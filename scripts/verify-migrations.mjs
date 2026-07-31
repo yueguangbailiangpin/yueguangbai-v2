@@ -30,6 +30,17 @@ const requiredTables = [
   'staff_permission_overrides',
   'staff_team_leaders',
   'staff_authorization_events',
+  'marketplaces',
+  'customer_identity_subjects',
+  'buyer_channels',
+  'seller_channels',
+  'buyer_customers',
+  'seller_organizations',
+  'seller_organization_members',
+  'wechat_identity_claims',
+  'customer_identity_claim_events',
+  'seller_organization_channel_events',
+  'buyer_number_allocation_events',
 ];
 
 const requiredTriggers = [
@@ -39,6 +50,14 @@ const requiredTriggers = [
   'trg_audit_events_no_delete',
   'trg_staff_authorization_events_no_update',
   'trg_staff_authorization_events_no_delete',
+  'trg_buyer_identity_subject_type_guard',
+  'trg_seller_member_identity_subject_type_guard',
+  'trg_customer_identity_claim_events_no_update',
+  'trg_customer_identity_claim_events_no_delete',
+  'trg_seller_channel_events_no_update',
+  'trg_seller_channel_events_no_delete',
+  'trg_buyer_number_events_no_update',
+  'trg_buyer_number_events_no_delete',
 ];
 
 try {
@@ -93,6 +112,15 @@ try {
       if (!triggers.has(trigger)) throw new Error(`缺少触发器: ${trigger}`);
     }
 
+    const sellerChannels = database.prepare(`
+      SELECT code, prefix, next_sequence
+      FROM seller_channels
+      ORDER BY code
+    `).all();
+    if (sellerChannels.length !== 3) {
+      throw new Error('卖家渠道种子数量不正确');
+    }
+
     const state = database.prepare(`
       SELECT schema_version
       FROM app_schema_state
@@ -113,6 +141,7 @@ try {
       integrity_check: 'ok',
       foreign_key_errors: 0,
       schema_version: Number(state.schema_version),
+      seller_channels: sellerChannels,
     }, null, 2));
   } finally {
     database.close();

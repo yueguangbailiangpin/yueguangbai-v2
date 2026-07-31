@@ -4,6 +4,8 @@ export * from './http/bounded-request';
 export * from './http/idempotency-key';
 export * from './identity/amazon-order-number';
 export * from './identity/asin';
+export * from './identity/wechat-id';
 export * from './money/fixed-decimal';
+export * from './numbering/customer-number';
 export * from './serialization/canonical-json';
 export * from './time/business-clock';
