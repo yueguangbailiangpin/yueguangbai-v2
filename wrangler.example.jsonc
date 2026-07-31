@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "yueguangbai-v2-example",
+  "main": "apps/api/src/index.ts",
+  "compatibility_date": "REPLACE_BEFORE_USE",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "REPLACE_BEFORE_USE",
+      "database_id": "REPLACE_BEFORE_USE",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "REPLACE_BEFORE_USE"
+    }
+  ]
+}
