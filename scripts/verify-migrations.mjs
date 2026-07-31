@@ -54,6 +54,8 @@ const requiredTables = [
   'seller_member_events',
   'product_applications',
   'product_application_events',
+  'demand_batches',
+  'demand_batch_events',
 ];
 
 const requiredTriggers = [
@@ -85,6 +87,8 @@ const requiredTriggers = [
   'trg_seller_member_events_no_delete',
   'trg_product_application_events_no_update',
   'trg_product_application_events_no_delete',
+  'trg_demand_batch_events_no_update',
+  'trg_demand_batch_events_no_delete',
 ];
 
 try {
