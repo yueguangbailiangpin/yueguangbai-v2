@@ -1,6 +1,7 @@
 import {
   apiFailure,
   apiSuccess,
+  type SqlDatabase,
 } from '@ygb/contracts';
 import { Hono } from 'hono';
 import {
@@ -9,12 +10,17 @@ import {
   writeErrorLog,
 } from './observability';
 
+type AppBindings = {
+  DB: SqlDatabase;
+};
+
 type AppVariables = {
   requestId: string;
   errorLogged: boolean;
 };
 
 type AppEnv = {
+  Bindings: AppBindings;
   Variables: AppVariables;
 };
 

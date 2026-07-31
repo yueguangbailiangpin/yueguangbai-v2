@@ -6,10 +6,13 @@
   "scripts": {
     "dev": "wrangler dev --local --config wrangler.local.jsonc",
     "build": "wrangler deploy --dry-run --config wrangler.local.jsonc --outdir dist",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
     "@ygb/contracts": "0.1.0",
     "hono": "4.12.32"
+  },
+  "devDependencies": {
+    "@ygb/testkit": "0.2.0"
   }
 }

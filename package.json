@@ -1,6 +1,6 @@
 {
   "name": "yueguangbai-v2",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -15,8 +15,10 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
+    "db:migrate:local": "wrangler d1 migrations apply yueguangbai-v2-local --local --config apps/api/wrangler.local.jsonc",
+    "db:verify": "node scripts/verify-migrations.mjs",
     "security:scan": "node scripts/scan-secrets.mjs",
-    "check": "npm run security:scan && npm run typecheck && npm test && npm run build",
+    "check": "npm run security:scan && npm run typecheck && npm run db:verify && npm test && npm run build",
     "dev:api": "npm --workspace @ygb/api run dev",
     "dev:web": "npm --workspace @ygb/web run dev"
   },

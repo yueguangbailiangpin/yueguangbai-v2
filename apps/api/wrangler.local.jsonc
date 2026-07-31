@@ -7,5 +7,13 @@
   "preview_urls": false,
   "observability": {
     "enabled": false
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "yueguangbai-v2-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../migrations"
+    }
+  ]
 }
