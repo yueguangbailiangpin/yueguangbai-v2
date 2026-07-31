@@ -1,14 +1,13 @@
 PRAGMA foreign_keys = ON;
 
--- This staged migration is valid both for isolated Phase 3E verification after
--- 0001-0009 and for the final sequence after 0010 is merged. It never invents
--- or skips 0010. Only the final 0001-0011 sequence advances schema_version.
+-- Formal migration 0011: only advances schema_version from 10 to 11.
+-- Any other preceding schema version must fail before any DDL is applied.
 INSERT INTO transaction_assertions (assertion_value)
 SELECT CASE WHEN EXISTS (
   SELECT 1
   FROM app_schema_state
   WHERE singleton_id=1
-    AND schema_version IN (9, 10)
+    AND schema_version=10
 ) THEN 1 ELSE 0 END;
 
 CREATE TABLE buyer_daily_exchange_rates (

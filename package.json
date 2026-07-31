@@ -17,8 +17,9 @@
     "test:watch": "vitest",
     "db:migrate:local": "wrangler d1 migrations apply yueguangbai-v2-local --local --config apps/api/wrangler.local.jsonc",
     "db:verify": "node scripts/verify-migrations.mjs",
+    "verify:migration-guards": "node scripts/verify-migration-version-guards.mjs",
     "security:scan": "node scripts/scan-secrets.mjs",
-    "check": "npm run security:scan && npm run typecheck && npm run db:verify && npm test && npm run build",
+    "check": "npm run security:scan && npm run typecheck && npm run db:verify && npm run verify:migration-guards && npm test && npm run build",
     "dev:api": "npm --workspace @ygb/api run dev",
     "dev:web": "npm --workspace @ygb/web run dev"
   },

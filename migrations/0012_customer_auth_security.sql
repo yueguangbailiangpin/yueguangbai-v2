@@ -1,5 +1,15 @@
 PRAGMA foreign_keys = ON;
 
+-- Formal migration 0012: only advances schema_version from 11 to 12.
+-- Any other preceding schema version must fail before any DDL is applied.
+INSERT INTO transaction_assertions (assertion_value)
+SELECT CASE WHEN EXISTS (
+  SELECT 1
+  FROM app_schema_state
+  WHERE singleton_id=1
+    AND schema_version=11
+) THEN 1 ELSE 0 END;
+
 CREATE TABLE customer_login_rate_limits (
   scope_type TEXT NOT NULL
     CHECK (scope_type IN (
@@ -126,4 +136,5 @@ UPDATE app_schema_state
 SET
   schema_version=12,
   installed_at=CAST(unixepoch('now') AS INTEGER) * 1000
-WHERE singleton_id=1;
+WHERE singleton_id=1
+  AND schema_version=11;
