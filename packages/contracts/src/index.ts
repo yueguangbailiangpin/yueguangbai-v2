@@ -4,5 +4,6 @@ export * from './customer';
 export * from './demand';
 export * from './errors';
 export * from './product-application';
+export * from './reservation';
 export * from './sql';
 export * from './staff';

@@ -56,6 +56,8 @@ const requiredTables = [
   'product_application_events',
   'demand_batches',
   'demand_batch_events',
+  'product_reservations',
+  'reservation_events',
 ];
 
 const requiredTriggers = [
@@ -89,6 +91,10 @@ const requiredTriggers = [
   'trg_product_application_events_no_delete',
   'trg_demand_batch_events_no_update',
   'trg_demand_batch_events_no_delete',
+  'trg_demand_batch_capacity_guard_insert',
+  'trg_demand_batch_capacity_guard_update',
+  'trg_reservation_events_no_update',
+  'trg_reservation_events_no_delete',
 ];
 
 try {
@@ -148,6 +154,22 @@ try {
       FROM seller_channels
       ORDER BY code
     `).all();
+
+    const demandColumns = database.prepare(`
+      PRAGMA table_info(demand_batches)
+    `).all();
+    for (const requiredColumn of [
+      'held_reservation_count',
+      'approved_reservation_count',
+    ]) {
+      if (!demandColumns.some(
+        (column) => column.name === requiredColumn,
+      )) {
+        throw new Error(
+          `demand_batches 缺少 ${requiredColumn}`,
+        );
+      }
+    }
 
     const sellerOrganizationColumns = database.prepare(`
       PRAGMA table_info(seller_organizations)
