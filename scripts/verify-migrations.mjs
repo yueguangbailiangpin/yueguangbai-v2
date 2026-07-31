@@ -21,6 +21,15 @@ const requiredTables = [
   'command_idempotency_records',
   'audit_events',
   'integration_outbox',
+  'staff_departments',
+  'staff_teams',
+  'staff_users',
+  'feishu_staff_identities',
+  'staff_team_memberships',
+  'staff_role_assignments',
+  'staff_permission_overrides',
+  'staff_team_leaders',
+  'staff_authorization_events',
 ];
 
 const requiredTriggers = [
@@ -28,6 +37,8 @@ const requiredTriggers = [
   'trg_transaction_assertion_cleanup',
   'trg_audit_events_no_update',
   'trg_audit_events_no_delete',
+  'trg_staff_authorization_events_no_update',
+  'trg_staff_authorization_events_no_delete',
 ];
 
 try {
