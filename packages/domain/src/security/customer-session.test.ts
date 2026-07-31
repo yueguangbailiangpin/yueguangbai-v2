@@ -36,7 +36,7 @@ describe('customer session codec', () => {
       ttlMs: 60_000,
     });
     const token = await signCustomerSession(payload, SECRET);
-    const tampered = `${token.slice(0, -1)}x`;
+    const tampered = tamperSessionSignature(token);
 
     await expect(verifyCustomerSession(
       tampered,
@@ -69,3 +69,15 @@ describe('customer session codec', () => {
       .rejects.toThrow('customer_session_secret_too_short');
   });
 });
+
+function tamperSessionSignature(token: string): string {
+  const parts = token.split('.');
+  const signature = parts[2];
+  if (parts.length !== 3 || !signature) {
+    throw new Error('invalid_test_session_token');
+  }
+  // The first base64url character always carries six signature bits.
+  const replacement = signature[0] === 'A' ? 'B' : 'A';
+  parts[2] = `${replacement}${signature.slice(1)}`;
+  return parts.join('.');
+}
