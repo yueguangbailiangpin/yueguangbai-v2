@@ -4,6 +4,7 @@ export * from './customer';
 export * from './demand';
 export * from './errors';
 export * from './file-storage';
+export * from './http-auth';
 export * from './pricing';
 export * from './product-application';
 export * from './reservation';
