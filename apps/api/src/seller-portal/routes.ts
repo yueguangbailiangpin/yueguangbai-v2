@@ -521,7 +521,8 @@ function idempotencyKey(context: Context<any>): string {
   return value;
 }
 
-function identifier(value: string): string {
+function identifier(value: unknown): string {
+  if (typeof value !== 'string') validation();
   const normalized = value.normalize('NFKC').trim();
   if (normalized.length < 1
     || normalized.length > 120
