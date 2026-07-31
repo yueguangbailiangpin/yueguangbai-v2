@@ -422,10 +422,6 @@ describe('Phase 3E pricing rules', () => {
 
 function pricingDatabase(): SqliteDatabase {
   const result = createMigratedTestDatabase();
-  result.exec(readFileSync(path.resolve(
-    process.cwd(),
-    'staged-migrations/0011_pricing_rules.sql',
-  ), 'utf8'));
   seedPricingFixture(result);
   return result;
 }

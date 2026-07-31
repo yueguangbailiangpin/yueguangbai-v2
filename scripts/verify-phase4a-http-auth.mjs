@@ -1,6 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
 import {
-  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -11,11 +10,6 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
-const stagedMigration = path.join(
-  root,
-  'staged-migrations',
-  '0012_customer_auth_security.sql',
-);
 const expectedBaseline = [
   '0001_foundation.sql',
   '0002_staff_identity_permissions.sql',
@@ -26,6 +20,9 @@ const expectedBaseline = [
   '0007_product_applications.sql',
   '0008_demand_batches.sql',
   '0009_reservations.sql',
+  '0010_file_storage.sql',
+  '0011_pricing_rules.sql',
+  '0012_customer_auth_security.sql',
 ];
 const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-v2-phase4a-'),
@@ -38,17 +35,9 @@ try {
     .sort();
   if (JSON.stringify(actualBaseline) !== JSON.stringify(expectedBaseline)) {
     throw new Error(
-      'Phase 4A staged verifier requires the untouched 0001-0009 baseline; '
+      'Phase 4A verifier requires the formal 0001-0012 sequence; '
       + `found: ${actualBaseline.join(', ')}`,
     );
-  }
-  if (actualBaseline.some(
-    (name) => name.startsWith('0010_') || name.startsWith('0011_'),
-  )) {
-    throw new Error('Do not create placeholder 0010 or 0011 migrations');
-  }
-  if (!existsSync(stagedMigration)) {
-    throw new Error('Missing staged 0012 customer auth migration');
   }
 
   const database = new DatabaseSync(databasePath);
@@ -60,8 +49,6 @@ try {
         'utf8',
       ));
     }
-    database.exec(readFileSync(stagedMigration, 'utf8'));
-
     const integrity = database.prepare(
       'PRAGMA integrity_check',
     ).all().map((row) => String(row.integrity_check));
@@ -104,8 +91,7 @@ try {
 
     console.log(JSON.stringify({
       status: 'PASS',
-      baseline_migrations: expectedBaseline,
-      staged_migration: path.relative(root, stagedMigration),
+      migrations: expectedBaseline,
       schema_version: 12,
       integrity_check: 'ok',
       foreign_key_errors: 0,

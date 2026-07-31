@@ -10,11 +10,6 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
-const stagedMigration = path.join(
-  root,
-  'staged-migrations',
-  '0011_pricing_rules.sql',
-);
 const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-phase3e-'),
 );
@@ -60,39 +55,28 @@ try {
     .sort();
   assertFormalMigrationSequence(formalMigrations);
 
-  const stagedSql = readFileSync(stagedMigration, 'utf8');
-  if (/\bREAL\b/u.test(stagedSql)) {
+  const migrationSql = readFileSync(
+    path.join(migrationsDirectory, '0011_pricing_rules.sql'),
+    'utf8',
+  );
+  if (/\bREAL\b/u.test(migrationSql)) {
     throw new Error('Phase 3E Migration 禁止 REAL');
-  }
-  if (/0010_[a-z0-9_-]+\.sql/u.test(stagedSql)) {
-    throw new Error('0011 不得制造或引用空 0010 Migration');
   }
 
   const database = new DatabaseSync(databasePath);
   try {
     database.exec('PRAGMA foreign_keys = ON;');
     for (const file of formalMigrations) {
+      if (file.startsWith('0012_')) continue;
       database.exec(readFileSync(
         path.join(migrationsDirectory, file),
         'utf8',
       ));
     }
-    const schemaBefore = readSchemaVersion(database);
-    database.exec(stagedSql);
-    const schemaAfter = readSchemaVersion(database);
-
-    const expectedBefore = formalMigrations.length;
-    if (schemaBefore !== expectedBefore) {
+    const schema = readSchemaVersion(database);
+    if (schema !== 11) {
       throw new Error(
-        `正式 Schema 版本 ${schemaBefore} 与 Migration 数量 `
-        + `${expectedBefore} 不一致`,
-      );
-    }
-    const expectedAfter = schemaBefore === 10 ? 11 : 9;
-    if (schemaAfter !== expectedAfter) {
-      throw new Error(
-        `staged 0011 后 Schema 版本应为 ${expectedAfter}，实际为 `
-        + `${schemaAfter}`,
+        `正式 0011 后 Schema 版本应为 11，实际为 ${schema}`,
       );
     }
 
@@ -112,10 +96,8 @@ try {
 
     console.log(JSON.stringify({
       status: 'PASS',
-      formal_migrations: formalMigrations,
-      staged_migration: path.relative(root, stagedMigration),
-      schema_version_before: schemaBefore,
-      schema_version_after: schemaAfter,
+      migrations: formalMigrations,
+      schema_version: 11,
       pricing_tables: pricingTables,
       required_triggers: requiredTriggers.length,
       integer_fact_check: 'PASS',
@@ -136,9 +118,10 @@ try {
 }
 
 function assertFormalMigrationSequence(files) {
-  if (files.length < 9 || files.length > 10) {
+  if (files.length !== 12
+    || !files.includes('0011_pricing_rules.sql')) {
     throw new Error(
-      'Phase 3E staged 验证只接受正式 0001-0009 或 0001-0010',
+      'Phase 3E 正式验证要求 Migration 0001-0012 且包含 0011_pricing_rules.sql',
     );
   }
   files.forEach((file, index) => {
@@ -147,9 +130,6 @@ function assertFormalMigrationSequence(files) {
       throw new Error(`Migration 序列缺口: 期望 ${expected}，实际 ${file}`);
     }
   });
-  if (files.some((file) => file.startsWith('0011_'))) {
-    throw new Error('0011 仍必须位于 staged-migrations');
-  }
 }
 
 function readSchemaVersion(database) {

@@ -63,6 +63,14 @@ const requiredTables = [
   'file_entity_links',
   'file_read_intents',
   'file_events',
+  'buyer_daily_exchange_rates',
+  'buyer_daily_exchange_rate_events',
+  'seller_agreement_rate_versions',
+  'seller_agreement_rate_events',
+  'seller_service_fee_versions',
+  'seller_service_fee_events',
+  'customer_login_rate_limits',
+  'customer_auth_security_events',
 ];
 
 const requiredTriggers = [
@@ -106,6 +114,14 @@ const requiredTriggers = [
   'trg_file_read_intents_verified_guard',
   'trg_file_events_no_update',
   'trg_file_events_no_delete',
+  'trg_buyer_daily_rate_events_no_update',
+  'trg_buyer_daily_rate_events_no_delete',
+  'trg_seller_agreement_rate_events_no_update',
+  'trg_seller_agreement_rate_events_no_delete',
+  'trg_seller_service_fee_events_no_update',
+  'trg_seller_service_fee_events_no_delete',
+  'trg_customer_auth_security_events_no_update',
+  'trg_customer_auth_security_events_no_delete',
 ];
 
 try {
@@ -207,6 +223,40 @@ try {
     ]) {
       if (fileObjectColumns.includes(forbiddenColumn)) {
         throw new Error(`file_objects 禁止列: ${forbiddenColumn}`);
+      }
+    }
+
+    const integerFacts = new Map([
+      ['buyer_daily_exchange_rates', ['cny_per_jpy_e8']],
+      ['seller_agreement_rate_versions', ['cny_per_jpy_e8']],
+      ['seller_service_fee_versions', ['fee_cny_fen']],
+    ]);
+    for (const [table, columns] of integerFacts) {
+      const definitions = new Map(database.prepare(
+        `PRAGMA table_info(${table})`,
+      ).all().map((column) => [
+        String(column.name),
+        String(column.type).toUpperCase(),
+      ]));
+      for (const column of columns) {
+        if (definitions.get(column) !== 'INTEGER') {
+          throw new Error(`${table}.${column} 必须为 INTEGER`);
+        }
+      }
+    }
+
+    const rateLimitColumns = new Set(database.prepare(
+      'PRAGMA table_info(customer_login_rate_limits)',
+    ).all().map((column) => String(column.name)));
+    for (const requiredColumn of [
+      'scope_type',
+      'scope_hash',
+      'window_expires_at',
+    ]) {
+      if (!rateLimitColumns.has(requiredColumn)) {
+        throw new Error(
+          `customer_login_rate_limits 缺少 ${requiredColumn}`,
+        );
       }
     }
 

@@ -19,8 +19,9 @@ try {
   const migrationFiles = readdirSync(migrationsDirectory)
     .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
     .sort();
-  if (migrationFiles.at(-1) !== '0010_file_storage.sql') {
-    throw new Error('0010_file_storage.sql 不是最终 Migration');
+  if (migrationFiles.length !== 12
+    || !migrationFiles.includes('0010_file_storage.sql')) {
+    throw new Error('正式 Migration 必须为 0001-0012 且包含 0010_file_storage.sql');
   }
 
   const database = new DatabaseSync(databasePath);
@@ -174,7 +175,7 @@ try {
       FROM app_schema_state
       WHERE singleton_id=1
     `).get();
-    if (Number(state?.schema_version) !== 10) {
+    if (Number(state?.schema_version) !== 12) {
       throw new Error(`Schema 版本错误: ${String(state?.schema_version)}`);
     }
 
@@ -190,7 +191,7 @@ try {
     console.log(JSON.stringify({
       status: 'PASS',
       migration: '0010_file_storage.sql',
-      schema_version: 10,
+      schema_version: 12,
       tables: requiredTables,
       triggers: requiredTriggers,
       verified_guards: [

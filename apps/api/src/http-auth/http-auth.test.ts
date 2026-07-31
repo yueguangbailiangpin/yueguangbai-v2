@@ -432,13 +432,6 @@ function testApp() {
 
 async function createPhase4aDatabase(): Promise<SqliteDatabase> {
   const result = createMigratedTestDatabase();
-  result.exec(readFileSync(
-    path.resolve(
-      process.cwd(),
-      'staged-migrations/0012_customer_auth_security.sql',
-    ),
-    'utf8',
-  ));
   return result;
 }
 
