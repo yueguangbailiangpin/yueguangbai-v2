@@ -107,10 +107,11 @@ async function getDemand(
   context: Context<any>,
 ): Promise<Response> {
   const buyer = await requireBuyerPortalContext(context);
+  const demandId = requireRouteId(context);
   const demand = await getBuyerPortalDemand(
     context.env.DB,
     buyer,
-    context.req.param('id'),
+    demandId,
     Date.now(),
   );
   return success(context, { demand });
@@ -121,11 +122,12 @@ async function createReservation(
 ): Promise<Response> {
   await requireEmptyCreateBody(context);
   const buyer = await requireBuyerPortalContext(context);
+  const demandBatchId = requireRouteId(context);
   const idempotencyKey = requireIdempotencyKey(context);
   const result = await submitReservation(
     context.env.DB,
     {
-      demandBatchId: context.req.param('id'),
+      demandBatchId,
     },
     {
       actor: buyer,
@@ -170,10 +172,11 @@ async function getReservation(
   context: Context<any>,
 ): Promise<Response> {
   const buyer = await requireBuyerPortalContext(context);
+  const reservationId = requireRouteId(context);
   const reservation = await getBuyerPortalReservation(
     context.env.DB,
     buyer,
-    context.req.param('id'),
+    reservationId,
   );
   return success(context, { reservation });
 }
@@ -182,6 +185,7 @@ async function cancelOwnReservation(
   context: Context<any>,
 ): Promise<Response> {
   const buyer = await requireBuyerPortalContext(context);
+  const reservationId = requireRouteId(context);
   const body = await readBoundedJson(
     context.req.raw,
     CANCEL_BODY_LIMIT_BYTES,
@@ -197,7 +201,7 @@ async function cancelOwnReservation(
   const result = await cancelReservation(
     context.env.DB,
     {
-      reservationId: context.req.param('id'),
+      reservationId,
       expectedVersion: Number(body['expected_version']),
     },
     {
@@ -229,6 +233,16 @@ async function requireEmptyCreateBody(
   if (!body || Object.keys(body).length !== 0) {
     throw new BuyerPortalError('VALIDATION_ERROR', 400);
   }
+}
+
+function requireRouteId(
+  context: Context<any>,
+): string {
+  const value = context.req.param('id');
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new BuyerPortalError('NOT_FOUND', 404);
+  }
+  return value;
 }
 
 function requireIdempotencyKey(
