@@ -10,5 +10,6 @@ export * from './order-evidence';
 export * from './pricing';
 export * from './product-application';
 export * from './reservation';
+export * from './seller-portal';
 export * from './sql';
 export * from './staff';
