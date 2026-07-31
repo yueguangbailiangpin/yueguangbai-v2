@@ -41,6 +41,9 @@ const requiredTables = [
   'customer_identity_claim_events',
   'seller_organization_channel_events',
   'buyer_number_allocation_events',
+  'customer_login_accounts',
+  'customer_password_credentials',
+  'customer_access_events',
 ];
 
 const requiredTriggers = [
@@ -58,6 +61,8 @@ const requiredTriggers = [
   'trg_seller_channel_events_no_delete',
   'trg_buyer_number_events_no_update',
   'trg_buyer_number_events_no_delete',
+  'trg_customer_access_events_no_update',
+  'trg_customer_access_events_no_delete',
 ];
 
 try {

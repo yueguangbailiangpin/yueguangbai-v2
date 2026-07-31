@@ -7,5 +7,7 @@ export * from './identity/asin';
 export * from './identity/wechat-id';
 export * from './money/fixed-decimal';
 export * from './numbering/customer-number';
+export * from './security/customer-password';
+export * from './security/customer-session';
 export * from './serialization/canonical-json';
 export * from './time/business-clock';
