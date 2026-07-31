@@ -1,0 +1,25 @@
+export const API_ERROR_CODES = [
+  'VALIDATION_ERROR',
+  'UNAUTHENTICATED',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'CONFLICT',
+  'VERSION_CONFLICT',
+  'IDEMPOTENCY_CONFLICT',
+  'REQUEST_IN_PROGRESS',
+  'RATE_LIMITED',
+  'DEPENDENCY_UNAVAILABLE',
+  'UPLOAD_FAILED',
+  'STATE_CONFLICT',
+  'DUPLICATE_ORDER_NUMBER',
+  'DUPLICATE_PRODUCT',
+  'ASIN_STORE_CONFLICT',
+  'CAPACITY_FULL',
+] as const;
+
+export type ApiErrorCode = typeof API_ERROR_CODES[number];
+
+export function isApiErrorCode(value: unknown): value is ApiErrorCode {
+  return typeof value === 'string'
+    && (API_ERROR_CODES as readonly string[]).includes(value);
+}

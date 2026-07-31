@@ -1,0 +1,30 @@
+{
+  "name": "yueguangbai-v2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "security:scan": "node scripts/scan-secrets.mjs",
+    "check": "npm run security:scan && npm run typecheck && npm test && npm run build",
+    "dev:api": "npm --workspace @ygb/api run dev",
+    "dev:web": "npm --workspace @ygb/web run dev"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "6.0.3",
+    "vite": "8.1.5",
+    "vitest": "4.1.10",
+    "wrangler": "4.114.0"
+  }
+}

@@ -1,0 +1,98 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: #172033;
+  background: #f3f5f8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.page-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.hero-card {
+  width: min(720px, 100%);
+  padding: clamp(28px, 5vw, 56px);
+  background: #ffffff;
+  border: 1px solid #dde3eb;
+  border-radius: 24px;
+  box-shadow: 0 18px 50px rgb(23 32 51 / 10%);
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: #58677f;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(32px, 6vw, 52px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.summary {
+  max-width: 580px;
+  margin: 20px 0 0;
+  color: #4d5c73;
+  font-size: 18px;
+  line-height: 1.75;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f4f7fb;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1f9d66;
+  box-shadow: 0 0 0 5px rgb(31 157 102 / 12%);
+}
+
+.foundation-list {
+  margin: 24px 0 0;
+  padding-left: 22px;
+  color: #27364c;
+  line-height: 1.9;
+}
+
+.boundary {
+  margin: 28px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid #e4e8ee;
+  color: #6b778a;
+  font-size: 14px;
+}
