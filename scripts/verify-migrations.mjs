@@ -44,6 +44,13 @@ const requiredTables = [
   'customer_login_accounts',
   'customer_password_credentials',
   'customer_access_events',
+  'seller_stores',
+  'seller_store_events',
+  'seller_member_store_scopes',
+  'seller_member_store_scope_events',
+  'products',
+  'product_versions',
+  'product_events',
 ];
 
 const requiredTriggers = [
@@ -63,6 +70,14 @@ const requiredTriggers = [
   'trg_buyer_number_events_no_delete',
   'trg_customer_access_events_no_update',
   'trg_customer_access_events_no_delete',
+  'trg_seller_store_events_no_update',
+  'trg_seller_store_events_no_delete',
+  'trg_seller_scope_events_no_update',
+  'trg_seller_scope_events_no_delete',
+  'trg_product_versions_no_update',
+  'trg_product_versions_no_delete',
+  'trg_product_events_no_update',
+  'trg_product_events_no_delete',
 ];
 
 try {

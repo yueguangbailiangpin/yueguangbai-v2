@@ -1,3 +1,5 @@
+export * from './catalog/product-version';
+export * from './catalog/store-name';
 export * from './crypto/request-hash';
 export * from './crypto/sha256';
 export * from './http/bounded-request';
