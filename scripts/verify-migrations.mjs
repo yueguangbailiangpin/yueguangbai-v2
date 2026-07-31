@@ -58,6 +58,11 @@ const requiredTables = [
   'demand_batch_events',
   'product_reservations',
   'reservation_events',
+  'file_upload_intents',
+  'file_objects',
+  'file_entity_links',
+  'file_read_intents',
+  'file_events',
 ];
 
 const requiredTriggers = [
@@ -95,6 +100,12 @@ const requiredTriggers = [
   'trg_demand_batch_capacity_guard_update',
   'trg_reservation_events_no_update',
   'trg_reservation_events_no_delete',
+  'trg_file_objects_intent_guard',
+  'trg_file_objects_verified_guard',
+  'trg_file_entity_links_verified_guard',
+  'trg_file_read_intents_verified_guard',
+  'trg_file_events_no_update',
+  'trg_file_events_no_delete',
 ];
 
 try {
@@ -183,6 +194,20 @@ try {
     }
     if (sellerChannels.length !== 3) {
       throw new Error('卖家渠道种子数量不正确');
+    }
+
+    const fileObjectColumns = database.prepare(`
+      PRAGMA table_info(file_objects)
+    `).all().map((column) => String(column.name));
+    for (const forbiddenColumn of [
+      'public_url',
+      'signed_url',
+      'secret',
+      'upload_token',
+    ]) {
+      if (fileObjectColumns.includes(forbiddenColumn)) {
+        throw new Error(`file_objects 禁止列: ${forbiddenColumn}`);
+      }
     }
 
     const state = database.prepare(`

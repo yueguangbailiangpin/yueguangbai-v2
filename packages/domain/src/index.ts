@@ -2,6 +2,7 @@ export * from './catalog/product-version';
 export * from './catalog/store-name';
 export * from './crypto/request-hash';
 export * from './crypto/sha256';
+export * from './files';
 export * from './http/bounded-request';
 export * from './http/idempotency-key';
 export * from './identity/amazon-order-number';
