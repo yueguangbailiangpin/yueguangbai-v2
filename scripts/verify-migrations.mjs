@@ -71,6 +71,11 @@ const requiredTables = [
   'seller_service_fee_events',
   'customer_login_rate_limits',
   'customer_auth_security_events',
+  'order_evidence_submissions',
+  'order_evidence_versions',
+  'order_evidence_version_files',
+  'order_evidence_duplicate_signals',
+  'order_evidence_events',
 ];
 
 const requiredTriggers = [
@@ -122,6 +127,20 @@ const requiredTriggers = [
   'trg_seller_service_fee_events_no_delete',
   'trg_customer_auth_security_events_no_update',
   'trg_customer_auth_security_events_no_delete',
+  'trg_order_evidence_submission_reservation_guard',
+  'trg_order_evidence_submission_identity_immutable',
+  'trg_order_evidence_version_submission_guard',
+  'trg_order_evidence_versions_no_update',
+  'trg_order_evidence_versions_no_delete',
+  'trg_order_evidence_version_file_guard',
+  'trg_order_evidence_version_files_no_update',
+  'trg_order_evidence_version_files_no_delete',
+  'trg_order_evidence_duplicate_signal_after_version',
+  'trg_order_evidence_duplicate_signals_no_update',
+  'trg_order_evidence_duplicate_signals_no_delete',
+  'trg_order_evidence_event_identity_guard',
+  'trg_order_evidence_events_no_update',
+  'trg_order_evidence_events_no_delete',
 ];
 
 try {
@@ -192,9 +211,7 @@ try {
       if (!demandColumns.some(
         (column) => column.name === requiredColumn,
       )) {
-        throw new Error(
-          `demand_batches 缺少 ${requiredColumn}`,
-        );
+        throw new Error(`demand_batches 缺少 ${requiredColumn}`);
       }
     }
 
@@ -204,9 +221,7 @@ try {
     if (!sellerOrganizationColumns.some(
       (column) => column.name === 'next_member_number',
     )) {
-      throw new Error(
-        'seller_organizations 缺少 next_member_number',
-      );
+      throw new Error('seller_organizations 缺少 next_member_number');
     }
     if (sellerChannels.length !== 3) {
       throw new Error('卖家渠道种子数量不正确');
@@ -230,6 +245,7 @@ try {
       ['buyer_daily_exchange_rates', ['cny_per_jpy_e8']],
       ['seller_agreement_rate_versions', ['cny_per_jpy_e8']],
       ['seller_service_fee_versions', ['fee_cny_fen']],
+      ['order_evidence_versions', ['final_paid_jpy']],
     ]);
     for (const [table, columns] of integerFacts) {
       const definitions = new Map(database.prepare(
@@ -242,6 +258,24 @@ try {
         if (definitions.get(column) !== 'INTEGER') {
           throw new Error(`${table}.${column} 必须为 INTEGER`);
         }
+      }
+    }
+
+    const orderEvidenceColumns = new Set(database.prepare(`
+      PRAGMA table_info(order_evidence_versions)
+    `).all().map((column) => String(column.name)));
+    for (const forbiddenColumn of [
+      'buyer_number',
+      'business_order_number',
+      'buyer_rate_snapshot',
+      'seller_rate_snapshot',
+      'service_fee_snapshot',
+      'profit_cny_fen',
+      'refund_amount',
+      'settlement_amount',
+    ]) {
+      if (orderEvidenceColumns.has(forbiddenColumn)) {
+        throw new Error(`order_evidence_versions 禁止列: ${forbiddenColumn}`);
       }
     }
 
