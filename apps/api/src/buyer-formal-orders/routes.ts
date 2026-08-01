@@ -70,7 +70,7 @@ async function listFormalOrders(context: Context<any>): Promise<Response> {
 
 async function getFormalOrder(context: Context<any>): Promise<Response> {
   const buyer = await requireBuyerPortalContext(context);
-  const id = context.req.param('id');
+  const id = requireRouteId(context);
   const formalOrder = await getBuyerFormalOrder(
     context.env.DB,
     buyer,
@@ -177,6 +177,17 @@ function rejectUnknownOrRepeatedQuery(url: URL): void {
       validationError();
     }
   }
+}
+
+function requireRouteId(context: Context<any>): string {
+  const value = context.req.param('id');
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new BuyerFormalOrderPortalError(
+      'BUYER_FORMAL_ORDER_NOT_FOUND',
+      404,
+    );
+  }
+  return value;
 }
 
 function singleQuery(url: URL, key: string): string | null {
