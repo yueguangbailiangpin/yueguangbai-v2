@@ -76,6 +76,9 @@ const requiredTables = [
   'order_evidence_version_files',
   'order_evidence_duplicate_signals',
   'order_evidence_events',
+  'formal_orders',
+  'formal_order_financial_snapshots',
+  'formal_order_events',
 ];
 
 const requiredTriggers = [
@@ -141,6 +144,15 @@ const requiredTriggers = [
   'trg_order_evidence_event_identity_guard',
   'trg_order_evidence_events_no_update',
   'trg_order_evidence_events_no_delete',
+  'trg_formal_order_source_guard',
+  'trg_formal_orders_no_update',
+  'trg_formal_orders_no_delete',
+  'trg_formal_order_financial_snapshot_guard',
+  'trg_formal_order_financial_snapshots_no_update',
+  'trg_formal_order_financial_snapshots_no_delete',
+  'trg_formal_order_event_identity_guard',
+  'trg_formal_order_events_no_update',
+  'trg_formal_order_events_no_delete',
 ];
 
 try {
@@ -246,6 +258,14 @@ try {
       ['seller_agreement_rate_versions', ['cny_per_jpy_e8']],
       ['seller_service_fee_versions', ['fee_cny_fen']],
       ['order_evidence_versions', ['final_paid_jpy']],
+      ['formal_orders', ['final_paid_jpy']],
+      ['formal_order_financial_snapshots', [
+        'buyer_cny_per_jpy_e8',
+        'seller_cny_per_jpy_e8',
+        'service_fee_cny_fen',
+        'buyer_expected_principal_cny_fen',
+        'seller_expected_principal_cny_fen',
+      ]],
     ]);
     for (const [table, columns] of integerFacts) {
       const definitions = new Map(database.prepare(
@@ -277,6 +297,39 @@ try {
       if (orderEvidenceColumns.has(forbiddenColumn)) {
         throw new Error(`order_evidence_versions 禁止列: ${forbiddenColumn}`);
       }
+    }
+
+
+    const formalOrderColumns = new Set(database.prepare(`
+      PRAGMA table_info(formal_orders)
+    `).all().map((column) => String(column.name)));
+    const formalSnapshotColumns = new Set(database.prepare(`
+      PRAGMA table_info(formal_order_financial_snapshots)
+    `).all().map((column) => String(column.name)));
+    for (const forbiddenColumn of [
+      'review_status',
+      'refund_status',
+      'settlement_status',
+      'profit_cny_fen',
+      'realized_profit_cny_fen',
+    ]) {
+      if (formalOrderColumns.has(forbiddenColumn)
+        || formalSnapshotColumns.has(forbiddenColumn)) {
+        throw new Error(`Phase 3F 禁止字段: ${forbiddenColumn}`);
+      }
+    }
+
+    const uniqueAmazonOrderIndex = database.prepare(`
+      SELECT name
+      FROM sqlite_schema
+      WHERE type='index'
+        AND tbl_name='formal_orders'
+        AND sql IS NOT NULL
+        AND upper(sql) LIKE '%UNIQUE%'
+        AND sql LIKE '%amazon_order_number_normalized%'
+    `).all();
+    if (uniqueAmazonOrderIndex.length > 0) {
+      throw new Error('Amazon订单号不得设置全局唯一');
     }
 
     const rateLimitColumns = new Set(database.prepare(

@@ -5,6 +5,7 @@ export * from './customer';
 export * from './demand';
 export * from './errors';
 export * from './file-storage';
+export * from './formal-order';
 export * from './http-auth';
 export * from './order-evidence';
 export * from './pricing';
