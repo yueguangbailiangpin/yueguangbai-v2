@@ -1,5 +1,6 @@
 import { createApp } from './app';
 import { registerBuyerFormalOrderRoutes } from './buyer-formal-orders';
+import { registerBuyerRefundStatusRoutes } from './buyer-refund-status';
 import { registerBuyerOrderEvidencePortalRoutes } from './buyer-order-evidence-portal';
 import { registerBuyerPortalRoutes } from './buyer-portal';
 import { registerBuyerReviewRoutes } from './buyer-reviews';
@@ -15,6 +16,7 @@ registerBuyerSelfRegistrationRoutes(app);
 registerBuyerPortalRoutes(app);
 registerBuyerOrderEvidencePortalRoutes(app);
 registerBuyerFormalOrderRoutes(app);
+registerBuyerRefundStatusRoutes(app);
 registerBuyerReviewRoutes(app);
 registerSellerPortalRoutes(app);
 registerSellerFormalOrderRoutes(app);
