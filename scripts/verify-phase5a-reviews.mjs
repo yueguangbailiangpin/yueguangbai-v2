@@ -57,9 +57,9 @@ function expectFailure(operation, expected, label) {
 }
 
 try {
-  if (migrationFiles.length !== 16
-    || migrationFiles.at(-1) !== '0016_review_workflow.sql') {
-    throw new Error(`expected migrations 0001-0016, got ${migrationFiles.join(', ')}`);
+  if (migrationFiles.length !== 17
+    || migrationFiles.at(-1) !== '0017_buyer_refunds.sql') {
+    throw new Error(`expected migrations 0001-0017, got ${migrationFiles.join(', ')}`);
   }
 
   const requiredReviewFiles = [
@@ -180,8 +180,8 @@ try {
   const fresh = openDatabase('fresh.sqlite');
   try {
     apply(fresh, migrationFiles);
-    if (schemaVersion(fresh) !== 16) {
-      throw new Error(`fresh schema expected 16, got ${schemaVersion(fresh)}`);
+    if (schemaVersion(fresh) !== 17) {
+      throw new Error(`fresh schema expected 17, got ${schemaVersion(fresh)}`);
     }
     const integrity = fresh.prepare('PRAGMA integrity_check').all()
       .map((row) => String(row.integrity_check));
@@ -281,7 +281,7 @@ try {
       'transaction_assertion_failed',
       'repeat0016@16',
     );
-    if (schemaVersion(repeated) !== 16) {
+    if (schemaVersion(repeated) !== 17) {
       throw new Error('repeat migration changed schema version');
     }
   } finally {
@@ -290,8 +290,8 @@ try {
 
   console.log(JSON.stringify({
     status: 'PASS',
-    schema_version: 16,
-    migrations: '0001-0016',
+    schema_version: 17,
+    migrations: '0001-0017',
     explicit_file_audiences: true,
     exact_buyer_seller_staff_grants: true,
     approval_events_once: true,

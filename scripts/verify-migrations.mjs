@@ -85,6 +85,10 @@ const requiredTables = [
   'review_evidence_versions',
   'review_evidence_version_files',
   'review_events',
+  'buyer_refund_obligations',
+  'buyer_refund_payment_entries',
+  'buyer_refund_payment_entry_files',
+  'buyer_refund_events',
 ];
 
 const requiredTriggers = [
@@ -178,6 +182,19 @@ const requiredTriggers = [
   'trg_review_event_identity_guard',
   'trg_review_events_no_update',
   'trg_review_events_no_delete',
+  'trg_buyer_refund_obligation_source_guard',
+  'trg_buyer_refund_obligation_version_guard',
+  'trg_buyer_refund_obligations_no_delete',
+  'trg_buyer_refund_payment_entry_source_guard',
+  'trg_buyer_refund_reversal_limit_guard',
+  'trg_buyer_refund_payment_entries_no_update',
+  'trg_buyer_refund_payment_entries_no_delete',
+  'trg_buyer_refund_payment_entry_file_guard',
+  'trg_buyer_refund_payment_entry_files_no_update',
+  'trg_buyer_refund_payment_entry_files_no_delete',
+  'trg_buyer_refund_event_identity_guard',
+  'trg_buyer_refund_events_no_update',
+  'trg_buyer_refund_events_no_delete',
 ];
 
 try {
@@ -230,6 +247,22 @@ try {
     }
     for (const trigger of requiredTriggers) {
       if (!triggers.has(trigger)) throw new Error(`缺少触发器: ${trigger}`);
+    }
+
+    const buyerRefundView = database.prepare(`
+      SELECT name
+      FROM sqlite_schema
+      WHERE type='view' AND name='buyer_refund_ledger_balances'
+    `).get();
+    if (!buyerRefundView) {
+      throw new Error('缺少视图: buyer_refund_ledger_balances');
+    }
+
+    const refundObligationColumns = new Set(database.prepare(`
+      PRAGMA table_info(buyer_refund_obligations)
+    `).all().map((column) => String(column.name)));
+    if (refundObligationColumns.has('status')) {
+      throw new Error('买家返款状态必须由账本推导，禁止持久化 status');
     }
 
     const sellerChannels = database.prepare(`
@@ -311,6 +344,12 @@ try {
         'seller_expected_principal_cny_fen',
       ]],
       ['review_events', ['amount_cny_fen']],
+      ['buyer_refund_obligations', ['due_amount_cny_fen']],
+      ['buyer_refund_payment_entries', ['amount_cny_fen']],
+      ['buyer_refund_events', [
+        'amount_cny_fen',
+        'net_paid_after_cny_fen',
+      ]],
     ]);
     for (const [table, columns] of integerFacts) {
       const definitions = new Map(database.prepare(
@@ -378,7 +417,7 @@ try {
         )
     `).all();
     if (forbiddenPhase5Tables.length > 0) {
-      throw new Error('Phase 5A 不得创建实际返款、结算、利润或 Amazon 自动化表');
+      throw new Error('禁止旧式返款覆盖表、卖家结算、利润或 Amazon 自动化表');
     }
 
     const uniqueAmazonOrderIndex = database.prepare(`

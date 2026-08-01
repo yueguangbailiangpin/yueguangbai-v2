@@ -428,21 +428,21 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(await formalOrderCounts()).toEqual(before);
   });
 
-  it('keeps migrations at 0001-0016 and schema16', async () => {
+  it('keeps migrations at 0001-0017 and schema17', async () => {
     const state = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(16);
+    expect(Number(state?.schema_version)).toBe(17);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(16);
+    expect(migrations).toHaveLength(17);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
-    expect(migrations[15]?.startsWith('0016_')).toBe(true);
+    expect(migrations[16]?.startsWith('0017_')).toBe(true);
   });
 });
 

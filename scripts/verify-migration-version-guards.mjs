@@ -69,18 +69,18 @@ function expectMigrationFailure(database, name, label) {
   if (!failed) throw new Error(`${label}: Migration 应失败但未失败`);
 }
 
-// 1. Fresh full sequence 0001-0016.
+// 1. Fresh full sequence 0001-0017.
 {
   const fresh = openDatabase();
   applyFiles(fresh, migrationFiles);
-  if (schemaVersion(fresh) !== 16) {
-    throw new Error(`fresh: schema 应为 16，实际 ${schemaVersion(fresh)}`);
+  if (schemaVersion(fresh) !== 17) {
+    throw new Error(`fresh: schema 应为 17，实际 ${schemaVersion(fresh)}`);
   }
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
 
-// 2. Upgrade path 0001-0009 -> 0010 -> ... -> 0015 -> 0016.
+// 2. Upgrade path 0001-0009 -> 0010 -> ... -> 0016 -> 0017.
 {
   const upgrade = openDatabase();
   applyFiles(upgrade, migrationFiles.slice(0, 9));
@@ -99,6 +99,8 @@ function expectMigrationFailure(database, name, label) {
   if (schemaVersion(upgrade) !== 15) throw new Error('upgrade: schema 15');
   applyFiles(upgrade, ['0016_review_workflow.sql']);
   if (schemaVersion(upgrade) !== 16) throw new Error('upgrade: schema 16');
+  applyFiles(upgrade, ['0017_buyer_refunds.sql']);
+  if (schemaVersion(upgrade) !== 17) throw new Error('upgrade: schema 17');
   assertIntegrity(upgrade, 'upgrade');
   upgrade.close();
 }
@@ -177,7 +179,23 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 9. Repeat 0011 at schema 11.
+
+// 9. Negative: schema=15, direct 0017.
+{
+  const neg = openDatabase();
+  applyFiles(neg, migrationFiles.slice(0, 15));
+  expectMigrationFailure(
+    neg,
+    '0017_buyer_refunds.sql',
+    'schema15->0017',
+  );
+  if (schemaVersion(neg) !== 15) throw new Error('schema15->0017 changed');
+  assertObjectAbsent(neg, 'table', 'buyer_refund_obligations');
+  assertIntegrity(neg, 'schema15->0017');
+  neg.close();
+}
+
+// 10. Repeat 0011 at schema 11.
 {
   const neg = openDatabase();
   applyFiles(neg, migrationFiles.slice(0, 11));
@@ -187,7 +205,7 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 10. Repeat 0012 at schema 12.
+// 11. Repeat 0012 at schema 12.
 {
   const neg = openDatabase();
   applyFiles(neg, migrationFiles.slice(0, 12));
@@ -197,7 +215,7 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 11. Repeat 0013 at schema 13.
+// 12. Repeat 0013 at schema 13.
 {
   const neg = openDatabase();
   applyFiles(neg, migrationFiles.slice(0, 13));
@@ -207,7 +225,7 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 12. Repeat 0014 at schema 14.
+// 13. Repeat 0014 at schema 14.
 {
   const neg = openDatabase();
   applyFiles(neg, migrationFiles.slice(0, 14));
@@ -217,7 +235,7 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 13. Repeat 0015 at schema 15.
+// 14. Repeat 0015 at schema 15.
 {
   const neg = openDatabase();
   applyFiles(neg, migrationFiles.slice(0, 15));
@@ -231,10 +249,10 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 14. Repeat 0016 at schema 16.
+// 15. Repeat 0016 at schema 16.
 {
   const neg = openDatabase();
-  applyFiles(neg, migrationFiles);
+  applyFiles(neg, migrationFiles.slice(0, 16));
   expectMigrationFailure(
     neg,
     '0016_review_workflow.sql',
@@ -245,21 +263,37 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
+// 16. Repeat 0017 at schema 17.
+{
+  const neg = openDatabase();
+  applyFiles(neg, migrationFiles);
+  expectMigrationFailure(
+    neg,
+    '0017_buyer_refunds.sql',
+    'repeat0017@17',
+  );
+  if (schemaVersion(neg) !== 17) throw new Error('repeat0017 changed');
+  assertIntegrity(neg, 'repeat0017@17');
+  neg.close();
+}
+
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_db: 'schema 16, integrity ok, fk 0',
-  upgrade_9_to_16: '9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16',
+  fresh_db: 'schema 17, integrity ok, fk 0',
+  upgrade_9_to_17: '9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17',
   negative_schema9_to_0011: 'REJECTED',
   negative_schema10_to_0012: 'REJECTED',
   negative_schema11_to_0013: 'REJECTED',
   negative_schema12_to_0014: 'REJECTED',
   negative_schema13_to_0015: 'REJECTED',
   negative_schema14_to_0016: 'REJECTED',
+  negative_schema15_to_0017: 'REJECTED',
   repeat_0011_rejected: true,
   repeat_0012_rejected: true,
   repeat_0013_rejected: true,
   repeat_0014_rejected: true,
   repeat_0015_rejected: true,
   repeat_0016_rejected: true,
+  repeat_0017_rejected: true,
   no_partial_ddl: true,
 }, null, 2));

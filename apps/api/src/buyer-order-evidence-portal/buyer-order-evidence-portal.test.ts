@@ -903,22 +903,22 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     },
   );
 
-  it('keeps migration 0001-0016 and creates no actual refund, settlement, or profit', async () => {
+  it('keeps migration 0001-0017 and creates no actual refund, settlement, or profit', async () => {
     setup();
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(16);
+    expect(migrations).toHaveLength(17);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toMatch(/^0016_/u);
+    expect(migrations.at(-1)).toMatch(/^0017_/u);
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(16);
+    expect(Number(schema?.schema_version)).toBe(17);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name
