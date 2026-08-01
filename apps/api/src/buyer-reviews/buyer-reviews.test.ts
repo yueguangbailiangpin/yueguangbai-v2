@@ -277,13 +277,13 @@ describe('Phase 4B4 buyer review API security boundaries', () => {
     );
   });
 
-  it('keeps schema16 and forbidden domains unchanged', () => {
+  it('keeps schema17 and forbidden domains unchanged', () => {
     const root = path.resolve(MODULE_DIRECTORY, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(16);
-    expect(migrations.at(-1)).toBe('0016_review_workflow.sql');
+    expect(migrations).toHaveLength(17);
+    expect(migrations.at(-1)).toBe('0017_buyer_refunds.sql');
 
     const source = readFileSync(
       path.join(root, 'apps/api/src/buyer-reviews/read-model.ts'),
