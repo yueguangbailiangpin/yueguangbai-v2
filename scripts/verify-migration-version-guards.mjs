@@ -1,299 +1,121 @@
 import { DatabaseSync } from 'node:sqlite';
-import {
-  readFileSync,
-  readdirSync,
-} from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
-
 const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
+if (migrationFiles.length !== 18
+  || migrationFiles.at(-1) !== '0018_buyer_self_registration.sql') {
+  throw new Error('expected migrations 0001-0018');
+}
+
+const guarded = new Map([
+  [11, 'buyer_daily_exchange_rates'],
+  [12, 'customer_login_rate_limits'],
+  [13, 'order_evidence_submissions'],
+  [14, 'formal_orders'],
+  [15, 'file_entity_audience_grants'],
+  [16, 'review_cases'],
+  [17, 'buyer_refund_obligations'],
+  [18, 'buyer_registration_conflicts'],
+]);
+
 function readMigration(name) {
   return readFileSync(path.join(migrationsDirectory, name), 'utf8');
 }
-
 function openDatabase() {
   const database = new DatabaseSync(':memory:');
   database.exec('PRAGMA foreign_keys = ON;');
   return database;
 }
-
-function applyFiles(database, names) {
-  for (const name of names) database.exec(readMigration(name));
+function applyPrefix(database, count) {
+  for (const name of migrationFiles.slice(0, count)) {
+    database.exec(readMigration(name));
+  }
 }
-
 function schemaVersion(database) {
-  const row = database.prepare(`
-    SELECT schema_version
-    FROM app_schema_state
-    WHERE singleton_id=1
-  `).get();
-  return Number(row?.schema_version);
+  return Number(database.prepare(`
+    SELECT schema_version FROM app_schema_state WHERE singleton_id=1
+  `).get()?.schema_version);
 }
-
 function assertIntegrity(database, label) {
   const integrity = database.prepare('PRAGMA integrity_check').all()
     .map((row) => String(row.integrity_check));
   if (integrity.length !== 1 || integrity[0] !== 'ok') {
-    throw new Error(`${label}: integrity_check 失败`);
+    throw new Error(`${label}: integrity failed`);
   }
-  const foreignKeys = database.prepare('PRAGMA foreign_key_check').all();
-  if (foreignKeys.length > 0) {
-    throw new Error(`${label}: foreign_key_check 发现 ${foreignKeys.length} 项`);
+  if (database.prepare('PRAGMA foreign_key_check').all().length > 0) {
+    throw new Error(`${label}: foreign keys failed`);
   }
 }
-
-function assertObjectAbsent(database, type, name) {
-  const row = database.prepare(`
-    SELECT 1
-    FROM sqlite_schema
-    WHERE type=? AND name=?
-  `).get(type, name);
-  if (row) throw new Error(`${type} ${name} 不应在失败后残留`);
-}
-
-function expectMigrationFailure(database, name, label) {
+function expectGuardFailure(database, migration, label) {
   let failed = false;
   try {
-    database.exec(readMigration(name));
+    database.exec(readMigration(migration));
   } catch (error) {
     failed = true;
     if (!String(error).includes('transaction_assertion_failed')) {
-      throw new Error(`${label}: 失败原因不是前置断言: ${String(error)}`);
+      throw new Error(`${label}: wrong failure ${String(error)}`);
     }
   }
-  if (!failed) throw new Error(`${label}: Migration 应失败但未失败`);
+  if (!failed) throw new Error(`${label}: expected failure`);
 }
 
-// 1. Fresh full sequence 0001-0017.
 {
   const fresh = openDatabase();
-  applyFiles(fresh, migrationFiles);
-  if (schemaVersion(fresh) !== 17) {
-    throw new Error(`fresh: schema 应为 17，实际 ${schemaVersion(fresh)}`);
-  }
+  applyPrefix(fresh, migrationFiles.length);
+  if (schemaVersion(fresh) !== 18) throw new Error('fresh schema not 18');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
 
-// 2. Upgrade path 0001-0009 -> 0010 -> ... -> 0016 -> 0017.
 {
   const upgrade = openDatabase();
-  applyFiles(upgrade, migrationFiles.slice(0, 9));
-  if (schemaVersion(upgrade) !== 9) throw new Error('upgrade: schema 9');
-  applyFiles(upgrade, ['0010_file_storage.sql']);
-  if (schemaVersion(upgrade) !== 10) throw new Error('upgrade: schema 10');
-  applyFiles(upgrade, ['0011_pricing_rules.sql']);
-  if (schemaVersion(upgrade) !== 11) throw new Error('upgrade: schema 11');
-  applyFiles(upgrade, ['0012_customer_auth_security.sql']);
-  if (schemaVersion(upgrade) !== 12) throw new Error('upgrade: schema 12');
-  applyFiles(upgrade, ['0013_order_evidence.sql']);
-  if (schemaVersion(upgrade) !== 13) throw new Error('upgrade: schema 13');
-  applyFiles(upgrade, ['0014_formal_orders.sql']);
-  if (schemaVersion(upgrade) !== 14) throw new Error('upgrade: schema 14');
-  applyFiles(upgrade, ['0015_file_audience_grants.sql']);
-  if (schemaVersion(upgrade) !== 15) throw new Error('upgrade: schema 15');
-  applyFiles(upgrade, ['0016_review_workflow.sql']);
-  if (schemaVersion(upgrade) !== 16) throw new Error('upgrade: schema 16');
-  applyFiles(upgrade, ['0017_buyer_refunds.sql']);
-  if (schemaVersion(upgrade) !== 17) throw new Error('upgrade: schema 17');
+  for (let count = 1; count <= migrationFiles.length; count += 1) {
+    upgrade.exec(readMigration(migrationFiles[count - 1]));
+    if (schemaVersion(upgrade) !== count) {
+      throw new Error(`upgrade expected schema ${count}`);
+    }
+  }
   assertIntegrity(upgrade, 'upgrade');
   upgrade.close();
 }
 
-// 3. Negative: schema=9, direct 0011.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 9));
-  expectMigrationFailure(neg, '0011_pricing_rules.sql', 'schema9->0011');
-  if (schemaVersion(neg) !== 9) throw new Error('schema9->0011 changed');
-  assertObjectAbsent(neg, 'table', 'buyer_daily_exchange_rates');
-  assertIntegrity(neg, 'schema9->0011');
-  neg.close();
-}
+for (const [number, sentinel] of guarded) {
+  const migration = migrationFiles[number - 1];
+  const skipped = openDatabase();
+  applyPrefix(skipped, number - 2);
+  expectGuardFailure(skipped, migration, `skip-${number}`);
+  if (schemaVersion(skipped) !== number - 2) {
+    throw new Error(`skip-${number}: schema changed`);
+  }
+  const object = skipped.prepare(`
+    SELECT 1 FROM sqlite_schema WHERE name=?
+  `).get(sentinel);
+  if (object) throw new Error(`skip-${number}: partial DDL ${sentinel}`);
+  assertIntegrity(skipped, `skip-${number}`);
+  skipped.close();
 
-// 4. Negative: schema=10, direct 0012.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 10));
-  expectMigrationFailure(neg, '0012_customer_auth_security.sql', 'schema10->0012');
-  if (schemaVersion(neg) !== 10) throw new Error('schema10->0012 changed');
-  assertObjectAbsent(neg, 'table', 'customer_login_rate_limits');
-  assertIntegrity(neg, 'schema10->0012');
-  neg.close();
-}
-
-// 5. Negative: schema=11, direct 0013.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 11));
-  expectMigrationFailure(neg, '0013_order_evidence.sql', 'schema11->0013');
-  if (schemaVersion(neg) !== 11) throw new Error('schema11->0013 changed');
-  assertObjectAbsent(neg, 'table', 'order_evidence_submissions');
-  assertIntegrity(neg, 'schema11->0013');
-  neg.close();
-}
-
-// 6. Negative: schema=12, direct 0014.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 12));
-  expectMigrationFailure(neg, '0014_formal_orders.sql', 'schema12->0014');
-  if (schemaVersion(neg) !== 12) throw new Error('schema12->0014 changed');
-  assertObjectAbsent(neg, 'table', 'formal_orders');
-  assertIntegrity(neg, 'schema12->0014');
-  neg.close();
-}
-
-// 7. Negative: schema=13, direct 0015.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 13));
-  expectMigrationFailure(
-    neg,
-    '0015_file_audience_grants.sql',
-    'schema13->0015',
-  );
-  if (schemaVersion(neg) !== 13) throw new Error('schema13->0015 changed');
-  assertObjectAbsent(neg, 'table', 'file_entity_audience_grants');
-  assertIntegrity(neg, 'schema13->0015');
-  neg.close();
-}
-
-// 8. Negative: schema=14, direct 0016.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 14));
-  expectMigrationFailure(
-    neg,
-    '0016_review_workflow.sql',
-    'schema14->0016',
-  );
-  if (schemaVersion(neg) !== 14) throw new Error('schema14->0016 changed');
-  assertObjectAbsent(neg, 'table', 'review_cases');
-  assertIntegrity(neg, 'schema14->0016');
-  neg.close();
-}
-
-
-// 9. Negative: schema=15, direct 0017.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 15));
-  expectMigrationFailure(
-    neg,
-    '0017_buyer_refunds.sql',
-    'schema15->0017',
-  );
-  if (schemaVersion(neg) !== 15) throw new Error('schema15->0017 changed');
-  assertObjectAbsent(neg, 'table', 'buyer_refund_obligations');
-  assertIntegrity(neg, 'schema15->0017');
-  neg.close();
-}
-
-// 10. Repeat 0011 at schema 11.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 11));
-  expectMigrationFailure(neg, '0011_pricing_rules.sql', 'repeat0011@11');
-  if (schemaVersion(neg) !== 11) throw new Error('repeat0011 changed');
-  assertIntegrity(neg, 'repeat0011@11');
-  neg.close();
-}
-
-// 11. Repeat 0012 at schema 12.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 12));
-  expectMigrationFailure(neg, '0012_customer_auth_security.sql', 'repeat0012@12');
-  if (schemaVersion(neg) !== 12) throw new Error('repeat0012 changed');
-  assertIntegrity(neg, 'repeat0012@12');
-  neg.close();
-}
-
-// 12. Repeat 0013 at schema 13.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 13));
-  expectMigrationFailure(neg, '0013_order_evidence.sql', 'repeat0013@13');
-  if (schemaVersion(neg) !== 13) throw new Error('repeat0013 changed');
-  assertIntegrity(neg, 'repeat0013@13');
-  neg.close();
-}
-
-// 13. Repeat 0014 at schema 14.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 14));
-  expectMigrationFailure(neg, '0014_formal_orders.sql', 'repeat0014@14');
-  if (schemaVersion(neg) !== 14) throw new Error('repeat0014 changed');
-  assertIntegrity(neg, 'repeat0014@14');
-  neg.close();
-}
-
-// 14. Repeat 0015 at schema 15.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 15));
-  expectMigrationFailure(
-    neg,
-    '0015_file_audience_grants.sql',
-    'repeat0015@15',
-  );
-  if (schemaVersion(neg) !== 15) throw new Error('repeat0015 changed');
-  assertIntegrity(neg, 'repeat0015@15');
-  neg.close();
-}
-
-// 15. Repeat 0016 at schema 16.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles.slice(0, 16));
-  expectMigrationFailure(
-    neg,
-    '0016_review_workflow.sql',
-    'repeat0016@16',
-  );
-  if (schemaVersion(neg) !== 16) throw new Error('repeat0016 changed');
-  assertIntegrity(neg, 'repeat0016@16');
-  neg.close();
-}
-
-// 16. Repeat 0017 at schema 17.
-{
-  const neg = openDatabase();
-  applyFiles(neg, migrationFiles);
-  expectMigrationFailure(
-    neg,
-    '0017_buyer_refunds.sql',
-    'repeat0017@17',
-  );
-  if (schemaVersion(neg) !== 17) throw new Error('repeat0017 changed');
-  assertIntegrity(neg, 'repeat0017@17');
-  neg.close();
+  const repeated = openDatabase();
+  applyPrefix(repeated, number);
+  expectGuardFailure(repeated, migration, `repeat-${number}`);
+  if (schemaVersion(repeated) !== number) {
+    throw new Error(`repeat-${number}: schema changed`);
+  }
+  assertIntegrity(repeated, `repeat-${number}`);
+  repeated.close();
 }
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_db: 'schema 17, integrity ok, fk 0',
-  upgrade_9_to_17: '9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17',
-  negative_schema9_to_0011: 'REJECTED',
-  negative_schema10_to_0012: 'REJECTED',
-  negative_schema11_to_0013: 'REJECTED',
-  negative_schema12_to_0014: 'REJECTED',
-  negative_schema13_to_0015: 'REJECTED',
-  negative_schema14_to_0016: 'REJECTED',
-  negative_schema15_to_0017: 'REJECTED',
-  repeat_0011_rejected: true,
-  repeat_0012_rejected: true,
-  repeat_0013_rejected: true,
-  repeat_0014_rejected: true,
-  repeat_0015_rejected: true,
-  repeat_0016_rejected: true,
-  repeat_0017_rejected: true,
+  fresh_schema: 18,
+  sequential_upgrade: '0001 -> 0018',
+  guarded_migrations: [...guarded.keys()],
+  wrong_order_rejected: true,
+  repeat_rejected: true,
   no_partial_ddl: true,
 }, null, 2));
