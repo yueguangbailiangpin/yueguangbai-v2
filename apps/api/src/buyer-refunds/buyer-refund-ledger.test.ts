@@ -717,11 +717,14 @@ function seedFormalOrderPrerequisites(db: SqliteDatabase): void {
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
       created_by_staff_id, created_at
-    ) VALUES (
+    ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES (
       'product-review-v1', 'product-review', 1,
       '返款流程测试产品', '[]', NULL, NULL, NULL,
       'staff-review-pre-sales', 1000
-    );
+    ,
+          1980, 'MAIN_IMAGE_VARIANT');
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,

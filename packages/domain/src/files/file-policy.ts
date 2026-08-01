@@ -32,6 +32,12 @@ const PURPOSE_POLICIES: Readonly<Record<FilePurpose, FilePurposePolicy>> =
       allowedMimes: IMAGE_MIMES,
       entityType: 'PRODUCT_APPLICATION',
     }),
+    PRODUCT_IMAGE: Object.freeze({
+      maximumFileCount: 1,
+      maximumByteSize: 10 * MEBIBYTE,
+      allowedMimes: IMAGE_MIMES,
+      entityType: 'PRODUCT_VERSION',
+    }),
     ORDER_EVIDENCE: Object.freeze({
       maximumFileCount: 10,
       maximumByteSize: 20 * MEBIBYTE,

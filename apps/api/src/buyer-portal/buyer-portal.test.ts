@@ -190,7 +190,6 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       expect(firstBody.data.items).toHaveLength(1);
       expect(firstBody.data.items[0]).toMatchObject({
         demand_id: 'demand-projection',
-        asin: 'B0PORTAL01',
         product_name: '门户产品一',
         task_type: 'IMAGE',
         target_quantity: 3,
@@ -216,6 +215,10 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       expect(detail.status).toBe(200);
       const detailText = JSON.stringify(await json(detail));
       for (const forbidden of [
+        'asin',
+        'product_url',
+        'search_keywords',
+        'search_keywords_json',
         'seller_notes',
         'internal_notes',
         'held_reservation_count',
@@ -317,7 +320,6 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
           can_cancel: true,
           demand: {
             demand_id: 'demand-final',
-            asin: 'B0PORTAL02',
           },
         },
       });
@@ -329,6 +331,14 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
         'seller-org-1',
         'precheck_snapshot_json',
         'decided_by_staff_id',
+        'asin',
+        'product_url',
+        'search_keywords',
+        'search_keywords_json',
+        'asin',
+        'product_url',
+        'search_keywords',
+        'search_keywords_json',
         'seller_notes',
         'internal_notes',
       ]) {
@@ -577,7 +587,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     },
   );
 
-  it('keeps migrations at 0001-0017 with schema_version 16', async () => {
+  it('keeps migrations through 0019 with schema_version 19', async () => {
     database = createMigratedTestDatabase();
     const repositoryRoot = path.resolve(
       import.meta.dirname,
@@ -588,16 +598,16 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     )
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(18);
+    expect(migrations).toHaveLength(19);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toMatch(/^0018_/u);
+    expect(migrations.at(-1)).toMatch(/^0019_/u);
 
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(18);
+    expect(Number(state?.schema_version)).toBe(19);
   });
 });
 
@@ -754,19 +764,25 @@ function seedPortalFixture(
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
       created_by_staff_id, created_at
-    ) VALUES
+    ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES
       ('product-1-v1', 'product-1', 1, '门户产品一',
        '["关键词一"]', 'https://www.amazon.co.jp/portal-one',
-       '产品公开说明一', '产品内部说明一', 'staff-pre-sales', 1000),
+       '产品公开说明一', '产品内部说明一', 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-2-v1', 'product-2', 1, '门户产品二',
        '["关键词二"]', 'https://www.amazon.co.jp/portal-two',
-       '产品公开说明二', '产品内部说明二', 'staff-pre-sales', 1000),
+       '产品公开说明二', '产品内部说明二', 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-3-v1', 'product-3', 1, '门户产品三',
        '["关键词三"]', 'https://www.amazon.co.jp/portal-three',
-       '产品公开说明三', '产品内部说明三', 'staff-pre-sales', 1000),
+       '产品公开说明三', '产品内部说明三', 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-4-v1', 'product-4', 1, '门户产品四',
        '["关键词四"]', 'https://www.amazon.co.jp/portal-four',
-       '产品公开说明四', '产品内部说明四', 'staff-pre-sales', 1000);
+       '产品公开说明四', '产品内部说明四', 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT');
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,

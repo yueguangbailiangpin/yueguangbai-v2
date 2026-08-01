@@ -335,11 +335,14 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
         search_keywords_json, product_url,
         buyer_visible_notes, internal_notes,
         created_by_staff_id, created_at
-      ) VALUES (
+      ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES (
         'product-portal-1-v2', 'product-portal-1', 2,
         'Portal 产品一新规则名称', '[]', NULL, NULL,
         'new internal secret', 'staff-confirm', 9900
-      );
+      ,
+          1980, 'MAIN_IMAGE_VARIANT');
       UPDATE products
       SET current_version_no=2, version=2, updated_at=9900
       WHERE id='product-portal-1';
@@ -436,21 +439,21 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(await formalOrderCounts()).toEqual(before);
   });
 
-  it('keeps migrations at 0001-0017 and schema17', async () => {
+  it('keeps migrations through 0019 and schema19', async () => {
     const state = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(18);
+    expect(Number(state?.schema_version)).toBe(19);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(18);
+    expect(migrations).toHaveLength(19);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
-    expect(migrations[17]?.startsWith('0018_')).toBe(true);
+    expect(migrations[18]?.startsWith('0019_')).toBe(true);
   });
 });
 
@@ -788,16 +791,21 @@ function seedFixture(db: SqliteDatabase): void {
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
       created_by_staff_id, created_at
-    ) VALUES
+    ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES
       ('product-portal-1-v1', 'product-portal-1', 1,
        'Portal 产品一', '[]', NULL, NULL,
-       'internal product secret', 'staff-confirm', 1000),
+       'internal product secret', 'staff-confirm', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-portal-2-v1', 'product-portal-2', 1,
        'Portal 产品二', '[]', NULL, NULL,
-       'internal product secret two', 'staff-confirm', 1000),
+       'internal product secret two', 'staff-confirm', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-other-v1', 'product-other', 1,
        'Other 产品', '[]', NULL, NULL,
-       'other internal secret', 'staff-confirm', 1000);
+       'other internal secret', 'staff-confirm', 1000,
+          1980, 'MAIN_IMAGE_VARIANT');
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,

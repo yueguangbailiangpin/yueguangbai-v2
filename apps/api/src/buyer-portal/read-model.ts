@@ -18,10 +18,7 @@ import {
 interface DemandRow {
   demand_batch_id: string;
   marketplace_code: 'JP';
-  asin: string;
   product_name: string;
-  search_keywords_json: string;
-  product_url: string | null;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;
@@ -46,10 +43,7 @@ interface ReservationRow {
   expired_at: number | null;
   demand_batch_id: string;
   marketplace_code: 'JP';
-  asin: string;
   product_name: string;
-  search_keywords_json: string;
-  product_url: string | null;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;
@@ -61,10 +55,7 @@ const PUBLIC_DEMAND_SELECT = `
   SELECT
     demand.id AS demand_batch_id,
     demand.marketplace_code,
-    product.asin_normalized AS asin,
     version.product_name,
-    version.search_keywords_json,
-    version.product_url,
     demand.buyer_visible_notes,
     store.display_name AS store_display_name,
     demand.task_type,
@@ -120,10 +111,7 @@ const RESERVATION_SELECT = `
     reservation.expired_at,
     demand.id AS demand_batch_id,
     demand.marketplace_code,
-    product.asin_normalized AS asin,
     version.product_name,
-    version.search_keywords_json,
-    version.product_url,
     demand.buyer_visible_notes,
     store.display_name AS store_display_name,
     demand.task_type,
@@ -361,12 +349,7 @@ function toDemandDto(row: DemandRow): BuyerPortalDemandDto {
   return {
     demand_id: row.demand_batch_id,
     marketplace_code: row.marketplace_code,
-    asin: row.asin,
     product_name: row.product_name,
-    search_keywords: Object.freeze(
-      parseStringArray(row.search_keywords_json),
-    ),
-    product_url: row.product_url,
     buyer_visible_notes: row.buyer_visible_notes,
     store_display_name: row.store_display_name,
     task_type: row.task_type,
@@ -401,12 +384,7 @@ function toReservationDto(
     demand: {
       demand_id: row.demand_batch_id,
       marketplace_code: row.marketplace_code,
-      asin: row.asin,
       product_name: row.product_name,
-      search_keywords: Object.freeze(
-        parseStringArray(row.search_keywords_json),
-      ),
-      product_url: row.product_url,
       buyer_visible_notes: row.buyer_visible_notes,
       store_display_name: row.store_display_name,
       task_type: row.task_type,
@@ -419,20 +397,4 @@ function toReservationDto(
 
 function nullableNumber(value: number | null): number | null {
   return value === null ? null : Number(value);
-}
-
-function parseStringArray(value: string): string[] {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)
-      || parsed.some((item) => typeof item !== 'string')) {
-      throw new Error('invalid');
-    }
-    return parsed;
-  } catch {
-    throw new BuyerPortalError(
-      'DEPENDENCY_UNAVAILABLE',
-      503,
-    );
-  }
 }

@@ -1,5 +1,5 @@
 import type {
-  ProductVersionFields,
+  ProductDescriptiveFields,
   SellerMemberRole,
   SqlDatabase,
   SqlStatement,
@@ -137,8 +137,8 @@ export function cleanReviewReason(
 }
 
 export function parseApplicationProductFields(
-  parser: () => ProductVersionFields,
-): ProductVersionFields {
+  parser: () => ProductDescriptiveFields,
+): ProductDescriptiveFields {
   try {
     return parser();
   } catch {
@@ -211,7 +211,7 @@ export function insertProductApplicationEventStatement(
 }
 
 export function productVersionSnapshot(
-  version: ProductVersionFields,
+  version: ProductDescriptiveFields,
 ): {
   product_name: string;
   search_keywords_json: string;

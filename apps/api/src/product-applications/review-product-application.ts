@@ -6,6 +6,7 @@ import type {
 } from '@ygb/contracts';
 import {
   isProductApplicationReviewDecision,
+  PRODUCT_COLOR_SPEC_MODES,
 } from '@ygb/contracts';
 import {
   canonicalJson,
@@ -73,6 +74,8 @@ export async function reviewProductApplication(
     expectedVersion: number;
     decision: ProductApplicationReviewDecision;
     rejectionReason?: string | null;
+    orderingGuideExpectedAmountJpy?: number;
+    colorSpecMode?: ProductVersionFields['colorSpecMode'];
   },
   command: {
     actor: ProductApplicationStaffActor;
@@ -107,6 +110,27 @@ export async function reviewProductApplication(
     );
   }
 
+  const expectedAmount = input.orderingGuideExpectedAmountJpy;
+  const colorSpecMode = input.colorSpecMode;
+  if (input.decision === 'APPROVE') {
+    if (!Number.isSafeInteger(expectedAmount)
+      || Number(expectedAmount) < 0
+      || typeof colorSpecMode !== 'string'
+      || !(PRODUCT_COLOR_SPEC_MODES as readonly string[])
+        .includes(colorSpecMode)) {
+      throw new ProductApplicationError(
+        'VALIDATION_ERROR',
+        400,
+      );
+    }
+  } else if (expectedAmount !== undefined
+    || colorSpecMode !== undefined) {
+    throw new ProductApplicationError(
+      'VALIDATION_ERROR',
+      400,
+    );
+  }
+
   const now = command.now ?? Date.now();
   if (!Number.isSafeInteger(now) || now < 0) {
     throw new ProductApplicationError(
@@ -121,6 +145,8 @@ export async function reviewProductApplication(
     expected_version: input.expectedVersion,
     decision: input.decision,
     rejection_reason: rejectionReason,
+    ordering_guide_expected_amount_jpy: expectedAmount ?? null,
+    color_spec_mode: colorSpecMode ?? null,
   });
 
   const acquired =
@@ -168,6 +194,8 @@ export async function reviewProductApplication(
       ? await buildApproval(
           database,
           source,
+          requireExpectedAmount(expectedAmount),
+          requireColorSpecMode(colorSpecMode),
           command,
           acquired.claim.idempotencyKey,
           now,
@@ -271,6 +299,23 @@ export async function reviewProductApplication(
 }
 
 
+function requireExpectedAmount(value: number | undefined): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new ProductApplicationError('VALIDATION_ERROR', 400);
+  }
+  return Number(value);
+}
+
+function requireColorSpecMode(
+  value: ProductVersionFields['colorSpecMode'] | undefined,
+): ProductVersionFields['colorSpecMode'] {
+  if (typeof value !== 'string'
+    || !(PRODUCT_COLOR_SPEC_MODES as readonly string[]).includes(value)) {
+    throw new ProductApplicationError('VALIDATION_ERROR', 400);
+  }
+  return value as ProductVersionFields['colorSpecMode'];
+}
+
 function requireRejectionReason(
   value: string | null,
 ): string {
@@ -286,6 +331,8 @@ function requireRejectionReason(
 async function buildApproval(
   database: SqlDatabase,
   source: ApplicationSource,
+  orderingGuideExpectedAmountJpy: number,
+  colorSpecMode: ProductVersionFields['colorSpecMode'],
   command: {
     actor: ProductApplicationStaffActor;
   },
@@ -321,6 +368,8 @@ async function buildApproval(
     productUrl: source.product_url,
     buyerVisibleNotes: source.buyer_visible_notes,
     internalNotes: source.seller_notes,
+    orderingGuideExpectedAmountJpy,
+    colorSpecMode,
   };
 
   return {
@@ -361,19 +410,23 @@ async function buildApproval(
           version_no,
           product_name,
           search_keywords_json,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode,
           product_url,
           buyer_visible_notes,
           internal_notes,
           created_by_staff_id,
           created_at
         ) VALUES (
-          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `).bind(
         productVersionId,
         productId,
         version.productName,
         canonicalJson(version.searchKeywords),
+        version.orderingGuideExpectedAmountJpy,
+        version.colorSpecMode,
         version.productUrl,
         version.buyerVisibleNotes,
         version.internalNotes,

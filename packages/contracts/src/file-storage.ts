@@ -1,5 +1,6 @@
 export const FILE_PURPOSES = [
   'PRODUCT_APPLICATION_IMAGE',
+  'PRODUCT_IMAGE',
   'ORDER_EVIDENCE',
   'REVIEW_EVIDENCE',
   'BUYER_REFUND_PROOF',
@@ -77,6 +78,7 @@ export type FileReadIntentStatus =
 
 export const FILE_ENTITY_TYPES = [
   'PRODUCT_APPLICATION',
+  'PRODUCT_VERSION',
   'ORDER',
   'REVIEW',
   'BUYER_REFUND',

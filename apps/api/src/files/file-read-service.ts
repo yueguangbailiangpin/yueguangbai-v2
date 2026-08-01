@@ -45,6 +45,7 @@ const MAXIMUM_READ_TTL_MS = 10 * 60 * 1000;
 interface ReadableFileSource extends FileObjectRow {
   file_entity_link_id: string;
   entity_type: 'PRODUCT_APPLICATION'
+    | 'PRODUCT_VERSION'
     | 'ORDER'
     | 'REVIEW'
     | 'BUYER_REFUND'

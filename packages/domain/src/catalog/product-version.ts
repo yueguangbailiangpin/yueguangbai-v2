@@ -1,5 +1,10 @@
 import type {
+  ProductColorSpecMode,
+  ProductDescriptiveFields,
   ProductVersionFields,
+} from '@ygb/contracts';
+import {
+  PRODUCT_COLOR_SPEC_MODES,
 } from '@ygb/contracts';
 
 export class ProductVersionFieldsError extends Error {
@@ -10,16 +15,18 @@ export class ProductVersionFieldsError extends Error {
       | 'too_many_search_keywords'
       | 'invalid_product_url'
       | 'invalid_buyer_visible_notes'
-      | 'invalid_internal_notes',
+      | 'invalid_internal_notes'
+      | 'invalid_ordering_guide_expected_amount_jpy'
+      | 'invalid_color_spec_mode',
   ) {
     super(reason);
     this.name = 'ProductVersionFieldsError';
   }
 }
 
-export function normalizeProductVersionFields(
-  input: ProductVersionFields,
-): ProductVersionFields {
+export function normalizeProductDescriptiveFields(
+  input: ProductDescriptiveFields,
+): ProductDescriptiveFields {
   const productName = cleanRequired(
     input.productName,
     200,
@@ -33,14 +40,14 @@ export function normalizeProductVersionFields(
     );
   }
 
-  const searchKeywords = [...new Set(
-    input.searchKeywords.map((keyword) =>
-      cleanRequired(
-        keyword,
-        100,
-        'invalid_search_keyword',
-      )),
-  )];
+  // The submitted sequence is authoritative. Validate each value without
+  // sorting or deduplicating so repeated terms and original order survive.
+  const searchKeywords = input.searchKeywords.map((keyword) =>
+    cleanRequired(
+      keyword,
+      100,
+      'invalid_search_keyword',
+    ));
 
   const productUrl = normalizeProductUrl(input.productUrl);
   const buyerVisibleNotes = cleanOptional(
@@ -61,6 +68,38 @@ export function normalizeProductVersionFields(
     buyerVisibleNotes,
     internalNotes,
   };
+}
+
+export function normalizeProductVersionFields(
+  input: ProductVersionFields,
+): ProductVersionFields {
+  const descriptive = normalizeProductDescriptiveFields(input);
+  const orderingGuideExpectedAmountJpy =
+    input.orderingGuideExpectedAmountJpy;
+  if (!Number.isSafeInteger(orderingGuideExpectedAmountJpy)
+    || orderingGuideExpectedAmountJpy < 0) {
+    throw new ProductVersionFieldsError(
+      'invalid_ordering_guide_expected_amount_jpy',
+    );
+  }
+  if (!isProductColorSpecMode(input.colorSpecMode)) {
+    throw new ProductVersionFieldsError(
+      'invalid_color_spec_mode',
+    );
+  }
+  return {
+    ...descriptive,
+    orderingGuideExpectedAmountJpy,
+    colorSpecMode: input.colorSpecMode,
+  };
+}
+
+function isProductColorSpecMode(
+  value: unknown,
+): value is ProductColorSpecMode {
+  return typeof value === 'string'
+    && (PRODUCT_COLOR_SPEC_MODES as readonly string[])
+      .includes(value);
 }
 
 function normalizeProductUrl(

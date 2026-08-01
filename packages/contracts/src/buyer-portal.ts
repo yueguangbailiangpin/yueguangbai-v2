@@ -16,10 +16,7 @@ export interface BuyerPortalMeDto {
 export interface BuyerPortalDemandDto {
   demand_id: string;
   marketplace_code: 'JP';
-  asin: string;
   product_name: string;
-  search_keywords: readonly string[];
-  product_url: string | null;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;
@@ -33,10 +30,7 @@ export interface BuyerPortalDemandDto {
 export interface BuyerPortalReservationDemandDto {
   demand_id: string;
   marketplace_code: 'JP';
-  asin: string;
   product_name: string;
-  search_keywords: readonly string[];
-  product_url: string | null;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;

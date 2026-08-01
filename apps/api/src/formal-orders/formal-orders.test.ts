@@ -799,13 +799,18 @@ function seedFormalOrderFixture(
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
       created_by_staff_id, created_at
-    ) VALUES
+    ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES
       ('product-formal-1-v1', 'product-formal-1', 1,
-       '正式订单产品一', '[]', NULL, NULL, NULL, 'staff-pre-sales', 1000),
+       '正式订单产品一', '[]', NULL, NULL, NULL, 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-formal-2-v1', 'product-formal-2', 1,
-       '正式订单产品二', '[]', NULL, NULL, NULL, 'staff-pre-sales', 1000),
+       '正式订单产品二', '[]', NULL, NULL, NULL, 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-formal-3-v1', 'product-formal-3', 1,
-       '正式订单产品三', '[]', NULL, NULL, NULL, 'staff-pre-sales', 1000);
+       '正式订单产品三', '[]', NULL, NULL, NULL, 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT');
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,

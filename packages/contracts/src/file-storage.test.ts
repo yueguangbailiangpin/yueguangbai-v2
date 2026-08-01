@@ -16,6 +16,7 @@ describe('file storage contracts', () => {
   it('publishes the frozen purpose and visibility values', () => {
     expect(FILE_PURPOSES).toEqual([
       'PRODUCT_APPLICATION_IMAGE',
+      'PRODUCT_IMAGE',
       'ORDER_EVIDENCE',
       'REVIEW_EVIDENCE',
       'BUYER_REFUND_PROOF',
@@ -27,7 +28,15 @@ describe('file storage contracts', () => {
       'BUYER_VISIBLE',
       'SELLER_VISIBLE',
     ]);
-    expect(FILE_ENTITY_TYPES).toHaveLength(6);
+    expect(FILE_ENTITY_TYPES).toEqual([
+      'PRODUCT_APPLICATION',
+      'PRODUCT_VERSION',
+      'ORDER',
+      'REVIEW',
+      'BUYER_REFUND',
+      'SELLER_SETTLEMENT',
+      'SUPPORT_CASE',
+    ]);
     expect(FILE_LINK_AUTHORIZATION_MODES).toEqual([
       'LEGACY_VISIBILITY',
       'EXPLICIT_AUDIENCES',
@@ -39,7 +48,9 @@ describe('file storage contracts', () => {
     ]);
   });
 
-  it('rejects unpublished values', () => {
+  it('publishes only the two new formal product-file values', () => {
+    expect(isFilePurpose('PRODUCT_IMAGE')).toBe(true);
+    expect(isFileEntityType('PRODUCT_VERSION')).toBe(true);
     expect(isFilePurpose('ORDER_IMAGE')).toBe(false);
     expect(isFileVisibility('PUBLIC')).toBe(false);
     expect(isFileLinkAuthorizationMode('BOTH')).toBe(false);

@@ -903,22 +903,22 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     },
   );
 
-  it('keeps migration 0001-0017 and creates no actual refund, settlement, or profit', async () => {
+  it('keeps migration through 0019 and creates no actual refund, settlement, or profit', async () => {
     setup();
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(18);
+    expect(migrations).toHaveLength(19);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toMatch(/^0018_/u);
+    expect(migrations.at(-1)).toMatch(/^0019_/u);
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(18);
+    expect(Number(schema?.schema_version)).toBe(19);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name
@@ -1255,22 +1255,29 @@ function seedFixture(
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
       created_by_staff_id, created_at
-    ) VALUES
+    ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES
       ('product-a-v1', 'product-a', 1, '订单资料产品A',
        '["关键词A"]', 'https://www.amazon.co.jp/evidence-a',
-       '公开说明A', '内部说明A', 'staff-pre-sales', 1000),
+       '公开说明A', '内部说明A', 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-b-v1', 'product-b', 1, '订单资料产品B',
        '["关键词B"]', 'https://www.amazon.co.jp/evidence-b',
-       '公开说明B', '内部说明B', 'staff-pre-sales', 1000),
+       '公开说明B', '内部说明B', 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-c-v1', 'product-c', 1, '订单资料产品C',
        '["关键词C"]', 'https://www.amazon.co.jp/evidence-c',
-       '公开说明C', '内部说明C', 'staff-pre-sales', 1000),
+       '公开说明C', '内部说明C', 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-other-v1', 'product-other', 1, '其他买家产品',
        '["关键词O"]', 'https://www.amazon.co.jp/evidence-o',
-       '公开说明O', '内部说明O', 'staff-pre-sales', 1000),
+       '公开说明O', '内部说明O', 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-pending-v1', 'product-pending', 1, '待审核产品',
        '["关键词P"]', 'https://www.amazon.co.jp/evidence-p',
-       '公开说明P', '内部说明P', 'staff-pre-sales', 1000);
+       '公开说明P', '内部说明P', 'staff-pre-sales', 1000,
+          1980, 'MAIN_IMAGE_VARIANT');
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,

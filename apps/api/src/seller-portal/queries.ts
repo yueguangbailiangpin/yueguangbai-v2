@@ -34,6 +34,7 @@ interface ProductRow {
   store_id: string;
   store_display_name: string;
   marketplace_code: 'JP';
+  seller_code: string;
   asin: string;
   status: 'ACTIVE' | 'DISABLED';
   current_version_no: number;
@@ -43,6 +44,9 @@ interface ProductRow {
   product_version_id: string;
   product_name: string;
   search_keywords_json: string;
+  ordering_guide_expected_amount_jpy: number | null;
+  color_spec_mode: 'MAIN_IMAGE_VARIANT' | 'ANY_VARIANT' | null;
+  main_image_file_entity_link_id: string | null;
   product_url: string | null;
   buyer_visible_notes: string | null;
   product_version_created_at: number;
@@ -53,6 +57,9 @@ interface ProductVersionRow {
   version_no: number;
   product_name: string;
   search_keywords_json: string;
+  ordering_guide_expected_amount_jpy: number | null;
+  color_spec_mode: 'MAIN_IMAGE_VARIANT' | 'ANY_VARIANT' | null;
+  main_image_file_entity_link_id: string | null;
   product_url: string | null;
   buyer_visible_notes: string | null;
   created_at: number;
@@ -230,6 +237,7 @@ export async function listSellerPortalProducts(
       product.store_id,
       store.display_name AS store_display_name,
       product.marketplace_code,
+      organization.seller_code,
       product.asin_normalized AS asin,
       product.status,
       product.current_version_no,
@@ -239,6 +247,9 @@ export async function listSellerPortalProducts(
       current.id AS product_version_id,
       current.product_name,
       current.search_keywords_json,
+      current.ordering_guide_expected_amount_jpy,
+      current.color_spec_mode,
+      image.file_entity_link_id AS main_image_file_entity_link_id,
       current.product_url,
       current.buyer_visible_notes,
       current.created_at AS product_version_created_at
@@ -246,9 +257,13 @@ export async function listSellerPortalProducts(
     JOIN seller_stores store
       ON store.id=product.store_id
       AND store.organization_id=product.organization_id
+    JOIN seller_organizations organization
+      ON organization.id=product.organization_id
     JOIN product_versions current
       ON current.product_id=product.id
       AND current.version_no=product.current_version_no
+    LEFT JOIN product_version_main_images image
+      ON image.product_version_id=current.id
     WHERE product.organization_id=?
       ${scope.sql}
       ${extra}
@@ -288,6 +303,7 @@ export async function getSellerPortalProduct(
       product.store_id,
       store.display_name AS store_display_name,
       product.marketplace_code,
+      organization.seller_code,
       product.asin_normalized AS asin,
       product.status,
       product.current_version_no,
@@ -297,6 +313,9 @@ export async function getSellerPortalProduct(
       current.id AS product_version_id,
       current.product_name,
       current.search_keywords_json,
+      current.ordering_guide_expected_amount_jpy,
+      current.color_spec_mode,
+      image.file_entity_link_id AS main_image_file_entity_link_id,
       current.product_url,
       current.buyer_visible_notes,
       current.created_at AS product_version_created_at
@@ -304,9 +323,13 @@ export async function getSellerPortalProduct(
     JOIN seller_stores store
       ON store.id=product.store_id
       AND store.organization_id=product.organization_id
+    JOIN seller_organizations organization
+      ON organization.id=product.organization_id
     JOIN product_versions current
       ON current.product_id=product.id
       AND current.version_no=product.current_version_no
+    LEFT JOIN product_version_main_images image
+      ON image.product_version_id=current.id
     WHERE product.id=?
       AND product.organization_id=?
       ${scope.sql}
@@ -335,14 +358,19 @@ export async function listSellerPortalProductVersions(
       id,
       version_no,
       product_name,
-      search_keywords_json,
-      product_url,
-      buyer_visible_notes,
-      created_at
-    FROM product_versions
-    WHERE product_id=?
-      ${cursor ? 'AND version_no<?' : ''}
-    ORDER BY version_no DESC
+      version.search_keywords_json,
+      version.ordering_guide_expected_amount_jpy,
+      version.color_spec_mode,
+      image.file_entity_link_id AS main_image_file_entity_link_id,
+      version.product_url,
+      version.buyer_visible_notes,
+      version.created_at
+    FROM product_versions version
+    LEFT JOIN product_version_main_images image
+      ON image.product_version_id=version.id
+    WHERE version.product_id=?
+      ${cursor ? 'AND version.version_no<?' : ''}
+    ORDER BY version.version_no DESC
     LIMIT ?
   `).bind(
     productId,
@@ -737,6 +765,7 @@ function mapProduct(row: ProductRow): SellerPortalProductDto {
       display_name: row.store_display_name,
     }),
     marketplace_code: row.marketplace_code,
+    seller_code: row.seller_code,
     asin: row.asin,
     status: row.status,
     current_version_no: Number(row.current_version_no),
@@ -748,6 +777,11 @@ function mapProduct(row: ProductRow): SellerPortalProductDto {
       version_no: row.current_version_no,
       product_name: row.product_name,
       search_keywords_json: row.search_keywords_json,
+      ordering_guide_expected_amount_jpy:
+        row.ordering_guide_expected_amount_jpy,
+      color_spec_mode: row.color_spec_mode,
+      main_image_file_entity_link_id:
+        row.main_image_file_entity_link_id,
       product_url: row.product_url,
       buyer_visible_notes: row.buyer_visible_notes,
       created_at: row.product_version_created_at,
@@ -765,6 +799,16 @@ function mapProductVersion(
     search_keywords: Object.freeze(
       parseStringArray(row.search_keywords_json),
     ),
+    ordering_guide_expected_amount_jpy:
+      row.ordering_guide_expected_amount_jpy === null
+        ? null
+        : Number(row.ordering_guide_expected_amount_jpy),
+    color_spec_mode: row.color_spec_mode,
+    main_image: row.main_image_file_entity_link_id === null
+      ? null
+      : Object.freeze({
+          file_entity_link_id: row.main_image_file_entity_link_id,
+        }),
     product_url: row.product_url,
     buyer_visible_notes: row.buyer_visible_notes,
     created_at: Number(row.created_at),

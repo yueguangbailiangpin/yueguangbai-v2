@@ -14,10 +14,24 @@ export const PRODUCT_STATUSES = [
 export type ProductStatus =
   typeof PRODUCT_STATUSES[number];
 
-export interface ProductVersionFields {
+export const PRODUCT_COLOR_SPEC_MODES = [
+  'MAIN_IMAGE_VARIANT',
+  'ANY_VARIANT',
+] as const;
+
+export type ProductColorSpecMode =
+  typeof PRODUCT_COLOR_SPEC_MODES[number];
+
+export interface ProductDescriptiveFields {
   productName: string;
   searchKeywords: readonly string[];
   productUrl: string | null;
   buyerVisibleNotes: string | null;
   internalNotes: string | null;
+}
+
+export interface ProductVersionFields
+extends ProductDescriptiveFields {
+  orderingGuideExpectedAmountJpy: number;
+  colorSpecMode: ProductColorSpecMode;
 }

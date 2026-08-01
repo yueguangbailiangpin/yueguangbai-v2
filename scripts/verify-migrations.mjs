@@ -50,6 +50,7 @@ const requiredTables = [
   'seller_member_store_scope_events',
   'products',
   'product_versions',
+  'product_version_main_images',
   'product_events',
   'seller_member_events',
   'product_applications',
@@ -121,6 +122,12 @@ const requiredTriggers = [
   'trg_seller_scope_events_no_delete',
   'trg_product_versions_no_update',
   'trg_product_versions_no_delete',
+  'trg_product_versions_ordering_profile_insert_guard',
+  'trg_product_version_main_image_guard',
+  'trg_product_version_main_images_no_update',
+  'trg_product_version_main_images_no_delete',
+  'trg_product_image_file_links_no_update',
+  'trg_product_image_file_links_no_delete',
   'trg_product_events_no_update',
   'trg_product_events_no_delete',
   'trg_seller_member_events_no_update',
@@ -229,10 +236,17 @@ try {
   try {
     database.exec('PRAGMA foreign_keys = ON;');
     for (const file of migrationFiles) {
-      database.exec(readFileSync(
-        path.join(migrationsDirectory, file),
-        'utf8',
-      ));
+      database.exec('BEGIN IMMEDIATE;');
+      try {
+        database.exec(readFileSync(
+          path.join(migrationsDirectory, file),
+          'utf8',
+        ));
+        database.exec('COMMIT;');
+      } catch (error) {
+        try { database.exec('ROLLBACK;'); } catch { /* no open tx */ }
+        throw error;
+      }
     }
 
     const integrity = database.prepare(
@@ -350,6 +364,7 @@ try {
     }
 
     const integerFacts = new Map([
+      ['product_versions', ['ordering_guide_expected_amount_jpy']],
       ['buyer_daily_exchange_rates', ['cny_per_jpy_e8']],
       ['seller_agreement_rate_versions', ['cny_per_jpy_e8']],
       ['seller_service_fee_versions', ['fee_cny_fen']],
@@ -381,6 +396,48 @@ try {
         if (definitions.get(column) !== 'INTEGER') {
           throw new Error(`${table}.${column} 必须为 INTEGER`);
         }
+      }
+    }
+
+    const productVersionColumns = new Map(database.prepare(`
+      PRAGMA table_info(product_versions)
+    `).all().map((column) => [
+      String(column.name),
+      String(column.type).toUpperCase(),
+    ]));
+    if (productVersionColumns.get('ordering_guide_expected_amount_jpy')
+      !== 'INTEGER') {
+      throw new Error('product_versions expected JPY amount must be INTEGER');
+    }
+    if (!productVersionColumns.has('color_spec_mode')) {
+      throw new Error('product_versions missing color_spec_mode');
+    }
+
+    const mainImageColumns = new Set(database.prepare(`
+      PRAGMA table_info(product_version_main_images)
+    `).all().map((column) => String(column.name)));
+    for (const requiredColumn of [
+      'product_version_id',
+      'file_entity_link_id',
+      'created_by_staff_id',
+      'created_at',
+    ]) {
+      if (!mainImageColumns.has(requiredColumn)) {
+        throw new Error(`product_version_main_images missing ${requiredColumn}`);
+      }
+    }
+
+    const fileSql = database.prepare(`
+      SELECT sql FROM sqlite_schema
+      WHERE type='table' AND name IN (
+        'file_upload_intents', 'file_objects',
+        'file_entity_links', 'file_audience_events'
+      )
+      ORDER BY name
+    `).all().map((row) => String(row.sql)).join('\n');
+    for (const requiredValue of ['PRODUCT_IMAGE', 'PRODUCT_VERSION']) {
+      if (!fileSql.includes(requiredValue)) {
+        throw new Error(`file schema missing ${requiredValue}`);
       }
     }
 

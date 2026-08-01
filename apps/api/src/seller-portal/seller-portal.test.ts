@@ -157,9 +157,13 @@ describe('Phase 4C1 seller portal HTTP API', () => {
           id: 'product-1',
           status: 'ACTIVE',
           current_version_no: 2,
+          seller_code: 'ido-mango-portal-1',
           current_version: {
             product_name: '产品一新版',
             search_keywords: ['新关键词'],
+            ordering_guide_expected_amount_jpy: 1980,
+            color_spec_mode: 'MAIN_IMAGE_VARIANT',
+            main_image: null,
           },
         },
       },
@@ -168,6 +172,10 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(serialized).not.toContain('内部秘密');
     expect(serialized).not.toContain('internal_notes');
     expect(serialized).not.toContain('created_by_staff_id');
+    expect(serialized).not.toContain('object_key');
+    expect(serialized).not.toContain('signed_url');
+    expect(serialized).not.toContain('public_url');
+    expect(serialized).not.toContain('wechat');
 
     const versions = await request(
       app,
@@ -473,22 +481,22 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(crossOrigin.status).toBe(403);
   });
 
-  it('keeps migrations at 0001-0017 and schema_version 16', async () => {
+  it('keeps migrations through 0019 and schema_version 19', async () => {
     if (!database) throw new Error('test_database_missing');
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(18);
+    expect(Number(state?.schema_version)).toBe(19);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(18);
+    expect(migrations).toHaveLength(19);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
-    expect(migrations[17]?.startsWith('0018_')).toBe(true);
+    expect(migrations[18]?.startsWith('0019_')).toBe(true);
   });
 });
 
@@ -720,17 +728,23 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
       created_by_staff_id, created_at
-    ) VALUES
+    ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES
       ('product-1-v1', 'product-1', 1, '产品一旧版',
        '["旧关键词"]', 'https://example.test/p1-v1',
-       '旧公开说明', '内部秘密旧版', 'staff-portal', 1000),
+       '旧公开说明', '内部秘密旧版', 'staff-portal', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-1-v2', 'product-1', 2, '产品一新版',
        '["新关键词"]', 'https://example.test/p1-v2',
-       '新公开说明', '内部秘密新版', 'staff-portal', 2000),
+       '新公开说明', '内部秘密新版', 'staff-portal', 2000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-2-v1', 'product-2', 1, '产品二',
-       '[]', NULL, NULL, '内部秘密二', 'staff-portal', 1000),
+       '[]', NULL, NULL, '内部秘密二', 'staff-portal', 1000,
+          1980, 'MAIN_IMAGE_VARIANT'),
       ('product-other-v1', 'product-other', 1, '其他产品',
-       '[]', NULL, NULL, '其他内部秘密', 'staff-portal', 1000);
+       '[]', NULL, NULL, '其他内部秘密', 'staff-portal', 1000,
+          1980, 'MAIN_IMAGE_VARIANT');
 
     INSERT INTO product_applications (
       id, organization_id, store_id, marketplace_code,

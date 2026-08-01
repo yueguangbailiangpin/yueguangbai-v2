@@ -114,10 +114,21 @@ export function applyMigrations(
   if (files.length === 0) throw new Error('no_migrations_found');
 
   for (const file of files) {
-    database.exec(readFileSync(
-      path.join(migrationsDirectory, file),
-      'utf8',
-    ));
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      database.exec(readFileSync(
+        path.join(migrationsDirectory, file),
+        'utf8',
+      ));
+      database.exec('COMMIT;');
+    } catch (error) {
+      try {
+        database.exec('ROLLBACK;');
+      } catch {
+        // No open transaction only if SQLite already rolled the statement back.
+      }
+      throw error;
+    }
   }
   return files;
 }

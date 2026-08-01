@@ -710,28 +710,33 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
       created_by_staff_id, created_at
-    ) VALUES
+    ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES
       (
         'product-evidence-1-v1', 'product-evidence-1', 1,
         '证据产品一', '["证据一"]',
         'https://www.amazon.co.jp/evidence-one',
         '公开说明一', '内部说明一',
         'staff-pre-sales', 1000
-      ),
+      ,
+          1980, 'MAIN_IMAGE_VARIANT'),
       (
         'product-evidence-2-v1', 'product-evidence-2', 1,
         '证据产品二', '["证据二"]',
         'https://www.amazon.co.jp/evidence-two',
         '公开说明二', '内部说明二',
         'staff-pre-sales', 1000
-      ),
+      ,
+          1980, 'MAIN_IMAGE_VARIANT'),
       (
         'product-evidence-3-v1', 'product-evidence-3', 1,
         '证据产品三', '["证据三"]',
         'https://www.amazon.co.jp/evidence-three',
         '公开说明三', '内部说明三',
         'staff-pre-sales', 1000
-      );
+      ,
+          1980, 'MAIN_IMAGE_VARIANT');
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,

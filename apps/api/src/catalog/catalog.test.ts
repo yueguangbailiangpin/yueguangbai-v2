@@ -281,7 +281,7 @@ describe('seller stores and product catalog', () => {
     });
     expect(versionTwo.product_version).toMatchObject({
       productName: '版本二',
-      searchKeywords: ['关键词二'],
+      searchKeywords: ['关键词二', '关键词二'],
       productUrl: 'https://www.amazon.co.jp/version-two',
     });
 
@@ -519,6 +519,8 @@ function productVersion(
   return {
     productName,
     searchKeywords: ['关键词一'],
+    orderingGuideExpectedAmountJpy: 1980,
+    colorSpecMode: 'MAIN_IMAGE_VARIANT' as const,
     productUrl: 'https://www.amazon.co.jp/product',
     buyerVisibleNotes: '买家可见',
     internalNotes: '内部说明',

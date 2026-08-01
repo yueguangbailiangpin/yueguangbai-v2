@@ -589,21 +589,25 @@ function seedReservationFixture(
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
       created_by_staff_id, created_at
-    ) VALUES
+    ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES
       (
         'product-1-v1', 'product-1', 1,
         '预约产品一', '["关键词一"]',
         'https://www.amazon.co.jp/reservation-one',
         '公开说明一', '内部说明一',
         'staff-pre-sales', 1000
-      ),
+      ,
+          1980, 'MAIN_IMAGE_VARIANT'),
       (
         'product-2-v1', 'product-2', 1,
         '预约产品二', '["关键词二"]',
         'https://www.amazon.co.jp/reservation-two',
         '公开说明二', '内部说明二',
         'staff-pre-sales', 1000
-      );
+      ,
+          1980, 'MAIN_IMAGE_VARIANT');
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,

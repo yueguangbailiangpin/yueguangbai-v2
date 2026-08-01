@@ -188,19 +188,23 @@ export async function createApprovedProduct(
           version_no,
           product_name,
           search_keywords_json,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode,
           product_url,
           buyer_visible_notes,
           internal_notes,
           created_by_staff_id,
           created_at
         ) VALUES (
-          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `).bind(
         productVersionId,
         productId,
         version.productName,
         canonicalJson(version.searchKeywords),
+        version.orderingGuideExpectedAmountJpy,
+        version.colorSpecMode,
         version.productUrl,
         version.buyerVisibleNotes,
         version.internalNotes,

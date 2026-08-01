@@ -155,13 +155,16 @@ describe('demand batch workflow', () => {
         search_keywords_json, product_url,
         buyer_visible_notes, internal_notes,
         created_by_staff_id, created_at
-      ) VALUES (
+      ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES (
         'product-version-1-v2', 'product-1', 2,
         '产品一新版', '["新版关键词"]',
         'https://www.amazon.co.jp/product-new',
         '新版公开说明', '新版内部说明',
         'staff-demand-reviewer', 2500
-      );
+      ,
+          1980, 'MAIN_IMAGE_VARIANT');
     `);
 
     const replayAfterProductChanged = await submitDemandBatch(
@@ -663,21 +666,25 @@ function seedDemandFixture(
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
       created_by_staff_id, created_at
-    ) VALUES
+    ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode) VALUES
       (
         'product-version-1-v1', 'product-1', 1,
         '产品一旧版', '["旧版关键词"]',
         'https://www.amazon.co.jp/product-old',
         '产品公开说明', '产品内部说明',
         'staff-demand-reviewer', 1000
-      ),
+      ,
+          1980, 'MAIN_IMAGE_VARIANT'),
       (
         'product-version-2-v1', 'product-2', 1,
         '产品二', '["产品二关键词"]',
         'https://www.amazon.co.jp/product-two',
         '产品二公开说明', '产品二内部说明',
         'staff-demand-reviewer', 1000
-      );
+      ,
+          1980, 'MAIN_IMAGE_VARIANT');
   `);
 }
 

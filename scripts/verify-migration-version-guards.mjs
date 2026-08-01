@@ -8,9 +8,9 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 18
-  || migrationFiles.at(-1) !== '0018_buyer_self_registration.sql') {
-  throw new Error('expected migrations 0001-0018');
+if (migrationFiles.length !== 19
+  || migrationFiles.at(-1) !== '0019_product_ordering_profiles.sql') {
+  throw new Error('expected migrations 0001-0019');
 }
 
 const guarded = new Map([
@@ -22,6 +22,7 @@ const guarded = new Map([
   [16, 'review_cases'],
   [17, 'buyer_refund_obligations'],
   [18, 'buyer_registration_conflicts'],
+  [19, 'product_version_main_images'],
 ]);
 
 function readMigration(name) {
@@ -32,9 +33,20 @@ function openDatabase() {
   database.exec('PRAGMA foreign_keys = ON;');
   return database;
 }
+function runMigration(database, name) {
+  database.exec('BEGIN IMMEDIATE;');
+  try {
+    database.exec(readMigration(name));
+    database.exec('COMMIT;');
+  } catch (error) {
+    try { database.exec('ROLLBACK;'); } catch { /* no open tx */ }
+    try { database.exec('PRAGMA foreign_keys = ON;'); } catch { /* ignore */ }
+    throw error;
+  }
+}
 function applyPrefix(database, count) {
   for (const name of migrationFiles.slice(0, count)) {
-    database.exec(readMigration(name));
+    runMigration(database, name);
   }
 }
 function schemaVersion(database) {
@@ -43,6 +55,7 @@ function schemaVersion(database) {
   `).get()?.schema_version);
 }
 function assertIntegrity(database, label) {
+  database.exec('PRAGMA foreign_keys = ON;');
   const integrity = database.prepare('PRAGMA integrity_check').all()
     .map((row) => String(row.integrity_check));
   if (integrity.length !== 1 || integrity[0] !== 'ok') {
@@ -55,7 +68,7 @@ function assertIntegrity(database, label) {
 function expectGuardFailure(database, migration, label) {
   let failed = false;
   try {
-    database.exec(readMigration(migration));
+    runMigration(database, migration);
   } catch (error) {
     failed = true;
     if (!String(error).includes('transaction_assertion_failed')) {
@@ -68,7 +81,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 18) throw new Error('fresh schema not 18');
+  if (schemaVersion(fresh) !== 19) throw new Error('fresh schema not 19');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -76,7 +89,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const upgrade = openDatabase();
   for (let count = 1; count <= migrationFiles.length; count += 1) {
-    upgrade.exec(readMigration(migrationFiles[count - 1]));
+    runMigration(upgrade, migrationFiles[count - 1]);
     if (schemaVersion(upgrade) !== count) {
       throw new Error(`upgrade expected schema ${count}`);
     }
@@ -112,8 +125,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 18,
-  sequential_upgrade: '0001 -> 0018',
+  fresh_schema: 19,
+  sequential_upgrade: '0001 -> 0019',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,

@@ -1,12 +1,12 @@
 import type {
-  ProductVersionFields,
+  ProductDescriptiveFields,
   SqlDatabase,
   SqlStatement,
 } from '@ygb/contracts';
 import {
   hashCanonicalJson,
   normalizeAsin,
-  normalizeProductVersionFields,
+  normalizeProductDescriptiveFields,
 } from '@ygb/domain';
 import {
   createAuditEventStatement,
@@ -63,7 +63,7 @@ export async function submitProductApplication(
   input: {
     storeId: string;
     asin: string;
-    product: ProductVersionFields;
+    product: ProductDescriptiveFields;
     sellerNotes: string | null;
   },
   command: {
@@ -91,7 +91,7 @@ export async function submitProductApplication(
     }
   })();
   const product = parseApplicationProductFields(
-    () => normalizeProductVersionFields(input.product),
+    () => normalizeProductDescriptiveFields(input.product),
   );
   if (product.internalNotes !== null) {
     throw new ProductApplicationError(

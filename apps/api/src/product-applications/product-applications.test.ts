@@ -5,7 +5,7 @@ import {
   it,
 } from 'vitest';
 import type {
-  ProductVersionFields,
+  ProductDescriptiveFields,
   SellerMemberRole,
   StaffPermissionCode,
   StaffRoleCode,
@@ -194,6 +194,8 @@ describe('seller product applications and staff review', () => {
         applicationId: submitted.application_id,
         expectedVersion: 1,
         decision: 'APPROVE',
+        orderingGuideExpectedAmountJpy: 1980,
+        colorSpecMode: 'MAIN_IMAGE_VARIANT',
       },
       {
         actor: reviewerActor(),
@@ -250,7 +252,7 @@ describe('seller product applications and staff review', () => {
       product_status: 'ACTIVE',
       current_version_no: 1,
       product_name: '批准产品',
-      search_keywords_json: '["关键词A","关键词B"]',
+      search_keywords_json: '["关键词A","关键词A","关键词B"]',
       internal_notes: '内部卖家说明',
     });
 
@@ -260,6 +262,8 @@ describe('seller product applications and staff review', () => {
         applicationId: submitted.application_id,
         expectedVersion: 1,
         decision: 'APPROVE',
+        orderingGuideExpectedAmountJpy: 1980,
+        colorSpecMode: 'MAIN_IMAGE_VARIANT',
       },
       {
         actor: reviewerActor(),
@@ -323,6 +327,8 @@ describe('seller product applications and staff review', () => {
         applicationId: submitted.application_id,
         expectedVersion: 2,
         decision: 'APPROVE',
+        orderingGuideExpectedAmountJpy: 1980,
+        colorSpecMode: 'MAIN_IMAGE_VARIANT',
       },
       {
         actor: reviewerActor(),
@@ -419,6 +425,8 @@ describe('seller product applications and staff review', () => {
         applicationId: submitted.application_id,
         expectedVersion: 1,
         decision: 'APPROVE',
+        orderingGuideExpectedAmountJpy: 1980,
+        colorSpecMode: 'MAIN_IMAGE_VARIANT',
       },
       {
         actor: {
@@ -647,7 +655,7 @@ function reviewerActor(): ProductApplicationStaffActor {
 
 function productVersion(
   productName: string,
-): ProductVersionFields {
+): ProductDescriptiveFields {
   return {
     productName,
     searchKeywords: ['关键词A'],

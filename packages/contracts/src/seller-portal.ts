@@ -1,4 +1,8 @@
-import type { ProductStatus, SellerStoreStatus } from './catalog';
+import type {
+  ProductColorSpecMode,
+  ProductStatus,
+  SellerStoreStatus,
+} from './catalog';
 import type { SellerMemberRole } from './customer';
 import type { DemandBatchStatus, DemandTaskType } from './demand';
 import type { ProductApplicationStatus } from './product-application';
@@ -70,6 +74,9 @@ export interface SellerPortalProductVersionDto {
   version_no: number;
   product_name: string;
   search_keywords: readonly string[];
+  ordering_guide_expected_amount_jpy: number | null;
+  color_spec_mode: ProductColorSpecMode | null;
+  main_image: { file_entity_link_id: string } | null;
   product_url: string | null;
   buyer_visible_notes: string | null;
   created_at: number;
@@ -82,6 +89,7 @@ export interface SellerPortalProductDto {
     display_name: string;
   };
   marketplace_code: 'JP';
+  seller_code: string;
   asin: string;
   status: ProductStatus;
   current_version_no: number;
