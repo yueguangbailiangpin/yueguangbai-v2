@@ -79,6 +79,8 @@ const requiredTables = [
   'formal_orders',
   'formal_order_financial_snapshots',
   'formal_order_events',
+  'file_entity_audience_grants',
+  'file_audience_events',
 ];
 
 const requiredTriggers = [
@@ -153,6 +155,13 @@ const requiredTriggers = [
   'trg_formal_order_event_identity_guard',
   'trg_formal_order_events_no_update',
   'trg_formal_order_events_no_delete',
+  'trg_file_audience_grant_link_guard',
+  'trg_file_audience_grants_revoke_only',
+  'trg_file_audience_grants_no_delete',
+  'trg_explicit_file_link_revoke_only',
+  'trg_file_read_intent_link_guard',
+  'trg_file_audience_events_no_update',
+  'trg_file_audience_events_no_delete',
 ];
 
 try {
@@ -251,6 +260,25 @@ try {
       if (fileObjectColumns.includes(forbiddenColumn)) {
         throw new Error(`file_objects 禁止列: ${forbiddenColumn}`);
       }
+    }
+
+    const fileEntityLinkColumns = new Set(database.prepare(`
+      PRAGMA table_info(file_entity_links)
+    `).all().map((column) => String(column.name)));
+    for (const requiredColumn of [
+      'authorization_mode',
+      'expires_at',
+      'revoked_at',
+    ]) {
+      if (!fileEntityLinkColumns.has(requiredColumn)) {
+        throw new Error(`file_entity_links 缺少 ${requiredColumn}`);
+      }
+    }
+    const fileReadIntentColumns = new Set(database.prepare(`
+      PRAGMA table_info(file_read_intents)
+    `).all().map((column) => String(column.name)));
+    if (!fileReadIntentColumns.has('file_entity_link_id')) {
+      throw new Error('file_read_intents 缺少 file_entity_link_id');
     }
 
     const integerFacts = new Map([

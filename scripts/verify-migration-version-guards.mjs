@@ -69,18 +69,18 @@ function expectMigrationFailure(database, name, label) {
   if (!failed) throw new Error(`${label}: Migration 应失败但未失败`);
 }
 
-// 1. Fresh full sequence 0001-0014.
+// 1. Fresh full sequence 0001-0015.
 {
   const fresh = openDatabase();
   applyFiles(fresh, migrationFiles);
-  if (schemaVersion(fresh) !== 14) {
-    throw new Error(`fresh: schema 应为 14，实际 ${schemaVersion(fresh)}`);
+  if (schemaVersion(fresh) !== 15) {
+    throw new Error(`fresh: schema 应为 15，实际 ${schemaVersion(fresh)}`);
   }
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
 
-// 2. Upgrade path 0001-0009 -> 0010 -> 0011 -> 0012 -> 0013 -> 0014.
+// 2. Upgrade path 0001-0009 -> 0010 -> ... -> 0014 -> 0015.
 {
   const upgrade = openDatabase();
   applyFiles(upgrade, migrationFiles.slice(0, 9));
@@ -95,6 +95,8 @@ function expectMigrationFailure(database, name, label) {
   if (schemaVersion(upgrade) !== 13) throw new Error('upgrade: schema 13');
   applyFiles(upgrade, ['0014_formal_orders.sql']);
   if (schemaVersion(upgrade) !== 14) throw new Error('upgrade: schema 14');
+  applyFiles(upgrade, ['0015_file_audience_grants.sql']);
+  if (schemaVersion(upgrade) !== 15) throw new Error('upgrade: schema 15');
   assertIntegrity(upgrade, 'upgrade');
   upgrade.close();
 }
@@ -143,7 +145,22 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 7. Repeat 0011 at schema 11.
+// 7. Negative: schema=13, direct 0015.
+{
+  const neg = openDatabase();
+  applyFiles(neg, migrationFiles.slice(0, 13));
+  expectMigrationFailure(
+    neg,
+    '0015_file_audience_grants.sql',
+    'schema13->0015',
+  );
+  if (schemaVersion(neg) !== 13) throw new Error('schema13->0015 changed');
+  assertObjectAbsent(neg, 'table', 'file_entity_audience_grants');
+  assertIntegrity(neg, 'schema13->0015');
+  neg.close();
+}
+
+// 8. Repeat 0011 at schema 11.
 {
   const neg = openDatabase();
   applyFiles(neg, migrationFiles.slice(0, 11));
@@ -153,7 +170,7 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 8. Repeat 0012 at schema 12.
+// 9. Repeat 0012 at schema 12.
 {
   const neg = openDatabase();
   applyFiles(neg, migrationFiles.slice(0, 12));
@@ -163,7 +180,7 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 9. Repeat 0013 at schema 13.
+// 10. Repeat 0013 at schema 13.
 {
   const neg = openDatabase();
   applyFiles(neg, migrationFiles.slice(0, 13));
@@ -173,27 +190,43 @@ function expectMigrationFailure(database, name, label) {
   neg.close();
 }
 
-// 10. Repeat 0014 at schema 14.
+// 11. Repeat 0014 at schema 14.
 {
   const neg = openDatabase();
-  applyFiles(neg, migrationFiles);
+  applyFiles(neg, migrationFiles.slice(0, 14));
   expectMigrationFailure(neg, '0014_formal_orders.sql', 'repeat0014@14');
   if (schemaVersion(neg) !== 14) throw new Error('repeat0014 changed');
   assertIntegrity(neg, 'repeat0014@14');
   neg.close();
 }
 
+// 12. Repeat 0015 at schema 15.
+{
+  const neg = openDatabase();
+  applyFiles(neg, migrationFiles);
+  expectMigrationFailure(
+    neg,
+    '0015_file_audience_grants.sql',
+    'repeat0015@15',
+  );
+  if (schemaVersion(neg) !== 15) throw new Error('repeat0015 changed');
+  assertIntegrity(neg, 'repeat0015@15');
+  neg.close();
+}
+
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_db: 'schema 14, integrity ok, fk 0',
-  upgrade_9_to_14: '9 -> 10 -> 11 -> 12 -> 13 -> 14',
+  fresh_db: 'schema 15, integrity ok, fk 0',
+  upgrade_9_to_15: '9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15',
   negative_schema9_to_0011: 'REJECTED',
   negative_schema10_to_0012: 'REJECTED',
   negative_schema11_to_0013: 'REJECTED',
   negative_schema12_to_0014: 'REJECTED',
+  negative_schema13_to_0015: 'REJECTED',
   repeat_0011_rejected: true,
   repeat_0012_rejected: true,
   repeat_0013_rejected: true,
   repeat_0014_rejected: true,
+  repeat_0015_rejected: true,
   no_partial_ddl: true,
 }, null, 2));
