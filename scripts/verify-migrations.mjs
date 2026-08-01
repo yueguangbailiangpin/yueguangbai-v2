@@ -81,6 +81,10 @@ const requiredTables = [
   'formal_order_events',
   'file_entity_audience_grants',
   'file_audience_events',
+  'review_cases',
+  'review_evidence_versions',
+  'review_evidence_version_files',
+  'review_events',
 ];
 
 const requiredTriggers = [
@@ -162,6 +166,18 @@ const requiredTriggers = [
   'trg_file_read_intent_link_guard',
   'trg_file_audience_events_no_update',
   'trg_file_audience_events_no_delete',
+  'trg_review_case_source_guard',
+  'trg_review_case_transition_guard',
+  'trg_review_cases_no_delete',
+  'trg_review_evidence_version_guard',
+  'trg_review_evidence_versions_no_update',
+  'trg_review_evidence_versions_no_delete',
+  'trg_review_evidence_version_file_guard',
+  'trg_review_evidence_version_files_no_update',
+  'trg_review_evidence_version_files_no_delete',
+  'trg_review_event_identity_guard',
+  'trg_review_events_no_update',
+  'trg_review_events_no_delete',
 ];
 
 try {
@@ -294,6 +310,7 @@ try {
         'buyer_expected_principal_cny_fen',
         'seller_expected_principal_cny_fen',
       ]],
+      ['review_events', ['amount_cny_fen']],
     ]);
     for (const [table, columns] of integerFacts) {
       const definitions = new Map(database.prepare(
@@ -345,6 +362,23 @@ try {
         || formalSnapshotColumns.has(forbiddenColumn)) {
         throw new Error(`Phase 3F 禁止字段: ${forbiddenColumn}`);
       }
+    }
+
+    const forbiddenPhase5Tables = database.prepare(`
+      SELECT name
+      FROM sqlite_schema
+      WHERE type='table'
+        AND name IN (
+          'buyer_refunds',
+          'seller_settlements',
+          'internal_settlements',
+          'review_profits',
+          'amazon_accounts',
+          'amazon_review_automation'
+        )
+    `).all();
+    if (forbiddenPhase5Tables.length > 0) {
+      throw new Error('Phase 5A 不得创建实际返款、结算、利润或 Amazon 自动化表');
     }
 
     const uniqueAmazonOrderIndex = database.prepare(`
