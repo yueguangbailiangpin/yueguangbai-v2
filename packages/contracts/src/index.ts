@@ -3,6 +3,7 @@ export * from './buyer-formal-order-portal';
 export * from './buyer-refund';
 export * from './buyer-order-evidence-portal';
 export * from './buyer-portal';
+export * from './buyer-review-portal';
 export * from './catalog';
 export * from './customer';
 export * from './demand';
