@@ -20,6 +20,10 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  batchWithAssignmentRetry,
+  prepareDirectWorkItem,
+} from '../staff-assignment';
+import {
   cleanDemandIdentifier,
   cleanDemandOptionalNotes,
   demandAuditState,
@@ -304,7 +308,24 @@ export async function submitDemandBatch(
       ),
     ];
 
-    await database.batch(statements);
+    await batchWithAssignmentRetry(
+      database,
+      () => prepareDirectWorkItem(database, {
+        workType: 'DEMAND_REVIEW',
+        sourceEntityType: 'DEMAND_BATCH',
+        sourceEntityId: demandBatchId,
+        marketplaceCode: source.marketplace_code,
+        sellerOrganizationId: source.organization_id,
+        storeId: source.store_id,
+        actorType: 'SYSTEM',
+        actorId: `seller-member:${command.actor.memberId}`,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'demand batch submitted',
+        now,
+      }),
+      statements,
+    );
     return response;
   } catch (error) {
     const normalized = normalizeDemandBatchError(error);

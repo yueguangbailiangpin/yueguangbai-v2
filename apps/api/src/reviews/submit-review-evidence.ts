@@ -19,6 +19,10 @@ import {
   createOutboxStatements,
   prepareOutboxEvent,
 } from '../foundation/outbox';
+import {
+  batchWithAssignmentRetry,
+  prepareDirectWorkItem,
+} from '../staff-assignment';
 import type { FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
 import {
@@ -330,7 +334,24 @@ export async function submitReviewEvidence(
       assertIdempotencyCompletionStatement(database, acquired.claim),
     );
 
-    await database.batch(statements);
+    await batchWithAssignmentRetry(
+      database,
+      () => prepareDirectWorkItem(database, {
+        workType: 'REVIEW_DECISION',
+        sourceEntityType: 'REVIEW_CASE',
+        sourceEntityId: reviewCaseId,
+        marketplaceCode: 'JP',
+        buyerCustomerId: source.buyer_customer_id,
+        sellerOrganizationId: source.seller_organization_id,
+        actorType: 'SYSTEM',
+        actorId: `buyer:${source.buyer_customer_id}`,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: source.review_case_id === null ? 'review evidence submitted' : 'review evidence resubmitted',
+        now,
+      }),
+      statements,
+    );
     return response;
   } catch (error) {
     const normalized = normalizeReviewError(error);

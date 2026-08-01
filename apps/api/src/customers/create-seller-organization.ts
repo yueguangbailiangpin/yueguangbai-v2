@@ -21,6 +21,10 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  batchWithFixedAssignmentRetry,
+  prepareInitialSellerAssignment,
+} from '../staff-assignment';
+import {
   assertWechatAvailable,
   cleanRequiredText,
   createIdentityClaimStatements,
@@ -332,7 +336,20 @@ export async function createSellerOrganization(
       ),
     ];
 
-    await database.batch(statements);
+    await batchWithFixedAssignmentRetry(
+      database,
+      () => prepareInitialSellerAssignment(database, {
+        sellerOrganizationId: organizationId,
+        marketplaceCode: 'JP',
+        actorType: 'STAFF',
+        actorId: command.actor.staffId,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'seller organization created',
+        now,
+      }),
+      statements,
+    );
     return response;
   } catch (error) {
     const normalized = normalizeFoundationError(error);

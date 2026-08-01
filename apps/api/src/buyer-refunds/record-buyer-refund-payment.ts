@@ -19,6 +19,10 @@ import {
   createOutboxStatements,
   prepareOutboxEvent,
 } from '../foundation/outbox';
+import {
+  prepareWorkItemCompletionStatements,
+  requireAssignedWorkflowActor,
+} from '../staff-assignment';
 import type { FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
 import { insertBuyerRefundEventStatement } from './buyer-refund-events';
@@ -126,6 +130,13 @@ export async function recordBuyerRefundPayment(
   }
 
   try {
+    await requireAssignedWorkflowActor(database, {
+      staffId: command.actor.staffId,
+      workType: 'BUYER_REFUND_PROCESSING',
+      sourceEntityType: 'BUYER_REFUND_OBLIGATION',
+      sourceEntityId: obligationId,
+      allowCompleted: true,
+    });
     const ledger = await requireBuyerRefundLedger(database, obligationId);
     if (ledger.version !== expectedVersion) {
       throw new BuyerRefundError('VERSION_CONFLICT', 409);
@@ -378,7 +389,20 @@ export async function recordBuyerRefundPayment(
       assertIdempotencyCompletionStatement(database, acquired.claim),
     );
 
-    await database.batch(statements);
+    const completion = nextStatus === 'PAID'
+      ? await prepareWorkItemCompletionStatements(database, {
+          workType: 'BUYER_REFUND_PROCESSING',
+          sourceEntityType: 'BUYER_REFUND_OBLIGATION',
+          sourceEntityId: obligationId,
+          outcome: 'COMPLETED',
+          actorType: 'STAFF',
+          actorId: command.actor.staffId,
+          requestId: command.requestId ?? null,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          now,
+        })
+      : [];
+    await database.batch([...statements, ...completion]);
     return response;
   } catch (error) {
     const normalized = normalizeBuyerRefundError(error);

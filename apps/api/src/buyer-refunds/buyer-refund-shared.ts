@@ -90,7 +90,7 @@ export function buyerRefundActorIdentity(
 ): {
   actorType: 'SYSTEM' | 'STAFF';
   actorId: string;
-  actorRoles: readonly string[];
+  actorRoles: readonly StaffRoleCode[];
 } {
   validateBuyerRefundObligationActor(actor);
   if (actor.type === 'SYSTEM') {

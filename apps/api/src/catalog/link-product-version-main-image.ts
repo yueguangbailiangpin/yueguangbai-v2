@@ -5,6 +5,7 @@ import type {
 } from '@ygb/contracts';
 import { hashCanonicalJson } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
+import { requireCatalogOrganizationScope } from '../staff-assignment';
 import {
   acquireIdempotency,
   assertIdempotencyCompletionStatement,
@@ -87,6 +88,7 @@ export async function linkProductVersionMainImage(
     database,
     productVersionId,
   );
+  requireCatalogOrganizationScope(command.actor, source.organization_id);
   const requestHash = await hashCanonicalJson({
     action: 'LINK_PRODUCT_VERSION_MAIN_IMAGE',
     product_version_id: productVersionId,

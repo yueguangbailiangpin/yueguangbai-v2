@@ -22,6 +22,10 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  batchWithAssignmentRetry,
+  prepareDirectWorkItem,
+} from '../staff-assignment';
+import {
   cleanApplicationIdentifier,
   cleanOptionalSellerNotes,
   insertProductApplicationEventStatement,
@@ -296,7 +300,24 @@ export async function submitProductApplication(
       ),
     ];
 
-    await database.batch(statements);
+    await batchWithAssignmentRetry(
+      database,
+      () => prepareDirectWorkItem(database, {
+        workType: 'PRODUCT_APPLICATION_REVIEW',
+        sourceEntityType: 'PRODUCT_APPLICATION',
+        sourceEntityId: applicationId,
+        marketplaceCode: store.marketplace_code,
+        sellerOrganizationId: store.organization_id,
+        storeId: store.store_id,
+        actorType: 'SYSTEM',
+        actorId: `seller-member:${command.actor.memberId}`,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'product application submitted',
+        now,
+      }),
+      statements,
+    );
     return response;
   } catch (error) {
     const normalized =

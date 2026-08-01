@@ -9,9 +9,11 @@ import { registerCustomerAuthRoutes } from './http-auth';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
 import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
+import { registerStaffAssignmentRoutes } from './staff-assignment';
 
 const app = createApp();
 registerCustomerAuthRoutes(app);
+registerStaffAssignmentRoutes(app);
 registerBuyerSelfRegistrationRoutes(app);
 registerBuyerPortalRoutes(app);
 registerBuyerOrderEvidencePortalRoutes(app);

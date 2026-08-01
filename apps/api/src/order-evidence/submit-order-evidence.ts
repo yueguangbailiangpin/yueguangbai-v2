@@ -19,6 +19,10 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  batchWithAssignmentRetry,
+  prepareDirectWorkItem,
+} from '../staff-assignment';
+import {
   findSubmissionForBuyerByReservation,
   listVerifiedEvidenceFiles,
   requireApprovedReservationForBuyer,
@@ -322,7 +326,23 @@ export async function submitOrderEvidence(
       ),
     );
 
-    await database.batch(statements);
+    await batchWithAssignmentRetry(
+      database,
+      () => prepareDirectWorkItem(database, {
+        workType: 'ORDER_EVIDENCE_REVIEW',
+        sourceEntityType: 'ORDER_EVIDENCE',
+        sourceEntityId: submissionId,
+        marketplaceCode: input.marketplace,
+        buyerCustomerId: command.actor.buyerCustomerId,
+        actorType: 'SYSTEM',
+        actorId: `buyer:${command.actor.buyerCustomerId}`,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: source === null ? 'order evidence submitted' : 'order evidence resubmitted',
+        now,
+      }),
+      statements,
+    );
     return response;
   } catch (error) {
     const normalized = normalizeOrderEvidenceError(error);

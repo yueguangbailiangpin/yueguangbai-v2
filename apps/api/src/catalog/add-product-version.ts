@@ -9,6 +9,7 @@ import {
   normalizeProductVersionFields,
 } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
+import { requireCatalogOrganizationScope } from '../staff-assignment';
 import {
   acquireIdempotency,
   assertIdempotencyCompletionStatement,
@@ -112,6 +113,7 @@ export async function addProductVersion(
       database,
       productId,
     );
+    requireCatalogOrganizationScope(command.actor, source.organization_id);
     if (source.product_version !== input.expectedVersion) {
       throw new CatalogError('VERSION_CONFLICT', 409);
     }

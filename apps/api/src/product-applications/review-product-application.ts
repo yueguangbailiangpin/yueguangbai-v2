@@ -26,6 +26,10 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  prepareWorkItemCompletionStatements,
+  requireAssignedWorkflowActor,
+} from '../staff-assignment';
+import {
   cleanApplicationIdentifier,
   cleanReviewReason,
   insertProductApplicationEventStatement,
@@ -233,7 +237,15 @@ export async function reviewProductApplication(
       createdAt: now,
     });
 
+    await requireAssignedWorkflowActor(database, {
+      staffId: command.actor.staffId,
+      workType: 'PRODUCT_APPLICATION_REVIEW',
+      sourceEntityType: 'PRODUCT_APPLICATION',
+      sourceEntityId: applicationId,
+    });
+
     const statements: SqlStatement[] = [
+      // Phase 3H access was resolved from persisted Staff facts above.
       ...result.statements,
       createAuditEventStatement(database, {
         id: crypto.randomUUID(),
@@ -283,7 +295,20 @@ export async function reviewProductApplication(
       ),
     ];
 
-    await database.batch(statements);
+    await database.batch([
+      ...statements,
+      ...await prepareWorkItemCompletionStatements(database, {
+        workType: 'PRODUCT_APPLICATION_REVIEW',
+        sourceEntityType: 'PRODUCT_APPLICATION',
+        sourceEntityId: applicationId,
+        outcome: 'COMPLETED',
+        actorType: 'STAFF',
+        actorId: command.actor.staffId,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        now,
+      }),
+    ]);
     return result.response;
   } catch (error) {
     const normalized =

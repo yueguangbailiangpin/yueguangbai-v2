@@ -10,6 +10,7 @@ import {
   normalizeProductVersionFields,
 } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
+import { requireCatalogOrganizationScope } from '../staff-assignment';
 import {
   acquireIdempotency,
   assertIdempotencyCompletionStatement,
@@ -84,6 +85,7 @@ export async function createApprovedProduct(
   }
 
   const store = await requireProductStore(database, storeId);
+  requireCatalogOrganizationScope(command.actor, store.organization_id);
   const requestHash = await hashCanonicalJson({
     action: 'CREATE_APPROVED_PRODUCT',
     store_id: storeId,

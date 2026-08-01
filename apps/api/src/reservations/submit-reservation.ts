@@ -19,6 +19,10 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  batchWithAssignmentRetry,
+  prepareDirectWorkItem,
+} from '../staff-assignment';
+import {
   cleanReservationIdentifier,
   insertReservationEventStatement,
   normalizeReservationError,
@@ -365,7 +369,25 @@ export async function submitReservation(
       ),
     ];
 
-    await database.batch(statements);
+    await batchWithAssignmentRetry(
+      database,
+      () => prepareDirectWorkItem(database, {
+        workType: 'RESERVATION_DECISION',
+        sourceEntityType: 'RESERVATION',
+        sourceEntityId: reservationId,
+        marketplaceCode: source.marketplace_code,
+        buyerCustomerId: command.actor.buyerCustomerId,
+        sellerOrganizationId: source.organization_id,
+        storeId: source.store_id,
+        actorType: 'SYSTEM',
+        actorId: `buyer:${command.actor.buyerCustomerId}`,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'reservation submitted',
+        now,
+      }),
+      statements,
+    );
     return response;
   } catch (error) {
     const normalized = normalizeReservationError(error);

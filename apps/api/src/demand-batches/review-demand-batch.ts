@@ -23,6 +23,10 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  prepareWorkItemCompletionStatements,
+  requireAssignedWorkflowActor,
+} from '../staff-assignment';
+import {
   cleanDemandIdentifier,
   cleanDemandReason,
   insertDemandBatchEventStatement,
@@ -194,7 +198,15 @@ export async function reviewDemandBatch(
       createdAt: now,
     });
 
+    await requireAssignedWorkflowActor(database, {
+      staffId: command.actor.staffId,
+      workType: 'DEMAND_REVIEW',
+      sourceEntityType: 'DEMAND_BATCH',
+      sourceEntityId: demandBatchId,
+    });
+
     const statements: SqlStatement[] = [
+      // Phase 3H access was resolved from persisted Staff facts above.
       input.decision === 'PUBLISH'
         ? database.prepare(`
             UPDATE demand_batches
@@ -299,7 +311,20 @@ export async function reviewDemandBatch(
       ),
     ];
 
-    await database.batch(statements);
+    await database.batch([
+      ...statements,
+      ...await prepareWorkItemCompletionStatements(database, {
+        workType: 'DEMAND_REVIEW',
+        sourceEntityType: 'DEMAND_BATCH',
+        sourceEntityId: demandBatchId,
+        outcome: 'COMPLETED',
+        actorType: 'STAFF',
+        actorId: command.actor.staffId,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        now,
+      }),
+    ]);
     return response;
   } catch (error) {
     const normalized = normalizeDemandBatchError(error);

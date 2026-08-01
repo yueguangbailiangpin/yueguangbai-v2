@@ -24,6 +24,10 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  prepareWorkItemCompletionStatements,
+  requireAssignedWorkflowActor,
+} from '../staff-assignment';
+import {
   cleanReservationIdentifier,
   cleanReservationReason,
   insertReservationEventStatement,
@@ -199,7 +203,15 @@ export async function decideReservation(
       createdAt: now,
     });
 
+    await requireAssignedWorkflowActor(database, {
+      staffId: command.actor.staffId,
+      workType: 'RESERVATION_DECISION',
+      sourceEntityType: 'RESERVATION',
+      sourceEntityId: reservationId,
+    });
+
     const statements: SqlStatement[] = [
+      // Phase 3H access was resolved from persisted Staff facts above.
       database.prepare(`
         UPDATE product_reservations
         SET
@@ -317,7 +329,20 @@ export async function decideReservation(
       ),
     ];
 
-    await database.batch(statements);
+    await database.batch([
+      ...statements,
+      ...await prepareWorkItemCompletionStatements(database, {
+        workType: 'RESERVATION_DECISION',
+        sourceEntityType: 'RESERVATION',
+        sourceEntityId: reservationId,
+        outcome: 'COMPLETED',
+        actorType: 'STAFF',
+        actorId: command.actor.staffId,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        now,
+      }),
+    ]);
     return response;
   } catch (error) {
     const normalized = normalizeReservationError(error);

@@ -6,6 +6,7 @@ import type {
 } from '@ygb/contracts';
 import { hashCanonicalJson } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
+import { prepareBuyerRefundObligationFromReviewApproval } from '../buyer-refunds';
 import {
   acquireIdempotency,
   assertIdempotencyCompletionStatement,
@@ -17,6 +18,12 @@ import {
   prepareOutboxEvent,
   type PreparedOutboxEvent,
 } from '../foundation/outbox';
+import {
+  batchWithAssignmentRetry,
+  prepareWorkItemCompletionStatements,
+  prepareDirectWorkItem,
+  requireAssignedWorkflowActor,
+} from '../staff-assignment';
 import { requireCurrentReviewCaseForStaff } from './review-records';
 import { insertReviewEventStatement } from './review-events';
 import {
@@ -155,6 +162,13 @@ async function transitionReview(
       throw new ReviewError('REVIEW_STATE_CONFLICT', 409);
     }
 
+    await requireAssignedWorkflowActor(database, {
+      staffId: command.actor.staffId,
+      workType: 'REVIEW_DECISION',
+      sourceEntityType: 'REVIEW_CASE',
+      sourceEntityId: reviewCaseId,
+    });
+
     const nextVersion = source.version + 1;
     const nextStatus = decisionStatus(input.mode);
     const eventType = decisionEventType(input.mode);
@@ -213,6 +227,21 @@ async function transitionReview(
       response,
       now,
     );
+    const preparedRefund = input.mode === 'APPROVE'
+      ? await prepareBuyerRefundObligationFromReviewApproval(database, {
+          sourceReviewEventId: buyerRefundEventId as string,
+          reviewCaseId: source.review_case_id,
+          formalOrderId: source.formal_order_id,
+          buyerCustomerId: source.buyer_customer_id,
+          dueAmountCnyFen: source.buyer_expected_principal_cny_fen,
+          actorStaffId: command.actor.staffId,
+          actorRoles: command.actor.roles,
+          requestId: command.requestId ?? null,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          now,
+        })
+      : null;
+
     const statements: SqlStatement[] = [
       updateReviewCaseDecisionStatement(database, {
         mode: input.mode,
@@ -294,6 +323,7 @@ async function transitionReview(
     }
 
     statements.push(
+      ...(preparedRefund?.statements ?? []),
       ...decisionAuditStatements(database, {
         mode: input.mode,
         source,
@@ -337,7 +367,39 @@ async function transitionReview(
       assertIdempotencyCompletionStatement(database, acquired.claim),
     );
 
-    await database.batch(statements);
+    const reviewCompletion = await prepareWorkItemCompletionStatements(database, {
+      workType: 'REVIEW_DECISION',
+      sourceEntityType: 'REVIEW_CASE',
+      sourceEntityId: reviewCaseId,
+      outcome: 'COMPLETED',
+      actorType: 'STAFF',
+      actorId: command.actor.staffId,
+      requestId: command.requestId ?? null,
+      idempotencyKey: acquired.claim.idempotencyKey,
+      now,
+    });
+    if (preparedRefund !== null) {
+      await batchWithAssignmentRetry(
+        database,
+        () => prepareDirectWorkItem(database, {
+          workType: 'BUYER_REFUND_PROCESSING',
+          sourceEntityType: 'BUYER_REFUND_OBLIGATION',
+          sourceEntityId: preparedRefund.obligationId,
+          marketplaceCode: 'JP',
+          buyerCustomerId: source.buyer_customer_id,
+          sellerOrganizationId: source.seller_organization_id,
+          actorType: 'STAFF',
+          actorId: command.actor.staffId,
+          requestId: command.requestId ?? null,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          reason: 'buyer refund became due',
+          now,
+        }),
+        [...statements, ...reviewCompletion],
+      );
+    } else {
+      await database.batch([...statements, ...reviewCompletion]);
+    }
     return response;
   } catch (error) {
     const normalized = normalizeReviewError(error);

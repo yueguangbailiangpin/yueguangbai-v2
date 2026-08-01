@@ -1,4 +1,5 @@
 import type {
+  StaffDataScope,
   StaffPermissionCode,
   StaffRoleCode,
 } from '@ygb/contracts';
@@ -8,6 +9,7 @@ export interface CatalogStaffActor {
   displayName: string;
   roles: readonly StaffRoleCode[];
   permissions: ReadonlySet<StaffPermissionCode>;
+  dataScope?: StaffDataScope;
 }
 
 export class CatalogError extends Error {

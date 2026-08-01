@@ -16,6 +16,10 @@ import {
   createOutboxStatements,
   prepareOutboxEvent,
 } from '../foundation/outbox';
+import {
+  prepareWorkItemCompletionStatements,
+  requireAssignedWorkflowActor,
+} from '../staff-assignment';
 import { requireCurrentOrderEvidenceForStaff } from './order-evidence-records';
 import {
   cleanOptionalOrderEvidenceText,
@@ -252,7 +256,15 @@ async function transitionOrderEvidence(
       createdAt: now,
     });
 
+    await requireAssignedWorkflowActor(database, {
+      staffId: command.actor.staffId,
+      workType: 'ORDER_EVIDENCE_REVIEW',
+      sourceEntityType: 'ORDER_EVIDENCE',
+      sourceEntityId: submissionId,
+    });
+
     const statements: SqlStatement[] = [
+      // Phase 3H access was resolved from persisted Staff facts above.
       updateReviewStateStatement(database, {
         mode: input.mode,
         submissionId,
@@ -332,7 +344,20 @@ async function transitionOrderEvidence(
         acquired.claim,
       ),
     ];
-    await database.batch(statements);
+    await database.batch([
+      ...statements,
+      ...await prepareWorkItemCompletionStatements(database, {
+        workType: 'ORDER_EVIDENCE_REVIEW',
+        sourceEntityType: 'ORDER_EVIDENCE',
+        sourceEntityId: submissionId,
+        outcome: 'COMPLETED',
+        actorType: 'STAFF',
+        actorId: command.actor.staffId,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        now,
+      }),
+    ]);
     return response;
   } catch (error) {
     const normalized = normalizeOrderEvidenceError(error);
