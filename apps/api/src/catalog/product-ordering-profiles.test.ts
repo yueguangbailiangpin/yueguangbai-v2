@@ -483,6 +483,12 @@ function productActor(): CatalogStaffActor {
       'PRODUCT_VIEW',
       'PRODUCT_REVIEW',
     ]),
+    dataScope: {
+      type: 'ASSIGNED_SELLER_ORGANIZATIONS',
+      buyerCustomerIds: [],
+      sellerOrganizationIds: ['seller-org-profile'],
+      teamIds: [],
+    },
   };
 }
 

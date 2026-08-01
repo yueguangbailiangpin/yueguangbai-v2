@@ -607,6 +607,30 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       'staff-pre-sales', '售前', 'ACTIVE', 1,
       1, 1000, 1000, NULL
     );
+    INSERT INTO staff_departments (
+      id, code, name, status, version, created_at, updated_at, disabled_at
+    ) VALUES ('department-order-evidence','order-evidence','Order Evidence',
+      'ACTIVE',1,1000,1000,NULL);
+    INSERT INTO staff_teams (
+      id, department_id, code, name, status, version,
+      created_at, updated_at, disabled_at
+    ) VALUES ('team-order-evidence','department-order-evidence','order-evidence',
+      'Order Evidence','ACTIVE',1,1000,1000,NULL);
+    INSERT INTO staff_role_assignments (
+      staff_id, role_code, status, assigned_by_staff_id, assigned_at,
+      revoked_at, created_at, updated_at
+    ) VALUES ('staff-pre-sales','pre_sales','ACTIVE',NULL,1000,NULL,1000,1000);
+    INSERT INTO staff_team_memberships (
+      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
+    ) VALUES ('staff-pre-sales','team-order-evidence','ACTIVE',1000,NULL,1000,1000);
+    INSERT INTO staff_team_memberships (
+      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
+    ) VALUES ('zz-phase3h-test-owner','team-order-evidence','ACTIVE',1000,NULL,1000,1000);
+    INSERT INTO staff_team_leaders (
+      staff_id, team_id, status, assigned_by_staff_id,
+      assigned_at, revoked_at, created_at, updated_at
+    ) VALUES ('staff-pre-sales','team-order-evidence','ACTIVE',
+      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,

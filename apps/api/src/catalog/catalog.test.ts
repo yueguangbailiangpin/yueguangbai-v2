@@ -482,12 +482,14 @@ function actor(input: {
   displayName: string;
   roles: readonly StaffRoleCode[];
   permissions: readonly StaffPermissionCode[];
+  dataScope?: CatalogStaffActor['dataScope'];
 }): CatalogStaffActor {
   return {
     staffId: input.staffId,
     displayName: input.displayName,
     roles: input.roles,
     permissions: new Set(input.permissions),
+    ...(input.dataScope ? { dataScope: input.dataScope } : {}),
   };
 }
 
@@ -510,6 +512,12 @@ function productReviewerActor(): CatalogStaffActor {
     permissions: [
       'PRODUCT_REVIEW',
     ],
+    dataScope: {
+      type: 'ASSIGNED_SELLER_ORGANIZATIONS',
+      buyerCustomerIds: [],
+      sellerOrganizationIds: ['seller-org-1', 'seller-org-2'],
+      teamIds: [],
+    },
   });
 }
 

@@ -587,7 +587,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     },
   );
 
-  it('keeps migrations through 0019 with schema_version 19', async () => {
+  it('keeps migrations through 0020 with schema_version 20', async () => {
     database = createMigratedTestDatabase();
     const repositoryRoot = path.resolve(
       import.meta.dirname,
@@ -598,16 +598,16 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     )
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(20);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toMatch(/^0019_/u);
+    expect(migrations.at(-1)).toMatch(/^0020_/u);
 
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(19);
+    expect(Number(state?.schema_version)).toBe(20);
   });
 });
 
@@ -633,6 +633,29 @@ function seedPortalFixture(
       'staff-pre-sales', '售前', 'ACTIVE', 1,
       1, 1000, 1000, NULL
     );
+    INSERT INTO staff_departments (
+      id, code, name, status, version, created_at, updated_at, disabled_at
+    ) VALUES ('department-portal-pre-sales','portal-pre-sales','Portal Pre Sales',
+      'ACTIVE',1,1000,1000,NULL);
+    INSERT INTO staff_teams (
+      id, department_id, code, name, status, version,
+      created_at, updated_at, disabled_at
+    ) VALUES ('team-portal-pre-sales','department-portal-pre-sales','portal-pre-sales',
+      'Portal Pre Sales','ACTIVE',1,1000,1000,NULL);
+    INSERT INTO staff_role_assignments (
+      staff_id, role_code, status, assigned_by_staff_id, assigned_at,
+      revoked_at, created_at, updated_at
+    ) VALUES ('staff-pre-sales','pre_sales','ACTIVE',NULL,1000,NULL,1000,1000);
+    INSERT INTO staff_team_memberships (
+      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
+    ) VALUES
+      ('staff-pre-sales','team-portal-pre-sales','ACTIVE',1000,NULL,1000,1000),
+      ('zz-phase3h-test-owner','team-portal-pre-sales','ACTIVE',1000,NULL,1000,1000);
+    INSERT INTO staff_team_leaders (
+      staff_id, team_id, status, assigned_by_staff_id,
+      assigned_at, revoked_at, created_at, updated_at
+    ) VALUES ('staff-pre-sales','team-portal-pre-sales','ACTIVE',
+      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,

@@ -565,6 +565,26 @@ function seedDemandFixture(
       'staff-demand-reviewer', 'seller_ops', 'ACTIVE', NULL,
       1000, NULL, 1000, 1000
     );
+    INSERT INTO staff_departments (
+      id, code, name, status, version, created_at, updated_at, disabled_at
+    ) VALUES ('department-demand-review','demand-review','Demand Review',
+      'ACTIVE',1,1000,1000,NULL);
+    INSERT INTO staff_teams (
+      id, department_id, code, name, status, version,
+      created_at, updated_at, disabled_at
+    ) VALUES ('team-demand-review','department-demand-review','demand-review',
+      'Demand Review','ACTIVE',1,1000,1000,NULL);
+    INSERT INTO staff_team_memberships (
+      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
+    ) VALUES ('staff-demand-reviewer','team-demand-review','ACTIVE',1000,NULL,1000,1000);
+    INSERT INTO staff_team_memberships (
+      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
+    ) VALUES ('zz-phase3h-test-owner','team-demand-review','ACTIVE',1000,NULL,1000,1000);
+    INSERT INTO staff_team_leaders (
+      staff_id, team_id, status, assigned_by_staff_id,
+      assigned_at, revoked_at, created_at, updated_at
+    ) VALUES ('staff-demand-reviewer','team-demand-review','ACTIVE',
+      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,

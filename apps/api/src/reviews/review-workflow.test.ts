@@ -509,7 +509,7 @@ describe('Phase 5A review evidence workflow', () => {
     const state = await database!.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(state?.schema_version).toBe(19);
+    expect(state?.schema_version).toBe(20);
   });
 });
 
@@ -625,6 +625,30 @@ function seedFormalOrderPrerequisites(db: SqliteDatabase): void {
       ('staff-review-owner', '负责人', 'ACTIVE', 1, 1, 1000, 1000, NULL),
       ('staff-review-after-sales', '售后', 'ACTIVE', 1, 1, 1000, 1000, NULL),
       ('staff-review-other', '其他', 'ACTIVE', 1, 1, 1000, 1000, NULL);
+
+    INSERT INTO staff_departments (
+      id, code, name, status, version, created_at, updated_at, disabled_at
+    ) VALUES ('department-review','review','Review','ACTIVE',1,1000,1000,NULL);
+    INSERT INTO staff_teams (
+      id, department_id, code, name, status, version,
+      created_at, updated_at, disabled_at
+    ) VALUES ('team-review','department-review','review','Review','ACTIVE',1,
+      1000,1000,NULL);
+    INSERT INTO staff_role_assignments (
+      staff_id, role_code, status, assigned_by_staff_id, assigned_at,
+      revoked_at, created_at, updated_at
+    ) VALUES
+      ('staff-review-pre-sales','pre_sales','ACTIVE','staff-review-owner',1000,NULL,1000,1000),
+      ('staff-review-owner','owner','ACTIVE',NULL,1000,NULL,1000,1000),
+      ('staff-review-after-sales','after_sales','ACTIVE','staff-review-owner',1000,NULL,1000,1000),
+      ('staff-review-other','seller_ops','ACTIVE','staff-review-owner',1000,NULL,1000,1000);
+    INSERT INTO staff_team_memberships (
+      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
+    ) VALUES
+      ('staff-review-pre-sales','team-review','ACTIVE',1000,NULL,1000,1000),
+      ('staff-review-owner','team-review','ACTIVE',1000,NULL,1000,1000),
+      ('staff-review-after-sales','team-review','ACTIVE',1000,NULL,1000,1000),
+      ('staff-review-other','team-review','ACTIVE',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,

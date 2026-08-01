@@ -174,7 +174,7 @@ describe('Phase 4B3 buyer formal order read model', () => {
     expect(database.calls).toHaveLength(0);
   });
 
-  it('keeps routes read-only and leaves the schema compatible through 0019', () => {
+  it('keeps routes read-only and leaves the schema compatible through 0020', () => {
     const root = path.resolve(import.meta.dirname, '../../../..');
     const routeSource = readFileSync(
       path.join(
@@ -192,9 +192,9 @@ describe('Phase 4B3 buyer formal order read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(20);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0019_product_ordering_profiles.sql');
+    expect(migrations.at(-1)).toBe('0020_staff_assignment_rules.sql');
   });
 });
 
