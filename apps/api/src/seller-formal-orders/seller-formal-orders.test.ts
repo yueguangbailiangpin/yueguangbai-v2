@@ -402,8 +402,16 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
         service_fee_cny_fen: '2500',
       },
     });
-    expect(JSON.stringify(body)).not.toContain('9000000');
-    expect(JSON.stringify(body)).not.toContain('9999');
+    expect(body.data.formal_order.product_name)
+      .not.toBe('Portal 产品一新规则名称');
+    expect(
+      body.data.formal_order.seller_agreement_rate_snapshot
+        .cny_per_jpy_e8,
+    ).not.toBe('9000000');
+    expect(
+      body.data.formal_order.locked_service_fee_snapshot
+        .service_fee_cny_fen,
+    ).not.toBe('9999');
   });
 
   it('registers no write operation and leaves formal order facts unchanged', async () => {
