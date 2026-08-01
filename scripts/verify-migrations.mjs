@@ -97,6 +97,17 @@ const requiredTables = [
   'buyer_refund_payment_entries',
   'buyer_refund_payment_entry_files',
   'buyer_refund_events',
+  'staff_availability',
+  'staff_assignment_role_permission_defaults',
+  'buyer_staff_assignments',
+  'seller_staff_assignments',
+  'staff_assignment_cursors',
+  'staff_assignment_fallbacks',
+  'staff_work_items',
+  'staff_assignment_events',
+  'staff_reassignment_batches',
+  'staff_reassignment_batch_items',
+  'staff_assignment_cursor_assertions',
 ];
 
 const requiredTriggers = [
@@ -221,6 +232,17 @@ const requiredTriggers = [
   'trg_buyer_refund_event_identity_guard',
   'trg_buyer_refund_events_no_update',
   'trg_buyer_refund_events_no_delete',
+  'trg_buyer_staff_assignments_revoke_only',
+  'trg_buyer_staff_assignments_no_delete',
+  'trg_seller_staff_assignments_revoke_only',
+  'trg_seller_staff_assignments_no_delete',
+  'trg_staff_work_items_assignment_guard',
+  'trg_staff_work_items_update_guard',
+  'trg_staff_work_items_no_delete',
+  'trg_staff_assignment_events_no_update',
+  'trg_staff_assignment_events_no_delete',
+  'trg_staff_assignment_cursor_assertion_guard',
+  'trg_staff_assignment_cursor_assertion_cleanup',
 ];
 
 try {

@@ -23,3 +23,4 @@ export * from './seller-review-portal';
 export * from './seller-portal';
 export * from './sql';
 export * from './staff';
+export * from './staff-assignment';

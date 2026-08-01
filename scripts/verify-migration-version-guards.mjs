@@ -8,9 +8,9 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 19
-  || migrationFiles.at(-1) !== '0019_product_ordering_profiles.sql') {
-  throw new Error('expected migrations 0001-0019');
+if (migrationFiles.length !== 20
+  || migrationFiles.at(-1) !== '0020_staff_assignment_rules.sql') {
+  throw new Error('expected migrations 0001-0020');
 }
 
 const guarded = new Map([
@@ -23,6 +23,7 @@ const guarded = new Map([
   [17, 'buyer_refund_obligations'],
   [18, 'buyer_registration_conflicts'],
   [19, 'product_version_main_images'],
+  [20, 'staff_availability'],
 ]);
 
 function readMigration(name) {
@@ -81,7 +82,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 19) throw new Error('fresh schema not 19');
+  if (schemaVersion(fresh) !== 20) throw new Error('fresh schema not 20');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -125,8 +126,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 19,
-  sequential_upgrade: '0001 -> 0019',
+  fresh_schema: 20,
+  sequential_upgrade: '0001 -> 0020',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,
