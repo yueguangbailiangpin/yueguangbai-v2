@@ -577,7 +577,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     },
   );
 
-  it('keeps migrations at 0001-0014 with schema_version 14', async () => {
+  it('keeps migrations at 0001-0015 with schema_version 15', async () => {
     database = createMigratedTestDatabase();
     const repositoryRoot = path.resolve(
       import.meta.dirname,
@@ -588,16 +588,16 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     )
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(14);
+    expect(migrations).toHaveLength(15);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toMatch(/^0014_/u);
+    expect(migrations.at(-1)).toMatch(/^0015_/u);
 
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(14);
+    expect(Number(state?.schema_version)).toBe(15);
   });
 });
 
