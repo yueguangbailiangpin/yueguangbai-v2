@@ -1,6 +1,8 @@
 import type {
   FileActor,
+  FileLinkAuthorizationMode,
   FileReadIntentResult,
+  FileReadPrincipal,
   ObjectStorageAdapter,
   SqlDatabase,
   SqlStatement,
@@ -26,6 +28,7 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import type { FileAuthorizationService } from './authorization';
+import { authorizeFileRead } from './file-audience-authorization';
 import { createFileEventStatement } from './file-events';
 import {
   FileStorageError,
@@ -40,6 +43,7 @@ const DEFAULT_READ_TTL_MS = 5 * 60 * 1000;
 const MAXIMUM_READ_TTL_MS = 10 * 60 * 1000;
 
 interface ReadableFileSource extends FileObjectRow {
+  file_entity_link_id: string;
   entity_type: 'PRODUCT_APPLICATION'
     | 'ORDER'
     | 'REVIEW'
@@ -47,6 +51,9 @@ interface ReadableFileSource extends FileObjectRow {
     | 'SELLER_SETTLEMENT'
     | 'SUPPORT_CASE';
   entity_id: string;
+  authorization_mode: FileLinkAuthorizationMode;
+  link_expires_at: number | null;
+  link_revoked_at: number | null;
 }
 
 interface ReadIntentRow extends ReadableFileSource {
@@ -63,11 +70,13 @@ export async function createFileReadIntent(
   authorization: FileAuthorizationService,
   input: {
     fileObjectId: string;
+    fileEntityLinkId?: string;
     expectedFileVersion: number;
     ttlMs?: number;
   },
   command: {
     actor: FileActor;
+    principal?: FileReadPrincipal;
     idempotencyKey: string;
     requestId?: string | null;
     now?: number;
@@ -82,15 +91,30 @@ export async function createFileReadIntent(
     throw new FileStorageError('VALIDATION_ERROR', 400);
   }
 
-  const source = await requireReadableFile(database, fileObjectId);
+  const fileEntityLinkId = input.fileEntityLinkId === undefined
+    ? null
+    : cleanFileIdentifier(input.fileEntityLinkId, 120);
+  const source = await requireReadableFile(
+    database,
+    fileObjectId,
+    fileEntityLinkId,
+  );
   if (source.version !== input.expectedFileVersion) {
     throw new FileStorageError('VERSION_CONFLICT', 409);
   }
-  await authorization.assertCanRead(command.actor, resource(source));
+  await authorizeFileRead(
+    database,
+    authorization,
+    command.actor,
+    command.principal,
+    resource(source),
+    now,
+  );
   const expiresAt = now + ttlMs;
   const requestHash = await hashCanonicalJson({
     action: 'CREATE_FILE_READ_INTENT',
     file_object_id: fileObjectId,
+    file_entity_link_id: source.file_entity_link_id,
     expected_file_version: input.expectedFileVersion,
     ttl_ms: ttlMs,
   });
@@ -163,8 +187,9 @@ export async function createFileReadIntent(
           created_at,
           updated_at,
           consumed_at,
-          revoked_at
-        ) VALUES (?, ?, ?, ?, ?, 'ISSUED', 0, ?, ?, ?, NULL, NULL)
+          revoked_at,
+          file_entity_link_id
+        ) VALUES (?, ?, ?, ?, ?, 'ISSUED', 0, ?, ?, ?, NULL, NULL, ?)
       `).bind(
         readIntentId,
         fileObjectId,
@@ -174,6 +199,7 @@ export async function createFileReadIntent(
         expiresAt,
         now,
         now,
+        source.file_entity_link_id,
       ),
       createFileEventStatement(database, {
         uploadIntentId: source.upload_intent_id,
@@ -254,6 +280,7 @@ export async function consumeFileReadIntent(
   },
   command: {
     actor: FileActor;
+    principal?: FileReadPrincipal;
     now?: number;
   },
 ): Promise<{
@@ -280,7 +307,14 @@ export async function consumeFileReadIntent(
   if (!constantTimeHexEqual(tokenHash, source.token_hash)) {
     throw new FileStorageError('FORBIDDEN', 403);
   }
-  await authorization.assertCanRead(command.actor, resource(source));
+  await authorizeFileRead(
+    database,
+    authorization,
+    command.actor,
+    command.principal,
+    resource(source),
+    now,
+  );
 
   const bytes = await storage.readObject(source.object_key)
     .catch(() => {
@@ -354,6 +388,7 @@ export async function consumeFileReadIntent(
 async function requireReadableFile(
   database: SqlDatabase,
   fileObjectId: string,
+  fileEntityLinkId: string | null,
 ): Promise<ReadableFileSource> {
   const row = await database.prepare(`
     SELECT
@@ -363,8 +398,12 @@ async function requireReadableFile(
       intent.status AS intent_status,
       intent.version AS intent_version,
       intent.expires_at AS intent_expires_at,
+      link.id AS file_entity_link_id,
       link.entity_type,
-      link.entity_id
+      link.entity_id,
+      link.authorization_mode,
+      link.expires_at AS link_expires_at,
+      link.revoked_at AS link_revoked_at
     FROM file_objects object
     JOIN file_upload_intents intent
       ON intent.id=object.upload_intent_id
@@ -373,9 +412,19 @@ async function requireReadableFile(
     WHERE object.id=?
       AND object.status='VERIFIED'
       AND intent.status='VERIFIED'
+      AND (
+        (? IS NOT NULL AND link.id=?)
+        OR
+        (? IS NULL AND link.authorization_mode='LEGACY_VISIBILITY')
+      )
     ORDER BY link.created_at, link.id
     LIMIT 1
-  `).bind(fileObjectId).first<ReadableFileSource>();
+  `).bind(
+    fileObjectId,
+    fileEntityLinkId,
+    fileEntityLinkId,
+    fileEntityLinkId,
+  ).first<ReadableFileSource>();
   if (!row) throw new FileStorageError('FILE_NOT_VERIFIED', 409);
   return row;
 }
@@ -392,8 +441,12 @@ async function requireReadIntent(
       intent.status AS intent_status,
       intent.version AS intent_version,
       intent.expires_at AS intent_expires_at,
+      link.id AS file_entity_link_id,
       link.entity_type,
       link.entity_id,
+      link.authorization_mode,
+      link.expires_at AS link_expires_at,
+      link.revoked_at AS link_revoked_at,
       read.id AS read_intent_id,
       read.actor_type AS read_actor_type,
       read.actor_id AS read_actor_id,
@@ -407,6 +460,13 @@ async function requireReadIntent(
       ON intent.id=object.upload_intent_id
     JOIN file_entity_links link
       ON link.file_object_id=object.id
+      AND (
+        (read.file_entity_link_id IS NOT NULL
+          AND link.id=read.file_entity_link_id)
+        OR
+        (read.file_entity_link_id IS NULL
+          AND link.authorization_mode='LEGACY_VISIBILITY')
+      )
     WHERE read.id=?
       AND object.status='VERIFIED'
       AND intent.status='VERIFIED'
@@ -429,6 +489,10 @@ function resource(source: ReadableFileSource) {
     visibility: source.visibility,
     entityType: source.entity_type,
     entityId: source.entity_id,
+    fileEntityLinkId: source.file_entity_link_id,
+    linkAuthorizationMode: source.authorization_mode,
+    linkExpiresAt: source.link_expires_at,
+    linkRevokedAt: source.link_revoked_at,
   } as const;
 }
 

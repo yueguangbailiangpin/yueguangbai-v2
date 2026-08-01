@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   FILE_ENTITY_TYPES,
+  FILE_AUDIENCE_SUBJECT_TYPES,
+  FILE_LINK_AUTHORIZATION_MODES,
   FILE_PURPOSES,
   FILE_VISIBILITIES,
   isFileEntityType,
+  isFileLinkAuthorizationMode,
   isFilePurpose,
   isFileVisibility,
   isSupportedFileMime,
@@ -25,11 +28,22 @@ describe('file storage contracts', () => {
       'SELLER_VISIBLE',
     ]);
     expect(FILE_ENTITY_TYPES).toHaveLength(6);
+    expect(FILE_LINK_AUTHORIZATION_MODES).toEqual([
+      'LEGACY_VISIBILITY',
+      'EXPLICIT_AUDIENCES',
+    ]);
+    expect(FILE_AUDIENCE_SUBJECT_TYPES).toEqual([
+      'BUYER',
+      'SELLER_ORGANIZATION',
+      'STAFF_INTERNAL',
+    ]);
   });
 
   it('rejects unpublished values', () => {
     expect(isFilePurpose('ORDER_IMAGE')).toBe(false);
     expect(isFileVisibility('PUBLIC')).toBe(false);
+    expect(isFileLinkAuthorizationMode('BOTH')).toBe(false);
+    expect(isFileLinkAuthorizationMode('EXPLICIT_AUDIENCES')).toBe(true);
     expect(isFileEntityType('PAYMENT')).toBe(false);
     expect(isSupportedFileMime('image/svg+xml')).toBe(false);
     expect(isSupportedFileMime('text/html')).toBe(false);

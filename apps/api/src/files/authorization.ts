@@ -1,6 +1,7 @@
 import type {
   FileActor,
   FileEntityType,
+  FileLinkAuthorizationMode,
   FilePurpose,
   FileVisibility,
 } from '@ygb/contracts';
@@ -14,6 +15,10 @@ export interface FileAuthorizationResource {
   visibility: FileVisibility;
   entityType: FileEntityType | null;
   entityId: string | null;
+  fileEntityLinkId?: string | null;
+  linkAuthorizationMode?: FileLinkAuthorizationMode;
+  linkExpiresAt?: number | null;
+  linkRevokedAt?: number | null;
 }
 
 export interface FileAuthorizationService {

@@ -17,6 +17,31 @@ export const FILE_VISIBILITIES = [
 
 export type FileVisibility = typeof FILE_VISIBILITIES[number];
 
+export const FILE_LINK_AUTHORIZATION_MODES = [
+  'LEGACY_VISIBILITY',
+  'EXPLICIT_AUDIENCES',
+] as const;
+
+export type FileLinkAuthorizationMode =
+  typeof FILE_LINK_AUTHORIZATION_MODES[number];
+
+export const FILE_AUDIENCE_SUBJECT_TYPES = [
+  'BUYER',
+  'SELLER_ORGANIZATION',
+  'STAFF_INTERNAL',
+] as const;
+
+export type FileAudienceSubjectType =
+  typeof FILE_AUDIENCE_SUBJECT_TYPES[number];
+
+export const FILE_STAFF_AUDIENCE_SCOPE_TYPES = [
+  'GLOBAL',
+  'TEAM',
+] as const;
+
+export type FileStaffAudienceScopeType =
+  typeof FILE_STAFF_AUDIENCE_SCOPE_TYPES[number];
+
 export const FILE_UPLOAD_INTENT_STATUSES = [
   'ISSUED',
   'VERIFYING',
@@ -171,8 +196,69 @@ export interface FileEntityLinkResult {
   entityId: string;
   purpose: FilePurpose;
   visibility: FileVisibility;
+  authorizationMode?: FileLinkAuthorizationMode;
   replayed: boolean;
 }
+
+export type ExplicitFileAudienceGrantInput =
+  | {
+      subjectType: 'BUYER';
+      buyerCustomerId: string;
+      expiresAt?: number | null;
+    }
+  | {
+      subjectType: 'SELLER_ORGANIZATION';
+      sellerOrganizationId: string;
+      expiresAt?: number | null;
+    }
+  | {
+      subjectType: 'STAFF_INTERNAL';
+      permissionCode: import('./staff').StaffPermissionCode;
+      scope:
+        | { type: 'GLOBAL' }
+        | { type: 'TEAM'; teamId: string };
+      expiresAt?: number | null;
+    };
+
+export interface ExplicitFileAudienceGrantResult {
+  grantId: string;
+  subjectType: FileAudienceSubjectType;
+  subjectAuthorityId: string;
+  expiresAt: number | null;
+}
+
+export interface ExplicitAudienceFileLinkResult {
+  linkId: string;
+  fileObjectId: string;
+  entityType: FileEntityType;
+  entityId: string;
+  purpose: FilePurpose;
+  visibility: FileVisibility;
+  authorizationMode: 'EXPLICIT_AUDIENCES';
+  expiresAt: number | null;
+  grants: readonly ExplicitFileAudienceGrantResult[];
+}
+
+/**
+ * The customer variants contain only verified session authority identifiers.
+ * Buyer and seller organization ids are deliberately absent and must be
+ * resolved from the active account and identity-subject records.
+ */
+export type FileReadPrincipal =
+  | {
+      type: 'BUYER_SESSION';
+      accountId: string;
+      identitySubjectId: string;
+    }
+  | {
+      type: 'SELLER_SESSION';
+      accountId: string;
+      identitySubjectId: string;
+    }
+  | {
+      type: 'STAFF_SESSION';
+      staffId: string;
+    };
 
 export interface FileReadIntentResult {
   readIntentId: string;
@@ -225,6 +311,12 @@ export function isFileVisibility(
   value: unknown,
 ): value is FileVisibility {
   return isPublished(value, FILE_VISIBILITIES);
+}
+
+export function isFileLinkAuthorizationMode(
+  value: unknown,
+): value is FileLinkAuthorizationMode {
+  return isPublished(value, FILE_LINK_AUTHORIZATION_MODES);
 }
 
 export function isSupportedFileMime(
