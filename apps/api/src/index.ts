@@ -5,6 +5,7 @@ import { registerBuyerPortalRoutes } from './buyer-portal';
 import { registerBuyerReviewRoutes } from './buyer-reviews';
 import { registerCustomerAuthRoutes } from './http-auth';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
+import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
 
 const app = createApp();
@@ -15,5 +16,6 @@ registerBuyerFormalOrderRoutes(app);
 registerBuyerReviewRoutes(app);
 registerSellerPortalRoutes(app);
 registerSellerFormalOrderRoutes(app);
+registerSellerReviewRoutes(app);
 
 export default app;
