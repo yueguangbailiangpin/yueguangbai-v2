@@ -7,9 +7,10 @@ import type {
 import type { BuyerPortalContext } from '../buyer-portal/buyer-context';
 import { BuyerReviewPortalError } from './errors';
 
-interface UrlRow {
+interface CurrentEvidenceRow {
   review_case_id: string;
   review_url: string | null;
+  submitted_at: number;
 }
 
 export async function attachBuyerReviewUrl<T extends BuyerReviewSummaryDto>(
@@ -18,7 +19,10 @@ export async function attachBuyerReviewUrl<T extends BuyerReviewSummaryDto>(
   review: T,
 ): Promise<T> {
   const row = await database.prepare(`
-    SELECT review_case.id AS review_case_id, evidence.review_url
+    SELECT
+      review_case.id AS review_case_id,
+      evidence.review_url,
+      evidence.created_at AS submitted_at
     FROM review_cases review_case
     JOIN review_evidence_versions evidence
       ON evidence.review_case_id=review_case.id
@@ -30,9 +34,13 @@ export async function attachBuyerReviewUrl<T extends BuyerReviewSummaryDto>(
   `).bind(
     review.review_case_id,
     buyer.buyerCustomerId,
-  ).first<UrlRow>();
+  ).first<CurrentEvidenceRow>();
   if (!row) throw new BuyerReviewPortalError('NOT_FOUND', 404);
-  return Object.freeze({ ...review, review_url: row.review_url });
+  return Object.freeze({
+    ...review,
+    review_url: row.review_url,
+    submitted_at: Number(row.submitted_at),
+  });
 }
 
 export async function attachBuyerReviewPageUrls(
