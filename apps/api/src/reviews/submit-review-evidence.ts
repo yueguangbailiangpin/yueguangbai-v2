@@ -37,6 +37,7 @@ import {
   cleanOptionalReviewText,
   cleanReviewIdentifier,
   cleanReviewTimestamp,
+  cleanReviewUrl,
   normalizeReviewError,
   normalizeReviewFileInputs,
   ReviewError,
@@ -59,6 +60,7 @@ export async function submitReviewEvidence(
     formalOrderId: string;
     expectedVersion: number;
     reviewType: PricingReviewType;
+    reviewUrl?: string | null;
     evidenceFiles: readonly ReviewEvidenceFileInput[];
     buyerNote?: string | null;
   },
@@ -78,6 +80,7 @@ export async function submitReviewEvidence(
   if (!isPricingReviewType(input.reviewType)) {
     throw new ReviewError('VALIDATION_ERROR', 400);
   }
+  const reviewUrl = cleanReviewUrl(input.reviewType, input.reviewUrl);
   const evidenceFiles = normalizeReviewFileInputs(input.evidenceFiles);
   const buyerNote = cleanOptionalReviewText(input.buyerNote, 2000);
   const now = cleanReviewTimestamp(command.now ?? Date.now());
@@ -87,6 +90,7 @@ export async function submitReviewEvidence(
     formal_order_id: formalOrderId,
     expected_version: expectedVersion,
     review_type: input.reviewType,
+    review_url: reviewUrl,
     evidence_files: evidenceFiles.map((file) => ({
       file_object_id: file.fileObjectId,
       expected_file_version: file.expectedFileVersion,
@@ -171,8 +175,7 @@ export async function submitReviewEvidence(
         },
         {
           actor: fileActor,
-          idempotencyKey:
-            acquired.claim.idempotencyKey,
+          idempotencyKey: acquired.claim.idempotencyKey,
           requestId: command.requestId ?? null,
           now,
         },
@@ -194,10 +197,12 @@ export async function submitReviewEvidence(
       formal_order_id: source.formal_order_id,
       buyer_customer_id: source.buyer_customer_id,
       review_type: input.reviewType,
+      review_url: reviewUrl,
       status: 'PENDING_REVIEW',
       version: aggregateVersion,
       current_evidence_version_no: evidenceVersionNo,
       current_evidence_version_id: evidenceVersionId,
+      submitted_at: now,
       evidence_files: preparedFiles.map((file) => ({
         file_object_id: file.fileObjectId,
         file_entity_link_id: file.linkId,
@@ -237,6 +242,7 @@ export async function submitReviewEvidence(
       formalOrderId: source.formal_order_id,
       versionNo: evidenceVersionNo,
       reviewType: input.reviewType,
+      reviewUrl,
       buyerCustomerId: source.buyer_customer_id,
       buyerNote,
       now,
@@ -276,6 +282,7 @@ export async function submitReviewEvidence(
         caseVersion: aggregateVersion,
         metadata: {
           evidence_version_no: evidenceVersionNo,
+          review_url: reviewUrl,
           file_count: preparedFiles.length,
           authorization_mode: 'EXPLICIT_AUDIENCES',
         },
@@ -302,6 +309,7 @@ export async function submitReviewEvidence(
         nextState: response,
         metadata: {
           seller_organization_id: source.seller_organization_id,
+          evidence_version_id: evidenceVersionId,
           file_authorization_mode: 'EXPLICIT_AUDIENCES',
         },
         createdAt: now,
@@ -328,6 +336,7 @@ export async function submitReviewEvidence(
         evidenceVersionId,
         evidenceVersionNo,
         aggregateVersion,
+        reviewUrl,
         preparedFiles,
         claim: acquired.claim,
       }),
@@ -347,7 +356,9 @@ export async function submitReviewEvidence(
         actorId: `buyer:${source.buyer_customer_id}`,
         requestId: command.requestId ?? null,
         idempotencyKey: acquired.claim.idempotencyKey,
-        reason: source.review_case_id === null ? 'review evidence submitted' : 'review evidence resubmitted',
+        reason: source.review_case_id === null
+          ? 'review evidence submitted'
+          : 'review evidence resubmitted',
         now,
       }),
       statements,
@@ -488,6 +499,7 @@ function insertReviewEvidenceVersionStatement(
     formalOrderId: string;
     versionNo: number;
     reviewType: PricingReviewType;
+    reviewUrl: string | null;
     buyerCustomerId: string;
     buyerNote: string | null;
     now: number;
@@ -502,8 +514,9 @@ function insertReviewEvidenceVersionStatement(
       review_type,
       submitted_by_buyer_id,
       buyer_note,
-      created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      created_at,
+      review_url
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     input.evidenceVersionId,
     input.reviewCaseId,
@@ -513,6 +526,7 @@ function insertReviewEvidenceVersionStatement(
     input.buyerCustomerId,
     input.buyerNote,
     input.now,
+    input.reviewUrl,
   );
 }
 
@@ -593,6 +607,7 @@ function assertReviewEvidenceSubmittedStatement(
     evidenceVersionId: string;
     evidenceVersionNo: number;
     aggregateVersion: number;
+    reviewUrl: string | null;
     preparedFiles: readonly PreparedReviewFile[];
     claim: {
       actorType: string;
@@ -624,6 +639,8 @@ function assertReviewEvidenceSubmittedStatement(
           AND evidence.review_case_id=?
           AND evidence.formal_order_id=?
           AND evidence.version_no=?
+          AND evidence.review_url IS ?
+          AND evidence.created_at=?
       )
       AND (
         SELECT COUNT(*)
@@ -634,6 +651,7 @@ function assertReviewEvidenceSubmittedStatement(
           AND version_file.file_object_id IN (${filePlaceholders})
           AND link.authorization_mode='EXPLICIT_AUDIENCES'
       )=?
+      AND ? BETWEEN 1 AND 3
       AND (
         SELECT COUNT(*)
         FROM review_events
@@ -665,8 +683,13 @@ function assertReviewEvidenceSubmittedStatement(
     input.reviewCaseId,
     input.formalOrderId,
     input.evidenceVersionNo,
+    input.reviewUrl,
+    input.preparedFiles.length > 0
+      ? undefined
+      : undefined,
     input.evidenceVersionId,
     ...input.preparedFiles.map((file) => file.fileObjectId),
+    input.preparedFiles.length,
     input.preparedFiles.length,
     input.reviewCaseId,
     input.aggregateVersion,
