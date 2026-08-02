@@ -1,7 +1,13 @@
 import type {
   DemandTaskType,
+  FixedIntegerString,
   SqlDatabase,
 } from '@ygb/contracts';
+import {
+  calculateBuyerSelfPayFacts,
+  fixedIntegerString,
+  parseJpyInteger,
+} from '@ygb/domain';
 import {
   DemandBatchError,
   type BuyerDemandContext,
@@ -9,13 +15,11 @@ import {
 
 interface PublicDemandRow {
   demand_batch_id: string;
-  product_id: string;
-  product_version_no: number;
+  demand_version: number;
   marketplace_code: 'JP';
-  asin: string;
   product_name: string;
-  search_keywords_json: string;
-  product_url: string | null;
+  reference_order_amount_jpy: number;
+  buyer_self_pay_bps: number;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;
@@ -27,13 +31,13 @@ interface PublicDemandRow {
 
 export interface BuyerPublicDemandBatch {
   demand_batch_id: string;
-  product_id: string;
-  product_version_no: number;
+  demand_version: number;
   marketplace_code: 'JP';
-  asin: string;
   product_name: string;
-  search_keywords: readonly string[];
-  product_url: string | null;
+  reference_order_amount_jpy: FixedIntegerString;
+  buyer_self_pay_bps: number;
+  estimated_buyer_self_pay_jpy: FixedIntegerString;
+  estimated_refundable_principal_jpy: FixedIntegerString;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;
@@ -52,16 +56,10 @@ export async function listBuyerPublicDemandBatches(
   } = {},
 ): Promise<readonly BuyerPublicDemandBatch[]> {
   if (context.accessStatus !== 'ACTIVE') {
-    throw new DemandBatchError(
-      'CUSTOMER_NOT_ACTIVE',
-      409,
-    );
+    throw new DemandBatchError('CUSTOMER_NOT_ACTIVE', 409);
   }
   if (context.identityReviewStatus !== 'CLEAR') {
-    throw new DemandBatchError(
-      'IDENTITY_REVIEW_REQUIRED',
-      409,
-    );
+    throw new DemandBatchError('IDENTITY_REVIEW_REQUIRED', 409);
   }
 
   const now = options.now ?? Date.now();
@@ -76,13 +74,11 @@ export async function listBuyerPublicDemandBatches(
   const result = await database.prepare(`
     SELECT
       demand.id AS demand_batch_id,
-      demand.product_id,
-      demand.product_version_no,
+      demand.version AS demand_version,
       demand.marketplace_code,
-      product.asin_normalized AS asin,
       version.product_name,
-      version.search_keywords_json,
-      version.product_url,
+      version.ordering_guide_expected_amount_jpy AS reference_order_amount_jpy,
+      demand.buyer_self_pay_bps_snapshot AS buyer_self_pay_bps,
       demand.buyer_visible_notes,
       store.display_name AS store_display_name,
       demand.task_type,
@@ -112,10 +108,7 @@ export async function listBuyerPublicDemandBatches(
       AND product.status='ACTIVE'
       AND store.status='ACTIVE'
       AND organization.status='ACTIVE'
-    ORDER BY
-      demand.reservation_deadline,
-      demand.submitted_at,
-      demand.id
+    ORDER BY demand.reservation_deadline, demand.submitted_at, demand.id
     LIMIT ?
   `).bind(
     context.marketplaceCode,
@@ -125,43 +118,30 @@ export async function listBuyerPublicDemandBatches(
     limit,
   ).all<PublicDemandRow>();
 
-  return Object.freeze(result.results.map((row) =>
-    Object.freeze({
+  return Object.freeze(result.results.map((row) => {
+    const reference = parseJpyInteger(String(row.reference_order_amount_jpy));
+    const estimate = calculateBuyerSelfPayFacts(
+      reference,
+      Number(row.buyer_self_pay_bps),
+    );
+    return Object.freeze({
       demand_batch_id: row.demand_batch_id,
-      product_id: row.product_id,
-      product_version_no:
-        Number(row.product_version_no),
+      demand_version: Number(row.demand_version),
       marketplace_code: row.marketplace_code,
-      asin: row.asin,
       product_name: row.product_name,
-      search_keywords: Object.freeze(
-        parseStringArray(row.search_keywords_json),
-      ),
-      product_url: row.product_url,
+      reference_order_amount_jpy: fixedIntegerString(reference),
+      buyer_self_pay_bps: Number(row.buyer_self_pay_bps),
+      estimated_buyer_self_pay_jpy:
+        fixedIntegerString(estimate.buyerSelfPayJpy),
+      estimated_refundable_principal_jpy:
+        fixedIntegerString(estimate.refundablePrincipalJpy),
       buyer_visible_notes: row.buyer_visible_notes,
       store_display_name: row.store_display_name,
       task_type: row.task_type,
       target_quantity: Number(row.target_quantity),
       open_at: Number(row.open_at),
-      reservation_deadline:
-        Number(row.reservation_deadline),
+      reservation_deadline: Number(row.reservation_deadline),
       order_deadline: Number(row.order_deadline),
-    }),
-  ));
-}
-
-function parseStringArray(value: string): string[] {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)
-      || parsed.some((item) => typeof item !== 'string')) {
-      throw new Error('invalid');
-    }
-    return parsed;
-  } catch {
-    throw new DemandBatchError(
-      'DEPENDENCY_UNAVAILABLE',
-      503,
-    );
-  }
+    });
+  }));
 }

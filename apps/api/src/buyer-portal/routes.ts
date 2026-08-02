@@ -120,7 +120,11 @@ async function getDemand(
 async function createReservation(
   context: Context<any>,
 ): Promise<Response> {
-  await requireEmptyCreateBody(context);
+  const body = await readBoundedJson(
+    context.req.raw,
+    CREATE_BODY_LIMIT_BYTES,
+  );
+  const acceptance = parseReservationAcceptance(body);
   const buyer = await requireBuyerPortalContext(context);
   const demandBatchId = requireRouteId(context);
   const idempotencyKey = requireIdempotencyKey(context);
@@ -128,6 +132,8 @@ async function createReservation(
     context.env.DB,
     {
       demandBatchId,
+      expectedDemandVersion: acceptance.expectedDemandVersion,
+      acceptedBuyerSelfPayBps: acceptance.acceptedBuyerSelfPayBps,
     },
     {
       actor: buyer,
@@ -222,17 +228,26 @@ async function cancelOwnReservation(
   return success(context, response);
 }
 
-async function requireEmptyCreateBody(
-  context: Context<any>,
-): Promise<void> {
-  if (!context.req.raw.body) return;
-  const body = await readBoundedJson(
-    context.req.raw,
-    CREATE_BODY_LIMIT_BYTES,
-  );
-  if (!body || Object.keys(body).length !== 0) {
+function parseReservationAcceptance(value: unknown): {
+  expectedDemandVersion: number;
+  acceptedBuyerSelfPayBps: number;
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new BuyerPortalError('VALIDATION_ERROR', 400);
   }
+  const body = value as Record<string, unknown>;
+  if (Object.keys(body).length !== 2
+    || !Number.isSafeInteger(body['expected_demand_version'])
+    || Number(body['expected_demand_version']) < 1
+    || !Number.isSafeInteger(body['accepted_buyer_self_pay_bps'])
+    || Number(body['accepted_buyer_self_pay_bps']) < 0
+    || Number(body['accepted_buyer_self_pay_bps']) > 10_000) {
+    throw new BuyerPortalError('VALIDATION_ERROR', 400);
+  }
+  return {
+    expectedDemandVersion: Number(body['expected_demand_version']),
+    acceptedBuyerSelfPayBps: Number(body['accepted_buyer_self_pay_bps']),
+  };
 }
 
 function requireRouteId(

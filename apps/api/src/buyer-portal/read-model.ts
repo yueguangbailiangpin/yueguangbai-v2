@@ -6,6 +6,11 @@ import type {
   ReservationStatus,
   SqlDatabase,
 } from '@ygb/contracts';
+import {
+  calculateBuyerSelfPayFacts,
+  fixedIntegerString,
+  parseJpyInteger,
+} from '@ygb/domain';
 import type { BuyerPortalContext } from './buyer-context';
 import { BuyerPortalError } from './errors';
 import {
@@ -17,8 +22,11 @@ import {
 
 interface DemandRow {
   demand_batch_id: string;
+  demand_version: number;
   marketplace_code: 'JP';
   product_name: string;
+  reference_order_amount_jpy: number;
+  buyer_self_pay_bps: number;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;
@@ -38,12 +46,21 @@ interface ReservationRow {
   updated_at: number;
   hold_expires_at: number;
   order_deadline_snapshot: number;
+  buyer_self_pay_bps_snapshot: number;
+  reference_order_amount_jpy_snapshot: number;
+  estimated_self_pay_jpy_snapshot: number;
+  estimated_refundable_principal_jpy_snapshot: number;
+  buyer_self_pay_accepted_at: number;
+  buyer_self_pay_accepted_demand_version: number;
   decided_at: number | null;
   cancelled_at: number | null;
   expired_at: number | null;
   demand_batch_id: string;
+  demand_version: number;
   marketplace_code: 'JP';
   product_name: string;
+  reference_order_amount_jpy: number;
+  buyer_self_pay_bps: number;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;
@@ -54,8 +71,11 @@ interface ReservationRow {
 const PUBLIC_DEMAND_SELECT = `
   SELECT
     demand.id AS demand_batch_id,
+    demand.version AS demand_version,
     demand.marketplace_code,
     version.product_name,
+    version.ordering_guide_expected_amount_jpy AS reference_order_amount_jpy,
+    demand.buyer_self_pay_bps_snapshot AS buyer_self_pay_bps,
     demand.buyer_visible_notes,
     store.display_name AS store_display_name,
     demand.task_type,
@@ -106,12 +126,21 @@ const RESERVATION_SELECT = `
     reservation.updated_at,
     reservation.hold_expires_at,
     reservation.order_deadline_snapshot,
+    reservation.buyer_self_pay_bps_snapshot,
+    reservation.reference_order_amount_jpy_snapshot,
+    reservation.estimated_self_pay_jpy_snapshot,
+    reservation.estimated_refundable_principal_jpy_snapshot,
+    reservation.buyer_self_pay_accepted_at,
+    reservation.buyer_self_pay_accepted_demand_version,
     reservation.decided_at,
     reservation.cancelled_at,
     reservation.expired_at,
     demand.id AS demand_batch_id,
+    demand.version AS demand_version,
     demand.marketplace_code,
     version.product_name,
+    reservation.reference_order_amount_jpy_snapshot AS reference_order_amount_jpy,
+    reservation.buyer_self_pay_bps_snapshot AS buyer_self_pay_bps,
     demand.buyer_visible_notes,
     store.display_name AS store_display_name,
     demand.task_type,
@@ -346,8 +375,23 @@ function validateIdentifier(value: string): void {
 }
 
 function toDemandDto(row: DemandRow): BuyerPortalDemandDto {
+  const estimate = calculateBuyerSelfPayFacts(
+    parseJpyInteger(String(row.reference_order_amount_jpy)),
+    Number(row.buyer_self_pay_bps),
+  );
   return {
     demand_id: row.demand_batch_id,
+    demand_version: Number(row.demand_version),
+    reference_order_amount_jpy: fixedIntegerString(
+      parseJpyInteger(String(row.reference_order_amount_jpy)),
+    ),
+    buyer_self_pay_bps: Number(row.buyer_self_pay_bps),
+    estimated_buyer_self_pay_jpy: fixedIntegerString(
+      estimate.buyerSelfPayJpy,
+    ),
+    estimated_refundable_principal_jpy: fixedIntegerString(
+      estimate.refundablePrincipalJpy,
+    ),
     marketplace_code: row.marketplace_code,
     product_name: row.product_name,
     buyer_visible_notes: row.buyer_visible_notes,
@@ -376,6 +420,20 @@ function toReservationDto(
     hold_expires_at: Number(row.hold_expires_at),
     order_deadline_snapshot:
       Number(row.order_deadline_snapshot),
+    buyer_self_pay_bps_snapshot: Number(row.buyer_self_pay_bps_snapshot),
+    reference_order_amount_jpy_snapshot: String(
+      row.reference_order_amount_jpy_snapshot,
+    ),
+    estimated_self_pay_jpy_snapshot: String(
+      row.estimated_self_pay_jpy_snapshot,
+    ),
+    estimated_refundable_principal_jpy_snapshot: String(
+      row.estimated_refundable_principal_jpy_snapshot,
+    ),
+    buyer_self_pay_accepted_at: Number(row.buyer_self_pay_accepted_at),
+    buyer_self_pay_accepted_demand_version: Number(
+      row.buyer_self_pay_accepted_demand_version,
+    ),
     decided_at: nullableNumber(row.decided_at),
     cancelled_at: nullableNumber(row.cancelled_at),
     expired_at: nullableNumber(row.expired_at),
@@ -383,8 +441,15 @@ function toReservationDto(
       || row.status === 'APPROVED',
     demand: {
       demand_id: row.demand_batch_id,
+      demand_version: Number(row.demand_version),
       marketplace_code: row.marketplace_code,
       product_name: row.product_name,
+      reference_order_amount_jpy: String(row.reference_order_amount_jpy),
+      buyer_self_pay_bps: Number(row.buyer_self_pay_bps),
+      estimated_buyer_self_pay_jpy: String(row.estimated_self_pay_jpy_snapshot),
+      estimated_refundable_principal_jpy: String(
+        row.estimated_refundable_principal_jpy_snapshot,
+      ),
       buyer_visible_notes: row.buyer_visible_notes,
       store_display_name: row.store_display_name,
       task_type: row.task_type,

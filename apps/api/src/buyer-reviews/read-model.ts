@@ -27,7 +27,6 @@ interface EligibleOrderRow {
   formal_order_id: string;
   marketplace_code: 'JP';
   amazon_order_number_normalized: string;
-  asin_normalized: string;
   product_name_snapshot: string;
   review_type: PricingReviewType;
   confirmed_at: number;
@@ -43,7 +42,6 @@ interface ReviewRow {
   formal_order_id: string;
   marketplace_code: 'JP';
   amazon_order_number_normalized: string;
-  asin_normalized: string;
   product_name_snapshot: string;
   order_review_type: PricingReviewType;
   confirmed_at: number;
@@ -95,7 +93,6 @@ const REVIEW_SELECT = `
     formal_order.id AS formal_order_id,
     formal_order.marketplace_code,
     formal_order.amazon_order_number_normalized,
-    formal_order.asin_normalized,
     formal_order.product_name_snapshot,
     formal_order.review_type AS order_review_type,
     formal_order.confirmed_at,
@@ -213,7 +210,6 @@ export async function listBuyerReviewEligibleOrders(
       formal_order.id AS formal_order_id,
       formal_order.marketplace_code,
       formal_order.amazon_order_number_normalized,
-      formal_order.asin_normalized,
       formal_order.product_name_snapshot,
       formal_order.review_type,
       formal_order.confirmed_at,
@@ -614,7 +610,6 @@ function toOrderSummaryDto(
     | 'formal_order_id'
     | 'marketplace_code'
     | 'amazon_order_number_normalized'
-    | 'asin_normalized'
     | 'product_name_snapshot'
     | 'confirmed_at'
     | 'confirmed_business_date'
@@ -627,7 +622,6 @@ function toOrderSummaryDto(
     formal_order_id: row.formal_order_id,
     marketplace: row.marketplace_code,
     amazon_order_number: row.amazon_order_number_normalized,
-    asin: row.asin_normalized,
     product_name: row.product_name_snapshot,
     review_type: reviewType,
     confirmed_at: safeNonNegativeInteger(row.confirmed_at),

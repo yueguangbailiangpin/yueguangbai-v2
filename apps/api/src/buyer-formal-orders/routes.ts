@@ -26,7 +26,6 @@ const ALLOWED_LIST_QUERY_KEYS = new Set([
   'limit',
   'cursor',
   'marketplace',
-  'asin',
   'product_name',
   'review_type',
   'confirmed_business_date',
@@ -82,7 +81,6 @@ async function getFormalOrder(context: Context<any>): Promise<Response> {
 function parseFilters(url: URL): BuyerFormalOrderFilters {
   return {
     marketplace: optionalMarketplace(singleQuery(url, 'marketplace')),
-    asin: optionalAsin(singleQuery(url, 'asin')),
     productName: optionalText(
       singleQuery(url, 'product_name'),
       200,
@@ -104,13 +102,6 @@ function optionalMarketplace(value: string | null): 'JP' | null {
   if (value === null) return null;
   if (value !== 'JP') return validationError();
   return value;
-}
-
-function optionalAsin(value: string | null): string | null {
-  if (value === null) return null;
-  const normalized = value.normalize('NFKC').trim().toUpperCase();
-  if (!/^[A-Z0-9]{10}$/u.test(normalized)) return validationError();
-  return normalized;
 }
 
 function optionalReviewType(

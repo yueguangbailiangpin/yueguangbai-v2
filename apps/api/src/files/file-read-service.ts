@@ -46,7 +46,9 @@ interface ReadableFileSource extends FileObjectRow {
   file_entity_link_id: string;
   entity_type: 'PRODUCT_APPLICATION'
     | 'PRODUCT_VERSION'
+    | 'ORDER_INSTRUCTION_VERSION'
     | 'ORDER'
+    | 'ORDER_EVIDENCE_SUBMISSION'
     | 'REVIEW'
     | 'BUYER_REFUND'
     | 'SELLER_SETTLEMENT'
@@ -109,6 +111,12 @@ export async function createFileReadIntent(
     command.actor,
     command.principal,
     resource(source),
+    now,
+  );
+  await requireDynamicInstructionReadAuthorization(
+    database,
+    source,
+    command.actor,
     now,
   );
   const expiresAt = now + ttlMs;
@@ -314,6 +322,12 @@ export async function consumeFileReadIntent(
     command.actor,
     command.principal,
     resource(source),
+    now,
+  );
+  await requireDynamicInstructionReadAuthorization(
+    database,
+    source,
+    command.actor,
     now,
   );
 
@@ -546,5 +560,61 @@ function validateReadTiming(now: number, ttlMs: number): void {
     || ttlMs > MAXIMUM_READ_TTL_MS
     || now + ttlMs > Number.MAX_SAFE_INTEGER) {
     throw new FileStorageError('VALIDATION_ERROR', 400);
+  }
+}
+
+async function requireDynamicInstructionReadAuthorization(
+  database: SqlDatabase,
+  source: ReadableFileSource,
+  actor: FileActor,
+  now: number,
+): Promise<void> {
+  if (source.entity_type !== 'ORDER_INSTRUCTION_VERSION'
+    || actor.type !== 'BUYER_CUSTOMER') {
+    return;
+  }
+  const row = await database.prepare(`
+    SELECT
+      instruction.status AS instruction_status,
+      instruction.current_version_no,
+      instruction.initial_deadline_at,
+      instruction.resubmission_deadline_at,
+      version.version_no,
+      evidence.status AS evidence_status,
+      formal_order.id AS formal_order_id
+    FROM order_instruction_versions version
+    JOIN order_instructions instruction
+      ON instruction.id=version.instruction_id
+      AND instruction.buyer_customer_id=?
+    LEFT JOIN order_evidence_submissions evidence
+      ON evidence.reservation_id=instruction.reservation_id
+    LEFT JOIN formal_orders formal_order
+      ON formal_order.reservation_id=instruction.reservation_id
+    WHERE version.id=?
+  `).bind(actor.id, source.entity_id).first<{
+    instruction_status: string;
+    current_version_no: number;
+    initial_deadline_at: number | null;
+    resubmission_deadline_at: number | null;
+    version_no: number;
+    evidence_status: string | null;
+    formal_order_id: string | null;
+  }>();
+  const current = row !== null
+    && row.instruction_status === 'ACTIVE'
+    && Number(row.current_version_no) === Number(row.version_no)
+    && row.formal_order_id === null;
+  const readable = current && (
+    (row.evidence_status === null
+      && row.initial_deadline_at !== null
+      && now < row.initial_deadline_at)
+    || row.evidence_status === 'PENDING_VERIFICATION'
+    || row.evidence_status === 'VERIFIED'
+    || (row.evidence_status === 'CHANGES_REQUESTED'
+      && row.resubmission_deadline_at !== null
+      && now < row.resubmission_deadline_at)
+  );
+  if (!readable) {
+    throw new FileStorageError('FORBIDDEN', 403);
   }
 }

@@ -12,6 +12,10 @@ import {
 
 type AppBindings = {
   DB: SqlDatabase;
+  KEYWORD_IMAGE_GENERATOR?: unknown;
+  KEYWORD_GENERATOR_SHARED_SECRET?: string;
+  KEYWORD_HMAC_SECRET?: string;
+  FILE_OBJECT_STORAGE?: unknown;
 };
 
 type AppVariables = {

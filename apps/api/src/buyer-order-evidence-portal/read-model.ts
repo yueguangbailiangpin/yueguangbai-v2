@@ -28,7 +28,6 @@ interface EligibleReservationRow {
   order_deadline_snapshot: number;
   demand_id: string;
   marketplace_code: 'JP';
-  asin: string;
   product_name: string;
   store_display_name: string;
   review_type: DemandTaskType;
@@ -41,7 +40,6 @@ interface OrderEvidenceRow {
   reservation_id: string;
   demand_id: string;
   marketplace_code: 'JP';
-  asin: string;
   product_name: string;
   store_display_name: string;
   review_type: DemandTaskType;
@@ -52,6 +50,11 @@ interface OrderEvidenceRow {
   evidence_version_id: string;
   amazon_order_number_normalized: string;
   final_paid_jpy: number;
+  buyer_self_pay_bps_snapshot: number;
+  buyer_self_pay_jpy: number;
+  buyer_refundable_principal_jpy: number;
+  price_mismatch: number;
+  price_difference_jpy: number;
   public_change_reason: string | null;
   submitted_at: number;
   updated_at: number;
@@ -100,7 +103,6 @@ const ORDER_EVIDENCE_SELECT = `
     reservation.id AS reservation_id,
     demand.id AS demand_id,
     submission.marketplace_code,
-    product.asin_normalized AS asin,
     product_version.product_name,
     store.display_name AS store_display_name,
     demand.task_type AS review_type,
@@ -111,6 +113,11 @@ const ORDER_EVIDENCE_SELECT = `
     evidence.id AS evidence_version_id,
     evidence.amazon_order_number_normalized,
     evidence.final_paid_jpy,
+    evidence.buyer_self_pay_bps_snapshot,
+    evidence.buyer_self_pay_jpy,
+    evidence.buyer_refundable_principal_jpy,
+    evidence.price_mismatch,
+    evidence.price_difference_jpy,
     submission.public_change_reason,
     submission.submitted_at,
     submission.updated_at,
@@ -191,7 +198,6 @@ export async function listEligibleOrderEvidenceReservations(
       reservation.order_deadline_snapshot,
       demand.id AS demand_id,
       reservation.marketplace_code,
-      product.asin_normalized AS asin,
       product_version.product_name,
       store.display_name AS store_display_name,
       demand.task_type AS review_type,
@@ -371,7 +377,6 @@ function toReservationDto(
     | 'reservation_id'
     | 'demand_id'
     | 'marketplace_code'
-    | 'asin'
     | 'product_name'
     | 'store_display_name'
     | 'review_type'
@@ -382,7 +387,6 @@ function toReservationDto(
     reservation_id: row.reservation_id,
     demand_id: row.demand_id,
     marketplace_code: row.marketplace_code,
-    asin: row.asin,
     product_name: row.product_name,
     store_display_name: row.store_display_name,
     review_type: row.review_type,
@@ -401,6 +405,12 @@ function toOrderEvidenceDto(
     amazon_order_number_display:
       row.amazon_order_number_normalized,
     final_paid_jpy: Number(row.final_paid_jpy),
+    buyer_self_pay_bps: Number(row.buyer_self_pay_bps_snapshot),
+    buyer_self_pay_jpy: Number(row.buyer_self_pay_jpy),
+    buyer_refundable_principal_jpy:
+      Number(row.buyer_refundable_principal_jpy),
+    price_mismatch: Number(row.price_mismatch) === 1,
+    price_difference_jpy: Number(row.price_difference_jpy),
     status: row.status,
     version: Number(row.aggregate_version),
     evidence_version_no: Number(row.evidence_version_no),

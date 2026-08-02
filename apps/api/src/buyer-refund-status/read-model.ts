@@ -30,7 +30,6 @@ interface BuyerRefundPortalRow {
   formal_order_id: string;
   marketplace_code: 'JP';
   amazon_order_number_normalized: string;
-  asin_normalized: string;
   product_name_snapshot: string;
   review_type: PricingReviewType;
   due_amount_cny_fen: number;
@@ -71,7 +70,6 @@ const BUYER_REFUND_PORTAL_SELECT = `
     ledger.formal_order_id,
     formal_order.marketplace_code,
     formal_order.amazon_order_number_normalized,
-    formal_order.asin_normalized,
     formal_order.product_name_snapshot,
     formal_order.review_type,
     ledger.due_amount_cny_fen,
@@ -236,7 +234,6 @@ function toSummaryDto(
         row.amazon_order_number_normalized,
         100,
       ),
-      asin: safeText(row.asin_normalized, 20),
       product_name: safeText(row.product_name_snapshot, 500),
       review_type: row.review_type,
       status: 'CONFIRMED',

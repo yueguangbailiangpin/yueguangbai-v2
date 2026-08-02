@@ -13,7 +13,6 @@ import {
 
 export interface BuyerFormalOrderFilters {
   marketplace: 'JP' | null;
-  asin: string | null;
   productName: string | null;
   reviewType: PricingReviewType | null;
   confirmedBusinessDate: string | null;
@@ -26,10 +25,12 @@ interface BuyerFormalOrderRow {
   buyer_customer_no: string;
   marketplace_code: 'JP';
   amazon_order_number_normalized: string;
-  asin_normalized: string;
   product_name_snapshot: string;
   review_type: PricingReviewType;
   final_paid_jpy: number;
+  buyer_self_pay_bps: number;
+  buyer_self_pay_jpy: number;
+  buyer_refundable_principal_jpy: number;
   buyer_expected_principal_cny_fen: number;
   buyer_rate_version_no: number;
   buyer_rate_business_date: string;
@@ -50,10 +51,12 @@ const BUYER_FORMAL_ORDER_SELECT = `
     formal_order.buyer_customer_no,
     formal_order.marketplace_code,
     formal_order.amazon_order_number_normalized,
-    formal_order.asin_normalized,
     formal_order.product_name_snapshot,
     formal_order.review_type,
     formal_order.final_paid_jpy,
+    snapshot.buyer_self_pay_bps,
+    snapshot.buyer_self_pay_jpy,
+    snapshot.buyer_refundable_principal_jpy,
     snapshot.buyer_expected_principal_cny_fen,
     snapshot.buyer_rate_version_no,
     snapshot.buyer_rate_business_date,
@@ -175,10 +178,6 @@ function addFilters(
     where.push('formal_order.marketplace_code=?');
     bindings.push(filters.marketplace);
   }
-  if (filters.asin) {
-    where.push('formal_order.asin_normalized=?');
-    bindings.push(filters.asin);
-  }
   if (filters.productName) {
     where.push(
       "formal_order.product_name_snapshot LIKE ? ESCAPE '\\'",
@@ -216,10 +215,13 @@ function toDto(row: BuyerFormalOrderRow): BuyerFormalOrderDto {
     buyer_customer_no: row.buyer_customer_no,
     marketplace: row.marketplace_code,
     amazon_order_number: row.amazon_order_number_normalized,
-    asin: row.asin_normalized,
     product_name: row.product_name_snapshot,
     review_type: row.review_type,
     final_paid_jpy: integerString(row.final_paid_jpy),
+    buyer_self_pay_bps: safeNonNegativeInteger(row.buyer_self_pay_bps),
+    buyer_self_pay_jpy: integerString(row.buyer_self_pay_jpy),
+    buyer_refundable_principal_jpy:
+      integerString(row.buyer_refundable_principal_jpy),
     buyer_expected_principal_cny_fen:
       integerString(row.buyer_expected_principal_cny_fen),
     buyer_exchange_rate_snapshot: {
