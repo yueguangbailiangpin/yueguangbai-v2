@@ -1,7 +1,5 @@
 import type { SqlDatabase } from '@ygb/contracts';
-import {
-  SellerSettlementError,
-} from './shared';
+import { SellerSettlementError } from './shared';
 
 export interface SellerSettlementProofFileRow {
   id: string;
@@ -17,6 +15,14 @@ export interface SellerSettlementProofFileRow {
   intent_visibility: string;
   owner_actor_type: string;
   owner_actor_id: string;
+}
+
+export interface SellerPaymentProofRow {
+  payment_id: string;
+  seller_organization_id: string;
+  file_object_id: string;
+  file_entity_link_id: string;
+  file_version: number;
 }
 
 export interface SellerPaymentBalanceRow {
@@ -87,6 +93,38 @@ export async function requireSettlementProofFile(
   `).bind(fileObjectId).first<SellerSettlementProofFileRow>();
   if (!row) throw new SellerSettlementError('FILE_OBJECT_NOT_FOUND', 404);
   return Object.freeze({ ...row, version: Number(row.version) });
+}
+
+export async function requirePaymentProof(
+  database: SqlDatabase,
+  paymentId: string,
+): Promise<SellerPaymentProofRow> {
+  const row = await database.prepare(`
+    SELECT
+      proof.payment_id,
+      proof.seller_organization_id,
+      proof.file_object_id,
+      proof.file_entity_link_id,
+      object.version AS file_version
+    FROM seller_payment_proofs proof
+    JOIN file_objects object ON object.id=proof.file_object_id
+    JOIN file_entity_links link
+      ON link.id=proof.file_entity_link_id
+      AND link.file_object_id=proof.file_object_id
+    WHERE proof.payment_id=?
+      AND object.status='VERIFIED'
+      AND object.purpose='SELLER_SETTLEMENT_PROOF'
+      AND object.visibility='INTERNAL_ONLY'
+      AND link.entity_type='SELLER_SETTLEMENT'
+      AND link.entity_id=proof.payment_id
+      AND link.purpose='SELLER_SETTLEMENT_PROOF'
+      AND link.visibility='INTERNAL_ONLY'
+      AND link.authorization_mode='EXPLICIT_AUDIENCES'
+      AND link.revoked_at IS NULL
+    LIMIT 1
+  `).bind(paymentId).first<SellerPaymentProofRow>();
+  if (!row) throw new SellerSettlementError('NOT_FOUND', 404);
+  return Object.freeze({ ...row, file_version: Number(row.file_version) });
 }
 
 export async function assertSettlementProofUnused(
