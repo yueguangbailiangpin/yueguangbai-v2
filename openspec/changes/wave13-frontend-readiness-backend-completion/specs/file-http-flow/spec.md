@@ -2,21 +2,23 @@
 
 ## ADDED Requirements
 
-### Requirement: Upload intent endpoints are bound to trusted Actor and verified existing Purpose
+### Requirement: Upload intent endpoints are bound to trusted Actor and five active existing Purposes
 
-The system SHALL expose purpose-specific `/api/*` upload-intent routes only for Buyer Order Evidence, Buyer Review Evidence, Seller Product Application Images, Staff Order Evidence Internal Communication, Staff Buyer Refund Proofs and Staff Seller Settlement Proofs. These routes SHALL map respectively to the existing `FilePurpose` constants `ORDER_EVIDENCE`, `REVIEW_EVIDENCE`, `PRODUCT_APPLICATION_IMAGE`, `ORDER_EVIDENCE_INTERNAL_COMMUNICATION`, `BUYER_REFUND_PROOF` and `SELLER_SETTLEMENT_PROOF`; no FilePurpose Contract extension is required. Each route SHALL derive Actor, ownership, Purpose and fixed existing `FileVisibility` from the authenticated route family and business context, SHALL call the existing `createFileUploadIntent`, and SHALL reject client authority fields or arbitrary Purpose/Visibility selection.
+The system SHALL expose purpose-specific `/api/*` upload-intent routes only for Buyer Order Evidence, Buyer Review Evidence, Seller Product Application Images, Staff Buyer Refund Proofs and Staff Seller Settlement Proofs. These routes SHALL map respectively to the existing `FilePurpose` constants `ORDER_EVIDENCE`, `REVIEW_EVIDENCE`, `PRODUCT_APPLICATION_IMAGE`, `BUYER_REFUND_PROOF` and `SELLER_SETTLEMENT_PROOF`; no FilePurpose Contract extension is required. Each route SHALL derive Actor, ownership, Purpose and fixed existing `FileVisibility` from the authenticated route family and business context, SHALL call the existing `createFileUploadIntent`, and SHALL reject client authority fields or arbitrary Purpose/Visibility selection.
 
-The fixed Visibility mapping SHALL be: Buyer Order Evidence `BUYER_VISIBLE`; Buyer Review Evidence `SELLER_VISIBLE` with later explicit Buyer/Seller/Staff audiences; Seller Product Application Images `SELLER_VISIBLE`; all three Staff proof/internal routes `INTERNAL_ONLY`.
+The fixed Visibility mapping SHALL be: Buyer Order Evidence `BUYER_VISIBLE`; Buyer Review Evidence `SELLER_VISIBLE` with later explicit Buyer/Seller/Staff audiences; Seller Product Application Images `SELLER_VISIBLE`; both Staff proof routes `INTERNAL_ONLY`.
 
-#### Scenario: Allowed purpose-bound intent
+The global historical `FilePurpose` constant `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` SHALL remain available to existing schema and code, but Wave 13 SHALL NOT register its upload-intent route or include it in the active Staff upload mapping. This is an approved Wave 13 scope reduction assigned to Wave 15 because no entity-specific consume command, Link flow or Audience flow has been frozen. Wave 13 SHALL NOT create a generic Link/Grant route as a substitute.
 
-- **WHEN** an authenticated Actor invokes the `/api/*` route corresponding to one of the six verified existing Purpose/Visibility pairs with a valid file manifest and Idempotency-Key
+#### Scenario: Allowed active purpose-bound intent
+
+- **WHEN** an authenticated Actor invokes the `/api/*` route corresponding to one of the five active verified existing Purpose/Visibility pairs with a valid file manifest and Idempotency-Key
 - **THEN** the existing File Service creates an owned ISSUED intent and returns only opaque upload references and the first-use upload token.
 
-#### Scenario: Arbitrary purpose, visibility or authority injection
+#### Scenario: Deferred internal communication purpose
 
-- **WHEN** a client submits `purpose`, `visibility`, owner, owner ID, organization authority, buyer/seller/staff authority, scope, audience, object key, URL or entity authority outside the route Contract
-- **THEN** exact-key validation rejects the request before any file intent or object is created.
+- **WHEN** a caller attempts to use a Wave 13 upload-intent route for `ORDER_EVIDENCE_INTERNAL_COMMUNICATION`
+- **THEN** no such active endpoint or Staff upload mapping exists, the global Purpose constant remains intact, and the future entity-specific workflow remains assigned to Wave 15.
 
 ### Requirement: Controlled HTTP upload reuses the existing object upload service
 
@@ -34,11 +36,11 @@ The system SHALL expose authenticated domain-bound `/api/*` upload routes that a
 
 ### Requirement: File validation enforces existing Purpose policies
 
-The HTTP flow SHALL reuse the existing `FilePurpose`, `FileVisibility`, supported MIME, extension, byte-size, file-count, digest and manifest policies. It SHALL validate trusted magic bytes and detected MIME rather than trusting client MIME. Order Evidence business submission SHALL remain stricter than generic file policy and require exactly one verified file at its business command boundary. Wave 13 SHALL NOT add upload endpoints for `PRODUCT_IMAGE`, `ORDER_INSTRUCTION_KEYWORD_IMAGE` or `SUPPORT_ATTACHMENT`.
+The HTTP flow SHALL reuse the existing `FilePurpose`, `FileVisibility`, supported MIME, extension, byte-size, file-count, digest and manifest policies. It SHALL validate trusted magic bytes and detected MIME rather than trusting client MIME. Order Evidence business submission SHALL remain stricter than generic file policy and require exactly one verified file at its business command boundary. Wave 13 SHALL NOT add upload endpoints for `PRODUCT_IMAGE`, `ORDER_INSTRUCTION_KEYWORD_IMAGE`, `SUPPORT_ATTACHMENT` or the deferred `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` Purpose.
 
 #### Scenario: Matching file policy
 
-- **WHEN** uploaded bytes, extension, declared MIME, detected MIME, byte size and the route-fixed existing Purpose/Visibility satisfy the current policy
+- **WHEN** uploaded bytes, extension, declared MIME, detected MIME, byte size and the route-fixed active existing Purpose/Visibility satisfy the current policy
 - **THEN** the file may advance through UPLOADED to VERIFIED without adding or renaming a Purpose enum.
 
 #### Scenario: MIME, size, digest or purpose mismatch
@@ -76,7 +78,7 @@ File HTTP responses SHALL expose only opaque file object IDs, upload/read intent
 
 ### Requirement: Business commands own entity link and audience grant creation
 
-Entity links and explicit audience grants SHALL be created inside the authorized business command that knows the target entity, using the existing file link and authorization services. Customer routes SHALL NOT expose a generic operation accepting arbitrary file ID, entity type, entity ID, Audience, permission or scope. Any future Staff link/grant route SHALL be entity-specific, permission-bound, scoped and added to this Change before implementation.
+Entity links and explicit audience grants SHALL be created inside the authorized business command that knows the target entity, using the existing file link and authorization services. Customer routes SHALL NOT expose a generic operation accepting arbitrary file ID, entity type, entity ID, Audience, permission or scope. Any future Staff link/grant route SHALL be entity-specific, permission-bound, scoped and added to its owning Change before implementation.
 
 #### Scenario: Business command links a verified file
 
@@ -132,7 +134,7 @@ After any successful R2 put, if receipt verification, R2 HEAD/prefix validation 
 
 ### Requirement: File HTTP contracts are bounded, idempotent and leak-tested
 
-Every file mutation SHALL enforce bounded body/part size, exact allowed fields/parts, bounded identifiers, Idempotency-Key and request hash semantics. Unknown fields, duplicate query parameters and malformed versions SHALL be rejected. Route, D1 behavior and real R2 failure tests SHALL cover all six existing Purpose/Visibility mappings, intent replay, upload replay, complete replay, HEAD failure, D1 commit failure, cleanup retry, cross-tenant denial, Purpose mismatch and DTO leakage.
+Every file mutation SHALL enforce bounded body/part size, exact allowed fields/parts, bounded identifiers, Idempotency-Key and request hash semantics. Unknown fields, duplicate query parameters and malformed versions SHALL be rejected. Route, D1 behavior and R2 failure test source SHALL cover all five active Purpose/Visibility mappings, the formally deferred Purpose with no route, intent replay, upload replay, complete replay, HEAD failure, D1 commit failure, cleanup retry, cross-tenant denial, Purpose mismatch and recursive DTO leakage.
 
 #### Scenario: Idempotent replay
 
@@ -141,5 +143,5 @@ Every file mutation SHALL enforce bounded body/part size, exact allowed fields/p
 
 #### Scenario: Contract or leakage violation
 
-- **WHEN** a request contains unknown fields/parts, a duplicate query, a mismatched Purpose/Visibility or a response projection contains `object_key` or permanent URL
+- **WHEN** a request contains unknown fields/parts, a duplicate query, a mismatched active Purpose/Visibility or a response projection contains `object_key` or permanent URL
 - **THEN** validation or the dedicated verifier fails and the route is not considered frontend-ready.

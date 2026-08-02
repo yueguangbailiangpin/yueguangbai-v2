@@ -1,350 +1,228 @@
 # Pre-Wave 13 Baseline Conformance Audit
 
-## 1. Executive Summary
+## 1. Document Purpose
 
-This remote static audit reviewed formal `main` at `f28c52a36e9498c37453a4a12755d9ad8459ae65` before Big Module 5 formal frontend development.
+本文件保留 Pre-Wave 13 审计的历史结论，并追加 Wave 13 Feature 的 `REMOTE_IMPLEMENTATION_EVIDENCE`。历史基线来自 formal `main` `f28c52a36e9498c37453a4a12755d9ad8459ae65` 和 audit branch `5a72fd5d13204a6603ebfe3b39254915972390f8`。当前实现证据来自 `feature/wave13-frontend-readiness-backend-completion`。
 
-The backend has strong domain and database foundations. Buyer and Seller read/mutation flows are generally tenant-scoped, idempotent, versioned, and projected through safe DTOs. File services implement upload intents, verification, links, audience grants, short reads, compensation, and cleanup. Financial facts use integer money, immutable ledgers/snapshots, reversal-based corrections, conflict-aware views, audited exports, triggers, audit, outbox, and transaction assertions.
+本次远程收尾没有运行 npm、Vitest、D1、R2、Wrangler、OpenSpec CLI、OpenSpec Verify、浏览器或生产飞书应用。当前总体状态固定为：
 
-The result is nevertheless **NO_GO**. Three P1 blockers were confirmed:
+# NO_GO_PENDING_LOCAL_VALIDATION
 
-1. The production app registers Staff routes but has no trusted Staff login/session middleware that populates `staffAuthorization`.
-2. Required frontend HTTP capabilities are absent even though service implementations exist: file upload intent/completion/link routes, Staff order-evidence review routes, and Staff Buyer Refund payment/reversal routes.
-3. Current authority conflicts on Staff identity: latest governance requires an independent Staff identity/session boundary, while Decision D-004 and the current resolver remain Feishu-specific.
+## 2. Historical Pre-Wave 13 Baseline
 
-No P0 vulnerability was confirmed. No local commands, tests, D1, Wrangler, OpenSpec CLI, or Ponytail were run.
+Pre-Wave 13 审计确认后端已经具备较强的 Domain 和数据库基础：
 
-## 2. Audit Scope
+- Buyer/Seller session 与租户 Scope；
+- Staff Role、Permission、Personal DENY、Team、Department、Assignment 和 Data Scope 引擎；
+- 文件 upload intent、对象验证、entity link、audience grant、短期 read intent、compensation 和 cleanup；
+- Order Evidence、Formal Order、Amazon order claim、financial snapshot；
+- Review、Buyer Refund、Seller Payable/Payment、Internal Finance；
+- integer JPY、integer-fen CNY、e8 rate、不可变账本、冲正、更正、Audit、Outbox、Idempotency 和 Transaction Assertions。
 
-- Fixed formal `main` SHA.
-- Migrations `0001–0026`.
-- Buyer, Seller, Staff, Internal Finance, Authentication, and file capabilities.
-- Contracts, domain rules, production implementation, tests, migrations, and verifiers.
-- Formal frontend API readiness.
+历史接受的本地基线为：
 
-## 3. Explicit Non-Scope
+| Item | Historical accepted value |
+|---|---:|
+| Migrations | 0001–0026 |
+| Schema version | 26 |
+| Application tables | 113 |
+| Triggers | 213 |
+| Views | 10 |
+| Test files | 99 |
+| Tests | 511 |
 
-No production code changes, fixes, refactors, migration `0027`, historical spec reconstruction, test changes, local execution, deployment, PR, Integration, `main` advancement, or frontend implementation.
+这些值不是本次 Feature 的当前运行结果。
 
-## 4. Authority Sources
-
-Authority followed `AGENTS.md`, then current governance, decision, product, contract, architecture, and migration documents. Implementation evidence came from `packages/contracts/src/**`, `packages/domain/src/**`, `apps/api/src/**`, `migrations/**`, `scripts/**`, and relevant test source.
-
-Chat memory, old repositories, file-name inference, and generic industry practice were not authority.
-
-## 5. Audit Method
-
-1. Verified remote `main`, audit branch, merge base, and ahead/behind.
-2. Read OpenSpec 1.7.0 project skills and `spec-driven` configuration.
-3. Read the real route registration entrypoint.
-4. Traced requirements through implementation, contracts, tests, database, and verifiers.
-5. Built 115 requirement classifications and an actual method/path inventory.
-6. Performed `REMOTE_SEMANTIC_VERIFY`.
-7. Recorded local validation requests rather than claiming runtime results.
-
-## 6. Evidence Strength Model
-
-- **Strong:** production implementation plus matching contract/test/database evidence.
-- **Medium:** an important layer is missing or only static verification exists.
-- **Weak:** documentation, names, comments, conversation, or inference alone.
-
-Statuses are `PASS`, `PARTIAL`, `FAIL`, `NOT_VERIFIED`, or `GOVERNANCE_CONFLICT`. Missing evidence is not labelled FAIL.
-
-## 7. Current Baseline
-
-These are historical accepted Integration results, not commands run in this audit:
-
-| Item | Accepted baseline | Runtime evidence |
-|---|---:|---|
-| Migrations | 0001–0026 | PREVIOUSLY_VALIDATED |
-| Schema version | 26 | PREVIOUSLY_VALIDATED |
-| Application tables | 113 | PREVIOUSLY_VALIDATED |
-| Triggers | 213 | PREVIOUSLY_VALIDATED |
-| Views | 10 | PREVIOUSLY_VALIDATED |
-| Test files | 99 | PREVIOUSLY_VALIDATED |
-| Tests | 511 | PREVIOUSLY_VALIDATED |
-
-## 8. Identity and Authorization
-
-### Strengths
-
-- Customer login verifies backend credentials and issues signed customer sessions.
-- Buyer and Seller actors derive from trusted sessions and scoped database rows.
-- Staff effective authorization supports active status, role defaults, personal grants, final personal DENY, owner-only restrictions, team/assignment scope, and data-scope resolution.
-- Staff handlers fail closed when `staffAuthorization` is absent.
-- Internal Finance requires active Staff system owner plus `FINANCIAL_VIEW`; export additionally requires `FINANCIAL_EXPORT`.
-- Seller Organization OWNER does not satisfy system-owner checks.
-
-### P1 gap
-
-`apps/api/src/index.ts` registers `/api/staff/**`, while `apps/api/src/app.ts` installs no Staff authentication/session middleware. Staff handlers explicitly expect an upstream trusted context that does not exist in the production entrypoint. This is not an authentication bypass; it is a complete Staff frontend reachability failure.
-
-AUTH totals: **10 PASS, 4 PARTIAL, 1 FAIL, 0 NOT_VERIFIED**.
-
-## 9. Financial Integrity
-
-All 25 financial requirements are PASS on source plus historical validation evidence:
-
-- integer JPY, integer-fen CNY, e8 rates;
-- no REAL/FLOAT facts or prohibited floating-point calculations;
-- precision-safe JSON/CSV money;
-- immutable facts and reversal-based corrections;
-- principal due on Formal Order and service fee due on Review approval;
-- independent Buyer Refund and Seller settlement ledgers;
-- split allocation, reversal, reallocation, unallocated credit, and OVERPAID derivation;
-- projected/completed gross profit, attributed cash, and company cash flow formulas;
-- missing/conflicting facts classified rather than guessed as zero;
-- owner-only finance view/export;
-- export audit, outbox, SHA-256, 50,000-row/25-MiB limits, BOM, CRLF, RFC4180, formula-injection protection, and no persisted CSV/permanent URL;
-- Buyer/Seller DTO finance isolation.
-
-FIN totals: **25 PASS**.
-
-## 10. File Security
-
-The service layer satisfies upload intent, preflight checks, HEAD verification, VERIFIED state, entity links, audience grants, short reads, dynamic authorization, object-key privacy, no permanent URL, server-controlled ownership/scope, compensation, retry cleanup, purpose/audience isolation, settlement-proof authorization, and exactly one order screenshot at the domain layer.
-
-Two frontend concerns remain:
-
-1. The order-evidence HTTP parser accepts one to ten IDs, while the domain enforces exactly one. Runtime safety is preserved, but the contract is wider than the real rule.
-2. No file upload/create/complete/link HTTP routes are registered in the production entrypoint. The strong service layer is therefore unavailable to the formal frontend.
-
-FILE totals: **16 PASS, 1 PARTIAL** at requirement level; missing HTTP reachability is classified under API-013/P1.
-
-## 11. Business State Machines
-
-All 23 required state-machine requirements have supporting evidence: Buyer registration, reservation capacity, self-pay acceptance, instruction task creation, versioned instructions, safe image reads, ordered keyword PNG, six-hour/two-hour deadlines, one screenshot, PRICE_MISMATCH, financial snapshot, formal-order linkage, database order-number uniqueness, expiry/release, reconciliation, review lifecycle, service-fee creation, refund facts, idempotency, expected-version concurrency, audit/outbox, and server-controlled transitions.
-
-However, two implemented Staff operational service surfaces are not registered as HTTP APIs:
-
-- order-evidence read/request-changes/verify;
-- Buyer Refund read/record-payment/reverse-payment.
-
-Thus the internal state machines are present, but the formal Staff frontend cannot drive them.
-
-FLOW totals: **23 PASS** at implementation requirement level; API reachability is a separate P1.
-
-## 12. API and DTO Readiness
-
-Registered route inventory:
-
-- 39 READY;
-- 17 READY_WITH_LIMITATIONS;
-- 52 NOT_READY;
-- 0 NOT_VERIFIED.
-
-The 52 NOT_READY routes are all registered Staff/Internal Finance endpoints blocked by absent Staff authentication. Missing file-upload, Staff order-evidence, and Staff Buyer Refund capabilities are additional NOT_READY capabilities, not included in the registered-route count.
-
-API requirement totals: **6 PASS, 8 PARTIAL, 1 FAIL**.
-
-Full evidence is in `PRE_WAVE13_FRONTEND_API_READINESS.md`.
-
-## 13. Migration and Database Integrity
-
-Source evidence supports:
-
-- consecutive `0001–0026`;
-- schema transition to 26;
-- foreign keys, unique indexes, strict tables, CHECK constraints, transaction assertions;
-- audit, outbox, and idempotency foundations;
-- 0025 backup/rebuild/copy preservation of Staff permission history;
-- immutable finance/export records protected from UPDATE/DELETE;
-- active Amazon order-number uniqueness;
-- file relation/audience constraints;
-- behavior-oriented migration tests and current verifier scripts.
-
-Real D1 versus test-double parity remains NOT_VERIFIED.
-
-DB totals: **19 PASS, 1 NOT_VERIFIED**.
-
-## 14. P0 Findings
-
-**0.** No confirmed cross-tenant access, authentication bypass, customer disclosure of internal finance, destructive financial fact mutation, confirmed data loss, or unrecoverable production disaster path.
-
-## 15. P1 Findings
+## 3. Historical P1 Findings
 
 ### P1-01 — Missing production Staff authentication/session boundary
 
-**Evidence:** `apps/api/src/index.ts`, `apps/api/src/app.ts`, Staff route context readers, and the explicit upstream-middleware comment in `staff-assignment/routes.ts`.
-
-**Impact:** every registered Staff/Internal Finance route is unreachable by a real formal frontend.
-
-**Action:** resolve the Staff identity authority, implement the trusted Staff session producer/middleware, and add end-to-end tests through the production entrypoint.
+生产入口注册 Staff/Internal Finance 路由，但没有可信 Staff login、内部 Session 和 Middleware 生成 `staffAuthorization`，因此正式 Staff 前端无法建立可用身份上下文。
 
 ### P1-02 — Missing required frontend HTTP capability surfaces
 
-**Evidence:**
-
-- `apps/api/src/files/**` contains upload intent/upload/complete/link/grant services, but no file route registration exists.
-- `apps/api/src/order-evidence/read-order-evidence.ts` and `review-order-evidence.ts` exist, but no Staff order-evidence routes are registered.
-- `apps/api/src/buyer-refunds/**` contains ledger/payment/reversal services, but no Staff Buyer Refund routes are registered.
-
-**Impact:** Buyers/Staff cannot obtain required file IDs through formal APIs; Staff cannot verify orders into Formal Orders or record/reverse Buyer Refund payments through a formal frontend.
-
-**Action:** define, contract, register, and test these APIs before frontend freeze.
+底层 File、Order Evidence 和 Buyer Refund Service 已存在，但缺少正式 File HTTP、Staff Order Evidence 和 Staff Buyer Refund 路由，正式前端无法完成完整运营闭环。
 
 ### P1-03 — Staff identity governance conflict
 
-Latest `AGENTS.md`/governance require an independent Staff identity/session boundary with Feishu optional; Decision D-004 and `resolveStaffAuthorizationByFeishu` remain Feishu-specific.
+历史治理文字对“独立 Staff 身份”与“飞书身份入口”的关系不一致，Staff Auth Contract 不能冻结。
 
-**Impact:** Staff login/session contracts cannot be frozen.
+以上三项是历史 P1。Wave 13 已写入对应修复源码，但在完整本地和运行时验收前只能标记：
 
-**Action:** project control decides the authority; implementation follows that decision without rewriting evidence.
+`IMPLEMENTED_AWAITING_LOCAL_VALIDATION`
 
-## 16. P2 Findings
+不得标记正式关闭。
 
-1. Exact-key validation is inconsistent in customer auth and several Seller/Staff parsers.
-2. Unknown/repeated query rejection and 404/403 disclosure conventions are not uniform.
-3. Order-evidence route cardinality differs from the exact-one domain rule.
-4. Real D1, object storage, Wrangler, full tests, and OpenSpec CLI were not run in this audit.
+## 4. Historical Local Validation Supplement
 
-## 17. P3 Findings
+历史 audit branch 曾记录：
 
-1. Repeated route-local `success()` response wrappers.
-2. Repeated ordinary cursor/limit adapters across Buyer/Seller read modules.
+- Node/npm/Codex/OpenSpec 环境信息；
+- `npm ci`；
+- 当时 schema 26 的 `npm run check`；
+- 99 test files / 511 tests；
+- schema 26、113 application tables、213 triggers、10 views；
+- FK 0、integrity `ok`；
+- strict OpenSpec validate；
+- OpenSpec Verify 当时不可执行；
+- real R2 failure compensation 未运行。
 
-## 18. Not Verified Items
+这些是 Pre-Wave 13 历史证据，不能证明 Wave 13 当前源码已经通过。
 
-- Real D1/test-double parity.
-- Current runtime counts after full local validation.
-- Real R2/object-storage fault compensation.
-- Future Staff session behavior, because the path does not exist yet.
+## 5. Wave 13 REMOTE_IMPLEMENTATION_EVIDENCE
 
-Requirement-level NOT_VERIFIED count: **1** (`DB-020`).
+### 5.1 Migration and Contracts
 
-## 19. Governance Conflicts
+远程 Feature 新增：
 
-### GOVERNANCE_CONFLICT-001 — Staff identity source
+- `migrations/0027_staff_auth_sessions.sql`；
+- `staff_users.session_version`；
+- `staff_login_states`；
+- `staff_sessions`；
+- `staff_auth_rate_limits`；
+- `staff_auth_security_events`；
+- Staff Auth、File HTTP、Staff Order Evidence、Staff Buyer Refund Contract；
+- `PRICE_MISMATCH` 公共错误与 HTTP mapping。
 
-Independent Staff identity/session authority conflicts with the Feishu-specific decision/current resolver. Count: **1**.
+静态 schema 预期为 27。真实 D1 应用、Trigger、FK、integrity 和行为仍等待本地运行。
 
-## 20. Frontend Blocking Items
+### 5.2 Staff Authentication
 
-1. Trusted Staff authentication/session contract and middleware.
-2. File upload HTTP APIs.
-3. Staff order-evidence operational APIs.
-4. Staff Buyer Refund operational APIs.
-5. Resolution of the Staff identity governance conflict.
-6. Exact-key/query/error/disclosure contract decisions.
-7. Full local validation and real OpenSpec verification.
+远程源码实现：
 
-## 21. Local Validation Requests
+- `POST /api/staff-auth/login/start`；
+- `GET /api/staff-auth/feishu/callback`；
+- `GET /api/staff-auth/session`；
+- `POST /api/staff-auth/logout`；
+- `POST /api/staff-auth/logout-all`；
+- 10 分钟 hashed single-use state；
+- 12 小时 absolute opaque internal Session；
+- `__Host-ygb_staff_session` Cookie；
+- Fake Provider seam；
+- D1 每请求授权重算；
+- 默认入口统一 Staff Session Middleware；
+- Feishu/client authority Header bypass 拒绝。
 
-- Run dependency installation and the full repository check gate locally.
-- Rerun all Wave 11/Wave 12 verifiers.
-- Reconfirm schema/table/trigger/view/test counts.
-- Run strict OpenSpec validation and the real verify workflow.
-- Run real D1 migration/behavior tests on populated fixtures.
-- After fixes, run end-to-end Staff auth and every Staff route through the production entrypoint.
-- Run real object-storage upload/HEAD/compensation/cleanup tests.
-- Run authorized Wrangler validation before Integration.
+Decision D-014 已明确：D1 Staff 是身份/授权权威；飞书只作为第一版认证 Provider。
 
-## 22. Ponytail Candidate Areas
+### 5.3 Logout-All Replay Safety
 
-Ponytail was not run. Candidate review only:
+远程源码增加受限 replay：
 
-| File/symbol | Why potentially over-designed/duplicated | Low-risk reason | Possible behavior change | Tests to retain | Review? |
-|---|---|---|---|---|---|
-| `buyer-formal-orders/routes.ts::success` | repeated response wrapper | no auth/finance decision | headers/status/envelope | route tests | Yes |
-| `buyer-refund-status/routes.ts::success` | repeated response wrapper | read-only packaging | headers/envelope | refund tests | Yes |
-| `seller-formal-orders/routes.ts::success` | repeated response wrapper | read-only packaging | headers/envelope | seller order tests | Yes |
-| `buyer-formal-orders/pagination.ts` | similar cursor adapter | ordinary pagination | cursor/default limit | malformed/golden cursor tests | Cautiously |
-| `buyer-refund-status/pagination.ts` | similar cursor adapter | ordinary pagination | empty page/cursor | refund pagination tests | Cautiously |
-| `seller-portal/pagination.ts` | similar limit/cursor parsing | no direct auth decision | limit/cursor behavior | pagination and tenant-scope tests | Cautiously |
+- 仅接受仍未超过绝对 TTL、状态 `REVOKED` 且 reason=`LOGOUT_ALL` 的旧 Session；
+- 只读取 Session ID、Staff ID、issued session version；
+- 使用相同 actor/action/target、Idempotency-Key 和 request hash 查询已 `COMMITTED` 记录；
+- 命中后返回首次业务响应并清 Cookie；
+- 不创建 Claim、不递增 `session_version`、不重复 Audit、不再次撤销 Session、不创建 `staffAuthorization`；
+- 不同 Key、普通 LOGOUT、其他 reason、expired/unknown/forged Cookie 返回 401；
+- 旧 Cookie 访问其他 Staff Route 仍 401。
 
-## 23. Ponytail Excluded Areas
+### 5.4 File HTTP
 
-Permanently excluded: migrations, Authentication, Authorization, Personal DENY, Staff data scope, Internal Finance, Seller Payment, Allocation, Reversal, Buyer Refund, Idempotency, Audit, Outbox, transaction assertions, triggers, File Audience, dynamic file authorization, order/review state machines, reconciliation, recovery, security verifiers, CSV injection defenses, BigInt/integer finance, and data-loss protection.
+Wave 13 活动 Purpose 为五种：
 
-## 24. Recommendation
+- `ORDER_EVIDENCE / BUYER_VISIBLE`；
+- `REVIEW_EVIDENCE / SELLER_VISIBLE`；
+- `PRODUCT_APPLICATION_IMAGE / SELLER_VISIBLE`；
+- `BUYER_REFUND_PROOF / INTERNAL_ONLY`；
+- `SELLER_SETTLEMENT_PROOF / INTERNAL_ONLY`。
 
-Do not begin formal Big Module 5 implementation against the full backend. Resolve all P1 blockers, freeze the missing API contracts, and execute local gates first. Buyer/Seller read contracts are leading candidates for later freeze, but that does not authorize starting the formal frontend now.
+`ORDER_EVIDENCE_INTERNAL_COMMUNICATION` 全局常量保留，但活动 Intent Route 和 `STAFF_UPLOADS` mapping 已删除。没有创建通用 Link/Grant。该能力正式归属 Wave 15，因为当前没有冻结的实体消费命令、Link 和 Audience 流程。
 
-## 25. Go/No-Go for Big Module 5
+文件 HTTP 实现包含 purpose-bound intent、multipart upload、complete/HEAD、short read-intent create/consume。object key 和永久 URL 不进入 DTO。
 
-# NO_GO
+### 5.5 Staff Order Evidence
 
-There are three P1 findings; any P1 requires NO_GO.
+远程源码实现 list、detail、request-changes、approve。Atomic approve 在一个 D1 batch 中组合 Evidence、Claim、Formal Order、Snapshot、Seller Payable、Instruction、Evidence consume、Work Item、Audit、Event、Outbox、Idempotency 和 Assertions。
 
-## REMOTE_SEMANTIC_VERIFY
+`PRICE_MISMATCH` 要求显式 ack+reason；Buyer DTO 不返回内部 reason；Snapshot 使用最终实际支付金额。
 
-This is not OpenSpec CLI Verify and not `$openspec-verify-change`.
+### 5.6 Staff Buyer Refund
 
-| Result | Count |
+远程源码实现 list、detail、Payment 和 Reversal：
+
+- `BUYER_REFUND_VIEW` 与 `BUYER_REFUND_RECORD` 分离；
+- SQL Scope 过滤与 404 concealment；
+- append-only Payment/Reversal；
+- OVERPAID 不截断；
+- proof 固定 `BUYER_REFUND_PROOF / INTERNAL_ONLY`；
+- Seller DTO 不暴露 Buyer Refund 成本或 proof。
+
+## 6. Route Inventory Supplement
+
+Pre-Wave 13 静态正式路由：108。
+
+Wave 13 活动新增：30：
+
+| Group | Added routes |
 |---|---:|
-| COMPLETE | 99 |
-| PARTIAL | 13 |
-| MISSING | 1 |
-| INCONSISTENT | 1 |
-| NOT_VERIFIED | 1 |
-| **Total** | **115** |
+| Staff Auth | 5 |
+| Active purpose-bound File Intent | 5 |
+| Buyer/Seller/Staff File lifecycle | 12 |
+| Staff Order Evidence | 4 |
+| Staff Buyer Refund | 4 |
+| Total | 30 |
 
-- `MISSING`: API-013, including absent Staff auth and required missing HTTP capability surfaces.
-- `INCONSISTENT`: AUTH-002 Staff identity/session authority conflict.
-- `NOT_VERIFIED`: DB-020 real D1/test-double parity.
+静态总路由预期：138。
 
-Local Codex must still run the real OpenSpec validation/verify workflow after blockers are fixed.
+延期的 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` Intent Route 不计入活动端点。
 
-## Local Validation Supplement
+## 7. Test and Verifier Source Evidence
 
-**Validation date:** 2026-08-02 (Asia/Shanghai)
-**Audit base:** `origin/main` `f28c52a36e9498c37453a4a12755d9ad8459ae65`; audit initial HEAD `8a0473bdcc4606905065ffef7c332864a099de06`; merge-base matched `origin/main`; remote relation at start was behind `0`, ahead `3`.
+远程 Feature 已写入但未运行：
 
-### Environment and dependency installation
+- Migration 0027 测试源码；
+- Staff Auth 和 logout-all replay Route/Service 测试源码；
+- Default App 九个 Staff 路由家族真实请求矩阵源码；
+- 空库 0001–0027、26→27、state 并发、Session revoke/version、STRICT/Trigger/FK/Assertion/integrity 测试源码；
+- 正式 Atomic Approve、Refund Payment、Refund Reversal 最终 batch 故障注入源码；
+- R2 put、receipt、HEAD、D1 final commit、compensation delete 成功/失败、delete pending、cleanup retry 源码；
+- 五种活动 Purpose/Visibility 测试源码；
+- 递归遍历实际 Default App response object 的 DTO verifier 源码；
+- Staff Auth route、secret/DTO、File architecture、Mismatch、Refund isolation 和 Migration 门禁源码。
 
-- Node `v24.18.1`; npm `11.16.0`; Codex CLI `0.146.0`; OpenSpec `1.7.0`.
-- OpenSpec configuration is `profile=custom`, `delivery=both`, with the `verify` workflow configured.
-- `npm ci` passed in approximately 3 seconds and added 94 locked packages. npm reported three packages with pending install scripts (`esbuild`, `fsevents`, and `workerd`); no script was approved or manually enabled.
-- `PONYTAIL_MODE=off`; config confirmed `defaultMode=off`. `PONYTAIL_REVIEW=not-run`.
+“测试源码已写”不等于“测试通过”。
 
-### Full gate
+## 8. Requirements and Scenarios
 
-`npm run check` passed in approximately 19 seconds. It completed the security scan (507 project files), workspace typechecks, migration verification, migration guards, all Wave 11 and Wave 12 verifiers, Vitest, and workspace build.
+Wave 13 保持 52 Requirements / 104 Scenarios：
 
-| Result | Local evidence |
-|---|---|
-| Test Files | 99 passed (99) |
-| Tests | 511 passed (511); 0 failed |
-| Vitest duration | 6.19 s |
-| Build | Passed; API Wrangler deploy dry-run and all workspace builds completed |
-| Migration verifier | `0001`–`0026`, schema 26, 113 tables, 213 triggers, FK errors 0, integrity `ok` |
+| Classification | Requirements | Scenarios |
+|---|---:|---:|
+| `IMPLEMENTED_AWAITING_LOCAL_VALIDATION` | 37 | 74 |
+| `PARTIAL` | 5 | 10 |
+| `APPROVED_WAVE13_SCOPE_REDUCTION` | 1 | 2 |
+| `LOCAL_VALIDATION_REQUIRED` | 9 | 18 |
+| Total | 52 | 104 |
 
-The API dry-run emitted a non-fatal Wrangler log-file `EPERM` warning for the sandboxed user Preferences directory, but completed successfully with `--dry-run`. Codex CLI also emitted a non-fatal PATH-alias creation warning under the sandbox.
+`APPROVED_WAVE13_SCOPE_REDUCTION` 只对应内部沟通 Purpose 的活动 HTTP Route 延期到 Wave 15，不删除历史常量。
 
-### Strict OpenSpec validation and Verify availability
+## 9. P1 Re-evaluation
 
-- `openspec validate pre-wave13-baseline-conformance-audit --strict --json --no-interactive`: passed, 1/1 change, 0 failed.
-- `openspec validate --all --strict --json --no-interactive`: passed, 1/1 item, 0 failed.
-- The audit spec contains 115 `Requirement` blocks and 115 `Scenario` blocks. A formatting-only correction added the required `## ADDED Requirements` delta section and lowered six category headings so OpenSpec 1.7.0 parses the existing requirements. No requirement, scenario, finding, or risk level was changed.
-- `$openspec-verify-change` was not available in this Codex session, and OpenSpec 1.7.0 CLI exposes no `verify` command. Therefore the real Verify workflow was **not executed** and its task remains unchecked. The pre-existing `REMOTE_SEMANTIC_VERIFY` classification remains the available semantic result: COMPLETE 99, PARTIAL 13, MISSING 1, INCONSISTENT 1, NOT_VERIFIED 1.
+| Finding | Current static status | Closure condition |
+|---|---|---|
+| P1-01 Staff Auth/Session | `IMPLEMENTED_AWAITING_LOCAL_VALIDATION` | Default App、Cookie、Middleware、全部 Staff family、D1/Provider 本地运行通过 |
+| P1-02 Missing HTTP surfaces | `IMPLEMENTED_AWAITING_LOCAL_VALIDATION` | File、Evidence、Refund 的 Route/D1/R2/Scope/DTO 运行证据通过 |
+| P1-03 identity governance conflict | `IMPLEMENTED_AWAITING_LOCAL_VALIDATION` | D-014 与实现经 OpenSpec Verify 和总控确认 |
 
-### Local D1 baseline
+没有任何 P1 在本文件中正式关闭。
 
-Wrangler applied migrations to one isolated local D1 state directory under `/tmp/pre-wave13-audit-d1-20260802-192033/state` using `--local --persist-to`. Wrangler's JSON query invocations exited successfully but emitted no result payload under `WRANGLER_LOG=none`; the unique schema-26 SQLite file in that same state directory was then queried read-only.
+## 10. Remaining Validation Gates
 
-| Check | Result |
-|---|---:|
-| Applied migration records | 26 (`0001_foundation.sql` through `0026_financial_export_audit.sql`) |
-| Schema version | 26 |
-| Application tables | 113 |
-| Raw `sqlite_schema` tables | 116 (includes `_cf_METADATA`, `d1_migrations`, and `sqlite_sequence`) |
-| Triggers | 213 |
-| Views | 10 |
-| `foreign_key_check` | 0 rows |
-| `integrity_check` | `ok` |
-| Required financial views | all present: `internal_order_finance_positions`, `internal_finance_exceptions`, `internal_finance_cash_movements` |
+以下仍未执行：
 
-This reconfirms the schema baseline only. `DB-020` remains **NOT_VERIFIED**: the run does not prove all real-D1 versus test-double behavior for triggers, strict tables, transactions, cursors, or integer/string conversion. Real R2 failure-compensation testing was not run.
+1. 当前 Feature 的 dependency install 与 `npm run check`；
+2. Vitest、typecheck、build；
+3. 真实 D1 0001–0027、26→27、事务、Trigger、STRICT、FK、integrity；
+4. 真实 R2 put/HEAD/compensation/cleanup；
+5. 本次语义更新后的 OpenSpec strict validation；
+6. OpenSpec Verify；
+7. Ponytail；
+8. 浏览器、飞书生产应用和中国大陆网络联调；
+9. PR、Integration、部署或 main 推进。
 
-### Effect on the audit conclusion
+## 11. Final Audit Status
 
-The local gate and D1 evidence do not rebut P1-01, P1-02, or P1-03. The overall conclusion remains **NO_GO** with final counts **P0=0, P1=3, P2=4, P3=2, NOT_VERIFIED=1, GOVERNANCE_CONFLICT=1**. The remote report's P2-4 recorded that these local gates had not yet run; this supplement supplies the completed local gate evidence without removing the P2 finding or reducing its severity, because real R2 fault testing and the actual OpenSpec Verify workflow remain outstanding.
+# NO_GO_PENDING_LOCAL_VALIDATION
 
-### Recorded Staff identity control decision (future direction only)
-
-- D1 `staff_users` is the authority for Staff subject, status, roles, permissions, and data scope.
-- Feishu is the production Staff-login identity authentication provider for the first release.
-- The Worker verifies Feishu identity, maps it to D1 `staff_users`, and issues its own trusted internal Staff Session.
-- Staff APIs consume only `staffAuthorization` generated by internal-session middleware; they do not directly trust Feishu headers, client `staff_id`, or client roles.
-
-This is a project-control decision and later remediation direction, not a currently implemented capability. No P1 remediation, business source, test, migration, deployment, Integration, or PR was created by this validation.
+远程源码足以证明修复已经实现到 Feature，但不足以证明运行正确、P1 正式关闭或允许进入 Integration。

@@ -84,6 +84,14 @@ ChatGPT 网页版负责主要架构、完整文件和测试设计；Codex/DeepSe
 
 状态：Accepted
 
+### D-014 Staff身份与飞书认证边界
+
+D1 中的 `staff_users`、角色、Permission、Personal DENY、Team、Department、Assignment 和 Data Scope 是 Staff 身份与授权的唯一权威。飞书是第一版生产 Staff 登录的认证 Provider，只证明配置 tenant 中的稳定身份；飞书不是角色、Permission、Scope、内部 Session、业务事实或财务数据库。
+
+Worker 只把经服务端交换和校验的飞书身份映射到已经存在的 ACTIVE D1 Staff，并签发自己的 opaque、hashed、可撤销内部 Staff Session。Staff API 只信任该内部 Session Middleware 生成的 `staffAuthorization`，不得信任飞书 Header、客户端 `staff_id`、role、Permission、Team 或 Scope。未知、冲突或 inactive identity 不自动创建 Staff，必须 fail closed。
+
+状态：Accepted
+
 ## 上线前必须关闭的风险项
 
 ### R-001 飞书免费版和 API 实测

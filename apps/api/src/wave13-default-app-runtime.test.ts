@@ -40,30 +40,15 @@ afterEach(() => {
 });
 
 describe('Wave 13 default application runtime boundary', () => {
-  it('uses Fake Feishu login, internal Cookie, middleware and all Staff route families', async () => {
+  it('uses Fake Feishu login, internal Cookie, middleware and nine Staff route families', async () => {
     const owner = await login('owner');
     expect((await request(owner, '/api/staff/me/work-items/runtime-work-item')).status)
       .toBe(200);
-
-    const catalog = await request(owner, '/api/staff/catalog/products', {
+    expect((await request(owner, '/api/staff/catalog/products', {
       method: 'POST',
       headers: jsonHeaders(owner.cookie, 'runtime-catalog-create'),
-      body: JSON.stringify({
-        store_id: 'runtime-store',
-        asin: 'B0RT000001',
-        version: {
-          product_name: 'Runtime Product',
-          search_keywords: ['runtime'],
-          product_url: null,
-          buyer_visible_notes: null,
-          internal_notes: null,
-          ordering_guide_expected_amount_jpy: 1980,
-          color_spec_mode: 'MAIN_IMAGE_VARIANT',
-          default_buyer_self_pay_bps: 0,
-        },
-      }),
-    });
-    expect(catalog.status).toBe(201);
+      body: JSON.stringify(validCatalogBody('B0RT000001')),
+    })).status).toBe(201);
     expect((await request(owner, '/api/staff/reviews/runtime-review')).status)
       .toBe(200);
     expect((await request(
@@ -78,7 +63,7 @@ describe('Wave 13 default application runtime boundary', () => {
       proof.completeStatus,
       proof.paymentStatus,
     ]).toEqual([200, 200, 200, 201]);
-    const proofRead = await request(
+    expect((await request(
       owner,
       `/api/staff/seller-payments/${proof.paymentId}/proof/read-intent`,
       {
@@ -86,8 +71,7 @@ describe('Wave 13 default application runtime boundary', () => {
         headers: jsonHeaders(owner.cookie, 'runtime-proof-read'),
         body: JSON.stringify({ expected_file_version: proof.fileVersion }),
       },
-    );
-    expect(proofRead.status).toBe(201);
+    )).status).toBe(201);
     expect((await request(owner, '/api/staff/finance/summary')).status).toBe(200);
     expect((await request(
       owner,
@@ -99,8 +83,8 @@ describe('Wave 13 default application runtime boundary', () => {
     )).status).toBe(200);
   });
 
-  it('returns 401 without a Cookie and ignores client authority headers', async () => {
-    for (const input of representativeRequests(null, null)) {
+  it('returns 401 without a Cookie and rejects authority headers', async () => {
+    for (const input of representativeNoSessionRequests()) {
       const response = await app.request(input.request, undefined, input.env);
       expect(response.status, input.family).toBe(401);
     }
@@ -111,6 +95,7 @@ describe('Wave 13 default application runtime boundary', () => {
           'X-Staff-Id': 'zz-phase3h-test-owner',
           'X-Staff-Roles': 'owner',
           'X-Staff-Permissions': 'FINANCIAL_VIEW',
+          'X-Feishu-Open-Id': 'wave13-open-owner',
         },
       },
       runtimeBindings(database!, 'owner', storage!),
@@ -118,7 +103,7 @@ describe('Wave 13 default application runtime boundary', () => {
     expect(bypass.status).toBe(401);
   });
 
-  it('returns 403 when the trusted Session lacks the route permission', async () => {
+  it('returns 403 for valid requests without the operation Permission', async () => {
     const owner = await login('owner');
     const proof = await createSellerSettlementProof(owner);
     const limited = await login('limited');
@@ -128,7 +113,7 @@ describe('Wave 13 default application runtime boundary', () => {
     }
   });
 
-  it('conceals out-of-scope resources with 404; Internal Finance remains owner-global', async () => {
+  it('conceals out-of-scope resources with 404 while Internal Finance remains 403', async () => {
     const owner = await login('owner');
     const proof = await createSellerSettlementProof(owner);
     const scoped = await login('scoped');
@@ -156,25 +141,34 @@ async function request(
   }, identity.env);
 }
 
-function jsonHeaders(cookie: string, idempotencyKey: string): HeadersInit {
+function jsonHeaders(cookie: string, key: string): HeadersInit {
   return {
     Cookie: cookie,
     'Content-Type': 'application/json',
-    'Idempotency-Key': idempotencyKey,
+    'Idempotency-Key': key,
+  };
+}
+
+function validCatalogBody(asin: string) {
+  return {
+    store_id: 'runtime-store',
+    asin,
+    version: {
+      product_name: 'Runtime Product',
+      search_keywords: ['runtime'],
+      product_url: null,
+      buyer_visible_notes: null,
+      internal_notes: null,
+      ordering_guide_expected_amount_jpy: 1980,
+      color_spec_mode: 'MAIN_IMAGE_VARIANT',
+      default_buyer_self_pay_bps: 0,
+    },
   };
 }
 
 async function createSellerSettlementProof(
   owner: Awaited<ReturnType<typeof login>>,
-): Promise<{
-  intentStatus: number;
-  uploadStatus: number;
-  completeStatus: number;
-  paymentStatus: number;
-  fileObjectId: string;
-  fileVersion: number;
-  paymentId: string;
-}> {
+) {
   const png = onePixelPng();
   const intent = await request(
     owner,
@@ -258,26 +252,21 @@ async function createSellerSettlementProof(
   };
 }
 
-function representativeRequests(
-  cookie: string | null,
-  paymentId: string | null,
-): readonly { family: string; request: Request; env: Record<string, unknown> }[] {
+function representativeNoSessionRequests() {
   const env = runtimeBindings(database!, 'owner', storage!);
-  const headers = cookie ? { Cookie: cookie } : {};
-  const id = paymentId ?? 'missing-payment';
   return [
     ['Assignment', '/api/staff/assignment-fallbacks/JP', 'GET'],
     ['Catalog', '/api/staff/catalog/products', 'POST'],
     ['Review', '/api/staff/reviews/runtime-review', 'GET'],
     ['Seller Settlement', '/api/staff/seller-settlements/runtime-org/summary', 'GET'],
-    ['Settlement Proof', `/api/staff/seller-payments/${id}/proof/read-intent`, 'POST'],
+    ['Settlement Proof', '/api/staff/seller-payments/missing/proof/read-intent', 'POST'],
     ['Internal Finance', '/api/staff/finance/summary', 'GET'],
     ['Staff File', '/api/staff/file-uploads/buyer-refund-proofs/intents', 'POST'],
     ['Order Evidence', '/api/staff/order-evidence/runtime-evidence', 'GET'],
     ['Buyer Refund', '/api/staff/buyer-refunds/runtime-refund', 'GET'],
   ].map(([family, path, method]) => ({
     family,
-    request: new Request(`https://api.example.test${path}`, { method, headers }),
+    request: new Request(`https://api.example.test${path}`, { method }),
     env,
   }));
 }
@@ -286,46 +275,44 @@ function permissionRequests(
   identity: Awaited<ReturnType<typeof login>>,
   paymentId: string,
 ) {
-  const json = (key: string, body: unknown) => ({
-    method: 'POST',
-    headers: jsonHeaders(identity.cookie, key),
-    body: JSON.stringify(body),
+  const get = (path: string) => new Request(`https://api.example.test${path}`, {
+    headers: { Cookie: identity.cookie },
   });
+  const post = (path: string, key: string, body: unknown) => new Request(
+    `https://api.example.test${path}`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(identity.cookie, key),
+      body: JSON.stringify(body),
+    },
+  );
   return [
-    { family: 'Assignment', request: new Request(
-      'https://api.example.test/api/staff/assignment-fallbacks/JP',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Assignment', request: get('/api/staff/assignment-fallbacks/JP') },
+    { family: 'Catalog', request: post(
+      '/api/staff/catalog/products',
+      'limited-catalog',
+      validCatalogBody('B0RT000003'),
     ) },
-    { family: 'Catalog', request: new Request(
-      'https://api.example.test/api/staff/catalog/products', json('limited-catalog', {}),
+    { family: 'Review', request: get('/api/staff/reviews/runtime-review') },
+    { family: 'Seller Settlement', request: get(
+      '/api/staff/seller-settlements/runtime-org/summary',
     ) },
-    { family: 'Review', request: new Request(
-      'https://api.example.test/api/staff/reviews/runtime-review',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Settlement Proof', request: post(
+      `/api/staff/seller-payments/${paymentId}/proof/read-intent`,
+      'limited-proof',
+      { expected_file_version: 3 },
     ) },
-    { family: 'Seller Settlement', request: new Request(
-      'https://api.example.test/api/staff/seller-settlements/runtime-org/summary',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Internal Finance', request: get('/api/staff/finance/summary') },
+    { family: 'Staff File', request: post(
+      '/api/staff/files/runtime-legacy-file/read-intents',
+      'limited-file-read',
+      { expected_file_version: 3 },
     ) },
-    { family: 'Settlement Proof', request: new Request(
-      `https://api.example.test/api/staff/seller-payments/${paymentId}/proof/read-intent`,
-      json('limited-proof', { expected_file_version: 3 }),
+    { family: 'Order Evidence', request: get(
+      '/api/staff/order-evidence/runtime-evidence',
     ) },
-    { family: 'Internal Finance', request: new Request(
-      'https://api.example.test/api/staff/finance/summary',
-      { headers: { Cookie: identity.cookie } },
-    ) },
-    { family: 'Staff File', request: new Request(
-      'https://api.example.test/api/staff/files/runtime-legacy-file/read-intents',
-      json('limited-file-read', { expected_file_version: 3 }),
-    ) },
-    { family: 'Order Evidence', request: new Request(
-      'https://api.example.test/api/staff/order-evidence/runtime-evidence',
-      { headers: { Cookie: identity.cookie } },
-    ) },
-    { family: 'Buyer Refund', request: new Request(
-      'https://api.example.test/api/staff/buyer-refunds/runtime-refund',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Buyer Refund', request: get(
+      '/api/staff/buyer-refunds/runtime-refund',
     ) },
   ];
 }
@@ -334,56 +321,50 @@ function scopeRequests(
   identity: Awaited<ReturnType<typeof login>>,
   proof: Awaited<ReturnType<typeof createSellerSettlementProof>>,
 ) {
-  const json = (key: string, body: unknown) => ({
-    method: 'POST',
-    headers: jsonHeaders(identity.cookie, key),
-    body: JSON.stringify(body),
+  const get = (path: string) => new Request(`https://api.example.test${path}`, {
+    headers: { Cookie: identity.cookie },
   });
+  const post = (path: string, key: string, body: unknown) => new Request(
+    `https://api.example.test${path}`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(identity.cookie, key),
+      body: JSON.stringify(body),
+    },
+  );
   return [
-    { family: 'Assignment', expected: 404, request: new Request(
-      'https://api.example.test/api/staff/me/work-items/runtime-work-item',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Assignment', expected: 404, request: get(
+      '/api/staff/me/work-items/runtime-work-item',
     ) },
-    { family: 'Catalog', expected: 404, request: new Request(
-      'https://api.example.test/api/staff/catalog/products',
-      json('scoped-catalog', {
-        store_id: 'runtime-store',
-        asin: 'B0RT000002',
-        version: {
-          product_name: 'Scoped Product', search_keywords: [],
-          product_url: null, buyer_visible_notes: null, internal_notes: null,
-          ordering_guide_expected_amount_jpy: 1980,
-          color_spec_mode: 'MAIN_IMAGE_VARIANT',
-        },
-      }),
+    { family: 'Catalog', expected: 404, request: post(
+      '/api/staff/catalog/products',
+      'scoped-catalog',
+      validCatalogBody('B0RT000002'),
     ) },
-    { family: 'Review', expected: 404, request: new Request(
-      'https://api.example.test/api/staff/reviews/runtime-review',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Review', expected: 404, request: get(
+      '/api/staff/reviews/runtime-review',
     ) },
-    { family: 'Seller Settlement', expected: 404, request: new Request(
-      'https://api.example.test/api/staff/seller-settlements/runtime-org/summary',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Seller Settlement', expected: 404, request: get(
+      '/api/staff/seller-settlements/runtime-org/summary',
     ) },
-    { family: 'Settlement Proof', expected: 404, request: new Request(
-      `https://api.example.test/api/staff/seller-payments/${proof.paymentId}/proof/read-intent`,
-      json('scoped-proof', { expected_file_version: proof.fileVersion }),
+    { family: 'Settlement Proof', expected: 404, request: post(
+      `/api/staff/seller-payments/${proof.paymentId}/proof/read-intent`,
+      'scoped-proof',
+      { expected_file_version: proof.fileVersion },
     ) },
-    { family: 'Internal Finance', expected: 403, request: new Request(
-      'https://api.example.test/api/staff/finance/summary',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Internal Finance', expected: 403, request: get(
+      '/api/staff/finance/summary',
     ) },
-    { family: 'Staff File', expected: 404, request: new Request(
-      'https://api.example.test/api/staff/files/runtime-legacy-file/read-intents',
-      json('scoped-file-read', { expected_file_version: 3 }),
+    { family: 'Staff File', expected: 404, request: post(
+      '/api/staff/files/runtime-legacy-file/read-intents',
+      'scoped-file-read',
+      { expected_file_version: 3 },
     ) },
-    { family: 'Order Evidence', expected: 404, request: new Request(
-      'https://api.example.test/api/staff/order-evidence/runtime-evidence',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Order Evidence', expected: 404, request: get(
+      '/api/staff/order-evidence/runtime-evidence',
     ) },
-    { family: 'Buyer Refund', expected: 404, request: new Request(
-      'https://api.example.test/api/staff/buyer-refunds/runtime-refund',
-      { headers: { Cookie: identity.cookie } },
+    { family: 'Buyer Refund', expected: 404, request: get(
+      '/api/staff/buyer-refunds/runtime-refund',
     ) },
   ];
 }

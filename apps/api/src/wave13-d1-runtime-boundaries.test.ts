@@ -27,17 +27,11 @@ const migrations = readdirSync(path.join(root, 'migrations'))
   .sort();
 
 function applyPrefix(target: SqliteDatabase, count: number): void {
-  for (const name of migrations.slice(0, count)) {
-    runMigration(target, name);
-  }
+  for (const name of migrations.slice(0, count)) runMigration(target, name);
 }
-
 function applyFrom(target: SqliteDatabase, start: number): void {
-  for (const name of migrations.slice(start)) {
-    runMigration(target, name);
-  }
+  for (const name of migrations.slice(start)) runMigration(target, name);
 }
-
 function runMigration(target: SqliteDatabase, name: string): void {
   target.exec('BEGIN IMMEDIATE;');
   try {
@@ -92,9 +86,7 @@ describe('Wave 13 D1 runtime boundaries', () => {
     `);
     const customerSchemaBefore = customerAuthSchema(database);
     const customerCountsBefore = customerAuthCounts(database);
-
     applyFrom(database, 26);
-
     expect(database.raw.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).get()).toEqual({ schema_version: 27 });
@@ -170,7 +162,7 @@ describe('Wave 13 D1 runtime boundaries', () => {
     `).get()).toEqual({ session_version: 1 });
   });
 
-  it('rolls back approval and Refund command namespaces on assertion failure', async () => {
+  it('rolls back command namespaces on an assertion failure', async () => {
     database = createMigratedTestDatabase();
     for (const command of [
       {
@@ -231,7 +223,7 @@ describe('Wave 13 D1 runtime boundaries', () => {
         id, token_hash, staff_id, issued_session_version,
         issued_authorization_version, status, expires_at,
         revoked_at, revoked_reason, created_at, updated_at
-      ) VALUES ('bad-session', ?, 'missing-staff', 1, 1, 'ACTIVE',
+      ) VALUES ('bad-session-0000001', ?, 'missing-staff', 1, 1, 'ACTIVE',
         1000, NULL, NULL, 1, 1)
     `).run('c'.repeat(64))).toThrow();
     await database.prepare(`
@@ -271,18 +263,18 @@ function customerAuthSchema(target: SqliteDatabase) {
     ORDER BY type, name
   `).all();
 }
-
 function customerAuthCounts(target: SqliteDatabase) {
   return {
-    loginRateLimits: Number(target.raw.prepare(`
-      SELECT COUNT(*) AS count FROM customer_login_rate_limits
-    `).get()?.count),
-    securityEvents: Number(target.raw.prepare(`
-      SELECT COUNT(*) AS count FROM customer_auth_security_events
-    `).get()?.count),
+    loginRateLimits: rowCount(target, 'customer_login_rate_limits'),
+    securityEvents: rowCount(target, 'customer_auth_security_events'),
   };
 }
-
+function rowCount(target: SqliteDatabase, table: string): number {
+  const row = target.raw.prepare(
+    `SELECT COUNT(*) AS count FROM ${table}`,
+  ).get() as { count: number | bigint };
+  return Number(row.count);
+}
 function processingCommand(
   target: SqliteDatabase,
   input: {
