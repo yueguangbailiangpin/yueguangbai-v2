@@ -183,7 +183,7 @@ describe('Phase 4B5 buyer refund status read model', () => {
     })).toMatchObject({ code: 'FORBIDDEN', status: 403 });
   });
 
-  it('keeps the API read-only, file-blind, and schema24-compatible', () => {
+  it('keeps the API read-only, file-blind, and schema26-compatible', () => {
     const root = path.resolve(import.meta.dirname, '../../../..');
     const routeSource = readFileSync(
       path.join(root, 'apps/api/src/buyer-refund-status/routes.ts'),
@@ -208,8 +208,8 @@ describe('Phase 4B5 buyer refund status read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(24);
-    expect(migrations.at(-1)).toBe('0024_seller_payments_allocations.sql');
+    expect(migrations).toHaveLength(26);
+    expect(migrations.at(-1)).toBe('0026_financial_export_audit.sql');
   });
 });
 
