@@ -13,14 +13,17 @@ import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { generateAuditedFinancialCsv } from './exports';
 import {
   FINANCE_QUERY_KEYS,
+  assertCashFinanceDateBasis,
   assertExactQueryParameters,
+  assertFinancialExportDateBasis,
+  assertOrderFinanceDateBasis,
   normalizeFinanceFilters,
   normalizeFinanceQuery,
 } from './filters';
 import { buildFinanceOrderDetail } from './order-detail';
 import {
   readFinanceCashFlow,
-  readFinanceExceptions,
+  readFinanceExceptionPage,
   readFinanceGroups,
   readFinanceOrder,
   readFinanceOrderPage,
@@ -55,6 +58,7 @@ async function summary(context: Context<any>): Promise<Response> {
   const url = new URL(context.req.url);
   assertExactQueryParameters(url, FILTER_KEYS);
   const filters = normalizeFinanceQuery(url);
+  assertOrderFinanceDateBasis(filters);
   return success(context, {
     summary: await readFinanceSummary(context.env.DB, filters),
   });
@@ -64,6 +68,7 @@ async function orders(context: Context<any>): Promise<Response> {
   const url = new URL(context.req.url);
   assertExactQueryParameters(url, [...FILTER_KEYS, 'limit', 'cursor']);
   const filters = normalizeFinanceQuery(url);
+  assertOrderFinanceDateBasis(filters);
   return success(context, await readFinanceOrderPage(
     context.env.DB,
     filters,
@@ -89,6 +94,7 @@ async function groups(context: Context<any>): Promise<Response> {
   const groupBy = url.searchParams.get('group_by');
   if (!isFinanceGroupBy(groupBy)) validation();
   const filters = normalizeFinanceQuery(urlWithout(url, ['group_by']));
+  assertOrderFinanceDateBasis(filters);
   return success(context, {
     group_by: groupBy,
     groups: await readFinanceGroups(context.env.DB, filters, groupBy),
@@ -104,6 +110,7 @@ async function cashFlow(context: Context<any>): Promise<Response> {
   ];
   assertExactQueryParameters(url, allowed);
   const filters = normalizeFinanceQuery(url);
+  assertCashFinanceDateBasis(filters);
   return success(context, {
     cash_flow: await readFinanceCashFlow(context.env.DB, filters),
   });
@@ -111,12 +118,19 @@ async function cashFlow(context: Context<any>): Promise<Response> {
 async function exceptions(context: Context<any>): Promise<Response> {
   requireActor(context);
   const url = new URL(context.req.url);
-  assertExactQueryParameters(url, FILTER_KEYS);
+  assertExactQueryParameters(url, [...FILTER_KEYS, 'limit', 'cursor']);
   const filters = normalizeFinanceQuery(url);
-  return success(context, {
-    exceptions: await readFinanceExceptions(context.env.DB, filters),
+  assertOrderFinanceDateBasis(filters);
+  const page = await readFinanceExceptionPage(
+    context.env.DB,
     filters,
-    data_as_of: Date.now(),
+    pagination(url),
+  );
+  return success(context, {
+    exceptions: page.items,
+    page: page.page,
+    filters: page.filters,
+    data_as_of: page.data_as_of,
   });
 }
 async function exportCsv(context: Context<any>): Promise<Response> {
@@ -125,6 +139,7 @@ async function exportCsv(context: Context<any>): Promise<Response> {
   exactKeys(body, ['export_type', 'filters', 'date_basis']);
   if (!isFinancialExportType(body['export_type'])
     || !isFinanceDateBasis(body['date_basis'])) validation();
+  assertFinancialExportDateBasis(body['export_type'], body['date_basis']);
   const filters = normalizeFinanceFilters(
     record(body['filters']),
     Date.now(),
