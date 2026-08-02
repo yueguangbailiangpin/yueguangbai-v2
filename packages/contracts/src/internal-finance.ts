@@ -6,6 +6,9 @@ export type SignedIntegerString = string;
 export const FINANCE_DATE_BASES = ['CONFIRMED', 'APPROVED', 'CASH'] as const;
 export type FinanceDateBasis = typeof FINANCE_DATE_BASES[number];
 
+export const ORDER_FINANCE_DATE_BASES = ['CONFIRMED', 'APPROVED'] as const;
+export type OrderFinanceDateBasis = typeof ORDER_FINANCE_DATE_BASES[number];
+
 export const FINANCE_GROUP_BYS = [
   'SELLER_ORGANIZATION', 'STORE', 'PRODUCT', 'ASIN', 'DAY', 'MONTH',
 ] as const;
@@ -215,6 +218,13 @@ export interface InternalFinanceOrderPageDto {
   data_as_of: number;
 }
 
+export interface InternalFinanceExceptionPageDto {
+  items: readonly InternalFinanceExceptionDto[];
+  page: { limit: number; next_cursor: string | null };
+  filters: InternalFinanceFilters;
+  data_as_of: number;
+}
+
 export interface FinancialCsvExportRequest {
   export_type: FinancialExportType;
   filters: Partial<InternalFinanceFilters>;
@@ -224,6 +234,12 @@ export interface FinancialCsvExportRequest {
 export function isFinanceDateBasis(value: unknown): value is FinanceDateBasis {
   return typeof value === 'string'
     && (FINANCE_DATE_BASES as readonly string[]).includes(value);
+}
+export function isOrderFinanceDateBasis(
+  value: unknown,
+): value is OrderFinanceDateBasis {
+  return typeof value === 'string'
+    && (ORDER_FINANCE_DATE_BASES as readonly string[]).includes(value);
 }
 export function isFinanceGroupBy(value: unknown): value is FinanceGroupBy {
   return typeof value === 'string'
