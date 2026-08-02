@@ -8,9 +8,10 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 24
-  || migrationFiles.at(-1) !== '0024_seller_payments_allocations.sql') {
-  throw new Error('expected migrations 0001-0024');
+if (migrationFiles.length !== 26
+  || migrationFiles.at(-2) !== '0025_internal_finance_reporting.sql'
+  || migrationFiles.at(-1) !== '0026_financial_export_audit.sql') {
+  throw new Error('expected migrations 0001-0026');
 }
 
 const guarded = new Map([
@@ -28,6 +29,8 @@ const guarded = new Map([
   [22, 'idx_review_evidence_versions_current_url'],
   [23, 'seller_payables'],
   [24, 'seller_payments'],
+  [25, 'internal_order_finance_positions'],
+  [26, 'financial_export_events'],
 ]);
 
 function readMigration(name) {
@@ -86,7 +89,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 24) throw new Error('fresh schema not 24');
+  if (schemaVersion(fresh) !== 26) throw new Error('fresh schema not 26');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -130,8 +133,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 24,
-  sequential_upgrade: '0001 -> 0024',
+  fresh_schema: 26,
+  sequential_upgrade: '0001 -> 0026',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,
