@@ -19,6 +19,12 @@ assert(url.includes("parsed.hash = ''"));
 assert(shared.includes('files.length > 3'));
 assert(submit.includes('review_url: reviewUrl'));
 assert(submit.includes('AND ? BETWEEN 1 AND 3'));
+assert(submit.includes('dedupKey: `review-evidence:${evidenceVersionId}`'));
+assert(submit.includes('actorId: source.buyer_customer_id'));
+assert(!submit.includes(
+  'dedupKey: `review-evidence:${reviewCaseId}:${evidenceVersionNo}`',
+));
+assert(!submit.includes('actorId: `buyer:${source.buyer_customer_id}`'));
 assert(buyer.includes('current_evidence_version_no'));
 assert(seller.includes("review.status !== 'APPROVED'"));
 assert(seller.includes("review_case.status='APPROVED'"));
