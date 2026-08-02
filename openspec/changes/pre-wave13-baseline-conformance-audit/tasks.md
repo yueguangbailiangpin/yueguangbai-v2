@@ -17,17 +17,17 @@
 
 ## LOCAL_VALIDATION_PENDING
 
-- [ ] Install repository dependencies locally through the authorized workflow.
-- [ ] Run the repository full check gate locally.
-- [ ] Run strict migration and schema validation against a D1-compatible local database.
-- [ ] Reconfirm schema version 26, application tables 113, triggers 213, and views 10.
-- [ ] Reconfirm test files 99 and tests 511, or document an intentional new baseline.
-- [ ] Execute every verifier referenced by package.json.
-- [ ] Run strict OpenSpec validation for this change.
+- [x] Install repository dependencies locally through the authorized workflow.
+- [x] Run the repository full check gate locally.
+- [x] Run strict migration and schema validation against a D1-compatible local database.
+- [x] Reconfirm schema version 26, application tables 113, triggers 213, and views 10.
+- [x] Reconfirm test files 99 and tests 511, or document an intentional new baseline.
+- [x] Execute every verifier referenced by package.json.
+- [x] Run strict OpenSpec validation for this change.
 - [ ] Run the repository OpenSpec verify workflow for this change.
 - [ ] Validate trusted Staff session creation in the production Worker entrypoint after the blocker is resolved.
 - [ ] Validate real D1 behavior versus test doubles for triggers, strict tables, transactions, cursors, and integer/string conversion.
-- [ ] Run Wrangler validation only in the authorized local or Integration workflow.
+- [x] Run Wrangler validation only in the authorized local or Integration workflow.
 - [ ] Run a later Ponytail review only after separate approval and only on documented low-risk candidates.
 - [ ] Create Integration only after blockers are fixed and every gate passes.
 - [ ] Advance main only through the authorized Integration process.

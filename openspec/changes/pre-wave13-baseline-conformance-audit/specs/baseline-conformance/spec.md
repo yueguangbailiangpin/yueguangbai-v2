@@ -2,7 +2,9 @@
 
 This specification defines the requirements against which the current formal `main` baseline is audited. It is not a historical Wave 1–12 specification. Each requirement has one audit scenario; implementation evidence and classification are recorded in the audit matrix.
 
-## Identity and Authorization
+## ADDED Requirements
+
+### Identity and Authorization
 
 ### Requirement: AUTH-001 Identity domains are separated
 Buyer, Seller, and Staff identities SHALL remain distinct authorization domains.
@@ -94,7 +96,7 @@ GRANT, DENY, inactive, cross-tenant, and empty-context behavior SHALL have test 
 - **WHEN** authorization tests are inspected
 - **THEN** each required edge case is located or classified incomplete.
 
-## Financial Facts
+### Financial Facts
 
 ### Requirement: FIN-001 JPY is integer
 JPY financial facts SHALL use integers.
@@ -246,7 +248,7 @@ Buyer and Seller APIs SHALL fully isolate internal profit and Buyer Refund cost.
 - **WHEN** customer DTOs are inspected
 - **THEN** prohibited internal finance fields are absent.
 
-## File Security
+### File Security
 
 ### Requirement: FILE-001 Upload intent
 Uploads SHALL begin with an upload intent.
@@ -350,7 +352,7 @@ Unauthorized, expired, revoked, and duplicate-binding cases SHALL have test evid
 - **WHEN** file tests are inspected
 - **THEN** each required denial path is located or classified incomplete.
 
-## Business State Machines
+### Business State Machines
 
 ### Requirement: FLOW-001 Buyer registration and identity
 Buyer registration and identity SHALL follow the formal self-registration/authentication flow.
@@ -490,7 +492,7 @@ Clients SHALL NOT directly select authoritative next states.
 - **WHEN** request bodies are inspected
 - **THEN** commands accept business inputs and the server determines state transitions.
 
-## API, Contract, and DTO
+### API, Contract, and DTO
 
 ### Requirement: API-001 Exact-key validation
 Mutation contracts SHALL use exact-key validation.
@@ -582,7 +584,7 @@ Contracts required by Big Module 5 SHALL be stable enough to freeze before imple
 - **WHEN** readiness is summarized
 - **THEN** each required contract is marked freeze-ready, limited, blocked, or unverified.
 
-## Migration and Database Integrity
+### Migration and Database Integrity
 
 ### Requirement: DB-001 Consecutive migrations
 The migration chain SHALL be consecutive from 0001 through 0026.

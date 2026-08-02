@@ -284,3 +284,67 @@ This is not OpenSpec CLI Verify and not `$openspec-verify-change`.
 - `NOT_VERIFIED`: DB-020 real D1/test-double parity.
 
 Local Codex must still run the real OpenSpec validation/verify workflow after blockers are fixed.
+
+## Local Validation Supplement
+
+**Validation date:** 2026-08-02 (Asia/Shanghai)
+**Audit base:** `origin/main` `f28c52a36e9498c37453a4a12755d9ad8459ae65`; audit initial HEAD `8a0473bdcc4606905065ffef7c332864a099de06`; merge-base matched `origin/main`; remote relation at start was behind `0`, ahead `3`.
+
+### Environment and dependency installation
+
+- Node `v24.18.1`; npm `11.16.0`; Codex CLI `0.146.0`; OpenSpec `1.7.0`.
+- OpenSpec configuration is `profile=custom`, `delivery=both`, with the `verify` workflow configured.
+- `npm ci` passed in approximately 3 seconds and added 94 locked packages. npm reported three packages with pending install scripts (`esbuild`, `fsevents`, and `workerd`); no script was approved or manually enabled.
+- `PONYTAIL_MODE=off`; config confirmed `defaultMode=off`. `PONYTAIL_REVIEW=not-run`.
+
+### Full gate
+
+`npm run check` passed in approximately 19 seconds. It completed the security scan (507 project files), workspace typechecks, migration verification, migration guards, all Wave 11 and Wave 12 verifiers, Vitest, and workspace build.
+
+| Result | Local evidence |
+|---|---|
+| Test Files | 99 passed (99) |
+| Tests | 511 passed (511); 0 failed |
+| Vitest duration | 6.19 s |
+| Build | Passed; API Wrangler deploy dry-run and all workspace builds completed |
+| Migration verifier | `0001`–`0026`, schema 26, 113 tables, 213 triggers, FK errors 0, integrity `ok` |
+
+The API dry-run emitted a non-fatal Wrangler log-file `EPERM` warning for the sandboxed user Preferences directory, but completed successfully with `--dry-run`. Codex CLI also emitted a non-fatal PATH-alias creation warning under the sandbox.
+
+### Strict OpenSpec validation and Verify availability
+
+- `openspec validate pre-wave13-baseline-conformance-audit --strict --json --no-interactive`: passed, 1/1 change, 0 failed.
+- `openspec validate --all --strict --json --no-interactive`: passed, 1/1 item, 0 failed.
+- The audit spec contains 115 `Requirement` blocks and 115 `Scenario` blocks. A formatting-only correction added the required `## ADDED Requirements` delta section and lowered six category headings so OpenSpec 1.7.0 parses the existing requirements. No requirement, scenario, finding, or risk level was changed.
+- `$openspec-verify-change` was not available in this Codex session, and OpenSpec 1.7.0 CLI exposes no `verify` command. Therefore the real Verify workflow was **not executed** and its task remains unchecked. The pre-existing `REMOTE_SEMANTIC_VERIFY` classification remains the available semantic result: COMPLETE 99, PARTIAL 13, MISSING 1, INCONSISTENT 1, NOT_VERIFIED 1.
+
+### Local D1 baseline
+
+Wrangler applied migrations to one isolated local D1 state directory under `/tmp/pre-wave13-audit-d1-20260802-192033/state` using `--local --persist-to`. Wrangler's JSON query invocations exited successfully but emitted no result payload under `WRANGLER_LOG=none`; the unique schema-26 SQLite file in that same state directory was then queried read-only.
+
+| Check | Result |
+|---|---:|
+| Applied migration records | 26 (`0001_foundation.sql` through `0026_financial_export_audit.sql`) |
+| Schema version | 26 |
+| Application tables | 113 |
+| Raw `sqlite_schema` tables | 116 (includes `_cf_METADATA`, `d1_migrations`, and `sqlite_sequence`) |
+| Triggers | 213 |
+| Views | 10 |
+| `foreign_key_check` | 0 rows |
+| `integrity_check` | `ok` |
+| Required financial views | all present: `internal_order_finance_positions`, `internal_finance_exceptions`, `internal_finance_cash_movements` |
+
+This reconfirms the schema baseline only. `DB-020` remains **NOT_VERIFIED**: the run does not prove all real-D1 versus test-double behavior for triggers, strict tables, transactions, cursors, or integer/string conversion. Real R2 failure-compensation testing was not run.
+
+### Effect on the audit conclusion
+
+The local gate and D1 evidence do not rebut P1-01, P1-02, or P1-03. The overall conclusion remains **NO_GO** with final counts **P0=0, P1=3, P2=4, P3=2, NOT_VERIFIED=1, GOVERNANCE_CONFLICT=1**. The remote report's P2-4 recorded that these local gates had not yet run; this supplement supplies the completed local gate evidence without removing the P2 finding or reducing its severity, because real R2 fault testing and the actual OpenSpec Verify workflow remain outstanding.
+
+### Recorded Staff identity control decision (future direction only)
+
+- D1 `staff_users` is the authority for Staff subject, status, roles, permissions, and data scope.
+- Feishu is the production Staff-login identity authentication provider for the first release.
+- The Worker verifies Feishu identity, maps it to D1 `staff_users`, and issues its own trusted internal Staff Session.
+- Staff APIs consume only `staffAuthorization` generated by internal-session middleware; they do not directly trust Feishu headers, client `staff_id`, or client roles.
+
+This is a project-control decision and later remediation direction, not a currently implemented capability. No P1 remediation, business source, test, migration, deployment, Integration, or PR was created by this validation.
