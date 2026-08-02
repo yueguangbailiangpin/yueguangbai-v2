@@ -1,6 +1,6 @@
 # Tasks: Wave 13 Frontend Readiness Backend Completion
 
-Planning tasks checked below were completed by remote repository reading and `REMOTE_PLANNING_REVIEW` only. No implementation, local CLI, test, D1, R2, OpenSpec CLI, Verify, Ponytail or Integration task is checked.
+Planning tasks checked below were completed by remote repository reading and REMOTE_PLANNING_REVIEW. Local Codex subsequently completed and checked only the authorized OpenSpec CLI validation tasks 24.1 and 24.2. No Migration, Contract implementation, business source, test implementation, D1/R2 behavior validation, OpenSpec Verify, Ponytail, Integration, main advancement or deployment task is checked.
 
 ## 0. Authority and Controller Decisions
 
@@ -149,8 +149,8 @@ Planning tasks checked below were completed by remote repository reading and `RE
 
 ## 24. OpenSpec Validation
 
-- [ ] 24.1 Run strict validation for `wave13-frontend-readiness-backend-completion`. **Output:** machine-readable validation result. **Verify:** zero failed items.
-- [ ] 24.2 Run strict all-change/spec validation required by repository governance. **Output:** repository-wide result. **Verify:** unrelated failures are reported and not bypassed.
+- [x] 24.1 Run strict validation for `wave13-frontend-readiness-backend-completion`. **Output:** machine-readable validation result. **Verify:** zero failed items.
+- [x] 24.2 Run strict all-change/spec validation required by repository governance. **Output:** repository-wide result. **Verify:** unrelated failures are reported and not bypassed.
 - [ ] 24.3 Correct only valid OpenSpec formatting/semantic issues without weakening frozen controller decisions. **Output:** validated artifacts. **Verify:** Requirement count 52 and Scenario count 104 unless a justified Delta is recorded.
 
 ## 25. OpenSpec Verify
