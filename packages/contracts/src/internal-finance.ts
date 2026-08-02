@@ -97,6 +97,63 @@ export interface InternalOrderFinancePositionDto {
   finance_status: FinanceStatus;
 }
 
+export interface InternalFinanceOrderDetailDto {
+  position: InternalOrderFinancePositionDto;
+  frozen_snapshot: {
+    financial_snapshot_id: string | null;
+    buyer_self_pay_bps: number | null;
+    buyer_self_pay_jpy: FixedIntegerString | null;
+    buyer_expected_principal_cny_fen: FixedIntegerString | null;
+    seller_expected_principal_cny_fen: FixedIntegerString | null;
+    service_fee_cny_fen: FixedIntegerString | null;
+  };
+  seller_payables: {
+    principal_due_cny_fen: FixedIntegerString;
+    principal_collected_cny_fen: FixedIntegerString;
+    principal_outstanding_cny_fen: FixedIntegerString;
+    service_fee_due_cny_fen: FixedIntegerString;
+    service_fee_collected_cny_fen: FixedIntegerString;
+    service_fee_outstanding_cny_fen: FixedIntegerString;
+  };
+  buyer_refund: {
+    due_cny_fen: FixedIntegerString;
+    net_paid_cny_fen: FixedIntegerString;
+    outstanding_cny_fen: FixedIntegerString;
+    overpaid_cny_fen: FixedIntegerString;
+  };
+  attributed_cash: {
+    seller_allocated_net_cny_fen: FixedIntegerString;
+    buyer_refund_net_paid_cny_fen: FixedIntegerString;
+    net_cny_fen: SignedIntegerString;
+  };
+  calculations: {
+    projected_gross_profit: {
+      formula: 'SELLER_EXPECTED_PRINCIPAL_PLUS_SERVICE_FEE_MINUS_BUYER_EXPECTED_PRINCIPAL';
+      seller_expected_principal_cny_fen: FixedIntegerString | null;
+      service_fee_cny_fen: FixedIntegerString | null;
+      buyer_expected_principal_cny_fen: FixedIntegerString | null;
+      result_cny_fen: SignedIntegerString | null;
+    };
+    completed_gross_profit: {
+      formula: 'SELLER_PRINCIPAL_PAYABLE_PLUS_SERVICE_FEE_PAYABLE_MINUS_BUYER_REFUND_DUE';
+      eligible: boolean;
+      seller_principal_payable_cny_fen: FixedIntegerString;
+      seller_service_fee_payable_cny_fen: FixedIntegerString;
+      buyer_refund_due_cny_fen: FixedIntegerString;
+      result_cny_fen: SignedIntegerString | null;
+    };
+    current_attributed_cash: {
+      formula: 'SELLER_CURRENT_NET_ALLOCATION_MINUS_BUYER_REFUND_NET_PAID';
+      seller_current_net_allocation_cny_fen: FixedIntegerString;
+      buyer_refund_net_paid_cny_fen: FixedIntegerString;
+      result_cny_fen: SignedIntegerString;
+    };
+  };
+  finance_status: FinanceStatus;
+  exception_codes: readonly string[];
+  suggested_actions: readonly FinanceExceptionAction[];
+}
+
 export interface InternalFinanceTotalsDto {
   order_count: number;
   projected_order_count: number;
