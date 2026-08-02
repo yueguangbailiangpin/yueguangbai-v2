@@ -6,16 +6,16 @@ import type {
 import type { SellerPortalActor } from '../seller-portal/actor';
 import { SellerReviewPortalError } from './errors';
 
-interface UrlRow { review_url: string | null }
+interface CurrentEvidenceRow {
+  review_url: string | null;
+  submitted_at: number;
+}
 
 export async function attachSellerReviewUrl(
   database: SqlDatabase,
   actor: SellerPortalActor,
   review: SellerReviewPortalDto,
 ): Promise<SellerReviewPortalDto> {
-  if (review.status !== 'APPROVED') {
-    return Object.freeze({ ...review, review_url: null });
-  }
   const scope = actor.allActiveStores
     ? { sql: '', values: [] as readonly string[] }
     : actor.storeIds.length === 0
@@ -25,7 +25,9 @@ export async function attachSellerReviewUrl(
           values: actor.storeIds,
         };
   const row = await database.prepare(`
-    SELECT evidence.review_url
+    SELECT
+      evidence.review_url,
+      evidence.created_at AS submitted_at
     FROM review_cases review_case
     JOIN formal_orders formal_order
       ON formal_order.id=review_case.formal_order_id
@@ -35,7 +37,6 @@ export async function attachSellerReviewUrl(
       AND evidence.formal_order_id=formal_order.id
       AND evidence.version_no=review_case.current_evidence_version_no
     WHERE review_case.id=?
-      AND review_case.status='APPROVED'
       AND review_case.seller_organization_id=?
       ${scope.sql}
     LIMIT 1
@@ -43,11 +44,15 @@ export async function attachSellerReviewUrl(
     review.review_case_id,
     actor.sellerOrganizationId,
     ...scope.values,
-  ).first<UrlRow>();
+  ).first<CurrentEvidenceRow>();
   if (!row) {
     throw new SellerReviewPortalError('SELLER_REVIEW_NOT_FOUND', 404);
   }
-  return Object.freeze({ ...review, review_url: row.review_url });
+  return Object.freeze({
+    ...review,
+    review_url: review.status === 'APPROVED' ? row.review_url : null,
+    submitted_at: Number(row.submitted_at),
+  });
 }
 
 export async function attachSellerReviewPageUrls(
