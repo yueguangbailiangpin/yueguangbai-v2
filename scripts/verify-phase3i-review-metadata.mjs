@@ -26,8 +26,11 @@ assert(!submit.includes(
 ));
 assert(!submit.includes('actorId: `buyer:${source.buyer_customer_id}`'));
 assert(buyer.includes('current_evidence_version_no'));
-assert(seller.includes("review.status !== 'APPROVED'"));
-assert(seller.includes("review_case.status='APPROVED'"));
+assert(seller.includes(
+  "review_url: review.status === 'APPROVED' ? row.review_url : null",
+));
+assert(seller.includes('current_evidence_version_no'));
+assert(!seller.includes('version_no=?'));
 
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
