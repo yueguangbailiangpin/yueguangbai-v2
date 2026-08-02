@@ -11,6 +11,7 @@ export const API_ERROR_CODES = [
   'DEPENDENCY_UNAVAILABLE',
   'UPLOAD_FAILED',
   'STATE_CONFLICT',
+  'PRICE_MISMATCH',
   'EXPORT_TOO_LARGE',
   'DUPLICATE_ORDER_NUMBER',
   'DUPLICATE_STORE',
@@ -78,6 +79,20 @@ export const API_ERROR_CODES = [
 ] as const;
 
 export type ApiErrorCode = typeof API_ERROR_CODES[number];
+
+export const API_ERROR_HTTP_STATUS = Object.freeze({
+  UNAUTHENTICATED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  VALIDATION_ERROR: 400,
+  STATE_CONFLICT: 409,
+  VERSION_CONFLICT: 409,
+  IDEMPOTENCY_CONFLICT: 409,
+  REQUEST_IN_PROGRESS: 409,
+  PRICE_MISMATCH: 409,
+  DEPENDENCY_UNAVAILABLE: 503,
+  FILE_COMPENSATION_REQUIRED: 503,
+} as const satisfies Partial<Record<ApiErrorCode, number>>);
 
 export function isApiErrorCode(value: unknown): value is ApiErrorCode {
   return typeof value === 'string'
