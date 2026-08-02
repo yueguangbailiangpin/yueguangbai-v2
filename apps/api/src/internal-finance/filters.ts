@@ -2,9 +2,12 @@ import {
   FINANCE_DATE_BASES,
   type FinanceDateBasis,
   type FinanceStatus,
+  type FinancialExportType,
   type InternalFinanceFilters,
+  type OrderFinanceDateBasis,
   isFinanceDateBasis,
   isFinanceStatus,
+  isOrderFinanceDateBasis,
   isPricingReviewType,
 } from '@ygb/contracts';
 import {
@@ -14,7 +17,7 @@ import {
   normalizeAsin,
   parseChinaBusinessDate,
 } from '@ygb/domain';
-import { validation } from './shared';
+import { InternalFinanceError, validation } from './shared';
 
 export const FINANCE_QUERY_KEYS = Object.freeze([
   'from_date',
@@ -77,8 +80,17 @@ export function normalizeFinanceFilters(
     validation();
   }
 
-  const basisValue = forcedBasis ?? input['date_basis'] ?? 'CONFIRMED';
+  const hasInputBasis = Object.hasOwn(input, 'date_basis');
+  let basisValue: unknown;
+  if (forcedBasis === undefined) {
+    if (!hasInputBasis) validation();
+    basisValue = input['date_basis'];
+  } else {
+    if (hasInputBasis) validation();
+    basisValue = forcedBasis;
+  }
   if (!isFinanceDateBasis(basisValue)) validation();
+
   const reviewType = nullable(input['review_type']);
   if (reviewType !== null && !isPricingReviewType(reviewType)) validation();
   const status = nullable(input['finance_status']);
@@ -102,11 +114,38 @@ export function normalizeFinanceFilters(
   });
 }
 
-export function financeDateColumn(basis: FinanceDateBasis): string {
-  if (!(FINANCE_DATE_BASES as readonly string[]).includes(basis)) validation();
-  if (basis === 'CONFIRMED') return 'position.confirmed_business_date';
-  if (basis === 'APPROVED') return 'position.review_approved_business_date';
-  return 'position.last_cash_business_date';
+export function assertOrderFinanceDateBasis(
+  filters: InternalFinanceFilters,
+): asserts filters is InternalFinanceFilters & {
+  date_basis: OrderFinanceDateBasis;
+} {
+  if (!isOrderFinanceDateBasis(filters.date_basis)) validation();
+}
+
+export function assertCashFinanceDateBasis(
+  filters: InternalFinanceFilters,
+): asserts filters is InternalFinanceFilters & { date_basis: 'CASH' } {
+  if (filters.date_basis !== 'CASH') validation();
+}
+
+export function assertFinancialExportDateBasis(
+  exportType: FinancialExportType,
+  basis: FinanceDateBasis,
+): void {
+  if (exportType === 'CASH_FLOW') {
+    if (basis !== 'CASH') validation();
+    return;
+  }
+  if (!isOrderFinanceDateBasis(basis)) validation();
+}
+
+export function financeDateColumn(basis: OrderFinanceDateBasis): string {
+  if (!(FINANCE_DATE_BASES as readonly string[]).includes(basis)) {
+    throw new InternalFinanceError('VALIDATION_ERROR', 400);
+  }
+  return basis === 'CONFIRMED'
+    ? 'position.confirmed_business_date'
+    : 'position.review_approved_business_date';
 }
 
 function date(value: unknown): string {
