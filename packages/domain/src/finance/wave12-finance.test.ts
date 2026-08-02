@@ -98,6 +98,8 @@ describe('Wave 12 audited CSV safety', () => {
     expect(csv).toContain("'+cmd");
     expect(csv).toContain("'-calc");
     expect(csv).toContain("'@evil");
+    expect(csv).toContain("'\tbad");
+    expect(csv).toContain("'\rbad");
     expect(csv).toContain('"a""b"');
     expect(csv).toContain('"a,b"');
     expect(csv).toContain('"a\nb"');
@@ -116,6 +118,14 @@ describe('Wave 12 audited CSV safety', () => {
   it('rejects more than 50000 rows', () => {
     expect(() => serializeFinancialCsv(
       Array.from({ length: 50_001 }, () => ({ value: 'x' })),
+      [{ header: 'value', value: (row) => row.value }],
+    )).toThrow('EXPORT_TOO_LARGE');
+  });
+
+  it('rejects output larger than 25 MiB', () => {
+    const oversized = 'x'.repeat(25 * 1024 * 1024);
+    expect(() => serializeFinancialCsv(
+      [{ value: oversized }],
       [{ header: 'value', value: (row) => row.value }],
     )).toThrow('EXPORT_TOO_LARGE');
   });
