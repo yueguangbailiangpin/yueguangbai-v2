@@ -481,22 +481,23 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(crossOrigin.status).toBe(403);
   });
 
-  it('keeps migrations through 0021 and schema_version 21', async () => {
+  it('keeps migrations through 0024 and schema_version 24', async () => {
     if (!database) throw new Error('test_database_missing');
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(21);
+    expect(Number(state?.schema_version)).toBe(24);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(21);
+    expect(migrations).toHaveLength(24);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
+    expect(migrations.at(-1)).toBe('0024_seller_payments_allocations.sql');
   });
 });
 

@@ -214,10 +214,13 @@ async function runReconciliation(context: Context<any>): Promise<Response> {
   const actor = requireAuthorization(context);
   const body = await bodyRecord(context);
   allowedKeys(body, ['cursor', 'limit']);
+  const limit = body['limit'] === undefined
+    ? {}
+    : { limit: integer(body['limit']) };
   const result = await reconcileSellerPayables(context.env.DB, {
     sellerOrganizationId: organization(context),
     cursor: body['cursor'] === undefined ? null : nullableString(body['cursor']),
-    limit: body['limit'] === undefined ? undefined : integer(body['limit']),
+    ...limit,
   }, command(context, actor));
   return success(context, { reconciliation: result });
 }
@@ -229,14 +232,15 @@ async function conflicts(context: Context<any>): Promise<Response> {
   const url = new URL(context.req.url);
   const after = url.searchParams.get('after');
   const limit = url.searchParams.get('limit');
+  const pagination = {
+    ...(after === null ? {} : { after: integer(Number(after)) }),
+    ...(limit === null ? {} : { limit: integer(Number(limit)) }),
+  };
   return success(context, {
     conflicts: await listSellerPayableReconciliationConflicts(
       context.env.DB,
       organizationId,
-      {
-        after: after === null ? undefined : integer(Number(after)),
-        limit: limit === null ? undefined : integer(Number(limit)),
-      },
+      pagination,
     ),
   });
 }

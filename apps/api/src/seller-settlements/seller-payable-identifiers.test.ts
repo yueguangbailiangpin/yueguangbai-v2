@@ -100,7 +100,7 @@ describe('seller payable opaque identifiers', () => {
 
     expect(value.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).get()?.schema_version).toBe(23);
+    `).get()?.['schema_version']).toBe(23);
     const payables = value.prepare(`
       SELECT id, formal_order_id, source_id, payable_type
       FROM seller_payables
@@ -147,13 +147,13 @@ describe('seller payable opaque identifiers', () => {
 
     value.exec(replayableReconciliationSql());
     expect(value.prepare('SELECT COUNT(*) AS count FROM seller_payables')
-      .get()?.count).toBe(2);
+      .get()?.['count']).toBe(2);
     expect(value.prepare('SELECT COUNT(*) AS count FROM seller_payable_events')
-      .get()?.count).toBe(2);
+      .get()?.['count']).toBe(2);
     expect(value.prepare(`
       SELECT COUNT(*) AS count FROM seller_payable_reconciliation_conflicts
-    `).get()?.count).toBe(1);
-    expect(value.prepare('PRAGMA integrity_check').get()?.integrity_check)
+    `).get()?.['count']).toBe(1);
+    expect(value.prepare('PRAGMA integrity_check').get()?.['integrity_check'])
       .toBe('ok');
     expect(value.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     value.close();

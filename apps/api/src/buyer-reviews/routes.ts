@@ -376,10 +376,9 @@ function withBuyerReviewErrors(handler: (context: Context<any>) => Promise<Respo
     try {
       return await handler(context);
     } catch (error) {
-      const normalized = normalizeBuyerReviewPortalError(error);
-      return context.json(
-        buyerReviewPortalFailure(normalized.code, requestIdFromContext(context)),
-        normalized.status,
+      return buyerReviewPortalFailure(
+        context,
+        normalizeBuyerReviewPortalError(error),
       );
     }
   };

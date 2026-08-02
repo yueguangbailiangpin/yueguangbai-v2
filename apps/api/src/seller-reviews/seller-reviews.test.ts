@@ -327,14 +327,14 @@ describe('Phase 4C3 route and schema guardrails', () => {
     expect(actorSource).toContain("row.organization_status !== 'ACTIVE'");
   });
 
-  it('keeps schema20 and does not add refund, settlement, or profit storage', () => {
+  it('keeps the Wave 11 schema and does not add refund or profit storage', () => {
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(21);
+    expect(migrations).toHaveLength(24);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0021_order_instructions.sql');
+    expect(migrations.at(-1)).toBe('0024_seller_payments_allocations.sql');
 
     const source = [
       'read-model.ts',

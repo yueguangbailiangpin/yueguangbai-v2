@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -26,6 +26,13 @@ function ledgerDatabase(): DatabaseSync {
   // disabled only in this test database.
   database.exec('PRAGMA foreign_keys = OFF;');
   database.exec('DROP TRIGGER trg_seller_payable_source_guard;');
+  database.exec('DROP TRIGGER trg_seller_payment_insert_guard;');
+  database.exec(`
+    INSERT INTO staff_users (
+      id, display_name, status, authorization_version,
+      version, created_at, updated_at, disabled_at
+    ) VALUES ('staff-1', '测试员工', 'ACTIVE', 1, 1, 0, 0, NULL)
+  `);
   return database;
 }
 
@@ -114,7 +121,7 @@ function reverseAllocation(
 function value(
   database: DatabaseSync,
   sql: string,
-  ...bindings: unknown[]
+  ...bindings: SQLInputValue[]
 ): Record<string, unknown> {
   return database.prepare(sql).get(...bindings) as Record<string, unknown>;
 }
@@ -184,7 +191,7 @@ describe('Wave 11 seller ledger database constraints', () => {
       'payable-2',
       'seller-1',
       10,
-    )).toThrow(/seller_allocation_authority_mismatch/u);
+    )).toThrow(/seller_allocation_exceeds_available_balance/u);
     expect(() => allocate(
       database,
       'allocation-over-payable',
@@ -192,7 +199,7 @@ describe('Wave 11 seller ledger database constraints', () => {
       'payable-1',
       'seller-1',
       81,
-    )).toThrow(/seller_allocation_exceeds_payable/u);
+    )).toThrow(/seller_allocation_exceeds_available_balance/u);
     allocate(database, 'allocation-1', 'payment-1', 'payable-1', 'seller-1', 80);
     insertPayable(database, 'payable-3', 'seller-1', 'order-3', 30);
     expect(() => allocate(

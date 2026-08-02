@@ -24,20 +24,28 @@ function database(row: Record<string, unknown>): SqlDatabase {
 function sellerReview(status: SellerReviewPortalDto['status']): SellerReviewPortalDto {
   return {
     review_case_id: 'review-1',
-    formal_order_id: 'formal-order-1',
-    amazon_order_number: '123-1234567-1234567',
+    formal_order: {
+      id: 'formal-order-1',
+      amazon_order_number: '123-1234567-1234567',
+    },
+    store: { id: 'store-1', display_name: 'Store' },
+    marketplace_code: 'JP',
+    asin: 'B000000001',
+    product_name: 'Product',
     review_type: 'TEXT',
     status,
     version: 1,
-    current_evidence_version_no: 1,
-    public_change_reason: null,
+    review_url: null,
     submitted_at: 10,
-    updated_at: 10,
-    decided_at: status === 'APPROVED' ? 20 : null,
-    store: { id: 'store-1', name: 'Store' },
-    product: { id: 'product-1', asin: 'B000000001', product_name: 'Product' },
-    service_fee_cny_fen: '100',
-    files: [],
+    approved_at: status === 'APPROVED' ? 20 : null,
+    evidence: {
+      version_id: 'evidence-1',
+      version_no: 1,
+      submitted_at: 10,
+      files: [],
+    },
+    service_fee_accrued: null,
+    allowed_actions: ['VIEW'],
   };
 }
 
@@ -83,20 +91,28 @@ describe('Wave 11 review URL DTO isolation', () => {
   it('returns only the Buyer current-evidence URL and server timestamp', async () => {
     const review = {
       review_case_id: 'review-1',
-      formal_order_id: 'formal-order-1',
-      amazon_order_number: '123-1234567-1234567',
+      order: {
+        formal_order_id: 'formal-order-1',
+        marketplace: 'JP',
+        amazon_order_number: '123-1234567-1234567',
+        product_name: 'Product',
+        review_type: 'TEXT',
+        confirmed_at: 50,
+        confirmed_business_date: '2026-08-01',
+        status: 'CONFIRMED',
+      },
       review_type: 'TEXT',
       status: 'CHANGES_REQUESTED',
       version: 2,
       current_evidence_version_no: 2,
-      buyer_note: 'new version',
       public_change_reason: 'fix url',
       submitted_at: 100,
       updated_at: 100,
-      decided_at: null,
-      withdrawn_at: null,
-      store: { id: 'store-1', name: 'Store' },
-      product: { id: 'product-1', asin: 'B000000001', product_name: 'Product' },
+      review_url: null,
+      review_approved_at: null,
+      buyer_refund_due: null,
+      file_count: 0,
+      allowed_actions: ['RESUBMIT', 'WITHDRAW'],
     } satisfies BuyerReviewSummaryDto;
     const result = await attachBuyerReviewUrl(
       database({

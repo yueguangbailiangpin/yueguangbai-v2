@@ -267,7 +267,7 @@ describe('Phase 4B4 buyer review API security boundaries', () => {
       expect(routeSource).toContain(route);
     }
     expect(routeSource.match(/customerAuthOriginGuard\(\)/gu)).toHaveLength(4);
-    expect(routeSource.match(/\bsession,\n/gu)?.length).toBeGreaterThanOrEqual(7);
+    expect(routeSource.match(/\bsession\b/gu)?.length).toBeGreaterThanOrEqual(8);
     expect(routeSource).toContain('submitReviewEvidence(');
     expect(routeSource).toContain('withdrawReview(');
     expect(routeSource).toContain('createFileReadIntent(');
@@ -277,13 +277,13 @@ describe('Phase 4B4 buyer review API security boundaries', () => {
     );
   });
 
-  it('keeps schema20 and forbidden domains unchanged', () => {
+  it('keeps the Wave 11 schema and forbidden domains unchanged', () => {
     const root = path.resolve(MODULE_DIRECTORY, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(21);
-    expect(migrations.at(-1)).toBe('0021_order_instructions.sql');
+    expect(migrations).toHaveLength(24);
+    expect(migrations.at(-1)).toBe('0024_seller_payments_allocations.sql');
 
     const source = readFileSync(
       path.join(root, 'apps/api/src/buyer-reviews/read-model.ts'),

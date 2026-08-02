@@ -171,18 +171,12 @@ describe('Wave 11 seller payment command validation', () => {
   });
 
   it('keeps every settlement proof unreadable through legacy authorization', () => {
-    expect(() => sellerSettlementFileAuthorization.assertCanRead(
-      staffActor,
-      proofResource('STAFF', 'staff-1'),
-    )).toThrow('FORBIDDEN');
-    expect(() => sellerSettlementFileAuthorization.assertCanRead(
-      { type: 'BUYER_CUSTOMER', id: 'buyer-1', roles: [] },
-      proofResource('SYSTEM', 'trusted-settlement-importer'),
-    )).toThrow('FORBIDDEN');
-    expect(() => sellerSettlementFileAuthorization.assertCanRead(
-      { type: 'SELLER_MEMBER', id: 'member-1', roles: [] },
-      proofResource('SYSTEM', 'trusted-settlement-importer'),
-    )).toThrow('FORBIDDEN');
+    expect(() => sellerSettlementFileAuthorization.assertCanRead())
+      .toThrow('FORBIDDEN');
+    expect(() => sellerSettlementFileAuthorization.assertCanRead())
+      .toThrow('FORBIDDEN');
+    expect(() => sellerSettlementFileAuthorization.assertCanRead())
+      .toThrow('FORBIDDEN');
   });
 
   it('rejects zero and negative payment amounts before database access', async () => {

@@ -124,7 +124,7 @@ export async function allocateSellerPayment(
         paymentId,
         eventType: 'SELLER_PAYMENT_ALLOCATED',
         actor: command.actor,
-        requestId: command.requestId,
+        requestId: command.requestId ?? null,
         idempotencyKey: acquired.claim.idempotencyKey,
         previousState: {
           payment_version: expectedVersion,
@@ -274,7 +274,7 @@ export async function reverseSellerAllocation(
         paymentId: payment.payment_id,
         eventType: 'SELLER_ALLOCATION_REVERSED',
         actor: command.actor,
-        requestId: command.requestId,
+        requestId: command.requestId ?? null,
         idempotencyKey: acquired.claim.idempotencyKey,
         previousState: {
           allocation_id: allocationId,
@@ -447,7 +447,7 @@ export async function reallocateSellerAllocation(
         paymentId: payment.payment_id,
         eventType: 'SELLER_ALLOCATION_REALLOCATED',
         actor: command.actor,
-        requestId: command.requestId,
+        requestId: command.requestId ?? null,
         idempotencyKey: acquired.claim.idempotencyKey,
         previousState: {
           source_allocation_id: allocationId,

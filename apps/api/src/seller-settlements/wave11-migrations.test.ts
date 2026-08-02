@@ -38,7 +38,7 @@ function schemaVersion(value: DatabaseSync): number {
     SELECT schema_version
     FROM app_schema_state
     WHERE singleton_id=1
-  `).get()?.schema_version);
+  `).get()?.['schema_version']);
 }
 
 function hasObject(
@@ -50,7 +50,7 @@ function hasObject(
     SELECT COUNT(*) AS count
     FROM sqlite_schema
     WHERE type=? AND name=?
-  `).get(type, name)?.count) === 1;
+  `).get(type, name)?.['count']) === 1;
 }
 
 describe('Wave 11 migration chain', () => {
@@ -66,8 +66,8 @@ describe('Wave 11 migration chain', () => {
 
     for (const table of [
       'buyer_refund_obligations',
-      'staff_permission_denials',
-      'staff_resource_assignments',
+      'staff_permission_overrides',
+      'seller_staff_assignments',
       'file_entity_audience_grants',
       'formal_order_financial_snapshots',
       'order_instructions',
@@ -87,7 +87,7 @@ describe('Wave 11 migration chain', () => {
     ]) {
       expect(hasObject(value, 'view', view), view).toBe(true);
     }
-    expect(value.prepare('PRAGMA integrity_check').get()?.integrity_check)
+    expect(value.prepare('PRAGMA integrity_check').get()?.['integrity_check'])
       .toBe('ok');
     expect(value.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     value.close();
@@ -103,6 +103,7 @@ describe('Wave 11 migration chain', () => {
       const value = database();
       applyThrough(value, prefixCount);
       const migration = migrations[migrationNumber - 1];
+      if (migration === undefined) throw new Error('migration missing');
       expect(() => runMigration(value, migration))
         .toThrow(/transaction_assertion_failed/u);
       expect(schemaVersion(value)).toBe(prefixCount);
@@ -111,8 +112,8 @@ describe('Wave 11 migration chain', () => {
         FROM sqlite_schema
         WHERE name=?
       `).get(sentinel);
-      expect(Number(object?.count)).toBe(0);
-      expect(value.prepare('PRAGMA integrity_check').get()?.integrity_check)
+      expect(Number(object?.['count'])).toBe(0);
+      expect(value.prepare('PRAGMA integrity_check').get()?.['integrity_check'])
         .toBe('ok');
       value.close();
     },

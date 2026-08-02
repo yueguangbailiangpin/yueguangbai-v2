@@ -17,9 +17,9 @@ for (const forbidden of [
   'recorded_by_staff_id',
   'reversed_by_staff_id',
 ]) assert(!sellerSettlement.toLowerCase().includes(forbidden));
-assert(sellerReview.includes("review.status !== 'APPROVED'"));
-assert(sellerReview.includes('review_url: null'));
-assert(sellerReview.includes("review_case.status='APPROVED'"));
+assert(sellerReview.includes(
+  "review_url: review.status === 'APPROVED' ? row.review_url : null",
+));
 assert(buyerReview.includes('review_case.buyer_customer_id=?'));
 assert(!buyerReview.includes('version_no=?'));
 assert(!sellerContracts.includes('proof_file_object_id'));

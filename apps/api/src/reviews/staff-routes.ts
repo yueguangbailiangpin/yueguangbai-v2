@@ -37,7 +37,7 @@ async function readCurrent(context: Context<any>): Promise<Response> {
     review: await getStaffReview(
       context.env.DB,
       authorization(context),
-      cleanReviewIdentifier(context.req.param('id')),
+      reviewId(context),
     ),
   });
 }
@@ -47,7 +47,7 @@ async function readHistory(context: Context<any>): Promise<Response> {
     history: await getStaffReviewHistory(
       context.env.DB,
       authorization(context),
-      cleanReviewIdentifier(context.req.param('id')),
+      reviewId(context),
     ),
   });
 }
@@ -57,7 +57,7 @@ async function requestChanges(context: Context<any>): Promise<Response> {
   exactKeys(body, ['expected_version', 'public_reason', 'internal_note'], ['internal_note']);
   const actor = authorization(context);
   const result = await requestReviewChanges(context.env.DB, {
-    reviewCaseId: cleanReviewIdentifier(context.req.param('id')),
+    reviewCaseId: reviewId(context),
     expectedVersion: positiveInteger(body['expected_version']),
     publicReason: text(body['public_reason'], 2000),
     internalNote: optionalText(body['internal_note'], 4000),
@@ -70,7 +70,7 @@ async function reject(context: Context<any>): Promise<Response> {
   exactKeys(body, ['expected_version', 'public_reason', 'internal_note'], ['internal_note']);
   const actor = authorization(context);
   const result = await rejectReview(context.env.DB, {
-    reviewCaseId: cleanReviewIdentifier(context.req.param('id')),
+    reviewCaseId: reviewId(context),
     expectedVersion: positiveInteger(body['expected_version']),
     publicReason: text(body['public_reason'], 2000),
     internalNote: optionalText(body['internal_note'], 4000),
@@ -83,7 +83,7 @@ async function approve(context: Context<any>): Promise<Response> {
   exactKeys(body, ['expected_version', 'internal_note'], ['internal_note']);
   const actor = authorization(context);
   const result = await approveReview(context.env.DB, {
-    reviewCaseId: cleanReviewIdentifier(context.req.param('id')),
+    reviewCaseId: reviewId(context),
     expectedVersion: positiveInteger(body['expected_version']),
     internalNote: optionalText(body['internal_note'], 4000),
   }, command(context, actor));
@@ -97,6 +97,12 @@ function authorization(context: Context<any>): AssignmentStaffAuthorization {
     | undefined;
   if (!value) throw new ReviewError('FORBIDDEN', 403);
   return value;
+}
+
+function reviewId(context: Context<any>): string {
+  const id = context.req.param('id');
+  if (id === undefined) throw new ReviewError('VALIDATION_ERROR', 400);
+  return cleanReviewIdentifier(id);
 }
 
 function command(context: Context<any>, actor: AssignmentStaffAuthorization) {

@@ -65,6 +65,7 @@ describe('Phase 5A review evidence workflow', () => {
         formalOrderId: fixture.formalOrderId,
         expectedVersion: 0,
         reviewType: 'IMAGE',
+        reviewUrl: 'https://example.com/reviews/1',
         evidenceFiles: [{
           fileObjectId: 'review-file-1',
           expectedFileVersion: 3,
@@ -78,13 +79,14 @@ describe('Phase 5A review evidence workflow', () => {
       formal_order_id: fixture.formalOrderId,
       buyer_customer_id: 'buyer-review-1',
       review_type: 'IMAGE',
+      review_url: 'https://example.com/reviews/1',
       status: 'PENDING_REVIEW',
       version: 1,
       current_evidence_version_no: 1,
       replayed: false,
     });
     expect(JSON.stringify(result)).not.toMatch(
-      /object_key|signed_url|https?:\/\//iu,
+      /object_key|signed_url/iu,
     );
 
     const linkId = result.evidence_files[0]?.file_entity_link_id;
@@ -255,6 +257,7 @@ describe('Phase 5A review evidence workflow', () => {
         formalOrderId: fixture.formalOrderId,
         expectedVersion: 2,
         reviewType: 'IMAGE',
+        reviewUrl: 'https://example.com/reviews/7',
         evidenceFiles: [{
           fileObjectId: 'review-file-7',
           expectedFileVersion: 3,
@@ -478,7 +481,7 @@ describe('Phase 5A review evidence workflow', () => {
     });
   });
 
-  it('keeps events immutable and creates no actual payment, settlement, profit, or Amazon automation facts', async () => {
+  it('keeps events immutable and creates no refund, profit, or Amazon automation facts', async () => {
     const fixture = await setupConfirmedOrder();
     seedReviewFile(database!, { suffix: 13, ownerBuyerId: 'buyer-review-1' });
     const submitted = await submitReviewEvidence(
@@ -506,7 +509,6 @@ describe('Phase 5A review evidence workflow', () => {
       WHERE type='table'
         AND name IN (
           'buyer_refunds',
-          'seller_settlements',
           'internal_settlements',
           'review_profits',
           'amazon_accounts',
@@ -517,7 +519,7 @@ describe('Phase 5A review evidence workflow', () => {
     const state = await database!.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(state?.schema_version).toBe(21);
+    expect(state?.schema_version).toBe(24);
   });
 });
 
@@ -526,6 +528,7 @@ function submitInput(formalOrderId: string, fileObjectId: string) {
     formalOrderId,
     expectedVersion: 0,
     reviewType: 'IMAGE' as const,
+    reviewUrl: `https://example.com/reviews/${fileObjectId}`,
     evidenceFiles: [{ fileObjectId, expectedFileVersion: 3 }],
   };
 }

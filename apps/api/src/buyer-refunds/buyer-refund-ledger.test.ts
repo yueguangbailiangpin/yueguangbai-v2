@@ -462,6 +462,7 @@ async function setupDueRefund(): Promise<{
       formalOrderId: formalOrder.formal_order_id,
       expectedVersion: 0,
       reviewType: 'IMAGE',
+      reviewUrl: 'https://example.com/reviews/refund-1',
       evidenceFiles: [{
         fileObjectId: 'review-file-refund-1',
         expectedFileVersion: 3,
