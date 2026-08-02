@@ -77,11 +77,7 @@ export interface BuyerReviewSummaryDto {
   submitted_at: number;
   updated_at: number;
   public_change_reason: string | null;
-  /**
-   * Phase 5A/schema 16 has no authoritative review URL column. The buyer API
-   * deliberately returns null rather than deriving a URL from notes or files.
-   */
-  review_url: null;
+  review_url: string | null;
   review_approved_at: number | null;
   buyer_refund_due: BuyerReviewRefundDueDto | null;
   file_count: number;
@@ -106,6 +102,7 @@ export interface SubmitBuyerReviewRequest {
   formal_order_id: string;
   expected_version: 0;
   review_type: PricingReviewType;
+  review_url: string | null;
   evidence_files: readonly BuyerReviewEvidenceFileRequest[];
   buyer_note?: string | null;
 }
@@ -113,6 +110,7 @@ export interface SubmitBuyerReviewRequest {
 export interface ResubmitBuyerReviewRequest {
   expected_version: number;
   review_type: PricingReviewType;
+  review_url: string | null;
   evidence_files: readonly BuyerReviewEvidenceFileRequest[];
   buyer_note?: string | null;
 }
