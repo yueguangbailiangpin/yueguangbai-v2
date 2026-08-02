@@ -28,10 +28,6 @@ describe('Wave 11 review metadata validation', () => {
   });
 
   it('rejects a reused screenshot inside one submission', () => {
-    expect(() => normalizeReviewFileInputs([
-      { fileObjectId: 'same-file', expectedFileVersion: 1 },
-      { fileObjectId: 'same-file', expectedFileVersion: 1 },
-    ])).toMatchObject;
     try {
       normalizeReviewFileInputs([
         { fileObjectId: 'same-file', expectedFileVersion: 1 },
