@@ -18,8 +18,17 @@ function allFiles(directory: string): string[] {
 }
 
 describe('Phase 3G static source policy', () => {
-  it('publishes no 0022 migration', () => {
-    expect(readdirSync(join(root, 'migrations')).some((name) => /^0022/u.test(name))).toBe(false);
+  it('retains 0021 and allows only the consecutive Wave 11 migrations after it', () => {
+    const migrations = readdirSync(join(root, 'migrations'))
+      .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
+      .sort();
+    expect(migrations.slice(-4)).toEqual([
+      '0021_order_instructions.sql',
+      '0022_review_submission_metadata.sql',
+      '0023_seller_payables.sql',
+      '0024_seller_payments_allocations.sql',
+    ]);
+    expect(migrations.some((name) => /^0025/u.test(name))).toBe(false);
   });
 
   it('does not use public/claimable/unassigned work items', () => {
