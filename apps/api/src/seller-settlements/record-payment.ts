@@ -222,6 +222,7 @@ export async function recordSellerPayment(
           proof_file_count: 1,
           proof_file_object_id: fileObjectId,
           proof_file_entity_link_id: link.result.linkId,
+          proof_owner_actor_type: file.owner_actor_type,
         },
         createdAt: now,
       }),
@@ -297,12 +298,14 @@ function validateProof(
     throw new SellerSettlementError('FILE_NOT_VERIFIED', 409);
   }
   const mime = file.detected_mime ?? file.declared_mime;
+  const ownerAllowed = file.owner_actor_type === 'SYSTEM'
+    || (file.owner_actor_type === 'STAFF'
+      && file.owner_actor_id === staffId);
   if (file.purpose !== 'SELLER_SETTLEMENT_PROOF'
     || file.intent_purpose !== 'SELLER_SETTLEMENT_PROOF'
     || file.visibility !== 'INTERNAL_ONLY'
     || file.intent_visibility !== 'INTERNAL_ONLY'
-    || file.owner_actor_type !== 'STAFF'
-    || file.owner_actor_id !== staffId
+    || !ownerAllowed
     || !['image/jpeg', 'image/png', 'image/webp'].includes(mime)) {
     throw new SellerSettlementError('SELLER_SETTLEMENT_CONFLICT', 409);
   }
