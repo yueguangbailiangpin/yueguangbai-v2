@@ -1,0 +1,52 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+context: |
+  项目：月光白 V2；私有仓库 yueguangbailiangpin/yueguangbai-v2。
+  技术栈：Node.js 24、TypeScript、Cloudflare Workers/Hono、D1 SQLite、R2 文件存储、React/Vite/Tailwind 正式前端。业务时区为 Asia/Shanghai；事实时间一律为 UTC。
+
+  金额与财务：JPY 使用整数日元；CNY 使用整数分；汇率字段为 cny_per_jpy_e8。财务计算必须使用 BigInt，JSON 中的金额使用十进制字符串。禁止 REAL/FLOAT，以及 parseFloat 或 toFixed 参与财务计算。财务事实不可原地修改；更正必须以冲销和新的事实记录完成。
+
+  身份与权限：Buyer、Seller、Staff 身份分离；后端强制数据隔离。Personal DENY 最终优先，绝不信任客户端 Scope。文件授权必须在读取时动态校验。Buyer/Seller DTO 不得泄漏内部财务或 Staff 数据。
+
+  文件流程：upload intent → upload → VERIFIED → entity link → audience grant → short read intent。不得返回 object_key，不得保存永久 URL，不允许客户端指定权威 owner 或 scope。
+
+  开发治理：总控负责冻结规则、创建分支与最终审查；网页开发对话负责主要 Feature 源码；本地 Codex 负责真实 Node/D1/Wrangler/浏览器验收。一个 Feature 同时只能有一个写入者。Integration 仅验证，禁止开发；main 只允许非强制快进；不得直接部署。Migration 必须连续，禁止并行创建相互竞争的 Migration。
+
+  OpenSpec：大模块和行为变化必须创建 OpenSpec Change；纯类型、Fixture 和版本断言修复可不创建。OpenSpec 只记录长期有效规则和未来变化，不伪造过去模块的历史 Spec。Spec 与代码冲突时不得偷偷修改 Spec 掩盖问题，必须交由总控判断是代码错误还是规则变化。
+
+  Ponytail：全局默认 off，正式开发期间保持 off；仅在测试和 OpenSpec 一致性检查完成后进行只读 review。不得自动修改代码，不得删除纵深防御，也不得简化 Migration、权限、账本、Audit、Outbox、幂等或文件授权。
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+rules:
+  proposal:
+    - 明确业务价值、范围和非范围。
+    - 明确是否需要 Migration。
+    - 明确权限、隐私影响、风险和回滚边界。
+  specs:
+    - 每条 Requirement 必须可测试，并使用明确 Scenario。
+    - 明确 Buyer、Seller、Staff 的可见性差异。
+    - 明确金额、时区、状态机和错误；禁止使用“等”“合理处理”等模糊描述。
+  design:
+    - 说明数据库事实来源、事务边界和权限边界。
+    - 说明幂等、Audit、Outbox、文件策略、性能和分页。
+    - 说明被拒绝的替代方案及其原因。
+  tasks:
+    - 按 Migration、Contracts、Domain、API、Tests、Verifier 分组。
+    - 每项必须可验证；不得用“完成整个模块”作为单一 Task。
+    - 必须包含回归测试、本地 D1 验收与 Buyer/Seller DTO 隔离检查。
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+operations:
+  apply:
+    guidance:
+      - 本地 OpenSpec apply 不是本项目的主要业务代码开发入口；主要 Feature 源码由网页开发对话在冻结 Spec 后写入。
+      - 不得将计划产物当作代码正确性证明；实现仍须通过完整本地门禁。
+  archive:
+    guidance:
+      - 仅在总控确认完整验收、实现一致性审查和必要修复完成后归档。

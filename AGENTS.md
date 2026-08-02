@@ -142,3 +142,10 @@ GITHUB_REMOTE_TOUCHED=no
 OPEN_RISKS=
 NEXT_SAFE_STEP=
 ```
+
+## 10. OpenSpec 治理入口
+
+- 变更规划遵循 `openspec/config.yaml` 与 `docs/AI_ENGINEERING_GOVERNANCE.md`。
+- 总控对话是业务规则的最终决策者；Spec 与代码冲突必须交回总控判断。
+- 一个 Feature 同时只能有一个源码写入者；Integration 只验证，不开发。
+- Ponytail 默认关闭，只能在完整验收后进行只读审查，绝不自动修改代码。
