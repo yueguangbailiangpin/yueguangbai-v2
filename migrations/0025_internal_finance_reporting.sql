@@ -248,22 +248,29 @@ base AS (
     snapshot.service_fee_cny_fen,
     COALESCE(review.review_case_count,0) AS review_case_count,
     COALESCE(review.approved_case_count,0) AS approved_case_count,
-    COALESCE(review.organization_mismatch_count,0) AS review_organization_mismatch_count,
+    COALESCE(review.organization_mismatch_count,0)
+      AS review_organization_mismatch_count,
     COALESCE(approval.approval_event_count,0) AS approval_event_count,
     COALESCE(payable.principal_count,0) AS principal_count,
     COALESCE(payable.service_fee_count,0) AS service_fee_count,
     payable.principal_organization_id,
     payable.service_fee_organization_id,
     COALESCE(payable.principal_due,0) AS seller_principal_due_cny_fen,
-    COALESCE(payable.principal_collected,0) AS seller_principal_collected_cny_fen,
-    COALESCE(payable.principal_outstanding,0) AS seller_principal_outstanding_cny_fen,
-    COALESCE(payable.service_fee_due,0) AS seller_service_fee_due_cny_fen,
-    COALESCE(payable.service_fee_collected,0) AS seller_service_fee_collected_cny_fen,
-    COALESCE(payable.service_fee_outstanding,0) AS seller_service_fee_outstanding_cny_fen,
+    COALESCE(payable.principal_collected,0)
+      AS seller_principal_collected_cny_fen,
+    COALESCE(payable.principal_outstanding,0)
+      AS seller_principal_outstanding_cny_fen,
+    COALESCE(payable.service_fee_due,0)
+      AS seller_service_fee_due_cny_fen,
+    COALESCE(payable.service_fee_collected,0)
+      AS seller_service_fee_collected_cny_fen,
+    COALESCE(payable.service_fee_outstanding,0)
+      AS seller_service_fee_outstanding_cny_fen,
     COALESCE(refund.refund_count,0) AS refund_count,
     COALESCE(refund.refund_due,0) AS buyer_refund_due_cny_fen,
     COALESCE(refund.refund_net_paid,0) AS buyer_refund_net_paid_cny_fen,
-    COALESCE(allocation.seller_attributed_cash,0) AS seller_attributed_cash_cny_fen
+    COALESCE(allocation.seller_attributed_cash,0)
+      AS seller_attributed_cash_cny_fen
   FROM formal_orders formal_order
   LEFT JOIN snapshot_facts snapshot ON snapshot.formal_order_id=formal_order.id
   LEFT JOIN review_facts review ON review.formal_order_id=formal_order.id
@@ -283,12 +290,12 @@ classified AS (
     CASE
       WHEN snapshot_count=0 THEN 'MISSING_FINANCIAL_SNAPSHOT'
       WHEN snapshot_count>1 THEN 'MULTIPLE_FINANCIAL_SNAPSHOTS'
-      WHEN principal_count=0 THEN 'MISSING_PRINCIPAL_PAYABLE'
       WHEN principal_count>1 OR service_fee_count>1 OR refund_count>1
         OR review_case_count>1 THEN 'LEDGER_CONFLICT'
       WHEN approved_case_count=0 AND approval_event_count=0 THEN 'PROJECTED_ONLY'
       WHEN approved_case_count<>1 OR approval_event_count<>1
         THEN 'REVIEW_APPROVAL_CONFLICT'
+      WHEN principal_count=0 THEN 'MISSING_PRINCIPAL_PAYABLE'
       WHEN service_fee_count=0 THEN 'MISSING_SERVICE_FEE_PAYABLE'
       WHEN refund_count=0 THEN 'MISSING_BUYER_REFUND_OBLIGATION'
       WHEN review_organization_mismatch_count>0
@@ -308,32 +315,49 @@ SELECT
   store_id, product_id, asin, product_name, review_type,
   confirmed_at, confirmed_business_date,
   review_approved_at, review_approved_business_date,
-  last_cash_business_date, final_paid_jpy,
+  last_cash_business_date, CAST(final_paid_jpy AS TEXT) AS final_paid_jpy,
   snapshot_id AS financial_snapshot_id,
-  buyer_self_pay_bps, buyer_self_pay_jpy,
-  buyer_expected_principal_cny_fen,
-  seller_expected_principal_cny_fen,
-  service_fee_cny_fen AS service_fee_snapshot_cny_fen,
-  projected_gross_profit_cny_fen,
-  CASE WHEN finance_status='COMPLETED' THEN
+  buyer_self_pay_bps,
+  CASE WHEN buyer_self_pay_jpy IS NULL THEN NULL
+    ELSE CAST(buyer_self_pay_jpy AS TEXT) END AS buyer_self_pay_jpy,
+  CASE WHEN buyer_expected_principal_cny_fen IS NULL THEN NULL
+    ELSE CAST(buyer_expected_principal_cny_fen AS TEXT)
+    END AS buyer_expected_principal_cny_fen,
+  CASE WHEN seller_expected_principal_cny_fen IS NULL THEN NULL
+    ELSE CAST(seller_expected_principal_cny_fen AS TEXT)
+    END AS seller_expected_principal_cny_fen,
+  CASE WHEN service_fee_cny_fen IS NULL THEN NULL
+    ELSE CAST(service_fee_cny_fen AS TEXT)
+    END AS service_fee_snapshot_cny_fen,
+  CASE WHEN projected_gross_profit_cny_fen IS NULL THEN NULL
+    ELSE CAST(projected_gross_profit_cny_fen AS TEXT)
+    END AS projected_gross_profit_cny_fen,
+  CASE WHEN finance_status='COMPLETED' THEN CAST(
     seller_principal_due_cny_fen + seller_service_fee_due_cny_fen
-      - buyer_refund_due_cny_fen
+      - buyer_refund_due_cny_fen AS TEXT)
     ELSE NULL END AS completed_gross_profit_cny_fen,
-  seller_principal_due_cny_fen,
-  seller_principal_collected_cny_fen,
-  seller_principal_outstanding_cny_fen,
-  seller_service_fee_due_cny_fen,
-  seller_service_fee_collected_cny_fen,
-  seller_service_fee_outstanding_cny_fen,
-  buyer_refund_due_cny_fen,
-  buyer_refund_net_paid_cny_fen,
-  CASE WHEN buyer_refund_due_cny_fen>buyer_refund_net_paid_cny_fen
+  CAST(seller_principal_due_cny_fen AS TEXT)
+    AS seller_principal_due_cny_fen,
+  CAST(seller_principal_collected_cny_fen AS TEXT)
+    AS seller_principal_collected_cny_fen,
+  CAST(seller_principal_outstanding_cny_fen AS TEXT)
+    AS seller_principal_outstanding_cny_fen,
+  CAST(seller_service_fee_due_cny_fen AS TEXT)
+    AS seller_service_fee_due_cny_fen,
+  CAST(seller_service_fee_collected_cny_fen AS TEXT)
+    AS seller_service_fee_collected_cny_fen,
+  CAST(seller_service_fee_outstanding_cny_fen AS TEXT)
+    AS seller_service_fee_outstanding_cny_fen,
+  CAST(buyer_refund_due_cny_fen AS TEXT) AS buyer_refund_due_cny_fen,
+  CAST(buyer_refund_net_paid_cny_fen AS TEXT)
+    AS buyer_refund_net_paid_cny_fen,
+  CAST(CASE WHEN buyer_refund_due_cny_fen>buyer_refund_net_paid_cny_fen
     THEN buyer_refund_due_cny_fen-buyer_refund_net_paid_cny_fen
-    ELSE 0 END AS buyer_refund_outstanding_cny_fen,
-  CASE WHEN buyer_refund_net_paid_cny_fen>buyer_refund_due_cny_fen
+    ELSE 0 END AS TEXT) AS buyer_refund_outstanding_cny_fen,
+  CAST(CASE WHEN buyer_refund_net_paid_cny_fen>buyer_refund_due_cny_fen
     THEN buyer_refund_net_paid_cny_fen-buyer_refund_due_cny_fen
-    ELSE 0 END AS buyer_refund_overpaid_cny_fen,
-  seller_attributed_cash_cny_fen-buyer_refund_net_paid_cny_fen
+    ELSE 0 END AS TEXT) AS buyer_refund_overpaid_cny_fen,
+  CAST(seller_attributed_cash_cny_fen-buyer_refund_net_paid_cny_fen AS TEXT)
     AS attributed_cash_net_cny_fen,
   finance_status
 FROM classified;
