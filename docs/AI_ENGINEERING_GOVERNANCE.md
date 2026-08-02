@@ -15,6 +15,14 @@
 - Buyer、Seller、Staff 分离，后端实施数据隔离与字段投影；Personal DENY 最终优先。
 - 文件必须经过 upload intent、upload、VERIFIED、entity link、audience grant、short read intent；不得暴露 `object_key` 或永久 URL。
 
+### Staff 身份现状
+
+当前 Staff 使用独立身份、可信后端会话和权限模型，不使用旧共享角色链接。飞书是大模块 6 才可能接入的员工入口、通知渠道或身份源，不是当前唯一权威身份系统，也不是 D1 业务事实的替代品。未经独立 OpenSpec Change 和总控批准，不得将正式前端登录流程或 Staff Auth 强制绑定飞书。
+
+### 财务权限边界
+
+内部公司财务与 Seller 结算视图不是同一个权限域；`SELLER_SETTLEMENT_VIEW` 不等于 `FINANCIAL_VIEW`，Seller Organization OWNER 也不等于 system owner。内部公司财务查看必须同时满足 Active Staff、system owner role 和 `FINANCIAL_VIEW`，且 Personal DENY 最终优先；内部导出还必须具有 `FINANCIAL_EXPORT`。Seller 不得读取内部利润、Buyer Refund 成本、公司现金流、内部财务异常或内部财务导出。未来卖家端可能存在安全导出，但必须通过单独 Change、Contract、Permission 和字段投影，不得复用内部公司财务 API 或 `FINANCIAL_EXPORT`。
+
 ## 3. 角色分工
 
 总控对话决定规则、分支、冻结与采纳；网页开发对话是已冻结 Feature 的主要源码写入者；本地 Codex 负责真实本地工具验收和治理维护；Ponytail 只提供受限的只读审查意见。
@@ -44,13 +52,19 @@
 
 ## 8. OpenSpec 使用流程
 
-本项目当前使用 Core profile，常用入口为 `/opsx:explore`、`/opsx:propose`、`/opsx:sync`、`/opsx:archive`。Core 虽生成 apply，但本地 `/opsx:apply` 不是主要业务代码开发入口。OpenSpec 记录未来变化与长期有效规则，不为 0001–0026 或既有 Wave 伪造历史 Change。
+本项目当前使用 Custom profile（delivery 为 both），工作流包含 propose、explore、new、continue、apply、update、ff、sync、archive 和 verify。开发前使用 `/opsx:explore` 或 `/opsx:propose`；本地 `/opsx:apply` 不是主要业务代码开发入口。OpenSpec 记录未来变化与长期有效规则，不为 0001–0026 或既有 Wave 伪造历史 Change。
 
 正式流程固定为：
 
 > 总控选择大模块 → 创建远程 Feature → 本地 Codex 只创建 OpenSpec 规划文件 → 总控审查并冻结 Spec → 网页开发对话成为唯一源码写入者 → 网页完成远程源码 → 总控静态审查 → 本地 Codex 真实验收 → OpenSpec 结构验证 → OpenSpec 实现一致性审查 → Ponytail 只读审查 → 总控决定是否采纳建议 → 必要修复 → 再次完整验收 → OpenSpec sync/archive → 干净 Integration → main 非强制快进
 
 Spec 与代码冲突时，不得静默修改 Spec 来掩盖问题；必须交回总控判定。
+
+### Verify、sync 与 archive 的实际执行
+
+开发完成并通过本地门禁后，执行 `/opsx:verify`。当前 OpenSpec 1.7.0 为 Codex 生成的实际技能名为 `$openspec-verify-change`，其语义等同于上述 Verify 流程。Verify 结果符合 Spec 时，才可继续 Ponytail 只读审查；如实现不符合 Spec，必须停止晋级，不得直接改 Spec 掩盖代码错误。总控判断应修复代码还是发生正式规则变化；如规则正式变化，必须先更新 Change Artifact，再重新 Verify。
+
+收尾依次执行 `/opsx:sync` 和 `/opsx:archive`（当前生成的实际技能名分别为 `$openspec-sync-specs` 与 `$openspec-archive-change`）。只有完成重新 Verify、必要修复和总控确认后，才可 sync/archive。
 
 ## 9. Ponytail 使用流程
 

@@ -81,13 +81,18 @@ docs/migration/V2_LEGACY_CODE_REUSE.md
 
 ## 6. 身份和权限硬约束
 
-- 员工使用飞书身份，不使用旧共享角色链接。
+- Staff 使用独立 Staff 身份、可信后端会话和权限模型，不使用旧共享角色链接。
+- 飞书属于后续可接入的员工入口、通知渠道或身份源；它不是当前唯一的 Staff 身份系统，也不是业务事实数据库。
+- 未经独立 OpenSpec Change 和总控批准，不得强制将 Staff Auth 绑定为飞书。
 - 一个员工可同时拥有多个角色。
 - 最终权限：
   `(角色默认权限并集 + 个人授权 + 负责人权限包) - 个人禁用 - 系统硬禁止`
 - 权限之后仍必须检查组织、部门、团队、客户、店铺、资源归属和字段投影。
 - 无权访问其他客户资源时统一返回 404，避免信息泄露。
-- 只有卖家组织 OWNER 可导出财务。
+- 内部公司财务查看仅允许 Active Staff、system owner role 和 `FINANCIAL_VIEW`，且 Personal DENY 最终优先。
+- 内部公司财务导出还必须具有 `FINANCIAL_EXPORT`，且 Personal DENY 最终优先。
+- Seller Organization OWNER 不得因此读取内部利润、Buyer Refund 成本、公司现金流、内部财务异常、内部财务导出或其他 Seller 数据。
+- 未来卖家侧导出必须通过独立 OpenSpec Change，使用单独的 Seller-safe Contract 和 Permission，只输出该 Seller Organization 被允许的字段；不得复用内部公司财务 API 或 `FINANCIAL_EXPORT`，也不得输出内部利润或 Buyer Refund 成本。
 - 买家隐私、买家返款和内部利润不得出现在卖家可见 DTO 中。
 
 ## 7. API 和并发硬约束
