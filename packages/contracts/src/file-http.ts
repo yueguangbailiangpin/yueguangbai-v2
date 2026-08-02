@@ -20,11 +20,6 @@ export const FILE_HTTP_PURPOSE_ROUTES = Object.freeze({
     purpose: 'PRODUCT_APPLICATION_IMAGE',
     visibility: 'SELLER_VISIBLE',
   },
-  staffOrderEvidenceInternalCommunication: {
-    path: '/api/staff/file-uploads/order-evidence-internal-communication/intents',
-    purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
-    visibility: 'INTERNAL_ONLY',
-  },
   staffBuyerRefundProof: {
     path: '/api/staff/file-uploads/buyer-refund-proofs/intents',
     purpose: 'BUYER_REFUND_PROOF',
@@ -40,6 +35,16 @@ export const FILE_HTTP_PURPOSE_ROUTES = Object.freeze({
   purpose: FilePurpose;
   visibility: FileVisibility;
 }>);
+
+/**
+ * ORDER_EVIDENCE_INTERNAL_COMMUNICATION remains a global FilePurpose for
+ * historical compatibility, but its Wave 13 HTTP intent route is formally
+ * deferred to Wave 15 because no entity-specific consume/link/audience command
+ * is frozen yet.
+ */
+export const WAVE13_DEFERRED_FILE_PURPOSES = Object.freeze([
+  'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+] as const satisfies readonly FilePurpose[]);
 
 export interface FileHttpUploadDescriptor {
   client_file_name: string;

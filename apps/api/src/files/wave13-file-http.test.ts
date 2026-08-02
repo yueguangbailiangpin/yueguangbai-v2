@@ -5,14 +5,15 @@ import {
   API_ERROR_HTTP_STATUS,
   FILE_HTTP_LIFECYCLE_PATHS,
   FILE_HTTP_PURPOSE_ROUTES,
+  WAVE13_DEFERRED_FILE_PURPOSES,
 } from '@ygb/contracts';
 
 const root = path.resolve(process.cwd());
 const source = (relative: string) => readFileSync(path.join(root, relative), 'utf8');
 
 describe('Wave 13 File HTTP contract and architecture', () => {
-  it('freezes six purpose-bound intent routes and concrete lifecycle routes', () => {
-    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(6);
+  it('freezes five active purpose-bound intent routes', () => {
+    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(5);
     expect(FILE_HTTP_PURPOSE_ROUTES).toMatchObject({
       buyerOrderEvidence: {
         purpose: 'ORDER_EVIDENCE',
@@ -30,11 +31,36 @@ describe('Wave 13 File HTTP contract and architecture', () => {
         purpose: 'BUYER_REFUND_PROOF',
         visibility: 'INTERNAL_ONLY',
       },
+      staffSellerSettlementProof: {
+        purpose: 'SELLER_SETTLEMENT_PROOF',
+        visibility: 'INTERNAL_ONLY',
+      },
     });
+    expect(WAVE13_DEFERRED_FILE_PURPOSES).toEqual([
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+    ]);
+    expect(JSON.stringify(FILE_HTTP_PURPOSE_ROUTES)).not.toContain(
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+    );
     for (const route of Object.values(FILE_HTTP_LIFECYCLE_PATHS)) {
       expect(route).toMatch(/^\/api\/(buyer-portal|seller-portal|staff)\//u);
       expect(route).not.toContain('{buyer-portal|seller-portal|staff}');
     }
+  });
+
+  it('keeps the historical global purpose but does not register a Wave 13 endpoint', () => {
+    const storage = source('packages/contracts/src/file-storage.ts');
+    const routes = source('apps/api/src/files/routes.ts');
+    expect(storage).toContain("'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'");
+    expect(routes).not.toContain(
+      'staffOrderEvidenceInternalCommunication',
+    );
+    expect(routes).not.toContain(
+      "['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'INTERNAL_ONLY']",
+    );
+    expect(routes).not.toContain(
+      '/api/staff/file-uploads/order-evidence-internal-communication/intents',
+    );
   });
 
   it('keeps File authority out of public request contracts and DTOs', () => {

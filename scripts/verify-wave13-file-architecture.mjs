@@ -7,6 +7,7 @@ import {
 } from './wave13-verifier-lib.mjs';
 
 const contract = read('packages/contracts/src/file-http.ts');
+const globalPurposes = read('packages/contracts/src/file-storage.ts');
 const routes = read('apps/api/src/files/routes.ts');
 const authorization = read('apps/api/src/files/route-authorization.ts');
 const errors = read('packages/contracts/src/errors.ts');
@@ -15,10 +16,29 @@ for (const purpose of [
   'ORDER_EVIDENCE',
   'REVIEW_EVIDENCE',
   'PRODUCT_APPLICATION_IMAGE',
-  'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
   'BUYER_REFUND_PROOF',
   'SELLER_SETTLEMENT_PROOF',
-]) assertContains(contract, purpose, 'File HTTP purpose contract');
+]) assertContains(contract, purpose, 'active File HTTP purpose contract');
+assertContains(
+  globalPurposes,
+  'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+  'historical global FilePurpose',
+);
+assertNotContains(
+  routes,
+  'staffOrderEvidenceInternalCommunication',
+  'Wave 13 active route registration',
+);
+assertNotContains(
+  routes,
+  "['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'INTERNAL_ONLY']",
+  'Wave 13 Staff upload mapping',
+);
+assertNotContains(
+  contract,
+  '/api/staff/file-uploads/order-evidence-internal-communication/intents',
+  'Wave 13 File HTTP path contract',
+);
 for (const authorityField of [
   'purpose?:', 'visibility?:', 'owner_id:', 'staff_id:',
   'buyer_id:', 'seller_id:', 'object_key:', 'permanent_url:',
@@ -40,7 +60,8 @@ assertContains(routes, "keys.length !== 1 || keys[0] !== 'file'", 'multipart par
 assert(!/context\.json\([\s\S]{0,300}object_key/u.test(routes),
   'File route response exposes object_key');
 report('wave13-file-architecture', {
-  purpose_routes: 6,
+  active_purpose_routes: 5,
+  deferred_to_wave15: ['ORDER_EVIDENCE_INTERNAL_COMMUNICATION'],
   generic_link_routes: 0,
   generic_grant_routes: 0,
   r2_authority_fields: 0,

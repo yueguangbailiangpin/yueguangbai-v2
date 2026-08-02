@@ -12,20 +12,20 @@ import {
   type StaffDataScope,
 } from '@ygb/contracts';
 import type { Context, Hono, MiddlewareHandler } from 'hono';
+import type { CustomerSessionContext } from '../customer-auth/authenticate-customer';
 import {
   customerSessionMiddleware,
   requireCustomerSessionFromContext,
 } from '../middleware/customer-auth';
-import type { CustomerSessionContext } from '../customer-auth/authenticate-customer';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
   completeFileUploadIntent,
+  consumeFileReadIntent,
   createFileReadIntent,
   createFileUploadIntent,
   FileStorageError,
   normalizeFileStorageError,
   uploadFileObject,
-  consumeFileReadIntent,
 } from './index';
 import { RouteBoundFileAuthorizationService } from './route-authorization';
 
@@ -37,7 +37,6 @@ const SELLER_UPLOADS = new Map<FilePurpose, FileVisibility>([
   ['PRODUCT_APPLICATION_IMAGE', 'SELLER_VISIBLE'],
 ]);
 const STAFF_UPLOADS = new Map<FilePurpose, FileVisibility>([
-  ['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'INTERNAL_ONLY'],
   ['BUYER_REFUND_PROOF', 'INTERNAL_ONLY'],
   ['SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY'],
 ]);
@@ -70,14 +69,6 @@ export function registerFileHttpRoutes(app: Hono<any>): void {
     'SELLER',
     'PRODUCT_APPLICATION_IMAGE',
     'SELLER_VISIBLE',
-  );
-  registerIntentRoute(
-    app,
-    FILE_HTTP_PURPOSE_ROUTES.staffOrderEvidenceInternalCommunication.path,
-    undefined,
-    'STAFF',
-    'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
-    'INTERNAL_ONLY',
   );
   registerIntentRoute(
     app,
@@ -115,11 +106,7 @@ function registerIntentRoute(
     const result = await createFileUploadIntent(
       context.env.DB,
       authorization(context, authority),
-      {
-        purpose,
-        visibility,
-        files: body.files,
-      },
+      { purpose, visibility, files: body.files },
       {
         actor: authority.actor,
         idempotencyKey: requireIdempotencyKey(context),
@@ -187,14 +174,13 @@ function registerLifecycleRoutes(
   const complete = withFileErrors(async (context) => {
     const authority = await resolveRouteAuthority(context, domain);
     const body = await readExactObject(context, new Set(['expected_version']));
-    const expectedVersion = positiveSafeInteger(body.expected_version);
     const result = await completeFileUploadIntent(
       context.env.DB,
       requireObjectStorage(context),
       authorization(context, authority),
       {
         uploadIntentId: requiredIdentifier(context.req.param('id')),
-        expectedVersion,
+        expectedVersion: positiveSafeInteger(body.expected_version),
       },
       {
         actor: authority.actor,
@@ -231,10 +217,7 @@ function registerLifecycleRoutes(
       authorization(context, authority),
       {
         fileObjectId,
-        fileEntityLinkId: await resolveFileEntityLinkId(
-          context,
-          fileObjectId,
-        ),
+        fileEntityLinkId: await resolveFileEntityLinkId(context, fileObjectId),
         expectedFileVersion: positiveSafeInteger(body.expected_file_version),
       },
       {
@@ -269,10 +252,7 @@ function registerLifecycleRoutes(
           512,
         ),
       },
-      {
-        actor: authority.actor,
-        principal: authority.principal,
-      },
+      { actor: authority.actor, principal: authority.principal },
     );
     return new Response(result.bytes, {
       status: 200,
@@ -311,17 +291,14 @@ async function resolveRouteAuthority(
     const scope = context.get('staffDataScope') as StaffDataScope | undefined;
     if (!staff || !scope) throw new FileStorageError('FORBIDDEN', 403);
     return {
-      actor: {
-        type: 'STAFF',
-        id: staff.staffId,
-        roles: [...staff.roles],
-      },
+      actor: { type: 'STAFF', id: staff.staffId, roles: [...staff.roles] },
       principal: { type: 'STAFF_SESSION', staffId: staff.staffId },
       allowedUploads: STAFF_UPLOADS,
       staffAuthorization: staff,
       staffDataScope: scope,
     };
   }
+
   const session = requireCustomerSessionFromContext(context);
   if (domain === 'BUYER') {
     if (session.accountType !== 'BUYER') denyNotFound();
@@ -336,6 +313,7 @@ async function resolveRouteAuthority(
       allowedUploads: BUYER_UPLOADS,
     };
   }
+
   if (session.accountType !== 'SELLER_MEMBER') denyNotFound();
   const row = await context.env.DB.prepare(`
     SELECT member.id
@@ -527,7 +505,9 @@ function toApiCode(code: FileStorageError['code']): ApiErrorCode {
 }
 
 function requireObjectStorage(context: Context<any>): ObjectStorageAdapter {
-  const value = context.env.FILE_OBJECT_STORAGE as Partial<ObjectStorageAdapter> | undefined;
+  const value = context.env.FILE_OBJECT_STORAGE as
+    | Partial<ObjectStorageAdapter>
+    | undefined;
   if (!value
     || typeof value.putObject !== 'function'
     || typeof value.headObject !== 'function'
