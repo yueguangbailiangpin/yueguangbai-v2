@@ -17,7 +17,8 @@ export class ProductVersionFieldsError extends Error {
       | 'invalid_buyer_visible_notes'
       | 'invalid_internal_notes'
       | 'invalid_ordering_guide_expected_amount_jpy'
-      | 'invalid_color_spec_mode',
+      | 'invalid_color_spec_mode'
+      | 'invalid_default_buyer_self_pay_bps',
   ) {
     super(reason);
     this.name = 'ProductVersionFieldsError';
@@ -82,6 +83,14 @@ export function normalizeProductVersionFields(
       'invalid_ordering_guide_expected_amount_jpy',
     );
   }
+  if (input.defaultBuyerSelfPayBps !== undefined
+    && (!Number.isSafeInteger(input.defaultBuyerSelfPayBps)
+      || input.defaultBuyerSelfPayBps < 0
+      || input.defaultBuyerSelfPayBps > 10_000)) {
+    throw new ProductVersionFieldsError(
+      'invalid_default_buyer_self_pay_bps',
+    );
+  }
   if (!isProductColorSpecMode(input.colorSpecMode)) {
     throw new ProductVersionFieldsError(
       'invalid_color_spec_mode',
@@ -91,6 +100,9 @@ export function normalizeProductVersionFields(
     ...descriptive,
     orderingGuideExpectedAmountJpy,
     colorSpecMode: input.colorSpecMode,
+    ...(input.defaultBuyerSelfPayBps === undefined
+      ? {}
+      : { defaultBuyerSelfPayBps: input.defaultBuyerSelfPayBps }),
   };
 }
 

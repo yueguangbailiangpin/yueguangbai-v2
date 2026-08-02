@@ -18,7 +18,6 @@ export interface BuyerOrderEvidenceReservationDto {
   reservation_id: string;
   demand_id: string;
   marketplace_code: 'JP';
-  asin: string;
   product_name: string;
   store_display_name: string;
   review_type: DemandTaskType;
@@ -48,6 +47,11 @@ export interface BuyerOrderEvidenceDto {
   marketplace: 'JP';
   amazon_order_number_display: string;
   final_paid_jpy: number;
+  buyer_self_pay_bps: number;
+  buyer_self_pay_jpy: number;
+  buyer_refundable_principal_jpy: number;
+  price_mismatch: boolean;
+  price_difference_jpy: number;
   status: OrderEvidenceStatus;
   version: number;
   evidence_version_no: number;

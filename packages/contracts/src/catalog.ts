@@ -34,4 +34,5 @@ export interface ProductVersionFields
 extends ProductDescriptiveFields {
   orderingGuideExpectedAmountJpy: number;
   colorSpecMode: ProductColorSpecMode;
+  defaultBuyerSelfPayBps?: number;
 }

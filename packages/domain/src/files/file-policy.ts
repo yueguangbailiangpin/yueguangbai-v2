@@ -38,11 +38,23 @@ const PURPOSE_POLICIES: Readonly<Record<FilePurpose, FilePurposePolicy>> =
       allowedMimes: IMAGE_MIMES,
       entityType: 'PRODUCT_VERSION',
     }),
+    ORDER_INSTRUCTION_KEYWORD_IMAGE: Object.freeze({
+      maximumFileCount: 1,
+      maximumByteSize: 10 * MEBIBYTE,
+      allowedMimes: IMAGE_MIMES,
+      entityType: 'ORDER_INSTRUCTION_VERSION',
+    }),
     ORDER_EVIDENCE: Object.freeze({
-      maximumFileCount: 10,
+      maximumFileCount: 1,
       maximumByteSize: 20 * MEBIBYTE,
-      allowedMimes: EVIDENCE_MIMES,
+      allowedMimes: IMAGE_MIMES,
       entityType: 'ORDER',
+    }),
+    ORDER_EVIDENCE_INTERNAL_COMMUNICATION: Object.freeze({
+      maximumFileCount: 1,
+      maximumByteSize: 20 * MEBIBYTE,
+      allowedMimes: IMAGE_MIMES,
+      entityType: 'ORDER_EVIDENCE_SUBMISSION',
     }),
     REVIEW_EVIDENCE: Object.freeze({
       maximumFileCount: 10,

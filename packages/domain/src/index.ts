@@ -12,6 +12,7 @@ export * from './money/fixed-decimal';
 export * from './numbering/customer-number';
 export * from './pricing/business-date';
 export * from './pricing/fixed-point';
+export * from './order-instructions';
 export * from './security/customer-password';
 export * from './security/customer-session';
 export * from './serialization/canonical-json';

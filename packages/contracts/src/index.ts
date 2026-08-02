@@ -14,6 +14,7 @@ export * from './file-storage';
 export * from './formal-order';
 export * from './http-auth';
 export * from './order-evidence';
+export * from './order-instruction';
 export * from './pricing';
 export * from './product-application';
 export * from './reservation';

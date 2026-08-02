@@ -39,6 +39,11 @@ export interface FormalOrderFinancialSnapshotProjection {
   service_fee_effective_from: number;
   service_fee_confirmed_at: number;
   service_fee_cny_fen: FixedIntegerString;
+  buyer_self_pay_bps: number;
+  buyer_self_pay_jpy: FixedIntegerString;
+  buyer_refundable_principal_jpy: FixedIntegerString;
+  buyer_gross_principal_cny_fen: FixedIntegerString;
+  buyer_self_pay_contribution_cny_fen: FixedIntegerString;
   buyer_expected_principal_cny_fen: FixedIntegerString;
   seller_expected_principal_cny_fen: FixedIntegerString;
   rounding_rule: FormalOrderRoundingRule;

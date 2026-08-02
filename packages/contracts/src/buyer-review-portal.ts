@@ -31,7 +31,6 @@ export interface BuyerReviewOrderSummaryDto {
   formal_order_id: string;
   marketplace: MarketplaceCode;
   amazon_order_number: string;
-  asin: string;
   product_name: string;
   review_type: PricingReviewType;
   confirmed_at: number;

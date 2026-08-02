@@ -1,5 +1,6 @@
 import type { DemandTaskType } from './demand';
 import type { ReservationStatus } from './reservation';
+import type { FixedIntegerString } from './pricing';
 
 export interface BuyerPortalMeDto {
   buyer: {
@@ -15,8 +16,13 @@ export interface BuyerPortalMeDto {
 
 export interface BuyerPortalDemandDto {
   demand_id: string;
+  demand_version: number;
   marketplace_code: 'JP';
   product_name: string;
+  reference_order_amount_jpy: FixedIntegerString;
+  buyer_self_pay_bps: number;
+  estimated_buyer_self_pay_jpy: FixedIntegerString;
+  estimated_refundable_principal_jpy: FixedIntegerString;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;
@@ -29,8 +35,13 @@ export interface BuyerPortalDemandDto {
 
 export interface BuyerPortalReservationDemandDto {
   demand_id: string;
+  demand_version: number;
   marketplace_code: 'JP';
   product_name: string;
+  reference_order_amount_jpy: FixedIntegerString;
+  buyer_self_pay_bps: number;
+  estimated_buyer_self_pay_jpy: FixedIntegerString;
+  estimated_refundable_principal_jpy: FixedIntegerString;
   buyer_visible_notes: string | null;
   store_display_name: string;
   task_type: DemandTaskType;
@@ -46,6 +57,12 @@ export interface BuyerPortalReservationDto {
   updated_at: number;
   hold_expires_at: number;
   order_deadline_snapshot: number;
+  buyer_self_pay_bps_snapshot: number;
+  reference_order_amount_jpy_snapshot: FixedIntegerString;
+  estimated_self_pay_jpy_snapshot: FixedIntegerString;
+  estimated_refundable_principal_jpy_snapshot: FixedIntegerString;
+  buyer_self_pay_accepted_at: number;
+  buyer_self_pay_accepted_demand_version: number;
   decided_at: number | null;
   cancelled_at: number | null;
   expired_at: number | null;

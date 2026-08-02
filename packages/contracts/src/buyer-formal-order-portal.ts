@@ -26,10 +26,12 @@ export interface BuyerFormalOrderDto {
   buyer_customer_no: string;
   marketplace: MarketplaceCode;
   amazon_order_number: string;
-  asin: string;
   product_name: string;
   review_type: PricingReviewType;
   final_paid_jpy: FixedIntegerString;
+  buyer_self_pay_bps: number;
+  buyer_self_pay_jpy: FixedIntegerString;
+  buyer_refundable_principal_jpy: FixedIntegerString;
   buyer_expected_principal_cny_fen: FixedIntegerString;
   buyer_exchange_rate_snapshot: BuyerFormalOrderRateSnapshotDto;
   confirmed_at: number;

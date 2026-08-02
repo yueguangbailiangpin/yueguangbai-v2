@@ -108,6 +108,17 @@ const requiredTables = [
   'staff_reassignment_batches',
   'staff_reassignment_batch_items',
   'staff_assignment_cursor_assertions',
+  'order_instructions',
+  'order_instruction_versions',
+  'order_instruction_asset_batches',
+  'order_instruction_asset_items',
+  'order_instruction_keyword_images',
+  'order_instruction_events',
+  'order_instruction_expiry_scan_cursors',
+  'order_instruction_reconciliation_markers',
+  'order_evidence_internal_files',
+  'formal_order_number_claims',
+  'formal_order_number_conflicts',
 ];
 
 const requiredTriggers = [
@@ -243,6 +254,26 @@ const requiredTriggers = [
   'trg_staff_assignment_events_no_delete',
   'trg_staff_assignment_cursor_assertion_guard',
   'trg_staff_assignment_cursor_assertion_cleanup',
+  'trg_product_versions_self_pay_insert_guard',
+  'trg_demand_buyer_self_pay_publish_guard_insert',
+  'trg_demand_buyer_self_pay_publish_guard_update',
+  'trg_demand_buyer_self_pay_published_immutable',
+  'trg_reservation_self_pay_snapshot_insert_guard',
+  'trg_reservation_self_pay_snapshot_immutable',
+  'trg_order_instruction_reservation_guard',
+  'trg_order_instruction_transition_guard',
+  'trg_order_instruction_versions_no_update',
+  'trg_order_instruction_versions_no_delete',
+  'trg_order_instruction_keyword_images_no_update',
+  'trg_order_instruction_keyword_images_no_delete',
+  'trg_order_instruction_events_no_update',
+  'trg_order_instruction_events_no_delete',
+  'trg_order_evidence_instruction_snapshot_guard',
+  'trg_formal_order_instruction_guard',
+  'trg_formal_order_financial_self_pay_guard',
+  'trg_formal_order_number_claim_source_guard',
+  'trg_formal_order_number_claim_transition_guard',
+  'trg_formal_order_number_claims_no_delete',
 ];
 
 try {
@@ -386,16 +417,28 @@ try {
     }
 
     const integerFacts = new Map([
-      ['product_versions', ['ordering_guide_expected_amount_jpy']],
+      ['product_versions', [
+        'ordering_guide_expected_amount_jpy',
+        'default_buyer_self_pay_bps',
+      ]],
       ['buyer_daily_exchange_rates', ['cny_per_jpy_e8']],
       ['seller_agreement_rate_versions', ['cny_per_jpy_e8']],
       ['seller_service_fee_versions', ['fee_cny_fen']],
-      ['order_evidence_versions', ['final_paid_jpy']],
+      ['order_evidence_versions', [
+        'final_paid_jpy', 'reference_order_amount_jpy_snapshot',
+        'buyer_self_pay_bps_snapshot', 'buyer_self_pay_jpy',
+        'buyer_refundable_principal_jpy', 'price_mismatch',
+        'price_difference_jpy', 'submitted_before_deadline',
+      ]],
       ['formal_orders', ['final_paid_jpy']],
       ['formal_order_financial_snapshots', [
         'buyer_cny_per_jpy_e8',
         'seller_cny_per_jpy_e8',
         'service_fee_cny_fen',
+        'buyer_self_pay_bps', 'buyer_self_pay_jpy',
+        'buyer_refundable_principal_jpy',
+        'buyer_gross_principal_cny_fen',
+        'buyer_self_pay_contribution_cny_fen',
         'buyer_expected_principal_cny_fen',
         'seller_expected_principal_cny_fen',
       ]],
@@ -457,7 +500,13 @@ try {
       )
       ORDER BY name
     `).all().map((row) => String(row.sql)).join('\n');
-    for (const requiredValue of ['PRODUCT_IMAGE', 'PRODUCT_VERSION']) {
+    for (const requiredValue of [
+      'PRODUCT_IMAGE', 'PRODUCT_VERSION',
+      'ORDER_INSTRUCTION_KEYWORD_IMAGE',
+      'ORDER_INSTRUCTION_VERSION',
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+      'ORDER_EVIDENCE_SUBMISSION',
+    ]) {
       if (!fileSql.includes(requiredValue)) {
         throw new Error(`file schema missing ${requiredValue}`);
       }
