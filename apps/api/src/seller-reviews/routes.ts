@@ -6,29 +6,25 @@ import {
   type SellerReviewFileReadIntentDto,
   type SellerReviewPortalFilters,
 } from '@ygb/contracts';
-import {
-  parseIdempotencyKey,
-  readBoundedJson,
-} from '@ygb/domain';
+import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
-import {
-  DenyAllFileAuthorizationService,
-} from '../files/authorization';
+import { DenyAllFileAuthorizationService } from '../files/authorization';
 import { createFileReadIntent } from '../files/file-read-service';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerSessionMiddleware } from '../middleware/customer-auth';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import { resolveSellerPortalActor } from '../seller-portal/actor';
 import { parseSellerPortalPagination } from '../seller-portal/pagination';
-import {
-  SellerReviewPortalError,
-  withSellerReviewPortalErrors,
-} from './errors';
+import { SellerReviewPortalError, withSellerReviewPortalErrors } from './errors';
 import {
   getSellerReview,
   listSellerReviews,
   requireSellerReviewEvidenceFile,
 } from './read-model';
+import {
+  attachSellerReviewPageUrls,
+  attachSellerReviewUrl,
+} from './review-url-projection';
 
 const READ_INTENT_BODY_LIMIT_BYTES = 2048;
 const LEGACY_FILE_AUTHORIZATION = new DenyAllFileAuthorizationService();
@@ -36,17 +32,8 @@ const LEGACY_FILE_AUTHORIZATION = new DenyAllFileAuthorizationService();
 export function registerSellerReviewRoutes(app: Hono<any>): void {
   const session = customerSessionMiddleware();
   const origin = customerAuthOriginGuard();
-
-  app.get(
-    '/api/seller-portal/reviews',
-    session,
-    withSellerReviewPortalErrors(reviews),
-  );
-  app.get(
-    '/api/seller-portal/reviews/:id',
-    session,
-    withSellerReviewPortalErrors(review),
-  );
+  app.get('/api/seller-portal/reviews', session, withSellerReviewPortalErrors(reviews));
+  app.get('/api/seller-portal/reviews/:id', session, withSellerReviewPortalErrors(review));
   app.post(
     '/api/seller-portal/reviews/:id/files/:fileLinkId/read-intent',
     origin,
@@ -64,35 +51,37 @@ async function reviews(context: Context<any>): Promise<Response> {
     status: optionalReviewStatus(url.searchParams.get('status')),
     asin: optionalAsin(url.searchParams.get('asin')),
     review_type: optionalReviewType(url.searchParams.get('review_type')),
-    formal_order_id:
-      optionalIdentifier(url.searchParams.get('formal_order_id')),
+    formal_order_id: optionalIdentifier(url.searchParams.get('formal_order_id')),
     amazon_order_number: optionalAmazonOrderNumber(
       url.searchParams.get('amazon_order_number'),
     ),
   };
-  return success(context, await listSellerReviews(
+  const page = await listSellerReviews(
     context.env.DB,
     actor,
     pagination,
     filters,
+  );
+  return success(context, await attachSellerReviewPageUrls(
+    context.env.DB,
+    actor,
+    page,
   ));
 }
 
 async function review(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
-  const reviewCaseId = identifier(context.req.param('id'));
+  const value = await getSellerReview(
+    context.env.DB,
+    actor,
+    identifier(context.req.param('id')),
+  );
   return success(context, {
-    review: await getSellerReview(
-      context.env.DB,
-      actor,
-      reviewCaseId,
-    ),
+    review: await attachSellerReviewUrl(context.env.DB, actor, value),
   });
 }
 
-async function createEvidenceReadIntent(
-  context: Context<any>,
-): Promise<Response> {
+async function createEvidenceReadIntent(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
   const reviewCaseId = identifier(context.req.param('id'));
   const fileEntityLinkId = identifier(context.req.param('fileLinkId'));
@@ -111,7 +100,6 @@ async function createEvidenceReadIntent(
   if (body.expected_file_version !== access.fileVersion) {
     throw new SellerReviewPortalError('VERSION_CONFLICT', 409);
   }
-
   let result: Awaited<ReturnType<typeof createFileReadIntent>>;
   try {
     result = await createFileReadIntent(
@@ -143,14 +131,10 @@ async function createEvidenceReadIntent(
     if (code === 'FORBIDDEN'
       || code === 'FILE_OBJECT_NOT_FOUND'
       || code === 'FILE_NOT_VERIFIED') {
-      throw new SellerReviewPortalError(
-        'SELLER_REVIEW_FILE_NOT_FOUND',
-        404,
-      );
+      throw new SellerReviewPortalError('SELLER_REVIEW_FILE_NOT_FOUND', 404);
     }
     throw error;
   }
-
   const readIntent: SellerReviewFileReadIntentDto = Object.freeze({
     read_intent_id: result.readIntentId,
     access_token: result.accessToken,
@@ -170,13 +154,9 @@ function parseReadIntentBody(
 ): CreateSellerReviewFileReadIntentRequest {
   if (value === null
     || Object.keys(value).length !== 1
-    || !Object.hasOwn(value, 'expected_file_version')) {
-    validation();
-  }
+    || !Object.hasOwn(value, 'expected_file_version')) validation();
   const version = value['expected_file_version'];
-  if (!Number.isSafeInteger(version) || Number(version) < 1) {
-    validation();
-  }
+  if (!Number.isSafeInteger(version) || Number(version) < 1) validation();
   return { expected_file_version: Number(version) };
 }
 
@@ -186,10 +166,7 @@ function success(
   status: 200 | 201 = 200,
 ): Response {
   context.header('Cache-Control', 'no-store');
-  return context.json(
-    apiSuccess(data, requestIdFromContext(context)),
-    status,
-  );
+  return context.json(apiSuccess(data, requestIdFromContext(context)), status);
 }
 
 function identifier(value: unknown): string {
@@ -197,23 +174,19 @@ function identifier(value: unknown): string {
   const normalized = value.normalize('NFKC').trim();
   if (normalized.length < 1
     || normalized.length > 120
-    || /[\u0000-\u001f\u007f]/u.test(normalized)) {
-    validation();
-  }
+    || /[\u0000-\u001f\u007f]/u.test(normalized)) validation();
   return normalized;
 }
 
 function optionalIdentifier(value: string | null): string | null {
   return value === null ? null : identifier(value);
 }
-
 function optionalAsin(value: string | null): string | null {
   if (value === null) return null;
   const normalized = value.normalize('NFKC').trim().toUpperCase();
   if (!/^[A-Z0-9]{10}$/u.test(normalized)) validation();
   return normalized;
 }
-
 function optionalReviewType(
   value: string | null,
 ): SellerReviewPortalFilters['review_type'] {
@@ -221,7 +194,6 @@ function optionalReviewType(
   if (!isPricingReviewType(value)) validation();
   return value;
 }
-
 function optionalReviewStatus(
   value: string | null,
 ): SellerReviewPortalFilters['status'] {
@@ -229,24 +201,17 @@ function optionalReviewStatus(
   if (!isReviewCaseStatus(value)) validation();
   return value;
 }
-
-function optionalAmazonOrderNumber(
-  value: string | null,
-): string | null {
+function optionalAmazonOrderNumber(value: string | null): string | null {
   if (value === null) return null;
   const normalized = value.normalize('NFKC').trim();
   if (!/^\d{3}-\d{7}-\d{7}$/u.test(normalized)) validation();
   return normalized;
 }
-
 function idempotencyKey(context: Context<any>): string {
-  const value = parseIdempotencyKey(
-    context.req.header('Idempotency-Key'),
-  );
+  const value = parseIdempotencyKey(context.req.header('Idempotency-Key'));
   if (!value) validation();
   return value;
 }
-
 function validation(): never {
   throw new SellerReviewPortalError('VALIDATION_ERROR', 400);
 }
