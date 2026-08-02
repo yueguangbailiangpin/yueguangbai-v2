@@ -458,9 +458,10 @@ async function prepareDecisionOutboxes(
   response: DecisionResult,
   now: number,
 ): Promise<readonly PreparedOutboxEvent[]> {
+  const baseOutboxId = crypto.randomUUID();
   const base = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `review-decision:${source.review_case_id}:${response.version}`,
+    id: baseOutboxId,
+    dedupKey: `review-decision:${baseOutboxId}`,
     eventType: decisionEventType(mode),
     aggregateType: 'REVIEW_CASE',
     aggregateId: source.review_case_id,
@@ -472,7 +473,7 @@ async function prepareDecisionOutboxes(
   const financial = await Promise.all(approved.financial_events.map(
     (event) => prepareOutboxEvent({
       id: crypto.randomUUID(),
-      dedupKey: `review-financial:${event.event_type}:${source.formal_order_id}`,
+      dedupKey: `review-financial:${event.event_id}`,
       eventType: event.event_type,
       aggregateType: 'FORMAL_ORDER',
       aggregateId: source.formal_order_id,
