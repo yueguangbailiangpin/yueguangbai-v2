@@ -10,6 +10,10 @@ const source = readFileSync(
   path.join(root, 'apps/api/src/internal-finance/exports.ts'),
   'utf8',
 );
+const routes = readFileSync(
+  path.join(root, 'apps/api/src/internal-finance/routes.ts'),
+  'utf8',
+);
 const csv = readFileSync(
   path.join(root, 'packages/domain/src/finance/csv.ts'),
   'utf8',
@@ -26,8 +30,15 @@ for (const token of [
   '\\r\\n',
   'FINANCIAL_CSV_MAX_ROWS = 50_000',
   '25 * 1024 * 1024',
+  'CAST(COUNT(*) AS TEXT)',
+  'MAX_EXPORT_ROWS = 50_000n',
+  'assertExportSourceSize',
+  "date_basis !== 'CASH'",
+  'database.batch(statements)',
+  'DEPENDENCY_UNAVAILABLE',
+  '/api/staff/finance/exports/csv',
 ]) {
-  if (!(migration + source + csv).includes(token)) {
+  if (!(migration + source + routes + csv).includes(token)) {
     throw new Error(`missing ${token}`);
   }
 }
@@ -36,7 +47,26 @@ if (/\b(?:R2|object_key|permanent_url|download_url)\b/iu.test(
 )) {
   throw new Error('financial export must not persist to object storage');
 }
-if (/client.*(?:column|sql|filename)|body\[['"](?:columns|sql|filename|sort)['"]\]/iu.test(source)) {
+if (/client.*(?:column|sql|filename)|body\[['"](?:columns|sql|filename|sort)['"]\]/iu.test(
+  source + routes,
+)) {
   throw new Error('client-controlled CSV shape is forbidden');
 }
-console.log(JSON.stringify({ status: 'PASS', phase: '3M' }, null, 2));
+if (/return\s+new\s+Response\([^)]*bytes/iu.test(source)) {
+  throw new Error('CSV must be returned by the route only after audited DB batch');
+}
+const outboxPayload = source.slice(
+  source.indexOf('payload: {'),
+  source.indexOf('createdAt: now,', source.indexOf('payload: {')),
+);
+for (const forbidden of ['bytes', 'csv', 'order_detail', 'filter_json']) {
+  if (outboxPayload.includes(forbidden)) {
+    throw new Error(`outbox payload contains ${forbidden}`);
+  }
+}
+console.log(JSON.stringify({
+  status: 'PASS',
+  phase: '3M',
+  source_preflight: true,
+  audit_before_response: true,
+}, null, 2));
