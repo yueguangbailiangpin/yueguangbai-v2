@@ -21,6 +21,7 @@ export * from './reservation';
 export * from './review';
 export * from './seller-formal-order-portal';
 export * from './seller-review-portal';
+export * from './seller-settlement';
 export * from './seller-portal';
 export * from './sql';
 export * from './staff';
