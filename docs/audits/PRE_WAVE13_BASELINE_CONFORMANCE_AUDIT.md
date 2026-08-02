@@ -4,74 +4,57 @@
 
 This remote static audit reviewed formal `main` at `f28c52a36e9498c37453a4a12755d9ad8459ae65` before Big Module 5 formal frontend development.
 
-The Buyer and Seller backend surfaces are broadly mature: trusted customer sessions, tenant-scoped read models, idempotent mutations, optimistic concurrency, dedicated DTO projections, safe file read intents, order-instruction state machines, formal orders, reviews, settlement views, and refund status APIs are present. Financial and database evidence is especially strong: integer money, immutable facts, reversal-based corrections, projected/completed profit views, audited synchronous CSV export, migration assertions, unique claims, triggers, audit, outbox, and idempotency are mutually reinforcing.
+The backend has strong domain and database foundations. Buyer and Seller read/mutation flows are generally tenant-scoped, idempotent, versioned, and projected through safe DTOs. File services implement upload intents, verification, links, audience grants, short reads, compensation, and cleanup. Financial facts use integer money, immutable ledgers/snapshots, reversal-based corrections, conflict-aware views, audited exports, triggers, audit, outbox, and transaction assertions.
 
-The formal frontend baseline is nevertheless **NO_GO** because current production route registration does not establish a trusted Staff session or populate `staffAuthorization`. Every Staff and Internal Finance handler is registered, but the production `createApp()`/`index.ts` path contains no Staff authentication middleware or Staff login/session route. Handlers fail closed, which prevents an authorization bypass, but also makes the entire Staff frontend surface unreachable. This is a P1 readiness failure.
+The result is nevertheless **NO_GO**. Three P1 blockers were confirmed:
 
-A second P1 issue is a current governance conflict: `AGENTS.md` and the latest engineering governance require an independent Staff identity/session boundary with Feishu at most an optional identity source, while Decision D-004 and `resolveStaffAuthorizationByFeishu` remain Feishu-specific. The Staff authentication contract cannot be frozen until project control resolves that authority conflict.
+1. The production app registers Staff routes but has no trusted Staff login/session middleware that populates `staffAuthorization`.
+2. Required frontend HTTP capabilities are absent even though service implementations exist: file upload intent/completion/link routes, Staff order-evidence review routes, and Staff Buyer Refund payment/reversal routes.
+3. Current authority conflicts on Staff identity: latest governance requires an independent Staff identity/session boundary, while Decision D-004 and the current resolver remain Feishu-specific.
 
-No P0 vulnerability was confirmed. The audit did not run local commands, tests, D1, Wrangler, OpenSpec CLI, or Ponytail.
+No P0 vulnerability was confirmed. No local commands, tests, D1, Wrangler, OpenSpec CLI, or Ponytail were run.
 
 ## 2. Audit Scope
 
-- Formal `main` at the fixed SHA.
+- Fixed formal `main` SHA.
 - Migrations `0001–0026`.
-- Buyer, Seller, Staff, Internal Finance, Authentication, and file-related APIs.
-- Contracts, domain rules, production implementation, relevant tests, migrations, and verifiers.
-- Current frontend API readiness.
+- Buyer, Seller, Staff, Internal Finance, Authentication, and file capabilities.
+- Contracts, domain rules, production implementation, tests, migrations, and verifiers.
+- Formal frontend API readiness.
 
 ## 3. Explicit Non-Scope
 
-- No production implementation changes.
-- No bug fixes or refactors.
-- No migration `0027`.
-- No historical Wave 1–12 specification reconstruction.
-- No test changes.
-- No local commands, D1, Wrangler, OpenSpec CLI, Ponytail, deployment, PR, Integration, or `main` advancement.
+No production code changes, fixes, refactors, migration `0027`, historical spec reconstruction, test changes, local execution, deployment, PR, Integration, `main` advancement, or frontend implementation.
 
 ## 4. Authority Sources
 
-The audit used the authority order in `AGENTS.md`, then inspected:
+Authority followed `AGENTS.md`, then current governance, decision, product, contract, architecture, and migration documents. Implementation evidence came from `packages/contracts/src/**`, `packages/domain/src/**`, `apps/api/src/**`, `migrations/**`, `scripts/**`, and relevant test source.
 
-- `openspec/config.yaml`;
-- `docs/AI_ENGINEERING_GOVERNANCE.md`;
-- `docs/decisions/V2_DECISION_REGISTER.md`;
-- `docs/product/V2_PRODUCT_RULES.md`;
-- `docs/contracts/**`;
-- `docs/architecture/**`;
-- `docs/migration/**`;
-- `package.json`;
-- migrations, contracts, domain, API, scripts, and test source.
-
-Chat memory, old-repository behavior, file-name inference, and generic industry assumptions were not used as authority.
+Chat memory, old repositories, file-name inference, and generic industry practice were not authority.
 
 ## 5. Audit Method
 
-1. Verified the remote branch relationship before writing.
-2. Read governance and OpenSpec project rules.
-3. Read the real API registration entrypoint.
-4. Extracted actual methods and paths from route source.
-5. Traced representative requirements through implementation, contracts, tests, migrations, and verifiers.
-6. Classified 115 requirements using fixed status terms.
-7. Built a route readiness inventory.
-8. Performed `REMOTE_SEMANTIC_VERIFY`.
-9. Recorded local validation requests rather than claiming runtime execution.
+1. Verified remote `main`, audit branch, merge base, and ahead/behind.
+2. Read OpenSpec 1.7.0 project skills and `spec-driven` configuration.
+3. Read the real route registration entrypoint.
+4. Traced requirements through implementation, contracts, tests, database, and verifiers.
+5. Built 115 requirement classifications and an actual method/path inventory.
+6. Performed `REMOTE_SEMANTIC_VERIFY`.
+7. Recorded local validation requests rather than claiming runtime results.
 
 ## 6. Evidence Strength Model
 
-**Strong:** production source plus matching contract/test/database evidence.
+- **Strong:** production implementation plus matching contract/test/database evidence.
+- **Medium:** an important layer is missing or only static verification exists.
+- **Weak:** documentation, names, comments, conversation, or inference alone.
 
-**Medium:** implementation with a missing key test, test without full production path, static verifier only, or only one defense layer.
-
-**Weak:** documentation, names, comments, conversation, or inference alone. Weak evidence cannot create a PASS.
-
-Statuses are exactly `PASS`, `PARTIAL`, `FAIL`, `NOT_VERIFIED`, and `GOVERNANCE_CONFLICT`.
+Statuses are `PASS`, `PARTIAL`, `FAIL`, `NOT_VERIFIED`, or `GOVERNANCE_CONFLICT`. Missing evidence is not labelled FAIL.
 
 ## 7. Current Baseline
 
-The following numbers are the previously accepted Integration baseline and were **not rerun in this audit**:
+These are historical accepted Integration results, not commands run in this audit:
 
-| Item | Historical accepted value | Runtime label |
+| Item | Accepted baseline | Runtime evidence |
 |---|---:|---|
 | Migrations | 0001–0026 | PREVIOUSLY_VALIDATED |
 | Schema version | 26 | PREVIOUSLY_VALIDATED |
@@ -81,251 +64,223 @@ The following numbers are the previously accepted Integration baseline and were 
 | Test files | 99 | PREVIOUSLY_VALIDATED |
 | Tests | 511 | PREVIOUSLY_VALIDATED |
 
-Current source still contains the corresponding migration chain and verifier/test gates, but local revalidation remains pending.
-
 ## 8. Identity and Authorization
 
-### Confirmed strengths
+### Strengths
 
-- Customer auth uses backend password verification and signed session cookies.
-- Buyer and Seller actors are resolved from the authenticated customer account rather than request-supplied owner IDs.
-- Staff effective authorization supports role defaults, personal grants, final personal DENY, leader scope, owner-only permissions, active status, and data scope.
-- Staff route handlers fail closed when `staffAuthorization` is absent.
-- Internal Finance requires active Staff, system-owner role, and `FINANCIAL_VIEW`; export additionally requires `FINANCIAL_EXPORT`.
-- Seller Organization OWNER does not satisfy system-owner finance checks.
-- Buyer and Seller projections have dedicated privacy verifiers and route-specific read models.
+- Customer login verifies backend credentials and issues signed customer sessions.
+- Buyer and Seller actors derive from trusted sessions and scoped database rows.
+- Staff effective authorization supports active status, role defaults, personal grants, final personal DENY, owner-only restrictions, team/assignment scope, and data-scope resolution.
+- Staff handlers fail closed when `staffAuthorization` is absent.
+- Internal Finance requires active Staff system owner plus `FINANCIAL_VIEW`; export additionally requires `FINANCIAL_EXPORT`.
+- Seller Organization OWNER does not satisfy system-owner checks.
 
-### Confirmed gap
+### P1 gap
 
-`apps/api/src/index.ts` registers Staff routes, while `apps/api/src/app.ts` only installs request ID, error handling, security headers, health, and not-found behavior. No production Staff authentication middleware or Staff login/session route populates `context.get('staffAuthorization')`. Source comments in `staff-assignment/routes.ts` explicitly state that an upstream verified Staff middleware is required and that endpoints fail closed until it exists.
-
-Result: no confirmed bypass, but all Staff frontend and Internal Finance APIs are operationally unreachable from the real production entrypoint.
+`apps/api/src/index.ts` registers `/api/staff/**`, while `apps/api/src/app.ts` installs no Staff authentication/session middleware. Staff handlers explicitly expect an upstream trusted context that does not exist in the production entrypoint. This is not an authentication bypass; it is a complete Staff frontend reachability failure.
 
 AUTH totals: **10 PASS, 4 PARTIAL, 1 FAIL, 0 NOT_VERIFIED**.
 
 ## 9. Financial Integrity
 
-All 25 financial requirements are PASS on remote source evidence plus historical validation:
+All 25 financial requirements are PASS on source plus historical validation evidence:
 
-- JPY integer; CNY integer fen; rates use e8 scale.
-- No REAL/FLOAT finance facts and no floating-point fact calculation helpers.
-- Customer-facing large money values use precision-safe serialization.
-- Snapshots and ledgers are immutable; corrections use reversal/new facts.
-- Formal Order creates Seller Principal Due; Review Approved creates Service Fee Due.
-- Buyer Refund and Seller settlement remain independent.
-- Seller payments support split allocation, reversal, reallocation, and unallocated credit.
-- Buyer Refund supports payment, reversal, and OVERPAID derivation.
-- Projected Gross Profit, Completed Gross Profit, Attributed Cash, and Company Cash Flow have current view/read-model evidence.
-- Missing/duplicate/conflicting facts are classified rather than silently treated as valid zero.
-- Export is owner-gated, audited, SHA-256 hashed, synchronous, ephemeral, bounded to 50,000 rows/25 MiB, BOM+CRLF+RFC4180 safe, and formula-injection protected.
-- Buyer/Seller DTO isolation is covered by dedicated verifiers.
+- integer JPY, integer-fen CNY, e8 rates;
+- no REAL/FLOAT facts or prohibited floating-point calculations;
+- precision-safe JSON/CSV money;
+- immutable facts and reversal-based corrections;
+- principal due on Formal Order and service fee due on Review approval;
+- independent Buyer Refund and Seller settlement ledgers;
+- split allocation, reversal, reallocation, unallocated credit, and OVERPAID derivation;
+- projected/completed gross profit, attributed cash, and company cash flow formulas;
+- missing/conflicting facts classified rather than guessed as zero;
+- owner-only finance view/export;
+- export audit, outbox, SHA-256, 50,000-row/25-MiB limits, BOM, CRLF, RFC4180, formula-injection protection, and no persisted CSV/permanent URL;
+- Buyer/Seller DTO finance isolation.
 
-The Staff authentication blocker prevents frontend use but does not invalidate the financial formulas themselves.
-
-FIN totals: **25 PASS, 0 PARTIAL, 0 FAIL, 0 NOT_VERIFIED**.
+FIN totals: **25 PASS**.
 
 ## 10. File Security
 
-Confirmed layers include upload intents, preflight authorization and limits, object-storage metadata verification, VERIFIED transitions, entity links, explicit audience grants, short read intents, dynamic authorization, object-key privacy, no permanent URL storage, server-controlled ownership/scope, compensation, retryable residual cleanup, purpose/audience isolation, dedicated settlement-proof authorization, and exact one-file order evidence in the domain layer.
+The service layer satisfies upload intent, preflight checks, HEAD verification, VERIFIED state, entity links, audience grants, short reads, dynamic authorization, object-key privacy, no permanent URL, server-controlled ownership/scope, compensation, retry cleanup, purpose/audience isolation, settlement-proof authorization, and exactly one order screenshot at the domain layer.
 
-One inconsistency is non-fatal but should be corrected: the Buyer order-evidence HTTP parser accepts one to ten `file_object_ids`, while `normalizeEvidenceFileIds` rejects anything except exactly one. Security and business behavior remain correct because the domain rejects extra files, but the route contract advertises a wider shape than the real rule.
+Two frontend concerns remain:
 
-FILE totals: **16 PASS, 1 PARTIAL, 0 FAIL, 0 NOT_VERIFIED**.
+1. The order-evidence HTTP parser accepts one to ten IDs, while the domain enforces exactly one. Runtime safety is preserved, but the contract is wider than the real rule.
+2. No file upload/create/complete/link HTTP routes are registered in the production entrypoint. The strong service layer is therefore unavailable to the formal frontend.
+
+FILE totals: **16 PASS, 1 PARTIAL** at requirement level; missing HTTP reachability is classified under API-013/P1.
 
 ## 11. Business State Machines
 
-Remote evidence supports all 23 required flows:
+All 23 required state-machine requirements have supporting evidence: Buyer registration, reservation capacity, self-pay acceptance, instruction task creation, versioned instructions, safe image reads, ordered keyword PNG, six-hour/two-hour deadlines, one screenshot, PRICE_MISMATCH, financial snapshot, formal-order linkage, database order-number uniqueness, expiry/release, reconciliation, review lifecycle, service-fee creation, refund facts, idempotency, expected-version concurrency, audit/outbox, and server-controlled transitions.
 
-- Buyer self-registration and authentication.
-- Reservation creation/cancellation and capacity/version protection.
-- Buyer self-pay disclosure and explicit acceptance.
-- Post-approval instruction tasks and reconciliation.
-- Versioned instructions, safe main-image reads, ordered keyword PNG assets.
-- Initial six-hour and correction two-hour deadlines.
-- Exactly one order screenshot and PRICE_MISMATCH handling.
-- Immutable Buyer self-pay finance snapshot and formal-order linkage.
-- Database-backed Amazon order-number claim uniqueness.
-- Expiry, capacity release, and bounded reconciliation.
-- Review submission, evidence versions, metadata, decisions, and service-fee creation.
-- Buyer Refund payment/status facts.
-- Idempotency, expected-version concurrency, audit, outbox, and server-controlled transitions.
+However, two implemented Staff operational service surfaces are not registered as HTTP APIs:
 
-FLOW totals: **23 PASS, 0 PARTIAL, 0 FAIL, 0 NOT_VERIFIED**.
+- order-evidence read/request-changes/verify;
+- Buyer Refund read/record-payment/reverse-payment.
+
+Thus the internal state machines are present, but the formal Staff frontend cannot drive them.
+
+FLOW totals: **23 PASS** at implementation requirement level; API reachability is a separate P1.
 
 ## 12. API and DTO Readiness
 
-Customer APIs are mostly ready. Main limitations are inconsistent exact-key/query strictness and route-family error/disclosure conventions. Customer login/password parsers and several Seller/Staff route parsers select known values without uniformly rejecting unknown fields. Major list APIs are cursor-based and bounded, but a complete SQL-level audit of every list path still requires local validation.
+Registered route inventory:
 
-Staff APIs are NOT_READY as a group because trusted Staff authentication/session creation is absent from the production entrypoint.
+- 39 READY;
+- 17 READY_WITH_LIMITATIONS;
+- 52 NOT_READY;
+- 0 NOT_VERIFIED.
 
-API requirement totals: **6 PASS, 8 PARTIAL, 1 FAIL, 0 NOT_VERIFIED**.
+The 52 NOT_READY routes are all registered Staff/Internal Finance endpoints blocked by absent Staff authentication. Missing file-upload, Staff order-evidence, and Staff Buyer Refund capabilities are additional NOT_READY capabilities, not included in the registered-route count.
 
-The full method/path inventory and per-route readiness are in `PRE_WAVE13_FRONTEND_API_READINESS.md`.
+API requirement totals: **6 PASS, 8 PARTIAL, 1 FAIL**.
+
+Full evidence is in `PRE_WAVE13_FRONTEND_API_READINESS.md`.
 
 ## 13. Migration and Database Integrity
 
-Confirmed source evidence includes:
+Source evidence supports:
 
-- consecutive migrations `0001–0026`;
-- schema-version assertions and transition to 26;
-- foreign keys, unique indexes, strict tables, CHECK constraints, and transaction assertions;
+- consecutive `0001–0026`;
+- schema transition to 26;
+- foreign keys, unique indexes, strict tables, CHECK constraints, transaction assertions;
 - audit, outbox, and idempotency foundations;
-- 0025 backup/rebuild/copy behavior preserving Staff permission history while adding `FINANCIAL_VIEW`;
-- immutable financial tables and export events protected against UPDATE/DELETE;
-- active Amazon order-number unique claims;
+- 0025 backup/rebuild/copy preservation of Staff permission history;
+- immutable finance/export records protected from UPDATE/DELETE;
+- active Amazon order-number uniqueness;
 - file relation/audience constraints;
-- behavior-focused migration tests and current verifier script references.
+- behavior-oriented migration tests and current verifier scripts.
 
-Real D1/test-double parity is NOT_VERIFIED in this remote audit.
+Real D1 versus test-double parity remains NOT_VERIFIED.
 
-DB totals: **19 PASS, 0 PARTIAL, 0 FAIL, 1 NOT_VERIFIED**.
+DB totals: **19 PASS, 1 NOT_VERIFIED**.
 
 ## 14. P0 Findings
 
-**Count: 0.**
-
-No confirmed cross-tenant bypass, authentication bypass, customer disclosure of internal finance, destructive financial mutation, confirmed data loss, or unrecoverable production disaster path was found.
+**0.** No confirmed cross-tenant access, authentication bypass, customer disclosure of internal finance, destructive financial fact mutation, confirmed data loss, or unrecoverable production disaster path.
 
 ## 15. P1 Findings
 
-### P1-01 — Production Staff authentication/session boundary is missing
+### P1-01 — Missing production Staff authentication/session boundary
 
-**Evidence:** `apps/api/src/index.ts`, `apps/api/src/app.ts`, all Staff route authorization readers, and the explicit upstream-middleware comment in `apps/api/src/staff-assignment/routes.ts`.
+**Evidence:** `apps/api/src/index.ts`, `apps/api/src/app.ts`, Staff route context readers, and the explicit upstream-middleware comment in `staff-assignment/routes.ts`.
 
-**Impact:** Staff work queues, catalog review, order-instruction publication, review decisions, seller payment operations, reconciliation, proof reads, and Internal Finance cannot be used by the formal frontend.
+**Impact:** every registered Staff/Internal Finance route is unreachable by a real formal frontend.
 
-**Required action:** define and implement the trusted Staff session producer/middleware and route contract; add end-to-end route tests using the real production entrypoint.
+**Action:** resolve the Staff identity authority, implement the trusted Staff session producer/middleware, and add end-to-end tests through the production entrypoint.
 
-### P1-02 — Staff identity authority conflict
+### P1-02 — Missing required frontend HTTP capability surfaces
 
-**Evidence:** latest `AGENTS.md`/engineering governance require an independent Staff identity/session boundary; Decision D-004 and `resolveStaffAuthorizationByFeishu` use Feishu as the primary resolution path.
+**Evidence:**
 
-**Impact:** frontend login/session contracts and backend middleware cannot be frozen without deciding whether Feishu is mandatory, optional, or merely one verified identity source.
+- `apps/api/src/files/**` contains upload intent/upload/complete/link/grant services, but no file route registration exists.
+- `apps/api/src/order-evidence/read-order-evidence.ts` and `review-order-evidence.ts` exist, but no Staff order-evidence routes are registered.
+- `apps/api/src/buyer-refunds/**` contains ledger/payment/reversal services, but no Staff Buyer Refund routes are registered.
 
-**Required action:** project control resolves the authority conflict without rewriting evidence to fit current code; implementation then follows the winning authority.
+**Impact:** Buyers/Staff cannot obtain required file IDs through formal APIs; Staff cannot verify orders into Formal Orders or record/reverse Buyer Refund payments through a formal frontend.
+
+**Action:** define, contract, register, and test these APIs before frontend freeze.
+
+### P1-03 — Staff identity governance conflict
+
+Latest `AGENTS.md`/governance require an independent Staff identity/session boundary with Feishu optional; Decision D-004 and `resolveStaffAuthorizationByFeishu` remain Feishu-specific.
+
+**Impact:** Staff login/session contracts cannot be frozen.
+
+**Action:** project control decides the authority; implementation follows that decision without rewriting evidence.
 
 ## 16. P2 Findings
 
-### P2-01 — Exact-key validation is not uniform
-
-Customer auth and several Seller/Staff parsers do not consistently reject unknown fields. This increases contract drift and makes generated-client assumptions unreliable.
-
-### P2-02 — Query/error/disclosure conventions are not fully uniform
-
-Some route families strictly reject unknown/repeated query parameters while others do not. Customer routes often conceal scope as 404; some Staff routes return explicit 403. The difference may be intentional by domain, but it is not yet freeze-ready as a shared frontend rule.
-
-### P2-03 — Order-evidence route cardinality differs from domain cardinality
-
-The HTTP parser permits up to ten file IDs while the domain enforces exactly one. Runtime behavior is safe; contract clarity is not.
-
-### P2-04 — Local D1 and full current gate not executed
-
-Trigger behavior, strict table behavior, transaction semantics, cursor behavior, object-storage integration, and test-double parity remain local validation requirements.
+1. Exact-key validation is inconsistent in customer auth and several Seller/Staff parsers.
+2. Unknown/repeated query rejection and 404/403 disclosure conventions are not uniform.
+3. Order-evidence route cardinality differs from the exact-one domain rule.
+4. Real D1, object storage, Wrangler, full tests, and OpenSpec CLI were not run in this audit.
 
 ## 17. P3 Findings
 
-### P3-01 — Repeated response wrappers
-
-Many route files repeat small `success()` wrappers around `apiSuccess`, request ID, status, and no-store headers.
-
-### P3-02 — Repeated ordinary pagination adapters
-
-Buyer formal order, Buyer refund, and Seller portal modules contain similar bounded cursor/page adapters. Consolidation may reduce maintenance, but only after retaining route-specific tests and without changing cursor semantics.
+1. Repeated route-local `success()` response wrappers.
+2. Repeated ordinary cursor/limit adapters across Buyer/Seller read modules.
 
 ## 18. Not Verified Items
 
-- Real D1 versus test substitute parity.
-- Current runtime counts after rerunning the full local gate.
-- Real object-storage/R2 compensation and cleanup behavior under Integration faults.
-- Production Staff identity/session behavior, because no production path currently exists.
+- Real D1/test-double parity.
+- Current runtime counts after full local validation.
+- Real R2/object-storage fault compensation.
+- Future Staff session behavior, because the path does not exist yet.
 
-Requirement-level NOT_VERIFIED count: **1** (`DB-020`). Other local checks are validation requests or confirmed blockers rather than unknown compliance states.
+Requirement-level NOT_VERIFIED count: **1** (`DB-020`).
 
 ## 19. Governance Conflicts
 
 ### GOVERNANCE_CONFLICT-001 — Staff identity source
 
-- Latest authority: independent Staff identity/session; Feishu optional as an identity source.
-- Conflicting decision/current implementation: Feishu-specific Staff identity resolution.
-- Result: do not silently select either interpretation; do not freeze Staff auth contracts.
-
-Count: **1**.
+Independent Staff identity/session authority conflicts with the Feishu-specific decision/current resolver. Count: **1**.
 
 ## 20. Frontend Blocking Items
 
-1. Trusted Staff authentication/session contract and production middleware.
-2. Resolution of the Staff identity authority conflict.
-3. End-to-end Staff route tests through the real production entrypoint.
-4. Contract decision for exact-key/query/error/disclosure conventions.
-5. Local full-gate, OpenSpec CLI, D1, and Wrangler-compatible validation.
-
-Buyer/Seller contract work is substantially more ready than Staff work, but this audit does not authorize starting formal Big Module 5 implementation.
+1. Trusted Staff authentication/session contract and middleware.
+2. File upload HTTP APIs.
+3. Staff order-evidence operational APIs.
+4. Staff Buyer Refund operational APIs.
+5. Resolution of the Staff identity governance conflict.
+6. Exact-key/query/error/disclosure contract decisions.
+7. Full local validation and real OpenSpec verification.
 
 ## 21. Local Validation Requests
 
-- Install dependencies through the authorized local workflow.
-- Run the repository full `check` gate.
-- Run every Wave 11/Wave 12 verifier referenced by `package.json`.
-- Reconfirm migrations 0001–0026, schema version 26, tables 113, triggers 213, views 10.
-- Reconfirm 99 test files and 511 tests, or document an intentional new baseline.
-- Run strict OpenSpec validation and the real OpenSpec verify workflow.
-- Run real D1-compatible migration and behavior tests on populated fixtures.
-- Run Staff authentication end-to-end tests after the P1 fix.
-- Run object-storage/R2 integration tests for HEAD verification, compensation, and retry cleanup.
+- Run dependency installation and the full repository check gate locally.
+- Rerun all Wave 11/Wave 12 verifiers.
+- Reconfirm schema/table/trigger/view/test counts.
+- Run strict OpenSpec validation and the real verify workflow.
+- Run real D1 migration/behavior tests on populated fixtures.
+- After fixes, run end-to-end Staff auth and every Staff route through the production entrypoint.
+- Run real object-storage upload/HEAD/compensation/cleanup tests.
 - Run authorized Wrangler validation before Integration.
 
 ## 22. Ponytail Candidate Areas
 
-Ponytail was not run. These are review candidates only; none is a deletion recommendation.
+Ponytail was not run. Candidate review only:
 
-| File/symbol | Why it may be over-designed or duplicated | Why lower risk | Behavior that might change | Tests that must remain | Later review? |
+| File/symbol | Why potentially over-designed/duplicated | Low-risk reason | Possible behavior change | Tests to retain | Review? |
 |---|---|---|---|---|---|
-| `apps/api/src/buyer-formal-orders/routes.ts::success` | Repeats standard success envelope/header behavior | No authorization or finance semantics | Header/status/request-id packaging | Buyer formal-order route tests | Yes |
-| `apps/api/src/buyer-refund-status/routes.ts::success` | Same response-wrapper pattern | Read-only portal packaging | Envelope/header consistency | Buyer refund portal tests | Yes |
-| `apps/api/src/seller-formal-orders/routes.ts::success` | Same response-wrapper pattern | Read-only DTO packaging | Status/header/request-id behavior | Seller formal-order route tests | Yes |
-| `apps/api/src/buyer-formal-orders/pagination.ts` | Similar bounded cursor adapter to other portals | Ordinary pagination adaptation | Cursor encoding/limit defaults | Pagination golden and malformed-cursor tests | Yes, cautiously |
-| `apps/api/src/buyer-refund-status/pagination.ts` | Similar page adapter | Read-only pagination | Cursor/empty-page behavior | Refund pagination tests | Yes, cautiously |
-| `apps/api/src/seller-portal/pagination.ts` | Shared-looking portal cursor/limit parsing | No direct authorization decision | Limits, cursor ordering, repeated-query behavior | Seller portal pagination and tenant-scope tests | Yes, cautiously |
+| `buyer-formal-orders/routes.ts::success` | repeated response wrapper | no auth/finance decision | headers/status/envelope | route tests | Yes |
+| `buyer-refund-status/routes.ts::success` | repeated response wrapper | read-only packaging | headers/envelope | refund tests | Yes |
+| `seller-formal-orders/routes.ts::success` | repeated response wrapper | read-only packaging | headers/envelope | seller order tests | Yes |
+| `buyer-formal-orders/pagination.ts` | similar cursor adapter | ordinary pagination | cursor/default limit | malformed/golden cursor tests | Cautiously |
+| `buyer-refund-status/pagination.ts` | similar cursor adapter | ordinary pagination | empty page/cursor | refund pagination tests | Cautiously |
+| `seller-portal/pagination.ts` | similar limit/cursor parsing | no direct auth decision | limit/cursor behavior | pagination and tenant-scope tests | Cautiously |
 
 ## 23. Ponytail Excluded Areas
 
-Permanently excluded from this audit’s Ponytail candidates:
-
-- `migrations/**`;
-- Authentication and Authorization;
-- Personal DENY and Staff data scope;
-- Internal Finance, Seller Payment, Allocation, Reversal, Buyer Refund;
-- Idempotency, Audit, Outbox, transaction assertions, triggers;
-- File Audience and dynamic file authorization;
-- order/review state machines and reconciliation;
-- data recovery and safety verifiers;
-- CSV injection defenses;
-- BigInt/integer financial code;
-- all data-loss protections.
+Permanently excluded: migrations, Authentication, Authorization, Personal DENY, Staff data scope, Internal Finance, Seller Payment, Allocation, Reversal, Buyer Refund, Idempotency, Audit, Outbox, transaction assertions, triggers, File Audience, dynamic file authorization, order/review state machines, reconciliation, recovery, security verifiers, CSV injection defenses, BigInt/integer finance, and data-loss protection.
 
 ## 24. Recommendation
 
-Do not start formal Big Module 5 frontend implementation against the full backend surface. First resolve the Staff identity authority conflict and add the trusted Staff authentication/session path. Then freeze Staff contracts and execute the complete local validation set.
-
-The Buyer/Seller APIs may be treated as leading freeze candidates, subject to exact-key/query/error cleanup and local gate confirmation.
+Do not begin formal Big Module 5 implementation against the full backend. Resolve all P1 blockers, freeze the missing API contracts, and execute local gates first. Buyer/Seller read contracts are leading candidates for later freeze, but that does not authorize starting the formal frontend now.
 
 ## 25. Go/No-Go for Big Module 5
 
 # NO_GO
 
-Reason: two P1 findings exist. Under the fixed decision rule, any P1 requires NO_GO.
+There are three P1 findings; any P1 requires NO_GO.
 
 ## REMOTE_SEMANTIC_VERIFY
 
-This section is a remote semantic comparison, **not** OpenSpec CLI Verify and not `$openspec-verify-change`.
+This is not OpenSpec CLI Verify and not `$openspec-verify-change`.
 
-| Result | Count | Meaning |
-|---|---:|---|
-| COMPLETE | 99 | Requirement supported by current evidence |
-| PARTIAL | 13 | Material layer/consistency evidence incomplete |
-| MISSING | 1 | Required frontend capability is absent/unreachable (`API-013`) |
-| INCONSISTENT | 1 | Staff session requirement conflicts with authority/current implementation (`AUTH-002`) |
-| NOT_VERIFIED | 1 | Real D1/test-double parity requires local execution (`DB-020`) |
-| **Total** | **115** | All requirements classified |
+| Result | Count |
+|---|---:|
+| COMPLETE | 99 |
+| PARTIAL | 13 |
+| MISSING | 1 |
+| INCONSISTENT | 1 |
+| NOT_VERIFIED | 1 |
+| **Total** | **115** |
 
-Local Codex must still run the real OpenSpec CLI validation/verify workflow after blockers are resolved.
+- `MISSING`: API-013, including absent Staff auth and required missing HTTP capability surfaces.
+- `INCONSISTENT`: AUTH-002 Staff identity/session authority conflict.
+- `NOT_VERIFIED`: DB-020 real D1/test-double parity.
+
+Local Codex must still run the real OpenSpec validation/verify workflow after blockers are fixed.
