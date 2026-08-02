@@ -135,6 +135,7 @@ review_facts AS (
   SELECT
     formal_order.id AS formal_order_id,
     COUNT(review_case.id) AS review_case_count,
+    MIN(review_case.id) AS review_case_id,
     COALESCE(SUM(CASE WHEN review_case.status='APPROVED' THEN 1 ELSE 0 END),0)
       AS approved_case_count,
     COALESCE(SUM(CASE
@@ -148,12 +149,39 @@ review_facts AS (
 approval_facts AS (
   SELECT
     formal_order_id,
-    COUNT(*) AS approval_event_count,
-    MIN(created_at) AS approved_at,
-    MIN(date(created_at / 1000, 'unixepoch', '+8 hours'))
-      AS approved_business_date
+    SUM(CASE WHEN event_type='REVIEW_APPROVED' THEN 1 ELSE 0 END)
+      AS approval_event_count,
+    MIN(CASE WHEN event_type='REVIEW_APPROVED' THEN id END)
+      AS approval_event_id,
+    MIN(CASE WHEN event_type='REVIEW_APPROVED' THEN review_case_id END)
+      AS approval_review_case_id,
+    MIN(CASE WHEN event_type='REVIEW_APPROVED' THEN created_at END)
+      AS approved_at,
+    MIN(CASE WHEN event_type='REVIEW_APPROVED'
+      THEN date(created_at / 1000, 'unixepoch', '+8 hours') END)
+      AS approved_business_date,
+    SUM(CASE WHEN event_type='BUYER_REFUND_BECAME_DUE' THEN 1 ELSE 0 END)
+      AS buyer_due_event_count,
+    MIN(CASE WHEN event_type='BUYER_REFUND_BECAME_DUE' THEN id END)
+      AS buyer_due_event_id,
+    MIN(CASE WHEN event_type='BUYER_REFUND_BECAME_DUE' THEN review_case_id END)
+      AS buyer_due_review_case_id,
+    MIN(CASE WHEN event_type='BUYER_REFUND_BECAME_DUE'
+      THEN formal_order_financial_snapshot_id END) AS buyer_due_snapshot_id,
+    SUM(CASE WHEN event_type='SELLER_SERVICE_FEE_ACCRUED' THEN 1 ELSE 0 END)
+      AS service_fee_event_count,
+    MIN(CASE WHEN event_type='SELLER_SERVICE_FEE_ACCRUED' THEN id END)
+      AS service_fee_event_id,
+    MIN(CASE WHEN event_type='SELLER_SERVICE_FEE_ACCRUED' THEN review_case_id END)
+      AS service_fee_review_case_id,
+    MIN(CASE WHEN event_type='SELLER_SERVICE_FEE_ACCRUED'
+      THEN formal_order_financial_snapshot_id END) AS service_fee_snapshot_id
   FROM review_events
-  WHERE event_type='REVIEW_APPROVED'
+  WHERE event_type IN (
+    'REVIEW_APPROVED',
+    'BUYER_REFUND_BECAME_DUE',
+    'SELLER_SERVICE_FEE_ACCRUED'
+  )
   GROUP BY formal_order_id
 ),
 payable_facts AS (
@@ -165,8 +193,22 @@ payable_facts AS (
       AS service_fee_count,
     MIN(CASE WHEN balance.payable_type='SELLER_PRINCIPAL'
       THEN balance.seller_organization_id END) AS principal_organization_id,
+    MIN(CASE WHEN balance.payable_type='SELLER_PRINCIPAL'
+      THEN balance.financial_snapshot_id END) AS principal_snapshot_id,
+    MIN(CASE WHEN balance.payable_type='SELLER_PRINCIPAL'
+      THEN balance.source_type END) AS principal_source_type,
+    MIN(CASE WHEN balance.payable_type='SELLER_PRINCIPAL'
+      THEN balance.source_id END) AS principal_source_id,
     MIN(CASE WHEN balance.payable_type='SELLER_SERVICE_FEE'
       THEN balance.seller_organization_id END) AS service_fee_organization_id,
+    MIN(CASE WHEN balance.payable_type='SELLER_SERVICE_FEE'
+      THEN balance.financial_snapshot_id END) AS service_fee_payable_snapshot_id,
+    MIN(CASE WHEN balance.payable_type='SELLER_SERVICE_FEE'
+      THEN balance.source_type END) AS service_fee_source_type,
+    MIN(CASE WHEN balance.payable_type='SELLER_SERVICE_FEE'
+      THEN balance.source_id END) AS service_fee_source_id,
+    MIN(CASE WHEN balance.payable_type='SELLER_SERVICE_FEE'
+      THEN balance.due_at END) AS service_fee_due_at,
     COALESCE(SUM(CASE WHEN balance.payable_type='SELLER_PRINCIPAL'
       THEN balance.amount_cny_fen ELSE 0 END),0) AS principal_due,
     COALESCE(SUM(CASE WHEN balance.payable_type='SELLER_PRINCIPAL'
@@ -184,12 +226,14 @@ payable_facts AS (
 ),
 refund_facts AS (
   SELECT
-    formal_order_id,
+    balance.formal_order_id,
     COUNT(*) AS refund_count,
-    COALESCE(SUM(due_amount_cny_fen),0) AS refund_due,
-    COALESCE(SUM(net_paid_cny_fen),0) AS refund_net_paid
-  FROM buyer_refund_ledger_balances
-  GROUP BY formal_order_id
+    MIN(balance.source_review_event_id) AS refund_source_event_id,
+    MIN(balance.review_case_id) AS refund_review_case_id,
+    COALESCE(SUM(balance.due_amount_cny_fen),0) AS refund_due,
+    COALESCE(SUM(balance.net_paid_cny_fen),0) AS refund_net_paid
+  FROM buyer_refund_ledger_balances balance
+  GROUP BY balance.formal_order_id
 ),
 allocation_facts AS (
   SELECT
@@ -197,6 +241,10 @@ allocation_facts AS (
     COALESCE(SUM(net.net_amount_cny_fen),0) AS seller_attributed_cash
   FROM seller_payables payable
   JOIN seller_allocation_net_amounts net ON net.payable_id=payable.id
+  JOIN seller_payments payment ON payment.id=net.payment_id
+  LEFT JOIN seller_payment_reversals payment_reversal
+    ON payment_reversal.payment_id=payment.id
+  WHERE payment_reversal.id IS NULL
   GROUP BY payable.formal_order_id
 ),
 cash_dates AS (
@@ -247,30 +295,44 @@ base AS (
     snapshot.seller_expected_principal_cny_fen,
     snapshot.service_fee_cny_fen,
     COALESCE(review.review_case_count,0) AS review_case_count,
+    review.review_case_id,
     COALESCE(review.approved_case_count,0) AS approved_case_count,
     COALESCE(review.organization_mismatch_count,0)
       AS review_organization_mismatch_count,
     COALESCE(approval.approval_event_count,0) AS approval_event_count,
+    approval.approval_event_id,
+    approval.approval_review_case_id,
+    COALESCE(approval.buyer_due_event_count,0) AS buyer_due_event_count,
+    approval.buyer_due_event_id,
+    approval.buyer_due_review_case_id,
+    approval.buyer_due_snapshot_id,
+    COALESCE(approval.service_fee_event_count,0) AS service_fee_event_count,
+    approval.service_fee_event_id,
+    approval.service_fee_review_case_id,
+    approval.service_fee_snapshot_id,
     COALESCE(payable.principal_count,0) AS principal_count,
     COALESCE(payable.service_fee_count,0) AS service_fee_count,
     payable.principal_organization_id,
+    payable.principal_snapshot_id,
+    payable.principal_source_type,
+    payable.principal_source_id,
     payable.service_fee_organization_id,
+    payable.service_fee_payable_snapshot_id,
+    payable.service_fee_source_type,
+    payable.service_fee_source_id,
+    payable.service_fee_due_at,
     COALESCE(payable.principal_due,0) AS seller_principal_due_cny_fen,
-    COALESCE(payable.principal_collected,0)
-      AS seller_principal_collected_cny_fen,
-    COALESCE(payable.principal_outstanding,0)
-      AS seller_principal_outstanding_cny_fen,
-    COALESCE(payable.service_fee_due,0)
-      AS seller_service_fee_due_cny_fen,
-    COALESCE(payable.service_fee_collected,0)
-      AS seller_service_fee_collected_cny_fen,
-    COALESCE(payable.service_fee_outstanding,0)
-      AS seller_service_fee_outstanding_cny_fen,
+    COALESCE(payable.principal_collected,0) AS seller_principal_collected_cny_fen,
+    COALESCE(payable.principal_outstanding,0) AS seller_principal_outstanding_cny_fen,
+    COALESCE(payable.service_fee_due,0) AS seller_service_fee_due_cny_fen,
+    COALESCE(payable.service_fee_collected,0) AS seller_service_fee_collected_cny_fen,
+    COALESCE(payable.service_fee_outstanding,0) AS seller_service_fee_outstanding_cny_fen,
     COALESCE(refund.refund_count,0) AS refund_count,
+    refund.refund_source_event_id,
+    refund.refund_review_case_id,
     COALESCE(refund.refund_due,0) AS buyer_refund_due_cny_fen,
     COALESCE(refund.refund_net_paid,0) AS buyer_refund_net_paid_cny_fen,
-    COALESCE(allocation.seller_attributed_cash,0)
-      AS seller_attributed_cash_cny_fen
+    COALESCE(allocation.seller_attributed_cash,0) AS seller_attributed_cash_cny_fen
   FROM formal_orders formal_order
   LEFT JOIN snapshot_facts snapshot ON snapshot.formal_order_id=formal_order.id
   LEFT JOIN review_facts review ON review.formal_order_id=formal_order.id
@@ -294,6 +356,10 @@ classified AS (
         OR review_case_count>1 THEN 'LEDGER_CONFLICT'
       WHEN approved_case_count=0 AND approval_event_count=0 THEN 'PROJECTED_ONLY'
       WHEN approved_case_count<>1 OR approval_event_count<>1
+        OR buyer_due_event_count<>1 OR service_fee_event_count<>1
+        OR review_case_id<>approval_review_case_id
+        OR review_case_id<>buyer_due_review_case_id
+        OR review_case_id<>service_fee_review_case_id
         THEN 'REVIEW_APPROVAL_CONFLICT'
       WHEN principal_count=0 THEN 'MISSING_PRINCIPAL_PAYABLE'
       WHEN service_fee_count=0 THEN 'MISSING_SERVICE_FEE_PAYABLE'
@@ -302,6 +368,18 @@ classified AS (
         OR principal_organization_id<>seller_organization_id
         OR service_fee_organization_id<>seller_organization_id
         THEN 'SELLER_ORGANIZATION_MISMATCH'
+      WHEN principal_snapshot_id<>snapshot_id
+        OR principal_source_type<>'FORMAL_ORDER'
+        OR principal_source_id<>formal_order_id
+        OR service_fee_payable_snapshot_id<>snapshot_id
+        OR service_fee_source_type<>'REVIEW_APPROVAL'
+        OR service_fee_source_id<>review_case_id
+        OR service_fee_due_at<>review_approved_at
+        OR refund_source_event_id<>buyer_due_event_id
+        OR refund_review_case_id<>review_case_id
+        OR buyer_due_snapshot_id<>snapshot_id
+        OR service_fee_snapshot_id<>snapshot_id
+        THEN 'REVIEW_APPROVAL_CONFLICT'
       WHEN seller_principal_due_cny_fen<>seller_expected_principal_cny_fen
         OR seller_service_fee_due_cny_fen<>service_fee_cny_fen
         OR buyer_refund_due_cny_fen<>buyer_expected_principal_cny_fen
