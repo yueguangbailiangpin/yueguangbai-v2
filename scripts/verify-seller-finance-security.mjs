@@ -12,8 +12,8 @@ const sourceFiles = [
   'apps/api/src/seller-settlements/seller-routes.ts',
 ];
 const sources = sourceFiles.map(read).join('\n');
-const sellerRead = read('apps/api/src/seller-settlements/read-model.ts')
-  + read('packages/contracts/src/seller-settlement.ts');
+const sellerPublicRead = read('apps/api/src/seller-settlements/read-model.ts')
+  + read('apps/api/src/seller-settlements/seller-routes.ts');
 const migration = read('migrations/0024_seller_payments_allocations.sql');
 
 for (const token of [
@@ -26,13 +26,14 @@ for (const token of [
 assert(!sources.includes('assigned_owner_id'));
 assert(!sources.includes('resource_scope_json'));
 assert(!sources.includes('payment_channel'));
-assert(!sellerRead.includes('file_object_id'));
-assert(!sellerRead.includes('file_entity_link_id'));
-assert(!sellerRead.includes('object_key'));
-assert(!sellerRead.includes('reversal reason'));
+assert(!sellerPublicRead.includes('file_object_id'));
+assert(!sellerPublicRead.includes('file_entity_link_id'));
+assert(!sellerPublicRead.includes('object_key'));
+assert(!sellerPublicRead.includes('reversal reason'));
+assert(!sellerPublicRead.includes('recorded_by_staff_id'));
+assert(!sellerPublicRead.includes('reversed_by_staff_id'));
 assert(migration.includes("object.visibility='INTERNAL_ONLY'"));
-assert(migration.includes("grant_row.subject_type='STAFF_INTERNAL'")
-  || migration.includes("staff_grant.subject_type='STAFF_INTERNAL'"));
+assert(migration.includes("staff_grant.subject_type='STAFF_INTERNAL'"));
 assert(!sources.match(/public\s+queue|claim\s+api/iu));
 
 const migrations = readdirSync(path.join(root, 'migrations'))
