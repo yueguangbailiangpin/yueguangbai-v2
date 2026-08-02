@@ -14,6 +14,10 @@ const routes = readFileSync(
   path.join(root, 'apps/api/src/internal-finance/routes.ts'),
   'utf8',
 );
+const detail = readFileSync(
+  path.join(root, 'apps/api/src/internal-finance/order-detail.ts'),
+  'utf8',
+);
 const required = [
   'internal_order_finance_positions',
   'internal_finance_exceptions',
@@ -23,11 +27,20 @@ const required = [
   'attributed_cash_net_cny_fen',
   'buyer_refund_overpaid_cny_fen',
   'seller_unallocated_credit_cny_fen',
+  'approval_review_case_id',
+  'refund_source_event_id',
+  'service_fee_source_type',
+  "principal_source_type<>'FORMAL_ORDER'",
+  "service_fee_source_type<>'REVIEW_APPROVAL'",
+  'seller_payment_reversals',
   'FINANCIAL_VIEW',
   'schema_version=25',
+  'buildFinanceOrderDetail',
+  'frozen_snapshot',
+  'calculations',
 ];
 for (const token of required) {
-  if (!(migration + contracts + routes).includes(token)) {
+  if (!(migration + contracts + routes + detail).includes(token)) {
     throw new Error(`missing ${token}`);
   }
 }
@@ -44,4 +57,21 @@ for (const route of [
 ]) {
   if (!routes.includes(route)) throw new Error(`missing route ${route}`);
 }
-console.log(JSON.stringify({ status: 'PASS', phase: '3L' }, null, 2));
+for (const forbidden of [
+  'payment_proof',
+  'refund_proof',
+  'object_key',
+  'file_url',
+  'buyer_wechat',
+  'session_secret',
+]) {
+  if (detail.includes(forbidden)) {
+    throw new Error(`sensitive order detail token: ${forbidden}`);
+  }
+}
+console.log(JSON.stringify({
+  status: 'PASS',
+  phase: '3L',
+  approval_source_consistency: true,
+  order_detail_calculation_process: true,
+}, null, 2));
