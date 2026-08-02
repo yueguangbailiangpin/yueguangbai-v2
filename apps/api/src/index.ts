@@ -13,6 +13,7 @@ import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
 import {
   registerSellerSettlementRoutes,
+  registerStaffSellerSettlementProofRoutes,
   registerStaffSellerSettlementRoutes,
 } from './seller-settlements';
 import { registerStaffAssignmentRoutes } from './staff-assignment';
@@ -24,6 +25,7 @@ registerStaffAssignmentRoutes(app);
 registerStaffCatalogWorkflowRoutes(app);
 registerStaffReviewRoutes(app);
 registerStaffSellerSettlementRoutes(app);
+registerStaffSellerSettlementProofRoutes(app);
 registerBuyerSelfRegistrationRoutes(app);
 registerBuyerPortalRoutes(app);
 registerBuyerOrderEvidencePortalRoutes(app);
