@@ -15,14 +15,8 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
-  batchWithAssignmentRetry,
-  prepareDirectWorkItem,
-} from '../staff-assignment';
+import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
+import { batchWithAssignmentRetry, prepareDirectWorkItem } from '../staff-assignment';
 import type { FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
 import {
@@ -47,7 +41,6 @@ import {
 
 interface PreparedReviewFile {
   fileObjectId: string;
-  expectedFileVersion: number;
   linkId: string;
   versionFileId: string;
   statements: readonly SqlStatement[];
@@ -73,10 +66,7 @@ export async function submitReviewEvidence(
 ): Promise<SubmitReviewEvidenceResult> {
   validateBuyerReviewActor(command.actor);
   const formalOrderId = cleanReviewIdentifier(input.formalOrderId);
-  const expectedVersion = cleanExpectedVersion(
-    input.expectedVersion,
-    { allowZero: true },
-  );
+  const expectedVersion = cleanExpectedVersion(input.expectedVersion, { allowZero: true });
   if (!isPricingReviewType(input.reviewType)) {
     throw new ReviewError('VALIDATION_ERROR', 400);
   }
@@ -84,7 +74,6 @@ export async function submitReviewEvidence(
   const evidenceFiles = normalizeReviewFileInputs(input.evidenceFiles);
   const buyerNote = cleanOptionalReviewText(input.buyerNote, 2000);
   const now = cleanReviewTimestamp(command.now ?? Date.now());
-
   const requestHash = await hashCanonicalJson({
     action: 'SUBMIT_REVIEW_EVIDENCE',
     formal_order_id: formalOrderId,
@@ -97,22 +86,16 @@ export async function submitReviewEvidence(
     })),
     buyer_note: buyerNote,
   });
-  const acquired = await acquireIdempotency<SubmitReviewEvidenceResult>(
-    database,
-    {
-      actorType: 'BUYER_CUSTOMER',
-      actorId: command.actor.buyerCustomerId,
-      action: 'SUBMIT_REVIEW_EVIDENCE',
-      targetType: 'FORMAL_ORDER',
-      targetId: formalOrderId,
-      idempotencyKey: command.idempotencyKey,
-      requestHash,
-    },
-    { now },
-  );
-  if (acquired.kind === 'REPLAY') {
-    return { ...acquired.response, replayed: true };
-  }
+  const acquired = await acquireIdempotency<SubmitReviewEvidenceResult>(database, {
+    actorType: 'BUYER_CUSTOMER',
+    actorId: command.actor.buyerCustomerId,
+    action: 'SUBMIT_REVIEW_EVIDENCE',
+    targetType: 'FORMAL_ORDER',
+    targetId: formalOrderId,
+    idempotencyKey: command.idempotencyKey,
+    requestHash,
+  }, { now });
+  if (acquired.kind === 'REPLAY') return { ...acquired.response, replayed: true };
 
   try {
     const source = await requireFormalOrderForBuyerReview(
@@ -121,7 +104,6 @@ export async function submitReviewEvidence(
       command.actor.buyerCustomerId,
     );
     validateReviewSource(source, expectedVersion, input.reviewType);
-
     const reviewCaseId = source.review_case_id ?? crypto.randomUUID();
     const evidenceVersionNo = source.review_case_id === null
       ? 1
@@ -135,11 +117,7 @@ export async function submitReviewEvidence(
       database,
       evidenceFiles.map((file) => file.fileObjectId),
     );
-    validateReviewEvidenceFiles(
-      fileRows,
-      evidenceFiles,
-      command.actor.buyerCustomerId,
-    );
+    validateReviewEvidenceFiles(fileRows, evidenceFiles, command.actor.buyerCustomerId);
     await assertFilesUnused(database, evidenceFiles);
 
     const fileActor: FileActor = {
@@ -158,10 +136,7 @@ export async function submitReviewEvidence(
           entityType: 'REVIEW',
           entityId: evidenceVersionId,
           grants: [
-            {
-              subjectType: 'BUYER',
-              buyerCustomerId: source.buyer_customer_id,
-            },
+            { subjectType: 'BUYER', buyerCustomerId: source.buyer_customer_id },
             {
               subjectType: 'SELLER_ORGANIZATION',
               sellerOrganizationId: source.seller_organization_id,
@@ -182,7 +157,6 @@ export async function submitReviewEvidence(
       );
       preparedFiles.push({
         fileObjectId: evidenceFile.fileObjectId,
-        expectedFileVersion: evidenceFile.expectedFileVersion,
         linkId: prepared.result.linkId,
         versionFileId: crypto.randomUUID(),
         statements: prepared.statements,
@@ -230,13 +204,9 @@ export async function submitReviewEvidence(
 
     const statements: SqlStatement[] = [];
     if (source.review_case_id === null) {
-      statements.push(insertReviewCaseStatement(database, {
-        reviewCaseId,
-        source,
-        now,
-      }));
+      statements.push(insertReviewCaseStatement(database, reviewCaseId, source, now));
     }
-    statements.push(insertReviewEvidenceVersionStatement(database, {
+    statements.push(insertEvidenceStatement(database, {
       evidenceVersionId,
       reviewCaseId,
       formalOrderId: source.formal_order_id,
@@ -248,25 +218,31 @@ export async function submitReviewEvidence(
       now,
     }));
     if (source.review_case_id !== null) {
-      statements.push(resubmitReviewCaseStatement(database, {
+      statements.push(resubmitCaseStatement(
+        database,
         reviewCaseId,
         expectedVersion,
         evidenceVersionNo,
         now,
-      }));
+      ));
     }
-    for (const prepared of preparedFiles) {
+    for (const file of preparedFiles) {
       statements.push(
-        ...prepared.statements,
-        insertReviewEvidenceFileStatement(database, {
-          versionFileId: prepared.versionFileId,
+        ...file.statements,
+        database.prepare(`
+          INSERT INTO review_evidence_version_files (
+            id, review_case_id, evidence_version_id, formal_order_id,
+            file_object_id, file_entity_link_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          file.versionFileId,
           reviewCaseId,
           evidenceVersionId,
-          formalOrderId: source.formal_order_id,
-          fileObjectId: prepared.fileObjectId,
-          fileEntityLinkId: prepared.linkId,
+          source.formal_order_id,
+          file.fileObjectId,
+          file.linkId,
           now,
-        }),
+        ),
       );
     }
     statements.push(
@@ -294,11 +270,7 @@ export async function submitReviewEvidence(
         aggregateType: 'REVIEW_CASE',
         aggregateId: reviewCaseId,
         eventType,
-        actor: {
-          type: 'BUYER_CUSTOMER',
-          id: source.buyer_customer_id,
-          roles: [],
-        },
+        actor: { type: 'BUYER_CUSTOMER', id: source.buyer_customer_id, roles: [] },
         requestId: command.requestId ?? null,
         idempotencyKey: acquired.claim.idempotencyKey,
         previousState: source.review_case_id === null ? null : {
@@ -315,20 +287,15 @@ export async function submitReviewEvidence(
         createdAt: now,
       }),
       ...createOutboxStatements(database, outbox),
-      completeIdempotencyStatement(
-        database,
-        acquired.claim,
-        response,
-        {
-          resultReferences: {
-            review_case_id: reviewCaseId,
-            evidence_version_id: evidenceVersionId,
-            formal_order_id: source.formal_order_id,
-          },
-          now,
+      completeIdempotencyStatement(database, acquired.claim, response, {
+        resultReferences: {
+          review_case_id: reviewCaseId,
+          evidence_version_id: evidenceVersionId,
+          formal_order_id: source.formal_order_id,
         },
-      ),
-      assertReviewEvidenceSubmittedStatement(database, {
+        now,
+      }),
+      assertSubmitted(database, {
         reviewCaseId,
         formalOrderId: source.formal_order_id,
         buyerCustomerId: source.buyer_customer_id,
@@ -337,32 +304,29 @@ export async function submitReviewEvidence(
         evidenceVersionNo,
         aggregateVersion,
         reviewUrl,
+        submittedAt: now,
         preparedFiles,
         claim: acquired.claim,
       }),
       assertIdempotencyCompletionStatement(database, acquired.claim),
     );
 
-    await batchWithAssignmentRetry(
-      database,
-      () => prepareDirectWorkItem(database, {
-        workType: 'REVIEW_DECISION',
-        sourceEntityType: 'REVIEW_CASE',
-        sourceEntityId: reviewCaseId,
-        marketplaceCode: 'JP',
-        buyerCustomerId: source.buyer_customer_id,
-        sellerOrganizationId: source.seller_organization_id,
-        actorType: 'SYSTEM',
-        actorId: `buyer:${source.buyer_customer_id}`,
-        requestId: command.requestId ?? null,
-        idempotencyKey: acquired.claim.idempotencyKey,
-        reason: source.review_case_id === null
-          ? 'review evidence submitted'
-          : 'review evidence resubmitted',
-        now,
-      }),
-      statements,
-    );
+    await batchWithAssignmentRetry(database, () => prepareDirectWorkItem(database, {
+      workType: 'REVIEW_DECISION',
+      sourceEntityType: 'REVIEW_CASE',
+      sourceEntityId: reviewCaseId,
+      marketplaceCode: 'JP',
+      buyerCustomerId: source.buyer_customer_id,
+      sellerOrganizationId: source.seller_organization_id,
+      actorType: 'SYSTEM',
+      actorId: `buyer:${source.buyer_customer_id}`,
+      requestId: command.requestId ?? null,
+      idempotencyKey: acquired.claim.idempotencyKey,
+      reason: source.review_case_id === null
+        ? 'review evidence submitted'
+        : 'review evidence resubmitted',
+      now,
+    }), statements);
     return response;
   } catch (error) {
     const normalized = normalizeReviewError(error);
@@ -381,19 +345,14 @@ function validateReviewSource(
   expectedVersion: number,
   reviewType: PricingReviewType,
 ): void {
-  if (source.order_status !== 'CONFIRMED'
-    || source.review_type !== reviewType) {
+  if (source.order_status !== 'CONFIRMED' || source.review_type !== reviewType) {
     throw new ReviewError('FORMAL_ORDER_STATE_CONFLICT', 409);
   }
   if (source.review_case_id === null) {
-    if (expectedVersion !== 0) {
-      throw new ReviewError('REVIEW_CASE_NOT_FOUND', 404);
-    }
+    if (expectedVersion !== 0) throw new ReviewError('REVIEW_CASE_NOT_FOUND', 404);
     return;
   }
-  if (expectedVersion === 0) {
-    throw new ReviewError('REVIEW_ALREADY_EXISTS', 409);
-  }
+  if (expectedVersion === 0) throw new ReviewError('REVIEW_ALREADY_EXISTS', 409);
   if (source.review_case_version !== expectedVersion) {
     throw new ReviewError('VERSION_CONFLICT', 409);
   }
@@ -404,21 +363,13 @@ function validateReviewSource(
 
 function validateReviewEvidenceFiles(
   rows: readonly ReviewEvidenceFileRow[],
-  expected: readonly {
-    fileObjectId: string;
-    expectedFileVersion: number;
-  }[],
+  expected: readonly { fileObjectId: string; expectedFileVersion: number }[],
   buyerCustomerId: string,
 ): void {
-  if (rows.length !== expected.length) {
-    throw new ReviewError('FILE_OBJECT_NOT_FOUND', 404);
-  }
-  const expectedVersions = new Map(
-    expected.map((file) => [file.fileObjectId, file.expectedFileVersion]),
-  );
+  if (rows.length !== expected.length) throw new ReviewError('FILE_OBJECT_NOT_FOUND', 404);
+  const versions = new Map(expected.map((file) => [file.fileObjectId, file.expectedFileVersion]));
   for (const row of rows) {
-    if (row.status !== 'VERIFIED'
-      || row.intent_status !== 'VERIFIED') {
+    if (row.status !== 'VERIFIED' || row.intent_status !== 'VERIFIED') {
       throw new ReviewError('FILE_NOT_VERIFIED', 409);
     }
     if (row.purpose !== 'REVIEW_EVIDENCE'
@@ -427,9 +378,7 @@ function validateReviewEvidenceFiles(
       || row.owner_actor_id !== buyerCustomerId) {
       throw new ReviewError('REVIEW_FILE_CONFLICT', 409);
     }
-    if (row.version !== expectedVersions.get(row.id)) {
-      throw new ReviewError('VERSION_CONFLICT', 409);
-    }
+    if (row.version !== versions.get(row.id)) throw new ReviewError('VERSION_CONFLICT', 409);
   }
 }
 
@@ -437,61 +386,42 @@ async function assertFilesUnused(
   database: SqlDatabase,
   files: readonly { fileObjectId: string }[],
 ): Promise<void> {
-  const placeholders = files.map(() => '?').join(', ');
   const row = await database.prepare(`
-    SELECT 1 AS conflict
-    FROM review_evidence_version_files
-    WHERE file_object_id IN (${placeholders})
-    LIMIT 1
-  `).bind(
-    ...files.map((file) => file.fileObjectId),
-  ).first<{ conflict: number }>();
+    SELECT 1 AS conflict FROM review_evidence_version_files
+    WHERE file_object_id IN (${files.map(() => '?').join(', ')}) LIMIT 1
+  `).bind(...files.map((file) => file.fileObjectId)).first<{ conflict: number }>();
   if (row) throw new ReviewError('REVIEW_FILE_CONFLICT', 409);
 }
 
 function insertReviewCaseStatement(
   database: SqlDatabase,
-  input: {
-    reviewCaseId: string;
-    source: FormalOrderReviewSourceRow;
-    now: number;
-  },
+  reviewCaseId: string,
+  source: FormalOrderReviewSourceRow,
+  now: number,
 ): SqlStatement {
   return database.prepare(`
     INSERT INTO review_cases (
-      id,
-      formal_order_id,
-      buyer_customer_id,
-      seller_organization_id,
-      review_type,
-      status,
-      current_evidence_version_no,
-      version,
-      public_change_reason,
-      internal_review_note,
-      submitted_at,
-      updated_at,
-      decided_by_staff_id,
-      decided_at,
-      withdrawn_at,
-      created_at
+      id, formal_order_id, buyer_customer_id, seller_organization_id,
+      review_type, status, current_evidence_version_no, version,
+      public_change_reason, internal_review_note, submitted_at, updated_at,
+      decided_by_staff_id, decided_at, withdrawn_at, created_at
     ) VALUES (
       ?, ?, ?, ?, ?, 'PENDING_REVIEW', 1, 1,
       NULL, NULL, ?, ?, NULL, NULL, NULL, ?
     )
   `).bind(
-    input.reviewCaseId,
-    input.source.formal_order_id,
-    input.source.buyer_customer_id,
-    input.source.seller_organization_id,
-    input.source.review_type,
-    input.now,
-    input.now,
-    input.now,
+    reviewCaseId,
+    source.formal_order_id,
+    source.buyer_customer_id,
+    source.seller_organization_id,
+    source.review_type,
+    now,
+    now,
+    now,
   );
 }
 
-function insertReviewEvidenceVersionStatement(
+function insertEvidenceStatement(
   database: SqlDatabase,
   input: {
     evidenceVersionId: string;
@@ -507,15 +437,8 @@ function insertReviewEvidenceVersionStatement(
 ): SqlStatement {
   return database.prepare(`
     INSERT INTO review_evidence_versions (
-      id,
-      review_case_id,
-      formal_order_id,
-      version_no,
-      review_type,
-      submitted_by_buyer_id,
-      buyer_note,
-      created_at,
-      review_url
+      id, review_case_id, formal_order_id, version_no, review_type,
+      submitted_by_buyer_id, buyer_note, created_at, review_url
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     input.evidenceVersionId,
@@ -530,18 +453,15 @@ function insertReviewEvidenceVersionStatement(
   );
 }
 
-function resubmitReviewCaseStatement(
+function resubmitCaseStatement(
   database: SqlDatabase,
-  input: {
-    reviewCaseId: string;
-    expectedVersion: number;
-    evidenceVersionNo: number;
-    now: number;
-  },
+  reviewCaseId: string,
+  expectedVersion: number,
+  evidenceVersionNo: number,
+  now: number,
 ): SqlStatement {
   return database.prepare(`
-    UPDATE review_cases
-    SET
+    UPDATE review_cases SET
       status='PENDING_REVIEW',
       current_evidence_version_no=?,
       version=version+1,
@@ -551,53 +471,12 @@ function resubmitReviewCaseStatement(
       decided_by_staff_id=NULL,
       decided_at=NULL,
       withdrawn_at=NULL
-    WHERE id=?
-      AND status='CHANGES_REQUESTED'
-      AND version=?
+    WHERE id=? AND status='CHANGES_REQUESTED' AND version=?
       AND current_evidence_version_no=?
-  `).bind(
-    input.evidenceVersionNo,
-    input.now,
-    input.reviewCaseId,
-    input.expectedVersion,
-    input.evidenceVersionNo - 1,
-  );
+  `).bind(evidenceVersionNo, now, reviewCaseId, expectedVersion, evidenceVersionNo - 1);
 }
 
-function insertReviewEvidenceFileStatement(
-  database: SqlDatabase,
-  input: {
-    versionFileId: string;
-    reviewCaseId: string;
-    evidenceVersionId: string;
-    formalOrderId: string;
-    fileObjectId: string;
-    fileEntityLinkId: string;
-    now: number;
-  },
-): SqlStatement {
-  return database.prepare(`
-    INSERT INTO review_evidence_version_files (
-      id,
-      review_case_id,
-      evidence_version_id,
-      formal_order_id,
-      file_object_id,
-      file_entity_link_id,
-      created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    input.versionFileId,
-    input.reviewCaseId,
-    input.evidenceVersionId,
-    input.formalOrderId,
-    input.fileObjectId,
-    input.fileEntityLinkId,
-    input.now,
-  );
-}
-
-function assertReviewEvidenceSubmittedStatement(
+function assertSubmitted(
   database: SqlDatabase,
   input: {
     reviewCaseId: string;
@@ -608,6 +487,7 @@ function assertReviewEvidenceSubmittedStatement(
     evidenceVersionNo: number;
     aggregateVersion: number;
     reviewUrl: string | null;
+    submittedAt: number;
     preparedFiles: readonly PreparedReviewFile[];
     claim: {
       actorType: string;
@@ -617,15 +497,13 @@ function assertReviewEvidenceSubmittedStatement(
     };
   },
 ): SqlStatement {
-  const filePlaceholders = input.preparedFiles.map(() => '?').join(', ');
+  const placeholders = input.preparedFiles.map(() => '?').join(', ');
   return database.prepare(`
     INSERT INTO transaction_assertions (assertion_value)
     SELECT CASE WHEN
       EXISTS (
-        SELECT 1
-        FROM review_cases review_case
-        WHERE review_case.id=?
-          AND review_case.formal_order_id=?
+        SELECT 1 FROM review_cases review_case
+        WHERE review_case.id=? AND review_case.formal_order_id=?
           AND review_case.buyer_customer_id=?
           AND review_case.seller_organization_id=?
           AND review_case.status='PENDING_REVIEW'
@@ -633,43 +511,29 @@ function assertReviewEvidenceSubmittedStatement(
           AND review_case.current_evidence_version_no=?
       )
       AND EXISTS (
-        SELECT 1
-        FROM review_evidence_versions evidence
-        WHERE evidence.id=?
-          AND evidence.review_case_id=?
-          AND evidence.formal_order_id=?
-          AND evidence.version_no=?
-          AND evidence.review_url IS ?
-          AND evidence.created_at=?
+        SELECT 1 FROM review_evidence_versions evidence
+        WHERE evidence.id=? AND evidence.review_case_id=?
+          AND evidence.formal_order_id=? AND evidence.version_no=?
+          AND evidence.review_url IS ? AND evidence.created_at=?
       )
       AND (
         SELECT COUNT(*)
         FROM review_evidence_version_files version_file
-        JOIN file_entity_links link
-          ON link.id=version_file.file_entity_link_id
+        JOIN file_entity_links link ON link.id=version_file.file_entity_link_id
         WHERE version_file.evidence_version_id=?
-          AND version_file.file_object_id IN (${filePlaceholders})
+          AND version_file.file_object_id IN (${placeholders})
           AND link.authorization_mode='EXPLICIT_AUDIENCES'
       )=?
       AND ? BETWEEN 1 AND 3
       AND (
-        SELECT COUNT(*)
-        FROM review_events
-        WHERE review_case_id=?
-          AND case_version=?
-          AND event_type IN (
-            'REVIEW_EVIDENCE_SUBMITTED',
-            'REVIEW_EVIDENCE_RESUBMITTED'
-          )
+        SELECT COUNT(*) FROM review_events
+        WHERE review_case_id=? AND case_version=?
+          AND event_type IN ('REVIEW_EVIDENCE_SUBMITTED','REVIEW_EVIDENCE_RESUBMITTED')
       )=1
       AND EXISTS (
-        SELECT 1
-        FROM command_idempotency_records
-        WHERE actor_type=?
-          AND actor_id=?
-          AND idempotency_key=?
-          AND status='COMMITTED'
-          AND lease_token=?
+        SELECT 1 FROM command_idempotency_records
+        WHERE actor_type=? AND actor_id=? AND idempotency_key=?
+          AND status='COMMITTED' AND lease_token=?
       )
     THEN 1 ELSE 0 END
   `).bind(
@@ -684,9 +548,7 @@ function assertReviewEvidenceSubmittedStatement(
     input.formalOrderId,
     input.evidenceVersionNo,
     input.reviewUrl,
-    input.preparedFiles.length > 0
-      ? undefined
-      : undefined,
+    input.submittedAt,
     input.evidenceVersionId,
     ...input.preparedFiles.map((file) => file.fileObjectId),
     input.preparedFiles.length,
