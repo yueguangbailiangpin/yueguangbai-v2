@@ -6,4 +6,5 @@ export * from './reconciliation';
 export * from './record-payment';
 export * from './seller-routes';
 export * from './shared';
+export * from './staff-proof-routes';
 export * from './staff-routes';
