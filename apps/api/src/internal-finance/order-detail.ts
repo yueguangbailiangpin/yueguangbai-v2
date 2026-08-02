@@ -1,4 +1,6 @@
 import type {
+  FinanceExceptionAction,
+  FinanceStatus,
   InternalFinanceOrderDetailDto,
   InternalOrderFinancePositionDto,
 } from '@ygb/contracts';
@@ -6,7 +8,6 @@ import {
   databaseIntegerToBigInt,
   signedIntegerString,
 } from '@ygb/domain';
-import { financeExceptionAction } from './read-model';
 
 export function buildFinanceOrderDetail(
   position: InternalOrderFinancePositionDto,
@@ -92,4 +93,21 @@ export function buildFinanceOrderDetail(
       hasException ? [financeExceptionAction(position.finance_status)] : [],
     ),
   });
+}
+
+function financeExceptionAction(
+  status: FinanceStatus,
+): FinanceExceptionAction {
+  if (status === 'MISSING_FINANCIAL_SNAPSHOT'
+    || status === 'MULTIPLE_FINANCIAL_SNAPSHOTS') {
+    return 'REVIEW_FORMAL_ORDER_SNAPSHOT';
+  }
+  if (status === 'MISSING_PRINCIPAL_PAYABLE'
+    || status === 'MISSING_SERVICE_FEE_PAYABLE') {
+    return 'RUN_SELLER_PAYABLE_RECONCILIATION';
+  }
+  if (status === 'MISSING_BUYER_REFUND_OBLIGATION') {
+    return 'REVIEW_BUYER_REFUND_OBLIGATION';
+  }
+  return 'MANUAL_INTERNAL_INVESTIGATION';
 }
