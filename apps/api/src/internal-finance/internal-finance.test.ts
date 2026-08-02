@@ -132,6 +132,43 @@ describe('Wave 12 migration and authorization boundaries', () => {
         'legacy-owner',30,31,30,31
       )
     `).run()).rejects.toThrow();
+    await expect(database.prepare(`
+      INSERT INTO staff_permission_overrides (
+        staff_id, permission_code, effect, status, reason,
+        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
+      ) VALUES (
+        'legacy-staff','PRODUCT_EDIT','ALLOW','ACTIVE',NULL,
+        'legacy-owner',32,NULL,32,32
+      )
+    `).run()).rejects.toThrow();
+    await expect(database.prepare(`
+      INSERT INTO staff_permission_overrides (
+        staff_id, permission_code, effect, status, reason,
+        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
+      ) VALUES (
+        'legacy-staff','PRODUCT_EDIT','GRANT','UNKNOWN',NULL,
+        'legacy-owner',33,NULL,33,33
+      )
+    `).run()).rejects.toThrow();
+
+    await database.prepare(`
+      INSERT INTO staff_permission_overrides (
+        staff_id, permission_code, effect, status, reason,
+        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
+      ) VALUES (
+        'legacy-staff','FINANCIAL_VIEW','DENY','ACTIVE','owner-only guard',
+        'legacy-owner',34,NULL,34,34
+      )
+    `).run();
+    expect(await database.prepare(`
+      SELECT permission_code, effect, status
+      FROM staff_permission_overrides
+      WHERE staff_id='legacy-staff' AND permission_code='FINANCIAL_VIEW'
+    `).first()).toEqual({
+      permission_code: 'FINANCIAL_VIEW',
+      effect: 'DENY',
+      status: 'ACTIVE',
+    });
 
     const rebuiltViews = database.raw.prepare(`
       SELECT name FROM sqlite_schema
