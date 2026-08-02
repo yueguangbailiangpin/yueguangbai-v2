@@ -51,7 +51,7 @@ export async function reconcileSellerPayables(
   },
 ): Promise<SellerPayableReconciliationResultDto> {
   const sellerOrganizationId = cleanSettlementIdentifier(input.sellerOrganizationId);
-  const cursor = input.cursor == null ? '' : cleanSettlementIdentifier(input.cursor);
+  const cursor = cleanReconciliationCursor(input.cursor);
   const limit = input.limit ?? 100;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
     throw new SellerSettlementError('VALIDATION_ERROR', 400);
@@ -105,7 +105,7 @@ export async function reconcileSellerPayables(
             id, entity_type, entity_id, reason_code, detected_at
           ) VALUES (?, ?, ?, ?, ?)
         `).bind(
-          `seller-payable-conflict:${row.entity_type}:${row.entity_id}:${conflict}`,
+          crypto.randomUUID(),
           row.entity_type,
           row.entity_id,
           conflict,
@@ -118,9 +118,11 @@ export async function reconcileSellerPayables(
       const payableType = row.entity_type === 'FORMAL_ORDER'
         ? 'SELLER_PRINCIPAL'
         : 'SELLER_SERVICE_FEE';
-      const payableId = row.entity_type === 'FORMAL_ORDER'
-        ? `seller-payable:principal:${row.formal_order_id}`
-        : `seller-payable:service-fee:${row.entity_id}`;
+      const sourceType = row.entity_type === 'FORMAL_ORDER'
+        ? 'FORMAL_ORDER'
+        : 'REVIEW_APPROVAL';
+      const payableId = crypto.randomUUID();
+      const payableEventId = crypto.randomUUID();
       const dueAt = row.entity_type === 'FORMAL_ORDER'
         ? await confirmedAt(database, row.formal_order_id)
         : Number(row.approval_at);
@@ -138,7 +140,7 @@ export async function reconcileSellerPayables(
           payableType,
           Number(row.amount_cny_fen),
           row.financial_snapshot_id,
-          row.entity_type === 'FORMAL_ORDER' ? 'FORMAL_ORDER' : 'REVIEW_APPROVAL',
+          sourceType,
           row.entity_id,
           dueAt,
           dueAt,
@@ -147,18 +149,28 @@ export async function reconcileSellerPayables(
           INSERT OR IGNORE INTO seller_payable_events (
             id, payable_id, event_type, actor_type, actor_id,
             amount_cny_fen, metadata_json, idempotency_key, created_at
-          ) VALUES (?, ?, 'PAYABLE_RECONCILED', 'STAFF', ?, ?, ?, ?, ?)
+          )
+          SELECT
+            ?, payable.id, 'PAYABLE_RECONCILED', 'STAFF', ?,
+            payable.amount_cny_fen, ?, ?, ?
+          FROM seller_payables payable
+          WHERE payable.formal_order_id=?
+            AND payable.payable_type=?
+            AND payable.source_type=?
+            AND payable.source_id=?
         `).bind(
-          `seller-payable-reconciled:${payableId}`,
-          payableId,
+          payableEventId,
           command.actor.staffId,
-          Number(row.amount_cny_fen),
           canonicalJson({
             source_entity_type: row.entity_type,
             source_entity_id: row.entity_id,
           }),
           acquired.claim.idempotencyKey,
           now,
+          row.formal_order_id,
+          payableType,
+          sourceType,
+          row.entity_id,
         ),
       );
     }
@@ -172,7 +184,7 @@ export async function reconcileSellerPayables(
     };
     const outbox = await prepareOutboxEvent({
       id: crypto.randomUUID(),
-      dedupKey: `seller-payable-reconciliation:${sellerOrganizationId}:${cursor || 'start'}:${now}`,
+      dedupKey: `seller-payable-reconciliation:${acquired.claim.idempotencyKey}`,
       eventType: 'SELLER_PAYABLE_RECONCILIATION_RAN',
       aggregateType: 'SELLER_ORGANIZATION',
       aggregateId: sellerOrganizationId,
@@ -398,4 +410,17 @@ async function confirmedAt(database: SqlDatabase, formalOrderId: string): Promis
     throw new SellerSettlementError('DEPENDENCY_UNAVAILABLE', 503);
   }
   return Number(row.confirmed_at);
+}
+
+function cleanReconciliationCursor(value: string | null | undefined): string {
+  if (value == null) return '';
+  if (typeof value !== 'string') {
+    throw new SellerSettlementError('VALIDATION_ERROR', 400);
+  }
+  const normalized = value.normalize('NFKC').trim();
+  if (normalized.length < 1 || normalized.length > 240
+    || /[\u0000-\u001f\u007f]/u.test(normalized)) {
+    throw new SellerSettlementError('VALIDATION_ERROR', 400);
+  }
+  return normalized;
 }
