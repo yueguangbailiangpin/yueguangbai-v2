@@ -77,10 +77,10 @@ function seedFoundation(d: SqliteDatabase): void {
 }
 
 describe('Phase 3H staff assignment foundation', () => {
-  it('migrates through 0024 and treats missing availability as AVAILABLE', async () => {
+  it('migrates through 0026 and treats missing availability as AVAILABLE', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 24 });
+      .toEqual({ schema_version: 26 });
     expect(await getStaffAvailability(d, 'pre-1')).toMatchObject({
       staff_id: 'pre-1',
       availability_status: 'AVAILABLE',
