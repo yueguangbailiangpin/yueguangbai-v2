@@ -10,6 +10,10 @@ import { registerCustomerAuthRoutes } from './http-auth';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
 import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
+import {
+  registerSellerSettlementRoutes,
+  registerStaffSellerSettlementRoutes,
+} from './seller-settlements';
 import { registerStaffAssignmentRoutes } from './staff-assignment';
 import { registerStaffCatalogWorkflowRoutes } from './staff-catalog-routes';
 
@@ -17,6 +21,7 @@ const app = createApp();
 registerCustomerAuthRoutes(app);
 registerStaffAssignmentRoutes(app);
 registerStaffCatalogWorkflowRoutes(app);
+registerStaffSellerSettlementRoutes(app);
 registerBuyerSelfRegistrationRoutes(app);
 registerBuyerPortalRoutes(app);
 registerBuyerOrderEvidencePortalRoutes(app);
@@ -27,5 +32,6 @@ registerBuyerReviewRoutes(app);
 registerSellerPortalRoutes(app);
 registerSellerFormalOrderRoutes(app);
 registerSellerReviewRoutes(app);
+registerSellerSettlementRoutes(app);
 
 export default app;
