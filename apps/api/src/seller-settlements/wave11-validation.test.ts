@@ -1,12 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import type { SqlDatabase } from '@ygb/contracts';
+import type { FileActor, SqlDatabase } from '@ygb/contracts';
+import type { FileAuthorizationResource } from '../files/authorization';
 import { recordSellerPayment } from './record-payment';
 import {
   cleanPositiveCnyFen,
   cleanSettlementReason,
   cleanSettlementTimestamp,
+  sellerSettlementFileAuthorization,
   SellerSettlementError,
 } from './shared';
+
+const staffActor: FileActor = Object.freeze({
+  type: 'STAFF',
+  id: 'staff-1',
+  roles: Object.freeze(['seller_ops']),
+});
+
+function proofResource(
+  ownerActorType: string,
+  ownerActorId: string,
+  purpose: FileAuthorizationResource['purpose'] = 'SELLER_SETTLEMENT_PROOF',
+): FileAuthorizationResource {
+  return {
+    uploadIntentId: 'intent-1',
+    fileObjectId: 'proof-1',
+    ownerActorType,
+    ownerActorId,
+    purpose,
+    visibility: 'INTERNAL_ONLY',
+    entityType: 'SELLER_SETTLEMENT',
+    entityId: 'payment-1',
+  };
+}
 
 describe('Wave 11 seller payment command validation', () => {
   it('accepts only positive safe CNY fen integer strings', () => {
@@ -32,6 +57,73 @@ describe('Wave 11 seller payment command validation', () => {
     expect(() => cleanSettlementTimestamp(1.1)).toThrow(SellerSettlementError);
   });
 
+  it('allows the current Staff-owned proof to upload, complete and link', () => {
+    const resource = proofResource('STAFF', 'staff-1');
+    expect(() => sellerSettlementFileAuthorization.assertCanCreateUpload(
+      staffActor,
+      { purpose: 'SELLER_SETTLEMENT_PROOF', visibility: 'INTERNAL_ONLY' },
+    )).not.toThrow();
+    expect(() => sellerSettlementFileAuthorization.assertCanUpload(
+      staffActor,
+      resource,
+    )).not.toThrow();
+    expect(() => sellerSettlementFileAuthorization.assertCanCompleteUpload(
+      staffActor,
+      resource,
+    )).not.toThrow();
+    expect(() => sellerSettlementFileAuthorization.assertCanLink(
+      staffActor,
+      resource,
+    )).not.toThrow();
+  });
+
+  it('allows a trusted persisted SYSTEM proof to be linked by Staff', () => {
+    expect(() => sellerSettlementFileAuthorization.assertCanLink(
+      staffActor,
+      proofResource('SYSTEM', 'trusted-settlement-importer'),
+    )).not.toThrow();
+  });
+
+  it('does not let a client actor create or upload as SYSTEM', () => {
+    expect(() => sellerSettlementFileAuthorization.assertCanCreateUpload(
+      { type: 'SYSTEM', id: 'fake-client-system', roles: [] },
+      { purpose: 'SELLER_SETTLEMENT_PROOF', visibility: 'INTERNAL_ONLY' },
+    )).toThrow('FORBIDDEN');
+    expect(() => sellerSettlementFileAuthorization.assertCanUpload(
+      staffActor,
+      proofResource('SYSTEM', 'trusted-settlement-importer'),
+    )).toThrow('FORBIDDEN');
+  });
+
+  it('rejects another Staff, Buyer, Seller and non-proof ownership', () => {
+    for (const resource of [
+      proofResource('STAFF', 'staff-2'),
+      proofResource('BUYER_CUSTOMER', 'buyer-1'),
+      proofResource('SELLER_MEMBER', 'seller-member-1'),
+      proofResource('STAFF', 'staff-1', 'SUPPORT_ATTACHMENT'),
+    ]) {
+      expect(() => sellerSettlementFileAuthorization.assertCanLink(
+        staffActor,
+        resource,
+      )).toThrow('FORBIDDEN');
+    }
+  });
+
+  it('keeps every settlement proof unreadable through legacy authorization', () => {
+    expect(() => sellerSettlementFileAuthorization.assertCanRead(
+      staffActor,
+      proofResource('STAFF', 'staff-1'),
+    )).toThrow('FORBIDDEN');
+    expect(() => sellerSettlementFileAuthorization.assertCanRead(
+      { type: 'BUYER_CUSTOMER', id: 'buyer-1', roles: [] },
+      proofResource('SYSTEM', 'trusted-settlement-importer'),
+    )).toThrow('FORBIDDEN');
+    expect(() => sellerSettlementFileAuthorization.assertCanRead(
+      { type: 'SELLER_MEMBER', id: 'member-1', roles: [] },
+      proofResource('SYSTEM', 'trusted-settlement-importer'),
+    )).toThrow('FORBIDDEN');
+  });
+
   it('rejects zero and negative payment amounts before database access', async () => {
     const database = {} as SqlDatabase;
     const actor = {
@@ -46,8 +138,8 @@ describe('Wave 11 seller payment command validation', () => {
         'FINANCIAL_CORRECT',
       ] as const),
       deniedPermissions: new Set(),
-      memberTeamIds: new Set<string>(),
-      leaderTeamIds: new Set<string>(),
+      memberTeamIds: [] as string[],
+      leaderTeamIds: [] as string[],
       isOwner: true,
     };
     for (const amount of ['0', '-1']) {
