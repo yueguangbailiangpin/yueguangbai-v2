@@ -8,6 +8,7 @@ import {
   type StaffRoleCode,
 } from '@ygb/contracts';
 import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
+import { resolveAssignmentStaffAuthorization } from '../staff-assignment';
 import type {
   FileAuthorizationResource,
   FileAuthorizationService,
@@ -35,6 +36,11 @@ interface TeamRow {
   team_status: string;
   department_status: string;
   is_leader: number;
+}
+
+interface SellerSettlementProofAuthorityRow {
+  payment_id: string;
+  seller_organization_id: string;
 }
 
 /**
@@ -77,6 +83,11 @@ export async function authorizeExplicitAudienceRead(
     throw new FileStorageError('FORBIDDEN', 403);
   }
   const linkId = cleanFileIdentifier(resource.fileEntityLinkId, 120);
+  const settlementProof = isSellerSettlementProofResource(resource);
+
+  // Seller settlement proofs are never customer-readable, even if a malformed
+  // or compromised audience graph contains a customer grant.
+  if (settlementProof && principal.type !== 'STAFF_SESSION') deny();
 
   if (principal.type === 'BUYER_SESSION') {
     if (actor.type !== 'BUYER_CUSTOMER') deny();
@@ -110,6 +121,21 @@ export async function authorizeExplicitAudienceRead(
     now,
   );
   if (!allowed) deny();
+
+  // GLOBAL is only an internal audience marker for settlement proofs. It is
+  // never sufficient authority. Resolve the current Staff authorization and
+  // current Seller Account Manager / Team Manager / Owner scope on every
+  // create and consume operation.
+  if (settlementProof) {
+    const scoped = await activeSellerSettlementProofScopeExists(
+      database,
+      linkId,
+      resource.fileObjectId,
+      principal.staffId,
+      now,
+    );
+    if (!scoped) deny();
+  }
 }
 
 async function activeBuyerGrantExists(
@@ -298,6 +324,125 @@ async function activeStaffGrantExists(
         && grant.staff_team_id !== null
         && effective.memberTeamIds.includes(grant.staff_team_id));
   });
+}
+
+async function activeSellerSettlementProofScopeExists(
+  database: SqlDatabase,
+  linkId: string,
+  fileObjectId: string,
+  untrustedStaffId: string,
+  now: number,
+): Promise<boolean> {
+  const staffId = cleanFileIdentifier(untrustedStaffId, 120);
+  const objectId = cleanFileIdentifier(fileObjectId, 120);
+  const authority = await database.prepare(`
+    SELECT
+      payment.id AS payment_id,
+      payment.seller_organization_id
+    FROM seller_payment_proofs proof
+    JOIN seller_payments payment
+      ON payment.id=proof.payment_id
+      AND payment.seller_organization_id=proof.seller_organization_id
+    JOIN seller_organizations organization
+      ON organization.id=payment.seller_organization_id
+      AND organization.status='ACTIVE'
+    JOIN file_objects object
+      ON object.id=proof.file_object_id
+      AND object.status='VERIFIED'
+      AND object.purpose='SELLER_SETTLEMENT_PROOF'
+      AND object.visibility='INTERNAL_ONLY'
+    JOIN file_upload_intents intent
+      ON intent.id=object.upload_intent_id
+      AND intent.status='VERIFIED'
+      AND intent.purpose='SELLER_SETTLEMENT_PROOF'
+      AND intent.visibility='INTERNAL_ONLY'
+    JOIN file_entity_links link
+      ON link.id=proof.file_entity_link_id
+      AND link.file_object_id=object.id
+      AND link.entity_type='SELLER_SETTLEMENT'
+      AND link.entity_id=payment.id
+      AND link.purpose='SELLER_SETTLEMENT_PROOF'
+      AND link.visibility='INTERNAL_ONLY'
+      AND link.authorization_mode='EXPLICIT_AUDIENCES'
+      AND link.revoked_at IS NULL
+      AND (link.expires_at IS NULL OR link.expires_at>?)
+    WHERE proof.file_entity_link_id=?
+      AND proof.file_object_id=?
+      AND (
+        SELECT COUNT(*)
+        FROM seller_payment_proofs current_proof
+        WHERE current_proof.payment_id=payment.id
+      )=1
+    LIMIT 1
+  `).bind(
+    now,
+    linkId,
+    objectId,
+  ).first<SellerSettlementProofAuthorityRow>();
+  if (!authority) return false;
+
+  const authorization = await resolveAssignmentStaffAuthorization(
+    database,
+    staffId,
+  );
+  if (!authorization
+    || !authorization.permissions.has('SELLER_SETTLEMENT_VIEW')) {
+    return false;
+  }
+  if (authorization.roles.has('owner')) return true;
+
+  const direct = await database.prepare(`
+    SELECT 1 AS allowed
+    FROM seller_staff_assignments assignment
+    WHERE assignment.seller_organization_id=?
+      AND assignment.duty_code='SELLER_ACCOUNT_MANAGER'
+      AND assignment.staff_id=?
+      AND assignment.status='ACTIVE'
+    LIMIT 1
+  `).bind(
+    authority.seller_organization_id,
+    staffId,
+  ).first<{ allowed: number }>();
+  if (Number(direct?.allowed) === 1) return true;
+
+  if (!authorization.permissions.has('TASK_VIEW_TEAM')
+    || authorization.leaderTeamIds.length === 0) {
+    return false;
+  }
+  const placeholders = authorization.leaderTeamIds
+    .map(() => '?')
+    .join(', ');
+  const team = await database.prepare(`
+    SELECT 1 AS allowed
+    FROM seller_staff_assignments assignment
+    JOIN staff_team_memberships assignee_membership
+      ON assignee_membership.staff_id=assignment.staff_id
+      AND assignee_membership.status='ACTIVE'
+    JOIN staff_teams team
+      ON team.id=assignee_membership.team_id
+      AND team.status='ACTIVE'
+    JOIN staff_departments department
+      ON department.id=team.department_id
+      AND department.status='ACTIVE'
+    WHERE assignment.seller_organization_id=?
+      AND assignment.duty_code='SELLER_ACCOUNT_MANAGER'
+      AND assignment.status='ACTIVE'
+      AND assignee_membership.team_id IN (${placeholders})
+    LIMIT 1
+  `).bind(
+    authority.seller_organization_id,
+    ...authorization.leaderTeamIds,
+  ).first<{ allowed: number }>();
+  return Number(team?.allowed) === 1;
+}
+
+function isSellerSettlementProofResource(
+  resource: FileAuthorizationResource,
+): resource is FileAuthorizationResource & { fileObjectId: string } {
+  return resource.entityType === 'SELLER_SETTLEMENT'
+    && resource.purpose === 'SELLER_SETTLEMENT_PROOF'
+    && resource.visibility === 'INTERNAL_ONLY'
+    && typeof resource.fileObjectId === 'string';
 }
 
 function deny(): never {
