@@ -9,6 +9,7 @@ import type {
 } from '@ygb/contracts';
 import {
   canonicalJson,
+  databaseIntegerToBigInt,
   FinancialCsvError,
   hashCanonicalJson,
   serializeFinancialCsv,
@@ -18,6 +19,7 @@ import {
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { createAuditEventStatement } from '../foundation/audit';
 import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
+import { financeDateColumn } from './filters';
 import {
   readAllFinancePositions,
   readFinanceCashFlow,
@@ -25,6 +27,9 @@ import {
   readFinanceGroups,
 } from './read-model';
 import { InternalFinanceError } from './shared';
+
+const MAX_EXPORT_ROWS = 50_000n;
+const MAX_CASH_SOURCE_MOVEMENTS = 500_000n;
 
 export interface GeneratedFinancialCsv {
   bytes: Uint8Array;
@@ -159,6 +164,7 @@ async function exportRows(
     Record<string, string | number | null>
   >[];
 }> {
+  await assertExportSourceSize(database, exportType, filters);
   if (exportType === 'ORDER_DETAIL') {
     const rows = await readAllFinancePositions(database, filters);
     return { rows: rows.map(orderRecord), columns: orderColumns() };
@@ -177,6 +183,73 @@ async function exportRows(
   const groupBy = exportGroup(exportType);
   const groups = await readFinanceGroups(database, filters, groupBy);
   return { rows: groups.map(groupRecord), columns: groupColumns() };
+}
+
+async function assertExportSourceSize(
+  database: SqlDatabase,
+  exportType: FinancialExportType,
+  filters: InternalFinanceFilters,
+): Promise<void> {
+  if (exportType === 'CASH_FLOW') {
+    assertCashFlowFilters(filters);
+    const values: unknown[] = [filters.from_date, filters.to_date];
+    let organization = '';
+    if (filters.seller_organization_id !== null) {
+      organization = 'AND movement.seller_organization_id=?';
+      values.push(filters.seller_organization_id);
+    }
+    const row = await database.prepare(`
+      SELECT CAST(COUNT(*) AS TEXT) AS source_count
+      FROM internal_finance_cash_movements movement
+      WHERE movement.cash_business_date BETWEEN ? AND ? ${organization}
+    `).bind(...values).first<{ source_count: string | number }>();
+    if (databaseIntegerToBigInt(row?.source_count ?? 0)
+      > MAX_CASH_SOURCE_MOVEMENTS) {
+      throw new InternalFinanceError('EXPORT_TOO_LARGE', 413);
+    }
+    return;
+  }
+
+  const clauses = [`${financeDateColumn(filters.date_basis)} BETWEEN ? AND ?`];
+  const values: unknown[] = [filters.from_date, filters.to_date];
+  const entries: readonly [keyof InternalFinanceFilters, string][] = [
+    ['seller_organization_id', 'position.seller_organization_id'],
+    ['store_id', 'position.store_id'],
+    ['product_id', 'position.product_id'],
+    ['asin', 'position.asin'],
+    ['formal_order_id', 'position.formal_order_id'],
+    ['amazon_order_number', 'position.amazon_order_number'],
+    ['review_type', 'position.review_type'],
+    ['finance_status', 'position.finance_status'],
+  ];
+  for (const [key, column] of entries) {
+    const value = filters[key];
+    if (value !== null) {
+      clauses.push(`${column}=?`);
+      values.push(value);
+    }
+  }
+  const row = await database.prepare(`
+    SELECT CAST(COUNT(*) AS TEXT) AS source_count
+    FROM internal_order_finance_positions position
+    WHERE ${clauses.join(' AND ')}
+  `).bind(...values).first<{ source_count: string | number }>();
+  if (databaseIntegerToBigInt(row?.source_count ?? 0) > MAX_EXPORT_ROWS) {
+    throw new InternalFinanceError('EXPORT_TOO_LARGE', 413);
+  }
+}
+
+function assertCashFlowFilters(filters: InternalFinanceFilters): void {
+  if (filters.date_basis !== 'CASH'
+    || filters.store_id !== null
+    || filters.product_id !== null
+    || filters.asin !== null
+    || filters.formal_order_id !== null
+    || filters.amazon_order_number !== null
+    || filters.review_type !== null
+    || filters.finance_status !== null) {
+    throw new InternalFinanceError('VALIDATION_ERROR', 400);
+  }
 }
 
 function exportGroup(type: FinancialExportType): FinanceGroupBy {
