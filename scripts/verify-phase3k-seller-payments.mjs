@@ -23,9 +23,21 @@ for (const token of [
 ]) assert(migration.includes(token));
 assert(record.includes('proof_file_count: 1'));
 assert(record.includes("'image/jpeg', 'image/png', 'image/webp'"));
+assert(record.includes("file.owner_actor_type === 'SYSTEM'"));
 assert(allocation.includes('reallocateSellerAllocation'));
 assert(payment.includes('listActiveAllocationsForPayment'));
 assert(payment.includes("derived_status='REVERSED'"));
+assert(payment.includes('dedupKey: `seller-payment-paid-at:${eventId}`'));
+assert(payment.includes('dedupKey: `seller-payment-reversed:${reversalId}`'));
+assert(payment.includes('const allocationReversalId = crypto.randomUUID()'));
+assert(payment.includes('allocationReversalId,\n          now'));
+assert(!payment.includes(
+  'dedupKey: `seller-payment-paid-at:${paymentId}:${nextVersion}`',
+));
+assert(!payment.includes('dedupKey: `seller-payment-reversed:${paymentId}`'));
+assert(!payment.includes(
+  '`payment-reversal:${paymentId}:${allocation.allocation_id}`',
+));
 assert(!migration.match(/\b(?:REAL|FLOAT)\b/u));
 assert(![migration, record, allocation, payment].join('\n').includes('payment_channel'));
 
