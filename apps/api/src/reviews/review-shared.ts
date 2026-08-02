@@ -1,10 +1,15 @@
 import type {
+  PricingReviewType,
   ReviewCaseStatus,
   SqlDatabase,
   SqlStatement,
   StaffPermissionCode,
   StaffRoleCode,
 } from '@ygb/contracts';
+import {
+  normalizeReviewUrl,
+  ReviewUrlValidationError,
+} from '@ygb/domain';
 
 export interface BuyerReviewActor {
   buyerCustomerId: string;
@@ -44,8 +49,7 @@ export class ReviewError extends Error {
 }
 
 export function validateBuyerReviewActor(actor: BuyerReviewActor): void {
-  if (!actor
-    || !safeText(actor.buyerCustomerId, 120)) {
+  if (!actor || !safeText(actor.buyerCustomerId, 120)) {
     throw new ReviewError('VALIDATION_ERROR', 400);
   }
 }
@@ -93,6 +97,20 @@ export function cleanReviewTimestamp(value: number): number {
   return value;
 }
 
+export function cleanReviewUrl(
+  reviewType: PricingReviewType,
+  raw: string | null | undefined,
+): string | null {
+  try {
+    return normalizeReviewUrl(reviewType, raw);
+  } catch (error) {
+    if (error instanceof ReviewUrlValidationError) {
+      throw new ReviewError('VALIDATION_ERROR', 400);
+    }
+    throw error;
+  }
+}
+
 export function cleanOptionalReviewText(
   raw: string | null | undefined,
   maximum: number,
@@ -129,7 +147,7 @@ export function normalizeReviewFileInputs(
   fileObjectId: string;
   expectedFileVersion: number;
 }[] {
-  if (!Array.isArray(files) || files.length < 1 || files.length > 10) {
+  if (!Array.isArray(files) || files.length < 1 || files.length > 3) {
     throw new ReviewError('VALIDATION_ERROR', 400);
   }
   const seen = new Set<string>();
@@ -189,6 +207,9 @@ export function normalizeReviewError(error: unknown): ReviewError {
   if (message.includes('UNIQUE constraint failed: review_evidence_version_files')
     || message.includes('review_evidence_file_authority_mismatch')) {
     return new ReviewError('REVIEW_FILE_CONFLICT', 409);
+  }
+  if (message.includes('review_evidence_version_url_invalid')) {
+    return new ReviewError('VALIDATION_ERROR', 400);
   }
   if (message.includes('review_case_invalid_transition')
     || message.includes('review_case_source_mismatch')
