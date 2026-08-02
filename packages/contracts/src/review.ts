@@ -38,10 +38,12 @@ export interface SubmitReviewEvidenceResult {
   formal_order_id: string;
   buyer_customer_id: string;
   review_type: PricingReviewType;
+  review_url: string | null;
   status: 'PENDING_REVIEW';
   version: number;
   current_evidence_version_no: number;
   current_evidence_version_id: string;
+  submitted_at: number;
   evidence_files: readonly ReviewEvidenceFileProjection[];
   replayed: boolean;
 }
