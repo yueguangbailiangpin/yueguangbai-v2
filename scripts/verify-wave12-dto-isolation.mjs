@@ -16,26 +16,42 @@ for (const file of customerContracts) {
     throw new Error(`profit leaked into customer contract: ${file}`);
   }
 }
-const finance = readFileSync(
-  path.join(root, 'apps/api/src/internal-finance/routes.ts'),
+const financeFiles = [
+  'apps/api/src/internal-finance/routes.ts',
+  'apps/api/src/internal-finance/exports.ts',
+  'apps/api/src/internal-finance/order-detail.ts',
+  'apps/api/src/internal-finance/read-model.ts',
+];
+const finance = financeFiles.map((file) => readFileSync(
+  path.join(root, file),
   'utf8',
-) + readFileSync(
-  path.join(root, 'apps/api/src/internal-finance/exports.ts'),
-  'utf8',
-);
+)).join('\n');
 for (const forbidden of [
   'object_key',
   'file_url',
+  'permanent_url',
   'payment_proof',
+  'refund_proof',
   'buyer_wechat',
+  'seller_member_contact',
   'password',
   'session_secret',
+  'idempotency_payload',
+  'internal_note',
 ]) {
   if (finance.includes(forbidden)) {
     throw new Error(`sensitive finance DTO token: ${forbidden}`);
   }
 }
+const routes = readFileSync(
+  path.join(root, 'apps/api/src/internal-finance/routes.ts'),
+  'utf8',
+);
+if (!routes.includes('buildFinanceOrderDetail(position)')) {
+  throw new Error('order detail must use the isolated financial projection');
+}
 console.log(JSON.stringify({
   status: 'PASS',
   buyer_seller_isolation: true,
+  staff_detail_isolation: true,
 }, null, 2));
