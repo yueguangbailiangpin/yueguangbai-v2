@@ -64,6 +64,8 @@ for (const token of [
   "link.purpose='SELLER_SETTLEMENT_PROOF'",
   "object.status='VERIFIED'",
   "intent.status='VERIFIED'",
+  'JOIN staff_users assigned_staff',
+  "assigned_staff.status='ACTIVE'",
   'SELECT COUNT(*)',
 ]) assert(fileAuthorization.includes(token));
 assert(fileAuthorization.includes(
@@ -79,6 +81,7 @@ assert(fileReadService.lastIndexOf('await authorizeFileRead(')
 // file facts; customer actors and client-declared SYSTEM uploads remain closed.
 assert(payment.includes("file.owner_actor_type === 'SYSTEM'"));
 assert(payment.includes("file.owner_actor_type === 'STAFF'"));
+assert(payment.includes('validateSellerSettlementProofFile'));
 assert(settlementFilePolicy.includes("resource.ownerActorType === 'SYSTEM'"));
 assert(settlementFilePolicy.includes("resource.ownerActorType === 'STAFF'"));
 assert(settlementFilePolicy.includes("actor.type !== 'STAFF'"));
