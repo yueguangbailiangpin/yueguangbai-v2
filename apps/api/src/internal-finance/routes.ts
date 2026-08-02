@@ -17,6 +17,7 @@ import {
   normalizeFinanceFilters,
   normalizeFinanceQuery,
 } from './filters';
+import { buildFinanceOrderDetail } from './order-detail';
 import {
   readFinanceCashFlow,
   readFinanceExceptions,
@@ -73,11 +74,12 @@ async function order(context: Context<any>): Promise<Response> {
   requireActor(context);
   const url = new URL(context.req.url);
   assertExactQueryParameters(url, []);
+  const position = await readFinanceOrder(
+    context.env.DB,
+    financeIdentifier(context.req.param('formalOrderId')),
+  );
   return success(context, {
-    order: await readFinanceOrder(
-      context.env.DB,
-      financeIdentifier(context.req.param('formalOrderId')),
-    ),
+    order: buildFinanceOrderDetail(position),
   });
 }
 async function groups(context: Context<any>): Promise<Response> {
