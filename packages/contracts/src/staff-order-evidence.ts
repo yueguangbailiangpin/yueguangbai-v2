@@ -41,6 +41,10 @@ export interface StaffOrderEvidenceDetailDto
   price_difference_jpy: string;
   price_mismatch: boolean;
   screenshot: SafeFileReferenceDto;
+  buyer: {
+    buyer_customer_id: string;
+    buyer_customer_no: string | null;
+  };
   instruction: {
     instruction_id: string;
     instruction_version_id: string;

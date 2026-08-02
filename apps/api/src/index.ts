@@ -10,6 +10,10 @@ import { registerFileHttpRoutes } from './files';
 import { registerCustomerAuthRoutes } from './http-auth';
 import { registerStaffFinanceRoutes } from './internal-finance';
 import { staffSessionMiddleware } from './middleware/staff-auth';
+import {
+  exactOneOrderEvidenceScreenshotGuard,
+  registerStaffOrderEvidenceRoutes,
+} from './order-evidence';
 import { registerStaffReviewRoutes } from './reviews';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
 import { registerSellerReviewRoutes } from './seller-reviews';
@@ -39,10 +43,19 @@ registerStaffReviewRoutes(app);
 registerStaffSellerSettlementRoutes(app);
 registerStaffSellerSettlementProofRoutes(app);
 registerStaffFinanceRoutes(app);
+registerStaffOrderEvidenceRoutes(app);
 registerFileHttpRoutes(app);
 
 registerBuyerSelfRegistrationRoutes(app);
 registerBuyerPortalRoutes(app);
+app.use(
+  '/api/buyer-portal/order-evidence',
+  exactOneOrderEvidenceScreenshotGuard(),
+);
+app.use(
+  '/api/buyer-portal/order-evidence/:id/resubmit',
+  exactOneOrderEvidenceScreenshotGuard(),
+);
 registerBuyerOrderEvidencePortalRoutes(app);
 registerOrderInstructionRoutes(app);
 registerBuyerFormalOrderRoutes(app);
