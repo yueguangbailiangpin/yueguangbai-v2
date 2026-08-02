@@ -1,13 +1,20 @@
 import type {
   FileActor,
-  FileEntityType,
   FilePurpose,
   FileVisibility,
   FixedIntegerString,
+  SqlDatabase,
   StaffPermissionCode,
 } from '@ygb/contracts';
-import type { FileAuthorizationResource, FileAuthorizationService } from '../files/authorization';
-import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import type {
+  FileAuthorizationResource,
+  FileAuthorizationService,
+} from '../files/authorization';
+import {
+  requireSellerOrganizationScope,
+  resolveStaffDataScope,
+  type AssignmentStaffAuthorization,
+} from '../staff-assignment';
 
 export type SellerSettlementErrorCode =
   | 'VALIDATION_ERROR'
@@ -48,6 +55,36 @@ export function requireFinancialCorrectionPermissions(
   requireSettlementPermission(actor, 'FINANCIAL_CORRECT');
 }
 
+export async function authorizeSellerSettlement(
+  database: SqlDatabase,
+  actor: AssignmentStaffAuthorization,
+  sellerOrganizationId: string,
+  options: { correction?: boolean; viewOnly?: boolean } = {},
+): Promise<void> {
+  if (options.correction === true) {
+    requireFinancialCorrectionPermissions(actor);
+  } else {
+    requireSettlementPermission(
+      actor,
+      options.viewOnly === true
+        ? 'SELLER_SETTLEMENT_VIEW'
+        : 'SELLER_SETTLEMENT_RECORD',
+    );
+  }
+  const scope = await resolveStaffDataScope(database, actor, {
+    requiredPermission: options.viewOnly === true
+      ? 'SELLER_SETTLEMENT_VIEW'
+      : options.correction === true
+        ? 'FINANCIAL_CORRECT'
+        : 'SELLER_SETTLEMENT_RECORD',
+  });
+  try {
+    requireSellerOrganizationScope(scope, sellerOrganizationId);
+  } catch {
+    throw new SellerSettlementError('NOT_FOUND', 404);
+  }
+}
+
 export function cleanSettlementIdentifier(value: unknown): string {
   if (typeof value !== 'string') throw validation();
   const normalized = value.normalize('NFKC').trim();
@@ -57,8 +94,10 @@ export function cleanSettlementIdentifier(value: unknown): string {
 }
 
 export function cleanSettlementReason(value: unknown): string {
-  const normalized = cleanSettlementIdentifier(value);
-  if (normalized.length > 2000) throw validation();
+  if (typeof value !== 'string') throw validation();
+  const normalized = value.normalize('NFKC').trim();
+  if (normalized.length < 1 || normalized.length > 2000
+    || /[\u0000-\u001f\u007f]/u.test(normalized)) throw validation();
   return normalized;
 }
 
@@ -169,10 +208,4 @@ function parseIntegerString(value: unknown): bigint {
 
 function validation(): SellerSettlementError {
   return new SellerSettlementError('VALIDATION_ERROR', 400);
-}
-
-export function isSettlementEntityType(
-  value: FileEntityType,
-): value is 'SELLER_SETTLEMENT' {
-  return value === 'SELLER_SETTLEMENT';
 }
