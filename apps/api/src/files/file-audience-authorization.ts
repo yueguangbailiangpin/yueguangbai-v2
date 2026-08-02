@@ -415,6 +415,9 @@ async function activeSellerSettlementProofScopeExists(
   const team = await database.prepare(`
     SELECT 1 AS allowed
     FROM seller_staff_assignments assignment
+    JOIN staff_users assigned_staff
+      ON assigned_staff.id=assignment.staff_id
+      AND assigned_staff.status='ACTIVE'
     JOIN staff_team_memberships assignee_membership
       ON assignee_membership.staff_id=assignment.staff_id
       AND assignee_membership.status='ACTIVE'
