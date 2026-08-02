@@ -29,7 +29,7 @@ export function quoteCsvCell(value: string): string {
 export function serializeFinancialCsv<Row>(
   rows: readonly Row[],
   columns: readonly FinancialCsvColumn<Row>[],
-): Uint8Array {
+): Uint8Array<ArrayBuffer> {
   if (rows.length > FINANCIAL_CSV_MAX_ROWS) {
     throw new FinancialCsvError('EXPORT_TOO_LARGE');
   }

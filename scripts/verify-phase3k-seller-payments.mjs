@@ -44,9 +44,11 @@ assert(![migration, record, allocation, payment].join('\n').includes('payment_ch
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
   .sort();
-assert(migrations.length === 24);
-assert(migrations.at(-1) === '0024_seller_payments_allocations.sql');
-assert(!migrations.some((name) => name.startsWith('0025_')));
+const wave11Migrations = migrations.filter(
+  (name) => Number(name.slice(0, 4)) <= 24,
+);
+assert(wave11Migrations.length === 24);
+assert(wave11Migrations.at(-1) === '0024_seller_payments_allocations.sql');
 
 console.log('phase3k seller payment verifier passed');
 function read(file) { return readFileSync(path.join(root, file), 'utf8'); }

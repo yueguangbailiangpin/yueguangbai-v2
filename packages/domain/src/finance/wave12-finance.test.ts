@@ -92,7 +92,7 @@ describe('Wave 12 audited CSV safety', () => {
       { header: 'amount', value: (row) => row.amount, kind: 'FEN' },
     ]);
     const csv = new TextDecoder().decode(bytes);
-    expect(csv.startsWith('\uFEFF')).toBe(true);
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     expect(csv.endsWith('\r\n')).toBe(true);
     expect(csv).toContain("'=SUM(1,1)");
     expect(csv).toContain("'+cmd");

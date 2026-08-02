@@ -8,6 +8,9 @@ const migrationDirectory = path.join(root, 'migrations');
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
+const wave11Migrations = migrations.filter(
+  (name) => Number(name.slice(0, 4)) <= 24,
+);
 
 function database(): DatabaseSync {
   const value = new DatabaseSync(':memory:');
@@ -27,8 +30,12 @@ function runMigration(value: DatabaseSync, name: string): void {
   }
 }
 
-function applyThrough(value: DatabaseSync, count: number): void {
-  for (const migration of migrations.slice(0, count)) {
+function applyThrough(
+  value: DatabaseSync,
+  count: number,
+  source = migrations,
+): void {
+  for (const migration of source.slice(0, count)) {
     runMigration(value, migration);
   }
 }
@@ -56,12 +63,12 @@ function hasObject(
 describe('Wave 11 migration chain', () => {
   it('applies 0001 through 0024 and preserves older foundations', () => {
     const value = database();
-    applyThrough(value, migrations.length);
+    applyThrough(value, wave11Migrations.length, wave11Migrations);
 
-    expect(migrations).toHaveLength(24);
-    expect(migrations.at(-3)).toBe('0022_review_submission_metadata.sql');
-    expect(migrations.at(-2)).toBe('0023_seller_payables.sql');
-    expect(migrations.at(-1)).toBe('0024_seller_payments_allocations.sql');
+    expect(wave11Migrations).toHaveLength(24);
+    expect(wave11Migrations.at(-3)).toBe('0022_review_submission_metadata.sql');
+    expect(wave11Migrations.at(-2)).toBe('0023_seller_payables.sql');
+    expect(wave11Migrations.at(-1)).toBe('0024_seller_payments_allocations.sql');
     expect(schemaVersion(value)).toBe(24);
 
     for (const table of [

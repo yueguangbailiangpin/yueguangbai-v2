@@ -29,7 +29,7 @@ import {
 import { InternalFinanceError } from './shared';
 
 export interface GeneratedFinancialCsv {
-  bytes: Uint8Array;
+  bytes: Uint8Array<ArrayBuffer>;
   filename: string;
   exportId: string;
   rowCount: number;
@@ -60,7 +60,7 @@ export async function generateAuditedFinancialCsv(
     input.filters,
     now,
   );
-  let bytes: Uint8Array;
+  let bytes: Uint8Array<ArrayBuffer>;
   try {
     bytes = serializeFinancialCsv(data.rows, data.columns);
   } catch (error) {

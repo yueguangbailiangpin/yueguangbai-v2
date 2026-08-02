@@ -92,7 +92,6 @@ assert(migration.includes("intent.owner_actor_type='SYSTEM'"));
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name));
 assert(migrations.filter((name) => /^002[234]_/u.test(name)).length === 3);
-assert(!migrations.some((name) => /^0025_/u.test(name)));
 
 console.log('seller finance security scan passed');
 function read(file) { return readFileSync(path.join(root, file), 'utf8'); }

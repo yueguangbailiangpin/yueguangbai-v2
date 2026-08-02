@@ -13,6 +13,7 @@ import type {
   OrderFinanceDateBasis,
   PricingReviewType,
   SqlDatabase,
+  SqlAllResult,
 } from '@ygb/contracts';
 import {
   databaseIntegerToBigInt,
@@ -579,7 +580,10 @@ async function readUnallocatedCredit(
   let cursor: string | null = null;
   let total = 0n;
   while (true) {
-    const result = cursor === null
+    const result: SqlAllResult<{
+      seller_organization_id: string;
+      value: string | number;
+    }> = cursor === null
       ? await database.prepare(`
           SELECT seller_organization_id,
             CAST(unallocated_credit_cny_fen AS TEXT) AS value
