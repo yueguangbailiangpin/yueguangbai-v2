@@ -9,7 +9,7 @@ import type {
 } from '@ygb/contracts';
 import {
   canonicalJson,
-  databaseIntegerToBigInt,
+  FINANCIAL_CSV_MAX_ROWS,
   FinancialCsvError,
   hashCanonicalJson,
   serializeFinancialCsv,
@@ -19,17 +19,14 @@ import {
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { createAuditEventStatement } from '../foundation/audit';
 import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
-import { financeDateColumn } from './filters';
+import { assertFinancialExportDateBasis } from './filters';
 import {
-  readAllFinancePositions,
+  iterateFinanceExceptions,
+  iterateFinancePositions,
   readFinanceCashFlow,
-  readFinanceExceptions,
   readFinanceGroups,
 } from './read-model';
 import { InternalFinanceError } from './shared';
-
-const MAX_EXPORT_ROWS = 50_000n;
-const MAX_CASH_SOURCE_MOVEMENTS = 500_000n;
 
 export interface GeneratedFinancialCsv {
   bytes: Uint8Array;
@@ -37,6 +34,13 @@ export interface GeneratedFinancialCsv {
   exportId: string;
   rowCount: number;
   outputSha256: string;
+}
+
+interface FinancialExportRows {
+  rows: readonly Record<string, string | number | null>[];
+  columns: readonly FinancialCsvColumn<
+    Record<string, string | number | null>
+  >[];
 }
 
 export async function generateAuditedFinancialCsv(
@@ -50,7 +54,12 @@ export async function generateAuditedFinancialCsv(
   },
 ): Promise<GeneratedFinancialCsv> {
   const now = input.now ?? Date.now();
-  const data = await exportRows(database, input.exportType, input.filters, now);
+  const data = await buildFinancialExportRows(
+    database,
+    input.exportType,
+    input.filters,
+    now,
+  );
   let bytes: Uint8Array;
   try {
     bytes = serializeFinancialCsv(data.rows, data.columns);
@@ -153,90 +162,58 @@ export async function generateAuditedFinancialCsv(
   });
 }
 
-async function exportRows(
+export async function buildFinancialExportRows(
   database: SqlDatabase,
   exportType: FinancialExportType,
   filters: InternalFinanceFilters,
   now: number,
-): Promise<{
-  rows: readonly Record<string, string | number | null>[];
-  columns: readonly FinancialCsvColumn<
-    Record<string, string | number | null>
-  >[];
-}> {
-  await assertExportSourceSize(database, exportType, filters);
+): Promise<FinancialExportRows> {
+  assertFinancialExportDateBasis(exportType, filters.date_basis);
   if (exportType === 'ORDER_DETAIL') {
-    const rows = await readAllFinancePositions(database, filters);
-    return { rows: rows.map(orderRecord), columns: orderColumns() };
+    return {
+      rows: await collectBounded(
+        iterateFinancePositions(database, filters),
+        orderRecord,
+      ),
+      columns: orderColumns(),
+    };
   }
   if (exportType === 'CASH_FLOW') {
+    assertCashFlowFilters(filters);
     const cash = await readFinanceCashFlow(database, filters, now);
     return { rows: [{ ...cash }], columns: cashColumns() };
   }
   if (exportType === 'FINANCIAL_EXCEPTIONS') {
-    const exceptions = await readFinanceExceptions(database, filters);
     return {
-      rows: exceptions.map(exceptionRecord),
+      rows: await collectBounded(
+        iterateFinanceExceptions(database, filters),
+        exceptionRecord,
+      ),
       columns: exceptionColumns(),
     };
   }
   const groupBy = exportGroup(exportType);
-  const groups = await readFinanceGroups(database, filters, groupBy);
+  const groups = await readFinanceGroups(
+    database,
+    filters,
+    groupBy,
+    { maxGroups: FINANCIAL_CSV_MAX_ROWS },
+  );
   return { rows: groups.map(groupRecord), columns: groupColumns() };
 }
 
-async function assertExportSourceSize(
-  database: SqlDatabase,
-  exportType: FinancialExportType,
-  filters: InternalFinanceFilters,
-): Promise<void> {
-  if (exportType === 'CASH_FLOW') {
-    assertCashFlowFilters(filters);
-    const values: unknown[] = [filters.from_date, filters.to_date];
-    let organization = '';
-    if (filters.seller_organization_id !== null) {
-      organization = 'AND movement.seller_organization_id=?';
-      values.push(filters.seller_organization_id);
-    }
-    const row = await database.prepare(`
-      SELECT CAST(COUNT(*) AS TEXT) AS source_count
-      FROM internal_finance_cash_movements movement
-      WHERE movement.cash_business_date BETWEEN ? AND ? ${organization}
-    `).bind(...values).first<{ source_count: string | number }>();
-    if (databaseIntegerToBigInt(row?.source_count ?? 0)
-      > MAX_CASH_SOURCE_MOVEMENTS) {
+async function collectBounded<Input>(
+  source: AsyncIterable<Input>,
+  map: (value: Input) => Record<string, string | number | null>,
+): Promise<readonly Record<string, string | number | null>[]> {
+  const rows: Record<string, string | number | null>[] = [];
+  for await (const value of source) {
+    if (rows.length >= FINANCIAL_CSV_MAX_ROWS) {
       throw new InternalFinanceError('EXPORT_TOO_LARGE', 413);
     }
-    return;
+    rows.push(map(value));
   }
-
-  const clauses = [`${financeDateColumn(filters.date_basis)} BETWEEN ? AND ?`];
-  const values: unknown[] = [filters.from_date, filters.to_date];
-  const entries: readonly [keyof InternalFinanceFilters, string][] = [
-    ['seller_organization_id', 'position.seller_organization_id'],
-    ['store_id', 'position.store_id'],
-    ['product_id', 'position.product_id'],
-    ['asin', 'position.asin'],
-    ['formal_order_id', 'position.formal_order_id'],
-    ['amazon_order_number', 'position.amazon_order_number'],
-    ['review_type', 'position.review_type'],
-    ['finance_status', 'position.finance_status'],
-  ];
-  for (const [key, column] of entries) {
-    const value = filters[key];
-    if (value !== null) {
-      clauses.push(`${column}=?`);
-      values.push(value);
-    }
-  }
-  const row = await database.prepare(`
-    SELECT CAST(COUNT(*) AS TEXT) AS source_count
-    FROM internal_order_finance_positions position
-    WHERE ${clauses.join(' AND ')}
-  `).bind(...values).first<{ source_count: string | number }>();
-  if (databaseIntegerToBigInt(row?.source_count ?? 0) > MAX_EXPORT_ROWS) {
-    throw new InternalFinanceError('EXPORT_TOO_LARGE', 413);
-  }
+  return Object.freeze(rows);
 }
 
 function assertCashFlowFilters(filters: InternalFinanceFilters): void {
@@ -260,16 +237,19 @@ function exportGroup(type: FinancialExportType): FinanceGroupBy {
   if (type === 'MONTHLY_SUMMARY') return 'MONTH';
   throw new InternalFinanceError('VALIDATION_ERROR', 400);
 }
+
 function orderRecord(
   row: InternalOrderFinancePositionDto,
 ): Record<string, string | number | null> {
   return { ...row };
 }
+
 function groupRecord(
   row: InternalFinanceGroupDto,
 ): Record<string, string | number | null> {
   return { ...row };
 }
+
 function exceptionRecord(
   row: InternalFinanceExceptionDto,
 ): Record<string, string | number | null> {
@@ -335,6 +315,7 @@ function orderColumns() {
     fen('attributed_cash_net_cny_fen'), text('finance_status'),
   ] as const;
 }
+
 function groupColumns() {
   return [
     text('group_by'), text('group_key'), text('group_label'),
@@ -355,6 +336,7 @@ function groupColumns() {
     fen('seller_unallocated_credit_cny_fen'),
   ] as const;
 }
+
 function cashColumns() {
   return [
     fen('seller_cash_inflow_cny_fen'),
@@ -365,6 +347,7 @@ function cashColumns() {
     integer('data_as_of'),
   ] as const;
 }
+
 function exceptionColumns() {
   return [
     text('formal_order_id'), text('seller_organization_id'), text('store_id'),
@@ -372,6 +355,7 @@ function exceptionColumns() {
     text('detected_facts_summary'),
   ] as const;
 }
+
 function safeFilename(type: FinancialExportType, toDate: string): string {
   return `financial-${type.toLowerCase().replaceAll('_', '-')}-${toDate}.csv`;
 }
