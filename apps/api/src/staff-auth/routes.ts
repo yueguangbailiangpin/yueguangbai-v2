@@ -13,9 +13,7 @@ import {
   acquireIdempotency,
   type IdempotencyError,
 } from '../foundation/idempotency';
-import {
-  resolveStaffDataScope,
-} from '../staff-assignment';
+import { resolveStaffDataScope } from '../staff-assignment';
 import {
   clearStaffSessionCookie,
   readStaffSessionCookie,
@@ -32,6 +30,7 @@ import {
   staffAuthFailure,
 } from './errors';
 import { logoutAllStaffSessions } from './logout-all';
+import { readCommittedLogoutAllReplay } from './logout-all-replay';
 import {
   FeishuStaffAuthProvider,
   requireStaffAuthConfig,
@@ -334,9 +333,26 @@ async function logout(context: Context<any>): Promise<Response> {
 async function logoutAll(context: Context<any>): Promise<Response> {
   const config = requireStaffAuthConfig(context.env);
   requireAllowedOrigin(context, config);
-  const trusted = await requireTrustedSession(context, config);
   await readExactJsonObject(context, new Set(), true);
   const idempotencyKey = requireIdempotencyKey(context);
+  const cookie = readStaffSessionCookie(context);
+
+  if (cookie.value && !cookie.malformed) {
+    const replay = await readCommittedLogoutAllReplay(context.env.DB, {
+      sessionToken: cookie.value,
+      idempotencyKey,
+    });
+    if (replay) {
+      clearStaffSessionCookie(context);
+      context.header('Cache-Control', 'no-store');
+      return context.json(apiSuccess(
+        replay.response,
+        requestIdFromContext(context),
+      ));
+    }
+  }
+
+  const trusted = await requireTrustedSession(context, config);
   const now = Date.now();
   const requestHash = await hashCanonicalJson({
     action: 'STAFF_LOGOUT_ALL',
