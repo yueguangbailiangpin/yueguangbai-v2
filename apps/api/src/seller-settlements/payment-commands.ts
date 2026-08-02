@@ -81,7 +81,7 @@ export async function correctSellerPaymentPaidAt(
     const eventId = crypto.randomUUID();
     const outbox = await prepareOutboxEvent({
       id: crypto.randomUUID(),
-      dedupKey: `seller-payment-paid-at:${paymentId}:${nextVersion}`,
+      dedupKey: `seller-payment-paid-at:${eventId}`,
       eventType: 'SELLER_PAYMENT_PAID_AT_CORRECTED',
       aggregateType: 'SELLER_PAYMENT',
       aggregateId: paymentId,
@@ -239,7 +239,7 @@ export async function reverseSellerPayment(
     const response = { paymentId, replayed: false } as const;
     const outbox = await prepareOutboxEvent({
       id: crypto.randomUUID(),
-      dedupKey: `seller-payment-reversed:${paymentId}`,
+      dedupKey: `seller-payment-reversed:${reversalId}`,
       eventType: 'SELLER_PAYMENT_REVERSED',
       aggregateType: 'SELLER_PAYMENT',
       aggregateId: paymentId,
@@ -252,25 +252,28 @@ export async function reverseSellerPayment(
       createdAt: now,
     });
     const allocationReversals: SqlStatement[] = allocations.map(
-      (allocation) => database.prepare(`
-        INSERT INTO seller_payment_allocation_reversals (
-          id, allocation_id, payment_id, payable_id,
-          seller_organization_id, amount_cny_fen, reason,
-          reversed_by_staff_id, reversed_at, idempotency_key, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        crypto.randomUUID(),
-        allocation.allocation_id,
-        paymentId,
-        allocation.payable_id,
-        payment.seller_organization_id,
-        allocation.net_amount_cny_fen,
-        reason,
-        command.actor.staffId,
-        now,
-        `payment-reversal:${paymentId}:${allocation.allocation_id}`,
-        now,
-      ),
+      (allocation) => {
+        const allocationReversalId = crypto.randomUUID();
+        return database.prepare(`
+          INSERT INTO seller_payment_allocation_reversals (
+            id, allocation_id, payment_id, payable_id,
+            seller_organization_id, amount_cny_fen, reason,
+            reversed_by_staff_id, reversed_at, idempotency_key, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          allocationReversalId,
+          allocation.allocation_id,
+          paymentId,
+          allocation.payable_id,
+          payment.seller_organization_id,
+          allocation.net_amount_cny_fen,
+          reason,
+          command.actor.staffId,
+          now,
+          allocationReversalId,
+          now,
+        );
+      },
     );
     await database.batch([
       database.prepare(`
