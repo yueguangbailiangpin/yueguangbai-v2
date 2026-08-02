@@ -2,23 +2,25 @@
 
 ## ADDED Requirements
 
-### Requirement: Upload intent endpoints are bound to trusted Actor and fixed Purpose
+### Requirement: Upload intent endpoints are bound to trusted Actor and verified existing Purpose
 
-The system SHALL expose purpose-specific upload-intent routes for Buyer Order Evidence, Buyer Review Evidence, Seller Product Application Images, Staff Order Evidence Internal Communication, Staff Buyer Refund Proofs and Staff Seller Settlement Proofs. Each route SHALL derive Actor, ownership, Purpose and Visibility from the authenticated route family and business context, SHALL call the existing `createFileUploadIntent`, and SHALL reject client authority fields or arbitrary Purpose selection.
+The system SHALL expose purpose-specific `/api/*` upload-intent routes only for Buyer Order Evidence, Buyer Review Evidence, Seller Product Application Images, Staff Order Evidence Internal Communication, Staff Buyer Refund Proofs and Staff Seller Settlement Proofs. These routes SHALL map respectively to the existing `FilePurpose` constants `ORDER_EVIDENCE`, `REVIEW_EVIDENCE`, `PRODUCT_APPLICATION_IMAGE`, `ORDER_EVIDENCE_INTERNAL_COMMUNICATION`, `BUYER_REFUND_PROOF` and `SELLER_SETTLEMENT_PROOF`; no FilePurpose Contract extension is required. Each route SHALL derive Actor, ownership, Purpose and fixed existing `FileVisibility` from the authenticated route family and business context, SHALL call the existing `createFileUploadIntent`, and SHALL reject client authority fields or arbitrary Purpose/Visibility selection.
+
+The fixed Visibility mapping SHALL be: Buyer Order Evidence `BUYER_VISIBLE`; Buyer Review Evidence `SELLER_VISIBLE` with later explicit Buyer/Seller/Staff audiences; Seller Product Application Images `SELLER_VISIBLE`; all three Staff proof/internal routes `INTERNAL_ONLY`.
 
 #### Scenario: Allowed purpose-bound intent
 
-- **WHEN** an authenticated Actor invokes the route corresponding to an allowed current business purpose with a valid file manifest and Idempotency-Key
+- **WHEN** an authenticated Actor invokes the `/api/*` route corresponding to one of the six verified existing Purpose/Visibility pairs with a valid file manifest and Idempotency-Key
 - **THEN** the existing File Service creates an owned ISSUED intent and returns only opaque upload references and the first-use upload token.
 
-#### Scenario: Arbitrary purpose or authority injection
+#### Scenario: Arbitrary purpose, visibility or authority injection
 
-- **WHEN** a client submits `purpose`, owner, owner ID, organization authority, buyer/seller/staff authority, scope, audience, object key, URL or entity authority outside the route Contract
+- **WHEN** a client submits `purpose`, `visibility`, owner, owner ID, organization authority, buyer/seller/staff authority, scope, audience, object key, URL or entity authority outside the route Contract
 - **THEN** exact-key validation rejects the request before any file intent or object is created.
 
 ### Requirement: Controlled HTTP upload reuses the existing object upload service
 
-The system SHALL expose authenticated domain-bound upload routes that accept one bounded multipart `file` part, `X-Upload-Token` and Idempotency-Key, SHALL derive the Actor from the current Session, and SHALL invoke the existing `uploadFileObject`. The route SHALL NOT accept or return an R2 object key or permanent URL.
+The system SHALL expose authenticated domain-bound `/api/*` upload routes that accept one bounded multipart `file` part, `X-Upload-Token` and Idempotency-Key, SHALL derive the Actor from the current Session, and SHALL invoke the existing `uploadFileObject`. The route SHALL NOT accept or return an R2 object key or permanent URL. No `/api/v2/*` alias SHALL exist.
 
 #### Scenario: Valid object upload
 
@@ -32,21 +34,21 @@ The system SHALL expose authenticated domain-bound upload routes that accept one
 
 ### Requirement: File validation enforces existing Purpose policies
 
-The HTTP flow SHALL reuse the existing `FilePurpose`, supported MIME, extension, byte-size, file-count, digest and manifest policies. It SHALL validate trusted magic bytes and detected MIME rather than trusting client MIME. Order Evidence business submission SHALL remain stricter than generic file policy and require exactly one verified file at its business command boundary.
+The HTTP flow SHALL reuse the existing `FilePurpose`, `FileVisibility`, supported MIME, extension, byte-size, file-count, digest and manifest policies. It SHALL validate trusted magic bytes and detected MIME rather than trusting client MIME. Order Evidence business submission SHALL remain stricter than generic file policy and require exactly one verified file at its business command boundary. Wave 13 SHALL NOT add upload endpoints for `PRODUCT_IMAGE`, `ORDER_INSTRUCTION_KEYWORD_IMAGE` or `SUPPORT_ATTACHMENT`.
 
 #### Scenario: Matching file policy
 
-- **WHEN** uploaded bytes, extension, declared MIME, detected MIME, byte size and Purpose-specific count satisfy the existing policy
-- **THEN** the file may advance through UPLOADED to VERIFIED without changing the policy enum.
+- **WHEN** uploaded bytes, extension, declared MIME, detected MIME, byte size and the route-fixed existing Purpose/Visibility satisfy the current policy
+- **THEN** the file may advance through UPLOADED to VERIFIED without adding or renaming a Purpose enum.
 
-#### Scenario: MIME, size or digest mismatch
+#### Scenario: MIME, size, digest or purpose mismatch
 
-- **WHEN** any trusted file inspection, receipt, SHA-256, size or detected MIME conflicts with the reserved descriptor or Purpose policy
+- **WHEN** any trusted file inspection, receipt, SHA-256, size, detected MIME, Purpose or Visibility conflicts with the reserved descriptor or route policy
 - **THEN** the flow rejects the file with a stable validation/storage error and cannot link it to a business entity.
 
 ### Requirement: Complete upload verifies R2 and conditionally commits D1
 
-The system SHALL expose authenticated complete-intent routes that require `expected_version` and Idempotency-Key, derive the Actor from Session and invoke the existing `completeFileUploadIntent`. Completion SHALL require an ISSUED unexpired intent, every reserved object in UPLOADED state, successful R2 HEAD metadata verification and trusted prefix/MIME verification before marking intent and objects VERIFIED.
+The system SHALL expose authenticated `/api/*` complete-intent routes that require `expected_version` and Idempotency-Key, derive the Actor from Session and invoke the existing `completeFileUploadIntent`. Completion SHALL require an ISSUED unexpired intent, every reserved object in UPLOADED state, successful R2 HEAD metadata verification and trusted prefix/MIME verification before marking intent and objects VERIFIED.
 
 #### Scenario: Successful completion
 
@@ -88,7 +90,7 @@ Entity links and explicit audience grants SHALL be created inside the authorized
 
 ### Requirement: Short read intents provide authorized single-use reads
 
-The system SHALL expose domain-bound create-read-intent and consume-read-intent routes that call the existing file read service. Create SHALL require the current Actor, current entity authorization, expected file version and Idempotency-Key. Consume SHALL require `X-File-Read-Token`, the same Actor, an unexpired ISSUED read intent and fresh entity/file authorization, and SHALL consume the intent once.
+The system SHALL expose domain-bound `/api/*` create-read-intent and consume-read-intent routes that call the existing file read service. Create SHALL require the current Actor, current entity authorization, expected file version and Idempotency-Key. Consume SHALL require `X-File-Read-Token`, the same Actor, an unexpired ISSUED read intent and fresh entity/file authorization, and SHALL consume the intent once.
 
 #### Scenario: Authorized safe read
 
@@ -114,9 +116,9 @@ For create, upload, complete, link, grant and read operations, owner Actor type/
 - **WHEN** a customer crosses tenant boundaries or a Staff Permission is absent/denied or the resource is outside current Data Scope
 - **THEN** the operation fails closed, with cross-tenant/scope resources concealed as 404.
 
-### Requirement: R2 and D1 failures use existing compensation and cleanup
+### Requirement: R2 and D1 failures use existing compensation, error code and cleanup
 
-After any successful R2 put, if receipt verification, R2 HEAD/prefix validation or final D1 commit fails, the system SHALL call the existing compensation flow. Successful compensation SHALL delete the object and terminate its usable lifecycle. Failed deletion SHALL mark delete-pending state, increment attempts, calculate retry time and return `FILE_COMPENSATION_REQUIRED`; cleanup SHALL be safe to retry.
+After any successful R2 put, if receipt verification, R2 HEAD/prefix validation or final D1 commit fails, the system SHALL call the existing compensation flow. Successful compensation SHALL delete the object and terminate its usable lifecycle. Failed deletion SHALL mark delete-pending state, increment attempts, calculate retry time and return the existing formal 503 error code `FILE_COMPENSATION_REQUIRED`; cleanup SHALL be safe to retry. No Contract extension is required for this code.
 
 #### Scenario: Compensation deletion succeeds
 
@@ -126,11 +128,11 @@ After any successful R2 put, if receipt verification, R2 HEAD/prefix validation 
 #### Scenario: Compensation deletion fails
 
 - **WHEN** the compensating R2 delete is unavailable or fails
-- **THEN** D1 records a cleanup plan/delete-pending object, the route returns 503 and a later cleanup retry can complete without duplicating business state.
+- **THEN** D1 records a cleanup plan/delete-pending object, the route returns 503 `FILE_COMPENSATION_REQUIRED` and a later cleanup retry can complete without duplicating business state.
 
 ### Requirement: File HTTP contracts are bounded, idempotent and leak-tested
 
-Every file mutation SHALL enforce bounded body/part size, exact allowed fields/parts, bounded identifiers, Idempotency-Key and request hash semantics. Unknown fields, duplicate query parameters and malformed versions SHALL be rejected. Route, D1 behavior and real R2 failure tests SHALL cover intent replay, upload replay, complete replay, HEAD failure, D1 commit failure, cleanup retry, cross-tenant denial, Purpose mismatch and DTO leakage.
+Every file mutation SHALL enforce bounded body/part size, exact allowed fields/parts, bounded identifiers, Idempotency-Key and request hash semantics. Unknown fields, duplicate query parameters and malformed versions SHALL be rejected. Route, D1 behavior and real R2 failure tests SHALL cover all six existing Purpose/Visibility mappings, intent replay, upload replay, complete replay, HEAD failure, D1 commit failure, cleanup retry, cross-tenant denial, Purpose mismatch and DTO leakage.
 
 #### Scenario: Idempotent replay
 
@@ -139,5 +141,5 @@ Every file mutation SHALL enforce bounded body/part size, exact allowed fields/p
 
 #### Scenario: Contract or leakage violation
 
-- **WHEN** a request contains unknown fields/parts, a duplicate query, a mismatched Purpose or a response projection contains `object_key` or permanent URL
+- **WHEN** a request contains unknown fields/parts, a duplicate query, a mismatched Purpose/Visibility or a response projection contains `object_key` or permanent URL
 - **THEN** validation or the dedicated verifier fails and the route is not considered frontend-ready.

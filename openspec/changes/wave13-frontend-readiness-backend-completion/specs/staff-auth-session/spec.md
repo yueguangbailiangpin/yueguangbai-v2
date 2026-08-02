@@ -4,7 +4,7 @@
 
 ### Requirement: Staff login start creates a bounded single-use authorization state
 
-The system SHALL expose `POST /api/staff-auth/login/start` with an exact-key JSON object containing only optional `return_to`, SHALL validate the request Origin and redirect allowlist, SHALL generate a cryptographically random state, SHALL store only its hash with Provider, tenant, callback purpose and expiry, and SHALL NOT place an authoritative `staff_id` in client state. The default state TTL SHALL be ten minutes.
+The system SHALL expose `POST /api/staff-auth/login/start` under the sole formal `/api/*` route family with an exact-key JSON object containing only optional `return_to`, SHALL validate the request Origin and redirect allowlist, SHALL generate a cryptographically random state, SHALL store only its hash with Provider, tenant, callback purpose and expiry, and SHALL NOT place an authoritative `staff_id` in client state. The login state TTL SHALL be ten minutes.
 
 #### Scenario: Valid login start
 
@@ -18,16 +18,16 @@ The system SHALL expose `POST /api/staff-auth/login/start` with an exact-key JSO
 
 ### Requirement: Feishu callback validates state and Provider identity server-side
 
-The system SHALL expose `GET /api/staff-auth/feishu/callback` with exactly one `code` and one `state`, SHALL atomically consume an unexpired ISSUED state before accepting the callback, SHALL exchange and verify Provider identity server-side, SHALL validate configured Provider and tenant, and SHALL NOT return a Provider Access Token to the browser.
+The system SHALL expose only `GET /api/staff-auth/feishu/callback` with exactly one `code` and one `state`, SHALL atomically consume an unexpired ISSUED state before accepting the callback, SHALL exchange and verify Provider identity server-side, SHALL validate configured Provider and tenant, and SHALL NOT return a Provider Access Token to the browser. Endpoint, app ID, secret, scope, tenant and redirect URI SHALL be environment-configured from an approved Feishu application and verified against implementation-time official Feishu documentation. The Provider Adapter SHALL support a test substitute, and missing configuration SHALL fail closed. No `/api/v2/*` alias SHALL be registered.
 
 #### Scenario: Valid callback
 
-- **WHEN** a callback presents a valid unconsumed state and the Provider returns a verified identity for the configured tenant
-- **THEN** the Worker consumes the state, resolves the identity mapping and continues to internal session issuance.
+- **WHEN** a callback presents a valid unconsumed state and the configured Provider Adapter returns a verified identity for the approved tenant
+- **THEN** the Worker consumes the state, resolves the identity mapping and continues to internal session issuance without persisting or returning Provider tokens.
 
-#### Scenario: Invalid, expired or replayed callback
+#### Scenario: Invalid, expired, replayed or unconfigured callback
 
-- **WHEN** state is unknown, expired, already consumed, bound to another Provider/callback, or repeated
+- **WHEN** state is unknown, expired, already consumed, bound to another Provider/callback, repeated, or required Provider configuration is absent/inconsistent
 - **THEN** authentication fails closed, no Staff Session is issued and a sanitized security event is recorded.
 
 ### Requirement: Staff identity mapping uses the existing D1 binding as authority bridge
@@ -46,17 +46,17 @@ The system SHALL map the stable Feishu subject by `(tenant_key, open_id)` to exa
 
 ### Requirement: Worker issues an opaque internal Staff Session
 
-After successful mapping, the Worker SHALL generate a new opaque session token with at least 256 bits of entropy, store only its hash in D1, bind it to the Staff ID and issued `session_version` and `authorization_version`, and set `__Host-ygb_staff_session` as `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/` with a twelve-hour absolute TTL. The Cookie and session record SHALL NOT contain roles, permissions, data scope or Provider tokens as authority.
+After successful mapping, the Worker SHALL generate a new opaque session token with at least 256 bits of entropy, store only its hash in D1, bind it to the Staff ID and issued `session_version` and `authorization_version`, and set `__Host-ygb_staff_session` as `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/` with a twelve-hour absolute TTL. First release SHALL have no independent idle timeout and SHALL NOT require a per-request `last_seen` write. This is an explicit write-amplification and complexity decision, not an omitted security rule. The Cookie and session record SHALL NOT contain roles, permissions, data scope or Provider tokens as authority.
 
 #### Scenario: Session issuance
 
 - **WHEN** Provider verification and D1 identity mapping succeed
-- **THEN** a new ACTIVE Staff Session is persisted, a lifecycle audit/security event is recorded and the browser receives only the opaque HttpOnly Cookie before an allowlisted redirect.
+- **THEN** a new ACTIVE Staff Session with a twelve-hour absolute expiry is persisted, a lifecycle audit/security event is recorded and the browser receives only the opaque HttpOnly Cookie before an allowlisted redirect.
 
-#### Scenario: Session fixation resistance
+#### Scenario: Session fixation and idle behavior
 
-- **WHEN** the browser already holds an arbitrary or old Staff Cookie during a successful callback
-- **THEN** the Worker replaces it with a newly generated session and never reuses a client-supplied session identifier.
+- **WHEN** the browser already holds an arbitrary or old Staff Cookie or remains inactive during the valid absolute lifetime
+- **THEN** successful callback replaces the Cookie with a new token, and inactivity alone does not extend, shorten or refresh the fixed twelve-hour expiry.
 
 ### Requirement: Staff Session Middleware authenticates every Staff request
 
@@ -88,7 +88,7 @@ For each authenticated request, the middleware SHALL call the existing D1 author
 
 ### Requirement: Session APIs expose only the current safe Staff projection and revocation actions
 
-The system SHALL expose `GET /api/staff-auth/session`, `POST /api/staff-auth/logout` and `POST /api/staff-auth/logout-all`. Current session response SHALL include a safe Staff projection, current effective roles/permissions/scope summary and expiry but SHALL exclude Cookie/token hashes and Provider secrets. Logout SHALL revoke the current session and clear the Cookie. Logout-all SHALL increment `staff_users.session_version`, revoke all active sessions for that Staff and clear the Cookie.
+The system SHALL expose `GET /api/staff-auth/session`, `POST /api/staff-auth/logout` and `POST /api/staff-auth/logout-all`. Current session response SHALL include a safe Staff projection, current effective roles/permissions/scope summary and absolute expiry but SHALL exclude Cookie/token hashes and Provider secrets. Logout SHALL revoke the current session and clear the Cookie. Logout-all SHALL increment `staff_users.session_version`, revoke all active sessions for that Staff and clear the Cookie.
 
 #### Scenario: Current session read
 
@@ -107,12 +107,12 @@ The middleware SHALL reject sessions when Staff status is not ACTIVE, `session_v
 #### Scenario: Staff is disabled or all sessions are revoked
 
 - **WHEN** Staff status changes to inactive or `session_version` is incremented
-- **THEN** every prior session is rejected on its next request and cannot be revived by replaying its Cookie.
+- **THEN** every prior session is rejected with 401 on its next request and cannot be revived by replaying its Cookie.
 
 #### Scenario: Authorization changes
 
 - **WHEN** an authorized change increments `authorization_version`
-- **THEN** sessions issued under the previous version are rejected and no stale permission snapshot is used.
+- **THEN** sessions issued under the previous version are rejected with 401 and no stale permission snapshot is used.
 
 ### Requirement: Staff authentication applies origin, redirect, rate-limit and replay security controls
 
@@ -130,7 +130,7 @@ Login start and session-changing POST requests SHALL enforce allowed Origin. Red
 
 ### Requirement: Authentication lifecycle is auditable without leaking secrets
 
-Successful known-Staff session creation, current-session revoke and logout-all SHALL create immutable audit evidence. Unknown identity, invalid state, callback replay, Provider failure, Cookie rejection and rate-limit decisions SHALL create immutable `staff_auth_security_events` with request ID and minimized or hashed context. Raw codes, tokens, Cookie values, R2 keys and full Provider claims SHALL never be persisted in audit, security event or outbox payloads.
+Successful known-Staff session creation, current-session revoke and logout-all SHALL create immutable audit evidence. Unknown identity, invalid state, callback replay, identity conflict, Provider failure, Cookie rejection and rate-limit decisions SHALL create immutable `staff_auth_security_events` with structured event type/outcome, request ID, nullable trusted references and minimized or hashed context. Raw codes, tokens, Cookie values, R2 keys and full Provider claims SHALL never be persisted in audit, security event or outbox payloads. Wave 13 SHALL persist these events but SHALL NOT implement Feishu real-time alerts, security message delivery, duty notifications or operational reminders; those consumers belong to Wave 16.
 
 #### Scenario: Successful lifecycle audit
 
@@ -140,4 +140,4 @@ Successful known-Staff session creation, current-session revoke and logout-all S
 #### Scenario: Failed authentication security event
 
 - **WHEN** authentication fails before a trusted Staff Actor is known
-- **THEN** a sanitized security event is appended with nullable Staff reference and the global business audit log is not populated with a fabricated Actor.
+- **THEN** a sanitized immutable security event is appended with nullable Staff reference, no fabricated Actor and no Wave 13 alert delivery side effect.

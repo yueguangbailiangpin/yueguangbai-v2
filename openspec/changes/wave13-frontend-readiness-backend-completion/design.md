@@ -2,74 +2,68 @@
 
 ## 1. Context
 
-Pre-Wave 13 审计已证明当前 `main` 的业务 Service、权限引擎、账本、文件和门户基础大体存在，但生产 HTTP 入口仍有三个固定 P1：可信 Staff 登录与 Session 缺失；File Upload、Staff Order Evidence、Staff Buyer Refund 正式 HTTP 闭环缺失；旧决策与最新 Staff 权威边界冲突。当前审计本地补充已记录 schema 26、113 application tables、213 triggers、10 views、99 test files、511 tests 和 `npm run check` 通过，但这些历史证据没有关闭 P1，也不能替代 Wave 13 的实现后验证。
+Pre-Wave 13 审计确认当前业务 Service、权限引擎、不可变账本、文件生命周期和客户门户基础大体存在，但正式前端仍被三个 P1 阻塞：生产 Staff 登录与内部 Session 缺失；File HTTP、Staff Order Evidence、Staff Buyer Refund 正式 HTTP 闭环缺失；Staff 身份权威边界需要在实现阶段通过正式决策澄清。
 
-本设计以远程 SHA `5a72fd5d13204a6603ebfe3b39254915972390f8` 为只读规划基线。规划阶段不执行本地命令、不创建 SQL、不修改业务源码、不更新审计结论。
+本设计以远程规划基线 `5a72fd5d13204a6603ebfe3b39254915972390f8` 和当前 Change 修订前 HEAD `56240b24340e0809c644f5d856655a20b237c20b` 为依据。规划阶段不执行本地命令、不创建 SQL、不修改业务源码、不更新审计结论。
 
 ## 2. Existing Capability Inventory
 
-| 能力 | 已存在 | 可直接复用 | 需要扩展 | 证据 |
-|---|---|---|---|---|
-| `staff_users` 主体与状态 | 是 | 主体、`status`、`authorization_version`、`version` | 增加 `session_version` | `migrations/0002_staff_identity_permissions.sql` |
-| 飞书 Staff identity binding | 是 | `(tenant_key, open_id)` 稳定映射、`user_id` 辅助校验、唯一约束、ACTIVE/REVOKED | 回调 Provider adapter 与冲突审计 | `feishu_staff_identities`、`provision-staff.ts` |
-| Staff Role Assignment | 是 | 多角色、ACTIVE/REVOKED | 无 Schema 扩展 | `staff_role_assignments` |
-| Permission Override / Personal DENY | 是 | GRANT、DENY，DENY 最终优先 | 中间件统一调用 | `staff_permission_overrides`、`authorization-policy.ts` |
-| Team / Department / Leader | 是 | ACTIVE membership、leader package、department status | 无 Schema 扩展 | `staff-assignment/effective-authorization.ts` |
-| Data Scope | 是 | GLOBAL、ASSIGNED_BUYERS、ASSIGNED_SELLER_ORGANIZATIONS、TEAM_ASSIGNMENTS | 让新 Staff Read Models 使用 | `staff-assignment/data-scope.ts` |
-| Feishu resolver | 部分 | identity mapping 规则和 fail-closed 语义 | 拆分为 Provider mapping 与按 `staff_id` 重算授权 | `staff/staff-authorization.ts` |
-| 按 `staff_id` 重算授权 | 是 | 角色、Permission、DENY、Team、Department、Scope | Staff middleware 调用 | `resolveAssignmentStaffAuthorization` |
-| Staff login state | 否 | 无 | 新表、单次消费、TTL、Provider/redirect 绑定 | 未发现对应 Migration/Service |
-| Internal Staff Session | 否 | Customer Session 的 cookie/secret/中间件模式仅作实现参考 | 新 Staff 专用 opaque session、撤销、版本检查 | `customer-auth/**` 仅属于 Customer Auth |
-| Staff auth rate limit | 否 | 可复用基础清理/时间模式 | 新 Staff 专用 rate-limit records | 现有登录限流不应跨身份域复用权威记录 |
-| Staff auth security event | 否 | 可复用规范 JSON、request id、审计风格 | 新不可变安全事件表 | 未发现对应表 |
-| Session revoke | 否 | `staff_users.status` 与 `authorization_version` 可触发失效 | current revoke、logout-all、expiry cleanup | 无 Staff Session 表 |
-| File upload intent | 是 | Purpose、Visibility、Manifest、15 分钟默认 TTL、幂等 | HTTP adapter | `files/create-upload-intent.ts` |
-| File object upload | 是 | token、魔数、MIME、size、SHA-256、R2 put | multipart HTTP adapter | `files/upload-file-object.ts` |
-| File complete | 是 | HEAD、metadata、prefix/digest、版本、幂等 | HTTP adapter | `files/complete-upload-intent.ts` |
-| File link / audience grant | 是 | entity link、explicit audiences、Staff/Buyer/Seller 动态授权 | 仅由业务命令内部调用 | `explicit-audience-links.ts`、`file-audience-authorization.ts` |
-| Short read intent | 是 | 5 分钟默认 TTL、单次 token、对象再校验 | HTTP adapter | `files/file-read-service.ts` |
-| R2 compensation / cleanup | 是 | 删除补偿、delete pending、重试清理 | 正式故障测试与可观测性 | `files/compensation.ts`、cleanup scripts/services |
-| Order Evidence submit/read/review | 是 | 状态机、两小时修改期限、Audit/Outbox/Idempotency | Staff HTTP、Scope、严格一张截图入口 | `order-evidence/**` |
-| Formal Order confirmation | 是 | order claim、snapshot、seller payable、transaction assertions | 与 verify 组成原子 Staff approval orchestrator | `formal-orders/confirm-formal-order.ts` |
-| Buyer Refund ledger | 是 | append-only Payment/Reversal、OVERPAID、整数分 | Staff list/detail/routes/scope | `buyer-refunds/**` |
-| Audit | 是 | 业务成功事件、Actor、request/idempotency context | Staff auth lifecycle 与安全事件边界 | `foundation/audit` |
-| Outbox | 是 | 业务状态同步事件、dedup | 新业务命令复用；认证失败不外发 PII | `foundation/outbox` |
-| Command Idempotency | 是 | request hash、lease、replay/conflict | 所有新 mutation adapter 复用 | `foundation/idempotency` |
+| 能力 | 当前状态 | Wave 13处理 |
+|---|---|---|
+| `staff_users`、角色、Permission Override、Personal DENY | 已存在 | 直接复用；仅增加 `session_version` |
+| `feishu_staff_identities` | 已存在 | 继续作为 Provider identity 到既有 Staff 的最小映射 |
+| Team、Department、Leader、Assignment、Data Scope | 已存在 | 每个请求重新计算并用于新 Staff API |
+| `resolveAssignmentStaffAuthorization` | 已存在 | 作为 Staff Session Middleware 的统一授权解析器 |
+| Staff login state | 缺失 | 0027 最小新增 |
+| Internal Staff Session | 缺失 | 0027 最小新增 |
+| Staff auth rate limit | 缺失 | 0027 最小新增 |
+| Staff auth security event | 缺失 | 0027 最小新增 |
+| File upload intent、object upload、complete、read intent | 已存在 | 仅补正式 HTTP Adapter |
+| File entity link、explicit audience、动态授权 | 已存在 | 只允许业务命令内部调用 |
+| R2 compensation、delete pending、cleanup retry | 已存在 | 复用并补正式故障测试 |
+| Order Evidence、两小时修改期限 | 已存在 | 补 Staff HTTP、Scope、Mismatch 确认和原子 approve |
+| Formal Order、Claim、Snapshot、Seller Principal Payable | 已存在 | 组合进一个原子 approve command |
+| Buyer Refund Payment/Reversal/OVERPAID | 已存在 | 补 Staff list/detail/payment/reversal HTTP |
+| Audit、Outbox、Idempotency、Transaction Assertions | 已存在 | 新业务命令继续复用 |
 
-## 3. Audit Findings Being Closed
+## 3. Goals
 
-- **P1-01**：生产入口注册 Staff/Internal Finance 路由，却没有可信登录、内部 Session 或默认中间件生成 `staffAuthorization`。
-- **P1-02**：正式 HTTP 入口缺少 File HTTP、Staff Order Evidence、Staff Buyer Refund。
-- **P1-03**：旧决策把飞书描述为员工身份来源/工作入口，但最新治理要求独立 Staff 主体和可信内部 Session；必须通过正式决策澄清而非删除历史。
-
-本 Change 不降低严重级别，不把 Service 存在描述为 HTTP 已可用，不把 fail-closed 路由描述为前端 ready。
-
-## 4. Goals
-
-1. 让生产 Worker 能从飞书认证结果建立内部可信 Staff Session。
-2. 让所有现有 Staff/Internal Finance 路由通过默认中间件获得实时 D1 授权。
+1. 让生产 Worker 从飞书认证结果建立内部可信 Staff Session。
+2. 让全部现有 Staff/Internal Finance 路由通过默认中间件获得实时 D1 授权。
 3. 暴露现有文件系统的正式受控 HTTP Flow。
-4. 暴露 Staff Order Evidence 与 Buyer Refund 的正式运营 API。
-5. 冻结大模块 5 的关键 Contract、安全、DTO 与错误边界。
-6. 定义实现后更新既有 Pre-Wave 13 审计的关闭标准。
+4. 暴露 Staff Order Evidence 与 Buyer Refund 正式运营 API。
+5. 冻结 `/api/*`、Session、安全事件、Mismatch、DTO、错误与 Scope Contract。
+6. 定义实现后关闭 Pre-Wave 13 P1 的证据标准。
 
-## 5. Non-Goals
+## 4. Non-Goals
 
-React 正式前端、完整 Staff 工作台、飞书消息/队列/提醒、历史迁移、部署、生产资源、财务公式调整、Seller Settlement 重构、全仓 API 版本迁移、Ponytail 重构均不属于本 Change。
+React 正式前端、完整 Staff 工作台、飞书消息/队列/提醒、飞书安全告警、历史迁移、部署、生产资源、财务公式调整、Seller Settlement 重构、全仓 API 版本迁移、Ponytail 重构均不属于本 Change。
 
-## 6. Staff Identity Authority
+## 5. Staff Identity Authority
 
-D1 `staff_users` 是 Staff 主体、ACTIVE 状态、角色、Permission、Personal DENY、Team、Department 和 Data Scope 的唯一权威。`feishu_staff_identities` 只把经 Provider 验证的稳定身份映射到已存在 Staff。客户端永远不能提交权威 `staff_id`、role、permission、team 或 scope。
+D1 `staff_users` 及 D1 中的角色、Permission、Personal DENY、Team、Department、Assignment 和 Data Scope 是唯一 Staff 权威。`feishu_staff_identities` 只把经 Provider 验证的稳定身份映射到已存在的 ACTIVE Staff。
 
-Staff Session 保存的 `staff_id` 只是定位 D1 主体的不可篡改引用；Session 不保存权限权威快照。每个请求都重新查询 D1 并计算授权。
+客户端、飞书 Header、飞书 Access Token、请求 JSON 和 Query 均不得提交或决定权威 `staff_id`、role、permission、team、department 或 scope。Staff Session 只保存定位 D1 Staff 的不可篡改引用，不保存角色、Permission 或 Data Scope 权威快照。
 
-## 7. Feishu Provider Boundary
+## 6. Feishu Provider Boundary
 
-飞书是第一版 Staff 登录认证 Provider，负责证明某个 tenant 中的某个 `open_id` 完成了认证。Provider adapter 必须服务端交换 code、验证配置 tenant、处理超时和非成功响应，并只返回最小声明：provider、tenant key、open id、可选 user id。
+飞书是第一版生产 Staff 登录认证 Provider，仅负责证明配置 tenant 中的稳定 `open_id` 已完成认证。Worker 服务端交换 code，映射 `(tenant_key, open_id)`，可使用 `user_id` 进行辅助冲突检查，并签发自己的内部 Session。
 
-飞书不是角色、Permission、Data Scope、Staff API Session、业务事实或财务数据库。Provider Access Token 不返回浏览器，不写长期业务表，默认仅在回调请求内存中存在。未知 identity、重复/冲突 binding、inactive identity 或 inactive Staff 均拒绝，不自动创建 Staff。
+飞书不是角色、Permission、Data Scope、Staff API Session、业务事实、财务或安全事件数据库。未知 identity、冲突 binding、inactive identity 或 inactive Staff 均 fail closed，不自动创建 Staff。
 
-## 8. Staff Login Sequence
+### IMPLEMENTATION_PREREQUISITE：Provider 参数
+
+实现阶段必须：
+
+- 依据实现当时的官方飞书文档核验 authorization、token/identity endpoint 和 claim 语义；
+- 使用已获批飞书应用；
+- 将 endpoint、app id、secret、scope、tenant、redirect URI 全部环境配置化；
+- Provider 配置缺失或不一致时 fail closed；
+- Provider Adapter 支持测试替身；
+- 禁止把 Provider 参数写死进 Domain；
+- 禁止凭模型记忆填写生产参数。
+
+## 7. Staff Login Sequence
 
 ```mermaid
 sequenceDiagram
@@ -79,96 +73,107 @@ sequenceDiagram
   participant Feishu
   Browser->>Worker: POST /api/staff-auth/login/start {return_to?}
   Worker->>Worker: validate Origin and allowlisted return_to
-  Worker->>D1: store hashed random state, provider, tenant, callback, TTL
+  Worker->>D1: store hashed state, FEISHU, tenant, callback, 10-minute expiry
   Worker-->>Browser: authorization_url + expires_at
   Browser->>Feishu: authenticate
-  Feishu-->>Worker: GET callback?code&state
+  Feishu-->>Worker: GET /api/staff-auth/feishu/callback?code&state
   Worker->>D1: atomically consume unexpired ISSUED state
   Worker->>Feishu: server-side code exchange and identity verification
-  Feishu-->>Worker: tenant_key + open_id (+ user_id)
   Worker->>D1: resolve exactly one ACTIVE binding and ACTIVE staff_user
-  Worker->>D1: create hashed opaque Staff Session + security/audit events
-  Worker-->>Browser: Set-Cookie HttpOnly; 303 allowlisted return_to
+  Worker->>D1: create hashed opaque Staff Session and lifecycle evidence
+  Worker-->>Browser: Set-Cookie; 303 allowlisted return_to
 ```
 
-登录 `state` 使用密码学随机值，数据库只保存 hash。默认 TTL 为 10 分钟，状态为 ISSUED、CONSUMED、EXPIRED 或 CANCELLED；单次条件更新消费。客户端 state 不包含权威 Staff ID。
+Login state TTL 固定为 10 分钟。State 使用密码学随机值，D1 只保存 hash，状态单次条件消费；客户端 state 不包含 Staff ID。
 
-## 9. Session Trust Boundary
+## 8. Internal Staff Session
 
-Worker 生成至少 256-bit opaque token，数据库只保存 token hash。Cookie：
+Worker 生成至少 256-bit opaque token，D1 只保存 token hash。Cookie 固定为：
 
-- name: `__Host-ygb_staff_session`
+- `__Host-ygb_staff_session`
 - `HttpOnly=true`
 - `Secure=true`
 - `SameSite=Lax`
 - `Path=/`
-- absolute TTL: 12 hours
-- Max-Age: 43,200 seconds
+- absolute TTL：12 小时
+- `Max-Age=43,200`
 
-浏览器持有的 token 不能解码出 role、permission、scope 或 Provider token。回调成功后总是生成新 Session ID，防止 Session fixation。
+第一版明确**没有独立 idle timeout**。这是为了避免每次请求更新 `last_seen` 带来的 D1 写放大、竞争和额外清理复杂度，不是遗漏。0027 不需要为 idle timeout 增加 `last_seen` 权威字段。每次请求仍读取 Session 并重新计算 D1 权限和 Data Scope。
 
-## 10. Session Revocation
+## 9. Session Revocation and Authorization Version
 
-- `POST /api/staff-auth/logout`：条件撤销当前 session，清 Cookie；重放保持成功。
-- `POST /api/staff-auth/logout-all`：增加 `staff_users.session_version`，撤销该 Staff 的全部 ACTIVE sessions，并清当前 Cookie。
-- Staff 变为非 ACTIVE：下次请求立即 401 并撤销当前 session。
-- session 到期：下次请求 401；cleanup 归档/删除已过保留期的临时记录。
-- `session_version` 不匹配：401，并撤销 session。
-- `authorization_version` 不匹配：为确保授权变更立即生效，当前 session 失效并返回 401；用户重新认证后获得新版本。即使实现选择继续当前会话，也不得继续使用旧权限快照；本 Change 默认采用强制重新认证。
+- `POST /api/staff-auth/logout`：撤销当前 Session 并清 Cookie；重复调用保持安全。
+- `POST /api/staff-auth/logout-all`：递增 `staff_users.session_version`，撤销该 Staff 全部 ACTIVE Sessions，并清 Cookie。
+- inactive Staff：下一请求立即 401。
+- expired、revoked、tampered、unknown Session：立即 401。
+- `session_version` 不匹配：立即 401，旧 Session 不可恢复。
+- `authorization_version` 与签发版本不匹配：立即 401 并要求重新登录。
+- 有效 Session 的每个请求仍调用现有 D1 resolver，重新计算角色、GRANT、Personal DENY、Team、Department、Leader package 和 Data Scope。
+- Personal DENY 和系统硬禁止最终优先。
 
-## 11. Authorization Recalculation
+## 10. Why Customer Auth Tables Are Not Reused
 
-```mermaid
-sequenceDiagram
-  actor Browser
-  participant Middleware
-  participant D1
-  participant Route
-  Browser->>Middleware: Staff API request + session cookie
-  Middleware->>D1: resolve ACTIVE session by token hash
-  Middleware->>D1: check staff ACTIVE, session_version, authorization_version
-  Middleware->>D1: resolve roles, GRANT/DENY, active teams/departments, data scope
-  Middleware->>Middleware: Personal DENY and system hard deny win
-  Middleware->>Route: context.set(staffAuthorization)
-  Route->>Route: permission then resource scope check
-  Route-->>Browser: response / 401 / 403 / concealed 404
-```
+`customer_login_rate_limits` 和 `customer_auth_security_events` 不作为 Staff 认证记录复用，原因是：
 
-中间件复用 `resolveAssignmentStaffAuthorization`，不复制另一套权限算法。解析失败时不执行后续 Staff 路由。`staffAuthorization` 包含 Staff ID、展示名、角色集合、有效 Permission、member/leader team IDs 和 Data Scope。
+1. Customer 表绑定 Buyer/Seller Customer 身份域、Customer account 和登录标识语义。
+2. Staff 认证使用 Provider、tenant、subject、login state 和内部 Session 语义。
+3. 强行复用会混淆身份域、事件类型、nullable Actor、索引和保留字段。
+4. 修改既有 Customer 表会增加 Customer Auth 回归风险，却不能消除 Staff 专用字段需求。
+5. 代码层可复用规范化、hash、时间、限流算法和事件写入模式，但持久化表保持身份域隔离。
 
-## 12. Existing Schema Analysis
+## 11. Migration 0027 Decision
 
-现有 Schema 已满足：Staff 主体、ACTIVE 状态、`authorization_version`、飞书 identity binding、角色、多角色、Permission override、Personal DENY、Team/Department、Assignment、Work Item、Audit、Outbox 和 Idempotency。
+**需要最小 Migration：`0027_staff_auth_sessions.sql`。**
 
-现有 Schema 不满足：
-
-- 没有 `session_version`，无法一次撤销某 Staff 的所有内部 Session。
-- 没有短期、单次消费的 Staff login state。
-- 没有可逐条撤销、到期和审计的 Staff session record。
-- 没有 Staff 登录专用 rate-limit record。
-- 没有未知 Actor/失败 Provider 回调可安全记录的 Staff auth security event。
-
-`feishu_staff_identities` 已是当前 Provider 所需最小 binding；不创建通用多 Provider 身份框架，不增加 union_id 作为第一版必需字段，不自动创建 Staff。
-
-## 13. Migration Decision
-
-**Decision B：需要最小 Migration 0027。**
-
-建议名称：`0027_staff_auth_sessions.sql`。
-
-建议变更：
+最终范围仅包括：
 
 1. `staff_users.session_version INTEGER NOT NULL DEFAULT 1 CHECK(session_version >= 1)`。
-2. `staff_login_states`：UUID、`state_hash` unique、provider FEISHU、tenant key、callback purpose、allowlisted return path、status、expires/consumed/cancelled timestamps、request/origin context、created/updated。
-3. `staff_sessions`：UUID、token hash unique、Staff FK、issued session/authorization versions、ACTIVE/REVOKED/EXPIRED status、expires、last seen、revoked reason/timestamps、created/updated。
-4. `staff_auth_rate_limits`：hashed key、bucket、count、expires/updated，唯一 `(key_hash, bucket_start, action)`。
-5. `staff_auth_security_events`：不可变 event type/outcome、nullable staff/identity/session refs、provider、hashed tenant/subject/network context、request ID、bounded canonical metadata、created_at。
-6. 索引：state status+expiry、session staff+status+expiry、session token hash、rate-limit expiry、security-event created/staff。
-7. Trigger/CHECK：生命周期状态、单次消费、不可逆 revoked/consumed、时间顺序、不可更新/删除安全事件。
+2. `staff_login_states`：hashed state、FEISHU provider、tenant/callback/return path、ISSUED/CONSUMED/EXPIRED/CANCELLED、expiry 和单次消费时间。
+3. `staff_sessions`：unique token hash、Staff FK、issued `session_version`、issued `authorization_version`、ACTIVE/REVOKED/EXPIRED、absolute expiry 和 revoke metadata。
+4. `staff_auth_rate_limits`：hashed key、action、bucket、count、expiry。
+5. `staff_auth_security_events`：不可变 event/outcome、nullable Staff/identity/session refs、Provider、hashed/minimized context、request ID、bounded metadata 和 created time。
+6. 必要的 unique、FK、CHECK、lifecycle trigger 和 status/expiry indexes。
 
-Migration 不保存飞书 token，不复制角色/Permission/Scope，不读取历史生产数据。既有 Staff 自动得到 `session_version=1`；没有历史 Session 需要迁移。回滚边界是“应用未依赖新列/表前可回退”；一旦签发 Session，不通过 destructive down migration 回滚，改为停用新入口并撤销 sessions。
+明确禁止：
 
-## 14. File HTTP Sequence
+- 创建通用多 Provider 身份框架；
+- 复制角色、Permission 或 Data Scope 到 Session；
+- 保存长期飞书 Token；
+- 新增无当前前端用途的身份表；
+- 复用或重建 Customer Auth 表；
+- 在本规划阶段创建 SQL。
+
+## 12. API Path Decision
+
+Wave 13 新端点和受影响现有端点的唯一正式路径前缀是现有 `/api/*`。
+
+- 不新增 `/api/v2/*`。
+- 不为旧文档注册 alias 或双路由。
+- 不维护两套 Contract 版本。
+- API 整体版本迁移不属于 Wave 13。
+- 实现阶段必须修正旧合同/文档中把正式路径写成 `/api/v2/*` 的内容，使其与生产源码 `/api/*` 一致。
+- 路由清单、测试、审计重算和前端 SDK 只能统计 `/api/*`。
+
+## 13. File Contract Verification
+
+真实 Contract 中存在以下 `FilePurpose`：
+
+`PRODUCT_APPLICATION_IMAGE`、`PRODUCT_IMAGE`、`ORDER_INSTRUCTION_KEYWORD_IMAGE`、`ORDER_EVIDENCE`、`ORDER_EVIDENCE_INTERNAL_COMMUNICATION`、`REVIEW_EVIDENCE`、`BUYER_REFUND_PROOF`、`SELLER_SETTLEMENT_PROOF`、`SUPPORT_ATTACHMENT`。
+
+真实 `FileVisibility` 仅有：`INTERNAL_ONLY`、`BUYER_VISIBLE`、`SELLER_VISIBLE`。
+
+| Planned HTTP purpose | Existing FilePurpose constant | Status | Action |
+|---|---|---|---|
+| Buyer Order Evidence | `ORDER_EVIDENCE` | EXISTING | 直接复用；路由固定 `BUYER_VISIBLE`，不得 Seller 可见 |
+| Buyer Review Evidence | `REVIEW_EVIDENCE` | EXISTING | 直接复用；路由固定 `SELLER_VISIBLE`，业务命令仍创建 Buyer/Seller/Staff explicit audiences |
+| Seller Product Application Images | `PRODUCT_APPLICATION_IMAGE` | EXISTING | 直接复用；路由固定 `SELLER_VISIBLE` |
+| Staff Order Evidence Internal Communication | `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` | EXISTING | 直接复用；路由固定 `INTERNAL_ONLY` |
+| Staff Buyer Refund Proofs | `BUYER_REFUND_PROOF` | EXISTING | 直接复用；路由固定 `INTERNAL_ONLY` |
+| Staff Seller Settlement Proofs | `SELLER_SETTLEMENT_PROOF` | EXISTING | 直接复用；路由固定 `INTERNAL_ONLY` |
+
+Wave 13 不为 `PRODUCT_IMAGE`、`ORDER_INSTRUCTION_KEYWORD_IMAGE` 或 `SUPPORT_ATTACHMENT` 新增通用上传端点。六个规划 Purpose 均为 EXISTING，因此不需要 FilePurpose Contract 扩展。
+
+## 14. File HTTP Flow
 
 ```mermaid
 sequenceDiagram
@@ -177,127 +182,87 @@ sequenceDiagram
   participant FileService
   participant D1
   participant R2
-  Client->>Route: purpose-bound intent request + Idempotency-Key
-  Route->>Route: derive Actor, Purpose, Visibility and ownership
+  Client->>Route: purpose-bound intent + Idempotency-Key
+  Route->>Route: derive Actor, fixed Purpose, fixed Visibility, ownership
   Route->>FileService: createFileUploadIntent
-  FileService->>D1: intent + reserved file objects + audit/outbox/idempotency
-  FileService-->>Client: file_object_id + one-time upload token
-  Client->>Route: multipart upload + X-Upload-Token
+  FileService->>D1: intent + reserved objects + audit/outbox/idempotency
+  Client->>Route: multipart file + X-Upload-Token
   Route->>FileService: uploadFileObject
   FileService->>R2: put
-  FileService->>D1: mark UPLOADED or compensate delete
-  Client->>Route: complete intent + expected_version
+  Client->>Route: complete + expected_version
   Route->>FileService: completeFileUploadIntent
-  FileService->>R2: head + prefix verification
-  FileService->>D1: mark VERIFIED or compensate/queue cleanup
+  FileService->>R2: HEAD + prefix/digest verification
+  FileService->>D1: VERIFIED or compensation/delete-pending
   Client->>Route: business command references verified file IDs
   Route->>D1: business transaction creates entity link/audience grant
 ```
 
-HTTP 不接受 owner、owner_id、organization authority、buyer/seller/staff authority、scope、audience、object_key、permanent URL 或任意 entity authority。Purpose 由路径固定；文件数量、MIME、大小和 digest 继续由现有 policy 校验。
+HTTP 不接受 owner、organization authority、buyer/seller/staff authority、scope、audience、object key、permanent URL 或任意 entity authority。不存在无权限的通用 link/grant route。
 
-## 15. Staff Order Evidence Sequence
+## 15. Staff Order Evidence and PRICE_MISMATCH
 
-```mermaid
-sequenceDiagram
-  actor Staff
-  participant Route
-  participant Authorization
-  participant Evidence
-  participant FormalOrder
-  participant D1
-  Staff->>Route: POST /api/staff/order-evidence/:id/approve
-  Route->>Authorization: require ORDER_CONFIRM and in-scope work item
-  Route->>Evidence: validate expected_version and exactly one VERIFIED file
-  Evidence->>Evidence: compute stored price mismatch facts
-  alt PRICE_MISMATCH unresolved
-    Evidence-->>Staff: 409 ORDER_EVIDENCE_STATE_CONFLICT, reason PRICE_MISMATCH
-  else valid
-    Evidence->>FormalOrder: prepare verify + formal order statements
-    FormalOrder->>D1: one atomic batch: verify event, claim, order, snapshot, payable, consume evidence, audit/outbox/idempotency/assertions
-    D1-->>Staff: formal order result
-  end
-```
+最终支付金额的业务权威是订单截图显示的最终实际支付金额。`reference_order_amount_jpy` 仅是参考事实；与 `final_paid_jpy` 不同不自动表示资料错误。
 
-新 orchestrator 必须复用现有验证、claim、snapshot、payable 和 statement builders；不能先调用一个已提交的 `verifyOrderEvidence`，再调用第二个已提交的 `confirmFormalOrder`。最终成功要么全部存在，要么全部不存在。
+Staff review rules:
 
-## 16. Staff Buyer Refund Sequence
+1. 截图与买家填写的 `final_paid_jpy` 不一致、截图不清楚或无法证明最终金额：Staff 必须使用 request-changes，不得 approve。
+2. 截图清楚证明 `final_paid_jpy`，且仅与 reference amount 不同：具有 `ORDER_CONFIRM` 的 Staff 可以 approve，但必须显式提交：
+   - `price_mismatch_acknowledged: true`
+   - `price_mismatch_reason`: 非空内部原因
+3. 存在 mismatch 但 acknowledgment 缺失或为 false：返回 HTTP 409 `PRICE_MISMATCH`，不得形成 Formal Order。
+4. 存在 mismatch 且 acknowledgment=true 但 reason 为空/缺失：返回 400 `VALIDATION_ERROR`。
+5. 不存在 mismatch 时，`price_mismatch_acknowledged=true` 或非空 `price_mismatch_reason` 均返回 400 `VALIDATION_ERROR`；acknowledged 缺失或 false 且无 reason 可通过。
+6. 不新增 Permission；继续使用 `ORDER_CONFIRM`、Personal DENY、Assignment、Data Scope、`expected_version` 和 Idempotency-Key。
+7. Request hash 必须包含 acknowledgment 和规范化 reason；Replay 必须返回首次已提交结果，不能改变 reason。
+8. Audit 和 Formal Order Event 必须记录：
+   - `reference_order_amount_jpy`
+   - `final_paid_jpy`
+   - `price_difference_jpy`
+   - `price_mismatch_acknowledged`
+   - `price_mismatch_reason`
+   - `confirmed_by_staff_id`
+9. Buyer 可见 DTO 不得暴露内部 reason。
+10. Formal Order 和财务快照继续使用最终实际 `final_paid_jpy`，不得使用 reference amount 覆盖。
 
-```mermaid
-sequenceDiagram
-  actor Staff
-  participant Route
-  participant Scope
-  participant RefundService
-  participant FileService
-  participant D1
-  Staff->>Route: POST payment/reversal + Idempotency-Key
-  Route->>Scope: require BUYER_REFUND_RECORD, Personal DENY, assignment/scope
-  Route->>RefundService: expected_version + immutable entry facts
-  opt payment proof
-    RefundService->>FileService: verify STAFF-owned BUYER_REFUND_PROOF
-    FileService->>D1: prepare explicit STAFF_INTERNAL audience link
-  end
-  RefundService->>D1: append PAYMENT or REVERSAL + event + audit + outbox + idempotency + assertion
-  D1-->>Staff: decimal-string ledger projection including OVERPAID
-```
+Approve body 最终 exact-key Contract：
 
-Payment 和 Reversal 都是新事实；禁止 UPDATE/DELETE 旧 Payment。Reversal 必须引用原 Payment，且不能超过其未冲销余额。Buyer Refund 与 Seller Settlement 不共享 Permission、DTO、ledger 或 route。
+- 必填：`expected_version`
+- 可选：`internal_note`
+- 可选：`price_mismatch_acknowledged`
+- 可选：`price_mismatch_reason`
 
-## 17. Permission Matrix
+新 orchestrator 必须复用现有 Evidence、Claim、Formal Order、Snapshot、Payable、Audit、Outbox、Idempotency 和 assertion builders，并在一个 D1 atomic batch 中完成；不能先提交 verify，再单独提交 Formal Order。
 
-| API/Action | Identity | Permission | Data Scope | Concealment | Personal DENY |
-|---|---|---|---|---|---|
-| Staff Session read | ACTIVE Staff Session | 无业务 Permission；仅 self | self | invalid session 401 | 不适用业务 Permission |
-| Staff logout/logout-all | ACTIVE Staff Session | 无业务 Permission；仅 self | self | invalid session 401 | 不适用 |
-| Staff Work Items | Staff | 现有 `TASK_VIEW_SELF`/`TASK_VIEW_TEAM`/对应 mutation Permission | self/team assignment | 超 Scope 404 | 生效 |
-| Internal Finance | Staff | `FINANCIAL_VIEW`/`FINANCIAL_CORRECT`/`FINANCIAL_EXPORT` | owner/global +现有规则 | 无 Permission 403；资源超 Scope 404 | 最终优先 |
-| File Upload: Order Evidence | Buyer session | 当前 Buyer reservation/evidence authority | own buyer reservation | 404 | 不适用 |
-| File Upload: Review Evidence | Buyer session | 当前 Buyer review authority | own buyer review | 404 | 不适用 |
-| File Upload: Product Application | Seller session | 当前 product application create authority | own organization/store | 404 | 不适用 |
-| File Upload: Internal Evidence | Staff | `ORDER_VIEW`/`ORDER_CONFIRM` 按动作 | evidence/work-item scope | 404 | 生效 |
-| File Upload: Buyer Refund Proof | Staff | `BUYER_REFUND_RECORD` | refund assignment/scope | 404 | 生效 |
-| File Upload: Seller Settlement Proof | Staff | 现有 `SELLER_SETTLEMENT_RECORD` | seller assignment/scope | 404 | 生效 |
-| File Link/Grant | trusted business command | 对应业务 Permission | 对应 entity scope | 无通用 route | 生效 |
-| Order Evidence list/detail | Staff | `ORDER_VIEW` | assigned buyers/team/global | 超 Scope 404 | 生效 |
-| Request Changes | Staff | `ORDER_CONFIRM` | assigned work item/buyer | 超 Scope 404 | 生效 |
-| Verify/Approve Evidence | Staff | `ORDER_CONFIRM` +既有 role policy | assigned work item/buyer | 超 Scope 404 | 生效 |
-| Buyer Refund list/detail | Staff | `BUYER_REFUND_VIEW` | assigned refund/buyer/team/global | 超 Scope 404 | 生效 |
-| Record Payment | Staff | `BUYER_REFUND_RECORD` | `BUYER_REFUND_PROCESSING` assignment/scope | 超 Scope 404 | 生效 |
-| Reverse Payment | Staff | `BUYER_REFUND_RECORD` | 与原 Payment 同 obligation scope | 超 Scope 404 | 生效 |
-| Proof Read Intent | Staff | 对应 `ORDER_VIEW`、`BUYER_REFUND_VIEW` 或 settlement view | entity scope + explicit grant | 超 Scope 404 | 生效 |
+## 16. Staff Buyer Refund
 
-不新增 Permission。若实现发现当前 Permission 无法表达一个真实业务动作，必须先返回 OpenSpec/总控，给出最小新增项、默认角色与 DENY 行为，不得为命名整齐自行添加。
+Buyer Refund 继续复用现有 append-only Payment/Reversal ledger、整数分、decimal-string DTO、OVERPAID、proof linking、Audit、Outbox、Idempotency 和 assertions。Payment/Reversal 不得 UPDATE 或 DELETE 原事实，也不得复用 Seller Settlement Permission、DTO、ledger 或 route。
 
-## 18. Data Scope Matrix
+## 17. Permission and Data Scope
 
-| Resource | GLOBAL | ASSIGNED_BUYERS | TEAM_ASSIGNMENTS | ASSIGNED_SELLER_ORGANIZATIONS |
-|---|---|---|---|---|
-| Order Evidence | owner/明确全局能力可见 | buyer assignment 或 fixed work item | leader/member 按现有 work item 规则 | 不作为主授权来源 |
-| Buyer Refund | owner/明确全局能力可见 | refund owner、buyer after-sales/refund duty | team 内有效 assignment/work item | 不作为 Buyer Refund 替代授权 |
-| Buyer Refund Proof | 随 obligation | 随 obligation | 随 obligation | 不可因 Seller scope 获得 |
-| Seller Settlement Proof | 现有 owner/global 规则 | 不适用 | seller account manager team | seller organization assignment |
-| Internal Finance | 现有 internal finance rules | 不由 buyer assignment 单独授权 | 仅现有规则允许时 | 仅现有规则允许时 |
+| Action | Permission | Scope | Scope miss |
+|---|---|---|---|
+| Staff Session read/logout | 当前 Session self | self | 401 when invalid |
+| Internal Finance | 现有 `FINANCIAL_*` | 现有 owner/global rules | 403/404 |
+| Order Evidence list/detail | `ORDER_VIEW` | assigned buyer/work item/team/global | 404 |
+| Request Changes / Approve | `ORDER_CONFIRM` + existing role policy | assigned evidence/buyer/work item | 404 |
+| Buyer Refund list/detail | `BUYER_REFUND_VIEW` | refund/buyer/team/global | 404 |
+| Refund Payment/Reversal | `BUYER_REFUND_RECORD` | processing assignment + obligation scope | 404 |
+| Internal file upload/read | 对应业务 Permission | entity scope + current grant | 404 |
+| Customer file upload/read | 当前 Customer business authority | own tenant/entity | 404 |
 
-列表查询必须在 SQL 层应用 Scope，而不是先读全量再过滤。详情在确认全局 Permission 后按 Scope fail-closed；存在但超 Scope 返回 404。
+不新增 Permission。Personal DENY 最终优先。列表在 SQL 中过滤 Scope，禁止先读全量再过滤。
 
-## 19. API Inventory
-
-当前源码使用 `/api/staff`、`/api/buyer-portal`、`/api/seller-portal` 等已注册 route family。虽然早期 `V2_API_CONVENTIONS.md` 写有 `/api/v2/*`，Wave 13 不创建含义重叠的第二套路由；实现继续当前生产风格，并把是否整体版本化留给独立总控决策。
+## 18. API Inventory
 
 ### Staff Auth
 
-| Method | Path | Request | Response | Idempotency/version |
-|---|---|---|---|---|
-| POST | `/api/staff-auth/login/start` | `{return_to?}` | `{authorization_url, expires_at}` | server state single-use；不使用业务 Idempotency-Key |
-| GET | `/api/staff-auth/feishu/callback` | exact query `code,state` | 303 + Staff cookie | state single-use |
-| GET | `/api/staff-auth/session` | none | `StaffSessionDto` | none |
-| POST | `/api/staff-auth/logout` | exact `{}` | `{logged_out:true}` | replay-safe |
-| POST | `/api/staff-auth/logout-all` | exact `{}` | `{logged_out_all:true, session_version}` | Idempotency-Key + current session version |
+- `POST /api/staff-auth/login/start`
+- `GET /api/staff-auth/feishu/callback`
+- `GET /api/staff-auth/session`
+- `POST /api/staff-auth/logout`
+- `POST /api/staff-auth/logout-all`
 
-### File HTTP
-
-Purpose-bound intent endpoints:
+### Purpose-bound File Intent
 
 - `POST /api/buyer-portal/file-uploads/order-evidence/intents`
 - `POST /api/buyer-portal/file-uploads/review-evidence/intents`
@@ -306,14 +271,12 @@ Purpose-bound intent endpoints:
 - `POST /api/staff/file-uploads/buyer-refund-proofs/intents`
 - `POST /api/staff/file-uploads/seller-settlement-proofs/intents`
 
-Domain-bound upload/complete/read endpoints:
+### Domain-bound File Lifecycle
 
 - `PUT /api/{buyer-portal|seller-portal|staff}/file-uploads/:fileObjectId/content`
 - `POST /api/{buyer-portal|seller-portal|staff}/file-upload-intents/:id/complete`
 - `POST /api/{buyer-portal|seller-portal|staff}/files/:fileObjectId/read-intents`
 - `GET /api/{buyer-portal|seller-portal|staff}/file-read-intents/:id/content`
-
-Upload uses one multipart `file` part and `X-Upload-Token`; read consume uses `X-File-Read-Token`. Tokens never enter URL/query/log fields. All intent/upload/complete/read-intent mutations use `Idempotency-Key`; single-use read consume does not replay bytes after consumption.
 
 ### Staff Order Evidence
 
@@ -329,169 +292,204 @@ Upload uses one multipart `file` part and `X-Upload-Token`; read consume uses `X
 - `POST /api/staff/buyer-refunds/:id/payments`
 - `POST /api/staff/buyer-refunds/:id/payments/:paymentEntryId/reversals`
 
-## 20. Request/Response Contract
+## 19. Request and Query Contract
 
-- 所有 JSON mutation body 必须是对象、大小有界、exact-key、未知字段拒绝。
-- Authority 字段（`staff_id`、role、permission、buyer/seller/store authority、owner、scope、audience、object_key、URL、next_state）即使值看似正确也拒绝。
-- List limit 严格十进制整数，默认 25，范围 1–100；cursor 为版本化 base64url opaque payload，最大 2 KiB。
+- JSON mutation body 必须大小有界、exact-key、未知字段和 authority 字段拒绝。
+- Query 必须拒绝未知和重复参数。
+- List `limit` 为规范十进制整数，默认 25，范围 1–100。
+- Cursor 为版本化 base64url opaque payload，最大 2 KiB。
+- `from/to` 使用 inclusive 中国业务日期，除非既有 route Contract 明确另一 date basis。
 - Order Evidence request-changes：`expected_version`、`public_reason`、可选 `internal_note`。
-- Order Evidence approve：`expected_version`、可选 `internal_note`；不接受 next state。`PRICE_MISMATCH` 由存储事实判断。
-- Refund payment：`expected_version`、`amount_cny_fen` decimal string、`paid_at` ISO-8601 UTC、`china_business_date`、`payment_channel`、`proof_files`、可选 public/internal notes。
-- Refund reversal：`expected_version`、`amount_cny_fen` decimal string、`reversed_at` ISO-8601 UTC、`china_business_date`、可选 notes。obligation/payment identity 来自 path。
-- File response只返回 opaque IDs、version、status、expires、token-available flags；不返回 R2 key/permanent URL。
-- 时间响应使用 UTC epoch milliseconds，业务日期使用 `YYYY-MM-DD`；HTTP 可接受明确 ISO 输入后转换为安全整数。
+- Order Evidence approve：使用第 15 节 exact-key Contract。
+- Refund payment/reversal：CNY 使用 canonical decimal-string fen；时间和业务日期显式校验。
+- File response 只返回 opaque ID、version、status、expiry 和一次性 token availability，不返回 R2 key/permanent URL。
 
-## 21. Error Matrix
+## 20. Error Contract Verification
 
-| HTTP | Public code | 使用边界 |
-|---:|---|---|
-| 400 | `VALIDATION_ERROR` | body/query/header 格式、unknown key、unsafe integer |
-| 401 | `UNAUTHENTICATED` / `SESSION_INVALID` | 无/过期/撤销/篡改 Staff Session |
-| 403 | `FORBIDDEN` | 已认证但缺少全局操作 Permission、Origin 失败 |
-| 404 | `NOT_FOUND` 或领域 not-found | 不存在或有 Permission 但资源超 Scope |
-| 409 | `STATE_CONFLICT` /领域 state conflict | 当前状态不能执行，包括 unresolved `PRICE_MISMATCH` |
-| 409 | `VERSION_CONFLICT` | expected version stale |
-| 409 | `IDEMPOTENCY_CONFLICT` | 同 Key 不同 request hash |
-| 409 | `REQUEST_IN_PROGRESS` | 幂等租约仍处理中 |
-| 410 | `FILE_UPLOAD_EXPIRED` | upload/read intent 到期 |
-| 422 | `FILE_VALIDATION_FAILED` | MIME、魔数、size、digest 不符 |
-| 429 | `RATE_LIMITED` | Staff auth rate limit |
-| 503 | `DEPENDENCY_UNAVAILABLE` | Provider/R2/D1 暂不可用 |
-| 503 | `FILE_COMPENSATION_REQUIRED` | R2 删除失败进入 cleanup |
+| HTTP | Public code | Contract status | Boundary |
+|---:|---|---|---|
+| 400 | `VALIDATION_ERROR` | EXISTING | malformed/unknown/mismatch reason validation |
+| 401 | `UNAUTHENTICATED` / `SESSION_INVALID` | EXISTING | invalid Staff Session |
+| 403 | `FORBIDDEN` | EXISTING | missing operation Permission / invalid upload token |
+| 404 | `NOT_FOUND` or domain not-found | EXISTING | missing or concealed out-of-scope resource |
+| 409 | `PRICE_MISMATCH` | CONTRACT_EXTENSION_REQUIRED | mismatch requires explicit ack before approve |
+| 409 | `STATE_CONFLICT` / domain state conflict | EXISTING | other invalid state |
+| 409 | `VERSION_CONFLICT` | EXISTING | stale expected version |
+| 409 | `IDEMPOTENCY_CONFLICT` | EXISTING | same key, different hash |
+| 409 | `REQUEST_IN_PROGRESS` | EXISTING | active idempotency lease |
+| 410 | `FILE_UPLOAD_EXPIRED` | EXISTING | expired upload/read intent |
+| 422 | `FILE_VALIDATION_FAILED` | EXISTING | MIME/magic/size/digest |
+| 429 | `RATE_LIMITED` | EXISTING | auth rate limit |
+| 503 | `DEPENDENCY_UNAVAILABLE` | EXISTING | Provider/R2/D1 unavailable |
+| 503 | `FILE_COMPENSATION_REQUIRED` | EXISTING | compensation delete failed |
 
-固定公共消息不包含 SQL、Provider 原始响应、token、R2 key、跨租户资源信息或内部异常。
+`FILE_COMPENSATION_REQUIRED` 已存在于正式 `API_ERROR_CODES`。`PRICE_MISMATCH` 当前不存在，Wave 13 实现必须以最小 Contract 扩展加入公共错误目录和 Order Evidence 错误映射；不得改用模糊 state conflict 伪装。
 
-## 22. 401/403/404 Rules
+## 21. 401/403/404 Rules
 
 - 无有效 Staff Session：401。
-- Staff Session 有效但没有操作所需 Permission：403。
-- Staff 有 Permission，但目标超出 Data Scope、assignment 或 entity ownership：404。
+- Session 有效但缺少操作 Permission：403。
+- 有 Permission 但资源超 Data Scope、Assignment 或 Ownership：404。
 - Buyer/Seller 跨租户：404。
-- Provider 回调 identity 未绑定：固定认证失败，不说明是否存在 Staff。
-- File token 错误：403；file/entity 超 Scope：404；已知 intent 到期：410。
+- Provider identity 未绑定：固定认证失败，不说明 Staff 是否存在。
+- File token 错误：403；资源超 Scope：404；已知 intent 到期：410。
 
-## 23. Idempotency
+## 22. Idempotency and Transaction Boundaries
 
-所有关键 mutation 使用现有 `command_idempotency_records`：Actor 从 Session 派生，action/target 固定，canonical request hash 包含业务字段和 expected version；相同 key/hash 重放相同响应，不重新签发一次性 token；同 key 不同 hash 409；处理中 409。Login state 和 callback 依靠随机 state 的单次消费，不把 OAuth callback 强行塞入业务幂等表。
+- 关键业务 mutation 使用当前 Staff/Customer Actor、canonical request hash、`expected_version`、Audit、Outbox 和 Transaction Assertion。
+- Order Evidence approve request hash 包含 mismatch acknowledgment 和 reason。
+- 相同 key/hash replay 返回原 committed response；不得重新解释或替换 mismatch reason。
+- 同 key 不同 hash：`IDEMPOTENCY_CONFLICT`。
+- active lease：`REQUEST_IN_PROGRESS`。
+- stale version：`VERSION_CONFLICT`。
+- Order Evidence approve 在一个 D1 batch 中完成 verify、claim、Formal Order、snapshot、payable、consume、events、audit/outbox/idempotency/assertions。
+- Provider 网络调用不进入 D1 batch；state 先单次消费，失败写安全事件。
 
-## 24. Transaction Boundaries
+## 23. Audit, Security Events and Alert Boundary
 
-- Staff login state 创建、消费、session 签发和已知 Staff 审计分别使用条件写和最终断言；Provider 网络调用不能放入 D1 batch，回调采用“先原子消费 state，再 Provider 验证，失败记录安全事件且 state 不可重放”。
-- File R2 与 D1 使用已有 compensation pattern。
-- Order Evidence approve 必须一个 D1 atomic batch 覆盖 verify、formal order、claim、snapshot、payable、consume、audit/outbox/idempotency/assertions。
-- Refund Payment/Reversal 继续一个 batch 追加事实、event、audit、outbox、idempotency 和 assertion。
+Wave 13 负责：
 
-## 25. Audit and Outbox
+- `staff_auth_security_events` 不可变持久化；
+- 已知 Staff 的认证成功和 Session 生命周期 Audit；
+- 登录失败、限流、state 重放、identity 冲突、Provider 失败、Session 拒绝事件；
+- 后续消费者所需的结构化字段、request ID、hashed/minimized context；
+- Order Evidence mismatch acknowledgment facts进入 Audit 和 Formal Order Event。
 
-- 已知 Staff 的 login success、logout、logout-all、session revoked 写全局 Audit；失败/未知 identity 写 `staff_auth_security_events`，避免伪造 Staff Actor。
-- Provider 原始 token/claims 不进入 Audit/Outbox；仅记录 hashed/minimized identifiers、result 和 request ID。
-- Order Evidence、Formal Order、Refund 继续使用现有领域 event、Audit 和 Outbox dedup。
-- Outbox 只用于有下游消费者的业务事实；认证失败不创建通知 Outbox，除非后续独立安全告警 Change 明确批准。
+Wave 13 不负责：
 
-## 26. R2 Compensation
+- 飞书实时安全告警；
+- 安全消息推送；
+- 值班通知；
+- 运营提醒。
 
-上传后任一 receipt、HEAD、prefix、digest 或 D1 commit 失败，调用现有 `compensateStoredObjects`。删除成功则对象进入终止状态并返回原稳定错误；删除失败标记 delete pending、增加 attempt、计算 next delete time，返回 503 `FILE_COMPENSATION_REQUIRED`。Cleanup 幂等重试，不重建业务 link，不泄露 object key。真实 R2 fault test 是 P1-02 关闭证据之一。
+这些告警/通知属于后续 **Wave 16**。Wave 13 不为认证失败创建飞书通知 Outbox，也不把“未做告警”当作持久化遗漏。
 
-## 27. Rate Limits
+## 24. R2 Compensation
 
-默认可配置边界：login start 每 network key 10 次/10 分钟；callback 失败每 state/network/provider subject hash 10 次/10 分钟；成功登录不绕过 callback replay guard。Rate-limit key 只存 hash，窗口记录有 TTL/cleanup。Provider exchange timeout 默认 5 秒，最多一次受控重试仅限明确可重试网络错误，不能重放已消费 code 到不确定 Provider 状态。
+继续复用现有 `compensateStoredObjects`。R2 put 后 receipt、HEAD、prefix、digest 或 D1 commit 失败时执行补偿删除；删除失败进入 delete-pending、递增 attempts、计算 retry time，并返回现有 503 `FILE_COMPENSATION_REQUIRED`。Cleanup 幂等重试，不创建业务 link，不泄漏 object key。
 
-## 28. Capacity and Cleanup
+## 25. Rate Limits, Capacity and Cleanup
 
-- Login state：10 分钟 TTL，保留安全审计后清理已过期临时行。
-- Session：12 小时 TTL；revoked/expired 行按安全保留期清理或归档，ACTIVE 索引支持每请求查询。
-- Rate limits：窗口过期后清理。
-- Security events：按治理保留，不作为临时表物理删除。
-- File intents/read intents：沿用现有 TTL 与 cleanup；对象 delete pending 可指数退避。
-- List endpoints limit 最大 100，禁止无界聚合。
+- Login state TTL：10 分钟。
+- Staff Session absolute TTL：12 小时；无 idle timeout。
+- Login start 默认每 hashed network key 10 次/10 分钟。
+- Callback failure 默认每 state/network/provider subject hash 10 次/10 分钟。
+- Provider timeout 默认 5 秒；仅明确可重试网络错误可执行一次受控重试。
+- Rate-limit 行按窗口 expiry 清理。
+- Security events 按治理保留，不作为临时表删除。
+- File intent/read intent 和 delete-pending cleanup 沿用现有策略。
+- List endpoint limit 最大 100。
 
-## 29. Privacy and DTO Projection
+## 26. Privacy and DTO Projection
 
-Staff DTO 只返回完成当前操作所需字段。Buyer/Seller DTO 继续白名单。禁止返回：Session token/hash、Provider token、完整 Provider claim、R2 object key、永久 URL、其他租户 identity、Seller 内部利润、Buyer Refund 成本给 Seller、internal note 给 Customer。Staff Refund detail 可包含内部 note，但 Customer refund status projection不得包含。
+禁止响应或持久化到不当位置的内容包括：Session token/hash、Provider token、完整 Provider claims、R2 object key、永久 URL、其他租户 identity、Seller internal profit、Buyer Refund cost/proof 给 Seller、internal mismatch reason 给 Buyer。
 
-## 30. Testing Strategy
+Staff DTO 使用操作白名单；Buyer/Seller DTO 继续身份域白名单。Buyer 只看到必要的 public reason、deadline 和 status，不看到 `price_mismatch_reason`。
 
-### Staff Auth minimum
+## 27. Testing Strategy
 
-login start success；state 错误、过期、重放；Provider callback error/timeout；未绑定 identity；binding 冲突；inactive Staff；禁止 auto create；Cookie 篡改；Session 过期/撤销/version 失效；authorization version 变化；Personal DENY；logout/logout-all；默认 app Staff route success；无 Session 401；飞书 Header 不能绕过。
+### PRICE_MISMATCH
 
-### File HTTP minimum
+必须规划并实现：
 
-intent success；purpose 不允许；authority 注入；MIME/size/digest 不符；intent 过期；complete success/replay；HEAD 失败；DB commit 失败；补偿删除成功；补偿失败进入 cleanup；cleanup retry；跨租户；object key/permanent URL 泄漏验证。
+1. mismatch 且无 ack 返回 409 `PRICE_MISMATCH`。
+2. mismatch 且 ack=false 返回 409 `PRICE_MISMATCH`。
+3. mismatch 且 ack=true 但无/空 reason 返回 `VALIDATION_ERROR`。
+4. mismatch 且 ack=true、reason 非空、截图清楚证明 final amount 时确认成功。
+5. 无 mismatch 但 ack=true 返回 `VALIDATION_ERROR`。
+6. Buyer 填写金额与截图不一致时必须 request-changes，不得 approve。
+7. Audit 和 Formal Order Event 包含完整差额确认事实。
+8. Replay 返回原确认结果且不能改变 mismatch reason。
 
-### Order Evidence minimum
+### Staff Auth
 
-list/detail/request changes/approve；0/2 张截图拒绝、恰好 1 张成功；stale version；replay；order number conflict；PRICE_MISMATCH；formal order 原子形成；snapshot；audit/outbox；scope miss 404。
+覆盖 state 错误/过期/重放、Provider timeout、配置缺失、identity 冲突、inactive Staff、Cookie tamper、expiry/revoke、session/authorization version、Personal DENY、logout/logout-all、Header bypass、无 idle timeout 的 12 小时 absolute expiry。
 
-### Buyer Refund minimum
+### File HTTP
 
-list/detail/payment/split payment/reversal；stale version；replay；OVERPAID；proof authorization；Personal DENY；跨 Scope；immutable facts；Seller 不可见成本。
+覆盖六个现有 Purpose、固定 Visibility、authority injection、MIME/size/digest、expiry、replay、HEAD/D1 failure、compensation delete、cleanup retry、cross-tenant 和 DTO leakage。
 
-### Contract minimum
+### Buyer Refund and Contract
 
-unknown body key/query；duplicate query；malformed cursor；limit boundary；empty string；401/403/404；DTO privacy；money precision；date/inclusive range semantics。
+覆盖 split payment、reversal、OVERPAID、proof、Scope、immutable facts、Seller isolation、unknown body/query、duplicate query、cursor、limit、money/date 和 401/403/404。
 
-测试层次包括纯函数、route、production entrypoint E2E、真实 D1 Migration/behavior、R2 failure/compensation、security verifier、DTO isolation verifier 和全回归。
+测试层次包括 pure unit、route、production entrypoint E2E、真实 D1 migration/behavior、R2 failure/compensation、security verifier、DTO isolation verifier 和全回归。
 
-## 31. Migration and Rollback
+## 28. Migration and Rollback
 
-Migration 0027 必须从 schema 26 连续执行，验证 schema version 27、FK、integrity、indexes、CHECK/triggers 和既有 113 application tables 的预期增量。测试覆盖空库、schema 26 upgrade、重复执行保护、inactive Staff、session version bump、state double consume。
+0027 从 schema 26 连续执行，验证 schema version 27、FK、integrity、indexes、CHECK/triggers 和 application table 增量。覆盖空库、schema-26 upgrade、duplicate hash、invalid lifecycle、state double consume、session version bump 和 Customer Auth 不回归。
 
-回滚不删除已签发 Session 数据。若实现部署失败，关闭 Staff login entry、撤销全部 sessions、回退应用读取；数据库保留新增表/列，后续 forward fix。历史业务/财务数据不受影响。
+不创建 destructive down migration。若应用发布失败，关闭 Staff login entry、递增 session versions/撤销 Sessions，并以 forward fix 修复；新增表/列保留，历史业务和财务不受影响。
 
-## 32. Audit Closure
+## 29. Audit Closure
 
-实现后修改现有三份审计文档与 `pre-wave13-baseline-conformance-audit` Change，不新建第二份结论。重新统计 108 个原端点加新增端点；更新 READY/READY_WITH_LIMITATIONS/NOT_READY、P0/P1/P2/P3、GO/NO_GO、Traceability 和 Local Validation Supplement。
+实现后更新现有三份审计文档和现有 `pre-wave13-baseline-conformance-audit` Change，不创建第二份审计。重新统计 `/api/*` 端点、READY 状态、P0/P1/P2/P3、GO/NO_GO 和 Local Validation Supplement。
 
-P1-01 仅在 Staff Contract/Session/Middleware/default app/production E2E 全部通过后关闭。P1-02 仅在三组 HTTP 路由可达、权限/Scope/Contract/测试/R2 补偿完整后关闭。P1-03 仅在 Decision Register 保留 D-004 历史并增加正式澄清后关闭。
+- P1-01：仅在 Staff login、Session、Middleware、default app 和 production-entrypoint E2E 完整后关闭。
+- P1-02：仅在 File HTTP、Staff Order Evidence、Staff Buyer Refund 可达并通过 Scope/Contract/D1/R2 测试后关闭。
+- P1-03：仅在实现阶段正式澄清 D-004 且保留历史后关闭。
 
-## 33. Security Threat Model
+## 30. Threat Model
 
 | Threat | Control |
 |---|---|
-| OAuth CSRF/state substitution | random hashed state、Origin、Provider/callback binding、single consume |
-| Callback replay | consumed state 与 security event |
-| Provider impersonation | server code exchange、tenant allowlist、stable open_id mapping |
-| Unknown Staff auto-provision | explicit deny；只接受既有 ACTIVE binding |
-| Session theft/fixation | Secure HttpOnly `__Host-` cookie、新 token、short TTL、revoke/version |
-| Cookie tampering | random opaque token + stored hash + constant-time compare |
-| Feishu header bypass | default middleware ignores Feishu identity headers |
-| Stale authorization | every request D1 recomputation + authorization_version invalidation |
-| Personal DENY bypass | effective authorization shared resolver，DENY final |
-| Cross-tenant enumeration | permission then scope；scope miss 404 |
-| Authority-field injection | exact-key DTO and server-derived Actor/Scope/Owner |
-| File malware/type spoofing | bounded multipart、magic bytes、MIME、size、SHA、HEAD/prefix |
-| Orphan R2 objects | compensation + delete pending cleanup |
-| Double formal order/refund | unique claims、version、idempotency、transaction assertions |
-| Financial mutation | append-only Payment/Reversal and immutable triggers |
-| Sensitive DTO leak | allowlist projections and dedicated verifier |
+| OAuth CSRF/state substitution | random hashed state、Origin、callback binding、single consume |
+| Callback replay | consumed state + immutable security event |
+| Provider impersonation | server exchange、configured tenant、stable binding |
+| Unknown Staff auto-provision | explicit deny |
+| Session theft/fixation | Secure HttpOnly `__Host-` cookie、新 256-bit token、12h expiry、revoke/version |
+| Cookie tampering | opaque token hash and constant-time comparison |
+| Feishu Header bypass | default middleware ignores Provider identity headers |
+| Stale authorization | every-request D1 recalculation + authorization version 401 |
+| Personal DENY bypass | shared effective resolver，DENY final |
+| Cross-tenant enumeration | Permission then Scope; Scope miss 404 |
+| Authority injection | exact-key and server-derived authority |
+| File spoofing/orphan | magic/MIME/SHA/HEAD + compensation |
+| Mismatch without review | explicit ack/reason or 409 `PRICE_MISMATCH` |
+| Double order/refund | unique claim、version、idempotency、assertion |
+| Sensitive DTO leak | allowlist projection and recursive verifier |
 
-## 34. Rejected Alternatives
+## 31. Rejected Alternatives
 
-- 直接信任飞书 Access Token：拒绝；它不是 Staff Session，撤销和 D1 权限语义不可控。
-- 直接信任飞书 Header：拒绝；生产入口可被伪造或代理误配。
-- 客户端提交 `staff_id`、role 或 permission：拒绝；Actor 必须来自 Session。
-- 未绑定身份自动创建 Staff：拒绝；会绕过 owner provisioning、角色与 Scope 审批。
-- 把飞书作为权限数据库：拒绝；D1 是唯一权威。
-- 通用无权限文件 link API：拒绝；会形成跨租户任意绑定原语。
-- 前端模拟缺失 Staff API：拒绝；不能关闭 P1。
-- 先做页面再补 Contract：拒绝；大模块 5 依赖必须先冻结。
-- 创建第二套文件系统：拒绝；现有 Service 已覆盖完整生命周期。
-- 创建第二套 Buyer Refund 模型：拒绝；现有 append-only ledger 已是权威。
-- 为新 API 新增命名整齐的 Permission：拒绝；现有 `ORDER_*` 和 `BUYER_REFUND_*` 足够。
-- 将 verify 与 formal order 两次独立提交：拒绝；不能满足审核通过原子语义。
-- 在 Session 中复制权限作为权威：拒绝；每次请求必须重算。
+- 直接信任飞书 Access Token/Header。
+- 客户端提交 Staff Actor、role、Permission 或 Scope。
+- 未绑定 identity 自动创建 Staff。
+- 把飞书作为 Permission、Session 或业务数据库。
+- 通用多 Provider 身份框架。
+- 复用 Customer Auth 持久化表承载 Staff 语义。
+- 在 Session 中复制 Permission/Data Scope 权威。
+- 每请求更新 `last_seen` 并实现第一版 idle timeout。
+- 注册 `/api` 与 `/api/v2` 双路由。
+- 通用无权限文件 link/grant API。
+- 新建第二套 File 或 Buyer Refund 模型。
+- 新增仅为命名整齐的 Permission。
+- 将 verify 与 Formal Order 分两次提交。
+- 使用 reference amount 覆盖截图证明的 final amount。
+- 将内部 mismatch reason 暴露给 Buyer。
 
-## 35. Open Questions Requiring Total Control
+## 32. Implementation Prerequisites
 
-1. **`PRICE_MISMATCH` 最终操作政策。** 本规划默认 fail closed：approve 返回 409，并要求 Staff 请求买家修改；若总控希望允许 Staff 显式确认差额，需要独立明确谁有权、审计字段和是否触发财务复核，不能在实现中自行决定。
-2. **API path 版本化冲突。** 早期合同写 `/api/v2/*`，现有生产源码统一使用 `/api/*` route families。本 Wave 默认延续现有路径，避免第二套 API；是否整体迁移 `/api/v2` 需单独总控决定。
-3. **Staff Session TTL。** 本规划冻结第一版 absolute 12 hours、无独立 idle timeout；若运营安全政策不同，应在实现前由总控改动 Spec。
-4. **飞书 OAuth 精确 endpoint、scope 和 tenant claim。** 架构边界已冻结，但实现参数必须依据当时官方 Provider 文档和已批准应用配置核验；不得凭记忆写死。
-5. **认证安全告警下游。** 本 Wave只记录 security events，不开发飞书/邮件告警；是否在后续模块消费这些事件由总控决定。
+以下不是业务或架构未决项，全部标记为 `IMPLEMENTATION_PREREQUISITE`：
+
+1. **IMPLEMENTATION_PREREQUISITE — Feishu app configuration**：获批 app id/secret、官方 endpoint、scope、tenant 和 redirect URI，按环境配置。
+2. **IMPLEMENTATION_PREREQUISITE — Staff web origins and return paths**：local/staging/production 的 allowed Origin、callback URL 和 `return_to` allowlist。
+3. **IMPLEMENTATION_PREREQUISITE — Secret and environment provisioning**：在授权的部署流程中提供 Secret/Bindings；缺失时 fail closed。
+
+实现者不得重新选择 PRICE_MISMATCH、API Path、Session TTL、Provider 权威或安全告警边界。
 
 ## REMOTE_PLANNING_REVIEW
 
-本规划的语义审查检查：Change 结构采用 `spec-driven`；六个 Capability 各自边界清晰；不重复 Staff Authorization、File、Order Evidence、Formal Order、Buyer Refund、Audit、Outbox 或 Idempotency；飞书仅为 Provider；无通用文件 link API；Buyer Refund 不复用 Seller Settlement 权限；不修改财务公式；不授权正式前端；实现、本地验证、OpenSpec CLI、Verify、Ponytail 和 Integration tasks 保持未完成。
+本次远程语义复核结论：**PASS（planning semantics only）**。
+
+- PRICE_MISMATCH 规则唯一明确：截图证明的 final amount 为权威；参考差额需 `ORDER_CONFIRM` Staff 显式 ack+reason，否则 409 `PRICE_MISMATCH`。
+- `/api/*` 是唯一正式路径，不注册 `/api/v2` alias。
+- Login state 10 分钟、Staff Session absolute 12 小时、无 idle timeout 已冻结。
+- 0027 保持 `session_version` 加四张 Staff auth 表的最小范围。
+- 飞书仍仅为认证 Provider；D1/Worker Session 是权威边界。
+- 六个规划 FilePurpose 均对应真实 EXISTING 常量；FileVisibility 使用真实三值。
+- `FILE_COMPENSATION_REQUIRED` 为 EXISTING；`PRICE_MISMATCH` 标记为 CONTRACT_EXTENSION_REQUIRED。
+- 未修改业务代码、Migration、测试、审计或 Decision Register。
+- 实现、local、OpenSpec CLI、Verify、Ponytail 和 Integration tasks 均未勾选。
+- Requirement 总数保持 52，Scenario 总数保持 104。
 
 `REMOTE_PLANNING_REVIEW` 不是 OpenSpec CLI validate，也不是 OpenSpec Verify。
