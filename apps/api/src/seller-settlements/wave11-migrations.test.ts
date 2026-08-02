@@ -161,4 +161,26 @@ describe('Wave 11 migration chain', () => {
     }
     value.close();
   });
+
+  it('enforces one unique proof per Payment and forbids file reuse', () => {
+    const value = database();
+    applyThrough(value, migrations.length);
+    const schema = value.prepare(`
+      SELECT sql
+      FROM sqlite_schema
+      WHERE type='table' AND name='seller_payment_proofs'
+    `).get() as { sql: string };
+    expect(schema.sql).toContain(
+      'payment_id TEXT NOT NULL UNIQUE REFERENCES seller_payments(id)',
+    );
+    expect(schema.sql).toContain(
+      'file_object_id TEXT NOT NULL UNIQUE REFERENCES file_objects(id)',
+    );
+    expect(schema.sql).toContain(
+      'file_entity_link_id TEXT NOT NULL UNIQUE REFERENCES file_entity_links(id)',
+    );
+    expect(hasObject(value, 'trigger', 'trg_seller_payment_proof_guard'))
+      .toBe(true);
+    value.close();
+  });
 });
