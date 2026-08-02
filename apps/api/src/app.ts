@@ -1,29 +1,38 @@
 import {
   apiFailure,
   apiSuccess,
+  type StaffAuthProviderAdapter,
+  type StaffAuthProviderBindings,
+  type StaffDataScope,
   type SqlDatabase,
 } from '@ygb/contracts';
 import { Hono } from 'hono';
+import type { AssignmentStaffAuthorization } from './staff-assignment';
+import type { StaffSessionRow } from './staff-auth';
 import {
   errorLogEvent,
   routeGroup,
   writeErrorLog,
 } from './observability';
 
-type AppBindings = {
+export type AppBindings = StaffAuthProviderBindings & {
   DB: SqlDatabase;
   KEYWORD_IMAGE_GENERATOR?: unknown;
   KEYWORD_GENERATOR_SHARED_SECRET?: string;
   KEYWORD_HMAC_SECRET?: string;
   FILE_OBJECT_STORAGE?: unknown;
+  STAFF_AUTH_PROVIDER_ADAPTER?: StaffAuthProviderAdapter;
 };
 
-type AppVariables = {
+export type AppVariables = {
   requestId: string;
   errorLogged: boolean;
+  staffAuthorization?: AssignmentStaffAuthorization;
+  staffDataScope?: StaffDataScope;
+  staffSession?: StaffSessionRow;
 };
 
-type AppEnv = {
+export type AppEnv = {
   Bindings: AppBindings;
   Variables: AppVariables;
 };
