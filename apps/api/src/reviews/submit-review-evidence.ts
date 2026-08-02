@@ -185,7 +185,7 @@ export async function submitReviewEvidence(
     };
     const outbox = await prepareOutboxEvent({
       id: crypto.randomUUID(),
-      dedupKey: `review-evidence:${reviewCaseId}:${evidenceVersionNo}`,
+      dedupKey: `review-evidence:${evidenceVersionId}`,
       eventType,
       aggregateType: 'REVIEW_CASE',
       aggregateId: reviewCaseId,
@@ -319,7 +319,7 @@ export async function submitReviewEvidence(
       buyerCustomerId: source.buyer_customer_id,
       sellerOrganizationId: source.seller_organization_id,
       actorType: 'SYSTEM',
-      actorId: `buyer:${source.buyer_customer_id}`,
+      actorId: source.buyer_customer_id,
       requestId: command.requestId ?? null,
       idempotencyKey: acquired.claim.idempotencyKey,
       reason: source.review_case_id === null
