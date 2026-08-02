@@ -6,6 +6,7 @@ import { registerOrderInstructionRoutes } from './order-instructions';
 import { registerBuyerPortalRoutes } from './buyer-portal';
 import { registerBuyerReviewRoutes } from './buyer-reviews';
 import { registerBuyerSelfRegistrationRoutes } from './buyer-self-registration';
+import { registerStaffBuyerRefundRoutes } from './buyer-refunds/staff-routes';
 import { registerFileHttpRoutes } from './files';
 import { registerCustomerAuthRoutes } from './http-auth';
 import { registerStaffFinanceRoutes } from './internal-finance';
@@ -44,6 +45,7 @@ registerStaffSellerSettlementRoutes(app);
 registerStaffSellerSettlementProofRoutes(app);
 registerStaffFinanceRoutes(app);
 registerStaffOrderEvidenceRoutes(app);
+registerStaffBuyerRefundRoutes(app);
 registerFileHttpRoutes(app);
 
 registerBuyerSelfRegistrationRoutes(app);

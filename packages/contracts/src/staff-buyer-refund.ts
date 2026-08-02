@@ -60,13 +60,19 @@ export interface StaffBuyerRefundDetailDto
   reversals: readonly StaffBuyerRefundReversalDto[];
 }
 
+export interface StaffBuyerRefundProofInput {
+  file_object_id: string;
+  expected_file_version: number;
+}
+
 export interface RecordStaffBuyerRefundPaymentRequest {
   expected_version: number;
   amount_cny_fen: string;
   paid_at: number;
   payment_channel: BuyerRefundPaymentChannel;
   public_note?: string;
-  proof_file_object_ids?: readonly string[];
+  internal_note?: string;
+  proof_files: readonly StaffBuyerRefundProofInput[];
 }
 
 export interface ReverseStaffBuyerRefundPaymentRequest {
@@ -74,4 +80,5 @@ export interface ReverseStaffBuyerRefundPaymentRequest {
   amount_cny_fen: string;
   reversed_at: number;
   reason: string;
+  internal_note?: string;
 }
