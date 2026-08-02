@@ -25,6 +25,13 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
+  calculateBuyerFormalFinancials,
+  completeFormalInstructionStatements,
+  finalizeOrderNumberClaimStatement,
+  requireProvisionalOrderNumberClaim,
+  requireFormalInstructionSource,
+} from '../order-instructions/formal-order-integration';
+import {
   createOutboxStatements,
   prepareOutboxEvent,
 } from '../foundation/outbox';
@@ -147,6 +154,16 @@ export async function confirmFormalOrder(
     const source = await requireFormalOrderSource(database, submissionId);
     validateFormalOrderSource(source, expectedVersion);
     const reviewType = requireFormalOrderReviewType(source.review_type);
+    const instruction = await requireFormalInstructionSource(database, {
+      reservationId: source.reservation_id,
+      evidenceVersionId: source.evidence_version_id,
+    });
+    await requireProvisionalOrderNumberClaim(database, {
+      marketplaceCode: 'JP',
+      amazonOrderNumberNormalized: source.amazon_order_number_normalized,
+      evidenceSubmissionId: source.submission_id,
+      evidenceVersionId: source.evidence_version_id,
+    });
 
     const buyerRate = await resolveBuyerDailyExchangeRate(database, {
       businessDate,
@@ -170,10 +187,14 @@ export async function confirmFormalOrder(
       sellerRate.cny_per_jpy_e8,
     );
     const serviceFeeValue = parseCnyFen(serviceFee.fee_cny_fen);
-    const buyerExpectedPrincipal = convertJpyToCnyFen(
-      finalPaidJpy,
-      buyerRateValue,
-      'HALF_UP',
+    const buyerFinancial = calculateBuyerFormalFinancials({
+      finalPaidJpy: Number(source.final_paid_jpy),
+      buyerRefundablePrincipalJpy:
+        Number(instruction.buyer_refundable_principal_jpy),
+      buyerCnyPerJpyE8: buyerRate.cny_per_jpy_e8,
+    });
+    const buyerExpectedPrincipal = BigInt(
+      buyerFinancial.buyerExpectedPrincipalCnyFen,
     );
     const sellerExpectedPrincipal = convertJpyToCnyFen(
       finalPaidJpy,
@@ -210,6 +231,14 @@ export async function confirmFormalOrder(
       service_fee_effective_from: serviceFee.effective_from,
       service_fee_confirmed_at: serviceFee.confirmed_at,
       service_fee_cny_fen: fixedIntegerString(serviceFeeValue),
+      buyer_self_pay_bps: instruction.buyer_self_pay_bps,
+      buyer_self_pay_jpy: String(instruction.buyer_self_pay_jpy),
+      buyer_refundable_principal_jpy:
+        String(instruction.buyer_refundable_principal_jpy),
+      buyer_gross_principal_cny_fen:
+        String(buyerFinancial.buyerGrossPrincipalCnyFen),
+      buyer_self_pay_contribution_cny_fen:
+        String(buyerFinancial.buyerSelfPayContributionCnyFen),
       buyer_expected_principal_cny_fen:
         fixedIntegerString(buyerExpectedPrincipal),
       seller_expected_principal_cny_fen:
@@ -260,6 +289,8 @@ export async function confirmFormalOrder(
           id,
           order_evidence_submission_id,
           order_evidence_version_id,
+          order_instruction_id,
+          order_instruction_version_id,
           reservation_id,
           demand_batch_id,
           buyer_customer_id,
@@ -284,7 +315,7 @@ export async function confirmFormalOrder(
           confirmed_business_date,
           created_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, 'JP',
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'JP',
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           'CONFIRMED', 1, ?, ?, ?, ?
         )
@@ -292,6 +323,8 @@ export async function confirmFormalOrder(
         formalOrderId,
         source.submission_id,
         source.evidence_version_id,
+        instruction.instruction_id,
+        instruction.instruction_version_id,
         source.reservation_id,
         source.demand_batch_id,
         source.buyer_customer_id,
@@ -314,6 +347,15 @@ export async function confirmFormalOrder(
         now,
       ),
       assertPreviousStatementChangedOnce(database),
+      finalizeOrderNumberClaimStatement(database, {
+        marketplaceCode: 'JP',
+        amazonOrderNumberNormalized: source.amazon_order_number_normalized,
+        evidenceSubmissionId: source.submission_id,
+        evidenceVersionId: source.evidence_version_id,
+        formalOrderId,
+        now,
+      }),
+      assertPreviousStatementChangedOnce(database),
       database.prepare(`
         INSERT INTO formal_order_financial_snapshots (
           id,
@@ -334,13 +376,17 @@ export async function confirmFormalOrder(
           service_fee_effective_from,
           service_fee_confirmed_at,
           service_fee_cny_fen,
+          buyer_self_pay_bps, buyer_self_pay_jpy,
+          buyer_refundable_principal_jpy,
+          buyer_gross_principal_cny_fen,
+          buyer_self_pay_contribution_cny_fen,
           buyer_expected_principal_cny_fen,
           seller_expected_principal_cny_fen,
           rounding_rule,
           created_at
         ) VALUES (
           ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, 'HALF_UP', ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'HALF_UP', ?
         )
       `).bind(
         snapshotId,
@@ -360,6 +406,11 @@ export async function confirmFormalOrder(
         serviceFee.effective_from,
         serviceFee.confirmed_at,
         toD1SafeInteger(serviceFeeValue),
+        instruction.buyer_self_pay_bps,
+        instruction.buyer_self_pay_jpy,
+        instruction.buyer_refundable_principal_jpy,
+        buyerFinancial.buyerGrossPrincipalCnyFen,
+        buyerFinancial.buyerSelfPayContributionCnyFen,
         toD1SafeInteger(buyerExpectedPrincipal),
         toD1SafeInteger(sellerExpectedPrincipal),
         now,
@@ -422,6 +473,12 @@ export async function confirmFormalOrder(
         createdAt: now,
       }),
       ...createOutboxStatements(database, outbox),
+      ...completeFormalInstructionStatements(database, {
+        source: instruction,
+        reservationId: source.reservation_id,
+        formalOrderId,
+        now,
+      }),
       database.prepare(`
         UPDATE order_evidence_submissions
         SET

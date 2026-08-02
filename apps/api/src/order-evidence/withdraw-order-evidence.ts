@@ -25,6 +25,7 @@ import {
   validateExpectedVersion,
   type BuyerOrderEvidenceActor,
 } from './order-evidence-shared';
+import { releaseProvisionalOrderNumberClaimStatement } from '../order-instructions/order-number-claim-release';
 
 export async function withdrawOrderEvidence(
   database: SqlDatabase,
@@ -141,6 +142,11 @@ export async function withdrawOrderEvidence(
         submissionId,
         command.actor.buyerCustomerId,
         expectedVersion,
+      ),
+      releaseProvisionalOrderNumberClaimStatement(
+        database,
+        submissionId,
+        now,
       ),
       insertOrderEvidenceEventStatement(database, {
         submissionId,

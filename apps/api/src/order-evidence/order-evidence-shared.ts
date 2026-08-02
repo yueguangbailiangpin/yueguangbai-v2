@@ -32,6 +32,7 @@ export type OrderEvidenceErrorCode =
   | 'ORDER_EVIDENCE_ALREADY_EXISTS'
   | 'ORDER_EVIDENCE_STATE_CONFLICT'
   | 'ORDER_EVIDENCE_FILE_CONFLICT'
+  | 'ORDER_NUMBER_ALREADY_CLAIMED'
   | 'RESERVATION_NOT_FOUND'
   | 'FILE_OBJECT_NOT_FOUND'
   | 'FILE_NOT_VERIFIED'
@@ -197,8 +198,7 @@ export function normalizeEvidenceFileIds(
   values: readonly string[],
 ): readonly string[] {
   if (!Array.isArray(values)
-    || values.length < 1
-    || values.length > 10) {
+    || values.length !== 1) {
     throw new OrderEvidenceError('VALIDATION_ERROR', 400);
   }
   const normalized = values.map((value) =>
@@ -281,6 +281,10 @@ export function normalizeOrderEvidenceError(
   if (code === 'REQUEST_IN_PROGRESS') {
     return new OrderEvidenceError('REQUEST_IN_PROGRESS', 409);
   }
+  if (code === 'ORDER_NUMBER_ALREADY_CLAIMED'
+    || code === 'ORDER_NUMBER_CONFLICT_REQUIRES_REVIEW') {
+    return new OrderEvidenceError('ORDER_NUMBER_ALREADY_CLAIMED', 409);
+  }
 
   const message = String(error);
   if (message.includes(
@@ -300,6 +304,11 @@ export function normalizeOrderEvidenceError(
   }
   if (message.includes('order_evidence_file_not_verified')) {
     return new OrderEvidenceError('FILE_NOT_VERIFIED', 409);
+  }
+  if (message.includes('formal_order_number_claims')
+    || message.includes('uq_formal_order_number_claims_active')
+    || message.includes('formal_order_number_claim_source_mismatch')) {
+    return new OrderEvidenceError('ORDER_NUMBER_ALREADY_CLAIMED', 409);
   }
   if (message.includes('transaction_assertion_failed')) {
     return new OrderEvidenceError('VERSION_CONFLICT', 409);

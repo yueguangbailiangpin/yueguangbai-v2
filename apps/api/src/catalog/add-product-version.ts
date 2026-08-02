@@ -40,6 +40,7 @@ interface ProductSource {
   product_version: number;
   store_status: string;
   organization_status: string;
+  current_default_buyer_self_pay_bps: number;
 }
 
 export interface AddProductVersionResult {
@@ -118,6 +119,19 @@ export async function addProductVersion(
       throw new CatalogError('VERSION_CONFLICT', 409);
     }
 
+    const defaultBuyerSelfPayBps =
+      version.defaultBuyerSelfPayBps
+      ?? Number(source.current_default_buyer_self_pay_bps);
+    if (!Number.isSafeInteger(defaultBuyerSelfPayBps)
+      || defaultBuyerSelfPayBps < 0
+      || defaultBuyerSelfPayBps > 10_000) {
+      throw new CatalogError('VALIDATION_ERROR', 400);
+    }
+    const normalizedVersion = {
+      ...version,
+      defaultBuyerSelfPayBps,
+    };
+
     const nextVersionNo =
       Number(source.current_version_no) + 1;
     const nextAggregateVersion =
@@ -127,7 +141,7 @@ export async function addProductVersion(
       product_id: productId,
       product_version_id: productVersionId,
       version_no: nextVersionNo,
-      product_version: version,
+      product_version: normalizedVersion,
       aggregate_version: nextAggregateVersion,
       replayed: false,
     };
@@ -174,13 +188,14 @@ export async function addProductVersion(
           search_keywords_json,
           ordering_guide_expected_amount_jpy,
           color_spec_mode,
+          default_buyer_self_pay_bps,
           product_url,
           buyer_visible_notes,
           internal_notes,
           created_by_staff_id,
           created_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `).bind(
         productVersionId,
@@ -190,6 +205,7 @@ export async function addProductVersion(
         canonicalJson(version.searchKeywords),
         version.orderingGuideExpectedAmountJpy,
         version.colorSpecMode,
+        defaultBuyerSelfPayBps,
         version.productUrl,
         version.buyerVisibleNotes,
         version.internalNotes,
@@ -304,9 +320,14 @@ async function requireProductSource(
       product.status AS product_status,
       product.current_version_no,
       product.version AS product_version,
+      current_version.default_buyer_self_pay_bps
+        AS current_default_buyer_self_pay_bps,
       store.status AS store_status,
       organization.status AS organization_status
     FROM products product
+    JOIN product_versions current_version
+      ON current_version.product_id=product.id
+      AND current_version.version_no=product.current_version_no
     JOIN seller_stores store
       ON store.id=product.store_id
       AND store.organization_id=product.organization_id

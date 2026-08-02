@@ -17,6 +17,9 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  setChangesRequestedDeadlineStatements,
+} from '../order-instructions/evidence-integration';
+import {
   prepareWorkItemCompletionStatements,
   requireAssignedWorkflowActor,
 } from '../staff-assignment';
@@ -205,6 +208,14 @@ async function transitionOrderEvidence(
       );
     }
 
+    const instruction = await database.prepare(`
+      SELECT id, version FROM order_instructions
+      WHERE reservation_id=? AND status='ACTIVE'
+    `).bind(source.reservation_id).first<{ id: string; version: number }>();
+    if (!instruction) {
+      throw new OrderEvidenceError('ORDER_EVIDENCE_STATE_CONFLICT', 409);
+    }
+
     const nextVersion = source.aggregate_version + 1;
     const nextStatus = input.mode === 'REQUEST_CHANGES'
       ? 'CHANGES_REQUESTED'
@@ -264,6 +275,28 @@ async function transitionOrderEvidence(
     });
 
     const statements: SqlStatement[] = [
+      ...(input.mode === 'REQUEST_CHANGES'
+        ? setChangesRequestedDeadlineStatements(database, {
+            instructionId: instruction.id,
+            instructionAggregateVersion: Number(instruction.version),
+            submissionId,
+            reservationId: source.reservation_id,
+            actorStaffId: command.actor.staffId,
+            idempotencyKey: acquired.claim.idempotencyKey,
+            now,
+          })
+        : [
+            database.prepare(`
+              UPDATE order_instructions
+              SET resubmission_deadline_at=NULL, version=version+1,
+                  updated_at=MAX(?, updated_at+1)
+              WHERE id=? AND status='ACTIVE' AND version=?
+            `).bind(now, instruction.id, instruction.version),
+            database.prepare(`
+              UPDATE order_evidence_submissions
+              SET resubmission_deadline_at=NULL WHERE id=?
+            `).bind(submissionId),
+          ]),
       // Phase 3H access was resolved from persisted Staff facts above.
       updateReviewStateStatement(database, {
         mode: input.mode,
@@ -395,7 +428,8 @@ function updateReviewStateStatement(
         verified_by_staff_id=NULL,
         verified_at=NULL,
         withdrawn_at=NULL,
-        consumed_at=NULL
+        consumed_at=NULL,
+        resubmission_deadline_at=?
       WHERE id=?
         AND status='PENDING_VERIFICATION'
         AND version=?
@@ -403,6 +437,7 @@ function updateReviewStateStatement(
       input.publicReason,
       input.internalNote,
       input.now,
+      input.now + 2 * 60 * 60 * 1000,
       input.submissionId,
       input.expectedVersion,
     );
@@ -418,7 +453,8 @@ function updateReviewStateStatement(
       verified_by_staff_id=?,
       verified_at=?,
       withdrawn_at=NULL,
-      consumed_at=NULL
+      consumed_at=NULL,
+      resubmission_deadline_at=NULL
     WHERE id=?
       AND status='PENDING_VERIFICATION'
       AND version=?

@@ -16,6 +16,7 @@ export async function requireAssignedWorkflowActor(
       | 'PRODUCT_APPLICATION'
       | 'DEMAND_BATCH'
       | 'RESERVATION'
+      | 'ORDER_INSTRUCTION'
       | 'ORDER_EVIDENCE'
       | 'REVIEW_CASE'
       | 'BUYER_REFUND_OBLIGATION';

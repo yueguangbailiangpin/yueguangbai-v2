@@ -27,6 +27,8 @@ export type FormalOrderErrorCode =
   | 'PRICING_RULE_NOT_FOUND'
   | 'CUSTOMER_NOT_ACTIVE'
   | 'FORMAL_ORDER_ALREADY_EXISTS'
+  | 'ORDER_NUMBER_ALREADY_CLAIMED'
+  | 'ORDER_NUMBER_CONFLICT_REQUIRES_REVIEW'
   | 'FORMAL_ORDER_STATE_CONFLICT'
   | 'DEPENDENCY_UNAVAILABLE';
 
@@ -130,8 +132,15 @@ export function normalizeFormalOrderError(
   if (code === 'VALIDATION_ERROR') {
     return new FormalOrderError('VALIDATION_ERROR', 400);
   }
+  if (code === 'ORDER_NUMBER_ALREADY_CLAIMED'
+    || code === 'ORDER_NUMBER_CONFLICT_REQUIRES_REVIEW') {
+    return new FormalOrderError('ORDER_NUMBER_ALREADY_CLAIMED', 409);
+  }
 
   const message = String(error);
+  if (message.includes('formal_order_number_claims')) {
+    return new FormalOrderError('ORDER_NUMBER_ALREADY_CLAIMED', 409);
+  }
   if (message.includes('UNIQUE constraint failed: formal_orders.')) {
     return new FormalOrderError('FORMAL_ORDER_ALREADY_EXISTS', 409);
   }

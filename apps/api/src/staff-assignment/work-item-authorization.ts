@@ -21,6 +21,7 @@ export async function requireWorkItemOperationAccess(
       | 'PRODUCT_APPLICATION'
       | 'DEMAND_BATCH'
       | 'RESERVATION'
+      | 'ORDER_INSTRUCTION'
       | 'ORDER_EVIDENCE'
       | 'REVIEW_CASE'
       | 'BUYER_REFUND_OBLIGATION';

@@ -80,6 +80,7 @@ export async function reviewProductApplication(
     rejectionReason?: string | null;
     orderingGuideExpectedAmountJpy?: number;
     colorSpecMode?: ProductVersionFields['colorSpecMode'];
+    defaultBuyerSelfPayBps?: number;
   },
   command: {
     actor: ProductApplicationStaffActor;
@@ -116,9 +117,14 @@ export async function reviewProductApplication(
 
   const expectedAmount = input.orderingGuideExpectedAmountJpy;
   const colorSpecMode = input.colorSpecMode;
+  const defaultBuyerSelfPayBps =
+    input.defaultBuyerSelfPayBps ?? 0;
   if (input.decision === 'APPROVE') {
     if (!Number.isSafeInteger(expectedAmount)
       || Number(expectedAmount) < 0
+      || !Number.isSafeInteger(defaultBuyerSelfPayBps)
+      || defaultBuyerSelfPayBps < 0
+      || defaultBuyerSelfPayBps > 10_000
       || typeof colorSpecMode !== 'string'
       || !(PRODUCT_COLOR_SPEC_MODES as readonly string[])
         .includes(colorSpecMode)) {
@@ -128,7 +134,8 @@ export async function reviewProductApplication(
       );
     }
   } else if (expectedAmount !== undefined
-    || colorSpecMode !== undefined) {
+    || colorSpecMode !== undefined
+    || input.defaultBuyerSelfPayBps !== undefined) {
     throw new ProductApplicationError(
       'VALIDATION_ERROR',
       400,
@@ -151,6 +158,8 @@ export async function reviewProductApplication(
     rejection_reason: rejectionReason,
     ordering_guide_expected_amount_jpy: expectedAmount ?? null,
     color_spec_mode: colorSpecMode ?? null,
+    default_buyer_self_pay_bps:
+      input.decision === 'APPROVE' ? defaultBuyerSelfPayBps : null,
   });
 
   const acquired =
@@ -200,6 +209,7 @@ export async function reviewProductApplication(
           source,
           requireExpectedAmount(expectedAmount),
           requireColorSpecMode(colorSpecMode),
+          defaultBuyerSelfPayBps,
           command,
           acquired.claim.idempotencyKey,
           now,
@@ -267,6 +277,17 @@ export async function reviewProductApplication(
           version: source.application_version,
         },
         nextState: result.response,
+        metadata: {
+          default_buyer_self_pay_bps: input.decision === 'APPROVE'
+            ? defaultBuyerSelfPayBps
+            : null,
+          ordering_guide_expected_amount_jpy: input.decision === 'APPROVE'
+            ? expectedAmount
+            : null,
+          color_spec_mode: input.decision === 'APPROVE'
+            ? colorSpecMode
+            : null,
+        },
         createdAt: now,
       }),
       ...createOutboxStatements(database, outbox),
@@ -358,6 +379,7 @@ async function buildApproval(
   source: ApplicationSource,
   orderingGuideExpectedAmountJpy: number,
   colorSpecMode: ProductVersionFields['colorSpecMode'],
+  defaultBuyerSelfPayBps: number,
   command: {
     actor: ProductApplicationStaffActor;
   },
@@ -395,6 +417,7 @@ async function buildApproval(
     internalNotes: source.seller_notes,
     orderingGuideExpectedAmountJpy,
     colorSpecMode,
+    defaultBuyerSelfPayBps,
   };
 
   return {
@@ -437,13 +460,14 @@ async function buildApproval(
           search_keywords_json,
           ordering_guide_expected_amount_jpy,
           color_spec_mode,
+          default_buyer_self_pay_bps,
           product_url,
           buyer_visible_notes,
           internal_notes,
           created_by_staff_id,
           created_at
         ) VALUES (
-          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `).bind(
         productVersionId,
@@ -452,6 +476,7 @@ async function buildApproval(
         canonicalJson(version.searchKeywords),
         version.orderingGuideExpectedAmountJpy,
         version.colorSpecMode,
+        version.defaultBuyerSelfPayBps ?? 0,
         version.productUrl,
         version.buyerVisibleNotes,
         version.internalNotes,

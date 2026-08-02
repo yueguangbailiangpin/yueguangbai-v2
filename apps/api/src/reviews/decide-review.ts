@@ -378,7 +378,8 @@ async function transitionReview(
       idempotencyKey: acquired.claim.idempotencyKey,
       now,
     });
-    if (preparedRefund !== null) {
+    if (preparedRefund !== null
+      && source.buyer_expected_principal_cny_fen > 0) {
       await batchWithAssignmentRetry(
         database,
         () => prepareDirectWorkItem(database, {

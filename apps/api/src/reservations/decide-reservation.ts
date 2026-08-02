@@ -24,9 +24,14 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  batchWithAssignmentRetry,
+  prepareDirectWorkItem,
   prepareWorkItemCompletionStatements,
   requireAssignedWorkflowActor,
 } from '../staff-assignment';
+import {
+  createApprovedInstructionStatements,
+} from '../order-instructions/reservation-integration';
 import {
   cleanReservationIdentifier,
   cleanReservationReason,
@@ -41,6 +46,9 @@ interface ReservationSource {
   reservation_id: string;
   demand_batch_id: string;
   buyer_customer_id: string;
+  organization_id: string;
+  store_id: string;
+  marketplace_code: 'JP';
   status: ReservationStatus;
   reservation_version: number;
   hold_expires_at: number;
@@ -210,6 +218,17 @@ export async function decideReservation(
       sourceEntityId: reservationId,
     });
 
+    const instructionPlan = input.decision === 'APPROVE'
+      ? createApprovedInstructionStatements(database, {
+          reservationId,
+          buyerCustomerId: source.buyer_customer_id,
+          marketplaceCode: source.marketplace_code,
+          now,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          actorStaffId: command.actor.staffId,
+        })
+      : null;
+
     const statements: SqlStatement[] = [
       // Phase 3H access was resolved from persisted Staff facts above.
       database.prepare(`
@@ -235,6 +254,7 @@ export async function decideReservation(
         reservationId,
         source.reservation_version,
       ),
+      ...(instructionPlan?.statements ?? []),
       input.decision === 'APPROVE'
         ? database.prepare(`
             UPDATE demand_batches
@@ -329,9 +349,9 @@ export async function decideReservation(
       ),
     ];
 
-    await database.batch([
-      ...statements,
-      ...await prepareWorkItemCompletionStatements(database, {
+    const completionStatements = await prepareWorkItemCompletionStatements(
+      database,
+      {
         workType: 'RESERVATION_DECISION',
         sourceEntityType: 'RESERVATION',
         sourceEntityId: reservationId,
@@ -341,8 +361,31 @@ export async function decideReservation(
         requestId: command.requestId ?? null,
         idempotencyKey: acquired.claim.idempotencyKey,
         now,
-      }),
-    ]);
+      },
+    );
+    if (instructionPlan) {
+      await batchWithAssignmentRetry(
+        database,
+        () => prepareDirectWorkItem(database, {
+          workType: 'ORDER_INSTRUCTION_PUBLISH',
+          sourceEntityType: 'ORDER_INSTRUCTION',
+          sourceEntityId: instructionPlan.instructionId,
+          marketplaceCode: source.marketplace_code,
+          buyerCustomerId: source.buyer_customer_id,
+          sellerOrganizationId: source.organization_id,
+          storeId: source.store_id,
+          actorType: 'STAFF',
+          actorId: command.actor.staffId,
+          requestId: command.requestId ?? null,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          reason: 'reservation approved; publish order instruction',
+          now,
+        }),
+        [...statements, ...completionStatements],
+      );
+    } else {
+      await database.batch([...statements, ...completionStatements]);
+    }
     return response;
   } catch (error) {
     const normalized = normalizeReservationError(error);
@@ -365,6 +408,9 @@ async function requireDecisionSource(
       reservation.id AS reservation_id,
       reservation.demand_batch_id,
       reservation.buyer_customer_id,
+      reservation.organization_id,
+      reservation.store_id,
+      reservation.marketplace_code,
       reservation.status,
       reservation.version AS reservation_version,
       reservation.hold_expires_at,

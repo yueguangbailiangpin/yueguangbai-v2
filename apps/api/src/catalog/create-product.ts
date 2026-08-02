@@ -79,6 +79,10 @@ export async function createApprovedProduct(
   const version = parseCatalogInput(
     () => normalizeProductVersionFields(input.version),
   );
+  const normalizedVersion: ProductVersionFields = {
+    ...version,
+    defaultBuyerSelfPayBps: version.defaultBuyerSelfPayBps ?? 0,
+  };
   const now = command.now ?? Date.now();
   if (!Number.isSafeInteger(now) || now < 0) {
     throw new CatalogError('VALIDATION_ERROR', 400);
@@ -91,7 +95,7 @@ export async function createApprovedProduct(
     store_id: storeId,
     marketplace_code: store.marketplace_code,
     asin,
-    version,
+    version: normalizedVersion,
   });
   const acquired =
     await acquireIdempotency<CreateApprovedProductResult>(
@@ -132,7 +136,7 @@ export async function createApprovedProduct(
       marketplace_code: store.marketplace_code,
       asin,
       current_version_no: 1,
-      product_version: version,
+      product_version: normalizedVersion,
       status: 'ACTIVE',
       replayed: false,
     };
@@ -192,13 +196,14 @@ export async function createApprovedProduct(
           search_keywords_json,
           ordering_guide_expected_amount_jpy,
           color_spec_mode,
+          default_buyer_self_pay_bps,
           product_url,
           buyer_visible_notes,
           internal_notes,
           created_by_staff_id,
           created_at
         ) VALUES (
-          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `).bind(
         productVersionId,
@@ -207,6 +212,7 @@ export async function createApprovedProduct(
         canonicalJson(version.searchKeywords),
         version.orderingGuideExpectedAmountJpy,
         version.colorSpecMode,
+        normalizedVersion.defaultBuyerSelfPayBps,
         version.productUrl,
         version.buyerVisibleNotes,
         version.internalNotes,

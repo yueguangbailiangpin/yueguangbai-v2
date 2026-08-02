@@ -53,6 +53,7 @@ export interface VerifiedEvidenceFileRow {
   intent_status: string;
   owner_actor_type: string;
   owner_actor_id: string;
+  detected_mime: string | null;
 }
 
 export async function requireApprovedReservationForBuyer(
@@ -267,7 +268,8 @@ export async function listVerifiedEvidenceFiles(
       object.version,
       intent.status AS intent_status,
       intent.owner_actor_type,
-      intent.owner_actor_id
+      intent.owner_actor_id,
+      object.detected_mime
     FROM file_objects object
     JOIN file_upload_intents intent
       ON intent.id=object.upload_intent_id

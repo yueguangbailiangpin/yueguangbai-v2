@@ -268,6 +268,18 @@ export function normalizeDemandBatchError(
       409,
     );
   }
+  if (record?.code === 'VALIDATION_ERROR') {
+    return new DemandBatchError('VALIDATION_ERROR', 400);
+  }
+  if (record?.code === 'FORBIDDEN') {
+    return new DemandBatchError('FORBIDDEN', 403);
+  }
+  if (record?.code === 'NOT_FOUND') {
+    return new DemandBatchError('NOT_FOUND', 404);
+  }
+  if (record?.code === 'ORDERING_PROFILE_REQUIRED') {
+    return new DemandBatchError('VALIDATION_ERROR', 409);
+  }
 
   const message = String(error);
   if (message.includes('transaction_assertion_failed')) {

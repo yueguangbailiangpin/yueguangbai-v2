@@ -23,6 +23,9 @@ import {
   prepareDirectWorkItem,
 } from '../staff-assignment';
 import {
+  validateReservationSelfPayAcceptance,
+} from '../order-instructions/reservation-integration';
+import {
   cleanReservationIdentifier,
   insertReservationEventStatement,
   normalizeReservationError,
@@ -38,6 +41,9 @@ interface DemandEligibilityRow {
   store_id: string;
   product_id: string;
   product_version_no: number;
+  demand_version: number;
+  buyer_self_pay_bps_snapshot: number;
+  ordering_guide_expected_amount_jpy: number;
   marketplace_code: 'JP';
   demand_status: string;
   target_quantity: number;
@@ -63,6 +69,12 @@ export interface SubmitReservationResult {
   status: 'PENDING_REVIEW';
   hold_expires_at: number;
   order_deadline_snapshot: number;
+  buyer_self_pay_bps_snapshot: number;
+  reference_order_amount_jpy_snapshot: number;
+  estimated_self_pay_jpy_snapshot: number;
+  estimated_refundable_principal_jpy_snapshot: number;
+  buyer_self_pay_accepted_at: number;
+  buyer_self_pay_accepted_demand_version: number;
   version: 1;
   replayed: boolean;
 }
@@ -71,6 +83,8 @@ export async function submitReservation(
   database: SqlDatabase,
   input: {
     demandBatchId: string;
+    expectedDemandVersion: number;
+    acceptedBuyerSelfPayBps: number;
   },
   command: {
     actor: BuyerReservationActor;
@@ -94,6 +108,8 @@ export async function submitReservation(
     demand_batch_id: demandBatchId,
     buyer_customer_id: command.actor.buyerCustomerId,
     marketplace_code: command.actor.marketplaceCode,
+    expected_demand_version: input.expectedDemandVersion,
+    accepted_buyer_self_pay_bps: input.acceptedBuyerSelfPayBps,
   });
 
   const acquired =
@@ -130,6 +146,10 @@ export async function submitReservation(
       source,
       command.actor.buyerCustomerId,
     );
+    const acceptance = validateReservationSelfPayAcceptance(source, {
+      expectedDemandVersion: input.expectedDemandVersion,
+      acceptedBuyerSelfPayBps: input.acceptedBuyerSelfPayBps,
+    });
 
     const reservationId = crypto.randomUUID();
     const response: SubmitReservationResult = {
@@ -145,6 +165,15 @@ export async function submitReservation(
         Number(source.reservation_deadline),
       order_deadline_snapshot:
         Number(source.order_deadline),
+      buyer_self_pay_bps_snapshot: acceptance.buyerSelfPayBps,
+      reference_order_amount_jpy_snapshot:
+        acceptance.referenceOrderAmountJpy,
+      estimated_self_pay_jpy_snapshot: acceptance.estimatedSelfPayJpy,
+      estimated_refundable_principal_jpy_snapshot:
+        acceptance.estimatedRefundablePrincipalJpy,
+      buyer_self_pay_accepted_at: now,
+      buyer_self_pay_accepted_demand_version:
+        acceptance.acceptedDemandVersion,
       version: 1,
       replayed: false,
     };
@@ -200,6 +229,12 @@ export async function submitReservation(
           precheck_snapshot_json,
           hold_expires_at,
           order_deadline_snapshot,
+          buyer_self_pay_bps_snapshot,
+          reference_order_amount_jpy_snapshot,
+          estimated_self_pay_jpy_snapshot,
+          estimated_refundable_principal_jpy_snapshot,
+          buyer_self_pay_accepted_at,
+          buyer_self_pay_accepted_demand_version,
           version,
           submitted_at,
           updated_at,
@@ -221,6 +256,7 @@ export async function submitReservation(
           ?,
           demand.reservation_deadline,
           demand.order_deadline,
+          ?, ?, ?, ?, ?, ?,
           1, ?, ?, NULL, NULL, NULL, NULL, NULL, 0
         FROM demand_batches demand
         JOIN buyer_customers buyer
@@ -268,6 +304,12 @@ export async function submitReservation(
       `).bind(
         reservationId,
         precheck,
+        acceptance.buyerSelfPayBps,
+        acceptance.referenceOrderAmountJpy,
+        acceptance.estimatedSelfPayJpy,
+        acceptance.estimatedRefundablePrincipalJpy,
+        now,
+        acceptance.acceptedDemandVersion,
         now,
         now,
         command.actor.buyerCustomerId,
@@ -414,6 +456,9 @@ async function requireEligibility(
       demand.store_id,
       demand.product_id,
       demand.product_version_no,
+      demand.version AS demand_version,
+      demand.buyer_self_pay_bps_snapshot,
+      version.ordering_guide_expected_amount_jpy,
       demand.marketplace_code,
       demand.status AS demand_status,
       demand.target_quantity,
@@ -432,6 +477,9 @@ async function requireEligibility(
     JOIN products product
       ON product.id=demand.product_id
       AND product.organization_id=demand.organization_id
+    JOIN product_versions version
+      ON version.product_id=demand.product_id
+      AND version.version_no=demand.product_version_no
     JOIN seller_stores store
       ON store.id=demand.store_id
       AND store.organization_id=demand.organization_id

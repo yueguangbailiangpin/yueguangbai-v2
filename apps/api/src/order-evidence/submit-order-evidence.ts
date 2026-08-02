@@ -19,6 +19,14 @@ import {
   prepareOutboxEvent,
 } from '../foundation/outbox';
 import {
+  requireCurrentInstructionForEvidence,
+  clearResubmissionDeadlineStatements,
+} from '../order-instructions/evidence-integration';
+import {
+  assertOrderNumberAvailable,
+  provisionalOrderNumberClaimStatements,
+} from '../order-instructions/formal-order-integration';
+import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
 } from '../staff-assignment';
@@ -145,6 +153,17 @@ export async function submitOrderEvidence(
     );
     validateSubmissionTransition(source, expectedVersion);
 
+    const instruction = await requireCurrentInstructionForEvidence(
+      database,
+      {
+        reservationId,
+        buyerCustomerId: command.actor.buyerCustomerId,
+        finalPaidJpy,
+        now,
+        resubmission: source !== null,
+      },
+    );
+
     const submissionId = source?.submission_id
       ?? crypto.randomUUID();
     const evidenceVersionNo = source === null
@@ -154,6 +173,12 @@ export async function submitOrderEvidence(
       ? 1
       : source.aggregate_version + 1;
     const evidenceVersionId = crypto.randomUUID();
+    await assertOrderNumberAvailable(
+      database,
+      input.marketplace,
+      orderNumber.normalized,
+      submissionId,
+    );
 
     const fileRows = await listVerifiedEvidenceFiles(
       database,
@@ -231,14 +256,36 @@ export async function submitOrderEvidence(
       orderNumberNormalized: orderNumber.normalized,
       finalPaidJpy,
       buyerNote,
+      evidenceFileObjectId: preparedFiles[0]!.object.id,
+      instruction,
       now,
     }));
+    statements.push(...provisionalOrderNumberClaimStatements(database, {
+      marketplaceCode: input.marketplace,
+      amazonOrderNumberNormalized: orderNumber.normalized,
+      evidenceSubmissionId: submissionId,
+      evidenceVersionId,
+      claimedAt: now,
+    }));
     if (source !== null) {
-      statements.push(resubmitSubmissionStatement(database, {
-        source,
-        evidenceVersionNo,
-        now,
-      }));
+      statements.push(
+        ...clearResubmissionDeadlineStatements(database, {
+          instructionId: instruction.instructionId,
+          instructionAggregateVersion:
+            instruction.instructionAggregateVersion,
+          submissionId,
+          reservationId,
+          buyerCustomerId: command.actor.buyerCustomerId,
+          deadlineSnapshot: instruction.deadlineSnapshot,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          now,
+        }),
+        resubmitSubmissionStatement(database, {
+          source,
+          evidenceVersionNo,
+          now,
+        }),
+      );
     }
     for (const prepared of preparedFiles) {
       statements.push(
@@ -398,6 +445,9 @@ function validateEvidenceFiles(
     }
     if (row.purpose !== 'ORDER_EVIDENCE'
       || row.visibility === 'SELLER_VISIBLE'
+      || !['image/jpeg', 'image/png', 'image/webp'].includes(
+        row.detected_mime ?? '',
+      )
       || row.owner_actor_type !== 'BUYER_CUSTOMER'
       || row.owner_actor_id !== buyerCustomerId) {
       throw new OrderEvidenceError(
@@ -488,6 +538,19 @@ function insertEvidenceVersionStatement(
     orderNumberNormalized: string;
     finalPaidJpy: number;
     buyerNote: string | null;
+    evidenceFileObjectId: string;
+    instruction: {
+        instructionId: string;
+        instructionVersionId: string;
+        deadlineSnapshot: number;
+        referenceOrderAmountJpy: number;
+        buyerSelfPayBps: number;
+        buyerSelfPayJpy: number;
+        buyerRefundablePrincipalJpy: number;
+        priceDifferenceJpy: number;
+        priceMismatch: boolean;
+        submittedBeforeDeadline: 1;
+      };
     now: number;
   },
 ): SqlStatement {
@@ -504,8 +567,16 @@ function insertEvidenceVersionStatement(
       final_paid_jpy,
       submitted_by_buyer_id,
       buyer_note,
+      order_instruction_id, order_instruction_version_id,
+      instruction_deadline_snapshot,
+      reference_order_amount_jpy_snapshot,
+      buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
+      buyer_refundable_principal_jpy, price_mismatch,
+      price_difference_jpy, submitted_before_deadline,
+      evidence_file_object_id,
       created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     input.evidenceVersionId,
     input.submissionId,
@@ -518,6 +589,17 @@ function insertEvidenceVersionStatement(
     input.finalPaidJpy,
     input.buyerCustomerId,
     input.buyerNote,
+    input.instruction.instructionId,
+    input.instruction.instructionVersionId,
+    input.instruction.deadlineSnapshot,
+    input.instruction.referenceOrderAmountJpy,
+    input.instruction.buyerSelfPayBps,
+    input.instruction.buyerSelfPayJpy,
+    input.instruction.buyerRefundablePrincipalJpy,
+    input.instruction.priceMismatch ? 1 : 0,
+    input.instruction.priceDifferenceJpy,
+    input.instruction.submittedBeforeDeadline,
+    input.evidenceFileObjectId,
     input.now,
   );
 }

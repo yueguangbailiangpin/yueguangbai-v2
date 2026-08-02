@@ -84,6 +84,12 @@ export function normalizeCatalogError(
   if (record?.code === 'REQUEST_IN_PROGRESS') {
     return new CatalogError('REQUEST_IN_PROGRESS', 409);
   }
+  if (record?.code === 'FORBIDDEN') {
+    return new CatalogError('FORBIDDEN', 403);
+  }
+  if (record?.code === 'NOT_FOUND') {
+    return new CatalogError('NOT_FOUND', 404);
+  }
 
   const message = String(error);
   if (message.includes(

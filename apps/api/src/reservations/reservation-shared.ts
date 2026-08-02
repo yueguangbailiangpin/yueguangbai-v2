@@ -217,6 +217,15 @@ export function normalizeReservationError(
       409,
     );
   }
+  if (record?.code === 'VERSION_CONFLICT') {
+    return new ReservationError('VERSION_CONFLICT', 409);
+  }
+  if (record?.code === 'SELF_PAY_ACCEPTANCE_MISMATCH') {
+    return new ReservationError('VERSION_CONFLICT', 409);
+  }
+  if (record?.code === 'VALIDATION_ERROR') {
+    return new ReservationError('VALIDATION_ERROR', 400);
+  }
 
   const message = String(error);
   if (message.includes(

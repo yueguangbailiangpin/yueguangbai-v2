@@ -250,6 +250,12 @@ export function normalizeProductApplicationError(
       409,
     );
   }
+  if (record?.code === 'FORBIDDEN') {
+    return new ProductApplicationError('FORBIDDEN', 403);
+  }
+  if (record?.code === 'NOT_FOUND') {
+    return new ProductApplicationError('NOT_FOUND', 404);
+  }
 
   const message = String(error);
   if (message.includes(

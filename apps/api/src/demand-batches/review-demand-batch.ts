@@ -26,6 +26,7 @@ import {
   prepareWorkItemCompletionStatements,
   requireAssignedWorkflowActor,
 } from '../staff-assignment';
+import { resolveDemandSelfPayForPublish } from '../order-instructions/demand-self-pay';
 import {
   cleanDemandIdentifier,
   cleanDemandReason,
@@ -41,6 +42,12 @@ interface DemandSource {
   organization_id: string;
   store_id: string;
   product_id: string;
+  product_version_no: number;
+  product_version_id: string;
+  search_keywords_json: string;
+  ordering_guide_expected_amount_jpy: number | null;
+  color_spec_mode: string | null;
+  main_image_file_object_id: string | null;
   task_type: string;
   target_quantity: number;
   open_at: number;
@@ -68,6 +75,8 @@ export async function reviewDemandBatch(
     expectedVersion: number;
     decision: DemandReviewDecision;
     rejectionReason?: string | null;
+    buyerSelfPayBps?: number | null;
+    buyerSelfPayOverrideReason?: string | null;
   },
   command: {
     actor: DemandStaffActor;
@@ -107,6 +116,9 @@ export async function reviewDemandBatch(
     expected_version: input.expectedVersion,
     decision: input.decision,
     rejection_reason: rejectionReason,
+    buyer_self_pay_bps: input.buyerSelfPayBps ?? null,
+    buyer_self_pay_override_reason:
+      input.buyerSelfPayOverrideReason ?? null,
   });
 
   const acquired =
@@ -164,7 +176,21 @@ export async function reviewDemandBatch(
           409,
         );
       }
+      requireOrderInstructionReadiness(source);
     }
+
+    const selfPay = input.decision === 'PUBLISH'
+      ? await resolveDemandSelfPayForPublish(database, {
+          productId: source.product_id,
+          productVersionNo: Number(source.product_version_no),
+          ...(input.buyerSelfPayBps === undefined
+            ? {}
+            : { overrideBps: input.buyerSelfPayBps }),
+          ...(input.buyerSelfPayOverrideReason === undefined
+            ? {}
+            : { overrideReason: input.buyerSelfPayOverrideReason }),
+        })
+      : null;
 
     const nextVersion = source.version + 1;
     const nextStatus = input.decision === 'PUBLISH'
@@ -218,6 +244,9 @@ export async function reviewDemandBatch(
               updated_at=MAX(?, updated_at+1),
               reviewed_at=?,
               published_at=?,
+              buyer_self_pay_bps_snapshot=?,
+              buyer_self_pay_source=?,
+              buyer_self_pay_override_reason=?,
               withdrawn_at=NULL,
               closed_at=NULL
             WHERE id=?
@@ -228,6 +257,9 @@ export async function reviewDemandBatch(
             now,
             now,
             now,
+            selfPay!.buyerSelfPayBps,
+            selfPay!.source,
+            selfPay!.overrideReason,
             demandBatchId,
             source.version,
           )
@@ -286,6 +318,15 @@ export async function reviewDemandBatch(
           version: source.version,
         },
         nextState: response,
+        metadata: {
+          buyer_self_pay_bps: selfPay?.buyerSelfPayBps ?? null,
+          buyer_self_pay_source: selfPay?.source ?? null,
+          buyer_self_pay_override_reason: selfPay?.overrideReason ?? null,
+          product_version_id: source.product_version_id,
+          product_version_no: source.product_version_no,
+          reference_order_amount_jpy:
+            source.ordering_guide_expected_amount_jpy,
+        },
         createdAt: now,
       }),
       ...createOutboxStatements(database, outbox),
@@ -348,6 +389,12 @@ async function requireReviewSource(
       demand.organization_id,
       demand.store_id,
       demand.product_id,
+      demand.product_version_no,
+      version.id AS product_version_id,
+      version.search_keywords_json,
+      version.ordering_guide_expected_amount_jpy,
+      version.color_spec_mode,
+      image.file_object_id AS main_image_file_object_id,
       demand.task_type,
       demand.target_quantity,
       demand.open_at,
@@ -362,6 +409,27 @@ async function requireReviewSource(
     JOIN products product
       ON product.id=demand.product_id
       AND product.organization_id=demand.organization_id
+    JOIN product_versions version
+      ON version.product_id=demand.product_id
+      AND version.version_no=demand.product_version_no
+    LEFT JOIN (
+      SELECT main_image.product_version_id, link.file_object_id
+      FROM product_version_main_images main_image
+      JOIN file_entity_links link
+        ON link.id=main_image.file_entity_link_id
+        AND link.entity_type='PRODUCT_VERSION'
+        AND link.entity_id=main_image.product_version_id
+        AND link.purpose='PRODUCT_IMAGE'
+        AND link.revoked_at IS NULL
+      JOIN file_objects object
+        ON object.id=link.file_object_id
+        AND object.status='VERIFIED'
+        AND object.purpose='PRODUCT_IMAGE'
+      JOIN file_upload_intents intent
+        ON intent.id=object.upload_intent_id
+        AND intent.status='VERIFIED'
+        AND intent.purpose='PRODUCT_IMAGE'
+    ) image ON image.product_version_id=version.id
     JOIN seller_stores store
       ON store.id=demand.store_id
       AND store.organization_id=demand.organization_id
@@ -379,6 +447,30 @@ async function requireReviewSource(
     );
   }
   return row;
+}
+
+function requireOrderInstructionReadiness(source: DemandSource): void {
+  const expectedAmount = Number(source.ordering_guide_expected_amount_jpy);
+  if (source.ordering_guide_expected_amount_jpy === null
+    || !Number.isSafeInteger(expectedAmount)
+    || expectedAmount < 0
+    || !['MAIN_IMAGE_VARIANT', 'ANY_VARIANT'].includes(
+      source.color_spec_mode ?? '',
+    )
+    || source.main_image_file_object_id === null) {
+    throw new DemandBatchError('VALIDATION_ERROR', 409);
+  }
+  try {
+    const keywords = JSON.parse(source.search_keywords_json) as unknown;
+    if (!Array.isArray(keywords)
+      || keywords.length < 1
+      || keywords.some((keyword) => typeof keyword !== 'string'
+        || keyword.normalize('NFKC').trim().length < 1)) {
+      throw new Error('invalid keywords');
+    }
+  } catch {
+    throw new DemandBatchError('VALIDATION_ERROR', 409);
+  }
 }
 
 function assertReviewedStatement(
