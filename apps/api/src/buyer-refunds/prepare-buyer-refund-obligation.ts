@@ -5,10 +5,8 @@ import type {
   StaffRoleCode,
 } from '@ygb/contracts';
 import { createAuditEventStatement } from '../foundation/audit';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
+import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
+import { prepareSellerPayableCreation } from '../seller-settlements/payable-statements';
 import { insertBuyerRefundEventStatement } from './buyer-refund-events';
 
 export interface PreparedBuyerRefundObligation {
@@ -17,15 +15,19 @@ export interface PreparedBuyerRefundObligation {
   auditId: string;
   statements: readonly SqlStatement[];
   result: EnsureBuyerRefundObligationResult;
+  sellerServiceFeePayableId?: string;
+}
+
+interface ServiceFeeFacts {
+  seller_organization_id: string;
+  financial_snapshot_id: string;
+  service_fee_cny_fen: number;
 }
 
 /**
- * Prepares the immutable buyer-refund obligation created by review approval.
- *
- * This helper deliberately accepts only the frozen review-decision facts. It
- * does not re-read pricing, exchange-rate, service-fee, or product defaults.
- * The returned statements must be appended after the authoritative
- * BUYER_REFUND_BECAME_DUE review-event statement in the same atomic batch.
+ * Approval creates both financial obligations from the same immutable formal
+ * snapshot. The caller appends these statements after the three approval
+ * review events in one D1 batch.
  */
 export async function prepareBuyerRefundObligationFromReviewApproval(
   database: SqlDatabase,
@@ -42,7 +44,7 @@ export async function prepareBuyerRefundObligationFromReviewApproval(
     now: number;
   },
 ): Promise<PreparedBuyerRefundObligation> {
-  return prepareBuyerRefundObligationStatements(database, {
+  const base = await prepareBuyerRefundObligationStatements(database, {
     sourceReviewEventId: input.sourceReviewEventId,
     reviewCaseId: input.reviewCaseId,
     formalOrderId: input.formalOrderId,
@@ -55,13 +57,36 @@ export async function prepareBuyerRefundObligationFromReviewApproval(
     idempotencyKey: input.idempotencyKey,
     now: input.now,
   });
+  const facts = await requireServiceFeeFacts(
+    database,
+    input.reviewCaseId,
+    input.formalOrderId,
+  );
+  const payable = await prepareSellerPayableCreation(database, {
+    sellerOrganizationId: facts.seller_organization_id,
+    formalOrderId: input.formalOrderId,
+    payableType: 'SELLER_SERVICE_FEE',
+    amountCnyFen: Number(facts.service_fee_cny_fen),
+    financialSnapshotId: facts.financial_snapshot_id,
+    sourceType: 'REVIEW_APPROVAL',
+    sourceId: input.reviewCaseId,
+    dueAt: input.now,
+    createdAt: input.now,
+    actor: {
+      type: 'STAFF',
+      id: input.actorStaffId,
+      roles: input.actorRoles,
+    },
+    requestId: input.requestId,
+    idempotencyKey: input.idempotencyKey,
+  });
+  return Object.freeze({
+    ...base,
+    sellerServiceFeePayableId: payable.payableId,
+    statements: Object.freeze([...base.statements, ...payable.statements]),
+  });
 }
 
-/**
- * Shared immutable-obligation preparation used by both review approval and
- * the compatibility ensure API. The caller supplies the frozen source facts;
- * this helper never reads current pricing or exchange-rate data.
- */
 export async function prepareBuyerRefundObligationStatements(
   database: SqlDatabase,
   input: {
@@ -84,7 +109,6 @@ export async function prepareBuyerRefundObligationStatements(
     || input.now < 0) {
     throw new Error('invalid_buyer_refund_obligation_facts');
   }
-
   const obligationId = crypto.randomUUID();
   const eventId = crypto.randomUUID();
   const auditId = crypto.randomUUID();
@@ -111,7 +135,6 @@ export async function prepareBuyerRefundObligationStatements(
     payload: response,
     createdAt: input.now,
   });
-
   return {
     obligationId,
     eventId,
@@ -120,15 +143,8 @@ export async function prepareBuyerRefundObligationStatements(
     statements: [
       database.prepare(`
         INSERT INTO buyer_refund_obligations (
-          id,
-          source_review_event_id,
-          review_case_id,
-          formal_order_id,
-          buyer_customer_id,
-          due_amount_cny_fen,
-          version,
-          created_at,
-          updated_at
+          id, source_review_event_id, review_case_id, formal_order_id,
+          buyer_customer_id, due_amount_cny_fen, version, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
       `).bind(
         obligationId,
@@ -170,9 +186,7 @@ export async function prepareBuyerRefundObligationStatements(
         idempotencyKey: input.idempotencyKey,
         previousState: null,
         nextState: response,
-        metadata: {
-          source_review_event_id: input.sourceReviewEventId,
-        },
+        metadata: { source_review_event_id: input.sourceReviewEventId },
         createdAt: input.now,
       }),
       ...createOutboxStatements(database, outbox),
@@ -180,36 +194,25 @@ export async function prepareBuyerRefundObligationStatements(
         INSERT INTO transaction_assertions (assertion_value)
         SELECT CASE WHEN
           EXISTS (
-            SELECT 1
-            FROM buyer_refund_obligations
-            WHERE id=?
-              AND source_review_event_id=?
-              AND review_case_id=?
-              AND formal_order_id=?
-              AND buyer_customer_id=?
-              AND due_amount_cny_fen=?
-              AND version=1
+            SELECT 1 FROM buyer_refund_obligations
+            WHERE id=? AND source_review_event_id=? AND review_case_id=?
+              AND formal_order_id=? AND buyer_customer_id=?
+              AND due_amount_cny_fen=? AND version=1
           )
           AND EXISTS (
-            SELECT 1
-            FROM buyer_refund_events
-            WHERE id=?
-              AND obligation_id=?
+            SELECT 1 FROM buyer_refund_events
+            WHERE id=? AND obligation_id=?
               AND event_type='BUYER_REFUND_OBLIGATION_CREATED'
-              AND amount_cny_fen=?
-              AND net_paid_after_cny_fen=0
+              AND amount_cny_fen=? AND net_paid_after_cny_fen=0
           )
           AND (
             SELECT COUNT(*) FROM review_events
-            WHERE id=?
-              AND event_type='BUYER_REFUND_BECAME_DUE'
+            WHERE id=? AND event_type='BUYER_REFUND_BECAME_DUE'
               AND amount_cny_fen=?
           )=1
           AND EXISTS (
-            SELECT 1
-            FROM audit_events
-            WHERE id=?
-              AND aggregate_type='BUYER_REFUND_OBLIGATION'
+            SELECT 1 FROM audit_events
+            WHERE id=? AND aggregate_type='BUYER_REFUND_OBLIGATION'
               AND aggregate_id=?
           )
         THEN 1 ELSE 0 END
@@ -230,4 +233,30 @@ export async function prepareBuyerRefundObligationStatements(
       ),
     ],
   };
+}
+
+async function requireServiceFeeFacts(
+  database: SqlDatabase,
+  reviewCaseId: string,
+  formalOrderId: string,
+): Promise<ServiceFeeFacts> {
+  const row = await database.prepare(`
+    SELECT
+      review_case.seller_organization_id,
+      snapshot.id AS financial_snapshot_id,
+      snapshot.service_fee_cny_fen
+    FROM review_cases review_case
+    JOIN formal_orders formal_order
+      ON formal_order.id=review_case.formal_order_id
+      AND formal_order.seller_organization_id=review_case.seller_organization_id
+    JOIN formal_order_financial_snapshots snapshot
+      ON snapshot.formal_order_id=formal_order.id
+    WHERE review_case.id=? AND formal_order.id=?
+  `).bind(reviewCaseId, formalOrderId).first<ServiceFeeFacts>();
+  if (!row
+    || !Number.isSafeInteger(Number(row.service_fee_cny_fen))
+    || Number(row.service_fee_cny_fen) < 0) {
+    throw new Error('invalid_seller_service_fee_payable_facts');
+  }
+  return { ...row, service_fee_cny_fen: Number(row.service_fee_cny_fen) };
 }
