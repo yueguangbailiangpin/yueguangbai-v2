@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { FileActor, SqlDatabase } from '@ygb/contracts';
 import type { FileAuthorizationResource } from '../files/authorization';
-import { recordSellerPayment } from './record-payment';
+import {
+  recordSellerPayment,
+  validateSellerSettlementProofFile,
+} from './record-payment';
+import type { SellerSettlementProofFileRow } from './records';
 import {
   cleanPositiveCnyFen,
   cleanSettlementReason,
@@ -33,6 +37,29 @@ function proofResource(
   };
 }
 
+function proofFile(
+  ownerActorType: string,
+  ownerActorId: string,
+  overrides: Partial<SellerSettlementProofFileRow> = {},
+): SellerSettlementProofFileRow {
+  return {
+    id: 'proof-1',
+    upload_intent_id: 'intent-1',
+    status: 'VERIFIED',
+    version: 1,
+    purpose: 'SELLER_SETTLEMENT_PROOF',
+    visibility: 'INTERNAL_ONLY',
+    detected_mime: 'image/png',
+    declared_mime: 'image/png',
+    intent_status: 'VERIFIED',
+    intent_purpose: 'SELLER_SETTLEMENT_PROOF',
+    intent_visibility: 'INTERNAL_ONLY',
+    owner_actor_type: ownerActorType,
+    owner_actor_id: ownerActorId,
+    ...overrides,
+  };
+}
+
 describe('Wave 11 seller payment command validation', () => {
   it('accepts only positive safe CNY fen integer strings', () => {
     expect(cleanPositiveCnyFen('1')).toBe(1);
@@ -55,6 +82,40 @@ describe('Wave 11 seller payment command validation', () => {
     expect(cleanSettlementTimestamp(0)).toBe(0);
     expect(() => cleanSettlementTimestamp(-1)).toThrow(SellerSettlementError);
     expect(() => cleanSettlementTimestamp(1.1)).toThrow(SellerSettlementError);
+  });
+
+  it('accepts the current Staff-owned VERIFIED proof for payment recording', () => {
+    expect(() => validateSellerSettlementProofFile(
+      proofFile('STAFF', 'staff-1'),
+      1,
+      'staff-1',
+    )).not.toThrow();
+  });
+
+  it('accepts a trusted persisted SYSTEM-owned VERIFIED proof', () => {
+    expect(() => validateSellerSettlementProofFile(
+      proofFile('SYSTEM', 'trusted-settlement-importer'),
+      1,
+      'staff-1',
+    )).not.toThrow();
+  });
+
+  it('rejects other Staff, Buyer, Seller, wrong purpose and unverified proofs', () => {
+    for (const file of [
+      proofFile('STAFF', 'staff-2'),
+      proofFile('BUYER_CUSTOMER', 'buyer-1'),
+      proofFile('SELLER_MEMBER', 'seller-member-1'),
+      proofFile('STAFF', 'staff-1', { purpose: 'SUPPORT_ATTACHMENT' }),
+      proofFile('SYSTEM', 'trusted-settlement-importer', {
+        status: 'UPLOADED',
+      }),
+    ]) {
+      expect(() => validateSellerSettlementProofFile(
+        file,
+        1,
+        'staff-1',
+      )).toThrow(SellerSettlementError);
+    }
   });
 
   it('allows the current Staff-owned proof to upload, complete and link', () => {
