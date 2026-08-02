@@ -13,16 +13,30 @@ for (const token of [
   'CREATE TABLE seller_payables',
   "payable_type IN ('SELLER_PRINCIPAL','SELLER_SERVICE_FEE')",
   'UNIQUE (formal_order_id, payable_type)',
+  'UNIQUE (source_type, source_id, payable_type)',
+  'UNIQUE (entity_type, entity_id, reason_code)',
+  'UNIQUE (payable_id, event_type)',
   'trg_seller_payables_no_update',
   'trg_seller_payables_no_delete',
   'seller_payable_reconciliation_conflicts',
   'PAYABLE_RECONCILED',
+  'lower(hex(randomblob(16)))',
 ]) assert(migration.includes(token));
 assert(formal.includes("payableType: 'SELLER_PRINCIPAL'"));
 assert(formal.includes('seller_expected_principal_cny_fen'));
 assert(approval.includes("payableType: 'SELLER_SERVICE_FEE'"));
 assert(approval.includes('service_fee_cny_fen'));
 assert(reconcile.includes('REVIEW_APPROVAL_SOURCE_CONFLICT'));
+assert(reconcile.includes('const payableId = crypto.randomUUID()'));
+assert(reconcile.includes('const payableEventId = crypto.randomUUID()'));
+assert(reconcile.includes('crypto.randomUUID(),\n          row.entity_type'));
+assert(reconcile.includes('FROM seller_payables payable'));
+assert(reconcile.includes('seller-payable-reconciliation:${acquired.claim.idempotencyKey}'));
+assert(!migration.match(/'seller-payable[^']*'\s*\|\|/u));
+assert(!migration.match(/'payable-conflict[^']*'\s*\|\|/u));
+assert(!migration.match(/'seller-payable-event[^']*'\s*\|\|/u));
+assert(!reconcile.match(/`seller-payable:(?:principal|service-fee):\$\{/u));
+assert(!reconcile.match(/`seller-payable-(?:conflict|reconciled):\$\{/u));
 assert(!migration.match(/\b(?:REAL|FLOAT)\b/u));
 
 console.log('phase3j seller payable verifier passed');
