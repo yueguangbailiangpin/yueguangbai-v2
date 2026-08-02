@@ -135,11 +135,26 @@ export function fixedInteger(value: number | string | bigint): FixedIntegerStrin
 export function normalizeSettlementError(error: unknown): SellerSettlementError {
   if (error instanceof SellerSettlementError) return error;
   const code = (error as { code?: unknown })?.code;
+  if (code === 'UNAUTHENTICATED') {
+    return new SellerSettlementError('UNAUTHENTICATED', 401);
+  }
   if (code === 'IDEMPOTENCY_CONFLICT') {
     return new SellerSettlementError('IDEMPOTENCY_CONFLICT', 409);
   }
   if (code === 'REQUEST_IN_PROGRESS') {
     return new SellerSettlementError('REQUEST_IN_PROGRESS', 409);
+  }
+  if (code === 'VERSION_CONFLICT') {
+    return new SellerSettlementError('VERSION_CONFLICT', 409);
+  }
+  if (code === 'VALIDATION_ERROR') {
+    return new SellerSettlementError('VALIDATION_ERROR', 400);
+  }
+  if (code === 'FILE_OBJECT_NOT_FOUND') {
+    return new SellerSettlementError('FILE_OBJECT_NOT_FOUND', 404);
+  }
+  if (code === 'FILE_NOT_VERIFIED') {
+    return new SellerSettlementError('FILE_NOT_VERIFIED', 409);
   }
   if (code === 'FORBIDDEN') return new SellerSettlementError('FORBIDDEN', 403);
   if (code === 'NOT_FOUND') return new SellerSettlementError('NOT_FOUND', 404);
@@ -167,25 +182,36 @@ implements FileAuthorizationService {
     purpose: FilePurpose;
     visibility: FileVisibility;
   }): void {
+    // Client-facing upload creation remains Staff-only. A SYSTEM owner can
+    // only originate from a trusted server-side file fact already persisted.
     if (actor.type !== 'STAFF'
       || input.purpose !== 'SELLER_SETTLEMENT_PROOF'
       || input.visibility !== 'INTERNAL_ONLY') throw new Error('FORBIDDEN');
   }
   assertCanUpload(actor: FileActor, resource: FileAuthorizationResource): void {
-    this.assertOwner(actor, resource);
+    this.assertStaffOwner(actor, resource);
   }
   assertCanCompleteUpload(actor: FileActor, resource: FileAuthorizationResource): void {
-    this.assertOwner(actor, resource);
+    this.assertStaffOwner(actor, resource);
   }
   assertCanLink(actor: FileActor, resource: FileAuthorizationResource): void {
-    this.assertOwner(actor, resource);
-    if (resource.purpose !== 'SELLER_SETTLEMENT_PROOF'
-      || resource.visibility !== 'INTERNAL_ONLY') throw new Error('FORBIDDEN');
+    const ownerAllowed = resource.ownerActorType === 'SYSTEM'
+      || (resource.ownerActorType === 'STAFF'
+        && resource.ownerActorId === actor.id);
+    if (actor.type !== 'STAFF'
+      || !ownerAllowed
+      || resource.purpose !== 'SELLER_SETTLEMENT_PROOF'
+      || resource.visibility !== 'INTERNAL_ONLY') {
+      throw new Error('FORBIDDEN');
+    }
   }
   assertCanRead(): never {
     throw new Error('FORBIDDEN');
   }
-  private assertOwner(actor: FileActor, resource: FileAuthorizationResource): void {
+  private assertStaffOwner(
+    actor: FileActor,
+    resource: FileAuthorizationResource,
+  ): void {
     if (actor.type !== 'STAFF'
       || resource.ownerActorType !== 'STAFF'
       || resource.ownerActorId !== actor.id) throw new Error('FORBIDDEN');
