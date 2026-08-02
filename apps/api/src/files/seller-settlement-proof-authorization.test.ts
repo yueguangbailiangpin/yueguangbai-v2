@@ -16,7 +16,10 @@ import {
   type FileAuthorizationResource,
 } from './authorization';
 import { authorizeExplicitAudienceRead } from './file-audience-authorization';
-import { consumeFileReadIntent } from './file-read-service';
+import {
+  consumeFileReadIntent,
+  createFileReadIntent,
+} from './file-read-service';
 
 interface Scenario {
   staffStatus: 'ACTIVE' | 'DISABLED';
@@ -160,16 +163,47 @@ describe('seller settlement proof dynamic file authorization', () => {
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
-  it('rejects common file authorization bypass without Seller scope', async () => {
-    await expect(authorizeExplicitAudienceRead(
+  it('allows the common file API to create an intent for a scoped manager', async () => {
+    const result = await createFileReadIntent(
+      fakeDatabase(scenario()),
+      new DenyAllFileAuthorizationService(),
+      {
+        fileObjectId: 'proof-file-1',
+        fileEntityLinkId: 'proof-link-1',
+        expectedFileVersion: 1,
+      },
+      {
+        actor: STAFF_ACTOR,
+        principal: STAFF_PRINCIPAL,
+        idempotencyKey: 'proof-read-intent-scoped-manager',
+        now: NOW,
+      },
+    );
+    expect(result).toMatchObject({
+      fileObjectId: 'proof-file-1',
+      accessTokenAvailable: true,
+      replayed: false,
+    });
+  });
+
+  it('rejects common file API creation without Seller scope', async () => {
+    await expect(createFileReadIntent(
       fakeDatabase(scenario({
         directOrganizationId: null,
         teamOrganizationId: null,
       })),
-      STAFF_PRINCIPAL,
-      STAFF_ACTOR,
-      RESOURCE,
-      NOW,
+      new DenyAllFileAuthorizationService(),
+      {
+        fileObjectId: 'proof-file-1',
+        fileEntityLinkId: 'proof-link-1',
+        expectedFileVersion: 1,
+      },
+      {
+        actor: STAFF_ACTOR,
+        principal: STAFF_PRINCIPAL,
+        idempotencyKey: 'proof-read-intent-unscoped-staff',
+        now: NOW,
+      },
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
@@ -220,35 +254,11 @@ function fakeDatabase(input: Scenario): SqlDatabase {
         async first<T>(): Promise<T | null> {
           if (sql.includes('FROM file_read_intents read')) {
             if (!input.readIntentTokenHash) return null;
-            return {
-              id: 'proof-file-1',
-              upload_intent_id: 'intent-1',
-              object_key: 'proofs/proof-file-1.png',
-              purpose: 'SELLER_SETTLEMENT_PROOF',
-              visibility: 'INTERNAL_ONLY',
-              status: 'VERIFIED',
-              version: 1,
-              detected_mime: 'image/png',
-              uploaded_byte_size: 8,
-              uploaded_sha256: 'unused-before-authorization',
-              owner_actor_type: 'STAFF',
-              owner_actor_id: 'staff-uploader',
-              intent_status: 'VERIFIED',
-              intent_version: 1,
-              intent_expires_at: NOW + 100_000,
-              file_entity_link_id: 'proof-link-1',
-              entity_type: 'SELLER_SETTLEMENT',
-              entity_id: 'payment-1',
-              authorization_mode: 'EXPLICIT_AUDIENCES',
-              link_expires_at: null,
-              link_revoked_at: null,
-              read_intent_id: 'read-intent-1',
-              read_actor_type: 'STAFF',
-              read_actor_id: 'staff-1',
-              token_hash: input.readIntentTokenHash,
-              read_status: 'ISSUED',
-              read_expires_at: NOW + 10_000,
-            } as T;
+            return readIntentSource(input.readIntentTokenHash) as T;
+          }
+          if (sql.includes('FROM file_objects object')
+            && sql.includes('JOIN file_entity_links link')) {
+            return readableFileSource() as T;
           }
           if (sql.includes('SELECT status')
             && sql.includes('FROM staff_users')) {
@@ -343,6 +353,44 @@ function fakeDatabase(input: Scenario): SqlDatabase {
     async batch(statements: readonly SqlStatement[]): Promise<SqlRunResult[]> {
       return statements.map(() => ({ meta: { changes: 1 } }));
     },
+  };
+}
+
+function readableFileSource() {
+  return {
+    id: 'proof-file-1',
+    upload_intent_id: 'intent-1',
+    object_key: 'proofs/proof-file-1.png',
+    purpose: 'SELLER_SETTLEMENT_PROOF',
+    visibility: 'INTERNAL_ONLY',
+    status: 'VERIFIED',
+    version: 1,
+    owner_actor_type: 'STAFF',
+    owner_actor_id: 'staff-uploader',
+    intent_status: 'VERIFIED',
+    intent_version: 1,
+    intent_expires_at: NOW + 100_000,
+    file_entity_link_id: 'proof-link-1',
+    entity_type: 'SELLER_SETTLEMENT',
+    entity_id: 'payment-1',
+    authorization_mode: 'EXPLICIT_AUDIENCES',
+    link_expires_at: null,
+    link_revoked_at: null,
+  };
+}
+
+function readIntentSource(tokenHash: string) {
+  return {
+    ...readableFileSource(),
+    detected_mime: 'image/png',
+    uploaded_byte_size: 8,
+    uploaded_sha256: 'unused-before-authorization',
+    read_intent_id: 'read-intent-1',
+    read_actor_type: 'STAFF',
+    read_actor_id: 'staff-1',
+    token_hash: tokenHash,
+    read_status: 'ISSUED',
+    read_expires_at: NOW + 10_000,
   };
 }
 
