@@ -32,7 +32,7 @@ describe('Wave 11 review URL normalization', () => {
       'http://example.com/review',
       'https://user:password@example.com/review',
       'not a url',
-      'https:///missing-host',
+      'https://',
     ]) {
       expect(() => normalizeReviewUrl('VIDEO', value))
         .toThrow(ReviewUrlValidationError);
