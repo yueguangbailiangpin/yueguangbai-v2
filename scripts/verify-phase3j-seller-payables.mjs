@@ -5,6 +5,9 @@ const root = path.resolve(import.meta.dirname, '..');
 const migration = read('migrations/0023_seller_payables.sql');
 const formal = read('apps/api/src/formal-orders/confirm-formal-order.ts');
 const approval = read('apps/api/src/buyer-refunds/prepare-buyer-refund-obligation.ts');
+const payableStatements = read(
+  'apps/api/src/seller-settlements/payable-statements.ts',
+);
 const reconcile = read('apps/api/src/seller-settlements/reconciliation.ts');
 
 for (const token of [
@@ -26,12 +29,19 @@ assert(formal.includes("payableType: 'SELLER_PRINCIPAL'"));
 assert(formal.includes('seller_expected_principal_cny_fen'));
 assert(approval.includes("payableType: 'SELLER_SERVICE_FEE'"));
 assert(approval.includes('service_fee_cny_fen'));
+assert(payableStatements.includes('const payableId = crypto.randomUUID()'));
+assert(payableStatements.includes('const eventId = crypto.randomUUID()'));
+assert(payableStatements.includes('seller-payable-created:${payableId}'));
+assert(!payableStatements.includes(
+  'seller-payable:${input.payableType}:${input.formalOrderId}',
+));
 assert(reconcile.includes('REVIEW_APPROVAL_SOURCE_CONFLICT'));
 assert(reconcile.includes('const payableId = crypto.randomUUID()'));
 assert(reconcile.includes('const payableEventId = crypto.randomUUID()'));
 assert(reconcile.includes('crypto.randomUUID(),\n          row.entity_type'));
 assert(reconcile.includes('FROM seller_payables payable'));
 assert(reconcile.includes('seller-payable-reconciliation:${acquired.claim.idempotencyKey}'));
+assert(reconcile.includes('normalized.length > 240'));
 assert(!migration.match(/'seller-payable[^']*'\s*\|\|/u));
 assert(!migration.match(/'payable-conflict[^']*'\s*\|\|/u));
 assert(!migration.match(/'seller-payable-event[^']*'\s*\|\|/u));
