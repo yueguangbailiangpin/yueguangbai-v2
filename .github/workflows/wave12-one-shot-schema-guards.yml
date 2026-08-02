@@ -1,0 +1,84 @@
+name: Wave 12 one-shot schema guard update
+
+on:
+  push:
+    branches:
+      - feature/wave12-profit-financial-reporting
+    paths:
+      - .github/workflows/wave12-one-shot-schema-guards.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-schema-guards:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wave12-profit-financial-reporting
+          fetch-depth: 0
+      - name: Update legacy migration-count guards
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          targets = [
+              Path('apps/api/src/buyer-order-evidence-portal/buyer-order-evidence-portal.test.ts'),
+              Path('apps/api/src/buyer-portal/buyer-portal.test.ts'),
+              Path('apps/api/src/reviews/review-workflow.test.ts'),
+              Path('apps/api/src/seller-formal-orders/seller-formal-orders.test.ts'),
+              Path('apps/api/src/seller-portal/seller-portal.test.ts'),
+          ]
+          replacements = [
+              ('schema_version: 24', 'schema_version: 26'),
+              ('toHaveLength(24)', 'toHaveLength(26)'),
+              ("toBe('0024_seller_payments_allocations.sql')", "toBe('0026_financial_export_audit.sql')"),
+              ("toMatch(/^0024_/u)", "toBe('0026_financial_export_audit.sql')"),
+              ('through 0024', 'through 0026'),
+              ('schema24', 'schema26'),
+              ('schema 24', 'schema 26'),
+          ]
+          residual_tokens = [
+              'schema_version: 24',
+              'toHaveLength(24)',
+              "toBe('0024_seller_payments_allocations.sql')",
+              'toMatch(/^0024_/u)',
+              'through 0024',
+              'schema24',
+              'schema 24',
+          ]
+          total = 0
+          for path in targets:
+              text = path.read_text()
+              before = text
+              counts = []
+              for old, new in replacements:
+                  count = text.count(old)
+                  if count:
+                      text = text.replace(old, new)
+                      counts.append((old, count))
+              if text == before:
+                  raise SystemExit(f'no schema guard replacement in {path}')
+              remaining = [token for token in residual_tokens if token in text]
+              if remaining:
+                  raise SystemExit(f'residual schema 24 tokens in {path}: {remaining}')
+              path.write_text(text)
+              total += sum(count for _, count in counts)
+              print(path, counts)
+          if total < len(targets):
+              raise SystemExit(f'expected at least {len(targets)} replacements, got {total}')
+          PY
+          rm .github/workflows/wave12-one-shot-schema-guards.yml
+          git diff --check
+          git diff --exit-code --quiet && { echo 'No changes'; exit 1; } || true
+      - name: Commit only to Wave 12 feature branch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src .github/workflows/wave12-one-shot-schema-guards.yml
+          git commit -m 'test: advance remaining schema guards to 26'
+          git push origin HEAD:feature/wave12-profit-financial-reporting
