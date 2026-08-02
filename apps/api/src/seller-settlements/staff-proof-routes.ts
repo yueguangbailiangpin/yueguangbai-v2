@@ -30,15 +30,21 @@ export function registerStaffSellerSettlementProofRoutes(app: Hono<any>): void {
 async function createProofReadIntent(context: Context<any>): Promise<Response> {
   const actor = authorization(context);
   const paymentId = cleanSettlementIdentifier(context.req.param('paymentId'));
-  const body = await readBoundedJson(context.req.raw, BODY_LIMIT);
-  if (!body || typeof body !== 'object' || Array.isArray(body)
-    || Object.keys(body).length !== 1
+  const rawBody = await readBoundedJson(context.req.raw, BODY_LIMIT);
+  if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+    throw new SellerSettlementError('VALIDATION_ERROR', 400);
+  }
+  const body = rawBody as Record<string, unknown>;
+  if (Object.keys(body).length !== 1
     || !Object.hasOwn(body, 'expected_file_version')
     || !Number.isSafeInteger(body['expected_file_version'])
     || Number(body['expected_file_version']) < 1) {
     throw new SellerSettlementError('VALIDATION_ERROR', 400);
   }
   const proof = await requirePaymentProof(context.env.DB, paymentId);
+  // Defense in depth for the dedicated route. The common file authorization
+  // layer repeats the current Seller Organization scope check when the read
+  // intent is created and again when it is consumed.
   await authorizeSellerSettlement(
     context.env.DB,
     actor,
