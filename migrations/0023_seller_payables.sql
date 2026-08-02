@@ -174,12 +174,13 @@ BEGIN
   SELECT RAISE(ABORT, 'seller_payable_reconciliation_conflicts_are_immutable');
 END;
 
--- Record historical conflicts instead of guessing.
+-- Record historical conflicts instead of guessing. Every internal primary key
+-- is a fixed-length opaque value; business uniqueness provides idempotency.
 INSERT OR IGNORE INTO seller_payable_reconciliation_conflicts (
   id, entity_type, entity_id, reason_code, detected_at
 )
 SELECT
-  'payable-conflict:formal-order:snapshot-missing:' || formal_order.id,
+  lower(hex(randomblob(16))),
   'FORMAL_ORDER', formal_order.id, 'FINANCIAL_SNAPSHOT_MISSING',
   CAST(unixepoch('now') AS INTEGER) * 1000
 FROM formal_orders formal_order
@@ -192,7 +193,7 @@ INSERT OR IGNORE INTO seller_payable_reconciliation_conflicts (
   id, entity_type, entity_id, reason_code, detected_at
 )
 SELECT
-  'payable-conflict:formal-order:snapshot-multiple:' || formal_order.id,
+  lower(hex(randomblob(16))),
   'FORMAL_ORDER', formal_order.id, 'FINANCIAL_SNAPSHOT_MULTIPLE',
   CAST(unixepoch('now') AS INTEGER) * 1000
 FROM formal_orders formal_order
@@ -205,7 +206,7 @@ INSERT OR IGNORE INTO seller_payable_reconciliation_conflicts (
   id, entity_type, entity_id, reason_code, detected_at
 )
 SELECT
-  'payable-conflict:review:approval:' || review_case.id,
+  lower(hex(randomblob(16))),
   'REVIEW_CASE', review_case.id, 'REVIEW_APPROVAL_SOURCE_CONFLICT',
   CAST(unixepoch('now') AS INTEGER) * 1000
 FROM review_cases review_case
@@ -220,7 +221,7 @@ INSERT OR IGNORE INTO seller_payable_reconciliation_conflicts (
   id, entity_type, entity_id, reason_code, detected_at
 )
 SELECT
-  'payable-conflict:review:organization:' || review_case.id,
+  lower(hex(randomblob(16))),
   'REVIEW_CASE', review_case.id, 'SELLER_ORGANIZATION_MISMATCH',
   CAST(unixepoch('now') AS INTEGER) * 1000
 FROM review_cases review_case
@@ -235,7 +236,7 @@ INSERT OR IGNORE INTO seller_payables (
   due_at, created_at
 )
 SELECT
-  'seller-payable:principal:' || formal_order.id,
+  lower(hex(randomblob(16))),
   formal_order.seller_organization_id,
   formal_order.id,
   'SELLER_PRINCIPAL',
@@ -259,7 +260,7 @@ INSERT OR IGNORE INTO seller_payable_events (
   amount_cny_fen, metadata_json, idempotency_key, created_at
 )
 SELECT
-  'seller-payable-event:principal:' || payable.formal_order_id,
+  lower(hex(randomblob(16))),
   payable.id,
   'PAYABLE_RECONCILED',
   'SYSTEM',
@@ -279,7 +280,7 @@ INSERT OR IGNORE INTO seller_payables (
   due_at, created_at
 )
 SELECT
-  'seller-payable:service-fee:' || review_case.id,
+  lower(hex(randomblob(16))),
   review_case.seller_organization_id,
   review_case.formal_order_id,
   'SELLER_SERVICE_FEE',
@@ -315,7 +316,7 @@ INSERT OR IGNORE INTO seller_payable_events (
   amount_cny_fen, metadata_json, idempotency_key, created_at
 )
 SELECT
-  'seller-payable-event:service-fee:' || payable.source_id,
+  lower(hex(randomblob(16))),
   payable.id,
   'PAYABLE_RECONCILED',
   'SYSTEM',
