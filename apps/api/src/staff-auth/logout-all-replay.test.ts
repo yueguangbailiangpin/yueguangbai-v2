@@ -5,6 +5,7 @@ import {
   SqliteDatabase,
 } from '@ygb/testkit';
 import app from '../index';
+import { readCommittedLogoutAllReplay } from './logout-all-replay';
 import { FakeStaffAuthProvider } from './provider';
 
 let database: SqliteDatabase | null = null;
@@ -183,9 +184,16 @@ describe('Staff logout-all replay safety', () => {
       env,
     );
     expect(oldSessionRoute.status).toBe(401);
+
+    const token = cookie.slice(cookie.indexOf('=') + 1);
+    expect(await readCommittedLogoutAllReplay(database, {
+      sessionToken: token,
+      idempotencyKey: key,
+      now: Date.now() + 13 * 60 * 60 * 1000,
+    })).toBeNull();
   });
 
-  it('rejects a different key and a non-LOGOUT_ALL revocation', async () => {
+  it('rejects different keys, forged Cookies and non-LOGOUT_ALL revocations', async () => {
     database = createMigratedTestDatabase();
     seedOwner(database);
     const env = bindings(database);
@@ -196,12 +204,19 @@ describe('Staff logout-all replay safety', () => {
       env,
     );
     expect(first.status).toBe(200);
-    const differentKey = await app.request(
+    expect((await app.request(
       logoutAllRequest(cookie, 'logout-all-replay-key-other'),
       undefined,
       env,
-    );
-    expect(differentKey.status).toBe(401);
+    )).status).toBe(401);
+    expect((await app.request(
+      logoutAllRequest(
+        `${STAFF_SESSION_COOKIE_NAME}=forged-session-token-value-0000000000000`,
+        'logout-all-forged-cookie-key',
+      ),
+      undefined,
+      env,
+    )).status).toBe(401);
 
     const secondCookie = await login(database);
     const normalLogout = await app.request(
@@ -213,12 +228,11 @@ describe('Staff logout-all replay safety', () => {
       env,
     );
     expect(normalLogout.status).toBe(200);
-    const wrongReason = await app.request(
+    expect((await app.request(
       logoutAllRequest(secondCookie, 'logout-all-after-normal-logout'),
       undefined,
       env,
-    );
-    expect(wrongReason.status).toBe(401);
+    )).status).toBe(401);
     expect((await counts(database)).sessionVersion).toBe(2);
   });
 

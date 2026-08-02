@@ -106,7 +106,7 @@ implements FileAuthorizationService {
     resource: FileAuthorizationResource,
   ): Promise<void> {
     if (!resource.entityType || !resource.entityId || !this.staffDataScope) {
-      deny();
+      concealNotFound();
     }
     if (this.staffDataScope.type === 'GLOBAL') return;
     const authority = await resolveEntityAuthority(
@@ -123,7 +123,7 @@ implements FileAuthorizationService {
         this.staffDataScope,
         authority.sellerOrganizationId,
       )) return;
-    deny();
+    concealNotFound();
   }
 }
 
@@ -244,4 +244,7 @@ function authority(row: AuthorityRow | null): {
 }
 function deny(): never {
   throw new FileStorageError('FORBIDDEN', 403);
+}
+function concealNotFound(): never {
+  throw new FileStorageError('NOT_FOUND', 404);
 }

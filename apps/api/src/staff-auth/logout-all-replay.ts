@@ -26,15 +26,19 @@ export async function readCommittedLogoutAllReplay(
   input: {
     sessionToken: string;
     idempotencyKey: string;
+    now?: number;
   },
 ): Promise<LogoutAllReplayResult | null> {
+  const now = input.now ?? Date.now();
+  if (!Number.isSafeInteger(now) || now < 0) return null;
   const session = await findStaffSessionByToken(
     database,
     input.sessionToken,
   );
   if (!session
     || session.status !== 'REVOKED'
-    || session.revoked_reason !== 'LOGOUT_ALL') {
+    || session.revoked_reason !== 'LOGOUT_ALL'
+    || session.expires_at <= now) {
     return null;
   }
 
