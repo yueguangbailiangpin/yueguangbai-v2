@@ -97,7 +97,11 @@ export async function recordSellerPayment(
 
   try {
     const file = await requireSettlementProofFile(database, fileObjectId);
-    validateProof(file, expectedFileVersion, command.actor.staffId);
+    validateSellerSettlementProofFile(
+      file,
+      expectedFileVersion,
+      command.actor.staffId,
+    );
     await assertSettlementProofUnused(database, fileObjectId);
     const paymentId = crypto.randomUUID();
     const proofId = crypto.randomUUID();
@@ -286,7 +290,7 @@ export async function recordSellerPayment(
   }
 }
 
-function validateProof(
+export function validateSellerSettlementProofFile(
   file: Awaited<ReturnType<typeof requireSettlementProofFile>>,
   expectedVersion: number,
   staffId: string,
