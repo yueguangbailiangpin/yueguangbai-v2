@@ -162,6 +162,79 @@ describe('Wave 12 bounded financial reads', () => {
     expect(seen).toHaveLength(525);
   });
 
+  it('does not attribute an entire order to its last cash date', async () => {
+    const position = rawPosition(1, {
+      confirmed_business_date: '2026-07-01',
+      review_approved_business_date: '2026-07-02',
+      last_cash_business_date: '2026-07-10',
+      projected_gross_profit_cny_fen: '30',
+      completed_gross_profit_cny_fen: '20',
+      attributed_cash_net_cny_fen: '20',
+    });
+    const movements: RawCashMovement[] = [
+      {
+        occurred_at: 3,
+        movement_id: 'seller-payment-1',
+        movement_type: 'SELLER_PAYMENT',
+        amount_cny_fen: '70',
+        cash_business_date: '2026-07-03',
+        seller_organization_id: 'seller-0',
+      },
+      {
+        occurred_at: 5,
+        movement_id: 'seller-payment-2',
+        movement_type: 'SELLER_PAYMENT',
+        amount_cny_fen: '50',
+        cash_business_date: '2026-07-05',
+        seller_organization_id: 'seller-0',
+      },
+      {
+        occurred_at: 10,
+        movement_id: 'buyer-refund-1',
+        movement_type: 'BUYER_REFUND_PAYMENT',
+        amount_cny_fen: '100',
+        cash_business_date: '2026-07-10',
+        seller_organization_id: 'seller-0',
+      },
+    ];
+    const fake = financeDatabase({ positions: [position], cashMovements: movements });
+
+    const confirmed = await readFinanceSummary(
+      fake.database,
+      orderFiltersForDay('CONFIRMED', '2026-07-01'),
+    );
+    expect(confirmed.order_count).toBe(1);
+    expect(confirmed.completed_gross_profit_cny_fen).toBe('20');
+
+    const lastCashDayAsOrderBasis = await readFinanceSummary(
+      fake.database,
+      orderFiltersForDay('CONFIRMED', '2026-07-10'),
+    );
+    expect(lastCashDayAsOrderBasis.order_count).toBe(0);
+
+    const approved = await readFinanceSummary(
+      fake.database,
+      orderFiltersForDay('APPROVED', '2026-07-02'),
+    );
+    expect(approved.order_count).toBe(1);
+
+    const firstPayment = await readFinanceCashFlow(
+      fake.database,
+      cashFilters('2026-07-03', '2026-07-03'),
+    );
+    expect(firstPayment.net_cash_flow_cny_fen).toBe('70');
+    const secondPayment = await readFinanceCashFlow(
+      fake.database,
+      cashFilters('2026-07-05', '2026-07-05'),
+    );
+    expect(secondPayment.net_cash_flow_cny_fen).toBe('50');
+    const refund = await readFinanceCashFlow(
+      fake.database,
+      cashFilters('2026-07-10', '2026-07-10'),
+    );
+    expect(refund.net_cash_flow_cny_fen).toBe('-100');
+  });
+
   it('aggregates cash movements across pages by actual movement date', async () => {
     const huge = '9007199254740993';
     const movements = Array.from({ length: 1_501 }, (_, index) => ({
@@ -252,7 +325,7 @@ function financeDatabase(input: {
                   || (row.confirmed_at === cursorAt
                     && row.formal_order_id < cursorId));
             }
-            return { results: rows.slice(0, limit) as T[] };
+            return { results: rows.slice(0, limit) as unknown as T[] };
           }
           if (sql.includes('internal_finance_cash_movements')) {
             state.cashPageReads += 1;
@@ -276,7 +349,7 @@ function financeDatabase(input: {
                 || (row.occurred_at === cursorAt
                   && row.movement_id > cursorId));
             }
-            return { results: rows.slice(0, limit) as T[] };
+            return { results: rows.slice(0, limit) as unknown as T[] };
           }
           if (sql.includes('seller_organization_settlement_balances')) {
             return { results: [] as T[] };
@@ -366,6 +439,17 @@ function orderFilters(
     amazon_order_number: null,
     review_type: null,
     finance_status: null,
+  };
+}
+
+function orderFiltersForDay(
+  dateBasis: 'CONFIRMED' | 'APPROVED',
+  date: string,
+): InternalFinanceFilters {
+  return {
+    ...orderFilters(dateBasis),
+    from_date: date,
+    to_date: date,
   };
 }
 
