@@ -302,7 +302,7 @@ describe('Phase 3D order evidence workflow', () => {
       marketplace: 'JP',
       amazonOrderNumber: '555-1234567-7654321',
       finalPaidJpy: 4980,
-      evidenceFileObjectIds: ['file-object-8', 'file-object-9'],
+      evidenceFileObjectIds: ['file-object-9'],
       buyerNote: '已补充清晰截图',
     }, {
       actor: buyerActor('buyer-1'),
@@ -314,7 +314,7 @@ describe('Phase 3D order evidence workflow', () => {
       version: 3,
       current_evidence_version_no: 2,
       final_paid_jpy: 4980,
-      evidence_file_count: 2,
+      evidence_file_count: 1,
     });
 
     const verified = await verifyOrderEvidence(database, {
@@ -371,7 +371,7 @@ describe('Phase 3D order evidence workflow', () => {
     });
   });
 
-  it('records duplicate signals without rejecting or merging submissions', async () => {
+  it('rejects an order number already claimed by another submission', async () => {
     database = createMigratedTestDatabase();
     seedOrderEvidenceFixture(database);
     seedVerifiedEvidenceFile(database, {
@@ -395,7 +395,7 @@ describe('Phase 3D order evidence workflow', () => {
       idempotencyKey: 'order-evidence:duplicate:first',
       now: 7000,
     });
-    const second = await submitOrderEvidence(database, {
+    await expect(submitOrderEvidence(database, {
       reservationId: 'reservation-2',
       expectedVersion: 0,
       marketplace: 'JP',
@@ -406,29 +406,22 @@ describe('Phase 3D order evidence workflow', () => {
       actor: buyerActor('buyer-2'),
       idempotencyKey: 'order-evidence:duplicate:second',
       now: 7100,
+    })).rejects.toMatchObject({
+      code: 'ORDER_NUMBER_ALREADY_CLAIMED',
+      status: 409,
     });
 
-    expect(second.submission_id).not.toBe(first.submission_id);
-    const signals = await database.prepare(`
-      SELECT source_version_id, conflicting_version_id
-      FROM order_evidence_duplicate_signals
-      ORDER BY source_version_id, conflicting_version_id
-    `).all();
-    expect(signals.results).toHaveLength(2);
-
-    const staffProjection = await readStaffOrderEvidence(
-      database,
-      { submissionId: second.submission_id },
-      preSalesActor(),
-    );
-    expect(staffProjection.duplicate_signal_count).toBe(1);
-    expect(staffProjection.final_paid_jpy).toBe(2000);
-
-    await expect(database.prepare(`
-      DELETE FROM order_evidence_duplicate_signals
-    `).run()).rejects.toThrow(
-      'order_evidence_duplicate_signals_are_immutable',
-    );
+    const activeClaim = await database.prepare(`
+      SELECT evidence_submission_id, status
+      FROM formal_order_number_claims
+      WHERE marketplace_code='JP'
+        AND amazon_order_number_normalized='666-1234567-1234567'
+        AND status IN ('PROVISIONAL','FINAL')
+    `).first<{ evidence_submission_id: string; status: string }>();
+    expect(activeClaim).toEqual({
+      evidence_submission_id: first.submission_id,
+      status: 'PROVISIONAL',
+    });
   });
 
   it('allows withdrawal only before verification and enforces permissions', async () => {
@@ -736,7 +729,8 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       created_by_staff_id, created_at
     ,
           ordering_guide_expected_amount_jpy,
-          color_spec_mode) VALUES
+          color_spec_mode,
+          default_buyer_self_pay_bps) VALUES
       (
         'product-evidence-1-v1', 'product-evidence-1', 1,
         '证据产品一', '["证据一"]',
@@ -744,7 +738,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
         '公开说明一', '内部说明一',
         'staff-pre-sales', 1000
       ,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 1000),
       (
         'product-evidence-2-v1', 'product-evidence-2', 1,
         '证据产品二', '["证据二"]',
@@ -752,7 +746,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
         '公开说明二', '内部说明二',
         'staff-pre-sales', 1000
       ,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 1000),
       (
         'product-evidence-3-v1', 'product-evidence-3', 1,
         '证据产品三', '["证据三"]',
@@ -760,7 +754,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
         '公开说明三', '内部说明三',
         'staff-pre-sales', 1000
       ,
-          1980, 'MAIN_IMAGE_VARIANT');
+          1980, 'MAIN_IMAGE_VARIANT', 1000);
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,
@@ -775,7 +769,10 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       reviewed_at, published_at,
       withdrawn_at, closed_at,
       held_reservation_count,
-      approved_reservation_count
+      approved_reservation_count,
+      buyer_self_pay_bps_snapshot,
+      buyer_self_pay_source,
+      buyer_self_pay_override_reason
     ) VALUES
       (
         'demand-evidence-1', 'seller-org-evidence',
@@ -786,7 +783,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
         'PUBLISHED', NULL, NULL,
         'staff-pre-sales', NULL,
         2, 1000, 3000, 3000, 3000, NULL, NULL,
-        0, 1
+        0, 1, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
         'demand-evidence-2', 'seller-org-evidence',
@@ -797,7 +794,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
         'PUBLISHED', NULL, NULL,
         'staff-pre-sales', NULL,
         2, 1000, 3000, 3000, 3000, NULL, NULL,
-        0, 1
+        0, 1, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
         'demand-evidence-3', 'seller-org-evidence',
@@ -808,7 +805,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
         'PUBLISHED', NULL, NULL,
         'staff-pre-sales', NULL,
         2, 1000, 3000, 3000, 3000, NULL, NULL,
-        1, 0
+        1, 0, 1000, 'PRODUCT_DEFAULT', NULL
       );
 
     INSERT INTO product_reservations (
@@ -820,6 +817,12 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       version, submitted_at, updated_at,
       decided_by_staff_id, decision_reason, decided_at,
       cancelled_at, expired_at, reopened_count
+      , buyer_self_pay_bps_snapshot,
+      reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot,
+      estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at,
+      buyer_self_pay_accepted_demand_version
     ) VALUES
       (
         'reservation-1', 'demand-evidence-1', 'buyer-1',
@@ -828,7 +831,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
         'APPROVED', '{}', 5000, 20000,
         2, 4000, 6000,
         'staff-pre-sales', NULL, 6000,
-        NULL, NULL, 0
+        NULL, NULL, 0, 1000, 1980, 198, 1782, 4000, 2
       ),
       (
         'reservation-2', 'demand-evidence-2', 'buyer-2',
@@ -837,7 +840,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
         'APPROVED', '{}', 5000, 20000,
         2, 4000, 6000,
         'staff-pre-sales', NULL, 6000,
-        NULL, NULL, 0
+        NULL, NULL, 0, 1000, 1980, 198, 1782, 4000, 2
       ),
       (
         'reservation-pending', 'demand-evidence-3', 'buyer-1',
@@ -846,9 +849,140 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
         'PENDING_REVIEW', '{}', 9000, 20000,
         1, 4000, 4000,
         NULL, NULL, NULL,
-        NULL, NULL, 0
+        NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL
       );
   `);
+  seedActiveInstruction(database, {
+    suffix: '1',
+    reservationId: 'reservation-1',
+    buyerCustomerId: 'buyer-1',
+    productId: 'product-evidence-1',
+    productVersionId: 'product-evidence-1-v1',
+  });
+  seedActiveInstruction(database, {
+    suffix: '2',
+    reservationId: 'reservation-2',
+    buyerCustomerId: 'buyer-2',
+    productId: 'product-evidence-2',
+    productVersionId: 'product-evidence-2-v1',
+  });
+}
+
+function seedActiveInstruction(
+  database: SqliteDatabase,
+  input: {
+    suffix: string;
+    reservationId: string;
+    buyerCustomerId: string;
+    productId: string;
+    productVersionId: string;
+  },
+): void {
+  const instructionId = `instruction-${input.suffix}`;
+  const versionId = `instruction-version-${input.suffix}`;
+  const intentId = `instruction-main-intent-${input.suffix}`;
+  const objectId = `instruction-main-object-${input.suffix}`;
+  const linkId = `instruction-main-link-${input.suffix}`;
+  database.prepare(`
+    INSERT INTO order_instructions (
+      id, reservation_id, buyer_customer_id, marketplace_code,
+      status, current_version_no, version, published_at,
+      initial_deadline_at, resubmission_deadline_at,
+      expired_at, cancelled_at, completed_at, created_at, updated_at
+    ) VALUES (?, ?, ?, 'JP', 'UNPUBLISHED', 0, 1, NULL,
+      NULL, NULL, NULL, NULL, NULL, 6000, 6000)
+  `).bind(instructionId, input.reservationId, input.buyerCustomerId).run();
+  database.prepare(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility, status,
+      requested_file_count, manifest_hash, version, expires_at,
+      failure_code, created_at, updated_at, completed_at
+    ) VALUES (?, 'STAFF', 'staff-pre-sales', 'PRODUCT_IMAGE',
+      'BUYER_VISIBLE', 'ISSUED', 1, ?, 1, 30000000,
+      NULL, 5000, 5000, NULL)
+  `).bind(intentId, input.suffix.padStart(64, '0')).run();
+  database.prepare(`
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size,
+      status, upload_token_hash, upload_expires_at, uploaded_byte_size,
+      detected_mime, uploaded_sha256, failure_code, delete_attempt_count,
+      next_delete_at, version, created_at, updated_at, uploaded_at,
+      verified_at, deleted_at
+    ) VALUES (?, ?, 1, 'PRODUCT_IMAGE', 'BUYER_VISIBLE', ?,
+      'main.png', 'png', 'image/png', 8, 'RESERVED', ?, 30000000,
+      NULL, NULL, NULL, NULL, 0, NULL, 1, 5000, 5000,
+      NULL, NULL, NULL)
+  `).bind(
+    objectId,
+    intentId,
+    `files/v1/2026/08/instruction-main-${input.suffix.padEnd(30, 'x')}`,
+    'a'.repeat(64),
+  ).run();
+  database.prepare(`
+    UPDATE file_upload_intents
+    SET status='VERIFIED', version=2, updated_at=5001, completed_at=5001
+    WHERE id=?
+  `).bind(intentId).run();
+  database.prepare(`
+    UPDATE file_objects
+    SET status='VERIFIED', version=2, uploaded_byte_size=8,
+        detected_mime='image/png', uploaded_sha256=?,
+        updated_at=5001, uploaded_at=5001, verified_at=5001
+    WHERE id=?
+  `).bind('b'.repeat(64), objectId).run();
+  database.prepare(`
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (?, ?, 'ORDER_INSTRUCTION_VERSION', ?, 'PRODUCT_IMAGE',
+      'BUYER_VISIBLE', 'STAFF', 'staff-pre-sales', 6000,
+      'EXPLICIT_AUDIENCES', NULL, NULL)
+  `).bind(linkId, objectId, versionId).run();
+  database.prepare(`
+    INSERT INTO file_entity_audience_grants (
+      id, file_entity_link_id, subject_type, buyer_customer_id,
+      seller_organization_id, staff_permission_code, staff_scope_type,
+      staff_team_id, granted_by_actor_type, granted_by_actor_id,
+      created_at, expires_at, revoked_at
+    ) VALUES (?, ?, 'BUYER', ?, NULL, NULL, NULL, NULL,
+      'STAFF', 'staff-pre-sales', 6000, NULL, NULL)
+  `).bind(
+    `instruction-main-grant-${input.suffix}`,
+    linkId,
+    input.buyerCustomerId,
+  ).run();
+  database.prepare(`
+    INSERT INTO order_instruction_versions (
+      id, instruction_id, version_no, reservation_id,
+      product_id, product_version_id, product_version_no,
+      main_image_file_entity_link_id, store_display_name_snapshot,
+      demand_buyer_visible_notes_snapshot, staff_public_note,
+      reference_order_amount_jpy, buyer_self_pay_bps,
+      estimated_self_pay_jpy, estimated_refundable_principal_jpy,
+      color_spec_mode, content_hash, generator_version,
+      published_by_staff_id, published_at, initial_deadline_at, created_at
+    ) VALUES (?, ?, 1, ?, ?, ?, 1, ?, '证据测试店铺',
+      '公开说明', NULL, 1980, 1000, 198, 1782,
+      'MAIN_IMAGE_VARIANT', ?, 'fixture-v1',
+      'staff-pre-sales', 6000, 21606000, 6000)
+  `).bind(
+    versionId,
+    instructionId,
+    input.reservationId,
+    input.productId,
+    input.productVersionId,
+    linkId,
+    'c'.repeat(64),
+  ).run();
+  database.prepare(`
+    UPDATE order_instructions
+    SET status='ACTIVE', current_version_no=1, version=2,
+        published_at=6000, initial_deadline_at=21606000,
+        updated_at=6001
+    WHERE id=? AND version=1
+  `).bind(instructionId).run();
 }
 
 function seedVerifiedEvidenceFile(

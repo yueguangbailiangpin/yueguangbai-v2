@@ -13,6 +13,9 @@ import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
+import { createApp } from '../app';
+import { resolveAssignmentStaffAuthorization } from '../staff-assignment';
+import { registerStaffCatalogWorkflowRoutes } from '../staff-catalog-routes';
 import {
   closeDemandBatch,
 } from './close-demand-batch';
@@ -42,6 +45,72 @@ afterEach(() => {
 });
 
 describe('demand batch workflow', () => {
+  it('runs the staff Demand API and persists a reasoned 10000 BPS override', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const now = Date.now();
+    const submitted = await submitDemandBatch(database, {
+      ...demandInput('product-1'),
+      openAt: now - 1_000,
+      reservationDeadline: now + 60_000,
+      orderDeadline: now + 120_000,
+    }, {
+      actor: ownerActor(),
+      idempotencyKey: 'staff-demand-api:submit',
+      now: now - 2_000,
+    });
+    const authorization = await resolveAssignmentStaffAuthorization(
+      database,
+      'staff-demand-reviewer',
+    );
+    expect(authorization?.permissions.has('DEMAND_PUBLISH')).toBe(true);
+
+    const app = createApp();
+    app.use('/api/staff/*', async (context, next) => {
+      (context as any).set('staffAuthorization', authorization);
+      await next();
+    });
+    registerStaffCatalogWorkflowRoutes(app);
+    const response = await app.request(
+      `https://api.test/api/staff/demand-batches/${submitted.demand_batch_id}/review`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'staff-demand-api:publish',
+        },
+        body: JSON.stringify({
+          expected_version: 1,
+          decision: 'PUBLISH',
+          buyer_self_pay_bps: 10000,
+          buyer_self_pay_override_reason: '全额自费专项活动',
+        }),
+      },
+      { DB: database } as any,
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json() as any;
+    expect(payload.data.demand_review).toMatchObject({
+      demand_batch_id: submitted.demand_batch_id,
+      status: 'PUBLISHED',
+      version: 2,
+    });
+    const frozen = await database.prepare(`
+      SELECT buyer_self_pay_bps_snapshot, buyer_self_pay_source,
+             buyer_self_pay_override_reason
+      FROM demand_batches WHERE id=?
+    `).bind(submitted.demand_batch_id).first<{
+      buyer_self_pay_bps_snapshot: number;
+      buyer_self_pay_source: string;
+      buyer_self_pay_override_reason: string;
+    }>();
+    expect(frozen).toEqual({
+      buyer_self_pay_bps_snapshot: 10000,
+      buyer_self_pay_source: 'STAFF_OVERRIDE',
+      buyer_self_pay_override_reason: '全额自费专项活动',
+    });
+  });
+
   it('allows OWNER and scoped OPERATIONS to submit approved-product demand batches', async () => {
     database = createMigratedTestDatabase();
     seedDemandFixture(database);
@@ -217,14 +286,13 @@ describe('demand batch workflow', () => {
     expect(publicRows).toHaveLength(1);
     expect(publicRows[0]).toEqual({
       demand_batch_id: submitted.demand_batch_id,
-      product_id: 'product-1',
-      product_version_no: 1,
+      demand_version: 2,
       marketplace_code: 'JP',
-      asin: 'B0DEMAND01',
       product_name: '产品一旧版',
-      search_keywords: ['旧版关键词'],
-      product_url:
-        'https://www.amazon.co.jp/product-old',
+      reference_order_amount_jpy: '1980',
+      buyer_self_pay_bps: 0,
+      estimated_buyer_self_pay_jpy: '0',
+      estimated_refundable_principal_jpy: '1980',
       buyer_visible_notes: '公开说明',
       store_display_name: '需求店铺一',
       task_type: 'IMAGE',
@@ -240,6 +308,9 @@ describe('demand batch workflow', () => {
     expect(serialized).not.toContain('新版内部说明');
     expect(serialized).not.toContain('submitted_by_member_id');
     expect(serialized).not.toContain('review_reason');
+    expect(serialized).not.toContain('B0DEMAND01');
+    expect(serialized).not.toContain('product-old');
+    expect(serialized).not.toContain('旧版关键词');
   });
 
   it('rejects or withdraws without exposing the batch publicly', async () => {
@@ -706,6 +777,89 @@ function seedDemandFixture(
       ,
           1980, 'MAIN_IMAGE_VARIANT');
   `);
+  seedProductMainImage(database, 'product-version-1-v1', 'main-image-1');
+  seedProductMainImage(database, 'product-version-2-v1', 'main-image-2');
+}
+
+function seedProductMainImage(
+  database: SqliteDatabase,
+  productVersionId: string,
+  suffix: string,
+): void {
+  const intentId = `intent-${suffix}`;
+  const fileObjectId = `file-${suffix}`;
+  const linkId = `link-${suffix}`;
+  database.prepare(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility,
+      status, requested_file_count, manifest_hash, version,
+      expires_at, failure_code, created_at, updated_at, completed_at
+    ) VALUES (?, 'STAFF', 'staff-demand-reviewer', 'PRODUCT_IMAGE',
+      'SELLER_VISIBLE', 'ISSUED', 1, ?, 1, 30000, NULL,
+      1000, 1000, NULL)
+  `).bind(intentId, 'a'.repeat(64)).run();
+  database.prepare(`
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size,
+      status, upload_token_hash, upload_expires_at, uploaded_byte_size,
+      detected_mime, uploaded_sha256, failure_code, delete_attempt_count,
+      next_delete_at, version, created_at, updated_at, uploaded_at,
+      verified_at, deleted_at
+    ) VALUES (?, ?, 1, 'PRODUCT_IMAGE', 'SELLER_VISIBLE', ?,
+      'main.webp', 'webp', 'image/webp', 100, 'RESERVED', ?, 30000,
+      NULL, NULL, NULL, NULL, 0, NULL, 1, 1000, 1000,
+      NULL, NULL, NULL)
+  `).bind(
+    fileObjectId,
+    intentId,
+    `files/v1/2026/08/${suffix.padEnd(40, 'x')}`,
+    'b'.repeat(64),
+  ).run();
+  database.prepare(`
+    UPDATE file_upload_intents
+    SET status='VERIFIED', completed_at=1001, updated_at=1001
+    WHERE id=?
+  `).bind(intentId).run();
+  database.prepare(`
+    UPDATE file_objects
+    SET status='VERIFIED', uploaded_byte_size=100,
+        detected_mime='image/webp', uploaded_sha256=?,
+        uploaded_at=1001, verified_at=1001, updated_at=1001
+    WHERE id=?
+  `).bind('c'.repeat(64), fileObjectId).run();
+  database.prepare(`
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (?, ?, 'PRODUCT_VERSION', ?, 'PRODUCT_IMAGE',
+      'SELLER_VISIBLE', 'STAFF', 'staff-demand-reviewer', 1002,
+      'EXPLICIT_AUDIENCES', NULL, NULL)
+  `).bind(linkId, fileObjectId, productVersionId).run();
+  database.prepare(`
+    INSERT INTO file_entity_audience_grants (
+      id, file_entity_link_id, subject_type, buyer_customer_id,
+      seller_organization_id, staff_permission_code, staff_scope_type,
+      staff_team_id, granted_by_actor_type, granted_by_actor_id,
+      created_at, expires_at, revoked_at
+    ) VALUES
+      (?, ?, 'SELLER_ORGANIZATION', NULL, 'seller-org-1', NULL, NULL,
+       NULL, 'STAFF', 'staff-demand-reviewer', 1002, NULL, NULL),
+      (?, ?, 'STAFF_INTERNAL', NULL, NULL, 'PRODUCT_VIEW', 'GLOBAL',
+       NULL, 'STAFF', 'staff-demand-reviewer', 1002, NULL, NULL)
+  `).bind(
+    `seller-grant-${suffix}`,
+    linkId,
+    `staff-grant-${suffix}`,
+    linkId,
+  ).run();
+  database.prepare(`
+    INSERT INTO product_version_main_images (
+      product_version_id, file_entity_link_id,
+      created_by_staff_id, created_at
+    ) VALUES (?, ?, 'staff-demand-reviewer', 1002)
+  `).bind(productVersionId, linkId).run();
 }
 
 function demandInput(

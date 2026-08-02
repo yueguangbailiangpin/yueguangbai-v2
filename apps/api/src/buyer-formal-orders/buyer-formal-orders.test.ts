@@ -28,7 +28,6 @@ const BUYER: BuyerPortalContext = {
 
 const NO_FILTERS: BuyerFormalOrderFilters = {
   marketplace: null,
-  asin: null,
   productName: null,
   reviewType: null,
   confirmedBusinessDate: null,
@@ -77,7 +76,8 @@ describe('Phase 4B3 buyer formal order read model', () => {
       'internal_review_note',
       'idempotency',
       'profit',
-      'refund',
+      'refund_status',
+      'refund_work_item',
       'settlement',
     ]) {
       expect(serialized).not.toContain(forbidden);
@@ -88,7 +88,6 @@ describe('Phase 4B3 buyer formal order read model', () => {
     const database = fakeDatabase({ all: [row('formal-1', 1000)] });
     const filters: BuyerFormalOrderFilters = {
       marketplace: 'JP',
-      asin: 'B0FORM0001',
       productName: '产品一',
       reviewType: 'IMAGE',
       confirmedBusinessDate: '2026-08-01',
@@ -115,7 +114,6 @@ describe('Phase 4B3 buyer formal order read model', () => {
     });
     const call = database.calls[0]!;
     expect(call.sql).toContain('formal_order.marketplace_code=?');
-    expect(call.sql).toContain('formal_order.asin_normalized=?');
     expect(call.sql).toContain('formal_order.product_name_snapshot LIKE ?');
     expect(call.sql).toContain('formal_order.review_type=?');
     expect(call.sql).toContain('formal_order.confirmed_business_date=?');
@@ -128,7 +126,6 @@ describe('Phase 4B3 buyer formal order read model', () => {
     expect(call.bindings).toEqual([
       'buyer-1',
       'JP',
-      'B0FORM0001',
       '%产品一%',
       'IMAGE',
       '2026-08-01',
@@ -174,7 +171,7 @@ describe('Phase 4B3 buyer formal order read model', () => {
     expect(database.calls).toHaveLength(0);
   });
 
-  it('keeps routes read-only and leaves the schema compatible through 0020', () => {
+  it('keeps routes read-only and leaves the schema compatible through 0021', () => {
     const root = path.resolve(import.meta.dirname, '../../../..');
     const routeSource = readFileSync(
       path.join(
@@ -192,9 +189,9 @@ describe('Phase 4B3 buyer formal order read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(20);
+    expect(migrations).toHaveLength(21);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0020_staff_assignment_rules.sql');
+    expect(migrations.at(-1)).toBe('0021_order_instructions.sql');
   });
 });
 
@@ -212,6 +209,9 @@ function row(
     product_name_snapshot: '正式订单产品一',
     review_type: 'IMAGE' as const,
     final_paid_jpy: 8880,
+    buyer_self_pay_bps: 1000,
+    buyer_self_pay_jpy: 888,
+    buyer_refundable_principal_jpy: 7992,
     buyer_expected_principal_cny_fen: 48840,
     buyer_rate_version_no: 1,
     buyer_rate_business_date: '2026-08-01',

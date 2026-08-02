@@ -14,6 +14,10 @@ import {
 } from '@ygb/testkit';
 import { confirmFormalOrder } from './confirm-formal-order';
 import type { FormalOrderStaffActor } from './formal-order-shared';
+import {
+  bindPhase3GEvidenceFixture,
+  seedPhase3GInstructionFixture,
+} from '../../test-support/phase3g-test-fixtures';
 
 const NOW = Date.UTC(2026, 7, 1, 0, 0, 0);
 const BUSINESS_DATE = '2026-08-01';
@@ -28,7 +32,7 @@ afterEach(() => {
 describe('Phase 3F formal order confirmation', () => {
   it('atomically confirms a VERIFIED order and freezes all financial facts', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
 
     const result = await confirmFormalOrder(
       database,
@@ -94,7 +98,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('requires VERIFIED evidence, APPROVED reservation, and expectedVersion', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
 
     database.exec(`
       UPDATE order_evidence_submissions
@@ -112,7 +116,7 @@ describe('Phase 3F formal order confirmation', () => {
 
     database.close();
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     database.exec(`
       UPDATE product_reservations
       SET status='CANCELLED', cancelled_at=${NOW}, version=3,
@@ -130,7 +134,7 @@ describe('Phase 3F formal order confirmation', () => {
 
     database.close();
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     await expect(confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-1', 1),
@@ -143,7 +147,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('replays the same command and rejects an idempotency payload conflict', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     const key = 'formal-order:idempotency:0001';
 
     const first = await confirmFormalOrder(
@@ -173,7 +177,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('allows at most one formal order per evidence and reservation', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     await confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-1'),
@@ -209,7 +213,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('requires the exact China-business-date buyer rate and never falls back', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     const nextDay = Date.UTC(2026, 7, 2, 0, 0, 0);
 
     await expect(confirmFormalOrder(
@@ -226,7 +230,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('blocks confirmation when seller rate or Review Type fee is missing', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database, { omitSellerRate: true });
+    await seedFormalOrderFixture(database, { omitSellerRate: true });
 
     await expect(confirmFormalOrder(
       database,
@@ -240,7 +244,7 @@ describe('Phase 3F formal order confirmation', () => {
 
     database.close();
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database, { omitVideoServiceFee: true });
+    await seedFormalOrderFixture(database, { omitVideoServiceFee: true });
     await expect(confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-3'),
@@ -254,7 +258,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('resolves the seller agreement version effective at confirmation time', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     seedConfirmedSellerRate(database, {
       id: 'seller-rate-v2',
       versionNo: 2,
@@ -279,7 +283,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('resolves the service fee by seller organization and Review Type', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
 
     const result = await confirmFormalOrder(
       database,
@@ -295,7 +299,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('uses integer fixed-point HALF_UP rounding at the half-fen boundary', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database, {
+    await seedFormalOrderFixture(database, {
       finalPaidJpy: 1,
       buyerRateE8: 5_500_000,
       sellerRateE8: 5_400_000,
@@ -315,7 +319,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('preserves an existing historical buyer number without a second allocation', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
 
     const result = await confirmFormalOrder(
       database,
@@ -356,7 +360,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('never allocates two buyer numbers during concurrent first orders', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
 
     await Promise.allSettled([
       confirmFormalOrder(
@@ -393,34 +397,35 @@ describe('Phase 3F formal order confirmation', () => {
     expect((state?.orders ?? 0) >= 1).toBe(true);
   });
 
-  it('keeps duplicate Amazon order numbers as separate orders without merging', async () => {
+  it('rejects a second formal order for an already claimed Amazon order number', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database, { duplicateAmazonOrder: true });
+    await seedFormalOrderFixture(database, { duplicateAmazonOrder: true });
 
     const first = await confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-1'),
       command(preSalesActor(), 'formal-order:duplicate:one'),
     );
-    const second = await confirmFormalOrder(
+    await expect(confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-2'),
       command(preSalesActor(), 'formal-order:duplicate:two'),
-    );
-    expect(first.formal_order_id).not.toBe(second.formal_order_id);
-    expect(first.amazon_order_number).toBe(second.amazon_order_number);
+    )).rejects.toMatchObject({
+      code: 'ORDER_NUMBER_ALREADY_CLAIMED',
+      status: 409,
+    });
 
     const count = await database.prepare(`
       SELECT COUNT(*) AS value
       FROM formal_orders
       WHERE amazon_order_number_normalized=?
     `).bind(first.amazon_order_number).first<{ value: number }>();
-    expect(Number(count?.value)).toBe(2);
+    expect(Number(count?.value)).toBe(1);
   });
 
   it('does not rewrite snapshots after product or store status changes', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     const result = await confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-1'),
@@ -467,7 +472,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('makes formal orders, snapshots, and events immutable', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     const result = await confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-1'),
@@ -495,7 +500,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('rolls back order, number, snapshot, event, and CONSUMED status on failure', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     database.exec(`
       CREATE TRIGGER trg_phase3f_test_snapshot_failure
       BEFORE INSERT ON formal_order_financial_snapshots
@@ -517,7 +522,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('allows owner/pre_sales with ORDER_CONFIRM and rejects every other actor or deny', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
 
     await expect(confirmFormalOrder(
       database,
@@ -540,7 +545,7 @@ describe('Phase 3F formal order confirmation', () => {
 
   it('contains no comment, refund, settlement, or profit facts', async () => {
     database = createMigratedTestDatabase();
-    seedFormalOrderFixture(database);
+    await seedFormalOrderFixture(database);
     const tables = await database.prepare(`
       SELECT name
       FROM sqlite_schema
@@ -664,7 +669,7 @@ async function expectNoPartialFacts(
   });
 }
 
-function seedFormalOrderFixture(
+async function seedFormalOrderFixture(
   db: SqliteDatabase,
   options: {
     finalPaidJpy?: number;
@@ -674,7 +679,7 @@ function seedFormalOrderFixture(
     omitSellerRate?: boolean;
     omitVideoServiceFee?: boolean;
   } = {},
-): void {
+): Promise<void> {
   const finalPaidJpy = options.finalPaidJpy ?? 8880;
   const buyerRateE8 = options.buyerRateE8 ?? 5_500_000;
   const sellerRateE8 = options.sellerRateE8 ?? 6_000_000;
@@ -848,20 +853,57 @@ function seedFormalOrderFixture(
       hold_expires_at, order_deadline_snapshot,
       version, submitted_at, updated_at,
       decided_by_staff_id, decision_reason, decided_at,
-      cancelled_at, expired_at, reopened_count
+      cancelled_at, expired_at, reopened_count,
+      buyer_self_pay_bps_snapshot,
+      reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot,
+      estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at,
+      buyer_self_pay_accepted_demand_version
     ) VALUES
       ('reservation-formal-1', 'demand-formal-1', 'buyer-1',
        'seller-org-formal', 'store-formal', 'product-formal-1', 1, 'JP',
        'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
-       'staff-pre-sales', NULL, 6000, NULL, NULL, 0),
+       'staff-pre-sales', NULL, 6000, NULL, NULL, 0,
+       0, 1980, 0, 1980, 4000, 2),
       ('reservation-formal-2', 'demand-formal-2', 'buyer-1',
        'seller-org-formal', 'store-formal', 'product-formal-2', 1, 'JP',
        'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
-       'staff-pre-sales', NULL, 6000, NULL, NULL, 0),
+       'staff-pre-sales', NULL, 6000, NULL, NULL, 0,
+       0, 1980, 0, 1980, 4000, 2),
       ('reservation-formal-3', 'demand-formal-3', 'buyer-existing',
        'seller-org-formal', 'store-formal', 'product-formal-3', 1, 'JP',
        'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
-       'staff-pre-sales', NULL, 6000, NULL, NULL, 0);
+       'staff-pre-sales', NULL, 6000, NULL, NULL, 0,
+       0, 1980, 0, 1980, 4000, 2);
+  `);
+
+  const instructionOne = await seedPhase3GInstructionFixture(db, {
+    suffix: 'formal-1',
+    reservationId: 'reservation-formal-1',
+    buyerCustomerId: 'buyer-1',
+    productId: 'product-formal-1',
+    productVersionId: 'product-formal-1-v1',
+    staffId: 'staff-pre-sales',
+  });
+  const instructionTwo = await seedPhase3GInstructionFixture(db, {
+    suffix: 'formal-2',
+    reservationId: 'reservation-formal-2',
+    buyerCustomerId: 'buyer-1',
+    productId: 'product-formal-2',
+    productVersionId: 'product-formal-2-v1',
+    staffId: 'staff-pre-sales',
+  });
+  const instructionThree = await seedPhase3GInstructionFixture(db, {
+    suffix: 'formal-3',
+    reservationId: 'reservation-formal-3',
+    buyerCustomerId: 'buyer-existing',
+    productId: 'product-formal-3',
+    productVersionId: 'product-formal-3-v1',
+    staffId: 'staff-pre-sales',
+  });
+
+  db.exec(`
 
     INSERT INTO order_evidence_submissions (
       id, reservation_id, buyer_customer_id, marketplace_code,
@@ -885,20 +927,42 @@ function seedFormalOrderFixture(
       id, submission_id, reservation_id, buyer_customer_id,
       marketplace_code, version_no,
       amazon_order_number_raw, amazon_order_number_normalized,
-      final_paid_jpy, submitted_by_buyer_id, buyer_note, created_at
+      final_paid_jpy, submitted_by_buyer_id, buyer_note,
+      order_instruction_id, order_instruction_version_id,
+      instruction_deadline_snapshot,
+      reference_order_amount_jpy_snapshot,
+      buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
+      buyer_refundable_principal_jpy, price_mismatch,
+      price_difference_jpy, submitted_before_deadline,
+      evidence_file_object_id, created_at
     ) VALUES
       ('evidence-version-1', 'evidence-submission-1',
        'reservation-formal-1', 'buyer-1', 'JP', 1,
        '123-1234567-1234567', '123-1234567-1234567',
-       ${finalPaidJpy}, 'buyer-1', NULL, 7000),
+       ${finalPaidJpy}, 'buyer-1', NULL,
+       '${instructionOne.instructionId}',
+       '${instructionOne.instructionVersionId}',
+       ${instructionOne.deadlineAt}, 1980, 0, 0, ${finalPaidJpy},
+       ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
+       '${instructionOne.evidenceFileObjectId}', 7000),
       ('evidence-version-2', 'evidence-submission-2',
        'reservation-formal-2', 'buyer-1', 'JP', 1,
        '${secondOrder}', '${secondOrder}',
-       ${finalPaidJpy}, 'buyer-1', NULL, 7000),
+       ${finalPaidJpy}, 'buyer-1', NULL,
+       '${instructionTwo.instructionId}',
+       '${instructionTwo.instructionVersionId}',
+       ${instructionTwo.deadlineAt}, 1980, 0, 0, ${finalPaidJpy},
+       ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
+       '${instructionTwo.evidenceFileObjectId}', 7000),
       ('evidence-version-3', 'evidence-submission-3',
        'reservation-formal-3', 'buyer-existing', 'JP', 1,
        '789-1234567-1234567', '789-1234567-1234567',
-       ${finalPaidJpy}, 'buyer-existing', NULL, 7000);
+       ${finalPaidJpy}, 'buyer-existing', NULL,
+       '${instructionThree.instructionId}',
+       '${instructionThree.instructionVersionId}',
+       ${instructionThree.deadlineAt}, 1980, 0, 0, ${finalPaidJpy},
+       ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
+       '${instructionThree.evidenceFileObjectId}', 7000);
 
     UPDATE order_evidence_submissions
     SET status='VERIFIED', version=2,
@@ -926,6 +990,35 @@ function seedFormalOrderFixture(
 
     ${sellerRateSql}
   `);
+
+  await bindPhase3GEvidenceFixture(db, {
+    suffix: 'formal-1',
+    submissionId: 'evidence-submission-1',
+    evidenceVersionId: 'evidence-version-1',
+    reservationId: 'reservation-formal-1',
+    buyerCustomerId: 'buyer-1',
+    evidenceFileObjectId: instructionOne.evidenceFileObjectId,
+    amazonOrderNumber: '123-1234567-1234567',
+  });
+  await bindPhase3GEvidenceFixture(db, {
+    suffix: 'formal-2',
+    submissionId: 'evidence-submission-2',
+    evidenceVersionId: 'evidence-version-2',
+    reservationId: 'reservation-formal-2',
+    buyerCustomerId: 'buyer-1',
+    evidenceFileObjectId: instructionTwo.evidenceFileObjectId,
+    amazonOrderNumber: secondOrder,
+    createClaim: !options.duplicateAmazonOrder,
+  });
+  await bindPhase3GEvidenceFixture(db, {
+    suffix: 'formal-3',
+    submissionId: 'evidence-submission-3',
+    evidenceVersionId: 'evidence-version-3',
+    reservationId: 'reservation-formal-3',
+    buyerCustomerId: 'buyer-existing',
+    evidenceFileObjectId: instructionThree.evidenceFileObjectId,
+    amazonOrderNumber: '789-1234567-1234567',
+  });
 
   seedConfirmedServiceFee(db, 'IMAGE', 'service-fee-image-v1', 2500);
   seedConfirmedServiceFee(db, 'TEXT', 'service-fee-text-v1', 1800);

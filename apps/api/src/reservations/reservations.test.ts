@@ -25,7 +25,7 @@ import {
   reopenReservation,
 } from './reopen-reservation';
 import {
-  submitReservation,
+  submitReservation as submitReservationService,
 } from './submit-reservation';
 import type {
   BuyerReservationActor,
@@ -181,7 +181,7 @@ describe('buyer reservations and atomic demand capacity', () => {
 
     const rejectedSource = await submitReservation(
       database,
-      { demandBatchId: 'demand-1' },
+      { demandBatchId: 'demand-1', expectedDemandVersion: 4 },
       {
         actor: buyerActor('buyer-2'),
         idempotencyKey: 'reservation:reject:submit',
@@ -238,7 +238,7 @@ describe('buyer reservations and atomic demand capacity', () => {
 
     const approved = await submitReservation(
       database,
-      { demandBatchId: 'demand-1' },
+      { demandBatchId: 'demand-1', expectedDemandVersion: 4 },
       {
         actor: buyerActor('buyer-2'),
         idempotencyKey: 'reservation:cancel:approved-submit',
@@ -463,6 +463,18 @@ describe('buyer reservations and atomic demand capacity', () => {
   });
 });
 
+function submitReservation(
+  database: SqliteDatabase,
+  input: { demandBatchId: string; expectedDemandVersion?: number },
+  command: Parameters<typeof submitReservationService>[2],
+): ReturnType<typeof submitReservationService> {
+  return submitReservationService(database, {
+    ...input,
+    expectedDemandVersion: input.expectedDemandVersion ?? 2,
+    acceptedBuyerSelfPayBps: 1000,
+  }, command);
+}
+
 function seedReservationFixture(
   database: SqliteDatabase,
   options: {
@@ -611,7 +623,8 @@ function seedReservationFixture(
       created_by_staff_id, created_at
     ,
           ordering_guide_expected_amount_jpy,
-          color_spec_mode) VALUES
+          color_spec_mode,
+          default_buyer_self_pay_bps) VALUES
       (
         'product-1-v1', 'product-1', 1,
         '预约产品一', '["关键词一"]',
@@ -619,7 +632,7 @@ function seedReservationFixture(
         '公开说明一', '内部说明一',
         'staff-pre-sales', 1000
       ,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 1000),
       (
         'product-2-v1', 'product-2', 1,
         '预约产品二', '["关键词二"]',
@@ -627,7 +640,7 @@ function seedReservationFixture(
         '公开说明二', '内部说明二',
         'staff-pre-sales', 1000
       ,
-          1980, 'MAIN_IMAGE_VARIANT');
+          1980, 'MAIN_IMAGE_VARIANT', 1000);
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,
@@ -642,7 +655,10 @@ function seedReservationFixture(
       reviewed_at, published_at,
       withdrawn_at, closed_at,
       held_reservation_count,
-      approved_reservation_count
+      approved_reservation_count,
+      buyer_self_pay_bps_snapshot,
+      buyer_self_pay_source,
+      buyer_self_pay_override_reason
     ) VALUES
       (
         'demand-1', 'seller-org-1', 'store-1', 'JP',
@@ -652,7 +668,7 @@ function seedReservationFixture(
         'PUBLISHED', NULL, NULL,
         'staff-pre-sales', NULL,
         2, 1000, 3000, 3000, 3000, NULL, NULL,
-        0, 0
+        0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
         'demand-2-same-product',
@@ -663,7 +679,7 @@ function seedReservationFixture(
         'PUBLISHED', NULL, NULL,
         'staff-pre-sales', NULL,
         2, 1000, 3000, 3000, 3000, NULL, NULL,
-        0, 0
+        0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
         'demand-2', 'seller-org-1', 'store-1', 'JP',
@@ -673,7 +689,7 @@ function seedReservationFixture(
         'PUBLISHED', NULL, NULL,
         'staff-pre-sales', NULL,
         2, 1000, 3000, 3000, 3000, NULL, NULL,
-        0, 0
+        0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
         'demand-future', 'seller-org-1', 'store-1', 'JP',
@@ -683,7 +699,7 @@ function seedReservationFixture(
         'PUBLISHED', NULL, NULL,
         'staff-pre-sales', NULL,
         2, 1000, 3000, 3000, 3000, NULL, NULL,
-        0, 0
+        0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       );
   `);
 }

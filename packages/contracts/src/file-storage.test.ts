@@ -17,7 +17,9 @@ describe('file storage contracts', () => {
     expect(FILE_PURPOSES).toEqual([
       'PRODUCT_APPLICATION_IMAGE',
       'PRODUCT_IMAGE',
+      'ORDER_INSTRUCTION_KEYWORD_IMAGE',
       'ORDER_EVIDENCE',
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
       'REVIEW_EVIDENCE',
       'BUYER_REFUND_PROOF',
       'SELLER_SETTLEMENT_PROOF',
@@ -31,7 +33,9 @@ describe('file storage contracts', () => {
     expect(FILE_ENTITY_TYPES).toEqual([
       'PRODUCT_APPLICATION',
       'PRODUCT_VERSION',
+      'ORDER_INSTRUCTION_VERSION',
       'ORDER',
+      'ORDER_EVIDENCE_SUBMISSION',
       'REVIEW',
       'BUYER_REFUND',
       'SELLER_SETTLEMENT',

@@ -17,6 +17,10 @@ import type { FileAuthorizationService } from '../files/authorization';
 import { confirmFormalOrder } from '../formal-orders/confirm-formal-order';
 import type { FormalOrderStaffActor } from '../formal-orders/formal-order-shared';
 import {
+  bindPhase3GEvidenceFixture,
+  seedPhase3GInstructionFixture,
+} from '../../test-support/phase3g-test-fixtures';
+import {
   approveReview,
   rejectReview,
   requestReviewChanges,
@@ -450,7 +454,11 @@ describe('Phase 5A review evidence workflow', () => {
         (SELECT COUNT(*) FROM review_events) AS review_events,
         (SELECT COUNT(*) FROM file_entity_links
           WHERE entity_type='REVIEW') AS links,
-        (SELECT COUNT(*) FROM file_entity_audience_grants) AS grants,
+        (SELECT COUNT(*)
+          FROM file_entity_audience_grants grant_row
+          JOIN file_entity_links link
+            ON link.id=grant_row.file_entity_link_id
+          WHERE link.entity_type='REVIEW') AS grants,
         (SELECT COUNT(*) FROM file_audience_events) AS audience_events,
         (SELECT COUNT(*) FROM audit_events
           WHERE aggregate_type='REVIEW_CASE') AS review_audit,
@@ -509,7 +517,7 @@ describe('Phase 5A review evidence workflow', () => {
     const state = await database!.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(state?.schema_version).toBe(20);
+    expect(state?.schema_version).toBe(21);
   });
 });
 
@@ -590,7 +598,7 @@ async function setupConfirmedOrder(): Promise<{
   snapshotId: string;
 }> {
   database = createMigratedTestDatabase();
-  seedFormalOrderPrerequisites(database);
+  await seedFormalOrderPrerequisites(database);
   const result = await confirmFormalOrder(
     database,
     {
@@ -615,7 +623,9 @@ async function setupConfirmedOrder(): Promise<{
   };
 }
 
-function seedFormalOrderPrerequisites(db: SqliteDatabase): void {
+async function seedFormalOrderPrerequisites(
+  db: SqliteDatabase,
+): Promise<void> {
   db.exec(`
     INSERT INTO staff_users (
       id, display_name, status, authorization_version,
@@ -773,13 +783,32 @@ function seedFormalOrderPrerequisites(db: SqliteDatabase): void {
       hold_expires_at, order_deadline_snapshot,
       version, submitted_at, updated_at,
       decided_by_staff_id, decision_reason, decided_at,
-      cancelled_at, expired_at, reopened_count
+      cancelled_at, expired_at, reopened_count,
+      buyer_self_pay_bps_snapshot,
+      reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot,
+      estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at,
+      buyer_self_pay_accepted_demand_version
     ) VALUES (
       'reservation-review', 'demand-review', 'buyer-review-1',
       'seller-org-review', 'store-review', 'product-review', 1, 'JP',
       'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
-      'staff-review-pre-sales', NULL, 6000, NULL, NULL, 0
+      'staff-review-pre-sales', NULL, 6000, NULL, NULL, 0,
+      0, 1980, 0, 1980, 4000, 2
     );
+  `);
+
+  const instruction = await seedPhase3GInstructionFixture(db, {
+    suffix: 'review-downstream',
+    reservationId: 'reservation-review',
+    buyerCustomerId: 'buyer-review-1',
+    productId: 'product-review',
+    productVersionId: 'product-review-v1',
+    staffId: 'staff-review-pre-sales',
+  });
+
+  db.exec(`
 
     INSERT INTO order_evidence_submissions (
       id, reservation_id, buyer_customer_id, marketplace_code,
@@ -799,12 +828,22 @@ function seedFormalOrderPrerequisites(db: SqliteDatabase): void {
       id, submission_id, reservation_id, buyer_customer_id,
       marketplace_code, version_no,
       amazon_order_number_raw, amazon_order_number_normalized,
-      final_paid_jpy, submitted_by_buyer_id, buyer_note, created_at
+      final_paid_jpy, submitted_by_buyer_id, buyer_note,
+      order_instruction_id, order_instruction_version_id,
+      instruction_deadline_snapshot,
+      reference_order_amount_jpy_snapshot,
+      buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
+      buyer_refundable_principal_jpy, price_mismatch,
+      price_difference_jpy, submitted_before_deadline,
+      evidence_file_object_id, created_at
     ) VALUES (
       'evidence-review-version-1', 'evidence-review-submission',
       'reservation-review', 'buyer-review-1', 'JP', 1,
       '123-1234567-1234567', '123-1234567-1234567',
-      8880, 'buyer-review-1', NULL, 7000
+      8880, 'buyer-review-1', NULL,
+      '${instruction.instructionId}', '${instruction.instructionVersionId}',
+      ${instruction.deadlineAt}, 1980, 0, 0, 8880, 1, 6900, 1,
+      '${instruction.evidenceFileObjectId}', 7000
     );
 
     UPDATE order_evidence_submissions
@@ -863,6 +902,16 @@ function seedFormalOrderPrerequisites(db: SqliteDatabase): void {
         confirmed_by_staff_id='staff-review-owner', confirmed_at=2000
     WHERE id='service-review-fee-v1';
   `);
+
+  await bindPhase3GEvidenceFixture(db, {
+    suffix: 'review-downstream',
+    submissionId: 'evidence-review-submission',
+    evidenceVersionId: 'evidence-review-version-1',
+    reservationId: 'reservation-review',
+    buyerCustomerId: 'buyer-review-1',
+    evidenceFileObjectId: instruction.evidenceFileObjectId,
+    amazonOrderNumber: '123-1234567-1234567',
+  });
 }
 
 function seedLaterPricingRules(db: SqliteDatabase): void {

@@ -19,6 +19,10 @@ import { createApp } from '../app';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
 import { confirmFormalOrder } from '../formal-orders/confirm-formal-order';
 import type { FormalOrderStaffActor } from '../formal-orders/formal-order-shared';
+import {
+  bindPhase3GEvidenceFixture,
+  seedPhase3GInstructionFixture,
+} from '../../test-support/phase3g-test-fixtures';
 import { registerSellerFormalOrderRoutes } from './routes';
 
 const ORIGIN = 'https://portal.local.test';
@@ -40,7 +44,7 @@ let orders: FixtureOrders | null = null;
 
 beforeEach(async () => {
   database = createMigratedTestDatabase();
-  seedFixture(database);
+  await seedFixture(database);
   const storeOne = await confirmFormalOrder(
     database,
     {
@@ -439,19 +443,19 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(await formalOrderCounts()).toEqual(before);
   });
 
-  it('keeps migrations through 0020 and schema20', async () => {
+  it('keeps migrations through 0021 and schema21', async () => {
     const state = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(20);
+    expect(Number(state?.schema_version)).toBe(21);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(20);
+    expect(migrations).toHaveLength(21);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
   });
@@ -621,7 +625,7 @@ function staffActor(): FormalOrderStaffActor {
   };
 }
 
-function seedFixture(db: SqliteDatabase): void {
+async function seedFixture(db: SqliteDatabase): Promise<void> {
   db.exec(`
     INSERT INTO staff_users (
       id, display_name, status, authorization_version,
@@ -842,20 +846,60 @@ function seedFixture(db: SqliteDatabase): void {
       hold_expires_at, order_deadline_snapshot,
       version, submitted_at, updated_at,
       decided_by_staff_id, decision_reason, decided_at,
-      cancelled_at, expired_at, reopened_count
+      cancelled_at, expired_at, reopened_count,
+      buyer_self_pay_bps_snapshot,
+      reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot,
+      estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at,
+      buyer_self_pay_accepted_demand_version
     ) VALUES
       ('reservation-portal-1', 'demand-portal-1', 'buyer-portal-1',
        'org-portal', 'store-portal-1', 'product-portal-1', 1, 'JP',
        'APPROVED', '{}', 5000, 20000, 2, 3000, 4000,
-       'staff-confirm', NULL, 4000, NULL, NULL, 0),
+       'staff-confirm', NULL, 4000, NULL, NULL, 0,
+       0, 1980, 0, 1980, 3000, 2),
       ('reservation-portal-2', 'demand-portal-2', 'buyer-portal-2',
        'org-portal', 'store-portal-2', 'product-portal-2', 1, 'JP',
        'APPROVED', '{}', 5000, 20000, 2, 3000, 4000,
-       'staff-confirm', NULL, 4000, NULL, NULL, 0),
+       'staff-confirm', NULL, 4000, NULL, NULL, 0,
+       0, 1980, 0, 1980, 3000, 2),
       ('reservation-other', 'demand-other', 'buyer-other',
        'org-other', 'store-other', 'product-other', 1, 'JP',
        'APPROVED', '{}', 5000, 20000, 2, 3000, 4000,
-       'staff-confirm', NULL, 4000, NULL, NULL, 0);
+       'staff-confirm', NULL, 4000, NULL, NULL, 0,
+       0, 1980, 0, 1980, 3000, 2);
+  `);
+
+  const instructionOne = await seedPhase3GInstructionFixture(db, {
+    suffix: 'seller-portal-1',
+    reservationId: 'reservation-portal-1',
+    buyerCustomerId: 'buyer-portal-1',
+    productId: 'product-portal-1',
+    productVersionId: 'product-portal-1-v1',
+    staffId: 'staff-confirm',
+    publishedAt: 4_000,
+  });
+  const instructionTwo = await seedPhase3GInstructionFixture(db, {
+    suffix: 'seller-portal-2',
+    reservationId: 'reservation-portal-2',
+    buyerCustomerId: 'buyer-portal-2',
+    productId: 'product-portal-2',
+    productVersionId: 'product-portal-2-v1',
+    staffId: 'staff-confirm',
+    publishedAt: 4_000,
+  });
+  const instructionOther = await seedPhase3GInstructionFixture(db, {
+    suffix: 'seller-portal-other',
+    reservationId: 'reservation-other',
+    buyerCustomerId: 'buyer-other',
+    productId: 'product-other',
+    productVersionId: 'product-other-v1',
+    staffId: 'staff-confirm',
+    publishedAt: 4_000,
+  });
+
+  db.exec(`
 
     INSERT INTO order_evidence_submissions (
       id, reservation_id, buyer_customer_id, marketplace_code,
@@ -882,20 +926,39 @@ function seedFixture(db: SqliteDatabase): void {
       id, submission_id, reservation_id, buyer_customer_id,
       marketplace_code, version_no,
       amazon_order_number_raw, amazon_order_number_normalized,
-      final_paid_jpy, submitted_by_buyer_id, buyer_note, created_at
+      final_paid_jpy, submitted_by_buyer_id, buyer_note,
+      order_instruction_id, order_instruction_version_id,
+      instruction_deadline_snapshot,
+      reference_order_amount_jpy_snapshot,
+      buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
+      buyer_refundable_principal_jpy, price_mismatch,
+      price_difference_jpy, submitted_before_deadline,
+      evidence_file_object_id, created_at
     ) VALUES
       ('evidence-portal-1-v1', 'evidence-portal-1',
        'reservation-portal-1', 'buyer-portal-1', 'JP', 1,
        '111-1234567-1234567', '111-1234567-1234567',
-       8880, 'buyer-portal-1', 'buyer note secret one', 5000),
+       8880, 'buyer-portal-1', 'buyer note secret one',
+       '${instructionOne.instructionId}',
+       '${instructionOne.instructionVersionId}',
+       ${instructionOne.deadlineAt}, 1980, 0, 0, 8880, 1, 6900, 1,
+       '${instructionOne.evidenceFileObjectId}', 5000),
       ('evidence-portal-2-v1', 'evidence-portal-2',
        'reservation-portal-2', 'buyer-portal-2', 'JP', 1,
        '222-1234567-1234567', '222-1234567-1234567',
-       5000, 'buyer-portal-2', 'buyer note secret two', 5000),
+       5000, 'buyer-portal-2', 'buyer note secret two',
+       '${instructionTwo.instructionId}',
+       '${instructionTwo.instructionVersionId}',
+       ${instructionTwo.deadlineAt}, 1980, 0, 0, 5000, 1, 3020, 1,
+       '${instructionTwo.evidenceFileObjectId}', 5000),
       ('evidence-portal-other-v1', 'evidence-portal-other',
        'reservation-other', 'buyer-other', 'JP', 1,
        '333-1234567-1234567', '333-1234567-1234567',
-       7000, 'buyer-other', 'other buyer note secret', 5000);
+       7000, 'buyer-other', 'other buyer note secret',
+       '${instructionOther.instructionId}',
+       '${instructionOther.instructionVersionId}',
+       ${instructionOther.deadlineAt}, 1980, 0, 0, 7000, 1, 5020, 1,
+       '${instructionOther.evidenceFileObjectId}', 5000);
 
     UPDATE order_evidence_submissions
     SET status='VERIFIED', version=2,
@@ -923,6 +986,37 @@ function seedFixture(db: SqliteDatabase): void {
         confirmed_by_staff_id='staff-confirm', confirmed_at=2000
     WHERE id='buyer-rate-portal-v1';
   `);
+
+  await bindPhase3GEvidenceFixture(db, {
+    suffix: 'seller-portal-1',
+    submissionId: 'evidence-portal-1',
+    evidenceVersionId: 'evidence-portal-1-v1',
+    reservationId: 'reservation-portal-1',
+    buyerCustomerId: 'buyer-portal-1',
+    evidenceFileObjectId: instructionOne.evidenceFileObjectId,
+    amazonOrderNumber: '111-1234567-1234567',
+    at: 5_000,
+  });
+  await bindPhase3GEvidenceFixture(db, {
+    suffix: 'seller-portal-2',
+    submissionId: 'evidence-portal-2',
+    evidenceVersionId: 'evidence-portal-2-v1',
+    reservationId: 'reservation-portal-2',
+    buyerCustomerId: 'buyer-portal-2',
+    evidenceFileObjectId: instructionTwo.evidenceFileObjectId,
+    amazonOrderNumber: '222-1234567-1234567',
+    at: 5_000,
+  });
+  await bindPhase3GEvidenceFixture(db, {
+    suffix: 'seller-portal-other',
+    submissionId: 'evidence-portal-other',
+    evidenceVersionId: 'evidence-portal-other-v1',
+    reservationId: 'reservation-other',
+    buyerCustomerId: 'buyer-other',
+    evidenceFileObjectId: instructionOther.evidenceFileObjectId,
+    amazonOrderNumber: '333-1234567-1234567',
+    at: 5_000,
+  });
 
   seedSellerRate(db, 'org-portal', 'seller-rate-portal-v1', 6_000_000);
   seedSellerRate(db, 'org-other', 'seller-rate-other-v1', 6_200_000);

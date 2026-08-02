@@ -23,6 +23,7 @@ import {
   requestOrderEvidenceChanges,
   verifyOrderEvidence,
 } from '../order-evidence/review-order-evidence';
+import { seedPhase3GInstructionFixture } from '../../test-support/phase3g-test-fixtures';
 import { registerBuyerOrderEvidencePortalRoutes } from './routes';
 
 const ORIGIN = 'https://portal.local.test';
@@ -42,7 +43,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
   it(
     'requires a valid buyer session and rejects inactive account trees',
     async () => {
-      setup();
+      await setup();
       const app = testApp();
 
       const anonymous = await request(
@@ -133,7 +134,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
   it(
     'lists only buyer-owned eligible reservations with stable paging',
     async () => {
-      setup();
+      await setup();
       seedEvidenceFile(database!, {
         suffix: 1,
         ownerBuyerId: 'buyer-1',
@@ -247,7 +248,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
   it(
     'submits through Phase 3D normalization and validates integer JPY input',
     async () => {
-      setup();
+      await setup();
       seedEvidenceFile(database!, {
         suffix: 1,
         ownerBuyerId: 'buyer-1',
@@ -397,7 +398,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
   it(
     'rejects unverified, wrong-purpose, seller-visible and foreign files',
     async () => {
-      setup();
+      await setup();
       seedEvidenceFile(database!, {
         suffix: 1,
         ownerBuyerId: 'buyer-1',
@@ -461,7 +462,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
   );
 
   it('replays identical writes and rejects idempotency payload conflicts', async () => {
-    setup();
+    await setup();
     seedEvidenceFile(database!, {
       suffix: 1,
       ownerBuyerId: 'buyer-1',
@@ -516,7 +517,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
   it(
     'lists and reads only safe current-buyer projections',
     async () => {
-      setup();
+      await setup();
       seedEvidenceFile(database!, {
         suffix: 1,
         ownerBuyerId: 'buyer-1',
@@ -634,7 +635,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
   it(
     'resubmits only CHANGES_REQUESTED evidence as a new immutable version',
     async () => {
-      setup();
+      await setup();
       seedEvidenceFile(database!, {
         suffix: 1,
         ownerBuyerId: 'buyer-1',
@@ -758,7 +759,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
   it(
     'withdraws only allowed states and blocks VERIFIED and CONSUMED',
     async () => {
-      setup();
+      await setup();
       seedEvidenceFile(database!, {
         suffix: 1,
         ownerBuyerId: 'buyer-1',
@@ -903,22 +904,22 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     },
   );
 
-  it('keeps migration through 0020 and creates no actual refund, settlement, or profit', async () => {
-    setup();
+  it('keeps migration through 0021 and creates no actual refund, settlement, or profit', async () => {
+    await setup();
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(20);
+    expect(migrations).toHaveLength(21);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toMatch(/^0020_/u);
+    expect(migrations.at(-1)).toMatch(/^0021_/u);
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(20);
+    expect(Number(schema?.schema_version)).toBe(21);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name
@@ -935,10 +936,10 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
   });
 });
 
-function setup(): void {
+async function setup(): Promise<void> {
   database = createMigratedTestDatabase();
   fixtureNow = Date.now();
-  seedFixture(database, fixtureNow);
+  await seedFixture(database, fixtureNow);
 }
 
 function testApp() {
@@ -1120,10 +1121,10 @@ async function json<T = Record<string, unknown>>(
   return response.json() as Promise<T>;
 }
 
-function seedFixture(
+async function seedFixture(
   target: SqliteDatabase,
   now: number,
-): void {
+): Promise<void> {
   const orderDeadline = now + 2 * 60 * 60 * 1000;
   target.exec(`
     INSERT INTO staff_users (
@@ -1356,34 +1357,83 @@ function seedFixture(
       hold_expires_at, order_deadline_snapshot,
       version, submitted_at, updated_at,
       decided_by_staff_id, decision_reason, decided_at,
-      cancelled_at, expired_at, reopened_count
+      cancelled_at, expired_at, reopened_count,
+      buyer_self_pay_bps_snapshot,
+      reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot,
+      estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at,
+      buyer_self_pay_accepted_demand_version
     ) VALUES
       ('reservation-a', 'demand-a', 'buyer-1',
        'seller-org-1', 'store-1', 'product-a', 1, 'JP',
        'APPROVED', '{}', ${orderDeadline - 1000},
        ${orderDeadline + 100}, 2, 2000, 3000,
-       'staff-pre-sales', NULL, 3000, NULL, NULL, 0),
+       'staff-pre-sales', NULL, 3000, NULL, NULL, 0,
+       0, 1980, 0, 1980, 2000, 2),
       ('reservation-b', 'demand-b', 'buyer-1',
        'seller-org-1', 'store-1', 'product-b', 1, 'JP',
        'APPROVED', '{}', ${orderDeadline - 900},
        ${orderDeadline + 200}, 2, 2100, 3100,
-       'staff-pre-sales', NULL, 3100, NULL, NULL, 0),
+       'staff-pre-sales', NULL, 3100, NULL, NULL, 0,
+       0, 1980, 0, 1980, 2100, 2),
       ('reservation-c', 'demand-c', 'buyer-1',
        'seller-org-1', 'store-1', 'product-c', 1, 'JP',
        'APPROVED', '{}', ${orderDeadline - 800},
        ${orderDeadline + 300}, 2, 2200, 3200,
-       'staff-pre-sales', NULL, 3200, NULL, NULL, 0),
+       'staff-pre-sales', NULL, 3200, NULL, NULL, 0,
+       0, 1980, 0, 1980, 2200, 2),
       ('reservation-other', 'demand-other', 'buyer-2',
        'seller-org-1', 'store-1', 'product-other', 1, 'JP',
        'APPROVED', '{}', ${orderDeadline - 700},
        ${orderDeadline + 400}, 2, 2300, 3300,
-       'staff-pre-sales', NULL, 3300, NULL, NULL, 0),
+       'staff-pre-sales', NULL, 3300, NULL, NULL, 0,
+       0, 1980, 0, 1980, 2300, 2),
       ('reservation-pending', 'demand-pending', 'buyer-1',
        'seller-org-1', 'store-1', 'product-pending', 1, 'JP',
        'PENDING_REVIEW', '{}', ${orderDeadline - 600},
        ${orderDeadline + 500}, 1, 2400, 2400,
-       NULL, NULL, NULL, NULL, NULL, 0);
+       NULL, NULL, NULL, NULL, NULL, 0,
+       NULL, NULL, NULL, NULL, NULL, NULL);
   `);
+
+  for (const input of [
+    {
+      suffix: 'buyer-portal-a',
+      reservationId: 'reservation-a',
+      buyerCustomerId: 'buyer-1',
+      productId: 'product-a',
+      productVersionId: 'product-a-v1',
+    },
+    {
+      suffix: 'buyer-portal-b',
+      reservationId: 'reservation-b',
+      buyerCustomerId: 'buyer-1',
+      productId: 'product-b',
+      productVersionId: 'product-b-v1',
+    },
+    {
+      suffix: 'buyer-portal-c',
+      reservationId: 'reservation-c',
+      buyerCustomerId: 'buyer-1',
+      productId: 'product-c',
+      productVersionId: 'product-c-v1',
+    },
+    {
+      suffix: 'buyer-portal-other',
+      reservationId: 'reservation-other',
+      buyerCustomerId: 'buyer-2',
+      productId: 'product-other',
+      productVersionId: 'product-other-v1',
+    },
+  ] as const) {
+    await seedPhase3GInstructionFixture(target, {
+      ...input,
+      staffId: 'staff-pre-sales',
+      publishedAt: now - 1_000,
+      seedEvidenceFile: false,
+    });
+  }
 }
 
 function seedEvidenceFile(

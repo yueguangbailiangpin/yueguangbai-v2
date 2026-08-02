@@ -12,6 +12,9 @@ import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
+import { createApp } from '../app';
+import { resolveAssignmentStaffAuthorization } from '../staff-assignment';
+import { registerStaffCatalogWorkflowRoutes } from '../staff-catalog-routes';
 import {
   addProductVersion,
 } from './add-product-version';
@@ -39,6 +42,81 @@ afterEach(() => {
 });
 
 describe('seller stores and product catalog', () => {
+  it('runs the staff product API with persisted authorization and freezes 10000 BPS', async () => {
+    database = createMigratedTestDatabase();
+    seedCatalogActorsAndOrganizations(database);
+    const store = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'JP',
+      storeName: '员工 API 店铺',
+    }, {
+      actor: sellerOpsActor(),
+      idempotencyKey: 'staff-product-api:store',
+      now: 2000,
+    });
+
+    const unauthorizedApp = createApp();
+    registerStaffCatalogWorkflowRoutes(unauthorizedApp);
+    const requestBody = JSON.stringify({
+      store_id: store.store_id,
+      asin: 'B0API10000',
+      version: {
+        product_name: '员工 API 产品',
+        search_keywords: ['关键词一'],
+        product_url: null,
+        buyer_visible_notes: '买家说明',
+        internal_notes: '内部说明',
+        ordering_guide_expected_amount_jpy: 1980,
+        color_spec_mode: 'MAIN_IMAGE_VARIANT',
+        default_buyer_self_pay_bps: 10000,
+      },
+    });
+    const requestInit = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'staff-product-api:create',
+      },
+      body: requestBody,
+    };
+    const unauthorized = await unauthorizedApp.request(
+      'https://api.test/api/staff/catalog/products',
+      requestInit,
+      { DB: database } as any,
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const authorization = await resolveAssignmentStaffAuthorization(
+      database,
+      'zz-phase3h-test-owner',
+    );
+    expect(authorization).not.toBeNull();
+    const app = createApp();
+    app.use('/api/staff/*', async (context, next) => {
+      (context as any).set('staffAuthorization', authorization);
+      await next();
+    });
+    registerStaffCatalogWorkflowRoutes(app);
+    const response = await app.request(
+      'https://api.test/api/staff/catalog/products',
+      requestInit,
+      { DB: database } as any,
+    );
+    expect(response.status).toBe(201);
+    const payload = await response.json() as any;
+    expect(payload.data.product.product_version)
+      .toMatchObject({ defaultBuyerSelfPayBps: 10000 });
+
+    const stored = await database.prepare(`
+      SELECT default_buyer_self_pay_bps
+      FROM product_versions
+      WHERE id=?
+    `).bind(payload.data.product.product_version_id).first<{
+      default_buyer_self_pay_bps: number;
+    }>();
+    expect(stored?.default_buyer_self_pay_bps).toBe(10000);
+  });
+
   it('creates normalized stores idempotently and rejects duplicates in the same organization', async () => {
     database = createMigratedTestDatabase();
     seedCatalogActorsAndOrganizations(database);

@@ -303,10 +303,11 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
         {
           method: 'POST',
           headers: {
-            ...stateHeaders(false),
+            ...stateHeaders(),
             Cookie: buyerOne,
             'Idempotency-Key': 'portal-submit-final-slot',
           },
+          body: reservationAcceptanceBody(),
         },
       );
       expect(created.status).toBe(201);
@@ -355,7 +356,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
             Cookie: buyerOne,
             'Idempotency-Key': 'portal-submit-final-slot',
           },
-          body: '{}',
+          body: reservationAcceptanceBody(),
         },
       );
       expect(replay.status).toBe(200);
@@ -372,10 +373,11 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
         {
           method: 'POST',
           headers: {
-            ...stateHeaders(false),
+            ...stateHeaders(),
             Cookie: buyerOne,
             'Idempotency-Key': 'portal-submit-duplicate-source',
           },
+          body: reservationAcceptanceBody(),
         },
       );
       expect(duplicateSource.status).toBe(201);
@@ -386,10 +388,11 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
         {
           method: 'POST',
           headers: {
-            ...stateHeaders(false),
+            ...stateHeaders(),
             Cookie: buyerOne,
             'Idempotency-Key': 'portal-submit-duplicate-again',
           },
+          body: reservationAcceptanceBody(3),
         },
       );
       expect(duplicate.status).toBe(409);
@@ -403,10 +406,11 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
         {
           method: 'POST',
           headers: {
-            ...stateHeaders(false),
+            ...stateHeaders(),
             Cookie: buyerTwo,
             'Idempotency-Key': 'portal-submit-final-second-buyer',
           },
+          body: reservationAcceptanceBody(3),
         },
       );
       expect(finalSlotLost.status).toBe(409);
@@ -587,7 +591,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     },
   );
 
-  it('keeps migrations through 0020 with schema_version 20', async () => {
+  it('keeps migrations through 0021 with schema_version 21', async () => {
     database = createMigratedTestDatabase();
     const repositoryRoot = path.resolve(
       import.meta.dirname,
@@ -598,16 +602,16 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     )
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(20);
+    expect(migrations).toHaveLength(21);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toMatch(/^0020_/u);
+    expect(migrations.at(-1)).toMatch(/^0021_/u);
 
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(20);
+    expect(Number(state?.schema_version)).toBe(21);
   });
 });
 
@@ -789,23 +793,24 @@ function seedPortalFixture(
       created_by_staff_id, created_at
     ,
           ordering_guide_expected_amount_jpy,
-          color_spec_mode) VALUES
+          color_spec_mode,
+          default_buyer_self_pay_bps) VALUES
       ('product-1-v1', 'product-1', 1, '门户产品一',
        '["关键词一"]', 'https://www.amazon.co.jp/portal-one',
        '产品公开说明一', '产品内部说明一', 'staff-pre-sales', 1000,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 0),
       ('product-2-v1', 'product-2', 1, '门户产品二',
        '["关键词二"]', 'https://www.amazon.co.jp/portal-two',
        '产品公开说明二', '产品内部说明二', 'staff-pre-sales', 1000,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 0),
       ('product-3-v1', 'product-3', 1, '门户产品三',
        '["关键词三"]', 'https://www.amazon.co.jp/portal-three',
        '产品公开说明三', '产品内部说明三', 'staff-pre-sales', 1000,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 0),
       ('product-4-v1', 'product-4', 1, '门户产品四',
        '["关键词四"]', 'https://www.amazon.co.jp/portal-four',
        '产品公开说明四', '产品内部说明四', 'staff-pre-sales', 1000,
-          1980, 'MAIN_IMAGE_VARIANT');
+          1980, 'MAIN_IMAGE_VARIANT', 0);
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,
@@ -820,7 +825,10 @@ function seedPortalFixture(
       reviewed_at, published_at,
       withdrawn_at, closed_at,
       held_reservation_count,
-      approved_reservation_count
+      approved_reservation_count,
+      buyer_self_pay_bps_snapshot,
+      buyer_self_pay_source,
+      buyer_self_pay_override_reason
     ) VALUES
       (
         'demand-projection', 'seller-org-1', 'store-1', 'JP',
@@ -828,7 +836,8 @@ function seedPortalFixture(
         3, '需求公开说明一', '需求内部说明一',
         ${openAt}, ${reservationDeadlineBase}, ${orderDeadlineBase},
         'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
-        2, 1000, 1000, 1000, 1000, NULL, NULL, 1, 1
+        2, 1000, 1000, 1000, 1000, NULL, NULL, 1, 1,
+        0, 'PRODUCT_DEFAULT', NULL
       ),
       (
         'demand-final', 'seller-org-1', 'store-1', 'JP',
@@ -837,7 +846,8 @@ function seedPortalFixture(
         ${openAt}, ${reservationDeadlineBase + 1000},
         ${orderDeadlineBase + 1000},
         'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
-        2, 1100, 1100, 1100, 1100, NULL, NULL, 0, 0
+        2, 1100, 1100, 1100, 1100, NULL, NULL, 0, 0,
+        0, 'PRODUCT_DEFAULT', NULL
       ),
       (
         'demand-pending', 'seller-org-1', 'store-1', 'JP',
@@ -846,7 +856,8 @@ function seedPortalFixture(
         ${openAt}, ${reservationDeadlineBase + 2000},
         ${orderDeadlineBase + 2000},
         'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
-        2, 1200, 1200, 1200, 1200, NULL, NULL, 0, 0
+        2, 1200, 1200, 1200, 1200, NULL, NULL, 0, 0,
+        0, 'PRODUCT_DEFAULT', NULL
       ),
       (
         'demand-approved', 'seller-org-1', 'store-1', 'JP',
@@ -855,7 +866,8 @@ function seedPortalFixture(
         ${openAt}, ${reservationDeadlineBase + 3000},
         ${orderDeadlineBase + 3000},
         'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
-        2, 1300, 1300, 1300, 1300, NULL, NULL, 0, 0
+        2, 1300, 1300, 1300, 1300, NULL, NULL, 0, 0,
+        0, 'PRODUCT_DEFAULT', NULL
       );
   `);
 }
@@ -908,14 +920,22 @@ async function createReservation(
     {
       method: 'POST',
       headers: {
-        ...stateHeaders(false),
+        ...stateHeaders(),
         Cookie: cookie,
         'Idempotency-Key': idempotencyKey,
       },
+      body: reservationAcceptanceBody(),
     },
   );
   expect(response.status).toBe(201);
   return json<any>(response);
+}
+
+function reservationAcceptanceBody(expectedDemandVersion = 2): string {
+  return JSON.stringify({
+    expected_demand_version: expectedDemandVersion,
+    accepted_buyer_self_pay_bps: 0,
+  });
 }
 
 async function cancelViaApi(
