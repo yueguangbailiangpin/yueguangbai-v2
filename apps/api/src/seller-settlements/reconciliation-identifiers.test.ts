@@ -180,6 +180,7 @@ function fakeDatabase(options: {
   batchCalls: number;
 } {
   const captured: CapturedStatement[] = [];
+  let requestHash = '';
   const database = {
     captured,
     batchCalls: 0,
@@ -189,6 +190,9 @@ function fakeDatabase(options: {
         bind(...values: unknown[]): SqlStatement {
           bindings = values;
           captured.push({ sql, bindings });
+          if (sql.includes('INSERT OR IGNORE INTO command_idempotency_records')) {
+            requestHash = String(values[6] ?? '');
+          }
           return statement;
         },
         async first<T>(): Promise<T | null> {
@@ -199,7 +203,7 @@ function fakeDatabase(options: {
                   action: 'RECONCILE_SELLER_PAYABLES',
                   target_type: 'SELLER_ORGANIZATION',
                   target_id: 'seller-1',
-                  request_hash: String(bindings[6] ?? ''),
+                  request_hash: requestHash,
                   status: 'COMMITTED',
                   lease_expires_at: 0,
                   response_json: JSON.stringify(options.replayResponse),
