@@ -50,7 +50,7 @@ export async function prepareSellerPayableCreation(
   };
   const outbox = await prepareOutboxEvent({
     id: crypto.randomUUID(),
-    dedupKey: `seller-payable:${input.payableType}:${input.formalOrderId}`,
+    dedupKey: `seller-payable-created:${payableId}`,
     eventType: 'SELLER_PAYABLE_CREATED',
     aggregateType: 'SELLER_PAYABLE',
     aggregateId: payableId,
