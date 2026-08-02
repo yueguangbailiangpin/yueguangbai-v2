@@ -25,7 +25,10 @@ import {
   registerStaffSellerSettlementRoutes,
 } from './seller-settlements';
 import { registerStaffAssignmentRoutes } from './staff-assignment';
-import { registerStaffAuthRoutes } from './staff-auth';
+import {
+  FeishuStaffAuthProvider,
+  registerStaffAuthRoutes,
+} from './staff-auth';
 import { registerStaffCatalogWorkflowRoutes } from './staff-catalog-routes';
 
 const app = createApp();
@@ -34,7 +37,12 @@ const app = createApp();
 // protected Staff namespace. They issue the internal Worker session; Staff
 // business APIs never consume Feishu headers or Provider tokens directly.
 registerCustomerAuthRoutes(app);
-registerStaffAuthRoutes(app);
+registerStaffAuthRoutes(app, {
+  providerFactory: (config, context) => (
+    context.env.STAFF_AUTH_PROVIDER_ADAPTER
+      ?? new FeishuStaffAuthProvider(config)
+  ),
+});
 
 // This path middleware must precede every /api/staff route registration.
 app.use('/api/staff/*', staffSessionMiddleware());

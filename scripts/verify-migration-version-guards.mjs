@@ -8,10 +8,11 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 26
-  || migrationFiles.at(-2) !== '0025_internal_finance_reporting.sql'
-  || migrationFiles.at(-1) !== '0026_financial_export_audit.sql') {
-  throw new Error('expected migrations 0001-0026');
+if (migrationFiles.length !== 27
+  || migrationFiles.at(-3) !== '0025_internal_finance_reporting.sql'
+  || migrationFiles.at(-2) !== '0026_financial_export_audit.sql'
+  || migrationFiles.at(-1) !== '0027_staff_auth_sessions.sql') {
+  throw new Error('expected migrations 0001-0027');
 }
 
 const guarded = new Map([
@@ -31,6 +32,7 @@ const guarded = new Map([
   [24, 'seller_payments'],
   [25, 'internal_order_finance_positions'],
   [26, 'financial_export_events'],
+  [27, 'staff_sessions'],
 ]);
 
 function readMigration(name) {
@@ -53,9 +55,7 @@ function runMigration(database, name) {
   }
 }
 function applyPrefix(database, count) {
-  for (const name of migrationFiles.slice(0, count)) {
-    runMigration(database, name);
-  }
+  for (const name of migrationFiles.slice(0, count)) runMigration(database, name);
 }
 function schemaVersion(database) {
   return Number(database.prepare(`
@@ -75,9 +75,8 @@ function assertIntegrity(database, label) {
 }
 function expectGuardFailure(database, migration, label) {
   let failed = false;
-  try {
-    runMigration(database, migration);
-  } catch (error) {
+  try { runMigration(database, migration); }
+  catch (error) {
     failed = true;
     if (!String(error).includes('transaction_assertion_failed')) {
       throw new Error(`${label}: wrong failure ${String(error)}`);
@@ -89,7 +88,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 26) throw new Error('fresh schema not 26');
+  if (schemaVersion(fresh) !== 27) throw new Error('fresh schema not 27');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -114,10 +113,10 @@ for (const [number, sentinel] of guarded) {
   if (schemaVersion(skipped) !== number - 2) {
     throw new Error(`skip-${number}: schema changed`);
   }
-  const object = skipped.prepare(`
-    SELECT 1 FROM sqlite_schema WHERE name=?
-  `).get(sentinel);
-  if (object) throw new Error(`skip-${number}: partial DDL ${sentinel}`);
+  if (skipped.prepare('SELECT 1 FROM sqlite_schema WHERE name=?')
+    .get(sentinel)) {
+    throw new Error(`skip-${number}: partial DDL ${sentinel}`);
+  }
   assertIntegrity(skipped, `skip-${number}`);
   skipped.close();
 
@@ -133,8 +132,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 26,
-  sequential_upgrade: '0001 -> 0026',
+  fresh_schema: 27,
+  sequential_upgrade: '0001 -> 0027',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,
