@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { isFrontendApiError } from '../api/errors';
+import { FrontendApiError, isFrontendApiError } from '../api/errors';
 import { queryKeys } from '../api/query-client';
 import { clearStaffTransport } from './customer-transport-invalidation';
+import {
+  captureSessionCycle,
+  establishFreshSessionCycle,
+  retrySessionInvalidation,
+  useSessionInvalidation,
+} from './session-invalidation';
 import { customerSessionSchema, type CustomerSession } from './customer/customer-auth-api';
 import { staffAuthApi, staffSessionSchema, type StaffAuthApiAdapter, type StaffSession } from './staff/staff-auth-api';
 
@@ -11,23 +17,53 @@ export type Identity = 'buyer' | 'seller' | 'staff';
 export type { CustomerSession };
 export type { StaffSession };
 export type StaffSessionResult =
-  | Readonly<{ status: 'LOADING'; value: null }>
+  | Readonly<{ status: 'LOADING'; value: null; retry: () => void }>
   | Readonly<{ status: 'AUTHENTICATED'; value: StaffSession }>
-  | Readonly<{ status: 'UNAUTHENTICATED'; value: null }>
-  | Readonly<{ status: 'DEPENDENCY_ERROR'; value: null }>;
+  | Readonly<{ status: 'UNAUTHENTICATED'; value: null; retry: () => void }>
+  | Readonly<{
+      status: 'DEPENDENCY_ERROR';
+      value: null;
+      cleanupFailed: boolean;
+      requestId: string | null;
+      retry: () => void;
+    }>;
+
+type StaffCleanupView = Readonly<{
+  state: 'IDLE' | 'CLEARING' | 'CLEARED' | 'FAILED';
+  requestId: string | null;
+}>;
 
 export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): StaffSessionResult {
   const client = useQueryClient();
   const mountedRef = useRef(true);
-  const [clearing, setClearing] = useState<'IDLE' | 'CLEARING' | 'CLEARED' | 'FAILED'>('IDLE');
+  const verifiedGenerationRef = useRef<number | null>(null);
+  const [clearing, setClearing] = useState<StaffCleanupView>({ state: 'IDLE', requestId: null });
+  const invalidation = useSessionInvalidation(client, 'staff');
+  const mayResolveInvalidatedMountRef = useRef(invalidation.status === 'INVALIDATED');
+  const invalidationAllowsSessionRead = invalidation.status === 'STABLE'
+    || (mayResolveInvalidatedMountRef.current && invalidation.status === 'INVALIDATED');
   const query = useQuery({
     queryKey: queryKeys.staff.session,
-    queryFn: async ({ signal }) => (await adapter.readSession(signal)).data.session,
+    queryFn: async ({ signal }) => {
+      const requestCycle = captureSessionCycle(client, 'staff');
+      const session = (await adapter.readSession(signal)).data.session;
+      const generation = establishFreshSessionCycle(client, 'staff', requestCycle);
+      if (generation === null) {
+        throw new FrontendApiError('CANCELED', 0, null, 'CANCELED');
+      }
+      verifiedGenerationRef.current = generation;
+      mayResolveInvalidatedMountRef.current = false;
+      return session;
+    },
     retry: false,
     refetchOnMount: 'always',
-    enabled: clearing === 'IDLE',
+    enabled: clearing.state === 'IDLE' && invalidationAllowsSessionRead,
   });
   const freshSessionResolved = query.isFetchedAfterMount && !query.isFetching;
+  const verifiedFreshSession = freshSessionResolved
+    && query.isSuccess
+    && invalidation.status === 'STABLE'
+    && verifiedGenerationRef.current === invalidation.generation;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -36,31 +72,77 @@ export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): St
 
   useEffect(() => {
     if (freshSessionResolved
-      && clearing === 'IDLE'
+      && clearing.state === 'IDLE'
       && isFrontendApiError(query.error)
       && query.error.httpStatus === 401) {
-      setClearing('CLEARING');
+      const requestId = query.error.requestId;
+      setClearing({ state: 'CLEARING', requestId });
       void clearStaffTransport(client).then(() => {
-        if (mountedRef.current) setClearing('CLEARED');
+        if (mountedRef.current) setClearing({ state: 'CLEARED', requestId });
       }).catch(() => {
-        if (mountedRef.current) setClearing('FAILED');
+        if (mountedRef.current) setClearing({ state: 'FAILED', requestId });
       });
     }
-  }, [clearing, client, freshSessionResolved, query.error]);
+  }, [clearing.state, client, freshSessionResolved, query.error]);
 
   useEffect(() => {
-    if (clearing !== 'IDLE') client.removeQueries({ queryKey: queryKeys.staff.root });
-  }, [clearing, client]);
+    if (clearing.state !== 'IDLE' || invalidation.status !== 'STABLE') {
+      client.removeQueries({ queryKey: queryKeys.staff.root });
+    }
+  }, [clearing.state, client, invalidation.status]);
 
-  if (clearing === 'CLEARING') return { status: 'LOADING', value: null };
-  if (clearing === 'CLEARED') return { status: 'UNAUTHENTICATED', value: null };
-  if (clearing === 'FAILED') return { status: 'DEPENDENCY_ERROR', value: null };
-  if (!freshSessionResolved) return { status: 'LOADING', value: null };
-  if (query.isSuccess) return { status: 'AUTHENTICATED', value: query.data };
-  if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
-    return { status: 'LOADING', value: null };
+  const retryQuery = (): void => { void query.refetch(); };
+  const retrySessionCleanup = (): void => {
+    const requestId = clearing.requestId;
+    setClearing({ state: 'CLEARING', requestId });
+    void clearStaffTransport(client).then(() => {
+      if (mountedRef.current) setClearing({ state: 'CLEARED', requestId });
+    }).catch(() => {
+      if (mountedRef.current) setClearing({ state: 'FAILED', requestId });
+    });
+  };
+  const retryProtectedInvalidation = (): void => {
+    void retrySessionInvalidation(client, 'staff').catch(() => undefined);
+  };
+
+  if (invalidation.status === 'CLEARING') {
+    return { status: 'LOADING', value: null, retry: retryQuery };
   }
-  return { status: 'DEPENDENCY_ERROR', value: null };
+  if (invalidation.status === 'FAILED') {
+    return {
+      status: 'DEPENDENCY_ERROR',
+      value: null,
+      cleanupFailed: true,
+      requestId: invalidation.requestId,
+      retry: retryProtectedInvalidation,
+    };
+  }
+  if (clearing.state === 'CLEARING') return { status: 'LOADING', value: null, retry: retryQuery };
+  if (clearing.state === 'CLEARED') return { status: 'UNAUTHENTICATED', value: null, retry: retryQuery };
+  if (clearing.state === 'FAILED') {
+    return {
+      status: 'DEPENDENCY_ERROR',
+      value: null,
+      cleanupFailed: true,
+      requestId: clearing.requestId,
+      retry: retrySessionCleanup,
+    };
+  }
+  if (invalidation.status === 'INVALIDATED' && !mayResolveInvalidatedMountRef.current) {
+    return { status: 'UNAUTHENTICATED', value: null, retry: retryQuery };
+  }
+  if (!freshSessionResolved) return { status: 'LOADING', value: null, retry: retryQuery };
+  if (verifiedFreshSession) return { status: 'AUTHENTICATED', value: query.data };
+  if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
+    return { status: 'LOADING', value: null, retry: retryQuery };
+  }
+  return {
+    status: 'DEPENDENCY_ERROR',
+    value: null,
+    cleanupFailed: false,
+    requestId: isFrontendApiError(query.error) ? query.error.requestId : null,
+    retry: retryQuery,
+  };
 }
 
 export { customerSessionSchema, staffSessionSchema };

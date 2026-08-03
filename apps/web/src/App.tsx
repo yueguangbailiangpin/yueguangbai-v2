@@ -1,8 +1,7 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type ReactNode } from 'react';
-import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { useRef, useState } from 'react';
+import { BrowserRouter, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { queryClient } from './api/query-client';
-import { useStaffSession } from './auth/session';
 import { CustomerLoginPage } from './auth/customer/CustomerLoginPage';
 import { CustomerChangePasswordPage } from './auth/customer/CustomerChangePasswordPage';
 import { CustomerPasswordRouteBoundary } from './auth/customer/CustomerPasswordRouteBoundary';
@@ -10,18 +9,10 @@ import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary
 import { safeReturnPath } from './routes/return-path';
 import { Button, Card, DependencyUnavailable, Dialog, Drawer, ErrorState, LoadingState, NotFound, PageHeader, PermissionDenied, RequestIdDisplay } from './ui/primitives';
 import { StaffAuthController } from './auth/staff/staff-auth-controller';
+import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary';
 
 export function RootEntry() {
   return <main className="identity-entry"><Card><p className="eyebrow">专属链接提示</p><h1>月光白</h1><p>请使用工作人员发送的专属链接登录。</p></Card></main>;
-}
-
-function StaffProtected({ children }: { children: ReactNode }) {
-  const session = useStaffSession();
-  const location = useLocation();
-  if (session.status === 'LOADING') return <main className="centered"><LoadingState label="正在确认登录状态" /></main>;
-  if (session.status === 'DEPENDENCY_ERROR') return <main className="centered"><DependencyUnavailable /></main>;
-  if (session.status === 'UNAUTHENTICATED') return <Navigate to={`/staff/login?return_to=${encodeURIComponent(location.pathname + location.search)}`} replace />;
-  return <>{children}</>;
 }
 
 function StaffLogin() {
@@ -52,6 +43,6 @@ function SellerShell() { const [drawer, setDrawer] = useState(false); return <ma
 function StaffShell() { const [drawer, setDrawer] = useState(false); return <main className="staff-shell"><PageHeader title="员工工作台"><Button onClick={() => setDrawer(true)}>打开操作区</Button></PageHeader><section className="staff-panes"><section aria-labelledby="queue"><h2 id="queue">待处理队列</h2><p>队列结构将在员工业务模块开放。</p></section><section aria-labelledby="detail"><h2 id="detail">详情</h2><p>客户可见内容与内部内容将在正式流程中区分。</p><div className="internal-note">内部内容区（示例）</div></section><section aria-labelledby="actions"><h2 id="actions">操作区</h2><StaffAccountActions /><div className="sensitive-action">财务敏感操作（示例）</div></section></section><Drawer open={drawer} title="操作区" onClose={() => setDrawer(false)}><p>小屏幕使用顺序操作区，不执行真实业务命令。</p></Drawer></main>; }
 
 function DomainNotFound() { return <main className="centered"><NotFound /></main>; }
-function AppRoutes() { return <Routes><Route path="/" element={<RootEntry />} /><Route path="/buyer/login" element={<CustomerLoginPage target="buyer" />} /><Route path="/seller/login" element={<CustomerLoginPage target="seller" />} /><Route path="/buyer/change-password" element={<CustomerPasswordRouteBoundary target="buyer"><CustomerChangePasswordPage target="buyer" /></CustomerPasswordRouteBoundary>} /><Route path="/seller/change-password" element={<CustomerPasswordRouteBoundary target="seller"><CustomerChangePasswordPage target="seller" /></CustomerPasswordRouteBoundary>} /><Route path="/staff/login" element={<StaffLogin />} /><Route path="/staff/auth/callback" element={<StaffProtected><StaffShell /></StaffProtected>} /><Route path="/buyer/*" element={<CustomerSessionBoundary target="buyer"><Routes><Route index element={<BuyerShell />} /><Route path="tasks" element={<BuyerShell />} /><Route path="order-materials" element={<BuyerShell />} /><Route path="reviews" element={<BuyerShell />} /><Route path="me" element={<BuyerShell />} /><Route path="*" element={<DomainNotFound />} /></Routes></CustomerSessionBoundary>} /><Route path="/seller/*" element={<CustomerSessionBoundary target="seller"><Routes><Route index element={<SellerShell />} /><Route path="products" element={<SellerShell />} /><Route path="demands" element={<SellerShell />} /><Route path="orders" element={<SellerShell />} /><Route path="reviews" element={<SellerShell />} /><Route path="settlements" element={<SellerShell />} /><Route path="settings" element={<SellerShell />} /><Route path="*" element={<DomainNotFound />} /></Routes></CustomerSessionBoundary>} /><Route path="/staff/*" element={<StaffProtected><Routes><Route index element={<StaffShell />} /><Route path="queue" element={<StaffShell />} /><Route path="work/:workItemId" element={<StaffShell />} /><Route path="*" element={<DomainNotFound />} /></Routes></StaffProtected>} /><Route path="/forbidden" element={<PermissionDenied />} /><Route path="/dependency-error" element={<ErrorState title="服务暂时不可用" requestId="local-request" />} /><Route path="*" element={<DomainNotFound />} /></Routes>; }
+function AppRoutes() { return <Routes><Route path="/" element={<RootEntry />} /><Route path="/buyer/login" element={<CustomerLoginPage target="buyer" />} /><Route path="/seller/login" element={<CustomerLoginPage target="seller" />} /><Route path="/buyer/change-password" element={<CustomerPasswordRouteBoundary target="buyer"><CustomerChangePasswordPage target="buyer" /></CustomerPasswordRouteBoundary>} /><Route path="/seller/change-password" element={<CustomerPasswordRouteBoundary target="seller"><CustomerChangePasswordPage target="seller" /></CustomerPasswordRouteBoundary>} /><Route path="/staff/login" element={<StaffLogin />} /><Route path="/staff/auth/callback" element={<StaffSessionBoundary><StaffShell /></StaffSessionBoundary>} /><Route path="/buyer/*" element={<CustomerSessionBoundary target="buyer"><Routes><Route index element={<BuyerShell />} /><Route path="tasks" element={<BuyerShell />} /><Route path="order-materials" element={<BuyerShell />} /><Route path="reviews" element={<BuyerShell />} /><Route path="me" element={<BuyerShell />} /><Route path="*" element={<DomainNotFound />} /></Routes></CustomerSessionBoundary>} /><Route path="/seller/*" element={<CustomerSessionBoundary target="seller"><Routes><Route index element={<SellerShell />} /><Route path="products" element={<SellerShell />} /><Route path="demands" element={<SellerShell />} /><Route path="orders" element={<SellerShell />} /><Route path="reviews" element={<SellerShell />} /><Route path="settlements" element={<SellerShell />} /><Route path="settings" element={<SellerShell />} /><Route path="*" element={<DomainNotFound />} /></Routes></CustomerSessionBoundary>} /><Route path="/staff/*" element={<StaffSessionBoundary><Routes><Route index element={<StaffShell />} /><Route path="queue" element={<StaffShell />} /><Route path="work/:workItemId" element={<StaffShell />} /><Route path="*" element={<DomainNotFound />} /></Routes></StaffSessionBoundary>} /><Route path="/forbidden" element={<PermissionDenied />} /><Route path="/dependency-error" element={<ErrorState title="服务暂时不可用" requestId="local-request" />} /><Route path="*" element={<DomainNotFound />} /></Routes>; }
 
 export function App() { return <QueryClientProvider client={queryClient}><BrowserRouter><AppRoutes /></BrowserRouter></QueryClientProvider>; }

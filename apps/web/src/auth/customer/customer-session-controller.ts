@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { isFrontendApiError } from '../../api/errors';
+import { FrontendApiError, isFrontendApiError } from '../../api/errors';
 import { queryKeys } from '../../api/query-client';
 import { CUSTOMER_TRANSPORT_INVALIDATION_GROUP } from '../customer-transport-invalidation';
+import {
+  captureSessionCycle,
+  establishFreshSessionCycle,
+  retrySessionInvalidation,
+  useSessionInvalidation,
+} from '../session-invalidation';
 import {
   customerAuthApi,
   expectedAccountType,
@@ -47,20 +53,41 @@ export function useCustomerSessionController(
     [adapter, client],
   );
   const mountedRef = useRef(true);
+  const verifiedGenerationRef = useRef<number | null>(null);
   const [cleanup, setCleanup] = useState<CleanupView>({ state: 'IDLE', requestId: null });
   const [unauthenticatedCleanup, setUnauthenticatedCleanup] = useState<UnauthenticatedCleanupView>({
     state: 'IDLE',
     requestId: null,
   });
+  const invalidation = useSessionInvalidation(client, target);
+  const mayResolveInvalidatedMountRef = useRef(invalidation.status === 'INVALIDATED');
+  const invalidationAllowsSessionRead = invalidation.status === 'STABLE'
+    || (mayResolveInvalidatedMountRef.current && invalidation.status === 'INVALIDATED');
   const query = useQuery({
     queryKey: queryKeys[target].session,
-    queryFn: async ({ signal }) => (await adapter.readSession(signal)).data.session,
+    queryFn: async ({ signal }) => {
+      const requestCycle = captureSessionCycle(client, target);
+      const session = (await adapter.readSession(signal)).data.session;
+      const generation = establishFreshSessionCycle(client, target, requestCycle);
+      if (generation === null) {
+        throw new FrontendApiError('CANCELED', 0, null, 'CANCELED');
+      }
+      verifiedGenerationRef.current = generation;
+      mayResolveInvalidatedMountRef.current = false;
+      return session;
+    },
     retry: false,
     refetchOnMount: 'always',
-    enabled: cleanup.state === 'IDLE' && unauthenticatedCleanup.state === 'IDLE',
+    enabled: cleanup.state === 'IDLE'
+      && unauthenticatedCleanup.state === 'IDLE'
+      && invalidationAllowsSessionRead,
   });
   const freshSessionResolved = query.isFetchedAfterMount && !query.isFetching;
-  const mismatch = freshSessionResolved && query.isSuccess
+  const verifiedFreshSession = freshSessionResolved
+    && query.isSuccess
+    && invalidation.status === 'STABLE'
+    && verifiedGenerationRef.current === invalidation.generation;
+  const mismatch = verifiedFreshSession
     && query.data.account_type !== expectedAccountType(target);
 
   useEffect(() => {
@@ -69,10 +96,12 @@ export function useCustomerSessionController(
   }, []);
 
   useEffect(() => {
-    if (cleanup.state === 'IDLE' && unauthenticatedCleanup.state === 'IDLE') return;
+    if (cleanup.state === 'IDLE'
+      && unauthenticatedCleanup.state === 'IDLE'
+      && invalidation.status === 'STABLE') return;
     client.removeQueries({ queryKey: queryKeys.buyer.root });
     client.removeQueries({ queryKey: queryKeys.seller.root });
-  }, [cleanup.state, client, unauthenticatedCleanup.state]);
+  }, [cleanup.state, client, invalidation.status, unauthenticatedCleanup.state]);
 
   useEffect(() => {
     if (!mismatch || cleanup.state !== 'IDLE') return;
@@ -111,6 +140,22 @@ export function useCustomerSessionController(
       if (mountedRef.current) setUnauthenticatedCleanup({ state: 'FAILED', requestId });
     });
   };
+  const retryProtectedInvalidation = (): void => {
+    void retrySessionInvalidation(client, target).catch(() => undefined);
+  };
+
+  if (invalidation.status === 'CLEARING') {
+    return { status: 'LOADING', value: null, retry: retryQuery };
+  }
+  if (invalidation.status === 'FAILED') {
+    return {
+      status: 'DEPENDENCY_ERROR',
+      value: null,
+      cleanupFailed: true,
+      requestId: invalidation.requestId,
+      retry: retryProtectedInvalidation,
+    };
+  }
 
   if (cleanup.state === 'CLEANING' || (mismatch && cleanup.state === 'IDLE')) {
     return { status: 'LOADING', value: null, retry: retryQuery };
@@ -142,8 +187,13 @@ export function useCustomerSessionController(
       retry: retryUnauthenticatedCleanup,
     };
   }
+  if (invalidation.status === 'INVALIDATED' && !mayResolveInvalidatedMountRef.current) {
+    return { status: 'UNAUTHENTICATED', value: null, retry: retryQuery };
+  }
   if (!freshSessionResolved) return { status: 'LOADING', value: null, retry: retryQuery };
-  if (query.isSuccess) return { status: 'AUTHENTICATED', value: query.data, retry: retryQuery };
+  if (verifiedFreshSession) {
+    return { status: 'AUTHENTICATED', value: query.data, retry: retryQuery };
+  }
   if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
     return { status: 'LOADING', value: null, retry: retryQuery };
   }
