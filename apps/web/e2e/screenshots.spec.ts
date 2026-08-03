@@ -10,7 +10,7 @@ test('production build renders frozen visual foundation states', async ({ page }
     const session = identity === 'staff'
       ? { staff_id: 'staff-local', display_name: '本地员工', roles: [], permissions: [], data_scope: {}, authorization_version: 1, session_version: 1, expires_at: 9_999_999_999_999 }
       : { account_id: `${identity}-local`, identity_subject_id: 'subject-local', account_type: identity === 'buyer' ? 'BUYER' : 'SELLER_MEMBER', session_version: 1, password_change_required: false, issued_at: 1, expires_at: 9_999_999_999_999 };
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: session, meta: { request_id: 'screenshot-local' } }) });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { session }, meta: { request_id: 'screenshot-local' } }) });
   });
   const capture = async (name: string): Promise<void> => { if (directory) { mkdirSync(directory, { recursive: true }); await page.screenshot({ path: join(directory, name), fullPage: true }); } };
   await page.setViewportSize({ width: 1440, height: 900 }); await page.goto('/'); await expect(page.getByRole('heading', { name: '月光白' })).toBeVisible(); await capture('root-desktop-1440x900.png');
