@@ -46,6 +46,9 @@ const staffSessionTests = readFileSync(join(webRoot, 'auth/staff/staff-auth.msw.
 const identityRequest = readFileSync(join(webRoot, 'api/identity-request.ts'), 'utf8');
 const protectedResources = readFileSync(join(webRoot, 'api/protected-resources.ts'), 'utf8');
 const protectedResourceTests = readFileSync(join(webRoot, 'auth/protected-errors.msw.test.tsx'), 'utf8');
+const sessionInvalidation = readFileSync(join(webRoot, 'auth/session-invalidation.ts'), 'utf8');
+const mountedProtectedTests = readFileSync(join(webRoot, 'auth/mounted-protected-session.msw.test.tsx'), 'utf8');
+const staffSessionBoundary = readFileSync(join(webRoot, 'auth/staff/StaffSessionBoundary.tsx'), 'utf8');
 const mswRoot = join(webRoot, 'test/msw');
 const mswServer = readFileSync(join(mswRoot, 'server.ts'), 'utf8');
 const mswHandlers = readFileSync(join(mswRoot, 'handlers.ts'), 'utf8');
@@ -284,10 +287,10 @@ require401ClearBeforeUnauthenticated(
 require401ClearBeforeUnauthenticated(
   staffSessionController,
   'Staff protected Session',
-  "setClearing('CLEARING')",
+  "setClearing({ state: 'CLEARING'",
   'clearStaffTransport(client)',
-  "setClearing('CLEARED')",
-  "setClearing('FAILED')",
+  "setClearing({ state: 'CLEARED'",
+  "setClearing({ state: 'FAILED'",
 );
 
 requireText(customerRaceTests, [
@@ -315,8 +318,8 @@ requireText(identityRequest, [
   'request: ApiRequest<T>',
   'return await apiRequest(request)',
   'error.httpStatus === 401',
-  'CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client)',
-  'clearStaffTransport(client)',
+  'captureSessionCycle(client, identity)',
+  'invalidateSessionCycle(client, identity, requestCycle, error.requestId)',
   'finally {',
   'throw error',
 ], 'identity-aware protected request boundary');
@@ -367,6 +370,93 @@ requireText(protectedResourceTests, [
   "code: 'CANCELED'",
   'request-${identity}-protected-${status}',
 ], 'protected API identity invalidation and non-401 preservation evidence');
+
+requireText(sessionInvalidation, [
+  "type SessionInvalidationStatus = 'STABLE' | 'CLEARING' | 'INVALIDATED' | 'FAILED'",
+  'new WeakMap<QueryClient, ClientChannels>()',
+  'useSyncExternalStore(',
+  'customer: createChannel()',
+  'staff: createChannel()',
+  'captureSessionCycle(',
+  'establishFreshSessionCycle(',
+  'current.generation !== requestCycle.generation',
+  'channel.active?.generation === generation',
+  'return channel.active.promise',
+  "publish(channel, { status: 'CLEARING'",
+  'remainsCurrent',
+  "publish(channel, { status: 'INVALIDATED'",
+  "publish(channel, { status: 'FAILED'",
+  'retrySessionInvalidation(',
+], 'QueryClient-scoped mounted Session invalidation coordinator');
+if (/localStorage|sessionStorage|window\.|document\.|dispatchEvent|CustomEvent/iu.test(sessionInvalidation)) {
+  throw new Error('mounted Session invalidation must not use storage or window/DOM events');
+}
+if ((sessionInvalidation.match(/new WeakMap</gu) ?? []).length !== 1) {
+  throw new Error('mounted Session invalidation must have one QueryClient-scoped WeakMap');
+}
+const clearingPublish = sessionInvalidation.indexOf("publish(channel, { status: 'CLEARING'");
+const protectedClear = sessionInvalidation.indexOf('clearStaffTransport(client, remainsCurrent)', clearingPublish);
+const invalidatedPublish = sessionInvalidation.indexOf("publish(channel, { status: 'INVALIDATED'", protectedClear);
+if (clearingPublish < 0 || protectedClear < clearingPublish || invalidatedPublish < protectedClear) {
+  throw new Error('mounted protected 401 must publish CLEARING before cleanup and INVALIDATED after cleanup');
+}
+
+requireText(staffSessionBoundary, [
+  'export function StaffSessionBoundary(',
+  'useStaffSession(adapter)',
+  "session.status === 'LOADING'",
+  "session.status === 'DEPENDENCY_ERROR'",
+  'session.cleanupFailed',
+  "session.status === 'UNAUTHENTICATED'",
+  '<Navigate to={`/staff/login?return_to=${returnTo}`}',
+  '重新清理',
+], 'independent Staff Session Boundary');
+requireText(app, [
+  "import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary'",
+  '<StaffSessionBoundary><StaffShell /></StaffSessionBoundary>',
+  '<StaffSessionBoundary><Routes>',
+], 'App Staff Session Boundary integration');
+if (app.includes('function StaffProtected')) {
+  throw new Error('Staff Session Boundary must not remain an App-private function');
+}
+
+requireText(mountedProtectedTests, [
+  "import '../test/msw/lifecycle'",
+  'CustomerSessionBoundary',
+  'StaffSessionBoundary',
+  'protectedResourcesApi.readBuyerMe(client)',
+  'protectedResourcesApi.readSellerMe(client)',
+  'protectedResourcesApi.readStaffAssignments(client)',
+  '<Routes>',
+  'MOUNTED SHELL',
+  'PRIVATE CONTENT',
+  "screen.queryByText(`${label} MOUNTED SHELL`)).not.toBeInTheDocument()",
+  "screen.queryByText(`${label} LOGIN`)).not.toBeInTheDocument()",
+  'releaseCancellation()',
+  "screen.findByText(`${label} LOGIN`)",
+  'expectCustomerClearedStaffPreserved(client)',
+  'expectStaffClearedCustomerPreserved(client)',
+  '并发读取',
+  'toHaveBeenCalledTimes(expectedCancellations)',
+  'firstGeneration + 1',
+  'request-${identity}-stale-401',
+  'expect(cancelQueries).not.toHaveBeenCalled()',
+  'mounted 403 and 404 keep the authenticated identity Shell',
+  "screen.getByText(`${label} PRIVATE CONTENT`)).toBeVisible()",
+  '会话清理失败，请重试或刷新',
+  "getByRole('button', { name: '重新清理' })",
+], 'mounted protected API Session transition evidence');
+if (/CUSTOMER_TRANSPORT_INVALIDATION_GROUP|clearStaffTransport/u.test(mountedProtectedTests)) {
+  throw new Error('mounted Session transition tests must traverse adapters and Boundaries, not call cleanup directly');
+}
+if ((mountedProtectedTests.match(/installProtectedFailure\(path, 401/gu) ?? []).length < 2
+  || !mountedProtectedTests.includes("installProtectedFailure(path, 401, 'UNAUTHENTICATED'")) {
+  throw new Error('Buyer, Seller, and Staff mounted protected 401 chains are incomplete');
+}
+if ((mountedProtectedTests.match(/\[identity, path, label, 403/gu) ?? []).length !== 1
+  || (mountedProtectedTests.match(/\[identity, path, label, 404/gu) ?? []).length !== 1) {
+  throw new Error('mounted Buyer, Seller, and Staff 403/404 matrix is incomplete');
+}
 requireText(passwordController, [
   "'IDLE'",
   "'EDITING'",
