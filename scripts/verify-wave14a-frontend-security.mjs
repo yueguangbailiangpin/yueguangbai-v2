@@ -40,6 +40,22 @@ const passwordPage = readFileSync(join(customerRoot, 'CustomerChangePasswordPage
 const passwordRouteBoundary = readFileSync(join(customerRoot, 'CustomerPasswordRouteBoundary.tsx'), 'utf8');
 const passwordRouteController = readFileSync(join(customerRoot, 'customer-password-route-controller.ts'), 'utf8');
 const passwordRouteTests = readFileSync(join(customerRoot, 'customer-password-route-flow.test.tsx'), 'utf8');
+const mswRoot = join(webRoot, 'test/msw');
+const mswServer = readFileSync(join(mswRoot, 'server.ts'), 'utf8');
+const mswHandlers = readFileSync(join(mswRoot, 'handlers.ts'), 'utf8');
+const mswFixtures = readFileSync(join(mswRoot, 'fixtures.ts'), 'utf8');
+const mswLifecycle = readFileSync(join(mswRoot, 'lifecycle.ts'), 'utf8');
+const mswTestFiles = [];
+function collectMswTests(directory) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) collectMswTests(path);
+    else if (/\.msw\.test\.tsx?$/.test(entry.name)
+      || entry.name === 'msw-lifecycle.test.ts') mswTestFiles.push(path);
+  }
+}
+collectMswTests(webRoot);
+const mswTests = mswTestFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
 
 const changeFiles = [];
 function walkChange(directory) {
@@ -84,6 +100,70 @@ requireText(source, [
   'staffProviderOrigin',
   'data.session',
 ], 'required Wave 14A boundary');
+
+requireText(mswServer, [
+  "from 'msw/node'",
+  'setupServer(...handlers)',
+], 'formal MSW server');
+requireText(mswHandlers, [
+  "from 'msw'",
+  'http.get',
+  'http.post',
+  'HttpResponse.json',
+  'export const handlers',
+], 'formal MSW handlers');
+requireText(mswFixtures, [
+  'customerSessionEnvelopeFixture',
+  'staffSessionEnvelopeFixture',
+  'data: { session }',
+  'malformedFixtures',
+  'flatCustomerSession',
+  'flatStaffSession',
+], 'typed MSW fixtures');
+requireText(mswLifecycle, [
+  'beforeAll(() => {',
+  "server.listen({ onUnhandledRequest: 'error' })",
+  'afterEach(() => {',
+  'server.resetHandlers()',
+  'afterAll(() => {',
+  'server.close()',
+], 'strict MSW lifecycle');
+if (mswTestFiles.length < 5) {
+  throw new Error(`formal MSW test files missing: found ${mswTestFiles.length}`);
+}
+for (const file of mswTestFiles) {
+  const body = readFileSync(file, 'utf8');
+  if (!body.includes('msw/lifecycle')) {
+    throw new Error(`MSW test bypasses unified lifecycle: ${file}`);
+  }
+}
+if (/globalThis\.fetch\s*=|global\.fetch\s*=|vi\.stubGlobal\(['"]fetch/u.test(mswTests)) {
+  throw new Error('formal MSW evidence must not stub global fetch');
+}
+requireText(mswTests, [
+  "credentials).toBe('include')",
+  "request.headers.get('Idempotency-Key')",
+  'safeDetails',
+  "shouldRetryQuery(0, new Error('unknown'))",
+  'request-customer-401',
+  'activeCanceled',
+  'expectOnlyStaff(client)',
+  'request-staff-401',
+  'request-protected-${status}',
+  "['customer', '/api/buyer-portal/me', 403, 'FORBIDDEN']",
+  "['staff', '/api/staff/me/assignments', 404, 'NOT_FOUND']",
+  'internal-communication-files',
+  "code: 'NETWORK_FAILURE'",
+], 'formal MSW network evidence');
+if (!mswTests.includes('apiRequest({')
+  || !mswTests.includes('customerAuthApi')
+  || !mswTests.includes('staffAuthApi')) {
+  throw new Error('formal MSW tests must traverse apiRequest and real Auth adapters');
+}
+const phantomRoute = '/api/staff/order-evidence/:id/internal-communication-files';
+if (source.includes(phantomRoute) || mswHandlers.includes('internal-communication-files')) {
+  throw new Error('phantom internal-communication route must have no production call or MSW handler');
+}
 requireText(app, [
   'path="/buyer/login"',
   'path="/seller/login"',

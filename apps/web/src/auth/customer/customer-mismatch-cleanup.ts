@@ -48,15 +48,18 @@ export class CustomerMismatchCleanupCoordinator {
 
   private async performCleanup(): Promise<CustomerMismatchCleanupResult> {
     await CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(this.client);
+    let result: CustomerMismatchCleanupResult;
     try {
       const response = await this.api.logout();
-      return this.settle({ state: 'CLEANED', requestId: response.requestId });
+      result = { state: 'CLEANED', requestId: response.requestId };
     } catch (error: unknown) {
-      return this.settle({
+      result = {
         state: 'FAILED',
         requestId: isFrontendApiError(error) ? error.requestId : null,
-      });
+      };
     }
+    await CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(this.client);
+    return this.settle(result);
   }
 
   private settle(result: CustomerMismatchCleanupResult): CustomerMismatchCleanupResult {

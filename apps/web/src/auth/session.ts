@@ -1,54 +1,44 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { z } from 'zod';
 import { isFrontendApiError } from '../api/errors';
 import { queryKeys } from '../api/query-client';
-import { apiRequest } from '../api/transport';
 import { clearStaffTransport } from './customer-transport-invalidation';
 import { customerSessionSchema, type CustomerSession } from './customer/customer-auth-api';
+import { staffAuthApi, staffSessionSchema, type StaffAuthApiAdapter, type StaffSession } from './staff/staff-auth-api';
 
 export type Identity = 'buyer' | 'seller' | 'staff';
 
-const staffSessionSchema = z.object({
-  staff_id: z.string(),
-  display_name: z.string(),
-  roles: z.array(z.string()),
-  permissions: z.array(z.string()),
-  data_scope: z.unknown(),
-  authorization_version: z.number().int(),
-  session_version: z.number().int(),
-  expires_at: z.number().int(),
-}).strict();
-
-const staffSessionResponseSchema = z.object({ session: staffSessionSchema }).strict();
-
 export type { CustomerSession };
-export type StaffSession = z.output<typeof staffSessionSchema>;
+export type { StaffSession };
 export type StaffSessionResult =
   | Readonly<{ status: 'LOADING'; value: null }>
   | Readonly<{ status: 'AUTHENTICATED'; value: StaffSession }>
   | Readonly<{ status: 'UNAUTHENTICATED'; value: null }>
   | Readonly<{ status: 'DEPENDENCY_ERROR'; value: null }>;
 
-export function useStaffSession(): StaffSessionResult {
+export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): StaffSessionResult {
   const client = useQueryClient();
+  const [clearing, setClearing] = useState<'IDLE' | 'CLEARING' | 'CLEARED'>('IDLE');
   const query = useQuery({
     queryKey: queryKeys.staff.session,
-    queryFn: async ({ signal }) => (await apiRequest({
-      path: '/api/staff-auth/session',
-      method: 'GET',
-      schema: staffSessionResponseSchema,
-      signal,
-    })).data.session,
+    queryFn: async ({ signal }) => (await adapter.readSession(signal)).data.session,
     retry: false,
+    enabled: clearing === 'IDLE',
   });
 
   useEffect(() => {
     if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
-      void clearStaffTransport(client);
+      setClearing('CLEARING');
+      void clearStaffTransport(client).then(() => setClearing('CLEARED'));
     }
   }, [client, query.error]);
 
+  useEffect(() => {
+    if (clearing !== 'IDLE') client.removeQueries({ queryKey: queryKeys.staff.root });
+  }, [clearing, client]);
+
+  if (clearing === 'CLEARING') return { status: 'LOADING', value: null };
+  if (clearing === 'CLEARED') return { status: 'UNAUTHENTICATED', value: null };
   if (query.isPending) return { status: 'LOADING', value: null };
   if (query.isSuccess) return { status: 'AUTHENTICATED', value: query.data };
   if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {

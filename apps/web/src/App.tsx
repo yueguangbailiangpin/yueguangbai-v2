@@ -1,23 +1,15 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { z } from 'zod';
 import { queryClient } from './api/query-client';
-import { startOperation } from './api/idempotency';
-import { staffLogoutAllResponseSchema, staffLogoutResponseSchema } from './auth/staff/staff-logout-schemas';
-import { apiRequest } from './api/transport';
-import { isFrontendApiError } from './api/errors';
-import { clearStaffTransport } from './auth/customer-transport-invalidation';
 import { useStaffSession } from './auth/session';
 import { CustomerLoginPage } from './auth/customer/CustomerLoginPage';
 import { CustomerChangePasswordPage } from './auth/customer/CustomerChangePasswordPage';
 import { CustomerPasswordRouteBoundary } from './auth/customer/CustomerPasswordRouteBoundary';
 import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary';
 import { safeReturnPath } from './routes/return-path';
-import { runtimeConfig } from './config/runtime-config';
 import { Button, Card, DependencyUnavailable, Dialog, Drawer, ErrorState, LoadingState, NotFound, PageHeader, PermissionDenied, RequestIdDisplay } from './ui/primitives';
-
-const staffStartSchema = z.object({ provider: z.literal('FEISHU'), authorization_url: z.string().url(), expires_at: z.number().int() }).strict();
+import { StaffAuthController } from './auth/staff/staff-auth-controller';
 
 export function RootEntry() {
   return <main className="identity-entry"><Card><p className="eyebrow">专属链接提示</p><h1>月光白</h1><p>请使用工作人员发送的专属链接登录。</p></Card></main>;
@@ -33,14 +25,11 @@ function StaffProtected({ children }: { children: ReactNode }) {
 }
 
 function StaffLogin() {
-  const navigate = useNavigate(); const location = useLocation(); const [message, setMessage] = useState<string | null>(null);
+  const client = useQueryClient(); const navigate = useNavigate(); const location = useLocation(); const [message, setMessage] = useState<string | null>(null); const controller = useRef<StaffAuthController | null>(null); controller.current ??= new StaffAuthController(client);
   async function start(): Promise<void> {
     const returnTo = safeReturnPath(new URLSearchParams(location.search).get('return_to'), 'staff');
     try {
-      const result = (await apiRequest({ path: '/api/staff-auth/login/start', method: 'POST', schema: staffStartSchema, body: { return_to: returnTo } })).data;
-      const url = new URL(result.authorization_url);
-      if (url.protocol !== 'https:' || url.origin !== runtimeConfig().staffProviderOrigin) throw new Error('unsafe_provider_url');
-      window.location.assign(url.toString());
+      window.location.assign(await controller.current!.startLogin(returnTo));
     } catch { setMessage('暂时无法开始员工登录，请稍后重试。'); }
   }
   return <main className="login-page"><Card><h1>员工登录</h1><p>将跳转到受信任的身份提供方完成验证。</p>{message && <p className="inline-error" role="alert">{message}</p>}<Button onClick={() => { void start(); }}>继续登录</Button><Button className="secondary" onClick={() => navigate('/')}>返回入口</Button></Card></main>;
@@ -48,10 +37,10 @@ function StaffLogin() {
 
 
 function StaffAccountActions() {
-  const client = useQueryClient(); const navigate = useNavigate(); const [confirming, setConfirming] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState<string | null>(null); const [requestId, setRequestId] = useState<string | null>(null); const operation = useRef<ReturnType<typeof startOperation<{}>> | null>(null);
-  async function finishLogout(path: '/api/staff-auth/logout' | '/api/staff-auth/logout-all', all: boolean): Promise<void> { setBusy(true); setMessage(null); try { const current = all ? (operation.current ?? (operation.current = startOperation({}))) : null; const response = await apiRequest({ path, method: 'POST', schema: all ? staffLogoutAllResponseSchema : staffLogoutResponseSchema, ...(all ? { body: {}, headers: { 'Idempotency-Key': current?.key ?? '' } } : {}) }); setRequestId(response.requestId); await clearStaffTransport(client); operation.current = null; navigate('/staff/login', { replace: true }); } catch (error: unknown) { if (isFrontendApiError(error)) { setRequestId(error.requestId); if (error.httpStatus === 401) { await clearStaffTransport(client); operation.current = null; navigate('/staff/login', { replace: true }); return; } if (error.code === 'IDEMPOTENCY_CONFLICT') operation.current = null; setMessage(error.code === 'IDEMPOTENCY_CONFLICT' ? '该操作发生冲突，请结束后重新发起。' : error.code === 'REQUEST_IN_PROGRESS' ? '操作正在处理中，请勿重复提交。' : '退出未完成，请由您决定是否重试。'); } else setMessage('退出未完成，请由您决定是否重试。'); } finally { setBusy(false); } }
-  const cancel = (): void => { if (!busy) { operation.current = null; setConfirming(false); setMessage(null); } };
-  return <section className="staff-account-actions" aria-label="账户操作"><Button className="secondary" disabled={busy} onClick={() => { void finishLogout('/api/staff-auth/logout', false); }}>退出登录</Button><Button className="danger" disabled={busy} onClick={() => setConfirming(true)}>退出所有设备</Button>{message && <p className="inline-error" role="alert">{message}</p>}<RequestIdDisplay requestId={requestId} /><Dialog open={confirming} title="退出所有设备" description="这会使其他设备上的员工会话失效。" busy={busy} onClose={cancel}><div className="entry-actions"><Button className="secondary" disabled={busy} onClick={cancel}>取消</Button><Button className="danger" disabled={busy} onClick={() => { void finishLogout('/api/staff-auth/logout-all', true); }}>{busy ? '正在退出' : '确认退出所有设备'}</Button></div></Dialog></section>;
+  const client = useQueryClient(); const navigate = useNavigate(); const [confirming, setConfirming] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState<string | null>(null); const [requestId, setRequestId] = useState<string | null>(null); const controller = useRef<StaffAuthController | null>(null); controller.current ??= new StaffAuthController(client);
+  async function finishLogout(all: boolean): Promise<void> { setBusy(true); setMessage(null); const result = all ? await controller.current!.logoutAll() : await controller.current!.logout(); setRequestId(result.requestId); if (result.kind === 'LOGGED_OUT') { navigate('/staff/login', { replace: true }); } else { setMessage(result.kind === 'IDEMPOTENCY_CONFLICT' ? '该操作发生冲突，请结束后重新发起。' : result.kind === 'REQUEST_IN_PROGRESS' || result.kind === 'ALREADY_SUBMITTING' ? '操作正在处理中，请勿重复提交。' : '退出未完成，请由您决定是否重试。'); } setBusy(false); }
+  const cancel = (): void => { if (!busy) { controller.current!.cancelLogoutAll(); setConfirming(false); setMessage(null); } };
+  return <section className="staff-account-actions" aria-label="账户操作"><Button className="secondary" disabled={busy} onClick={() => { void finishLogout(false); }}>退出登录</Button><Button className="danger" disabled={busy} onClick={() => setConfirming(true)}>退出所有设备</Button>{message && <p className="inline-error" role="alert">{message}</p>}<RequestIdDisplay requestId={requestId} /><Dialog open={confirming} title="退出所有设备" description="这会使其他设备上的员工会话失效。" busy={busy} onClose={cancel}><div className="entry-actions"><Button className="secondary" disabled={busy} onClick={cancel}>取消</Button><Button className="danger" disabled={busy} onClick={() => { void finishLogout(true); }}>{busy ? '正在退出' : '确认退出所有设备'}</Button></div></Dialog></section>;
 }
 
 const buyerItems = [['/', '首页'], ['/tasks', '任务'], ['/order-materials', '订单资料'], ['/reviews', '评论'], ['/me', '我的']] as const;

@@ -54,6 +54,7 @@ export function useCustomerPasswordRouteController(
     queryKey: queryKeys[target].session,
     queryFn: async ({ signal }) => (await adapter.readSession(signal)).data.session,
     retry: false,
+    enabled: cleanup.state === 'IDLE' && unauthenticatedCleanup === 'IDLE',
   });
   const mismatch = query.isSuccess
     && query.data.account_type !== expectedAccountType(target);
@@ -62,6 +63,12 @@ export function useCustomerPasswordRouteController(
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+
+  useEffect(() => {
+    if (cleanup.state === 'IDLE' && unauthenticatedCleanup !== 'CLEARED') return;
+    client.removeQueries({ queryKey: queryKeys.buyer.root });
+    client.removeQueries({ queryKey: queryKeys.seller.root });
+  }, [cleanup.state, client, unauthenticatedCleanup]);
 
   useEffect(() => {
     if (!mismatch || cleanup.state !== 'IDLE') return;

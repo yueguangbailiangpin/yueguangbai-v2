@@ -32,6 +32,8 @@ type CleanupView = Readonly<{
   requestId: string | null;
 }>;
 
+type UnauthenticatedCleanupState = 'IDLE' | 'CLEARING' | 'CLEARED';
+
 export function useCustomerSessionController(
   target: CustomerTarget,
   adapter: CustomerAuthApiAdapter = customerAuthApi,
@@ -43,10 +45,12 @@ export function useCustomerSessionController(
   );
   const mountedRef = useRef(true);
   const [cleanup, setCleanup] = useState<CleanupView>({ state: 'IDLE', requestId: null });
+  const [unauthenticatedCleanup, setUnauthenticatedCleanup] = useState<UnauthenticatedCleanupState>('IDLE');
   const query = useQuery({
     queryKey: queryKeys[target].session,
     queryFn: async ({ signal }) => (await adapter.readSession(signal)).data.session,
     retry: false,
+    enabled: cleanup.state === 'IDLE' && unauthenticatedCleanup === 'IDLE',
   });
   const mismatch = query.isSuccess
     && query.data.account_type !== expectedAccountType(target);
@@ -57,6 +61,12 @@ export function useCustomerSessionController(
   }, []);
 
   useEffect(() => {
+    if (cleanup.state === 'IDLE' && unauthenticatedCleanup !== 'CLEARED') return;
+    client.removeQueries({ queryKey: queryKeys.buyer.root });
+    client.removeQueries({ queryKey: queryKeys.seller.root });
+  }, [cleanup.state, client, unauthenticatedCleanup]);
+
+  useEffect(() => {
     if (!mismatch || cleanup.state !== 'IDLE') return;
     setCleanup({ state: 'CLEANING', requestId: null });
     void coordinator.clean().then((result) => {
@@ -65,10 +75,13 @@ export function useCustomerSessionController(
   }, [cleanup.state, coordinator, mismatch]);
 
   useEffect(() => {
-    if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
-      void CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client);
-    }
-  }, [client, query.error]);
+    if (!(isFrontendApiError(query.error) && query.error.httpStatus === 401)
+      || unauthenticatedCleanup !== 'IDLE') return;
+    setUnauthenticatedCleanup('CLEARING');
+    void CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client).then(() => {
+      if (mountedRef.current) setUnauthenticatedCleanup('CLEARED');
+    });
+  }, [client, query.error, unauthenticatedCleanup]);
 
   const retryQuery = (): void => { void query.refetch(); };
   const retryCleanup = (): void => {
@@ -92,6 +105,12 @@ export function useCustomerSessionController(
       requestId: cleanup.requestId,
       retry: retryCleanup,
     };
+  }
+  if (unauthenticatedCleanup === 'CLEARING') {
+    return { status: 'LOADING', value: null, retry: retryQuery };
+  }
+  if (unauthenticatedCleanup === 'CLEARED') {
+    return { status: 'UNAUTHENTICATED', value: null, retry: retryQuery };
   }
   if (query.isPending) return { status: 'LOADING', value: null, retry: retryQuery };
   if (query.isSuccess) return { status: 'AUTHENTICATED', value: query.data, retry: retryQuery };
