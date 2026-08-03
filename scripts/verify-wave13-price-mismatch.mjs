@@ -14,6 +14,9 @@ const buyer = [
   read('apps/api/src/buyer-order-evidence-portal/routes.ts'),
 ].join('\n');
 const permissions = read('packages/contracts/src/staff.ts');
+const tests = read(
+  'apps/api/src/order-evidence/wave13-staff-order-evidence.test.ts',
+);
 
 assertContains(errors, "'PRICE_MISMATCH'", 'error catalog');
 assertContains(errors, 'PRICE_MISMATCH: 409', 'HTTP mapping');
@@ -40,8 +43,32 @@ assertContains(approval, 'finalPaidJpy: source.final_paid_jpy', 'financial snaps
 assertNotContains(approval,
   'finalPaidJpy: source.reference_order_amount_jpy',
   'financial snapshot');
+for (const field of [
+  'reference_order_amount_jpy: string',
+  'price_difference_jpy: string',
+  'price_mismatch: boolean',
+  'resubmission_deadline_at: number | null',
+  'workflow: StaffOrderEvidenceWorkflowDto',
+  'buyer: StaffOrderEvidenceBuyerSummaryDto',
+]) assertContains(contracts, field, 'Staff Order Evidence list contract');
+for (const evidence of [
+  'evidence.reference_order_amount_jpy_snapshot',
+  'submission.resubmission_deadline_at',
+  "work.work_type='ORDER_EVIDENCE_REVIEW'",
+  'screenshot_association_count',
+  'eligible_screenshot_association_count',
+  "new StaffOrderEvidenceHttpError('STATE_CONFLICT', 409)",
+]) assertContains(routes, evidence, 'Staff Order Evidence route');
+for (const evidence of [
+  'returns the complete Staff-safe review queue DTO at runtime',
+  'rejects a tampered local D1 %s current screenshot association',
+  'returns one safe screenshot for a valid local D1 association',
+  "['zero', 'multiple', 'mismatch']",
+  'seedDetailInvariantFixture',
+]) assertContains(tests, evidence, 'Staff Order Evidence runtime tests');
 report('wave13-price-mismatch', {
   error_status: 409,
   new_permissions: 0,
   buyer_reason_fields: 0,
+  detail_screenshot_associations: 1,
 });

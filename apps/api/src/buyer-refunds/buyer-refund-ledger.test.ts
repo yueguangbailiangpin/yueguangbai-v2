@@ -334,6 +334,16 @@ describe('Phase 5B immutable buyer refund ledger', () => {
       refundCommand('buyer-refund:idempotency:payment', NOW + 80_000),
     )).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
 
+    await expect(recordBuyerRefundPayment(
+      database!,
+      allowAllFiles,
+      {
+        ...paymentInput(obligation.obligation_id, 1, 100, 7),
+        chinaBusinessDate: '2026-08-02',
+      },
+      refundCommand('buyer-refund:idempotency:payment', NOW + 80_001),
+    )).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+
     seedRefundProof(database!, 8);
     await expect(recordPayment(
       obligation.obligation_id,

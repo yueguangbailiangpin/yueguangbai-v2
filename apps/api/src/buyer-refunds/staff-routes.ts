@@ -11,7 +11,11 @@ import {
   type StaffBuyerRefundListItemDto,
   type StaffDataScope,
 } from '@ygb/contracts';
-import { chinaBusinessDate } from '@ygb/domain';
+import {
+  chinaBusinessDate,
+  chinaBusinessDateStartEpoch,
+  parseChinaBusinessDate,
+} from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../app';
 import type { FileAuthorizationResource, FileAuthorizationService } from '../files/authorization';
@@ -34,17 +38,26 @@ interface RefundListRow {
   buyer_customer_id: string;
   formal_order_id: string;
   due_amount_cny_fen: number;
+  gross_paid_cny_fen: number;
+  reversed_cny_fen: number;
   net_paid_cny_fen: number;
   status: BuyerRefundStatus;
   version: number;
   created_at: number;
+  updated_at: number;
+  buyer_customer_no: string | null;
+  marketplace_code: 'JP';
+  amazon_order_number_normalized: string;
+  product_id: string;
+  asin_normalized: string;
+  work_item_id: string | null;
+  assigned_staff_id: string | null;
+  fixed_assignment_id: string | null;
 }
 
 interface RefundDetailRow extends RefundListRow {
   source_review_event_id: string;
   review_case_id: string;
-  gross_paid_cny_fen: number;
-  reversed_cny_fen: number;
 }
 
 interface PaymentRow {
@@ -54,6 +67,7 @@ interface PaymentRow {
   china_business_date: string;
   payment_channel: BuyerRefundPaymentChannel;
   public_note: string | null;
+  internal_note: string | null;
 }
 
 interface ReversalRow {
@@ -64,6 +78,7 @@ interface ReversalRow {
   china_business_date: string;
   payment_channel: BuyerRefundPaymentChannel;
   public_note: string | null;
+  internal_note: string | null;
 }
 
 interface ProofRow {
@@ -103,21 +118,43 @@ async function listStaffBuyerRefunds(context: Context<AppEnv>): Promise<Response
       (ledger.created_at=? AND ledger.obligation_id>?))`
     : '';
   const status = query.status ? 'AND ledger.status=?' : '';
+  const from = query.fromStart === undefined
+    ? ''
+    : 'AND ledger.created_at>=?';
+  const to = query.toExclusive === undefined
+    ? ''
+    : 'AND ledger.created_at<?';
   const rows = await context.env.DB.prepare(`
     SELECT ledger.obligation_id, ledger.buyer_customer_id,
       ledger.formal_order_id, ledger.due_amount_cny_fen,
+      ledger.gross_paid_cny_fen, ledger.reversed_cny_fen,
       ledger.net_paid_cny_fen, ledger.status, ledger.version,
-      ledger.created_at
+      ledger.created_at, ledger.updated_at,
+      buyer.buyer_customer_no, formal_order.marketplace_code,
+      formal_order.amazon_order_number_normalized,
+      formal_order.product_id, formal_order.asin_normalized,
+      work.id AS work_item_id, work.assigned_staff_id,
+      work.fixed_assignment_id
     FROM buyer_refund_ledger_balances ledger
     JOIN formal_orders formal_order ON formal_order.id=ledger.formal_order_id
+    JOIN buyer_customers buyer ON buyer.id=ledger.buyer_customer_id
+    LEFT JOIN staff_work_items work
+      ON work.work_type='BUYER_REFUND_PROCESSING'
+      AND work.source_entity_type='BUYER_REFUND_OBLIGATION'
+      AND work.source_entity_id=ledger.obligation_id
+      AND work.status='OPEN'
     WHERE ${scope.sql}
       ${status}
+      ${from}
+      ${to}
       ${cursor}
     ORDER BY ledger.created_at, ledger.obligation_id
     LIMIT ?
   `).bind(
     ...scope.args,
     ...(query.status ? [query.status] : []),
+    ...(query.fromStart === undefined ? [] : [query.fromStart]),
+    ...(query.toExclusive === undefined ? [] : [query.toExclusive]),
     ...(query.cursor
       ? [query.cursor.createdAt, query.cursor.createdAt, query.cursor.id]
       : []),
@@ -156,6 +193,7 @@ async function recordPayment(context: Context<AppEnv>): Promise<Response> {
     'expected_version',
     'amount_cny_fen',
     'paid_at',
+    'china_business_date',
     'payment_channel',
     'public_note',
     'internal_note',
@@ -164,10 +202,18 @@ async function recordPayment(context: Context<AppEnv>): Promise<Response> {
     'expected_version',
     'amount_cny_fen',
     'paid_at',
+    'china_business_date',
     'payment_channel',
     'proof_files',
   ]));
   const proofFiles = parseProofFiles(body['proof_files']);
+  const paidAt = nonNegativeTimestamp(body['paid_at']);
+  const submittedBusinessDate = canonicalBusinessDate(
+    body['china_business_date'],
+  );
+  if (submittedBusinessDate !== chinaBusinessDate(paidAt)) {
+    return validationError();
+  }
   const result = await recordBuyerRefundPayment(
     context.env.DB,
     new BuyerRefundProofLinkAuthorization(actor),
@@ -175,8 +221,8 @@ async function recordPayment(context: Context<AppEnv>): Promise<Response> {
       obligationId,
       expectedVersion: positiveVersion(body['expected_version']),
       amountCnyFen: positiveMoney(body['amount_cny_fen']),
-      paidAt: nonNegativeTimestamp(body['paid_at']),
-      chinaBusinessDate: chinaBusinessDate(nonNegativeTimestamp(body['paid_at'])),
+      paidAt,
+      chinaBusinessDate: submittedBusinessDate,
       paymentChannel: paymentChannel(body['payment_channel']),
       proofFiles,
       publicNote: optionalText(body['public_note'], 2000),
@@ -197,6 +243,7 @@ async function recordPayment(context: Context<AppEnv>): Promise<Response> {
       china_business_date: result.payment.china_business_date,
       payment_channel: result.payment.payment_channel,
       public_note: result.payment.public_note,
+      internal_note: optionalText(body['internal_note'], 4000),
       proofs: proofFiles.map((proof) => ({
         file_object_id: proof.fileObjectId,
         file_version: proof.expectedFileVersion,
@@ -268,9 +315,20 @@ async function readRefundDetail(
       ledger.buyer_customer_id, ledger.due_amount_cny_fen,
       ledger.gross_paid_cny_fen, ledger.reversed_cny_fen,
       ledger.net_paid_cny_fen, ledger.status, ledger.version,
-      ledger.created_at
+      ledger.created_at, ledger.updated_at,
+      buyer.buyer_customer_no, formal_order.marketplace_code,
+      formal_order.amazon_order_number_normalized,
+      formal_order.product_id, formal_order.asin_normalized,
+      work.id AS work_item_id, work.assigned_staff_id,
+      work.fixed_assignment_id
     FROM buyer_refund_ledger_balances ledger
     JOIN formal_orders formal_order ON formal_order.id=ledger.formal_order_id
+    JOIN buyer_customers buyer ON buyer.id=ledger.buyer_customer_id
+    LEFT JOIN staff_work_items work
+      ON work.work_type='BUYER_REFUND_PROCESSING'
+      AND work.source_entity_type='BUYER_REFUND_OBLIGATION'
+      AND work.source_entity_id=ledger.obligation_id
+      AND work.status='OPEN'
     WHERE ledger.obligation_id=? AND ${scope.sql}
     LIMIT 1
   `).bind(obligationId, ...scope.args).first<RefundDetailRow>();
@@ -278,14 +336,15 @@ async function readRefundDetail(
   const [payments, reversals, proofs] = await Promise.all([
     context.env.DB.prepare(`
       SELECT id, amount_cny_fen, paid_at, china_business_date,
-        payment_channel, public_note
+        payment_channel, public_note, internal_note
       FROM buyer_refund_payment_entries
       WHERE obligation_id=? AND entry_type='PAYMENT'
       ORDER BY created_at, id
     `).bind(obligationId).all<PaymentRow>(),
     context.env.DB.prepare(`
       SELECT id, original_payment_entry_id, amount_cny_fen,
-        reversed_at, china_business_date, payment_channel, public_note
+        reversed_at, china_business_date, payment_channel,
+        public_note, internal_note
       FROM buyer_refund_payment_entries
       WHERE obligation_id=? AND entry_type='REVERSAL'
       ORDER BY created_at, id
@@ -331,6 +390,7 @@ async function readRefundDetail(
       china_business_date: payment.china_business_date,
       payment_channel: payment.payment_channel,
       public_note: payment.public_note,
+      internal_note: payment.internal_note,
       proofs: proofMap.get(payment.id) ?? [],
     })),
     reversals: reversals.results.map((reversal) => ({
@@ -341,6 +401,7 @@ async function readRefundDetail(
       china_business_date: reversal.china_business_date,
       payment_channel: reversal.payment_channel,
       public_note: reversal.public_note,
+      internal_note: reversal.internal_note,
     })),
   };
 }
@@ -363,8 +424,12 @@ async function assertVisibleRefund(
 
 function projectListItem(row: RefundListRow): StaffBuyerRefundListItemDto {
   const due = Number(row.due_amount_cny_fen);
+  const gross = Number(row.gross_paid_cny_fen);
+  const reversed = Number(row.reversed_cny_fen);
   const net = Number(row.net_paid_cny_fen);
   if (!Number.isSafeInteger(due) || due < 0
+    || !Number.isSafeInteger(gross) || gross < 0
+    || !Number.isSafeInteger(reversed) || reversed < 0
     || !Number.isSafeInteger(net) || net < 0) {
     throw new BuyerRefundHttpError('DEPENDENCY_UNAVAILABLE', 503);
   }
@@ -373,11 +438,32 @@ function projectListItem(row: RefundListRow): StaffBuyerRefundListItemDto {
     buyer_customer_id: row.buyer_customer_id,
     formal_order_id: row.formal_order_id,
     due_amount_cny_fen: String(due),
+    gross_paid_cny_fen: String(gross),
+    reversed_cny_fen: String(reversed),
     net_paid_cny_fen: String(net),
     outstanding_amount_cny_fen: String(Math.max(due - net, 0)),
     overpaid_amount_cny_fen: String(Math.max(net - due, 0)),
     status: row.status,
     version: Number(row.version),
+    created_at: Number(row.created_at),
+    updated_at: Number(row.updated_at),
+    buyer: {
+      buyer_customer_id: row.buyer_customer_id,
+      buyer_customer_no: row.buyer_customer_no,
+    },
+    order: {
+      formal_order_id: row.formal_order_id,
+      marketplace: row.marketplace_code,
+      amazon_order_number_normalized: row.amazon_order_number_normalized,
+      product_id: row.product_id,
+      asin: row.asin_normalized,
+    },
+    workflow: {
+      work_item_id: row.work_item_id,
+      assigned_staff_id: row.assigned_staff_id,
+      assigned_team_id: null,
+      fixed_assignment_id: row.fixed_assignment_id,
+    },
   };
 }
 
@@ -389,7 +475,7 @@ function projectLedger(row: {
   net_paid_cny_fen: string;
   status: BuyerRefundStatus;
   version: number;
-}): StaffBuyerRefundListItemDto {
+}) {
   const due = Number(row.due_amount_cny_fen);
   const net = Number(row.net_paid_cny_fen);
   return {
@@ -457,10 +543,14 @@ function scopeSql(scope: StaffDataScope): {
 function parseListQuery(context: Context<AppEnv>): {
   limit: number;
   status?: BuyerRefundStatus;
+  from?: string;
+  to?: string;
+  fromStart?: number;
+  toExclusive?: number;
   cursor?: { createdAt: number; id: string };
 } {
   const parameters = new URL(context.req.url).searchParams;
-  const allowed = new Set(['limit', 'status', 'cursor']);
+  const allowed = new Set(['limit', 'status', 'cursor', 'from', 'to']);
   for (const key of parameters.keys()) {
     if (!allowed.has(key) || parameters.getAll(key).length !== 1) {
       return validationError();
@@ -469,16 +559,59 @@ function parseListQuery(context: Context<AppEnv>): {
   const limitRaw = parameters.get('limit');
   const statusRaw = parameters.get('status');
   const cursorRaw = parameters.get('cursor');
+  const fromRaw = parameters.get('from');
+  const toRaw = parameters.get('to');
   const status = statusRaw === null
     ? undefined
     : BUYER_REFUND_STATUSES.includes(statusRaw as BuyerRefundStatus)
       ? statusRaw as BuyerRefundStatus
       : validationError();
+  const fromDate = fromRaw === null
+    ? undefined
+    : canonicalBusinessDate(fromRaw);
+  const toDate = toRaw === null
+    ? undefined
+    : canonicalBusinessDate(toRaw);
+  const fromStart = fromDate === undefined
+    ? undefined
+    : businessDateStart(fromDate);
+  const toStart = toDate === undefined
+    ? undefined
+    : businessDateStart(toDate);
+  if (fromStart !== undefined && toStart !== undefined
+    && fromStart > toStart) return validationError();
   return {
     limit: limitRaw === null ? DEFAULT_LIMIT : parseLimit(limitRaw),
     ...(status ? { status } : {}),
+    ...(fromDate === undefined
+      ? {}
+      : { from: fromDate, fromStart: fromStart! }),
+    ...(toDate === undefined
+      ? {}
+      : { to: toDate, toExclusive: toStart! + 86_400_000 }),
     ...(cursorRaw === null ? {} : { cursor: decodeCursor(cursorRaw) }),
   };
+}
+
+function canonicalBusinessDate(value: unknown): string {
+  if (typeof value !== 'string' || value.length !== 10) {
+    return validationError();
+  }
+  try {
+    const normalized = parseChinaBusinessDate(value);
+    if (normalized !== value) return validationError();
+    return normalized;
+  } catch {
+    return validationError();
+  }
+}
+
+function businessDateStart(value: string): number {
+  try {
+    return chinaBusinessDateStartEpoch(value);
+  } catch {
+    return validationError();
+  }
 }
 
 function parseProofFiles(value: unknown): readonly {

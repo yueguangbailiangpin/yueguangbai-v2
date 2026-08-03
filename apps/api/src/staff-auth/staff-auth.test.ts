@@ -242,6 +242,65 @@ describe('Wave 13 Staff authentication and production entry', () => {
     expect(after.status).toBe(401);
   });
 
+  it('requires an allowed Origin before logout has any side effect', async () => {
+    database = createMigratedTestDatabase();
+    seedOwner(database);
+    const bindings = env(database);
+    const { cookie } = await login(database);
+
+    for (const headers of [
+      { Cookie: cookie },
+      { Cookie: cookie, Origin: 'https://evil.example.test' },
+      { Cookie: cookie, Origin: 'https://staff.example.test, https://evil.example.test' },
+      {
+        Cookie: cookie,
+        Origin: 'https://staff.example.test',
+        'Sec-Fetch-Site': 'cross-site',
+      },
+    ]) {
+      const rejected = await app.request(
+        'https://api.example.test/api/staff-auth/logout',
+        { method: 'POST', headers },
+        bindings,
+      );
+      expect(rejected.status).toBe(403);
+      expect(rejected.headers.getSetCookie()).toEqual([]);
+      expect((await database.prepare(`
+        SELECT status FROM staff_sessions
+        WHERE staff_id='staff-wave13-owner'
+        ORDER BY created_at DESC LIMIT 1
+      `).first<{ status: string }>())?.status).toBe('ACTIVE');
+      expect((await app.request(
+        'https://api.example.test/api/staff-auth/session',
+        { headers: { Cookie: cookie } },
+        bindings,
+      )).status).toBe(200);
+    }
+
+    const succeeded = await app.request(
+      'https://api.example.test/api/staff-auth/logout',
+      {
+        method: 'POST',
+        headers: {
+          Cookie: cookie,
+          Origin: 'https://staff.example.test',
+          'Sec-Fetch-Site': 'same-site',
+        },
+      },
+      bindings,
+    );
+    expect(succeeded.status).toBe(200);
+    expect(await succeeded.json()).toMatchObject({
+      data: { logged_out: true, all_devices_logged_out: false },
+    });
+    expect(succeeded.headers.getSetCookie().join(';')).toContain('Max-Age=0');
+    expect((await app.request(
+      'https://api.example.test/api/staff-auth/session',
+      { headers: { Cookie: cookie } },
+      bindings,
+    )).status).toBe(401);
+  });
+
   it('cleans only Staff Auth ephemeral rows older than the retention window', async () => {
     database = createMigratedTestDatabase();
     seedOwner(database);

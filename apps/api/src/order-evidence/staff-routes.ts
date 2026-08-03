@@ -56,6 +56,13 @@ interface OrderEvidenceDetailRow {
   screenshot_file_version: number;
   screenshot_purpose: 'ORDER_EVIDENCE';
   screenshot_visibility: 'BUYER_VISIBLE';
+  screenshot_file_status: string;
+  screenshot_intent_status: string;
+  screenshot_owner_actor_type: string;
+  screenshot_owner_actor_id: string;
+  screenshot_association_count: number;
+  associated_file_object_id: string | null;
+  eligible_screenshot_association_count: number;
   duplicate_signal_count: number;
   work_item_id: string | null;
   assigned_staff_id: string | null;
@@ -100,11 +107,30 @@ async function listStaffOrderEvidence(
     )`;
   const rows = await context.env.DB.prepare(`
     SELECT submission.id AS submission_id,
+      submission.reservation_id,
       submission.buyer_customer_id,
+      buyer.buyer_customer_no,
+      submission.marketplace_code,
       submission.status,
       submission.version,
       submission.current_version_no,
+      evidence.order_instruction_id AS instruction_id,
+      evidence.order_instruction_version_id AS instruction_version_id,
+      evidence.amazon_order_number_raw,
+      evidence.amazon_order_number_normalized,
+      evidence.reference_order_amount_jpy_snapshot
+        AS reference_order_amount_jpy,
       evidence.final_paid_jpy,
+      evidence.price_difference_jpy,
+      evidence.price_mismatch,
+      submission.resubmission_deadline_at,
+      file.id AS screenshot_file_object_id,
+      file.version AS screenshot_file_version,
+      file.purpose AS screenshot_purpose,
+      file.visibility AS screenshot_visibility,
+      work.id AS work_item_id,
+      work.assigned_staff_id,
+      work.fixed_assignment_id,
       submission.submitted_at,
       submission.updated_at
     FROM order_evidence_submissions submission
@@ -113,6 +139,13 @@ async function listStaffOrderEvidence(
       AND evidence.version_no=submission.current_version_no
     JOIN product_reservations reservation
       ON reservation.id=submission.reservation_id
+    JOIN buyer_customers buyer ON buyer.id=submission.buyer_customer_id
+    JOIN file_objects file ON file.id=evidence.evidence_file_object_id
+    LEFT JOIN staff_work_items work
+      ON work.work_type='ORDER_EVIDENCE_REVIEW'
+      AND work.source_entity_type='ORDER_EVIDENCE'
+      AND work.source_entity_id=submission.id
+      AND work.status='OPEN'
     WHERE ${scopeFilter.sql}
       ${statusFilter}
       ${cursorFilter}
@@ -127,11 +160,29 @@ async function listStaffOrderEvidence(
     query.limit + 1,
   ).all<{
     submission_id: string;
+    reservation_id: string;
     buyer_customer_id: string;
+    buyer_customer_no: string | null;
+    marketplace_code: 'JP';
     status: StaffOrderEvidenceListItem['status'];
     version: number;
     current_version_no: number;
+    instruction_id: string;
+    instruction_version_id: string;
+    amazon_order_number_raw: string;
+    amazon_order_number_normalized: string;
+    reference_order_amount_jpy: number;
     final_paid_jpy: number;
+    price_difference_jpy: number;
+    price_mismatch: number;
+    resubmission_deadline_at: number | null;
+    screenshot_file_object_id: string;
+    screenshot_file_version: number;
+    screenshot_purpose: 'ORDER_EVIDENCE';
+    screenshot_visibility: 'BUYER_VISIBLE';
+    work_item_id: string | null;
+    assigned_staff_id: string | null;
+    fixed_assignment_id: string | null;
     submitted_at: number;
     updated_at: number;
   }>();
@@ -140,12 +191,40 @@ async function listStaffOrderEvidence(
   const items: StaffOrderEvidenceListItem[] = visible.map((row) => ({
     submission_id: row.submission_id,
     buyer_customer_id: row.buyer_customer_id,
+    reservation_id: row.reservation_id,
+    instruction_id: row.instruction_id,
+    instruction_version_id: row.instruction_version_id,
+    marketplace: row.marketplace_code,
+    amazon_order_number_raw: row.amazon_order_number_raw,
+    amazon_order_number_normalized: row.amazon_order_number_normalized,
     status: row.status,
     version: Number(row.version),
     current_evidence_version_no: Number(row.current_version_no),
+    reference_order_amount_jpy: String(row.reference_order_amount_jpy),
     final_paid_jpy: String(row.final_paid_jpy),
+    price_difference_jpy: String(row.price_difference_jpy),
+    price_mismatch: Number(row.price_mismatch) === 1,
+    resubmission_deadline_at: row.resubmission_deadline_at === null
+      ? null
+      : Number(row.resubmission_deadline_at),
     submitted_at: Number(row.submitted_at),
     updated_at: Number(row.updated_at),
+    buyer: {
+      buyer_customer_id: row.buyer_customer_id,
+      buyer_customer_no: row.buyer_customer_no,
+    },
+    screenshot: {
+      file_object_id: row.screenshot_file_object_id,
+      file_version: Number(row.screenshot_file_version),
+      purpose: row.screenshot_purpose,
+      visibility: row.screenshot_visibility,
+    },
+    workflow: {
+      work_item_id: row.work_item_id,
+      assigned_staff_id: row.assigned_staff_id,
+      assigned_team_id: null,
+      fixed_assignment_id: row.fixed_assignment_id,
+    },
   }));
   const last = visible.at(-1);
   return success(context, {
@@ -280,6 +359,47 @@ async function readDetail(
       file.version AS screenshot_file_version,
       file.purpose AS screenshot_purpose,
       file.visibility AS screenshot_visibility,
+      file.status AS screenshot_file_status,
+      intent.status AS screenshot_intent_status,
+      intent.owner_actor_type AS screenshot_owner_actor_type,
+      intent.owner_actor_id AS screenshot_owner_actor_id,
+      (SELECT COUNT(*) FROM order_evidence_version_files version_file
+        WHERE version_file.version_id=evidence.id)
+        AS screenshot_association_count,
+      (SELECT MAX(version_file.file_object_id)
+        FROM order_evidence_version_files version_file
+        WHERE version_file.version_id=evidence.id)
+        AS associated_file_object_id,
+      (SELECT COUNT(*)
+        FROM order_evidence_version_files version_file
+        JOIN file_objects associated_file
+          ON associated_file.id=version_file.file_object_id
+        JOIN file_upload_intents associated_intent
+          ON associated_intent.id=associated_file.upload_intent_id
+        JOIN file_entity_links link
+          ON link.id=version_file.file_entity_link_id
+        WHERE version_file.version_id=evidence.id
+          AND version_file.submission_id=submission.id
+          AND version_file.reservation_id=submission.reservation_id
+          AND version_file.buyer_customer_id=submission.buyer_customer_id
+          AND version_file.visibility='BUYER_VISIBLE'
+          AND associated_file.id=evidence.evidence_file_object_id
+          AND associated_file.status='VERIFIED'
+          AND associated_file.purpose='ORDER_EVIDENCE'
+          AND associated_file.visibility='BUYER_VISIBLE'
+          AND associated_intent.status='VERIFIED'
+          AND associated_intent.owner_actor_type='BUYER_CUSTOMER'
+          AND associated_intent.owner_actor_id=submission.buyer_customer_id
+          AND associated_intent.purpose='ORDER_EVIDENCE'
+          AND associated_intent.visibility='BUYER_VISIBLE'
+          AND link.file_object_id=associated_file.id
+          AND link.entity_type='ORDER'
+          AND link.entity_id=evidence.id
+          AND link.purpose='ORDER_EVIDENCE'
+          AND link.visibility='BUYER_VISIBLE'
+          AND link.revoked_at IS NULL
+          AND (link.expires_at IS NULL OR link.expires_at>?))
+        AS eligible_screenshot_association_count,
       (SELECT COUNT(*) FROM formal_order_number_conflicts conflict
         WHERE conflict.marketplace_code=submission.marketplace_code
           AND conflict.amazon_order_number_normalized=
@@ -310,10 +430,20 @@ async function readDetail(
       ON reservation.id=submission.reservation_id
     JOIN buyer_customers buyer ON buyer.id=submission.buyer_customer_id
     JOIN file_objects file ON file.id=evidence.evidence_file_object_id
+    JOIN file_upload_intents intent ON intent.id=file.upload_intent_id
     WHERE submission.id=? AND ${filter.sql}
     LIMIT 1
-  `).bind(submissionId, ...filter.args).first<OrderEvidenceDetailRow>();
+  `).bind(Date.now(), submissionId, ...filter.args).first<OrderEvidenceDetailRow>();
   if (!row) throw new StaffOrderEvidenceHttpError('NOT_FOUND', 404);
+  if (Number(row.screenshot_association_count) !== 1
+    || Number(row.eligible_screenshot_association_count) !== 1
+    || row.associated_file_object_id !== row.screenshot_file_object_id
+    || row.screenshot_file_status !== 'VERIFIED'
+    || row.screenshot_intent_status !== 'VERIFIED'
+    || row.screenshot_owner_actor_type !== 'BUYER_CUSTOMER'
+    || row.screenshot_owner_actor_id !== row.buyer_customer_id) {
+    throw new StaffOrderEvidenceHttpError('STATE_CONFLICT', 409);
+  }
   if (row.screenshot_purpose !== 'ORDER_EVIDENCE'
     || row.screenshot_visibility !== 'BUYER_VISIBLE'
     || Number(row.screenshot_file_version) < 1
@@ -387,6 +517,7 @@ async function readDetail(
       work_item_id: row.work_item_id,
       assigned_staff_id: row.assigned_staff_id,
       assigned_team_id: null,
+      fixed_assignment_id: row.fixed_assignment_id,
     },
     buyer: {
       buyer_customer_id: row.buyer_customer_id,

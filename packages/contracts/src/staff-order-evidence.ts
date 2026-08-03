@@ -26,12 +26,37 @@ export interface StaffOrderEvidenceListQuery {
 export interface StaffOrderEvidenceListItem {
   submission_id: string;
   buyer_customer_id: string;
+  reservation_id: string;
+  instruction_id: string;
+  instruction_version_id: string;
+  marketplace: 'JP';
+  amazon_order_number_raw: string;
+  amazon_order_number_normalized: string;
   status: OrderEvidenceStatus;
   version: number;
   current_evidence_version_no: number;
+  reference_order_amount_jpy: string;
   final_paid_jpy: string;
+  price_difference_jpy: string;
+  price_mismatch: boolean;
+  resubmission_deadline_at: number | null;
   submitted_at: number;
   updated_at: number;
+  buyer: StaffOrderEvidenceBuyerSummaryDto;
+  screenshot: SafeFileReferenceDto;
+  workflow: StaffOrderEvidenceWorkflowDto;
+}
+
+export interface StaffOrderEvidenceBuyerSummaryDto {
+  buyer_customer_id: string;
+  buyer_customer_no: string | null;
+}
+
+export interface StaffOrderEvidenceWorkflowDto {
+  work_item_id: string | null;
+  assigned_staff_id: string | null;
+  assigned_team_id: string | null;
+  fixed_assignment_id: string | null;
 }
 
 export interface StaffOrderEvidenceDetailDto
@@ -41,10 +66,7 @@ export interface StaffOrderEvidenceDetailDto
   price_difference_jpy: string;
   price_mismatch: boolean;
   screenshot: SafeFileReferenceDto;
-  buyer: {
-    buyer_customer_id: string;
-    buyer_customer_no: string | null;
-  };
+  buyer: StaffOrderEvidenceBuyerSummaryDto;
   instruction: {
     instruction_id: string;
     instruction_version_id: string;
@@ -63,11 +85,7 @@ export interface StaffOrderEvidenceDetailDto
     final_paid_jpy: string;
     submitted_at: number;
   }[];
-  workflow: {
-    work_item_id: string | null;
-    assigned_staff_id: string | null;
-    assigned_team_id: string | null;
-  };
+  workflow: StaffOrderEvidenceWorkflowDto;
 }
 
 export interface RequestStaffOrderEvidenceChangesRequest {

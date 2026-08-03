@@ -1,4 +1,5 @@
 import {
+  assertContains,
   assertNotContains,
   read,
   report,
@@ -22,6 +23,11 @@ const buyerSellerContracts = [
   'packages/contracts/src/seller-portal.ts',
   'packages/contracts/src/seller-settlement.ts',
 ].map(read).join('\n');
+const staffRefundContract = read('packages/contracts/src/staff-buyer-refund.ts');
+const staffRefundRoutes = read('apps/api/src/buyer-refunds/staff-routes.ts');
+const buyerRefundTests = read(
+  'apps/api/src/buyer-refund-status/buyer-refund-status.test.ts',
+);
 
 for (const forbidden of [
   'token_hash:',
@@ -53,9 +59,20 @@ for (const forbiddenMetadata of [
   'access_token: input.',
   'object_key: input.',
 ]) assertNotContains(securityEvents, forbiddenMetadata, 'security event metadata');
+assertContains(staffRefundContract, 'internal_note: string | null',
+  'Staff-only refund notes');
+assertContains(staffRefundRoutes,
+  'payment_channel, public_note, internal_note',
+  'Staff-only refund Payment query');
+assertContains(staffRefundRoutes,
+  'public_note, internal_note',
+  'Staff-only refund Reversal query');
+assertContains(buyerRefundTests, 'internal_note|recorded_by_staff',
+  'Buyer refund DTO isolation tests');
 
 report('wave13-secret-dto-leakage', {
   public_contract_files: 4,
   response_route_files: 4,
   buyer_seller_contract_files: 4,
+  staff_internal_notes: true,
 });

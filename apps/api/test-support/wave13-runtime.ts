@@ -49,8 +49,10 @@ type OverlayKind =
   | 'REVIEW'
   | 'REVIEW_VERSION'
   | 'REVIEW_FILES'
+  | 'ORDER_LIST'
   | 'ORDER_DETAIL'
   | 'ORDER_HISTORY'
+  | 'REFUND_LIST'
   | 'REFUND_DETAIL'
   | 'REFUND_PAYMENTS'
   | 'REFUND_REVERSALS'
@@ -95,6 +97,33 @@ class OverlayStatement implements SqlStatement {
         submitted_at: 10_000,
       } as T] };
     }
+    if (this.kind === 'ORDER_LIST') {
+      if (this.sql.includes('0=1')) return { results: [] };
+      return { results: [
+        orderListRow() as T,
+        {
+          ...orderListRow(),
+          submission_id: 'runtime-evidence-no-mismatch',
+          price_difference_jpy: 0,
+          price_mismatch: 0,
+          resubmission_deadline_at: null,
+          submitted_at: 11_000,
+          updated_at: 11_000,
+        } as T,
+      ] };
+    }
+    if (this.kind === 'REFUND_LIST') {
+      return { results: filteredRefundListRows(
+        this.sql,
+        this.bindings,
+      ) as T[] };
+    }
+    if (this.kind === 'REFUND_PAYMENTS') {
+      return { results: [refundPaymentRow() as T] };
+    }
+    if (this.kind === 'REFUND_REVERSALS') {
+      return { results: [refundReversalRow() as T] };
+    }
     return { results: [] };
   }
 
@@ -113,11 +142,15 @@ function overlayKind(sql: string): OverlayKind | null {
   if (sql.includes('FROM review_evidence_version_files')) {
     return 'REVIEW_FILES';
   }
+  if (sql.includes('FROM order_evidence_submissions submission')
+    && sql.includes('ORDER BY submission.submitted_at')) return 'ORDER_LIST';
   if (sql.includes('AS screenshot_file_object_id')) return 'ORDER_DETAIL';
   if (sql.includes('FROM order_evidence_versions')
     && sql.includes('created_at AS submitted_at')) return 'ORDER_HISTORY';
   if (sql.includes('FROM buyer_refund_ledger_balances ledger')
     && sql.includes('WHERE ledger.obligation_id=?')) return 'REFUND_DETAIL';
+  if (sql.includes('FROM buyer_refund_ledger_balances ledger')
+    && sql.includes('ORDER BY ledger.created_at')) return 'REFUND_LIST';
   if (sql.includes("entry_type='PAYMENT'")) return 'REFUND_PAYMENTS';
   if (sql.includes("entry_type='REVERSAL'")) return 'REFUND_REVERSALS';
   if (sql.includes('FROM buyer_refund_payment_entry_files')) {
@@ -195,10 +228,48 @@ function orderDetailRow() {
     screenshot_file_version: 3,
     screenshot_purpose: 'ORDER_EVIDENCE',
     screenshot_visibility: 'BUYER_VISIBLE',
+    screenshot_file_status: 'VERIFIED',
+    screenshot_intent_status: 'VERIFIED',
+    screenshot_owner_actor_type: 'BUYER_CUSTOMER',
+    screenshot_owner_actor_id: 'runtime-buyer',
+    screenshot_association_count: 1,
+    associated_file_object_id: 'runtime-screenshot',
+    eligible_screenshot_association_count: 1,
     duplicate_signal_count: 0,
     work_item_id: 'runtime-work-item',
     assigned_staff_id: 'zz-phase3h-test-owner',
     fixed_assignment_id: 'runtime-assignment',
+  };
+}
+
+function orderListRow() {
+  return {
+    submission_id: 'runtime-evidence',
+    reservation_id: 'runtime-reservation',
+    buyer_customer_id: 'runtime-buyer',
+    buyer_customer_no: 'P202608020001',
+    marketplace_code: 'JP',
+    status: 'PENDING_VERIFICATION',
+    version: 1,
+    current_version_no: 1,
+    instruction_id: 'runtime-instruction',
+    instruction_version_id: 'runtime-instruction-version',
+    amazon_order_number_raw: '123-1234567-1234567',
+    amazon_order_number_normalized: '123-1234567-1234567',
+    reference_order_amount_jpy: 1980,
+    final_paid_jpy: 2080,
+    price_difference_jpy: 100,
+    price_mismatch: 1,
+    resubmission_deadline_at: 18_000,
+    screenshot_file_object_id: 'runtime-screenshot',
+    screenshot_file_version: 3,
+    screenshot_purpose: 'ORDER_EVIDENCE',
+    screenshot_visibility: 'BUYER_VISIBLE',
+    work_item_id: 'runtime-work-item',
+    assigned_staff_id: 'zz-phase3h-test-owner',
+    fixed_assignment_id: 'runtime-assignment',
+    submitted_at: 10_000,
+    updated_at: 12_000,
   };
 }
 
@@ -210,12 +281,112 @@ function refundDetailRow() {
     formal_order_id: 'runtime-formal-order',
     buyer_customer_id: 'runtime-buyer',
     due_amount_cny_fen: 1000,
-    gross_paid_cny_fen: 0,
-    reversed_cny_fen: 0,
-    net_paid_cny_fen: 0,
-    status: 'DUE',
-    version: 1,
+    gross_paid_cny_fen: 1000,
+    reversed_cny_fen: 200,
+    net_paid_cny_fen: 800,
+    status: 'PARTIALLY_PAID',
+    version: 3,
     created_at: 10_000,
+    updated_at: 12_000,
+    buyer_customer_no: 'P202608020001',
+    marketplace_code: 'JP',
+    amazon_order_number_normalized: '123-1234567-1234567',
+    product_id: 'runtime-product',
+    asin_normalized: 'B0RT000001',
+    work_item_id: 'runtime-refund-work-item',
+    assigned_staff_id: 'zz-phase3h-test-owner',
+    fixed_assignment_id: 'runtime-refund-assignment',
+  };
+}
+
+function refundPaymentRow() {
+  return {
+    id: 'runtime-refund-payment',
+    amount_cny_fen: 1000,
+    paid_at: 11_000,
+    china_business_date: '1970-01-01',
+    payment_channel: 'WECHAT',
+    public_note: 'Buyer-visible payment note',
+    internal_note: 'Staff-only payment note',
+  };
+}
+
+function refundReversalRow() {
+  return {
+    id: 'runtime-refund-reversal',
+    original_payment_entry_id: 'runtime-refund-payment',
+    amount_cny_fen: 200,
+    reversed_at: 12_000,
+    china_business_date: '1970-01-01',
+    payment_channel: 'WECHAT',
+    public_note: 'Buyer-visible reversal note',
+    internal_note: 'Staff-only reversal note',
+  };
+}
+
+function filteredRefundListRows(
+  sql: string,
+  bindings: readonly unknown[],
+) {
+  if (sql.includes('0=1')) return [];
+  const start = Date.parse('2026-07-31T16:00:00.000Z');
+  const rows = [
+    refundListRow('runtime-refund-before', start - 1, 'DUE'),
+    refundListRow('runtime-refund-start', start, 'DUE'),
+    refundListRow('runtime-refund-end', start + 86_400_000 - 1, 'DUE'),
+    refundListRow('runtime-refund-next', start + 86_400_000, 'PAID'),
+  ];
+  let index = 0;
+  let filtered = rows;
+  if (sql.includes('ledger.status=?')) {
+    const status = bindings[index++];
+    filtered = filtered.filter((row) => row.status === status);
+  }
+  if (sql.includes('ledger.created_at>=?')) {
+    const from = Number(bindings[index++]);
+    filtered = filtered.filter((row) => row.created_at >= from);
+  }
+  if (sql.includes('ledger.created_at<?')) {
+    const to = Number(bindings[index++]);
+    filtered = filtered.filter((row) => row.created_at < to);
+  }
+  if (sql.includes('(ledger.created_at>? OR')) {
+    const createdAt = Number(bindings[index++]);
+    index += 1;
+    const id = String(bindings[index++]);
+    filtered = filtered.filter((row) => row.created_at > createdAt
+      || (row.created_at === createdAt && row.obligation_id > id));
+  }
+  const limit = Number(bindings.at(-1));
+  return filtered.slice(0, limit);
+}
+
+function refundListRow(
+  obligationId: string,
+  createdAt: number,
+  status: 'DUE' | 'PAID',
+) {
+  const paid = status === 'PAID' ? 1000 : 0;
+  return {
+    obligation_id: obligationId,
+    buyer_customer_id: 'runtime-buyer',
+    formal_order_id: 'runtime-formal-order',
+    due_amount_cny_fen: 1000,
+    gross_paid_cny_fen: paid,
+    reversed_cny_fen: 0,
+    net_paid_cny_fen: paid,
+    status,
+    version: status === 'PAID' ? 2 : 1,
+    created_at: createdAt,
+    updated_at: createdAt + 100,
+    buyer_customer_no: 'P202608020001',
+    marketplace_code: 'JP',
+    amazon_order_number_normalized: '123-1234567-1234567',
+    product_id: 'runtime-product',
+    asin_normalized: 'B0RT000001',
+    work_item_id: 'runtime-refund-work-item',
+    assigned_staff_id: 'zz-phase3h-test-owner',
+    fixed_assignment_id: 'runtime-refund-assignment',
   };
 }
 

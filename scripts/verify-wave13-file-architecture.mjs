@@ -11,6 +11,8 @@ const globalPurposes = read('packages/contracts/src/file-storage.ts');
 const routes = read('apps/api/src/files/routes.ts');
 const authorization = read('apps/api/src/files/route-authorization.ts');
 const errors = read('packages/contracts/src/errors.ts');
+const app = read('apps/api/src/index.ts');
+const inventoryTests = read('apps/api/src/wave13-default-app-security.test.ts');
 
 for (const purpose of [
   'ORDER_EVIDENCE',
@@ -59,10 +61,21 @@ assertContains(errors, "'FILE_COMPENSATION_REQUIRED'", 'error catalog');
 assertContains(routes, "keys.length !== 1 || keys[0] !== 'file'", 'multipart parser');
 assert(!/context\.json\([\s\S]{0,300}object_key/u.test(routes),
   'File route response exposes object_key');
+assertContains(app, "app.use('/api/staff/*', staffSessionMiddleware())",
+  'Staff middleware');
+for (const evidence of [
+  'businessMethods',
+  'duplicateRegistrations',
+  'FILE_HTTP_PURPOSE_ROUTES',
+  'FILE_HTTP_LIFECYCLE_PATHS',
+  'staffMiddlewareIndex',
+  'toHaveLength(138)',
+]) assertContains(inventoryTests, evidence, 'real Hono route inventory test');
 report('wave13-file-architecture', {
   active_purpose_routes: 5,
   deferred_to_wave15: ['ORDER_EVIDENCE_INTERNAL_COMMUNICATION'],
   generic_link_routes: 0,
   generic_grant_routes: 0,
   r2_authority_fields: 0,
+  active_route_inventory: 138,
 });

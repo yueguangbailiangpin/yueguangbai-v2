@@ -12,6 +12,8 @@ const session = read('apps/api/src/staff-auth/session.ts');
 const authRoutes = read('apps/api/src/staff-auth/routes.ts');
 const contracts = read('packages/contracts/src/staff-auth.ts');
 const migration = read('migrations/0027_staff_auth_sessions.sql');
+const authTests = read('apps/api/src/staff-auth/staff-auth.test.ts');
+const inventoryTests = read('apps/api/src/wave13-default-app-security.test.ts');
 
 const authPosition = index.indexOf('registerStaffAuthRoutes(app');
 const middlewarePosition = index.indexOf("app.use('/api/staff/*', staffSessionMiddleware())");
@@ -56,6 +58,28 @@ assertNotContains(contracts, 'staff_id?:', 'login start request');
 assertContains(authRoutes, "provider: 'FEISHU'", 'auth routes');
 assertContains(authRoutes, 'resolveVerifiedStaffIdentity', 'auth routes');
 assertContains(authRoutes, 'createInternalStaffSession', 'auth routes');
+const logout = authRoutes.slice(
+  authRoutes.indexOf('async function logout('),
+  authRoutes.indexOf('async function logoutAll('),
+);
+const logoutOrigin = logout.indexOf('requireAllowedOrigin(context, config)');
+assert(logoutOrigin >= 0
+  && logoutOrigin < logout.indexOf('readStaffSessionCookie(context)')
+  && logoutOrigin < logout.indexOf('clearStaffSessionCookie(context)'),
+  'ordinary logout must validate Origin before cookie/session side effects');
+for (const evidence of [
+  'requires an allowed Origin before logout has any side effect',
+  "Origin: 'https://evil.example.test'",
+  "'Sec-Fetch-Site': 'cross-site'",
+  "status: string",
+]) assertContains(authTests, evidence, 'ordinary logout runtime tests');
+for (const evidence of [
+  'app.routes',
+  'duplicateRegistrations',
+  'toHaveLength(138)',
+  'toHaveLength(108)',
+  'toHaveLength(30)',
+]) assertContains(inventoryTests, evidence, 'route inventory runtime test');
 for (const source of [index, middleware, authRoutes]) {
   assertNotContains(source, '/api/v2/', 'Wave13 Staff routing');
 }
@@ -63,4 +87,5 @@ report('wave13-staff-auth-route-guard', {
   middleware_before_staff_routes: true,
   header_actor_paths: 0,
   api_v2_routes: 0,
+  active_routes: 138,
 });

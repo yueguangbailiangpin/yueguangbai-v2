@@ -300,6 +300,7 @@ async function session(context: Context<any>): Promise<Response> {
 
 async function logout(context: Context<any>): Promise<Response> {
   const config = requireStaffAuthConfig(context.env);
+  requireAllowedOrigin(context, config);
   const cookie = readStaffSessionCookie(context);
   clearStaffSessionCookie(context);
   if (cookie.malformed) {

@@ -16,6 +16,8 @@ export interface StaffBuyerRefundListQuery {
   limit?: number;
   cursor?: string;
   status?: BuyerRefundStatus;
+  from?: string;
+  to?: string;
 }
 
 export interface StaffBuyerRefundListItemDto {
@@ -23,11 +25,38 @@ export interface StaffBuyerRefundListItemDto {
   buyer_customer_id: string;
   formal_order_id: string;
   due_amount_cny_fen: string;
+  gross_paid_cny_fen: string;
+  reversed_cny_fen: string;
   net_paid_cny_fen: string;
   outstanding_amount_cny_fen: string;
   overpaid_amount_cny_fen: string;
   status: BuyerRefundStatus;
   version: number;
+  created_at: number;
+  updated_at: number;
+  buyer: StaffBuyerRefundBuyerSummaryDto;
+  order: StaffBuyerRefundOrderSummaryDto;
+  workflow: StaffBuyerRefundWorkflowDto;
+}
+
+export interface StaffBuyerRefundBuyerSummaryDto {
+  buyer_customer_id: string;
+  buyer_customer_no: string | null;
+}
+
+export interface StaffBuyerRefundOrderSummaryDto {
+  formal_order_id: string;
+  marketplace: 'JP';
+  amazon_order_number_normalized: string;
+  product_id: string;
+  asin: string;
+}
+
+export interface StaffBuyerRefundWorkflowDto {
+  work_item_id: string | null;
+  assigned_staff_id: string | null;
+  assigned_team_id: string | null;
+  fixed_assignment_id: string | null;
 }
 
 export interface StaffBuyerRefundPaymentDto {
@@ -37,6 +66,7 @@ export interface StaffBuyerRefundPaymentDto {
   china_business_date: string;
   payment_channel: BuyerRefundPaymentChannel;
   public_note: string | null;
+  internal_note: string | null;
   proofs: readonly SafeFileReferenceDto[];
 }
 
@@ -48,14 +78,13 @@ export interface StaffBuyerRefundReversalDto {
   china_business_date: string;
   payment_channel: BuyerRefundPaymentChannel;
   public_note: string | null;
+  internal_note: string | null;
 }
 
 export interface StaffBuyerRefundDetailDto
   extends StaffBuyerRefundListItemDto {
   source_review_event_id: string;
   review_case_id: string;
-  gross_paid_cny_fen: string;
-  reversed_cny_fen: string;
   payments: readonly StaffBuyerRefundPaymentDto[];
   reversals: readonly StaffBuyerRefundReversalDto[];
 }
@@ -69,6 +98,7 @@ export interface RecordStaffBuyerRefundPaymentRequest {
   expected_version: number;
   amount_cny_fen: string;
   paid_at: number;
+  china_business_date: string;
   payment_channel: BuyerRefundPaymentChannel;
   public_note?: string;
   internal_note?: string;

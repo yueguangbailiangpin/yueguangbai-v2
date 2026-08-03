@@ -226,7 +226,11 @@ describe('Staff logout-all replay safety', () => {
       'https://api.example.test/api/staff-auth/logout',
       {
         method: 'POST',
-        headers: { Cookie: secondCookie },
+        headers: {
+          Cookie: secondCookie,
+          Origin: 'https://staff.example.test',
+          'Sec-Fetch-Site': 'same-site',
+        },
       },
       env,
     );
