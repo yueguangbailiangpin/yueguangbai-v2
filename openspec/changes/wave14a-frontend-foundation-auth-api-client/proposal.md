@@ -85,3 +85,12 @@ Implementation proceeds as a frontend-only feature after controller freeze, usin
 - Wave 15: internal Staff operations, including the deferred internal-communication file workflow.
 - Wave 16: real Feishu integration.
 - Wave 17: production R2, mainland network, deployment, migration/import, and production acceptance.
+
+## CONTROLLER_FREEZE
+
+- Planning frozen at `4200c5aa8dbb9d21a7566cfe24a228768002edca`.
+- 7 Capabilities / 42 Requirements / 84 Scenarios are frozen.
+- Quiet Operations, Customer shared-transport invalidation, and the real route map are frozen.
+- Local Codex is the sole source writer; Backend, Contracts, and Migrations remain unchanged.
+- Implementation requires local browser validation, formal OpenSpec Verify, and complete gates.
+- Ponytail remains OFF pending independent authorization.

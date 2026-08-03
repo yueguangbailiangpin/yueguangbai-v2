@@ -169,3 +169,11 @@ Wave 14A has no database, backend, Contract, or production resource change. Runt
 - Vitest counts are updated honestly; full repository check, typecheck, build, Wrangler dry-run, security/migration/Wave11–13 gates remain green.
 - Minimal Playwright smoke passes without claiming business acceptance.
 - OpenSpec target/all strict pass; implementation Verify, Ponytail, Integration, main, deployment, real Feishu/R2, and production validation occur only in their authorized stages.
+
+## CONTROLLER_FREEZE
+
+- Planning frozen at `4200c5aa8dbb9d21a7566cfe24a228768002edca`: 7 Capabilities, 42 Requirements, and 84 Scenarios.
+- Quiet Operations, Customer shared-transport invalidation, and the real route map are implementation constraints.
+- Local Codex is the only source writer. Backend, Contracts, and Migrations are not editable in this feature.
+- Browser validation, full gates, and formal OpenSpec Verify are mandatory before controller review.
+- Ponytail remains OFF pending independent authorization.

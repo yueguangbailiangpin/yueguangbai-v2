@@ -159,3 +159,11 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - `npm ci`: passed; 94 packages added, 101 audited, 0 vulnerabilities. The existing npm allow-scripts warning listed three unapproved install scripts and did not fail installation.
 - `npm run check`: passed; security scan, workspace typecheck, 27 migrations/schema 27, migration guards, Wave 11, Wave 12, Wave 13, 111 test files / 580 tests / 0 failed, API Wrangler dry-run, Web Vite build, and all workspace builds passed.
 - Planning did not run browser business flows, OpenSpec Verify, Ponytail, Integration, PR, deployment, real Feishu, production R2, production data, or `main` advancement.
+
+## CONTROLLER_FREEZE
+
+- Planning frozen at `4200c5aa8dbb9d21a7566cfe24a228768002edca` with 7 Capabilities / 42 Requirements / 84 Scenarios.
+- Quiet Operations, the Customer shared-transport invalidation policy, and the real route map are frozen.
+- Local Codex is the sole source writer; Backend, Contracts, and Migrations are prohibited changes.
+- Browser validation, full gates, and formal OpenSpec Verify are required after implementation.
+- Ponytail remains OFF pending independent authorization.
