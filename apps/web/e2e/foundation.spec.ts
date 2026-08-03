@@ -4,7 +4,7 @@ async function mockSession(page: Page, identity: 'buyer' | 'seller' | 'staff'): 
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     const session = identity === 'staff'
-      ? { staff_id: 'staff-local', display_name: '本地员工', roles: [], permissions: [], data_scope: {}, authorization_version: 1, session_version: 1, expires_at: 9_999_999_999_999 }
+      ? { staff_id: 'staff-local', display_name: '本地员工', roles: [], permissions: [], data_scope: { type: 'GLOBAL', buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [] }, authorization_version: 1, session_version: 1, expires_at: 9_999_999_999_999 }
       : { account_id: `${identity}-local`, identity_subject_id: 'subject-local', account_type: identity === 'buyer' ? 'BUYER' : 'SELLER_MEMBER', session_version: 1, password_change_required: false, issued_at: 1, expires_at: 9_999_999_999_999 };
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { session }, meta: { request_id: 'browser-local' } }) });
   });

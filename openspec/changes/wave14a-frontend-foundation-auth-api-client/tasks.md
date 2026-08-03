@@ -27,7 +27,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 4. Runtime Configuration
 
-- [ ] 4.1 Implement non-secret runtime configuration and origin-relative `/api/*` enforcement.
+- [x] 4.1 Implement non-secret runtime configuration and origin-relative `/api/*` enforcement.
 
 ## 5. Design Tokens
 
@@ -60,15 +60,15 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 12. API Envelope
 
-- [ ] 12.1 Implement credentialed fetch transport, success/error envelope parsing, request ID, AbortSignal, and endpoint Zod validation.
+- [x] 12.1 Implement credentialed fetch transport, success/error envelope parsing, request ID, AbortSignal, and endpoint Zod validation.
 
 ## 13. API Errors
 
-- [ ] 13.1 Implement safe normalized errors, status/code categories, safe detail allowlists, Retry-After, and request-ID presentation.
+- [x] 13.1 Implement safe normalized errors, status/code categories, safe detail allowlists, Retry-After, and request-ID presentation.
 
 ## 14. Query Client
 
-- [ ] 14.1 Implement identity-rooted query keys, finite GET retry, zero default mutation retry, cancellation, stale/gc policy, and no persistence.
+- [x] 14.1 Implement identity-rooted query keys, finite GET retry, zero default mutation retry, cancellation, stale/gc policy, and no persistence.
 
 ## 15. Idempotency
 
@@ -76,19 +76,19 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 16. Staff Auth
 
-- [ ] 16.1 Implement login/start, safe Provider redirect, callback return, Session read, logout/logout-all boundaries, and Fake Provider validation.
+- [x] 16.1 Implement login/start, safe Provider redirect, callback return, Session read, logout/logout-all boundaries, and local Provider validation.
 
 ## 17. Buyer Auth
 
-- [ ] 17.1 Implement Buyer Customer Auth login/session/account-type/password-change states without a full registration business page.
+- [x] 17.1 Implement Buyer Customer Auth login/session/account-type/password-change states without a full registration business page.
 
 ## 18. Seller Auth
 
-- [ ] 18.1 Implement Seller Customer Auth login/session/account-type/password-change states without client role selection.
+- [x] 18.1 Implement Seller Customer Auth login/session/account-type/password-change states without client role selection.
 
 ## 19. Session Cache Isolation
 
-- [ ] 19.1 Implement three separate state machines plus Customer shared-transport invalidation: Customer login/mismatch/logout/401 clears Buyer+Seller, Staff 401 clears Staff only, and 403/404 changes no Session.
+- [x] 19.1 Implement three separate state machines plus Customer shared-transport invalidation: Customer login/mismatch/logout/401 clears Buyer+Seller, Staff 401 clears Staff only, and 403/404 changes no Session.
 
 ## 20. File Transfer Client
 
@@ -105,7 +105,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 23. Unit Tests
 
-- [ ] 23.1 Add Vitest coverage for configuration, routing, keys, envelopes, errors, retry, idempotency, Session, and file state policies.
+- [x] 23.1 Add Vitest coverage for configuration, routing, keys, envelopes, errors, retry, idempotency, Session, and the scoped file state policy already present in Wave 14A.
 
 ## 24. Component Tests
 
@@ -113,19 +113,20 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 25. MSW Tests
 
-- [ ] 25.1 Add real `/api/*` mock coverage for credentials, envelopes, identity, statuses, retry/cancel, versions, idempotency, file transfer, Customer two-root invalidation, Staff-only invalidation, mismatch non-navigation, and phantom internal-communication route rejection.
+- [x] 25.1 Add real `/api/*` MSW coverage for credentials, envelopes, identity, statuses, retry/cancel, idempotency, Customer two-root invalidation, Staff-only invalidation, mismatch non-navigation, and phantom internal-communication route rejection.
+- [ ] 25.2 Add File Transfer MSW coverage only after the separately authorized File Transfer implementation.
 
 ## 26. Playwright Smoke
 
-- [ ] 26.1 Add and run minimal production-build smoke for root/login/guards/shells/keyboard/320px/403/404/503 without business acceptance claims.
+- [x] 26.1 Add and run minimal production-build smoke for root/login/guards/shells/keyboard/320px/403/404/503 without business acceptance claims.
 
 ## 27. Security Verifiers
 
-- [ ] 27.1 Add gates for no `/api/v2`, hard-coded production host, secret/Cookie/client authority, persisted sensitive cache, raw error leakage, object key, permanent URL, or generic File Link/Grant.
+- [x] 27.1 Add gates for no `/api/v2`, hard-coded production host, secret/Cookie/client authority, persisted sensitive cache, raw error leakage, object key, permanent URL, or generic File Link/Grant.
 
 ## 28. Build and Typecheck
 
-- [ ] 28.1 Run Web and workspace typecheck/build and record exact results.
+- [x] 28.1 Run Web and workspace typecheck/build and record exact results.
 
 ## 29. Browser Validation
 
@@ -202,3 +203,18 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - A new Controller → QueryClient → Component → Customer API Adapter Stub test file adds 10 route scenarios covering Buyer/Seller 401, matching Buyer/Seller Sessions, both password-change-required values, both mismatch directions, cleanup failure/retry, dependency retry, cache isolation, and rerender logout locking. The existing Root component test continues to prove no identity link is rendered.
 - Validation passed: Web typecheck; Wave 14A security verifier; 7 Wave 14A test files / 37 tests / 0 failed; Web production build; 4 Playwright smoke tests / 0 failed; repository `npm run check` with 117 test files / 616 tests / 0 failed; target strict OpenSpec 1/1 and all strict OpenSpec 8/8.
 - Structure remains 7 Capabilities / 42 Requirements / 84 Scenarios / 17 Change files. Backend, Contracts, Migrations, and `package-lock.json` remain unchanged. Formal MSW matrix, File Transfer, remaining UI primitives, formal browser acceptance, and formal OpenSpec Verify remain unstarted.
+
+## A4_MSW_VALIDATION_EVIDENCE
+
+- A single formal MSW infrastructure now separates `server.ts`, `handlers.ts`, `fixtures.ts`, `lifecycle.ts`, and `render.tsx`. It uses `setupServer`, `http`, and `HttpResponse`; every MSW test imports the shared lifecycle with `onUnhandledRequest: 'error'`, per-test handler reset, and final server close.
+- Six MSW test files add 72 real network scenarios. They traverse production Controllers or test components through the real Customer/Staff adapters and `apiRequest` to `fetch`, MSW, strict Envelope parsing, and endpoint Zod schemas. No formal MSW evidence stubs `global.fetch` or mocks Hook results.
+- The Transport matrix covers GET/POST/PUT/PATCH/DELETE with `credentials: 'include'`, JSON and Content-Type, custom `Idempotency-Key`, success data/request ID, malformed top-level and business data, strict failure envelopes, 401/403/404/409/422/429/503 classification, AbortSignal cancellation, network failure, invalid paths, and finite retry. Unknown JavaScript exceptions now fail closed instead of retrying.
+- `safeDetails` now uses an error-code-specific primitive allowlist for approved `field`, `reason`, version, and retry fields. Tests inject stack, SQL, query, Cookie, token, Authorization, object key, signed URL, Provider response, and nested exception data and prove none is retained or rendered.
+- Customer MSW coverage proves Buyer/Seller login and password-required states, both mismatch directions, real logout and explicit retry after 503, Customer Session 401/503 and flat-envelope rejection, Buyer/Seller password changes, one-key safe retry, new key after edit, 401 cleanup, idempotency conflict/in-progress behavior, Session reread, and reread mismatch logout.
+- Customer race coverage seeds `['buyer','session']`, `['buyer','fixture']`, `['seller','session']`, `['seller','fixture']`, `['staff','session']`, and `['staff','fixture']`. Customer 401 awaits two-root cleanup before login navigation; mismatch cancels a live MSW Session request; settled cleanup performs final removal so an active Observer cannot recreate an empty or stale Customer key; extra event-loop turns do not refill either root; Staff remains intact.
+- Staff MSW coverage proves the exact login/start body, strict Provider Origin, real nested Session, flat-envelope rejection, Staff-only 401 cleanup, 503 dependency state, ordinary logout success/401/503 semantics, logout-all `{}` body, Idempotency-Key reuse/new-operation lifecycle, parsed `session_version`, conflict/in-progress/concurrent-submit behavior, and no automatic 429/503 retry. Buyer and Seller cache state remains unchanged.
+- Real protected-route tests use `/api/buyer-portal/me` and `/api/staff/me/assignments` to prove 403/404 preserve every Session, do not navigate to login, expose only the safe request ID, and never render raw details. The phantom `POST /api/staff/order-evidence/:id/internal-communication-files` has no production call or handler and fails as an unhandled MSW request.
+- Final validation: Wave 14A 13 test files / 109 tests / 0 failed; Playwright 4 passed / 0 failed; repository 123 test files / 688 tests / 0 failed; Web and workspace typecheck/build passed; the Wave 14A security verifier passed.
+- Strict OpenSpec target validation passed 1/1 with 0 issues. Strict repository-wide validation passed 8/8 with 0 failures and the same 27 pre-existing INFO notices. Structure remains 7 Capabilities / 42 Requirements / 84 Scenarios / 17 Change files.
+- Database and route invariants remain 27 migrations / schema 27 / 117 tables / 221 triggers / 10 final views / 138 active routes, with no `0028`. Backend, Contracts, Migrations, and `package-lock.json` remain unchanged.
+- File Transfer implementation/MSW, remaining UI primitives, final visual refinement, full browser acceptance, formal OpenSpec Verify, Ponytail, Integration, `main`, deployment, and Wave 14B remain pending and were not started.
