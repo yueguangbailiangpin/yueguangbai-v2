@@ -26,3 +26,10 @@ export function Drawer({ open, title, onClose, children }: PropsWithChildren<{ o
   if (!open) return null;
   return <div className="overlay" role="presentation"><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby={titleId}><header><h2 id={titleId}>{title}</h2><button ref={closeRef} className="icon-button" aria-label="关闭详情" onClick={onClose}><X aria-hidden="true" /></button></header>{children}</aside></div>;
 }
+
+export function Dialog({ open, title, description, busy = false, onClose, children }: PropsWithChildren<{ open: boolean; title: string; description: string; busy?: boolean; onClose: () => void }>) {
+  const dialog = useRef<HTMLDivElement>(null); const opener = useRef<HTMLElement | null>(null); const titleId = useId(); const descriptionId = useId();
+  useEffect(() => { if (!open) return; opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; const first = dialog.current?.querySelector<HTMLElement>('button:not([disabled])'); first?.focus(); const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busy) onClose(); if (event.key === 'Tab' && dialog.current) { const nodes = Array.from(dialog.current.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled])')); const firstNode = nodes[0]; const lastNode = nodes[nodes.length - 1]; if (firstNode && lastNode && ((event.shiftKey && document.activeElement === firstNode) || (!event.shiftKey && document.activeElement === lastNode))) { event.preventDefault(); (event.shiftKey ? lastNode : firstNode).focus(); } } }; window.addEventListener('keydown', key); return () => { window.removeEventListener('keydown', key); opener.current?.focus(); }; }, [open, busy, onClose]);
+  if (!open) return null;
+  return <div className="overlay" role="presentation"><div className="drawer" ref={dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}><h2 id={titleId}>{title}</h2><p id={descriptionId}>{description}</p>{children}</div></div>;
+}
