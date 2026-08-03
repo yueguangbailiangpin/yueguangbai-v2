@@ -7,6 +7,8 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - [x] 0.1 Read the frozen request, `AGENTS.md`, governance, decisions, product rules, architecture, contracts, audits, OpenSpec, Web source, API registration/routes, Contracts, and workspace configs.
 - [x] 0.2 Confirm baseline SHA, target uniqueness, clean worktree, Ponytail off, and sole planning-writer boundary.
 - [x] 0.3 Create Proposal, Design, Tasks, seven Delta Specs, and six References inside this Change only.
+- [x] 0.4 Run the unchanged-baseline `npm ci` and complete repository regression gate after planning artifacts were written.
+- [x] 0.5 Run planning counts, static review, diff checks, and final Change-only Git scope verification.
 
 ## 1. Existing Frontend Inventory
 
@@ -130,7 +132,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 30. OpenSpec Validation
 
-- [ ] 30.1 Run target and repository-wide strict OpenSpec validation and record passed/failed/INFO counts.
+- [x] 30.1 Run target and repository-wide strict OpenSpec validation and record passed/failed/INFO counts.
 
 ## 31. OpenSpec Verify
 
@@ -147,3 +149,12 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 ## 34. Main Advancement
 
 - [ ] 34.1 Advance `main` only through the authorized clean Integration process with ordinary non-force fast-forward; do not deploy.
+
+## Planning Validation Evidence
+
+- OpenSpec target strict: 1 passed / 0 failed / 0 INFO.
+- OpenSpec all strict: 8 passed / 0 failed / 27 INFO. All 27 INFO belong to pre-existing Wave 13 main Specs or the pre-Wave 13 audit Change; this Wave 14A Change has 0 issues.
+- Planning counts: 7 Capabilities / 42 Requirements / 84 Scenarios / 17 files.
+- `npm ci`: passed; 94 packages added, 101 audited, 0 vulnerabilities. The existing npm allow-scripts warning listed three unapproved install scripts and did not fail installation.
+- `npm run check`: passed; security scan, workspace typecheck, 27 migrations/schema 27, migration guards, Wave 11, Wave 12, Wave 13, 111 test files / 580 tests / 0 failed, API Wrangler dry-run, Web Vite build, and all workspace builds passed.
+- Planning did not run browser business flows, OpenSpec Verify, Ponytail, Integration, PR, deployment, real Feishu, production R2, production data, or `main` advancement.
