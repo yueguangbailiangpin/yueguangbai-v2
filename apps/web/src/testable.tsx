@@ -1,0 +1,1 @@
+export { RootEntry } from './App';
