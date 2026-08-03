@@ -54,6 +54,24 @@ const mswServer = readFileSync(join(mswRoot, 'server.ts'), 'utf8');
 const mswHandlers = readFileSync(join(mswRoot, 'handlers.ts'), 'utf8');
 const mswFixtures = readFileSync(join(mswRoot, 'fixtures.ts'), 'utf8');
 const mswLifecycle = readFileSync(join(mswRoot, 'lifecycle.ts'), 'utf8');
+const webPackage = JSON.parse(readFileSync(join(workspace, 'apps/web/package.json'), 'utf8'));
+const fileRoot = join(webRoot, 'files');
+const fileProductionFiles = readdirSync(fileRoot)
+  .filter((name) => /\.(ts|tsx)$/.test(name) && !/\.(test|spec)\.(ts|tsx)$/.test(name));
+const fileProduction = fileProductionFiles
+  .map((name) => readFileSync(join(fileRoot, name), 'utf8'))
+  .join('\n');
+const filePurposeConfig = readFileSync(join(fileRoot, 'file-purpose-config.ts'), 'utf8');
+const fileContracts = readFileSync(join(fileRoot, 'file-contracts.ts'), 'utf8');
+const fileDescriptor = readFileSync(join(fileRoot, 'file-descriptor.ts'), 'utf8');
+const fileUploadApi = readFileSync(join(fileRoot, 'file-upload-api.ts'), 'utf8');
+const fileUploadTransport = readFileSync(join(fileRoot, 'file-upload-transport.ts'), 'utf8');
+const fileUploadController = readFileSync(join(fileRoot, 'file-upload-controller.ts'), 'utf8');
+const fileUploadOperation = readFileSync(join(fileRoot, 'file-upload-operation.ts'), 'utf8');
+const fileUploadTests = readdirSync(fileRoot)
+  .filter((name) => /\.(test|spec)\.(ts|tsx)$/.test(name))
+  .map((name) => readFileSync(join(fileRoot, name), 'utf8'))
+  .join('\n');
 const mswTestFiles = [];
 function collectMswTests(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -316,7 +334,10 @@ requireText(identityRequest, [
   'identity: RequestIdentity',
   'client: QueryClient',
   'request: ApiRequest<T>',
-  'return await apiRequest(request)',
+  'withIdentity401Invalidation<T>',
+  'operation: () => Promise<T>',
+  'return await operation()',
+  'withIdentity401Invalidation(identity, client, () => apiRequest(request))',
   'error.httpStatus === 401',
   'captureSessionCycle(client, identity)',
   'invalidateSessionCycle(client, identity, requestCycle, error.requestId)',
@@ -345,9 +366,169 @@ if ((protectedResources.match(/\bidentityApiRequest\(/gu) ?? []).length !== 3) {
 for (const file of files) {
   const body = readFileSync(file, 'utf8');
   if (/\/api\/(?:buyer-portal|seller-portal|staff\/)/u.test(body)
-    && !body.includes('identityApiRequest')) {
+    && /\b(?:apiRequest|fetch|XMLHttpRequest)\b/u.test(body)
+    && !body.includes('identityApiRequest')
+    && !body.includes('withIdentity401Invalidation')) {
     throw new Error(`protected business adapter bypasses identityApiRequest: ${file}`);
   }
+}
+
+if (webPackage.dependencies?.['@ygb/contracts'] !== '0.1.0') {
+  throw new Error('apps/web must declare exact @ygb/contracts 0.1.0 direct dependency');
+}
+requireText(filePurposeConfig, [
+  'FILE_UPLOAD_WORKFLOW_KEYS',
+  "'buyerOrderEvidence'",
+  "'buyerReviewEvidence'",
+  "'sellerProductApplicationImage'",
+  "'staffBuyerRefundProof'",
+  "'staffSellerSettlementProof'",
+  'maximumFileCount: 1',
+  'maximumFileCount: 10',
+  'maximumFileCount: 8',
+  'maximumFileCount: 6',
+  'maximumByteSize: 10 * MEBIBYTE',
+  'maximumByteSize: 20 * MEBIBYTE',
+  'requireFileUploadWorkflow(',
+  'unsupported_file_upload_workflow',
+], 'five fixed Purpose-bound upload policies');
+if ((filePurposeConfig.match(/identity:/gu) ?? []).length !== 6
+  || (filePurposeConfig.match(/intentPath:/gu) ?? []).length !== 6
+  || (filePurposeConfig.match(/lifecyclePrefix:/gu) ?? []).length !== 6
+  || (filePurposeConfig.match(/purpose:/gu) ?? []).length !== 6
+  || (filePurposeConfig.match(/visibility:/gu) ?? []).length !== 6) {
+  throw new Error('file upload workflow config must contain exactly five concrete entries');
+}
+for (const deferred of [
+  'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+  'PRODUCT_IMAGE',
+  'ORDER_INSTRUCTION_KEYWORD_IMAGE',
+  'SUPPORT_ATTACHMENT',
+]) {
+  if (fileProduction.includes(deferred)) {
+    throw new Error(`unsupported file workflow leaked into production Web: ${deferred}`);
+  }
+}
+requireText(fileDescriptor, [
+  'validateFileSelection(',
+  'descriptorForFile(',
+  'duplicate_file_object',
+  'duplicate_file_descriptor',
+  'extension_mime_mismatch',
+  'file_size_exceeded',
+  'file.size < 1',
+], 'client file descriptor validation');
+if (/packages\/domain|@ygb\/domain/u.test(fileProduction)) {
+  throw new Error('Web file client must not import Domain implementation');
+}
+requireText(fileContracts, [
+  'uploadIntentRequestSchema',
+  'uploadIntentResponseSchema',
+  'uploadContentResponseSchema',
+  'completeUploadRequestSchema',
+  'completeUploadResponseSchema',
+  '.strict()',
+  'Number.MAX_SAFE_INTEGER',
+  '/^[a-f0-9]{64}$/u',
+  'assertIntentMatchesWorkflow(',
+  'assertCompleteMatchesIntent(',
+  'fileObjectIds.has(file.file_object_id)',
+], 'strict file upload DTO and Manifest schemas');
+requireText(fileUploadApi, [
+  'identityApiRequest(',
+  'input.workflow.intentPath',
+  'input.workflow.lifecyclePrefix',
+  'expected_version',
+  'operationHeaders(',
+  'assertIntentMatchesWorkflow(',
+  'assertCompleteMatchesIntent(',
+], 'purpose-bound Intent and Complete adapters');
+requireText(fileUploadTransport, [
+  'new XMLHttpRequest()',
+  "xhr.open('PUT', path)",
+  'xhr.withCredentials = true',
+  "xhr.setRequestHeader('X-Upload-Token'",
+  "xhr.setRequestHeader('Idempotency-Key'",
+  "formData.append('file', input.file)",
+  'xhr.upload.onprogress',
+  'measuredUploadProgress(event)',
+  "mode: 'INDETERMINATE'",
+  'input.signal.addEventListener',
+  'xhr.abort()',
+  'withIdentity401Invalidation(',
+  'parseApiSuccessEnvelope(',
+  'parseApiFailureEnvelope(',
+], 'single-file credentialed XHR upload transport');
+if ((fileUploadTransport.match(/\.append\(/gu) ?? []).length !== 1) {
+  throw new Error('multipart transport must append exactly one form part');
+}
+if (/setRequestHeader\(['"]Content-Type/iu.test(fileUploadTransport)) {
+  throw new Error('multipart transport must leave Content-Type boundary to the browser');
+}
+requireText(fileUploadOperation, [
+  "'RESTART_REQUIRED'",
+  "'FILE_COMPENSATION_REQUIRED'",
+  "'DEPENDENCY_UNAVAILABLE'",
+  'SafeVerifiedManifest',
+  'file_version',
+  'restartRequired: boolean',
+], 'safe file upload operation snapshot');
+for (const secretField of ['uploadToken', 'idempotencyKey', 'File;']) {
+  if (fileUploadOperation.includes(secretField)) {
+    throw new Error(`public upload snapshot exposes private operation material: ${secretField}`);
+  }
+}
+requireText(fileUploadController, [
+  'private createKey:',
+  'private completeKey:',
+  'uploadToken: string | null',
+  'idempotencyKey: string | null',
+  'replaceFiles(',
+  'this.cancel()',
+  'result.data.replayed',
+  "'UPLOAD_INTENT_REPLAYED'",
+  "'FILE_UPLOAD_EXPIRED'",
+  "'IDEMPOTENCY_CONFLICT'",
+  "'REQUEST_IN_PROGRESS'",
+  "'FILE_COMPENSATION_REQUIRED'",
+  "state: 'VERIFIED'",
+  'completePurposeBoundUploadIntent({',
+  'file_version: file.version',
+], 'private upload Controller lifecycle');
+const completeCall = fileUploadController.indexOf('completePurposeBoundUploadIntent({');
+const verifiedState = fileUploadController.indexOf("state: 'VERIFIED'", completeCall);
+if (completeCall < 0 || verifiedState < completeCall) {
+  throw new Error('Upload success must not mark VERIFIED before strict Complete');
+}
+if (/localStorage|sessionStorage|console\.|URLSearchParams/u.test(fileProduction)) {
+  throw new Error('file token, key, and bytes must remain private memory only');
+}
+if (/\/api\/[\s\S]{0,80}(?:link|grant)/iu.test(fileProduction)) {
+  throw new Error('general file client must not call Link or Grant endpoints');
+}
+requireText(fileUploadTests, [
+  "import '../test/msw/lifecycle'",
+  'Controller to exact Intent/XHR/Complete routes',
+  "request.credentials).toBe('include')",
+  "request.headers.get('X-Upload-Token')",
+  "request.headers.get('Idempotency-Key')",
+  "record.uploadParts).toEqual([['file']])",
+  'multipart\\/form-data; boundary=',
+  'explicit network retry',
+  'cancel aborts the active XHR',
+  'old upload 401',
+  'Upload 401 uses the existing identity cleanup cycle',
+  'FILE_COMPENSATION_REQUIRED',
+  'VERSION_CONFLICT',
+  'REQUEST_IN_PROGRESS',
+  'does not show VERIFIED after Upload until Complete succeeds',
+  'request-malformed-upload',
+  'request-malformed-manifest',
+], 'formal MSW file upload safety evidence');
+if (!fileUploadTests.includes('server.use(')
+  || !fileUploadTests.includes('http.put(')
+  || !fileUploadTests.includes('FileUploadController')) {
+  throw new Error('file upload tests must traverse Controller, XHR, and MSW');
 }
 if (/AuthContext|createContext\s*\([^)]*auth|dispatchEvent\s*\([^)]*auth|addEventListener\s*\([^)]*auth/iu.test(source)) {
   throw new Error('global AuthContext or authentication event invalidation is prohibited');
@@ -566,7 +747,7 @@ for (const forbiddenRootControl of ['买家入口', '卖家入口', '员工入�
 const browserFixtures = readFileSync(join(workspace, 'apps/web/e2e/foundation.spec.ts'), 'utf8');
 if (!browserFixtures.includes('data: { session }')) throw new Error('Playwright fixture must use data.session');
 if (!existsSync(join(workspace, 'apps/web/dist/index.html'))) {
-  process.stdout.write('Wave 14A Customer auth source, route, lifecycle, and test verifier passed (build artifact not present).\n');
+  process.stdout.write('Wave 14A auth, upload, route, lifecycle, and test verifier passed (build artifact not present).\n');
 } else {
-  process.stdout.write('Wave 14A Customer auth source, route, lifecycle, test, and build verifier passed.\n');
+  process.stdout.write('Wave 14A auth, upload, route, lifecycle, test, and build verifier passed.\n');
 }
