@@ -16,6 +16,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:wave13": "vitest run apps/api/src/wave13-migration-0027.test.ts apps/api/src/staff-auth/staff-auth.test.ts apps/api/src/staff-auth/logout-all-replay.test.ts apps/api/src/files/wave13-file-http.test.ts apps/api/src/files/wave13-r2-runtime-boundaries.test.ts apps/api/src/order-evidence/wave13-staff-order-evidence.test.ts apps/api/src/buyer-refunds/wave13-staff-buyer-refund.test.ts apps/api/src/wave13-default-app-security.test.ts apps/api/src/wave13-default-app-runtime.test.ts apps/api/src/wave13-d1-runtime-boundaries.test.ts apps/api/src/wave13-d1-service-rollback.test.ts apps/api/src/wave13-recursive-dto-runtime.test.ts",
+    "test:wave14a": "vitest run apps/web/src",
+    "test:wave14a:browser": "npm run build --workspace @ygb/web && playwright test -c apps/web/playwright.config.ts",
+    "check:wave14a": "node scripts/verify-wave14a-frontend-security.mjs && npm run test:wave14a && npm run typecheck --workspace @ygb/web && npm run build --workspace @ygb/web",
     "db:migrate:local": "wrangler d1 migrations apply yueguangbai-v2-local --local --config apps/api/wrangler.local.jsonc",
     "db:verify": "node scripts/verify-migrations.mjs",
     "verify:migration-guards": "node scripts/verify-migration-version-guards.mjs",
@@ -40,7 +43,7 @@
     "check:wave13:buyer-refund": "node scripts/verify-wave13-buyer-refund-isolation.mjs",
     "check:wave13": "npm run check:wave13:migration && npm run check:wave13:staff-auth && npm run check:wave13:dto && npm run check:wave13:file && npm run check:wave13:price-mismatch && npm run check:wave13:buyer-refund",
     "security:scan": "node scripts/scan-secrets.mjs",
-    "check": "npm run security:scan && npm run typecheck && npm run db:verify && npm run verify:migration-guards && npm run verify:wave11 && npm run verify:wave12 && npm run check:wave13 && npm test && npm run build",
+    "check": "npm run security:scan && npm run typecheck && npm run db:verify && npm run verify:migration-guards && npm run verify:wave11 && npm run verify:wave12 && npm run check:wave13 && npm run check:wave14a && npm test && npm run build",
     "dev:api": "npm --workspace @ygb/api run dev",
     "dev:web": "npm --workspace @ygb/web run dev"
   },
