@@ -27,19 +27,20 @@
 - [x] Keep all P1 findings at `IMPLEMENTED_AWAITING_LOCAL_VALIDATION` rather than formally closed.
 - [x] Keep the audit conclusion `NO_GO_PENDING_LOCAL_VALIDATION`.
 
-## Current Local Validation Pending
+## Current Local Validation
 
-- [ ] Install dependencies for the current Feature through the authorized local workflow.
-- [ ] Run the current repository full check gate.
-- [ ] Run current Vitest, typecheck and build.
-- [ ] Apply and verify 0001–0027 against real local D1.
-- [ ] Upgrade a schema-26 fixture to 27 and verify Customer Auth preservation.
-- [ ] Run real D1 state/session/logout-all/approve/refund transaction behavior.
+- [x] Install dependencies for the current Feature through the authorized local workflow.
+- [x] Run the current repository full check gate.
+- [x] Run current Vitest, typecheck and build.
+- [x] Apply and verify 0001–0027 against real local D1.
+- [x] Upgrade a schema-26 fixture to 27 and verify Customer Auth preservation.
+- [x] Run real D1 state/session/logout-all/approve/refund transaction behavior.
+- [x] Run repository Mock R2 put/receipt/HEAD/compensation/delete-pending/cleanup coverage; production R2 remains unverified.
 - [ ] Run real R2 put/receipt/HEAD/compensation/delete-pending/cleanup tests.
-- [ ] Recount current schema, tables, triggers, views, test files and tests.
-- [ ] Re-run strict OpenSpec validation after the File HTTP semantic scope reduction.
-- [ ] Run the repository OpenSpec Verify workflow.
-- [ ] Validate production-entrypoint Staff login and every Staff route family in the authorized local workflow.
+- [x] Recount current schema, tables, triggers, views, test files and tests.
+- [x] Re-run strict OpenSpec validation after the File HTTP semantic scope reduction.
+- [x] Run the repository OpenSpec Verify workflow.
+- [x] Validate production-entrypoint Staff login and every Staff route family in the authorized local workflow.
 - [ ] Run browser, approved Feishu app and network validation.
 - [ ] Run Ponytail only after separate approval and only after all prior gates pass.
 
@@ -50,9 +51,9 @@
 - [ ] Create a PR only if later authorized by project control.
 - [ ] Deploy only through the authorized release workflow.
 
-## Explicit Current Non-Actions
+## Historical Explicit Non-Actions Snapshot
 
-- [ ] No current npm/Vitest/D1/R2/Wrangler execution was performed by the remote implementation conversation.
-- [ ] No OpenSpec Verify was executed after the Wave 13 semantic update.
+- [ ] Historical remote snapshot: no npm/Vitest/D1/R2/Wrangler execution had yet been performed.
+- [ ] Historical remote snapshot: no OpenSpec Verify had yet been executed after the Wave 13 semantic update.
 - [ ] No Ponytail review was run.
 - [ ] No PR, Integration, deployment or main advancement was created.

@@ -1,6 +1,6 @@
 # Tasks: Wave 13 Frontend Readiness Backend Completion
 
-本文件记录远程 Feature 上的源码完成状态。`[x]` 仅表示对应源码、Contract、Migration、测试源码或静态门禁源码已经写入；不表示 npm、Vitest、D1、R2、Wrangler、OpenSpec CLI 或浏览器验收已经运行。当前总状态固定为 `NO_GO_PENDING_LOCAL_VALIDATION`。
+本文件最初记录远程 Feature 的源码完成状态；0–22 节的 `[x]` 仍保留该历史语义。23–26 节随后追加本地运行、strict 与正式 Verify 结果。当前为 83 completed / 4 pending，建议状态是 `READY_FOR_CONTROLLER_REVIEW`；生产 R2、真实飞书、浏览器、中国大陆网络和部署仍未验证，且不授权 Ponytail、Integration、PR、部署、main 推进或 Wave 14。
 
 ## 0. Authority and Controller Decisions
 
@@ -148,23 +148,23 @@
 
 - [x] 23.1 运行依赖安装和完整 `npm run check`。
 - [x] 23.2 运行真实本地 D1 migration/behavior 与 R2 Mock fault/compensation 验收；本地配置无真实 R2 binding，生产 R2 未运行。
-- [x] 23.3 记录真实 test files/tests/build/counts/warnings；完整门禁为 111 files / 571 tests，typecheck/build 通过，非致命 npm/Wrangler 警告已记录。
+- [x] 23.3 记录真实 test files/tests/build/counts/warnings；最终完整门禁为 111 files / 580 tests / 0 failed（7.21s），typecheck/build/Wrangler dry-run 通过，非致命 npm/Wrangler 警告已记录。
 
 ## 24. OpenSpec Validation
 
-- [x] 24.1 历史上曾对本 Change 执行 strict validation；本次语义更新后尚未重新运行。
-- [x] 24.2 历史上曾执行 repository-wide strict validation；本次语义更新后尚未重新运行。
+- [x] 24.1 保留历史 strict validation 记录，并在本次语义更新后重新运行目标 Change strict validation：1 passed / 0 failed。
+- [x] 24.2 保留历史 repository-wide strict validation 记录，并在本次语义更新后重新运行全仓 strict validation：2 passed / 0 failed。
 - [x] 24.3 重新运行 OpenSpec CLI strict validation，确认 52 Requirements / 104 Scenarios 和 Delta 结构。
 
 ## 25. OpenSpec Verify
 
-- [ ] 25.1 执行正式 OpenSpec Verify workflow。
-- [ ] 25.2 对 52 Requirements / 104 Scenarios 逐项核对运行证据。
-- [ ] 25.3 未验证项保持显式开放。
+- [x] 25.1 执行正式 OpenSpec Verify workflow。
+- [x] 25.2 对 52 Requirements / 104 Scenarios 逐项核对运行证据。
+- [x] 25.3 未生产验证项保持显式开放。
 
 ## 26. Ponytail Review Gate
 
-- [ ] 26.1 完成本地门禁、OpenSpec validation 和 Verify 后再判断资格。
+- [x] 26.1 完成本地门禁、OpenSpec validation 和 Verify 后再由总控判断是否考虑 Ponytail。
 - [ ] 26.2 获得单独批准后才运行只读 Ponytail review。
 - [ ] 26.3 记录 findings；当前 `PONYTAIL_REVIEW=not-run`。
 

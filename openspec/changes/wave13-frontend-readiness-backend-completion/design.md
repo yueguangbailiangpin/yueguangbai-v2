@@ -214,3 +214,18 @@ Scope reduction 专指 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` 活动 HTTP Route
 - PR、Integration、部署或 main 推进。
 
 因此 Pre-Wave 13 的 P1 只能标记为 `IMPLEMENTED_AWAITING_LOCAL_VALIDATION`，不得标记正式关闭。
+
+## 18. Final Local Implementation and Verify Evidence（2026-08-03）
+
+第 15–17 节保留远程规划和当时的证据快照；以下是本轮完成修复后的追加证据，不倒写历史：
+
+- 六个 Critical 已修复：普通 logout 在任何 Cookie/Session 副作用前校验 Origin；Order Evidence List DTO 补齐 workflow、Buyer/order 摘要、金额/mismatch 和 deadline；Buyer Refund List 增加严格中国业务日期筛选与完整 DTO；Payment 必填并校验 `china_business_date`；Staff Refund Detail 返回 Payment/Reversal `internal_note`；Order Evidence Detail 独立 fail-closed 校验当前版本恰好一张有效截图。
+- Default App 真实注册表可复现得到 Pre-Wave 13 108 + Wave 13 活动新增 30 = 138；新增分组为 Staff Auth 5、Purpose Intent 5、File Lifecycle 12、Staff Order Evidence 4、Staff Buyer Refund 4。重复注册块、`/api/v2`、通用 Link/Grant 和延期的内部沟通上传 Intent 均由运行测试约束。
+- `npm run typecheck`、定向 Vitest、`npm run check:wave13`、`npm run test:wave13` 和完整 `npm run check` 均通过。最终全量 Vitest 为 111 files / 580 tests / 0 failed（7.21s），Wave 13 为 12 files / 69 tests / 0 failed；build 与 Wrangler dry-run 通过。
+- Local D1 空库 0001–0027、26→27 升级和事务/约束行为通过；最终 Schema 27、117 application tables、221 triggers、10 views、`foreign_key_check=0`、`integrity_check=ok`。本轮没有修改 0001–0027，也没有创建 0028。
+- R2 put/receipt/HEAD/final-commit/compensation/delete-pending/cleanup 由仓库 Mock 验证通过；生产 R2 未运行。
+- 目标 Change strict validation 为 1 passed / 0 failed，全仓 strict validation 为 2 passed / 0 failed；52 Requirements / 104 Scenarios 数量不变。
+- 正式 OpenSpec Verify 结果：Requirements `COMPLETE=51`、`APPROVED_SCOPE_REDUCTION=1`，其余分类均为 0；Scenarios `COMPLETE=103`、`APPROVED_SCOPE_REDUCTION=1`，其余分类均为 0。原 7 条 `INCONSISTENT` 已归零，没有新增 CRITICAL 或 WARNING。
+- 唯一 approved scope reduction 是 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` 活动上传 Intent 延期至 Wave 15；已有历史读取/引用能力不被删除。
+
+生产 R2、真实飞书应用、中国大陆网络、浏览器和部署保持 `NOT_PRODUCTION_VERIFIED`。Ponytail、PR、Integration、部署、main 推进和 Wave 14 均未执行。当前建议为 `READY_FOR_CONTROLLER_REVIEW`；它不等于 GO、P1 CLOSED、Integration allowed 或 Wave 14 allowed。

@@ -222,3 +222,25 @@ Customer-facing 历史 READY/READY_WITH_LIMITATIONS 结论保持历史参考，�
 # NO_GO_PENDING_OPENSPEC_VERIFY
 
 后端本地门禁与前端所需 API/DTO 运行基线已通过，可交总控复核；正式 Verify 缺失，因此仍不得标记 READY、关闭 P1、进入 Integration 或部署。
+
+## 19. LOCAL_VERIFY_REMEDIATION（2026-08-03）
+
+本节保留原始 readiness/NO_GO/P1 历史并追加最终后端证据：
+
+- 普通 logout 现在在任何 Cookie/Session 副作用前执行 Origin 防护，拒绝路径保持 Session ACTIVE 且原 Cookie 可继续读取；允许路径正常撤销并清 Cookie。
+- Order Evidence List 返回 workflow assignment、Buyer/order 安全摘要、reference/final/difference/mismatch 和服务端 deadline；Detail 独立校验当前 Evidence Version 恰好一个有效 screenshot association。
+- Buyer Refund List 支持严格 `from`/`to` 中国业务日期边界并返回完整金额、摘要和 workflow DTO；Payment 必填 `china_business_date`；Staff Detail 返回 Payment/Reversal internal notes，Buyer/Seller DTO 不泄漏。
+- 真实 Default App route registry 为 138：历史 108 + Wave 13 的 5 Staff Auth、5 Purpose Intent、12 File Lifecycle、4 Staff Order Evidence、4 Staff Buyer Refund。
+- 最终全量门禁为 111 files / 580 tests / 0 failed（7.21s），Wave 13 为 12 files / 69 tests；typecheck、六项 verifier、build、Wrangler dry-run 全部通过。
+- Local D1 为 27 migrations、Schema 27、117 application tables、221 triggers、10 views、FK 0、integrity ok；空库与 26→27 均通过，无 migration 修改、无 0028。
+- R2 fault/compensation 只由仓库 Mock 验证；生产 R2 未验证。OpenSpec target/all strict 为 1/0、2/0。
+
+## 20. FORMAL_OPENSPEC_VERIFY（2026-08-03）
+
+正式 Verify 将 52 Requirements 分类为 51 `COMPLETE` + 1 `APPROVED_SCOPE_REDUCTION`，将 104 Scenarios 分类为 103 + 1；`INCONSISTENT`、`MISSING`、`PARTIAL`、`NOT_VERIFIED`、CRITICAL 和 WARNING 均为 0。唯一 scope reduction 是内部沟通活动上传 Intent 延期至 Wave 15。
+
+生产 R2、真实飞书应用、中国大陆网络、浏览器和部署保持 `NOT_PRODUCTION_VERIFIED`。Ponytail、PR、Integration、部署、main 推进和 Wave 14 均未运行。
+
+# READY_FOR_CONTROLLER_REVIEW
+
+该建议允许总控复核是否考虑后续 Ponytail，但不表示 GO、P1 CLOSED、Integration allowed 或 Wave 14 allowed。

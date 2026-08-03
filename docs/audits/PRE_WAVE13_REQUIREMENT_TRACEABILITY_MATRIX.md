@@ -172,3 +172,36 @@ P1 不得在仅有远程源码时正式关闭。
 # NO_GO_PENDING_OPENSPEC_VERIFY
 
 本地验证项可以进入总控复核，但正式 OpenSpec Verify 仍不可用；52/104 不作“全部正式核对完成”声明，P1 保持未正式关闭。
+
+## 12. LOCAL_VERIFY_REMEDIATION（2026-08-03）
+
+以下结果追加于历史矩阵，不修改 115 条审计 Requirement，也不覆盖原始分类：
+
+| Remediated requirement | Final local evidence status |
+|---|---|
+| S9 logout Origin controls | `COMPLETE`；拒绝 missing/disallowed/multivalue/cross-site Origin 且无 Session/Cookie 副作用，允许 Origin 正常撤销 |
+| O1 Order Evidence List | `COMPLETE`；完整安全 DTO、SQL scope、金额/mismatch、deadline、workflow 与 Buyer/order 摘要均有运行证据 |
+| H2 strict query parsing | `COMPLETE`；Refund `from`/`to` 单值、canonical/存在性、顺序、未知键和 cursor/limit 均 fail closed |
+| R1 Refund List | `COMPLETE`；中国业务日期 SQL 边界、完整金额/摘要/workflow DTO、scope/status/cursor 组合通过 |
+| R3 Refund Payment | `COMPLETE`；必填 `china_business_date`、Asia/Shanghai 一致性及 idempotency hash 冲突通过 |
+| R2 Refund Detail | `COMPLETE`；Staff Payment/Reversal 真实 `internal_note` 可见，Buyer/Seller DTO 隔离通过 |
+| O5 exact-one screenshot | `COMPLETE`；0/2/ID mismatch 本地 D1 篡改均 409，恰好一张有效关联为 200 |
+
+Route inventory 可复现为 108 + 30 = 138。最终全量门禁为 111 files / 580 tests / 0 failed（7.21s），Wave 13 为 12 files / 69 tests；typecheck、build、Wrangler dry-run、六项 verifier 均通过。Local D1 为 27 migrations / 117 application tables / 221 triggers / 10 views / FK 0 / integrity ok；R2 为 Mock 验证，生产 R2 未验证。OpenSpec target/all strict 为 1/0、2/0。
+
+## 13. FORMAL_OPENSPEC_VERIFY（2026-08-03）
+
+| Classification | Requirements | Scenarios |
+|---|---:|---:|
+| `COMPLETE` | 51 | 103 |
+| `APPROVED_SCOPE_REDUCTION` | 1 | 1 |
+| `INCONSISTENT` | 0 | 0 |
+| `MISSING` | 0 | 0 |
+| `PARTIAL` | 0 | 0 |
+| `NOT_VERIFIED` | 0 | 0 |
+
+Scope reduction 仅为 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` 活动上传 Intent 延期到 Wave 15；CRITICAL=0、WARNING=0。生产 R2、真实飞书应用、中国大陆网络、浏览器和部署保持 `NOT_PRODUCTION_VERIFIED`。
+
+# READY_FOR_CONTROLLER_REVIEW
+
+Ponytail、PR、Integration、部署、main 推进和 Wave 14 均未运行；本状态不关闭 P1，也不授予 Integration 或发布权限。

@@ -249,3 +249,36 @@ Wave 13 保持 52 Requirements / 104 Scenarios：
 # NO_GO_PENDING_OPENSPEC_VERIFY
 
 本地代码与运行门禁已通过，可以交还总控复核；正式 Verify 不可用，因此本审计不关闭 P1，也不授权 Integration 或部署。
+
+## 14. LOCAL_VERIFY_REMEDIATION（2026-08-03）
+
+本节追加最终修复证据，保留此前 `NO_GO`、P1、`NOT_VERIFIED` 与 `LOCAL_REMEDIATION_VALIDATION` 历史：
+
+- 六个 Critical 已全部修复：logout Origin、Order Evidence 完整 List DTO、Refund 日期筛选与完整 List DTO、Payment `china_business_date`、Staff-only internal notes、Detail 恰好一张截图不变量。
+- 原 7 条 Requirement 不一致（S9、O1、H2、R1、R3、R2、O5）已通过实现、Contract、运行测试和组合 verifier 归零。
+- Default App 真实 route registry 稳定复现 138 个业务端点：历史 108 + Wave 13 活动新增 30（5/5/12/4/4）；重复注册块会失败，延期 Purpose、`/api/v2` 和通用 Link/Grant 不计入活动路由。
+- `npm run typecheck`、定向 Vitest、6 项 Wave 13 verifier、Wave 13 12 files / 69 tests 和完整 `npm run check` 均通过；全量为 111 files / 580 tests / 0 failed（7.21s），build 与 Wrangler dry-run 通过。
+- Local D1 为 27 migrations / Schema 27 / 117 application tables / 221 triggers / 10 views / FK 0 / integrity ok；空库与 26→27 升级均通过，本轮无 migration 修改、无 0028。
+- R2 仅由仓库 Mock 完成 fault/compensation 验证；生产 R2 未验证。
+- OpenSpec target/all strict 分别为 1/0、2/0。
+
+## 15. FORMAL_OPENSPEC_VERIFY（2026-08-03）
+
+正式 workflow 逐项核对 52 Requirements / 104 Scenarios：
+
+| Classification | Requirements | Scenarios |
+|---|---:|---:|
+| `COMPLETE` | 51 | 103 |
+| `APPROVED_SCOPE_REDUCTION` | 1 | 1 |
+| `INCONSISTENT` | 0 | 0 |
+| `MISSING` | 0 | 0 |
+| `PARTIAL` | 0 | 0 |
+| `NOT_VERIFIED` | 0 | 0 |
+
+唯一 scope reduction 为 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` 活动上传 Intent 延期至 Wave 15。正式 Verify 未发现新的 CRITICAL 或 WARNING。
+
+生产 R2、真实飞书应用、中国大陆网络、浏览器与部署单独保持 `NOT_PRODUCTION_VERIFIED`。Ponytail、PR、Integration、部署、main 推进和 Wave 14 均未运行；P1 未在本审计中正式关闭。
+
+# READY_FOR_CONTROLLER_REVIEW
+
+该状态仅表示本地实现、门禁、strict 与正式 Verify 已达到交还总控复核的条件，不表示 GO、P1 CLOSED、Integration allowed 或 Wave 14 allowed。
