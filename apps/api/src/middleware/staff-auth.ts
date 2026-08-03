@@ -1,4 +1,5 @@
 import type { Context, MiddlewareHandler } from 'hono';
+import type { AppEnv } from '../app';
 import { readStaffSessionCookie } from '../staff-auth/cookies';
 import {
   normalizeStaffAuthError,
@@ -10,7 +11,7 @@ import { requireStaffAuthConfig } from '../staff-auth/provider';
 import { recordStaffAuthSecurityEvent } from '../staff-auth/repository';
 import { resolveTrustedStaffSession } from '../staff-auth/session';
 
-export function staffSessionMiddleware(): MiddlewareHandler<any> {
+export function staffSessionMiddleware(): MiddlewareHandler<AppEnv> {
   return async (context, next) => {
     let config;
     try {
@@ -59,12 +60,12 @@ export function staffSessionMiddleware(): MiddlewareHandler<any> {
         eventType: 'SESSION_REJECTED',
         outcome: 'REJECTED',
         config,
-        staffId: readString(details?.staff_id),
-        sessionId: readString(details?.session_id),
+        staffId: readString(details?.['staff_id']),
+        sessionId: readString(details?.['session_id']),
         networkSource: networkSource(context),
         requestId: requestIdFromContext(context),
         metadata: {
-          reason: readString(details?.reason) ?? 'INVALID',
+          reason: readString(details?.['reason']) ?? 'INVALID',
           route_family: 'STAFF_API',
         },
         createdAt: Date.now(),
@@ -74,7 +75,7 @@ export function staffSessionMiddleware(): MiddlewareHandler<any> {
   };
 }
 
-function networkSource(context: Context<any>): string | null {
+function networkSource(context: Context<AppEnv>): string | null {
   const value = context.req.header('CF-Connecting-IP')?.trim() ?? '';
   return value.length >= 1 && value.length <= 200 ? value : null;
 }

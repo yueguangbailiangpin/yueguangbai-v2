@@ -388,13 +388,16 @@ class ReceiptMismatchStorage implements ObjectStorageAdapter {
   headObject(key: string): Promise<ObjectStorageHead | null> {
     return this.target.headObject(key);
   }
+  readPrefix(
+    key: string,
+    maximumBytes: number,
+  ): Promise<Uint8Array<ArrayBuffer>> {
+    return this.target.readPrefix(key, maximumBytes);
+  }
   readObject(key: string): Promise<Uint8Array<ArrayBuffer>> {
     return this.target.readObject(key);
   }
   deleteObject(key: string): Promise<void> {
     return this.target.deleteObject(key);
-  }
-  listObjectKeys(prefix: string): Promise<readonly string[]> {
-    return this.target.listObjectKeys(prefix);
   }
 }

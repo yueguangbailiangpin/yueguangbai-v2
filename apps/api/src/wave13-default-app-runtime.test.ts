@@ -254,7 +254,7 @@ async function createSellerSettlementProof(
 
 function representativeNoSessionRequests() {
   const env = runtimeBindings(database!, 'owner', storage!);
-  return [
+  return ([
     ['Assignment', '/api/staff/assignment-fallbacks/JP', 'GET'],
     ['Catalog', '/api/staff/catalog/products', 'POST'],
     ['Review', '/api/staff/reviews/runtime-review', 'GET'],
@@ -264,7 +264,7 @@ function representativeNoSessionRequests() {
     ['Staff File', '/api/staff/file-uploads/buyer-refund-proofs/intents', 'POST'],
     ['Order Evidence', '/api/staff/order-evidence/runtime-evidence', 'GET'],
     ['Buyer Refund', '/api/staff/buyer-refunds/runtime-refund', 'GET'],
-  ].map(([family, path, method]) => ({
+  ] as const).map(([family, path, method]) => ({
     family,
     request: new Request(`https://api.example.test${path}`, { method }),
     env,

@@ -559,7 +559,7 @@ function networkSourceFromContext(context: Context<any>): string | null {
 
 function readReason(details: unknown): string | null {
   if (!details || typeof details !== 'object') return null;
-  const reason = (details as Record<string, unknown>).reason;
+  const reason = (details as Record<string, unknown>)['reason'];
   return typeof reason === 'string' ? reason : null;
 }
 

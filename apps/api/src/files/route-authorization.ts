@@ -63,7 +63,8 @@ implements FileAuthorizationService {
   ): Promise<void> {
     this.assertActor(actor);
     if (resource.linkRevokedAt !== null
-      || (resource.linkExpiresAt !== null
+      || (resource.linkExpiresAt !== undefined
+        && resource.linkExpiresAt !== null
         && resource.linkExpiresAt <= Date.now())) deny();
     if (resource.ownerActorType === actor.type
       && resource.ownerActorId === actor.id) return;

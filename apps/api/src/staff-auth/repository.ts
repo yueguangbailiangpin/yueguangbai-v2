@@ -523,8 +523,9 @@ export function projectStaffSession(
     staff_id: authorization.staffId,
     display_name: authorization.displayName,
     roles: [...authorization.roles].sort() as StaffSessionSafeDto['roles'],
-    permissions: [...authorization.permissions].sort()
-      as StaffSessionSafeDto['permissions'],
+    permissions: (
+      [...authorization.permissions].sort()
+    ) as StaffSessionSafeDto['permissions'],
     data_scope: dataScope,
     authorization_version: authorization.authorizationVersion,
     session_version: session.issued_session_version,

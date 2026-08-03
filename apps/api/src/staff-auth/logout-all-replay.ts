@@ -95,15 +95,15 @@ function parseResponse(value: string): StaffLogoutAllResponse | null {
   }
   const record = parsed as Record<string, unknown>;
   if (Object.keys(record).length !== 3
-    || record.logged_out !== true
-    || record.all_devices_logged_out !== true
-    || !Number.isSafeInteger(record.session_version)
-    || Number(record.session_version) < 2) {
+    || record['logged_out'] !== true
+    || record['all_devices_logged_out'] !== true
+    || !Number.isSafeInteger(record['session_version'])
+    || Number(record['session_version']) < 2) {
     return null;
   }
   return {
     logged_out: true,
     all_devices_logged_out: true,
-    session_version: Number(record.session_version),
+    session_version: Number(record['session_version']),
   };
 }

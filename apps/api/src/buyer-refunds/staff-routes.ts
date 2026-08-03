@@ -13,6 +13,7 @@ import {
 } from '@ygb/contracts';
 import { chinaBusinessDate } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
+import type { AppEnv } from '../app';
 import type { FileAuthorizationResource, FileAuthorizationService } from '../files/authorization';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
@@ -73,7 +74,7 @@ interface ProofRow {
   visibility: string;
 }
 
-export function registerStaffBuyerRefundRoutes(app: Hono<any>): void {
+export function registerStaffBuyerRefundRoutes(app: Hono<AppEnv>): void {
   app.get(
     '/api/staff/buyer-refunds',
     withBuyerRefundHttpErrors(listStaffBuyerRefunds),
@@ -92,7 +93,7 @@ export function registerStaffBuyerRefundRoutes(app: Hono<any>): void {
   );
 }
 
-async function listStaffBuyerRefunds(context: Context<any>): Promise<Response> {
+async function listStaffBuyerRefunds(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requireBuyerRefundViewPermission(toRefundActor(actor));
   const query = parseListQuery(context);
@@ -134,7 +135,7 @@ async function listStaffBuyerRefunds(context: Context<any>): Promise<Response> {
   });
 }
 
-async function getStaffBuyerRefund(context: Context<any>): Promise<Response> {
+async function getStaffBuyerRefund(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requireBuyerRefundViewPermission(toRefundActor(actor));
   const detail = await readRefundDetail(
@@ -145,7 +146,7 @@ async function getStaffBuyerRefund(context: Context<any>): Promise<Response> {
   return success(context, { buyer_refund: detail });
 }
 
-async function recordPayment(context: Context<any>): Promise<Response> {
+async function recordPayment(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   const refundActor = toRefundActor(actor);
   requireBuyerRefundRecordPermission(refundActor);
@@ -166,20 +167,20 @@ async function recordPayment(context: Context<any>): Promise<Response> {
     'payment_channel',
     'proof_files',
   ]));
-  const proofFiles = parseProofFiles(body.proof_files);
+  const proofFiles = parseProofFiles(body['proof_files']);
   const result = await recordBuyerRefundPayment(
     context.env.DB,
     new BuyerRefundProofLinkAuthorization(actor),
     {
       obligationId,
-      expectedVersion: positiveVersion(body.expected_version),
-      amountCnyFen: positiveMoney(body.amount_cny_fen),
-      paidAt: nonNegativeTimestamp(body.paid_at),
-      chinaBusinessDate: chinaBusinessDate(nonNegativeTimestamp(body.paid_at)),
-      paymentChannel: paymentChannel(body.payment_channel),
+      expectedVersion: positiveVersion(body['expected_version']),
+      amountCnyFen: positiveMoney(body['amount_cny_fen']),
+      paidAt: nonNegativeTimestamp(body['paid_at']),
+      chinaBusinessDate: chinaBusinessDate(nonNegativeTimestamp(body['paid_at'])),
+      paymentChannel: paymentChannel(body['payment_channel']),
       proofFiles,
-      publicNote: optionalText(body.public_note, 2000),
-      internalNote: optionalText(body.internal_note, 4000),
+      publicNote: optionalText(body['public_note'], 2000),
+      internalNote: optionalText(body['internal_note'], 4000),
     },
     {
       actor: refundActor,
@@ -207,7 +208,7 @@ async function recordPayment(context: Context<any>): Promise<Response> {
   });
 }
 
-async function reversePayment(context: Context<any>): Promise<Response> {
+async function reversePayment(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   const refundActor = toRefundActor(actor);
   requireBuyerRefundRecordPermission(refundActor);
@@ -228,19 +229,19 @@ async function reversePayment(context: Context<any>): Promise<Response> {
     'reversed_at',
     'reason',
   ]));
-  const reversedAt = nonNegativeTimestamp(body.reversed_at);
-  const reason = requiredText(body.reason, 2000);
+  const reversedAt = nonNegativeTimestamp(body['reversed_at']);
+  const reason = requiredText(body['reason'], 2000);
   const result = await reverseBuyerRefundPayment(
     context.env.DB,
     {
       obligationId,
       originalPaymentEntryId: paymentEntryId,
-      expectedVersion: positiveVersion(body.expected_version),
-      amountCnyFen: positiveMoney(body.amount_cny_fen),
+      expectedVersion: positiveVersion(body['expected_version']),
+      amountCnyFen: positiveMoney(body['amount_cny_fen']),
       reversedAt,
       chinaBusinessDate: chinaBusinessDate(reversedAt),
       publicNote: reason,
-      internalNote: optionalText(body.internal_note, 4000),
+      internalNote: optionalText(body['internal_note'], 4000),
     },
     {
       actor: refundActor,
@@ -256,7 +257,7 @@ async function reversePayment(context: Context<any>): Promise<Response> {
 }
 
 async function readRefundDetail(
-  context: Context<any>,
+  context: Context<AppEnv>,
   obligationId: string,
   dataScope: StaffDataScope,
 ): Promise<StaffBuyerRefundDetailDto> {
@@ -345,7 +346,7 @@ async function readRefundDetail(
 }
 
 async function assertVisibleRefund(
-  context: Context<any>,
+  context: Context<AppEnv>,
   obligationId: string,
   dataScope: StaffDataScope,
 ): Promise<void> {
@@ -453,7 +454,7 @@ function scopeSql(scope: StaffDataScope): {
     : { sql: '0=1', args: [] };
 }
 
-function parseListQuery(context: Context<any>): {
+function parseListQuery(context: Context<AppEnv>): {
   limit: number;
   status?: BuyerRefundStatus;
   cursor?: { createdAt: number; id: string };
@@ -497,18 +498,18 @@ function parseProofFiles(value: unknown): readonly {
       !== 'expected_file_version,file_object_id') {
       return validationError();
     }
-    const fileObjectId = requireIdentifier(record.file_object_id);
+    const fileObjectId = requireIdentifier(record['file_object_id']);
     if (seen.has(fileObjectId)) return validationError();
     seen.add(fileObjectId);
     return {
       fileObjectId,
-      expectedFileVersion: positiveVersion(record.expected_file_version),
+      expectedFileVersion: positiveVersion(record['expected_file_version']),
     };
   });
 }
 
 async function readExactJson(
-  context: Context<any>,
+  context: Context<AppEnv>,
   allowed: ReadonlySet<string>,
   required: ReadonlySet<string>,
 ): Promise<Record<string, unknown>> {
@@ -589,7 +590,7 @@ function requireIdentifier(value: unknown): string {
   return requiredText(value, 120);
 }
 
-function requireIdempotencyKey(context: Context<any>): string {
+function requireIdempotencyKey(context: Context<AppEnv>): string {
   const value = context.req.header('Idempotency-Key')?.trim() ?? '';
   if (value.length < 8 || value.length > 128
     || value.includes(',')
@@ -598,7 +599,7 @@ function requireIdempotencyKey(context: Context<any>): string {
 }
 
 function requireStaffAuthorization(
-  context: Context<any>,
+  context: Context<AppEnv>,
 ): AssignmentStaffAuthorization {
   const value = context.get('staffAuthorization') as
     | AssignmentStaffAuthorization
@@ -607,7 +608,7 @@ function requireStaffAuthorization(
   return value;
 }
 
-function requireStaffDataScope(context: Context<any>): StaffDataScope {
+function requireStaffDataScope(context: Context<AppEnv>): StaffDataScope {
   const value = context.get('staffDataScope') as StaffDataScope | undefined;
   if (!value) throw new BuyerRefundHttpError('UNAUTHENTICATED', 401);
   return value;
@@ -643,16 +644,17 @@ function decodeCursor(value: string): { createdAt: number; id: string } {
   if (value.length < 1 || value.length > CURSOR_MAX_LENGTH
     || !/^[A-Za-z0-9_-]+$/u.test(value)) return validationError();
   try {
-    const parsed = JSON.parse(new TextDecoder().decode(decodeBase64Url(value)))
-      as Record<string, unknown>;
+    const parsed = (
+      JSON.parse(new TextDecoder().decode(decodeBase64Url(value)))
+    ) as Record<string, unknown>;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
       || Object.keys(parsed).sort().join(',') !== 'created_at,id,v'
-      || parsed.v !== 1
-      || !Number.isSafeInteger(parsed.created_at)
-      || Number(parsed.created_at) < 0) return validationError();
+      || parsed['v'] !== 1
+      || !Number.isSafeInteger(parsed['created_at'])
+      || Number(parsed['created_at']) < 0) return validationError();
     return {
-      createdAt: Number(parsed.created_at),
-      id: requireIdentifier(parsed.id),
+      createdAt: Number(parsed['created_at']),
+      id: requireIdentifier(parsed['id']),
     };
   } catch { return validationError(); }
 }
@@ -707,9 +709,9 @@ function normalizeHttpError(error: unknown): BuyerRefundHttpError {
 }
 
 function withBuyerRefundHttpErrors(
-  handler: (context: Context<any>) => Promise<Response>,
+  handler: (context: Context<AppEnv>) => Promise<Response>,
 ) {
-  return async (context: Context<any>): Promise<Response> => {
+  return async (context: Context<AppEnv>): Promise<Response> => {
     try { return await handler(context); }
     catch (error) {
       const normalized = normalizeHttpError(error);
@@ -723,11 +725,11 @@ function withBuyerRefundHttpErrors(
   };
 }
 
-function requestId(context: Context<any>): string {
+function requestId(context: Context<AppEnv>): string {
   return String(context.get('requestId') ?? crypto.randomUUID());
 }
 
-function success<T>(context: Context<any>, data: T): Response {
+function success<T>(context: Context<AppEnv>, data: T): Response {
   context.header('Cache-Control', 'no-store');
   return context.json(apiSuccess(data, requestId(context)));
 }

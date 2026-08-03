@@ -12,6 +12,7 @@ import {
   type StaffDataScope,
 } from '@ygb/contracts';
 import type { Context, Hono, MiddlewareHandler } from 'hono';
+import type { AppEnv } from '../app';
 import type { CustomerSessionContext } from '../customer-auth/authenticate-customer';
 import {
   customerSessionMiddleware,
@@ -43,7 +44,7 @@ const STAFF_UPLOADS = new Map<FilePurpose, FileVisibility>([
 const JSON_BODY_MAX_BYTES = 16 * 1024;
 const MULTIPART_BODY_MAX_BYTES = 26 * 1024 * 1024;
 
-export function registerFileHttpRoutes(app: Hono<any>): void {
+export function registerFileHttpRoutes(app: Hono<AppEnv>): void {
   const customerSession = customerSessionMiddleware();
 
   registerIntentRoute(
@@ -93,9 +94,9 @@ export function registerFileHttpRoutes(app: Hono<any>): void {
 }
 
 function registerIntentRoute(
-  app: Hono<any>,
+  app: Hono<AppEnv>,
   path: string,
-  middleware: MiddlewareHandler<any> | undefined,
+  middleware: MiddlewareHandler<AppEnv> | undefined,
   domain: ActorDomain,
   purpose: FilePurpose,
   visibility: FileVisibility,
@@ -106,7 +107,7 @@ function registerIntentRoute(
     const result = await createFileUploadIntent(
       context.env.DB,
       authorization(context, authority),
-      { purpose, visibility, files: body.files },
+      { purpose, visibility, files: body['files'] },
       {
         actor: authority.actor,
         idempotencyKey: requireIdempotencyKey(context),
@@ -135,10 +136,10 @@ function registerIntentRoute(
 }
 
 function registerLifecycleRoutes(
-  app: Hono<any>,
+  app: Hono<AppEnv>,
   domain: ActorDomain,
   prefix: string,
-  middleware?: MiddlewareHandler<any>,
+  middleware?: MiddlewareHandler<AppEnv>,
 ): void {
   const upload = withFileErrors(async (context) => {
     const authority = await resolveRouteAuthority(context, domain);
@@ -180,7 +181,7 @@ function registerLifecycleRoutes(
       authorization(context, authority),
       {
         uploadIntentId: requiredIdentifier(context.req.param('id')),
-        expectedVersion: positiveSafeInteger(body.expected_version),
+        expectedVersion: positiveSafeInteger(body['expected_version']),
       },
       {
         actor: authority.actor,
@@ -212,13 +213,17 @@ function registerLifecycleRoutes(
       new Set(['expected_file_version']),
     );
     const fileObjectId = requiredIdentifier(context.req.param('fileObjectId'));
+    const fileEntityLinkId = await resolveFileEntityLinkId(
+      context,
+      fileObjectId,
+    );
     const result = await createFileReadIntent(
       context.env.DB,
       authorization(context, authority),
       {
         fileObjectId,
-        fileEntityLinkId: await resolveFileEntityLinkId(context, fileObjectId),
-        expectedFileVersion: positiveSafeInteger(body.expected_file_version),
+        ...(fileEntityLinkId === undefined ? {} : { fileEntityLinkId }),
+        expectedFileVersion: positiveSafeInteger(body['expected_file_version']),
       },
       {
         actor: authority.actor,
@@ -281,7 +286,7 @@ interface RouteAuthority {
 }
 
 async function resolveRouteAuthority(
-  context: Context<any>,
+  context: Context<AppEnv>,
   domain: ActorDomain,
 ): Promise<RouteAuthority> {
   if (domain === 'STAFF') {
@@ -344,7 +349,7 @@ function customerPrincipal(
 }
 
 function authorization(
-  context: Context<any>,
+  context: Context<AppEnv>,
   authority: RouteAuthority,
 ): RouteBoundFileAuthorizationService {
   return new RouteBoundFileAuthorizationService(
@@ -358,7 +363,7 @@ function authorization(
 }
 
 async function resolveFileEntityLinkId(
-  context: Context<any>,
+  context: Context<AppEnv>,
   fileObjectId: string,
 ): Promise<string | undefined> {
   const result = await context.env.DB.prepare(`
@@ -381,15 +386,15 @@ async function resolveFileEntityLinkId(
     : result.id;
 }
 
-async function readIntentBody(context: Context<any>): Promise<{
+async function readIntentBody(context: Context<AppEnv>): Promise<{
   files: readonly FileUploadDescriptor[];
 }> {
   const body = await readExactObject(context, new Set(['files']));
-  if (!Array.isArray(body.files) || body.files.length < 1 || body.files.length > 10) {
+  if (!Array.isArray(body['files']) || body['files'].length < 1 || body['files'].length > 10) {
     throw new FileStorageError('VALIDATION_ERROR', 400);
   }
   return {
-    files: body.files.map((value) => {
+    files: body['files'].map((value) => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
         throw new FileStorageError('VALIDATION_ERROR', 400);
       }
@@ -398,21 +403,21 @@ async function readIntentBody(context: Context<any>): Promise<{
         record,
         new Set(['client_file_name', 'extension', 'declared_mime', 'byte_size']),
       );
-      const clientFileName = requiredText(record.client_file_name, 255);
-      const extension = requiredText(record.extension, 10).toLowerCase();
+      const clientFileName = requiredText(record['client_file_name'], 255);
+      const extension = requiredText(record['extension'], 10).toLowerCase();
       if (!clientFileName.toLowerCase().endsWith(`.${extension}`)) {
         throw new FileStorageError('VALIDATION_ERROR', 400);
       }
       return {
         clientFileName,
-        declaredMime: requiredText(record.declared_mime, 100).toLowerCase(),
-        byteSize: positiveSafeInteger(record.byte_size),
+        declaredMime: requiredText(record['declared_mime'], 100).toLowerCase(),
+        byteSize: positiveSafeInteger(record['byte_size']),
       };
     }),
   };
 }
 
-async function readSingleMultipartFile(context: Context<any>): Promise<File> {
+async function readSingleMultipartFile(context: Context<AppEnv>): Promise<File> {
   const contentType = context.req.header('Content-Type') ?? '';
   if (!contentType.toLowerCase().startsWith('multipart/form-data;')) {
     throw new FileStorageError('VALIDATION_ERROR', 400);
@@ -442,7 +447,7 @@ async function readSingleMultipartFile(context: Context<any>): Promise<File> {
 }
 
 async function readExactObject(
-  context: Context<any>,
+  context: Context<AppEnv>,
   allowedKeys: ReadonlySet<string>,
 ): Promise<Record<string, unknown>> {
   const contentType = context.req.header('Content-Type') ?? '';
@@ -484,9 +489,9 @@ function assertExactKeys(
 }
 
 function withFileErrors(
-  handler: (context: Context<any>) => Promise<Response>,
+  handler: (context: Context<AppEnv>) => Promise<Response>,
 ) {
-  return async (context: Context<any>): Promise<Response> => {
+  return async (context: Context<AppEnv>): Promise<Response> => {
     try {
       return await handler(context);
     } catch (error) {
@@ -504,7 +509,7 @@ function toApiCode(code: FileStorageError['code']): ApiErrorCode {
   return code;
 }
 
-function requireObjectStorage(context: Context<any>): ObjectStorageAdapter {
+function requireObjectStorage(context: Context<AppEnv>): ObjectStorageAdapter {
   const value = context.env.FILE_OBJECT_STORAGE as
     | Partial<ObjectStorageAdapter>
     | undefined;
@@ -518,12 +523,12 @@ function requireObjectStorage(context: Context<any>): ObjectStorageAdapter {
   return value as ObjectStorageAdapter;
 }
 
-function requireIdempotencyKey(context: Context<any>): string {
+function requireIdempotencyKey(context: Context<AppEnv>): string {
   return requireBoundedHeader(context, 'Idempotency-Key', 8, 128);
 }
 
 function requireBoundedHeader(
-  context: Context<any>,
+  context: Context<AppEnv>,
   name: string,
   minimum: number,
   maximum: number,
@@ -562,7 +567,7 @@ function positiveSafeInteger(value: unknown): number {
   return value;
 }
 
-function requestId(context: Context<any>): string {
+function requestId(context: Context<AppEnv>): string {
   return String(context.get('requestId') ?? crypto.randomUUID());
 }
 
@@ -571,11 +576,11 @@ function denyNotFound(): never {
 }
 
 function addRoute(
-  app: Hono<any>,
+  app: Hono<AppEnv>,
   method: 'get' | 'post' | 'put',
   path: string,
-  middleware: MiddlewareHandler<any> | undefined,
-  handler: (context: Context<any>) => Promise<Response>,
+  middleware: MiddlewareHandler<AppEnv> | undefined,
+  handler: (context: Context<AppEnv>) => Promise<Response>,
 ): void {
   if (middleware) app[method](path, middleware, handler);
   else app[method](path, handler);

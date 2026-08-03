@@ -1,5 +1,6 @@
 import { apiFailure } from '@ygb/contracts';
 import type { Context, MiddlewareHandler } from 'hono';
+import type { AppEnv } from '../app';
 
 const BODY_LIMIT_BYTES = 16 * 1024;
 
@@ -7,7 +8,7 @@ const BODY_LIMIT_BYTES = 16 * 1024;
  * HTTP boundary guard for the frozen one-screenshot Order Evidence contract.
  * The Domain service independently enforces the same invariant.
  */
-export function exactOneOrderEvidenceScreenshotGuard(): MiddlewareHandler<any> {
+export function exactOneOrderEvidenceScreenshotGuard(): MiddlewareHandler<AppEnv> {
   return async (context, next) => {
     if (context.req.method !== 'POST') {
       await next();
@@ -32,7 +33,7 @@ export function exactOneOrderEvidenceScreenshotGuard(): MiddlewareHandler<any> {
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return failure(context);
       }
-      const fileObjectIds = (parsed as Record<string, unknown>).file_object_ids;
+      const fileObjectIds = (parsed as Record<string, unknown>)['file_object_ids'];
       if (!Array.isArray(fileObjectIds)
         || fileObjectIds.length !== 1
         || typeof fileObjectIds[0] !== 'string'
@@ -48,7 +49,7 @@ export function exactOneOrderEvidenceScreenshotGuard(): MiddlewareHandler<any> {
   };
 }
 
-function failure(context: Context<any>): Response {
+function failure(context: Context<AppEnv>): Response {
   context.header('Cache-Control', 'no-store');
   return context.json(
     apiFailure(

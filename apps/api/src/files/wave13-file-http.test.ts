@@ -6,7 +6,15 @@ import {
   FILE_HTTP_LIFECYCLE_PATHS,
   FILE_HTTP_PURPOSE_ROUTES,
   WAVE13_DEFERRED_FILE_PURPOSES,
+  type FileActor,
+  type SqlAllResult,
+  type SqlDatabase,
+  type SqlRunResult,
+  type SqlStatement,
 } from '@ygb/contracts';
+import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import type { FileAuthorizationResource } from './authorization';
+import { RouteBoundFileAuthorizationService } from './route-authorization';
 
 const root = path.resolve(process.cwd());
 const source = (relative: string) => readFileSync(path.join(root, relative), 'utf8');
@@ -100,7 +108,95 @@ describe('Wave 13 File HTTP contract and architecture', () => {
       expect(routes).not.toContain(forbidden);
     }
     const read = source('apps/api/src/files/file-read-service.ts');
-    expect(read).toContain('authorization.assertCanRead');
-    expect(read).toContain('authorizeExplicitFileAudience');
+    expect(read.match(/\bauthorizeFileRead\(/gu)).toHaveLength(2);
+    expect(read).toContain('export async function createFileReadIntent');
+    expect(read).toContain('export async function consumeFileReadIntent');
+    expect(read).toContain('requireDynamicInstructionReadAuthorization');
+  });
+
+  it('rejects missing permission and out-of-scope reads at runtime', async () => {
+    const actor: FileActor = {
+      type: 'STAFF',
+      id: 'wave13-file-reader',
+      roles: ['buyer_support'],
+    };
+    const resource: FileAuthorizationResource = {
+      uploadIntentId: 'wave13-file-intent',
+      fileObjectId: 'wave13-file-object',
+      ownerActorType: 'STAFF',
+      ownerActorId: 'another-staff',
+      purpose: 'ORDER_EVIDENCE',
+      visibility: 'BUYER_VISIBLE',
+      entityType: 'ORDER_EVIDENCE_SUBMISSION',
+      entityId: 'wave13-evidence-out-of-scope',
+      linkRevokedAt: null,
+      linkExpiresAt: null,
+    };
+    const missingPermission = authorization(new Set());
+    const globalScope = {
+      type: 'GLOBAL',
+      buyerCustomerIds: [],
+      sellerOrganizationIds: [],
+      teamIds: [],
+    } as const;
+    await expect(new RouteBoundFileAuthorizationService(
+      authorityDatabase,
+      actor,
+      new Map(),
+      { type: 'STAFF_SESSION', staffId: actor.id },
+      missingPermission,
+      globalScope,
+    ).assertCanRead(actor, resource)).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      status: 403,
+    });
+
+    const scoped = {
+      type: 'ASSIGNED_BUYERS',
+      buyerCustomerIds: ['buyer-in-scope'],
+      sellerOrganizationIds: [],
+      teamIds: [],
+    } as const;
+    await expect(new RouteBoundFileAuthorizationService(
+      authorityDatabase,
+      actor,
+      new Map(),
+      { type: 'STAFF_SESSION', staffId: actor.id },
+      authorization(new Set(['ORDER_VIEW'])),
+      scoped,
+    ).assertCanRead(actor, resource)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      status: 404,
+    });
   });
 });
+
+const authorityStatement: SqlStatement = {
+  bind: () => authorityStatement,
+  first: async <T>() => ({
+    buyer_customer_id: 'buyer-out-of-scope',
+    seller_organization_id: 'seller-out-of-scope',
+  }) as unknown as T,
+  all: async <T>(): Promise<SqlAllResult<T>> => ({ results: [] }),
+  run: async (): Promise<SqlRunResult> => ({ meta: { changes: 0 } }),
+};
+
+const authorityDatabase: SqlDatabase = {
+  prepare: () => authorityStatement,
+  batch: async () => [],
+};
+
+function authorization(
+  permissions: AssignmentStaffAuthorization['permissions'],
+): AssignmentStaffAuthorization {
+  return {
+    staffId: 'wave13-file-reader',
+    displayName: 'Wave 13 File Reader',
+    staffStatus: 'ACTIVE',
+    authorizationVersion: 1,
+    roles: new Set(['buyer_support']),
+    permissions,
+    memberTeamIds: [],
+    leaderTeamIds: [],
+  };
+}

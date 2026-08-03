@@ -8,6 +8,7 @@ import {
   type StaffOrderEvidenceListItem,
 } from '@ygb/contracts';
 import type { Context, Hono } from 'hono';
+import type { AppEnv } from '../app';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { requestOrderEvidenceChanges } from './review-order-evidence';
 import {
@@ -61,7 +62,7 @@ interface OrderEvidenceDetailRow {
   fixed_assignment_id: string | null;
 }
 
-export function registerStaffOrderEvidenceRoutes(app: Hono<any>): void {
+export function registerStaffOrderEvidenceRoutes(app: Hono<AppEnv>): void {
   app.get(
     '/api/staff/order-evidence',
     withStaffOrderEvidenceErrors(listStaffOrderEvidence),
@@ -81,7 +82,7 @@ export function registerStaffOrderEvidenceRoutes(app: Hono<any>): void {
 }
 
 async function listStaffOrderEvidence(
-  context: Context<any>,
+  context: Context<AppEnv>,
 ): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requirePermission(actor, 'ORDER_VIEW');
@@ -156,7 +157,7 @@ async function listStaffOrderEvidence(
 }
 
 async function getStaffOrderEvidence(
-  context: Context<any>,
+  context: Context<AppEnv>,
 ): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requirePermission(actor, 'ORDER_VIEW');
@@ -168,7 +169,7 @@ async function getStaffOrderEvidence(
   return success(context, { order_evidence: detail });
 }
 
-async function requestChanges(context: Context<any>): Promise<Response> {
+async function requestChanges(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requirePermission(actor, 'ORDER_CONFIRM');
   const submissionId = requireRouteIdentifier(context);
@@ -186,9 +187,9 @@ async function requestChanges(context: Context<any>): Promise<Response> {
     context.env.DB,
     {
       submissionId,
-      expectedVersion: positiveVersion(body.expected_version),
-      publicReason: requiredText(body.public_reason, 2000),
-      internalNote: optionalText(body.internal_note, 4000),
+      expectedVersion: positiveVersion(body['expected_version']),
+      publicReason: requiredText(body['public_reason'], 2000),
+      internalNote: optionalText(body['internal_note'], 4000),
     },
     {
       actor: toOrderEvidenceActor(actor),
@@ -199,7 +200,7 @@ async function requestChanges(context: Context<any>): Promise<Response> {
   return success(context, result);
 }
 
-async function approve(context: Context<any>): Promise<Response> {
+async function approve(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requirePermission(actor, 'ORDER_CONFIRM');
   const submissionId = requireRouteIdentifier(context);
@@ -215,16 +216,18 @@ async function approve(context: Context<any>): Promise<Response> {
     'price_mismatch_reason',
   ]), new Set(['expected_version']));
   const acknowledged = Object.hasOwn(body, 'price_mismatch_acknowledged')
-    ? booleanValue(body.price_mismatch_acknowledged)
+    ? booleanValue(body['price_mismatch_acknowledged'])
     : undefined;
   const result = await approveOrderEvidenceAtomically(
     context.env.DB,
     {
       submissionId,
-      expectedVersion: positiveVersion(body.expected_version),
-      internalNote: optionalText(body.internal_note, 4000),
-      priceMismatchAcknowledged: acknowledged,
-      priceMismatchReason: optionalText(body.price_mismatch_reason, 2000),
+      expectedVersion: positiveVersion(body['expected_version']),
+      internalNote: optionalText(body['internal_note'], 4000),
+      ...(acknowledged === undefined
+        ? {}
+        : { priceMismatchAcknowledged: acknowledged }),
+      priceMismatchReason: optionalText(body['price_mismatch_reason'], 2000),
     },
     {
       actor: toFormalOrderActor(actor),
@@ -236,7 +239,7 @@ async function approve(context: Context<any>): Promise<Response> {
 }
 
 async function readDetail(
-  context: Context<any>,
+  context: Context<AppEnv>,
   submissionId: string,
   scope: StaffDataScope,
 ): Promise<StaffOrderEvidenceDetailDto> {
@@ -393,7 +396,7 @@ async function readDetail(
 }
 
 async function assertScopeVisibility(
-  context: Context<any>,
+  context: Context<AppEnv>,
   submissionId: string,
   scope: StaffDataScope,
 ): Promise<void> {
@@ -433,7 +436,7 @@ function scopeSql(scope: StaffDataScope): {
     : { sql: '0=1', args: [] };
 }
 
-function parseListQuery(context: Context<any>): {
+function parseListQuery(context: Context<AppEnv>): {
   limit: number;
   status?: typeof STAFF_ORDER_EVIDENCE_LIST_STATUSES[number];
   cursor?: { submittedAt: number; id: string };
@@ -481,14 +484,14 @@ function decodeCursor(raw: string): { submittedAt: number; id: string } {
     ) as Record<string, unknown>;
     if (!value || typeof value !== 'object' || Array.isArray(value)
       || Object.keys(value).sort().join(',') !== 'id,submitted_at,v'
-      || value.v !== 1
-      || !Number.isSafeInteger(value.submitted_at)
-      || Number(value.submitted_at) < 0) {
+      || value['v'] !== 1
+      || !Number.isSafeInteger(value['submitted_at'])
+      || Number(value['submitted_at']) < 0) {
       return validationError();
     }
     return {
-      submittedAt: Number(value.submitted_at),
-      id: requiredText(value.id, 120),
+      submittedAt: Number(value['submitted_at']),
+      id: requiredText(value['id'], 120),
     };
   } catch {
     return validationError();
@@ -496,7 +499,7 @@ function decodeCursor(raw: string): { submittedAt: number; id: string } {
 }
 
 async function readExactJson(
-  context: Context<any>,
+  context: Context<AppEnv>,
   allowedKeys: ReadonlySet<string>,
   requiredKeys: ReadonlySet<string>,
 ): Promise<Record<string, unknown>> {
@@ -532,7 +535,7 @@ async function readExactJson(
 }
 
 function requireStaffAuthorization(
-  context: Context<any>,
+  context: Context<AppEnv>,
 ): AssignmentStaffAuthorization {
   const value = context.get('staffAuthorization') as
     | AssignmentStaffAuthorization
@@ -541,7 +544,7 @@ function requireStaffAuthorization(
   return value;
 }
 
-function requireStaffDataScope(context: Context<any>): StaffDataScope {
+function requireStaffDataScope(context: Context<AppEnv>): StaffDataScope {
   const value = context.get('staffDataScope') as StaffDataScope | undefined;
   if (!value) throw new StaffOrderEvidenceHttpError('UNAUTHENTICATED', 401);
   return value;
@@ -570,9 +573,9 @@ function toFormalOrderActor(actor: AssignmentStaffAuthorization) {
 }
 
 function withStaffOrderEvidenceErrors(
-  handler: (context: Context<any>) => Promise<Response>,
+  handler: (context: Context<AppEnv>) => Promise<Response>,
 ) {
-  return async (context: Context<any>): Promise<Response> => {
+  return async (context: Context<AppEnv>): Promise<Response> => {
     try {
       return await handler(context);
     } catch (error) {
@@ -666,11 +669,11 @@ function requiredText(value: unknown, maximum: number): string {
   return normalized;
 }
 
-function requireRouteIdentifier(context: Context<any>): string {
+function requireRouteIdentifier(context: Context<AppEnv>): string {
   return requiredText(context.req.param('id'), 120);
 }
 
-function requireIdempotencyKey(context: Context<any>): string {
+function requireIdempotencyKey(context: Context<AppEnv>): string {
   const value = context.req.header('Idempotency-Key')?.trim() ?? '';
   if (value.length < 8 || value.length > 128
     || value.includes(',')
@@ -698,7 +701,7 @@ function decodeBase64Url(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-function requestId(context: Context<any>): string {
+function requestId(context: Context<AppEnv>): string {
   return String(context.get('requestId') ?? crypto.randomUUID());
 }
 
@@ -706,7 +709,7 @@ function validationError(): never {
   throw new StaffOrderEvidenceHttpError('VALIDATION_ERROR', 400);
 }
 
-function success<T>(context: Context<any>, data: T): Response {
+function success<T>(context: Context<AppEnv>, data: T): Response {
   context.header('Cache-Control', 'no-store');
   return context.json(apiSuccess(data, requestId(context)));
 }

@@ -61,7 +61,10 @@ function encodeBase64Url(bytes: Uint8Array): string {
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    'SHA-256',
+    new Uint8Array(bytes),
+  ));
   return [...digest]
     .map((value) => value.toString(16).padStart(2, '0'))
     .join('');

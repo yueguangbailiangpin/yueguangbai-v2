@@ -106,8 +106,8 @@ export class FeishuStaffAuthProvider implements StaffAuthProviderAdapter {
     });
     const tokenJson = await readProviderJson(tokenResponse);
     const accessToken = readString(
-      tokenJson.access_token
-        ?? asRecord(tokenJson.data)?.access_token,
+      tokenJson['access_token']
+        ?? asRecord(tokenJson['data'])?.['access_token'],
       16,
       4096,
     );
@@ -119,12 +119,12 @@ export class FeishuStaffAuthProvider implements StaffAuthProviderAdapter {
       signal: input.signal,
     });
     const identityJson = await readProviderJson(identityResponse);
-    const data = asRecord(identityJson.data) ?? identityJson;
-    const openId = readString(data.open_id, 1, 200);
-    const tenantKey = readString(data.tenant_key, 1, 200);
-    const userId = data.user_id === undefined || data.user_id === null
+    const data = asRecord(identityJson['data']) ?? identityJson;
+    const openId = readString(data['open_id'], 1, 200);
+    const tenantKey = readString(data['tenant_key'], 1, 200);
+    const userId = data['user_id'] === undefined || data['user_id'] === null
       ? null
-      : readString(data.user_id, 1, 200);
+      : readString(data['user_id'], 1, 200);
     if (!openId || !tenantKey) throw new Error('feishu_identity_missing');
     if (tenantKey !== this.config.tenantKey) {
       throw new Error('feishu_tenant_mismatch');
@@ -238,7 +238,7 @@ async function readProviderJson(response: Response): Promise<Record<string, unkn
   const value = await response.json().catch(() => null);
   const record = asRecord(value);
   if (!record) throw new Error('feishu_invalid_json');
-  const code = record.code;
+  const code = record['code'];
   if (code !== undefined && code !== 0 && code !== '0') {
     throw new Error('feishu_provider_error');
   }
