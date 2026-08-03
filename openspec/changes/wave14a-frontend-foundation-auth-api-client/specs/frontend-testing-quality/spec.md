@@ -1,0 +1,59 @@
+# Frontend Testing and Quality Capability
+
+## ADDED Requirements
+
+### Requirement: Web unit tests cover deterministic foundation policy
+
+Vitest unit tests SHALL cover runtime configuration, route/return-path parsing, query-key factories, envelope/Zod parsing, error/status/retry mapping, Retry-After bounds, idempotency lifecycle, Session reducers, and file transfer reducers. Tests SHALL include normal and security/edge cases and SHALL not weaken existing Node test configuration.
+
+#### Scenario: Foundation unit suite
+
+- **WHEN** pure frontend policies are executed with valid inputs
+- **THEN** exact identity/path/data/error/operation transitions match the specifications.
+
+#### Scenario: Malformed, cross-domain, or stale input
+
+- **WHEN** inputs are unsafe, canceled, stale, malformed, cross-identity, or persistence-seeking
+- **THEN** tests prove fail-closed behavior without network or protected-data leakage.
+
+### Requirement: Component tests exercise user behavior and accessibility
+
+Testing Library, user-event, and jsdom SHALL test public/login/protected routing, three shells, forms, state components, keyboard/focus, overlay restoration, announcements, 320px structure, and 200% zoom-compatible semantics through user-visible roles/names rather than private implementation details.
+
+#### Scenario: User completes foundation interaction
+
+- **WHEN** a keyboard or pointer user navigates entries, login states, shell navigation, and overlays
+- **THEN** focus, names, landmarks, state feedback, and navigation outcomes are correct.
+
+#### Scenario: Loading, denied, missing, or dependency state
+
+- **WHEN** components receive unresolved, 403, 404, 503, contract, or canceled results
+- **THEN** protected content stays hidden and the appropriate accessible state/request ID/recovery action is rendered.
+
+### Requirement: MSW tests validate the real network boundary
+
+MSW SHALL intercept the actual registered `/api/*` paths and assert credentials, methods, headers, exact envelopes, identity account types, AbortSignal effects, retry policy, idempotency-key reuse, expected_version, file multipart/token flow, and safe error fields. Tests SHALL NOT depend only on mocking hook/client return values.
+
+#### Scenario: Valid mocked API flow
+
+- **WHEN** MSW returns contract-valid auth, session, query, mutation, or file responses
+- **THEN** the full adapter/query/component boundary validates and presents the intended state.
+
+#### Scenario: Network/contract/security failure
+
+- **WHEN** MSW returns malformed envelopes, forbidden fields, 401/403/404/409/422/429/503, delay/cancel, replay, or token expiry
+- **THEN** identity, retry, error, cache, and file rules remain exact and no unsafe data reaches UI.
+
+### Requirement: Build, security, regression, and browser smoke gates remain mandatory
+
+The feature SHALL pass Web typecheck/build, repository security scan, complete `npm run check`, migration/Wave11/Wave12/Wave13/Wrangler gates, OpenSpec target/all strict validation, and a minimal Playwright production-build smoke for public/login/shell/responsive/keyboard/error paths. Wave 14A SHALL NOT claim formal business browser acceptance.
+
+#### Scenario: All foundation gates pass
+
+- **WHEN** implementation is ready for controller review
+- **THEN** exact commands/counts/results are recorded, existing backend gates stay green, and smoke covers one safe route/state per identity.
+
+#### Scenario: Gate failure or overstated evidence
+
+- **WHEN** any gate fails, was not run, uses production resources, or is described as broader business acceptance
+- **THEN** advancement stops and the report records the real failure/unverified boundary.
