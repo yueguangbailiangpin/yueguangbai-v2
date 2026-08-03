@@ -167,3 +167,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - Local Codex is the sole source writer; Backend, Contracts, and Migrations are prohibited changes.
 - Browser validation, full gates, and formal OpenSpec Verify are required after implementation.
 - Ponytail remains OFF pending independent authorization.
+
+## Controller Dedicated-Link Amendment
+
+- [x] Amend root to a dedicated-link notice, retain direct login routes, fail closed on Customer mismatch with logout plus two-root cleanup, and align Session adapters with real `{ session: ... }` data.

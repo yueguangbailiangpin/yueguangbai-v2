@@ -94,3 +94,7 @@ Implementation proceeds as a frontend-only feature after controller freeze, usin
 - Local Codex is the sole source writer; Backend, Contracts, and Migrations remain unchanged.
 - Implementation requires local browser validation, formal OpenSpec Verify, and complete gates.
 - Ponytail remains OFF pending independent authorization.
+
+## Controller Dedicated-Link Amendment
+
+`/` is a dedicated-link notice only. It displays 月光白 and asks users to use the correct link supplied by staff; it has no selector, login form, or identity link. A Customer mismatch must call Customer logout, clear both Customer roots, and show one neutral message without cross-identity handoff.

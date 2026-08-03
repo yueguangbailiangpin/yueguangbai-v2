@@ -2,6 +2,8 @@
 
 ## ADDED Requirements
 
+> Controller amendment: root is a 月光白 dedicated-link notice only; it contains no identity selector, login form, or identity link. Direct identity login routes remain public.
+
 ### Requirement: Public routing exposes separated identity entries
 
 React Router SHALL own `/`, `/buyer/login`, `/seller/login`, and `/staff/login`. The root SHALL show only Buyer and Seller entry actions; Staff SHALL remain directly reachable at `/staff/login`. Hidden Staff navigation SHALL NOT be represented as a security control.

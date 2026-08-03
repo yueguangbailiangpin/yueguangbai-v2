@@ -2,6 +2,8 @@
 
 ## ADDED Requirements
 
+> Controller amendment coverage includes dedicated-link root, real `{ session: ... }` fixtures, mismatch logout, and Customer/Staff invalidation isolation.
+
 ### Requirement: Web unit tests cover deterministic foundation policy
 
 Vitest unit tests SHALL cover runtime configuration, route/return-path parsing, query-key factories, envelope/Zod parsing, error/status/retry mapping, Retry-After bounds, idempotency lifecycle, Session reducers, Customer transport invalidation, and file transfer reducers. Tests SHALL include normal and security/edge cases and SHALL not weaken existing Node test configuration.

@@ -79,3 +79,7 @@ Filters, cursor/page state, selected row, and drawer identity use route search p
 ## Language Boundary
 
 The first release is Simplified Chinese. Route IDs and copy catalogs are structured so visible text is not scattered through data clients, but Wave 14A does not add a full i18n framework or language switcher.
+
+## Controller Dedicated-Link Amendment
+
+`/` is a 月光白 dedicated-link notice only: no Buyer/Seller/Staff entry, identity selector, or login form. `/buyer/login`, `/seller/login`, and `/staff/login` remain direct routes.

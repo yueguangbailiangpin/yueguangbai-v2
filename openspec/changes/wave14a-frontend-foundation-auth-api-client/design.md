@@ -177,3 +177,7 @@ Wave 14A has no database, backend, Contract, or production resource change. Runt
 - Local Codex is the only source writer. Backend, Contracts, and Migrations are not editable in this feature.
 - Browser validation, full gates, and formal OpenSpec Verify are mandatory before controller review.
 - Ponytail remains OFF pending independent authorization.
+
+## Controller Dedicated-Link Amendment
+
+Root is a dedicated-link notice, not an identity selector. The three login routes remain direct. Mismatch calls Customer logout, clears both Customer roots, and never reveals or links to the other identity. Customer and Staff Session adapters consume real `{ session: ... }` data.

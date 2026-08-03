@@ -2,6 +2,8 @@
 
 ## ADDED Requirements
 
+> Controller amendment: a Customer account-type mismatch calls Customer logout then clears both Customer roots, enters no shell, and displays a neutral message with no cross-identity handoff.
+
 ### Requirement: Buyer, Seller, and Staff have independent frontend Session domains
 
 The frontend SHALL define separate Buyer, Seller, and Staff Session boundaries, controllers, route guards, query roots, and shells. Each SHALL use exactly `UNKNOWN`, `LOADING`, `AUTHENTICATED`, `UNAUTHENTICATED`, and `DEPENDENCY_ERROR`. Buyer and Seller MAY share only a narrow `CUSTOMER_TRANSPORT_INVALIDATION_GROUP` coordinator for cancel/reset/cache removal caused by their shared Cookie; it SHALL carry no combined authenticated identity or authority. The frontend SHALL NOT expose a mixed-identity Auth Context or borrow another identity's roles/data.

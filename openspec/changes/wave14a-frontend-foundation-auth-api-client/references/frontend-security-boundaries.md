@@ -40,6 +40,8 @@ One logical mutation creates one cryptographically random `Idempotency-Key` in o
 
 Query keys begin with an identity discriminator and then resource/domain identifiers. They do not rely on display names. Customer login/mismatch/logout/401 cancels in-flight Buyer and Seller queries and removes both Customer roots before any matching domain is authenticated. Staff logout/401 removes only Staff. Sensitive caches are memory-only, have conservative stale/gc behavior, and never hydrate across identity roots. Mutation responses invalidate only documented identity-domain resources.
 
+Customer mismatch is fail-closed: call Customer logout after the replaced Cookie, clear both roots even if cleanup fails, reveal no account class, and offer no cross-identity link.
+
 ## File Boundary
 
 - Upload purpose and visibility are fixed by the selected route, never client-configured authority.

@@ -134,3 +134,5 @@ Use semantic landmarks/headings, logical DOM/reading order, keyboard-complete op
 - Showy animation; motion is short, functional, and reducible.
 - Dark mode or a theme switcher in Wave 14A.
 - Customer-facing English product branding or `V2`.
+
+Root is a quiet dedicated-link notice, not an identity selector or login surface.
