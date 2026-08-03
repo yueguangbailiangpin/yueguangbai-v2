@@ -1,61 +1,60 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import { apiRequest } from '../api/transport';
-import { queryKeys } from '../api/query-client';
 import { isFrontendApiError } from '../api/errors';
-import { CUSTOMER_TRANSPORT_INVALIDATION_GROUP, clearStaffTransport } from './customer-transport-invalidation';
+import { queryKeys } from '../api/query-client';
+import { apiRequest } from '../api/transport';
+import { clearStaffTransport } from './customer-transport-invalidation';
+import { customerSessionSchema, type CustomerSession } from './customer/customer-auth-api';
 
-export type SessionStatus = 'UNKNOWN' | 'LOADING' | 'AUTHENTICATED' | 'UNAUTHENTICATED' | 'DEPENDENCY_ERROR';
 export type Identity = 'buyer' | 'seller' | 'staff';
 
-const customerSession = z.object({
-  account_id: z.string(), identity_subject_id: z.string(), account_type: z.enum(['BUYER', 'SELLER_MEMBER']),
-  session_version: z.number().int(), password_change_required: z.boolean(), issued_at: z.number().int(), expires_at: z.number().int(),
+const staffSessionSchema = z.object({
+  staff_id: z.string(),
+  display_name: z.string(),
+  roles: z.array(z.string()),
+  permissions: z.array(z.string()),
+  data_scope: z.unknown(),
+  authorization_version: z.number().int(),
+  session_version: z.number().int(),
+  expires_at: z.number().int(),
 }).strict();
-const staffSession = z.object({
-  staff_id: z.string(), display_name: z.string(), roles: z.array(z.string()), permissions: z.array(z.string()),
-  data_scope: z.unknown(), authorization_version: z.number().int(), session_version: z.number().int(), expires_at: z.number().int(),
-}).strict();
 
-export type CustomerSession = z.output<typeof customerSession>;
-export type StaffSession = z.output<typeof staffSession>;
-export type SessionValue = CustomerSession | StaffSession;
+const staffSessionResponseSchema = z.object({ session: staffSessionSchema }).strict();
 
-export const customerSessionResponseSchema = z.object({ session: customerSession }).strict();
-export const staffSessionResponseSchema = z.object({ session: staffSession }).strict();
+export type { CustomerSession };
+export type StaffSession = z.output<typeof staffSessionSchema>;
+export type StaffSessionResult =
+  | Readonly<{ status: 'LOADING'; value: null }>
+  | Readonly<{ status: 'AUTHENTICATED'; value: StaffSession }>
+  | Readonly<{ status: 'UNAUTHENTICATED'; value: null }>
+  | Readonly<{ status: 'DEPENDENCY_ERROR'; value: null }>;
 
-function sessionEndpoint(identity: Identity): { path: string; schema: typeof customerSessionResponseSchema | typeof staffSessionResponseSchema } {
-  if (identity === 'staff') return { path: '/api/staff-auth/session', schema: staffSessionResponseSchema };
-  return { path: '/api/customer-auth/session', schema: customerSessionResponseSchema };
-}
-
-function keyFor(identity: Identity) {
-  return queryKeys[identity].session;
-}
-
-export function useIdentitySession(identity: Identity): Readonly<{ status: SessionStatus; value: SessionValue | null; refetch: () => void }> {
+export function useStaffSession(): StaffSessionResult {
   const client = useQueryClient();
-  const endpoint = sessionEndpoint(identity);
   const query = useQuery({
-    queryKey: keyFor(identity),
-    queryFn: async ({ signal }) => (await apiRequest({ path: endpoint.path, method: 'GET', schema: endpoint.schema, signal })).data.session,
+    queryKey: queryKeys.staff.session,
+    queryFn: async ({ signal }) => (await apiRequest({
+      path: '/api/staff-auth/session',
+      method: 'GET',
+      schema: staffSessionResponseSchema,
+      signal,
+    })).data.session,
     retry: false,
   });
-  useEffect(() => { if (isFrontendApiError(query.error) && query.error.httpStatus === 401) { if (identity === 'staff') void clearStaffTransport(client); else void CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client); } }, [client, identity, query.error]);
-  if (query.isPending) return { status: 'LOADING', value: null, refetch: () => { void query.refetch(); } };
-  if (query.isSuccess) {
-    const value = query.data;
-    if ((identity === 'buyer' && (!('account_type' in value) || value.account_type !== 'BUYER')) ||
-        (identity === 'seller' && (!('account_type' in value) || value.account_type !== 'SELLER_MEMBER')) ||
-        (identity === 'staff' && 'account_type' in value)) {
-      return { status: 'UNAUTHENTICATED', value: null, refetch: () => { void query.refetch(); } };
+
+  useEffect(() => {
+    if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
+      void clearStaffTransport(client);
     }
-    return { status: 'AUTHENTICATED', value, refetch: () => { void query.refetch(); } };
+  }, [client, query.error]);
+
+  if (query.isPending) return { status: 'LOADING', value: null };
+  if (query.isSuccess) return { status: 'AUTHENTICATED', value: query.data };
+  if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
+    return { status: 'UNAUTHENTICATED', value: null };
   }
-  if (isFrontendApiError(query.error) && query.error.httpStatus === 401) return { status: 'UNAUTHENTICATED', value: null, refetch: () => { void query.refetch(); } };
-  return { status: 'DEPENDENCY_ERROR', value: null, refetch: () => { void query.refetch(); } };
+  return { status: 'DEPENDENCY_ERROR', value: null };
 }
 
-export const customerSessionSchema = customerSession;
-export const staffSessionSchema = staffSession;
+export { customerSessionSchema, staffSessionSchema };

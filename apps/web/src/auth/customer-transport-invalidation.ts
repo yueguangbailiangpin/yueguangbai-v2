@@ -3,7 +3,7 @@ import { queryKeys } from '../api/query-client';
 
 export const CUSTOMER_TRANSPORT_INVALIDATION_GROUP = Object.freeze({
   async clear(client: QueryClient): Promise<void> {
-    await Promise.all([
+    await Promise.allSettled([
       client.cancelQueries({ queryKey: queryKeys.buyer.root }),
       client.cancelQueries({ queryKey: queryKeys.seller.root }),
     ]);
