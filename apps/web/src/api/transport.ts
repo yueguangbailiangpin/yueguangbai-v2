@@ -14,6 +14,62 @@ export type ApiRequest<T extends z.ZodType> = Readonly<{
 }>;
 
 export type ApiResult<T> = Readonly<{ data: T; requestId: string }>;
+
+export function parseApiSuccessEnvelope<T extends z.ZodType>(
+  payload: unknown,
+  status: number,
+  schema: T,
+): ApiResult<z.output<T>> {
+  const envelope = z.object({
+    data: z.unknown(),
+    meta: z.object({ request_id: z.string().min(1).max(200) }).strict(),
+  }).strict().safeParse(payload);
+  if (!envelope.success) {
+    throw new FrontendApiError('MALFORMED_RESPONSE', status, null, 'CONTRACT');
+  }
+  const parsed = schema.safeParse(envelope.data.data);
+  if (!parsed.success) {
+    throw new FrontendApiError(
+      'MALFORMED_RESPONSE',
+      status,
+      envelope.data.meta.request_id,
+      'CONTRACT',
+    );
+  }
+  return { data: parsed.data, requestId: envelope.data.meta.request_id };
+}
+
+export function parseApiFailureEnvelope(
+  payload: unknown,
+  status: number,
+  retryAfterHeader: string | null,
+): never {
+  const parsed = failureEnvelope.safeParse(payload);
+  if (!parsed.success) {
+    throw new FrontendApiError('MALFORMED_ERROR', status, null, 'CONTRACT');
+  }
+  throw new FrontendApiError(
+    parsed.data.error.code,
+    status,
+    parsed.data.meta.request_id,
+    categoryForStatus(status),
+    retryAfterMilliseconds(retryAfterHeader),
+    projectSafeDetails(parsed.data.error.code, parsed.data.error.details),
+  );
+}
+
+export function normalizeResponseError(
+  error: unknown,
+  signal?: AbortSignal,
+): FrontendApiError {
+  if (error instanceof FrontendApiError) return error;
+  if (signal?.aborted
+    || (error instanceof DOMException && error.name === 'AbortError')) {
+    return new FrontendApiError('CANCELED', 0, null, 'CANCELED');
+  }
+  return new FrontendApiError('NETWORK_FAILURE', 0, null, 'NETWORK');
+}
+
 export async function apiRequest<T extends z.ZodType>(request: ApiRequest<T>): Promise<ApiResult<z.output<T>>> {
   if (!approvedApiPath(request.path)) {
     throw new FrontendApiError('INVALID_PATH', 0, null, 'CONTRACT');
@@ -28,30 +84,11 @@ export async function apiRequest<T extends z.ZodType>(request: ApiRequest<T>): P
     };
     const response = await fetch(request.path, init);
     const payload: unknown = await response.json().catch(() => null);
-    const retryAfter = retryAfterMilliseconds(response.headers.get('Retry-After'));
     if (response.ok) {
-      const envelope = z.object({ data: z.unknown(), meta: z.object({ request_id: z.string().min(1).max(200) }).strict() }).strict().safeParse(payload);
-      if (!envelope.success) throw new FrontendApiError('MALFORMED_RESPONSE', response.status, null, 'CONTRACT');
-      const parsed = request.schema.safeParse(envelope.data.data);
-      if (!parsed.success) throw new FrontendApiError('MALFORMED_RESPONSE', response.status, envelope.data.meta.request_id, 'CONTRACT');
-      return { data: parsed.data, requestId: envelope.data.meta.request_id };
+      return parseApiSuccessEnvelope(payload, response.status, request.schema);
     }
-    const parsed = failureEnvelope.safeParse(payload);
-    if (!parsed.success) throw new FrontendApiError('MALFORMED_ERROR', response.status, null, 'CONTRACT');
-    throw new FrontendApiError(
-      parsed.data.error.code,
-      response.status,
-      parsed.data.meta.request_id,
-      categoryForStatus(response.status),
-      retryAfter,
-      projectSafeDetails(parsed.data.error.code, parsed.data.error.details),
-    );
+    return parseApiFailureEnvelope(payload, response.status, response.headers.get('Retry-After'));
   } catch (error: unknown) {
-    if (error instanceof FrontendApiError) throw error;
-    if (request.signal?.aborted
-      || (error instanceof DOMException && error.name === 'AbortError')) {
-      throw new FrontendApiError('CANCELED', 0, null, 'CANCELED');
-    }
-    throw new FrontendApiError('NETWORK_FAILURE', 0, null, 'NETWORK');
+    throw normalizeResponseError(error, request.signal);
   }
 }

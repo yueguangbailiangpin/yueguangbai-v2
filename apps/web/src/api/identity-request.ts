@@ -6,14 +6,14 @@ import { apiRequest, type ApiRequest, type ApiResult } from './transport';
 
 export type RequestIdentity = 'buyer' | 'seller' | 'staff';
 
-export async function identityApiRequest<T extends z.ZodType>(
+export async function withIdentity401Invalidation<T>(
   identity: RequestIdentity,
   client: QueryClient,
-  request: ApiRequest<T>,
-): Promise<ApiResult<z.output<T>>> {
+  operation: () => Promise<T>,
+): Promise<T> {
   const requestCycle = captureSessionCycle(client, identity);
   try {
-    return await apiRequest(request);
+    return await operation();
   } catch (error: unknown) {
     if (!(isFrontendApiError(error) && error.httpStatus === 401)) throw error;
     try {
@@ -22,4 +22,12 @@ export async function identityApiRequest<T extends z.ZodType>(
       throw error;
     }
   }
+}
+
+export async function identityApiRequest<T extends z.ZodType>(
+  identity: RequestIdentity,
+  client: QueryClient,
+  request: ApiRequest<T>,
+): Promise<ApiResult<z.output<T>>> {
+  return withIdentity401Invalidation(identity, client, () => apiRequest(request));
 }
