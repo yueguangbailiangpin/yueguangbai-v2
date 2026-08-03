@@ -19,7 +19,7 @@
 
 - [x] 2.1 实现连续 Migration `0027_staff_auth_sessions.sql`。
 - [x] 2.2 实现 CHECK、unique、FK、生命周期、expiry、immutable-event 和索引约束。
-- [x] 2.3 添加前向升级与测试源码，现有 Staff 默认 `session_version=1`。
+- [x] 2.3 添加前向升级与 `apps/api/src/wave13-migration-0027.test.ts`，现有 Staff 默认 `session_version=1`。
 
 ## 3. Contracts
 

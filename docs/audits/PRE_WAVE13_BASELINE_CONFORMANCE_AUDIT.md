@@ -171,7 +171,7 @@ Wave 13 活动新增：30：
 
 远程 Feature 已写入但未运行：
 
-- Migration 0027 测试源码；
+- Migration 0027 测试源码 `apps/api/src/wave13-migration-0027.test.ts`；
 - Staff Auth 和 logout-all replay Route/Service 测试源码；
 - Default App 九个 Staff 路由家族真实请求矩阵源码；
 - 空库 0001–0027、26→27、state 并发、Session revoke/version、STRICT/Trigger/FK/Assertion/integrity 测试源码；

@@ -7,17 +7,18 @@ const directory = path.join(root, 'migrations');
 const files = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (files.length !== 26
-  || files.at(-2) !== '0025_internal_finance_reporting.sql'
-  || files.at(-1) !== '0026_financial_export_audit.sql'
-  || files.some((name) => /^0027_/u.test(name))) {
-  throw new Error('Wave 12 requires exactly migrations 0001-0026');
+if (files.length !== 27
+  || files[24] !== '0025_internal_finance_reporting.sql'
+  || files[25] !== '0026_financial_export_audit.sql'
+  || files[26] !== '0027_staff_auth_sessions.sql') {
+  throw new Error('Expected Wave 12 history plus migration 0027');
 }
+const wave12Files = files.slice(0, 26);
 
 const database = new DatabaseSync(':memory:');
 try {
   database.exec('PRAGMA foreign_keys=ON;');
-  for (const file of files) {
+  for (const file of wave12Files) {
     database.exec('BEGIN IMMEDIATE;');
     try {
       database.exec(readFileSync(path.join(directory, file), 'utf8'));
@@ -64,7 +65,7 @@ try {
   console.log(JSON.stringify({
     status: 'PASS',
     schema_version: 26,
-    migrations: files.length,
+    migrations: wave12Files.length,
   }, null, 2));
 } finally {
   database.close();

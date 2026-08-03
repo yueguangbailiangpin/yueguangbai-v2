@@ -292,7 +292,7 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
     ) VALUES (
       'runtime-org','JP','ido-mango-runtime-1',
       'seller-channel-ido-mango','seller-channel-ido-mango',9101,
-      'Runtime Organization','ACTIVE',1,2,2,2,NULL,1
+      'Runtime Organization','ACTIVE',1,2,2,2,NULL,2
     );
     INSERT INTO seller_stores (
       id, organization_id, marketplace_code,
@@ -374,7 +374,11 @@ export async function loginThroughDefaultApp(
   if (callback.status !== 303) {
     throw new Error(`login_callback_${callback.status}`);
   }
-  const cookie = (callback.headers.get('Set-Cookie') ?? '').split(';')[0];
+  const cookie = callback.headers.getSetCookie()
+    .map((header) => header.split(';')[0] ?? '')
+    .find((candidate) => candidate.startsWith(
+      '__Host-ygb_staff_session=',
+    ) && candidate !== '__Host-ygb_staff_session=') ?? '';
   if (!cookie.includes('__Host-ygb_staff_session=')) {
     throw new Error('staff_cookie_missing');
   }

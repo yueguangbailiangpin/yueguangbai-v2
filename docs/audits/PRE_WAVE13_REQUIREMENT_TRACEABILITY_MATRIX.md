@@ -103,7 +103,7 @@ Wave 13 Change 保持 52 Requirements / 104 Scenarios：
 | Buyer Refund Payment | append-only, proof audience, OVERPAID | existing service + Staff route | payment/fault/DTO source | `IMPLEMENTED_AWAITING_LOCAL_VALIDATION` |
 | Buyer Refund Reversal | append-only correction | existing service + Staff route | reversal/fault source | `IMPLEMENTED_AWAITING_LOCAL_VALIDATION` |
 | R2 compensation | put/receipt/HEAD/D1/delete-pending/retry | existing compensation reused | shared R2 failure source | `LOCAL_VALIDATION_REQUIRED` |
-| D1 migration | 0001–0027, 26→27, FK/integrity | Migration 0027 | migration/runtime test source | `LOCAL_VALIDATION_REQUIRED` |
+| D1 migration | 0001–0027, 26→27, FK/integrity | Migration 0027 | `apps/api/src/wave13-migration-0027.test.ts` and runtime test source | `LOCAL_VALIDATION_REQUIRED` |
 | Runtime DTO isolation | no secrets/storage authority/cross-domain finance | safe projections | recursive actual-response test source | `LOCAL_VALIDATION_REQUIRED` |
 | OpenSpec validation | 52/104 structure after semantic update | files updated | CLI not rerun | `LOCAL_VALIDATION_REQUIRED` |
 | OpenSpec Verify | implementation/requirement reconciliation | not executed | none | `LOCAL_VALIDATION_REQUIRED` |

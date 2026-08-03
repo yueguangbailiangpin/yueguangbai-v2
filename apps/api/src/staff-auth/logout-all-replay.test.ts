@@ -96,7 +96,10 @@ async function login(target: SqliteDatabase): Promise<string> {
     env,
   );
   expect(callback.status).toBe(303);
-  const setCookie = callback.headers.get('Set-Cookie') ?? '';
+  const setCookie = callback.headers.getSetCookie().find((header) => (
+    header.startsWith(`${STAFF_SESSION_COOKIE_NAME}=`)
+      && !header.startsWith(`${STAFF_SESSION_COOKIE_NAME}=;`)
+  )) ?? '';
   expect(setCookie).toContain(`${STAFF_SESSION_COOKIE_NAME}=`);
   return setCookie.split(';')[0] as string;
 }

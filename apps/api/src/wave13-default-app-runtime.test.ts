@@ -72,7 +72,10 @@ describe('Wave 13 default application runtime boundary', () => {
         body: JSON.stringify({ expected_file_version: proof.fileVersion }),
       },
     )).status).toBe(201);
-    expect((await request(owner, '/api/staff/finance/summary')).status).toBe(200);
+    expect((await request(
+      owner,
+      '/api/staff/finance/summary?date_basis=CONFIRMED',
+    )).status).toBe(200);
     expect((await request(
       owner,
       '/api/staff/order-evidence/runtime-evidence',
@@ -377,8 +380,8 @@ function seedLegacyScopedFile(target: SqliteDatabase): void {
       expires_at, failure_code, created_at, updated_at, completed_at
     ) VALUES (
       'runtime-legacy-intent','BUYER_CUSTOMER','runtime-buyer',
-      'ORDER_EVIDENCE','BUYER_VISIBLE','VERIFIED',1,
-      '${'a'.repeat(64)}',2,9999999999999,NULL,2,3,3
+      'ORDER_EVIDENCE','BUYER_VISIBLE','ISSUED',1,
+      '${'a'.repeat(64)}',1,9999999999999,NULL,2,2,NULL
     );
     INSERT INTO file_objects (
       id, upload_intent_id, slot_no, purpose, visibility, object_key,
@@ -392,10 +395,16 @@ function seedLegacyScopedFile(target: SqliteDatabase): void {
       'ORDER_EVIDENCE','BUYER_VISIBLE',
       'files/v1/order_evidence/2026/08/02/runtime_legacy_object_0001',
       'runtime-evidence.png','png','image/png',68,
-      'VERIFIED','${'b'.repeat(64)}',9999999999999,
-      68,'image/png','${'c'.repeat(64)}',NULL,0,NULL,3,
-      2,3,3,3,NULL
+      'UPLOADED','${'b'.repeat(64)}',9999999999999,
+      68,'image/png','${'c'.repeat(64)}',NULL,0,NULL,2,
+      2,3,3,NULL,NULL
     );
+    UPDATE file_upload_intents
+    SET status='VERIFIED', version=2, updated_at=3, completed_at=3
+    WHERE id='runtime-legacy-intent';
+    UPDATE file_objects
+    SET status='VERIFIED', version=3, updated_at=3, verified_at=3
+    WHERE id='runtime-legacy-file';
     INSERT INTO file_entity_links (
       id, file_object_id, entity_type, entity_id, purpose, visibility,
       linked_by_actor_type, linked_by_actor_id, created_at,

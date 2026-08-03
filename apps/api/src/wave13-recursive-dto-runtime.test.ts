@@ -42,7 +42,7 @@ describe('Wave 13 recursive DTO runtime isolation', () => {
       getJson(identity, '/api/staff/me/work-items/runtime-work-item'),
       getJson(identity, '/api/staff/reviews/runtime-review'),
       getJson(identity, '/api/staff/seller-settlements/runtime-org/summary'),
-      getJson(identity, '/api/staff/finance/summary'),
+      getJson(identity, '/api/staff/finance/summary?date_basis=CONFIRMED'),
       getJson(identity, '/api/staff/order-evidence/runtime-evidence'),
       getJson(identity, '/api/staff/buyer-refunds/runtime-refund'),
     ]);

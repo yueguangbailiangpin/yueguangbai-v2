@@ -20,12 +20,12 @@ afterEach(() => {
 });
 
 describe('Wave 12 migration and authorization boundaries', () => {
-  it('migrates through schema 26 and publishes only owner FINANCIAL_VIEW', async () => {
+  it('preserves Wave 12 finance authority on schema 27', async () => {
     database = createMigratedTestDatabase();
     const schema = await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(26);
+    expect(Number(schema?.schema_version)).toBe(27);
     const objects = await database.prepare(`
       SELECT type, name FROM sqlite_schema
       WHERE name IN (
