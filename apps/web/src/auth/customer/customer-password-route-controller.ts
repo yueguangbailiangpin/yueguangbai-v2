@@ -36,7 +36,10 @@ type CleanupView = Readonly<{
   requestId: string | null;
 }>;
 
-type UnauthenticatedCleanupState = 'IDLE' | 'CLEARING' | 'CLEARED';
+type UnauthenticatedCleanupView = Readonly<{
+  state: 'IDLE' | 'CLEARING' | 'CLEARED' | 'FAILED';
+  requestId: string | null;
+}>;
 
 export function useCustomerPasswordRouteController(
   target: CustomerTarget,
@@ -49,14 +52,19 @@ export function useCustomerPasswordRouteController(
   );
   const mountedRef = useRef(true);
   const [cleanup, setCleanup] = useState<CleanupView>({ state: 'IDLE', requestId: null });
-  const [unauthenticatedCleanup, setUnauthenticatedCleanup] = useState<UnauthenticatedCleanupState>('IDLE');
+  const [unauthenticatedCleanup, setUnauthenticatedCleanup] = useState<UnauthenticatedCleanupView>({
+    state: 'IDLE',
+    requestId: null,
+  });
   const query = useQuery({
     queryKey: queryKeys[target].session,
     queryFn: async ({ signal }) => (await adapter.readSession(signal)).data.session,
     retry: false,
-    enabled: cleanup.state === 'IDLE' && unauthenticatedCleanup === 'IDLE',
+    refetchOnMount: 'always',
+    enabled: cleanup.state === 'IDLE' && unauthenticatedCleanup.state === 'IDLE',
   });
-  const mismatch = query.isSuccess
+  const freshSessionResolved = query.isFetchedAfterMount && !query.isFetching;
+  const mismatch = freshSessionResolved && query.isSuccess
     && query.data.account_type !== expectedAccountType(target);
 
   useEffect(() => {
@@ -65,10 +73,10 @@ export function useCustomerPasswordRouteController(
   }, []);
 
   useEffect(() => {
-    if (cleanup.state === 'IDLE' && unauthenticatedCleanup !== 'CLEARED') return;
+    if (cleanup.state === 'IDLE' && unauthenticatedCleanup.state === 'IDLE') return;
     client.removeQueries({ queryKey: queryKeys.buyer.root });
     client.removeQueries({ queryKey: queryKeys.seller.root });
-  }, [cleanup.state, client, unauthenticatedCleanup]);
+  }, [cleanup.state, client, unauthenticatedCleanup.state]);
 
   useEffect(() => {
     if (!mismatch || cleanup.state !== 'IDLE') return;
@@ -79,18 +87,31 @@ export function useCustomerPasswordRouteController(
   }, [cleanup.state, coordinator, mismatch]);
 
   useEffect(() => {
-    if (!(isFrontendApiError(query.error) && query.error.httpStatus === 401)
-      || unauthenticatedCleanup !== 'IDLE') return;
-    setUnauthenticatedCleanup('CLEARING');
+    if (!freshSessionResolved
+      || !(isFrontendApiError(query.error) && query.error.httpStatus === 401)
+      || unauthenticatedCleanup.state !== 'IDLE') return;
+    const requestId = query.error.requestId;
+    setUnauthenticatedCleanup({ state: 'CLEARING', requestId });
     void CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client).then(() => {
-      if (mountedRef.current) setUnauthenticatedCleanup('CLEARED');
+      if (mountedRef.current) setUnauthenticatedCleanup({ state: 'CLEARED', requestId });
+    }).catch(() => {
+      if (mountedRef.current) setUnauthenticatedCleanup({ state: 'FAILED', requestId });
     });
-  }, [client, query.error, unauthenticatedCleanup]);
+  }, [client, freshSessionResolved, query.error, unauthenticatedCleanup.state]);
 
   const retryCleanup = (): void => {
     setCleanup({ state: 'CLEANING', requestId: null });
     void coordinator.retry().then((result) => {
       if (mountedRef.current) setCleanup(result);
+    });
+  };
+  const retryUnauthenticatedCleanup = (): void => {
+    const requestId = unauthenticatedCleanup.requestId;
+    setUnauthenticatedCleanup({ state: 'CLEARING', requestId });
+    void CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client).then(() => {
+      if (mountedRef.current) setUnauthenticatedCleanup({ state: 'CLEARED', requestId });
+    }).catch(() => {
+      if (mountedRef.current) setUnauthenticatedCleanup({ state: 'FAILED', requestId });
     });
   };
 
@@ -105,12 +126,19 @@ export function useCustomerPasswordRouteController(
       retry: retryCleanup,
     };
   }
-  if (unauthenticatedCleanup === 'CLEARING') return { status: 'LOADING' };
-  if (unauthenticatedCleanup === 'CLEARED') return { status: 'UNAUTHENTICATED' };
-  if (query.isPending) return { status: 'LOADING' };
+  if (unauthenticatedCleanup.state === 'CLEARING') return { status: 'LOADING' };
+  if (unauthenticatedCleanup.state === 'CLEARED') return { status: 'UNAUTHENTICATED' };
+  if (unauthenticatedCleanup.state === 'FAILED') {
+    return {
+      status: 'DEPENDENCY_ERROR',
+      requestId: unauthenticatedCleanup.requestId,
+      retry: retryUnauthenticatedCleanup,
+    };
+  }
+  if (!freshSessionResolved) return { status: 'LOADING' };
   if (query.isSuccess) return { status: 'ALLOWED', session: query.data };
   if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
-    return { status: 'UNAUTHENTICATED' };
+    return { status: 'LOADING' };
   }
   return {
     status: 'DEPENDENCY_ERROR',

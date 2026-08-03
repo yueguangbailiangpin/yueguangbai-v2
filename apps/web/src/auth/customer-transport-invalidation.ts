@@ -3,16 +3,23 @@ import { queryKeys } from '../api/query-client';
 
 export const CUSTOMER_TRANSPORT_INVALIDATION_GROUP = Object.freeze({
   async clear(client: QueryClient): Promise<void> {
-    await Promise.allSettled([
+    const cancellations = await Promise.allSettled([
       client.cancelQueries({ queryKey: queryKeys.buyer.root }),
       client.cancelQueries({ queryKey: queryKeys.seller.root }),
     ]);
     client.removeQueries({ queryKey: queryKeys.buyer.root });
     client.removeQueries({ queryKey: queryKeys.seller.root });
+    const failedCancellation = cancellations.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failedCancellation) throw failedCancellation.reason;
   },
 });
 
 export async function clearStaffTransport(client: QueryClient): Promise<void> {
-  await client.cancelQueries({ queryKey: queryKeys.staff.root });
-  client.removeQueries({ queryKey: queryKeys.staff.root });
+  try {
+    await client.cancelQueries({ queryKey: queryKeys.staff.root });
+  } finally {
+    client.removeQueries({ queryKey: queryKeys.staff.root });
+  }
 }

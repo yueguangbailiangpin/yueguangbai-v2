@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isFrontendApiError } from '../api/errors';
 import { queryKeys } from '../api/query-client';
@@ -18,20 +18,35 @@ export type StaffSessionResult =
 
 export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): StaffSessionResult {
   const client = useQueryClient();
-  const [clearing, setClearing] = useState<'IDLE' | 'CLEARING' | 'CLEARED'>('IDLE');
+  const mountedRef = useRef(true);
+  const [clearing, setClearing] = useState<'IDLE' | 'CLEARING' | 'CLEARED' | 'FAILED'>('IDLE');
   const query = useQuery({
     queryKey: queryKeys.staff.session,
     queryFn: async ({ signal }) => (await adapter.readSession(signal)).data.session,
     retry: false,
+    refetchOnMount: 'always',
     enabled: clearing === 'IDLE',
   });
+  const freshSessionResolved = query.isFetchedAfterMount && !query.isFetching;
 
   useEffect(() => {
-    if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (freshSessionResolved
+      && clearing === 'IDLE'
+      && isFrontendApiError(query.error)
+      && query.error.httpStatus === 401) {
       setClearing('CLEARING');
-      void clearStaffTransport(client).then(() => setClearing('CLEARED'));
+      void clearStaffTransport(client).then(() => {
+        if (mountedRef.current) setClearing('CLEARED');
+      }).catch(() => {
+        if (mountedRef.current) setClearing('FAILED');
+      });
     }
-  }, [client, query.error]);
+  }, [clearing, client, freshSessionResolved, query.error]);
 
   useEffect(() => {
     if (clearing !== 'IDLE') client.removeQueries({ queryKey: queryKeys.staff.root });
@@ -39,10 +54,11 @@ export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): St
 
   if (clearing === 'CLEARING') return { status: 'LOADING', value: null };
   if (clearing === 'CLEARED') return { status: 'UNAUTHENTICATED', value: null };
-  if (query.isPending) return { status: 'LOADING', value: null };
+  if (clearing === 'FAILED') return { status: 'DEPENDENCY_ERROR', value: null };
+  if (!freshSessionResolved) return { status: 'LOADING', value: null };
   if (query.isSuccess) return { status: 'AUTHENTICATED', value: query.data };
   if (isFrontendApiError(query.error) && query.error.httpStatus === 401) {
-    return { status: 'UNAUTHENTICATED', value: null };
+    return { status: 'LOADING', value: null };
   }
   return { status: 'DEPENDENCY_ERROR', value: null };
 }

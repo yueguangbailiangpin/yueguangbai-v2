@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import { delay, http, HttpResponse } from 'msw';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../test/msw/lifecycle';
 import { queryKeys } from '../../api/query-client';
 import { useStaffSession } from '../session';
@@ -40,8 +40,22 @@ function expectCustomerPreserved(client: ReturnType<typeof createMswQueryClient>
   expect(client.getQueryData(['seller', 'fixture'])).toBe('seller-fixture');
 }
 
-function StaffSessionProbe() {
+function StaffProtectedProbe({
+  client,
+  loginSnapshots = [],
+}: {
+  client: ReturnType<typeof createMswQueryClient>;
+  loginSnapshots?: number[];
+}) {
   const session = useStaffSession();
+  if (session.status === 'AUTHENTICATED') return <div>STAFF SHELL</div>;
+  if (session.status === 'UNAUTHENTICATED') {
+    loginSnapshots.push(
+      client.getQueriesData({ queryKey: queryKeys.staff.root })
+        .filter((entry) => entry[1] !== undefined).length,
+    );
+    return <div>STAFF LOGIN</div>;
+  }
   return <div>{session.status}</div>;
 }
 
@@ -96,6 +110,30 @@ describe('Staff login/start and Session formal MSW chain', () => {
     });
   });
 
+  it('keeps cached Staff protected content hidden until this mount receives a fresh Session success', async () => {
+    let sessionRequestStarted = false;
+    let releaseSession!: () => void;
+    const sessionGate = new Promise<void>((resolve) => { releaseSession = resolve; });
+    server.use(http.get(apiUrl('/api/staff-auth/session'), async () => {
+      sessionRequestStarted = true;
+      await sessionGate;
+      return HttpResponse.json(staffSessionEnvelopeFixture(
+        staffSessionFixture,
+        'request-fresh-staff',
+      ));
+    }));
+    const client = createMswQueryClient();
+    seedAllIdentityCaches(client);
+    renderWithMsw(<StaffProtectedProbe client={client} />, { client });
+
+    await waitFor(() => expect(sessionRequestStarted).toBe(true));
+    expect(screen.getByText('LOADING')).toBeVisible();
+    expect(screen.queryByText('STAFF SHELL')).not.toBeInTheDocument();
+
+    releaseSession();
+    expect(await screen.findByText('STAFF SHELL')).toBeVisible();
+  });
+
   it('awaits Staff-only cache clearing for Session 401 and leaves every Customer key intact', async () => {
     server.use(http.get(apiUrl('/api/staff-auth/session'), () => HttpResponse.json(
       failureEnvelopeFixture('UNAUTHENTICATED', 'login', null, 'request-staff-401'),
@@ -103,9 +141,14 @@ describe('Staff login/start and Session formal MSW chain', () => {
     )));
     const client = createMswQueryClient();
     seedAllIdentityCaches(client);
-    renderWithMsw(<StaffSessionProbe />, { client });
-    expect(await screen.findByText('UNAUTHENTICATED')).toBeVisible();
-    await waitFor(() => expect(client.getQueriesData({ queryKey: queryKeys.staff.root })).toEqual([]));
+    const cancelQueries = vi.spyOn(client, 'cancelQueries');
+    const loginSnapshots: number[] = [];
+    renderWithMsw(<StaffProtectedProbe client={client} loginSnapshots={loginSnapshots} />, { client });
+    expect(screen.queryByText('STAFF SHELL')).not.toBeInTheDocument();
+    expect(await screen.findByText('STAFF LOGIN')).toBeVisible();
+    expect(loginSnapshots).toEqual([0]);
+    expect(cancelQueries).toHaveBeenCalledOnce();
+    expect(client.getQueriesData({ queryKey: queryKeys.staff.root })).toEqual([]);
     expectCustomerPreserved(client);
   });
 
@@ -116,8 +159,9 @@ describe('Staff login/start and Session formal MSW chain', () => {
     )));
     const client = createMswQueryClient();
     seedAllIdentityCaches(client);
-    renderWithMsw(<StaffSessionProbe />, { client });
+    renderWithMsw(<StaffProtectedProbe client={client} />, { client });
     expect(await screen.findByText('DEPENDENCY_ERROR')).toBeVisible();
+    expect(screen.queryByText('STAFF SHELL')).not.toBeInTheDocument();
     expect(client.getQueryData(['staff', 'fixture'])).toBe('staff-fixture');
     expectCustomerPreserved(client);
   });

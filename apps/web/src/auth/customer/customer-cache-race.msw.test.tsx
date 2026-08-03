@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Route, Routes } from 'react-router-dom';
 import { z } from 'zod';
 import '../../test/msw/lifecycle';
@@ -20,7 +20,8 @@ import { apiUrl } from '../../test/msw/handlers';
 import { createMswQueryClient, renderWithMsw } from '../../test/msw/render';
 import { server } from '../../test/msw/server';
 import { CustomerSessionBoundary } from './CustomerSessionBoundary';
-import { customerSessionSchema } from './customer-auth-api';
+import { CustomerPasswordRouteBoundary } from './CustomerPasswordRouteBoundary';
+import { customerSessionSchema, type CustomerTarget } from './customer-auth-api';
 
 afterEach(cleanup);
 
@@ -40,7 +41,11 @@ function expectOnlyStaff(client: ReturnType<typeof createMswQueryClient>): void 
   expect(client.getQueryData(['staff', 'fixture'])).toBe('staff-fixture');
 }
 
-function routes(client: ReturnType<typeof createMswQueryClient>, loginSnapshots: number[]) {
+function routes(
+  client: ReturnType<typeof createMswQueryClient>,
+  loginSnapshots: number[],
+  target: CustomerTarget = 'buyer',
+) {
   function LoginProbe() {
     loginSnapshots.push(
       client.getQueriesData({ queryKey: queryKeys.buyer.root })
@@ -48,29 +53,125 @@ function routes(client: ReturnType<typeof createMswQueryClient>, loginSnapshots:
       + client.getQueriesData({ queryKey: queryKeys.seller.root })
         .filter((entry) => entry[1] !== undefined).length,
     );
-    return <div>BUYER LOGIN</div>;
+    return <div>{target.toUpperCase()} LOGIN</div>;
   }
   return (
     <Routes>
-      <Route path="/buyer" element={<CustomerSessionBoundary target="buyer"><div>BUYER SHELL</div></CustomerSessionBoundary>} />
-      <Route path="/buyer/login" element={<LoginProbe />} />
+      <Route
+        path={`/${target}`}
+        element={<CustomerSessionBoundary target={target}><div>{target.toUpperCase()} SHELL</div></CustomerSessionBoundary>}
+      />
+      <Route path={`/${target}/login`} element={<LoginProbe />} />
+    </Routes>
+  );
+}
+
+function freshCustomerRoutes(target: CustomerTarget, shell: string) {
+  return (
+    <Routes>
+      <Route
+        path={`/${target}`}
+        element={<CustomerSessionBoundary target={target}><div>{shell}</div></CustomerSessionBoundary>}
+      />
+      <Route path={`/${target}/login`} element={<div>{target.toUpperCase()} LOGIN</div>} />
     </Routes>
   );
 }
 
 describe('Customer cache isolation and race control through MSW', () => {
-  it('awaits Customer 401 two-root cleanup before login navigation and preserves both Staff keys', async () => {
+  it.each([
+    ['buyer', buyerSessionFixture, 'BUYER SHELL'],
+    ['seller', sellerSessionFixture, 'SELLER SHELL'],
+  ] as const)('keeps cached %s protected content hidden until this mount receives a fresh Session success', async (
+    target,
+    session,
+    shell,
+  ) => {
+    let sessionRequestStarted = false;
+    let releaseSession!: () => void;
+    const sessionGate = new Promise<void>((resolve) => { releaseSession = resolve; });
+    server.use(http.get(apiUrl('/api/customer-auth/session'), async () => {
+      sessionRequestStarted = true;
+      await sessionGate;
+      return HttpResponse.json(customerSessionEnvelopeFixture(session, `request-fresh-${target}`));
+    }));
+    const client = createMswQueryClient();
+    seedSixKeys(client);
+    renderWithMsw(freshCustomerRoutes(target, shell), { route: `/${target}`, client });
+
+    await waitFor(() => expect(sessionRequestStarted).toBe(true));
+    expect(screen.getByRole('status')).toHaveTextContent('正在确认登录状态');
+    expect(screen.queryByText(shell)).not.toBeInTheDocument();
+
+    releaseSession();
+    expect(await screen.findByText(shell)).toBeVisible();
+  });
+
+  it('keeps a cached matching Session from exposing the password form before a fresh route check', async () => {
+    let releaseSession!: () => void;
+    const sessionGate = new Promise<void>((resolve) => { releaseSession = resolve; });
+    server.use(http.get(apiUrl('/api/customer-auth/session'), async () => {
+      await sessionGate;
+      return HttpResponse.json(customerSessionEnvelopeFixture(
+        buyerSessionFixture,
+        'request-fresh-password-route',
+      ));
+    }));
+    const client = createMswQueryClient();
+    seedSixKeys(client);
+    renderWithMsw(
+      <Routes>
+        <Route
+          path="/buyer/change-password"
+          element={<CustomerPasswordRouteBoundary target="buyer"><div>PASSWORD FORM</div></CustomerPasswordRouteBoundary>}
+        />
+      </Routes>,
+      { route: '/buyer/change-password', client },
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('正在确认登录状态');
+    expect(screen.queryByText('PASSWORD FORM')).not.toBeInTheDocument();
+    releaseSession();
+    expect(await screen.findByText('PASSWORD FORM')).toBeVisible();
+  });
+
+  it.each([
+    ['buyer', 'BUYER SHELL'],
+    ['seller', 'SELLER SHELL'],
+  ] as const)('does not treat a cached %s Session as authority when fresh resolution returns 503', async (
+    target,
+    shell,
+  ) => {
+    server.use(http.get(apiUrl('/api/customer-auth/session'), () => HttpResponse.json(
+      failureEnvelopeFixture(
+        'DEPENDENCY_UNAVAILABLE', 'unavailable', null, `request-fresh-${target}-503`,
+      ),
+      { status: 503 },
+    )));
+    const client = createMswQueryClient();
+    seedSixKeys(client);
+    renderWithMsw(freshCustomerRoutes(target, shell), { route: `/${target}`, client });
+
+    expect(await screen.findByRole('heading', { name: '服务暂时不可用' })).toBeVisible();
+    expect(screen.queryByText(shell)).not.toBeInTheDocument();
+    expect(client.getQueryData(['staff', 'fixture'])).toBe('staff-fixture');
+  });
+
+  it.each(['buyer', 'seller'] as const)('awaits %s Session 401 two-root cleanup before login navigation and preserves both Staff keys', async (target) => {
     server.use(http.get(apiUrl('/api/customer-auth/session'), () => HttpResponse.json(
       failureEnvelopeFixture('UNAUTHENTICATED', 'login', null, 'request-customer-401'),
       { status: 401 },
     )));
     const client = createMswQueryClient();
     seedSixKeys(client);
+    const cancelQueries = vi.spyOn(client, 'cancelQueries');
     const loginSnapshots: number[] = [];
-    renderWithMsw(routes(client, loginSnapshots), { route: '/buyer', client });
+    renderWithMsw(routes(client, loginSnapshots, target), { route: `/${target}`, client });
 
-    expect(await screen.findByText('BUYER LOGIN')).toBeVisible();
+    expect(screen.queryByText(`${target.toUpperCase()} SHELL`)).not.toBeInTheDocument();
+    expect(await screen.findByText(`${target.toUpperCase()} LOGIN`)).toBeVisible();
     expect(loginSnapshots).toEqual([0]);
+    expect(cancelQueries).toHaveBeenCalledTimes(2);
     expectOnlyStaff(client);
   });
 
