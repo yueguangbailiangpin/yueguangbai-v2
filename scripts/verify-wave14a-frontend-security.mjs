@@ -40,6 +40,12 @@ const passwordPage = readFileSync(join(customerRoot, 'CustomerChangePasswordPage
 const passwordRouteBoundary = readFileSync(join(customerRoot, 'CustomerPasswordRouteBoundary.tsx'), 'utf8');
 const passwordRouteController = readFileSync(join(customerRoot, 'customer-password-route-controller.ts'), 'utf8');
 const passwordRouteTests = readFileSync(join(customerRoot, 'customer-password-route-flow.test.tsx'), 'utf8');
+const customerRaceTests = readFileSync(join(customerRoot, 'customer-cache-race.msw.test.tsx'), 'utf8');
+const staffSessionController = readFileSync(join(webRoot, 'auth/session.ts'), 'utf8');
+const staffSessionTests = readFileSync(join(webRoot, 'auth/staff/staff-auth.msw.test.tsx'), 'utf8');
+const identityRequest = readFileSync(join(webRoot, 'api/identity-request.ts'), 'utf8');
+const protectedResources = readFileSync(join(webRoot, 'api/protected-resources.ts'), 'utf8');
+const protectedResourceTests = readFileSync(join(webRoot, 'auth/protected-errors.msw.test.tsx'), 'utf8');
 const mswRoot = join(webRoot, 'test/msw');
 const mswServer = readFileSync(join(mswRoot, 'server.ts'), 'utf8');
 const mswHandlers = readFileSync(join(mswRoot, 'handlers.ts'), 'utf8');
@@ -149,9 +155,10 @@ requireText(mswTests, [
   'activeCanceled',
   'expectOnlyStaff(client)',
   'request-staff-401',
-  'request-protected-${status}',
-  "['customer', '/api/buyer-portal/me', 403, 'FORBIDDEN']",
-  "['staff', '/api/staff/me/assignments', 404, 'NOT_FOUND']",
+  'request-${identity}-protected-${status}',
+  "['buyer', '/api/buyer-portal/me']",
+  "['seller', '/api/seller-portal/me']",
+  "['staff', '/api/staff/me/assignments']",
   'internal-communication-files',
   "code: 'NETWORK_FAILURE'",
 ], 'formal MSW network evidence');
@@ -205,6 +212,161 @@ requireText(sessionController, [
   "cleanup.state === 'CLEANING'",
   "cleanup.state === 'FAILED'",
 ], 'Customer Session mismatch cleanup');
+
+function requireFreshSessionGate(controller, label, successResult) {
+  requireText(controller, [
+    "refetchOnMount: 'always'",
+    'query.isFetchedAfterMount',
+    '!query.isFetching',
+    'freshSessionResolved',
+    'if (!freshSessionResolved)',
+    successResult,
+  ], `${label} fresh Session gate`);
+  const gate = controller.lastIndexOf('if (!freshSessionResolved)');
+  const authorization = controller.lastIndexOf(successResult);
+  if (gate < 0 || authorization <= gate) {
+    throw new Error(`${label} authorizes cached Session data before the current mount resolves`);
+  }
+}
+
+function require401ClearBeforeUnauthenticated(
+  controller,
+  label,
+  clearingState,
+  clearCall,
+  clearedState,
+  failedState,
+) {
+  const start = controller.indexOf('query.error.httpStatus === 401');
+  const clearing = controller.indexOf(clearingState, start);
+  const clear = controller.indexOf(clearCall, clearing);
+  const cleared = controller.indexOf(clearedState, clear);
+  if (start < 0 || clearing < start || clear < clearing || cleared < clear) {
+    throw new Error(`${label} 401 does not enter clearing and await cache removal before unauthenticated state`);
+  }
+  requireText(controller, [
+    ".catch(() => {",
+    failedState,
+  ], `${label} 401 cleanup failure state`);
+}
+
+requireFreshSessionGate(
+  sessionController,
+  'Customer protected Session',
+  "return { status: 'AUTHENTICATED', value: query.data",
+);
+requireFreshSessionGate(
+  passwordRouteController,
+  'Customer password route Session',
+  "return { status: 'ALLOWED', session: query.data }",
+);
+requireFreshSessionGate(
+  staffSessionController,
+  'Staff protected Session',
+  "return { status: 'AUTHENTICATED', value: query.data }",
+);
+require401ClearBeforeUnauthenticated(
+  sessionController,
+  'Customer protected Session',
+  "state: 'CLEARING'",
+  'CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client)',
+  "state: 'CLEARED'",
+  "state: 'FAILED'",
+);
+require401ClearBeforeUnauthenticated(
+  passwordRouteController,
+  'Customer password route Session',
+  "state: 'CLEARING'",
+  'CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client)',
+  "state: 'CLEARED'",
+  "state: 'FAILED'",
+);
+require401ClearBeforeUnauthenticated(
+  staffSessionController,
+  'Staff protected Session',
+  "setClearing('CLEARING')",
+  'clearStaffTransport(client)',
+  "setClearing('CLEARED')",
+  "setClearing('FAILED')",
+);
+
+requireText(customerRaceTests, [
+  'sessionGate',
+  'sessionRequestStarted',
+  "screen.queryByText(shell)).not.toBeInTheDocument()",
+  "['buyer', buyerSessionFixture, 'BUYER SHELL']",
+  "['seller', sellerSessionFixture, 'SELLER SHELL']",
+  'PASSWORD FORM',
+  'request-fresh-${target}-503',
+  'loginSnapshots).toEqual([0])',
+  'cancelQueries).toHaveBeenCalledTimes(2)',
+], 'Customer fresh Session and 401 ordering evidence');
+requireText(staffSessionTests, [
+  'request-fresh-staff',
+  "queryByText('STAFF SHELL')",
+  'loginSnapshots).toEqual([0])',
+  'cancelQueries).toHaveBeenCalledOnce()',
+  "findByText('DEPENDENCY_ERROR')",
+], 'Staff fresh Session and 401 ordering evidence');
+
+requireText(identityRequest, [
+  'identity: RequestIdentity',
+  'client: QueryClient',
+  'request: ApiRequest<T>',
+  'return await apiRequest(request)',
+  'error.httpStatus === 401',
+  'CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client)',
+  'clearStaffTransport(client)',
+  'finally {',
+  'throw error',
+], 'identity-aware protected request boundary');
+if ((identityRequest.match(/\bapiRequest\(/gu) ?? []).length !== 1) {
+  throw new Error('identityApiRequest must call the unique apiRequest transport exactly once');
+}
+if (/apiRequest|CUSTOMER_TRANSPORT_INVALIDATION_GROUP|clearStaffTransport/u.test(
+  protectedResources.replaceAll('identityApiRequest', ''),
+)) {
+  throw new Error('protected resource adapters must not bypass or duplicate identityApiRequest invalidation');
+}
+requireText(protectedResources, [
+  "identityApiRequest(\n    'buyer'",
+  "identityApiRequest(\n    'seller'",
+  "identityApiRequest(\n    'staff'",
+  "path: '/api/buyer-portal/me'",
+  "path: '/api/seller-portal/me'",
+  "path: '/api/staff/me/assignments'",
+], 'real protected resource adapters');
+if ((protectedResources.match(/\bidentityApiRequest\(/gu) ?? []).length !== 3) {
+  throw new Error('each real protected resource adapter must cross identityApiRequest exactly once');
+}
+for (const file of files) {
+  const body = readFileSync(file, 'utf8');
+  if (/\/api\/(?:buyer-portal|seller-portal|staff\/)/u.test(body)
+    && !body.includes('identityApiRequest')) {
+    throw new Error(`protected business adapter bypasses identityApiRequest: ${file}`);
+  }
+}
+if (/AuthContext|createContext\s*\([^)]*auth|dispatchEvent\s*\([^)]*auth|addEventListener\s*\([^)]*auth/iu.test(source)) {
+  throw new Error('global AuthContext or authentication event invalidation is prohibited');
+}
+requireText(protectedResourceTests, [
+  "['buyer', '/api/buyer-portal/me']",
+  "['seller', '/api/seller-portal/me']",
+  "['staff', '/api/staff/me/assignments']",
+  'cancellationGate',
+  'expect(rejected).toBe(false)',
+  'expectCustomerClearedStaffPreserved(client)',
+  'expectStaffClearedCustomerPreserved(client)',
+  'expectEveryIdentityPreserved(client)',
+  '[409, \'STATE_CONFLICT\']',
+  '[422, \'VALIDATION_ERROR\']',
+  '[429, \'RATE_LIMITED\']',
+  "[503, 'DEPENDENCY_UNAVAILABLE']",
+  "code: 'MALFORMED_RESPONSE'",
+  "code: 'NETWORK_FAILURE'",
+  "code: 'CANCELED'",
+  'request-${identity}-protected-${status}',
+], 'protected API identity invalidation and non-401 preservation evidence');
 requireText(passwordController, [
   "'IDLE'",
   "'EDITING'",
