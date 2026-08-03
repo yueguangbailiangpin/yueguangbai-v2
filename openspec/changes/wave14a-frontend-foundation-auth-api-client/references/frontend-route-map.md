@@ -12,16 +12,17 @@
 
 | Path | Access | Wave 14A behavior |
 |---|---|---|
-| `/` | Public | Compact `月光白` identity entry with Buyer and Seller links only. No Staff entry. |
+| `/` | Public | Shows only `月光白` and `请使用工作人员发送的专属链接登录。`; no identity controls or links. |
 | `*` | Public | Branded `NotFound`, preserving a safe way back to `/`. |
 
-Hiding Staff from `/` is navigation design, not authorization. `/staff/login` remains directly reachable and backend Session/Permission is authoritative.
+Hiding all login navigation from `/` is not authorization. `/buyer/login`, `/seller/login`, and `/staff/login` remain directly reachable, and backend Session/Permission is authoritative.
 
 ## Buyer Routes
 
 | Path | Access | Guard/shell behavior |
 |---|---|---|
 | `/buyer/login` | Public/auth-aware | Customer credential login; accepts only resulting `account_type=BUYER`; authenticated Buyer continues to `/buyer`. |
+| `/buyer/change-password` | Buyer auth protected | Dedicated password boundary requires a valid BUYER Session; permits forced or voluntary password change without redirecting to itself. |
 | `/buyer` | Buyer protected | Buyer shell home foundation placeholder. |
 | `/buyer/tasks` | Buyer protected | Task destination placeholder reserved for Wave 14B. |
 | `/buyer/order-materials` | Buyer protected | Order-material destination placeholder reserved for Wave 14B. |
@@ -36,6 +37,7 @@ Buyer bottom navigation is fixed, in order: **首页、任务、订单资料、�
 | Path | Access | Guard/shell behavior |
 |---|---|---|
 | `/seller/login` | Public/auth-aware | Customer credential login; accepts only `account_type=SELLER_MEMBER`; authenticated Seller continues to `/seller`. |
+| `/seller/change-password` | Seller auth protected | Dedicated password boundary requires a valid SELLER_MEMBER Session; permits forced or voluntary password change without redirecting to itself. |
 | `/seller` | Seller protected | Seller shell overview foundation placeholder. |
 | `/seller/products` | Seller protected | Later Wave 14C destination. |
 | `/seller/demands` | Seller protected | Later Wave 14C destination. |
@@ -70,7 +72,7 @@ The Staff shell is left queue + center detail + right review actions at wide wid
 | `UNAUTHENTICATED` | Navigate to that identity's login with an allowlisted relative return path. |
 | `DEPENDENCY_ERROR` | Render retryable `DependencyUnavailable`; do not mislabel as logged out. |
 
-403 renders `PermissionDenied` inside the matching shell and does not log out. 404 renders `NotFound` and does not log out. A Staff 401 invalidates only Staff. A Customer Session/protected-API 401 invalidates Buyer and Seller together through `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`; Staff remains unchanged. Customer login success first clears both Customer roots and authenticates only the server-returned matching domain. `account_type` mismatch clears both Customer roots, renders a safe mismatch message and correct entry, and never automatically enters the opposite shell or borrows its cache.
+403 renders `PermissionDenied` inside the matching shell and does not log out. 404 renders `NotFound` and does not log out. A Staff 401 invalidates only Staff. A Customer Session/protected-API 401 invalidates Buyer and Seller together through `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`; Staff remains unchanged. Customer login success first clears both Customer roots and authenticates only the server-returned matching domain. `account_type` mismatch calls Customer logout, clears both Customer roots, renders a neutral safe notice without revealing the returned type, and never links or automatically enters the opposite identity. The password routes use a separate guard: matching Session is allowed regardless of `password_change_required`; 401 returns to same-domain login after two-root cleanup; mismatch uses the logout coordinator; network/503/contract failure remains a retryable dependency state.
 
 ## Route State Preservation
 
@@ -82,4 +84,4 @@ The first release is Simplified Chinese. Route IDs and copy catalogs are structu
 
 ## Controller Dedicated-Link Amendment
 
-`/` is a 月光白 dedicated-link notice only: no Buyer/Seller/Staff entry, identity selector, or login form. `/buyer/login`, `/seller/login`, and `/staff/login` remain direct routes.
+`/` is a 月光白 dedicated-link notice only: no Buyer/Seller/Staff login control, identity selector, or login form. `/buyer/login`, `/seller/login`, and `/staff/login` remain direct routes. Hidden navigation is not a security control.

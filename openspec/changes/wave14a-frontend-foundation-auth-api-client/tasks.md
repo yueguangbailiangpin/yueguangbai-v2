@@ -44,7 +44,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 8. Root Entry
 
-- [ ] 8.1 Implement the `月光白` root with Buyer/Seller entries only and direct Staff-login accessibility.
+- [ ] 8.1 Implement the `月光白` dedicated-link notice with no identity controls while retaining direct Buyer, Seller, and Staff login routes.
 
 ## 9. Buyer Shell
 
@@ -191,3 +191,14 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - Validation passed: Web typecheck; Wave 14A security verifier; 6 Wave 14A test files / 27 tests / 0 failed; Web production build; 4 Playwright smoke tests / 0 failed; repository `npm run check` with 116 test files / 606 tests / 0 failed; target strict OpenSpec 1/1 and all strict OpenSpec 8/8.
 - Structure remains 7 Capabilities / 42 Requirements / 84 Scenarios / 17 Change files. Database verification remains 27 migrations / schema 27 / 117 tables / 221 triggers / 10 views, with no `0028`.
 - Backend, Contracts, Migrations, and `package-lock.json` were not modified. Formal MSW matrix, File Transfer, remaining UI primitives, visual refinement, and formal OpenSpec Verify remain unstarted.
+
+## A3R3_VALIDATION_EVIDENCE
+
+- `/buyer/change-password` and `/seller/change-password` now use an independent `CustomerPasswordRouteBoundary` instead of a naked page or the protected-shell guard. The boundary has explicit `LOADING`, `ALLOWED`, `UNAUTHENTICATED`, `MISMATCH_CLEANING`, `MISMATCH_CLEANUP_FAILED`, and `DEPENDENCY_ERROR` outcomes.
+- A valid matching Customer Session may enter the password form whether `password_change_required` is true or false, preserving both forced and voluntary password change supported by the backend. The boundary does not redirect a matching Session to its own route.
+- A Customer Session 401 hides the form, clears Buyer and Seller roots, preserves Staff, and returns only to the same-domain login. Account-type mismatch hides the form, reuses the A3R2 Customer logout coordinator, clears both Customer roots, exposes no opposite-identity link, and never enters either Shell.
+- Mismatch logout failure remains fail closed with a safe request ID and accessible `重新清理` action. Network/503/contract Session failure remains a retryable dependency state and is not misclassified as logout.
+- The Wave 14A root/spec/reference semantics now consistently require only `月光白` plus `请使用工作人员发送的专属链接登录。`, while `/buyer/login`, `/seller/login`, and `/staff/login` remain directly reachable. Obsolete cross-identity handoff/correct-entry wording is prohibited by the security verifier.
+- A new Controller → QueryClient → Component → Customer API Adapter Stub test file adds 10 route scenarios covering Buyer/Seller 401, matching Buyer/Seller Sessions, both password-change-required values, both mismatch directions, cleanup failure/retry, dependency retry, cache isolation, and rerender logout locking. The existing Root component test continues to prove no identity link is rendered.
+- Validation passed: Web typecheck; Wave 14A security verifier; 7 Wave 14A test files / 37 tests / 0 failed; Web production build; 4 Playwright smoke tests / 0 failed; repository `npm run check` with 117 test files / 616 tests / 0 failed; target strict OpenSpec 1/1 and all strict OpenSpec 8/8.
+- Structure remains 7 Capabilities / 42 Requirements / 84 Scenarios / 17 Change files. Backend, Contracts, Migrations, and `package-lock.json` remain unchanged. Formal MSW matrix, File Transfer, remaining UI primitives, formal browser acceptance, and formal OpenSpec Verify remain unstarted.

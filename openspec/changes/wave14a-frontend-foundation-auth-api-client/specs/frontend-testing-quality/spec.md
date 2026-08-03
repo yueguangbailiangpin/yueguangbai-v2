@@ -20,7 +20,7 @@ Vitest unit tests SHALL cover runtime configuration, route/return-path parsing, 
 
 ### Requirement: Component tests exercise user behavior and accessibility
 
-Testing Library, user-event, and jsdom SHALL test public/login/protected routing, three shells, forms, state components, keyboard/focus, overlay restoration, announcements, 320px structure, and 200% zoom-compatible semantics through user-visible roles/names rather than private implementation details.
+Testing Library, user-event, and jsdom SHALL test public/login/protected routing, three shells, forms, state components, keyboard/focus, overlay restoration, announcements, 320px structure, and 200% zoom-compatible semantics through user-visible roles/names rather than private implementation details. Customer password-route tests SHALL use a real QueryClient and adapter stub to prove unauthenticated same-domain return, matching Session entry for both `password_change_required` values, mismatch logout/two-root cleanup, Staff preservation, dependency retry, cleanup-failure recovery, and rerender loop prevention.
 
 #### Scenario: User completes foundation interaction
 

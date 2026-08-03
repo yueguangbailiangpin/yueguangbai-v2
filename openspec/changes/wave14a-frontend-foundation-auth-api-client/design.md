@@ -49,7 +49,7 @@ Buyer, Seller, and Staff have distinct Session state types, controller hooks, ro
 
 ## 7. Root Entry
 
-`/` displays `月光白`, a brief neutral introduction, Buyer entry, and Seller entry. It does not show Staff. The page is low-density, keyboard navigable, and avoids marketing illustration or fake production status. Direct `/staff/login` remains available because concealment is not security.
+`/` displays only `月光白` and the neutral dedicated-link notice `请使用工作人员发送的专属链接登录。`. It contains no Buyer, Seller, or Staff login control or identity link. The page is low-density, keyboard navigable, and avoids marketing illustration or fake production status. Direct `/buyer/login`, `/seller/login`, and `/staff/login` remain available because hiding navigation is not security.
 
 ## 8. Buyer Shell
 
@@ -85,7 +85,7 @@ A mutation action allocates one random key when the user begins the logical oper
 
 ## 16. Session State Machines
 
-Each identity implements `UNKNOWN → LOADING → AUTHENTICATED | UNAUTHENTICATED | DEPENDENCY_ERROR`. A refresh/retry may return to LOADING. A validated Customer 401 resets both Buyer and Seller to UNAUTHENTICATED or forces fresh resolution after canceling/clearing both Customer roots; a Staff 401 resets only Staff and clears only Staff. Customer login success and account-type mismatch use the same two-root invalidation before authenticating only the matching domain or showing a safe mismatch entry. 503/network/contract failure transitions to DEPENDENCY_ERROR without claiming logout. 403/404 change no Session state. Protected content is absent until AUTHENTICATED.
+Each identity implements `UNKNOWN → LOADING → AUTHENTICATED | UNAUTHENTICATED | DEPENDENCY_ERROR`. A refresh/retry may return to LOADING. A validated Customer 401 resets both Buyer and Seller to UNAUTHENTICATED or forces fresh resolution after canceling/clearing both Customer roots; a Staff 401 resets only Staff and clears only Staff. Customer login success and account-type mismatch use the same two-root invalidation before authenticating only the matching domain or showing a neutral mismatch notice with no cross-identity handoff. 503/network/contract failure transitions to DEPENDENCY_ERROR without claiming logout. 403/404 change no Session state. Protected content is absent until AUTHENTICATED.
 
 ## 17. Staff Auth Flow
 
@@ -93,7 +93,7 @@ The UI posts `return_to` to `/api/staff-auth/login/start`, validates the returne
 
 ## 18. Buyer/Seller Auth Inventory
 
-Both login pages post the real `login_identifier` and `password` to `/api/customer-auth/login`; neither invents OAuth or a unified role picker. On success, the shared Cookie may have replaced the prior Customer identity, so both Customer roots are canceled/cleared before `CustomerHttpSession.account_type` authenticates only its matching domain. If the type does not match the requested login, neither Customer shell is entered automatically; the user receives a safe mismatch notice and the correct entry link. Password-change-required is a 403 workflow state requiring the real change-password endpoint, not logout. Buyer alone may expose the real self-registration route later within approved scope; Wave 14A plans login/session foundation, not a full registration business page.
+Both login pages post the real `login_identifier` and `password` to `/api/customer-auth/login`; neither invents OAuth or a unified role picker. On success, the shared Cookie may have replaced the prior Customer identity, so both Customer roots are canceled/cleared before `CustomerHttpSession.account_type` authenticates only its matching domain. If the type does not match the requested login, neither Customer shell is entered automatically; Customer logout and two-root cleanup run, and the user receives only a neutral notice with no account-type disclosure or cross-identity link. Password-change-required is a workflow state requiring the real change-password endpoint, not logout. `/buyer/change-password` and `/seller/change-password` use a dedicated password route boundary that reads the real Customer Session, permits only matching `account_type`, and allows both `password_change_required=true` forced change and `password_change_required=false` voluntary change. A 401 clears both Customer roots and returns to the same-domain login; mismatch logs out and clears both roots; dependency failure remains retryable without claiming logout. The dedicated boundary never redirects a matching Session to itself. Buyer alone may expose the real self-registration route later within approved scope; Wave 14A plans login/session foundation, not a full registration business page.
 
 ## 19. File Transfer State Machine
 
@@ -180,4 +180,4 @@ Wave 14A has no database, backend, Contract, or production resource change. Runt
 
 ## Controller Dedicated-Link Amendment
 
-Root is a dedicated-link notice, not an identity selector. The three login routes remain direct. Mismatch calls Customer logout, clears both Customer roots, and never reveals or links to the other identity. Customer and Staff Session adapters consume real `{ session: ... }` data.
+Root is a dedicated-link notice, not an identity selector. The three login routes remain direct. Mismatch calls Customer logout, clears both Customer roots, and never reveals or links to the other identity. Customer and Staff Session adapters consume real `{ session: ... }` data. Buyer and Seller password routes use their own Session boundary so both forced and voluntary matching-identity password changes are allowed without a self-redirect loop.

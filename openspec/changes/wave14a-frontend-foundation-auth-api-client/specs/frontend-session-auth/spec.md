@@ -30,7 +30,7 @@ The frontend SHALL define separate Buyer, Seller, and Staff Session boundaries, 
 #### Scenario: Seller account or password-change state
 
 - **WHEN** the Buyer login receives `SELLER_MEMBER` or the server requires a password change
-- **THEN** both Customer roots are cleared, no Seller shell is entered automatically, Buyer protected content remains unavailable, and the UI shows the safe mismatch/correct Seller entry or password-change action without inventing authority.
+- **THEN** mismatch calls Customer logout and clears both Customer roots, enters neither Customer shell, reveals no returned account type, and shows a neutral safe notice with no cross-identity link; a matching password-change state continues only to the Buyer password workflow.
 
 ### Requirement: Seller login follows the real Customer Auth Contract
 
@@ -44,7 +44,7 @@ The frontend SHALL define separate Buyer, Seller, and Staff Session boundaries, 
 #### Scenario: Buyer account or spoofed type
 
 - **WHEN** the Seller login receives BUYER or client input attempts to select/override account type
-- **THEN** both Customer roots are cleared, no Buyer shell is entered automatically, Seller protected content remains unavailable, and the safe mismatch UI offers the correct Buyer entry while server account type remains the only accepted discriminator.
+- **THEN** mismatch calls Customer logout and clears both Customer roots, enters neither Customer shell, reveals no returned account type, and shows a neutral safe notice with no cross-identity link while server account type remains the only accepted discriminator.
 
 ### Requirement: Customer Cookie sharing never creates cross-identity authority
 
@@ -53,7 +53,7 @@ The frontend SHALL document that Buyer and Seller use the same HttpOnly `__Host-
 #### Scenario: Customer identity changes
 
 - **WHEN** any Customer login replaces the shared Cookie, including one whose account type differs from the target domain
-- **THEN** both Customer roots are canceled/cleared before only the matching domain may authenticate; mismatch enters neither shell automatically and offers the correct identity entry.
+- **THEN** both Customer roots are canceled/cleared before only the matching domain may authenticate; mismatch calls Customer logout, enters neither shell, and provides no cross-identity handoff or account-type disclosure.
 
 #### Scenario: Stale opposite-domain cache
 
@@ -77,6 +77,8 @@ The frontend SHALL document that Buyer and Seller use the same HttpOnly `__Host-
 ### Requirement: Session status transitions preserve HTTP semantics
 
 A validated Customer 401 from Customer Session or any Buyer/Seller protected API SHALL invalidate Buyer and Seller through `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`; a validated Staff 401 SHALL invalidate only Staff. 403 and 404 SHALL preserve every Session state. Network, 503, and runtime-contract failures during Session resolution SHALL produce DEPENDENCY_ERROR rather than false logout. Session loading SHALL never render prior protected DTOs.
+
+`/buyer/change-password` and `/seller/change-password` SHALL use a dedicated Customer password route boundary rather than the protected-shell guard. It SHALL read the formal Customer Session, allow only the matching route `account_type`, and permit entry whether `password_change_required` is true or false. A Customer 401 SHALL clear both Customer roots and return to the same-domain login; mismatch SHALL call Customer logout and clear both roots; dependency failure SHALL remain retryable and render no form. A matching Session SHALL render the password form directly without redirecting to the same route.
 
 #### Scenario: Session expiry
 

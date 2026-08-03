@@ -11,6 +11,7 @@ The browser is untrusted. D1-backed Worker Sessions, permissions, assignments, d
 - Staff uses the separate Staff Auth Cookie and Staff Auth routes.
 - Customer login success or mismatch, Customer logout success, Customer Session 401, and any Buyer/Seller protected-API 401 cancel both Customer domains, clear both Customer roots, and reset/re-resolve both Customer states. Staff remains unchanged. Staff 401 clears only Staff. 403 and 404 change no Session state.
 - Session data is not rendered before successful resolution, and previous-identity cached data is not shown during loading.
+- `/buyer/change-password` and `/seller/change-password` use a dedicated Customer password route boundary. It reads the formal Customer Session, allows only matching `account_type` whether `password_change_required` is true or false, clears both Customer roots on 401, and invokes Customer logout plus two-root cleanup on mismatch. It never consumes Staff state or redirects a matching Session back to itself.
 
 ## Credential and Secret Boundary
 
