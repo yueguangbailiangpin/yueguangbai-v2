@@ -234,3 +234,17 @@ Ponytail、PR、Integration、部署、main 推进和 Wave 14 均未运行；本
 `PRODUCTION_GO=no`
 
 `READY_FOR_INTEGRATION`
+
+## 15. INTEGRATION_VALIDATION（2026-08-03）
+
+Integration 重新验证未改变 Requirement/Scenario 分类：
+
+- 基线为 `origin/main` `f28c52a36e9498c37453a4a12755d9ad8459ae65`，Feature 通过 fast-forward-only 引入，未产生 Merge Commit。
+- 引入后代码树与 Feature Closure HEAD `61ecca86683bb97428b62f4041336c4972a9af27` 完全一致。
+- `npm ci`、`npm run check`、`npm run test:wave13` 全部通过；结果分别为 111 files / 580 tests / 0 failed，以及 12 files / 69 tests / 0 failed。
+- build、API Wrangler dry-run、security scan、workspace typecheck、migration verification、migration guards、Wave11、Wave12、Wave13 均通过。
+- OpenSpec strict target/all 为 1/1、2/2。
+- Fresh Local D1 为 27 / 27 / 117 / 221 / 10，FK 0、integrity `ok`；生产环境未访问。
+- 未运行 Ponytail、未推进 main、未部署、未开始 Wave 14。
+
+`WAVE13_INTEGRATION_VALIDATED_PENDING_MAIN`

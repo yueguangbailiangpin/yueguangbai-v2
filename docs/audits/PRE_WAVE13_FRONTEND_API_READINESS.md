@@ -261,3 +261,11 @@ Customer-facing 历史 READY/READY_WITH_LIMITATIONS 结论保持历史参考，�
 `WAVE14_ALLOWED=no_until_main`
 
 `PRODUCTION_GO=no`
+
+## 22. INTEGRATION_VALIDATION（2026-08-03）
+
+Backend baseline 在 Integration 分支完成复验：基线为 `origin/main`，Feature 仅以 fast-forward 引入，代码树与 Feature Closure HEAD 完全一致；111 files / 580 tests / 0 failed、Wave 13 12 files / 69 tests / 0 failed、OpenSpec strict target/all 1/1 与 2/2、fresh Local D1 27/117/221/10、FK 0、integrity `ok`。
+
+Integration 只做验证，没有开发新业务行为；未修改源码、Contracts、Migration、测试、Verifier、package-lock 或部署配置。未运行 Ponytail，未推进 main，未部署，未开始 Wave 14。
+
+`WAVE13_INTEGRATION_VALIDATED_PENDING_MAIN`

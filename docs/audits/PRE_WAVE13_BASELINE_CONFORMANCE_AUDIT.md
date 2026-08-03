@@ -328,3 +328,20 @@ Wave 13 保持 52 Requirements / 104 Scenarios：
 `PRODUCTION_GO=no`
 
 原因：生产 R2、真实飞书应用、中国大陆网络、浏览器前端、部署和回滚均未验证。本节只授权 `READY_FOR_INTEGRATION`，不表示 `PRODUCTION_GO`、`DEPLOYMENT_READY` 或 `WAVE14_STARTED`。
+
+## 17. INTEGRATION_VALIDATION（2026-08-03）
+
+- Integration 基线为 `origin/main`：`f28c52a36e9498c37453a4a12755d9ad8459ae65`。
+- Feature 以 `git merge --ff-only origin/feature/wave13-frontend-readiness-backend-completion` 引入；未产生 Merge Commit。
+- 引入后 Integration 代码树与 Feature Closure HEAD `61ecca86683bb97428b62f4041336c4972a9af27` 完全一致。
+- `npm ci` 通过；`npm run check` 通过：111 files / 580 tests / 0 failed，包含 security scan、workspace typecheck、migration verification、migration guards、Wave11、Wave12、Wave13、build 和 API Wrangler dry-run。
+- `npm run test:wave13` 通过：12 files / 69 tests / 0 failed。
+- OpenSpec strict target/all 通过：1/1、2/2。
+- Fresh Local D1 通过：27 migrations / schema 27 / 117 application tables / 221 triggers / 10 views / FK 0 / integrity `ok`。Wrangler Local D1 查询对 `PRAGMA integrity_check` 返回 `SQLITE_AUTH` 接口限制，已对同一 Wrangler 持久化数据库文件完成真实 SQLite integrity check，结果为 `ok`。
+- 未运行 Ponytail；未推进 main；未部署；未开始 Wave 14。
+
+Integration 最终状态：
+
+`WAVE13_INTEGRATION_VALIDATED_PENDING_MAIN`
+
+本节不表示 `MAIN_ADVANCED`、`PRODUCTION_GO`、`DEPLOYED` 或 `WAVE14_STARTED`。

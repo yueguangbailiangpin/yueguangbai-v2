@@ -1,6 +1,6 @@
 # Tasks: Wave 13 Frontend Readiness Backend Completion
 
-本文件最初记录远程 Feature 的源码完成状态；0–22 节的 `[x]` 仍保留该历史语义。23–26 节随后追加本地运行、strict 与正式 Verify 结果。Stage A 当前为 83 completed / 4 pending，已完成 Controller Closure；生产 R2、真实飞书、浏览器、中国大陆网络和部署仍未验证，且不授权 Ponytail、Integration、PR、部署、main 推进或 Wave 14。
+本文件最初记录远程 Feature 的源码完成状态；0–22 节的 `[x]` 仍保留该历史语义。23–26 节随后追加本地运行、strict 与正式 Verify 结果。Stage A 已完成 Controller Closure；当前 Integration 验证完成，为 85 completed / 2 pending。生产 R2、真实飞书、浏览器、中国大陆网络和部署仍未验证，且不授权 Ponytail、PR、部署、main 推进或 Wave 14。
 
 ## 0. Authority and Controller Decisions
 
@@ -170,8 +170,8 @@
 
 ## 27. Integration
 
-- [ ] 27.1 所有门禁和审计正式关闭后才创建 Integration。
-- [ ] 27.2 当前 Feature 不创建 PR、不部署、不推进 main。
+- [x] 27.1 所有门禁和审计正式关闭后创建并验证 Integration：从 `origin/main` 起点以 fast-forward-only 引入 Feature。
+- [x] 27.2 确认 Integration 只做集成验证，没有开发新业务行为；不创建 PR、不部署、不推进 main。
 
 ## Controller Closure（Stage A）（2026-08-03）
 
@@ -180,3 +180,9 @@
 P1-01、P1-02、P1-03 均为 `CLOSED`；`P0=0`、`P1=0`。本次只授权 `READY_FOR_INTEGRATION`，不表示 `PRODUCTION_GO`、`DEPLOYMENT_READY` 或 `WAVE14_STARTED`。
 
 Ponytail 为可选审查，不是业务门禁；总控决定 `PONYTAIL_DECISION=SKIPPED_BY_CONTROLLER`、`PONYTAIL_REVIEW=not-run`。跳过不记为失败、缺失或风险接受。
+
+## Integration Validation（Stage B）（2026-08-03）
+
+`WAVE13_INTEGRATION_VALIDATED_PENDING_MAIN`
+
+Integration 基线为 `origin/main`；Feature 以 fast-forward-only 引入，未产生 Merge Commit，代码树与 Feature Closure HEAD 完全一致。`npm ci`、`npm run check`、Wave 13 定向测试、OpenSpec strict target/all 和 fresh Local D1 均通过。Integration 阶段没有源码或业务行为修改。
