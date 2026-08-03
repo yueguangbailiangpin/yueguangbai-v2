@@ -37,6 +37,20 @@ const mismatch = readFileSync(join(customerRoot, 'customer-mismatch-cleanup.ts')
 const sessionController = readFileSync(join(customerRoot, 'customer-session-controller.ts'), 'utf8');
 const passwordController = readFileSync(join(customerRoot, 'customer-password-operation.ts'), 'utf8');
 const passwordPage = readFileSync(join(customerRoot, 'CustomerChangePasswordPage.tsx'), 'utf8');
+const passwordRouteBoundary = readFileSync(join(customerRoot, 'CustomerPasswordRouteBoundary.tsx'), 'utf8');
+const passwordRouteController = readFileSync(join(customerRoot, 'customer-password-route-controller.ts'), 'utf8');
+const passwordRouteTests = readFileSync(join(customerRoot, 'customer-password-route-flow.test.tsx'), 'utf8');
+
+const changeFiles = [];
+function walkChange(directory) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) walkChange(path);
+    else changeFiles.push(path);
+  }
+}
+walkChange(join(workspace, 'openspec/changes/wave14a-frontend-foundation-auth-api-client'));
+const changeSource = changeFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
 
 const forbidden = [
   /\/api\/v2/,
@@ -78,6 +92,13 @@ requireText(app, [
   'CustomerSessionBoundary target="buyer"',
   'CustomerSessionBoundary target="seller"',
 ], 'Customer route boundary');
+requireText(app, [
+  'path="/buyer/change-password" element={<CustomerPasswordRouteBoundary target="buyer"><CustomerChangePasswordPage target="buyer" /></CustomerPasswordRouteBoundary>}',
+  'path="/seller/change-password" element={<CustomerPasswordRouteBoundary target="seller"><CustomerChangePasswordPage target="seller" /></CustomerPasswordRouteBoundary>}',
+], 'Customer password route guard');
+if (/path="\/(buyer|seller)\/change-password"\s+element=\{<CustomerChangePasswordPage/u.test(app)) {
+  throw new Error('Customer password page must not be mounted without its route boundary');
+}
 requireText(customerInvalidation, [
   'queryKeys.buyer.root',
   'queryKeys.seller.root',
@@ -125,6 +146,34 @@ requireText(passwordController, [
 if (/function submit[\s\S]{0,1200}crypto\.randomUUID/u.test(passwordPage)) {
   throw new Error('password submit must not generate a new Idempotency-Key on every attempt');
 }
+requireText(passwordRouteBoundary, [
+  'useCustomerPasswordRouteController(target, adapter)',
+  "route.status === 'MISMATCH_CLEANING'",
+  "route.status === 'MISMATCH_CLEANUP_FAILED'",
+  "route.status === 'DEPENDENCY_ERROR'",
+  '<Navigate to={`/${target}/login`}',
+  '重新清理',
+], 'Customer password route boundary');
+if (passwordRouteBoundary.includes('change-password')) {
+  throw new Error('Customer password route boundary must not redirect to itself');
+}
+requireText(passwordRouteController, [
+  "status: 'LOADING'",
+  "status: 'ALLOWED'",
+  "status: 'UNAUTHENTICATED'",
+  "status: 'MISMATCH_CLEANING'",
+  "status: 'MISMATCH_CLEANUP_FAILED'",
+  "status: 'DEPENDENCY_ERROR'",
+  'adapter.readSession(signal)',
+  'query.data.account_type !== expectedAccountType(target)',
+  'CustomerMismatchCleanupCoordinator',
+  'coordinator.clean()',
+  'CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client)',
+  "query.error.httpStatus === 401",
+], 'Customer password route controller');
+if (/clearStaffTransport|queryKeys\.staff/u.test(passwordRouteController)) {
+  throw new Error('Customer password route boundary must not clear Staff');
+}
 
 requireText(tests, [
   "createAdapter('SELLER_MEMBER'",
@@ -142,6 +191,41 @@ requireText(tests, [
   "session('BUYER', true)",
   "queryByText('SELLER SHELL')",
 ], 'Customer auth chain-test evidence');
+requireText(passwordRouteTests, [
+  "'UNAUTHENTICATED', 401",
+  "session('BUYER', true)",
+  "session('SELLER_MEMBER', true)",
+  "session('BUYER', false)",
+  "session('SELLER_MEMBER', false)",
+  'request-route-cleanup',
+  'request-route-503',
+  "getQueryData(['buyer', 'fixture'])",
+  "getQueryData(['seller', 'fixture'])",
+  "getQueryData(['staff', 'fixture'])",
+  'view.rerender',
+  'toHaveBeenCalledOnce()',
+  "queryByRole('link', { name: /卖家/u })",
+], 'Customer password route chain-test evidence');
+
+for (const obsolete of [
+  'correct entry',
+  'correct identity entry',
+  'Buyer entry action',
+  'Seller entry action',
+  'safe mismatch notice and correct entry link',
+  '正确身份入口',
+  '正确买家入口',
+  '正确卖家入口',
+]) {
+  if (changeSource.toLowerCase().includes(obsolete.toLowerCase())) {
+    throw new Error(`obsolete Wave 14A login semantics remain: ${obsolete}`);
+  }
+}
+requireText(changeSource, [
+  '请使用工作人员发送的专属链接登录。',
+  '`/buyer/login`, `/seller/login`, and `/staff/login` remain directly reachable',
+  'dedicated Customer password route boundary',
+], 'Wave 14A dedicated-link and password-route semantics');
 
 const rootEntry = app.match(/export function RootEntry\(\)[\s\S]*?\n}/)?.[0] ?? '';
 for (const forbiddenRootControl of ['买家入口', '卖家入口', '员工入口', '<Link', '<NavLink']) {
