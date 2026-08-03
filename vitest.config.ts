@@ -7,6 +7,9 @@ export default defineConfig({
       'apps/**/*.{test,spec}.{ts,tsx}',
       'packages/**/*.{test,spec}.{ts,tsx}',
     ],
+    exclude: [
+      'apps/web/e2e/**',
+    ],
     passWithNoTests: false,
     restoreMocks: true,
     clearMocks: true,
