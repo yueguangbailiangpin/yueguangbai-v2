@@ -9,6 +9,7 @@ export class FrontendApiError extends Error {
     readonly requestId: string | null,
     readonly category: ErrorCategory,
     readonly retryAfter: number | null = null,
+    readonly safeDetails: Readonly<Record<string, string>> | null = null,
   ) {
     super(code);
     this.name = 'FrontendApiError';

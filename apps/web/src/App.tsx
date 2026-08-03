@@ -1,6 +1,6 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { queryClient, queryKeys } from './api/query-client';
 import { apiRequest } from './api/transport';
@@ -8,6 +8,7 @@ import { isFrontendApiError } from './api/errors';
 import { CUSTOMER_TRANSPORT_INVALIDATION_GROUP, clearStaffTransport } from './auth/customer-transport-invalidation';
 import { customerSessionSchema, staffSessionSchema, type Identity, useIdentitySession } from './auth/session';
 import { safeReturnPath } from './routes/return-path';
+import { runtimeConfig } from './config/runtime-config';
 import { Button, Card, DependencyUnavailable, Drawer, ErrorState, LoadingState, NotFound, PageHeader, PermissionDenied, TextInput } from './ui/primitives';
 
 type CustomerTarget = 'buyer' | 'seller';
@@ -16,7 +17,7 @@ const staffStartSchema = z.object({ provider: z.literal('FEISHU'), authorization
 const logoutSchema = z.object({ logged_out: z.literal(true), all_devices_logged_out: z.boolean() }).strict();
 
 export function RootEntry() {
-  return <main className="identity-entry"><Card><p className="eyebrow">可信、安静的业务入口</p><h1>月光白</h1><p>请选择您的入口继续。</p><div className="entry-actions"><Link className="button" to="/buyer/login">买家入口</Link><Link className="button secondary" to="/seller/login">卖家入口</Link></div></Card></main>;
+  return <main className="identity-entry"><Card><p className="eyebrow">专属链接提示</p><h1>月光白</h1><p>请使用工作人员发送的专属链接登录。</p></Card></main>;
 }
 
 function Protected({ identity, children }: { identity: Identity; children: ReactNode }) {
@@ -38,10 +39,10 @@ function CustomerLogin({ target }: { target: CustomerTarget }) {
     if (!payload.success) { setMessage('请输入登录标识和密码。'); return; }
     setBusy(true);
     try {
-      const result = await apiRequest({ path: '/api/customer-auth/login', method: 'POST', schema: z.object({ session: customerSessionSchema }).strict(), body: payload.data });
+      const result = (await apiRequest({ path: '/api/customer-auth/login', method: 'POST', schema: z.object({ session: customerSessionSchema }).strict(), body: payload.data })).data;
       await CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client);
       const expected = target === 'buyer' ? 'BUYER' : 'SELLER_MEMBER';
-      if (result.session.account_type !== expected) { setMessage(target === 'buyer' ? '此账号属于卖家，请使用卖家入口登录。' : '此账号属于买家，请使用买家入口登录。'); return; }
+      if (result.session.account_type !== expected) { try { await apiRequest({ path: '/api/customer-auth/logout', method: 'POST', schema: logoutSchema }); } catch {} setMessage('该账号不适用于此登录入口，请确认账号或联系工作人员。'); return; }
       client.setQueryData(queryKeys[target].session, result.session); navigate(returnTo, { replace: true });
     } catch (error: unknown) { setMessage(isFrontendApiError(error) && error.code === 'PASSWORD_CHANGE_REQUIRED' ? '需要先修改密码。' : '登录未完成，请检查信息后重试。'); }
     finally { setBusy(false); }
@@ -55,9 +56,9 @@ function StaffLogin() {
   async function start(): Promise<void> {
     const returnTo = safeReturnPath(new URLSearchParams(location.search).get('return_to'), 'staff');
     try {
-      const result = await apiRequest({ path: '/api/staff-auth/login/start', method: 'POST', schema: staffStartSchema, body: { return_to: returnTo } });
+      const result = (await apiRequest({ path: '/api/staff-auth/login/start', method: 'POST', schema: staffStartSchema, body: { return_to: returnTo } })).data;
       const url = new URL(result.authorization_url);
-      if (url.protocol !== 'https:') throw new Error('unsafe_provider_url');
+      if (url.protocol !== 'https:' || url.origin !== runtimeConfig().staffProviderOrigin) throw new Error('unsafe_provider_url');
       window.location.assign(url.toString());
     } catch { setMessage('暂时无法开始员工登录，请稍后重试。'); }
   }

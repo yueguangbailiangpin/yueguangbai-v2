@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { z } from 'zod';
 import { apiRequest } from '../api/transport';
 import { queryKeys } from '../api/query-client';
 import { isFrontendApiError } from '../api/errors';
+import { CUSTOMER_TRANSPORT_INVALIDATION_GROUP, clearStaffTransport } from './customer-transport-invalidation';
 
 export type SessionStatus = 'UNKNOWN' | 'LOADING' | 'AUTHENTICATED' | 'UNAUTHENTICATED' | 'DEPENDENCY_ERROR';
 export type Identity = 'buyer' | 'seller' | 'staff';
@@ -20,9 +22,12 @@ export type CustomerSession = z.output<typeof customerSession>;
 export type StaffSession = z.output<typeof staffSession>;
 export type SessionValue = CustomerSession | StaffSession;
 
-function sessionEndpoint(identity: Identity): { path: string; schema: z.ZodType<SessionValue> } {
-  if (identity === 'staff') return { path: '/api/staff-auth/session', schema: staffSession };
-  return { path: '/api/customer-auth/session', schema: customerSession };
+export const customerSessionResponseSchema = z.object({ session: customerSession }).strict();
+export const staffSessionResponseSchema = z.object({ session: staffSession }).strict();
+
+function sessionEndpoint(identity: Identity): { path: string; schema: typeof customerSessionResponseSchema | typeof staffSessionResponseSchema } {
+  if (identity === 'staff') return { path: '/api/staff-auth/session', schema: staffSessionResponseSchema };
+  return { path: '/api/customer-auth/session', schema: customerSessionResponseSchema };
 }
 
 function keyFor(identity: Identity) {
@@ -30,12 +35,14 @@ function keyFor(identity: Identity) {
 }
 
 export function useIdentitySession(identity: Identity): Readonly<{ status: SessionStatus; value: SessionValue | null; refetch: () => void }> {
+  const client = useQueryClient();
   const endpoint = sessionEndpoint(identity);
   const query = useQuery({
     queryKey: keyFor(identity),
-    queryFn: ({ signal }) => apiRequest({ path: endpoint.path, method: 'GET', schema: endpoint.schema, signal }),
+    queryFn: async ({ signal }) => (await apiRequest({ path: endpoint.path, method: 'GET', schema: endpoint.schema, signal })).data.session,
     retry: false,
   });
+  useEffect(() => { if (isFrontendApiError(query.error) && query.error.httpStatus === 401) { if (identity === 'staff') void clearStaffTransport(client); else void CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client); } }, [client, identity, query.error]);
   if (query.isPending) return { status: 'LOADING', value: null, refetch: () => { void query.refetch(); } };
   if (query.isSuccess) {
     const value = query.data;

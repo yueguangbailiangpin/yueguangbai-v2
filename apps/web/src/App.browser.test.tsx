@@ -7,6 +7,6 @@ import { RootEntry } from './testable';
 import { Drawer } from './ui/primitives';
 
 describe('foundation accessibility components', () => {
-  it('shows only the two public identity entries', () => { render(<BrowserRouter><RootEntry /></BrowserRouter>); expect(screen.getByRole('link', { name: '买家入口' })).toBeVisible(); expect(screen.getByRole('link', { name: '卖家入口' })).toBeVisible(); expect(screen.queryByText('员工入口')).toBeNull(); });
+  it('shows only the dedicated-link notice at root', () => { render(<BrowserRouter><RootEntry /></BrowserRouter>); expect(screen.getByRole('heading', { name: '月光白' })).toBeVisible(); expect(screen.queryByRole('link')).toBeNull(); expect(screen.getByText('请使用工作人员发送的专属链接登录。')).toBeVisible(); });
   it('names and closes a drawer with Escape', () => { const close = vi.fn(); render(<Drawer open title="详情结构" onClose={close}>内容</Drawer>); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); expect(close).toHaveBeenCalledOnce(); });
 });
