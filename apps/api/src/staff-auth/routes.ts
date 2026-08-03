@@ -19,6 +19,7 @@ import {
   readStaffSessionCookie,
   writeStaffSessionCookie,
 } from './cookies';
+import { cleanupExpiredStaffAuthEphemeralRecords } from './cleanup';
 import {
   generateStaffOpaqueToken,
   hashStaffOpaqueToken,
@@ -87,6 +88,7 @@ async function loginStart(
     : cleanReturnTo(body.return_to, config);
   if (!returnTo) throw new StaffAuthError('VALIDATION_ERROR', 400);
   const now = Date.now();
+  await cleanupExpiredStaffAuthEphemeralRecords(context.env.DB, now);
   const requestId = requestIdFromContext(context);
   const networkSource = networkSourceFromContext(context);
   const rate = await consumeStaffAuthRateLimit(context.env.DB, {
@@ -145,6 +147,7 @@ async function callback(
   const config = requireStaffAuthConfig(context.env);
   const query = readExactCallbackQuery(context);
   const now = Date.now();
+  await cleanupExpiredStaffAuthEphemeralRecords(context.env.DB, now);
   const requestId = requestIdFromContext(context);
   const networkSource = networkSourceFromContext(context);
   const rate = await consumeStaffAuthRateLimit(context.env.DB, {

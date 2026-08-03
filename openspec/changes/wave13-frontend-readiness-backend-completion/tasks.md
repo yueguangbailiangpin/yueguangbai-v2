@@ -37,7 +37,7 @@
 
 - [x] 5.1 实现 `POST /api/staff-auth/login/start`、Origin/return allowlist 和固定 10 分钟 TTL。
 - [x] 5.2 实现 hashed state 原子单次消费和 callback replay 拒绝。
-- [ ] 5.3 增加独立的过期 login-state/rate-limit 临时行调度清理；当前只有状态/expiry 字段和索引，尚无正式调度执行器。
+- [x] 5.3 增加认证流量触发的 24 小时有界清理：每张临时表每次最多 100 行，失败时在 state/session 创建前以 `DEPENDENCY_UNAVAILABLE` 关闭；第一版不引入 Cron 或 Scheduled Handler。
 
 ## 6. Internal Staff Session
 

@@ -116,11 +116,11 @@ The middleware SHALL reject sessions when Staff status is not ACTIVE, `session_v
 
 ### Requirement: Staff authentication applies origin, redirect, rate-limit and replay security controls
 
-Login start and session-changing POST requests SHALL enforce allowed Origin. Redirects SHALL use an explicit allowlist. Staff authentication SHALL apply bounded rate limits to login starts and failed callbacks using hashed network/subject keys, fixed public errors, sanitized security events and a bounded Provider timeout. Provider failure SHALL fail closed.
+Login start and session-changing POST requests SHALL enforce allowed Origin. Redirects SHALL use an explicit allowlist. Staff authentication SHALL apply bounded rate limits to login starts and failed callbacks using hashed network/subject keys, fixed public errors, sanitized security events and a bounded Provider timeout. Login start before state creation and callback before state consumption or Provider exchange SHALL run authentication-traffic-triggered cleanup limited to 100 rows per table, deleting only login states whose expiry and update are both older than 24 hours and rate-limit rows whose window ended more than 24 hours ago and whose block is absent or also older than 24 hours. The cleanup SHALL never delete Staff sessions, security events, audit events, idempotency records or business/financial facts, SHALL introduce no Cron or Scheduled Handler, and SHALL fail closed with `DEPENDENCY_UNAVAILABLE` before new state/session facts or Provider authentication when cleanup SQL fails. Provider failure SHALL fail closed.
 
 #### Scenario: Rate limit or Provider outage
 
-- **WHEN** a caller exceeds the configured authentication window or the Provider times out/unavailable
+- **WHEN** a caller exceeds the configured authentication window, bounded cleanup SQL fails, or the Provider times out/unavailable
 - **THEN** the Worker returns `RATE_LIMITED` or `DEPENDENCY_UNAVAILABLE`, issues no session and records no Provider token or sensitive claim.
 
 #### Scenario: Header bypass attempt

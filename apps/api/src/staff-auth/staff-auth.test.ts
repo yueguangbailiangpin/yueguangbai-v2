@@ -4,6 +4,9 @@ import {
   STAFF_SESSION_COOKIE_NAME,
   STAFF_SESSION_MAX_AGE_SECONDS,
   STAFF_SESSION_TTL_MS,
+  type SqlDatabase,
+  type SqlRunResult,
+  type SqlStatement,
 } from '@ygb/contracts';
 import {
   createMigratedTestDatabase,
@@ -12,6 +15,9 @@ import {
 import app from '../index';
 import {
   FakeStaffAuthProvider,
+  STAFF_AUTH_CLEANUP_DELETE_LIMIT_PER_TABLE,
+  STAFF_AUTH_EPHEMERAL_RETENTION_MS,
+  cleanupExpiredStaffAuthEphemeralRecords,
   generateStaffOpaqueToken,
   hashStaffOpaqueToken,
   isAllowedRelativeReturnTo,
@@ -24,7 +30,7 @@ afterEach(() => {
   database = null;
 });
 
-function env(target: SqliteDatabase) {
+function env(target: SqlDatabase) {
   return {
     DB: target,
     STAFF_AUTH_PROVIDER: 'FEISHU' as const,
@@ -235,4 +241,273 @@ describe('Wave 13 Staff authentication and production entry', () => {
     );
     expect(after.status).toBe(401);
   });
+
+  it('cleans only Staff Auth ephemeral rows older than the retention window', async () => {
+    database = createMigratedTestDatabase();
+    seedOwner(database);
+    const now = 3 * STAFF_AUTH_EPHEMERAL_RETENTION_MS;
+    const retainedAfter = now - STAFF_AUTH_EPHEMERAL_RETENTION_MS;
+    insertLoginState(database, {
+      id: 'cleanup-state-old-0001',
+      hash: '1'.repeat(64),
+      status: 'EXPIRED',
+      expiresAt: retainedAfter - 2,
+      updatedAt: retainedAfter - 1,
+    });
+    insertLoginState(database, {
+      id: 'cleanup-state-recent-01',
+      hash: '2'.repeat(64),
+      status: 'EXPIRED',
+      expiresAt: retainedAfter + 1,
+      updatedAt: retainedAfter + 1,
+    });
+    insertLoginState(database, {
+      id: 'cleanup-state-issued-01',
+      hash: '3'.repeat(64),
+      status: 'ISSUED',
+      expiresAt: now + 1,
+      updatedAt: 1,
+    });
+    insertRateLimit(database, {
+      id: 'cleanup-rate-old-00001',
+      hash: '4'.repeat(64),
+      windowEndsAt: retainedAfter - 1,
+      blockedUntil: null,
+    });
+    insertRateLimit(database, {
+      id: 'cleanup-rate-current-01',
+      hash: '5'.repeat(64),
+      windowEndsAt: now + 1,
+      blockedUntil: null,
+    });
+    insertRateLimit(database, {
+      id: 'cleanup-rate-blocked-01',
+      hash: '6'.repeat(64),
+      windowEndsAt: retainedAfter - 1,
+      blockedUntil: now + 1,
+    });
+    database.exec(`
+      INSERT INTO staff_auth_security_events (
+        id,event_type,outcome,provider,metadata_json,created_at
+      ) VALUES (
+        'cleanup-security-event-01','STATE_INVALID','REJECTED',
+        'FEISHU','{}',1
+      );
+      INSERT INTO staff_sessions (
+        id,token_hash,staff_id,issued_session_version,
+        issued_authorization_version,status,expires_at,
+        created_at,updated_at
+      ) VALUES (
+        'cleanup-staff-session-01','${'7'.repeat(64)}',
+        'staff-wave13-owner',1,1,'ACTIVE',${now + 1000},1,1
+      );
+    `);
+
+    expect(await cleanupExpiredStaffAuthEphemeralRecords(database, now))
+      .toEqual({
+        staffLoginStatesDeleted: 1,
+        staffAuthRateLimitsDeleted: 1,
+      });
+    expect(ids(database, 'staff_login_states')).toEqual([
+      'cleanup-state-issued-01',
+      'cleanup-state-recent-01',
+    ]);
+    expect(ids(database, 'staff_auth_rate_limits')).toEqual([
+      'cleanup-rate-blocked-01',
+      'cleanup-rate-current-01',
+    ]);
+    expect(count(database, 'staff_auth_security_events')).toBe(1);
+    expect(count(database, 'staff_sessions')).toBe(1);
+  });
+
+  it('deletes at most 100 rows per table and continues on the next call', async () => {
+    database = createMigratedTestDatabase();
+    const now = 3 * STAFF_AUTH_EPHEMERAL_RETENTION_MS;
+    const retainedAfter = now - STAFF_AUTH_EPHEMERAL_RETENTION_MS;
+    for (let index = 0; index < 102; index += 1) {
+      const suffix = index.toString().padStart(4, '0');
+      insertLoginState(database, {
+        id: `cleanup-batch-state-${suffix}`,
+        hash: index.toString(16).padStart(64, '0'),
+        status: 'EXPIRED',
+        expiresAt: retainedAfter - 2,
+        updatedAt: retainedAfter - 1,
+      });
+      insertRateLimit(database, {
+        id: `cleanup-batch-rate-${suffix}`,
+        hash: (index + 1024).toString(16).padStart(64, '0'),
+        windowEndsAt: retainedAfter - 1,
+        blockedUntil: null,
+      });
+    }
+    expect(STAFF_AUTH_CLEANUP_DELETE_LIMIT_PER_TABLE).toBe(100);
+    expect(await cleanupExpiredStaffAuthEphemeralRecords(database, now))
+      .toEqual({
+        staffLoginStatesDeleted: 100,
+        staffAuthRateLimitsDeleted: 100,
+      });
+    expect(count(database, 'staff_login_states')).toBe(2);
+    expect(count(database, 'staff_auth_rate_limits')).toBe(2);
+    expect(await cleanupExpiredStaffAuthEphemeralRecords(database, now))
+      .toEqual({
+        staffLoginStatesDeleted: 2,
+        staffAuthRateLimitsDeleted: 2,
+      });
+    expect(count(database, 'staff_login_states')).toBe(0);
+    expect(count(database, 'staff_auth_rate_limits')).toBe(0);
+  });
+
+  it('rejects an unsafe cleanup clock without deleting records', async () => {
+    database = createMigratedTestDatabase();
+    await expect(cleanupExpiredStaffAuthEphemeralRecords(database, -1))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+    await expect(cleanupExpiredStaffAuthEphemeralRecords(
+      database,
+      Number.MAX_SAFE_INTEGER + 1,
+    )).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+  });
+
+  it('fails login/start closed before creating State or Rate Limit rows', async () => {
+    database = createMigratedTestDatabase();
+    const response = await app.request(
+      'https://api.example.test/api/staff-auth/login/start',
+      {
+        method: 'POST',
+        headers: {
+          Origin: 'https://staff.example.test',
+          'Sec-Fetch-Site': 'same-site',
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+      env(new FailFirstBatchDatabase(database)),
+    );
+    expect(response.status).toBe(503);
+    expect(count(database, 'staff_login_states')).toBe(0);
+    expect(count(database, 'staff_auth_rate_limits')).toBe(0);
+  });
+
+  it('fails callback closed before consuming State or creating Session', async () => {
+    database = createMigratedTestDatabase();
+    seedOwner(database);
+    const start = await app.request(
+      'https://api.example.test/api/staff-auth/login/start',
+      {
+        method: 'POST',
+        headers: {
+          Origin: 'https://staff.example.test',
+          'Sec-Fetch-Site': 'same-site',
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+      env(database),
+    );
+    const body = await start.json() as {
+      data: { authorization_url: string };
+    };
+    const state = new URL(body.data.authorization_url)
+      .searchParams.get('state');
+    expect(state).toHaveLength(43);
+    const response = await app.request(
+      `https://api.example.test/api/staff-auth/feishu/callback?code=test&state=${state}`,
+      { method: 'GET', redirect: 'manual' },
+      env(new FailFirstBatchDatabase(database)),
+    );
+    expect(response.status).toBe(503);
+    expect(database.raw.prepare(`
+      SELECT status FROM staff_login_states
+    `).get()).toEqual({ status: 'ISSUED' });
+    expect(count(database, 'staff_sessions')).toBe(0);
+  });
 });
+
+interface LoginStateFixture {
+  id: string;
+  hash: string;
+  status: 'ISSUED' | 'EXPIRED';
+  expiresAt: number;
+  updatedAt: number;
+}
+
+function insertLoginState(
+  target: SqliteDatabase,
+  fixture: LoginStateFixture,
+): void {
+  target.raw.prepare(`
+    INSERT INTO staff_login_states (
+      id,state_hash,provider,tenant_key,callback_purpose,return_to,status,
+      expires_at,consumed_at,cancelled_at,created_at,updated_at
+    ) VALUES (?,?,'FEISHU','cleanup-tenant','STAFF_LOGIN','/staff',?,
+      ?,NULL,NULL,1,?)
+  `).run(
+    fixture.id,
+    fixture.hash,
+    fixture.status,
+    fixture.expiresAt,
+    fixture.updatedAt,
+  );
+}
+
+interface RateLimitFixture {
+  id: string;
+  hash: string;
+  windowEndsAt: number;
+  blockedUntil: number | null;
+}
+
+function insertRateLimit(
+  target: SqliteDatabase,
+  fixture: RateLimitFixture,
+): void {
+  target.raw.prepare(`
+    INSERT INTO staff_auth_rate_limits (
+      id,action,scope_type,scope_hash,window_started_at,window_ends_at,
+      attempt_count,blocked_until,created_at,updated_at
+    ) VALUES (?,'LOGIN_START','NETWORK',?,1,?,1,?,1,1)
+  `).run(
+    fixture.id,
+    fixture.hash,
+    fixture.windowEndsAt,
+    fixture.blockedUntil,
+  );
+}
+
+function ids(target: SqliteDatabase, table: string): string[] {
+  if (table !== 'staff_login_states' && table !== 'staff_auth_rate_limits') {
+    throw new Error('invalid_cleanup_table');
+  }
+  return target.raw.prepare(`SELECT id FROM ${table} ORDER BY id`)
+    .all().map((row) => String(row['id']));
+}
+
+function count(target: SqliteDatabase, table: string): number {
+  const allowed = new Set([
+    'staff_login_states',
+    'staff_auth_rate_limits',
+    'staff_auth_security_events',
+    'staff_sessions',
+  ]);
+  if (!allowed.has(table)) throw new Error('invalid_cleanup_table');
+  const row = target.raw.prepare(`SELECT COUNT(*) AS count FROM ${table}`)
+    .get() as { count: number };
+  return Number(row.count);
+}
+
+class FailFirstBatchDatabase implements SqlDatabase {
+  private failed = false;
+
+  constructor(private readonly target: SqlDatabase) {}
+
+  prepare(sql: string): SqlStatement {
+    return this.target.prepare(sql);
+  }
+
+  batch(statements: readonly SqlStatement[]): Promise<SqlRunResult[]> {
+    if (!this.failed) {
+      this.failed = true;
+      return Promise.reject(new Error('injected_cleanup_failure'));
+    }
+    return this.target.batch(statements);
+  }
+}

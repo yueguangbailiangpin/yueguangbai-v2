@@ -64,6 +64,8 @@ Customer Auth 表不重建、不复用为 Staff 表。Migration 只做 forward u
 - inactive、expired、revoked、unknown、tampered、session-version 或 authorization-version 不匹配全部 401；
 - 每次有效请求重新解析 D1 授权和 Data Scope。
 
+第一版临时认证数据清理由真实认证流量触发，不增加 Cron 或 Scheduled Handler。`login/start` 在创建 state 前、Feishu callback 在消费 state 与调用 Provider 前，各执行一次有界清理：仅删除 `expires_at`/`updated_at` 均早于 24 小时保留线的 `staff_login_states`，以及 `window_ends_at` 早于保留线且未处于有效 blocked 窗口的 `staff_auth_rate_limits`；每张表每次最多 100 行。清理绝不触及 security events、sessions、audit、idempotency 或业务/财务事实。任一清理 SQL 失败即返回 503 `DEPENDENCY_UNAVAILABLE`，且不继续创建 state、消费 callback state、调用 Provider 或签发 Session。
+
 ## 6. Logout-All Replay Safety
 
 首次 ACTIVE Session 的 logout-all 继续使用一个顶层 Idempotency-Key、一个 canonical request hash 和一个 D1 batch，递增 `session_version`、撤销全部 ACTIVE Sessions、写 Audit、完成幂等记录并清 Cookie。

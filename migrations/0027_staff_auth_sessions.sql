@@ -103,10 +103,14 @@ BEGIN
   SELECT RAISE(ABORT, 'invalid_staff_login_state_transition');
 END;
 
-CREATE TRIGGER trg_staff_login_states_no_delete
+CREATE TRIGGER trg_staff_login_states_retention_delete_guard
 BEFORE DELETE ON staff_login_states
+WHEN NOT (
+  OLD.expires_at < CAST(unixepoch('now') AS INTEGER) * 1000 - 86400000
+  AND OLD.updated_at < CAST(unixepoch('now') AS INTEGER) * 1000 - 86400000
+)
 BEGIN
-  SELECT RAISE(ABORT, 'staff_login_states_cannot_be_deleted');
+  SELECT RAISE(ABORT, 'staff_login_states_retention_guard');
 END;
 
 CREATE TABLE staff_sessions (
