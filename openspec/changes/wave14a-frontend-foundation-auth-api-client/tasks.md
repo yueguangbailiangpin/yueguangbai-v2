@@ -178,3 +178,16 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - Staff cleanup uses only the Staff query root; Customer roots are not touched by these actions.
 - Logout-all is protected by a labeled modal confirmation with Escape, focus cycling, and focus restoration.
 - MSW remains deferred to A4. File Transfer, remaining primitives, formal browser acceptance, and OpenSpec Verify remain pending.
+
+## A3R2_VALIDATION_EVIDENCE
+
+- Customer login and protected-route Session account-type mismatches now use one fail-closed cleanup coordinator: cancel Buyer and Seller requests, remove both Customer query roots, then call `POST /api/customer-auth/logout` without touching Staff state or offering cross-identity navigation.
+- The mismatch coordinator has explicit `IDLE`, `CLEANING`, `CLEANED`, and `FAILED` states. An in-flight Promise lock prevents duplicate logout during React rerenders; only the accessible explicit retry action starts a new cleanup attempt after failure.
+- Logout failure keeps every Customer Shell blocked, keeps both Customer roots empty, presents only the safe cleanup-failure message and request ID, and exposes a `重新清理` action.
+- Customer password changes now use an in-memory operation lifecycle with `IDLE`, `EDITING`, `SUBMITTING`, `FAILED_RETRYABLE`, `FAILED_TERMINAL`, `SUCCESS`, and `CANCELED` states plus an operation-held Idempotency-Key, non-secret edit-revision fingerprint, safe error, and request ID.
+- The first valid submit creates one Key. An unchanged-body explicit retry after network, rate-limit, dependency, or `REQUEST_IN_PROGRESS` failure reuses it. Editing either password field or canceling releases it, and the next submit creates a new Key. React rerenders preserve the active operation and Key.
+- Password success clears both Customer roots and rereads the formal Customer Session. Only an identity-matched Session with `password_change_required=false` enters the matching Shell. Response or reread identity mismatch invokes the same logout coordinator; 401 clears Customer only; `IDEMPOTENCY_CONFLICT` ends the old operation; `REQUEST_IN_PROGRESS` remains non-concurrent and explicitly retryable.
+- Three Controller → QueryClient → Component → Customer API Adapter Stub test files create real QueryClient instances, seed Buyer, Seller, and Staff caches, and assert final cache contents. They cover login mismatch, Session mismatch and loop prevention, logout failure and accessible retry, password Key reuse/release, rerender, Session reread, mismatch, 401, conflict, in-progress, and password-change-required boundaries.
+- Validation passed: Web typecheck; Wave 14A security verifier; 6 Wave 14A test files / 27 tests / 0 failed; Web production build; 4 Playwright smoke tests / 0 failed; repository `npm run check` with 116 test files / 606 tests / 0 failed; target strict OpenSpec 1/1 and all strict OpenSpec 8/8.
+- Structure remains 7 Capabilities / 42 Requirements / 84 Scenarios / 17 Change files. Database verification remains 27 migrations / schema 27 / 117 tables / 221 triggers / 10 views, with no `0028`.
+- Backend, Contracts, Migrations, and `package-lock.json` were not modified. Formal MSW matrix, File Transfer, remaining UI primitives, visual refinement, and formal OpenSpec Verify remain unstarted.
