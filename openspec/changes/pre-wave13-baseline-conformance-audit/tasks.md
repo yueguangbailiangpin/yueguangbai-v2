@@ -57,3 +57,15 @@
 - [ ] Historical remote snapshot: no OpenSpec Verify had yet been executed after the Wave 13 semantic update.
 - [ ] No Ponytail review was run.
 - [ ] No PR, Integration, deployment or main advancement was created.
+
+## Controller Closure Status（2026-08-03）
+
+当前总控已确认本地完整门禁、Local D1、26→27 升级、R2 Mock、Default App、OpenSpec strict、正式 Verify 和 P1 重新分类均已完成。生产 R2、真实飞书、浏览器、中国大陆网络、部署和 main 推进保持未完成；这些项目不得因本次 Controller Closure 被误标完成。
+
+`WAVE13_IMPLEMENTATION_ACCEPTED=yes`
+
+`P1-01=CLOSED`、`P1-02=CLOSED`、`P1-03=CLOSED`；历史 NO_GO 与此前其他 P2/P3/历史风险保持保留。
+
+`WAVE13_READY_FOR_INTEGRATION`
+
+`PRODUCTION_GO=no`

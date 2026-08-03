@@ -282,3 +282,49 @@ Wave 13 保持 52 Requirements / 104 Scenarios：
 # READY_FOR_CONTROLLER_REVIEW
 
 该状态仅表示本地实现、门禁、strict 与正式 Verify 已达到交还总控复核的条件，不表示 GO、P1 CLOSED、Integration allowed 或 Wave 14 allowed。
+
+## 16. CONTROLLER_CLOSURE_DECISION（2026-08-03）
+
+本节为总控在保留全部历史审计结论基础上的正式关闭记录：
+
+- 原始审计 `NO_GO` 历史保留；原始 P1-01、P1-02、P1-03 历史保留；不倒写、不删除历史结论。
+- 最终本地门禁：111 test files / 580 tests / 0 failed；Wave 13 定向门禁：12 files / 69 tests。
+- Local D1：27 migrations / schema version 27 / 117 application tables / 221 triggers / 10 views / foreign key check 0 / integrity check `ok`。
+- OpenSpec strict target/all 均通过；正式 Verify：51 `COMPLETE` + 1 `APPROVED_SCOPE_REDUCTION`，`INCONSISTENT=0`、`MISSING=0`、`PARTIAL=0`、`NOT_VERIFIED=0`、`CRITICAL=0`、`WARNING=0`。
+- 唯一批准范围缩减为 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` 活动上传 Intent 延期至 Wave 15。
+
+### Controller P1 Closure
+
+#### P1-01：`CLOSED`
+
+- 飞书仅为认证 Provider；D1 为 Staff 主体和授权权威。
+- 使用 Worker 内部 Staff Session，默认启用 Staff Middleware。
+- 九家族 Default App E2E 已验证。
+- 401/403/404 与 authority Header bypass 已验证。
+- 正式 OpenSpec Verify 无不一致。
+
+#### P1-02：`CLOSED`
+
+- 五种活动 Purpose File HTTP 已验证。
+- Staff Order Evidence API 与 Staff Buyer Refund API 已验证。
+- R2 Mock fault/compensation、原子事务与 rollback 已验证。
+- DTO 隔离已验证；138 个业务端点可复现。
+- 内部沟通 Purpose 作为批准范围缩减处理。
+
+#### P1-03：`CLOSED`
+
+- D-004 历史保留，D-014 正式澄清。
+- 飞书不再作为业务权限权威。
+- Staff API 只消费内部 Session 和 D1 授权。
+
+当前审计严重级别：`P0=0`、`P1=0`。此前其他 P2/P3 与历史风险不因本节而关闭，继续按原范围和后续 Wave 保留。
+
+审计最终状态：
+
+`WAVE13_READY_FOR_INTEGRATION`
+
+`WAVE13_IMPLEMENTATION_ACCEPTED=yes`
+
+`PRODUCTION_GO=no`
+
+原因：生产 R2、真实飞书应用、中国大陆网络、浏览器前端、部署和回滚均未验证。本节只授权 `READY_FOR_INTEGRATION`，不表示 `PRODUCTION_GO`、`DEPLOYMENT_READY` 或 `WAVE14_STARTED`。

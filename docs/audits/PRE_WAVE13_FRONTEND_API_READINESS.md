@@ -244,3 +244,20 @@ Customer-facing 历史 READY/READY_WITH_LIMITATIONS 结论保持历史参考，�
 # READY_FOR_CONTROLLER_REVIEW
 
 该建议允许总控复核是否考虑后续 Ponytail，但不表示 GO、P1 CLOSED、Integration allowed 或 Wave 14 allowed。
+
+## 21. BACKEND_READY_FOR_INTEGRATION（2026-08-03）
+
+后端 API/DTO 已达到 Integration 候选状态：
+
+- 138 个业务端点可复现：历史 108 + Wave 13 活动新增 30。
+- 最终本地门禁为 111 files / 580 tests / 0 failed；Wave 13 定向为 12 files / 69 tests。
+- Local D1 为 27 migrations / schema 27 / 117 application tables / 221 triggers / 10 views / FK 0 / integrity `ok`。
+- OpenSpec strict target/all 通过，正式 Verify 为 51 `COMPLETE` + 1 `APPROVED_SCOPE_REDUCTION`。
+
+边界保持明确：Wave 14 仍不能开始；必须先完成 Integration 并由总控决定是否推进 main。浏览器真实流程属于 Wave 14，真实飞书属于 Wave 16，生产 R2、Cloudflare 和中国大陆网络属于 Wave 17。
+
+`FRONTEND_BACKEND_BASELINE=READY_FOR_INTEGRATION`
+
+`WAVE14_ALLOWED=no_until_main`
+
+`PRODUCTION_GO=no`

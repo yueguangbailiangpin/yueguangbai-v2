@@ -205,3 +205,32 @@ Scope reduction 仅为 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` 活动上传 Inte
 # READY_FOR_CONTROLLER_REVIEW
 
 Ponytail、PR、Integration、部署、main 推进和 Wave 14 均未运行；本状态不关闭 P1，也不授予 Integration 或发布权限。
+
+## 14. CONTROLLER_CLOSURE_DECISION（2026-08-03）
+
+本节追加最终 Controller Closure，保留前文历史分类、NO_GO、P1 未关闭和本地验证过渡记录，不覆盖或删除历史结果。
+
+| P1 | Final status | Closure evidence |
+|---|---|---|
+| P1-01 Staff Auth/Session | `CLOSED` | 飞书仅为认证 Provider；D1 Staff/授权权威；Worker 内部 Staff Session；默认 Staff Middleware；九家族 Default App E2E；401/403/404；authority Header bypass；OpenSpec Verify 无不一致 |
+| P1-02 Missing HTTP surfaces | `CLOSED` | 五种活动 Purpose File HTTP；Staff Order Evidence API；Staff Buyer Refund API；R2 Mock fault/compensation；原子事务与 rollback；DTO 隔离；138 个业务端点；内部沟通 Purpose 批准范围缩减 |
+| P1-03 identity governance conflict | `CLOSED` | D-004 历史保留；D-014 正式澄清；飞书不再作为业务权限权威；Staff API 仅消费内部 Session 和 D1 授权 |
+
+最终分类计数：
+
+- Requirements：52，总计 `51 COMPLETE` + `1 APPROVED_SCOPE_REDUCTION`。
+- Scenarios：104，总计 `103 COMPLETE` + `1 APPROVED_SCOPE_REDUCTION`。
+- `INCONSISTENT=0`、`MISSING=0`、`PARTIAL=0`、`NOT_VERIFIED=0`。
+- `CRITICAL=0`、`WARNING=0`。
+
+唯一批准范围缩减为 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` 活动上传 Intent 延期至 Wave 15。生产 R2、真实飞书应用、中国大陆网络、浏览器前端和部署不重新计为 Requirement 缺失；它们仍属于后续运行/发布验证边界。
+
+`WAVE13_IMPLEMENTATION_ACCEPTED=yes`
+
+`P0=0`
+
+`P1=0`
+
+`PRODUCTION_GO=no`
+
+`READY_FOR_INTEGRATION`

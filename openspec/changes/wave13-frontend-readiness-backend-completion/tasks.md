@@ -1,6 +1,6 @@
 # Tasks: Wave 13 Frontend Readiness Backend Completion
 
-本文件最初记录远程 Feature 的源码完成状态；0–22 节的 `[x]` 仍保留该历史语义。23–26 节随后追加本地运行、strict 与正式 Verify 结果。当前为 83 completed / 4 pending，建议状态是 `READY_FOR_CONTROLLER_REVIEW`；生产 R2、真实飞书、浏览器、中国大陆网络和部署仍未验证，且不授权 Ponytail、Integration、PR、部署、main 推进或 Wave 14。
+本文件最初记录远程 Feature 的源码完成状态；0–22 节的 `[x]` 仍保留该历史语义。23–26 节随后追加本地运行、strict 与正式 Verify 结果。Stage A 当前为 83 completed / 4 pending，已完成 Controller Closure；生产 R2、真实飞书、浏览器、中国大陆网络和部署仍未验证，且不授权 Ponytail、Integration、PR、部署、main 推进或 Wave 14。
 
 ## 0. Authority and Controller Decisions
 
@@ -142,7 +142,7 @@
 
 - [x] 22.1 更新既有 Decision、Audit、Traceability、Readiness 和 Audit Tasks，不创建第二套审计。
 - [x] 22.2 静态重算：原 108 + Wave 13 活动新增 30 = 138；延期 Purpose 不计入活动端点。
-- [x] 22.3 将 P1 标记为 `IMPLEMENTED_AWAITING_LOCAL_VALIDATION`，总体保持 `NO_GO_PENDING_LOCAL_VALIDATION`。
+- [x] 22.3 历史阶段曾为 `IMPLEMENTED_AWAITING_LOCAL_VALIDATION`；最终经本地门禁和正式 Verify 后，P1-01/P1-02/P1-03 已由总控正式关闭，当前状态为 `READY_FOR_INTEGRATION`。
 
 ## 23. Local Validation
 
@@ -165,10 +165,18 @@
 ## 26. Ponytail Review Gate
 
 - [x] 26.1 完成本地门禁、OpenSpec validation 和 Verify 后再由总控判断是否考虑 Ponytail。
-- [ ] 26.2 获得单独批准后才运行只读 Ponytail review。
-- [ ] 26.3 记录 findings；当前 `PONYTAIL_REVIEW=not-run`。
+- [ ] 26.2 获得单独批准后才运行只读 Ponytail review。`SKIPPED_BY_CONTROLLER`
+- [ ] 26.3 记录 findings；`PONYTAIL_REVIEW=not-run`。`SKIPPED_BY_CONTROLLER`
 
 ## 27. Integration
 
 - [ ] 27.1 所有门禁和审计正式关闭后才创建 Integration。
 - [ ] 27.2 当前 Feature 不创建 PR、不部署、不推进 main。
+
+## Controller Closure（Stage A）（2026-08-03）
+
+`WAVE13_IMPLEMENTATION_ACCEPTED=yes`
+
+P1-01、P1-02、P1-03 均为 `CLOSED`；`P0=0`、`P1=0`。本次只授权 `READY_FOR_INTEGRATION`，不表示 `PRODUCTION_GO`、`DEPLOYMENT_READY` 或 `WAVE14_STARTED`。
+
+Ponytail 为可选审查，不是业务门禁；总控决定 `PONYTAIL_DECISION=SKIPPED_BY_CONTROLLER`、`PONYTAIL_REVIEW=not-run`。跳过不记为失败、缺失或风险接受。
