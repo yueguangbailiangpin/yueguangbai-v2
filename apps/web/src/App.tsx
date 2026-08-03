@@ -4,6 +4,7 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNaviga
 import { z } from 'zod';
 import { queryClient, queryKeys } from './api/query-client';
 import { startOperation } from './api/idempotency';
+import { staffLogoutAllResponseSchema, staffLogoutResponseSchema } from './auth/staff/staff-logout-schemas';
 import { apiRequest } from './api/transport';
 import { isFrontendApiError } from './api/errors';
 import { CUSTOMER_TRANSPORT_INVALIDATION_GROUP, clearStaffTransport } from './auth/customer-transport-invalidation';
@@ -15,7 +16,7 @@ import { Button, Card, DependencyUnavailable, Dialog, Drawer, ErrorState, Loadin
 type CustomerTarget = 'buyer' | 'seller';
 const loginSchema = z.object({ login_identifier: z.string().min(1), password: z.string().min(1) });
 const staffStartSchema = z.object({ provider: z.literal('FEISHU'), authorization_url: z.string().url(), expires_at: z.number().int() }).strict();
-const logoutSchema = z.object({ logged_out: z.literal(true), all_devices_logged_out: z.boolean() }).strict();
+const logoutSchema = z.object({ logged_out: z.literal(true), all_devices_logged_out: z.literal(false) }).strict();
 
 export function RootEntry() {
   return <main className="identity-entry"><Card><p className="eyebrow">专属链接提示</p><h1>月光白</h1><p>请使用工作人员发送的专属链接登录。</p></Card></main>;
@@ -27,6 +28,7 @@ function Protected({ identity, children }: { identity: Identity; children: React
   if (session.status === 'LOADING' || session.status === 'UNKNOWN') return <main className="centered"><LoadingState label="正在确认登录状态" /></main>;
   if (session.status === 'DEPENDENCY_ERROR') return <main className="centered"><DependencyUnavailable /></main>;
   if (session.status === 'UNAUTHENTICATED') return <Navigate to={`/${identity}/login?return_to=${encodeURIComponent(location.pathname + location.search)}`} replace />;
+  if ((identity === 'buyer' || identity === 'seller') && session.value !== null && 'password_change_required' in session.value && session.value.password_change_required) return <Navigate to={`/${identity}/change-password`} replace />;
   return <>{children}</>;
 }
 
@@ -75,8 +77,9 @@ function ChangePassword({ target }: { target: CustomerTarget }) {
 
 function StaffAccountActions() {
   const client = useQueryClient(); const navigate = useNavigate(); const [confirming, setConfirming] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState<string | null>(null); const [requestId, setRequestId] = useState<string | null>(null); const operation = useRef<ReturnType<typeof startOperation<{}>> | null>(null);
-  async function finishLogout(path: '/api/staff-auth/logout' | '/api/staff-auth/logout-all', all: boolean): Promise<void> { setBusy(true); setMessage(null); try { const current = all ? (operation.current ?? (operation.current = startOperation({}))) : null; const response = await apiRequest({ path, method: 'POST', schema: logoutSchema, ...(all ? { body: {}, headers: { 'Idempotency-Key': current?.key ?? '' } } : {}) }); setRequestId(response.requestId); await clearStaffTransport(client); operation.current = null; navigate('/staff/login', { replace: true }); } catch (error: unknown) { if (isFrontendApiError(error)) { setRequestId(error.requestId); if (error.httpStatus === 401) { await clearStaffTransport(client); operation.current = null; navigate('/staff/login', { replace: true }); return; } setMessage(error.code === 'IDEMPOTENCY_CONFLICT' ? '该操作发生冲突，请结束后重新发起。' : error.code === 'REQUEST_IN_PROGRESS' ? '操作正在处理中，请勿重复提交。' : '退出未完成，请由您决定是否重试。'); } else setMessage('退出未完成，请由您决定是否重试。'); } finally { setBusy(false); } }
-  return <section className="staff-account-actions" aria-label="账户操作"><Button className="secondary" disabled={busy} onClick={() => { void finishLogout('/api/staff-auth/logout', false); }}>退出登录</Button><Button className="danger" disabled={busy} onClick={() => setConfirming(true)}>退出所有设备</Button>{message && <p className="inline-error" role="alert">{message}</p>}<RequestIdDisplay requestId={requestId} /><Dialog open={confirming} title="退出所有设备" description="这会使其他设备上的员工会话失效。" busy={busy} onClose={() => { if (!busy) { setConfirming(false); operation.current = null; } }}><div className="entry-actions"><Button className="secondary" disabled={busy} onClick={() => setConfirming(false)}>取消</Button><Button className="danger" disabled={busy} onClick={() => { void finishLogout('/api/staff-auth/logout-all', true); }}>{busy ? '正在退出' : '确认退出所有设备'}</Button></div></Dialog></section>;
+  async function finishLogout(path: '/api/staff-auth/logout' | '/api/staff-auth/logout-all', all: boolean): Promise<void> { setBusy(true); setMessage(null); try { const current = all ? (operation.current ?? (operation.current = startOperation({}))) : null; const response = await apiRequest({ path, method: 'POST', schema: all ? staffLogoutAllResponseSchema : staffLogoutResponseSchema, ...(all ? { body: {}, headers: { 'Idempotency-Key': current?.key ?? '' } } : {}) }); setRequestId(response.requestId); await clearStaffTransport(client); operation.current = null; navigate('/staff/login', { replace: true }); } catch (error: unknown) { if (isFrontendApiError(error)) { setRequestId(error.requestId); if (error.httpStatus === 401) { await clearStaffTransport(client); operation.current = null; navigate('/staff/login', { replace: true }); return; } if (error.code === 'IDEMPOTENCY_CONFLICT') operation.current = null; setMessage(error.code === 'IDEMPOTENCY_CONFLICT' ? '该操作发生冲突，请结束后重新发起。' : error.code === 'REQUEST_IN_PROGRESS' ? '操作正在处理中，请勿重复提交。' : '退出未完成，请由您决定是否重试。'); } else setMessage('退出未完成，请由您决定是否重试。'); } finally { setBusy(false); } }
+  const cancel = (): void => { if (!busy) { operation.current = null; setConfirming(false); setMessage(null); } };
+  return <section className="staff-account-actions" aria-label="账户操作"><Button className="secondary" disabled={busy} onClick={() => { void finishLogout('/api/staff-auth/logout', false); }}>退出登录</Button><Button className="danger" disabled={busy} onClick={() => setConfirming(true)}>退出所有设备</Button>{message && <p className="inline-error" role="alert">{message}</p>}<RequestIdDisplay requestId={requestId} /><Dialog open={confirming} title="退出所有设备" description="这会使其他设备上的员工会话失效。" busy={busy} onClose={cancel}><div className="entry-actions"><Button className="secondary" disabled={busy} onClick={cancel}>取消</Button><Button className="danger" disabled={busy} onClick={() => { void finishLogout('/api/staff-auth/logout-all', true); }}>{busy ? '正在退出' : '确认退出所有设备'}</Button></div></Dialog></section>;
 }
 
 const buyerItems = [['/', '首页'], ['/tasks', '任务'], ['/order-materials', '订单资料'], ['/reviews', '评论'], ['/me', '我的']] as const;

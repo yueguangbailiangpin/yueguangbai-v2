@@ -33,7 +33,7 @@ export async function apiRequest<T extends z.ZodType>(request: ApiRequest<T>): P
       const envelope = z.object({ data: z.unknown(), meta: z.object({ request_id: z.string().min(1).max(200) }).strict() }).strict().safeParse(payload);
       if (!envelope.success) throw new FrontendApiError('MALFORMED_RESPONSE', response.status, null, 'CONTRACT');
       const parsed = request.schema.safeParse(envelope.data.data);
-      if (!parsed.success) throw new FrontendApiError('MALFORMED_RESPONSE', response.status, null, 'CONTRACT');
+      if (!parsed.success) throw new FrontendApiError('MALFORMED_RESPONSE', response.status, envelope.data.meta.request_id, 'CONTRACT');
       return { data: parsed.data, requestId: envelope.data.meta.request_id };
     }
     const parsed = failureEnvelope.safeParse(payload);
