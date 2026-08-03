@@ -150,3 +150,25 @@ P1 不得在仅有远程源码时正式关闭。
 # NO_GO_PENDING_LOCAL_VALIDATION
 
 远程源码把历史缺口推进到 `IMPLEMENTED_AWAITING_LOCAL_VALIDATION`，但运行证据和治理门禁尚未满足。
+
+## 10. LOCAL_REMEDIATION_VALIDATION（2026-08-03）
+
+| Evidence area | Local result | Traceability effect |
+|---|---|---|
+| Full repository gate | `npm run check` passed；111 files / 571 tests；typecheck/build passed | 本地回归证据已满足，不等同于正式 P1 closure |
+| Wave 13 gates | 6 verifiers passed；12 files / 60 tests passed | Staff Auth、File、Evidence、Refund、DTO 和 migration 源码门禁已运行 |
+| Empty Local D1 | 0001–0027；Schema 27；117 app tables；221 triggers；10 views；FK 0；integrity ok | 空库迁移与当前 Schema 运行证据已满足 |
+| Local D1 26→27 | only 0027 applied；Staff/Customer seed preserved；session_version=1；Customer Auth schema unchanged | 升级兼容与既有认证边界证据已满足 |
+| Staff Auth cleanup | 24h、100 rows/table/batch、continuation、retention、fail-closed tests passed | Task 5.3 本地行为证据已满足；无 Cron/Scheduled Handler |
+| R2 boundaries | Mock 2 files / 11 tests passed | fault/compensation 本地 Mock 证据已满足；真实/生产 R2 未验证 |
+| Default App / DTO / replay | 3 files / 8 tests passed | 运行时装配、递归泄漏与 replay 边界已验证 |
+| OpenSpec CLI | 52 Requirements / 104 Scenarios；target 1/1、all 2/2 strict passed | 结构与 CLI strict gate 已满足 |
+| OpenSpec Verify | `NOT_AVAILABLE` | 正式 reconciliation 仍开放，25.x 不勾选 |
+
+环境只出现两类非致命告警：npm allow-scripts 覆盖提示，以及 Wrangler 无法写用户 Preferences 日志；命令本身均成功。Ponytail、浏览器/真实飞书、生产 R2、PR、Integration、部署、main 推进均未运行。
+
+## 11. Updated Traceability Conclusion
+
+# NO_GO_PENDING_OPENSPEC_VERIFY
+
+本地验证项可以进入总控复核，但正式 OpenSpec Verify 仍不可用；52/104 不作“全部正式核对完成”声明，P1 保持未正式关闭。

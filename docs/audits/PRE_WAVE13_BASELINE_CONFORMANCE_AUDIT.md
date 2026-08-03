@@ -226,3 +226,26 @@ Wave 13 保持 52 Requirements / 104 Scenarios：
 # NO_GO_PENDING_LOCAL_VALIDATION
 
 远程源码足以证明修复已经实现到 Feature，但不足以证明运行正确、P1 正式关闭或允许进入 Integration。
+
+## 12. LOCAL_REMEDIATION_VALIDATION（2026-08-03）
+
+本地修复后的运行证据如下；它补充第 7、10、11 节的“未运行”状态，但不改写历史快照：
+
+- `npm ci` 成功；`npm run check` 成功，Vitest 111 files / 571 tests 全部通过，typecheck 与 build 通过；
+- `npm run check:wave13`、`npm run test:wave13`、`npm run db:verify`、migration guards 全部通过；Wave 13 定向套件为 12 files / 60 tests；
+- 空库通过 Wrangler Local D1 依次应用 0001–0027；Schema 27、117 张应用表（另有 2 张 D1 平台表）、221 个 Trigger、10 个 View，`foreign_key_check=0`、`integrity_check=ok`；
+- 真实 26→27 本地升级只应用 `0027_staff_auth_sessions.sql`；升级前 Staff 与 Customer Auth 数据保留，`staff_users.session_version` 回填/默认值为 1，既有 `customer_login_rate_limits` 与 `customer_auth_security_events` 结构未变化；
+- Staff Auth 临时数据清理覆盖 24 小时保留、每表每批最多 100 行、继续批处理、近期/issued/blocked 保留以及失败先于 state/session 创建；未增加 Cron 或 Scheduled Handler；
+- R2 仅使用仓库 Mock 验证 put/receipt/HEAD、D1 final commit、compensation、delete-pending 与 retry：2 files / 11 tests 通过；本地配置无真实 R2 binding，生产 R2 未运行；
+- Default App、递归 DTO 与 logout-all replay 定向验证为 3 files / 8 tests 通过；
+- OpenSpec 计数仍为 52 Requirements / 104 Scenarios；目标 strict validation 1/1、全仓 strict validation 2/2 通过；历史审计 change 保留 6 条既有 INFO，不构成失败；
+- 当前可用 skills 中没有 `openspec-verify-change`，因此 `OPENSPEC_VERIFY=NOT_AVAILABLE`，未用普通 CLI 冒充正式 Verify；
+- 非致命环境告警：npm allow-scripts 未覆盖 esbuild/fsevents/workerd；Wrangler 无权写用户 Preferences 日志，但 Local D1 命令与 dry-run 均以 0 退出。
+
+未执行且不得声称完成：正式 OpenSpec Verify、Ponytail、浏览器/真实飞书、生产 R2、PR、Integration、部署或 main 推进。
+
+## 13. Local Remediation Status
+
+# NO_GO_PENDING_OPENSPEC_VERIFY
+
+本地代码与运行门禁已通过，可以交还总控复核；正式 Verify 不可用，因此本审计不关闭 P1，也不授权 Integration 或部署。

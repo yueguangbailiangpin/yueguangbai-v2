@@ -202,3 +202,23 @@ Customer-facing 历史 READY/READY_WITH_LIMITATIONS 结论保持历史参考，�
 # NO_GO_PENDING_LOCAL_VALIDATION
 
 正式前端不得把远程测试源码存在误当成运行通过。只有完整本地门禁、D1/R2、OpenSpec Verify 和总控审查完成后，才能重新判断 readiness。
+
+## 17. LOCAL_REMEDIATION_VALIDATION（2026-08-03）
+
+本地修复后，后端面向前端的运行基线已取得以下证据：
+
+- 完整 `npm run check` 通过：111 files / 571 tests，typecheck 和 build 均通过；Wave 13 定向 12 files / 60 tests 通过；
+- 默认 App、递归 DTO 与 logout-all replay 为 3 files / 8 tests 通过；401/403/404、authority header bypass、Session/replay 和敏感字段边界由运行测试覆盖；
+- Local D1 空库 0001–0027 与真实 26→27 升级均通过；最终 Schema 27、117 张应用表、221 个 Trigger、10 个 View、FK 0、integrity ok；既有 Staff/Customer 数据保留，Customer Auth 表结构不漂移；
+- R2 put/HEAD/final-commit/compensation/delete-pending/retry 仅以仓库 Mock 运行，2 files / 11 tests 通过；本地配置没有真实 R2 binding，生产 R2 未运行；
+- OpenSpec 仍为 52 Requirements / 104 Scenarios，目标与全仓 strict validation 分别 1/1、2/2 通过；
+- `openspec-verify-change` skill 不可用，`OPENSPEC_VERIFY=NOT_AVAILABLE`；正式 Verify 未执行；
+- npm allow-scripts 与 Wrangler 用户日志权限提示均为非致命环境告警。
+
+没有运行浏览器、真实飞书、中国大陆网络、生产 R2、Ponytail、PR、Integration、部署或 main 推进。
+
+## 18. Updated Recommendation
+
+# NO_GO_PENDING_OPENSPEC_VERIFY
+
+后端本地门禁与前端所需 API/DTO 运行基线已通过，可交总控复核；正式 Verify 缺失，因此仍不得标记 READY、关闭 P1、进入 Integration 或部署。

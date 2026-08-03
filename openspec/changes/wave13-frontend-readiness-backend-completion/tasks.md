@@ -146,15 +146,15 @@
 
 ## 23. Local Validation
 
-- [ ] 23.1 运行依赖安装和完整 `npm run check`。
-- [ ] 23.2 运行真实 D1 migration/behavior 与 R2 fault/compensation 验收。
-- [ ] 23.3 记录真实 test files/tests/build/counts/warnings；当前不得声称通过。
+- [x] 23.1 运行依赖安装和完整 `npm run check`。
+- [x] 23.2 运行真实本地 D1 migration/behavior 与 R2 Mock fault/compensation 验收；本地配置无真实 R2 binding，生产 R2 未运行。
+- [x] 23.3 记录真实 test files/tests/build/counts/warnings；完整门禁为 111 files / 571 tests，typecheck/build 通过，非致命 npm/Wrangler 警告已记录。
 
 ## 24. OpenSpec Validation
 
 - [x] 24.1 历史上曾对本 Change 执行 strict validation；本次语义更新后尚未重新运行。
 - [x] 24.2 历史上曾执行 repository-wide strict validation；本次语义更新后尚未重新运行。
-- [ ] 24.3 重新运行 OpenSpec CLI strict validation，确认 52 Requirements / 104 Scenarios 和 Delta 结构。
+- [x] 24.3 重新运行 OpenSpec CLI strict validation，确认 52 Requirements / 104 Scenarios 和 Delta 结构。
 
 ## 25. OpenSpec Verify
 
