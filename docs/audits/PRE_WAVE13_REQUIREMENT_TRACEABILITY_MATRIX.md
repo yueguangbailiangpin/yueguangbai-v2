@@ -248,3 +248,11 @@ Integration 重新验证未改变 Requirement/Scenario 分类：
 - 未运行 Ponytail、未推进 main、未部署、未开始 Wave 14。
 
 `WAVE13_INTEGRATION_VALIDATED_PENDING_MAIN`
+
+## 16. OPENSPEC_SYNC_ARCHIVE_REMEDIATION（2026-08-03）
+
+Wave 13 的 Integration 先完成而 OpenSpec sync/archive 后补，属于治理顺序遗漏；补正只在现有 Integration 分支追加普通 Commit，未重写、删除或伪造 Git 历史。六份 Delta Spec 已同步至 main specs，合计 52 Requirements / 104 Scenarios，保留最终 Staff Auth、File、Evidence、Refund Contract、138 Route Inventory 关闭依据和内部沟通 Purpose 延期至 Wave 15 的批准范围缩减。
+
+Wave 13 Change 已归档，Pre-Wave13 Audit Change 保持 active；归档 Tasks 为 85 completed / 2 pending，两个 pending 均为 `SKIPPED_BY_CONTROLLER` 的 Ponytail 主动跳过，不是实现或验证缺口。完整门禁、Wave 13 测试、strict OpenSpec 与 fresh Local D1 均重新通过；Integration 未开发新业务行为，main 尚未推进，生产验证项仍开放。
+
+`WAVE13_ARCHIVED_INTEGRATION_VALIDATED_READY_FOR_MAIN`

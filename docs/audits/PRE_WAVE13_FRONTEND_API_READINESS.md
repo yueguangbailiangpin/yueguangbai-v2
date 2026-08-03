@@ -269,3 +269,12 @@ Backend baseline 在 Integration 分支完成复验：基线为 `origin/main`，
 Integration 只做验证，没有开发新业务行为；未修改源码、Contracts、Migration、测试、Verifier、package-lock 或部署配置。未运行 Ponytail，未推进 main，未部署，未开始 Wave 14。
 
 `WAVE13_INTEGRATION_VALIDATED_PENDING_MAIN`
+
+## 23. OPENSPEC_SYNC_ARCHIVE_REMEDIATION（2026-08-03）
+
+- Integration 先完成、再完成 OpenSpec sync/archive 是治理顺序遗漏；本补正仅在现有 Integration 追加普通治理 Commit，未重写、删除或伪造历史。
+- 六份 Delta Spec 已同步至 main specs，52 Requirements / 104 Scenarios 已进入主规格，包含最终 Staff Auth、File、Evidence、Refund Contract、138 Route Inventory 关闭依据及内部沟通 Purpose 延期至 Wave 15 的批准范围缩减。
+- Wave 13 Change 已归档，Pre-Wave13 Audit Change 保持 active；归档 Tasks 为 85/2，两个 pending 均为 `SKIPPED_BY_CONTROLLER` 的 Ponytail 主动跳过。
+- 完整门禁、Wave 13 测试、strict OpenSpec 与 fresh Local D1 已重新通过；Integration 没有开发新业务行为，main 尚未推进，生产验证项继续开放。
+
+`WAVE13_ARCHIVED_INTEGRATION_VALIDATED_READY_FOR_MAIN`

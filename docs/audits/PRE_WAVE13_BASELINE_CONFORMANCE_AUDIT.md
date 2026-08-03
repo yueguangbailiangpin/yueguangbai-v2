@@ -345,3 +345,12 @@ Integration 最终状态：
 `WAVE13_INTEGRATION_VALIDATED_PENDING_MAIN`
 
 本节不表示 `MAIN_ADVANCED`、`PRODUCTION_GO`、`DEPLOYED` 或 `WAVE14_STARTED`。
+
+## 18. OPENSPEC_SYNC_ARCHIVE_REMEDIATION（2026-08-03）
+
+- 原 Integration 先完成、后进行 OpenSpec sync/archive 属治理顺序遗漏；本节在现有 Integration 上以普通治理 Commit 补正，未重写、删除或伪造任何 Git 历史。
+- Wave 13 的六份 Delta Spec 已同步到 main specs，包含 52 Requirements / 104 Scenarios、最终 Staff Auth、File、Evidence、Refund Contract、138 Route Inventory 关闭依据，以及内部沟通 Purpose 延期至 Wave 15 的批准范围缩减事实。
+- Wave 13 Change 已归档；Pre-Wave13 Audit Change 保持 active。归档 Tasks 为 85 completed / 2 pending，两个 pending 均为总控主动跳过的 Ponytail 审查（`SKIPPED_BY_CONTROLLER`），不构成业务、测试、Verify 或 Integration 缺失。
+- 完整门禁、Wave 13 专项测试、strict OpenSpec 验证与 fresh Local D1 已重新通过；Integration 未开发任何新业务行为。main 尚未推进，生产验证项仍保持开放。
+
+`WAVE13_ARCHIVED_INTEGRATION_VALIDATED_READY_FOR_MAIN`
