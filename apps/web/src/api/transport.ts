@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { approvedApiPath } from '../config/runtime-config';
 import { failureEnvelope, retryAfterMilliseconds } from './envelopes';
-import { FrontendApiError, categoryForStatus } from './errors';
+import { FrontendApiError, categoryForStatus, projectSafeDetails } from './errors';
 
 type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export type ApiRequest<T extends z.ZodType> = Readonly<{
@@ -38,10 +38,18 @@ export async function apiRequest<T extends z.ZodType>(request: ApiRequest<T>): P
     }
     const parsed = failureEnvelope.safeParse(payload);
     if (!parsed.success) throw new FrontendApiError('MALFORMED_ERROR', response.status, null, 'CONTRACT');
-    throw new FrontendApiError(parsed.data.error.code, response.status, parsed.data.meta.request_id, categoryForStatus(response.status), retryAfter);
+    throw new FrontendApiError(
+      parsed.data.error.code,
+      response.status,
+      parsed.data.meta.request_id,
+      categoryForStatus(response.status),
+      retryAfter,
+      projectSafeDetails(parsed.data.error.code, parsed.data.error.details),
+    );
   } catch (error: unknown) {
     if (error instanceof FrontendApiError) throw error;
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (request.signal?.aborted
+      || (error instanceof DOMException && error.name === 'AbortError')) {
       throw new FrontendApiError('CANCELED', 0, null, 'CANCELED');
     }
     throw new FrontendApiError('NETWORK_FAILURE', 0, null, 'NETWORK');

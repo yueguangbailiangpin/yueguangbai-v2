@@ -2,7 +2,7 @@ import { isFrontendApiError } from './errors';
 
 export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
   if (failureCount >= 2) return false;
-  if (!isFrontendApiError(error)) return true;
+  if (!isFrontendApiError(error)) return false;
   return error.category === 'NETWORK';
 }
 
