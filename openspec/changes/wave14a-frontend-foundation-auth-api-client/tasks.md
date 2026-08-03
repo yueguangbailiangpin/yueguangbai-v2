@@ -171,3 +171,10 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 ## Controller Dedicated-Link Amendment
 
 - [x] Amend root to a dedicated-link notice, retain direct login routes, fail closed on Customer mismatch with logout plus two-root cleanup, and align Session adapters with real `{ session: ... }` data.
+
+## CONTINUATION_A3_EVIDENCE
+
+- Staff ordinary logout and logout-all use the single credentialed Transport; logout-all holds one in-memory Idempotency-Key per confirmed logical operation.
+- Staff cleanup uses only the Staff query root; Customer roots are not touched by these actions.
+- Logout-all is protected by a labeled modal confirmation with Escape, focus cycling, and focus restoration.
+- MSW remains deferred to A4. File Transfer, remaining primitives, formal browser acceptance, and OpenSpec Verify remain pending.
