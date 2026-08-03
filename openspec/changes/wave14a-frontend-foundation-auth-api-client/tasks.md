@@ -9,6 +9,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - [x] 0.3 Create Proposal, Design, Tasks, seven Delta Specs, and six References inside this Change only.
 - [x] 0.4 Run the unchanged-baseline `npm ci` and complete repository regression gate after planning artifacts were written.
 - [x] 0.5 Run planning counts, static review, diff checks, and final Change-only Git scope verification.
+- [x] 0.6 Complete Controller Review Remediation: remove the non-formal Staff internal-communication route from the frontend inventory, freeze `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`, preserve 42/84, and start no implementation.
 
 ## 1. Existing Frontend Inventory
 
@@ -87,7 +88,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 19. Session Cache Isolation
 
-- [ ] 19.1 Implement three state machines, 401 domain transition, 403/404 retention, dependency state, query cancellation, and scoped cache removal.
+- [ ] 19.1 Implement three separate state machines plus Customer shared-transport invalidation: Customer login/mismatch/logout/401 clears Buyer+Seller, Staff 401 clears Staff only, and 403/404 changes no Session.
 
 ## 20. File Transfer Client
 
@@ -112,7 +113,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 25. MSW Tests
 
-- [ ] 25.1 Add real `/api/*` mock coverage for credentials, envelopes, identity, statuses, retry/cancel, versions, idempotency, and file transfer.
+- [ ] 25.1 Add real `/api/*` mock coverage for credentials, envelopes, identity, statuses, retry/cancel, versions, idempotency, file transfer, Customer two-root invalidation, Staff-only invalidation, mismatch non-navigation, and phantom internal-communication route rejection.
 
 ## 26. Playwright Smoke
 

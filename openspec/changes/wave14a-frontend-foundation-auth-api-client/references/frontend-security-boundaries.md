@@ -6,10 +6,10 @@ The browser is untrusted. D1-backed Worker Sessions, permissions, assignments, d
 
 ## Identity Separation
 
-- Buyer, Seller, and Staff use separate frontend Session state machines, providers/boundaries, query-key roots, route guards, and logout cache teardown.
-- Buyer and Seller consume the real shared Customer Auth Cookie. The frontend validates `account_type` for the requested domain and never converts a Buyer session into Seller authority or vice versa.
+- Buyer, Seller, and Staff use separate frontend Session state machines, providers/boundaries, query-key roots, route guards, and shells.
+- Buyer and Seller consume the real shared Customer Auth Cookie. They retain independent UI/cache namespaces but share `CUSTOMER_TRANSPORT_INVALIDATION_GROUP` for Cookie replacement/loss. The frontend validates `account_type` and never converts a Buyer session into Seller authority or vice versa.
 - Staff uses the separate Staff Auth Cookie and Staff Auth routes.
-- A 401 affects only the request's identity state. 403 and 404 never cause logout.
+- Customer login success or mismatch, Customer logout success, Customer Session 401, and any Buyer/Seller protected-API 401 cancel both Customer domains, clear both Customer roots, and reset/re-resolve both Customer states. Staff remains unchanged. Staff 401 clears only Staff. 403 and 404 change no Session state.
 - Session data is not rendered before successful resolution, and previous-identity cached data is not shown during loading.
 
 ## Credential and Secret Boundary
@@ -38,7 +38,7 @@ One logical mutation creates one cryptographically random `Idempotency-Key` in o
 
 ## Query Cache Boundary
 
-Query keys begin with an identity discriminator and then resource/domain identifiers. They do not rely on display names. Logout cancels in-flight queries and removes only the matching identity root. Sensitive caches are memory-only, have conservative stale/gc behavior, and never hydrate across identity roots. Mutation responses invalidate only documented identity-domain resources.
+Query keys begin with an identity discriminator and then resource/domain identifiers. They do not rely on display names. Customer login/mismatch/logout/401 cancels in-flight Buyer and Seller queries and removes both Customer roots before any matching domain is authenticated. Staff logout/401 removes only Staff. Sensitive caches are memory-only, have conservative stale/gc behavior, and never hydrate across identity roots. Mutation responses invalidate only documented identity-domain resources.
 
 ## File Boundary
 
@@ -59,8 +59,8 @@ Return paths are allowlisted relative application paths within the same identity
 
 | Risk | Required control |
 |---|---|
-| Shared Customer Cookie causes Buyer/Seller confusion | Validate `account_type`, separate state/query roots, never render stale opposite-domain data. |
-| Cached private data survives logout | Cancel and remove matching identity queries synchronously before navigation. |
+| Shared Customer Cookie causes Buyer/Seller confusion | Validate `account_type`, retain separate state/query roots, and invalidate both Customer roots on every Cookie replacement/loss event. |
+| Cached private data survives logout or new Customer login | Cancel/remove Buyer and Seller together before navigation/authentication; Staff remains isolated. |
 | Malformed server payload reaches components | Zod-validate envelope and DTO at the client boundary; sanitized contract error. |
 | Mutation duplicate on retry | Operation-owned idempotency key, immutable body hash assumption, mutation retry off. |
 | Stale version overwrites current state | Latest server DTO only; conflict refresh and explicit user re-review. |

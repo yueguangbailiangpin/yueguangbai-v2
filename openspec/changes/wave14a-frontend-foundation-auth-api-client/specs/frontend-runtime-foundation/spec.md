@@ -18,7 +18,7 @@ The frontend SHALL mount the application under React StrictMode, SHALL validate 
 
 ### Requirement: Provider ownership is explicit and identity-safe
 
-The frontend SHALL compose StrictMode, Root Error Boundary, Router, Query Client, identity-specific Session Boundary, and Route Shell with explicit ownership. It SHALL NOT create a universal Buyer/Seller/Staff Auth Context or general-purpose global store.
+The frontend SHALL compose StrictMode, Root Error Boundary, Router, Query Client, identity-specific Session Boundary, and Route Shell with explicit ownership. Buyer and Seller MAY share only a transport invalidation coordinator that cancels/clears both Customer roots and resets their independent states when the shared Cookie changes; it SHALL own no authenticated identity or business data. The frontend SHALL NOT create a universal Buyer/Seller/Staff Auth Context or general-purpose global store.
 
 #### Scenario: Matching identity route
 
@@ -27,8 +27,8 @@ The frontend SHALL compose StrictMode, Root Error Boundary, Router, Query Client
 
 #### Scenario: Cross-identity provider access
 
-- **WHEN** Buyer code attempts to consume Seller/Staff Session state or any route lacks its required identity boundary
-- **THEN** the architecture/test fails closed and no opposite-domain cached data is rendered.
+- **WHEN** Buyer code attempts to consume Seller/Staff Session authority, the invalidation coordinator carries combined auth data, or any route lacks its required identity boundary
+- **THEN** the architecture/test fails closed while still allowing group-wide Customer cache cancellation, and no opposite-domain cached data is rendered.
 
 ### Requirement: Runtime configuration is minimal and origin-relative
 
@@ -46,7 +46,7 @@ The frontend SHALL send business requests only to origin-relative `/api/*`, SHAL
 
 ### Requirement: Server state uses one controlled TanStack Query runtime
 
-The frontend SHALL use TanStack Query for server state, cancellation, invalidation, and cache lifetime, SHALL use React state or narrow Context for local UI state, and SHALL NOT add Redux, MobX, or a universal store. Sensitive Query state SHALL remain memory-only.
+The frontend SHALL use TanStack Query for server state, cancellation, invalidation, and cache lifetime, including atomic cancellation/removal of both Customer roots by `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`. It SHALL use React state or narrow Context for local UI state and SHALL NOT add Redux, MobX, or a universal store. Sensitive Query state SHALL remain memory-only.
 
 #### Scenario: Server query lifecycle
 

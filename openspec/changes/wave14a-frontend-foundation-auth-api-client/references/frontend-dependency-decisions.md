@@ -22,7 +22,7 @@
 
 ## State Management
 
-Local UI state uses React component state. Small stable cross-component UI state may use narrowly scoped Context. Remote/server state uses TanStack Query. Identity-specific Session boundaries are separate and may coordinate with their own Query Client access, but no mixed Auth Context, Redux, MobX, generic event bus, or universal store is introduced.
+Local UI state uses React component state. Small stable cross-component UI state may use narrowly scoped Context. Remote/server state uses TanStack Query. Identity-specific Session boundaries remain separate. A narrow `CUSTOMER_TRANSPORT_INVALIDATION_GROUP` coordinator may cancel/clear the Buyer and Seller query roots together when their shared Cookie is replaced or lost; it carries no combined authenticated identity, role, permission, or business data. No mixed Auth Context, Redux, MobX, generic event bus, or universal store is introduced.
 
 Sensitive Query caches are memory-only. There is no localStorage/sessionStorage persistence of session, token, role, permission, organization authority, upload/read token, or business response cache.
 

@@ -45,7 +45,7 @@ React Router defines public `/`, three login routes, a Staff callback transition
 
 ## 6. Identity Domain Separation
 
-Buyer, Seller, and Staff have distinct Session state types, controller hooks, route guards, query-key factories, and cache cleanup functions. Customer Auth's shared Cookie is acknowledged explicitly: Buyer requires `account_type=BUYER`; Seller requires `SELLER_MEMBER`. A mismatch is unauthenticated for that frontend domain. Staff cannot consume Customer Session and Customer domains cannot consume Staff Session.
+Buyer, Seller, and Staff have distinct Session state types, controller hooks, route guards, query-key factories, and shell ownership. Customer Auth's shared Cookie is acknowledged explicitly: Buyer requires `account_type=BUYER`; Seller requires `SELLER_MEMBER`. Buyer and Seller therefore share a transport invalidation coordinator named `CUSTOMER_TRANSPORT_INVALIDATION_GROUP` without sharing UI state or authority. A successful Customer login first cancels and clears both Customer roots, then authenticates only the server-returned matching domain. Mismatch does not enter the opposite shell. Staff cannot consume Customer Session, Customer domains cannot consume Staff Session, and Staff state/cache is never changed by Customer invalidation.
 
 ## 7. Root Entry
 
@@ -73,7 +73,7 @@ Zod schemas model the success/error envelope and the exact fields used by each W
 
 ## 13. Query Key Architecture
 
-Keys use immutable factories such as `['buyer', 'session']`, `['seller', 'session']`, and `['staff', 'session']`, followed by resource name and canonical filters/IDs. No key crosses an identity root. Query cancellation uses the provided `AbortSignal`. Session/logout code cancels and removes only its matching identity root. Sensitive data is never persisted or hydrated from browser storage.
+Keys use immutable factories such as `['buyer', 'session']`, `['seller', 'session']`, and `['staff', 'session']`, followed by resource name and canonical filters/IDs. No key crosses an identity root. Query cancellation uses the provided `AbortSignal`. Customer login, account-type mismatch, Customer logout, Customer Session 401, or Buyer/Seller protected-API 401 cancels Buyer and Seller requests and removes both Customer roots. Staff logout/401 cancels and removes only Staff. Sensitive data is never persisted or hydrated from browser storage.
 
 ## 14. Error Architecture
 
@@ -85,7 +85,7 @@ A mutation action allocates one random key when the user begins the logical oper
 
 ## 16. Session State Machines
 
-Each identity implements `UNKNOWN → LOADING → AUTHENTICATED | UNAUTHENTICATED | DEPENDENCY_ERROR`. A refresh/retry may return to LOADING. 401 transitions only the matching domain to UNAUTHENTICATED and removes that domain's protected cache. 503/network/contract failure transitions to DEPENDENCY_ERROR without claiming logout. 403/404 stay AUTHENTICATED. Protected content is absent until AUTHENTICATED.
+Each identity implements `UNKNOWN → LOADING → AUTHENTICATED | UNAUTHENTICATED | DEPENDENCY_ERROR`. A refresh/retry may return to LOADING. A validated Customer 401 resets both Buyer and Seller to UNAUTHENTICATED or forces fresh resolution after canceling/clearing both Customer roots; a Staff 401 resets only Staff and clears only Staff. Customer login success and account-type mismatch use the same two-root invalidation before authenticating only the matching domain or showing a safe mismatch entry. 503/network/contract failure transitions to DEPENDENCY_ERROR without claiming logout. 403/404 change no Session state. Protected content is absent until AUTHENTICATED.
 
 ## 17. Staff Auth Flow
 
@@ -93,7 +93,7 @@ The UI posts `return_to` to `/api/staff-auth/login/start`, validates the returne
 
 ## 18. Buyer/Seller Auth Inventory
 
-Both login pages post the real `login_identifier` and `password` to `/api/customer-auth/login`; neither invents OAuth or a unified role picker. The resulting `CustomerHttpSession.account_type` must match the requested domain. Password-change-required is a 403 workflow state requiring the real change-password endpoint, not logout. Buyer alone may expose the real self-registration route later within approved scope; Wave 14A plans login/session foundation, not a full registration business page.
+Both login pages post the real `login_identifier` and `password` to `/api/customer-auth/login`; neither invents OAuth or a unified role picker. On success, the shared Cookie may have replaced the prior Customer identity, so both Customer roots are canceled/cleared before `CustomerHttpSession.account_type` authenticates only its matching domain. If the type does not match the requested login, neither Customer shell is entered automatically; the user receives a safe mismatch notice and the correct entry link. Password-change-required is a 403 workflow state requiring the real change-password endpoint, not logout. Buyer alone may expose the real self-registration route later within approved scope; Wave 14A plans login/session foundation, not a full registration business page.
 
 ## 19. File Transfer State Machine
 
@@ -130,7 +130,7 @@ Smoke runs against the production Web build with deterministic mocked/local netw
 
 ## 26. Security Boundaries
 
-No browser storage for secrets/session/query cache; no Cookie reads; no client authority; no cross-identity query keys; no `/api/v2`; no hard-coded production host. Return paths are same-origin/identity allowlisted. Errors are allowlisted. File and idempotency tokens are memory-only. Logout cancels/removes matching queries before navigation. Backend remains final for Session, Permission, Scope, state, version, and file access.
+No browser storage for secrets/session/query cache; no Cookie reads; no client authority; no cross-identity query keys; no `/api/v2`; no hard-coded production host. Return paths are same-origin/identity allowlisted. Errors are allowlisted. File and idempotency tokens are memory-only. Customer transport invalidation cancels/removes Buyer and Seller roots together; Staff invalidation remains Staff-only. Backend remains final for Session, Permission, Scope, state, version, and file access.
 
 ## 27. Dependency Decisions
 

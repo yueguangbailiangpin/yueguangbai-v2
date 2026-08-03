@@ -70,7 +70,7 @@ The Staff shell is left queue + center detail + right review actions at wide wid
 | `UNAUTHENTICATED` | Navigate to that identity's login with an allowlisted relative return path. |
 | `DEPENDENCY_ERROR` | Render retryable `DependencyUnavailable`; do not mislabel as logged out. |
 
-403 renders `PermissionDenied` inside the matching shell and does not log out. 404 renders `NotFound` and does not log out. 401 invalidates only the matching frontend Session domain. Customer `account_type` mismatch is treated as unauthenticated for the requested domain without borrowing authority from the other domain.
+403 renders `PermissionDenied` inside the matching shell and does not log out. 404 renders `NotFound` and does not log out. A Staff 401 invalidates only Staff. A Customer Session/protected-API 401 invalidates Buyer and Seller together through `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`; Staff remains unchanged. Customer login success first clears both Customer roots and authenticates only the server-returned matching domain. `account_type` mismatch clears both Customer roots, renders a safe mismatch message and correct entry, and never automatically enters the opposite shell or borrows its cache.
 
 ## Route State Preservation
 

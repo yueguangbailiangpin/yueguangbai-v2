@@ -4,7 +4,7 @@
 
 ### Requirement: Web unit tests cover deterministic foundation policy
 
-Vitest unit tests SHALL cover runtime configuration, route/return-path parsing, query-key factories, envelope/Zod parsing, error/status/retry mapping, Retry-After bounds, idempotency lifecycle, Session reducers, and file transfer reducers. Tests SHALL include normal and security/edge cases and SHALL not weaken existing Node test configuration.
+Vitest unit tests SHALL cover runtime configuration, route/return-path parsing, query-key factories, envelope/Zod parsing, error/status/retry mapping, Retry-After bounds, idempotency lifecycle, Session reducers, Customer transport invalidation, and file transfer reducers. Tests SHALL include normal and security/edge cases and SHALL not weaken existing Node test configuration.
 
 #### Scenario: Foundation unit suite
 
@@ -13,8 +13,8 @@ Vitest unit tests SHALL cover runtime configuration, route/return-path parsing, 
 
 #### Scenario: Malformed, cross-domain, or stale input
 
-- **WHEN** inputs are unsafe, canceled, stale, malformed, cross-identity, or persistence-seeking
-- **THEN** tests prove fail-closed behavior without network or protected-data leakage.
+- **WHEN** inputs are unsafe, canceled, stale, malformed, cross-identity, persistence-seeking, or attempt to preserve one Customer root during shared-Cookie replacement/loss
+- **THEN** tests prove fail-closed behavior, two-root Customer cleanup, Staff isolation, and no network/protected-data leakage.
 
 ### Requirement: Component tests exercise user behavior and accessibility
 
@@ -32,7 +32,7 @@ Testing Library, user-event, and jsdom SHALL test public/login/protected routing
 
 ### Requirement: MSW tests validate the real network boundary
 
-MSW SHALL intercept the actual registered `/api/*` paths and assert credentials, methods, headers, exact envelopes, identity account types, AbortSignal effects, retry policy, idempotency-key reuse, expected_version, file multipart/token flow, and safe error fields. Tests SHALL NOT depend only on mocking hook/client return values.
+MSW SHALL intercept the actual formal `/api/*` paths and assert credentials, methods, headers, exact envelopes, identity account types, AbortSignal effects, retry policy, idempotency-key reuse, expected_version, file multipart/token flow, and safe error fields. It SHALL prove Buyer logout and Seller logout each clear Buyer+Seller; Customer 401 clears Buyer+Seller; Staff 401 clears Staff only; new Customer login/account-type replacement clears Buyer+Seller; mismatch does not enter the opposite shell; and 403/404 clear no Session. It SHALL reject any phantom internal-communication route as absent. Tests SHALL NOT depend only on mocking hook/client return values.
 
 #### Scenario: Valid mocked API flow
 
@@ -41,8 +41,8 @@ MSW SHALL intercept the actual registered `/api/*` paths and assert credentials,
 
 #### Scenario: Network/contract/security failure
 
-- **WHEN** MSW returns malformed envelopes, forbidden fields, 401/403/404/409/422/429/503, delay/cancel, replay, or token expiry
-- **THEN** identity, retry, error, cache, and file rules remain exact and no unsafe data reaches UI.
+- **WHEN** MSW returns malformed envelopes, forbidden fields, Customer/Staff 401, 403/404/409/422/429/503, mismatch, delay/cancel, replay, token expiry, or a request targets a non-formal internal-communication route
+- **THEN** Customer two-root invalidation, Staff-only invalidation, mismatch non-navigation, 403/404 retention, route rejection, retry/error/cache/file rules remain exact and no unsafe data reaches UI.
 
 ### Requirement: Build, security, regression, and browser smoke gates remain mandatory
 

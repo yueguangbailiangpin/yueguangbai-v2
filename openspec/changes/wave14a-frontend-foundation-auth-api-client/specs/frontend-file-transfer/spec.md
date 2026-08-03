@@ -60,7 +60,7 @@ The client SHALL create a read intent from an authorized File ID and latest expe
 
 ### Requirement: File client never owns link, audience, or storage authority
 
-The general file client SHALL NOT call/create a generic entity link or audience grant, SHALL NOT accept/return `object_key`, permanent URL, owner actor, organization scope, or storage credential, and SHALL leave all business consumption to registered business commands. `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` upload remains deferred to Wave 15.
+The general file client SHALL NOT call/create a generic entity link or audience grant, SHALL NOT accept/return `object_key`, permanent URL, owner actor, organization scope, or storage credential, and SHALL leave all business consumption to registered business commands. `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` remains a historical global Purpose only; Wave 14A SHALL expose no upload intent or active Staff consume/Link/Grant HTTP capability, and its complete workflow SHALL remain deferred to Wave 15.
 
 #### Scenario: Business command consumes verified file
 

@@ -34,7 +34,7 @@ No Contract changes are proposed. The implementation consumes the current `@ygb/
 
 ## 7. Security Impact
 
-All requests use `credentials: include`. The frontend never reads HttpOnly cookies, stores session tokens, treats roles/permissions/scope as authority, embeds secrets, or persists sensitive Query data. Identity-specific query keys and cache teardown prevent cross-domain reuse. Errors exclude stack, SQL, object keys, Provider tokens, cookies, secrets, and raw internal exceptions. File tokens and idempotency keys live only in operation-scoped memory.
+All requests use `credentials: include`. The frontend never reads HttpOnly cookies, stores session tokens, treats roles/permissions/scope as authority, embeds secrets, or persists sensitive Query data. Identity-specific query keys prevent cross-domain reuse, while Buyer and Seller participate in one `CUSTOMER_TRANSPORT_INVALIDATION_GROUP` because their shared Customer Cookie can be replaced or invalidated by either domain. Customer login, account-type mismatch, Customer logout, or a validated Customer 401 cancels and clears both Customer roots without changing Staff. Errors exclude stack, SQL, object keys, Provider tokens, cookies, secrets, and raw internal exceptions. File tokens and idempotency keys live only in operation-scoped memory.
 
 ## 8. Visual Direction
 
@@ -58,7 +58,7 @@ Implementation proceeds as a frontend-only feature after controller freeze, usin
 
 ## 13. Risks
 
-- The Buyer and Seller frontend state domains consume one backend Customer Cookie; `account_type` mismatch must fail closed and identity cache keys must never overlap.
+- The Buyer and Seller frontend state/query namespaces consume one backend Customer Cookie; `account_type` mismatch must fail closed, both Customer roots must be invalidated on Customer transport replacement/loss, and Staff must remain unchanged.
 - Runtime Zod schemas can drift from TypeScript Contracts unless contract fixtures and negative tests remain paired.
 - Retry logic can duplicate mutations unless mutation retry is off by default and one logical operation owns one idempotency key.
 - File uploads span network, R2, and D1; cancellation, token expiry, replay, and compensation states require an explicit state machine.
@@ -72,8 +72,9 @@ Implementation proceeds as a frontend-only feature after controller freeze, usin
 - Displayed brand is only `月光白`; English brand names and `V2` are not customer-facing.
 - React Router, TanStack Query, Zod, Tailwind plus CSS variables, and lucide-react are frozen.
 - Buyer/Seller/Staff remain separate frontend session and query domains; no universal Auth Context exists.
+- Buyer/Seller form `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`: Customer login, mismatch, logout, and Customer 401 clear both Customer roots; Staff login/logout/401 clears only Staff.
 - Mutation retry is disabled by default; GET network retry is finite; 401/403/404/409/422 are not auto-retried.
-- `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` remains deferred to Wave 15.
+- `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` remains only a historical global Purpose in Wave 14A; it has no active upload intent, Staff consume, Link, or Grant HTTP capability, and its complete workflow remains deferred to Wave 15.
 
 ## 15. Deferred Work
 

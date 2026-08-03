@@ -4,7 +4,7 @@
 
 ### Requirement: Buyer, Seller, and Staff have independent frontend Session domains
 
-The frontend SHALL define separate Buyer, Seller, and Staff Session boundaries, controllers, route guards, query roots, and logout cleanup. Each SHALL use exactly `UNKNOWN`, `LOADING`, `AUTHENTICATED`, `UNAUTHENTICATED`, and `DEPENDENCY_ERROR`. It SHALL NOT expose a mixed-identity Auth Context or borrow another identity's roles/data.
+The frontend SHALL define separate Buyer, Seller, and Staff Session boundaries, controllers, route guards, query roots, and shells. Each SHALL use exactly `UNKNOWN`, `LOADING`, `AUTHENTICATED`, `UNAUTHENTICATED`, and `DEPENDENCY_ERROR`. Buyer and Seller MAY share only a narrow `CUSTOMER_TRANSPORT_INVALIDATION_GROUP` coordinator for cancel/reset/cache removal caused by their shared Cookie; it SHALL carry no combined authenticated identity or authority. The frontend SHALL NOT expose a mixed-identity Auth Context or borrow another identity's roles/data.
 
 #### Scenario: Matching Session resolution
 
@@ -18,45 +18,45 @@ The frontend SHALL define separate Buyer, Seller, and Staff Session boundaries, 
 
 ### Requirement: Buyer login follows the real Customer Auth Contract
 
-`/buyer/login` SHALL post `login_identifier` and `password` to `POST /api/customer-auth/login`, SHALL validate `CustomerLoginResponse`, and SHALL accept authentication only when `account_type` is `BUYER`. Session refresh SHALL use `GET /api/customer-auth/session`; required password change SHALL remain a distinct workflow and SHALL NOT be treated as logout.
+`/buyer/login` SHALL post `login_identifier` and `password` to `POST /api/customer-auth/login`, SHALL validate `CustomerLoginResponse`, and SHALL accept authentication only when `account_type` is `BUYER`. Because success replaces the shared Cookie, it SHALL first cancel and clear both Customer roots. Session refresh SHALL use `GET /api/customer-auth/session`; required password change SHALL remain a distinct workflow and SHALL NOT be treated as logout.
 
 #### Scenario: Buyer account login
 
 - **WHEN** valid credentials return an active BUYER Session
-- **THEN** Buyer state becomes AUTHENTICATED and the allowlisted Buyer return route is entered without reading the Cookie.
+- **THEN** Buyer and Seller protected requests/caches are first canceled/cleared, Buyer becomes AUTHENTICATED, Seller remains UNAUTHENTICATED/unresolved, and the allowlisted Buyer return route is entered without reading the Cookie.
 
 #### Scenario: Seller account or password-change state
 
 - **WHEN** the Buyer login receives `SELLER_MEMBER` or the server requires a password change
-- **THEN** Buyer protected content remains unavailable and the UI shows the correct domain-mismatch or password-change action without inventing authority.
+- **THEN** both Customer roots are cleared, no Seller shell is entered automatically, Buyer protected content remains unavailable, and the UI shows the safe mismatch/correct Seller entry or password-change action without inventing authority.
 
 ### Requirement: Seller login follows the real Customer Auth Contract
 
-`/seller/login` SHALL use the same real Customer Auth endpoints but SHALL accept authentication only when `account_type` is `SELLER_MEMBER`. It SHALL NOT offer a client-side role/account-type selector that overrides the server response or unify Buyer and Seller Session authority.
+`/seller/login` SHALL use the same real Customer Auth endpoints but SHALL accept authentication only when `account_type` is `SELLER_MEMBER`. Successful login SHALL first cancel and clear both Customer roots. It SHALL NOT offer a client-side role/account-type selector that overrides the server response or unify Buyer and Seller Session authority.
 
 #### Scenario: Seller member login
 
 - **WHEN** valid credentials return an active SELLER_MEMBER Session
-- **THEN** Seller state becomes AUTHENTICATED and enters only an allowlisted Seller route.
+- **THEN** Buyer and Seller protected requests/caches are first canceled/cleared, Seller becomes AUTHENTICATED, Buyer remains UNAUTHENTICATED/unresolved, and only an allowlisted Seller route is entered.
 
 #### Scenario: Buyer account or spoofed type
 
 - **WHEN** the Seller login receives BUYER or client input attempts to select/override account type
-- **THEN** Seller protected content remains unavailable and the server-returned account type remains the only accepted discriminator.
+- **THEN** both Customer roots are cleared, no Buyer shell is entered automatically, Seller protected content remains unavailable, and the safe mismatch UI offers the correct Buyer entry while server account type remains the only accepted discriminator.
 
 ### Requirement: Customer Cookie sharing never creates cross-identity authority
 
-The frontend SHALL document that Buyer and Seller use the same HttpOnly `__Host-ygb_customer_session` transport Cookie while maintaining separate UI state/query domains. It SHALL validate account type on every Customer Session resolution, SHALL never read the Cookie, and SHALL not assume simultaneous Buyer and Seller authentication in one browser profile.
+The frontend SHALL document that Buyer and Seller use the same HttpOnly `__Host-ygb_customer_session` transport Cookie while maintaining separate UI state/query namespaces, guards, and shells. It SHALL define `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`: successful Customer login/Cookie replacement, target/account-type mismatch, successful Customer logout, validated Customer Session 401, or any validated Buyer/Seller protected-API 401 SHALL cancel Buyer and Seller requests, clear both Customer query roots, and reset both Customer Session states to UNAUTHENTICATED or fresh resolution. Staff SHALL remain unchanged. The frontend SHALL never read the Cookie or assume simultaneous Buyer and Seller authentication.
 
 #### Scenario: Customer identity changes
 
-- **WHEN** a new Customer login replaces the shared Cookie with the opposite account type
-- **THEN** the newly requested domain validates its type and opposite-domain cached data remains inaccessible behind its own keys/guard.
+- **WHEN** any Customer login replaces the shared Cookie, including one whose account type differs from the target domain
+- **THEN** both Customer roots are canceled/cleared before only the matching domain may authenticate; mismatch enters neither shell automatically and offers the correct identity entry.
 
 #### Scenario: Stale opposite-domain cache
 
-- **WHEN** old Seller data exists in memory while the active Customer Session is BUYER, or vice versa
-- **THEN** route guards never render it and subsequent opposite-domain Session/API resolution fails closed or returns unauthenticated.
+- **WHEN** Customer logout/401 occurs or old opposite-domain data exists while the active Cookie identity changes
+- **THEN** Buyer and Seller requests/caches are both removed and states reset/re-resolved, no stale opposite-domain data renders, and Staff remains unchanged.
 
 ### Requirement: Staff auth uses login start, backend callback, and Worker Session
 
@@ -74,31 +74,31 @@ The frontend SHALL document that Buyer and Seller use the same HttpOnly `__Host-
 
 ### Requirement: Session status transitions preserve HTTP semantics
 
-A validated 401 SHALL transition only the request identity to UNAUTHENTICATED. 403 and 404 SHALL preserve AUTHENTICATED. Network, 503, and runtime-contract failures during Session resolution SHALL produce DEPENDENCY_ERROR rather than false logout. Session loading SHALL never render prior protected DTOs.
+A validated Customer 401 from Customer Session or any Buyer/Seller protected API SHALL invalidate Buyer and Seller through `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`; a validated Staff 401 SHALL invalidate only Staff. 403 and 404 SHALL preserve every Session state. Network, 503, and runtime-contract failures during Session resolution SHALL produce DEPENDENCY_ERROR rather than false logout. Session loading SHALL never render prior protected DTOs.
 
 #### Scenario: Session expiry
 
-- **WHEN** the matching Session endpoint or protected request returns 401
-- **THEN** that identity's requests are canceled, its protected cache is removed, and its login route is offered.
+- **WHEN** Customer Session/Buyer/Seller protected API returns 401 or Staff Session/protected API returns 401
+- **THEN** Customer failure cancels/clears and unauthenticates/re-resolves both Customer domains only, while Staff failure cancels/clears and unauthenticates Staff only.
 
 #### Scenario: Permission, concealment, or outage
 
 - **WHEN** an authenticated request returns 403/404 or Session resolution returns network/503/contract failure
-- **THEN** 403/404 retain authentication while outage uses DependencyUnavailable and no stale private content is shown.
+- **THEN** 403/404 change no Session state while outage uses DependencyUnavailable and no stale private content is shown.
 
-### Requirement: Logout is identity-scoped and does not persist sensitive state
+### Requirement: Logout follows Cookie transport ownership and does not persist sensitive state
 
-Buyer/Seller logout SHALL use `POST /api/customer-auth/logout`; Staff logout SHALL use `POST /api/staff-auth/logout` and optional approved all-device action SHALL use `/api/staff-auth/logout-all` with required idempotency semantics. The frontend SHALL cancel/remove only the initiating identity query root and SHALL store no Session token or sensitive cache in localStorage/sessionStorage.
+Buyer/Seller logout SHALL use `POST /api/customer-auth/logout`; after success the frontend SHALL cancel/remove both Buyer and Seller protected roots and reset both Customer states because the shared Cookie is cleared. Staff logout SHALL use `POST /api/staff-auth/logout`, optional approved all-device action SHALL use `/api/staff-auth/logout-all` with required idempotency semantics, and success SHALL clear Staff only. No Session token or sensitive cache SHALL enter localStorage/sessionStorage.
 
 #### Scenario: Successful identity logout
 
-- **WHEN** an authenticated identity completes logout
-- **THEN** its in-flight requests are canceled, its cache is removed, state becomes UNAUTHENTICATED, and navigation returns to its login/public entry.
+- **WHEN** Buyer or Seller completes Customer logout, or Staff completes Staff logout
+- **THEN** Customer logout cancels/clears Buyer and Seller and resets both states while preserving Staff; Staff logout cancels/clears only Staff while preserving Buyer and Seller.
 
 #### Scenario: Other identity or storage cleanup
 
-- **WHEN** logout runs while other identity roots exist or code attempts token/cache persistence
-- **THEN** no unrelated root is used as authority or indiscriminately exposed/cleared, and persistence checks fail for sensitive data.
+- **WHEN** logout runs while Customer and Staff roots coexist or code attempts token/cache persistence
+- **THEN** cleanup follows its Cookie transport group exactly, no stale Customer/opposite-identity data renders, and persistence checks fail for sensitive data.
 
 ### Requirement: Session DTO fields are display context, not client authority
 

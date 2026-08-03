@@ -46,17 +46,17 @@ Every client error SHALL contain `code`, `httpStatus`, `requestId`, `safeDetails
 
 ### Requirement: HTTP status and authentication semantics are strict
 
-The client SHALL distinguish 401 authentication loss, 403 permission denial, 404 concealed/missing resource, 409 conflict, 422 validation, 429 rate limit, and 503 dependency/file compensation behavior. A 401 SHALL notify only the request's identity Session domain; 403 and 404 SHALL NOT log out any identity.
+The client SHALL distinguish 401 authentication loss, 403 permission denial, 404 concealed/missing resource, 409 conflict, 422 validation, 429 rate limit, and 503 dependency/file compensation behavior. A validated Customer 401 from Customer Session or any Buyer/Seller protected API SHALL notify `CUSTOMER_TRANSPORT_INVALIDATION_GROUP` to cancel and clear both Customer domains. A validated Staff 401 SHALL notify only Staff. 403 and 404 SHALL NOT log out or clear any Session domain.
 
-#### Scenario: Identity-specific 401
+#### Scenario: Customer or Staff 401
 
-- **WHEN** a Buyer, Seller, or Staff request receives a validated 401
-- **THEN** only that domain transitions to unauthenticated and only its protected query root is removed.
+- **WHEN** a Buyer/Seller request receives a validated 401 or a Staff request receives a validated 401
+- **THEN** Customer failure cancels/clears Buyer and Seller and leaves Staff unchanged, while Staff failure clears only Staff and leaves both Customer domains unchanged.
 
 #### Scenario: Non-auth denial or failure
 
 - **WHEN** a request receives 403, 404, 409, 422, 429, or 503
-- **THEN** the Session remains unchanged and code/status-specific UI action is selected without rewriting the error as logout.
+- **THEN** 403/404 change no Session/cache state and other statuses select their code-specific UI action without rewriting the error as logout.
 
 ### Requirement: Query and mutation retry policies are distinct and bounded
 

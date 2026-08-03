@@ -2,7 +2,9 @@
 
 ## Authority and Envelope
 
-The inventory is reproduced from the default Hono app on baseline `503709a5745931e6732d32f2ed5ae6967b299faa`: 138 unique registered `GET`/`POST`/`PUT`/`PATCH`/`DELETE` endpoints, including `/health`. All business endpoints use `/api/*`; no `/api/v2/*` alias is registered.
+The verified baseline count remains 138 unique registered `GET`/`POST`/`PUT`/`PATCH`/`DELETE` endpoints: 137 under `/api/*` plus one `/health`. The formal frontend inventory does not invent routes to preserve a subgroup count. Formal Staff frontend capability comprises 70 Staff-addressed endpoints: five Staff Auth endpoints and 65 protected Staff endpoints. Staff Order Evidence itself has exactly four formal routes. No `/api/v2/*` alias is a formal frontend route.
+
+After the Controller removes the non-formal internal-communication entry, the explicit frontend-consumable route lines below total 136 unique `/api/*` routes. No guessed replacement is added. The repository-wide 138/137/1 baseline remains the independently verified aggregate; this reference is the formal frontend-consumption inventory, not permission to restore the excluded capability.
 
 Success is `{ data, meta: { request_id } }`. Failure is `{ error: { code, message, details }, meta: { request_id } }`. The frontend must parse both envelopes and treat every payload as untrusted until Zod validation succeeds. `Retry-After` is currently emitted for bounded rate-limit paths and must be parsed from the header. Money contracts mix exact decimal strings and bounded integer JPY according to each DTO; the client must not coerce these generically.
 
@@ -10,7 +12,7 @@ Success is `{ data, meta: { request_id } }`. Failure is `{ error: { code, messag
 
 - Customer Auth: `POST /api/customer-auth/login`, `POST /api/customer-auth/change-password`, `POST /api/customer-auth/logout`, `GET /api/customer-auth/session`.
 - Buyer self-registration: `POST /api/buyer-auth/register`.
-- Customer Session uses one HttpOnly `__Host-ygb_customer_session` Cookie and returns `account_type: BUYER | SELLER_MEMBER`. Buyer and Seller frontend domains must validate the expected account type and never treat the shared transport Cookie as cross-identity authority.
+- Customer Session uses one HttpOnly `__Host-ygb_customer_session` Cookie and returns `account_type: BUYER | SELLER_MEMBER`. Buyer and Seller retain separate UI/cache namespaces but share `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`: Customer login, mismatch, logout, or validated Customer 401 cancels and clears both Customer roots without changing Staff.
 - Staff Auth: `POST /api/staff-auth/login/start`, `GET /api/staff-auth/feishu/callback`, `GET /api/staff-auth/session`, `POST /api/staff-auth/logout`, `POST /api/staff-auth/logout-all`.
 - Staff Session uses a distinct HttpOnly `__Host-ygb_staff_session` Cookie. `login/start` returns an allowlisted Feishu authorization URL; callback consumes single-use state and establishes the Worker Session.
 
@@ -92,7 +94,7 @@ POST /api/seller-portal/files/:fileObjectId/read-intents
 GET  /api/seller-portal/file-read-intents/:id/content
 ```
 
-## Staff Routes (67 including Staff Auth)
+## Formal Staff Frontend Routes (70: 5 Staff Auth + 65 protected Staff)
 
 ```text
 POST /api/staff-auth/login/start
@@ -124,7 +126,6 @@ GET  /api/staff/order-evidence
 GET  /api/staff/order-evidence/:id
 POST /api/staff/order-evidence/:id/request-changes
 POST /api/staff/order-evidence/:id/approve
-POST /api/staff/order-evidence/:id/internal-communication-files
 GET  /api/staff/order-instructions/:id
 GET  /api/staff/order-instructions/:id/versions
 POST /api/staff/order-instructions/:id/publish
@@ -170,10 +171,10 @@ GET  /api/staff/file-read-intents/:id/content
 
 ## File Contract Boundary
 
-Five active purpose routes are fixed: Buyer order evidence, Buyer review evidence, Seller product application image, Staff buyer refund proof, and Staff seller settlement proof. Each identity domain also has upload, complete, create-read-intent, and consume-read endpoints. Multipart accepts exactly one `file` part. Intent and access tokens are one-time and memory-only at the frontend. The client receives safe file IDs/versions/digests, never `object_key` or a permanent URL. Entity Link and Audience Grant creation remains inside business commands; no generic client route exists. `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` has historical business linkage/read behavior but no active purpose-bound upload-intent route and remains deferred to Wave 15.
+Five active purpose routes are fixed: Buyer order evidence, Buyer review evidence, Seller product application image, Staff buyer refund proof, and Staff seller settlement proof. Each identity domain also has upload, complete, create-read-intent, and consume-read endpoints. Multipart accepts exactly one `file` part. Intent and access tokens are one-time and memory-only at the frontend. The client receives safe File IDs/versions/digests, never `object_key` or a permanent URL. Entity Link and Audience Grant creation remains inside approved business commands; no generic client route exists. `ORDER_EVIDENCE_INTERNAL_COMMUNICATION` remains a historical global Purpose only: Wave 14A has no upload intent or active Staff consume/Link/Grant HTTP capability, and the complete workflow is deferred to Wave 15.
 
 ## Error and Authority Boundary
 
-Published codes include validation/auth/not-found, version/idempotency/request-in-progress/state/price conflicts, rate limits, dependency failures, and file-specific failures including `FILE_COMPENSATION_REQUIRED`. The client must preserve exact HTTP status, code, `request_id`, safe details, and `Retry-After`. A 401 changes only the active frontend identity domain to unauthenticated; 403 is permission denial, 404 is concealed missing/out-of-scope, 409 is explicit conflict, 422 is file/semantic validation, and 503 requires code-specific user action rather than unbounded retry.
+Published codes include validation/auth/not-found, version/idempotency/request-in-progress/state/price conflicts, rate limits, dependency failures, and file-specific failures including `FILE_COMPENSATION_REQUIRED`. The client must preserve exact HTTP status, code, `request_id`, safe details, and `Retry-After`. A Customer 401 invalidates Buyer and Seller together; a Staff 401 invalidates only Staff. 403 is permission denial and 404 is concealed missing/out-of-scope; neither changes Session. 409 is explicit conflict, 422 is file/semantic validation, and 503 requires code-specific user action rather than unbounded retry.
 
 Roles, permissions, staff/customer IDs, organization IDs, assignments, scopes, and file ownership are server-derived authority. Frontend values are display and routing hints only.
