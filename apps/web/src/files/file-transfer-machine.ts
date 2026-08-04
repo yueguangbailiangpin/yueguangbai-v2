@@ -9,7 +9,7 @@ export type FileTransferEvent =
 
 export function fileTransferReducer(state: FileTransferState, event: FileTransferEvent): FileTransferState {
   const transitions: Readonly<Record<FileTransferState, Partial<Record<FileTransferEvent, FileTransferState>>>> = {
-    IDLE: { VALIDATE: 'VALIDATING' },
+    IDLE: { VALIDATE: 'VALIDATING', CREATE: 'CREATING_INTENT' },
     VALIDATING: { CREATE: 'CREATING_INTENT', FAIL: 'ERROR', CANCEL: 'CANCELED' },
     CREATING_INTENT: { INTENT_READY: 'INTENT_READY', RESTART: 'RESTART_REQUIRED', FAIL: 'ERROR', CANCEL: 'CANCELED' },
     INTENT_READY: { UPLOAD: 'UPLOADING', CANCEL: 'CANCELED' },

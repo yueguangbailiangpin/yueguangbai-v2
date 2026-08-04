@@ -164,6 +164,12 @@ describe('strict upload runtime contracts', () => {
   });
 
   it('rejects Purpose/Visibility, duplicate slots, unknown manifest IDs, and count mismatch', () => {
+    const uploadedReceipts = new Map([['file-1', {
+      detectedMime: 'image/png' as const,
+      byteSize: 4,
+      sha256: 'a'.repeat(64),
+      uploadedVersion: 2,
+    }]]);
     expect(() => assertIntentMatchesWorkflow(
       uploadIntentResponseSchema.parse({ ...intent, visibility: 'SELLER_VISIBLE' }),
       fileUploadWorkflows.buyerOrderEvidence,
@@ -176,11 +182,17 @@ describe('strict upload runtime contracts', () => {
     )).toThrow();
     expect(() => assertCompleteMatchesIntent(
       { ...complete, files: [{ ...complete.files[0], file_object_id: 'file-unknown' }] },
-      { intentId: 'intent-1', workflow: fileUploadWorkflows.buyerOrderEvidence, fileObjectIds: new Set(['file-1']) },
+      {
+        intentId: 'intent-1', intentVersion: 1,
+        workflow: fileUploadWorkflows.buyerOrderEvidence, uploadedReceipts,
+      },
     )).toThrow();
     expect(() => assertCompleteMatchesIntent(
       { ...complete, files: [] },
-      { intentId: 'intent-1', workflow: fileUploadWorkflows.buyerOrderEvidence, fileObjectIds: new Set(['file-1']) },
+      {
+        intentId: 'intent-1', intentVersion: 1,
+        workflow: fileUploadWorkflows.buyerOrderEvidence, uploadedReceipts,
+      },
     )).toThrow();
   });
 

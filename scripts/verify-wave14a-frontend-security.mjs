@@ -68,6 +68,8 @@ const fileUploadApi = readFileSync(join(fileRoot, 'file-upload-api.ts'), 'utf8')
 const fileUploadTransport = readFileSync(join(fileRoot, 'file-upload-transport.ts'), 'utf8');
 const fileUploadController = readFileSync(join(fileRoot, 'file-upload-controller.ts'), 'utf8');
 const fileUploadOperation = readFileSync(join(fileRoot, 'file-upload-operation.ts'), 'utf8');
+const fileTransferMachine = readFileSync(join(fileRoot, 'file-transfer-machine.ts'), 'utf8');
+const fileUploadHarness = readFileSync(join(fileRoot, 'file-upload-test-harness.tsx'), 'utf8');
 const fileUploadTests = readdirSync(fileRoot)
   .filter((name) => /\.(test|spec)\.(ts|tsx)$/.test(name))
   .map((name) => readFileSync(join(fileRoot, name), 'utf8'))
@@ -432,7 +434,12 @@ requireText(fileContracts, [
   '/^[a-f0-9]{64}$/u',
   'assertIntentMatchesWorkflow(',
   'assertCompleteMatchesIntent(',
-  'fileObjectIds.has(file.file_object_id)',
+  'uploadedReceipts.get(file.file_object_id)',
+  'result.version !== input.intentVersion + 1',
+  'file.detected_mime !== receipt.detectedMime',
+  'file.byte_size !== receipt.byteSize',
+  'file.sha256 !== receipt.sha256',
+  'file.version !== receipt.uploadedVersion + 1',
 ], 'strict file upload DTO and Manifest schemas');
 requireText(fileUploadApi, [
   'identityApiRequest(',
@@ -472,6 +479,9 @@ requireText(fileUploadOperation, [
   'SafeVerifiedManifest',
   'file_version',
   'restartRequired: boolean',
+  'canCancel: boolean',
+  'requiresFileReselection: boolean',
+  "'FILE_NOT_VERIFIED'",
 ], 'safe file upload operation snapshot');
 for (const secretField of ['uploadToken', 'idempotencyKey', 'File;']) {
   if (fileUploadOperation.includes(secretField)) {
@@ -494,7 +504,53 @@ requireText(fileUploadController, [
   "state: 'VERIFIED'",
   'completePurposeBoundUploadIntent({',
   'file_version: file.version',
+  'receipt: UploadedFileReceipt | null',
+  'slot.receipt = Object.freeze({',
+  'uploadedReceipts: new Map(',
+  'releaseAllSlotAuthorities()',
+  'slot.uploadToken = null',
+  'slot.idempotencyKey = null',
+  'isAmbiguousRemoteResult(apiError)',
+  "apiError.code === 'FILE_NOT_VERIFIED'",
+  "this.publishFailure(apiError, 'FILE_NOT_VERIFIED', false, true)",
+  'if (!this.snapshot.canCancel) return',
+  "if (this.snapshot.state === 'COMPLETING')",
+  'this.completeKey ??= this.generateKey()',
+  'requiresFileReselection',
 ], 'private upload Controller lifecycle');
+requireText(fileTransferMachine, [
+  'assertFileUploadTransition(',
+  "COMPLETING: stateSet(",
+  "FILE_COMPENSATION_REQUIRED: stateSet()",
+  "next.state === 'COMPLETING'",
+  "slot.state !== 'UPLOADED'",
+  "next.state === 'VERIFIED'",
+  'options.completeValidated !== true',
+], 'authoritative file upload transition guard');
+if (/COMPLETING:[^\n]*CANCEL|FILE_COMPENSATION_REQUIRED:[^\n]*CANCEL/iu.test(fileTransferMachine)) {
+  throw new Error('Completing and compensation terminal states must not transition to CANCELED');
+}
+requireText(fileUploadHarness, [
+  'disabled={!snapshot.canCancel}',
+  'props.controller.cancel()',
+], 'file upload cancel capability projection');
+const replaceCompleting = fileUploadController.indexOf("if (this.snapshot.state === 'COMPLETING')");
+const replaceCancel = fileUploadController.indexOf('this.cancel()', replaceCompleting);
+if (replaceCompleting < 0 || replaceCancel < 0 || replaceCompleting > replaceCancel) {
+  throw new Error('replaceFiles must reject replacement while Complete owns the operation');
+}
+const cancelGuard = fileUploadController.indexOf('if (!this.snapshot.canCancel) return');
+const cancelAbort = fileUploadController.indexOf('this.abortController?.abort()', cancelGuard);
+if (cancelGuard < 0 || cancelAbort < cancelGuard) {
+  throw new Error('Controller must reject illegal cancel before aborting an operation');
+}
+const compensationBranch = fileUploadController.indexOf("apiError.code === 'FILE_COMPENSATION_REQUIRED'");
+const compensationRelease = fileUploadController.indexOf('this.releasePrivateState(true)', compensationBranch);
+const compensationPublish = fileUploadController.indexOf("'FILE_COMPENSATION_REQUIRED'", compensationRelease);
+if (compensationBranch < 0 || compensationRelease < compensationBranch
+  || compensationPublish < compensationRelease) {
+  throw new Error('Compensation terminal handling must release files and all authority before publishing');
+}
 const completeCall = fileUploadController.indexOf('completePurposeBoundUploadIntent({');
 const verifiedState = fileUploadController.indexOf("state: 'VERIFIED'", completeCall);
 if (completeCall < 0 || verifiedState < completeCall) {
@@ -524,6 +580,23 @@ requireText(fileUploadTests, [
   'does not show VERIFIED after Upload until Complete succeeds',
   'request-malformed-upload',
   'request-malformed-manifest',
+  'keeps VERIFIED and its complete Manifest unchanged when cancel is called',
+  'keeps FILE_COMPENSATION_REQUIRED request correlation and rejects terminal actions',
+  'does not abort Complete or enter CANCELED while COMPLETING',
+  'does not replace files or create another Intent while COMPLETING',
+  'publishes accurate canCancel values across the real Controller lifecycle',
+  'abandons every old Slot authority after first-slot 401',
+  'abandons every old Slot authority after first-slot 422',
+  'preserves the current Slot token/key after malformed success',
+  'reuses the same Complete key and body after a malformed successful response',
+  'enters explicit FILE_NOT_VERIFIED state without automatic Complete retry',
+  'rejects Manifest %s mismatch against the Upload receipt',
+  'rejects Complete Intent Version that is not Intent version plus one',
+  'accepts the exact backend v1→v2 Intent and v2→v3 File evolution',
+  'requiresFileReselection: true',
+  'expect(keys[0]).toBe(keys[1])',
+  'expect(tokens[0]).toBe(tokens[1])',
+  "expect(bodies).toEqual([{ expected_version: 1 }, { expected_version: 1 }])",
 ], 'formal MSW file upload safety evidence');
 if (!fileUploadTests.includes('server.use(')
   || !fileUploadTests.includes('http.put(')
