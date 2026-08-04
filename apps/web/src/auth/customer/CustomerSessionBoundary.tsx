@@ -31,7 +31,7 @@ export function CustomerSessionBoundary({
     );
   }
   if (session.status === 'DEPENDENCY_ERROR') {
-    return <main className="centered"><DependencyUnavailable /></main>;
+    return <main className="centered"><DependencyUnavailable requestId={session.requestId} /></main>;
   }
   if (session.status === 'UNAUTHENTICATED') {
     const returnTo = encodeURIComponent(location.pathname + location.search);

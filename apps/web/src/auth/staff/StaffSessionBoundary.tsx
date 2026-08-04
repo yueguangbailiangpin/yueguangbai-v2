@@ -32,8 +32,7 @@ export function StaffSessionBoundary({
     return (
       <main className="centered">
         <div>
-          <DependencyUnavailable />
-          <RequestIdDisplay requestId={session.requestId} />
+          <DependencyUnavailable requestId={session.requestId} />
           <Button type="button" onClick={session.retry}>重试</Button>
         </div>
       </main>

@@ -37,8 +37,7 @@ export function CustomerPasswordRouteBoundary({
     return (
       <main className="centered">
         <div>
-          <DependencyUnavailable />
-          <RequestIdDisplay requestId={route.requestId} />
+          <DependencyUnavailable requestId={route.requestId} />
           <Button type="button" onClick={route.retry}>重试</Button>
         </div>
       </main>
