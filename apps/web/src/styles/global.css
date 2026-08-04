@@ -1094,6 +1094,16 @@ select:disabled {
   padding: var(--space-6) var(--space-8) var(--space-10);
 }
 
+.seller-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: var(--space-4);
+}
+
+.seller-metrics .metric-card {
+  min-width: 0;
+}
+
 .filter-bar {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto 180px;

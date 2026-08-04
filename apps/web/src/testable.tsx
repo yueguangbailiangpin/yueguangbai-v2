@@ -1,1 +1,1 @@
-export { RootEntry } from './App';
+export { RootEntry, SellerShell } from './App';

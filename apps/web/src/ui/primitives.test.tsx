@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   Alert,
@@ -223,12 +224,12 @@ describe('navigation and structured content', () => {
       const [collapsed, setCollapsed] = useState(false);
       return <><Sidebar
         label="卖家导航"
-        items={[{ id: 'home', label: '概览', href: '#home', current: true }]}
+        items={[{ id: 'home', label: '概览', href: '/seller', end: true }]}
         collapsed={collapsed}
         onCollapsedChange={setCollapsed}
       /><BottomNavigation label="买家导航"><a href="#home">首页</a></BottomNavigation></>;
     }
-    render(<Harness />);
+    render(<MemoryRouter><Harness /></MemoryRouter>);
     await user.click(screen.getByRole('button', { name: '收起侧边导航' }));
     expect(screen.getByRole('button', { name: '展开侧边导航' })).toHaveAttribute(
       'aria-expanded', 'false',
@@ -236,6 +237,7 @@ describe('navigation and structured content', () => {
     expect(screen.getByRole('navigation', { name: '买家导航' })).toHaveClass(
       'bottom-nav',
     );
+    expect(screen.getByRole('link', { name: '概览' })).toBeVisible();
   });
 
   it('renders Timeline and a non-color StatusBadge label', () => {

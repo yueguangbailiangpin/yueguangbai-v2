@@ -21,6 +21,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
+import { NavLink } from 'react-router-dom';
 
 function classes(...values: (string | false | null | undefined)[]): string {
   return values.filter(Boolean).join(' ');
@@ -217,7 +218,7 @@ export type SidebarItem = Readonly<{
   id: string;
   label: string;
   href: string;
-  current?: boolean;
+  end?: boolean;
 }>;
 
 export function Sidebar({
@@ -241,12 +242,15 @@ export function Sidebar({
         onClick={() => onCollapsedChange(!collapsed)}
       >{collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronLeft aria-hidden="true" />}</IconButton> : null}
     </div>
-    <nav aria-label={label}>{items.map((item) => <a
+    <nav aria-label={label}>{items.map((item) => <NavLink
       key={item.id}
-      href={item.href}
-      aria-current={item.current ? 'page' : undefined}
+      to={item.href}
+      {...(item.end === undefined ? {} : { end: item.end })}
+      aria-label={collapsed ? item.label : undefined}
       title={collapsed ? item.label : undefined}
-    ><span>{collapsed ? item.label.slice(0, 1) : item.label}</span></a>)}</nav>
+    ><span aria-hidden={collapsed || undefined}>{
+        collapsed ? item.label.slice(0, 1) : item.label
+      }</span></NavLink>)}</nav>
   </aside>;
 }
 

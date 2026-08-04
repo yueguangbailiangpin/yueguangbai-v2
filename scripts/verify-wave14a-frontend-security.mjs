@@ -31,6 +31,7 @@ const tests = readdirSync(customerRoot)
   .map((name) => readFileSync(join(customerRoot, name), 'utf8'))
   .join('\n');
 const app = readFileSync(join(webRoot, 'App.tsx'), 'utf8');
+const appTests = readFileSync(join(webRoot, 'App.browser.test.tsx'), 'utf8');
 const invalidation = readFileSync(join(webRoot, 'auth/customer-transport-invalidation.ts'), 'utf8');
 const customerInvalidation = invalidation.split('export async function clearStaffTransport')[0] ?? '';
 const mismatch = readFileSync(join(customerRoot, 'customer-mismatch-cleanup.ts'), 'utf8');
@@ -735,9 +736,15 @@ requireText(fileReadController, [
   'const blob = new Blob([result.bytes]',
   'this.objectUrls.createObjectURL(blob)',
   'this.objectUrls.revokeObjectURL(this.objectUrl)',
-  "apiError.code === 'RATE_LIMITED'",
+  "apiError.category === 'RATE_LIMIT'",
   "apiError.httpStatus === 429",
   "apiError.httpStatus === 503",
+  'private retryAvailableAt: number | null',
+  'this.retryAvailableAt = this.clock.now() + apiError.retryAfter',
+  'this.clock.now() < this.retryAvailableAt',
+  'this.scheduleRetryAvailability()',
+  'this.clearRetryWindow()',
+  "this.publishFailure(apiError, 'RESTART_REQUIRED', false, true)",
   "apiError.code === 'FILE_STORAGE_CONFLICT'",
   "apiError.code === 'FILE_UPLOAD_EXPIRED'",
   "apiError.code === 'NETWORK_FAILURE'",
@@ -784,7 +791,13 @@ requireText(fileReadTests, [
   'rejects a body shorter than Content-Length',
   'stops immediately when streamed bytes exceed Content-Length',
   'never publishes 100 before completion',
-  'allows explicit same-token retry for clear %i',
+  'blocks 429 retry for 7 seconds, then reuses the same token once',
+  'time.advance(6_999)',
+  'time.advance(1)',
+  'clears a pending 429 window on cancel without another request',
+  'allows 429 restart with a new Intent and clears the old wait window',
+  'requires a new Intent when 429 Retry-After is invalid',
+  'keeps explicit immediate same-token retry for clear 503',
   "[409, 'FILE_STORAGE_CONFLICT', 'FILE_STORAGE_CONFLICT', false]",
   "[410, 'FILE_UPLOAD_EXPIRED', 'RESTART_REQUIRED', true]",
   '%s 401 clears only its session domain after invalidation completes',
@@ -819,6 +832,8 @@ requireText(primitives, [
   "aria-live={tone === 'danger' ? 'assertive' : 'polite'}",
   "role={tone === 'danger' ? 'alert' : 'status'}",
   "aria-current={page === currentPage ? 'page' : undefined}",
+  "import { NavLink } from 'react-router-dom'",
+  'aria-label={collapsed ? item.label : undefined}',
 ], 'accessible shared UI primitive behavior');
 requireText(primitiveTests, [
   'traps Drawer focus, closes on Escape, and restores the opener',
@@ -1039,13 +1054,34 @@ requireText(changeSource, [
 ], 'Wave 14A dedicated-link and password-route semantics');
 
 const rootEntry = app.match(/export function RootEntry\(\)[\s\S]*?\n}/)?.[0] ?? '';
-for (const forbiddenRootControl of ['买家入口', '卖家入口', '员工入口', '<Link', '<NavLink']) {
+for (const forbiddenRootControl of [
+  '买家入口', '卖家入口', '员工入口', '<Link', '<NavLink',
+  '专属访问', '链接将自动确认您的访问身份', 'className="brand-mark"',
+]) {
   if (rootEntry.includes(forbiddenRootControl)) throw new Error(`root dedicated-link violation: ${forbiddenRootControl}`);
 }
 requireText(rootEntry, [
   '>月光白</h1>',
   '请使用工作人员发送的专属链接登录。',
 ], 'finished dedicated-link root notice');
+requireText(app, [
+  "{ id: 'overview', label: '概览', href: '/seller', end: true }",
+  'className="seller-metrics"',
+  '>业务指标摘要</h2>',
+  "['订单', '评论', '结算'].map",
+  'value="—"',
+  'detail="业务模块开放后显示"',
+], 'Seller metric and route-aware navigation remediation');
+if (app.includes("href: '/seller', current: true")) {
+  throw new Error('Seller overview must not remain permanently current');
+}
+requireText(appTests, [
+  'shows exactly the two approved visible strings at root',
+  'renders the formal Seller metric summary without invented values',
+  "['/seller/products', '商品']",
+  "['/seller/orders', '订单']",
+  'uses client navigation for Seller links',
+], 'Root and Seller component remediation evidence');
 const browserFixtures = readFileSync(join(workspace, 'apps/web/e2e/foundation.spec.ts'), 'utf8');
 if (!browserFixtures.includes('success({ session:')) throw new Error('Playwright fixture must use data.session');
 requireText(browserFixtures, [
@@ -1053,6 +1089,10 @@ requireText(browserFixtures, [
   'Buyer shell is task-focused with five fixed items and no fake business data',
   'Buyer shell keeps navigation clear at 320px and safe content padding',
   'Seller Drawer traps focus, closes with Escape, and restores its opener',
+  'Seller navigation is route-aware, client-side, and session-stable',
+  "getByRole('region', { name: '业务指标摘要' })",
+  "getByText('专属访问')).toHaveCount(0)",
+  "getByText('链接将自动确认您的访问身份')).toHaveCount(0)",
   'Seller small screen uses a card fallback without page overflow',
   'Staff desktop shell preserves queue-detail-action DOM order and separation',
   'Staff narrow shell opens the ordered action Drawer and restores focus',

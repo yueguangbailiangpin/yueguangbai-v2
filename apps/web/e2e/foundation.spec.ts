@@ -60,7 +60,11 @@ async function fulfillJson(
   });
 }
 
-async function mockApi(page: Page, identity: Identity): Promise<void> {
+async function mockApi(
+  page: Page,
+  identity: Identity,
+  sessionReads?: { count: number },
+): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/staff-auth/session') {
@@ -68,6 +72,7 @@ async function mockApi(page: Page, identity: Identity): Promise<void> {
       return;
     }
     if (path === '/api/customer-auth/session') {
+      if (sessionReads) sessionReads.count += 1;
       const customer = identity === 'staff' ? 'buyer' : identity;
       await fulfillJson(route, success({ session: customerSession(customer) }));
       return;
@@ -114,6 +119,12 @@ test('root is a finished dedicated-link notice with no identity controls', async
   await expect(page.getByRole('link')).toHaveCount(0);
   await expect(page.getByRole('button')).toHaveCount(0);
   await expect(page.locator('form')).toHaveCount(0);
+  await expect(page.locator('.dedicated-entry')).toHaveText(
+    '月光白请使用工作人员发送的专属链接登录。',
+  );
+  await expect(page.getByText('专属访问')).toHaveCount(0);
+  await expect(page.getByText('链接将自动确认您的访问身份')).toHaveCount(0);
+  await expect(page.getByText('月', { exact: true })).toHaveCount(0);
   await expect(page.locator('body')).not.toContainText(/Moonlight|Moonlight White|V2/u);
 });
 
@@ -209,11 +220,51 @@ test('Seller shell exposes context, filters, table caption, and accessible empty
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/seller');
   await expect(page.getByRole('navigation', { name: '卖家导航' })).toBeVisible();
+  const metrics = page.getByRole('region', { name: '业务指标摘要' });
+  await expect(metrics).toBeVisible();
+  for (const label of ['订单', '评论', '结算']) {
+    await expect(metrics.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(metrics.getByText('—')).toHaveCount(3);
+  await expect(metrics.getByText('业务模块开放后显示')).toHaveCount(3);
   await expect(page.getByRole('search', { name: '列表筛选' })).toBeVisible();
+  expect(await metrics.evaluate((summary) =>
+    summary.nextElementSibling?.getAttribute('role') === 'search',
+  )).toBe(true);
   await expect(page.getByRole('table', { name: '卖家工作列表基础容器' })).toBeVisible();
   await expect(page.getByRole('table', { name: '卖家工作列表基础容器' })
     .getByText('该功能将在卖家业务模块开放')).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
+});
+
+test('Seller navigation is route-aware, client-side, and session-stable', async ({ page }) => {
+  const sessionReads = { count: 0 };
+  await mockApi(page, 'seller', sessionReads);
+  await page.goto('/seller');
+  const navigation = page.getByRole('navigation', { name: '卖家导航' });
+  const expectCurrent = async (label: string): Promise<void> => {
+    await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(navigation.getByRole('link', { name: label })).toHaveAttribute(
+      'aria-current', 'page',
+    );
+  };
+  await expectCurrent('概览');
+  expect(sessionReads.count).toBe(1);
+
+  await navigation.getByRole('link', { name: '商品' }).click();
+  await expect(page).toHaveURL(/\/seller\/products$/u);
+  await expectCurrent('商品');
+  expect(sessionReads.count).toBe(1);
+
+  await navigation.getByRole('link', { name: '订单' }).click();
+  await expect(page).toHaveURL(/\/seller\/orders$/u);
+  await expectCurrent('订单');
+  expect(sessionReads.count).toBe(1);
+
+  await page.getByRole('button', { name: '收起侧边导航' }).click();
+  for (const label of ['概览', '商品', '需求', '订单', '评论', '结算', '设置']) {
+    await expect(navigation.getByRole('link', { name: label })).toBeVisible();
+  }
 });
 
 test('Seller Drawer traps focus, closes with Escape, and restores its opener', async ({ page }) => {
@@ -357,6 +408,7 @@ test('200% equivalent text zoom reflows without critical horizontal clipping', a
   });
   await expect(page.getByRole('heading', { name: '卖家工作台' })).toBeVisible();
   await expect(page.getByRole('button', { name: '查看详情结构' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '业务指标摘要' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 

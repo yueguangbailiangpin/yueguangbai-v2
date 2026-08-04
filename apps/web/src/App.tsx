@@ -5,7 +5,6 @@ import {
   FolderOpen,
   Home,
   MessageSquareText,
-  ShieldCheck,
   UserRound,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -37,6 +36,7 @@ import {
   EmptyState,
   ErrorState,
   IdentityShell,
+  MetricCard,
   NotFound,
   PageHeader,
   PermissionDenied,
@@ -50,14 +50,8 @@ import {
 export function RootEntry(): React.JSX.Element {
   return <main className="identity-entry">
     <section className="dedicated-entry" aria-labelledby="brand-title">
-      <div className="brand-mark" aria-hidden="true">月</div>
-      <p className="eyebrow">专属访问</p>
       <h1 id="brand-title">月光白</h1>
       <p>请使用工作人员发送的专属链接登录。</p>
-      <div className="entry-trust-note">
-        <ShieldCheck aria-hidden="true" />
-        <span>链接将自动确认您的访问身份</span>
-      </div>
     </section>
   </main>;
 }
@@ -198,7 +192,7 @@ function BuyerShell(): React.JSX.Element {
 }
 
 const sellerNavigation = [
-  { id: 'overview', label: '概览', href: '/seller', current: true },
+  { id: 'overview', label: '概览', href: '/seller', end: true },
   { id: 'products', label: '商品', href: '/seller/products' },
   { id: 'demands', label: '需求', href: '/seller/demands' },
   { id: 'orders', label: '订单', href: '/seller/orders' },
@@ -207,7 +201,7 @@ const sellerNavigation = [
   { id: 'settings', label: '设置', href: '/seller/settings' },
 ] as const;
 
-function SellerShell(): React.JSX.Element {
+export function SellerShell(): React.JSX.Element {
   const [drawer, setDrawer] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   return <IdentityShell identity="seller" className="work-shell seller-shell">
@@ -228,6 +222,15 @@ function SellerShell(): React.JSX.Element {
         description="集中处理商品、需求、订单与结算入口。"
       ><Button onClick={() => setDrawer(true)}>查看详情结构</Button></PageHeader>
       <section id="foundation" className="seller-workspace">
+        <section className="seller-metrics" aria-labelledby="seller-metrics-title">
+          <h2 id="seller-metrics-title" className="visually-hidden">业务指标摘要</h2>
+          {['订单', '评论', '结算'].map((label) => <MetricCard
+            key={label}
+            label={label}
+            value="—"
+            detail="业务模块开放后显示"
+          />)}
+        </section>
         <div className="filter-bar" role="search" aria-label="列表筛选">
           <SearchInput label="搜索当前列表" placeholder="搜索（业务模块开放后可用）" />
           <label htmlFor="seller-status">状态</label>

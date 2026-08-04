@@ -15,6 +15,7 @@ import { apiUrl } from '../test/msw/handlers';
 import { createMswQueryClient } from '../test/msw/render';
 import { server } from '../test/msw/server';
 import {
+  type FileReadClock,
   FileReadController,
   type ObjectUrlAdapter,
 } from './file-read-controller';
@@ -123,15 +124,44 @@ function objectUrls() {
   return { adapter, created, revoked };
 }
 
+function manualClock(initial = 10_000) {
+  let now = initial;
+  let sequence = 0;
+  const scheduled = new Map<number, { at: number; callback: () => void }>();
+  const clock: FileReadClock = Object.freeze({
+    now: () => now,
+    schedule: (callback, delay) => {
+      sequence += 1;
+      const id = sequence;
+      scheduled.set(id, { at: now + delay, callback });
+      return () => { scheduled.delete(id); };
+    },
+  });
+  const advance = (milliseconds: number): void => {
+    now += milliseconds;
+    while (true) {
+      const ready = [...scheduled.entries()]
+        .filter(([, task]) => task.at <= now)
+        .sort((left, right) => left[1].at - right[1].at)[0];
+      if (!ready) return;
+      scheduled.delete(ready[0]);
+      ready[1].callback();
+    }
+  };
+  return { clock, advance };
+}
+
 function controller(
   client: QueryClient = createMswQueryClient(),
   adapter: ObjectUrlAdapter = objectUrls().adapter,
+  clock?: FileReadClock,
 ): FileReadController {
   let key = 0;
   return new FileReadController(
     client,
     () => `read-operation-key-${++key}`,
     adapter,
+    clock,
   );
 }
 
@@ -456,16 +486,10 @@ describe('binary header, byte, progress, cancellation, and retry boundaries', ()
     ]);
   });
 
-  it.each([
-    [503, 'DEPENDENCY_UNAVAILABLE', null],
-    [429, 'RATE_LIMITED', '7'],
-  ] as const)('allows explicit same-token retry for clear %i', async (
-    status,
-    code,
-    retryAfter,
-  ) => {
+  it('blocks 429 retry for 7 seconds, then reuses the same token once', async () => {
     const record = evidence();
     installReadChain('buyer', record);
+    const time = manualClock();
     let calls = 0;
     server.use(http.get(
       apiUrl('/api/buyer-portal/file-read-intents/:id/content'),
@@ -476,23 +500,129 @@ describe('binary header, byte, progress, cancellation, and retry boundaries', ()
         );
         if (calls === 1) {
           return HttpResponse.json(
-            failureEnvelopeFixture(code, 'retry', null, `request-${status}`),
+            failureEnvelopeFixture('RATE_LIMITED', 'retry', null, 'request-429'),
             {
-              status,
-              headers: retryAfter === null ? {} : { 'Retry-After': retryAfter },
+              status: 429,
+              headers: { 'Retry-After': '7' },
             },
           );
         }
         return binaryResponse();
       },
     ));
+    const target = controller(createMswQueryClient(), objectUrls().adapter, time.clock);
+    await target.start('buyer', reference);
+    expect(target.getSnapshot()).toMatchObject({
+      state: 'DEPENDENCY_UNAVAILABLE', canRetry: false, restartRequired: true,
+      safeError: { retryAfter: 7_000 },
+    });
+    expect(calls).toBe(1);
+    await target.retry();
+    expect(calls).toBe(1);
+    time.advance(6_999);
+    await target.retry();
+    expect(calls).toBe(1);
+    time.advance(1);
+    expect(target.getSnapshot().canRetry).toBe(true);
+    expect(calls).toBe(1);
+    await target.retry();
+    expect(target.getSnapshot().state).toBe('READY');
+    expect(calls).toBe(2);
+    expect(record.contentTokens[0]).toBe(record.contentTokens[1]);
+    expect(target.getSnapshot()).toMatchObject({
+      canRetry: false, restartRequired: false,
+    });
+    expect(JSON.stringify(target.getSnapshot())).not.toContain('retryAvailableAt');
+  });
+
+  it('clears a pending 429 window on cancel without another request', async () => {
+    const record = evidence();
+    const time = manualClock();
+    installReadChain('buyer', record, () => HttpResponse.json(
+      failureEnvelopeFixture('RATE_LIMITED', 'retry', null, 'request-cancel-429'),
+      { status: 429, headers: { 'Retry-After': '7' } },
+    ));
+    const target = controller(createMswQueryClient(), objectUrls().adapter, time.clock);
+    await target.start('buyer', reference);
+    expect(record.contentPaths).toHaveLength(1);
+    target.cancel();
+    expect(target.getSnapshot().state).toBe('CANCELED');
+    time.advance(7_000);
+    await target.retry();
+    expect(record.contentPaths).toHaveLength(1);
+  });
+
+  it('allows 429 restart with a new Intent and clears the old wait window', async () => {
+    const record = evidence();
+    const time = manualClock();
+    let calls = 0;
+    installReadChain('buyer', record, () => {
+      calls += 1;
+      return calls === 1 ? HttpResponse.json(
+        failureEnvelopeFixture('RATE_LIMITED', 'retry', null, 'request-restart-429'),
+        { status: 429, headers: { 'Retry-After': '7' } },
+      ) : binaryResponse();
+    });
+    const target = controller(createMswQueryClient(), objectUrls().adapter, time.clock);
+    await target.start('buyer', reference);
+    await target.restart();
+    expect(target.getSnapshot().state).toBe('READY');
+    expect(record.intentKeys).toEqual([
+      'read-operation-key-1', 'read-operation-key-2',
+    ]);
+    time.advance(7_000);
+    expect(calls).toBe(2);
+  });
+
+  it('requires a new Intent when 429 Retry-After is invalid', async () => {
+    const record = evidence();
+    let calls = 0;
+    installReadChain('buyer', record, () => {
+      calls += 1;
+      return calls === 1 ? HttpResponse.json(
+        failureEnvelopeFixture('RATE_LIMITED', 'retry', null, 'request-invalid-429'),
+        { status: 429, headers: { 'Retry-After': 'invalid' } },
+      ) : binaryResponse();
+    });
+    const target = controller();
+    await target.start('buyer', reference);
+    expect(target.getSnapshot()).toMatchObject({
+      state: 'RESTART_REQUIRED', canRetry: false, restartRequired: true,
+    });
+    await target.retry();
+    expect(calls).toBe(1);
+    await target.restart();
+    expect(calls).toBe(2);
+    expect(record.intentKeys).toEqual([
+      'read-operation-key-1', 'read-operation-key-2',
+    ]);
+  });
+
+  it('keeps explicit immediate same-token retry for clear 503', async () => {
+    const record = evidence();
+    let calls = 0;
+    installReadChain('buyer', record);
+    server.use(http.get(
+      apiUrl('/api/buyer-portal/file-read-intents/:id/content'),
+      ({ request }) => {
+        calls += 1;
+        record.contentTokens.push(
+          request.headers.get('X-File-Read-Token') ?? '',
+        );
+        return calls === 1 ? HttpResponse.json(
+          failureEnvelopeFixture(
+            'DEPENDENCY_UNAVAILABLE', 'retry', null, 'request-503',
+          ),
+          { status: 503 },
+        ) : binaryResponse();
+      },
+    ));
     const target = controller();
     await target.start('buyer', reference);
     expect(target.getSnapshot()).toMatchObject({
       state: 'DEPENDENCY_UNAVAILABLE', canRetry: true,
-      safeError: retryAfter === null ? {} : { retryAfter: 7_000 },
+      restartRequired: false,
     });
-    expect(calls).toBe(1);
     await target.retry();
     expect(target.getSnapshot().state).toBe('READY');
     expect(calls).toBe(2);

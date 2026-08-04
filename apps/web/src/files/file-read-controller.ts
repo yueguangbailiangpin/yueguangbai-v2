@@ -27,9 +27,22 @@ export type ObjectUrlAdapter = Readonly<{
   revokeObjectURL: (objectUrl: string) => void;
 }>;
 
+export type FileReadClock = Readonly<{
+  now: () => number;
+  schedule: (callback: () => void, delay: number) => () => void;
+}>;
+
 const browserObjectUrlAdapter: ObjectUrlAdapter = Object.freeze({
   createObjectURL: (blob) => URL.createObjectURL(blob),
   revokeObjectURL: (objectUrl) => URL.revokeObjectURL(objectUrl),
+});
+
+const browserFileReadClock: FileReadClock = Object.freeze({
+  now: () => Date.now(),
+  schedule: (callback, delay) => {
+    const timer = window.setTimeout(callback, delay);
+    return () => window.clearTimeout(timer);
+  },
 });
 
 export class FileReadController {
@@ -42,12 +55,15 @@ export class FileReadController {
   private abortController: AbortController | null = null;
   private active: Promise<void> | null = null;
   private mayRetryCurrentToken = false;
+  private retryAvailableAt: number | null = null;
+  private cancelRetryAvailability: (() => void) | null = null;
   private objectUrl: string | null = null;
 
   constructor(
     private readonly client: QueryClient,
     private readonly generateKey: () => string = () => crypto.randomUUID(),
     private readonly objectUrls: ObjectUrlAdapter = browserObjectUrlAdapter,
+    private readonly clock: FileReadClock = browserFileReadClock,
   ) {}
 
   subscribe = (listener: () => void): (() => void) => {
@@ -88,9 +104,15 @@ export class FileReadController {
   }
 
   retry(): Promise<void> {
-    if (this.active || !this.snapshot.canRetry || !this.mayRetryCurrentToken) {
+    if (this.active || !this.mayRetryCurrentToken) {
       return this.active ?? Promise.resolve();
     }
+    if (this.retryAvailableAt !== null) {
+      if (this.clock.now() < this.retryAvailableAt) return Promise.resolve();
+      this.clearRetryWindow();
+      this.publish({ ...this.snapshot, canRetry: true });
+    }
+    if (!this.snapshot.canRetry) return Promise.resolve();
     return this.run(() => this.download());
   }
 
@@ -209,6 +231,7 @@ export class FileReadController {
 
   private async download(): Promise<void> {
     if (!this.identity || !this.intent?.accessToken) return;
+    this.clearRetryWindow();
     this.abortController = new AbortController();
     this.mayRetryCurrentToken = false;
     this.publish({
@@ -257,17 +280,28 @@ export class FileReadController {
 
   private handleDownloadFailure(error: unknown): void {
     const apiError = normalized(error);
-    if (apiError.code === 'DEPENDENCY_UNAVAILABLE'
-      || apiError.code === 'RATE_LIMITED'
-      || apiError.httpStatus === 429
-      || apiError.httpStatus === 503) {
+    if (apiError.httpStatus === 429 || apiError.category === 'RATE_LIMIT') {
+      if (apiError.retryAfter === null || apiError.retryAfter <= 0) {
+        this.releaseIntentAuthority();
+        this.publishFailure(apiError, 'RESTART_REQUIRED', false, true);
+        return;
+      }
       this.mayRetryCurrentToken = true;
+      this.retryAvailableAt = this.clock.now() + apiError.retryAfter;
+      this.scheduleRetryAvailability();
       this.publishFailure(
         apiError,
         'DEPENDENCY_UNAVAILABLE',
-        true,
         false,
+        true,
       );
+      return;
+    }
+    if (apiError.code === 'DEPENDENCY_UNAVAILABLE'
+      || apiError.httpStatus === 503) {
+      this.clearRetryWindow();
+      this.mayRetryCurrentToken = true;
+      this.publishFailure(apiError, 'DEPENDENCY_UNAVAILABLE', true, false);
       return;
     }
     this.releaseIntentAuthority();
@@ -322,11 +356,39 @@ export class FileReadController {
   }
 
   private releaseIntentAuthority(): void {
+    this.clearRetryWindow();
     if (this.intent) this.intent.accessToken = null;
     this.intent = null;
     this.createKey = null;
     this.abortController = null;
     this.mayRetryCurrentToken = false;
+  }
+
+  private scheduleRetryAvailability(): void {
+    this.cancelRetryAvailability?.();
+    const availableAt = this.retryAvailableAt;
+    if (availableAt === null) return;
+    const delay = Math.max(0, availableAt - this.clock.now());
+    this.cancelRetryAvailability = this.clock.schedule(() => {
+      this.cancelRetryAvailability = null;
+      if (this.retryAvailableAt !== availableAt) return;
+      if (this.clock.now() < availableAt) {
+        this.scheduleRetryAvailability();
+        return;
+      }
+      this.retryAvailableAt = null;
+      if (this.snapshot.state === 'DEPENDENCY_UNAVAILABLE'
+        && this.mayRetryCurrentToken
+        && this.intent?.accessToken) {
+        this.publish({ ...this.snapshot, canRetry: true });
+      }
+    }, delay);
+  }
+
+  private clearRetryWindow(): void {
+    this.cancelRetryAvailability?.();
+    this.cancelRetryAvailability = null;
+    this.retryAvailableAt = null;
   }
 
   private publish(snapshot: FileReadSnapshot, readyBytesValidated = false): void {
