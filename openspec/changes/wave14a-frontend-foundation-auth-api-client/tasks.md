@@ -22,8 +22,8 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 3. Dependencies
 
-- [ ] 3.1 After controller freeze, select/install compatible React Router, TanStack Query, Zod, Tailwind, lucide-react, and approved narrow Radix primitives.
-- [ ] 3.2 Install Testing Library, user-event, MSW, jsdom, and Playwright with lockfile/license/install-script review.
+- [x] 3.1 After controller freeze, select/install compatible React Router, TanStack Query, Zod, Tailwind, lucide-react, and approved narrow Radix primitives.
+- [x] 3.2 Install Testing Library, user-event, MSW, jsdom, and Playwright with lockfile/license/install-script review.
 
 ## 4. Runtime Configuration
 
@@ -32,31 +32,31 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 ## 5. Design Tokens
 
 - [x] 5.1 Freeze Quiet Operations, brand/identity/status semantics, typography, shape, shadow, responsive, and prohibited-style rules.
-- [ ] 5.2 Implement light CSS custom properties and Tailwind semantic mappings with contrast tests; do not add dark mode.
+- [x] 5.2 Implement light CSS custom properties and Tailwind semantic mappings with contrast tests; do not add dark mode.
 
 ## 6. App Bootstrap
 
-- [ ] 6.1 Implement StrictMode, root/config validation, Root Error Boundary, Router/Query integration, and safe bootstrap failure.
+- [x] 6.1 Implement StrictMode, root/config validation, Root Error Boundary, Router/Query integration, and safe bootstrap failure.
 
 ## 7. Router
 
-- [ ] 7.1 Implement public, login, callback, Buyer, Seller, Staff, guard, return-path, and scoped not-found routes.
+- [x] 7.1 Implement public, login, callback, Buyer, Seller, Staff, guard, return-path, and scoped not-found routes.
 
 ## 8. Root Entry
 
-- [ ] 8.1 Implement the `月光白` dedicated-link notice with no identity controls while retaining direct Buyer, Seller, and Staff login routes.
+- [x] 8.1 Implement the `月光白` dedicated-link notice with no identity controls while retaining direct Buyer, Seller, and Staff login routes.
 
 ## 9. Buyer Shell
 
-- [ ] 9.1 Implement the mobile-first Buyer shell and fixed 首页、任务、订单资料、评论、我的 navigation without business pages.
+- [x] 9.1 Implement the mobile-first Buyer shell and fixed 首页、任务、订单资料、评论、我的 navigation without business pages.
 
 ## 10. Seller Shell
 
-- [ ] 10.1 Implement the medium-density Seller shell, list context, right detail drawer, focus restoration, and small-screen fallback without business pages.
+- [x] 10.1 Implement the medium-density Seller shell, list context, right detail drawer, focus restoration, and small-screen fallback without business pages.
 
 ## 11. Staff Shell
 
-- [ ] 11.1 Implement the queue/detail/action workbench, semantic separations, context preservation, and narrow fallback without business pages.
+- [x] 11.1 Implement the queue/detail/action workbench, semantic separations, context preservation, and narrow fallback without business pages.
 
 ## 12. API Envelope
 
@@ -72,7 +72,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 15. Idempotency
 
-- [ ] 15.1 Implement in-memory logical-operation keys, identical-body safe retry, release lifecycle, and latest-DTO expected_version handling.
+- [x] 15.1 Implement in-memory logical-operation keys, identical-body safe retry, release lifecycle, and latest-DTO expected_version handling.
 
 ## 16. Staff Auth
 
@@ -92,16 +92,16 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 20. File Transfer Client
 
-- [ ] 20.1 Implement purpose-bound intent/upload/complete/VERIFIED/read flows, memory-only tokens, progress, cancel, expiry/replay restart, and compensation state.
-- [ ] 20.2 Prove no object key/permanent URL/generic Link/Grant/deferred internal-communication upload capability exists.
+- [x] 20.1 Implement purpose-bound intent/upload/complete/VERIFIED/read flows, memory-only tokens, progress, cancel, expiry/replay restart, and compensation state.
+- [x] 20.2 Prove no object key/permanent URL/generic Link/Grant/deferred internal-communication upload capability exists.
 
 ## 21. Shared UI Primitives
 
-- [ ] 21.1 Implement the frozen shell/navigation/input/content/data/overlay/feedback/state primitive inventory with semantic tokens.
+- [x] 21.1 Implement the frozen shell/navigation/input/content/data/overlay/feedback/state primitive inventory with semantic tokens.
 
 ## 22. Accessibility
 
-- [ ] 22.1 Implement semantic HTML, keyboard/focus/overlay behavior, labels/errors, non-color states, live announcements, alt/table semantics, 320px/200%, targets, and reduced motion.
+- [x] 22.1 Implement semantic HTML, keyboard/focus/overlay behavior, labels/errors, non-color states, live announcements, alt/table semantics, 320px/200%, targets, and reduced motion.
 
 ## 23. Unit Tests
 
@@ -109,12 +109,12 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 24. Component Tests
 
-- [ ] 24.1 Add Testing Library/user-event/jsdom coverage for routes, shells, forms, focus, overlays, responsive semantics, and all system states.
+- [x] 24.1 Add Testing Library/user-event/jsdom coverage for routes, shells, forms, focus, overlays, responsive semantics, and all system states.
 
 ## 25. MSW Tests
 
 - [x] 25.1 Add real `/api/*` MSW coverage for credentials, envelopes, identity, statuses, retry/cancel, idempotency, Customer two-root invalidation, Staff-only invalidation, mismatch non-navigation, and phantom internal-communication route rejection.
-- [ ] 25.2 Add File Transfer MSW coverage only after the separately authorized File Transfer implementation.
+- [x] 25.2 Add File Transfer MSW coverage only after the separately authorized File Transfer implementation.
 
 ## 26. Playwright Smoke
 
@@ -130,7 +130,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 29. Browser Validation
 
-- [ ] 29.1 Run local browser smoke and accessibility/responsive checks; leave real business, Feishu, R2, mainland network, and production validation deferred.
+- [x] 29.1 Run local browser smoke and accessibility/responsive checks; leave real business, Feishu, R2, mainland network, and production validation deferred.
 
 ## 30. OpenSpec Validation
 
@@ -138,7 +138,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 31. OpenSpec Verify
 
-- [ ] 31.1 After implementation and all gates, run formal OpenSpec Verify against all 42 Requirements and 84 Scenarios.
+- [x] 31.1 After implementation and all gates, run formal OpenSpec Verify against all 42 Requirements and 84 Scenarios.
 
 ## 32. Ponytail Read-only Review
 
@@ -301,3 +301,53 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - Strict JSON OpenSpec validation passed target 1/1 and repository-wide 8/8 with 0 failures. Structure remains 7 Capabilities / 42 Requirements / 84 Scenarios / 17 Change files. Database invariants remain 27 migrations / schema 27 / 117 tables / 221 triggers / 10 final views, with no `0028`.
 - `npm audit` reported 6 unresolved entries: 3 high, 3 moderate, 0 critical/low. Direct affected packages are runtime `hono` and `react-router-dom`, plus dev-only `wrangler`; only `hono` has a non-major-version fix suggestion in the audit result. No dependency fix or package-file change was made.
 - Task 20.1 remains unchecked because Read Intent, download, Object URL, remaining File UI, and formal OpenSpec Verify remain deferred. Push, PR, Integration, `main`, deployment, and remote resource changes were not performed.
+
+## FINAL_IMPLEMENTATION_VALIDATION_EVIDENCE
+
+### Final build scope
+
+- Final implementation adds the complete identity-bound File Read Intent/content flow, bounded binary verification, memory-only access authority, exact-length streaming, and ephemeral Object URL create/revoke lifecycle. The security verifier now requires these production paths and their formal MSW evidence.
+- The frozen shared UI inventory is complete and component-tested: shell/navigation, fields/forms, data, overlay/navigation, feedback, state, request ID, progress, and skeleton primitives all use semantic light tokens and accessible state contracts.
+- Root, Buyer, Seller, and Staff surfaces received final Quiet Operations polish without fake business data, dark mode, gradients, heavy shadows, customer-facing English branding, or `V2`. The accepted visual reference records final AA contrast values.
+- Final Playwright acceptance contains 29 foundation scenarios plus 12 deterministic screenshot scenarios. It covers root and all login routes, password-route guards, Buyer 320px navigation, Seller desktop/drawer/card fallback, Staff desktop/narrow/logout flows, 401/mismatch, 403/404/503, keyboard focus, reduced motion, 200% text zoom, and five viewport sizes.
+
+### Dependency and security disposition
+
+- Exact `hono` was advanced from `4.12.32` to patched `4.12.34`. The `miniflare` dependency graph is pinned to `undici 7.29.0` through a narrow root override. No Backend source, Contract, Domain, Migration, route, schema, or production resource changed.
+- Final `npm audit --json`: 0 critical, 2 high, 0 moderate, 0 low. Both reported nodes are the same React Router RSC-mode advisory. This application uses `BrowserRouter` as a static Vite SPA and does not import or enable React Server Components, server actions, or React Router framework/data-action mode; therefore the advisory path is not deployment-reachable in Wave 14A. The audit-recommended `7.11.0` change is an unsafe cross-range downgrade and was not applied. This residual is accepted for controller review, not represented as zero advisory inventory.
+- `npm ci` install-script review reported five pending package scripts (`esbuild`, two `fsevents` versions, `msw`, and `workerd`); installation and all build/test gates completed without approving new scripts.
+- The final Wave 14A verifier rejects `/api/v2`, client authority/storage, raw exception diagnostics, File Link/Grant/storage authority, deferred internal-communication capability, unsafe read headers/bytes, missing URL revocation, incomplete primitives, obsolete root semantics, and incomplete browser acceptance.
+
+### Formal OpenSpec Verify report
+
+| Dimension | Result |
+|---|---|
+| Completeness | 43/46 tasks complete; the only unchecked tasks are explicitly unauthorized Ponytail, Integration, and `main` advancement |
+| Correctness | 42/42 Requirements mapped; 84/84 Scenarios covered by production structure plus unit/component/MSW/Playwright evidence |
+| Coherence | Provider ownership, identity isolation, API/error/idempotency/file rules, Quiet Operations, responsive/accessibility rules, and deferred boundaries follow Proposal/Design |
+
+- API client Requirements map to `apps/web/src/api/**`, Query/idempotency/session controllers, and formal transport/protected/MSW tests.
+- Design/accessibility Requirements map to `apps/web/src/styles/**`, `apps/web/src/ui/primitives.tsx`, component tests, Playwright reflow/focus tests, and the accepted screenshots.
+- File Requirements map to `apps/web/src/files/**`, the single upload transition authority, the File Read transition authority, XHR/fetch transports, and 149 scoped File tests.
+- Routing/shell Requirements map to `apps/web/src/App.tsx`, identity boundaries, browser route/guard/error tests, and the 12 screenshot states.
+- Runtime/session Requirements map to `apps/web/src/main.tsx`, runtime config, Router/Query providers, independent Customer/Staff boundaries, generation-aware invalidation, and logout/password flows.
+- Testing-quality Requirements map to the strict shared MSW lifecycle, 18 Wave test files, 128 repository test files, 41 Playwright tests, security/migration/Wave verifiers, and strict OpenSpec validation.
+- CRITICAL: 0. WARNING: 0. SUGGESTION: 0. Final assessment: all authorized Wave 14A implementation checks passed and the Change is ready for controller review, but not for archive/integration until governance authorizes the remaining stages.
+
+### Exact final validation results
+
+- `npm ci --cache /tmp/wave14a-npm-cache-delivery`: passed; 226 packages installed, 233 audited.
+- Web typecheck: passed.
+- Wave 14A: 18 test files / 322 tests / 0 failed.
+- Repository: 128 test files / 901 tests / 0 failed.
+- Playwright: 41 passed / 0 failed, including 12 external screenshots in `/tmp/wave14a-final-20260804-122857`.
+- Web production build and every workspace build: passed; API Wrangler dry-run: passed.
+- Security scan: passed across 656 project files.
+- Database invariants: 27 migrations / schema 27 / 117 tables / 221 triggers / 0 foreign-key errors; no `0028`.
+- Wave 13 route/file invariants: 138 active routes / 5 active purpose routes / 0 generic Link routes / 0 generic Grant routes / 0 R2 authority fields.
+- OpenSpec target strict: 1 passed / 0 failed / 0 issues.
+- OpenSpec repository strict: 8 passed / 0 failed. The 27 INFO notices remain confined to pre-existing Wave 13 Specs and the pre-Wave 13 audit Change; this Change has 0 issues.
+
+### Deferred production boundary
+
+`NOT_PRODUCTION_VERIFIED`: no real Feishu, production R2, production data, mainland-network validation, business workflow acceptance, deployment, PR, Push, Integration, `main` advancement, or Wave 14B–17 work was performed or claimed. Ponytail remained OFF throughout and was not run.

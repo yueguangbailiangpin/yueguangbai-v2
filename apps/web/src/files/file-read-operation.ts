@@ -67,4 +67,3 @@ export const initialFileReadSnapshot: FileReadSnapshot = Object.freeze({
   canRelease: false,
   restartRequired: false,
 });
-

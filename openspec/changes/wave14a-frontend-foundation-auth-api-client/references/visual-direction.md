@@ -136,3 +136,27 @@ Use semantic landmarks/headings, logical DOM/reading order, keyboard-complete op
 - Customer-facing English product branding or `V2`.
 
 Root is a quiet dedicated-link notice, not an identity selector or login surface.
+
+## Final Implemented Tokens and Contrast
+
+Wave 14A final polish retains the candidate canvas, surface, primary text,
+brand, Buyer, Seller, and Staff colors. The following candidates were adjusted
+before acceptance so every foreground pairing used for text, controls, focus,
+and status labels reaches at least WCAG AA normal-text contrast:
+
+| Token | Final value | Adjustment reason |
+|---|---:|---|
+| `color.text.disabled` | `#687588` | Darkened from `#7D8999`; final white-surface contrast is 4.68:1 while disabled controls also retain opacity, cursor, and native disabled semantics. |
+| `color.border.strong` | `#AEB9C8` | Increased structural separation for inputs and dense panes without using shadow. |
+| `color.focus` | `#1745B5` | Dedicated focus color provides 8.22:1 against white and remains visibly distinct from borders. |
+| `color.status.processing` | `#245AAB` | Final foreground on `#EAF2FF` reaches 5.96:1. |
+| `color.status.warning` | `#8A5200` | Darkened from `#9A5B00`; final foreground on `#FFF3D6` reaches 5.79:1. |
+| `color.status.danger` | `#AD202B` | Final foreground on `#FFF0F1` reaches 6.29:1. |
+| `color.status.conflict` | `#9A3E13` | Darkened from the candidate for stable normal-text contrast on the conflict surface. |
+
+Automated relative-luminance checks produced: primary text 16.27:1 on white,
+secondary text 6.31:1 on white and 5.88:1 on canvas, inverse button text
+6.16:1 on brand blue, focus 8.22:1 on white, success 4.73:1, warning
+5.79:1, danger 6.29:1, processing 5.96:1, Seller 4.69:1, and Staff
+5.09:1 on their respective soft surfaces. Statuses also include visible label
+text, border, and dot/icon treatment and therefore never rely on color alone.

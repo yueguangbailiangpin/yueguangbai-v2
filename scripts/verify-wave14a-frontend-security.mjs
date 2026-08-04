@@ -74,6 +74,16 @@ const fileUploadTests = readdirSync(fileRoot)
   .filter((name) => /\.(test|spec)\.(ts|tsx)$/.test(name))
   .map((name) => readFileSync(join(fileRoot, name), 'utf8'))
   .join('\n');
+const fileReadApi = readFileSync(join(fileRoot, 'file-read-api.ts'), 'utf8');
+const fileReadContracts = readFileSync(join(fileRoot, 'file-read-contracts.ts'), 'utf8');
+const fileReadController = readFileSync(join(fileRoot, 'file-read-controller.ts'), 'utf8');
+const fileReadMachine = readFileSync(join(fileRoot, 'file-read-machine.ts'), 'utf8');
+const fileReadOperation = readFileSync(join(fileRoot, 'file-read-operation.ts'), 'utf8');
+const fileReadTransport = readFileSync(join(fileRoot, 'file-read-transport.ts'), 'utf8');
+const fileReadHarness = readFileSync(join(fileRoot, 'file-read-test-harness.tsx'), 'utf8');
+const fileReadTests = readFileSync(join(fileRoot, 'file-read-controller.msw.test.tsx'), 'utf8');
+const primitives = readFileSync(join(webRoot, 'ui/primitives.tsx'), 'utf8');
+const primitiveTests = readFileSync(join(webRoot, 'ui/primitives.test.tsx'), 'utf8');
 const mswTestFiles = [];
 function collectMswTests(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -117,6 +127,9 @@ if (/catch\s*\{\s*\}/u.test(customerSource) || /catch\s*\{\s*\}/u.test(app)) {
 }
 if (/console\.|localStorage|sessionStorage|URLSearchParams/u.test(passwordController + passwordPage)) {
   throw new Error('password operation data must not enter logs, storage, or URLs');
+}
+if (/error\.(?:stack|message)|String\(error\)|JSON\.stringify\(error\)/u.test(source)) {
+  throw new Error('raw exception diagnostics must not enter production UI output');
 }
 
 requireText(source, [
@@ -651,6 +664,170 @@ if (!fileUploadTests.includes('server.use(')
   || !fileUploadTests.includes('FileUploadController')) {
   throw new Error('file upload tests must traverse Controller, XHR, and MSW');
 }
+
+requireText(fileReadContracts, [
+  'FILE_PURPOSES',
+  'FILE_VISIBILITIES',
+  'file_object_id: identifier',
+  'file_version: positiveSafeInteger',
+  'purpose: z.enum(FILE_PURPOSES)',
+  'visibility: z.enum(FILE_VISIBILITIES)',
+  'expected_file_version: positiveSafeInteger',
+  '.strict()',
+  'Number.MAX_SAFE_INTEGER',
+], 'strict Safe File Reference and Read Intent contracts');
+requireText(fileReadApi, [
+  "buyer: '/api/buyer-portal'",
+  "seller: '/api/seller-portal'",
+  "staff: '/api/staff'",
+  '/files/${input.reference.file_object_id}/read-intents',
+  'identityApiRequest(input.identity, input.client',
+  'operationHeaders({ key: input.idempotencyKey, body })',
+  'result.data.replayed === result.data.access_token_available',
+], 'fixed identity-bound file Read Intent adapter');
+requireText(fileReadTransport, [
+  'MAXIMUM_FILE_READ_BYTES = 25 * 1024 * 1024',
+  "'image/jpeg'",
+  "'image/png'",
+  "'image/webp'",
+  "'application/pdf'",
+  '/file-read-intents/${input.readIntentId}/content',
+  'approvedApiPath(path)',
+  'withIdentity401Invalidation(input.identity, input.client',
+  "credentials: 'include'",
+  "Accept: 'application/octet-stream'",
+  "'X-File-Read-Token': input.accessToken",
+  'parseApiFailureEnvelope(',
+  "response.headers.get('Content-Length')",
+  "cacheDirectives.includes('no-store')",
+  "!== 'nosniff'",
+  'response.body.getReader()',
+  'loadedBytes > totalBytes',
+  'loadedBytes !== totalBytes',
+  'Math.min(99',
+], 'bounded credentialed binary read transport');
+requireText(fileReadOperation, [
+  "| 'CREATING_READ_INTENT'",
+  "| 'READ_READY'",
+  "| 'DOWNLOADING'",
+  "| 'READY'",
+  "| 'RESTART_REQUIRED'",
+  "| 'DEPENDENCY_UNAVAILABLE'",
+  "| 'FILE_STORAGE_CONFLICT'",
+  'ephemeralObjectUrl: string | null',
+  'canRetry: boolean',
+  'restartRequired: boolean',
+], 'safe file read operation snapshot');
+for (const privateMaterial of ['accessToken', 'idempotencyKey', 'Uint8Array', 'ArrayBuffer']) {
+  if (fileReadOperation.includes(privateMaterial)) {
+    throw new Error(`public file read snapshot exposes private material: ${privateMaterial}`);
+  }
+}
+requireText(fileReadController, [
+  'private intent: PrivateReadIntent | null',
+  'private createKey: string | null',
+  'private objectUrl: string | null',
+  'this.createKey = this.generateKey()',
+  'result.data.replayed',
+  "'FILE_READ_INTENT_REPLAYED'",
+  "'RESTART_REQUIRED'",
+  'this.intent.accessToken = null',
+  'const blob = new Blob([result.bytes]',
+  'this.objectUrls.createObjectURL(blob)',
+  'this.objectUrls.revokeObjectURL(this.objectUrl)',
+  "apiError.code === 'RATE_LIMITED'",
+  "apiError.httpStatus === 429",
+  "apiError.httpStatus === 503",
+  "apiError.code === 'FILE_STORAGE_CONFLICT'",
+  "apiError.code === 'FILE_UPLOAD_EXPIRED'",
+  "apiError.code === 'NETWORK_FAILURE'",
+  "apiError.code === 'MALFORMED_RESPONSE'",
+  'releaseIntentAuthority()',
+  'dispose(): void',
+], 'private file read Controller lifecycle');
+const verifiedRead = fileReadController.indexOf('const blob = new Blob([result.bytes]');
+const createdObjectUrl = fileReadController.indexOf('this.objectUrls.createObjectURL(blob)', verifiedRead);
+const readyPublication = fileReadController.indexOf("state: 'READY'", createdObjectUrl);
+if (verifiedRead < 0 || createdObjectUrl < verifiedRead || readyPublication < createdObjectUrl) {
+  throw new Error('Object URL must be created only after the binary transport verifies all bytes');
+}
+requireText(fileReadMachine, [
+  'FILE_READ_TRANSITIONS',
+  'assertFileReadTransition(',
+  'readyBytesValidated',
+  "next.state === 'READY'",
+  'next.ephemeralObjectUrl === null',
+  "next.state !== 'READY' && next.ephemeralObjectUrl !== null",
+], 'authoritative file read transition guard');
+requireText(fileReadHarness, [
+  'useSyncExternalStore(',
+  'props.controller.dispose()',
+  'snapshot.ephemeralObjectUrl',
+  'disabled={!snapshot.canRelease}',
+], 'file read lifecycle projection');
+if (/localStorage|sessionStorage|console\.|URLSearchParams|base64/iu.test(
+  fileReadApi + fileReadContracts + fileReadController + fileReadMachine
+  + fileReadOperation + fileReadTransport,
+)) {
+  throw new Error('file read authority and bytes must remain private memory only');
+}
+requireText(fileReadTests, [
+  "import '../test/msw/lifecycle'",
+  "it.each(['buyer', 'seller', 'staff'] as const)",
+  "request.headers.get('X-File-Read-Token')",
+  "request.headers.get('Idempotency-Key')",
+  "record.credentials).toEqual(['include', 'include'])",
+  "'application/json', 'application/octet-stream'",
+  'requires an explicit restart with a fresh key after tokenless replay',
+  'rejects %s before object URL creation',
+  'over 25 MiB',
+  'rejects a body shorter than Content-Length',
+  'stops immediately when streamed bytes exceed Content-Length',
+  'never publishes 100 before completion',
+  'allows explicit same-token retry for clear %i',
+  "[409, 'FILE_STORAGE_CONFLICT', 'FILE_STORAGE_CONFLICT', false]",
+  "[410, 'FILE_UPLOAD_EXPIRED', 'RESTART_REQUIRED', true]",
+  '%s 401 clears only its session domain after invalidation completes',
+  'ignores an old download 401 after a fresh session generation is established',
+  'revokes on release and revokes the first URL before creating a second',
+  'dispose aborts an active operation without creating or leaking a URL',
+  'expect(localStorage.length).toBe(0)',
+  'expect(sessionStorage.length).toBe(0)',
+], 'formal MSW file read safety evidence');
+if (!fileReadTests.includes('server.use(')
+  || !fileReadTests.includes('FileReadController')
+  || !fileReadTests.includes('ReadableStream')) {
+  throw new Error('file read tests must traverse Controller, streaming transport, and MSW');
+}
+
+for (const primitive of [
+  'AppShell', 'IdentityShell', 'PageHeader', 'Sidebar', 'BottomNavigation',
+  'StatusBadge', 'Button', 'IconButton', 'TextInput', 'Select', 'SearchInput',
+  'Checkbox', 'FormField', 'Card', 'MetricCard', 'DataTable', 'Drawer',
+  'Dialog', 'Tabs', 'Pagination', 'Breadcrumb', 'Timeline', 'Progress',
+  'Alert', 'Toast', 'EmptyState', 'LoadingState', 'ErrorState',
+  'PermissionDenied', 'NotFound', 'DependencyUnavailable',
+  'RequestIdDisplay', 'Skeleton',
+]) {
+  if (!primitives.includes(`export function ${primitive}`)) {
+    throw new Error(`shared UI primitive missing: ${primitive}`);
+  }
+}
+requireText(primitives, [
+  "addEventListener('keydown'",
+  'if (opener?.isConnected) opener.focus()',
+  "aria-live={tone === 'danger' ? 'assertive' : 'polite'}",
+  "role={tone === 'danger' ? 'alert' : 'status'}",
+  "aria-current={page === currentPage ? 'page' : undefined}",
+], 'accessible shared UI primitive behavior');
+requireText(primitiveTests, [
+  'traps Drawer focus, closes on Escape, and restores the opener',
+  'cycles Dialog tabs, blocks Escape while busy, then restores focus',
+  'moves Tabs with arrows, Home, and End',
+  'renders DataTable caption and scoped headers inside an overflow region',
+  'renders complete empty/loading/error/403/404/503 states',
+  'copies Request ID without exposing any error detail',
+], 'shared UI component acceptance evidence');
 if (/AuthContext|createContext\s*\([^)]*auth|dispatchEvent\s*\([^)]*auth|addEventListener\s*\([^)]*auth/iu.test(source)) {
   throw new Error('global AuthContext or authentication event invalidation is prohibited');
 }
@@ -865,10 +1042,38 @@ const rootEntry = app.match(/export function RootEntry\(\)[\s\S]*?\n}/)?.[0] ?? 
 for (const forbiddenRootControl of ['买家入口', '卖家入口', '员工入口', '<Link', '<NavLink']) {
   if (rootEntry.includes(forbiddenRootControl)) throw new Error(`root dedicated-link violation: ${forbiddenRootControl}`);
 }
+requireText(rootEntry, [
+  '>月光白</h1>',
+  '请使用工作人员发送的专属链接登录。',
+], 'finished dedicated-link root notice');
 const browserFixtures = readFileSync(join(workspace, 'apps/web/e2e/foundation.spec.ts'), 'utf8');
-if (!browserFixtures.includes('data: { session }')) throw new Error('Playwright fixture must use data.session');
+if (!browserFixtures.includes('success({ session:')) throw new Error('Playwright fixture must use data.session');
+requireText(browserFixtures, [
+  'root is a finished dedicated-link notice with no identity controls',
+  'Buyer shell is task-focused with five fixed items and no fake business data',
+  'Buyer shell keeps navigation clear at 320px and safe content padding',
+  'Seller Drawer traps focus, closes with Escape, and restores its opener',
+  'Seller small screen uses a card fallback without page overflow',
+  'Staff desktop shell preserves queue-detail-action DOM order and separation',
+  'Staff narrow shell opens the ordered action Drawer and restores focus',
+  'Staff ordinary logout clears the local session before navigation',
+  'Staff logout-all requires a busy-safe Dialog and completes explicitly',
+  '401 route guard redirects without rendering Buyer shell content',
+  'mismatch fails closed, logs out, and returns to the correct login',
+  '403 state is durable, explicit, and retains a safe request ID',
+  '404 state does not disclose protected resource detail',
+  '503 session state is persistent and carries request_id',
+  'reduced-motion removes meaningful animation duration',
+  '200% equivalent text zoom reflows without critical horizontal clipping',
+  'viewport retains the root notice without clipping',
+], 'final browser acceptance matrix');
+// Twenty-three declarations expand through the three frozen case matrices to
+// twenty-nine final Playwright scenarios.
+if ((browserFixtures.match(/\btest\(/gu) ?? []).length < 23) {
+  throw new Error('final browser acceptance matrix is incomplete');
+}
 if (!existsSync(join(workspace, 'apps/web/dist/index.html'))) {
-  process.stdout.write('Wave 14A auth, upload, route, lifecycle, and test verifier passed (build artifact not present).\n');
+  process.stdout.write('Wave 14A auth, upload, read, UI, route, lifecycle, and test verifier passed (build artifact not present).\n');
 } else {
-  process.stdout.write('Wave 14A auth, upload, route, lifecycle, test, and build verifier passed.\n');
+  process.stdout.write('Wave 14A auth, upload, read, UI, route, lifecycle, test, and build verifier passed.\n');
 }

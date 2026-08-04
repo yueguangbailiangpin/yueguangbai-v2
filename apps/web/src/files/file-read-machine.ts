@@ -57,4 +57,3 @@ export function assertFileReadTransition(
     throw new FileReadTransitionError('object_url_requires_ready');
   }
 }
-
