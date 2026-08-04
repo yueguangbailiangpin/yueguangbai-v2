@@ -10,6 +10,7 @@ import {
   uploadIntentBody,
   uploadIntentResponseSchema,
   type CompleteUploadResponse,
+  type UploadedFileReceipt,
   type UploadIntentResponse,
 } from './file-contracts';
 import type { ValidatedFileSelection } from './file-descriptor';
@@ -49,7 +50,7 @@ export async function completePurposeBoundUploadIntent(input: {
   workflow: FileUploadWorkflow;
   intentId: string;
   expectedVersion: number;
-  fileObjectIds: ReadonlySet<string>;
+  uploadedReceipts: ReadonlyMap<string, UploadedFileReceipt>;
   idempotencyKey: string;
   signal: AbortSignal;
 }): Promise<Readonly<{ data: CompleteUploadResponse; requestId: string }>> {
@@ -70,8 +71,9 @@ export async function completePurposeBoundUploadIntent(input: {
   try {
     assertCompleteMatchesIntent(result.data, {
       intentId: input.intentId,
+      intentVersion: input.expectedVersion,
       workflow: input.workflow,
-      fileObjectIds: input.fileObjectIds,
+      uploadedReceipts: input.uploadedReceipts,
     });
   } catch {
     throw new FrontendApiError(
@@ -80,4 +82,3 @@ export async function completePurposeBoundUploadIntent(input: {
   }
   return result;
 }
-

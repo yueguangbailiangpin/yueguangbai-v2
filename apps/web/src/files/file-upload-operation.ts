@@ -10,6 +10,7 @@ export type FileUploadOperationState =
   | 'COMPLETING'
   | 'VERIFIED'
   | 'RESTART_REQUIRED'
+  | 'FILE_NOT_VERIFIED'
   | 'ERROR'
   | 'CANCELED'
   | 'FILE_COMPENSATION_REQUIRED'
@@ -69,7 +70,9 @@ export type FileUploadSnapshot = Readonly<{
   error: SafeFileUploadError | null;
   manifest: SafeVerifiedManifest | null;
   canRetry: boolean;
+  canCancel: boolean;
   restartRequired: boolean;
+  requiresFileReselection: boolean;
 }>;
 
 export const initialFileUploadSnapshot: FileUploadSnapshot = Object.freeze({
@@ -89,6 +92,7 @@ export const initialFileUploadSnapshot: FileUploadSnapshot = Object.freeze({
   error: null,
   manifest: null,
   canRetry: false,
+  canCancel: false,
   restartRequired: false,
+  requiresFileReselection: false,
 });
-

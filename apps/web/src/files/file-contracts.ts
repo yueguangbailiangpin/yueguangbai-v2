@@ -71,6 +71,12 @@ export const completeUploadResponseSchema = z.object({
 export type UploadIntentResponse = z.output<typeof uploadIntentResponseSchema>;
 export type UploadContentResponse = z.output<typeof uploadContentResponseSchema>;
 export type CompleteUploadResponse = z.output<typeof completeUploadResponseSchema>;
+export type UploadedFileReceipt = Readonly<{
+  detectedMime: z.output<typeof supportedMime>;
+  byteSize: number;
+  sha256: string;
+  uploadedVersion: number;
+}>;
 
 export function uploadIntentBody(
   files: readonly { descriptor: PurposeBoundFileUploadIntentRequest['files'][number] }[],
@@ -105,19 +111,27 @@ export function assertCompleteMatchesIntent(
   result: CompleteUploadResponse,
   input: {
     intentId: string;
+    intentVersion: number;
     workflow: FileUploadWorkflow;
-    fileObjectIds: ReadonlySet<string>;
+    uploadedReceipts: ReadonlyMap<string, UploadedFileReceipt>;
   },
 ): void {
   if (result.upload_intent_id !== input.intentId
-    || result.files.length !== input.fileObjectIds.size) {
+    || result.version !== input.intentVersion + 1
+    || result.files.length !== input.uploadedReceipts.size) {
     throw new Error('complete_manifest_contract_mismatch');
   }
   const found = new Set<string>();
   for (const file of result.files) {
-    if (file.purpose !== input.workflow.purpose
+    const receipt = input.uploadedReceipts.get(file.file_object_id);
+    if (!receipt
+      || file.purpose !== input.workflow.purpose
       || file.visibility !== input.workflow.visibility
-      || !input.fileObjectIds.has(file.file_object_id)
+      || !input.workflow.allowedMimes.includes(file.detected_mime)
+      || file.detected_mime !== receipt.detectedMime
+      || file.byte_size !== receipt.byteSize
+      || file.sha256 !== receipt.sha256
+      || file.version !== receipt.uploadedVersion + 1
       || found.has(file.file_object_id)) {
       throw new Error('complete_manifest_file_mismatch');
     }

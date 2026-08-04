@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { FrontendApiError, isFrontendApiError } from '../api/errors';
 import { completePurposeBoundUploadIntent, createPurposeBoundUploadIntent } from './file-upload-api';
+import type { UploadedFileReceipt } from './file-contracts';
 import { validateFileSelection, type ValidatedFileSelection } from './file-descriptor';
 import {
   initialFileUploadSnapshot,
@@ -15,6 +16,7 @@ import {
   type FileUploadWorkflowKey,
 } from './file-purpose-config';
 import { uploadSingleFileMultipart, type UploadProgress } from './file-upload-transport';
+import { assertFileUploadTransition } from './file-transfer-machine';
 
 type PrivateSlot = {
   slotNo: number;
@@ -22,6 +24,7 @@ type PrivateSlot = {
   uploadToken: string | null;
   idempotencyKey: string | null;
   selection: ValidatedFileSelection;
+  receipt: UploadedFileReceipt | null;
   state: FileUploadSlotState;
 };
 
@@ -60,6 +63,9 @@ export class FileUploadController {
 
   start(workflowKey: FileUploadWorkflowKey, files: readonly File[]): Promise<void> {
     if (this.active) return this.active;
+    if (this.snapshot.state === 'FILE_COMPENSATION_REQUIRED') {
+      return Promise.resolve();
+    }
     this.releasePrivateState(true);
     this.workflowKey = workflowKey;
     try {
@@ -90,6 +96,10 @@ export class FileUploadController {
   ): Promise<void> {
     if (this.active) {
       const previous = this.active;
+      if (this.snapshot.state === 'COMPLETING') {
+        await previous;
+        return;
+      }
       this.cancel();
       await previous;
     }
@@ -114,6 +124,7 @@ export class FileUploadController {
   }
 
   cancel(): void {
+    if (!this.snapshot.canCancel) return;
     this.abortController?.abort();
     const slots = this.snapshot.slots.map((slot) => Object.freeze({
       ...slot,
@@ -174,6 +185,7 @@ export class FileUploadController {
           uploadToken: slot.upload_token,
           idempotencyKey: null,
           selection: this.selections![slot.slot_no - 1]!,
+          receipt: null,
           state: 'PENDING',
         })),
       };
@@ -219,6 +231,12 @@ export class FileUploadController {
           onProgress: (progress) => this.publishSlotProgress(slot, progress),
         });
         slot.state = 'UPLOADED';
+        slot.receipt = Object.freeze({
+          detectedMime: result.data.detected_mime,
+          byteSize: result.data.byte_size,
+          sha256: result.data.sha256,
+          uploadedVersion: result.data.version,
+        });
         slot.uploadToken = null;
         slot.idempotencyKey = null;
         this.publishSlots('UPLOADING', result.requestId);
@@ -230,7 +248,7 @@ export class FileUploadController {
         }
         slot.state = 'FAILED';
         this.publishSlots('UPLOADING', this.snapshot.requestId);
-        this.handleUploadFailure(error, slot);
+        this.handleUploadFailure(error);
         return;
       }
     }
@@ -239,7 +257,9 @@ export class FileUploadController {
 
   private async complete(): Promise<void> {
     if (!this.workflow || !this.intent
-      || this.intent.slots.some((slot) => slot.state !== 'UPLOADED')) return;
+      || this.intent.slots.some(
+        (slot) => slot.state !== 'UPLOADED' || slot.receipt === null,
+      )) return;
     this.abortController = new AbortController();
     this.completeKey ??= this.generateKey();
     this.retryStage = 'COMPLETE';
@@ -250,7 +270,10 @@ export class FileUploadController {
         workflow: this.workflow,
         intentId: this.intent.id,
         expectedVersion: this.intent.version,
-        fileObjectIds: new Set(this.intent.slots.map((slot) => slot.fileObjectId)),
+        uploadedReceipts: new Map(this.intent.slots.map((slot) => [
+          slot.fileObjectId,
+          slot.receipt!,
+        ])),
         idempotencyKey: this.completeKey,
         signal: this.abortController.signal,
       });
@@ -270,8 +293,7 @@ export class FileUploadController {
           sha256: file.sha256,
         }))),
       });
-      this.selections = null;
-      this.intent = null;
+      this.releasePrivateState(true);
       this.publish({
         ...this.snapshot,
         state: 'VERIFIED',
@@ -280,70 +302,102 @@ export class FileUploadController {
         manifest,
         canRetry: false,
         restartRequired: false,
-      });
+        requiresFileReselection: false,
+      }, { completeValidated: true });
     } catch (error: unknown) {
       if (isCanceled(error)) this.cancelFromFailure(error);
       else this.handleCompleteFailure(error);
     }
   }
 
-  private handleUploadFailure(error: unknown, slot: PrivateSlot): void {
+  private handleUploadFailure(error: unknown): void {
     const apiError = normalized(error);
-    const restart = apiError.code === 'FILE_UPLOAD_EXPIRED'
-      || apiError.code === 'FORBIDDEN'
-      || apiError.code === 'VERSION_CONFLICT'
-      || apiError.code === 'IDEMPOTENCY_CONFLICT'
-      || apiError.code === 'FILE_STORAGE_CONFLICT';
-    if (restart) {
-      this.releaseIntentSecrets();
-      this.publishFailure(apiError, 'RESTART_REQUIRED', false, true);
+    if (isAmbiguousRemoteResult(apiError)
+      || apiError.code === 'REQUEST_IN_PROGRESS'
+      || apiError.code === 'DEPENDENCY_UNAVAILABLE') {
+      this.retryStage = 'UPLOAD';
+      this.publishFailure(
+        apiError,
+        apiError.code === 'DEPENDENCY_UNAVAILABLE'
+          ? 'DEPENDENCY_UNAVAILABLE'
+          : 'ERROR',
+        true,
+        false,
+      );
       return;
     }
     if (apiError.code === 'FILE_COMPENSATION_REQUIRED') {
-      this.releaseIntentSecrets();
+      this.releasePrivateState(true);
       this.publishFailure(apiError, 'FILE_COMPENSATION_REQUIRED', false, false);
       return;
     }
-    const retryable = apiError.code === 'NETWORK_FAILURE'
-      || apiError.code === 'REQUEST_IN_PROGRESS'
-      || apiError.code === 'DEPENDENCY_UNAVAILABLE';
-    this.retryStage = retryable ? 'UPLOAD' : null;
-    if (!retryable) {
-      slot.idempotencyKey = null;
-      slot.uploadToken = null;
+    if (apiError.code === 'FILE_VALIDATION_FAILED') {
+      this.releasePrivateState(true);
+      this.publishFailure(apiError, 'ERROR', false, false, true);
+      return;
     }
-    const state = apiError.code === 'DEPENDENCY_UNAVAILABLE'
-      ? 'DEPENDENCY_UNAVAILABLE'
-      : 'ERROR';
-    this.publishFailure(apiError, state, retryable, false);
+    const restart = apiError.code === 'UNAUTHENTICATED'
+      || apiError.code === 'FORBIDDEN'
+      || apiError.code === 'NOT_FOUND'
+      || apiError.code === 'FILE_UPLOAD_EXPIRED'
+      || apiError.code === 'VERSION_CONFLICT'
+      || apiError.code === 'IDEMPOTENCY_CONFLICT'
+      || apiError.code === 'FILE_STORAGE_CONFLICT'
+      || apiError.category === 'CONTRACT';
+    this.releaseIntentSecrets();
+    this.publishFailure(
+      apiError,
+      restart ? 'RESTART_REQUIRED' : 'ERROR',
+      false,
+      restart,
+    );
   }
 
   private handleCompleteFailure(error: unknown): void {
     const apiError = normalized(error);
+    if (isAmbiguousRemoteResult(apiError)
+      || apiError.code === 'REQUEST_IN_PROGRESS'
+      || apiError.code === 'DEPENDENCY_UNAVAILABLE') {
+      this.retryStage = 'COMPLETE';
+      this.publishFailure(
+        apiError,
+        apiError.code === 'DEPENDENCY_UNAVAILABLE'
+          ? 'DEPENDENCY_UNAVAILABLE'
+          : 'ERROR',
+        true,
+        false,
+      );
+      return;
+    }
     if (apiError.code === 'FILE_COMPENSATION_REQUIRED') {
-      this.releaseIntentSecrets();
+      this.releasePrivateState(true);
       this.publishFailure(apiError, 'FILE_COMPENSATION_REQUIRED', false, false);
       return;
     }
-    const restart = apiError.code === 'FILE_UPLOAD_EXPIRED'
-      || apiError.code === 'VERSION_CONFLICT'
-      || apiError.code === 'IDEMPOTENCY_CONFLICT'
-      || apiError.code === 'FILE_STORAGE_CONFLICT';
-    if (restart) {
+    if (apiError.code === 'FILE_NOT_VERIFIED') {
       this.releaseIntentSecrets();
-      this.publishFailure(apiError, 'RESTART_REQUIRED', false, true);
+      this.publishFailure(apiError, 'FILE_NOT_VERIFIED', false, true);
       return;
     }
-    const retryable = apiError.code === 'NETWORK_FAILURE'
-      || apiError.code === 'REQUEST_IN_PROGRESS'
-      || apiError.code === 'DEPENDENCY_UNAVAILABLE';
-    this.retryStage = retryable ? 'COMPLETE' : null;
-    if (!retryable) this.completeKey = null;
+    if (apiError.code === 'FILE_VALIDATION_FAILED') {
+      this.releasePrivateState(true);
+      this.publishFailure(apiError, 'ERROR', false, false, true);
+      return;
+    }
+    const restart = apiError.code === 'UNAUTHENTICATED'
+      || apiError.code === 'FORBIDDEN'
+      || apiError.code === 'NOT_FOUND'
+      || apiError.code === 'FILE_UPLOAD_EXPIRED'
+      || apiError.code === 'VERSION_CONFLICT'
+      || apiError.code === 'IDEMPOTENCY_CONFLICT'
+      || apiError.code === 'FILE_STORAGE_CONFLICT'
+      || apiError.category === 'CONTRACT';
+    this.releaseIntentSecrets();
     this.publishFailure(
       apiError,
-      apiError.code === 'DEPENDENCY_UNAVAILABLE' ? 'DEPENDENCY_UNAVAILABLE' : 'ERROR',
-      retryable,
+      restart ? 'RESTART_REQUIRED' : 'ERROR',
       false,
+      restart,
     );
   }
 
@@ -388,6 +442,7 @@ export class FileUploadController {
       error: null,
       canRetry: false,
       restartRequired: false,
+      requiresFileReselection: false,
     });
   }
 
@@ -411,6 +466,7 @@ export class FileUploadController {
     state: FileUploadSnapshot['state'],
     canRetry: boolean,
     restartRequired: boolean,
+    requiresFileReselection = false,
   ): void {
     const projected = safeError(normalized(error));
     this.publish({
@@ -421,6 +477,7 @@ export class FileUploadController {
       error: projected,
       canRetry,
       restartRequired,
+      requiresFileReselection,
       manifest: null,
       progress: Object.freeze({ ...this.snapshot.progress, currentSlot: null }),
     });
@@ -432,12 +489,7 @@ export class FileUploadController {
   }
 
   private releaseIntentSecrets(): void {
-    if (this.intent) {
-      for (const slot of this.intent.slots) {
-        slot.uploadToken = null;
-        slot.idempotencyKey = null;
-      }
-    }
+    this.releaseAllSlotAuthorities();
     this.intent = null;
     this.createKey = null;
     this.completeKey = null;
@@ -445,14 +497,40 @@ export class FileUploadController {
     this.abortController = null;
   }
 
+  private releaseAllSlotAuthorities(): void {
+    if (!this.intent) return;
+    for (const slot of this.intent.slots) {
+      slot.uploadToken = null;
+      slot.idempotencyKey = null;
+    }
+  }
+
   private releasePrivateState(releaseFiles: boolean): void {
     this.releaseIntentSecrets();
     if (releaseFiles) this.selections = null;
   }
 
-  private publish(snapshot: FileUploadSnapshot): void {
-    this.snapshot = Object.freeze(snapshot);
+  private publish(
+    snapshot: FileUploadSnapshot,
+    options: Readonly<{ completeValidated?: boolean }> = {},
+  ): void {
+    const prepared = Object.freeze({
+      ...snapshot,
+      canCancel: this.canCancel(snapshot),
+    });
+    assertFileUploadTransition(this.snapshot, prepared, options);
+    this.snapshot = prepared;
     for (const listener of this.listeners) listener();
+  }
+
+  private canCancel(snapshot: FileUploadSnapshot): boolean {
+    if (snapshot.state === 'VALIDATING'
+      || snapshot.state === 'CREATING_INTENT'
+      || snapshot.state === 'INTENT_READY'
+      || snapshot.state === 'UPLOADING') return true;
+    if (snapshot.state === 'ERROR') return this.retryStage === 'UPLOAD';
+    return snapshot.state === 'DEPENDENCY_UNAVAILABLE'
+      && this.retryStage === 'UPLOAD';
   }
 }
 
@@ -473,6 +551,13 @@ function safeError(error: FrontendApiError): SafeFileUploadError {
 
 function isCanceled(error: unknown): boolean {
   return isFrontendApiError(error) && error.code === 'CANCELED';
+}
+
+function isAmbiguousRemoteResult(error: FrontendApiError): boolean {
+  return error.code === 'NETWORK_FAILURE'
+    || (error.code === 'MALFORMED_RESPONSE'
+      && error.httpStatus >= 200
+      && error.httpStatus < 300);
 }
 
 export function workflowForTest(key: FileUploadWorkflowKey): FileUploadWorkflow {

@@ -29,6 +29,8 @@ export function FileUploadTestHarness(props: {
     <button type="button" disabled={!snapshot.restartRequired} onClick={() => { void props.controller.restart(); }}>
       重新开始
     </button>
-    <button type="button" onClick={() => props.controller.cancel()}>取消</button>
+    <button type="button" disabled={!snapshot.canCancel} onClick={() => props.controller.cancel()}>
+      取消
+    </button>
   </section>;
 }
