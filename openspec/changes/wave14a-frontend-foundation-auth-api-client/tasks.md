@@ -351,3 +351,26 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 ### Deferred production boundary
 
 `NOT_PRODUCTION_VERIFIED`: no real Feishu, production R2, production data, mainland-network validation, business workflow acceptance, deployment, PR, Push, Integration, `main` advancement, or Wave 14B–17 work was performed or claimed. Ponytail remained OFF throughout and was not run.
+
+## FINAL_CONTROLLER_REMEDIATION_EVIDENCE
+
+### Controller findings closed
+
+- Root `/` now renders exactly `月光白` and `请使用工作人员发送的专属链接登录。` as visible content. The obsolete access eyebrow, trust note, standalone brand mark, identity links, buttons, and login controls are absent; component and Playwright assertions enforce the exact two-string contract.
+- Seller Shell now places three semantic `MetricCard` items immediately after the Page Header and before filters: 订单、评论、结算. Every value is `—` and every detail is `业务模块开放后显示`; no quantity, amount, trend, percentage, or fabricated status is shown. The grid wraps responsively and remains covered by the 200% reflow gate.
+- Reusable `Sidebar` items now use React Router `NavLink` with route-aware `aria-current`. `/seller`, `/seller/products`, and `/seller/orders` each expose only the matching current item; client navigation preserves the mounted Session, and collapsed navigation retains each full accessible name.
+- `FileReadController` now owns a private, memory-only `retryAvailableAt` window behind an injectable clock. A valid 429 Retry-After disables retry without releasing the Read Intent/token, performs no automatic request, and enables only explicit same-token retry at the deadline. Missing/invalid Retry-After requires restart. 503 retains immediate explicit same-token retry. Cancel, success, restart, dispose, and a new File reference clear the window, and no absolute timestamp enters the public snapshot.
+- Formal File Read evidence covers a 7-second Retry-After, safe no-op retry through 6.999 seconds, availability at exactly 7 seconds without automatic transport, one explicit same-token request, cancel cleanup, new-Intent restart, invalid-header restart, and immediate explicit 503 retry.
+
+### Final remediation validation
+
+- Isolated-cache `npm ci --cache /tmp/wave14a-npm-cache-remediation`: passed; 226 packages installed and 233 audited. The unchanged install-script review listed `esbuild`, two `fsevents` versions, `msw`, and `workerd`; no new scripts were approved.
+- Web typecheck: passed. Wave 14A security verifier/typecheck/build: passed. Wave 14A tests: 18 files / 330 tests / 0 failed.
+- Playwright production-build acceptance: 42 passed / 0 failed, including 12 deterministic external screenshots in `/tmp/wave14a-final-remediation-20260804-152230`.
+- Repository `npm run check`: passed; 128 test files / 909 tests / 0 failed, all security/migration/Wave gates passed, all workspace builds passed, and API Wrangler dry-run passed.
+- Database and route invariants remain 27 migrations / schema 27 / 117 tables / 221 triggers / 0 foreign-key errors / 138 active routes; no `0028` exists.
+- Strict OpenSpec target validation: 1 passed / 0 failed / 0 issues. Strict repository validation: 8 passed / 0 failed; the same 27 INFO notices remain outside this Change.
+- Formal OpenSpec Verify: `COMPLETE=42`, `INCONSISTENT=0`, `MISSING=0`, `PARTIAL=0`, `NOT_VERIFIED=0`, `CRITICAL=0`, `WARNING=0`, `SUGGESTION=0`. All 84 Scenarios remain covered. Tasks remain 43/46; only the explicitly unauthorized Ponytail, Integration, and `main` governance stages are unchecked.
+- Final `npm audit --json`: 0 critical, 2 high, 0 moderate, 0 low. Both nodes describe the same React Router RSC-mode CSRF advisory. Wave 14A remains a Vite `BrowserRouter` SPA with no React Server Components, server actions, or framework/data-action mode, so this advisory path is not deployment-reachable in the implemented architecture. The suggested cross-range downgrade was not applied.
+- The remediation scope changed only Web source/tests/styles and the Wave 14A security verifier before this evidence update. Backend, Contracts, Domain, Migrations, package manifests, lockfile, routes, schema, and production resources were not modified.
+- Ponytail, Push, PR, Integration, `main`, deployment, archive, and Wave 14B were not run or started.
