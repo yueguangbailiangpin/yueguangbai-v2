@@ -15,7 +15,11 @@ import {
   fileUploadWorkflows,
   requireFileUploadWorkflow,
 } from './file-purpose-config';
-import { fileTransferReducer } from './file-transfer-machine';
+import { initialFileUploadSnapshot } from './file-upload-operation';
+import {
+  assertFileUploadTransition,
+  FileUploadTransitionError,
+} from './file-transfer-machine';
 import { measuredUploadProgress } from './file-upload-transport';
 
 const png = (name = 'proof.png', size = 4) => {
@@ -196,15 +200,6 @@ describe('strict upload runtime contracts', () => {
     )).toThrow();
   });
 
-  it('models validation, restart, cancel, compensation, dependency, and verified transitions', () => {
-    expect(fileTransferReducer('IDLE', 'VALIDATE')).toBe('VALIDATING');
-    expect(fileTransferReducer('CREATING_INTENT', 'RESTART')).toBe('RESTART_REQUIRED');
-    expect(fileTransferReducer('UPLOADING', 'CANCEL')).toBe('CANCELED');
-    expect(fileTransferReducer('COMPLETING', 'COMPENSATION')).toBe('FILE_COMPENSATION_REQUIRED');
-    expect(fileTransferReducer('COMPLETING', 'DEPENDENCY')).toBe('DEPENDENCY_UNAVAILABLE');
-    expect(fileTransferReducer('COMPLETING', 'VERIFIED')).toBe('VERIFIED');
-  });
-
   it('reports only computable bounded upload progress and never invents bytes', () => {
     expect(measuredUploadProgress({ lengthComputable: true, loaded: 25, total: 100 })).toEqual({
       mode: 'DETERMINATE', loadedBytes: 25, totalBytes: 100, percent: 25,
@@ -215,5 +210,16 @@ describe('strict upload runtime contracts', () => {
     expect(measuredUploadProgress({ lengthComputable: false, loaded: 25, total: 100 })).toEqual({
       mode: 'INDETERMINATE', loadedBytes: null, totalBytes: null, percent: null,
     });
+  });
+
+  it.each([
+    ['VERIFIED', 'CANCELED'],
+    ['COMPLETING', 'CANCELED'],
+    ['FILE_COMPENSATION_REQUIRED', 'VERIFIED'],
+  ] as const)('the authoritative transition table rejects %s → %s', (from, to) => {
+    expect(() => assertFileUploadTransition(
+      { ...initialFileUploadSnapshot, state: from },
+      { ...initialFileUploadSnapshot, state: to },
+    )).toThrow(FileUploadTransitionError);
   });
 });

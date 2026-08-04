@@ -124,7 +124,7 @@ requireText(source, [
   'CUSTOMER_TRANSPORT_INVALIDATION_GROUP',
   'clearStaffTransport',
   'safeReturnPath',
-  'fileTransferReducer',
+  'assertFileUploadTransition',
   "path: '/api/customer-auth/logout'",
   'staffProviderOrigin',
   'data.session',
@@ -480,6 +480,8 @@ requireText(fileUploadOperation, [
   'file_version',
   'restartRequired: boolean',
   'canCancel: boolean',
+  'canStartNewOperation: boolean',
+  'canReplaceFiles: boolean',
   'requiresFileReselection: boolean',
   "'FILE_NOT_VERIFIED'",
 ], 'safe file upload operation snapshot');
@@ -514,11 +516,20 @@ requireText(fileUploadController, [
   "apiError.code === 'FILE_NOT_VERIFIED'",
   "this.publishFailure(apiError, 'FILE_NOT_VERIFIED', false, true)",
   'if (!this.snapshot.canCancel) return',
-  "if (this.snapshot.state === 'COMPLETING')",
   'this.completeKey ??= this.generateKey()',
   'requiresFileReselection',
+  'start(workflowKey: unknown',
+  'if (!this.snapshot.canStartNewOperation)',
+  'if (!this.snapshot.canReplaceFiles)',
+  'this.isCompleteRecoveryLocked()',
+  "this.retryStage === 'COMPLETE'",
+  'canStartNewOperation: this.canStartNewOperation(snapshot)',
+  'canReplaceFiles: this.canReplaceFiles(snapshot)',
+  'if (error instanceof FileUploadTransitionError) throw error',
 ], 'private upload Controller lifecycle');
 requireText(fileTransferMachine, [
+  'FILE_UPLOAD_TRANSITIONS',
+  'FileUploadTransitionError',
   'assertFileUploadTransition(',
   "COMPLETING: stateSet(",
   "FILE_COMPENSATION_REQUIRED: stateSet()",
@@ -527,17 +538,38 @@ requireText(fileTransferMachine, [
   "next.state === 'VERIFIED'",
   'options.completeValidated !== true',
 ], 'authoritative file upload transition guard');
+if (fileTransferMachine.includes('fileTransferReducer')
+  || fileUploadTests.includes('fileTransferReducer')) {
+  throw new Error('decorative fileTransferReducer must not remain in production or tests');
+}
+if ((fileTransferMachine.match(/FILE_UPLOAD_TRANSITIONS\s*:/gu) ?? []).length !== 1) {
+  throw new Error('file upload must define exactly one authoritative transition table');
+}
 if (/COMPLETING:[^\n]*CANCEL|FILE_COMPENSATION_REQUIRED:[^\n]*CANCEL/iu.test(fileTransferMachine)) {
   throw new Error('Completing and compensation terminal states must not transition to CANCELED');
 }
 requireText(fileUploadHarness, [
   'disabled={!snapshot.canCancel}',
+  'disabled={!snapshot.canReplaceFiles}',
   'props.controller.cancel()',
 ], 'file upload cancel capability projection');
-const replaceCompleting = fileUploadController.indexOf("if (this.snapshot.state === 'COMPLETING')");
-const replaceCancel = fileUploadController.indexOf('this.cancel()', replaceCompleting);
-if (replaceCompleting < 0 || replaceCancel < 0 || replaceCompleting > replaceCancel) {
-  throw new Error('replaceFiles must reject replacement while Complete owns the operation');
+const startCapabilityGuard = fileUploadController.indexOf('if (!this.snapshot.canStartNewOperation)');
+const workflowValidation = fileUploadController.indexOf('workflow = requireFileUploadWorkflow(workflowKey)');
+const firstPrivateRelease = fileUploadController.indexOf('this.releasePrivateState(true)', startCapabilityGuard);
+if (startCapabilityGuard < 0 || workflowValidation < startCapabilityGuard
+  || firstPrivateRelease < workflowValidation) {
+  throw new Error('start must enforce operation lock and runtime workflow validation before releasing state');
+}
+const replaceCapabilityGuard = fileUploadController.indexOf('if (!this.snapshot.canReplaceFiles)');
+const replaceCancel = fileUploadController.indexOf('this.cancel()', replaceCapabilityGuard);
+if (replaceCapabilityGuard < 0 || replaceCancel < replaceCapabilityGuard) {
+  throw new Error('replaceFiles must enforce its public capability before releasing upload authority');
+}
+const restartMethod = fileUploadController.indexOf('restart(): Promise<void>');
+const restartLock = fileUploadController.indexOf('this.isCompleteRecoveryLocked()', restartMethod);
+const restartRelease = fileUploadController.indexOf('this.releaseIntentSecrets()', restartMethod);
+if (restartMethod < 0 || restartLock < restartMethod || restartRelease < restartLock) {
+  throw new Error('restart must preserve a locked Complete recovery context');
 }
 const cancelGuard = fileUploadController.indexOf('if (!this.snapshot.canCancel) return');
 const cancelAbort = fileUploadController.indexOf('this.abortController?.abort()', cancelGuard);
@@ -597,6 +629,22 @@ requireText(fileUploadTests, [
   'expect(keys[0]).toBe(keys[1])',
   'expect(tokens[0]).toBe(tokens[1])',
   "expect(bodies).toEqual([{ expected_version: 1 }, { expected_version: 1 }])",
+  'locks %s Complete recovery until explicit retry',
+  'canStartNewOperation: false',
+  'canReplaceFiles: false',
+  'keeps start, replace, and restart occupied by an in-flight Complete',
+  'allows VERIFIED to begin a separate Intent with new operation keys',
+  'allows a fresh selection after FILE_VALIDATION_FAILED releases the old upload',
+  'explicitly replaces an ambiguous Upload and creates a new Intent/key',
+  'allows a new start only after ambiguous Upload is explicitly canceled',
+  'deferred internal communication Purpose',
+  'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+  'rejects %s before state or network authority is created',
+  "expect(requests).toBe(0)",
+  "code: 'VALIDATION_ERROR'",
+  "workflow: null",
+  'accepts a legal workflow after a rejected runtime workflow',
+  'expect(generated).toBe(0)',
 ], 'formal MSW file upload safety evidence');
 if (!fileUploadTests.includes('server.use(')
   || !fileUploadTests.includes('http.put(')
