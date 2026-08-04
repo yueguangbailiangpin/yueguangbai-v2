@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@ygb/contracts": "0.1.0",
-    "hono": "4.12.32"
+    "hono": "4.12.34"
   },
   "devDependencies": {
     "@ygb/testkit": "0.2.0"

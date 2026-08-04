@@ -53,5 +53,10 @@
     "vite": "8.1.5",
     "vitest": "4.1.10",
     "wrangler": "4.114.0"
+  },
+  "overrides": {
+    "miniflare": {
+      "undici": "7.29.0"
+    }
   }
 }
