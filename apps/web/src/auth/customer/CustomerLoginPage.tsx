@@ -4,7 +4,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { isFrontendApiError } from '../../api/errors';
 import { safeReturnPath } from '../../routes/return-path';
-import { Button, Card, RequestIdDisplay, TextInput } from '../../ui/primitives';
+import {
+  Alert,
+  Button,
+  Card,
+  FormField,
+  RequestIdDisplay,
+  TextInput,
+} from '../../ui/primitives';
 import { CustomerAuthController, type CustomerLoginResult } from './customer-auth-controller';
 import { customerAuthApi, type CustomerAuthApiAdapter, type CustomerTarget } from './customer-auth-api';
 
@@ -112,22 +119,36 @@ export function CustomerLoginPage({
 
   const label = target === 'buyer' ? '买家登录' : '卖家登录';
   return (
-    <main className="login-page">
-      <Card>
-        <h1>{label}</h1>
-        <p>使用您的账户凭据继续。</p>
+    <main className={`login-page identity-${target}`}>
+      <Card className="login-card">
+        <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
+          <strong>月光白</strong></div>
+        <div className="login-heading"><p className="eyebrow">
+          {target === 'buyer' ? '买家服务' : '卖家工作区'}
+        </p><h1>{label}</h1>
+          <p>{target === 'buyer' ? '安全访问您的买家服务。' : '安全访问您的组织与店铺工作区。'}</p></div>
         <form onSubmit={(event) => { void submit(event); }}>
-          <label>登录标识<TextInput name="login_identifier" autoComplete="username" required /></label>
-          <label>密码<TextInput name="password" type="password" autoComplete="current-password" required /></label>
-          {message && <p className="inline-error" role="alert">{message}</p>}
+          <FormField label="账号" htmlFor={`${target}-account`} required>
+            <TextInput name="login_identifier" autoComplete="username" required />
+          </FormField>
+          <FormField label="密码" htmlFor={`${target}-password`} required>
+            <TextInput name="password" type="password" autoComplete="current-password" required />
+          </FormField>
+          {message ? <Alert tone="danger">{message}</Alert> : null}
           <RequestIdDisplay requestId={requestId} />
           {cleanupFailed && (
             <Button type="button" className="secondary" disabled={busy} onClick={() => { void retryCleanup(); }}>
               {busy ? '正在重新清理' : '重新清理'}
             </Button>
           )}
-          <Button type="submit" disabled={busy || cleanupFailed}>{busy ? '正在登录' : '登录'}</Button>
+          <Button
+            type="submit"
+            loading={busy}
+            loadingLabel="正在登录"
+            disabled={cleanupFailed}
+          >登录</Button>
         </form>
+        <p className="security-note">请仅使用工作人员提供的专属访问方式。</p>
       </Card>
     </main>
   );

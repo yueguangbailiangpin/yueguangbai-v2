@@ -61,7 +61,7 @@ async function renderMismatch(target: CustomerTarget, adapter: CustomerAuthApiAd
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  await user.type(screen.getByLabelText('登录标识'), 'customer');
+  await user.type(screen.getByLabelText('账号'), 'customer');
   await user.type(screen.getByLabelText('密码'), 'password');
   await user.click(screen.getByRole('button', { name: '登录' }));
   return user;

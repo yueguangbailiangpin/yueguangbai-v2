@@ -619,7 +619,7 @@ export function LoadingState({
   label = '正在加载',
 }: { label?: string }): React.JSX.Element {
   return <StateFrame icon="…" title={label} role="status">
-    <Skeleton lines={3} />
+    <Skeleton lines={3} announce={false} />
   </StateFrame>;
 }
 
@@ -685,11 +685,18 @@ export function DependencyUnavailable({
 export function Skeleton({
   lines = 1,
   label = '内容加载中',
+  announce = true,
 }: {
   lines?: number;
   label?: string;
+  announce?: boolean;
 }): React.JSX.Element {
-  return <div className="skeleton" role="status" aria-label={label}>
+  return <div
+    className="skeleton"
+    role={announce ? 'status' : undefined}
+    aria-label={announce ? label : undefined}
+    aria-hidden={announce ? undefined : true}
+  >
     {Array.from({ length: Math.max(1, lines) }, (_, index) => <span
       key={index}
       aria-hidden="true"

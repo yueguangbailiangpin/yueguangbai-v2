@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, RequestIdDisplay, TextInput } from '../../ui/primitives';
+import {
+  Alert,
+  Button,
+  Card,
+  FormField,
+  RequestIdDisplay,
+  TextInput,
+} from '../../ui/primitives';
 import { customerAuthApi, type CustomerAuthApiAdapter, type CustomerTarget } from './customer-auth-api';
 import {
   CustomerPasswordOperationController,
@@ -156,12 +163,16 @@ export function CustomerChangePasswordPage({
       : '修改密码';
 
   return (
-    <main className="login-page">
-      <Card>
-        <h1>{target === 'buyer' ? '买家修改密码' : '卖家修改密码'}</h1>
+    <main className={`login-page identity-${target}`}>
+      <Card className="login-card password-card">
+        <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
+          <strong>月光白</strong></div>
+        <div className="login-heading"><p className="eyebrow">
+          {target === 'buyer' ? '买家服务' : '卖家工作区'}
+        </p><h1>{target === 'buyer' ? '买家修改密码' : '卖家修改密码'}</h1>
+          <p>首次登录或安全状态变化后，需要先设置新密码。</p></div>
         <form onSubmit={(event) => { void submit(event); }}>
-          <label>
-            当前密码
+          <FormField label="当前密码" htmlFor={`${target}-current-password`} required>
             <TextInput
               name="current_password"
               type="password"
@@ -171,9 +182,13 @@ export function CustomerChangePasswordPage({
               value={currentPassword}
               onChange={(event) => editPassword(setCurrentPassword, event)}
             />
-          </label>
-          <label>
-            新密码
+          </FormField>
+          <FormField
+            label="新密码"
+            htmlFor={`${target}-new-password`}
+            description="请使用独立且不易猜测的新密码。"
+            required
+          >
             <TextInput
               name="new_password"
               type="password"
@@ -183,9 +198,15 @@ export function CustomerChangePasswordPage({
               value={newPassword}
               onChange={(event) => editPassword(setNewPassword, event)}
             />
-          </label>
-          <label>
-            确认新密码
+          </FormField>
+          <FormField
+            label="确认新密码"
+            htmlFor={`${target}-confirm-password`}
+            {...(confirmation && newPassword !== confirmation
+              ? { error: '两次输入的新密码不一致。' }
+              : {})}
+            required
+          >
             <TextInput
               name="confirm_password"
               type="password"
@@ -195,8 +216,8 @@ export function CustomerChangePasswordPage({
               value={confirmation}
               onChange={(event) => setConfirmation(event.currentTarget.value)}
             />
-          </label>
-          {message && <p className="inline-error" role="alert">{message}</p>}
+          </FormField>
+          {message ? <Alert tone="danger">{message}</Alert> : null}
           <RequestIdDisplay requestId={snapshot.requestId} />
           {cleanupFailed && (
             <Button type="button" className="secondary" disabled={busy} onClick={() => { void retryCleanup(); }}>
@@ -205,9 +226,12 @@ export function CustomerChangePasswordPage({
           )}
           <div className="entry-actions">
             <Button type="button" className="secondary" disabled={busy} onClick={cancel}>取消本次操作</Button>
-            <Button type="submit" disabled={busy || cleanupFailed}>
-              {busy ? '正在提交' : submitLabel}
-            </Button>
+            <Button
+              type="submit"
+              loading={busy}
+              loadingLabel="正在提交"
+              disabled={cleanupFailed}
+            >{submitLabel}</Button>
           </div>
         </form>
       </Card>
