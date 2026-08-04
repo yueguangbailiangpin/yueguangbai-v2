@@ -71,6 +71,8 @@ export type FileUploadSnapshot = Readonly<{
   manifest: SafeVerifiedManifest | null;
   canRetry: boolean;
   canCancel: boolean;
+  canStartNewOperation: boolean;
+  canReplaceFiles: boolean;
   restartRequired: boolean;
   requiresFileReselection: boolean;
 }>;
@@ -93,6 +95,8 @@ export const initialFileUploadSnapshot: FileUploadSnapshot = Object.freeze({
   manifest: null,
   canRetry: false,
   canCancel: false,
+  canStartNewOperation: true,
+  canReplaceFiles: true,
   restartRequired: false,
   requiresFileReselection: false,
 });

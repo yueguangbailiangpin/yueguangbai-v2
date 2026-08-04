@@ -20,7 +20,8 @@ export function FileUploadTestHarness(props: {
       {snapshot.error.code}{snapshot.error.requestId ? ` · ${snapshot.error.requestId}` : ''}
     </p>}
     {snapshot.manifest === null ? null : <output>VERIFIED {snapshot.manifest.files.length}</output>}
-    <button type="button" onClick={() => { void props.controller.replaceFiles(props.workflow, props.files); }}>
+    <button type="button" disabled={!snapshot.canReplaceFiles}
+      onClick={() => { void props.controller.replaceFiles(props.workflow, props.files); }}>
       开始上传
     </button>
     <button type="button" disabled={!snapshot.canRetry} onClick={() => { void props.controller.retry(); }}>

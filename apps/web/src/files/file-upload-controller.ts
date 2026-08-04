@@ -16,7 +16,10 @@ import {
   type FileUploadWorkflowKey,
 } from './file-purpose-config';
 import { uploadSingleFileMultipart, type UploadProgress } from './file-upload-transport';
-import { assertFileUploadTransition } from './file-transfer-machine';
+import {
+  assertFileUploadTransition,
+  FileUploadTransitionError,
+} from './file-transfer-machine';
 
 type PrivateSlot = {
   slotNo: number;
@@ -61,47 +64,57 @@ export class FileUploadController {
 
   getSnapshot = (): FileUploadSnapshot => this.snapshot;
 
-  start(workflowKey: FileUploadWorkflowKey, files: readonly File[]): Promise<void> {
+  start(workflowKey: unknown, files: readonly File[]): Promise<void> {
     if (this.active) return this.active;
-    if (this.snapshot.state === 'FILE_COMPENSATION_REQUIRED') {
+    if (!this.snapshot.canStartNewOperation) {
+      return Promise.resolve();
+    }
+    let workflow: FileUploadWorkflow;
+    try {
+      workflow = requireFileUploadWorkflow(workflowKey);
+    } catch (error: unknown) {
+      if (!(error instanceof TypeError)) throw error;
+      this.publishFailure(
+        new FrontendApiError(
+          'VALIDATION_ERROR', 0, null, 'VALIDATION', null,
+          Object.freeze({ field: 'workflow', reason: 'unsupported_workflow' }),
+        ),
+        'ERROR',
+        false,
+        false,
+      );
       return Promise.resolve();
     }
     this.releasePrivateState(true);
-    this.workflowKey = workflowKey;
+    const validatedWorkflowKey = workflowKey as FileUploadWorkflowKey;
+    this.workflowKey = validatedWorkflowKey;
+    this.workflow = workflow;
+    this.publish({
+      ...initialFileUploadSnapshot,
+      workflow: validatedWorkflowKey,
+      state: 'VALIDATING',
+    });
     try {
-      this.workflow = requireFileUploadWorkflow(workflowKey);
-      this.publish({
-        ...initialFileUploadSnapshot,
-        workflow: workflowKey,
-        state: 'VALIDATING',
-      });
       this.selections = validateFileSelection(this.workflow, files);
-      this.publishSelection('CREATING_INTENT');
     } catch (error: unknown) {
-      const safe = error instanceof TypeError
-        ? new FrontendApiError(
-          'VALIDATION_ERROR', 0, null, 'VALIDATION', null,
-          Object.freeze({ field: 'workflow', reason: 'unsupported_workflow' }),
-        )
-        : error;
-      this.publishFailure(safe, 'ERROR', false, false);
+      this.publishFailure(error, 'ERROR', false, false);
       return Promise.resolve();
     }
+    this.publishSelection('CREATING_INTENT');
     return this.run(() => this.createAndUpload());
   }
 
   async replaceFiles(
-    workflowKey: FileUploadWorkflowKey,
+    workflowKey: unknown,
     files: readonly File[],
   ): Promise<void> {
+    if (!this.snapshot.canReplaceFiles) return this.active ?? Promise.resolve();
     if (this.active) {
       const previous = this.active;
-      if (this.snapshot.state === 'COMPLETING') {
-        await previous;
-        return;
-      }
       this.cancel();
       await previous;
+    } else if (this.snapshot.canCancel) {
+      this.cancel();
     }
     await this.start(workflowKey, files);
   }
@@ -114,7 +127,8 @@ export class FileUploadController {
   }
 
   restart(): Promise<void> {
-    if (this.active || !this.snapshot.restartRequired
+    if (this.active || this.isCompleteRecoveryLocked()
+      || !this.snapshot.restartRequired
       || !this.workflow || !this.workflowKey || !this.selections) {
       return this.active ?? Promise.resolve();
     }
@@ -192,6 +206,7 @@ export class FileUploadController {
       this.publishSlots('INTENT_READY', result.requestId);
       await this.uploadRemaining();
     } catch (error: unknown) {
+      if (error instanceof FileUploadTransitionError) throw error;
       if (isCanceled(error)) this.cancelFromFailure(error);
       else {
         this.createKey = null;
@@ -241,6 +256,7 @@ export class FileUploadController {
         slot.idempotencyKey = null;
         this.publishSlots('UPLOADING', result.requestId);
       } catch (error: unknown) {
+        if (error instanceof FileUploadTransitionError) throw error;
         if (isCanceled(error)) {
           slot.state = 'CANCELED';
           this.cancelFromFailure(error);
@@ -305,6 +321,7 @@ export class FileUploadController {
         requiresFileReselection: false,
       }, { completeValidated: true });
     } catch (error: unknown) {
+      if (error instanceof FileUploadTransitionError) throw error;
       if (isCanceled(error)) this.cancelFromFailure(error);
       else this.handleCompleteFailure(error);
     }
@@ -517,6 +534,8 @@ export class FileUploadController {
     const prepared = Object.freeze({
       ...snapshot,
       canCancel: this.canCancel(snapshot),
+      canStartNewOperation: this.canStartNewOperation(snapshot),
+      canReplaceFiles: this.canReplaceFiles(snapshot),
     });
     assertFileUploadTransition(this.snapshot, prepared, options);
     this.snapshot = prepared;
@@ -531,6 +550,37 @@ export class FileUploadController {
     if (snapshot.state === 'ERROR') return this.retryStage === 'UPLOAD';
     return snapshot.state === 'DEPENDENCY_UNAVAILABLE'
       && this.retryStage === 'UPLOAD';
+  }
+
+  private canStartNewOperation(snapshot: FileUploadSnapshot): boolean {
+    if (this.isCompleteRecoveryLocked(snapshot)
+      || snapshot.state === 'FILE_COMPENSATION_REQUIRED') return false;
+    if (snapshot.state === 'IDLE'
+      || snapshot.state === 'CANCELED'
+      || snapshot.state === 'VERIFIED'
+      || snapshot.state === 'RESTART_REQUIRED'
+      || snapshot.state === 'FILE_NOT_VERIFIED') return true;
+    return snapshot.state === 'ERROR'
+      && (snapshot.requiresFileReselection || this.retryStage === null);
+  }
+
+  private canReplaceFiles(snapshot: FileUploadSnapshot): boolean {
+    if (this.isCompleteRecoveryLocked(snapshot)
+      || snapshot.state === 'FILE_COMPENSATION_REQUIRED') return false;
+    if (snapshot.state === 'VALIDATING'
+      || snapshot.state === 'CREATING_INTENT'
+      || snapshot.state === 'INTENT_READY'
+      || snapshot.state === 'UPLOADING') return true;
+    if ((snapshot.state === 'ERROR' || snapshot.state === 'DEPENDENCY_UNAVAILABLE')
+      && this.retryStage === 'UPLOAD') return true;
+    return this.canStartNewOperation(snapshot);
+  }
+
+  private isCompleteRecoveryLocked(snapshot = this.snapshot): boolean {
+    return snapshot.state === 'COMPLETING'
+      || ((snapshot.state === 'ERROR'
+        || snapshot.state === 'DEPENDENCY_UNAVAILABLE')
+        && this.retryStage === 'COMPLETE');
   }
 }
 
