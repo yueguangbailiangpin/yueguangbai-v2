@@ -150,7 +150,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 34. Main Advancement
 
-- [ ] 34.1 Advance `main` only through the authorized clean Integration process with ordinary non-force fast-forward; do not deploy.
+- [x] 34.1 Advance `main` only through the authorized clean Integration process with ordinary non-force fast-forward; do not deploy.
 
 ## Planning Validation Evidence
 
@@ -402,3 +402,12 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - Database invariants remain 27 migrations / schema 27 / 117 tables / 221 triggers / 10 final views / 0 foreign-key errors, with no `0028`.
 - No business source, Backend, Contract, Domain, Migration, package manifest, or lockfile was modified during Integration. The archive was not rewritten; only this governance task/evidence file changed.
 - Remote `main` remains at `503709a5745931e6732d32f2ed5ae6967b299faa` and has not yet been advanced. Task 34.1 remains pending until the separately required validated fast-forward.
+
+## MAIN_ADVANCEMENT_EVIDENCE
+
+- Remote `main` started at `503709a5745931e6732d32f2ed5ae6967b299faa` and was first advanced to validated Integration HEAD `da559bdfcf5e2cc12b6627f82e4fc35e95a0c48c`.
+- The dedicated Main advancement Worktree used `git merge --ff-only` from `origin/integration/wave14a-frontend-foundation-auth-api-client`; the remote update used ordinary `git push origin HEAD:main` with no force, merge commit, squash, rebase, or amend.
+- Before the first Main push, the candidate passed isolated-cache `npm ci`, repository `npm run check` with 128 test files / 909 tests / 0 failed, 18 Wave 14A files / 330 tests / 0 failed, 42 Playwright tests / 0 failed, and strict OpenSpec 14/14 with 0 failures.
+- After the first push, remote `main` and remote Integration both resolved to `da559bdfcf5e2cc12b6627f82e4fc35e95a0c48c`.
+- No deployment or production-resource connection was performed. Feature and Integration branches and all existing Worktrees were retained.
+- This later governance-record commit will be pushed to Integration and then fast-forwarded to `main` a second time so final remote `main` and Integration remain identical.
