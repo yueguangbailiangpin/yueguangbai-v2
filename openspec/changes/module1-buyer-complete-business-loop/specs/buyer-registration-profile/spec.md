@@ -3,15 +3,15 @@
 ## ADDED Requirements
 
 ### Requirement: Buyer direct self-registration uses the frozen contract
-`/buyer/register` SHALL submit only `wechat_id`, `password`, `password_confirmation`, and optional `human_verification_token` to `POST /api/buyer-auth/register`. A 201 response SHALL establish the shared Customer Session and navigate to the returned `/buyer` next path.
+`/buyer/register` SHALL submit only `wechat_id`, `password`, `password_confirmation`, and optional `human_verification_token` to `POST /api/buyer-auth/register`. A 201 response writes/replaces the shared Customer cookie but SHALL NOT directly set client AUTHENTICATED. It SHALL immediately enter `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`: cancel Buyer requests, cancel Seller requests, clear Buyer root, clear Seller root, preserve Staff, call `GET /api/customer-auth/session`, accept only `account_type=BUYER`, then enter `/buyer`.
 
 #### Scenario: Registration succeeds
 - **WHEN** the server accepts a valid registration and returns `session_established=true`
-- **THEN** the Buyer enters `/buyer` without a second login and no registration authority is stored client-side.
+- **THEN** both Customer roots are cleared before a fresh Session read confirms BUYER, after which the Buyer enters `/buyer` without a second login and no registration response is used as authentication authority.
 
 #### Scenario: Response or identity is unsafe
-- **WHEN** the response is malformed, the next path differs from the contract, or the resulting Customer Session is not BUYER
-- **THEN** the flow fails closed, clears Customer transport through the existing mismatch path when needed, and shows a safe request ID.
+- **WHEN** the response is malformed, cleanup or Session reread fails, the next path differs from the contract, or the resulting Customer Session is not BUYER
+- **THEN** the flow fails closed; mismatch performs logout and Buyer+Seller root cleanup, Staff remains, Buyer content stays hidden, and a safe recovery/request ID is shown.
 
 ### Requirement: Feature and human-verification boundaries fail closed
 Registration availability SHALL remain controlled by the backend feature flag and human-verification requirement. The frontend MAY collect and pass a verifier token but SHALL NOT create a fake token, bypass a required verifier, or alter runtime configuration.
@@ -25,7 +25,7 @@ Registration availability SHALL remain controlled by the backend feature flag an
 - **THEN** the page shows a generic unavailable/contact-support state without revealing the internal reason or offering bypass.
 
 ### Requirement: Registration form is safe and accessible
-The registration form SHALL label all fields, use appropriate autocomplete, confirm password locally without weakening server validation, disable concurrent submit, and retain no password after success. It SHALL present `Retry-After` only as a bounded wait and SHALL not automatically resubmit.
+The registration form SHALL label all fields, use appropriate autocomplete, confirm password locally without weakening server validation, disable concurrent submit, and retain no password after success. Password and human token SHALL remain operation-local and SHALL NOT enter Query cache, URL, browser Storage, snapshots, or logs. It SHALL present `Retry-After` only as a bounded wait and SHALL not automatically resubmit.
 
 #### Scenario: Buyer submits a valid form
 - **WHEN** required fields match and the user explicitly submits

@@ -14,15 +14,15 @@ The Web application SHALL keep `/` as the exact dedicated-link notice, expose `/
 - **THEN** no registration, Seller, or Staff link is present and the root still shows only `月光白` and `请使用工作人员发送的专属链接登录。`.
 
 ### Requirement: Buyer route tree separates business journeys
-The Buyer route tree SHALL provide separate list, detail, and form routes for dashboard, tasks/demands, reservations, order materials, formal orders, reviews, refunds, and account information. Unknown Buyer routes SHALL render a safe in-shell NotFound and SHALL NOT redirect to another identity.
+The Buyer route tree SHALL provide separate list, detail, and form routes for dashboard, tasks/demands, reservations, order materials, formal orders, reviews, refunds, and account information. Initial evidence SHALL use `/buyer/order-materials/new?reservation_id=<id>` and initial review SHALL use `/buyer/reviews/new?formal_order_id=<id>`. Each required query ID SHALL pass 1–120-character safe-identifier validation and current eligibility reread on load/refresh/direct link; navigation state is only a display hint and Session storage SHALL NOT restore authority. Unknown Buyer routes SHALL render a safe in-shell NotFound and SHALL NOT redirect to another identity.
 
-#### Scenario: Buyer deep-links to a detail
-- **WHEN** an authenticated Buyer opens a valid reservation, evidence, formal-order, review, or refund detail URL
-- **THEN** the matching detail journey loads inside the Buyer shell and preserves direct-link refresh behavior.
+#### Scenario: Buyer deep-links to a detail or new form
+- **WHEN** an authenticated Buyer opens a valid detail URL or a new-form URL with a valid currently eligible query identifier
+- **THEN** the matching journey loads inside the Buyer shell and preserves direct-link refresh behavior after authoritative eligibility reread.
 
-#### Scenario: Buyer opens an unknown or concealed detail
-- **WHEN** a Buyer route is unknown or its API returns concealed 404
-- **THEN** the Buyer shell remains authenticated and shows a safe NotFound without disclosing another customer's resource.
+#### Scenario: Buyer opens an unknown, invalid, stale, or concealed source
+- **WHEN** a Buyer route is unknown, a required query identifier is missing/invalid/stale, or its API returns concealed 404
+- **THEN** the Buyer shell remains authenticated, no submit form appears, and a safe owning list or NotFound is shown without disclosing another customer's resource.
 
 ### Requirement: Fixed five-item Buyer navigation
 The bottom navigation SHALL contain exactly 首页、任务、订单资料、评论、我的 in that order. Formal orders and refunds SHALL be reachable from contextual links, especially 我的, without adding a sixth bottom item.
@@ -36,7 +36,7 @@ The bottom navigation SHALL contain exactly 首页、任务、订单资料、评
 - **THEN** the semantically owning bottom item remains current without duplicating navigation items.
 
 ### Requirement: Dashboard is a bounded next-step workbench
-The dashboard SHALL present actionable or informational next steps in this priority: order evidence CHANGES_REQUESTED; review CHANGES_REQUESTED; soonest ACTIVE instruction; approved reservation without initial evidence; confirmed formal order without a submitted review; pending evidence and review; refund change or unpaid balance; newly reservable demand. It SHALL derive only from returned DTO status, `allowed_actions`, deadlines, and server facts.
+The dashboard SHALL present actionable or informational next steps in this priority: order evidence CHANGES_REQUESTED; review CHANGES_REQUESTED; soonest ACTIVE instruction; approved reservation without initial evidence; confirmed formal order without a submitted review; pending evidence and review; returned refund DUE, PARTIALLY_PAID, or OVERPAID; newly reservable demand. Refund items MAY be ordered by their own returned `updated_at` and SHALL link to 查看全部, but the dashboard SHALL NOT claim unread, new-message, or detected status-change semantics. PAID remains on refund history and is not a default high-priority task. It SHALL derive only from returned DTO status, `allowed_actions`, deadlines, and server facts.
 
 #### Scenario: Multiple returned tasks compete
 - **WHEN** the first loaded pages contain tasks from several priority groups
@@ -61,8 +61,8 @@ Dashboard source queries SHALL use separate Buyer-rooted Query keys and render s
 Every Buyer business request SHALL use `identityApiRequest('buyer', ...)`, every business Query key SHALL start with `buyer`, and successful mutations SHALL invalidate only keys whose server facts can have changed. Sensitive Buyer queries and file bytes SHALL not be persisted.
 
 #### Scenario: Buyer mutation succeeds
-- **WHEN** registration/session establishment, reservation, evidence, review, or logout mutation succeeds
-- **THEN** only the documented Buyer queries are set, removed, or invalidated and Staff cache remains untouched.
+- **WHEN** registration returns 201, or reservation, evidence, review, or logout mutation succeeds
+- **THEN** registration first cancels/clears both Buyer and Seller Customer roots and rereads a BUYER Session while preserving Staff; other mutations affect only their documented keys.
 
 #### Scenario: Mutation or Customer Session fails
 - **WHEN** a mutation conflicts or a protected request returns 403/404

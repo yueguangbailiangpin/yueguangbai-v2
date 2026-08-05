@@ -1,12 +1,12 @@
 # Buyer API and Contract Inventory
 
-All paths below are registered on the formal baseline and use the existing success/error envelopes. Customer-protected calls use the shared HttpOnly Customer Session; business calls require BUYER. There are 38 Buyer-relevant endpoints.
+All paths below are registered on the formal baseline and use the existing success/error envelopes. Customer-protected calls use the shared HttpOnly Customer Session; business calls require BUYER. The baseline has exactly 38 Buyer-relevant endpoints. The separately marked future target adds exactly one endpoint for a total of 39.
 
 ## Registration and Customer Auth (5)
 
 | Method | Path | Request / response authority |
 |---|---|---|
-| POST | `/api/buyer-auth/register` | `wechat_id`, `password`, `password_confirmation`, optional `human_verification_token`; backend flag, verifier, rate limit and conflict hiding; returns Buyer identity, established Session, `/buyer`. |
+| POST | `/api/buyer-auth/register` | `wechat_id`, `password`, `password_confirmation`, optional `human_verification_token`; backend flag, verifier, rate limit and conflict hiding; 201 replaces the Customer cookie but is not frontend authentication authority. |
 | POST | `/api/customer-auth/login` | `login_identifier`, `password`; returns Customer Session with account type. |
 | POST | `/api/customer-auth/change-password` | current/new password + Idempotency-Key; returns fresh Session. |
 | POST | `/api/customer-auth/logout` | Origin guarded; returns logged-out facts and clears cookie. |
@@ -80,11 +80,28 @@ All paths below are registered on the formal baseline and use the existing succe
 | POST | `/api/buyer-portal/files/:fileObjectId/read-intents` | Positive `expected_file_version`; legacy or resolved explicit link. |
 | GET | `/api/buyer-portal/file-read-intents/:id/content` | One short read token; bounded bytes, no-store, nosniff. |
 
+## Future Module 1 target (1; total 39)
+
+| Method | Path | Request / response authority |
+|---|---|---|
+| POST | `/api/buyer-portal/order-evidence/:id/files/:fileLinkId/read-intent` | Body is exactly positive `expected_file_version`; current Buyer must own the submission, link must be a currently visible submission file, version must match, and explicit-audience or current formal-file authorization applies. Concealed scope miss is 404. Response matches Buyer Review safety fields: `read_intent_id`, `file_object_id`, nullable `access_token`, `access_token_available`, `expires_at`, `replayed`; replay does not reissue a token. Content remains the existing Buyer bytes endpoint. |
+
+No other endpoint is added or inferred by this module.
+
+## Future narrow Contract and Schema target
+
+- Initial and resubmit order-evidence requests add required `amazon_order_date`.
+- `BuyerOrderEvidenceDto` adds `amazon_order_date: string | null`; `BuyerFormalOrderDto` and review order summaries add the same nullable-read-model snapshot field. NULL is legacy-only: every new initial/resubmit mutation and new formal-order projection must return a real date.
+- `BuyerOrderEvidenceFileDto` adds `file_entity_link_id`, positive `version`, and `allowed_actions` whose only value is `CREATE_READ_INTENT`.
+- `amazon_order_date` is strict valid Gregorian `YYYY-MM-DD`, represents the date displayed on the Amazon order page, remains date-only, and is never replaced by a submission/confirmation timestamp or `confirmed_business_date`.
+- Migration 0028 is required for nullable checked columns on `order_evidence_versions` and `formal_orders`; new-row guards require the date and formal-order source matching, historical NULL remains unknown, and no index is needed.
+
 ## API limitations relevant to planning
 
 - No dashboard aggregation endpoint exists.
 - All business lists use cursor pagination with default page size 20 and maximum 100; no total count is returned.
 - Instruction state is per reservation, so an exhaustive dashboard would create unbounded N+1 calls.
-- `BuyerOrderEvidenceFileDto` exposes object ID, name, MIME, size, status, visibility, and verified time but not the positive file version required by the generic read-intent Contract. Historical order-evidence preview therefore cannot be promised without a future Contract/backend decision; the frontend must not guess version 1.
+- Baseline `BuyerOrderEvidenceFileDto` exposes object ID, name, MIME, size, status, visibility, and verified time but not link/version/action facts. The authorized target fixes new readable data through the dedicated endpoint and DTO fields. Historical records that cannot be authoritatively backfilled remain metadata-only; the frontend never guesses version 1.
+- Baseline order-evidence and formal-order Contracts/Schemas omit the product-required Amazon order date. The authorized date prerequisite fixes only that end-to-end fact; no historical date is fabricated.
 - Full instruction content is intentionally unavailable outside readable ACTIVE state; the state endpoint is the status authority.
 - No Buyer write route exists for formal orders or refunds.

@@ -10,9 +10,9 @@
 | Reservation | status/version, submit/update/hold/order times, financial snapshots, accepted version/time, decision/cancel/expiry times, `can_cancel`, demand snapshot. |
 | Instruction | status/content/notes/color mode, financial estimates, two deadlines, update flag, main/ordered image handles and read paths. |
 | Instruction state | status/version numbers, two deadlines, evidence status, submit/read booleans, update flag. |
-| Evidence | reservation, order number, final/self-pay/refundable JPY facts, mismatch/difference, status/versions/times/reason/files/actions. |
-| Formal order | confirmed snapshot, financial decimal strings, rate snapshot, business date, evidence summary. |
-| Review | order, type/status/versions/times/reason/url/approved/refund-due/file count/files/actions. |
+| Evidence target | reservation, order number, distinct required `amazon_order_date`, final/self-pay/refundable JPY facts, mismatch/difference, status/versions/times/reason/files/actions. Each file adds link ID, positive version, and only CREATE_READ_INTENT when readable. |
+| Formal order target | confirmed snapshot, distinct `amazon_order_date`, financial decimal strings, rate snapshot, server `confirmed_business_date`, evidence summary. |
+| Review target | order summary safely includes `amazon_order_date` when available, plus type/status/versions/times/reason/url/approved/refund-due/file count/files/actions. |
 | Refund | order, four CNY balance strings, status/times, empty actions; detail adds payment/reversal activities and balance-after. |
 
 ## Status and action authority
@@ -34,6 +34,7 @@
 | Order evidence | PENDING_VERIFICATION | `WITHDRAW`. |
 | Order evidence | CHANGES_REQUESTED | `RESUBMIT`, `WITHDRAW`. |
 | Order evidence | VERIFIED / WITHDRAWN / CONSUMED | No actions. |
+| Order evidence file | VERIFIED current visible linked file | `CREATE_READ_INTENT` only; absent action/version/link means metadata-only. |
 | Review | no current case | `SUBMIT` only when returned in eligibility. |
 | Review | PENDING_REVIEW | `WITHDRAW`. |
 | Review | CHANGES_REQUESTED | `RESUBMIT`, `WITHDRAW`. |
@@ -48,7 +49,9 @@
 - JPY demand and formal-order Contract amounts are decimal strings where declared; order-evidence JPY fields are safe integers in the current Contract.
 - CNY refund and review-due values are decimal strings in fen.
 - Rate direction is `cny_per_jpy_e8` and is displayed as a snapshot, not recomputed.
-- Time points are UTC epoch milliseconds and display in `Asia/Shanghai`.
+- `amazon_order_date` is valid Gregorian `YYYY-MM-DD`, date-only, and is never timezone-converted.
+- Epoch-millisecond deadlines/timestamps display in the frozen Buyer timezone `Asia/Shanghai` with the timezone explicit.
+- `confirmed_business_date` is a server business date and never substitutes for `amazon_order_date`.
 
 ## Stable frontend error semantics
 

@@ -3,15 +3,15 @@
 ## ADDED Requirements
 
 ### Requirement: Review eligibility is server-defined
-The review area SHALL page `GET /api/buyer-portal/reviews/eligible-orders` and use each order, `current_review`, and `allowed_actions` as the only authority for SUBMIT or RESUBMIT entry.
+The review area SHALL page `GET /api/buyer-portal/reviews/eligible-orders` and use each order, `current_review`, and `allowed_actions` as the only authority for SUBMIT or RESUBMIT entry. Initial submission SHALL start from `/buyer/reviews/new?formal_order_id=<id>`; the required safe identifier SHALL be validated and matched against a fresh eligibility read on load, refresh, and direct link. Navigation state is only a display hint and Session storage SHALL NOT restore the source ID.
 
 #### Scenario: Eligible formal order is returned
-- **WHEN** `allowed_actions` contains SUBMIT or RESUBMIT
+- **WHEN** the query-bound formal order is returned and `allowed_actions` contains SUBMIT or RESUBMIT
 - **THEN** the matching form entry shows returned order context and current review version when present.
 
 #### Scenario: Eligibility is absent or stale
-- **WHEN** an order is not returned, action is absent, or mutation rejects current state
-- **THEN** the UI exposes no inferred action and refreshes the authoritative eligibility/detail.
+- **WHEN** the query identifier is missing/invalid, an order is not returned, action is absent, or mutation rejects current state
+- **THEN** the UI exposes no form or inferred action and returns safely to the owning list/NotFound or refreshes authoritative eligibility/detail.
 
 ### Requirement: Review upload and business file limits remain distinct
 The form SHALL use the Wave14A `buyerReviewEvidence` upload workflow, while the review business command SHALL accept only one to three distinct VERIFIED evidence files. Each command file SHALL include the authoritative positive `expected_file_version` from Complete output.
@@ -36,7 +36,7 @@ Initial submission SHALL call `POST /api/buyer-portal/reviews` with `formal_orde
 - **THEN** the UI shows only the safe error/request ID and never leaks another Buyer, Seller, or storage fact.
 
 ### Requirement: Review list and detail preserve states and public facts
-The review list/detail SHALL display order summary, review type, PENDING_REVIEW, CHANGES_REQUESTED, REJECTED, WITHDRAWN, or APPROVED, versions, submit/update/approval times, public change reason, review URL, refund due, file count/files, and `allowed_actions` from the DTO.
+The review list/detail SHALL display order summary including the distinct nullable-read-model `amazon_order_date`, review type, PENDING_REVIEW, CHANGES_REQUESTED, REJECTED, WITHDRAWN, or APPROVED, versions, submit/update/approval times, public change reason, review URL, refund due, file count/files, and `allowed_actions` from the DTO. Historical NULL date remains unknown; it is never replaced with confirmation/submission timestamps or `confirmed_business_date`.
 
 #### Scenario: Review detail loads
 - **WHEN** a valid DTO is returned
@@ -69,7 +69,7 @@ WITHDRAW SHALL be offered only when present in `allowed_actions` and SHALL call 
 - **THEN** the control is absent or the conflict requires refresh without duplicate submission.
 
 ### Requirement: Review files use the specialized read-intent route
-Each review file SHALL use its `file_entity_link_id`, positive `version`, and CREATE_READ_INTENT action to call `POST /api/buyer-portal/reviews/:id/files/:fileLinkId/read-intent` with `expected_file_version`, then consume the short token through the Wave14A bounded content transport.
+Each review file SHALL use `BuyerReviewFileReadIntentAdapter` with validated review ID, `file_entity_link_id`, positive `version`, and CREATE_READ_INTENT action. The adapter SHALL construct `POST /api/buyer-portal/reviews/:id/files/:fileLinkId/read-intent` from those entity IDs and send `expected_file_version`; it SHALL NOT accept or forward an arbitrary DTO path. Only intent creation changes; the short token is consumed through the existing Wave14A bounded content/header/401/Object-URL transport.
 
 #### Scenario: Review evidence is viewed
 - **WHEN** the specialized read intent returns a first-use token

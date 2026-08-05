@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: Buyer contracts have runtime and unit coverage
-Every Buyer API adapter SHALL runtime-validate its success DTO and cover parsers/formatters/query keys/status/action mapping with focused unit tests, including malformed network values and decimal-string money formatting.
+Every Buyer API adapter SHALL runtime-validate its success DTO and cover parsers/formatters/query keys/status/action mapping with focused unit tests, including malformed network values, decimal-string money formatting, strict Gregorian `amazon_order_date`, timezone-distinct epoch/business dates, all four fixed read-intent adapters, and exact instruction route matching.
 
 #### Scenario: Valid DTO and formatter are tested
 - **WHEN** representative Contract fixtures are parsed and displayed
@@ -14,7 +14,7 @@ Every Buyer API adapter SHALL runtime-validate its success DTO and cover parsers
 - **THEN** tests prove fail-closed contract behavior and no network request for an unapproved path.
 
 ### Requirement: Buyer components cover normal and boundary states
-Component tests SHALL cover loading, empty, populated, error/request ID, 403, 404, conflict, terminal state, action absence, accessible form validation, keyboard operation, and unmount cleanup for each major journey.
+Component tests SHALL cover loading, empty, populated, error/request ID, 403, 404, conflict, terminal state, action absence, accessible form validation, keyboard operation, and unmount cleanup for each major journey. They SHALL also cover registration 201 without premature authentication, Buyer+Seller cleanup with Staff preserved, Session mismatch/failure, required new-form query IDs, refreshed eligibility, date-only validation, and historical file/date fallback.
 
 #### Scenario: Normal component journey renders
 - **WHEN** a component receives a valid returned DTO
@@ -25,18 +25,18 @@ Component tests SHALL cover loading, empty, populated, error/request ID, 403, 40
 - **THEN** tests assert the safe state, focus behavior, and absence of forbidden controls.
 
 ### Requirement: MSW covers real Buyer transports and cache effects
-MSW tests SHALL use the exact 38 Buyer-relevant endpoints, real envelopes, credentials, idempotency headers, origin-relative paths, mutation replay/conflict, 401 shared Customer invalidation, 403/404 session retention, precise Query invalidation, file tokens, and explicit retry behavior.
+MSW tests SHALL distinguish the exact 38 baseline Buyer-relevant endpoints from the target total of exactly 39 and add only `POST /api/buyer-portal/order-evidence/:id/files/:fileLinkId/read-intent`. They SHALL cover real envelopes, credentials, idempotency headers, required order-date request/response fields, origin-relative fixed adapter paths, mutation replay/conflict, registration dual-root invalidation and Session reread, 401 shared Customer invalidation, 403/404 session retention, precise Query invalidation, file tokens, and explicit retry behavior.
 
 #### Scenario: Real transport sequence succeeds
 - **WHEN** registration, reservation, file upload, evidence, review, read intent, or logout completes through MSW
-- **THEN** the exact request shape, response validation, cache effect, and token lifecycle are asserted.
+- **THEN** the exact request shape, 38-to-39 endpoint boundary, date field, response validation, cache effect, fixed adapter, and token lifecycle are asserted.
 
 #### Scenario: Network, conflict, or disclosure failure occurs
 - **WHEN** MSW returns 401, 403, 404, 409, 429, 503, malformed envelope, lost response, or unsafe details
 - **THEN** tests prove the documented no-auto-mutation-retry, session, request-ID, and disclosure behavior.
 
 ### Requirement: Playwright covers complete Buyer browser journeys
-Production-build Playwright SHALL cover direct registration availability/unavailability, login/password change, dashboard partial data, demand acceptance/reservation/cancel, instruction/images, initial evidence and mismatch, resubmit/withdraw, formal orders, review submit/resubmit/withdraw/read, refunds, Me, and logout at 390px, plus 320px and 200%/reduced-motion gates.
+Production-build Playwright SHALL cover direct registration 201/dual-root Session confirmation/mismatch/unavailability, login/password change, dashboard partial data without unread/change claims, demand acceptance/reservation/cancel, instruction/images and invalid path rejection, required evidence/review query deep links plus refresh/stale IDs, initial evidence date and mismatch, resubmit/withdraw/dedicated file preview/historical metadata-only, formal-order date snapshots, review submit/resubmit/withdraw/read, refunds, Me, and logout at 390px, plus 320px and 200%/reduced-motion gates.
 
 #### Scenario: Complete happy and change-request journeys run
 - **WHEN** deterministic Buyer fixtures drive the browser

@@ -16,21 +16,21 @@ Checked items in this planning round are evidence-backed planning artifacts only
 ## 2. Buyer API/Contract Inventory
 
 - [x] 2.1 Record all 38 registered Buyer-relevant endpoints and request boundaries.
-- [x] 2.2 Record DTO fields, cursor limits, statuses, actions, error semantics, financial types, and API gaps.
+- [x] 2.2 Record DTO fields, cursor limits, statuses, actions, error/date semantics, baseline 38 versus target 39, real Schema gaps, and the two narrow authorized prerequisites.
 
 ## 3. Routing and Navigation
 
-- [ ] 3.1 Implement the route map and modular Buyer layout/outlets.
+- [ ] 3.1 Implement the route map, modular Buyer layout/outlets, and required query-bound new-form deep links with eligibility reread.
 - [ ] 3.2 Preserve exact root/login semantics and five-item bottom navigation.
 
 ## 4. Buyer Registration
 
 - [ ] 4.1 Add runtime schemas/API adapter for direct self-registration.
-- [ ] 4.2 Build accessible feature/verifier/rate/conflict-safe registration UI and Session handoff.
+- [ ] 4.2 Build accessible feature/verifier/rate/conflict-safe registration UI; after 201 enter `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`, cancel/clear Buyer+Seller, preserve Staff, reread Session, and accept only BUYER.
 
 ## 5. Buyer Dashboard
 
-- [ ] 5.1 Implement bounded source queries, de-duplication, priority and deadline ordering.
+- [ ] 5.1 Implement bounded source queries, de-duplication, priority/deadline ordering, and refund preview limited to returned DUE/PARTIALLY_PAID/OVERPAID facts without unread/change claims.
 - [ ] 5.2 Implement partial-failure panels and 查看全部 without totals.
 
 ## 6. Demand List
@@ -62,8 +62,8 @@ Checked items in this planning round are evidence-backed planning artifacts only
 
 ## 12. Instruction Images
 
-- [ ] 12.1 Integrate returned main/ordered keyword read-intent paths with File Read Controller.
-- [ ] 12.2 Verify memory-only tokens, bounded bytes, Object URL cleanup and denied/expired states.
+- [ ] 12.1 Add the narrow `FileReadIntentProvider` boundary and four fixed adapters; validate instruction Buyer/current-reservation/main-or-position routes exactly and forbid arbitrary paths.
+- [ ] 12.2 Keep Wave14A content/header/token/Object-URL behavior; map absent instruction file-ID/replay assertions without fabrication and require restart when token availability is false/null.
 
 ## 13. Order Evidence Eligibility
 
@@ -71,13 +71,14 @@ Checked items in this planning round are evidence-backed planning artifacts only
 
 ## 14. Order Evidence Upload
 
-- [ ] 14.1 Integrate `buyerOrderEvidence` with exactly one verified image.
+- [ ] 14.1 Integrate `buyerOrderEvidence` with exactly one image and server-side file verification during Complete; do not send client HEAD.
 - [ ] 14.2 Block business submit on zero/multiple/unsupported/unverified files.
 
 ## 15. Order Evidence Form
 
-- [ ] 15.1 Implement initial version-zero form and command.
-- [ ] 15.2 Implement detail facts, safe file metadata, mismatch warning and request IDs.
+- [ ] 15.1 Implement query-bound initial version-zero form and initial/resubmit commands with required valid date-only `amazon_order_date`.
+- [ ] 15.2 Implement detail facts, distinct date/unknown-history display, safe file metadata/actions, mismatch warning and request IDs.
+- [ ] 15.3 Implement only the authorized date prerequisite across Contract, Domain, routes, read models, runtime schemas, and Migration 0028 nullable history/new-row guards; add no date index or fake backfill.
 
 ## 16. Order Evidence Resubmit/Withdraw
 
@@ -87,11 +88,11 @@ Checked items in this planning round are evidence-backed planning artifacts only
 ## 17. Formal Orders
 
 - [ ] 17.1 Implement supported filters/cursor list.
-- [ ] 17.2 Implement immutable detail and decimal-string snapshot presentation.
+- [ ] 17.2 Implement immutable detail, distinct `amazon_order_date` snapshot/legacy unknown, business-date/timestamp separation, and decimal-string presentation.
 
 ## 18. Review Eligibility
 
-- [ ] 18.1 Implement eligible-order paging and action-driven initial/resubmit entry.
+- [ ] 18.1 Implement eligible-order paging and required `formal_order_id` query-bound initial entry with refresh/deep-link eligibility reread.
 
 ## 19. Review Upload
 
@@ -109,7 +110,8 @@ Checked items in this planning round are evidence-backed planning artifacts only
 
 ## 22. Review File Read
 
-- [ ] 22.1 Integrate specialized review/link/version read intent and Wave14A content viewer.
+- [ ] 22.1 Integrate the fixed review/link/version adapter and Wave14A content viewer without DTO path forwarding.
+- [ ] 22.2 Implement only the authorized order-evidence file DTO fields and dedicated read-intent endpoint with ownership/link/version/audience checks, concealed 404, replay safety, and existing content endpoint.
 
 ## 23. Refund List/Detail
 
@@ -142,25 +144,25 @@ Checked items in this planning round are evidence-backed planning artifacts only
 
 ## 29. Unit Tests
 
-- [ ] 29.1 Add schema, key, priority, dedupe, formatter, status/action and form-state tests.
+- [ ] 29.1 Add schema, key, priority, dedupe, date-only/timezone formatter, fixed adapter/path, status/action and form-state tests.
 
 ## 30. Component Tests
 
-- [ ] 30.1 Add normal plus failure/boundary/accessibility coverage for every major page/form.
+- [ ] 30.1 Add normal plus failure/boundary/accessibility coverage, including registration dual-root invalidation, query-bound form refresh, date validation, and historical fallback.
 
 ## 31. MSW Tests
 
-- [ ] 31.1 Cover all exact Buyer endpoints, request bodies, headers, envelopes and cache effects.
+- [ ] 31.1 Cover exact 38 baseline endpoints plus only the one authorized target endpoint (39 total), request bodies/date fields, headers, envelopes and cache effects.
 - [ ] 31.2 Cover Session/error/conflict/replay/file-token/retry/disclosure boundaries.
 
 ## 32. Playwright
 
 - [ ] 32.1 Run complete registration-to-refund Buyer journeys at 390px.
-- [ ] 32.2 Run 320px, 200%, reduced-motion, keyboard, 401/403/404/409/503 and deep-link gates.
+- [ ] 32.2 Run 320px, 200%, reduced-motion, keyboard, 401/403/404/409/503, refreshed/direct query deep links, registration mismatch, and strict file-path gates.
 
 ## 33. Security Verifier
 
-- [ ] 33.1 Add static/runtime checks for identity, paths, authority, actions, money, files and forbidden disclosure.
+- [ ] 33.1 Add static/runtime checks for identity, fixed adapter paths, date authority, actions, money, files, API 38→39 boundary and forbidden disclosure.
 
 ## 34. Build/Typecheck
 
@@ -193,7 +195,7 @@ Checked items in this planning round are evidence-backed planning artifacts only
 
 ## Planning Validation Evidence
 
-- [x] P.1 Complete route, DTO/status, dashboard, form, file, security, visual, and acceptance references.
+- [x] P.1 Complete corrected route, DTO/status/date, dashboard, form, file-adapter, registration-security, visual, and acceptance references.
 - [x] P.2 Complete Proposal, Design, ten Specs, and this Tasks plan.
 - [x] P.3 Run isolated `npm ci` and the formal baseline regression (128 files / 909 tests, Wave14A 18 / 330, Playwright 42).
 - [x] P.4 Run strict OpenSpec target/all validation and exact counts.

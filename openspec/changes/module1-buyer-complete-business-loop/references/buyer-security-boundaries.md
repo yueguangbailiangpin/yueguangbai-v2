@@ -4,7 +4,7 @@
 
 - Buyer, Seller, and Staff remain distinct authorization domains.
 - Buyer/Seller use one shared HttpOnly `__Host-ygb_customer_session` cookie; the frontend cannot read it.
-- Buyer/Seller Query roots clear together on Customer login replacement, mismatch, logout, or validated 401. Staff cache/session is not cleared.
+- Buyer/Seller Query roots clear together on Customer login replacement, registration cookie replacement, mismatch, logout, or validated 401. Staff cache/session is not cleared.
 - A BUYER route receiving SELLER_MEMBER fails closed, logs out/cleans through the existing mismatch controller, and never offers cross-identity handoff.
 - 403 and concealed 404 do not log out.
 - `REVIEW_REQUIRED` is a safe limitation, not frontend permission to trigger staff action.
@@ -22,13 +22,16 @@
 - Backend feature flag and verifier decide availability. The frontend never enables the flag or simulates verification.
 - Public failures deliberately collapse account-exists, conflict, eligibility, configuration, and dependency details to safe messages.
 - Passwords and human tokens are operation-local and not cached/logged.
+- Registration 201 does not set frontend AUTHENTICATED. It immediately cancels Buyer and Seller requests, clears both Customer roots, preserves Staff, and rereads Customer Session; only BUYER succeeds. Mismatch logs out and clears both roots, and any cleanup/reread failure remains fail closed.
 
 ## Files
 
 - Purpose, visibility, owner, entity link, and audience are derived by server workflow.
 - Tokens are memory-only, bounded, one-use authorities; Object URLs are ephemeral.
 - No storage object key, permanent URL, signed URL, private token, file bytes, or raw R2 diagnostic enters Query cache or UI diagnostics.
-- Instruction and review reads use their entity-specific paths. Generic reads require authoritative positive file version.
+- Public FileReadController APIs do not accept arbitrary routes. Four fixed adapters create generic, instruction, review, and order-evidence intents while the existing controller retains byte/header/token/Object-URL safety.
+- Instruction DTO paths must exactly match the Buyer/current-reservation/`main`-or-current-positive-position route. Review and order-evidence routes are constructed from validated entity IDs, never forwarded from unvalidated DTO strings.
+- Dedicated order-evidence reads require current Buyer submission ownership, current visible link membership, positive matching version, CREATE_READ_INTENT, and explicit-audience/current formal-file authorization. Concealed misses are 404; unavailable historical facts remain metadata-only.
 - One screenshot and three review files are business-layer limits even if a lower-level parser permits more.
 
 ## Disclosure and error handling
@@ -46,6 +49,12 @@
 - Formal-order snapshots, review refund due, and refund ledger values remain read-only.
 - OVERPAID and reversals remain visible.
 
+## Date authority
+
+- `amazon_order_date` is a required valid Gregorian `YYYY-MM-DD` source fact from the Amazon order page, stored per evidence version and locked into new formal orders.
+- It is date-only and receives no timezone conversion. Epoch milliseconds display in the frozen Buyer timezone with that timezone explicit; `confirmed_business_date` remains a separate server business date.
+- Historical unknown dates remain NULL/unknown. No timestamp or business date is used to fabricate them, and new formal orders cannot omit the date.
+
 ## Explicitly excluded authority
 
-No Backend, Contract, Domain, Migration, D1/R2 production binding, real Feishu, Seller/Staff business UI, deployment, data import, or history mutation is authorized by this Change.
+No unrelated Backend, Contract, Domain, Migration, D1/R2 production binding, real Feishu, Seller/Staff business UI, deployment, data import, or history mutation is authorized. Later implementation is narrowly authorized only for end-to-end `amazon_order_date` (including required Migration 0028) and the one dedicated order-evidence file-read capability; this planning round changes none of that source.

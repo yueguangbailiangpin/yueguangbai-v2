@@ -2,17 +2,18 @@
 
 | Journey / gate | Unit/runtime | Component | MSW | Playwright |
 |---|---|---|---|---|
-| Root/login/direct registration | path/DTO/error schema | fields, unavailable, mismatch | feature-disabled/rate/201 Session | direct links, root has no entry, success/unavailable |
+| Root/login/direct registration | path/DTO/error schema | fields, unavailable, mismatch, no premature auth | feature-disabled/rate/201 then dual-root invalidation and Session reread | direct links, root has no entry, BUYER success/mismatch/unavailable |
 | Password and Session | existing controllers | guards/cleanup retry | 401/mismatch/shared roots | login/change/logout |
 | Dashboard | priority/dedupe/deadline/keys | partial success, bounded preview | multi-source/cursor/failure | mixed tasks, one source fails |
 | Demand list/detail | DTO/cursor/money/date | empty/page/detail | real GET paths | browse/detail/deep link |
 | Self-pay/reservation | acceptance/reset/body | unchecked/accessibility/conflict | 201/replay/version/capacity | accept/reserve/cancel |
-| Instruction | state/action/deadline/image order | terminal/update/deadline | state/content/read intent | active/expired/images |
+| Instruction | state/action/deadline/exact adapter path | terminal/update/deadline | state/content/read intent and absent replay/file-ID assertions | active/expired/images/path rejection |
 | Evidence upload | one-file policy/controller | progress/error/reselection | intent/upload/complete | one screenshot |
-| Evidence workflow | DTO/actions/mismatch/money | initial/detail/change/withdraw | create/list/detail/resubmit/withdraw | submit/mismatch/change/withdraw |
-| Formal orders | filters/cursor/decimal strings | list/detail/not-found | exact GET/filter paths | filter/deep link |
+| Evidence workflow | DTO/actions/date/mismatch/money | initial/detail/change/withdraw/date-only | create/list/detail/resubmit/withdraw with `amazon_order_date` | query deep link/refresh/date/submit/mismatch/change/withdraw |
+| Evidence file read | link/version/action schemas | viewer/metadata fallback/cleanup | dedicated intent/token/content/replay/404 | new preview and historical metadata-only |
+| Formal orders | filters/cursor/decimal strings/date snapshot | list/detail/not-found/unknown history | exact GET/filter paths and date projection | filter/deep link/date snapshot |
 | Review upload | three-file business limit | selection/progress | upload lifecycle | one-to-three files |
-| Review workflow | DTO/actions/due/file refs | all states/reason/action absence | all seven endpoints | submit/change/withdraw/approved |
+| Review workflow | DTO/actions/due/file refs/date summary | all states/reason/action absence | all seven baseline endpoints | query deep link/refresh/submit/change/withdraw/approved |
 | Review file read | specialized path/version | viewer/cleanup/error | token/content/replay/conflict | image/PDF view and close |
 | Refunds | balance/status/activity validation | list/detail/reversal/overpaid | list/detail/error | due/partial/paid/overpaid history |
 | Me | DTO/date/status | review-required/no edits | me/logout | account links/logout |
@@ -24,7 +25,7 @@
 - 10 capabilities, 58 requirements, 116 scenarios, 24 files.
 - Target and repository-wide strict OpenSpec validation.
 - Static review: only real paths/DTOs/statuses/actions; no backend assumption or forbidden storage authority.
-- Baseline `npm ci`, `npm run check`, Wave14A Playwright regression, database counts, no new migration.
+- Baseline `npm ci`, `npm run check`, Wave14A Playwright regression, and current database counts; Migration 0028 is planned but not created in this round.
 - Git diff and status restricted to this Change directory.
 
 ## Later implementation acceptance gates
@@ -32,10 +33,10 @@
 - All new Buyer unit/component/MSW/Playwright tests pass in addition to baseline.
 - Production Web build and typecheck pass.
 - Browser journeys run against deterministic local/mock infrastructure; no production R2 or real Feishu.
-- Security verifier covers identity roots, 401/403/404, path allowlist, action authority, financial formatting, file cleanup, object-key/URL absence, one screenshot, and three review files.
+- Security verifier covers registration dual-root invalidation, identity roots, 401/403/404, fixed adapter/path validation, action authority, date separation, financial formatting, file cleanup, object-key/URL absence, one screenshot, and three review files.
 - Formal OpenSpec Verify occurs only after implementation, not in this planning round.
 - Ponytail, Integration, main, PR, deployment, production and later modules require separate controller authorization.
 
-## Known acceptance limitation requiring controller disposition
+## Historical compatibility acceptance
 
-Historical order-evidence file preview lacks a DTO file version required by generic read intent. Planning accepts metadata-only display and treats preview as unavailable. If full historical screenshot viewing is mandatory, the controller must authorize a later Contract/backend change; the frontend must not guess or bypass it.
+New order-evidence records with target link/version/action facts must pass the dedicated preview journey. A historical record that cannot be authoritatively backfilled must pass a metadata-only journey without a read action or guessed version. Historical NULL `amazon_order_date` displays as unknown and is never substituted; all new evidence versions and formal orders must reject a missing date.

@@ -12,7 +12,7 @@ The backend has no dashboard endpoint and list responses have no totals. The das
 | 4 | eligible evidence page | no current evidence, SUBMIT action | evidence new |
 | 5 | eligible review page | no current review, SUBMIT action | review new |
 | 6 | evidence/review list | pending status; informational, not executable | matching detail |
-| 7 | refund page | DUE/PARTIALLY_PAID/OVERPAID or recently returned updated item | refund detail |
+| 7 | refund page | returned DUE/PARTIALLY_PAID/OVERPAID item, ordered only by that item's `updated_at` where needed | refund detail |
 | 8 | demand page | returned currently public demand | demand detail |
 
 ## Ordering and de-duplication
@@ -22,6 +22,7 @@ The backend has no dashboard endpoint and list responses have no totals. The das
 - Without a deadline, returned update/submit time may order newest status information, but it does not create urgency.
 - The dashboard displays a short bounded number per group and a 查看全部 link.
 - No metric card, total, “all caught up,” or global unread number is shown from a partial page.
+- Refund preview never claims a new message, unread state, or detected status change because there is no last-seen/change cursor. PAID remains on the refund history page and is not a default high-priority dashboard task.
 
 ## Query limitations
 

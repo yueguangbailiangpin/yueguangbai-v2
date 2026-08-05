@@ -36,14 +36,14 @@ The UI SHALL label `initial_deadline_at` as 初始提交期限 and `resubmission
 - **THEN** the submit action is unavailable and a refetch is required before any later action.
 
 ### Requirement: Instruction images use short read intents
-Each image SHALL call only its returned `read_intent_path` with an operation-scoped idempotency key, then consume the resulting token through the Wave14A File Read Client. Access tokens SHALL remain private memory, bytes SHALL stay out of Query cache, and Object URLs SHALL be revoked on replacement, close, unmount, cancellation, or failure.
+Each image SHALL use `BuyerInstructionImageReadIntentAdapter`, which validates Buyer domain, current reservation ID, and `main` or the selected current positive integer position against the exact formal route pattern before constructing the request. A DTO path that names another reservation, position, domain, or any other `/api` route SHALL fail closed; no business page or public FileReadController API may forward an arbitrary path. Only read-intent creation is adapted: bounded content download, header validation, token lifecycle, Customer 401 handling, and Object URL cleanup remain Wave14A behavior. Because the instruction response lacks `file_object_id` and `replayed`, the adapter SHALL record those assertions as unavailable rather than fabricate them; `access_token_available=false` or a null token SHALL require restart.
 
 #### Scenario: Buyer views an authorized image
-- **WHEN** a first read intent returns a usable token and bounded bytes
-- **THEN** an ephemeral Object URL displays the image and is revoked when its lifecycle ends.
+- **WHEN** the exact current reservation/position route validates and a read intent returns a usable token and bounded bytes
+- **THEN** the fixed adapter feeds the existing content controller, an ephemeral Object URL displays the image, and it is revoked when its lifecycle ends without invented response facts.
 
 #### Scenario: Read is replayed, expired, denied, or malformed
-- **WHEN** no token is available, authorization changes, bytes/header validation fails, or the instruction becomes unreadable
+- **WHEN** the DTO path mismatches, no token is available, authorization changes, bytes/header validation fails, or the instruction becomes unreadable
 - **THEN** no permanent URL or storage object key is exposed and only the documented explicit restart/retry path is offered.
 
 ### Requirement: Instruction cache follows reservation scope
