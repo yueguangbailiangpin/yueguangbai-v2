@@ -1,5 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { FrontendApiError, isFrontendApiError } from '../api/errors';
+import {
+  FrontendApiError,
+  isCanceledFrontendError,
+  normalizeFrontendControllerError,
+} from '../api/errors';
 import { completePurposeBoundUploadIntent, createPurposeBoundUploadIntent } from './file-upload-api';
 import type { UploadedFileReceipt } from './file-contracts';
 import { validateFileSelection, type ValidatedFileSelection } from './file-descriptor';
@@ -10,7 +14,6 @@ import {
   type SafeFileUploadError,
 } from './file-upload-operation';
 import {
-  fileUploadWorkflows,
   requireFileUploadWorkflow,
   type FileUploadWorkflow,
   type FileUploadWorkflowKey,
@@ -207,7 +210,7 @@ export class FileUploadController {
       await this.uploadRemaining();
     } catch (error: unknown) {
       if (error instanceof FileUploadTransitionError) throw error;
-      if (isCanceled(error)) this.cancelFromFailure(error);
+      if (isCanceledFrontendError(error)) this.cancelFromFailure(error);
       else {
         this.createKey = null;
         this.publishFailure(error, 'RESTART_REQUIRED', false, true);
@@ -257,7 +260,7 @@ export class FileUploadController {
         this.publishSlots('UPLOADING', result.requestId);
       } catch (error: unknown) {
         if (error instanceof FileUploadTransitionError) throw error;
-        if (isCanceled(error)) {
+        if (isCanceledFrontendError(error)) {
           slot.state = 'CANCELED';
           this.cancelFromFailure(error);
           return;
@@ -322,13 +325,13 @@ export class FileUploadController {
       }, { completeValidated: true });
     } catch (error: unknown) {
       if (error instanceof FileUploadTransitionError) throw error;
-      if (isCanceled(error)) this.cancelFromFailure(error);
+      if (isCanceledFrontendError(error)) this.cancelFromFailure(error);
       else this.handleCompleteFailure(error);
     }
   }
 
   private handleUploadFailure(error: unknown): void {
-    const apiError = normalized(error);
+    const apiError = normalizeFrontendControllerError(error);
     if (isAmbiguousRemoteResult(apiError)
       || apiError.code === 'REQUEST_IN_PROGRESS'
       || apiError.code === 'DEPENDENCY_UNAVAILABLE') {
@@ -371,7 +374,7 @@ export class FileUploadController {
   }
 
   private handleCompleteFailure(error: unknown): void {
-    const apiError = normalized(error);
+    const apiError = normalizeFrontendControllerError(error);
     if (isAmbiguousRemoteResult(apiError)
       || apiError.code === 'REQUEST_IN_PROGRESS'
       || apiError.code === 'DEPENDENCY_UNAVAILABLE') {
@@ -485,7 +488,7 @@ export class FileUploadController {
     restartRequired: boolean,
     requiresFileReselection = false,
   ): void {
-    const projected = safeError(normalized(error));
+    const projected = safeError(normalizeFrontendControllerError(error));
     this.publish({
       ...this.snapshot,
       workflow: this.workflowKey,
@@ -584,11 +587,6 @@ export class FileUploadController {
   }
 }
 
-function normalized(error: unknown): FrontendApiError {
-  if (isFrontendApiError(error)) return error;
-  return new FrontendApiError('MALFORMED_RESPONSE', 0, null, 'CONTRACT');
-}
-
 function safeError(error: FrontendApiError): SafeFileUploadError {
   return Object.freeze({
     code: error.code,
@@ -599,17 +597,9 @@ function safeError(error: FrontendApiError): SafeFileUploadError {
   });
 }
 
-function isCanceled(error: unknown): boolean {
-  return isFrontendApiError(error) && error.code === 'CANCELED';
-}
-
 function isAmbiguousRemoteResult(error: FrontendApiError): boolean {
   return error.code === 'NETWORK_FAILURE'
     || (error.code === 'MALFORMED_RESPONSE'
       && error.httpStatus >= 200
       && error.httpStatus < 300);
-}
-
-export function workflowForTest(key: FileUploadWorkflowKey): FileUploadWorkflow {
-  return fileUploadWorkflows[key];
 }

@@ -1,5 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { FrontendApiError, isFrontendApiError } from '../api/errors';
+import {
+  FrontendApiError,
+  isCanceledFrontendError,
+  normalizeFrontendControllerError,
+} from '../api/errors';
 import type { RequestIdentity } from '../api/identity-request';
 import { createIdentityFileReadIntent } from './file-read-api';
 import {
@@ -219,7 +223,7 @@ export class FileReadController {
     } catch (error: unknown) {
       if (error instanceof FileReadTransitionError) throw error;
       this.createKey = null;
-      if (isCanceled(error)) {
+      if (isCanceledFrontendError(error)) {
         this.releaseIntentAuthority();
         this.publishFailure(error, 'CANCELED', false, true);
       } else {
@@ -279,7 +283,7 @@ export class FileReadController {
   }
 
   private handleDownloadFailure(error: unknown): void {
-    const apiError = normalized(error);
+    const apiError = normalizeFrontendControllerError(error);
     if (apiError.httpStatus === 429 || apiError.category === 'RATE_LIMIT') {
       if (apiError.retryAfter === null || apiError.retryAfter <= 0) {
         this.releaseIntentAuthority();
@@ -341,7 +345,7 @@ export class FileReadController {
     canRetry: boolean,
     restartRequired: boolean,
   ): void {
-    const projected = safeError(normalized(error));
+    const projected = safeError(normalizeFrontendControllerError(error));
     this.publish({
       ...this.snapshot,
       state,
@@ -414,11 +418,6 @@ export class FileReadController {
   }
 }
 
-function normalized(error: unknown): FrontendApiError {
-  if (isFrontendApiError(error)) return error;
-  return new FrontendApiError('MALFORMED_RESPONSE', 0, null, 'CONTRACT');
-}
-
 function safeError(error: FrontendApiError): SafeFileReadError {
   return Object.freeze({
     code: error.code,
@@ -428,10 +427,6 @@ function safeError(error: FrontendApiError): SafeFileReadError {
     retryAfter: error.retryAfter,
     safeDetails: error.safeDetails,
   });
-}
-
-function isCanceled(error: unknown): boolean {
-  return isFrontendApiError(error) && error.code === 'CANCELED';
 }
 
 function isRequestIdentity(value: unknown): value is RequestIdentity {

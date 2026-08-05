@@ -1,5 +1,4 @@
 import {
-  Check,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -14,10 +13,8 @@ import {
   useId,
   useRef,
   type ButtonHTMLAttributes,
-  type HTMLAttributes,
   type InputHTMLAttributes,
   type PropsWithChildren,
-  type ReactElement,
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
@@ -707,15 +704,4 @@ export function Skeleton({
       style={{ width: index === lines - 1 && lines > 1 ? '68%' : '100%' }}
     />)}
   </div>;
-}
-
-export function Checkmark(): ReactElement {
-  return <Check aria-hidden="true" />;
-}
-
-export function VisuallyHidden({
-  children,
-  ...props
-}: PropsWithChildren<HTMLAttributes<HTMLSpanElement>>): React.JSX.Element {
-  return <span {...props} className={classes('visually-hidden', props.className)}>{children}</span>;
 }

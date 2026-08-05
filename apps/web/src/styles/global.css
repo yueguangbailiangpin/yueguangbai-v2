@@ -333,22 +333,26 @@ select:disabled {
   color: var(--color-neutral);
 }
 
-.status-processing {
+.status-processing,
+.alert-info {
   background: var(--color-processing-soft);
   color: var(--color-processing);
 }
 
-.status-success {
+.status-success,
+.alert-success {
   background: var(--color-success-soft);
   color: var(--color-success);
 }
 
-.status-warning {
+.status-warning,
+.alert-warning {
   background: var(--color-warning-soft);
   color: var(--color-warning);
 }
 
-.status-danger {
+.status-danger,
+.alert-danger {
   background: var(--color-danger-soft);
   color: var(--color-danger);
 }
@@ -718,26 +722,6 @@ select:disabled {
   border-radius: var(--radius-control);
 }
 
-.alert-info {
-  background: var(--color-processing-soft);
-  color: var(--color-processing);
-}
-
-.alert-success {
-  background: var(--color-success-soft);
-  color: var(--color-success);
-}
-
-.alert-warning {
-  background: var(--color-warning-soft);
-  color: var(--color-warning);
-}
-
-.alert-danger {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-}
-
 .toast {
   display: flex;
   width: min(420px, calc(100vw - 2rem));
@@ -829,19 +813,10 @@ select:disabled {
 .identity-entry,
 .login-page,
 .centered {
+  display: grid;
   min-height: 100vh;
+  place-items: center;
   padding: var(--space-6);
-}
-
-.identity-entry,
-.login-page {
-  display: grid;
-  place-items: center;
-}
-
-.centered {
-  display: grid;
-  place-items: center;
 }
 
 .identity-entry {

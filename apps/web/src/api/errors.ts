@@ -56,3 +56,12 @@ export function categoryForStatus(status: number): ErrorCategory {
 export function isFrontendApiError(value: unknown): value is FrontendApiError {
   return value instanceof FrontendApiError;
 }
+
+export function normalizeFrontendControllerError(error: unknown): FrontendApiError {
+  if (isFrontendApiError(error)) return error;
+  return new FrontendApiError('MALFORMED_RESPONSE', 0, null, 'CONTRACT');
+}
+
+export function isCanceledFrontendError(error: unknown): boolean {
+  return isFrontendApiError(error) && error.code === 'CANCELED';
+}
