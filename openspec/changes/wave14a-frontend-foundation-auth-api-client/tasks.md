@@ -142,7 +142,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 32. Ponytail Read-only Review
 
-- [ ] 32.1 Keep Ponytail off during planning/implementation; only after full acceptance and separate authorization may a read-only review run.
+- [x] 32.1 Keep Ponytail off during planning/implementation; only after full acceptance and separate authorization may a read-only review run.
 
 ## 33. Integration
 
@@ -374,3 +374,20 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - Final `npm audit --json`: 0 critical, 2 high, 0 moderate, 0 low. Both nodes describe the same React Router RSC-mode CSRF advisory. Wave 14A remains a Vite `BrowserRouter` SPA with no React Server Components, server actions, or framework/data-action mode, so this advisory path is not deployment-reachable in the implemented architecture. The suggested cross-range downgrade was not applied.
 - The remediation scope changed only Web source/tests/styles and the Wave 14A security verifier before this evidence update. Backend, Contracts, Domain, Migrations, package manifests, lockfile, routes, schema, and production resources were not modified.
 - Ponytail, Push, PR, Integration, `main`, deployment, archive, and Wave 14B were not run or started.
+
+## PONYTAIL_DISPOSITION_EVIDENCE
+
+- The separately authorized read-only Ponytail review ran against review HEAD `0b0740a890cfefbfee47a23626d33987b42e60c4` after final acceptance. It reported `BLOCKING=0`, modified 0 files, and created 0 commits.
+- Controller disposition is frozen and recorded without reinterpretation: R-01, R-02, R-03, R-04, and R-05 are `ACCEPT`; O-01 is `LATER`; D-01 through D-07 are `REJECT` because they cross the frozen security, identity, File, accessibility, architecture, or governance boundaries.
+- R-01 removed only the unused upload `workflowForTest()` helper and its now-unused `fileUploadWorkflows` import. R-02 removed only the unused `Checkmark` and `VisuallyHidden` React components and their exclusive imports; the `.visually-hidden` CSS and every active accessibility primitive remain.
+- R-03 moved the two byte-for-byte duplicate Controller error-classification helpers to the existing `api/errors.ts` module. Unknown errors still become safe `MALFORMED_RESPONSE` / `CONTRACT` failures, only explicit `CANCELED` is cancellation, and the upload/read `safeError`, `safeDetails`, and request-ID projections remain distinct and unchanged.
+- R-04 merged only the identical `display: grid` and `place-items: center` declarations for `.identity-entry`, `.login-page`, and `.centered`. R-05 merged only the four identical Status/Alert color declaration pairs with ordinary comma selectors. Selector sets, specificity, tokens, color values, semantics, Root/login layout, 320px behavior, and 200% reflow are unchanged.
+- O-01 remains deferred: `apps/web/src/testable.tsx` and the existing `App.browser.test.tsx` import path are retained because a one-line reduction does not justify expanding this final cleanup; a later business module may refactor it naturally. No D-01 through D-07 boundary proposal was implemented.
+- The accepted implementation changes 5 Web source files by 38 insertions and 83 deletions, a net reduction of 45 lines. It does not change functional behavior, public Controller APIs, fixed workflows, upload/read state machines, identity/session handling, File authority, accessibility, or visual semantics.
+- Isolated-cache `npm ci` passed with 226 packages installed and 233 audited. Targeted validation passed 5 test files / 176 tests / 0 failed. Final Wave 14A validation passed 18 test files / 330 tests / 0 failed; the Wave 14A security verifier, Web typecheck, production build, and workspace checks passed.
+- Final Playwright acceptance passed 42 / 42 with 0 failures and regenerated all 12 deterministic external screenshots in `/tmp/wave14a-final-ponytail-cleanup`. Root still has exactly its two approved visible strings; Quiet Operations, three Seller metric cards, Buyer/Seller/Staff layouts, state colors/contrast, 320px behavior, and 200% reflow are unchanged.
+- Repository validation passed 128 test files / 909 tests / 0 failed, all workspace builds, migration/security/Wave verifiers, and API Worker dry-run. Database invariants remain 27 migrations / schema 27 / 117 tables / 221 triggers / 10 final views / 0 foreign-key errors, with no `0028`.
+- Strict OpenSpec validation passed target 1/1 with 0 issues and repository-wide 8/8; the 27 INFO notices remain outside this Change. Formal OpenSpec Verify remains `COMPLETE=42`, `INCONSISTENT=0`, `MISSING=0`, `PARTIAL=0`, `NOT_VERIFIED=0`, `CRITICAL=0`, `WARNING=0`, and `SUGGESTION=0`; all 84 Scenarios remain covered.
+- Structure remains 7 Capabilities / 42 Requirements / 84 Scenarios / 17 Change files. Tasks are 44/46 complete; only 33.1 Integration and 34.1 `main` advancement remain pending.
+- Final `npm audit --json` reports 0 critical / 2 high / 0 moderate / 0 low. Both nodes represent the same React Router RSC-mode advisory; the Wave 14A Vite `BrowserRouter` SPA does not use RSC, server actions, or framework/data-action mode, so the advisory path is not deployment-reachable. No dependency or override changed.
+- Backend business source, Contracts, Domain, Migrations, package manifests, and lockfile are unchanged. Integration, `main`, PR, archive, deployment, production resources, and later business modules were not executed or started.
