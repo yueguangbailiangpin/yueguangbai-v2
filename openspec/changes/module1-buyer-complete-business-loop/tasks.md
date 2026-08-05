@@ -197,4 +197,4 @@ Checked items in this planning round are evidence-backed planning artifacts only
 - [x] P.2 Complete Proposal, Design, ten Specs, and this Tasks plan.
 - [x] P.3 Run isolated `npm ci` and the formal baseline regression (128 files / 909 tests, Wave14A 18 / 330, Playwright 42).
 - [x] P.4 Run strict OpenSpec target/all validation and exact counts.
-- [ ] P.5 Confirm Git diff is only this Change and Worktree is clean after commit/push.
+- [x] P.5 Confirm staged/committed Git scope is only this Change; final post-push clean state is reported separately.
