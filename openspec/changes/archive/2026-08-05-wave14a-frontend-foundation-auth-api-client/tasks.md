@@ -146,7 +146,7 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 
 ## 33. Integration
 
-- [ ] 33.1 Create/validate Integration only after controller acceptance, Verify, and authorized governance completion; do not develop there.
+- [x] 33.1 Create/validate Integration only after controller acceptance, Verify, and authorized governance completion; do not develop there.
 
 ## 34. Main Advancement
 
@@ -391,3 +391,14 @@ Planning completion marks only authority/inventory/artifact work. All implementa
 - Structure remains 7 Capabilities / 42 Requirements / 84 Scenarios / 17 Change files. Tasks are 44/46 complete; only 33.1 Integration and 34.1 `main` advancement remain pending.
 - Final `npm audit --json` reports 0 critical / 2 high / 0 moderate / 0 low. Both nodes represent the same React Router RSC-mode advisory; the Wave 14A Vite `BrowserRouter` SPA does not use RSC, server actions, or framework/data-action mode, so the advisory path is not deployment-reachable. No dependency or override changed.
 - Backend business source, Contracts, Domain, Migrations, package manifests, and lockfile are unchanged. Integration, `main`, PR, archive, deployment, production resources, and later business modules were not executed or started.
+
+## INTEGRATION_VALIDATION_EVIDENCE
+
+- Clean Integration branch `integration/wave14a-frontend-foundation-auth-api-client` was created from starting remote `main` SHA `503709a5745931e6732d32f2ed5ae6967b299faa` in its dedicated Worktree.
+- Feature SHA `ab7be31f7906363af92e2ef974ff3e5eb7ff3fa7` entered Integration through `git merge --ff-only`; no merge commit, squash, rebase, amend, or source development was performed on Integration.
+- Isolated-cache `npm ci` passed with 226 packages installed and 233 audited. The unchanged audit inventory reported 2 high-severity entries; no dependency or package-file change was made.
+- Integration validation passed: Wave 14A security verifier; 18 Wave 14A test files / 330 tests / 0 failed; Web typecheck and production build; 42 Playwright tests / 0 failed; repository `npm run check` with 128 test files / 909 tests / 0 failed; all workspace typechecks/builds; and API Wrangler dry-run.
+- Strict repository-wide OpenSpec validation passed 14/14 with 0 failures. Structure remains 7 Capabilities / 42 Requirements / 84 Scenarios.
+- Database invariants remain 27 migrations / schema 27 / 117 tables / 221 triggers / 10 final views / 0 foreign-key errors, with no `0028`.
+- No business source, Backend, Contract, Domain, Migration, package manifest, or lockfile was modified during Integration. The archive was not rewritten; only this governance task/evidence file changed.
+- Remote `main` remains at `503709a5745931e6732d32f2ed5ae6967b299faa` and has not yet been advanced. Task 34.1 remains pending until the separately required validated fast-forward.
