@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { isFrontendApiError } from '../../api/errors';
 import {
@@ -15,6 +15,7 @@ import {
   BuyerRegistrationController,
   disconnectedHumanVerificationProvider,
   type HumanVerificationProvider,
+  type BuyerInvitationContext,
 } from './registration';
 
 const formSchema = z.object({
@@ -32,17 +33,35 @@ export function BuyerRegistrationPage({
 }): React.JSX.Element {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const invitationToken = searchParams.get('token') ?? '';
   const controller = useRef<BuyerRegistrationController | null>(null);
   const abort = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [invitation, setInvitation] = useState<BuyerInvitationContext | null>(null);
   controller.current ??= new BuyerRegistrationController(
     client,
     humanVerificationProvider,
   );
 
-  useEffect(() => () => abort.current?.abort(), []);
+  useEffect(() => {
+    const current = new AbortController();
+    abort.current = current;
+    if (!invitationToken) {
+      setMessage('注册链接无效，请联系工作人员重新获取。');
+      return () => current.abort();
+    }
+    void controller.current!.readInvitation(invitationToken, current.signal)
+      .then(setInvitation)
+      .catch((error: unknown) => {
+        if (!(isFrontendApiError(error) && error.code === 'CANCELED')) {
+          setMessage('注册链接无效或已失效，请联系工作人员重新获取。');
+        }
+      });
+    return () => current.abort();
+  }, [invitationToken]);
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -62,7 +81,12 @@ export function BuyerRegistrationPage({
     const current = new AbortController();
     abort.current = current;
     try {
-      const result = await controller.current!.register(parsed.data, current.signal);
+      if (!invitation) throw new Error('invitation_unavailable');
+      const result = await controller.current!.register({
+        ...parsed.data,
+        invitation_token: invitationToken,
+        marketplace_code: invitation.marketplace_code,
+      }, current.signal);
       if (result.kind === 'AUTHENTICATED') {
         navigate('/buyer', { replace: true });
       } else if (result.kind === 'MISMATCH_CLEANED') {
@@ -86,7 +110,10 @@ export function BuyerRegistrationPage({
       <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
         <strong>月光白</strong></div>
       <div className="login-heading"><p className="eyebrow">买家服务</p>
-        <h1>买家注册</h1><p>创建买家账号后，我们会重新确认您的会话身份。</p></div>
+        <h1>买家邀请注册</h1><p>仅限工作人员发送的专属一次性邀请。</p></div>
+      {invitation ? <Alert tone="info">
+        站点：{invitation.marketplace_name}；邀请微信：{invitation.wechat_hint}
+      </Alert> : null}
       <form onSubmit={(event) => { void submit(event); }}>
         <FormField label="微信号" htmlFor="buyer-register-wechat" required>
           <TextInput name="wechat_id" autoComplete="username" required />
@@ -99,7 +126,7 @@ export function BuyerRegistrationPage({
         </FormField>
         {message ? <Alert tone="danger">{message}</Alert> : null}
         <RequestIdDisplay requestId={requestId} />
-        <Button type="submit" loading={busy} loadingLabel="正在创建账号">注册</Button>
+        <Button type="submit" disabled={!invitation} loading={busy} loadingLabel="正在创建账号">注册并进入买家工作区</Button>
       </form>
       <Button className="secondary" onClick={() => navigate('/buyer/login')}>返回登录</Button>
     </Card>

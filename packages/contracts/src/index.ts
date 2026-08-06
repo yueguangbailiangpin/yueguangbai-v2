@@ -8,6 +8,7 @@ export * from './buyer-review-portal';
 export * from './buyer-self-registration';
 export * from './catalog';
 export * from './customer';
+export * from './customer-security';
 export * from './demand';
 export * from './errors';
 export * from './file-http';

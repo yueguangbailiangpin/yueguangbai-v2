@@ -9,21 +9,23 @@ const migrationDirectory = path.join(root, 'migrations');
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (migrations.at(-1) !== '0029_multi_marketplace_multicurrency_foundation.sql') {
-  throw new Error('0029 must be the next consecutive migration');
+const marketplaceMigration = '0029_multi_marketplace_multicurrency_foundation.sql';
+const marketplaceMigrationIndex = migrations.indexOf(marketplaceMigration);
+if (marketplaceMigrationIndex !== 28) {
+  throw new Error('0029 must remain the 29th consecutive migration');
 }
 
 const work = mkdtempSync(path.join(tmpdir(), 'ygb-v2-marketplace-money-'));
 try {
   const database = open();
-  apply(database, migrations.slice(0, -1));
+  apply(database, migrations.slice(0, marketplaceMigrationIndex));
   seedJpUpgradeFixture(database);
   const before = manifest(database);
   const beforeHash = hash(before);
   const preWriteBackup = path.join(work, 'pre-write.sqlite');
   await backup(database, preWriteBackup);
 
-  runMigration(database, migrations.at(-1));
+  runMigration(database, marketplaceMigration);
   assert(database.prepare(`
     SELECT schema_version FROM app_schema_state WHERE singleton_id=1
   `).get().schema_version === 29, 'schema version');
@@ -86,7 +88,7 @@ try {
   restoredForward.close();
 
   const source = readFileSync(
-    path.join(migrationDirectory, migrations.at(-1)), 'utf8',
+    path.join(migrationDirectory, marketplaceMigration), 'utf8',
   );
   assert(!/\b(?:REAL|FLOAT)\b/iu.test(source), 'floating SQL type');
   for (const file of [
@@ -102,7 +104,7 @@ try {
 
   console.log(JSON.stringify({
     status: 'PASS',
-    migration: migrations.at(-1),
+    migration: marketplaceMigration,
     jp_manifest_sha256: beforeHash,
     fresh_and_upgrade_integrity: 'ok',
     pre_write_restore: 'verified',

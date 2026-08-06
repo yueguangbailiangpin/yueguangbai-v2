@@ -14,10 +14,12 @@ import {
 import { queryClient } from './api/query-client';
 import { CustomerChangePasswordPage } from './auth/customer/CustomerChangePasswordPage';
 import { CustomerLoginPage } from './auth/customer/CustomerLoginPage';
+import { CustomerPasswordResetPage } from './auth/customer/CustomerPasswordResetPage';
 import { CustomerPasswordRouteBoundary } from './auth/customer/CustomerPasswordRouteBoundary';
 import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary';
 import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from './auth/staff/staff-auth-controller';
+import { StaffCustomerSecurityPanel } from './auth/staff/StaffCustomerSecurityPanel';
 import { safeReturnPath } from './routes/return-path';
 import { BuyerDashboardPage } from './buyer/dashboard/BuyerDashboardPage';
 import { BuyerDemandDetailPage } from './buyer/demands/BuyerDemandDetailPage';
@@ -246,7 +248,7 @@ export function SellerShell(): React.JSX.Element {
 function StaffActionContent(): React.JSX.Element {
   return <><section className="action-group" aria-labelledby="ordinary-actions">
     <h3 id="ordinary-actions">普通操作</h3>
-    <p>业务操作将在员工业务模块开放。</p>
+    <StaffCustomerSecurityPanel />
   </section>
   <section className="action-group sensitive-action" aria-labelledby="financial-actions">
     <h3 id="financial-actions">财务敏感操作</h3>
@@ -308,6 +310,8 @@ function AppRoutes(): React.JSX.Element {
     <Route path="/" element={<RootEntry />} />
     <Route path="/buyer/login" element={<CustomerLoginPage target="buyer" />} />
     <Route path="/buyer/register" element={<BuyerRegistrationPage />} />
+    <Route path="/customer/reset-password" element={<CustomerPasswordResetPage />} />
+    <Route path="/customer/login" element={<CustomerLoginPage target="buyer" />} />
     <Route path="/seller/login" element={<CustomerLoginPage target="seller" />} />
     <Route path="/buyer/change-password" element={<CustomerPasswordRouteBoundary target="buyer"><CustomerChangePasswordPage target="buyer" /></CustomerPasswordRouteBoundary>} />
     <Route path="/seller/change-password" element={<CustomerPasswordRouteBoundary target="seller"><CustomerChangePasswordPage target="seller" /></CustomerPasswordRouteBoundary>} />

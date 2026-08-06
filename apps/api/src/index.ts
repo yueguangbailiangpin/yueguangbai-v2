@@ -9,6 +9,10 @@ import { registerBuyerSelfRegistrationRoutes } from './buyer-self-registration';
 import { registerStaffBuyerRefundRoutes } from './buyer-refunds/staff-routes';
 import { registerFileHttpRoutes } from './files';
 import { registerCustomerAuthRoutes } from './http-auth';
+import {
+  registerPublicCustomerSecurityRoutes,
+  registerStaffCustomerSecurityRoutes,
+} from './customer-security';
 import { registerStaffFinanceRoutes } from './internal-finance';
 import { staffSessionMiddleware } from './middleware/staff-auth';
 import {
@@ -38,6 +42,7 @@ const app = createApp();
 // protected Staff namespace. They issue the internal Worker session; Staff
 // business APIs never consume Feishu headers or Provider tokens directly.
 registerCustomerAuthRoutes(app);
+registerPublicCustomerSecurityRoutes(app);
 registerStaffAuthRoutes(app, {
   providerFactory: (config, context) => (
     context.env.STAFF_AUTH_PROVIDER_ADAPTER
@@ -48,6 +53,7 @@ registerStaffAuthRoutes(app, {
 // This path middleware must precede every /api/staff route registration.
 app.use('/api/staff/*', staffSessionMiddleware());
 registerStaffAssignmentRoutes(app);
+registerStaffCustomerSecurityRoutes(app);
 registerStaffCatalogWorkflowRoutes(app);
 registerMarketplaceFoundationRoutes(app);
 registerStaffReviewRoutes(app);

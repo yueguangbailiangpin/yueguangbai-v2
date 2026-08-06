@@ -31,6 +31,18 @@ export function normalizeBuyerSelfRegistrationError(
   error: unknown,
 ): BuyerSelfRegistrationError {
   if (error instanceof BuyerSelfRegistrationError) return error;
+  const external = error as { code?: unknown; retryAfterSeconds?: unknown };
+  if (external?.code === 'CONFLICT'
+    || external?.code === 'VALIDATION_ERROR') {
+    return new BuyerSelfRegistrationError(
+      external.code === 'VALIDATION_ERROR' ? 'INVALID_REQUEST' : 'REGISTRATION_CONFLICT',
+      external.code === 'VALIDATION_ERROR' ? 400 : 409,
+    );
+  }
+  if (external?.code === 'RATE_LIMITED') {
+    return new BuyerSelfRegistrationError('RATE_LIMITED', 429,
+      Number(external.retryAfterSeconds ?? 1));
+  }
   const message = String(error);
   if (message.includes('invalid_customer_password')
     || message.includes('invalid_wechat_id')

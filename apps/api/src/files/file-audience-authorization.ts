@@ -149,8 +149,11 @@ async function activeBuyerGrantExists(
   const row = await database.prepare(`
     SELECT 1 AS allowed
     FROM customer_login_accounts account
+    JOIN customer_account_personas persona
+      ON persona.account_id=account.id AND persona.persona_type='BUYER'
     JOIN buyer_customers buyer
-      ON buyer.identity_subject_id=account.identity_subject_id
+      ON buyer.id=persona.buyer_customer_id
+      AND buyer.identity_subject_id=account.identity_subject_id
     JOIN file_entity_audience_grants grant
       ON grant.buyer_customer_id=buyer.id
       AND grant.subject_type='BUYER'
@@ -158,7 +161,6 @@ async function activeBuyerGrantExists(
       ON link.id=grant.file_entity_link_id
     WHERE account.id=?
       AND account.identity_subject_id=?
-      AND account.account_type='BUYER'
       AND account.status='ACTIVE'
       AND buyer.access_status='ACTIVE'
       AND link.id=?
@@ -189,8 +191,11 @@ async function activeSellerGrantExists(
   const row = await database.prepare(`
     SELECT 1 AS allowed
     FROM customer_login_accounts account
+    JOIN customer_account_personas persona
+      ON persona.account_id=account.id AND persona.persona_type='SELLER_MEMBER'
     JOIN seller_organization_members member
-      ON member.identity_subject_id=account.identity_subject_id
+      ON member.id=persona.seller_member_id
+      AND member.identity_subject_id=account.identity_subject_id
     JOIN seller_organizations organization
       ON organization.id=member.organization_id
     JOIN file_entity_audience_grants grant
@@ -200,7 +205,6 @@ async function activeSellerGrantExists(
       ON link.id=grant.file_entity_link_id
     WHERE account.id=?
       AND account.identity_subject_id=?
-      AND account.account_type='SELLER_MEMBER'
       AND account.status='ACTIVE'
       AND member.status='ACTIVE'
       AND organization.status='ACTIVE'

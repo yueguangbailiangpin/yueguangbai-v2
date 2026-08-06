@@ -5,6 +5,7 @@ import { allocateBuyerCustomerNumber } from '../customers/allocate-buyer-number'
 import { registerBuyerSelfRegistrationRoutes } from './routes';
 import { consumeBuyerRegistrationRateLimit } from './rate-limit';
 import { registerBuyerSelf } from './register-buyer';
+import { hashOneTimeToken } from '@ygb/domain';
 import { rebindBuyerAuthAccount, revokeAllBuyerSessions } from './recovery';
 
 const SECRET = 'phase4a2-session-secret-with-at-least-thirty-two-bytes';
@@ -18,7 +19,7 @@ afterEach(() => {
 });
 
 describe('Phase 4A2 buyer self registration', () => {
-  it('creates an active zero-order buyer, account, preorder number and session issuance', async () => {
+  it('closes direct registration when no Staff invitation is supplied', async () => {
     database = createDb();
     const app = createApp();
     registerBuyerSelfRegistrationRoutes(app);
@@ -35,16 +36,9 @@ describe('Phase 4A2 buyer self registration', () => {
       },
       env(),
     );
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(400);
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(response.headers.get('set-cookie')).toMatch(/HttpOnly/iu);
-    const payload = await response.json() as any;
-    expect(payload.data).toMatchObject({
-      identity: { wechat_id: 'New_Buyer_01' },
-      session_established: true,
-      must_change_password: false,
-      next_path: '/buyer',
-    });
+    expect(response.headers.get('set-cookie')).toBeNull();
     const facts = await database.prepare(`
       SELECT
         (SELECT COUNT(*) FROM buyer_customers) AS buyers,
@@ -55,7 +49,7 @@ describe('Phase 4A2 buyer self registration', () => {
         (SELECT COUNT(*) FROM buyer_preorder_number_allocations) AS numbers,
         (SELECT COUNT(*) FROM buyer_registration_session_issuances) AS sessions
     `).first();
-    expect(facts).toEqual({ buyers: 1, orders: 0, accounts: 1, numbers: 1, sessions: 1 });
+    expect(facts).toEqual({ buyers: 0, orders: 0, accounts: 0, numbers: 0, sessions: 0 });
     expect(JSON.stringify(facts)).not.toContain('Strong-Password-2026!');
   });
 
@@ -277,6 +271,7 @@ describe('Phase 4A2 buyer self registration', () => {
     database = createDb();
     const app = createApp();
     registerBuyerSelfRegistrationRoutes(app);
+    const invitationToken = await seedInvitation(database, 'fixation_wx', 'fixation');
     const response = await app.request(
       'https://api.local.test/api/buyer-auth/register',
       {
@@ -286,6 +281,8 @@ describe('Phase 4A2 buyer self registration', () => {
           Cookie: '__Host-ygb_customer_session=attacker-session-id',
         },
         body: JSON.stringify({
+          invitation_token: invitationToken,
+          marketplace_code: 'AMAZON_JP',
           wechat_id: 'fixation_wx',
           password: 'Strong-Password-2026!',
           password_confirmation: 'Strong-Password-2026!',
@@ -303,10 +300,13 @@ describe('Phase 4A2 buyer self registration', () => {
     database = createDb();
     const app = createApp();
     registerBuyerSelfRegistrationRoutes(app);
+    const duplicateToken = await seedInvitation(database, 'public_duplicate_wx', 'public');
     const first = await app.request('https://api.local.test/api/buyer-auth/register', {
       method: 'POST',
       headers: headers('public-first'),
       body: JSON.stringify({
+        invitation_token: duplicateToken,
+        marketplace_code: 'AMAZON_JP',
         wechat_id: 'public_duplicate_wx',
         password: 'Strong-Password-2026!',
         password_confirmation: 'Strong-Password-2026!',
@@ -317,19 +317,19 @@ describe('Phase 4A2 buyer self registration', () => {
       method: 'POST',
       headers: headers('public-second'),
       body: JSON.stringify({
+        invitation_token: duplicateToken,
+        marketplace_code: 'AMAZON_JP',
         wechat_id: 'public_duplicate_wx',
         password: 'Other-Strong-Password-2026!',
         password_confirmation: 'Other-Strong-Password-2026!',
       }),
     }, env());
-    seedBuyer(database, 'buyer-conflict-a', 'subject-conflict-a',
-      'claim-conflict-a', 'public_conflict_wx', 'RELEASED');
-    seedBuyer(database, 'buyer-conflict-b', 'subject-conflict-b',
-      'claim-conflict-b', 'public_conflict_wx', 'RELEASED');
     const conflict = await app.request('https://api.local.test/api/buyer-auth/register', {
       method: 'POST',
       headers: headers('public-conflict'),
       body: JSON.stringify({
+        invitation_token: 'z'.repeat(43),
+        marketplace_code: 'AMAZON_JP',
         wechat_id: 'public_conflict_wx',
         password: 'Strong-Password-2026!',
         password_confirmation: 'Strong-Password-2026!',
@@ -364,10 +364,13 @@ describe('Phase 4A2 buyer self registration', () => {
     database = createDb();
     const app = createApp();
     registerBuyerSelfRegistrationRoutes(app);
+    const humanToken = await seedInvitation(database, 'human_required_wx', 'human');
     const human = await app.request('https://api.local.test/api/buyer-auth/register', {
       method: 'POST',
       headers: headers('human-required'),
       body: JSON.stringify({
+        invitation_token: humanToken,
+        marketplace_code: 'AMAZON_JP',
         wechat_id: 'human_required_wx',
         password: 'Strong-Password-2026!',
         password_confirmation: 'Strong-Password-2026!',
@@ -571,16 +574,39 @@ function headers(key: string) {
     'Sec-Fetch-Site': 'same-origin',
     'X-Device-ID': 'device-test-0001',
     'CF-Connecting-IP': '203.0.113.10',
+    'Idempotency-Key': key.padEnd(8, '0'),
   };
 }
 function env() {
   return {
     DB: database!,
     CUSTOMER_SESSION_SECRET: SECRET,
+    CUSTOMER_SECURITY_TOKEN_SECRET: SECRET,
     BUYER_SELF_REGISTRATION_ENABLED: 'true',
     BUYER_SELF_REGISTRATION_CHANNEL_ID: 'buyer-channel-self',
     BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED: 'false',
   };
+}
+
+async function seedInvitation(
+  db: SqliteDatabase,
+  wechat: string,
+  suffix: string,
+): Promise<string> {
+  const token = suffix.slice(0, 1).padEnd(43, 'a');
+  const now = Date.now();
+  db.raw.prepare(`
+    INSERT INTO customer_buyer_invitations (
+      id, token_hash, wechat_display, normalized_wechat, wechat_hash,
+      marketplace_code, issued_by_staff_id, status, version,
+      issued_at, expires_at, consumed_at, consumed_by_account_id,
+      revoked_at, revoked_by_staff_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, 'AMAZON_JP', 'staff-owner', 'ACTIVE', 1,
+      ?, ?, NULL, NULL, NULL, NULL, ?, ?)
+  `).run(`invitation-${suffix}`, await hashOneTimeToken(token), wechat,
+    wechat.toLowerCase(), 'd'.repeat(64), now,
+    now + 7 * 24 * 60 * 60 * 1000, now, now);
+  return token;
 }
 function ownerActor() {
   return {

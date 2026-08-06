@@ -21,6 +21,8 @@ export type AppBindings = StaffAuthProviderBindings & {
   KEYWORD_GENERATOR_SHARED_SECRET?: string;
   KEYWORD_HMAC_SECRET?: string;
   FILE_OBJECT_STORAGE?: unknown;
+  CUSTOMER_SESSION_SECRET?: string;
+  CUSTOMER_SECURITY_TOKEN_SECRET?: string;
   STAFF_AUTH_PROVIDER_ADAPTER?: StaffAuthProviderAdapter;
 };
 

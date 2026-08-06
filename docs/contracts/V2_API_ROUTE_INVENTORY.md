@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 在本 Change 基线 `e444e19d0d514a1b45fee0acc1e730c9f142d119` 上的可复现 route inventory。共有 140 个唯一业务/健康端点：139 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
+这是默认 App 在 Customer Multi-Persona Change 上的可复现 route inventory。共有 147 个唯一业务/健康端点：146 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表精确比较；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都会失败。
 
@@ -26,6 +26,7 @@ GET /api/buyer-portal/reviews
 GET /api/buyer-portal/reviews/:id
 GET /api/buyer-portal/reviews/eligible-orders
 GET /api/customer-auth/session
+GET /api/buyer-auth/invitations/:token
 GET /api/seller-portal/demand-batches
 GET /api/seller-portal/demand-batches/:id
 GET /api/seller-portal/file-read-intents/:id/content
@@ -75,6 +76,7 @@ GET /api/staff/seller-settlements/:organizationId/payments
 GET /api/staff/seller-settlements/:organizationId/payments/:paymentId
 GET /api/staff/seller-settlements/:organizationId/reconciliation/conflicts
 GET /api/staff/seller-settlements/:organizationId/summary
+GET /api/staff/customer-security/buyer-invitations/:id
 GET /health
 ```
 
@@ -107,6 +109,8 @@ POST /api/buyer-portal/reviews/:id/withdraw
 POST /api/customer-auth/change-password
 POST /api/customer-auth/login
 POST /api/customer-auth/logout
+POST /api/customer-auth/password-reset/complete
+POST /api/customer-auth/select-persona
 POST /api/seller-portal/demand-batches
 POST /api/seller-portal/demand-batches/:id/withdraw
 POST /api/seller-portal/file-upload-intents/:id/complete
@@ -122,6 +126,9 @@ POST /api/staff/assignments/reassign
 POST /api/staff/buyer-refunds/:id/payments
 POST /api/staff/buyer-refunds/:id/payments/:paymentEntryId/reversals
 POST /api/staff/buyers/:id/marketplace-correction
+POST /api/staff/customer-security/buyer-invitations
+POST /api/staff/customer-security/buyer-invitations/:id/revoke
+POST /api/staff/customer-security/password-resets
 POST /api/staff/catalog/products
 POST /api/staff/catalog/products/:id/versions
 POST /api/staff/demand-batches/:id/review

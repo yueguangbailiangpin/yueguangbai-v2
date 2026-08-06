@@ -12,13 +12,25 @@ import { queryKeys } from '../../api/query-client';
 
 const registrationResponseSchema = z.object({
   identity: z.object({
-    buyer_number: z.string().min(1),
+    buyer_number: z.string().min(1).nullable(),
     wechat_id: z.string().min(1),
   }).strict(),
   session_established: z.literal(true),
   must_change_password: z.literal(false),
   next_path: z.literal('/buyer'),
 }).strict();
+
+const invitationContextSchema = z.object({
+  invitation: z.object({
+    invitation_valid: z.literal(true),
+    marketplace_code: z.enum(['AMAZON_JP', 'AMAZON_US', 'COUPANG_KR']),
+    marketplace_name: z.string().min(1),
+    wechat_hint: z.string().min(1),
+    expires_at: z.number().int(),
+  }).strict(),
+}).strict();
+
+export type BuyerInvitationContext = z.output<typeof invitationContextSchema>['invitation'];
 
 export interface HumanVerificationProvider {
   token(signal: AbortSignal): Promise<string | null>;
@@ -46,6 +58,8 @@ export class BuyerRegistrationController {
 
   async register(
     body: Readonly<{
+      invitation_token: string;
+      marketplace_code: 'AMAZON_JP' | 'AMAZON_US' | 'COUPANG_KR';
       wechat_id: string;
       password: string;
       password_confirmation: string;
@@ -63,6 +77,7 @@ export class BuyerRegistrationController {
       method: 'POST',
       schema: registrationResponseSchema,
       body: requestBody,
+      headers: { 'Idempotency-Key': `buyer-invite-register:${crypto.randomUUID()}` },
       signal,
     });
 
@@ -76,5 +91,15 @@ export class BuyerRegistrationController {
     }
     this.client.setQueryData(queryKeys.buyer.session, session.data.session);
     return { kind: 'AUTHENTICATED', session: session.data.session };
+  }
+
+  async readInvitation(token: string, signal: AbortSignal): Promise<BuyerInvitationContext> {
+    const response = await apiRequest({
+      path: `/api/buyer-auth/invitations/${encodeURIComponent(token)}`,
+      method: 'GET',
+      schema: invitationContextSchema,
+      signal,
+    });
+    return response.data.invitation;
   }
 }

@@ -166,6 +166,8 @@ test('buyer login tab order and focus ring remain keyboard-visible', async ({ pa
   await page.keyboard.press('Tab');
   await expect(page.getByLabel('密码')).toBeFocused();
   await page.keyboard.press('Tab');
+  await expect(page.getByLabel('进入身份')).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: '登录' })).toBeFocused();
 });
 

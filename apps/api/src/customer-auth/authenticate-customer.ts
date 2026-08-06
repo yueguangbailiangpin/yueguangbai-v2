@@ -1,13 +1,10 @@
-import type {
-  SqlDatabase,
-} from '@ygb/contracts';
+import type { CustomerPersona, SqlDatabase } from '@ygb/contracts';
 import {
   createCustomerSessionPayload,
   normalizeWechatId,
   signCustomerSession,
   verifyCustomerPassword,
   verifyCustomerSession,
-  type CustomerSessionPayload,
   type PasswordCredential,
 } from '@ygb/domain';
 
@@ -21,7 +18,6 @@ const DUMMY_CREDENTIAL: PasswordCredential = {
 interface AuthenticationRow {
   account_id: string;
   identity_subject_id: string;
-  account_type: 'BUYER' | 'SELLER_MEMBER';
   account_status: string;
   session_version: number;
   password_change_required: number;
@@ -29,21 +25,19 @@ interface AuthenticationRow {
   iterations: number;
   salt_base64url: string;
   hash_base64url: string;
-  buyer_status: string | null;
-  seller_member_status: string | null;
-  seller_organization_status: string | null;
 }
 
 export interface AuthenticatedCustomer {
   accountId: string;
   identitySubjectId: string;
-  accountType: 'BUYER' | 'SELLER_MEMBER';
+  accountType: CustomerPersona;
+  availablePersonas?: readonly CustomerPersona[];
   sessionVersion: number;
   passwordChangeRequired: boolean;
 }
 
-export interface CustomerSessionContext
-  extends AuthenticatedCustomer {
+export interface CustomerSessionContext extends AuthenticatedCustomer {
+  availablePersonas: readonly CustomerPersona[];
   issuedAt: number;
   expiresAt: number;
 }
@@ -53,6 +47,7 @@ export async function authenticateCustomerPassword(
   input: {
     loginIdentifier: string;
     password: string;
+    persona?: CustomerPersona;
   },
 ): Promise<AuthenticatedCustomer | null> {
   const identifier = normalizeIdentifier(input.loginIdentifier);
@@ -61,28 +56,16 @@ export async function authenticateCustomerPassword(
         SELECT
           account.id AS account_id,
           account.identity_subject_id,
-          account.account_type,
           account.status AS account_status,
           account.session_version,
           account.password_change_required,
           credential.algorithm,
           credential.iterations,
           credential.salt_base64url,
-          credential.hash_base64url,
-          buyer.access_status AS buyer_status,
-          member.status AS seller_member_status,
-          organization.status AS seller_organization_status
+          credential.hash_base64url
         FROM customer_login_accounts account
         JOIN customer_password_credentials credential
           ON credential.account_id=account.id
-        LEFT JOIN buyer_customers buyer
-          ON buyer.identity_subject_id=account.identity_subject_id
-          AND account.account_type='BUYER'
-        LEFT JOIN seller_organization_members member
-          ON member.identity_subject_id=account.identity_subject_id
-          AND account.account_type='SELLER_MEMBER'
-        LEFT JOIN seller_organizations organization
-          ON organization.id=member.organization_id
         WHERE account.login_identifier_normalized=?
       `).bind(identifier).first<AuthenticationRow>()
     : null;
@@ -95,30 +78,27 @@ export async function authenticateCustomerPassword(
         hashBase64Url: row.hash_base64url,
       }
     : DUMMY_CREDENTIAL;
+  const validPassword = await verifyCustomerPassword(input.password, credential);
+  if (!row || !validPassword || row.account_status !== 'ACTIVE') return null;
 
-  const validPassword = await verifyCustomerPassword(
-    input.password,
-    credential,
-  );
-  if (!row || !validPassword || !isRowActive(row)) return null;
+  const availablePersonas = await loadActivePersonas(database, row.account_id);
+  const accountType = input.persona ?? availablePersonas[0];
+  if (!accountType || !availablePersonas.includes(accountType)) return null;
 
   return {
     accountId: row.account_id,
     identitySubjectId: row.identity_subject_id,
-    accountType: row.account_type,
+    accountType,
+    availablePersonas,
     sessionVersion: Number(row.session_version),
-    passwordChangeRequired:
-      Number(row.password_change_required) === 1,
+    passwordChangeRequired: Number(row.password_change_required) === 1,
   };
 }
 
 export async function issueCustomerSession(
   authenticated: AuthenticatedCustomer,
   secret: string,
-  options: {
-    now?: number | undefined;
-    ttlMs?: number | undefined;
-  } = {},
+  options: { now?: number; ttlMs?: number } = {},
 ): Promise<string> {
   return signCustomerSession(
     createCustomerSessionPayload({
@@ -139,58 +119,76 @@ export async function resolveCustomerSession(
   secret: string,
   now = Date.now(),
 ): Promise<CustomerSessionContext | null> {
-  const payload = await verifyCustomerSession(
-    token,
-    secret,
-    now,
-  );
+  const payload = await verifyCustomerSession(token, secret, now);
   if (!payload) return null;
 
   const row = await database.prepare(`
-    SELECT
-      account.id AS account_id,
-      account.identity_subject_id,
-      account.account_type,
-      account.status AS account_status,
-      account.session_version,
-      account.password_change_required,
-      buyer.access_status AS buyer_status,
-      member.status AS seller_member_status,
-      organization.status AS seller_organization_status
-    FROM customer_login_accounts account
-    LEFT JOIN buyer_customers buyer
-      ON buyer.identity_subject_id=account.identity_subject_id
-      AND account.account_type='BUYER'
-    LEFT JOIN seller_organization_members member
-      ON member.identity_subject_id=account.identity_subject_id
-      AND account.account_type='SELLER_MEMBER'
-    LEFT JOIN seller_organizations organization
-      ON organization.id=member.organization_id
-    WHERE account.id=?
-      AND account.identity_subject_id=?
-      AND account.account_type=?
+    SELECT id AS account_id, identity_subject_id,
+      status AS account_status, session_version, password_change_required
+    FROM customer_login_accounts
+    WHERE id=? AND identity_subject_id=?
   `).bind(
     payload.account_id,
     payload.identity_subject_id,
-    payload.account_type,
   ).first<AuthenticationRow>();
+  if (!row || row.account_status !== 'ACTIVE'
+    || Number(row.session_version) !== payload.session_version) return null;
 
-  if (!row
-    || !isRowActive(row)
-    || Number(row.session_version) !== payload.session_version) {
-    return null;
-  }
+  const availablePersonas = await loadActivePersonas(database, row.account_id);
+  if (!availablePersonas.includes(payload.account_type)) return null;
 
   return {
     accountId: row.account_id,
     identitySubjectId: row.identity_subject_id,
-    accountType: row.account_type,
+    accountType: payload.account_type,
+    availablePersonas,
     sessionVersion: Number(row.session_version),
-    passwordChangeRequired:
-      Number(row.password_change_required) === 1,
+    passwordChangeRequired: Number(row.password_change_required) === 1,
     issuedAt: payload.issued_at,
     expiresAt: payload.expires_at,
   };
+}
+
+export async function selectCustomerPersona(
+  database: SqlDatabase,
+  current: CustomerSessionContext,
+  persona: CustomerPersona,
+): Promise<AuthenticatedCustomer | null> {
+  const availablePersonas = await loadActivePersonas(database, current.accountId);
+  if (!availablePersonas.includes(persona)) return null;
+  return {
+    accountId: current.accountId,
+    identitySubjectId: current.identitySubjectId,
+    accountType: persona,
+    availablePersonas,
+    sessionVersion: current.sessionVersion,
+    passwordChangeRequired: current.passwordChangeRequired,
+  };
+}
+
+async function loadActivePersonas(
+  database: SqlDatabase,
+  accountId: string,
+): Promise<CustomerPersona[]> {
+  const rows = await database.prepare(`
+    SELECT persona.persona_type
+    FROM customer_account_personas persona
+    LEFT JOIN buyer_customers buyer
+      ON buyer.id=persona.buyer_customer_id
+    LEFT JOIN seller_organization_members member
+      ON member.id=persona.seller_member_id
+    LEFT JOIN seller_organizations organization
+      ON organization.id=member.organization_id
+    WHERE persona.account_id=?
+      AND (
+        (persona.persona_type='BUYER' AND buyer.access_status='ACTIVE')
+        OR
+        (persona.persona_type='SELLER_MEMBER' AND member.status='ACTIVE'
+          AND organization.status='ACTIVE')
+      )
+    ORDER BY CASE persona.persona_type WHEN 'BUYER' THEN 1 ELSE 2 END
+  `).bind(accountId).all<{ persona_type: CustomerPersona }>();
+  return rows.results.map((row) => row.persona_type);
 }
 
 function normalizeIdentifier(value: string): string | null {
@@ -199,13 +197,4 @@ function normalizeIdentifier(value: string): string | null {
   } catch {
     return null;
   }
-}
-
-function isRowActive(row: AuthenticationRow): boolean {
-  if (row.account_status !== 'ACTIVE') return false;
-  if (row.account_type === 'BUYER') {
-    return row.buyer_status === 'ACTIVE';
-  }
-  return row.seller_member_status === 'ACTIVE'
-    && row.seller_organization_status === 'ACTIVE';
 }

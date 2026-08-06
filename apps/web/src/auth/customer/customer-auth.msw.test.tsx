@@ -60,7 +60,10 @@ describe('Customer Auth formal MSW chain', () => {
     }));
     const client = createMswQueryClient();
     const result = await new CustomerAuthController(client, customerAuthApi).login(target, loginBody);
-    expect(body).toEqual(loginBody);
+    expect(body).toEqual({
+      ...loginBody,
+      persona: target === 'buyer' ? 'BUYER' : 'SELLER_MEMBER',
+    });
     expect(result).toMatchObject({ kind: 'AUTHENTICATED', session });
     expect(client.getQueryData(queryKeys[target].session)).toEqual(session);
   });

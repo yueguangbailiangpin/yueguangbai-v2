@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+apps/web/test-results/
+apps/web/playwright-report/
 .wrangler/
 .dev.vars
 .env

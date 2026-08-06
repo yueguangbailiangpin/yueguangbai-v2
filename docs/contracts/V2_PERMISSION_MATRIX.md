@@ -11,6 +11,11 @@
 
 员工可以同时拥有多个角色。
 
+所有 ACTIVE Staff 均可在可信 Staff Session 下签发、查看和在使用前撤销普通
+Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发一次性 Customer 密码
+恢复凭证。Staff API 不接受、不返回也不可读取 Customer 新旧密码。身份合并、
+微信冲突、Persona 归属冲突和 Marketplace 高风险纠错仍只允许 owner 治理流程处理。
+
 ## 2. 权限计算
 
 ```text
@@ -134,3 +139,6 @@
 - 客服角色直接修改财务；
 - 已完成财务直接编辑或删除；
 - 飞书直接修改正式业务状态。
+- Staff 查看、指定或恢复 Customer 密码；
+- 非 owner 合并 Customer Account、释放冲突微信号或改写 Persona 归属；
+- Buyer/Seller Session 跨 Persona 或跨组织读取数据。

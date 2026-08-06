@@ -10,6 +10,7 @@ import {
   Card,
   FormField,
   RequestIdDisplay,
+  Select,
   TextInput,
 } from '../../ui/primitives';
 import { CustomerAuthController, type CustomerLoginResult } from './customer-auth-controller';
@@ -18,6 +19,7 @@ import { customerAuthApi, type CustomerAuthApiAdapter, type CustomerTarget } fro
 const loginSchema = z.object({
   login_identifier: z.string().min(1),
   password: z.string().min(1),
+  persona: z.enum(['buyer', 'seller']),
 });
 
 export function CustomerLoginPage({
@@ -51,14 +53,14 @@ export function CustomerLoginPage({
     };
   }, []);
 
-  function applyResult(result: CustomerLoginResult): void {
+  function applyResult(result: CustomerLoginResult, selectedTarget = target): void {
     if (!mountedRef.current) return;
     if (result.kind === 'AUTHENTICATED') {
-      navigate(returnTo, { replace: true });
+      navigate(selectedTarget === target ? returnTo : `/${selectedTarget}`, { replace: true });
       return;
     }
     if (result.kind === 'PASSWORD_CHANGE_REQUIRED') {
-      navigate(`/${target}/change-password`, { replace: true });
+      navigate(`/${selectedTarget}/change-password`, { replace: true });
       return;
     }
     if (result.kind === 'MISMATCH_CLEANED') {
@@ -81,6 +83,7 @@ export function CustomerLoginPage({
     const payload = loginSchema.safeParse({
       login_identifier: data.get('login_identifier'),
       password: data.get('password'),
+      persona: data.get('persona'),
     });
     if (!payload.success) {
       setMessage('请输入登录标识和密码。');
@@ -91,7 +94,11 @@ export function CustomerLoginPage({
     const abort = new AbortController();
     abortRef.current = abort;
     try {
-      applyResult(await controllerRef.current!.login(target, payload.data, abort.signal));
+      const selectedTarget = payload.data.persona;
+      applyResult(await controllerRef.current!.login(selectedTarget, {
+        login_identifier: payload.data.login_identifier,
+        password: payload.data.password,
+      }, abort.signal), selectedTarget);
     } catch (error: unknown) {
       if (mountedRef.current && !(isFrontendApiError(error) && error.code === 'CANCELED')) {
         setRequestId(isFrontendApiError(error) ? error.requestId : null);
@@ -133,6 +140,12 @@ export function CustomerLoginPage({
           </FormField>
           <FormField label="密码" htmlFor={`${target}-password`} required>
             <TextInput name="password" type="password" autoComplete="current-password" required />
+          </FormField>
+          <FormField label="进入身份" htmlFor={`${target}-persona`} required>
+            <Select name="persona" defaultValue={target}>
+              <option value="buyer">买家工作区</option>
+              <option value="seller">卖家工作区</option>
+            </Select>
           </FormField>
           {message ? <Alert tone="danger">{message}</Alert> : null}
           <RequestIdDisplay requestId={requestId} />

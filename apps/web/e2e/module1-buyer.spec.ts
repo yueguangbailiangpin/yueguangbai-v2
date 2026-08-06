@@ -4,6 +4,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 const now = 1_900_000_000_000;
 const sha = 'a'.repeat(64);
+const buyerInvitationToken = 'i'.repeat(43);
 type MockOptions = {
   failures?: Readonly<Record<string, number>>;
   instructionStatus?: 'UNPUBLISHED' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'COMPLETED';
@@ -148,6 +149,13 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
     if (forced) { await json(route, failure(forced === 403 ? 'FORBIDDEN' : forced === 404 ? 'NOT_FOUND' : forced === 409 ? 'VERSION_CONFLICT' : forced === 429 ? 'RATE_LIMITED' : 'DEPENDENCY_UNAVAILABLE'), forced); return; }
     if (path === '/api/customer-auth/session') { sessionReads += 1; await new Promise((resolve) => setTimeout(resolve, 10)); await json(route, success({ session: session(options.sessionType) })); return; }
     if (path === '/api/customer-auth/logout') { await json(route, success({ logged_out: true, all_devices_logged_out: false })); return; }
+    if (path === `/api/buyer-auth/invitations/${buyerInvitationToken}`) {
+      await json(route, success({ invitation: {
+        invitation_valid: true, marketplace_code: 'AMAZON_JP',
+        marketplace_name: '日本亚马逊', wechat_hint: 'bu***wx',
+        expires_at: now + 100_000,
+      } })); return;
+    }
     if (path === '/api/buyer-auth/register') {
       const status = options.registrationStatus ?? 201;
       if (status !== 201) { await json(route, failure(status === 429 ? 'RATE_LIMITED' : 'FEATURE_DISABLED'), status, status === 429 ? { 'Retry-After': '10' } : {}); return; }
@@ -235,30 +243,30 @@ async function captureAcceptance(page: Page, name: string): Promise<void> {
 }
 
 test('Buyer registration exposes no manual human token input', async ({ page }) => {
-  await page.goto('/buyer/register'); await expect(page.getByRole('heading', { name: '买家注册' })).toBeVisible();
+  await page.goto('/buyer/register'); await expect(page.getByRole('heading', { name: '买家邀请注册' })).toBeVisible();
   await expect(page.locator('input[name="human_verification_token"]')).toHaveCount(0);
 });
 
 test('Buyer registration succeeds only after the verified session read', async ({ page }) => {
-  await installBuyerApi(page); await page.goto('/buyer/register');
+  await installBuyerApi(page); await page.goto(`/buyer/register?token=${buyerInvitationToken}`);
   await page.getByLabel('微信号').fill('buyer_wx'); await page.getByLabel('密码', { exact: true }).fill('safe-password-123');
-  await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '注册' }).click();
+  await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '注册并进入买家工作区' }).click();
   await expect(page).toHaveURL(/\/buyer$/u); await expect(page.getByRole('navigation', { name: '买家导航' })).toBeVisible();
 });
 
 for (const [name, status, message] of [['disabled', 503, '当前暂未开放注册'], ['rate limited', 429, '操作过于频繁']] as const) {
   test(`Buyer registration ${name} fails safely`, async ({ page }) => {
-    await installBuyerApi(page, { registrationStatus: status }); await page.goto('/buyer/register');
+    await installBuyerApi(page, { registrationStatus: status }); await page.goto(`/buyer/register?token=${buyerInvitationToken}`);
     await page.getByLabel('微信号').fill('buyer_wx'); await page.getByLabel('密码', { exact: true }).fill('safe-password-123');
-    await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '注册' }).click();
+    await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '注册并进入买家工作区' }).click();
     await expect(page.getByText(new RegExp(message, 'u'))).toBeVisible();
   });
 }
 
 test('Buyer registration mismatch logs out and stays fail closed', async ({ page }) => {
-  await installBuyerApi(page, { sessionType: 'SELLER_MEMBER' }); await page.goto('/buyer/register');
+  await installBuyerApi(page, { sessionType: 'SELLER_MEMBER' }); await page.goto(`/buyer/register?token=${buyerInvitationToken}`);
   await page.getByLabel('微信号').fill('buyer_wx'); await page.getByLabel('密码', { exact: true }).fill('safe-password-123');
-  await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '注册' }).click();
+  await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '注册并进入买家工作区' }).click();
   await expect(page.getByText('注册后的会话身份不匹配，已安全退出。')).toBeVisible();
 });
 
@@ -413,7 +421,7 @@ test('Buyer respects reduced motion', async ({ page }) => { await page.emulateMe
 test('Buyer keyboard focus remains visible', async ({ page }) => { await gotoBuyer(page, '/buyer/me'); const focused = page.getByRole('link', { name: '正式订单' }); await focused.focus(); await expect(focused).toBeFocused(); const outline = await focused.evaluate((element) => getComputedStyle(element).outlineStyle); expect(outline).not.toBe('none'); });
 
 test('capture Module1 root desktop acceptance', async ({ page }) => { await page.setViewportSize({ width: 1440, height: 900 }); await page.goto('/'); await expect(page.getByRole('heading', { name: '月光白' })).toBeVisible(); await captureAcceptance(page, 'root-desktop-1440x900.png'); });
-test('capture Module1 registration mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/buyer/register'); await expect(page.getByRole('heading', { name: '买家注册' })).toBeVisible(); await captureAcceptance(page, 'buyer-register-mobile-390x844.png'); });
+test('capture Module1 registration mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/buyer/register'); await expect(page.getByRole('heading', { name: '买家邀请注册' })).toBeVisible(); await captureAcceptance(page, 'buyer-register-mobile-390x844.png'); });
 test('capture Module1 login mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/buyer/login'); await expect(page.getByRole('heading', { name: '买家登录' })).toBeVisible(); await captureAcceptance(page, 'buyer-login-mobile-390x844.png'); });
 
 for (const [name, path] of [

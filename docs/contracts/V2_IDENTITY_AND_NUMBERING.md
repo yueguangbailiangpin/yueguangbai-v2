@@ -20,6 +20,12 @@
 
 有效微信号在买家和卖家成员身份域中全局唯一。
 
+一个规范化微信号只对应一个 Customer Identity Subject、一个登录账号和
+一套密码。Buyer Profile 与 Seller Organization Member 是该账号下相互
+隔离的 Persona；同一账号可同时具备二者，但当前 Session 每次只激活一个
+Persona。服务端按 Buyer/Seller 路由重新解析对应主体，不以历史
+`customer_login_accounts.account_type` 作为权限权威。
+
 ## 2. 微信号变更
 
 旧微信号进入保留状态，不立即释放。只有 owner 完成人工核验后才能释放给其他身份。
@@ -35,6 +41,11 @@
 ## 3. 买家编号
 
 买家注册后只属于一个 Marketplace，不能自行切换。只有同时具备 `owner` 角色与 `BUYER_IDENTITY_HIGH_RISK_MANAGE` 权限的员工，才能在任何预约、订单资料、正式订单、评论或财务事实产生前执行幂等、带版本和原因的受控纠错；纠错后追加不可变前后值审计。已有正式事实时，应用条件更新与数据库触发器均拒绝跨站改写。
+
+Buyer 注册只接受 ACTIVE Staff 签发的七天一次性邀请。邀请绑定规范化微信号
+和唯一 Marketplace；页面读取不消费邀请，成功注册在同一事务中激活 Persona、
+签发 Session 并消费邀请。已使用、过期、撤销、绑定不符或身份冲突均失败关闭。
+邀请签发即代表普通无冲突 Buyer 已批准，不增加第二次人工审批。
 
 格式：
 
@@ -76,6 +87,10 @@ YYYYMMDD + 渠道代码 + 渠道独立序号
 ## 5. Seller Organization
 
 一个卖家客户对应一个全局 Seller Organization。主微信默认属于 OWNER，其他成员使用各自微信；Marketplace 归属于 Store，而不是 Organization。
+
+同一 Customer Identity Subject 最多只能拥有一个有效 Seller Organization
+Membership；Buyer Persona 不改变这一限制，也不得把全局 Organization 重新绑定
+到单一 Marketplace。
 
 后备用户名：
 

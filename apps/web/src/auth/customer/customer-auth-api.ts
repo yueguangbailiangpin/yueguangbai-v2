@@ -6,6 +6,7 @@ export const customerSessionSchema = z.object({
   account_id: z.string(),
   identity_subject_id: z.string(),
   account_type: z.enum(['BUYER', 'SELLER_MEMBER']),
+  available_personas: z.array(z.enum(['BUYER', 'SELLER_MEMBER'])).optional(),
   session_version: z.number().int(),
   password_change_required: z.boolean(),
   issued_at: z.number().int(),
@@ -26,6 +27,7 @@ export type CustomerTarget = 'buyer' | 'seller';
 export type CustomerLoginBody = Readonly<{
   login_identifier: string;
   password: string;
+  persona?: 'BUYER' | 'SELLER_MEMBER';
 }>;
 export type CustomerPasswordBody = Readonly<{
   current_password: string;
@@ -37,6 +39,7 @@ export interface CustomerAuthApiAdapter {
   logout(signal?: AbortSignal): Promise<ApiResult<{ logged_out: true; all_devices_logged_out: false }>>;
   changePassword(body: CustomerPasswordBody, idempotencyKey: string, signal?: AbortSignal): Promise<ApiResult<{ session: CustomerSession }>>;
   readSession(signal?: AbortSignal): Promise<ApiResult<{ session: CustomerSession }>>;
+  selectPersona?(persona: 'BUYER' | 'SELLER_MEMBER', signal?: AbortSignal): Promise<ApiResult<{ session: CustomerSession }>>;
 }
 
 export const customerAuthApi: CustomerAuthApiAdapter = Object.freeze({
@@ -65,6 +68,16 @@ export const customerAuthApi: CustomerAuthApiAdapter = Object.freeze({
     path: '/api/customer-auth/session',
     method: 'GET',
     schema: customerSessionResponseSchema,
+    ...(signal ? { signal } : {}),
+  }),
+  selectPersona: (
+    persona: 'BUYER' | 'SELLER_MEMBER',
+    signal?: AbortSignal,
+  ) => apiRequest({
+    path: '/api/customer-auth/select-persona',
+    method: 'POST',
+    schema: customerSessionResponseSchema,
+    body: { persona },
     ...(signal ? { signal } : {}),
   }),
 });

@@ -33,9 +33,11 @@ describe('Module 1 registration transport transition', () => {
       token: async () => 'trusted-human-token',
     }, authAdapter(buyerSession, events));
     await expect(controller.register({
+      invitation_token: 'a'.repeat(43), marketplace_code: 'AMAZON_JP',
       wechat_id: 'buyer_wx', password: 'safe-password-123', password_confirmation: 'safe-password-123',
     }, new AbortController().signal)).resolves.toMatchObject({ kind: 'AUTHENTICATED' });
-    expect(body).toEqual({ wechat_id: 'buyer_wx', password: 'safe-password-123',
+    expect(body).toEqual({ invitation_token: 'a'.repeat(43), marketplace_code: 'AMAZON_JP',
+      wechat_id: 'buyer_wx', password: 'safe-password-123',
       password_confirmation: 'safe-password-123', human_verification_token: 'trusted-human-token' });
     expect(events.indexOf('session')).toBeGreaterThan(events.indexOf('register'));
     expect(events).toContain('cancel:buyer'); expect(events).toContain('cancel:seller');
@@ -52,7 +54,7 @@ describe('Module 1 registration transport transition', () => {
       return HttpResponse.json({ data: registration(), meta: { request_id: 'register-no-human' } }, { status: 201 });
     }));
     await new BuyerRegistrationController(queryClient(), { token: async () => null }, authAdapter(buyerSession, []))
-      .register({ wechat_id: 'buyer', password: 'safe-password-123', password_confirmation: 'safe-password-123' }, new AbortController().signal);
+      .register({ invitation_token: 'a'.repeat(43), marketplace_code: 'AMAZON_JP', wechat_id: 'buyer', password: 'safe-password-123', password_confirmation: 'safe-password-123' }, new AbortController().signal);
     expect(body).not.toHaveProperty('human_verification_token');
   });
 
@@ -61,7 +63,7 @@ describe('Module 1 registration transport transition', () => {
     const events: string[] = [];
     const seller = { ...buyerSession, account_type: 'SELLER_MEMBER' as const };
     await expect(new BuyerRegistrationController(queryClient(), { token: async () => null }, authAdapter(seller, events))
-      .register({ wechat_id: 'buyer', password: 'safe-password-123', password_confirmation: 'safe-password-123' }, new AbortController().signal))
+      .register({ invitation_token: 'a'.repeat(43), marketplace_code: 'AMAZON_JP', wechat_id: 'buyer', password: 'safe-password-123', password_confirmation: 'safe-password-123' }, new AbortController().signal))
       .resolves.toEqual({ kind: 'MISMATCH_CLEANED' });
     expect(events).toContain('logout');
   });
