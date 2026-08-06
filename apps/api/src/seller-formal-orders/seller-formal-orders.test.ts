@@ -443,23 +443,23 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(await formalOrderCounts()).toEqual(before);
   });
 
-  it('retains the schema 26 history beneath current schema 27', async () => {
+  it('retains the schema 26 history beneath current schema 28', async () => {
     const state = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(27);
+    expect(Number(state?.schema_version)).toBe(28);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(27);
+    expect(migrations).toHaveLength(28);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-1)).toBe('0027_staff_auth_sessions.sql');
+    expect(migrations.at(-1)).toBe('0028_buyer_amazon_order_date.sql');
   });
 });
 
@@ -928,6 +928,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       id, submission_id, reservation_id, buyer_customer_id,
       marketplace_code, version_no,
       amazon_order_number_raw, amazon_order_number_normalized,
+      amazon_order_date,
       final_paid_jpy, submitted_by_buyer_id, buyer_note,
       order_instruction_id, order_instruction_version_id,
       instruction_deadline_snapshot,
@@ -940,6 +941,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       ('evidence-portal-1-v1', 'evidence-portal-1',
        'reservation-portal-1', 'buyer-portal-1', 'JP', 1,
        '111-1234567-1234567', '111-1234567-1234567',
+       '2026-08-01',
        8880, 'buyer-portal-1', 'buyer note secret one',
        '${instructionOne.instructionId}',
        '${instructionOne.instructionVersionId}',
@@ -948,6 +950,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       ('evidence-portal-2-v1', 'evidence-portal-2',
        'reservation-portal-2', 'buyer-portal-2', 'JP', 1,
        '222-1234567-1234567', '222-1234567-1234567',
+       '2026-08-02',
        5000, 'buyer-portal-2', 'buyer note secret two',
        '${instructionTwo.instructionId}',
        '${instructionTwo.instructionVersionId}',
@@ -956,6 +959,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       ('evidence-portal-other-v1', 'evidence-portal-other',
        'reservation-other', 'buyer-other', 'JP', 1,
        '333-1234567-1234567', '333-1234567-1234567',
+       '2026-08-03',
        7000, 'buyer-other', 'other buyer note secret',
        '${instructionOther.instructionId}',
        '${instructionOther.instructionVersionId}',

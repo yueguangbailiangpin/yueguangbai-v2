@@ -298,6 +298,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
             reservation_id: 'reservation-a',
             expected_version: 0,
             amazon_order_number: ' 123－1234567 – 1234567 ',
+            amazon_order_date: '2026-08-01',
             final_paid_jpy: 3980,
             file_object_ids: ['file-object-1'],
             buyer_note: '订单截图已上传',
@@ -362,6 +363,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
               reservation_id: 'reservation-b',
               expected_version: 0,
               amazon_order_number: '124-1234567-1234567',
+              amazon_order_date: '2026-08-01',
               final_paid_jpy: value,
               file_object_ids: ['file-object-1'],
             }),
@@ -386,6 +388,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
             reservation_id: 'reservation-other',
             expected_version: 0,
             amazon_order_number: '125-1234567-1234567',
+            amazon_order_date: '2026-08-01',
             final_paid_jpy: 100,
             file_object_ids: ['file-object-1'],
           }),
@@ -442,6 +445,7 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
               reservation_id: 'reservation-a',
               expected_version: 0,
               amazon_order_number: '200-1234567-1234567',
+              amazon_order_date: '2026-08-01',
               final_paid_jpy: 1000,
               file_object_ids: [fileObjectId],
             }),
@@ -631,6 +635,95 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
       });
     },
   );
+
+  it('creates a concealed, version-bound file read intent with replay safety', async () => {
+    await setup();
+    seedEvidenceFile(database!, {
+      suffix: 1,
+      ownerBuyerId: 'buyer-1',
+    });
+    const app = testApp();
+    const buyerOne = await buyerCookie('1');
+    const buyerTwo = await buyerCookie('2');
+    const submitted = await submitViaApi(app, buyerOne, {
+      reservationId: 'reservation-a',
+      orderNumber: '311-1234567-1234567',
+      fileObjectId: 'file-object-1',
+      idempotencyKey: 'module1-read-source-0001',
+    });
+    const evidence = submitted.data.order_evidence;
+    const file = evidence.files[0];
+    expect(file).toMatchObject({
+      file_object_id: 'file-object-1',
+      file_entity_link_id: expect.any(String),
+      version: 3,
+      allowed_actions: ['CREATE_READ_INTENT'],
+    });
+    const path = `/api/buyer-portal/order-evidence/${evidence.submission_id}`
+      + `/files/${file.file_entity_link_id}/read-intent`;
+
+    const missingOrigin = await request(app, path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: buyerOne,
+        'Idempotency-Key': 'module1-read-no-origin-0001',
+      },
+      body: JSON.stringify({ expected_file_version: 3 }),
+    });
+    expect(missingOrigin.status).toBe(403);
+
+    const wrongVersion = await request(app, path, {
+      method: 'POST',
+      headers: writeHeaders(buyerOne, 'module1-read-version-0001'),
+      body: JSON.stringify({ expected_file_version: 2 }),
+    });
+    expect(wrongVersion.status).toBe(409);
+    await expect(json(wrongVersion)).resolves.toMatchObject({
+      error: { code: 'VERSION_CONFLICT' },
+    });
+
+    const foreign = await request(app, path, {
+      method: 'POST',
+      headers: writeHeaders(buyerTwo, 'module1-read-foreign-0001'),
+      body: JSON.stringify({ expected_file_version: 3 }),
+    });
+    expect(foreign.status).toBe(404);
+
+    const key = 'module1-read-success-0001';
+    const first = await request(app, path, {
+      method: 'POST',
+      headers: writeHeaders(buyerOne, key),
+      body: JSON.stringify({ expected_file_version: 3 }),
+    });
+    expect(first.status).toBe(201);
+    const firstBody = await json<any>(first);
+    expect(firstBody.data).toMatchObject({
+      read_intent_id: expect.any(String),
+      file_object_id: 'file-object-1',
+      access_token: expect.any(String),
+      access_token_available: true,
+      expires_at: expect.any(Number),
+      replayed: false,
+    });
+    expect(JSON.stringify(firstBody)).not.toMatch(/object_key|files\/v1\//iu);
+
+    const replay = await request(app, path, {
+      method: 'POST',
+      headers: writeHeaders(buyerOne, key),
+      body: JSON.stringify({ expected_file_version: 3 }),
+    });
+    expect(replay.status).toBe(200);
+    await expect(json(replay)).resolves.toMatchObject({
+      data: {
+        read_intent_id: firstBody.data.read_intent_id,
+        file_object_id: 'file-object-1',
+        access_token: null,
+        access_token_available: false,
+        replayed: true,
+      },
+    });
+  });
 
   it(
     'resubmits only CHANGES_REQUESTED evidence as a new immutable version',
@@ -910,17 +1003,17 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(27);
+    expect(migrations).toHaveLength(28);
     expect(migrations[0]).toMatch(/^0001_/u);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-1)).toBe('0027_staff_auth_sessions.sql');
+    expect(migrations.at(-1)).toBe('0028_buyer_amazon_order_date.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(27);
+    expect(Number(schema?.schema_version)).toBe(28);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name
@@ -1019,6 +1112,7 @@ function submitBody(input: {
     expected_version: 0,
     amazon_order_number:
       input.orderNumber ?? '123-1234567-1234567',
+    amazon_order_date: '2026-08-01',
     final_paid_jpy: input.finalPaidJpy ?? 3980,
     file_object_ids: [input.fileObjectId],
   });
@@ -1070,6 +1164,7 @@ async function resubmitViaApi(
       body: JSON.stringify({
         expected_version: input.expectedVersion,
         amazon_order_number: '402-1234567-7654321',
+        amazon_order_date: '2026-08-02',
         final_paid_jpy: 4980,
         file_object_ids: [input.fileObjectId],
         buyer_note: '已补充清晰截图',

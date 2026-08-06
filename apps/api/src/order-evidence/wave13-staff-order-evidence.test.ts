@@ -351,7 +351,7 @@ function seedDetailInvariantFixture(database: SqliteDatabase): void {
     INSERT INTO order_evidence_versions (
       id, submission_id, reservation_id, buyer_customer_id, marketplace_code,
       version_no, amazon_order_number_raw,
-      amazon_order_number_normalized, final_paid_jpy,
+      amazon_order_number_normalized, amazon_order_date, final_paid_jpy,
       submitted_by_buyer_id, buyer_note, created_at,
       order_instruction_id, order_instruction_version_id,
       instruction_deadline_snapshot, reference_order_amount_jpy_snapshot,
@@ -362,7 +362,7 @@ function seedDetailInvariantFixture(database: SqliteDatabase): void {
     ) VALUES (
       'tampered-version','tampered-evidence','tampered-reservation',
       'tampered-buyer','JP',1,'123-1234567-1234567',
-      '123-1234567-1234567',2080,'tampered-buyer',NULL,5000,
+      '123-1234567-1234567','2026-08-01',2080,'tampered-buyer',NULL,5000,
       'tampered-instruction','tampered-instruction-version',20000,1980,
       0,0,2080,1,100,1,'tampered-file'
     );

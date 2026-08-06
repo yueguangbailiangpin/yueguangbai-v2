@@ -70,6 +70,7 @@ interface AtomicApprovalSource {
   evidence_version_id: string;
   amazon_order_number_raw: string;
   amazon_order_number_normalized: string;
+  amazon_order_date: string | null;
   final_paid_jpy: number;
   reference_order_amount_jpy: number;
   price_difference_jpy: number;
@@ -199,6 +200,9 @@ export async function approveOrderEvidenceAtomically(
   try {
     const source = await requireAtomicApprovalSource(database, submissionId);
     validateSource(source, expectedVersion);
+    if (source.amazon_order_date === null) {
+      throw new AtomicOrderEvidenceApprovalError('STATE_CONFLICT', 409);
+    }
     const mismatch = source.price_difference_jpy !== 0;
     validateMismatchDecision({
       mismatch,
@@ -317,6 +321,7 @@ export async function approveOrderEvidenceAtomically(
       product_name: source.product_name,
       review_type: reviewType,
       amazon_order_number: source.amazon_order_number_normalized,
+      amazon_order_date: source.amazon_order_date,
       final_paid_jpy: fixedIntegerString(finalPaidJpy),
       confirmed_at: now,
       confirmed_business_date: businessDate,
@@ -456,11 +461,12 @@ export async function approveOrderEvidenceAtomically(
           marketplace_code, product_id, product_version_id,
           product_version_no, asin_display, asin_normalized,
           product_name_snapshot, review_type, amazon_order_number_raw,
-          amazon_order_number_normalized, final_paid_jpy, status, version,
+          amazon_order_number_normalized, amazon_order_date,
+          final_paid_jpy, status, version,
           confirmed_by_staff_id, confirmed_at, confirmed_business_date, created_at
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'JP',
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', 1, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', 1, ?, ?, ?, ?
         )
       `).bind(
         formalOrderId,
@@ -483,6 +489,7 @@ export async function approveOrderEvidenceAtomically(
         reviewType,
         source.amazon_order_number_raw,
         source.amazon_order_number_normalized,
+        source.amazon_order_date,
         toD1SafeInteger(finalPaidJpy),
         command.actor.staffId,
         now,
@@ -616,6 +623,7 @@ async function requireAtomicApprovalSource(
       evidence.id AS evidence_version_id,
       evidence.amazon_order_number_raw,
       evidence.amazon_order_number_normalized,
+      evidence.amazon_order_date,
       evidence.final_paid_jpy,
       evidence.reference_order_amount_jpy_snapshot AS reference_order_amount_jpy,
       evidence.price_difference_jpy, evidence.price_mismatch,

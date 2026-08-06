@@ -49,6 +49,7 @@ interface OrderEvidenceRow {
   evidence_version_no: number;
   evidence_version_id: string;
   amazon_order_number_normalized: string;
+  amazon_order_date: string | null;
   final_paid_jpy: number;
   buyer_self_pay_bps_snapshot: number;
   buyer_self_pay_jpy: number;
@@ -63,12 +64,21 @@ interface OrderEvidenceRow {
 
 interface FileSummaryRow {
   file_object_id: string;
+  file_entity_link_id: string | null;
   client_file_name: string;
   mime: SupportedFileMime;
   byte_size: number;
   status: FileObjectStatus;
   visibility: 'INTERNAL_ONLY' | 'BUYER_VISIBLE';
   verified_at: number | null;
+  file_version: number;
+  can_read: number;
+}
+
+export interface BuyerOrderEvidenceFileLinkSource {
+  fileObjectId: string;
+  fileEntityLinkId: string;
+  fileVersion: number;
 }
 
 
@@ -112,6 +122,7 @@ const ORDER_EVIDENCE_SELECT = `
     submission.current_version_no AS evidence_version_no,
     evidence.id AS evidence_version_id,
     evidence.amazon_order_number_normalized,
+    evidence.amazon_order_date,
     evidence.final_paid_jpy,
     evidence.buyer_self_pay_bps_snapshot,
     evidence.buyer_self_pay_jpy,
@@ -359,6 +370,93 @@ export async function requireBuyerOrderEvidenceReservationId(
   return row.reservation_id;
 }
 
+export async function requireBuyerOrderEvidenceFileLink(
+  database: SqlDatabase,
+  buyer: BuyerPortalContext,
+  submissionId: string,
+  fileEntityLinkId: string,
+  now = Date.now(),
+): Promise<BuyerOrderEvidenceFileLinkSource> {
+  assertBuyerBusinessAccess(buyer);
+  validateIdentifier(submissionId);
+  validateIdentifier(fileEntityLinkId);
+  if (!Number.isSafeInteger(now) || now < 0) {
+    throw new BuyerOrderEvidencePortalError('NOT_FOUND', 404);
+  }
+
+  const row = await database.prepare(`
+    SELECT
+      object.id AS file_object_id,
+      link.id AS file_entity_link_id,
+      object.version AS file_version
+    FROM order_evidence_submissions submission
+    JOIN order_evidence_versions evidence
+      ON evidence.submission_id=submission.id
+      AND evidence.version_no=submission.current_version_no
+    JOIN order_evidence_version_files version_file
+      ON version_file.submission_id=submission.id
+      AND version_file.version_id=evidence.id
+      AND version_file.buyer_customer_id=submission.buyer_customer_id
+      AND version_file.visibility='BUYER_VISIBLE'
+    JOIN file_objects object
+      ON object.id=version_file.file_object_id
+      AND object.status='VERIFIED'
+      AND object.purpose='ORDER_EVIDENCE'
+      AND object.visibility='BUYER_VISIBLE'
+    JOIN file_upload_intents intent
+      ON intent.id=object.upload_intent_id
+      AND intent.status='VERIFIED'
+      AND intent.purpose='ORDER_EVIDENCE'
+      AND intent.visibility='BUYER_VISIBLE'
+      AND intent.owner_actor_type='BUYER_CUSTOMER'
+      AND intent.owner_actor_id=submission.buyer_customer_id
+    JOIN file_entity_links link
+      ON link.id=version_file.file_entity_link_id
+      AND link.file_object_id=object.id
+      AND link.entity_type='ORDER'
+      AND link.entity_id=evidence.id
+      AND link.purpose='ORDER_EVIDENCE'
+      AND link.visibility='BUYER_VISIBLE'
+      AND link.revoked_at IS NULL
+      AND (link.expires_at IS NULL OR link.expires_at>?)
+    WHERE submission.id=?
+      AND submission.buyer_customer_id=?
+      AND link.id=?
+      AND (
+        link.authorization_mode='LEGACY_VISIBILITY'
+        OR EXISTS (
+          SELECT 1 FROM file_entity_audience_grants buyer_grant
+          WHERE buyer_grant.file_entity_link_id=link.id
+            AND buyer_grant.subject_type='BUYER'
+            AND buyer_grant.buyer_customer_id=submission.buyer_customer_id
+            AND buyer_grant.revoked_at IS NULL
+            AND (buyer_grant.expires_at IS NULL OR buyer_grant.expires_at>?)
+        )
+      )
+    LIMIT 1
+  `).bind(
+    now,
+    submissionId,
+    buyer.buyerCustomerId,
+    fileEntityLinkId,
+    now,
+  ).first<{
+    file_object_id: string;
+    file_entity_link_id: string;
+    file_version: number;
+  }>();
+  if (!row) throw new BuyerOrderEvidencePortalError('NOT_FOUND', 404);
+  const fileVersion = Number(row.file_version);
+  if (!Number.isSafeInteger(fileVersion) || fileVersion < 1) {
+    throw new BuyerOrderEvidencePortalError('NOT_FOUND', 404);
+  }
+  return {
+    fileObjectId: row.file_object_id,
+    fileEntityLinkId: row.file_entity_link_id,
+    fileVersion,
+  };
+}
+
 function toEligibleReservationDto(
   row: EligibleReservationRow,
 ): BuyerOrderEvidenceEligibleReservationDto {
@@ -404,6 +502,7 @@ function toOrderEvidenceDto(
     marketplace: row.marketplace_code,
     amazon_order_number_display:
       row.amazon_order_number_normalized,
+    amazon_order_date: row.amazon_order_date,
     final_paid_jpy: Number(row.final_paid_jpy),
     buyer_self_pay_bps: Number(row.buyer_self_pay_bps_snapshot),
     buyer_self_pay_jpy: Number(row.buyer_self_pay_jpy),
@@ -431,6 +530,7 @@ async function listOrderEvidenceFiles(
   const result = await database.prepare(`
     SELECT
       version_file.file_object_id,
+      link.id AS file_entity_link_id,
       object.client_file_name,
       COALESCE(object.detected_mime, object.declared_mime) AS mime,
       COALESCE(
@@ -440,17 +540,46 @@ async function listOrderEvidenceFiles(
       object.status,
       version_file.visibility,
       object.verified_at
+      , object.version AS file_version
+      , CASE WHEN
+          object.status='VERIFIED'
+          AND version_file.visibility='BUYER_VISIBLE'
+          AND link.file_object_id=object.id
+          AND link.entity_type='ORDER'
+          AND link.entity_id=?
+          AND link.purpose='ORDER_EVIDENCE'
+          AND link.visibility='BUYER_VISIBLE'
+          AND link.revoked_at IS NULL
+          AND (link.expires_at IS NULL OR link.expires_at>?)
+          AND (
+            link.authorization_mode='LEGACY_VISIBILITY'
+            OR EXISTS (
+              SELECT 1 FROM file_entity_audience_grants grant_row
+              WHERE grant_row.file_entity_link_id=link.id
+                AND grant_row.subject_type='BUYER'
+                AND grant_row.buyer_customer_id=?
+                AND grant_row.revoked_at IS NULL
+                AND (grant_row.expires_at IS NULL OR grant_row.expires_at>?)
+            )
+          )
+        THEN 1 ELSE 0 END AS can_read
     FROM order_evidence_version_files version_file
     JOIN file_objects object
       ON object.id=version_file.file_object_id
     JOIN file_upload_intents intent
       ON intent.id=object.upload_intent_id
+    LEFT JOIN file_entity_links link
+      ON link.id=version_file.file_entity_link_id
     WHERE version_file.version_id=?
       AND version_file.buyer_customer_id=?
       AND intent.owner_actor_type='BUYER_CUSTOMER'
       AND intent.owner_actor_id=?
     ORDER BY version_file.created_at, version_file.id
   `).bind(
+    evidenceVersionId,
+    Date.now(),
+    buyerCustomerId,
+    Date.now(),
     evidenceVersionId,
     buyerCustomerId,
     buyerCustomerId,
@@ -469,7 +598,12 @@ async function listOrderEvidenceFiles(
         503,
       );
     }
-    return Object.freeze({
+    const readable = Number(row.can_read) === 1
+      && typeof row.file_entity_link_id === 'string'
+      && row.file_entity_link_id.length > 0
+      && Number.isSafeInteger(Number(row.file_version))
+      && Number(row.file_version) > 0;
+    const base = {
       file_object_id: row.file_object_id,
       client_file_name: row.client_file_name,
       mime: row.mime,
@@ -477,7 +611,20 @@ async function listOrderEvidenceFiles(
       status: row.status,
       visibility: row.visibility,
       verified_at: nullableNumber(row.verified_at),
-    });
+    };
+    return readable
+      ? Object.freeze({
+          ...base,
+          file_entity_link_id: row.file_entity_link_id!,
+          version: Number(row.file_version),
+          allowed_actions: Object.freeze(['CREATE_READ_INTENT'] as const),
+        })
+      : Object.freeze({
+          ...base,
+          file_entity_link_id: null,
+          version: null,
+          allowed_actions: Object.freeze([] as const),
+        });
   }));
 }
 

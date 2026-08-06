@@ -127,6 +127,7 @@ function toBuyerProjection(
     amazon_order_number_raw: source.amazon_order_number_raw,
     amazon_order_number_normalized:
       source.amazon_order_number_normalized,
+    amazon_order_date: source.amazon_order_date,
     final_paid_jpy: source.final_paid_jpy,
     buyer_note: source.buyer_note,
     public_change_reason: source.public_change_reason,

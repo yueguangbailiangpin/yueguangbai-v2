@@ -33,6 +33,7 @@ interface OrderEvidenceDetailRow {
   evidence_version_id: string;
   amazon_order_number_raw: string;
   amazon_order_number_normalized: string;
+  amazon_order_date: string | null;
   final_paid_jpy: number;
   buyer_note: string | null;
   public_change_reason: string | null;
@@ -335,6 +336,7 @@ async function readDetail(
       evidence.id AS evidence_version_id,
       evidence.amazon_order_number_raw,
       evidence.amazon_order_number_normalized,
+      evidence.amazon_order_date,
       evidence.final_paid_jpy,
       evidence.buyer_note,
       submission.public_change_reason,
@@ -474,6 +476,7 @@ async function readDetail(
     evidence_version_no: Number(row.current_version_no),
     amazon_order_number_raw: row.amazon_order_number_raw,
     amazon_order_number_normalized: row.amazon_order_number_normalized,
+    amazon_order_date: row.amazon_order_date,
     final_paid_jpy: String(row.final_paid_jpy),
     buyer_note: row.buyer_note,
     public_change_reason: row.public_change_reason,

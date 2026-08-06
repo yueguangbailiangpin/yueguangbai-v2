@@ -519,7 +519,7 @@ describe('Phase 5A review evidence workflow', () => {
     const state = await database!.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(state?.schema_version).toBe(27);
+    expect(state?.schema_version).toBe(28);
   });
 });
 
@@ -831,6 +831,7 @@ async function seedFormalOrderPrerequisites(
       id, submission_id, reservation_id, buyer_customer_id,
       marketplace_code, version_no,
       amazon_order_number_raw, amazon_order_number_normalized,
+      amazon_order_date,
       final_paid_jpy, submitted_by_buyer_id, buyer_note,
       order_instruction_id, order_instruction_version_id,
       instruction_deadline_snapshot,
@@ -843,6 +844,7 @@ async function seedFormalOrderPrerequisites(
       'evidence-review-version-1', 'evidence-review-submission',
       'reservation-review', 'buyer-review-1', 'JP', 1,
       '123-1234567-1234567', '123-1234567-1234567',
+      '2026-08-01',
       8880, 'buyer-review-1', NULL,
       '${instruction.instructionId}', '${instruction.instructionVersionId}',
       ${instruction.deadlineAt}, 1980, 0, 0, 8880, 1, 6900, 1,

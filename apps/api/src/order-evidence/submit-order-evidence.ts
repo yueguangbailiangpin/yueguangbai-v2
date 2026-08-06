@@ -6,6 +6,7 @@ import type {
 import {
   canonicalJson,
   hashCanonicalJson,
+  parseGregorianDateOnly,
 } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
 import {
@@ -65,6 +66,7 @@ export async function submitOrderEvidence(
     expectedVersion: number;
     marketplace: 'JP';
     amazonOrderNumber: string;
+    amazonOrderDate: string;
     finalPaidJpy: number;
     evidenceFileObjectIds: readonly string[];
     buyerNote?: string | null;
@@ -92,6 +94,12 @@ export async function submitOrderEvidence(
   const orderNumber = normalizeAmazonOrderNumber(
     input.amazonOrderNumber,
   );
+  let amazonOrderDate: string;
+  try {
+    amazonOrderDate = parseGregorianDateOnly(input.amazonOrderDate);
+  } catch {
+    throw new OrderEvidenceError('VALIDATION_ERROR', 400);
+  }
   const finalPaidJpy = validateFinalPaidJpy(input.finalPaidJpy);
   const evidenceFileObjectIds = normalizeEvidenceFileIds(
     input.evidenceFileObjectIds,
@@ -109,6 +117,7 @@ export async function submitOrderEvidence(
     marketplace: input.marketplace,
     amazon_order_number_raw: orderNumber.raw,
     amazon_order_number_normalized: orderNumber.normalized,
+    amazon_order_date: amazonOrderDate,
     final_paid_jpy: finalPaidJpy,
     evidence_file_object_ids: evidenceFileObjectIds,
     buyer_note: buyerNote,
@@ -210,6 +219,7 @@ export async function submitOrderEvidence(
       current_evidence_version_no: evidenceVersionNo,
       current_evidence_version_id: evidenceVersionId,
       amazon_order_number_normalized: orderNumber.normalized,
+      amazon_order_date: amazonOrderDate,
       final_paid_jpy: finalPaidJpy,
       evidence_file_count: preparedFiles.length,
       replayed: false,
@@ -254,6 +264,7 @@ export async function submitOrderEvidence(
       evidenceVersionNo,
       orderNumberRaw: orderNumber.raw,
       orderNumberNormalized: orderNumber.normalized,
+      amazonOrderDate,
       finalPaidJpy,
       buyerNote,
       evidenceFileObjectId: preparedFiles[0]!.object.id,
@@ -536,6 +547,7 @@ function insertEvidenceVersionStatement(
     evidenceVersionNo: number;
     orderNumberRaw: string;
     orderNumberNormalized: string;
+    amazonOrderDate: string;
     finalPaidJpy: number;
     buyerNote: string | null;
     evidenceFileObjectId: string;
@@ -564,6 +576,7 @@ function insertEvidenceVersionStatement(
       version_no,
       amazon_order_number_raw,
       amazon_order_number_normalized,
+      amazon_order_date,
       final_paid_jpy,
       submitted_by_buyer_id,
       buyer_note,
@@ -575,7 +588,7 @@ function insertEvidenceVersionStatement(
       price_difference_jpy, submitted_before_deadline,
       evidence_file_object_id,
       created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     input.evidenceVersionId,
@@ -586,6 +599,7 @@ function insertEvidenceVersionStatement(
     input.evidenceVersionNo,
     input.orderNumberRaw,
     input.orderNumberNormalized,
+    input.amazonOrderDate,
     input.finalPaidJpy,
     input.buyerCustomerId,
     input.buyerNote,

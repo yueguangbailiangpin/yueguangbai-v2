@@ -73,6 +73,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '123 1234567 1234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 3980,
       evidenceFileObjectIds: ['file-object-1'],
       buyerNote: '订单截图已上传',
@@ -99,6 +100,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '123 1234567 1234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 3980,
       evidenceFileObjectIds: ['file-object-1'],
       buyerNote: '订单截图已上传',
@@ -143,6 +145,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '123-1234567-1234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 3980,
       evidenceFileObjectIds: ['file-object-1'],
     }, {
@@ -172,6 +175,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '222-1234567-1234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 1,
       evidenceFileObjectIds: ['file-object-2'],
     }, {
@@ -188,6 +192,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '333-1234567-1234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 1,
       evidenceFileObjectIds: ['file-object-3'],
     }, {
@@ -233,6 +238,7 @@ describe('Phase 3D order evidence workflow', () => {
         expectedVersion: 0,
         marketplace: 'JP',
         amazonOrderNumber: '444-1234567-1234567',
+      amazonOrderDate: '2026-08-01',
         finalPaidJpy: 0,
         evidenceFileObjectIds: [fileObjectId],
       }, {
@@ -263,6 +269,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '555-1234567-1234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 5000,
       evidenceFileObjectIds: ['file-object-8'],
     }, {
@@ -301,6 +308,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 2,
       marketplace: 'JP',
       amazonOrderNumber: '555-1234567-7654321',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 4980,
       evidenceFileObjectIds: ['file-object-9'],
       buyerNote: '已补充清晰截图',
@@ -359,6 +367,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 4,
       marketplace: 'JP',
       amazonOrderNumber: '555-1234567-7654321',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 4980,
       evidenceFileObjectIds: ['file-object-9'],
     }, {
@@ -388,6 +397,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '666-1234567-1234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 1000,
       evidenceFileObjectIds: ['file-object-10'],
     }, {
@@ -400,6 +410,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '66612345671234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 2000,
       evidenceFileObjectIds: ['file-object-11'],
     }, {
@@ -436,6 +447,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '777-1234567-1234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 777,
       evidenceFileObjectIds: ['file-object-12'],
     }, {
@@ -508,6 +520,7 @@ describe('Phase 3D order evidence workflow', () => {
       expectedVersion: 0,
       marketplace: 'JP',
       amazonOrderNumber: '888-1234567-1234567',
+      amazonOrderDate: '2026-08-01',
       finalPaidJpy: 888,
       evidenceFileObjectIds: ['file-object-13'],
     }, {

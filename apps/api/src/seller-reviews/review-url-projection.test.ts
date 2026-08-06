@@ -95,6 +95,7 @@ describe('Wave 11 review URL DTO isolation', () => {
         formal_order_id: 'formal-order-1',
         marketplace: 'JP',
         amazon_order_number: '123-1234567-1234567',
+        amazon_order_date: '2026-08-01',
         product_name: 'Product',
         review_type: 'TEXT',
         confirmed_at: 50,

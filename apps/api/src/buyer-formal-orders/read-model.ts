@@ -25,6 +25,7 @@ interface BuyerFormalOrderRow {
   buyer_customer_no: string;
   marketplace_code: 'JP';
   amazon_order_number_normalized: string;
+  amazon_order_date: string | null;
   product_name_snapshot: string;
   review_type: PricingReviewType;
   final_paid_jpy: number;
@@ -51,6 +52,7 @@ const BUYER_FORMAL_ORDER_SELECT = `
     formal_order.buyer_customer_no,
     formal_order.marketplace_code,
     formal_order.amazon_order_number_normalized,
+    formal_order.amazon_order_date,
     formal_order.product_name_snapshot,
     formal_order.review_type,
     formal_order.final_paid_jpy,
@@ -215,6 +217,7 @@ function toDto(row: BuyerFormalOrderRow): BuyerFormalOrderDto {
     buyer_customer_no: row.buyer_customer_no,
     marketplace: row.marketplace_code,
     amazon_order_number: row.amazon_order_number_normalized,
+    amazon_order_date: row.amazon_order_date,
     product_name: row.product_name_snapshot,
     review_type: row.review_type,
     final_paid_jpy: integerString(row.final_paid_jpy),

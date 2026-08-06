@@ -38,6 +38,7 @@ extends OrderEvidenceSubmissionRow {
   evidence_version_id: string;
   amazon_order_number_raw: string;
   amazon_order_number_normalized: string;
+  amazon_order_date: string | null;
   final_paid_jpy: number;
   buyer_note: string | null;
   version_created_at: number;
@@ -242,6 +243,7 @@ async function currentOrderEvidenceQuery(
       evidence.id AS evidence_version_id,
       evidence.amazon_order_number_raw,
       evidence.amazon_order_number_normalized,
+      evidence.amazon_order_date,
       evidence.final_paid_jpy,
       evidence.buyer_note,
       evidence.created_at AS version_created_at
