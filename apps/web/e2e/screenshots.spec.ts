@@ -53,6 +53,22 @@ async function mockSession(
       });
       return;
     }
+    if (identity === 'seller' && path === '/api/seller-portal/me') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { me: { account_id: 'seller-screenshot', member: { id: 'member-shot', display_name: '演示卖家', role: 'OWNER', primary_owner: true }, organization: { id: 'org-shot', seller_code: 'seller-shot', name: '演示卖家组织', marketplace_code: 'JP', status: 'ACTIVE' }, access: { read_scope: 'ORGANIZATION', store_ids: ['store-shot'], can_submit_product_applications: true, can_submit_demand_batches: true } } }, meta: { request_id: 'screenshot-local' } }) });
+      return;
+    }
+    if (identity === 'seller' && path === '/api/seller-portal/stores') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { items: [{ id: 'store-shot', marketplace_code: 'JP', display_name: '日本演示店', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }], page: { limit: 100, next_cursor: null } }, meta: { request_id: 'screenshot-local' } }) });
+      return;
+    }
+    if (identity === 'seller' && path === '/api/seller-portal/formal-orders') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { items: [], page: { limit: 100, next_cursor: null } }, meta: { request_id: 'screenshot-local' } }) });
+      return;
+    }
+    if (identity === 'seller' && path === '/api/seller-portal/settlement/summary') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { settlement: { outstanding_principal_cny_fen: '0', outstanding_service_fee_cny_fen: '0', total_outstanding_cny_fen: '0', unallocated_credit_cny_fen: '0' } }, meta: { request_id: 'screenshot-local' } }) });
+      return;
+    }
     await route.fulfill({
       status: 404,
       contentType: 'application/json',
@@ -117,16 +133,16 @@ test('capture Buyer shell mobile', async ({ page }) => {
 test('capture Seller shell desktop', async ({ page }) => {
   await mockSession(page, 'seller');
   await page.goto('/seller');
-  await expect(page.getByRole('heading', { name: '卖家工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '业务进度' })).toBeVisible();
   await capture(page, 'seller-shell-desktop-1440x900.png', { width: 1440, height: 900 });
 });
 
-test('capture Seller drawer desktop', async ({ page }) => {
+test('capture Seller orders desktop', async ({ page }) => {
   await mockSession(page, 'seller');
   await page.goto('/seller');
-  await page.getByRole('button', { name: '查看详情结构' }).click();
-  await expect(page.getByRole('dialog', { name: '详情结构' })).toBeVisible();
-  await capture(page, 'seller-drawer-desktop-1440x900.png', { width: 1440, height: 900 });
+  await page.getByRole('link', { name: '订单', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '订单与业务完成' })).toBeVisible();
+  await capture(page, 'seller-orders-desktop-1440x900.png', { width: 1440, height: 900 });
 });
 
 test('capture Staff shell desktop', async ({ page }) => {

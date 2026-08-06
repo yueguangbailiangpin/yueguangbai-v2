@@ -2,6 +2,34 @@
   box-sizing: border-box;
 }
 
+.seller-business-shell { min-height: 100dvh; background: var(--color-surface-subtle); padding-bottom: 84px; }
+.seller-business-shell .bottom-nav { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.seller-business-shell .bottom-nav a[aria-current="page"] { border-top-color: var(--color-seller); background: var(--color-seller-soft); color: var(--color-seller); }
+.seller-brand-bar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: minmax(160px, 1fr) minmax(220px, 360px) auto; gap: var(--space-4); align-items: end; padding: var(--space-3) clamp(16px, 4vw, 48px); background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
+.seller-brand-bar > div { display: flex; gap: var(--space-2); align-items: baseline; }
+.seller-brand-bar label { display: grid; gap: 4px; font-size: .8rem; font-weight: 700; }
+.seller-main { width: min(1120px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 32px); }
+.seller-page { display: grid; gap: var(--space-5); }
+.seller-card-list { display: grid; gap: var(--space-3); }
+.seller-order-card { display: grid; gap: var(--space-4); }
+.seller-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
+.seller-facts div { min-width: 0; }
+.seller-facts dt { color: var(--color-text-muted); font-size: .82rem; }
+.seller-facts dd { margin: 4px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.completion-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 0; margin: 0; list-style: none; }
+.completion-grid li { padding: 10px; border-radius: var(--radius-control); background: var(--color-seller-soft); color: var(--color-text); }
+
+@media (max-width: 680px) {
+  .seller-brand-bar { position: static; grid-template-columns: 1fr; align-items: stretch; }
+  .seller-brand-bar small { overflow-wrap: anywhere; }
+  .seller-main { padding: 16px; }
+  .seller-facts, .completion-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 360px) {
+  .seller-facts, .completion-grid { grid-template-columns: 1fr; }
+}
+
 html {
   min-width: 0;
   background: var(--color-canvas);

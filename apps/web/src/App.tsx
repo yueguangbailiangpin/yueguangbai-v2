@@ -40,6 +40,16 @@ import { BuyerReviewDetailPage } from './buyer/reviews/BuyerReviewDetailPage';
 import { BuyerReviewFormPage } from './buyer/reviews/BuyerReviewFormPage';
 import { BuyerReviewsPage } from './buyer/reviews/BuyerReviewsPage';
 import { BuyerLayout } from './buyer/routes/BuyerLayout';
+import { SellerLayout } from './seller/routes/SellerLayout';
+import {
+  SellerDashboardPage,
+  SellerDemandsPage,
+  SellerOrdersPage,
+  SellerProductsPage,
+  SellerReviewsPage,
+  SellerSettingsPage,
+  SellerSettlementsPage,
+} from './seller/pages/SellerPages';
 import {
   Alert,
   AppShell,
@@ -339,13 +349,15 @@ function AppRoutes(): React.JSX.Element {
       <Route path="*" element={<DomainNotFound />} />
     </Route>
     <Route path="/seller/*" element={<CustomerSessionBoundary target="seller"><Routes>
-      <Route index element={<SellerShell />} />
-      <Route path="products" element={<SellerShell />} />
-      <Route path="demands" element={<SellerShell />} />
-      <Route path="orders" element={<SellerShell />} />
-      <Route path="reviews" element={<SellerShell />} />
-      <Route path="settlements" element={<SellerShell />} />
-      <Route path="settings" element={<SellerShell />} />
+      <Route element={<SellerLayout />}>
+      <Route index element={<SellerDashboardPage />} />
+      <Route path="products" element={<SellerProductsPage />} />
+      <Route path="demands" element={<SellerDemandsPage />} />
+      <Route path="orders" element={<SellerOrdersPage />} />
+      <Route path="reviews" element={<SellerReviewsPage />} />
+      <Route path="settlements" element={<SellerSettlementsPage />} />
+      <Route path="settings" element={<SellerSettingsPage />} />
+      </Route>
       <Route path="*" element={<DomainNotFound />} />
     </Routes></CustomerSessionBoundary>} />
     <Route path="/staff/*" element={<StaffSessionBoundary><Routes>

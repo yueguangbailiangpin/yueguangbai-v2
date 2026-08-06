@@ -3,6 +3,10 @@ import type {
   FixedIntegerString,
   PricingReviewType,
 } from './pricing';
+import type {
+  CanonicalMarketplaceCode,
+} from './customer';
+import type { CurrencyCode, CurrencyExponent } from './marketplace-money';
 import type { SellerPortalPage } from './seller-portal';
 
 export const SELLER_FORMAL_ORDER_PORTAL_HTTP_PATHS = Object.freeze({
@@ -26,6 +30,13 @@ export interface SellerAgreementRateSnapshotDto {
   cny_per_jpy_e8: FixedIntegerString;
   effective_from: number;
   confirmed_at: number;
+  source_currency_code: CurrencyCode;
+  quote_currency_code: 'CNY';
+  source_currency_exponent: CurrencyExponent;
+  quote_currency_exponent: 2;
+  rate_value: FixedIntegerString;
+  rate_scale: FixedIntegerString;
+  rounding_rule: 'HALF_UP';
 }
 
 export interface LockedSellerServiceFeeSnapshotDto {
@@ -35,22 +46,47 @@ export interface LockedSellerServiceFeeSnapshotDto {
   service_fee_cny_fen: FixedIntegerString;
   effective_from: number;
   confirmed_at: number;
+  marketplace_code: CanonicalMarketplaceCode;
+  currency_code: 'CNY';
+  currency_exponent: 2;
+}
+
+export type SellerBusinessCompletionComponentStatus =
+  | 'PENDING'
+  | 'COMPLETE'
+  | 'NOT_APPLICABLE';
+
+export interface SellerBusinessCompletionDto {
+  status: 'IN_PROGRESS' | 'COMPLETE';
+  review: SellerBusinessCompletionComponentStatus;
+  buyer_refund: SellerBusinessCompletionComponentStatus;
+  seller_principal: SellerBusinessCompletionComponentStatus;
+  seller_service_fee: SellerBusinessCompletionComponentStatus;
 }
 
 export interface SellerFormalOrderPortalDto {
   formal_order_id: string;
   status: FormalOrderStatus;
   marketplace_code: 'JP';
+  canonical_marketplace_code: CanonicalMarketplaceCode;
   amazon_order_number: string;
+  platform_order_identifier: string;
   store: SellerFormalOrderStoreSummaryDto;
   asin: string;
+  platform_product_identifier: string;
   product_name: string;
   product_version: SellerFormalOrderProductVersionSummaryDto;
   review_type: PricingReviewType;
   final_paid_jpy: FixedIntegerString;
+  payment: {
+    amount_minor: FixedIntegerString;
+    currency_code: CurrencyCode;
+    currency_exponent: CurrencyExponent;
+  };
   seller_expected_principal_cny_fen: FixedIntegerString;
   seller_agreement_rate_snapshot: SellerAgreementRateSnapshotDto;
   locked_service_fee_snapshot: LockedSellerServiceFeeSnapshotDto;
+  business_completion: SellerBusinessCompletionDto;
   confirmed_at: number;
   confirmed_business_date: string;
 }

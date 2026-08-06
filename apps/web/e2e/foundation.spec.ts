@@ -84,6 +84,26 @@ async function mockApi(
       }, 'browser-customer-logout'));
       return;
     }
+    if (identity === 'seller' && path === '/api/seller-portal/me') {
+      await fulfillJson(route, success({ me: { account_id: 'seller-local', member: { id: 'member-local', display_name: '本地卖家', role: 'OWNER', primary_owner: true }, organization: { id: 'org-local', seller_code: 'seller-local', name: '本地卖家组织', marketplace_code: 'JP', status: 'ACTIVE' }, access: { read_scope: 'ORGANIZATION', store_ids: ['store-local'], can_submit_product_applications: true, can_submit_demand_batches: true } } }));
+      return;
+    }
+    if (identity === 'seller' && path === '/api/seller-portal/stores') {
+      await fulfillJson(route, success({ items: [{ id: 'store-local', marketplace_code: 'JP', display_name: '日本一号店', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }], page: { limit: 100, next_cursor: null } }));
+      return;
+    }
+    if (identity === 'seller' && path === '/api/seller-portal/formal-orders') {
+      await fulfillJson(route, success({ items: [], page: { limit: 100, next_cursor: null } }));
+      return;
+    }
+    if (identity === 'seller' && path === '/api/seller-portal/settlement/summary') {
+      await fulfillJson(route, success({ settlement: { outstanding_principal_cny_fen: '0', outstanding_service_fee_cny_fen: '0', total_outstanding_cny_fen: '0', unallocated_credit_cny_fen: '0' } }));
+      return;
+    }
+    if (identity === 'seller' && ['/api/seller-portal/products', '/api/seller-portal/demand-batches', '/api/seller-portal/reviews', '/api/seller-portal/settlement/payables'].includes(path)) {
+      await fulfillJson(route, success({ items: [], page: { limit: 100, next_cursor: null } }));
+      return;
+    }
     if (path === '/api/staff-auth/logout') {
       await fulfillJson(route, success({
         logged_out: true,
@@ -218,25 +238,15 @@ test('Buyer shell keeps navigation clear at 320px and safe content padding', asy
   await expectNoCriticalHorizontalOverflow(page);
 });
 
-test('Seller shell exposes context, filters, table caption, and accessible empty state', async ({ page }) => {
+test('Seller shell exposes organization/store context and truthful business metrics', async ({ page }) => {
   await mockApi(page, 'seller');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/seller');
   await expect(page.getByRole('navigation', { name: '卖家导航' })).toBeVisible();
-  const metrics = page.getByRole('region', { name: '业务指标摘要' });
-  await expect(metrics).toBeVisible();
-  for (const label of ['订单', '评论', '结算']) {
-    await expect(metrics.getByText(label, { exact: true })).toBeVisible();
-  }
-  await expect(metrics.getByText('—')).toHaveCount(3);
-  await expect(metrics.getByText('业务模块开放后显示')).toHaveCount(3);
-  await expect(page.getByRole('search', { name: '列表筛选' })).toBeVisible();
-  expect(await metrics.evaluate((summary) =>
-    summary.nextElementSibling?.getAttribute('role') === 'search',
-  )).toBe(true);
-  await expect(page.getByRole('table', { name: '卖家工作列表基础容器' })).toBeVisible();
-  await expect(page.getByRole('table', { name: '卖家工作列表基础容器' })
-    .getByText('该功能将在卖家业务模块开放')).toBeVisible();
+  await expect(page.getByLabel('店铺与站点')).toBeVisible();
+  await expect(page.getByText(/本地卖家组织/u)).toBeVisible();
+  for (const label of ['正式订单', '业务完成', '待结算']) await expect(page.getByText(label, { exact: true })).toBeVisible();
+  await expect(page.getByText('状态来自服务器业务事实；结算确认由员工控制。')).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
@@ -251,7 +261,7 @@ test('Seller navigation is route-aware, client-side, and session-stable', async 
       'aria-current', 'page',
     );
   };
-  await expectCurrent('概览');
+  await expectCurrent('首页');
   expect(sessionReads.count).toBe(1);
 
   await navigation.getByRole('link', { name: '商品' }).click();
@@ -264,31 +274,27 @@ test('Seller navigation is route-aware, client-side, and session-stable', async 
   await expectCurrent('订单');
   expect(sessionReads.count).toBe(1);
 
-  await page.getByRole('button', { name: '收起侧边导航' }).click();
-  for (const label of ['概览', '商品', '需求', '订单', '评论', '结算', '设置']) {
+  for (const label of ['首页', '商品', '需求', '订单', '评论', '结算', '我的']) {
     await expect(navigation.getByRole('link', { name: label })).toBeVisible();
   }
 });
 
-test('Seller Drawer traps focus, closes with Escape, and restores its opener', async ({ page }) => {
+test('Seller store context is keyboard operable and remains visible', async ({ page }) => {
   await mockApi(page, 'seller');
   await page.goto('/seller');
-  const opener = page.getByRole('button', { name: '查看详情结构' });
-  await opener.click();
-  const dialog = page.getByRole('dialog', { name: '详情结构' });
-  await expect(dialog).toBeVisible();
-  await expect(page.getByRole('button', { name: '关闭详情' })).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  await expect(opener).toBeFocused();
+  const context = page.getByLabel('店铺与站点');
+  await context.focus();
+  await expect(context).toBeFocused();
+  await context.selectOption('store-local');
+  await expect(context).toHaveValue('store-local');
 });
 
-test('Seller small screen uses a card fallback without page overflow', async ({ page }) => {
+test('Seller small screen uses the business dashboard without page overflow', async ({ page }) => {
   await mockApi(page, 'seller');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/seller');
-  await expect(page.getByRole('table')).toBeHidden();
-  await expect(page.getByRole('heading', { name: '暂无列表内容' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '业务进度' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '卖家导航' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
@@ -409,9 +415,8 @@ test('200% equivalent text zoom reflows without critical horizontal clipping', a
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%';
   });
-  await expect(page.getByRole('heading', { name: '卖家工作台' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '查看详情结构' })).toBeVisible();
-  await expect(page.getByRole('region', { name: '业务指标摘要' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '业务进度' })).toBeVisible();
+  await expect(page.getByLabel('店铺与站点')).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 

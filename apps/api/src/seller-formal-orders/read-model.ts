@@ -5,6 +5,7 @@ import type {
   SellerFormalOrderPortalPage,
   SqlDatabase,
 } from '@ygb/contracts';
+import { sellerBusinessCompletion } from '@ygb/domain';
 import type { SellerPortalActor } from '../seller-portal/actor';
 import {
   decodeSellerPortalCursor,
@@ -18,15 +19,28 @@ interface FormalOrderRow {
   formal_order_id: string;
   status: 'CONFIRMED';
   marketplace_code: 'JP';
+  canonical_marketplace_code: 'AMAZON_JP' | 'AMAZON_US' | 'COUPANG_KR';
   amazon_order_number: string;
+  platform_order_identifier: string;
   store_id: string;
   store_display_name: string;
   asin: string;
+  platform_product_identifier: string;
   product_name: string;
   product_version_id: string;
   product_version_no: number;
   review_type: 'RATING' | 'TEXT' | 'IMAGE' | 'VIDEO';
   final_paid_jpy: number | string;
+  payment_amount_minor: number | string;
+  payment_currency_code: 'JPY' | 'USD' | 'KRW' | 'CNY';
+  payment_currency_exponent: 0 | 2;
+  source_currency_code: 'JPY' | 'USD' | 'KRW' | 'CNY';
+  quote_currency_code: 'CNY';
+  source_currency_exponent: 0 | 2;
+  quote_currency_exponent: 2;
+  seller_rate_value: number | string;
+  seller_rate_scale: number | string;
+  rounding_rule: 'HALF_UP';
   seller_expected_principal_cny_fen: number | string;
   seller_rate_version_id: string;
   seller_rate_version_no: number;
@@ -38,6 +52,11 @@ interface FormalOrderRow {
   service_fee_effective_from: number;
   service_fee_confirmed_at: number;
   service_fee_cny_fen: number | string;
+  refund_expected_cny_fen: number | string;
+  review_status: string | null;
+  buyer_refund_status: string | null;
+  principal_status: string | null;
+  service_fee_status: string | null;
   confirmed_at: number;
   confirmed_business_date: string;
 }
@@ -176,19 +195,32 @@ function selectFormalOrderProjection(): string {
       formal_order.id AS formal_order_id,
       formal_order.status,
       formal_order.marketplace_code,
+      generic.marketplace_code AS canonical_marketplace_code,
       formal_order.amazon_order_number_normalized AS amazon_order_number,
+      generic.platform_order_identifier,
       formal_order.store_id,
       store.display_name AS store_display_name,
       formal_order.asin_normalized AS asin,
+      generic.platform_product_identifier,
       formal_order.product_name_snapshot AS product_name,
       formal_order.product_version_id,
       formal_order.product_version_no,
       formal_order.review_type,
       formal_order.final_paid_jpy,
+      generic.payment_amount_minor,
+      generic.payment_currency_code,
+      generic.payment_currency_exponent,
       snapshot.seller_expected_principal_cny_fen,
       snapshot.seller_rate_version_id,
       snapshot.seller_rate_version_no,
       snapshot.seller_cny_per_jpy_e8,
+      generic.source_currency_code,
+      generic.quote_currency_code,
+      generic.source_currency_exponent,
+      generic.quote_currency_exponent,
+      generic.seller_rate_value,
+      generic.seller_rate_scale,
+      generic.rounding_rule,
       snapshot.seller_rate_effective_from,
       snapshot.seller_rate_confirmed_at,
       snapshot.service_fee_version_id,
@@ -196,6 +228,18 @@ function selectFormalOrderProjection(): string {
       snapshot.service_fee_effective_from,
       snapshot.service_fee_confirmed_at,
       snapshot.service_fee_cny_fen,
+      generic.buyer_expected_principal_amount_minor
+        AS refund_expected_cny_fen,
+      (SELECT review.status FROM review_cases review
+        WHERE review.formal_order_id=formal_order.id) AS review_status,
+      (SELECT refund.status FROM buyer_refund_ledger_balances refund
+        WHERE refund.formal_order_id=formal_order.id) AS buyer_refund_status,
+      (SELECT payable.derived_status FROM seller_payable_balances payable
+        WHERE payable.formal_order_id=formal_order.id
+          AND payable.payable_type='SELLER_PRINCIPAL') AS principal_status,
+      (SELECT payable.derived_status FROM seller_payable_balances payable
+        WHERE payable.formal_order_id=formal_order.id
+          AND payable.payable_type='SELLER_SERVICE_FEE') AS service_fee_status,
       formal_order.confirmed_at,
       formal_order.confirmed_business_date
     FROM formal_orders formal_order
@@ -204,6 +248,8 @@ function selectFormalOrderProjection(): string {
       AND store.organization_id=formal_order.seller_organization_id
     JOIN formal_order_financial_snapshots snapshot
       ON snapshot.formal_order_id=formal_order.id
+    JOIN formal_order_marketplace_money_snapshots generic
+      ON generic.formal_order_id=formal_order.id
   `;
 }
 
@@ -228,12 +274,15 @@ function mapFormalOrder(
     formal_order_id: row.formal_order_id,
     status: row.status,
     marketplace_code: row.marketplace_code,
+    canonical_marketplace_code: row.canonical_marketplace_code,
     amazon_order_number: row.amazon_order_number,
+    platform_order_identifier: row.platform_order_identifier,
     store: Object.freeze({
       id: row.store_id,
       display_name: row.store_display_name,
     }),
     asin: row.asin,
+    platform_product_identifier: row.platform_product_identifier,
     product_name: row.product_name,
     product_version: Object.freeze({
       id: row.product_version_id,
@@ -241,6 +290,11 @@ function mapFormalOrder(
     }),
     review_type: row.review_type,
     final_paid_jpy: integerString(row.final_paid_jpy),
+    payment: Object.freeze({
+      amount_minor: integerString(row.payment_amount_minor),
+      currency_code: row.payment_currency_code,
+      currency_exponent: Number(row.payment_currency_exponent) as 0 | 2,
+    }),
     seller_expected_principal_cny_fen:
       integerString(row.seller_expected_principal_cny_fen),
     seller_agreement_rate_snapshot: Object.freeze({
@@ -249,6 +303,13 @@ function mapFormalOrder(
       cny_per_jpy_e8: integerString(row.seller_cny_per_jpy_e8),
       effective_from: Number(row.seller_rate_effective_from),
       confirmed_at: Number(row.seller_rate_confirmed_at),
+      source_currency_code: row.source_currency_code,
+      quote_currency_code: row.quote_currency_code,
+      source_currency_exponent: Number(row.source_currency_exponent) as 0 | 2,
+      quote_currency_exponent: 2,
+      rate_value: integerString(row.seller_rate_value),
+      rate_scale: integerString(row.seller_rate_scale),
+      rounding_rule: row.rounding_rule,
     }),
     locked_service_fee_snapshot: Object.freeze({
       fee_version_id: row.service_fee_version_id,
@@ -257,6 +318,20 @@ function mapFormalOrder(
       service_fee_cny_fen: integerString(row.service_fee_cny_fen),
       effective_from: Number(row.service_fee_effective_from),
       confirmed_at: Number(row.service_fee_confirmed_at),
+      marketplace_code: row.canonical_marketplace_code,
+      currency_code: 'CNY',
+      currency_exponent: 2,
+    }),
+    business_completion: sellerBusinessCompletion({
+      reviewStatus: row.review_status,
+      buyerRefundExpectedCnyFen:
+        BigInt(String(row.refund_expected_cny_fen)),
+      buyerRefundStatus: row.buyer_refund_status,
+      principalExpectedCnyFen:
+        BigInt(String(row.seller_expected_principal_cny_fen)),
+      principalStatus: row.principal_status,
+      serviceFeeExpectedCnyFen: BigInt(String(row.service_fee_cny_fen)),
+      serviceFeeStatus: row.service_fee_status,
     }),
     confirmed_at: Number(row.confirmed_at),
     confirmed_business_date: row.confirmed_business_date,

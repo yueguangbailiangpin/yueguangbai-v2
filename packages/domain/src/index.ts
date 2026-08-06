@@ -20,6 +20,7 @@ export * from './pricing/fixed-point';
 export * from './order-instructions';
 export * from './reviews/review-url';
 export * from './seller-settlement/status';
+export * from './seller-settlement/business-completion';
 export * from './security/customer-password';
 export * from './security/customer-session';
 export * from './security/one-time-token';
