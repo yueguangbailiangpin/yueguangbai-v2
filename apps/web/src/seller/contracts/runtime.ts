@@ -14,6 +14,10 @@ export const sellerMeSchema = z.object({ me: z.object({
 
 export const sellerStoresSchema = z.object({ items: z.array(z.object({
   id: z.string(), marketplace_code: z.literal('JP'), display_name: z.string(),
+  canonical_marketplace_code: z.enum(['AMAZON_JP', 'AMAZON_US', 'COUPANG_KR']),
+  transaction_currency_code: z.enum(['JPY', 'USD', 'KRW', 'CNY']),
+  transaction_currency_exponent: z.union([z.literal(0), z.literal(2)]),
+  marketplace_status: z.enum(['ACTIVE', 'DISABLED']), adapter_status: z.enum(['AVAILABLE', 'UNAVAILABLE']),
   status: z.string(), version: z.number().int(), created_at: epoch, updated_at: epoch,
 }).strict()), page }).strict();
 

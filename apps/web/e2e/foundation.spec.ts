@@ -89,7 +89,7 @@ async function mockApi(
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/stores') {
-      await fulfillJson(route, success({ items: [{ id: 'store-local', marketplace_code: 'JP', display_name: '日本一号店', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }], page: { limit: 100, next_cursor: null } }));
+      await fulfillJson(route, success({ items: [{ id: 'store-local', marketplace_code: 'JP', canonical_marketplace_code: 'AMAZON_JP', transaction_currency_code: 'JPY', transaction_currency_exponent: 0, marketplace_status: 'ACTIVE', adapter_status: 'AVAILABLE', display_name: '日本一号店', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }], page: { limit: 100, next_cursor: null } }));
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/formal-orders') {

@@ -26,7 +26,7 @@ export function SellerLayout(): React.JSX.Element {
   return <SellerContext.Provider value={value}><IdentityShell identity="seller" className="seller-business-shell">
     <header className="seller-brand-bar"><div><strong>月光白</strong><span>卖家工作台</span></div>
       <label>店铺与站点<Select aria-label="店铺与站点" value={storeId ?? ''} onChange={(event) => setStoreId(event.target.value || null)}>
-        <option value="">全部授权店铺</option>{stores.data?.map((store) => <option key={store.id} value={store.id}>{store.display_name} · 日本站</option>)}</Select></label>
+        <option value="">全部授权店铺</option>{stores.data?.map((store) => <option key={store.id} value={store.id} disabled={store.marketplace_status !== 'ACTIVE' || store.adapter_status !== 'AVAILABLE'}>{store.display_name} · {store.canonical_marketplace_code === 'AMAZON_JP' ? '日本站' : store.canonical_marketplace_code === 'AMAZON_US' ? '美国站' : '韩国站（未开放）'} · {store.transaction_currency_code}</option>)}</Select></label>
       <small>{me.data ? `${me.data.organization.name} · ${me.data.organization.seller_code}` : '正在核验卖家身份'}</small>
     </header>
     <main className="seller-main"><Outlet /></main>

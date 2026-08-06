@@ -4,6 +4,8 @@ import type {
   SellerStoreStatus,
 } from './catalog';
 import type { SellerMemberRole } from './customer';
+import type { CanonicalMarketplaceCode } from './customer';
+import type { CurrencyCode, CurrencyExponent } from './marketplace-money';
 import type { DemandBatchStatus, DemandTaskType } from './demand';
 import type { ProductApplicationStatus } from './product-application';
 
@@ -62,6 +64,11 @@ export interface SellerPortalMeDto {
 export interface SellerPortalStoreDto {
   id: string;
   marketplace_code: 'JP';
+  canonical_marketplace_code: CanonicalMarketplaceCode;
+  transaction_currency_code: CurrencyCode;
+  transaction_currency_exponent: CurrencyExponent;
+  marketplace_status: 'ACTIVE' | 'DISABLED';
+  adapter_status: 'AVAILABLE' | 'UNAVAILABLE';
   display_name: string;
   status: SellerStoreStatus;
   version: number;

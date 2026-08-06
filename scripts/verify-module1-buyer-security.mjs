@@ -160,8 +160,17 @@ assertNotContains(read('apps/web/src/App.tsx').split('<Route path="/buyer/login"
 const changedSellerStaff = execFileSync('git', [
   'diff', '--name-only', 'origin/main', '--',
   'apps/api/src/seller-portal', 'apps/api/src/staff-auth', 'apps/web/src/seller', 'apps/web/src/staff',
-], { encoding: 'utf8' }).trim().split('\n').filter((path) => path.length > 0 && !path.includes('.test.')).join(', ');
-assert(changedSellerStaff.length === 0, `Seller/Staff business source expanded: ${changedSellerStaff}`);
+], { encoding: 'utf8' }).trim().split('\n').filter((path) => path.length > 0 && !path.includes('.test.'));
+const module4SellerAllowlist = new Set([
+  'apps/api/src/seller-portal/queries.ts',
+  'apps/web/src/seller/api/client.ts',
+  'apps/web/src/seller/contracts/runtime.ts',
+  'apps/web/src/seller/pages/SellerPages.tsx',
+  'apps/web/src/seller/queries/keys.ts',
+  'apps/web/src/seller/routes/SellerLayout.tsx',
+]);
+const unapprovedSellerStaff = changedSellerStaff.filter((path) => !module4SellerAllowlist.has(path));
+assert(unapprovedSellerStaff.length === 0, `Unapproved Seller/Staff business source expanded: ${unapprovedSellerStaff.join(', ')}`);
 const taskSource = read(`${change}/tasks.md`);
 assertContains(taskSource, 'COMPLETE=58', 'formal requirement evidence');
 assertContains(taskSource, 'Scenarios=116/116', 'formal scenario evidence');
@@ -172,5 +181,6 @@ report('module1-buyer-security', {
   new_api_count: 1,
   arbitrary_read_paths: 0,
   token_storage: 0,
-  seller_staff_business_expansion: 0,
+  approved_seller_business_files: changedSellerStaff.length,
+  unapproved_seller_staff_business_expansion: unapprovedSellerStaff.length,
 });

@@ -22,6 +22,11 @@ import {
 interface StoreRow {
   id: string;
   marketplace_code: 'JP';
+  canonical_marketplace_code: 'AMAZON_JP' | 'AMAZON_US' | 'COUPANG_KR';
+  transaction_currency_code: 'JPY' | 'USD' | 'KRW' | 'CNY';
+  transaction_currency_exponent: 0 | 2;
+  marketplace_status: 'ACTIVE' | 'DISABLED';
+  adapter_status: 'AVAILABLE' | 'UNAVAILABLE';
   display_name: string;
   status: 'ACTIVE' | 'DISABLED';
   version: number;
@@ -158,12 +163,24 @@ export async function listSellerPortalStores(
     SELECT
       store.id,
       store.marketplace_code,
+      store_marketplace.marketplace_code AS canonical_marketplace_code,
+      marketplace.transaction_currency_code,
+      currency.exponent AS transaction_currency_exponent,
+      marketplace.status AS marketplace_status,
+      marketplace.adapter_status,
       store.display_name,
       store.status,
       store.version,
       store.created_at,
       store.updated_at
     FROM seller_stores store
+    JOIN seller_store_marketplaces store_marketplace
+      ON store_marketplace.store_id=store.id
+      AND store_marketplace.seller_organization_id=store.organization_id
+    JOIN marketplace_registry marketplace
+      ON marketplace.code=store_marketplace.marketplace_code
+    JOIN currencies currency
+      ON currency.code=marketplace.transaction_currency_code
     WHERE store.organization_id=?
       ${scope.sql}
       ${cursorSql}
@@ -749,6 +766,11 @@ function mapStore(row: StoreRow): SellerPortalStoreDto {
   return Object.freeze({
     id: row.id,
     marketplace_code: row.marketplace_code,
+    canonical_marketplace_code: row.canonical_marketplace_code,
+    transaction_currency_code: row.transaction_currency_code,
+    transaction_currency_exponent: Number(row.transaction_currency_exponent) as 0 | 2,
+    marketplace_status: row.marketplace_status,
+    adapter_status: row.adapter_status,
     display_name: row.display_name,
     status: row.status,
     version: Number(row.version),

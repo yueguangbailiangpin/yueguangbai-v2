@@ -2,7 +2,7 @@
 
 ## Result
 
-`COMPLETE=12`, `INCONSISTENT=0`, `MISSING=0`, `PARTIAL=0`, `NOT_VERIFIED=0`; Scenarios `24/24`; Critical/Warning/Suggestion `0/0/0`.
+`COMPLETE=13`, `INCONSISTENT=0`, `MISSING=0`, `PARTIAL=0`, `NOT_VERIFIED=0`; Scenarios `26/26`; Critical/Warning/Suggestion `0/0/0`.
 
 ## Requirement Mapping
 

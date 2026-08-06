@@ -58,7 +58,7 @@ async function mockSession(
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/stores') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { items: [{ id: 'store-shot', marketplace_code: 'JP', display_name: '日本演示店', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }], page: { limit: 100, next_cursor: null } }, meta: { request_id: 'screenshot-local' } }) });
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { items: [{ id: 'store-shot', marketplace_code: 'JP', canonical_marketplace_code: 'AMAZON_JP', transaction_currency_code: 'JPY', transaction_currency_exponent: 0, marketplace_status: 'ACTIVE', adapter_status: 'AVAILABLE', display_name: '日本演示店', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }], page: { limit: 100, next_cursor: null } }, meta: { request_id: 'screenshot-local' } }) });
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/formal-orders') {
