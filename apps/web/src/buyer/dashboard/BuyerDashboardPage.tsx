@@ -167,8 +167,9 @@ export function BuyerDashboardPage({ full = false }: { full?: boolean }): React.
     <PageHeader eyebrow="买家工作区" title={full ? '任务' : '首页'}
       description={full ? '按业务优先级查看需要处理的事项。' : '查看接下来最值得处理的事项。'} />
     {loading ? <BuyerLoading label="正在读取下一步" /> : null}
+    {failures.length > 0 ? <StatusBadge tone="warning">部分内容暂不可用</StatusBadge> : null}
     {failures.map((source) => <Card className="buyer-partial-error" as="div" key={source.name}>
-      <StatusBadge tone="warning">{source.name}暂不可用</StatusBadge>
+      <strong>{source.name}暂不可用</strong>
       <p>{source.description}其他可用事项仍会正常显示。</p>
       <RequestIdDisplay requestId={isFrontendApiError(source.query.error) ? source.query.error.requestId : null} />
       <Button className="secondary" onClick={() => { void source.query.refetch(); }}>仅重试此来源</Button>

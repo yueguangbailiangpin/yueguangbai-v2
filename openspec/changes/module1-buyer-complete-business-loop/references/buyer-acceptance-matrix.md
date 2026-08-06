@@ -40,3 +40,19 @@
 ## Historical compatibility acceptance
 
 New order-evidence records with target link/version/action facts must pass the dedicated preview journey. A historical record that cannot be authoritatively backfilled must pass a metadata-only journey without a read action or guessed version. Historical NULL `amazon_order_date` displays as unknown and is never substituted; all new evidence versions and formal orders must reject a missing date.
+
+## Final controller remediation evidence
+
+| Controller finding | Implemented authority | Direct acceptance evidence |
+|---|---|---|
+| Query collisions and cursor replacement | Complete parameter keys, eight roots, cumulative page chains and filter reset | 8/20/100 key separation; three-page retention; later-page error/retry |
+| Ad-hoc protected file reads | Trusted provider entry into `FileReadController` | 429/503 same-token retry; invalid provider rejection; provider-change/unmount URL revocation |
+| Per-page random mutation keys | One eight-operation idempotency controller | eight endpoint header/body assertions; click coalescing; ambiguous same key/body; success/change/409 key rotation |
+| Route-prefix current state | Semantic route ownership | parameterized nested route assertions, exactly one `aria-current=page` |
+| Source-string dashboard identity | `taskId` plus `businessObjectKey` | reservation/formal-order cross-source dedupe and ranked winner |
+| Generic dashboard failure | Per-source safe recovery | source name, safe copy, request ID and source-only retry count |
+| Terminal instruction content leak | ACTIVE-only Content plus strict image schema | all five states, terminal zero Content, path/position/order/duplicate rejection without pageerror |
+| Unsigned price mismatch | Signed formatter, direction copy and coherent runtime flag | positive, negative, zero and inconsistent DTO tests plus mobile screenshot |
+| Manual-only governance | Archive-aware verifiers and root check integration | active/archive pass; coexist/duplicate/symlink/missing fail; security/migration gates run from root check |
+
+Final counts: Module1 232/232; Web/Wave14A 405/405; repository 1001/1001; Module1 Playwright 88/88; complete Playwright 130/130; screenshots 20/20; Formal Verify COMPLETE=58 and Scenarios=116/116 with zero findings.

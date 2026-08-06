@@ -195,10 +195,26 @@ Checked items in this planning round are evidence-backed planning artifacts only
 
 ## Implementation Verification Evidence
 
+### Final Controller Remediation
+
+- [x] R.1 Query keys include complete limit/cursor/filter/entity/version inputs, preserve distinct 8/20/100 caches, and expose eight stable invalidation roots.
+- [x] R.2 All eight Buyer list sources use cumulative cursor paging, retain successful pages, retry only a failed later page, and reset the cursor chain on filter changes.
+- [x] R.3 All protected Buyer file buttons reuse `FileReadController` through trusted providers, including 429/503 same-token recovery and provider-change/unmount Object URL release.
+- [x] R.4 All eight Buyer mutations reuse one idempotent operation controller: ambiguous results retain the exact key/body for explicit retry; changed body, success, and deterministic conflicts rotate authority.
+- [x] R.5 Every legal Buyer route has exactly one semantic five-item navigation owner, including formal orders/refunds/change-password under `我的`.
+- [x] R.6 Dashboard tasks deduplicate by `businessObjectKey`; each failed source retains its own safe request ID and source-only retry.
+- [x] R.7 Instruction Content is requested only for `ACTIVE`; terminal states request zero Content, and image DTOs enforce null main position plus positive, unique, strictly increasing keyword positions and safe paths.
+- [x] R.8 PRICE_MISMATCH preserves the signed JPY delta, states its high/low direction, and fails closed when the mismatch flag and delta disagree.
+- [x] R.9 Module1 security/formal verifiers resolve either the active ordinary directory or one strictly dated archive, reject coexistence/duplicates/symlinks/missing roots, and exercise all six resolver cases deterministically.
+- [x] R.10 Root `npm run check` includes Module1 security and Migration 0028 verification without changing the migration, database schema, backend, Contract, Domain, dependencies, or package-lock graph.
+- [x] R.11 Automated evidence: 232 Module1 tests, 405 Web/Wave14A tests, 1001 repository tests, 88 Module1 Playwright tests, and 130 complete Playwright tests.
+- [x] R.12 Regenerated and visually reviewed all 20 deterministic screenshots; code artifacts continue to exclude screenshots.
+- [ ] R.13 Ponytail, Integration, and Main Advancement remain separately controlled and were not performed.
+
 - [x] V.1 Migration 0028 verification: schema 28, 117 tables, 221 triggers, 10 views; nullable history, strict Gregorian values, mandatory new writes, and formal-source equality.
 - [x] V.2 Buyer API verification: frozen baseline 38 to target 39 with exactly the dedicated order-evidence file read-intent endpoint added.
-- [x] V.3 Frontend verification: modular protected routes, exactly five navigation items, authoritative query-bound forms, fixed file providers, safe runtime DTO parsing, precise cache invalidation, and mutation retry disabled.
-- [x] V.4 Automated verification: Module1 unit/API/MSW tests, Wave14A regression, workspace gates, Module1 and complete Playwright suites, and 20 deterministic screenshots.
+- [x] V.3 Frontend verification: complete query keys, eight cumulative pagers, semantic five-item navigation, business-object dashboard dedupe, formal file/mutation controllers, ACTIVE-only instruction Content, strict image DTOs, signed price mismatch, and precise root invalidation.
+- [x] V.4 Automated verification: 232 Module1 tests, 405 Wave14A Web tests, 1001 repository tests, 88 Module1 Playwright tests, 130 complete Playwright tests, workspace gates, and 20 deterministic screenshots.
 - [x] V.5 Formal OpenSpec Verify: `COMPLETE=58`, `INCONSISTENT=0`, `MISSING=0`, `PARTIAL=0`, `NOT_VERIFIED=0`, `CRITICAL=0`, `WARNING=0`, `SUGGESTION=0`; `Scenarios=116/116`.
 
 ### Formal Requirement and Scenario Mapping
