@@ -14,6 +14,10 @@ type MockOptions = {
   registrationStatus?: number;
   reservationConflict?: boolean;
   invalidInstructionPath?: boolean;
+  failureOnce?: string;
+  networkFailureOnce?: string;
+  cursorPages?: boolean;
+  fileContentFailureOnce?: 429 | 503;
 };
 
 function success(data: unknown, requestId = 'module1-browser') {
@@ -128,14 +132,21 @@ const refundDetail = (status: MockOptions['refundStatus'] = 'PARTIALLY_PAID') =>
 
 async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<void> {
   let sessionReads = 0;
+  const failedOnce = new Set<string>();
   let activeUpload: { purpose: 'ORDER_EVIDENCE' | 'REVIEW_EVIDENCE'; visibility: 'BUYER_VISIBLE' | 'SELLER_VISIBLE'; count: number } | null = null;
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
+    if (options.networkFailureOnce === path && !failedOnce.has(`network:${path}`)) {
+      failedOnce.add(`network:${path}`); await route.abort('failed'); return;
+    }
+    if (options.failureOnce === path && !failedOnce.has(`http:${path}`)) {
+      failedOnce.add(`http:${path}`); await json(route, failure('DEPENDENCY_UNAVAILABLE', 'module1-retry-source'), 503); return;
+    }
     const forced = options.failures?.[path];
     if (forced) { await json(route, failure(forced === 403 ? 'FORBIDDEN' : forced === 404 ? 'NOT_FOUND' : forced === 409 ? 'VERSION_CONFLICT' : forced === 429 ? 'RATE_LIMITED' : 'DEPENDENCY_UNAVAILABLE'), forced); return; }
-    if (path === '/api/customer-auth/session') { sessionReads += 1; await json(route, success({ session: session(options.sessionType) })); return; }
+    if (path === '/api/customer-auth/session') { sessionReads += 1; await new Promise((resolve) => setTimeout(resolve, 10)); await json(route, success({ session: session(options.sessionType) })); return; }
     if (path === '/api/customer-auth/logout') { await json(route, success({ logged_out: true, all_devices_logged_out: false })); return; }
     if (path === '/api/buyer-auth/register') {
       const status = options.registrationStatus ?? 201;
@@ -143,7 +154,12 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
       await json(route, success({ identity: { buyer_number: 'B-1001', wechat_id: 'buyer_wx' }, session_established: true, must_change_password: false, next_path: '/buyer' }), 201); return;
     }
     if (path === '/api/buyer-portal/me') { await json(route, success({ buyer: { customer_number: 'B-1001', display_name: '月白买家', marketplace_code: 'JP', identity_review_status: options.reviewRequired ? 'REVIEW_REQUIRED' : 'CLEAR' }, session: { expires_at: now + 100_000 } })); return; }
-    if (path === '/api/buyer-portal/demands') { await json(route, success({ items: [demand], next_cursor: 'more-demands' })); return; }
+    if (path === '/api/buyer-portal/demands') {
+      const cursor = url.searchParams.get('cursor');
+      if (options.cursorPages && cursor === 'demand-cursor-2') { await json(route, success({ items: [{ ...demand, demand_id: 'demand-2', product_name: '月白补充装' }], next_cursor: 'demand-cursor-3' })); return; }
+      if (options.cursorPages && cursor === 'demand-cursor-3') { await json(route, success({ items: [{ ...demand, demand_id: 'demand-3', product_name: '月白旅行装' }], next_cursor: null })); return; }
+      await json(route, success({ items: [demand], next_cursor: options.cursorPages ? 'demand-cursor-2' : 'more-demands' })); return;
+    }
     if (path === '/api/buyer-portal/demands/demand-1') { await json(route, success({ demand })); return; }
     if (path === '/api/buyer-portal/demands/demand-1/reservations') {
       if (options.reservationConflict) { await json(route, failure('VERSION_CONFLICT'), 409); return; }
@@ -157,7 +173,7 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
     if (path.includes('/order-instruction/images/') && path.endsWith('/read-intent')) { await json(route, success({ read_intent: { read_intent_id: 'image-intent', access_token: 'x'.repeat(40), access_token_available: true, expires_at: now + 1000 } }), 201); return; }
     if (path === '/api/buyer-portal/order-evidence/eligible-reservations') { await json(route, success({ items: [{ ...evidence.reservation, current_order_evidence_status: null, current_order_evidence_version: null, allowed_actions: ['SUBMIT'] }], next_cursor: null })); return; }
     if (path === '/api/buyer-portal/order-evidence' && request.method() === 'GET') { await json(route, success({ items: [evidence], next_cursor: 'more-evidence' })); return; }
-    if (path === '/api/buyer-portal/order-evidence' && request.method() === 'POST') { await json(route, success({ order_evidence: { ...evidence, status: 'PENDING_VERIFICATION', allowed_actions: ['WITHDRAW'], price_mismatch: false }, replayed: false }), 201); return; }
+    if (path === '/api/buyer-portal/order-evidence' && request.method() === 'POST') { await json(route, success({ order_evidence: { ...evidence, status: 'PENDING_VERIFICATION', allowed_actions: ['WITHDRAW'], price_mismatch: false, price_difference_jpy: 0 }, replayed: false }), 201); return; }
     if (path === '/api/buyer-portal/order-evidence/evidence-1') { await json(route, success({ order_evidence: evidence })); return; }
     if (path.endsWith('/order-evidence/evidence-1/resubmit')) { await json(route, success({ order_evidence: { ...evidence, status: 'PENDING_VERIFICATION', version: 3, allowed_actions: ['WITHDRAW'] }, replayed: false })); return; }
     if (path.endsWith('/order-evidence/evidence-1/withdraw')) { await json(route, success({ order_evidence: { ...evidence, status: 'WITHDRAWN', version: 3, allowed_actions: [] }, replayed: false })); return; }
@@ -189,7 +205,14 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
       await json(route, success({ upload_intent_id: 'upload-intent', status: 'VERIFIED', version: 2,
         files: Array.from({ length: activeUpload.count }, (_, index) => ({ file_object_id: `upload-file-${index + 1}`, purpose: activeUpload!.purpose, visibility: activeUpload!.visibility, detected_mime: 'image/png', byte_size: 3, sha256: sha, version: 3 })), replayed: false })); return;
     }
-    if (path.includes('/file-read-intents/') && path.endsWith('/content')) { await route.fulfill({ status: 200, headers: { 'Content-Type': 'image/png', 'Content-Length': '3', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }, body: 'png' }); return; }
+    if (path.includes('/file-read-intents/') && path.endsWith('/content')) {
+      if (options.fileContentFailureOnce && !failedOnce.has('file-content')) {
+        failedOnce.add('file-content');
+        await json(route, failure(options.fileContentFailureOnce === 429 ? 'RATE_LIMITED' : 'DEPENDENCY_UNAVAILABLE'), options.fileContentFailureOnce,
+          options.fileContentFailureOnce === 429 ? { 'Retry-After': '1' } : {}); return;
+      }
+      await route.fulfill({ status: 200, headers: { 'Content-Type': 'image/png', 'Content-Length': '3', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }, body: 'png' }); return;
+    }
     await json(route, failure('NOT_FOUND'), 404);
   });
   await page.addInitScript((reads) => { (window as any).__module1SessionReads = reads; }, sessionReads);
@@ -243,23 +266,52 @@ test('Root has no registration link', async ({ page }) => { await page.goto('/')
 test('Buyer login has no registration link', async ({ page }) => { await page.goto('/buyer/login'); await expect(page.getByRole('link', { name: /注册/u })).toHaveCount(0); });
 
 test('Dashboard ranks mixed tasks and remains useful', async ({ page }) => {
-  await gotoBuyer(page, '/buyer'); const cards = page.locator('.buyer-task-card'); await expect(cards).toHaveCount(5);
+  await gotoBuyer(page, '/buyer'); const cards = page.locator('.buyer-task-card'); await expect(cards).toHaveCount(4);
   await expect(cards.first()).toContainText('修改订单资料'); await expect(cards.nth(1)).toContainText('修改评论资料');
 });
 
 test('Dashboard partial failure does not hide other sources', async ({ page }) => {
   await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/order-evidence': 503 } });
-  await expect(page.getByText('部分内容暂不可用')).toBeVisible(); await expect(page.getByText('修改评论资料')).toBeVisible();
+  await expect(page.getByText('订单资料暂不可用')).toBeVisible(); await expect(page.getByText('修改评论资料')).toBeVisible();
 });
 
-test('Nested Buyer routes retain exactly five navigation items and highlight current', async ({ page }) => {
-  await gotoBuyer(page, '/buyer/orders/formal-1'); const nav = page.getByRole('navigation', { name: '买家导航' });
-  await expect(nav.getByRole('link')).toHaveCount(5); await expect(nav.getByRole('link', { name: '我的' })).not.toHaveAttribute('aria-current', 'page');
+test('Dashboard retries only the failed source and restores its task', async ({ page }) => {
+  let evidenceReads = 0;
+  page.on('request', (request) => { if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/buyer-portal/order-evidence') evidenceReads += 1; });
+  await gotoBuyer(page, '/buyer', { failureOnce: '/api/buyer-portal/order-evidence' });
+  await expect(page.getByText('订单资料暂不可用')).toBeVisible();
+  await page.getByRole('button', { name: '仅重试此来源' }).click();
+  await expect(page.getByText('修改订单资料')).toBeVisible(); expect(evidenceReads).toBe(2);
 });
+
+for (const [path, owner] of [
+  ['/buyer/demands/demand-1', '任务'], ['/buyer/reservations/reservation-1/instruction', '任务'],
+  ['/buyer/order-materials/evidence-1', '订单资料'], ['/buyer/orders/formal-1', '订单资料'],
+  ['/buyer/reviews/review-1', '评论'], ['/buyer/refunds/refund-1', '我的'], ['/buyer/change-password', '我的'],
+] as const) {
+  test(`Nested Buyer route ${path} has one ${owner} navigation owner`, async ({ page }) => {
+    await gotoBuyer(page, path); const nav = page.getByRole('navigation', { name: '买家导航' });
+    await expect(nav.getByRole('link')).toHaveCount(5); await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(nav.getByRole('link', { name: owner })).toHaveAttribute('aria-current', 'page');
+  });
+}
 
 test('Demand list shows real rules and deadlines', async ({ page }) => { await gotoBuyer(page, '/buyer/demands'); await expect(page.getByText('月白护肤套装')).toBeVisible(); await expect(page.getByText('12.50%')).toBeVisible(); });
+test('Demand cursor loads and retains three pages', async ({ page }) => {
+  await gotoBuyer(page, '/buyer/demands', { cursorPages: true });
+  await page.getByRole('button', { name: '加载更多' }).click(); await page.getByRole('button', { name: '加载更多' }).click();
+  await expect(page.getByText('月白护肤套装')).toBeVisible(); await expect(page.getByText('月白补充装')).toBeVisible(); await expect(page.getByText('月白旅行装')).toBeVisible();
+});
 test('Demand confirmation defaults unchecked', async ({ page }) => { await gotoBuyer(page, '/buyer/demands/demand-1'); await expect(page.getByRole('checkbox')).not.toBeChecked(); await expect(page.getByRole('button', { name: '确认并预约' })).toBeDisabled(); });
 test('Demand version conflict resets acceptance', async ({ page }) => { await gotoBuyer(page, '/buyer/demands/demand-1', { reservationConflict: true }); await page.getByRole('checkbox').check(); await page.getByRole('button', { name: '确认并预约' }).click(); await expect(page.getByRole('checkbox')).not.toBeChecked(); });
+test('Ambiguous reservation retry preserves the exact idempotency key and body', async ({ page }) => {
+  const operations: { key: string | undefined; body: string | null }[] = [];
+  page.on('request', (request) => { if (new URL(request.url()).pathname.endsWith('/demands/demand-1/reservations')) operations.push({ key: request.headers()['idempotency-key'], body: request.postData() }); });
+  await gotoBuyer(page, '/buyer/demands/demand-1', { networkFailureOnce: '/api/buyer-portal/demands/demand-1/reservations' });
+  await page.getByRole('checkbox').check(); await page.getByRole('button', { name: '确认并预约' }).click();
+  await page.getByRole('button', { name: '重新尝试同一操作' }).click(); await expect(page).toHaveURL(/\/buyer\/reservations\/reservation-1$/u);
+  expect(operations).toHaveLength(2); expect(operations[0]).toEqual(operations[1]);
+});
 test('Reservation creation navigates to authoritative detail', async ({ page }) => { await gotoBuyer(page, '/buyer/demands/demand-1'); await page.getByRole('checkbox').check(); await page.getByRole('button', { name: '确认并预约' }).click(); await expect(page).toHaveURL(/\/buyer\/reservations\/reservation-1$/u); });
 test('Reservation list shows status', async ({ page }) => { await gotoBuyer(page, '/buyer/reservations'); await expect(page.getByText('已确认')).toBeVisible(); });
 test('Reservation cancellation is offered only by can_cancel', async ({ page }) => { await gotoBuyer(page, '/buyer/reservations/reservation-1'); await expect(page.getByRole('button', { name: '取消预约' })).toBeVisible(); });
@@ -274,8 +326,16 @@ for (const status of ['UNPUBLISHED', 'EXPIRED', 'CANCELLED'] as const) {
 }
 
 test('Instruction ACTIVE reads content after state and shows image controls', async ({ page }) => { await gotoBuyer(page, '/buyer/reservations/reservation-1/instruction'); await expect(page.getByText('商品图片')).toBeVisible(); await expect(page.getByRole('button', { name: '查看主图' })).toBeVisible(); });
-test('Instruction COMPLETED displays content-updated notice without submit', async ({ page }) => { await gotoBuyer(page, '/buyer/reservations/reservation-1/instruction', { instructionStatus: 'COMPLETED' }); await expect(page.getByText('指引内容已更新')).toBeVisible(); await expect(page.getByRole('link', { name: '提交订单资料' })).toHaveCount(0); });
-test('Instruction arbitrary image path fails closed', async ({ page }) => { await gotoBuyer(page, '/buyer/reservations/reservation-1/instruction', { invalidInstructionPath: true }); await expect(page.getByRole('heading', { name: '页面暂时无法打开' })).toBeVisible(); });
+test('Instruction COMPLETED is terminal and makes zero Content requests', async ({ page }) => {
+  let contentRequests = 0; page.on('request', (request) => { if (new URL(request.url()).pathname.endsWith('/order-instruction')) contentRequests += 1; });
+  await gotoBuyer(page, '/buyer/reservations/reservation-1/instruction', { instructionStatus: 'COMPLETED' });
+  await expect(page.getByRole('heading', { name: '已完成' })).toBeVisible(); await expect(page.getByText('商品图片')).toHaveCount(0); expect(contentRequests).toBe(0);
+});
+test('Instruction arbitrary image path fails closed without pageerror', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
+  await gotoBuyer(page, '/buyer/reservations/reservation-1/instruction', { invalidInstructionPath: true });
+  await expect(page.getByRole('heading', { name: '暂时无法读取内容' })).toBeVisible(); expect(errors).toEqual([]);
+});
 
 test('Order materials show actionable and submitted sections', async ({ page }) => { await gotoBuyer(page, '/buyer/order-materials'); await expect(page.getByText('可提交')).toBeVisible(); await expect(page.getByText('已提交资料')).toBeVisible(); });
 test('Evidence detail survives direct deep link refresh', async ({ page }) => { await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await page.reload(); await expect(page.getByText('123-1234567-1234567')).toBeVisible(); });
@@ -288,11 +348,22 @@ test('Evidence upload and submit completes the business command', async ({ page 
   await page.getByLabel('最终支付金额 JPY').fill('4100'); await page.getByLabel('订单截图').setInputFiles({ name: 'evidence.png', mimeType: 'image/png', buffer: Buffer.from('png') });
   await page.getByRole('button', { name: '提交资料' }).click(); await expect(page).toHaveURL(/\/buyer\/order-materials\/evidence-1$/u);
 });
-test('Evidence detail shows fixed PRICE_MISMATCH copy', async ({ page }) => { await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await expect(page.getByText('实际支付金额与参考金额不一致')).toBeVisible(); });
+test('Evidence detail shows fixed PRICE_MISMATCH copy and signed direction', async ({ page }) => { await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await expect(page.getByText('实际支付金额与参考金额不一致')).toBeVisible(); await expect(page.getByText('+¥120 JPY（实际支付高于参考金额）')).toBeVisible(); });
 test('Evidence historical metadata falls back without a read action', async ({ page }) => { const metadata = { ...evidenceFile, file_entity_link_id: null, version: null, allowed_actions: [] }; await installBuyerApi(page); await page.route('**/api/buyer-portal/order-evidence/evidence-1', (route) => json(route, success({ order_evidence: { ...evidence, files: [metadata] } }))); await page.goto('/buyer/order-materials/evidence-1'); await expect(page.getByText('历史文件仅保留元数据')).toBeVisible(); });
 test('Evidence withdrawal requires confirmation', async ({ page }) => { await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await page.getByRole('button', { name: '撤回资料' }).click(); await expect(page.getByRole('dialog', { name: '撤回订单资料' })).toBeVisible(); });
 test('Evidence changes-requested resubmit requires date and one new screenshot', async ({ page }) => { await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await expect(page.getByRole('heading', { name: '按说明重新提交' })).toBeVisible(); await expect(page.getByLabel('新的订单截图')).not.toHaveAttribute('multiple'); });
 test('Evidence protected file read consumes the shared content endpoint', async ({ page }) => { await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await page.getByRole('button', { name: '查看文件' }).click(); await expect(page.getByRole('link', { name: '打开文件' })).toBeVisible(); });
+
+for (const status of [429, 503] as const) {
+  test(`Provider ${status} recovery retries the same content token`, async ({ page }) => {
+    const tokens: string[] = []; page.on('request', (request) => { if (new URL(request.url()).pathname.includes('/file-read-intents/')) tokens.push(request.headers()['x-file-read-token'] ?? ''); });
+    await gotoBuyer(page, '/buyer/order-materials/evidence-1', { fileContentFailureOnce: status });
+    await page.getByRole('button', { name: '查看文件' }).click();
+    await expect(page.getByRole('button', { name: '重试读取' })).toBeVisible({ timeout: status === 429 ? 2_500 : 1_000 });
+    await page.getByRole('button', { name: '重试读取' }).click(); await expect(page.getByRole('link', { name: '打开文件' })).toBeVisible();
+    expect(tokens).toHaveLength(2); expect(tokens[0]).toBe(tokens[1]);
+  });
+}
 
 test('Formal order list exposes all six business filters plus paging', async ({ page }) => { await gotoBuyer(page, '/buyer/orders'); await expect(page.getByRole('search', { name: '正式订单筛选' })).toBeVisible(); await expect(page.getByLabel('Amazon 订单号')).toBeVisible(); });
 test('Formal order detail displays historical null date as unknown', async ({ page }) => { await gotoBuyer(page, '/buyer/orders/formal-1'); await expect(page.getByText('未知')).toBeVisible(); await expect(page.getByText('汇率快照 e8')).toBeVisible(); });
@@ -366,7 +437,7 @@ for (const [name, path] of [
   });
 }
 
-test('capture Module1 partial failure mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/order-evidence': 503 } }); await expect(page.getByText('部分内容暂不可用')).toBeVisible(); await captureAcceptance(page, 'buyer-dashboard-partial-error-mobile-390x844.png'); });
+test('capture Module1 partial failure mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/order-evidence': 503 } }); await expect(page.getByText('订单资料暂不可用')).toBeVisible(); await captureAcceptance(page, 'buyer-dashboard-partial-error-mobile-390x844.png'); });
 test('capture Module1 320 reflow acceptance', async ({ page }) => { await page.setViewportSize({ width: 320, height: 800 }); await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await noOverflow(page); await captureAcceptance(page, 'buyer-320-reflow-320x800.png'); });
 test('capture Module1 200 percent acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer/me'); await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; }); await noOverflow(page); await captureAcceptance(page, 'buyer-200-percent-390x844.png'); });
 test('capture Module1 permission error mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer/me', { failures: { '/api/buyer-portal/me': 403 } }); await expect(page.getByText(/当前账号没有查看/u)).toBeVisible(); await captureAcceptance(page, 'buyer-permission-error-mobile-390x844.png'); });

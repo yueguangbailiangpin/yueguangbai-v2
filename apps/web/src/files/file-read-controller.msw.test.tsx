@@ -20,6 +20,7 @@ import {
   type ObjectUrlAdapter,
 } from './file-read-controller';
 import { safeFileReferenceSchema } from './file-read-contracts';
+import { GenericBuyerFileReadIntentAdapter } from './file-read-providers';
 import { FileReadTestHarness } from './file-read-test-harness';
 import { MAXIMUM_FILE_READ_BYTES } from './file-read-transport';
 
@@ -246,6 +247,48 @@ describe('formal MSW identity-bound file read chain', () => {
     );
     rendered.unmount();
     expect(urls.revoked).toEqual(['blob:wave14a-1']);
+  });
+});
+
+describe('Module 1 provider-backed formal Controller path', () => {
+  it.each([429, 503] as const)('reuses the provider token after recoverable %i', async (status) => {
+    const record = evidence();
+    const time = manualClock();
+    let calls = 0;
+    installReadChain('buyer', record);
+    server.use(http.get(apiUrl('/api/buyer-portal/file-read-intents/:id/content'), ({ request }) => {
+      calls += 1;
+      record.contentTokens.push(request.headers.get('X-File-Read-Token') ?? '');
+      if (calls > 1) return binaryResponse();
+      return HttpResponse.json(
+        failureEnvelopeFixture(status === 429 ? 'RATE_LIMITED' : 'DEPENDENCY_UNAVAILABLE', 'retry', null, `provider-${status}`),
+        { status, ...(status === 429 ? { headers: { 'Retry-After': '1' } } : {}) },
+      );
+    }));
+    const target = controller(createMswQueryClient(), objectUrls().adapter, time.clock);
+    const provider = new GenericBuyerFileReadIntentAdapter(reference);
+    await target.startWithProvider(provider);
+    expect(target.getSnapshot().state).toBe('DEPENDENCY_UNAVAILABLE');
+    if (status === 429) time.advance(1_000);
+    await target.retry();
+    expect(target.getSnapshot().state).toBe('READY');
+    expect(record.intentKeys).toEqual(['read-operation-key-1']);
+    expect(record.contentTokens[0]).toBe(record.contentTokens[1]);
+  });
+
+  it('rejects a structurally similar object or string before any network request', async () => {
+    let requests = 0;
+    server.events.on('request:start', () => { requests += 1; });
+    try {
+      for (const candidate of ['/api/private', { identity: 'buyer', create: async () => ({}) }]) {
+        const target = controller();
+        await target.startWithProvider(candidate);
+        expect(target.getSnapshot()).toMatchObject({ state: 'ERROR', safeError: { code: 'VALIDATION_ERROR' } });
+      }
+      expect(requests).toBe(0);
+    } finally {
+      server.events.removeAllListeners('request:start');
+    }
   });
 });
 
