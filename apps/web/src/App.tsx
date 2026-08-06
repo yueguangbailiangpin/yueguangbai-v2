@@ -1,11 +1,6 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   CircleUserRound,
-  ClipboardList,
-  FolderOpen,
-  Home,
-  MessageSquareText,
-  UserRound,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import {
@@ -24,6 +19,25 @@ import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary
 import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from './auth/staff/staff-auth-controller';
 import { safeReturnPath } from './routes/return-path';
+import { BuyerDashboardPage } from './buyer/dashboard/BuyerDashboardPage';
+import { BuyerDemandDetailPage } from './buyer/demands/BuyerDemandDetailPage';
+import { BuyerDemandsPage } from './buyer/demands/BuyerDemandsPage';
+import { BuyerFormalOrderDetailPage } from './buyer/formal-orders/BuyerFormalOrderDetailPage';
+import { BuyerFormalOrdersPage } from './buyer/formal-orders/BuyerFormalOrdersPage';
+import { BuyerInstructionPage } from './buyer/instructions/BuyerInstructionPage';
+import { BuyerMePage } from './buyer/me/BuyerMePage';
+import { BuyerOrderEvidenceDetailPage } from './buyer/order-evidence/BuyerOrderEvidenceDetailPage';
+import { BuyerOrderEvidenceFormPage } from './buyer/order-evidence/BuyerOrderEvidenceFormPage';
+import { BuyerOrderMaterialsPage } from './buyer/order-evidence/BuyerOrderMaterialsPage';
+import { BuyerRefundDetailPage } from './buyer/refunds/BuyerRefundDetailPage';
+import { BuyerRefundsPage } from './buyer/refunds/BuyerRefundsPage';
+import { BuyerRegistrationPage } from './buyer/registration/BuyerRegistrationPage';
+import { BuyerReservationDetailPage } from './buyer/reservations/BuyerReservationDetailPage';
+import { BuyerReservationsPage } from './buyer/reservations/BuyerReservationsPage';
+import { BuyerReviewDetailPage } from './buyer/reviews/BuyerReviewDetailPage';
+import { BuyerReviewFormPage } from './buyer/reviews/BuyerReviewFormPage';
+import { BuyerReviewsPage } from './buyer/reviews/BuyerReviewsPage';
+import { BuyerLayout } from './buyer/routes/BuyerLayout';
 import {
   Alert,
   AppShell,
@@ -153,42 +167,6 @@ function StaffAccountActions(): React.JSX.Element {
         }}>确认退出所有设备</Button>
       </div></Dialog>
   </section>;
-}
-
-const buyerItems = [
-  ['/', '首页', Home],
-  ['/tasks', '任务', ClipboardList],
-  ['/order-materials', '订单资料', FolderOpen],
-  ['/reviews', '评论', MessageSquareText],
-  ['/me', '我的', UserRound],
-] as const;
-
-function BuyerShell(): React.JSX.Element {
-  const location = useLocation();
-  const current = buyerItems.find(
-    ([path]) => location.pathname === `/buyer${path}`,
-  ) ?? buyerItems[0];
-  return <IdentityShell identity="buyer" className="buyer-shell">
-    <header className="buyer-brand-bar"><strong>月光白</strong>
-      <span>买家服务</span></header>
-    <main className="buyer-main">
-      <PageHeader
-        eyebrow="买家工作区"
-        title={current[1]}
-        description="清晰查看当前可用的服务入口。"
-      />
-      <section className="buyer-content" aria-label={`${current[1]}内容`}>
-        <EmptyState
-          title={`${current[1]}尚未开放`}
-          description="该功能将在买家业务模块开放"
-        />
-      </section>
-    </main>
-    <BottomNavigation label="买家导航">{buyerItems.map(([path, label, Icon]) =>
-      <NavLink key={path} to={`/buyer${path}`} end={path === '/'}>
-        <Icon aria-hidden="true" /><span>{label}</span>
-      </NavLink>)}</BottomNavigation>
-  </IdentityShell>;
 }
 
 const sellerNavigation = [
@@ -329,19 +307,33 @@ function AppRoutes(): React.JSX.Element {
   return <Routes>
     <Route path="/" element={<RootEntry />} />
     <Route path="/buyer/login" element={<CustomerLoginPage target="buyer" />} />
+    <Route path="/buyer/register" element={<BuyerRegistrationPage />} />
     <Route path="/seller/login" element={<CustomerLoginPage target="seller" />} />
     <Route path="/buyer/change-password" element={<CustomerPasswordRouteBoundary target="buyer"><CustomerChangePasswordPage target="buyer" /></CustomerPasswordRouteBoundary>} />
     <Route path="/seller/change-password" element={<CustomerPasswordRouteBoundary target="seller"><CustomerChangePasswordPage target="seller" /></CustomerPasswordRouteBoundary>} />
     <Route path="/staff/login" element={<StaffLogin />} />
     <Route path="/staff/auth/callback" element={<StaffSessionBoundary><StaffShell /></StaffSessionBoundary>} />
-    <Route path="/buyer/*" element={<CustomerSessionBoundary target="buyer"><Routes>
-      <Route index element={<BuyerShell />} />
-      <Route path="tasks" element={<BuyerShell />} />
-      <Route path="order-materials" element={<BuyerShell />} />
-      <Route path="reviews" element={<BuyerShell />} />
-      <Route path="me" element={<BuyerShell />} />
+    <Route path="/buyer/*" element={<CustomerSessionBoundary target="buyer"><BuyerLayout /></CustomerSessionBoundary>}>
+      <Route index element={<BuyerDashboardPage />} />
+      <Route path="tasks" element={<BuyerDashboardPage full />} />
+      <Route path="demands" element={<BuyerDemandsPage />} />
+      <Route path="demands/:demandId" element={<BuyerDemandDetailPage />} />
+      <Route path="reservations" element={<BuyerReservationsPage />} />
+      <Route path="reservations/:reservationId" element={<BuyerReservationDetailPage />} />
+      <Route path="reservations/:reservationId/instruction" element={<BuyerInstructionPage />} />
+      <Route path="order-materials" element={<BuyerOrderMaterialsPage />} />
+      <Route path="order-materials/new" element={<BuyerOrderEvidenceFormPage />} />
+      <Route path="order-materials/:submissionId" element={<BuyerOrderEvidenceDetailPage />} />
+      <Route path="orders" element={<BuyerFormalOrdersPage />} />
+      <Route path="orders/:formalOrderId" element={<BuyerFormalOrderDetailPage />} />
+      <Route path="reviews" element={<BuyerReviewsPage />} />
+      <Route path="reviews/new" element={<BuyerReviewFormPage />} />
+      <Route path="reviews/:reviewCaseId" element={<BuyerReviewDetailPage />} />
+      <Route path="refunds" element={<BuyerRefundsPage />} />
+      <Route path="refunds/:refundId" element={<BuyerRefundDetailPage />} />
+      <Route path="me" element={<BuyerMePage />} />
       <Route path="*" element={<DomainNotFound />} />
-    </Routes></CustomerSessionBoundary>} />
+    </Route>
     <Route path="/seller/*" element={<CustomerSessionBoundary target="seller"><Routes>
       <Route index element={<SellerShell />} />
       <Route path="products" element={<SellerShell />} />

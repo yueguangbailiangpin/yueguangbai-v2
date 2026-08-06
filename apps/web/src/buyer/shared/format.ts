@@ -1,0 +1,39 @@
+const shanghai = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+export function formatShanghai(epochMilliseconds: number | null): string {
+  if (epochMilliseconds === null) return '未知';
+  return `${shanghai.format(new Date(epochMilliseconds))}（中国标准时间）`;
+}
+
+export function formatDateOnly(value: string | null): string {
+  return value ?? '未知';
+}
+
+export function formatJpy(value: string | number): string {
+  const text = typeof value === 'number' ? String(value) : value;
+  return `¥${groupInteger(text)} JPY`;
+}
+
+export function formatCnyFen(value: string): string {
+  const whole = value.length > 2 ? value.slice(0, -2) : '0';
+  const fraction = value.padStart(3, '0').slice(-2);
+  return `¥${groupInteger(whole)}.${fraction} CNY`;
+}
+
+export function formatBps(value: number): string {
+  const whole = Math.floor(value / 100);
+  const fraction = String(value % 100).padStart(2, '0');
+  return `${whole}.${fraction}%`;
+}
+
+function groupInteger(value: string): string {
+  return value.replace(/\B(?=(\d{3})+(?!\d))/gu, ',');
+}

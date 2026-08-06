@@ -1,0 +1,349 @@
+import { z } from 'zod';
+
+export const identifierSchema = z.string().min(1).max(120)
+  .regex(/^[^\u0000-\u001f\u007f]+$/u);
+export const positiveIntegerSchema = z.number().int().positive()
+  .max(Number.MAX_SAFE_INTEGER);
+export const nonnegativeIntegerSchema = z.number().int().nonnegative()
+  .max(Number.MAX_SAFE_INTEGER);
+export const integerAmountSchema = z.string().regex(/^(?:0|[1-9][0-9]*)$/u);
+export const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.valueOf())
+      && date.toISOString().slice(0, 10) === value;
+  });
+
+const marketplace = z.literal('JP');
+const reviewType = z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']);
+const epoch = nonnegativeIntegerSchema;
+const nullableEpoch = epoch.nullable();
+const page = <T extends z.ZodType>(item: T) => z.object({
+  items: z.array(item),
+  next_cursor: z.string().min(1).nullable(),
+}).strict();
+
+export const buyerMeSchema = z.object({
+  buyer: z.object({
+    customer_number: z.string().nullable(),
+    display_name: z.string(),
+    marketplace_code: marketplace,
+    identity_review_status: z.enum(['CLEAR', 'REVIEW_REQUIRED']),
+  }).strict(),
+  session: z.object({ expires_at: epoch }).strict(),
+}).strict();
+
+export const demandSchema = z.object({
+  demand_id: identifierSchema,
+  demand_version: positiveIntegerSchema,
+  marketplace_code: marketplace,
+  product_name: z.string(),
+  reference_order_amount_jpy: integerAmountSchema,
+  buyer_self_pay_bps: nonnegativeIntegerSchema.max(10_000),
+  estimated_buyer_self_pay_jpy: integerAmountSchema,
+  estimated_refundable_principal_jpy: integerAmountSchema,
+  buyer_visible_notes: z.string().nullable(),
+  store_display_name: z.string(),
+  task_type: reviewType,
+  target_quantity: positiveIntegerSchema,
+  remaining_quantity: nonnegativeIntegerSchema,
+  open_at: epoch,
+  reservation_deadline: epoch,
+  order_deadline: epoch,
+}).strict();
+export const demandsPageSchema = page(demandSchema);
+export const demandDetailSchema = z.object({ demand: demandSchema }).strict();
+
+const reservationDemandSchema = demandSchema.omit({
+  target_quantity: true,
+  remaining_quantity: true,
+  open_at: true,
+});
+export const reservationSchema = z.object({
+  reservation_id: identifierSchema,
+  status: z.enum([
+    'PENDING_REVIEW', 'APPROVED', 'REJECTED', 'CANCELLED', 'EXPIRED',
+  ]),
+  version: positiveIntegerSchema,
+  submitted_at: epoch,
+  updated_at: epoch,
+  hold_expires_at: epoch,
+  order_deadline_snapshot: epoch,
+  buyer_self_pay_bps_snapshot: nonnegativeIntegerSchema.max(10_000),
+  reference_order_amount_jpy_snapshot: integerAmountSchema,
+  estimated_self_pay_jpy_snapshot: integerAmountSchema,
+  estimated_refundable_principal_jpy_snapshot: integerAmountSchema,
+  buyer_self_pay_accepted_at: epoch,
+  buyer_self_pay_accepted_demand_version: positiveIntegerSchema,
+  decided_at: nullableEpoch,
+  cancelled_at: nullableEpoch,
+  expired_at: nullableEpoch,
+  can_cancel: z.boolean(),
+  demand: reservationDemandSchema,
+}).strict();
+export const reservationsPageSchema = page(reservationSchema);
+export const reservationDetailSchema = z.object({ reservation: reservationSchema }).strict();
+export const reservationMutationSchema = z.object({
+  reservation: reservationSchema,
+  replayed: z.boolean(),
+}).strict();
+
+export const instructionStateSchema = z.object({
+  status: z.enum(['UNPUBLISHED', 'ACTIVE', 'EXPIRED', 'CANCELLED', 'COMPLETED']),
+  instruction_version: positiveIntegerSchema,
+  current_version_no: positiveIntegerSchema,
+  initial_deadline_at: nullableEpoch,
+  resubmission_deadline_at: nullableEpoch,
+  evidence_status: z.enum([
+    'NONE', 'PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED',
+    'WITHDRAWN', 'CONSUMED',
+  ]),
+  can_submit_evidence: z.boolean(),
+  can_read_images: z.boolean(),
+  content_updated: z.boolean(),
+}).strict();
+export const instructionStateResponseSchema = z.object({
+  order_instruction: instructionStateSchema,
+}).strict();
+export const instructionImageSchema = z.object({
+  image_id: identifierSchema,
+  position: positiveIntegerSchema.nullable(),
+  mime: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+  width: positiveIntegerSchema.nullable(),
+  height: positiveIntegerSchema.nullable(),
+  read_intent_path: z.string().min(1),
+}).strict();
+export const instructionSchema = z.object({
+  status: instructionStateSchema.shape.status,
+  product_name: z.string(),
+  store_display_name: z.string(),
+  color_spec_mode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']),
+  staff_public_note: z.string().nullable(),
+  buyer_visible_notes: z.string().nullable(),
+  initial_deadline_at: nullableEpoch,
+  resubmission_deadline_at: nullableEpoch,
+  content_updated: z.boolean(),
+  reference_order_amount_jpy: integerAmountSchema,
+  buyer_self_pay_bps: nonnegativeIntegerSchema.max(10_000),
+  estimated_buyer_self_pay_jpy: integerAmountSchema,
+  estimated_refundable_principal_jpy: integerAmountSchema,
+  main_image: instructionImageSchema,
+  keyword_images: z.array(instructionImageSchema),
+}).strict();
+export const instructionResponseSchema = z.object({
+  order_instruction: instructionSchema,
+}).strict();
+
+const evidenceAction = z.enum(['SUBMIT', 'RESUBMIT', 'WITHDRAW']);
+const evidenceReservationSchema = z.object({
+  reservation_id: identifierSchema,
+  demand_id: identifierSchema,
+  marketplace_code: marketplace,
+  product_name: z.string(),
+  store_display_name: z.string(),
+  review_type: reviewType,
+  order_deadline: epoch,
+}).strict();
+export const eligibleEvidenceReservationSchema = evidenceReservationSchema.extend({
+  current_order_evidence_status: z.enum([
+    'PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED', 'WITHDRAWN', 'CONSUMED',
+  ]).nullable(),
+  current_order_evidence_version: positiveIntegerSchema.nullable(),
+  allowed_actions: z.array(evidenceAction),
+}).strict();
+const evidenceFileBase = z.object({
+  file_object_id: identifierSchema,
+  client_file_name: z.string(),
+  mime: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
+  byte_size: nonnegativeIntegerSchema,
+  status: z.enum(['RESERVED', 'UPLOADING', 'UPLOADED', 'VERIFYING', 'VERIFIED', 'REJECTED', 'EXPIRED', 'DELETED']),
+  visibility: z.enum(['INTERNAL_ONLY', 'BUYER_VISIBLE']),
+  verified_at: nullableEpoch,
+});
+export const evidenceFileSchema = z.union([
+  evidenceFileBase.extend({
+    file_entity_link_id: identifierSchema,
+    version: positiveIntegerSchema,
+    allowed_actions: z.tuple([z.literal('CREATE_READ_INTENT')]),
+  }).strict(),
+  evidenceFileBase.extend({
+    file_entity_link_id: z.null(),
+    version: z.null(),
+    allowed_actions: z.tuple([]),
+  }).strict(),
+]);
+export const orderEvidenceSchema = z.object({
+  submission_id: identifierSchema,
+  reservation: evidenceReservationSchema,
+  marketplace,
+  amazon_order_number_display: z.string(),
+  amazon_order_date: dateOnlySchema.nullable(),
+  final_paid_jpy: nonnegativeIntegerSchema,
+  buyer_self_pay_bps: nonnegativeIntegerSchema.max(10_000),
+  buyer_self_pay_jpy: nonnegativeIntegerSchema,
+  buyer_refundable_principal_jpy: nonnegativeIntegerSchema,
+  price_mismatch: z.boolean(),
+  price_difference_jpy: z.number().int().safe(),
+  status: z.enum(['PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED', 'WITHDRAWN', 'CONSUMED']),
+  version: positiveIntegerSchema,
+  evidence_version_no: positiveIntegerSchema,
+  submitted_at: epoch,
+  updated_at: epoch,
+  verified_at: nullableEpoch,
+  public_change_reason: z.string().nullable(),
+  files: z.array(evidenceFileSchema),
+  allowed_actions: z.array(evidenceAction),
+}).strict();
+export const eligibleEvidencePageSchema = page(eligibleEvidenceReservationSchema);
+export const orderEvidencePageSchema = page(orderEvidenceSchema);
+export const orderEvidenceDetailSchema = z.object({ order_evidence: orderEvidenceSchema }).strict();
+export const orderEvidenceMutationSchema = z.object({
+  order_evidence: orderEvidenceSchema,
+  replayed: z.boolean(),
+}).strict();
+
+const rateSnapshotSchema = z.object({
+  version_no: positiveIntegerSchema,
+  business_date: dateOnlySchema,
+  confirmed_at: epoch,
+  cny_per_jpy_e8: integerAmountSchema,
+}).strict();
+export const formalOrderSchema = z.object({
+  formal_order_id: identifierSchema,
+  buyer_customer_no: z.string(),
+  marketplace,
+  amazon_order_number: z.string(),
+  amazon_order_date: dateOnlySchema.nullable(),
+  product_name: z.string(),
+  review_type: reviewType,
+  final_paid_jpy: integerAmountSchema,
+  buyer_self_pay_bps: nonnegativeIntegerSchema.max(10_000),
+  buyer_self_pay_jpy: integerAmountSchema,
+  buyer_refundable_principal_jpy: integerAmountSchema,
+  buyer_expected_principal_cny_fen: integerAmountSchema,
+  buyer_exchange_rate_snapshot: rateSnapshotSchema,
+  confirmed_at: epoch,
+  confirmed_business_date: dateOnlySchema,
+  status: z.literal('CONFIRMED'),
+  order_evidence_summary: z.object({
+    evidence_version_no: positiveIntegerSchema,
+    submitted_at: epoch,
+    verified_at: epoch,
+    file_count: nonnegativeIntegerSchema,
+  }).strict(),
+}).strict();
+export const formalOrdersPageSchema = page(formalOrderSchema);
+export const formalOrderDetailSchema = z.object({ formal_order: formalOrderSchema }).strict();
+
+const reviewOrderSchema = z.object({
+  formal_order_id: identifierSchema,
+  marketplace,
+  amazon_order_number: z.string(),
+  amazon_order_date: dateOnlySchema.nullable(),
+  product_name: z.string(),
+  review_type: reviewType,
+  confirmed_at: epoch,
+  confirmed_business_date: dateOnlySchema,
+  status: z.literal('CONFIRMED'),
+}).strict();
+const reviewAction = z.enum(['SUBMIT', 'RESUBMIT', 'WITHDRAW']);
+export const eligibleReviewOrderSchema = z.object({
+  order: reviewOrderSchema,
+  current_review: z.object({
+    review_case_id: identifierSchema,
+    status: z.enum(['PENDING_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'WITHDRAWN', 'APPROVED']),
+    version: positiveIntegerSchema,
+  }).strict().nullable(),
+  allowed_actions: z.array(reviewAction),
+}).strict();
+const reviewFileSchema = z.object({
+  file_object_id: identifierSchema,
+  file_entity_link_id: identifierSchema,
+  client_file_name: z.string(),
+  mime: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
+  byte_size: nonnegativeIntegerSchema,
+  status: z.literal('VERIFIED'),
+  version: positiveIntegerSchema,
+  verified_at: epoch,
+  allowed_actions: z.tuple([z.literal('CREATE_READ_INTENT')]),
+}).strict();
+export const reviewSchema = z.object({
+  review_case_id: identifierSchema,
+  order: reviewOrderSchema,
+  review_type: reviewType,
+  status: z.enum(['PENDING_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'WITHDRAWN', 'APPROVED']),
+  version: positiveIntegerSchema,
+  current_evidence_version_no: positiveIntegerSchema,
+  submitted_at: epoch,
+  updated_at: epoch,
+  public_change_reason: z.string().nullable(),
+  review_url: z.string().url().nullable(),
+  review_approved_at: nullableEpoch,
+  buyer_refund_due: z.object({
+    amount_cny_fen: integerAmountSchema,
+    became_due_at: epoch,
+  }).strict().nullable(),
+  file_count: nonnegativeIntegerSchema,
+  allowed_actions: z.array(reviewAction),
+}).strict();
+export const reviewDetailValueSchema = reviewSchema.extend({ files: z.array(reviewFileSchema) }).strict();
+export const eligibleReviewOrdersPageSchema = page(eligibleReviewOrderSchema);
+export const reviewsPageSchema = page(reviewSchema);
+export const reviewDetailSchema = z.object({ review: reviewDetailValueSchema }).strict();
+export const reviewMutationSchema = z.object({
+  review: reviewDetailValueSchema,
+  replayed: z.boolean(),
+}).strict();
+
+const refundBalanceSchema = z.object({
+  due_amount_cny_fen: integerAmountSchema,
+  net_paid_cny_fen: integerAmountSchema,
+  remaining_amount_cny_fen: integerAmountSchema,
+  overpaid_amount_cny_fen: integerAmountSchema,
+  status: z.enum(['DUE', 'PARTIALLY_PAID', 'PAID', 'OVERPAID']),
+}).strict();
+const refundOrderSchema = z.object({
+  formal_order_id: identifierSchema,
+  marketplace,
+  amazon_order_number: z.string(),
+  product_name: z.string(),
+  review_type: reviewType,
+  status: z.literal('CONFIRMED'),
+}).strict();
+export const refundSchema = refundBalanceSchema.extend({
+  refund_obligation_id: identifierSchema,
+  order: refundOrderSchema,
+  became_due_at: epoch,
+  first_paid_at: nullableEpoch,
+  last_paid_at: nullableEpoch,
+  updated_at: epoch,
+  allowed_actions: z.tuple([]),
+}).strict();
+export const refundDetailValueSchema = refundSchema.extend({
+  activities: z.array(z.object({
+    activity_id: identifierSchema,
+    activity_type: z.enum(['PAYMENT_RECORDED', 'PAYMENT_REVERSED']),
+    amount_cny_fen: integerAmountSchema,
+    occurred_at: epoch,
+    payment_channel: z.enum(['ALIPAY', 'WECHAT_PAY', 'BANK_TRANSFER', 'OTHER']),
+    balance_after: refundBalanceSchema,
+  }).strict()),
+}).strict();
+export const refundsPageSchema = page(refundSchema);
+export const refundDetailSchema = z.object({ refund: refundDetailValueSchema }).strict();
+
+export const fileReadIntentSchema = z.object({
+  read_intent_id: identifierSchema,
+  file_object_id: identifierSchema,
+  access_token: z.string().min(32).max(512).nullable(),
+  access_token_available: z.boolean(),
+  expires_at: epoch,
+  replayed: z.boolean(),
+}).strict();
+
+export type Demand = z.output<typeof demandSchema>;
+export type Reservation = z.output<typeof reservationSchema>;
+export type OrderEvidence = z.output<typeof orderEvidenceSchema>;
+export type FormalOrder = z.output<typeof formalOrderSchema>;
+export type Review = z.output<typeof reviewSchema>;
+export type Refund = z.output<typeof refundSchema>;
