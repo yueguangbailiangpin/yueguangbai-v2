@@ -1,6 +1,6 @@
 # Tasks: Module 1 Buyer Complete Business Loop
 
-Checked items are evidence-backed against the current implementation. Source implementation, browser acceptance, and Formal Verify are complete at the current HEAD; OpenSpec sync/archive, Integration, and main advancement remain separately controlled closeout stages.
+Checked items are evidence-backed against the current implementation. Source implementation, browser acceptance, Formal Verify, OpenSpec sync/archive, and clean Integration are complete at the current HEAD; main advancement remains a separately controlled closeout stage.
 
 ## 0. Authority and Planning
 
@@ -187,7 +187,7 @@ Checked items are evidence-backed against the current implementation. Source imp
 
 ## 39. Integration
 
-- [ ] 39.1 After controller freeze, implementation, complete acceptance, Verify and authorized closeout, validate a clean Integration without development.
+- [x] 39.1 After controller freeze, implementation, complete acceptance, Verify and authorized closeout, validate a clean Integration without development.
 
 ## 40. Main Advancement
 
@@ -241,3 +241,12 @@ Requirement and Scenario ranges follow their order in each named delta Spec. The
 - [x] P.3 Run isolated `npm ci` and the formal baseline regression (128 files / 909 tests, Wave14A 18 / 330, Playwright 42).
 - [x] P.4 Run strict OpenSpec target/all validation and exact counts.
 - [x] P.5 Confirm staged/committed Git scope is only this Change; final post-push clean state is reported separately.
+
+## INTEGRATION_VALIDATION_EVIDENCE
+
+- Integration started from remote `main` `f8b160d8fd5f2c16509ca8ffddcd7a60c754135c` and introduced Feature closeout `4c8609fe7ccc4ea3b471174ed8b962a577ed1d67` by `git merge --ff-only`; before this evidence record, the Integration tree was byte-identical to the Feature tree.
+- Isolated-cache `npm ci` completed without changing the lockfile. The existing audit reported two high-severity dependency findings; no automatic dependency mutation was attempted during Integration.
+- Repository `npm run check` passed: 140 test files / 1001 tests / 0 failed, all workspace typechecks/builds, schema 28 with 117 tables / 221 triggers / 10 views / 0 foreign-key errors, Module 1 security and Migration 0028 verification, and API Wrangler dry-run.
+- Complete browser validation passed 130/130, including all 88 Module 1 scenarios and 20 deterministic temporary screenshots. Repository-wide OpenSpec strict passed 24/24; Formal Verify remained `COMPLETE=58`, `Scenarios=116/116`, with zero inconsistent, missing, partial, unverified, critical, warning, or suggestion findings.
+- Secrets scan passed. Integration changed no business source, Contract, Domain, Migration, dependency manifest, lockfile, or deployment configuration; only this archived governance evidence changed after validation.
+- No production deployment, external credential creation, online database operation, force push, squash, rebase, or main advancement occurred in this Integration stage.
