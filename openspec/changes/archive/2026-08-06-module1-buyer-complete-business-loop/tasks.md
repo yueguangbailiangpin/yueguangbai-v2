@@ -1,6 +1,6 @@
 # Tasks: Module 1 Buyer Complete Business Loop
 
-Checked items in this planning round are evidence-backed planning artifacts only. All source implementation, browser acceptance, Formal Verify, review, Integration, and main work remains pending.
+Checked items are evidence-backed against the current implementation. Source implementation, browser acceptance, and Formal Verify are complete at the current HEAD; OpenSpec sync/archive, Integration, and main advancement remain separately controlled closeout stages.
 
 ## 0. Authority and Planning
 
