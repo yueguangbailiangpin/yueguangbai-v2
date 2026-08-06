@@ -7,11 +7,11 @@ context: |
   项目：月光白 V2；私有仓库 yueguangbailiangpin/yueguangbai-v2。
   技术栈：Node.js 24、TypeScript、Cloudflare Workers/Hono、D1 SQLite、R2 文件存储、React/Vite/Tailwind 正式前端。业务时区为 Asia/Shanghai；事实时间一律为 UTC。
 
-  金额与财务：JPY 使用整数日元；CNY 使用整数分；汇率字段为 cny_per_jpy_e8。财务计算必须使用 BigInt，JSON 中的金额使用十进制字符串。禁止 REAL/FLOAT，以及 parseFloat 或 toFixed 参与财务计算。财务事实不可原地修改；更正必须以冲销和新的事实记录完成。内部公司财务查看仅限 Active Staff 的 system owner role 加 FINANCIAL_VIEW；导出还必须具有 FINANCIAL_EXPORT，且 Personal DENY 最终优先。Seller Organization OWNER 不拥有内部公司财务权限，不得看到内部利润、Buyer Refund 成本或公司现金流。未来卖家安全导出必须单独建立 Spec、Contract 和 Permission。
+  金额与财务：现有 JP 基线使用 JPY 整数日元、CNY 整数分和 cny_per_jpy_e8；新的多站点 Change 必须迁移为整数最小货币单位、显式 currency_code 与版本化汇率方向，支持 JPY/USD/KRW 付款和统一 CNY 返款/结算。JPY/KRW 为零位小数，USD/CNY 为两位小数。财务计算必须使用 BigInt，JSON 中的金额使用十进制字符串。禁止 REAL/FLOAT，以及 parseFloat 或 toFixed 参与财务计算。财务事实不可原地修改；更正必须以冲销和新的事实记录完成。内部公司财务查看仅限 Active Staff 的 system owner role 加 FINANCIAL_VIEW；导出还必须具有 FINANCIAL_EXPORT，且 Personal DENY 最终优先。Seller Organization OWNER 不拥有内部公司财务权限，不得看到内部利润、Buyer Refund 成本或公司现金流。未来卖家安全导出必须单独建立 Spec、Contract 和 Permission。
 
-  身份与权限：Buyer、Seller、Staff 身份分离；后端强制数据隔离。Staff Auth 当前独立于飞书，使用独立 Staff 身份、可信后端会话和权限模型。飞书是后续可接入的员工入口或身份源，不是当前唯一权威身份系统，也不能保存正式业务事实。Personal DENY 最终优先，绝不信任客户端 Scope。文件授权必须在读取时动态校验。Buyer/Seller DTO 不得泄漏内部财务或 Staff 数据。
+  身份与权限：Staff 与 Customer 身份分离。一个 Customer Identity Subject 可同时拥有 Buyer Profile 和一个 Seller Organization Member Profile，并共用一套登录凭证，但 Buyer/Seller 门户上下文、授权、DTO 和 Query Cache 必须隔离；同一人不得加入两个 Seller Organization。Staff Auth 当前独立于飞书，使用独立 Staff 身份、可信后端会话和权限模型。飞书是后续可接入的员工入口或身份源，不是当前唯一权威身份系统，也不能保存正式业务事实。Personal DENY 最终优先，绝不信任客户端 Scope。文件授权必须在读取时动态校验。Buyer/Seller DTO 不得泄漏内部财务或 Staff 数据。
 
-  文件流程：upload intent → upload → VERIFIED → entity link → audience grant → short read intent。不得返回 object_key，不得保存永久 URL，不允许客户端指定权威 owner 或 scope。
+  文件流程：upload intent → upload → VERIFIED → entity link → audience grant → short read intent。不得返回 object_key、drive_file_id 或永久 URL，不允许客户端指定权威 owner 或 scope。订单截图、评价截图、Buyer Refund 凭证和 Seller Settlement 凭证在整单业务关闭六个自然月后，经 Google Drive 上传与回读哈希验证后删除 R2；归档内容仍只能通过原受控文件接口按 D1 Audience 代理读取。
 
   开发治理：总控负责冻结规则、创建分支与最终审查；网页开发对话负责主要 Feature 源码；本地 Codex 负责真实 Node/D1/Wrangler/浏览器验收。一个 Feature 同时只能有一个写入者。Integration 仅验证，禁止开发；main 只允许非强制快进；不得直接部署。Migration 必须连续，禁止并行创建相互竞争的 Migration。
 
