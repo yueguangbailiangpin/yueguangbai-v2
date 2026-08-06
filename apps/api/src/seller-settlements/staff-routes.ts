@@ -2,6 +2,8 @@ import {
   apiFailure,
   apiSuccess,
   type ApiErrorCode,
+  type SellerPaymentDto,
+  type StaffSellerPaymentDto,
 } from '@ygb/contracts';
 import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
@@ -29,7 +31,7 @@ import {
   reconcileSellerPayables,
 } from './reconciliation';
 import { recordSellerPayment } from './record-payment';
-import { requirePaymentBalance } from './records';
+import { requirePaymentBalance, requirePaymentProof } from './records';
 import {
   authorizeSellerSettlement,
   cleanSettlementIdentifier,
@@ -97,11 +99,18 @@ async function payments(context: Context<any>): Promise<Response> {
   const actor = requireAuthorization(context);
   const organizationId = organization(context);
   await authorizeSellerSettlement(context.env.DB, actor, organizationId, { viewOnly: true });
-  return success(context, await listSellerPayments(
+  const page = await listSellerPayments(
     context.env.DB,
     staffScope(organizationId),
     pagination(context),
-  ));
+  );
+  return success(context, {
+    ...page,
+    items: await Promise.all(page.items.map((item) => staffPayment(
+      context.env.DB,
+      item,
+    ))),
+  });
 }
 
 async function payment(context: Context<any>): Promise<Response> {
@@ -109,11 +118,10 @@ async function payment(context: Context<any>): Promise<Response> {
   const organizationId = organization(context);
   await authorizeSellerSettlement(context.env.DB, actor, organizationId, { viewOnly: true });
   return success(context, {
-    payment: await getSellerPayment(
-      context.env.DB,
-      staffScope(organizationId),
+    payment: await staffPayment(context.env.DB, await getSellerPayment(
+      context.env.DB, staffScope(organizationId),
       cleanSettlementIdentifier(context.req.param('paymentId')),
-    ),
+    )),
   });
 }
 
@@ -134,11 +142,9 @@ async function recordPayment(context: Context<any>): Promise<Response> {
     },
   }, command(context, actor));
   return success(context, {
-    payment: await getSellerPayment(
-      context.env.DB,
-      staffScope(organizationId),
-      result.paymentId,
-    ),
+    payment: await staffPayment(context.env.DB, await getSellerPayment(
+      context.env.DB, staffScope(organizationId), result.paymentId,
+    )),
     replayed: result.replayed,
   }, result.replayed ? 200 : 201);
 }
@@ -253,13 +259,27 @@ async function paymentMutation(
 ): Promise<Response> {
   const row = await requirePaymentBalance(context.env.DB, paymentId);
   return success(context, {
-    payment: await getSellerPayment(
-      context.env.DB,
-      staffScope(row.seller_organization_id),
-      paymentId,
-    ),
+    payment: await staffPayment(context.env.DB, await getSellerPayment(
+      context.env.DB, staffScope(row.seller_organization_id), paymentId,
+    )),
     replayed,
   }, replayed ? 200 : createdStatus);
+}
+
+async function staffPayment(
+  database: Parameters<typeof requirePaymentProof>[0],
+  payment: SellerPaymentDto,
+): Promise<StaffSellerPaymentDto> {
+  const proof = await requirePaymentProof(database, payment.payment_id);
+  return Object.freeze({
+    ...payment,
+    proof: Object.freeze({
+      file_object_id: proof.file_object_id,
+      file_version: proof.file_version,
+      purpose: 'SELLER_SETTLEMENT_PROOF' as const,
+      visibility: 'INTERNAL_ONLY' as const,
+    }),
+  });
 }
 
 function requireAuthorization(context: Context<any>): AssignmentStaffAuthorization {

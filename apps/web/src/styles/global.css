@@ -1448,6 +1448,104 @@ select:disabled {
   gap: var(--space-4);
 }
 
+.staff-filter-grid,
+.staff-actions form,
+.staff-customer-security,
+.staff-customer-security form,
+.sensitive-action form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.staff-filter-grid > label,
+.staff-actions label,
+.sensitive-action label {
+  font-weight: var(--font-weight-semibold);
+}
+
+.staff-work-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.staff-work-item {
+  display: grid;
+  width: 100%;
+  min-height: 64px;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.staff-work-item:hover,
+.staff-work-item.selected {
+  border-color: var(--color-staff);
+  background: var(--color-staff-soft);
+}
+
+.staff-work-item span,
+.staff-work-item small {
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+}
+
+.pagination-actions,
+.finance-separation {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.staff-detail > .card,
+.staff-actions > section,
+.staff-actions > .staff-customer-security {
+  min-width: 0;
+}
+
+.staff-fact {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.55fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.staff-fact dt {
+  color: var(--color-text-muted);
+}
+
+.staff-fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: var(--font-weight-medium);
+}
+
+.staff-account-footer {
+  padding: var(--space-4) var(--space-6) var(--space-8);
+  background: var(--color-surface);
+}
+
+.staff-account-footer .staff-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 0;
+}
+
+.invitation-status {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-subtle);
+}
+
 .staff-panes .state {
   padding: var(--space-4);
   border: 0;
@@ -1629,6 +1727,10 @@ select:disabled {
     grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.4fr);
   }
 
+  .staff-panes > .staff-actions {
+    grid-column: 1 / -1;
+  }
+
   .staff-panes > .wide-only {
     display: none;
   }
@@ -1729,6 +1831,15 @@ select:disabled {
 
   .staff-panes > section {
     border-bottom: 1px solid var(--color-border);
+  }
+
+  .staff-panes > aside {
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .staff-fact,
+  .finance-separation {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .drawer,

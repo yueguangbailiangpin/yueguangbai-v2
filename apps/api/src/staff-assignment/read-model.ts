@@ -3,6 +3,7 @@ import type {
   StaffAssignmentDto,
   StaffAssignmentDutyCode,
   StaffWorkItemDto,
+  StaffWorkItemPageDto,
   StaffWorkItemType,
 } from '@ygb/contracts';
 import {
@@ -24,6 +25,7 @@ const WORK_TYPES: readonly StaffWorkItemType[] = [
   'PRODUCT_APPLICATION_REVIEW',
   'DEMAND_REVIEW',
   'RESERVATION_DECISION',
+  'ORDER_INSTRUCTION_PUBLISH',
   'ORDER_EVIDENCE_REVIEW',
   'REVIEW_DECISION',
   'BUYER_REFUND_PROCESSING',
@@ -66,14 +68,22 @@ export async function listMyAssignments(
 export async function listVisibleWorkItems(
   database: SqlDatabase,
   actor: AssignmentStaffAuthorization,
-  options: { limit?: number; status?: 'OPEN' | 'COMPLETED' | 'CANCELLED' } = {},
-): Promise<readonly StaffWorkItemDto[]> {
+  options: {
+    limit?: number;
+    status?: 'OPEN' | 'COMPLETED' | 'CANCELLED';
+    workType?: StaffWorkItemType | null;
+    cursor?: { createdAt: number; id: string } | null;
+  } = {},
+): Promise<StaffWorkItemPageDto> {
   const limit = options.limit ?? 50;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
     throw new StaffAssignmentError('VALIDATION_ERROR', 400);
   }
   const allowedWorkTypes = visibleWorkTypes(actor);
-  if (allowedWorkTypes.length < 1) return [];
+  const requestedWorkTypes = options.workType === null || options.workType === undefined
+    ? allowedWorkTypes
+    : allowedWorkTypes.filter((workType) => workType === options.workType);
+  if (requestedWorkTypes.length < 1) return { work_items: [], next_cursor: null };
   const status = options.status ?? 'OPEN';
   const visibilityScope = await visibility(database, actor);
   const rows = await database.prepare(`
@@ -83,18 +93,28 @@ export async function listVisibleWorkItems(
       status, version, created_at, updated_at, completed_at, cancelled_at
     FROM staff_work_items
     WHERE status=?
-      AND work_type IN (${placeholders(allowedWorkTypes)})
+      AND work_type IN (${placeholders(requestedWorkTypes)})
       AND (?=1 OR assigned_staff_id IN (${placeholders(visibilityScope.staffIds)}))
+      ${options.cursor ? 'AND (created_at>? OR (created_at=? AND id>?))' : ''}
     ORDER BY created_at, id
     LIMIT ?
   `).bind(
     status,
-    ...allowedWorkTypes,
+    ...requestedWorkTypes,
     visibilityScope.global ? 1 : 0,
     ...visibilityScope.staffIds,
-    limit,
+    ...(options.cursor ? [options.cursor.createdAt, options.cursor.createdAt, options.cursor.id] : []),
+    limit + 1,
   ).all<StaffWorkItemDto>();
-  return rows.results;
+  const hasMore = rows.results.length > limit;
+  const workItems = rows.results.slice(0, limit);
+  const last = workItems.at(-1);
+  return {
+    work_items: workItems,
+    next_cursor: hasMore && last
+      ? JSON.stringify({ createdAt: Number(last.created_at), id: last.work_item_id })
+      : null,
+  };
 }
 
 export async function getVisibleWorkItem(

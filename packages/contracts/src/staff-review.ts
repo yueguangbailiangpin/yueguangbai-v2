@@ -4,6 +4,9 @@ import type { ReviewCaseStatus } from './review';
 export interface StaffReviewEvidenceFileDto {
   file_object_id: string;
   file_entity_link_id: string;
+  file_version: number;
+  purpose: 'REVIEW_EVIDENCE';
+  visibility: 'SELLER_VISIBLE';
   client_file_name: string;
   mime: string;
   byte_size: number;

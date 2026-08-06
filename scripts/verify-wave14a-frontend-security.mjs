@@ -1129,7 +1129,7 @@ requireText(browserFixtures, [
   "getByText('链接将自动确认您的访问身份')).toHaveCount(0)",
   'Seller small screen uses the business dashboard without page overflow',
   'Staff desktop shell preserves queue-detail-action DOM order and separation',
-  'Staff narrow shell opens the ordered action Drawer and restores focus',
+  'Staff narrow shell preserves queue-detail-tools order without overflow',
   'Staff ordinary logout clears the local session before navigation',
   'Staff logout-all requires a busy-safe Dialog and completes explicitly',
   '401 route guard redirects without rendering Buyer shell content',

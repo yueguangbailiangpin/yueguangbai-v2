@@ -69,6 +69,10 @@ async function mockSession(
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { settlement: { outstanding_principal_cny_fen: '0', outstanding_service_fee_cny_fen: '0', total_outstanding_cny_fen: '0', unallocated_credit_cny_fen: '0' } }, meta: { request_id: 'screenshot-local' } }) });
       return;
     }
+    if (identity === 'staff' && path === '/api/staff/me/work-items') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { work_items: [], next_cursor: null }, meta: { request_id: 'screenshot-local' } }) });
+      return;
+    }
     await route.fulfill({
       status: 404,
       contentType: 'application/json',

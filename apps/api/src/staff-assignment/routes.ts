@@ -3,6 +3,7 @@ import {
   apiSuccess,
   isStaffAssignmentDutyCode,
   isStaffAvailabilityStatus,
+  isStaffWorkItemType,
   type ApiErrorCode,
 } from '@ygb/contracts';
 import type { Context, Hono } from 'hono';
@@ -19,6 +20,7 @@ import {
 import type { AssignmentStaffAuthorization } from './effective-authorization';
 import { StaffAssignmentError } from './errors';
 import { requirePermission } from './permission-policy';
+import { decodeStaffWorkItemCursor, encodeStaffWorkItemCursor } from './pagination';
 import {
   getVisibleWorkItem,
   listMyAssignments,
@@ -66,6 +68,13 @@ export function registerStaffAssignmentRoutes(app: Hono<any>): void {
 
   app.get('/api/staff/me/work-items', withStaffErrors(async (context) => {
     const actor = requireStaffActor(context);
+    const parameters = new URL(context.req.url).searchParams;
+    for (const key of parameters.keys()) {
+      if (!['status', 'work_type', 'limit', 'cursor'].includes(key)
+        || parameters.getAll(key).length !== 1) {
+        throw new StaffAssignmentError('VALIDATION_ERROR', 400);
+      }
+    }
     const status = context.req.query('status');
     if (status !== undefined
       && status !== 'OPEN'
@@ -74,10 +83,29 @@ export function registerStaffAssignmentRoutes(app: Hono<any>): void {
       throw new StaffAssignmentError('VALIDATION_ERROR', 400);
     }
     const normalizedStatus = status ?? 'OPEN';
+    const workType = context.req.query('work_type');
+    if (workType !== undefined && !isStaffWorkItemType(workType)) {
+      throw new StaffAssignmentError('VALIDATION_ERROR', 400);
+    }
+    const cursor = decodeStaffWorkItemCursor(context.req.query('cursor'), {
+      status: normalizedStatus,
+      workType: workType ?? null,
+    });
+    const page = await listVisibleWorkItems(context.env.DB, actor, {
+      status: normalizedStatus,
+      workType: workType ?? null,
+      limit: parseLimit(context.req.query('limit')),
+      cursor,
+    });
+    const lastCursor = page.next_cursor === null
+      ? null
+      : JSON.parse(page.next_cursor) as { createdAt: number; id: string };
     return context.json(apiSuccess({
-      work_items: await listVisibleWorkItems(context.env.DB, actor, {
+      work_items: page.work_items,
+      next_cursor: lastCursor === null ? null : encodeStaffWorkItemCursor({
+        ...lastCursor,
         status: normalizedStatus,
-        limit: parseLimit(context.req.query('limit')),
+        workType: workType ?? null,
       }),
     }, requestId(context)));
   }));
@@ -320,6 +348,9 @@ function integer(value: unknown): number {
 }
 function parseLimit(value: string | undefined): number {
   if (value == null) return 50;
+  if (!/^[1-9][0-9]*$/u.test(value)) {
+    throw new StaffAssignmentError('VALIDATION_ERROR', 400);
+  }
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed)) {
     throw new StaffAssignmentError('VALIDATION_ERROR', 400);

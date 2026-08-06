@@ -1,4 +1,5 @@
 import type { FixedIntegerString } from './pricing';
+import type { SafeFileReferenceDto } from './file-http';
 import type { SellerPortalPage } from './seller-portal';
 
 export const SELLER_PAYABLE_TYPES = [
@@ -69,6 +70,12 @@ export interface SellerPaymentDto {
   version: number;
   allocations: readonly SellerPaymentAllocationSummaryDto[];
 }
+
+export interface StaffSellerPaymentDto extends SellerPaymentDto {
+  proof: SafeFileReferenceDto;
+}
+
+export type StaffSellerPaymentPageDto = SellerPortalPage<StaffSellerPaymentDto>;
 
 export interface SellerSettlementSummaryDto {
   outstanding_principal_cny_fen: FixedIntegerString;

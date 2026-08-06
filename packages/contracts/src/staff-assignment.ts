@@ -117,6 +117,18 @@ export interface StaffWorkItemDto {
   cancelled_at: number | null;
 }
 
+export interface StaffWorkItemListQuery {
+  status?: StaffWorkItemStatus;
+  work_type?: StaffWorkItemType;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface StaffWorkItemPageDto {
+  work_items: readonly StaffWorkItemDto[];
+  next_cursor: string | null;
+}
+
 export const STAFF_REASSIGNMENT_BATCH_STATUSES = [
   'PENDING',
   'RUNNING',

@@ -19,7 +19,7 @@ import { CustomerPasswordRouteBoundary } from './auth/customer/CustomerPasswordR
 import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary';
 import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from './auth/staff/staff-auth-controller';
-import { StaffCustomerSecurityPanel } from './auth/staff/StaffCustomerSecurityPanel';
+import { StaffWorkbench } from './staff/StaffWorkbench';
 import { safeReturnPath } from './routes/return-path';
 import { BuyerDashboardPage } from './buyer/dashboard/BuyerDashboardPage';
 import { BuyerDemandDetailPage } from './buyer/demands/BuyerDemandDetailPage';
@@ -108,13 +108,13 @@ function StaffLogin(): React.JSX.Element {
         <strong>月光白</strong></div>
       <div className="login-heading"><p className="eyebrow">员工工作区</p>
         <h1>员工登录</h1>
-        <p>通过受信任的飞书身份验证进入内部工作区。</p></div>
+        <p>通过受信任的员工身份验证进入内部工作区。</p></div>
       {message ? <Alert tone="danger">{message}</Alert> : null}
       <div className="entry-actions">
-        <Button onClick={() => { void start(); }}>使用飞书继续</Button>
+        <Button onClick={() => { void start(); }}>使用受信任身份继续</Button>
         <Button className="secondary" onClick={() => navigate('/')}>返回</Button>
       </div>
-      <p className="security-note">本地验收使用模拟身份提供方，不连接真实飞书。</p>
+      <p className="security-note">员工身份与买家、卖家账号严格分离；本地验收不连接外部身份提供方。</p>
     </Card>
   </main>;
 }
@@ -255,20 +255,7 @@ export function SellerShell(): React.JSX.Element {
   </IdentityShell>;
 }
 
-function StaffActionContent(): React.JSX.Element {
-  return <><section className="action-group" aria-labelledby="ordinary-actions">
-    <h3 id="ordinary-actions">普通操作</h3>
-    <StaffCustomerSecurityPanel />
-  </section>
-  <section className="action-group sensitive-action" aria-labelledby="financial-actions">
-    <h3 id="financial-actions">财务敏感操作</h3>
-    <p>仅在具备独立权限并完成后端校验后开放。</p>
-  </section>
-  <StaffAccountActions /></>;
-}
-
 function StaffShell(): React.JSX.Element {
-  const [drawer, setDrawer] = useState(false);
   return <IdentityShell identity="staff" className="staff-shell">
     <header className="staff-context"><strong>月光白</strong>
       <span>员工工作区</span></header>
@@ -276,38 +263,9 @@ function StaffShell(): React.JSX.Element {
       eyebrow="内部操作"
       title="员工工作台"
       description="队列、详情与操作保持清晰的阅读和处理顺序。"
-    ><Button className="narrow-only" onClick={() => setDrawer(true)}>
-        打开操作区
-      </Button></PageHeader>
-    <main className="staff-panes">
-      <section className="staff-queue" aria-labelledby="queue">
-        <div className="pane-heading"><h2 id="queue">待处理队列</h2>
-          <StatusBadge tone="neutral">空</StatusBadge></div>
-        <SearchInput label="搜索待处理队列" placeholder="搜索队列" />
-        <EmptyState title="队列为空" description="该功能将在员工业务模块开放" />
-      </section>
-      <section className="staff-detail" aria-labelledby="detail">
-        <div className="pane-heading"><h2 id="detail">详情</h2>
-          <StatusBadge tone="processing">等待选择</StatusBadge></div>
-        <section className="customer-visible" aria-labelledby="customer-visible-title">
-          <h3 id="customer-visible-title">客户可见内容</h3>
-          <p>仅展示允许客户查看的信息结构。</p>
-        </section>
-        <section className="internal-note" aria-labelledby="internal-title">
-          <h3 id="internal-title">内部内容</h3>
-          <p>内部记录与客户可见内容保持结构分离。</p>
-        </section>
-      </section>
-      <aside className="staff-actions wide-only" aria-labelledby="actions">
-        <h2 id="actions">操作区</h2><StaffActionContent />
-      </aside>
-    </main>
-    <Drawer
-      open={drawer}
-      title="操作区"
-      description="窄屏按队列、详情、操作的顺序完成工作。"
-      onClose={() => setDrawer(false)}
-    ><StaffActionContent /></Drawer>
+    />
+    <StaffWorkbench />
+    <footer className="staff-account-footer"><StaffAccountActions /></footer>
   </IdentityShell>;
 }
 

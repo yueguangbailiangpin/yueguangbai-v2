@@ -119,6 +119,10 @@ async function mockApi(
       }, 'browser-staff-logout-all'));
       return;
     }
+    if (identity === 'staff' && path === '/api/staff/me/work-items') {
+      await fulfillJson(route, success({ work_items: [], next_cursor: null }));
+      return;
+    }
     await fulfillJson(route, failure('NOT_FOUND', 'browser-unhandled'), 404);
   });
 }
@@ -167,10 +171,10 @@ test(`${path} renders a polished customer login with no cross-identity entry`, a
 test('staff login has only the trusted provider action and no customer form', async ({ page }) => {
   await page.goto('/staff/login');
   await expect(page.getByRole('heading', { name: '员工登录' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '使用飞书继续' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '使用受信任身份继续' })).toBeVisible();
   await expect(page.getByLabel('账号')).toHaveCount(0);
   await expect(page.getByLabel('密码')).toHaveCount(0);
-  await expect(page.getByText('本地验收使用模拟身份提供方，不连接真实飞书。')).toBeVisible();
+  await expect(page.getByText('员工身份与买家、卖家账号严格分离；本地验收不连接外部身份提供方。')).toBeVisible();
 });
 
 test('buyer login tab order and focus ring remain keyboard-visible', async ({ page }) => {
@@ -306,22 +310,23 @@ test('Staff desktop shell preserves queue-detail-action DOM order and separation
   const headings = await page.locator(
     '.staff-panes > section > .pane-heading h2, .staff-panes > aside > h2',
   ).allTextContents();
-  expect(headings).toEqual(['待处理队列', '详情', '操作区']);
-  await expect(page.getByRole('heading', { name: '客户可见内容' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '内部内容' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '财务敏感操作' })).toBeVisible();
+  expect(headings).toEqual(['待处理队列', '详情', '客户安全与账户']);
+  await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '客户邀请与账号恢复' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
-test('Staff narrow shell opens the ordered action Drawer and restores focus', async ({ page }) => {
+test('Staff narrow shell preserves queue-detail-tools order without overflow', async ({ page }) => {
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/staff');
-  const opener = page.getByRole('button', { name: '打开操作区' });
-  await opener.click();
-  await expect(page.getByRole('dialog', { name: '操作区' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(opener).toBeFocused();
+  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+  const headings = await page.locator(
+    '.staff-panes > section > .pane-heading h2, .staff-panes > aside > h2',
+  ).allTextContents();
+  expect(headings.slice(0, 3)).toEqual(['待处理队列', '详情', '客户安全与账户']);
+  await page.getByLabel('状态').focus();
+  await expect(page.getByLabel('状态')).toBeFocused();
   await expectNoCriticalHorizontalOverflow(page);
 });
 

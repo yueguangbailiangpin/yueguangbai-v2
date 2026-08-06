@@ -44,6 +44,7 @@ interface FileRow {
   evidence_version_id: string;
   file_object_id: string;
   file_entity_link_id: string;
+  file_version: number;
   client_file_name: string;
   mime: string;
   byte_size: number;
@@ -162,6 +163,7 @@ async function readVersions(
           version_file.evidence_version_id,
           object.id AS file_object_id,
           link.id AS file_entity_link_id,
+          object.version AS file_version,
           intent.client_file_name,
           COALESCE(object.detected_mime, object.declared_mime) AS mime,
           object.byte_size,
@@ -181,6 +183,9 @@ async function readVersions(
     values.push(Object.freeze({
       file_object_id: file.file_object_id,
       file_entity_link_id: file.file_entity_link_id,
+      file_version: Number(file.file_version),
+      purpose: 'REVIEW_EVIDENCE',
+      visibility: 'SELLER_VISIBLE',
       client_file_name: file.client_file_name,
       mime: file.mime,
       byte_size: Number(file.byte_size),
