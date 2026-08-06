@@ -67,7 +67,7 @@ describe('Wave 13 default app and route security boundaries', () => {
     expect(session).not.toContain('idle');
   });
 
-  it('reproduces the audited 108 + 30 + 1 = 139 active route inventory', () => {
+  it('reproduces the audited 109 + 30 = 139 active route inventory', () => {
     const businessMethods = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
     const entries = app.routes
       .map((route, index) => ({
