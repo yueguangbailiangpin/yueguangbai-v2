@@ -13,9 +13,16 @@ Verified at the M5 head before archive. Ponytail remained off.
 | Buyer refund | Existing payment/reversal commands, verified proof upload/read, CNY strings and Beijing time | Existing ledger rollback/replay/scope/file suites and Web regressions pass | PASS |
 | Seller settlement | Existing payment/allocation/reversal commands; Staff-only additive safe proof; principal/service fee separate | Seller ledger/authorization/proof suites plus Staff MSW separation test pass | PASS |
 | Protected files | Generic purpose/audience Staff reader; no object key, arbitrary URL or permanent token projection | File architecture, dynamic audience and R2 boundary suites pass | PASS |
-| Partial failure and accessibility | Independent queries/errors/retries/request IDs; desktop three-pane and narrow source order | 140/140 Playwright tests, including 320/390px, keyboard, 200% and reduced motion | PASS |
+| Partial failure and accessibility | Independent queries/errors/retries/request IDs; desktop three-pane and narrow source order | 141/141 Playwright tests, including 320/390px, keyboard, 200% and reduced motion | PASS |
 | Migration and rollback | No schema gap; no Migration created; deployment rollback never reverses facts | Fresh schema 30, sequential 0001→0030, integrity/foreign keys/migration guards all pass | PASS |
-| Compatibility and dependency baseline | Additive contracts/routes; Buyer/Seller behavior unchanged | `npm run check`: 155 files/1054 tests; React Router 7.18.2 baseline remains exactly two documented high advisories | PASS WITH DOCUMENTED EXCEPTION |
+| Compatibility and dependency baseline | Additive contracts/routes; Buyer/Seller behavior unchanged | `npm run check`: 156 files/1058 tests; React Router 7.18.2 baseline remains exactly two documented high advisories | PASS WITH DOCUMENTED EXCEPTION |
+
+## Independent review remediation
+
+- Staff writes now use a shared mutation authority bound to stable serialization of exact `action + path + body`.
+- Only explicit retry after an ambiguous network/contract outcome reuses the frozen key and cloned body.
+- Deterministic 4xx/conflicts release authority; editing a body or choosing another action/path starts a new logical operation and key.
+- Unit tests cover ambiguous replay, deterministic failure, changed bodies and separation across payment/reversal/allocation. The 141-test Playwright suite covers the real order-confirmation retry and changed-body journey.
 
 ## Visual review
 

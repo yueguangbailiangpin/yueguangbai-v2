@@ -77,6 +77,35 @@ test('Staff completes queue to authoritative order detail and sees explicit conf
   await noOverflow(page);
 });
 
+test('Staff explicit retry preserves ambiguous request authority and changed body starts a new operation', async ({ page }) => {
+  const calls: Array<{ key: string | null; body: unknown }> = [];
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/staff-auth/session') return json(route, success({ session }));
+    if (url.pathname === '/api/staff/me/work-items') return json(route, success({ work_items: [item], next_cursor: null }));
+    if (url.pathname === '/api/staff/order-evidence/evidence-m5') return json(route, success({ order_evidence: evidence }));
+    if (url.pathname === '/api/staff/order-evidence/evidence-m5/approve') {
+      calls.push({ key: route.request().headers()['idempotency-key'] ?? null, body: route.request().postDataJSON() });
+      if (calls.length === 1) return route.abort('failed');
+      return json(route, { error: { code: 'VERSION_CONFLICT', message: '已更新', details: null }, meta: { request_id: `retry-deterministic-${calls.length}` } }, 409);
+    }
+    return json(route, { error: { code: 'NOT_FOUND', message: 'not found', details: null }, meta: { request_id: 'retry-unhandled' } }, 404);
+  });
+  await page.goto('/staff');
+  await page.getByRole('button', { name: /订单证据核对/u }).click();
+  await page.getByLabel('已核对截图并确认价差').check();
+  await page.getByLabel('价差确认原因').fill('第一次提交的稳定原因');
+  await page.getByRole('button', { name: '确认并形成正式订单' }).click();
+  await page.getByRole('button', { name: '重试原请求' }).click();
+  await expect(page.getByText(/retry-deterministic-2/u)).toBeVisible();
+  expect(calls[1]).toEqual(calls[0]);
+  await page.getByLabel('价差确认原因').fill('确定性失败后修改的新原因');
+  await page.getByRole('button', { name: '确认并形成正式订单' }).click();
+  await expect(page.getByText(/retry-deterministic-3/u)).toBeVisible();
+  expect(calls[2]?.key).not.toBe(calls[1]?.key);
+  expect(calls[2]?.body).toMatchObject({ price_mismatch_reason: '确定性失败后修改的新原因' });
+});
+
 for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 720 }]) {
   test(`Staff workbench reflows at ${viewport.width}px with keyboard controls`, async ({ page }) => {
     await mockWorkbench(page); await page.setViewportSize(viewport); await page.goto('/staff');

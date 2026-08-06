@@ -157,10 +157,17 @@ for (const label of ['首页', '任务', '订单资料', '评论', '我的']) as
 assert((layout.match(/label:/gu) ?? []).length === 5, 'Buyer navigation must contain exactly five items');
 assertNotContains(read('apps/web/src/App.tsx').split('<Route path="/buyer/login"')[0], '/buyer/register', 'root page registration entry');
 
-const changedSellerStaff = execFileSync('git', [
-  'diff', '--name-only', 'origin/main', '--',
+const sellerStaffScopes = [
   'apps/api/src/seller-portal', 'apps/api/src/staff-auth', 'apps/web/src/seller', 'apps/web/src/staff',
-], { encoding: 'utf8' }).trim().split('\n').filter((path) => path.length > 0 && !path.includes('.test.'));
+];
+const trackedSellerStaff = execFileSync('git', [
+  'diff', '--name-only', 'origin/main', '--', ...sellerStaffScopes,
+], { encoding: 'utf8' }).trim().split('\n');
+const untrackedSellerStaff = execFileSync('git', [
+  'ls-files', '--others', '--exclude-standard', '--', ...sellerStaffScopes,
+], { encoding: 'utf8' }).trim().split('\n');
+const changedSellerStaff = [...new Set([...trackedSellerStaff, ...untrackedSellerStaff])]
+  .filter((path) => path.length > 0 && !path.includes('.test.'));
 const module4SellerAllowlist = new Set([
   'apps/api/src/seller-portal/queries.ts',
   'apps/web/src/seller/api/client.ts',
@@ -168,6 +175,13 @@ const module4SellerAllowlist = new Set([
   'apps/web/src/seller/pages/SellerPages.tsx',
   'apps/web/src/seller/queries/keys.ts',
   'apps/web/src/seller/routes/SellerLayout.tsx',
+  'apps/web/src/staff/StaffWorkbench.tsx',
+  'apps/web/src/staff/api/client.ts',
+  'apps/web/src/staff/contracts/runtime.ts',
+  'apps/web/src/staff/mutations/StaffMutationAuthority.ts',
+  'apps/web/src/staff/queries/keys.ts',
+  'apps/web/src/staff/shared/StaffProtectedFileButton.tsx',
+  'apps/web/src/staff/shared/format.ts',
 ]);
 const unapprovedSellerStaff = changedSellerStaff.filter((path) => !module4SellerAllowlist.has(path));
 assert(unapprovedSellerStaff.length === 0, `Unapproved Seller/Staff business source expanded: ${unapprovedSellerStaff.join(', ')}`);
