@@ -21,6 +21,7 @@
     "test:module1:buyer": "vitest run apps/api/src/module1-migration-0028.test.ts apps/api/src/buyer-order-evidence-portal apps/api/src/buyer-formal-orders apps/api/src/buyer-reviews packages/domain/src apps/web/src/buyer apps/web/src/files/file-read-providers.msw.test.ts",
     "test:module1:buyer:browser": "npm run build --workspace @ygb/web && playwright test -c apps/web/playwright.config.ts apps/web/e2e/module1-buyer.spec.ts",
     "verify:module1:buyer:formal": "node scripts/verify-module1-buyer-formal.mjs",
+    "verify:module1:buyer": "node scripts/verify-module1-buyer-security.mjs && node scripts/verify-module1-migration-0028.mjs",
     "check:module1:buyer": "node scripts/verify-module1-buyer-security.mjs && node scripts/verify-module1-migration-0028.mjs && npm run test:module1:buyer && npm run typecheck --workspace @ygb/web && npm run build --workspace @ygb/web",
     "check:wave14a": "node scripts/verify-wave14a-frontend-security.mjs && npm run test:wave14a && npm run typecheck --workspace @ygb/web && npm run build --workspace @ygb/web",
     "db:migrate:local": "wrangler d1 migrations apply yueguangbai-v2-local --local --config apps/api/wrangler.local.jsonc",
@@ -47,7 +48,7 @@
     "check:wave13:buyer-refund": "node scripts/verify-wave13-buyer-refund-isolation.mjs",
     "check:wave13": "npm run check:wave13:migration && npm run check:wave13:staff-auth && npm run check:wave13:dto && npm run check:wave13:file && npm run check:wave13:price-mismatch && npm run check:wave13:buyer-refund",
     "security:scan": "node scripts/scan-secrets.mjs",
-    "check": "npm run security:scan && npm run typecheck && npm run db:verify && npm run verify:migration-guards && npm run verify:wave11 && npm run verify:wave12 && npm run check:wave13 && npm run check:wave14a && npm test && npm run build",
+    "check": "npm run security:scan && npm run typecheck && npm run db:verify && npm run verify:migration-guards && npm run verify:wave11 && npm run verify:wave12 && npm run check:wave13 && npm run check:wave14a && npm run verify:module1:buyer && npm test && npm run build",
     "dev:api": "npm --workspace @ygb/api run dev",
     "dev:web": "npm --workspace @ygb/web run dev"
   },
