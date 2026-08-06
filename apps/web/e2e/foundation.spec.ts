@@ -202,7 +202,8 @@ test('Buyer shell is task-focused with five fixed items and no fake business dat
   for (const label of ['首页', '任务', '订单资料', '评论', '我的']) {
     await expect(navigation.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.getByText('该功能将在买家业务模块开放')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '首页' })).toBeVisible();
+  await expect(page.getByText('部分内容暂不可用')).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
