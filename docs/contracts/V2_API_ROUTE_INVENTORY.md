@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 在 Customer Multi-Persona Change 上的可复现 route inventory。共有 147 个唯一业务/健康端点：146 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
+这是默认 App 的可复现 route inventory。共有 149 个唯一业务/健康端点：148 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表精确比较；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都会失败。
 
@@ -58,6 +58,7 @@ GET /api/staff/finance/groups
 GET /api/staff/finance/orders
 GET /api/staff/finance/orders/:formalOrderId
 GET /api/staff/finance/summary
+GET /api/staff/operations/health
 GET /api/staff/me/assignments
 GET /api/staff/me/work-items
 GET /api/staff/me/work-items/:id
@@ -111,6 +112,7 @@ POST /api/customer-auth/login
 POST /api/customer-auth/logout
 POST /api/customer-auth/password-reset/complete
 POST /api/customer-auth/select-persona
+POST /api/staff/operations/jobs/:job/retry
 POST /api/seller-portal/demand-batches
 POST /api/seller-portal/demand-batches/:id/withdraw
 POST /api/seller-portal/file-upload-intents/:id/complete

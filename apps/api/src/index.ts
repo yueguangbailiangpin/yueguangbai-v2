@@ -35,6 +35,7 @@ import {
 } from './staff-auth';
 import { registerStaffCatalogWorkflowRoutes } from './staff-catalog-routes';
 import { registerMarketplaceFoundationRoutes } from './marketplaces/routes';
+import { registerScheduledOperationRoutes } from './scheduled-operations';
 
 const app = createApp();
 
@@ -62,6 +63,7 @@ registerStaffSellerSettlementProofRoutes(app);
 registerStaffFinanceRoutes(app);
 registerStaffOrderEvidenceRoutes(app);
 registerStaffBuyerRefundRoutes(app);
+registerScheduledOperationRoutes(app);
 registerFileHttpRoutes(app);
 
 registerBuyerSelfRegistrationRoutes(app);

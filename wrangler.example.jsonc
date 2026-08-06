@@ -1,7 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
   "name": "yueguangbai-v2-example",
-  "main": "apps/api/src/index.ts",
+  "main": "apps/api/src/worker.ts",
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": { "SCHEDULED_OPERATIONS_ENABLED": "false", "SCHEDULED_OPERATIONS_DISABLED_JOBS": "" },
   "compatibility_date": "REPLACE_BEFORE_USE",
   "d1_databases": [
     {

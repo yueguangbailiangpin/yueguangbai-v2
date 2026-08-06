@@ -8,10 +8,11 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 30
-  || migrationFiles.at(-2) !== '0029_multi_marketplace_multicurrency_foundation.sql'
-  || migrationFiles.at(-1) !== '0030_customer_multipersona_invitation_recovery.sql') {
-  throw new Error('expected migrations 0001-0030');
+if (migrationFiles.length !== 31
+  || migrationFiles.at(-3) !== '0029_multi_marketplace_multicurrency_foundation.sql'
+  || migrationFiles.at(-2) !== '0030_customer_multipersona_invitation_recovery.sql'
+  || migrationFiles.at(-1) !== '0031_scheduled_operations.sql') {
+  throw new Error('expected migrations 0001-0031');
 }
 
 const guarded = new Map([
@@ -34,6 +35,7 @@ const guarded = new Map([
   [27, 'staff_sessions'],
   [29, 'marketplace_registry'],
   [30, 'customer_account_personas'],
+  [31, 'scheduled_job_states'],
 ]);
 
 function readMigration(name) {
@@ -89,7 +91,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 30) throw new Error('fresh schema not 30');
+  if (schemaVersion(fresh) !== 31) throw new Error('fresh schema not 31');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -133,8 +135,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 30,
-  sequential_upgrade: '0001 -> 0030',
+  fresh_schema: 31,
+  sequential_upgrade: '0001 -> 0031',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,

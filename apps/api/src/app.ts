@@ -24,6 +24,7 @@ export type AppBindings = StaffAuthProviderBindings & {
   CUSTOMER_SESSION_SECRET?: string;
   CUSTOMER_SECURITY_TOKEN_SECRET?: string;
   STAFF_AUTH_PROVIDER_ADAPTER?: StaffAuthProviderAdapter;
+  OUTBOX_DELIVERY_ADAPTER?: unknown;
 };
 
 export type AppVariables = {
