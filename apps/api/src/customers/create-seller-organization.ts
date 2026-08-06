@@ -34,6 +34,10 @@ import {
   requirePermission,
   type CustomerMasterActor,
 } from './master-data-shared';
+import {
+  legacyMarketplaceProjection,
+  resolveMarketplace,
+} from '../marketplaces/registry';
 
 interface SellerChannelRow {
   id: string;
@@ -72,9 +76,10 @@ export async function createSellerOrganization(
 ): Promise<CreateSellerOrganizationResult> {
   requirePermission(command.actor, 'SELLER_MANAGE');
 
-  if (input.marketplaceCode !== 'JP') {
-    throw new CustomerMasterDataError('VALIDATION_ERROR', 400);
-  }
+  await resolveMarketplace(database, input.marketplaceCode, {
+    requireActive: true,
+    requireAdapter: true,
+  });
   const sellerChannelId = cleanRequiredText(
     input.sellerChannelId,
     120,
@@ -217,7 +222,7 @@ export async function createSellerOrganization(
         )
       `).bind(
         organizationId,
-        input.marketplaceCode,
+        legacyMarketplaceProjection(),
         sellerCode,
         channel.id,
         channel.id,

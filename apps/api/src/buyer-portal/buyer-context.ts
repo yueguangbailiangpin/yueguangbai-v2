@@ -1,5 +1,6 @@
 import type {
   BuyerPortalMeDto,
+  MarketplaceCode,
   SqlDatabase,
 } from '@ygb/contracts';
 import type { Context } from 'hono';
@@ -12,7 +13,7 @@ interface BuyerContextRow {
   buyer_customer_id: string;
   buyer_customer_no: string | null;
   display_name: string;
-  marketplace_code: 'JP';
+  marketplace_code: MarketplaceCode;
   access_status: 'ACTIVE' | 'DISABLED';
   identity_review_status: 'CLEAR' | 'REVIEW_REQUIRED';
 }
@@ -77,11 +78,16 @@ async function loadBuyerContext(
       id AS buyer_customer_id,
       buyer_customer_no,
       display_name,
-      marketplace_code,
+      CASE assignment.marketplace_code
+        WHEN 'AMAZON_JP' THEN 'JP'
+        ELSE assignment.marketplace_code
+      END AS marketplace_code,
       access_status,
       identity_review_status
-    FROM buyer_customers
-    WHERE identity_subject_id=?
+    FROM buyer_customers buyer
+    JOIN buyer_marketplace_assignments assignment
+      ON assignment.buyer_customer_id=buyer.id
+    WHERE buyer.identity_subject_id=?
     LIMIT 1
   `).bind(identitySubjectId).first<BuyerContextRow>();
 }

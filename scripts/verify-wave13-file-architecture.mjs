@@ -69,7 +69,7 @@ for (const evidence of [
   'FILE_HTTP_PURPOSE_ROUTES',
   'FILE_HTTP_LIFECYCLE_PATHS',
   'staffMiddlewareIndex',
-  'toHaveLength(139)',
+  'toHaveLength(140)',
 ]) assertContains(inventoryTests, evidence, 'real Hono route inventory test');
 report('wave13-file-architecture', {
   active_purpose_routes: 5,
@@ -77,5 +77,5 @@ report('wave13-file-architecture', {
   generic_link_routes: 0,
   generic_grant_routes: 0,
   r2_authority_fields: 0,
-  active_route_inventory: 139,
+  active_route_inventory: 140,
 });

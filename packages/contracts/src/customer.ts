@@ -1,5 +1,16 @@
-export const MARKETPLACE_CODES = ['JP'] as const;
-export type MarketplaceCode = typeof MARKETPLACE_CODES[number];
+export const MARKETPLACE_CODES = [
+  'AMAZON_JP',
+  'AMAZON_US',
+  'COUPANG_KR',
+] as const;
+export type CanonicalMarketplaceCode = typeof MARKETPLACE_CODES[number];
+
+/** Existing JP HTTP payloads remain accepted during the compatibility window. */
+export const LEGACY_MARKETPLACE_CODES = ['JP'] as const;
+export type LegacyMarketplaceCode = typeof LEGACY_MARKETPLACE_CODES[number];
+export type MarketplaceCode =
+  | CanonicalMarketplaceCode
+  | LegacyMarketplaceCode;
 
 export const CUSTOMER_IDENTITY_SUBJECT_TYPES = [
   'BUYER_CUSTOMER',
@@ -40,6 +51,16 @@ export type SellerMemberRole = typeof SELLER_MEMBER_ROLES[number];
 export function isMarketplaceCode(
   value: unknown,
 ): value is MarketplaceCode {
+  return typeof value === 'string'
+    && [
+      ...MARKETPLACE_CODES,
+      ...LEGACY_MARKETPLACE_CODES,
+    ].includes(value as CanonicalMarketplaceCode);
+}
+
+export function isCanonicalMarketplaceCode(
+  value: unknown,
+): value is CanonicalMarketplaceCode {
   return typeof value === 'string'
     && (MARKETPLACE_CODES as readonly string[]).includes(value);
 }

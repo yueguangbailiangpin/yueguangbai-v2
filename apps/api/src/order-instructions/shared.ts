@@ -2,6 +2,7 @@ import type {
   OrderInstructionStatus,
   SqlDatabase,
   SqlStatement,
+  MarketplaceCode,
   StaffPermissionCode,
 } from '@ygb/contracts';
 import { canonicalJson } from '@ygb/domain';
@@ -18,7 +19,7 @@ export const MAX_EXPIRY_SCAN_BATCH_SIZE = 100;
 
 export interface BuyerInstructionActor {
   buyerCustomerId: string;
-  marketplaceCode: 'JP';
+  marketplaceCode: MarketplaceCode;
   accessStatus: 'ACTIVE' | 'DISABLED';
   identityReviewStatus: 'CLEAR' | 'REVIEW_REQUIRED';
 }

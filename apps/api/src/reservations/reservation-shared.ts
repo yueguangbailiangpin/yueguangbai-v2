@@ -1,5 +1,6 @@
 import type {
   ReservationStatus,
+  MarketplaceCode,
   SqlDatabase,
   SqlStatement,
   StaffPermissionCode,
@@ -11,7 +12,7 @@ import {
 
 export interface BuyerReservationActor {
   buyerCustomerId: string;
-  marketplaceCode: 'JP';
+  marketplaceCode: MarketplaceCode;
   accessStatus: 'ACTIVE' | 'DISABLED';
   identityReviewStatus: 'CLEAR' | 'REVIEW_REQUIRED';
 }

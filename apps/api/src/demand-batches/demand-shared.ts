@@ -1,5 +1,6 @@
 import type {
   DemandTaskType,
+  MarketplaceCode,
   SellerMemberRole,
   SqlDatabase,
   SqlStatement,
@@ -28,7 +29,7 @@ export interface DemandStaffActor {
 
 export interface BuyerDemandContext {
   buyerCustomerId: string;
-  marketplaceCode: 'JP';
+  marketplaceCode: MarketplaceCode;
   accessStatus: 'ACTIVE' | 'DISABLED';
   identityReviewStatus: 'CLEAR' | 'REVIEW_REQUIRED';
 }

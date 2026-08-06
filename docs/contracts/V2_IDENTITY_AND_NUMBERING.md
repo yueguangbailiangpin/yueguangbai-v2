@@ -34,6 +34,8 @@
 
 ## 3. 买家编号
 
+买家注册后只属于一个 Marketplace，不能自行切换。只有同时具备 `owner` 角色与 `BUYER_IDENTITY_HIGH_RISK_MANAGE` 权限的员工，才能在任何预约、订单资料、正式订单、评论或财务事实产生前执行幂等、带版本和原因的受控纠错；纠错后追加不可变前后值审计。已有正式事实时，应用条件更新与数据库触发器均拒绝跨站改写。
+
 格式：
 
 ```text
@@ -73,7 +75,7 @@ YYYYMMDD + 渠道代码 + 渠道独立序号
 
 ## 5. Seller Organization
 
-一个卖家客户对应一个 Seller Organization。主微信默认属于 OWNER，其他成员使用各自微信。
+一个卖家客户对应一个全局 Seller Organization。主微信默认属于 OWNER，其他成员使用各自微信；Marketplace 归属于 Store，而不是 Organization。
 
 后备用户名：
 
@@ -81,12 +83,12 @@ YYYYMMDD + 渠道代码 + 渠道独立序号
 seller-code-member-number
 ```
 
-## 6. ASIN
+## 6. 平台产品标识
 
 唯一键：
 
 ```text
-marketplace_id + normalized_asin
+marketplace_code + normalized_platform_product_identifier
 ```
 
 规范化：
@@ -94,13 +96,14 @@ marketplace_id + normalized_asin
 - NFKC；
 - trim；
 - uppercase；
-- 标准 Amazon ASIN 格式校验。
+- Amazon Marketplace 使用标准 ASIN 格式校验。
+- 未批准真实规则的 Marketplace Adapter 必须失败关闭，不得臆造格式。
 
-同 Marketplace 的规范化 ASIN 只能归属一个权威店铺。跨店铺冲突不向卖家暴露其他店铺或卖家信息。
+同 Marketplace 的规范化平台产品标识只能归属一个权威店铺。跨店铺冲突不向卖家暴露其他店铺或卖家信息。
 
-## 7. Amazon 订单号
+## 7. 平台订单标识
 
-规范化：
+Amazon Adapter 规范化：
 
 - NFKC；
 - 移除空白；

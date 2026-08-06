@@ -1003,17 +1003,17 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(28);
+    expect(migrations).toHaveLength(29);
     expect(migrations[0]).toMatch(/^0001_/u);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-1)).toBe('0028_buyer_amazon_order_date.sql');
+    expect(migrations.at(-1)).toBe('0029_multi_marketplace_multicurrency_foundation.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(28);
+    expect(Number(schema?.schema_version)).toBe(29);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name

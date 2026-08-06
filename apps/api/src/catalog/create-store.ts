@@ -26,10 +26,13 @@ import {
   requireCatalogPermission,
   type CatalogStaffActor,
 } from './catalog-shared';
+import {
+  legacyMarketplaceProjection,
+  resolveMarketplace,
+} from '../marketplaces/registry';
 
 interface SellerOrganizationRow {
   id: string;
-  marketplace_code: string;
   status: string;
 }
 
@@ -62,9 +65,11 @@ export async function createSellerStore(
   const organizationId = cleanCatalogIdentifier(
     input.sellerOrganizationId,
   );
-  if (input.marketplaceCode !== 'JP') {
-    throw new CatalogError('VALIDATION_ERROR', 400);
-  }
+  const marketplace = await resolveMarketplace(
+    database,
+    input.marketplaceCode,
+    { requireActive: true, requireAdapter: true },
+  );
   const storeName = parseCatalogInput(
     () => normalizeStoreName(input.storeName),
   );
@@ -108,22 +113,19 @@ export async function createSellerStore(
   }
 
   try {
-    await requireActiveSellerOrganization(
-      database,
-      organizationId,
-      input.marketplaceCode,
-    );
+    await requireActiveSellerOrganization(database, organizationId);
 
     const existing = await database.prepare(`
       SELECT id
-      FROM seller_stores
-      WHERE organization_id=?
-        AND marketplace_code=?
+      FROM seller_stores store
+      JOIN seller_store_marketplaces scope ON scope.store_id=store.id
+      WHERE store.organization_id=?
+        AND scope.marketplace_code=?
         AND normalized_name=?
       LIMIT 1
     `).bind(
       organizationId,
-      input.marketplaceCode,
+      marketplace.code,
       storeName.normalized,
     ).first<{ id: string }>();
     if (existing) {
@@ -174,12 +176,17 @@ export async function createSellerStore(
       `).bind(
         storeId,
         organizationId,
-        input.marketplaceCode,
+        legacyMarketplaceProjection(),
         storeName.display,
         storeName.normalized,
         now,
         now,
       ),
+      database.prepare(`
+        UPDATE seller_store_marketplaces
+        SET marketplace_code=?
+        WHERE store_id=? AND seller_organization_id=?
+      `).bind(marketplace.code, storeId, organizationId),
       database.prepare(`
         INSERT INTO seller_store_events (
           id,
@@ -263,17 +270,15 @@ export async function createSellerStore(
 async function requireActiveSellerOrganization(
   database: SqlDatabase,
   organizationId: string,
-  marketplaceCode: MarketplaceCode,
 ): Promise<SellerOrganizationRow> {
   const row = await database.prepare(`
-    SELECT id, marketplace_code, status
+    SELECT id, status
     FROM seller_organizations
     WHERE id=?
   `).bind(organizationId).first<SellerOrganizationRow>();
 
   if (!row) throw new CatalogError('NOT_FOUND', 404);
-  if (row.status !== 'ACTIVE'
-    || row.marketplace_code !== marketplaceCode) {
+  if (row.status !== 'ACTIVE') {
     throw new CatalogError('VALIDATION_ERROR', 409);
   }
   return row;
@@ -295,11 +300,14 @@ function assertStoreCreatedStatement(
       EXISTS (
         SELECT 1
         FROM seller_stores
-        WHERE id=?
-          AND organization_id=?
-          AND marketplace_code=?
-          AND status='ACTIVE'
-          AND version=1
+        JOIN seller_store_marketplaces scope
+          ON scope.store_id=seller_stores.id
+        WHERE seller_stores.id=?
+          AND seller_stores.organization_id=?
+          AND scope.marketplace_code=CASE
+            WHEN ?='JP' THEN 'AMAZON_JP' ELSE ? END
+          AND seller_stores.status='ACTIVE'
+          AND seller_stores.version=1
       )
       AND EXISTS (
         SELECT 1
@@ -314,6 +322,7 @@ function assertStoreCreatedStatement(
   `).bind(
     response.store_id,
     response.seller_organization_id,
+    response.marketplace_code,
     response.marketplace_code,
     claim.actorType,
     claim.actorId,

@@ -30,6 +30,7 @@ import {
   registerStaffAuthRoutes,
 } from './staff-auth';
 import { registerStaffCatalogWorkflowRoutes } from './staff-catalog-routes';
+import { registerMarketplaceFoundationRoutes } from './marketplaces/routes';
 
 const app = createApp();
 
@@ -48,6 +49,7 @@ registerStaffAuthRoutes(app, {
 app.use('/api/staff/*', staffSessionMiddleware());
 registerStaffAssignmentRoutes(app);
 registerStaffCatalogWorkflowRoutes(app);
+registerMarketplaceFoundationRoutes(app);
 registerStaffReviewRoutes(app);
 registerStaffSellerSettlementRoutes(app);
 registerStaffSellerSettlementProofRoutes(app);

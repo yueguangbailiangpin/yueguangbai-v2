@@ -3,6 +3,7 @@ import type {
   OrderEvidenceStatus,
   SqlDatabase,
   SqlStatement,
+  MarketplaceCode,
   StaffPermissionCode,
   StaffRoleCode,
 } from '@ygb/contracts';
@@ -13,7 +14,7 @@ const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 
 export interface BuyerOrderEvidenceActor {
   buyerCustomerId: string;
-  marketplaceCode: 'JP';
+  marketplaceCode: MarketplaceCode;
   accessStatus: 'ACTIVE' | 'DISABLED';
   identityReviewStatus: 'CLEAR' | 'REVIEW_REQUIRED';
 }

@@ -7,15 +7,16 @@ const directory = path.join(root, 'migrations');
 const files = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (files.length !== 28
-  || files.at(-1) !== '0028_buyer_amazon_order_date.sql') {
-  throw new Error('expected migrations 0001-0028');
+if (files.length < 28
+  || files[27] !== '0028_buyer_amazon_order_date.sql') {
+  throw new Error('expected preserved migrations 0001-0028');
 }
+const module1Files = files.slice(0, 28);
 
 const database = new DatabaseSync(':memory:');
 try {
   database.exec('PRAGMA foreign_keys=ON;');
-  for (const file of files) {
+  for (const file of module1Files) {
     database.exec(readFileSync(path.join(directory, file), 'utf8'));
   }
   const schemaVersion = Number(database.prepare(`
@@ -56,7 +57,7 @@ try {
   }
   console.log(JSON.stringify({
     status: 'PASS',
-    migrations: files.length,
+    migrations: module1Files.length,
     schema_version: schemaVersion,
     tables: count('table'),
     triggers: count('trigger'),

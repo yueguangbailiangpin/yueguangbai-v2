@@ -7,7 +7,7 @@ const directory = path.join(root, 'migrations');
 const files = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (files.length !== 28
+if (files.length < 28
   || files[24] !== '0025_internal_finance_reporting.sql'
   || files[25] !== '0026_financial_export_audit.sql'
   || files[26] !== '0027_staff_auth_sessions.sql'

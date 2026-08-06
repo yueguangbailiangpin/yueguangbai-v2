@@ -1,0 +1,502 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  createMigratedTestDatabase,
+  type SqliteDatabase,
+} from '@ygb/testkit';
+import { createSellerStore } from '../catalog/create-store';
+import { createApp } from '../app';
+import {
+  confirmBuyerDailyCurrencyRate,
+  confirmSellerAgreementCurrencyRate,
+  submitBuyerDailyCurrencyRate,
+  submitSellerAgreementCurrencyRate,
+} from '../pricing/currency-rate-foundation';
+import {
+  confirmMarketplaceServiceFee,
+  submitMarketplaceServiceFee,
+} from '../pricing/marketplace-service-fee';
+import { correctBuyerMarketplace } from './correct-buyer-marketplace';
+import { lockFormalOrderMarketplaceMoneySnapshot } from './lock-money-snapshot';
+import { resolveMarketplace } from './registry';
+import { registerMarketplaceFoundationRoutes } from './routes';
+
+let database: SqliteDatabase | null = null;
+afterEach(() => {
+  database?.close();
+  database = null;
+});
+
+describe('marketplace and multi-currency application foundation', () => {
+  it('resolves the JP alias and keeps Korea disabled and unavailable', async () => {
+    database = createMigratedTestDatabase();
+    await expect(resolveMarketplace(database, 'JP', {
+      requireActive: true, requireAdapter: true,
+    })).resolves.toMatchObject({
+      code: 'AMAZON_JP', transaction_currency_code: 'JPY',
+    });
+    await expect(resolveMarketplace(database, 'AMAZON_US', {
+      requireActive: true, requireAdapter: true,
+    })).resolves.toMatchObject({
+      code: 'AMAZON_US', transaction_currency_code: 'USD',
+    });
+    await expect(resolveMarketplace(database, 'COUPANG_KR', {
+      requireActive: true,
+    })).rejects.toMatchObject({ code: 'MARKETPLACE_DISABLED' });
+  });
+
+  it('allows one global seller organization to own JP and US stores', async () => {
+    database = createMigratedTestDatabase();
+    seedOrganization(database);
+    const jp = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-global',
+      marketplaceCode: 'JP',
+      storeName: '日本店',
+    }, command('seller-store-jp'));
+    const us = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-global',
+      marketplaceCode: 'AMAZON_US',
+      storeName: '美国店',
+    }, command('seller-store-us'));
+    expect(jp.marketplace_code).toBe('JP');
+    expect(us.marketplace_code).toBe('AMAZON_US');
+    await expect(database.prepare(`
+      SELECT marketplace_code FROM seller_store_marketplaces
+      WHERE seller_organization_id=? ORDER BY marketplace_code
+    `).bind('seller-org-global').all()).resolves.toEqual({
+      results: [
+        { marketplace_code: 'AMAZON_JP' },
+        { marketplace_code: 'AMAZON_US' },
+      ],
+    });
+  });
+
+  it('corrects a fact-free buyer once with version, audit and replay', async () => {
+    database = createMigratedTestDatabase();
+    seedBuyer(database);
+    const input = {
+      buyerCustomerId: 'buyer-fact-free',
+      marketplaceCode: 'AMAZON_US' as const,
+      expectedVersion: 1,
+      reason: '注册时站点选择错误，已人工核验',
+    };
+    const first = await correctBuyerMarketplace(
+      database, input, correctionCommand('buyer-market-correction'),
+    );
+    const replay = await correctBuyerMarketplace(
+      database, input, correctionCommand('buyer-market-correction'),
+    );
+    expect(first).toMatchObject({
+      previous_marketplace_code: 'AMAZON_JP',
+      marketplace_code: 'AMAZON_US', version: 2, replayed: false,
+    });
+    expect(replay).toMatchObject({ version: 2, replayed: true });
+    await expect(database.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM buyer_marketplace_correction_events) AS events,
+        (SELECT COUNT(*) FROM audit_events
+          WHERE event_type='BUYER_MARKETPLACE_CORRECTED') AS audits
+    `).first()).resolves.toEqual({ events: 1, audits: 1 });
+  });
+
+  it('rejects non-owner correction without changing the assignment', async () => {
+    database = createMigratedTestDatabase();
+    seedBuyer(database);
+    await expect(correctBuyerMarketplace(database, {
+      buyerCustomerId: 'buyer-fact-free',
+      marketplaceCode: 'AMAZON_US',
+      expectedVersion: 1,
+      reason: '无权测试',
+    }, {
+      actor: {
+        staffId: 'zz-phase3h-test-owner',
+        roles: ['pre_sales'],
+        permissions: new Set(['BUYER_IDENTITY_HIGH_RISK_MANAGE'] as const),
+      },
+      idempotencyKey: 'buyer-market-forbidden',
+      now: 2000,
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    await expect(database.prepare(`
+      SELECT marketplace_code, version FROM buyer_marketplace_assignments
+      WHERE buyer_customer_id='buyer-fact-free'
+    `).first()).resolves.toEqual({
+      marketplace_code: 'AMAZON_JP', version: 1,
+    });
+  });
+
+  it('rejects disabled Korea as a correction target without side effects', async () => {
+    database = createMigratedTestDatabase();
+    seedBuyer(database);
+    await expect(correctBuyerMarketplace(database, {
+      buyerCustomerId: 'buyer-fact-free', marketplaceCode: 'COUPANG_KR',
+      expectedVersion: 1, reason: '韩国站尚未开通',
+    }, correctionCommand('buyer-market-disabled-target')))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+    await expect(database.prepare(`
+      SELECT marketplace_code, version FROM buyer_marketplace_assignments
+      WHERE buyer_customer_id='buyer-fact-free'
+    `).first()).resolves.toEqual({
+      marketplace_code: 'AMAZON_JP', version: 1,
+    });
+  });
+
+  it('rejects correction after a reservation fact without audit side effects', async () => {
+    database = createMigratedTestDatabase();
+    seedBuyer(database);
+    seedReservationFact(database);
+    await expect(correctBuyerMarketplace(database, {
+      buyerCustomerId: 'buyer-fact-free',
+      marketplaceCode: 'AMAZON_US',
+      expectedVersion: 1,
+      reason: '已有正式事实后不得修改',
+    }, correctionCommand('buyer-market-after-fact')))
+      .rejects.toMatchObject({ code: 'STATE_CONFLICT', status: 409 });
+    await expect(database.prepare(`
+      SELECT
+        assignment.marketplace_code, assignment.version,
+        (SELECT COUNT(*) FROM buyer_marketplace_correction_events) AS events,
+        (SELECT COUNT(*) FROM audit_events
+          WHERE event_type='BUYER_MARKETPLACE_CORRECTED') AS audits
+      FROM buyer_marketplace_assignments assignment
+      WHERE assignment.buyer_customer_id='buyer-fact-free'
+    `).first()).resolves.toEqual({
+      marketplace_code: 'AMAZON_JP', version: 1, events: 0, audits: 0,
+    });
+  });
+
+  it('does not expose correction to buyers and rejects ordinary Staff', async () => {
+    database = createMigratedTestDatabase();
+    seedBuyer(database);
+    const app = createApp();
+    app.use('/api/staff/*', async (context, next) => {
+      context.set('staffAuthorization', {
+        staffId: 'zz-phase3h-test-owner',
+        displayName: '普通员工',
+        staffStatus: 'ACTIVE',
+        authorizationVersion: 1,
+        roles: new Set(['pre_sales']),
+        permissions: new Set(['BUYER_CREATE']),
+        memberTeamIds: [],
+        leaderTeamIds: [],
+      });
+      await next();
+    });
+    registerMarketplaceFoundationRoutes(app);
+    const payload = JSON.stringify({
+      marketplace_code: 'AMAZON_US',
+      expected_version: 1,
+      reason: '普通员工不得纠正',
+    });
+    const staffResponse = await app.request(
+      '/api/staff/buyers/buyer-fact-free/marketplace-correction',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'ordinary-staff-correction',
+        },
+        body: payload,
+      },
+      { DB: database },
+    );
+    expect(staffResponse.status).toBe(403);
+
+    const buyerResponse = await app.request(
+      '/api/buyer-portal/buyers/buyer-fact-free/marketplace-correction',
+      { method: 'POST', body: payload },
+      { DB: database },
+    );
+    expect(buyerResponse.status).toBe(404);
+    await expect(database.prepare(`
+      SELECT marketplace_code, version FROM buyer_marketplace_assignments
+      WHERE buyer_customer_id='buyer-fact-free'
+    `).first()).resolves.toEqual({
+      marketplace_code: 'AMAZON_JP', version: 1,
+    });
+  });
+
+  it('confirms USD/CNY rules, locks an immutable snapshot and blocks later correction', async () => {
+    database = createMigratedTestDatabase();
+    seedOrganization(database);
+    seedBuyer(database);
+    const store = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-global',
+      marketplaceCode: 'AMAZON_US',
+      storeName: '美国正式事实店',
+    }, command('seller-us-snapshot-store'));
+    await correctBuyerMarketplace(database, {
+      buyerCustomerId: 'buyer-fact-free', marketplaceCode: 'AMAZON_US',
+      expectedVersion: 1, reason: '正式事实前受控纠正到美国站',
+    }, correctionCommand('buyer-us-before-snapshot'));
+
+    const buyerSubmitted = await submitBuyerDailyCurrencyRate(database, {
+      businessDate: '2026-08-06', sourceCurrencyCode: 'USD',
+      rateValue: '7000000', rateScale: '1000000', expectedVersion: 0,
+    }, pricingCommand('submit-us-buyer-rate', ['seller_ops'], 1000));
+    await expect(confirmBuyerDailyCurrencyRate(database, {
+      rateVersionId: buyerSubmitted.rate_version_id, expectedVersion: 1,
+    }, pricingCommand('ordinary-cannot-confirm-rate', ['seller_ops'], 2000)))
+      .rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    const buyerRate = await confirmBuyerDailyCurrencyRate(database, {
+      rateVersionId: buyerSubmitted.rate_version_id, expectedVersion: 1,
+    }, pricingCommand('confirm-us-buyer-rate', ['owner'], 2000));
+
+    const sellerSubmitted = await submitSellerAgreementCurrencyRate(database, {
+      sellerOrganizationId: 'seller-org-global', sourceCurrencyCode: 'USD',
+      rateValue: '6800000', rateScale: '1000000', effectiveFrom: 3000,
+      expectedVersion: 0,
+    }, pricingCommand('submit-us-seller-rate', ['seller_ops'], 1000));
+    const sellerRate = await confirmSellerAgreementCurrencyRate(database, {
+      rateVersionId: sellerSubmitted.rate_version_id, expectedVersion: 1,
+    }, pricingCommand('confirm-us-seller-rate', ['owner'], 2000));
+
+    const feeSubmitted = await submitMarketplaceServiceFee(database, {
+      sellerOrganizationId: 'seller-org-global', marketplaceCode: 'AMAZON_US',
+      reviewType: 'TEXT', feeAmountMinor: '2500', effectiveFrom: 3000,
+      expectedVersion: 0,
+    }, pricingCommand('submit-us-fee', ['seller_ops'], 1000));
+    const fee = await confirmMarketplaceServiceFee(database, {
+      feeRuleVersionId: feeSubmitted.fee_rule_version_id, expectedVersion: 1,
+    }, pricingCommand('confirm-us-fee', ['owner'], 2000));
+
+    const snapshot = await lockFormalOrderMarketplaceMoneySnapshot(database, {
+      formalOrderId: 'us-formal-fact-1',
+      buyerCustomerId: 'buyer-fact-free',
+      sellerOrganizationId: 'seller-org-global', storeId: store.store_id,
+      marketplaceCode: 'AMAZON_US', reviewType: 'TEXT',
+      platformOrderIdentifier: '123-1234567-1234567',
+      platformProductIdentifier: 'B012345678',
+      platformOrderDate: '2026-08-06',
+      payment: { amount_minor: '12345', currency_code: 'USD',
+        currency_exponent: 2 },
+      buyerRateVersionId: buyerRate.rate_version_id,
+      sellerRateVersionId: sellerRate.rate_version_id,
+      serviceFeeRuleVersionId: fee.fee_rule_version_id,
+    }, pricingCommand('lock-us-money-snapshot', ['seller_ops'], 4500));
+    expect(snapshot).toMatchObject({
+      marketplace_code: 'AMAZON_US',
+      payment: { amount_minor: '12345', currency_code: 'USD',
+        currency_exponent: 2 },
+      buyer_rate: { rate_version_id: buyerRate.rate_version_id,
+        rate_value: '7000000', rate_scale: '1000000' },
+      seller_rate: { rate_version_id: sellerRate.rate_version_id,
+        rate_value: '6800000', rate_scale: '1000000' },
+      buyer_expected_principal: { amount_minor: '86415',
+        currency_code: 'CNY' },
+      seller_expected_principal: { amount_minor: '83946',
+        currency_code: 'CNY' },
+    });
+    const replay = await lockFormalOrderMarketplaceMoneySnapshot(database, {
+      formalOrderId: 'us-formal-fact-1', buyerCustomerId: 'buyer-fact-free',
+      sellerOrganizationId: 'seller-org-global', storeId: store.store_id,
+      marketplaceCode: 'AMAZON_US', reviewType: 'TEXT',
+      platformOrderIdentifier: '123-1234567-1234567',
+      platformProductIdentifier: 'B012345678',
+      platformOrderDate: '2026-08-06',
+      payment: { amount_minor: '12345', currency_code: 'USD',
+        currency_exponent: 2 },
+      buyerRateVersionId: buyerRate.rate_version_id,
+      sellerRateVersionId: sellerRate.rate_version_id,
+      serviceFeeRuleVersionId: fee.fee_rule_version_id,
+    }, pricingCommand('lock-us-money-snapshot', ['seller_ops'], 4000));
+    expect(replay.replayed).toBe(true);
+
+    const laterSellerRate = await submitSellerAgreementCurrencyRate(database, {
+      sellerOrganizationId: 'seller-org-global', sourceCurrencyCode: 'USD',
+      rateValue: '6900000', rateScale: '1000000', effectiveFrom: 6000,
+      expectedVersion: 1,
+    }, pricingCommand('submit-later-us-seller-rate', ['seller_ops'], 4600));
+    await confirmSellerAgreementCurrencyRate(database, {
+      rateVersionId: laterSellerRate.rate_version_id, expectedVersion: 1,
+    }, pricingCommand('confirm-later-us-seller-rate', ['owner'], 5000));
+
+    await expect(correctBuyerMarketplace(database, {
+      buyerCustomerId: 'buyer-fact-free', marketplaceCode: 'AMAZON_JP',
+      expectedVersion: 2, reason: '已有财务快照后不得静默跨站重写',
+    }, correctionCommand('buyer-after-us-snapshot')))
+      .rejects.toMatchObject({ code: 'STATE_CONFLICT', status: 409 });
+    await expect(database.prepare(`
+      UPDATE formal_order_marketplace_money_snapshots
+      SET buyer_rate_value=1 WHERE formal_order_id='us-formal-fact-1'
+    `).run()).rejects.toThrow('formal_order_marketplace_money_is_immutable');
+    await expect(database.prepare(`
+      UPDATE buyer_marketplace_assignments
+      SET marketplace_code='AMAZON_JP'
+      WHERE buyer_customer_id='buyer-fact-free'
+    `).run()).rejects.toThrow('buyer_marketplace_has_formal_facts');
+    await expect(database.prepare(`
+      SELECT marketplace_code, payment_amount_minor, payment_currency_code,
+        buyer_rate_version_id, seller_rate_version_id,
+        buyer_expected_principal_amount_minor,
+        seller_expected_principal_amount_minor
+      FROM formal_order_marketplace_money_snapshots
+      WHERE formal_order_id='us-formal-fact-1'
+    `).first()).resolves.toEqual({
+      marketplace_code: 'AMAZON_US', payment_amount_minor: 12345,
+      payment_currency_code: 'USD',
+      buyer_rate_version_id: buyerRate.rate_version_id,
+      seller_rate_version_id: sellerRate.rate_version_id,
+      buyer_expected_principal_amount_minor: 86415,
+      seller_expected_principal_amount_minor: 83946,
+    });
+  });
+});
+
+function seedOrganization(result: SqliteDatabase): void {
+  result.exec(`
+    INSERT INTO seller_organizations (
+      id, marketplace_code, seller_code, origin_channel_id,
+      current_channel_id, seller_sequence, organization_name, status,
+      version, created_at, updated_at, activated_at, disabled_at,
+      next_member_number
+    ) VALUES (
+      'seller-org-global','JP','ido-mango-900001',
+      'seller-channel-ido-mango','seller-channel-ido-mango',900001,
+      '全局测试卖家','ACTIVE',1,1000,1000,1000,NULL,2
+    );
+  `);
+}
+
+function pricingCommand(
+  idempotencyKey: string,
+  roles: readonly ('owner' | 'seller_ops')[],
+  now: number,
+) {
+  return {
+    actor: {
+      staffId: 'zz-phase3h-test-owner',
+      displayName: '多币种测试员工',
+      roles,
+    },
+    idempotencyKey,
+    now,
+  };
+}
+
+function seedBuyer(result: SqliteDatabase): void {
+  result.exec(`
+    INSERT INTO buyer_channels (
+      id, code, name, status, next_sequence, version,
+      created_at, updated_at, disabled_at
+    ) VALUES ('buyer-channel-test','B','测试渠道','ACTIVE',1,1,1,1,NULL);
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+    VALUES ('buyer-subject-fact-free','BUYER_CUSTOMER',1);
+    INSERT INTO buyer_customers (
+      id, identity_subject_id, marketplace_code, buyer_channel_id,
+      buyer_customer_no, buyer_sequence, first_valid_order_business_date,
+      display_name, access_status, identity_review_status, version,
+      created_at, updated_at, activated_at, disabled_at
+    ) VALUES (
+      'buyer-fact-free','buyer-subject-fact-free','JP','buyer-channel-test',
+      NULL,NULL,NULL,'测试买家','ACTIVE','CLEAR',1,1,1,1,NULL
+    );
+  `);
+}
+
+function seedReservationFact(result: SqliteDatabase): void {
+  result.exec(`
+    INSERT INTO seller_organizations (
+      id, marketplace_code, seller_code, origin_channel_id,
+      current_channel_id, seller_sequence, organization_name, status,
+      version, created_at, updated_at, activated_at, disabled_at,
+      next_member_number
+    ) VALUES (
+      'seller-org-reservation','JP','ido-mango-900002',
+      'seller-channel-ido-mango','seller-channel-ido-mango',900002,
+      '预约事实卖家','ACTIVE',1,1,1,1,NULL,2
+    );
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+    VALUES ('seller-reservation-subject','SELLER_ORG_MEMBER',1);
+    INSERT INTO seller_organization_members (
+      id, identity_subject_id, organization_id, member_number,
+      username_fallback, display_name, role, primary_owner, status,
+      version, created_at, updated_at, activated_at, disabled_at
+    ) VALUES (
+      'seller-reservation-owner','seller-reservation-subject',
+      'seller-org-reservation',1,'ido-mango-900002-1','负责人','OWNER',1,
+      'ACTIVE',1,1,1,1,NULL
+    );
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code, display_name,
+      normalized_name, status, version, created_at, updated_at, disabled_at
+    ) VALUES (
+      'store-reservation','seller-org-reservation','JP','预约店','预约店',
+      'ACTIVE',1,1,1,NULL
+    );
+    INSERT INTO products (
+      id, organization_id, store_id, marketplace_code, asin_display,
+      asin_normalized, status, current_version_no, version,
+      created_at, updated_at, disabled_at
+    ) VALUES (
+      'product-reservation','seller-org-reservation','store-reservation','JP',
+      'B0FACT0001','B0FACT0001','ACTIVE',1,1,1,1,NULL
+    );
+    INSERT INTO product_versions (
+      id, product_id, version_no, product_name, search_keywords_json,
+      product_url, buyer_visible_notes, internal_notes,
+      created_by_staff_id, created_at,
+      ordering_guide_expected_amount_jpy, color_spec_mode,
+      default_buyer_self_pay_bps
+    ) VALUES (
+      'product-reservation-v1','product-reservation',1,'预约事实产品','[]',
+      NULL,NULL,NULL,'zz-phase3h-test-owner',1,1000,
+      'MAIN_IMAGE_VARIANT',1000
+    );
+    INSERT INTO demand_batches (
+      id, organization_id, store_id, marketplace_code, product_id,
+      product_version_no, submitted_by_member_id, task_type,
+      target_quantity, buyer_visible_notes, seller_notes, open_at,
+      reservation_deadline, order_deadline, status, review_reason,
+      close_reason, reviewed_by_staff_id, closed_by_staff_id, version,
+      submitted_at, updated_at, reviewed_at, published_at, withdrawn_at,
+      closed_at, held_reservation_count, approved_reservation_count,
+      buyer_self_pay_bps_snapshot, buyer_self_pay_source,
+      buyer_self_pay_override_reason
+    ) VALUES (
+      'demand-reservation','seller-org-reservation','store-reservation','JP',
+      'product-reservation',1,'seller-reservation-owner','TEXT',1,NULL,NULL,
+      1,10000,20000,'PUBLISHED',NULL,NULL,'zz-phase3h-test-owner',NULL,2,
+      1,1,1,1,NULL,NULL,1,0,1000,'PRODUCT_DEFAULT',NULL
+    );
+    INSERT INTO product_reservations (
+      id, demand_batch_id, buyer_customer_id, organization_id, store_id,
+      product_id, product_version_no, marketplace_code, status,
+      precheck_snapshot_json, hold_expires_at, order_deadline_snapshot,
+      version, submitted_at, updated_at, decided_by_staff_id,
+      decision_reason, decided_at, cancelled_at, expired_at, reopened_count,
+      buyer_self_pay_bps_snapshot, reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot,
+      estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at, buyer_self_pay_accepted_demand_version
+    ) VALUES (
+      'reservation-fact','demand-reservation','buyer-fact-free',
+      'seller-org-reservation','store-reservation','product-reservation',1,
+      'JP','PENDING_REVIEW','{}',5000,20000,1,1,1,NULL,NULL,NULL,NULL,NULL,0,
+      1000,1000,100,900,1,2
+    );
+  `);
+}
+
+function command(idempotencyKey: string) {
+  return {
+    actor: {
+      staffId: 'zz-phase3h-test-owner',
+      displayName: '管理员',
+      roles: ['owner'] as const,
+      permissions: new Set(['SELLER_MANAGE'] as const),
+    },
+    idempotencyKey,
+    now: 2000,
+  };
+}
+
+function correctionCommand(idempotencyKey: string) {
+  return {
+    actor: {
+      staffId: 'zz-phase3h-test-owner',
+      roles: ['owner'] as const,
+      permissions: new Set(['BUYER_IDENTITY_HIGH_RISK_MANAGE'] as const),
+    },
+    idempotencyKey,
+    now: 2000,
+  };
+}

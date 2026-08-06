@@ -12,11 +12,12 @@
 
 ## 2. 金额
 
-- JPY：整数日元。
-- CNY：整数分。
-- 汇率：明确命名方向，例如 `cny_fen_per_10000_jpy`，禁止含糊的 `rate`。
+- 所有金额：整数最小货币单位 + ISO `currency_code` + 冻结 exponent。
+- JPY/KRW exponent 为 0；USD/CNY exponent 为 2。
+- 汇率：保存来源币种、报价币种、整数值、整数比例尺与取整规则，禁止含糊的无方向 `rate`。
 - 计算先使用 BigInt 或等价安全整数逻辑，最后检查 JavaScript 安全整数范围。
 - 每个财务事实保存币种和比例尺。
+- JSON 金额使用十进制字符串；财务计算使用 BigInt，禁止浮点转换。
 
 ## 3. 版本和并发
 
@@ -97,6 +98,8 @@ WHERE id=? AND version=?;
 - 店铺；
 - 产品和产品版本；
 - Marketplace；
+- 平台中性订单/产品标识；
+- 付款金额、ISO 币种和 exponent；
 - 需求批次；
 - 评论/任务类型；
 - 最终支付金额；

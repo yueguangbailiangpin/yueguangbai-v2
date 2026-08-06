@@ -178,6 +178,9 @@ export async function submitReservation(
       replayed: false,
     };
 
+    if (command.actor.marketplaceCode !== 'JP') {
+      throw new ReservationError('NOT_FOUND', 404);
+    }
     const precheck = reservationPrecheckSnapshot({
       buyerCustomerId: command.actor.buyerCustomerId,
       marketplaceCode: command.actor.marketplaceCode,

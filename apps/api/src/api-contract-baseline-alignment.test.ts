@@ -6,6 +6,7 @@ import {
   CUSTOMER_AUTH_HTTP_PATHS,
   FILE_HTTP_LIFECYCLE_PATHS,
   FILE_HTTP_PURPOSE_ROUTES,
+  MARKETPLACE_FOUNDATION_HTTP_PATHS,
   SELLER_FORMAL_ORDER_PORTAL_HTTP_PATHS,
   SELLER_PORTAL_HTTP_PATHS,
   SELLER_REVIEW_PORTAL_HTTP_PATHS,
@@ -63,7 +64,7 @@ describe('API contract baseline alignment', () => {
     const documented = documentedRoutes().sort();
     expect(new Set(actual).size, 'non-contiguous duplicate registration').toBe(actual.length);
     expect(documented, 'route inventory drift').toEqual(actual);
-    expect(actual).toHaveLength(139);
+    expect(actual).toHaveLength(140);
     expect(actual.filter((route) => route.startsWith('GET /api/'))).not.toHaveLength(0);
     expect(actual.some((route) => route.includes('/api/v2/'))).toBe(false);
   });
@@ -80,6 +81,7 @@ describe('API contract baseline alignment', () => {
       STAFF_BUYER_REFUND_PATHS,
       FILE_HTTP_PURPOSE_ROUTES,
       FILE_HTTP_LIFECYCLE_PATHS,
+      MARKETPLACE_FOUNDATION_HTTP_PATHS,
     ];
     const actual = new Set(registeredRoutes());
     const missing = stringsDeep(constants)

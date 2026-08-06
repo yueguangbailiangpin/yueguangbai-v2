@@ -15,6 +15,7 @@ export * from './file-storage';
 export * from './formal-order';
 export * from './http-auth';
 export * from './internal-finance';
+export * from './marketplace-money';
 export * from './order-evidence';
 export * from './order-instruction';
 export * from './pricing';

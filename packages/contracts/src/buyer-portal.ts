@@ -1,12 +1,13 @@
 import type { DemandTaskType } from './demand';
 import type { ReservationStatus } from './reservation';
 import type { FixedIntegerString } from './pricing';
+import type { MarketplaceCode } from './customer';
 
 export interface BuyerPortalMeDto {
   buyer: {
     customer_number: string | null;
     display_name: string;
-    marketplace_code: 'JP';
+    marketplace_code: MarketplaceCode;
     identity_review_status: 'CLEAR' | 'REVIEW_REQUIRED';
   };
   session: {
@@ -17,7 +18,7 @@ export interface BuyerPortalMeDto {
 export interface BuyerPortalDemandDto {
   demand_id: string;
   demand_version: number;
-  marketplace_code: 'JP';
+  marketplace_code: MarketplaceCode;
   product_name: string;
   reference_order_amount_jpy: FixedIntegerString;
   buyer_self_pay_bps: number;
@@ -36,7 +37,7 @@ export interface BuyerPortalDemandDto {
 export interface BuyerPortalReservationDemandDto {
   demand_id: string;
   demand_version: number;
-  marketplace_code: 'JP';
+  marketplace_code: MarketplaceCode;
   product_name: string;
   reference_order_amount_jpy: FixedIntegerString;
   buyer_self_pay_bps: number;

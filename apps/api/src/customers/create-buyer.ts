@@ -29,6 +29,10 @@ import {
   requirePermission,
   type CustomerMasterActor,
 } from './master-data-shared';
+import {
+  legacyMarketplaceProjection,
+  resolveMarketplace,
+} from '../marketplaces/registry';
 
 export interface CreateBuyerInput {
   marketplaceCode: MarketplaceCode;
@@ -60,9 +64,11 @@ export async function createBuyerCustomer(
 
   const displayName = cleanRequiredText(input.displayName, 100);
   const buyerChannelId = cleanRequiredText(input.buyerChannelId, 120);
-  if (input.marketplaceCode !== 'JP') {
-    throw new CustomerMasterDataError('VALIDATION_ERROR', 400);
-  }
+  const marketplace = await resolveMarketplace(
+    database,
+    input.marketplaceCode,
+    { requireActive: true, requireAdapter: true },
+  );
   const wechat = normalizeWechatForMasterData(input.wechatId);
   const now = command.now ?? Date.now();
   if (!Number.isSafeInteger(now) || now < 0) {
@@ -168,13 +174,18 @@ export async function createBuyerCustomer(
       `).bind(
         buyerId,
         subjectId,
-        input.marketplaceCode,
+        legacyMarketplaceProjection(),
         buyerChannelId,
         displayName,
         now,
         now,
         now,
       ),
+      database.prepare(`
+        UPDATE buyer_marketplace_assignments
+        SET marketplace_code=?
+        WHERE buyer_customer_id=? AND version=1
+      `).bind(marketplace.code, buyerId),
       createAuditEventStatement(database, {
         id: crypto.randomUUID(),
         aggregateType: 'BUYER_CUSTOMER',
@@ -217,6 +228,7 @@ export async function createBuyerCustomer(
         buyerId,
         subjectId,
         claimId,
+        marketplace.code,
       ),
       assertIdempotencyCompletionStatement(
         database,
@@ -265,6 +277,7 @@ function assertBuyerCreatedStatement(
   buyerId: string,
   subjectId: string,
   claimId: string,
+  marketplaceCode: string,
 ): SqlStatement {
   return database.prepare(`
     INSERT INTO transaction_assertions (assertion_value)
@@ -276,6 +289,13 @@ function assertBuyerCreatedStatement(
           AND identity_subject_id=?
           AND access_status='DISABLED'
           AND buyer_customer_no IS NULL
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM buyer_marketplace_assignments
+        WHERE buyer_customer_id=?
+          AND marketplace_code=?
+          AND version=1
       )
       AND EXISTS (
         SELECT 1
@@ -297,6 +317,8 @@ function assertBuyerCreatedStatement(
   `).bind(
     buyerId,
     subjectId,
+    buyerId,
+    marketplaceCode,
     claimId,
     subjectId,
     claim.actorType,

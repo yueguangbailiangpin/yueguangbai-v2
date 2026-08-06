@@ -28,6 +28,7 @@
     "db:migrate:local": "wrangler d1 migrations apply yueguangbai-v2-local --local --config apps/api/wrangler.local.jsonc",
     "db:verify": "node scripts/verify-migrations.mjs",
     "verify:migration-guards": "node scripts/verify-migration-version-guards.mjs",
+    "verify:marketplace-money": "node scripts/verify-multi-marketplace-multicurrency.mjs",
     "verify:phase3i": "node scripts/verify-phase3i-review-metadata.mjs",
     "verify:phase3j": "node scripts/verify-phase3j-seller-payables.mjs",
     "verify:phase3k": "node scripts/verify-phase3k-seller-payments.mjs",
@@ -49,7 +50,7 @@
     "check:wave13:buyer-refund": "node scripts/verify-wave13-buyer-refund-isolation.mjs",
     "check:wave13": "npm run check:wave13:migration && npm run check:wave13:staff-auth && npm run check:wave13:dto && npm run check:wave13:file && npm run check:wave13:price-mismatch && npm run check:wave13:buyer-refund",
     "security:scan": "node scripts/scan-secrets.mjs",
-    "check": "npm run security:scan && npm run typecheck && npm run db:verify && npm run verify:migration-guards && npm run verify:wave11 && npm run verify:wave12 && npm run check:wave13 && npm run check:wave14a && npm run verify:module1:buyer && npm test && npm run build",
+    "check": "npm run security:scan && npm run typecheck && npm run db:verify && npm run verify:migration-guards && npm run verify:marketplace-money && npm run verify:wave11 && npm run verify:wave12 && npm run check:wave13 && npm run check:wave14a && npm run verify:module1:buyer && npm test && npm run build",
     "dev:api": "npm --workspace @ygb/api run dev",
     "dev:web": "npm --workspace @ygb/web run dev"
   },

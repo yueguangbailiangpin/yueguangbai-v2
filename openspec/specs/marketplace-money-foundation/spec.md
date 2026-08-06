@@ -1,6 +1,10 @@
-# Marketplace and Money Foundation Capability
+# Marketplace and Money Foundation Specification
 
-## ADDED Requirements
+## Purpose
+
+Define the stable Marketplace, ownership, currency, rate, fee and immutable financial-snapshot boundaries required to extend the JP baseline safely to Amazon US and a disabled future Korea capability.
+
+## Requirements
 
 ### Requirement: Marketplace registry is the stable platform boundary
 

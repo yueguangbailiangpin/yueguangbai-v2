@@ -7,9 +7,9 @@ const migrationDirectory = path.join(root, 'migrations');
 const files = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-assert(files.length === 28, 'repository requires migrations 0001-0028');
+assert(files.length >= 28, 'repository must preserve migrations 0001-0028');
 assert(files[26] === '0027_staff_auth_sessions.sql', 'Wave 13 migration must remain 0027');
-assert(files[27] === '0028_buyer_amazon_order_date.sql', 'latest migration must be 0028');
+assert(files[27] === '0028_buyer_amazon_order_date.sql', 'migration 0028 must remain in sequence');
 const wave13Files = files.slice(0, 27);
 for (const name of wave13Files.slice(0, 26)) {
   assert(!read(`migrations/${name}`).includes('staff_sessions'),
