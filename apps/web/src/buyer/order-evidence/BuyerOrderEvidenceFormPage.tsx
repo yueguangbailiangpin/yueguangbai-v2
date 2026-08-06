@@ -1,12 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { isFrontendApiError } from '../../api/errors';
 import { Alert, Button, Card, FormField, PageHeader, RequestIdDisplay, TextInput } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
 import { dateOnlySchema, identifierSchema } from '../contracts/runtime';
+import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { useFileUpload } from '../shared/useFileUpload';
 
 export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
@@ -20,7 +21,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const eligible = useQuery({
-    queryKey: buyerQueryKeys.evidenceEligible(),
+    queryKey: buyerQueryKeys.evidenceEligiblePage({ limit: 100, cursor: null }),
     queryFn: ({ signal }) => buyerApi.evidenceEligible(client, 'limit=100', signal).then((r) => r.data),
     enabled: reservationId.length > 0,
   });
@@ -32,17 +33,16 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
   const current = eligible.data?.items.find((item) => item.reservation_id === reservationId);
   const canSubmit = current?.allowed_actions.includes('SUBMIT') === true
     && instruction.data?.can_submit_evidence === true;
-  const mutation = useMutation({
-    mutationFn: (body: unknown) => buyerApi.submitEvidence(client, body, crypto.randomUUID()),
+  const mutation = useBuyerMutation({
+    operation: (body: unknown, key, signal) => buyerApi.submitEvidence(client, body, key, signal),
     onSuccess: async (result) => {
       await Promise.all([
-        client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceEligible() }),
-        client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceList() }),
+        client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceEligibleRoot }),
+        client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceListRoot }),
       ]);
       navigate(`/buyer/order-materials/${result.data.order_evidence.submission_id}`, { replace: true });
     },
-    onError: (error) => {
-      setRequestId(isFrontendApiError(error) ? error.requestId : null);
+    onError: () => {
       setMessage('提交未完成，请检查页面事实后重试。');
     },
   });
@@ -102,6 +102,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
       </FormField>
       <FormField label="备注（可选）" htmlFor="evidence-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>
       {message ? <Alert tone="danger">{message}</Alert> : null}<RequestIdDisplay requestId={requestId} />
+      <BuyerMutationRecovery mutation={mutation} onRefresh={() => { void Promise.all([eligible.refetch(), instruction.refetch()]); }} />
       <Button type="submit" loading={mutation.isPending || !upload.canStartNewOperation}
         loadingLabel={upload.state === 'VERIFIED' ? '正在提交' : '正在上传截图'}>提交资料</Button>
     </form></Card>

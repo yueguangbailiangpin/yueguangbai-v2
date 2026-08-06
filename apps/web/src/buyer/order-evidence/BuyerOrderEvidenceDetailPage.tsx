@@ -1,14 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
-import { isFrontendApiError } from '../../api/errors';
 import { BuyerOrderEvidenceFileReadIntentAdapter } from '../../files/file-read-providers';
-import { Alert, Button, Card, Dialog, FormField, PageHeader, RequestIdDisplay, StatusBadge, TextInput } from '../../ui/primitives';
+import { Alert, Button, Card, Dialog, FormField, PageHeader, StatusBadge, TextInput } from '../../ui/primitives';
 import { useParams } from 'react-router-dom';
 import { buyerApi } from '../api/client';
 import { dateOnlySchema, type OrderEvidence } from '../contracts/runtime';
+import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
-import { formatBps, formatDateOnly, formatJpy, formatShanghai } from '../shared/format';
+import { formatBps, formatDateOnly, formatJpy, formatShanghai, formatSignedJpyDifference, priceDifferenceDirection } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { statusLabel, statusTone } from '../shared/status';
 import { useFileUpload } from '../shared/useFileUpload';
@@ -17,23 +18,19 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
   const { submissionId = '' } = useParams();
   const client = useQueryClient();
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
-  const [requestId, setRequestId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: buyerQueryKeys.evidence(submissionId),
     queryFn: ({ signal }) => buyerApi.evidence(client, submissionId, signal).then((r) => r.data.order_evidence),
     enabled: submissionId.length > 0,
   });
-  const withdraw = useMutation({
-    mutationFn: () => buyerApi.withdrawEvidence(client, submissionId, query.data!.version, crypto.randomUUID()),
+  const withdraw = useBuyerMutation({
+    operation: (body: { expected_version: number }, key, signal) => buyerApi.withdrawEvidence(client, submissionId, body.expected_version, key, signal),
     onSuccess: async (result) => {
       client.setQueryData(buyerQueryKeys.evidence(submissionId), result.data.order_evidence);
-      await client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceList() });
+      await client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceListRoot });
       setConfirmWithdraw(false);
     },
-    onError: async (error) => {
-      setRequestId(isFrontendApiError(error) ? error.requestId : null);
-      if (isFrontendApiError(error) && error.httpStatus === 409) await query.refetch();
-    },
+    onError: async () => {},
   });
   if (query.isPending) return <BuyerLoading />;
   if (query.isError) return <BuyerQueryError error={query.error} />;
@@ -47,24 +44,23 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
       <Button className="secondary compact-button" onClick={() => { void navigator.clipboard.writeText(item.amazon_order_number_display); }}>复制</Button></dd></div>
       <div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.amazon_order_date)}</dd></div>
       <div><dt>最终支付</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div>
+      <div><dt>金额差异</dt><dd>{formatSignedJpyDifference(item.price_difference_jpy)}（{priceDifferenceDirection(item.price_difference_jpy)}）</dd></div>
       <div><dt>自费比例</dt><dd>{formatBps(item.buyer_self_pay_bps)}</dd></div>
       <div><dt>自费金额</dt><dd>{formatJpy(item.buyer_self_pay_jpy)}</dd></div>
       <div><dt>可返本金</dt><dd>{formatJpy(item.buyer_refundable_principal_jpy)}</dd></div>
-      <div><dt>金额差异</dt><dd>{formatJpy(Math.abs(item.price_difference_jpy))}</dd></div>
       <div><dt>资料版本</dt><dd>{item.version}（证据版本 {item.evidence_version_no}）</dd></div>
       <div><dt>提交时间</dt><dd>{formatShanghai(item.submitted_at)}</dd></div>
       <div><dt>更新时间</dt><dd>{formatShanghai(item.updated_at)}</dd></div>
       <div><dt>核验时间</dt><dd>{formatShanghai(item.verified_at)}</dd></div></dl></Card>
     <Card><h2>文件</h2><div className="buyer-file-list">{item.files.map((file) => <EvidenceFile
       key={file.file_object_id} submissionId={submissionId} file={file} />)}</div></Card>
-    {item.allowed_actions.includes('RESUBMIT') ? <EvidenceResubmitForm evidence={item} /> : null}
+    {item.allowed_actions.includes('RESUBMIT') ? <EvidenceResubmitForm evidence={item} onRefresh={() => { void query.refetch(); }} /> : null}
     {item.allowed_actions.includes('WITHDRAW') ? <Button className="danger" onClick={() => setConfirmWithdraw(true)}>撤回资料</Button> : null}
-    <RequestIdDisplay requestId={requestId} />
     <Dialog open={confirmWithdraw} title="撤回订单资料" description="撤回后当前资料将不能继续审核。"
       busy={withdraw.isPending} onClose={() => setConfirmWithdraw(false)}>
-      {withdraw.isError ? <Alert tone="danger">撤回未完成，页面事实可能已经变化。</Alert> : null}
+      <BuyerMutationRecovery mutation={withdraw} onRefresh={() => { void query.refetch(); }} />
       <div className="entry-actions"><Button className="secondary" onClick={() => setConfirmWithdraw(false)}>取消</Button>
-        <Button className="danger" loading={withdraw.isPending} onClick={() => withdraw.mutate()}>确认撤回</Button></div>
+        <Button className="danger" loading={withdraw.isPending} onClick={() => withdraw.mutate({ expected_version: item.version })}>确认撤回</Button></div>
     </Dialog>
   </section>;
 }
@@ -88,26 +84,21 @@ function EvidenceFile({ submissionId, file }: {
   </article>;
 }
 
-function EvidenceResubmitForm({ evidence }: { evidence: OrderEvidence }): React.JSX.Element {
+function EvidenceResubmitForm({ evidence, onRefresh }: { evidence: OrderEvidence; onRefresh: () => void }): React.JSX.Element {
   const client = useQueryClient();
   const [uploader, upload] = useFileUpload();
   const file = useRef<File | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState<string | null>(null);
-  const mutation = useMutation({
-    mutationFn: (body: unknown) => buyerApi.resubmitEvidence(client, evidence.submission_id, body, crypto.randomUUID()),
+  const mutation = useBuyerMutation({
+    operation: (body: unknown, key, signal) => buyerApi.resubmitEvidence(client, evidence.submission_id, body, key, signal),
     onSuccess: async (result) => {
       client.setQueryData(buyerQueryKeys.evidence(evidence.submission_id), result.data.order_evidence);
       await Promise.all([
-        client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceList() }),
-        client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceEligible() }),
+        client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceListRoot }),
+        client.invalidateQueries({ queryKey: buyerQueryKeys.evidenceEligibleRoot }),
       ]);
     },
-    onError: async (error) => {
-      setRequestId(isFrontendApiError(error) ? error.requestId : null);
-      setMessage(isFrontendApiError(error) && error.httpStatus === 409
-        ? '资料状态已变化，请刷新后重试。' : '重新提交未完成。');
-    },
+    onError: async () => { setMessage('重新提交未完成。'); },
   });
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -137,7 +128,8 @@ function EvidenceResubmitForm({ evidence }: { evidence: OrderEvidence }): React.
     <FormField label="最终支付金额 JPY" htmlFor="resubmit-paid" required><TextInput name="final_paid_jpy" type="number" min="0" step="1" defaultValue={evidence.final_paid_jpy} required /></FormField>
     <FormField label="新的订单截图" htmlFor="resubmit-file" description="必须且只能选择一张图片" required><TextInput name="file" type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event) => { file.current = event.currentTarget.files?.[0] ?? null; }} /></FormField>
     <FormField label="备注（可选）" htmlFor="resubmit-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>
-    {message ? <Alert tone="danger">{message}</Alert> : null}<RequestIdDisplay requestId={requestId} />
+    {message ? <Alert tone="danger">{message}</Alert> : null}
+    <BuyerMutationRecovery mutation={mutation} onRefresh={onRefresh} />
     <Button type="submit" loading={mutation.isPending || !upload.canStartNewOperation}>重新提交</Button>
   </form></Card>;
 }

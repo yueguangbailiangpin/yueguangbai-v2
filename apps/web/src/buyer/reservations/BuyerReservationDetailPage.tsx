@@ -1,35 +1,32 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { isFrontendApiError } from '../../api/errors';
-import { Alert, Button, Card, Dialog, PageHeader, RequestIdDisplay, StatusBadge } from '../../ui/primitives';
+import { Button, Card, Dialog, PageHeader, StatusBadge } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
+import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { statusLabel, statusTone } from '../shared/status';
 
 export function BuyerReservationDetailPage(): React.JSX.Element {
   const { reservationId = '' } = useParams();
   const client = useQueryClient();
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const [requestId, setRequestId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: buyerQueryKeys.reservation(reservationId),
     queryFn: ({ signal }) => buyerApi.reservation(client, reservationId, signal).then((r) => r.data.reservation),
     enabled: reservationId.length > 0,
   });
-  const cancel = useMutation({
-    mutationFn: () => buyerApi.cancelReservation(client, reservationId, query.data!.version, crypto.randomUUID()),
+  const cancel = useBuyerMutation({
+    operation: (body: { expected_version: number }, key, signal) => buyerApi.cancelReservation(client, reservationId, body.expected_version, key, signal),
     onSuccess: async (result) => {
       client.setQueryData(buyerQueryKeys.reservation(reservationId), result.data.reservation);
-      await client.invalidateQueries({ queryKey: buyerQueryKeys.reservations() });
+      await client.invalidateQueries({ queryKey: buyerQueryKeys.reservationsRoot });
       setConfirmCancel(false);
     },
-    onError: async (error) => {
-      setRequestId(isFrontendApiError(error) ? error.requestId : null);
-      if (isFrontendApiError(error) && error.httpStatus === 409) await query.refetch();
-    },
+    onError: async () => {},
   });
   if (query.isPending) return <BuyerLoading />;
   if (query.isError) return <BuyerQueryError error={query.error} />;
@@ -46,12 +43,12 @@ export function BuyerReservationDetailPage(): React.JSX.Element {
       {item.status === 'APPROVED' ? <Link className="button" to={`/buyer/reservations/${item.reservation_id}/instruction`}>查看下单指引</Link> : null}
       {item.can_cancel ? <Button className="danger" onClick={() => setConfirmCancel(true)}>取消预约</Button> : null}
     </div>
-    <RequestIdDisplay requestId={requestId} />
     <Dialog open={confirmCancel} title="取消预约" description="取消后无法从当前预约继续下单。"
       busy={cancel.isPending} onClose={() => setConfirmCancel(false)}>
-      {cancel.isError ? <Alert tone="danger">取消未完成，页面事实可能已经变化。</Alert> : null}
+      <BuyerMutationRecovery mutation={cancel} deterministicMessage="预约事实可能已经变化，请刷新事实后重新提交。"
+        onRefresh={() => { void query.refetch(); }} />
       <div className="entry-actions"><Button className="secondary" onClick={() => setConfirmCancel(false)}>返回</Button>
-        <Button className="danger" loading={cancel.isPending} onClick={() => cancel.mutate()}>确认取消</Button></div>
+        <Button className="danger" loading={cancel.isPending} onClick={() => cancel.mutate({ expected_version: item.version })}>确认取消</Button></div>
     </Dialog>
   </section>;
 }

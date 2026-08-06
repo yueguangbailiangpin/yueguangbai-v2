@@ -105,16 +105,30 @@ export const instructionStateSchema = z.object({
 export const instructionStateResponseSchema = z.object({
   order_instruction: instructionStateSchema,
 }).strict();
-export const instructionImageSchema = z.object({
+const instructionReadPathPrefix = '\\/api\\/buyer-portal\\/reservations\\/[A-Za-z0-9._~-]{1,120}'
+  + '\\/order-instruction\\/images\\/';
+export const instructionMainImageSchema = z.object({
   image_id: identifierSchema,
-  position: positiveIntegerSchema.nullable(),
+  position: z.null(),
   mime: z.enum(['image/png', 'image/jpeg', 'image/webp']),
   width: positiveIntegerSchema.nullable(),
   height: positiveIntegerSchema.nullable(),
-  read_intent_path: z.string().min(1),
+  read_intent_path: z.string().regex(new RegExp(`^${instructionReadPathPrefix}main\\/read-intent$`, 'u')),
 }).strict();
+export const instructionKeywordImageSchema = z.object({
+  image_id: identifierSchema,
+  position: positiveIntegerSchema,
+  mime: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+  width: positiveIntegerSchema.nullable(),
+  height: positiveIntegerSchema.nullable(),
+  read_intent_path: z.string().regex(new RegExp(`^${instructionReadPathPrefix}[1-9][0-9]*\\/read-intent$`, 'u')),
+}).strict().superRefine((image, context) => {
+  if (!image.read_intent_path.endsWith(`/images/${image.position}/read-intent`)) {
+    context.addIssue({ code: 'custom', path: ['read_intent_path'], message: 'instruction_image_position_path_mismatch' });
+  }
+});
 export const instructionSchema = z.object({
-  status: instructionStateSchema.shape.status,
+  status: z.literal('ACTIVE'),
   product_name: z.string(),
   store_display_name: z.string(),
   color_spec_mode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']),
@@ -127,9 +141,18 @@ export const instructionSchema = z.object({
   buyer_self_pay_bps: nonnegativeIntegerSchema.max(10_000),
   estimated_buyer_self_pay_jpy: integerAmountSchema,
   estimated_refundable_principal_jpy: integerAmountSchema,
-  main_image: instructionImageSchema,
-  keyword_images: z.array(instructionImageSchema),
-}).strict();
+  main_image: instructionMainImageSchema,
+  keyword_images: z.array(instructionKeywordImageSchema),
+}).strict().superRefine((instruction, context) => {
+  let previous = 0;
+  const ids = new Set<string>();
+  instruction.keyword_images.forEach((image, index) => {
+    if (image.position <= previous) context.addIssue({ code: 'custom', path: ['keyword_images', index, 'position'], message: 'instruction_positions_must_strictly_increase' });
+    if (ids.has(image.image_id)) context.addIssue({ code: 'custom', path: ['keyword_images', index, 'image_id'], message: 'duplicate_instruction_image' });
+    previous = image.position;
+    ids.add(image.image_id);
+  });
+});
 export const instructionResponseSchema = z.object({
   order_instruction: instructionSchema,
 }).strict();
@@ -193,7 +216,11 @@ export const orderEvidenceSchema = z.object({
   public_change_reason: z.string().nullable(),
   files: z.array(evidenceFileSchema),
   allowed_actions: z.array(evidenceAction),
-}).strict();
+}).strict().superRefine((evidence, context) => {
+  if (evidence.price_mismatch !== (evidence.price_difference_jpy !== 0)) {
+    context.addIssue({ code: 'custom', path: ['price_mismatch'], message: 'price_mismatch_difference_inconsistent' });
+  }
+});
 export const eligibleEvidencePageSchema = page(eligibleEvidenceReservationSchema);
 export const orderEvidencePageSchema = page(orderEvidenceSchema);
 export const orderEvidenceDetailSchema = z.object({ order_evidence: orderEvidenceSchema }).strict();

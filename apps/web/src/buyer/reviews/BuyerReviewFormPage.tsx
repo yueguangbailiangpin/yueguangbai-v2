@@ -1,12 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { isFrontendApiError } from '../../api/errors';
-import { Alert, Button, Card, FormField, PageHeader, RequestIdDisplay, TextInput } from '../../ui/primitives';
+import { Alert, Button, Card, FormField, PageHeader, TextInput } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
 import { identifierSchema } from '../contracts/runtime';
+import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { useFileUpload } from '../shared/useFileUpload';
 
 export function BuyerReviewFormPage(): React.JSX.Element {
@@ -18,24 +19,22 @@ export function BuyerReviewFormPage(): React.JSX.Element {
   const files = useRef<readonly File[]>([]);
   const [uploader, upload] = useFileUpload();
   const [message, setMessage] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState<string | null>(null);
   const eligible = useQuery({
-    queryKey: buyerQueryKeys.reviewEligible(),
+    queryKey: buyerQueryKeys.reviewEligiblePage({ limit: 100, cursor: null }),
     queryFn: ({ signal }) => buyerApi.reviewEligible(client, 'limit=100', signal).then((r) => r.data),
     enabled: formalOrderId.length > 0,
   });
   const current = eligible.data?.items.find((item) => item.order.formal_order_id === formalOrderId);
-  const mutation = useMutation({
-    mutationFn: (body: unknown) => buyerApi.submitReview(client, body, crypto.randomUUID()),
+  const mutation = useBuyerMutation({
+    operation: (body: unknown, key, signal) => buyerApi.submitReview(client, body, key, signal),
     onSuccess: async (result) => {
       await Promise.all([
-        client.invalidateQueries({ queryKey: buyerQueryKeys.reviewEligible() }),
-        client.invalidateQueries({ queryKey: buyerQueryKeys.reviews() }),
+        client.invalidateQueries({ queryKey: buyerQueryKeys.reviewEligibleRoot }),
+        client.invalidateQueries({ queryKey: buyerQueryKeys.reviewsRoot }),
       ]);
       navigate(`/buyer/reviews/${result.data.review.review_case_id}`, { replace: true });
     },
-    onError: (error) => {
-      setRequestId(isFrontendApiError(error) ? error.requestId : null);
+    onError: () => {
       setMessage('评论资料提交未完成，请检查后重试。');
     },
   });
@@ -78,7 +77,8 @@ export function BuyerReviewFormPage(): React.JSX.Element {
             onChange={(event) => { files.current = Array.from(event.currentTarget.files ?? []).slice(0, 4); }} />
         </FormField>
         <FormField label="备注（可选）" htmlFor="review-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>
-        {message ? <Alert tone="danger">{message}</Alert> : null}<RequestIdDisplay requestId={requestId} />
+        {message ? <Alert tone="danger">{message}</Alert> : null}
+        <BuyerMutationRecovery mutation={mutation} onRefresh={() => { void eligible.refetch(); }} />
         <Button type="submit" loading={mutation.isPending || !upload.canStartNewOperation}>提交评论资料</Button>
       </form></Card>
   </section>;

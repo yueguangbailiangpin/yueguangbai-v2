@@ -10,6 +10,7 @@ import {
   TextInput,
 } from '../../ui/primitives';
 import { customerAuthApi, type CustomerAuthApiAdapter, type CustomerTarget } from './customer-auth-api';
+import { BuyerLayout } from '../../buyer/routes/BuyerLayout';
 import {
   CustomerPasswordOperationController,
   type CustomerPasswordResult,
@@ -162,8 +163,8 @@ export function CustomerChangePasswordPage({
       ? '发起新操作'
       : '修改密码';
 
-  return (
-    <main className={`login-page identity-${target}`}>
+  const content = (
+    <section className={`login-page identity-${target}${target === 'buyer' ? ' buyer-page' : ''}`}>
       <Card className="login-card password-card">
         <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
           <strong>月光白</strong></div>
@@ -235,6 +236,7 @@ export function CustomerChangePasswordPage({
           </div>
         </form>
       </Card>
-    </main>
+    </section>
   );
+  return target === 'buyer' ? <BuyerLayout>{content}</BuyerLayout> : <main>{content}</main>;
 }

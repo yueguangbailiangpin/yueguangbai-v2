@@ -20,6 +20,10 @@ import {
   type SafeFileReadError,
 } from './file-read-operation';
 import { consumeIdentityFileReadIntent } from './file-read-transport';
+import {
+  isTrustedFileReadIntentProvider,
+  type FileReadIntentProvider,
+} from './file-read-providers';
 
 type PrivateReadIntent = {
   id: string;
@@ -54,6 +58,7 @@ export class FileReadController {
   private readonly listeners = new Set<() => void>();
   private reference: SafeFileReference | null = null;
   private identity: RequestIdentity | null = null;
+  private provider: FileReadIntentProvider | null = null;
   private intent: PrivateReadIntent | null = null;
   private createKey: string | null = null;
   private abortController: AbortController | null = null;
@@ -83,6 +88,7 @@ export class FileReadController {
     }
     this.release();
     this.releaseIntentAuthority();
+    this.provider = null;
     if (!isRequestIdentity(identity)) {
       this.publishValidationFailure('identity', 'unsupported_identity');
       return Promise.resolve();
@@ -107,6 +113,32 @@ export class FileReadController {
     return this.run(() => this.createAndDownload());
   }
 
+  startWithProvider(provider: unknown): Promise<void> {
+    if (this.active || !this.snapshot.canStartNewOperation) {
+      return this.active ?? Promise.resolve();
+    }
+    this.release();
+    this.releaseIntentAuthority();
+    this.reference = null;
+    this.provider = null;
+    if (!isTrustedFileReadIntentProvider(provider) || provider.identity !== 'buyer') {
+      this.publishValidationFailure('provider', 'untrusted_file_read_provider');
+      return Promise.resolve();
+    }
+    this.identity = 'buyer';
+    this.provider = provider;
+    this.publish({
+      ...initialFileReadSnapshot,
+      identity: 'buyer',
+      state: 'VALIDATING_REFERENCE',
+    });
+    this.publish({
+      ...this.snapshot,
+      state: 'CREATING_READ_INTENT',
+    });
+    return this.run(() => this.createAndDownload());
+  }
+
   retry(): Promise<void> {
     if (this.active || !this.mayRetryCurrentToken) {
       return this.active ?? Promise.resolve();
@@ -122,7 +154,7 @@ export class FileReadController {
 
   restart(): Promise<void> {
     if (this.active || !this.snapshot.restartRequired
-      || !this.identity || !this.reference) {
+      || !this.identity || (!this.reference && !this.provider)) {
       return this.active ?? Promise.resolve();
     }
     this.releaseIntentAuthority();
@@ -183,17 +215,28 @@ export class FileReadController {
   }
 
   private async createAndDownload(): Promise<void> {
-    if (!this.identity || !this.reference) return;
+    if (!this.identity || (!this.reference && !this.provider)) return;
     this.abortController = new AbortController();
     this.createKey = this.generateKey();
     try {
-      const result = await createIdentityFileReadIntent({
-        client: this.client,
-        identity: this.identity,
-        reference: this.reference,
-        idempotencyKey: this.createKey,
-        signal: this.abortController.signal,
-      });
+      const result = this.provider
+        ? await this.provider.create(
+          this.client,
+          this.createKey,
+          this.abortController.signal,
+        ).then((data) => ({ data: {
+          read_intent_id: data.readIntentId,
+          access_token: data.accessToken,
+          access_token_available: data.accessTokenAvailable,
+          replayed: data.replayed,
+        }, requestId: data.requestId }))
+        : await createIdentityFileReadIntent({
+          client: this.client,
+          identity: this.identity,
+          reference: this.reference!,
+          idempotencyKey: this.createKey,
+          signal: this.abortController.signal,
+        });
       this.createKey = null;
       if (result.data.replayed
         || !result.data.access_token_available

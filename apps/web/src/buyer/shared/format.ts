@@ -22,6 +22,17 @@ export function formatJpy(value: string | number): string {
   return `¥${groupInteger(text)} JPY`;
 }
 
+export function formatSignedJpyDifference(value: number): string {
+  if (value === 0) return '¥0 JPY';
+  return `${value > 0 ? '+' : '-'}${formatJpy(Math.abs(value))}`;
+}
+
+export function priceDifferenceDirection(value: number): string {
+  if (value > 0) return '实际支付高于参考金额';
+  if (value < 0) return '实际支付低于参考金额';
+  return '实际支付与参考金额一致';
+}
+
 export function formatCnyFen(value: string): string {
   const whole = value.length > 2 ? value.slice(0, -2) : '0';
   const fraction = value.padStart(3, '0').slice(-2);

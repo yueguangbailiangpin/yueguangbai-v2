@@ -30,12 +30,23 @@ export interface FileReadIntentProvider {
   ): Promise<CreatedFileReadIntent>;
 }
 
+const trustedProviders = new WeakSet<object>();
+
+function trustProvider(provider: object): void {
+  trustedProviders.add(provider);
+}
+
+export function isTrustedFileReadIntentProvider(value: unknown): value is FileReadIntentProvider {
+  return typeof value === 'object' && value !== null && trustedProviders.has(value);
+}
+
 export class GenericBuyerFileReadIntentAdapter implements FileReadIntentProvider {
   readonly identity = 'buyer' as const;
   private readonly reference: SafeFileReference;
 
   constructor(reference: unknown) {
     this.reference = safeFileReferenceSchema.parse(reference);
+    trustProvider(this);
   }
 
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
@@ -74,6 +85,7 @@ export class BuyerInstructionImageReadIntentAdapter implements FileReadIntentPro
       + `/order-instruction/images/${part}/read-intent`;
     if (dtoReadIntentPath !== expected) throw new TypeError('instruction_read_path_mismatch');
     this.path = expected;
+    trustProvider(this);
   }
 
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
@@ -106,7 +118,9 @@ abstract class EntityFileReadIntentAdapter implements FileReadIntentProvider {
     private readonly path: string,
     private readonly expectedFileObjectId: string,
     private readonly expectedVersion: number,
-  ) {}
+  ) {
+    trustProvider(this);
+  }
 
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
     const body = { expected_file_version: this.expectedVersion };

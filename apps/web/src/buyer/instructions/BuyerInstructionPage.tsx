@@ -18,9 +18,7 @@ export function BuyerInstructionPage(): React.JSX.Element {
     queryFn: ({ signal }) => buyerApi.instructionState(client, reservationId, signal).then((r) => r.data.order_instruction),
     enabled: reservationId.length > 0,
   });
-  const shouldReadContent = state.data?.status === 'ACTIVE'
-    || state.data?.status === 'COMPLETED'
-    || state.data?.content_updated === true;
+  const shouldReadContent = state.data?.status === 'ACTIVE';
   const content = useQuery({
     queryKey: buyerQueryKeys.instruction(reservationId, state.data?.current_version_no ?? 0),
     queryFn: ({ signal }) => buyerApi.instruction(client, reservationId, signal).then((r) => r.data.order_instruction),
@@ -81,7 +79,7 @@ function KeywordImage({ reservationId, image }: {
 }): React.JSX.Element {
   const provider = useMemo(() => new BuyerInstructionImageReadIntentAdapter(
     reservationId,
-    image.position!,
+    image.position,
     image.read_intent_path,
   ), [reservationId, image.position, image.read_intent_path]);
   return <div className="instruction-image-item"><strong>关键词图片 {image.position}</strong>

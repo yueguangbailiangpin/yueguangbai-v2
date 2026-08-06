@@ -1,19 +1,19 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { isFrontendApiError } from '../../api/errors';
-import { Alert, Button, Card, Checkbox, PageHeader, RequestIdDisplay } from '../../ui/primitives';
+import { Button, Card, Checkbox, PageHeader } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
+import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 
 export function BuyerDemandDetailPage(): React.JSX.Element {
   const { demandId = '' } = useParams();
   const client = useQueryClient();
   const navigate = useNavigate();
   const [confirmed, setConfirmed] = useState(false);
-  const [requestId, setRequestId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: buyerQueryKeys.demand(demandId),
     queryFn: ({ signal }) => buyerApi.demand(client, demandId, signal).then((r) => r.data.demand),
@@ -23,25 +23,16 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
     ? `${query.data.demand_version}:${query.data.buyer_self_pay_bps}`
     : '';
   useEffect(() => setConfirmed(false), [tuple]);
-  const mutation = useMutation({
-    mutationFn: () => buyerApi.createReservation(client, demandId, {
-      expected_demand_version: query.data!.demand_version,
-      accepted_buyer_self_pay_bps: query.data!.buyer_self_pay_bps,
-    }, crypto.randomUUID()),
+  const mutation = useBuyerMutation({
+    operation: (body: { expected_demand_version: number; accepted_buyer_self_pay_bps: number }, key, signal) => buyerApi.createReservation(client, demandId, body, key, signal),
     onSuccess: async (result) => {
       await Promise.all([
-        client.invalidateQueries({ queryKey: buyerQueryKeys.demands() }),
-        client.invalidateQueries({ queryKey: buyerQueryKeys.reservations() }),
+        client.invalidateQueries({ queryKey: buyerQueryKeys.demandsRoot }),
+        client.invalidateQueries({ queryKey: buyerQueryKeys.reservationsRoot }),
       ]);
       navigate(`/buyer/reservations/${result.data.reservation.reservation_id}`);
     },
-    onError: async (error) => {
-      setRequestId(isFrontendApiError(error) ? error.requestId : null);
-      if (isFrontendApiError(error) && error.httpStatus === 409) {
-        setConfirmed(false);
-        await query.refetch();
-      }
-    },
+    onError: async () => { setConfirmed(false); },
   });
 
   if (query.isPending) return <BuyerLoading />;
@@ -63,12 +54,11 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
       <h2>确认自费规则</h2><p>提交预约表示您接受当前需求版本和自费比例。事实发生变化时需要重新确认。</p>
       <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.currentTarget.checked)}
         label={`我确认接受 ${formatBps(demand.buyer_self_pay_bps)} 的买家自费比例`} />
-      {mutation.isError ? <Alert tone="danger">{isFrontendApiError(mutation.error) && mutation.error.httpStatus === 409
-        ? '需求事实已变化，请检查刷新后的内容并重新确认。'
-        : '预约未完成，请稍后重试。'}</Alert> : null}
-      <RequestIdDisplay requestId={requestId} />
+      <BuyerMutationRecovery mutation={mutation} deterministicMessage="需求事实已变化，请刷新事实后重新确认。"
+        onRefresh={() => { void query.refetch(); }} />
       <Button disabled={!confirmed} loading={mutation.isPending} loadingLabel="正在预约"
-        onClick={() => mutation.mutate()}>确认并预约</Button>
+        onClick={() => mutation.mutate({ expected_demand_version: demand.demand_version,
+          accepted_buyer_self_pay_bps: demand.buyer_self_pay_bps })}>确认并预约</Button>
     </Card>
   </section>;
 }

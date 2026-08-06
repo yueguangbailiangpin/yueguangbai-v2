@@ -1,5 +1,6 @@
 export type BuyerTask = Readonly<{
-  id: string;
+  taskId: string;
+  businessObjectKey: string;
   priority: number;
   title: string;
   detail: string;
@@ -10,8 +11,8 @@ export type BuyerTask = Readonly<{
 export function rankBuyerTasks(tasks: readonly BuyerTask[]): readonly BuyerTask[] {
   const unique = new Map<string, BuyerTask>();
   for (const task of tasks) {
-    const current = unique.get(task.id);
-    if (!current || compareTasks(task, current) < 0) unique.set(task.id, task);
+    const current = unique.get(task.businessObjectKey);
+    if (!current || compareTasks(task, current) < 0) unique.set(task.businessObjectKey, task);
   }
   return [...unique.values()].sort(compareTasks);
 }
@@ -23,5 +24,5 @@ function compareTasks(left: BuyerTask, right: BuyerTask): number {
     if (right.deadline === null) return -1;
     if (left.deadline !== right.deadline) return left.deadline - right.deadline;
   }
-  return left.id.localeCompare(right.id);
+  return left.taskId.localeCompare(right.taskId);
 }
