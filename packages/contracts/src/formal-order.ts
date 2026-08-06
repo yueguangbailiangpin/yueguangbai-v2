@@ -70,6 +70,7 @@ export interface ConfirmFormalOrderResult {
   product_name: string;
   review_type: PricingReviewType;
   amazon_order_number: string;
+  amazon_order_date: string;
   final_paid_jpy: FixedIntegerString;
   confirmed_at: number;
   confirmed_business_date: string;

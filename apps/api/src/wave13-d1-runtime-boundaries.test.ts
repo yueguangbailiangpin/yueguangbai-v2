@@ -29,9 +29,6 @@ const migrations = readdirSync(path.join(root, 'migrations'))
 function applyPrefix(target: SqliteDatabase, count: number): void {
   for (const name of migrations.slice(0, count)) runMigration(target, name);
 }
-function applyFrom(target: SqliteDatabase, start: number): void {
-  for (const name of migrations.slice(start)) runMigration(target, name);
-}
 function runMigration(target: SqliteDatabase, name: string): void {
   target.exec('BEGIN IMMEDIATE;');
   try {
@@ -64,8 +61,8 @@ function config(): StaffAuthRuntimeConfig {
 describe('Wave 13 D1 runtime boundaries', () => {
   it('applies 0001-0027 to an empty database with integrity and FK checks', () => {
     database = new SqliteDatabase();
-    applyPrefix(database, migrations.length);
-    expect(migrations.at(-1)).toBe('0027_staff_auth_sessions.sql');
+    applyPrefix(database, 27);
+    expect(migrations[26]).toBe('0027_staff_auth_sessions.sql');
     expect(database.raw.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).get()).toEqual({ schema_version: 27 });
@@ -86,7 +83,7 @@ describe('Wave 13 D1 runtime boundaries', () => {
     `);
     const customerSchemaBefore = customerAuthSchema(database);
     const customerCountsBefore = customerAuthCounts(database);
-    applyFrom(database, 26);
+    runMigration(database, migrations[26]!);
     expect(database.raw.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).get()).toEqual({ schema_version: 27 });

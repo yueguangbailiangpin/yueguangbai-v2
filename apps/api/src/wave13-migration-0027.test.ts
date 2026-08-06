@@ -36,7 +36,8 @@ function seedStaff(target: SqliteDatabase, id = 'staff-wave13-owner'): void {
 
 describe('Migration 0027 Staff authentication persistence', () => {
   it('migrates an empty database through schema 27 with expected objects', async () => {
-    database = createMigratedTestDatabase();
+    database = new SqliteDatabase();
+    applyThrough(database, 27);
     const state = await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();

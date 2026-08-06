@@ -38,6 +38,7 @@ export interface SubmitOrderEvidenceResult
 extends OrderEvidenceCommandResult {
   status: 'PENDING_VERIFICATION';
   amazon_order_number_normalized: string;
+  amazon_order_date: string;
   final_paid_jpy: number;
   evidence_file_count: number;
 }
@@ -75,6 +76,7 @@ export interface BuyerOrderEvidenceProjection {
   evidence_version_no: number;
   amazon_order_number_raw: string;
   amazon_order_number_normalized: string;
+  amazon_order_date: string | null;
   final_paid_jpy: number;
   buyer_note: string | null;
   public_change_reason: string | null;

@@ -7,16 +7,18 @@ const migrationDirectory = path.join(root, 'migrations');
 const files = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-assert(files.length === 27, 'Wave 13 requires exactly migrations 0001-0027');
-assert(files.at(-1) === '0027_staff_auth_sessions.sql', 'latest migration must be 0027');
-for (const name of files.slice(0, 26)) {
+assert(files.length === 28, 'repository requires migrations 0001-0028');
+assert(files[26] === '0027_staff_auth_sessions.sql', 'Wave 13 migration must remain 0027');
+assert(files[27] === '0028_buyer_amazon_order_date.sql', 'latest migration must be 0028');
+const wave13Files = files.slice(0, 27);
+for (const name of wave13Files.slice(0, 26)) {
   assert(!read(`migrations/${name}`).includes('staff_sessions'),
     `${name} must remain pre-Wave13`);
 }
 
 const database = new DatabaseSync(':memory:');
 database.exec('PRAGMA foreign_keys=ON;');
-for (const name of files) database.exec(read(`migrations/${name}`));
+for (const name of wave13Files) database.exec(read(`migrations/${name}`));
 const schema = Number(database.prepare(`
   SELECT schema_version FROM app_schema_state WHERE singleton_id=1
 `).get()?.schema_version);
@@ -51,7 +53,7 @@ assert(database.prepare('PRAGMA foreign_key_check').all().length === 0,
   'foreign_key_check failed');
 database.close();
 report('wave13-migration', {
-  migrations: files.length,
+  migrations: wave13Files.length,
   schema_version: schema,
   application_tables: tables.length,
   triggers: triggers.length,

@@ -7,11 +7,12 @@ const directory = path.join(root, 'migrations');
 const files = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (files.length !== 27
+if (files.length !== 28
   || files[24] !== '0025_internal_finance_reporting.sql'
   || files[25] !== '0026_financial_export_audit.sql'
-  || files[26] !== '0027_staff_auth_sessions.sql') {
-  throw new Error('Expected Wave 12 history plus migration 0027');
+  || files[26] !== '0027_staff_auth_sessions.sql'
+  || files[27] !== '0028_buyer_amazon_order_date.sql') {
+  throw new Error('Expected preserved Wave 12 history through migration 0028');
 }
 const wave12Files = files.slice(0, 26);
 

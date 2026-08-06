@@ -8,11 +8,10 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 27
-  || migrationFiles.at(-3) !== '0025_internal_finance_reporting.sql'
-  || migrationFiles.at(-2) !== '0026_financial_export_audit.sql'
-  || migrationFiles.at(-1) !== '0027_staff_auth_sessions.sql') {
-  throw new Error('expected migrations 0001-0027');
+if (migrationFiles.length !== 28
+  || migrationFiles.at(-2) !== '0027_staff_auth_sessions.sql'
+  || migrationFiles.at(-1) !== '0028_buyer_amazon_order_date.sql') {
+  throw new Error('expected migrations 0001-0028');
 }
 
 const guarded = new Map([
@@ -88,7 +87,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 27) throw new Error('fresh schema not 27');
+  if (schemaVersion(fresh) !== 28) throw new Error('fresh schema not 28');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -132,8 +131,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 27,
-  sequential_upgrade: '0001 -> 0027',
+  fresh_schema: 28,
+  sequential_upgrade: '0001 -> 0028',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,

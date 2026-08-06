@@ -22,4 +22,5 @@ export * from './security/customer-password';
 export * from './security/customer-session';
 export * from './serialization/canonical-json';
 export * from './time/business-clock';
+export * from './time/date-only';
 export * from './staff-assignment';
