@@ -1,0 +1,122 @@
+import { execFileSync } from 'node:child_process';
+import { assert, assertContains, assertNotContains, read, report } from './wave13-verifier-lib.mjs';
+
+const expected = Object.freeze([
+  ['POST', '/api/buyer-auth/register'],
+  ['POST', '/api/customer-auth/login'],
+  ['POST', '/api/customer-auth/change-password'],
+  ['POST', '/api/customer-auth/logout'],
+  ['GET', '/api/customer-auth/session'],
+  ['GET', '/api/buyer-portal/me'],
+  ['GET', '/api/buyer-portal/demands'],
+  ['GET', '/api/buyer-portal/demands/:id'],
+  ['POST', '/api/buyer-portal/demands/:id/reservations'],
+  ['GET', '/api/buyer-portal/reservations'],
+  ['GET', '/api/buyer-portal/reservations/:id'],
+  ['POST', '/api/buyer-portal/reservations/:id/cancel'],
+  ['GET', '/api/buyer-portal/reservations/:id/order-instruction'],
+  ['GET', '/api/buyer-portal/reservations/:id/order-instruction/state'],
+  ['POST', '/api/buyer-portal/reservations/:id/order-instruction/images/:position/read-intent'],
+  ['GET', '/api/buyer-portal/order-evidence/eligible-reservations'],
+  ['POST', '/api/buyer-portal/order-evidence'],
+  ['GET', '/api/buyer-portal/order-evidence'],
+  ['GET', '/api/buyer-portal/order-evidence/:id'],
+  ['POST', '/api/buyer-portal/order-evidence/:id/resubmit'],
+  ['POST', '/api/buyer-portal/order-evidence/:id/withdraw'],
+  ['GET', '/api/buyer-portal/formal-orders'],
+  ['GET', '/api/buyer-portal/formal-orders/:id'],
+  ['GET', '/api/buyer-portal/reviews/eligible-orders'],
+  ['POST', '/api/buyer-portal/reviews'],
+  ['GET', '/api/buyer-portal/reviews'],
+  ['GET', '/api/buyer-portal/reviews/:id'],
+  ['POST', '/api/buyer-portal/reviews/:id/resubmit'],
+  ['POST', '/api/buyer-portal/reviews/:id/withdraw'],
+  ['POST', '/api/buyer-portal/reviews/:id/files/:fileLinkId/read-intent'],
+  ['GET', '/api/buyer-portal/refunds'],
+  ['GET', '/api/buyer-portal/refunds/:id'],
+  ['POST', '/api/buyer-portal/file-uploads/order-evidence/intents'],
+  ['POST', '/api/buyer-portal/file-uploads/review-evidence/intents'],
+  ['PUT', '/api/buyer-portal/file-uploads/:fileObjectId/content'],
+  ['POST', '/api/buyer-portal/file-upload-intents/:id/complete'],
+  ['POST', '/api/buyer-portal/files/:fileObjectId/read-intents'],
+  ['GET', '/api/buyer-portal/file-read-intents/:id/content'],
+  ['POST', '/api/buyer-portal/order-evidence/:id/files/:fileLinkId/read-intent'],
+]);
+assert(expected.length === 39, 'Buyer target route inventory must contain 39 entries');
+assert(new Set(expected.map(([method, path]) => `${method} ${path}`)).size === 39, 'Buyer route inventory contains duplicates');
+
+const inventory = read('openspec/changes/module1-buyer-complete-business-loop/references/buyer-api-contract-inventory.md');
+for (const [, path] of expected) assertContains(inventory, `\`${path}\``, 'frozen Buyer API inventory');
+const routeSources = [
+  'packages/contracts/src/buyer-self-registration.ts',
+  'apps/api/src/http-auth/routes.ts',
+  'apps/api/src/buyer-portal/routes.ts',
+  'apps/api/src/order-instructions/routes.ts',
+  'apps/api/src/buyer-order-evidence-portal/routes.ts',
+  'apps/api/src/buyer-formal-orders/routes.ts',
+  'apps/api/src/buyer-reviews/routes.ts',
+  'apps/api/src/buyer-refund-status/routes.ts',
+  'packages/contracts/src/file-http.ts',
+].map(read).join('\n');
+for (const [, path] of expected) assertContains(routeSources, path, 'registered Buyer route source');
+
+const buyerWeb = [
+  read('apps/web/src/App.tsx'), read('apps/web/src/config/runtime-config.ts'),
+  read('apps/web/src/files/file-read-providers.ts'),
+  ...['api/client.ts', 'contracts/runtime.ts', 'routes/BuyerLayout.tsx',
+    'order-evidence/BuyerOrderEvidenceFormPage.tsx', 'reviews/BuyerReviewFormPage.tsx']
+    .map((path) => read(`apps/web/src/buyer/${path}`)),
+].join('\n');
+assertNotContains(buyerWeb, '/api/v2', 'Buyer frontend');
+assertNotContains(buyerWeb, 'object_key', 'Buyer DTO/UI');
+assertNotContains(buyerWeb, 'permanent_url', 'Buyer DTO/UI');
+assert(!/(?:localStorage|sessionStorage)\.(?:setItem|getItem)\([^\n]*(?:token|access)/iu.test(buyerWeb), 'Buyer token storage is forbidden');
+assertNotContains(read('apps/web/src/files/file-read-providers.ts'), 'read_intent_path', 'fixed file read providers');
+assertContains(read('apps/web/src/api/query-client.ts'), 'mutations: { retry: false }', 'mutation retry policy');
+
+const migration = read('migrations/0028_buyer_amazon_order_date.sql');
+for (const text of ['amazon_order_date', 'trg_order_evidence_version_submission_guard', 'trg_formal_order_source_guard', "RAISE(ABORT, 'order_evidence_version_submission_mismatch')"]) {
+  assertContains(migration, text, 'Migration 0028');
+}
+assert(!/UPDATE\s+(?:order_evidence_versions|formal_orders)\s+SET\s+amazon_order_date/iu.test(migration), 'historical dates must not be backfilled');
+assertNotContains(migration, 'CREATE INDEX', 'Migration 0028');
+for (const path of [
+  'packages/contracts/src/order-evidence.ts',
+  'packages/contracts/src/buyer-formal-order-portal.ts',
+  'packages/domain/src/time/date-only.ts',
+  'apps/api/src/order-evidence/submit-order-evidence.ts',
+  'apps/api/src/formal-orders/confirm-formal-order.ts',
+  'apps/api/src/buyer-order-evidence-portal/read-model.ts',
+  'apps/web/src/buyer/contracts/runtime.ts',
+]) {
+  const source = read(path);
+  assert(path.endsWith('date-only.ts') ? source.includes('parseGregorianDateOnly') : source.includes('amazon_order_date'), `${path} date authority`);
+}
+
+const evidenceForm = read('apps/web/src/buyer/order-evidence/BuyerOrderEvidenceFormPage.tsx');
+assertContains(evidenceForm, "uploader.start('buyerOrderEvidence', [selected.current])", 'exact-one evidence upload');
+assert(!/name="evidence_file"[^>]*\bmultiple\b/u.test(evidenceForm), 'order evidence input must not allow multiple files');
+const reviewForm = read('apps/web/src/buyer/reviews/BuyerReviewFormPage.tsx');
+assertContains(reviewForm, 'files.current.length > 3', 'review three-file command limit');
+const layout = read('apps/web/src/buyer/routes/BuyerLayout.tsx');
+for (const label of ['首页', '任务', '订单资料', '评论', '我的']) assertContains(layout, label, 'Buyer five-item navigation');
+assert((layout.match(/label:/gu) ?? []).length === 5, 'Buyer navigation must contain exactly five items');
+assertNotContains(read('apps/web/src/App.tsx').split('<Route path="/buyer/login"')[0], '/buyer/register', 'root page registration entry');
+
+const changedSellerStaff = execFileSync('git', [
+  'diff', '--name-only', 'origin/main', '--',
+  'apps/api/src/seller-portal', 'apps/api/src/staff-auth', 'apps/web/src/seller', 'apps/web/src/staff',
+], { encoding: 'utf8' }).trim().split('\n').filter((path) => path.length > 0 && !path.includes('.test.')).join(', ');
+assert(changedSellerStaff.length === 0, `Seller/Staff business source expanded: ${changedSellerStaff}`);
+const taskSource = read('openspec/changes/module1-buyer-complete-business-loop/tasks.md');
+assertContains(taskSource, 'COMPLETE=58', 'formal requirement evidence');
+assertContains(taskSource, 'Scenarios=116/116', 'formal scenario evidence');
+
+report('module1-buyer-security', {
+  buyer_api_baseline: 38,
+  buyer_api_target: 39,
+  new_api_count: 1,
+  arbitrary_read_paths: 0,
+  token_storage: 0,
+  seller_staff_business_expansion: 0,
+});

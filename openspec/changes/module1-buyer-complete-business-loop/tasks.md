@@ -20,157 +20,157 @@ Checked items in this planning round are evidence-backed planning artifacts only
 
 ## 3. Routing and Navigation
 
-- [ ] 3.1 Implement the route map, modular Buyer layout/outlets, and required query-bound new-form deep links with eligibility reread.
-- [ ] 3.2 Preserve exact root/login semantics and five-item bottom navigation.
+- [x] 3.1 Implement the route map, modular Buyer layout/outlets, and required query-bound new-form deep links with eligibility reread.
+- [x] 3.2 Preserve exact root/login semantics and five-item bottom navigation.
 
 ## 4. Buyer Registration
 
-- [ ] 4.1 Add runtime schemas/API adapter for direct self-registration.
-- [ ] 4.2 Build accessible feature/verifier/rate/conflict-safe registration UI; after 201 enter `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`, cancel/clear Buyer+Seller, preserve Staff, reread Session, and accept only BUYER.
+- [x] 4.1 Add runtime schemas/API adapter for direct self-registration.
+- [x] 4.2 Build accessible feature/verifier/rate/conflict-safe registration UI; after 201 enter `CUSTOMER_TRANSPORT_INVALIDATION_GROUP`, cancel/clear Buyer+Seller, preserve Staff, reread Session, and accept only BUYER.
 
 ## 5. Buyer Dashboard
 
-- [ ] 5.1 Implement bounded source queries, de-duplication, priority/deadline ordering, and refund preview limited to returned DUE/PARTIALLY_PAID/OVERPAID facts without unread/change claims.
-- [ ] 5.2 Implement partial-failure panels and 查看全部 without totals.
+- [x] 5.1 Implement bounded source queries, de-duplication, priority/deadline ordering, and refund preview limited to returned DUE/PARTIALLY_PAID/OVERPAID facts without unread/change claims.
+- [x] 5.2 Implement partial-failure panels and 查看全部 without totals.
 
 ## 6. Demand List
 
-- [ ] 6.1 Implement cursor-paged public demand cards with safe money/date formatting.
+- [x] 6.1 Implement cursor-paged public demand cards with safe money/date formatting.
 
 ## 7. Demand Detail
 
-- [ ] 7.1 Implement demand detail and current version retention.
-- [ ] 7.2 Implement prominent initially-unchecked self-pay acceptance/reset.
+- [x] 7.1 Implement demand detail and current version retention.
+- [x] 7.2 Implement prominent initially-unchecked self-pay acceptance/reset.
 
 ## 8. Reservation Creation
 
-- [ ] 8.1 Implement exact acceptance body, operation idempotency and conflict handling.
+- [x] 8.1 Implement exact acceptance body, operation idempotency and conflict handling.
 
 ## 9. Reservation List/Detail
 
-- [ ] 9.1 Implement cursor-paged reservation history and snapshot/status display.
-- [ ] 9.2 Implement reservation detail and approved instruction entry.
+- [x] 9.1 Implement cursor-paged reservation history and snapshot/status display.
+- [x] 9.2 Implement reservation detail and approved instruction entry.
 
 ## 10. Reservation Cancellation
 
-- [ ] 10.1 Implement `can_cancel`-driven confirmation, latest version, and precise invalidation.
+- [x] 10.1 Implement `can_cancel`-driven confirmation, latest version, and precise invalidation.
 
 ## 11. Order Instruction
 
-- [ ] 11.1 Implement state-first reads and all five instruction statuses.
-- [ ] 11.2 Implement full ACTIVE content and distinct initial/change deadlines.
+- [x] 11.1 Implement state-first reads and all five instruction statuses.
+- [x] 11.2 Implement full ACTIVE content and distinct initial/change deadlines.
 
 ## 12. Instruction Images
 
-- [ ] 12.1 Add the narrow `FileReadIntentProvider` boundary and four fixed adapters; validate instruction Buyer/current-reservation/main-or-position routes exactly and forbid arbitrary paths.
-- [ ] 12.2 Keep Wave14A content/header/token/Object-URL behavior; map absent instruction file-ID/replay assertions without fabrication and require restart when token availability is false/null.
+- [x] 12.1 Add the narrow `FileReadIntentProvider` boundary and four fixed adapters; validate instruction Buyer/current-reservation/main-or-position routes exactly and forbid arbitrary paths.
+- [x] 12.2 Keep Wave14A content/header/token/Object-URL behavior; map absent instruction file-ID/replay assertions without fabrication and require restart when token availability is false/null.
 
 ## 13. Order Evidence Eligibility
 
-- [ ] 13.1 Implement eligible reservation paging and `allowed_actions` authority.
+- [x] 13.1 Implement eligible reservation paging and `allowed_actions` authority.
 
 ## 14. Order Evidence Upload
 
-- [ ] 14.1 Integrate `buyerOrderEvidence` with exactly one image and server-side file verification during Complete; do not send client HEAD.
-- [ ] 14.2 Block business submit on zero/multiple/unsupported/unverified files.
+- [x] 14.1 Integrate `buyerOrderEvidence` with exactly one image and server-side file verification during Complete; do not send client HEAD.
+- [x] 14.2 Block business submit on zero/multiple/unsupported/unverified files.
 
 ## 15. Order Evidence Form
 
-- [ ] 15.1 Implement query-bound initial version-zero form and initial/resubmit commands with required valid date-only `amazon_order_date`.
-- [ ] 15.2 Implement detail facts, distinct date/unknown-history display, safe file metadata/actions, mismatch warning and request IDs.
-- [ ] 15.3 Implement only the authorized date prerequisite across Contract, Domain, routes, read models, runtime schemas, and Migration 0028 nullable history/new-row guards; add no date index or fake backfill.
+- [x] 15.1 Implement query-bound initial version-zero form and initial/resubmit commands with required valid date-only `amazon_order_date`.
+- [x] 15.2 Implement detail facts, distinct date/unknown-history display, safe file metadata/actions, mismatch warning and request IDs.
+- [x] 15.3 Implement only the authorized date prerequisite across Contract, Domain, routes, read models, runtime schemas, and Migration 0028 nullable history/new-row guards; add no date index or fake backfill.
 
 ## 16. Order Evidence Resubmit/Withdraw
 
-- [ ] 16.1 Implement public reason, current-version full resubmit and change deadline.
-- [ ] 16.2 Implement allowed current-version withdrawal and conflicts.
+- [x] 16.1 Implement public reason, current-version full resubmit and change deadline.
+- [x] 16.2 Implement allowed current-version withdrawal and conflicts.
 
 ## 17. Formal Orders
 
-- [ ] 17.1 Implement supported filters/cursor list.
-- [ ] 17.2 Implement immutable detail, distinct `amazon_order_date` snapshot/legacy unknown, business-date/timestamp separation, and decimal-string presentation.
+- [x] 17.1 Implement supported filters/cursor list.
+- [x] 17.2 Implement immutable detail, distinct `amazon_order_date` snapshot/legacy unknown, business-date/timestamp separation, and decimal-string presentation.
 
 ## 18. Review Eligibility
 
-- [ ] 18.1 Implement eligible-order paging and required `formal_order_id` query-bound initial entry with refresh/deep-link eligibility reread.
+- [x] 18.1 Implement eligible-order paging and required `formal_order_id` query-bound initial entry with refresh/deep-link eligibility reread.
 
 ## 19. Review Upload
 
-- [ ] 19.1 Integrate `buyerReviewEvidence` while limiting the business command to three verified files.
+- [x] 19.1 Integrate `buyerReviewEvidence` while limiting the business command to three verified files.
 
 ## 20. Review Form
 
-- [ ] 20.1 Implement initial version-zero review type/url/files/note form and command.
-- [ ] 20.2 Implement list/detail status, due, reason, actions and safe order context.
+- [x] 20.1 Implement initial version-zero review type/url/files/note form and command.
+- [x] 20.2 Implement list/detail status, due, reason, actions and safe order context.
 
 ## 21. Review Resubmit/Withdraw
 
-- [ ] 21.1 Implement full current-version resubmit and public reason.
-- [ ] 21.2 Implement current-version allowed withdrawal.
+- [x] 21.1 Implement full current-version resubmit and public reason.
+- [x] 21.2 Implement current-version allowed withdrawal.
 
 ## 22. Review File Read
 
-- [ ] 22.1 Integrate the fixed review/link/version adapter and Wave14A content viewer without DTO path forwarding.
-- [ ] 22.2 Implement only the authorized order-evidence file DTO fields and dedicated read-intent endpoint with ownership/link/version/audience checks, concealed 404, replay safety, and existing content endpoint.
+- [x] 22.1 Integrate the fixed review/link/version adapter and Wave14A content viewer without DTO path forwarding.
+- [x] 22.2 Implement only the authorized order-evidence file DTO fields and dedicated read-intent endpoint with ownership/link/version/audience checks, concealed 404, replay safety, and existing content endpoint.
 
 ## 23. Refund List/Detail
 
-- [ ] 23.1 Implement read-only cursor list with all four balances/statuses.
-- [ ] 23.2 Implement detail payment/reversal activity and balance-after history.
+- [x] 23.1 Implement read-only cursor list with all four balances/statuses.
+- [x] 23.2 Implement detail payment/reversal activity and balance-after history.
 
 ## 24. Buyer Me
 
-- [ ] 24.1 Implement published profile fields, review-required notice and supported links.
-- [ ] 24.2 Reuse password and logout controllers with shared Customer cleanup.
+- [x] 24.1 Implement published profile fields, review-required notice and supported links.
+- [x] 24.2 Reuse password and logout controllers with shared Customer cleanup.
 
 ## 25. Query/Cache
 
 - [x] 25.1 Freeze Buyer Query key architecture and precise mutation invalidation map.
-- [ ] 25.2 Implement keys, adapters, freshness, cancellation, paging and non-persistence.
+- [x] 25.2 Implement keys, adapters, freshness, cancellation, paging and non-persistence.
 
 ## 26. Errors/Conflict
 
-- [ ] 26.1 Implement runtime schemas and safe 401/403/404/409/429/503/contract states.
-- [ ] 26.2 Implement explicit version comparison/retry without auto mutation retry.
+- [x] 26.1 Implement runtime schemas and safe 401/403/404/409/429/503/contract states.
+- [x] 26.2 Implement explicit version comparison/retry without auto mutation retry.
 
 ## 27. Mobile UI
 
-- [ ] 27.1 Polish 390px primary and 320px minimum layouts with bottom safe area.
+- [x] 27.1 Polish 390px primary and 320px minimum layouts with bottom safe area.
 
 ## 28. Accessibility
 
-- [ ] 28.1 Verify landmarks, labels, focus, targets, status text, live errors and copy behavior.
-- [ ] 28.2 Verify 200% reflow, reduced motion, images, skeleton stability and keyboard journeys.
+- [x] 28.1 Verify landmarks, labels, focus, targets, status text, live errors and copy behavior.
+- [x] 28.2 Verify 200% reflow, reduced motion, images, skeleton stability and keyboard journeys.
 
 ## 29. Unit Tests
 
-- [ ] 29.1 Add schema, key, priority, dedupe, date-only/timezone formatter, fixed adapter/path, status/action and form-state tests.
+- [x] 29.1 Add schema, key, priority, dedupe, date-only/timezone formatter, fixed adapter/path, status/action and form-state tests.
 
 ## 30. Component Tests
 
-- [ ] 30.1 Add normal plus failure/boundary/accessibility coverage, including registration dual-root invalidation, query-bound form refresh, date validation, and historical fallback.
+- [x] 30.1 Add normal plus failure/boundary/accessibility coverage, including registration dual-root invalidation, query-bound form refresh, date validation, and historical fallback.
 
 ## 31. MSW Tests
 
-- [ ] 31.1 Cover exact 38 baseline endpoints plus only the one authorized target endpoint (39 total), request bodies/date fields, headers, envelopes and cache effects.
-- [ ] 31.2 Cover Session/error/conflict/replay/file-token/retry/disclosure boundaries.
+- [x] 31.1 Cover exact 38 baseline endpoints plus only the one authorized target endpoint (39 total), request bodies/date fields, headers, envelopes and cache effects.
+- [x] 31.2 Cover Session/error/conflict/replay/file-token/retry/disclosure boundaries.
 
 ## 32. Playwright
 
-- [ ] 32.1 Run complete registration-to-refund Buyer journeys at 390px.
-- [ ] 32.2 Run 320px, 200%, reduced-motion, keyboard, 401/403/404/409/503, refreshed/direct query deep links, registration mismatch, and strict file-path gates.
+- [x] 32.1 Run complete registration-to-refund Buyer journeys at 390px.
+- [x] 32.2 Run 320px, 200%, reduced-motion, keyboard, 401/403/404/409/503, refreshed/direct query deep links, registration mismatch, and strict file-path gates.
 
 ## 33. Security Verifier
 
-- [ ] 33.1 Add static/runtime checks for identity, fixed adapter paths, date authority, actions, money, files, API 38→39 boundary and forbidden disclosure.
+- [x] 33.1 Add static/runtime checks for identity, fixed adapter paths, date authority, actions, money, files, API 38→39 boundary and forbidden disclosure.
 
 ## 34. Build/Typecheck
 
-- [ ] 34.1 Pass Web and workspace typecheck/build after implementation.
+- [x] 34.1 Pass Web and workspace typecheck/build after implementation.
 
 ## 35. Browser Screenshots
 
-- [ ] 35.1 Capture deterministic 390px primary journeys and 320px/error/accessibility states for review.
+- [x] 35.1 Capture deterministic 390px primary journeys and 320px/error/accessibility states for review.
 
 ## 36. OpenSpec Validation
 
@@ -179,7 +179,7 @@ Checked items in this planning round are evidence-backed planning artifacts only
 
 ## 37. Formal Verify
 
-- [ ] 37.1 After implementation only, formally map all 58 Requirements / 116 Scenarios to evidence.
+- [x] 37.1 After implementation only, formally map all 58 Requirements / 116 Scenarios to evidence.
 
 ## 38. Ponytail
 
@@ -192,6 +192,14 @@ Checked items in this planning round are evidence-backed planning artifacts only
 ## 40. Main Advancement
 
 - [ ] 40.1 Advance main only after separately authorized clean Integration; do not deploy from this task.
+
+## Implementation Verification Evidence
+
+- [x] V.1 Migration 0028 verification: schema 28, 117 tables, 221 triggers, 10 views; nullable history, strict Gregorian values, mandatory new writes, and formal-source equality.
+- [x] V.2 Buyer API verification: frozen baseline 38 to target 39 with exactly the dedicated order-evidence file read-intent endpoint added.
+- [x] V.3 Frontend verification: modular protected routes, exactly five navigation items, authoritative query-bound forms, fixed file providers, safe runtime DTO parsing, precise cache invalidation, and mutation retry disabled.
+- [x] V.4 Automated verification: Module1 unit/API/MSW tests, Wave14A regression, workspace gates, Module1 and complete Playwright suites, and 20 deterministic screenshots.
+- [x] V.5 Formal OpenSpec Verify: `COMPLETE=58`, `INCONSISTENT=0`, `MISSING=0`, `PARTIAL=0`, `NOT_VERIFIED=0`, `CRITICAL=0`, `WARNING=0`, `SUGGESTION=0`; `Scenarios=116/116`.
 
 ## Planning Validation Evidence
 
