@@ -25,7 +25,12 @@ function SimpleRecords({ kind }: { kind: 'products' | 'demands' | 'reviews' }): 
   const query = useQuery({ queryKey: sellerQueryKeys[kind](storeId), queryFn: ({ signal }) => sellerApi[kind](client, storeId, signal).then((r) => r.data.items) });
   const title = kind === 'products' ? '商品与申请' : kind === 'demands' ? '需求批次' : '评论';
   return <section className="seller-page"><PageHeader eyebrow="卖家业务" title={title} description="仅显示当前组织及授权店铺范围。" />
-    {query.isPending ? <p role="status">正在加载</p> : query.isError ? <p role="alert">暂时无法读取，请稍后重试。</p> : query.data.length === 0 ? <EmptyState title={`暂无${title}`} description="没有符合当前店铺范围的记录。" /> : <div className="seller-card-list">{query.data.map((item, index) => <Card key={String(item['id'] ?? item['review_case_id'] ?? index)}><strong>{String(item['product_name'] ?? item['display_name'] ?? item['asin'] ?? item['id'] ?? '业务记录')}</strong><p>{String(item['status'] ?? item['review_type'] ?? '状态以详情为准')}</p></Card>)}</div>}
+    {query.isPending ? <p role="status">正在加载</p> : query.isError ? <p role="alert">暂时无法读取，请稍后重试。</p> : query.data.length === 0 ? <EmptyState title={`暂无${title}`} description="没有符合当前店铺范围的记录。" /> : <div className="seller-card-list">{query.data.map((item) => {
+      const key = 'review_case_id' in item ? item.review_case_id : item.id;
+      const label = 'review_case_id' in item ? item.product_name
+        : 'current_version' in item ? item.current_version.product_name : item.product.product_name;
+      return <Card key={key}><strong>{label}</strong><p>{item.status}</p></Card>;
+    })}</div>}
   </section>;
 }
 export const SellerProductsPage = (): React.JSX.Element => <SimpleRecords kind="products" />;

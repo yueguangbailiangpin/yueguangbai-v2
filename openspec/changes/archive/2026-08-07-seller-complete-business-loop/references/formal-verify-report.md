@@ -20,11 +20,11 @@
 | Proof association/authorization | `seller_payment_proofs`, Staff-only audience, dynamic file tests and Seller denial |
 | Mutation concurrency/idempotency | Existing application/demand tests plus repository replay/version/security gates |
 | Chinese/mobile/accessibility | Seller route/browser tests at 320/390/200%, keyboard, reduced motion and visual review |
-| JP/Buyer/Staff compatibility | 151 files / 1042 tests, Marketplace verifier and complete browser suite |
+| JP/Buyer/Staff compatibility | 152 files / 1044 tests, Marketplace verifier and complete browser suite |
 
 ## Executed Evidence
 
-- `npm run check`: PASS; 151 test files / 1042 tests, all workspace typechecks/builds, Worker dry-run, schema 30, 134 tables, 261 triggers, zero foreign-key errors.
+- `npm run check`: PASS; 152 test files / 1044 tests, all workspace typechecks/builds, Worker dry-run, schema 30, 134 tables, 261 triggers, zero foreign-key errors.
 - `npm run test:wave14a:browser`: PASS; 135/135 Chromium scenarios.
 - Seller-focused Vitest: 13 files / 78 tests, plus new completion truth tests.
 - Strict OpenSpec target and repository validation: PASS before implementation; repeated at closeout.

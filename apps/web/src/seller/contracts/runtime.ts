@@ -7,7 +7,7 @@ const component = z.enum(['PENDING', 'COMPLETE', 'NOT_APPLICABLE']);
 
 export const sellerMeSchema = z.object({ me: z.object({
   account_id: z.string(),
-  member: z.object({ id: z.string(), display_name: z.string(), role: z.string(), primary_owner: z.boolean() }).strict(),
+  member: z.object({ id: z.string(), display_name: z.string(), role: z.enum(['OWNER', 'OPERATOR']), primary_owner: z.boolean() }).strict(),
   organization: z.object({ id: z.string(), seller_code: z.string(), name: z.string(), marketplace_code: z.literal('JP'), status: z.literal('ACTIVE') }).strict(),
   access: z.object({ read_scope: z.enum(['ORGANIZATION', 'ASSIGNED_STORES']), store_ids: z.array(z.string()), can_submit_product_applications: z.boolean(), can_submit_demand_batches: z.boolean() }).strict(),
 }).strict() }).strict();
@@ -18,7 +18,7 @@ export const sellerStoresSchema = z.object({ items: z.array(z.object({
   transaction_currency_code: z.enum(['JPY', 'USD', 'KRW', 'CNY']),
   transaction_currency_exponent: z.union([z.literal(0), z.literal(2)]),
   marketplace_status: z.enum(['ACTIVE', 'DISABLED']), adapter_status: z.enum(['AVAILABLE', 'UNAVAILABLE']),
-  status: z.string(), version: z.number().int(), created_at: epoch, updated_at: epoch,
+  status: z.enum(['ACTIVE', 'DISABLED']), version: z.number().int(), created_at: epoch, updated_at: epoch,
 }).strict()), page }).strict();
 
 export const sellerFormalOrdersSchema = z.object({ items: z.array(z.object({
@@ -53,15 +53,53 @@ export const sellerSettlementSummarySchema = z.object({ settlement: z.object({
   total_outstanding_cny_fen: integerString, unallocated_credit_cny_fen: integerString,
 }).strict() }).strict();
 
-const looseItemPage = z.object({ items: z.array(z.object({ id: z.string().optional() }).passthrough()), page }).strict();
-export const sellerProductsSchema = looseItemPage;
-export const sellerDemandsSchema = looseItemPage;
+const productVersion = z.object({
+  id: z.string(), version_no: z.number().int().positive(), product_name: z.string(),
+  search_keywords: z.array(z.string()), ordering_guide_expected_amount_jpy: z.number().int().nullable(),
+  color_spec_mode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']).nullable(),
+  main_image: z.object({ file_entity_link_id: z.string() }).strict().nullable(),
+  product_url: z.string().nullable(), buyer_visible_notes: z.string().nullable(), created_at: epoch,
+}).strict();
+
+export const sellerProductsSchema = z.object({ items: z.array(z.object({
+  id: z.string(), store: z.object({ id: z.string(), display_name: z.string() }).strict(),
+  marketplace_code: z.literal('JP'), seller_code: z.string(), asin: z.string(),
+  status: z.enum(['ACTIVE', 'DISABLED']), current_version_no: z.number().int().positive(),
+  version: z.number().int().positive(), created_at: epoch, updated_at: epoch,
+  current_version: productVersion,
+}).strict()), page }).strict();
+
+export const sellerDemandsSchema = z.object({ items: z.array(z.object({
+  id: z.string(), store: z.object({ id: z.string(), display_name: z.string() }).strict(),
+  product: z.object({ id: z.string(), version_no: z.number().int().positive(), asin: z.string(),
+    product_name: z.string(), search_keywords: z.array(z.string()), product_url: z.string().nullable() }).strict(),
+  marketplace_code: z.literal('JP'), task_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
+  target_quantity: z.number().int(), held_quantity: z.number().int(), approved_quantity: z.number().int(),
+  remaining_quantity: z.number().int(), buyer_visible_notes: z.string().nullable(), seller_notes: z.string().nullable(),
+  open_at: epoch, reservation_deadline: epoch, order_deadline: epoch,
+  status: z.enum(['SUBMITTED', 'PUBLISHED', 'REJECTED', 'WITHDRAWN', 'CLOSED']),
+  review_reason: z.string().nullable(), close_reason: z.string().nullable(), version: z.number().int().positive(),
+  submitted_at: epoch, updated_at: epoch, reviewed_at: epoch.nullable(), published_at: epoch.nullable(),
+  withdrawn_at: epoch.nullable(), closed_at: epoch.nullable(),
+}).strict()), page }).strict();
+
 export const sellerReviewsSchema = z.object({ items: z.array(z.object({
-  review_case_id: z.string(), product_name: z.string(), status: z.string(), review_type: z.string(),
-  store: z.object({ id: z.string(), display_name: z.string() }).passthrough(),
-}).passthrough()), page }).strict();
+  review_case_id: z.string(), formal_order: z.object({ id: z.string(), amazon_order_number: z.string() }).strict(),
+  store: z.object({ id: z.string(), display_name: z.string() }).strict(), marketplace_code: z.literal('JP'),
+  asin: z.string(), product_name: z.string(), review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
+  status: z.enum(['PENDING_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'WITHDRAWN', 'APPROVED']),
+  version: z.number().int().positive(), review_url: z.string().nullable(), submitted_at: epoch, approved_at: epoch.nullable(),
+  evidence: z.object({ version_id: z.string(), version_no: z.number().int().positive(), submitted_at: epoch,
+    files: z.array(z.object({ file_entity_link_id: z.string(), file_version: z.number().int().positive(),
+      content_type: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']), byte_size: z.number().int().nonnegative(), created_at: epoch }).strict()) }).strict(),
+  service_fee_accrued: z.object({ amount_cny_fen: integerString, accrued_at: epoch }).strict().nullable(),
+  allowed_actions: z.array(z.enum(['VIEW', 'READ_EVIDENCE'])),
+}).strict()), page }).strict();
 export const sellerPayablesSchema = z.object({ items: z.array(z.object({
   payable_id: z.string(), formal_order_id: z.string(), payable_type: z.enum(['SELLER_PRINCIPAL', 'SELLER_SERVICE_FEE']),
+  amazon_order_number: z.string(), store: z.object({ id: z.string(), display_name: z.string() }).strict(),
+  product: z.object({ id: z.string(), asin: z.string(), name: z.string() }).strict(),
   due_amount_cny_fen: integerString, paid_amount_cny_fen: integerString,
-  outstanding_amount_cny_fen: integerString, status: z.string(),
-}).passthrough()), page }).strict();
+  outstanding_amount_cny_fen: integerString, status: z.enum(['UNPAID', 'PARTIALLY_PAID', 'PAID']),
+  due_at: epoch, created_at: epoch,
+}).strict()), page }).strict();
