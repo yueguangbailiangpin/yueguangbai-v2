@@ -22,6 +22,7 @@
     "test:module1:buyer:browser": "npm run build --workspace @ygb/web && playwright test -c apps/web/playwright.config.ts apps/web/e2e/module1-buyer.spec.ts",
     "verify:module1:buyer:formal": "node scripts/verify-module1-buyer-formal.mjs",
     "verify:module1:buyer": "node scripts/verify-module1-buyer-security.mjs && node scripts/verify-module1-migration-0028.mjs",
+    "verify:api-contract": "node scripts/verify-api-contract-baseline.mjs && vitest run apps/api/src/api-contract-baseline-alignment.test.ts",
     "check:module1:buyer": "node scripts/verify-module1-buyer-security.mjs && node scripts/verify-module1-migration-0028.mjs && npm run test:module1:buyer && npm run typecheck --workspace @ygb/web && npm run build --workspace @ygb/web",
     "check:wave14a": "node scripts/verify-wave14a-frontend-security.mjs && npm run test:wave14a && npm run typecheck --workspace @ygb/web && npm run build --workspace @ygb/web",
     "db:migrate:local": "wrangler d1 migrations apply yueguangbai-v2-local --local --config apps/api/wrangler.local.jsonc",
