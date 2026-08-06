@@ -46,6 +46,6 @@
 
 ## 8. Delivery
 
-- [ ] 8.1 Commit a clean Feature tree, push without force and create PR.
-- [ ] 8.2 Advance Integration/main only if separately required governance conditions are demonstrably green.
-- [ ] 8.3 Report the exact M5 `origin/main` baseline and remaining risks.
+- [x] 8.1 Commit a clean Feature tree, push without force and create PR #7.
+- [x] 8.2 Evaluate Integration/main advancement and correctly stop because PR #7 has no independent review; no main write is permitted.
+- [x] 8.3 Report the exact M5 `origin/main` baseline and remaining risks.
