@@ -1,6 +1,6 @@
 # Tasks: Module 1 Buyer Complete Business Loop
 
-Checked items are evidence-backed against the current implementation. Source implementation, browser acceptance, Formal Verify, OpenSpec sync/archive, and clean Integration are complete at the current HEAD; main advancement remains a separately controlled closeout stage.
+Checked items are evidence-backed against the current implementation. Source implementation, browser acceptance, Formal Verify, OpenSpec sync/archive, clean Integration, and ordinary non-force main advancement are complete. The separately excluded optional review remained out of scope and was not run.
 
 ## 0. Authority and Planning
 
@@ -191,7 +191,7 @@ Checked items are evidence-backed against the current implementation. Source imp
 
 ## 40. Main Advancement
 
-- [ ] 40.1 Advance main only after separately authorized clean Integration; do not deploy from this task.
+- [x] 40.1 Advance main only after separately authorized clean Integration; do not deploy from this task.
 
 ## Implementation Verification Evidence
 
@@ -209,7 +209,7 @@ Checked items are evidence-backed against the current implementation. Source imp
 - [x] R.10 Root `npm run check` includes Module1 security and Migration 0028 verification without changing the migration, database schema, backend, Contract, Domain, dependencies, or package-lock graph.
 - [x] R.11 Automated evidence: 232 Module1 tests, 405 Web/Wave14A tests, 1001 repository tests, 88 Module1 Playwright tests, and 130 complete Playwright tests.
 - [x] R.12 Regenerated and visually reviewed all 20 deterministic screenshots; code artifacts continue to exclude screenshots.
-- [ ] R.13 Ponytail, Integration, and Main Advancement remain separately controlled and were not performed.
+- [x] R.13 Integration and Main Advancement were separately controlled and completed; the excluded optional review remained out of scope and was not performed.
 
 - [x] V.1 Migration 0028 verification: schema 28, 117 tables, 221 triggers, 10 views; nullable history, strict Gregorian values, mandatory new writes, and formal-source equality.
 - [x] V.2 Buyer API verification: frozen baseline 38 to target 39 with exactly the dedicated order-evidence file read-intent endpoint added.
@@ -250,3 +250,11 @@ Requirement and Scenario ranges follow their order in each named delta Spec. The
 - Complete browser validation passed 130/130, including all 88 Module 1 scenarios and 20 deterministic temporary screenshots. Repository-wide OpenSpec strict passed 24/24; Formal Verify remained `COMPLETE=58`, `Scenarios=116/116`, with zero inconsistent, missing, partial, unverified, critical, warning, or suggestion findings.
 - Secrets scan passed. Integration changed no business source, Contract, Domain, Migration, dependency manifest, lockfile, or deployment configuration; only this archived governance evidence changed after validation.
 - No production deployment, external credential creation, online database operation, force push, squash, rebase, or main advancement occurred in this Integration stage.
+
+## MAIN_ADVANCEMENT_EVIDENCE
+
+- Remote `main` started at `f8b160d8fd5f2c16509ca8ffddcd7a60c754135c`. A dedicated advancement Worktree based on that ref used `git merge --ff-only origin/integration/module1-buyer-complete-business-loop` and verified that its Git tree exactly matched validated Integration `d08f19196c9c148322406d48c8693e2f3480bee6`.
+- GitHub PR #2 reported `mergeable=true`; the Integration head had no configured status checks or pull-request-triggered Actions runs. The repository contains no `.github` workflow that deploys on `main` push.
+- Remote `main` was advanced from `f8b160d8fd5f2c16509ca8ffddcd7a60c754135c` to `d08f19196c9c148322406d48c8693e2f3480bee6` using ordinary `git push origin HEAD:main`, with no force, merge commit, squash, rebase, amend, or GitHub merge mutation.
+- No production deployment, DNS/domain change, external credential creation, or online database operation was performed. Feature, Integration, and advancement Worktrees were retained.
+- This evidence-only commit is to be pushed to Integration and then advanced to `main` by a second ordinary fast-forward so the final remote Integration and `main` refs remain identical.
