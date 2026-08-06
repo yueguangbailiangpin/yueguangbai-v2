@@ -201,6 +201,23 @@ Checked items in this planning round are evidence-backed planning artifacts only
 - [x] V.4 Automated verification: Module1 unit/API/MSW tests, Wave14A regression, workspace gates, Module1 and complete Playwright suites, and 20 deterministic screenshots.
 - [x] V.5 Formal OpenSpec Verify: `COMPLETE=58`, `INCONSISTENT=0`, `MISSING=0`, `PARTIAL=0`, `NOT_VERIFIED=0`, `CRITICAL=0`, `WARNING=0`, `SUGGESTION=0`; `Scenarios=116/116`.
 
+### Formal Requirement and Scenario Mapping
+
+Requirement and Scenario ranges follow their order in each named delta Spec. The formal verifier checks the exact headings, two Scenarios per Requirement, evidence-file existence, and aggregate counts.
+
+| Capability | Requirement coverage | Scenario coverage | Primary evidence |
+|---|---:|---:|---|
+| buyer-demand-reservation | R01–R08 COMPLETE | S01–S16 COMPLETE | Demand/reservation pages, API adapters, browser acceptance |
+| buyer-formal-orders | R01–R04 COMPLETE | S01–S08 COMPLETE | Migration 0028, formal read model, immutable detail, migration tests |
+| buyer-mobile-accessibility | R01–R05 COMPLETE | S01–S10 COMPLETE | Mobile CSS, UI primitives, 390/320/200%/motion/keyboard acceptance |
+| buyer-order-evidence | R01–R08 COMPLETE | S01–S16 COMPLETE | Contract/domain/API date chain, exact-one upload, read intent and tests |
+| buyer-order-instruction | R01–R05 COMPLETE | S01–S10 COMPLETE | State-first API, five UI states, fixed image provider, path rejection |
+| buyer-refund-status | R01–R04 COMPLETE | S01–S08 COMPLETE | Read-only DTO/API/UI, payment/reversal/OVERPAID acceptance |
+| buyer-registration-profile | R01–R05 COMPLETE | S01–S10 COMPLETE | Registration controller, dual-root MSW tests, mismatch acceptance |
+| buyer-review-workflow | R01–R08 COMPLETE | S01–S16 COMPLETE | Review API/UI, 1–3 files, read provider, command acceptance |
+| buyer-routing-dashboard | R01–R06 COMPLETE | S01–S12 COMPLETE | Route tree, five-item layout, task priority and partial-failure tests |
+| buyer-testing-quality | R01–R05 COMPLETE | S01–S10 COMPLETE | Module scripts, security/migration/formal verifiers, browser suite/screenshots |
+
 ## Planning Validation Evidence
 
 - [x] P.1 Complete corrected route, DTO/status/date, dashboard, form, file-adapter, registration-security, visual, and acceptance references.

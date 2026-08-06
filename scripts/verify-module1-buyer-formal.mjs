@@ -61,7 +61,7 @@ const mappings = Object.freeze({
     'scripts/verify-module1-buyer-security.mjs',
     'scripts/verify-module1-migration-0028.mjs',
     'apps/web/e2e/module1-buyer.spec.ts',
-    'openspec/changes/module1-buyer-complete-business-loop/references/buyer-formal-verification.md',
+    'openspec/changes/module1-buyer-complete-business-loop/tasks.md',
   ],
 });
 
