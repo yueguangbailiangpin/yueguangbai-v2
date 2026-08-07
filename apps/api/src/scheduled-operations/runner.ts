@@ -104,8 +104,9 @@ async function execute(database: SqlDatabase, job: ScheduledJobName, input: Para
       r2DeleteEnabled:input.driveArchiveR2DeleteEnabled===true,dryRun:input.dryRun===true,
       ...(input.deadlineReached?{deadlineReached:input.deadlineReached}:{}),
     });
-    const reconciliation=input.deadlineReached?.()?{processed:0,succeeded:0,failed:0}
-      :await reconcileDriveArchiveBatch(database,input.driveAdapter,{now:input.now,limit:5});
+    const reconciliation=input.dryRun===true||input.deadlineReached?.()?{processed:0,succeeded:0,failed:0}
+      :await reconcileDriveArchiveBatch(database,input.driveAdapter,{now:input.now,limit:5,
+        ...(input.deadlineReached?{deadlineReached:input.deadlineReached}:{})});
     return {processed:result.processed+reconciliation.processed,succeeded:result.succeeded+reconciliation.succeeded,
       failed:result.failed+reconciliation.failed,backlog:result.backlog,
       failureCategory:result.failed+reconciliation.failed>0?'job_item_failed':undefined};

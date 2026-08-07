@@ -188,3 +188,5 @@ Staff 身份继续与 Customer 身份严格分离。一个规范化微信身份�
 ### R-006 Google Drive所有者账号连续性
 
 第一版使用业务所有者控制的普通 Google Drive 账号。生产前必须完成账号恢复与多因素认证、专用归档目录、最小 OAuth Scope、Refresh Token 吊销/轮换、人工误删防护、容量告警和 D1 Manifest 定期巡检；账号失效或授权撤销时归档读取必须失败关闭并告警。
+
+M7 只交付本地 Migration、合同、Adapter、mock、受控命令、真实 runner dry-run、测试与 Runbook，没有创建或使用真实 OAuth、Refresh Token、owner 目录或外部文件。真实 owner 授权、匿名 Provider PoC、MFA/恢复、目录/Scope/容量/轮换以及分阶段生产验收已转交 M10/最终老板外部激活清单；清单完成前所有归档开关必须 hard-disabled。OpenSpec 本地 Change 的归档不消除此未执行风险。

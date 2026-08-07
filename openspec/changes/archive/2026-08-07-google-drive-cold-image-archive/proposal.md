@@ -29,9 +29,15 @@
 
 依赖 Scheduled Operations Change、四类文件现有 Audience/Manifest、整单业务关闭事实和生产 Secret 管理。实施前必须确认 Google Drive API、OAuth Scope、账号恢复/MFA 与容量告警。
 
+## Local Delivery and External Activation Boundary
+
+本 Change 的可验收交付仅包括连续 Migration、关闭/重开与回灌命令、合同、运行时工厂、Google Drive Adapter、mock、受控读取、真实 runner dry-run、自动化测试、Runbook 和外部激活清单。M7 不创建或使用真实 Google OAuth Client、Refresh Token、owner 账号目录、外部文件，也不执行生产部署或线上 D1/R2 写入。
+
+真实 owner OAuth/MFA/恢复方式、专用目录、匿名 Provider PoC、Scope 批准、容量/轮换以及 shadow-copy → proxy-read → 首次 R2-delete 的生产阶段验收，正式转交 M10/最终老板外部激活清单。该风险在外部清单完成前保持未执行，所有运行时开关继续 hard-disabled；本 Change 归档不表示这些外部事项已完成。
+
 ## Rollout and Rollback
 
-分三阶段：只计算到期；只复制/回读验证但不删 R2；代理读取验收后才启用 R2 删除。首次删除 R2 后，旧 R2-only Worker 不可直接回滚；必须保持 Drive 代理读取兼容，或先按 Manifest 将归档文件回灌 R2 再降级。
+本地以 mock 完成三阶段路径：只计算到期；只复制/回读验证但不删 R2；代理读取验收后才允许 R2 删除。真实 Provider 与生产阶段由 M10/老板单独批准。首次删除 R2 后，旧 R2-only Worker 不可直接回滚；必须保持 Drive 代理读取兼容，或先按 Manifest 将归档文件回灌 R2 再降级。
 
 ## Acceptance
 

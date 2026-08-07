@@ -19,6 +19,7 @@ import {
   requireCustomerSessionFromContext,
 } from '../middleware/customer-auth';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import { driveArchiveRuntime } from '../cold-image-archive/runtime';
 import {
   completeFileUploadIntent,
   consumeFileReadIntent,
@@ -244,6 +245,7 @@ function registerLifecycleRoutes(
 
   const readContent = withFileErrors(async (context) => {
     const authority = await resolveRouteAuthority(context, domain);
+    const driveRuntime=driveArchiveRuntime(context.env);
     const result = await consumeFileReadIntent(
       context.env.DB,
       requireObjectStorage(context),
@@ -259,9 +261,8 @@ function registerLifecycleRoutes(
       },
       { actor: authority.actor, principal: authority.principal },
       {
-        adapter: context.env.DRIVE_ARCHIVE_ADAPTER ?? null,
-        proxyReadEnabled: context.env.DRIVE_ARCHIVE_ENABLED === 'true'
-          && context.env.DRIVE_ARCHIVE_PROXY_READ_ENABLED === 'true',
+        adapter: driveRuntime.adapter,
+        proxyReadEnabled: driveRuntime.enabled && driveRuntime.proxyReadEnabled,
       },
     );
     return new Response(result.bytes, {

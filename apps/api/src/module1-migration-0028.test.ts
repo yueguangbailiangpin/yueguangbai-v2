@@ -29,7 +29,7 @@ describe('Migration 0028 Amazon order date facts', () => {
       SELECT name FROM sqlite_schema WHERE type='view'
     `).all();
     expect(tables.results).toHaveLength(148);
-    expect(triggers.results).toHaveLength(277);
+    expect(triggers.results).toHaveLength(279);
     expect(views.results).toHaveLength(10);
 
     for (const table of ['order_evidence_versions', 'formal_orders']) {

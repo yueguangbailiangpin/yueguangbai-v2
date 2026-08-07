@@ -65,7 +65,7 @@ describe('API contract baseline alignment', () => {
     const documented = documentedRoutes().sort();
     expect(new Set(actual).size, 'non-contiguous duplicate registration').toBe(actual.length);
     expect(documented, 'route inventory drift').toEqual(actual);
-    expect(actual).toHaveLength(151);
+    expect(actual).toHaveLength(154);
     expect(actual.filter((route) => route.startsWith('GET /api/'))).not.toHaveLength(0);
     expect(actual.some((route) => route.includes('/api/v2/'))).toBe(false);
   });

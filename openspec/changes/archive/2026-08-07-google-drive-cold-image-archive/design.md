@@ -20,6 +20,8 @@ Job 获取归档 lease 后读取 R2 verified object，以可恢复上传创建 D
 
 第一版由业务所有者普通 Google 账号授权专用归档目录。优先使用只允许应用创建/管理自身文件的最小 Scope；Refresh Token 加密存为 Secret，支持轮换/吊销。账号必须启用 MFA 与恢复方式。应用定期按 D1 Manifest 检查文件存在性、大小和访问能力；人工移动/删除造成不一致时告警并停止相关 R2 删除。
 
+上述账号、OAuth、目录和匿名 Provider 验证不是 M7 本地交付的已执行事实。M7 仅交付引用 Secret/var 名称的 fail-closed runtime factory 与 mock/HTTP 合同；缺少任一配置或总开关时不得实例化生产 Adapter。真实激活转交 M10/最终老板清单，完成前所有阶段开关保持关闭。
+
 ## Performance and Availability
 
 按每日最多二百订单分批归档，归档读取属于低频冷路径，不引入 CDN 或第二数据库。Drive 不可用时返回安全的 dependency-unavailable，不伪造 404 或降低权限；Staff operations health 记录失败类别和 request ID。
@@ -27,3 +29,5 @@ Job 获取归档 lease 后读取 R2 verified object，以可恢复上传创建 D
 ## Recovery
 
 提供仅 owner 授权的 Manifest 驱动回灌工具：从 Drive 读取、校验 SHA-256、写入新 R2 key、HEAD 校验、条件更新存储位置。回灌不删除 Drive 永久归档。任何自动/人工修复都写 Audit。
+
+回灌命令使用成熟的 request-hash 幂等记录、expected archive version、条件更新和 STARTED/FAILED/COMPLETED 审计；Drive→R2 外部副作用若先于 D1 最终提交，重试必须先 HEAD 并仅在内容与 Manifest 完全一致时继续。

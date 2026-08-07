@@ -15,14 +15,21 @@ CREATE TABLE order_archive_closures (
   status TEXT NOT NULL CHECK (status IN ('CLOSED','REOPENED')),
   business_closed_at INTEGER NOT NULL CHECK (typeof(business_closed_at)='integer' AND business_closed_at>=0),
   archive_due_at INTEGER NOT NULL CHECK (typeof(archive_due_at)='integer' AND archive_due_at>=business_closed_at),
+  closed_by_staff_id TEXT NOT NULL REFERENCES staff_users(id),
+  close_reason TEXT NOT NULL CHECK (length(close_reason) BETWEEN 1 AND 2000),
+  close_idempotency_key TEXT NOT NULL CHECK (length(close_idempotency_key) BETWEEN 8 AND 128),
   reopened_at INTEGER CHECK (reopened_at IS NULL OR (typeof(reopened_at)='integer' AND reopened_at>=business_closed_at)),
-  reason TEXT CHECK (reason IS NULL OR length(reason) BETWEEN 1 AND 2000),
+  reopened_by_staff_id TEXT REFERENCES staff_users(id),
+  reopen_reason TEXT CHECK (reopen_reason IS NULL OR length(reopen_reason) BETWEEN 1 AND 2000),
+  reopen_idempotency_key TEXT CHECK (reopen_idempotency_key IS NULL OR length(reopen_idempotency_key) BETWEEN 8 AND 128),
   version INTEGER NOT NULL CHECK (version>=1),
   created_at INTEGER NOT NULL CHECK (typeof(created_at)='integer' AND created_at>=0),
   updated_at INTEGER NOT NULL CHECK (typeof(updated_at)='integer' AND updated_at>=created_at),
   CHECK (
-    (status='CLOSED' AND reopened_at IS NULL)
-    OR (status='REOPENED' AND reopened_at IS NOT NULL AND reason IS NOT NULL)
+    (status='CLOSED' AND reopened_at IS NULL AND reopened_by_staff_id IS NULL
+      AND reopen_reason IS NULL AND reopen_idempotency_key IS NULL)
+    OR (status='REOPENED' AND reopened_at IS NOT NULL AND reopened_by_staff_id IS NOT NULL
+      AND reopen_reason IS NOT NULL AND reopen_idempotency_key IS NOT NULL)
   )
 ) STRICT;
 CREATE INDEX idx_order_archive_closures_due
@@ -31,6 +38,15 @@ ON order_archive_closures(status,archive_due_at,formal_order_id);
 CREATE TRIGGER trg_order_archive_closure_insert_guard
 BEFORE INSERT ON order_archive_closures
 WHEN NEW.status<>'CLOSED' OR NEW.version<>1 OR NEW.created_at<>NEW.updated_at
+  OR NOT EXISTS (
+    SELECT 1 FROM formal_orders formal_order WHERE formal_order.id=NEW.formal_order_id
+      AND formal_order.status='CONFIRMED' AND formal_order.confirmed_at<=NEW.business_closed_at
+  )
+  OR NOT EXISTS (
+    SELECT 1 FROM staff_users staff JOIN staff_role_assignments role ON role.staff_id=staff.id
+    WHERE staff.id=NEW.closed_by_staff_id AND staff.status='ACTIVE'
+      AND role.role_code='owner' AND role.status='ACTIVE'
+  )
   OR (NEW.review_state='COMPLETED' AND NOT EXISTS (
     SELECT 1 FROM review_cases review
     WHERE review.formal_order_id=NEW.formal_order_id
@@ -77,19 +93,89 @@ END;
 CREATE TRIGGER trg_order_archive_closure_update_guard
 BEFORE UPDATE ON order_archive_closures
 WHEN NOT (NEW.formal_order_id IS OLD.formal_order_id)
-  OR NOT (NEW.review_state IS OLD.review_state)
-  OR NOT (NEW.buyer_refund_state IS OLD.buyer_refund_state)
-  OR NOT (NEW.seller_principal_state IS OLD.seller_principal_state)
-  OR NOT (NEW.seller_service_fee_state IS OLD.seller_service_fee_state)
-  OR NOT (NEW.business_closed_at IS OLD.business_closed_at)
-  OR NOT (NEW.archive_due_at IS OLD.archive_due_at)
   OR NOT (NEW.created_at IS OLD.created_at)
-  OR OLD.status<>'CLOSED' OR NEW.status<>'REOPENED'
-  OR NEW.reopened_at IS NULL OR NEW.reason IS NULL
   OR NEW.version<>OLD.version+1 OR NEW.updated_at<=OLD.updated_at
+  OR (OLD.status='CLOSED' AND NEW.status='REOPENED' AND NOT EXISTS (
+    SELECT 1 FROM staff_users staff JOIN staff_role_assignments role ON role.staff_id=staff.id
+    WHERE staff.id=NEW.reopened_by_staff_id AND staff.status='ACTIVE'
+      AND role.role_code='owner' AND role.status='ACTIVE'
+  ))
+  OR NOT (
+    (OLD.status='CLOSED' AND NEW.status='REOPENED'
+      AND NEW.review_state IS OLD.review_state
+      AND NEW.buyer_refund_state IS OLD.buyer_refund_state
+      AND NEW.seller_principal_state IS OLD.seller_principal_state
+      AND NEW.seller_service_fee_state IS OLD.seller_service_fee_state
+      AND NEW.business_closed_at IS OLD.business_closed_at
+      AND NEW.archive_due_at IS OLD.archive_due_at
+      AND NEW.closed_by_staff_id IS OLD.closed_by_staff_id
+      AND NEW.close_reason IS OLD.close_reason
+      AND NEW.close_idempotency_key IS OLD.close_idempotency_key
+      AND NEW.reopened_at IS NOT NULL AND NEW.reopened_by_staff_id IS NOT NULL
+      AND NEW.reopen_reason IS NOT NULL AND NEW.reopen_idempotency_key IS NOT NULL)
+    OR (OLD.status='REOPENED' AND NEW.status='CLOSED'
+      AND NEW.closed_by_staff_id IS NOT NULL AND NEW.close_reason IS NOT NULL
+      AND NEW.close_idempotency_key IS NOT NULL
+      AND NEW.reopened_at IS NULL AND NEW.reopened_by_staff_id IS NULL
+      AND NEW.reopen_reason IS NULL AND NEW.reopen_idempotency_key IS NULL)
+  )
 BEGIN
   SELECT RAISE(ABORT,'order_archive_closure_invalid_transition');
 END;
+
+CREATE TRIGGER trg_order_archive_closure_reclose_source_guard
+BEFORE UPDATE ON order_archive_closures
+WHEN OLD.status='REOPENED' AND NEW.status='CLOSED' AND (
+  NOT EXISTS (
+    SELECT 1 FROM formal_orders formal_order WHERE formal_order.id=NEW.formal_order_id
+      AND formal_order.status='CONFIRMED' AND formal_order.confirmed_at<=NEW.business_closed_at
+  )
+  OR NOT EXISTS (
+    SELECT 1 FROM staff_users staff JOIN staff_role_assignments role ON role.staff_id=staff.id
+    WHERE staff.id=NEW.closed_by_staff_id AND staff.status='ACTIVE'
+      AND role.role_code='owner' AND role.status='ACTIVE'
+  )
+  OR
+  (NEW.review_state='COMPLETED' AND NOT EXISTS (
+    SELECT 1 FROM review_cases review WHERE review.formal_order_id=NEW.formal_order_id
+      AND review.status='APPROVED' AND review.decided_at<=NEW.business_closed_at
+  ))
+  OR (NEW.review_state='NOT_APPLICABLE' AND EXISTS (
+    SELECT 1 FROM review_cases review WHERE review.formal_order_id=NEW.formal_order_id
+  ))
+  OR (NEW.buyer_refund_state='COMPLETED' AND NOT EXISTS (
+    SELECT 1 FROM buyer_refund_ledger_balances refund
+    WHERE refund.formal_order_id=NEW.formal_order_id AND refund.status='PAID'
+      AND NOT EXISTS (SELECT 1 FROM buyer_refund_payment_entries entry
+        WHERE entry.obligation_id=refund.obligation_id AND entry.created_at>NEW.business_closed_at)
+  ))
+  OR (NEW.buyer_refund_state='NOT_APPLICABLE' AND EXISTS (
+    SELECT 1 FROM buyer_refund_obligations refund WHERE refund.formal_order_id=NEW.formal_order_id
+  ))
+  OR (NEW.seller_principal_state='COMPLETED' AND NOT EXISTS (
+    SELECT 1 FROM seller_payable_balances payable
+    WHERE payable.formal_order_id=NEW.formal_order_id
+      AND payable.payable_type='SELLER_PRINCIPAL' AND payable.derived_status='PAID'
+      AND NOT EXISTS (SELECT 1 FROM seller_payment_allocations allocation
+        WHERE allocation.payable_id=payable.payable_id AND allocation.created_at>NEW.business_closed_at)
+  ))
+  OR (NEW.seller_principal_state='NOT_APPLICABLE' AND EXISTS (
+    SELECT 1 FROM seller_payables payable
+    WHERE payable.formal_order_id=NEW.formal_order_id AND payable.payable_type='SELLER_PRINCIPAL'
+  ))
+  OR (NEW.seller_service_fee_state='COMPLETED' AND NOT EXISTS (
+    SELECT 1 FROM seller_payable_balances payable
+    WHERE payable.formal_order_id=NEW.formal_order_id
+      AND payable.payable_type='SELLER_SERVICE_FEE' AND payable.derived_status='PAID'
+      AND NOT EXISTS (SELECT 1 FROM seller_payment_allocations allocation
+        WHERE allocation.payable_id=payable.payable_id AND allocation.created_at>NEW.business_closed_at)
+  ))
+  OR (NEW.seller_service_fee_state='NOT_APPLICABLE' AND EXISTS (
+    SELECT 1 FROM seller_payables payable
+    WHERE payable.formal_order_id=NEW.formal_order_id AND payable.payable_type='SELLER_SERVICE_FEE'
+  ))
+)
+BEGIN SELECT RAISE(ABORT,'order_archive_closure_source_mismatch'); END;
 CREATE TRIGGER trg_order_archive_closures_no_delete
 BEFORE DELETE ON order_archive_closures
 BEGIN SELECT RAISE(ABORT,'order_archive_closures_are_immutable'); END;
@@ -232,7 +318,7 @@ CREATE TABLE file_drive_archive_events (
   file_object_id TEXT NOT NULL REFERENCES file_drive_archives(file_object_id),
   event_type TEXT NOT NULL CHECK (event_type IN (
     'ELIGIBILITY_RECORDED','COPY_STARTED','COPY_RESUMED','COPY_FAILED',
-    'DRIVE_VERIFIED','R2_DELETE_REQUESTED','R2_DELETE_FAILED','DRIVE_ARCHIVED',
+    'DRIVE_UPLOAD_RECORDED','DRIVE_VERIFIED','R2_DELETE_REQUESTED','R2_DELETE_FAILED','DRIVE_ARCHIVED',
     'RECONCILIATION_FAILED','REHYDRATION_STARTED','REHYDRATION_COMPLETED','REHYDRATION_FAILED'
   )),
   previous_status TEXT,
@@ -285,21 +371,56 @@ CREATE TABLE file_drive_rehydrations (
   target_object_key TEXT NOT NULL CHECK (length(target_object_key) BETWEEN 1 AND 1024),
   status TEXT NOT NULL CHECK (status IN ('STARTED','COMPLETED','FAILED')),
   expected_sha256 TEXT NOT NULL CHECK (length(expected_sha256)=64 AND expected_sha256 NOT GLOB '*[^0-9a-f]*'),
-  failure_category TEXT,
+  expected_archive_version INTEGER NOT NULL CHECK (expected_archive_version>=1),
+  request_hash TEXT NOT NULL CHECK (length(request_hash)=64 AND request_hash NOT GLOB '*[^0-9a-f]*'),
+  failure_category TEXT CHECK (failure_category IS NULL OR length(failure_category) BETWEEN 1 AND 100),
   requested_by_staff_id TEXT NOT NULL REFERENCES staff_users(id),
   request_id TEXT,
   idempotency_key TEXT NOT NULL CHECK (length(idempotency_key) BETWEEN 8 AND 128),
+  attempt_count INTEGER NOT NULL CHECK (attempt_count>=1),
+  version INTEGER NOT NULL CHECK (version>=1),
   created_at INTEGER NOT NULL CHECK (typeof(created_at)='integer' AND created_at>=0),
+  updated_at INTEGER NOT NULL CHECK (typeof(updated_at)='integer' AND updated_at>=created_at),
   completed_at INTEGER,
-  UNIQUE(requested_by_staff_id,idempotency_key)
+  UNIQUE(requested_by_staff_id,idempotency_key),
+  CHECK (
+    (status='STARTED' AND failure_category IS NULL AND completed_at IS NULL)
+    OR (status='COMPLETED' AND failure_category IS NULL AND completed_at IS NOT NULL)
+    OR (status='FAILED' AND failure_category IS NOT NULL AND completed_at IS NOT NULL)
+  )
 ) STRICT;
+CREATE TRIGGER trg_file_drive_rehydration_insert_guard
+BEFORE INSERT ON file_drive_rehydrations
+WHEN NEW.status<>'STARTED' OR NEW.version<>1 OR NEW.attempt_count<>1
+  OR NEW.updated_at<>NEW.created_at OR NEW.completed_at IS NOT NULL OR NEW.failure_category IS NOT NULL
+  OR NOT EXISTS (
+    SELECT 1 FROM file_drive_archives archive
+    JOIN file_drive_archive_manifests manifest ON manifest.file_object_id=archive.file_object_id
+    JOIN file_objects object ON object.id=archive.file_object_id
+    WHERE archive.file_object_id=NEW.file_object_id AND archive.status='DRIVE_ARCHIVED'
+      AND archive.version=NEW.expected_archive_version
+      AND manifest.sha256=NEW.expected_sha256 AND object.object_key=NEW.target_object_key
+  )
+BEGIN SELECT RAISE(ABORT,'file_drive_rehydration_source_mismatch'); END;
 CREATE TRIGGER trg_file_drive_rehydration_update_guard
 BEFORE UPDATE ON file_drive_rehydrations
 WHEN NOT (NEW.id IS OLD.id) OR NOT (NEW.file_object_id IS OLD.file_object_id)
   OR NOT (NEW.target_object_key IS OLD.target_object_key) OR NOT (NEW.expected_sha256 IS OLD.expected_sha256)
+  OR NOT (NEW.expected_archive_version IS OLD.expected_archive_version)
+  OR NOT (NEW.request_hash IS OLD.request_hash)
   OR NOT (NEW.requested_by_staff_id IS OLD.requested_by_staff_id) OR NOT (NEW.request_id IS OLD.request_id)
   OR NOT (NEW.idempotency_key IS OLD.idempotency_key) OR NOT (NEW.created_at IS OLD.created_at)
-  OR OLD.status<>'STARTED' OR NEW.status NOT IN ('COMPLETED','FAILED') OR NEW.completed_at IS NULL
+  OR NEW.version<>OLD.version+1 OR NEW.updated_at<=OLD.updated_at
+  OR NOT (
+    (OLD.status='STARTED' AND NEW.status IN ('COMPLETED','FAILED')
+      AND NEW.attempt_count=OLD.attempt_count AND NEW.completed_at IS NOT NULL)
+    OR (OLD.status='STARTED' AND NEW.status='STARTED'
+      AND NEW.attempt_count=OLD.attempt_count+1
+      AND NEW.failure_category IS NULL AND NEW.completed_at IS NULL)
+    OR (OLD.status='FAILED' AND NEW.status='STARTED'
+      AND NEW.attempt_count=OLD.attempt_count+1
+      AND NEW.failure_category IS NULL AND NEW.completed_at IS NULL)
+  )
 BEGIN SELECT RAISE(ABORT,'file_drive_rehydration_invalid_transition'); END;
 CREATE TRIGGER trg_file_drive_rehydrations_no_delete
 BEFORE DELETE ON file_drive_rehydrations

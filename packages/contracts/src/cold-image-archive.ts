@@ -20,6 +20,34 @@ export type FileDriveArchiveState = typeof FILE_DRIVE_ARCHIVE_STATES[number];
 export const ARCHIVE_COMPONENT_STATES = ['COMPLETED', 'NOT_APPLICABLE'] as const;
 export type ArchiveComponentState = typeof ARCHIVE_COMPONENT_STATES[number];
 
+export const ARCHIVE_COMPONENTS = [
+  'review',
+  'buyer_refund',
+  'seller_principal',
+  'seller_service_fee',
+] as const;
+export type ArchiveComponent = typeof ARCHIVE_COMPONENTS[number];
+
+export interface OrderArchiveClosureResultDto {
+  formal_order_id: string;
+  status: 'CLOSED' | 'REOPENED';
+  version: number;
+  business_closed_at: number;
+  archive_due_at: number;
+  review_state: ArchiveComponentState;
+  buyer_refund_state: ArchiveComponentState;
+  seller_principal_state: ArchiveComponentState;
+  seller_service_fee_state: ArchiveComponentState;
+  replayed: boolean;
+}
+
+export interface FileDriveRehydrationResultDto {
+  file_object_id: string;
+  status: 'COMPLETED';
+  archive_version: number;
+  replayed: boolean;
+}
+
 export interface DriveArchiveUploadInput {
   fileObjectId: string;
   fileName: string;
