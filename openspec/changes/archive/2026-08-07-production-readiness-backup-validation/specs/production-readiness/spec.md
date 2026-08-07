@@ -1,19 +1,23 @@
 # Production Readiness Capability
 
+## Purpose
+
+定义月光白 V2 在本地或隔离环境中的生产候选备份、恢复、文件对账、容量验证、告警与回滚控制，以及外部 Production GO 边界；只有绑定明确 release commit 且经过认证的备份与验收证据才能进入放行审计。
+
 ## ADDED Requirements
 
 ### Requirement: D1 backups are complete, hashed and restorable
 
-The release process SHALL produce an encrypted D1 backup with Schema inventory, row counts, critical financial aggregates, tool/version metadata and SHA-256 Manifest, and SHALL prove restoration in an isolated database before Production GO.
+The release process SHALL produce an encrypted D1 backup with Schema inventory, row counts, critical financial aggregates, tool/version metadata and SHA-256 Manifest, SHALL authenticate a separate attestation bound to an explicitly supplied release commit, and SHALL prove restoration in an isolated database before Production GO.
 
 #### Scenario: Backup and restore agree
 
 - **WHEN** the candidate backup is restored into an isolated D1
-- **THEN** schema, row, relationship and financial assertions match the signed Manifest and application smoke reads succeed.
+- **THEN** attestation, release commit, bundle, Manifest, schema, row, relationship and financial assertions agree and application smoke reads succeed.
 
 #### Scenario: Backup is incomplete or corrupt
 
-- **WHEN** hash, schema, row or financial assertions differ
+- **WHEN** attestation authentication, release provenance, hash, schema, row or financial assertions differ
 - **THEN** the release is blocked and the backup is not marked usable.
 
 ### Requirement: R2 and Drive files reconcile to D1 Manifest

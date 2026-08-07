@@ -15,6 +15,7 @@ export interface DatabaseInventoryEntry {
 export interface D1BackupManifest {
   format_version: typeof PRODUCTION_READINESS_FORMAT_VERSION;
   generated_at_utc_ms: number;
+  release_commit_sha: string;
   time_basis: 'UTC_MS';
   display_timezone: 'Asia/Shanghai';
   source: {
@@ -54,18 +55,22 @@ export interface D1BackupManifest {
 export interface D1BackupAttestation {
   format_version: typeof PRODUCTION_READINESS_FORMAT_VERSION;
   generated_at_utc_ms: number;
+  release_commit_sha: string;
   schema_version: number;
   cipher: 'AES-256-GCM';
+  kdf: 'HKDF-SHA256';
   key_id: string;
   encrypted_bundle_bytes: number;
   encrypted_bundle_sha256: string;
   manifest_sha256: string;
   anonymous_fixture: boolean;
+  attestation_hmac_sha256: string;
 }
 
 export interface D1RestoreReport {
   format_version: typeof PRODUCTION_READINESS_FORMAT_VERSION;
   verified_at_utc_ms: number;
+  release_commit_sha: string;
   status: 'PASS' | 'FAIL';
   schema_version: number;
   schema_match: boolean;

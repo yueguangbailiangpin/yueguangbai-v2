@@ -9,8 +9,8 @@
 | 能力 | 本地证据 | 结论 |
 | --- | --- | --- |
 | Migration | 连续 `0001`–`0034`、schema 34；发布证据外置，不创建 0035 | LOCAL_PASS |
-| D1 backup | 一致快照、完整 dump、gzip、双 SHA-256、四类 inventory、全表 row counts、财务聚合、工具版本、AES-256-GCM | LOCAL_PASS |
-| D1 restore | 新隔离 DB；auth/hash/schema/inventory/rows/finance/integrity/FK/smoke 全比较 | LOCAL_PASS |
+| D1 backup | 一致快照、完整 dump、gzip、双 SHA-256、四类 inventory、全表 row counts、财务聚合、工具版本、显式 release SHA、HKDF 派生与 AES-256-GCM | LOCAL_PASS |
+| D1 restore | 必需 HMAC attestation；release/bundle/Manifest 闭环；严格有界 runtime validation；新隔离 DB 的 schema/rows/finance/integrity/FK/smoke 全比较 | LOCAL_PASS |
 | File reconciliation | D1 authority 对 R2 hot / Drive archived 离线 Fixture；8 类 finding；零 Provider 调用/零删除 | LOCAL_PASS |
 | Capacity | 8 Staff、200 orders/day、50/15m peak、800 files、50 batch | LOCAL_PASS |
 | Rollback | 禁止覆盖恢复目标；R2 删除后无 proxy/完整回灌则阻断旧 Worker | LOCAL_PASS |

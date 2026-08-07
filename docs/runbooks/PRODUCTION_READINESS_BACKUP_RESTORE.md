@@ -12,7 +12,7 @@
 
 ## 本地/隔离备份
 
-1. 在仓库外创建权限受限的工作目录和 32 字节随机密钥；密钥与备份分开保管，均设为仅所有者可读。
+1. 在仓库外创建权限受限的工作目录和 32 字节随机主密钥；密钥与备份分开保管。POSIX 上密钥路径必须是普通文件，且 group/other 不得有任何权限（使用 `0600` 或 `0400`），否则工具 fail-closed。
 2. 输入必须是本地或隔离 SQLite/D1 导出，不得直接把生产数据库路径或 Secret 写进命令历史、日志或 PR。
 3. 执行：
 
@@ -21,12 +21,15 @@
      --database /outside-git/source.sqlite \
      --output-dir /outside-git/backup-candidate \
      --key-file /outside-git/keys/d1-backup.key \
+     --release-commit-sha 40位小写候选Git提交SHA \
      --expected-schema 34
    ```
 
-4. 工具先创建一致快照，再执行完整 SQL dump、gzip、SHA-256、schema/table/view/trigger/index inventory、全部表行数、关键财务聚合、关系完整性、关键应用 smoke read 和 Node/npm/SQLite/Wrangler 版本采集。
-5. 明文 SQL、压缩包和完整 Manifest 只存在于受限临时目录；最终写出 AES-256-GCM 加密包和最小 attestation，文件权限为 `0600`。attestation 不含数据库路径、对象 key、Drive ID、客户字段或财务行内容。
-6. 若未来经逐项授权执行真实 D1 export，先把远程 SQL 导出到仓库外受限目录，再导入新的隔离 SQLite，运行本工具；不得直接访问旧生产资源或提交导出物。
+4. `--release-commit-sha` 必须由操作者显式提供，严格为 40 位小写 Git SHA；工具不读取当前 HEAD、不猜测候选版本。该 SHA 同时进入 Manifest 与 attestation。
+5. 工具先创建一致快照，再执行完整 SQL dump、gzip、SHA-256、schema/table/view/trigger/index inventory、全部表行数、关键财务聚合、关系完整性、关键应用 smoke read 和 Node/npm/SQLite/Wrangler 版本采集。
+6. 主密钥只作为 HKDF-SHA256 输入，分别派生 AES-256-GCM encryption subkey 与 attestation HMAC-SHA256 authentication subkey；两个算法不直接复用同一密钥。attestation 的 release/schema/time/key-id/bundle bytes+SHA/Manifest SHA 等核心字段全部受 HMAC 保护。
+7. 明文 SQL、压缩包和完整 Manifest 只存在于受限临时目录；最终写出 AES-256-GCM 加密包和最小 attestation，文件权限为 `0600`。attestation 不含数据库路径、对象 key、Drive ID、客户字段或财务行内容。
+8. 若未来经逐项授权执行真实 D1 export，先把远程 SQL 导出到仓库外受限目录，再导入新的隔离 SQLite，运行本工具；不得直接访问旧生产资源或提交导出物。
 
 ## 隔离恢复
 
@@ -35,12 +38,16 @@
 ```text
 npm run restore:d1:local -- \
   --bundle /outside-git/backup-candidate/d1-backup.bundle.aes256gcm \
+  --attestation /outside-git/backup-candidate/d1-backup.attestation.json \
   --restore-database /outside-git/restore-rehearsal/restored.sqlite \
   --key-file /outside-git/keys/d1-backup.key \
+  --expected-release-commit-sha 40位小写候选Git提交SHA \
   --expected-schema 34
 ```
 
-恢复目标必须不存在，工具禁止覆盖。恢复依次验证 AES-GCM auth tag、压缩/明文 SHA-256、schema version/fingerprint、四类 schema inventory、全部 row counts、关键财务聚合、`integrity_check`、`foreign_key_check` 和 Staff/Buyer/Seller/订单/文件/调度 smoke reads。任一差异返回 `FAIL` 或直接拒绝，不能把备份标为 usable。
+恢复目标必须不存在，工具禁止覆盖。创建目标数据库之前，工具先把 attestation、bundle 和 Manifest 当作不可信外部输入，依次验证：attestation 精确 schema/字段上限、HMAC、派生 key-id、bundle bytes/SHA、Manifest SHA、显式 expected release SHA，以及 Manifest 与 attestation 的 schema/time/release/fixture 一致性。随后验证 AES-GCM auth tag、压缩/明文 SHA-256、schema version/fingerprint、四类 schema inventory、全部 row counts、关键财务聚合、`integrity_check`、`foreign_key_check` 和 Staff/Buyer/Seller/订单/文件/调度 smoke reads。
+
+Manifest runtime validator 拒绝 unknown 字段、错类型、重复/非法 inventory、未覆盖 table row counts、非法对象键、非规范财务十进制字符串、错误 tools/integrity/smoke/source/timezone/release SHA，以及超过固定数组、Record、Manifest、bundle 或解压大小上限的输入。任一差异直接拒绝且不得创建恢复目标，不能把备份标为 usable。attestation 是恢复必需输入，不是旁路文档。
 
 恢复环境保持 Scheduler、Drive、飞书和 MCP hard-disabled，不配置回调或接收人。恢复演练输出只保留匿名汇总；隔离数据库完成审计后按受控临时数据流程销毁。
 

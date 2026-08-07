@@ -3,11 +3,15 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
+  hkdfSync,
   randomBytes,
+  timingSafeEqual,
 } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -32,6 +36,29 @@ const PAYLOAD_MAGIC = Buffer.from('YGBD1PAY1', 'ascii');
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const MAX_DUMP_BYTES = 1024 * 1024 * 1024;
+const MAX_MANIFEST_BYTES = 8 * 1024 * 1024;
+const MAX_ATTESTATION_BYTES = 64 * 1024;
+const MAX_BUNDLE_BYTES = MAX_DUMP_BYTES + MAX_MANIFEST_BYTES + 1024 * 1024;
+const MAX_INVENTORY_ENTRIES = 20_000;
+const MAX_RECORD_ENTRIES = 20_000;
+const MAX_FINANCIAL_GROUPS = 200;
+const MAX_FINANCIAL_FIELDS = 200;
+const MAX_SMOKE_READS = 200;
+const RELEASE_COMMIT_SHA = /^[0-9a-f]{40}$/u;
+const SHA256_HEX = /^[0-9a-f]{64}$/u;
+const HKDF_SALT = Buffer.from('yueguangbai-v2/d1-backup/v1', 'utf8');
+const FINANCIAL_AGGREGATE_FIELDS = {
+  formal_order_snapshots: [
+    'row_count', 'buyer_expected_cny_fen', 'seller_expected_cny_fen',
+    'service_fee_cny_fen',
+  ],
+  buyer_refund_obligations: ['row_count', 'due_cny_fen'],
+  buyer_refund_entries: ['row_count', 'net_paid_cny_fen'],
+  seller_payables: ['row_count', 'principal_cny_fen', 'service_fee_cny_fen'],
+  seller_payments: ['row_count', 'paid_cny_fen'],
+  seller_allocations: ['row_count', 'allocated_cny_fen'],
+  seller_allocation_reversals: ['row_count', 'reversed_cny_fen'],
+} as const;
 
 const SMOKE_QUERIES = {
   active_staff_authorization: `SELECT COUNT(DISTINCT staff.id) AS count
@@ -53,6 +80,7 @@ export interface CreateBackupInput {
   databasePath: string;
   outputDirectory: string;
   key: Buffer;
+  releaseCommitSha: string;
   generatedAtUtcMs?: number;
   expectedSchemaVersion?: number;
   anonymousFixture?: boolean;
@@ -67,8 +95,10 @@ export interface CreateBackupResult {
 
 export interface RestoreBackupInput {
   bundlePath: string;
+  attestationPath: string;
   restorePath: string;
   key: Buffer;
+  expectedReleaseCommitSha: string;
   verifiedAtUtcMs?: number;
   expectedSchemaVersion?: number;
 }
@@ -77,6 +107,7 @@ export async function createEncryptedD1Backup(
   input: CreateBackupInput,
 ): Promise<CreateBackupResult> {
   validateKey(input.key);
+  validateReleaseCommitSha(input.releaseCommitSha);
   if (!existsSync(input.databasePath)) throw new Error('backup_source_missing');
   mkdirSync(input.outputDirectory, { recursive: true, mode: 0o700 });
   const bundlePath = path.join(input.outputDirectory, 'd1-backup.bundle.aes256gcm');
@@ -110,6 +141,7 @@ export async function createEncryptedD1Backup(
     const manifest: D1BackupManifest = {
       format_version: PRODUCTION_READINESS_FORMAT_VERSION,
       generated_at_utc_ms: generatedAtUtcMs,
+      release_commit_sha: input.releaseCommitSha,
       time_basis: 'UTC_MS',
       display_timezone: 'Asia/Shanghai',
       source: {
@@ -132,22 +164,36 @@ export async function createEncryptedD1Backup(
         compressed_sha256: sha256(compressed),
       },
     };
+    validateBackupManifest(manifest);
     const manifestBytes = Buffer.from(stableJson(manifest));
+    if (manifestBytes.byteLength > MAX_MANIFEST_BYTES) {
+      throw new Error('backup_manifest_too_large');
+    }
     const payload = encodePayload(manifestBytes, compressed);
-    const encrypted = encryptPayload(payload, input.key);
+    const keys = deriveBackupKeys(input.key);
+    const encrypted = encryptPayload(payload, keys.encryptionKey);
     writeFileSync(bundlePath, encrypted, { mode: 0o600, flag: 'wx' });
     chmodSync(bundlePath, 0o600);
 
-    const attestation: D1BackupAttestation = {
+    const core: Omit<D1BackupAttestation, 'attestation_hmac_sha256'> = {
       format_version: PRODUCTION_READINESS_FORMAT_VERSION,
       generated_at_utc_ms: generatedAtUtcMs,
+      release_commit_sha: input.releaseCommitSha,
       schema_version: evidence.schemaVersion,
       cipher: 'AES-256-GCM',
-      key_id: sha256(input.key).slice(0, 16),
+      kdf: 'HKDF-SHA256',
+      key_id: backupKeyId(keys.authenticationKey),
       encrypted_bundle_bytes: encrypted.byteLength,
       encrypted_bundle_sha256: sha256(encrypted),
       manifest_sha256: sha256(manifestBytes),
       anonymous_fixture: input.anonymousFixture === true,
+    };
+    const attestation: D1BackupAttestation = {
+      ...core,
+      attestation_hmac_sha256: hmacSha256(
+        keys.authenticationKey,
+        Buffer.from(stableJson(core)),
+      ),
     };
     writeFileSync(attestationPath, `${stableJson(attestation)}\n`, {
       mode: 0o600,
@@ -164,17 +210,60 @@ export function restoreEncryptedD1Backup(
   input: RestoreBackupInput,
 ): { manifest: D1BackupManifest; report: D1RestoreReport } {
   validateKey(input.key);
+  validateReleaseCommitSha(input.expectedReleaseCommitSha);
   if (existsSync(input.restorePath)) throw new Error('restore_target_exists');
-  const encrypted = readFileSync(input.bundlePath);
-  const payload = decryptPayload(encrypted, input.key);
+  const attestationBytes = readBoundedRegularFile(
+    input.attestationPath,
+    MAX_ATTESTATION_BYTES,
+    'attestation',
+  );
+  const attestation = parseJson(attestationBytes, 'invalid_backup_attestation');
+  validateBackupAttestation(attestation);
+  const keys = deriveBackupKeys(input.key);
+  const { attestation_hmac_sha256: suppliedHmac, ...core } = attestation;
+  const expectedHmac = hmacSha256(
+    keys.authenticationKey,
+    Buffer.from(stableJson(core)),
+  );
+  if (!secureHexEqual(suppliedHmac, expectedHmac)) {
+    throw new Error('attestation_hmac_mismatch');
+  }
+  if (attestation.key_id !== backupKeyId(keys.authenticationKey)) {
+    throw new Error('backup_key_id_mismatch');
+  }
+  if (attestation.release_commit_sha !== input.expectedReleaseCommitSha) {
+    throw new Error('release_commit_mismatch');
+  }
+  const encrypted = readBoundedRegularFile(
+    input.bundlePath,
+    MAX_BUNDLE_BYTES,
+    'bundle',
+  );
+  if (encrypted.byteLength !== attestation.encrypted_bundle_bytes
+    || sha256(encrypted) !== attestation.encrypted_bundle_sha256) {
+    throw new Error('bundle_attestation_mismatch');
+  }
+  const payload = decryptPayload(encrypted, keys.encryptionKey);
   const { manifestBytes, compressed } = decodePayload(payload);
-  const manifest = JSON.parse(manifestBytes.toString('utf8')) as D1BackupManifest;
-  validateManifest(manifest);
+  if (sha256(manifestBytes) !== attestation.manifest_sha256) {
+    throw new Error('manifest_attestation_mismatch');
+  }
+  const manifest = parseJson(manifestBytes, 'invalid_backup_manifest');
+  validateBackupManifest(manifest);
+  if (manifest.generated_at_utc_ms !== attestation.generated_at_utc_ms
+    || manifest.schema_version !== attestation.schema_version
+    || manifest.release_commit_sha !== attestation.release_commit_sha
+    || manifest.source.anonymous_fixture !== attestation.anonymous_fixture) {
+    throw new Error('manifest_attestation_mismatch');
+  }
+  if (manifest.release_commit_sha !== input.expectedReleaseCommitSha) {
+    throw new Error('release_commit_mismatch');
+  }
   if (sha256(compressed) !== manifest.backup.compressed_sha256
     || compressed.byteLength !== manifest.backup.compressed_bytes) {
     throw new Error('compressed_backup_mismatch');
   }
-  const sqlDump = gunzipSync(compressed);
+  const sqlDump = gunzipSync(compressed, { maxOutputLength: MAX_DUMP_BYTES });
   if (sha256(sqlDump) !== manifest.backup.uncompressed_sha256
     || sqlDump.byteLength !== manifest.backup.uncompressed_bytes) {
     throw new Error('uncompressed_backup_mismatch');
@@ -212,6 +301,7 @@ export function verifyDatabaseAgainstManifest(
   manifest: D1BackupManifest,
   verifiedAtUtcMs = Date.now(),
 ): D1RestoreReport {
+  validateBackupManifest(manifest);
   assertTimestamp(verifiedAtUtcMs);
   const evidence = collectDatabaseEvidence(database);
   const mismatches: string[] = [];
@@ -236,6 +326,7 @@ export function verifyDatabaseAgainstManifest(
   return {
     format_version: PRODUCTION_READINESS_FORMAT_VERSION,
     verified_at_utc_ms: verifiedAtUtcMs,
+    release_commit_sha: manifest.release_commit_sha,
     status: mismatches.length === 0 ? 'PASS' : 'FAIL',
     schema_version: evidence.schemaVersion,
     schema_match: schemaMatch,
@@ -419,6 +510,14 @@ function exactInteger(value: unknown): bigint {
 }
 
 export function readBackupKey(keyPath: string): Buffer {
+  const metadata = lstatSync(keyPath);
+  if (!metadata.isFile()) throw new Error('backup_key_must_be_regular_file');
+  if (process.platform !== 'win32' && (metadata.mode & 0o077) !== 0) {
+    throw new Error('insecure_backup_key_permissions');
+  }
+  if (metadata.size < 32 || metadata.size > 128) {
+    throw new Error('invalid_backup_key_file_size');
+  }
   const source = readFileSync(keyPath);
   const text = source.toString('utf8').trim();
   const key = /^[0-9a-f]{64}$/iu.test(text)
@@ -486,6 +585,10 @@ function schemaObjectExists(
 }
 
 function encodePayload(manifest: Buffer, compressed: Buffer): Buffer {
+  if (manifest.byteLength < 2 || manifest.byteLength > MAX_MANIFEST_BYTES
+    || compressed.byteLength < 1 || compressed.byteLength > MAX_BUNDLE_BYTES) {
+    throw new Error('invalid_backup_payload');
+  }
   const length = Buffer.allocUnsafe(4);
   length.writeUInt32BE(manifest.byteLength);
   return Buffer.concat([PAYLOAD_MAGIC, length, manifest, compressed]);
@@ -500,7 +603,8 @@ function decodePayload(payload: Buffer): { manifestBytes: Buffer; compressed: Bu
   const manifestLength = payload.readUInt32BE(lengthOffset);
   const manifestStart = lengthOffset + 4;
   const compressedStart = manifestStart + manifestLength;
-  if (manifestLength < 2 || compressedStart >= payload.byteLength) {
+  if (manifestLength < 2 || manifestLength > MAX_MANIFEST_BYTES
+    || compressedStart >= payload.byteLength) {
     throw new Error('invalid_backup_payload');
   }
   return {
@@ -541,17 +645,300 @@ function decryptPayload(envelope: Buffer, key: Buffer): Buffer {
   }
 }
 
-function validateManifest(manifest: D1BackupManifest): void {
-  if (manifest.format_version !== PRODUCTION_READINESS_FORMAT_VERSION
-    || manifest.time_basis !== 'UTC_MS'
-    || manifest.display_timezone !== 'Asia/Shanghai'
-    || !Number.isSafeInteger(manifest.schema_version)
-    || manifest.schema_version < 1
-    || !/^[0-9a-f]{64}$/u.test(manifest.schema_fingerprint_sha256)
-    || !/^[0-9a-f]{64}$/u.test(manifest.backup.compressed_sha256)
-    || !/^[0-9a-f]{64}$/u.test(manifest.backup.uncompressed_sha256)) {
+export function validateBackupManifest(
+  value: unknown,
+): asserts value is D1BackupManifest {
+  const manifest = exactObject(value, [
+    'format_version', 'generated_at_utc_ms', 'release_commit_sha', 'time_basis',
+    'display_timezone', 'source', 'schema_version', 'schema_fingerprint_sha256',
+    'inventory', 'row_counts', 'financial_aggregates', 'integrity',
+    'smoke_reads', 'tools', 'backup',
+  ], 'invalid_backup_manifest');
+  if (manifest['format_version'] !== PRODUCTION_READINESS_FORMAT_VERSION
+    || !validTimestamp(manifest['generated_at_utc_ms'])
+    || !isReleaseCommitSha(manifest['release_commit_sha'])
+    || manifest['time_basis'] !== 'UTC_MS'
+    || manifest['display_timezone'] !== 'Asia/Shanghai'
+    || !positiveSafeInteger(manifest['schema_version'])
+    || !isSha256(manifest['schema_fingerprint_sha256'])) {
     throw new Error('invalid_backup_manifest');
   }
+
+  const source = exactObject(manifest['source'], [
+    'kind', 'anonymous_fixture',
+  ], 'invalid_backup_manifest');
+  if (source['kind'] !== 'LOCAL_OR_ISOLATED_D1_EXPORT'
+    || typeof source['anonymous_fixture'] !== 'boolean') {
+    throw new Error('invalid_backup_manifest');
+  }
+
+  const inventory = exactObject(manifest['inventory'], [
+    'tables', 'views', 'triggers', 'indexes',
+  ], 'invalid_backup_manifest');
+  const inventoryNames: Record<string, string[]> = {};
+  for (const kind of ['tables', 'views', 'triggers', 'indexes']) {
+    const entries = inventory[kind];
+    if (!Array.isArray(entries) || entries.length < 1
+      || entries.length > MAX_INVENTORY_ENTRIES) {
+      throw new Error('invalid_backup_manifest');
+    }
+    const names = new Set<string>();
+    inventoryNames[kind] = [];
+    for (const valueEntry of entries) {
+      const entry = exactObject(valueEntry, [
+        'name', 'table_name', 'definition_sha256',
+      ], 'invalid_backup_manifest');
+      if (!safeObjectName(entry['name']) || !safeObjectName(entry['table_name'])
+        || !isSha256(entry['definition_sha256']) || names.has(entry['name'])) {
+        throw new Error('invalid_backup_manifest');
+      }
+      names.add(entry['name']);
+      inventoryNames[kind]!.push(entry['name']);
+    }
+  }
+  if (sha256(Buffer.from(stableJson(inventory)))
+    !== manifest['schema_fingerprint_sha256']) {
+    throw new Error('invalid_backup_manifest');
+  }
+
+  const rowCounts = boundedRecord(
+    manifest['row_counts'],
+    MAX_RECORD_ENTRIES,
+    'invalid_backup_manifest',
+  );
+  for (const [name, count] of Object.entries(rowCounts)) {
+    if (!safeObjectName(name) || !nonNegativeSafeInteger(count)) {
+      throw new Error('invalid_backup_manifest');
+    }
+  }
+  if (stableJson(Object.keys(rowCounts).sort())
+    !== stableJson((inventoryNames['tables'] ?? []).sort())) {
+    throw new Error('invalid_backup_manifest');
+  }
+
+  const financial = boundedRecord(
+    manifest['financial_aggregates'],
+    MAX_FINANCIAL_GROUPS,
+    'invalid_backup_manifest',
+  );
+  if (stableJson(Object.keys(financial).sort())
+    !== stableJson(Object.keys(FINANCIAL_AGGREGATE_FIELDS).sort())) {
+    throw new Error('invalid_backup_manifest');
+  }
+  for (const [groupName, groupValue] of Object.entries(financial)) {
+    if (!safeRecordKey(groupName)) throw new Error('invalid_backup_manifest');
+    const expectedFields = FINANCIAL_AGGREGATE_FIELDS[
+      groupName as keyof typeof FINANCIAL_AGGREGATE_FIELDS
+    ];
+    if (!expectedFields || expectedFields.length > MAX_FINANCIAL_FIELDS) {
+      throw new Error('invalid_backup_manifest');
+    }
+    const group = exactObject(groupValue, expectedFields, 'invalid_backup_manifest');
+    for (const [field, amount] of Object.entries(group)) {
+      if (!safeRecordKey(field)
+        || (field === 'row_count'
+          ? !nonNegativeSafeInteger(amount)
+          : !financialDecimalString(amount))) {
+        throw new Error('invalid_backup_manifest');
+      }
+    }
+  }
+
+  const integrity = exactObject(manifest['integrity'], [
+    'integrity_check', 'foreign_key_violations',
+  ], 'invalid_backup_manifest');
+  if (integrity['integrity_check'] !== 'ok'
+    || integrity['foreign_key_violations'] !== 0) {
+    throw new Error('invalid_backup_manifest');
+  }
+
+  const smokeReads = boundedRecord(
+    manifest['smoke_reads'],
+    MAX_SMOKE_READS,
+    'invalid_backup_manifest',
+  );
+  if (stableJson(Object.keys(smokeReads).sort())
+    !== stableJson(Object.keys(SMOKE_QUERIES).sort())) {
+    throw new Error('invalid_backup_manifest');
+  }
+  for (const [name, count] of Object.entries(smokeReads)) {
+    if (!safeRecordKey(name) || !nonNegativeSafeInteger(count)) {
+      throw new Error('invalid_backup_manifest');
+    }
+  }
+
+  const tools = exactObject(manifest['tools'], [
+    'node', 'npm', 'sqlite', 'wrangler',
+  ], 'invalid_backup_manifest');
+  if (Object.values(tools).some((version) => !boundedText(version, 256))) {
+    throw new Error('invalid_backup_manifest');
+  }
+
+  const backup = exactObject(manifest['backup'], [
+    'compression', 'uncompressed_bytes', 'uncompressed_sha256',
+    'compressed_bytes', 'compressed_sha256',
+  ], 'invalid_backup_manifest');
+  if (backup['compression'] !== 'gzip'
+    || !boundedPositiveSize(backup['uncompressed_bytes'], MAX_DUMP_BYTES)
+    || !boundedPositiveSize(backup['compressed_bytes'], MAX_BUNDLE_BYTES)
+    || !isSha256(backup['uncompressed_sha256'])
+    || !isSha256(backup['compressed_sha256'])) {
+    throw new Error('invalid_backup_manifest');
+  }
+}
+
+function validateBackupAttestation(
+  value: unknown,
+): asserts value is D1BackupAttestation {
+  const attestation = exactObject(value, [
+    'format_version', 'generated_at_utc_ms', 'release_commit_sha',
+    'schema_version', 'cipher', 'kdf', 'key_id', 'encrypted_bundle_bytes',
+    'encrypted_bundle_sha256', 'manifest_sha256', 'anonymous_fixture',
+    'attestation_hmac_sha256',
+  ], 'invalid_backup_attestation');
+  if (attestation['format_version'] !== PRODUCTION_READINESS_FORMAT_VERSION
+    || !validTimestamp(attestation['generated_at_utc_ms'])
+    || !isReleaseCommitSha(attestation['release_commit_sha'])
+    || !positiveSafeInteger(attestation['schema_version'])
+    || attestation['cipher'] !== 'AES-256-GCM'
+    || attestation['kdf'] !== 'HKDF-SHA256'
+    || typeof attestation['key_id'] !== 'string'
+    || !/^[0-9a-f]{16}$/u.test(attestation['key_id'])
+    || !boundedPositiveSize(attestation['encrypted_bundle_bytes'], MAX_BUNDLE_BYTES)
+    || !isSha256(attestation['encrypted_bundle_sha256'])
+    || !isSha256(attestation['manifest_sha256'])
+    || typeof attestation['anonymous_fixture'] !== 'boolean'
+    || !isSha256(attestation['attestation_hmac_sha256'])) {
+    throw new Error('invalid_backup_attestation');
+  }
+}
+
+function deriveBackupKeys(masterKey: Buffer): {
+  encryptionKey: Buffer;
+  authenticationKey: Buffer;
+} {
+  validateKey(masterKey);
+  return {
+    encryptionKey: Buffer.from(hkdfSync(
+      'sha256', masterKey, HKDF_SALT, Buffer.from('aes-256-gcm', 'utf8'), 32,
+    )),
+    authenticationKey: Buffer.from(hkdfSync(
+      'sha256', masterKey, HKDF_SALT, Buffer.from('attestation-hmac', 'utf8'), 32,
+    )),
+  };
+}
+
+function backupKeyId(authenticationKey: Buffer): string {
+  return createHmac('sha256', authenticationKey)
+    .update('backup-key-id/v1', 'utf8').digest('hex').slice(0, 16);
+}
+
+function hmacSha256(key: Buffer, value: Buffer): string {
+  return createHmac('sha256', key).update(value).digest('hex');
+}
+
+function secureHexEqual(left: string, right: string): boolean {
+  if (!isSha256(left) || !isSha256(right)) return false;
+  return timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));
+}
+
+function readBoundedRegularFile(
+  filePath: string,
+  maximumBytes: number,
+  label: string,
+): Buffer {
+  const metadata = lstatSync(filePath);
+  if (!metadata.isFile()) throw new Error(`${label}_must_be_regular_file`);
+  if (metadata.size < 1 || metadata.size > maximumBytes) {
+    throw new Error(`${label}_file_size_invalid`);
+  }
+  return readFileSync(filePath);
+}
+
+function parseJson(bytes: Buffer, errorCode: string): unknown {
+  try {
+    return JSON.parse(bytes.toString('utf8')) as unknown;
+  } catch {
+    throw new Error(errorCode);
+  }
+}
+
+function exactObject(
+  value: unknown,
+  allowedKeys: readonly string[],
+  errorCode: string,
+): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(errorCode);
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) throw new Error(errorCode);
+  const keys = Object.keys(value);
+  if (keys.length !== allowedKeys.length
+    || keys.some((key) => !allowedKeys.includes(key))) {
+    throw new Error(errorCode);
+  }
+  return value as Record<string, unknown>;
+}
+
+function boundedRecord(
+  value: unknown,
+  maximumEntries: number,
+  errorCode: string,
+): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(errorCode);
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) throw new Error(errorCode);
+  const keys = Object.keys(value);
+  if (keys.length > maximumEntries) throw new Error(errorCode);
+  return value as Record<string, unknown>;
+}
+
+function validTimestamp(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function positiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) > 0;
+}
+
+function nonNegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function boundedPositiveSize(value: unknown, maximum: number): value is number {
+  return positiveSafeInteger(value) && Number(value) <= maximum;
+}
+
+function isReleaseCommitSha(value: unknown): value is string {
+  return typeof value === 'string' && RELEASE_COMMIT_SHA.test(value);
+}
+
+function validateReleaseCommitSha(value: unknown): asserts value is string {
+  if (!isReleaseCommitSha(value)) throw new Error('invalid_release_commit_sha');
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === 'string' && SHA256_HEX.test(value);
+}
+
+function safeObjectName(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,127}$/u.test(value);
+}
+
+function safeRecordKey(value: string): boolean {
+  return /^[a-z][a-z0-9_]{0,127}$/u.test(value);
+}
+
+function financialDecimalString(value: unknown): value is string {
+  return typeof value === 'string' && /^-?(?:0|[1-9][0-9]{0,38})$/u.test(value);
+}
+
+function boundedText(value: unknown, maximumLength: number): value is string {
+  return typeof value === 'string' && value.length >= 1 && value.length <= maximumLength
+    && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
 function validateKey(key: Buffer): void {

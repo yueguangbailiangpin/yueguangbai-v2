@@ -14,14 +14,14 @@
   },
   "local_verification": {
     "production_readiness_test_files": 5,
-    "production_readiness_tests": 11,
+    "production_readiness_tests": 14,
     "browser_tests": 141,
     "openspec_strict_passed": 34,
     "openspec_strict_failed": 0,
     "npm_audit_vulnerabilities": 0,
     "full_test_files": 180,
-    "full_tests": 1188,
-    "security_scan_project_files": 980,
+    "full_tests": 1191,
+    "security_scan_project_files": 975,
     "full_gate_status": "PASS"
   },
   "data_safety": {
@@ -33,6 +33,9 @@
   },
   "local_capabilities": {
     "encrypted_d1_backup_and_manifest": "PASS",
+    "release_bound_authenticated_attestation": "PASS",
+    "strict_bounded_manifest_runtime_validation": "PASS",
+    "posix_owner_only_key_file": "PASS",
     "isolated_d1_restore_and_invariants": "PASS",
     "offline_file_authority_reconciliation": "PASS",
     "anonymous_capacity_dry_run": "PASS",

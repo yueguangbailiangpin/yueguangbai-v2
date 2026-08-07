@@ -4,8 +4,10 @@ import { readBackupKey, restoreEncryptedD1Backup } from '../packages/testkit/src
 const args=parseArgs(process.argv.slice(2));
 const result=restoreEncryptedD1Backup({
   bundlePath:path.resolve(required(args,'bundle')),
+  attestationPath:path.resolve(required(args,'attestation')),
   restorePath:path.resolve(required(args,'restore-database')),
   key:readBackupKey(path.resolve(required(args,'key-file'))),
+  expectedReleaseCommitSha:required(args,'expected-release-commit-sha'),
   expectedSchemaVersion:numberArg(args,'expected-schema',34),
 });
 console.log(JSON.stringify(result.report,null,2));
