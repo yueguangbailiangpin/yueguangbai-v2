@@ -2,7 +2,7 @@
 
 ## 结论
 
-本地 Staff MCP v1 server/adapter、OAuth verifier port/mock、13 个 Staff-only 工具合同、严格输入/最小输出、当前 D1 授权重算、重放/并发/限流、immutable safe audit、kill switch、runbook 和协议 dry-run 与 active OpenSpec 一致。
+本地 Staff MCP v1 server/adapter、OAuth verifier port/mock、13 个 Staff-only 工具合同、严格输入与嵌套输出正向白名单、当前 D1 授权重算、重放/并发/限流、immutable safe audit、kill switch、runbook 和协议 dry-run 与已归档 delta 及主 OpenSpec 一致。
 
 当前没有真实 OAuth、外部 AI 隐私批准、ChatGPT 应用/MCP 注册、公开端点、网络 Provider、部署或生产激活。生产必须继续 hard-disabled，见 `docs/runbooks/STAFF_MCP_EXTERNAL_ACTIVATION_CHECKLIST.md`。
 
@@ -11,10 +11,12 @@
 | OpenSpec Requirement/Scenario | 实现证据 | 测试/门禁证据 |
 | --- | --- | --- |
 | 每 session 一个当前 ACTIVE Staff；不信客户端身份 | `mock-oauth.ts`、`server-adapter.ts` | unknown/expired/disabled/forged Staff 测试 |
+| verifier 输出先验证再使用 | `validateVerifiedSession`；安全 identifier/scope/expiry 边界 | 恶意 client/session/Staff/scope/expiry；Application Service、audit、limiter、replay 隔离测试 |
 | 每次调用重算角色、DENY、Team/Department、data scope | `resolveAssignmentStaffAuthorization` + `resolveStaffDataScope` | Personal DENY、Department disabled、Buyer scope 测试 |
 | Staff-only bounded read/draft tools | `tools.ts` 13-tool registry | conformance、全工具循环、limit/cursor/extra-field 测试 |
+| 13 工具精确嵌套输出白名单 | `STAFF_MCP_OUTPUT_SCHEMAS` 同时驱动声明与运行时递归投影 | `private_note`、`buyer_phone`、内部利润、未知嵌套、错类型、越长与 51 items 恶意 Service 测试 |
 | Buyer/Seller 未注册 | Staff-only registry；Hono 无 `/mcp` route | `tools/list` 与未知 Buyer tool 协议测试；static verifier |
-| 微信号/截图允许但 Secret 禁止 | Customer projection；single task screenshot + Audience/Read Intent mock | full WeChat、截图 allow/deny、credential 字段测试 |
+| 微信号/截图允许但 Secret 禁止 | Customer projection；single task screenshot + Audience/Read Intent mock | full WeChat、截图 allow/deny、8 MiB/MIME/base64、data URL/credential 字段测试 |
 | Prompt injection 不扩权 | 草稿只收对象绑定/枚举；输出标记 untrusted | 评论注入、跨 Buyer 404、审核草稿不采纳指令测试 |
 | FACT/DRAFT/WARNING；正式动作只返 Web | common result + `get_web_confirmation_step_v1` | 五类正式动作不写 D1、只返 `/staff/...` 测试 |
 | immutable safe audit | 复用 `audit_events` + fail-closed | success/replay/conflict/immutability/redaction/audit outage 测试 |
@@ -26,10 +28,10 @@
 
 - `npm run check:staff-mcp`
 - `npm run check`
-- `npx openspec validate staff-mcp-agent-access --strict`
+- `npx openspec validate staff-mcp-agent-access --strict`（归档前）
 - `npx openspec validate --all --strict`
 - `npm run security:scan`
 - `npm audit --json`（不得高于既有 React Router 2 high）
 - `git diff --check`
 
-Formal Verify 结论：active delta spec 的每个 Requirement 与新增 Scenario 都能映射到实现和至少一条可执行测试/静态门禁；没有通过修改 Spec 掩盖实现缺口。外部激活事项不属于本地完成结论，并保留为老板清单未勾选项。
+Formal Verify 结论：已归档 delta 与主 spec 的每个 Requirement、新增 Scenario 和准确 Purpose 均能映射到合同、实现及可执行测试/静态门禁；没有通过修改 Spec 掩盖实现缺口。外部激活事项不属于本地完成结论，并保留为老板清单未勾选项。

@@ -7,7 +7,6 @@ import {
   type StaffMcpCurrentActor,
   type StaffMcpOAuthVerifier,
   type StaffMcpOutcome,
-  type StaffMcpStructuredResult,
   type StaffMcpToolName,
   type StaffMcpToolResult,
   type StaffMcpVerifiedSession,
@@ -27,11 +26,15 @@ import type { StaffMcpRateLimiter } from './rate-limit';
 import type { StaffMcpReplayStore } from './replay';
 import {
   parseStaffMcpArguments,
+  projectStaffMcpStructuredResult,
   STAFF_MCP_TOOL_DEFINITIONS,
   StaffMcpValidationError,
 } from './tools';
 
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const VERIFIED_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const VERIFIED_SCOPE = /^[a-z][a-z0-9:._-]{0,63}$/u;
+const MAX_VERIFIED_SCOPES = 16;
 const RATE_WINDOW_MS = 60_000;
 
 export interface StaffMcpServerOptions {
@@ -138,16 +141,16 @@ export class StaffMcpServerAdapter {
       );
     }
 
+    let untrustedSession: unknown;
     try {
-      session = await this.oauthVerifier.verifyAccessToken(input.accessToken, now);
+      untrustedSession = await this.oauthVerifier.verifyAccessToken(input.accessToken, now);
     } catch {
       return this.errorWithAudit(
         'PROVIDER_UNAVAILABLE', requestId, toolName, session, actor, now,
       );
     }
-    if (!session
-      || session.expiresAt <= now
-      || !session.scopes.includes(STAFF_MCP_REQUIRED_OAUTH_SCOPE)) {
+    session = validateVerifiedSession(untrustedSession, now);
+    if (!session) {
       return this.errorWithAudit(
         'UNAUTHENTICATED', requestId, toolName, session, actor, now,
       );
@@ -217,8 +220,8 @@ export class StaffMcpServerAdapter {
 
     try {
       const output = await this.applicationService.execute(toolName, args, actor);
-      const result = buildSuccessResult(output, requestId, now);
-      assertSafeToolResult(result);
+      const result = buildSuccessResult(toolName, output, requestId, now);
+      assertSafeToolResult(toolName, result);
       await this.safeAudit({
         requestId,
         toolName,
@@ -295,6 +298,9 @@ export class StaffMcpServerAdapter {
       return protocolError(id, -32602, '工具调用参数不正确');
     }
     const call = params as Record<string, unknown>;
+    if (Object.keys(call).some((key) => key !== 'name' && key !== 'arguments')) {
+      return protocolError(id, -32602, '工具调用参数不正确');
+    }
     if (typeof call['name'] !== 'string' || !isStaffMcpToolName(call['name'])) {
       return protocolError(id, -32602, '工具未注册');
     }
@@ -339,10 +345,9 @@ export class StaffMcpServerAdapter {
     if (!this.enabled) return false;
     try {
       const now = this.now();
-      const session = await this.oauthVerifier.verifyAccessToken(accessToken, now);
-      if (!session
-        || session.expiresAt <= now
-        || !session.scopes.includes(STAFF_MCP_REQUIRED_OAUTH_SCOPE)) return false;
+      const untrustedSession = await this.oauthVerifier.verifyAccessToken(accessToken, now);
+      const session = validateVerifiedSession(untrustedSession, now);
+      if (!session) return false;
       return await resolveAssignmentStaffAuthorization(
         this.database,
         session.staffId,
@@ -385,11 +390,12 @@ export class StaffMcpServerAdapter {
 class StaffMcpAuditUnavailableError extends Error {}
 
 function buildSuccessResult(
+  toolName: StaffMcpToolName,
   output: StaffMcpApplicationOutput,
   requestId: string,
   now: number,
 ): StaffMcpToolResult {
-  const structuredContent: StaffMcpStructuredResult = {
+  const structuredContent = projectStaffMcpStructuredResult(toolName, {
     kind: output.kind,
     tool_version: STAFF_MCP_TOOL_VERSION,
     generated_at: now,
@@ -399,10 +405,11 @@ function buildSuccessResult(
     data: output.data,
     warnings: output.warnings,
     next_step: output.nextStep,
-  };
+  });
+  const imageContent = validateImageContent(toolName, output.imageContent);
   const content: StaffMcpToolResult['content'] = [
     { type: 'text', text: JSON.stringify(structuredContent) },
-    ...(output.imageContent ? [output.imageContent] : []),
+    ...(imageContent ? [imageContent] : []),
   ];
   return { content, structuredContent, isError: false };
 }
@@ -436,20 +443,53 @@ function errorResult(outcome: StaffMcpOutcome, requestId: string): StaffMcpToolR
   };
 }
 
-function assertSafeToolResult(result: StaffMcpToolResult): void {
+function assertSafeToolResult(toolName: StaffMcpToolName, result: StaffMcpToolResult): void {
   const structured = result.structuredContent;
   if (!structured) throw new StaffMcpApplicationError('INVALID_RESULT');
+  projectStaffMcpStructuredResult(toolName, structured);
   const serialized = JSON.stringify(structured);
   if (serialized.length > 64 * 1024) throw new StaffMcpApplicationError('INVALID_RESULT');
   inspect(structured, 0);
   for (const item of result.content) {
     if (item.type === 'image') {
-      if (item.data.length > 8 * 1024 * 1024
-        || !/^[A-Za-z0-9+/]*={0,2}$/u.test(item.data)) {
-        throw new StaffMcpApplicationError('INVALID_RESULT');
-      }
+      validateImageContent(toolName, item);
     }
   }
+}
+
+function validateImageContent(
+  toolName: StaffMcpToolName,
+  value: StaffMcpApplicationOutput['imageContent'],
+): StaffMcpApplicationOutput['imageContent'] {
+  if (toolName !== 'read_task_screenshot_v1') {
+    if (value !== undefined) throw new StaffMcpApplicationError('INVALID_RESULT');
+    return undefined;
+  }
+  if (!value
+    || value.type !== 'image'
+    || !['image/jpeg', 'image/png', 'image/webp'].includes(value.mimeType)
+    || Object.keys(value).some((key) => !['type', 'data', 'mimeType', 'annotations'].includes(key))
+    || Object.keys(value.annotations).some((key) => key !== 'audience')
+    || value.annotations.audience.length !== 2
+    || value.annotations.audience[0] !== 'user'
+    || value.annotations.audience[1] !== 'assistant'
+    || value.data.length === 0
+    || value.data.length % 4 !== 0
+    || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value.data)
+    || base64DecodedByteLength(value.data) > 8 * 1024 * 1024) {
+    throw new StaffMcpApplicationError('INVALID_RESULT');
+  }
+  return Object.freeze({
+    type: 'image' as const,
+    data: value.data,
+    mimeType: value.mimeType,
+    annotations: Object.freeze({ audience: Object.freeze(['user', 'assistant'] as const) }),
+  });
+}
+
+function base64DecodedByteLength(value: string): number {
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  return value.length / 4 * 3 - padding;
 }
 
 function inspect(value: unknown, depth: number): void {
@@ -479,12 +519,50 @@ function safeRequestId(value: string): string | null {
   return typeof value === 'string' && REQUEST_ID.test(value) ? value : null;
 }
 
+function validateVerifiedSession(
+  value: unknown,
+  now: number,
+): StaffMcpVerifiedSession | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const session = value as Record<string, unknown>;
+  const expected = ['clientId', 'sessionId', 'staffId', 'expiresAt', 'scopes'];
+  if (Object.keys(session).length !== expected.length
+    || expected.some((key) => !Object.hasOwn(session, key))
+    || typeof session['clientId'] !== 'string'
+    || typeof session['sessionId'] !== 'string'
+    || typeof session['staffId'] !== 'string'
+    || !VERIFIED_IDENTIFIER.test(session['clientId'])
+    || !VERIFIED_IDENTIFIER.test(session['sessionId'])
+    || !VERIFIED_IDENTIFIER.test(session['staffId'])
+    || !Number.isSafeInteger(session['expiresAt'])
+    || Number(session['expiresAt']) < 0
+    || Number(session['expiresAt']) <= now
+    || !Array.isArray(session['scopes'])
+    || session['scopes'].length < 1
+    || session['scopes'].length > MAX_VERIFIED_SCOPES
+    || session['scopes'].some((scope) => typeof scope !== 'string'
+      || !VERIFIED_SCOPE.test(scope))
+    || new Set(session['scopes']).size !== session['scopes'].length
+    || !session['scopes'].includes(STAFF_MCP_REQUIRED_OAUTH_SCOPE)) {
+    return null;
+  }
+  return Object.freeze({
+    clientId: session['clientId'],
+    sessionId: session['sessionId'],
+    staffId: session['staffId'],
+    expiresAt: Number(session['expiresAt']),
+    scopes: Object.freeze([...session['scopes']]) as readonly string[],
+  });
+}
+
 function safeToolLabel(value: string): string {
   return /^[A-Za-z0-9_.-]{1,128}$/u.test(value) ? value : 'invalid_tool';
 }
 
 function safeScope(value: string): string {
-  return /^[A-Za-z0-9:_-]{1,200}$/u.test(value) ? value : 'redacted';
+  return typeof value === 'string' && /^[A-Za-z0-9:_-]{1,200}$/u.test(value)
+    ? value
+    : 'redacted';
 }
 
 function positiveLimit(value: number): number {

@@ -21,9 +21,14 @@ The system SHALL map each approved MCP client session to exactly one existing AC
 - **WHEN** this Change is run without the explicit local mock gates and an injected adapter
 - **THEN** Staff MCP remains disabled and no real OAuth, ChatGPT registration or public MCP endpoint is used.
 
+#### Scenario: Malformed verified-session response
+
+- **WHEN** the OAuth verifier returns unsafe, ambiguous, oversized, duplicated or malformed client, session, Staff, expiry or scope values
+- **THEN** the server treats the response as unverified, returns `UNAUTHENTICATED`, and does not use those values in audit, rate-limit or replay keys.
+
 ### Requirement: Staff MCP v1 exposes bounded read and draft tools only
 
-The first Staff MCP version SHALL expose explicit bounded query tools and draft-generation tools through existing Application Services, SHALL use exact schemas and cursor limits, and SHALL NOT expose generic SQL, arbitrary HTTP paths or formal approval/finance mutation tools.
+The first Staff MCP version SHALL expose explicit bounded query tools and draft-generation tools through existing Application Services, SHALL use exact nested input and output schemas, positive runtime output projection and cursor limits, and SHALL NOT expose generic SQL, arbitrary HTTP paths or formal approval/finance mutation tools.
 
 #### Scenario: Generate a WeChat draft
 
@@ -35,10 +40,15 @@ The first Staff MCP version SHALL expose explicit bounded query tools and draft-
 - **WHEN** a caller asks the Agent to finalize a refund, settlement, rate or approval
 - **THEN** MCP refuses the formal mutation and returns a controlled Web confirmation link or next-step instruction.
 
-#### Scenario: Strict pagination and authority fields
+#### Scenario: Strict tools/call parameters, arguments and authority fields
 
-- **WHEN** input has an unknown field, `limit` above 50, an invalid cursor, client-supplied Staff/role/scope, model-supplied expected version or idempotency authority
+- **WHEN** `tools/call.params` or tool arguments have an unknown field, `limit` above 50, an invalid cursor, client-supplied Staff/role/scope, model-supplied expected version or idempotency authority
 - **THEN** server-side validation rejects it before Application Service execution.
+
+#### Scenario: Application Service returns an undeclared output field
+
+- **WHEN** an Application Service returns an unknown nested field, wrong type, oversized string or array beyond the tool-specific output schema
+- **THEN** the server rejects the entire result before success audit, records only a safe failure audit, and returns no `structuredContent` or business payload.
 
 #### Scenario: Buyer or Seller MCP discovery
 

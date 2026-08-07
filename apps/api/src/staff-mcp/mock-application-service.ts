@@ -84,11 +84,7 @@ implements StaffMcpApplicationService {
           String(args['marketplace_code']),
           actor,
         );
-        const summary: Record<string, unknown> = { ...record.summary };
-        if (record.fullWechatRequired && record.fullWechatId) {
-          summary['wechat_id'] = record.fullWechatId;
-        }
-        return fact(record, { summary });
+        return fact(record, { summary: customerSummary(record, type) });
       }
       case 'get_order_summary_v1':
         return this.summary('ORDER', 'order_id', args, actor);
@@ -106,7 +102,7 @@ implements StaffMcpApplicationService {
           actor,
           String(args['store_id']),
         );
-        return fact(record, { summary: record.summary }, [], webStep(
+        return fact(record, { summary: businessSummary(record) }, [], webStep(
           '请在受控 Web 页面重新授权并确认结算。',
           `/staff/seller-settlements/${record.objectId}`,
         ));
@@ -216,14 +212,20 @@ implements StaffMcpApplicationService {
     return {
       kind: 'FACT',
       data: {
-        items: visible.map((record) => ({
-          object_id: record.objectId,
-          object_type: record.objectType,
-          status: record.status ?? null,
-          category: record.category ?? null,
-          summary: record.summary,
-          updated_at: Number(record.summary['updated_at'] ?? 0),
-        })),
+        items: visible.map((record) => type === 'TASK'
+          ? {
+              task_id: record.objectId,
+              title: String(record.summary['title']),
+              status: record.status ?? null,
+              updated_at: Number(record.summary['updated_at']),
+            }
+          : {
+              exception_id: record.objectId,
+              title: String(record.summary['title']),
+              status: record.status ?? null,
+              category: record.category ?? null,
+              updated_at: Number(record.summary['updated_at']),
+            }),
         next_cursor: start + limit < filtered.length ? `c_${start + limit}` : null,
       },
       sourceReferences: visible.map(reference),
@@ -251,7 +253,7 @@ implements StaffMcpApplicationService {
       : type === 'REVIEW'
         ? webStep('请在受控 Web 页面作出最终审核决定。', `/staff/reviews/${record.objectId}`)
         : none();
-    return fact(record, { summary: record.summary }, warnings, step);
+    return fact(record, { summary: businessSummary(record) }, warnings, step);
   }
 
   private recordByDraftObject(
@@ -356,6 +358,64 @@ implements StaffMcpApplicationService {
     if (record.sellerOrganizationId
       && !actor.dataScope.sellerOrganizationIds.includes(record.sellerOrganizationId)) return false;
     return Boolean(record.buyerCustomerId || record.sellerOrganizationId);
+  }
+}
+
+function customerSummary(
+  record: MockStaffMcpRecord,
+  customerType: 'BUYER' | 'SELLER_ORGANIZATION',
+): Readonly<Record<string, unknown>> {
+  return {
+    customer_id: record.objectId,
+    customer_type: customerType,
+    marketplace_code: record.marketplaceCode,
+    name: String(customerType === 'BUYER'
+      ? record.summary['display_name']
+      : record.summary['organization_name']),
+    status: String(record.summary['status']),
+    wechat_id: record.fullWechatRequired && record.fullWechatId
+      ? record.fullWechatId
+      : null,
+  };
+}
+
+function businessSummary(record: MockStaffMcpRecord): Readonly<Record<string, unknown>> {
+  switch (record.objectType) {
+    case 'ORDER':
+      return {
+        order_id: record.objectId,
+        marketplace_code: record.marketplaceCode,
+        order_number_masked: String(record.summary['order_number_masked']),
+        status: String(record.summary['status']),
+        amount_minor: String(record.summary['amount_minor']),
+        currency: String(record.summary['currency']),
+      };
+    case 'REVIEW':
+      return {
+        review_id: record.objectId,
+        marketplace_code: record.marketplaceCode,
+        status: String(record.summary['status']),
+        untrusted_data: typeof record.summary['untrusted_data'] === 'string'
+          ? record.summary['untrusted_data']
+          : null,
+      };
+    case 'REFUND':
+      return {
+        refund_id: record.objectId,
+        marketplace_code: record.marketplaceCode,
+        status: String(record.summary['status']),
+        amount_cny_fen: String(record.summary['amount_cny_fen']),
+      };
+    case 'SETTLEMENT':
+      return {
+        seller_organization_id: record.sellerOrganizationId,
+        store_id: record.storeId,
+        marketplace_code: record.marketplaceCode,
+        status: String(record.summary['status']),
+        due_cny_fen: String(record.summary['due_cny_fen']),
+      };
+    default:
+      throw new StaffMcpApplicationError('INVALID_RESULT');
   }
 }
 

@@ -45,7 +45,9 @@ dry-run 只启动进程内 mock，执行 `initialize -> tools/list -> tools/call
 
 ## 安全检查
 
+- verifier 返回会话必须先通过 `clientId/sessionId/staffId/expiresAt/scopes` 精确校验；失败审计只能记录 `unverified`，不得使用未验证值构造限流或重放 key。
+- 13 个工具的 `structuredContent.data` 由声明的精确 output schema 在运行时递归重建；任何未知嵌套字段、类型/长度错误或超量数组整次失败关闭，并只记录 `INTERNAL_ERROR` 安全审计。
 - 审计只允许 Staff/client/tool/version/scope/outcome/request ID/UTC 时间。
 - 不得记录 Authorization header、Token、完整 Prompt、微信正文、客户文本、OCR 或截图字节。
-- 截图必须绑定一个当前任务，同时通过业务资源权限、文件 Audience 和 Read Intent；结果只允许 inline image，不允许 URL、R2 key、Drive ID。
+- 截图必须绑定一个当前任务，同时通过业务资源权限、文件 Audience 和 Read Intent；结果只允许 JPEG/PNG/WebP inline base64 image，解码后不超过 8 MiB；structuredContent 不允许 data URL、R2 key、Drive ID。
 - 所有时间记录使用 UTC ms；中文展示使用 `Asia/Shanghai`。

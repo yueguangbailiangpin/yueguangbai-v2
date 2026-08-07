@@ -6,6 +6,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const contract = read('packages/contracts/src/staff-mcp.ts');
 const tools = read('apps/api/src/staff-mcp/tools.ts');
 const server = read('apps/api/src/staff-mcp/server-adapter.ts');
+const tests = read('apps/api/src/staff-mcp/staff-mcp.test.ts');
 const app = read('apps/api/src/app.ts');
 const expected = [
   'list_staff_tasks_v1',
@@ -39,6 +40,12 @@ for (const key of [
 }
 assert(tools.includes('additionalProperties: false'), 'exact-object schema helper missing');
 assert(expected.every((name) => new RegExp(`${name}: (?:exact|pagedInput)\\(`, 'u').test(inputBlock)), 'strict schema registry missing');
+assert(expected.every((name) => new RegExp(`${name}: commonOutput\\(`, 'u').test(tools)), 'tool-specific output schema registry missing');
+assert(tools.includes('STAFF_MCP_OUTPUT_SCHEMAS'), 'positive output whitelist missing');
+assert(tools.includes('projectStaffMcpStructuredResult'), 'runtime output projection missing');
+assert(tools.includes('projectSchemaValue'), 'recursive runtime output validation missing');
+assert(!tools.includes("summary: Object.freeze({ type: 'object' })"), 'open summary output schema remains');
+assert(!tools.includes("items: { type: 'object' }"), 'open list item output schema remains');
 assert(tools.includes('maximum: STAFF_MCP_MAX_LIMIT'), 'list maximum missing');
 assert(tools.includes('maxItems: 20'), 'payment draft batch bound missing');
 assert(server.includes("aggregateType: 'MCP_TOOL_CALL'"), 'safe audit missing');
@@ -46,6 +53,13 @@ assert(server.includes("outcome: 'SUCCEEDED'"), 'success audit missing');
 assert(server.includes("'AUDIT_UNAVAILABLE'"), 'audit fail-closed missing');
 assert(server.includes('resolveAssignmentStaffAuthorization'), 'current Staff authorization resolution missing');
 assert(server.includes('resolveStaffDataScope'), 'current Staff data scope resolution missing');
+assert(server.includes('validateVerifiedSession'), 'verified-session validator missing');
+assert(server.includes('untrustedSession'), 'verifier output is trusted before validation');
+assert(server.includes("key !== 'name' && key !== 'arguments'"), 'tools/call params are not exact');
+assert(server.includes('base64DecodedByteLength'), '8 MiB decoded screenshot bound missing');
+for (const marker of ['private_note', 'buyer_phone', 'internal_profit_cny_fen', 'unexpected_nested']) {
+  assert(tests.includes(marker), `malicious output test missing: ${marker}`);
+}
 assert(!app.includes("'/mcp'"), 'public MCP endpoint must remain unregistered');
 
 console.log(`Staff MCP security verifier passed: ${expected.length} Staff-only tools, no public endpoint.`);

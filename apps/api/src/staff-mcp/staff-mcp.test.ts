@@ -1,15 +1,20 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   STAFF_MCP_TOOL_NAMES,
+  type StaffMcpOAuthVerifier,
   type StaffMcpToolName,
   type StaffMcpToolResult,
+  type StaffMcpVerifiedSession,
 } from '@ygb/contracts';
 import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
 import { createApp } from '../app';
-import type { StaffMcpApplicationService } from './application-service';
+import type {
+  StaffMcpApplicationOutput,
+  StaffMcpApplicationService,
+} from './application-service';
 import {
   MockStaffMcpApplicationService,
   type MockStaffMcpRecord,
@@ -51,6 +56,9 @@ describe('Staff MCP local server and adapter', () => {
       && tool.annotations.readOnlyHint === true
       && tool.annotations.destructiveHint === false
       && tool.execution.taskSupport === 'forbidden')).toBe(true);
+    for (const tool of listed.result.tools) {
+      expectExactNestedObjects(tool.outputSchema);
+    }
 
     const called = await harness.adapter.handleJsonRpc({
       jsonrpc: '2.0', id: 3, method: 'tools/call',
@@ -65,6 +73,15 @@ describe('Staff MCP local server and adapter', () => {
       params: { name: 'buyer_orders_v1', arguments: {} },
     }, harness.ownerToken) as any;
     expect(buyerAttempt.error).toMatchObject({ code: -32602, message: '工具未注册' });
+    const forgedParams = await harness.adapter.handleJsonRpc({
+      jsonrpc: '2.0', id: 5, method: 'tools/call',
+      params: {
+        name: 'get_order_summary_v1',
+        arguments: argsFor('get_order_summary_v1'),
+        staff_id: 'zz-phase3h-test-owner',
+      },
+    }, harness.ownerToken) as any;
+    expect(forgedParams.error).toMatchObject({ code: -32602, message: '工具调用参数不正确' });
   });
 
   it('executes every bounded read/draft tool with minimal FACT/DRAFT/WARNING results', async () => {
@@ -93,6 +110,7 @@ describe('Staff MCP local server and adapter', () => {
     expect(screenshot).toMatchObject({
       type: 'image', mimeType: 'image/png', annotations: { audience: ['user', 'assistant'] },
     });
+    expect(JSON.stringify(results[7]?.structuredContent)).not.toContain('aW1hZ2U=');
     expect(JSON.stringify(results)).not.toMatch(
       /object_key|drive_file_id|access_token|refresh_token|password_hash|cookie|session_id/iu,
     );
@@ -243,6 +261,216 @@ describe('Staff MCP local server and adapter', () => {
       tool.name === 'draft_payment_batch_v1')).not.toThrow();
   });
 
+  it('fails closed on undeclared, mistyped, oversized or over-limit Application Service output', async () => {
+    const harness = setup();
+    const cases: readonly {
+      requestId: string;
+      toolName: StaffMcpToolName;
+      mutate: (output: StaffMcpApplicationOutput) => StaffMcpApplicationOutput;
+      leakedMarker: string;
+    }[] = [
+      {
+        requestId: 'malicious-output-private-note',
+        toolName: 'get_customer_summary_v1',
+        mutate: (output) => withSummaryField(output, 'private_note', 'sensitive-private-value'),
+        leakedMarker: 'private_note',
+      },
+      {
+        requestId: 'malicious-output-buyer-phone',
+        toolName: 'get_customer_summary_v1',
+        mutate: (output) => withSummaryField(output, 'buyer_phone', '13800000000'),
+        leakedMarker: 'buyer_phone',
+      },
+      {
+        requestId: 'malicious-output-internal-profit',
+        toolName: 'get_order_summary_v1',
+        mutate: (output) => withSummaryField(output, 'internal_profit_cny_fen', '999999'),
+        leakedMarker: 'internal_profit_cny_fen',
+      },
+      {
+        requestId: 'malicious-output-unexpected-nested',
+        toolName: 'get_customer_summary_v1',
+        mutate: (output) => withSummaryField(output, 'unexpected_nested', { secretless: 'still-forbidden' }),
+        leakedMarker: 'unexpected_nested',
+      },
+      {
+        requestId: 'malicious-output-wrong-type',
+        toolName: 'get_customer_summary_v1',
+        mutate: (output) => withSummaryField(output, 'status', 7),
+        leakedMarker: '"status":7',
+      },
+      {
+        requestId: 'malicious-output-oversized',
+        toolName: 'get_customer_summary_v1',
+        mutate: (output) => withSummaryField(output, 'name', 'x'.repeat(201)),
+        leakedMarker: 'x'.repeat(201),
+      },
+      {
+        requestId: 'malicious-output-too-many-items',
+        toolName: 'list_staff_tasks_v1',
+        mutate: (output) => {
+          const data = output.data as { items: readonly unknown[]; next_cursor: string | null };
+          return {
+            ...output,
+            data: {
+              items: Array.from({ length: 51 }, () => data.items[0]),
+              next_cursor: data.next_cursor,
+            },
+          };
+        },
+        leakedMarker: 'never-in-audit',
+      },
+      {
+        requestId: 'malicious-output-data-url',
+        toolName: 'read_task_screenshot_v1',
+        mutate: (output) => withSummaryField(
+          output,
+          'data_url',
+          'data:image/png;base64,aW1hZ2U=',
+        ),
+        leakedMarker: 'data_url',
+      },
+    ];
+
+    let executions = 0;
+    for (const testCase of cases) {
+      const maliciousService: StaffMcpApplicationService = {
+        execute: async (...args) => {
+          executions += 1;
+          return testCase.mutate(await harness.service.execute(...args));
+        },
+      };
+      const adapter = makeAdapter(harness.database, harness.oauth, maliciousService);
+      const result = await adapter.invoke({
+        accessToken: harness.ownerToken,
+        requestId: testCase.requestId,
+        toolName: testCase.toolName,
+        argumentsValue: argsFor(testCase.toolName),
+      });
+      expect(errorCode(result), testCase.requestId).toBe('INTERNAL_ERROR');
+      expect(result.structuredContent).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain(testCase.leakedMarker);
+    }
+    expect(executions).toBe(cases.length);
+    const audits = await harness.database.prepare(`
+      SELECT actor_id,next_state_json,metadata_json
+      FROM audit_events
+      WHERE aggregate_type='MCP_TOOL_CALL'
+        AND request_id LIKE 'malicious-output-%'
+      ORDER BY request_id
+    `).all<{ actor_id: string; next_state_json: string; metadata_json: string }>();
+    expect(audits.results).toHaveLength(cases.length);
+    expect(audits.results.every((row) =>
+      JSON.parse(row.next_state_json).outcome === 'INTERNAL_ERROR')).toBe(true);
+    expect(JSON.stringify(audits.results)).not.toMatch(
+      /private_note|buyer_phone|internal_profit_cny_fen|unexpected_nested|data_url|sensitive-private-value|13800000000|999999/iu,
+    );
+  });
+
+  it('validates verifier sessions before Staff lookup, audit, limiter or replay use', async () => {
+    const harness = setup();
+    const malformed = new Map<string, StaffMcpVerifiedSession>([
+      ['unsafe-client', { ...session('safe-session', 'mcp-after'), clientId: 'client:collision' }],
+      ['unsafe-session', { ...session('safe-session', 'mcp-after'), sessionId: 'session\ncontrol' }],
+      ['empty-staff', { ...session('safe-session', 'mcp-after'), staffId: '' }],
+      ['fractional-expiry', { ...session('safe-session', 'mcp-after'), expiresAt: 1000.5 }],
+      ['negative-expiry', { ...session('safe-session', 'mcp-after'), expiresAt: -1 }],
+      ['duplicate-scope', { ...session('safe-session', 'mcp-after'), scopes: ['staff:mcp', 'staff:mcp'] }],
+      ['unsafe-scope', { ...session('safe-session', 'mcp-after'), scopes: ['staff:mcp', 'bad scope'] }],
+      ['missing-scope', { ...session('safe-session', 'mcp-after'), scopes: ['profile:read'] }],
+      ['too-many-scopes', {
+        ...session('safe-session', 'mcp-after'),
+        scopes: ['staff:mcp', ...Array.from({ length: 16 }, (_, index) => `extra:${index}`)],
+      }],
+      ['oversized-client', { ...session('safe-session', 'mcp-after'), clientId: 'c'.repeat(129) }],
+    ]);
+    const validToken = 'verified-safe-session';
+    const verifier: StaffMcpOAuthVerifier = {
+      verifyAccessToken: async (accessToken) => accessToken === validToken
+        ? session('verified-session', 'mcp-after')
+        : malformed.get(accessToken) ?? null,
+    };
+    const limiterKeys: string[] = [];
+    const replayKeys: string[] = [];
+    let applicationExecutions = 0;
+    const adapter = new StaffMcpServerAdapter({
+      database: harness.database,
+      oauthVerifier: verifier,
+      applicationService: {
+        execute: async (...args) => {
+          applicationExecutions += 1;
+          return harness.service.execute(...args);
+        },
+      },
+      rateLimiter: {
+        take: (key) => {
+          limiterKeys.push(key);
+          return true;
+        },
+      },
+      replayStore: {
+        acquire: (key) => {
+          replayKeys.push(key);
+          return { kind: 'NEW' };
+        },
+        complete: () => undefined,
+        fail: () => undefined,
+      },
+      enabled: true,
+      now: () => 1_000,
+      idFactory: () => `malformed-session-audit-${crypto.randomUUID()}`,
+    });
+
+    for (const token of malformed.keys()) {
+      const result = await adapter.invoke({
+        accessToken: token,
+        requestId: `malformed-session-${token}`,
+        toolName: 'get_order_summary_v1',
+        argumentsValue: argsFor('get_order_summary_v1'),
+      });
+      expect(errorCode(result), token).toBe('UNAUTHENTICATED');
+      expect(result.structuredContent).toBeUndefined();
+    }
+    const catalog = await adapter.handleJsonRpc({
+      jsonrpc: '2.0', id: 71, method: 'tools/list', params: {},
+    }, 'unsafe-client') as any;
+    expect(catalog.error).toMatchObject({ code: -32001, message: '员工身份不可用' });
+    expect(applicationExecutions).toBe(0);
+    expect(limiterKeys).toEqual([]);
+    expect(replayKeys).toEqual([]);
+
+    const invalidAudits = await harness.database.prepare(`
+      SELECT actor_id,next_state_json
+      FROM audit_events
+      WHERE aggregate_type='MCP_TOOL_CALL'
+        AND request_id LIKE 'malformed-session-%'
+      ORDER BY request_id
+    `).all<{ actor_id: string | null; next_state_json: string }>();
+    expect(invalidAudits.results).toHaveLength(malformed.size);
+    expect(invalidAudits.results.every((row) => row.actor_id === null
+      && JSON.parse(row.next_state_json).client_id === 'unverified'
+      && JSON.parse(row.next_state_json).outcome === 'UNAUTHENTICATED')).toBe(true);
+    expect(JSON.stringify(invalidAudits.results)).not.toMatch(
+      /client:collision|session\\ncontrol|bad scope|profile:read/iu,
+    );
+
+    const valid = await adapter.invoke({
+      accessToken: validToken,
+      requestId: 'verified-session-valid',
+      toolName: 'get_order_summary_v1',
+      argumentsValue: argsFor('get_order_summary_v1'),
+    });
+    expect(valid.isError).toBe(false);
+    expect(applicationExecutions).toBe(1);
+    expect(limiterKeys).toEqual([
+      'chatgpt-local-approved:verified-session:global',
+      'chatgpt-local-approved:verified-session:mcp-after:get_order_summary_v1',
+    ]);
+    expect(replayKeys).toEqual([
+      'chatgpt-local-approved:verified-session:verified-session-valid',
+    ]);
+  });
+
   it('treats prompt injection/OCR/customer text as data and never lets it expand authority', async () => {
     const harness = setup();
     const review = await harness.adapter.invoke({
@@ -285,6 +513,31 @@ describe('Staff MCP local server and adapter', () => {
       toolName: 'read_task_screenshot_v1',
       argumentsValue: { task_id: 'task-denied-file', screenshot_kind: 'REVIEW_EVIDENCE' },
     }))).toBe('NOT_FOUND');
+    const oversizedImageService: StaffMcpApplicationService = {
+      execute: async (...args) => {
+        const output = await harness.service.execute(...args);
+        if (!output.imageContent) throw new Error('missing_test_image');
+        return {
+          ...output,
+          imageContent: {
+            ...output.imageContent,
+            data: 'AAAA'.repeat(2_796_203),
+          },
+        };
+      },
+    };
+    const oversizedImage = await makeAdapter(
+      harness.database,
+      harness.oauth,
+      oversizedImageService,
+    ).invoke({
+      accessToken: harness.afterToken,
+      requestId: 'screenshot-over-8-mib',
+      toolName: 'read_task_screenshot_v1',
+      argumentsValue: argsFor('read_task_screenshot_v1'),
+    });
+    expect(errorCode(oversizedImage)).toBe('INTERNAL_ERROR');
+    expect(oversizedImage.structuredContent).toBeUndefined();
     for (const key of ['password', 'password_hash', 'cookie', 'session', 'one_time_token', 'oauth_token', 'provider_token', 'secret', 'object_key', 'drive_file_id']) {
       expect(JSON.stringify(await harness.adapter.invoke({
         accessToken: harness.afterToken,
@@ -480,7 +733,7 @@ function setup() {
 
 function makeAdapter(
   d: SqliteDatabase,
-  oauth: MockStaffMcpOAuthVerifier,
+  oauth: StaffMcpOAuthVerifier,
   service: StaffMcpApplicationService,
   options: {
     enabled?: boolean;
@@ -699,6 +952,36 @@ async function invoke(
 function errorCode(result: StaffMcpToolResult): string | undefined {
   const text = result.content.find((item) => item.type === 'text');
   return text ? JSON.parse(text.text).error_code : undefined;
+}
+
+function withSummaryField(
+  output: StaffMcpApplicationOutput,
+  key: string,
+  value: unknown,
+): StaffMcpApplicationOutput {
+  const summary = output.data['summary'];
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) {
+    throw new Error('invalid_test_summary_fixture');
+  }
+  return {
+    ...output,
+    data: { summary: { ...summary, [key]: value } },
+  };
+}
+
+function expectExactNestedObjects(schema: unknown): void {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
+  const value = schema as Record<string, unknown>;
+  const types = Array.isArray(value['type']) ? value['type'] : [value['type']];
+  if (types.includes('object')) {
+    expect(value['additionalProperties']).toBe(false);
+    const properties = value['properties'];
+    expect(properties).toBeTypeOf('object');
+    for (const nested of Object.values(properties as Record<string, unknown>)) {
+      expectExactNestedObjects(nested);
+    }
+  }
+  if (types.includes('array')) expectExactNestedObjects(value['items']);
 }
 
 function objectForAction(action: string): string {

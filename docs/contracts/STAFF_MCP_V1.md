@@ -23,6 +23,7 @@
 ## 3. 身份、授权与会话
 
 - MCP access token 只能由 `StaffMcpOAuthVerifier` 映射为批准的 `clientId + sessionId + staffId + expiry + scopes`。
+- verifier 返回值仍是不可信边界：服务端只接受精确的五字段对象；`clientId/sessionId/staffId` 仅允许 1–128 个安全字母、数字、点、下划线或连字符（禁止控制字符和用于 key 拼接的冒号）；`expiresAt` 必须是未过期的非负安全整数；`scopes` 必须是 1–16 个唯一、1–64 字符的安全字符串并包含 `staff:mcp`。验证前的值一律不进入审计、限流或重放 key。
 - token 必须具有 `staff:mcp` scope，且只能映射一个已存在的 Staff。
 - 每次 `tools/call` 都重新读取 D1：Staff 必须为 `ACTIVE`；至少一个有效角色；Team 和 Department 必须有效；Personal DENY 最终优先；随后重新计算 Customer、Seller Organization、Team 和资源范围。
 - 客户端不得传入或覆盖 `staff_id`、role、permission 或 scope。伪造字段因 `additionalProperties: false` 直接拒绝。
@@ -49,11 +50,31 @@
 | `draft_review_recommendation_v1` | DRAFT | `REVIEW_VIEW` + Customer/Marketplace/资源 | 单一评论 | 审核建议；不构成决定 |
 | `get_web_confirmation_step_v1` | WARNING | 正式动作对应的读取权限 | 动作枚举、单一对象 | 仅 `/staff/...` 受控相对路径 |
 
-完整 JSON Schema 与运行时解析器位于 `apps/api/src/staff-mcp/tools.ts`。列表 cursor 只接受最多 128 字符的 opaque 值；所有对象 ID、枚举、数组和时间区间均有服务端边界；任何多余字段都拒绝。
+完整 JSON Schema 与运行时解析器位于 `apps/api/src/staff-mcp/tools.ts`。列表 cursor 只接受最多 128 字符的 opaque 值；所有对象 ID、枚举、数组和时间区间均有服务端边界；`tools/call.params` 只允许 `name` 与 `arguments`，工具 arguments 只允许各工具声明字段，任何多余字段都拒绝。
+
+### 4.1 structuredContent.data 正向白名单
+
+每个嵌套 object 均为 `additionalProperties:false`；字段名、类型、字符串长度、数组数量和整数范围由同一份 `STAFF_MCP_OUTPUT_SCHEMAS` 同时驱动工具声明与运行时递归投影/校验：
+
+| 工具 | `data` 唯一允许形状 |
+| --- | --- |
+| `list_staff_tasks_v1` | `items[]:{task_id,title,status,updated_at}`（最多 50）+ `next_cursor` |
+| `list_staff_exceptions_v1` | `items[]:{exception_id,title,status,category,updated_at}`（最多 50）+ `next_cursor` |
+| `get_customer_summary_v1` | `summary:{customer_id,customer_type,marketplace_code,name,status,wechat_id}` |
+| `get_order_summary_v1` | `summary:{order_id,marketplace_code,order_number_masked,status,amount_minor,currency}` |
+| `get_review_summary_v1` | `summary:{review_id,marketplace_code,status,untrusted_data}` |
+| `get_refund_summary_v1` | `summary:{refund_id,marketplace_code,status,amount_cny_fen}` |
+| `get_settlement_summary_v1` | `summary:{seller_organization_id,store_id,marketplace_code,status,due_cny_fen}` |
+| `read_task_screenshot_v1` | `summary:{task_id,screenshot_kind,protected_representation="INLINE_IMAGE"}` |
+| 四个 draft 工具 | 仅 `{draft_text}` |
+| `get_web_confirmation_step_v1` | `summary:{formal_action_executed=false,confirmation_required=true}` |
+
+Application Service 返回未知嵌套字段、错误类型、越长字符串或越界数组时，整次调用在成功审计前以稳定 `INTERNAL_ERROR` 失败关闭；结果没有 `structuredContent`，安全失败审计不保存 payload。通用敏感字段/URL blacklist 仅作为第二层防御，不替代正向白名单。
 
 ## 5. 结果与不可信数据
 
 - 成功结果固定区分 `FACT`、`DRAFT`、`WARNING`，含 `tool_version`、UTC `generated_at`、`Asia/Shanghai`、安全 source references、warnings 和 next step。
+- 截图只能由 `read_task_screenshot_v1` 返回为单个 inline image content，MIME 仅允许 JPEG/PNG/WebP、base64 必须有效且解码后不超过 8 MiB；`structuredContent` 只含 `INLINE_IMAGE` 标记，不含 data URL、R2/Drive 标识或存储链接。
 - 评论、客户文本、OCR 与截图内容始终是数据，不能选择工具、改变参数、创建 scope、提供 `expected_version`、幂等键或批准权威。
 - Draft 文案只使用服务端已授权结构化事实与枚举目的，不接收自由 Prompt。
 - 正式返款、卖家本金/服务费结算、汇率、审核和订单关闭不由 MCP 执行。`get_web_confirmation_step_v1` 只返回受控 Web 路径；员工必须在 Web 重新授权、读取最新版本并点击。

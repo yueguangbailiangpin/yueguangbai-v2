@@ -2,13 +2,26 @@ import {
   STAFF_MCP_DEFAULT_LIMIT,
   STAFF_MCP_MAX_LIMIT,
   type StaffMcpJsonSchema,
+  type StaffMcpStructuredResult,
   type StaffMcpToolDefinition,
   type StaffMcpToolName,
 } from '@ygb/contracts';
 
 const IDENTIFIER = '^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$';
 const CURSOR = '^[A-Za-z0-9_-]{1,128}$';
+const REQUEST_ID = '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$';
 const MARKETPLACES = ['AMAZON_JP', 'AMAZON_US', 'COUPANG_KR'] as const;
+const SOURCE_OBJECT_TYPES = [
+  'TASK',
+  'EXCEPTION',
+  'BUYER',
+  'SELLER_ORGANIZATION',
+  'ORDER',
+  'REVIEW',
+  'REFUND',
+  'SETTLEMENT',
+  'RATE',
+] as const;
 
 const exact = (
   properties: Record<string, StaffMcpJsonSchema>,
@@ -43,19 +56,28 @@ const pagedInput = (extra: Record<string, StaffMcpJsonSchema> = {}) => exact({
   }),
 }, []);
 
-const commonOutput = (data: StaffMcpJsonSchema): StaffMcpJsonSchema => exact({
-  kind: Object.freeze({ type: 'string', enum: ['FACT', 'DRAFT', 'WARNING'] }),
+const commonOutput = (
+  data: StaffMcpJsonSchema,
+  kind: 'FACT' | 'DRAFT' | 'WARNING',
+): StaffMcpJsonSchema => exact({
+  kind: Object.freeze({ type: 'string', const: kind }),
   tool_version: Object.freeze({ type: 'string', const: 'v1' }),
-  generated_at: Object.freeze({ type: 'integer', minimum: 0 }),
+  generated_at: Object.freeze({
+    type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER,
+  }),
   display_timezone: Object.freeze({ type: 'string', const: 'Asia/Shanghai' }),
-  request_id: Object.freeze({ type: 'string', minLength: 1, maxLength: 128 }),
+  request_id: Object.freeze({
+    type: 'string', pattern: REQUEST_ID, minLength: 1, maxLength: 128,
+  }),
   source_references: Object.freeze({
     type: 'array',
     maxItems: 50,
     items: exact({
-      object_type: Object.freeze({ type: 'string', minLength: 1, maxLength: 64 }),
+      object_type: Object.freeze({ type: 'string', enum: SOURCE_OBJECT_TYPES }),
       object_id: Object.freeze({ type: 'string', pattern: IDENTIFIER, maxLength: 128 }),
-      version: Object.freeze({ type: ['integer', 'null'], minimum: 1 }),
+      version: Object.freeze({
+        type: ['integer', 'null'], minimum: 1, maximum: Number.MAX_SAFE_INTEGER,
+      }),
     }, ['object_type', 'object_id', 'version']),
   }),
   data,
@@ -87,16 +109,129 @@ const commonOutput = (data: StaffMcpJsonSchema): StaffMcpJsonSchema => exact({
   'next_step',
 ]);
 
-const dataObject = exact({
-  summary: Object.freeze({ type: 'object' }),
-}, ['summary']);
-const pageData = exact({
-  items: Object.freeze({ type: 'array', maxItems: STAFF_MCP_MAX_LIMIT, items: { type: 'object' } }),
-  next_cursor: Object.freeze({ type: ['string', 'null'], maxLength: 128 }),
+const boundedText = (maxLength: number): StaffMcpJsonSchema => Object.freeze({
+  type: 'string', minLength: 1, maxLength,
+});
+const statusText: StaffMcpJsonSchema = Object.freeze({
+  type: 'string', pattern: '^[A-Z][A-Z0-9_]{0,63}$', minLength: 1, maxLength: 64,
+});
+const nullableStatus: StaffMcpJsonSchema = Object.freeze({
+  type: ['string', 'null'], pattern: '^[A-Z][A-Z0-9_]{0,63}$', maxLength: 64,
+});
+const utcMs: StaffMcpJsonSchema = Object.freeze({
+  type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER,
+});
+const moneyMinor: StaffMcpJsonSchema = Object.freeze({
+  type: 'string', pattern: '^(0|[1-9][0-9]{0,19})$', minLength: 1, maxLength: 20,
+});
+
+const taskPageData = exact({
+  items: Object.freeze({
+    type: 'array',
+    maxItems: STAFF_MCP_MAX_LIMIT,
+    items: exact({
+      task_id: id('员工任务 ID'),
+      title: boundedText(200),
+      status: nullableStatus,
+      updated_at: utcMs,
+    }, ['task_id', 'title', 'status', 'updated_at']),
+  }),
+  next_cursor: Object.freeze({
+    type: ['string', 'null'], pattern: CURSOR, maxLength: 128,
+  }),
 }, ['items', 'next_cursor']);
+
+const exceptionPageData = exact({
+  items: Object.freeze({
+    type: 'array',
+    maxItems: STAFF_MCP_MAX_LIMIT,
+    items: exact({
+      exception_id: id('业务异常 ID'),
+      title: boundedText(200),
+      status: nullableStatus,
+      category: Object.freeze({
+        type: ['string', 'null'],
+        enum: ['OVERDUE', 'AUTHORIZATION', 'FINANCE', 'FILE', null],
+      }),
+      updated_at: utcMs,
+    }, ['exception_id', 'title', 'status', 'category', 'updated_at']),
+  }),
+  next_cursor: Object.freeze({
+    type: ['string', 'null'], pattern: CURSOR, maxLength: 128,
+  }),
+}, ['items', 'next_cursor']);
+
+const customerData = exact({
+  summary: exact({
+    customer_id: id('客户业务对象 ID'),
+    customer_type: Object.freeze({ type: 'string', enum: ['BUYER', 'SELLER_ORGANIZATION'] }),
+    marketplace_code: marketplace,
+    name: boundedText(200),
+    status: statusText,
+    wechat_id: Object.freeze({ type: ['string', 'null'], minLength: 1, maxLength: 128 }),
+  }, ['customer_id', 'customer_type', 'marketplace_code', 'name', 'status', 'wechat_id']),
+}, ['summary']);
+
+const orderData = exact({
+  summary: exact({
+    order_id: id('正式订单 ID'),
+    marketplace_code: marketplace,
+    order_number_masked: boundedText(128),
+    status: statusText,
+    amount_minor: moneyMinor,
+    currency: Object.freeze({ type: 'string', pattern: '^[A-Z]{3}$', minLength: 3, maxLength: 3 }),
+  }, ['order_id', 'marketplace_code', 'order_number_masked', 'status', 'amount_minor', 'currency']),
+}, ['summary']);
+
+const reviewData = exact({
+  summary: exact({
+    review_id: id('评论业务对象 ID'),
+    marketplace_code: marketplace,
+    status: statusText,
+    untrusted_data: Object.freeze({ type: ['string', 'null'], maxLength: 4000 }),
+  }, ['review_id', 'marketplace_code', 'status', 'untrusted_data']),
+}, ['summary']);
+
+const refundData = exact({
+  summary: exact({
+    refund_id: id('买家返款义务 ID'),
+    marketplace_code: marketplace,
+    status: statusText,
+    amount_cny_fen: moneyMinor,
+  }, ['refund_id', 'marketplace_code', 'status', 'amount_cny_fen']),
+}, ['summary']);
+
+const settlementData = exact({
+  summary: exact({
+    seller_organization_id: id('卖家组织 ID'),
+    store_id: id('店铺 ID'),
+    marketplace_code: marketplace,
+    status: statusText,
+    due_cny_fen: moneyMinor,
+  }, ['seller_organization_id', 'store_id', 'marketplace_code', 'status', 'due_cny_fen']),
+}, ['summary']);
+
+const screenshotData = exact({
+  summary: exact({
+    task_id: id('员工任务 ID'),
+    screenshot_kind: Object.freeze({
+      type: 'string',
+      enum: ['ORDER_EVIDENCE', 'REVIEW_EVIDENCE', 'REFUND_PROOF', 'SETTLEMENT_PROOF'],
+    }),
+    protected_representation: Object.freeze({ type: 'string', const: 'INLINE_IMAGE' }),
+  }, ['task_id', 'screenshot_kind', 'protected_representation']),
+}, ['summary']);
+
 const draftData = exact({
   draft_text: Object.freeze({ type: 'string', minLength: 1, maxLength: 4000 }),
 }, ['draft_text']);
+
+const webConfirmationData = exact({
+  summary: exact({
+    formal_action_executed: Object.freeze({ type: 'boolean', const: false }),
+    confirmation_required: Object.freeze({ type: 'boolean', const: true }),
+  }, ['formal_action_executed', 'confirmation_required']),
+}, ['summary']);
 
 const DEFINITION_INPUTS: Readonly<Record<StaffMcpToolName, StaffMcpJsonSchema>> = Object.freeze({
   list_staff_tasks_v1: pagedInput({
@@ -205,20 +340,22 @@ const TITLES: Readonly<Record<StaffMcpToolName, readonly [string, string]>> = Ob
   get_web_confirmation_step_v1: ['获取 Web 确认步骤', '为正式动作返回受控 Web 下一步；ChatGPT 中的确认不会执行写入。'],
 });
 
-const OUTPUTS: Readonly<Record<StaffMcpToolName, StaffMcpJsonSchema>> = Object.freeze({
-  list_staff_tasks_v1: commonOutput(pageData),
-  list_staff_exceptions_v1: commonOutput(pageData),
-  get_customer_summary_v1: commonOutput(dataObject),
-  get_order_summary_v1: commonOutput(dataObject),
-  get_review_summary_v1: commonOutput(dataObject),
-  get_refund_summary_v1: commonOutput(dataObject),
-  get_settlement_summary_v1: commonOutput(dataObject),
-  read_task_screenshot_v1: commonOutput(dataObject),
-  draft_wechat_message_v1: commonOutput(draftData),
-  draft_reconciliation_v1: commonOutput(draftData),
-  draft_payment_batch_v1: commonOutput(draftData),
-  draft_review_recommendation_v1: commonOutput(draftData),
-  get_web_confirmation_step_v1: commonOutput(dataObject),
+export const STAFF_MCP_OUTPUT_SCHEMAS: Readonly<
+Record<StaffMcpToolName, StaffMcpJsonSchema>
+> = Object.freeze({
+  list_staff_tasks_v1: commonOutput(taskPageData, 'FACT'),
+  list_staff_exceptions_v1: commonOutput(exceptionPageData, 'FACT'),
+  get_customer_summary_v1: commonOutput(customerData, 'FACT'),
+  get_order_summary_v1: commonOutput(orderData, 'FACT'),
+  get_review_summary_v1: commonOutput(reviewData, 'FACT'),
+  get_refund_summary_v1: commonOutput(refundData, 'FACT'),
+  get_settlement_summary_v1: commonOutput(settlementData, 'FACT'),
+  read_task_screenshot_v1: commonOutput(screenshotData, 'FACT'),
+  draft_wechat_message_v1: commonOutput(draftData, 'DRAFT'),
+  draft_reconciliation_v1: commonOutput(draftData, 'DRAFT'),
+  draft_payment_batch_v1: commonOutput(draftData, 'DRAFT'),
+  draft_review_recommendation_v1: commonOutput(draftData, 'DRAFT'),
+  get_web_confirmation_step_v1: commonOutput(webConfirmationData, 'WARNING'),
 });
 
 export const STAFF_MCP_TOOL_DEFINITIONS: readonly StaffMcpToolDefinition[] = Object.freeze(
@@ -227,7 +364,7 @@ export const STAFF_MCP_TOOL_DEFINITIONS: readonly StaffMcpToolDefinition[] = Obj
     title: TITLES[name][0],
     description: TITLES[name][1],
     inputSchema: DEFINITION_INPUTS[name],
-    outputSchema: OUTPUTS[name],
+    outputSchema: STAFF_MCP_OUTPUT_SCHEMAS[name],
     annotations: Object.freeze({
       readOnlyHint: true as const,
       destructiveHint: false as const,
@@ -242,6 +379,28 @@ export class StaffMcpValidationError extends Error {
     super('VALIDATION_ERROR');
     this.name = 'StaffMcpValidationError';
   }
+}
+
+export class StaffMcpOutputValidationError extends Error {
+  constructor() {
+    super('INVALID_RESULT');
+    this.name = 'StaffMcpOutputValidationError';
+  }
+}
+
+/**
+ * Runtime output gate driven by the exact schema advertised for the same tool.
+ * It rebuilds only declared fields and rejects unknown/malformed nested values.
+ */
+export function projectStaffMcpStructuredResult(
+  toolName: StaffMcpToolName,
+  value: unknown,
+): StaffMcpStructuredResult {
+  return projectSchemaValue(
+    STAFF_MCP_OUTPUT_SCHEMAS[toolName],
+    value,
+    0,
+  ) as StaffMcpStructuredResult;
 }
 
 export function parseStaffMcpArguments(
@@ -429,6 +588,97 @@ function limit(value: unknown): number {
 function timestamp(value: unknown): number {
   if (!Number.isSafeInteger(value) || Number(value) < 0) reject();
   return Number(value);
+}
+
+function projectSchemaValue(
+  schema: StaffMcpJsonSchema,
+  value: unknown,
+  depth: number,
+): unknown {
+  if (depth > 12) outputReject();
+  const declaredType = schema['type'];
+  const types = Array.isArray(declaredType) ? declaredType : [declaredType];
+  if (!types.some((type) => matchesSchemaType(type, value))) outputReject();
+  if (schema['const'] !== undefined && !Object.is(value, schema['const'])) outputReject();
+  const allowed = schema['enum'];
+  if (Array.isArray(allowed) && !allowed.some((item) => Object.is(item, value))) outputReject();
+  if (value === null) return null;
+
+  if (typeof value === 'string') {
+    const minLength = schema['minLength'];
+    const maxLength = schema['maxLength'];
+    if ((typeof minLength === 'number' && value.length < minLength)
+      || (typeof maxLength === 'number' && value.length > maxLength)) outputReject();
+    const pattern = schema['pattern'];
+    if (typeof pattern === 'string' && !new RegExp(pattern, 'u').test(value)) outputReject();
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) outputReject();
+    const minimum = schema['minimum'];
+    const maximum = schema['maximum'];
+    if ((typeof minimum === 'number' && value < minimum)
+      || (typeof maximum === 'number' && value > maximum)) outputReject();
+    return value;
+  }
+
+  if (typeof value === 'boolean') return value;
+
+  if (Array.isArray(value)) {
+    const minItems = schema['minItems'];
+    const maxItems = schema['maxItems'];
+    if ((typeof minItems === 'number' && value.length < minItems)
+      || (typeof maxItems === 'number' && value.length > maxItems)) outputReject();
+    const itemSchema = schema['items'];
+    if (!itemSchema || typeof itemSchema !== 'object' || Array.isArray(itemSchema)) outputReject();
+    const projected = value.map((item) => projectSchemaValue(
+      itemSchema as StaffMcpJsonSchema,
+      item,
+      depth + 1,
+    ));
+    if (schema['uniqueItems'] === true
+      && new Set(projected.map((item) => JSON.stringify(item))).size !== projected.length) {
+      outputReject();
+    }
+    return Object.freeze(projected);
+  }
+
+  if (!value || typeof value !== 'object') outputReject();
+  const properties = schema['properties'];
+  const required = schema['required'];
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)
+    || !Array.isArray(required)) outputReject();
+  const input = value as Record<string, unknown>;
+  const propertyMap = properties as Record<string, StaffMcpJsonSchema>;
+  if (schema['additionalProperties'] !== false
+    || Object.keys(input).some((key) => !Object.hasOwn(propertyMap, key))
+    || required.some((key) => typeof key !== 'string' || !Object.hasOwn(input, key))) {
+    outputReject();
+  }
+  const projected: Record<string, unknown> = {};
+  for (const [key, propertySchema] of Object.entries(propertyMap)) {
+    if (Object.hasOwn(input, key)) {
+      projected[key] = projectSchemaValue(propertySchema, input[key], depth + 1);
+    }
+  }
+  return Object.freeze(projected);
+}
+
+function matchesSchemaType(type: unknown, value: unknown): boolean {
+  switch (type) {
+    case 'null': return value === null;
+    case 'string': return typeof value === 'string';
+    case 'integer': return Number.isSafeInteger(value);
+    case 'boolean': return typeof value === 'boolean';
+    case 'array': return Array.isArray(value);
+    case 'object': return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+    default: return false;
+  }
+}
+
+function outputReject(): never {
+  throw new StaffMcpOutputValidationError();
 }
 
 function reject(): never {
