@@ -11,7 +11,6 @@ afterEach(()=>{database?.close();database=null});
 describe('scheduled operation Staff HTTP contract',()=>{
   it('returns only Staff-safe capability scopes and enforces AUDIT_VIEW',async()=>{
     database=createMigratedTestDatabase();
-    database.exec("INSERT INTO scheduled_job_states(job_name,updated_at) VALUES('instruction_expiry',1),('drive_archive',1),('feishu_sync',1)");
     await ingestScheduledOperationalSignal(database,{observation_id:'a'.repeat(64),signal_type:'login_anomaly',summary_code:'LOGIN_ANOMALY_DETECTED',job_name:null,observation_state:'BREACH',observed_at:1000,count_value:5});
     const app=createTestApp();
     const bindings:AppBindings={DB:database};
@@ -21,7 +20,9 @@ describe('scheduled operation Staff HTTP contract',()=>{
     const response=await app.request('http://local/api/staff/operations/health',{headers:{'X-Test-Permission':'audit'}},bindings);
     expect(response.status).toBe(200);
     const body=await response.json() as {data:{jobs:Array<Record<string,unknown>>;alerts:Array<Record<string,unknown>>;time_basis:string;display_timezone:string}};
-    expect(Object.fromEntries(body.data.jobs.map(j=>[j['job_name'],j['capability_scope']]))).toEqual({drive_archive:'HARD_DISABLED',feishu_sync:'HARD_DISABLED',instruction_expiry:'LEGACY_JP_ONLY'});
+    expect(body.data.jobs).toHaveLength(7);
+    expect(Object.fromEntries(body.data.jobs.map(j=>[j['job_name'],j['capability_scope']]))).toEqual({reservation_expiry:'ALL_ENABLED_MARKETPLACES',instruction_expiry:'LEGACY_JP_ONLY',outbox_delivery:'ALL_ENABLED_MARKETPLACES',file_orphan_cleanup:'ALL_ENABLED_MARKETPLACES',staff_auth_cleanup:'ALL_ENABLED_MARKETPLACES',drive_archive:'HARD_DISABLED',feishu_sync:'HARD_DISABLED'});
+    expect(body.data.jobs.filter((job)=>job['capability_scope']==='HARD_DISABLED').every((job)=>job['enabled']===false)).toBe(true);
     expect(body.data.alerts).toEqual([expect.objectContaining({signal_type:'login_anomaly',category:'auth',severity:'CRITICAL',summary_code:'LOGIN_ANOMALY_DETECTED',status:'OPEN',time_basis:'UTC_MS',display_timezone:'Asia/Shanghai'})]);
     expect([body.data.time_basis,body.data.display_timezone]).toEqual(['UTC_MS','Asia/Shanghai']);
     expect(JSON.stringify(body)).not.toMatch(/object_key|payload_json|token|wechat|last_error/u);
@@ -31,7 +32,7 @@ describe('scheduled operation Staff HTTP contract',()=>{
     database=createMigratedTestDatabase();
     await ingestScheduledOperationalSignal(database,{observation_id:'b'.repeat(64),signal_type:'login_anomaly',summary_code:'LOGIN_ANOMALY_DETECTED',job_name:null,observation_state:'BREACH',observed_at:1000,count_value:5});
     const app=createTestApp(); const bindings:AppBindings={DB:database};
-    const command={signal_type:'login_anomaly',job_name:null,incident_version:1};
+    const command={signal_type:'login_anomaly',summary_code:'LOGIN_ANOMALY_DETECTED',job_name:null,incident_version:1};
     const base={method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':'http-alert-ack-key'},body:JSON.stringify(command)};
     expect((await app.request('http://local/api/staff/operations/alerts/ack',{...base,headers:{...base.headers,'X-Test-Permission':'audit'}},bindings)).status).toBe(403);
     const authorized={...base,headers:{...base.headers,'X-Test-Permission':'run'}};

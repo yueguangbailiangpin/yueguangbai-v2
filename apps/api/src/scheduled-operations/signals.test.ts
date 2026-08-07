@@ -103,6 +103,27 @@ describe('scheduled operational signal evaluation',()=>{
     expect(await count(database,'scheduled_operational_signals')).toBe(2);
   });
 
+  it('keeps primary and future Feishu adapter incidents as separate alert identities',async()=>{
+    database=createMigratedTestDatabase();
+    await ingestScheduledOperationalSignal(database,workerObservation(450,1_000,3),{sink:new MemoryOperationalAlertSink(()=>true)});
+    for (let index=0;index<3;index+=1) await recordFeishuAdapterFailureSignal(database,{securityEventId:`coexisting-feishu-${index}`,observedAt:2_000+index});
+    const states=(await database.prepare("SELECT summary_code,status FROM scheduled_alert_states WHERE signal_type='external_adapter_failure' ORDER BY summary_code").all()).results;
+    expect(states).toEqual([
+      {summary_code:'FEISHU_ADAPTER_FAILURE',status:'OPEN'},
+      {summary_code:'PRIMARY_ALERT_SINK_FAILURE',status:'OPEN'},
+    ]);
+  });
+
+  it('automatically resolves event-based alerts after two quiet scheduled evaluations',async()=>{
+    database=createMigratedTestDatabase();
+    const sink=new MemoryOperationalAlertSink();
+    await ingestScheduledOperationalSignal(database,workerObservation(460,1_000,3),{sink});
+    await evaluatePersistedScheduledJobSignals(database,{evaluationId:id(461),now:301_001,sink});
+    await evaluatePersistedScheduledJobSignals(database,{evaluationId:id(462),now:302_001,sink});
+    expect(await alertState(database,'worker_5xx','','WORKER_5XX_THRESHOLD')).toMatchObject({status:'RESOLVED',consecutive_healthy_count:2});
+    expect(sink.notifications.map((entry)=>entry.notification_kind)).toEqual(['OPENED','RESOLVED']);
+  });
+
   it('defaults the primary adapter to disabled and validates local-only configuration',async()=>{
     expect(resolveOperationalAlertSink({})).toBeNull();
     expect(()=>resolveOperationalAlertSink({mode:'external'})).toThrow('invalid_operational_alert_mode');
@@ -146,8 +167,10 @@ describe('scheduled operational signal evaluation',()=>{
   });
 });
 
-async function alertState(db:SqliteDatabase,signalType:string,jobName:string) {
-  return db.prepare('SELECT * FROM scheduled_alert_states WHERE signal_type=? AND job_name=?').bind(signalType,jobName).first<Record<string,unknown>>();
+async function alertState(db:SqliteDatabase,signalType:string,jobName:string,summaryCode?:string) {
+  return summaryCode
+    ? db.prepare('SELECT * FROM scheduled_alert_states WHERE signal_type=? AND job_name=? AND summary_code=?').bind(signalType,jobName,summaryCode).first<Record<string,unknown>>()
+    : db.prepare('SELECT * FROM scheduled_alert_states WHERE signal_type=? AND job_name=?').bind(signalType,jobName).first<Record<string,unknown>>();
 }
 
 async function count(db:SqliteDatabase,table:'scheduled_operational_signals') {

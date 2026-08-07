@@ -20,6 +20,7 @@ import {
   runScheduledOperationManually,
   ScheduledOperationCommandError,
 } from './commands';
+import { SCHEDULED_JOB_NAMES } from './runner';
 import {
   acknowledgeScheduledOperationalAlert,
   readScheduledOperationalAlerts,
@@ -39,7 +40,8 @@ async function health(context: Context<AppEnv>): Promise<Response> {
   if (!actor || actor.staffStatus!=='ACTIVE') throw new ScheduledOperationCommandError('FORBIDDEN',403);
   requirePermission(actor,'AUDIT_VIEW');
   const rows=await context.env.DB.prepare('SELECT job_name,enabled,last_started_at,last_succeeded_at,last_failed_at,last_failure_category,last_backlog_count AS backlog_count,lease_expires_at FROM scheduled_job_states ORDER BY job_name').all<{job_name:string;enabled:number;last_started_at:number|null;last_succeeded_at:number|null;last_failed_at:number|null;last_failure_category:string|null;backlog_count:number;lease_expires_at:number|null}>();
-  const jobs=rows.results.map((row)=>parseScheduledOperationHealthDto({job_name:row.job_name,enabled:row.enabled===1,last_started_at:row.last_started_at,last_succeeded_at:row.last_succeeded_at,last_failed_at:row.last_failed_at,last_failure_category:row.last_failure_category,backlog_count:Number(row.backlog_count),lease_expires_at:row.lease_expires_at,capability_scope:row.job_name==='instruction_expiry'?'LEGACY_JP_ONLY':['drive_archive','feishu_sync'].includes(row.job_name)?'HARD_DISABLED':'ALL_ENABLED_MARKETPLACES'}));
+  const states=new Map(rows.results.map((row)=>[row.job_name,row]));
+  const jobs=SCHEDULED_JOB_NAMES.map((jobName)=>{ const row=states.get(jobName); const hardDisabled=jobName==='drive_archive'||jobName==='feishu_sync'; return parseScheduledOperationHealthDto({job_name:jobName,enabled:hardDisabled?false:row?.enabled!==0,last_started_at:row?.last_started_at??null,last_succeeded_at:row?.last_succeeded_at??null,last_failed_at:row?.last_failed_at??null,last_failure_category:row?.last_failure_category??null,backlog_count:Number(row?.backlog_count??0),lease_expires_at:row?.lease_expires_at??null,capability_scope:jobName==='instruction_expiry'?'LEGACY_JP_ONLY':hardDisabled?'HARD_DISABLED':'ALL_ENABLED_MARKETPLACES'}); });
   const alerts=await readScheduledOperationalAlerts(context.env.DB);
   return context.json(apiSuccess({jobs,alerts,time_basis:'UTC_MS' as const,display_timezone:'Asia/Shanghai' as const},context.get('requestId')));
 }

@@ -64,7 +64,7 @@ describe('scheduled operations public contract', () => {
   });
 
   it('strictly parses one fixed alert acknowledgement command and result',()=>{
-    const command={signal_type:'login_anomaly',job_name:null,incident_version:1};
+    const command={signal_type:'login_anomaly',summary_code:'LOGIN_ANOMALY_DETECTED',job_name:null,incident_version:1};
     expect(parseScheduledOperationalAlertAckCommandDto(command)).toEqual(command);
     expect(parseScheduledOperationalAlertAckResultDto({...command,status:'ACKNOWLEDGED',acknowledged_at:3000})).toMatchObject({status:'ACKNOWLEDGED'});
     expect(()=>parseScheduledOperationalAlertAckCommandDto({...command,reason:'arbitrary'})).toThrow();

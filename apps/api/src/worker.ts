@@ -5,6 +5,8 @@ import { runScheduledOperations } from './scheduled-operations';
 import { hashCanonicalJson } from '@ygb/domain';
 import { evaluatePersistedScheduledJobSignals } from './scheduled-operations/signals';
 
+const SCHEDULED_HANDLER_TIME_BUDGET_MS=25_000;
+
 export default {
   fetch: app.fetch,
   async scheduled(event: {scheduledTime?:number}, env: AppBindings, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
@@ -12,7 +14,9 @@ export default {
     const disabledJobs = (env.SCHEDULED_OPERATIONS_DISABLED_JOBS ?? '').split(',').map((name: string) => name.trim()).filter(isScheduledOperationJobName);
     const now=Number.isSafeInteger(event.scheduledTime) && Number(event.scheduledTime)>=0 ? Number(event.scheduledTime) : Date.now();
     ctx.waitUntil((async()=>{
-      await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,now });
+      const startedAt=Date.now();
+      const deadlineReached=()=>Date.now()-startedAt>=SCHEDULED_HANDLER_TIME_BUDGET_MS;
+      await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,now,deadlineReached });
       const evaluationId=await hashCanonicalJson({kind:'SCHEDULED_OPERATIONS_EVALUATION',scheduled_time:now});
       const sink=configuredAlertSink(env);
       await evaluatePersistedScheduledJobSignals(env.DB,{evaluationId,now,...(sink?{sink}:{})});

@@ -23,7 +23,7 @@ describe('scheduled operational alert Staff services',()=>{
   it('acknowledges one OPEN incident once and safely replays the same command',async()=>{
     database=createMigratedTestDatabase();
     await openLoginAlert(database);
-    const command={signal_type:'login_anomaly',job_name:null,incident_version:1};
+    const command={signal_type:'login_anomaly',summary_code:'LOGIN_ANOMALY_DETECTED',job_name:null,incident_version:1};
     const first=await acknowledgeScheduledOperationalAlert(database,command,context('alert-ack-key'));
     const replay=await acknowledgeScheduledOperationalAlert(database,command,context('alert-ack-key'));
     expect(replay).toEqual(first);
@@ -38,13 +38,24 @@ describe('scheduled operational alert Staff services',()=>{
   it('rejects key conflicts, denied actors, stale incidents, and non-OPEN states',async()=>{
     database=createMigratedTestDatabase();
     await openLoginAlert(database);
-    const command={signal_type:'login_anomaly',job_name:null,incident_version:1};
+    const command={signal_type:'login_anomaly',summary_code:'LOGIN_ANOMALY_DETECTED',job_name:null,incident_version:1};
     await expect(acknowledgeScheduledOperationalAlert(database,command,{...context('denied-alert-key'),actor:actor([])})).rejects.toMatchObject({code:'FORBIDDEN',status:403});
     await acknowledgeScheduledOperationalAlert(database,command,context('conflicting-alert-key'));
     await expect(acknowledgeScheduledOperationalAlert(database,{...command,incident_version:2},context('conflicting-alert-key'))).rejects.toMatchObject({code:'IDEMPOTENCY_CONFLICT',status:409});
     await expect(acknowledgeScheduledOperationalAlert(database,command,context('already-acknowledged-key'))).rejects.toMatchObject({code:'STATE_CONFLICT',status:409});
-    await expect(acknowledgeScheduledOperationalAlert(database,{signal_type:'worker_5xx',job_name:null,incident_version:1},context('missing-alert-key'))).rejects.toMatchObject({code:'NOT_FOUND',status:404});
+    await expect(acknowledgeScheduledOperationalAlert(database,{signal_type:'worker_5xx',summary_code:'WORKER_5XX_THRESHOLD',job_name:null,incident_version:1},context('missing-alert-key'))).rejects.toMatchObject({code:'NOT_FOUND',status:404});
     expect((await database.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type='SCHEDULED_OPERATION_ALERT_ACKNOWLEDGED'").first<{count:number}>())?.count).toBe(1);
+  });
+
+  it('acknowledges one external adapter summary without changing the other',async()=>{
+    database=createMigratedTestDatabase();
+    await ingestScheduledOperationalSignal(database,{observation_id:id(20),signal_type:'external_adapter_failure',summary_code:'PRIMARY_ALERT_SINK_FAILURE',job_name:null,observation_state:'BREACH',observed_at:1_000,count_value:1});
+    await ingestScheduledOperationalSignal(database,{observation_id:id(21),signal_type:'external_adapter_failure',summary_code:'FEISHU_ADAPTER_FAILURE',job_name:null,observation_state:'BREACH',observed_at:1_100,count_value:3});
+    await acknowledgeScheduledOperationalAlert(database,{signal_type:'external_adapter_failure',summary_code:'FEISHU_ADAPTER_FAILURE',job_name:null,incident_version:1},context('external-alert-ack'));
+    expect((await database.prepare("SELECT summary_code,status FROM scheduled_alert_states WHERE signal_type='external_adapter_failure' ORDER BY summary_code").all()).results).toEqual([
+      {summary_code:'FEISHU_ADAPTER_FAILURE',status:'ACKNOWLEDGED'},
+      {summary_code:'PRIMARY_ALERT_SINK_FAILURE',status:'OPEN'},
+    ]);
   });
 });
 

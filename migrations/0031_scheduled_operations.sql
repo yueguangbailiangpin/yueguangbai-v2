@@ -63,7 +63,7 @@ CREATE TABLE scheduled_alert_states (
   incident_version INTEGER NOT NULL DEFAULT 0 CHECK (incident_version>=0),
   version INTEGER NOT NULL DEFAULT 1 CHECK (version>=1),
   updated_at INTEGER NOT NULL CHECK (typeof(updated_at)='integer' AND updated_at>=0),
-  PRIMARY KEY(signal_type,job_name),
+  PRIMARY KEY(signal_type,job_name,summary_code),
   CHECK ((status='RESOLVED' AND resolved_at IS NOT NULL) OR (status='OPEN' AND opened_at IS NOT NULL) OR (status='ACKNOWLEDGED' AND opened_at IS NOT NULL AND acknowledged_at IS NOT NULL))
 ) STRICT;
 

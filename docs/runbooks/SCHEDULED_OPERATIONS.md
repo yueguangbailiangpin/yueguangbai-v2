@@ -10,16 +10,16 @@ Worker 的 Cron 配置只定义触发频率；`SCHEDULED_OPERATIONS_ENABLED` 必
 
 ## 作业、恢复与人工操作
 
-`reservation_expiry`、`instruction_expiry`、`outbox_delivery`、`file_orphan_cleanup`、`staff_auth_cleanup` 运行既有领域服务；`drive_archive` 与 `feishu_sync` 始终禁用，等待各自 Change 提供 adapter。每次运行持有 90 秒 D1 租约；进程中断后仅在到期后被接管。业务幂等键、版本和唯一约束仍是最终副作用防线。
+`reservation_expiry`、`instruction_expiry`、`outbox_delivery`、`file_orphan_cleanup`、`staff_auth_cleanup` 运行既有领域服务；`drive_archive` 与 `feishu_sync` 始终禁用，等待各自 Change 提供 adapter。每次 Scheduled Handler 设 25 秒墙钟预算，每次作业持有 90 秒 D1 租约；预算耗尽时不再启动新作业，批次内保存“最后已尝试”游标后续跑。进程中断后仅在租约到期后被接管；旧 token 迟到完成只能记为 `lease_lost` 的部分运行，不能覆盖新 owner、游标或成功事实。业务幂等键、版本和唯一约束仍是最终副作用防线。
 
 受已登录 ACTIVE Staff 且完成 scope、hard deny 与 Personal DENY 计算后保护的接口：
 
 - `GET /api/staff/operations/health`：需要 `AUDIT_VIEW`，只返回低基数、无客户 payload 的作业与告警状态摘要；时间字段为 UTC 毫秒，展示约定为 `Asia/Shanghai`。
 - `POST /api/staff/operations/jobs/:job/retry`：需要 `SCHEDULED_OPERATIONS_RUN` 与 `Idempotency-Key`，通过同一租约路径运行一个固定作业，不能提交 SQL、任意 job 或 payload。
 - `POST /api/staff/operations/dead-letters/:id/replay`：需要 `SCHEDULED_OPERATIONS_RUN` 与 `Idempotency-Key`，只允许固定 dead-letter id 与匹配的未发送 event id。
-- `POST /api/staff/operations/alerts/ack`：需要 `SCHEDULED_OPERATIONS_RUN` 与 `Idempotency-Key`，正文只能包含固定 `signal_type`、固定或空 `job_name` 和当前 `incident_version`；仅当前 OPEN incident 可 ACK。
+- `POST /api/staff/operations/alerts/ack`：需要 `SCHEDULED_OPERATIONS_RUN` 与 `Idempotency-Key`，正文只能包含固定 `signal_type`、固定或空 `job_name`、固定 `summary_code` 和当前 `incident_version`；仅该精确身份的当前 OPEN incident 可 ACK。
 
-文件作业只删除 durable orphan / `DELETION_PENDING` 且没有有效授权链接的对象；R2 失败会保留记录、有限指数退避，之后可重放。Outbox 未配置 adapter 或投递失败同样保留事件，按最大一小时退避；不把 payload 写进运行事实或日志。已提交的财务/业务事实不回滚覆盖；错误依赖对应领域的审计重放、补偿或更正。
+文件作业只删除 durable orphan / `DELETION_PENDING` 且没有有效授权链接的对象；未配置 R2 adapter 必须记失败，R2 删除失败会保留记录、有限指数退避，之后可重放。作业完成后重新计算积压，不能用删除前计数伪装健康。Outbox 未配置 adapter 或投递失败同样保留事件，按最大一小时退避；不把 payload 写进运行事实或日志。已提交的财务/业务事实不回滚覆盖；错误依赖对应领域的审计重放、补偿或更正。
 
 ### Dry-run 演练
 
@@ -42,7 +42,7 @@ Worker 的 Cron 配置只定义触发频率；`SCHEDULED_OPERATIONS_ENABLED` 必
 | 主告警 sink 失败 | 5 分钟 1 次 | 30 分钟 | CRITICAL |
 | 未来飞书 adapter 失败 | 15 分钟 3 次 | 60 分钟 | WARNING |
 
-连续两次健康评估自动恢复；重复 observation id 不重复计数或通知；恢复后复发建立新的 incident version。冷却期内继续持久化状态但不重复通知。sink 失败不影响原请求或作业，只写固定 `PRIMARY_ALERT_SINK_FAILURE` 信号且不得递归通知。信号、日志和 DTO 只能包含固定枚举、哈希 observation id、UTC 毫秒、整数计数及固定 job 名；禁止路径、用户 id、token、凭证、微信号、对象 key、原始错误、金额或客户内容。
+连续两次健康评估自动恢复；事件型信号在观察窗口安静后由定时评估补充健康事实，因此不依赖新的业务事件才能恢复。重复 observation id 不重复计数或通知；恢复后复发建立新的 incident version。告警身份为 `signal_type + job_name + summary_code`，主告警 sink 与未来飞书 adapter 等独立故障不能互相覆盖。冷却期内继续持久化状态但不重复通知。sink 失败不影响原请求或作业，只写固定 `PRIMARY_ALERT_SINK_FAILURE` 信号且不得递归通知。信号、日志和 DTO 只能包含固定枚举、哈希 observation id、UTC 毫秒、整数计数及固定 job 名；禁止路径、用户 id、token、凭证、微信号、对象 key、原始错误、金额或客户内容。
 
 `OPERATIONAL_ALERT_MODE` 默认为 `disabled`；本 Change 唯一可启用值为 `local`。`local` 可使用内置安全日志 adapter 或注入内存 mock，二者都只接受正式通知 DTO。disabled 状态配置 adapter、未知 mode 或任何外部 adapter 名均视为无效配置并安全退回不发送。这里不读取外部凭证，也不发起网络调用。
 

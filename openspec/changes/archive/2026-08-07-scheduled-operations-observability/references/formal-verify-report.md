@@ -7,17 +7,17 @@ Verified on 2026-08-07 Asia/Shanghai against the archived proposal, design, task
 | Dimension | Result |
 | --- | --- |
 | Completeness | PASS — 14/14 tasks, 7/7 requirements |
-| Correctness | PASS — 7/7 requirements and 18/18 scenarios have implementation and test evidence |
+| Correctness | PASS — 7/7 requirements and 19/19 scenarios have implementation and test evidence |
 | Coherence | PASS — Migration 0031, strict DTOs, domain services, leases, cursors, alerts and Staff authorization follow the design |
 | Findings | 0 critical, 0 warning, 0 suggestion |
 
 ## Requirement and scenario evidence
 
-1. The bounded handler and registry live in `apps/api/src/scheduled-operations/runner.ts`; registered jobs use injected time, bounded batches, persisted safe cursors and round reset. `runner.test.ts` covers stable ordering, partial continuation, earlier-row rescan, duplicate Cron and truthful outcomes.
-2. Versioned D1 leases and conditional completion protect concurrency and crash recovery. The runner suite covers a real blocked concurrent run, pre-expiry skip, post-expiry takeover and rejection of a stale token's late cursor/last-fact update. Domain idempotency, version and unique guards remain the final side-effect boundary.
-3. Reservation and JP-only instruction expiry, Outbox delivery, instruction-file orphan reconciliation and Staff-auth retention cleanup call their existing domain services. Dedicated runner and `asset-reconciliation.test.ts` fixtures cover due/not-due, retention, active-link protection, dry-run, R2 success/failure, bounded backlog, retry and repeated delivery. `instruction_expiry` reports `LEGACY_JP_ONLY`; Drive and Feishu jobs report `HARD_DISABLED`.
-4. `signals.ts` and `alerts.ts` ingest only fixed schemas and persist threshold, cooldown, suppression, recovery and incident facts. Tests cover HTTP 5xx, stale/stuck/backlog, file failure, login anomaly, primary sink failure and future Feishu failure, including duplicate observation, recovery, recurrence, disabled/local adapters and sink-failure recursion protection.
-5. Health and alert summary routes require `AUDIT_VIEW`; alert ACK, manual run and dead-letter replay require effective `SCHEDULED_OPERATIONS_RUN` for ACTIVE Staff. Route, authorization and contract tests cover concealment, scope, hard deny, Personal DENY, strict runtime parsing, idempotency conflict and safe DTO projection.
+1. The bounded handler and registry live in `apps/api/src/scheduled-operations/runner.ts`; registered jobs use a real Worker wall-clock budget, bounded batches, last-attempted safe cursors and round reset. `runner.test.ts` covers stable ordering, partial continuation, mid-page budget exhaustion, earlier-row rescan, duplicate Cron and truthful outcomes.
+2. Versioned D1 leases and conditional completion protect concurrency and crash recovery. The runner suite covers a real blocked concurrent run, pre-expiry skip, post-expiry takeover and rejection of a stale token's late cursor/last-fact and success update; the stale run is recorded as partial `lease_lost`. Domain idempotency, version and unique guards remain the final side-effect boundary.
+3. Reservation and JP-only instruction expiry, Outbox delivery, instruction-file orphan reconciliation and Staff-auth retention cleanup call their existing domain services. Dedicated runner and `asset-reconciliation.test.ts` fixtures cover due/not-due, retention, active-link protection, side-effect-free dry-run without idempotency claims, missing/R2 adapter failure truth, bounded continuation without skipped candidates, post-operation backlog, retry and repeated delivery. `instruction_expiry` reports `LEGACY_JP_ONLY`; Drive and Feishu jobs report `HARD_DISABLED`.
+4. `signals.ts` and `alerts.ts` ingest only fixed schemas and persist threshold, cooldown, suppression, recovery and incident facts. Alert identity includes signal, job and summary code. Tests cover HTTP 5xx, stale/stuck/backlog, file failure, login anomaly, independent primary/Feishu adapter failures, scheduler-owned quiet-window recovery, recurrence, disabled/local adapters and sink-failure recursion protection.
+5. Health and alert summary routes require `AUDIT_VIEW`; a fresh database still reports every fixed registry job and hard-disabled Drive/Feishu truth. Alert ACK identifies the exact signal/job/summary incident; ACK, manual run and dead-letter replay require effective `SCHEDULED_OPERATIONS_RUN` for ACTIVE Staff. Route, authorization and contract tests cover concealment, scope, hard deny, Personal DENY, strict runtime parsing, idempotency conflict and safe DTO projection.
 6. Global and per-job kill switches stop lease acquisition for scheduled and manual execution; Drive and Feishu stay hard disabled. Tests verify disabled paths write no run or business fact and that already committed domain facts use forward recovery.
 7. `commands.ts` replays only an exact quarantined Outbox dead-letter/event pair and never accepts or returns payload. Idempotency-Key plus request hash handles repeat/conflict/concurrent commands; audit facts are fixed and low cardinality.
 
@@ -30,11 +30,11 @@ Verified on 2026-08-07 Asia/Shanghai against the archived proposal, design, task
 
 ## Executed gate evidence
 
-- M6-focused Vitest: PASS, 9 files / 64 tests.
-- Full `npm run check`: PASS, including 163 files / 1106 tests, all workspace typechecks/builds, D1 checks and Worker dry-run. The API build was repeated with a sandbox-safe Wrangler log path and exited via `--dry-run` without deployment.
+- Original M6-focused Vitest: PASS, 9 files / 64 tests; independent-review regression suite: PASS, 6 files / 47 tests.
+- Full `npm run check`: PASS, including 163 files / 1112 tests, all workspace typechecks/builds, D1 checks and Worker dry-run. The API build exited via `--dry-run` without deployment.
 - OpenSpec `--all --strict`: PASS, 34/34 items.
-- Secrets scan: PASS, 894 project files.
+- Secrets scan: PASS, 895 project files.
 - `npm audit`: exactly 2 pre-existing high entries (`react-router` and `react-router-dom`) from the documented RSC advisory; 0 critical and no dependency or lockfile change.
 - `git diff --check`: PASS. `.github/workflows` contains only `.gitkeep`, so no production auto-deployment workflow exists.
 
-Final assessment: the archived change and synchronized main specification match the implemented, tested capability and are ready for independent PR review.
+Final assessment: the archived change and synchronized main specification match the implemented, tested capability. Independent controller review findings were corrected and the branch is ready for final PR publication and integration.

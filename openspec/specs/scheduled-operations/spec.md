@@ -20,7 +20,7 @@ The system SHALL expose one Worker Scheduled Handler that invokes only fixed reg
 #### Scenario: Time budget is reached
 
 - **WHEN** due work remains after the job budget is exhausted
-- **THEN** the job persists a safe continuation cursor and the next scheduled run resumes without skipping or duplicating formal effects.
+- **THEN** the job stops before starting more work, persists the last attempted safe continuation cursor, and the next scheduled run resumes without skipping or duplicating formal effects.
 
 ### Requirement: Job leases and business idempotency resist duplicate execution
 
@@ -35,6 +35,11 @@ The system SHALL acquire versioned expiring D1 leases before scanning a job, SHA
 
 - **WHEN** a run terminates before releasing its lease
 - **THEN** no other runner takes it before expiry and a later runner safely recovers it after expiry.
+
+#### Scenario: Superseded runner completes late
+
+- **WHEN** an expired lease is taken over and the previous runner later reports completion
+- **THEN** the stale token cannot overwrite the current owner, cursor or health truth, and the late run is recorded as partial lease loss rather than success.
 
 ### Requirement: Required lifecycle jobs progress automatically
 
@@ -67,7 +72,7 @@ Signal ingestion SHALL accept only opaque 64-character lowercase hexadecimal obs
 | Primary alert sink failure | 1 failure in 5 minutes | 30 minutes | Critical |
 | Future Feishu adapter failure | 3 failures in 15 minutes | 60 minutes | Warning |
 
-Every signal SHALL resolve after two consecutive healthy evaluations. Duplicate observation IDs SHALL NOT advance thresholds or resend notifications; a resolved problem MAY open a new incident when it breaches again. Alert delivery failure SHALL NOT fail the originating request or job and SHALL create only the fixed primary-sink-failure signal without recursively invoking the failed sink.
+Every signal SHALL resolve after two consecutive healthy evaluations. Event-driven signals SHALL receive scheduler-owned healthy evaluations after their observation window becomes quiet so they can recover without a new business event. Duplicate observation IDs SHALL NOT advance thresholds or resend notifications; a resolved problem MAY open a new incident when it breaches again. Alert delivery failure SHALL NOT fail the originating request or job and SHALL create only the fixed primary-sink-failure signal without recursively invoking the failed sink. Alert identity SHALL include the fixed signal type, fixed or empty job name, and fixed summary code so independent adapter failures cannot overwrite one another.
 
 Staff authentication rejection, replay, rate-limit and invalid-session facts SHALL enter the login-anomaly policy through an opaque hash of the existing security-event id. Successful authentication SHALL NOT emit an anomaly. The operational signal SHALL NOT contain a login identifier, network address, token, password, User-Agent, Provider subject or raw error. Provider delivery failure SHALL use the fixed future-Feishu-adapter signal instead of a dynamic error label.
 
@@ -110,7 +115,7 @@ The primary alert adapter SHALL default to disabled and SHALL support only an ex
 
 ### Requirement: Alert acknowledgement is a controlled Staff command
 
-The system SHALL allow only an ACTIVE Staff actor with effective `SCHEDULED_OPERATIONS_RUN` to acknowledge the exact current OPEN incident. The command SHALL require an Idempotency-Key and request hash, SHALL conditionally update the incident version, and SHALL write only fixed signal, job, incident, status, actor, request and idempotency audit facts.
+The system SHALL allow only an ACTIVE Staff actor with effective `SCHEDULED_OPERATIONS_RUN` to acknowledge the exact current OPEN incident identified by signal type, job name and summary code. The command SHALL require an Idempotency-Key and request hash, SHALL conditionally update the incident version, and SHALL write only fixed signal, job, summary, incident, status, actor, request and idempotency audit facts.
 
 #### Scenario: Operator acknowledges an open incident twice
 

@@ -131,7 +131,7 @@ export async function ingestScheduledOperationalSignal(
   for (let attempt=0;attempt<5;attempt+=1) {
     const observation=await database.prepare('SELECT signal_type,category,severity,summary_code,job_name,observation_state,observed_at,count_value,evaluated_at FROM scheduled_operational_signals WHERE id=?').bind(input.observation_id).first<PersistedObservationRow>();
     if (!observation || !sameObservation(input,policy,observation)) throw new Error('scheduled_operational_signal_id_conflict');
-    const current=await readAlertState(database,input.signal_type,jobKey);
+    const current=await readAlertState(database,input.signal_type,jobKey,policy.summaryCode);
     if (observation.evaluated_at!==null) return resultFromCurrent('DUPLICATE',current);
     if (current && input.observed_at<current.last_evaluated_at) {
       const stale=await database.prepare('UPDATE scheduled_operational_signals SET evaluated_at=? WHERE id=? AND evaluated_at IS NULL').bind(input.observed_at,input.observation_id).run();
@@ -156,10 +156,10 @@ export async function ingestScheduledOperationalSignal(
     }
     try {
       await options.sink?.notify(computed.notification);
-      await database.prepare('UPDATE scheduled_alert_states SET last_notification_at=?,updated_at=? WHERE signal_type=? AND job_name=? AND (last_notification_at IS NULL OR last_notification_at<?)').bind(input.observed_at,input.observed_at,input.signal_type,jobKey,input.observed_at).run();
+      await database.prepare('UPDATE scheduled_alert_states SET last_notification_at=?,updated_at=? WHERE signal_type=? AND job_name=? AND summary_code=? AND (last_notification_at IS NULL OR last_notification_at<?)').bind(input.observed_at,input.observed_at,input.signal_type,jobKey,policy.summaryCode,input.observed_at).run();
       return {disposition:'EVALUATED',notification:'SENT',status:computed.status,incident_version:computed.incident_version};
     } catch {
-      await database.prepare('UPDATE scheduled_alert_states SET suppressed_until=COALESCE(cooldown_until,?),updated_at=? WHERE signal_type=? AND job_name=?').bind(input.observed_at,input.observed_at,input.signal_type,jobKey).run();
+      await database.prepare('UPDATE scheduled_alert_states SET suppressed_until=COALESCE(cooldown_until,?),updated_at=? WHERE signal_type=? AND job_name=? AND summary_code=?').bind(input.observed_at,input.observed_at,input.signal_type,jobKey,policy.summaryCode).run();
       await recordAlertSinkFailure(database,input,computed.incident_version).catch(()=>undefined);
       return {disposition:'EVALUATED',notification:'FAILED',status:computed.status,incident_version:computed.incident_version};
     }
@@ -181,6 +181,12 @@ export async function evaluatePersistedScheduledJobSignals(
     results.push(await ingestDerived(database,input,{signalType:'lease_stuck',summaryCode:'JOB_LEASE_STUCK',jobName:job.job_name,breach:job.lease_token!==null && job.lease_expires_at!==null && input.now-job.lease_expires_at>=LEASE_STUCK_GRACE_MS,countValue:1},input.sink));
     results.push(await ingestDerived(database,input,{signalType:'backlog_sustained',summaryCode:'JOB_BACKLOG_SUSTAINED',jobName:job.job_name,breach:job.last_backlog_count>0,countValue:job.last_backlog_count},input.sink));
     if (job.job_name==='file_orphan_cleanup') results.push(await ingestDerived(database,input,{signalType:'file_failure',summaryCode:'FILE_PROCESSING_FAILURE',jobName:job.job_name,breach:job.last_failure_category==='file_cleanup_deferred',countValue:1},input.sink));
+  }
+  for (const global of GLOBAL_RECOVERY_SIGNALS) {
+    const state=await readAlertState(database,global.signalType,'',global.summaryCode);
+    if (!state || state.status==='RESOLVED') continue;
+    const recent=await database.prepare("SELECT 1 AS found FROM scheduled_operational_signals WHERE signal_type=? AND summary_code=? AND job_name IS NULL AND observation_state='BREACH' AND observed_at>? LIMIT 1").bind(global.signalType,global.summaryCode,input.now-global.quietWindowMs).first<{found:number}>();
+    if (!recent) results.push(await ingestGlobalHealthy(database,input,global,input.sink));
   }
   return results;
 }
@@ -325,11 +331,11 @@ function initialState(input:ScheduledOperationalSignalObservationDto,policy:Sign
 }
 
 function upsertAlertStateStatement(database:SqlDatabase,state:ComputedAlertState,expectedVersion:number) {
-  return database.prepare(`INSERT INTO scheduled_alert_states(signal_type,job_name,category,severity,summary_code,status,first_seen_at,last_seen_at,consecutive_breach_count,consecutive_healthy_count,window_started_at,window_count_value,threshold_count,threshold_window_ms,recovery_count,opened_at,acknowledged_at,resolved_at,cooldown_until,suppressed_until,last_notification_at,last_evaluated_at,incident_version,version,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(signal_type,job_name) DO UPDATE SET category=excluded.category,severity=excluded.severity,summary_code=excluded.summary_code,status=excluded.status,first_seen_at=excluded.first_seen_at,last_seen_at=excluded.last_seen_at,consecutive_breach_count=excluded.consecutive_breach_count,consecutive_healthy_count=excluded.consecutive_healthy_count,window_started_at=excluded.window_started_at,window_count_value=excluded.window_count_value,threshold_count=excluded.threshold_count,threshold_window_ms=excluded.threshold_window_ms,recovery_count=excluded.recovery_count,opened_at=excluded.opened_at,acknowledged_at=excluded.acknowledged_at,resolved_at=excluded.resolved_at,cooldown_until=excluded.cooldown_until,suppressed_until=excluded.suppressed_until,last_notification_at=excluded.last_notification_at,last_evaluated_at=excluded.last_evaluated_at,incident_version=excluded.incident_version,version=excluded.version,updated_at=excluded.updated_at WHERE scheduled_alert_states.version=?`).bind(state.signal_type,state.job_name,state.category,state.severity,state.summary_code,state.status,state.first_seen_at,state.last_seen_at,state.consecutive_breach_count,state.consecutive_healthy_count,state.window_started_at,state.window_count_value,state.threshold_count,state.threshold_window_ms,state.recovery_count,state.opened_at,state.acknowledged_at,state.resolved_at,state.cooldown_until,state.suppressed_until,state.last_notification_at,state.last_evaluated_at,state.incident_version,state.version,state.updated_at,expectedVersion);
+  return database.prepare(`INSERT INTO scheduled_alert_states(signal_type,job_name,category,severity,summary_code,status,first_seen_at,last_seen_at,consecutive_breach_count,consecutive_healthy_count,window_started_at,window_count_value,threshold_count,threshold_window_ms,recovery_count,opened_at,acknowledged_at,resolved_at,cooldown_until,suppressed_until,last_notification_at,last_evaluated_at,incident_version,version,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(signal_type,job_name,summary_code) DO UPDATE SET category=excluded.category,severity=excluded.severity,status=excluded.status,first_seen_at=excluded.first_seen_at,last_seen_at=excluded.last_seen_at,consecutive_breach_count=excluded.consecutive_breach_count,consecutive_healthy_count=excluded.consecutive_healthy_count,window_started_at=excluded.window_started_at,window_count_value=excluded.window_count_value,threshold_count=excluded.threshold_count,threshold_window_ms=excluded.threshold_window_ms,recovery_count=excluded.recovery_count,opened_at=excluded.opened_at,acknowledged_at=excluded.acknowledged_at,resolved_at=excluded.resolved_at,cooldown_until=excluded.cooldown_until,suppressed_until=excluded.suppressed_until,last_notification_at=excluded.last_notification_at,last_evaluated_at=excluded.last_evaluated_at,incident_version=excluded.incident_version,version=excluded.version,updated_at=excluded.updated_at WHERE scheduled_alert_states.version=?`).bind(state.signal_type,state.job_name,state.category,state.severity,state.summary_code,state.status,state.first_seen_at,state.last_seen_at,state.consecutive_breach_count,state.consecutive_healthy_count,state.window_started_at,state.window_count_value,state.threshold_count,state.threshold_window_ms,state.recovery_count,state.opened_at,state.acknowledged_at,state.resolved_at,state.cooldown_until,state.suppressed_until,state.last_notification_at,state.last_evaluated_at,state.incident_version,state.version,state.updated_at,expectedVersion);
 }
 
-async function readAlertState(database:SqlDatabase,signalType:ScheduledOperationalSignalType,jobKey:string) {
-  return database.prepare('SELECT signal_type,job_name,category,severity,summary_code,status,first_seen_at,last_seen_at,consecutive_breach_count,consecutive_healthy_count,window_started_at,window_count_value,threshold_count,threshold_window_ms,recovery_count,opened_at,acknowledged_at,resolved_at,cooldown_until,suppressed_until,last_notification_at,last_evaluated_at,incident_version,version,updated_at FROM scheduled_alert_states WHERE signal_type=? AND job_name=?').bind(signalType,jobKey).first<AlertStateRow>();
+async function readAlertState(database:SqlDatabase,signalType:ScheduledOperationalSignalType,jobKey:string,summaryCode:ScheduledOperationalSignalSummaryCode) {
+  return database.prepare('SELECT signal_type,job_name,category,severity,summary_code,status,first_seen_at,last_seen_at,consecutive_breach_count,consecutive_healthy_count,window_started_at,window_count_value,threshold_count,threshold_window_ms,recovery_count,opened_at,acknowledged_at,resolved_at,cooldown_until,suppressed_until,last_notification_at,last_evaluated_at,incident_version,version,updated_at FROM scheduled_alert_states WHERE signal_type=? AND job_name=? AND summary_code=?').bind(signalType,jobKey,summaryCode).first<AlertStateRow>();
 }
 
 function sameObservation(input:ScheduledOperationalSignalObservationDto,policy:SignalPolicy,row:PersistedObservationRow) {
@@ -357,4 +363,16 @@ async function ingestDerived(database:SqlDatabase,evaluation:{evaluationId:strin
   const observationState=derived.breach?'BREACH':'HEALTHY';
   const observationId=await hashCanonicalJson({evaluation_id:evaluation.evaluationId,signal_type:derived.signalType,job_name:derived.jobName});
   return ingestScheduledOperationalSignal(database,{observation_id:observationId,signal_type:derived.signalType,summary_code:derived.summaryCode,job_name:derived.jobName,observation_state:observationState,observed_at:evaluation.now,count_value:derived.breach?derived.countValue:0},sink===undefined?{}:{sink});
+}
+
+const GLOBAL_RECOVERY_SIGNALS = [
+  {signalType:'worker_5xx',summaryCode:'WORKER_5XX_THRESHOLD',quietWindowMs:5*MINUTE_MS},
+  {signalType:'login_anomaly',summaryCode:'LOGIN_ANOMALY_DETECTED',quietWindowMs:10*MINUTE_MS},
+  {signalType:'external_adapter_failure',summaryCode:'PRIMARY_ALERT_SINK_FAILURE',quietWindowMs:5*MINUTE_MS},
+  {signalType:'external_adapter_failure',summaryCode:'FEISHU_ADAPTER_FAILURE',quietWindowMs:15*MINUTE_MS},
+] as const satisfies readonly {signalType:ScheduledOperationalSignalType;summaryCode:ScheduledOperationalSignalSummaryCode;quietWindowMs:number}[];
+
+async function ingestGlobalHealthy(database:SqlDatabase,evaluation:{evaluationId:string;now:number},global:(typeof GLOBAL_RECOVERY_SIGNALS)[number],sink:OperationalAlertSink|null|undefined) {
+  const observationId=await hashCanonicalJson({evaluation_id:evaluation.evaluationId,signal_type:global.signalType,summary_code:global.summaryCode});
+  return ingestScheduledOperationalSignal(database,{observation_id:observationId,signal_type:global.signalType,summary_code:global.summaryCode,job_name:null,observation_state:'HEALTHY',observed_at:evaluation.now,count_value:0},sink===undefined?{}:{sink});
 }

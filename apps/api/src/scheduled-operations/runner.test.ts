@@ -15,6 +15,13 @@ describe('scheduled operations', () => {
     expect(extension[0]?.outcome).toBe('DISABLED');
   });
 
+  it('reports a missing file storage adapter as a failed dependency instead of a success',async()=>{
+    database=createMigratedTestDatabase();
+    const run=await runScheduledOperations(database,{now:2_000,only:'file_orphan_cleanup'});
+    expect(run[0]).toMatchObject({outcome:'FAILED',processed_count:0,succeeded_count:0,failed_count:1,backlog_count:0,failure_category:'adapter_unavailable'});
+    expect(await database.prepare("SELECT last_succeeded_at,last_failure_category FROM scheduled_job_states WHERE job_name='file_orphan_cleanup'").first()).toEqual({last_succeeded_at:null,last_failure_category:'adapter_unavailable'});
+  });
+
   it('uses an expiring lease so duplicate scheduler delivery is skipped then recoverable', async () => {
     database = createMigratedTestDatabase();
     database.exec("INSERT INTO scheduled_job_states (job_name,lease_token,lease_expires_at,updated_at) VALUES ('staff_auth_cleanup','other',2000,1)");
@@ -34,6 +41,21 @@ describe('scheduled operations', () => {
     expect(second[0]?.outcome).toBe('SKIPPED');
     release();
     expect((await first)[0]?.outcome).toBe('SUCCEEDED');
+  });
+
+  it('records a late worker as lease-lost after a real takeover without overwriting current health',async()=>{
+    database=createMigratedTestDatabase();
+    database.exec("INSERT INTO integration_outbox (id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES ('outbox-takeover-1','scheduled:takeover:1','TEST','TEST','1','{}','eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee','PENDING',1,NULL,NULL,0,NULL,1,1,NULL)");
+    let release!:()=>void; const blocked=new Promise<void>((resolve)=>{release=resolve});
+    const late=runScheduledOperations(database,{now:1_000,only:'outbox_delivery',outboxAdapter:{deliver:async()=>blocked}});
+    await Promise.resolve();
+    let takeoverSends=0;
+    const takeover=await runScheduledOperations(database,{now:92_000,only:'outbox_delivery',outboxAdapter:{deliver:async()=>{takeoverSends+=1}}});
+    expect(takeover[0]).toMatchObject({outcome:'SUCCEEDED',succeeded_count:1});
+    release();
+    expect((await late)[0]).toMatchObject({outcome:'PARTIAL',failure_category:'lease_lost'});
+    expect(takeoverSends).toBe(1);
+    expect(await database.prepare("SELECT last_succeeded_at,last_failure_category FROM scheduled_job_states WHERE job_name='outbox_delivery'").first()).toEqual({last_succeeded_at:92_000,last_failure_category:null});
   });
 
   it('skips before lease expiry, takes over after expiry, and rejects stale completion', async () => {
@@ -137,12 +159,13 @@ describe('scheduled operations', () => {
     const firstInstruction=await seedScheduledInstruction(database,{suffix:'scheduled-partial-a',reservationIndex:1,publishedAt:1000});
     const secondInstruction=await seedScheduledInstruction(database,{suffix:'scheduled-partial-b',reservationIndex:2,publishedAt:1000});
 
-    const partial=await runScheduledOperations(database,{now:25_000_000,only:'instruction_expiry',batchSize:1});
+    let budgetChecks=0;
+    const partial=await runScheduledOperations(database,{now:25_000_000,only:'instruction_expiry',batchSize:2,deadlineReached:()=>budgetChecks++>=2});
     expect(partial[0]).toMatchObject({outcome:'SUCCEEDED',processed_count:1,succeeded_count:1,backlog_count:1});
     const partialState=await database.prepare("SELECT cursor_json FROM scheduled_job_states WHERE job_name='instruction_expiry'").first<{cursor_json:string|null}>();
     expect(JSON.parse(partialState?.cursor_json ?? 'null')).toMatchObject({marketplace_code:'JP',next_instruction_id:firstInstruction.instructionId});
 
-    const completed=await runScheduledOperations(database,{now:25_000_000,only:'instruction_expiry',batchSize:1});
+    const completed=await runScheduledOperations(database,{now:25_000_000,only:'instruction_expiry',batchSize:2});
     expect(completed[0]).toMatchObject({outcome:'SUCCEEDED',processed_count:1,succeeded_count:1,backlog_count:0});
     const completedState=await database.prepare("SELECT cursor_json FROM scheduled_job_states WHERE job_name='instruction_expiry'").first<{cursor_json:string|null}>();
     expect(completedState?.cursor_json).toBeNull();

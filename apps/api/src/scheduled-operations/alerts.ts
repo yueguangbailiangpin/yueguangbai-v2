@@ -48,20 +48,20 @@ export async function acknowledgeScheduledOperationalAlert(
   const command=parseCommand(rawCommand);
   const now=validNow(context.now??Date.now());
   const jobKey=command.job_name??'';
-  const targetId=`${command.signal_type}:${jobKey||'GLOBAL'}:${command.incident_version}`;
-  const requestHash=await hashCanonicalJson({command_type:'ACK_ALERT',signal_type:command.signal_type,job_name:command.job_name,incident_version:command.incident_version});
+  const targetId=`${command.signal_type}:${command.summary_code}:${jobKey||'GLOBAL'}:${command.incident_version}`;
+  const requestHash=await hashCanonicalJson({command_type:'ACK_ALERT',signal_type:command.signal_type,summary_code:command.summary_code,job_name:command.job_name,incident_version:command.incident_version});
   const acquired=await acquire(database,{actor:context.actor,idempotencyKey:context.idempotencyKey,requestHash,targetId,now});
   if (acquired.kind==='REPLAY') return parseResult(acquired.response);
   try {
-    const state=await database.prepare('SELECT status,incident_version,version FROM scheduled_alert_states WHERE signal_type=? AND job_name=?').bind(command.signal_type,jobKey).first<AlertStateVersionRow>();
+    const state=await database.prepare('SELECT status,incident_version,version FROM scheduled_alert_states WHERE signal_type=? AND job_name=? AND summary_code=?').bind(command.signal_type,jobKey,command.summary_code).first<AlertStateVersionRow>();
     if (!state) throw new ScheduledOperationCommandError('NOT_FOUND',404);
     if (state.status!=='OPEN' || state.incident_version!==command.incident_version) throw new ScheduledOperationCommandError('STATE_CONFLICT',409);
-    const result=parseResult({signal_type:command.signal_type,job_name:command.job_name,incident_version:command.incident_version,status:'ACKNOWLEDGED',acknowledged_at:now});
+    const result=parseResult({signal_type:command.signal_type,summary_code:command.summary_code,job_name:command.job_name,incident_version:command.incident_version,status:'ACKNOWLEDGED',acknowledged_at:now});
     await database.batch([
-      database.prepare("UPDATE scheduled_alert_states SET status='ACKNOWLEDGED',acknowledged_at=?,version=version+1,updated_at=MAX(updated_at,?) WHERE signal_type=? AND job_name=? AND status='OPEN' AND incident_version=? AND version=?").bind(now,now,command.signal_type,jobKey,command.incident_version,state.version),
+      database.prepare("UPDATE scheduled_alert_states SET status='ACKNOWLEDGED',acknowledged_at=?,version=version+1,updated_at=MAX(updated_at,?) WHERE signal_type=? AND job_name=? AND summary_code=? AND status='OPEN' AND incident_version=? AND version=?").bind(now,now,command.signal_type,jobKey,command.summary_code,command.incident_version,state.version),
       changedOnce(database),
-      createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'SCHEDULED_OPERATION_ALERT',aggregateId:targetId,eventType:'SCHEDULED_OPERATION_ALERT_ACKNOWLEDGED',actor:{type:'STAFF',id:context.actor.staffId,roles:[...context.actor.roles]},requestId:context.requestId??null,idempotencyKey:context.idempotencyKey,previousState:{signal_type:command.signal_type,job_name:command.job_name,incident_version:command.incident_version,status:'OPEN'},nextState:{signal_type:command.signal_type,job_name:command.job_name,incident_version:command.incident_version,status:'ACKNOWLEDGED'},reason:'OPERATOR_ACKNOWLEDGED',metadata:{},createdAt:now}),
-      completeIdempotencyStatement(database,acquired.claim,result,{resultReferences:{signal_type:command.signal_type,job_name:command.job_name,incident_version:command.incident_version},now}),
+      createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'SCHEDULED_OPERATION_ALERT',aggregateId:targetId,eventType:'SCHEDULED_OPERATION_ALERT_ACKNOWLEDGED',actor:{type:'STAFF',id:context.actor.staffId,roles:[...context.actor.roles]},requestId:context.requestId??null,idempotencyKey:context.idempotencyKey,previousState:{signal_type:command.signal_type,summary_code:command.summary_code,job_name:command.job_name,incident_version:command.incident_version,status:'OPEN'},nextState:{signal_type:command.signal_type,summary_code:command.summary_code,job_name:command.job_name,incident_version:command.incident_version,status:'ACKNOWLEDGED'},reason:'OPERATOR_ACKNOWLEDGED',metadata:{},createdAt:now}),
+      completeIdempotencyStatement(database,acquired.claim,result,{resultReferences:{signal_type:command.signal_type,summary_code:command.summary_code,job_name:command.job_name,incident_version:command.incident_version},now}),
       assertIdempotencyCompletionStatement(database,acquired.claim),
     ]);
     return result;

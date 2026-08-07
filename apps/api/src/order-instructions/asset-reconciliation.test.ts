@@ -13,7 +13,7 @@ function seed(id:string, active=false): void {
   db!.exec('PRAGMA foreign_keys=ON');
 }
 describe('asset orphan reconciliation',()=>{
-  it('dry-run previews eligible candidates without storage or database effects',async()=>{ db=createMigratedTestDatabase(); seed('obj-a'); let deletes=0; const storage={deleteObject:async()=>{deletes++}} as any; const r=await reconcileInstructionAssetOrphans(db,storage,{limit:1,dryRun:true},{actor,idempotencyKey:'dry-run-key',now:2}); expect(r).toMatchObject({scanned:1,deleted:0,dry_run:true,backlog_count:1}); expect(deletes).toBe(0); expect((await db.prepare("SELECT status FROM file_objects WHERE id='obj-a'").first())?.['status']).toBe('DELETION_PENDING'); });
+  it('dry-run previews eligible candidates without storage or database effects',async()=>{ db=createMigratedTestDatabase(); seed('obj-a'); let deletes=0; const storage={deleteObject:async()=>{deletes++}} as any; const r=await reconcileInstructionAssetOrphans(db,storage,{limit:1,dryRun:true},{actor,idempotencyKey:'dry-run-key',now:2}); expect(r).toMatchObject({scanned:1,deleted:0,dry_run:true,backlog_count:1}); expect(deletes).toBe(0); expect((await db.prepare("SELECT status FROM file_objects WHERE id='obj-a'").first())?.['status']).toBe('DELETION_PENDING'); expect((await db.prepare('SELECT COUNT(*) AS count FROM command_idempotency_records').first())?.['count']).toBe(0); });
   it('excludes active links',async()=>{ db=createMigratedTestDatabase(); seed('obj-b',true); const r=await reconcileInstructionAssetOrphans(db,{deleteObject:async()=>undefined} as any,{dryRun:true},{actor,idempotencyKey:'active-link-key',now:2}); expect(r.backlog_count).toBe(0); });
   it('defers on storage delete failure without deleting the object',async()=>{ db=createMigratedTestDatabase(); seed('obj-c'); const r=await reconcileInstructionAssetOrphans(db,{deleteObject:async()=>{throw new Error('fail')}} as any,{limit:1},{actor,idempotencyKey:'failure-key',now:2}); expect(r.deferred).toBe(1); expect((await db.prepare("SELECT status FROM file_objects WHERE id='obj-c'").first())?.['status']).toBe('DELETION_PENDING'); });
   it('resumes equal-time candidates by item id, then resets the round for earlier work',async()=>{
@@ -21,6 +21,7 @@ describe('asset orphan reconciliation',()=>{
     const calls:string[]=[]; const storage={deleteObject:async(key:string)=>{calls.push(key)}} as any;
     const first=await reconcileInstructionAssetOrphans(db,storage,{limit:1},{actor,idempotencyKey:'cursor-one',now:2});
     expect(first.deleted).toBe(1); expect(first.next_cursor?.item_id).toBe('item-obj-d');
+    expect(first.backlog_count).toBe(1);
     const second=await reconcileInstructionAssetOrphans(db,storage,{limit:1,cursor:first.next_cursor},{actor,idempotencyKey:'cursor-two',now:2});
     expect(second.deleted).toBe(1); expect(second.next_cursor).toBeNull();
     expect(calls).toHaveLength(2); expect(new Set(calls).size).toBe(2);
@@ -28,6 +29,17 @@ describe('asset orphan reconciliation',()=>{
     seed('obj-0');
     const reset=await reconcileInstructionAssetOrphans(db,storage,{limit:1},{actor,idempotencyKey:'cursor-reset',now:2});
     expect(reset.deleted).toBe(1); expect(calls).toHaveLength(3);
+  });
+  it('persists the last attempted cursor when the time budget stops a larger page',async()=>{
+    db=createMigratedTestDatabase(); seed('obj-g'); seed('obj-h'); seed('obj-i');
+    const calls:string[]=[]; const storage={deleteObject:async(key:string)=>{calls.push(key)}} as any;
+    let checks=0;
+    const first=await reconcileInstructionAssetOrphans(db,storage,{limit:3,deadlineReached:()=>checks++>0},{actor,idempotencyKey:'deadline-first',now:2});
+    expect(first).toMatchObject({scanned:1,deleted:1,has_more:true,backlog_count:2});
+    expect(first.next_cursor?.item_id).toBe('item-obj-g');
+    const resumed=await reconcileInstructionAssetOrphans(db,storage,{limit:3,cursor:first.next_cursor},{actor,idempotencyKey:'deadline-resume',now:2});
+    expect(resumed).toMatchObject({scanned:2,deleted:2,has_more:false,backlog_count:0,next_cursor:null});
+    expect(calls).toHaveLength(3); expect(new Set(calls).size).toBe(3);
   });
   it('does not delete an already-cleaned object again on duplicate reconciliation',async()=>{ db=createMigratedTestDatabase(); seed('obj-once'); let deletes=0; const storage={deleteObject:async()=>{deletes++}} as any; await reconcileInstructionAssetOrphans(db,storage,{limit:1},{actor,idempotencyKey:'once-first',now:2}); await reconcileInstructionAssetOrphans(db,storage,{limit:1},{actor,idempotencyKey:'once-second',now:2}); expect(deletes).toBe(1); });
 });

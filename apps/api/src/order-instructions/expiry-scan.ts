@@ -74,6 +74,7 @@ export async function runOrderInstructionExpiryScan(
   input: {
     marketplaceCode: 'JP';
     limit?: number;
+    deadlineReached?: () => boolean;
   },
   command: {
     actor: OrderInstructionStaffActor;
@@ -184,10 +185,17 @@ export async function runOrderInstructionExpiryScan(
     }>();
 
     const candidates = rows.results.slice(0, limit);
+    const attemptedRows: typeof candidates = [];
+    let budgetStopped = false;
     let expired = 0;
     let unchanged = 0;
     let failed = 0;
     for (const row of candidates) {
+      if (input.deadlineReached?.()) {
+        budgetStopped = true;
+        break;
+      }
+      attemptedRows.push(row);
       try {
         const result = await expireOrderInstruction(database, {
           instructionId: row.instruction_id,
@@ -206,16 +214,16 @@ export async function runOrderInstructionExpiryScan(
         failed += 1;
       }
     }
-    const last = candidates.at(-1);
+    const last = attemptedRows.at(-1);
     const response: OrderInstructionExpiryScanResult = {
       marketplace_code: input.marketplaceCode,
-      attempted: candidates.length,
+      attempted: attemptedRows.length,
       expired,
       unchanged,
       failed,
-      next_deadline_at: last?.deadline_at ?? null,
-      next_instruction_id: last?.instruction_id ?? null,
-      completed: rows.results.length <= limit,
+      next_deadline_at: last?.deadline_at ?? cursor?.deadline_at ?? null,
+      next_instruction_id: last?.instruction_id ?? cursor?.instruction_id ?? null,
+      completed: !budgetStopped && rows.results.length <= limit,
       replayed: false,
     };
     const outbox = await prepareOutboxEvent({

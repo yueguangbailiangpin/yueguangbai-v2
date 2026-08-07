@@ -5,7 +5,7 @@ export const SCHEDULED_OPERATION_JOB_NAMES = [
 export type ScheduledOperationJobName = typeof SCHEDULED_OPERATION_JOB_NAMES[number];
 export const SCHEDULED_OPERATION_OUTCOMES = ['SUCCEEDED','PARTIAL','FAILED','SKIPPED','DISABLED'] as const;
 export type ScheduledOperationOutcome = typeof SCHEDULED_OPERATION_OUTCOMES[number];
-export const SCHEDULED_OPERATION_FAILURE_CATEGORIES = ['adapter_unavailable','delivery_failed','file_cleanup_deferred','reservation_expiry_failed','job_item_failed','job_execution_failed','dependency_unavailable','login_anomaly','worker_5xx'] as const;
+export const SCHEDULED_OPERATION_FAILURE_CATEGORIES = ['adapter_unavailable','delivery_failed','file_cleanup_deferred','reservation_expiry_failed','job_item_failed','job_execution_failed','lease_lost','dependency_unavailable','login_anomaly','worker_5xx'] as const;
 export type ScheduledOperationFailureCategory = typeof SCHEDULED_OPERATION_FAILURE_CATEGORIES[number];
 export const SCHEDULED_OPERATION_CAPABILITY_SCOPES = ['ALL_ENABLED_MARKETPLACES','LEGACY_JP_ONLY','HARD_DISABLED'] as const;
 export type ScheduledOperationCapabilityScope = typeof SCHEDULED_OPERATION_CAPABILITY_SCOPES[number];
@@ -119,11 +119,13 @@ export interface ScheduledOperationalAlertDto {
 }
 export interface ScheduledOperationalAlertAckCommandDto {
   signal_type: ScheduledOperationalSignalType;
+  summary_code: ScheduledOperationalSignalSummaryCode;
   job_name: ScheduledOperationJobName|null;
   incident_version: number;
 }
 export interface ScheduledOperationalAlertAckResultDto {
   signal_type: ScheduledOperationalSignalType;
+  summary_code: ScheduledOperationalSignalSummaryCode;
   job_name: ScheduledOperationJobName|null;
   incident_version: number;
   status: 'ACKNOWLEDGED';
@@ -180,14 +182,14 @@ export function parseScheduledOperationalAlertDto(value: unknown): ScheduledOper
   return {signal_type:record['signal_type'],category:record['category'],severity:record['severity'],summary_code:record['summary_code'],job_name:record['job_name'],status:record['status'],first_seen_at:record['first_seen_at'],last_seen_at:record['last_seen_at'],consecutive_breach_count:record['consecutive_breach_count'],consecutive_healthy_count:record['consecutive_healthy_count'],window_count_value:record['window_count_value'],threshold_count:record['threshold_count'],threshold_window_ms:record['threshold_window_ms'],recovery_count:record['recovery_count'],opened_at:record['opened_at'],acknowledged_at:record['acknowledged_at'],resolved_at:record['resolved_at'],cooldown_until:record['cooldown_until'],suppressed_until:record['suppressed_until'],last_notification_at:record['last_notification_at'],incident_version:record['incident_version'],updated_at:record['updated_at'],time_basis:'UTC_MS',display_timezone:'Asia/Shanghai'};
 }
 export function parseScheduledOperationalAlertAckCommandDto(value:unknown):ScheduledOperationalAlertAckCommandDto {
-  const record=exactRecord(value,['signal_type','job_name','incident_version']);
-  if (!published(record['signal_type'],SCHEDULED_OPERATIONAL_SIGNAL_TYPES) || !(record['job_name']===null || isScheduledOperationJobName(record['job_name'])) || !positiveCount(record['incident_version'])) throw new Error('invalid_scheduled_operational_alert_ack');
-  return {signal_type:record['signal_type'],job_name:record['job_name'],incident_version:record['incident_version']};
+  const record=exactRecord(value,['signal_type','summary_code','job_name','incident_version']);
+  if (!published(record['signal_type'],SCHEDULED_OPERATIONAL_SIGNAL_TYPES) || !published(record['summary_code'],SCHEDULED_OPERATIONAL_SIGNAL_SUMMARY_CODES) || !(record['job_name']===null || isScheduledOperationJobName(record['job_name'])) || !positiveCount(record['incident_version'])) throw new Error('invalid_scheduled_operational_alert_ack');
+  return {signal_type:record['signal_type'],summary_code:record['summary_code'],job_name:record['job_name'],incident_version:record['incident_version']};
 }
 export function parseScheduledOperationalAlertAckResultDto(value:unknown):ScheduledOperationalAlertAckResultDto {
-  const record=exactRecord(value,['signal_type','job_name','incident_version','status','acknowledged_at']);
-  if (!published(record['signal_type'],SCHEDULED_OPERATIONAL_SIGNAL_TYPES) || !(record['job_name']===null || isScheduledOperationJobName(record['job_name'])) || !positiveCount(record['incident_version']) || record['status']!=='ACKNOWLEDGED' || !timestamp(record['acknowledged_at'])) throw new Error('invalid_scheduled_operational_alert_ack_result');
-  return {signal_type:record['signal_type'],job_name:record['job_name'],incident_version:record['incident_version'],status:'ACKNOWLEDGED',acknowledged_at:record['acknowledged_at']};
+  const record=exactRecord(value,['signal_type','summary_code','job_name','incident_version','status','acknowledged_at']);
+  if (!published(record['signal_type'],SCHEDULED_OPERATIONAL_SIGNAL_TYPES) || !published(record['summary_code'],SCHEDULED_OPERATIONAL_SIGNAL_SUMMARY_CODES) || !(record['job_name']===null || isScheduledOperationJobName(record['job_name'])) || !positiveCount(record['incident_version']) || record['status']!=='ACKNOWLEDGED' || !timestamp(record['acknowledged_at'])) throw new Error('invalid_scheduled_operational_alert_ack_result');
+  return {signal_type:record['signal_type'],summary_code:record['summary_code'],job_name:record['job_name'],incident_version:record['incident_version'],status:'ACKNOWLEDGED',acknowledged_at:record['acknowledged_at']};
 }
 
 function exactRecord(value: unknown, keys: readonly string[]): Record<string,unknown> { if (!value || typeof value!=='object' || Array.isArray(value)) throw new Error('invalid_scheduled_operation_contract'); const record=value as Record<string,unknown>; if (Object.keys(record).length!==keys.length || Object.keys(record).some((key)=>!keys.includes(key))) throw new Error('invalid_scheduled_operation_contract'); return record; }
