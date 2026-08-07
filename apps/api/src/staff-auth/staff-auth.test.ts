@@ -197,12 +197,16 @@ describe('Wave 13 Staff authentication and production entry', () => {
     seedOwner(database);
     const bindings = env(database);
     const { state } = await login(database);
+    expect((await database.prepare("SELECT COUNT(*) AS count FROM scheduled_operational_signals WHERE signal_type='login_anomaly'").first<{count:number}>())?.count).toBe(0);
     const replay = await app.request(
       `https://api.example.test/api/staff-auth/feishu/callback?code=other&state=${state}`,
       { method: 'GET', redirect: 'manual' },
       bindings,
     );
     expect(replay.status).toBe(409);
+    const signals=await database.prepare("SELECT signal_type,category,severity,summary_code,job_name,count_value FROM scheduled_operational_signals WHERE signal_type='login_anomaly'").all<Record<string,unknown>>();
+    expect(signals.results).toEqual([{signal_type:'login_anomaly',category:'auth',severity:'CRITICAL',summary_code:'LOGIN_ANOMALY_DETECTED',job_name:null,count_value:1}]);
+    expect(JSON.stringify(signals.results)).not.toMatch(/open-wave13|user-wave13|tenant-wave13|state|token|password|user-agent|wechat|127\.0\.0\.1/u);
   });
 
   it('logout-all revokes every session and increments session_version', async () => {
@@ -363,7 +367,7 @@ describe('Wave 13 Staff authentication and production entry', () => {
     `);
 
     expect(await cleanupExpiredStaffAuthEphemeralRecords(database, now))
-      .toEqual({
+      .toMatchObject({
         staffLoginStatesDeleted: 1,
         staffAuthRateLimitsDeleted: 1,
       });
@@ -401,14 +405,14 @@ describe('Wave 13 Staff authentication and production entry', () => {
     }
     expect(STAFF_AUTH_CLEANUP_DELETE_LIMIT_PER_TABLE).toBe(100);
     expect(await cleanupExpiredStaffAuthEphemeralRecords(database, now))
-      .toEqual({
+      .toMatchObject({
         staffLoginStatesDeleted: 100,
         staffAuthRateLimitsDeleted: 100,
       });
     expect(count(database, 'staff_login_states')).toBe(2);
     expect(count(database, 'staff_auth_rate_limits')).toBe(2);
     expect(await cleanupExpiredStaffAuthEphemeralRecords(database, now))
-      .toEqual({
+      .toMatchObject({
         staffLoginStatesDeleted: 2,
         staffAuthRateLimitsDeleted: 2,
       });

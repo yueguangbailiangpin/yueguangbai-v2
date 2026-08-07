@@ -34,6 +34,41 @@ export interface OrderInstructionExpiryScanResult {
   replayed: boolean;
 }
 
+export async function countOrderInstructionExpiryCandidates(
+  database: SqlDatabase,
+  marketplaceCode: 'JP',
+  now: number,
+): Promise<number> {
+  const row = await database.prepare(`
+    SELECT COUNT(*) AS count
+    FROM order_instructions instruction
+    JOIN buyer_marketplace_assignments assignment
+      ON assignment.buyer_customer_id=instruction.buyer_customer_id
+      AND assignment.marketplace_code='AMAZON_JP'
+    LEFT JOIN order_evidence_submissions evidence
+      ON evidence.reservation_id=instruction.reservation_id
+    LEFT JOIN formal_orders formal_order
+      ON formal_order.reservation_id=instruction.reservation_id
+    WHERE instruction.marketplace_code=?
+      AND instruction.status='ACTIVE'
+      AND formal_order.id IS NULL
+      AND (
+        (evidence.id IS NULL
+          AND instruction.initial_deadline_at IS NOT NULL
+          AND instruction.initial_deadline_at<=?)
+        OR
+        (evidence.status='CHANGES_REQUESTED'
+          AND instruction.resubmission_deadline_at IS NOT NULL
+          AND instruction.resubmission_deadline_at<=?)
+      )
+  `).bind(
+    marketplaceCode,
+    now,
+    now,
+  ).first<{ count: number }>();
+  return Number(row?.count ?? 0);
+}
+
 export async function runOrderInstructionExpiryScan(
   database: SqlDatabase,
   input: {
@@ -96,6 +131,9 @@ export async function runOrderInstructionExpiryScan(
           ELSE instruction.initial_deadline_at
         END AS deadline_at
       FROM order_instructions instruction
+      JOIN buyer_marketplace_assignments assignment
+        ON assignment.buyer_customer_id=instruction.buyer_customer_id
+        AND assignment.marketplace_code='AMAZON_JP'
       LEFT JOIN order_evidence_submissions evidence
         ON evidence.reservation_id=instruction.reservation_id
       LEFT JOIN formal_orders formal_order
@@ -138,17 +176,18 @@ export async function runOrderInstructionExpiryScan(
       cursor?.deadline_at ?? 0,
       cursor?.deadline_at ?? 0,
       cursor?.instruction_id ?? '',
-      limit,
+      limit + 1,
     ).all<{
       instruction_id: string;
       version: number;
       deadline_at: number;
     }>();
 
+    const candidates = rows.results.slice(0, limit);
     let expired = 0;
     let unchanged = 0;
     let failed = 0;
-    for (const row of rows.results) {
+    for (const row of candidates) {
       try {
         const result = await expireOrderInstruction(database, {
           instructionId: row.instruction_id,
@@ -167,16 +206,16 @@ export async function runOrderInstructionExpiryScan(
         failed += 1;
       }
     }
-    const last = rows.results.at(-1);
+    const last = candidates.at(-1);
     const response: OrderInstructionExpiryScanResult = {
       marketplace_code: input.marketplaceCode,
-      attempted: rows.results.length,
+      attempted: candidates.length,
       expired,
       unchanged,
       failed,
       next_deadline_at: last?.deadline_at ?? null,
       next_instruction_id: last?.instruction_id ?? null,
-      completed: rows.results.length < limit,
+      completed: rows.results.length <= limit,
       replayed: false,
     };
     const outbox = await prepareOutboxEvent({

@@ -9,6 +9,7 @@ import {
 } from '@ygb/contracts';
 import { hashCanonicalJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
+import { configuredAlertSink } from '../app';
 import {
   acquireIdempotency,
   type IdempotencyError,
@@ -107,6 +108,7 @@ async function loginStart(
       tenantKey: config.tenantKey,
       requestId,
       metadata: { action: 'LOGIN_START' },
+      alertSink: configuredAlertSink(context.env),
       createdAt: now,
     });
     throw new StaffAuthError('RATE_LIMITED', 429, {
@@ -166,6 +168,7 @@ async function callback(
       tenantKey: config.tenantKey,
       requestId,
       metadata: { action: 'LOGIN_CALLBACK' },
+      alertSink: configuredAlertSink(context.env),
       createdAt: now,
     });
     throw new StaffAuthError('RATE_LIMITED', 429, {
@@ -195,6 +198,7 @@ async function callback(
       tenantKey: config.tenantKey,
       requestId,
       metadata: { callback_purpose: 'STAFF_LOGIN' },
+      alertSink: configuredAlertSink(context.env),
       createdAt: now,
     });
     throw normalized;
@@ -218,6 +222,7 @@ async function callback(
       tenantKey: config.tenantKey,
       requestId,
       metadata: { provider: 'FEISHU' },
+      alertSink: configuredAlertSink(context.env),
       createdAt: now,
     });
     throw new StaffAuthError('DEPENDENCY_UNAVAILABLE', 503);
@@ -246,6 +251,7 @@ async function callback(
       subject: verifiedIdentity.openId,
       requestId,
       metadata: { user_id_present: verifiedIdentity.userId !== null },
+      alertSink: configuredAlertSink(context.env),
       createdAt: now,
     });
     throw normalized;
@@ -310,6 +316,7 @@ async function logout(context: Context<any>): Promise<Response> {
       config,
       networkSource: networkSourceFromContext(context),
       requestId: requestIdFromContext(context),
+      alertSink: configuredAlertSink(context.env),
       createdAt: Date.now(),
     });
   } else if (cookie.value) {
@@ -414,6 +421,7 @@ async function requireTrustedSession(
       config,
       networkSource: networkSourceFromContext(context),
       requestId: requestIdFromContext(context),
+      alertSink: configuredAlertSink(context.env),
       createdAt: Date.now(),
     });
     throw new StaffAuthError('UNAUTHENTICATED', 401);
@@ -434,6 +442,7 @@ async function requireTrustedSession(
       networkSource: networkSourceFromContext(context),
       requestId: requestIdFromContext(context),
       metadata: { reason: readReason(normalized.details) ?? 'INVALID' },
+      alertSink: configuredAlertSink(context.env),
       createdAt: Date.now(),
     });
     throw normalized;

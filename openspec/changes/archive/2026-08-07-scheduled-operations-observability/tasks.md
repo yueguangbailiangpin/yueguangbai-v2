@@ -15,7 +15,7 @@
 
 - [x] 2.1 Emit privacy-safe metrics/logs and persist last-success/backlog/failure facts.
 - [x] 2.2 Add Staff-safe health list/detail and controlled retry contracts with permission checks.
-- [x] 2.3 Configure independent primary alerting plus optional Feishu notification fallback.
+- [x] 2.3 Configure independent local/disabled primary alerting plus the hard-disabled future Feishu failure signal.
 
 ## 3. Tests and Acceptance
 

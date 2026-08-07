@@ -3,7 +3,7 @@
   "name": "yueguangbai-v2-example",
   "main": "apps/api/src/worker.ts",
   "triggers": { "crons": ["*/5 * * * *"] },
-  "vars": { "SCHEDULED_OPERATIONS_ENABLED": "false", "SCHEDULED_OPERATIONS_DISABLED_JOBS": "" },
+  "vars": { "SCHEDULED_OPERATIONS_ENABLED": "false", "SCHEDULED_OPERATIONS_DISABLED_JOBS": "", "OPERATIONAL_ALERT_MODE": "disabled" },
   "compatibility_date": "REPLACE_BEFORE_USE",
   "d1_databases": [
     {

@@ -7,17 +7,24 @@ export const STAFF_AUTH_CLEANUP_DELETE_LIMIT_PER_TABLE = 100;
 export interface StaffAuthCleanupResult {
   staffLoginStatesDeleted: number;
   staffAuthRateLimitsDeleted: number;
+  hasMore: boolean;
+  dryRun: boolean;
 }
 
 export async function cleanupExpiredStaffAuthEphemeralRecords(
   database: SqlDatabase,
   now: number = Date.now(),
+  options: { limit?: number; dryRun?: boolean } = {},
 ): Promise<StaffAuthCleanupResult> {
   if (!Number.isSafeInteger(now) || now < 0) {
     throw new StaffAuthError('VALIDATION_ERROR', 400);
   }
   const retainedAfter = now - STAFF_AUTH_EPHEMERAL_RETENTION_MS;
+  const limit = options.limit ?? STAFF_AUTH_CLEANUP_DELETE_LIMIT_PER_TABLE;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > STAFF_AUTH_CLEANUP_DELETE_LIMIT_PER_TABLE) throw new StaffAuthError('VALIDATION_ERROR',400);
   try {
+    const counts = await database.prepare(`SELECT (SELECT COUNT(*) FROM staff_login_states WHERE expires_at<? AND updated_at<?)+(SELECT COUNT(*) FROM staff_auth_rate_limits WHERE window_ends_at<? AND (blocked_until IS NULL OR blocked_until<?)) AS count`).bind(retainedAfter,retainedAfter,retainedAfter,retainedAfter).first<{count:number}>();
+    if (options.dryRun) return { staffLoginStatesDeleted:0,staffAuthRateLimitsDeleted:0,hasMore:Number(counts?.count??0)>limit,dryRun:true };
     const results = await database.batch([
       database.prepare(`
         DELETE FROM staff_login_states
@@ -27,7 +34,7 @@ export async function cleanupExpiredStaffAuthEphemeralRecords(
           WHERE expires_at < ?
             AND updated_at < ?
           ORDER BY expires_at, id
-          LIMIT ${STAFF_AUTH_CLEANUP_DELETE_LIMIT_PER_TABLE}
+          LIMIT ${limit}
         )
       `).bind(retainedAfter, retainedAfter),
       database.prepare(`
@@ -41,13 +48,15 @@ export async function cleanupExpiredStaffAuthEphemeralRecords(
               OR blocked_until < ?
             )
           ORDER BY window_ends_at, id
-          LIMIT ${STAFF_AUTH_CLEANUP_DELETE_LIMIT_PER_TABLE}
+          LIMIT ${limit}
         )
       `).bind(retainedAfter, retainedAfter),
     ]);
     return {
       staffLoginStatesDeleted: Number(results[0]?.meta.changes ?? 0),
       staffAuthRateLimitsDeleted: Number(results[1]?.meta.changes ?? 0),
+      hasMore: Number(counts?.count ?? 0) > limit,
+      dryRun: false,
     };
   } catch {
     throw new StaffAuthError('DEPENDENCY_UNAVAILABLE', 503);

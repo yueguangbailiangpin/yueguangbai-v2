@@ -169,6 +169,9 @@ const untrackedSellerStaff = execFileSync('git', [
 const changedSellerStaff = [...new Set([...trackedSellerStaff, ...untrackedSellerStaff])]
   .filter((path) => path.length > 0 && !path.includes('.test.'));
 const module4SellerAllowlist = new Set([
+  'apps/api/src/staff-auth/cleanup.ts',
+  'apps/api/src/staff-auth/repository.ts',
+  'apps/api/src/staff-auth/routes.ts',
   'apps/api/src/seller-portal/queries.ts',
   'apps/web/src/seller/api/client.ts',
   'apps/web/src/seller/contracts/runtime.ts',

@@ -14,6 +14,12 @@ function set<T>(...values: T[]): ReadonlySet<T> {
 }
 
 describe('staff authorization formula', () => {
+  it('keeps scheduled operation execution owner-only and personal deny final', () => {
+    const deniedOwner = calculateEffectiveStaffAuthorization({ roles: set<StaffRoleCode>('owner'), grants: set<StaffPermissionCode>(), denies: set<StaffPermissionCode>('SCHEDULED_OPERATIONS_RUN'), memberTeamIds: [], leaderTeamIds: [] });
+    const grantedNonOwner = calculateEffectiveStaffAuthorization({ roles: set<StaffRoleCode>('pre_sales'), grants: set<StaffPermissionCode>('SCHEDULED_OPERATIONS_RUN'), denies: set<StaffPermissionCode>(), memberTeamIds: ['team-1'], leaderTeamIds: [] });
+    expect(deniedOwner.permissions.has('SCHEDULED_OPERATIONS_RUN')).toBe(false);
+    expect(grantedNonOwner.permissions.has('SCHEDULED_OPERATIONS_RUN')).toBe(false);
+  });
   it('unions multiple role defaults and personal grants', () => {
     const result = calculateEffectiveStaffAuthorization({
       roles: set<StaffRoleCode>('pre_sales', 'buyer_support'),

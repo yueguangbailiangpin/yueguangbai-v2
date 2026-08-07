@@ -6,6 +6,11 @@ import type {
 import { canonicalJson } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
 import {
+  recordFeishuAdapterFailureSignal,
+  recordLoginAnomalySignal,
+  type OperationalAlertSink,
+} from '../scheduled-operations/signals';
+import {
   hashStaffOpaqueToken,
   hashStaffSecurityScope,
 } from './crypto';
@@ -459,6 +464,7 @@ export async function recordStaffAuthSecurityEvent(
     networkSource?: string | null;
     requestId?: string | null;
     metadata?: Record<string, unknown>;
+    alertSink?: OperationalAlertSink|null;
     createdAt: number;
   },
 ): Promise<void> {
@@ -487,6 +493,7 @@ export async function recordStaffAuthSecurityEvent(
   if (metadataJson.length > 4096) {
     throw new StaffAuthError('DEPENDENCY_UNAVAILABLE', 503);
   }
+  const securityEventId=crypto.randomUUID();
   await database.prepare(`
     INSERT INTO staff_auth_security_events (
       id, event_type, outcome, staff_id, session_id, provider,
@@ -494,7 +501,7 @@ export async function recordStaffAuthSecurityEvent(
       request_id, metadata_json, created_at
     ) VALUES (?, ?, ?, ?, ?, 'FEISHU', ?, ?, ?, ?, ?, ?)
   `).bind(
-    crypto.randomUUID(),
+    securityEventId,
     input.eventType,
     input.outcome,
     input.staffId ?? null,
@@ -506,6 +513,12 @@ export async function recordStaffAuthSecurityEvent(
     metadataJson,
     input.createdAt,
   ).run();
+  const signalInput={securityEventId,observedAt:input.createdAt,...(input.alertSink===undefined?{}:{sink:input.alertSink})};
+  if (input.eventType==='PROVIDER_FAILURE') {
+    await recordFeishuAdapterFailureSignal(database,signalInput).catch(()=>undefined);
+  } else {
+    await recordLoginAnomalySignal(database,signalInput).catch(()=>undefined);
+  }
 }
 
 export function projectStaffSession(

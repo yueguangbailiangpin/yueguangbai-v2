@@ -35,6 +35,9 @@ export interface ReconcileInstructionAssetOrphansResult {
   deferred: number;
   has_more: boolean;
   replayed: boolean;
+  backlog_count: number;
+  next_cursor: { next_delete_at: number; updated_at: number; item_id: string } | null;
+  dry_run: boolean;
 }
 
 /**
@@ -44,7 +47,7 @@ export interface ReconcileInstructionAssetOrphansResult {
 export async function reconcileInstructionAssetOrphans(
   database: SqlDatabase,
   objectStorage: ObjectStorageAdapter | null,
-  input: { limit?: number },
+  input: { limit?: number; cursor?: { next_delete_at: number; updated_at: number; item_id: string } | null; dryRun?: boolean; deadlineReached?: () => boolean },
   command: {
     actor: OrderInstructionStaffActor;
     idempotencyKey: string;
@@ -83,7 +86,7 @@ export async function reconcileInstructionAssetOrphans(
   try {
     const rows = await database.prepare(`
       SELECT item.id AS item_id, object.id AS file_object_id,
-             object.object_key, object.delete_attempt_count
+             object.object_key, object.delete_attempt_count, object.next_delete_at, item.updated_at
       FROM order_instruction_asset_items item
       JOIN order_instruction_asset_batches batch
         ON batch.id=item.asset_batch_id
@@ -96,14 +99,18 @@ export async function reconcileInstructionAssetOrphans(
           SELECT 1 FROM file_entity_links link
           WHERE link.file_object_id=object.id AND link.revoked_at IS NULL
         )
+        AND (? IS NULL OR object.next_delete_at>? OR (object.next_delete_at=? AND (item.updated_at>? OR (item.updated_at=? AND item.id>?))))
       ORDER BY object.next_delete_at, item.updated_at, item.id
       LIMIT ?
-    `).bind(now, limit + 1).all<OrphanAssetRow>();
+    `).bind(now,input.cursor?.next_delete_at ?? null,input.cursor?.next_delete_at ?? 0,input.cursor?.next_delete_at ?? 0,input.cursor?.updated_at ?? 0,input.cursor?.updated_at ?? 0,input.cursor?.item_id ?? '', limit + 1).all<OrphanAssetRow & {next_delete_at:number;updated_at:number}>();
     const visible = rows.results.slice(0, limit);
+    const backlog = await database.prepare(`SELECT COUNT(*) AS count FROM order_instruction_asset_items item JOIN order_instruction_asset_batches batch ON batch.id=item.asset_batch_id JOIN file_objects object ON object.id=item.file_object_id WHERE item.status='ORPHANED' AND batch.status IN ('FAILED','CANCELLED') AND object.status='DELETION_PENDING' AND object.next_delete_at<=? AND NOT EXISTS (SELECT 1 FROM file_entity_links link WHERE link.file_object_id=object.id AND link.revoked_at IS NULL)`).bind(now).first<{count:number}>();
+    if (input.dryRun) return { scanned: visible.length, deleted: 0, deferred: 0, has_more: rows.results.length > limit, replayed: false, backlog_count:Number(backlog?.count??0), next_cursor:null, dry_run:true };
     let deleted = 0;
     let deferred = 0;
 
     for (const row of visible) {
+      if (input.deadlineReached?.()) break;
       try {
         await objectStorage.deleteObject(row.object_key);
         await database.batch([
@@ -143,11 +150,14 @@ export async function reconcileInstructionAssetOrphans(
     }
 
     const response: ReconcileInstructionAssetOrphansResult = {
-      scanned: visible.length,
+      scanned: deleted + deferred,
       deleted,
       deferred,
       has_more: rows.results.length > limit,
       replayed: false,
+      backlog_count: Number(backlog?.count ?? 0),
+      next_cursor: rows.results.length > limit && visible.at(-1) ? { next_delete_at: Number(visible.at(-1)!.next_delete_at), updated_at: Number(visible.at(-1)!.updated_at), item_id: visible.at(-1)!.item_id } : null,
+      dry_run: false,
     };
     const outbox = await prepareOutboxEvent({
       id: crypto.randomUUID(),

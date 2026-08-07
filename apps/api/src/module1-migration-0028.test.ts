@@ -28,7 +28,7 @@ describe('Migration 0028 Amazon order date facts', () => {
     const views = await database.prepare(`
       SELECT name FROM sqlite_schema WHERE type='view'
     `).all();
-    expect(tables.results).toHaveLength(136);
+    expect(tables.results).toHaveLength(141);
     expect(triggers.results).toHaveLength(261);
     expect(views.results).toHaveLength(10);
 

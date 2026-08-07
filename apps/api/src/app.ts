@@ -4,6 +4,7 @@ import {
   type StaffAuthProviderAdapter,
   type StaffAuthProviderBindings,
   type StaffDataScope,
+  type ObjectStorageAdapter,
   type SqlDatabase,
 } from '@ygb/contracts';
 import { Hono } from 'hono';
@@ -14,17 +15,26 @@ import {
   routeGroup,
   writeErrorLog,
 } from './observability';
+import {
+  recordWorker5xxSignal,
+  safeResolveOperationalAlertSink,
+  type OperationalAlertSink,
+} from './scheduled-operations/signals';
 
 export type AppBindings = StaffAuthProviderBindings & {
   DB: SqlDatabase;
   KEYWORD_IMAGE_GENERATOR?: unknown;
   KEYWORD_GENERATOR_SHARED_SECRET?: string;
   KEYWORD_HMAC_SECRET?: string;
-  FILE_OBJECT_STORAGE?: unknown;
+  FILE_OBJECT_STORAGE?: ObjectStorageAdapter;
   CUSTOMER_SESSION_SECRET?: string;
   CUSTOMER_SECURITY_TOKEN_SECRET?: string;
   STAFF_AUTH_PROVIDER_ADAPTER?: StaffAuthProviderAdapter;
-  OUTBOX_DELIVERY_ADAPTER?: unknown;
+  OUTBOX_DELIVERY_ADAPTER?: { deliver(event: { id: string; eventType: string; payloadJson: string }): Promise<void> };
+  SCHEDULED_OPERATIONS_ENABLED?: string;
+  SCHEDULED_OPERATIONS_DISABLED_JOBS?: string;
+  OPERATIONAL_ALERT_SINK?: OperationalAlertSink;
+  OPERATIONAL_ALERT_MODE?: string;
 };
 
 export type AppVariables = {
@@ -68,10 +78,14 @@ export function createApp(): Hono<AppEnv> {
         error_category: 'handled_server_error',
         cf_ray: context.req.header('CF-Ray') ?? null,
       }));
+      if (context.env?.DB) {
+        const sink=configuredAlertSink(context.env);
+        await recordWorker5xxSignal(context.env.DB,{requestId,observedAt:Date.now(),...(sink?{sink}:{})}).catch(()=>undefined);
+      }
     }
   });
 
-  app.onError((_error, context) => {
+  app.onError(async (_error, context) => {
     const requestId = context.get('requestId') || crypto.randomUUID();
     context.set('errorLogged', true);
     writeErrorLog(errorLogEvent({
@@ -82,6 +96,10 @@ export function createApp(): Hono<AppEnv> {
       error_category: 'unhandled_exception',
       cf_ray: context.req.header('CF-Ray') ?? null,
     }));
+    if (context.env?.DB) {
+      const sink=configuredAlertSink(context.env);
+      await recordWorker5xxSignal(context.env.DB,{requestId,observedAt:Date.now(),...(sink?{sink}:{})}).catch(()=>undefined);
+    }
 
     return context.json(
       apiFailure(
@@ -113,4 +131,8 @@ export function createApp(): Hono<AppEnv> {
   });
 
   return app;
+}
+
+export function configuredAlertSink(bindings:Pick<AppBindings,'OPERATIONAL_ALERT_MODE'|'OPERATIONAL_ALERT_SINK'>):OperationalAlertSink|null {
+  return safeResolveOperationalAlertSink({...((bindings.OPERATIONAL_ALERT_MODE!==undefined)?{mode:bindings.OPERATIONAL_ALERT_MODE}:{}),...(bindings.OPERATIONAL_ALERT_SINK?{localSink:bindings.OPERATIONAL_ALERT_SINK}:{})});
 }

@@ -174,6 +174,11 @@ export async function claimNextOutboxEvent(
       SELECT id
       FROM integration_outbox
       WHERE available_at<=?
+        AND NOT EXISTS (
+          SELECT 1 FROM scheduled_dead_letters dead
+          WHERE dead.source_kind='OUTBOX' AND dead.source_id=integration_outbox.id
+            AND dead.replay_status IN ('QUARANTINED','PROCESSING')
+        )
         AND (
           status IN ('PENDING', 'FAILED')
           OR (
