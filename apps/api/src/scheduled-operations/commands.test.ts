@@ -96,6 +96,20 @@ describe('scheduled operation manual commands',()=>{
     expect((await runScheduledOperations(database,{now:2_000,only:'feishu_sync',feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'https://staff.example.test'}))[0]).toMatchObject({processed_count:1,succeeded_count:1});
   });
 
+  it('keeps feishu dead letters quarantined when its adapter or valid origin is absent',async()=>{
+    database=createMigratedTestDatabase();
+    seedFeishuDeadLetter(database,'feishu-no-adapter','feishu-no-adapter-event');
+    const noAdapter=await replayScheduledDeadLetter(database,{enabled:true,feishuWebOrigin:'https://staff.example.test'},{deadLetterId:'feishu-no-adapter',command:{event_id:'feishu-no-adapter-event',reason_code:'DEPENDENCY_RECOVERED'}},commandContext('replay-feishu-no-adapter'));
+    expect(noAdapter).toMatchObject({job_name:'feishu_sync',outcome:'DISABLED'});
+    expect(await database.prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='feishu-no-adapter'").first()).toEqual({replay_status:'QUARANTINED'});
+    expect(await database.prepare("SELECT status,attempt_count FROM integration_outbox WHERE id='feishu-no-adapter-event'").first()).toEqual({status:'FAILED',attempt_count:5});
+    seedFeishuDeadLetter(database,'feishu-bad-origin','feishu-bad-origin-event');
+    const badOrigin=await replayScheduledDeadLetter(database,{enabled:true,feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'http://not-safe.example.test'},{deadLetterId:'feishu-bad-origin',command:{event_id:'feishu-bad-origin-event',reason_code:'DEPENDENCY_RECOVERED'}},commandContext('replay-feishu-bad-origin'));
+    expect(badOrigin).toMatchObject({job_name:'feishu_sync',outcome:'DISABLED'});
+    expect(await database.prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='feishu-bad-origin'").first()).toEqual({replay_status:'QUARANTINED'});
+    expect(await database.prepare("SELECT status,attempt_count FROM integration_outbox WHERE id='feishu-bad-origin-event'").first()).toEqual({status:'FAILED',attempt_count:5});
+  });
+
   it('applies global, per-job, and hard kill switches to manual commands and replay',async()=>{
     database=createMigratedTestDatabase();
     seedOutbox(database,'disabled-event');
@@ -127,5 +141,6 @@ function actor(permissions:readonly ('SCHEDULED_OPERATIONS_RUN')[]=['SCHEDULED_O
 function commandContext(idempotencyKey:string):{actor:AssignmentStaffAuthorization;idempotencyKey:string;requestId:string;now:number} { return {actor:actor(),idempotencyKey,requestId:`request-${idempotencyKey}`,now:2000}; }
 function seedOutbox(db:SqliteDatabase,id:string) { db.exec(`INSERT INTO integration_outbox(id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES('${id}','dedup-${id}','TEST','TEST','aggregate','{"secret":"secret-value"}','${'a'.repeat(64)}','PENDING',1,NULL,NULL,0,NULL,1,1,NULL)`); }
 function seedDeadLetter(db:SqliteDatabase,deadLetterId:string,eventId:string) { db.exec("INSERT OR IGNORE INTO scheduled_job_states(job_name,updated_at) VALUES('outbox_delivery',1)"); db.exec(`INSERT INTO integration_outbox(id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES('${eventId}','dedup-${eventId}','TEST','TEST','aggregate','{"secret":"secret-value"}','${'b'.repeat(64)}','FAILED',1,NULL,NULL,5,'quarantined',1,1,NULL); INSERT INTO scheduled_dead_letters(id,job_name,source_kind,source_id,failure_category,attempt_count,quarantined_at) VALUES('${deadLetterId}','outbox_delivery','OUTBOX','${eventId}','delivery_failed',5,1)`); }
+function seedFeishuDeadLetter(db:SqliteDatabase,deadLetterId:string,eventId:string) { db.exec(`INSERT OR IGNORE INTO scheduled_job_states(job_name,updated_at) VALUES('feishu_sync',1); INSERT INTO integration_outbox(id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES('${eventId}','dedup-${eventId}','WORK_ITEM_CHANGED','STAFF_WORK_ITEM','no-business-read','{}','${'c'.repeat(64)}','FAILED',1,NULL,NULL,5,'quarantined',1,1,NULL); INSERT INTO scheduled_dead_letters(id,job_name,source_kind,source_id,failure_category,attempt_count,quarantined_at) VALUES('${deadLetterId}','feishu_sync','OUTBOX','${eventId}','provider_unavailable',5,1)`); }
 async function count(db:SqliteDatabase,table:string) { return Number((await db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).first<{count:number}>())?.count??0); }
 async function auditFacts(db:SqliteDatabase,eventType:string) { return (await db.prepare('SELECT event_type,actor_id,request_id,idempotency_key,next_state_json,reason,metadata_json FROM audit_events WHERE event_type=? ORDER BY created_at,id').bind(eventType).all()).results; }

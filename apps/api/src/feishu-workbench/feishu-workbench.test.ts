@@ -100,10 +100,39 @@ describe('Feishu staff workbench local boundary', () => {
     expect(await runFeishuWorkbenchSyncBatch(d,adapter,{webOrigin:'https://staff.example.test',now:200,limit:1})).toMatchObject({processed:1,failed:1});
     const event=await d.prepare("SELECT id,status,last_error,attempt_count FROM integration_outbox WHERE aggregate_type='STAFF_WORK_ITEM'").first<{id:string;status:string;last_error:string;attempt_count:number}>();
     expect(event).toMatchObject({status:'FAILED',last_error:'quarantined',attempt_count:5});
-    expect(await d.prepare("SELECT job_name,source_kind,source_id,replay_status,attempt_count FROM scheduled_dead_letters WHERE source_id=?").bind(event?.id).first()).toEqual({job_name:'feishu_sync',source_kind:'OUTBOX',source_id:event?.id,replay_status:'QUARANTINED',attempt_count:5});
+    expect(await d.prepare("SELECT job_name,source_kind,source_id,replay_status,attempt_count,failure_category FROM scheduled_dead_letters WHERE source_id=?").bind(event?.id).first()).toEqual({job_name:'feishu_sync',source_kind:'OUTBOX',source_id:event?.id,replay_status:'QUARANTINED',attempt_count:5,failure_category:'provider_unavailable'});
     expect(await runFeishuWorkbenchSyncBatch(d,adapter,{webOrigin:'https://staff.example.test',now:300,limit:1})).toMatchObject({processed:0});
     expect(await runFeishuWorkbenchSyncBatch(d,adapter,{webOrigin:'https://staff.example.test',now:300,dryRun:true,limit:1})).toMatchObject({processed:0});
     expect(await d.prepare('SELECT attempt_count FROM integration_outbox WHERE id=?').bind(event?.id).first()).toEqual({attempt_count:5});
+  });
+
+  it('persists every safe adapter failure category in the fifth-attempt dead letter', async () => {
+    const d=await setup();
+    const cases=[['RATE_LIMITED','provider_rate_limited'],['UNAVAILABLE','provider_unavailable'],['CONTRACT','contract_rejected']] as const;
+    const events: Array<{id:string;code:(typeof cases)[number][0];category:(typeof cases)[number][1]}>=[];
+    for(const [index,[code,category]] of cases.entries()) {
+      const item=await createWorkItem(d);
+      const event=await d.prepare("SELECT id FROM integration_outbox WHERE aggregate_type='STAFF_WORK_ITEM' AND aggregate_id=?").bind(item.workItemId).first<{id:string}>();
+      expect(event).toBeTruthy();
+      const now=200+index;
+      d.exec(`UPDATE integration_outbox SET attempt_count=4,available_at=${now} WHERE id='${event?.id}'`);
+      events.push({id:String(event?.id),code,category});
+    }
+    for(const [index,event] of events.entries()) {
+      const adapter=new MockFeishuWorkbenchAdapter(); adapter.nextError=new FeishuWorkbenchAdapterError(event.code);
+      await runFeishuWorkbenchSyncBatch(d,adapter,{webOrigin:'https://staff.example.test',now:200+index,limit:1});
+      expect(await d.prepare('SELECT failure_category FROM scheduled_dead_letters WHERE source_id=?').bind(event.id).first()).toEqual({failure_category:event.category});
+    }
+  });
+
+  it('rolls back the fifth-attempt dead letter when the Outbox lease is lost', async () => {
+    const d=await setup(); const item=await createWorkItem(d);
+    const event=await d.prepare("SELECT id FROM integration_outbox WHERE aggregate_type='STAFF_WORK_ITEM' AND aggregate_id=?").bind(item.workItemId).first<{id:string}>();
+    d.exec(`UPDATE integration_outbox SET attempt_count=4,available_at=200 WHERE id='${event?.id}'`);
+    const leaseLosingAdapter={upsertTask:async()=>{d.exec(`UPDATE integration_outbox SET lease_token='lost-lease',updated_at=201 WHERE id='${event?.id}'`);throw new FeishuWorkbenchAdapterError('CONTRACT');}};
+    await expect(runFeishuWorkbenchSyncBatch(d,leaseLosingAdapter,{webOrigin:'https://staff.example.test',now:200,limit:1})).rejects.toThrow();
+    expect(await d.prepare('SELECT id FROM scheduled_dead_letters WHERE source_id=?').bind(event?.id).first()).toBeNull();
+    expect(await d.prepare('SELECT status,lease_token,attempt_count FROM integration_outbox WHERE id=?').bind(event?.id).first()).toEqual({status:'PROCESSING',lease_token:'lost-lease',attempt_count:5});
   });
 
   it('rejects mismatched callback replays and permits only exact success replay', async () => {

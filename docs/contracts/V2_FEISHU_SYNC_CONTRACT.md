@@ -19,7 +19,7 @@
 
 `feishu_sync` 只消费 `STAFF_WORK_ITEM` Outbox；现有通用 Outbox delivery 排除这一 aggregate。每次同步重新读取当前 D1 work item，持久化镜像键与镜像版本到 `feishu_workbench_mirrors`。OPEN 正常创建/更新镜像；从未有镜像的 `COMPLETED`/`CANCELLED` 项只安全消费事件，不创建新卡片；已有镜像仍同步终态以关闭卡片。
 
-adapter 的第三个入参是稳定的外部幂等键，且必须等于 `work_item_id`。即使 Provider 已成功而 D1 镜像提交失败，重试也是同一 Provider 对象的 upsert，绝不重复创建。429、服务不可用和合同错误分别归类为 `provider_rate_limited`、`provider_unavailable`、`contract_rejected`；第 5 次失败将该事件以 `job_name=feishu_sync`、`source_kind=OUTBOX` 隔离进既有 `scheduled_dead_letters`，之后不再 claim。具备既有 owner 权限与幂等命令保护的重放只能把该记录恢复给 `feishu_sync`；通用 Outbox adapter 永远不能消费它。
+adapter 的第三个入参是稳定的外部幂等键，且必须等于 `work_item_id`。即使 Provider 已成功而 D1 镜像提交失败，重试也是同一 Provider 对象的 upsert，绝不重复创建。429、服务不可用和合同错误分别归类为 `provider_rate_limited`、`provider_unavailable`、`contract_rejected`；第 5 次失败会在同一 D1 原子批次中按当前 Outbox lease 写入 `job_name=feishu_sync`、`source_kind=OUTBOX` 死信，随后以 `changes()=1` 断言租约更新成功。丢租约时整批回滚且绝不生成死信；已隔离事件不再 claim。具备既有 owner 权限与幂等命令保护的重放只能把该记录恢复给 `feishu_sync`，且缺 adapter 或有效 HTTPS origin 时返回 `DISABLED` 并保留隔离状态；通用 Outbox adapter 永远不能消费它。
 
 ## 飞书 → D1 回调
 
@@ -44,7 +44,7 @@ adapter 的第三个入参是稳定的外部幂等键，且必须等于 `work_it
 
 ## HTTP 与迁移审计
 
-公开 callback 在读取前以 16 KiB 原始 UTF-8 body 上限流式限制，随后对同一原文验 HMAC；超长、编码或严格字段错误只返回中文安全错误且 `Cache-Control: no-store`。本次修复不新增 Migration：0031 已为 `feishu_sync` 建立作业状态与死信外键，0033 已有回调/镜像事实表；行为只使用既有字段和约束，可由 `db:verify` 与 migration guards 核验。
+公开 callback 在读取前以 16 KiB 原始 UTF-8 body 上限流式限制，随后对同一原文验 HMAC；超长、编码或严格字段错误只返回中文安全错误且 `Cache-Control: no-store`。0034 是必要的连续 Migration：它仅扩展 `scheduled_dead_letters.failure_category` CHECK 以持久化三种飞书分类，保留既有数据、外键和重放状态；可由 `db:verify` 与 migration guards 核验。
 
 ## 回滚
 

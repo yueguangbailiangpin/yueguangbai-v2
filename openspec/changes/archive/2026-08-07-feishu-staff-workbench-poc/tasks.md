@@ -9,7 +9,7 @@
 ## 1. Contracts and Migration Decision
 
 - [x] 1.1 Freeze summary whitelist, actions, callback validation, conflict, retry and deep-link contracts.
-- [x] 1.2 Inventory existing identity/work-item/outbox schema and add only the next consecutive Migration required for mirror/replay facts.
+- [x] 1.2 Inventory existing identity/work-item/outbox schema and add only the next consecutive Migrations required for mirror/replay facts and safe Feishu dead-letter categories (0033, 0034).
 - [x] 1.3 Add runtime schemas and secret/sensitive-field static verifiers.
 
 ## 2. Adapter and Sync

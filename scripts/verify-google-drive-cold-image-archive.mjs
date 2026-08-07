@@ -4,7 +4,7 @@ import path from 'node:path';
 const root=path.resolve(import.meta.dirname,'..');
 const read=(name)=>readFileSync(path.join(root,name),'utf8');
 const migrationFiles=readdirSync(path.join(root,'migrations')).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort();
-if(!migrationFiles.includes('0032_google_drive_cold_image_archive.sql')||migrationFiles.at(-1)!=='0033_feishu_staff_workbench_poc.sql') throw new Error('archive migration sequence changed unexpectedly');
+if(!migrationFiles.includes('0032_google_drive_cold_image_archive.sql')||migrationFiles.at(-2)!=='0033_feishu_staff_workbench_poc.sql'||migrationFiles.at(-1)!=='0034_feishu_sync_dead_letter_categories.sql') throw new Error('archive migration sequence changed unexpectedly');
 const migration=read('migrations/0032_google_drive_cold_image_archive.sql');
 for(const fragment of ['schema_version=31','schema_version=32','order_archive_closures','drive_archive_controls',
   'file_drive_archives','file_drive_archive_manifests','trg_file_drive_archive_transition_guard',

@@ -8,12 +8,13 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 33
-  || migrationFiles.at(-4) !== '0030_customer_multipersona_invitation_recovery.sql'
-  || migrationFiles.at(-3) !== '0031_scheduled_operations.sql'
-  || migrationFiles.at(-2) !== '0032_google_drive_cold_image_archive.sql'
-  || migrationFiles.at(-1) !== '0033_feishu_staff_workbench_poc.sql') {
-  throw new Error('expected migrations 0001-0033');
+if (migrationFiles.length !== 34
+  || migrationFiles.at(-5) !== '0030_customer_multipersona_invitation_recovery.sql'
+  || migrationFiles.at(-4) !== '0031_scheduled_operations.sql'
+  || migrationFiles.at(-3) !== '0032_google_drive_cold_image_archive.sql'
+  || migrationFiles.at(-2) !== '0033_feishu_staff_workbench_poc.sql'
+  || migrationFiles.at(-1) !== '0034_feishu_sync_dead_letter_categories.sql') {
+  throw new Error('expected migrations 0001-0034');
 }
 
 const guarded = new Map([
@@ -39,6 +40,7 @@ const guarded = new Map([
   [31, 'scheduled_job_states'],
   [32, 'file_drive_archives'],
   [33, 'feishu_workbench_mirrors'],
+  [34, 'scheduled_dead_letters_next'],
 ]);
 
 function readMigration(name) {
@@ -94,7 +96,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 33) throw new Error('fresh schema not 33');
+  if (schemaVersion(fresh) !== 34) throw new Error('fresh schema not 34');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -138,8 +140,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 33,
-  sequential_upgrade: '0001 -> 0033',
+  fresh_schema: 34,
+  sequential_upgrade: '0001 -> 0034',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,

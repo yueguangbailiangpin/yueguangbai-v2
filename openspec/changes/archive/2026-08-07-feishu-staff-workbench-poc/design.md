@@ -18,7 +18,7 @@ D1 task command 事务内写既有 `integration_outbox`。`feishu_sync` 只处�
 
 ## Scale and Failure
 
-按八 Staff、每日二百订单只同步 actionable/exception/overdue work item 和聚合摘要。频繁状态变化在 `feishu_sync` 内按 work item 合并。adapter 将 429、5xx、超时和合同错误映射到固定、无敏感内容的失败分类；第 5 次失败以 `job_name=feishu_sync` 进入既有 dead-letter，受控重放只路由回本作业，通用 adapter 永不消费；业务成功不依赖 Provider 成功。连续三次实际 adapter 失败产生固定脱敏观察并可自动恢复。真实 adapter 未注入、开关未显式开启或 secret 缺失时一律 DISABLED，不尝试网络回退。
+按八 Staff、每日二百订单只同步 actionable/exception/overdue work item 和聚合摘要。频繁状态变化在 `feishu_sync` 内按 work item 合并。adapter 将 429、5xx、超时和合同错误映射到固定、无敏感内容的失败分类；0034 扩展死信分类约束，第 5 次失败以当前 Outbox lease 与 `changes()=1` 断言在同一原子批次写入 `job_name=feishu_sync`，丢租约整批回滚。受控重放只路由回本作业，且缺 adapter 或有效 origin 时保持 DISABLED；通用 adapter 永不消费。业务成功不依赖 Provider 成功。连续三次实际 adapter 失败产生固定脱敏观察并可自动恢复。真实 adapter 未注入、开关未显式开启或 secret 缺失时一律 DISABLED，不尝试网络回退。
 
 ## Rollback
 
