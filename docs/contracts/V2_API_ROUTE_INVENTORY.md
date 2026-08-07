@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。共有 154 个唯一业务/健康端点：153 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
+这是默认 App 的可复现 route inventory。共有 155 个唯一业务/健康端点：154 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表精确比较；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都会失败。
 
@@ -112,6 +112,7 @@ POST /api/customer-auth/login
 POST /api/customer-auth/logout
 POST /api/customer-auth/password-reset/complete
 POST /api/customer-auth/select-persona
+POST /api/feishu-workbench/callback
 POST /api/staff/operations/jobs/:job/retry
 POST /api/staff/operations/alerts/ack
 POST /api/staff/operations/dead-letters/:id/replay

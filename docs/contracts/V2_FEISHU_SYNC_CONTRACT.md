@@ -1,93 +1,45 @@
-# V2 飞书同步合同
+# V2 飞书员工工作台合同
 
-## 1. 权威性
+## 权威与范围
 
-D1 中的 `staff_tasks`、`task_events` 和权限上下文是权威事实。飞书记录是镜像和操作入口。
+`staff_work_items`、D1 Staff identity、当前授权、既有 versioned command 和 `integration_outbox` 是唯一权威。飞书只接收可处理任务的最小镜像与月光白受控深链接；它不是订单、财务、权限、审计或任务事实库。
 
-## 2. 任务创建
+本合同当前只实现本地 adapter/mock。缺少显式开关、HTTPS 工作台 origin 或注入的本地 adapter 时 outbound sync 为 `HARD_DISABLED`；缺少 callback 开关或最少 32 字符 secret 时 inbound callback 也为 `HARD_DISABLED`。不得创建或调用真实飞书资源。
 
-业务命令在同一 D1 批处理中：
+## D1 → 飞书摘要 DTO
 
-1. 更新业务聚合；
-2. 追加业务事件；
-3. 创建/更新权威任务；
-4. 插入 `integration_outbox`。
+严格对象仅包含：
 
-Worker 消费 Outbox 后创建或更新飞书记录。
+- `work_item_id`、`work_type`、`status`、`assigned_staff_id`、`updated_at`；
+- 中文 `safe_title`；
+- 仅指向 `/staff/work-items/{work_item_id}` 的 HTTPS `deep_link`；
+- `time_basis: UTC_MS` 与 `display_timezone: Asia/Shanghai`。
 
-## 3. D1 → 飞书
+不得包含完整客户资料、微信号、订单/来源 ID、截图、凭证、财务金额、对象键、Drive ID、token、secret 或任意裸链接。adapter 必须按负责人最小可见范围投递，不能把团队外或跨组织任务广播给其他员工。
 
-同步字段：
+`feishu_sync` 只消费 `STAFF_WORK_ITEM` Outbox；现有通用 Outbox delivery 排除这一 aggregate。每次同步读取当前 D1 work item，持久化镜像键与镜像版本到 `feishu_workbench_mirrors`。429、服务不可用和合同错误分别归类为 `provider_rate_limited`、`provider_unavailable`、`contract_rejected`，使用既有 bounded retry/dead-letter；业务命令不等待同步成功。
 
-- D1 task_id；
-- 任务类型；
-- 标题摘要；
-- 部门；
-- 状态；
-- 主负责人；
-- 协作者；
-- 优先级；
-- 截止时间；
-- 详情链接；
-- D1 version；
-- 更新时间。
+## 飞书 → D1 回调
 
-不发送完整财务或敏感聊天内容。
+本期唯一允许动作是 `REASSIGN_WORK_ITEM`：
 
-## 4. 飞书 → D1
-
-允许动作：
-
-- 领取；
-- 放回公共队列；
-- 分配；
-- 改派；
-- 添加/移除协作者；
-- 改优先级；
-- 改截止时间；
-- 更新内部任务备注。
-
-请求必须包含：
-
-- task_id；
-- expected_version；
-- 飞书用户 ID；
-- action；
-- idempotency_key；
-- 回调事件 ID。
-
-D1 校验员工、角色、团队范围和版本后写入。成功后生成新 Outbox 更新飞书。
-
-## 5. 原子领取
-
-领取通过条件更新完成：
-
-```sql
-UPDATE staff_tasks
-SET primary_assignee_id=?, status='CLAIMED', version=version+1
-WHERE id=? AND status='OPEN' AND primary_assignee_id IS NULL AND version=?;
+```json
+{
+  "event_id": "opaque-event-id",
+  "tenant_key": "configured-tenant",
+  "open_id": "stable-provider-subject",
+  "action": "REASSIGN_WORK_ITEM",
+  "work_item_id": "existing-d1-id",
+  "expected_version": 1,
+  "target_staff_id": "existing-d1-id",
+  "reason": "中文改派原因"
+}
 ```
 
-受影响行数不是 1 时返回冲突，飞书显示“任务已被其他人领取”。
+回调 Header 必须提供 `X-Feishu-Workbench-Timestamp`、`X-Feishu-Workbench-Nonce`、`X-Feishu-Workbench-Signature`。签名为 `HMAC-SHA-256(secret, "timestamp.nonce.sha256(raw-body)")`，时间窗为五分钟。已验签的 event ID、nonce hash、payload hash 与结果存入 `feishu_workbench_callback_receipts`；重复 event 返回幂等结果，处理中返回 `IN_PROGRESS`，nonce 或载荷不一致拒绝。
 
-## 6. 同步失败
+服务端只根据 `(tenant_key, open_id)` 找到 ACTIVE 的 `feishu_staff_identities`，再重新计算 D1 ACTIVE、角色、Personal DENY、Team 与 data scope。绝不信任回调内或 Header 内的 Staff ID、role、permission、scope。最终调用既有 `reassignWorkItem`，携带 event-derived idempotency key 和 `expected_version`；未知/停用/无权/跨范围/冲突均 fail closed。
 
-- Outbox 保存 attempt_count、last_error、next_retry_at。
-- 指数退避。
-- 超过阈值进入同步异常表。
-- 业务命令成功不因飞书暂时失败而回滚。
-- 飞书恢复后可幂等重放。
-- 不允许手工修改飞书记录伪造同步成功。
+## 回滚
 
-## 7. 身份映射
-
-每个员工保存：
-
-- internal_staff_id；
-- feishu_open_id；
-- feishu_user_id；
-- tenant_key；
-- status；
-- last_verified_at。
-
-未知或停用飞书用户不得执行 D1 写操作。
+关闭 outbound 或 inbound 开关即可停止相应入口；既有内部 Staff Session、受控 Web 和 D1 业务继续运行。镜像可从 D1 重建，回滚不得从飞书恢复或覆写业务事实，不得撤销已经合法完成的 D1 命令。

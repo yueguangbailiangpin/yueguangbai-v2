@@ -1,0 +1,13 @@
+import { readFileSync,readdirSync } from 'node:fs';
+import path from 'node:path';
+const root=path.resolve(import.meta.dirname,'..');
+const read=(file)=>readFileSync(path.join(root,file),'utf8');
+const files=readdirSync(path.join(root,'apps/api/src/feishu-workbench')).filter((file)=>file.endsWith('.ts')).map((file)=>`apps/api/src/feishu-workbench/${file}`);
+const combined=files.map(read).join('\n');
+if(/\bfetch\s*\(/u.test(combined)) throw new Error('feishu workbench must not make external network calls');
+for(const fragment of ['parseFeishuWorkbenchTaskSummaryDto','FEISHU_WORKBENCH_SYNC_ENABLED','FEISHU_WORKBENCH_CALLBACK_ENABLED','verifyFeishuWorkbenchSignature','resolveAssignmentStaffAuthorization','reassignWorkItem','provider_rate_limited','provider_unavailable','contract_rejected']) if(!combined.includes(fragment)) throw new Error(`missing Feishu boundary: ${fragment}`);
+const contract=read('packages/contracts/src/feishu-workbench.ts');
+for(const forbidden of ['wechat','amount','proof','object_key','drive_file_id','access_token','app_secret']) if(contract.includes(forbidden)) throw new Error(`sensitive field appears in Feishu DTO contract: ${forbidden}`);
+const migration=read('migrations/0033_feishu_staff_workbench_poc.sql');
+for(const table of ['feishu_workbench_mirrors','feishu_workbench_callback_receipts','schema_version=33']) if(!migration.includes(table)) throw new Error(`missing Feishu migration guard: ${table}`);
+console.log(JSON.stringify({status:'PASS',network_calls:'none',runtime_default:'HARD_DISABLED',summary_dto:'whitelist_only',callback:'signature_timestamp_nonce_replay_and_d1_reauthorization'},null,2));

@@ -25,6 +25,7 @@ export * from './reservation';
 export * from './review';
 export * from './scheduled-operations';
 export * from './cold-image-archive';
+export * from './feishu-workbench';
 export * from './seller-formal-order-portal';
 export * from './seller-review-portal';
 export * from './seller-settlement';

@@ -1,10 +1,11 @@
-import { statementChangedOnce, type DriveArchiveAdapter, type ObjectStorageAdapter, type SqlDatabase, type StaffPermissionCode, type StaffRoleCode } from '@ygb/contracts';
+import { statementChangedOnce, type DriveArchiveAdapter, type FeishuWorkbenchAdapter, type ObjectStorageAdapter, type SqlDatabase, type StaffPermissionCode, type StaffRoleCode } from '@ygb/contracts';
 import { reconcileDriveArchiveBatch, runDriveArchiveBatch } from '../cold-image-archive/job';
 import { claimNextOutboxEvent, markOutboxFailed, markOutboxSent } from '../foundation/outbox';
 import { reconcileInstructionAssetOrphans } from '../order-instructions/asset-reconciliation';
 import { countOrderInstructionExpiryCandidates, runOrderInstructionExpiryScan } from '../order-instructions/expiry-scan';
 import { cleanupExpiredStaffAuthEphemeralRecords } from '../staff-auth/cleanup';
 import { expireReservation } from '../reservations/expire-reservation';
+import { runFeishuWorkbenchSyncBatch } from '../feishu-workbench/sync';
 
 export const SCHEDULED_JOB_NAMES = [
   'reservation_expiry', 'instruction_expiry', 'outbox_delivery', 'file_orphan_cleanup', 'staff_auth_cleanup',
@@ -25,7 +26,7 @@ const SYSTEM_SCHEDULER_ACTOR = Object.freeze({
   permissions: new Set<StaffPermissionCode>(['ORDER_INSTRUCTION_EXPIRY_RUN','ORDER_INSTRUCTION_MANAGE']),
 });
 
-export async function runScheduledOperations(database: SqlDatabase, input: { now?: number; enabled?: boolean; disabledJobs?: readonly string[]; storage?: ObjectStorageAdapter | null; driveAdapter?: DriveArchiveAdapter | null; driveArchiveEnabled?: boolean; driveArchiveCopyEnabled?: boolean; driveArchiveProxyReadEnabled?: boolean; driveArchiveR2DeleteEnabled?: boolean; outboxAdapter?: OutboxDeliveryAdapter | null; trigger?: ScheduledTrigger; only?: ScheduledJobName; dryRun?: boolean; deadlineReached?: () => boolean; batchSize?: number; }): Promise<SafeJobRun[]> {
+export async function runScheduledOperations(database: SqlDatabase, input: { now?: number; enabled?: boolean; disabledJobs?: readonly string[]; storage?: ObjectStorageAdapter | null; driveAdapter?: DriveArchiveAdapter | null; driveArchiveEnabled?: boolean; driveArchiveCopyEnabled?: boolean; driveArchiveProxyReadEnabled?: boolean; driveArchiveR2DeleteEnabled?: boolean; outboxAdapter?: OutboxDeliveryAdapter | null; feishuAdapter?: FeishuWorkbenchAdapter | null; feishuWebOrigin?: string | null; trigger?: ScheduledTrigger; only?: ScheduledJobName; dryRun?: boolean; deadlineReached?: () => boolean; batchSize?: number; }): Promise<SafeJobRun[]> {
   const now = input.now ?? Date.now();
   const names = input.only ? [input.only] : SCHEDULED_JOB_NAMES;
   const output: SafeJobRun[] = [];
@@ -42,7 +43,8 @@ export async function runScheduledOperations(database: SqlDatabase, input: { now
 async function runOne(database: SqlDatabase, job: ScheduledJobName, input: Required<Pick<Parameters<typeof runScheduledOperations>[1], 'now'>> & Parameters<typeof runScheduledOperations>[1]): Promise<SafeJobRun> {
   const driveHardDisabled=job==='drive_archive' && (input.driveArchiveEnabled!==true
     || input.driveArchiveCopyEnabled!==true || !input.storage || !input.driveAdapter);
-  if (input.enabled === false || input.disabledJobs?.includes(job) || driveHardDisabled || job === 'feishu_sync') return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
+  const feishuHardDisabled=job==='feishu_sync' && (!input.feishuAdapter || !input.feishuWebOrigin);
+  if (input.enabled === false || input.disabledJobs?.includes(job) || driveHardDisabled || feishuHardDisabled) return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
   const configured=await database.prepare('SELECT enabled FROM scheduled_job_states WHERE job_name=?').bind(job).first<{enabled:number}>();
   if (configured?.enabled===0) return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
   const token = `scheduled:${crypto.randomUUID()}`;
@@ -111,10 +113,14 @@ async function execute(database: SqlDatabase, job: ScheduledJobName, input: Para
       failed:result.failed+reconciliation.failed,backlog:result.backlog,
       failureCategory:result.failed+reconciliation.failed>0?'job_item_failed':undefined};
   }
+  if (job === 'feishu_sync') {
+    const result=await runFeishuWorkbenchSyncBatch(database,input.feishuAdapter??null,{webOrigin:input.feishuWebOrigin??null,now:input.now,limit:batchSize,dryRun:input.dryRun===true});
+    return {processed:result.processed,succeeded:result.succeeded,failed:result.failed,backlog:result.backlog,failureCategory:result.failureCategory??undefined};
+  }
   if (input.dryRun) { const c=await database.prepare("SELECT COUNT(*) AS count FROM integration_outbox o WHERE status IN ('PENDING','FAILED') AND available_at<=? AND NOT EXISTS(SELECT 1 FROM scheduled_dead_letters d WHERE d.source_kind='OUTBOX' AND d.source_id=o.id AND d.replay_status IN ('QUARANTINED','PROCESSING'))").bind(input.now).first<{count:number}>(); return {processed:0,succeeded:0,failed:0,backlog:Number(c?.count??0)}; }
   let processed=0; let succeeded=0; let failed=0; let category: 'adapter_unavailable'|'delivery_failed'|undefined;
   for (; processed<batchSize && !input.deadlineReached?.(); processed += 1) {
-  const event = await claimNextOutboxEvent(database, {now:input.now, leaseMs:LEASE_MS});
+  const event = await claimNextOutboxEvent(database, {now:input.now, leaseMs:LEASE_MS,excludeAggregateType:'STAFF_WORK_ITEM'});
   if (!event) break;
   const fail = async (kind: 'adapter_unavailable'|'delivery_failed') => { category=kind; failed += 1; if(event.attempt_count>=MAX_OUTBOX_ATTEMPTS) { await database.prepare("INSERT INTO scheduled_dead_letters(id,job_name,source_kind,source_id,failure_category,attempt_count,quarantined_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_name,source_kind,source_id) DO UPDATE SET failure_category=excluded.failure_category,attempt_count=excluded.attempt_count,quarantined_at=excluded.quarantined_at,replay_status='QUARANTINED',replay_lease_token=NULL,replay_lease_expires_at=NULL,replayed_at=NULL,replayed_by_staff_id=NULL,replay_request_id=NULL,replay_idempotency_key=NULL,replay_version=scheduled_dead_letters.replay_version+1 WHERE scheduled_dead_letters.replay_status='REPLAYED'").bind(crypto.randomUUID(),'outbox_delivery','OUTBOX',event.id,kind,event.attempt_count,input.now).run(); await markOutboxFailed(database,event,{error:'quarantined',nextAttemptAt:input.now+365*86400000,now:input.now}); } else await markOutboxFailed(database,event,{error:kind,nextAttemptAt:input.now+backoff(event.attempt_count),now:input.now}); };
   if (!input.outboxAdapter) await fail('adapter_unavailable');

@@ -37,6 +37,7 @@ import { registerStaffCatalogWorkflowRoutes } from './staff-catalog-routes';
 import { registerMarketplaceFoundationRoutes } from './marketplaces/routes';
 import { registerScheduledOperationRoutes } from './scheduled-operations';
 import { registerColdImageArchiveRoutes } from './cold-image-archive';
+import { registerFeishuWorkbenchRoutes } from './feishu-workbench';
 
 const app = createApp();
 
@@ -51,6 +52,7 @@ registerStaffAuthRoutes(app, {
       ?? new FeishuStaffAuthProvider(config)
   ),
 });
+registerFeishuWorkbenchRoutes(app);
 
 // This path middleware must precede every /api/staff route registration.
 app.use('/api/staff/*', staffSessionMiddleware());

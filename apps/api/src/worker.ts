@@ -5,6 +5,7 @@ import { runScheduledOperations } from './scheduled-operations';
 import { hashCanonicalJson } from '@ygb/domain';
 import { evaluatePersistedScheduledJobSignals } from './scheduled-operations/signals';
 import { driveArchiveRuntime } from './cold-image-archive/runtime';
+import { feishuWorkbenchRuntime } from './feishu-workbench';
 
 const SCHEDULED_HANDLER_TIME_BUDGET_MS=25_000;
 
@@ -18,7 +19,8 @@ export default {
       const startedAt=Date.now();
       const deadlineReached=()=>Date.now()-startedAt>=SCHEDULED_HANDLER_TIME_BUDGET_MS;
       const drive=driveArchiveRuntime(env);
-      await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled,now,deadlineReached });
+      const feishu=feishuWorkbenchRuntime(env);
+      await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,feishuAdapter:feishu.adapter,feishuWebOrigin:feishu.webOrigin,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled,now,deadlineReached });
       const evaluationId=await hashCanonicalJson({kind:'SCHEDULED_OPERATIONS_EVALUATION',scheduled_time:now});
       const sink=configuredAlertSink(env);
       await evaluatePersistedScheduledJobSignals(env.DB,{evaluationId,now,...(sink?{sink}:{})});

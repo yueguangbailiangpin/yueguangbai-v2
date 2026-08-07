@@ -154,6 +154,8 @@ export async function claimNextOutboxEvent(
   options: {
     now?: number;
     leaseMs?: number;
+    aggregateType?: string;
+    excludeAggregateType?: string;
   } = {},
 ): Promise<ClaimedOutboxEvent | null> {
   const now = options.now ?? Date.now();
@@ -161,6 +163,10 @@ export async function claimNextOutboxEvent(
   validateTiming(now, leaseMs);
   const leaseToken = `outbox-lease:${crypto.randomUUID()}`;
 
+  if ((options.aggregateType !== undefined && !safe(options.aggregateType,100))
+    || (options.excludeAggregateType !== undefined && !safe(options.excludeAggregateType,100))) {
+    throw new OutboxError('VALIDATION_ERROR');
+  }
   return database.prepare(`
     UPDATE integration_outbox
     SET
@@ -174,6 +180,8 @@ export async function claimNextOutboxEvent(
       SELECT id
       FROM integration_outbox
       WHERE available_at<=?
+        ${options.aggregateType === undefined ? '' : 'AND aggregate_type=?'}
+        ${options.excludeAggregateType === undefined ? '' : 'AND aggregate_type<>?'}
         AND NOT EXISTS (
           SELECT 1 FROM scheduled_dead_letters dead
           WHERE dead.source_kind='OUTBOX' AND dead.source_id=integration_outbox.id
@@ -214,6 +222,8 @@ export async function claimNextOutboxEvent(
     now + leaseMs,
     now,
     now,
+    ...(options.aggregateType === undefined ? [] : [options.aggregateType]),
+    ...(options.excludeAggregateType === undefined ? [] : [options.excludeAggregateType]),
     now,
     now,
   ).first<ClaimedOutboxEvent>();

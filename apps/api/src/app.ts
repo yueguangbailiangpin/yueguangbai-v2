@@ -6,6 +6,7 @@ import {
   type StaffDataScope,
   type ObjectStorageAdapter,
   type DriveArchiveAdapter,
+  type FeishuWorkbenchAdapter,
   type SqlDatabase,
 } from '@ygb/contracts';
 import { Hono } from 'hono';
@@ -46,6 +47,11 @@ export type AppBindings = StaffAuthProviderBindings & {
   SCHEDULED_OPERATIONS_DISABLED_JOBS?: string;
   OPERATIONAL_ALERT_SINK?: OperationalAlertSink;
   OPERATIONAL_ALERT_MODE?: string;
+  FEISHU_WORKBENCH_SYNC_ENABLED?: string;
+  FEISHU_WORKBENCH_CALLBACK_ENABLED?: string;
+  FEISHU_WORKBENCH_CALLBACK_SECRET?: string;
+  FEISHU_WORKBENCH_WEB_ORIGIN?: string;
+  FEISHU_WORKBENCH_ADAPTER?: FeishuWorkbenchAdapter;
 };
 
 export type AppVariables = {

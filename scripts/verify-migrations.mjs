@@ -136,6 +136,8 @@ const requiredTables = [
   'customer_password_reset_tokens',
   'customer_password_reset_events',
   'customer_security_rate_limits',
+  'feishu_workbench_mirrors',
+  'feishu_workbench_callback_receipts',
 ];
 
 const requiredTriggers = [
@@ -327,6 +329,12 @@ const requiredTriggers = [
   'trg_formal_order_marketplace_money_no_update',
   'trg_formal_order_marketplace_money_no_delete',
   'trg_formal_order_marketplace_money_legacy_insert',
+  'trg_feishu_workbench_mirrors_insert_guard',
+  'trg_feishu_workbench_mirrors_update_guard',
+  'trg_feishu_workbench_mirrors_no_delete',
+  'trg_feishu_workbench_callback_receipts_insert_guard',
+  'trg_feishu_workbench_callback_receipts_update_guard',
+  'trg_feishu_workbench_callback_receipts_no_delete',
 ];
 
 try {
