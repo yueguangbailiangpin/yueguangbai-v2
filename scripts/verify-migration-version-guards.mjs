@@ -8,11 +8,11 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 31
-  || migrationFiles.at(-3) !== '0029_multi_marketplace_multicurrency_foundation.sql'
-  || migrationFiles.at(-2) !== '0030_customer_multipersona_invitation_recovery.sql'
-  || migrationFiles.at(-1) !== '0031_scheduled_operations.sql') {
-  throw new Error('expected migrations 0001-0031');
+if (migrationFiles.length !== 32
+  || migrationFiles.at(-3) !== '0030_customer_multipersona_invitation_recovery.sql'
+  || migrationFiles.at(-2) !== '0031_scheduled_operations.sql'
+  || migrationFiles.at(-1) !== '0032_google_drive_cold_image_archive.sql') {
+  throw new Error('expected migrations 0001-0032');
 }
 
 const guarded = new Map([
@@ -36,6 +36,7 @@ const guarded = new Map([
   [29, 'marketplace_registry'],
   [30, 'customer_account_personas'],
   [31, 'scheduled_job_states'],
+  [32, 'file_drive_archives'],
 ]);
 
 function readMigration(name) {
@@ -91,7 +92,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 31) throw new Error('fresh schema not 31');
+  if (schemaVersion(fresh) !== 32) throw new Error('fresh schema not 32');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -135,8 +136,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 31,
-  sequential_upgrade: '0001 -> 0031',
+  fresh_schema: 32,
+  sequential_upgrade: '0001 -> 0032',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,

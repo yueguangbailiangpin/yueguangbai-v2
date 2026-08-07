@@ -74,8 +74,10 @@ assert(fileAuthorization.includes(
 assert((fileReadService.match(/await authorizeFileRead\(/gu) ?? []).length >= 2);
 assert(fileReadService.indexOf('await authorizeFileRead(')
   < fileReadService.indexOf('const expiresAt = now + ttlMs'));
-assert(fileReadService.lastIndexOf('await authorizeFileRead(')
-  < fileReadService.indexOf('const bytes = await storage.readObject'));
+const finalReadAuthorization = fileReadService.lastIndexOf('await authorizeFileRead(');
+assert(finalReadAuthorization < fileReadService.indexOf('const archived ='));
+assert(finalReadAuthorization < fileReadService.indexOf('await readArchivedBytes(source'));
+assert(finalReadAuthorization < fileReadService.indexOf('await storage.readObject(source.object_key'));
 
 // Staff-owned and trusted SYSTEM-owned proofs are accepted only from persisted
 // file facts; customer actors and client-declared SYSTEM uploads remain closed.

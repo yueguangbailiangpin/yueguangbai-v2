@@ -5,6 +5,7 @@ import {
   type StaffAuthProviderBindings,
   type StaffDataScope,
   type ObjectStorageAdapter,
+  type DriveArchiveAdapter,
   type SqlDatabase,
 } from '@ygb/contracts';
 import { Hono } from 'hono';
@@ -27,6 +28,11 @@ export type AppBindings = StaffAuthProviderBindings & {
   KEYWORD_GENERATOR_SHARED_SECRET?: string;
   KEYWORD_HMAC_SECRET?: string;
   FILE_OBJECT_STORAGE?: ObjectStorageAdapter;
+  DRIVE_ARCHIVE_ADAPTER?: DriveArchiveAdapter;
+  DRIVE_ARCHIVE_ENABLED?: string;
+  DRIVE_ARCHIVE_COPY_ENABLED?: string;
+  DRIVE_ARCHIVE_PROXY_READ_ENABLED?: string;
+  DRIVE_ARCHIVE_R2_DELETE_ENABLED?: string;
   CUSTOMER_SESSION_SECRET?: string;
   CUSTOMER_SECURITY_TOKEN_SECRET?: string;
   STAFF_AUTH_PROVIDER_ADAPTER?: StaffAuthProviderAdapter;

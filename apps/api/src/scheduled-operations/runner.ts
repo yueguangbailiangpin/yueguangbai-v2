@@ -1,4 +1,5 @@
-import { statementChangedOnce, type ObjectStorageAdapter, type SqlDatabase, type StaffPermissionCode, type StaffRoleCode } from '@ygb/contracts';
+import { statementChangedOnce, type DriveArchiveAdapter, type ObjectStorageAdapter, type SqlDatabase, type StaffPermissionCode, type StaffRoleCode } from '@ygb/contracts';
+import { reconcileDriveArchiveBatch, runDriveArchiveBatch } from '../cold-image-archive/job';
 import { claimNextOutboxEvent, markOutboxFailed, markOutboxSent } from '../foundation/outbox';
 import { reconcileInstructionAssetOrphans } from '../order-instructions/asset-reconciliation';
 import { countOrderInstructionExpiryCandidates, runOrderInstructionExpiryScan } from '../order-instructions/expiry-scan';
@@ -24,7 +25,7 @@ const SYSTEM_SCHEDULER_ACTOR = Object.freeze({
   permissions: new Set<StaffPermissionCode>(['ORDER_INSTRUCTION_EXPIRY_RUN','ORDER_INSTRUCTION_MANAGE']),
 });
 
-export async function runScheduledOperations(database: SqlDatabase, input: { now?: number; enabled?: boolean; disabledJobs?: readonly string[]; storage?: ObjectStorageAdapter | null; outboxAdapter?: OutboxDeliveryAdapter | null; trigger?: ScheduledTrigger; only?: ScheduledJobName; dryRun?: boolean; deadlineReached?: () => boolean; batchSize?: number; }): Promise<SafeJobRun[]> {
+export async function runScheduledOperations(database: SqlDatabase, input: { now?: number; enabled?: boolean; disabledJobs?: readonly string[]; storage?: ObjectStorageAdapter | null; driveAdapter?: DriveArchiveAdapter | null; driveArchiveEnabled?: boolean; driveArchiveCopyEnabled?: boolean; driveArchiveProxyReadEnabled?: boolean; driveArchiveR2DeleteEnabled?: boolean; outboxAdapter?: OutboxDeliveryAdapter | null; trigger?: ScheduledTrigger; only?: ScheduledJobName; dryRun?: boolean; deadlineReached?: () => boolean; batchSize?: number; }): Promise<SafeJobRun[]> {
   const now = input.now ?? Date.now();
   const names = input.only ? [input.only] : SCHEDULED_JOB_NAMES;
   const output: SafeJobRun[] = [];
@@ -39,7 +40,9 @@ export async function runScheduledOperations(database: SqlDatabase, input: { now
 }
 
 async function runOne(database: SqlDatabase, job: ScheduledJobName, input: Required<Pick<Parameters<typeof runScheduledOperations>[1], 'now'>> & Parameters<typeof runScheduledOperations>[1]): Promise<SafeJobRun> {
-  if (input.enabled === false || input.disabledJobs?.includes(job) || job === 'drive_archive' || job === 'feishu_sync') return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
+  const driveHardDisabled=job==='drive_archive' && (input.driveArchiveEnabled!==true
+    || input.driveArchiveCopyEnabled!==true || !input.storage || !input.driveAdapter);
+  if (input.enabled === false || input.disabledJobs?.includes(job) || driveHardDisabled || job === 'feishu_sync') return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
   const configured=await database.prepare('SELECT enabled FROM scheduled_job_states WHERE job_name=?').bind(job).first<{enabled:number}>();
   if (configured?.enabled===0) return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
   const token = `scheduled:${crypto.randomUUID()}`;
@@ -93,6 +96,20 @@ async function execute(database: SqlDatabase, job: ScheduledJobName, input: Para
   }
   if (job === 'staff_auth_cleanup') { const r = await cleanupExpiredStaffAuthEphemeralRecords(database, input.now, {limit:batchSize,dryRun:input.dryRun === true}); return { processed:r.staffLoginStatesDeleted+r.staffAuthRateLimitsDeleted, succeeded:r.staffLoginStatesDeleted+r.staffAuthRateLimitsDeleted, failed:0, backlog:r.hasMore ? batchSize+1 : 0 }; }
   if (job === 'file_orphan_cleanup') { if (!input.storage) return {processed:0,succeeded:0,failed:1,backlog:await countFileOrphanCleanupCandidates(database,input.now),failureCategory:'adapter_unavailable'}; const state=await database.prepare('SELECT cursor_json FROM scheduled_job_states WHERE job_name=?').bind(job).first<{cursor_json:string|null}>(); const cursor=parseFileCursor(state?.cursor_json); const r = await reconcileInstructionAssetOrphans(database, input.storage, {limit:batchSize,cursor,dryRun:input.dryRun === true,...(input.deadlineReached ? {deadlineReached:input.deadlineReached} : {})}, {actor, idempotencyKey:`scheduled:file-orphan:${Math.floor(input.now/60_000)}`, now:input.now}); return {processed:r.scanned,succeeded:r.deleted,failed:r.deferred,backlog:r.backlog_count,failureCategory:r.deferred?'file_cleanup_deferred':undefined,cursorJson:r.next_cursor ? JSON.stringify(r.next_cursor) : undefined}; }
+  if (job === 'drive_archive') {
+    if (!input.storage || !input.driveAdapter) return {processed:0,succeeded:0,failed:1,backlog:0,failureCategory:'adapter_unavailable'};
+    const result=await runDriveArchiveBatch(database,input.storage,input.driveAdapter,{
+      now:input.now,limit:batchSize,copyEnabled:input.driveArchiveCopyEnabled===true,
+      proxyReadEnabled:input.driveArchiveProxyReadEnabled===true,
+      r2DeleteEnabled:input.driveArchiveR2DeleteEnabled===true,dryRun:input.dryRun===true,
+      ...(input.deadlineReached?{deadlineReached:input.deadlineReached}:{}),
+    });
+    const reconciliation=input.deadlineReached?.()?{processed:0,succeeded:0,failed:0}
+      :await reconcileDriveArchiveBatch(database,input.driveAdapter,{now:input.now,limit:5});
+    return {processed:result.processed+reconciliation.processed,succeeded:result.succeeded+reconciliation.succeeded,
+      failed:result.failed+reconciliation.failed,backlog:result.backlog,
+      failureCategory:result.failed+reconciliation.failed>0?'job_item_failed':undefined};
+  }
   if (input.dryRun) { const c=await database.prepare("SELECT COUNT(*) AS count FROM integration_outbox o WHERE status IN ('PENDING','FAILED') AND available_at<=? AND NOT EXISTS(SELECT 1 FROM scheduled_dead_letters d WHERE d.source_kind='OUTBOX' AND d.source_id=o.id AND d.replay_status IN ('QUARANTINED','PROCESSING'))").bind(input.now).first<{count:number}>(); return {processed:0,succeeded:0,failed:0,backlog:Number(c?.count??0)}; }
   let processed=0; let succeeded=0; let failed=0; let category: 'adapter_unavailable'|'delivery_failed'|undefined;
   for (; processed<batchSize && !input.deadlineReached?.(); processed += 1) {

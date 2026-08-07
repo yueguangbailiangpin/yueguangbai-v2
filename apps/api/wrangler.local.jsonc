@@ -12,6 +12,10 @@
     "SCHEDULED_OPERATIONS_ENABLED": "false",
     "SCHEDULED_OPERATIONS_DISABLED_JOBS": "",
     "OPERATIONAL_ALERT_MODE": "disabled"
+    ,"DRIVE_ARCHIVE_ENABLED": "false"
+    ,"DRIVE_ARCHIVE_COPY_ENABLED": "false"
+    ,"DRIVE_ARCHIVE_PROXY_READ_ENABLED": "false"
+    ,"DRIVE_ARCHIVE_R2_DELETE_ENABLED": "false"
   },
   "d1_databases": [
     {

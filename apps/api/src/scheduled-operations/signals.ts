@@ -19,7 +19,7 @@ import { hashCanonicalJson } from '@ygb/domain';
 const MINUTE_MS=60_000;
 const JOB_SUCCESS_STALE_AFTER_MS=6*60*MINUTE_MS;
 const LEASE_STUCK_GRACE_MS=5*MINUTE_MS;
-const HARD_DISABLED_JOBS = new Set<ScheduledOperationJobName>(['drive_archive','feishu_sync']);
+const HARD_DISABLED_JOBS = new Set<ScheduledOperationJobName>(['feishu_sync']);
 
 interface SignalPolicy {
   category: ScheduledOperationalSignalCategory;
@@ -180,7 +180,7 @@ export async function evaluatePersistedScheduledJobSignals(
     results.push(await ingestDerived(database,input,{signalType:'job_stale',summaryCode:'JOB_SUCCESS_STALE',jobName:job.job_name,breach:input.now-baseline>=JOB_SUCCESS_STALE_AFTER_MS,countValue:1},input.sink));
     results.push(await ingestDerived(database,input,{signalType:'lease_stuck',summaryCode:'JOB_LEASE_STUCK',jobName:job.job_name,breach:job.lease_token!==null && job.lease_expires_at!==null && input.now-job.lease_expires_at>=LEASE_STUCK_GRACE_MS,countValue:1},input.sink));
     results.push(await ingestDerived(database,input,{signalType:'backlog_sustained',summaryCode:'JOB_BACKLOG_SUSTAINED',jobName:job.job_name,breach:job.last_backlog_count>0,countValue:job.last_backlog_count},input.sink));
-    if (job.job_name==='file_orphan_cleanup') results.push(await ingestDerived(database,input,{signalType:'file_failure',summaryCode:'FILE_PROCESSING_FAILURE',jobName:job.job_name,breach:job.last_failure_category==='file_cleanup_deferred',countValue:1},input.sink));
+    if (job.job_name==='file_orphan_cleanup'||job.job_name==='drive_archive') results.push(await ingestDerived(database,input,{signalType:'file_failure',summaryCode:'FILE_PROCESSING_FAILURE',jobName:job.job_name,breach:job.job_name==='file_orphan_cleanup'?job.last_failure_category==='file_cleanup_deferred':job.last_failure_category!==null,countValue:1},input.sink));
   }
   for (const global of GLOBAL_RECOVERY_SIGNALS) {
     const state=await readAlertState(database,global.signalType,'',global.summaryCode);
@@ -234,7 +234,7 @@ function policyFor(input: ScheduledOperationalSignalObservationDto): SignalPolic
       return policy('scheduler','WARNING','JOB_BACKLOG_SUSTAINED',3,30*MINUTE_MS,60*MINUTE_MS,'OBSERVATION');
     case 'file_failure':
       assertShape(input,'FILE_PROCESSING_FAILURE',true);
-      if (input.job_name!=='file_orphan_cleanup') throw new Error('invalid_scheduled_operational_signal_scope');
+      if (input.job_name!=='file_orphan_cleanup'&&input.job_name!=='drive_archive') throw new Error('invalid_scheduled_operational_signal_scope');
       return policy('file','WARNING','FILE_PROCESSING_FAILURE',3,30*MINUTE_MS,60*MINUTE_MS,'COUNT');
     case 'login_anomaly':
       assertShape(input,'LOGIN_ANOMALY_DETECTED',false);

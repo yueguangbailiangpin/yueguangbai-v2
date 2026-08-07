@@ -332,10 +332,10 @@ describe('Phase 4C3 route and schema guardrails', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(31);
+    expect(migrations).toHaveLength(32);
     expect(migrations[0]).toMatch(/^0001_/u);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-2)).toBe('0030_customer_multipersona_invitation_recovery.sql');
+    expect(migrations.at(-2)).toBe('0031_scheduled_operations.sql');
 
     const source = [
       'read-model.ts',

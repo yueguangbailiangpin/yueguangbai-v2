@@ -258,6 +258,11 @@ function registerLifecycleRoutes(
         ),
       },
       { actor: authority.actor, principal: authority.principal },
+      {
+        adapter: context.env.DRIVE_ARCHIVE_ADAPTER ?? null,
+        proxyReadEnabled: context.env.DRIVE_ARCHIVE_ENABLED === 'true'
+          && context.env.DRIVE_ARCHIVE_PROXY_READ_ENABLED === 'true',
+      },
     );
     return new Response(result.bytes, {
       status: 200,
@@ -265,6 +270,7 @@ function registerLifecycleRoutes(
         'Content-Type': result.contentType,
         'Content-Length': String(result.bytes.byteLength),
         'Cache-Control': 'no-store',
+        'Content-Disposition': 'inline',
         'X-Content-Type-Options': 'nosniff',
       },
     });

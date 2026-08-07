@@ -1,5 +1,6 @@
 import type {
   ObjectStorageAdapter,
+  DriveArchiveAdapter,
   ScheduledOperationCommandResultDto,
   ScheduledOperationDeadLetterReplayCommandDto,
   ScheduledOperationJobName,
@@ -30,7 +31,7 @@ import {
 } from './runner';
 
 const REPLAY_LEASE_MS=5*60*1000;
-const HARD_DISABLED_JOBS = new Set<ScheduledOperationJobName>(['drive_archive','feishu_sync']);
+const HARD_DISABLED_JOBS = new Set<ScheduledOperationJobName>(['feishu_sync']);
 
 export class ScheduledOperationCommandError extends Error {
   constructor(public readonly code: 'VALIDATION_ERROR'|'FORBIDDEN'|'NOT_FOUND'|'STATE_CONFLICT'|'IDEMPOTENCY_CONFLICT'|'REQUEST_IN_PROGRESS'|'DEPENDENCY_UNAVAILABLE', public readonly status: 400|403|404|409|503) { super(code); this.name='ScheduledOperationCommandError'; }
@@ -41,6 +42,11 @@ export interface ScheduledOperationCommandDependencies {
   disabledJobs?: readonly ScheduledOperationJobName[];
   storage?: ObjectStorageAdapter|null;
   outboxAdapter?: OutboxDeliveryAdapter|null;
+  driveAdapter?: DriveArchiveAdapter|null;
+  driveArchiveEnabled?: boolean;
+  driveArchiveCopyEnabled?: boolean;
+  driveArchiveProxyReadEnabled?: boolean;
+  driveArchiveR2DeleteEnabled?: boolean;
   afterReplayClaimed?: (()=>Promise<void>)|undefined;
 }
 
@@ -62,7 +68,7 @@ export async function runScheduledOperationManually(database: SqlDatabase, depen
   const commandId=crypto.randomUUID();
   try {
     await ensureJobAndCommand(database,{commandId,commandType:'RUN_JOB',jobName:input.jobName,targetId:input.jobName,reasonCode:command.reason_code,actor:context.actor,idempotencyKey:context.idempotencyKey,requestHash,requestId:context.requestId??null,now});
-    const runs=await runScheduledOperations(database,{only:input.jobName,trigger:'MANUAL',enabled:dependencies.enabled,...(dependencies.disabledJobs?{disabledJobs:dependencies.disabledJobs}:{}),storage:dependencies.storage??null,outboxAdapter:dependencies.outboxAdapter??null,now});
+    const runs=await runScheduledOperations(database,{only:input.jobName,trigger:'MANUAL',enabled:dependencies.enabled,...(dependencies.disabledJobs?{disabledJobs:dependencies.disabledJobs}:{}),storage:dependencies.storage??null,outboxAdapter:dependencies.outboxAdapter??null,driveAdapter:dependencies.driveAdapter??null,driveArchiveEnabled:dependencies.driveArchiveEnabled===true,driveArchiveCopyEnabled:dependencies.driveArchiveCopyEnabled===true,driveArchiveProxyReadEnabled:dependencies.driveArchiveProxyReadEnabled===true,driveArchiveR2DeleteEnabled:dependencies.driveArchiveR2DeleteEnabled===true,now});
     const run=runs[0];
     if (!run) throw new ScheduledOperationCommandError('DEPENDENCY_UNAVAILABLE',503);
     const result=parseResult({command_type:'RUN_JOB',job_name:input.jobName,reason_code:command.reason_code,outcome:run.outcome,run});

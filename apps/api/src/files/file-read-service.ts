@@ -1,5 +1,6 @@
 import type {
   FileActor,
+  DriveArchiveAdapter,
   FileLinkAuthorizationMode,
   FileReadIntentResult,
   FileReadPrincipal,
@@ -57,6 +58,11 @@ interface ReadableFileSource extends FileObjectRow {
   authorization_mode: FileLinkAuthorizationMode;
   link_expires_at: number | null;
   link_revoked_at: number | null;
+  archive_status: string | null;
+  drive_file_id: string | null;
+  archive_byte_size: number | null;
+  archive_mime_type: SupportedFileMime | null;
+  archive_sha256: string | null;
 }
 
 interface ReadIntentRow extends ReadableFileSource {
@@ -292,6 +298,10 @@ export async function consumeFileReadIntent(
     principal?: FileReadPrincipal;
     now?: number;
   },
+  coldArchive?: {
+    adapter: DriveArchiveAdapter | null;
+    proxyReadEnabled: boolean;
+  },
 ): Promise<{
   fileObjectId: string;
   contentType: SupportedFileMime;
@@ -331,10 +341,12 @@ export async function consumeFileReadIntent(
     now,
   );
 
-  const bytes = await storage.readObject(source.object_key)
-    .catch(() => {
-      throw new FileStorageError('DEPENDENCY_UNAVAILABLE', 503);
-    });
+  const archived = source.archive_status === 'DRIVE_ARCHIVED';
+  const bytes = archived
+    ? await readArchivedBytes(source, coldArchive)
+    : await storage.readObject(source.object_key).catch(() => {
+        throw new FileStorageError('DEPENDENCY_UNAVAILABLE', 503);
+      });
   if (source.uploaded_byte_size === null
     || source.detected_mime === null
     || source.uploaded_sha256 === null
@@ -419,11 +431,18 @@ async function requireReadableFile(
       link.authorization_mode,
       link.expires_at AS link_expires_at,
       link.revoked_at AS link_revoked_at
+      ,archive.status AS archive_status
+      ,archive.drive_file_id
+      ,manifest.byte_size AS archive_byte_size
+      ,manifest.mime_type AS archive_mime_type
+      ,manifest.sha256 AS archive_sha256
     FROM file_objects object
     JOIN file_upload_intents intent
       ON intent.id=object.upload_intent_id
     JOIN file_entity_links link
       ON link.file_object_id=object.id
+    LEFT JOIN file_drive_archives archive ON archive.file_object_id=object.id
+    LEFT JOIN file_drive_archive_manifests manifest ON manifest.file_object_id=object.id
     WHERE object.id=?
       AND object.status='VERIFIED'
       AND intent.status='VERIFIED'
@@ -468,6 +487,11 @@ async function requireReadIntent(
       read.token_hash,
       read.status AS read_status,
       read.expires_at AS read_expires_at
+      ,archive.status AS archive_status
+      ,archive.drive_file_id
+      ,manifest.byte_size AS archive_byte_size
+      ,manifest.mime_type AS archive_mime_type
+      ,manifest.sha256 AS archive_sha256
     FROM file_read_intents read
     JOIN file_objects object
       ON object.id=read.file_object_id
@@ -482,6 +506,8 @@ async function requireReadIntent(
         (read.file_entity_link_id IS NULL
           AND link.authorization_mode='LEGACY_VISIBILITY')
       )
+    LEFT JOIN file_drive_archives archive ON archive.file_object_id=object.id
+    LEFT JOIN file_drive_archive_manifests manifest ON manifest.file_object_id=object.id
     WHERE read.id=?
       AND object.status='VERIFIED'
       AND intent.status='VERIFIED'
@@ -492,6 +518,28 @@ async function requireReadIntent(
     throw new FileStorageError('FILE_READ_INTENT_NOT_FOUND', 404);
   }
   return row;
+}
+
+async function readArchivedBytes(
+  source: ReadIntentRow,
+  coldArchive: {adapter:DriveArchiveAdapter|null;proxyReadEnabled:boolean}|undefined,
+): Promise<Uint8Array<ArrayBuffer>> {
+  if (!coldArchive?.proxyReadEnabled || !coldArchive.adapter
+    || !source.drive_file_id || source.archive_byte_size === null
+    || source.archive_mime_type === null || source.archive_sha256 === null) {
+    throw new FileStorageError('DEPENDENCY_UNAVAILABLE',503);
+  }
+  const result=await coldArchive.adapter.readFile(source.drive_file_id).catch(()=>{
+    throw new FileStorageError('DEPENDENCY_UNAVAILABLE',503);
+  });
+  if (result.byteSize!==source.archive_byte_size
+    || result.mimeType!==source.archive_mime_type
+    || result.bytes.byteLength!==source.uploaded_byte_size
+    || detectSupportedMime(result.bytes)!==source.detected_mime
+    || await sha256Hex(result.bytes)!==source.archive_sha256) {
+    throw new FileStorageError('FILE_STORAGE_CONFLICT',409);
+  }
+  return result.bytes;
 }
 
 function resource(source: ReadableFileSource) {

@@ -16,7 +16,7 @@ export default {
     ctx.waitUntil((async()=>{
       const startedAt=Date.now();
       const deadlineReached=()=>Date.now()-startedAt>=SCHEDULED_HANDLER_TIME_BUDGET_MS;
-      await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,now,deadlineReached });
+      await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,driveAdapter:env.DRIVE_ARCHIVE_ADAPTER??null,driveArchiveEnabled:env.DRIVE_ARCHIVE_ENABLED==='true',driveArchiveCopyEnabled:env.DRIVE_ARCHIVE_COPY_ENABLED==='true',driveArchiveProxyReadEnabled:env.DRIVE_ARCHIVE_PROXY_READ_ENABLED==='true',driveArchiveR2DeleteEnabled:env.DRIVE_ARCHIVE_R2_DELETE_ENABLED==='true',now,deadlineReached });
       const evaluationId=await hashCanonicalJson({kind:'SCHEDULED_OPERATIONS_EVALUATION',scheduled_time:now});
       const sink=configuredAlertSink(env);
       await evaluatePersistedScheduledJobSignals(env.DB,{evaluationId,now,...(sink?{sink}:{})});
