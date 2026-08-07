@@ -488,17 +488,19 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(33);
+    expect(Number(state?.schema_version)).toBe(34);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(33);
+    expect(migrations).toHaveLength(34);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-3)).toBe('0031_scheduled_operations.sql');
+    expect(migrations.at(-3)).toBe('0032_google_drive_cold_image_archive.sql');
+    expect(migrations.at(-2)).toBe('0033_feishu_staff_workbench_poc.sql');
+    expect(migrations.at(-1)).toBe('0034_feishu_sync_dead_letter_categories.sql');
   });
 });
 
