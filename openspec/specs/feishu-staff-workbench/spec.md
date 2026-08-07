@@ -72,4 +72,3 @@ The system SHALL retry and dead-letter Feishu 429/5xx failures, SHALL expose syn
 
 - **WHEN** outbound sync and callbacks are disabled
 - **THEN** D1 tasks and Web operations continue and no deletion of a Feishu mirror deletes D1 facts.
-
