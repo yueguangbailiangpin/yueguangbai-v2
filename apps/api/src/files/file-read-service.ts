@@ -529,6 +529,14 @@ async function readArchivedBytes(
     || source.archive_mime_type === null || source.archive_sha256 === null) {
     throw new FileStorageError('DEPENDENCY_UNAVAILABLE',503);
   }
+  if (source.uploaded_byte_size === null
+    || source.detected_mime === null
+    || source.uploaded_sha256 === null
+    || source.uploaded_byte_size !== source.archive_byte_size
+    || source.detected_mime !== source.archive_mime_type
+    || source.uploaded_sha256 !== source.archive_sha256) {
+    throw new FileStorageError('FILE_STORAGE_CONFLICT',409);
+  }
   const result=await coldArchive.adapter.readFile(source.drive_file_id).catch(()=>{
     throw new FileStorageError('DEPENDENCY_UNAVAILABLE',503);
   });

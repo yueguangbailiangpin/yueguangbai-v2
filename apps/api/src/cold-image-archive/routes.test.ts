@@ -56,6 +56,26 @@ describe('Staff cold archive command routes',()=>{
     expect(body).toMatchObject({data:{rehydration:{status:'COMPLETED',file_object_id:settled.fileId}}});
     expect(JSON.stringify(body)).not.toMatch(/drive_file_id|object_key|mock-drive/u);
   });
+
+  it('rejects missing, extra, and mistyped fields on every privileged write route',async()=>{
+    database=createMigratedTestDatabase();const value=app(coldArchiveOwner);
+    const cases=[
+      ['/api/staff/operations/archive/orders/order-contract/close',
+        [{expected_version:0,not_applicable:[]},{expected_version:0,not_applicable:[],reason:'测试',extra:true},
+          {expected_version:'0',not_applicable:[],reason:'测试'}]],
+      ['/api/staff/operations/archive/orders/order-contract/reopen',
+        [{expected_version:1},{expected_version:1,reason:'测试',extra:true},{expected_version:'1',reason:'测试'}]],
+      ['/api/staff/operations/archive/files/file-contract/rehydrate',
+        [{},{expected_archive_version:1,extra:true},{expected_archive_version:'1'}]],
+    ] as const;
+    let index=0;
+    for(const [path,bodies] of cases){for(const body of bodies){index+=1;
+      const response=await value.request(`https://local${path}`,{method:'POST',headers:{'Content-Type':'application/json',
+        'Idempotency-Key':`route-contract-${index}`},body:JSON.stringify(body)},{DB:database});
+      expect(response.status,`${path}: ${JSON.stringify(body)}`).toBe(400);
+      expect(await response.json()).toMatchObject({error:{code:'VALIDATION_ERROR'}});
+    }}
+  });
 });
 
 function app(actor:typeof coldArchiveOwner){const value=new Hono<AppEnv>();value.use('*',async(context,next)=>{

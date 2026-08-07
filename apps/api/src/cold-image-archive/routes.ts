@@ -14,25 +14,29 @@ export function registerColdImageArchiveRoutes(app:Hono<AppEnv>):void{
   app.post('/api/staff/operations/archive/files/:id/rehydrate',withErrors(rehydrate));
 }
 async function closeOrder(context:Context<AppEnv>):Promise<Response>{
-  const actor=requireOwner(context);const body=record(await readBoundedJson(context.req.raw,BODY_LIMIT));
+  const actor=requireOwner(context);const body=exactRecord(await readBoundedJson(context.req.raw,BODY_LIMIT),
+    ['expected_version','not_applicable','reason']);
   const result=await recordOrderBusinessClosure(context.env.DB,{formalOrderId:context.req.param('id')??'',
     expectedVersion:integer(body['expected_version']),notApplicable:componentList(body['not_applicable']),
     reason:string(body['reason'])},{actor,idempotencyKey:idempotencyKey(context),requestId:context.get('requestId')});
   return context.json(apiSuccess({closure:result},context.get('requestId')));
 }
 async function reopenOrder(context:Context<AppEnv>):Promise<Response>{
-  const actor=requireOwner(context);const body=record(await readBoundedJson(context.req.raw,BODY_LIMIT));
+  const actor=requireOwner(context);const body=exactRecord(await readBoundedJson(context.req.raw,BODY_LIMIT),
+    ['expected_version','reason']);
   const result=await reopenOrderBusinessClosure(context.env.DB,{formalOrderId:context.req.param('id')??'',
     expectedVersion:integer(body['expected_version']),reason:string(body['reason'])},
     {actor,idempotencyKey:idempotencyKey(context),requestId:context.get('requestId')});
   return context.json(apiSuccess({closure:result},context.get('requestId')));
 }
 async function rehydrate(context:Context<AppEnv>):Promise<Response>{
-  const actor=requireOwner(context);const body=record(await readBoundedJson(context.req.raw,BODY_LIMIT));
+  const actor=requireOwner(context);const body=exactRecord(await readBoundedJson(context.req.raw,BODY_LIMIT),
+    ['expected_archive_version']);
+  const expectedArchiveVersion=integer(body['expected_archive_version']);
   const runtime=driveArchiveRuntime(context.env);const storage=context.env.FILE_OBJECT_STORAGE;
   if(!runtime.adapter||!storage)throw new ColdArchiveCommandError('DEPENDENCY_UNAVAILABLE',503);
   const result=await rehydrateArchivedFile(context.env.DB,storage,runtime.adapter,{fileObjectId:context.req.param('id')??'',
-    expectedArchiveVersion:integer(body['expected_archive_version'])},
+    expectedArchiveVersion},
     {actor,idempotencyKey:idempotencyKey(context),requestId:context.get('requestId')});
   return context.json(apiSuccess({rehydration:result},context.get('requestId')));
 }
@@ -41,6 +45,9 @@ function requireOwner(context:Context<AppEnv>){const actor=context.get('staffAut
   requirePermission(actor,'SCHEDULED_OPERATIONS_RUN');return actor;}
 function record(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))
   throw new ColdArchiveCommandError('VALIDATION_ERROR',400);return value as Record<string,unknown>;}
+function exactRecord(value:unknown,fields:readonly string[]):Record<string,unknown>{const body=record(value);const keys=Object.keys(body);
+  if(keys.length!==fields.length||keys.some((key)=>!fields.includes(key)))throw new ColdArchiveCommandError('VALIDATION_ERROR',400);
+  return body;}
 function integer(value:unknown):number{if(!Number.isSafeInteger(value))throw new ColdArchiveCommandError('VALIDATION_ERROR',400);return Number(value);}
 function string(value:unknown):string{if(typeof value!=='string')throw new ColdArchiveCommandError('VALIDATION_ERROR',400);return value;}
 function componentList(value:unknown):ArchiveComponent[]{if(!Array.isArray(value)||value.some((item)=>typeof item!=='string'))

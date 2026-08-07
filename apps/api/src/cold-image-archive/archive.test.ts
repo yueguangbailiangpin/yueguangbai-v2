@@ -108,6 +108,44 @@ describe('Drive cold archive safety pipeline with enforced production constraint
     expect(drive.readCalls).toBe(reads);
   });
 
+  it('fails closed before Drive read when source or immutable manifest metadata is tampered',async()=>{
+    database=createMigratedTestDatabase();const r2=new MockObjectStorage();const drive=new MockDriveArchiveAdapter();
+    const fixture=await seed(database,r2,'read-metadata');await enable(database,true);
+    const link=await database.prepare(`SELECT id FROM file_entity_links WHERE file_object_id=? AND entity_type='SELLER_SETTLEMENT'`)
+      .bind(fixture.fileId).first<{id:string}>();if(!link)throw new Error('missing_settlement_link');
+    const intent=await createFileReadIntent(database,allow,{fileObjectId:fixture.fileId,fileEntityLinkId:link.id,expectedFileVersion:2,ttlMs:60_000},
+      {actor:fileActor,principal:{type:'STAFF_SESSION',staffId:'cold-archive-owner'},idempotencyKey:'cold-read-metadata',now:fixture.dueAt-1});
+    if(!intent.accessToken)throw new Error('missing_read_token');await run(database,r2,drive,fixture.dueAt);
+    const facts=await database.prepare(`SELECT object.uploaded_byte_size,object.detected_mime,object.uploaded_sha256,
+      manifest.byte_size,manifest.mime_type,manifest.sha256 FROM file_objects object
+      JOIN file_drive_archive_manifests manifest ON manifest.file_object_id=object.id WHERE object.id=?`)
+      .bind(fixture.fileId).first<Record<string,unknown>>();if(!facts)throw new Error('missing_archive_facts');
+    await expect(database.prepare(`UPDATE file_drive_archive_manifests SET byte_size=byte_size+1 WHERE file_object_id=?`)
+      .bind(fixture.fileId).run()).rejects.toThrow('file_drive_archive_manifests_are_immutable');
+    database.exec(`DROP TRIGGER trg_file_drive_archive_manifests_no_update`);
+    const cases=[
+      ['file_objects','uploaded_byte_size',Number(facts['uploaded_byte_size'])+1,facts['uploaded_byte_size']],
+      ['file_objects','detected_mime','application/pdf',facts['detected_mime']],
+      ['file_objects','uploaded_sha256','0'.repeat(64),facts['uploaded_sha256']],
+      ['file_drive_archive_manifests','byte_size',Number(facts['byte_size'])+1,facts['byte_size']],
+      ['file_drive_archive_manifests','mime_type','application/pdf',facts['mime_type']],
+      ['file_drive_archive_manifests','sha256','0'.repeat(64),facts['sha256']],
+    ] as const;
+    for(const [table,column,tampered,original] of cases){
+      await database.prepare(`UPDATE ${table} SET ${column}=? WHERE ${table==='file_objects'?'id':'file_object_id'}=?`)
+        .bind(tampered,fixture.fileId).run();
+      const reads=drive.readCalls;
+      await expect(consumeFileReadIntent(database,r2,allow,{readIntentId:intent.readIntentId,accessToken:intent.accessToken},
+        {actor:fileActor,principal:{type:'STAFF_SESSION',staffId:'cold-archive-owner'},now:fixture.dueAt+1},
+        {adapter:drive,proxyReadEnabled:true})).rejects.toMatchObject({code:'FILE_STORAGE_CONFLICT',status:409});
+      expect(drive.readCalls).toBe(reads);
+      await database.prepare(`UPDATE ${table} SET ${column}=? WHERE ${table==='file_objects'?'id':'file_object_id'}=?`)
+        .bind(original,fixture.fileId).run();
+    }
+    expect(await database.prepare(`SELECT status,use_count FROM file_read_intents WHERE id=?`)
+      .bind(intent.readIntentId).first()).toEqual({status:'ISSUED',use_count:0});
+  });
+
   it('uses a lease so concurrent runners upload once and supports shadow mode',async()=>{
     database=createMigratedTestDatabase();const r2=new MockObjectStorage();const drive=new MockDriveArchiveAdapter();
     const fixture=await seed(database,r2,'concurrent');await enable(database,false);
