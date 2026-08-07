@@ -90,3 +90,14 @@
 - [ ] 中国大陆主要网络实测门户可用。
 - [ ] 真实导入先 PREVIEW、再人工审批。
 - [ ] 生产部署有显式授权和回滚方案。
+
+## I. Staff MCP 本地交付（M9）
+
+- [x] Staff-only 13 工具合同、schema、mock 和 protocol dry-run 通过。
+- [x] ACTIVE Staff、角色、Personal DENY、Team/Department 和资源 scope 每次调用重算。
+- [x] 微信号/单任务截图允许路径与 Credential/Secret/批量导出禁止路径通过。
+- [x] Prompt injection/OCR/客户文本不能扩工具、参数或权限。
+- [x] Immutable safe audit、重放/并发、限流和全局/逐工具 kill switch 通过。
+- [x] MCP 关闭不影响 D1/Web，Buyer/Seller MCP 未注册。
+- [x] 无需 0035 的 Migration 证据、回滚 Runbook 和本地验收矩阵完成。
+- [ ] 真实 OAuth、外部 AI 隐私批准、ChatGPT 注册和生产激活完成（必须按老板清单另行执行）。

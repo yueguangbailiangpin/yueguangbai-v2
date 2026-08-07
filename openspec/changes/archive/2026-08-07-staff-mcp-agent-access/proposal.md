@@ -12,6 +12,7 @@
 - 原始微信号/截图只在当前 Staff 权限和具体业务对象范围内返回，不做无目的批量导出。
 - 所有调用重新计算 D1 权限并记录 tool、actor、scope、business object、result、request ID 和时间。
 - 最终返款、结算、汇率、审核和正式状态仍要求员工打开受控 Web 点击确认。
+- 当前 Change 只交付 hard-disabled 的本地 server/adapter、OAuth 映射接口、mock、合同、测试和 runbook；不注册公开 MCP，不连接真实 OpenAI/ChatGPT，不部署。
 
 ## Non-Goals
 
@@ -27,11 +28,13 @@
 
 ## Dependencies
 
-依赖 API Contract alignment、Customer/Marketplace 稳定 Contract、Staff Operations Application Services 和正式 OpenAI/MCP 接入方式选择。实现时必须查验当时官方 OpenAI/MCP 认证、数据处理与工具安全文档，并完成隐私告知。
+依赖 API Contract alignment、Customer/Marketplace 稳定 Contract、Staff Operations Application Services 和正式 OpenAI/MCP 接入方式选择。实现时必须查验当时官方 OpenAI/MCP 认证、数据处理与工具安全文档。本 Change 记录隐私告知/审批和真实 OAuth 为外部激活 hard gate；不把未执行的外部批准声称为完成。
 
 ## Rollback Boundary
 
 MCP 有独立总开关和逐工具开关。停用后不影响 Web/D1。第一阶段只读/草稿工具不产生不可逆业务事实；若未来新增写工具必须独立 Change。
+
+当前连续 Migration 末号为 0034。inventory 证明既有 immutable `audit_events` 足以保存低敏调用审计；本地 binding、rate limit、replay 和 kill switch 通过 port/mock 验证，因此不虚构 0035。未来生产持久化需要必须由独立 Change 使用当时下一连续编号。
 
 ## Acceptance
 
