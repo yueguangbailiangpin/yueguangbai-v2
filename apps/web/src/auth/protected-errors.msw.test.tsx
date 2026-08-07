@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { delay, http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import '../test/msw/lifecycle';
 import { FrontendApiError, isFrontendApiError } from '../api/errors';
 import { type RequestIdentity } from '../api/identity-request';

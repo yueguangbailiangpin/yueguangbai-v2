@@ -6,7 +6,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router';
 import { BottomNavigation, IdentityShell } from '../../ui/primitives';
 
 export const BUYER_NAVIGATION = Object.freeze([

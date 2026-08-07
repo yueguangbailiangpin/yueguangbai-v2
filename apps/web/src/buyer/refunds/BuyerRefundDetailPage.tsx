@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { Card, PageHeader, StatusBadge } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys } from '../queries/keys';

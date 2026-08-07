@@ -10,7 +10,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
-} from 'react-router-dom';
+} from 'react-router';
 import { queryClient } from './api/query-client';
 import { CustomerChangePasswordPage } from './auth/customer/CustomerChangePasswordPage';
 import { CustomerLoginPage } from './auth/customer/CustomerLoginPage';

@@ -1,5 +1,5 @@
 import { ArrowRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { PageHeader, StatusBadge } from '../../ui/primitives';
 import { buyerApi } from '../api/client';

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { isFrontendApiError } from '../../api/errors';
 import { CUSTOMER_TRANSPORT_INVALIDATION_GROUP } from '../../auth/customer-transport-invalidation';
 import { customerAuthApi } from '../../auth/customer/customer-auth-api';

@@ -20,6 +20,7 @@ export * from './marketplace-money';
 export * from './order-evidence';
 export * from './order-instruction';
 export * from './pricing';
+export * from './production-readiness';
 export * from './product-application';
 export * from './reservation';
 export * from './review';

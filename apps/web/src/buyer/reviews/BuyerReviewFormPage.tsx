@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type FormEvent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Alert, Button, Card, FormField, PageHeader, TextInput } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
 import { identifierSchema } from '../contracts/runtime';

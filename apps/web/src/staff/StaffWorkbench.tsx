@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type FormEvent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { isFrontendApiError } from '../api/errors';
 import { StaffCustomerSecurityPanel } from '../auth/staff/StaffCustomerSecurityPanel';
 import { useFileUpload } from '../buyer/shared/useFileUpload';

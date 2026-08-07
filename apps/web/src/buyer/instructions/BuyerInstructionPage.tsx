@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 import { BuyerInstructionImageReadIntentAdapter } from '../../files/file-read-providers';
 import { Card, PageHeader, StatusBadge } from '../../ui/primitives';
 import { buyerApi } from '../api/client';

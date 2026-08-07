@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { BuyerReviewFileReadIntentAdapter } from '../../files/file-read-providers';
 import { Alert, Button, Card, Dialog, FormField, PageHeader, StatusBadge, TextInput } from '../../ui/primitives';
 import { buyerApi } from '../api/client';

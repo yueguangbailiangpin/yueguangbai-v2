@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Home, MessageSquareText, PackageSearch, ReceiptText, Settings } from 'lucide-react';
 import { createContext, useContext, useMemo, useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router';
 import { BottomNavigation, IdentityShell, Select } from '../../ui/primitives';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';

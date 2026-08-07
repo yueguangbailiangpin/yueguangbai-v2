@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Button, FormField, PageHeader, Select, TextInput } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys, formalOrderQuery, type FormalOrderPageParameters } from '../queries/keys';

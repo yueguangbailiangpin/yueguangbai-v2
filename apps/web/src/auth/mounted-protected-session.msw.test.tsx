@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router';
 import '../test/msw/lifecycle';
 import { FrontendApiError, isFrontendApiError } from '../api/errors';
 import { protectedResourcesApi } from '../api/protected-resources';

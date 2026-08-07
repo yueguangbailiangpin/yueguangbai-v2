@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { z } from 'zod';
 import { isFrontendApiError } from '../../api/errors';
 import { safeReturnPath } from '../../routes/return-path';

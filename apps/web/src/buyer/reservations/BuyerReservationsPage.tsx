@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { PageHeader, StatusBadge } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys, cursorQuery } from '../queries/keys';

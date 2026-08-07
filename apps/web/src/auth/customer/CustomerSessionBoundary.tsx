@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router';
 import { Button, DependencyUnavailable, LoadingState, RequestIdDisplay } from '../../ui/primitives';
 import { customerAuthApi, type CustomerAuthApiAdapter, type CustomerTarget } from './customer-auth-api';
 import { useCustomerSessionController } from './customer-session-controller';

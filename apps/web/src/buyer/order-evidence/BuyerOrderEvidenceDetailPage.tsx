@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { BuyerOrderEvidenceFileReadIntentAdapter } from '../../files/file-read-providers';
 import { Alert, Button, Card, Dialog, FormField, PageHeader, StatusBadge, TextInput } from '../../ui/primitives';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { buyerApi } from '../api/client';
 import { dateOnlySchema, type OrderEvidence } from '../contracts/runtime';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';

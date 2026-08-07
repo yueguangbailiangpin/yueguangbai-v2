@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 import { Button, Card, Dialog, PageHeader, StatusBadge } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';

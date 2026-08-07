@@ -1,6 +1,6 @@
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Clock3 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { isFrontendApiError } from '../../api/errors';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys } from '../queries/keys';

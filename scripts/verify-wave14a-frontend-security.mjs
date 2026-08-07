@@ -866,7 +866,7 @@ requireText(primitives, [
   "aria-live={tone === 'danger' ? 'assertive' : 'polite'}",
   "role={tone === 'danger' ? 'alert' : 'status'}",
   "aria-current={page === currentPage ? 'page' : undefined}",
-  "import { NavLink } from 'react-router-dom'",
+  "import { NavLink } from 'react-router'",
   'aria-label={collapsed ? item.label : undefined}',
 ], 'accessible shared UI primitive behavior');
 requireText(primitiveTests, [

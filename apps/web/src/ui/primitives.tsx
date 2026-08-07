@@ -18,7 +18,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router';
 
 function classes(...values: (string | false | null | undefined)[]): string {
   return values.filter(Boolean).join(' ');
