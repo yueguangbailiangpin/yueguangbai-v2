@@ -5,7 +5,7 @@ export const SCHEDULED_OPERATION_JOB_NAMES = [
 export type ScheduledOperationJobName = typeof SCHEDULED_OPERATION_JOB_NAMES[number];
 export const SCHEDULED_OPERATION_OUTCOMES = ['SUCCEEDED','PARTIAL','FAILED','SKIPPED','DISABLED'] as const;
 export type ScheduledOperationOutcome = typeof SCHEDULED_OPERATION_OUTCOMES[number];
-export const SCHEDULED_OPERATION_FAILURE_CATEGORIES = ['adapter_unavailable','delivery_failed','file_cleanup_deferred','reservation_expiry_failed','job_item_failed','job_execution_failed','lease_lost','dependency_unavailable','login_anomaly','worker_5xx'] as const;
+export const SCHEDULED_OPERATION_FAILURE_CATEGORIES = ['adapter_unavailable','delivery_failed','provider_rate_limited','provider_unavailable','contract_rejected','file_cleanup_deferred','reservation_expiry_failed','job_item_failed','job_execution_failed','lease_lost','dependency_unavailable','login_anomaly','worker_5xx'] as const;
 export type ScheduledOperationFailureCategory = typeof SCHEDULED_OPERATION_FAILURE_CATEGORIES[number];
 export const SCHEDULED_OPERATION_CAPABILITY_SCOPES = ['ALL_ENABLED_MARKETPLACES','LEGACY_JP_ONLY','HARD_DISABLED'] as const;
 export type ScheduledOperationCapabilityScope = typeof SCHEDULED_OPERATION_CAPABILITY_SCOPES[number];
@@ -63,7 +63,7 @@ export interface ScheduledOperationManualRunResultDto {
 }
 export interface ScheduledOperationDeadLetterReplayResultDto {
   command_type: 'REPLAY_DEAD_LETTER';
-  job_name: 'outbox_delivery';
+  job_name: 'outbox_delivery'|'feishu_sync';
   reason_code: ScheduledOperationReasonCode;
   outcome: 'SUCCEEDED'|'DISABLED';
   dead_letter_id: string;
@@ -163,8 +163,8 @@ export function parseScheduledOperationCommandResultDto(value: unknown): Schedul
     return {command_type:'RUN_JOB',job_name:record['job_name'],reason_code:record['reason_code'],outcome:record['outcome'],run};
   }
   const record=exactRecord(value,['command_type','job_name','reason_code','outcome','dead_letter_id','event_id']);
-  if (record['command_type']!=='REPLAY_DEAD_LETTER' || record['job_name']!=='outbox_delivery' || !published(record['reason_code'],SCHEDULED_OPERATION_REASON_CODES) || (record['outcome']!=='SUCCEEDED' && record['outcome']!=='DISABLED') || !safeIdentifier(record['dead_letter_id']) || !safeIdentifier(record['event_id'])) throw new Error('invalid_scheduled_operation_result');
-  return {command_type:'REPLAY_DEAD_LETTER',job_name:'outbox_delivery',reason_code:record['reason_code'],outcome:record['outcome'],dead_letter_id:record['dead_letter_id'],event_id:record['event_id']};
+  if (record['command_type']!=='REPLAY_DEAD_LETTER' || (record['job_name']!=='outbox_delivery'&&record['job_name']!=='feishu_sync') || !published(record['reason_code'],SCHEDULED_OPERATION_REASON_CODES) || (record['outcome']!=='SUCCEEDED' && record['outcome']!=='DISABLED') || !safeIdentifier(record['dead_letter_id']) || !safeIdentifier(record['event_id'])) throw new Error('invalid_scheduled_operation_result');
+  return {command_type:'REPLAY_DEAD_LETTER',job_name:record['job_name'],reason_code:record['reason_code'],outcome:record['outcome'],dead_letter_id:record['dead_letter_id'],event_id:record['event_id']};
 }
 export function parseScheduledOperationalSignalObservationDto(value: unknown): ScheduledOperationalSignalObservationDto {
   const record=exactRecord(value,['observation_id','signal_type','summary_code','job_name','observation_state','observed_at','count_value']);

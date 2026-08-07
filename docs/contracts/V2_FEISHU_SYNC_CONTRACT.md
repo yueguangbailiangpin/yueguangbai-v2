@@ -17,7 +17,9 @@
 
 不得包含完整客户资料、微信号、订单/来源 ID、截图、凭证、财务金额、对象键、Drive ID、token、secret 或任意裸链接。adapter 必须按负责人最小可见范围投递，不能把团队外或跨组织任务广播给其他员工。
 
-`feishu_sync` 只消费 `STAFF_WORK_ITEM` Outbox；现有通用 Outbox delivery 排除这一 aggregate。每次同步读取当前 D1 work item，持久化镜像键与镜像版本到 `feishu_workbench_mirrors`。429、服务不可用和合同错误分别归类为 `provider_rate_limited`、`provider_unavailable`、`contract_rejected`，使用既有 bounded retry/dead-letter；业务命令不等待同步成功。
+`feishu_sync` 只消费 `STAFF_WORK_ITEM` Outbox；现有通用 Outbox delivery 排除这一 aggregate。每次同步重新读取当前 D1 work item，持久化镜像键与镜像版本到 `feishu_workbench_mirrors`。OPEN 正常创建/更新镜像；从未有镜像的 `COMPLETED`/`CANCELLED` 项只安全消费事件，不创建新卡片；已有镜像仍同步终态以关闭卡片。
+
+adapter 的第三个入参是稳定的外部幂等键，且必须等于 `work_item_id`。即使 Provider 已成功而 D1 镜像提交失败，重试也是同一 Provider 对象的 upsert，绝不重复创建。429、服务不可用和合同错误分别归类为 `provider_rate_limited`、`provider_unavailable`、`contract_rejected`；第 5 次失败将该事件以 `job_name=feishu_sync`、`source_kind=OUTBOX` 隔离进既有 `scheduled_dead_letters`，之后不再 claim。具备既有 owner 权限与幂等命令保护的重放只能把该记录恢复给 `feishu_sync`；通用 Outbox adapter 永远不能消费它。
 
 ## 飞书 → D1 回调
 
@@ -36,9 +38,13 @@
 }
 ```
 
-回调 Header 必须提供 `X-Feishu-Workbench-Timestamp`、`X-Feishu-Workbench-Nonce`、`X-Feishu-Workbench-Signature`。签名为 `HMAC-SHA-256(secret, "timestamp.nonce.sha256(raw-body)")`，时间窗为五分钟。已验签的 event ID、nonce hash、payload hash 与结果存入 `feishu_workbench_callback_receipts`；重复 event 返回幂等结果，处理中返回 `IN_PROGRESS`，nonce 或载荷不一致拒绝。
+回调 Header 必须提供 `X-Feishu-Workbench-Timestamp`、`X-Feishu-Workbench-Nonce`、`X-Feishu-Workbench-Signature`。签名为 `HMAC-SHA-256(secret, "timestamp.nonce.sha256(raw-body)")`，时间窗为五分钟。完全相同且已成功的 event 返回原已提交结果，处理中返回 `IN_PROGRESS`，过期租约可被同一哈希安全接管；相同 event 但 nonce/payload hash 不同、或同 nonce 对应不同 event 均固定以 `401 UNAUTHENTICATED` 拒绝，绝不伪装成幂等成功。
 
-服务端只根据 `(tenant_key, open_id)` 找到 ACTIVE 的 `feishu_staff_identities`，再重新计算 D1 ACTIVE、角色、Personal DENY、Team 与 data scope。绝不信任回调内或 Header 内的 Staff ID、role、permission、scope。最终调用既有 `reassignWorkItem`，携带 event-derived idempotency key 和 `expected_version`；未知/停用/无权/跨范围/冲突均 fail closed。
+服务端只根据 `(tenant_key, open_id)` 找到 ACTIVE 的 `feishu_staff_identities`，再重新计算 D1 ACTIVE、角色、Personal DENY、Team 与 data scope。绝不信任回调内或 Header 内的 Staff ID、role、permission、scope。最终调用既有 `reassignWorkItem`，携带 event-derived idempotency key 和 `expected_version`；未知/停用/无权/跨范围/冲突均 fail closed。版本冲突不改业务事实，但会以 `staff-work-item:{id}:feishu-reconcile:v{currentVersion}` 写入最小 `STAFF_WORK_ITEM` reconciliation Outbox，下一轮只从 D1 读取快照收敛镜像。
+
+## HTTP 与迁移审计
+
+公开 callback 在读取前以 16 KiB 原始 UTF-8 body 上限流式限制，随后对同一原文验 HMAC；超长、编码或严格字段错误只返回中文安全错误且 `Cache-Control: no-store`。本次修复不新增 Migration：0031 已为 `feishu_sync` 建立作业状态与死信外键，0033 已有回调/镜像事实表；行为只使用既有字段和约束，可由 `db:verify` 与 migration guards 核验。
 
 ## 回滚
 

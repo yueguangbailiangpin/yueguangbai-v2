@@ -37,7 +37,12 @@ export interface FeishuWorkbenchCallbackResultDto {
 }
 
 export interface FeishuWorkbenchAdapter {
-  upsertTask(input: FeishuWorkbenchTaskSummaryDto, previousMirrorKey: string | null): Promise<{
+  /**
+   * `external_idempotency_key` is always the immutable D1 `work_item_id`.
+   * A provider success followed by a D1 mirror-write failure is therefore
+   * retried as an upsert of the same provider object, never as a new task.
+   */
+  upsertTask(input: FeishuWorkbenchTaskSummaryDto, previousMirrorKey: string | null, external_idempotency_key: string): Promise<{
     mirror_key: string;
     adapter_version: number;
   }>;

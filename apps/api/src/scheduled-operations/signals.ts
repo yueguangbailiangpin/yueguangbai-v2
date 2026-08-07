@@ -19,7 +19,6 @@ import { hashCanonicalJson } from '@ygb/domain';
 const MINUTE_MS=60_000;
 const JOB_SUCCESS_STALE_AFTER_MS=6*60*MINUTE_MS;
 const LEASE_STUCK_GRACE_MS=5*MINUTE_MS;
-const HARD_DISABLED_JOBS = new Set<ScheduledOperationJobName>(['feishu_sync']);
 
 interface SignalPolicy {
   category: ScheduledOperationalSignalCategory;
@@ -169,13 +168,13 @@ export async function ingestScheduledOperationalSignal(
 
 export async function evaluatePersistedScheduledJobSignals(
   database: SqlDatabase,
-  input: {evaluationId:string;now:number;sink?:OperationalAlertSink|null},
+  input: {evaluationId:string;now:number;sink?:OperationalAlertSink|null;disabledJobs?:readonly ScheduledOperationJobName[]},
 ): Promise<OperationalSignalEvaluationResult[]> {
   if (!/^[0-9a-f]{64}$/u.test(input.evaluationId) || !Number.isSafeInteger(input.now) || input.now<0) throw new Error('invalid_scheduled_operational_evaluation');
   const jobs=await database.prepare(`SELECT job_name,lease_token,lease_expires_at,last_started_at,last_succeeded_at,last_failure_category,last_backlog_count,updated_at FROM scheduled_job_states WHERE enabled=1 ORDER BY job_name`).all<{job_name:ScheduledOperationJobName;lease_token:string|null;lease_expires_at:number|null;last_started_at:number|null;last_succeeded_at:number|null;last_failure_category:string|null;last_backlog_count:number;updated_at:number}>();
   const results: OperationalSignalEvaluationResult[]=[];
   for (const job of jobs.results) {
-    if (HARD_DISABLED_JOBS.has(job.job_name)) continue;
+    if (input.disabledJobs?.includes(job.job_name)) continue;
     const baseline=job.last_succeeded_at??job.last_started_at??job.updated_at;
     results.push(await ingestDerived(database,input,{signalType:'job_stale',summaryCode:'JOB_SUCCESS_STALE',jobName:job.job_name,breach:input.now-baseline>=JOB_SUCCESS_STALE_AFTER_MS,countValue:1},input.sink));
     results.push(await ingestDerived(database,input,{signalType:'lease_stuck',summaryCode:'JOB_LEASE_STUCK',jobName:job.job_name,breach:job.lease_token!==null && job.lease_expires_at!==null && input.now-job.lease_expires_at>=LEASE_STUCK_GRACE_MS,countValue:1},input.sink));

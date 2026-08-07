@@ -92,21 +92,26 @@ export async function replayScheduledDeadLetter(database: SqlDatabase, dependenc
   const acquired=await acquire(database,{actor:context.actor,idempotencyKey:context.idempotencyKey,requestHash,action:'SCHEDULED_OPERATION_DEAD_LETTER_REPLAY',targetType:'SCHEDULED_DEAD_LETTER',targetId:deadLetterId,now});
   if (acquired.kind==='REPLAY') return parseResult(acquired.response);
   const commandId=crypto.randomUUID();
+  let jobName: 'outbox_delivery'|'feishu_sync'='outbox_delivery';
   try {
-    await ensureJobAndCommand(database,{commandId,commandType:'REPLAY_DEAD_LETTER',jobName:'outbox_delivery',targetId:deadLetterId,reasonCode:command.reason_code,actor:context.actor,idempotencyKey:context.idempotencyKey,requestHash,requestId:context.requestId??null,now});
-    if (!await jobEnabled(database,'outbox_delivery',dependencies)) {
-      const disabled=parseResult({command_type:'REPLAY_DEAD_LETTER',job_name:'outbox_delivery',reason_code:command.reason_code,outcome:'DISABLED',dead_letter_id:deadLetterId,event_id:command.event_id});
+    const target=await database.prepare("SELECT job_name FROM scheduled_dead_letters WHERE id=? AND source_kind='OUTBOX' AND source_id=? AND job_name IN ('outbox_delivery','feishu_sync')").bind(deadLetterId,command.event_id).first<{job_name:'outbox_delivery'|'feishu_sync'}>();
+    if(!target) throw new ScheduledOperationCommandError('NOT_FOUND',404);
+    jobName=target.job_name;
+    await ensureJobAndCommand(database,{commandId,commandType:'REPLAY_DEAD_LETTER',jobName,targetId:deadLetterId,reasonCode:command.reason_code,actor:context.actor,idempotencyKey:context.idempotencyKey,requestHash,requestId:context.requestId??null,now});
+    if (!await jobEnabled(database,jobName,dependencies)) {
+      const disabled=parseResult({command_type:'REPLAY_DEAD_LETTER',job_name:jobName,reason_code:command.reason_code,outcome:'DISABLED',dead_letter_id:deadLetterId,event_id:command.event_id});
       await completeCommand(database,{commandId,claim:acquired.claim,result:disabled,actor:context.actor,requestId:context.requestId??null,idempotencyKey:context.idempotencyKey,reasonCode:command.reason_code,targetId:deadLetterId,now});
       return disabled;
     }
     const replayToken=`dead-letter-replay:${crypto.randomUUID()}`;
-    const claimed=await database.prepare(`UPDATE scheduled_dead_letters SET replay_status='PROCESSING',replay_lease_token=?,replay_lease_expires_at=?,replay_version=replay_version+1 WHERE id=? AND job_name='outbox_delivery' AND source_kind='OUTBOX' AND source_id=? AND (replay_status='QUARANTINED' OR (replay_status='PROCESSING' AND replay_lease_expires_at<=?)) AND EXISTS(SELECT 1 FROM integration_outbox event WHERE event.id=scheduled_dead_letters.source_id AND event.status IN ('PENDING','FAILED') AND event.sent_at IS NULL) RETURNING source_id`).bind(replayToken,now+REPLAY_LEASE_MS,deadLetterId,command.event_id,now).first<{source_id:string}>();
+    const aggregateCondition=jobName==='feishu_sync'?"event.aggregate_type='STAFF_WORK_ITEM'":"event.aggregate_type<>'STAFF_WORK_ITEM'";
+    const claimed=await database.prepare(`UPDATE scheduled_dead_letters SET replay_status='PROCESSING',replay_lease_token=?,replay_lease_expires_at=?,replay_version=replay_version+1 WHERE id=? AND job_name=? AND source_kind='OUTBOX' AND source_id=? AND (replay_status='QUARANTINED' OR (replay_status='PROCESSING' AND replay_lease_expires_at<=?)) AND EXISTS(SELECT 1 FROM integration_outbox event WHERE event.id=scheduled_dead_letters.source_id AND event.status IN ('PENDING','FAILED') AND event.sent_at IS NULL AND ${aggregateCondition}) RETURNING source_id`).bind(replayToken,now+REPLAY_LEASE_MS,deadLetterId,jobName,command.event_id,now).first<{source_id:string}>();
     if (!claimed) {
       const processing=await database.prepare("SELECT replay_lease_expires_at FROM scheduled_dead_letters WHERE id=? AND source_kind='OUTBOX' AND source_id=? AND replay_status='PROCESSING'").bind(deadLetterId,command.event_id).first<{replay_lease_expires_at:number}>();
       throw processing && processing.replay_lease_expires_at>now ? new ScheduledOperationCommandError('REQUEST_IN_PROGRESS',409) : new ScheduledOperationCommandError('NOT_FOUND',404);
     }
     await dependencies.afterReplayClaimed?.();
-    const result=parseResult({command_type:'REPLAY_DEAD_LETTER',job_name:'outbox_delivery',reason_code:command.reason_code,outcome:'SUCCEEDED',dead_letter_id:deadLetterId,event_id:claimed.source_id});
+    const result=parseResult({command_type:'REPLAY_DEAD_LETTER',job_name:jobName,reason_code:command.reason_code,outcome:'SUCCEEDED',dead_letter_id:deadLetterId,event_id:claimed.source_id});
     await database.batch([
       database.prepare("UPDATE scheduled_dead_letters SET replay_status='REPLAYED',replay_lease_token=NULL,replay_lease_expires_at=NULL,replayed_at=?,replayed_by_staff_id=?,replay_request_id=?,replay_idempotency_key=?,replay_version=replay_version+1 WHERE id=? AND source_id=? AND replay_status='PROCESSING' AND replay_lease_token=?").bind(now,context.actor.staffId,context.requestId??null,context.idempotencyKey,deadLetterId,claimed.source_id,replayToken),
       changedOnce(database),
@@ -116,7 +121,7 @@ export async function replayScheduledDeadLetter(database: SqlDatabase, dependenc
     ]);
     return result;
   } catch (error) {
-    await failCommand(database,{commandId,commandType:'REPLAY_DEAD_LETTER',jobName:'outbox_delivery',targetId:deadLetterId,reasonCode:command.reason_code,actor:context.actor,requestId:context.requestId??null,idempotencyKey:context.idempotencyKey,now}).catch(()=>undefined);
+    await failCommand(database,{commandId,commandType:'REPLAY_DEAD_LETTER',jobName,targetId:deadLetterId,reasonCode:command.reason_code,actor:context.actor,requestId:context.requestId??null,idempotencyKey:context.idempotencyKey,now}).catch(()=>undefined);
     await markIdempotencyFailed(database,acquired.claim,safeErrorCode(error),now).catch(()=>false);
     throw normalize(error);
   }

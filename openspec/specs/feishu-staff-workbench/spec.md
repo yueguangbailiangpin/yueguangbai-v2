@@ -1,20 +1,20 @@
 # feishu-staff-workbench Specification
 
 ## Purpose
-TBD - created by archiving change feishu-staff-workbench-poc. Update Purpose after archive.
+在保持 D1 为员工身份、权限和任务唯一事实的前提下，提供默认硬关闭、无真实网络的飞书员工工作台本地 adapter/mock：仅镜像最小任务摘要与受控深链接，并将低风险回调重新授权后路由到既有 D1 命令。
 ## Requirements
 ### Requirement: Anonymous PoC gates real Feishu integration
 
-The system SHALL verify current Feishu free-plan OAuth, task/workbench, callback, deep-link, administrator and quota behavior using anonymous data before any real Staff or Customer data is synchronized, and SHALL record the tested API/version and observed limits.
+The system SHALL keep real Feishu integration disabled until the final business owner verifies current free-plan OAuth, task/workbench, callback, deep-link, administrator and quota behavior using anonymous data, and records the tested API/version and observed limits.
 
 #### Scenario: PoC passes
 
-- **WHEN** every required capability works with the approved tenant configuration and anonymous fixtures
+- **WHEN** the final business owner records every required capability working with the approved tenant configuration and anonymous fixtures
 - **THEN** the production Adapter contract may be frozen with evidence and capacity estimates.
 
 #### Scenario: Capability or quota is insufficient
 
-- **WHEN** a required action, permission or expected workload is unsupported
+- **WHEN** a required action, permission or expected workload is unsupported, or no owner evidence exists
 - **THEN** real integration remains disabled and the design is reduced or an explicit plan decision is requested.
 
 ### Requirement: D1 remains identity, permission and task authority

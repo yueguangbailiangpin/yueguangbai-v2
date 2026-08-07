@@ -3,4 +3,45 @@ import type { Hono } from 'hono';
 import { handleFeishuWorkbenchCallback, FeishuWorkbenchCallbackError, verifyFeishuWorkbenchSignature } from './callback';
 import { feishuWorkbenchRuntime } from './runtime';
 
-export function registerFeishuWorkbenchRoutes(app:Hono<any>):void{app.post('/api/feishu-workbench/callback',async(context)=>{const runtime=feishuWorkbenchRuntime(context.env);const requestId=String(context.get('requestId')??crypto.randomUUID());try{if(!runtime.callbackEnabled)throw new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);const body=await context.req.text();let parsed:unknown;try{parsed=JSON.parse(body);}catch{throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR',400);}const verified=await verifyFeishuWorkbenchSignature({secret:runtime.callbackSecret,signature:context.req.header('X-Feishu-Workbench-Signature')??null,timestamp:context.req.header('X-Feishu-Workbench-Timestamp')??null,nonce:context.req.header('X-Feishu-Workbench-Nonce')??null,body,now:Date.now()});const result=await handleFeishuWorkbenchCallback(context.env.DB,{body:parsed,nonceHash:verified.nonceHash,payloadHash:verified.payloadHash,now:Date.now(),requestId});return context.json(apiSuccess({callback:result},requestId));}catch(error){const normalized=error instanceof FeishuWorkbenchCallbackError?error:new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);const messages={VALIDATION_ERROR:'回调参数不正确',UNAUTHENTICATED:'回调验证失败',FORBIDDEN:'无权执行该操作',NOT_FOUND:'资源不存在',VERSION_CONFLICT:'数据已发生变化，请刷新后重试',DEPENDENCY_UNAVAILABLE:'服务暂时不可用，请稍后重试'} as const;return context.json(apiFailure(normalized.code,messages[normalized.code],requestId),normalized.status);}});}
+const MAX_CALLBACK_BODY_BYTES=16*1024;
+
+export function registerFeishuWorkbenchRoutes(app:Hono<any>):void {
+  app.post('/api/feishu-workbench/callback',async(context)=>{
+    const runtime=feishuWorkbenchRuntime(context.env);
+    const requestId=String(context.get('requestId')??crypto.randomUUID());
+    try {
+      if(!runtime.callbackEnabled) throw new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);
+      const body=await readBoundedUtf8Body(context.req.raw,MAX_CALLBACK_BODY_BYTES);
+      let parsed:unknown;
+      try { parsed=JSON.parse(body); } catch { throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR',400); }
+      const verified=await verifyFeishuWorkbenchSignature({secret:runtime.callbackSecret,signature:context.req.header('X-Feishu-Workbench-Signature')??null,timestamp:context.req.header('X-Feishu-Workbench-Timestamp')??null,nonce:context.req.header('X-Feishu-Workbench-Nonce')??null,body,now:Date.now()});
+      const result=await handleFeishuWorkbenchCallback(context.env.DB,{body:parsed,nonceHash:verified.nonceHash,payloadHash:verified.payloadHash,now:Date.now(),requestId});
+      return context.json(apiSuccess({callback:result},requestId));
+    } catch(error) {
+      const normalized=error instanceof FeishuWorkbenchCallbackError?error:new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);
+      const messages={VALIDATION_ERROR:'回调参数不正确',UNAUTHENTICATED:'回调验证失败',FORBIDDEN:'无权执行该操作',NOT_FOUND:'资源不存在',VERSION_CONFLICT:'数据已发生变化，请刷新后重试',DEPENDENCY_UNAVAILABLE:'服务暂时不可用，请稍后重试'} as const;
+      return context.json(apiFailure(normalized.code,messages[normalized.code],requestId),normalized.status);
+    }
+  });
+}
+
+async function readBoundedUtf8Body(request:Request,maximum:number):Promise<string> {
+  const length=request.headers.get('content-length');
+  if(length!==null&&(!/^\d+$/u.test(length)||Number(length)>maximum)) throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR',400);
+  if(!request.body) return '';
+  const reader=request.body.getReader();
+  const chunks:Uint8Array[]=[];
+  let size=0;
+  try {
+    while(true) {
+      const next=await reader.read();
+      if(next.done) break;
+      size+=next.value.byteLength;
+      if(size>maximum) { await reader.cancel(); throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR',400); }
+      chunks.push(next.value);
+    }
+  } finally { reader.releaseLock(); }
+  const raw=new Uint8Array(size); let offset=0;
+  for(const chunk of chunks) { raw.set(chunk,offset); offset+=chunk.byteLength; }
+  try { return new TextDecoder('utf-8',{fatal:true}).decode(raw); } catch { throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR',400); }
+}

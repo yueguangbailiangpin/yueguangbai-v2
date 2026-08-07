@@ -4,16 +4,16 @@
 
 ### Requirement: Anonymous PoC gates real Feishu integration
 
-The system SHALL verify current Feishu free-plan OAuth, task/workbench, callback, deep-link, administrator and quota behavior using anonymous data before any real Staff or Customer data is synchronized, and SHALL record the tested API/version and observed limits.
+The system SHALL keep real Feishu integration disabled until the final business owner verifies current free-plan OAuth, task/workbench, callback, deep-link, administrator and quota behavior using anonymous data, and records the tested API/version and observed limits.
 
 #### Scenario: PoC passes
 
-- **WHEN** every required capability works with the approved tenant configuration and anonymous fixtures
+- **WHEN** the final business owner records every required capability working with the approved tenant configuration and anonymous fixtures
 - **THEN** the production Adapter contract may be frozen with evidence and capacity estimates.
 
 #### Scenario: Capability or quota is insufficient
 
-- **WHEN** a required action, permission or expected workload is unsupported
+- **WHEN** a required action, permission or expected workload is unsupported, or no owner evidence exists
 - **THEN** real integration remains disabled and the design is reduced or an explicit plan decision is requested.
 
 ### Requirement: D1 remains identity, permission and task authority

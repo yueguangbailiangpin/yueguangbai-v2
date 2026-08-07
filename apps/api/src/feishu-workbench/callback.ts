@@ -3,6 +3,7 @@ import { hashCanonicalJson } from '@ygb/domain';
 import { resolveAssignmentStaffAuthorization } from '../staff-assignment/effective-authorization';
 import { reassignWorkItem } from '../staff-assignment/reassignment-service';
 import { StaffAssignmentError } from '../staff-assignment/errors';
+import { prepareStaffAssignmentOutboxStatements } from '../staff-assignment/outbox';
 
 const WINDOW_MS=5*60*1000;
 const LEASE_MS=60_000;
@@ -23,6 +24,7 @@ export async function handleFeishuWorkbenchCallback(database:SqlDatabase,input:{
   let callback;try{callback=parseFeishuWorkbenchCallbackDto(input.body);}catch{throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR',400);}
   if(callback.event_id.length<8) throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR',400);
   const claim=await claimReceipt(database,{eventId:callback.event_id,nonceHash:input.nonceHash,payloadHash:input.payloadHash,now:input.now});
+  if(claim.kind==='MISMATCH') throw new FeishuWorkbenchCallbackError('UNAUTHENTICATED',401);
   if(claim.kind==='DUPLICATE') return claim.result;
   if(claim.kind==='IN_PROGRESS') return {outcome:'IN_PROGRESS',work_item_id:null,version:null};
   try{
@@ -36,6 +38,7 @@ export async function handleFeishuWorkbenchCallback(database:SqlDatabase,input:{
     return response;
   }catch(error){
     const normalized=normalize(error);
+    if (normalized.code==='VERSION_CONFLICT') await enqueueReconciliation(database,callback.work_item_id,input.now);
     const failureCode=normalized.code==='FORBIDDEN'||normalized.code==='NOT_FOUND'||normalized.code==='VERSION_CONFLICT'
       ? normalized.code : 'DEPENDENCY_UNAVAILABLE';
     await finishReceipt(database,claim,{status:'REJECTED',failureCode,now:input.now}).catch(()=>undefined);
@@ -44,15 +47,21 @@ export async function handleFeishuWorkbenchCallback(database:SqlDatabase,input:{
   }
 }
 
-type Claim={kind:'OWNED';leaseToken:string}|{kind:'DUPLICATE';result:FeishuWorkbenchCallbackResultDto}|{kind:'IN_PROGRESS'};
+type Claim={kind:'OWNED';leaseToken:string}|{kind:'DUPLICATE';result:FeishuWorkbenchCallbackResultDto}|{kind:'IN_PROGRESS'}|{kind:'MISMATCH'};
 async function claimReceipt(database:SqlDatabase,input:{eventId:string;nonceHash:string;payloadHash:string;now:number}):Promise<Claim>{
   const leaseToken=`feishu-callback:${crypto.randomUUID()}`;
-  try{const inserted=await database.prepare(`INSERT INTO feishu_workbench_callback_receipts(event_id,nonce_hash,payload_hash,status,response_json,failure_code,lease_token,lease_expires_at,version,created_at,updated_at,completed_at) VALUES(?,?,?,'PROCESSING',NULL,NULL,?,?,1,?,?,NULL) ON CONFLICT(event_id) DO UPDATE SET lease_token=excluded.lease_token,lease_expires_at=excluded.lease_expires_at,version=feishu_workbench_callback_receipts.version+1,updated_at=MAX(excluded.updated_at,feishu_workbench_callback_receipts.updated_at+1) WHERE feishu_workbench_callback_receipts.status='PROCESSING' AND feishu_workbench_callback_receipts.payload_hash=excluded.payload_hash AND feishu_workbench_callback_receipts.nonce_hash=excluded.nonce_hash AND feishu_workbench_callback_receipts.lease_expires_at<=? RETURNING lease_token`).bind(input.eventId,input.nonceHash,input.payloadHash,leaseToken,input.now+LEASE_MS,input.now,input.now,input.now).first<{lease_token:string}>();if(inserted?.lease_token===leaseToken)return{kind:'OWNED',leaseToken};}catch(error){if(!String(error).includes('UNIQUE constraint failed: feishu_workbench_callback_receipts.nonce_hash'))throw error;return{kind:'DUPLICATE',result:{outcome:'DUPLICATE',work_item_id:null,version:null}};}
+  try{const inserted=await database.prepare(`INSERT INTO feishu_workbench_callback_receipts(event_id,nonce_hash,payload_hash,status,response_json,failure_code,lease_token,lease_expires_at,version,created_at,updated_at,completed_at) VALUES(?,?,?,'PROCESSING',NULL,NULL,?,?,1,?,?,NULL) ON CONFLICT(event_id) DO UPDATE SET lease_token=excluded.lease_token,lease_expires_at=excluded.lease_expires_at,version=feishu_workbench_callback_receipts.version+1,updated_at=MAX(excluded.updated_at,feishu_workbench_callback_receipts.updated_at+1) WHERE feishu_workbench_callback_receipts.status='PROCESSING' AND feishu_workbench_callback_receipts.payload_hash=excluded.payload_hash AND feishu_workbench_callback_receipts.nonce_hash=excluded.nonce_hash AND feishu_workbench_callback_receipts.lease_expires_at<=? RETURNING lease_token`).bind(input.eventId,input.nonceHash,input.payloadHash,leaseToken,input.now+LEASE_MS,input.now,input.now,input.now).first<{lease_token:string}>();if(inserted?.lease_token===leaseToken)return{kind:'OWNED',leaseToken};}catch(error){if(!String(error).includes('UNIQUE constraint failed: feishu_workbench_callback_receipts.nonce_hash'))throw error;const nonceOwner=await database.prepare('SELECT event_id FROM feishu_workbench_callback_receipts WHERE nonce_hash=?').bind(input.nonceHash).first<{event_id:string}>();if(nonceOwner?.event_id!==input.eventId)return{kind:'MISMATCH'};}
   const row=await database.prepare('SELECT nonce_hash,payload_hash,status,response_json,lease_expires_at FROM feishu_workbench_callback_receipts WHERE event_id=?').bind(input.eventId).first<{nonce_hash:string;payload_hash:string;status:'PROCESSING'|'SUCCEEDED'|'REJECTED';response_json:string|null;lease_expires_at:number|null}>();
-  if(!row||row.nonce_hash!==input.nonceHash||row.payload_hash!==input.payloadHash)return{kind:'DUPLICATE',result:{outcome:'DUPLICATE',work_item_id:null,version:null}};
+  if(!row||row.nonce_hash!==input.nonceHash||row.payload_hash!==input.payloadHash)return{kind:'MISMATCH'};
   if(row.status==='PROCESSING'&&Number(row.lease_expires_at)>input.now)return{kind:'IN_PROGRESS'};
-  if(row.status==='SUCCEEDED'&&row.response_json){try{return{kind:'DUPLICATE',result:{...parseFeishuWorkbenchCallbackResultDto(JSON.parse(row.response_json)),outcome:'DUPLICATE'}};}catch{throw new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);}}
-  return{kind:'DUPLICATE',result:{outcome:'DUPLICATE',work_item_id:null,version:null}};
+  if(row.status==='SUCCEEDED'&&row.response_json){try{return{kind:'DUPLICATE',result:parseFeishuWorkbenchCallbackResultDto(JSON.parse(row.response_json))};}catch{throw new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);}}
+  return{kind:'DUPLICATE',result:{outcome:'REJECTED',work_item_id:null,version:null}};
+}
+async function enqueueReconciliation(database:SqlDatabase,workItemId:string,now:number):Promise<void>{
+  const item=await database.prepare('SELECT id,version FROM staff_work_items WHERE id=?').bind(workItemId).first<{id:string;version:number}>();
+  if(!item)return;
+  const statements=await prepareStaffAssignmentOutboxStatements(database,{dedupKey:`staff-work-item:${item.id}:feishu-reconcile:v${item.version}`,eventType:'FEISHU_WORKBENCH_RECONCILE',aggregateType:'STAFF_WORK_ITEM',aggregateId:item.id,payload:{work_item_id:item.id,reconciliation:'VERSION_CONFLICT'},now});
+  await database.batch(statements);
 }
 async function finishReceipt(database:SqlDatabase,claim:Extract<Claim,{kind:'OWNED'}>,input:{status:'SUCCEEDED';response:FeishuWorkbenchCallbackResultDto;now:number}|{status:'REJECTED';failureCode:'FORBIDDEN'|'NOT_FOUND'|'VERSION_CONFLICT'|'DEPENDENCY_UNAVAILABLE';now:number}){const result=await database.prepare(`UPDATE feishu_workbench_callback_receipts SET status=?,response_json=?,failure_code=?,lease_token=NULL,lease_expires_at=NULL,version=version+1,updated_at=MAX(?,updated_at+1),completed_at=MAX(?,updated_at+1) WHERE event_id=(SELECT event_id FROM feishu_workbench_callback_receipts WHERE lease_token=? LIMIT 1) AND status='PROCESSING' AND lease_token=?`).bind(input.status,input.status==='SUCCEEDED'?JSON.stringify(input.response):null,input.status==='REJECTED'?input.failureCode:null,input.now,input.now,claim.leaseToken,claim.leaseToken).run();if((result as {meta?:{changes?:number}}).meta?.changes!==1)throw new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);}
 function normalize(error:unknown):FeishuWorkbenchCallbackError{if(error instanceof FeishuWorkbenchCallbackError)return error;if(error instanceof StaffAssignmentError){if(error.code==='FORBIDDEN')return new FeishuWorkbenchCallbackError('FORBIDDEN',403);if(error.code==='NOT_FOUND')return new FeishuWorkbenchCallbackError('NOT_FOUND',404);if(error.code==='VERSION_CONFLICT'||error.code==='IDEMPOTENCY_CONFLICT'||error.code==='REQUEST_IN_PROGRESS')return new FeishuWorkbenchCallbackError('VERSION_CONFLICT',409);}return new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);}

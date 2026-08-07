@@ -6,6 +6,7 @@ import {
   runScheduledOperationManually,
 } from './commands';
 import { runScheduledOperations } from './runner';
+import { MockFeishuWorkbenchAdapter } from '../feishu-workbench/mock-adapter';
 
 let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null});
@@ -62,8 +63,8 @@ describe('scheduled operation manual commands',()=>{
     database.exec("UPDATE integration_outbox SET status='SENT',sent_at=2,last_error=NULL WHERE id='sent-event'");
     await expect(replayScheduledDeadLetter(database,{enabled:true},{deadLetterId:'dead-sent',command:{event_id:'sent-event',reason_code:'POISON_RECOVERY'}},commandContext('replay-sent-key'))).rejects.toMatchObject({code:'NOT_FOUND',status:404});
     const audit=await auditFacts(database,'SCHEDULED_OPERATION_DEAD_LETTER_REPLAY');
-    expect(audit).toHaveLength(5);
-    expect(audit.map((row)=>JSON.parse(String(row['next_state_json']))['outcome']).sort()).toEqual(['FAILED','FAILED','FAILED','FAILED','SUCCEEDED']);
+    expect(audit).toHaveLength(3);
+    expect(audit.map((row)=>JSON.parse(String(row['next_state_json']))['outcome']).sort()).toEqual(['FAILED','FAILED','SUCCEEDED']);
     expect(JSON.stringify(audit)).not.toMatch(/payload|secret-value|object_key|token|wechat|amount|last_error/u);
     let sends=0;
     const delivered=await runScheduledOperations(database,{now:3000,only:'outbox_delivery',outboxAdapter:{deliver:async()=>{sends+=1}}});
@@ -82,6 +83,17 @@ describe('scheduled operation manual commands',()=>{
     releaseResolve();
     await expect(first).resolves.toMatchObject({outcome:'SUCCEEDED'});
     expect(await database.prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='dead-race'").first()).toEqual({replay_status:'REPLAYED'});
+  });
+
+  it('replays a quarantined STAFF_WORK_ITEM only to the fixed feishu_sync consumer',async()=>{
+    database=createMigratedTestDatabase();
+    database.exec("INSERT INTO scheduled_job_states(job_name,updated_at) VALUES('feishu_sync',1); INSERT INTO integration_outbox(id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES('feishu-poison','feishu-poison-key','WORK_ITEM_CHANGED','STAFF_WORK_ITEM','no-business-read','{}','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','FAILED',1,NULL,NULL,5,'quarantined',1,1,NULL); INSERT INTO scheduled_dead_letters(id,job_name,source_kind,source_id,failure_category,attempt_count,quarantined_at) VALUES('feishu-dead','feishu_sync','OUTBOX','feishu-poison','adapter_unavailable',5,1)");
+    const result=await replayScheduledDeadLetter(database,{enabled:true,feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'https://staff.example.test'},{deadLetterId:'feishu-dead',command:{event_id:'feishu-poison',reason_code:'DEPENDENCY_RECOVERED'}},commandContext('replay-feishu-key'));
+    expect(result).toMatchObject({job_name:'feishu_sync',outcome:'SUCCEEDED'});
+    let genericCalls=0;
+    expect((await runScheduledOperations(database,{now:2_000,only:'outbox_delivery',outboxAdapter:{deliver:async()=>{genericCalls+=1}}}))[0]).toMatchObject({processed_count:0});
+    expect(genericCalls).toBe(0);
+    expect((await runScheduledOperations(database,{now:2_000,only:'feishu_sync',feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'https://staff.example.test'}))[0]).toMatchObject({processed_count:1,succeeded_count:1});
   });
 
   it('applies global, per-job, and hard kill switches to manual commands and replay',async()=>{

@@ -15,14 +15,14 @@
 ## 2. Adapter and Sync
 
 - [x] 2.1 Implement no-network testable task/callback adapter interfaces and a local mock; do not implement or call real OAuth/Task/Bitable APIs.
-- [x] 2.2 Implement Outbox coalescing, idempotent mock create/update, retry/dead-letter and mirror reconciliation.
+- [x] 2.2 Implement Outbox coalescing, `work_item_id`-stable idempotent mock create/update, fifth-attempt dead-letter/replay isolation and mirror reconciliation.
 - [x] 2.3 Route the supported inbound task reassignment action through the current D1 permission/versioned Application Service.
 - [x] 2.4 Add controlled Web deep links for every formal action.
 
 ## 3. Tests and Acceptance
 
-- [x] 3.1 Test identity mapping, inactive/unknown Staff, signature, replay, duplicate callback and version race.
-- [x] 3.2 Test Provider outage/429/5xx, backlog, retry, rebuild and D1 business independence.
+- [x] 3.1 Test identity mapping, inactive/unknown Staff, signature/time-window/nonce, exact replay, mismatch rejection, lease takeover and version race reconciliation.
+- [x] 3.2 Test Provider outage/429/5xx, fifth-attempt isolation, controlled replay, backlog, rebuild, terminal filtering, alert recovery and D1 business independence.
 - [x] 3.3 Test summary field whitelist and absence of full WeChat, screenshots, proofs and finance facts.
 - [x] 3.4 Run local eight-Staff/two-hundred-order dry-run; leave mainland network and free-quota acceptance in the external checklist.
 - [x] 3.5 Run full workspace, security, strict OpenSpec and formal Verify gates.
