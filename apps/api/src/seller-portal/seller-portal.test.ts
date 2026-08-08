@@ -239,6 +239,7 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       product_url: 'https://www.amazon.co.jp/dp/B000000010',
       buyer_visible_notes: '买家可见说明',
       seller_notes: '卖家备注',
+      image_files: [{ file_object_id: 'portal-application-image', expected_file_version: 1 }],
     };
     const first = await request(
       app,
@@ -838,6 +839,25 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
        'owner2', 'owner2', 'ACTIVE', 1, 0, 1, 1000, 1000, 1000, NULL),
       ('account-buyer', 'subject-buyer', 'BUYER',
        'buyer', 'buyer', 'ACTIVE', 1, 0, 1, 1000, 1000, 1000, NULL);
+
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility, status,
+      requested_file_count, manifest_hash, version, expires_at, failure_code,
+      created_at, updated_at, completed_at
+    ) VALUES ('portal-application-intent','SELLER_MEMBER','member-ops','PRODUCT_APPLICATION_IMAGE','SELLER_VISIBLE','ISSUED',
+      1,'0000000000000000000000000000000000000000000000000000000000000010',1,9000000,NULL,1000,1000,NULL);
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size, status,
+      upload_token_hash, upload_expires_at, uploaded_byte_size, detected_mime,
+      uploaded_sha256, failure_code, delete_attempt_count, next_delete_at, version,
+      created_at, updated_at, uploaded_at, verified_at, deleted_at
+    ) VALUES ('portal-application-image','portal-application-intent',1,'PRODUCT_APPLICATION_IMAGE','SELLER_VISIBLE',
+      'files/v1/application/portal-application-image-000000000', 'portal.png','png','image/png',10,'RESERVED',
+      '0000000000000000000000000000000000000000000000000000000000000010',9000000,NULL,NULL,NULL,NULL,0,NULL,1,1000,1000,NULL,NULL,NULL);
+    UPDATE file_upload_intents SET status='VERIFIED', completed_at=1001, updated_at=1001 WHERE id='portal-application-intent';
+    UPDATE file_objects SET status='VERIFIED', uploaded_byte_size=10, detected_mime='image/png',
+      uploaded_sha256=upload_token_hash, uploaded_at=1001, verified_at=1001, updated_at=1001 WHERE id='portal-application-image';
   `);
 }
 

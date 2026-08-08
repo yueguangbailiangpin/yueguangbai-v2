@@ -17,11 +17,17 @@ Submission requests SHALL derive Seller Organization, member role and authorized
 - **THEN** the backend conceals or rejects it without creating an application, demand, audit side effect or file link.
 
 ### Requirement: Product applications use the formal lifecycle
-The Web form SHALL submit the existing product-application contract and SHALL NOT directly approve a Product or publish demand capacity.
+The Web form SHALL submit the existing product-application lifecycle with one to eight verified `PRODUCT_APPLICATION_IMAGE` files and SHALL NOT directly approve a Product or publish demand capacity. Each file reference SHALL contain only an opaque file object identifier and its expected version; the command SHALL derive all actor, organization, Store and audience authority server-side.
 
 #### Scenario: Product application succeeds
 - **WHEN** valid fields and verified images are submitted by an authorized member
 - **THEN** one reviewable product application is created with replay-safe response and the Seller sees its server status.
+
+#### Scenario: Product application images are atomically protected
+- **WHEN** an authorized Seller submits one to eight owned, VERIFIED product-application images
+- **THEN** the application, file entity links, explicit Seller Organization and Staff audiences, audits, Outbox records and idempotency completion commit together
+- **AND WHEN** any image is missing, duplicated, stale, unverified, wrong-purpose, wrong-visibility or owned by another actor
+- **THEN** the command fails without creating an application, link, audience grant, audit or Outbox side effect.
 
 ### Requirement: Demand submission is separate and append-only
 The Web form SHALL create a new demand batch for an approved scoped Product and SHALL NOT overwrite a previous batch to add quantity.

@@ -41,6 +41,9 @@ export class ProductApplicationError extends Error {
       | 'PRODUCT_APPLICATION_CONFLICT'
       | 'IDEMPOTENCY_CONFLICT'
       | 'REQUEST_IN_PROGRESS'
+      | 'FILE_OBJECT_NOT_FOUND'
+      | 'FILE_NOT_VERIFIED'
+      | 'FILE_STORAGE_CONFLICT'
       | 'DEPENDENCY_UNAVAILABLE',
     public readonly status: 400 | 403 | 404 | 409 | 503,
   ) {
@@ -250,8 +253,20 @@ export function normalizeProductApplicationError(
       409,
     );
   }
+  if (record?.code === 'VERSION_CONFLICT') {
+    return new ProductApplicationError('VERSION_CONFLICT', 409);
+  }
   if (record?.code === 'FORBIDDEN') {
     return new ProductApplicationError('FORBIDDEN', 403);
+  }
+  if (record?.code === 'FILE_OBJECT_NOT_FOUND') {
+    return new ProductApplicationError('FILE_OBJECT_NOT_FOUND', 404);
+  }
+  if (record?.code === 'FILE_NOT_VERIFIED') {
+    return new ProductApplicationError('FILE_NOT_VERIFIED', 409);
+  }
+  if (record?.code === 'FILE_STORAGE_CONFLICT') {
+    return new ProductApplicationError('FILE_STORAGE_CONFLICT', 409);
   }
   if (record?.code === 'NOT_FOUND') {
     return new ProductApplicationError('NOT_FOUND', 404);

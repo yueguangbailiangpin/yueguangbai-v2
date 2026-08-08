@@ -70,6 +70,21 @@ export const sellerProductsSchema = z.object({ items: z.array(z.object({
 }).strict()), page }).strict();
 export type SellerProductStatus = z.infer<typeof sellerProductsSchema>['items'][number]['status'];
 
+const sellerApplication = z.object({
+  id: z.string(), store: z.object({ id: z.string(), display_name: z.string() }).strict(),
+  marketplace_code: z.literal('JP'), asin: z.string(), product_name: z.string(), search_keywords: z.array(z.string()),
+  product_url: z.string().nullable(), buyer_visible_notes: z.string().nullable(), seller_notes: z.string().nullable(),
+  status: z.enum(['SUBMITTED', 'APPROVED', 'REJECTED', 'WITHDRAWN']), review_reason: z.string().nullable(),
+  product_id: z.string().nullable(), version: z.number().int().positive(), submitted_at: epoch, updated_at: epoch,
+  reviewed_at: epoch.nullable(), withdrawn_at: epoch.nullable(),
+}).strict();
+export const sellerApplicationsSchema = z.object({ items: z.array(sellerApplication), page }).strict();
+export const sellerApplicationMutationSchema = z.object({
+  application: sellerApplication,
+  replayed: z.boolean(),
+}).strict();
+export const sellerApplicationDetailSchema = z.object({ application: sellerApplication }).strict();
+
 export const sellerDemandsSchema = z.object({ items: z.array(z.object({
   id: z.string(), store: z.object({ id: z.string(), display_name: z.string() }).strict(),
   product: z.object({ id: z.string(), version_no: z.number().int().positive(), asin: z.string(),
@@ -84,6 +99,7 @@ export const sellerDemandsSchema = z.object({ items: z.array(z.object({
   withdrawn_at: epoch.nullable(), closed_at: epoch.nullable(),
 }).strict()), page }).strict();
 export type SellerDemandStatus = z.infer<typeof sellerDemandsSchema>['items'][number]['status'];
+export const sellerDemandMutationSchema = z.object({ demand_batch: sellerDemandsSchema.shape.items.element, replayed: z.boolean() }).strict();
 
 export const sellerReviewsSchema = z.object({ items: z.array(z.object({
   review_case_id: z.string(), formal_order: z.object({ id: z.string(), amazon_order_number: z.string() }).strict(),

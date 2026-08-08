@@ -1,4 +1,5 @@
 import type {
+  FileActor,
   ProductDescriptiveFields,
   SqlDatabase,
   SqlStatement,
@@ -21,6 +22,8 @@ import {
   createOutboxStatements,
   prepareOutboxEvent,
 } from '../foundation/outbox';
+import type { FileAuthorizationService } from '../files/authorization';
+import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
 import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
@@ -51,6 +54,11 @@ interface ExistingProduct {
   store_id: string;
 }
 
+interface ProductApplicationImageFile {
+  fileObjectId: string;
+  expectedFileVersion: number;
+}
+
 export interface SubmitProductApplicationResult {
   application_id: string;
   seller_organization_id: string;
@@ -64,11 +72,13 @@ export interface SubmitProductApplicationResult {
 
 export async function submitProductApplication(
   database: SqlDatabase,
+  fileAuthorization: FileAuthorizationService,
   input: {
     storeId: string;
     asin: string;
     product: ProductDescriptiveFields;
     sellerNotes: string | null;
+    imageFiles: readonly ProductApplicationImageFile[];
   },
   command: {
     actor: SellerProductApplicationActor;
@@ -106,6 +116,7 @@ export async function submitProductApplication(
   const sellerNotes = cleanOptionalSellerNotes(
     input.sellerNotes,
   );
+  const imageFiles = normalizeImageFiles(input.imageFiles);
   const now = command.now ?? Date.now();
   if (!Number.isSafeInteger(now) || now < 0) {
     throw new ProductApplicationError(
@@ -122,6 +133,7 @@ export async function submitProductApplication(
     asin,
     product,
     seller_notes: sellerNotes,
+    image_files: imageFiles,
   });
   const targetHash = await hashCanonicalJson({
     marketplace_code: 'JP',
@@ -166,6 +178,7 @@ export async function submitProductApplication(
       store.marketplace_code,
       asin,
     );
+    await assertImagesUnused(database, imageFiles);
 
     const applicationId = crypto.randomUUID();
     const response: SubmitProductApplicationResult = {
@@ -179,6 +192,31 @@ export async function submitProductApplication(
       replayed: false,
     };
     const snapshot = productVersionSnapshot(product);
+    const fileActor: FileActor = {
+      type: 'SELLER_MEMBER', id: command.actor.memberId, roles: [command.actor.role],
+    };
+    const preparedImages = await Promise.all(imageFiles.map(async (image) => {
+      const prepared = await createExplicitAudienceFileLinkStatements(
+        database,
+        fileAuthorization,
+        {
+          fileObjectId: image.fileObjectId,
+          expectedFileVersion: image.expectedFileVersion,
+          entityType: 'PRODUCT_APPLICATION',
+          entityId: applicationId,
+          grants: [
+            { subjectType: 'SELLER_ORGANIZATION', sellerOrganizationId: store.organization_id },
+            { subjectType: 'STAFF_INTERNAL', permissionCode: 'PRODUCT_VIEW', scope: { type: 'GLOBAL' } },
+          ],
+        },
+        { actor: fileActor, idempotencyKey: acquired.claim.idempotencyKey, requestId: command.requestId ?? null, now },
+      );
+      if (prepared.result.purpose !== 'PRODUCT_APPLICATION_IMAGE'
+        || prepared.result.visibility !== 'SELLER_VISIBLE') {
+        throw new ProductApplicationError('VALIDATION_ERROR', 400);
+      }
+      return prepared;
+    }));
 
     const outbox = await prepareOutboxEvent({
       id: crypto.randomUUID(),
@@ -256,6 +294,7 @@ export async function submitProductApplication(
         idempotencyKey: acquired.claim.idempotencyKey,
         createdAt: now,
       }),
+      ...preparedImages.flatMap((image) => image.statements),
       createAuditEventStatement(database, {
         id: crypto.randomUUID(),
         aggregateType: 'PRODUCT_APPLICATION',
@@ -273,6 +312,7 @@ export async function submitProductApplication(
           ...response,
           product,
           seller_notes: sellerNotes,
+          image_file_object_ids: imageFiles.map((image) => image.fileObjectId),
         },
         createdAt: now,
       }),
@@ -293,6 +333,7 @@ export async function submitProductApplication(
         acquired.claim,
         response,
         command.actor.memberId,
+        imageFiles.map((image) => image.fileObjectId),
       ),
       assertIdempotencyCompletionStatement(
         database,
@@ -424,6 +465,37 @@ async function assertNoSubmittedApplication(
   }
 }
 
+function normalizeImageFiles(
+  value: readonly ProductApplicationImageFile[],
+): readonly ProductApplicationImageFile[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 8) {
+    throw new ProductApplicationError('VALIDATION_ERROR', 400);
+  }
+  const files = value.map((file) => ({
+    fileObjectId: cleanApplicationIdentifier(file.fileObjectId),
+    expectedFileVersion: file.expectedFileVersion,
+  })).sort((left, right) => left.fileObjectId.localeCompare(right.fileObjectId));
+  if (files.some((file) => !Number.isSafeInteger(file.expectedFileVersion)
+    || file.expectedFileVersion < 1)
+    || new Set(files.map((file) => file.fileObjectId)).size !== files.length) {
+    throw new ProductApplicationError('VALIDATION_ERROR', 400);
+  }
+  return Object.freeze(files);
+}
+
+async function assertImagesUnused(
+  database: SqlDatabase,
+  files: readonly ProductApplicationImageFile[],
+): Promise<void> {
+  const row = await database.prepare(`
+    SELECT 1 AS conflict
+    FROM file_entity_links
+    WHERE file_object_id IN (${files.map(() => '?').join(', ')})
+    LIMIT 1
+  `).bind(...files.map((file) => file.fileObjectId)).first<{ conflict: number }>();
+  if (row) throw new ProductApplicationError('PRODUCT_APPLICATION_CONFLICT', 409);
+}
+
 function assertSubmittedStatement(
   database: SqlDatabase,
   claim: {
@@ -434,6 +506,7 @@ function assertSubmittedStatement(
   },
   response: SubmitProductApplicationResult,
   memberId: string,
+  imageFileObjectIds: readonly string[],
 ): SqlStatement {
   return database.prepare(`
     INSERT INTO transaction_assertions (assertion_value)
@@ -452,6 +525,14 @@ function assertSubmittedStatement(
       )
       AND EXISTS (
         SELECT 1
+        FROM file_entity_links
+        WHERE entity_type='PRODUCT_APPLICATION'
+          AND entity_id=?
+        GROUP BY entity_id
+        HAVING COUNT(*)=?
+      )
+      AND EXISTS (
+        SELECT 1
         FROM command_idempotency_records
         WHERE actor_type=?
           AND actor_id=?
@@ -467,6 +548,8 @@ function assertSubmittedStatement(
     memberId,
     response.marketplace_code,
     response.asin,
+    response.application_id,
+    imageFileObjectIds.length,
     claim.actorType,
     claim.actorId,
     claim.idempotencyKey,

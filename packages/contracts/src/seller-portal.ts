@@ -174,6 +174,10 @@ export interface SubmitSellerPortalProductApplicationBody {
   product_url: string | null;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
+  image_files: readonly {
+    file_object_id: string;
+    expected_file_version: number;
+  }[];
 }
 
 export interface WithdrawSellerPortalResourceBody {
