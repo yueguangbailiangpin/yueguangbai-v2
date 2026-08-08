@@ -59,7 +59,7 @@ export function requireReviewDecisionPermission(
 ): void {
   validateStaffReviewActor(actor);
   const roleAllowed = actor.roles.includes('owner')
-    || actor.roles.includes('after_sales');
+    || actor.roles.includes('buyer_refund');
   if (!roleAllowed || !actor.permissions.has('REVIEW_DECIDE')) {
     throw new ReviewError('FORBIDDEN', 403);
   }
@@ -239,7 +239,7 @@ function validateStaffReviewActor(actor: StaffReviewActor): void {
     || !safeText(actor.staffId, 120)
     || !safeText(actor.displayName, 100)
     || !Array.isArray(actor.roles)
-    || actor.roles.length < 1
+    || actor.roles.length !== 1
     || typeof actor.permissions?.has !== 'function') {
     throw new ReviewError('VALIDATION_ERROR', 400);
   }

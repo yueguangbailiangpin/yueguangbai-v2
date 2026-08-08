@@ -5,7 +5,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 const screenshotDirectory = process.env['M5_SCREENSHOT_DIR'];
 const success = (data: unknown, requestId = 'm5-browser') => ({ data, meta: { request_id: requestId } });
 const session = {
-  staff_id: 'staff-m5', display_name: '售前员工', roles: ['pre_sales'],
+  staff_id: 'staff-m5', display_name: '售前员工', role: { code: 'pre_sales', display_name: '售前' },
   permissions: ['ORDER_VIEW', 'ORDER_CONFIRM'], data_scope: {
     type: 'ASSIGNED_BUYERS', buyerCustomerIds: ['buyer-m5'], sellerOrganizationIds: [], teamIds: [],
   }, authorization_version: 2, session_version: 3, expires_at: 9_999_999_999_999,
@@ -61,6 +61,7 @@ test('Staff completes queue to authoritative order detail and sees explicit conf
   await mockWorkbench(page, observed);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
+  await expect(page.getByText('售前员工 · 售前')).toBeVisible();
   await page.getByRole('button', { name: /订单证据核对/u }).click();
   await expect(page.getByRole('heading', { name: '客户可见内容' })).toBeVisible();
   await expect(page.getByText('123-1234567-1234567')).toBeVisible();

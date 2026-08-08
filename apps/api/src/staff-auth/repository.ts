@@ -3,6 +3,10 @@ import type {
   StaffSessionSafeDto,
   SqlDatabase,
 } from '@ygb/contracts';
+import {
+  STAFF_ROLE_DISPLAY_NAMES,
+  isStaffRoleCode,
+} from '@ygb/contracts';
 import { canonicalJson } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
 import {
@@ -532,10 +536,20 @@ export function projectStaffSession(
   dataScope: StaffDataScope,
   session: StaffSessionRow,
 ): StaffSessionSafeDto {
+  const roles = [...authorization.roles];
+  if (roles.length !== 1 || !isStaffRoleCode(roles[0])) {
+    throw new StaffAuthError('UNAUTHENTICATED', 401, {
+      reason: 'AUTHORIZATION_UNAVAILABLE',
+    });
+  }
+  const role = roles[0];
   return {
     staff_id: authorization.staffId,
     display_name: authorization.displayName,
-    roles: [...authorization.roles].sort() as StaffSessionSafeDto['roles'],
+    role: {
+      code: role,
+      display_name: STAFF_ROLE_DISPLAY_NAMES[role],
+    },
     permissions: (
       [...authorization.permissions].sort()
     ) as StaffSessionSafeDto['permissions'],

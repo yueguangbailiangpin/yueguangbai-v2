@@ -3,23 +3,29 @@ import {
   isStaffPermissionCode,
   isStaffRoleCode,
   STAFF_PERMISSION_CODES,
+  STAFF_ROLE_DISPLAY_NAMES,
   STAFF_ROLE_CODES,
 } from './staff';
 
 describe('staff contracts', () => {
-  it('publishes the six frozen internal roles', () => {
+  it('publishes the four frozen internal roles and Chinese displays', () => {
     expect(STAFF_ROLE_CODES).toEqual([
       'owner',
       'pre_sales',
       'seller_ops',
-      'seller_support',
-      'after_sales',
-      'buyer_support',
+      'buyer_refund',
     ]);
+    expect(STAFF_ROLE_DISPLAY_NAMES).toEqual({
+      owner: '总管理员',
+      pre_sales: '售前',
+      seller_ops: '卖家对接',
+      buyer_refund: '买家返款',
+    });
   });
 
   it('recognizes only published role and permission codes', () => {
-    expect(isStaffRoleCode('seller_support')).toBe(true);
+    expect(isStaffRoleCode('buyer_refund')).toBe(true);
+    expect(isStaffRoleCode('seller_support')).toBe(false);
     expect(isStaffRoleCode('department_leader')).toBe(false);
     expect(isStaffPermissionCode('ORDER_CONFIRM')).toBe(true);
     expect(isStaffPermissionCode('ROOT_ACCESS')).toBe(false);

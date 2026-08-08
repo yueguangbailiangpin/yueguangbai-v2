@@ -170,7 +170,7 @@ export class StaffMcpServerAdapter {
       staffId: current.staffId,
       displayName: current.displayName,
       authorizationVersion: current.authorizationVersion,
-      roles: current.roles,
+      role: [...current.roles][0]!,
       permissions: current.permissions,
       dataScope,
       memberTeamIds: current.memberTeamIds,
@@ -367,7 +367,7 @@ export class StaffMcpServerAdapter {
         actor: {
           type: 'STAFF_MCP',
           id: input.actor?.staffId ?? null,
-          roles: input.actor ? [...input.actor.roles] : [],
+          roles: input.actor ? [input.actor.role] : [],
         },
         requestId: input.requestId,
         previousState: null,

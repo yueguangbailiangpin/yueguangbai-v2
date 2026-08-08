@@ -57,8 +57,7 @@ export function requireBuyerRefundViewPermission(
 ): void {
   validateBuyerRefundStaffActor(actor);
   const roleAllowed = actor.roles.includes('owner')
-    || actor.roles.includes('after_sales')
-    || actor.roles.includes('buyer_support');
+    || actor.roles.includes('buyer_refund');
   if (!roleAllowed || !actor.permissions.has('BUYER_REFUND_VIEW')) {
     throw new BuyerRefundError('FORBIDDEN', 403);
   }
@@ -69,7 +68,7 @@ export function requireBuyerRefundRecordPermission(
 ): void {
   validateBuyerRefundStaffActor(actor);
   const roleAllowed = actor.roles.includes('owner')
-    || actor.roles.includes('after_sales');
+    || actor.roles.includes('buyer_refund');
   if (!roleAllowed || !actor.permissions.has('BUYER_REFUND_RECORD')) {
     throw new BuyerRefundError('FORBIDDEN', 403);
   }
@@ -310,7 +309,7 @@ function validateBuyerRefundStaffActor(actor: BuyerRefundStaffActor): void {
     || !safeText(actor.staffId, 120)
     || !safeText(actor.displayName, 100)
     || !Array.isArray(actor.roles)
-    || actor.roles.length < 1
+    || actor.roles.length !== 1
     || typeof actor.permissions?.has !== 'function') {
     throw new BuyerRefundError('VALIDATION_ERROR', 400);
   }

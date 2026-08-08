@@ -17,7 +17,7 @@ import { CustomerLoginPage } from './auth/customer/CustomerLoginPage';
 import { CustomerPasswordResetPage } from './auth/customer/CustomerPasswordResetPage';
 import { CustomerPasswordRouteBoundary } from './auth/customer/CustomerPasswordRouteBoundary';
 import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary';
-import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary';
+import { StaffSessionBoundary, useCurrentStaffSession } from './auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from './auth/staff/staff-auth-controller';
 import { StaffWorkbench } from './staff/StaffWorkbench';
 import { safeReturnPath } from './routes/return-path';
@@ -256,9 +256,10 @@ export function SellerShell(): React.JSX.Element {
 }
 
 function StaffShell(): React.JSX.Element {
+  const session = useCurrentStaffSession();
   return <IdentityShell identity="staff" className="staff-shell">
     <header className="staff-context"><strong>月光白</strong>
-      <span>员工工作区</span></header>
+      <span>{session.display_name} · {session.role.display_name}</span></header>
     <PageHeader
       eyebrow="内部操作"
       title="员工工作台"

@@ -291,7 +291,7 @@ async function activeStaffGrantExists(
     if (!isStaffRoleCode(row.role_code)) return false;
     roles.add(row.role_code);
   }
-  if (roles.size < 1) return false;
+  if (roles.size !== 1) return false;
 
   const grants = new Set<StaffPermissionCode>();
   const denies = new Set<StaffPermissionCode>();

@@ -442,7 +442,7 @@ function normalizeInput(
     throw new ProvisionStaffError('VALIDATION_ERROR', 400);
   }
 
-  if (roles.length < 1) {
+  if (roles.length !== 1) {
     throw new ProvisionStaffError('VALIDATION_ERROR', 400);
   }
 

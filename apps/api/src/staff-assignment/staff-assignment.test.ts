@@ -46,7 +46,7 @@ function seedFoundation(d: SqliteDatabase): void {
       ('owner-1','owner','ACTIVE',NULL,1,NULL,1,1),
       ('pre-1','pre_sales','ACTIVE','owner-1',1,NULL,1,1),
       ('pre-2','pre_sales','ACTIVE','owner-1',1,NULL,1,1),
-      ('after-1','after_sales','ACTIVE','owner-1',1,NULL,1,1);
+      ('after-1','buyer_refund','ACTIVE','owner-1',1,NULL,1,1);
     INSERT INTO staff_team_memberships (
       staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
     ) VALUES
@@ -80,7 +80,7 @@ describe('Phase 3H staff assignment foundation', () => {
   it('preserves Wave 12 availability behavior on schema 28', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 34 });
+      .toEqual({ schema_version: 35 });
     expect(await getStaffAvailability(d, 'pre-1')).toMatchObject({
       staff_id: 'pre-1',
       availability_status: 'AVAILABLE',
@@ -221,7 +221,7 @@ describe('Phase 3H staff assignment foundation', () => {
     expect(candidate?.staff.staffId).toBe('pre-2');
   });
 
-  it('requires every fixed-duty business permission and keeps seller_support non-default', async () => {
+  it('requires every fixed-duty business permission despite personal grants', async () => {
     const d = db();
     const support = await resolveAssignmentStaffAuthorization(d, 'owner-1');
     expect(support?.permissions.has('ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT')).toBe(true);
@@ -233,7 +233,7 @@ describe('Phase 3H staff assignment foundation', () => {
       INSERT INTO staff_role_assignments (
         staff_id, role_code, status, assigned_by_staff_id, assigned_at,
         revoked_at, created_at, updated_at
-      ) VALUES ('support-1','seller_support','ACTIVE','owner-1',1,NULL,1,1);
+      ) VALUES ('support-1','pre_sales','ACTIVE','owner-1',1,NULL,1,1);
       INSERT INTO staff_team_memberships (
         staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
       ) VALUES ('support-1','team-ops','ACTIVE',1,NULL,1,1);

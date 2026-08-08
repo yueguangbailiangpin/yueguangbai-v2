@@ -9,7 +9,7 @@ import app from '../src/index';
 import { FakeStaffAuthProvider } from '../src/staff-auth/provider';
 import type { MockObjectStorage } from '../src/files/mock-object-storage';
 
-export type RuntimeStaff = 'owner' | 'limited' | 'scoped';
+export type RuntimeStaff = 'owner' | 'limited' | 'scoped' | 'sellerScoped';
 
 const STAFF = Object.freeze({
   owner: {
@@ -26,6 +26,11 @@ const STAFF = Object.freeze({
     staffId: 'wave13-runtime-scoped',
     openId: 'wave13-open-scoped',
     userId: 'wave13-user-scoped',
+  },
+  sellerScoped: {
+    staffId: 'wave13-runtime-seller-scoped',
+    openId: 'wave13-open-seller-scoped',
+    userId: 'wave13-user-seller-scoped',
   },
 });
 
@@ -418,22 +423,26 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
       created_at, updated_at, disabled_at
     ) VALUES
       ('wave13-runtime-limited','Wave 13 Limited','ACTIVE',1,1,2,2,NULL),
-      ('wave13-runtime-scoped','Wave 13 Scoped','ACTIVE',1,1,2,2,NULL);
+      ('wave13-runtime-scoped','Wave 13 Scoped','ACTIVE',1,1,2,2,NULL),
+      ('wave13-runtime-seller-scoped','Wave 13 Seller Scoped',
+       'ACTIVE',1,1,2,2,NULL);
     INSERT INTO staff_role_assignments (
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
     ) VALUES
-      ('wave13-runtime-limited','buyer_support','ACTIVE',
+      ('wave13-runtime-limited','pre_sales','ACTIVE',
        'zz-phase3h-test-owner',2,NULL,2,2),
-      ('wave13-runtime-scoped','seller_ops','ACTIVE',
+      ('wave13-runtime-scoped','buyer_refund','ACTIVE',
        'zz-phase3h-test-owner',2,NULL,2,2),
-      ('wave13-runtime-scoped','after_sales','ACTIVE',
+      ('wave13-runtime-seller-scoped','seller_ops','ACTIVE',
        'zz-phase3h-test-owner',2,NULL,2,2);
     INSERT INTO staff_team_memberships (
       staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
     ) VALUES
       ('wave13-runtime-limited','phase3h-test-team','ACTIVE',2,NULL,2,2),
-      ('wave13-runtime-scoped','phase3h-test-team','ACTIVE',2,NULL,2,2);
+      ('wave13-runtime-scoped','phase3h-test-team','ACTIVE',2,NULL,2,2),
+      ('wave13-runtime-seller-scoped','phase3h-test-team',
+       'ACTIVE',2,NULL,2,2);
     INSERT INTO staff_permission_overrides (
       staff_id, permission_code, effect, status, reason,
       assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
@@ -443,7 +452,11 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
       ('wave13-runtime-limited','REVIEW_VIEW','DENY','ACTIVE',
        'runtime deny','zz-phase3h-test-owner',2,NULL,2,2),
       ('wave13-runtime-limited','BUYER_REFUND_VIEW','DENY','ACTIVE',
-       'runtime deny','zz-phase3h-test-owner',2,NULL,2,2);
+       'runtime deny','zz-phase3h-test-owner',2,NULL,2,2),
+      ('wave13-runtime-scoped','ORDER_CONFIRM','GRANT','ACTIVE',
+       'runtime scoped order review','zz-phase3h-test-owner',2,NULL,2,2),
+      ('wave13-runtime-scoped','PRODUCT_VIEW','GRANT','ACTIVE',
+       'runtime scoped catalog read','zz-phase3h-test-owner',2,NULL,2,2);
     INSERT INTO feishu_staff_identities (
       id, staff_id, tenant_key, open_id, user_id, status,
       verified_at, created_at, updated_at, revoked_at
@@ -453,7 +466,10 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
       ('wave13-feishu-limited','wave13-runtime-limited','wave13-runtime-tenant',
        'wave13-open-limited','wave13-user-limited','ACTIVE',2,2,2,NULL),
       ('wave13-feishu-scoped','wave13-runtime-scoped','wave13-runtime-tenant',
-       'wave13-open-scoped','wave13-user-scoped','ACTIVE',2,2,2,NULL);
+       'wave13-open-scoped','wave13-user-scoped','ACTIVE',2,2,2,NULL),
+      ('wave13-feishu-seller-scoped','wave13-runtime-seller-scoped',
+       'wave13-runtime-tenant','wave13-open-seller-scoped',
+       'wave13-user-seller-scoped','ACTIVE',2,2,2,NULL);
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
       origin_channel_id, current_channel_id, seller_sequence,

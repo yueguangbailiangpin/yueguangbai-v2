@@ -33,7 +33,7 @@ export const sellerSessionFixture = Object.freeze({
 export const staffSessionFixture = Object.freeze({
   staff_id: 'staff-1',
   display_name: '测试员工',
-  roles: ['owner'],
+  role: { code: 'owner', display_name: '总管理员' },
   permissions: [],
   data_scope: {
     type: 'GLOBAL',

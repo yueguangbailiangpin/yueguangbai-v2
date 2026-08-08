@@ -173,7 +173,7 @@ function validateActor(actor: FormalOrderStaffActor): void {
     || typeof actor.displayName !== 'string'
     || actor.displayName.length < 1
     || actor.displayName.length > 100
-    || actor.roles.length < 1
+    || actor.roles.length !== 1
     || typeof actor.permissions?.has !== 'function') {
     throw new FormalOrderError('VALIDATION_ERROR', 400);
   }

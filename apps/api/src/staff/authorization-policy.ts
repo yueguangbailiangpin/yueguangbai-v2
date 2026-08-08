@@ -61,17 +61,7 @@ const ROLE_DEFAULT_PERMISSIONS: Readonly<
     'SELLER_SETTLEMENT_RECORD',
     'ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT',
   ],
-  seller_support: [
-    'TASK_VIEW_OPEN',
-    'TASK_CLAIM',
-    'SELLER_SUPPORT_VIEW',
-    'SELLER_SUPPORT_NOTE',
-    'PRODUCT_VIEW',
-    'DEMAND_VIEW',
-    'ORDER_VIEW',
-    'SELLER_SETTLEMENT_VIEW',
-  ],
-  after_sales: [
+  buyer_refund: [
     'TASK_VIEW_OPEN',
     'TASK_CLAIM',
     'BUYER_VIEW',
@@ -82,16 +72,6 @@ const ROLE_DEFAULT_PERMISSIONS: Readonly<
     'BUYER_REFUND_RECORD',
     'ASSIGNMENT_ELIGIBLE_BUYER_AFTER_SALES',
     'ASSIGNMENT_ELIGIBLE_BUYER_REFUND',
-  ],
-  buyer_support: [
-    'TASK_VIEW_OPEN',
-    'TASK_CLAIM',
-    'BUYER_SUPPORT_VIEW',
-    'BUYER_SUPPORT_NOTE',
-    'BUYER_VIEW',
-    'ORDER_VIEW',
-    'REVIEW_VIEW',
-    'BUYER_REFUND_VIEW',
   ],
 });
 
@@ -113,6 +93,9 @@ export interface EffectiveStaffAuthorization {
 export function calculateEffectiveStaffAuthorization(
   input: StaffAuthorizationInput,
 ): EffectiveStaffAuthorization {
+  if (input.roles.size !== 1) {
+    throw new Error('invalid_active_staff_role_count');
+  }
   const permissions = new Set<StaffPermissionCode>();
 
   for (const role of input.roles) {

@@ -120,7 +120,8 @@ describe('Wave 13 default application runtime boundary', () => {
     const owner = await login('owner');
     const proof = await createSellerSettlementProof(owner);
     const scoped = await login('scoped');
-    for (const input of scopeRequests(scoped, proof)) {
+    const sellerScoped = await login('sellerScoped');
+    for (const input of scopeRequests(scoped, sellerScoped, proof)) {
       const response = await app.request(input.request, undefined, scoped.env);
       expect(response.status, input.family).toBe(input.expected);
     }
@@ -322,6 +323,7 @@ function permissionRequests(
 
 function scopeRequests(
   identity: Awaited<ReturnType<typeof login>>,
+  sellerIdentity: Awaited<ReturnType<typeof login>>,
   proof: Awaited<ReturnType<typeof createSellerSettlementProof>>,
 ) {
   const get = (path: string) => new Request(`https://api.example.test${path}`, {
@@ -335,11 +337,23 @@ function scopeRequests(
       body: JSON.stringify(body),
     },
   );
+  const sellerGet = (path: string) => new Request(
+    `https://api.example.test${path}`,
+    { headers: { Cookie: sellerIdentity.cookie } },
+  );
+  const sellerPost = (path: string, key: string, body: unknown) => new Request(
+    `https://api.example.test${path}`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(sellerIdentity.cookie, key),
+      body: JSON.stringify(body),
+    },
+  );
   return [
     { family: 'Assignment', expected: 404, request: get(
       '/api/staff/me/work-items/runtime-work-item',
     ) },
-    { family: 'Catalog', expected: 404, request: post(
+    { family: 'Catalog', expected: 404, request: sellerPost(
       '/api/staff/catalog/products',
       'scoped-catalog',
       validCatalogBody('B0RT000002'),
@@ -347,10 +361,10 @@ function scopeRequests(
     { family: 'Review', expected: 404, request: get(
       '/api/staff/reviews/runtime-review',
     ) },
-    { family: 'Seller Settlement', expected: 404, request: get(
+    { family: 'Seller Settlement', expected: 404, request: sellerGet(
       '/api/staff/seller-settlements/runtime-org/summary',
     ) },
-    { family: 'Settlement Proof', expected: 404, request: post(
+    { family: 'Settlement Proof', expected: 404, request: sellerPost(
       `/api/staff/seller-payments/${proof.paymentId}/proof/read-intent`,
       'scoped-proof',
       { expected_file_version: proof.fileVersion },

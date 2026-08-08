@@ -792,7 +792,7 @@ function seedScopeFixtures(d: SqliteDatabase): void {
     INSERT INTO staff_role_assignments (
       staff_id,role_code,status,assigned_by_staff_id,assigned_at,revoked_at,created_at,updated_at
     ) VALUES
-      ('mcp-after','after_sales','ACTIVE','zz-phase3h-test-owner',1,NULL,1,1),
+      ('mcp-after','buyer_refund','ACTIVE','zz-phase3h-test-owner',1,NULL,1,1),
       ('mcp-seller','seller_ops','ACTIVE','zz-phase3h-test-owner',1,NULL,1,1);
     INSERT INTO staff_team_memberships (
       staff_id,team_id,status,joined_at,ended_at,created_at,updated_at

@@ -130,7 +130,7 @@ export async function resolveStaffAuthorizationByFeishu(
     ]);
 
   const roles = parseRoles(rolesResult.results);
-  if (roles.size < 1) return null;
+  if (roles.size !== 1) return null;
 
   const {
     grants,

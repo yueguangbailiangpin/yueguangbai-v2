@@ -35,7 +35,7 @@ describe('staff provisioning command', () => {
         openId: 'open-new',
         userId: 'user-new',
       },
-      roles: ['pre_sales', 'buyer_support'] as const,
+      roles: ['pre_sales'] as const,
       teamIds: ['team-sales'],
       leaderTeamIds: ['team-sales'],
       permissionOverrides: [
@@ -74,10 +74,7 @@ describe('staff provisioning command', () => {
       openId: 'open-new',
     });
     expect(context?.displayName).toBe('新员工');
-    expect(context?.roles).toEqual(new Set([
-      'buyer_support',
-      'pre_sales',
-    ]));
+    expect(context?.roles).toEqual(new Set(['pre_sales']));
     expect(context?.leaderTeamIds).toEqual(['team-sales']);
     expect(context?.permissions.has('TASK_ASSIGN_TEAM')).toBe(true);
     expect(context?.permissions.has('ORDER_CONFIRM')).toBe(false);

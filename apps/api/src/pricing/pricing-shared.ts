@@ -272,7 +272,7 @@ function validateActor(actor: PricingStaffActor): void {
     || actor.staffId.length > 120
     || typeof actor.displayName !== 'string'
     || actor.displayName.length < 1
-    || actor.roles.length < 1) {
+    || actor.roles.length !== 1) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
 }

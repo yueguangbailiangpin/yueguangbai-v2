@@ -23,7 +23,8 @@ function buyerSession() {
 
 function staffSession() {
   return {
-    staff_id: 'ordinary-staff', display_name: '普通员工', roles: ['buyer_support'],
+    staff_id: 'ordinary-staff', display_name: '普通员工',
+    role: { code: 'pre_sales', display_name: '售前' },
     permissions: [], data_scope: {
       type: 'GLOBAL', buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [],
     }, authorization_version: 1, session_version: 1,
