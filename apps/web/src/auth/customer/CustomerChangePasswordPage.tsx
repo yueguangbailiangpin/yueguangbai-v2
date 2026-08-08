@@ -10,7 +10,7 @@ import {
   TextInput,
 } from '../../ui/primitives';
 import { customerAuthApi, type CustomerAuthApiAdapter, type CustomerTarget } from './customer-auth-api';
-import { BuyerLayout } from '../../buyer/routes/BuyerLayout';
+import { BuyerFrame } from '../../buyer/routes/BuyerFrame';
 import {
   CustomerPasswordOperationController,
   type CustomerPasswordResult,
@@ -236,5 +236,5 @@ export function CustomerChangePasswordPage({
       </Card>
     </section>
   );
-  return target === 'buyer' ? <BuyerLayout>{content}</BuyerLayout> : <main>{content}</main>;
+  return target === 'buyer' ? <BuyerFrame>{content}</BuyerFrame> : <main>{content}</main>;
 }

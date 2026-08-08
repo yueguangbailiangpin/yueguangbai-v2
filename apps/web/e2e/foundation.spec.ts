@@ -531,6 +531,7 @@ test('Staff desktop shell preserves queue-detail-action DOM order and separation
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
   await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
   const headings = await page.locator(
     '.staff-panes > section > .pane-heading h2, .staff-panes > aside > h2',
   ).allTextContents();
@@ -545,6 +546,7 @@ test('Staff narrow shell preserves queue-detail-tools order without overflow', a
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/staff');
   await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
   const headings = await page.locator(
     '.staff-panes > section > .pane-heading h2, .staff-panes > aside > h2',
   ).allTextContents();
@@ -609,6 +611,92 @@ test('403 state is durable, explicit, and retains a safe request ID', async ({ p
   await page.goto('/forbidden');
   await expect(page.getByRole('heading', { name: '无权访问' })).toBeVisible();
   await expect(page.getByText(/local-permission-request/u)).toBeVisible();
+});
+
+test('identity chunk failure is Chinese, hides protected content, and retries only after an explicit reload', async ({ page }) => {
+  let chunkRequests = 0;
+  await mockApi(page, 'buyer');
+  await page.route('**/assets/BuyerRouteModule-*.js', async (route) => {
+    chunkRequests += 1;
+    if (chunkRequests === 1) {
+      await route.abort('failed');
+      return;
+    }
+    await route.continue();
+  });
+  await page.goto('/buyer');
+  await expect(page.getByRole('heading', { name: '页面内容暂时无法加载' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '产品', exact: true })).toHaveCount(0);
+  expect(chunkRequests).toBe(1);
+  await Promise.all([
+    page.waitForLoadState('domcontentloaded'),
+    page.getByRole('button', { name: '重新加载整页' }).click(),
+  ]);
+  await expect(page.getByRole('heading', { name: '产品', exact: true })).toBeVisible();
+  expect(chunkRequests).toBe(2);
+});
+
+for (const [identity, path, heading, ownChunk, foreignChunks] of [
+  ['buyer', '/buyer', '产品', 'BuyerRouteModule-', ['SellerRouteModule-', 'StaffRouteModule-']],
+  ['seller', '/seller', '业务进度', 'SellerRouteModule-', ['BuyerRouteModule-', 'StaffRouteModule-']],
+  ['staff', '/staff', '员工工作台', 'StaffRouteModule-', ['BuyerRouteModule-', 'SellerRouteModule-']],
+] as const) {
+  test(`${identity} only downloads its own protected route chunk`, async ({ page }) => {
+    const assets: string[] = [];
+    page.on('request', (request) => {
+      const asset = request.url().split('/').at(-1) ?? '';
+      if (asset.endsWith('.js')) assets.push(asset);
+    });
+    await mockApi(page, identity);
+    await page.goto(path);
+    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+    expect(assets.some((asset) => asset.includes(ownChunk))).toBe(true);
+    for (const foreignChunk of foreignChunks) expect(assets.some((asset) => asset.includes(foreignChunk))).toBe(false);
+  });
+}
+
+test('buyer product defers order materials and after-sales chunks until their routes open', async ({ page }) => {
+  const assets: string[] = [];
+  page.on('request', (request) => {
+    const asset = request.url().split('/').at(-1) ?? '';
+    if (asset.endsWith('.js')) assets.push(asset);
+  });
+  await mockApi(page, 'buyer');
+  await page.goto('/buyer/products');
+  await expect(page.getByRole('heading', { name: '产品', exact: true })).toBeVisible();
+  expect(assets.some((asset) => asset.includes('BuyerOrderRouteModule-'))).toBe(false);
+  expect(assets.some((asset) => asset.includes('BuyerAfterSalesRouteModule-'))).toBe(false);
+
+  await page.goto('/buyer/reviews');
+  await expect(page.getByRole('heading', { name: '评论资料', exact: true })).toBeVisible();
+  expect(assets.some((asset) => asset.includes('BuyerAfterSalesRouteModule-'))).toBe(true);
+  expect(assets.some((asset) => asset.includes('BuyerOrderRouteModule-'))).toBe(false);
+
+  await page.goto('/buyer/order-materials');
+  await expect(page.getByRole('heading', { name: '订单资料', exact: true })).toBeVisible();
+  expect(assets.some((asset) => asset.includes('BuyerOrderRouteModule-'))).toBe(true);
+});
+
+test('staff workbench defers dashboard and scheduling chunks until their routes open', async ({ page }) => {
+  const assets: string[] = [];
+  page.on('request', (request) => {
+    const asset = request.url().split('/').at(-1) ?? '';
+    if (asset.endsWith('.js')) assets.push(asset);
+  });
+  await mockApi(page, 'staff');
+  await page.goto('/staff');
+  await expect(page.getByRole('heading', { name: '员工工作台', exact: true })).toBeVisible();
+  expect(assets.some((asset) => asset.includes('StaffAdminRouteModule-'))).toBe(false);
+  expect(assets.some((asset) => asset.includes('StaffSchedulingRouteModule-'))).toBe(false);
+
+  await page.goto('/staff/admin-business-dashboard');
+  await expect(page.getByText('当前员工身份没有经营看板权限。')).toBeVisible();
+  expect(assets.some((asset) => asset.includes('StaffAdminRouteModule-'))).toBe(true);
+  expect(assets.some((asset) => asset.includes('StaffSchedulingRouteModule-'))).toBe(false);
+
+  await page.goto('/staff/products');
+  await expect(page.getByText('当前角色无权查看产品排期')).toBeVisible();
+  expect(assets.some((asset) => asset.includes('StaffSchedulingRouteModule-'))).toBe(true);
 });
 
 test('404 state does not disclose protected resource detail', async ({ page }) => {

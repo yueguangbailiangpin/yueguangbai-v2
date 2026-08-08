@@ -50,6 +50,9 @@ const protectedResourceTests = readFileSync(join(webRoot, 'auth/protected-errors
 const sessionInvalidation = readFileSync(join(webRoot, 'auth/session-invalidation.ts'), 'utf8');
 const mountedProtectedTests = readFileSync(join(webRoot, 'auth/mounted-protected-session.msw.test.tsx'), 'utf8');
 const staffSessionBoundary = readFileSync(join(webRoot, 'auth/staff/StaffSessionBoundary.tsx'), 'utf8');
+const sellerLayout = readFileSync(join(webRoot, 'seller/routes/SellerLayout.tsx'), 'utf8');
+const buyerRouteModule = readFileSync(join(webRoot, 'buyer/routes/BuyerRouteModule.tsx'), 'utf8');
+const staffRouteModule = readFileSync(join(webRoot, 'staff/StaffRouteModule.tsx'), 'utf8');
 const mswRoot = join(webRoot, 'test/msw');
 const mswServer = readFileSync(join(mswRoot, 'server.ts'), 'utf8');
 const mswHandlers = readFileSync(join(mswRoot, 'handlers.ts'), 'utf8');
@@ -940,12 +943,53 @@ requireText(staffSessionBoundary, [
   '重新清理',
 ], 'independent Staff Session Boundary');
 requireText(app, [
-  "import { StaffSessionBoundary, useCurrentStaffSession } from './auth/staff/StaffSessionBoundary'",
-  '<StaffSessionBoundary><StaffShell /></StaffSessionBoundary>',
-  '<StaffSessionBoundary><Routes>',
-], 'App Staff Session Boundary integration');
+  "import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary'",
+  "const loadStaffShell = () => staffShell ??= import('./staff/StaffRouteModule')",
+  '<StaffSessionBoundary><RouteChunkBoundary load={loadStaffShell} /></StaffSessionBoundary>',
+  "const loadBuyerLayout = () => buyerLayout ??= import('./buyer/routes/BuyerRouteModule')",
+  "const loadSellerLayout = () => sellerLayout ??= import('./seller/routes/SellerRouteModule')",
+], 'App async identity shell boundary integration');
+for (const forbiddenStaticIdentityImport of [
+  "from './buyer/routes/BuyerLayout'", "from './seller/routes/SellerLayout'", "from './staff/StaffShell'",
+]) {
+  if (app.includes(forbiddenStaticIdentityImport)) throw new Error(`identity shell must remain asynchronous: ${forbiddenStaticIdentityImport}`);
+}
+for (const [route, guardedChunk] of [
+  ['path="/buyer/*"', '<CustomerSessionBoundary target="buyer"><RouteChunkBoundary load={loadBuyerLayout} /></CustomerSessionBoundary>'],
+  ['path="/seller/*"', '<CustomerSessionBoundary target="seller"><RouteChunkBoundary load={loadSellerLayout} /></CustomerSessionBoundary>'],
+  ['path="/staff/*"', '<StaffSessionBoundary><RouteChunkBoundary load={loadStaffShell} /></StaffSessionBoundary>'],
+]) {
+  const routeIndex = app.indexOf(route);
+  const guardedChunkIndex = app.indexOf(guardedChunk, routeIndex);
+  if (routeIndex < 0 || guardedChunkIndex < routeIndex) throw new Error(`${route} must guard the asynchronous identity shell before loading it`);
+}
 if (app.includes('function StaffProtected')) {
   throw new Error('Staff Session Boundary must not remain an App-private function');
+}
+requireText(buyerRouteModule, [
+  "const loadBuyerOrderRoutes = () => import('./BuyerOrderRouteModule')",
+  "const loadBuyerAfterSalesRoutes = () => import('./BuyerAfterSalesRouteModule')",
+  "pathname.startsWith('/buyer/order-materials')",
+  "pathname.startsWith('/buyer/reviews')",
+], 'Buyer deferred route module integration');
+for (const eagerBuyerAfterSalesImport of [
+  "from '../reviews/BuyerReview", "from '../refunds/BuyerRefund",
+]) {
+  if (buyerRouteModule.includes(eagerBuyerAfterSalesImport)) {
+    throw new Error(`Buyer product portal must defer review/refund modules: ${eagerBuyerAfterSalesImport}`);
+  }
+}
+requireText(staffRouteModule, [
+  "const loadStaffAdminRoutes = () => import('./StaffAdminRouteModule')",
+  "const loadStaffSchedulingRoutes = () => import('./StaffSchedulingRouteModule')",
+  "pathname.startsWith('/staff/admin-business-dashboard')",
+], 'Staff deferred route module integration');
+for (const eagerStaffHeavyImport of [
+  "from './admin-dashboard/AdminBusinessDashboard'", "from './product-scheduling/ProductSchedulingWorkspace'",
+]) {
+  if (staffRouteModule.includes(eagerStaffHeavyImport)) {
+    throw new Error(`Staff workbench must defer heavy route module: ${eagerStaffHeavyImport}`);
+  }
 }
 
 requireText(mountedProtectedTests, [
@@ -1098,7 +1142,7 @@ requireText(rootEntry, [
   '>月光白</h1>',
   '请使用工作人员发送的专属链接登录。',
 ], 'finished dedicated-link root notice');
-requireText(app, [
+requireText(sellerLayout, [
   "{ id: 'overview', label: '概览', href: '/seller', end: true }",
   'className="seller-metrics"',
   '>业务指标摘要</h2>',
@@ -1106,7 +1150,7 @@ requireText(app, [
   'value="—"',
   'detail="业务模块开放后显示"',
 ], 'Seller metric and route-aware navigation remediation');
-if (app.includes("href: '/seller', current: true")) {
+if (sellerLayout.includes("href: '/seller', current: true")) {
   throw new Error('Seller overview must not remain permanently current');
 }
 requireText(appTests, [

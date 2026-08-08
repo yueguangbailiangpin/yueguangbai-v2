@@ -123,7 +123,8 @@ for (const [, path] of expected) {
 const buyerWeb = [
   read('apps/web/src/App.tsx'), read('apps/web/src/config/runtime-config.ts'),
   read('apps/web/src/files/file-read-providers.ts'),
-  ...['api/client.ts', 'contracts/runtime.ts', 'routes/BuyerLayout.tsx',
+  ...['api/client.ts', 'contracts/runtime.ts', 'routes/BuyerFrame.tsx', 'routes/BuyerLayout.tsx',
+    'routes/BuyerRouteModule.tsx', 'routes/BuyerOrderRouteModule.tsx', 'routes/BuyerAfterSalesRouteModule.tsx',
     'order-evidence/BuyerOrderEvidenceFormPage.tsx', 'reviews/BuyerReviewFormPage.tsx']
     .map((path) => read(`apps/web/src/buyer/${path}`)),
 ].join('\n');
@@ -158,9 +159,9 @@ assertContains(evidenceForm, "uploader.start('buyerOrderEvidence', [selected.cur
 assert(!/name="evidence_file"[^>]*\bmultiple\b/u.test(evidenceForm), 'order evidence input must not allow multiple files');
 const reviewForm = read('apps/web/src/buyer/reviews/BuyerReviewFormPage.tsx');
 assertContains(reviewForm, 'files.current.length > 3', 'review three-file command limit');
-const layout = read('apps/web/src/buyer/routes/BuyerLayout.tsx');
-for (const label of ['首页', '产品', '订单资料', '评论', '我的']) assertContains(layout, label, 'Buyer five-item navigation');
-assert((layout.match(/label:/gu) ?? []).length === 5, 'Buyer navigation must contain exactly five items');
+const buyerFrame = read('apps/web/src/buyer/routes/BuyerFrame.tsx');
+for (const label of ['首页', '产品', '订单资料', '评论', '我的']) assertContains(buyerFrame, label, 'Buyer five-item navigation');
+assert((buyerFrame.match(/label:/gu) ?? []).length === 5, 'Buyer navigation must contain exactly five items');
 assertNotContains(read('apps/web/src/App.tsx').split('<Route path="/buyer/login"')[0], '/buyer/register', 'root page registration entry');
 
 const sellerStaffScopes = [
@@ -186,7 +187,13 @@ const module4SellerAllowlist = new Set([
   'apps/web/src/seller/pages/SellerSubmissionPages.tsx',
   'apps/web/src/seller/queries/keys.ts',
   'apps/web/src/seller/routes/SellerLayout.tsx',
+  'apps/web/src/seller/routes/SellerRouteModule.tsx',
   'apps/web/src/staff/StaffWorkbench.tsx',
+  'apps/web/src/staff/StaffCallbackModule.tsx',
+  'apps/web/src/staff/StaffAdminRouteModule.tsx',
+  'apps/web/src/staff/StaffRouteModule.tsx',
+  'apps/web/src/staff/StaffSchedulingRouteModule.tsx',
+  'apps/web/src/staff/StaffShell.tsx',
   'apps/web/src/staff/admin-dashboard/AdminBusinessDashboard.tsx',
   'apps/web/src/staff/acquisition/AcquisitionWorkbench.tsx',
   'apps/web/src/staff/api/client.ts',
@@ -199,6 +206,21 @@ const module4SellerAllowlist = new Set([
 ]);
 const unapprovedSellerStaff = changedSellerStaff.filter((path) => !module4SellerAllowlist.has(path));
 assert(unapprovedSellerStaff.length === 0, `Unapproved Seller/Staff business source expanded: ${unapprovedSellerStaff.join(', ')}`);
+for (const routeModule of [
+  'apps/web/src/seller/routes/SellerRouteModule.tsx',
+  'apps/web/src/buyer/routes/BuyerRouteModule.tsx',
+  'apps/web/src/buyer/routes/BuyerOrderRouteModule.tsx',
+  'apps/web/src/buyer/routes/BuyerAfterSalesRouteModule.tsx',
+  'apps/web/src/staff/StaffCallbackModule.tsx',
+  'apps/web/src/staff/StaffAdminRouteModule.tsx',
+  'apps/web/src/staff/StaffRouteModule.tsx',
+  'apps/web/src/staff/StaffSchedulingRouteModule.tsx',
+  'apps/web/src/staff/StaffShell.tsx',
+]) {
+  const source = read(routeModule);
+  assertNotContains(source, '/api/', `${routeModule} must not expand an API contract`);
+  assertNotContains(source, 'fetch(', `${routeModule} must remain a UI composition module`);
+}
 const taskSource = read(`${change}/tasks.md`);
 assertContains(taskSource, 'COMPLETE=58', 'formal requirement evidence');
 assertContains(taskSource, 'Scenarios=116/116', 'formal scenario evidence');
