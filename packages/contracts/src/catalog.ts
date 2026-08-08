@@ -35,4 +35,6 @@ extends ProductDescriptiveFields {
   orderingGuideExpectedAmountJpy: number;
   colorSpecMode: ProductColorSpecMode;
   defaultBuyerSelfPayBps?: number;
+  orderIntervalDays: number;
+  ordersPerRun: number;
 }

@@ -43,6 +43,16 @@ export function requireCatalogPermission(
   }
 }
 
+export function requireProductScheduleMaintenance(
+  actor: CatalogStaffActor,
+): void {
+  if (!actor.permissions.has('PRODUCT_REVIEW')
+    || !actor.permissions.has('DEMAND_PUBLISH')
+    || !actor.roles.some((role) => role === 'owner' || role === 'seller_ops')) {
+    throw new CatalogError('FORBIDDEN', 403);
+  }
+}
+
 export function parseCatalogInput<T>(
   parser: () => T,
 ): T {

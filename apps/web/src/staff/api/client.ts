@@ -13,6 +13,10 @@ import {
   acquisitionFunnelSchema, acquisitionLeadSchema,
   adminDashboardSummarySchema, adminDashboardTrendSchema,
   adminDashboardDrillDownSchema,
+  demandReviewContextSchema, demandReviewMutationSchema,
+  demandScheduleConfirmationSchema, demandSchedulePreviewSchema,
+  productVersionMutationSchema, staffProductDetailSchema,
+  staffProductPageSchema, staffReservationSchedulePageSchema,
 } from '../contracts/runtime';
 
 const acquisitionChannelResultSchema = z.object({ channel: acquisitionChannelSchema, replayed: z.boolean() }).strict();
@@ -51,6 +55,41 @@ function write<T extends z.ZodType>(client: QueryClient, path: string, body: unk
 }
 
 export const staffApi = Object.freeze({
+  products: (client: QueryClient, input: { search: string; cursor: string|null }, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ limit: '25' });
+    if (input.search) query.set('search', input.search);
+    if (input.cursor) query.set('cursor', input.cursor);
+    return read(client, `/api/staff/catalog/products?${query}`, staffProductPageSchema, signal);
+  },
+  product: (client: QueryClient, id: string, signal?: AbortSignal) => read(client,
+    `/api/staff/catalog/products/${encodeURIComponent(id)}`, staffProductDetailSchema, signal),
+  addProductVersion: (client: QueryClient, id: string, body: unknown, key: string) => write(client,
+    `/api/staff/catalog/products/${encodeURIComponent(id)}/versions`, body,
+    productVersionMutationSchema, key),
+  reservationSchedule: (client: QueryClient, id: string, cursor: string|null, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ limit: '50' });
+    if (cursor) query.set('cursor', cursor);
+    return read(client, `/api/staff/demand-batches/${encodeURIComponent(id)}/reservation-schedule?${query}`,
+      staffReservationSchedulePageSchema, signal);
+  },
+  previewDemandSchedule: (client: QueryClient, id: string, body: unknown, signal?: AbortSignal) =>
+    identityApiRequest('staff', client, {
+      path: `/api/staff/demand-batches/${encodeURIComponent(id)}/schedule/preview`,
+      method: 'POST', schema: demandSchedulePreviewSchema, body,
+      ...(signal ? { signal } : {}),
+    }),
+  confirmDemandSchedule: (client: QueryClient, id: string, body: unknown, key: string) => write(
+    client, `/api/staff/demand-batches/${encodeURIComponent(id)}/schedule/confirm`,
+    body, demandScheduleConfirmationSchema, key,
+  ),
+  demandReviewContext: (client: QueryClient, id: string, signal?: AbortSignal) => read(
+    client, `/api/staff/demand-batches/${encodeURIComponent(id)}/review-context`,
+    demandReviewContextSchema, signal,
+  ),
+  reviewDemand: (client: QueryClient, id: string, body: unknown, key: string) => write(
+    client, `/api/staff/demand-batches/${encodeURIComponent(id)}/review`,
+    body, demandReviewMutationSchema, key,
+  ),
   workItems: (client: QueryClient, query: { status: string; workType: string | null; cursor: string | null }, signal?: AbortSignal) => {
     const parameters = new URLSearchParams({ status: query.status, limit: '25' });
     if (query.workType) parameters.set('work_type', query.workType);

@@ -25,7 +25,7 @@ describe('Wave 12 migration and authorization boundaries', () => {
     const schema = await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(36);
+    expect(Number(schema?.schema_version)).toBe(37);
     const objects = await database.prepare(`
       SELECT type, name FROM sqlite_schema
       WHERE name IN (

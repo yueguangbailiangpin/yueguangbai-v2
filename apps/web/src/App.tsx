@@ -22,6 +22,7 @@ import { StaffAuthController } from './auth/staff/staff-auth-controller';
 import { StaffWorkbench } from './staff/StaffWorkbench';
 import { AcquisitionWorkbench } from './staff/acquisition/AcquisitionWorkbench';
 import { AdminBusinessDashboard } from './staff/admin-dashboard/AdminBusinessDashboard';
+import { ProductSchedulingWorkspace } from './staff/product-scheduling/ProductSchedulingWorkspace';
 import { safeReturnPath } from './routes/return-path';
 import { BuyerDashboardPage } from './buyer/dashboard/BuyerDashboardPage';
 import { BuyerDemandDetailPage } from './buyer/demands/BuyerDemandDetailPage';
@@ -262,6 +263,9 @@ function StaffShell(): React.JSX.Element {
   const location = useLocation();
   const acquisition = location.pathname.startsWith('/staff/acquisition');
   const dashboard = location.pathname.startsWith('/staff/admin-business-dashboard');
+  const productScheduling = location.pathname.startsWith('/staff/products')
+    || /^\/staff\/demands\/[^/]+\/reservations$/u.test(location.pathname);
+  const mayViewProducts = session.permissions.includes('PRODUCT_VIEW');
   const mayViewDashboard = session.role.code === 'owner'
     && session.permissions.includes('FINANCIAL_VIEW');
   return <IdentityShell identity="staff" className="staff-shell">
@@ -270,16 +274,20 @@ function StaffShell(): React.JSX.Element {
     <nav className="staff-primary-nav" aria-label="员工工作台导航">
       <NavLink to="/staff" end>工作队列</NavLink>
       <NavLink to="/staff/acquisition">获客登记</NavLink>
+      {mayViewProducts ? <NavLink to="/staff/products">产品预约</NavLink> : null}
       {mayViewDashboard ? <NavLink to="/staff/admin-business-dashboard">经营看板</NavLink> : null}
     </nav>
     <PageHeader
       eyebrow="内部操作"
-      title={dashboard ? '经营看板' : acquisition ? '获客登记' : '员工工作台'}
+      title={dashboard ? '经营看板' : productScheduling ? '产品预约排期'
+        : acquisition ? '获客登记' : '员工工作台'}
       description={dashboard ? '按北京时间核对获客、订单与内部利润事实。'
-        : acquisition ? '添加微信后登记单人线索；渠道由后端自动带入。'
+        : productScheduling ? '按不可变预约顺序查看排名，并以北京时间自然日维护下单排期。'
+          : acquisition ? '添加微信后登记单人线索；渠道由后端自动带入。'
           : '队列、详情与操作保持清晰的阅读和处理顺序。'}
     />
-    {dashboard ? <AdminBusinessDashboard /> : acquisition ? <AcquisitionWorkbench /> : <StaffWorkbench />}
+    {dashboard ? <AdminBusinessDashboard /> : productScheduling ? <ProductSchedulingWorkspace />
+      : acquisition ? <AcquisitionWorkbench /> : <StaffWorkbench />}
     <footer className="staff-account-footer"><StaffAccountActions /></footer>
   </IdentityShell>;
 }
@@ -342,6 +350,9 @@ function AppRoutes(): React.JSX.Element {
       <Route path="work/:workItemId" element={<StaffShell />} />
       <Route path="acquisition" element={<StaffShell />} />
       <Route path="admin-business-dashboard" element={<StaffShell />} />
+      <Route path="products" element={<StaffShell />} />
+      <Route path="products/:productId" element={<StaffShell />} />
+      <Route path="demands/:demandId/reservations" element={<StaffShell />} />
       <Route path="*" element={<DomainNotFound />} />
     </Routes></StaffSessionBoundary>} />
     <Route path="/forbidden" element={<main className="centered"><PermissionDenied requestId="local-permission-request" /></main>} />

@@ -192,6 +192,7 @@ const module4SellerAllowlist = new Set([
   'apps/web/src/staff/api/client.ts',
   'apps/web/src/staff/contracts/runtime.ts',
   'apps/web/src/staff/mutations/StaffMutationAuthority.ts',
+  'apps/web/src/staff/product-scheduling/ProductSchedulingWorkspace.tsx',
   'apps/web/src/staff/queries/keys.ts',
   'apps/web/src/staff/shared/StaffProtectedFileButton.tsx',
   'apps/web/src/staff/shared/format.ts',

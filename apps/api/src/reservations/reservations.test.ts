@@ -27,6 +27,16 @@ import {
 import {
   submitReservation as submitReservationService,
 } from './submit-reservation';
+import {
+  readStaffReservationSchedule,
+} from '../product-reservation-scheduling/read-model';
+import {
+  confirmDemandSchedule,
+  previewDemandSchedule,
+} from '../product-reservation-scheduling/schedule-command';
+import type {
+  SchedulingStaffActor,
+} from '../product-reservation-scheduling/shared';
 import type {
   BuyerReservationActor,
   ReservationStaffActor,
@@ -40,6 +50,182 @@ afterEach(() => {
 });
 
 describe('buyer reservations and atomic demand capacity', () => {
+  it('previews and confirms an immutable schedule without changing order or finance facts', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    await submitReservation(database, {
+      demandBatchId: 'demand-1', expectedDemandVersion: 2,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'schedule:buyer-1',
+      now: 5000,
+    });
+
+    const owner = ownerScheduleActor();
+    const stalePreview = await previewDemandSchedule(database, owner, {
+      demandBatchId: 'demand-1',
+      expectedVersion: 3,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 3,
+      reason: '首次补齐历史排期',
+    });
+    await submitReservation(database, {
+      demandBatchId: 'demand-1', expectedDemandVersion: 3,
+    }, {
+      actor: buyerActor('buyer-2'),
+      idempotencyKey: 'schedule:buyer-2',
+      now: 5001,
+    });
+    await expect(confirmDemandSchedule(database, owner, {
+      demandBatchId: 'demand-1',
+      expectedVersion: 3,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 3,
+      reason: '首次补齐历史排期',
+      previewHash: stalePreview.preview_hash,
+    }, {
+      idempotencyKey: 'schedule:stale-confirm',
+      now: 6000,
+    })).rejects.toMatchObject({
+      code: 'VERSION_CONFLICT',
+      status: 409,
+    });
+
+    const preview = await previewDemandSchedule(database, owner, {
+      demandBatchId: 'demand-1',
+      expectedVersion: 4,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 3,
+      reason: '首次补齐历史排期',
+    });
+    const sellerOpsPreview = await previewDemandSchedule(
+      database,
+      sellerOpsScheduleActor(['seller-org-1']),
+      {
+        demandBatchId: 'demand-1',
+        expectedVersion: 4,
+        firstOrderDate: '1970-01-01',
+        orderIntervalDays: 1,
+        ordersPerRun: 3,
+        reason: '首次补齐历史排期',
+      },
+    );
+    expect(sellerOpsPreview.preview_hash).toBe(preview.preview_hash);
+    await expect(previewDemandSchedule(
+      database,
+      sellerOpsScheduleActor(['another-seller-org']),
+      {
+        demandBatchId: 'demand-1', expectedVersion: 4,
+        firstOrderDate: '1970-01-01', orderIntervalDays: 1,
+        ordersPerRun: 3, reason: '越权组织',
+      },
+    )).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+    await expect(previewDemandSchedule(
+      database,
+      sellerOpsScheduleActor(['seller-org-1'], ['PRODUCT_VIEW']),
+      {
+        demandBatchId: 'demand-1', expectedVersion: 4,
+        firstOrderDate: '1970-01-01', orderIntervalDays: 1,
+        ordersPerRun: 3, reason: '个人禁用后无有效编辑权限',
+      },
+    )).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    expect(preview).toMatchObject({
+      effective_reservation_count: 2,
+      affected_reservation_count: 2,
+      theoretical_last_order_date: '1970-01-01',
+    });
+    await expect(confirmDemandSchedule(database, owner, {
+      demandBatchId: 'demand-1',
+      expectedVersion: 4,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 3,
+      reason: '首次补齐历史排期',
+      previewHash: '0'.repeat(64),
+    }, {
+      idempotencyKey: 'schedule:tampered-preview',
+      now: 6050,
+    })).rejects.toMatchObject({
+      code: 'SCHEDULE_PREVIEW_STALE', status: 409,
+    });
+    const before = await orderFinanceCounts(database);
+    const confirmed = await confirmDemandSchedule(database, owner, {
+      demandBatchId: 'demand-1',
+      expectedVersion: 4,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 3,
+      reason: '首次补齐历史排期',
+      previewHash: preview.preview_hash,
+    }, {
+      idempotencyKey: 'schedule:confirm',
+      now: 6100,
+    });
+    expect(confirmed).toMatchObject({
+      demand_version: 5,
+      schedule: {
+        version_no: 1,
+        affected_reservation_count: 2,
+        change_reason: '首次补齐历史排期',
+      },
+      replayed: false,
+    });
+    expect(await confirmDemandSchedule(database, owner, {
+      demandBatchId: 'demand-1',
+      expectedVersion: 4,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 3,
+      reason: '首次补齐历史排期',
+      previewHash: preview.preview_hash,
+    }, {
+      idempotencyKey: 'schedule:confirm',
+      now: 6200,
+    })).toEqual({ ...confirmed, replayed: true });
+    expect(await orderFinanceCounts(database)).toEqual(before);
+
+    const preSalesPage = await readStaffReservationSchedule(
+      database,
+      preSalesScheduleActor(),
+      'demand-1',
+      { limit: 20 },
+    );
+    expect(preSalesPage.items.map((item) => ({
+      rank: item.rank,
+      planned: item.planned_order_date,
+      buyerId: item.buyer_customer_id,
+      name: item.buyer_display_name,
+    }))).toEqual([
+      { rank: 1, planned: '1970-01-01', buyerId: 'buyer-1', name: '买家一' },
+      { rank: 2, planned: '1970-01-01', buyerId: null, name: null },
+    ]);
+    await expect(previewDemandSchedule(database, buyerRefundActor(), {
+      demandBatchId: 'demand-1',
+      expectedVersion: 5,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 3,
+      reason: '不允许修改',
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    await expect(previewDemandSchedule(database, owner, {
+      demandBatchId: 'demand-1',
+      expectedVersion: 5,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 1,
+      reason: '超过截止日',
+    })).rejects.toMatchObject({
+      code: 'SCHEDULE_WINDOW_CONFLICT', status: 409,
+    });
+    await expect(database.prepare(`
+      UPDATE demand_order_schedule_versions SET change_reason='覆盖历史'
+      WHERE demand_batch_id='demand-1'
+    `).run()).rejects.toThrow('demand_order_schedule_versions_are_immutable');
+  });
+
   it('submits a pending reservation, consumes a temporary hold, and replays', async () => {
     database = createMigratedTestDatabase();
     seedReservationFixture(database);
@@ -624,7 +810,8 @@ function seedReservationFixture(
     ,
           ordering_guide_expected_amount_jpy,
           color_spec_mode,
-          default_buyer_self_pay_bps) VALUES
+          default_buyer_self_pay_bps,
+          order_interval_days, orders_per_run) VALUES
       (
         'product-1-v1', 'product-1', 1,
         '预约产品一', '["关键词一"]',
@@ -632,7 +819,7 @@ function seedReservationFixture(
         '公开说明一', '内部说明一',
         'staff-pre-sales', 1000
       ,
-          1980, 'MAIN_IMAGE_VARIANT', 1000),
+          1980, 'MAIN_IMAGE_VARIANT', 1000, 1, 3),
       (
         'product-2-v1', 'product-2', 1,
         '预约产品二', '["关键词二"]',
@@ -640,7 +827,7 @@ function seedReservationFixture(
         '公开说明二', '内部说明二',
         'staff-pre-sales', 1000
       ,
-          1980, 'MAIN_IMAGE_VARIANT', 1000);
+          1980, 'MAIN_IMAGE_VARIANT', 1000, 1, 3);
 
     INSERT INTO demand_batches (
       id, organization_id, store_id, marketplace_code,
@@ -723,6 +910,102 @@ function preSalesActor(): ReservationStaffActor {
     permissions: new Set<StaffPermissionCode>([
       'RESERVATION_DECIDE',
     ]),
+  };
+}
+
+function ownerScheduleActor(): SchedulingStaffActor {
+  return {
+    staffId: 'zz-phase3h-test-owner',
+    displayName: '总管理员',
+    roles: ['owner'],
+    permissions: new Set([
+      'PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH',
+    ]),
+    dataScope: {
+      type: 'GLOBAL',
+      buyerCustomerIds: [],
+      sellerOrganizationIds: [],
+      teamIds: [],
+    },
+  };
+}
+
+function preSalesScheduleActor(): SchedulingStaffActor {
+  return {
+    staffId: 'staff-pre-sales',
+    displayName: '售前',
+    roles: ['pre_sales'],
+    permissions: new Set(['PRODUCT_VIEW']),
+    dataScope: {
+      type: 'ASSIGNED_BUYERS',
+      buyerCustomerIds: ['buyer-1'],
+      sellerOrganizationIds: [],
+      teamIds: [],
+    },
+  };
+}
+
+function sellerOpsScheduleActor(
+  sellerOrganizationIds: string[],
+  permissions: StaffPermissionCode[] = [
+    'PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH',
+  ],
+): SchedulingStaffActor {
+  return {
+    staffId: 'staff-seller-ops',
+    displayName: '卖家对接',
+    roles: ['seller_ops'],
+    permissions: new Set(permissions),
+    dataScope: {
+      type: 'ASSIGNED_SELLER_ORGANIZATIONS',
+      buyerCustomerIds: [],
+      sellerOrganizationIds,
+      teamIds: [],
+    },
+  };
+}
+
+function buyerRefundActor(): SchedulingStaffActor {
+  return {
+    staffId: 'staff-pre-sales',
+    displayName: '退款专员',
+    roles: ['buyer_refund'],
+    permissions: new Set([
+      'PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH',
+    ]),
+    dataScope: {
+      type: 'GLOBAL',
+      buyerCustomerIds: [],
+      sellerOrganizationIds: [],
+      teamIds: [],
+    },
+  };
+}
+
+async function orderFinanceCounts(database: SqliteDatabase): Promise<{
+  evidence: number;
+  formalOrders: number;
+  snapshots: number;
+  moneySnapshots: number;
+}> {
+  const row = await database.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM order_evidence_submissions) AS evidence,
+      (SELECT COUNT(*) FROM formal_orders) AS formalOrders,
+      (SELECT COUNT(*) FROM formal_order_financial_snapshots) AS snapshots,
+      (SELECT COUNT(*) FROM formal_order_marketplace_money_snapshots)
+        AS moneySnapshots
+  `).first<{
+    evidence: number;
+    formalOrders: number;
+    snapshots: number;
+    moneySnapshots: number;
+  }>();
+  return {
+    evidence: Number(row?.evidence ?? 0),
+    formalOrders: Number(row?.formalOrders ?? 0),
+    snapshots: Number(row?.snapshots ?? 0),
+    moneySnapshots: Number(row?.moneySnapshots ?? 0),
   };
 }
 

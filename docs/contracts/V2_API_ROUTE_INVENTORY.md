@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。共有 175 个唯一业务/健康端点：174 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
+这是默认 App 的可复现 route inventory。共有 181 个唯一业务/健康端点：180 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表精确比较；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都会失败。
 
@@ -61,6 +61,10 @@ GET /api/staff/admin-business-dashboard/summary
 GET /api/staff/admin-business-dashboard/trends
 GET /api/staff/buyer-refunds
 GET /api/staff/buyer-refunds/:id
+GET /api/staff/catalog/products
+GET /api/staff/catalog/products/:id
+GET /api/staff/demand-batches/:id/review-context
+GET /api/staff/demand-batches/:id/reservation-schedule
 GET /api/staff/file-read-intents/:id/content
 GET /api/staff/finance/cash-flow
 GET /api/staff/finance/exceptions
@@ -160,6 +164,8 @@ POST /api/staff/customer-security/password-resets
 POST /api/staff/catalog/products
 POST /api/staff/catalog/products/:id/versions
 POST /api/staff/demand-batches/:id/review
+POST /api/staff/demand-batches/:id/schedule/confirm
+POST /api/staff/demand-batches/:id/schedule/preview
 POST /api/staff/file-upload-intents/:id/complete
 POST /api/staff/file-uploads/buyer-refund-proofs/intents
 POST /api/staff/file-uploads/seller-settlement-proofs/intents

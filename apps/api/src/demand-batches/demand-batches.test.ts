@@ -23,6 +23,7 @@ import {
   listBuyerPublicDemandBatches,
 } from './list-public-demand-batches';
 import {
+  readDemandReviewContext,
   reviewDemandBatch,
 } from './review-demand-batch';
 import {
@@ -64,6 +65,7 @@ describe('demand batch workflow', () => {
       'staff-demand-reviewer',
     );
     expect(authorization?.permissions.has('DEMAND_PUBLISH')).toBe(true);
+    expect(authorization?.permissions.has('PRODUCT_REVIEW')).toBe(true);
 
     const app = createApp();
     app.use('/api/staff/*', async (context, next) => {
@@ -71,6 +73,22 @@ describe('demand batch workflow', () => {
       await next();
     });
     registerStaffCatalogWorkflowRoutes(app);
+    const contextResponse = await app.request(
+      `https://api.test/api/staff/demand-batches/${submitted.demand_batch_id}/review-context`,
+      { method: 'GET' },
+      { DB: database } as any,
+    );
+    expect(contextResponse.status).toBe(200);
+    const reviewContext = await contextResponse.json() as any;
+    expect(reviewContext.data.review_context).toMatchObject({
+      demand_batch_id: submitted.demand_batch_id,
+      demand_version: 1,
+      status: 'SUBMITTED',
+      product_version_no: 1,
+      product_name: '产品一旧版',
+      cadence: { order_interval_days: 1, orders_per_run: 100 },
+      timezone: 'Asia/Shanghai',
+    });
     const response = await app.request(
       `https://api.test/api/staff/demand-batches/${submitted.demand_batch_id}/review`,
       {
@@ -82,6 +100,8 @@ describe('demand batch workflow', () => {
         body: JSON.stringify({
           expected_version: 1,
           decision: 'PUBLISH',
+          first_order_date: new Date(now + 8 * 60 * 60 * 1000)
+            .toISOString().slice(0, 10),
           buyer_self_pay_bps: 10000,
           buyer_self_pay_override_reason: '全额自费专项活动',
         }),
@@ -226,14 +246,14 @@ describe('demand batch workflow', () => {
         created_by_staff_id, created_at
       ,
           ordering_guide_expected_amount_jpy,
-          color_spec_mode) VALUES (
+          color_spec_mode, order_interval_days, orders_per_run) VALUES (
         'product-version-1-v2', 'product-1', 2,
         '产品一新版', '["新版关键词"]',
         'https://www.amazon.co.jp/product-new',
         '新版公开说明', '新版内部说明',
         'staff-demand-reviewer', 2500
       ,
-          1980, 'MAIN_IMAGE_VARIANT');
+          1980, 'MAIN_IMAGE_VARIANT', 1, 100);
     `);
 
     const replayAfterProductChanged = await submitDemandBatch(
@@ -260,6 +280,7 @@ describe('demand batch workflow', () => {
         demandBatchId: submitted.demand_batch_id,
         expectedVersion: 1,
         decision: 'PUBLISH',
+        firstOrderDate: '1970-01-01',
       },
       {
         actor: reviewerActor(),
@@ -273,6 +294,20 @@ describe('demand batch workflow', () => {
       status: 'PUBLISHED',
       version: 2,
       review_reason: null,
+      schedule: {
+        schedule_version_id: expect.any(String),
+        version_no: 1,
+        demand_version: 2,
+        first_order_date: '1970-01-01',
+        order_interval_days: 1,
+        orders_per_run: 100,
+        theoretical_last_order_date: '1970-01-01',
+        affected_reservation_count: 0,
+        preview_hash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        change_reason: '需求发布',
+        changed_by_staff_id: 'staff-demand-reviewer',
+        created_at: 3000,
+      },
       replayed: false,
     });
 
@@ -345,6 +380,7 @@ describe('demand batch workflow', () => {
       status: 'REJECTED',
       version: 2,
       review_reason: '数量或时间需要调整',
+      schedule: null,
       replayed: false,
     });
 
@@ -405,6 +441,7 @@ describe('demand batch workflow', () => {
         demandBatchId: submitted.demand_batch_id,
         expectedVersion: 1,
         decision: 'PUBLISH',
+        firstOrderDate: '1970-01-01',
       },
       {
         actor: reviewerActor(),
@@ -471,6 +508,7 @@ describe('demand batch workflow', () => {
         demandBatchId: future.demand_batch_id,
         expectedVersion: 1,
         decision: 'PUBLISH',
+        firstOrderDate: '1970-01-01',
       },
       {
         actor: reviewerActor(),
@@ -522,7 +560,7 @@ describe('demand batch workflow', () => {
     });
   });
 
-  it('enforces review permission, expected version, expiry, and immutable events', async () => {
+  it('enforces review role, base demand permission, assignment, expected version, expiry, and immutable events', async () => {
     database = createMigratedTestDatabase();
     seedDemandFixture(database);
 
@@ -540,25 +578,59 @@ describe('demand batch workflow', () => {
       },
     );
 
-    await expect(reviewDemandBatch(
-      database,
-      {
-        demandBatchId: submitted.demand_batch_id,
-        expectedVersion: 1,
-        decision: 'PUBLISH',
-      },
-      {
-        actor: {
-          ...reviewerActor(),
-          permissions: new Set(),
+    const forbiddenActors: DemandStaffActor[] = [
+      { ...reviewerActor(), roles: ['buyer_refund'],
+        permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW', 'DEMAND_PUBLISH']) },
+      { ...reviewerActor(), roles: ['pre_sales'],
+        permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW', 'DEMAND_PUBLISH']) },
+      { ...reviewerActor(), permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW']) },
+    ];
+    for (const [index, deniedActor] of forbiddenActors.entries()) {
+      await expect(readDemandReviewContext(
+        database, submitted.demand_batch_id, deniedActor,
+      )).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+      await expect(reviewDemandBatch(
+        database,
+        {
+          demandBatchId: submitted.demand_batch_id,
+          expectedVersion: 1,
+          decision: 'PUBLISH',
+          firstOrderDate: '1970-01-01',
         },
-        idempotencyKey: 'demand:guard:forbidden',
-        now: 3000,
-      },
-    )).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-      status: 403,
-    });
+        {
+          actor: deniedActor,
+          idempotencyKey: `demand:guard:forbidden:${index}`,
+          now: 3000,
+        },
+      )).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    }
+    await expect(reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id, expectedVersion: 1,
+      decision: 'REJECT', rejectionReason: '缺少需求发布权限',
+    }, { actor: { ...reviewerActor(),
+      permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW']) },
+      idempotencyKey: 'demand:guard:reject-without-demand', now: 3000,
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+
+    database.exec(`
+      INSERT INTO staff_users (
+        id, display_name, status, authorization_version,
+        version, created_at, updated_at, disabled_at
+      ) VALUES ('staff-demand-unassigned', '未指派卖家对接', 'ACTIVE', 1,
+        1, 1000, 1000, NULL);
+      INSERT INTO staff_role_assignments (
+        staff_id, role_code, status, assigned_by_staff_id,
+        assigned_at, revoked_at, created_at, updated_at
+      ) VALUES ('staff-demand-unassigned', 'seller_ops', 'ACTIVE', NULL,
+        1000, NULL, 1000, 1000);
+      INSERT INTO staff_team_memberships (
+        staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
+      ) VALUES ('staff-demand-unassigned', 'team-demand-review', 'ACTIVE',
+        1000, NULL, 1000, 1000);
+    `);
+    await expect(readDemandReviewContext(database, submitted.demand_batch_id, {
+      ...reviewerActor(), staffId: 'staff-demand-unassigned',
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
 
     await expect(reviewDemandBatch(
       database,
@@ -584,6 +656,7 @@ describe('demand batch workflow', () => {
         demandBatchId: submitted.demand_batch_id,
         expectedVersion: 1,
         decision: 'PUBLISH',
+        firstOrderDate: '1970-01-01',
       },
       {
         actor: reviewerActor(),
@@ -613,6 +686,82 @@ describe('demand batch workflow', () => {
     ).run()).rejects.toThrow(
       'demand_batch_events_are_immutable',
     );
+  });
+
+  it('lets effective DEMAND_PUBLISH-only seller_ops inspect, reject, and close but not publish', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const rejectSource = await submitDemandBatch(database, demandInput('product-1'), {
+      actor: ownerActor(), idempotencyKey: 'demand-action:reject-submit', now: 2000,
+    });
+    const closeSource = await submitDemandBatch(database, demandInput('product-2'), {
+      actor: ownerActor(), idempotencyKey: 'demand-action:close-submit', now: 2100,
+    });
+    database.exec(`INSERT INTO staff_permission_overrides (
+      staff_id, permission_code, effect, status, reason,
+      assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
+    ) VALUES ('staff-demand-reviewer','PRODUCT_REVIEW','DENY','ACTIVE','action gate',
+      'zz-phase3h-test-owner',1500,NULL,1500,1500)`);
+    const actor = await persistedDemandReviewerActor(database);
+    expect(actor.permissions.has('DEMAND_PUBLISH')).toBe(true);
+    expect(actor.permissions.has('PRODUCT_REVIEW')).toBe(false);
+
+    await expect(readDemandReviewContext(database, rejectSource.demand_batch_id, actor))
+      .resolves.toMatchObject({ can_publish: false, demand_version: 1 });
+    await expect(reviewDemandBatch(database, {
+      demandBatchId: rejectSource.demand_batch_id, expectedVersion: 1,
+      decision: 'PUBLISH', firstOrderDate: '1970-01-01',
+    }, { actor, idempotencyKey: 'demand-action:publish-denied', now: 3000 }))
+      .rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    await expect(reviewDemandBatch(database, {
+      demandBatchId: rejectSource.demand_batch_id, expectedVersion: 1,
+      decision: 'REJECT', rejectionReason: '基础需求权限允许拒绝',
+    }, { actor, idempotencyKey: 'demand-action:reject', now: 3100 }))
+      .resolves.toMatchObject({ status: 'REJECTED', schedule: null });
+
+    await reviewDemandBatch(database, {
+      demandBatchId: closeSource.demand_batch_id, expectedVersion: 1,
+      decision: 'PUBLISH', firstOrderDate: '1970-01-01',
+    }, { actor: ownerDemandReviewerActor(), idempotencyKey: 'demand-action:owner-publish', now: 3200 });
+    await expect(closeDemandBatch(database, {
+      demandBatchId: closeSource.demand_batch_id, expectedVersion: 2,
+      closeReason: '关闭不写排期',
+    }, { actor, idempotencyKey: 'demand-action:close', now: 3300 }))
+      .resolves.toMatchObject({ status: 'CLOSED' });
+  });
+
+  it('rejects stale demand work-item organization scope without writes while owner GLOBAL proceeds', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    insertDemandScopeMismatchOrganization(database);
+    const submitted = await submitDemandBatch(database, demandInput('product-1'), {
+      actor: ownerActor(), idempotencyKey: 'demand-scope:submit', now: 2000,
+    });
+    // Simulate stale metadata that normal database write guards prevent.
+    database.exec(`DROP TRIGGER trg_staff_work_items_update_guard`);
+    await database.prepare(`UPDATE staff_work_items SET seller_organization_id='seller-org-2'
+      WHERE source_entity_type='DEMAND_BATCH' AND source_entity_id=?`)
+      .bind(submitted.demand_batch_id).run();
+    const before = await demandReviewBusinessCounts(database, submitted.demand_batch_id);
+    await expect(readDemandReviewContext(database, submitted.demand_batch_id, reviewerActor()))
+      .rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+    await expect(reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id, expectedVersion: 1,
+      decision: 'REJECT', rejectionReason: '恶意工作项组织',
+    }, { actor: reviewerActor(), idempotencyKey: 'demand-scope:denied', now: 3000 }))
+      .rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+    expect(await demandReviewBusinessCounts(database, submitted.demand_batch_id)).toEqual(before);
+    await expect(readDemandReviewContext(
+      database, submitted.demand_batch_id, ownerDemandReviewerActor(),
+    )).resolves.toMatchObject({ demand_version: 1 });
+    await expect(reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id, expectedVersion: 1,
+      decision: 'REJECT', rejectionReason: 'Owner 全局处理',
+    }, { actor: ownerDemandReviewerActor(), idempotencyKey: 'demand-scope:owner', now: 3100 }))
+      .resolves.toMatchObject({ status: 'REJECTED' });
+    expect((await database.prepare(`SELECT status FROM staff_work_items
+      WHERE source_entity_type='DEMAND_BATCH' AND source_entity_id=?`)
+      .bind(submitted.demand_batch_id).first<{status:string}>())?.status).toBe('COMPLETED');
   });
 });
 
@@ -759,7 +908,7 @@ function seedDemandFixture(
       created_by_staff_id, created_at
     ,
           ordering_guide_expected_amount_jpy,
-          color_spec_mode) VALUES
+          color_spec_mode, order_interval_days, orders_per_run) VALUES
       (
         'product-version-1-v1', 'product-1', 1,
         '产品一旧版', '["旧版关键词"]',
@@ -767,7 +916,7 @@ function seedDemandFixture(
         '产品公开说明', '产品内部说明',
         'staff-demand-reviewer', 1000
       ,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 1, 100),
       (
         'product-version-2-v1', 'product-2', 1,
         '产品二', '["产品二关键词"]',
@@ -775,7 +924,7 @@ function seedDemandFixture(
         '产品二公开说明', '产品二内部说明',
         'staff-demand-reviewer', 1000
       ,
-          1980, 'MAIN_IMAGE_VARIANT');
+          1980, 'MAIN_IMAGE_VARIANT', 1, 100);
   `);
   seedProductMainImage(database, 'product-version-1-v1', 'main-image-1');
   seedProductMainImage(database, 'product-version-2-v1', 'main-image-2');
@@ -930,9 +1079,57 @@ function reviewerActor(): DemandStaffActor {
     displayName: '需求审核',
     roles: ['seller_ops'] as readonly StaffRoleCode[],
     permissions: new Set<StaffPermissionCode>([
+      'PRODUCT_REVIEW',
       'DEMAND_PUBLISH',
     ]),
   };
+}
+
+async function persistedDemandReviewerActor(
+  database: SqliteDatabase,
+): Promise<DemandStaffActor> {
+  const authorization = await resolveAssignmentStaffAuthorization(database, 'staff-demand-reviewer');
+  if (!authorization) throw new Error('missing persisted demand reviewer');
+  return {
+    staffId: authorization.staffId,
+    displayName: authorization.displayName,
+    roles: [...authorization.roles],
+    permissions: authorization.permissions,
+  };
+}
+
+function ownerDemandReviewerActor(): DemandStaffActor {
+  return {
+    staffId: 'zz-phase3h-test-owner', displayName: '总管理员', roles: ['owner'],
+    permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW', 'DEMAND_PUBLISH']),
+  };
+}
+
+function insertDemandScopeMismatchOrganization(database: SqliteDatabase): void {
+  database.exec(`INSERT INTO seller_organizations (
+    id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
+    seller_sequence, organization_name, status, version, created_at, updated_at,
+    activated_at, disabled_at, next_member_number
+  ) VALUES ('seller-org-2','JP','ygbceping-8001','seller-channel-ygbceping',
+    'seller-channel-ygbceping',8001,'错误工作项组织','ACTIVE',1,1000,1000,1000,NULL,2)`);
+}
+
+async function demandReviewBusinessCounts(
+  database: SqliteDatabase,
+  demandBatchId: string,
+) {
+  return database.prepare(`SELECT
+    (SELECT status FROM demand_batches WHERE id=?) AS demand_status,
+    (SELECT status FROM staff_work_items
+      WHERE source_entity_type='DEMAND_BATCH' AND source_entity_id=?) AS work_status,
+    (SELECT COUNT(*) FROM demand_batch_events WHERE demand_batch_id=?) AS events,
+    (SELECT COUNT(*) FROM demand_order_schedule_versions WHERE demand_batch_id=?) AS schedules,
+    (SELECT COUNT(*) FROM audit_events
+      WHERE aggregate_type='DEMAND_BATCH' AND aggregate_id=?) AS audits,
+    (SELECT COUNT(*) FROM integration_outbox
+      WHERE aggregate_type='DEMAND_BATCH' AND aggregate_id=?) AS outbox_events
+  `).bind(demandBatchId, demandBatchId, demandBatchId, demandBatchId,
+    demandBatchId, demandBatchId).first();
 }
 
 function activeBuyer(): BuyerDemandContext {

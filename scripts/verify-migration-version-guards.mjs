@@ -8,14 +8,15 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 36
-  || migrationFiles.at(-6) !== '0031_scheduled_operations.sql'
-  || migrationFiles.at(-5) !== '0032_google_drive_cold_image_archive.sql'
-  || migrationFiles.at(-4) !== '0033_feishu_staff_workbench_poc.sql'
-  || migrationFiles.at(-3) !== '0034_feishu_sync_dead_letter_categories.sql'
-  || migrationFiles.at(-2) !== '0035_staff_four_role_consolidation.sql'
-  || migrationFiles.at(-1) !== '0036_staff_acquisition_funnel_workbench.sql') {
-  throw new Error('expected migrations 0001-0036');
+if (migrationFiles.length !== 37
+  || migrationFiles.at(-7) !== '0031_scheduled_operations.sql'
+  || migrationFiles.at(-6) !== '0032_google_drive_cold_image_archive.sql'
+  || migrationFiles.at(-5) !== '0033_feishu_staff_workbench_poc.sql'
+  || migrationFiles.at(-4) !== '0034_feishu_sync_dead_letter_categories.sql'
+  || migrationFiles.at(-3) !== '0035_staff_four_role_consolidation.sql'
+  || migrationFiles.at(-2) !== '0036_staff_acquisition_funnel_workbench.sql'
+  || migrationFiles.at(-1) !== '0037_product_reservation_order_scheduling.sql') {
+  throw new Error('expected migrations 0001-0037');
 }
 
 const guarded = new Map([
@@ -44,6 +45,7 @@ const guarded = new Map([
   [34, 'scheduled_dead_letters_next'],
   [35, 'staff_role_consolidation_cutovers'],
   [36, 'acquisition_channels'],
+  [37, 'demand_order_schedule_versions'],
 ]);
 
 function readMigration(name) {
@@ -99,7 +101,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 36) throw new Error('fresh schema not 36');
+  if (schemaVersion(fresh) !== 37) throw new Error('fresh schema not 37');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -143,8 +145,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 36,
-  sequential_upgrade: '0001 -> 0036',
+  fresh_schema: 37,
+  sequential_upgrade: '0001 -> 0037',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,

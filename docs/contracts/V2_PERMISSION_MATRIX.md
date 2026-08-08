@@ -68,6 +68,15 @@ Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发�
 - 不查看买家微信、买家返款和内部利润。
 - 只能建立和管理本人或授权团队范围的 Seller 获客线索；不获得 Buyer 漏斗或利润投影。
 
+### 产品预约排期专项边界
+
+- 角色硬门禁始终仅允许 `owner`、`seller_ops`：产品申请 `REJECT` 只要求 `PRODUCT_REVIEW`，`APPROVE` 额外要求 `DEMAND_PUBLISH`；需求 `REJECT`、`CLOSE` 只要求 `DEMAND_PUBLISH`，`PUBLISH` 额外要求 `PRODUCT_REVIEW`。
+- 产品创建、新增产品版本节奏、排期预览/确认仍同时要求 `PRODUCT_REVIEW`、`DEMAND_PUBLISH`，并校验权威卖家组织/店铺 Scope；基础拒绝/关闭动作不得被 M16 的双权限额外收紧。
+- `pre_sales` 只在有效 Buyer/Customer Scope 内查看稳定排名、预约时间、预计日期和最小买家标识；身份字段继续按 Buyer Scope 投影。
+- `buyer_refund` 即使获得个人额外授权也不得修改产品版本或排期，系统硬禁止优先。
+- Personal DENY、角色权限、卖家组织/店铺 Scope、Buyer/Customer Scope 和资源归属都在服务端逐次校验；产品申请、需求审核上下文及需求审核在读出权威 Source 后重新解析当前授权并校验权威卖家组织，不能只信工作项元数据。
+- Buyer/Seller Session 与门户不得读取内部排名、其他买家、预计日期、排期版本或 Staff 数据。
+
 ### buyer_refund
 
 - 查看买家订单、评论、返款和必要图片；

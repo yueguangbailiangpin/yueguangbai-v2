@@ -1,13 +1,21 @@
 import type {
+  DemandReviewContextDto,
+  DemandOrderScheduleVersionDto,
   DemandReviewDecision,
+  DemandTaskType,
   SqlDatabase,
   SqlStatement,
 } from '@ygb/contracts';
 import {
   isDemandReviewDecision,
+  PRODUCT_SCHEDULE_TIMEZONE,
 } from '@ygb/contracts';
 import {
+  addCalendarDays,
+  beijingDateFromEpochMs,
   hashCanonicalJson,
+  theoreticalLastOrderDate,
+  validateOrderCadence,
 } from '@ygb/domain';
 import {
   createAuditEventStatement,
@@ -24,15 +32,19 @@ import {
 } from '../foundation/outbox';
 import {
   prepareWorkItemCompletionStatements,
+  requireSellerOrganizationScope,
   requireAssignedWorkflowActor,
+  resolveStaffDataScope,
 } from '../staff-assignment';
 import { resolveDemandSelfPayForPublish } from '../order-instructions/demand-self-pay';
 import {
   cleanDemandIdentifier,
   cleanDemandReason,
+  canPublishInitialDemandSchedule,
   insertDemandBatchEventStatement,
   normalizeDemandBatchError,
   requireDemandPublishPermission,
+  requireInitialDemandSchedulePermission,
   DemandBatchError,
   type DemandStaffActor,
 } from './demand-shared';
@@ -44,11 +56,14 @@ interface DemandSource {
   product_id: string;
   product_version_no: number;
   product_version_id: string;
+  product_name: string;
   search_keywords_json: string;
   ordering_guide_expected_amount_jpy: number | null;
   color_spec_mode: string | null;
+  order_interval_days: number | null;
+  orders_per_run: number | null;
   main_image_file_object_id: string | null;
-  task_type: string;
+  task_type: DemandTaskType;
   target_quantity: number;
   open_at: number;
   reservation_deadline: number;
@@ -65,7 +80,56 @@ export interface ReviewDemandBatchResult {
   status: 'PUBLISHED' | 'REJECTED';
   version: number;
   review_reason: string | null;
+  schedule: DemandOrderScheduleVersionDto | null;
   replayed: boolean;
+}
+
+export async function readDemandReviewContext(
+  database: SqlDatabase,
+  rawDemandBatchId: string,
+  actor: DemandStaffActor,
+): Promise<DemandReviewContextDto> {
+  requireDemandPublishPermission(actor);
+  const demandBatchId = cleanDemandIdentifier(rawDemandBatchId);
+  const source = await requireReviewSource(database, demandBatchId);
+  const authorization = await requireAssignedWorkflowActor(database, {
+    staffId: actor.staffId,
+    workType: 'DEMAND_REVIEW',
+    sourceEntityType: 'DEMAND_BATCH',
+    sourceEntityId: demandBatchId,
+    authoritativeSellerOrganizationId: source.organization_id,
+  });
+  requireDemandPublishPermission(authorization);
+  requireSellerOrganizationScope(
+    await resolveStaffDataScope(database, authorization),
+    source.organization_id,
+  );
+  if (source.status !== 'SUBMITTED') {
+    throw new DemandBatchError('DEMAND_BATCH_ALREADY_REVIEWED', 409);
+  }
+  return {
+    demand_batch_id: source.demand_batch_id,
+    demand_version: Number(source.version),
+    status: 'SUBMITTED',
+    seller_organization_id: source.organization_id,
+    store_id: source.store_id,
+    product_id: source.product_id,
+    product_version_no: Number(source.product_version_no),
+    product_name: source.product_name,
+    task_type: source.task_type,
+    target_quantity: Number(source.target_quantity),
+    reservation_deadline: Number(source.reservation_deadline),
+    order_deadline: Number(source.order_deadline),
+    cadence: source.order_interval_days === null || source.orders_per_run === null
+      ? null
+      : {
+          order_interval_days: Number(source.order_interval_days),
+          orders_per_run: Number(source.orders_per_run),
+        },
+    can_publish: canPublishInitialDemandSchedule(authorization),
+    timezone: PRODUCT_SCHEDULE_TIMEZONE,
+    data_as_of: Date.now(),
+  };
 }
 
 export async function reviewDemandBatch(
@@ -77,6 +141,7 @@ export async function reviewDemandBatch(
     rejectionReason?: string | null;
     buyerSelfPayBps?: number | null;
     buyerSelfPayOverrideReason?: string | null;
+    firstOrderDate?: string | null;
   },
   command: {
     actor: DemandStaffActor;
@@ -95,6 +160,9 @@ export async function reviewDemandBatch(
     || !isDemandReviewDecision(input.decision)) {
     throw new DemandBatchError('VALIDATION_ERROR', 400);
   }
+  if (input.decision === 'PUBLISH') {
+    requireInitialDemandSchedulePermission(command.actor);
+  }
 
   const rejectionReason = input.decision === 'REJECT'
     ? cleanDemandReason(input.rejectionReason)
@@ -102,6 +170,12 @@ export async function reviewDemandBatch(
   if (input.decision === 'PUBLISH'
     && input.rejectionReason != null
     && input.rejectionReason.trim().length > 0) {
+    throw new DemandBatchError('VALIDATION_ERROR', 400);
+  }
+  const firstOrderDate = input.decision === 'PUBLISH'
+    ? cleanDemandOrderDate(input.firstOrderDate)
+    : null;
+  if (input.decision === 'REJECT' && input.firstOrderDate != null) {
     throw new DemandBatchError('VALIDATION_ERROR', 400);
   }
 
@@ -119,6 +193,7 @@ export async function reviewDemandBatch(
     buyer_self_pay_bps: input.buyerSelfPayBps ?? null,
     buyer_self_pay_override_reason:
       input.buyerSelfPayOverrideReason ?? null,
+    first_order_date: firstOrderDate,
   });
 
   const acquired =
@@ -160,6 +235,21 @@ export async function reviewDemandBatch(
         409,
       );
     }
+    const authorization = await requireAssignedWorkflowActor(database, {
+      staffId: command.actor.staffId,
+      workType: 'DEMAND_REVIEW',
+      sourceEntityType: 'DEMAND_BATCH',
+      sourceEntityId: demandBatchId,
+      authoritativeSellerOrganizationId: source.organization_id,
+    });
+    requireDemandPublishPermission(authorization);
+    if (input.decision === 'PUBLISH') {
+      requireInitialDemandSchedulePermission(authorization);
+    }
+    requireSellerOrganizationScope(
+      await resolveStaffDataScope(database, authorization),
+      source.organization_id,
+    );
     if (input.decision === 'PUBLISH') {
       if (source.product_status !== 'ACTIVE'
         || source.store_status !== 'ACTIVE'
@@ -196,11 +286,21 @@ export async function reviewDemandBatch(
     const nextStatus = input.decision === 'PUBLISH'
       ? 'PUBLISHED'
       : 'REJECTED';
+    const schedule = input.decision === 'PUBLISH'
+      ? await buildInitialSchedule({
+          source,
+          firstOrderDate: firstOrderDate!,
+          demandVersion: nextVersion,
+          staffId: command.actor.staffId,
+          now,
+        })
+      : null;
     const response: ReviewDemandBatchResult = {
       demand_batch_id: demandBatchId,
       status: nextStatus,
       version: nextVersion,
       review_reason: rejectionReason,
+      schedule,
       replayed: false,
     };
 
@@ -220,15 +320,11 @@ export async function reviewDemandBatch(
         status: nextStatus,
         version: nextVersion,
         review_reason: rejectionReason,
+        first_order_date: schedule?.first_order_date ?? null,
+        order_interval_days: schedule?.order_interval_days ?? null,
+        orders_per_run: schedule?.orders_per_run ?? null,
       },
       createdAt: now,
-    });
-
-    await requireAssignedWorkflowActor(database, {
-      staffId: command.actor.staffId,
-      workType: 'DEMAND_REVIEW',
-      sourceEntityType: 'DEMAND_BATCH',
-      sourceEntityId: demandBatchId,
     });
 
     const statements: SqlStatement[] = [
@@ -286,6 +382,13 @@ export async function reviewDemandBatch(
             demandBatchId,
             source.version,
           ),
+      ...(schedule === null
+        ? []
+        : [insertInitialScheduleStatement(database, {
+            demandBatchId,
+            sourceProductVersionId: source.product_version_id,
+            schedule,
+          })]),
       insertDemandBatchEventStatement(database, {
         demandBatchId,
         organizationId: source.organization_id,
@@ -326,6 +429,12 @@ export async function reviewDemandBatch(
           product_version_no: source.product_version_no,
           reference_order_amount_jpy:
             source.ordering_guide_expected_amount_jpy,
+          first_order_date: schedule?.first_order_date ?? null,
+          theoretical_last_order_date:
+            schedule?.theoretical_last_order_date ?? null,
+          order_interval_days: schedule?.order_interval_days ?? null,
+          orders_per_run: schedule?.orders_per_run ?? null,
+          schedule_preview_hash: schedule?.preview_hash ?? null,
         },
         createdAt: now,
       }),
@@ -391,9 +500,12 @@ async function requireReviewSource(
       demand.product_id,
       demand.product_version_no,
       version.id AS product_version_id,
+      version.product_name,
       version.search_keywords_json,
       version.ordering_guide_expected_amount_jpy,
       version.color_spec_mode,
+      version.order_interval_days,
+      version.orders_per_run,
       image.file_object_id AS main_image_file_object_id,
       demand.task_type,
       demand.target_quantity,
@@ -461,6 +573,14 @@ function requireOrderInstructionReadiness(source: DemandSource): void {
     throw new DemandBatchError('VALIDATION_ERROR', 409);
   }
   try {
+    validateOrderCadence({
+      orderIntervalDays: Number(source.order_interval_days),
+      ordersPerRun: Number(source.orders_per_run),
+    });
+  } catch {
+    throw new DemandBatchError('VALIDATION_ERROR', 409);
+  }
+  try {
     const keywords = JSON.parse(source.search_keywords_json) as unknown;
     if (!Array.isArray(keywords)
       || keywords.length < 1
@@ -471,6 +591,98 @@ function requireOrderInstructionReadiness(source: DemandSource): void {
   } catch {
     throw new DemandBatchError('VALIDATION_ERROR', 409);
   }
+}
+
+function cleanDemandOrderDate(value: string | null | undefined): string {
+  if (typeof value !== 'string') {
+    throw new DemandBatchError('VALIDATION_ERROR', 400);
+  }
+  const normalized = value.normalize('NFKC').trim();
+  try {
+    if (addCalendarDays(normalized, 0) !== normalized) throw new Error('date');
+  } catch {
+    throw new DemandBatchError('VALIDATION_ERROR', 400);
+  }
+  return normalized;
+}
+
+async function buildInitialSchedule(input: {
+  source: DemandSource;
+  firstOrderDate: string;
+  demandVersion: number;
+  staffId: string;
+  now: number;
+}): Promise<DemandOrderScheduleVersionDto> {
+  const orderIntervalDays = Number(input.source.order_interval_days);
+  const ordersPerRun = Number(input.source.orders_per_run);
+  const theoreticalLast = theoreticalLastOrderDate({
+    firstOrderDate: input.firstOrderDate,
+    targetQuantity: Number(input.source.target_quantity),
+    orderIntervalDays,
+    ordersPerRun,
+  });
+  const deadlineDate = beijingDateFromEpochMs(input.source.order_deadline);
+  if (theoreticalLast > deadlineDate) {
+    throw new DemandBatchError('SCHEDULE_WINDOW_CONFLICT', 409);
+  }
+  const previewHash = await hashCanonicalJson({
+    action: 'PUBLISH_DEMAND_SCHEDULE',
+    demand_batch_id: input.source.demand_batch_id,
+    demand_version: input.demandVersion,
+    source_product_version_id: input.source.product_version_id,
+    target_quantity: input.source.target_quantity,
+    order_deadline_date: deadlineDate,
+    first_order_date: input.firstOrderDate,
+    order_interval_days: orderIntervalDays,
+    orders_per_run: ordersPerRun,
+  });
+  return {
+    schedule_version_id: crypto.randomUUID(),
+    version_no: 1,
+    demand_version: input.demandVersion,
+    first_order_date: input.firstOrderDate,
+    theoretical_last_order_date: theoreticalLast,
+    order_interval_days: orderIntervalDays,
+    orders_per_run: ordersPerRun,
+    affected_reservation_count: 0,
+    preview_hash: previewHash,
+    change_reason: '需求发布',
+    changed_by_staff_id: input.staffId,
+    created_at: input.now,
+  };
+}
+
+function insertInitialScheduleStatement(
+  database: SqlDatabase,
+  input: {
+    demandBatchId: string;
+    sourceProductVersionId: string;
+    schedule: DemandOrderScheduleVersionDto;
+  },
+): SqlStatement {
+  return database.prepare(`
+    INSERT INTO demand_order_schedule_versions (
+      id, demand_batch_id, version_no, demand_version,
+      source_product_version_id, first_order_date,
+      order_interval_days, orders_per_run,
+      previous_first_order_date, previous_theoretical_last_order_date,
+      theoretical_last_order_date, affected_reservation_count,
+      preview_hash, change_reason, changed_by_staff_id, created_at
+    ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, NULL, NULL, ?, 0, ?, ?, ?, ?)
+  `).bind(
+    input.schedule.schedule_version_id,
+    input.demandBatchId,
+    input.schedule.demand_version,
+    input.sourceProductVersionId,
+    input.schedule.first_order_date,
+    input.schedule.order_interval_days,
+    input.schedule.orders_per_run,
+    input.schedule.theoretical_last_order_date,
+    input.schedule.preview_hash,
+    input.schedule.change_reason,
+    input.schedule.changed_by_staff_id,
+    input.schedule.created_at,
+  );
 }
 
 function assertReviewedStatement(

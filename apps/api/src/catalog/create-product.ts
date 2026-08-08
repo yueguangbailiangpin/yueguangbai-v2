@@ -26,7 +26,7 @@ import {
   cleanCatalogIdentifier,
   normalizeCatalogError,
   parseCatalogInput,
-  requireCatalogPermission,
+  requireProductScheduleMaintenance,
   type CatalogStaffActor,
 } from './catalog-shared';
 
@@ -70,7 +70,7 @@ export async function createApprovedProduct(
     now?: number;
   },
 ): Promise<CreateApprovedProductResult> {
-  requireCatalogPermission(command.actor, 'PRODUCT_REVIEW');
+  requireProductScheduleMaintenance(command.actor);
 
   const storeId = cleanCatalogIdentifier(input.storeId);
   const asin = parseCatalogInput(
@@ -197,13 +197,15 @@ export async function createApprovedProduct(
           ordering_guide_expected_amount_jpy,
           color_spec_mode,
           default_buyer_self_pay_bps,
+          order_interval_days,
+          orders_per_run,
           product_url,
           buyer_visible_notes,
           internal_notes,
           created_by_staff_id,
           created_at
         ) VALUES (
-          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `).bind(
         productVersionId,
@@ -213,6 +215,8 @@ export async function createApprovedProduct(
         version.orderingGuideExpectedAmountJpy,
         version.colorSpecMode,
         normalizedVersion.defaultBuyerSelfPayBps,
+        version.orderIntervalDays,
+        version.ordersPerRun,
         version.productUrl,
         version.buyerVisibleNotes,
         version.internalNotes,

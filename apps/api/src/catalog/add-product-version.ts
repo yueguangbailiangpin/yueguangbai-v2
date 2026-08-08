@@ -25,7 +25,7 @@ import {
   cleanCatalogIdentifier,
   normalizeCatalogError,
   parseCatalogInput,
-  requireCatalogPermission,
+  requireProductScheduleMaintenance,
   type CatalogStaffActor,
 } from './catalog-shared';
 
@@ -66,7 +66,7 @@ export async function addProductVersion(
     now?: number;
   },
 ): Promise<AddProductVersionResult> {
-  requireCatalogPermission(command.actor, 'PRODUCT_REVIEW');
+  requireProductScheduleMaintenance(command.actor);
 
   const productId = cleanCatalogIdentifier(input.productId);
   if (!Number.isSafeInteger(input.expectedVersion)
@@ -189,13 +189,15 @@ export async function addProductVersion(
           ordering_guide_expected_amount_jpy,
           color_spec_mode,
           default_buyer_self_pay_bps,
+          order_interval_days,
+          orders_per_run,
           product_url,
           buyer_visible_notes,
           internal_notes,
           created_by_staff_id,
           created_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `).bind(
         productVersionId,
@@ -206,6 +208,8 @@ export async function addProductVersion(
         version.orderingGuideExpectedAmountJpy,
         version.colorSpecMode,
         defaultBuyerSelfPayBps,
+        version.orderIntervalDays,
+        version.ordersPerRun,
         version.productUrl,
         version.buyerVisibleNotes,
         version.internalNotes,

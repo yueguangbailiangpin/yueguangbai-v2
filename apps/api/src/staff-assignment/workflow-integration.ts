@@ -3,6 +3,7 @@ import type {
   StaffWorkItemType,
 } from '@ygb/contracts';
 import { resolveAssignmentStaffAuthorization } from './effective-authorization';
+import type { AssignmentStaffAuthorization } from './effective-authorization';
 import { StaffAssignmentError } from './errors';
 import { requireWorkItemOperationAccess } from './work-item-authorization';
 
@@ -21,10 +22,18 @@ export async function requireAssignedWorkflowActor(
       | 'REVIEW_CASE'
       | 'BUYER_REFUND_OBLIGATION';
     sourceEntityId: string;
+    authoritativeSellerOrganizationId?: string;
     allowCompleted?: boolean;
   },
-): Promise<void> {
+): Promise<AssignmentStaffAuthorization> {
   const actor = await resolveAssignmentStaffAuthorization(database, input.staffId);
   if (!actor) throw new StaffAssignmentError('FORBIDDEN', 403);
-  await requireWorkItemOperationAccess(database, actor, input);
+  const workItem = await requireWorkItemOperationAccess(database, actor, input);
+  if (input.authoritativeSellerOrganizationId !== undefined
+    && workItem.sellerOrganizationId
+      !== input.authoritativeSellerOrganizationId
+    && !actor.roles.has('owner')) {
+    throw new StaffAssignmentError('NOT_FOUND', 404);
+  }
+  return actor;
 }

@@ -10,6 +10,7 @@ import { isOwner } from './permission-policy';
 interface WorkItemAccessRow {
   id: string;
   assigned_staff_id: string;
+  seller_organization_id: string | null;
 }
 
 export async function requireWorkItemOperationAccess(
@@ -28,13 +29,17 @@ export async function requireWorkItemOperationAccess(
     sourceEntityId: string;
     allowCompleted?: boolean;
   },
-): Promise<{ workItemId: string; assignedStaffId: string }> {
+): Promise<{
+  workItemId: string;
+  assignedStaffId: string;
+  sellerOrganizationId: string | null;
+}> {
   const businessPermission = businessPermissionForWorkItem(input.workType);
   if (!actor.permissions.has(businessPermission)) {
     throw new StaffAssignmentError('FORBIDDEN', 403);
   }
   const item = await database.prepare(`
-    SELECT id, assigned_staff_id
+    SELECT id, assigned_staff_id, seller_organization_id
     FROM staff_work_items
     WHERE source_entity_type=? AND source_entity_id=?
       AND work_type=? AND status IN (${input.allowCompleted
@@ -50,6 +55,7 @@ export async function requireWorkItemOperationAccess(
     return {
       workItemId: item.id,
       assignedStaffId: item.assigned_staff_id,
+      sellerOrganizationId: item.seller_organization_id,
     };
   }
   if (!actor.permissions.has('TASK_TAKEOVER_TEAM')
@@ -73,5 +79,6 @@ export async function requireWorkItemOperationAccess(
   return {
     workItemId: item.id,
     assignedStaffId: item.assigned_staff_id,
+    sellerOrganizationId: item.seller_organization_id,
   };
 }

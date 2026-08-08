@@ -91,12 +91,70 @@ export function StaffWorkbench(): React.JSX.Element {
 }
 
 function WorkItemDetail({ item }: { item: StaffWorkItem }): React.JSX.Element {
+  if (item.work_type === 'DEMAND_REVIEW') return <DemandReviewPanel id={item.source_entity_id} />;
   if (item.work_type === 'ORDER_EVIDENCE_REVIEW') return <OrderEvidencePanel id={item.source_entity_id} />;
   if (item.work_type === 'REVIEW_DECISION') return <ReviewPanel id={item.source_entity_id} />;
   if (item.work_type === 'BUYER_REFUND_PROCESSING') return <RefundPanel id={item.source_entity_id} />;
   if (item.seller_organization_id) return <SellerSettlementPanel organizationId={item.seller_organization_id} item={item} />;
   return <><Card className="customer-visible"><h3>工作项事实</h3><Fact label="来源类型" value={item.source_entity_type} /><Fact label="来源编号" value={item.source_entity_id} /><Fact label="状态" value={item.status} /></Card>
     <Card className="internal-note"><h3>内部处理</h3><p>当前后端没有为此工作类型冻结独立详情读取合同；工作台不会猜测资源或发明操作。</p></Card></>;
+}
+
+function DemandReviewPanel({ id }: { id: string }): React.JSX.Element {
+  const client = useQueryClient();
+  const authority = useMemo(() => new StaffMutationAuthority(), []);
+  const query = useQuery({
+    queryKey: staffWorkbenchKeys.demandReview(id),
+    queryFn: ({ signal }) => staffApi.demandReviewContext(client, id, signal)
+      .then((response) => response.data.review_context),
+    retry: false,
+  });
+  const mutation = useMutation({
+    mutationFn: (request: StaffMutationRequest | null) => request === null
+      ? authority.retry()
+      : authority.execute(request, ({ body }, key) =>
+          staffApi.reviewDemand(client, id, body, key)),
+    onSuccess: () => { void client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot }); },
+  });
+  if (query.isPending) return <p role="status">正在加载需求审核事实</p>;
+  if (query.isError) return <PanelError error={query.error} retry={() => { void query.refetch(); }} />;
+  const value = query.data;
+  const cadence = value.cadence
+    ? `每隔 ${value.cadence.order_interval_days} 个自然日，每次 ${value.cadence.orders_per_run} 单`
+    : '尚未配置排期';
+  return <><Card className="customer-visible"><h3>需求发布事实</h3>
+    <Fact label="产品" value={`${value.product_name} · 版本 ${value.product_version_no}`} />
+    <Fact label="需求版本" value={`v${value.demand_version}`} />
+    <Fact label="目标数量" value={`${value.target_quantity} 单`} />
+    <Fact label="产品节奏" value={cadence} />
+    <Fact label="预约截止" value={formatShanghai(value.reservation_deadline)} />
+    <Fact label="下单截止" value={formatShanghai(value.order_deadline)} />
+  </Card><Card className="sensitive-action"><h3>审核并发布需求</h3>
+    <Alert tone="info">首个下单日期按北京时间填写；周六、周日及节假日均按自然日连续计入。</Alert>
+    {value.can_publish ? <form onSubmit={(event) => {
+      event.preventDefault();
+      const firstOrderDate = String(new FormData(event.currentTarget)
+        .get('first_order_date') ?? '');
+      mutation.mutate({ action: 'publish-demand', path: `/api/staff/demand-batches/${encodeURIComponent(id)}/review`,
+        body: { expected_version: value.demand_version, decision: 'PUBLISH', first_order_date: firstOrderDate } });
+    }}><FormField label="首个下单日期" htmlFor={`demand-first-order-${id}`}>
+      <TextInput id={`demand-first-order-${id}`} name="first_order_date" type="date" required />
+    </FormField><Button className="danger" disabled={mutation.isPending || value.cadence === null}>确认发布需求</Button></form>
+      : <Alert tone="warning">当前权限可拒绝需求，但不能发布并创建首个排期。</Alert>}
+    <form onSubmit={(event) => {
+      event.preventDefault();
+      const rejectionReason = String(new FormData(event.currentTarget)
+        .get('rejection_reason') ?? '');
+      mutation.mutate({ action: 'reject-demand', path: `/api/staff/demand-batches/${encodeURIComponent(id)}/review`,
+        body: { expected_version: value.demand_version, decision: 'REJECT', rejection_reason: rejectionReason } });
+    }}><FormField label="拒绝原因" htmlFor={`demand-rejection-${id}`}>
+      <TextInput id={`demand-rejection-${id}`} name="rejection_reason" required maxLength={1000} />
+    </FormField><Button className="secondary" disabled={mutation.isPending}>拒绝需求</Button></form>
+    {mutation.isSuccess ? <Alert tone="success">{mutation.variables?.action === 'publish-demand'
+      ? '需求已发布并锁定首个下单日期与产品节奏。' : '需求已拒绝并保留审核事实。'}</Alert> : null}
+    {mutation.isError ? <MutationError error={mutation.error} canRetry={authority.canRetry()}
+      retry={() => mutation.mutate(null)} refresh={() => { mutation.reset(); void query.refetch(); }} /> : null}
+  </Card></>;
 }
 
 function OrderEvidencePanel({ id }: { id: string }): React.JSX.Element {

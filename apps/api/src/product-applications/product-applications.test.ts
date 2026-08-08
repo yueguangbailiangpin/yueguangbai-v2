@@ -14,6 +14,7 @@ import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
+import { resolveAssignmentStaffAuthorization } from '../staff-assignment';
 import {
   reviewProductApplication,
 } from './review-product-application';
@@ -242,6 +243,8 @@ describe('seller product applications and staff review', () => {
         decision: 'APPROVE',
         orderingGuideExpectedAmountJpy: 1980,
         colorSpecMode: 'MAIN_IMAGE_VARIANT',
+        orderIntervalDays: 1,
+        ordersPerRun: 1,
       },
       {
         actor: reviewerActor(),
@@ -310,6 +313,8 @@ describe('seller product applications and staff review', () => {
         decision: 'APPROVE',
         orderingGuideExpectedAmountJpy: 1980,
         colorSpecMode: 'MAIN_IMAGE_VARIANT',
+        orderIntervalDays: 1,
+        ordersPerRun: 1,
       },
       {
         actor: reviewerActor(),
@@ -375,6 +380,8 @@ describe('seller product applications and staff review', () => {
         decision: 'APPROVE',
         orderingGuideExpectedAmountJpy: 1980,
         colorSpecMode: 'MAIN_IMAGE_VARIANT',
+        orderIntervalDays: 1,
+        ordersPerRun: 1,
       },
       {
         actor: reviewerActor(),
@@ -446,7 +453,7 @@ describe('seller product applications and staff review', () => {
     );
   });
 
-  it('requires PRODUCT_REVIEW and expected version for review', async () => {
+  it('applies product review permission to reject and the extra cadence permission only to approve', async () => {
     database = createMigratedTestDatabase();
     seedProductApplicationFixture(database);
 
@@ -465,28 +472,54 @@ describe('seller product applications and staff review', () => {
       },
     );
 
-    await expect(reviewProductApplication(
-      database,
-      {
-        applicationId: submitted.application_id,
-        expectedVersion: 1,
-        decision: 'APPROVE',
-        orderingGuideExpectedAmountJpy: 1980,
-        colorSpecMode: 'MAIN_IMAGE_VARIANT',
-      },
-      {
-        actor: {
-          ...reviewerActor(),
-          permissions: new Set(),
+    const forbiddenRoles: ProductApplicationStaffActor[] = [
+      { ...reviewerActor(), roles: ['buyer_refund'],
+        permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW', 'DEMAND_PUBLISH']) },
+      { ...reviewerActor(), roles: ['pre_sales'],
+        permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW', 'DEMAND_PUBLISH']) },
+    ];
+    for (const [index, deniedActor] of forbiddenRoles.entries()) {
+      await expect(reviewProductApplication(
+        database,
+        {
+          applicationId: submitted.application_id,
+          expectedVersion: 1,
+          decision: 'APPROVE',
+          orderingGuideExpectedAmountJpy: 1980,
+          colorSpecMode: 'MAIN_IMAGE_VARIANT',
+          orderIntervalDays: 1,
+          ordersPerRun: 1,
         },
-        idempotencyKey:
-          'product-application:permission:review',
-        now: 3000,
-      },
-    )).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-      status: 403,
-    });
+        {
+          actor: deniedActor,
+          idempotencyKey: `product-application:permission:review:${index}`,
+          now: 3000 + index,
+        },
+      )).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+      await expect(reviewProductApplication(database, {
+        applicationId: submitted.application_id, expectedVersion: 1,
+        decision: 'REJECT', rejectionReason: '角色硬门禁',
+      }, { actor: deniedActor,
+        idempotencyKey: `product-application:permission:reject:${index}`, now: 3000 + index,
+      })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    }
+
+    await expect(reviewProductApplication(database, {
+      applicationId: submitted.application_id, expectedVersion: 1,
+      decision: 'APPROVE', orderingGuideExpectedAmountJpy: 1980,
+      colorSpecMode: 'MAIN_IMAGE_VARIANT', orderIntervalDays: 1, ordersPerRun: 1,
+    }, { actor: { ...reviewerActor(),
+      permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW']) },
+      idempotencyKey: 'product-application:permission:approve-without-demand', now: 3000,
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+
+    await expect(reviewProductApplication(database, {
+      applicationId: submitted.application_id, expectedVersion: 1,
+      decision: 'REJECT', rejectionReason: '缺少产品审核权限',
+    }, { actor: { ...reviewerActor(),
+      permissions: new Set<StaffPermissionCode>(['DEMAND_PUBLISH']) },
+      idempotencyKey: 'product-application:permission:reject-without-product', now: 3000,
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
 
     await expect(reviewProductApplication(
       database,
@@ -506,6 +539,71 @@ describe('seller product applications and staff review', () => {
       code: 'VERSION_CONFLICT',
       status: 409,
     });
+
+    const rejected = await reviewProductApplication(database, {
+      applicationId: submitted.application_id, expectedVersion: 1,
+      decision: 'REJECT', rejectionReason: '基础产品审核权限允许拒绝',
+    }, { actor: { ...reviewerActor(),
+      permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW']) },
+      idempotencyKey: 'product-application:permission:product-only-reject', now: 3200,
+    });
+    expect(rejected.status).toBe('REJECTED');
+  });
+
+  it('uses current effective PRODUCT_REVIEW for reject while approval still needs DEMAND_PUBLISH', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+    const submitted = await submitProductApplication(database, {
+      storeId: 'store-1', asin: 'B0APPLY012', product: productVersion('动作权限'), sellerNotes: null,
+    }, { actor: ownerActor(), idempotencyKey: 'product-action:submit', now: 2000 });
+    database.exec(`INSERT INTO staff_permission_overrides (
+      staff_id, permission_code, effect, status, reason,
+      assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
+    ) VALUES ('staff-reviewer','DEMAND_PUBLISH','DENY','ACTIVE','action gate',
+      'zz-phase3h-test-owner',1500,NULL,1500,1500)`);
+    const actor = await persistedReviewerActor(database);
+    expect(actor.permissions.has('PRODUCT_REVIEW')).toBe(true);
+    expect(actor.permissions.has('DEMAND_PUBLISH')).toBe(false);
+    await expect(reviewProductApplication(database, {
+      applicationId: submitted.application_id, expectedVersion: 1, decision: 'APPROVE',
+      orderingGuideExpectedAmountJpy: 1980, colorSpecMode: 'MAIN_IMAGE_VARIANT',
+      orderIntervalDays: 1, ordersPerRun: 1,
+    }, { actor, idempotencyKey: 'product-action:approve', now: 3000 }))
+      .rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    await expect(reviewProductApplication(database, {
+      applicationId: submitted.application_id, expectedVersion: 1, decision: 'REJECT',
+      rejectionReason: '只拒绝，不创建产品版本',
+    }, { actor, idempotencyKey: 'product-action:reject', now: 3100 }))
+      .resolves.toMatchObject({ status: 'REJECTED' });
+  });
+
+  it('rejects stale work-item organization scope without writes while owner GLOBAL proceeds', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+    const submitted = await submitProductApplication(database, {
+      storeId: 'store-1', asin: 'B0APPLY013', product: productVersion('范围复核'), sellerNotes: null,
+    }, { actor: ownerActor(), idempotencyKey: 'product-scope:submit', now: 2000 });
+    // Simulate stale metadata that normal database write guards prevent.
+    database.exec(`DROP TRIGGER trg_staff_work_items_update_guard`);
+    await database.prepare(`UPDATE staff_work_items SET seller_organization_id='seller-org-2'
+      WHERE source_entity_type='PRODUCT_APPLICATION' AND source_entity_id=?`)
+      .bind(submitted.application_id).run();
+    const before = await productReviewBusinessCounts(database, submitted.application_id);
+    await expect(reviewProductApplication(database, {
+      applicationId: submitted.application_id, expectedVersion: 1,
+      decision: 'REJECT', rejectionReason: '恶意工作项组织',
+    }, { actor: reviewerActor(), idempotencyKey: 'product-scope:denied', now: 3000 }))
+      .rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+    expect(await productReviewBusinessCounts(database, submitted.application_id)).toEqual(before);
+    const approved = await reviewProductApplication(database, {
+      applicationId: submitted.application_id, expectedVersion: 1, decision: 'APPROVE',
+      orderingGuideExpectedAmountJpy: 1980, colorSpecMode: 'MAIN_IMAGE_VARIANT',
+      orderIntervalDays: 1, ordersPerRun: 1,
+    }, { actor: ownerReviewerActor(), idempotencyKey: 'product-scope:owner', now: 3100 });
+    expect(approved.status).toBe('APPROVED');
+    expect((await database.prepare(`SELECT status FROM staff_work_items
+      WHERE source_entity_type='PRODUCT_APPLICATION' AND source_entity_id=?`)
+      .bind(submitted.application_id).first<{status:string}>())?.status).toBe('COMPLETED');
   });
 
   it('requires owned verified images and leaves no partial application or links', async () => {
@@ -805,8 +903,46 @@ function reviewerActor(): ProductApplicationStaffActor {
     roles: ['seller_ops'] as readonly StaffRoleCode[],
     permissions: new Set<StaffPermissionCode>([
       'PRODUCT_REVIEW',
+      'DEMAND_PUBLISH',
     ]),
   };
+}
+
+async function persistedReviewerActor(
+  database: SqliteDatabase,
+): Promise<ProductApplicationStaffActor> {
+  const authorization = await resolveAssignmentStaffAuthorization(database, 'staff-reviewer');
+  if (!authorization) throw new Error('missing persisted reviewer');
+  return {
+    staffId: authorization.staffId,
+    displayName: authorization.displayName,
+    roles: [...authorization.roles],
+    permissions: authorization.permissions,
+  };
+}
+
+function ownerReviewerActor(): ProductApplicationStaffActor {
+  return {
+    staffId: 'zz-phase3h-test-owner', displayName: '总管理员', roles: ['owner'],
+    permissions: new Set<StaffPermissionCode>(['PRODUCT_REVIEW', 'DEMAND_PUBLISH']),
+  };
+}
+
+async function productReviewBusinessCounts(
+  database: SqliteDatabase,
+  applicationId: string,
+) {
+  return database.prepare(`SELECT
+    (SELECT status FROM product_applications WHERE id=?) AS application_status,
+    (SELECT status FROM staff_work_items
+      WHERE source_entity_type='PRODUCT_APPLICATION' AND source_entity_id=?) AS work_status,
+    (SELECT COUNT(*) FROM products) AS products,
+    (SELECT COUNT(*) FROM product_application_events WHERE application_id=?) AS events,
+    (SELECT COUNT(*) FROM audit_events
+      WHERE aggregate_type='PRODUCT_APPLICATION' AND aggregate_id=?) AS audits,
+    (SELECT COUNT(*) FROM integration_outbox
+      WHERE aggregate_type='PRODUCT_APPLICATION' AND aggregate_id=?) AS outbox_events
+  `).bind(applicationId, applicationId, applicationId, applicationId, applicationId).first();
 }
 
 function productVersion(

@@ -466,6 +466,8 @@ function versionFields(
     productName,
     searchKeywords: ['关键词一', '关键词一', '关键词二'],
     orderingGuideExpectedAmountJpy: amount,
+    orderIntervalDays: 1,
+    ordersPerRun: 1,
     colorSpecMode,
     productUrl: 'https://www.amazon.co.jp/product#fragment',
     buyerVisibleNotes: '买家可见',
@@ -482,6 +484,7 @@ function productActor(): CatalogStaffActor {
       'SELLER_MANAGE',
       'PRODUCT_VIEW',
       'PRODUCT_REVIEW',
+      'DEMAND_PUBLISH',
     ]),
     dataScope: {
       type: 'ASSIGNED_SELLER_ORGANIZATIONS',

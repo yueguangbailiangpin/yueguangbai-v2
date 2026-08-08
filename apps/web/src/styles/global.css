@@ -1463,6 +1463,116 @@ select:disabled {
   color: var(--color-staff);
 }
 
+.product-scheduling-workspace {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-6) var(--space-8);
+}
+
+.product-scheduling-workspace :focus {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.product-search,
+.product-detail-summary,
+.reservation-summary,
+.schedule-form-grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.product-search {
+  grid-template-columns: minmax(16rem, 36rem) auto;
+  align-items: end;
+}
+
+.product-detail-summary,
+.reservation-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.schedule-form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.product-version-form,
+.schedule-change-form {
+  padding: var(--space-5);
+}
+
+.product-version-form form,
+.schedule-change-form form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.product-version-form fieldset,
+.schedule-change-form fieldset {
+  display: grid;
+  gap: var(--space-4);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.product-scheduling-workspace .breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.product-scheduling-workspace .data-table small,
+.product-detail-summary span,
+.reservation-summary span {
+  display: block;
+  color: var(--color-text-muted);
+}
+
+.product-detail-summary dl {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.product-detail-summary dd { margin: 0; overflow-wrap: anywhere; }
+.product-detail-summary dt { color: var(--color-text-muted); }
+
+.cadence-examples {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.version-history {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.version-history li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.button-link {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-staff);
+  color: white;
+  text-decoration: none;
+  font-weight: var(--font-weight-semibold);
+}
+
 .acquisition-workbench {
   display: grid;
   gap: var(--space-5);
@@ -1537,6 +1647,11 @@ select:disabled {
   .acquisition-columns,
   .acquisition-admin-grid { grid-template-columns: 1fr; }
   .acquisition-workbench { padding-inline: var(--space-4); }
+  .product-scheduling-workspace { padding-inline: var(--space-4); }
+  .product-search,
+  .product-detail-summary,
+  .reservation-summary { grid-template-columns: 1fr; }
+  .version-history li { flex-direction: column; }
 }
 
 .context svg {

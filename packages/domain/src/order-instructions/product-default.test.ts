@@ -5,6 +5,8 @@ const base = {
   productName: '产品',
   searchKeywords: ['关键词一'],
   orderingGuideExpectedAmountJpy: 10_000,
+  orderIntervalDays: 1,
+  ordersPerRun: 1,
   colorSpecMode: 'MAIN_IMAGE_VARIANT' as const,
   productUrl: null,
   buyerVisibleNotes: null,

@@ -117,3 +117,10 @@ WHERE id=? AND version=?;
 - 每个 Migration 从空库连续执行。
 - Migration 不读取生产数据。
 - Schema、Trigger、Index 和 Seed 都必须可重复验证。
+
+当前连续版本为 schema 37。`0037_product_reservation_order_scheduling.sql` 的边界为：
+
+- `product_versions.order_interval_days` 与 `orders_per_run` 对 0037 前历史记录保持 `NULL`，受治理的新增产品版本写路径必须同时提供正整数；历史记录不得回填当前默认值。
+- `demand_order_schedule_versions` 是追加式不可变事实；数据库拒绝更新、删除、版本跳号、非 ACTIVE Staff、错误产品版本、错误需求版本和超出北京时间下单截止日的写入。
+- 当前排期通过 `(demand_batch_id, version_no DESC)` 索引读取；预约排名仍以现有预约事实动态计算，不建立每日派生表或定时任务。
+- Migration 只允许 36→37；错序、重复执行和部分 DDL 必须事务失败。恢复采用迁移前备份恢复后再前向执行 0037，不提供破坏不可变事实的 down migration。

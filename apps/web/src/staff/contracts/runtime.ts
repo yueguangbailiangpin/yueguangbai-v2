@@ -235,6 +235,133 @@ export type AcquisitionAssignment = z.output<typeof acquisitionAssignmentSchema>
 export type AcquisitionConsultation = z.output<typeof acquisitionConsultationSchema>;
 export type AcquisitionLead = z.output<typeof acquisitionLeadSchema>;
 
+export const orderCadenceSchema = z.object({
+  order_interval_days: z.number().int().positive(),
+  orders_per_run: z.number().int().positive(),
+}).strict();
+export const staffProductListItemSchema = z.object({
+  product_id: z.string(), seller_organization_id: z.string(),
+  store_id: z.string(), store_name: z.string(), marketplace_code: z.string(),
+  asin: z.string(), status: z.enum(['ACTIVE', 'DISABLED']),
+  aggregate_version: z.number().int().positive(),
+  current_version_no: z.number().int().positive(), product_name: z.string(),
+  cadence: orderCadenceSchema.nullable(), updated_at: epoch,
+}).strict();
+export const staffProductPageSchema = z.object({ page: z.object({
+  items: z.array(staffProductListItemSchema),
+  next_cursor: z.string().nullable(), data_as_of: epoch,
+}).strict() }).strict();
+export const staffProductVersionSchema = z.object({
+  product_version_id: z.string(), version_no: z.number().int().positive(),
+  product_name: z.string(), search_keywords: z.array(z.string()),
+  ordering_guide_expected_amount_jpy: z.number().int().nonnegative(),
+  color_spec_mode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']),
+  default_buyer_self_pay_bps: z.number().int().min(0).max(10_000),
+  product_url: z.string().nullable(), buyer_visible_notes: z.string().nullable(),
+  internal_notes: z.string().nullable(), cadence: orderCadenceSchema.nullable(),
+  created_at: epoch,
+}).strict();
+export const staffProductDemandSchema = z.object({
+  demand_batch_id: z.string(),
+  status: z.enum(['SUBMITTED','PUBLISHED','REJECTED','WITHDRAWN','CLOSED']),
+  target_quantity: z.number().int().positive(),
+  effective_reservation_count: z.number().int().nonnegative(),
+  order_deadline: epoch, demand_version: z.number().int().positive(),
+  schedule_version: z.number().int().positive().nullable(),
+  first_order_date: z.string().nullable(),
+}).strict();
+export const staffProductDetailSchema = z.object({ product:
+  staffProductListItemSchema.extend({
+    versions: z.array(staffProductVersionSchema),
+    demands: z.array(staffProductDemandSchema),
+    timezone: z.literal('Asia/Shanghai'), data_as_of: epoch,
+  }).strict(),
+}).strict();
+export const demandReviewContextSchema = z.object({ review_context: z.object({
+  demand_batch_id: z.string(), demand_version: z.number().int().positive(),
+  status: z.literal('SUBMITTED'), seller_organization_id: z.string(),
+  store_id: z.string(), product_id: z.string(),
+  product_version_no: z.number().int().positive(), product_name: z.string(),
+  task_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
+  target_quantity: z.number().int().positive(),
+  reservation_deadline: epoch, order_deadline: epoch,
+  cadence: orderCadenceSchema.nullable(), can_publish: z.boolean(),
+  timezone: z.literal('Asia/Shanghai'),
+  data_as_of: epoch,
+}).strict() }).strict();
+export const demandOrderScheduleVersionSchema = orderCadenceSchema.extend({
+  schedule_version_id: z.string(), version_no: z.number().int().positive(),
+  demand_version: z.number().int().positive(), first_order_date: z.string(),
+  theoretical_last_order_date: z.string(),
+  affected_reservation_count: z.number().int().nonnegative(),
+  preview_hash: z.string().regex(/^[0-9a-f]{64}$/u), change_reason: z.string(),
+  changed_by_staff_id: z.string(), created_at: epoch,
+}).strict();
+export const staffReservationSchedulePageSchema = z.object({ page: z.object({
+  demand: z.object({
+    demand_batch_id: z.string(), product_id: z.string(), product_name: z.string(),
+    target_quantity: z.number().int().positive(),
+    effective_reservation_count: z.number().int().nonnegative(),
+    order_deadline: epoch, demand_version: z.number().int().positive(),
+    schedule: demandOrderScheduleVersionSchema.nullable(),
+  }).strict(),
+  items: z.array(z.object({
+    reservation_id: z.string(),
+    status: z.enum(['PENDING_REVIEW','APPROVED','REJECTED','CANCELLED','EXPIRED']),
+    submitted_at: epoch, rank: z.number().int().positive().nullable(),
+    planned_order_date: z.string().nullable(), buyer_reference: z.string(),
+    buyer_customer_id: z.string().nullable(), buyer_display_name: z.string().nullable(),
+    actual_order_status: z.string().nullable(), actual_order_date: z.string().nullable(),
+  }).strict()),
+  next_cursor: z.string().nullable(), timezone: z.literal('Asia/Shanghai'),
+  sorting: z.literal('submitted_at ASC, id ASC'), data_as_of: epoch,
+}).strict() }).strict();
+export const demandSchedulePreviewSchema = z.object({ preview:
+  orderCadenceSchema.extend({
+    demand_batch_id: z.string(), expected_version: z.number().int().positive(),
+    current_schedule_version: z.number().int().positive().nullable(),
+    first_order_date: z.string(), theoretical_last_order_date: z.string(),
+    order_deadline_date: z.string(),
+    effective_reservation_count: z.number().int().nonnegative(),
+    affected_reservation_count: z.number().int().nonnegative(),
+    before_first_order_date: z.string().nullable(),
+    before_theoretical_last_order_date: z.string().nullable(),
+    preview_hash: z.string().regex(/^[0-9a-f]{64}$/u),
+    timezone: z.literal('Asia/Shanghai'), data_as_of: epoch,
+  }).strict(),
+}).strict();
+export const demandScheduleConfirmationSchema = z.object({
+  schedule_confirmation: z.object({
+    demand_batch_id: z.string(), demand_version: z.number().int().positive(),
+    schedule: demandOrderScheduleVersionSchema, replayed: z.boolean(),
+  }).strict(),
+}).strict();
+export const demandReviewMutationSchema = z.object({ demand_review: z.object({
+  demand_batch_id: z.string(), status: z.enum(['PUBLISHED','REJECTED']),
+  version: z.number().int().positive(), review_reason: z.string().nullable(),
+  schedule: demandOrderScheduleVersionSchema.nullable(), replayed: z.boolean(),
+}).strict() }).strict();
+export const productVersionMutationSchema = z.object({ product_version: z.object({
+  product_id: z.string(), product_version_id: z.string(),
+  version_no: z.number().int().positive(), aggregate_version: z.number().int().positive(),
+  product_version: z.object({
+    productName: z.string(), searchKeywords: z.array(z.string()),
+    orderingGuideExpectedAmountJpy: z.number().int().nonnegative(),
+    colorSpecMode: z.enum(['MAIN_IMAGE_VARIANT','ANY_VARIANT']),
+    defaultBuyerSelfPayBps: z.number().int().min(0).max(10_000),
+    productUrl: z.string().nullable(), buyerVisibleNotes: z.string().nullable(),
+    internalNotes: z.string().nullable(), orderIntervalDays: z.number().int().positive(),
+    ordersPerRun: z.number().int().positive(),
+  }).strict(),
+  replayed: z.boolean(),
+}).strict() }).strict();
+
+export type StaffProduct = z.output<typeof staffProductListItemSchema>;
+export type StaffProductDetail = z.output<typeof staffProductDetailSchema>['product'];
+export type DemandReviewContext = z.output<typeof demandReviewContextSchema>['review_context'];
+export type StaffReservationSchedulePage = z.output<typeof staffReservationSchedulePageSchema>['page'];
+export type DemandSchedulePreview = z.output<typeof demandSchedulePreviewSchema>['preview'];
+
 export const dashboardProfitSchema = z.object({
   amount_cny_fen: signedIntegerString,
   valid_order_count: z.number().int().nonnegative(),

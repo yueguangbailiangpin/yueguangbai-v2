@@ -22,13 +22,13 @@ Migration 使用可恢复的表重建或新表保存上述事实和约束，不�
 
 ## Authority and Projection
 
-Active owner 或具有 `PRODUCT_REVIEW` 且符合 Seller Organization/Store Scope 的 seller_ops 可维护产品默认节奏和需求排期。pre_sales 具有 `PRODUCT_VIEW` 时可读取产品与预约排名，但买家身份字段仍受其 Buyer/Customer Scope 限制；没有范围时只返回不具识别性的业务标识。buyer_refund 无产品排期修改权限。
+权限按动作收口，角色始终硬限制为 Active owner 或 seller_ops：产品申请 `REJECT` 只要求 `PRODUCT_REVIEW`，`APPROVE` 因创建带节奏的产品版本而额外要求 `DEMAND_PUBLISH`；需求 `REJECT`、`CLOSE` 只要求 `DEMAND_PUBLISH`，`PUBLISH` 因创建首个排期而额外要求 `PRODUCT_REVIEW`。产品创建、新增产品版本、排期预览/确认仍要求双权限。所有动作在读出权威 Source 后重新解析当前 Staff 授权与数据范围，对权威 Seller Organization/Store 执行 Scope，并保留工作项指派检查；pre_sales、buyer_refund 即使获得个人权限也失败关闭。pre_sales 具有 `PRODUCT_VIEW` 时可读取产品与预约排名，但买家身份字段仍受其 Buyer/Customer Scope 限制；没有范围时只返回不具识别性的业务标识。
 
 Buyer、Seller API 不增加排名、其他买家、内部预计日期或 Staff 信息。列表分页、搜索和详情均由服务端强制权限、Scope 与字段投影；客户端不得提交权威 rank、channel、buyer identity 或 planned date。
 
 ## API and Web
 
-为 Staff 增加有界产品列表/详情、需求预约排期详情和服务端影响预览。产品默认修改继续使用新增产品版本；需求排期使用独立预览与确认命令。Staff Web 增加可收藏的产品库、产品详情和预约详情路径，中文表单以“每隔 N 天、每次 M 单”和“首个下单日期”展示，并即时显示三种示例的中文摘要。
+为 Staff 增加有界产品列表/详情、需求预约排期详情和服务端影响预览。产品默认修改继续使用新增产品版本；需求排期使用独立预览与确认命令。`DEMAND_REVIEW` 工作项通过受指派保护的 `GET /api/staff/demand-batches/:id/review-context` 读取权威需求版本、产品版本与节奏，不误用工作项版本，并复用 `POST /api/staff/demand-batches/:id/review` 发布或拒绝。Staff Web 增加可收藏的产品库、产品详情和预约详情路径，以及中文需求审核面板；发布表单明确填写北京时间首个下单日期并携带权威 `expected_version` 与幂等键。
 
 ## Performance and Audit
 

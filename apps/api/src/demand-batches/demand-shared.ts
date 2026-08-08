@@ -46,6 +46,7 @@ export class DemandBatchError extends Error {
       | 'DEMAND_BATCH_ALREADY_REVIEWED'
       | 'DEMAND_BATCH_NOT_PUBLISHED'
       | 'DEMAND_BATCH_EXPIRED'
+      | 'SCHEDULE_WINDOW_CONFLICT'
       | 'CUSTOMER_NOT_ACTIVE'
       | 'IDENTITY_REVIEW_REQUIRED'
       | 'IDEMPOTENCY_CONFLICT'
@@ -71,9 +72,35 @@ export function requireSellerDemandPermission(
 }
 
 export function requireDemandPublishPermission(
-  actor: DemandStaffActor,
+  actor: {
+    roles: Iterable<StaffRoleCode>;
+    permissions: ReadonlySet<StaffPermissionCode>;
+  },
 ): void {
-  if (!actor.permissions.has('DEMAND_PUBLISH')) {
+  if (!actor.permissions.has('DEMAND_PUBLISH')
+    || ![...actor.roles].some((role) => role === 'owner' || role === 'seller_ops')) {
+    throw new DemandBatchError('FORBIDDEN', 403);
+  }
+}
+
+export function canPublishInitialDemandSchedule(
+  actor: {
+    roles: Iterable<StaffRoleCode>;
+    permissions: ReadonlySet<StaffPermissionCode>;
+  },
+): boolean {
+  return actor.permissions.has('PRODUCT_REVIEW')
+    && actor.permissions.has('DEMAND_PUBLISH')
+    && [...actor.roles].some((role) => role === 'owner' || role === 'seller_ops');
+}
+
+export function requireInitialDemandSchedulePermission(
+  actor: {
+    roles: Iterable<StaffRoleCode>;
+    permissions: ReadonlySet<StaffPermissionCode>;
+  },
+): void {
+  if (!canPublishInitialDemandSchedule(actor)) {
     throw new DemandBatchError('FORBIDDEN', 403);
   }
 }

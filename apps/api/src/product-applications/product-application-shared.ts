@@ -65,9 +65,25 @@ export function requireSellerCanSubmitProducts(
 }
 
 export function requireProductReviewPermission(
-  actor: ProductApplicationStaffActor,
+  actor: {
+    roles: Iterable<StaffRoleCode>;
+    permissions: ReadonlySet<StaffPermissionCode>;
+  },
 ): void {
-  if (!actor.permissions.has('PRODUCT_REVIEW')) {
+  if (!actor.permissions.has('PRODUCT_REVIEW')
+    || ![...actor.roles].some((role) => role === 'owner' || role === 'seller_ops')) {
+    throw new ProductApplicationError('FORBIDDEN', 403);
+  }
+}
+
+export function requireProductApprovalPermission(
+  actor: {
+    roles: Iterable<StaffRoleCode>;
+    permissions: ReadonlySet<StaffPermissionCode>;
+  },
+): void {
+  requireProductReviewPermission(actor);
+  if (!actor.permissions.has('DEMAND_PUBLISH')) {
     throw new ProductApplicationError('FORBIDDEN', 403);
   }
 }

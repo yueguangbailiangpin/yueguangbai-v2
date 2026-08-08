@@ -69,6 +69,8 @@ describe('seller stores and product catalog', () => {
         ordering_guide_expected_amount_jpy: 1980,
         color_spec_mode: 'MAIN_IMAGE_VARIANT',
         default_buyer_self_pay_bps: 10000,
+        order_interval_days: 1,
+        orders_per_run: 1,
       },
     });
     const requestInit = {
@@ -432,7 +434,7 @@ describe('seller stores and product catalog', () => {
     });
   });
 
-  it('rejects product creation from an actor without PRODUCT_REVIEW', async () => {
+  it('hard-gates product cadence writes by role, both permissions, and seller scope', async () => {
     database = createMigratedTestDatabase();
     seedCatalogActorsAndOrganizations(database);
 
@@ -446,21 +448,69 @@ describe('seller stores and product catalog', () => {
       now: 2000,
     });
 
-    await expect(createApprovedProduct(database, {
+    const scope = {
+      type: 'ASSIGNED_SELLER_ORGANIZATIONS' as const,
+      buyerCustomerIds: [],
+      sellerOrganizationIds: ['seller-org-1'],
+      teamIds: [],
+    };
+    const forbidden = [
+      actor({ staffId: 'staff-refund', displayName: '返款', roles: ['buyer_refund'],
+        permissions: ['PRODUCT_REVIEW', 'DEMAND_PUBLISH'], dataScope: scope }),
+      actor({ staffId: 'staff-presales', displayName: '售前', roles: ['pre_sales'],
+        permissions: ['PRODUCT_REVIEW', 'DEMAND_PUBLISH'], dataScope: scope }),
+      actor({ staffId: 'staff-product-only', displayName: '缺需求权限', roles: ['seller_ops'],
+        permissions: ['PRODUCT_REVIEW'], dataScope: scope }),
+      actor({ staffId: 'staff-demand-only', displayName: '缺产品权限', roles: ['seller_ops'],
+        permissions: ['DEMAND_PUBLISH'], dataScope: scope }),
+    ];
+    for (const [index, deniedActor] of forbidden.entries()) {
+      await expect(createApprovedProduct(database, {
+        storeId: store.store_id,
+        asin: `B0GATE${String(index).padStart(4, '0')}`,
+        version: productVersion('无权限产品'),
+      }, {
+        actor: deniedActor,
+        idempotencyKey: `product:create:permission:${index}`,
+        now: 2100 + index,
+      })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    }
+
+    const created = await createApprovedProduct(database, {
       storeId: store.store_id,
       asin: 'B0TEST0003',
-      version: productVersion('无权限产品'),
+      version: productVersion('双权限产品'),
     }, {
-      actor: {
-        ...sellerOpsActor(),
-        permissions: new Set(['SELLER_MANAGE']),
-      },
-      idempotencyKey: 'product:create:permission:0001',
-      now: 2100,
-    })).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-      status: 403,
+      actor: productReviewerActor(),
+      idempotencyKey: 'product:create:permission:allowed',
+      now: 2200,
     });
+    for (const [index, deniedActor] of forbidden.entries()) {
+      await expect(addProductVersion(database, {
+        productId: created.product_id,
+        expectedVersion: 1,
+        version: productVersion('无权限版本'),
+      }, {
+        actor: deniedActor,
+        idempotencyKey: `product:version:permission:${index}`,
+        now: 2300 + index,
+      })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    }
+
+    const ownerVersion = await addProductVersion(database, {
+      productId: created.product_id,
+      expectedVersion: 1,
+      version: productVersion('Owner 双权限版本'),
+    }, {
+      actor: actor({
+        staffId: 'zz-phase3h-test-owner', displayName: '总管理员', roles: ['owner'],
+        permissions: ['PRODUCT_REVIEW', 'DEMAND_PUBLISH'],
+        dataScope: { type: 'GLOBAL', buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [] },
+      }),
+      idempotencyKey: 'product:version:permission:owner-allowed',
+      now: 2400,
+    });
+    expect(ownerVersion.version_no).toBe(2);
   });
 });
 
@@ -589,6 +639,7 @@ function productReviewerActor(): CatalogStaffActor {
     roles: ['seller_ops'],
     permissions: [
       'PRODUCT_REVIEW',
+      'DEMAND_PUBLISH',
     ],
     dataScope: {
       type: 'ASSIGNED_SELLER_ORGANIZATIONS',
@@ -606,6 +657,8 @@ function productVersion(
     productName,
     searchKeywords: ['关键词一'],
     orderingGuideExpectedAmountJpy: 1980,
+    orderIntervalDays: 1,
+    ordersPerRun: 1,
     colorSpecMode: 'MAIN_IMAGE_VARIANT' as const,
     productUrl: 'https://www.amazon.co.jp/product',
     buyerVisibleNotes: '买家可见',

@@ -166,6 +166,8 @@ function validCatalogBody(asin: string) {
       ordering_guide_expected_amount_jpy: 1980,
       color_spec_mode: 'MAIN_IMAGE_VARIANT',
       default_buyer_self_pay_bps: 0,
+      order_interval_days: 1,
+      orders_per_run: 1,
     },
   };
 }

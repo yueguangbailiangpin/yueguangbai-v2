@@ -27,13 +27,16 @@ import {
 } from '../foundation/outbox';
 import {
   prepareWorkItemCompletionStatements,
+  requireSellerOrganizationScope,
   requireAssignedWorkflowActor,
+  resolveStaffDataScope,
 } from '../staff-assignment';
 import {
   cleanApplicationIdentifier,
   cleanReviewReason,
   insertProductApplicationEventStatement,
   normalizeProductApplicationError,
+  requireProductApprovalPermission,
   requireProductReviewPermission,
   ProductApplicationError,
   type ProductApplicationStaffActor,
@@ -81,6 +84,8 @@ export async function reviewProductApplication(
     orderingGuideExpectedAmountJpy?: number;
     colorSpecMode?: ProductVersionFields['colorSpecMode'];
     defaultBuyerSelfPayBps?: number;
+    orderIntervalDays?: number;
+    ordersPerRun?: number;
   },
   command: {
     actor: ProductApplicationStaffActor;
@@ -102,6 +107,9 @@ export async function reviewProductApplication(
       400,
     );
   }
+  if (input.decision === 'APPROVE') {
+    requireProductApprovalPermission(command.actor);
+  }
 
   const rejectionReason = input.decision === 'REJECT'
     ? cleanReviewReason(input.rejectionReason)
@@ -119,12 +127,20 @@ export async function reviewProductApplication(
   const colorSpecMode = input.colorSpecMode;
   const defaultBuyerSelfPayBps =
     input.defaultBuyerSelfPayBps ?? 0;
+  const orderIntervalDays = input.orderIntervalDays;
+  const ordersPerRun = input.ordersPerRun;
   if (input.decision === 'APPROVE') {
     if (!Number.isSafeInteger(expectedAmount)
       || Number(expectedAmount) < 0
       || !Number.isSafeInteger(defaultBuyerSelfPayBps)
       || defaultBuyerSelfPayBps < 0
       || defaultBuyerSelfPayBps > 10_000
+      || !Number.isSafeInteger(orderIntervalDays)
+      || Number(orderIntervalDays) < 1
+      || Number(orderIntervalDays) > 36_500
+      || !Number.isSafeInteger(ordersPerRun)
+      || Number(ordersPerRun) < 1
+      || Number(ordersPerRun) > 100_000
       || typeof colorSpecMode !== 'string'
       || !(PRODUCT_COLOR_SPEC_MODES as readonly string[])
         .includes(colorSpecMode)) {
@@ -135,7 +151,9 @@ export async function reviewProductApplication(
     }
   } else if (expectedAmount !== undefined
     || colorSpecMode !== undefined
-    || input.defaultBuyerSelfPayBps !== undefined) {
+    || input.defaultBuyerSelfPayBps !== undefined
+    || orderIntervalDays !== undefined
+    || ordersPerRun !== undefined) {
     throw new ProductApplicationError(
       'VALIDATION_ERROR',
       400,
@@ -160,6 +178,10 @@ export async function reviewProductApplication(
     color_spec_mode: colorSpecMode ?? null,
     default_buyer_self_pay_bps:
       input.decision === 'APPROVE' ? defaultBuyerSelfPayBps : null,
+    order_interval_days:
+      input.decision === 'APPROVE' ? orderIntervalDays : null,
+    orders_per_run:
+      input.decision === 'APPROVE' ? ordersPerRun : null,
   });
 
   const acquired =
@@ -202,6 +224,21 @@ export async function reviewProductApplication(
         409,
       );
     }
+    const authorization = await requireAssignedWorkflowActor(database, {
+      staffId: command.actor.staffId,
+      workType: 'PRODUCT_APPLICATION_REVIEW',
+      sourceEntityType: 'PRODUCT_APPLICATION',
+      sourceEntityId: applicationId,
+      authoritativeSellerOrganizationId: source.organization_id,
+    });
+    requireProductReviewPermission(authorization);
+    if (input.decision === 'APPROVE') {
+      requireProductApprovalPermission(authorization);
+    }
+    requireSellerOrganizationScope(
+      await resolveStaffDataScope(database, authorization),
+      source.organization_id,
+    );
 
     const result = input.decision === 'APPROVE'
       ? await buildApproval(
@@ -210,6 +247,8 @@ export async function reviewProductApplication(
           requireExpectedAmount(expectedAmount),
           requireColorSpecMode(colorSpecMode),
           defaultBuyerSelfPayBps,
+          Number(orderIntervalDays),
+          Number(ordersPerRun),
           command,
           acquired.claim.idempotencyKey,
           now,
@@ -247,13 +286,6 @@ export async function reviewProductApplication(
       createdAt: now,
     });
 
-    await requireAssignedWorkflowActor(database, {
-      staffId: command.actor.staffId,
-      workType: 'PRODUCT_APPLICATION_REVIEW',
-      sourceEntityType: 'PRODUCT_APPLICATION',
-      sourceEntityId: applicationId,
-    });
-
     const statements: SqlStatement[] = [
       // Phase 3H access was resolved from persisted Staff facts above.
       ...result.statements,
@@ -286,6 +318,12 @@ export async function reviewProductApplication(
             : null,
           color_spec_mode: input.decision === 'APPROVE'
             ? colorSpecMode
+            : null,
+          order_interval_days: input.decision === 'APPROVE'
+            ? orderIntervalDays
+            : null,
+          orders_per_run: input.decision === 'APPROVE'
+            ? ordersPerRun
             : null,
         },
         createdAt: now,
@@ -380,6 +418,8 @@ async function buildApproval(
   orderingGuideExpectedAmountJpy: number,
   colorSpecMode: ProductVersionFields['colorSpecMode'],
   defaultBuyerSelfPayBps: number,
+  orderIntervalDays: number,
+  ordersPerRun: number,
   command: {
     actor: ProductApplicationStaffActor;
   },
@@ -418,6 +458,8 @@ async function buildApproval(
     orderingGuideExpectedAmountJpy,
     colorSpecMode,
     defaultBuyerSelfPayBps,
+    orderIntervalDays,
+    ordersPerRun,
   };
 
   return {
@@ -461,13 +503,15 @@ async function buildApproval(
           ordering_guide_expected_amount_jpy,
           color_spec_mode,
           default_buyer_self_pay_bps,
+          order_interval_days,
+          orders_per_run,
           product_url,
           buyer_visible_notes,
           internal_notes,
           created_by_staff_id,
           created_at
         ) VALUES (
-          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `).bind(
         productVersionId,
@@ -477,6 +521,8 @@ async function buildApproval(
         version.orderingGuideExpectedAmountJpy,
         version.colorSpecMode,
         version.defaultBuyerSelfPayBps ?? 0,
+        version.orderIntervalDays,
+        version.ordersPerRun,
         version.productUrl,
         version.buyerVisibleNotes,
         version.internalNotes,

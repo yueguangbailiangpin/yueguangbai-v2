@@ -24,6 +24,7 @@ export * from './order-instruction';
 export * from './pricing';
 export * from './production-readiness';
 export * from './product-application';
+export * from './product-reservation-scheduling';
 export * from './reservation';
 export * from './review';
 export * from './scheduled-operations';

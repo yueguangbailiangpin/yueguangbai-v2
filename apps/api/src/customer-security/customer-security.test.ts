@@ -35,7 +35,7 @@ describe('customer multi-persona invitation and recovery', () => {
     database = createDb();
     expect(await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).first()).toEqual({ schema_version: 36 });
+    `).first()).toEqual({ schema_version: 37 });
     const triggerNames = (await database.prepare(`
       SELECT name FROM sqlite_schema WHERE type='trigger'
         AND name LIKE 'trg_customer_account_persona%'

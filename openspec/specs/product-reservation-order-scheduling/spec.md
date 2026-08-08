@@ -1,7 +1,8 @@
-# Product Reservation Order Scheduling Requirements
+# product-reservation-order-scheduling Specification
 
-## ADDED Requirements
-
+## Purpose
+TBD - created by archiving change staff-product-reservation-order-scheduling. Update Purpose after archive.
+## Requirements
 ### Requirement: Product versions carry a simple default cadence
 Each configured product version SHALL store positive integer `order_interval_days` and `orders_per_run` values, displayed to Staff as “每隔 N 个自然日、每次 M 单”.
 
@@ -11,6 +12,18 @@ Each configured product version SHALL store positive integer `order_interval_day
 
 ### Requirement: Each demand freezes its own first date and cadence
 Publishing a demand with scheduling enabled SHALL require an `Asia/Shanghai` first-order date and SHALL copy the selected product version cadence into an independently versioned demand schedule.
+
+#### Scenario: Assigned seller operations publishes from the Staff work item
+- **WHEN** an assigned seller_ops with effective PRODUCT_REVIEW and DEMAND_PUBLISH opens a DEMAND_REVIEW work item, reads the authoritative demand review context and submits PUBLISH
+- **THEN** the request carries that demand version as `expected_version`, a Beijing `first_order_date` and an Idempotency-Key, and the server locks the selected product-version cadence.
+
+#### Scenario: Assigned seller operations rejects a demand
+- **WHEN** an assigned owner or seller_ops with effective DEMAND_PUBLISH submits REJECT with a reason and the authoritative demand version, even without PRODUCT_REVIEW
+- **THEN** the existing demand review command rejects the demand without creating a schedule version.
+
+#### Scenario: Review actions do not inherit cadence-write permissions
+- **WHEN** seller_ops has only PRODUCT_REVIEW and rejects a product application, or has only DEMAND_PUBLISH and rejects or closes a demand
+- **THEN** the action succeeds within assignment and authoritative Seller Scope, while product APPROVE and demand PUBLISH still require both permissions.
 
 #### Scenario: Product default changes after demand publication
 - **WHEN** the product receives a later version with a new default cadence
@@ -59,15 +72,25 @@ An authorized owner or seller_ops SHALL change a published demand schedule only 
 - **WHEN** a reservation or schedule fact changes before confirmation
 - **THEN** confirmation fails with a stable conflict and does not apply a stale preview.
 
+#### Scenario: Ambiguous response is retried as the same confirmation
+- **WHEN** a product-version or schedule-confirm request may have reached the server but its response is lost
+- **THEN** the unchanged primary button, Enter activation and “重试原请求” all use the exact retained action, path, body and Idempotency-Key; mutation inputs are disabled while the request is in flight, success or deterministic 4xx releases it, and changed input or a newly submitted preview creates a new key.
+
 ### Requirement: Staff visibility follows duty and data scope
-Active owner and authorized seller_ops SHALL maintain schedules; authorized pre_sales SHALL read ranking and dates within scope; buyer_refund SHALL not modify schedules, and Buyer identity fields SHALL remain minimized outside authorized Buyer Scope.
+Active owner and seller_ops SHALL maintain product cadence or demand schedules only while both PRODUCT_REVIEW and DEMAND_PUBLISH are effective and the relevant Seller Scope/assignment permits the resource; authorized pre_sales SHALL read ranking and dates within scope; buyer_refund SHALL not modify schedules, and Buyer identity fields SHALL remain minimized outside authorized Buyer Scope.
+
+The double-permission rule SHALL apply only to writes that create or change cadence/schedule facts; product-application rejection remains a PRODUCT_REVIEW action and demand rejection/closure remains a DEMAND_PUBLISH action.
+
+#### Scenario: Stale work-item organization metadata cannot grant resource scope
+- **WHEN** a work item's seller organization differs from the authoritative product application or demand source organization
+- **THEN** a non-global reviewer receives NOT_FOUND with no business write or work-item completion, while an authorized owner with GLOBAL scope can proceed against the authoritative source.
 
 #### Scenario: Pre-sales opens reservation details
 - **WHEN** pre_sales has PRODUCT_VIEW and the relevant Buyer/Customer Scope
 - **THEN** the page returns stable ranks, reservation times, planned dates and permitted Buyer identifiers without refund, profit or unrelated-customer data.
 
 #### Scenario: An unauthorized role calls the edit command
-- **WHEN** buyer_refund, Buyer, Seller or a Staff lacking effective edit permission submits a schedule change
+- **WHEN** buyer_refund or pre_sales has even been personally granted both permissions, or seller_ops lacks either permission, or Buyer/Seller submits a cadence or schedule write
 - **THEN** the backend denies it without changing schedule, product, demand, reservation or audit facts.
 
 ### Requirement: Estimated and actual order facts stay separate

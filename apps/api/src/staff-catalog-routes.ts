@@ -5,6 +5,10 @@ import {
   isDemandReviewDecision,
   isProductApplicationReviewDecision,
   PRODUCT_COLOR_SPEC_MODES,
+  STAFF_PRODUCT_PAGE_DEFAULT_LIMIT,
+  STAFF_PRODUCT_PAGE_MAX_LIMIT,
+  STAFF_RESERVATION_SCHEDULE_PAGE_DEFAULT_LIMIT,
+  STAFF_RESERVATION_SCHEDULE_PAGE_MAX_LIMIT,
   type ApiErrorCode,
   type ProductColorSpecMode,
   type ProductVersionFields,
@@ -15,11 +19,27 @@ import type { Context, Hono } from 'hono';
 import { addProductVersion } from './catalog/add-product-version';
 import { createApprovedProduct } from './catalog/create-product';
 import type { CatalogStaffActor } from './catalog/catalog-shared';
-import { reviewDemandBatch } from './demand-batches/review-demand-batch';
+import {
+  readDemandReviewContext,
+  reviewDemandBatch,
+} from './demand-batches/review-demand-batch';
 import type { DemandStaffActor } from './demand-batches/demand-shared';
 import { requestIdFromContext } from './http-auth/errors';
 import { reviewProductApplication } from './product-applications/review-product-application';
 import type { ProductApplicationStaffActor } from './product-applications/product-application-shared';
+import {
+  listStaffProducts,
+  readStaffProduct,
+  readStaffReservationSchedule,
+} from './product-reservation-scheduling/read-model';
+import {
+  confirmDemandSchedule,
+  previewDemandSchedule,
+} from './product-reservation-scheduling/schedule-command';
+import {
+  parsePageLimit,
+  type SchedulingStaffActor,
+} from './product-reservation-scheduling/shared';
 import {
   resolveStaffDataScope,
   type AssignmentStaffAuthorization,
@@ -28,6 +48,22 @@ import {
 const BODY_LIMIT = 32 * 1024;
 
 export function registerStaffCatalogWorkflowRoutes(app: Hono<any>): void {
+  app.get(
+    '/api/staff/catalog/products',
+    withStaffWorkflowErrors(listProducts),
+  );
+  app.get(
+    '/api/staff/catalog/products/:id',
+    withStaffWorkflowErrors(readProduct),
+  );
+  app.get(
+    '/api/staff/demand-batches/:id/review-context',
+    withStaffWorkflowErrors(readDemandReview),
+  );
+  app.get(
+    '/api/staff/demand-batches/:id/reservation-schedule',
+    withStaffWorkflowErrors(readReservationSchedule),
+  );
   app.post(
     '/api/staff/product-applications/:id/review',
     withStaffWorkflowErrors(reviewApplication),
@@ -44,6 +80,125 @@ export function registerStaffCatalogWorkflowRoutes(app: Hono<any>): void {
     '/api/staff/demand-batches/:id/review',
     withStaffWorkflowErrors(reviewDemand),
   );
+  app.post(
+    '/api/staff/demand-batches/:id/schedule/preview',
+    withStaffWorkflowErrors(previewSchedule),
+  );
+  app.post(
+    '/api/staff/demand-batches/:id/schedule/confirm',
+    withStaffWorkflowErrors(confirmSchedule),
+  );
+}
+
+async function readDemandReview(context: Context<any>): Promise<Response> {
+  exactQuery(context, new Set());
+  const authorization = requireAuthorization(context);
+  const reviewContext = await readDemandReviewContext(
+    context.env.DB,
+    requiredString(context.req.param('id')),
+    workflowActor(authorization),
+  );
+  return success(context, { review_context: reviewContext });
+}
+
+async function listProducts(context: Context<any>): Promise<Response> {
+  const actor = await schedulingActor(context);
+  const query = exactQuery(context, new Set(['limit', 'cursor', 'search']));
+  const page = await listStaffProducts(context.env.DB, actor, {
+    limit: parsePageLimit(
+      query.get('limit') ?? undefined,
+      STAFF_PRODUCT_PAGE_DEFAULT_LIMIT,
+      STAFF_PRODUCT_PAGE_MAX_LIMIT,
+    ),
+    ...(query.get('cursor') === null
+      ? {}
+      : { cursor: query.get('cursor')! }),
+    ...(query.get('search') === null
+      ? {}
+      : { search: query.get('search')! }),
+  });
+  return success(context, { page });
+}
+
+async function readProduct(context: Context<any>): Promise<Response> {
+  exactQuery(context, new Set());
+  const detail = await readStaffProduct(
+    context.env.DB,
+    await schedulingActor(context),
+    requiredString(context.req.param('id')),
+  );
+  return success(context, { product: detail });
+}
+
+async function readReservationSchedule(
+  context: Context<any>,
+): Promise<Response> {
+  const query = exactQuery(context, new Set(['limit', 'cursor']));
+  const page = await readStaffReservationSchedule(
+    context.env.DB,
+    await schedulingActor(context),
+    requiredString(context.req.param('id')),
+    {
+      limit: parsePageLimit(
+        query.get('limit') ?? undefined,
+        STAFF_RESERVATION_SCHEDULE_PAGE_DEFAULT_LIMIT,
+        STAFF_RESERVATION_SCHEDULE_PAGE_MAX_LIMIT,
+      ),
+      ...(query.get('cursor') === null
+        ? {}
+        : { cursor: query.get('cursor')! }),
+    },
+  );
+  return success(context, { page });
+}
+
+async function previewSchedule(context: Context<any>): Promise<Response> {
+  exactQuery(context, new Set());
+  const body = await bodyRecord(context);
+  rejectUnknown(body, [
+    'expected_version', 'first_order_date', 'order_interval_days',
+    'orders_per_run', 'reason',
+  ]);
+  const preview = await previewDemandSchedule(
+    context.env.DB,
+    await schedulingActor(context),
+    {
+      demandBatchId: requiredString(context.req.param('id')),
+      expectedVersion: integer(body['expected_version']),
+      firstOrderDate: body['first_order_date'],
+      orderIntervalDays: body['order_interval_days'],
+      ordersPerRun: body['orders_per_run'],
+      reason: body['reason'],
+    },
+  );
+  return success(context, { preview });
+}
+
+async function confirmSchedule(context: Context<any>): Promise<Response> {
+  exactQuery(context, new Set());
+  const body = await bodyRecord(context);
+  rejectUnknown(body, [
+    'expected_version', 'first_order_date', 'order_interval_days',
+    'orders_per_run', 'reason', 'preview_hash',
+  ]);
+  const result = await confirmDemandSchedule(
+    context.env.DB,
+    await schedulingActor(context),
+    {
+      demandBatchId: requiredString(context.req.param('id')),
+      expectedVersion: integer(body['expected_version']),
+      firstOrderDate: body['first_order_date'],
+      orderIntervalDays: body['order_interval_days'],
+      ordersPerRun: body['orders_per_run'],
+      reason: body['reason'],
+      previewHash: body['preview_hash'],
+    },
+    {
+      idempotencyKey: idempotencyKey(context),
+      requestId: requestIdFromContext(context),
+    },
+  );
+  return success(context, { schedule_confirmation: result });
 }
 
 async function reviewApplication(context: Context<any>): Promise<Response> {
@@ -52,7 +207,7 @@ async function reviewApplication(context: Context<any>): Promise<Response> {
   rejectUnknown(body, [
     'expected_version', 'decision', 'rejection_reason',
     'ordering_guide_expected_amount_jpy', 'color_spec_mode',
-    'default_buyer_self_pay_bps',
+    'default_buyer_self_pay_bps', 'order_interval_days', 'orders_per_run',
   ]);
   const decision = body['decision'];
   if (!isProductApplicationReviewDecision(decision)) {
@@ -77,6 +232,12 @@ async function reviewApplication(context: Context<any>): Promise<Response> {
     ...(body['default_buyer_self_pay_bps'] === undefined
       ? {}
       : { defaultBuyerSelfPayBps: bps(body['default_buyer_self_pay_bps']) }),
+    ...(body['order_interval_days'] === undefined
+      ? {}
+      : { orderIntervalDays: positiveInteger(body['order_interval_days'], 36_500) }),
+    ...(body['orders_per_run'] === undefined
+      ? {}
+      : { ordersPerRun: positiveInteger(body['orders_per_run']) }),
   }, {
     actor: workflowActor(authorization),
     idempotencyKey: idempotencyKey(context),
@@ -124,7 +285,7 @@ async function reviewDemand(context: Context<any>): Promise<Response> {
   const body = await bodyRecord(context);
   rejectUnknown(body, [
     'expected_version', 'decision', 'rejection_reason',
-    'buyer_self_pay_bps', 'buyer_self_pay_override_reason',
+    'buyer_self_pay_bps', 'buyer_self_pay_override_reason', 'first_order_date',
   ]);
   const decision = body['decision'];
   if (!isDemandReviewDecision(decision)) throw validationError();
@@ -144,6 +305,9 @@ async function reviewDemand(context: Context<any>): Promise<Response> {
           buyerSelfPayOverrideReason:
             nullableString(body['buyer_self_pay_override_reason']),
         }),
+    ...(body['first_order_date'] === undefined
+      ? {}
+      : { firstOrderDate: nullableString(body['first_order_date']) }),
   }, {
     actor: workflowActor(authorization),
     idempotencyKey: idempotencyKey(context),
@@ -193,12 +357,22 @@ async function catalogActor(
   };
 }
 
+async function schedulingActor(
+  context: Context<any>,
+): Promise<SchedulingStaffActor> {
+  const authorization = requireAuthorization(context);
+  return {
+    ...workflowActor(authorization),
+    dataScope: await resolveStaffDataScope(context.env.DB, authorization),
+  };
+}
+
 function productVersion(value: unknown): ProductVersionFields {
   const input = record(value);
   rejectUnknown(input, [
     'product_name', 'search_keywords', 'product_url', 'buyer_visible_notes',
     'internal_notes', 'ordering_guide_expected_amount_jpy', 'color_spec_mode',
-    'default_buyer_self_pay_bps',
+    'default_buyer_self_pay_bps', 'order_interval_days', 'orders_per_run',
   ]);
   const keywords = input['search_keywords'];
   if (!Array.isArray(keywords)
@@ -214,6 +388,8 @@ function productVersion(value: unknown): ProductVersionFields {
     orderingGuideExpectedAmountJpy:
       integer(input['ordering_guide_expected_amount_jpy']),
     colorSpecMode: colorSpecMode(input['color_spec_mode']),
+    orderIntervalDays: positiveInteger(input['order_interval_days'], 36_500),
+    ordersPerRun: positiveInteger(input['orders_per_run']),
     ...(input['default_buyer_self_pay_bps'] === undefined
       ? {}
       : { defaultBuyerSelfPayBps: bps(input['default_buyer_self_pay_bps']) }),
@@ -230,6 +406,19 @@ function colorSpecMode(value: unknown): ProductColorSpecMode {
 
 async function bodyRecord(context: Context<any>): Promise<Record<string, unknown>> {
   return record(await readBoundedJson(context.req.raw, BODY_LIMIT));
+}
+
+function exactQuery(
+  context: Context<any>,
+  allowed: ReadonlySet<string>,
+): URLSearchParams {
+  const parameters = new URL(context.req.url).searchParams;
+  for (const key of new Set(parameters.keys())) {
+    if (!allowed.has(key) || parameters.getAll(key).length !== 1) {
+      throw validationError();
+    }
+  }
+  return parameters;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -273,6 +462,12 @@ function integer(value: unknown): number {
 function bps(value: unknown): number {
   const parsed = integer(value);
   if (parsed < 0 || parsed > 10_000) throw validationError();
+  return parsed;
+}
+
+function positiveInteger(value: unknown, maximum = 100_000): number {
+  const parsed = integer(value);
+  if (parsed < 1 || parsed > maximum) throw validationError();
   return parsed;
 }
 

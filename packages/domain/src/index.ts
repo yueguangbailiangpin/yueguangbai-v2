@@ -17,6 +17,7 @@ export * from './marketplace/adapter';
 export * from './numbering/customer-number';
 export * from './pricing/business-date';
 export * from './pricing/fixed-point';
+export * from './product-reservation-scheduling/schedule';
 export * from './order-instructions';
 export * from './reviews/review-url';
 export * from './seller-settlement/status';

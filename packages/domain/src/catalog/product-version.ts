@@ -18,7 +18,9 @@ export class ProductVersionFieldsError extends Error {
       | 'invalid_internal_notes'
       | 'invalid_ordering_guide_expected_amount_jpy'
       | 'invalid_color_spec_mode'
-      | 'invalid_default_buyer_self_pay_bps',
+      | 'invalid_default_buyer_self_pay_bps'
+      | 'invalid_order_interval_days'
+      | 'invalid_orders_per_run',
   ) {
     super(reason);
     this.name = 'ProductVersionFieldsError';
@@ -96,10 +98,22 @@ export function normalizeProductVersionFields(
       'invalid_color_spec_mode',
     );
   }
+  if (!Number.isSafeInteger(input.orderIntervalDays)
+    || input.orderIntervalDays < 1
+    || input.orderIntervalDays > 36_500) {
+    throw new ProductVersionFieldsError('invalid_order_interval_days');
+  }
+  if (!Number.isSafeInteger(input.ordersPerRun)
+    || input.ordersPerRun < 1
+    || input.ordersPerRun > 100_000) {
+    throw new ProductVersionFieldsError('invalid_orders_per_run');
+  }
   return {
     ...descriptive,
     orderingGuideExpectedAmountJpy,
     colorSpecMode: input.colorSpecMode,
+    orderIntervalDays: input.orderIntervalDays,
+    ordersPerRun: input.ordersPerRun,
     ...(input.defaultBuyerSelfPayBps === undefined
       ? {}
       : { defaultBuyerSelfPayBps: input.defaultBuyerSelfPayBps }),
