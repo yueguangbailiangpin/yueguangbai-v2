@@ -61,11 +61,11 @@ for (const marker of [
 ]) assert(checklist.includes(marker), `owner checklist missing: ${marker}`);
 
 for (const file of [
-  'openspec/changes/final-production-go-local-preparation/.openspec.yaml',
-  'openspec/changes/final-production-go-local-preparation/proposal.md',
-  'openspec/changes/final-production-go-local-preparation/design.md',
-  'openspec/changes/final-production-go-local-preparation/tasks.md',
-  'openspec/changes/final-production-go-local-preparation/specs/production-go-local-preparation/spec.md',
+  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/.openspec.yaml',
+  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/proposal.md',
+  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/design.md',
+  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/tasks.md',
+  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/specs/production-go-local-preparation/spec.md',
   'openspec/changes/archive/2026-08-07-production-readiness-backup-validation/proposal.md',
   'openspec/changes/pre-wave13-baseline-conformance-audit/tasks.md',
 ]) assert(existsSync(path.join(root, file)), `required governance evidence missing: ${file}`);
