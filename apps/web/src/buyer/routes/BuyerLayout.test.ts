@@ -4,10 +4,11 @@ import { buyerNavigationOwner } from './BuyerLayout';
 describe('buyer semantic navigation ownership', () => {
   it.each([
     ['/buyer', '/buyer'],
-    ['/buyer/tasks', '/buyer/tasks'],
-    ['/buyer/demands/d-1', '/buyer/tasks'],
-    ['/buyer/reservations/r-1', '/buyer/tasks'],
-    ['/buyer/reservations/r-1/instruction', '/buyer/tasks'],
+    ['/buyer/tasks', '/buyer/products'],
+    ['/buyer/products', '/buyer/products'],
+    ['/buyer/demands/d-1', '/buyer/products'],
+    ['/buyer/reservations/r-1', '/buyer/products'],
+    ['/buyer/reservations/r-1/instruction', '/buyer/products'],
     ['/buyer/order-materials/new', '/buyer/order-materials'],
     ['/buyer/orders/o-1', '/buyer/order-materials'],
     ['/buyer/reviews/review-1', '/buyer/reviews'],

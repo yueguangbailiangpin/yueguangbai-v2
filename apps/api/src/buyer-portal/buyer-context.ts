@@ -58,13 +58,9 @@ export function toBuyerPortalMeDto(
 ): BuyerPortalMeDto {
   return {
     buyer: {
-      customer_number: buyer.customerNumber,
       display_name: buyer.displayName,
       marketplace_code: buyer.marketplaceCode,
       identity_review_status: buyer.identityReviewStatus,
-    },
-    session: {
-      expires_at: buyer.sessionExpiresAt,
     },
   };
 }

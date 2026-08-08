@@ -115,6 +115,23 @@ const PUBLIC_DEMAND_WHERE = `
   AND product.status='ACTIVE'
   AND store.status='ACTIVE'
   AND organization.status='ACTIVE'
+  AND (
+    demand.held_reservation_count
+    + demand.approved_reservation_count
+  ) < demand.target_quantity
+  AND NOT EXISTS (
+    SELECT 1
+    FROM product_reservations existing
+    WHERE existing.demand_batch_id=demand.id
+      AND existing.buyer_customer_id=?
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM product_reservations active
+    WHERE active.buyer_customer_id=?
+      AND active.product_id=demand.product_id
+      AND active.status IN ('PENDING_REVIEW', 'APPROVED')
+  )
 `;
 
 const RESERVATION_SELECT = `
@@ -195,6 +212,8 @@ export async function listBuyerPortalDemands(
     options.now,
     options.now,
     options.now,
+    buyer.buyerCustomerId,
+    buyer.buyerCustomerId,
   ];
   if (options.cursor) {
     bindings.push(
@@ -256,6 +275,8 @@ export async function getBuyerPortalDemand(
     now,
     now,
     now,
+    buyer.buyerCustomerId,
+    buyer.buyerCustomerId,
     demandId,
   ).first<DemandRow>();
   if (!row) throw new BuyerPortalError('NOT_FOUND', 404);

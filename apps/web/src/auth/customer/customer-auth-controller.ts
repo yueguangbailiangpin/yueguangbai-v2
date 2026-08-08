@@ -31,10 +31,7 @@ export class CustomerAuthController {
 
   async login(target: CustomerTarget, body: CustomerLoginBody, signal?: AbortSignal): Promise<CustomerLoginResult> {
     this.mismatchCleanup.beginCycle();
-    const response = await this.api.login({
-      ...body,
-      persona: expectedAccountType(target),
-    }, signal);
+    const response = await this.api.login(target, body, signal);
     if (response.data.session.account_type !== expectedAccountType(target)) {
       return this.cleanupResult(await this.mismatchCleanup.clean());
     }

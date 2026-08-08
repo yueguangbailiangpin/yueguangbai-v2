@@ -27,7 +27,6 @@ export type CustomerTarget = 'buyer' | 'seller';
 export type CustomerLoginBody = Readonly<{
   login_identifier: string;
   password: string;
-  persona?: 'BUYER' | 'SELLER_MEMBER';
 }>;
 export type CustomerPasswordBody = Readonly<{
   current_password: string;
@@ -35,16 +34,15 @@ export type CustomerPasswordBody = Readonly<{
 }>;
 
 export interface CustomerAuthApiAdapter {
-  login(body: CustomerLoginBody, signal?: AbortSignal): Promise<ApiResult<{ session: CustomerSession }>>;
+  login(target: CustomerTarget, body: CustomerLoginBody, signal?: AbortSignal): Promise<ApiResult<{ session: CustomerSession }>>;
   logout(signal?: AbortSignal): Promise<ApiResult<{ logged_out: true; all_devices_logged_out: false }>>;
   changePassword(body: CustomerPasswordBody, idempotencyKey: string, signal?: AbortSignal): Promise<ApiResult<{ session: CustomerSession }>>;
   readSession(signal?: AbortSignal): Promise<ApiResult<{ session: CustomerSession }>>;
-  selectPersona?(persona: 'BUYER' | 'SELLER_MEMBER', signal?: AbortSignal): Promise<ApiResult<{ session: CustomerSession }>>;
 }
 
 export const customerAuthApi: CustomerAuthApiAdapter = Object.freeze({
-  login: (body: CustomerLoginBody, signal?: AbortSignal) => apiRequest({
-    path: '/api/customer-auth/login',
+  login: (target: CustomerTarget, body: CustomerLoginBody, signal?: AbortSignal) => apiRequest({
+    path: `/api/customer-auth/${target}/login`,
     method: 'POST',
     schema: customerSessionResponseSchema,
     body,
@@ -68,16 +66,6 @@ export const customerAuthApi: CustomerAuthApiAdapter = Object.freeze({
     path: '/api/customer-auth/session',
     method: 'GET',
     schema: customerSessionResponseSchema,
-    ...(signal ? { signal } : {}),
-  }),
-  selectPersona: (
-    persona: 'BUYER' | 'SELLER_MEMBER',
-    signal?: AbortSignal,
-  ) => apiRequest({
-    path: '/api/customer-auth/select-persona',
-    method: 'POST',
-    schema: customerSessionResponseSchema,
-    body: { persona },
     ...(signal ? { signal } : {}),
   }),
 });

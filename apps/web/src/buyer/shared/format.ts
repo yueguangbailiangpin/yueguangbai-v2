@@ -10,7 +10,7 @@ const shanghai = new Intl.DateTimeFormat('zh-CN', {
 
 export function formatShanghai(epochMilliseconds: number | null): string {
   if (epochMilliseconds === null) return '未知';
-  return `${shanghai.format(new Date(epochMilliseconds))}（中国标准时间）`;
+  return `${shanghai.format(new Date(epochMilliseconds))}（北京时间）`;
 }
 
 export function formatDateOnly(value: string | null): string {

@@ -10,7 +10,6 @@ import {
   Card,
   FormField,
   RequestIdDisplay,
-  Select,
   TextInput,
 } from '../../ui/primitives';
 import { CustomerAuthController, type CustomerLoginResult } from './customer-auth-controller';
@@ -19,7 +18,6 @@ import { customerAuthApi, type CustomerAuthApiAdapter, type CustomerTarget } fro
 const loginSchema = z.object({
   login_identifier: z.string().min(1),
   password: z.string().min(1),
-  persona: z.enum(['buyer', 'seller']),
 });
 
 export function CustomerLoginPage({
@@ -53,14 +51,14 @@ export function CustomerLoginPage({
     };
   }, []);
 
-  function applyResult(result: CustomerLoginResult, selectedTarget = target): void {
+  function applyResult(result: CustomerLoginResult): void {
     if (!mountedRef.current) return;
     if (result.kind === 'AUTHENTICATED') {
-      navigate(selectedTarget === target ? returnTo : `/${selectedTarget}`, { replace: true });
+      navigate(returnTo, { replace: true });
       return;
     }
     if (result.kind === 'PASSWORD_CHANGE_REQUIRED') {
-      navigate(`/${selectedTarget}/change-password`, { replace: true });
+      navigate(`/${target}/change-password`, { replace: true });
       return;
     }
     if (result.kind === 'MISMATCH_CLEANED') {
@@ -83,7 +81,6 @@ export function CustomerLoginPage({
     const payload = loginSchema.safeParse({
       login_identifier: data.get('login_identifier'),
       password: data.get('password'),
-      persona: data.get('persona'),
     });
     if (!payload.success) {
       setMessage('请输入登录标识和密码。');
@@ -94,11 +91,10 @@ export function CustomerLoginPage({
     const abort = new AbortController();
     abortRef.current = abort;
     try {
-      const selectedTarget = payload.data.persona;
-      applyResult(await controllerRef.current!.login(selectedTarget, {
+      applyResult(await controllerRef.current!.login(target, {
         login_identifier: payload.data.login_identifier,
         password: payload.data.password,
-      }, abort.signal), selectedTarget);
+      }, abort.signal));
     } catch (error: unknown) {
       if (mountedRef.current && !(isFrontendApiError(error) && error.code === 'CANCELED')) {
         setRequestId(isFrontendApiError(error) ? error.requestId : null);
@@ -124,28 +120,16 @@ export function CustomerLoginPage({
     }
   }
 
-  const label = target === 'buyer' ? '买家登录' : '卖家登录';
   return (
     <main className={`login-page identity-${target}`}>
       <Card className="login-card">
-        <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
-          <strong>月光白</strong></div>
-        <div className="login-heading"><p className="eyebrow">
-          {target === 'buyer' ? '买家服务' : '卖家工作区'}
-        </p><h1>{label}</h1>
-          <p>{target === 'buyer' ? '安全访问您的买家服务。' : '安全访问您的组织与店铺工作区。'}</p></div>
+        <div className="login-brand"><strong>月光白</strong></div>
         <form onSubmit={(event) => { void submit(event); }}>
           <FormField label="账号" htmlFor={`${target}-account`} required>
             <TextInput name="login_identifier" autoComplete="username" required />
           </FormField>
           <FormField label="密码" htmlFor={`${target}-password`} required>
             <TextInput name="password" type="password" autoComplete="current-password" required />
-          </FormField>
-          <FormField label="进入身份" htmlFor={`${target}-persona`} required>
-            <Select name="persona" defaultValue={target}>
-              <option value="buyer">买家工作区</option>
-              <option value="seller">卖家工作区</option>
-            </Select>
           </FormField>
           {message ? <Alert tone="danger">{message}</Alert> : null}
           <RequestIdDisplay requestId={requestId} />
@@ -161,7 +145,6 @@ export function CustomerLoginPage({
             disabled={cleanupFailed}
           >登录</Button>
         </form>
-        <p className="security-note">请仅使用工作人员提供的专属访问方式。</p>
       </Card>
     </main>
   );

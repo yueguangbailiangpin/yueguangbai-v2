@@ -39,27 +39,22 @@ async function noHorizontalOverflow(page: Page): Promise<void> {
   expect(width.content).toBeLessThanOrEqual(width.viewport + 1);
 }
 
-test('登录显式选择 Persona，且不公开 Buyer 注册入口', async ({ page }) => {
+test('卖家登录由路径固定身份，且不公开 Buyer 注册入口', async ({ page }) => {
   let loginBody: unknown;
-  await page.route('**/api/customer-auth/login', async (route) => {
+  await page.route('**/api/customer-auth/seller/login', async (route) => {
     loginBody = route.request().postDataJSON();
     await json(route, success({ session: {
       ...buyerSession(), account_type: 'SELLER_MEMBER',
     } }));
   });
-  await page.goto('/customer/login');
-  await expect(page.getByRole('heading', { name: '买家登录' })).toBeVisible();
+  await page.goto('/seller/login');
+  await expect(page.getByText('月光白')).toBeVisible();
   await expect(page.locator('body')).not.toContainText(/注册账号|立即注册/u);
   await page.getByLabel('账号').fill('dual_wx');
   await page.getByLabel('密码').fill('Strong-Password-2026!');
-  await expect(page.getByLabel('进入身份')).toHaveValue('buyer');
-  await page.getByLabel('进入身份').selectOption('seller');
-  await expect(page.getByLabel('进入身份')).toHaveValue('seller');
+  await expect(page.getByLabel('进入身份')).toHaveCount(0);
   await page.getByRole('button', { name: '登录' }).click();
-  expect(loginBody).toEqual({
-    login_identifier: 'dual_wx', password: 'Strong-Password-2026!',
-    persona: 'SELLER_MEMBER',
-  });
+  expect(loginBody).toEqual({ login_identifier: 'dual_wx', password: 'Strong-Password-2026!' });
   await expect(page).toHaveURL(/\/seller$/u);
 });
 
@@ -67,7 +62,7 @@ test('无邀请时注册失败关闭且按钮不可用', async ({ page }) => {
   await page.goto('/buyer/register');
   await expect(page.getByText('注册链接无效，请联系工作人员重新获取。'))
     .toBeVisible();
-  await expect(page.getByRole('button', { name: '注册并进入买家工作区' }))
+  await expect(page.getByRole('button', { name: '完成注册' }))
     .toBeDisabled();
 });
 
@@ -108,7 +103,7 @@ test('有效邀请只展示脱敏微信和绑定站点，成功消费后进入 B
   await page.getByLabel('微信号').fill('buyer_wx');
   await page.getByLabel('密码', { exact: true }).fill('Strong-Password-2026!');
   await page.getByLabel('确认密码').fill('Strong-Password-2026!');
-  await page.getByRole('button', { name: '注册并进入买家工作区' }).click();
+  await page.getByRole('button', { name: '完成注册' }).click();
   await expect(page).toHaveURL(/\/buyer$/u);
   expect(registrationBody).toEqual({
     invitation_token: invitationToken, marketplace_code: 'AMAZON_US',
@@ -119,13 +114,13 @@ test('有效邀请只展示脱敏微信和绑定站点，成功消费后进入 B
   await noHorizontalOverflow(page);
 });
 
-test('密码恢复在 320px 和键盘路径可用，并声明所有旧会话失效', async ({ page }) => {
+test('密码恢复在 320px 和键盘路径可用，并回到服务端确定的卖家登录入口', async ({ page }) => {
   let resetBody: unknown;
   await page.route('**/api/customer-auth/password-reset/complete', async (route) => {
     resetBody = route.request().postDataJSON();
     await json(route, success({
       password_reset: true, all_previous_sessions_revoked: true,
-      next_path: '/customer/login',
+      next_path: '/seller/login',
     }));
   });
   await page.setViewportSize({ width: 320, height: 720 });
@@ -141,6 +136,8 @@ test('密码恢复在 320px 和键盘路径可用，并声明所有旧会话失�
     token: 'reset-token-browser', new_password: 'New-Strong-Password-2026!',
     password_confirmation: 'New-Strong-Password-2026!',
   });
+  await page.getByRole('button', { name: '前往登录' }).click();
+  await expect(page).toHaveURL(/\/seller\/login$/u);
   await noHorizontalOverflow(page);
 });
 

@@ -236,6 +236,7 @@ describe('customer multi-persona invitation and recovery', () => {
     });
     expect(completed).toMatchObject({
       password_reset: true, all_previous_sessions_revoked: true,
+      next_path: '/seller/login',
       session_version: 2,
     });
     await expect(resolveCustomerSession(database, oldToken, SESSION_SECRET,

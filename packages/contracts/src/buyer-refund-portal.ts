@@ -36,10 +36,6 @@ export interface BuyerRefundPortalSummaryDto
 extends BuyerRefundPortalBalanceDto {
   refund_obligation_id: string;
   order: BuyerRefundPortalOrderSummaryDto;
-  became_due_at: number;
-  first_paid_at: number | null;
-  last_paid_at: number | null;
-  updated_at: number;
   allowed_actions: readonly [];
 }
 

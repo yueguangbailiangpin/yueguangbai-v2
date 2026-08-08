@@ -142,7 +142,6 @@ describe('Phase 4B4 buyer review API read projection', () => {
       review_approved_at: 3000,
       buyer_refund_due: {
         amount_cny_fen: '4884',
-        became_due_at: 3000,
       },
       allowed_actions: [],
     });

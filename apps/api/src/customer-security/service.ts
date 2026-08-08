@@ -396,7 +396,7 @@ export async function completePasswordReset(
   const reset = await database.prepare(`
     SELECT reset.id, reset.account_id, reset.identity_subject_id,
       reset.status, reset.version, reset.expires_at,
-      account.session_version, account.version AS account_version
+      account.account_type, account.session_version, account.version AS account_version
     FROM customer_password_reset_tokens reset
     JOIN customer_login_accounts account ON account.id=reset.account_id
     WHERE reset.token_hash=?
@@ -428,10 +428,14 @@ export async function completePasswordReset(
     requestHash,
   }, { now });
   if (acquired.kind === 'REPLAY') return { ...acquired.response, replayed: true };
+  let nextPath: '/buyer/login' | '/seller/login';
+  if (reset.account_type === 'BUYER') nextPath = '/buyer/login';
+  else if (reset.account_type === 'SELLER_MEMBER') nextPath = '/seller/login';
+  else throw new CustomerSecurityError('CONFLICT', 409);
   const result = {
     password_reset: true as const,
     all_previous_sessions_revoked: true as const,
-    next_path: '/customer/login' as const,
+    next_path: nextPath,
     session_version: Number(reset.session_version) + 1,
   };
   try {

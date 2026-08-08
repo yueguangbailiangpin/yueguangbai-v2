@@ -116,20 +116,22 @@ describe('Customer password route boundary chain', () => {
   it('allows a matching BUYER Session with password_change_required=true', async () => {
     const readSession = vi.fn<CustomerAuthApiAdapter['readSession']>(async () => result({ session: session('BUYER', true) }));
     render(routeTree('buyer', adapterWith(readSession), testClient()));
-    expect(await screen.findByRole('heading', { name: '买家修改密码' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '修改密码' })).toBeVisible();
     expect(screen.getByLabelText('当前密码')).toBeVisible();
+    expect(screen.queryByText(/买家服务|卖家工作区|买家修改密码|卖家修改密码/u))
+      .not.toBeInTheDocument();
   });
 
   it('allows a matching SELLER_MEMBER Session with password_change_required=true', async () => {
     const readSession = vi.fn<CustomerAuthApiAdapter['readSession']>(async () => result({ session: session('SELLER_MEMBER', true) }));
     render(routeTree('seller', adapterWith(readSession), testClient()));
-    expect(await screen.findByRole('heading', { name: '卖家修改密码' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '修改密码' })).toBeVisible();
   });
 
   it('allows a matching Session with password_change_required=false for voluntary password changes', async () => {
     const readSession = vi.fn<CustomerAuthApiAdapter['readSession']>(async () => result({ session: session('BUYER', false) }));
     render(routeTree('buyer', adapterWith(readSession), testClient()));
-    expect(await screen.findByRole('heading', { name: '买家修改密码' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '修改密码' })).toBeVisible();
     expect(screen.queryByText('BUYER SHELL')).not.toBeInTheDocument();
   });
 
@@ -196,7 +198,7 @@ describe('Customer password route boundary chain', () => {
     expect(screen.queryByText('BUYER LOGIN')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('当前密码')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '重试' }));
-    expect(await screen.findByRole('heading', { name: '买家修改密码' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '修改密码' })).toBeVisible();
   });
 
   it('does not repeat mismatch logout across React rerenders', async () => {

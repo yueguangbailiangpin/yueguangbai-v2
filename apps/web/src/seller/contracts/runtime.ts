@@ -68,6 +68,7 @@ export const sellerProductsSchema = z.object({ items: z.array(z.object({
   version: z.number().int().positive(), created_at: epoch, updated_at: epoch,
   current_version: productVersion,
 }).strict()), page }).strict();
+export type SellerProductStatus = z.infer<typeof sellerProductsSchema>['items'][number]['status'];
 
 export const sellerDemandsSchema = z.object({ items: z.array(z.object({
   id: z.string(), store: z.object({ id: z.string(), display_name: z.string() }).strict(),
@@ -82,6 +83,7 @@ export const sellerDemandsSchema = z.object({ items: z.array(z.object({
   submitted_at: epoch, updated_at: epoch, reviewed_at: epoch.nullable(), published_at: epoch.nullable(),
   withdrawn_at: epoch.nullable(), closed_at: epoch.nullable(),
 }).strict()), page }).strict();
+export type SellerDemandStatus = z.infer<typeof sellerDemandsSchema>['items'][number]['status'];
 
 export const sellerReviewsSchema = z.object({ items: z.array(z.object({
   review_case_id: z.string(), formal_order: z.object({ id: z.string(), amazon_order_number: z.string() }).strict(),
@@ -95,6 +97,7 @@ export const sellerReviewsSchema = z.object({ items: z.array(z.object({
   service_fee_accrued: z.object({ amount_cny_fen: integerString, accrued_at: epoch }).strict().nullable(),
   allowed_actions: z.array(z.enum(['VIEW', 'READ_EVIDENCE'])),
 }).strict()), page }).strict();
+export type SellerReviewStatus = z.infer<typeof sellerReviewsSchema>['items'][number]['status'];
 export const sellerPayablesSchema = z.object({ items: z.array(z.object({
   payable_id: z.string(), formal_order_id: z.string(), payable_type: z.enum(['SELLER_PRINCIPAL', 'SELLER_SERVICE_FEE']),
   amazon_order_number: z.string(), store: z.object({ id: z.string(), display_name: z.string() }).strict(),

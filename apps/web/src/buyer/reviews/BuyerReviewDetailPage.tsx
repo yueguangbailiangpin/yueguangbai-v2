@@ -29,7 +29,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
   return <section className="buyer-page"><PageHeader eyebrow="评论详情" title={item.order.product_name}>
     <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></PageHeader>
     {item.status === 'CHANGES_REQUESTED' && item.public_change_reason ? <Alert tone="warning">修改说明：{item.public_change_reason}</Alert> : null}
-    {item.status === 'APPROVED' && item.buyer_refund_due ? <Alert tone="success">应返款 {formatCnyFen(item.buyer_refund_due.amount_cny_fen)}</Alert> : null}
+    {item.status === 'APPROVED' && item.buyer_refund_due ? <Alert tone="success">返款金额 {formatCnyFen(item.buyer_refund_due.amount_cny_fen)}</Alert> : null}
     <Card><dl className="buyer-facts"><div><dt>评论类型</dt><dd>{item.review_type}</dd></div>
       <div><dt>Amazon 订单号</dt><dd>{item.order.amazon_order_number}</dd></div><div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.order.amazon_order_date)}</dd></div>
       <div><dt>证据版本</dt><dd>{item.current_evidence_version_no}</dd></div><div><dt>文件数量</dt><dd>{item.file_count}</dd></div>

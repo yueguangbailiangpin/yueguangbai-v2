@@ -239,10 +239,6 @@ function toSummaryDto(
       status: 'CONFIRMED',
     },
     ...balance,
-    became_due_at: safeNonNegativeInteger(row.became_due_at),
-    first_paid_at: nullableTimestamp(row.first_paid_at),
-    last_paid_at: nullableTimestamp(row.last_paid_at),
-    updated_at: safeNonNegativeInteger(row.updated_at),
     allowed_actions: [],
   };
 }
