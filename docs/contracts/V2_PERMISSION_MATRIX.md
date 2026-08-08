@@ -55,6 +55,7 @@ Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发�
 - 查看订单截图；
 - 不查看卖家内部利润；
 - 不执行已完成财务更正。
+- 只能建立和管理本人或授权团队范围的 Buyer 获客线索；渠道由后端按有效期解析。
 
 ### seller_ops
 
@@ -65,6 +66,7 @@ Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发�
 - 服务费规则变更申请；
 - 卖家侧订单与结算；
 - 不查看买家微信、买家返款和内部利润。
+- 只能建立和管理本人或授权团队范围的 Seller 获客线索；不获得 Buyer 漏斗或利润投影。
 
 ### buyer_refund
 
@@ -75,6 +77,14 @@ Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发�
 - 已完成财务不可改；
 - 只读取完成上述职责所必需的买家资料；
 - 不查看卖家内部协议、员工管理、高风险身份、系统管理或内部利润。
+- 不建立、查看或管理 Buyer/Seller 获客线索。
+
+### 获客专项权限
+
+- `ACQUISITION_ADMIN`：仅 owner，用于渠道、Staff 渠道生效期、北京日咨询汇总和留存豁免。
+- `ACQUISITION_BUYER_LEAD`：owner 和 pre_sales 默认权限，仍受个人 DENY 与数据范围限制。
+- `ACQUISITION_SELLER_LEAD`：owner 和 seller_ops 默认权限，仍受个人 DENY 与数据范围限制。
+- `buyer_refund` 没有任何获客默认权限；Personal DENY 始终在角色默认权限之后扣除。
 
 历史映射为 `owner→owner`、`pre_sales→pre_sales`、
 `seller_ops→seller_ops`、`after_sales→buyer_refund`。

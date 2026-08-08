@@ -12,6 +12,8 @@ Only an authorized system owner SHALL create, disable or version acquisition cha
 ### Requirement: Daily consultation is a channel aggregate
 The system SHALL store one versioned consultation-person count per channel and `Asia/Shanghai` business date and SHALL preserve every owner correction in audit history.
 
+The backend SHALL derive the consultation's Buyer or Seller funnel from the channel's effective assignment for that Beijing date, and SHALL reject cross-type overlapping assignments so one aggregate is not counted in both funnels.
+
 #### Scenario: Owner corrects a daily count
 - **WHEN** the expected version matches and the non-negative bounded count changes
 - **THEN** the new version becomes current and the prior value, actor, reason and time remain auditable.

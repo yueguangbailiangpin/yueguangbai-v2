@@ -177,3 +177,60 @@ export type StaffWorkItem = z.output<typeof staffWorkItemsSchema>['work_items'][
 export type StaffOrderEvidence = z.output<typeof staffOrderEvidenceSchema>['order_evidence'];
 export type StaffReview = z.output<typeof staffReviewSchema>['review'];
 export type StaffBuyerRefund = z.output<typeof staffBuyerRefundSchema>['buyer_refund'];
+
+export const acquisitionChannelSchema = z.object({
+  channel_id: z.string(), code: z.string(),
+  channel_type: z.enum(['XIAOHONGSHU','PRIVATE_WECHAT','REFERRAL','OTHER']),
+  display_name: z.string(), status: z.enum(['ACTIVE','DISABLED']),
+  version: z.number().int().positive(), created_at: epoch, updated_at: epoch,
+}).strict();
+export const acquisitionAssignmentSchema = z.object({
+  assignment_id: z.string(), staff_id: z.string(),
+  lead_type: z.enum(['BUYER','SELLER']), channel_id: z.string(), channel_name: z.string(),
+  effective_from: epoch, effective_until: epoch.nullable(),
+  status: z.enum(['ACTIVE','REVOKED']), version: z.number().int().positive(),
+}).strict();
+export const acquisitionConsultationSchema = z.object({
+  consultation_id: z.string(), channel_id: z.string(),
+  lead_type: z.enum(['BUYER','SELLER']), business_date: z.string(),
+  person_count: z.number().int().nonnegative(), version: z.number().int().positive(),
+  updated_by_staff_id: z.string(), updated_at: epoch,
+}).strict();
+export const acquisitionConsultationEventSchema = z.object({
+  event_id: z.string(), event_type: z.enum(['RECORDED','CORRECTED']),
+  previous_count: z.number().int().nonnegative().nullable(),
+  next_count: z.number().int().nonnegative(),
+  previous_version: z.number().int().positive().nullable(),
+  next_version: z.number().int().positive(), actor_staff_id: z.string(),
+  reason: z.string(), created_at: epoch,
+}).strict();
+export const acquisitionLeadSchema = z.object({
+  lead_id: z.string(), lead_type: z.enum(['BUYER','SELLER']), wechat_masked: z.string(),
+  display_name: z.string().nullable(), note: z.string().nullable(),
+  origin_channel_id: z.string(), origin_channel_name: z.string(),
+  origin_staff_id: z.string(), current_owner_staff_id: z.string(),
+  status: z.enum(['ACTIVE','INVALIDATED','ANONYMIZED']), version: z.number().int().positive(),
+  created_business_date: z.string(), latest_followup_at: epoch, retention_due_at: epoch,
+  retention_hold_reason: z.enum(['SECURITY','DISPUTE','LEGAL']).nullable(),
+  registered: z.boolean(), reservation_submitted: z.boolean(), no_participation: z.boolean(),
+  formal_order_count: z.number().int().nonnegative(), seller_cooperation: z.boolean(),
+  created_at: epoch, updated_at: epoch,
+}).strict();
+const acquisitionFunnelBuyerSchema = z.object({
+  consultation_count: z.number().int().nonnegative(), wechat_added_count: z.number().int().nonnegative(),
+  registered_count: z.number().int().nonnegative(), reservation_submitted_count: z.number().int().nonnegative(),
+  no_participation_count: z.number().int().nonnegative(), formal_order_count: z.number().int().nonnegative(),
+  projected_gross_profit_cny_fen: signedIntegerString.nullable(),
+  completed_gross_profit_cny_fen: signedIntegerString.nullable(),
+}).strict();
+export const acquisitionFunnelSchema = z.object({
+  from_date: z.string(), to_date: z.string(), data_as_of: epoch,
+  buyer: acquisitionFunnelBuyerSchema.nullable(),
+  seller: z.object({ consultation_count: z.number().int().nonnegative(),
+    wechat_added_count: z.number().int().nonnegative(), cooperation_count: z.number().int().nonnegative() }).strict().nullable(),
+}).strict();
+
+export type AcquisitionChannel = z.output<typeof acquisitionChannelSchema>;
+export type AcquisitionAssignment = z.output<typeof acquisitionAssignmentSchema>;
+export type AcquisitionConsultation = z.output<typeof acquisitionConsultationSchema>;
+export type AcquisitionLead = z.output<typeof acquisitionLeadSchema>;

@@ -8,7 +8,15 @@ import {
   settlementSummarySchema,
   staffBuyerRefundSchema, staffOrderEvidenceSchema, staffReviewSchema,
   staffReviewValueSchema, staffWorkItemsSchema,
+  acquisitionAssignmentSchema, acquisitionChannelSchema,
+  acquisitionConsultationEventSchema, acquisitionConsultationSchema,
+  acquisitionFunnelSchema, acquisitionLeadSchema,
 } from '../contracts/runtime';
+
+const acquisitionChannelResultSchema = z.object({ channel: acquisitionChannelSchema, replayed: z.boolean() }).strict();
+const acquisitionAssignmentResultSchema = z.object({ assignment: acquisitionAssignmentSchema, replayed: z.boolean() }).strict();
+const acquisitionConsultationResultSchema = z.object({ consultation: acquisitionConsultationSchema, replayed: z.boolean() }).strict();
+const acquisitionLeadResultSchema = z.object({ lead: acquisitionLeadSchema, replayed: z.boolean() }).strict();
 
 const orderMutationSchema = z.union([
   z.object({ submission_id: z.string(), reservation_id: z.string(), buyer_customer_id: z.string(),
@@ -62,4 +70,37 @@ export const staffApi = Object.freeze({
   reverseSellerPayment: (client: QueryClient, paymentId: string, body: unknown, key: string) => write(client, `/api/staff/seller-payments/${encodeURIComponent(paymentId)}/reverse`, body, settlementPaymentMutationSchema, key),
   invitation: (client: QueryClient, id: string, signal?: AbortSignal) => read(client, `/api/staff/customer-security/buyer-invitations/${encodeURIComponent(id)}`, invitationViewSchema, signal),
   revokeInvitation: (client: QueryClient, id: string, version: number, key: string) => write(client, `/api/staff/customer-security/buyer-invitations/${encodeURIComponent(id)}/revoke`, { expected_version: version }, invitationViewSchema, key),
+  acquisitionChannels: (client: QueryClient, signal?: AbortSignal) => read(client,
+    '/api/staff/acquisition/channels', z.object({ channels: z.array(acquisitionChannelSchema) }).strict(), signal),
+  createAcquisitionChannel: (client: QueryClient, body: unknown, key: string) => write(client,
+    '/api/staff/acquisition/channels', body, acquisitionChannelResultSchema, key),
+  disableAcquisitionChannel: (client: QueryClient, id: string, body: unknown, key: string) => write(client,
+    `/api/staff/acquisition/channels/${encodeURIComponent(id)}/disable`, body, acquisitionChannelResultSchema, key),
+  acquisitionAssignments: (client: QueryClient, signal?: AbortSignal) => read(client,
+    '/api/staff/acquisition/channel-assignments', z.object({ assignments: z.array(acquisitionAssignmentSchema) }).strict(), signal),
+  createAcquisitionAssignment: (client: QueryClient, body: unknown, key: string) => write(client,
+    '/api/staff/acquisition/channel-assignments', body, acquisitionAssignmentResultSchema, key),
+  revokeAcquisitionAssignment: (client: QueryClient, id: string, body: unknown, key: string) => write(client,
+    `/api/staff/acquisition/channel-assignments/${encodeURIComponent(id)}/revoke`, body, acquisitionAssignmentResultSchema, key),
+  acquisitionConsultations: (client: QueryClient, from: string, to: string, signal?: AbortSignal) => read(client,
+    `/api/staff/acquisition/consultations?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,
+    z.object({ consultations: z.array(acquisitionConsultationSchema) }).strict(), signal),
+  acquisitionConsultationHistory: (client: QueryClient, id: string, signal?: AbortSignal) => read(client,
+    `/api/staff/acquisition/consultations/${encodeURIComponent(id)}/history`,
+    z.object({ history: z.array(acquisitionConsultationEventSchema) }).strict(), signal),
+  recordAcquisitionConsultation: (client: QueryClient, body: unknown, key: string) => write(client,
+    '/api/staff/acquisition/consultations', body, acquisitionConsultationResultSchema, key),
+  acquisitionLeads: (client: QueryClient, leadType: 'BUYER'|'SELLER'|null, signal?: AbortSignal) => {
+    const parameters = new URLSearchParams({ limit: '50' });
+    if (leadType) parameters.set('lead_type', leadType);
+    return read(client, `/api/staff/acquisition/leads?${parameters}`,
+      z.object({ items: z.array(acquisitionLeadSchema), next_cursor: z.string().nullable() }).strict(), signal);
+  },
+  createAcquisitionLead: (client: QueryClient, body: unknown, key: string) => write(client,
+    '/api/staff/acquisition/leads', body, acquisitionLeadResultSchema, key),
+  invalidateAcquisitionLead: (client: QueryClient, id: string, body: unknown, key: string) => write(client,
+    `/api/staff/acquisition/leads/${encodeURIComponent(id)}/invalidate`, body, acquisitionLeadResultSchema, key),
+  acquisitionFunnel: (client: QueryClient, from: string, to: string, signal?: AbortSignal) => read(client,
+    `/api/staff/acquisition/funnel?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,
+    z.object({ funnel: acquisitionFunnelSchema }).strict(), signal),
 });

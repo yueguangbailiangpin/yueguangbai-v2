@@ -11,13 +11,17 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
-const migrations = readdirSync(migrationsDirectory)
+const allMigrations = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
+const migrations = allMigrations.slice(0, 35);
 const work = mkdtempSync(path.join(tmpdir(), 'ygb-role-consolidation-'));
 
 try {
-  assert(migrations.length === 35, 'expected 35 migrations');
+  assert(allMigrations.length === 36
+    && allMigrations.at(-1) === '0036_staff_acquisition_funnel_workbench.sql',
+  'expected governed 0036 tail');
+  assert(migrations.length === 35, 'expected 0035 prefix');
   assert(
     migrations.at(-1) === '0035_staff_four_role_consolidation.sql',
     '0035 ownership drift',

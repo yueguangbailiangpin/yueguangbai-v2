@@ -1,4 +1,5 @@
 export * from './api';
+export * from './acquisition';
 export * from './buyer-formal-order-portal';
 export * from './buyer-refund';
 export * from './buyer-refund-portal';

@@ -101,3 +101,14 @@
 - [x] MCP 关闭不影响 D1/Web，Buyer/Seller MCP 未注册。
 - [x] 无需 0035 的 Migration 证据、回滚 Runbook 和本地验收矩阵完成。
 - [ ] 真实 OAuth、外部 AI 隐私批准、ChatGPT 注册和生产激活完成（必须按老板清单另行执行）。
+
+## J. 员工获客漏斗本地交付（M14）
+
+- [x] Migration 0036 仅从 schema 35 升级，错序、重复和部分 DDL 失败关闭，隔离备份恢复/前向重新升级通过。
+- [x] owner / pre_sales / seller_ops / buyer_refund 职责、Scope 和 Personal DENY 通过，客户端无渠道权威。
+- [x] 微信规范化、同类型唯一有效线索、服务端加密/HMAC、脱敏 DTO 与秘钥失败关闭通过。
+- [x] 北京日咨询更正、不可变初始归因、自动 Buyer/Seller 关联、未参加与 Seller ACTIVE 合作口径通过。
+- [x] 正式订单/利润只计 Buyer 初始来源，Seller 投影无利润字段。
+- [x] 十二个北京日历月匿名化、业务/安全/争议/法律豁免、租约重试和只读 Worker dry-run 通过。
+- [x] 员工工作台中文入口、`/staff/acquisition` 可收藏路由、窄屏浏览器与 buyer_refund 隐藏控件通过。
+- [ ] 正式 Implementation Verify、总控验收、归档与 Production GO（不属于本地实现授权）。

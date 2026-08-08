@@ -4,7 +4,7 @@
 
 - `acquisition_channels`：管理员维护的渠道/账号，含类型、显示名、状态和版本。
 - `acquisition_staff_channel_assignments`：Staff、线索类型、渠道和生效区间；同一 Staff/类型/时间最多一个有效渠道。
-- `acquisition_daily_consultations`：渠道 + 北京业务日期的咨询人数、版本和操作者。
+- `acquisition_daily_consultations`：渠道 + 由有效分配自动确定的线索类型 + 北京业务日期的咨询人数、版本和操作者。渠道在同一有效期内不得同时承载 Buyer 与 Seller 获客，防止两个漏斗重复计算同一咨询总数。
 - `acquisition_leads`：BUYER/SELLER 单人线索、规范化微信身份保护值、可选显示名/备注、不可变来源渠道、创建 Staff、状态和版本。
 - `acquisition_lead_links/events`：与 Customer/Buyer/Seller、预约、正式订单的受控关联及更正历史。
 
