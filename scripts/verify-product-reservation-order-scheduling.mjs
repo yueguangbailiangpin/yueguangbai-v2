@@ -82,11 +82,20 @@ assert(demandClose.includes('requireDemandPublishPermission'),
 assert(!demandClose.includes('requireInitialDemandSchedulePermission'),
   'demand close must not inherit initial schedule double-permission gate');
 
-const web = source('apps/web/src/App.tsx');
-for (const route of ['/staff/products', 'products/:productId',
-  'demands/:demandId/reservations']) {
-  assert(web.includes(route), `bookmarkable Staff route missing: ${route}`);
+const app = source('apps/web/src/App.tsx');
+const staffRoutes = source('apps/web/src/staff/StaffRouteModule.tsx');
+const schedulingRoutes = source('apps/web/src/staff/StaffSchedulingRouteModule.tsx');
+assert(app.includes("import('./staff/StaffRouteModule')"),
+  'Staff route module is no longer lazy-loaded by the root shell');
+assert(!app.includes('ProductSchedulingWorkspace'),
+  'scheduling workspace must not be eagerly imported by the root shell');
+for (const route of ['/staff/products', 'staff\\/demands\\/', '/reservations']) {
+  assert(staffRoutes.includes(route), `bookmarkable Staff route missing: ${route}`);
 }
+assert(staffRoutes.includes("import('./StaffSchedulingRouteModule')"),
+  'scheduling route module is not lazy-loaded from the Staff route module');
+assert(schedulingRoutes.includes("ProductSchedulingWorkspace as default"),
+  'scheduling route module no longer owns the scheduling workspace');
 const workbench = source('apps/web/src/staff/StaffWorkbench.tsx');
 for (const required of ['DemandReviewPanel', 'demandReviewContext', 'first_order_date',
   'expected_version', 'can_publish', '北京时间']) {

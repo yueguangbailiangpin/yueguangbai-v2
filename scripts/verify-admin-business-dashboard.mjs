@@ -4,8 +4,25 @@ import { readdirSync, readFileSync } from 'node:fs';
 const migrations = readdirSync('migrations')
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
   .sort();
-if (migrations.at(-1) !== '0036_staff_acquisition_funnel_workbench.sql') {
-  throw new Error(`Admin dashboard must remain NO_SCHEMA_CHANGE; found ${migrations.at(-1)}`);
+assertContiguousMigrations(migrations);
+if (migrations.length < 37
+  || migrations[35] !== '0036_staff_acquisition_funnel_workbench.sql'
+  || migrations[36] !== '0037_product_reservation_order_scheduling.sql') {
+  throw new Error('current governed migration chain is missing M14 acquisition or M16 scheduling ownership');
+}
+const dashboardProposal = readFileSync(
+  'openspec/changes/archive/2026-08-08-admin-business-dashboard/proposal.md', 'utf8',
+);
+const schedulingProposal = readFileSync(
+  'openspec/changes/archive/2026-08-08-staff-product-reservation-order-scheduling/proposal.md', 'utf8',
+);
+const schedulingMigration = readFileSync(
+  'migrations/0037_product_reservation_order_scheduling.sql', 'utf8',
+);
+if (!dashboardProposal.includes('预计不需要 Migration')
+  || !schedulingProposal.includes('需要 Migration')
+  || !schedulingMigration.includes('demand_order_schedule_versions')) {
+  throw new Error('dashboard NO_SCHEMA_CHANGE or M16 migration ownership drift');
 }
 
 const sql = [
@@ -43,8 +60,9 @@ const output = execFileSync('node_modules/.bin/wrangler', [
   '--config', 'apps/api/wrangler.local.jsonc', '--command', sql,
 ], { encoding: 'utf8' });
 const result = JSON.parse(output);
-if (result[0]?.results?.[0]?.schema_version !== 36) {
-  throw new Error(`Expected local D1 schema 36: ${output}`);
+const currentSchemaVersion = Number(migrations.at(-1)?.slice(0, 4));
+if (result[0]?.results?.[0]?.schema_version !== currentSchemaVersion) {
+  throw new Error(`Expected local D1 schema ${currentSchemaVersion}: ${output}`);
 }
 const details = result.slice(1).flatMap((entry) =>
   entry.results.map((row) => String(row.detail)));
@@ -76,6 +94,14 @@ if (!readModel.includes("lead.status='ACTIVE'")
   throw new Error('Dashboard origin attribution or active lead boundary is missing');
 }
 
-console.log('Admin dashboard NO_SCHEMA_CHANGE verified on real local D1 schema 36.');
+console.log(`Admin dashboard NO_SCHEMA_CHANGE verified on real local D1 schema ${currentSchemaVersion}.`);
 console.log('Query plan evidence: bounded core scans plus existing acquisition, closure and canonical finance indexes/views.');
 console.log('Bounded scan acceptance is covered by the 8 Staff / 200 attributed-order D1 capacity test.');
+
+function assertContiguousMigrations(names) {
+  for (const [index, name] of names.entries()) {
+    if (Number(name.slice(0, 4)) !== index + 1) {
+      throw new Error(`Migration chain is not continuous at ${name}`);
+    }
+  }
+}

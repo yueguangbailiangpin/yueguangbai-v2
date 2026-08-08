@@ -8,14 +8,16 @@ const migrationDirectory = path.join(root, 'migrations');
 const migrationNames = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name)).sort();
 
-assert(migrationNames.length === 36, 'expected exactly 36 migrations');
-assert(migrationNames.at(-1) === '0036_staff_acquisition_funnel_workbench.sql',
+assertContiguousMigrations(migrationNames);
+assert(migrationNames.length >= 36, 'missing governed 0036 migration prefix');
+const acquisitionMigrations = migrationNames.slice(0, 36);
+assert(acquisitionMigrations.at(-1) === '0036_staff_acquisition_funnel_workbench.sql',
   'Migration 0036 ownership drift');
 
 const database = new DatabaseSync(':memory:');
 database.exec('PRAGMA foreign_keys=ON;');
 try {
-  apply(database, migrationNames);
+  apply(database, acquisitionMigrations);
   assert(Number(database.prepare(`SELECT schema_version FROM app_schema_state
     WHERE singleton_id=1`).get()?.schema_version) === 36, 'schema is not 36');
   assert(database.prepare('PRAGMA integrity_check').get()?.integrity_check === 'ok',
@@ -39,13 +41,13 @@ try {
   const restoredPath = path.join(recoveryDirectory, 'schema35.restored.sqlite');
   const sourceDatabase = new DatabaseSync(sourcePath);
   sourceDatabase.exec('PRAGMA foreign_keys=ON;');
-  apply(sourceDatabase, migrationNames.slice(0, 35));
+  apply(sourceDatabase, acquisitionMigrations.slice(0, 35));
   sourceDatabase.close();
   copyFileSync(sourcePath, backupPath);
 
   const upgraded = new DatabaseSync(sourcePath);
   upgraded.exec('PRAGMA foreign_keys=ON;');
-  apply(upgraded, migrationNames.slice(35));
+  apply(upgraded, acquisitionMigrations.slice(35));
   assert(schemaVersion(upgraded) === 36, 'schema35 upgrade failed');
   upgraded.close();
 
@@ -55,7 +57,7 @@ try {
   assert(schemaVersion(restored) === 35, 'pre-upgrade restore schema drift');
   assert(restored.prepare('PRAGMA integrity_check').get()?.integrity_check === 'ok',
     'pre-upgrade restore integrity failed');
-  apply(restored, migrationNames.slice(35));
+  apply(restored, acquisitionMigrations.slice(35));
   assert(schemaVersion(restored) === 36, 'restored database forward recovery failed');
   assert(restored.prepare('PRAGMA foreign_key_check').all().length === 0,
     'forward-recovered database foreign keys failed');
@@ -95,7 +97,7 @@ assert(contract.includes('Personal DENY') && contract.includes('Asia/Shanghai')
   && contract.includes('admin-business-dashboard'), 'acquisition contract boundary drift');
 
 console.log(JSON.stringify({
-  status: 'PASS', schema: 36, migration: migrationNames.at(-1),
+  status: 'PASS', schema: 36, migration: acquisitionMigrations.at(-1),
   privacy_fail_closed: true, client_channel_authority: false,
   buyer_refund_authority: false, seller_profit_fields: false,
   worker_dry_run_supported: true, production_resources_touched: 0,
@@ -126,4 +128,11 @@ function schemaVersion(database) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function assertContiguousMigrations(names) {
+  for (const [index, name] of names.entries()) {
+    assert(Number(name.slice(0, 4)) === index + 1,
+      `migration chain is not continuous at ${name}`);
+  }
 }

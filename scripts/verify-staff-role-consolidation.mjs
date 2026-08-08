@@ -18,9 +18,8 @@ const migrations = allMigrations.slice(0, 35);
 const work = mkdtempSync(path.join(tmpdir(), 'ygb-role-consolidation-'));
 
 try {
-  assert(allMigrations.length === 36
-    && allMigrations.at(-1) === '0036_staff_acquisition_funnel_workbench.sql',
-  'expected governed 0036 tail');
+  assertContiguousMigrations(allMigrations);
+  assert(allMigrations.length >= 35, 'missing governed 0035 migration prefix');
   assert(migrations.length === 35, 'expected 0035 prefix');
   assert(
     migrations.at(-1) === '0035_staff_four_role_consolidation.sql',
@@ -242,4 +241,11 @@ function assertHealthy(database, label) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function assertContiguousMigrations(names) {
+  for (const [index, name] of names.entries()) {
+    const version = Number(name.slice(0, 4));
+    assert(version === index + 1, `migration chain is not continuous at ${name}`);
+  }
 }
