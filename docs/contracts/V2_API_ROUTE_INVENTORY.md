@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。共有 155 个唯一业务/健康端点：154 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
+这是默认 App 的可复现 route inventory。共有 172 个唯一业务/健康端点：171 个 `/api/*` 端点和 1 个 `/health`。参数占位符使用 Hono 注册表的 `:name` 形式。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表精确比较；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都会失败。
 
@@ -49,6 +49,13 @@ GET /api/seller-portal/stores
 GET /api/staff-auth/feishu/callback
 GET /api/staff-auth/session
 GET /api/staff/assignment-fallbacks/:marketplaceCode
+GET /api/staff/acquisition/channel-assignments
+GET /api/staff/acquisition/channels
+GET /api/staff/acquisition/consultations
+GET /api/staff/acquisition/consultations/:id/history
+GET /api/staff/acquisition/funnel
+GET /api/staff/acquisition/leads
+GET /api/staff/acquisition/leads/:id
 GET /api/staff/buyer-refunds
 GET /api/staff/buyer-refunds/:id
 GET /api/staff/file-read-intents/:id/content
@@ -131,6 +138,16 @@ POST /api/staff-auth/login/start
 POST /api/staff-auth/logout
 POST /api/staff-auth/logout-all
 POST /api/staff/assignments/reassign
+POST /api/staff/acquisition/channel-assignments
+POST /api/staff/acquisition/channel-assignments/:id/revoke
+POST /api/staff/acquisition/channels
+POST /api/staff/acquisition/channels/:id/disable
+POST /api/staff/acquisition/consultations
+POST /api/staff/acquisition/leads
+POST /api/staff/acquisition/leads/:id/follow-ups
+POST /api/staff/acquisition/leads/:id/invalidate
+POST /api/staff/acquisition/leads/:id/retention-hold
+POST /api/staff/acquisition/leads/:id/transfer
 POST /api/staff/buyer-refunds/:id/payments
 POST /api/staff/buyer-refunds/:id/payments/:paymentEntryId/reversals
 POST /api/staff/buyers/:id/marketplace-correction
@@ -188,6 +205,7 @@ PUT /api/staff/file-uploads/:fileObjectId/content
 | Seller Portal、formal orders、reviews | `seller-portal.ts`、`seller-formal-order-portal.ts`、`seller-review-portal.ts` | `page.limit` + `page.next_cursor`，仍为 cursor |
 | Staff order evidence/refund | `staff-order-evidence.ts`、`staff-buyer-refund.ts` | `limit` + `cursor` 请求；`next_cursor` 响应 |
 | Staff finance reports | `internal-finance.ts` | 受控例外：`page.limit` + `page.next_cursor` |
+| Staff acquisition | `acquisition.ts` | `limit` + `cursor` 请求；`items` + `next_cursor` 响应 |
 | File lifecycle | `file-http.ts` | 非列表；path constants 必须逐一注册 |
 
-所有关键写操作继续使用既有认证、授权、幂等、版本、状态机和审计合同；本 Change 不修改 DTO、权限、业务语义或 route registration。
+所有关键写操作继续使用既有认证、授权、幂等、请求哈希、版本/条件更新、事务最终断言和审计合同。获客 API 的渠道必须由后端按生效期解析，不接受客户端渠道权威字段；微信身份只输出脱敏投影。

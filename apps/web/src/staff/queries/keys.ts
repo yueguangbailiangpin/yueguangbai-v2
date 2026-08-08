@@ -7,4 +7,11 @@ export const staffWorkbenchKeys = Object.freeze({
   settlement: (id: string) => ['staff', 'workbench', 'settlement', id] as const,
   payables: (id: string) => ['staff', 'workbench', 'settlement', id, 'payables'] as const,
   payments: (id: string) => ['staff', 'workbench', 'settlement', id, 'payments'] as const,
+  acquisition: ['staff', 'acquisition'] as const,
+  acquisitionChannels: ['staff', 'acquisition', 'channels'] as const,
+  acquisitionAssignments: ['staff', 'acquisition', 'assignments'] as const,
+  acquisitionConsultations: (from: string, to: string) => ['staff', 'acquisition', 'consultations', from, to] as const,
+  acquisitionConsultationHistory: (id: string) => ['staff', 'acquisition', 'consultations', id, 'history'] as const,
+  acquisitionLeads: (type: string|null) => ['staff', 'acquisition', 'leads', type] as const,
+  acquisitionFunnel: (from: string, to: string) => ['staff', 'acquisition', 'funnel', from, to] as const,
 });

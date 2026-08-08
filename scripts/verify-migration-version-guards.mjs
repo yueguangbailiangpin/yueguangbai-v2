@@ -8,13 +8,14 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 35
-  || migrationFiles.at(-5) !== '0031_scheduled_operations.sql'
-  || migrationFiles.at(-4) !== '0032_google_drive_cold_image_archive.sql'
-  || migrationFiles.at(-3) !== '0033_feishu_staff_workbench_poc.sql'
-  || migrationFiles.at(-2) !== '0034_feishu_sync_dead_letter_categories.sql'
-  || migrationFiles.at(-1) !== '0035_staff_four_role_consolidation.sql') {
-  throw new Error('expected migrations 0001-0035');
+if (migrationFiles.length !== 36
+  || migrationFiles.at(-6) !== '0031_scheduled_operations.sql'
+  || migrationFiles.at(-5) !== '0032_google_drive_cold_image_archive.sql'
+  || migrationFiles.at(-4) !== '0033_feishu_staff_workbench_poc.sql'
+  || migrationFiles.at(-3) !== '0034_feishu_sync_dead_letter_categories.sql'
+  || migrationFiles.at(-2) !== '0035_staff_four_role_consolidation.sql'
+  || migrationFiles.at(-1) !== '0036_staff_acquisition_funnel_workbench.sql') {
+  throw new Error('expected migrations 0001-0036');
 }
 
 const guarded = new Map([
@@ -42,6 +43,7 @@ const guarded = new Map([
   [33, 'feishu_workbench_mirrors'],
   [34, 'scheduled_dead_letters_next'],
   [35, 'staff_role_consolidation_cutovers'],
+  [36, 'acquisition_channels'],
 ]);
 
 function readMigration(name) {
@@ -97,7 +99,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 35) throw new Error('fresh schema not 35');
+  if (schemaVersion(fresh) !== 36) throw new Error('fresh schema not 36');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -141,8 +143,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 35,
-  sequential_upgrade: '0001 -> 0035',
+  fresh_schema: 36,
+  sequential_upgrade: '0001 -> 0036',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,

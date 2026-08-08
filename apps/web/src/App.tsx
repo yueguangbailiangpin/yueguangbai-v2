@@ -20,6 +20,7 @@ import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary
 import { StaffSessionBoundary, useCurrentStaffSession } from './auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from './auth/staff/staff-auth-controller';
 import { StaffWorkbench } from './staff/StaffWorkbench';
+import { AcquisitionWorkbench } from './staff/acquisition/AcquisitionWorkbench';
 import { safeReturnPath } from './routes/return-path';
 import { BuyerDashboardPage } from './buyer/dashboard/BuyerDashboardPage';
 import { BuyerDemandDetailPage } from './buyer/demands/BuyerDemandDetailPage';
@@ -257,15 +258,21 @@ export function SellerShell(): React.JSX.Element {
 
 function StaffShell(): React.JSX.Element {
   const session = useCurrentStaffSession();
+  const location = useLocation();
+  const acquisition = location.pathname.startsWith('/staff/acquisition');
   return <IdentityShell identity="staff" className="staff-shell">
     <header className="staff-context"><strong>月光白</strong>
       <span>{session.display_name} · {session.role.display_name}</span></header>
+    <nav className="staff-primary-nav" aria-label="员工工作台导航">
+      <NavLink to="/staff" end>工作队列</NavLink>
+      <NavLink to="/staff/acquisition">获客登记</NavLink>
+    </nav>
     <PageHeader
       eyebrow="内部操作"
-      title="员工工作台"
-      description="队列、详情与操作保持清晰的阅读和处理顺序。"
+      title={acquisition ? '获客登记' : '员工工作台'}
+      description={acquisition ? '添加微信后登记单人线索；渠道由后端自动带入。' : '队列、详情与操作保持清晰的阅读和处理顺序。'}
     />
-    <StaffWorkbench />
+    {acquisition ? <AcquisitionWorkbench /> : <StaffWorkbench />}
     <footer className="staff-account-footer"><StaffAccountActions /></footer>
   </IdentityShell>;
 }
@@ -326,6 +333,7 @@ function AppRoutes(): React.JSX.Element {
       <Route index element={<StaffShell />} />
       <Route path="queue" element={<StaffShell />} />
       <Route path="work/:workItemId" element={<StaffShell />} />
+      <Route path="acquisition" element={<StaffShell />} />
       <Route path="*" element={<DomainNotFound />} />
     </Routes></StaffSessionBoundary>} />
     <Route path="/forbidden" element={<main className="centered"><PermissionDenied requestId="local-permission-request" /></main>} />
