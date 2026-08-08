@@ -1,6 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router';
-import { Card, EmptyState, MetricCard, PageHeader, StatusBadge } from '../../ui/primitives';
+import { useState } from 'react';
+import { Link, useParams } from 'react-router';
+import { Button, Card, Dialog, EmptyState, MetricCard, PageHeader, StatusBadge } from '../../ui/primitives';
+import { useBuyerMutation } from '../../buyer/mutations/useBuyerMutation';
+import { BuyerMutationRecovery } from '../../buyer/shared/BuyerMutationRecovery';
 import { sellerApi } from '../api/client';
 import type {
   SellerDemandStatus,
@@ -42,8 +45,11 @@ export function SellerDashboardPage(): React.JSX.Element {
 function SimpleRecords({ kind }: { kind: 'products' | 'demands' | 'reviews' }): React.JSX.Element {
   const client = useQueryClient(); const { storeId } = useSellerStoreContext();
   const query = useQuery({ queryKey: sellerQueryKeys[kind](storeId), queryFn: ({ signal }) => sellerApi[kind](client, storeId, signal).then((r) => r.data.items) });
+  const me = useQuery({ queryKey: sellerQueryKeys.me, queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me), enabled: kind !== 'reviews' });
   const title = kind === 'products' ? '商品与申请' : kind === 'demands' ? '需求批次' : '评论';
-  return <section className="seller-page"><PageHeader title={title} />
+  const submission = kind === 'products' && me.data?.access.can_submit_product_applications ? <Link className="button" to="/seller/products/new">提交产品申请</Link>
+    : kind === 'demands' && me.data?.access.can_submit_demand_batches ? <Link className="button" to="/seller/demands/new">提交需求</Link> : null;
+  return <section className="seller-page"><PageHeader title={title}>{submission}</PageHeader>
     {query.isPending ? <p role="status">正在加载</p> : query.isError ? <p role="alert">暂时无法读取，请稍后重试。</p> : query.data.length === 0 ? <EmptyState title={`暂无${title}`} description="没有符合当前店铺范围的记录。" /> : <div className="seller-card-list">{query.data.map((item) => {
       const key = 'review_case_id' in item ? item.review_case_id : item.id;
       const label = 'review_case_id' in item ? item.product_name
@@ -52,8 +58,44 @@ function SimpleRecords({ kind }: { kind: 'products' | 'demands' | 'reviews' }): 
     })}</div>}
   </section>;
 }
-export const SellerProductsPage = (): React.JSX.Element => <SimpleRecords kind="products" />;
-export const SellerDemandsPage = (): React.JSX.Element => <SimpleRecords kind="demands" />;
+export function SellerProductsPage(): React.JSX.Element {
+  const client = useQueryClient(); const { storeId } = useSellerStoreContext();
+  const [pendingWithdraw, setPendingWithdraw] = useState<{ id: string; version: number } | null>(null);
+  const me = useQuery({ queryKey: sellerQueryKeys.me, queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me) });
+  const products = useQuery({ queryKey: sellerQueryKeys.products(storeId), queryFn: ({ signal }) => sellerApi.products(client, storeId, signal).then((r) => r.data.items) });
+  const applications = useQuery({ queryKey: sellerQueryKeys.applications(storeId), queryFn: ({ signal }) => sellerApi.applications(client, storeId, signal).then((r) => r.data.items) });
+  const withdraw = useBuyerMutation({ operation: (body: { id: string; version: number }, key, signal) => sellerApi.withdrawApplication(client, body.id, body.version, key, signal), onSuccess: async () => { await client.invalidateQueries({ queryKey: sellerQueryKeys.applications(storeId) }); setPendingWithdraw(null); } });
+  return <section className="seller-page"><PageHeader title="商品与申请">{me.data?.access.can_submit_product_applications ? <Link className="button" to="/seller/products/new">提交产品申请</Link> : null}</PageHeader>
+    {products.isPending || applications.isPending ? <p role="status">正在加载</p> : products.isError || applications.isError ? <><p role="alert">暂时无法读取商品与申请。</p><Button className="secondary" onClick={() => { void Promise.all([products.refetch(), applications.refetch()]); }}>重新读取</Button></> : products.data.length === 0 && applications.data.length === 0 ? <EmptyState title="暂无商品与申请" description="提交后可在这里查看审核状态。" /> : <div className="seller-card-list">{products.data.map((item) => <Card key={item.id}><strong>{item.current_version.product_name}</strong><p>{item.store.display_name} · {item.asin}</p><StatusBadge tone={item.status === 'ACTIVE' ? 'success' : 'neutral'}>{productStatusLabel[item.status]}</StatusBadge></Card>)}{applications.data.map((item) => <Card key={item.id}><strong>{item.product_name}</strong><p>{item.store.display_name} · {item.asin}</p><StatusBadge tone={item.status === 'APPROVED' ? 'success' : item.status === 'REJECTED' ? 'danger' : 'processing'}>{({ SUBMITTED: '待审核', APPROVED: '已通过', REJECTED: '未通过', WITHDRAWN: '已撤回' } as const)[item.status]}</StatusBadge>{item.review_reason ? <p>{item.review_reason}</p> : null}{item.status === 'SUBMITTED' && me.data?.access.can_submit_product_applications ? <Button className="danger" onClick={() => setPendingWithdraw({ id: item.id, version: item.version })}>撤回申请</Button> : null}</Card>)}</div>}
+    <Dialog open={pendingWithdraw !== null} title="撤回产品申请" description="撤回后当前申请将不再继续审核。" busy={withdraw.isPending} onClose={() => setPendingWithdraw(null)}>
+      <BuyerMutationRecovery mutation={withdraw} onRefresh={() => { setPendingWithdraw(null); void applications.refetch(); }} />
+      <div className="entry-actions"><Button className="secondary" onClick={() => setPendingWithdraw(null)}>取消</Button><Button className="danger" loading={withdraw.isPending} onClick={() => { if (pendingWithdraw) withdraw.mutate(pendingWithdraw); }}>确认撤回</Button></div>
+    </Dialog>
+  </section>;
+}
+
+export function SellerDemandsPage(): React.JSX.Element {
+  const client = useQueryClient(); const { storeId } = useSellerStoreContext();
+  const [pendingWithdraw, setPendingWithdraw] = useState<{ id: string; version: number } | null>(null);
+  const me = useQuery({ queryKey: sellerQueryKeys.me, queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me) });
+  const demands = useQuery({ queryKey: sellerQueryKeys.demands(storeId), queryFn: ({ signal }) => sellerApi.demands(client, storeId, signal).then((r) => r.data.items) });
+  const withdraw = useBuyerMutation({ operation: (body: { id: string; version: number }, key, signal) => sellerApi.withdrawDemand(client, body.id, body.version, key, signal), onSuccess: async () => { await client.invalidateQueries({ queryKey: sellerQueryKeys.demands(storeId) }); setPendingWithdraw(null); } });
+  return <section className="seller-page"><PageHeader title="需求批次">{me.data?.access.can_submit_demand_batches ? <Link className="button" to="/seller/demands/new">提交需求</Link> : null}</PageHeader>
+    {demands.isPending ? <p role="status">正在加载</p> : demands.isError ? <><p role="alert">暂时无法读取需求批次。</p><Button className="secondary" onClick={() => { void demands.refetch(); }}>重新读取</Button></> : demands.data.length === 0 ? <EmptyState title="暂无需求批次" description="选择已通过产品后可提交新的需求。" /> : <div className="seller-card-list">{demands.data.map((item) => <Card key={item.id}><strong>{item.product.product_name}</strong><p>{item.store.display_name} · 目标数量 {item.target_quantity}</p><StatusBadge tone={item.status === 'PUBLISHED' ? 'success' : item.status === 'REJECTED' ? 'danger' : 'processing'}>{demandStatusLabel[item.status]}</StatusBadge>{item.status === 'SUBMITTED' && me.data?.access.can_submit_demand_batches ? <Button className="danger" onClick={() => setPendingWithdraw({ id: item.id, version: item.version })}>撤回需求</Button> : null}</Card>)}</div>}
+    <Dialog open={pendingWithdraw !== null} title="撤回需求" description="撤回后当前需求将不再继续审核。" busy={withdraw.isPending} onClose={() => setPendingWithdraw(null)}>
+      <BuyerMutationRecovery mutation={withdraw} onRefresh={() => { setPendingWithdraw(null); void demands.refetch(); }} />
+      <div className="entry-actions"><Button className="secondary" onClick={() => setPendingWithdraw(null)}>取消</Button><Button className="danger" loading={withdraw.isPending} onClick={() => { if (pendingWithdraw) withdraw.mutate(pendingWithdraw); }}>确认撤回</Button></div>
+    </Dialog>
+  </section>;
+}
+export function SellerProductApplicationDetailPage(): React.JSX.Element {
+  const { applicationId = '' } = useParams(); const client = useQueryClient();
+  const query = useQuery({ queryKey: sellerQueryKeys.application(applicationId), queryFn: ({ signal }) => sellerApi.application(client, applicationId, signal).then((r) => r.data.application), enabled: applicationId.length > 0 });
+  if (query.isPending) return <section className="seller-page"><p role="status">正在加载</p></section>;
+  if (query.isError || !query.data) return <section className="seller-page"><EmptyState title="无法打开产品申请" description="请返回列表刷新后重试。" /></section>;
+  const item = query.data;
+  return <section className="seller-page"><PageHeader title="产品申请" /><Card><strong>{item.product_name}</strong><p>{item.store.display_name} · {item.asin}</p><StatusBadge tone={item.status === 'APPROVED' ? 'success' : item.status === 'REJECTED' ? 'danger' : 'processing'}>{({ SUBMITTED: '待审核', APPROVED: '已通过', REJECTED: '未通过', WITHDRAWN: '已撤回' } as const)[item.status]}</StatusBadge>{item.review_reason ? <p>{item.review_reason}</p> : null}</Card></section>;
+}
 export const SellerReviewsPage = (): React.JSX.Element => <SimpleRecords kind="reviews" />;
 
 export function SellerOrdersPage(): React.JSX.Element {

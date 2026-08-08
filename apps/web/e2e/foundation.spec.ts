@@ -100,7 +100,7 @@ async function mockApi(
       await fulfillJson(route, success({ settlement: { outstanding_principal_cny_fen: '0', outstanding_service_fee_cny_fen: '0', total_outstanding_cny_fen: '0', unallocated_credit_cny_fen: '0' } }));
       return;
     }
-    if (identity === 'seller' && ['/api/seller-portal/products', '/api/seller-portal/demand-batches', '/api/seller-portal/reviews', '/api/seller-portal/settlement/payables'].includes(path)) {
+    if (identity === 'seller' && ['/api/seller-portal/products', '/api/seller-portal/product-applications', '/api/seller-portal/demand-batches', '/api/seller-portal/reviews', '/api/seller-portal/settlement/payables'].includes(path)) {
       await fulfillJson(route, success({ items: [], page: { limit: 100, next_cursor: null } }));
       return;
     }
@@ -163,6 +163,101 @@ async function mockSellerStatusRecords(page: Page): Promise<void> {
       service_fee_accrued: null, allowed_actions: ['VIEW'],
     })), page: pageInfo,
   })));
+}
+
+async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
+  const state: {
+    intentCount: number;
+    uploadAttempts: number;
+    applicationBodies: unknown[];
+    demandBodies: unknown[];
+    applicationWithdrawBodies: unknown[];
+    demandWithdrawBodies: unknown[];
+  } = { intentCount: 0, uploadAttempts: 0, applicationBodies: [], demandBodies: [], applicationWithdrawBodies: [], demandWithdrawBodies: [] };
+  const product = {
+    id: 'product-new', store: { id: 'store-local', display_name: '日本一号店' },
+    marketplace_code: 'JP', seller_code: 'seller-local', asin: 'B000000001',
+    status: 'ACTIVE', current_version_no: 1, version: 1, created_at: 1, updated_at: 1,
+    current_version: { id: 'product-version-new', version_no: 1, product_name: '已通过产品',
+      search_keywords: [], ordering_guide_expected_amount_jpy: null, color_spec_mode: null,
+      main_image: null, product_url: null, buyer_visible_notes: null, created_at: 1 },
+  };
+  const application = {
+    id: 'application-new', store: product.store, marketplace_code: 'JP', asin: 'B000000002',
+    product_name: '新品申请', search_keywords: ['关键词一', '关键词二'], product_url: null,
+    buyer_visible_notes: null, seller_notes: null, status: 'SUBMITTED', review_reason: null,
+    product_id: null, version: 1, submitted_at: 1, updated_at: 1,
+    reviewed_at: null, withdrawn_at: null,
+  };
+  const demand = {
+    id: 'demand-new', store: product.store,
+    product: { id: product.id, version_no: 1, asin: product.asin, product_name: product.current_version.product_name,
+      search_keywords: [], product_url: null }, marketplace_code: 'JP', task_type: 'IMAGE',
+    target_quantity: 8, held_quantity: 0, approved_quantity: 0, remaining_quantity: 8,
+    buyer_visible_notes: null, seller_notes: null, open_at: 1_786_236_000_000,
+    reservation_deadline: 1_786_322_400_000, order_deadline: 1_786_408_800_000,
+    status: 'SUBMITTED', review_reason: null, close_reason: null, version: 1,
+    submitted_at: 1, updated_at: 1, reviewed_at: null, published_at: null,
+    withdrawn_at: null, closed_at: null,
+  };
+  await page.route('**/api/seller-portal/**', async (route) => {
+    const request = route.request(); const path = new URL(request.url()).pathname;
+    if (path === '/api/seller-portal/products') {
+      await fulfillJson(route, success({ items: [product], page: { limit: 100, next_cursor: null } })); return;
+    }
+    if (path === '/api/seller-portal/file-uploads/product-application-images/intents') {
+      state.intentCount += 1;
+      await fulfillJson(route, success({ upload_intent_id: 'application-intent', purpose: 'PRODUCT_APPLICATION_IMAGE',
+        visibility: 'SELLER_VISIBLE', status: 'ISSUED', version: 1, expires_at: 9_999_999_999_999,
+        uploads: [{ file_object_id: 'application-file', slot_no: 1, upload_token: 'u'.repeat(40),
+          upload_token_available: true, expires_at: 9_999_999_999_999 }], replayed: false }), 201); return;
+    }
+    if (path === '/api/seller-portal/file-uploads/application-file/content') {
+      state.uploadAttempts += 1;
+      if (failFirstUpload && state.uploadAttempts === 1) {
+        await fulfillJson(route, failure('DEPENDENCY_UNAVAILABLE', 'seller-upload-retry'), 503); return;
+      }
+      await fulfillJson(route, success({ file_object_id: 'application-file', upload_intent_id: 'application-intent',
+        status: 'UPLOADED', detected_mime: 'image/png', byte_size: 3, sha256: 'a'.repeat(64),
+        version: 2, replayed: false })); return;
+    }
+    if (path === '/api/seller-portal/file-upload-intents/application-intent/complete') {
+      await fulfillJson(route, success({ upload_intent_id: 'application-intent', status: 'VERIFIED', version: 2,
+        files: [{ file_object_id: 'application-file', purpose: 'PRODUCT_APPLICATION_IMAGE', visibility: 'SELLER_VISIBLE',
+          detected_mime: 'image/png', byte_size: 3, sha256: 'a'.repeat(64), version: 3 }], replayed: false })); return;
+    }
+    if (path === '/api/seller-portal/product-applications' && request.method() === 'POST') {
+      state.applicationBodies.push(request.postDataJSON());
+      await fulfillJson(route, success({ application, replayed: false }), 201); return;
+    }
+    if (path === '/api/seller-portal/product-applications' && request.method() === 'GET') {
+      await fulfillJson(route, success({ items: [application], page: { limit: 100, next_cursor: null } })); return;
+    }
+    if (path === '/api/seller-portal/product-applications/application-new') {
+      await fulfillJson(route, success({ application })); return;
+    }
+    if (path === '/api/seller-portal/product-applications/application-new/withdraw') {
+      state.applicationWithdrawBodies.push(request.postDataJSON());
+      await fulfillJson(route, success({ application: { ...application, status: 'WITHDRAWN', version: 2, updated_at: 2, withdrawn_at: 2 }, replayed: false })); return;
+    }
+    if (path === '/api/seller-portal/demand-batches' && request.method() === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>; state.demandBodies.push(body);
+      await fulfillJson(route, success({ demand_batch: { ...demand, task_type: body['task_type'],
+        target_quantity: body['target_quantity'], remaining_quantity: body['target_quantity'],
+        buyer_visible_notes: body['buyer_visible_notes'], seller_notes: body['seller_notes'],
+        open_at: body['open_at'], reservation_deadline: body['reservation_deadline'],
+        order_deadline: body['order_deadline'] }, replayed: false }), 201); return;
+    }
+    if (path === '/api/seller-portal/demand-batches' && request.method() === 'GET') {
+      await fulfillJson(route, success({ items: [demand], page: { limit: 100, next_cursor: null } })); return;
+    }
+    if (path === '/api/seller-portal/demand-batches/demand-new/withdraw') {
+      state.demandWithdrawBodies.push(request.postDataJSON());
+      await fulfillJson(route, success({ demand_batch: { ...demand, status: 'WITHDRAWN', version: 2, updated_at: 2, withdrawn_at: 2 }, replayed: false })); return;
+    }
+    await route.fallback();
+  });
+  return state;
 }
 
 async function expectNoCriticalHorizontalOverflow(page: Page): Promise<void> {
@@ -348,6 +443,68 @@ test('Seller record pages render every frozen status in Chinese without exposing
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
   await expect(page.locator('.seller-card-list')).not.toContainText(rawStatus);
+});
+
+test('Seller product application recovers one upload and reuses the verified manifest', async ({ page }) => {
+  await mockApi(page, 'seller'); const state = await mockSellerSubmissions(page, true);
+  await page.goto('/seller/products/new');
+  await page.locator('#application-store').selectOption('store-local');
+  await page.getByLabel('产品标识').fill('B000000002');
+  await page.getByLabel('中文名').fill('新品申请');
+  await page.getByLabel('搜索词').fill('关键词一，关键词二');
+  await page.getByLabel('申请图片').setInputFiles({ name: 'product.png', mimeType: 'image/png', buffer: Buffer.from('png') });
+  await page.getByRole('button', { name: '提交申请' }).click();
+  await expect(page.getByRole('button', { name: '继续上传' })).toBeVisible();
+  await page.getByRole('button', { name: '继续上传' }).click();
+  await expect(page.getByRole('button', { name: '继续上传' })).toHaveCount(0);
+  await page.getByRole('button', { name: '提交申请' }).click();
+  await expect(page).toHaveURL(/\/seller\/products\/application-new$/u);
+  expect(state.intentCount).toBe(1); expect(state.uploadAttempts).toBe(2);
+  expect(state.applicationBodies).toEqual([{
+    store_id: 'store-local', asin: 'B000000002', product_name: '新品申请',
+    search_keywords: ['关键词一', '关键词二'], product_url: null,
+    buyer_visible_notes: null, seller_notes: null,
+    image_files: [{ file_object_id: 'application-file', expected_file_version: 3 }],
+  }]);
+});
+
+test('Seller demand form submits a new batch with Beijing time values', async ({ page }) => {
+  await mockApi(page, 'seller'); const state = await mockSellerSubmissions(page);
+  await page.goto('/seller/demands/new');
+  await page.getByLabel('已通过产品').selectOption('product-new');
+  await page.getByLabel('任务类型').selectOption('IMAGE');
+  await page.getByLabel('目标数量').fill('8');
+  await page.getByLabel('开放时间（北京时间）').fill('2026-08-09T09:00');
+  await page.getByLabel('预约截止时间（北京时间）').fill('2026-08-10T09:00');
+  await page.getByLabel('下单截止时间（北京时间）').fill('2026-08-11T09:00');
+  await page.getByRole('button', { name: '提交需求' }).click();
+  await expect(page).toHaveURL(/\/seller\/demands$/u);
+  expect(state.demandBodies).toEqual([{
+    product_id: 'product-new', task_type: 'IMAGE', target_quantity: 8,
+    open_at: Date.parse('2026-08-09T09:00:00+08:00'),
+    reservation_deadline: Date.parse('2026-08-10T09:00:00+08:00'),
+    order_deadline: Date.parse('2026-08-11T09:00:00+08:00'),
+    buyer_visible_notes: null, seller_notes: null,
+  }]);
+});
+
+test('Seller withdrawals require confirmation and submit the server version', async ({ page }) => {
+  await mockApi(page, 'seller'); const state = await mockSellerSubmissions(page);
+  await page.goto('/seller/products');
+  await page.getByRole('button', { name: '撤回申请' }).click();
+  const applicationDialog = page.getByRole('dialog', { name: '撤回产品申请' });
+  await expect(applicationDialog).toBeVisible(); expect(state.applicationWithdrawBodies).toEqual([]);
+  await applicationDialog.getByRole('button', { name: '确认撤回' }).click();
+  await expect(applicationDialog).toHaveCount(0);
+  expect(state.applicationWithdrawBodies).toEqual([{ expected_version: 1 }]);
+
+  await page.goto('/seller/demands');
+  await page.getByRole('button', { name: '撤回需求' }).click();
+  const demandDialog = page.getByRole('dialog', { name: '撤回需求' });
+  await expect(demandDialog).toBeVisible(); expect(state.demandWithdrawBodies).toEqual([]);
+  await demandDialog.getByRole('button', { name: '确认撤回' }).click();
+  await expect(demandDialog).toHaveCount(0);
+  expect(state.demandWithdrawBodies).toEqual([{ expected_version: 1 }]);
 });
 
 test('Seller store context is keyboard operable and remains visible', async ({ page }) => {

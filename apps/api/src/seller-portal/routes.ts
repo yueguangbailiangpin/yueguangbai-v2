@@ -19,6 +19,7 @@ import { customerSessionMiddleware } from '../middleware/customer-auth';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import { submitProductApplication } from '../product-applications/submit-product-application';
 import { withdrawProductApplication } from '../product-applications/withdraw-product-application';
+import { productApplicationFileAuthorization } from '../product-applications/file-authorization';
 import {
   requireSellerPortalWriteRole,
   resolveSellerPortalActor,
@@ -231,6 +232,7 @@ async function createProductApplication(
   );
   const result = await submitProductApplication(
     context.env.DB,
+    productApplicationFileAuthorization,
     {
       storeId: body.store_id,
       asin: body.asin,
@@ -242,6 +244,10 @@ async function createProductApplication(
         internalNotes: null,
       },
       sellerNotes: body.seller_notes,
+      imageFiles: body.image_files.map((file) => ({
+        fileObjectId: file.file_object_id,
+        expectedFileVersion: file.expected_file_version,
+      })),
     },
     {
       actor,
@@ -422,7 +428,24 @@ async function readProductApplicationBody(
     product_url: nullableString(body, 'product_url'),
     buyer_visible_notes: nullableString(body, 'buyer_visible_notes'),
     seller_notes: nullableString(body, 'seller_notes'),
+    image_files: requiredFileReferences(body, 'image_files'),
   };
+}
+
+function requiredFileReferences(
+  body: Record<string, unknown>,
+  key: string,
+): readonly { file_object_id: string; expected_file_version: number }[] {
+  const value = body[key];
+  if (!Array.isArray(value) || value.length < 1 || value.length > 8) validation();
+  return Object.freeze(value.map((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) validation();
+    const file = item as Record<string, unknown>;
+    return {
+      file_object_id: requiredString(file, 'file_object_id'),
+      expected_file_version: requiredInteger(file, 'expected_file_version'),
+    };
+  }));
 }
 
 async function readDemandBatchBody(

@@ -18,8 +18,9 @@ import {
   reviewProductApplication,
 } from './review-product-application';
 import {
-  submitProductApplication,
+  submitProductApplication as submitProductApplicationImpl,
 } from './submit-product-application';
+import { productApplicationFileAuthorization } from './file-authorization';
 import {
   withdrawProductApplication,
 } from './withdraw-product-application';
@@ -29,6 +30,23 @@ import type {
 } from './product-application-shared';
 
 let database: SqliteDatabase | null = null;
+
+function submitProductApplication(
+  database: SqliteDatabase,
+  input: Omit<Parameters<typeof submitProductApplicationImpl>[2], 'imageFiles'>
+    & Partial<Pick<Parameters<typeof submitProductApplicationImpl>[2], 'imageFiles'>>,
+  command: Parameters<typeof submitProductApplicationImpl>[3],
+) {
+  return submitProductApplicationImpl(database, productApplicationFileAuthorization, {
+    ...input,
+    imageFiles: input.imageFiles ?? [{
+      fileObjectId: command.actor.memberId === 'member-ops-1'
+        ? 'application-image-ops' : command.actor.memberId === 'member-owner-2'
+          ? 'application-image-owner-2' : 'application-image-owner-1',
+      expectedFileVersion: 1,
+    }],
+  }, command);
+}
 
 afterEach(() => {
   database?.close();
@@ -82,6 +100,34 @@ describe('seller product applications and staff review', () => {
       ...submitted,
       replayed: true,
     });
+
+    const committed = await database.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM file_entity_links link
+          WHERE link.entity_type='PRODUCT_APPLICATION' AND link.entity_id=?) AS links,
+        (SELECT COUNT(*) FROM file_entity_audience_grants grant_row
+          JOIN file_entity_links link ON link.id=grant_row.file_entity_link_id
+          WHERE link.entity_type='PRODUCT_APPLICATION' AND link.entity_id=?) AS grants,
+        (SELECT COUNT(*) FROM file_audience_events event_row
+          WHERE event_row.entity_type='PRODUCT_APPLICATION' AND event_row.entity_id=?) AS audience_events,
+        (SELECT COUNT(*) FROM audit_events audit
+          WHERE audit.aggregate_id=? OR audit.aggregate_id IN (
+            SELECT id FROM file_entity_links WHERE entity_type='PRODUCT_APPLICATION' AND entity_id=?
+          )) AS audits,
+        (SELECT COUNT(*) FROM integration_outbox outbox
+          WHERE outbox.aggregate_id=? OR outbox.aggregate_id IN (
+            SELECT id FROM file_entity_links WHERE entity_type='PRODUCT_APPLICATION' AND entity_id=?
+          )) AS outbox_events
+    `).bind(
+      submitted.application_id,
+      submitted.application_id,
+      submitted.application_id,
+      submitted.application_id,
+      submitted.application_id,
+      submitted.application_id,
+      submitted.application_id,
+    ).first<{ links: number; grants: number; audience_events: number; audits: number; outbox_events: number }>();
+    expect(committed).toEqual({ links: 1, grants: 2, audience_events: 3, audits: 2, outbox_events: 2 });
 
     await expect(submitProductApplication(
       database,
@@ -461,6 +507,59 @@ describe('seller product applications and staff review', () => {
       status: 409,
     });
   });
+
+  it('requires owned verified images and leaves no partial application or links', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+    const input = {
+      storeId: 'store-1', asin: 'B0APPLY010', product: productVersion('图片申请'), sellerNotes: null,
+    };
+    for (const [suffix, imageFiles, code] of [
+      ['none', [], 'VALIDATION_ERROR'],
+      ['too-many', Array.from({ length: 9 }, () => ({ fileObjectId: 'application-image-owner-1', expectedFileVersion: 1 })), 'VALIDATION_ERROR'],
+      ['duplicate', [{ fileObjectId: 'application-image-owner-1', expectedFileVersion: 1 }, { fileObjectId: 'application-image-owner-1', expectedFileVersion: 1 }], 'VALIDATION_ERROR'],
+      ['stale', [{ fileObjectId: 'application-image-owner-1', expectedFileVersion: 2 }], 'VERSION_CONFLICT'],
+      ['wrong-purpose', [{ fileObjectId: 'application-image-wrong-purpose', expectedFileVersion: 1 }], 'FILE_STORAGE_CONFLICT'],
+      ['cross-owner', [{ fileObjectId: 'application-image-ops', expectedFileVersion: 1 }], 'FORBIDDEN'],
+      ['mixed', [{ fileObjectId: 'application-image-owner-1', expectedFileVersion: 1 }, { fileObjectId: 'application-image-ops', expectedFileVersion: 1 }], 'FORBIDDEN'],
+    ] as const) {
+      await expect(submitProductApplicationImpl(database, productApplicationFileAuthorization, {
+        ...input, imageFiles,
+      }, { actor: ownerActor(), idempotencyKey: `product-application:image:${suffix}`, now: 3000 })).rejects.toMatchObject({ code });
+    }
+    await database.prepare(`UPDATE file_objects SET status='RESERVED', uploaded_byte_size=NULL, detected_mime=NULL, uploaded_sha256=NULL, uploaded_at=NULL, verified_at=NULL WHERE id='application-image-owner-1'`).run();
+    await expect(submitProductApplicationImpl(database, productApplicationFileAuthorization, {
+      ...input, imageFiles: [{ fileObjectId: 'application-image-owner-1', expectedFileVersion: 1 }],
+    }, { actor: ownerActor(), idempotencyKey: 'product-application:image:unverified', now: 3100 })).rejects.toMatchObject({ code: 'FILE_NOT_VERIFIED' });
+    const counts = await database.prepare(`SELECT (SELECT COUNT(*) FROM product_applications) AS applications, (SELECT COUNT(*) FROM file_entity_links) AS links`).first<{ applications: number; links: number }>();
+    expect(counts).toEqual({ applications: 0, links: 0 });
+  });
+
+  it('rolls back application, image audiences, audit and outbox together', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+    database.exec(`
+      CREATE TRIGGER test_reject_product_application_outbox
+      BEFORE INSERT ON integration_outbox
+      WHEN NEW.event_type='PRODUCT_APPLICATION_SUBMITTED'
+      BEGIN
+        SELECT RAISE(ABORT, 'forced_product_application_outbox_failure');
+      END;
+    `);
+    await expect(submitProductApplication(database, {
+      storeId: 'store-1', asin: 'B0APPLY011', product: productVersion('原子回滚'), sellerNotes: null,
+    }, { actor: ownerActor(), idempotencyKey: 'product-application:atomic-rollback', now: 3200 }))
+      .rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE' });
+    const counts = await database.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM product_applications) AS applications,
+        (SELECT COUNT(*) FROM file_entity_links) AS links,
+        (SELECT COUNT(*) FROM file_entity_audience_grants) AS grants,
+        (SELECT COUNT(*) FROM audit_events) AS audits,
+        (SELECT COUNT(*) FROM integration_outbox) AS outbox_events
+    `).first<{ applications: number; links: number; grants: number; audits: number; outbox_events: number }>();
+    expect(counts).toEqual({ applications: 0, links: 0, grants: 0, audits: 0, outbox_events: 0 });
+  });
 });
 
 function seedProductApplicationFixture(
@@ -600,6 +699,43 @@ function seedProductApplicationFixture(
         'ACTIVE', 'staff-reviewer', 1000, NULL,
         1000, 1000
       );
+
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility, status,
+      requested_file_count, manifest_hash, version, expires_at, failure_code,
+      created_at, updated_at, completed_at
+    ) VALUES
+      ('application-intent-owner-1','SELLER_MEMBER','member-owner-1','PRODUCT_APPLICATION_IMAGE','SELLER_VISIBLE','ISSUED',
+        1,'0000000000000000000000000000000000000000000000000000000000000001',1,9000000,NULL,1000,1000,NULL),
+      ('application-intent-ops','SELLER_MEMBER','member-ops-1','PRODUCT_APPLICATION_IMAGE','SELLER_VISIBLE','ISSUED',
+        1,'0000000000000000000000000000000000000000000000000000000000000002',1,9000000,NULL,1000,1000,NULL),
+      ('application-intent-owner-2','SELLER_MEMBER','member-owner-2','PRODUCT_APPLICATION_IMAGE','SELLER_VISIBLE','ISSUED',
+        1,'0000000000000000000000000000000000000000000000000000000000000003',1,9000000,NULL,1000,1000,NULL),
+      ('application-intent-wrong-purpose','SELLER_MEMBER','member-owner-1','PRODUCT_IMAGE','SELLER_VISIBLE','ISSUED',
+        1,'0000000000000000000000000000000000000000000000000000000000000004',1,9000000,NULL,1000,1000,NULL);
+
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size, status,
+      upload_token_hash, upload_expires_at, uploaded_byte_size, detected_mime,
+      uploaded_sha256, failure_code, version, created_at, updated_at, uploaded_at, verified_at, deleted_at
+    ) VALUES
+      ('application-image-owner-1','application-intent-owner-1',1,'PRODUCT_APPLICATION_IMAGE','SELLER_VISIBLE','files/v1/application/image-owner-1-000000000000',
+       'owner.png','png','image/png',10,'RESERVED','0000000000000000000000000000000000000000000000000000000000000001',9000000,NULL,NULL,
+       NULL,NULL,1,1000,1000,NULL,NULL,NULL),
+      ('application-image-ops','application-intent-ops',1,'PRODUCT_APPLICATION_IMAGE','SELLER_VISIBLE','files/v1/application/image-ops-0000000000000000',
+       'ops.png','png','image/png',10,'RESERVED','0000000000000000000000000000000000000000000000000000000000000002',9000000,NULL,NULL,
+       NULL,NULL,1,1000,1000,NULL,NULL,NULL),
+      ('application-image-owner-2','application-intent-owner-2',1,'PRODUCT_APPLICATION_IMAGE','SELLER_VISIBLE','files/v1/application/image-owner-2-000000000000',
+       'other.png','png','image/png',10,'RESERVED','0000000000000000000000000000000000000000000000000000000000000003',9000000,NULL,NULL,
+       NULL,NULL,1,1000,1000,NULL,NULL,NULL),
+      ('application-image-wrong-purpose','application-intent-wrong-purpose',1,'PRODUCT_IMAGE','SELLER_VISIBLE','files/v1/application/image-wrong-purpose-000000000',
+       'wrong.png','png','image/png',10,'RESERVED','0000000000000000000000000000000000000000000000000000000000000004',9000000,NULL,NULL,
+       NULL,NULL,1,1000,1000,NULL,NULL,NULL);
+
+    UPDATE file_upload_intents SET status='VERIFIED', completed_at=1001, updated_at=1001;
+    UPDATE file_objects SET status='VERIFIED', uploaded_byte_size=10, detected_mime='image/png',
+      uploaded_sha256=upload_token_hash, uploaded_at=1001, verified_at=1001, updated_at=1001;
   `);
 }
 

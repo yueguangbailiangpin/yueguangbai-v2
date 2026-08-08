@@ -45,11 +45,13 @@ import {
   SellerDashboardPage,
   SellerDemandsPage,
   SellerOrdersPage,
+  SellerProductApplicationDetailPage,
   SellerProductsPage,
   SellerReviewsPage,
   SellerSettingsPage,
   SellerSettlementsPage,
 } from './seller/pages/SellerPages';
+import { SellerDemandFormPage, SellerProductApplicationFormPage } from './seller/pages/SellerSubmissionPages';
 import {
   Alert,
   AppShell,
@@ -308,7 +310,10 @@ function AppRoutes(): React.JSX.Element {
       <Route element={<SellerLayout />}>
       <Route index element={<SellerDashboardPage />} />
       <Route path="products" element={<SellerProductsPage />} />
+      <Route path="products/new" element={<SellerProductApplicationFormPage />} />
+      <Route path="products/:applicationId" element={<SellerProductApplicationDetailPage />} />
       <Route path="demands" element={<SellerDemandsPage />} />
+      <Route path="demands/new" element={<SellerDemandFormPage />} />
       <Route path="orders" element={<SellerOrdersPage />} />
       <Route path="reviews" element={<SellerReviewsPage />} />
       <Route path="settlements" element={<SellerSettlementsPage />} />

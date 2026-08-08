@@ -123,7 +123,7 @@ test('capture Staff login desktop', async ({ page }) => {
 test('capture Buyer password change mobile', async ({ page }) => {
   await mockSession(page, 'buyer');
   await page.goto('/buyer/change-password');
-  await expect(page.getByRole('heading', { name: '买家修改密码' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible();
   await capture(page, 'buyer-change-password-mobile-390x844.png', { width: 390, height: 844 });
 });
 
