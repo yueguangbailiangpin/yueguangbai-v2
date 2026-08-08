@@ -8,6 +8,7 @@ export * from './file-error';
 export * from './file-read-service';
 export * from './mock-object-storage';
 export * from './object-storage';
+export * from './r2-object-storage';
 export * from './route-authorization';
 export * from './routes';
 export * from './upload-file-object';

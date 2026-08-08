@@ -19,6 +19,7 @@ import {
 import { resolveAssignmentStaffAuthorization, resolveStaffDataScope } from '../staff-assignment';
 import { RouteBoundFileAuthorizationService } from './route-authorization';
 import { MockObjectStorage } from './mock-object-storage';
+import { R2ObjectStorageAdapter } from './r2-object-storage';
 import {
   completeFileUploadIntent,
   createFileUploadIntent,
@@ -26,6 +27,7 @@ import {
 } from './index';
 import { compensateStoredObjects } from './compensation';
 import { onePixelPng } from '../../test-support/wave13-runtime';
+import { AnonymousR2Bucket } from '../../test-support/anonymous-r2-binding';
 
 let database: SqliteDatabase | null = null;
 afterEach(() => {
@@ -163,7 +165,8 @@ describe('Wave 13 shared R2 failure and purpose matrix', () => {
 
   it('compensates an R2 put when the D1 final commit fails', async () => {
     database = createMigratedTestDatabase();
-    const storage = new MockObjectStorage();
+    const bucket = new AnonymousR2Bucket();
+    const storage = new R2ObjectStorageAdapter(bucket);
     const actor: FileActor = {
       type: 'STAFF', id: 'zz-phase3h-test-owner', roles: ['owner'],
     };
@@ -188,14 +191,50 @@ describe('Wave 13 shared R2 failure and purpose matrix', () => {
       { actor, idempotencyKey: 'd1-final-failure-upload', now: 50_000 },
     )).rejects.toMatchObject({ status: 503 });
     const key = await keyFor(database, issued.fileObjectId);
-    expect(storage.objects.has(key)).toBe(false);
+    expect(bucket.objects.has(key)).toBe(false);
     expect(await statusFor(database, issued.fileObjectId)).toBe('DELETED');
     expect(await linkCount(database, issued.fileObjectId)).toBe(0);
   });
 
-  it('records delete pending, hides storage authority, and retries cleanup to DELETED', async () => {
+  it('compensates an object stored before an incomplete R2 put receipt', async () => {
     database = createMigratedTestDatabase();
-    const storage = new MockObjectStorage();
+    const bucket = new AnonymousR2Bucket();
+    const storage = new R2ObjectStorageAdapter(bucket);
+    const actor: FileActor = {
+      type: 'STAFF', id: 'zz-phase3h-test-owner', roles: ['owner'],
+    };
+    const authorization = await routeAuthorization(
+      database, actor, 'BUYER_REFUND_PROOF', 'INTERNAL_ONLY',
+    );
+    const issued = await issue(
+      database, authorization, actor,
+      'BUYER_REFUND_PROOF', 'INTERNAL_ONLY', 'incomplete-r2-receipt',
+    );
+    const key = await keyFor(database, issued.fileObjectId);
+    bucket.returnIncompleteNextPutReceipt(key);
+    const failure = await uploadFileObject(
+      database,
+      storage,
+      authorization,
+      {
+        fileObjectId: issued.fileObjectId,
+        uploadToken: issued.uploadToken,
+        declaredMime: 'image/png',
+        bytes: onePixelPng(),
+      },
+      { actor, idempotencyKey: 'incomplete-r2-receipt-upload', now: 55_000 },
+    ).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ status: 503 });
+    expect(JSON.stringify(failure)).not.toContain(key);
+    expect(bucket.objects.has(key)).toBe(false);
+    expect(await statusFor(database, issued.fileObjectId)).toBe('DELETED');
+    expect(await linkCount(database, issued.fileObjectId)).toBe(0);
+  });
+
+  it('records delete pending after an invalid R2 receipt and safely retries cleanup', async () => {
+    database = createMigratedTestDatabase();
+    const bucket = new AnonymousR2Bucket();
+    const storage = new R2ObjectStorageAdapter(bucket);
     const actor: FileActor = {
       type: 'STAFF', id: 'zz-phase3h-test-owner', roles: ['owner'],
     };
@@ -207,12 +246,12 @@ describe('Wave 13 shared R2 failure and purpose matrix', () => {
       'SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY', 'delete-pending',
     );
     const key = await keyFor(database, issued.fileObjectId);
-    storage.failNext('delete', key);
-    const failing = new FailNextBatchDatabase(database);
+    bucket.returnIncompleteNextPutReceipt(key);
+    bucket.failNext('delete', key);
     let captured: unknown;
     try {
       await uploadFileObject(
-        failing,
+        database,
         storage,
         authorization,
         {
@@ -250,7 +289,7 @@ describe('Wave 13 shared R2 failure and purpose matrix', () => {
       now: 60_000 + 5 * 60 * 1000,
     });
     expect(await statusFor(database, issued.fileObjectId)).toBe('DELETED');
-    expect(storage.objects.has(key)).toBe(false);
+    expect(bucket.objects.has(key)).toBe(false);
   });
 });
 

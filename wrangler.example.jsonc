@@ -1,10 +1,35 @@
 {
   "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
   "name": "yueguangbai-v2-example",
+  "account_id": "REPLACE_BEFORE_USE",
   "main": "apps/api/src/worker.ts",
   "triggers": { "crons": ["*/5 * * * *"] },
-  "vars": { "SCHEDULED_OPERATIONS_ENABLED": "false", "SCHEDULED_OPERATIONS_DISABLED_JOBS": "", "OPERATIONAL_ALERT_MODE": "disabled" },
+  "vars": {
+    "APP_ENVIRONMENT": "REPLACE_BEFORE_USE",
+    "APP_ORIGIN": "REPLACE_BEFORE_USE",
+    "APP_ALLOWED_ORIGINS": "REPLACE_BEFORE_USE",
+    "SCHEDULED_OPERATIONS_ENABLED": "false",
+    "SCHEDULED_OPERATIONS_DISABLED_JOBS": "",
+    "OPERATIONAL_ALERT_MODE": "disabled",
+    "STAFF_AUTH_ENABLED": "false",
+    "DRIVE_ARCHIVE_ENABLED": "false",
+    "DRIVE_ARCHIVE_COPY_ENABLED": "false",
+    "DRIVE_ARCHIVE_PROXY_READ_ENABLED": "false",
+    "DRIVE_ARCHIVE_R2_DELETE_ENABLED": "false",
+    "FEISHU_WORKBENCH_SYNC_ENABLED": "false",
+    "FEISHU_WORKBENCH_CALLBACK_ENABLED": "false",
+    "STAFF_MCP_ENABLED": "false",
+    "STAFF_MCP_LOCAL_MOCK_ENABLED": "false"
+  },
   "compatibility_date": "REPLACE_BEFORE_USE",
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "apps/web/dist",
+    "binding": "WEB_ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -15,7 +40,7 @@
   ],
   "r2_buckets": [
     {
-      "binding": "IMAGES",
+      "binding": "FILE_OBJECT_STORAGE_R2",
       "bucket_name": "REPLACE_BEFORE_USE"
     }
   ]

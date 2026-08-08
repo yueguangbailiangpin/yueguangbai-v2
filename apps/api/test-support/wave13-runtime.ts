@@ -1,4 +1,5 @@
 import type {
+  ObjectStorageAdapter,
   SqlAllResult,
   SqlDatabase,
   SqlRunResult,
@@ -7,7 +8,6 @@ import type {
 import type { SqliteDatabase } from '@ygb/testkit';
 import app from '../src/index';
 import { FakeStaffAuthProvider } from '../src/staff-auth/provider';
-import type { MockObjectStorage } from '../src/files/mock-object-storage';
 
 export type RuntimeStaff = 'owner' | 'limited' | 'scoped' | 'sellerScoped';
 
@@ -495,7 +495,7 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
 export function runtimeBindings(
   database: SqlDatabase,
   staff: RuntimeStaff,
-  storage?: MockObjectStorage,
+  storage?: ObjectStorageAdapter,
 ): Record<string, unknown> {
   const identity = STAFF[staff];
   return {
@@ -530,7 +530,7 @@ export function runtimeBindings(
 export async function loginThroughDefaultApp(
   database: SqlDatabase,
   staff: RuntimeStaff,
-  storage?: MockObjectStorage,
+  storage?: ObjectStorageAdapter,
 ): Promise<{ cookie: string; env: Record<string, unknown> }> {
   const env = runtimeBindings(database, staff, storage);
   const start = await app.request(

@@ -39,9 +39,9 @@ assert(!productionRunbook.includes('--expected-schema 35'),
 
 const evidence = read('docs/acceptance/FINAL_PRODUCTION_GO_LOCAL_PREPARATION.md');
 for (const marker of [
-  '145fdd874d1de416809ee898a7937f1b09ba1584',
+  'b74a029876301a4f8bbb6ebd305ead13a6f2cd59',
   '8c4fdaa382fd1e2c56d76aa23bb6b960c4f6f72c',
-  'REPLACE_BEFORE_USE',
+  'LOCAL_IMPLEMENTATION_PRESENT_EXTERNAL_UNVERIFIED',
   'productionActivationSupported=false',
   'Production GO 阻断',
   '`NO-GO`',
@@ -68,11 +68,25 @@ for (const file of [
   'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/specs/production-go-local-preparation/spec.md',
   'openspec/changes/archive/2026-08-07-production-readiness-backup-validation/proposal.md',
   'openspec/changes/pre-wave13-baseline-conformance-audit/tasks.md',
+  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/proposal.md',
+  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/design.md',
+  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/tasks.md',
+  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/specs/production-cloudflare-web-r2-release-configuration/spec.md',
+  'apps/api/wrangler.staging.template.jsonc',
+  'apps/api/wrangler.production.template.jsonc',
+  'apps/api/src/files/r2-object-storage.ts',
+  'apps/api/src/cloudflare-runtime.ts',
+  'scripts/preflight-cloudflare-release.mjs',
+  'scripts/verify-production-cloudflare-web-r2-release-configuration.mjs',
+  'docs/contracts/PRODUCTION_CLOUDFLARE_WEB_R2_RELEASE.md',
+  'docs/runbooks/PRODUCTION_CLOUDFLARE_WEB_R2_RELEASE.md',
 ]) assert(existsSync(path.join(root, file)), `required governance evidence missing: ${file}`);
 
 const exampleConfig = read('wrangler.example.jsonc');
 const localConfig = read('apps/api/wrangler.local.jsonc');
-assert(exampleConfig.includes('REPLACE_BEFORE_USE') && exampleConfig.includes('"binding": "IMAGES"'),
+assert(exampleConfig.includes('REPLACE_BEFORE_USE')
+  && exampleConfig.includes('"binding": "FILE_OBJECT_STORAGE_R2"')
+  && exampleConfig.includes('"binding": "WEB_ASSETS"'),
   'example Cloudflare placeholder evidence changed');
 for (const marker of [
   '"SCHEDULED_OPERATIONS_ENABLED": "false"',
@@ -84,7 +98,11 @@ const workflowFiles = readdirSync(path.join(root, '.github/workflows'))
   .filter((file) => /\.ya?ml$/u.test(file));
 assert(workflowFiles.length === 0, 'CI workflow now exists; refresh release-control audit');
 assert(!existsSync(path.join(root, 'wrangler.production.jsonc')),
-  'production config now exists; refresh deployment audit');
+  'rendered production config exists; refresh deployment audit');
+assert(!existsSync(path.join(root, 'apps/api/wrangler.production.jsonc')),
+  'rendered API production config exists; refresh deployment audit');
+assert(!existsSync(path.join(root, 'apps/api/wrangler.staging.jsonc')),
+  'rendered API staging config exists; refresh deployment audit');
 
 const feishuFiles = readdirSync(path.join(root, 'apps/api/src/feishu-workbench'));
 assert(feishuFiles.includes('mock-adapter.ts')
@@ -99,7 +117,7 @@ console.log(JSON.stringify({
   change: 'final-production-go-local-preparation',
   migration: '0001-0037_CONTINUOUS',
   react_router: '8.3.0_LOCKED_CURRENT_AUDIT_REQUIRED',
-  production_config: 'ABSENT_BLOCKED',
+  production_config: 'LOCAL_IMPLEMENTATION_PRESENT_EXTERNAL_UNVERIFIED',
   external_integrations: 'OWNER_ACTION_REQUIRED_BLOCKED',
   production_go: 'NO_GO',
 }, null, 2));

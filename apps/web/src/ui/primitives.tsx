@@ -544,14 +544,15 @@ export function Progress({
   return <div className="progress-block">
     <div className="progress-label"><span>{label}</span>
       <span>{bounded === undefined ? '处理中' : `${Math.round((bounded / max) * 100)}%`}</span></div>
-    <div
+    <progress
       className={classes('progress', bounded === undefined && 'is-indeterminate')}
-      role="progressbar"
       aria-label={label}
       aria-valuemin={bounded === undefined ? undefined : 0}
       aria-valuemax={bounded === undefined ? undefined : max}
       aria-valuenow={bounded}
-    ><span style={bounded === undefined ? undefined : { width: `${(bounded / max) * 100}%` }} /></div>
+      max={max}
+      value={bounded}
+    />
   </div>;
 }
 
@@ -701,7 +702,6 @@ export function Skeleton({
     {Array.from({ length: Math.max(1, lines) }, (_, index) => <span
       key={index}
       aria-hidden="true"
-      style={{ width: index === lines - 1 && lines > 1 ? '68%' : '100%' }}
     />)}
   </div>;
 }

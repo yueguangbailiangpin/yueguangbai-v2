@@ -2,15 +2,15 @@
 
 审计日期：2026-08-09（Asia/Shanghai）
 
-Change：`final-production-go-local-preparation`
-结论：`LOCAL_CANDIDATE_PASS / PRODUCTION_NO-GO`
+当前补充 Change：`production-cloudflare-web-r2-release-configuration`
+结论：`LOCAL_IMPLEMENTATION_READY / PRODUCTION_NO-GO`
 
 ## 1. 基线与证据语义
 
 - `origin`：`https://github.com/yueguangbailiangpin/yueguangbai-v2.git`
-- fetch 后 `origin/main`：`145fdd874d1de416809ee898a7937f1b09ba1584`
-- 本地分支：`feature/final-production-go-local-preparation`，创建前分支与目标路径均不存在。
-- 当前工作不提交、不推送、不建 PR、不归档，也不把 `145fdd8` 当作最终可部署 SHA；总控后续审查、提交与 Integration 完成后必须重新冻结唯一 release SHA。
+- 2026-08-09 再次 fetch 后 `origin/main`：`b74a029876301a4f8bbb6ebd305ead13a6f2cd59`。
+- 本地分支：`feature/production-cloudflare-web-r2-release-configuration`，从上述远程 SHA 建立独立 worktree。
+- 当前工作不提交、不推送、不建 PR、不归档，也不把 `b74a029` 当作最终可部署 SHA；总控后续审查、提交与 Integration 完成后必须重新冻结唯一 release SHA。
 - `LOCAL_PASS` 只表示匿名、本地、隔离或 mock 证据；不表示线上 Migration、部署、真实 Provider、生产数据、真实网络或老板批准。
 
 ## 2. M10 真实历史状态
@@ -75,15 +75,16 @@ GitHub 只读快照：
 
 这意味着没有自动生产部署，降低了误触部署概率；同时也没有远端 CI、SHA pinning、受保护 main 或自动发布/回滚证据。老板必须在上线前批准并留存独立的人工双人发布控制，或先完成独立的 CI/release-control Change。
 
-Cloudflare/部署静态审计：
+Cloudflare/部署静态审计更新：
 
-- 只有 `wrangler.example.jsonc` 与 `apps/api/wrangler.local.jsonc`；前者含 `REPLACE_BEFORE_USE`，后者是本地假 D1 ID并关闭外部开关。
-- 没有可审核的 production Wrangler 配置、真实域名/route、D1/R2 ID、生产 Secret 清单或部署命令。
-- Web 只有 Vite build，没有已冻结的 Cloudflare Pages/Workers 静态托管、SPA fallback、headers/routes 或 Web/API 同域部署路径。
-- 示例 R2 binding 名为 `IMAGES`，生产代码读取 `FILE_OBJECT_STORAGE` 的应用端口；仓库没有把真实 `R2Bucket` 安全适配到该端口的生产装配。
-- 飞书工作台只有 mock adapter；Staff MCP 明确 `productionActivationSupported=false`，且没有公开 `/mcp` route。
+- 仓库已有独立 staging/production Wrangler 模板；模板故意使用 `REQUIRED_*`，真实 account、Worker、域名、D1/R2、Cron 和 Secret 仍不存在于 Git，也没有可部署的 owner-rendered config。
+- 本地 preflight 会拒绝 placeholder、缺失/默认资源、错误环境、origin/domain 不一致、Secret in vars 和任何已打开的外部/破坏性开关；命令没有 deploy 模式，不调用 Cloudflare。
+- Web 已冻结为同一 Worker Static Assets：SPA deep-link fallback、Worker-first security headers、同源 `/api/*`、跨源拒绝和 exact Custom Domain/HTTPS 合同已有本地实现与匿名测试路径。
+- Cloudflare `FILE_OBJECT_STORAGE_R2` 已通过 production adapter/factory 接入现有 `FILE_OBJECT_STORAGE` 应用端口；没有公有 bucket、list、裸 key、签名 URL 或永久 URL。
+- 总控复核提出的三项缺口已在本 Change 内收口：ambiguous/post-put R2 failure 通过通用端口进入既有补偿/`DELETION_PENDING`；`--config` 同时执行绝对词法路径与 `realpath` 的 Git 外强制；Web 已移除全部 JSX inline style 并由完整 Web gate 保持 `style-src 'self'` 兼容。
+- Staff Auth/Feishu、Drive、Feishu workbench、Staff MCP、Scheduler 和外部告警在模板中保持 disabled；飞书工作台仍只有 mock adapter，Staff MCP 仍 `productionActivationSupported=false` 且没有公开 `/mcp` route。
 
-上述不是“等老板填 ID”即可完成的占位问题；Web hosting、R2 production adapter、Feishu workbench production adapter、Staff MCP production transport/OAuth、独立告警与 release control 涉及新实现/配置合同，必须分别建立后续 Change，不能混入本 Change。
+这只关闭“production config/adapter 完全缺失”的本地实现缺口。真实资源存在性、Git 外渲染配置、Secret 注入、Cloudflare 校验/部署、Custom Domain/HTTPS、真实 R2、独立告警和网络仍没有证据，不能标为 staging/production 验收。
 
 ## 6. 发现分类
 
@@ -94,12 +95,14 @@ Cloudflare/部署静态审计：
 - 0001–0037 在仓库中连续；本 Change 无 Migration。
 - 本地备份/恢复、离线文件对账、Drive/Feishu/MCP mock、权限/财务/时区/中文测试能力存在。
 - Drive、Feishu、MCP 与 Scheduler 默认 hard-disabled；本任务未激活任何外部能力。
+- staging/production 配置模板、R2 adapter、同源 Web/SPA/security headers 与纯本地 preflight 已具备；模板仍不可部署，真实值未进入 Git。
 
 ### 可由总控继续本地修复
 
 - 本 Change 已修复 M10 formal verifier 和 Drive archive verifier 的 schema 36 静态漂移，以及 current runbook 的旧 schema/归档措辞。
 - `backup-d1.mjs` / `restore-d1.mjs` 仍有历史默认 schema 34，但当前 runbook 强制显式传入重新核验的 schema 37；默认值会安全失败而不会假通过。是否另行移除默认值可由总控建立小型安全工具 Change。
 - canonical `staff-internal-operations-workbench` 仍保留历史“两项 React Router high 不增加”的兼容性措辞；它是历史基线规则，不应当作当前漏洞库存。总控可在独立治理 Change 中决定是否增加“当前已关闭”的新 Scenario，不能改写历史。
+- `production-cloudflare-web-r2-release-configuration` 当前仍是未提交、未归档 Change；总控必须先审查 diff 和最终门禁，不能把本地实现存在写成外部 Gate 2 已完成。
 
 ### 必须老板本人授权
 
@@ -113,7 +116,7 @@ Cloudflare/部署静态审计：
 
 ### Production GO 阻断
 
-1. 缺少可部署的生产 Cloudflare/Web/R2 配置与生产 R2 adapter。
+1. 本地 Cloudflare/Web/R2 adapter、模板和 preflight 已具备，但缺少老板填充并保管的真实配置、实际 D1/R2/Worker/域名/Secret、Cloudflare 部署与真实 R2/HTTPS/网络验收。
 2. 缺少真实 D1 备份、隔离恢复、生产 ledger 和 Migration 证据。
 3. 缺少真实 R2/Drive Manifest 对账、Drive read-back 和恢复证据。
 4. 缺少飞书真实应用/回调/工作台 adapter/独立告警证据。
@@ -124,14 +127,14 @@ Cloudflare/部署静态审计：
 9. `pre-wave13-baseline-conformance-audit` 仍 active 28/40；GitHub CI/branch/release control 尚无批准处置。
 10. 最终老板 Production GO 未签发。
 
-## 7. 必须独立建立的后续 Change
+## 7. Change 状态与仍需独立建立的后续 Change
 
-- `production-cloudflare-web-r2-release-configuration`：生产/预发 Wrangler、Web hosting、SPA fallback、安全 headers、同域 API、R2 adapter、环境分离和部署/回滚。
+- `production-cloudflare-web-r2-release-configuration`：本地实现已在当前未提交 Change 中具备；真实资源、配置、Secret、部署和网络验收不在本地交付内，Gate 2 仍未通过。
 - `feishu-workbench-production-adapter-activation`：真实 API adapter、scope、callback、机器人/通知、深链接、限流和 Provider 告警。
 - `staff-mcp-production-transport-oauth`：HTTPS MCP resource、OAuth 2.1 metadata/PKCE、durable replay/rate/kill switch、ChatGPT 注册和安全审核。
 - `production-alerting-ci-release-controls`：独立告警接收器、CI pinning、人工/自动发布准入、不可变 release evidence 与受限回滚。
 
-是否合并或拆分名称由总控决定；这些 Change 不得在本治理 Change 中实现。
+其余 Change 不得混入当前 Cloudflare/Web/R2 Change。
 
 ## 8. 本 Change 最终本地门禁
 
@@ -139,20 +142,23 @@ Cloudflare/部署静态审计：
 
 | 门禁 | 当前结果 |
 | --- | --- |
-| `npx openspec validate --all --strict --no-interactive` | 47 passed，0 failed |
-| `npm ci`（独立临时 npm cache）+ `npm ls react-router react-router-dom --all` | 225 packages installed；仅 `react-router@8.3.0` |
-| `npm audit --json`、`npm audit --omit=dev --json`、`npm run verify:dependency-risk` | 各级漏洞均为 0 |
-| `npm run security:scan` | 1391 个项目文件通过 |
+| `npx openspec validate production-cloudflare-web-r2-release-configuration --strict --no-interactive`、`npx openspec validate --all --strict --no-interactive` | Change 通过；全库 48 passed，0 failed |
+| `npm ci`（独立临时 npm cache） | 225 packages installed；232 packages audited；0 vulnerabilities |
+| `npm run verify:dependency-risk` | 各级漏洞均为 0 |
+| `npm run security:scan` | 1410 个项目文件通过 |
 | `npm run db:verify`、`npm run verify:migration-guards`、本地 Wrangler Migration | 37 个 Migration；schema 37；165 tables；311 triggers；integrity ok；FK errors 0；fresh/顺序/错序/重复/部分 DDL 守卫通过；仅本地假 D1 |
 | M10、Drive、Feishu、Staff MCP、四角色、获客、排期、Dashboard 的 formal/static/dry-run | 全部通过；外部调用/生产写入为 0；Feishu 为 mock-only；MCP 为 local-only；Production GO 明确 blocked |
-| `npm run check` | 通过；194 个 Vitest 文件、1271 项测试全部通过；类型检查、全仓构建与 Worker 本地 dry-run 通过 |
+| `npx vitest run scripts/preflight-cloudflare-release.test.mjs`、`npm run dry-run:cloudflare-release`、`npm run verify:cloudflare-release`、`npm run verify:web-static-build` | Preflight 9/9；相对/仓库内/双向 symlink 路径拒绝且值不泄露；模板均为 `BLOCKED_NEEDS_OPERATOR_INPUT`；`jsx_inline_styles=0`；外部调用/部署/资源修改为 0 |
+| `npm run check` | 通过；197 个 Vitest 文件、1291 项测试全部通过；类型检查、全仓构建、Web 静态 verifier 与 Worker 本地 dry-run 通过 |
 | `npm run test:wave14a:browser` | Chromium 180 passed、1 skipped、0 failed；含中文、响应式、键盘、权限失败关闭和北京时间 UI 合同 |
-| `npm run verify:production-readiness:formal`、`npm run verify:final-production-go:local` | 通过；生产配置判定 `ABSENT_BLOCKED`，Production GO 判定 `NO_GO` |
+| `npm run verify:final-production-go:local` | 通过；`LOCAL_IMPLEMENTATION_PRESENT_EXTERNAL_UNVERIFIED`；Production GO 为 `NO_GO` |
 
-门禁过程中先后重现两个预期的陈旧静态断言失败：M10 formal verifier 的 `0036` 链尾和 Drive archive verifier 的 `0036` 链尾。二者均仅修复静态断言/当前文档并在统一门禁中复验通过。首次普通 `npm ci` 因用户级 npm cache 权限失败，改用独立临时 cache 后完整安装与 audit 通过；这不是代码或依赖失败。最终失败数为 0。
+收口过程中严格 OpenSpec 首次发现 delta 标题缺少 `ADDED`，完整门禁首次发现 Staff Auth 业务源超出既有静态 allowlist。前者按 OpenSpec 格式修正；后者将 fail-closed 权限剥离移至 Cloudflare 组合边界，保留业务模块不变。随后 target/all OpenSpec、对应模块测试与完整 `npm run check` 均从头通过。最终未解决失败数为 0。
+
+总控复核后的第二轮收口补充验证：实际落盘后返回不完整 R2 回执会触发删除并记录 `DELETED`；删除注入失败时记录 `DELETION_PENDING`、响应不含 key，cleanup 可重试至 `DELETED`。PUT 后 Provider rejection 同样标记为对象可能存在。Preflight 测试现已正式加入根 Vitest include，不再是未执行的游离测试；绝对外部文件可通过，仓库内路径、仓库内 symlink、仓库外 symlink 指回仓库和相对路径均失败关闭。Web 全源零 JSX inline style，CSP 仍无 `unsafe-inline`。复核后完整门禁与 Chromium 均重新执行，最终未解决失败数仍为 0。
 
 本地门禁证明的是当前仓库候选的静态、单元、隔离 D1 和 Chromium 合同性，不证明生产 Cloudflare、真实网络、Drive、飞书、ChatGPT、真实身份或恢复演练。
 
 ## 9. 当前决定
 
-`NO-GO`。本地候选门禁通过，但生产阻断项仍全部有效。允许的下一步只有：总控审查本 Change 的未提交 diff，决定后续 Change 顺序，并在不触碰生产的独立工作树完成缺失的 production configuration/adapter/release-control 实现。不得使用本报告执行部署。
+`NO-GO`。当前本地实现不授权也不证明任何 Cloudflare staging/production 状态。允许的下一步只有：完成当前 Change 的统一本地门禁并由总控审查未提交 diff；之后由老板在独立授权下准备 Git 外配置与真实资源验收。不得使用本报告或模板执行部署。

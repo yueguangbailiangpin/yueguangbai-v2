@@ -10,7 +10,9 @@ import {
   type SqliteDatabase,
 } from '@ygb/testkit';
 import app from './index';
-import { MockObjectStorage } from './files/mock-object-storage';
+import type { ObjectStorageAdapter } from '@ygb/contracts';
+import { R2ObjectStorageAdapter } from './files/r2-object-storage';
+import { AnonymousR2Bucket } from '../test-support/anonymous-r2-binding';
 import {
   loginThroughDefaultApp,
   onePixelPng,
@@ -22,14 +24,14 @@ import {
 
 let base: SqliteDatabase | null = null;
 let database: SqlDatabase | null = null;
-let storage: MockObjectStorage | null = null;
+let storage: ObjectStorageAdapter | null = null;
 
 beforeEach(() => {
   base = createMigratedTestDatabase();
   seedWave13RuntimeAuthority(base);
   seedLegacyScopedFile(base);
   database = new FileAuthorityDatabase(new Wave13RuntimeDatabase(base));
-  storage = new MockObjectStorage();
+  storage = new R2ObjectStorageAdapter(new AnonymousR2Bucket());
 });
 
 afterEach(() => {
@@ -63,7 +65,7 @@ describe('Wave 13 default application runtime boundary', () => {
       proof.completeStatus,
       proof.paymentStatus,
     ]).toEqual([200, 200, 200, 201]);
-    expect((await request(
+    const readIntent = await request(
       owner,
       `/api/staff/seller-payments/${proof.paymentId}/proof/read-intent`,
       {
@@ -71,7 +73,19 @@ describe('Wave 13 default application runtime boundary', () => {
         headers: jsonHeaders(owner.cookie, 'runtime-proof-read'),
         body: JSON.stringify({ expected_file_version: proof.fileVersion }),
       },
-    )).status).toBe(201);
+    );
+    expect(readIntent.status).toBe(201);
+    const readIntentBody = await readIntent.json() as {
+      data: { read_intent_id: string; access_token: string };
+    };
+    const content = await request(
+      owner,
+      `/api/staff/file-read-intents/${readIntentBody.data.read_intent_id}/content`,
+      { headers: { 'X-File-Read-Token': readIntentBody.data.access_token } },
+    );
+    expect(content.status).toBe(200);
+    expect(content.headers.get('content-type')).toBe('image/png');
+    expect(new Uint8Array(await content.arrayBuffer())).toEqual(onePixelPng());
     expect((await request(
       owner,
       '/api/staff/finance/summary?date_basis=CONFIRMED',

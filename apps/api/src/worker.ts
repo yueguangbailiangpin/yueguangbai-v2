@@ -1,4 +1,5 @@
 import app from './index';
+import type { ExecutionContext } from 'hono';
 import { isScheduledOperationJobName, type ScheduledOperationJobName } from '@ygb/contracts';
 import { configuredAlertSink, type AppBindings } from './app';
 import { runScheduledOperations } from './scheduled-operations';
@@ -7,11 +8,42 @@ import { evaluatePersistedScheduledJobSignals } from './scheduled-operations/sig
 import { driveArchiveRuntime } from './cold-image-archive/runtime';
 import { feishuWorkbenchRuntime } from './feishu-workbench';
 import { runAcquisitionMaintenance } from './acquisition/maintenance';
+import {
+  isAllowedSameOriginApiRequest,
+  isApiRequestPath,
+  resolveCloudflareRuntime,
+  withReleaseSecurityHeaders,
+  type CloudflareWorkerBindings,
+} from './cloudflare-runtime';
 
 const SCHEDULED_HANDLER_TIME_BUDGET_MS=25_000;
 
 export default {
-  fetch: app.fetch,
+  async fetch(
+    request: Request,
+    env: CloudflareWorkerBindings,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    const runtime = resolveCloudflareRuntime(env);
+    const pathname = new URL(request.url).pathname;
+    if (!runtime) return releaseFailure(pathname, 503);
+    if (runtime.environment === 'local') {
+      return app.fetch(request, runtime.appBindings, ctx);
+    }
+    if (isApiRequestPath(pathname)) {
+      if (!isAllowedSameOriginApiRequest(request, runtime.appOrigin!)) {
+        return withReleaseSecurityHeaders(
+          releaseFailure(pathname, 403), pathname, true,
+        );
+      }
+      return withReleaseSecurityHeaders(
+        await app.fetch(request, runtime.appBindings, ctx), pathname, true,
+      );
+    }
+    return withReleaseSecurityHeaders(
+      await runtime.assets!.fetch(request), pathname, true,
+    );
+  },
   async scheduled(event: {scheduledTime?:number}, env: AppBindings, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
     if (env.SCHEDULED_OPERATIONS_ENABLED !== 'true') return;
     const disabledJobs: ScheduledOperationJobName[] = (env.SCHEDULED_OPERATIONS_DISABLED_JOBS ?? '').split(',').map((name: string) => name.trim()).filter(isScheduledOperationJobName);
@@ -33,3 +65,16 @@ export default {
     })());
   },
 };
+
+function releaseFailure(pathname: string, status: 403 | 503): Response {
+  const requestId = crypto.randomUUID();
+  const response = Response.json({
+    error: {
+      code: status === 403 ? 'FORBIDDEN' : 'DEPENDENCY_UNAVAILABLE',
+      message: status === 403 ? '请求被拒绝' : '服务暂时不可用，请稍后重试',
+      details: null,
+    },
+    meta: { request_id: requestId },
+  }, { status, headers: { 'Cache-Control': 'no-store' } });
+  return withReleaseSecurityHeaders(response, pathname, status === 503);
+}

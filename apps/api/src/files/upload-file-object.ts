@@ -1,9 +1,10 @@
-import type {
-  FileActor,
-  FileObjectUploadResult,
-  ObjectStorageAdapter,
-  SqlDatabase,
-  SqlStatement,
+import {
+  objectStoragePutMayHaveStored,
+  type FileActor,
+  type FileObjectUploadResult,
+  type ObjectStorageAdapter,
+  type SqlDatabase,
+  type SqlStatement,
 } from '@ygb/contracts';
 import {
   constantTimeHexEqual,
@@ -133,15 +134,21 @@ export async function uploadFileObject(
 
   let stored = false;
   try {
-    const receipt = await storage.putObject({
-      objectKey: source.object_key,
-      bytes: input.bytes,
-      contentType: inspection.detectedMime,
-      metadata: {
-        'ygb-file-object-id': source.id,
-        'ygb-upload-intent-id': source.upload_intent_id,
-      },
-    });
+    let receipt;
+    try {
+      receipt = await storage.putObject({
+        objectKey: source.object_key,
+        bytes: input.bytes,
+        contentType: inspection.detectedMime,
+        metadata: {
+          'ygb-file-object-id': source.id,
+          'ygb-upload-intent-id': source.upload_intent_id,
+        },
+      });
+    } catch (error) {
+      stored = objectStoragePutMayHaveStored(error);
+      throw error;
+    }
     stored = true;
     if (receipt.byteSize !== inspection.byteSize
       || receipt.contentType !== inspection.detectedMime

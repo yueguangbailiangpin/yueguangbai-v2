@@ -1,0 +1,141 @@
+import { describe, expect, it } from 'vitest';
+import { AnonymousR2Bucket } from '../test-support/anonymous-r2-binding';
+import worker from './worker';
+import type { CloudflareWorkerBindings } from './cloudflare-runtime';
+
+const origin = 'https://release.example.invalid';
+const executionContext = {
+  waitUntil() {},
+  passThroughOnException() {},
+  props: {},
+};
+
+describe('production Cloudflare Worker runtime', () => {
+  it('routes API to Hono and never falls back to SPA HTML', async () => {
+    const health = await fetchWorker('/health');
+    expect(health.status).toBe(200);
+    expect(health.headers.get('content-type')).toContain('application/json');
+    expect(health.headers.get('strict-transport-security')).toContain('max-age=31536000');
+
+    const missing = await fetchWorker('/api/not-registered');
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('content-type')).toContain('application/json');
+    expect(await missing.text()).not.toContain('<!doctype html>');
+  });
+
+  it('serves SPA deep links and applies static security/cache headers', async () => {
+    const deepLink = await fetchWorker('/buyer/orders/anonymous-1', {
+      headers: { 'Sec-Fetch-Mode': 'navigate' },
+    });
+    expect(deepLink.status).toBe(200);
+    expect(await deepLink.text()).toContain('<div id="root"></div>');
+    expect(deepLink.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    expect(deepLink.headers.get('x-frame-options')).toBe('DENY');
+    expect(deepLink.headers.get('cache-control')).toBe('no-cache');
+
+    const asset = await fetchWorker('/assets/app-abc123.js');
+    expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(asset.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('rejects CORS/preflight and cross-origin API access without wildcard headers', async () => {
+    for (const request of [
+      new Request(`${origin}/api/example`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://attacker.invalid', 'Sec-Fetch-Site': 'cross-site' },
+      }),
+      new Request('https://wrong-host.invalid/health'),
+    ]) {
+      const response = await worker.fetch(request, bindings(), executionContext);
+      expect(response.status).toBe(403);
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
+      expect(await response.text()).not.toContain('attacker.invalid');
+    }
+  });
+
+  it('fails closed and redacts missing, placeholder and wrong-environment bindings', async () => {
+    const cases = [
+      { ...bindings(), FILE_OBJECT_STORAGE_R2: undefined },
+      { ...bindings(), APP_ORIGIN: 'REQUIRED_PRODUCTION_HTTPS_ORIGIN' },
+      { ...bindings(), APP_ENVIRONMENT: 'development' },
+      { ...bindings(), SCHEDULED_OPERATIONS_ENABLED: 'true' },
+    ];
+    for (const env of cases) {
+      const response = await worker.fetch(
+        new Request(`${origin}/health`), env as CloudflareWorkerBindings,
+        executionContext,
+      );
+      expect(response.status).toBe(503);
+      const body = await response.text();
+      expect(body).not.toContain('REQUIRED_PRODUCTION_HTTPS_ORIGIN');
+      expect(body).not.toContain('anonymous-secret-value');
+    }
+  });
+
+  it('removes Staff Auth provider authority while the release kill switch is off', async () => {
+    let providerCalls = 0;
+    const env = bindings();
+    Object.assign(env, {
+      STAFF_AUTH_PROVIDER: 'FEISHU',
+      STAFF_AUTH_FEISHU_APP_SECRET: 'anonymous-secret-value',
+      STAFF_AUTH_HASH_SECRET: 'h'.repeat(32),
+      STAFF_AUTH_PROVIDER_ADAPTER: {
+        createAuthorizationUrl() {
+          providerCalls += 1;
+          return 'https://provider.example.invalid';
+        },
+      },
+    });
+    const response = await worker.fetch(new Request(
+      `${origin}/api/staff-auth/login/start`,
+      {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ return_to: '/staff' }),
+      },
+    ), env, executionContext);
+    expect(response.status).toBe(503);
+    expect(providerCalls).toBe(0);
+    expect(await response.text()).not.toContain('anonymous-secret-value');
+  });
+});
+
+function bindings(): CloudflareWorkerBindings {
+  return {
+    APP_ENVIRONMENT: 'production',
+    APP_ORIGIN: origin,
+    APP_ALLOWED_ORIGINS: origin,
+    DB: {
+      prepare() { throw new Error('database_not_used'); },
+      async batch() { throw new Error('database_not_used'); },
+    },
+    FILE_OBJECT_STORAGE_R2: new AnonymousR2Bucket(),
+    WEB_ASSETS: {
+      async fetch(request: Request) {
+        return new URL(request.url).pathname.startsWith('/assets/')
+          ? new Response('export {};', { headers: { 'Content-Type': 'text/javascript' } })
+          : new Response('<!doctype html><div id="root"></div>', {
+              headers: { 'Content-Type': 'text/html; charset=utf-8' },
+            });
+      },
+    },
+    CUSTOMER_SESSION_SECRET: 'anonymous-secret-value',
+    SCHEDULED_OPERATIONS_ENABLED: 'false',
+    DRIVE_ARCHIVE_ENABLED: 'false',
+    DRIVE_ARCHIVE_COPY_ENABLED: 'false',
+    DRIVE_ARCHIVE_PROXY_READ_ENABLED: 'false',
+    DRIVE_ARCHIVE_R2_DELETE_ENABLED: 'false',
+    FEISHU_WORKBENCH_SYNC_ENABLED: 'false',
+    FEISHU_WORKBENCH_CALLBACK_ENABLED: 'false',
+    STAFF_AUTH_ENABLED: 'false',
+    STAFF_MCP_ENABLED: 'false',
+    STAFF_MCP_LOCAL_MOCK_ENABLED: 'false',
+    OPERATIONAL_ALERT_MODE: 'disabled',
+  } as unknown as CloudflareWorkerBindings;
+}
+
+function fetchWorker(pathname: string, init?: RequestInit): Promise<Response> {
+  return worker.fetch(
+    new Request(`${origin}${pathname}`, init), bindings(), executionContext,
+  );
+}

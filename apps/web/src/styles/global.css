@@ -1325,22 +1325,24 @@ select:disabled {
 }
 
 .progress {
+  width: 100%;
   height: 8px;
+  appearance: none;
   overflow: hidden;
+  border: 0;
   border-radius: var(--radius-pill);
   background: var(--color-surface-subtle);
 }
 
-.progress > span {
-  display: block;
-  height: 100%;
+.progress::-webkit-progress-bar {
   border-radius: inherit;
-  background: var(--color-brand);
+  background: var(--color-surface-subtle);
 }
 
-.progress.is-indeterminate > span {
-  width: 38%;
-  animation: progress-slide 1.4s ease-in-out infinite;
+.progress::-webkit-progress-value,
+.progress::-moz-progress-bar {
+  border-radius: inherit;
+  background: var(--color-brand);
 }
 
 .alert {
@@ -1437,6 +1439,10 @@ select:disabled {
   border-radius: var(--radius-pill);
   background: var(--color-border);
   animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton > span:last-child:not(:only-child) {
+  width: 68%;
 }
 
 .identity-entry,
@@ -3386,16 +3392,6 @@ select:disabled {
 
   50% {
     opacity: 1;
-  }
-}
-
-@keyframes progress-slide {
-  from {
-    transform: translateX(-100%);
-  }
-
-  to {
-    transform: translateX(280%);
   }
 }
 

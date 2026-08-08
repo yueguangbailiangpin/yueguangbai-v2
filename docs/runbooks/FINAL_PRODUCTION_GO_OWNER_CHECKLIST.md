@@ -23,7 +23,7 @@ Gate 1 未通过：`NO-GO`。
 
 ## Gate 2：Cloudflare、域名和生产配置
 
-必须先完成并验收独立 `production-cloudflare-web-r2-release-configuration` Change；当前仓库示例不能直接部署。
+独立 `production-cloudflare-web-r2-release-configuration` 已提供本地 adapter、不可部署模板、preflight 和 runbook；真实资源、Git 外配置、Secret、部署与网络仍全部未执行。以下每项继续保持未勾选，模板或本地测试不能替代。
 
 - [ ] 创建全新的 production D1 与 R2，不复用旧生产资源；另建 staging，记录资源名称/ID到受管配置而非 Git。
 - [ ] 完成 Web 静态托管、SPA 深链 fallback、安全 headers、API 同域/CORS、Worker route/custom domain 与 HTTPS。

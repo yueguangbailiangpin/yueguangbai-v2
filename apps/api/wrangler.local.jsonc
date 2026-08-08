@@ -9,6 +9,8 @@
     "enabled": false
   },
   "vars": {
+    "APP_ENVIRONMENT": "local",
+    "STAFF_AUTH_ENABLED": "false",
     "SCHEDULED_OPERATIONS_ENABLED": "false",
     "SCHEDULED_OPERATIONS_DISABLED_JOBS": "",
     "OPERATIONAL_ALERT_MODE": "disabled"

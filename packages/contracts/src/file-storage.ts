@@ -289,6 +289,28 @@ export interface ObjectStoragePutResult {
   checksumSha256: string;
 }
 
+/**
+ * A failed PUT can be ambiguous after storage accepted the request. Callers
+ * must compensate when `objectMayExist` is true, even without a receipt.
+ */
+export class ObjectStoragePutFailure extends Error {
+  readonly objectMayExist: boolean;
+
+  constructor(
+    message: string,
+    objectMayExist: boolean,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = 'ObjectStoragePutFailure';
+    this.objectMayExist = objectMayExist;
+  }
+}
+
+export function objectStoragePutMayHaveStored(error: unknown): boolean {
+  return error instanceof ObjectStoragePutFailure && error.objectMayExist;
+}
+
 export interface ObjectStorageHead {
   objectKey: string;
   etag: string;

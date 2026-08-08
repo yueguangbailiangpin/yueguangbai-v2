@@ -1,0 +1,70 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "REQUIRED_STAGING_WORKER_NAME",
+  "account_id": "REQUIRED_STAGING_ACCOUNT_ID",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-07",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "REQUIRED_STAGING_CUSTOM_DOMAIN",
+      "custom_domain": true
+    }
+  ],
+  "triggers": {
+    "crons": ["REQUIRED_STAGING_CRON"]
+  },
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "WEB_ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "observability": {
+    "enabled": false
+  },
+  "vars": {
+    "APP_ENVIRONMENT": "staging",
+    "APP_ORIGIN": "REQUIRED_STAGING_HTTPS_ORIGIN",
+    "APP_ALLOWED_ORIGINS": "REQUIRED_STAGING_HTTPS_ORIGIN",
+    "SCHEDULED_OPERATIONS_ENABLED": "false",
+    "SCHEDULED_OPERATIONS_DISABLED_JOBS": "",
+    "OPERATIONAL_ALERT_MODE": "disabled",
+    "STAFF_AUTH_ENABLED": "false",
+    "STAFF_AUTH_PROVIDER": "FEISHU",
+    "STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT": "REQUIRED_STAGING_FEISHU_AUTHORIZATION_ENDPOINT",
+    "STAFF_AUTH_FEISHU_TOKEN_ENDPOINT": "REQUIRED_STAGING_FEISHU_TOKEN_ENDPOINT",
+    "STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT": "REQUIRED_STAGING_FEISHU_IDENTITY_ENDPOINT",
+    "STAFF_AUTH_FEISHU_APP_ID": "REQUIRED_STAGING_FEISHU_APP_ID",
+    "STAFF_AUTH_FEISHU_SCOPE": "REQUIRED_STAGING_FEISHU_SCOPE",
+    "STAFF_AUTH_FEISHU_TENANT_KEY": "REQUIRED_STAGING_FEISHU_TENANT_KEY",
+    "STAFF_AUTH_FEISHU_REDIRECT_URI": "REQUIRED_STAGING_FEISHU_REDIRECT_URI",
+    "STAFF_AUTH_ALLOWED_ORIGINS": "REQUIRED_STAGING_HTTPS_ORIGIN",
+    "STAFF_AUTH_ALLOWED_RETURN_TO": "/staff",
+    "DRIVE_ARCHIVE_ENABLED": "false",
+    "DRIVE_ARCHIVE_COPY_ENABLED": "false",
+    "DRIVE_ARCHIVE_PROXY_READ_ENABLED": "false",
+    "DRIVE_ARCHIVE_R2_DELETE_ENABLED": "false",
+    "FEISHU_WORKBENCH_SYNC_ENABLED": "false",
+    "FEISHU_WORKBENCH_CALLBACK_ENABLED": "false",
+    "FEISHU_WORKBENCH_WEB_ORIGIN": "REQUIRED_STAGING_HTTPS_ORIGIN",
+    "STAFF_MCP_ENABLED": "false",
+    "STAFF_MCP_LOCAL_MOCK_ENABLED": "false",
+    "STAFF_MCP_DISABLED_TOOLS": ""
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "REQUIRED_STAGING_D1_NAME",
+      "database_id": "REQUIRED_STAGING_D1_ID",
+      "migrations_dir": "../../migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILE_OBJECT_STORAGE_R2",
+      "bucket_name": "REQUIRED_STAGING_R2_BUCKET_NAME"
+    }
+  ]
+}

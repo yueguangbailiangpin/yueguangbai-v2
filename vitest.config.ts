@@ -9,6 +9,7 @@ export default defineConfig({
     include: [
       'apps/**/*.{test,spec}.{ts,tsx}',
       'packages/**/*.{test,spec}.{ts,tsx}',
+      'scripts/**/*.{test,spec}.mjs',
     ],
     exclude: [
       'apps/web/e2e/**',

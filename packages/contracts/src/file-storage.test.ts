@@ -10,6 +10,8 @@ import {
   isFilePurpose,
   isFileVisibility,
   isSupportedFileMime,
+  ObjectStoragePutFailure,
+  objectStoragePutMayHaveStored,
 } from './file-storage';
 
 describe('file storage contracts', () => {
@@ -62,5 +64,15 @@ describe('file storage contracts', () => {
     expect(isFileEntityType('PAYMENT')).toBe(false);
     expect(isSupportedFileMime('image/svg+xml')).toBe(false);
     expect(isSupportedFileMime('text/html')).toBe(false);
+  });
+
+  it('marks only explicit ambiguous PUT failures as possibly stored', () => {
+    expect(objectStoragePutMayHaveStored(
+      new ObjectStoragePutFailure('ambiguous', true),
+    )).toBe(true);
+    expect(objectStoragePutMayHaveStored(
+      new ObjectStoragePutFailure('rejected', false),
+    )).toBe(false);
+    expect(objectStoragePutMayHaveStored(new Error('unknown'))).toBe(false);
   });
 });
