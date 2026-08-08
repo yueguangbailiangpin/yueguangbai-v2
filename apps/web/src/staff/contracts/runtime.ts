@@ -234,3 +234,60 @@ export type AcquisitionChannel = z.output<typeof acquisitionChannelSchema>;
 export type AcquisitionAssignment = z.output<typeof acquisitionAssignmentSchema>;
 export type AcquisitionConsultation = z.output<typeof acquisitionConsultationSchema>;
 export type AcquisitionLead = z.output<typeof acquisitionLeadSchema>;
+
+export const dashboardProfitSchema = z.object({
+  amount_cny_fen: signedIntegerString,
+  valid_order_count: z.number().int().nonnegative(),
+  conflict_order_count: z.number().int().nonnegative(),
+}).strict();
+const dashboardStageSchema = z.object({
+  code: z.string(), label: z.string(), count: z.number().int().nonnegative(),
+  conversion_rate_bps: z.number().int().min(0).max(10_000).nullable(),
+}).strict();
+const dashboardPerformanceSchema = z.object({
+  dimension_id: z.string(), dimension_name: z.string(),
+  buyer_lead_count: z.number().int().nonnegative(),
+  buyer_registered_count: z.number().int().nonnegative(),
+  buyer_reservation_count: z.number().int().nonnegative(),
+  buyer_formal_order_count: z.number().int().nonnegative(),
+  buyer_business_completed_count: z.number().int().nonnegative(),
+  buyer_no_participation_count: z.number().int().nonnegative(),
+  seller_lead_count: z.number().int().nonnegative(),
+  seller_cooperation_count: z.number().int().nonnegative(),
+  current_owner_active_lead_count: z.number().int().nonnegative().nullable(),
+  consultation_count: z.number().int().nonnegative().nullable(),
+  projected_profit: dashboardProfitSchema,
+  completed_profit: dashboardProfitSchema,
+}).strict();
+export const adminDashboardSummarySchema = z.object({ summary: z.object({
+  window: z.object({ key: z.enum(['TODAY','WEEK','MONTH']), from_date: z.string(),
+    to_date: z.string(), timezone: z.literal('Asia/Shanghai'), data_as_of: epoch }).strict(),
+  cards: z.object({ new_buyers: z.number().int().nonnegative(),
+    reservations: z.number().int().nonnegative(), formal_orders: z.number().int().nonnegative(),
+    business_completions: z.number().int().nonnegative() }).strict(),
+  buyer_funnel: z.object({ stages: z.array(dashboardStageSchema),
+    no_participation_count: z.number().int().nonnegative() }).strict(),
+  seller_funnel: z.object({ stages: z.array(dashboardStageSchema) }).strict(),
+  projected_profit: dashboardProfitSchema, completed_profit: dashboardProfitSchema,
+  staff_performance: z.array(dashboardPerformanceSchema),
+  channel_performance: z.array(dashboardPerformanceSchema),
+}).strict() }).strict();
+const trendPointSchema = z.object({
+  from_date: z.string(), to_date: z.string(), new_buyers: z.number().int().nonnegative(),
+  reservations: z.number().int().nonnegative(), formal_orders: z.number().int().nonnegative(),
+  business_completions: z.number().int().nonnegative(),
+  projected_profit: dashboardProfitSchema, completed_profit: dashboardProfitSchema,
+}).strict();
+export const adminDashboardTrendSchema = z.object({ trend: z.object({
+  granularity: z.enum(['DAY','WEEK','MONTH']), from_date: z.string(), to_date: z.string(),
+  timezone: z.literal('Asia/Shanghai'), data_as_of: epoch, points: z.array(trendPointSchema),
+}).strict() }).strict();
+export const adminDashboardDrillDownSchema = z.object({ drill_down: z.object({
+  metric: z.enum(['NEW_BUYERS','RESERVATIONS','FORMAL_ORDERS','BUSINESS_COMPLETIONS',
+    'PROJECTED_PROFIT_CONFLICTS','COMPLETED_PROFIT_CONFLICTS']),
+  from_date: z.string(), to_date: z.string(), timezone: z.literal('Asia/Shanghai'),
+  data_as_of: epoch, items: z.array(z.object({ reference_id: z.string(),
+    business_date: z.string(), status: z.string() }).strict()), next_cursor: z.string().nullable(),
+}).strict() }).strict();
+
+export type AdminDashboardSummary = z.output<typeof adminDashboardSummarySchema>['summary'];

@@ -10,7 +10,7 @@
 
 未来若外部消费者需要 breaking HTTP 版本，必须建立独立 Change，定义并存、迁移和退役；不得把当前 `/api/*` 静默重命名为 `/api/v2/*`。
 
-完整的 146 个 `/api/*` 端点及 `/health` 基线见 [`V2_API_ROUTE_INVENTORY.md`](./V2_API_ROUTE_INVENTORY.md)。该 inventory 由自动验证器与默认 App 的运行时 route table 对照，route count 必须与当前 Change 同步。
+完整的 174 个 `/api/*` 端点及 `/health` 基线见 [`V2_API_ROUTE_INVENTORY.md`](./V2_API_ROUTE_INVENTORY.md)。该 inventory 由自动验证器与默认 App 的运行时 route table 对照，route count 必须与当前 Change 同步。
 
 ## 2. 响应
 

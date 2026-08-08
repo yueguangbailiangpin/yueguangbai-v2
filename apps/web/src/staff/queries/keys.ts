@@ -14,4 +14,11 @@ export const staffWorkbenchKeys = Object.freeze({
   acquisitionConsultationHistory: (id: string) => ['staff', 'acquisition', 'consultations', id, 'history'] as const,
   acquisitionLeads: (type: string|null) => ['staff', 'acquisition', 'leads', type] as const,
   acquisitionFunnel: (from: string, to: string) => ['staff', 'acquisition', 'funnel', from, to] as const,
+  adminDashboard: ['staff', 'admin-business-dashboard'] as const,
+  adminDashboardSummary: (authorizationVersion: number, window: string) =>
+    ['staff', 'admin-business-dashboard', authorizationVersion, 'summary', window] as const,
+  adminDashboardTrend: (authorizationVersion: number, from: string, to: string, granularity: string) =>
+    ['staff', 'admin-business-dashboard', authorizationVersion, 'trend', from, to, granularity] as const,
+  adminDashboardDrillDown: (authorizationVersion: number, metric: string, from: string, to: string, cursor: string|null) =>
+    ['staff', 'admin-business-dashboard', authorizationVersion, 'drill-down', metric, from, to, cursor] as const,
 });

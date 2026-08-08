@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ACQUISITION_HTTP_PATHS,
+  ADMIN_BUSINESS_DASHBOARD_PATHS,
   BUYER_SELF_REGISTRATION_HTTP_PATHS,
   CUSTOMER_SECURITY_HTTP_PATHS,
   CUSTOMER_AUTH_HTTP_PATHS,
@@ -66,7 +67,7 @@ describe('API contract baseline alignment', () => {
     const documented = documentedRoutes().sort();
     expect(new Set(actual).size, 'non-contiguous duplicate registration').toBe(actual.length);
     expect(documented, 'route inventory drift').toEqual(actual);
-    expect(actual).toHaveLength(172);
+    expect(actual).toHaveLength(175);
     expect(actual.filter((route) => route.startsWith('GET /api/'))).not.toHaveLength(0);
     expect(actual.some((route) => route.includes('/api/v2/'))).toBe(false);
   });
@@ -74,6 +75,7 @@ describe('API contract baseline alignment', () => {
   it('keeps every shared HTTP path constant registered', () => {
     const constants = [
       ACQUISITION_HTTP_PATHS,
+      ADMIN_BUSINESS_DASHBOARD_PATHS,
       CUSTOMER_AUTH_HTTP_PATHS,
       BUYER_SELF_REGISTRATION_HTTP_PATHS,
       CUSTOMER_SECURITY_HTTP_PATHS,
@@ -103,6 +105,7 @@ describe('API contract baseline alignment', () => {
       path.join(root, 'apps/web/src/auth'),
       path.join(root, 'apps/web/src/files'),
       path.join(root, 'apps/web/src/buyer/registration'),
+      path.join(root, 'apps/web/src/staff'),
     ].flatMap(productionWebFiles);
     const candidates = files.flatMap((file) => {
       const source = readFileSync(file, 'utf8');
