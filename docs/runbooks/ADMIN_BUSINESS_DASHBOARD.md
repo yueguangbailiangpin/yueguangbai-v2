@@ -2,12 +2,12 @@
 
 ## 本地验收
 
-1. 将本地 D1 迁移到仓库当前版本，并确认 `app_schema_state.schema_version=36`。
-2. 运行 `npm run verify:admin-dashboard`。脚本会拒绝任何高于 `0036` 的 Migration，使用真实本地 D1 执行查询计划，并确认规范财务视图和 BigInt 聚合边界。
+1. 将本地 D1 迁移到仓库当前版本；本次最终本地准备审计的连续末号为 `0037`，确认 `app_schema_state.schema_version=37`。
+2. 运行 `npm run verify:admin-dashboard`。脚本会验证连续 Migration、0036 获客与 0037 排期的明确归属，再使用真实本地 D1 执行查询计划并确认规范财务视图和 BigInt 聚合边界；后续合法 Migration 不得被误判为管理员看板自行拥有 Schema。
 3. 运行 `npm run test:admin-dashboard`、`npm run test:admin-dashboard:browser` 和 `npm run check:admin-dashboard`。
 4. 再运行仓库完整 D1、财务、授权、安全、类型检查与构建门禁，以及 OpenSpec strict 校验。
 
-查询计划允许对当前有界核心事实表执行范围扫描；归档完成、获客咨询和线索链接必须分别命中现有 `idx_order_archive_closures_due`、`idx_acquisition_consultations_date`、`idx_acquisition_lead_links_target`。如果真实计划或容量测试表明需要新索引，停止本 Change，不得创建 `0037`，交由后续串行 Migration 治理。
+查询计划允许对当前有界核心事实表执行范围扫描；归档完成、获客咨询和线索链接必须分别命中现有 `idx_order_archive_closures_due`、`idx_acquisition_consultations_date`、`idx_acquisition_lead_links_target`。如果真实计划或容量测试表明需要新索引，必须建立独立后续 Change 并取得下一连续 Migration；管理员看板仍保持 `NO_SCHEMA_CHANGE`。
 
 ## 故障判断
 

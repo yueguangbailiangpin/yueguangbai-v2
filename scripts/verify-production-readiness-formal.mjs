@@ -23,16 +23,18 @@ for(const marker of ['MISSING','ORPHAN','DUPLICATE','SIZE_MISMATCH','MIME_MISMAT
 for(const marker of ['worker_5xx','login_anomaly','job_stale_or_backlog','file_integrity','drive_dependency','feishu_dependency','mcp_dependency','d1_dependency','r2_dependency','capacity','PROVIDER_INDEPENDENT_REQUIRED']) assert(controls.includes(marker),`alert control missing: ${marker}`);
 for(const marker of ['attestation_hmac_mismatch','release_commit_mismatch','bundle_attestation_mismatch','invalid_backup_manifest','insecure_backup_key_permissions','restore_target_exists','R2_REHYDRATION_REQUIRED','daily_orders: 200','staff_count: 8']) assert(tests.includes(marker),`test evidence missing: ${marker}`);
 assert(runbook.includes('备份创建成功不等于可恢复'),'backup/restore distinction missing');
-assert(runbook.includes('不创建 `0035`'),'Migration decision missing');
+assert(runbook.includes('连续 `0001`–`0037`'),'current Migration baseline missing');
+assert(runbook.includes('本最终本地准备 Change 同样不创建新 Migration'),'current no-Migration decision missing');
 assert(acceptance.includes('本地候选通过、生产未批准/未上线'),'truthful release conclusion missing');
 assert((acceptance.match(/P0-0[1-8]/gu)??[]).length===8,'external P0 matrix incomplete');
 assert(security.includes('react-router 8.3.0'),'official patched dependency disposition missing');
 const migrations=readdirSync(path.join(root,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
-assert(migrations.length===36&&migrations.at(-2)==='0035_staff_four_role_consolidation.sql'&&migrations.at(-1)==='0036_staff_acquisition_funnel_workbench.sql','schema must be the governed 0001-0036 chain');
+assert(migrations.length===37&&migrations.at(-2)==='0036_staff_acquisition_funnel_workbench.sql'&&migrations.at(-1)==='0037_product_reservation_order_scheduling.sql','schema must be the governed 0001-0037 chain');
+assert(migrations.every((file,index)=>Number(file.slice(0,4))===index+1),'Migration chain must be continuous');
 const webPackage=JSON.parse(read('apps/web/package.json'));
 assert(webPackage.dependencies?.['react-router']==='8.3.0','react-router must be pinned to 8.3.0');
 assert(webPackage.dependencies?.['react-router-dom']===undefined,'react-router-dom must be removed');
-console.log(JSON.stringify({status:'PASS',change:'production-readiness-backup-validation',requirements:5,scenarios:10,purpose:'NON_TBD',migration:'NO_0035_SCHEMA_34',backup:'HKDF_HMAC_RELEASE_BOUND_RESTORE_REQUIRED',reconciliation:'OFFLINE_NO_DELETE',capacity:'8_STAFF_200_ORDERS',external_gates:'8_PRODUCTION_GO_BLOCKERS',production_go:'NOT_APPROVED'},null,2));
+console.log(JSON.stringify({status:'PASS',change:'production-readiness-backup-validation',requirements:5,scenarios:10,purpose:'NON_TBD',migration:'M10_NO_SCHEMA_CHANGE_CURRENT_CHAIN_0001_0037',backup:'HKDF_HMAC_RELEASE_BOUND_RESTORE_REQUIRED',reconciliation:'OFFLINE_NO_DELETE',capacity:'8_STAFF_200_ORDERS',external_gates:'8_PRODUCTION_GO_BLOCKERS',production_go:'NOT_APPROVED'},null,2));
 
 function read(file){return readFileSync(path.join(root,file),'utf8');}
 function assert(value,message){if(!value)throw new Error(message);}

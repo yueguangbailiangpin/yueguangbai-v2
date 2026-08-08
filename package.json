@@ -85,6 +85,7 @@
     "reconcile:files:offline": "node scripts/reconcile-file-manifests.mjs",
     "dry-run:production-readiness": "node scripts/dry-run-production-readiness.mjs",
     "verify:production-readiness:formal": "node scripts/verify-production-readiness-formal.mjs",
+    "verify:final-production-go:local": "node scripts/verify-final-production-go-local-preparation.mjs",
     "test:production-readiness": "vitest run apps/api/src/production-readiness packages/contracts/src/production-readiness.test.ts",
     "check:production-readiness": "npm run db:verify && npm run verify:migration-guards && npm run test:production-readiness && npm run dry-run:production-readiness && npm run verify:production-readiness:formal && npm run typecheck --workspace @ygb/testkit && npm run typecheck --workspace @ygb/api && npm run typecheck --workspace @ygb/contracts",
     "test:drive-archive": "vitest run apps/api/src/cold-image-archive packages/contracts/src/cold-image-archive.test.ts apps/api/src/scheduled-operations packages/contracts/src/scheduled-operations.test.ts",

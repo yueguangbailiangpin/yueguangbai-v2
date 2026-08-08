@@ -25,4 +25,4 @@ Migration `0036_staff_acquisition_funnel_workbench.sql` 只允许从 schema 35 �
 - 已有获客事实：不回放旧程序覆盖渠道/身份/关联。通过新的连续 Migration 前向修复，保留原事件、Audit、幂等结果和不可变来源。
 - 匿名化已成功：已清除的私人身份不从日志、缓存或临时文件恢复。如发现豁免规则缺陷，先停作业，保留审计事实，经独立决策后前向修复。
 
-恢复或前向修复后重新运行专项、全仓和 OpenSpec strict 验证。在没有正式 Implementation Verify 和总控验收前，保持 Change 未归档、Production GO 未批准。
+恢复或前向修复后重新运行专项、全仓和 OpenSpec strict 验证。该 Change 已完成本地验收、同步并归档，但归档不构成生产 Secret、远程 Migration、入口、定时作业或 Production GO 授权；这些外部项目仍须由总控逐项批准。
