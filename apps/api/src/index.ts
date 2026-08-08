@@ -39,6 +39,7 @@ import { registerScheduledOperationRoutes } from './scheduled-operations';
 import { registerColdImageArchiveRoutes } from './cold-image-archive';
 import { registerFeishuWorkbenchRoutes } from './feishu-workbench';
 import { registerAcquisitionRoutes } from './acquisition';
+import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
 
 const app = createApp();
 
@@ -60,6 +61,7 @@ app.use('/api/staff/*', staffSessionMiddleware());
 registerStaffAssignmentRoutes(app);
 registerStaffCustomerSecurityRoutes(app);
 registerAcquisitionRoutes(app);
+registerAdminBusinessDashboardRoutes(app);
 registerStaffCatalogWorkflowRoutes(app);
 registerMarketplaceFoundationRoutes(app);
 registerStaffReviewRoutes(app);

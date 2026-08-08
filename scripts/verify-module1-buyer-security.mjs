@@ -187,6 +187,7 @@ const module4SellerAllowlist = new Set([
   'apps/web/src/seller/queries/keys.ts',
   'apps/web/src/seller/routes/SellerLayout.tsx',
   'apps/web/src/staff/StaffWorkbench.tsx',
+  'apps/web/src/staff/admin-dashboard/AdminBusinessDashboard.tsx',
   'apps/web/src/staff/acquisition/AcquisitionWorkbench.tsx',
   'apps/web/src/staff/api/client.ts',
   'apps/web/src/staff/contracts/runtime.ts',

@@ -11,6 +11,8 @@ import {
   acquisitionAssignmentSchema, acquisitionChannelSchema,
   acquisitionConsultationEventSchema, acquisitionConsultationSchema,
   acquisitionFunnelSchema, acquisitionLeadSchema,
+  adminDashboardSummarySchema, adminDashboardTrendSchema,
+  adminDashboardDrillDownSchema,
 } from '../contracts/runtime';
 
 const acquisitionChannelResultSchema = z.object({ channel: acquisitionChannelSchema, replayed: z.boolean() }).strict();
@@ -103,4 +105,20 @@ export const staffApi = Object.freeze({
   acquisitionFunnel: (client: QueryClient, from: string, to: string, signal?: AbortSignal) => read(client,
     `/api/staff/acquisition/funnel?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,
     z.object({ funnel: acquisitionFunnelSchema }).strict(), signal),
+  adminDashboardSummary: (client: QueryClient, window: 'TODAY'|'WEEK'|'MONTH', signal?: AbortSignal) => read(client,
+    `/api/staff/admin-business-dashboard/summary?window=${window}`,
+    adminDashboardSummarySchema, signal),
+  adminDashboardTrend: (client: QueryClient, input: { from: string; to: string; granularity: 'DAY'|'WEEK'|'MONTH' }, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ from_date: input.from, to_date: input.to,
+      granularity: input.granularity });
+    return read(client, `/api/staff/admin-business-dashboard/trends?${query}`,
+      adminDashboardTrendSchema, signal);
+  },
+  adminDashboardDrillDown: (client: QueryClient, input: { metric: string; from: string; to: string; cursor: string|null }, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ metric: input.metric, from_date: input.from,
+      to_date: input.to, limit: '25' });
+    if (input.cursor) query.set('cursor', input.cursor);
+    return read(client, `/api/staff/admin-business-dashboard/drill-down?${query}`,
+      adminDashboardDrillDownSchema, signal);
+  },
 });
