@@ -252,23 +252,35 @@ export async function listAcquisitionLeads(
   const cursor = decodeCursor(input.cursor);
   const types = input.leadType === null ? allowed : [input.leadType];
   const typePlaceholders = types.map(() => '?').join(',');
+  const visibility = visibilitySql(actor, 'lead');
   const rows = await database.prepare(`${leadProjectionSql(`lead.lead_type IN (${typePlaceholders})
-    AND (? IS NULL OR lead.created_at<? OR (lead.created_at=? AND lead.id<?))`)}
+    AND (? IS NULL OR lead.created_at<? OR (lead.created_at=? AND lead.id<?))
+    AND ${visibility.sql}`)}
     ORDER BY lead.created_at DESC,lead.id DESC LIMIT ?`).bind(
       ...types, cursor?.createdAt ?? null, cursor?.createdAt ?? null,
-      cursor?.createdAt ?? null, cursor?.id ?? null, input.limit + 1,
+      cursor?.createdAt ?? null, cursor?.id ?? null, ...visibility.bindings,
+      input.limit + 1,
     ).all<LeadRow>();
-  const visible: AcquisitionLeadDto[] = [];
-  for (const row of rows.results) {
-    if (await canSeeLead(database, actor, row)) visible.push(toLead(row));
-    if (visible.length > input.limit) break;
-  }
+  const visible = rows.results.map(toLead);
   const items = visible.slice(0, input.limit);
   const last = items.at(-1);
   return {
     items,
     next_cursor: visible.length > input.limit && last
       ? encodeCursor({ createdAt: last.created_at, id: last.lead_id }) : null,
+  };
+}
+
+function visibilitySql(actor: AssignmentStaffAuthorization, alias: string) {
+  if (actor.roles.has('owner')) return { sql: '1=1', bindings: [] as unknown[] };
+  const teamIds = actor.permissions.has('TASK_VIEW_TEAM') ? actor.leaderTeamIds : [];
+  const placeholders = teamIds.length ? teamIds.map(() => '?').join(',') : "''";
+  return {
+    sql: `(${alias}.origin_staff_id=? OR ${alias}.current_owner_staff_id=?
+      OR EXISTS (SELECT 1 FROM staff_team_memberships membership
+        WHERE membership.staff_id IN (${alias}.origin_staff_id,${alias}.current_owner_staff_id)
+          AND membership.status='ACTIVE' AND membership.team_id IN (${placeholders})))`,
+    bindings: [actor.staffId, actor.staffId, ...teamIds] as unknown[],
   };
 }
 

@@ -13,6 +13,8 @@ import {
   createAcquisitionLead,
   followUpAcquisitionLead,
   invalidateAcquisitionLead,
+  listAcquisitionLeads,
+  transferAcquisitionLead,
 } from './leads';
 import { runAcquisitionMaintenance } from './maintenance';
 import { readAcquisitionFunnel } from './funnel';
@@ -93,6 +95,35 @@ describe('staff acquisition funnel commands', () => {
       .rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
   });
 
+  it('applies staff scope before pagination and keeps origin attribution after transfer', async () => {
+    database = db();
+    const ownChannel = await seedChannel(database, 'XHS_OWN');
+    const otherChannel = await seedChannel(database, 'XHS_OTHER');
+    await seedAssignment(database, 'staff-pre', 'BUYER', ownChannel.channel.channel_id);
+    await seedAssignment(database, 'staff-pre-other', 'BUYER', otherChannel.channel.channel_id);
+    const own = await createAcquisitionLead(database, {
+      leadType: 'BUYER', wechatId: 'own_page_wx', displayName: null, note: null,
+    }, command(preSales(), 'page-own-0001', JAN_1_2025), SECRET);
+    for (const [index, wechat] of ['other_page_1','other_page_2'].entries()) {
+      await createAcquisitionLead(database, {
+        leadType: 'BUYER', wechatId: wechat, displayName: null, note: null,
+      }, command(auth('pre_sales','staff-pre-other'), `page-other-000${index + 1}`,
+        JAN_1_2025 + index + 1), SECRET);
+    }
+    const page = await listAcquisitionLeads(database, preSales(), {
+      leadType: 'BUYER', cursor: null, limit: 1,
+    });
+    expect(page.items.map((item) => item.lead_id)).toEqual([own.lead.lead_id]);
+
+    const transferred = await transferAcquisitionLead(database, {
+      leadId: own.lead.lead_id, expectedVersion: 1,
+      newOwnerStaffId: 'staff-pre-other', reason: '负责人调整',
+    }, command(preSales(), 'transfer-origin-0001', JAN_1_2025 + 10));
+    expect(transferred.lead).toMatchObject({
+      origin_staff_id: 'staff-pre', current_owner_staff_id: 'staff-pre-other',
+    });
+  });
+
   it('records Beijing-date aggregate corrections with immutable event history', async () => {
     database = db();
     const channel = await seedChannel(database, 'XHS_BUYER');
@@ -133,6 +164,10 @@ describe('staff acquisition funnel commands', () => {
 
   it('fails closed for missing/overlapping configuration and buyer_refund', async () => {
     database = db();
+    await expect(createAcquisitionChannel(database, {
+      code: 'FORBIDDEN_CHANNEL', channelType: 'OTHER', displayName: '无权渠道',
+    }, command(preSales(), 'forbidden-channel-0001', JAN_1_2025)))
+      .rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(createAcquisitionLead(database, {
       leadType: 'BUYER', wechatId: 'missing_channel', displayName: null, note: null,
     }, command(preSales(), 'missing-channel-0001', JAN_1_2025), SECRET))
@@ -154,6 +189,10 @@ describe('staff acquisition funnel commands', () => {
     await expect(createAcquisitionLead(database, {
       leadType: 'BUYER', wechatId: 'refund_forbidden', displayName: null, note: null,
     }, command(buyerRefund(), 'refund-forbidden-0001', JAN_1_2025), SECRET))
+      .rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(createAcquisitionLead(database, {
+      leadType: 'SELLER', wechatId: 'wrong_duty', displayName: null, note: null,
+    }, command(preSales(), 'wrong-duty-0001', JAN_1_2025), SECRET))
       .rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });
@@ -330,12 +369,14 @@ function db(): SqliteDatabase {
       created_at,updated_at,disabled_at,session_version) VALUES
       ('staff-owner-acq','总管理员','ACTIVE',1,1,1000,1000,NULL,1),
       ('staff-pre','售前','ACTIVE',1,1,1000,1000,NULL,1),
+      ('staff-pre-other','售前乙','ACTIVE',1,1,1000,1000,NULL,1),
       ('staff-seller','卖家对接','ACTIVE',1,1,1000,1000,NULL,1),
       ('staff-refund','买家返款','ACTIVE',1,1,1000,1000,NULL,1);
     INSERT INTO staff_role_assignments (staff_id,role_code,status,assigned_by_staff_id,
       assigned_at,revoked_at,created_at,updated_at) VALUES
       ('staff-owner-acq','owner','ACTIVE',NULL,1000,NULL,1000,1000),
       ('staff-pre','pre_sales','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
+      ('staff-pre-other','pre_sales','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
       ('staff-seller','seller_ops','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
       ('staff-refund','buyer_refund','ACTIVE','staff-owner-acq',1000,NULL,1000,1000);
     INSERT INTO staff_team_memberships (staff_id,team_id,status,joined_at,ended_at,
