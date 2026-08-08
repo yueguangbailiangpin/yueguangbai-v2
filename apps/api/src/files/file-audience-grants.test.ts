@@ -198,7 +198,7 @@ describe('explicit file audiences', () => {
       {
         type: 'STAFF',
         id: 'staff-file-denied',
-        roles: ['buyer_support'],
+        roles: ['pre_sales'],
       },
       { type: 'STAFF_SESSION', staffId: 'staff-file-denied' },
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
@@ -563,7 +563,7 @@ function seedAudienceIdentities(target: SqliteDatabase): void {
     ) VALUES
       ('staff-file-owner', 'owner', 'ACTIVE', NULL,
         1000, NULL, 1000, 1000),
-      ('staff-file-denied', 'buyer_support', 'ACTIVE', NULL,
+      ('staff-file-denied', 'pre_sales', 'ACTIVE', NULL,
         1000, NULL, 1000, 1000);
 
     INSERT INTO staff_permission_overrides (

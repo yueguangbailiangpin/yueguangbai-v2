@@ -106,7 +106,7 @@ export interface StaffMcpCurrentActor {
   staffId: string;
   displayName: string;
   authorizationVersion: number;
-  roles: ReadonlySet<StaffRoleCode>;
+  role: StaffRoleCode;
   permissions: ReadonlySet<StaffPermissionCode>;
   dataScope: StaffDataScope;
   memberTeamIds: readonly string[];

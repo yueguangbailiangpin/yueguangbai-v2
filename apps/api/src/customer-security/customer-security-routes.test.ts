@@ -156,7 +156,7 @@ function createDb() {
 function actor(): AssignmentStaffAuthorization {
   return {
     staffId: 'staff-route', displayName: '普通客服', staffStatus: 'ACTIVE',
-    authorizationVersion: 1, roles: new Set(['buyer_support']),
+    authorizationVersion: 1, roles: new Set(['pre_sales']),
     permissions: new Set(), memberTeamIds: ['team-route'], leaderTeamIds: [],
   };
 }

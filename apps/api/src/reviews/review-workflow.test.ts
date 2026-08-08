@@ -407,7 +407,7 @@ describe('Phase 5A review evidence workflow', () => {
     )).rejects.toMatchObject({ code: 'REVIEW_STATE_CONFLICT' });
   });
 
-  it('requires owner/after_sales plus REVIEW_DECIDE, including effective personal deny', async () => {
+  it('requires owner/buyer_refund plus REVIEW_DECIDE, including effective personal deny', async () => {
     const fixture = await setupConfirmedOrder();
     seedReviewFile(database!, { suffix: 11, ownerBuyerId: 'buyer-review-1' });
     const submitted = await submitReviewEvidence(
@@ -519,7 +519,7 @@ describe('Phase 5A review evidence workflow', () => {
     const state = await database!.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(state?.schema_version).toBe(34);
+    expect(state?.schema_version).toBe(35);
   });
 });
 
@@ -578,14 +578,14 @@ function ownerActor(): StaffReviewActor {
 
 function afterSalesActor(): StaffReviewActor {
   return reviewActor(
-    ['after_sales'],
+    ['buyer_refund'],
     ['REVIEW_DECIDE'],
     'staff-review-after-sales',
   );
 }
 
 function afterSalesDeniedActor(): StaffReviewActor {
-  return reviewActor(['after_sales'], [], 'staff-review-after-sales');
+  return reviewActor(['buyer_refund'], [], 'staff-review-after-sales');
 }
 
 function otherRoleActor(): StaffReviewActor {
@@ -653,7 +653,7 @@ async function seedFormalOrderPrerequisites(
     ) VALUES
       ('staff-review-pre-sales','pre_sales','ACTIVE','staff-review-owner',1000,NULL,1000,1000),
       ('staff-review-owner','owner','ACTIVE',NULL,1000,NULL,1000,1000),
-      ('staff-review-after-sales','after_sales','ACTIVE','staff-review-owner',1000,NULL,1000,1000),
+      ('staff-review-after-sales','buyer_refund','ACTIVE','staff-review-owner',1000,NULL,1000,1000),
       ('staff-review-other','seller_ops','ACTIVE','staff-review-owner',1000,NULL,1000,1000);
     INSERT INTO staff_team_memberships (
       staff_id, team_id, status, joined_at, ended_at, created_at, updated_at

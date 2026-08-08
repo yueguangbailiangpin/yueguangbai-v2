@@ -940,7 +940,7 @@ requireText(staffSessionBoundary, [
   '重新清理',
 ], 'independent Staff Session Boundary');
 requireText(app, [
-  "import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary'",
+  "import { StaffSessionBoundary, useCurrentStaffSession } from './auth/staff/StaffSessionBoundary'",
   '<StaffSessionBoundary><StaffShell /></StaffSessionBoundary>',
   '<StaffSessionBoundary><Routes>',
 ], 'App Staff Session Boundary integration');

@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 describe('encrypted D1 backup and isolated restore', () => {
-  it('backs up schema 34, restores it and verifies rows, finance, relations and smoke reads', async () => {
+  it('backs up schema 35, restores it and verifies rows, finance, relations and smoke reads', async () => {
     const directory = temporaryDirectory();
     const sourcePath = path.join(directory, 'source.sqlite');
     const database = new SqliteDatabase(sourcePath);
@@ -48,6 +48,10 @@ describe('encrypted D1 backup and isolated restore', () => {
     database.exec(`INSERT INTO staff_users (
       id,display_name,status,authorization_version,version,created_at,updated_at,disabled_at
     ) VALUES ('anonymous-owner','匿名负责人','ACTIVE',1,1,1,1,NULL)`);
+    database.exec(`INSERT INTO staff_role_assignments (
+      staff_id,role_code,status,assigned_by_staff_id,assigned_at,
+      revoked_at,created_at,updated_at
+    ) VALUES ('anonymous-owner','owner','ACTIVE',NULL,1,NULL,1,1)`);
     database.close();
     const key = Buffer.alloc(32, 7);
     const backup = await createEncryptedD1Backup({
@@ -56,16 +60,16 @@ describe('encrypted D1 backup and isolated restore', () => {
       key,
       releaseCommitSha: RELEASE_SHA,
       generatedAtUtcMs: 1_786_083_200_000,
-      expectedSchemaVersion: 34,
+      expectedSchemaVersion: 35,
       anonymousFixture: true,
     });
-    expect(backup.manifest.schema_version).toBe(34);
+    expect(backup.manifest.schema_version).toBe(35);
     expect(backup.manifest.release_commit_sha).toBe(RELEASE_SHA);
     expect(backup.manifest.row_counts['staff_users']).toBe(1);
-    expect(backup.manifest.inventory.tables).toHaveLength(150);
+    expect(backup.manifest.inventory.tables).toHaveLength(152);
     expect(backup.manifest.inventory.views).toHaveLength(10);
-    expect(backup.manifest.inventory.triggers).toHaveLength(285);
-    expect(backup.manifest.inventory.indexes).toHaveLength(209);
+    expect(backup.manifest.inventory.triggers).toHaveLength(289);
+    expect(backup.manifest.inventory.indexes).toHaveLength(210);
     expect(backup.manifest.integrity).toEqual({
       integrity_check: 'ok',
       foreign_key_violations: 0,
@@ -84,7 +88,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       key,
       expectedReleaseCommitSha: RELEASE_SHA,
       verifiedAtUtcMs: 1_786_083_201_000,
-      expectedSchemaVersion: 34,
+      expectedSchemaVersion: 35,
     });
     expect(restored.report).toMatchObject({
       status: 'PASS',
@@ -116,7 +120,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       outputDirectory: path.join(directory, 'backup'),
       key,
       releaseCommitSha: RELEASE_SHA,
-      expectedSchemaVersion: 34,
+      expectedSchemaVersion: 35,
       anonymousFixture: true,
     });
     const bytes = readFileSync(backup.bundlePath);
@@ -144,7 +148,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       outputDirectory: path.join(directory, 'backup'),
       key,
       releaseCommitSha: RELEASE_SHA,
-      expectedSchemaVersion: 34,
+      expectedSchemaVersion: 35,
       anonymousFixture: true,
     });
     const restorePath = path.join(directory, 'restored.sqlite');
@@ -186,7 +190,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       key,
       releaseCommitSha: RELEASE_SHA,
       generatedAtUtcMs: 10,
-      expectedSchemaVersion: 34,
+      expectedSchemaVersion: 35,
       anonymousFixture: true,
     });
     const second = await createEncryptedD1Backup({
@@ -195,7 +199,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       key,
       releaseCommitSha: RELEASE_SHA,
       generatedAtUtcMs: 11,
-      expectedSchemaVersion: 34,
+      expectedSchemaVersion: 35,
       anonymousFixture: true,
     });
     const tamperedAttestationPath = path.join(directory, 'tampered-attestation.json');
@@ -260,7 +264,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       outputDirectory: path.join(directory, 'original'),
       key,
       releaseCommitSha: RELEASE_SHA,
-      expectedSchemaVersion: 34,
+      expectedSchemaVersion: 35,
       anonymousFixture: true,
     });
     expect(() => validateBackupManifest({

@@ -35,7 +35,7 @@ describe('customer multi-persona invitation and recovery', () => {
     database = createDb();
     expect(await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).first()).toEqual({ schema_version: 34 });
+    `).first()).toEqual({ schema_version: 35 });
     const triggerNames = (await database.prepare(`
       SELECT name FROM sqlite_schema WHERE type='trigger'
         AND name LIKE 'trg_customer_account_persona%'
@@ -328,7 +328,7 @@ async function register(
 function staffActor(): AssignmentStaffAuthorization {
   return {
     staffId: 'staff-security', displayName: '安全员工', staffStatus: 'ACTIVE',
-    authorizationVersion: 1, roles: new Set(['buyer_support']),
+    authorizationVersion: 1, roles: new Set(['pre_sales']),
     permissions: new Set(), memberTeamIds: ['team-test'], leaderTeamIds: [],
   };
 }

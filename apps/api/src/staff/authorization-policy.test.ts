@@ -7,6 +7,7 @@ import {
   calculateEffectiveStaffAuthorization,
   isOwnerOnlyPermission,
   leaderPermissionPack,
+  roleDefaultPermissions,
 } from './authorization-policy';
 
 function set<T>(...values: T[]): ReadonlySet<T> {
@@ -20,24 +21,29 @@ describe('staff authorization formula', () => {
     expect(deniedOwner.permissions.has('SCHEDULED_OPERATIONS_RUN')).toBe(false);
     expect(grantedNonOwner.permissions.has('SCHEDULED_OPERATIONS_RUN')).toBe(false);
   });
-  it('unions multiple role defaults and personal grants', () => {
+  it('rejects role unions and keeps one role plus personal grants', () => {
+    expect(() => calculateEffectiveStaffAuthorization({
+      roles: set<StaffRoleCode>('pre_sales', 'buyer_refund'),
+      grants: set<StaffPermissionCode>(),
+      denies: set<StaffPermissionCode>(),
+      memberTeamIds: [],
+      leaderTeamIds: [],
+    })).toThrow('invalid_active_staff_role_count');
     const result = calculateEffectiveStaffAuthorization({
-      roles: set<StaffRoleCode>('pre_sales', 'buyer_support'),
+      roles: set<StaffRoleCode>('pre_sales'),
       grants: set<StaffPermissionCode>('SELLER_VIEW'),
       denies: set<StaffPermissionCode>(),
       memberTeamIds: ['team-b', 'team-a'],
       leaderTeamIds: [],
     });
-
     expect(result.permissions.has('ORDER_CONFIRM')).toBe(true);
-    expect(result.permissions.has('BUYER_SUPPORT_NOTE')).toBe(true);
     expect(result.permissions.has('SELLER_VIEW')).toBe(true);
     expect(result.memberTeamIds).toEqual(['team-a', 'team-b']);
   });
 
   it('applies the leader pack only when a leader scope exists', () => {
     const ordinary = calculateEffectiveStaffAuthorization({
-      roles: set<StaffRoleCode>('seller_support'),
+      roles: set<StaffRoleCode>('seller_ops'),
       grants: set<StaffPermissionCode>(),
       denies: set<StaffPermissionCode>(),
       memberTeamIds: ['team-a'],
@@ -46,7 +52,7 @@ describe('staff authorization formula', () => {
     expect(ordinary.permissions.has('TASK_ASSIGN_TEAM')).toBe(false);
 
     const leader = calculateEffectiveStaffAuthorization({
-      roles: set<StaffRoleCode>('seller_support'),
+      roles: set<StaffRoleCode>('seller_ops'),
       grants: set<StaffPermissionCode>(),
       denies: set<StaffPermissionCode>(),
       memberTeamIds: ['team-a'],
@@ -91,5 +97,30 @@ describe('staff authorization formula', () => {
     expect(result.permissions.has('FINANCIAL_CORRECT')).toBe(true);
     expect(result.permissions.has('FINANCIAL_EXPORT')).toBe(false);
     expect(result.permissions.has('TASK_ASSIGN_TEAM')).toBe(false);
+  });
+
+  it('bounds buyer_refund to review, refund and necessary Buyer duties', () => {
+    const defaults = roleDefaultPermissions('buyer_refund');
+    expect(defaults).toEqual(new Set([
+      'TASK_VIEW_OPEN',
+      'TASK_CLAIM',
+      'BUYER_VIEW',
+      'ORDER_VIEW',
+      'REVIEW_VIEW',
+      'REVIEW_DECIDE',
+      'BUYER_REFUND_VIEW',
+      'BUYER_REFUND_RECORD',
+      'ASSIGNMENT_ELIGIBLE_BUYER_AFTER_SALES',
+      'ASSIGNMENT_ELIGIBLE_BUYER_REFUND',
+    ]));
+    for (const excluded of [
+      'FINANCIAL_VIEW',
+      'SELLER_VIEW',
+      'SELLER_MANAGE',
+      'STAFF_MANAGE',
+      'PERMISSION_MANAGE',
+      'BUYER_IDENTITY_HIGH_RISK_MANAGE',
+      'SCHEDULED_OPERATIONS_RUN',
+    ] as const) expect(defaults.has(excluded)).toBe(false);
   });
 });

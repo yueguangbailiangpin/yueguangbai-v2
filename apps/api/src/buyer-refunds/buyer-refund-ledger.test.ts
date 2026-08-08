@@ -601,14 +601,14 @@ function ownerRefundActor(): BuyerRefundStaffActor {
 
 function buyerSupportActor(): BuyerRefundStaffActor {
   return refundActor(
-    ['buyer_support'],
+    ['buyer_refund'],
     ['BUYER_REFUND_VIEW'],
     'staff-review-buyer-support',
   );
 }
 
 function deniedAfterSalesActor(): BuyerRefundStaffActor {
-  return refundActor(['after_sales'], [], 'staff-review-after-sales');
+  return refundActor(['buyer_refund'], [], 'staff-review-after-sales');
 }
 
 function reviewOwnerActor(): StaffReviewActor {
@@ -669,8 +669,8 @@ async function seedFormalOrderPrerequisites(
     ) VALUES
       ('staff-review-pre-sales','pre_sales','ACTIVE','staff-review-owner',1000,NULL,1000,1000),
       ('staff-review-owner','owner','ACTIVE',NULL,1000,NULL,1000,1000),
-      ('staff-review-after-sales','after_sales','ACTIVE','staff-review-owner',1000,NULL,1000,1000),
-      ('staff-review-buyer-support','buyer_support','ACTIVE','staff-review-owner',1000,NULL,1000,1000);
+      ('staff-review-after-sales','buyer_refund','ACTIVE','staff-review-owner',1000,NULL,1000,1000),
+      ('staff-review-buyer-support','buyer_refund','ACTIVE','staff-review-owner',1000,NULL,1000,1000);
     INSERT INTO staff_team_memberships (
       staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
     ) VALUES

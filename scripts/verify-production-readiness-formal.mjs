@@ -28,7 +28,7 @@ assert(acceptance.includes('本地候选通过、生产未批准/未上线'),'tr
 assert((acceptance.match(/P0-0[1-8]/gu)??[]).length===8,'external P0 matrix incomplete');
 assert(security.includes('react-router 8.3.0'),'official patched dependency disposition missing');
 const migrations=readdirSync(path.join(root,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
-assert(migrations.length===34&&migrations.at(-1)==='0034_feishu_sync_dead_letter_categories.sql','schema must remain 34 without 0035');
+assert(migrations.length===35&&migrations.at(-1)==='0035_staff_four_role_consolidation.sql','schema must be the governed 0001-0035 chain');
 const webPackage=JSON.parse(read('apps/web/package.json'));
 assert(webPackage.dependencies?.['react-router']==='8.3.0','react-router must be pinned to 8.3.0');
 assert(webPackage.dependencies?.['react-router-dom']===undefined,'react-router-dom must be removed');

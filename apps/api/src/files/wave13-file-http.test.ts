@@ -118,7 +118,7 @@ describe('Wave 13 File HTTP contract and architecture', () => {
     const actor: FileActor = {
       type: 'STAFF',
       id: 'wave13-file-reader',
-      roles: ['buyer_support'],
+      roles: ['pre_sales'],
     };
     const resource: FileAuthorizationResource = {
       uploadIntentId: 'wave13-file-intent',
@@ -194,7 +194,7 @@ function authorization(
     displayName: 'Wave 13 File Reader',
     staffStatus: 'ACTIVE',
     authorizationVersion: 1,
-    roles: new Set(['buyer_support']),
+    roles: new Set(['pre_sales']),
     permissions,
     memberTeamIds: [],
     leaderTeamIds: [],

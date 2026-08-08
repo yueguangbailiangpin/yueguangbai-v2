@@ -77,7 +77,7 @@ export async function resolveAssignmentStaffAuthorization(
     if (!isStaffRoleCode(row.role_code)) return null;
     roles.add(row.role_code);
   }
-  if (roles.size < 1) return null;
+  if (roles.size !== 1) return null;
 
   const grants = new Set<StaffPermissionCode>();
   const denies = new Set<StaffPermissionCode>();

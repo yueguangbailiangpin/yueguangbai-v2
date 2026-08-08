@@ -14,7 +14,10 @@ import {
   acquireIdempotency,
   type IdempotencyError,
 } from '../foundation/idempotency';
-import { resolveStaffDataScope } from '../staff-assignment';
+import {
+  resolveAssignmentStaffAuthorization,
+  resolveStaffDataScope,
+} from '../staff-assignment';
 import {
   clearStaffSessionCookie,
   readStaffSessionCookie,
@@ -255,6 +258,17 @@ async function callback(
       createdAt: now,
     });
     throw normalized;
+  }
+
+  const authorization = await resolveAssignmentStaffAuthorization(
+    context.env.DB,
+    identity.staff_id,
+  );
+  if (!authorization
+    || authorization.authorizationVersion !== identity.authorization_version) {
+    throw new StaffAuthError('UNAUTHENTICATED', 401, {
+      reason: 'AUTHORIZATION_UNAVAILABLE',
+    });
   }
 
   const existingCookie = readStaffSessionCookie(context);

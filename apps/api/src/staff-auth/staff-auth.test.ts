@@ -162,8 +162,15 @@ describe('Wave 13 Staff authentication and production entry', () => {
       bindings,
     );
     expect(session.status).toBe(200);
-    const sessionText = await session.text();
+    const sessionText = await session.clone().text();
     expect(sessionText).toContain('staff-wave13-owner');
+    expect(await session.json()).toMatchObject({
+      data: {
+        session: {
+          role: { code: 'owner', display_name: '总管理员' },
+        },
+      },
+    });
     for (const forbidden of [
       'token_hash', 'access_token', 'app_secret', 'object_key',
     ]) expect(sessionText).not.toContain(forbidden);
@@ -190,6 +197,47 @@ describe('Wave 13 Staff authentication and production entry', () => {
       env(database),
     );
     expect(response.status).toBe(401);
+  });
+
+  it('does not issue a Staff Session when the active Staff has no active role', async () => {
+    database = createMigratedTestDatabase();
+    seedOwner(database);
+    database.exec(`
+      UPDATE staff_role_assignments
+      SET status='REVOKED',revoked_at=2,
+        revoked_by_staff_id='staff-wave13-owner',
+        revoked_reason='TEST_ZERO_ROLE',updated_at=2
+      WHERE staff_id='staff-wave13-owner' AND status='ACTIVE';
+    `);
+    const bindings = env(database);
+    const start = await app.request(
+      'https://api.example.test/api/staff-auth/login/start',
+      {
+        method: 'POST',
+        headers: {
+          Origin: 'https://staff.example.test',
+          'Sec-Fetch-Site': 'same-site',
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+      bindings,
+    );
+    const startJson = await start.json() as {
+      data: { authorization_url: string };
+    };
+    const state = new URL(startJson.data.authorization_url)
+      .searchParams.get('state');
+    const callback = await app.request(
+      `https://api.example.test/api/staff-auth/feishu/callback?code=test&state=${state}`,
+      { method: 'GET', redirect: 'manual' },
+      bindings,
+    );
+    expect(callback.status).toBe(401);
+    expect(await database.prepare(`
+      SELECT COUNT(*) AS count FROM staff_sessions
+      WHERE staff_id='staff-wave13-owner'
+    `).first()).toEqual({ count: 0 });
   });
 
   it('rejects callback state replay before Provider exchange', async () => {

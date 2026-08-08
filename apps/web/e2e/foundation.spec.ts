@@ -32,7 +32,7 @@ function staffSession() {
   return {
     staff_id: 'staff-local',
     display_name: '本地员工',
-    roles: [],
+    role: { code: 'pre_sales', display_name: '售前' },
     permissions: [],
     data_scope: {
       type: 'GLOBAL',

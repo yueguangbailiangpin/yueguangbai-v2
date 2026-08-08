@@ -10,8 +10,8 @@ describe('Staff MCP migration decision', () => {
     const migrations = readdirSync(resolve(root, 'migrations'))
       .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
       .sort();
-    expect(migrations.at(-1)).toBe('0034_feishu_sync_dead_letter_categories.sql');
-    expect(migrations).toHaveLength(34);
+    expect(migrations.at(-1)).toBe('0035_staff_four_role_consolidation.sql');
+    expect(migrations).toHaveLength(35);
     const foundation = readFileSync(resolve(root, 'migrations/0001_foundation.sql'), 'utf8');
     expect(foundation).toContain('CREATE TABLE audit_events');
     expect(foundation).toContain('trg_audit_events_no_update');
@@ -22,7 +22,7 @@ describe('Staff MCP migration decision', () => {
       const state = await database.prepare(`
         SELECT schema_version FROM app_schema_state WHERE singleton_id=1
       `).first<{ schema_version: number }>();
-      expect(state).toEqual({ schema_version: 34 });
+      expect(state).toEqual({ schema_version: 35 });
     } finally {
       database.close();
     }

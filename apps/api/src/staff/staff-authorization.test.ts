@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe('staff authorization resolver', () => {
-  it('resolves multi-role, override, membership, and leader scope', async () => {
+  it('resolves one role, override, membership, and leader scope', async () => {
     database = createMigratedTestDatabase();
     seedOrganization(database);
 
@@ -44,7 +44,6 @@ describe('staff authorization resolver', () => {
         )
       `),
       role(database, 'staff-1', 'pre_sales'),
-      role(database, 'staff-1', 'buyer_support'),
       database.prepare(`
         INSERT INTO staff_team_memberships (
           staff_id, team_id, status, joined_at, ended_at,
@@ -76,11 +75,7 @@ describe('staff authorization resolver', () => {
     expect(context).not.toBeNull();
     expect(context?.staffId).toBe('staff-1');
     expect(context?.authorizationVersion).toBe(7);
-    expect([...context?.roles ?? []].sort()).toEqual([
-      'buyer_support',
-      'pre_sales',
-    ]);
-    expect(context?.permissions.has('BUYER_SUPPORT_NOTE')).toBe(true);
+    expect([...context?.roles ?? []]).toEqual(['pre_sales']);
     expect(context?.permissions.has('SELLER_VIEW')).toBe(true);
     expect(context?.permissions.has('TASK_ASSIGN_TEAM')).toBe(true);
     expect(context?.permissions.has('ORDER_CONFIRM')).toBe(false);

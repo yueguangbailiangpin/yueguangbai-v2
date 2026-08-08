@@ -1,8 +1,16 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import { Button, DependencyUnavailable, LoadingState, RequestIdDisplay } from '../../ui/primitives';
 import { useStaffSession } from '../session';
-import { staffAuthApi, type StaffAuthApiAdapter } from './staff-auth-api';
+import { staffAuthApi, type StaffAuthApiAdapter, type StaffSession } from './staff-auth-api';
+
+const StaffSessionContext = createContext<StaffSession | null>(null);
+
+export function useCurrentStaffSession(): StaffSession {
+  const session = useContext(StaffSessionContext);
+  if (!session) throw new Error('staff_session_context_unavailable');
+  return session;
+}
 
 export function StaffSessionBoundary({
   adapter = staffAuthApi,
@@ -42,5 +50,7 @@ export function StaffSessionBoundary({
     const returnTo = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/staff/login?return_to=${returnTo}`} replace />;
   }
-  return <>{children}</>;
+  return <StaffSessionContext.Provider value={session.value}>
+    {children}
+  </StaffSessionContext.Provider>;
 }

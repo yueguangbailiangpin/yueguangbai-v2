@@ -22,7 +22,7 @@
      --output-dir /outside-git/backup-candidate \
      --key-file /outside-git/keys/d1-backup.key \
      --release-commit-sha 40位小写候选Git提交SHA \
-     --expected-schema 34
+     --expected-schema 35
    ```
 
 4. `--release-commit-sha` 必须由操作者显式提供，严格为 40 位小写 Git SHA；工具不读取当前 HEAD、不猜测候选版本。该 SHA 同时进入 Manifest 与 attestation。
@@ -42,7 +42,7 @@ npm run restore:d1:local -- \
   --restore-database /outside-git/restore-rehearsal/restored.sqlite \
   --key-file /outside-git/keys/d1-backup.key \
   --expected-release-commit-sha 40位小写候选Git提交SHA \
-  --expected-schema 34
+  --expected-schema 35
 ```
 
 恢复目标必须不存在，工具禁止覆盖。创建目标数据库之前，工具先把 attestation、bundle 和 Manifest 当作不可信外部输入，依次验证：attestation 精确 schema/字段上限、HMAC、派生 key-id、bundle bytes/SHA、Manifest SHA、显式 expected release SHA，以及 Manifest 与 attestation 的 schema/time/release/fixture 一致性。随后验证 AES-GCM auth tag、压缩/明文 SHA-256、schema version/fingerprint、四类 schema inventory、全部 row counts、关键财务聚合、`integrity_check`、`foreign_key_check` 和 Staff/Buyer/Seller/订单/文件/调度 smoke reads。

@@ -77,7 +77,10 @@ export interface StaffAuthProviderAdapter {
 export interface StaffSessionSafeDto {
   staff_id: string;
   display_name: string;
-  roles: readonly StaffRoleCode[];
+  role: {
+    code: StaffRoleCode;
+    display_name: '总管理员' | '售前' | '卖家对接' | '买家返款';
+  };
   permissions: readonly StaffPermissionCode[];
   data_scope: StaffDataScope;
   authorization_version: number;
