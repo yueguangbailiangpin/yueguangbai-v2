@@ -30,5 +30,5 @@
 - [x] 4.1 Cover role/scope/DENY, missing/conflicting channel config, duplicate WeChat, cross-day conversion and Beijing boundaries.
 - [x] 4.2 Cover idempotency, version conflicts, corrections, auto-linking, no double profit attribution, privacy projection and retention anonymization/exemptions.
 - [x] 4.3 Run full D1, auth, finance, browser, secrets, typecheck, build and rollback gates.
-- [ ] 4.4 Run OpenSpec strict and implementation Verify; sync/archive only after controller acceptance.
-  - Local evidence: target strict and all strict pass; no formal Implementation Verify capability was available, so this item and archive remain incomplete.
+- [x] 4.4 Run OpenSpec strict and implementation Verify; sync/archive only after controller acceptance.
+  - Controller evidence: target strict and all strict pass; the installed OpenSpec 1.7 official Verify workflow was executed manually because the generated skill was not registered in this session. Completeness, correctness and coherence review covered 17/17 tasks, 11/11 requirements and 12/12 scenarios with no remaining critical or warning issue.
