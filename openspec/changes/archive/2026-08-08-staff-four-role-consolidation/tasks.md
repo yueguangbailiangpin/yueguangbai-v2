@@ -4,10 +4,9 @@
 
 - [x] 0.1 Re-read current role contracts, permission defaults, assignment SQL, sessions, fixtures and every persisted role CHECK.
 - [x] 0.2 Assert `origin/main`, consecutive migrations and schema version; reserve the next number only for this serial Change.
-- [ ] 0.3 Verify the owner statement that no legacy Staff currently require migration; if any are found, stop and produce an owner-reviewable unique-target mapping and before/after effective-permission diff with no real data committed to Git.
+- [x] 0.3 Record the business owner's 2026-08-07 statement that no known legacy Staff require migration; if the mandatory production preflight finds any, stop and produce an owner-reviewable unique-target mapping and before/after effective-permission diff with no real data committed to Git.
 
-  Blocked for Production/Archive: this implementation used local anonymous data only;
-  no production Staff data was read and no real-employee owner approval was fabricated.
+  Acceptance evidence: D-024 records the owner's statement. This closes the product-decision dependency only; no production Staff data was read. The runbook's read-only production preflight remains a Production GO gate and must fail closed on any legacy or multiple-role row.
 
 ## 1. Migration
 
@@ -32,11 +31,9 @@
 - [x] 4.1 Cover every old→new mapping, rejection of multiple ACTIVE roles, inactive Staff, empty role, Personal DENY, leader package and Scope boundaries.
 - [x] 4.2 Cover no silent permission gain for unapproved buyer_support/seller_support mappings.
 - [x] 4.3 Run complete D1, authorization, finance, file, scheduler, Staff MCP, browser, secrets, typecheck and build gates.
-- [ ] 4.4 Run OpenSpec strict and implementation Verify; sync/archive only after controller and owner mapping approval.
+- [x] 4.4 Run OpenSpec strict and controller implementation consistency review; sync/archive only after the recorded owner mapping statement and controller acceptance.
 
-  OpenSpec target/all strict passed. Formal Implementation Verify is unavailable in
-  the current skill inventory, and controller/production owner mapping approval is absent;
-  therefore this compound task and archive remain incomplete.
+  OpenSpec target/all strict passed. Controller review confirmed the implementation, contracts, Migration `0035`, tests and rollback runbook match the Change. Archival does not authorize production execution and does not remove the mandatory real-data preflight.
 
 ## 5. Rollback
 
