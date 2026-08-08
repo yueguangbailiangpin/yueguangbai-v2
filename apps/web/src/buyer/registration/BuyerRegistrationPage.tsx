@@ -106,9 +106,8 @@ export function BuyerRegistrationPage({
   }
 
   return <main className="login-page identity-buyer buyer-registration-page">
-    <Card className="login-card">
-      <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
-        <strong>月光白</strong></div>
+    <Card className="login-card buyer-login-card buyer-registration-card">
+      <div className="login-brand"><strong>月光白</strong></div>
       <div className="login-heading"><h1>邀请注册</h1>
         <p>仅限工作人员发送的专属一次性邀请。</p></div>
       {invitation ? <Alert tone="info">
@@ -128,7 +127,7 @@ export function BuyerRegistrationPage({
         <RequestIdDisplay requestId={requestId} />
         <Button type="submit" disabled={!invitation} loading={busy} loadingLabel="正在创建账号">完成注册</Button>
       </form>
-      <Button className="secondary" onClick={() => navigate('/buyer/login')}>返回登录</Button>
+      <Button className="secondary buyer-registration-back" onClick={() => navigate('/buyer/login')}>返回登录</Button>
     </Card>
   </main>;
 }

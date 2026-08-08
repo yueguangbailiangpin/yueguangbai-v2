@@ -9,10 +9,12 @@ import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatBps, formatDateOnly, formatJpy, formatShanghai, formatSignedJpyDifference, priceDifferenceDirection } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { BuyerFilePicker } from '../shared/BuyerFilePicker';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { statusLabel, statusTone } from '../shared/status';
 import { useFileUpload } from '../shared/useFileUpload';
+import { BuyerJourney } from '../shared/BuyerJourney';
 
 export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
   const { submissionId = '' } = useParams();
@@ -35,12 +37,14 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
   if (query.isPending) return <BuyerLoading />;
   if (query.isError) return <BuyerQueryError error={query.error} />;
   const item = query.data;
-  return <section className="buyer-page"><PageHeader eyebrow="订单资料详情" title={item.reservation.product_name}>
+  return <section className="buyer-page buyer-flow-page buyer-detail-page">
+    <BuyerJourney current="materials" />
+    <PageHeader eyebrow="订单资料详情" title={item.reservation.product_name} description={item.reservation.store_display_name}>
     <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></PageHeader>
     {item.price_mismatch ? <Alert tone="warning">实际支付金额与参考金额不一致</Alert> : null}
     {item.status === 'CHANGES_REQUESTED' && item.public_change_reason
       ? <Alert tone="warning">修改说明：{item.public_change_reason}</Alert> : null}
-    <Card><dl className="buyer-facts"><div><dt>Amazon 订单号</dt><dd className="copyable-fact">{item.amazon_order_number_display}
+    <Card className="buyer-summary-card"><h2>已提交信息</h2><dl className="buyer-facts"><div><dt>Amazon 订单号</dt><dd className="copyable-fact">{item.amazon_order_number_display}
       <Button className="secondary compact-button" onClick={() => { void navigator.clipboard.writeText(item.amazon_order_number_display); }}>复制</Button></dd></div>
       <div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.amazon_order_date)}</dd></div>
       <div><dt>最终支付</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div>
@@ -52,7 +56,7 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
       <div><dt>提交时间</dt><dd>{formatShanghai(item.submitted_at)}</dd></div>
       <div><dt>更新时间</dt><dd>{formatShanghai(item.updated_at)}</dd></div>
       <div><dt>核验时间</dt><dd>{formatShanghai(item.verified_at)}</dd></div></dl></Card>
-    <Card><h2>文件</h2><div className="buyer-file-list">{item.files.map((file) => <EvidenceFile
+    <Card className="buyer-support-card"><h2>订单截图</h2><div className="buyer-file-list">{item.files.map((file) => <EvidenceFile
       key={file.file_object_id} submissionId={submissionId} file={file} />)}</div></Card>
     {item.allowed_actions.includes('RESUBMIT') ? <EvidenceResubmitForm evidence={item} onRefresh={() => { void query.refetch(); }} /> : null}
     {item.allowed_actions.includes('WITHDRAW') ? <Button className="danger" onClick={() => setConfirmWithdraw(true)}>撤回资料</Button> : null}
@@ -122,11 +126,12 @@ function EvidenceResubmitForm({ evidence, onRefresh }: { evidence: OrderEvidence
       buyer_note: String(values.get('buyer_note') ?? '').trim() || null,
     });
   }
-  return <Card><h2>按说明重新提交</h2><form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
+  return <Card className="buyer-action-panel"><h2>按说明重新提交</h2><form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
     <FormField label="Amazon 订单号" htmlFor="resubmit-order" required><TextInput name="amazon_order_number" defaultValue={evidence.amazon_order_number_display} required /></FormField>
-    <FormField label="Amazon 下单日期" htmlFor="resubmit-date" required><TextInput name="amazon_order_date" type="date" defaultValue={evidence.amazon_order_date ?? ''} required /></FormField>
+    <FormField label="Amazon 下单日期" htmlFor="resubmit-date" required><TextInput name="amazon_order_date" type="date" lang="zh-CN" defaultValue={evidence.amazon_order_date ?? ''} required /></FormField>
     <FormField label="最终支付金额 JPY" htmlFor="resubmit-paid" required><TextInput name="final_paid_jpy" type="number" min="0" step="1" defaultValue={evidence.final_paid_jpy} required /></FormField>
-    <FormField label="新的订单截图" htmlFor="resubmit-file" description="必须且只能选择一张图片" required><TextInput name="file" type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event) => { file.current = event.currentTarget.files?.[0] ?? null; }} /></FormField>
+    <FormField label="新的订单截图" htmlFor="resubmit-file" description="必须且只能选择一张图片" required><BuyerFilePicker name="file" accept="image/jpeg,image/png,image/webp" required
+      buttonLabel="选择新的订单截图" emptyLabel="尚未选择截图" onChange={(event) => { file.current = event.currentTarget.files?.[0] ?? null; }} /></FormField>
     <FormField label="备注（可选）" htmlFor="resubmit-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>
     {message ? <Alert tone="danger">{message}</Alert> : null}
     <BuyerMutationRecovery mutation={mutation} onRefresh={onRefresh} />

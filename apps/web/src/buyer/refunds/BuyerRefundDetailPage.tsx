@@ -5,7 +5,8 @@ import { buyerApi } from '../api/client';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatCnyFen, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { statusLabel, statusTone } from '../shared/status';
+import { BuyerJourney } from '../shared/BuyerJourney';
+import { paymentChannelLabel, statusLabel, statusTone } from '../shared/status';
 
 export function BuyerRefundDetailPage(): React.JSX.Element {
   const { refundId = '' } = useParams(); const client = useQueryClient();
@@ -13,16 +14,18 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
     queryFn: ({ signal }) => buyerApi.refund(client, refundId, signal).then((r) => r.data.refund), enabled: refundId.length > 0 });
   if (query.isPending) return <BuyerLoading />; if (query.isError) return <BuyerQueryError error={query.error} />;
   const item = query.data;
-  return <section className="buyer-page"><PageHeader eyebrow="返款详情" title={item.order.product_name}>
-    <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></PageHeader>
-    <Card><dl className="buyer-facts"><div><dt>对应订单</dt><dd>{item.order.formal_order_id}</dd></div><div><dt>Amazon 订单号</dt><dd>{item.order.amazon_order_number}</dd></div>
+  return <section className="buyer-page buyer-flow-page buyer-detail-page buyer-refund-page">
+    <BuyerJourney current={item.status === 'PAID' ? 'complete' : null} />
+    <PageHeader eyebrow="返款详情" title={item.order.product_name} description="返款只包含商品本金">
+      <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></PageHeader>
+    <Card className="buyer-summary-card buyer-refund-summary"><h2>返款信息</h2><dl className="buyer-facts"><div><dt>对应订单</dt><dd>{item.order.formal_order_id}</dd></div><div><dt>Amazon 订单号</dt><dd>{item.order.amazon_order_number}</dd></div>
       <div><dt>返款金额</dt><dd>{formatCnyFen(item.due_amount_cny_fen)}</dd></div><div><dt>净已付</dt><dd>{formatCnyFen(item.net_paid_cny_fen)}</dd></div>
       <div><dt>剩余金额</dt><dd>{formatCnyFen(item.remaining_amount_cny_fen)}</dd></div><div><dt>超额金额</dt><dd>{formatCnyFen(item.overpaid_amount_cny_fen)}</dd></div>
     </dl></Card>
-    <section aria-labelledby="refund-activity-title"><h2 id="refund-activity-title">支付活动</h2>
+    <section aria-labelledby="refund-activity-title"><h2 id="refund-activity-title">付款与冲正</h2>
       {item.activities.length === 0 ? <p>暂无支付活动。</p> : <ol className="refund-activity-list">{item.activities.map((activity) => <li key={activity.activity_id}>
         <Card as="article"><div className="record-card-heading"><strong>{statusLabel(activity.activity_type)}</strong><span>{formatCnyFen(activity.amount_cny_fen)}</span></div>
-          <p>{formatShanghai(activity.occurred_at)} · {activity.payment_channel}</p>
+          <p>{formatShanghai(activity.occurred_at)} · {paymentChannelLabel(activity.payment_channel)}</p>
           <dl className="compact-facts"><div><dt>活动后净已付</dt><dd>{formatCnyFen(activity.balance_after.net_paid_cny_fen)}</dd></div>
             <div><dt>活动后剩余</dt><dd>{formatCnyFen(activity.balance_after.remaining_amount_cny_fen)}</dd></div>
             <div><dt>活动后超额</dt><dd>{formatCnyFen(activity.balance_after.overpaid_amount_cny_fen)}</dd></div></dl>

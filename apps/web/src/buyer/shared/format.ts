@@ -39,6 +39,13 @@ export function formatCnyFen(value: string): string {
   return `¥${groupInteger(whole)}.${fraction} CNY`;
 }
 
+export function formatCnyPerJpyE8(value: string): string {
+  const scaled = BigInt(value);
+  const whole = scaled / 100_000_000n;
+  const fraction = (scaled % 100_000_000n).toString().padStart(8, '0').replace(/0+$/u, '');
+  return `1 JPY = ¥${whole}${fraction ? `.${fraction}` : ''} CNY`;
+}
+
 export function formatBps(value: number): string {
   const whole = Math.floor(value / 100);
   const fraction = String(value % 100).padStart(2, '0');

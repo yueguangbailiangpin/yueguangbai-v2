@@ -1917,6 +1917,233 @@ select:disabled {
   align-content: center;
 }
 
+.buyer-flow-page {
+  gap: var(--space-6);
+  padding-top: var(--space-5);
+}
+
+.buyer-flow-page > .buyer-journey,
+.buyer-flow-page > .page-header {
+  margin-inline: 0;
+}
+
+.buyer-journey-compact {
+  padding: var(--space-4) var(--space-3);
+}
+
+.buyer-journey-compact li {
+  gap: var(--space-1);
+}
+
+.buyer-journey-compact li > span {
+  width: var(--space-6);
+  height: var(--space-6);
+  font-size: var(--font-size-xs);
+}
+
+.buyer-journey-compact li:not(:last-child)::after {
+  top: var(--space-3);
+  left: calc(50% + var(--space-4));
+  width: calc(100% - var(--space-8));
+}
+
+.buyer-flow-page > .page-header {
+  padding: var(--space-2) var(--space-1) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.buyer-flow-page > .page-header h1 {
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-tight);
+}
+
+.buyer-flow-page > .page-header p:not(.eyebrow) {
+  max-width: 38rem;
+}
+
+.buyer-flow-page > .card,
+.buyer-work-section > .card,
+.refund-activity-list .card {
+  padding: var(--space-6);
+  border-radius: var(--radius-panel);
+}
+
+.buyer-summary-card,
+.buyer-support-card,
+.buyer-action-panel,
+.buyer-action-card {
+  border-color: var(--color-border-strong);
+}
+
+.buyer-summary-card > h2,
+.buyer-support-card > h2,
+.buyer-action-panel > h2,
+.buyer-action-card > h2,
+.buyer-work-section > h2 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-size-section);
+  line-height: var(--line-height-tight);
+}
+
+.buyer-summary-card .buyer-facts {
+  gap: var(--space-5) var(--space-6);
+}
+
+.buyer-summary-card .buyer-facts dd {
+  font-size: var(--font-size-lead);
+}
+
+.buyer-stage-card {
+  min-height: calc(var(--space-12) * 2);
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-color: var(--color-border-strong);
+  border-radius: var(--radius-panel);
+}
+
+.buyer-stage-card .record-card-heading > strong,
+.buyer-stage-card > strong {
+  font-size: var(--font-size-section);
+  line-height: var(--line-height-tight);
+}
+
+.buyer-work-section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.buyer-work-section > h2 {
+  margin-bottom: 0;
+}
+
+.buyer-action-section {
+  padding: var(--space-5);
+  border: 1px solid var(--color-buyer);
+  border-radius: var(--radius-panel);
+  background: var(--color-buyer-soft);
+}
+
+.buyer-action-section .buyer-stage-card {
+  border-color: var(--color-buyer);
+}
+
+.buyer-action-panel,
+.buyer-action-card {
+  background: var(--color-buyer-soft);
+}
+
+.buyer-form-intro {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-border-strong);
+}
+
+.buyer-form-intro strong {
+  font-size: var(--font-size-section);
+}
+
+.buyer-form-intro p {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+}
+
+.buyer-file-picker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.buyer-file-picker-button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-buyer);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-buyer);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.buyer-file-picker-name {
+  min-width: 0;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.buyer-file-input:focus-visible + .buyer-file-picker-button {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.buyer-action-panel .buyer-form > .button[type="submit"],
+.buyer-action-card > .button,
+.buyer-next-actions > .button:first-child {
+  width: 100%;
+  min-height: calc(var(--space-10) + var(--space-3));
+  font-size: var(--font-size-lead);
+}
+
+.buyer-next-actions {
+  padding: var(--space-5);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+}
+
+.buyer-account-summary {
+  border-color: var(--color-buyer);
+  background: var(--color-buyer-soft);
+}
+
+.buyer-account-page .buyer-me-links a {
+  min-height: calc(var(--space-12) + var(--space-3));
+  justify-content: space-between;
+  border-color: var(--color-border-strong);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  font-size: var(--font-size-lead);
+}
+
+.buyer-account-page > .button.secondary {
+  min-height: calc(var(--space-10) + var(--space-3));
+}
+
+.buyer-refund-summary .buyer-facts > div:nth-child(3) dd {
+  color: var(--color-buyer);
+  font-size: var(--font-size-title);
+}
+
+.buyer-refund-page .refund-activity-list .card {
+  border-color: var(--color-border-strong);
+}
+
+.login-page.identity-buyer.buyer-account-form-page {
+  min-height: auto;
+  place-items: start center;
+  padding: var(--space-5) var(--space-5) var(--space-10);
+  background: transparent;
+}
+
+.buyer-password-card,
+.buyer-registration-card {
+  border-radius: var(--radius-panel);
+}
+
+.buyer-registration-card .login-heading,
+.buyer-password-card .login-heading {
+  margin-bottom: var(--space-6);
+}
+
+.buyer-registration-card > .buyer-registration-back {
+  width: 100%;
+  min-height: calc(var(--space-10) + var(--space-1));
+  margin-top: var(--space-3);
+}
+
 @media (min-width: 900px) {
   .buyer-product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2639,6 +2866,42 @@ select:disabled {
 
   .buyer-page > .page-header {
     margin-inline: calc(var(--space-3) * -1);
+  }
+
+  .buyer-flow-page {
+    gap: var(--space-5);
+    padding-top: var(--space-4);
+  }
+
+  .buyer-flow-page > .page-header {
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+
+  .buyer-flow-page > .card,
+  .buyer-work-section > .card,
+  .refund-activity-list .card {
+    padding: var(--space-5);
+  }
+
+  .buyer-action-section {
+    padding: var(--space-4);
+  }
+
+  .buyer-file-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .buyer-journey-compact {
+    padding-inline: var(--space-2);
+  }
+
+  .buyer-journey-compact li strong {
+    font-size: var(--font-size-xs);
+  }
+
+  .login-page.identity-buyer.buyer-account-form-page {
+    padding: var(--space-4) var(--space-3) var(--space-8);
   }
 
   .buyer-login-card {

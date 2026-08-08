@@ -7,7 +7,9 @@ import { dateOnlySchema, identifierSchema } from '../contracts/runtime';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { BuyerFilePicker } from '../shared/BuyerFilePicker';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
+import { BuyerJourney } from '../shared/BuyerJourney';
 import { useFileUpload } from '../shared/useFileUpload';
 
 export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
@@ -85,19 +87,24 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
   if (eligible.isError) return <BuyerQueryError error={eligible.error} />;
   if (instruction.isError) return <BuyerQueryError error={instruction.error} />;
   if (!current || !canSubmit) return <BuyerQueryError error={null} title="无法打开提交页面" />;
-  return <section className="buyer-page"><PageHeader eyebrow="订单资料" title="提交订单资料" description={current.product_name} />
-    <Card><form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
+  return <section className="buyer-page buyer-flow-page buyer-form-page">
+    <BuyerJourney current="materials" />
+    <PageHeader eyebrow="订单资料阶段" title="提交订单资料" description={current.product_name} />
+    <Card className="buyer-action-panel"><div className="buyer-form-intro"><strong>填写订单信息</strong>
+      <p>请按 Amazon 订单页面填写，并上传一张订单截图。</p></div>
+      <form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
       <FormField label="Amazon 订单号" htmlFor="evidence-order-number" description="格式：123-1234567-1234567" required>
         <TextInput name="amazon_order_number" inputMode="numeric" placeholder="123-1234567-1234567" required />
       </FormField>
       <FormField label="Amazon 下单日期" htmlFor="evidence-order-date" description="按 Amazon 订单页面显示的日期填写" required>
-        <TextInput name="amazon_order_date" type="date" required />
+        <TextInput name="amazon_order_date" type="date" lang="zh-CN" required />
       </FormField>
       <FormField label="最终支付金额 JPY" htmlFor="evidence-paid" required>
         <TextInput name="final_paid_jpy" type="number" inputMode="numeric" min="0" step="1" required />
       </FormField>
       <FormField label="订单截图" htmlFor="evidence-file" description="必须且只能选择一张 JPG、PNG 或 WebP 图片" required>
-        <TextInput name="evidence_file" type="file" accept="image/jpeg,image/png,image/webp" required
+        <BuyerFilePicker name="evidence_file" accept="image/jpeg,image/png,image/webp" required
+          buttonLabel="选择订单截图" emptyLabel="尚未选择截图"
           onChange={(event) => { selected.current = event.currentTarget.files?.[0] ?? null; }} />
       </FormField>
       <FormField label="备注（可选）" htmlFor="evidence-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>

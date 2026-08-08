@@ -8,6 +8,7 @@ import { buyerQueryKeys } from '../queries/keys';
 import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
+import { BuyerJourney } from '../shared/BuyerJourney';
 import { statusLabel, statusTone } from '../shared/status';
 
 export function BuyerInstructionPage(): React.JSX.Element {
@@ -28,20 +29,22 @@ export function BuyerInstructionPage(): React.JSX.Element {
   if (state.isPending) return <BuyerLoading label="正在读取指引状态" />;
   if (state.isError) return <BuyerQueryError error={state.error} />;
   const fact = state.data;
-  if (!shouldReadContent) return <section className="buyer-page">
+  if (!shouldReadContent) return <section className="buyer-page buyer-flow-page buyer-detail-page">
+    <BuyerJourney current="products" />
     <PageHeader eyebrow="下单指引" title={statusLabel(fact.status)}>
       <StatusBadge tone={statusTone(fact.status)}>{statusLabel(fact.status)}</StatusBadge></PageHeader>
-    <Card><p>{instructionStateMessage(fact.status)}</p>
+    <Card className="buyer-summary-card"><h2>当前状态</h2><p>{instructionStateMessage(fact.status)}</p>
       <DeadlineFacts initial={fact.initial_deadline_at} resubmission={fact.resubmission_deadline_at} /></Card>
   </section>;
   if (content.isPending) return <BuyerLoading label="正在读取指引内容" />;
   if (content.isError) return <BuyerQueryError error={content.error} />;
   const instruction = content.data;
-  return <section className="buyer-page buyer-instruction-page">
+  return <section className="buyer-page buyer-flow-page buyer-detail-page buyer-instruction-page">
+    <BuyerJourney current="products" />
     <PageHeader eyebrow="下单指引" title={instruction.product_name} description={instruction.store_display_name}>
       <StatusBadge tone={statusTone(fact.status)}>{statusLabel(fact.status)}</StatusBadge></PageHeader>
     {fact.content_updated ? <Card className="buyer-notice" as="div"><strong>指引内容已更新</strong><p>请按当前版本重新确认。</p></Card> : null}
-    <Card><dl className="buyer-facts"><div><dt>颜色规格</dt><dd>{instruction.color_spec_mode === 'ANY_VARIANT' ? '任意规格' : '按主图规格'}</dd></div>
+    <Card className="buyer-summary-card"><h2>下单信息</h2><dl className="buyer-facts"><div><dt>颜色规格</dt><dd>{instruction.color_spec_mode === 'ANY_VARIANT' ? '任意规格' : '按主图规格'}</dd></div>
       <div><dt>参考金额</dt><dd>{formatJpy(instruction.reference_order_amount_jpy)}</dd></div>
       <div><dt>自费比例</dt><dd>{formatBps(instruction.buyer_self_pay_bps)}</dd></div>
       <div><dt>预计自费</dt><dd>{formatJpy(instruction.estimated_buyer_self_pay_jpy)}</dd></div>
@@ -51,7 +54,7 @@ export function BuyerInstructionPage(): React.JSX.Element {
       <DeadlineFacts initial={fact.initial_deadline_at} resubmission={fact.resubmission_deadline_at} />
     </Card>
     {fact.can_read_images ? <InstructionImages reservationId={reservationId} instruction={instruction} /> : null}
-    <Card><h2>订单资料状态</h2><p>{statusLabel(fact.evidence_status)}</p>
+    <Card className="buyer-action-card"><h2>订单资料</h2><p>{statusLabel(fact.evidence_status)}</p>
       {fact.can_submit_evidence ? <Link className="button" to={`/buyer/order-materials/new?reservation_id=${encodeURIComponent(reservationId)}`}>提交订单资料</Link>
         : <p>当前状态或期限不允许提交。</p>}</Card>
   </section>;

@@ -37,6 +37,31 @@ export function reviewTypeLabel(value: string): string {
   return reviewTypeLabels[value] ?? value;
 }
 
+export const marketplaceLabels: Readonly<Record<string, string>> = Object.freeze({
+  JP: '日本站',
+  AMAZON_JP: '日本亚马逊',
+  US: '美国站',
+  AMAZON_US: '美国亚马逊',
+  KR: '韩国站',
+  COUPANG_KR: '韩国 Coupang',
+});
+
+export function marketplaceLabel(value: string): string {
+  return marketplaceLabels[value] ?? value;
+}
+
+export const paymentChannelLabels: Readonly<Record<string, string>> = Object.freeze({
+  WECHAT_PAY: '微信支付',
+  ALIPAY: '支付宝',
+  BANK_TRANSFER: '银行转账',
+  CASH: '现金',
+  OTHER: '其他',
+});
+
+export function paymentChannelLabel(value: string): string {
+  return paymentChannelLabels[value] ?? value;
+}
+
 export function statusTone(value: string): 'neutral' | 'processing' | 'success' | 'warning' | 'danger' | 'expired' | 'conflict' {
   if (['APPROVED', 'VERIFIED', 'CONFIRMED', 'PAID', 'COMPLETED'].includes(value)) return 'success';
   if (['CHANGES_REQUESTED', 'PARTIALLY_PAID', 'DUE'].includes(value)) return 'warning';

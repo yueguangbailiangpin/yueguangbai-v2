@@ -164,10 +164,10 @@ export function CustomerChangePasswordPage({
       : '修改密码';
 
   const content = (
-    <section className={`login-page identity-${target}${target === 'buyer' ? ' buyer-page' : ''}`}>
-      <Card className="login-card password-card">
-        <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
-          <strong>月光白</strong></div>
+    <section className={`login-page identity-${target}${target === 'buyer' ? ' buyer-account-form-page' : ''}`}>
+      <Card className={`login-card password-card${target === 'buyer' ? ' buyer-login-card buyer-password-card' : ''}`}>
+        {target === 'buyer' ? null : <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
+          <strong>月光白</strong></div>}
         <div className="login-heading"><h1>修改密码</h1>
           <p>首次登录或安全状态变化后，需要先设置新密码。</p></div>
         <form onSubmit={(event) => { void submit(event); }}>

@@ -8,7 +8,8 @@ import { buyerQueryKeys } from '../queries/keys';
 import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
-import { statusLabel, statusTone } from '../shared/status';
+import { BuyerJourney } from '../shared/BuyerJourney';
+import { reviewTypeLabel, statusLabel, statusTone } from '../shared/status';
 
 export function BuyerReservationDetailPage(): React.JSX.Element {
   const { reservationId = '' } = useParams();
@@ -31,15 +32,17 @@ export function BuyerReservationDetailPage(): React.JSX.Element {
   if (query.isPending) return <BuyerLoading />;
   if (query.isError) return <BuyerQueryError error={query.error} />;
   const item = query.data;
-  return <section className="buyer-page"><PageHeader eyebrow="预约详情" title={item.demand.product_name}>
+  return <section className="buyer-page buyer-flow-page buyer-detail-page">
+    <BuyerJourney current="products" />
+    <PageHeader eyebrow="预约详情" title={item.demand.product_name} description={item.demand.store_display_name}>
       <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></PageHeader>
-    <Card><dl className="buyer-facts"><div><dt>店铺</dt><dd>{item.demand.store_display_name}</dd></div>
-      <div><dt>评论类型</dt><dd>{item.demand.task_type}</dd></div>
+    <Card className="buyer-summary-card"><h2>预约信息</h2><dl className="buyer-facts"><div><dt>店铺</dt><dd>{item.demand.store_display_name}</dd></div>
+      <div><dt>评论类型</dt><dd>{reviewTypeLabel(item.demand.task_type)}</dd></div>
       <div><dt>参考金额</dt><dd>{formatJpy(item.reference_order_amount_jpy_snapshot)}</dd></div>
       <div><dt>自费比例</dt><dd>{formatBps(item.buyer_self_pay_bps_snapshot)}</dd></div>
       <div><dt>预计自费</dt><dd>{formatJpy(item.estimated_self_pay_jpy_snapshot)}</dd></div>
       <div><dt>订单截止</dt><dd>{formatShanghai(item.order_deadline_snapshot)}</dd></div></dl></Card>
-    <div className="buyer-primary-actions">
+    <div className="buyer-primary-actions buyer-next-actions">
       {item.status === 'APPROVED' ? <Link className="button" to={`/buyer/reservations/${item.reservation_id}/instruction`}>查看下单指引</Link> : null}
       {item.can_cancel ? <Button className="danger" onClick={() => setConfirmCancel(true)}>取消预约</Button> : null}
     </div>

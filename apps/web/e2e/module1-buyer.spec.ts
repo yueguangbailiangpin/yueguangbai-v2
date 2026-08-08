@@ -373,7 +373,7 @@ for (const status of [429, 503] as const) {
 }
 
 test('Formal order list exposes all six business filters plus paging', async ({ page }) => { await gotoBuyer(page, '/buyer/orders'); await expect(page.getByRole('search', { name: '正式订单筛选' })).toBeVisible(); await expect(page.getByLabel('Amazon 订单号')).toBeVisible(); });
-test('Formal order detail displays historical null date as unknown', async ({ page }) => { await gotoBuyer(page, '/buyer/orders/formal-1'); await expect(page.getByText('未知')).toBeVisible(); await expect(page.getByText('汇率快照 e8')).toBeVisible(); });
+test('Formal order detail displays historical null date and readable immutable rate', async ({ page }) => { await gotoBuyer(page, '/buyer/orders/formal-1'); await expect(page.getByText('未知')).toBeVisible(); await expect(page.getByText('订单汇率')).toBeVisible(); await expect(page.getByText('1 JPY = ¥0.055 CNY')).toBeVisible(); await expect(page.locator('main')).not.toContainText(/汇率快照 e8|5500000/u); });
 
 test('Review list shows eligible and submitted cases', async ({ page }) => { await gotoBuyer(page, '/buyer/reviews'); await expect(page.getByText('可提交评论')).toBeVisible(); await expect(page.getByText('已提交评论')).toBeVisible(); });
 test('Review stale deep link remains concealed', async ({ page }) => { await gotoBuyer(page, '/buyer/reviews/new?formal_order_id=foreign'); await expect(page.getByRole('heading', { name: '无法打开评论提交页面' })).toBeVisible(); });

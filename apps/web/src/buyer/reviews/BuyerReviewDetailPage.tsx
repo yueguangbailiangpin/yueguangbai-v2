@@ -9,10 +9,12 @@ import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatCnyFen, formatDateOnly, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { BuyerFilePicker } from '../shared/BuyerFilePicker';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
-import { statusLabel, statusTone } from '../shared/status';
+import { reviewTypeLabel, statusLabel, statusTone } from '../shared/status';
 import { useFileUpload } from '../shared/useFileUpload';
+import { BuyerJourney } from '../shared/BuyerJourney';
 
 export function BuyerReviewDetailPage(): React.JSX.Element {
   const { reviewCaseId = '' } = useParams();
@@ -26,16 +28,18 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
   if (query.isPending) return <BuyerLoading />;
   if (query.isError) return <BuyerQueryError error={query.error} />;
   const item = query.data;
-  return <section className="buyer-page"><PageHeader eyebrow="评论详情" title={item.order.product_name}>
+  return <section className="buyer-page buyer-flow-page buyer-detail-page">
+    <BuyerJourney current="reviews" />
+    <PageHeader eyebrow="评论详情" title={item.order.product_name} description="查看审核状态与下一步">
     <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></PageHeader>
     {item.status === 'CHANGES_REQUESTED' && item.public_change_reason ? <Alert tone="warning">修改说明：{item.public_change_reason}</Alert> : null}
     {item.status === 'APPROVED' && item.buyer_refund_due ? <Alert tone="success">返款金额 {formatCnyFen(item.buyer_refund_due.amount_cny_fen)}</Alert> : null}
-    <Card><dl className="buyer-facts"><div><dt>评论类型</dt><dd>{item.review_type}</dd></div>
+    <Card className="buyer-summary-card"><h2>评论信息</h2><dl className="buyer-facts"><div><dt>评论类型</dt><dd>{reviewTypeLabel(item.review_type)}</dd></div>
       <div><dt>Amazon 订单号</dt><dd>{item.order.amazon_order_number}</dd></div><div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.order.amazon_order_date)}</dd></div>
       <div><dt>证据版本</dt><dd>{item.current_evidence_version_no}</dd></div><div><dt>文件数量</dt><dd>{item.file_count}</dd></div>
       <div><dt>提交时间</dt><dd>{formatShanghai(item.submitted_at)}</dd></div><div><dt>更新时间</dt><dd>{formatShanghai(item.updated_at)}</dd></div>
       <div><dt>评论链接</dt><dd>{item.review_url ? <a href={item.review_url} target="_blank" rel="noreferrer">打开评论链接</a> : '未提供'}</dd></div></dl></Card>
-    <Card><h2>证据文件</h2>{item.files.map((file) => <ReviewFile key={file.file_entity_link_id} reviewId={item.review_case_id} file={file} />)}</Card>
+    <Card className="buyer-support-card"><h2>证据文件</h2>{item.files.map((file) => <ReviewFile key={file.file_entity_link_id} reviewId={item.review_case_id} file={file} />)}</Card>
     {item.allowed_actions.includes('RESUBMIT') ? <ReviewResubmitForm review={item} onRefresh={() => { void query.refetch(); }} /> : null}
     {item.allowed_actions.includes('WITHDRAW') ? <Button className="danger" onClick={() => setConfirmWithdraw(true)}>撤回评论资料</Button> : null}
     <Dialog open={confirmWithdraw} title="撤回评论资料" description="撤回后当前资料不会继续审核。" busy={withdraw.isPending} onClose={() => setConfirmWithdraw(false)}>
@@ -65,9 +69,10 @@ function ReviewResubmitForm({ review, onRefresh }: { review: ReviewDetail; onRef
       evidence_files: manifest.files.map((file) => ({ file_object_id: file.file_object_id, expected_file_version: file.file_version })),
       buyer_note: String(values.get('buyer_note') ?? '').trim() || null });
   }
-  return <Card><h2>按说明重新提交</h2><form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
+  return <Card className="buyer-action-panel"><h2>按说明重新提交</h2><form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
     <FormField label="评论链接（可选）" htmlFor="review-resubmit-url"><TextInput name="review_url" type="url" defaultValue={review.review_url ?? ''} /></FormField>
-    <FormField label="新的评论证据" htmlFor="review-resubmit-files" description="必须选择 1–3 个文件" required><TextInput name="files" type="file" multiple required accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => { files.current = Array.from(event.currentTarget.files ?? []).slice(0, 4); }} /></FormField>
+    <FormField label="新的评论证据" htmlFor="review-resubmit-files" description="必须选择 1–3 个文件" required><BuyerFilePicker name="files" multiple required accept="image/jpeg,image/png,image/webp,application/pdf"
+      buttonLabel="选择新的评论证据" emptyLabel="尚未选择文件" onChange={(event) => { files.current = Array.from(event.currentTarget.files ?? []).slice(0, 4); }} /></FormField>
     <FormField label="备注（可选）" htmlFor="review-resubmit-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>
     {message ? <Alert tone="danger">{message}</Alert> : null}
     <BuyerMutationRecovery mutation={mutation} onRefresh={onRefresh} />

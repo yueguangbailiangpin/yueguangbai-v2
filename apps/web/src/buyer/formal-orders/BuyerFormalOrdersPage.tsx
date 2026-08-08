@@ -8,6 +8,8 @@ import { useCursorPages } from '../queries/useCursorPages';
 import { formatDateOnly, formatJpy } from '../shared/format';
 import { BuyerPagination } from '../shared/BuyerPagination';
 import { BuyerEmpty, BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { BuyerJourney } from '../shared/BuyerJourney';
+import { reviewTypeLabel } from '../shared/status';
 
 export function BuyerFormalOrdersPage(): React.JSX.Element {
   const client = useQueryClient();
@@ -29,11 +31,13 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
       amazonOrderNumber: read('amazon_order_number'),
     });
   }
-  return <section className="buyer-page"><PageHeader eyebrow="正式订单" title="正式订单" description="这里显示确认时保存的只读财务快照。" />
+  return <section className="buyer-page buyer-flow-page buyer-list-page">
+    <BuyerJourney current="materials" />
+    <PageHeader eyebrow="订单资料阶段" title="正式订单" description="这里显示确认时保存的只读订单快照。" />
     <form className="buyer-filter-form" role="search" onSubmit={submit} aria-label="正式订单筛选">
       <FormField label="市场" htmlFor="order-market"><Select name="marketplace" defaultValue=""><option value="">全部</option><option value="JP">日本</option></Select></FormField>
       <FormField label="产品名称" htmlFor="order-product"><TextInput name="product_name" /></FormField>
-      <FormField label="评论类型" htmlFor="order-review-type"><Select name="review_type" defaultValue=""><option value="">全部</option>{['RATING', 'TEXT', 'IMAGE', 'VIDEO'].map((value) => <option key={value}>{value}</option>)}</Select></FormField>
+      <FormField label="评论类型" htmlFor="order-review-type"><Select name="review_type" defaultValue=""><option value="">全部</option>{['RATING', 'TEXT', 'IMAGE', 'VIDEO'].map((value) => <option key={value} value={value}>{reviewTypeLabel(value)}</option>)}</Select></FormField>
       <FormField label="确认业务日期" htmlFor="order-confirmed-date"><TextInput name="confirmed_business_date" type="date" /></FormField>
       <FormField label="正式订单号" htmlFor="order-id"><TextInput name="formal_order_id" /></FormField>
       <FormField label="Amazon 订单号" htmlFor="order-amazon"><TextInput name="amazon_order_number" /></FormField>
@@ -41,7 +45,7 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
     </form>
     {query.isInitialPending ? <BuyerLoading /> : query.initialError ? <BuyerQueryError error={query.initialError} />
       : query.items.length === 0 ? <BuyerEmpty title="暂无正式订单" description="资料确认后会显示正式订单。" />
-        : <div className="buyer-card-list">{query.items.map((item) => <Link className="buyer-record-card" key={item.formal_order_id} to={`/buyer/orders/${item.formal_order_id}`}>
+        : <div className="buyer-card-list">{query.items.map((item) => <Link className="buyer-record-card buyer-stage-card" key={item.formal_order_id} to={`/buyer/orders/${item.formal_order_id}`}>
           <strong>{item.product_name}</strong><dl className="compact-facts"><div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.amazon_order_date)}</dd></div>
             <div><dt>确认业务日期</dt><dd>{item.confirmed_business_date}</dd></div><div><dt>最终支付</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div></dl>
         </Link>)}</div>}
