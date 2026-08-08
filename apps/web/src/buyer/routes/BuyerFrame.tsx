@@ -1,11 +1,11 @@
-import { ClipboardList, FolderOpen, Home, MessageSquareText, UserRound } from 'lucide-react';
+import { FolderOpen, Home, MessageSquareText, Tag, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { BottomNavigation, IdentityShell } from '../../ui/primitives';
 
 export const BUYER_NAVIGATION = Object.freeze([
   { path: '/buyer', label: '首页', icon: Home, end: true },
-  { path: '/buyer/products', label: '产品', icon: ClipboardList, end: false },
+  { path: '/buyer/products', label: '产品', icon: Tag, end: false },
   { path: '/buyer/order-materials', label: '订单资料', icon: FolderOpen, end: false },
   { path: '/buyer/reviews', label: '评论', icon: MessageSquareText, end: false },
   { path: '/buyer/me', label: '我的', icon: UserRound, end: false },
@@ -24,7 +24,7 @@ export function buyerNavigationOwner(pathname: string): BuyerNavigationPath {
 export function BuyerFrame({ children }: { children?: ReactNode } = {}): React.JSX.Element {
   const owner = buyerNavigationOwner(useLocation().pathname);
   return <IdentityShell identity="buyer" className="buyer-shell buyer-business-shell">
-    <header className="buyer-brand-bar"><strong>月光白</strong></header>
+    <header className="buyer-brand-bar"><div className="buyer-brand-inner"><strong>月光白</strong></div></header>
     <main className="buyer-main">{children ?? <Outlet />}</main>
     <BottomNavigation label="买家导航">{BUYER_NAVIGATION.map((item) => {
       const Icon = item.icon;

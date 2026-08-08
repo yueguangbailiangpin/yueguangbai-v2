@@ -273,7 +273,7 @@ test('Root has no registration link', async ({ page }) => { await page.goto('/')
 test('Buyer login has no registration link', async ({ page }) => { await page.goto('/buyer/login'); await expect(page.getByRole('link', { name: /注册/u })).toHaveCount(0); });
 
 test('Dashboard lists only server-authoritative reservable products', async ({ page }) => {
-  await gotoBuyer(page, '/buyer'); const cards = page.locator('.buyer-task-card'); await expect(cards).toHaveCount(1);
+  await gotoBuyer(page, '/buyer'); const cards = page.locator('main a[href^="/buyer/demands/"]:has(h2)'); await expect(cards).toHaveCount(1);
   await expect(cards.first()).toContainText('月白护肤套装'); await expect(cards).not.toContainText('修改订单资料');
 });
 
@@ -288,7 +288,7 @@ test('Dashboard reload restores the product list', async ({ page }) => {
   await gotoBuyer(page, '/buyer', { failureOnce: '/api/buyer-portal/demands' });
   await expect(page.getByText('产品暂时无法读取')).toBeVisible();
   await page.reload();
-  await expect(page.getByText('月白护肤套装')).toBeVisible(); expect(demandReads).toBe(2);
+  await expect(page.getByRole('heading', { name: '月白护肤套装', exact: true })).toBeVisible(); expect(demandReads).toBe(2);
 });
 
 for (const [path, owner] of [

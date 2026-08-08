@@ -366,7 +366,7 @@ test('Buyer shell is product-focused with five fixed items and no fake business 
   for (const label of ['首页', '产品', '订单资料', '评论', '我的']) {
     await expect(navigation.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.getByRole('heading', { name: '产品', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toBeVisible();
   await expect(page.getByText('产品暂时无法读取')).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
@@ -375,7 +375,7 @@ test('Buyer shell keeps navigation clear at 320px and safe content padding', asy
   await mockApi(page, 'buyer');
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/buyer/products');
-  await expect(page.getByRole('heading', { name: '产品', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: '买家导航' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
@@ -626,18 +626,18 @@ test('identity chunk failure is Chinese, hides protected content, and retries on
   });
   await page.goto('/buyer');
   await expect(page.getByRole('heading', { name: '页面内容暂时无法加载' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '产品', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toHaveCount(0);
   expect(chunkRequests).toBe(1);
   await Promise.all([
     page.waitForLoadState('domcontentloaded'),
     page.getByRole('button', { name: '重新加载整页' }).click(),
   ]);
-  await expect(page.getByRole('heading', { name: '产品', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toBeVisible();
   expect(chunkRequests).toBe(2);
 });
 
 for (const [identity, path, heading, ownChunk, foreignChunks] of [
-  ['buyer', '/buyer', '产品', 'BuyerRouteModule-', ['SellerRouteModule-', 'StaffRouteModule-']],
+  ['buyer', '/buyer', '当前开放产品', 'BuyerRouteModule-', ['SellerRouteModule-', 'StaffRouteModule-']],
   ['seller', '/seller', '业务进度', 'SellerRouteModule-', ['BuyerRouteModule-', 'StaffRouteModule-']],
   ['staff', '/staff', '员工工作台', 'StaffRouteModule-', ['BuyerRouteModule-', 'SellerRouteModule-']],
 ] as const) {
@@ -663,7 +663,7 @@ test('buyer product defers order materials and after-sales chunks until their ro
   });
   await mockApi(page, 'buyer');
   await page.goto('/buyer/products');
-  await expect(page.getByRole('heading', { name: '产品', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toBeVisible();
   expect(assets.some((asset) => asset.includes('BuyerOrderRouteModule-'))).toBe(false);
   expect(assets.some((asset) => asset.includes('BuyerAfterSalesRouteModule-'))).toBe(false);
 

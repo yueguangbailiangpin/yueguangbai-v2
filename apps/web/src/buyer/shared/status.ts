@@ -26,6 +26,17 @@ export function statusLabel(value: string): string {
   return statusLabels[value] ?? value;
 }
 
+export const reviewTypeLabels: Readonly<Record<string, string>> = Object.freeze({
+  RATING: '评分',
+  TEXT: '文字评论',
+  IMAGE: '图片评论',
+  VIDEO: '视频评论',
+});
+
+export function reviewTypeLabel(value: string): string {
+  return reviewTypeLabels[value] ?? value;
+}
+
 export function statusTone(value: string): 'neutral' | 'processing' | 'success' | 'warning' | 'danger' | 'expired' | 'conflict' {
   if (['APPROVED', 'VERIFIED', 'CONFIRMED', 'PAID', 'COMPLETED'].includes(value)) return 'success';
   if (['CHANGES_REQUESTED', 'PARTIALLY_PAID', 'DUE'].includes(value)) return 'warning';
