@@ -61,7 +61,9 @@ test('Staff completes queue to authoritative order detail and sees explicit conf
   await mockWorkbench(page, observed);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
-  await expect(page.getByText('售前员工 · 售前')).toBeVisible();
+  const staffContext = page.locator('.staff-context-bar');
+  await expect(staffContext.getByText('售前员工', { exact: true })).toBeVisible();
+  await expect(staffContext.getByText('售前', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /订单证据核对/u }).click();
   await expect(page.getByRole('heading', { name: '客户可见内容' })).toBeVisible();
   await expect(page.getByText('123-1234567-1234567')).toBeVisible();

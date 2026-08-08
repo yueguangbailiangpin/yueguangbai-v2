@@ -50,12 +50,12 @@ function StaffLogin(): React.JSX.Element {
   }
 
   return <main className="login-page identity-staff">
-    <Card className="login-card">
+    <Card className="login-card staff-login-card">
       <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span><strong>月光白</strong></div>
-      <div className="login-heading"><p className="eyebrow">员工工作区</p><h1>员工登录</h1><p>通过受信任的员工身份验证进入内部工作区。</p></div>
+      <div className="login-heading"><p className="eyebrow">内部员工入口</p><h1>员工登录</h1><p>使用受信任的员工身份进入。</p></div>
       {message ? <Alert tone="danger">{message}</Alert> : null}
       <div className="entry-actions"><Button onClick={() => { void start(); }}>使用受信任身份继续</Button><Button className="secondary" onClick={() => navigate('/')}>返回</Button></div>
-      <p className="security-note">员工身份与买家、卖家账号严格分离；本地验收不连接外部身份提供方。</p>
+      <p className="security-note">员工身份与买家、卖家账号严格分离。</p>
     </Card>
   </main>;
 }

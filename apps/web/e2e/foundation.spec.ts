@@ -314,7 +314,7 @@ test('staff login has only the trusted provider action and no customer form', as
   await expect(page.getByRole('button', { name: '使用受信任身份继续' })).toBeVisible();
   await expect(page.getByLabel('账号')).toHaveCount(0);
   await expect(page.getByLabel('密码')).toHaveCount(0);
-  await expect(page.getByText('员工身份与买家、卖家账号严格分离；本地验收不连接外部身份提供方。')).toBeVisible();
+  await expect(page.getByText('员工身份与买家、卖家账号严格分离。')).toBeVisible();
 });
 
 test('buyer login tab order and focus ring remain keyboard-visible', async ({ page }) => {

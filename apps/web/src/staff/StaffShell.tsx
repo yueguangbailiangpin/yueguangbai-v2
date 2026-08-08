@@ -1,9 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, UserPlus, UserRound } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useRef, useState, type ReactNode } from 'react';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from '../auth/staff/staff-auth-controller';
-import { Button, Dialog, IdentityShell, PageHeader, RequestIdDisplay } from '../ui/primitives';
+import { Button, Dialog, IdentityShell, RequestIdDisplay } from '../ui/primitives';
 
 function StaffAccountActions(): React.JSX.Element {
   const client = useQueryClient(); const navigate = useNavigate(); const [confirming, setConfirming] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState<string | null>(null); const [requestId, setRequestId] = useState<string | null>(null); const controller = useRef<StaffAuthController | null>(null); controller.current ??= new StaffAuthController(client);
@@ -22,25 +23,49 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const mayViewProducts = session.permissions.includes('PRODUCT_VIEW');
   const mayViewDashboard = session.role.code === 'owner'
     && session.permissions.includes('FINANCIAL_VIEW');
-  return <IdentityShell identity="staff" className="staff-shell">
-    <header className="staff-context"><strong>月光白</strong>
-      <span>{session.display_name} · {session.role.display_name}</span></header>
-    <nav className="staff-primary-nav" aria-label="员工工作台导航">
-      <NavLink to="/staff" end>工作队列</NavLink>
-      <NavLink to="/staff/acquisition">获客登记</NavLink>
-      {mayViewProducts ? <NavLink to="/staff/products">产品预约</NavLink> : null}
-      {mayViewDashboard ? <NavLink to="/staff/admin-business-dashboard">经营看板</NavLink> : null}
-    </nav>
-    <PageHeader
-      eyebrow="内部操作"
-      title={dashboard ? '经营看板' : productScheduling ? '产品预约排期'
-        : acquisition ? '获客登记' : '员工工作台'}
-      description={dashboard ? '按北京时间核对获客、订单与内部利润事实。'
-        : productScheduling ? '按不可变预约顺序查看排名，并以北京时间自然日维护下单排期。'
-          : acquisition ? '添加微信后登记单人线索；渠道由后端自动带入。'
-          : '队列、详情与操作保持清晰的阅读和处理顺序。'}
-    />
-    {children ?? <Outlet />}
-    <footer className="staff-account-footer"><StaffAccountActions /></footer>
+  const mayViewAcquisition = session.role.code === 'owner'
+    ? session.permissions.some((permission) => ['ACQUISITION_ADMIN', 'ACQUISITION_BUYER_LEAD', 'ACQUISITION_SELLER_LEAD'].includes(permission))
+    : session.role.code === 'pre_sales'
+      ? session.permissions.includes('ACQUISITION_BUYER_LEAD')
+      : session.role.code === 'seller_ops'
+        && session.permissions.includes('ACQUISITION_SELLER_LEAD');
+  const workQueue = !acquisition && !dashboard && !productScheduling;
+  const title = dashboard ? '经营看板' : productScheduling ? '产品预约排期'
+    : acquisition ? '获客登记' : '员工工作台';
+  const context = dashboard ? '经营与利润事实' : productScheduling ? '产品、预约与排期'
+    : acquisition ? '渠道与线索' : '队列、详情与受控操作';
+  return <IdentityShell identity="staff" className="staff-business-shell">
+    <aside className="staff-sidebar">
+      <NavLink className="staff-sidebar-brand" to="/staff" aria-label="月光白员工首页">月光白</NavLink>
+      <nav className="staff-primary-nav" aria-label="员工工作台导航">
+        <NavLink to="/staff" end className={workQueue ? 'active' : ''} {...(workQueue ? { 'aria-current': 'page' as const } : {})}>
+          <BriefcaseBusiness aria-hidden="true" /><span>工作队列</span>
+        </NavLink>
+        {mayViewAcquisition ? <NavLink to="/staff/acquisition">
+          <UserPlus aria-hidden="true" /><span>获客登记</span>
+        </NavLink> : null}
+        {mayViewProducts ? <NavLink to="/staff/products">
+          <CalendarDays aria-hidden="true" /><span>产品预约</span>
+        </NavLink> : null}
+        {mayViewDashboard ? <NavLink to="/staff/admin-business-dashboard">
+          <ChartNoAxesCombined aria-hidden="true" /><span>经营看板</span>
+        </NavLink> : null}
+      </nav>
+      <div className="staff-sidebar-person">
+        <UserRound aria-hidden="true" />
+        <span><strong>{session.display_name}</strong><small>{session.role.display_name}</small></span>
+      </div>
+    </aside>
+    <div className="staff-work-area">
+      <header className="staff-context-bar">
+        <NavLink className="staff-mobile-brand" to="/staff">月光白</NavLink>
+        <div><p>{context}</p><h1>{title}</h1></div>
+        <div className="staff-session-context">
+          <span>{session.display_name}</span><strong>{session.role.display_name}</strong><small>时间口径：北京时间</small>
+        </div>
+      </header>
+      <div className="staff-main">{children ?? <Outlet />}</div>
+      <footer className="staff-account-footer"><StaffAccountActions /></footer>
+    </div>
   </IdentityShell>;
 }

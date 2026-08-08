@@ -5,7 +5,7 @@ import { isFrontendApiError } from '../api/errors';
 import { StaffCustomerSecurityPanel } from '../auth/staff/StaffCustomerSecurityPanel';
 import { useFileUpload } from '../buyer/shared/useFileUpload';
 import {
-  Alert, Button, Card, EmptyState, FormField, RequestIdDisplay, SearchInput,
+  Alert, Button, Card, EmptyState, FormField, RequestIdDisplay,
   Select, StatusBadge, TextInput,
 } from '../ui/primitives';
 import { staffApi } from './api/client';
@@ -51,23 +51,24 @@ export function StaffWorkbench(): React.JSX.Element {
       <div className="pane-heading"><h2 id="staff-queue-title">待处理队列</h2>
         <StatusBadge tone={query.data?.work_items.length ? 'processing' : 'neutral'}>{query.data?.work_items.length ?? 0} 项（本页）</StatusBadge></div>
       <div className="staff-filter-grid" role="search" aria-label="工作队列筛选">
-        <SearchInput label="筛选提示" placeholder="队列按服务器范围加载" disabled />
-        <label htmlFor="staff-work-status">状态</label>
-        <Select id="staff-work-status" value={status} onChange={(event) => changeFilter('status', event.target.value)}>
+        <label htmlFor="staff-work-status">状态<Select id="staff-work-status" value={status} onChange={(event) => changeFilter('status', event.target.value)}>
           <option value="OPEN">待处理</option><option value="COMPLETED">已完成</option><option value="CANCELLED">已取消</option>
-        </Select>
-        <label htmlFor="staff-work-type">类型</label>
-        <Select id="staff-work-type" value={workType ?? ''} onChange={(event) => changeFilter('work_type', event.target.value)}>
+        </Select></label>
+        <label htmlFor="staff-work-type">类型<Select id="staff-work-type" value={workType ?? ''} onChange={(event) => changeFilter('work_type', event.target.value)}>
           <option value="">全部类型</option>{Object.entries(workLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </Select>
+        </Select></label>
       </div>
       {query.isPending ? <p role="status">正在加载工作队列</p>
         : query.isError ? <PanelError error={query.error} retry={() => { void query.refetch(); }} />
         : query.data.work_items.length === 0 ? <EmptyState title="当前队列为空" description="没有符合当前权限、范围和筛选条件的工作项。" />
         : <ol className="staff-work-list">{query.data.work_items.map((item) => <li key={item.work_item_id}>
           <button type="button" className={item.work_item_id === selectedId ? 'staff-work-item selected' : 'staff-work-item'} onClick={() => select(item)}>
-            <strong>{workLabels[item.work_type]}</strong><span>{item.source_entity_id}</span>
-            <small>{formatShanghai(item.created_at)} · {item.assigned_staff_id}</small>
+            <span className="staff-work-item-heading"><strong>{workLabels[item.work_type]}</strong>
+              <StatusBadge tone={item.status === 'OPEN' ? 'warning' : item.status === 'COMPLETED' ? 'success' : 'neutral'}>
+                {item.status === 'OPEN' ? '待处理' : item.status === 'COMPLETED' ? '已完成' : '已取消'}
+              </StatusBadge></span>
+            <span>编号：{item.source_entity_id}</span>
+            <small>创建：{formatShanghai(item.created_at)}</small><small>负责人：{item.assigned_staff_id}</small>
           </button></li>)}</ol>}
       <nav className="pagination-actions" aria-label="工作队列分页">
         <Button className="secondary" disabled={cursorHistory.length === 0} onClick={() => {
