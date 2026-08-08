@@ -29,8 +29,8 @@ Gate 1 未通过：`NO-GO`。
 - [ ] 完成 Web 静态托管、SPA 深链 fallback、安全 headers、API 同域/CORS、Worker route/custom domain 与 HTTPS。
 - [ ] 把真实 R2 binding 通过已验收的 production adapter 接到 `FILE_OBJECT_STORAGE`；验证 put/head/read/delete/补偿和私有访问，禁止裸 key/公开 URL。
 - [ ] 建立 production Wrangler/config，绑定 `DB`、R2、Cron 和必要 vars；不含 `REPLACE_BEFORE_USE`。
-- [ ] 初始把 Scheduler、Drive copy/proxy/delete、Feishu sync/callback、MCP 和获客维护等所有外部/破坏性开关保持 `false` 或 disabled。
-- [ ] 通过 Secret 管理写入并轮换所需值：Customer Session、安全 token、Staff auth hash、飞书 App Secret/回调 Secret、Drive OAuth、关键词服务 Secret及经独立 Change 批准的其他 Secret；绝不复制到命令日志或 Git。
+- [ ] 初始把 Scheduler、Drive copy/proxy/delete、Feishu sync/callback、MCP 和获客维护等所有外部/破坏性开关保持 `false` 或 disabled；获客维护必须核对精确变量 `ACQUISITION_MAINTENANCE_ENABLED=false`。
+- [ ] 通过 Secret 管理写入并轮换所需值：Customer Session、安全 token、Staff auth hash、Staff Auth 飞书 Secret，以及工作台独立的 `FEISHU_WORKBENCH_APP_SECRET`、`FEISHU_WORKBENCH_ENCRYPT_KEY`、`FEISHU_WORKBENCH_VERIFICATION_TOKEN`，另含 Drive OAuth、关键词服务 Secret及经独立 Change 批准的其他 Secret；绝不复制到命令日志或 Git。
 - [ ] 配置并验证 Staff Auth 的飞书 endpoints、App ID、tenant、redirect URI、allowed origins/return-to；所有域名精确匹配。
 - [ ] 配置独立于飞书的主告警接收器，执行一次带时间戳的投递、失败和恢复演练。
 
@@ -67,14 +67,16 @@ Gate 4 未通过：`NO-GO`，R2 delete 必须关闭。
 
 ## Gate 5：飞书应用、机器人、通知和安全深链
 
-必须先完成真实 Feishu workbench production adapter Change；当前只有 mock，不能靠填写 App Secret 激活。
+本地已具备 production-capable Task v2 adapter/factory 与官方加密 callback 合同，但没有任何真实飞书资源或验收；不能靠本地测试、模板或填写 Secret 激活。先运行 `npm run preflight:feishu-workbench`，其正确结果仍是 `LOCAL_NO_GO`。
+
+飞书激活预检必须同时证明 `ACQUISITION_MAINTENANCE_ENABLED=false`，六个标准调度作业全部 disabled；否则 Gate 5 立即失败，禁止以工作台窗口夹带获客维护或读取其 Secret。
 
 - [ ] 老板创建真实自建应用，批准最小 OAuth/用户/任务或多维表格/机器人/回调 scope，并记录当前免费版/API 版本和额度。
 - [ ] 使用匿名 A/B/C Staff 完成 OAuth、tenant 唯一映射、inactive/unknown/冲突失败关闭。
 - [ ] 验证工作台只同步安全任务摘要，不含完整微信、截图、凭证、内部利润或 Secret；D1 始终权威。
 - [ ] 验证机器人/内部通知只发送提醒与最小摘要，不执行返款、结算、审核、汇率或正式业务状态。
 - [ ] 深链只能是批准的 production HTTPS origin 下 `/staff/work-items/{id}`；打开后必须重新用当前 Staff Session、Personal DENY 和 Scope 授权。
-- [ ] 验证 callback HMAC、五分钟窗口、16 KiB 上限、nonce/event 重放、版本冲突、跨团队改派拒绝、429/5xx retry/dead-letter。
+- [ ] 验证官方 `X-Lark-*` SHA-256 签名、AES-256-CBC 加密 challenge/card action、Verification Token/App/Tenant、五分钟窗口、16 KiB 上限、nonce/event 重放、版本冲突、跨团队改派拒绝、429/5xx retry/dead-letter。
 - [ ] 验证 Feishu outage 不影响 D1/Web，并由独立告警通道通知；分别演练 sync 与 callback kill switch。
 - [ ] 完成飞书桌面/移动端及三大运营商匿名容量 PoC 后，老板再分别批准 Staff Auth、sync、callback/机器人阶段。
 

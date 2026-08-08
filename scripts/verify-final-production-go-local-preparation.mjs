@@ -7,6 +7,16 @@ const assert = (value, message) => {
   if (!value) throw new Error(message);
 };
 
+function resolveChangeFile(changeName, relativeFile) {
+  const active = path.join('openspec', 'changes', changeName, relativeFile);
+  const archived = readdirSync(path.join(root, 'openspec', 'changes', 'archive'))
+    .filter((entry) => /^\d{4}-\d{2}-\d{2}-/u.test(entry) && entry.endsWith(`-${changeName}`))
+    .map((entry) => path.join('openspec', 'changes', 'archive', entry, relativeFile));
+  const candidates = [active, ...archived].filter((file) => existsSync(path.join(root, file)));
+  assert(candidates.length === 1, `${changeName} must have exactly one active or archived evidence file`);
+  return candidates[0];
+}
+
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
@@ -90,6 +100,7 @@ assert(exampleConfig.includes('REPLACE_BEFORE_USE')
   'example Cloudflare placeholder evidence changed');
 for (const marker of [
   '"SCHEDULED_OPERATIONS_ENABLED": "false"',
+  '"ACQUISITION_MAINTENANCE_ENABLED": "false"',
   '"DRIVE_ARCHIVE_ENABLED": "false"',
   '"DRIVE_ARCHIVE_R2_DELETE_ENABLED": "false"',
 ]) assert(localConfig.includes(marker), `local fail-closed config missing: ${marker}`);
@@ -106,8 +117,16 @@ assert(!existsSync(path.join(root, 'apps/api/wrangler.staging.jsonc')),
 
 const feishuFiles = readdirSync(path.join(root, 'apps/api/src/feishu-workbench'));
 assert(feishuFiles.includes('mock-adapter.ts')
-  && !feishuFiles.some((file) => /production.*adapter|adapter.*production/iu.test(file)),
-  'Feishu production-adapter status changed; refresh external blocker');
+  && feishuFiles.includes('production-adapter.ts')
+  && feishuFiles.includes('production-adapter.test.ts'),
+  'Feishu local production-capable adapter evidence missing');
+const feishuNoGo = read(resolveChangeFile(
+  'feishu-workbench-production-adapter-activation',
+  'references/local-acceptance-and-no-go.md',
+));
+assert(feishuNoGo.includes('LOCAL_IMPLEMENTATION_READY / PRODUCTION_NO_GO')
+  && feishuNoGo.includes('No Provider API, Cloudflare, production D1/R2, domain, DNS or deployment was called.'),
+  'Feishu production adapter is not paired with truthful external NO-GO evidence');
 const mcpRuntime = read('apps/api/src/staff-mcp/runtime.ts');
 assert(mcpRuntime.includes('productionActivationSupported: false'),
   'Staff MCP production activation status changed; refresh audit');

@@ -1,9 +1,6 @@
-# feishu-staff-workbench Specification
+# Feishu Staff Workbench Production Adapter Activation
 
-## Purpose
-在保持 D1 为员工身份、权限、任务和业务事实唯一真值的前提下，提供默认关闭的飞书员工工作台生产适配：仅镜像最小任务摘要与受控深链接，并将通过官方验签、解密和重放保护的低风险回调重新授权后路由到既有 D1 命令。真实飞书激活仍须老板本人完成匿名 PoC 和 Production GO。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Anonymous PoC gates real Feishu integration
 
@@ -74,6 +71,8 @@ The system SHALL cache tenant tokens in memory with early expiry and concurrent 
 
 - **WHEN** a required switch/Secret/origin/app/tenant value is absent, a response is oversized/malformed, or Provider returns a non-retryable contract error
 - **THEN** activation fails closed without network where possible, the error is `CONTRACT` or disabled, and no raw response, token, Secret or open_id is persisted in logs or client responses.
+
+## ADDED Requirements
 
 ### Requirement: Activation preflight is local, staged and non-authorizing
 

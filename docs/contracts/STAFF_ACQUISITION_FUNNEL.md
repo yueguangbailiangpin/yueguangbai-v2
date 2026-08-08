@@ -28,6 +28,8 @@ owner 使用 `ACQUISITION_ADMIN` 管理渠道、Staff 渠道生效期和北京�
 
 未转化线索从最后跟进的北京日历时点起满十二个月后，由租约保护、可重试的维护作业清除微信哈希/密文/IV、显示名和备注。已有 Buyer、预约、正式订单、Seller 组织、Customer 安全事件，或显式 `SECURITY` / `DISPUTE` / `LEGAL` hold 的线索严格豁免。作业 dry-run 只读返回低基数计数，不获取租约、不改业务事实、不输出身份。
 
+Worker 只有在独立 `ACQUISITION_MAINTENANCE_ENABLED` 精确为 `true` 时才调用该维护作业并读取 `CUSTOMER_SECURITY_TOKEN_SECRET`。缺失、`false` 或其他值全部失败关闭，不得因总 Scheduler、飞书同步或其他作业启用而隐式执行。生产启用前仍须保留既有 dry-run、豁免、租约、审计和恢复验证；该独立门控不削弱任何候选或保留期检查。
+
 ## API 约定
 
 权威 path 和 TypeScript DTO 在 `packages/contracts/src/acquisition.ts`。列表采用 `limit` + `cursor` / `next_cursor`；日期使用 `YYYY-MM-DD` 北京业务日，时点使用 UTC 毫秒整数。稳定业务错误包括 `CHANNEL_CONFIGURATION_MISSING`、`CHANNEL_CONFIGURATION_AMBIGUOUS`、`DUPLICATE_LEAD`、`VERSION_CONFLICT`、`IDEMPOTENCY_CONFLICT` 和 `REQUEST_IN_PROGRESS`。

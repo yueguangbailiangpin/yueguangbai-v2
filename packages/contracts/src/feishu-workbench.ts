@@ -8,10 +8,10 @@ export const FEISHU_WORKBENCH_SYNC_FAILURE_CATEGORIES = [
 export type FeishuWorkbenchSyncFailureCategory = typeof FEISHU_WORKBENCH_SYNC_FAILURE_CATEGORIES[number];
 
 export interface FeishuWorkbenchTaskSummaryDto {
-  work_item_id: string;
   work_type: StaffWorkItemType;
   status: StaffWorkItemStatus;
-  assigned_staff_id: string;
+  work_item_version: number;
+  assignee_open_id: string;
   updated_at: number;
   safe_title: string;
   deep_link: string;
@@ -24,9 +24,9 @@ export interface FeishuWorkbenchCallbackDto {
   tenant_key: string;
   open_id: string;
   action: FeishuWorkbenchCallbackAction;
-  work_item_id: string;
+  task_guid: string;
   expected_version: number;
-  target_staff_id: string;
+  target_open_id: string;
   reason: string;
 }
 
@@ -38,7 +38,8 @@ export interface FeishuWorkbenchCallbackResultDto {
 
 export interface FeishuWorkbenchAdapter {
   /**
-   * `external_idempotency_key` is always the immutable D1 `work_item_id`.
+   * `external_idempotency_key` is a one-way hash derived from the immutable
+   * D1 work-item id. The raw internal id is never a standalone provider field.
    * A provider success followed by a D1 mirror-write failure is therefore
    * retried as an upsert of the same provider object, never as a new task.
    */
@@ -49,18 +50,18 @@ export interface FeishuWorkbenchAdapter {
 }
 
 export function parseFeishuWorkbenchTaskSummaryDto(value: unknown): FeishuWorkbenchTaskSummaryDto {
-  const record = exact(value, ['work_item_id','work_type','status','assigned_staff_id','updated_at','safe_title','deep_link','time_basis','display_timezone']);
-  if (!identifier(record['work_item_id']) || !workType(record['work_type']) || !workStatus(record['status'])
-    || !identifier(record['assigned_staff_id']) || !timestamp(record['updated_at']) || !safeTitle(record['safe_title'])
+  const record = exact(value, ['work_type','status','work_item_version','assignee_open_id','updated_at','safe_title','deep_link','time_basis','display_timezone']);
+  if (!workType(record['work_type']) || !workStatus(record['status']) || !positive(record['work_item_version'])
+    || !providerIdentifier(record['assignee_open_id']) || !timestamp(record['updated_at']) || !safeTitle(record['safe_title'])
     || !safeDeepLink(record['deep_link']) || record['time_basis'] !== 'UTC_MS' || record['display_timezone'] !== 'Asia/Shanghai') throw new Error('invalid_feishu_workbench_summary');
   return record as unknown as FeishuWorkbenchTaskSummaryDto;
 }
 
 export function parseFeishuWorkbenchCallbackDto(value: unknown): FeishuWorkbenchCallbackDto {
-  const record = exact(value, ['event_id','tenant_key','open_id','action','work_item_id','expected_version','target_staff_id','reason']);
+  const record = exact(value, ['event_id','tenant_key','open_id','action','task_guid','expected_version','target_open_id','reason']);
   if (!identifier(record['event_id']) || !short(record['tenant_key'],200) || !short(record['open_id'],200)
-    || record['action'] !== 'REASSIGN_WORK_ITEM' || !identifier(record['work_item_id'])
-    || !positive(record['expected_version']) || !identifier(record['target_staff_id']) || !short(record['reason'],1000)) throw new Error('invalid_feishu_workbench_callback');
+    || record['action'] !== 'REASSIGN_WORK_ITEM' || !providerIdentifier(record['task_guid'])
+    || !positive(record['expected_version']) || !providerIdentifier(record['target_open_id']) || !short(record['reason'],1000)) throw new Error('invalid_feishu_workbench_callback');
   return record as unknown as FeishuWorkbenchCallbackDto;
 }
 
@@ -74,10 +75,11 @@ export function parseFeishuWorkbenchCallbackResultDto(value: unknown): FeishuWor
 
 function exact(value:unknown,keys:readonly string[]):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('invalid_feishu_workbench_contract');const r=value as Record<string,unknown>;if(Object.keys(r).length!==keys.length||Object.keys(r).some((key)=>!keys.includes(key)))throw new Error('invalid_feishu_workbench_contract');return r;}
 function identifier(value:unknown){return short(value,200);}
+function providerIdentifier(value:unknown){return short(value,200)&&/^(?:ou_|on_|[a-z0-9])[A-Za-z0-9_-]+$/u.test(String(value));}
 function short(value:unknown,max:number){return typeof value==='string'&&value.length>=1&&value.length<=max&&!/[\u0000-\u001f\u007f]/u.test(value);}
 function timestamp(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=0;}
 function positive(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=1;}
 function safeTitle(value:unknown){return short(value,120);}
-function safeDeepLink(value:unknown){if(typeof value!=='string'||value.length>500)return false;try{const url=new URL(value);return url.protocol==='https:'&&url.username===''&&url.password===''&&url.hash===''&&url.search===''&&url.pathname.startsWith('/staff/work-items/');}catch{return false;}}
+function safeDeepLink(value:unknown){if(typeof value!=='string'||value.length>500)return false;try{const url=new URL(value);return url.protocol==='https:'&&url.username===''&&url.password===''&&url.hash===''&&url.search===''&&/^\/staff\/work-items\/[^/]+$/u.test(url.pathname);}catch{return false;}}
 function workType(value:unknown):value is StaffWorkItemType{return typeof value==='string'&&['PRODUCT_APPLICATION_REVIEW','DEMAND_REVIEW','RESERVATION_DECISION','ORDER_INSTRUCTION_PUBLISH','ORDER_EVIDENCE_REVIEW','REVIEW_DECISION','BUYER_REFUND_PROCESSING'].includes(value);}
 function workStatus(value:unknown):value is StaffWorkItemStatus{return value==='OPEN'||value==='COMPLETED'||value==='CANCELLED';}

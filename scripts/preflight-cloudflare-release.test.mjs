@@ -167,6 +167,8 @@ function anonymousConfig(environment) {
     if (value.endsWith('_FEISHU_SCOPE')) return 'anonymous:read';
     if (value.endsWith('_FEISHU_TENANT_KEY')) return `anonymous-${environment}-tenant`;
     if (value.endsWith('_FEISHU_REDIRECT_URI')) return `${origin}/api/staff-auth/feishu/callback`;
+    if (value.endsWith('_FEISHU_WORKBENCH_APP_ID')) return `anonymous-${environment}-workbench-app`;
+    if (value.endsWith('_FEISHU_WORKBENCH_TENANT_KEY')) return `anonymous-${environment}-workbench-tenant`;
     throw new Error(`unmapped_placeholder:${value}`);
   });
   return config;

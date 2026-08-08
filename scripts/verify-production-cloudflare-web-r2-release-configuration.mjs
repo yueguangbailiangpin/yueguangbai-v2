@@ -51,6 +51,7 @@ for (const environment of ['staging', 'production']) {
   `${environment} template SPA asset contract mismatch`);
   for (const flag of [
     'SCHEDULED_OPERATIONS_ENABLED',
+    'ACQUISITION_MAINTENANCE_ENABLED',
     'DRIVE_ARCHIVE_ENABLED',
     'DRIVE_ARCHIVE_COPY_ENABLED',
     'DRIVE_ARCHIVE_PROXY_READ_ENABLED',

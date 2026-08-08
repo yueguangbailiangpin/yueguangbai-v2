@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AnonymousR2Bucket } from '../test-support/anonymous-r2-binding';
 import worker from './worker';
 import type { CloudflareWorkerBindings } from './cloudflare-runtime';
+import { MockFeishuWorkbenchAdapter } from './feishu-workbench/mock-adapter';
 
 const origin = 'https://release.example.invalid';
 const executionContext = {
@@ -59,6 +60,7 @@ describe('production Cloudflare Worker runtime', () => {
       { ...bindings(), APP_ORIGIN: 'REQUIRED_PRODUCTION_HTTPS_ORIGIN' },
       { ...bindings(), APP_ENVIRONMENT: 'development' },
       { ...bindings(), SCHEDULED_OPERATIONS_ENABLED: 'true' },
+      { ...bindings(), ACQUISITION_MAINTENANCE_ENABLED: undefined },
     ];
     for (const env of cases) {
       const response = await worker.fetch(
@@ -98,6 +100,30 @@ describe('production Cloudflare Worker runtime', () => {
     expect(providerCalls).toBe(0);
     expect(await response.text()).not.toContain('anonymous-secret-value');
   });
+
+  it('allows only a complete Feishu-only schedule while Staff Auth remains off', async () => {
+    const env=bindings();
+    Object.assign(env,{
+      SCHEDULED_OPERATIONS_ENABLED:'true',
+      SCHEDULED_OPERATIONS_DISABLED_JOBS:'reservation_expiry,instruction_expiry,outbox_delivery,file_orphan_cleanup,staff_auth_cleanup,drive_archive',
+      FEISHU_WORKBENCH_SYNC_ENABLED:'true',
+      ACQUISITION_MAINTENANCE_ENABLED:'false',
+      FEISHU_WORKBENCH_WEB_ORIGIN:origin,
+      FEISHU_WORKBENCH_TENANT_KEY:'tenant-anonymous',
+      FEISHU_WORKBENCH_ADAPTER:new MockFeishuWorkbenchAdapter(),
+    });
+    expect((await worker.fetch(new Request(`${origin}/health`),env,executionContext)).status).toBe(200);
+    expect(env.STAFF_AUTH_ENABLED).toBe('false');
+    expect((await worker.fetch(new Request(`${origin}/health`),{
+      ...env,SCHEDULED_OPERATIONS_DISABLED_JOBS:'drive_archive',
+    },executionContext)).status).toBe(503);
+    expect((await worker.fetch(new Request(`${origin}/health`),{
+      ...env,FEISHU_WORKBENCH_TENANT_KEY:'',
+    },executionContext)).status).toBe(503);
+    expect((await worker.fetch(new Request(`${origin}/health`),{
+      ...env,ACQUISITION_MAINTENANCE_ENABLED:'true',
+    },executionContext)).status).toBe(503);
+  });
 });
 
 function bindings(): CloudflareWorkerBindings {
@@ -121,6 +147,7 @@ function bindings(): CloudflareWorkerBindings {
     },
     CUSTOMER_SESSION_SECRET: 'anonymous-secret-value',
     SCHEDULED_OPERATIONS_ENABLED: 'false',
+    ACQUISITION_MAINTENANCE_ENABLED: 'false',
     DRIVE_ARCHIVE_ENABLED: 'false',
     DRIVE_ARCHIVE_COPY_ENABLED: 'false',
     DRIVE_ARCHIVE_PROXY_READ_ENABLED: 'false',

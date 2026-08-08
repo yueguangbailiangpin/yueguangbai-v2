@@ -1,6 +1,6 @@
-import { apiFailure, apiSuccess } from '@ygb/contracts';
+import { apiFailure } from '@ygb/contracts';
 import type { Hono } from 'hono';
-import { handleFeishuWorkbenchCallback, FeishuWorkbenchCallbackError, verifyFeishuWorkbenchSignature } from './callback';
+import { handleFeishuWorkbenchCallback, FeishuWorkbenchCallbackError, verifyAndDecodeFeishuWorkbenchCallback } from './callback';
 import { feishuWorkbenchRuntime } from './runtime';
 
 const MAX_CALLBACK_BODY_BYTES=16*1024;
@@ -12,11 +12,22 @@ export function registerFeishuWorkbenchRoutes(app:Hono<any>):void {
     try {
       if(!runtime.callbackEnabled) throw new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);
       const body=await readBoundedUtf8Body(context.req.raw,MAX_CALLBACK_BODY_BYTES);
-      let parsed:unknown;
-      try { parsed=JSON.parse(body); } catch { throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR',400); }
-      const verified=await verifyFeishuWorkbenchSignature({secret:runtime.callbackSecret,signature:context.req.header('X-Feishu-Workbench-Signature')??null,timestamp:context.req.header('X-Feishu-Workbench-Timestamp')??null,nonce:context.req.header('X-Feishu-Workbench-Nonce')??null,body,now:Date.now()});
-      const result=await handleFeishuWorkbenchCallback(context.env.DB,{body:parsed,nonceHash:verified.nonceHash,payloadHash:verified.payloadHash,now:Date.now(),requestId});
-      return context.json(apiSuccess({callback:result},requestId));
+      const now=Date.now();
+      const verified=await verifyAndDecodeFeishuWorkbenchCallback({
+        encryptKey:runtime.encryptKey,verificationToken:runtime.verificationToken,
+        appId:runtime.appId,tenantKey:runtime.tenantKey,
+        signature:context.req.header('X-Lark-Signature')??null,
+        timestamp:context.req.header('X-Lark-Request-Timestamp')??null,
+        nonce:context.req.header('X-Lark-Request-Nonce')??null,body,now,
+      });
+      if(verified.kind==='CHALLENGE') return context.json({challenge:verified.challenge},200,{'Cache-Control':'no-store'});
+      const result=await handleFeishuWorkbenchCallback(context.env.DB,{callback:verified.callback,nonceHash:verified.nonceHash,payloadHash:verified.payloadHash,now,requestId});
+      const toast=result.outcome==='SUCCEEDED'
+        ? {type:'success',content:'任务已更新，请在月光白网页确认正式业务动作'}
+        : result.outcome==='IN_PROGRESS'
+          ? {type:'info',content:'任务处理中，请稍后在月光白网页查看'}
+          : {type:'warning',content:'任务未更新，请刷新月光白网页后重试'};
+      return context.json({toast},200,{'Cache-Control':'no-store'});
     } catch(error) {
       const normalized=error instanceof FeishuWorkbenchCallbackError?error:new FeishuWorkbenchCallbackError('DEPENDENCY_UNAVAILABLE',503);
       const messages={VALIDATION_ERROR:'回调参数不正确',UNAUTHENTICATED:'回调验证失败',FORBIDDEN:'无权执行该操作',NOT_FOUND:'资源不存在',VERSION_CONFLICT:'数据已发生变化，请刷新后重试',DEPENDENCY_UNAVAILABLE:'服务暂时不可用，请稍后重试'} as const;

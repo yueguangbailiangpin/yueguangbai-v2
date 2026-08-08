@@ -28,7 +28,7 @@ const SYSTEM_SCHEDULER_ACTOR = Object.freeze({
   permissions: new Set<StaffPermissionCode>(['ORDER_INSTRUCTION_EXPIRY_RUN','ORDER_INSTRUCTION_MANAGE']),
 });
 
-export async function runScheduledOperations(database: SqlDatabase, input: { now?: number; enabled?: boolean; disabledJobs?: readonly string[]; storage?: ObjectStorageAdapter | null; driveAdapter?: DriveArchiveAdapter | null; driveArchiveEnabled?: boolean; driveArchiveCopyEnabled?: boolean; driveArchiveProxyReadEnabled?: boolean; driveArchiveR2DeleteEnabled?: boolean; outboxAdapter?: OutboxDeliveryAdapter | null; feishuAdapter?: FeishuWorkbenchAdapter | null; feishuWebOrigin?: string | null; alertSink?: OperationalAlertSink|null; trigger?: ScheduledTrigger; only?: ScheduledJobName; dryRun?: boolean; deadlineReached?: () => boolean; batchSize?: number; }): Promise<SafeJobRun[]> {
+export async function runScheduledOperations(database: SqlDatabase, input: { now?: number; enabled?: boolean; disabledJobs?: readonly string[]; storage?: ObjectStorageAdapter | null; driveAdapter?: DriveArchiveAdapter | null; driveArchiveEnabled?: boolean; driveArchiveCopyEnabled?: boolean; driveArchiveProxyReadEnabled?: boolean; driveArchiveR2DeleteEnabled?: boolean; outboxAdapter?: OutboxDeliveryAdapter | null; feishuAdapter?: FeishuWorkbenchAdapter | null; feishuWebOrigin?: string | null; feishuTenantKey?: string | null; alertSink?: OperationalAlertSink|null; trigger?: ScheduledTrigger; only?: ScheduledJobName; dryRun?: boolean; deadlineReached?: () => boolean; batchSize?: number; }): Promise<SafeJobRun[]> {
   const now = input.now ?? Date.now();
   const names = input.only ? [input.only] : SCHEDULED_JOB_NAMES;
   const output: SafeJobRun[] = [];
@@ -45,7 +45,7 @@ export async function runScheduledOperations(database: SqlDatabase, input: { now
 async function runOne(database: SqlDatabase, job: ScheduledJobName, input: Required<Pick<Parameters<typeof runScheduledOperations>[1], 'now'>> & Parameters<typeof runScheduledOperations>[1]): Promise<SafeJobRun> {
   const driveHardDisabled=job==='drive_archive' && (input.driveArchiveEnabled!==true
     || input.driveArchiveCopyEnabled!==true || !input.storage || !input.driveAdapter);
-  const feishuHardDisabled=job==='feishu_sync' && (!input.feishuAdapter || !input.feishuWebOrigin);
+  const feishuHardDisabled=job==='feishu_sync' && (!input.feishuAdapter || !input.feishuWebOrigin || !input.feishuTenantKey);
   if (input.enabled === false || input.disabledJobs?.includes(job) || driveHardDisabled || feishuHardDisabled) return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
   const configured=await database.prepare('SELECT enabled FROM scheduled_job_states WHERE job_name=?').bind(job).first<{enabled:number}>();
   if (configured?.enabled===0) return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
@@ -116,7 +116,7 @@ async function execute(database: SqlDatabase, job: ScheduledJobName, input: Para
       failureCategory:result.failed+reconciliation.failed>0?'job_item_failed':undefined};
   }
   if (job === 'feishu_sync') {
-    const result=await runFeishuWorkbenchSyncBatch(database,input.feishuAdapter??null,{webOrigin:input.feishuWebOrigin??null,now:input.now,limit:batchSize,dryRun:input.dryRun===true});
+    const result=await runFeishuWorkbenchSyncBatch(database,input.feishuAdapter??null,{webOrigin:input.feishuWebOrigin??null,tenantKey:input.feishuTenantKey??null,now:input.now,limit:batchSize,dryRun:input.dryRun===true});
     if (result.failed>0) {
       const securityEventId=await hashCanonicalJson({kind:'FEISHU_SYNC_FAILURE',observed_at:input.now,failure_category:result.failureCategory});
       await recordFeishuAdapterFailureSignal(database,{securityEventId,observedAt:input.now,...(input.alertSink?{sink:input.alertSink}:{})}).catch(()=>undefined);

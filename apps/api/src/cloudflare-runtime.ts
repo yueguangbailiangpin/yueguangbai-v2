@@ -1,6 +1,7 @@
 import type { ObjectStorageAdapter, SqlDatabase } from '@ygb/contracts';
 import type { AppBindings } from './app';
 import { createR2ObjectStorageAdapter } from './files/r2-object-storage';
+import { feishuWorkbenchRuntime } from './feishu-workbench/runtime';
 
 export type ReleaseEnvironment = 'local' | 'staging' | 'production';
 
@@ -28,13 +29,10 @@ export interface ResolvedCloudflareRuntime {
 }
 
 const DISABLED_RELEASE_FLAGS = [
-  'SCHEDULED_OPERATIONS_ENABLED',
   'DRIVE_ARCHIVE_ENABLED',
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-  'FEISHU_WORKBENCH_SYNC_ENABLED',
-  'FEISHU_WORKBENCH_CALLBACK_ENABLED',
   'STAFF_AUTH_ENABLED',
   'STAFF_MCP_ENABLED',
   'STAFF_MCP_LOCAL_MOCK_ENABLED',
@@ -78,6 +76,8 @@ export function resolveCloudflareRuntime(
   const storage = createR2ObjectStorageAdapter(
     bindings.FILE_OBJECT_STORAGE_R2,
   );
+  const feishu = feishuWorkbenchRuntime(bindings);
+  const scheduledEnabled=bindings.SCHEDULED_OPERATIONS_ENABLED==='true';
   if (!appOrigin
     || allowedOrigins.length !== 1
     || allowedOrigins[0] !== appOrigin
@@ -85,6 +85,16 @@ export function resolveCloudflareRuntime(
     || !storage
     || !isStaticAssetBinding(bindings.WEB_ASSETS)
     || DISABLED_RELEASE_FLAGS.some((name) => bindings[name] !== 'false')
+    || !booleanFlag(bindings.SCHEDULED_OPERATIONS_ENABLED)
+    || !booleanFlag(bindings.ACQUISITION_MAINTENANCE_ENABLED)
+    || (scheduledEnabled && (bindings.FEISHU_WORKBENCH_SYNC_ENABLED!=='true'
+      || bindings.ACQUISITION_MAINTENANCE_ENABLED !== 'false'
+      || !feishuOnlySchedule(bindings.SCHEDULED_OPERATIONS_DISABLED_JOBS)))
+    || (!scheduledEnabled && bindings.FEISHU_WORKBENCH_SYNC_ENABLED==='true')
+    || !booleanFlag(bindings.FEISHU_WORKBENCH_SYNC_ENABLED)
+    || !booleanFlag(bindings.FEISHU_WORKBENCH_CALLBACK_ENABLED)
+    || (bindings.FEISHU_WORKBENCH_SYNC_ENABLED === 'true' && !feishu.syncEnabled)
+    || (bindings.FEISHU_WORKBENCH_CALLBACK_ENABLED === 'true' && !feishu.callbackEnabled)
     || bindings.OPERATIONAL_ALERT_MODE !== 'disabled') return null;
 
   return Object.freeze({
@@ -93,6 +103,14 @@ export function resolveCloudflareRuntime(
     appBindings: releaseAppBindings(bindings, storage),
     assets: bindings.WEB_ASSETS,
   });
+}
+
+function booleanFlag(value:unknown):value is 'true'|'false' { return value==='true'||value==='false'; }
+function feishuOnlySchedule(value:unknown):boolean {
+  if(typeof value!=='string')return false;
+  const actual=new Set(value.split(',').map((name)=>name.trim()).filter(Boolean));
+  const required=['reservation_expiry','instruction_expiry','outbox_delivery','file_orphan_cleanup','staff_auth_cleanup','drive_archive'];
+  return actual.size===required.length&&required.every((name)=>actual.has(name));
 }
 
 export function isApiRequestPath(pathname: string): boolean {

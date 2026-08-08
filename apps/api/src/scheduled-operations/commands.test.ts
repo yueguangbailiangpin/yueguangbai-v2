@@ -88,12 +88,12 @@ describe('scheduled operation manual commands',()=>{
   it('replays a quarantined STAFF_WORK_ITEM only to the fixed feishu_sync consumer',async()=>{
     database=createMigratedTestDatabase();
     database.exec("INSERT INTO scheduled_job_states(job_name,updated_at) VALUES('feishu_sync',1); INSERT INTO integration_outbox(id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES('feishu-poison','feishu-poison-key','WORK_ITEM_CHANGED','STAFF_WORK_ITEM','no-business-read','{}','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','FAILED',1,NULL,NULL,5,'quarantined',1,1,NULL); INSERT INTO scheduled_dead_letters(id,job_name,source_kind,source_id,failure_category,attempt_count,quarantined_at) VALUES('feishu-dead','feishu_sync','OUTBOX','feishu-poison','adapter_unavailable',5,1)");
-    const result=await replayScheduledDeadLetter(database,{enabled:true,feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'https://staff.example.test'},{deadLetterId:'feishu-dead',command:{event_id:'feishu-poison',reason_code:'DEPENDENCY_RECOVERED'}},commandContext('replay-feishu-key'));
+    const result=await replayScheduledDeadLetter(database,{enabled:true,feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'https://staff.example.test',feishuTenantKey:'tenant-local'},{deadLetterId:'feishu-dead',command:{event_id:'feishu-poison',reason_code:'DEPENDENCY_RECOVERED'}},commandContext('replay-feishu-key'));
     expect(result).toMatchObject({job_name:'feishu_sync',outcome:'SUCCEEDED'});
     let genericCalls=0;
     expect((await runScheduledOperations(database,{now:2_000,only:'outbox_delivery',outboxAdapter:{deliver:async()=>{genericCalls+=1}}}))[0]).toMatchObject({processed_count:0});
     expect(genericCalls).toBe(0);
-    expect((await runScheduledOperations(database,{now:2_000,only:'feishu_sync',feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'https://staff.example.test'}))[0]).toMatchObject({processed_count:1,succeeded_count:1});
+    expect((await runScheduledOperations(database,{now:2_000,only:'feishu_sync',feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'https://staff.example.test',feishuTenantKey:'tenant-local'}))[0]).toMatchObject({processed_count:1,succeeded_count:1});
   });
 
   it('keeps feishu dead letters quarantined when its adapter or valid origin is absent',async()=>{
@@ -104,7 +104,7 @@ describe('scheduled operation manual commands',()=>{
     expect(await database.prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='feishu-no-adapter'").first()).toEqual({replay_status:'QUARANTINED'});
     expect(await database.prepare("SELECT status,attempt_count FROM integration_outbox WHERE id='feishu-no-adapter-event'").first()).toEqual({status:'FAILED',attempt_count:5});
     seedFeishuDeadLetter(database,'feishu-bad-origin','feishu-bad-origin-event');
-    const badOrigin=await replayScheduledDeadLetter(database,{enabled:true,feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'http://not-safe.example.test'},{deadLetterId:'feishu-bad-origin',command:{event_id:'feishu-bad-origin-event',reason_code:'DEPENDENCY_RECOVERED'}},commandContext('replay-feishu-bad-origin'));
+    const badOrigin=await replayScheduledDeadLetter(database,{enabled:true,feishuAdapter:new MockFeishuWorkbenchAdapter(),feishuWebOrigin:'http://not-safe.example.test',feishuTenantKey:'tenant-local'},{deadLetterId:'feishu-bad-origin',command:{event_id:'feishu-bad-origin-event',reason_code:'DEPENDENCY_RECOVERED'}},commandContext('replay-feishu-bad-origin'));
     expect(badOrigin).toMatchObject({job_name:'feishu_sync',outcome:'DISABLED'});
     expect(await database.prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='feishu-bad-origin'").first()).toEqual({replay_status:'QUARANTINED'});
     expect(await database.prepare("SELECT status,attempt_count FROM integration_outbox WHERE id='feishu-bad-origin-event'").first()).toEqual({status:'FAILED',attempt_count:5});

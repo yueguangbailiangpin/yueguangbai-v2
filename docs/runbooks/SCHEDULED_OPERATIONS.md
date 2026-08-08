@@ -4,13 +4,15 @@
 
 Worker 的 Cron 配置只定义触发频率；`SCHEDULED_OPERATIONS_ENABLED` 必须显式为 `true` 才会获取任何租约。`SCHEDULED_OPERATIONS_DISABLED_JOBS` 为逗号分隔的作业名，可即时停止单一作业。示例配置默认关闭，绝不代表生产部署。
 
+获客维护不由总开关隐式授权。它另受 `ACQUISITION_MAINTENANCE_ENABLED` 控制，只有精确值 `true` 才会执行并读取 `CUSTOMER_SECURITY_TOKEN_SECRET`；缺失、`false` 或其他值均跳过。飞书专用调度必须把六个标准作业全部 disabled 并保持该获客开关为 `false`，因此一次 Cron 只能记录 `feishu_sync`，不会获得获客维护租约或触发线索匿名化。未来启用获客维护必须走独立 Change、候选 dry-run 与发布审批，不能借飞书激活窗口开启。
+
 `wrangler.example.jsonc` 与 `apps/api/wrangler.local.jsonc` 只提供本地 Cron/config/mock 合同；没有执行 Cloudflare 部署、没有线上 Queue 绑定，也没有写线上 D1。生产启用必须由独立发布审批设置开关、告警接收方和恢复负责人。本 Change 不读取 Cloudflare、飞书或其他外部凭证。
 
 全部时间事实使用 UTC 毫秒。员工界面应在客户端以 `Asia/Shanghai` 显示。
 
 ## 作业、恢复与人工操作
 
-`reservation_expiry`、`instruction_expiry`、`outbox_delivery`、`file_orphan_cleanup`、`staff_auth_cleanup` 运行既有领域服务；`drive_archive` 与 `feishu_sync` 始终禁用，等待各自 Change 提供 adapter。每次 Scheduled Handler 设 25 秒墙钟预算，每次作业持有 90 秒 D1 租约；预算耗尽时不再启动新作业，批次内保存“最后已尝试”游标后续跑。进程中断后仅在租约到期后被接管；旧 token 迟到完成只能记为 `lease_lost` 的部分运行，不能覆盖新 owner、游标或成功事实。业务幂等键、版本和唯一约束仍是最终副作用防线。
+`reservation_expiry`、`instruction_expiry`、`outbox_delivery`、`file_orphan_cleanup`、`staff_auth_cleanup` 运行既有领域服务；`drive_archive` 与 `feishu_sync` 各自等待独立能力开关与 adapter。每次 Scheduled Handler 设 25 秒墙钟预算，每次作业持有 90 秒 D1 租约；预算耗尽时不再启动新作业，批次内保存“最后已尝试”游标后续跑。进程中断后仅在租约到期后被接管；旧 token 迟到完成只能记为 `lease_lost` 的部分运行，不能覆盖新 owner、游标或成功事实。业务幂等键、版本和唯一约束仍是最终副作用防线。
 
 受已登录 ACTIVE Staff 且完成 scope、hard deny 与 Personal DENY 计算后保护的接口：
 

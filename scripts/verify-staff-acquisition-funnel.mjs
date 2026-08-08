@@ -88,9 +88,11 @@ assert(maintenanceSource.includes(`if (input.dryRun) return inspectMaintenance`)
   && maintenanceSource.includes(`'BUYER_CUSTOMER','RESERVATION','FORMAL_ORDER','SELLER_ORGANIZATION'`)
   && maintenanceSource.includes(`customer_auth_security_events`),
   'retention dry-run or preservation exemptions missing');
-assert(workerSource.includes('runAcquisitionMaintenance')
-  && workerSource.includes('CUSTOMER_SECURITY_TOKEN_SECRET'),
-  'Worker maintenance integration missing');
+const maintenanceGate = workerSource.indexOf("env.ACQUISITION_MAINTENANCE_ENABLED === 'true'");
+const maintenanceCall = workerSource.indexOf('await runAcquisitionMaintenance', maintenanceGate);
+const maintenanceSecret = workerSource.indexOf('CUSTOMER_SECURITY_TOKEN_SECRET', maintenanceCall);
+assert(maintenanceGate >= 0 && maintenanceCall > maintenanceGate && maintenanceSecret > maintenanceCall,
+  'Worker maintenance integration is not independently fail-closed');
 assert(webSource.includes('添加微信后登记') && webSource.includes('总管理员配置'),
   'Chinese workbench panels missing');
 assert(contract.includes('Personal DENY') && contract.includes('Asia/Shanghai')
@@ -101,6 +103,7 @@ console.log(JSON.stringify({
   privacy_fail_closed: true, client_channel_authority: false,
   buyer_refund_authority: false, seller_profit_fields: false,
   worker_dry_run_supported: true, production_resources_touched: 0,
+  worker_maintenance_default_enabled: false,
   pre_upgrade_restore: true, restored_forward_upgrade: true,
 }, null, 2));
 

@@ -1,6 +1,7 @@
 import { parseFeishuWorkbenchTaskSummaryDto, type FeishuWorkbenchAdapter, type FeishuWorkbenchSyncFailureCategory, type SqlDatabase, type StaffWorkItemStatus, type StaffWorkItemType } from '@ygb/contracts';
 import { claimNextOutboxEvent, markOutboxFailed, markOutboxSent } from '../foundation/outbox';
 import { FeishuWorkbenchAdapterError } from './mock-adapter';
+import { hashCanonicalJson } from '@ygb/domain';
 
 const MAX_ATTEMPTS = 5;
 const BACKOFF_BASE_MS = 30_000;
@@ -8,9 +9,9 @@ const BACKOFF_BASE_MS = 30_000;
 interface WorkItemRow { id:string; work_type:StaffWorkItemType; status:StaffWorkItemStatus; assigned_staff_id:string; version:number; updated_at:number; }
 interface MirrorRow { mirror_key:string; mirrored_work_item_version:number; }
 
-export async function runFeishuWorkbenchSyncBatch(database: SqlDatabase, adapter: FeishuWorkbenchAdapter | null, input: {webOrigin:string|null;now:number;limit:number;dryRun?:boolean}): Promise<{processed:number;succeeded:number;failed:number;backlog:number;failureCategory:FeishuWorkbenchSyncFailureCategory|null}> {
+export async function runFeishuWorkbenchSyncBatch(database: SqlDatabase, adapter: FeishuWorkbenchAdapter | null, input: {webOrigin:string|null;tenantKey:string|null;now:number;limit:number;dryRun?:boolean}): Promise<{processed:number;succeeded:number;failed:number;backlog:number;failureCategory:FeishuWorkbenchSyncFailureCategory|null}> {
   const backlog=()=>countBacklog(database,input.now);
-  if (!adapter || !input.webOrigin) return {processed:0,succeeded:0,failed:0,backlog:await backlog(),failureCategory:'adapter_unavailable'};
+  if (!adapter || !input.webOrigin || !input.tenantKey) return {processed:0,succeeded:0,failed:0,backlog:await backlog(),failureCategory:'adapter_unavailable'};
   if (input.dryRun) return {processed:0,succeeded:0,failed:0,backlog:await backlog(),failureCategory:null};
   let processed=0; let succeeded=0; let failed=0; let failureCategory:FeishuWorkbenchSyncFailureCategory|null=null;
   while(processed<input.limit){
@@ -25,8 +26,11 @@ export async function runFeishuWorkbenchSyncBatch(database: SqlDatabase, adapter
       // event is safely consumed; a pre-existing mirror still receives the
       // terminal snapshot below so the local card can close.
       if (!mirror && (item.status==='COMPLETED'||item.status==='CANCELLED')) { await markOutboxSent(database,event,input.now); succeeded+=1; continue; }
-      const summary=parseFeishuWorkbenchTaskSummaryDto({work_item_id:item.id,work_type:item.work_type,status:item.status,assigned_staff_id:item.assigned_staff_id,updated_at:Number(item.updated_at),safe_title:title(item.work_type),deep_link:`${input.webOrigin}/staff/work-items/${encodeURIComponent(item.id)}`,time_basis:'UTC_MS',display_timezone:'Asia/Shanghai'});
-      const result=await adapter.upsertTask(summary,mirror?.mirror_key??null,item.id);
+      const identities=await database.prepare("SELECT open_id FROM feishu_staff_identities WHERE staff_id=? AND tenant_key=? AND status='ACTIVE' ORDER BY open_id LIMIT 2").bind(item.assigned_staff_id,input.tenantKey).all<{open_id:string}>();
+      if(identities.results.length!==1) throw new FeishuWorkbenchAdapterError('CONTRACT');
+      const summary=parseFeishuWorkbenchTaskSummaryDto({work_type:item.work_type,status:item.status,work_item_version:item.version,assignee_open_id:identities.results[0]!.open_id,updated_at:Number(item.updated_at),safe_title:title(item.work_type),deep_link:`${input.webOrigin}/staff/work-items/${encodeURIComponent(item.id)}`,time_basis:'UTC_MS',display_timezone:'Asia/Shanghai'});
+      const providerKey=(await hashCanonicalJson({namespace:'YGB_FEISHU_WORK_ITEM_V1',work_item_id:item.id})).slice(0,40);
+      const result=await adapter.upsertTask(summary,mirror?.mirror_key??null,providerKey);
       if(!safe(result.mirror_key,200)||!Number.isSafeInteger(result.adapter_version)||result.adapter_version<1||(mirror&&result.mirror_key!==mirror.mirror_key)) throw new FeishuWorkbenchAdapterError('CONTRACT');
       await database.batch([
         database.prepare(`INSERT INTO feishu_workbench_mirrors(work_item_id,mirror_key,mirrored_work_item_version,adapter_version,last_outbox_event_id,last_synced_at,version,created_at,updated_at) VALUES(?,?,?,?,?,?,1,?,?) ON CONFLICT(work_item_id) DO UPDATE SET mirrored_work_item_version=excluded.mirrored_work_item_version,adapter_version=excluded.adapter_version,last_outbox_event_id=excluded.last_outbox_event_id,last_synced_at=excluded.last_synced_at,version=feishu_workbench_mirrors.version+1,updated_at=excluded.updated_at`).bind(item.id,result.mirror_key,item.version,result.adapter_version,event.id,input.now,input.now,input.now),

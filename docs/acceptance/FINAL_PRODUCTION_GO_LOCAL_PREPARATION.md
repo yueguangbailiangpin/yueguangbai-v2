@@ -82,7 +82,7 @@ Cloudflare/部署静态审计更新：
 - Web 已冻结为同一 Worker Static Assets：SPA deep-link fallback、Worker-first security headers、同源 `/api/*`、跨源拒绝和 exact Custom Domain/HTTPS 合同已有本地实现与匿名测试路径。
 - Cloudflare `FILE_OBJECT_STORAGE_R2` 已通过 production adapter/factory 接入现有 `FILE_OBJECT_STORAGE` 应用端口；没有公有 bucket、list、裸 key、签名 URL 或永久 URL。
 - 总控复核提出的三项缺口已在本 Change 内收口：ambiguous/post-put R2 failure 通过通用端口进入既有补偿/`DELETION_PENDING`；`--config` 同时执行绝对词法路径与 `realpath` 的 Git 外强制；Web 已移除全部 JSX inline style 并由完整 Web gate 保持 `style-src 'self'` 兼容。
-- Staff Auth/Feishu、Drive、Feishu workbench、Staff MCP、Scheduler 和外部告警在模板中保持 disabled；飞书工作台仍只有 mock adapter，Staff MCP 仍 `productionActivationSupported=false` 且没有公开 `/mcp` route。
+- Staff Auth/Feishu、Drive、Feishu workbench、Staff MCP、Scheduler、独立获客维护和外部告警在模板中保持 disabled；飞书激活预检精确要求 `ACQUISITION_MAINTENANCE_ENABLED=false`，飞书工作台已有 production-capable Task v2 adapter/factory 与官方加密 callback 本地合同，但真实租户/权限/Secret/callback/API 验收均为零，Staff MCP 仍 `productionActivationSupported=false` 且没有公开 `/mcp` route。
 
 这只关闭“production config/adapter 完全缺失”的本地实现缺口。真实资源存在性、Git 外渲染配置、Secret 注入、Cloudflare 校验/部署、Custom Domain/HTTPS、真实 R2、独立告警和网络仍没有证据，不能标为 staging/production 验收。
 
@@ -93,7 +93,7 @@ Cloudflare/部署静态审计更新：
 - origin/main 基线与 M10 archive/main/PR 历史已核实。
 - React Router 历史 high 已真实解析到 8.3.0，当前 audit 为 0。
 - 0001–0037 在仓库中连续；本 Change 无 Migration。
-- 本地备份/恢复、离线文件对账、Drive/Feishu/MCP mock、权限/财务/时区/中文测试能力存在。
+- 本地备份/恢复、离线文件对账、Drive/Feishu/MCP 匿名测试、权限/财务/时区/中文测试能力存在。
 - Drive、Feishu、MCP 与 Scheduler 默认 hard-disabled；本任务未激活任何外部能力。
 - staging/production 配置模板、R2 adapter、同源 Web/SPA/security headers 与纯本地 preflight 已具备；模板仍不可部署，真实值未进入 Git。
 
@@ -119,7 +119,7 @@ Cloudflare/部署静态审计更新：
 1. 本地 Cloudflare/Web/R2 adapter、模板和 preflight 已具备，但缺少老板填充并保管的真实配置、实际 D1/R2/Worker/域名/Secret、Cloudflare 部署与真实 R2/HTTPS/网络验收。
 2. 缺少真实 D1 备份、隔离恢复、生产 ledger 和 Migration 证据。
 3. 缺少真实 R2/Drive Manifest 对账、Drive read-back 和恢复证据。
-4. 缺少飞书真实应用/回调/工作台 adapter/独立告警证据。
+4. 飞书工作台本地 adapter/factory 已具备，但缺少真实应用/租户/权限/Secret/callback/API/独立告警证据。
 5. Staff MCP 仍是 local-only，无生产 HTTPS/OAuth/持久化安全边界或 ChatGPT 注册。
 6. 缺少移动/联通/电信、微信内置浏览器、飞书移动端的真实网络矩阵。
 7. 缺少生产 Staff/Buyer/Seller 权限隔离、Personal DENY、文件 Audience、财务和安全渗透验收。
@@ -147,7 +147,7 @@ Cloudflare/部署静态审计更新：
 | `npm run verify:dependency-risk` | 各级漏洞均为 0 |
 | `npm run security:scan` | 1410 个项目文件通过 |
 | `npm run db:verify`、`npm run verify:migration-guards`、本地 Wrangler Migration | 37 个 Migration；schema 37；165 tables；311 triggers；integrity ok；FK errors 0；fresh/顺序/错序/重复/部分 DDL 守卫通过；仅本地假 D1 |
-| M10、Drive、Feishu、Staff MCP、四角色、获客、排期、Dashboard 的 formal/static/dry-run | 全部通过；外部调用/生产写入为 0；Feishu 为 mock-only；MCP 为 local-only；Production GO 明确 blocked |
+| M10、Drive、Feishu、Staff MCP、四角色、获客、排期、Dashboard 的 formal/static/dry-run | 全部通过；外部调用/生产写入为 0；Feishu production-capable adapter 仅经匿名本地合同测试；MCP 为 local-only；Production GO 明确 blocked |
 | `npx vitest run scripts/preflight-cloudflare-release.test.mjs`、`npm run dry-run:cloudflare-release`、`npm run verify:cloudflare-release`、`npm run verify:web-static-build` | Preflight 9/9；相对/仓库内/双向 symlink 路径拒绝且值不泄露；模板均为 `BLOCKED_NEEDS_OPERATOR_INPUT`；`jsx_inline_styles=0`；外部调用/部署/资源修改为 0 |
 | `npm run check` | 通过；197 个 Vitest 文件、1291 项测试全部通过；类型检查、全仓构建、Web 静态 verifier 与 Worker 本地 dry-run 通过 |
 | `npm run test:wave14a:browser` | Chromium 180 passed、1 skipped、0 failed；含中文、响应式、键盘、权限失败关闭和北京时间 UI 合同 |

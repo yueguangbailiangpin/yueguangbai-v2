@@ -8,6 +8,7 @@ const environments = new Set(['staging', 'production']);
 const placeholderPattern = /REQUIRED|REPLACE|PLACEHOLDER|CHANGEME|TODO/iu;
 const disabledFlags = [
   'SCHEDULED_OPERATIONS_ENABLED',
+  'ACQUISITION_MAINTENANCE_ENABLED',
   'DRIVE_ARCHIVE_ENABLED',
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
@@ -31,7 +32,9 @@ export const requiredManagedSecrets = Object.freeze({
     'KEYWORD_HMAC_SECRET',
     'GOOGLE_DRIVE_CLIENT_SECRET',
     'GOOGLE_DRIVE_REFRESH_TOKEN',
-    'FEISHU_WORKBENCH_CALLBACK_SECRET',
+    'FEISHU_WORKBENCH_APP_SECRET',
+    'FEISHU_WORKBENCH_ENCRYPT_KEY',
+    'FEISHU_WORKBENCH_VERIFICATION_TOKEN',
   ]),
 });
 
@@ -147,6 +150,22 @@ export function validateReleaseConfig(config, environment) {
     'STAFF_AUTH_FEISHU_SCOPE',
     'STAFF_AUTH_FEISHU_TENANT_KEY',
   ]) requiredString(vars, key, errors, 'vars.');
+  if (vars?.FEISHU_WORKBENCH_API_ORIGIN !== 'https://open.feishu.cn') {
+    errors.push('vars.FEISHU_WORKBENCH_API_ORIGIN:official_origin_required');
+  }
+  for (const key of ['FEISHU_WORKBENCH_APP_ID', 'FEISHU_WORKBENCH_TENANT_KEY']) {
+    requiredString(vars, key, errors, 'vars.');
+  }
+  for (const [key, minimum, maximum] of [
+    ['FEISHU_WORKBENCH_REQUEST_TIMEOUT_MS', 100, 10_000],
+    ['FEISHU_WORKBENCH_MAX_ATTEMPTS', 1, 3],
+    ['FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND', 1, 10],
+  ]) {
+    const value = String(vars?.[key] ?? '');
+    if (!/^\d+$/u.test(value) || Number(value) < minimum || Number(value) > maximum) {
+      errors.push(`vars.${key}:invalid_integer`);
+    }
+  }
 
   const route = exactOne(record?.routes);
   if (!route || route.custom_domain !== true || typeof route.pattern !== 'string') {
