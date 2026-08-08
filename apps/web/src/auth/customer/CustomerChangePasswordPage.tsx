@@ -164,8 +164,8 @@ export function CustomerChangePasswordPage({
       : '修改密码';
 
   const content = (
-    <section className={`login-page identity-${target}${target === 'buyer' ? ' buyer-account-form-page' : ''}`}>
-      <Card className={`login-card password-card${target === 'buyer' ? ' buyer-login-card buyer-password-card' : ''}`}>
+    <section className={`login-page identity-${target}${target === 'buyer' ? ' buyer-account-form-page' : ' seller-account-form-page'}`}>
+      <Card className={`login-card password-card${target === 'buyer' ? ' buyer-login-card buyer-password-card' : ' seller-login-card seller-password-card'}`}>
         {target === 'buyer' ? null : <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
           <strong>月光白</strong></div>}
         <div className="login-heading"><h1>修改密码</h1>

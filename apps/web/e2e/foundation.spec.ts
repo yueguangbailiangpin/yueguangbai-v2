@@ -385,7 +385,7 @@ test('Seller shell exposes organization/store context and truthful business metr
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/seller');
   await expect(page.getByRole('navigation', { name: '卖家导航' })).toBeVisible();
-  await expect(page.getByLabel('店铺')).toBeVisible();
+  await expect(page.getByLabel('店铺', { exact: true })).toBeVisible();
   await expect(page.getByText(/本地卖家组织/u)).toBeVisible();
   for (const label of ['正式订单', '业务完成', '待结算']) await expect(page.getByText(label, { exact: true })).toBeVisible();
   await expect(page.getByText('状态来自服务器业务事实；结算确认由员工控制。')).toHaveCount(0);
@@ -430,19 +430,19 @@ test('Seller record pages render every frozen status in Chinese without exposing
   for (const label of ['启用中', '已停用']) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.locator('.seller-card-list')).not.toContainText(rawStatus);
+  await expect(page.locator('.seller-record-list')).not.toContainText(rawStatus);
 
   await page.goto('/seller/demands');
   for (const label of ['待审核', '已发布', '未通过', '已撤回', '已关闭']) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.locator('.seller-card-list')).not.toContainText(rawStatus);
+  await expect(page.locator('.seller-record-list')).not.toContainText(rawStatus);
 
   await page.goto('/seller/reviews');
   for (const label of ['待审核', '需修改', '未通过', '已撤回', '已通过']) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.locator('.seller-card-list')).not.toContainText(rawStatus);
+  await expect(page.locator('.seller-record-list')).not.toContainText(rawStatus);
 });
 
 test('Seller product application recovers one upload and reuses the verified manifest', async ({ page }) => {
@@ -510,7 +510,7 @@ test('Seller withdrawals require confirmation and submit the server version', as
 test('Seller store context is keyboard operable and remains visible', async ({ page }) => {
   await mockApi(page, 'seller');
   await page.goto('/seller');
-  const context = page.getByLabel('店铺');
+  const context = page.getByLabel('店铺', { exact: true });
   await context.focus();
   await expect(context).toBeFocused();
   await context.selectOption('store-local');
@@ -521,7 +521,7 @@ test('Seller small screen uses the business dashboard without page overflow', as
   await mockApi(page, 'seller');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/seller');
-  await expect(page.getByRole('heading', { name: '业务进度' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: '卖家导航' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
@@ -732,8 +732,8 @@ test('200% equivalent text zoom reflows without critical horizontal clipping', a
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%';
   });
-  await expect(page.getByRole('heading', { name: '业务进度' })).toBeVisible();
-  await expect(page.getByLabel('店铺')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
+  await expect(page.getByLabel('店铺', { exact: true })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 

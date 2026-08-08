@@ -122,7 +122,7 @@ export function CustomerLoginPage({
 
   return (
     <main className={`login-page identity-${target}`}>
-      <Card className={`login-card${target === 'buyer' ? ' buyer-login-card' : ''}`}>
+      <Card className={`login-card${target === 'buyer' ? ' buyer-login-card' : ' seller-login-card'}`}>
         <div className="login-brand"><strong>月光白</strong></div>
         <form onSubmit={(event) => { void submit(event); }}>
           <FormField label="账号" htmlFor={`${target}-account`} required>

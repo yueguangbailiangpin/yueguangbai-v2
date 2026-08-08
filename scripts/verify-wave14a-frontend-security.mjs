@@ -51,6 +51,7 @@ const sessionInvalidation = readFileSync(join(webRoot, 'auth/session-invalidatio
 const mountedProtectedTests = readFileSync(join(webRoot, 'auth/mounted-protected-session.msw.test.tsx'), 'utf8');
 const staffSessionBoundary = readFileSync(join(webRoot, 'auth/staff/StaffSessionBoundary.tsx'), 'utf8');
 const sellerLayout = readFileSync(join(webRoot, 'seller/routes/SellerLayout.tsx'), 'utf8');
+const sellerPages = readFileSync(join(webRoot, 'seller/pages/SellerPages.tsx'), 'utf8');
 const buyerRouteModule = readFileSync(join(webRoot, 'buyer/routes/BuyerRouteModule.tsx'), 'utf8');
 const staffRouteModule = readFileSync(join(webRoot, 'staff/StaffRouteModule.tsx'), 'utf8');
 const mswRoot = join(webRoot, 'test/msw');
@@ -1143,23 +1144,23 @@ requireText(rootEntry, [
   '请使用工作人员发送的专属链接登录。',
 ], 'finished dedicated-link root notice');
 requireText(sellerLayout, [
-  "{ id: 'overview', label: '概览', href: '/seller', end: true }",
+  "{ path: '/seller', label: '首页', icon: Home }",
+  "{ path: '/seller/products', label: '商品', icon: PackageSearch }",
+  "{ path: '/seller/demands', label: '需求', icon: ClipboardList }",
+  'className="seller-side-navigation" aria-label="卖家导航"',
+  'className="seller-context-bar" aria-label="组织和店铺上下文"',
+  '<SellerNavigation mobile />',
+], 'Seller contextual and route-aware navigation');
+requireText(sellerPages, [
   'className="seller-metrics"',
-  '>业务指标摘要</h2>',
-  "['订单', '评论', '结算'].map",
-  'value="—"',
-  'detail="业务模块开放后显示"',
-], 'Seller metric and route-aware navigation remediation');
-if (sellerLayout.includes("href: '/seller', current: true")) {
-  throw new Error('Seller overview must not remain permanently current');
-}
+  'label="正式订单"',
+  'label="业务完成"',
+  'label="待结算"',
+  'to="/seller/demands/new">提交需求</Link>',
+], 'Seller server-fact metrics and submission entry');
 requireText(appTests, [
   'shows exactly the two approved visible strings at root',
-  'renders the formal Seller metric summary without invented values',
-  "['/seller/products', '商品']",
-  "['/seller/orders', '订单']",
-  'uses client navigation for Seller links',
-], 'Root and Seller component remediation evidence');
+], 'Root component remediation evidence');
 const browserFixtures = readFileSync(join(workspace, 'apps/web/e2e/foundation.spec.ts'), 'utf8');
 if (!browserFixtures.includes('success({ session:')) throw new Error('Playwright fixture must use data.session');
 requireText(browserFixtures, [

@@ -137,7 +137,7 @@ test('capture Buyer shell mobile', async ({ page }) => {
 test('capture Seller shell desktop', async ({ page }) => {
   await mockSession(page, 'seller');
   await page.goto('/seller');
-  await expect(page.getByRole('heading', { name: '业务进度' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
   await capture(page, 'seller-shell-desktop-1440x900.png', { width: 1440, height: 900 });
 });
 
