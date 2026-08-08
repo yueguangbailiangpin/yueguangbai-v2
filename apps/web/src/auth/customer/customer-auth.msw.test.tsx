@@ -54,16 +54,13 @@ describe('Customer Auth formal MSW chain', () => {
     ['seller', sellerSessionFixture],
   ] as const)('logs in the %s identity through the real Adapter and Transport', async (target, session) => {
     let body: unknown;
-    server.use(http.post(apiUrl('/api/customer-auth/login'), async ({ request }) => {
+    server.use(http.post(apiUrl(`/api/customer-auth/${target}/login`), async ({ request }) => {
       body = await request.json();
       return HttpResponse.json(customerSessionEnvelopeFixture(session, `request-${target}-login`));
     }));
     const client = createMswQueryClient();
     const result = await new CustomerAuthController(client, customerAuthApi).login(target, loginBody);
-    expect(body).toEqual({
-      ...loginBody,
-      persona: target === 'buyer' ? 'BUYER' : 'SELLER_MEMBER',
-    });
+    expect(body).toEqual(loginBody);
     expect(result).toMatchObject({ kind: 'AUTHENTICATED', session });
     expect(client.getQueryData(queryKeys[target].session)).toEqual(session);
   });
@@ -72,7 +69,7 @@ describe('Customer Auth formal MSW chain', () => {
     ['buyer', { ...buyerSessionFixture, password_change_required: true }],
     ['seller', { ...sellerSessionFixture, password_change_required: true }],
   ] as const)('keeps %s login in the password-change boundary when required', async (target, session) => {
-    server.use(http.post(apiUrl('/api/customer-auth/login'), () => HttpResponse.json(
+    server.use(http.post(apiUrl(`/api/customer-auth/${target}/login`), () => HttpResponse.json(
       customerSessionEnvelopeFixture(session, `request-${target}-password-required`),
     )));
     const result = await new CustomerAuthController(createMswQueryClient(), customerAuthApi)
@@ -86,7 +83,7 @@ describe('Customer Auth formal MSW chain', () => {
   ] as const)('fails closed for %s entry identity mismatch and sends one real logout', async (target, session) => {
     const requests: string[] = [];
     server.use(
-      http.post(apiUrl('/api/customer-auth/login'), () => {
+      http.post(apiUrl(`/api/customer-auth/${target}/login`), () => {
         requests.push('login');
         return HttpResponse.json(customerSessionEnvelopeFixture(session, 'request-mismatch-login'));
       }),
@@ -106,7 +103,7 @@ describe('Customer Auth formal MSW chain', () => {
   it('keeps mismatch logout 503 fail closed and sends a second logout only on explicit retry', async () => {
     let logoutRequests = 0;
     server.use(
-      http.post(apiUrl('/api/customer-auth/login'), () => HttpResponse.json(
+      http.post(apiUrl('/api/customer-auth/buyer/login'), () => HttpResponse.json(
         customerSessionEnvelopeFixture(sellerSessionFixture, 'request-mismatch-login'),
       )),
       http.post(apiUrl('/api/customer-auth/logout'), () => {

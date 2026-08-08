@@ -68,6 +68,27 @@ async function renderMismatch(target: CustomerTarget, adapter: CustomerAuthApiAd
 }
 
 describe('Customer login mismatch controller chain', () => {
+  it.each(['buyer', 'seller'] as const)('renders the %s login with no Persona authority', (target) => {
+    const client = testClient();
+    const { adapter } = createAdapter(
+      target === 'buyer' ? 'BUYER' : 'SELLER_MEMBER',
+      vi.fn<CustomerAuthApiAdapter['logout']>(),
+    );
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[`/${target}/login`]}>
+          <Routes><Route path={`/${target}/login`} element={<CustomerLoginPage target={target} adapter={adapter} />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText('月光白')).toBeVisible();
+    expect(screen.getByLabelText('账号')).toBeVisible();
+    expect(screen.getByLabelText('密码')).toBeVisible();
+    expect(screen.getByRole('button', { name: '登录' })).toBeVisible();
+    expect(screen.queryByLabelText('进入身份')).not.toBeInTheDocument();
+    expect(screen.queryByText(/买家服务|卖家工作区|安全访问/u)).not.toBeInTheDocument();
+  });
+
   it('cleans both Customer roots for Buyer login returning SELLER_MEMBER and preserves Staff', async () => {
     const client = testClient();
     const logout = vi.fn<CustomerAuthApiAdapter['logout']>(async () => result({ logged_out: true, all_devices_logged_out: false }));

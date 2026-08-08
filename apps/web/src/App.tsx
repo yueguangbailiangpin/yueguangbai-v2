@@ -207,9 +207,7 @@ export function SellerShell(): React.JSX.Element {
         <small>业务上下文将在卖家业务模块开放</small>
       </header>
       <PageHeader
-        eyebrow="卖家工作区"
-        title="卖家工作台"
-        description="集中处理商品、需求、订单与结算入口。"
+        title="业务进度"
       ><Button onClick={() => setDrawer(true)}>查看详情结构</Button></PageHeader>
       <section id="foundation" className="seller-workspace">
         <section className="seller-metrics" aria-labelledby="seller-metrics-title">
@@ -279,7 +277,6 @@ function AppRoutes(): React.JSX.Element {
     <Route path="/buyer/login" element={<CustomerLoginPage target="buyer" />} />
     <Route path="/buyer/register" element={<BuyerRegistrationPage />} />
     <Route path="/customer/reset-password" element={<CustomerPasswordResetPage />} />
-    <Route path="/customer/login" element={<CustomerLoginPage target="buyer" />} />
     <Route path="/seller/login" element={<CustomerLoginPage target="seller" />} />
     <Route path="/buyer/change-password" element={<CustomerPasswordRouteBoundary target="buyer"><CustomerChangePasswordPage target="buyer" /></CustomerPasswordRouteBoundary>} />
     <Route path="/seller/change-password" element={<CustomerPasswordRouteBoundary target="seller"><CustomerChangePasswordPage target="seller" /></CustomerPasswordRouteBoundary>} />
@@ -287,7 +284,8 @@ function AppRoutes(): React.JSX.Element {
     <Route path="/staff/auth/callback" element={<StaffSessionBoundary><StaffShell /></StaffSessionBoundary>} />
     <Route path="/buyer/*" element={<CustomerSessionBoundary target="buyer"><BuyerLayout /></CustomerSessionBoundary>}>
       <Route index element={<BuyerDashboardPage />} />
-      <Route path="tasks" element={<BuyerDashboardPage full />} />
+      <Route path="products" element={<BuyerDashboardPage />} />
+      <Route path="tasks" element={<BuyerDashboardPage />} />
       <Route path="demands" element={<BuyerDemandsPage />} />
       <Route path="demands/:demandId" element={<BuyerDemandDetailPage />} />
       <Route path="reservations" element={<BuyerReservationsPage />} />

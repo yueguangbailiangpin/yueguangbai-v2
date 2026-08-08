@@ -65,7 +65,6 @@ export interface BuyerReviewFileDto {
 
 export interface BuyerReviewRefundDueDto {
   amount_cny_fen: FixedIntegerString;
-  became_due_at: number;
 }
 
 export interface BuyerReviewSummaryDto {

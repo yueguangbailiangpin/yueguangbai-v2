@@ -168,9 +168,7 @@ export function CustomerChangePasswordPage({
       <Card className="login-card password-card">
         <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
           <strong>月光白</strong></div>
-        <div className="login-heading"><p className="eyebrow">
-          {target === 'buyer' ? '买家服务' : '卖家工作区'}
-        </p><h1>{target === 'buyer' ? '买家修改密码' : '卖家修改密码'}</h1>
+        <div className="login-heading"><h1>修改密码</h1>
           <p>首次登录或安全状态变化后，需要先设置新密码。</p></div>
         <form onSubmit={(event) => { void submit(event); }}>
           <FormField label="当前密码" htmlFor={`${target}-current-password`} required>

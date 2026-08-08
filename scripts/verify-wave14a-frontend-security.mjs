@@ -1120,11 +1120,11 @@ const browserFixtures = readFileSync(join(workspace, 'apps/web/e2e/foundation.sp
 if (!browserFixtures.includes('success({ session:')) throw new Error('Playwright fixture must use data.session');
 requireText(browserFixtures, [
   'root is a finished dedicated-link notice with no identity controls',
-  'Buyer shell is task-focused with five fixed items and no fake business data',
+  'Buyer shell is product-focused with five fixed items and no fake business data',
   'Buyer shell keeps navigation clear at 320px and safe content padding',
   'Seller store context is keyboard operable and remains visible',
   'Seller navigation is route-aware, client-side, and session-stable',
-  "getByLabel('店铺与站点')",
+  "getByLabel('店铺')",
   "getByText('专属访问')).toHaveCount(0)",
   "getByText('链接将自动确认您的访问身份')).toHaveCount(0)",
   'Seller small screen uses the business dashboard without page overflow',

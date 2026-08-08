@@ -127,6 +127,44 @@ async function mockApi(
   });
 }
 
+async function mockSellerStatusRecords(page: Page): Promise<void> {
+  const pageInfo = { limit: 100, next_cursor: null };
+  await page.route('**/api/seller-portal/products**', (route) => fulfillJson(route, success({
+    items: (['ACTIVE', 'DISABLED'] as const).map((status, index) => ({
+      id: `product-status-${status}`, store: { id: 'store-local', display_name: '日本一号店' },
+      marketplace_code: 'JP', seller_code: 'seller-local', asin: `B0000000${index}`,
+      status, current_version_no: 1, version: 1, created_at: 1, updated_at: 1,
+      current_version: {
+        id: `product-version-${status}`, version_no: 1, product_name: `商品${index + 1}`,
+        search_keywords: [], ordering_guide_expected_amount_jpy: null,
+        color_spec_mode: null, main_image: null, product_url: null,
+        buyer_visible_notes: null, created_at: 1,
+      },
+    })), page: pageInfo,
+  })));
+  await page.route('**/api/seller-portal/demand-batches**', (route) => fulfillJson(route, success({
+    items: (['SUBMITTED', 'PUBLISHED', 'REJECTED', 'WITHDRAWN', 'CLOSED'] as const).map((status, index) => ({
+      id: `demand-status-${status}`, store: { id: 'store-local', display_name: '日本一号店' },
+      product: { id: 'product-status', version_no: 1, asin: 'B00000001', product_name: `需求商品${index + 1}`, search_keywords: [], product_url: null },
+      marketplace_code: 'JP', task_type: 'TEXT', target_quantity: 1, held_quantity: 0,
+      approved_quantity: 0, remaining_quantity: 1, buyer_visible_notes: null,
+      seller_notes: null, open_at: 1, reservation_deadline: 2, order_deadline: 3,
+      status, review_reason: null, close_reason: null, version: 1, submitted_at: 1,
+      updated_at: 1, reviewed_at: null, published_at: null, withdrawn_at: null, closed_at: null,
+    })), page: pageInfo,
+  })));
+  await page.route('**/api/seller-portal/reviews**', (route) => fulfillJson(route, success({
+    items: (['PENDING_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'WITHDRAWN', 'APPROVED'] as const).map((status, index) => ({
+      review_case_id: `review-status-${status}`, formal_order: { id: 'order-status', amazon_order_number: '111-1111111-1111111' },
+      store: { id: 'store-local', display_name: '日本一号店' }, marketplace_code: 'JP',
+      asin: 'B00000001', product_name: `评论商品${index + 1}`, review_type: 'TEXT', status,
+      version: 1, review_url: null, submitted_at: 1, approved_at: null,
+      evidence: { version_id: `evidence-${status}`, version_no: 1, submitted_at: 1, files: [] },
+      service_fee_accrued: null, allowed_actions: ['VIEW'],
+    })), page: pageInfo,
+  })));
+}
+
 async function expectNoCriticalHorizontalOverflow(page: Page): Promise<void> {
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -152,21 +190,28 @@ test('root is a finished dedicated-link notice with no identity controls', async
   await expect(page.locator('body')).not.toContainText(/Moonlight|Moonlight White|V2/u);
 });
 
-for (const [path, heading, other] of [
-  ['/buyer/login', '买家登录', 'buyer'],
-  ['/seller/login', '卖家登录', 'seller'],
+for (const [path, other] of [
+  ['/buyer/login', 'buyer'],
+  ['/seller/login', 'seller'],
 ] as const) {
 test(`${path} renders a polished customer login with no cross-identity entry`, async ({ page }) => {
   await page.goto(path);
-  await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+  await expect(page.getByText('月光白')).toBeVisible();
   await expect(page.getByLabel('账号')).toBeVisible();
   await expect(page.getByLabel('密码')).toBeVisible();
   await expect(page.getByRole('button', { name: '登录' })).toBeVisible();
   await expect(page.locator('body')).not.toContainText(
     other === 'buyer' ? '卖家登录' : '买家登录',
   );
+  await expect(page.getByLabel('进入身份')).toHaveCount(0);
 });
 }
+
+test('legacy customer login path cannot silently select the Buyer identity', async ({ page }) => {
+  await page.goto('/customer/login');
+  await expect(page.getByRole('heading', { name: '页面未找到' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '登录' })).toHaveCount(0);
+});
 
 test('staff login has only the trusted provider action and no customer form', async ({ page }) => {
   await page.goto('/staff/login');
@@ -190,19 +235,17 @@ test('buyer login tab order and focus ring remain keyboard-visible', async ({ pa
   await page.keyboard.press('Tab');
   await expect(page.getByLabel('密码')).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(page.getByLabel('进入身份')).toBeFocused();
-  await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: '登录' })).toBeFocused();
 });
 
-for (const [identity, path, heading] of [
-  ['buyer', '/buyer/change-password', '买家修改密码'],
-  ['seller', '/seller/change-password', '卖家修改密码'],
+for (const [identity, path] of [
+  ['buyer', '/buyer/change-password'],
+  ['seller', '/seller/change-password'],
 ] as const) {
 test(`${identity} password change renders only after a matching session`, async ({ page }) => {
   await mockApi(page, identity);
   await page.goto(path);
-  await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible();
   await expect(page.getByLabel('当前密码')).toBeVisible();
   await expect(page.getByLabel('新密码', { exact: true })).toBeVisible();
   await expect(page.getByLabel('确认新密码', { exact: true })).toBeVisible();
@@ -216,28 +259,28 @@ test('password_change_required routes Buyer to the password flow', async ({ page
   ));
   await page.goto('/buyer');
   await expect(page).toHaveURL(/\/buyer\/change-password$/u);
-  await expect(page.getByRole('heading', { name: '买家修改密码' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible();
 });
 
-test('Buyer shell is task-focused with five fixed items and no fake business data', async ({ page }) => {
+test('Buyer shell is product-focused with five fixed items and no fake business data', async ({ page }) => {
   await mockApi(page, 'buyer');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/buyer');
   const navigation = page.getByRole('navigation', { name: '买家导航' });
   await expect(navigation.getByRole('link')).toHaveCount(5);
-  for (const label of ['首页', '任务', '订单资料', '评论', '我的']) {
+  for (const label of ['首页', '产品', '订单资料', '评论', '我的']) {
     await expect(navigation.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.getByRole('heading', { name: '首页' })).toBeVisible();
-  await expect(page.getByText('部分内容暂不可用')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '产品', exact: true })).toBeVisible();
+  await expect(page.getByText('产品暂时无法读取')).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
 test('Buyer shell keeps navigation clear at 320px and safe content padding', async ({ page }) => {
   await mockApi(page, 'buyer');
   await page.setViewportSize({ width: 320, height: 720 });
-  await page.goto('/buyer/tasks');
-  await expect(page.getByRole('heading', { name: '任务', exact: true })).toBeVisible();
+  await page.goto('/buyer/products');
+  await expect(page.getByRole('heading', { name: '产品', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: '买家导航' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
@@ -247,10 +290,10 @@ test('Seller shell exposes organization/store context and truthful business metr
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/seller');
   await expect(page.getByRole('navigation', { name: '卖家导航' })).toBeVisible();
-  await expect(page.getByLabel('店铺与站点')).toBeVisible();
+  await expect(page.getByLabel('店铺')).toBeVisible();
   await expect(page.getByText(/本地卖家组织/u)).toBeVisible();
   for (const label of ['正式订单', '业务完成', '待结算']) await expect(page.getByText(label, { exact: true })).toBeVisible();
-  await expect(page.getByText('状态来自服务器业务事实；结算确认由员工控制。')).toBeVisible();
+  await expect(page.getByText('状态来自服务器业务事实；结算确认由员工控制。')).toHaveCount(0);
   await expectNoCriticalHorizontalOverflow(page);
 });
 
@@ -283,10 +326,34 @@ test('Seller navigation is route-aware, client-side, and session-stable', async 
   }
 });
 
+test('Seller record pages render every frozen status in Chinese without exposing status codes', async ({ page }) => {
+  await mockApi(page, 'seller');
+  await mockSellerStatusRecords(page);
+  const rawStatus = /ACTIVE|DISABLED|SUBMITTED|PUBLISHED|REJECTED|WITHDRAWN|CLOSED|PENDING_REVIEW|CHANGES_REQUESTED|APPROVED/u;
+
+  await page.goto('/seller/products');
+  for (const label of ['启用中', '已停用']) {
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(page.locator('.seller-card-list')).not.toContainText(rawStatus);
+
+  await page.goto('/seller/demands');
+  for (const label of ['待审核', '已发布', '未通过', '已撤回', '已关闭']) {
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(page.locator('.seller-card-list')).not.toContainText(rawStatus);
+
+  await page.goto('/seller/reviews');
+  for (const label of ['待审核', '需修改', '未通过', '已撤回', '已通过']) {
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(page.locator('.seller-card-list')).not.toContainText(rawStatus);
+});
+
 test('Seller store context is keyboard operable and remains visible', async ({ page }) => {
   await mockApi(page, 'seller');
   await page.goto('/seller');
-  const context = page.getByLabel('店铺与站点');
+  const context = page.getByLabel('店铺');
   await context.focus();
   await expect(context).toBeFocused();
   await context.selectOption('store-local');
@@ -356,7 +423,7 @@ test('401 route guard redirects without rendering Buyer shell content', async ({
     401,
   ));
   await page.goto('/buyer/orders');
-  await expect(page.getByRole('heading', { name: '买家登录' })).toBeVisible();
+  await expect(page.getByText('月光白')).toBeVisible();
   await expect(page.getByRole('navigation', { name: '买家导航' })).toHaveCount(0);
 });
 
@@ -377,7 +444,7 @@ test('mismatch fails closed, logs out, and returns to the correct login', async 
     }
   });
   await page.goto('/buyer');
-  await expect(page.getByRole('heading', { name: '买家登录' })).toBeVisible();
+  await expect(page.getByText('月光白')).toBeVisible();
   expect(logoutRequests).toBe(1);
 });
 
@@ -421,7 +488,7 @@ test('200% equivalent text zoom reflows without critical horizontal clipping', a
     document.documentElement.style.fontSize = '200%';
   });
   await expect(page.getByRole('heading', { name: '业务进度' })).toBeVisible();
-  await expect(page.getByLabel('店铺与站点')).toBeVisible();
+  await expect(page.getByLabel('店铺')).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 

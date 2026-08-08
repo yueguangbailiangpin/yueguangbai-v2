@@ -36,7 +36,7 @@ export function BuyerReviewsPage(): React.JSX.Element {
         : <><div className="buyer-card-list">{reviews.items.map((item) => <Link className="buyer-record-card" key={item.review_case_id} to={`/buyer/reviews/${item.review_case_id}`}>
           <div className="record-card-heading"><strong>{item.order.product_name}</strong><StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></div>
           <p>更新于 {formatShanghai(item.updated_at)}</p>
-          {item.buyer_refund_due ? <strong>应返 {formatCnyFen(item.buyer_refund_due.amount_cny_fen)}</strong> : null}
+          {item.buyer_refund_due ? <strong>返款金额 {formatCnyFen(item.buyer_refund_due.amount_cny_fen)}</strong> : null}
         </Link>)}</div><BuyerPagination hasMore={reviews.hasMore} isLoadingMore={reviews.isLoadingMore}
           laterError={reviews.laterError} onLoadMore={reviews.loadMore} onRetry={reviews.retryLater} /></>}</section>
   </section>;

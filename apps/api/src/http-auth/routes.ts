@@ -3,7 +3,6 @@ import type { Context, Hono } from 'hono';
 import {
   authenticateCustomerPassword,
   issueCustomerSession,
-  selectCustomerPersona,
 } from '../customer-auth/authenticate-customer';
 import { changeCustomerPassword } from '../customer-auth/change-password';
 import {
@@ -32,9 +31,14 @@ export function registerCustomerAuthRoutes(
   app: Hono<any>,
 ): void {
   app.post(
-    '/api/customer-auth/login',
+    '/api/customer-auth/buyer/login',
     customerAuthOriginGuard(),
-    withCustomerHttpAuthErrors(login),
+    withCustomerHttpAuthErrors((context) => login(context, 'BUYER')),
+  );
+  app.post(
+    '/api/customer-auth/seller/login',
+    customerAuthOriginGuard(),
+    withCustomerHttpAuthErrors((context) => login(context, 'SELLER_MEMBER')),
   );
   app.post(
     '/api/customer-auth/change-password',
@@ -60,15 +64,12 @@ export function registerCustomerAuthRoutes(
     }),
     withCustomerHttpAuthErrors(session),
   );
-  app.post(
-    '/api/customer-auth/select-persona',
-    customerAuthOriginGuard(),
-    customerSessionMiddleware({ allowPasswordChangeRequired: true }),
-    withCustomerHttpAuthErrors(selectPersona),
-  );
 }
 
-async function login(context: Context<any>): Promise<Response> {
+async function login(
+  context: Context<any>,
+  target: 'BUYER' | 'SELLER_MEMBER',
+): Promise<Response> {
   const now = Date.now();
   const requestId = requestIdFromContext(context);
   const secret = requireCustomerSessionSecret(
@@ -107,7 +108,7 @@ async function login(context: Context<any>): Promise<Response> {
     {
       loginIdentifier: body.loginIdentifier,
       password: body.password,
-      ...(body.persona ? { persona: body.persona } : {}),
+      persona: target,
     },
   );
   if (!authenticated) {
@@ -219,32 +220,6 @@ async function changePassword(context: Context<any>): Promise<Response> {
   }, requestId));
 }
 
-async function selectPersona(context: Context<any>): Promise<Response> {
-  const current = requireCustomerSessionFromContext(context);
-  const body = await readPersonaBody(context);
-  const authenticated = await selectCustomerPersona(
-    context.env.DB,
-    current,
-    body.persona,
-  );
-  if (!authenticated) throw new CustomerHttpAuthError('FORBIDDEN', 403);
-  const now = Date.now();
-  const secret = requireCustomerSessionSecret(context.env.CUSTOMER_SESSION_SECRET);
-  const token = await issueCustomerSession(authenticated, secret, {
-    now,
-    ttlMs: CUSTOMER_SESSION_TTL_MS,
-  });
-  writeCustomerSessionCookie(context, token);
-  context.header('Cache-Control', 'no-store');
-  return context.json(apiSuccess({
-    session: toHttpSession({
-      ...authenticated,
-      issuedAt: now,
-      expiresAt: now + CUSTOMER_SESSION_TTL_MS,
-    }),
-  }, requestIdFromContext(context)));
-}
-
 async function logout(context: Context<any>): Promise<Response> {
   const requestId = requestIdFromContext(context);
   const current = context.get('customerSession') as
@@ -297,24 +272,22 @@ async function readLoginBody(
 ): Promise<{
   loginIdentifier: string;
   password: string;
-  persona: 'BUYER' | 'SELLER_MEMBER' | null;
 }> {
   let body: unknown;
   try {
     body = await context.req.json();
   } catch {
-    return { loginIdentifier: '', password: '', persona: null };
+    return { loginIdentifier: '', password: '' };
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return { loginIdentifier: '', password: '', persona: null };
+    return { loginIdentifier: '', password: '' };
   }
   const record = body as Record<string, unknown>;
   if (Object.keys(record).some((key) => ![
-    'login_identifier', 'password', 'persona',
+    'login_identifier', 'password',
   ].includes(key))) {
-    return { loginIdentifier: '', password: '', persona: null };
+    return { loginIdentifier: '', password: '' };
   }
-  const persona = record['persona'];
   return {
     loginIdentifier:
       typeof record?.['login_identifier'] === 'string'
@@ -324,27 +297,7 @@ async function readLoginBody(
       typeof record?.['password'] === 'string'
         ? record['password'].slice(0, 500)
         : '',
-    persona: persona === 'BUYER' || persona === 'SELLER_MEMBER'
-      ? persona
-      : null,
   };
-}
-
-async function readPersonaBody(context: Context<any>): Promise<{
-  persona: 'BUYER' | 'SELLER_MEMBER';
-}> {
-  let body: unknown;
-  try { body = await context.req.json(); } catch { body = null; }
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    throw new CustomerHttpAuthError('VALIDATION_ERROR', 400);
-  }
-  const record = body as Record<string, unknown>;
-  if (Object.keys(record).length !== 1
-    || (record['persona'] !== 'BUYER'
-      && record['persona'] !== 'SELLER_MEMBER')) {
-    throw new CustomerHttpAuthError('VALIDATION_ERROR', 400);
-  }
-  return { persona: record['persona'] };
 }
 
 async function readPasswordChangeBody(

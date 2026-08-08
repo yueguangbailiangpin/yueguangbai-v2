@@ -25,12 +25,10 @@ const page = <T extends z.ZodType>(item: T) => z.object({
 
 export const buyerMeSchema = z.object({
   buyer: z.object({
-    customer_number: z.string().nullable(),
     display_name: z.string(),
     marketplace_code: marketplace,
     identity_review_status: z.enum(['CLEAR', 'REVIEW_REQUIRED']),
   }).strict(),
-  session: z.object({ expires_at: epoch }).strict(),
 }).strict();
 
 export const demandSchema = z.object({
@@ -237,7 +235,6 @@ const rateSnapshotSchema = z.object({
 }).strict();
 export const formalOrderSchema = z.object({
   formal_order_id: identifierSchema,
-  buyer_customer_no: z.string(),
   marketplace,
   amazon_order_number: z.string(),
   amazon_order_date: dateOnlySchema.nullable(),
@@ -308,7 +305,6 @@ export const reviewSchema = z.object({
   review_approved_at: nullableEpoch,
   buyer_refund_due: z.object({
     amount_cny_fen: integerAmountSchema,
-    became_due_at: epoch,
   }).strict().nullable(),
   file_count: nonnegativeIntegerSchema,
   allowed_actions: z.array(reviewAction),
@@ -340,10 +336,6 @@ const refundOrderSchema = z.object({
 export const refundSchema = refundBalanceSchema.extend({
   refund_obligation_id: identifierSchema,
   order: refundOrderSchema,
-  became_due_at: epoch,
-  first_paid_at: nullableEpoch,
-  last_paid_at: nullableEpoch,
-  updated_at: epoch,
   allowed_actions: z.tuple([]),
 }).strict();
 export const refundDetailValueSchema = refundSchema.extend({

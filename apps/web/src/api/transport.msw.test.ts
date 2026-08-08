@@ -21,7 +21,7 @@ const success = (requestId: string) => ({
 describe('formal MSW API transport matrix', () => {
   it.each([
     ['GET', '/api/buyer-portal/me'],
-    ['POST', '/api/customer-auth/login'],
+    ['POST', '/api/customer-auth/buyer/login'],
     ['PUT', '/api/staff/assignment-fallbacks/JP'],
     ['PATCH', '/api/staff/me/availability'],
     ['DELETE', '/api/test/transport-delete'],

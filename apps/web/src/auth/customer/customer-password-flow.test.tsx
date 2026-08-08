@@ -292,7 +292,7 @@ describe('Customer password operation controller chain', () => {
     await user.click(screen.getByRole('button', { name: '修改密码' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('密码修改状态尚未确认，请留在此页面。');
-    expect(screen.getByRole('heading', { name: '买家修改密码' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '修改密码' })).toBeVisible();
     expect(screen.queryByText('BUYER SHELL')).not.toBeInTheDocument();
   });
 });

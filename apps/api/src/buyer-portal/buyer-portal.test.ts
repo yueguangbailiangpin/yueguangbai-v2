@@ -171,7 +171,6 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       await expect(json(me)).resolves.toMatchObject({
         data: {
           buyer: {
-            customer_number: null,
             display_name: '买家一',
             marketplace_code: 'JP',
             identity_review_status: 'CLEAR',
@@ -259,8 +258,94 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     },
   );
 
+  it('does not list or disclose a demand whose capacity is full', async () => {
+    database = createMigratedTestDatabase();
+    fixtureNow = Date.now();
+    seedPortalFixture(database, fixtureNow);
+    const app = testApp();
+    const cookie = await buyerCookie('1');
+
+    database.exec(`
+      UPDATE demand_batches
+      SET held_reservation_count=target_quantity
+      WHERE id='demand-final';
+    `);
+
+    const list = await request(app, '/api/buyer-portal/demands', {
+      headers: { Cookie: cookie },
+    });
+    expect(list.status).toBe(200);
+    expect((await json<any>(list)).data.items.map((item: { demand_id: string }) => item.demand_id))
+      .not.toContain('demand-final');
+    expect((await request(app, '/api/buyer-portal/demands/demand-final', {
+      headers: { Cookie: cookie },
+    })).status).toBe(404);
+  });
+
+  it('does not list or disclose a demand after that Buyer has any reservation history', async () => {
+    database = createMigratedTestDatabase();
+    fixtureNow = Date.now();
+    seedPortalFixture(database, fixtureNow);
+    const app = testApp();
+    const cookie = await buyerCookie('1');
+    const reservation = await createReservation(
+      app, cookie, 'demand-projection', 'portal-eligibility-history',
+    );
+    const cancelled = await cancelViaApi(
+      app, cookie, reservation.data.reservation.reservation_id, 1,
+      'portal-eligibility-history-cancel',
+    );
+    expect(cancelled.status).toBe(200);
+
+    const list = await request(app, '/api/buyer-portal/demands', {
+      headers: { Cookie: cookie },
+    });
+    expect((await json<any>(list)).data.items.map((item: { demand_id: string }) => item.demand_id))
+      .not.toContain('demand-projection');
+    expect((await request(app, '/api/buyer-portal/demands/demand-projection', {
+      headers: { Cookie: cookie },
+    })).status).toBe(404);
+  });
+
+  for (const decision of ['PENDING_REVIEW', 'APPROVED'] as const) {
+    it(`does not list or disclose another demand for a product with a ${decision} reservation`, async () => {
+      database = createMigratedTestDatabase();
+      fixtureNow = Date.now();
+      seedPortalFixture(database, fixtureNow);
+      const app = testApp();
+      const cookie = await buyerCookie('1');
+      database.exec(`
+        UPDATE demand_batches
+        SET product_id='product-1', product_version_no=1
+        WHERE id='demand-final';
+      `);
+      const reservation = await createReservation(
+        app, cookie, 'demand-projection', `portal-eligibility-${decision}`,
+      );
+      if (decision === 'APPROVED') {
+        await decideReservation(database, {
+          reservationId: reservation.data.reservation.reservation_id,
+          expectedVersion: 1,
+          decision: 'APPROVE',
+        }, {
+          actor: staffActor(), idempotencyKey: 'portal-eligibility-approve',
+          now: fixtureNow + 1000,
+        });
+      }
+
+      const list = await request(app, '/api/buyer-portal/demands', {
+        headers: { Cookie: cookie },
+      });
+      expect((await json<any>(list)).data.items.map((item: { demand_id: string }) => item.demand_id))
+        .not.toContain('demand-final');
+      expect((await request(app, '/api/buyer-portal/demands/demand-final', {
+        headers: { Cookie: cookie },
+      })).status).toBe(404);
+    });
+  }
+
   it(
-    'submits through the original atomic reservation command',
+    'submits through the original atomic reservation command and rechecks stale capacity',
     async () => {
       database = createMigratedTestDatabase();
       fixtureNow = Date.now();
@@ -268,6 +353,13 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       const app = testApp();
       const buyerOne = await buyerCookie('1');
       const buyerTwo = await buyerCookie('2');
+
+      const buyerTwoSawFinalSlot = await request(
+        app,
+        '/api/buyer-portal/demands/demand-final',
+        { headers: { Cookie: buyerTwo } },
+      );
+      expect(buyerTwoSawFinalSlot.status).toBe(200);
 
       const missingOrigin = await request(
         app,

@@ -4,12 +4,10 @@ import { identityApiRequest } from './identity-request';
 
 const buyerPortalMeSchema = z.object({
   buyer: z.object({
-    customer_number: z.string().nullable(),
     display_name: z.string(),
     marketplace_code: z.literal('JP'),
     identity_review_status: z.enum(['CLEAR', 'REVIEW_REQUIRED']),
   }).strict(),
-  session: z.object({ expires_at: z.number().int() }).strict(),
 }).strict();
 
 const sellerPortalMeSchema = z.object({

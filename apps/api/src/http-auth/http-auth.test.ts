@@ -39,7 +39,7 @@ describe('Phase 4A customer HTTP authentication', () => {
     });
     const app = testApp();
 
-    const response = await request(app, '/api/customer-auth/login', {
+    const response = await request(app, '/api/customer-auth/buyer/login', {
       method: 'POST',
       headers: stateHeaders('203.0.113.19'),
       body: JSON.stringify({
@@ -193,7 +193,7 @@ describe('Phase 4A customer HTTP authentication', () => {
 
     const missingOrigin = await request(
       app,
-      '/api/customer-auth/login',
+      '/api/customer-auth/buyer/login',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -204,7 +204,7 @@ describe('Phase 4A customer HTTP authentication', () => {
 
     const crossOrigin = await request(
       app,
-      '/api/customer-auth/login',
+      '/api/customer-auth/buyer/login',
       {
         method: 'POST',
         headers: {
@@ -226,7 +226,7 @@ describe('Phase 4A customer HTTP authentication', () => {
     ]) {
       const response = await request(
         app,
-        '/api/customer-auth/login',
+        '/api/customer-auth/buyer/login',
         {
           method: 'POST',
           headers: stateHeaders('198.51.100.30'),
@@ -238,6 +238,37 @@ describe('Phase 4A customer HTTP authentication', () => {
         error: { code: 'INVALID_CREDENTIALS' },
       });
     }
+  });
+
+  it('binds login identity to the controlled endpoint and rejects the legacy generic endpoint', async () => {
+    database = await createPhase4aDatabase();
+    await seedBuyerAccount(database, {
+      loginIdentifier: 'buyer_route_01',
+      password: TEMPORARY_PASSWORD,
+      passwordChangeRequired: false,
+    });
+    const app = testApp();
+    const buyer = await request(app, '/api/customer-auth/buyer/login', {
+      method: 'POST', headers: stateHeaders('198.51.100.90'), body: JSON.stringify({
+        login_identifier: 'buyer_route_01', password: TEMPORARY_PASSWORD,
+      }),
+    });
+    expect(buyer.status).toBe(200);
+    await expect(json(buyer)).resolves.toMatchObject({
+      data: { session: { account_type: 'BUYER' } },
+    });
+    const rejected = await request(app, '/api/customer-auth/buyer/login', {
+      method: 'POST', headers: stateHeaders('198.51.100.91'), body: JSON.stringify({
+        login_identifier: 'buyer_route_01', password: TEMPORARY_PASSWORD, persona: 'SELLER_MEMBER',
+      }),
+    });
+    expect(rejected.status).toBe(401);
+    const legacy = await request(app, '/api/customer-auth/login', {
+      method: 'POST', headers: stateHeaders('198.51.100.92'), body: JSON.stringify({
+        login_identifier: 'buyer_route_01', password: TEMPORARY_PASSWORD,
+      }),
+    });
+    expect(legacy.status).toBe(404);
   });
 
   it('clears only the browser cookie on ordinary logout', async () => {
@@ -376,6 +407,7 @@ describe('Phase 4A customer HTTP authentication', () => {
       'seller_revoke_01',
       TEMPORARY_PASSWORD,
       '203.0.113.42',
+      'seller',
     );
     const sellerCookie = cookiePair(
       requiredHeader(sellerLogin, 'set-cookie'),
@@ -397,7 +429,7 @@ describe('Phase 4A customer HTTP authentication', () => {
     database = await createPhase4aDatabase();
     const app = testApp();
     const response = await app.request(
-      `${ORIGIN}/api/customer-auth/login`,
+      `${ORIGIN}/api/customer-auth/buyer/login`,
       {
         method: 'POST',
         headers: stateHeaders('203.0.113.50'),
@@ -611,8 +643,9 @@ async function login(
   loginIdentifier: string,
   password: string,
   sourceIp: string,
+  target: 'buyer' | 'seller' = 'buyer',
 ): Promise<Response> {
-  return request(app, '/api/customer-auth/login', {
+  return request(app, `/api/customer-auth/${target}/login`, {
     method: 'POST',
     headers: stateHeaders(sourceIp),
     body: JSON.stringify({

@@ -5,13 +5,9 @@ import type { MarketplaceCode } from './customer';
 
 export interface BuyerPortalMeDto {
   buyer: {
-    customer_number: string | null;
     display_name: string;
     marketplace_code: MarketplaceCode;
     identity_review_status: 'CLEAR' | 'REVIEW_REQUIRED';
-  };
-  session: {
-    expires_at: number;
   };
 }
 

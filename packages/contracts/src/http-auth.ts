@@ -1,9 +1,9 @@
 export const CUSTOMER_AUTH_HTTP_PATHS = Object.freeze({
-  login: '/api/customer-auth/login',
+  buyerLogin: '/api/customer-auth/buyer/login',
+  sellerLogin: '/api/customer-auth/seller/login',
   changePassword: '/api/customer-auth/change-password',
   logout: '/api/customer-auth/logout',
   session: '/api/customer-auth/session',
-  selectPersona: '/api/customer-auth/select-persona',
   completePasswordReset: '/api/customer-auth/password-reset/complete',
 } as const);
 
@@ -24,7 +24,6 @@ export interface CustomerHttpSession {
 export interface CustomerLoginRequest {
   login_identifier: string;
   password: string;
-  persona: CustomerPersona;
 }
 
 export interface CustomerLoginResponse {
@@ -49,14 +48,6 @@ export interface CustomerSessionResponse {
   session: CustomerHttpSession;
 }
 
-export interface CustomerSelectPersonaRequest {
-  persona: CustomerPersona;
-}
-
-export interface CustomerSelectPersonaResponse {
-  session: CustomerHttpSession;
-}
-
 export interface CustomerCompletePasswordResetRequest {
   token: string;
   new_password: string;
@@ -66,5 +57,5 @@ export interface CustomerCompletePasswordResetRequest {
 export interface CustomerCompletePasswordResetResponse {
   password_reset: true;
   all_previous_sessions_revoked: true;
-  next_path: '/customer/login';
+  next_path: '/buyer/login' | '/seller/login';
 }

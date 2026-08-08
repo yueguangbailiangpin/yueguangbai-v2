@@ -5,7 +5,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { StaffCustomerSecurityPanel } from '../staff/StaffCustomerSecurityPanel';
 import '../../test/msw/lifecycle';
 import { apiUrl } from '../../test/msw/handlers';
@@ -26,13 +26,16 @@ describe('客户邀请与密码恢复中文界面', () => {
           data: {
             password_reset: true,
             all_previous_sessions_revoked: true,
-            next_path: '/customer/login',
+            next_path: '/seller/login',
           },
           meta: { request_id: 'request-reset-ui' },
         });
       }));
     render(<MemoryRouter initialEntries={['/customer/reset-password?token=reset-token']}>
-      <CustomerPasswordResetPage />
+      <Routes>
+        <Route path="/customer/reset-password" element={<CustomerPasswordResetPage />} />
+        <Route path="/seller/login" element={<div>SELLER LOGIN</div>} />
+      </Routes>
     </MemoryRouter>);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('新密码'), 'New-Password-2026!');
@@ -45,6 +48,8 @@ describe('客户邀请与密码恢复中文界面', () => {
       password_confirmation: 'New-Password-2026!',
     });
     expect(key).toMatch(/^customer-reset:/u);
+    await user.click(screen.getByRole('button', { name: '前往登录' }));
+    expect(await screen.findByText('SELLER LOGIN')).toBeVisible();
   });
 
   it('普通 Staff 签发绑定微信与 Marketplace 的七天邀请', async () => {

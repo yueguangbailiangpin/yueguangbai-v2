@@ -104,13 +104,13 @@ test('capture root desktop', async ({ page }) => {
 
 test('capture Buyer login mobile', async ({ page }) => {
   await page.goto('/buyer/login');
-  await expect(page.getByRole('heading', { name: '买家登录' })).toBeVisible();
+  await expect(page.getByText('月光白')).toBeVisible();
   await capture(page, 'buyer-login-mobile-390x844.png', { width: 390, height: 844 });
 });
 
 test('capture Seller login desktop', async ({ page }) => {
   await page.goto('/seller/login');
-  await expect(page.getByRole('heading', { name: '卖家登录' })).toBeVisible();
+  await expect(page.getByText('月光白')).toBeVisible();
   await capture(page, 'seller-login-desktop-1440x900.png', { width: 1440, height: 900 });
 });
 

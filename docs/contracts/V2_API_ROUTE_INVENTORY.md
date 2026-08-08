@@ -108,10 +108,10 @@ POST /api/buyer-portal/reviews/:id/files/:fileLinkId/read-intent
 POST /api/buyer-portal/reviews/:id/resubmit
 POST /api/buyer-portal/reviews/:id/withdraw
 POST /api/customer-auth/change-password
-POST /api/customer-auth/login
+POST /api/customer-auth/buyer/login
 POST /api/customer-auth/logout
 POST /api/customer-auth/password-reset/complete
-POST /api/customer-auth/select-persona
+POST /api/customer-auth/seller/login
 POST /api/feishu-workbench/callback
 POST /api/staff/operations/jobs/:job/retry
 POST /api/staff/operations/alerts/ack

@@ -91,7 +91,7 @@ const evidence = {
   public_change_reason: '请补充清晰截图', files: [evidenceFile], allowed_actions: ['RESUBMIT', 'WITHDRAW'],
 };
 
-const formalOrder = { formal_order_id: 'formal-1', buyer_customer_no: 'B-1001', marketplace: 'JP',
+const formalOrder = { formal_order_id: 'formal-1', marketplace: 'JP',
   amazon_order_number: evidence.amazon_order_number_display, amazon_order_date: null, product_name: demand.product_name,
   review_type: 'IMAGE', final_paid_jpy: '4100', buyer_self_pay_bps: 1250, buyer_self_pay_jpy: '512',
   buyer_refundable_principal_jpy: '3588', buyer_expected_principal_cny_fen: '19734',
@@ -108,7 +108,7 @@ const review = (status: MockOptions['reviewStatus'] = 'CHANGES_REQUESTED') => ({
   current_evidence_version_no: 1, submitted_at: now - 2_500, updated_at: now - 2_000,
   public_change_reason: status === 'CHANGES_REQUESTED' ? '请补充完整评论截图' : null,
   review_url: 'https://www.amazon.co.jp/review/example', review_approved_at: status === 'APPROVED' ? now - 1_000 : null,
-  buyer_refund_due: status === 'APPROVED' ? { amount_cny_fen: '19734', became_due_at: now - 900 } : null,
+  buyer_refund_due: status === 'APPROVED' ? { amount_cny_fen: '19734' } : null,
   file_count: 1, allowed_actions: status === 'CHANGES_REQUESTED' ? ['RESUBMIT', 'WITHDRAW'] : [],
 });
 const reviewDetail = (status: MockOptions['reviewStatus'] = 'CHANGES_REQUESTED') => ({ ...review(status), files: [{
@@ -121,8 +121,7 @@ const refund = (status: MockOptions['refundStatus'] = 'PARTIALLY_PAID') => ({
   refund_obligation_id: 'refund-1', due_amount_cny_fen: '19734', net_paid_cny_fen: status === 'OVERPAID' ? '21000' : '10000',
   remaining_amount_cny_fen: status === 'PARTIALLY_PAID' ? '9734' : '0', overpaid_amount_cny_fen: status === 'OVERPAID' ? '1266' : '0', status,
   order: { formal_order_id: 'formal-1', marketplace: 'JP', amazon_order_number: evidence.amazon_order_number_display,
-    product_name: demand.product_name, review_type: 'IMAGE', status: 'CONFIRMED' }, became_due_at: now - 900,
-  first_paid_at: now - 600, last_paid_at: now - 300, updated_at: now - 200, allowed_actions: [],
+    product_name: demand.product_name, review_type: 'IMAGE', status: 'CONFIRMED' }, allowed_actions: [],
 });
 const refundDetail = (status: MockOptions['refundStatus'] = 'PARTIALLY_PAID') => ({ ...refund(status), activities: [
   { activity_id: 'pay-1', activity_type: 'PAYMENT_RECORDED', amount_cny_fen: '12000', occurred_at: now - 600,
@@ -161,7 +160,7 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
       if (status !== 201) { await json(route, failure(status === 429 ? 'RATE_LIMITED' : 'FEATURE_DISABLED'), status, status === 429 ? { 'Retry-After': '10' } : {}); return; }
       await json(route, success({ identity: { buyer_number: 'B-1001', wechat_id: 'buyer_wx' }, session_established: true, must_change_password: false, next_path: '/buyer' }), 201); return;
     }
-    if (path === '/api/buyer-portal/me') { await json(route, success({ buyer: { customer_number: 'B-1001', display_name: '月白买家', marketplace_code: 'JP', identity_review_status: options.reviewRequired ? 'REVIEW_REQUIRED' : 'CLEAR' }, session: { expires_at: now + 100_000 } })); return; }
+    if (path === '/api/buyer-portal/me') { await json(route, success({ buyer: { display_name: '月白买家', marketplace_code: 'JP', identity_review_status: options.reviewRequired ? 'REVIEW_REQUIRED' : 'CLEAR' } })); return; }
     if (path === '/api/buyer-portal/demands') {
       const cursor = url.searchParams.get('cursor');
       if (options.cursorPages && cursor === 'demand-cursor-2') { await json(route, success({ items: [{ ...demand, demand_id: 'demand-2', product_name: '月白补充装' }], next_cursor: 'demand-cursor-3' })); return; }
@@ -243,14 +242,14 @@ async function captureAcceptance(page: Page, name: string): Promise<void> {
 }
 
 test('Buyer registration exposes no manual human token input', async ({ page }) => {
-  await page.goto('/buyer/register'); await expect(page.getByRole('heading', { name: '买家邀请注册' })).toBeVisible();
+  await page.goto('/buyer/register'); await expect(page.getByRole('heading', { name: '邀请注册' })).toBeVisible();
   await expect(page.locator('input[name="human_verification_token"]')).toHaveCount(0);
 });
 
 test('Buyer registration succeeds only after the verified session read', async ({ page }) => {
   await installBuyerApi(page); await page.goto(`/buyer/register?token=${buyerInvitationToken}`);
   await page.getByLabel('微信号').fill('buyer_wx'); await page.getByLabel('密码', { exact: true }).fill('safe-password-123');
-  await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '注册并进入买家工作区' }).click();
+  await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '完成注册' }).click();
   await expect(page).toHaveURL(/\/buyer$/u); await expect(page.getByRole('navigation', { name: '买家导航' })).toBeVisible();
 });
 
@@ -258,7 +257,7 @@ for (const [name, status, message] of [['disabled', 503, '当前暂未开放注�
   test(`Buyer registration ${name} fails safely`, async ({ page }) => {
     await installBuyerApi(page, { registrationStatus: status }); await page.goto(`/buyer/register?token=${buyerInvitationToken}`);
     await page.getByLabel('微信号').fill('buyer_wx'); await page.getByLabel('密码', { exact: true }).fill('safe-password-123');
-    await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '注册并进入买家工作区' }).click();
+    await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '完成注册' }).click();
     await expect(page.getByText(new RegExp(message, 'u'))).toBeVisible();
   });
 }
@@ -266,34 +265,34 @@ for (const [name, status, message] of [['disabled', 503, '当前暂未开放注�
 test('Buyer registration mismatch logs out and stays fail closed', async ({ page }) => {
   await installBuyerApi(page, { sessionType: 'SELLER_MEMBER' }); await page.goto(`/buyer/register?token=${buyerInvitationToken}`);
   await page.getByLabel('微信号').fill('buyer_wx'); await page.getByLabel('密码', { exact: true }).fill('safe-password-123');
-  await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '注册并进入买家工作区' }).click();
+  await page.getByLabel('确认密码').fill('safe-password-123'); await page.getByRole('button', { name: '完成注册' }).click();
   await expect(page.getByText('注册后的会话身份不匹配，已安全退出。')).toBeVisible();
 });
 
 test('Root has no registration link', async ({ page }) => { await page.goto('/'); await expect(page.getByRole('link')).toHaveCount(0); });
 test('Buyer login has no registration link', async ({ page }) => { await page.goto('/buyer/login'); await expect(page.getByRole('link', { name: /注册/u })).toHaveCount(0); });
 
-test('Dashboard ranks mixed tasks and remains useful', async ({ page }) => {
-  await gotoBuyer(page, '/buyer'); const cards = page.locator('.buyer-task-card'); await expect(cards).toHaveCount(4);
-  await expect(cards.first()).toContainText('修改订单资料'); await expect(cards.nth(1)).toContainText('修改评论资料');
+test('Dashboard lists only server-authoritative reservable products', async ({ page }) => {
+  await gotoBuyer(page, '/buyer'); const cards = page.locator('.buyer-task-card'); await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toContainText('月白护肤套装'); await expect(cards).not.toContainText('修改订单资料');
 });
 
-test('Dashboard partial failure does not hide other sources', async ({ page }) => {
-  await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/order-evidence': 503 } });
-  await expect(page.getByText('订单资料暂不可用')).toBeVisible(); await expect(page.getByText('修改评论资料')).toBeVisible();
+test('Dashboard shows a product-only failure safely', async ({ page }) => {
+  await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/demands': 503 } });
+  await expect(page.getByText('产品暂时无法读取')).toBeVisible();
 });
 
-test('Dashboard retries only the failed source and restores its task', async ({ page }) => {
-  let evidenceReads = 0;
-  page.on('request', (request) => { if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/buyer-portal/order-evidence') evidenceReads += 1; });
-  await gotoBuyer(page, '/buyer', { failureOnce: '/api/buyer-portal/order-evidence' });
-  await expect(page.getByText('订单资料暂不可用')).toBeVisible();
-  await page.getByRole('button', { name: '仅重试此来源' }).click();
-  await expect(page.getByText('修改订单资料')).toBeVisible(); expect(evidenceReads).toBe(2);
+test('Dashboard reload restores the product list', async ({ page }) => {
+  let demandReads = 0;
+  page.on('request', (request) => { if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/buyer-portal/demands') demandReads += 1; });
+  await gotoBuyer(page, '/buyer', { failureOnce: '/api/buyer-portal/demands' });
+  await expect(page.getByText('产品暂时无法读取')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('月白护肤套装')).toBeVisible(); expect(demandReads).toBe(2);
 });
 
 for (const [path, owner] of [
-  ['/buyer/demands/demand-1', '任务'], ['/buyer/reservations/reservation-1/instruction', '任务'],
+  ['/buyer/demands/demand-1', '产品'], ['/buyer/reservations/reservation-1/instruction', '产品'],
   ['/buyer/order-materials/evidence-1', '订单资料'], ['/buyer/orders/formal-1', '订单资料'],
   ['/buyer/reviews/review-1', '评论'], ['/buyer/refunds/refund-1', '我的'], ['/buyer/change-password', '我的'],
 ] as const) {
@@ -399,16 +398,16 @@ test('Review upload and submit sends 1–3 verified file versions', async ({ pag
   await expect(page).toHaveURL(/\/buyer\/reviews\/review-1$/u);
 });
 test('Review detail shows public change reason and resubmit form', async ({ page }) => { await gotoBuyer(page, '/buyer/reviews/review-1'); await expect(page.getByText('修改说明：请补充完整评论截图')).toBeVisible(); await expect(page.getByRole('heading', { name: '按说明重新提交' })).toBeVisible(); });
-test('Approved review shows refund due without inventing payment', async ({ page }) => { await gotoBuyer(page, '/buyer/reviews/review-1', { reviewStatus: 'APPROVED' }); await expect(page.getByText(/应返款/u)).toBeVisible(); await expect(page.getByText(/已支付/u)).toHaveCount(0); });
+test('Approved review shows refund amount without inventing payment', async ({ page }) => { await gotoBuyer(page, '/buyer/reviews/review-1', { reviewStatus: 'APPROVED' }); await expect(page.getByText(/返款金额/u)).toBeVisible(); await expect(page.getByText(/已支付/u)).toHaveCount(0); });
 test('Review protected file read uses entity-bound provider', async ({ page }) => { await gotoBuyer(page, '/buyer/reviews/review-1'); await page.getByRole('button', { name: '查看文件' }).click(); await expect(page.getByRole('link', { name: '打开文件' })).toBeVisible(); });
 
 test('Refund detail keeps payment and reversal activities visible', async ({ page }) => { await gotoBuyer(page, '/buyer/refunds/refund-1'); await expect(page.getByText('记录付款')).toBeVisible(); await expect(page.getByText('付款冲正')).toBeVisible(); });
 test('Refund OVERPAID displays overpaid amount', async ({ page }) => { await gotoBuyer(page, '/buyer/refunds/refund-1', { refundStatus: 'OVERPAID' }); await expect(page.getByText('超额返款')).toBeVisible(); await expect(page.getByText('¥12.66 CNY')).toBeVisible(); });
-test('Me displays authoritative account and service links', async ({ page }) => { await gotoBuyer(page, '/buyer/me'); await expect(page.getByText('B-1001')).toBeVisible(); await expect(page.getByRole('link', { name: '正式订单' })).toBeVisible(); await expect(page.getByRole('link', { name: '返款记录' })).toBeVisible(); });
+test('Me displays service links without internal account fields', async ({ page }) => { await gotoBuyer(page, '/buyer/me'); await expect(page.getByText('B-1001')).toHaveCount(0); await expect(page.getByRole('link', { name: '正式订单' })).toBeVisible(); await expect(page.getByRole('link', { name: '返款记录' })).toBeVisible(); });
 test('Me REVIEW_REQUIRED shows only safe limitation guidance', async ({ page }) => { await gotoBuyer(page, '/buyer/me', { reviewRequired: true }); await expect(page.getByText(/部分业务操作会受到限制/u)).toBeVisible(); await expect(page.getByRole('button', { name: /编辑/u })).toHaveCount(0); });
 test('Me logout returns to Buyer login', async ({ page }) => { await gotoBuyer(page, '/buyer/me'); await page.getByRole('button', { name: '退出登录' }).click(); await expect(page).toHaveURL(/\/buyer\/login$/u); });
 
-test('Buyer 401 redirects before shell renders', async ({ page }) => { await gotoBuyer(page, '/buyer', { failures: { '/api/customer-auth/session': 401 } }); await expect(page.getByRole('heading', { name: '买家登录' })).toBeVisible(); });
+test('Buyer 401 redirects before shell renders', async ({ page }) => { await gotoBuyer(page, '/buyer', { failures: { '/api/customer-auth/session': 401 } }); await expect(page.getByText('月光白')).toBeVisible(); });
 for (const [status, path, message] of [[403, '/api/buyer-portal/me', '当前账号没有查看'], [404, '/api/buyer-portal/order-evidence/evidence-1', '内容不存在'], [503, '/api/buyer-portal/formal-orders/formal-1', '服务暂时不可用']] as const) {
   test(`Buyer ${status} renders a safe request-bound error`, async ({ page }) => { await gotoBuyer(page, status === 403 ? '/buyer/me' : status === 404 ? '/buyer/order-materials/evidence-1' : '/buyer/orders/formal-1', { failures: { [path]: status } }); await expect(page.getByText(new RegExp(message, 'u'))).toBeVisible(); await expect(page.getByText('请求编号：module1-browser-error')).toBeVisible(); });
 }
@@ -421,8 +420,8 @@ test('Buyer respects reduced motion', async ({ page }) => { await page.emulateMe
 test('Buyer keyboard focus remains visible', async ({ page }) => { await gotoBuyer(page, '/buyer/me'); const focused = page.getByRole('link', { name: '正式订单' }); await focused.focus(); await expect(focused).toBeFocused(); const outline = await focused.evaluate((element) => getComputedStyle(element).outlineStyle); expect(outline).not.toBe('none'); });
 
 test('capture Module1 root desktop acceptance', async ({ page }) => { await page.setViewportSize({ width: 1440, height: 900 }); await page.goto('/'); await expect(page.getByRole('heading', { name: '月光白' })).toBeVisible(); await captureAcceptance(page, 'root-desktop-1440x900.png'); });
-test('capture Module1 registration mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/buyer/register'); await expect(page.getByRole('heading', { name: '买家邀请注册' })).toBeVisible(); await captureAcceptance(page, 'buyer-register-mobile-390x844.png'); });
-test('capture Module1 login mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/buyer/login'); await expect(page.getByRole('heading', { name: '买家登录' })).toBeVisible(); await captureAcceptance(page, 'buyer-login-mobile-390x844.png'); });
+test('capture Module1 registration mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/buyer/register'); await expect(page.getByRole('heading', { name: '邀请注册' })).toBeVisible(); await captureAcceptance(page, 'buyer-register-mobile-390x844.png'); });
+test('capture Module1 login mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/buyer/login'); await expect(page.getByText('月光白')).toBeVisible(); await captureAcceptance(page, 'buyer-login-mobile-390x844.png'); });
 
 for (const [name, path] of [
   ['buyer-dashboard-mobile-390x844.png', '/buyer'],
@@ -445,7 +444,7 @@ for (const [name, path] of [
   });
 }
 
-test('capture Module1 partial failure mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/order-evidence': 503 } }); await expect(page.getByText('订单资料暂不可用')).toBeVisible(); await captureAcceptance(page, 'buyer-dashboard-partial-error-mobile-390x844.png'); });
+test('capture Module1 partial failure mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/demands': 503 } }); await expect(page.getByText('产品暂时无法读取')).toBeVisible(); await captureAcceptance(page, 'buyer-dashboard-partial-error-mobile-390x844.png'); });
 test('capture Module1 320 reflow acceptance', async ({ page }) => { await page.setViewportSize({ width: 320, height: 800 }); await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await noOverflow(page); await captureAcceptance(page, 'buyer-320-reflow-320x800.png'); });
 test('capture Module1 200 percent acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer/me'); await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; }); await expect(page.getByText('月白买家')).toBeVisible(); await noOverflow(page); await captureAcceptance(page, 'buyer-200-percent-390x844.png'); });
 test('capture Module1 permission error mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer/me', { failures: { '/api/buyer-portal/me': 403 } }); await expect(page.getByText(/当前账号没有查看/u)).toBeVisible(); await captureAcceptance(page, 'buyer-permission-error-mobile-390x844.png'); });

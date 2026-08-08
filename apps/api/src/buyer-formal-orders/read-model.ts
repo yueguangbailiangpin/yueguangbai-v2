@@ -22,7 +22,6 @@ export interface BuyerFormalOrderFilters {
 
 interface BuyerFormalOrderRow {
   formal_order_id: string;
-  buyer_customer_no: string;
   marketplace_code: 'JP';
   amazon_order_number_normalized: string;
   amazon_order_date: string | null;
@@ -49,7 +48,6 @@ interface BuyerFormalOrderRow {
 const BUYER_FORMAL_ORDER_SELECT = `
   SELECT
     formal_order.id AS formal_order_id,
-    formal_order.buyer_customer_no,
     formal_order.marketplace_code,
     formal_order.amazon_order_number_normalized,
     formal_order.amazon_order_date,
@@ -214,7 +212,6 @@ function toDto(row: BuyerFormalOrderRow): BuyerFormalOrderDto {
   }
   return {
     formal_order_id: row.formal_order_id,
-    buyer_customer_no: row.buyer_customer_no,
     marketplace: row.marketplace_code,
     amazon_order_number: row.amazon_order_number_normalized,
     amazon_order_date: row.amazon_order_date,

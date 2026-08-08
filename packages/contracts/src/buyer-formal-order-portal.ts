@@ -23,7 +23,6 @@ export interface BuyerFormalOrderEvidenceSummaryDto {
 
 export interface BuyerFormalOrderDto {
   formal_order_id: string;
-  buyer_customer_no: string;
   marketplace: MarketplaceCode;
   amazon_order_number: string;
   amazon_order_date: string | null;

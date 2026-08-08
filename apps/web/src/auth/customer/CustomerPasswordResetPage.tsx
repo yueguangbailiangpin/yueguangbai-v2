@@ -15,7 +15,10 @@ const formSchema = z.object({
 const responseSchema = z.object({
   password_reset: z.literal(true),
   all_previous_sessions_revoked: z.literal(true),
-  next_path: z.literal('/customer/login'),
+  next_path: z.union([
+    z.literal('/buyer/login'),
+    z.literal('/seller/login'),
+  ]),
 }).strict();
 
 export function CustomerPasswordResetPage(): React.JSX.Element {
@@ -24,6 +27,7 @@ export function CustomerPasswordResetPage(): React.JSX.Element {
   const token = params.get('token') ?? '';
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [nextPath, setNextPath] = useState<'/buyer/login' | '/seller/login' | null>(null);
   const [message, setMessage] = useState<string | null>(
     token ? null : '恢复链接无效，请联系工作人员重新获取。',
   );
@@ -44,13 +48,14 @@ export function CustomerPasswordResetPage(): React.JSX.Element {
     setMessage(null);
     setRequestId(null);
     try {
-      await apiRequest({
+      const result = await apiRequest({
         path: '/api/customer-auth/password-reset/complete',
         method: 'POST',
         schema: responseSchema,
         headers: { 'Idempotency-Key': `customer-reset:${crypto.randomUUID()}` },
         body: { token, ...parsed.data },
       });
+      setNextPath(result.data.next_path);
       setDone(true);
       setMessage('密码已更新，所有旧登录会话均已失效。');
     } catch (error: unknown) {
@@ -85,9 +90,9 @@ export function CustomerPasswordResetPage(): React.JSX.Element {
           更新密码
         </Button> : null}
       </form>
-      <Button className="secondary" onClick={() => navigate('/buyer/login')}>
-        返回登录
-      </Button>
+      {done && nextPath ? <Button className="secondary" onClick={() => navigate(nextPath)}>
+        前往登录
+      </Button> : null}
     </Card>
   </main>;
 }

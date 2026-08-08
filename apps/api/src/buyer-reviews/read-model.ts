@@ -601,7 +601,6 @@ function toReviewSummaryDto(row: ReviewRow): BuyerReviewSummaryDto {
       ? null
       : {
           amount_cny_fen: String(dueAmount),
-          became_due_at: dueAt,
         },
     file_count: safeNonNegativeInteger(row.file_count),
     allowed_actions: buyerReviewAllowedActions(row.review_status),

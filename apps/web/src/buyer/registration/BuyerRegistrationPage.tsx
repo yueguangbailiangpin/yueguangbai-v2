@@ -109,8 +109,8 @@ export function BuyerRegistrationPage({
     <Card className="login-card">
       <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
         <strong>月光白</strong></div>
-      <div className="login-heading"><p className="eyebrow">买家服务</p>
-        <h1>买家邀请注册</h1><p>仅限工作人员发送的专属一次性邀请。</p></div>
+      <div className="login-heading"><h1>邀请注册</h1>
+        <p>仅限工作人员发送的专属一次性邀请。</p></div>
       {invitation ? <Alert tone="info">
         站点：{invitation.marketplace_name}；邀请微信：{invitation.wechat_hint}
       </Alert> : null}
@@ -126,7 +126,7 @@ export function BuyerRegistrationPage({
         </FormField>
         {message ? <Alert tone="danger">{message}</Alert> : null}
         <RequestIdDisplay requestId={requestId} />
-        <Button type="submit" disabled={!invitation} loading={busy} loadingLabel="正在创建账号">注册并进入买家工作区</Button>
+        <Button type="submit" disabled={!invitation} loading={busy} loadingLabel="正在创建账号">完成注册</Button>
       </form>
       <Button className="secondary" onClick={() => navigate('/buyer/login')}>返回登录</Button>
     </Card>
