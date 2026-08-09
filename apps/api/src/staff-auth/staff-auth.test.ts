@@ -514,7 +514,7 @@ describe('Wave 13 Staff authentication and production entry', () => {
         },
         body: '{}',
       },
-      env(new FailFirstBatchDatabase(database)),
+      env(new FailFirstCleanupRunDatabase(database)),
     );
     expect(response.status).toBe(503);
     expect(count(database, 'staff_login_states')).toBe(0);
@@ -546,7 +546,7 @@ describe('Wave 13 Staff authentication and production entry', () => {
     const response = await app.request(
       `https://api.example.test/api/staff-auth/feishu/callback?code=test&state=${state}`,
       { method: 'GET', redirect: 'manual' },
-      env(new FailFirstBatchDatabase(database)),
+      env(new FailFirstCleanupRunDatabase(database)),
     );
     expect(response.status).toBe(503);
     expect(database.raw.prepare(`
@@ -628,20 +628,53 @@ function count(target: SqliteDatabase, table: string): number {
   return Number(row.count);
 }
 
-class FailFirstBatchDatabase implements SqlDatabase {
+class FailFirstCleanupRunDatabase implements SqlDatabase {
   private failed = false;
 
   constructor(private readonly target: SqlDatabase) {}
 
   prepare(sql: string): SqlStatement {
-    return this.target.prepare(sql);
+    const statement = this.target.prepare(sql);
+    return sql.includes('DELETE FROM staff_login_states')
+      ? new FailFirstRunStatement(statement, () => this.failOnce())
+      : statement;
   }
 
   batch(statements: readonly SqlStatement[]): Promise<SqlRunResult[]> {
-    if (!this.failed) {
-      this.failed = true;
-      return Promise.reject(new Error('injected_cleanup_failure'));
-    }
     return this.target.batch(statements);
+  }
+
+  private failOnce(): boolean {
+    if (this.failed) return false;
+    this.failed = true;
+    return true;
+  }
+}
+
+class FailFirstRunStatement implements SqlStatement {
+  constructor(
+    private readonly target: SqlStatement,
+    private readonly shouldFail: () => boolean,
+  ) {}
+
+  bind(...values: unknown[]): SqlStatement {
+    return new FailFirstRunStatement(
+      this.target.bind(...values),
+      this.shouldFail,
+    );
+  }
+
+  first<T = Record<string, unknown>>(): Promise<T | null> {
+    return this.target.first<T>();
+  }
+
+  all<T = Record<string, unknown>>() {
+    return this.target.all<T>();
+  }
+
+  run(): Promise<SqlRunResult> {
+    return this.shouldFail()
+      ? Promise.reject(new Error('injected_cleanup_failure'))
+      : this.target.run();
   }
 }
