@@ -65,6 +65,16 @@ D1 是唯一权威业务数据库和文件授权/Manifest 来源。R2 是正式�
 
 状态：Accepted by business owner
 
+### D-031 卖家本金下单日汇率与加点策略
+
+卖家应返本金的权威计算只使用平台下单日的权威日基准汇率加卖家本金汇率加点。Amazon 的 `amazon_order_date` 是日期事实，按中国业务自然日匹配日汇率；不使用确认日汇率，也不自动回退最近日期。加点为绝对增量，使用与日汇率相同的整数刻度，JPY→CNY 的 `0.004` 编码为 `400000` / `100000000`。
+
+币种对默认策略可由 Staff 配置，并预留卖家组织覆盖；组织覆盖优先，显式 0 与没有覆盖必须区分。策略版本带生效时间、提交/确认审计身份、决策版本和幂等键。Migration 0041 在 D1 层只允许 `SUBMITTED→CONFIRMED/REJECTED`，终态版本与事件不可改删，并保护 pending/effective boundary 唯一性；快照必须证明基准日等于平台下单日、默认策略组织为 NULL、覆盖组织等于正式订单卖家组织，并用无溢出商/余数分解证明 HALF_UP 本金金额。当前四角色模型下 GLOBAL Owner 可提交默认或组织覆盖，局部 Seller Ops 只能提交已分配组织覆盖；卖家端没有写权限；配置读取与写入依赖可信 Staff Session、有效角色/权限和 Personal DENY 后的有效授权，Staff 工作台提供与后端一致的可见操作入口。
+
+正式订单确认在同一事务中保存下单日、基准日汇率版本和值、实际采用策略的范围/版本/加点、最终汇率、`HALF_UP` 口径和本金结果。生产切换使用默认关闭的 `SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED`：先应用 0041 并部署兼容 Worker，再由 Staff 创建并由 Owner 确认默认 JPY→CNY 策略及生效时间，验证可解析后由单独授权开启；开启后缺少基准汇率或生效策略时返回稳定的 `SELLER_PRINCIPAL_RATE_NOT_FOUND` 并保持未确认。若开关保持关闭，使用 0040 兼容计算路径；本地 Change 不执行生产顺序。Migration 0041 只追加表和快照；旧 Seller agreement 字段作为兼容投影保留，既有正式订单和账务不回写。
+
+状态：Accepted for local implementation; production activation not approved
+
 记录：该模式存在外部平台政策风险；“内部使用”不改变业务行为风险。项目按业务所有者决定实施，但不得开发自动操作评论、隐藏审计或规避平台识别的功能。
 
 ### D-011 财务不可变

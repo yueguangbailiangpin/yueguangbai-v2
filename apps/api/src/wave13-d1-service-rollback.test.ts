@@ -55,6 +55,7 @@ describe('Wave 13 service-level D1 rollback boundaries', () => {
         idempotencyKey: 'fault-atomic-approval',
         requestId: 'fault-atomic-approval-request',
         now: 1_722_528_000_000,
+        sellerPrincipalRateEnforcementEnabled: true,
       },
     )).rejects.toMatchObject({ status: 503 });
     expect(count(base, 'formal_orders')).toBe(0);
@@ -224,6 +225,36 @@ function readOverlay(sql: string, mode: Mode): OverlayResult | null {
         confirmed_at: 1_722_528_000_000,
       });
     }
+    if (sql.includes('FROM buyer_daily_currency_rate_versions')
+      && sql.includes("quote_currency_code='CNY'")) {
+      return first({
+        id: 'currency-fault-buyer-rate',
+        business_date: '2024-08-02',
+        version_no: 1,
+        rate_value: 5_000_000,
+        rate_scale: 100_000_000,
+        confirmed_at: 1_722_528_000_000,
+      });
+    }
+    if (sql.includes('FROM seller_principal_rate_policy_versions')
+      && sql.includes("status='CONFIRMED'")) {
+      return first({
+        id: 'fault-principal-policy',
+        scope_type: 'SELLER_ORGANIZATION',
+        seller_organization_id: 'fault-org',
+        source_currency_code: 'JPY',
+        quote_currency_code: 'CNY',
+        version_no: 1,
+        decision_version: 2,
+        status: 'CONFIRMED',
+        markup_rate_value: 0,
+        rate_scale: 100_000_000,
+        effective_from: 1_700_000_000_000,
+        submitted_at: 1_700_000_000_000,
+        confirmed_at: 1_700_000_000_001,
+        rejection_reason: null,
+      });
+    }
     if (sql.includes('FROM seller_agreement_rate_versions')
       && sql.includes("status='CONFIRMED'")) {
       return first(sellerRule('fault-seller-rate', null, 5_000_000));
@@ -308,6 +339,7 @@ function approvalSource(): Record<string, unknown> {
     evidence_current_version_no: 1,
     evidence_aggregate_version: 1,
     evidence_version_id: 'fault-evidence-version',
+    amazon_order_date: '2024-08-02',
     amazon_order_number_raw: '123-1234567-1234567',
     amazon_order_number_normalized: '123-1234567-1234567',
     final_paid_jpy: 1980,

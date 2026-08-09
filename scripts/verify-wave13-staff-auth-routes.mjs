@@ -76,7 +76,7 @@ for (const evidence of [
 for (const evidence of [
   'app.routes',
   'duplicateRegistrations',
-  'toHaveLength(191)',
+  'toHaveLength(195)',
   'toHaveLength(160)',
   'toHaveLength(31)',
 ]) assertContains(inventoryTests, evidence, 'route inventory runtime test');
@@ -87,5 +87,5 @@ report('wave13-staff-auth-route-guard', {
   middleware_before_staff_routes: true,
   header_actor_paths: 0,
   api_v2_routes: 0,
-  active_routes: 191,
+  active_routes: 195,
 });

@@ -57,6 +57,15 @@ describe('Phase 3F formal order confirmation', () => {
         buyer_expected_principal_cny_fen: '48840',
         seller_expected_principal_cny_fen: '53280',
         rounding_rule: 'HALF_UP',
+        seller_principal_rate_snapshot: {
+          platform_order_date: '2026-08-01',
+          base_rate_version_id: 'currency-buyer-rate-v1',
+          base_rate_value: '5500000',
+          markup_rate_value: '500000',
+          final_rate_value: '6000000',
+          rounding_rule: 'HALF_UP',
+          seller_expected_principal_amount_minor: '53280',
+        },
       },
     });
 
@@ -256,7 +265,7 @@ describe('Phase 3F formal order confirmation', () => {
     await expectNoPartialFacts(database, 'evidence-submission-3');
   });
 
-  it('resolves the seller agreement version effective at confirmation time', async () => {
+  it('keeps the seller-principal policy independent from the legacy agreement version', async () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database);
     seedConfirmedSellerRate(database, {
@@ -277,7 +286,56 @@ describe('Phase 3F formal order confirmation', () => {
       seller_rate_version_id: 'seller-rate-v2',
       seller_rate_version_no: 2,
       seller_cny_per_jpy_e8: '6500000',
-      seller_expected_principal_cny_fen: '57720',
+      seller_expected_principal_cny_fen: '53280',
+    });
+  });
+
+  it('uses the explicit fail-closed enforcement switch for missing and existing policies', async () => {
+    database = createMigratedTestDatabase();
+    await seedFormalOrderFixture(database, { omitPrincipalPolicy: true });
+    const legacyResult = await confirmFormalOrder(
+      database,
+      confirmationInput('evidence-submission-1'),
+      command(preSalesActor(), 'formal-order:policy-switch:off', NOW, false),
+    );
+    expect(legacyResult.financial_snapshot.seller_principal_rate_snapshot).toBeUndefined();
+    expect(await database.prepare(`
+      SELECT COUNT(*) AS count FROM seller_principal_rate_snapshots
+      WHERE formal_order_id=?
+    `).bind(legacyResult.formal_order_id).first<{ count: number }>()).toEqual({ count: 0 });
+
+    database.close();
+    database = createMigratedTestDatabase();
+    await seedFormalOrderFixture(database, { omitPrincipalPolicy: true });
+    await expect(confirmFormalOrder(
+      database,
+      confirmationInput('evidence-submission-1'),
+      {
+        ...command(preSalesActor(), 'formal-order:policy-switch:on-missing'),
+        sellerPrincipalRateEnforcementEnabled: true,
+      },
+    )).rejects.toMatchObject({
+      code: 'SELLER_PRINCIPAL_RATE_NOT_FOUND',
+      status: 404,
+    });
+    expect(await database.prepare(
+      `SELECT COUNT(*) AS count FROM formal_orders`,
+    ).first<{ count: number }>()).toEqual({ count: 0 });
+
+    database.close();
+    database = createMigratedTestDatabase();
+    await seedFormalOrderFixture(database);
+    const enforcedResult = await confirmFormalOrder(
+      database,
+      confirmationInput('evidence-submission-1'),
+      {
+        ...command(preSalesActor(), 'formal-order:policy-switch:on-existing'),
+        sellerPrincipalRateEnforcementEnabled: true,
+      },
+    );
+    expect(enforcedResult.financial_snapshot.seller_principal_rate_snapshot).toMatchObject({
+      policy_version_id: 'principal-policy-override-v1',
+      seller_expected_principal_amount_minor: '53280',
     });
   });
 
@@ -312,7 +370,7 @@ describe('Phase 3F formal order confirmation', () => {
     );
     expect(result.financial_snapshot).toMatchObject({
       buyer_expected_principal_cny_fen: '6',
-      seller_expected_principal_cny_fen: '5',
+      seller_expected_principal_cny_fen: '6',
       rounding_rule: 'HALF_UP',
     });
   });
@@ -491,6 +549,68 @@ describe('Phase 3F formal order confirmation', () => {
       'formal_order_financial_snapshots_are_immutable',
     );
     await expect(database.prepare(`
+      UPDATE seller_principal_rate_snapshots
+      SET final_rate_value=1
+      WHERE formal_order_id=?
+    `).bind(result.formal_order_id).run()).rejects.toThrow(
+      'seller_principal_rate_snapshots_are_immutable',
+    );
+    await expect(database.prepare(`
+      INSERT INTO seller_principal_rate_snapshots
+      SELECT formal_order_id, platform_order_date, payment_amount_minor,
+        payment_currency_code, base_rate_version_id, ? AS base_rate_business_date,
+        base_rate_confirmed_at, base_rate_value, base_rate_scale,
+        policy_version_id, policy_scope_type, policy_seller_organization_id,
+        policy_version_no, policy_effective_from, policy_confirmed_at,
+        markup_rate_value, markup_rate_scale, final_rate_value, final_rate_scale,
+        rounding_rule, seller_expected_principal_amount_minor, created_at
+      FROM seller_principal_rate_snapshots WHERE formal_order_id=?
+    `).bind('2026-08-02', result.formal_order_id).run()).rejects.toThrow(
+      'seller_principal_rate_snapshot_source_mismatch',
+    );
+    await expect(database.prepare(`
+      INSERT INTO seller_principal_rate_snapshots
+      SELECT formal_order_id, platform_order_date, payment_amount_minor,
+        payment_currency_code, base_rate_version_id, base_rate_business_date,
+        base_rate_confirmed_at, base_rate_value, base_rate_scale,
+        policy_version_id, policy_scope_type, policy_seller_organization_id,
+        policy_version_no, policy_effective_from, policy_confirmed_at,
+        markup_rate_value, markup_rate_scale, final_rate_value, final_rate_scale,
+        rounding_rule, seller_expected_principal_amount_minor + 1, created_at
+      FROM seller_principal_rate_snapshots WHERE formal_order_id=?
+    `).bind(result.formal_order_id).run()).rejects.toThrow(
+      'seller_principal_rate_snapshot_source_mismatch',
+    );
+    await database.prepare(`
+      INSERT INTO seller_organizations (
+        id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
+        seller_sequence, organization_name, status, version, created_at,
+        updated_at, activated_at, disabled_at, next_member_number
+      ) SELECT 'seller-org-other', marketplace_code, 'other-seller-000001',
+        origin_channel_id, current_channel_id, seller_sequence + 1, '其他卖家',
+        status, version, created_at, updated_at, activated_at, disabled_at,
+        next_member_number FROM seller_organizations WHERE id='seller-org-formal'
+    `).run();
+    await expect(database.prepare(`
+      INSERT INTO seller_principal_rate_snapshots
+      SELECT formal_order_id, platform_order_date, payment_amount_minor,
+        payment_currency_code, base_rate_version_id, base_rate_business_date,
+        base_rate_confirmed_at, base_rate_value, base_rate_scale,
+        policy_version_id, policy_scope_type, 'seller-org-other',
+        policy_version_no, policy_effective_from, policy_confirmed_at,
+        markup_rate_value, markup_rate_scale, final_rate_value, final_rate_scale,
+        rounding_rule, seller_expected_principal_amount_minor, created_at
+      FROM seller_principal_rate_snapshots WHERE formal_order_id=?
+    `).bind(result.formal_order_id).run()).rejects.toThrow(
+      'seller_principal_rate_snapshot_source_mismatch',
+    );
+    await expect(database.prepare(`
+      DELETE FROM seller_principal_rate_snapshots
+      WHERE formal_order_id=?
+    `).bind(result.formal_order_id).run()).rejects.toThrow(
+      'seller_principal_rate_snapshots_are_immutable',
+    );
+    await expect(database.prepare(`
       UPDATE formal_order_events SET next_status='CONFIRMED'
       WHERE formal_order_id=?
     `).bind(result.formal_order_id).run()).rejects.toThrow(
@@ -594,12 +714,14 @@ function command(
   actor: FormalOrderStaffActor,
   idempotencyKey: string,
   now = NOW,
+  sellerPrincipalRateEnforcementEnabled = true,
 ) {
   return {
     actor,
     idempotencyKey,
     requestId: `request:${idempotencyKey}`,
     now,
+    sellerPrincipalRateEnforcementEnabled,
   };
 }
 
@@ -675,6 +797,7 @@ async function seedFormalOrderFixture(
     finalPaidJpy?: number;
     buyerRateE8?: number;
     sellerRateE8?: number;
+    omitPrincipalPolicy?: boolean;
     duplicateAmazonOrder?: boolean;
     omitSellerRate?: boolean;
     omitVideoServiceFee?: boolean;
@@ -683,6 +806,7 @@ async function seedFormalOrderFixture(
   const finalPaidJpy = options.finalPaidJpy ?? 8880;
   const buyerRateE8 = options.buyerRateE8 ?? 5_500_000;
   const sellerRateE8 = options.sellerRateE8 ?? 6_000_000;
+  const policyOverrideMarkupE8 = Math.max(0, sellerRateE8 - buyerRateE8);
   const secondOrder = options.duplicateAmazonOrder
     ? '123-1234567-1234567'
     : '456-1234567-1234567';
@@ -705,6 +829,36 @@ async function seedFormalOrderFixture(
           confirmed_by_staff_id='staff-owner', confirmed_at=2000
       WHERE id='seller-rate-v1';
     `;
+  const principalPolicySql = options.omitPrincipalPolicy
+    ? ''
+    : `
+    INSERT INTO seller_principal_rate_policy_versions (
+      id, scope_type, seller_organization_id, source_currency_code,
+      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
+      effective_from, submitted_by_staff_id, submitted_at, decision_version,
+      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
+      rejection_reason
+    ) VALUES (
+      'principal-policy-default-v1', 'CURRENCY_PAIR_DEFAULT', NULL, 'JPY',
+      'CNY', 1, 'SUBMITTED', 400000, 100000000, 3000,
+      'staff-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
+    );
+    INSERT INTO seller_principal_rate_policy_versions (
+      id, scope_type, seller_organization_id, source_currency_code,
+      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
+      effective_from, submitted_by_staff_id, submitted_at, decision_version,
+      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
+      rejection_reason
+    ) VALUES (
+      'principal-policy-override-v1', 'SELLER_ORGANIZATION', 'seller-org-formal', 'JPY',
+      'CNY', 1, 'SUBMITTED', ${policyOverrideMarkupE8}, 100000000, 3000,
+      'staff-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
+    );
+    UPDATE seller_principal_rate_policy_versions
+    SET status='CONFIRMED', decision_version=2,
+        confirmed_by_staff_id='staff-owner', confirmed_at=2000
+    WHERE id IN ('principal-policy-default-v1', 'principal-policy-override-v1');
+  `;
 
   db.exec(`
     INSERT INTO staff_users (
@@ -991,6 +1145,8 @@ async function seedFormalOrderFixture(
     SET status='CONFIRMED', decision_version=2,
         confirmed_by_staff_id='staff-owner', confirmed_at=2000
     WHERE id='buyer-rate-v1';
+
+    ${principalPolicySql}
 
     ${sellerRateSql}
   `);

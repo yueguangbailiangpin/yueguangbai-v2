@@ -17,10 +17,10 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 40, `expected 40 migrations, found ${migrations.length}`);
+assert(migrations.length === 41, `expected 41 migrations, found ${migrations.length}`);
 assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
   && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
-  && migrations[39] === '0040_seller_partner_master_data_import.sql',
+  && migrations[40] === '0041_seller_principal_rate_policy.sql',
   'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {
@@ -149,7 +149,7 @@ console.log(JSON.stringify({
   status: 'PASS',
   change: 'production-cloudflare-web-r2-release-configuration',
   schema_change: 'NO_SCHEMA_CHANGE',
-  migration: '0001-0040_CONTINUOUS',
+  migration: '0001-0041_CONTINUOUS',
   release_templates: 'BLOCKED_NEEDS_OPERATOR_INPUT',
   local_implementation: 'PRESENT',
   external_acceptance: 'UNVERIFIED',

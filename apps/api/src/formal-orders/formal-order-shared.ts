@@ -24,6 +24,7 @@ export type FormalOrderErrorCode =
   | 'ORDER_EVIDENCE_STATE_CONFLICT'
   | 'RESERVATION_NOT_FOUND'
   | 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND'
+  | 'SELLER_PRINCIPAL_RATE_NOT_FOUND'
   | 'PRICING_RULE_NOT_FOUND'
   | 'CUSTOMER_NOT_ACTIVE'
   | 'FORMAL_ORDER_ALREADY_EXISTS'
@@ -128,6 +129,9 @@ export function normalizeFormalOrderError(
   }
   if (code === 'PRICING_RULE_NOT_FOUND') {
     return new FormalOrderError('PRICING_RULE_NOT_FOUND', 404);
+  }
+  if (code === 'SELLER_PRINCIPAL_RATE_NOT_FOUND') {
+    return new FormalOrderError('SELLER_PRINCIPAL_RATE_NOT_FOUND', 404);
   }
   if (code === 'VALIDATION_ERROR') {
     return new FormalOrderError('VALIDATION_ERROR', 400);
