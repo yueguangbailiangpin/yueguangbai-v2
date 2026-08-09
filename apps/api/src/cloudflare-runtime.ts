@@ -34,7 +34,6 @@ const DISABLED_RELEASE_FLAGS = [
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-  'STAFF_AUTH_ENABLED',
   'STAFF_MCP_LOCAL_MOCK_ENABLED',
 ] as const;
 
@@ -85,6 +84,9 @@ export function resolveCloudflareRuntime(
     || !storage
     || !isStaticAssetBinding(bindings.WEB_ASSETS)
     || DISABLED_RELEASE_FLAGS.some((name) => bindings[name] !== 'false')
+    || !booleanFlag(bindings.STAFF_AUTH_ENABLED)
+    || (bindings.STAFF_AUTH_ENABLED === 'true'
+      && !validStaffAuthReleaseBindings(bindings, appOrigin))
     || !booleanFlag(bindings.STAFF_MCP_ENABLED)
     || !booleanFlag(bindings.STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED)
     || !booleanFlag(bindings.STAFF_MCP_CLEANUP_ENABLED)
@@ -223,6 +225,44 @@ function releaseAppBindings(
     ...bindings,
     FILE_OBJECT_STORAGE: storage,
   };
-  for (const name of DISABLED_STAFF_AUTH_BINDINGS) delete result[name];
+  if (bindings.STAFF_AUTH_ENABLED === 'false') {
+    for (const name of DISABLED_STAFF_AUTH_BINDINGS) delete result[name];
+  } else {
+    delete result['STAFF_AUTH_PROVIDER_ADAPTER'];
+  }
   return Object.freeze(result) as unknown as AppBindings;
+}
+
+function validStaffAuthReleaseBindings(
+  bindings: CloudflareWorkerBindings,
+  appOrigin: string,
+): boolean {
+  return bindings.STAFF_AUTH_PROVIDER === 'FEISHU'
+    && bindings.STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT
+      === 'https://accounts.feishu.cn/open-apis/authen/v1/authorize'
+    && bindings.STAFF_AUTH_FEISHU_TOKEN_ENDPOINT
+      === 'https://open.feishu.cn/open-apis/authen/v2/oauth/token'
+    && bindings.STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT
+      === 'https://open.feishu.cn/open-apis/authen/v1/user_info'
+    && safeStaffAuthValue(bindings.STAFF_AUTH_FEISHU_APP_ID, 128)
+    && safeStaffAuthValue(bindings.STAFF_AUTH_FEISHU_APP_SECRET, 4096)
+    && bindings.STAFF_AUTH_FEISHU_SCOPE === 'contact:user.base:readonly'
+    && safeStaffAuthValue(bindings.STAFF_AUTH_FEISHU_TENANT_KEY, 200)
+    && bindings.STAFF_AUTH_FEISHU_REDIRECT_URI
+      === `${appOrigin}/api/staff-auth/feishu/callback`
+    && bindings.STAFF_AUTH_ALLOWED_ORIGINS === appOrigin
+    && bindings.STAFF_AUTH_ALLOWED_RETURN_TO === '/staff'
+    && safeStaffAuthValue(bindings.STAFF_AUTH_HASH_SECRET, 4096, 32);
+}
+
+function safeStaffAuthValue(
+  value: unknown,
+  maximum: number,
+  minimum = 1,
+): value is string {
+  return typeof value === 'string'
+    && value.length >= minimum
+    && value.length <= maximum
+    && !/[\u0000-\u001f\u007f]/u.test(value)
+    && !isPlaceholder(value);
 }

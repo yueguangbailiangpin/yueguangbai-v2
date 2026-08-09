@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { AnonymousR2Bucket } from '../test-support/anonymous-r2-binding';
 import worker from './worker';
-import type { CloudflareWorkerBindings } from './cloudflare-runtime';
+import {
+  resolveCloudflareRuntime,
+  type CloudflareWorkerBindings,
+} from './cloudflare-runtime';
 import { MockFeishuWorkbenchAdapter } from './feishu-workbench/mock-adapter';
 
 const origin = 'https://release.example.invalid';
@@ -101,6 +104,50 @@ describe('production Cloudflare Worker runtime', () => {
     expect(await response.text()).not.toContain('anonymous-secret-value');
   });
 
+  it('allows Staff Auth only with a complete official Feishu production shape', async () => {
+    const env = enabledStaffAuthBindings();
+    const runtime = resolveCloudflareRuntime(env);
+    expect(runtime).not.toBeNull();
+    expect(runtime?.appBindings).toMatchObject({
+      STAFF_AUTH_PROVIDER: 'FEISHU',
+      STAFF_AUTH_FEISHU_APP_ID: 'cli_anonymous_release',
+      STAFF_AUTH_ALLOWED_ORIGINS: origin,
+      STAFF_AUTH_ALLOWED_RETURN_TO: '/staff',
+    });
+    expect(runtime?.appBindings.STAFF_AUTH_FEISHU_APP_SECRET)
+      .toBe('anonymous-secret-value');
+    expect(runtime?.appBindings.STAFF_AUTH_PROVIDER_ADAPTER).toBeUndefined();
+    expect((await worker.fetch(
+      new Request(`${origin}/health`), env, executionContext,
+    )).status).toBe(200);
+  });
+
+  it('fails closed when any enabled Staff Auth production boundary drifts', async () => {
+    const cases = [
+      { STAFF_AUTH_PROVIDER: 'OTHER' },
+      { STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT: 'https://example.invalid/authorize' },
+      { STAFF_AUTH_FEISHU_TOKEN_ENDPOINT: 'https://example.invalid/token' },
+      { STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT: 'https://example.invalid/user' },
+      { STAFF_AUTH_FEISHU_APP_ID: 'REQUIRED_APP_ID' },
+      { STAFF_AUTH_FEISHU_APP_SECRET: '' },
+      { STAFF_AUTH_FEISHU_SCOPE: 'contact:user:readonly' },
+      { STAFF_AUTH_FEISHU_TENANT_KEY: 'PLACEHOLDER' },
+      { STAFF_AUTH_FEISHU_REDIRECT_URI: 'https://other.invalid/callback' },
+      { STAFF_AUTH_ALLOWED_ORIGINS: 'https://other.invalid' },
+      { STAFF_AUTH_ALLOWED_RETURN_TO: '/admin' },
+      { STAFF_AUTH_HASH_SECRET: 'too-short' },
+    ];
+    for (const drift of cases) {
+      const response = await worker.fetch(
+        new Request(`${origin}/health`),
+        { ...enabledStaffAuthBindings(), ...drift } as CloudflareWorkerBindings,
+        executionContext,
+      );
+      expect(response.status).toBe(503);
+      expect(await response.text()).not.toContain('anonymous-secret-value');
+    }
+  });
+
   it('allows only a complete Feishu-only schedule while Staff Auth remains off', async () => {
     const env=bindings();
     Object.assign(env,{
@@ -160,6 +207,32 @@ function bindings(): CloudflareWorkerBindings {
     STAFF_MCP_LOCAL_MOCK_ENABLED: 'false',
     STAFF_MCP_CLEANUP_ENABLED: 'false',
     OPERATIONAL_ALERT_MODE: 'disabled',
+  } as unknown as CloudflareWorkerBindings;
+}
+
+function enabledStaffAuthBindings(): CloudflareWorkerBindings {
+  return {
+    ...bindings(),
+    STAFF_AUTH_ENABLED: 'true',
+    STAFF_AUTH_PROVIDER: 'FEISHU',
+    STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT:
+      'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
+    STAFF_AUTH_FEISHU_TOKEN_ENDPOINT:
+      'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
+    STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT:
+      'https://open.feishu.cn/open-apis/authen/v1/user_info',
+    STAFF_AUTH_FEISHU_APP_ID: 'cli_anonymous_release',
+    STAFF_AUTH_FEISHU_APP_SECRET: 'anonymous-secret-value',
+    STAFF_AUTH_FEISHU_SCOPE: 'contact:user.base:readonly',
+    STAFF_AUTH_FEISHU_TENANT_KEY: 'anonymous-tenant',
+    STAFF_AUTH_FEISHU_REDIRECT_URI:
+      `${origin}/api/staff-auth/feishu/callback`,
+    STAFF_AUTH_ALLOWED_ORIGINS: origin,
+    STAFF_AUTH_ALLOWED_RETURN_TO: '/staff',
+    STAFF_AUTH_HASH_SECRET: 'h'.repeat(32),
+    STAFF_AUTH_PROVIDER_ADAPTER: {
+      createAuthorizationUrl: () => 'https://example.invalid',
+    },
   } as unknown as CloudflareWorkerBindings;
 }
 
