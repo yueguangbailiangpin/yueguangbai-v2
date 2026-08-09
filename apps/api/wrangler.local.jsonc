@@ -21,6 +21,10 @@
     ,"DRIVE_ARCHIVE_R2_DELETE_ENABLED": "false"
     ,"FEISHU_WORKBENCH_SYNC_ENABLED": "false"
     ,"FEISHU_WORKBENCH_CALLBACK_ENABLED": "false"
+    ,"STAFF_MCP_ENABLED": "false"
+    ,"STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED": "false"
+    ,"STAFF_MCP_LOCAL_MOCK_ENABLED": "false"
+    ,"STAFF_MCP_CLEANUP_ENABLED": "false"
   },
   "d1_databases": [
     {

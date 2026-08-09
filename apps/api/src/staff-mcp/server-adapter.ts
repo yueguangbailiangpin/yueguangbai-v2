@@ -43,12 +43,17 @@ export interface StaffMcpServerOptions {
   applicationService: StaffMcpApplicationService;
   rateLimiter: StaffMcpRateLimiter;
   replayStore: StaffMcpReplayStore;
+  controlStore?: StaffMcpControlStore;
   enabled: boolean;
   disabledTools?: ReadonlySet<StaffMcpToolName>;
   globalRateLimitPerMinute?: number;
   toolRateLimitPerMinute?: number;
   now?: () => number;
   idFactory?: () => string;
+}
+
+export interface StaffMcpControlStore {
+  isEnabled(toolName: StaffMcpToolName): Promise<boolean>;
 }
 
 export interface StaffMcpInvokeInput {
@@ -75,6 +80,7 @@ export class StaffMcpServerAdapter {
   private readonly applicationService: StaffMcpApplicationService;
   private readonly rateLimiter: StaffMcpRateLimiter;
   private readonly replayStore: StaffMcpReplayStore;
+  private readonly controlStore: StaffMcpControlStore | null;
   private readonly enabled: boolean;
   private readonly disabledTools: ReadonlySet<StaffMcpToolName>;
   private readonly globalRateLimit: number;
@@ -88,6 +94,7 @@ export class StaffMcpServerAdapter {
     this.applicationService = options.applicationService;
     this.rateLimiter = options.rateLimiter;
     this.replayStore = options.replayStore;
+    this.controlStore = options.controlStore ?? null;
     this.enabled = options.enabled;
     this.disabledTools = options.disabledTools ?? new Set();
     this.globalRateLimit = positiveLimit(options.globalRateLimitPerMinute ?? 120);
@@ -182,10 +189,25 @@ export class StaffMcpServerAdapter {
         'DISABLED', requestId, toolName, session, actor, now,
       );
     }
+    if (this.controlStore) {
+      let controlEnabled = false;
+      try {
+        controlEnabled = await this.controlStore.isEnabled(toolName);
+      } catch {
+        return this.errorWithAudit(
+          'PROVIDER_UNAVAILABLE', requestId, toolName, session, actor, now,
+        );
+      }
+      if (!controlEnabled) {
+        return this.errorWithAudit(
+          'DISABLED', requestId, toolName, session, actor, now,
+        );
+      }
+    }
     const globalKey = `${session.clientId}:${session.sessionId}:global`;
     const toolKey = `${session.clientId}:${session.sessionId}:${actor.staffId}:${toolName}`;
-    if (!this.rateLimiter.take(globalKey, now, this.globalRateLimit, RATE_WINDOW_MS)
-      || !this.rateLimiter.take(toolKey, now, this.toolRateLimit, RATE_WINDOW_MS)) {
+    if (!await this.rateLimiter.take(globalKey, now, this.globalRateLimit, RATE_WINDOW_MS)
+      || !await this.rateLimiter.take(toolKey, now, this.toolRateLimit, RATE_WINDOW_MS)) {
       return this.errorWithAudit(
         'RATE_LIMITED', requestId, toolName, session, actor, now,
       );
@@ -193,7 +215,11 @@ export class StaffMcpServerAdapter {
 
     requestHash = await hashCanonicalJson({ tool_name: toolName, arguments: args });
     replayKey = `${session.clientId}:${session.sessionId}:${requestId}`;
-    const acquired = this.replayStore.acquire(replayKey, requestHash);
+    const acquired = await this.replayStore.acquire(
+      replayKey,
+      requestHash,
+      { toolName, now },
+    );
     if (acquired.kind === 'CONFLICT') {
       return this.errorWithAudit(
         'REPLAY_CONFLICT', requestId, toolName, session, actor, now,
@@ -204,7 +230,13 @@ export class StaffMcpServerAdapter {
         'IN_PROGRESS', requestId, toolName, session, actor, now,
       );
     }
+    if (acquired.kind === 'REPLAY_NOT_AVAILABLE') {
+      return this.errorWithAudit(
+        'REPLAY_NOT_AVAILABLE', requestId, toolName, session, actor, now,
+      );
+    }
     if (acquired.kind === 'REPLAY') {
+      assertSafeToolResult(toolName, acquired.result);
       await this.safeAudit({
         requestId,
         toolName,
@@ -232,10 +264,15 @@ export class StaffMcpServerAdapter {
         scopeId: output.auditScope.id,
         now,
       });
-      this.replayStore.complete(replayKey, requestHash, result);
+      await this.replayStore.complete(
+        replayKey,
+        requestHash,
+        toolName === 'read_task_screenshot_v1' ? null : result,
+        now,
+      );
       return result;
     } catch (error) {
-      this.replayStore.fail(replayKey, requestHash);
+      await this.replayStore.fail(replayKey, requestHash);
       if (error instanceof StaffMcpApplicationError) {
         const outcome = error.code === 'NOT_FOUND'
           ? 'NOT_FOUND'
@@ -258,6 +295,7 @@ export class StaffMcpServerAdapter {
   async handleJsonRpc(
     request: unknown,
     accessToken: string,
+    preauthenticated = false,
   ): Promise<Record<string, unknown>> {
     if (!request || typeof request !== 'object' || Array.isArray(request)) {
       return protocolError(null, -32600, '无效的 JSON-RPC 请求');
@@ -267,6 +305,9 @@ export class StaffMcpServerAdapter {
     if (value['jsonrpc'] !== '2.0' || (typeof id !== 'string' && typeof id !== 'number')) {
       return protocolError(null, -32600, '无效的 JSON-RPC 请求');
     }
+    if (!preauthenticated && !await this.authenticate(accessToken)) {
+      return protocolError(id, -32001, '员工身份不可用');
+    }
     if (value['method'] === 'initialize') {
       return {
         jsonrpc: '2.0',
@@ -274,7 +315,7 @@ export class StaffMcpServerAdapter {
         result: {
           protocolVersion: STAFF_MCP_PROTOCOL_VERSION,
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: 'yueguangbai-staff-mcp-local', version: '1.0.0-local' },
+          serverInfo: { name: 'yueguangbai-staff-mcp', version: '1.0.0' },
           instructions: '只处理当前员工已授权的受限读取与草稿。正式动作必须回到受控 Web。',
         },
       };
@@ -284,9 +325,6 @@ export class StaffMcpServerAdapter {
       if (!params || typeof params !== 'object' || Array.isArray(params)
         || Object.keys(params as object).some((key) => key !== 'cursor')) {
         return protocolError(id, -32602, '工具列表参数不正确');
-      }
-      if (!await this.catalogAuthorized(accessToken)) {
-        return protocolError(id, -32001, '员工身份不可用');
       }
       return { jsonrpc: '2.0', id, result: { tools: this.listTools() } };
     }
@@ -311,6 +349,10 @@ export class StaffMcpServerAdapter {
       argumentsValue: call['arguments'] ?? {},
     });
     return { jsonrpc: '2.0', id, result };
+  }
+
+  async authenticate(accessToken: string): Promise<boolean> {
+    return this.catalogAuthorized(accessToken);
   }
 
   private async errorWithAudit(
@@ -425,6 +467,7 @@ function errorResult(outcome: StaffMcpOutcome, requestId: string): StaffMcpToolR
     DISABLED: 'Staff MCP 或该工具当前已停用',
     IN_PROGRESS: '相同请求正在处理中',
     REPLAY_CONFLICT: '请求编号与先前调用不一致',
+    REPLAY_NOT_AVAILABLE: '截图不会持久化重放，请使用新的请求编号重新读取',
     PROVIDER_UNAVAILABLE: '认证或应用服务暂时不可用',
     AUDIT_UNAVAILABLE: '安全审计不可用，调用已失败关闭',
     INTERNAL_ERROR: '调用失败，未返回业务数据',

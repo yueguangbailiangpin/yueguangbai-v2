@@ -472,19 +472,20 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(37);
+    expect(Number(state?.schema_version)).toBe(38);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(37);
+    expect(migrations).toHaveLength(38);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-3)).toBe('0035_staff_four_role_consolidation.sql');
-    expect(migrations.at(-2)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-1)).toBe('0037_product_reservation_order_scheduling.sql');
+    expect(migrations.at(-4)).toBe('0035_staff_four_role_consolidation.sql');
+    expect(migrations.at(-3)).toBe('0036_staff_acquisition_funnel_workbench.sql');
+    expect(migrations.at(-2)).toBe('0037_product_reservation_order_scheduling.sql');
+    expect(migrations.at(-1)).toBe('0038_staff_mcp_production_transport_oauth.sql');
   });
 });
 

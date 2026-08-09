@@ -156,7 +156,9 @@ function bindings(): CloudflareWorkerBindings {
     FEISHU_WORKBENCH_CALLBACK_ENABLED: 'false',
     STAFF_AUTH_ENABLED: 'false',
     STAFF_MCP_ENABLED: 'false',
+    STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED: 'false',
     STAFF_MCP_LOCAL_MOCK_ENABLED: 'false',
+    STAFF_MCP_CLEANUP_ENABLED: 'false',
     OPERATIONAL_ALERT_MODE: 'disabled',
   } as unknown as CloudflareWorkerBindings;
 }

@@ -12,6 +12,9 @@ import {
 import { Hono } from 'hono';
 import type { AssignmentStaffAuthorization } from './staff-assignment';
 import type { StaffSessionRow } from './staff-auth';
+import type {
+  StaffMcpProductionRuntimeBindings,
+} from './staff-mcp/runtime';
 import {
   errorLogEvent,
   routeGroup,
@@ -23,7 +26,9 @@ import {
   type OperationalAlertSink,
 } from './scheduled-operations/signals';
 
-export type AppBindings = StaffAuthProviderBindings & {
+export type AppBindings = StaffAuthProviderBindings
+  & StaffMcpProductionRuntimeBindings
+  & {
   DB: SqlDatabase;
   KEYWORD_IMAGE_GENERATOR?: unknown;
   KEYWORD_GENERATOR_SHARED_SECRET?: string;

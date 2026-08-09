@@ -2,7 +2,7 @@
 
 ## 1. 交付状态与边界
 
-本合同只定义本地 Staff MCP server/adapter、OAuth 映射接口、mock、协议 conformance、测试和 runbook。当前没有公开 `/mcp` 端点，没有真实 ChatGPT/OpenAI OAuth、应用、凭证或外部 MCP 注册，没有网络 Provider、部署或生产激活路径。
+本合同定义 Staff MCP 工具与业务授权边界。后续 Change `staff-mcp-production-transport-oauth` 已增加默认关闭的 production-capable `/mcp`、OAuth/JWKS 与 D1 durable security boundary；详见 `STAFF_MCP_PRODUCTION_TRANSPORT_OAUTH.md`。当前仍没有真实 ChatGPT/OpenAI OAuth、应用、凭证、外部 MCP 注册、Provider 验收或部署，结论仍为 `LOCAL_IMPLEMENTATION_READY / PRODUCTION_NO_GO`。
 
 第一阶段只允许 Staff。Buyer/Seller 继续复用现有 Actor、授权和 Application Service 边界，但不创建、不注册、不广告任何 Buyer/Seller MCP 工具或公开端点。
 
@@ -18,7 +18,7 @@
 - MCP [2025-11-25 Tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)：工具名、`tools/list`、`tools/call`、JSON Schema 2020-12 默认语义、structured result/output schema、输入校验、访问控制、限流、输出清理与审计要求。
 - MCP [2025-11-25 Authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)：HTTP MCP 作为 OAuth 2.1 resource server，使用 Protected Resource Metadata 和 Authorization Server Metadata，并验证 Token 专用于本 MCP resource。
 
-本地实现落地了 schema、annotations、当前身份/权限重算、限流、重放、低敏不可变审计、fail closed 和人工 Web 确认边界。以下事项仍是外部待办且 hard-disabled：真实 HTTPS transport、Protected Resource Metadata、Authorization Server Metadata、CIMD/DCR、PKCE 回调、issuer/audience/JWKS 校验、真实 ChatGPT 注册、外部隐私审批和生产安全评审。
+本地实现已落地 schema、annotations、当前身份/权限重算、durable 限流/重放/kill switch、低敏不可变审计、fail closed、人工 Web 确认、HTTPS resource、Protected Resource Metadata 及匿名 OAuth/JWKS 校验。以下仍是外部待办且 hard-disabled：真实 authorization server/client、PKCE 回调、token/JWKS/撤销传播、ChatGPT 注册、Cloudflare 部署、外部隐私审批和生产安全评审。
 
 ## 3. 身份、授权与会话
 
@@ -81,14 +81,12 @@ Application Service 返回未知嵌套字段、错误类型、越长字符串或
 
 ## 6. 错误、重放、限流与审计
 
-稳定低基数结果包括：`UNAUTHENTICATED`、`NOT_FOUND`、`VALIDATION_REJECTED`、`RATE_LIMITED`、`DISABLED`、`IN_PROGRESS`、`REPLAY_CONFLICT`、`PROVIDER_UNAVAILABLE`、`AUDIT_UNAVAILABLE`、`INTERNAL_ERROR`。资源越权统一 `NOT_FOUND`，不泄露对象是否存在。
+稳定低基数结果包括：`UNAUTHENTICATED`、`NOT_FOUND`、`VALIDATION_REJECTED`、`RATE_LIMITED`、`DISABLED`、`IN_PROGRESS`、`REPLAY_CONFLICT`、`REPLAY_NOT_AVAILABLE`、`PROVIDER_UNAVAILABLE`、`AUDIT_UNAVAILABLE`、`INTERNAL_ERROR`。资源越权统一 `NOT_FOUND`，不泄露对象是否存在。
 
-本地 adapter 按 `client + session + requestId` 建立重放边界，请求哈希绑定 `tool + normalized arguments`：相同请求返回原结果；不同请求哈希冲突；并发处理中返回 `IN_PROGRESS`。本地 fixed-window limiter 同时约束 client 全局和 Staff/工具；生产启用前必须替换/验证持久化实现。
+adapter 按 `client + session + requestId` 建立重放边界，请求哈希绑定 `tool + normalized arguments`：普通 text-only 请求相同哈希返回原结果；不同请求哈希冲突；并发处理中返回 `IN_PROGRESS`。截图只记录 `COMPLETED_NO_RESPONSE` metadata，同一请求返回 `REPLAY_NOT_AVAILABLE`，不保存或重放图片字节。local mock 仍使用 memory；production transport 强制使用 Migration 0038 的 D1 replay/fixed-window limiter、bounded cleanup 与 GLOBAL/TOOL control。
 
 每次工具调用写入既有不可变 `audit_events`：Staff、client、tool/version、受限 scope、outcome、request ID 和 UTC 时间。不保存参数正文、完整 Prompt、微信正文、评论/OCR、截图字节或 Secret。审计不可用时调用失败关闭且不返回业务数据。
 
 ## 7. Migration 决策
 
-当前连续 Migration 末号为 0034。本地 MCP 不产生新业务事实；client binding、rate limit、replay 和 kill switch 均为明确 port + local mock，真实持久化方案属于外部激活评审。专用 MCP 审计表也不需要：既有 `audit_events` 已具不可更新/不可删除 trigger，并能保存所需低敏字段。
-
-因此本 Change 不创建 0035。`migration-decision.test.ts` 证明 schema 仍为 34、末号仍为 0034，并验证复用审计 trigger。若未来生产评审证明必须持久化 binding/grant/kill switch 或专用调用审计，只能通过新的 OpenSpec Change 使用当时下一连续 Migration，不能回填本 Change。
+原 `staff-mcp-agent-access` Change 的 NO_SCHEMA_CHANGE 是当时历史事实。后续 `staff-mcp-production-transport-oauth` 评审确认生产跨实例安全状态必须持久化，因此使用当时下一连续 Migration `0038_staff_mcp_production_transport_oauth.sql`；当前仓库 schema 为 38。它只保存 HMAC 后 binding/revocation/replay/rate/control，仍复用不可变 `audit_events`；普通 replay 限 256 KiB text-only，截图 replay 不保存 response；token、Secret、Prompt、Provider identifier 或图片字节不进入 replay/audit/log。

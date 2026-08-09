@@ -20,10 +20,10 @@ function resolveChangeFile(changeName, relativeFile) {
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 37, `expected 37 migrations, found ${migrations.length}`);
+assert(migrations.length === 38, `expected 38 migrations, found ${migrations.length}`);
 assert(migrations.every((file, index) => Number(file.slice(0, 4)) === index + 1),
   'migration chain is not continuous');
-assert(migrations.at(-1) === '0037_product_reservation_order_scheduling.sql',
+assert(migrations.at(-1) === '0038_staff_mcp_production_transport_oauth.sql',
   'unexpected migration tail');
 
 const webPackage = JSON.parse(read('apps/web/package.json'));
@@ -39,10 +39,10 @@ assert(lockedRouter?.version === '8.3.0'
 
 const productionRunbook = read('docs/runbooks/PRODUCTION_READINESS_BACKUP_RESTORE.md');
 for (const marker of [
-  '连续 `0001`–`0037`',
-  '`app_schema_state.schema_version=37`',
-  '--expected-schema 37',
-  '不得因为仓库当前末号为 `0037` 就推断线上已应用到 `0037`',
+  '连续 `0001`–`0038`',
+  '`app_schema_state.schema_version=38`',
+  '--expected-schema 38',
+  '不得因为仓库当前末号为 `0038` 就推断线上已应用到 `0038`',
 ]) assert(productionRunbook.includes(marker), `production runbook missing: ${marker}`);
 assert(!productionRunbook.includes('--expected-schema 35'),
   'production runbook still contains stale schema 35 command');
@@ -52,7 +52,7 @@ for (const marker of [
   'b74a029876301a4f8bbb6ebd305ead13a6f2cd59',
   '8c4fdaa382fd1e2c56d76aa23bb6b960c4f6f72c',
   'LOCAL_IMPLEMENTATION_PRESENT_EXTERNAL_UNVERIFIED',
-  'productionActivationSupported=false',
+  'production-capable HTTPS/OAuth/D1/Service Binding/bounded-cleanup 边界已具备且默认关闭',
   'Production GO 阻断',
   '`NO-GO`',
 ]) assert(evidence.includes(marker), `evidence audit missing: ${marker}`);
@@ -128,13 +128,18 @@ assert(feishuNoGo.includes('LOCAL_IMPLEMENTATION_READY / PRODUCTION_NO_GO')
   && feishuNoGo.includes('No Provider API, Cloudflare, production D1/R2, domain, DNS or deployment was called.'),
   'Feishu production adapter is not paired with truthful external NO-GO evidence');
 const mcpRuntime = read('apps/api/src/staff-mcp/runtime.ts');
-assert(mcpRuntime.includes('productionActivationSupported: false'),
-  'Staff MCP production activation status changed; refresh audit');
+const mcpNoGo = read('docs/acceptance/STAFF_MCP_PRODUCTION_TRANSPORT_OAUTH.md');
+assert(mcpRuntime.includes('staffMcpProductionRuntime')
+  && mcpRuntime.includes('STAFF_MCP_TOKEN_STATUS_SERVICE')
+  && mcpRuntime.includes('D1StaffMcpApplicationService')
+  && mcpNoGo.includes('LOCAL_IMPLEMENTATION_READY / PRODUCTION_NO_GO')
+  && mcpNoGo.includes('OPENAI_RESOURCES_TOUCHED=no'),
+  'Staff MCP local production boundary is not paired with truthful NO-GO evidence');
 
 console.log(JSON.stringify({
   status: 'PASS',
   change: 'final-production-go-local-preparation',
-  migration: '0001-0037_CONTINUOUS',
+  migration: '0001-0038_CONTINUOUS',
   react_router: '8.3.0_LOCKED_CURRENT_AUDIT_REQUIRED',
   production_config: 'LOCAL_IMPLEMENTATION_PRESENT_EXTERNAL_UNVERIFIED',
   external_integrations: 'OWNER_ACTION_REQUIRED_BLOCKED',

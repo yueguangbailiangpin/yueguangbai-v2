@@ -118,7 +118,14 @@ WHERE id=? AND version=?;
 - Migration 不读取生产数据。
 - Schema、Trigger、Index 和 Seed 都必须可重复验证。
 
-当前连续版本为 schema 37。`0037_product_reservation_order_scheduling.sql` 的边界为：
+当前连续版本为 schema 38。`0037_product_reservation_order_scheduling.sql` 仍拥有排期边界；`0038_staff_mcp_production_transport_oauth.sql` 新增 Staff MCP production transport 安全状态：
+
+- issuer/subject/JTI/client/session/replay/rate 只保存 keyed hash，不保存 bearer token、Secret 或 Prompt；一个 issuer/subject 只能映射一个 Staff，运行时仍要求 binding 与 Staff 当前 ACTIVE。
+- replay 使用 PROCESSING lease / COMPLETED text response / COMPLETED_NO_RESPONSE / expiry；text response 不超过 256 KiB，截图只保存 metadata 且 response 必须 NULL；rate 使用独立 fixed window；GLOBAL control seed 必须默认 disabled；审计继续复用不可变 `audit_events`。
+- 显式启用的 bounded cleanup 只按 expiry/window 从 replay、rate、token revocation 各删除有限行；subject binding、runtime control、audit 和业务事实不是清理目标。
+- Migration 只允许 37→38；错序、重复和部分 DDL 必须事务失败。回滚先关闭 MCP并前向修复，不 down migrate 或删除 revocation/audit 事实。
+
+`0037_product_reservation_order_scheduling.sql` 的历史边界为：
 
 - `product_versions.order_interval_days` 与 `orders_per_run` 对 0037 前历史记录保持 `NULL`，受治理的新增产品版本写路径必须同时提供正整数；历史记录不得回填当前默认值。
 - `demand_order_schedule_versions` 是追加式不可变事实；数据库拒绝更新、删除、版本跳号、非 ACTIVE Staff、错误产品版本、错误需求版本和超出北京时间下单截止日的写入。

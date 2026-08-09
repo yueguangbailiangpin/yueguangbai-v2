@@ -21,10 +21,14 @@
 
 ## 生产基础设施与安全
 
-- [ ] 用独立 Change 决定 durable client binding、rate limit、replay/idempotency 和 kill switch 是否需要 D1；如需 Migration，只能使用当时下一连续编号。
+- [x] 本地独立 Change 已决定并实现 Migration 0038 的 hashed binding/revocation、durable rate/replay 和 default-disabled kill switch；此勾选只表示本地合同完成，不表示线上已 Migration、启用或验收。
+- [x] 本地已实现每次 MCP 请求前的有界 cleanup（replay/rate/revocation 各默认最多 100、硬上限 1000），且 cleanup 未显式启用或失败时 MCP 失败关闭；subject bindings、runtime controls 与正式 audit 不在删除目标中。
+- [x] 本地生产组合由 D1 application-service factory 与 Cloudflare token-status Service Binding 构造，不依赖无法由 Wrangler 提供的 JavaScript 对象；Service Binding 只接收 HMAC 标识，并有 3 秒默认超时/主动取消、8 KiB 响应上限、拒绝重定向和失败关闭。
+- [x] production factory 当前只广告 11 个已有 D1 权威实现的有限读取/草稿工具；截图与异常列表分别等待 File Audience reader 和 D1 exception projection，不以 mock 或空页冒充生产能力。
+- [ ] 老板授权后只读核验真实 ledger，并在独立窗口验证 production D1 容量、24 小时 replay/窗口期 rate/token-expiry revocation 保留与有界清理、撤销传播、告警与回滚；本任务未执行。
 - [ ] 确认 immutable safe audit 的容量、索引、保留期、查询权限与告警；不得记录 Prompt/正文/截图字节/Secret。
 - [ ] 实施全局及逐工具生产 kill switch、异常流量告警、超时、重试和 Provider outage 演练。
-- [ ] 将截图 reader 接到真实 File Audience/Read Intent；验证 R2/Drive 存储标识永不出界。
+- [ ] 将截图 reader 接到真实 File Audience/Read Intent；在此之前生产 factory 固定禁用该工具。验证图片字节只在单次响应中出现，D1 replay 仅记录 `COMPLETED_NO_RESPONSE` 安全元数据，重复 request ID 返回 `REPLAY_NOT_AVAILABLE`，且 R2/Drive 标识永不出界。
 - [ ] 完成 Prompt injection、OCR、客户文本、伪造身份、越权 404、重放、并发、限流、Secret scan 和渗透测试。
 - [ ] 完成 OpenAI/MCP 当时最新官方 schema、认证、安全、数据处理与应用审核要求复核。
 

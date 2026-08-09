@@ -5,25 +5,45 @@ import { createMigratedTestDatabase } from '@ygb/testkit';
 
 const root = resolve(import.meta.dirname, '../../../..');
 
-describe('Staff MCP migration decision', () => {
-  it('reuses the immutable generic audit table beneath the governed schema 37', async () => {
+describe('Staff MCP production transport migration', () => {
+  it('appends guarded schema 38 while reusing immutable audit authority', async () => {
     const migrations = readdirSync(resolve(root, 'migrations'))
       .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
       .sort();
-    expect(migrations.at(-2)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-1)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations).toHaveLength(37);
+    expect(migrations.at(-2)).toBe('0037_product_reservation_order_scheduling.sql');
+    expect(migrations.at(-1)).toBe('0038_staff_mcp_production_transport_oauth.sql');
+    expect(migrations).toHaveLength(38);
     const foundation = readFileSync(resolve(root, 'migrations/0001_foundation.sql'), 'utf8');
+    const migration = readFileSync(
+      resolve(root, 'migrations/0038_staff_mcp_production_transport_oauth.sql'),
+      'utf8',
+    );
     expect(foundation).toContain('CREATE TABLE audit_events');
     expect(foundation).toContain('trg_audit_events_no_update');
     expect(foundation).toContain('trg_audit_events_no_delete');
+    expect(migration).toContain("'COMPLETED_NO_RESPONSE'");
+    expect(migration).toContain('length(response_json)<=262144');
+    expect(migration).not.toContain('16777216');
 
     const database = createMigratedTestDatabase();
     try {
       const state = await database.prepare(`
         SELECT schema_version FROM app_schema_state WHERE singleton_id=1
       `).first<{ schema_version: number }>();
-      expect(state).toEqual({ schema_version: 37 });
+      expect(state).toEqual({ schema_version: 38 });
+      const control = await database.prepare(`
+        SELECT enabled, reason_code FROM staff_mcp_runtime_controls
+        WHERE control_type='GLOBAL' AND control_name='staff-mcp'
+      `).first();
+      expect(control).toEqual({ enabled: 0, reason_code: 'DEFAULT_DISABLED' });
+      await expect(database.prepare(`
+        INSERT INTO staff_mcp_replay_records (
+          replay_key_hash,request_hash,tool_name,status,lease_token_hash,
+          lease_expires_at,response_json,expires_at,created_at,updated_at,completed_at
+        ) VALUES (?,?,'read_task_screenshot_v1','COMPLETED_NO_RESPONSE',
+          NULL,NULL,?,100,1,2,2)
+      `).bind('1'.repeat(64), '2'.repeat(64), '"raw-image-forbidden"').run())
+        .rejects.toThrow();
     } finally {
       database.close();
     }

@@ -501,12 +501,21 @@ describe('Staff MCP local server and adapter', () => {
 
   it('allows one authorized screenshot but denies Audience/Read Intent and credential/bulk paths', async () => {
     const harness = setup();
-    expect(await harness.adapter.invoke({
+    const screenshotInput = {
       accessToken: harness.afterToken,
       requestId: 'screenshot-allowed',
       toolName: 'read_task_screenshot_v1',
       argumentsValue: argsFor('read_task_screenshot_v1'),
-    })).toMatchObject({ isError: false });
+    } as const;
+    expect(await harness.adapter.invoke(screenshotInput)).toMatchObject({ isError: false });
+    expect(errorCode(await harness.adapter.invoke(screenshotInput)))
+      .toBe('REPLAY_NOT_AVAILABLE');
+    const screenshotAudits = await harness.database.prepare(`
+      SELECT next_state_json,metadata_json FROM audit_events
+      WHERE request_id='screenshot-allowed' ORDER BY created_at,id
+    `).all();
+    expect(JSON.stringify(screenshotAudits.results))
+      .not.toMatch(/aW1hZ2U=|image\/png|provider|token|secret/iu);
     expect(errorCode(await harness.adapter.invoke({
       accessToken: harness.afterToken,
       requestId: 'screenshot-audience-denied',

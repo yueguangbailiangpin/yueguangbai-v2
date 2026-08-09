@@ -5,7 +5,7 @@
 ## Gate 0：冻结唯一发布候选
 
 - [ ] 总控完成本 Change 审查、提交、干净 Integration 与非强制快进；重新 fetch 并记录最终 `origin/main` 40 位 SHA。
-- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、0001–0037 连续、全量本地/Chromium/OpenSpec 门禁通过。
+- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、0001–0038 连续、全量本地/Chromium/OpenSpec 门禁通过。
 - [ ] 正式处置 active `pre-wave13-baseline-conformance-audit`，不得伪勾历史未执行项。
 - [ ] 选择并批准发布控制：受保护 CI，或有时间戳、双人复核和不可变日志的人工流程。
 
@@ -42,7 +42,7 @@ Gate 2 未通过：`NO-GO`。
 
 1. [ ] 冻结写入，记录当前线上 Worker SHA、配置快照、D1 ledger、R2/Drive Manifest 和所有开关。
 2. [ ] 若目标 D1 已有任何数据，先做迁移前完整导出、加密、SHA-256/Manifest/attestation，并在全新隔离目标恢复通过；恢复目标不得覆盖。
-3. [ ] 只读比较线上 ledger 与 release SHA 的 `0001`–`0037`；发现未知、跳号、重复、并行或部分 Migration 立即停止。
+3. [ ] 只读比较线上 ledger 与 release SHA 的 `0001`–`0038`；发现未知、跳号、重复、并行或部分 Migration 立即停止。
 4. [ ] 老板单独批准 Migration 窗口；只按连续顺序应用尚未应用的 Migration，逐步核验 schema_version、integrity、foreign keys、关键表/触发器/视图和权限事实。
 5. [ ] 生成迁移后、绑定最终 release SHA 的 D1 加密备份，并再次在新隔离目标恢复；核对 schema、全表行数、关键财务聚合、Staff/Buyer/Seller/订单/文件/调度 smoke。
 6. [ ] 保持所有外部开关关闭，老板另行批准部署 schema-compatible API Worker 与 Web 制品。
@@ -84,16 +84,17 @@ Gate 5 未通过：`NO-GO`，Feishu workbench sync/callback 必须关闭。
 
 ## Gate 6：OpenAI/ChatGPT Staff MCP
 
-必须先完成 `staff-mcp-production-transport-oauth` Change；当前没有公开 `/mcp`，且 runtime 明确不支持生产激活。
+`staff-mcp-production-transport-oauth` 已补齐本地可构造、默认关闭的 production-capable runtime；当前仍没有已部署的公开 `/mcp`、真实 issuer/JWKS/token-status service 或 ChatGPT 注册，因此 Gate 仍未开始，不能把本地 `productionActivationSupported=true` 写成已激活。
 
 - [ ] 老板批准 OpenAI/ChatGPT workspace、应用、数据控制、工具白名单、字段白名单、保存/删除和外部 AI 隐私。
 - [ ] 部署 HTTPS MCP resource 与 OAuth 2.1 authorization server/discovery，完成 PKCE S256、issuer/audience/resource/expiry/scope/JWKS/rotation 验证；一个 token 只映射一个 ACTIVE Staff。
-- [ ] 先只开放有限读取：待办/异常和单对象摘要；逐调用重算 Personal DENY、Team/Customer/Seller/Store/文件 Audience。
+- [ ] 在 Wrangler 中配置 D1-backed application service 所需 `DB` 与独立 `STAFF_MCP_TOKEN_STATUS_SERVICE` Service Binding；验证仅传 HMAC 标识、超时主动取消、8 KiB 上限、拒绝重定向、撤销与 outage 失败关闭。
+- [ ] 先只开放已有 D1 权威 projection 的有限读取：待办和单对象摘要；逐调用重算 Personal DENY、Team/Customer/Seller/Store/文件 Audience。异常列表须先另行完成并验收真实 D1 projection，不能用空页替代。
 - [ ] 再开放草稿：中文微信文案、对账草稿、付款批次草稿、审核建议；明确标记 DRAFT，不自动发送或执行。
 - [ ] 密码/hash/Cookie/Session/一次性凭证/OAuth token/Secret/无目的批量导出永久禁止。
-- [ ] 原始截图只能按一个授权任务读取，不暴露 R2 key/Drive ID/裸链接；验证 Prompt injection、OCR 注入和跨客户 404。
+- [ ] 原始截图只能按一个授权任务读取，不暴露 R2 key/Drive ID/裸链接；生产 factory 当前固定禁用，只有真实 File Audience/Read Intent 验收后才能另行放行。D1 replay 不得保存 image/base64/raw bytes；同 request ID 的成功截图重试必须返回 `REPLAY_NOT_AVAILABLE`。
 - [ ] 返款、结算、审核、汇率、订单关闭等正式动作只能返回受控 Web 相对路径；员工必须回网页重新授权、读取最新版本并点击确认。
-- [ ] 验证 durable rate/replay/audit/kill switch、异常流量、连接/断开/撤销/过期和 Provider outage；MCP 关闭不得影响 Web。
+- [ ] 显式启用并验证有界 replay/rate/revocation cleanup；保留期为 replay 24 小时、rate 到窗口结束、revocation 到 token expiry，每表每次最多 100（可配、硬上限 1000），不得清理 subject binding/runtime control/audit。再验证 durable rate/replay/audit/kill switch、异常流量、连接/断开/撤销/过期和 Provider outage；cleanup 或 MCP 关闭不得影响 Web。
 - [ ] 老板单独批准有限读取、再批准草稿；任何正式写工具必须另建 Change。
 
 Gate 6 未通过：`NO-GO`，Staff MCP 必须关闭。

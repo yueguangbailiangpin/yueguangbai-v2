@@ -14,7 +14,9 @@ STAFF_MCP_LOCAL_MOCK_ENABLED=true
 STAFF_MCP_ADAPTER=<本地注入的 adapter>
 ```
 
-运行时固定报告 `productionActivationSupported=false`。当前 Hono app 没有注册 `/mcp` 端点；Buyer/Seller MCP 工具也未注册。
+本地 mock 运行时固定报告 `productionActivationSupported=false`。Hono app 现已注册默认关闭的 `/mcp` 和 RFC 9728 metadata 路由；只有 production transport、MCP 与 bounded cleanup 三个开关显式开启、OAuth 配置完整、D1 与 token-status Service Binding 可用且 D1 全局 control 为 enabled 时才提供服务。生产 application service 由 D1 factory 构造，不接受 JavaScript 对象注入；任何缺失或失败只关闭 MCP，Web/health 保持可用。Buyer/Seller MCP 工具仍未注册。
+
+production-capable 本地边界的配置、零网络预检、事故处置和回滚见 `STAFF_MCP_PRODUCTION_TRANSPORT_OAUTH.md`。本手册中的 mock 开关不能激活 production transport。
 
 ## 本地验证
 

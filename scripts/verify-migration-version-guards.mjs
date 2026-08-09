@@ -8,15 +8,11 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 37
-  || migrationFiles.at(-7) !== '0031_scheduled_operations.sql'
-  || migrationFiles.at(-6) !== '0032_google_drive_cold_image_archive.sql'
-  || migrationFiles.at(-5) !== '0033_feishu_staff_workbench_poc.sql'
-  || migrationFiles.at(-4) !== '0034_feishu_sync_dead_letter_categories.sql'
-  || migrationFiles.at(-3) !== '0035_staff_four_role_consolidation.sql'
-  || migrationFiles.at(-2) !== '0036_staff_acquisition_funnel_workbench.sql'
-  || migrationFiles.at(-1) !== '0037_product_reservation_order_scheduling.sql') {
-  throw new Error('expected migrations 0001-0037');
+if (migrationFiles.length !== 38
+  || migrationFiles.at(-3) !== '0036_staff_acquisition_funnel_workbench.sql'
+  || migrationFiles.at(-2) !== '0037_product_reservation_order_scheduling.sql'
+  || migrationFiles.at(-1) !== '0038_staff_mcp_production_transport_oauth.sql') {
+  throw new Error('expected migrations 0001-0038');
 }
 
 const guarded = new Map([
@@ -46,6 +42,7 @@ const guarded = new Map([
   [35, 'staff_role_consolidation_cutovers'],
   [36, 'acquisition_channels'],
   [37, 'demand_order_schedule_versions'],
+  [38, 'staff_mcp_subject_bindings'],
 ]);
 
 function readMigration(name) {
@@ -101,7 +98,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 37) throw new Error('fresh schema not 37');
+  if (schemaVersion(fresh) !== 38) throw new Error('fresh schema not 38');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -145,8 +142,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 37,
-  sequential_upgrade: '0001 -> 0037',
+  fresh_schema: 38,
+  sequential_upgrade: '0001 -> 0038',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,

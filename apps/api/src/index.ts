@@ -40,8 +40,11 @@ import { registerColdImageArchiveRoutes } from './cold-image-archive';
 import { registerFeishuWorkbenchRoutes } from './feishu-workbench';
 import { registerAcquisitionRoutes } from './acquisition';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
+import { registerStaffMcpTransportRoutes } from './staff-mcp';
 
 const app = createApp();
+
+registerStaffMcpTransportRoutes(app);
 
 // Public authentication endpoints are intentionally registered before the
 // protected Staff namespace. They issue the internal Worker session; Staff

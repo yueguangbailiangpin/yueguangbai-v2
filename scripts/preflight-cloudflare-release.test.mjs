@@ -69,6 +69,7 @@ describe('Cloudflare release preflight', () => {
 
     const config = anonymousConfig('production');
     config.d1_databases = [];
+    config.services = [];
     config.r2_buckets = [
       { binding: 'FILE_OBJECT_STORAGE_R2', bucket_name: 'default' },
       { binding: 'FILE_OBJECT_STORAGE_R2', bucket_name: 'duplicate' },
@@ -76,6 +77,7 @@ describe('Cloudflare release preflight', () => {
     const errors = validateReleaseConfig(config, 'production');
     expect(errors).toContain('d1_databases:binding_invalid');
     expect(errors).toContain('r2_buckets:binding_invalid');
+    expect(errors).toContain('services:staff_mcp_token_status_binding_invalid');
   });
 
   it('allows only real files outside the repository by lexical and real path', () => {
@@ -169,6 +171,14 @@ function anonymousConfig(environment) {
     if (value.endsWith('_FEISHU_REDIRECT_URI')) return `${origin}/api/staff-auth/feishu/callback`;
     if (value.endsWith('_FEISHU_WORKBENCH_APP_ID')) return `anonymous-${environment}-workbench-app`;
     if (value.endsWith('_FEISHU_WORKBENCH_TENANT_KEY')) return `anonymous-${environment}-workbench-tenant`;
+    if (value.endsWith('_STAFF_MCP_RESOURCE')) return `${origin}/mcp`;
+    if (value.endsWith('_STAFF_MCP_OAUTH_ISSUER')) return 'https://issuer.example.invalid/';
+    if (value.endsWith('_STAFF_MCP_OAUTH_METADATA_URL')) return 'https://issuer.example.invalid/.well-known/oauth-authorization-server';
+    if (value.endsWith('_STAFF_MCP_OAUTH_AUTHORIZATION_ENDPOINT')) return 'https://issuer.example.invalid/authorize';
+    if (value.endsWith('_STAFF_MCP_OAUTH_TOKEN_ENDPOINT')) return 'https://issuer.example.invalid/token';
+    if (value.endsWith('_STAFF_MCP_OAUTH_JWKS_URI')) return 'https://issuer.example.invalid/jwks';
+    if (value.endsWith('_STAFF_MCP_OAUTH_REVOCATION_ENDPOINT')) return 'https://issuer.example.invalid/revoke';
+    if (value.endsWith('_STAFF_MCP_TOKEN_STATUS_SERVICE')) return `ygb-${environment}-token-status`;
     throw new Error(`unmapped_placeholder:${value}`);
   });
   return config;

@@ -1,5 +1,10 @@
 export interface StaffMcpRateLimiter {
-  take(key: string, now: number, limit: number, windowMs: number): boolean;
+  take(
+    key: string,
+    now: number,
+    limit: number,
+    windowMs: number,
+  ): boolean | Promise<boolean>;
 }
 
 /** Local-only fixed-window limiter; production activation requires a durable provider. */

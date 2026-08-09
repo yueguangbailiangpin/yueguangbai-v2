@@ -2,7 +2,7 @@
 
 ## 本地验收
 
-1. 将本地 D1 迁移到仓库当前版本；本次最终本地准备审计的连续末号为 `0037`，确认 `app_schema_state.schema_version=37`。
+1. 将本地 D1 迁移到仓库当前版本；当前连续末号为 `0038`，确认 `app_schema_state.schema_version=38`。Dashboard 自身仍是 NO_SCHEMA_CHANGE。
 2. 运行 `npm run verify:admin-dashboard`。脚本会验证连续 Migration、0036 获客与 0037 排期的明确归属，再使用真实本地 D1 执行查询计划并确认规范财务视图和 BigInt 聚合边界；后续合法 Migration 不得被误判为管理员看板自行拥有 Schema。
 3. 运行 `npm run test:admin-dashboard`、`npm run test:admin-dashboard:browser` 和 `npm run check:admin-dashboard`。
 4. 再运行仓库完整 D1、财务、授权、安全、类型检查与构建门禁，以及 OpenSpec strict 校验。

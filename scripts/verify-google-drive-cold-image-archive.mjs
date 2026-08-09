@@ -6,10 +6,10 @@ const read=(name)=>readFileSync(path.join(root,name),'utf8');
 const migrationFiles=readdirSync(path.join(root,'migrations')).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort();
 const migrationNumbers=migrationFiles.map((name)=>Number(name.slice(0,4)));
 if(!migrationFiles.includes('0032_google_drive_cold_image_archive.sql')
-  ||migrationNumbers.length!==37
+  ||migrationNumbers.length!==38
   ||migrationNumbers.some((number,index)=>number!==index+1)
-  ||migrationFiles.at(-1)!=='0037_product_reservation_order_scheduling.sql') {
-  throw new Error('archive migration position or current 0001-0037 sequence changed unexpectedly');
+  ||migrationFiles.at(-1)!=='0038_staff_mcp_production_transport_oauth.sql') {
+  throw new Error('archive migration position or current 0001-0038 sequence changed unexpectedly');
 }
 const migration=read('migrations/0032_google_drive_cold_image_archive.sql');
 for(const fragment of ['schema_version=31','schema_version=32','order_archive_closures','drive_archive_controls',

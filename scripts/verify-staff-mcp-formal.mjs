@@ -54,7 +54,10 @@ for (const row of evidence) {
   assert(testMarkers.every((marker) => test.includes(marker)), `test gap: ${row.requirement}`);
 }
 
-assert(contract.includes('本 Change 不创建 0035'), 'no-Migration decision missing');
+assert(contract.includes('原 `staff-mcp-agent-access` Change 的 NO_SCHEMA_CHANGE 是当时历史事实'),
+  'historical no-Migration decision missing');
+assert(contract.includes('0038_staff_mcp_production_transport_oauth.sql'),
+  'current production transport Migration decision missing');
 assert(contract.includes('2026-08-07'), 'official documentation retrieval date missing');
 assert(!spec.includes('TBD - created by archiving'), 'main spec Purpose still contains archive placeholder');
 assert(spec.includes('Staff-only MCP v1'), 'accurate main spec Purpose missing');
@@ -71,7 +74,7 @@ console.log(JSON.stringify({
   implementation_mappings: evidence.length,
   test_mappings: evidence.length,
   external_activation: 'HARD_DISABLED_UNCOMPLETED',
-  migration: 'NO_0035_JUSTIFIED',
+  migration: 'HISTORICAL_NO_0035_CURRENT_0038',
   exact_output_whitelist: 'DECLARED_AND_RUNTIME_ENFORCED',
   verified_session_validation: 'FAIL_CLOSED_BEFORE_KEYS',
 }, null, 2));

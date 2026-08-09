@@ -15,11 +15,10 @@ const assert = (value, message) => {
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 37, `expected 37 migrations, found ${migrations.length}`);
-assert(migrations.at(-1) === '0037_product_reservation_order_scheduling.sql',
-  'NO_SCHEMA_CHANGE violated: migration tail is not 0037');
-assert(!migrations.some((file) => file.startsWith('0038_')),
-  'NO_SCHEMA_CHANGE violated: migration 0038 exists');
+assert(migrations.length === 38, `expected 38 migrations, found ${migrations.length}`);
+assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
+  && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql',
+  'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {
   const report = inspectReleaseTemplate(environment);
@@ -60,6 +59,7 @@ for (const environment of ['staging', 'production']) {
     'FEISHU_WORKBENCH_CALLBACK_ENABLED',
     'STAFF_AUTH_ENABLED',
     'STAFF_MCP_ENABLED',
+    'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
     'STAFF_MCP_LOCAL_MOCK_ENABLED',
   ]) assert(config.vars?.[flag] === 'false',
     `${environment} template kill switch not frozen: ${flag}`);
@@ -144,7 +144,7 @@ console.log(JSON.stringify({
   status: 'PASS',
   change: 'production-cloudflare-web-r2-release-configuration',
   schema_change: 'NO_SCHEMA_CHANGE',
-  migration: '0001-0037_CONTINUOUS',
+  migration: '0001-0038_CONTINUOUS',
   release_templates: 'BLOCKED_NEEDS_OPERATOR_INPUT',
   local_implementation: 'PRESENT',
   external_acceptance: 'UNVERIFIED',

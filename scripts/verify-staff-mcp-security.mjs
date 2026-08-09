@@ -7,7 +7,7 @@ const contract = read('packages/contracts/src/staff-mcp.ts');
 const tools = read('apps/api/src/staff-mcp/tools.ts');
 const server = read('apps/api/src/staff-mcp/server-adapter.ts');
 const tests = read('apps/api/src/staff-mcp/staff-mcp.test.ts');
-const app = read('apps/api/src/app.ts');
+const transport = read('apps/api/src/staff-mcp/transport.ts');
 const expected = [
   'list_staff_tasks_v1',
   'list_staff_exceptions_v1',
@@ -60,9 +60,12 @@ assert(server.includes('base64DecodedByteLength'), '8 MiB decoded screenshot bou
 for (const marker of ['private_note', 'buyer_phone', 'internal_profit_cny_fen', 'unexpected_nested']) {
   assert(tests.includes(marker), `malicious output test missing: ${marker}`);
 }
-assert(!app.includes("'/mcp'"), 'public MCP endpoint must remain unregistered');
+assert(transport.includes("const MCP_PATH = '/mcp'")
+  && transport.includes('staffMcpProductionRuntime')
+  && transport.includes('WWW-Authenticate'),
+  'protected production MCP transport boundary missing');
 
-console.log(`Staff MCP security verifier passed: ${expected.length} Staff-only tools, no public endpoint.`);
+console.log(`Staff MCP security verifier passed: ${expected.length} Staff-only tools, protected default-disabled endpoint.`);
 
 function read(path) {
   return readFileSync(resolve(root, path), 'utf8');

@@ -17,7 +17,9 @@ const disabledFlags = [
   'FEISHU_WORKBENCH_CALLBACK_ENABLED',
   'STAFF_AUTH_ENABLED',
   'STAFF_MCP_ENABLED',
+  'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
   'STAFF_MCP_LOCAL_MOCK_ENABLED',
+  'STAFF_MCP_CLEANUP_ENABLED',
 ];
 
 export const requiredManagedSecrets = Object.freeze({
@@ -35,6 +37,7 @@ export const requiredManagedSecrets = Object.freeze({
     'FEISHU_WORKBENCH_APP_SECRET',
     'FEISHU_WORKBENCH_ENCRYPT_KEY',
     'FEISHU_WORKBENCH_VERIFICATION_TOKEN',
+    'STAFF_MCP_BINDING_HASH_SECRET',
   ]),
 });
 
@@ -188,6 +191,12 @@ export function validateReleaseConfig(config, environment) {
   }
   if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u.test(String(r2?.bucket_name ?? ''))) {
     errors.push('r2_buckets.0.bucket_name:invalid');
+  }
+  const tokenStatus = exactOne(record?.services);
+  if (!tokenStatus
+    || tokenStatus.binding !== 'STAFF_MCP_TOKEN_STATUS_SERVICE'
+    || !isResourceName(tokenStatus.service)) {
+    errors.push('services:staff_mcp_token_status_binding_invalid');
   }
   for (const key of Object.keys(vars ?? {})) {
     if (/SECRET|PASSWORD|REFRESH_TOKEN|CLIENT_SECRET/iu.test(key)) {

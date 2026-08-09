@@ -5,8 +5,8 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name)).sort();
 
-assert(migrations.length === 37, 'expected exactly 37 migrations');
-assert(migrations.at(-1) === '0037_product_reservation_order_scheduling.sql',
+assert(migrations.length >= 37, 'expected Migration 0037 and later continuous migrations');
+assert(migrations[36] === '0037_product_reservation_order_scheduling.sql',
   'Migration 0037 ownership drift');
 
 const migration = source('migrations/0037_product_reservation_order_scheduling.sql');

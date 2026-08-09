@@ -19,6 +19,7 @@ export type CloudflareWorkerBindings = Omit<AppBindings, 'FILE_OBJECT_STORAGE'> 
   STAFF_AUTH_ENABLED?: string;
   STAFF_MCP_ENABLED?: string;
   STAFF_MCP_LOCAL_MOCK_ENABLED?: string;
+  STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED?: string;
 };
 
 export interface ResolvedCloudflareRuntime {
@@ -34,7 +35,6 @@ const DISABLED_RELEASE_FLAGS = [
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
   'STAFF_AUTH_ENABLED',
-  'STAFF_MCP_ENABLED',
   'STAFF_MCP_LOCAL_MOCK_ENABLED',
 ] as const;
 
@@ -85,6 +85,16 @@ export function resolveCloudflareRuntime(
     || !storage
     || !isStaticAssetBinding(bindings.WEB_ASSETS)
     || DISABLED_RELEASE_FLAGS.some((name) => bindings[name] !== 'false')
+    || !booleanFlag(bindings.STAFF_MCP_ENABLED)
+    || !booleanFlag(bindings.STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED)
+    || !booleanFlag(bindings.STAFF_MCP_CLEANUP_ENABLED)
+    || (bindings.STAFF_MCP_ENABLED === 'true'
+      && (bindings.STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED !== 'true'
+        || bindings.STAFF_MCP_CLEANUP_ENABLED !== 'true'
+        || !isStaticAssetBinding(bindings.STAFF_MCP_TOKEN_STATUS_SERVICE)))
+    || (bindings.STAFF_MCP_ENABLED === 'false'
+      && (bindings.STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED !== 'false'
+        || bindings.STAFF_MCP_CLEANUP_ENABLED !== 'false'))
     || !booleanFlag(bindings.SCHEDULED_OPERATIONS_ENABLED)
     || !booleanFlag(bindings.ACQUISITION_MAINTENANCE_ENABLED)
     || (scheduledEnabled && (bindings.FEISHU_WORKBENCH_SYNC_ENABLED!=='true'
@@ -116,7 +126,9 @@ function feishuOnlySchedule(value:unknown):boolean {
 export function isApiRequestPath(pathname: string): boolean {
   return pathname === '/health'
     || pathname === '/api'
-    || pathname.startsWith('/api/');
+    || pathname.startsWith('/api/')
+    || pathname === '/mcp'
+    || pathname === '/.well-known/oauth-protected-resource/mcp';
 }
 
 export function isAllowedSameOriginApiRequest(

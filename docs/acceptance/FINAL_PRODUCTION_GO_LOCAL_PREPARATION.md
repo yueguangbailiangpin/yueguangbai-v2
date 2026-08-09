@@ -24,7 +24,7 @@
 | 外部能力 | M10 acceptance 明确列出 8 个 P0：飞书、Drive、MCP、Cloudflare、真实网络、隐私、历史数据与最终 GO | 从未被 M10 标为完成 |
 | 历史治理 | `pre-wave13-baseline-conformance-audit` 仍 active，任务为 28/40 | 未归档，不能声称全部 Change 完成 |
 
-M10 的历史 Migration 结论“当时不创建 0035”是当时事实，不是当前 schema。后续 Change 已合法推进到 `0037`。本次发现并修复当前 M10 formal verifier 仍硬编码 `0001`–`0036` 的静态漂移；没有修改 M10 的历史证据语义。统一门禁还发现并修复 Drive archive verifier 把 `0036` 当成链尾的同类静态漂移；归档 Migration 本身仍固定为 `0032`。
+M10 的历史 Migration 结论“当时不创建 0035”是当时事实，不是当前 schema。后续 Change 已合法推进到 `0038`。当前 verifier 必须以连续 `0001`–`0038` 为候选链；这不修改 M10 的历史证据语义。Drive archive 归档 Migration 本身仍固定为 `0032`，Staff MCP production transport 合法拥有 `0038`。
 
 ## 3. React Router 两个 high 债务
 
@@ -45,7 +45,7 @@ M10 的历史 Migration 结论“当时不创建 0035”是当时事实，不是
 
 ### Migration 与回滚
 
-- 仓库有且仅有连续 `0001`–`0037`，末号为 `0037_product_reservation_order_scheduling.sql`；本 Change 不创建 Migration。
+- 仓库当前有且仅有连续 `0001`–`0038`，末号为 `0038_staff_mcp_production_transport_oauth.sql`；0038 由后续 Staff MCP production transport Change 所有，不改写本 Cloudflare Change 当时的 NO_SCHEMA_CHANGE。
 - 迁移守卫覆盖 fresh、顺序升级、错序、重复和部分 DDL 失败关闭；当前最终门禁结果完成后写入第 8 节。
 - 0029 多站点/多币种、0030 Customer 多 Persona、0031 调度、0032 Drive、0035 四角色、0036 获客、0037 排期均有恢复或前向修复边界。
 - 仓库 Migration 连续不证明生产 D1 ledger。上线前必须由老板授权只读核验；不得执行 down migration 或删除不可变业务/财务/Audit 事实。
@@ -82,7 +82,7 @@ Cloudflare/部署静态审计更新：
 - Web 已冻结为同一 Worker Static Assets：SPA deep-link fallback、Worker-first security headers、同源 `/api/*`、跨源拒绝和 exact Custom Domain/HTTPS 合同已有本地实现与匿名测试路径。
 - Cloudflare `FILE_OBJECT_STORAGE_R2` 已通过 production adapter/factory 接入现有 `FILE_OBJECT_STORAGE` 应用端口；没有公有 bucket、list、裸 key、签名 URL 或永久 URL。
 - 总控复核提出的三项缺口已在本 Change 内收口：ambiguous/post-put R2 failure 通过通用端口进入既有补偿/`DELETION_PENDING`；`--config` 同时执行绝对词法路径与 `realpath` 的 Git 外强制；Web 已移除全部 JSX inline style 并由完整 Web gate 保持 `style-src 'self'` 兼容。
-- Staff Auth/Feishu、Drive、Feishu workbench、Staff MCP、Scheduler、独立获客维护和外部告警在模板中保持 disabled；飞书激活预检精确要求 `ACQUISITION_MAINTENANCE_ENABLED=false`，飞书工作台已有 production-capable Task v2 adapter/factory 与官方加密 callback 本地合同，但真实租户/权限/Secret/callback/API 验收均为零，Staff MCP 仍 `productionActivationSupported=false` 且没有公开 `/mcp` route。
+- Staff Auth/Feishu、Drive、Feishu workbench、Staff MCP、Staff MCP cleanup、Scheduler、独立获客维护和外部告警在模板中保持 disabled；Staff MCP 后续 Change 已增加默认关闭的 production-capable `/mcp`、RFC 9728、OAuth/JWKS、D1 durable security boundary、D1 application factory、token-status Service Binding 和 bounded cleanup，但真实 issuer/token-status/JWKS/ChatGPT/Cloudflare 验收仍为零。
 
 这只关闭“production config/adapter 完全缺失”的本地实现缺口。真实资源存在性、Git 外渲染配置、Secret 注入、Cloudflare 校验/部署、Custom Domain/HTTPS、真实 R2、独立告警和网络仍没有证据，不能标为 staging/production 验收。
 
@@ -92,7 +92,7 @@ Cloudflare/部署静态审计更新：
 
 - origin/main 基线与 M10 archive/main/PR 历史已核实。
 - React Router 历史 high 已真实解析到 8.3.0，当前 audit 为 0。
-- 0001–0037 在仓库中连续；本 Change 无 Migration。
+- 0001–0038 在仓库中连续；本 Cloudflare Change 当时无 Migration，后续 Staff MCP Change 合法拥有 0038。
 - 本地备份/恢复、离线文件对账、Drive/Feishu/MCP 匿名测试、权限/财务/时区/中文测试能力存在。
 - Drive、Feishu、MCP 与 Scheduler 默认 hard-disabled；本任务未激活任何外部能力。
 - staging/production 配置模板、R2 adapter、同源 Web/SPA/security headers 与纯本地 preflight 已具备；模板仍不可部署，真实值未进入 Git。
@@ -100,7 +100,7 @@ Cloudflare/部署静态审计更新：
 ### 可由总控继续本地修复
 
 - 本 Change 已修复 M10 formal verifier 和 Drive archive verifier 的 schema 36 静态漂移，以及 current runbook 的旧 schema/归档措辞。
-- `backup-d1.mjs` / `restore-d1.mjs` 仍有历史默认 schema 34，但当前 runbook 强制显式传入重新核验的 schema 37；默认值会安全失败而不会假通过。是否另行移除默认值可由总控建立小型安全工具 Change。
+- `backup-d1.mjs` / `restore-d1.mjs` 仍有历史默认 schema 34，但当前 runbook 强制显式传入重新核验的 schema 38；默认值会安全失败而不会假通过。是否另行移除默认值可由总控建立小型安全工具 Change。
 - canonical `staff-internal-operations-workbench` 仍保留历史“两项 React Router high 不增加”的兼容性措辞；它是历史基线规则，不应当作当前漏洞库存。总控可在独立治理 Change 中决定是否增加“当前已关闭”的新 Scenario，不能改写历史。
 - `production-cloudflare-web-r2-release-configuration` 当前仍是未提交、未归档 Change；总控必须先审查 diff 和最终门禁，不能把本地实现存在写成外部 Gate 2 已完成。
 
@@ -120,7 +120,7 @@ Cloudflare/部署静态审计更新：
 2. 缺少真实 D1 备份、隔离恢复、生产 ledger 和 Migration 证据。
 3. 缺少真实 R2/Drive Manifest 对账、Drive read-back 和恢复证据。
 4. 飞书工作台本地 adapter/factory 已具备，但缺少真实应用/租户/权限/Secret/callback/API/独立告警证据。
-5. Staff MCP 仍是 local-only，无生产 HTTPS/OAuth/持久化安全边界或 ChatGPT 注册。
+5. Staff MCP 本地 production-capable HTTPS/OAuth/D1/Service Binding/bounded-cleanup 边界已具备且默认关闭，但无真实 issuer/token-status/JWKS/ChatGPT 注册、部署或安全验收。
 6. 缺少移动/联通/电信、微信内置浏览器、飞书移动端的真实网络矩阵。
 7. 缺少生产 Staff/Buyer/Seller 权限隔离、Personal DENY、文件 Audience、财务和安全渗透验收。
 8. 缺少隐私、AI 处理、跨境、保留/删除/注销与平台政策批准。
@@ -131,7 +131,7 @@ Cloudflare/部署静态审计更新：
 
 - `production-cloudflare-web-r2-release-configuration`：本地实现已在当前未提交 Change 中具备；真实资源、配置、Secret、部署和网络验收不在本地交付内，Gate 2 仍未通过。
 - `feishu-workbench-production-adapter-activation`：真实 API adapter、scope、callback、机器人/通知、深链接、限流和 Provider 告警。
-- `staff-mcp-production-transport-oauth`：HTTPS MCP resource、OAuth 2.1 metadata/PKCE、durable replay/rate/kill switch、ChatGPT 注册和安全审核。
+- `staff-mcp-production-transport-oauth`：本地 HTTPS MCP resource、OAuth 2.1 metadata/PKCE 验证边界、D1 application factory、token-status Service Binding、metadata-only screenshot replay、bounded cleanup 与 durable rate/kill switch 已在独立未提交 Change 实现；真实 ChatGPT 注册、Provider、部署和安全审核仍未执行。
 - `production-alerting-ci-release-controls`：独立告警接收器、CI pinning、人工/自动发布准入、不可变 release evidence 与受限回滚。
 
 其余 Change 不得混入当前 Cloudflare/Web/R2 Change。
@@ -142,14 +142,14 @@ Cloudflare/部署静态审计更新：
 
 | 门禁 | 当前结果 |
 | --- | --- |
-| `npx openspec validate production-cloudflare-web-r2-release-configuration --strict --no-interactive`、`npx openspec validate --all --strict --no-interactive` | Change 通过；全库 48 passed，0 failed |
+| `npx openspec validate staff-mcp-production-transport-oauth --strict --no-interactive`、`npx openspec validate --all --strict --no-interactive` | Change 通过；全库 49 passed，0 failed |
 | `npm ci`（独立临时 npm cache） | 225 packages installed；232 packages audited；0 vulnerabilities |
 | `npm run verify:dependency-risk` | 各级漏洞均为 0 |
-| `npm run security:scan` | 1410 个项目文件通过 |
-| `npm run db:verify`、`npm run verify:migration-guards`、本地 Wrangler Migration | 37 个 Migration；schema 37；165 tables；311 triggers；integrity ok；FK errors 0；fresh/顺序/错序/重复/部分 DDL 守卫通过；仅本地假 D1 |
-| M10、Drive、Feishu、Staff MCP、四角色、获客、排期、Dashboard 的 formal/static/dry-run | 全部通过；外部调用/生产写入为 0；Feishu production-capable adapter 仅经匿名本地合同测试；MCP 为 local-only；Production GO 明确 blocked |
+| `npm run security:scan` | 1442 个项目文件通过 |
+| `npm run db:verify`、`npm run verify:migration-guards`、本地 Wrangler Migration | 38 个 Migration；schema 38；170 tables；313 triggers；integrity ok；FK errors 0；fresh/顺序/错序/重复/部分 DDL 守卫通过；仅本地假 D1 |
+| M10、Drive、Feishu、Staff MCP、四角色、获客、排期、Dashboard 的 formal/static/dry-run | 全部通过；外部调用/生产写入为 0；Feishu 与 Staff MCP production-capable 边界仅经匿名本地合同测试；Production GO 明确 blocked |
 | `npx vitest run scripts/preflight-cloudflare-release.test.mjs`、`npm run dry-run:cloudflare-release`、`npm run verify:cloudflare-release`、`npm run verify:web-static-build` | Preflight 9/9；相对/仓库内/双向 symlink 路径拒绝且值不泄露；模板均为 `BLOCKED_NEEDS_OPERATOR_INPUT`；`jsx_inline_styles=0`；外部调用/部署/资源修改为 0 |
-| `npm run check` | 通过；197 个 Vitest 文件、1291 项测试全部通过；类型检查、全仓构建、Web 静态 verifier 与 Worker 本地 dry-run 通过 |
+| `npm run check` | 通过；205 个 Vitest 文件、1325 项测试全部通过；类型检查、全仓构建、Web 静态 verifier 与 Worker 本地 dry-run 通过 |
 | `npm run test:wave14a:browser` | Chromium 180 passed、1 skipped、0 failed；含中文、响应式、键盘、权限失败关闭和北京时间 UI 合同 |
 | `npm run verify:final-production-go:local` | 通过；`LOCAL_IMPLEMENTATION_PRESENT_EXTERNAL_UNVERIFIED`；Production GO 为 `NO_GO` |
 
