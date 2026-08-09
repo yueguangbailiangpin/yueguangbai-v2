@@ -100,10 +100,11 @@ export function createIdentityClaimStatements(
         reserved_at,
         released_at,
         created_at,
-        updated_at
+        updated_at,
+        identity_subject_type
       ) VALUES (
         ?, ?, ?, ?, 'ACTIVE', 1, ?,
-        NULL, NULL, ?, ?
+        NULL, NULL, ?, ?, ?
       )
     `).bind(
       input.claimId,
@@ -113,6 +114,7 @@ export function createIdentityClaimStatements(
       input.now,
       input.now,
       input.now,
+      input.subjectType,
     ),
     database.prepare(`
       INSERT INTO customer_identity_claim_events (

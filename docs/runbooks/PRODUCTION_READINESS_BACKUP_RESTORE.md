@@ -8,7 +8,7 @@
 
 ## Migration 决定与当前发布基线
 
-M10 当时不增加业务事实、权限、状态机或审计表，因此没有为发布证据创建 Migration；备份 Manifest 继续保存在加密外部包中，Git 只保存匿名发布证据。后续业务 Change 已把当前仓库 Migration 链推进为连续 `0001`–`0039`，当前候选的 `app_schema_state.schema_version=39`。本最终本地准备 Change 同样不创建新 Migration。任何生产操作都必须在窗口开始时重新核验候选 SHA、连续 Migration 末号和线上 ledger，并把核验出的当前 schema 作为 `--expected-schema` 显式传入。备份与恢复 CLI 已删除 schema 34 默认值；省略、非整数或非正数均在读写数据库前失败关闭。不得因为仓库当前末号为 `0039` 就推断线上已应用到 `0039`。如果未来必须在 D1 持久化生产发布事实，必须另建 OpenSpec Change，并使用届时下一连续 Migration。
+M10 当时不增加业务事实、权限、状态机或审计表，因此没有为发布证据创建 Migration；备份 Manifest 继续保存在加密外部包中，Git 只保存匿名发布证据。后续业务 Change 已把当前仓库 Migration 链推进为连续 `0001`–`0040`，当前候选的 `app_schema_state.schema_version=40`。本最终本地准备 Change 同样不创建新 Migration。任何生产操作都必须在窗口开始时重新核验候选 SHA、连续 Migration 末号和线上 ledger，并把核验出的当前 schema 作为 `--expected-schema` 显式传入。备份与恢复 CLI 已删除 schema 34 默认值；省略、非整数或非正数均在读写数据库前失败关闭。不得因为仓库当前末号为 `0040` 就推断线上已应用到 `0040`。如果未来必须在 D1 持久化生产发布事实，必须另建 OpenSpec Change，并使用届时下一连续 Migration。
 
 ## 本地/隔离备份
 
@@ -22,7 +22,7 @@ M10 当时不增加业务事实、权限、状态机或审计表，因此没有�
      --output-dir /outside-git/backup-candidate \
      --key-file /outside-git/keys/d1-backup.key \
      --release-commit-sha 40位小写候选Git提交SHA \
-     --expected-schema 39
+     --expected-schema 40
    ```
 
 4. `--release-commit-sha` 必须由操作者显式提供，严格为 40 位小写 Git SHA；工具不读取当前 HEAD、不猜测候选版本。该 SHA 同时进入 Manifest 与 attestation。
@@ -42,7 +42,7 @@ npm run restore:d1:local -- \
   --restore-database /outside-git/restore-rehearsal/restored.sqlite \
   --key-file /outside-git/keys/d1-backup.key \
   --expected-release-commit-sha 40位小写候选Git提交SHA \
-  --expected-schema 39
+  --expected-schema 40
 ```
 
 恢复目标必须不存在，工具禁止覆盖。创建目标数据库之前，工具先把 attestation、bundle 和 Manifest 当作不可信外部输入，依次验证：attestation 精确 schema/字段上限、HMAC、派生 key-id、bundle bytes/SHA、Manifest SHA、显式 expected release SHA，以及 Manifest 与 attestation 的 schema/time/release/fixture 一致性。随后验证 AES-GCM auth tag、压缩/明文 SHA-256、schema version/fingerprint、四类 schema inventory、全部 row counts、关键财务聚合、`integrity_check`、`foreign_key_check` 和 Staff/Buyer/Seller/订单/文件/调度 smoke reads。
@@ -96,7 +96,7 @@ npm run reconcile:files:offline -- \
 
 ## 部署与回滚边界
 
-本任务不执行部署。经最终批准后的顺序必须是：确认 release SHA/配置快照/备份可恢复 → 保持外部开关关闭 → 只读核验线上 Migration ledger → 按 `0001`–`0039` 连续顺序应用获批且尚未应用的 Migration → 部署 schema-compatible Worker → 匿名 smoke → 分阶段启用 Provider/Job。Migration、部署、Scheduler、Drive delete、Provider 和 Production GO 必须分别批准；不得因为仓库当前末号为 `0039` 就推断线上已应用到 `0039`。
+本任务不执行部署。经最终批准后的顺序必须是：确认 release SHA/配置快照/备份可恢复 → 保持外部开关关闭 → 只读核验线上 Migration ledger → 按 `0001`–`0040` 连续顺序应用获批且尚未应用的 Migration → 部署 schema-compatible Worker → 匿名 smoke → 分阶段启用 Provider/Job。Migration、部署、Scheduler、Drive delete、Provider 和 Production GO 必须分别批准；不得因为仓库当前末号为 `0040` 就推断线上已应用到 `0040`。
 
 首次 R2 删除前可切回 R2-only Worker。首次 R2 删除后，目标 Worker 必须支持 Drive proxy；否则必须按不可变 Manifest 将所有受影响对象 Drive→R2 回灌并 HEAD/SHA 验证，少一个都阻断回滚。已提交业务/财务事实不覆写或删除，只走领域前向补偿、更正或审计重放。
 

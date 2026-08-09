@@ -452,8 +452,8 @@ function newBuyerStatements(
       INSERT INTO wechat_identity_claims (
         id, identity_subject_id, display_wechat, normalized_wechat,
         status, version, acquired_at, reserved_at, released_at,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'ACTIVE', 1, ?, NULL, NULL, ?, ?)
+        created_at, updated_at, identity_subject_type
+      ) VALUES (?, ?, ?, ?, 'ACTIVE', 1, ?, NULL, NULL, ?, ?, 'BUYER_CUSTOMER')
     `).bind(
       claimId,
       input.identitySubjectId,

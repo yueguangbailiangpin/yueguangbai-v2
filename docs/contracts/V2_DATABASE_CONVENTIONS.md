@@ -118,7 +118,7 @@ WHERE id=? AND version=?;
 - Migration 不读取生产数据。
 - Schema、Trigger、Index 和 Seed 都必须可重复验证。
 
-当前连续版本为 schema 39。`0037_product_reservation_order_scheduling.sql` 仍拥有排期边界；`0038_staff_mcp_production_transport_oauth.sql` 新增 Staff MCP production transport 安全状态；`0039_staff_access_binding_management.sql` 新增仅存哈希的一次性员工绑定邀请、绑定 OAuth state 与不可变状态转换边界：
+当前连续版本为 schema 40。`0037_product_reservation_order_scheduling.sql` 仍拥有排期边界；`0038_staff_mcp_production_transport_oauth.sql` 新增 Staff MCP production transport 安全状态；`0039_staff_access_binding_management.sql` 新增仅存哈希的一次性员工绑定邀请、绑定 OAuth state 与不可变状态转换边界；`0040_seller_partner_master_data_import.sql` 新增卖家来源追溯、标准产品、卖家供给与预约资格边界：
 
 - issuer/subject/JTI/client/session/replay/rate 只保存 keyed hash，不保存 bearer token、Secret 或 Prompt；一个 issuer/subject 只能映射一个 Staff，运行时仍要求 binding 与 Staff 当前 ACTIVE。
 - replay 使用 PROCESSING lease / COMPLETED text response / COMPLETED_NO_RESPONSE / expiry；text response 不超过 256 KiB，截图只保存 metadata 且 response 必须 NULL；rate 使用独立 fixed window；GLOBAL control seed 必须默认 disabled；审计继续复用不可变 `audit_events`。

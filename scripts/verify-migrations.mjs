@@ -470,8 +470,10 @@ try {
     )) {
       throw new Error('seller_organizations 缺少 next_member_number');
     }
-    if (sellerChannels.length !== 3) {
-      throw new Error('卖家渠道种子数量不正确');
+    if (sellerChannels.length !== 5
+      || sellerChannels.map((row) => row.code).join(',')
+        !== 'ido-mango,queshengai,ygbceping,yinghua1942,yueguangbaiai') {
+      throw new Error('卖家渠道种子或编号顺序不正确');
     }
 
     const fileObjectColumns = database.prepare(`
