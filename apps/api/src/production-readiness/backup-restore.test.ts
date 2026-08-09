@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 describe('encrypted D1 backup and isolated restore', () => {
-  it('backs up schema 39, restores it and verifies rows, finance, relations and smoke reads', async () => {
+  it('backs up schema 40, restores it and verifies rows, finance, relations and smoke reads', async () => {
     const directory = temporaryDirectory();
     const sourcePath = path.join(directory, 'source.sqlite');
     const database = new SqliteDatabase(sourcePath);
@@ -60,16 +60,16 @@ describe('encrypted D1 backup and isolated restore', () => {
       key,
       releaseCommitSha: RELEASE_SHA,
       generatedAtUtcMs: 1_786_083_200_000,
-      expectedSchemaVersion: 39,
+      expectedSchemaVersion: 40,
       anonymousFixture: true,
     });
-    expect(backup.manifest.schema_version).toBe(39);
+    expect(backup.manifest.schema_version).toBe(40);
     expect(backup.manifest.release_commit_sha).toBe(RELEASE_SHA);
     expect(backup.manifest.row_counts['staff_users']).toBe(1);
-    expect(backup.manifest.inventory.tables).toHaveLength(172);
+    expect(backup.manifest.inventory.tables).toHaveLength(177);
     expect(backup.manifest.inventory.views).toHaveLength(10);
-    expect(backup.manifest.inventory.triggers).toHaveLength(319);
-    expect(backup.manifest.inventory.indexes).toHaveLength(228);
+    expect(backup.manifest.inventory.triggers).toHaveLength(321);
+    expect(backup.manifest.inventory.indexes).toHaveLength(231);
     expect(backup.manifest.integrity).toEqual({
       integrity_check: 'ok',
       foreign_key_violations: 0,
@@ -88,7 +88,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       key,
       expectedReleaseCommitSha: RELEASE_SHA,
       verifiedAtUtcMs: 1_786_083_201_000,
-      expectedSchemaVersion: 39,
+      expectedSchemaVersion: 40,
     });
     expect(restored.report).toMatchObject({
       status: 'PASS',
@@ -120,7 +120,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       outputDirectory: path.join(directory, 'backup'),
       key,
       releaseCommitSha: RELEASE_SHA,
-      expectedSchemaVersion: 39,
+      expectedSchemaVersion: 40,
       anonymousFixture: true,
     });
     const bytes = readFileSync(backup.bundlePath);
@@ -148,7 +148,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       outputDirectory: path.join(directory, 'backup'),
       key,
       releaseCommitSha: RELEASE_SHA,
-      expectedSchemaVersion: 39,
+      expectedSchemaVersion: 40,
       anonymousFixture: true,
     });
     const restorePath = path.join(directory, 'restored.sqlite');
@@ -190,7 +190,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       key,
       releaseCommitSha: RELEASE_SHA,
       generatedAtUtcMs: 10,
-      expectedSchemaVersion: 39,
+      expectedSchemaVersion: 40,
       anonymousFixture: true,
     });
     const second = await createEncryptedD1Backup({
@@ -199,7 +199,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       key,
       releaseCommitSha: RELEASE_SHA,
       generatedAtUtcMs: 11,
-      expectedSchemaVersion: 39,
+      expectedSchemaVersion: 40,
       anonymousFixture: true,
     });
     const tamperedAttestationPath = path.join(directory, 'tampered-attestation.json');
@@ -264,7 +264,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       outputDirectory: path.join(directory, 'original'),
       key,
       releaseCommitSha: RELEASE_SHA,
-      expectedSchemaVersion: 39,
+      expectedSchemaVersion: 40,
       anonymousFixture: true,
     });
     expect(() => validateBackupManifest({

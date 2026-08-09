@@ -95,6 +95,8 @@
     "verify:production-readiness:formal": "node scripts/verify-production-readiness-formal.mjs",
     "verify:final-production-go:local": "node scripts/verify-final-production-go-local-preparation.mjs",
     "verify:openspec:strict": "openspec validate --all --strict",
+    "dry-run:seller-partner-import": "node scripts/dry-run-seller-partner-import.mjs",
+    "test:seller-partner-import": "vitest run apps/api/src/seller-partner-import/seller-partner-import.test.ts",
     "audit:dependencies": "npm audit --audit-level=high",
     "release:check": "node scripts/release-check.mjs",
     "preflight:cloudflare-release": "node scripts/preflight-cloudflare-release.mjs",
