@@ -67,7 +67,7 @@ describe('Staff login/start and Session formal MSW chain', () => {
       return HttpResponse.json({
         data: {
           provider: 'FEISHU',
-          authorization_url: 'https://open.feishu.cn/open-apis/authen/v1/authorize?state=test',
+          authorization_url: 'https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=test',
           expires_at: 1_700_000_600_000,
         },
         meta: { request_id: 'request-staff-start' },
@@ -75,7 +75,7 @@ describe('Staff login/start and Session formal MSW chain', () => {
     }));
     const url = await new StaffAuthController(createMswQueryClient()).startLogin('/staff');
     expect(body).toEqual({ return_to: '/staff' });
-    expect(url).toBe('https://open.feishu.cn/open-apis/authen/v1/authorize?state=test');
+    expect(url).toBe('https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=test');
   });
 
   it('rejects an arbitrary HTTPS Provider Origin after the real response is validated', async () => {

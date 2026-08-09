@@ -10,6 +10,8 @@ The generic release template continues to require `STAFF_AUTH_ENABLED=false`. A 
 
 When disabled, all Staff Auth provider configuration and test-adapter authority are removed before Hono receives bindings. When enabled and valid, the real provider bindings are retained but the in-process test adapter is still removed, so staging/production cannot replace Feishu with synthetic identity authority.
 
+The Web redirect boundary independently allowlists the current official Feishu authorization origin, `https://accounts.feishu.cn`. It rejects every other HTTPS origin even after a structurally valid API response, so updating the official provider host does not weaken the arbitrary-redirect defense.
+
 Authentication-traffic cleanup deletes bounded expired rows from the login-state and rate-limit tables as two ordered statements. The tables are independent and the cleanup is not a business transaction; if either statement fails, login still fails before rate-limit, state, Provider or session creation. This preserves the original failure-closed contract while avoiding a remote D1 batch incompatibility observed during production activation.
 
 ## Preflight
