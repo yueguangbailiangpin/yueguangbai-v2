@@ -154,7 +154,7 @@ function submitRequest(overrides: Record<string, unknown>): RequestInit {
       scope_type: 'SELLER_ORGANIZATION',
       seller_organization_id: 'seller-org-1',
       source_currency_code: 'JPY',
-      markup_rate_value: '400000',
+      markup_rate_value: '0.004',
       effective_from: Date.now() + 86_400_000,
       expected_version: 0,
       ...overrides,

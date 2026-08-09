@@ -11,6 +11,7 @@ import {
   addCnyPerJpyE8,
   hashCanonicalJson,
   parseCnyPerJpyE8,
+  parseCnyPerJpyMarkupDecimal,
   parseCnyPerJpyMarkupE8,
   parseJpyInteger,
   toD1SafeInteger,
@@ -500,7 +501,7 @@ function normalizePolicyInput(input: {
   let markupRateValue: number;
   try {
     markupRateValue = toD1SafeInteger(
-      parseCnyPerJpyMarkupE8(input.markupRateValue),
+      parseCnyPerJpyMarkupDecimal(input.markupRateValue),
     );
   } catch {
     throw new PricingError('VALIDATION_ERROR', 400);

@@ -86,7 +86,7 @@ describe('explicit file audiences', () => {
     }
   });
 
-  it('matches exact active buyer and seller authorities from session facts', async () => {
+  it('matches exact buyer authority and rejects unknown Seller mappings', async () => {
     const fixture = await explicitFixture();
     await expect(authorize(
       fixture.resource,
@@ -97,7 +97,7 @@ describe('explicit file audiences', () => {
       fixture.resource,
       sellerActor('seller-member-1'),
       sellerPrincipal(1),
-    )).resolves.toBeUndefined();
+    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
     await expect(authorize(
       fixture.resource,

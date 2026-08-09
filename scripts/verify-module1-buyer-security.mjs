@@ -141,6 +141,7 @@ const module4SellerAllowlist = new Set([
   'apps/web/src/seller/pages/SellerPages.tsx',
   'apps/web/src/seller/pages/SellerSubmissionPages.tsx',
   'apps/web/src/seller/queries/keys.ts',
+  'apps/web/src/seller/queries/useSellerCursorPages.ts',
   'apps/web/src/seller/routes/SellerLayout.tsx',
   'apps/web/src/seller/routes/SellerRouteModule.tsx',
   'apps/web/src/seller/routes/SellerSubmissionRouteModule.tsx',
@@ -164,6 +165,23 @@ const module4SellerAllowlist = new Set([
 ]);
 const unapprovedSellerStaff = changedSellerStaff.filter((path) => !module4SellerAllowlist.has(path));
 assert(unapprovedSellerStaff.length === 0, `Unapproved Seller/Staff business source expanded: ${unapprovedSellerStaff.join(', ')}`);
+const sellerCursorAdapter = read(
+  'apps/web/src/seller/queries/useSellerCursorPages.ts',
+);
+for (const marker of [
+  "import { useCursorPages } from '../../api/useCursorPages'",
+  'items: response.data.items',
+  'next_cursor: response.data.page.next_cursor',
+]) assertContains(sellerCursorAdapter, marker, 'Seller cursor page adapter');
+for (const forbidden of [
+  "'/api/", '"/api/', 'fetch(', 'localStorage', 'sessionStorage',
+]) {
+  assertNotContains(
+    sellerCursorAdapter,
+    forbidden,
+    'Seller cursor page adapter authority boundary',
+  );
+}
 for (const routeModule of [
   'apps/web/src/seller/routes/SellerRouteModule.tsx',
   'apps/web/src/seller/routes/SellerSubmissionRouteModule.tsx',

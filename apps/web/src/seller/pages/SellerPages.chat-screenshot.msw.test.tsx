@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
-import { screen } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
+import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS } from '@ygb/contracts';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import '../../test/msw/lifecycle';
 import { apiUrl } from '../../test/msw/handlers';
 import { renderWithMsw } from '../../test/msw/render';
 import { server } from '../../test/msw/server';
-import { SellerOrdersPage } from './SellerPages';
+import { sellerQueryKeys } from '../queries/keys';
+import {
+  SellerDashboardPage,
+  SellerOrdersPage,
+  SellerSettlementsPage,
+} from './SellerPages';
+
+afterEach(cleanup);
 
 describe('Seller formal-order chat screenshot UI', () => {
   it('renders list status without issuing a screenshot read until the user asks', async () => {
@@ -51,7 +59,7 @@ describe('Seller formal-order chat screenshot UI', () => {
       expect(screen.queryByText('查看聊天截图')).toBeNull();
       expect(readIntentRequests).toBe(0);
       expect(contentRequests).toBe(0);
-      expect(client.getQueryData(['seller', 'orders', 'all'])).toBeDefined();
+      expect(client.getQueryData(sellerQueryKeys.ordersPage(null, null))).toBeDefined();
       expect(client.getQueryData(['buyer', 'orders', 'all'])).toBeUndefined();
 
       await userEvent.click(screen.getByRole('button', { name: '展开聊天截图' }));
@@ -72,7 +80,126 @@ describe('Seller formal-order chat screenshot UI', () => {
       else delete (URL as { createObjectURL?: unknown }).createObjectURL;
     }
   });
+
+  it('preserves loaded orders and follows the opaque Seller cursor', async () => {
+    const requests: string[] = [];
+    server.use(http.get(apiUrl('/api/seller-portal/formal-orders'), ({ request }) => {
+      const url = new URL(request.url);
+      requests.push(url.search);
+      const cursor = url.searchParams.get('cursor');
+      return HttpResponse.json({
+        data: cursor === null
+          ? {
+              items: [{ ...formalOrder(), product_name: '第一页订单' }],
+              page: { limit: 100, next_cursor: 'opaque-seller-page-2' },
+            }
+          : {
+              items: [{
+                ...formalOrder(), formal_order_id: 'order-2',
+                product_name: '第二页订单',
+              }],
+              page: { limit: 100, next_cursor: null },
+            },
+        meta: { request_id: cursor === null ? 'seller-page-1' : 'seller-page-2' },
+      });
+    }));
+
+    renderWithMsw(<SellerOrdersPage />, { route: '/seller/orders' });
+    expect(await screen.findByText('第一页订单')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', {
+      name: '加载更多正式订单',
+    }));
+
+    expect(await screen.findByText('第二页订单')).toBeVisible();
+    expect(screen.getByText('第一页订单')).toBeVisible();
+    expect(requests).toHaveLength(2);
+    expect(new URLSearchParams(requests[0]).get('cursor')).toBeNull();
+    expect(new URLSearchParams(requests[1]).get('cursor'))
+      .toBe('opaque-seller-page-2');
+  });
+
+  it('does not render failed initial order reads as authoritative zero facts', async () => {
+    server.use(
+      http.get(apiUrl('/api/seller-portal/me'), () => HttpResponse.json({
+        data: { me: sellerMe() }, meta: { request_id: 'seller-me' },
+      })),
+      http.get(apiUrl('/api/seller-portal/formal-orders'), () =>
+        unavailable('seller-orders-unavailable')),
+      http.get(apiUrl('/api/seller-portal/settlement/summary'), () =>
+        HttpResponse.json({
+          data: { settlement: {
+            outstanding_principal_cny_fen: '0',
+            outstanding_service_fee_cny_fen: '0',
+            total_outstanding_cny_fen: '0',
+            unallocated_credit_cny_fen: '0',
+          } },
+          meta: { request_id: 'seller-settlement' },
+        })),
+    );
+
+    renderWithMsw(<SellerDashboardPage />, { route: '/seller' });
+    expect(await screen.findByText(
+      '订单进度暂时不可用，请刷新后重试。',
+    )).toBeVisible();
+    expect(screen.getAllByText('—')).toHaveLength(2);
+    expect(screen.queryByText('暂无待完成订单')).not.toBeInTheDocument();
+  });
+
+  it('does not render a failed payable read as an empty financial ledger', async () => {
+    server.use(
+      http.get(apiUrl('/api/seller-portal/settlement/summary'), () =>
+        HttpResponse.json({
+          data: { settlement: {
+            outstanding_principal_cny_fen: '100',
+            outstanding_service_fee_cny_fen: '200',
+            total_outstanding_cny_fen: '300',
+            unallocated_credit_cny_fen: '0',
+          } },
+          meta: { request_id: 'seller-settlement' },
+        })),
+      http.get(apiUrl('/api/seller-portal/settlement/payables'), () =>
+        unavailable('seller-payables-unavailable')),
+    );
+
+    renderWithMsw(<SellerSettlementsPage />, {
+      route: '/seller/settlements',
+    });
+    expect(await screen.findByText(
+      '结算项目暂时不可用，请刷新后重试。',
+    )).toBeVisible();
+    expect(screen.queryByText('暂无结算项目')).not.toBeInTheDocument();
+  });
 });
+
+function unavailable(requestId: string) {
+  return HttpResponse.json({
+    error: {
+      code: 'DEPENDENCY_UNAVAILABLE',
+      message: '暂时不可用',
+      details: null,
+    },
+    meta: { request_id: requestId },
+  }, { status: 503 });
+}
+
+function sellerMe() {
+  return {
+    account_id: 'seller-account',
+    member: {
+      id: 'seller-member', display_name: '卖家', role: 'OPERATIONS',
+      primary_owner: false,
+    },
+    organization: {
+      id: 'seller-organization', seller_code: 'seller-1', name: '卖家组织',
+      marketplace_code: 'JP', status: 'ACTIVE',
+    },
+    access: {
+      read_scope: 'ASSIGNED_STORES', store_ids: ['store-1'],
+      can_submit_product_applications: true,
+      can_submit_demand_batches: true,
+    },
+  };
+}
 
 function formalOrder() {
   return {

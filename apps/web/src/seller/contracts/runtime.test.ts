@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   sellerFormalOrdersSchema,
+  sellerMeSchema,
   sellerOrderChatScreenshotReadIntentResponseSchema,
   sellerPayablesSchema,
   sellerProductsSchema,
@@ -9,6 +10,52 @@ import {
 const page = { limit: 100, next_cursor: null };
 
 describe('Seller runtime DTO allowlists', () => {
+  it('accepts every governed Seller member role', () => {
+    for (const role of ['OWNER', 'OPERATIONS', 'FINANCE', 'VIEWER']) {
+      expect(sellerMeSchema.safeParse({
+        me: {
+          account_id: 'account-1',
+          member: {
+            id: 'member-1', display_name: '卖家', role,
+            primary_owner: role === 'OWNER',
+          },
+          organization: {
+            id: 'organization-1', seller_code: 'seller-1',
+            name: '卖家组织', marketplace_code: 'JP', status: 'ACTIVE',
+          },
+          access: {
+            read_scope: role === 'OWNER'
+              ? 'ORGANIZATION'
+              : 'ASSIGNED_STORES',
+            store_ids: ['store-1'],
+            can_submit_product_applications:
+              role === 'OWNER' || role === 'OPERATIONS',
+            can_submit_demand_batches:
+              role === 'OWNER' || role === 'OPERATIONS',
+          },
+        },
+      }).success).toBe(true);
+    }
+    expect(sellerMeSchema.safeParse({
+      me: {
+        account_id: 'account-1',
+        member: {
+          id: 'member-1', display_name: '卖家', role: 'OPERATOR',
+          primary_owner: false,
+        },
+        organization: {
+          id: 'organization-1', seller_code: 'seller-1',
+          name: '卖家组织', marketplace_code: 'JP', status: 'ACTIVE',
+        },
+        access: {
+          read_scope: 'ASSIGNED_STORES', store_ids: ['store-1'],
+          can_submit_product_applications: false,
+          can_submit_demand_batches: false,
+        },
+      },
+    }).success).toBe(false);
+  });
+
   it('accepts the public product shape and rejects an added internal field', () => {
     const product = {
       id: 'product-1',

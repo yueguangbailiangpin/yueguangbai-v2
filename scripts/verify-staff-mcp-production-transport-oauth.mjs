@@ -11,12 +11,13 @@ const read = (file) => readRepositoryFile(file, root);
 
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file)).sort();
-assert(migrations.length === 42
+assert(migrations.length === 43
   && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
-  && migrations.at(-2) === '0041_seller_principal_rate_policy.sql'
-  && migrations.at(-1) === '0042_rakuten_tiktok_jp_marketplace_foundation.sql'
+  && migrations.at(-3) === '0041_seller_principal_rate_policy.sql'
+  && migrations.at(-2) === '0042_rakuten_tiktok_jp_marketplace_foundation.sql'
+  && migrations.at(-1) === '0043_seller_principal_rate_integrity_hardening.sql'
   && migrations.every((file, index) => Number(file.slice(0, 4)) === index + 1),
-'Staff MCP Migration must remain at 0038 in the continuous 0001-0042 chain');
+'Staff MCP Migration must remain at 0038 in the continuous 0001-0043 chain');
 
 const migration = read('migrations/0038_staff_mcp_production_transport_oauth.sql');
 for (const marker of [

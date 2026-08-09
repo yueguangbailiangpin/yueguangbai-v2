@@ -6,12 +6,13 @@ const read=(name)=>readFileSync(path.join(root,name),'utf8');
 const migrationFiles=readdirSync(path.join(root,'migrations')).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort();
 const migrationNumbers=migrationFiles.map((name)=>Number(name.slice(0,4)));
 if(!migrationFiles.includes('0032_google_drive_cold_image_archive.sql')
-  ||migrationNumbers.length!==42
+  ||migrationNumbers.length!==43
   ||migrationNumbers.some((number,index)=>number!==index+1)
   ||migrationFiles[31]!=='0032_google_drive_cold_image_archive.sql'
-  ||migrationFiles.at(-2)!=='0041_seller_principal_rate_policy.sql'
-  ||migrationFiles.at(-1)!=='0042_rakuten_tiktok_jp_marketplace_foundation.sql') {
-  throw new Error('archive migration position or current 0001-0042 sequence changed unexpectedly');
+  ||migrationFiles.at(-3)!=='0041_seller_principal_rate_policy.sql'
+  ||migrationFiles.at(-2)!=='0042_rakuten_tiktok_jp_marketplace_foundation.sql'
+  ||migrationFiles.at(-1)!=='0043_seller_principal_rate_integrity_hardening.sql') {
+  throw new Error('archive migration position or current 0001-0043 sequence changed unexpectedly');
 }
 const migration=read('migrations/0032_google_drive_cold_image_archive.sql');
 for(const fragment of ['schema_version=31','schema_version=32','order_archive_closures','drive_archive_controls',

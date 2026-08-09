@@ -377,6 +377,68 @@ describe('file manifest and upload intent lifecycle', () => {
     )).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE' });
     expect(storage.objects.size).toBe(0);
   });
+
+  it('returns bytes to exactly one concurrent read-intent consumer', async () => {
+    database = createMigratedTestDatabase();
+    const storage = new CoordinatedReadStorage();
+    const { intent, slot } = await uploadedFixture(database, storage, 'race');
+    await completeFileUploadIntent(
+      database,
+      storage,
+      { ...authorization },
+      { uploadIntentId: intent.uploadIntentId, expectedVersion: 1 },
+      { actor, idempotencyKey: 'file:complete:race', now: 1400 },
+    );
+    await linkVerifiedFileToEntity(
+      database,
+      authorization,
+      {
+        fileObjectId: slot.fileObjectId,
+        expectedFileVersion: 3,
+        entityType: 'ORDER',
+        entityId: 'order-race',
+      },
+      { actor, idempotencyKey: 'file:link:race', now: 1500 },
+    );
+    const readIntent = await createFileReadIntent(
+      database,
+      authorization,
+      {
+        fileObjectId: slot.fileObjectId,
+        expectedFileVersion: 3,
+        ttlMs: 60_000,
+      },
+      { actor, idempotencyKey: 'file:read:race', now: 1600 },
+    );
+    if (!readIntent.accessToken) throw new Error('missing_read_token');
+
+    const input = {
+      readIntentId: readIntent.readIntentId,
+      accessToken: readIntent.accessToken,
+    };
+    const results = await Promise.allSettled([
+      consumeFileReadIntent(
+        database, storage, authorization, input, { actor, now: 1700 },
+      ),
+      consumeFileReadIntent(
+        database, storage, authorization, input, { actor, now: 1700 },
+      ),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled'))
+      .toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected'))
+      .toHaveLength(1);
+    expect(results.find((result) => result.status === 'rejected'))
+      .toMatchObject({
+        reason: expect.objectContaining({ code: 'VERSION_CONFLICT' }),
+      });
+    expect(await database.prepare(`
+      SELECT COUNT(*) AS count FROM file_events
+      WHERE event_type='FILE_READ_INTENT_CONSUMED'
+        AND json_extract(metadata_json, '$.read_intent_id')=?
+    `).bind(readIntent.readIntentId).first()).toEqual({ count: 1 });
+  });
 });
 
 async function uploadedFixture(
@@ -436,5 +498,22 @@ class FailNextBatchDatabase implements SqlDatabase {
       throw new Error('injected_d1_batch_failure');
     }
     return this.delegate.batch(statements);
+  }
+}
+
+class CoordinatedReadStorage extends MockObjectStorage {
+  private readers = 0;
+  private release!: () => void;
+  private readonly gate = new Promise<void>((resolve) => {
+    this.release = resolve;
+  });
+
+  override async readObject(
+    objectKey: string,
+  ): Promise<Uint8Array<ArrayBuffer>> {
+    this.readers += 1;
+    if (this.readers === 2) this.release();
+    await this.gate;
+    return super.readObject(objectKey);
   }
 }

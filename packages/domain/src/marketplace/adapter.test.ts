@@ -68,7 +68,10 @@ describe('marketplace adapters', () => {
   });
 
   it('rejects generic control characters locally', () => {
-    for (const value of ['order\u0001id', '\torder-id', 'order-id\n']) {
+    for (const value of [
+      'order\u0001id', '\torder-id', 'order-id\n',
+      'order\u0085id', 'order\u009fid',
+    ]) {
       expect(() => normalizePlatformIdentifier(
         'TIKTOK_JP', 'ORDER', value,
       )).toThrow('PLATFORM_IDENTIFIER_CONTROL_CHARACTER');

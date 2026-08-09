@@ -1,6 +1,7 @@
 import type { CustomerPersona, SqlDatabase } from '@ygb/contracts';
 import {
   createCustomerSessionPayload,
+  CUSTOMER_PASSWORD_DEFAULT_ITERATIONS,
   normalizeWechatId,
   signCustomerSession,
   verifyCustomerPassword,
@@ -10,7 +11,7 @@ import {
 
 const DUMMY_CREDENTIAL: PasswordCredential = {
   algorithm: 'PBKDF2_SHA256',
-  iterations: 10_000,
+  iterations: CUSTOMER_PASSWORD_DEFAULT_ITERATIONS,
   saltBase64Url: 'AAAAAAAAAAAAAAAAAAAAAA',
   hashBase64Url: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
 };

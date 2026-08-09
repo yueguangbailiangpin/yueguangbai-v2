@@ -3,6 +3,7 @@ import type {
   SqlStatement,
 } from '@ygb/contracts';
 import {
+  CUSTOMER_PASSWORD_DEFAULT_ITERATIONS,
   hashCanonicalJson,
   hashCustomerPassword,
   verifyCustomerPassword,
@@ -130,7 +131,8 @@ export async function changeCustomerPassword(
     const nextCredential = await hashCustomerPassword(
       input.newPassword,
       {
-        iterations: input.passwordIterations ?? 310_000,
+        iterations: input.passwordIterations
+          ?? CUSTOMER_PASSWORD_DEFAULT_ITERATIONS,
       },
     );
     const nextSessionVersion =

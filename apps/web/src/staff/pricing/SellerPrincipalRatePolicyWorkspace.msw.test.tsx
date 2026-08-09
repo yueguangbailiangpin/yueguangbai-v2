@@ -100,6 +100,7 @@ describe('卖家本金汇率策略 Staff 工作台', () => {
     await user.click(screen.getByRole('button', { name: '提交待确认策略' }));
     await waitFor(() => expect(body).toMatchObject({
       scope_type: 'CURRENCY_PAIR_DEFAULT', seller_organization_id: null,
+      source_currency_code: 'JPY', markup_rate_value: '0.004',
     }));
   });
 });

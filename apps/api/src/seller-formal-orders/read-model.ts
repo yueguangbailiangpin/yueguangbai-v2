@@ -381,6 +381,7 @@ function selectFormalOrderProjection(): string {
     JOIN seller_stores store
       ON store.id=formal_order.store_id
       AND store.organization_id=formal_order.seller_organization_id
+      AND store.status='ACTIVE'
     JOIN formal_order_financial_snapshots snapshot
       ON snapshot.formal_order_id=formal_order.id
     JOIN formal_order_marketplace_money_snapshots generic

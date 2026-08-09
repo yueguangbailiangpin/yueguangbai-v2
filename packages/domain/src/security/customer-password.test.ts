@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CUSTOMER_PASSWORD_DEFAULT_ITERATIONS,
   generateTemporaryPassword,
   hashCustomerPassword,
   validateCustomerPassword,
@@ -28,6 +29,13 @@ describe('customer password security', () => {
       'Wrong-Password-2026!',
       credential,
     )).resolves.toBe(false);
+  });
+
+  it('uses the single current work factor when no test override is supplied', async () => {
+    const credential = await hashCustomerPassword('Correct-Horse-2026!', {
+      salt: new Uint8Array(16).fill(9),
+    });
+    expect(credential.iterations).toBe(CUSTOMER_PASSWORD_DEFAULT_ITERATIONS);
   });
 
   it('generates a valid temporary password without ambiguous characters', () => {

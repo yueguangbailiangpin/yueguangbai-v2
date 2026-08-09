@@ -3,7 +3,9 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from 'vitest';
+import { CUSTOMER_PASSWORD_DEFAULT_ITERATIONS } from '@ygb/domain';
 import type {
   StaffPermissionCode,
   StaffRoleCode,
@@ -45,11 +47,31 @@ const SESSION_SECRET =
 let database: SqliteDatabase | null = null;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   database?.close();
   database = null;
 });
 
 describe('customer activation, authentication, and session lifecycle', () => {
+  it('uses the current password work factor for an unknown account', async () => {
+    database = createMigratedTestDatabase();
+    const deriveBits = vi.spyOn(crypto.subtle, 'deriveBits');
+
+    await expect(authenticateCustomerPassword(database, {
+      loginIdentifier: 'unknown_customer_account',
+      password: 'Unknown-Password-2026!',
+    })).resolves.toBeNull();
+
+    expect(deriveBits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'PBKDF2',
+        iterations: CUSTOMER_PASSWORD_DEFAULT_ITERATIONS,
+      }),
+      expect.anything(),
+      256,
+    );
+  });
+
   it('activates a buyer, returns the temporary password once, and forces change', async () => {
     database = createMigratedTestDatabase();
     seedStaffAndBuyerChannel(database);

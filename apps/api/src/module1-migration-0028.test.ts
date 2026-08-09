@@ -17,7 +17,7 @@ describe('Migration 0028 Amazon order date facts', () => {
     database = createMigratedTestDatabase();
     expect(await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).first()).toEqual({ schema_version: 42 });
+    `).first()).toEqual({ schema_version: 43 });
     const tables = await database.prepare(`
       SELECT name FROM sqlite_schema
       WHERE type='table' AND name NOT LIKE 'sqlite_%'
@@ -29,7 +29,7 @@ describe('Migration 0028 Amazon order date facts', () => {
       SELECT name FROM sqlite_schema WHERE type='view'
     `).all();
     expect(tables.results).toHaveLength(187);
-    expect(triggers.results).toHaveLength(354);
+    expect(triggers.results).toHaveLength(357);
     expect(views.results).toHaveLength(10);
 
     for (const table of ['order_evidence_versions', 'formal_orders']) {
