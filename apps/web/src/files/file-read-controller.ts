@@ -121,15 +121,16 @@ export class FileReadController {
     this.releaseIntentAuthority();
     this.reference = null;
     this.provider = null;
-    if (!isTrustedFileReadIntentProvider(provider) || provider.identity !== 'buyer') {
+    if (!isTrustedFileReadIntentProvider(provider)
+      || !isRequestIdentity(provider.identity)) {
       this.publishValidationFailure('provider', 'untrusted_file_read_provider');
       return Promise.resolve();
     }
-    this.identity = 'buyer';
+    this.identity = provider.identity;
     this.provider = provider;
     this.publish({
       ...initialFileReadSnapshot,
-      identity: 'buyer',
+      identity: provider.identity,
       state: 'VALIDATING_REFERENCE',
     });
     this.publish({

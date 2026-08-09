@@ -1,9 +1,22 @@
 import { z } from 'zod';
+import type { SellerOrderChatScreenshotReadIntentResponseDto } from '@ygb/contracts';
 
 const integerString = z.string().regex(/^(0|[1-9][0-9]*)$/u);
 const epoch = z.number().int().nonnegative();
 const page = z.object({ limit: z.number().int().positive(), next_cursor: z.string().nullable() }).strict();
 const component = z.enum(['PENDING', 'COMPLETE', 'NOT_APPLICABLE']);
+
+export const sellerOrderChatScreenshotReadIntentResponseSchema = z.object({
+  read_intent: z.object({
+    read_intent_id: z.string().min(1).max(120),
+    access_token: z.string().min(32).max(512).nullable(),
+    access_token_available: z.boolean(),
+    expires_at: z.number().int().nonnegative(),
+    replayed: z.boolean(),
+  }).strict(),
+}).strict() satisfies z.ZodType<
+  SellerOrderChatScreenshotReadIntentResponseDto
+>;
 
 export const sellerMeSchema = z.object({ me: z.object({
   account_id: z.string(),
@@ -45,6 +58,7 @@ export const sellerFormalOrdersSchema = z.object({ items: z.array(z.object({
   }).strict(),
   business_completion: z.object({ status: z.enum(['IN_PROGRESS', 'COMPLETE']), review: component,
     buyer_refund: component, seller_principal: component, seller_service_fee: component }).strict(),
+  chat_screenshot: z.object({ status: z.enum(['AVAILABLE', 'NONE']), file_version: z.number().int().positive().nullable() }).strict(),
   confirmed_at: epoch, confirmed_business_date: z.string(),
 }).strict()), page }).strict();
 

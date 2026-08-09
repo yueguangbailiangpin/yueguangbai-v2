@@ -355,6 +355,41 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     }
   });
 
+  it.each([
+    ['active', 'AVAILABLE', 2],
+    ['missing', 'NONE', null],
+    ['revoked', 'NONE', null],
+    ['expired', 'NONE', null],
+  ] as const)(
+    'fails closed in list and detail when the Seller audience grant is %s',
+    async (grantState, expectedStatus, expectedVersion) => {
+      await seedChatScreenshotProjection(database!, grantState);
+      const app = testApp();
+
+      const listBody = await list(app, 'owner');
+      const listOrder = listBody.data.items.find(
+        (item: { formal_order_id: string }) =>
+          item.formal_order_id === requiredOrders().storeOne,
+      );
+      expect(listOrder?.chat_screenshot).toEqual({
+        status: expectedStatus,
+        file_version: expectedVersion,
+      });
+
+      const detailResponse = await request(
+        app,
+        `/api/seller-portal/formal-orders/${requiredOrders().storeOne}`,
+        { headers: { Cookie: await cookie('owner') } },
+      );
+      expect(detailResponse.status).toBe(200);
+      const detailBody = await json<any>(detailResponse);
+      expect(detailBody.data.formal_order.chat_screenshot).toEqual({
+        status: expectedStatus,
+        file_version: expectedVersion,
+      });
+    },
+  );
+
   it('keeps historical values unchanged after product and pricing rules change', async () => {
     database!.exec(`
       INSERT INTO product_versions (
@@ -633,6 +668,103 @@ async function formalOrderCounts(): Promise<{
     snapshots: Number(row.snapshots),
     events: Number(row.events),
   };
+}
+
+async function seedChatScreenshotProjection(
+  db: SqliteDatabase,
+  grantState: 'active' | 'missing' | 'revoked' | 'expired',
+): Promise<void> {
+  const fileObjectId = 'projection-chat-file';
+  const uploadIntentId = 'projection-chat-intent';
+  const fileEntityLinkId = 'projection-chat-link';
+  const grantId = 'projection-chat-grant';
+
+  db.exec(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility, status,
+      requested_file_count, manifest_hash, version, expires_at,
+      failure_code, created_at, updated_at, completed_at
+    ) VALUES (
+      '${uploadIntentId}', 'STAFF', 'staff-confirm',
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'ISSUED', 1, '${'a'.repeat(64)}', 1, 9999999999999,
+      NULL, 7000, 7000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size,
+      status, upload_token_hash, upload_expires_at, uploaded_byte_size,
+      detected_mime, uploaded_sha256, failure_code, delete_attempt_count,
+      next_delete_at, version, created_at, updated_at, uploaded_at,
+      verified_at, deleted_at
+    ) VALUES (
+      '${fileObjectId}', '${uploadIntentId}', 1,
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'files/v1/chat/projection-screenshot-000000000000000000000000000000',
+      'chat.png', 'png', 'image/png', 11, 'RESERVED',
+      '${'b'.repeat(64)}', 9999999999999, NULL, NULL, NULL,
+      NULL, 0, NULL, 1, 7000, 7000, NULL, NULL, NULL
+    );
+  `);
+  await db.prepare(`
+    UPDATE file_upload_intents
+    SET status='VERIFIED', version=2, updated_at=7001, completed_at=7001
+    WHERE id=?
+  `).bind(uploadIntentId).run();
+  await db.prepare(`
+    UPDATE file_objects
+    SET status='VERIFIED', version=2, uploaded_byte_size=11,
+        detected_mime='image/png', uploaded_sha256=?, updated_at=7001,
+        uploaded_at=7001, verified_at=7001
+    WHERE id=?
+  `).bind('c'.repeat(64), fileObjectId).run();
+  await db.prepare(`
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      ?, ?, 'ORDER_EVIDENCE_SUBMISSION', 'evidence-portal-1',
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'STAFF', 'staff-confirm', 7002, 'EXPLICIT_AUDIENCES', NULL, NULL
+    )
+  `).bind(fileEntityLinkId, fileObjectId).run();
+
+  if (grantState !== 'missing') {
+    await db.prepare(`
+      INSERT INTO file_entity_audience_grants (
+        id, file_entity_link_id, subject_type, buyer_customer_id,
+        seller_organization_id, staff_permission_code, staff_scope_type,
+        staff_team_id, granted_by_actor_type, granted_by_actor_id,
+        created_at, expires_at, revoked_at
+      ) VALUES (
+        ?, ?, 'SELLER_ORGANIZATION', NULL, 'org-portal',
+        NULL, NULL, NULL, 'STAFF', 'staff-confirm', 7003, ?, NULL
+      )
+    `).bind(
+      grantId,
+      fileEntityLinkId,
+      grantState === 'expired' ? 8000 : null,
+    ).run();
+    if (grantState === 'revoked') {
+      await db.prepare(`
+        UPDATE file_entity_audience_grants
+        SET revoked_at=8000
+        WHERE id=?
+      `).bind(grantId).run();
+    }
+  }
+
+  await db.prepare(`
+    INSERT INTO order_evidence_internal_files (
+      id, order_evidence_submission_id, slot,
+      file_object_id, file_entity_link_id,
+      created_by_staff_id, created_at
+    ) VALUES (
+      'projection-chat-attachment', 'evidence-portal-1', 1,
+      ?, ?, 'staff-confirm', 7004
+    )
+  `).bind(fileObjectId, fileEntityLinkId).run();
 }
 
 function command(idempotencyKey: string, now: number) {

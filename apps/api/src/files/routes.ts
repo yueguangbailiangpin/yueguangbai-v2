@@ -41,6 +41,7 @@ const SELLER_UPLOADS = new Map<FilePurpose, FileVisibility>([
 const STAFF_UPLOADS = new Map<FilePurpose, FileVisibility>([
   ['BUYER_REFUND_PROOF', 'INTERNAL_ONLY'],
   ['SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY'],
+  ['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE'],
 ]);
 const JSON_BODY_MAX_BYTES = 16 * 1024;
 const MULTIPART_BODY_MAX_BYTES = 26 * 1024 * 1024;
@@ -87,6 +88,14 @@ export function registerFileHttpRoutes(app: Hono<AppEnv>): void {
     'STAFF',
     'SELLER_SETTLEMENT_PROOF',
     'INTERNAL_ONLY',
+  );
+  registerIntentRoute(
+    app,
+    FILE_HTTP_PURPOSE_ROUTES.staffSellerOrderChatScreenshot.path,
+    undefined,
+    'STAFF',
+    'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+    'SELLER_VISIBLE',
   );
 
   registerLifecycleRoutes(app, 'BUYER', '/api/buyer-portal', customerSession);

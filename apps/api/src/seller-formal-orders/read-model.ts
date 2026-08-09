@@ -57,6 +57,8 @@ interface FormalOrderRow {
   buyer_refund_status: string | null;
   principal_status: string | null;
   service_fee_status: string | null;
+  chat_screenshot_status: 'AVAILABLE' | 'NONE';
+  chat_screenshot_file_version: number | null;
   confirmed_at: number;
   confirmed_business_date: string;
 }
@@ -240,6 +242,67 @@ function selectFormalOrderProjection(): string {
       (SELECT payable.derived_status FROM seller_payable_balances payable
         WHERE payable.formal_order_id=formal_order.id
           AND payable.payable_type='SELLER_SERVICE_FEE') AS service_fee_status,
+      (SELECT file_object.version
+        FROM order_evidence_internal_files attachment
+        JOIN file_objects file_object ON file_object.id=attachment.file_object_id
+        JOIN file_upload_intents upload_intent
+          ON upload_intent.id=file_object.upload_intent_id
+          AND upload_intent.status='VERIFIED'
+        JOIN file_entity_links file_link ON file_link.id=attachment.file_entity_link_id
+        JOIN file_entity_audience_grants audience_grant
+          ON audience_grant.file_entity_link_id=file_link.id
+          AND audience_grant.subject_type='SELLER_ORGANIZATION'
+          AND audience_grant.seller_organization_id=
+            formal_order.seller_organization_id
+          AND audience_grant.revoked_at IS NULL
+          AND (audience_grant.expires_at IS NULL
+            OR audience_grant.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
+        WHERE attachment.order_evidence_submission_id=
+          formal_order.order_evidence_submission_id
+          AND attachment.slot=1
+          AND store.status='ACTIVE'
+          AND file_object.status='VERIFIED'
+          AND file_link.file_object_id=attachment.file_object_id
+          AND file_link.entity_type='ORDER_EVIDENCE_SUBMISSION'
+          AND file_link.entity_id=formal_order.order_evidence_submission_id
+          AND file_link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
+          AND file_link.visibility='SELLER_VISIBLE'
+          AND file_link.authorization_mode='EXPLICIT_AUDIENCES'
+          AND file_link.revoked_at IS NULL
+          AND (file_link.expires_at IS NULL OR file_link.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
+        LIMIT 1) AS chat_screenshot_file_version,
+      CASE WHEN EXISTS (
+        SELECT 1
+        FROM order_evidence_internal_files attachment
+        JOIN file_entity_links file_link
+          ON file_link.id=attachment.file_entity_link_id
+          AND file_link.file_object_id=attachment.file_object_id
+          AND file_link.entity_type='ORDER_EVIDENCE_SUBMISSION'
+          AND file_link.entity_id=formal_order.order_evidence_submission_id
+          AND file_link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
+          AND file_link.visibility='SELLER_VISIBLE'
+          AND file_link.authorization_mode='EXPLICIT_AUDIENCES'
+          AND file_link.revoked_at IS NULL
+          AND (file_link.expires_at IS NULL OR file_link.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
+        JOIN file_objects file_object
+          ON file_object.id=attachment.file_object_id
+          AND file_object.status='VERIFIED'
+        JOIN file_upload_intents upload_intent
+          ON upload_intent.id=file_object.upload_intent_id
+          AND upload_intent.status='VERIFIED'
+        JOIN file_entity_audience_grants audience_grant
+          ON audience_grant.file_entity_link_id=file_link.id
+          AND audience_grant.subject_type='SELLER_ORGANIZATION'
+          AND audience_grant.seller_organization_id=
+            formal_order.seller_organization_id
+          AND audience_grant.revoked_at IS NULL
+          AND (audience_grant.expires_at IS NULL
+            OR audience_grant.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
+        WHERE attachment.order_evidence_submission_id=
+          formal_order.order_evidence_submission_id
+          AND attachment.slot=1
+          AND store.status='ACTIVE'
+      ) THEN 'AVAILABLE' ELSE 'NONE' END AS chat_screenshot_status,
       formal_order.confirmed_at,
       formal_order.confirmed_business_date
     FROM formal_orders formal_order
@@ -332,6 +395,14 @@ function mapFormalOrder(
       principalStatus: row.principal_status,
       serviceFeeExpectedCnyFen: BigInt(String(row.service_fee_cny_fen)),
       serviceFeeStatus: row.service_fee_status,
+    }),
+    chat_screenshot: Object.freeze({
+      status: row.chat_screenshot_status === 'AVAILABLE'
+        ? 'AVAILABLE'
+        : 'NONE',
+      file_version: row.chat_screenshot_file_version === null
+        ? null
+        : Number(row.chat_screenshot_file_version),
     }),
     confirmed_at: Number(row.confirmed_at),
     confirmed_business_date: row.confirmed_business_date,
