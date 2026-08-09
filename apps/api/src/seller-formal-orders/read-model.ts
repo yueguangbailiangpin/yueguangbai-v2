@@ -47,6 +47,26 @@ interface FormalOrderRow {
   seller_cny_per_jpy_e8: number | string;
   seller_rate_effective_from: number;
   seller_rate_confirmed_at: number;
+  principal_platform_order_date: string | null;
+  principal_payment_amount_minor: number | string | null;
+  principal_payment_currency_code: 'JPY' | 'USD' | 'KRW' | 'CNY' | null;
+  principal_base_rate_version_id: string | null;
+  principal_base_rate_business_date: string | null;
+  principal_base_rate_confirmed_at: number | null;
+  principal_base_rate_value: number | string | null;
+  principal_base_rate_scale: number | string | null;
+  principal_policy_version_id: string | null;
+  principal_policy_scope_type: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION' | null;
+  principal_policy_seller_organization_id: string | null;
+  principal_policy_version_no: number | null;
+  principal_policy_effective_from: number | null;
+  principal_policy_confirmed_at: number | null;
+  principal_markup_rate_value: number | string | null;
+  principal_markup_rate_scale: number | string | null;
+  principal_final_rate_value: number | string | null;
+  principal_final_rate_scale: number | string | null;
+  principal_rounding_rule: 'HALF_UP' | null;
+  principal_amount_minor: number | string | null;
   service_fee_version_id: string;
   service_fee_version_no: number;
   service_fee_effective_from: number;
@@ -225,6 +245,26 @@ function selectFormalOrderProjection(): string {
       generic.rounding_rule,
       snapshot.seller_rate_effective_from,
       snapshot.seller_rate_confirmed_at,
+      principal.platform_order_date AS principal_platform_order_date,
+      principal.payment_amount_minor AS principal_payment_amount_minor,
+      principal.payment_currency_code AS principal_payment_currency_code,
+      principal.base_rate_version_id AS principal_base_rate_version_id,
+      principal.base_rate_business_date AS principal_base_rate_business_date,
+      principal.base_rate_confirmed_at AS principal_base_rate_confirmed_at,
+      principal.base_rate_value AS principal_base_rate_value,
+      principal.base_rate_scale AS principal_base_rate_scale,
+      principal.policy_version_id AS principal_policy_version_id,
+      principal.policy_scope_type AS principal_policy_scope_type,
+      principal.policy_seller_organization_id AS principal_policy_seller_organization_id,
+      principal.policy_version_no AS principal_policy_version_no,
+      principal.policy_effective_from AS principal_policy_effective_from,
+      principal.policy_confirmed_at AS principal_policy_confirmed_at,
+      principal.markup_rate_value AS principal_markup_rate_value,
+      principal.markup_rate_scale AS principal_markup_rate_scale,
+      principal.final_rate_value AS principal_final_rate_value,
+      principal.final_rate_scale AS principal_final_rate_scale,
+      principal.rounding_rule AS principal_rounding_rule,
+      principal.seller_expected_principal_amount_minor AS principal_amount_minor,
       snapshot.service_fee_version_id,
       snapshot.service_fee_version_no,
       snapshot.service_fee_effective_from,
@@ -313,6 +353,8 @@ function selectFormalOrderProjection(): string {
       ON snapshot.formal_order_id=formal_order.id
     JOIN formal_order_marketplace_money_snapshots generic
       ON generic.formal_order_id=formal_order.id
+    LEFT JOIN seller_principal_rate_snapshots principal
+      ON principal.formal_order_id=formal_order.id
   `;
 }
 
@@ -360,6 +402,31 @@ function mapFormalOrder(
     }),
     seller_expected_principal_cny_fen:
       integerString(row.seller_expected_principal_cny_fen),
+    seller_principal_rate_snapshot: row.principal_policy_version_id === null
+      ? null
+      : Object.freeze({
+          platform_order_date: row.principal_platform_order_date!,
+          payment_amount_minor: integerString(row.principal_payment_amount_minor!),
+          payment_currency_code: row.principal_payment_currency_code!,
+          base_rate_version_id: row.principal_base_rate_version_id!,
+          base_rate_business_date: row.principal_base_rate_business_date!,
+          base_rate_confirmed_at: Number(row.principal_base_rate_confirmed_at),
+          base_rate_value: integerString(row.principal_base_rate_value!),
+          base_rate_scale: integerString(row.principal_base_rate_scale!),
+          policy_version_id: row.principal_policy_version_id,
+          policy_scope_type: row.principal_policy_scope_type!,
+          policy_seller_organization_id: row.principal_policy_seller_organization_id,
+          policy_version_no: Number(row.principal_policy_version_no),
+          policy_effective_from: Number(row.principal_policy_effective_from),
+          policy_confirmed_at: Number(row.principal_policy_confirmed_at),
+          markup_rate_value: integerString(row.principal_markup_rate_value!),
+          markup_rate_scale: integerString(row.principal_markup_rate_scale!),
+          final_rate_value: integerString(row.principal_final_rate_value!),
+          final_rate_scale: integerString(row.principal_final_rate_scale!),
+          rounding_rule: row.principal_rounding_rule!,
+          seller_expected_principal_amount_minor:
+            integerString(row.principal_amount_minor!),
+        }),
     seller_agreement_rate_snapshot: Object.freeze({
       rate_version_id: row.seller_rate_version_id,
       version_no: Number(row.seller_rate_version_no),

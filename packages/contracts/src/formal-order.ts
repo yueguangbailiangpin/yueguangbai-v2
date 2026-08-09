@@ -3,6 +3,7 @@ import type {
   FixedIntegerString,
   PricingReviewType,
 } from './pricing';
+import type { SellerPrincipalRateSnapshotDto } from './seller-principal-rate-policy';
 
 export const FORMAL_ORDER_STATUSES = ['CONFIRMED'] as const;
 export type FormalOrderStatus = typeof FORMAL_ORDER_STATUSES[number];
@@ -47,6 +48,7 @@ export interface FormalOrderFinancialSnapshotProjection {
   buyer_expected_principal_cny_fen: FixedIntegerString;
   seller_expected_principal_cny_fen: FixedIntegerString;
   rounding_rule: FormalOrderRoundingRule;
+  seller_principal_rate_snapshot?: SellerPrincipalRateSnapshotDto;
 }
 
 export interface ConfirmFormalOrderResult {

@@ -66,6 +66,7 @@ export type AppBindings = StaffAuthProviderBindings
   FEISHU_WORKBENCH_MAX_ATTEMPTS?: string;
   FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND?: string;
   FEISHU_WORKBENCH_ADAPTER?: FeishuWorkbenchAdapter;
+  SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED?: string;
 };
 
 export type AppVariables = {

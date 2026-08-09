@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。共有 191 个唯一端点：188 个 `/api/*`、1 个 `/health`，以及默认关闭并受 OAuth 保护的 Staff MCP metadata/resource。参数占位符使用 Hono 注册表的 `:name` 形式。
+这是默认 App 的可复现 route inventory。共有 195 个唯一端点：192 个 `/api/*`、1 个 `/health`，以及默认关闭并受 OAuth 保护的 Staff MCP metadata/resource。参数占位符使用 Hono 注册表的 `:name` 形式。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表精确比较；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都会失败。
 
@@ -87,6 +87,7 @@ GET /api/staff/order-instructions/expiry-scan/state
 GET /api/staff/reassignment-batches/:id
 GET /api/staff/reviews/:id
 GET /api/staff/reviews/:id/evidence-versions
+GET /api/staff/seller-principal-rate-policies
 GET /api/staff/seller-settlements/:organizationId/payables
 GET /api/staff/seller-settlements/:organizationId/payables/:payableId
 GET /api/staff/seller-settlements/:organizationId/payments
@@ -201,6 +202,9 @@ POST /api/staff/seller-allocations/:allocationId/reverse
 POST /api/staff/seller-payments/:paymentId/allocations
 POST /api/staff/seller-payments/:paymentId/proof/read-intent
 POST /api/staff/seller-payments/:paymentId/reverse
+POST /api/staff/seller-principal-rate-policies/:id/confirm
+POST /api/staff/seller-principal-rate-policies/:id/reject
+POST /api/staff/seller-principal-rate-policies/submit
 POST /api/staff/seller-settlements/:organizationId/payments
 POST /api/staff/seller-settlements/:organizationId/reconciliation
 POST /api/staff/work-items/:id/reassign

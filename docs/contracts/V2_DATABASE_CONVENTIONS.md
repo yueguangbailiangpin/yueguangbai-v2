@@ -118,7 +118,14 @@ WHERE id=? AND version=?;
 - Migration 不读取生产数据。
 - Schema、Trigger、Index 和 Seed 都必须可重复验证。
 
-当前连续版本为 schema 40。`0037_product_reservation_order_scheduling.sql` 仍拥有排期边界；`0038_staff_mcp_production_transport_oauth.sql` 新增 Staff MCP production transport 安全状态；`0039_staff_access_binding_management.sql` 新增仅存哈希的一次性员工绑定邀请、绑定 OAuth state 与不可变状态转换边界；`0040_seller_partner_master_data_import.sql` 新增卖家来源追溯、标准产品、卖家供给与预约资格边界：
+当前连续版本为 schema 41。`0037_product_reservation_order_scheduling.sql` 仍拥有排期边界；`0038_staff_mcp_production_transport_oauth.sql` 新增 Staff MCP production transport 安全状态；`0039_staff_access_binding_management.sql` 新增仅存哈希的一次性员工绑定邀请、绑定 OAuth state 与不可变状态转换边界；`0040_seller_partner_master_data_import.sql` 新增卖家来源追溯、标准产品、卖家供给与预约资格边界；`0041_seller_principal_rate_policy.sql` 新增版本化卖家本金汇率策略和正式订单不可变策略快照：
+
+- 卖家本金汇率只在正式订单确认时按 `平台下单日（Amazon 的 amazon_order_date，按中国业务自然日解释）` 读取权威日基准汇率，并加上生效策略的绝对汇率加点；组织覆盖优先于币种对默认值，明确的 0 与无覆盖不同。
+- 策略版本保存生效时间、提交/确认审计身份和幂等事件。订单快照同时保存基准版本和值、策略版本/范围/值、最终汇率、取整口径和本金计算结果；正式订单、旧账务和既有快照不回写。
+- 0041 的 D1 约束固定策略初始 `SUBMITTED`、唯一 `SUBMITTED→CONFIRMED/REJECTED` 决策、终态/事件不可变与禁止删除，并保护同一 scope/卖家/null/币种对的 pending 和 confirmed effective boundary 唯一性。
+- 0041 快照 guard 强制基准业务日期等于平台下单日期；默认策略的卖家组织必须为 NULL，组织覆盖必须等于正式订单卖家组织；并用商/余数分解在 SQLite 安全整数范围内证明本金金额等于 `payment × final_rate` 的 `HALF_UP` 结果，拒绝直接 SQL 篡改金额。
+- 策略 API 必须使用 Staff middleware 提供的可信 `staffDataScope`：范围外读取 concealed 404、范围外写入 403；当前四角色目录下仅 GLOBAL Owner 可提交币种对默认或任意组织覆盖，局部 Seller Ops 只能提交已分配组织覆盖，Personal DENY 不得绕过。
+- 下单日无权威日汇率或无生效策略时确认 fail closed；不得回退最近日期或猜测。旧 `seller_agreement_rate_versions` 及旧财务快照字段保留为向前兼容投影，新卖家本金金额以 0041 快照为权威。
 
 - issuer/subject/JTI/client/session/replay/rate 只保存 keyed hash，不保存 bearer token、Secret 或 Prompt；一个 issuer/subject 只能映射一个 Staff，运行时仍要求 binding 与 Staff 当前 ACTIVE。
 - replay 使用 PROCESSING lease / COMPLETED text response / COMPLETED_NO_RESPONSE / expiry；text response 不超过 256 KiB，截图只保存 metadata 且 response 必须 NULL；rate 使用独立 fixed window；GLOBAL control seed 必须默认 disabled；审计继续复用不可变 `audit_events`。

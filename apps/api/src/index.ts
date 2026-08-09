@@ -43,6 +43,7 @@ import { registerAcquisitionRoutes } from './acquisition';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
 import { registerStaffMcpTransportRoutes } from './staff-mcp';
 import { registerStaffAccessManagementRoutes } from './staff-access-management';
+import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
 
 const app = createApp();
 
@@ -64,6 +65,7 @@ registerFeishuWorkbenchRoutes(app);
 // This path middleware must precede every /api/staff route registration.
 app.use('/api/staff/*', staffSessionMiddleware());
 registerStaffAssignmentRoutes(app);
+registerSellerPrincipalRatePolicyRoutes(app);
 registerStaffCustomerSecurityRoutes(app);
 registerAcquisitionRoutes(app);
 registerAdminBusinessDashboardRoutes(app);

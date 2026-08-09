@@ -507,22 +507,23 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(40);
+    expect(Number(state?.schema_version)).toBe(41);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(40);
+    expect(migrations).toHaveLength(41);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-6)).toBe('0035_staff_four_role_consolidation.sql');
-    expect(migrations.at(-5)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-4)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations.at(-3)).toBe('0038_staff_mcp_production_transport_oauth.sql');
-    expect(migrations.at(-2)).toBe('0039_staff_access_binding_management.sql');
-    expect(migrations.at(-1)).toBe('0040_seller_partner_master_data_import.sql');
+    expect(migrations.at(-7)).toBe('0035_staff_four_role_consolidation.sql');
+    expect(migrations.at(-6)).toBe('0036_staff_acquisition_funnel_workbench.sql');
+    expect(migrations.at(-5)).toBe('0037_product_reservation_order_scheduling.sql');
+    expect(migrations.at(-4)).toBe('0038_staff_mcp_production_transport_oauth.sql');
+    expect(migrations.at(-3)).toBe('0039_staff_access_binding_management.sql');
+    expect(migrations.at(-2)).toBe('0040_seller_partner_master_data_import.sql');
+    expect(migrations.at(-1)).toBe('0041_seller_principal_rate_policy.sql');
   });
 });
 
@@ -773,6 +774,7 @@ function command(idempotencyKey: string, now: number) {
     idempotencyKey,
     requestId: `request:${idempotencyKey}`,
     now,
+    sellerPrincipalRateEnforcementEnabled: true,
   };
 }
 
@@ -1151,6 +1153,21 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
     SET status='CONFIRMED', decision_version=2,
         confirmed_by_staff_id='staff-confirm', confirmed_at=2000
     WHERE id='buyer-rate-portal-v1';
+
+    INSERT INTO buyer_daily_exchange_rates (
+      id, business_date, version_no, status, cny_per_jpy_e8,
+      submitted_by_staff_id, submitted_at, decision_version,
+      confirmed_by_staff_id, confirmed_at,
+      rejected_by_staff_id, rejected_at, rejection_reason
+    ) VALUES
+      ('buyer-rate-portal-v2', '2026-08-02', 1, 'SUBMITTED', 5500000,
+       'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL),
+      ('buyer-rate-portal-v3', '2026-08-03', 1, 'SUBMITTED', 5500000,
+       'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL);
+    UPDATE buyer_daily_exchange_rates
+    SET status='CONFIRMED', decision_version=2,
+        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
+    WHERE id IN ('buyer-rate-portal-v2', 'buyer-rate-portal-v3');
   `);
 
   await bindPhase3GEvidenceFixture(db, {
@@ -1186,6 +1203,8 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
 
   seedSellerRate(db, 'org-portal', 'seller-rate-portal-v1', 6_000_000);
   seedSellerRate(db, 'org-other', 'seller-rate-other-v1', 6_200_000);
+  seedPrincipalRate(db, 'org-portal', 'principal-rate-portal-v1', 500_000);
+  seedPrincipalRate(db, 'org-other', 'principal-rate-other-v1', 700_000);
   seedServiceFee(
     db,
     'org-portal',
@@ -1229,6 +1248,31 @@ function seedSellerRate(
       NULL, NULL, NULL, NULL, NULL
     );
     UPDATE seller_agreement_rate_versions
+    SET status='CONFIRMED', decision_version=2,
+        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
+    WHERE id='${id}';
+  `);
+}
+
+function seedPrincipalRate(
+  db: SqliteDatabase,
+  organizationId: string,
+  id: string,
+  markupRateE8: number,
+): void {
+  db.exec(`
+    INSERT INTO seller_principal_rate_policy_versions (
+      id, scope_type, seller_organization_id, source_currency_code,
+      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
+      effective_from, submitted_by_staff_id, submitted_at, decision_version,
+      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
+      rejection_reason
+    ) VALUES (
+      '${id}', 'SELLER_ORGANIZATION', '${organizationId}', 'JPY', 'CNY', 1,
+      'SUBMITTED', ${markupRateE8}, 100000000, 3000,
+      'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL
+    );
+    UPDATE seller_principal_rate_policy_versions
     SET status='CONFIRMED', decision_version=2,
         confirmed_by_staff_id='staff-confirm', confirmed_at=2000
     WHERE id='${id}';

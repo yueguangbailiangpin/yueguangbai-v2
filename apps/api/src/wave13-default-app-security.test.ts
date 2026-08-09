@@ -99,7 +99,7 @@ describe('Wave 13 default app and route security boundaries', () => {
 
     const inventory = blocks.map((block) => block.key).sort();
     const inventoryDump = inventory.join('\n');
-    expect(inventory, inventoryDump).toHaveLength(191);
+    expect(inventory, inventoryDump).toHaveLength(195);
     expect(inventory.some((route) => route.includes('/api/v2'))).toBe(false);
     expect(inventory.some((route) => /\/(?:links?|grants?)(?:\/|$)/u
       .test(route))).toBe(false);
@@ -152,7 +152,7 @@ describe('Wave 13 default app and route security boundaries', () => {
     const inventorySet = new Set(inventory);
     expect([...wave13].every((route) => inventorySet.has(route))).toBe(true);
     expect(inventory.filter((route) => !wave13.has(route)), inventoryDump)
-      .toHaveLength(160);
+      .toHaveLength(164);
 
     const staffMiddlewareIndex = app.routes.findIndex((route) =>
       route.method === 'ALL' && route.path === '/api/staff/*',

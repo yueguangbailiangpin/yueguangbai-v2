@@ -19,6 +19,7 @@ import {
   staffProductPageSchema, staffReservationSchedulePageSchema,
   staffAccessOverviewSchema, createStaffBindingInvitationSchema,
   cancelStaffBindingInvitationSchema, staffAccessMutationSchema,
+  staffSellerPrincipalRatePolicySchema, staffSellerPrincipalRatePolicyMutationSchema,
 } from '../contracts/runtime';
 
 const acquisitionChannelResultSchema = z.object({ channel: acquisitionChannelSchema, replayed: z.boolean() }).strict();
@@ -120,6 +121,19 @@ export const staffApi = Object.freeze({
     if (query.cursor) parameters.set('cursor', query.cursor);
     return read(client, `/api/staff/me/work-items?${parameters}`, staffWorkItemsSchema, signal);
   },
+  sellerPrincipalRatePolicies: (client: QueryClient, sourceCurrencyCode: string,
+    sellerOrganizationId: string, signal?: AbortSignal) => read(client,
+    `/api/staff/seller-principal-rate-policies?source_currency_code=${encodeURIComponent(sourceCurrencyCode)}&seller_organization_id=${encodeURIComponent(sellerOrganizationId)}`,
+    staffSellerPrincipalRatePolicySchema, signal),
+  submitSellerPrincipalRatePolicy: (client: QueryClient, body: unknown, key: string) => write(
+    client, '/api/staff/seller-principal-rate-policies/submit', body,
+    staffSellerPrincipalRatePolicyMutationSchema, key),
+  confirmSellerPrincipalRatePolicy: (client: QueryClient, id: string, body: unknown, key: string) => write(
+    client, `/api/staff/seller-principal-rate-policies/${encodeURIComponent(id)}/confirm`, body,
+    staffSellerPrincipalRatePolicyMutationSchema, key),
+  rejectSellerPrincipalRatePolicy: (client: QueryClient, id: string, body: unknown, key: string) => write(
+    client, `/api/staff/seller-principal-rate-policies/${encodeURIComponent(id)}/reject`, body,
+    staffSellerPrincipalRatePolicyMutationSchema, key),
   orderEvidence: (client: QueryClient, id: string, signal?: AbortSignal) => read(client, `/api/staff/order-evidence/${encodeURIComponent(id)}`, staffOrderEvidenceSchema, signal),
   mutateOrderEvidence: (client: QueryClient, id: string, action: 'approve' | 'request-changes', body: unknown, key: string) => write(client, `/api/staff/order-evidence/${encodeURIComponent(id)}/${action}`, body, orderMutationSchema, key),
   review: (client: QueryClient, id: string, signal?: AbortSignal) => read(client, `/api/staff/reviews/${encodeURIComponent(id)}`, staffReviewSchema, signal),

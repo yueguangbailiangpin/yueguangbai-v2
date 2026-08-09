@@ -9,6 +9,35 @@ export const workTypeSchema = z.enum([
   'BUYER_REFUND_PROCESSING',
 ]);
 export const workStatusSchema = z.enum(['OPEN', 'COMPLETED', 'CANCELLED']);
+const sellerPrincipalRatePolicyScopeSchema = z.enum([
+  'CURRENCY_PAIR_DEFAULT', 'SELLER_ORGANIZATION',
+]);
+const sellerPrincipalRatePolicyVersionSchema = z.object({
+  policy_version_id: z.string(),
+  scope_type: sellerPrincipalRatePolicyScopeSchema,
+  seller_organization_id: z.string().nullable(),
+  source_currency_code: z.string(), quote_currency_code: z.literal('CNY'),
+  version_no: z.number().int().positive(), decision_version: z.number().int().positive(),
+  status: z.enum(['SUBMITTED', 'CONFIRMED', 'REJECTED']),
+  markup_rate_value: z.string().regex(/^(0|[1-9][0-9]*)$/u),
+  markup_rate_scale: z.string().regex(/^100000000$/u), effective_from: z.number().int().nonnegative(),
+  submitted_at: z.number().int().nonnegative(), confirmed_at: z.number().int().nonnegative().nullable(),
+  rejection_reason: z.string().nullable(), replayed: z.boolean(),
+}).strict();
+export const staffSellerPrincipalRatePolicySchema = z.object({
+  source_currency_code: z.string(), quote_currency_code: z.literal('CNY'),
+  seller_organization_id: z.string(),
+  default_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+  seller_override_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+  default_pending_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+  seller_override_pending_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+  default_next_version: z.number().int().positive(),
+  seller_override_next_version: z.number().int().positive(),
+  selected_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+}).strict();
+export const staffSellerPrincipalRatePolicyMutationSchema = z.object({
+  policy: sellerPrincipalRatePolicyVersionSchema,
+}).strict();
 export const safeFileSchema = z.object({
   file_object_id: z.string(), file_version: z.number().int().positive(),
   purpose: z.enum(['ORDER_EVIDENCE', 'REVIEW_EVIDENCE', 'BUYER_REFUND_PROOF', 'SELLER_SETTLEMENT_PROOF']),
