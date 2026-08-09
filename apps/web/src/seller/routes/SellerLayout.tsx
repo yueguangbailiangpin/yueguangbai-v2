@@ -3,8 +3,10 @@ import { ClipboardList, Home, MessageSquareText, PackageSearch, ReceiptText, Set
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { BottomNavigation, IdentityShell, Select } from '../../ui/primitives';
+import { CursorPagination } from '../../ui/CursorPagination';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';
+import { useSellerCursorPages } from '../queries/useSellerCursorPages';
 
 const navigation = [
   { path: '/seller', label: '首页', icon: Home },
@@ -24,7 +26,12 @@ const marketplaceLabels = {
   TIKTOK_JP: 'TikTok 日本站（未接入）',
 } as const;
 
-const roleLabels = { OWNER: '负责人', OPERATOR: '运营成员' } as const;
+const roleLabels = {
+  OWNER: '负责人',
+  OPERATIONS: '运营成员',
+  FINANCE: '财务成员',
+  VIEWER: '查看成员',
+} as const;
 
 const SellerContext = createContext<{ storeId: string | null }>({ storeId: null });
 export function useSellerStoreContext(): { storeId: string | null } { return useContext(SellerContext); }
@@ -45,8 +52,12 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
   const client = useQueryClient();
   const [storeId, setStoreId] = useState<string | null>(null);
   const me = useQuery({ queryKey: sellerQueryKeys.me, queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me) });
-  const stores = useQuery({ queryKey: sellerQueryKeys.stores, queryFn: ({ signal }) => sellerApi.stores(client, signal).then((r) => r.data.items) });
-  const selectedStore = stores.data?.find((store) => store.id === storeId) ?? null;
+  const stores = useSellerCursorPages({
+    resetKey: 'seller-stores:100',
+    queryKey: sellerQueryKeys.storesPage,
+    queryFn: (cursor, signal) => sellerApi.stores(client, cursor, signal),
+  });
+  const selectedStore = stores.items.find((store) => store.id === storeId) ?? null;
   const value = useMemo(() => ({ storeId }), [storeId]);
   const organization = me.data?.organization;
   const member = me.data?.member;
@@ -72,11 +83,15 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
             <span>店铺</span>
             <Select id="seller-store" aria-label="店铺" value={storeId ?? ''} onChange={(event) => setStoreId(event.target.value || null)}>
               <option value="">全部授权店铺</option>
-              {stores.data?.map((store) => <option key={store.id} value={store.id} disabled={store.marketplace_status !== 'ACTIVE' || store.adapter_status !== 'AVAILABLE'}>
+              {stores.items.map((store) => <option key={store.id} value={store.id} disabled={store.marketplace_status !== 'ACTIVE' || store.adapter_status !== 'AVAILABLE'}>
                 {marketplaceLabels[store.canonical_marketplace_code]} · {store.display_name}
               </option>)}
             </Select>
           </label>
+          {stores.initialError ? <button type="button" className="button secondary" onClick={stores.retryInitial}>重试店铺列表</button>
+            : <CursorPagination {...stores} onLoadMore={stores.loadMore} onRetry={stores.retryLater}
+              loadLabel="加载更多店铺" loadingLabel="正在加载更多店铺" retryLabel="重试店铺列表"
+              errorMessage="后一页店铺暂时无法读取，已加载店铺仍可使用。" />}
           <div className="seller-context-member">
             <UserRound aria-hidden="true" /><span><strong>{member?.display_name ?? '核验中'}</strong>{member ? <small>{roleLabels[member.role]}</small> : null}</span>
           </div>

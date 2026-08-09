@@ -18,6 +18,7 @@ import {
   customerSessionMiddleware,
   requireCustomerSessionFromContext,
 } from '../middleware/customer-auth';
+import { resolveSellerPortalActor } from '../seller-portal/actor';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { driveArchiveRuntime } from '../cold-image-archive/runtime';
 import {
@@ -38,6 +39,7 @@ const BUYER_UPLOADS = new Map<FilePurpose, FileVisibility>([
 const SELLER_UPLOADS = new Map<FilePurpose, FileVisibility>([
   ['PRODUCT_APPLICATION_IMAGE', 'SELLER_VISIBLE'],
 ]);
+const NO_UPLOADS = new Map<FilePurpose, FileVisibility>();
 const STAFF_UPLOADS = new Map<FilePurpose, FileVisibility>([
   ['BUYER_REFUND_PROOF', 'INTERNAL_ONLY'],
   ['SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY'],
@@ -250,7 +252,7 @@ function registerLifecycleRoutes(
       expires_at: result.expiresAt,
       replayed: result.replayed,
     }, requestId(context)));
-  });
+  }, { concealCustomerRead: domain !== 'STAFF' });
 
   const readContent = withFileErrors(async (context) => {
     const authority = await resolveRouteAuthority(context, domain);
@@ -284,7 +286,7 @@ function registerLifecycleRoutes(
         'X-Content-Type-Options': 'nosniff',
       },
     });
-  });
+  }, { concealCustomerRead: domain !== 'STAFF' });
 
   addRoute(app, 'put', `${prefix}/file-uploads/:fileObjectId/content`, middleware, upload);
   addRoute(app, 'post', `${prefix}/file-upload-intents/:id/complete`, middleware, complete);
@@ -336,20 +338,28 @@ async function resolveRouteAuthority(
   }
 
   if (session.accountType !== 'SELLER_MEMBER') denyNotFound();
-  const row = await context.env.DB.prepare(`
-    SELECT member.id
-    FROM seller_organization_members member
-    JOIN seller_organizations organization
-      ON organization.id=member.organization_id
-    WHERE member.identity_subject_id=?
-      AND member.status='ACTIVE'
-      AND organization.status='ACTIVE'
-  `).bind(session.identitySubjectId).first<{ id: string }>();
-  if (!row) denyNotFound();
+  let seller: Awaited<ReturnType<typeof resolveSellerPortalActor>>;
+  try {
+    seller = await resolveSellerPortalActor(context);
+  } catch (error) {
+    const status = (error as { status?: unknown })?.status;
+    if (status === 401 || status === 403 || status === 404) denyNotFound();
+    throw error;
+  }
   return {
-    actor: { type: 'SELLER_MEMBER', id: row.id, roles: [] },
-    principal: customerPrincipal(session, 'SELLER_SESSION'),
-    allowedUploads: SELLER_UPLOADS,
+    actor: {
+      type: 'SELLER_MEMBER',
+      id: seller.memberId,
+      roles: [seller.role],
+    },
+    principal: {
+      type: 'SELLER_SESSION',
+      accountId: seller.accountId,
+      identitySubjectId: seller.identitySubjectId,
+    },
+    allowedUploads: seller.role === 'OWNER' || seller.role === 'OPERATIONS'
+      ? SELLER_UPLOADS
+      : NO_UPLOADS,
   };
 }
 
@@ -506,12 +516,17 @@ function assertExactKeys(
 
 function withFileErrors(
   handler: (context: Context<AppEnv>) => Promise<Response>,
+  options: { concealCustomerRead?: boolean } = {},
 ) {
   return async (context: Context<AppEnv>): Promise<Response> => {
     try {
       return await handler(context);
     } catch (error) {
-      const normalized = normalizeFileStorageError(error);
+      const source = normalizeFileStorageError(error);
+      const normalized = options.concealCustomerRead
+        && shouldConcealCustomerReadError(source)
+        ? new FileStorageError('NOT_FOUND', 404)
+        : source;
       const code = toApiCode(normalized.code);
       return context.json(
         apiFailure(code, code, requestId(context)),
@@ -519,6 +534,15 @@ function withFileErrors(
       );
     }
   };
+}
+
+function shouldConcealCustomerReadError(error: FileStorageError): boolean {
+  return error.code === 'FORBIDDEN'
+    || error.code === 'NOT_FOUND'
+    || error.code === 'FILE_INTENT_NOT_FOUND'
+    || error.code === 'FILE_OBJECT_NOT_FOUND'
+    || error.code === 'FILE_NOT_VERIFIED'
+    || error.code === 'FILE_READ_INTENT_NOT_FOUND';
 }
 
 function toApiCode(code: FileStorageError['code']): ApiErrorCode {

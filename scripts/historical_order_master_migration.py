@@ -14,7 +14,9 @@ import collections
 import datetime as dt
 import hashlib
 import json
+import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -72,6 +74,28 @@ class DryRunError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
+
+
+def ensure_private_output_directory(path: Path) -> None:
+    created = not path.exists()
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if created and os.name == "posix":
+        path.chmod(0o700)
+
+
+def open_private_text_output(path: Path):
+    descriptor = os.open(
+        path,
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+        0o600,
+    )
+    try:
+        if os.name == "posix":
+            os.fchmod(descriptor, 0o600)
+        return os.fdopen(descriptor, "w", encoding="utf-8")
+    except Exception:
+        os.close(descriptor)
+        raise
 
 
 def local_name(tag: str) -> str:
@@ -627,7 +651,7 @@ def build_manifest(path: Path, mapping_dir: Path, output_dir: Path) -> tuple[dic
     drawing = scan_drawing(path)
     mapping, mapping_references = load_current_mapping(mapping_dir)
     records, headers, exact_orders = read_source_rows(path, drawing)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    ensure_private_output_directory(output_dir)
     manifest_path = output_dir / "historical-order-master-manifest.jsonl"
 
     order_rows: dict[tuple[str, str], list[int]] = collections.defaultdict(list)
@@ -814,7 +838,7 @@ def build_manifest(path: Path, mapping_dir: Path, output_dir: Path) -> tuple[dic
             record["order"]["duplicate_group_key"] = duplicate_group_key(order["order_number_key"], len(group_rows))
 
     validate_manifest_invariants(row_records)
-    with manifest_path.open("w", encoding="utf-8") as destination:
+    with open_private_text_output(manifest_path) as destination:
         for record in row_records:
             destination.write(json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
     manifest_hash = sha256_file(manifest_path)
@@ -867,7 +891,8 @@ def build_manifest(path: Path, mapping_dir: Path, output_dir: Path) -> tuple[dic
         "quarantine_reason_counts": dict(sorted(collections.Counter(reason for record in row_records for reason in record["isolation_reasons"]).items())),
     }
     summary_path = output_dir / "historical-order-master-dry-run.json"
-    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    with open_private_text_output(summary_path) as destination:
+        destination.write(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     summary["manifest"]["summary_path"] = str(summary_path)
     return summary, manifest_path
 
@@ -906,6 +931,7 @@ def write_negative_xlsx(path: Path, headers: list[str]) -> None:
 
 
 def run_negative_tests() -> None:
+    permission_test_status = "SKIPPED_NON_POSIX"
     with tempfile.TemporaryDirectory(prefix="historical-order-negative-") as temporary_directory:
         temporary_path = Path(temporary_directory)
         try:
@@ -944,6 +970,21 @@ def run_negative_tests() -> None:
             assert error.code == "SOURCE_HEADER_MISMATCH"
         else:  # pragma: no cover - assertion guard
             raise AssertionError("header drift must fail structurally")
+        if os.name == "posix":
+            private_output = temporary_path / "private-output"
+            ensure_private_output_directory(private_output)
+            manifest_path = private_output / "manifest.jsonl"
+            summary_path = private_output / "summary.json"
+            with open_private_text_output(manifest_path) as destination:
+                destination.write("manifest\n")
+            summary_path.write_text("stale\n", encoding="utf-8")
+            summary_path.chmod(0o644)
+            with open_private_text_output(summary_path) as destination:
+                destination.write("summary\n")
+            assert stat.S_IMODE(private_output.stat().st_mode) == 0o700
+            assert stat.S_IMODE(manifest_path.stat().st_mode) == 0o600
+            assert stat.S_IMODE(summary_path.stat().st_mode) == 0o600
+            permission_test_status = "PASS"
     assert classify_refund_status("", order_number="", order_date="2025-12-31", has_refund_date=False, has_refund_screenshot=False) == {"buyer": "REFUNDED", "seller": "REFUNDED", "mapping": "MAPPED", "lifecycle": "ACTIVE", "basis": "OWNER_RULE_DATE_CUTOFF"}
     assert classify_refund_status("", order_number="", order_date="2026-01-01", has_refund_date=False, has_refund_screenshot=False) == {"buyer": "PENDING", "seller": "PENDING", "mapping": "MAPPED", "lifecycle": "ACTIVE", "basis": "OWNER_RULE_DATE_CUTOFF"}
     assert classify_refund_status("", order_number="", order_date=None, has_refund_date=False, has_refund_screenshot=False)["mapping"] == "MAPPED"
@@ -975,7 +1016,7 @@ def run_negative_tests() -> None:
     assert duplicate_group_key("order-key", 1) is None
     assert duplicate_group_key("order-key", 2) == "order-key"
     assert duplicate_group_key(None, 2) is None
-    print(json.dumps({"status": "NEGATIVE_TESTS_PASS", "cases": ["missing_source", "source_sha256_drift", "structured_entry_failure", "header_drift", "refund_mapping", "refund_blank_date_cutoff", "prompt_review_mapping", "duplicate_quarantine", "multi_seller_guard", "rakuten_order_shape", "tiktok_order_shape", "tiktok_outlier_rejection", "amazon_missing_separator_normalization", "tiktok_owner_product_override", "rakuten_registry_blocker", "tiktok_registry_blocker", "unique_duplicate_group_key_null", "repeated_duplicate_group_key_present"], "external_writes": 0}, ensure_ascii=False))
+    print(json.dumps({"status": "NEGATIVE_TESTS_PASS", "cases": ["missing_source", "source_sha256_drift", "structured_entry_failure", "header_drift", "private_output_permissions", "refund_mapping", "refund_blank_date_cutoff", "prompt_review_mapping", "duplicate_quarantine", "multi_seller_guard", "rakuten_order_shape", "tiktok_order_shape", "tiktok_outlier_rejection", "amazon_missing_separator_normalization", "tiktok_owner_product_override", "rakuten_registry_blocker", "tiktok_registry_blocker", "unique_duplicate_group_key_null", "repeated_duplicate_group_key_present"], "private_output_permissions": permission_test_status, "external_writes": 0}, ensure_ascii=False))
 
 
 def main() -> int:

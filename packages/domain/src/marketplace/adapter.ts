@@ -117,7 +117,7 @@ function normalizeGenericIdentifier(raw: string): string {
     throw new PlatformIdentifierValidationError('PLATFORM_IDENTIFIER_EMPTY');
   }
   const nfkc = raw.normalize('NFKC');
-  if (/[\u0000-\u001F\u007F]/u.test(nfkc)) {
+  if (/\p{Cc}/u.test(nfkc)) {
     throw new PlatformIdentifierValidationError(
       'PLATFORM_IDENTIFIER_CONTROL_CHARACTER',
     );

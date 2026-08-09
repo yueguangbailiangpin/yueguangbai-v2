@@ -11,8 +11,11 @@ import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
+import { FILE_HTTP_PURPOSE_ROUTES } from '@ygb/contracts';
 import { createApp } from '../app';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
+import { MockObjectStorage } from '../files/mock-object-storage';
+import { registerFileHttpRoutes } from '../files/routes';
 import { registerSellerPortalRoutes } from './routes';
 
 const ORIGIN = 'https://portal.local.test';
@@ -20,15 +23,18 @@ const SESSION_SECRET =
   'phase4c1-seller-portal-test-secret-at-least-thirty-two-bytes';
 
 let database: SqliteDatabase | null = null;
+let fileStorage: MockObjectStorage | null = null;
 
 beforeEach(() => {
   database = createMigratedTestDatabase();
+  fileStorage = new MockObjectStorage();
   seedSellerPortalFixture(database);
 });
 
 afterEach(() => {
   database?.close();
   database = null;
+  fileStorage = null;
 });
 
 describe('Phase 4C1 seller portal HTTP API', () => {
@@ -482,6 +488,362 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(crossOrigin.status).toBe(403);
   });
 
+  it('allows file upload intents only for OWNER and OPERATIONS', async () => {
+    const app = testApp();
+    const payload = JSON.stringify({
+      files: [{
+        client_file_name: 'application.png',
+        extension: 'png',
+        declared_mime: 'image/png',
+        byte_size: 10,
+      }],
+    });
+
+    for (const role of ['owner', 'ops'] as const) {
+      const allowed = await request(
+        app,
+        FILE_HTTP_PURPOSE_ROUTES.sellerProductApplicationImage.path,
+        {
+          method: 'POST',
+          headers: await stateHeaders(role, `file-upload-${role}-0001`),
+          body: payload,
+        },
+      );
+      expect(allowed.status).toBe(200);
+    }
+
+    for (const role of ['finance', 'viewer'] as const) {
+      const denied = await request(
+        app,
+        FILE_HTTP_PURPOSE_ROUTES.sellerProductApplicationImage.path,
+        {
+          method: 'POST',
+          headers: await stateHeaders(role, `file-upload-${role}-0001`),
+          body: payload,
+        },
+      );
+      expect(denied.status).toBe(403);
+      await expect(json(denied)).resolves.toMatchObject({
+        error: { code: 'FORBIDDEN' },
+      });
+    }
+  });
+
+  it('rechecks the Seller role before an issued upload can continue', async () => {
+    if (!database) throw new Error('test_database_missing');
+    const app = testApp();
+    const created = await request(
+      app,
+      FILE_HTTP_PURPOSE_ROUTES.sellerProductApplicationImage.path,
+      {
+        method: 'POST',
+        headers: await stateHeaders('ops', 'downgrade-intent-0001'),
+        body: JSON.stringify({
+          files: [{
+            client_file_name: 'downgrade.png',
+            extension: 'png',
+            declared_mime: 'image/png',
+            byte_size: 11,
+          }],
+        }),
+      },
+    );
+    expect(created.status).toBe(200);
+    const createdBody = await json<any>(created);
+    const slot = createdBody.data.uploads[0] as {
+      file_object_id: string;
+      upload_token: string;
+    };
+
+    database.exec(`
+      UPDATE seller_organization_members
+      SET role='VIEWER', version=version+1, updated_at=2000
+      WHERE id='member-ops';
+    `);
+    const form = new FormData();
+    form.set('file', new File([
+      new Uint8Array([
+        0x89, 0x50, 0x4e, 0x47,
+        0x0d, 0x0a, 0x1a, 0x0a,
+        0x01, 0x02, 0x03,
+      ]),
+    ], 'downgrade.png', { type: 'image/png' }));
+    const denied = await request(
+      app,
+      `/api/seller-portal/file-uploads/${slot.file_object_id}/content`,
+      {
+        method: 'PUT',
+        headers: {
+          Cookie: await cookie('ops'),
+          'Idempotency-Key': 'downgrade-upload-0001',
+          'X-Upload-Token': slot.upload_token,
+          Origin: ORIGIN,
+          'Sec-Fetch-Site': 'same-origin',
+        },
+        body: form,
+      },
+    );
+    expect(denied.status).toBe(403);
+    await expect(json(denied)).resolves.toMatchObject({
+      error: { code: 'FORBIDDEN' },
+    });
+    const source = await database.prepare(`
+      SELECT status FROM file_objects WHERE id=?
+    `).bind(slot.file_object_id).first<{ status: string }>();
+    expect(source?.status).toBe('RESERVED');
+  });
+
+  it('conceals file existence and rechecks store scope when consuming', async () => {
+    if (!database) throw new Error('test_database_missing');
+    const app = testApp();
+    const readIntentPath = (fileObjectId: string) =>
+      `/api/seller-portal/files/${fileObjectId}/read-intents`;
+    const readBody = JSON.stringify({ expected_file_version: 1 });
+
+    const wrongDomain = await request(
+      app,
+      readIntentPath('missing-file-object'),
+      {
+        method: 'POST',
+        headers: await stateHeaders('buyer', 'wrong-domain-file-read-0001'),
+        body: readBody,
+      },
+    );
+    expect(wrongDomain.status).toBe(404);
+    await expect(json(wrongDomain)).resolves.toMatchObject({
+      error: { code: 'NOT_FOUND' },
+    });
+
+    for (const actor of ['owner', 'buyer'] as const) {
+      const prefix = actor === 'owner'
+        ? '/api/seller-portal'
+        : '/api/buyer-portal';
+      for (const fileObjectId of [
+        'missing-file-object',
+        'portal-application-image',
+      ]) {
+        const absent = await request(
+          app,
+          `${prefix}/files/${fileObjectId}/read-intents`,
+          {
+            method: 'POST',
+            headers: await stateHeaders(
+              actor,
+              `absent-${actor}-${fileObjectId}`,
+            ),
+            body: readBody,
+          },
+        );
+        expect(absent.status).toBe(404);
+        await expect(json(absent)).resolves.toMatchObject({
+          error: { code: 'NOT_FOUND' },
+        });
+      }
+
+      const missingIntent = await request(
+        app,
+        `${prefix}/file-read-intents/missing-read-intent/content`,
+        {
+          headers: {
+            Cookie: await cookie(actor),
+            'X-File-Read-Token': 'f'.repeat(64),
+          },
+        },
+      );
+      expect(missingIntent.status).toBe(404);
+      await expect(json(missingIntent)).resolves.toMatchObject({
+        error: { code: 'NOT_FOUND' },
+      });
+    }
+
+    database.exec(`
+      INSERT INTO file_entity_links (
+        id, file_object_id, entity_type, entity_id,
+        purpose, visibility, linked_by_actor_type,
+        linked_by_actor_id, created_at, authorization_mode,
+        expires_at, revoked_at
+      ) VALUES (
+        'portal-application-link', 'portal-application-image',
+        'PRODUCT_APPLICATION', 'application-store-2',
+        'PRODUCT_APPLICATION_IMAGE', 'SELLER_VISIBLE',
+        'SELLER_MEMBER', 'member-owner', 2000,
+        'EXPLICIT_AUDIENCES', NULL, NULL
+      );
+    `);
+
+    const noAudience = await request(
+      app,
+      readIntentPath('portal-application-image'),
+      {
+        method: 'POST',
+        headers: await stateHeaders('owner', 'no-audience-file-0001'),
+        body: readBody,
+      },
+    );
+    expect(noAudience.status).toBe(404);
+    await expect(json(noAudience)).resolves.toMatchObject({
+      error: { code: 'NOT_FOUND' },
+    });
+    const buyerNoAudience = await request(
+      app,
+      '/api/buyer-portal/files/portal-application-image/read-intents',
+      {
+        method: 'POST',
+        headers: await stateHeaders('buyer', 'buyer-no-audience-file-0001'),
+        body: readBody,
+      },
+    );
+    expect(buyerNoAudience.status).toBe(404);
+    await expect(json(buyerNoAudience)).resolves.toMatchObject({
+      error: { code: 'NOT_FOUND' },
+    });
+
+    database.exec(`
+      INSERT INTO file_entity_audience_grants (
+        id, file_entity_link_id, subject_type,
+        buyer_customer_id, seller_organization_id,
+        staff_permission_code, staff_scope_type, staff_team_id,
+        granted_by_actor_type, granted_by_actor_id,
+        created_at, expires_at, revoked_at
+      ) VALUES (
+        'portal-application-seller-grant',
+        'portal-application-link', 'SELLER_ORGANIZATION',
+        NULL, 'org-1', NULL, NULL, NULL,
+        'STAFF', 'staff-portal', 2000, NULL, NULL
+      );
+    `);
+
+    const crossStoreWrongVersion = await request(
+      app,
+      readIntentPath('portal-application-image'),
+      {
+        method: 'POST',
+        headers: await stateHeaders(
+          'ops',
+          'cross-store-wrong-version-file-0001',
+        ),
+        body: JSON.stringify({ expected_file_version: 999 }),
+      },
+    );
+    expect(crossStoreWrongVersion.status).toBe(404);
+    await expect(json(crossStoreWrongVersion)).resolves.toMatchObject({
+      error: { code: 'NOT_FOUND' },
+    });
+
+    const crossStore = await request(
+      app,
+      readIntentPath('portal-application-image'),
+      {
+        method: 'POST',
+        headers: await stateHeaders('ops', 'cross-store-file-0001'),
+        body: readBody,
+      },
+    );
+    expect(crossStore.status).toBe(404);
+    await expect(json(crossStore)).resolves.toMatchObject({
+      error: { code: 'NOT_FOUND' },
+    });
+
+    const ownerWrongVersion = await request(
+      app,
+      readIntentPath('portal-application-image'),
+      {
+        method: 'POST',
+        headers: await stateHeaders(
+          'owner',
+          'owner-wrong-version-file-0001',
+        ),
+        body: JSON.stringify({ expected_file_version: 999 }),
+      },
+    );
+    expect(ownerWrongVersion.status).toBe(409);
+    await expect(json(ownerWrongVersion)).resolves.toMatchObject({
+      error: { code: 'VERSION_CONFLICT' },
+    });
+
+    const ownerRead = await request(
+      app,
+      readIntentPath('portal-application-image'),
+      {
+        method: 'POST',
+        headers: await stateHeaders('owner', 'owner-file-read-0001'),
+        body: readBody,
+      },
+    );
+    expect(ownerRead.status).toBe(200);
+
+    database.exec(`
+      INSERT INTO seller_member_store_scopes (
+        member_id, store_id, organization_id, status,
+        assigned_by_staff_id, assigned_at, revoked_at,
+        created_at, updated_at
+      ) VALUES
+        (
+          'member-ops', 'store-2', 'org-1', 'ACTIVE',
+          'staff-portal', 2000, NULL, 2000, 2000
+        ),
+        (
+          'member-finance', 'store-2', 'org-1', 'ACTIVE',
+          'staff-portal', 2000, NULL, 2000, 2000
+        ),
+        (
+          'member-viewer', 'store-2', 'org-1', 'ACTIVE',
+          'staff-portal', 2000, NULL, 2000, 2000
+        );
+    `);
+    for (const role of ['finance', 'viewer'] as const) {
+      const roleDenied = await request(
+        app,
+        readIntentPath('portal-application-image'),
+        {
+          method: 'POST',
+          headers: await stateHeaders(
+            role,
+            `role-denied-file-read-${role}-0001`,
+          ),
+          body: readBody,
+        },
+      );
+      expect(roleDenied.status).toBe(404);
+      await expect(json(roleDenied)).resolves.toMatchObject({
+        error: { code: 'NOT_FOUND' },
+      });
+    }
+    const scopedRead = await request(
+      app,
+      readIntentPath('portal-application-image'),
+      {
+        method: 'POST',
+        headers: await stateHeaders('ops', 'scoped-file-read-0001'),
+        body: readBody,
+      },
+    );
+    expect(scopedRead.status).toBe(200);
+    const scopedBody = await json<any>(scopedRead);
+    const readIntentId = scopedBody.data.read_intent_id as string;
+    const accessToken = scopedBody.data.access_token as string;
+
+    database.exec(`
+      UPDATE seller_member_store_scopes
+      SET status='REVOKED', revoked_at=3000, updated_at=3000
+      WHERE member_id='member-ops' AND store_id='store-2';
+    `);
+    const revoked = await request(
+      app,
+      `/api/seller-portal/file-read-intents/${readIntentId}/content`,
+      {
+        headers: {
+          Cookie: await cookie('ops'),
+          'X-File-Read-Token': accessToken,
+        },
+      },
+    );
+    expect(revoked.status).toBe(404);
+    await expect(json(revoked)).resolves.toMatchObject({
+      error: { code: 'NOT_FOUND' },
+    });
+  });
+
   it('retains the schema 26 history beneath current schema 27', async () => {
     if (!database) throw new Error('test_database_missing');
     const state = await database.prepare(`
@@ -489,30 +851,32 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(42);
+    expect(Number(state?.schema_version)).toBe(43);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(42);
+    expect(migrations).toHaveLength(43);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-8)).toBe('0035_staff_four_role_consolidation.sql');
-    expect(migrations.at(-7)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-6)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations.at(-5)).toBe('0038_staff_mcp_production_transport_oauth.sql');
-    expect(migrations.at(-4)).toBe('0039_staff_access_binding_management.sql');
-    expect(migrations.at(-3)).toBe('0040_seller_partner_master_data_import.sql');
-    expect(migrations.at(-2)).toBe('0041_seller_principal_rate_policy.sql');
-    expect(migrations.at(-1)).toBe('0042_rakuten_tiktok_jp_marketplace_foundation.sql');
+    expect(migrations.at(-9)).toBe('0035_staff_four_role_consolidation.sql');
+    expect(migrations.at(-8)).toBe('0036_staff_acquisition_funnel_workbench.sql');
+    expect(migrations.at(-7)).toBe('0037_product_reservation_order_scheduling.sql');
+    expect(migrations.at(-6)).toBe('0038_staff_mcp_production_transport_oauth.sql');
+    expect(migrations.at(-5)).toBe('0039_staff_access_binding_management.sql');
+    expect(migrations.at(-4)).toBe('0040_seller_partner_master_data_import.sql');
+    expect(migrations.at(-3)).toBe('0041_seller_principal_rate_policy.sql');
+    expect(migrations.at(-2)).toBe('0042_rakuten_tiktok_jp_marketplace_foundation.sql');
+    expect(migrations.at(-1)).toBe('0043_seller_principal_rate_integrity_hardening.sql');
   });
 });
 
 function testApp() {
   const app = createApp();
   registerSellerPortalRoutes(app);
+  registerFileHttpRoutes(app);
   return app;
 }
 
@@ -528,6 +892,7 @@ async function request(
     {
       DB: database,
       CUSTOMER_SESSION_SECRET: SESSION_SECRET,
+      FILE_OBJECT_STORAGE: fileStorage,
     } as any,
   );
 }

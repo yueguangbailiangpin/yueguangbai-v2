@@ -190,11 +190,17 @@ async function activeSellerGrantExists(
   resource: FileAuthorizationResource,
   now: number,
 ): Promise<boolean> {
+  if (resource.visibility !== 'SELLER_VISIBLE'
+    || resource.entityType === null
+    || resource.entityId === null) {
+    return false;
+  }
+  const entityScopeSql = sellerEntityScopeSql(resource);
+  if (entityScopeSql === null) return false;
   const accountId = cleanFileIdentifier(principal.accountId, 120);
   const subjectId = cleanFileIdentifier(principal.identitySubjectId, 120);
   const memberId = cleanFileIdentifier(actorMemberId, 120);
-  const chatScreenshot = resource.purpose === 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-    && resource.entityType === 'ORDER_EVIDENCE_SUBMISSION';
+  const entityId = cleanFileIdentifier(resource.entityId, 200);
   const row = await database.prepare(`
     SELECT 1 AS allowed
     FROM customer_login_accounts account
@@ -210,13 +216,121 @@ async function activeSellerGrantExists(
       AND grant.subject_type='SELLER_ORGANIZATION'
     JOIN file_entity_links link
       ON link.id=grant.file_entity_link_id
-    ${chatScreenshot ? `
-    JOIN (
+    JOIN (${entityScopeSql}) entity_scope
+      ON entity_scope.file_entity_link_id=link.id
+      AND entity_scope.entity_id=link.entity_id
+    JOIN seller_stores store
+      ON store.id=entity_scope.seller_store_id
+      AND store.organization_id=entity_scope.seller_organization_id
+    WHERE account.id=?
+      AND account.identity_subject_id=?
+      AND member.id=?
+      AND account.status='ACTIVE'
+      AND member.status='ACTIVE'
+      AND member.role IN ('OWNER','OPERATIONS')
+      AND organization.status='ACTIVE'
+      AND link.id=?
+      AND link.authorization_mode='EXPLICIT_AUDIENCES'
+      AND link.entity_type=?
+      AND link.entity_id=?
+      AND link.purpose=?
+      AND link.visibility='SELLER_VISIBLE'
+      AND entity_scope.seller_organization_id=organization.id
+      AND store.status='ACTIVE'
+      AND (
+        member.role='OWNER'
+        OR EXISTS (
+          SELECT 1
+          FROM seller_member_store_scopes scope
+          WHERE scope.member_id=member.id
+            AND scope.organization_id=organization.id
+            AND scope.store_id=entity_scope.seller_store_id
+            AND scope.status='ACTIVE'
+            AND scope.revoked_at IS NULL
+        )
+      )
+      AND link.revoked_at IS NULL
+      AND (link.expires_at IS NULL OR link.expires_at>?)
+      AND grant.revoked_at IS NULL
+      AND (grant.expires_at IS NULL OR grant.expires_at>?)
+    LIMIT 1
+  `).bind(
+    accountId,
+    subjectId,
+    memberId,
+    linkId,
+    resource.entityType,
+    entityId,
+    resource.purpose,
+    now,
+    now,
+  ).first<{ allowed: number }>();
+  return Number(row?.allowed) === 1;
+}
+
+function sellerEntityScopeSql(
+  resource: FileAuthorizationResource,
+): string | null {
+  if (resource.purpose === 'PRODUCT_APPLICATION_IMAGE'
+    && resource.entityType === 'PRODUCT_APPLICATION') {
+    return `
+      SELECT
+        entity_link.id AS file_entity_link_id,
+        application.id AS entity_id,
+        application.organization_id AS seller_organization_id,
+        application.store_id AS seller_store_id
+      FROM product_applications application
+      JOIN file_entity_links entity_link
+        ON entity_link.entity_type='PRODUCT_APPLICATION'
+        AND entity_link.entity_id=application.id
+    `;
+  }
+
+  if (resource.purpose === 'PRODUCT_IMAGE'
+    && resource.entityType === 'PRODUCT_VERSION') {
+    return `
+      SELECT
+        image.file_entity_link_id,
+        version.id AS entity_id,
+        product.organization_id AS seller_organization_id,
+        product.store_id AS seller_store_id
+      FROM product_version_main_images image
+      JOIN product_versions version
+        ON version.id=image.product_version_id
+      JOIN products product ON product.id=version.product_id
+    `;
+  }
+
+  if (resource.purpose === 'REVIEW_EVIDENCE'
+    && resource.entityType === 'REVIEW') {
+    return `
       SELECT
         attachment.file_entity_link_id,
+        evidence.id AS entity_id,
         formal_order.seller_organization_id,
-        formal_order.store_id AS seller_store_id,
-        formal_order.order_evidence_submission_id AS evidence_entity_id
+        formal_order.store_id AS seller_store_id
+      FROM review_evidence_version_files attachment
+      JOIN review_evidence_versions evidence
+        ON evidence.id=attachment.evidence_version_id
+        AND evidence.review_case_id=attachment.review_case_id
+        AND evidence.formal_order_id=attachment.formal_order_id
+      JOIN review_cases review_case
+        ON review_case.id=attachment.review_case_id
+        AND review_case.formal_order_id=attachment.formal_order_id
+      JOIN formal_orders formal_order
+        ON formal_order.id=attachment.formal_order_id
+        AND formal_order.status='CONFIRMED'
+    `;
+  }
+
+  if (resource.purpose === 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
+    && resource.entityType === 'ORDER_EVIDENCE_SUBMISSION') {
+    return `
+      SELECT
+        attachment.file_entity_link_id,
+        formal_order.order_evidence_submission_id AS entity_id,
+        formal_order.seller_organization_id,
+        formal_order.store_id AS seller_store_id
       FROM order_evidence_internal_files attachment
       JOIN formal_orders formal_order
         ON formal_order.order_evidence_submission_id=
@@ -225,9 +339,9 @@ async function activeSellerGrantExists(
       UNION ALL
       SELECT
         attachment.file_entity_link_id,
+        evidence.id AS entity_id,
         formal_order.seller_organization_id,
-        formal_order.seller_store_id,
-        evidence.id AS evidence_entity_id
+        formal_order.seller_store_id
       FROM platform_order_evidence_internal_files attachment
       JOIN platform_formal_orders formal_order
         ON formal_order.id=attachment.platform_formal_order_id
@@ -245,53 +359,10 @@ async function activeSellerGrantExists(
         AND evidence.evidence_type=
           'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
         AND evidence.status='VERIFIED'
-    ) chat_scope ON chat_scope.file_entity_link_id=link.id
-    JOIN seller_stores store
-      ON store.id=chat_scope.seller_store_id
-      AND store.organization_id=chat_scope.seller_organization_id
-    ` : ''}
-    WHERE account.id=?
-      AND account.identity_subject_id=?
-      AND member.id=?
-      AND account.status='ACTIVE'
-      AND member.status='ACTIVE'
-      AND organization.status='ACTIVE'
-      AND link.id=?
-      AND link.authorization_mode='EXPLICIT_AUDIENCES'
-      ${chatScreenshot ? `
-      AND link.entity_type='ORDER_EVIDENCE_SUBMISSION'
-      AND link.entity_id=chat_scope.evidence_entity_id
-      AND link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-      AND link.visibility='SELLER_VISIBLE'
-      AND chat_scope.seller_organization_id=organization.id
-      AND store.status='ACTIVE'
-      AND (
-        member.role='OWNER'
-        OR EXISTS (
-          SELECT 1
-          FROM seller_member_store_scopes scope
-          WHERE scope.member_id=member.id
-            AND scope.organization_id=organization.id
-            AND scope.store_id=chat_scope.seller_store_id
-            AND scope.status='ACTIVE'
-            AND scope.revoked_at IS NULL
-        )
-      )
-      ` : ''}
-      AND link.revoked_at IS NULL
-      AND (link.expires_at IS NULL OR link.expires_at>?)
-      AND grant.revoked_at IS NULL
-      AND (grant.expires_at IS NULL OR grant.expires_at>?)
-    LIMIT 1
-  `).bind(
-    accountId,
-    subjectId,
-    memberId,
-    linkId,
-    now,
-    now,
-  ).first<{ allowed: number }>();
-  return Number(row?.allowed) === 1;
+    `;
+  }
+
+  return null;
 }
 
 async function activeStaffGrantExists(

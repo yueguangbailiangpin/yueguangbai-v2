@@ -108,9 +108,6 @@ export async function createFileReadIntent(
     fileObjectId,
     fileEntityLinkId,
   );
-  if (source.version !== input.expectedFileVersion) {
-    throw new FileStorageError('VERSION_CONFLICT', 409);
-  }
   await authorizeFileRead(
     database,
     authorization,
@@ -125,6 +122,9 @@ export async function createFileReadIntent(
     command.actor,
     now,
   );
+  if (source.version !== input.expectedFileVersion) {
+    throw new FileStorageError('VERSION_CONFLICT', 409);
+  }
   const expiresAt = now + ttlMs;
   const requestHash = await hashCanonicalJson({
     action: 'CREATE_FILE_READ_INTENT',
@@ -380,6 +380,10 @@ export async function consumeFileReadIntent(
       command.actor.id,
       now,
     ),
+    database.prepare(`
+      INSERT INTO transaction_assertions (assertion_value)
+      SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END
+    `),
     createFileEventStatement(database, {
       uploadIntentId: source.upload_intent_id,
       fileObjectId: source.id,
@@ -403,7 +407,9 @@ export async function consumeFileReadIntent(
           AND consumed_at IS NOT NULL
       ) THEN 1 ELSE 0 END
     `).bind(readIntentId),
-  ]);
+  ]).catch((error: unknown) => {
+    throw normalizeFileStorageError(error);
+  });
 
   return {
     fileObjectId: source.id,

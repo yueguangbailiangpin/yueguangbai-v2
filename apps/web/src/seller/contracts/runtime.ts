@@ -20,7 +20,12 @@ export const sellerOrderChatScreenshotReadIntentResponseSchema = z.object({
 
 export const sellerMeSchema = z.object({ me: z.object({
   account_id: z.string(),
-  member: z.object({ id: z.string(), display_name: z.string(), role: z.enum(['OWNER', 'OPERATOR']), primary_owner: z.boolean() }).strict(),
+  member: z.object({
+    id: z.string(),
+    display_name: z.string(),
+    role: z.enum(['OWNER', 'OPERATIONS', 'FINANCE', 'VIEWER']),
+    primary_owner: z.boolean(),
+  }).strict(),
   organization: z.object({ id: z.string(), seller_code: z.string(), name: z.string(), marketplace_code: z.literal('JP'), status: z.literal('ACTIVE') }).strict(),
   access: z.object({ read_scope: z.enum(['ORGANIZATION', 'ASSIGNED_STORES']), store_ids: z.array(z.string()), can_submit_product_applications: z.boolean(), can_submit_demand_batches: z.boolean() }).strict(),
 }).strict() }).strict();

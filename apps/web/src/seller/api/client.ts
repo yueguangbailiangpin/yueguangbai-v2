@@ -13,19 +13,30 @@ function post<T extends Parameters<typeof identityApiRequest>[2]['schema']>(clie
   return identityApiRequest('seller', client, { path, method: 'POST', schema, body, headers: { 'Idempotency-Key': key }, ...(signal ? { signal } : {}) });
 }
 
+function listPath(
+  path: string,
+  cursor: string | null,
+  storeId?: string | null,
+): string {
+  const query = new URLSearchParams({ limit: '100' });
+  if (cursor !== null) query.set('cursor', cursor);
+  if (storeId) query.set('store_id', storeId);
+  return `${path}?${query.toString()}`;
+}
+
 export const sellerApi = Object.freeze({
   me: (client: QueryClient, signal?: AbortSignal) => get(client, '/api/seller-portal/me', sellerMeSchema, signal),
-  stores: (client: QueryClient, signal?: AbortSignal) => get(client, '/api/seller-portal/stores?limit=100', sellerStoresSchema, signal),
-  products: (client: QueryClient, storeId: string | null, signal?: AbortSignal) => get(client, `/api/seller-portal/products?limit=100${storeId ? `&store_id=${encodeURIComponent(storeId)}` : ''}`, sellerProductsSchema, signal),
-  applications: (client: QueryClient, storeId: string | null, signal?: AbortSignal) => get(client, `/api/seller-portal/product-applications?limit=100${storeId ? `&store_id=${encodeURIComponent(storeId)}` : ''}`, sellerApplicationsSchema, signal),
+  stores: (client: QueryClient, cursor: string | null, signal?: AbortSignal) => get(client, listPath('/api/seller-portal/stores', cursor), sellerStoresSchema, signal),
+  products: (client: QueryClient, storeId: string | null, cursor: string | null, signal?: AbortSignal) => get(client, listPath('/api/seller-portal/products', cursor, storeId), sellerProductsSchema, signal),
+  applications: (client: QueryClient, storeId: string | null, cursor: string | null, signal?: AbortSignal) => get(client, listPath('/api/seller-portal/product-applications', cursor, storeId), sellerApplicationsSchema, signal),
   application: (client: QueryClient, id: string, signal?: AbortSignal) => get(client, `/api/seller-portal/product-applications/${encodeURIComponent(id)}`, sellerApplicationDetailSchema, signal),
   submitApplication: (client: QueryClient, body: unknown, key: string, signal?: AbortSignal) => post(client, '/api/seller-portal/product-applications', sellerApplicationMutationSchema, body, key, signal),
   withdrawApplication: (client: QueryClient, id: string, version: number, key: string, signal?: AbortSignal) => post(client, `/api/seller-portal/product-applications/${encodeURIComponent(id)}/withdraw`, sellerApplicationMutationSchema, { expected_version: version }, key, signal),
-  demands: (client: QueryClient, storeId: string | null, signal?: AbortSignal) => get(client, `/api/seller-portal/demand-batches?limit=100${storeId ? `&store_id=${encodeURIComponent(storeId)}` : ''}`, sellerDemandsSchema, signal),
+  demands: (client: QueryClient, storeId: string | null, cursor: string | null, signal?: AbortSignal) => get(client, listPath('/api/seller-portal/demand-batches', cursor, storeId), sellerDemandsSchema, signal),
   submitDemand: (client: QueryClient, body: unknown, key: string, signal?: AbortSignal) => post(client, '/api/seller-portal/demand-batches', sellerDemandMutationSchema, body, key, signal),
   withdrawDemand: (client: QueryClient, id: string, version: number, key: string, signal?: AbortSignal) => post(client, `/api/seller-portal/demand-batches/${encodeURIComponent(id)}/withdraw`, sellerDemandMutationSchema, { expected_version: version }, key, signal),
-  orders: (client: QueryClient, storeId: string | null, signal?: AbortSignal) => get(client, `/api/seller-portal/formal-orders?limit=100${storeId ? `&store_id=${encodeURIComponent(storeId)}` : ''}`, sellerFormalOrdersSchema, signal),
-  reviews: (client: QueryClient, storeId: string | null, signal?: AbortSignal) => get(client, `/api/seller-portal/reviews?limit=100${storeId ? `&store_id=${encodeURIComponent(storeId)}` : ''}`, sellerReviewsSchema, signal),
+  orders: (client: QueryClient, storeId: string | null, cursor: string | null, signal?: AbortSignal) => get(client, listPath('/api/seller-portal/formal-orders', cursor, storeId), sellerFormalOrdersSchema, signal),
+  reviews: (client: QueryClient, storeId: string | null, cursor: string | null, signal?: AbortSignal) => get(client, listPath('/api/seller-portal/reviews', cursor, storeId), sellerReviewsSchema, signal),
   settlement: (client: QueryClient, signal?: AbortSignal) => get(client, '/api/seller-portal/settlement/summary', sellerSettlementSummarySchema, signal),
-  payables: (client: QueryClient, signal?: AbortSignal) => get(client, '/api/seller-portal/settlement/payables?limit=100', sellerPayablesSchema, signal),
+  payables: (client: QueryClient, cursor: string | null, signal?: AbortSignal) => get(client, listPath('/api/seller-portal/settlement/payables', cursor), sellerPayablesSchema, signal),
 });

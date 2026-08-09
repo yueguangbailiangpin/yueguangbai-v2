@@ -43,6 +43,22 @@ export function parseCnyPerJpyMarkupE8(raw: string): bigint {
   });
 }
 
+/** Parse an absolute seller-principal rate increment from display decimal. */
+export function parseCnyPerJpyMarkupDecimal(raw: string): bigint {
+  if (typeof raw !== 'string') throw new Error('invalid_rate_decimal');
+  const normalized = raw.normalize('NFKC').trim();
+  const match = /^\+?(0|[1-9]\d*)(?:\.(\d{1,8}))?$/u.exec(normalized);
+  if (!match) throw new Error('invalid_rate_decimal');
+
+  const integerPart = match[1]!;
+  const fraction = (match[2] ?? '').padEnd(8, '0');
+  const value = BigInt(`${integerPart}${fraction}`);
+  if (value > MAX_D1_SAFE_INTEGER) {
+    throw new Error('rate_out_of_range');
+  }
+  return value;
+}
+
 export function addCnyPerJpyE8(
   baseRateE8: bigint,
   markupRateE8: bigint,

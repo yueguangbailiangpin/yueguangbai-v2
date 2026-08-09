@@ -18,6 +18,7 @@ import {
   bindPhase3GEvidenceFixture,
   seedPhase3GInstructionFixture,
 } from '../../test-support/phase3g-test-fixtures';
+import { approveOrderEvidenceAtomically } from '../order-evidence/approve-order-evidence';
 
 const NOW = Date.UTC(2026, 7, 1, 0, 0, 0);
 const BUSINESS_DATE = '2026-08-01';
@@ -336,6 +337,95 @@ describe('Phase 3F formal order confirmation', () => {
     expect(enforcedResult.financial_snapshot.seller_principal_rate_snapshot).toMatchObject({
       policy_version_id: 'principal-policy-override-v1',
       seller_expected_principal_amount_minor: '53280',
+    });
+  });
+
+  it('leaves no formal financial facts when atomic approval cannot resolve an enforced principal policy', async () => {
+    database = createMigratedTestDatabase();
+    await seedFormalOrderFixture(database, {
+      leaveEvidencePending: true,
+      omitPrincipalPolicy: true,
+    });
+    seedAtomicApprovalWorkItem(database);
+
+    await expect(approveOrderEvidenceAtomically(
+      database,
+      {
+        submissionId: 'evidence-submission-1',
+        expectedVersion: 1,
+        priceMismatchAcknowledged: true,
+        priceMismatchReason: 'fixture amount differs from reference',
+      },
+      {
+        actor: atomicApprovalOwnerActor(),
+        idempotencyKey: 'atomic-policy-switch:on-missing',
+        requestId: 'request:atomic-policy-switch:on-missing',
+        now: NOW,
+        sellerPrincipalRateEnforcementEnabled: true,
+      },
+    )).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      status: 404,
+    });
+
+    expect(atomicApprovalFactCounts(database)).toEqual({
+      orders: 0,
+      financial_snapshots: 0,
+      principal_snapshots: 0,
+      principal_payables: 0,
+      order_events: 0,
+      audit_events: 0,
+      outbox_events: 0,
+    });
+  });
+
+  it('keeps atomic approval principal amounts identical across both snapshots and the payable', async () => {
+    database = createMigratedTestDatabase();
+    await seedFormalOrderFixture(database, { leaveEvidencePending: true });
+    seedAtomicApprovalWorkItem(database);
+
+    const result = await approveOrderEvidenceAtomically(
+      database,
+      {
+        submissionId: 'evidence-submission-1',
+        expectedVersion: 1,
+        priceMismatchAcknowledged: true,
+        priceMismatchReason: 'fixture amount differs from reference',
+      },
+      {
+        actor: atomicApprovalOwnerActor(),
+        idempotencyKey: 'atomic-policy-switch:on-existing',
+        requestId: 'request:atomic-policy-switch:on-existing',
+        now: NOW,
+        sellerPrincipalRateEnforcementEnabled: true,
+      },
+    );
+
+    expect(result.formalOrder.financial_snapshot).toMatchObject({
+      seller_expected_principal_cny_fen: '53280',
+      seller_principal_rate_snapshot: {
+        policy_version_id: 'principal-policy-override-v1',
+        seller_expected_principal_amount_minor: '53280',
+      },
+    });
+    expect(database.raw.prepare(`
+      SELECT
+        financial.seller_expected_principal_cny_fen AS financial_amount,
+        principal.seller_expected_principal_amount_minor AS principal_amount,
+        payable.amount_cny_fen AS payable_amount
+      FROM formal_orders formal_order
+      JOIN formal_order_financial_snapshots financial
+        ON financial.formal_order_id=formal_order.id
+      JOIN seller_principal_rate_snapshots principal
+        ON principal.formal_order_id=formal_order.id
+      JOIN seller_payables payable
+        ON payable.formal_order_id=formal_order.id
+        AND payable.payable_type='SELLER_PRINCIPAL'
+      WHERE formal_order.id=?
+    `).get(result.formalOrder.formal_order_id)).toEqual({
+      financial_amount: 53280,
+      principal_amount: 53280,
+      payable_amount: 53280,
     });
   });
 
@@ -750,6 +840,14 @@ function ownerActor(): FormalOrderStaffActor {
   return actor(['owner'], ['ORDER_CONFIRM'], 'staff-owner');
 }
 
+function atomicApprovalOwnerActor(): FormalOrderStaffActor {
+  return actor(
+    ['owner'],
+    ['ORDER_CONFIRM'],
+    'zz-phase3h-test-owner',
+  );
+}
+
 function otherActor(): FormalOrderStaffActor {
   return actor(['seller_ops'], ['ORDER_CONFIRM'], 'staff-other');
 }
@@ -801,6 +899,7 @@ async function seedFormalOrderFixture(
     duplicateAmazonOrder?: boolean;
     omitSellerRate?: boolean;
     omitVideoServiceFee?: boolean;
+    leaveEvidencePending?: boolean;
   } = {},
 ): Promise<void> {
   const finalPaidJpy = options.finalPaidJpy ?? 8880;
@@ -1122,15 +1221,17 @@ async function seedFormalOrderFixture(
        ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
        '${instructionThree.evidenceFileObjectId}', 7000);
 
-    UPDATE order_evidence_submissions
-    SET status='VERIFIED', version=2,
-        verified_by_staff_id='staff-pre-sales',
-        verified_at=8000, updated_at=8000
-    WHERE id IN (
-      'evidence-submission-1',
-      'evidence-submission-2',
-      'evidence-submission-3'
-    );
+    ${options.leaveEvidencePending ? '' : `
+      UPDATE order_evidence_submissions
+      SET status='VERIFIED', version=2,
+          verified_by_staff_id='staff-pre-sales',
+          verified_at=8000, updated_at=8000
+      WHERE id IN (
+        'evidence-submission-1',
+        'evidence-submission-2',
+        'evidence-submission-3'
+      );
+    `}
 
     INSERT INTO buyer_daily_exchange_rates (
       id, business_date, version_no, status, cny_per_jpy_e8,
@@ -1185,6 +1286,49 @@ async function seedFormalOrderFixture(
   if (!options.omitVideoServiceFee) {
     seedConfirmedServiceFee(db, 'VIDEO', 'service-fee-video-v1', 3500);
   }
+}
+
+function seedAtomicApprovalWorkItem(db: SqliteDatabase): void {
+  db.exec(`
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    ) VALUES (
+      'atomic-buyer-assignment', 'buyer-1', 'BUYER_PRE_SALES_OWNER',
+      'zz-phase3h-test-owner', 'ACTIVE', 'OWNER_FALLBACK',
+      'SYSTEM', NULL, NULL, 1, 7000, 7000, NULL
+    );
+    INSERT INTO staff_work_items (
+      id, work_type, source_entity_type, source_entity_id,
+      buyer_customer_id, seller_organization_id, store_id,
+      duty_code, fixed_assignment_type, fixed_assignment_id,
+      assigned_staff_id, status, version, created_at, updated_at,
+      completed_at, cancelled_at
+    ) VALUES (
+      'atomic-evidence-work-item', 'ORDER_EVIDENCE_REVIEW',
+      'ORDER_EVIDENCE', 'evidence-submission-1', 'buyer-1',
+      'seller-org-formal', 'store-formal', 'BUYER_PRE_SALES_OWNER',
+      'BUYER', 'atomic-buyer-assignment', 'zz-phase3h-test-owner',
+      'OPEN', 1, 7000, 7000, NULL, NULL
+    );
+  `);
+}
+
+function atomicApprovalFactCounts(db: SqliteDatabase) {
+  return db.raw.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM formal_orders) AS orders,
+      (SELECT COUNT(*) FROM formal_order_financial_snapshots)
+        AS financial_snapshots,
+      (SELECT COUNT(*) FROM seller_principal_rate_snapshots)
+        AS principal_snapshots,
+      (SELECT COUNT(*) FROM seller_payables
+        WHERE payable_type='SELLER_PRINCIPAL') AS principal_payables,
+      (SELECT COUNT(*) FROM formal_order_events) AS order_events,
+      (SELECT COUNT(*) FROM audit_events) AS audit_events,
+      (SELECT COUNT(*) FROM integration_outbox) AS outbox_events
+  `).get();
 }
 
 function seedConfirmedServiceFee(

@@ -108,7 +108,7 @@ OpenSpec 不是代码正确性证明。Ponytail 不是安全审查工具。二�
 
 ## 17. Migration 纪律
 
-Migration 必须连续，禁止跳号、补造历史、并行创建互相竞争的 Migration。任何涉及 D1 事实结构的变更先判断是否需要 Migration，并在 OpenSpec proposal、design、tasks 中明确。不得弱化数据库约束、触发器、事务最终断言、幂等、审计或 Outbox 来换取简化。
+Migration 必须连续，禁止跳号、补造历史、并行创建互相竞争的 Migration。进入集成基线后文件字节不可修改；确定性修复也只能新增下一连续、仅前向的 Migration，并由基线 checksum 门禁阻止历史内容漂移。任何涉及 D1 事实结构的变更先判断是否需要 Migration，并在 OpenSpec proposal、design、tasks 中明确。不得弱化数据库约束、触发器、事务最终断言、幂等、审计或 Outbox 来换取简化。
 
 ## 18. 失败和回退流程
 

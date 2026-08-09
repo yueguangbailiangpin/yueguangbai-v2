@@ -6,6 +6,7 @@ import type {
 } from '@ygb/contracts';
 import {
   canonicalJson,
+  CUSTOMER_PASSWORD_DEFAULT_ITERATIONS,
   hashCustomerPassword,
   normalizeWechatId,
   type PasswordCredential,
@@ -45,7 +46,7 @@ export interface PreparedTemporaryCredential {
 
 export async function prepareTemporaryCredential(
   generateTemporaryPassword: () => string,
-  iterations = 310_000,
+  iterations = CUSTOMER_PASSWORD_DEFAULT_ITERATIONS,
 ): Promise<PreparedTemporaryCredential> {
   const temporaryPassword = generateTemporaryPassword();
   const credential = await hashCustomerPassword(

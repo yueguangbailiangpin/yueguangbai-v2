@@ -31,7 +31,7 @@ describe('seller principal rate policy', () => {
     await seedBaseRate(database, '2026-08-01', '5100000');
     const submitted = await submitPolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '400000', expectedVersion: 0, effectiveFrom: 3_000,
+      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
     }, 'policy:default:submit');
     await confirmSellerPrincipalRatePolicy(
       database, { policyVersionId: submitted.policy_version_id, expectedVersion: 1 },
@@ -56,7 +56,7 @@ describe('seller principal rate policy', () => {
     await seedBaseRate(database, '2026-08-01', '5100000');
     const defaultPolicy = await submitPolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '400000', expectedVersion: 0, effectiveFrom: 3_000,
+      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
     }, 'policy:zero:default:submit');
     await confirmSellerPrincipalRatePolicy(
       database, { policyVersionId: defaultPolicy.policy_version_id, expectedVersion: 1 },
@@ -87,11 +87,11 @@ describe('seller principal rate policy', () => {
     await seedBaseRate(database, '2026-08-01', '5100000');
     const first = await submitPolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '400000', expectedVersion: 0, effectiveFrom: 10_000,
+      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 10_000,
     }, 'policy:future:submit');
     const replay = await submitSellerPrincipalRatePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      sourceCurrencyCode: 'JPY', markupRateValue: '400000',
+      sourceCurrencyCode: 'JPY', markupRateValue: '0.004',
       expectedVersion: 0, effectiveFrom: 10_000,
     }, command(sellerOps, 'policy:future:submit', 1_100));
     expect(replay).toMatchObject({
@@ -120,7 +120,7 @@ describe('seller principal rate policy', () => {
     database = fixture();
     await expect(submitSellerPrincipalRatePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      sourceCurrencyCode: 'JPY', markupRateValue: '400000',
+      sourceCurrencyCode: 'JPY', markupRateValue: '0.004',
       expectedVersion: 0, effectiveFrom: 3_000,
     }, { ...command({ ...sellerOps, roles: ['buyer_refund'] }, 'policy:denied', 1_000) }))
       .rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
@@ -130,7 +130,7 @@ describe('seller principal rate policy', () => {
     database = fixture();
     const pending = await submitPolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '400000', expectedVersion: 0, effectiveFrom: 3_000,
+      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
     }, 'policy:db-guard:submit');
     const event = await database.prepare(
       `SELECT id FROM seller_principal_rate_policy_events WHERE version_id=?`,
@@ -196,14 +196,14 @@ describe('seller principal rate policy', () => {
     database = fixture();
     const first = await submitPolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '400000', expectedVersion: 0, effectiveFrom: 3_000,
+      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
     }, 'policy:db-effective:first');
     await confirmSellerPrincipalRatePolicy(database,
       { policyVersionId: first.policy_version_id, expectedVersion: 1 },
       command(owner, 'policy:db-effective:first-confirm', 2_000));
     const second = await submitPolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '500000', expectedVersion: 1, effectiveFrom: 3_000,
+      markupRateValue: '0.005', expectedVersion: 1, effectiveFrom: 3_000,
     }, 'policy:db-effective:second');
     await expect(confirmSellerPrincipalRatePolicy(database,
       { policyVersionId: second.policy_version_id, expectedVersion: 1 },
@@ -216,11 +216,11 @@ describe('seller principal rate policy', () => {
     const results = await Promise.allSettled([
       submitPolicy(database, {
         scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-        markupRateValue: '400000', expectedVersion: 0, effectiveFrom: 3_000,
+        markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
       }, 'policy:concurrent:a'),
       submitPolicy(database, {
         scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-        markupRateValue: '500000', expectedVersion: 0, effectiveFrom: 4_000,
+        markupRateValue: '0.005', expectedVersion: 0, effectiveFrom: 4_000,
       }, 'policy:concurrent:b'),
     ]);
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);

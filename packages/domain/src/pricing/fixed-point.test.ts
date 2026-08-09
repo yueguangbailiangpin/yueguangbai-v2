@@ -10,6 +10,7 @@ import {
   parseCnyFen,
   parseCnyPerJpyDecimal,
   parseCnyPerJpyE8,
+  parseCnyPerJpyMarkupDecimal,
   parseJpyInteger,
   toD1SafeInteger,
 } from './fixed-point';
@@ -20,6 +21,17 @@ describe('pricing fixed-point arithmetic', () => {
     expect(parseCnyPerJpyDecimal(' ０.０５ ')).toBe(5_000_000n);
     expect(formatCnyPerJpyDecimal(5_000_000n)).toBe('0.05');
     expect(formatCnyPerJpyDecimal(100_000_000n)).toBe('1');
+  });
+
+  it('parses a decimal absolute markup including explicit zero and plus sign', () => {
+    expect(parseCnyPerJpyMarkupDecimal('0.004')).toBe(400_000n);
+    expect(parseCnyPerJpyMarkupDecimal('0')).toBe(0n);
+    expect(parseCnyPerJpyMarkupDecimal('+0.004')).toBe(400_000n);
+    expect(parseCnyPerJpyMarkupDecimal(' ＋０.００４ ')).toBe(400_000n);
+    expect(() => parseCnyPerJpyMarkupDecimal('-0.004'))
+      .toThrow('invalid_rate_decimal');
+    expect(() => parseCnyPerJpyMarkupDecimal('0.000000001'))
+      .toThrow('invalid_rate_decimal');
   });
 
   it('converts JPY to CNY fen with non-floating half-up rounding', () => {

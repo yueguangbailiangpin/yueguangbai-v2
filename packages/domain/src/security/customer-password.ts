@@ -1,4 +1,4 @@
-const DEFAULT_ITERATIONS = 310_000;
+export const CUSTOMER_PASSWORD_DEFAULT_ITERATIONS = 310_000;
 const MIN_ITERATIONS = 10_000;
 const MAX_ITERATIONS = 1_000_000;
 const SALT_BYTES = 16;
@@ -46,7 +46,7 @@ export async function hashCustomerPassword(
   options: HashPasswordOptions = {},
 ): Promise<PasswordCredential> {
   validateCustomerPassword(password);
-  const iterations = options.iterations ?? DEFAULT_ITERATIONS;
+  const iterations = options.iterations ?? CUSTOMER_PASSWORD_DEFAULT_ITERATIONS;
   assertIterations(iterations);
 
   const salt = options.salt ?? crypto.getRandomValues(

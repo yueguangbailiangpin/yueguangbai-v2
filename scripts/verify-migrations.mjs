@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
 import {
   mkdtempSync,
   readFileSync,
@@ -7,6 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { verifyHistoricalMigrationImmutability } from './historical-migration-immutability.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
@@ -14,6 +16,16 @@ const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-v2-migrations-'),
 );
 const databasePath = path.join(workDirectory, 'verification.sqlite');
+const expectedLatestSchema = 43;
+const expectedLastMigration =
+  '0043_seller_principal_rate_integrity_hardening.sql';
+const expectedSchemaInventory = {
+  table: 187,
+  index: 550,
+  trigger: 357,
+  view: 10,
+  sha256: '71ea6d9142575ca6de4e33b1eb8b1ea729921f8e2ae5a0dd78ea6c13defacb51',
+};
 
 const requiredTables = [
   'app_schema_state',
@@ -140,6 +152,9 @@ const requiredTables = [
   'customer_security_rate_limits',
   'feishu_workbench_mirrors',
   'feishu_workbench_callback_receipts',
+  'seller_principal_rate_policy_versions',
+  'seller_principal_rate_policy_events',
+  'seller_principal_rate_snapshots',
   'marketplace_registry_legacy_0029',
   'platform_product_identities',
   'platform_order_identities',
@@ -396,15 +411,192 @@ const requiredTriggers = [
   'trg_platform_order_evidence_internal_files_no_update',
   'trg_platform_order_evidence_internal_files_no_delete',
   'trg_order_evidence_internal_files_platform_collision_guard',
+  'trg_seller_principal_rate_policy_initial_state_guard',
+  'trg_seller_principal_rate_policy_decision_guard',
+  'trg_seller_principal_rate_policy_no_delete',
+  'trg_seller_principal_rate_policy_event_source_guard',
+  'trg_seller_principal_rate_policy_event_no_update',
+  'trg_seller_principal_rate_policy_event_no_delete',
+  'trg_seller_principal_rate_snapshot_guard',
+  'trg_seller_principal_rate_snapshots_no_update',
+  'trg_seller_principal_rate_snapshots_no_delete',
+  'trg_seller_principal_rate_policy_future_effective_guard',
+  'trg_seller_principal_rate_policy_event_fidelity_guard',
+  'trg_seller_principal_rate_snapshot_confirmation_guard',
 ];
 
+function schemaInventory(database) {
+  return database.prepare(`
+    SELECT type, name, tbl_name, sql
+    FROM sqlite_schema
+    WHERE type IN ('table', 'index', 'trigger', 'view')
+    ORDER BY type, name
+  `).all().map((row) => ({
+    type: String(row.type),
+    name: String(row.name),
+    table: String(row.tbl_name),
+    sql: row.sql === null ? null : String(row.sql),
+  }));
+}
+
+function inventoryCounts(inventory) {
+  return Object.fromEntries(
+    ['table', 'index', 'trigger', 'view'].map((type) => [
+      type,
+      inventory.filter((object) => object.type === type).length,
+    ]),
+  );
+}
+
+function inventoryHash(inventory) {
+  return createHash('sha256')
+    .update(JSON.stringify(inventory))
+    .digest('hex');
+}
+
+function assertIntegrity(database, label) {
+  const integrity = database.prepare('PRAGMA integrity_check').all()
+    .map((row) => String(row.integrity_check));
+  if (integrity.length !== 1 || integrity[0] !== 'ok') {
+    throw new Error(`${label} integrity_check 失败: ${integrity.join(',')}`);
+  }
+  const foreignKeys = database.prepare('PRAGMA foreign_key_check').all();
+  if (foreignKeys.length > 0) {
+    throw new Error(`${label} foreign_key_check 发现 ${foreignKeys.length} 项`);
+  }
+}
+
+function expectDmlFailure(database, sql, expectedMessage) {
+  let failure = null;
+  try {
+    database.exec(sql);
+  } catch (error) {
+    failure = String(error);
+  }
+  if (failure === null || !failure.includes(expectedMessage)) {
+    throw new Error(
+      `expected DML failure ${expectedMessage}, received ${String(failure)}`,
+    );
+  }
+}
+
+function verifyCriticalNegativeDml(database) {
+  database.exec('BEGIN IMMEDIATE;');
+  try {
+    database.exec(`
+      INSERT INTO staff_users (
+        id, display_name, status, authorization_version, version,
+        created_at, updated_at, disabled_at
+      ) VALUES
+        ('migration-verifier-owner','迁移校验负责人','ACTIVE',1,1,0,0,NULL),
+        ('migration-verifier-other','迁移校验其他员工','ACTIVE',1,1,0,0,NULL);
+
+      INSERT INTO seller_principal_rate_policy_versions (
+        id, scope_type, seller_organization_id, source_currency_code,
+        quote_currency_code, version_no, status, markup_rate_value, rate_scale,
+        effective_from, submitted_by_staff_id, submitted_at, decision_version,
+        confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
+        rejection_reason
+      ) VALUES (
+        'migration-verifier-past-policy', 'CURRENCY_PAIR_DEFAULT', NULL,
+        'JPY', 'CNY', 1, 'SUBMITTED', 400000, 100000000, 500,
+        'migration-verifier-owner', 3000, 1, NULL, NULL, NULL, NULL, NULL
+      );
+    `);
+    expectDmlFailure(database, `
+      UPDATE seller_principal_rate_policy_versions
+      SET status='CONFIRMED', decision_version=2,
+        confirmed_by_staff_id='migration-verifier-owner', confirmed_at=4000
+      WHERE id='migration-verifier-past-policy';
+    `, 'seller_principal_rate_policy_effective_time_conflict');
+
+    database.exec(`
+      INSERT INTO seller_principal_rate_policy_versions (
+        id, scope_type, seller_organization_id, source_currency_code,
+        quote_currency_code, version_no, status, markup_rate_value, rate_scale,
+        effective_from, submitted_by_staff_id, submitted_at, decision_version,
+        confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
+        rejection_reason
+      ) VALUES (
+        'migration-verifier-event-policy', 'CURRENCY_PAIR_DEFAULT', NULL,
+        'USD', 'CNY', 1, 'SUBMITTED', 400000, 100000000, 5000,
+        'migration-verifier-owner', 3000, 1, NULL, NULL, NULL, NULL, NULL
+      );
+    `);
+    expectDmlFailure(database, `
+      INSERT INTO seller_principal_rate_policy_events (
+        id, version_id, scope_type, seller_organization_id,
+        source_currency_code, quote_currency_code, version_no, event_type,
+        actor_staff_id, previous_status, next_status, markup_rate_value,
+        effective_from, reason, idempotency_key, created_at
+      ) VALUES (
+        'migration-verifier-forged-event', 'migration-verifier-event-policy',
+        'CURRENCY_PAIR_DEFAULT', NULL, 'USD', 'CNY', 1,
+        'SELLER_PRINCIPAL_RATE_POLICY_SUBMITTED', 'migration-verifier-other',
+        NULL, 'SUBMITTED', 400000, 5000, NULL, 'verifier-forged-event', 3000
+      );
+    `, 'seller_principal_rate_policy_event_source_mismatch');
+    database.exec(`
+      INSERT INTO seller_principal_rate_policy_events (
+        id, version_id, scope_type, seller_organization_id,
+        source_currency_code, quote_currency_code, version_no, event_type,
+        actor_staff_id, previous_status, next_status, markup_rate_value,
+        effective_from, reason, idempotency_key, created_at
+      ) VALUES (
+        'migration-verifier-submitted-event', 'migration-verifier-event-policy',
+        'CURRENCY_PAIR_DEFAULT', NULL, 'USD', 'CNY', 1,
+        'SELLER_PRINCIPAL_RATE_POLICY_SUBMITTED', 'migration-verifier-owner',
+        NULL, 'SUBMITTED', 400000, 5000, NULL, 'verifier-submit-event', 3000
+      );
+      UPDATE seller_principal_rate_policy_versions
+      SET status='CONFIRMED', decision_version=2,
+        confirmed_by_staff_id='migration-verifier-owner', confirmed_at=4000
+      WHERE id='migration-verifier-event-policy';
+      INSERT INTO seller_principal_rate_policy_events (
+        id, version_id, scope_type, seller_organization_id,
+        source_currency_code, quote_currency_code, version_no, event_type,
+        actor_staff_id, previous_status, next_status, markup_rate_value,
+        effective_from, reason, idempotency_key, created_at
+      ) VALUES (
+        'migration-verifier-confirmed-event', 'migration-verifier-event-policy',
+        'CURRENCY_PAIR_DEFAULT', NULL, 'USD', 'CNY', 1,
+        'SELLER_PRINCIPAL_RATE_POLICY_CONFIRMED', 'migration-verifier-owner',
+        'SUBMITTED', 'CONFIRMED', 400000, 5000, NULL,
+        'verifier-confirm-event', 4000
+      );
+    `);
+    expectDmlFailure(database, `
+      INSERT INTO seller_principal_rate_policy_events (
+        id, version_id, scope_type, seller_organization_id,
+        source_currency_code, quote_currency_code, version_no, event_type,
+        actor_staff_id, previous_status, next_status, markup_rate_value,
+        effective_from, reason, idempotency_key, created_at
+      ) VALUES (
+        'migration-verifier-duplicate-event', 'migration-verifier-event-policy',
+        'CURRENCY_PAIR_DEFAULT', NULL, 'USD', 'CNY', 1,
+        'SELLER_PRINCIPAL_RATE_POLICY_CONFIRMED', 'migration-verifier-owner',
+        'SUBMITTED', 'CONFIRMED', 400000, 5000, NULL,
+        'verifier-duplicate-event', 4000
+      );
+    `, 'UNIQUE constraint failed');
+    database.exec('ROLLBACK;');
+  } catch (error) {
+    try { database.exec('ROLLBACK;'); } catch { /* no open tx */ }
+    throw error;
+  }
+}
+
 try {
+  const historicalIntegrity = verifyHistoricalMigrationImmutability(root);
   const migrationFiles = readdirSync(migrationsDirectory)
     .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
     .sort();
 
-  if (migrationFiles.length === 0) {
-    throw new Error('未找到 Migration');
+  const migrationNumbers = migrationFiles.map((name) => Number(name.slice(0, 4)));
+  if (migrationFiles.length !== expectedLatestSchema
+    || migrationFiles.at(-1) !== expectedLastMigration
+    || migrationNumbers.some((number, index) => number !== index + 1)) {
+    throw new Error('Migration 必须是唯一连续的 0001-0043');
   }
 
   const database = new DatabaseSync(databasePath);
@@ -424,19 +616,58 @@ try {
       }
     }
 
-    const integrity = database.prepare(
-      'PRAGMA integrity_check',
-    ).all().map((row) => String(row.integrity_check));
-    if (integrity.length !== 1 || integrity[0] !== 'ok') {
-      throw new Error(`integrity_check 失败: ${integrity.join(',')}`);
+    assertIntegrity(database, 'sequential');
+    const sequentialInventory = schemaInventory(database);
+    const sequentialInventoryJson = JSON.stringify(sequentialInventory);
+    const schemaCounts = inventoryCounts(sequentialInventory);
+    const schemaInventorySha256 = inventoryHash(sequentialInventory);
+    for (const type of ['table', 'index', 'trigger', 'view']) {
+      if (schemaCounts[type] !== expectedSchemaInventory[type]) {
+        throw new Error(
+          `${type} inventory count ${schemaCounts[type]} != `
+          + `${expectedSchemaInventory[type]}`,
+        );
+      }
+    }
+    if (schemaInventorySha256 !== expectedSchemaInventory.sha256) {
+      throw new Error(
+        `完整 Schema inventory SHA-256 不匹配: ${schemaInventorySha256}`,
+      );
     }
 
-    const foreignKeys = database.prepare(
-      'PRAGMA foreign_key_check',
-    ).all();
-    if (foreignKeys.length > 0) {
-      throw new Error(`foreign_key_check 发现 ${foreignKeys.length} 项`);
+    const freshDatabase = new DatabaseSync(':memory:');
+    try {
+      freshDatabase.exec('PRAGMA foreign_keys = ON;');
+      freshDatabase.exec('BEGIN IMMEDIATE;');
+      try {
+        for (const file of migrationFiles) {
+          freshDatabase.exec(readFileSync(
+            path.join(migrationsDirectory, file),
+            'utf8',
+          ));
+        }
+        freshDatabase.exec('COMMIT;');
+      } catch (error) {
+        try { freshDatabase.exec('ROLLBACK;'); } catch { /* no open tx */ }
+        throw error;
+      }
+      assertIntegrity(freshDatabase, 'fresh');
+      const freshInventoryJson = JSON.stringify(schemaInventory(freshDatabase));
+      if (freshInventoryJson !== sequentialInventoryJson) {
+        throw new Error('fresh 与 sequential 的完整 name+SQL inventory 不一致');
+      }
+      const freshState = freshDatabase.prepare(`
+        SELECT schema_version FROM app_schema_state WHERE singleton_id=1
+      `).get();
+      if (Number(freshState?.schema_version) !== expectedLatestSchema) {
+        throw new Error(`fresh schema 不是 ${expectedLatestSchema}`);
+      }
+    } finally {
+      freshDatabase.close();
     }
+
+    verifyCriticalNegativeDml(database);
+    assertIntegrity(database, 'post-negative-dml');
 
     const tables = new Set(database.prepare(`
       SELECT name
@@ -455,6 +686,11 @@ try {
     }
     for (const trigger of requiredTriggers) {
       if (!triggers.has(trigger)) throw new Error(`缺少触发器: ${trigger}`);
+    }
+    if (!sequentialInventory.some((object) =>
+      object.type === 'index'
+      && object.name === 'uq_seller_principal_rate_policy_event_type')) {
+      throw new Error('缺少索引: uq_seller_principal_rate_policy_event_type');
     }
 
     const buyerRefundView = database.prepare(`
@@ -724,7 +960,8 @@ try {
       FROM app_schema_state
       WHERE singleton_id=1
     `).get();
-    if (Number(state?.schema_version) !== migrationFiles.length) {
+    if (Number(state?.schema_version) !== expectedLatestSchema
+      || migrationFiles.length !== expectedLatestSchema) {
       throw new Error(
         `Schema 版本 ${String(state?.schema_version)} 与 Migration 数量 `
         + `${migrationFiles.length} 不一致`,
@@ -733,9 +970,19 @@ try {
 
     console.log(JSON.stringify({
       status: 'PASS',
+      historical_baseline: historicalIntegrity.baseline,
+      immutable_historical_migrations: historicalIntegrity.count,
+      historical_migration_aggregate_sha256:
+        historicalIntegrity.aggregateSha256,
       migrations: migrationFiles,
       table_count: tables.size,
+      index_count: schemaCounts.index,
       trigger_count: triggers.size,
+      view_count: schemaCounts.view,
+      schema_inventory_objects: sequentialInventory.length,
+      schema_inventory_sha256: schemaInventorySha256,
+      fresh_sequential_inventory_match: true,
+      critical_negative_dml: 3,
       integrity_check: 'ok',
       foreign_key_errors: 0,
       schema_version: Number(state.schema_version),

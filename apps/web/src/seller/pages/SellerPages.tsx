@@ -6,8 +6,10 @@ import { useBuyerMutation } from '../../buyer/mutations/useBuyerMutation';
 import { BuyerMutationRecovery } from '../../buyer/shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../../buyer/shared/ProtectedFileButton';
 import { SellerOrderChatScreenshotReadIntentAdapter } from '../../files/file-read-providers';
+import { CursorPagination } from '../../ui/CursorPagination';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';
+import { useSellerCursorPages } from '../queries/useSellerCursorPages';
 import { useSellerStoreContext } from '../routes/SellerLayout';
 
 const shanghai = new Intl.DateTimeFormat('zh-CN', {
@@ -43,7 +45,12 @@ const marketplaceLabel = {
   AMAZON_JP: '日本站', AMAZON_US: '美国站', COUPANG_KR: '韩国站',
   RAKUTEN_JP: '乐天日本站（未接入）', TIKTOK_JP: 'TikTok 日本站（未接入）',
 } as const;
-const roleLabel = { OWNER: '负责人', OPERATOR: '运营成员' } as const;
+const roleLabel = {
+  OWNER: '负责人',
+  OPERATIONS: '运营成员',
+  FINANCE: '财务成员',
+  VIEWER: '查看成员',
+} as const;
 type Tone = 'neutral' | 'processing' | 'success' | 'warning' | 'danger';
 
 function tone(status: string): Tone {
@@ -75,19 +82,25 @@ function Fact({ label, value }: { label: string; value: ReactNode }): React.JSX.
 export function SellerDashboardPage(): React.JSX.Element {
   const client = useQueryClient(); const { storeId } = useSellerStoreContext();
   const me = useQuery({ queryKey: sellerQueryKeys.me, queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me) });
-  const orders = useQuery({ queryKey: sellerQueryKeys.orders(storeId), queryFn: ({ signal }) => sellerApi.orders(client, storeId, signal).then((r) => r.data.items) });
+  const orders = useSellerCursorPages({
+    resetKey: `seller-orders:${storeId ?? 'all'}:100`,
+    queryKey: (cursor) => sellerQueryKeys.ordersPage(storeId, cursor),
+    queryFn: (cursor, signal) => sellerApi.orders(client, storeId, cursor, signal),
+  });
   const settlement = useQuery({ queryKey: sellerQueryKeys.settlement, queryFn: ({ signal }) => sellerApi.settlement(client, signal).then((r) => r.data.settlement) });
-  const complete = orders.data?.filter((item) => item.business_completion?.status === 'COMPLETE').length ?? 0;
-  const inProgress = orders.data?.filter((item) => item.business_completion?.status === 'IN_PROGRESS') ?? [];
+  const complete = orders.items.filter((item) => item.business_completion?.status === 'COMPLETE').length;
+  const inProgress = orders.items.filter((item) => item.business_completion?.status === 'IN_PROGRESS');
+  const ordersUnavailable = orders.initialError !== null;
+  const count = (value: number): string => `${value}${orders.hasMore ? '+' : ''}`;
   return <section className="seller-page seller-dashboard-page">
     <PageHeader title="业务进度" eyebrow="当前授权范围">
       {me.data?.access.can_submit_product_applications ? <Link className="button secondary" to="/seller/products/new">提交产品申请</Link> : null}
       {me.data?.access.can_submit_demand_batches ? <Link className="button" to="/seller/demands/new">提交需求</Link> : null}
     </PageHeader>
-    {orders.isError || settlement.isError ? <Alert tone="danger">业务摘要暂时无法完整读取，请刷新后重试。</Alert> : null}
-    <div className="seller-metrics"><MetricCard label="正式订单" value={orders.isPending ? '—' : String(orders.data?.length ?? 0)} detail="当前授权范围" /><MetricCard label="业务完成" value={orders.isPending ? '—' : String(complete)} detail="四项均完成或不适用" /><MetricCard label="待结算" value={settlement.data ? cny(settlement.data.total_outstanding_cny_fen) : '—'} detail="卖家本金与卖家服务费" /></div>
+    {orders.initialError || settlement.isError ? <Alert tone="danger">业务摘要暂时无法完整读取，请刷新后重试。</Alert> : null}
+    <div className="seller-metrics"><MetricCard label="正式订单" value={orders.isInitialPending || ordersUnavailable ? '—' : count(orders.items.length)} detail={ordersUnavailable ? '订单数据暂时不可用' : orders.hasMore ? '当前已加载，仍有后一页' : '当前授权范围'} /><MetricCard label="业务完成" value={orders.isInitialPending || ordersUnavailable ? '—' : count(complete)} detail={ordersUnavailable ? '订单数据暂时不可用' : orders.hasMore ? '当前已加载订单，非最终总数' : '四项均完成或不适用'} /><MetricCard label="待结算" value={settlement.data ? cny(settlement.data.total_outstanding_cny_fen) : '—'} detail="卖家本金与卖家服务费" /></div>
     <Card className="seller-attention-card"><div className="seller-section-heading"><div><p className="eyebrow">待关注</p><h2>订单业务进度</h2></div><Link to="/seller/orders">查看全部订单</Link></div>
-      {orders.isPending ? <p role="status">正在读取订单进度</p> : inProgress.length === 0 ? <EmptyState title="暂无待完成订单" description="当前授权范围内没有待完成事项。" /> : <ul className="seller-attention-list">{inProgress.slice(0, 4).map((item) => <li key={item.formal_order_id}><span><strong>{item.product_name}</strong><small>{item.store.display_name} · {item.platform_order_identifier}</small></span><StatusBadge tone="processing">进行中</StatusBadge></li>)}</ul>}
+      {orders.isInitialPending ? <p role="status">正在读取订单进度</p> : ordersUnavailable ? <Alert tone="warning">订单进度暂时不可用，请刷新后重试。</Alert> : inProgress.length === 0 && !orders.hasMore ? <EmptyState title="暂无待完成订单" description="当前授权范围内没有待完成事项。" /> : inProgress.length === 0 ? <Alert tone="info">当前已加载订单没有待完成项；仍有后一页，请在订单页继续查看。</Alert> : <ul className="seller-attention-list">{inProgress.slice(0, 4).map((item) => <li key={item.formal_order_id}><span><strong>{item.product_name}</strong><small>{item.store.display_name} · {item.platform_order_identifier}</small></span><StatusBadge tone="processing">进行中</StatusBadge></li>)}</ul>}
     </Card>
   </section>;
 }
@@ -96,24 +109,38 @@ export function SellerProductsPage(): React.JSX.Element {
   const client = useQueryClient(); const { storeId } = useSellerStoreContext();
   const [pendingWithdraw, setPendingWithdraw] = useState<{ id: string; version: number } | null>(null);
   const me = useQuery({ queryKey: sellerQueryKeys.me, queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me) });
-  const products = useQuery({ queryKey: sellerQueryKeys.products(storeId), queryFn: ({ signal }) => sellerApi.products(client, storeId, signal).then((r) => r.data.items) });
-  const applications = useQuery({ queryKey: sellerQueryKeys.applications(storeId), queryFn: ({ signal }) => sellerApi.applications(client, storeId, signal).then((r) => r.data.items) });
+  const products = useSellerCursorPages({
+    resetKey: `seller-products:${storeId ?? 'all'}:100`,
+    queryKey: (cursor) => sellerQueryKeys.productsPage(storeId, cursor),
+    queryFn: (cursor, signal) => sellerApi.products(client, storeId, cursor, signal),
+  });
+  const applications = useSellerCursorPages({
+    resetKey: `seller-applications:${storeId ?? 'all'}:100`,
+    queryKey: (cursor) => sellerQueryKeys.applicationsPage(storeId, cursor),
+    queryFn: (cursor, signal) => sellerApi.applications(client, storeId, cursor, signal),
+  });
   const withdraw = useBuyerMutation({ operation: (body: { id: string; version: number }, key, signal) => sellerApi.withdrawApplication(client, body.id, body.version, key, signal), onSuccess: async () => { await client.invalidateQueries({ queryKey: sellerQueryKeys.applications(storeId) }); setPendingWithdraw(null); } });
-  const pending = products.isPending || applications.isPending;
-  const failed = products.isError || applications.isError;
+  const pending = products.isInitialPending || applications.isInitialPending;
+  const failed = products.initialError || applications.initialError;
   return <section className="seller-page"><PageHeader title="商品与申请" eyebrow="商品资料">
     {me.data?.access.can_submit_product_applications ? <Link className="button" to="/seller/products/new">提交产品申请</Link> : null}
   </PageHeader>
-    {pending ? <p role="status">正在加载商品与申请</p> : failed ? <><Alert tone="danger">暂时无法读取商品与申请。</Alert><Button className="secondary" onClick={() => { void Promise.all([products.refetch(), applications.refetch()]); }}>重新读取</Button></> : products.data.length === 0 && applications.data.length === 0 ? <EmptyState title="暂无商品与申请" description="提交后可在这里查看审核状态。" /> : <div className="seller-record-list">
-      {products.data.map((item) => <RecordCard key={item.id} title={item.current_version.product_name} meta={`${item.store.display_name} · ${item.asin}`} status={productStatusLabel[item.status]} statusTone={tone(item.status)}>
+    {pending ? <p role="status">正在加载商品与申请</p> : failed ? <><Alert tone="danger">暂时无法读取商品与申请。</Alert><Button type="button" className="secondary" onClick={() => { products.retryInitial(); applications.retryInitial(); }}>重新读取</Button></> : products.items.length === 0 && applications.items.length === 0 ? <EmptyState title="暂无商品与申请" description="提交后可在这里查看审核状态。" /> : <div className="seller-record-list">
+      {products.items.map((item) => <RecordCard key={item.id} title={item.current_version.product_name} meta={`${item.store.display_name} · ${item.asin}`} status={productStatusLabel[item.status]} statusTone={tone(item.status)}>
         <FactGrid><Fact label="记录类型" value="已通过商品" /><Fact label="版本" value={`v${item.current_version_no}`} /><Fact label="搜索词" value={item.current_version.search_keywords.join('、') || '未填写'} /><Fact label="更新时间" value={formatShanghai(item.updated_at)} /></FactGrid>
       </RecordCard>)}
-      {applications.data.map((item) => <RecordCard key={item.id} title={item.product_name} meta={`${item.store.display_name} · ${item.asin}`} status={applicationStatusLabel[item.status]} statusTone={tone(item.status)} actions={<><Link className="button secondary" to={`/seller/products/${item.id}`}>查看申请</Link>{item.status === 'SUBMITTED' && me.data?.access.can_submit_product_applications ? <Button className="danger" onClick={() => setPendingWithdraw({ id: item.id, version: item.version })}>撤回申请</Button> : null}</>}>
+      {applications.items.map((item) => <RecordCard key={item.id} title={item.product_name} meta={`${item.store.display_name} · ${item.asin}`} status={applicationStatusLabel[item.status]} statusTone={tone(item.status)} actions={<><Link className="button secondary" to={`/seller/products/${item.id}`}>查看申请</Link>{item.status === 'SUBMITTED' && me.data?.access.can_submit_product_applications ? <Button className="danger" onClick={() => setPendingWithdraw({ id: item.id, version: item.version })}>撤回申请</Button> : null}</>}>
         <FactGrid><Fact label="记录类型" value="产品申请" /><Fact label="提交时间" value={formatShanghai(item.submitted_at)} /><Fact label="搜索词" value={item.search_keywords.join('、') || '未填写'} /><Fact label="审核说明" value={item.review_reason ?? '暂无'} /></FactGrid>
       </RecordCard>)}
     </div>}
+    <CursorPagination {...products} onLoadMore={products.loadMore} onRetry={products.retryLater}
+      loadLabel="加载更多商品" loadingLabel="正在加载更多商品" retryLabel="重试商品列表"
+      errorMessage="后一页商品暂时无法读取，已加载商品仍会保留。" />
+    <CursorPagination {...applications} onLoadMore={applications.loadMore} onRetry={applications.retryLater}
+      loadLabel="加载更多申请" loadingLabel="正在加载更多申请" retryLabel="重试申请列表"
+      errorMessage="后一页申请暂时无法读取，已加载申请仍会保留。" />
     <Dialog open={pendingWithdraw !== null} title="撤回产品申请" description="撤回后当前申请将不再继续审核。" busy={withdraw.isPending} onClose={() => setPendingWithdraw(null)}>
-      <BuyerMutationRecovery mutation={withdraw} onRefresh={() => { setPendingWithdraw(null); void applications.refetch(); }} />
+      <BuyerMutationRecovery mutation={withdraw} onRefresh={() => { setPendingWithdraw(null); applications.retryInitial(); }} />
       <div className="entry-actions"><Button className="secondary" onClick={() => setPendingWithdraw(null)}>取消</Button><Button className="danger" loading={withdraw.isPending} onClick={() => { if (pendingWithdraw) withdraw.mutate(pendingWithdraw); }}>确认撤回</Button></div>
     </Dialog>
   </section>;
@@ -123,14 +150,21 @@ export function SellerDemandsPage(): React.JSX.Element {
   const client = useQueryClient(); const { storeId } = useSellerStoreContext();
   const [pendingWithdraw, setPendingWithdraw] = useState<{ id: string; version: number } | null>(null);
   const me = useQuery({ queryKey: sellerQueryKeys.me, queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me) });
-  const demands = useQuery({ queryKey: sellerQueryKeys.demands(storeId), queryFn: ({ signal }) => sellerApi.demands(client, storeId, signal).then((r) => r.data.items) });
+  const demands = useSellerCursorPages({
+    resetKey: `seller-demands:${storeId ?? 'all'}:100`,
+    queryKey: (cursor) => sellerQueryKeys.demandsPage(storeId, cursor),
+    queryFn: (cursor, signal) => sellerApi.demands(client, storeId, cursor, signal),
+  });
   const withdraw = useBuyerMutation({ operation: (body: { id: string; version: number }, key, signal) => sellerApi.withdrawDemand(client, body.id, body.version, key, signal), onSuccess: async () => { await client.invalidateQueries({ queryKey: sellerQueryKeys.demands(storeId) }); setPendingWithdraw(null); } });
   return <section className="seller-page"><PageHeader title="需求批次" eyebrow="数量计划">{me.data?.access.can_submit_demand_batches ? <Link className="button" to="/seller/demands/new">提交需求</Link> : null}</PageHeader>
-    {demands.isPending ? <p role="status">正在加载需求批次</p> : demands.isError ? <><Alert tone="danger">暂时无法读取需求批次。</Alert><Button className="secondary" onClick={() => { void demands.refetch(); }}>重新读取</Button></> : demands.data.length === 0 ? <EmptyState title="暂无需求批次" description="选择已通过产品后可提交新的需求。" /> : <div className="seller-record-list">{demands.data.map((item) => <RecordCard key={item.id} title={item.product.product_name} meta={`${item.store.display_name} · ${item.product.asin}`} status={demandStatusLabel[item.status]} statusTone={tone(item.status)} actions={item.status === 'SUBMITTED' && me.data?.access.can_submit_demand_batches ? <Button className="danger" onClick={() => setPendingWithdraw({ id: item.id, version: item.version })}>撤回需求</Button> : null}>
+    {demands.isInitialPending ? <p role="status">正在加载需求批次</p> : demands.initialError ? <><Alert tone="danger">暂时无法读取需求批次。</Alert><Button type="button" className="secondary" onClick={demands.retryInitial}>重新读取</Button></> : demands.items.length === 0 ? <EmptyState title="暂无需求批次" description="选择已通过产品后可提交新的需求。" /> : <div className="seller-record-list">{demands.items.map((item) => <RecordCard key={item.id} title={item.product.product_name} meta={`${item.store.display_name} · ${item.product.asin}`} status={demandStatusLabel[item.status]} statusTone={tone(item.status)} actions={item.status === 'SUBMITTED' && me.data?.access.can_submit_demand_batches ? <Button className="danger" onClick={() => setPendingWithdraw({ id: item.id, version: item.version })}>撤回需求</Button> : null}>
       <FactGrid><Fact label="评价类型" value={taskTypeLabel[item.task_type]} /><Fact label="目标数量" value={item.target_quantity} /><Fact label="已批准" value={item.approved_quantity} /><Fact label="剩余名额" value={item.remaining_quantity} /><Fact label="开放时间" value={formatShanghai(item.open_at)} /><Fact label="预约截止" value={formatShanghai(item.reservation_deadline)} /><Fact label="下单截止" value={formatShanghai(item.order_deadline)} /><Fact label="审核说明" value={item.review_reason ?? item.close_reason ?? '暂无'} /></FactGrid>
     </RecordCard>)}</div>}
+    <CursorPagination {...demands} onLoadMore={demands.loadMore} onRetry={demands.retryLater}
+      loadLabel="加载更多需求" loadingLabel="正在加载更多需求" retryLabel="重试需求列表"
+      errorMessage="后一页需求暂时无法读取，已加载需求仍会保留。" />
     <Dialog open={pendingWithdraw !== null} title="撤回需求" description="撤回后当前需求将不再继续审核。" busy={withdraw.isPending} onClose={() => setPendingWithdraw(null)}>
-      <BuyerMutationRecovery mutation={withdraw} onRefresh={() => { setPendingWithdraw(null); void demands.refetch(); }} />
+      <BuyerMutationRecovery mutation={withdraw} onRefresh={() => { setPendingWithdraw(null); demands.retryInitial(); }} />
       <div className="entry-actions"><Button className="secondary" onClick={() => setPendingWithdraw(null)}>取消</Button><Button className="danger" loading={withdraw.isPending} onClick={() => { if (pendingWithdraw) withdraw.mutate(pendingWithdraw); }}>确认撤回</Button></div>
     </Dialog>
   </section>;
@@ -151,22 +185,36 @@ export function SellerProductApplicationDetailPage(): React.JSX.Element {
 
 export function SellerReviewsPage(): React.JSX.Element {
   const client = useQueryClient(); const { storeId } = useSellerStoreContext();
-  const reviews = useQuery({ queryKey: sellerQueryKeys.reviews(storeId), queryFn: ({ signal }) => sellerApi.reviews(client, storeId, signal).then((r) => r.data.items) });
+  const reviews = useSellerCursorPages({
+    resetKey: `seller-reviews:${storeId ?? 'all'}:100`,
+    queryKey: (cursor) => sellerQueryKeys.reviewsPage(storeId, cursor),
+    queryFn: (cursor, signal) => sellerApi.reviews(client, storeId, cursor, signal),
+  });
   return <section className="seller-page"><PageHeader title="评论" eyebrow="评论进度" />
-    {reviews.isPending ? <p role="status">正在加载评论</p> : reviews.isError ? <Alert tone="danger">暂时无法读取评论。</Alert> : reviews.data.length === 0 ? <EmptyState title="暂无评论" description="评论资料提交后会显示在这里。" /> : <div className="seller-record-list">{reviews.data.map((item) => <RecordCard key={item.review_case_id} title={item.product_name} meta={`${item.store.display_name} · ${item.formal_order.amazon_order_number}`} status={reviewStatusLabel[item.status]} statusTone={tone(item.status)}>
+    {reviews.isInitialPending ? <p role="status">正在加载评论</p> : reviews.initialError ? <Alert tone="danger">暂时无法读取评论。</Alert> : reviews.items.length === 0 ? <EmptyState title="暂无评论" description="评论资料提交后会显示在这里。" /> : <div className="seller-record-list">{reviews.items.map((item) => <RecordCard key={item.review_case_id} title={item.product_name} meta={`${item.store.display_name} · ${item.formal_order.amazon_order_number}`} status={reviewStatusLabel[item.status]} statusTone={tone(item.status)}>
       <FactGrid><Fact label="产品标识" value={item.asin} /><Fact label="评价类型" value={taskTypeLabel[item.review_type]} /><Fact label="提交时间" value={formatShanghai(item.submitted_at)} /><Fact label="通过时间" value={item.approved_at ? formatShanghai(item.approved_at) : '暂无'} /><Fact label="资料数量" value={`${item.evidence.files.length} 份`} /><Fact label="卖家服务费" value={item.service_fee_accrued ? cny(item.service_fee_accrued.amount_cny_fen) : '尚未产生'} /></FactGrid>
     </RecordCard>)}</div>}
+    <CursorPagination {...reviews} onLoadMore={reviews.loadMore} onRetry={reviews.retryLater}
+      loadLabel="加载更多评论" loadingLabel="正在加载更多评论" retryLabel="重试评论列表"
+      errorMessage="后一页评论暂时无法读取，已加载评论仍会保留。" />
   </section>;
 }
 
 export function SellerOrdersPage(): React.JSX.Element {
   const client = useQueryClient(); const { storeId } = useSellerStoreContext();
-  const query = useQuery({ queryKey: sellerQueryKeys.orders(storeId), queryFn: ({ signal }) => sellerApi.orders(client, storeId, signal).then((r) => r.data.items) });
+  const query = useSellerCursorPages({
+    resetKey: `seller-orders:${storeId ?? 'all'}:100`,
+    queryKey: (cursor) => sellerQueryKeys.ordersPage(storeId, cursor),
+    queryFn: (cursor, signal) => sellerApi.orders(client, storeId, cursor, signal),
+  });
   return <section className="seller-page"><PageHeader title="订单与业务完成" eyebrow="正式订单" />
-    {query.isPending ? <p role="status">正在加载正式订单</p> : query.isError ? <Alert tone="danger">暂时无法读取正式订单。</Alert> : query.data.length === 0 ? <EmptyState title="暂无正式订单" description="正式订单确认后会显示在这里。" /> : <div className="seller-record-list">{query.data.map((item) => <RecordCard key={item.formal_order_id} title={item.product_name} meta={`${item.store.display_name} · ${item.platform_order_identifier}`} status={item.business_completion ? (item.business_completion.status === 'COMPLETE' ? '业务完成' : '进行中') : '平台基础记录'} statusTone={item.business_completion ? tone(item.business_completion.status) : 'neutral'}>
+    {query.isInitialPending ? <p role="status">正在加载正式订单</p> : query.initialError ? <Alert tone="danger">暂时无法读取正式订单。</Alert> : query.items.length === 0 ? <EmptyState title="暂无正式订单" description="正式订单确认后会显示在这里。" /> : <div className="seller-record-list">{query.items.map((item) => <RecordCard key={item.formal_order_id} title={item.product_name} meta={`${item.store.display_name} · ${item.platform_order_identifier}`} status={item.business_completion ? (item.business_completion.status === 'COMPLETE' ? '业务完成' : '进行中') : '平台基础记录'} statusTone={item.business_completion ? tone(item.business_completion.status) : 'neutral'}>
       <FactGrid><Fact label="站点" value={marketplaceLabel[item.canonical_marketplace_code]} /><Fact label="平台订单标识" value={item.platform_order_identifier} /><Fact label="平台产品标识" value={item.platform_product_identifier} />{item.payment ? <Fact label="买家支付" value={money(item.payment.amount_minor, item.payment.currency_code, item.payment.currency_exponent)} /> : <Fact label="买家支付" value="待后续导入" />}{item.seller_expected_principal_cny_fen !== null ? <Fact label="卖家本金" value={cny(item.seller_expected_principal_cny_fen)} /> : <Fact label="卖家本金" value="待后续导入" />}{item.locked_service_fee_snapshot ? <Fact label="卖家服务费" value={cny(item.locked_service_fee_snapshot.service_fee_cny_fen)} /> : <Fact label="卖家服务费" value="待后续导入" />}{item.seller_principal_rate_snapshot ? <><Fact label="平台下单日期" value={item.seller_principal_rate_snapshot.platform_order_date} /><Fact label="卖家本金基准汇率" value={rate(item.seller_principal_rate_snapshot.base_rate_value, item.seller_principal_rate_snapshot.base_rate_scale, item.seller_principal_rate_snapshot.payment_currency_code)} /><Fact label="卖家本金汇率加点" value={rate(item.seller_principal_rate_snapshot.markup_rate_value, item.seller_principal_rate_snapshot.markup_rate_scale, item.seller_principal_rate_snapshot.payment_currency_code)} /><Fact label="最终卖家本金汇率" value={rate(item.seller_principal_rate_snapshot.final_rate_value, item.seller_principal_rate_snapshot.final_rate_scale, item.seller_principal_rate_snapshot.payment_currency_code)} /><Fact label="策略版本" value={`v${item.seller_principal_rate_snapshot.policy_version_no}`} /></> : item.seller_agreement_rate_snapshot ? <><Fact label="协议汇率" value={rate(item.seller_agreement_rate_snapshot.rate_value, item.seller_agreement_rate_snapshot.rate_scale, item.seller_agreement_rate_snapshot.source_currency_code)} /><Fact label="协议版本" value={`v${item.seller_agreement_rate_snapshot.version_no}`} /></> : <Fact label="汇率" value="待后续导入" />}<Fact label="评价类型" value={item.review_type ? taskTypeLabel[item.review_type] : '待后续导入'} /><Fact label="确认时间" value={formatShanghai(item.confirmed_at)} /><Fact label="聊天截图" value={<SellerChatScreenshotControl formalOrderId={item.formal_order_id} status={item.chat_screenshot.status} version={item.chat_screenshot.file_version} />} /></FactGrid>
       {item.business_completion ? <ul className="completion-grid"><li><span>评论</span><strong>{componentLabel[item.business_completion.review]}</strong></li><li><span>买家返款</span><strong>{componentLabel[item.business_completion.buyer_refund]}</strong></li><li><span>卖家本金</span><strong>{componentLabel[item.business_completion.seller_principal]}</strong></li><li><span>卖家服务费</span><strong>{componentLabel[item.business_completion.seller_service_fee]}</strong></li></ul> : <Alert tone="warning">该平台目前仅承载正式订单身份；财务与业务流程数据待后续导入。</Alert>}
     </RecordCard>)}</div>}
+    <CursorPagination {...query} onLoadMore={query.loadMore} onRetry={query.retryLater}
+      loadLabel="加载更多正式订单" loadingLabel="正在加载更多正式订单" retryLabel="重试正式订单列表"
+      errorMessage="后一页正式订单暂时无法读取，已加载订单仍会保留。" />
   </section>;
 }
 
@@ -203,13 +251,20 @@ function SellerChatScreenshotControl({
 export function SellerSettlementsPage(): React.JSX.Element {
   const client = useQueryClient();
   const summary = useQuery({ queryKey: sellerQueryKeys.settlement, queryFn: ({ signal }) => sellerApi.settlement(client, signal).then((r) => r.data.settlement) });
-  const payables = useQuery({ queryKey: sellerQueryKeys.payables, queryFn: ({ signal }) => sellerApi.payables(client, signal).then((r) => r.data.items) });
+  const payables = useSellerCursorPages({
+    resetKey: 'seller-payables:100',
+    queryKey: sellerQueryKeys.payablesPage,
+    queryFn: (cursor, signal) => sellerApi.payables(client, cursor, signal),
+  });
   return <section className="seller-page"><PageHeader title="本金与服务费" eyebrow="结算" />
-    {summary.isError || payables.isError ? <Alert tone="danger">结算信息暂时无法完整读取，请刷新后重试。</Alert> : null}
+    {summary.isError || payables.initialError ? <Alert tone="danger">结算信息暂时无法完整读取，请刷新后重试。</Alert> : null}
     <div className="seller-metrics"><MetricCard label="待结卖家本金" value={summary.data ? cny(summary.data.outstanding_principal_cny_fen) : '—'} /><MetricCard label="待结卖家服务费" value={summary.data ? cny(summary.data.outstanding_service_fee_cny_fen) : '—'} /><MetricCard label="未分配来款" value={summary.data ? cny(summary.data.unallocated_credit_cny_fen) : '—'} /></div>
-    {payables.isPending ? <p role="status">正在加载结算项目</p> : payables.data?.length === 0 ? <EmptyState title="暂无结算项目" description="产生卖家本金或卖家服务费后会显示在这里。" /> : <div className="seller-record-list">{payables.data?.map((item) => <RecordCard key={item.payable_id} title={item.product.name} meta={`${item.store.display_name} · ${item.amazon_order_number}`} status={payableStatusLabel[item.status]} statusTone={tone(item.status)}>
+    {payables.isInitialPending ? <p role="status">正在加载结算项目</p> : payables.initialError ? <Alert tone="warning">结算项目暂时不可用，请刷新后重试。</Alert> : payables.items.length === 0 ? <EmptyState title="暂无结算项目" description="产生卖家本金或卖家服务费后会显示在这里。" /> : <div className="seller-record-list">{payables.items.map((item) => <RecordCard key={item.payable_id} title={item.product.name} meta={`${item.store.display_name} · ${item.amazon_order_number}`} status={payableStatusLabel[item.status]} statusTone={tone(item.status)}>
       <FactGrid><Fact label="结算项目" value={item.payable_type === 'SELLER_PRINCIPAL' ? '卖家本金' : '卖家服务费'} /><Fact label="应结" value={cny(item.due_amount_cny_fen)} /><Fact label="已结" value={cny(item.paid_amount_cny_fen)} /><Fact label="未结" value={cny(item.outstanding_amount_cny_fen)} /><Fact label="应结时间" value={formatShanghai(item.due_at)} /><Fact label="产品标识" value={item.product.asin} /></FactGrid>
     </RecordCard>)}</div>}
+    <CursorPagination {...payables} onLoadMore={payables.loadMore} onRetry={payables.retryLater}
+      loadLabel="加载更多结算项目" loadingLabel="正在加载更多结算项目" retryLabel="重试结算项目"
+      errorMessage="后一页结算项目暂时无法读取，已加载项目仍会保留。" />
   </section>;
 }
 

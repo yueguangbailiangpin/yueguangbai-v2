@@ -65,7 +65,7 @@ function DomainNotFound(): React.JSX.Element {
   return <main className="centered"><NotFound /></main>;
 }
 
-function AppRoutes(): React.JSX.Element {
+export function AppRoutes(): React.JSX.Element {
   return <Routes>
     <Route path="/" element={<RootEntry />} />
     <Route path="/buyer/login" element={<CustomerLoginPage target="buyer" />} />
@@ -119,6 +119,7 @@ function AppRoutes(): React.JSX.Element {
       <Route path="acquisition" element={<StaffRouteSlot />} />
       <Route path="admin-business-dashboard" element={<StaffRouteSlot />} />
       <Route path="access-management" element={<StaffRouteSlot />} />
+      <Route path="seller-principal-rate-policies" element={<StaffRouteSlot />} />
       <Route path="products" element={<StaffRouteSlot />} />
       <Route path="products/:productId" element={<StaffRouteSlot />} />
       <Route path="demands/:demandId/reservations" element={<StaffRouteSlot />} />
