@@ -1,0 +1,39 @@
+{
+  "status": "LOCAL_READONLY_FROZEN",
+  "readOnly": true,
+  "sourceWorkbook": "DZEZ6a2F2aE1MWHdi",
+  "worksheets": [
+    {
+      "name": "工作表1",
+      "sheetId": "BB08J2",
+      "queriedRange": "rows 0..192, columns 0..25",
+      "nonEmptyDataRowsExcludingHeader": 91,
+      "missingProductIdentifierRows": [53, 54, 69, 70, 71]
+    },
+    {
+      "name": "飞利浦产品",
+      "sheetId": "1pne3d",
+      "queriedRange": "rows 0..129, columns 0..25",
+      "nonEmptyDataRowsExcludingHeader": 23,
+      "missingProductIdentifierRows": []
+    }
+  ],
+  "observed": {
+    "currentSourceRows": 114,
+    "currentRowsWithValidIdentifier": 109,
+    "amazonRowsWithValidAsin": 107,
+    "rakutenRowsWithValidIdentifier": 2,
+    "uniqueAmazonAsins": 86,
+    "uniqueRakutenIdentifiers": 2,
+    "uniqueMarketplaceAwareProducts": 88
+  },
+  "requiredByBusinessCorrection": {
+    "currentSourceRows": 114,
+    "currentRowsWithValidIdentifier": 109,
+    "uniqueAmazonAsins": 86,
+    "uniqueRakutenIdentifiers": 2,
+    "uniqueMarketplaceAwareProducts": 88
+  },
+  "acceptedSkip": "The missing 115th row and 89th product are explicitly skipped by the owner decision; they are not inferred or synthesized.",
+  "externalWrites": 0
+}
