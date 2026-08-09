@@ -4,7 +4,7 @@
 
 The four Tencent Docs folders are read-only historical seller/product sources. The current schema treats a seller WeChat claim as globally unique and treats a product as owned by exactly one seller, so a faithful import cannot safely represent the frozen folder/channel boundary, repeated WeChat identities, or the same ASIN supplied by multiple seller organizations.
 
-## Scope
+## What Changes
 
 - Add the five frozen seller channels and alias normalization without changing existing channel prefixes or sequence counters.
 - Add a local-only, traceable source manifest parser and two-phase preview/commit importer.
