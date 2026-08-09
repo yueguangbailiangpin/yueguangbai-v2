@@ -42,6 +42,18 @@ export async function verifyAndDecodeFeishuWorkbenchCallback(input: {
   const verificationToken = input.verificationToken;
   const appId = input.appId;
   const tenantKey = input.tenantKey;
+  const authenticationHeaders = [input.signature, input.timestamp, input.nonce];
+  const hasAnyAuthenticationHeader = authenticationHeaders.some((value) => value !== null);
+  const hasAllAuthenticationHeaders = authenticationHeaders.every((value) => value !== null);
+  if (!hasAnyAuthenticationHeader) {
+    const decoded = await decodeUrlVerificationBody(input.body, encryptKey);
+    const challenge = urlVerification(decoded, verificationToken);
+    if (!challenge) throw new FeishuWorkbenchCallbackError('UNAUTHENTICATED', 401);
+    return challenge;
+  }
+  if (!hasAllAuthenticationHeaders) {
+    throw new FeishuWorkbenchCallbackError('UNAUTHENTICATED', 401);
+  }
   if (!/^[0-9a-f]{64}$/u.test(input.signature ?? '') || !/^\d{1,16}$/u.test(input.timestamp ?? '')
     || !safe(input.nonce ?? '', 200)) throw new FeishuWorkbenchCallbackError('UNAUTHENTICATED', 401);
   const timestamp = Number(input.timestamp);
@@ -59,14 +71,8 @@ export async function verifyAndDecodeFeishuWorkbenchCallback(input: {
   const decoded = parseJson(plaintext);
   const record = object(decoded);
   if (!record) throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR', 400);
-  if (record['type'] === 'url_verification') {
-    const challenge = exact(record, ['challenge', 'token', 'type']);
-    if (challenge['type'] !== 'url_verification' || !safe(challenge['challenge'], 1000)
-      || !constantTimeEqual(String(challenge['token'] ?? ''), verificationToken)) {
-      throw new FeishuWorkbenchCallbackError('UNAUTHENTICATED', 401);
-    }
-    return { kind: 'CHALLENGE', challenge: challenge['challenge'] };
-  }
+  const challenge = urlVerification(record, verificationToken);
+  if (challenge) return challenge;
   const callback = parseCardAction(record, { verificationToken, appId, tenantKey });
   return {
     kind: 'EVENT',
@@ -74,6 +80,32 @@ export async function verifyAndDecodeFeishuWorkbenchCallback(input: {
     nonceHash: await sha256(input.nonce!),
     payloadHash: await sha256(plaintext),
   };
+}
+
+async function decodeUrlVerificationBody(body: string, encryptKey: string): Promise<unknown> {
+  const decoded = parseJson(body);
+  const record = object(decoded);
+  if (!record) throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR', 400);
+  if (!Object.hasOwn(record, 'encrypt')) return record;
+  const wrapper = exact(record, ['encrypt']);
+  if (!safe(wrapper['encrypt'], 128 * 1024)) {
+    throw new FeishuWorkbenchCallbackError('VALIDATION_ERROR', 400);
+  }
+  return parseJson(await decrypt(wrapper['encrypt'], encryptKey));
+}
+
+function urlVerification(
+  decoded: unknown,
+  verificationToken: string,
+): Extract<VerifiedFeishuWorkbenchCallback, { kind: 'CHALLENGE' }> | null {
+  const record = object(decoded);
+  if (!record || record['type'] !== 'url_verification') return null;
+  const challenge = exact(record, ['challenge', 'token', 'type']);
+  if (!safe(challenge['challenge'], 1000)
+    || !constantTimeEqual(String(challenge['token'] ?? ''), verificationToken)) {
+    throw new FeishuWorkbenchCallbackError('UNAUTHENTICATED', 401);
+  }
+  return { kind: 'CHALLENGE', challenge: challenge['challenge'] };
 }
 
 export async function handleFeishuWorkbenchCallback(database: SqlDatabase, input: {

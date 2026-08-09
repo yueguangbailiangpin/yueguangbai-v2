@@ -150,6 +150,35 @@ describe('Feishu staff workbench production boundary', () => {
     await expect(verify(wrongToken, now)).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
+  it('accepts only token-bound URL verification without signature headers', async () => {
+    const now = 1_800_000_000_000;
+    const encrypted = await encryptedBody({
+      type: 'url_verification', token: VERIFICATION_TOKEN, challenge: 'registration-challenge',
+    });
+    expect(await verifyWithoutHeaders(encrypted)).toEqual({
+      kind: 'CHALLENGE', challenge: 'registration-challenge',
+    });
+    const plaintext = JSON.stringify({
+      challenge: 'plain-registration-challenge', token: VERIFICATION_TOKEN, type: 'url_verification',
+    });
+    expect(await verifyWithoutHeaders(plaintext)).toEqual({
+      kind: 'CHALLENGE', challenge: 'plain-registration-challenge',
+    });
+    await expect(verifyWithoutHeaders(JSON.stringify({
+      challenge: 'wrong-token', token: 'wrong-token', type: 'url_verification',
+    }))).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    await expect(verifyWithoutHeaders(await encryptedBody(cardEvent({
+      taskGuid: 'task_unsigned_event',
+    })))).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    const signed = await signedEncrypted({
+      type: 'url_verification', token: VERIFICATION_TOKEN, challenge: 'partial-headers',
+    }, now, 'nonce-partial');
+    await expect(verifyAndDecodeFeishuWorkbenchCallback({
+      encryptKey: ENCRYPT_KEY, verificationToken: VERIFICATION_TOKEN, appId: APP_ID, tenantKey: TENANT_KEY,
+      signature: signed.signature, timestamp: null, nonce: null, body: signed.body, now,
+    })).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+  });
+
   it('recomputes D1 authorization, resolves open_id targets, and makes exact replay idempotent', async () => {
     const d = await setup();
     const item = await createWorkItem(d);
@@ -290,16 +319,27 @@ function cardEvent(input: { taskGuid: string; eventId?: string }) {
 }
 
 async function signedEncrypted(payload: unknown, now: number, nonce: string) {
+  const body = await encryptedBody(payload);
+  const timestamp = String(Math.floor(now / 1000));
+  const signature = await sha256(`${timestamp}${nonce}${ENCRYPT_KEY}${body}`);
+  return { body, timestamp, nonce, signature };
+}
+
+async function encryptedBody(payload: unknown): Promise<string> {
   const plaintext = JSON.stringify(payload);
   const keyHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ENCRYPT_KEY));
   const key = await crypto.subtle.importKey('raw', keyHash, { name: 'AES-CBC' }, false, ['encrypt']);
   const iv = new Uint8Array(16); iv.fill(7);
   const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CBC', iv }, key, new TextEncoder().encode(plaintext)));
   const combined = new Uint8Array(iv.byteLength + encrypted.byteLength); combined.set(iv); combined.set(encrypted, iv.byteLength);
-  const body = JSON.stringify({ encrypt: btoa(String.fromCharCode(...combined)) });
-  const timestamp = String(Math.floor(now / 1000));
-  const signature = await sha256(`${timestamp}${nonce}${ENCRYPT_KEY}${body}`);
-  return { body, timestamp, nonce, signature };
+  return JSON.stringify({ encrypt: btoa(String.fromCharCode(...combined)) });
+}
+
+async function verifyWithoutHeaders(body: string) {
+  return verifyAndDecodeFeishuWorkbenchCallback({
+    encryptKey: ENCRYPT_KEY, verificationToken: VERIFICATION_TOKEN, appId: APP_ID, tenantKey: TENANT_KEY,
+    signature: null, timestamp: null, nonce: null, body, now: 1_800_000_000_000,
+  });
 }
 
 async function verify(input: Awaited<ReturnType<typeof signedEncrypted>>, now: number) {
