@@ -2,7 +2,7 @@
 
 ## MODIFIED Requirements
 
-### Requirement: External and destructive capabilities remain disabled by default
+### Requirement: External and destructive capabilities remain disabled
 
 Staging and production templates SHALL set Scheduler, Staff Auth/Feishu, Drive copy, Drive proxy, Drive R2 delete, Feishu workbench sync/callback, Staff MCP and external alert delivery to disabled/false. A capability MAY be enabled only through its own approved OpenSpec Change and dedicated fail-closed activation preflight. R2 deletion required only for failed-upload compensation remains governed by the existing compensation contract.
 
@@ -10,6 +10,11 @@ Staging and production templates SHALL set Scheduler, Staff Auth/Feishu, Drive c
 
 - **WHEN** either environment template is parsed
 - **THEN** every frozen kill switch is explicitly disabled and no provider credential is stored in vars.
+
+#### Scenario: A capability is enabled in release input
+
+- **WHEN** the generic Cloudflare release preflight sees any frozen switch enabled
+- **THEN** it rejects the input and identifies the switch name without echoing any configuration value; a separately approved capability must instead use its dedicated activation preflight.
 
 #### Scenario: Staff Auth has a separately approved activation
 
