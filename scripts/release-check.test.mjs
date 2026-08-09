@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { candidateProvenance, RELEASE_COMMANDS, runReleaseCommands } from './release-check.mjs';
+import {
+  candidateProvenance,
+  commandEnvironment,
+  RELEASE_COMMANDS,
+  runReleaseCommands,
+} from './release-check.mjs';
 
 describe('release aggregate gate', () => {
   it('binds a clean candidate to its current commit and tree', () => {
@@ -29,5 +34,14 @@ describe('release aggregate gate', () => {
     expect(() => runReleaseCommands(['first', 'second', 'third'], runner))
       .toThrow('release sub-gate failed: npm run second');
     expect(runner.mock.calls.map(([command]) => command)).toEqual(['first', 'second']);
+  });
+
+  it('isolates the release browser server on a configurable loopback port', () => {
+    const environment = { RELEASE_BROWSER_PORT: '4300', EXISTING: 'preserved' };
+    expect(commandEnvironment('test:wave14a:browser', environment)).toEqual({
+      ...environment,
+      PLAYWRIGHT_PORT: '4300',
+    });
+    expect(commandEnvironment('check', environment)).toBe(environment);
   });
 });

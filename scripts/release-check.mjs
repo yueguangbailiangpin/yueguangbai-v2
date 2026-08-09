@@ -33,6 +33,14 @@ export function runReleaseCommands(commands = RELEASE_COMMANDS, runner = runNpmS
   }
 }
 
+export function commandEnvironment(command, environment = process.env) {
+  if (command !== 'test:wave14a:browser') return environment;
+  return {
+    ...environment,
+    PLAYWRIGHT_PORT: environment['RELEASE_BROWSER_PORT'] ?? '4188',
+  };
+}
+
 export function runReleaseCheck() {
   const candidate = candidateProvenance();
   console.log(JSON.stringify({ status: 'RUNNING', candidate, commands: RELEASE_COMMANDS }, null, 2));
@@ -52,7 +60,11 @@ function runGit(args) {
 }
 
 function runNpmScript(command) {
-  return spawnSync('npm', ['run', command], { cwd: root, stdio: 'inherit' });
+  return spawnSync('npm', ['run', command], {
+    cwd: root,
+    stdio: 'inherit',
+    env: commandEnvironment(command),
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) runReleaseCheck();
