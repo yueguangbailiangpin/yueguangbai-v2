@@ -41,6 +41,7 @@ import { registerFeishuWorkbenchRoutes } from './feishu-workbench';
 import { registerAcquisitionRoutes } from './acquisition';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
 import { registerStaffMcpTransportRoutes } from './staff-mcp';
+import { registerStaffAccessManagementRoutes } from './staff-access-management';
 
 const app = createApp();
 
@@ -65,6 +66,7 @@ registerStaffAssignmentRoutes(app);
 registerStaffCustomerSecurityRoutes(app);
 registerAcquisitionRoutes(app);
 registerAdminBusinessDashboardRoutes(app);
+registerStaffAccessManagementRoutes(app);
 registerStaffCatalogWorkflowRoutes(app);
 registerMarketplaceFoundationRoutes(app);
 registerStaffReviewRoutes(app);

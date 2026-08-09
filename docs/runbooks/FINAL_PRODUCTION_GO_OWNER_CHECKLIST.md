@@ -6,7 +6,7 @@
 
 - [ ] 总控完成当前收口 Changes 审查、本地提交、干净 Integration 与非强制快进；重新 fetch 并记录最终 `origin/main` 40 位 SHA。
 - [ ] 在最终干净候选执行 `npm run release:check`，把其动态输出的 commit 与 tree 绑定到不可变证据；不得沿用历史文档 SHA。
-- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、0001–0038 连续、全量本地/Chromium/OpenSpec 门禁通过。
+- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、0001–0039 连续、全量本地/Chromium/OpenSpec 门禁通过。
 - [ ] 确认已归档 `pre-wave13-baseline-conformance-audit` 的本地任务状态和仍未完成的外部阻断被分别读取；不得把 archive 状态写成 active，也不得伪勾真实生产项。
 - [ ] 选择并批准发布控制：受保护 CI，或有时间戳、双人复核和不可变日志的人工流程。
 

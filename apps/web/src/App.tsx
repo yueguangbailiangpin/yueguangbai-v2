@@ -8,6 +8,7 @@ import { CustomerPasswordResetPage } from './auth/customer/CustomerPasswordReset
 import { CustomerPasswordRouteBoundary } from './auth/customer/CustomerPasswordRouteBoundary';
 import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary';
 import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary';
+import { StaffBindingPage } from './auth/staff/StaffBindingPage';
 import { StaffAuthController } from './auth/staff/staff-auth-controller';
 import { BuyerRegistrationPage } from './buyer/registration/BuyerRegistrationPage';
 import { safeReturnPath } from './routes/return-path';
@@ -74,6 +75,7 @@ function AppRoutes(): React.JSX.Element {
     <Route path="/buyer/change-password" element={<CustomerPasswordRouteBoundary target="buyer"><CustomerChangePasswordPage target="buyer" /></CustomerPasswordRouteBoundary>} />
     <Route path="/seller/change-password" element={<CustomerPasswordRouteBoundary target="seller"><CustomerChangePasswordPage target="seller" /></CustomerPasswordRouteBoundary>} />
     <Route path="/staff/login" element={<StaffLogin />} />
+    <Route path="/staff/bind" element={<StaffBindingPage />} />
     <Route path="/staff/auth/callback" element={<StaffSessionBoundary><RouteChunkBoundary load={loadStaffCallbackModule} /></StaffSessionBoundary>} />
     <Route path="/buyer/*" element={<CustomerSessionBoundary target="buyer"><RouteChunkBoundary load={loadBuyerLayout} /></CustomerSessionBoundary>}>
       <Route index element={<BuyerRouteSlot />} />
@@ -116,6 +118,7 @@ function AppRoutes(): React.JSX.Element {
       <Route path="work/:workItemId" element={<StaffRouteSlot />} />
       <Route path="acquisition" element={<StaffRouteSlot />} />
       <Route path="admin-business-dashboard" element={<StaffRouteSlot />} />
+      <Route path="access-management" element={<StaffRouteSlot />} />
       <Route path="products" element={<StaffRouteSlot />} />
       <Route path="products/:productId" element={<StaffRouteSlot />} />
       <Route path="demands/:demandId/reservations" element={<StaffRouteSlot />} />

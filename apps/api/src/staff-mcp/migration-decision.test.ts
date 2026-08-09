@@ -10,9 +10,10 @@ describe('Staff MCP production transport migration', () => {
     const migrations = readdirSync(resolve(root, 'migrations'))
       .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
       .sort();
-    expect(migrations.at(-2)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations.at(-1)).toBe('0038_staff_mcp_production_transport_oauth.sql');
-    expect(migrations).toHaveLength(38);
+    expect(migrations[36]).toBe('0037_product_reservation_order_scheduling.sql');
+    expect(migrations[37]).toBe('0038_staff_mcp_production_transport_oauth.sql');
+    expect(migrations[38]).toBe('0039_staff_access_binding_management.sql');
+    expect(migrations).toHaveLength(39);
     const foundation = readFileSync(resolve(root, 'migrations/0001_foundation.sql'), 'utf8');
     const migration = readFileSync(
       resolve(root, 'migrations/0038_staff_mcp_production_transport_oauth.sql'),
@@ -30,7 +31,7 @@ describe('Staff MCP production transport migration', () => {
       const state = await database.prepare(`
         SELECT schema_version FROM app_schema_state WHERE singleton_id=1
       `).first<{ schema_version: number }>();
-      expect(state).toEqual({ schema_version: 38 });
+      expect(state).toEqual({ schema_version: 39 });
       const control = await database.prepare(`
         SELECT enabled, reason_code FROM staff_mcp_runtime_controls
         WHERE control_type='GLOBAL' AND control_name='staff-mcp'

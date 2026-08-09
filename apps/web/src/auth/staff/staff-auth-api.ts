@@ -75,3 +75,16 @@ export const staffAuthApi: StaffAuthApiAdapter = Object.freeze({
     ...(signal ? { signal } : {}),
   }),
 });
+
+export function startStaffBinding(
+  inviteToken: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<StaffLoginStart>> {
+  return apiRequest({
+    path: '/api/staff-auth/binding/start',
+    method: 'POST',
+    schema: staffLoginStartResponseSchema,
+    body: { invite_token: inviteToken },
+    ...(signal ? { signal } : {}),
+  });
+}

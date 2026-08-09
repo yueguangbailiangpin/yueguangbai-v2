@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, UserPlus, UserRound } from 'lucide-react';
+import { BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, UserCog, UserPlus, UserRound } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useRef, useState, type ReactNode } from 'react';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
@@ -18,21 +18,25 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const location = useLocation();
   const acquisition = location.pathname.startsWith('/staff/acquisition');
   const dashboard = location.pathname.startsWith('/staff/admin-business-dashboard');
+  const accessManagement = location.pathname.startsWith('/staff/access-management');
   const productScheduling = location.pathname.startsWith('/staff/products')
     || /^\/staff\/demands\/[^/]+\/reservations$/u.test(location.pathname);
   const mayViewProducts = session.permissions.includes('PRODUCT_VIEW');
   const mayViewDashboard = session.role.code === 'owner'
     && session.permissions.includes('FINANCIAL_VIEW');
+  const mayManageStaff = session.role.code === 'owner'
+    && session.permissions.includes('STAFF_MANAGE')
+    && session.permissions.includes('PERMISSION_MANAGE');
   const mayViewAcquisition = session.role.code === 'owner'
     ? session.permissions.some((permission) => ['ACQUISITION_ADMIN', 'ACQUISITION_BUYER_LEAD', 'ACQUISITION_SELLER_LEAD'].includes(permission))
     : session.role.code === 'pre_sales'
       ? session.permissions.includes('ACQUISITION_BUYER_LEAD')
       : session.role.code === 'seller_ops'
         && session.permissions.includes('ACQUISITION_SELLER_LEAD');
-  const workQueue = !acquisition && !dashboard && !productScheduling;
-  const title = dashboard ? '经营看板' : productScheduling ? '产品预约排期'
+  const workQueue = !acquisition && !dashboard && !productScheduling && !accessManagement;
+  const title = accessManagement ? '员工权限' : dashboard ? '经营看板' : productScheduling ? '产品预约排期'
     : acquisition ? '获客登记' : '员工工作台';
-  const context = dashboard ? '经营与利润事实' : productScheduling ? '产品、预约与排期'
+  const context = accessManagement ? '角色、启停与飞书绑定' : dashboard ? '经营与利润事实' : productScheduling ? '产品、预约与排期'
     : acquisition ? '渠道与线索' : '队列、详情与受控操作';
   return <IdentityShell identity="staff" className="staff-business-shell">
     <aside className="staff-sidebar">
@@ -49,6 +53,9 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
         </NavLink> : null}
         {mayViewDashboard ? <NavLink to="/staff/admin-business-dashboard">
           <ChartNoAxesCombined aria-hidden="true" /><span>经营看板</span>
+        </NavLink> : null}
+        {mayManageStaff ? <NavLink to="/staff/access-management">
+          <UserCog aria-hidden="true" /><span>员工权限</span>
         </NavLink> : null}
       </nav>
       <div className="staff-sidebar-person">

@@ -36,6 +36,7 @@ export * from './seller-settlement';
 export * from './seller-portal';
 export * from './sql';
 export * from './staff';
+export * from './staff-access-management';
 export * from './staff-assignment';
 export * from './staff-auth';
 export * from './staff-buyer-refund';

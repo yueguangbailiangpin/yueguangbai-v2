@@ -8,11 +8,11 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
 
-if (migrationFiles.length !== 38
-  || migrationFiles.at(-3) !== '0036_staff_acquisition_funnel_workbench.sql'
-  || migrationFiles.at(-2) !== '0037_product_reservation_order_scheduling.sql'
-  || migrationFiles.at(-1) !== '0038_staff_mcp_production_transport_oauth.sql') {
-  throw new Error('expected migrations 0001-0038');
+if (migrationFiles.length !== 39
+  || migrationFiles.at(-3) !== '0037_product_reservation_order_scheduling.sql'
+  || migrationFiles.at(-2) !== '0038_staff_mcp_production_transport_oauth.sql'
+  || migrationFiles.at(-1) !== '0039_staff_access_binding_management.sql') {
+  throw new Error('expected migrations 0001-0039');
 }
 
 const guarded = new Map([
@@ -43,6 +43,7 @@ const guarded = new Map([
   [36, 'acquisition_channels'],
   [37, 'demand_order_schedule_versions'],
   [38, 'staff_mcp_subject_bindings'],
+  [39, 'staff_binding_invitations'],
 ]);
 
 function readMigration(name) {
@@ -98,7 +99,7 @@ function expectGuardFailure(database, migration, label) {
 {
   const fresh = openDatabase();
   applyPrefix(fresh, migrationFiles.length);
-  if (schemaVersion(fresh) !== 38) throw new Error('fresh schema not 38');
+  if (schemaVersion(fresh) !== 39) throw new Error('fresh schema not 39');
   assertIntegrity(fresh, 'fresh');
   fresh.close();
 }
@@ -142,8 +143,8 @@ for (const [number, sentinel] of guarded) {
 
 console.log(JSON.stringify({
   status: 'PASS',
-  fresh_schema: 38,
-  sequential_upgrade: '0001 -> 0038',
+  fresh_schema: 39,
+  sequential_upgrade: '0001 -> 0039',
   guarded_migrations: [...guarded.keys()],
   wrong_order_rejected: true,
   repeat_rejected: true,
