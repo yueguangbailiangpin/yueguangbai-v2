@@ -241,7 +241,7 @@ describe('Customer cache isolation and race control through MSW', () => {
     expect(await screen.findByRole('heading', { name: '会话清理失败，请重试或刷新' })).toBeVisible();
     expect(screen.getByText('请求编号：request-failed-cleanup')).toBeVisible();
     expect(logoutRequests).toBe(1);
-    expectOnlyStaff(client);
+    await waitFor(() => expectOnlyStaff(client));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(logoutRequests).toBe(1);
     expectOnlyStaff(client);
