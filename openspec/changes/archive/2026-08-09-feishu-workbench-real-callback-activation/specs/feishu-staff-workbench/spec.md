@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Real Feishu callback activation preserves a no-write registration boundary
 
