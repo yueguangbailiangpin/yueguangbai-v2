@@ -1,58 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { lstatSync, mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { resolveChangeRoot } from './verifier-utils.mjs';
 import { assert, assertContains, assertNotContains, read, relative, report, root } from './wave13-verifier-lib.mjs';
 
 const changeName = 'module1-buyer-complete-business-loop';
 
 export function resolveModule1ChangeRoot(workspace) {
-  const activeRoot = join(workspace, 'openspec/changes', changeName);
-  const archiveRoot = join(workspace, 'openspec/changes/archive');
-  const requireDirectory = (path, label) => {
-    const stats = lstatSync(path, { throwIfNoEntry: false });
-    if (!stats) return false;
-    if (stats.isSymbolicLink()) throw new Error(`${label} must not be a symbolic link: ${path}`);
-    if (!stats.isDirectory()) throw new Error(`${label} must be an ordinary directory: ${path}`);
-    return true;
-  };
-  const activeExists = requireDirectory(activeRoot, 'Module 1 active change');
-  if (!requireDirectory(archiveRoot, 'OpenSpec archive')) throw new Error('OpenSpec archive directory missing');
-  const archivePattern = new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${changeName}$`, 'u');
-  const archivedRoots = readdirSync(archiveRoot).filter((entry) => archivePattern.test(entry)).map((entry) => join(archiveRoot, entry));
-  for (const path of archivedRoots) requireDirectory(path, 'Module 1 archived change');
-  if (archivedRoots.length > 1) throw new Error('Multiple Module 1 archived changes found');
-  if (activeExists && archivedRoots.length === 1) throw new Error('Module 1 active and archived changes must not coexist');
-  if (activeExists) return activeRoot;
-  if (archivedRoots.length === 1) return archivedRoots[0];
-  throw new Error('Module 1 active or archived change directory not found');
+  return resolveChangeRoot(changeName, workspace);
 }
 
-function selfTestResolver() {
-  const scenario = (setup, succeeds) => {
-    const workspace = mkdtempSync(join(tmpdir(), 'module1-change-root-'));
-    try {
-      mkdirSync(join(workspace, 'openspec/changes/archive'), { recursive: true });
-      setup(workspace);
-      if (succeeds) resolveModule1ChangeRoot(workspace);
-      else assertThrows(() => resolveModule1ChangeRoot(workspace));
-    } finally { rmSync(workspace, { recursive: true, force: true }); }
-  };
-  scenario((workspace) => mkdirSync(join(workspace, 'openspec/changes', changeName)), true);
-  scenario((workspace) => mkdirSync(join(workspace, 'openspec/changes/archive', `2026-08-06-${changeName}`)), true);
-  scenario((workspace) => { mkdirSync(join(workspace, 'openspec/changes', changeName)); mkdirSync(join(workspace, 'openspec/changes/archive', `2026-08-06-${changeName}`)); }, false);
-  scenario((workspace) => { mkdirSync(join(workspace, 'openspec/changes/archive', `2026-08-06-${changeName}`)); mkdirSync(join(workspace, 'openspec/changes/archive', `2026-08-07-${changeName}`)); }, false);
-  scenario((workspace) => { const target = join(workspace, 'target'); mkdirSync(target); symlinkSync(target, join(workspace, 'openspec/changes', changeName)); }, false);
-  scenario(() => {}, false);
-}
-
-function assertThrows(operation) {
-  let threw = false;
-  try { operation(); } catch { threw = true; }
-  assert(threw, 'Module 1 change-root resolver must fail deterministically');
-}
-
-selfTestResolver();
 const change = relative(resolveModule1ChangeRoot(root));
 
 const expected = Object.freeze([

@@ -15,7 +15,6 @@ import {
   type SqliteDatabase,
 } from '@ygb/testkit';
 import type {
-  FileAuthorizationResource,
   FileAuthorizationService,
 } from './authorization';
 import { completeFileUploadIntent } from './complete-upload-intent';

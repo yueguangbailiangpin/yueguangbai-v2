@@ -2,7 +2,6 @@
 import '@testing-library/jest-dom/vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { cleanup, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Route, Routes } from 'react-router';

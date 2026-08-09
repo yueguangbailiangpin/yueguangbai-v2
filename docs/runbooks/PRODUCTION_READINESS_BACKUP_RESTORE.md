@@ -8,7 +8,7 @@
 
 ## Migration 决定与当前发布基线
 
-M10 当时不增加业务事实、权限、状态机或审计表，因此没有为发布证据创建 Migration；备份 Manifest 继续保存在加密外部包中，Git 只保存匿名发布证据。后续业务 Change 已把当前仓库 Migration 链推进为连续 `0001`–`0038`，当前候选的 `app_schema_state.schema_version=38`。本最终本地准备 Change 同样不创建新 Migration。任何生产操作都必须在窗口开始时重新核验候选 SHA、连续 Migration 末号和线上 ledger，并把核验出的当前 schema 作为 `--expected-schema` 显式传入；不得依赖脚本历史默认值。如果未来必须在 D1 持久化生产发布事实，必须另建 OpenSpec Change，并使用届时下一连续 Migration。
+M10 当时不增加业务事实、权限、状态机或审计表，因此没有为发布证据创建 Migration；备份 Manifest 继续保存在加密外部包中，Git 只保存匿名发布证据。后续业务 Change 已把当前仓库 Migration 链推进为连续 `0001`–`0038`，当前候选的 `app_schema_state.schema_version=38`。本最终本地准备 Change 同样不创建新 Migration。任何生产操作都必须在窗口开始时重新核验候选 SHA、连续 Migration 末号和线上 ledger，并把核验出的当前 schema 作为 `--expected-schema` 显式传入。备份与恢复 CLI 已删除 schema 34 默认值；省略、非整数或非正数均在读写数据库前失败关闭。不得因为仓库当前末号为 `0038` 就推断线上已应用到 `0038`。如果未来必须在 D1 持久化生产发布事实，必须另建 OpenSpec Change，并使用届时下一连续 Migration。
 
 ## 本地/隔离备份
 

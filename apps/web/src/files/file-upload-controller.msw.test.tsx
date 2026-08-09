@@ -3,7 +3,7 @@ import { QueryClient } from '@tanstack/react-query';
 import '@testing-library/jest-dom/vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { delay, http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import '../test/msw/lifecycle';
 import { establishFreshSessionCycle, captureSessionCycle } from '../auth/session-invalidation';
 import { failureEnvelopeFixture } from '../test/msw/fixtures';

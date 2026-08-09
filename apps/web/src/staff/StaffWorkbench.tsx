@@ -9,7 +9,7 @@ import {
   Select, StatusBadge, TextInput,
 } from '../ui/primitives';
 import { staffApi } from './api/client';
-import type { StaffBuyerRefund, StaffOrderEvidence, StaffReview, StaffWorkItem } from './contracts/runtime';
+import type { StaffOrderEvidence, StaffReview, StaffWorkItem } from './contracts/runtime';
 import { staffWorkbenchKeys } from './queries/keys';
 import { StaffMutationAuthority, type StaffMutationRequest } from './mutations/StaffMutationAuthority';
 import { formatCny, formatShanghai } from './shared/format';

@@ -1,21 +1,13 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import {
+  invariant as assert,
+  readRepositoryFile,
+  repositoryRoot as root,
+  resolveChangeFile,
+} from './verifier-utils.mjs';
 
-const root = path.resolve(import.meta.dirname, '..');
-const read = (file) => readFileSync(path.join(root, file), 'utf8');
-const assert = (value, message) => {
-  if (!value) throw new Error(message);
-};
-
-function resolveChangeFile(changeName, relativeFile) {
-  const active = path.join('openspec', 'changes', changeName, relativeFile);
-  const archived = readdirSync(path.join(root, 'openspec', 'changes', 'archive'))
-    .filter((entry) => /^\d{4}-\d{2}-\d{2}-/u.test(entry) && entry.endsWith(`-${changeName}`))
-    .map((entry) => path.join('openspec', 'changes', 'archive', entry, relativeFile));
-  const candidates = [active, ...archived].filter((file) => existsSync(path.join(root, file)));
-  assert(candidates.length === 1, `${changeName} must have exactly one active or archived evidence file`);
-  return candidates[0];
-}
+const read = (file) => readRepositoryFile(file, root);
 
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
@@ -49,8 +41,8 @@ assert(!productionRunbook.includes('--expected-schema 35'),
 
 const evidence = read('docs/acceptance/FINAL_PRODUCTION_GO_LOCAL_PREPARATION.md');
 for (const marker of [
-  'b74a029876301a4f8bbb6ebd305ead13a6f2cd59',
-  '8c4fdaa382fd1e2c56d76aa23bb6b960c4f6f72c',
+  '`npm run release:check`',
+  '`HEAD` 与 `HEAD^{tree}`',
   'LOCAL_IMPLEMENTATION_PRESENT_EXTERNAL_UNVERIFIED',
   'production-capable HTTPS/OAuth/D1/Service Binding/bounded-cleanup 边界已具备且默认关闭',
   'Production GO 阻断',
@@ -70,18 +62,22 @@ for (const marker of [
   'PRODUCTION_GO=APPROVED',
 ]) assert(checklist.includes(marker), `owner checklist missing: ${marker}`);
 
+for (const [changeName, files] of [
+  ['final-production-go-local-preparation', [
+    '.openspec.yaml', 'proposal.md', 'design.md', 'tasks.md',
+    'specs/production-go-local-preparation/spec.md',
+  ]],
+  ['production-readiness-backup-validation', ['proposal.md']],
+  ['pre-wave13-baseline-conformance-audit', ['tasks.md']],
+  ['production-cloudflare-web-r2-release-configuration', [
+    'proposal.md', 'design.md', 'tasks.md',
+    'specs/production-cloudflare-web-r2-release-configuration/spec.md',
+  ]],
+]) {
+  for (const file of files) resolveChangeFile(changeName, file, root);
+}
+
 for (const file of [
-  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/.openspec.yaml',
-  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/proposal.md',
-  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/design.md',
-  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/tasks.md',
-  'openspec/changes/archive/2026-08-09-final-production-go-local-preparation/specs/production-go-local-preparation/spec.md',
-  'openspec/changes/archive/2026-08-07-production-readiness-backup-validation/proposal.md',
-  'openspec/changes/pre-wave13-baseline-conformance-audit/tasks.md',
-  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/proposal.md',
-  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/design.md',
-  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/tasks.md',
-  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/specs/production-cloudflare-web-r2-release-configuration/spec.md',
   'apps/api/wrangler.staging.template.jsonc',
   'apps/api/wrangler.production.template.jsonc',
   'apps/api/src/files/r2-object-storage.ts',
@@ -123,6 +119,7 @@ assert(feishuFiles.includes('mock-adapter.ts')
 const feishuNoGo = read(resolveChangeFile(
   'feishu-workbench-production-adapter-activation',
   'references/local-acceptance-and-no-go.md',
+  root,
 ));
 assert(feishuNoGo.includes('LOCAL_IMPLEMENTATION_READY / PRODUCTION_NO_GO')
   && feishuNoGo.includes('No Provider API, Cloudflare, production D1/R2, domain, DNS or deployment was called.'),

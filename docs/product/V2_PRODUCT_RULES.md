@@ -27,6 +27,13 @@
 - 平台稳定代码首批为 `AMAZON_JP`、`AMAZON_US`、`COUPANG_KR`；韩国站默认禁用且 Adapter 不可用。
 - 一个平台产品标识在同一 Marketplace 只能属于一个权威店铺；Amazon 使用 ASIN Adapter 校验。
 
+### 客户会话与退出
+
+- 买家页面保留“退出登录”，成功后按共享 Customer Cookie 归属清理 Buyer 与 Seller 两个 Customer Query Root。
+- 卖家页面不提供“退出登录”入口，不新增 Seller 退出按钮、页面动作、替代路由或专门测试。
+- 卖家没有主动退出入口不等于取消安全失效：账号类型不匹配、已验证的 Customer 401、Session 失效、凭证重置及其他既有失败关闭场景，仍必须执行共享 Customer logout/失效清理并清空两个 Customer Root；不得泄漏或继续显示旧身份数据。
+- Customer 清理不得影响独立 Staff Session；403/404 也不得被误当成退出或 Session 失效。
+
 ## 3. 产品与需求
 
 产品是长期主数据，需求批次是一次数量计划，两者不能混用。

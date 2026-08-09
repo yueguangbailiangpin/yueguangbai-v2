@@ -1,13 +1,11 @@
 import type { SqlDatabase, SqlStatement } from '@ygb/contracts';
 import {
-  canonicalJson,
   hashCanonicalJson,
   hashCustomerPassword,
   hashOneTimeToken,
   normalizeWechatId,
   validateCustomerPassword,
   verifyCustomerPassword,
-  type PasswordCredential,
 } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
 import {

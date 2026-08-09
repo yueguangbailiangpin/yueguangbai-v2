@@ -22,11 +22,28 @@ for (const identity of ['buyer', 'seller']) {
     let recording = false;
     const javascriptBodies = [];
     const javascriptNames = [];
+    const apiStarted = new Map();
+    const apiResponses = [];
+    page.on('request', (request) => {
+      if (recording && new URL(request.url()).pathname.startsWith('/api/')) {
+        apiStarted.set(request, performance.now());
+      }
+    });
     page.on('response', (response) => {
       const pathname = new URL(response.url()).pathname;
-      if (!recording || !/^\/assets\/.*\.js$/u.test(pathname)) return;
-      javascriptNames.push(pathname.split('/').at(-1));
-      javascriptBodies.push(response.body().then((body) => body.byteLength));
+      if (!recording) return;
+      if (/^\/assets\/.*\.js$/u.test(pathname)) {
+        javascriptNames.push(pathname.split('/').at(-1));
+        javascriptBodies.push(response.body().then((body) => body.byteLength));
+      }
+      const startedAt = apiStarted.get(response.request());
+      if (startedAt !== undefined) {
+        apiResponses.push({
+          path: pathname,
+          status: response.status(),
+          duration_ms: round(performance.now() - startedAt),
+        });
+      }
     });
 
     await page.goto(`${baseUrl}/${identity}/login`, { waitUntil: 'networkidle' });
@@ -55,11 +72,16 @@ for (const identity of ['buyer', 'seller']) {
     await page.waitForTimeout(25);
     const javascriptBytes = (await Promise.all(javascriptBodies))
       .reduce((total, bytes) => total + bytes, 0);
+    const apiCounts = Object.groupBy(apiResponses, (response) => response.path);
     samples.push({
       visible_ms: round(visibleMs),
       javascript_bytes: javascriptBytes,
       javascript_requests: javascriptNames.length,
       javascript_assets: [...javascriptNames].sort(),
+      api_requests: apiResponses,
+      duplicate_api_requests: Object.fromEntries(Object.entries(apiCounts)
+        .filter(([, responses]) => responses.length > 1)
+        .map(([pathname, responses]) => [pathname, responses.length])),
     });
     await context.close();
   }
@@ -68,6 +90,7 @@ for (const identity of ['buyer', 'seller']) {
     median_visible_ms: median(samples.map((sample) => sample.visible_ms)),
     median_javascript_bytes: median(samples.map((sample) => sample.javascript_bytes)),
     median_javascript_requests: median(samples.map((sample) => sample.javascript_requests)),
+    median_api_requests: median(samples.map((sample) => sample.api_requests.length)),
   };
 }
 

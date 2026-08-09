@@ -96,17 +96,27 @@ A validated Customer 401 from Customer Session or any Buyer/Seller protected API
 
 ### Requirement: Logout follows Cookie transport ownership and does not persist sensitive state
 
-Buyer/Seller logout SHALL use `POST /api/customer-auth/logout`; after success the frontend SHALL cancel/remove both Buyer and Seller protected roots and reset both Customer states because the shared Cookie is cleared. Staff logout SHALL use `POST /api/staff-auth/logout`, optional approved all-device action SHALL use `/api/staff-auth/logout-all` with required idempotency semantics, and success SHALL clear Staff only. No Session token or sensitive cache SHALL enter localStorage/sessionStorage.
+The Buyer portal SHALL offer voluntary logout through `POST /api/customer-auth/logout`; after success the frontend SHALL cancel/remove both Buyer and Seller protected roots and reset both Customer states because the shared Cookie is cleared. The Seller portal SHALL NOT expose a voluntary logout entry, action, or alternate Seller-specific logout flow. Seller identity mismatch, validated Customer 401, invalid Session, credential reset, and other existing fail-closed safety paths SHALL retain access to the shared Customer logout and both-root cleanup. Staff logout SHALL use `POST /api/staff-auth/logout`, optional approved all-device action SHALL use `/api/staff-auth/logout-all` with required idempotency semantics, and success SHALL clear Staff only. No Session token or sensitive cache SHALL enter localStorage/sessionStorage.
 
-#### Scenario: Successful identity logout
+#### Scenario: Buyer completes voluntary logout
 
-- **WHEN** Buyer or Seller completes Customer logout, or Staff completes Staff logout
-- **THEN** Customer logout cancels/clears Buyer and Seller and resets both states while preserving Staff; Staff logout cancels/clears only Staff while preserving Buyer and Seller.
+- **WHEN** a Buyer uses the visible logout action and Customer logout succeeds
+- **THEN** Buyer and Seller requests/caches are canceled and cleared, both Customer states reset, and Staff remains unchanged.
 
-#### Scenario: Other identity or storage cleanup
+#### Scenario: Seller portal renders
 
-- **WHEN** logout runs while Customer and Staff roots coexist or code attempts token/cache persistence
-- **THEN** cleanup follows its Cookie transport group exactly, no stale Customer/opposite-identity data renders, and persistence checks fail for sensitive data.
+- **WHEN** any Seller shell, navigation, account page, or protected Seller surface is displayed
+- **THEN** no voluntary logout entry, Seller-specific logout action, or alternate logout route is offered.
+
+#### Scenario: Seller safety cleanup is required
+
+- **WHEN** Seller entry detects account-type mismatch, a validated Customer 401, an invalid Session, or another existing Customer safety-cleanup condition
+- **THEN** the shared Customer logout and both-root cancellation/removal remain fail closed, no Seller content renders from stale state, and Staff remains unchanged.
+
+#### Scenario: Staff logout or sensitive persistence is evaluated
+
+- **WHEN** Staff logout runs while Customer roots coexist or code attempts to persist a Session token or sensitive cache
+- **THEN** Staff cleanup affects only Staff, Customer state is preserved, and persistence checks fail for sensitive data.
 
 ### Requirement: Session DTO fields are display context, not client authority
 

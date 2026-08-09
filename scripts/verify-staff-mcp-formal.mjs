@@ -1,22 +1,26 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {
+  invariant as assert,
+  readRepositoryFile as read,
+  repositoryRoot as root,
+  resolveChangeFile,
+} from './verifier-utils.mjs';
 
-const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const activeSpec = 'openspec/changes/staff-mcp-agent-access/specs/staff-mcp-agent/spec.md';
-const archivedSpec = 'openspec/specs/staff-mcp-agent/spec.md';
-const spec = read(existsSync(resolve(root, activeSpec)) ? activeSpec : archivedSpec);
+const spec = read('openspec/specs/staff-mcp-agent/spec.md');
 const adapter = read('apps/api/src/staff-mcp/server-adapter.ts');
 const service = read('apps/api/src/staff-mcp/mock-application-service.ts');
 const tools = read('apps/api/src/staff-mcp/tools.ts');
 const tests = read('apps/api/src/staff-mcp/staff-mcp.test.ts');
 const contract = read('docs/contracts/STAFF_MCP_V1.md');
 const ownerChecklist = read('docs/runbooks/STAFF_MCP_EXTERNAL_ACTIVATION_CHECKLIST.md');
-const archivedDelta = read('openspec/changes/archive/2026-08-07-staff-mcp-agent-access/specs/staff-mcp-agent/spec.md');
+const archivedDelta = read(resolveChangeFile(
+  'staff-mcp-agent-access',
+  'specs/staff-mcp-agent/spec.md',
+  root,
+));
 
 const requirements = [...spec.matchAll(/^### Requirement: (.+)$/gmu)]
   .map((match) => match[1]);
-assert(requirements.length === 5, `expected 5 requirements, found ${requirements.length}`);
+assert(new Set(requirements).size === requirements.length, 'authoritative MCP requirements must be uniquely named');
 
 const evidence = [
   {
@@ -53,6 +57,8 @@ for (const row of evidence) {
   const [test, ...testMarkers] = row.test;
   assert(testMarkers.every((marker) => test.includes(marker)), `test gap: ${row.requirement}`);
 }
+assert(requirements.length >= evidence.length,
+  `authoritative MCP requirement set cannot be smaller than the ${evidence.length} critical invariants`);
 
 assert(contract.includes('原 `staff-mcp-agent-access` Change 的 NO_SCHEMA_CHANGE 是当时历史事实'),
   'historical no-Migration decision missing');
@@ -70,7 +76,8 @@ assert((ownerChecklist.match(/- \[ \]/gu) ?? []).length >= 20, 'external owner g
 console.log(JSON.stringify({
   status: 'PASS',
   change: 'staff-mcp-agent-access',
-  requirements: evidence.length,
+  authoritative_requirements: requirements.length,
+  critical_requirements: evidence.length,
   implementation_mappings: evidence.length,
   test_mappings: evidence.length,
   external_activation: 'HARD_DISABLED_UNCOMPLETED',
@@ -78,11 +85,3 @@ console.log(JSON.stringify({
   exact_output_whitelist: 'DECLARED_AND_RUNTIME_ENFORCED',
   verified_session_validation: 'FAIL_CLOSED_BEFORE_KEYS',
 }, null, 2));
-
-function read(path) {
-  return readFileSync(resolve(root, path), 'utf8');
-}
-
-function assert(value, message) {
-  if (!value) throw new Error(message);
-}

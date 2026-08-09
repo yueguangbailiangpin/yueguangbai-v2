@@ -1,5 +1,4 @@
 import type {
-  ColdArchivePurpose,
   DriveArchiveAdapter,
   FileDriveArchiveState,
   ObjectStorageAdapter,
@@ -378,10 +377,6 @@ async function failArchive(database:SqlDatabase,fileId:string,token:string,categ
     .bind(now+retryDelay(category),category,now,fileId,token,current.version),
     archiveEventStatement(database,fileId,current.status==='R2_DELETE_PENDING'?'R2_DELETE_FAILED':'COPY_FAILED',
       current.status,current.status,current.version+1,category,now));
-}
-async function requireUpdate(database:SqlDatabase,sql:string,binds:readonly unknown[]):Promise<ArchiveRow> {
-  let statement=database.prepare(sql); statement=statement.bind(...binds);
-  const row=await statement.first<ArchiveRow>(); if(!row) throw tagged('d1_conflict'); return row;
 }
 async function verifyBytes(bytes:Uint8Array<ArrayBuffer>,mime:SupportedFileMime,size:number,hash:string):Promise<void> {
   if(bytes.byteLength!==size||detectSupportedMime(bytes)!==mime||await sha256Hex(bytes)!==hash) throw tagged('manifest_mismatch');

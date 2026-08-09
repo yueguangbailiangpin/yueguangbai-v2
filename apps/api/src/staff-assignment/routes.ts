@@ -7,7 +7,7 @@ import {
   type ApiErrorCode,
 } from '@ygb/contracts';
 import type { Context, Hono } from 'hono';
-import { getStaffAvailability, setStaffAvailability } from './availability-service';
+import { setStaffAvailability } from './availability-service';
 import {
   configureAssignmentFallback,
   getAssignmentFallback,

@@ -8,7 +8,6 @@ import {
   createAcquisitionChannel,
   recordAcquisitionConsultation,
 } from './admin';
-import { AcquisitionError } from './errors';
 import {
   createAcquisitionLead,
   followUpAcquisitionLead,

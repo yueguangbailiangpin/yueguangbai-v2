@@ -1,5 +1,6 @@
-import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { resolveChangeRoot } from './verifier-utils.mjs';
 
 const workspace = process.cwd();
 const webRoot = join(workspace, 'apps/web/src');
@@ -112,36 +113,7 @@ function walkChange(directory) {
 }
 
 function resolveWave14aChangeRoot() {
-  const name = 'wave14a-frontend-foundation-auth-api-client';
-  const activeRoot = join(workspace, 'openspec/changes', name);
-  const archiveRoot = join(workspace, 'openspec/changes/archive');
-  const requireDirectory = (path, label) => {
-    const stats = lstatSync(path, { throwIfNoEntry: false });
-    if (!stats) return false;
-    if (stats.isSymbolicLink()) throw new Error(`${label} must not be a symbolic link: ${path}`);
-    if (!stats.isDirectory()) throw new Error(`${label} must be a directory: ${path}`);
-    return true;
-  };
-
-  const activeExists = requireDirectory(activeRoot, 'Wave 14A active change');
-  if (!requireDirectory(archiveRoot, 'OpenSpec archive')) {
-    throw new Error(`OpenSpec archive directory missing: ${archiveRoot}`);
-  }
-  const archivePattern = new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${name}$`, 'u');
-  const archivedRoots = readdirSync(archiveRoot)
-    .filter((entry) => archivePattern.test(entry))
-    .map((entry) => join(archiveRoot, entry));
-  for (const path of archivedRoots) requireDirectory(path, 'Wave 14A archived change');
-
-  if (archivedRoots.length > 1) {
-    throw new Error(`Multiple Wave 14A archived changes found: ${archivedRoots.join(', ')}`);
-  }
-  if (activeExists && archivedRoots.length === 1) {
-    throw new Error('Wave 14A active and archived changes must not coexist');
-  }
-  if (activeExists) return activeRoot;
-  if (archivedRoots.length === 1) return archivedRoots[0];
-  throw new Error('Wave 14A active or archived change directory not found');
+  return resolveChangeRoot('wave14a-frontend-foundation-auth-api-client', workspace);
 }
 
 walkChange(resolveWave14aChangeRoot());

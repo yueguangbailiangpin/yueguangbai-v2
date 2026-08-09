@@ -2,6 +2,7 @@ import path from 'node:path';
 import { createEncryptedD1Backup, readBackupKey } from '../packages/testkit/src/production-readiness-backup.ts';
 
 const args=parseArgs(process.argv.slice(2));
+const expectedSchemaVersion=numberArg(args,'expected-schema');
 const database=required(args,'database');
 const outputDirectory=required(args,'output-dir');
 const keyPath=required(args,'key-file');
@@ -10,7 +11,7 @@ const result=await createEncryptedD1Backup({
   outputDirectory:path.resolve(outputDirectory),
   key:readBackupKey(path.resolve(keyPath)),
   releaseCommitSha:required(args,'release-commit-sha'),
-  expectedSchemaVersion:numberArg(args,'expected-schema',34),
+  expectedSchemaVersion,
   anonymousFixture:args.has('anonymous-fixture'),
 });
 console.log(JSON.stringify({
@@ -26,4 +27,4 @@ console.log(JSON.stringify({
 
 function parseArgs(values){const result=new Map();for(let index=0;index<values.length;index+=1){const value=values[index];if(!value?.startsWith('--'))throw new Error('invalid_argument');const key=value.slice(2);if(key==='anonymous-fixture'){result.set(key,'true');continue;}const next=values[index+1];if(!next||next.startsWith('--'))throw new Error(`missing_value:${key}`);result.set(key,next);index+=1;}return result;}
 function required(values,key){const value=values.get(key);if(!value)throw new Error(`missing_argument:${key}`);return value;}
-function numberArg(values,key,fallback){const raw=values.get(key);const value=raw===undefined?fallback:Number(raw);if(!Number.isSafeInteger(value)||value<1)throw new Error(`invalid_argument:${key}`);return value;}
+function numberArg(values,key){const value=Number(required(values,key));if(!Number.isSafeInteger(value)||value<1)throw new Error(`invalid_argument:${key}`);return value;}

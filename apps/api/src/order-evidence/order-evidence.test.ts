@@ -15,7 +15,6 @@ import {
 import {
   listOrderEvidenceForReview,
   readBuyerOrderEvidence,
-  readStaffOrderEvidence,
 } from './read-order-evidence';
 import {
   requestOrderEvidenceChanges,

@@ -7,7 +7,7 @@ import { runDriveArchiveBatch } from './job';
 import { MockDriveArchiveAdapter } from './mock-drive-adapter';
 import { registerColdImageArchiveRoutes } from './routes';
 import { recordOrderBusinessClosure } from './business-closure';
-import { COLD_ARCHIVE_CONFIRMED_AT,coldArchiveOwner,seedConfirmedColdArchiveOrder,settleColdArchivePrincipal }
+import { coldArchiveOwner,seedConfirmedColdArchiveOrder,settleColdArchivePrincipal }
   from '../../test-support/cold-archive-fixture';
 
 const png=new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);

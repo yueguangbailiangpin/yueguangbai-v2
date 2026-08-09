@@ -116,7 +116,7 @@ export async function prepareDirectWorkItem(
           ...input,
           dutyCode,
           assignmentId: active.id,
-          assignmentType: subjectType(input, dutyCode),
+          assignmentType: subjectType(dutyCode),
           assignedStaffId: active.staff_id,
           workItemId,
         }),
@@ -188,7 +188,7 @@ export async function prepareDirectWorkItem(
       : 'AUTO_INITIAL_ASSIGNMENT';
   const assignmentPayload = {
     assignment_id: assignmentId,
-    subject_type: subjectType(input, dutyCode),
+    subject_type: subjectType(dutyCode),
     buyer_customer_id: input.buyerCustomerId ?? null,
     seller_organization_id: input.sellerOrganizationId ?? null,
     duty_code: dutyCode,
@@ -219,7 +219,7 @@ export async function prepareDirectWorkItem(
       ...input,
       dutyCode,
       assignmentId,
-      assignmentType: subjectType(input, dutyCode),
+      assignmentType: subjectType(dutyCode),
       assignedStaffId,
       workItemId,
     }),
@@ -712,7 +712,6 @@ function validateSubject(
 }
 
 function subjectType(
-  input: DirectWorkItemInput,
   dutyCode: StaffAssignmentDutyCode,
 ): 'BUYER' | 'SELLER' {
   return dutyCode === 'SELLER_ACCOUNT_MANAGER' ? 'SELLER' : 'BUYER';

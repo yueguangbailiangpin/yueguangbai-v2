@@ -233,6 +233,14 @@ M14 验收时，生产构建已经没有高风险依赖漏洞，但仍出现前�
 
 状态：Accepted
 
+### D-030 Seller无主动退出入口与Customer安全清理边界
+
+Seller 门户不提供“退出登录”入口，不新增 Seller 退出按钮、页面动作、替代退出路由或专门测试。Buyer 门户继续保留主动退出能力。
+
+该界面决定不改变 Buyer 与 Seller 共用 HttpOnly Customer Session Cookie 的安全归属：Seller 入口发生账号类型不匹配、已验证的 Customer 401、Session 失效、凭证重置或其他既有失败关闭条件时，仍必须调用共享 Customer logout/失效清理，取消并移除 Buyer 与 Seller 两个 Customer Query Root，禁止旧身份缓存继续渲染；Staff Session 不受影响。不得以“Seller 没有退出按钮”为由删除或弱化底层自动清理。
+
+状态：Accepted by business owner
+
 ## 上线前必须关闭的风险项
 
 ### R-001 飞书免费版和 API 实测

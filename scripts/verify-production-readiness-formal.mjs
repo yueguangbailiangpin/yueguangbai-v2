@@ -1,14 +1,16 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import path from 'node:path';
+import {
+  invariant as assert,
+  readRepositoryFile as read,
+  repositoryRoot as root,
+} from './verifier-utils.mjs';
 
-const root=path.resolve(import.meta.dirname,'..');
-const active='openspec/changes/production-readiness-backup-validation/specs/production-readiness/spec.md';
-const archived='openspec/specs/production-readiness/spec.md';
-const spec=read(existsSync(path.join(root,active))?active:archived);
+const spec=read('openspec/specs/production-readiness/spec.md');
 const requirements=[...spec.matchAll(/^### Requirement: (.+)$/gmu)].map((match)=>match[1]);
 const scenarios=[...spec.matchAll(/^#### Scenario: (.+)$/gmu)].map((match)=>match[1]);
 assert(requirements.length===5,`expected 5 requirements, found ${requirements.length}`);
-assert(scenarios.length===10,`expected 10 scenarios, found ${scenarios.length}`);
+assert(scenarios.length===11,`expected 11 scenarios, found ${scenarios.length}`);
 const purpose=spec.match(/^## Purpose\n([^\n]+)$/mu)?.[1]??'';
 assert(purpose.length>=40&&!/\bTBD\b/iu.test(purpose),'canonical Purpose must be substantive and must not contain TBD');
 const backup=read('packages/testkit/src/production-readiness-backup.ts');
@@ -25,6 +27,7 @@ for(const marker of ['attestation_hmac_mismatch','release_commit_mismatch','bund
 assert(runbook.includes('备份创建成功不等于可恢复'),'backup/restore distinction missing');
 assert(runbook.includes('连续 `0001`–`0038`'),'current Migration baseline missing');
 assert(runbook.includes('本最终本地准备 Change 同样不创建新 Migration'),'current no-Migration decision missing');
+assert(runbook.includes('备份与恢复 CLI 已删除 schema 34 默认值'),'explicit expected-schema boundary missing');
 assert(acceptance.includes('本地候选通过、生产未批准/未上线'),'truthful release conclusion missing');
 assert((acceptance.match(/P0-0[1-8]/gu)??[]).length===8,'external P0 matrix incomplete');
 assert(security.includes('react-router 8.3.0'),'official patched dependency disposition missing');
@@ -34,7 +37,4 @@ assert(migrations.every((file,index)=>Number(file.slice(0,4))===index+1),'Migrat
 const webPackage=JSON.parse(read('apps/web/package.json'));
 assert(webPackage.dependencies?.['react-router']==='8.3.0','react-router must be pinned to 8.3.0');
 assert(webPackage.dependencies?.['react-router-dom']===undefined,'react-router-dom must be removed');
-console.log(JSON.stringify({status:'PASS',change:'production-readiness-backup-validation',requirements:5,scenarios:10,purpose:'NON_TBD',migration:'M10_NO_SCHEMA_CHANGE_CURRENT_CHAIN_0001_0038',backup:'HKDF_HMAC_RELEASE_BOUND_RESTORE_REQUIRED',reconciliation:'OFFLINE_NO_DELETE',capacity:'8_STAFF_200_ORDERS',external_gates:'8_PRODUCTION_GO_BLOCKERS',production_go:'NOT_APPROVED'},null,2));
-
-function read(file){return readFileSync(path.join(root,file),'utf8');}
-function assert(value,message){if(!value)throw new Error(message);}
+console.log(JSON.stringify({status:'PASS',change:'production-readiness-backup-validation',requirements:5,scenarios:11,purpose:'NON_TBD',migration:'M10_NO_SCHEMA_CHANGE_CURRENT_CHAIN_0001_0038',backup:'HKDF_HMAC_RELEASE_BOUND_RESTORE_REQUIRED',reconciliation:'OFFLINE_NO_DELETE',capacity:'8_STAFF_200_ORDERS',external_gates:'8_PRODUCTION_GO_BLOCKERS',production_go:'NOT_APPROVED'},null,2));

@@ -177,7 +177,7 @@ export async function allocateBuyerCustomerNumber(
         },
         now,
       }),
-      assertBuyerNumberAllocatedStatement(database, acquired.claim, source,
+      assertBuyerNumberAllocatedStatement(database, source,
         buyerNumber, sequence, input.firstValidOrderBusinessDate),
       assertIdempotencyCompletionStatement(database, acquired.claim),
     ];
@@ -248,7 +248,7 @@ async function promotePreorderNumber(
       },
       now,
     }),
-    assertPreorderPromotionStatement(database, claim, source,
+    assertPreorderPromotionStatement(database, source,
       buyerNumber, sequence, businessDate),
     assertIdempotencyCompletionStatement(database, claim),
   ]);
@@ -378,7 +378,6 @@ function numberAuditStatement(
 
 function assertPreorderPromotionStatement(
   database: SqlDatabase,
-  claim: { actorType: string; actorId: string; idempotencyKey: string; leaseToken: string },
   source: BuyerNumberSourceRow,
   buyerNumber: string,
   sequence: number,
@@ -410,7 +409,6 @@ function assertPreorderPromotionStatement(
 
 function assertBuyerNumberAllocatedStatement(
   database: SqlDatabase,
-  claim: { actorType: string; actorId: string; idempotencyKey: string; leaseToken: string },
   source: BuyerNumberSourceRow,
   buyerNumber: string,
   sequence: number,

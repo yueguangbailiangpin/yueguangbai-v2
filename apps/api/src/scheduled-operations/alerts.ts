@@ -15,7 +15,6 @@ import {
   assertIdempotencyCompletionStatement,
   completeIdempotencyStatement,
   markIdempotencyFailed,
-  type IdempotencyClaim,
   type IdempotencyError,
 } from '../foundation/idempotency';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';

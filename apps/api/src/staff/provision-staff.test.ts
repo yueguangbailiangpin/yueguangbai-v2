@@ -9,7 +9,6 @@ import {
   type SqliteDatabase,
 } from '@ygb/testkit';
 import {
-  ProvisionStaffError,
   provisionStaff,
 } from './provision-staff';
 import {

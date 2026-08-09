@@ -4,7 +4,6 @@ import { useParams } from 'react-router';
 import { BuyerReviewFileReadIntentAdapter } from '../../files/file-read-providers';
 import { Alert, Button, Card, Dialog, FormField, PageHeader, StatusBadge, TextInput } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
-import type { Review } from '../contracts/runtime';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatCnyFen, formatDateOnly, formatShanghai } from '../shared/format';

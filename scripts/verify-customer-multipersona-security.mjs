@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { resolveChangeRoot } from './verifier-utils.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const changeName = 'customer-multipersona-invitation-recovery';
@@ -80,18 +81,7 @@ requireTokens('apps/api/src/customer-security/routes.ts', [
   "'manual_verification_confirmed'",
 ]);
 
-const active = path.join(root, 'openspec/changes', changeName);
-const archive = path.join(root, 'openspec/changes/archive');
-const archived = existsSync(archive)
-  ? readdirSync(archive).filter((entry) => entry.endsWith(`-${changeName}`))
-  : [];
-if (existsSync(active) === (archived.length === 1)) {
-  throw new Error('exactly one active or archived OpenSpec change is required');
-}
-if (archived.length > 1) throw new Error('multiple archived OpenSpec changes found');
-const changeRoot = existsSync(active)
-  ? active
-  : path.join(archive, archived[0]);
+const changeRoot = resolveChangeRoot(changeName, root);
 const specification = readFileSync(path.join(
   changeRoot, 'specs/customer-identity-access/spec.md',
 ), 'utf8');
@@ -120,5 +110,5 @@ console.log(JSON.stringify({
   persona_authority: 'RELATION',
   session_revocation: 'VERSIONED',
   public_registration: 'INVITATION_REQUIRED',
-  openspec_location: existsSync(active) ? 'ACTIVE' : 'ARCHIVED',
+  openspec_location: changeRoot.includes(`${path.sep}archive${path.sep}`) ? 'ARCHIVED' : 'ACTIVE',
 }, null, 2));

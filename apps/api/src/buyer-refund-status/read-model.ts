@@ -367,10 +367,6 @@ function safeNonNegativeInteger(value: number): number {
   return numeric;
 }
 
-function nullableTimestamp(value: number | null): number | null {
-  return value === null ? null : safeNonNegativeInteger(value);
-}
-
 function dependencyError(): never {
   throw new BuyerRefundPortalError('DEPENDENCY_UNAVAILABLE', 503);
 }
