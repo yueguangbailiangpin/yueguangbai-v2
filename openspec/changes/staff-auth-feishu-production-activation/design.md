@@ -12,6 +12,8 @@ When disabled, all Staff Auth provider configuration and test-adapter authority 
 
 The Web redirect boundary independently allowlists the current official Feishu authorization origin, `https://accounts.feishu.cn`. It rejects every other HTTPS origin even after a structurally valid API response, so updating the official provider host does not weaken the arbitrary-redirect defense.
 
+The release perimeter keeps its default cross-site API deny and admits one OAuth protocol exception: an origin-less `GET` top-level document navigation to the exact Feishu callback path. CORS/fetch requests, writes, sibling API routes, foreign `Origin` headers and non-document modes remain denied. The admitted navigation still has no authority until the application consumes the exact single-use state, exchanges the code with Feishu and resolves one pre-existing ACTIVE D1 identity.
+
 Authentication-traffic cleanup deletes bounded expired rows from the login-state and rate-limit tables as two ordered statements. The tables are independent and the cleanup is not a business transaction; if either statement fails, login still fails before rate-limit, state, Provider or session creation. This preserves the original failure-closed contract while avoiding a remote D1 batch incompatibility observed during production activation.
 
 ## Preflight

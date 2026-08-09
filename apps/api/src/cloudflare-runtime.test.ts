@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AnonymousR2Bucket } from '../test-support/anonymous-r2-binding';
 import worker from './worker';
 import {
+  isAllowedSameOriginApiRequest,
   resolveCloudflareRuntime,
   type CloudflareWorkerBindings,
 } from './cloudflare-runtime';
@@ -54,6 +55,36 @@ describe('production Cloudflare Worker runtime', () => {
       expect(response.status).toBe(403);
       expect(response.headers.get('access-control-allow-origin')).toBeNull();
       expect(await response.text()).not.toContain('attacker.invalid');
+    }
+  });
+
+  it('allows only the exact cross-site top-level Feishu callback navigation', () => {
+    const callback = `${origin}/api/staff-auth/feishu/callback?code=test&state=test`;
+    const navigationHeaders = {
+      'Sec-Fetch-Site': 'cross-site',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Dest': 'document',
+    };
+    expect(isAllowedSameOriginApiRequest(
+      new Request(callback, { headers: navigationHeaders }),
+      origin,
+    )).toBe(true);
+    for (const request of [
+      new Request(callback, {
+        method: 'POST',
+        headers: navigationHeaders,
+      }),
+      new Request(callback, {
+        headers: { ...navigationHeaders, Origin: 'https://accounts.feishu.cn' },
+      }),
+      new Request(callback, {
+        headers: { ...navigationHeaders, 'Sec-Fetch-Mode': 'cors' },
+      }),
+      new Request(`${origin}/api/staff-auth/session`, {
+        headers: navigationHeaders,
+      }),
+    ]) {
+      expect(isAllowedSameOriginApiRequest(request, origin)).toBe(false);
     }
   });
 
