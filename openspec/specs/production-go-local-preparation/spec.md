@@ -4,9 +4,11 @@
 TBD - created by archiving change final-production-go-local-preparation. Update Purpose after archive.
 ## Requirements
 ### Requirement: Release evidence distinguishes local proof from external truth
+
 The release audit SHALL classify every finding as repository-evidenced, locally repairable, owner-authorized or Production GO blocking, SHALL resolve governed Change evidence from exactly one active or dated archive location, and SHALL NOT represent a mock, dry-run, placeholder, archived Change, local test, local timing, or configuration example as a deployed external capability or production Web Vital result.
 
 #### Scenario: A local provider dry-run passes
+
 - **WHEN** Drive, Feishu or Staff MCP passes against a mock, disabled template, or local adapter with zero external calls
 - **THEN** the local capability may be marked repository-evidenced while real Provider activation remains owner-authorized and Production GO blocked.
 
@@ -16,6 +18,7 @@ The release audit SHALL classify every finding as repository-evidenced, locally 
 - **THEN** the verifier reads that location; if evidence is missing, duplicated, or active and archived simultaneously, it fails closed.
 
 #### Scenario: A historical acceptance file says pass
+
 - **WHEN** current executable evidence, configuration, candidate provenance, or external receipts do not support the historical statement
 - **THEN** the current audit records the narrower truth and does not inherit the broader pass claim.
 
@@ -43,13 +46,16 @@ Release preparation SHALL compare current bundle/runtime evidence with the accep
 - **THEN** no speculative runtime optimization is added and the local evidence records that production Web Vitals remain unverified.
 
 ### Requirement: Release lineage, dependencies and migrations are verified from executable evidence
+
 The audit SHALL bind its baseline to a fetched remote SHA, SHALL verify the lockfile and installed dependency tree plus a current authoritative audit, and SHALL prove the Migration filenames are continuous and ordered without inferring any remote Migration status.
 
 #### Scenario: React Router advisory debt is checked
+
 - **WHEN** the package manifest, lockfile, installed tree, npm audit and current advisory are inspected
 - **THEN** the result states the resolved version, affected ranges and whether the installed version is affected, rather than relying on prose stating zero vulnerabilities.
 
 #### Scenario: Repository migration 0038 exists
+
 - **WHEN** the local chain ends at 0038
 - **THEN** the audit proves local continuity but still requires an owner-authorized read of the production ledger before any online Migration.
 
