@@ -72,7 +72,7 @@ describe('admin business dashboard D1 cohort read model', () => {
     expect(summary.staff_performance).toHaveLength(8);
     expect(database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
-    ).get()).toEqual({ schema_version: 41 });
+    ).get()).toEqual({ schema_version: 42 });
   });
 
   it('aggregates decimal-string BigInt profit and excludes missing or conflicting facts', async () => {

@@ -27,6 +27,7 @@ import {
   type SellerOrderChatScreenshotAccess,
 } from './read-model';
 import { registerSellerOrderChatScreenshotRoutes } from './routes';
+import { listSellerFormalOrders } from '../seller-formal-orders/read-model';
 
 const BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
 const NOW = 10_000;
@@ -105,6 +106,374 @@ describe('seller order chat screenshot access Change', () => {
       authorization_mode: 'EXPLICIT_AUDIENCES',
     });
   });
+
+  it('attaches a platform screenshot, projects AVAILABLE, and issues an opaque one-time short read intent', async () => {
+    seedPlatformChatFormalOrder(database);
+    const owner = sellerActor(
+      'member-owner', 'account-owner', 'subject-owner', 'org-1', true, [],
+    );
+    const before = await listSellerFormalOrders(
+      database,
+      owner,
+      { cursor: null, limit: 20 },
+      platformFormalOrderFilters(),
+    );
+    expect(before.items).toHaveLength(1);
+    expect(before.items[0]?.chat_screenshot).toEqual({
+      status: 'NONE', file_version: null,
+    });
+    await expect(requireSellerOrderChatScreenshot(
+      database, owner, 'platform-formal-chat', NOW,
+    )).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+
+    const attached = await attachSellerOrderChatScreenshot(
+      database,
+      {
+        formalOrderId: 'platform-formal-chat',
+        fileObjectId: 'chat-file-1',
+        expectedFileVersion: 2,
+      },
+      { actor: staffActor(), idempotencyKey: 'platform-chat-attach', now: NOW },
+    );
+    expect(attached).toMatchObject({
+      formal_order_id: 'platform-formal-chat',
+      file_object_id: 'chat-file-1',
+      replayed: false,
+    });
+    await expect(database.prepare(`
+      SELECT
+        attachment.platform_formal_order_id,
+        evidence.evidence_type,
+        evidence.seller_organization_id,
+        evidence.seller_store_id,
+        file_link.entity_type,
+        file_link.purpose,
+        file_link.authorization_mode,
+        grant.subject_type,
+        grant.seller_organization_id AS grant_seller_organization_id
+      FROM platform_order_evidence_internal_files attachment
+      JOIN platform_order_evidence_records evidence
+        ON evidence.id=attachment.platform_order_evidence_record_id
+      JOIN file_entity_links file_link
+        ON file_link.id=attachment.file_entity_link_id
+      JOIN file_entity_audience_grants grant
+        ON grant.file_entity_link_id=file_link.id
+    `).first()).resolves.toMatchObject({
+      platform_formal_order_id: 'platform-formal-chat',
+      evidence_type: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+      seller_organization_id: 'org-1',
+      seller_store_id: 'store-platform-chat',
+      entity_type: 'ORDER_EVIDENCE_SUBMISSION',
+      purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+      authorization_mode: 'EXPLICIT_AUDIENCES',
+      subject_type: 'SELLER_ORGANIZATION',
+      grant_seller_organization_id: 'org-1',
+    });
+
+    const after = await listSellerFormalOrders(
+      database,
+      owner,
+      { cursor: null, limit: 20 },
+      platformFormalOrderFilters(),
+    );
+    expect(after.items[0]?.chat_screenshot).toEqual({
+      status: 'AVAILABLE', file_version: 2,
+    });
+
+    const app = routeApp(staffActor());
+    const response = await sellerReadIntentRequest(
+      app,
+      'platform-formal-chat',
+      'owner',
+      { expected_file_version: 2 },
+      'platform-chat-read-intent',
+    );
+    expect(response.status).toBe(201);
+    const body = await response.json() as any;
+    expect(body.data.read_intent).toMatchObject({
+      read_intent_id: expect.any(String),
+      access_token: expect.any(String),
+      access_token_available: true,
+      expires_at: expect.any(Number),
+      replayed: false,
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('chat-file-1');
+    expect(serialized).not.toContain('files/v1/');
+    expect(serialized).not.toContain('object_key');
+    expect(serialized).not.toContain('http://');
+    expect(serialized).not.toContain('https://');
+
+    const access = await requireSellerOrderChatScreenshot(
+      database, owner, 'platform-formal-chat', NOW,
+    );
+    const issued = await issue(
+      access,
+      sellerFileActor('member-owner'),
+      sellerPrincipal('account-owner', 'subject-owner'),
+      'platform-chat-direct-intent',
+      20_000,
+    );
+    const content = await consume(
+      issued,
+      sellerFileActor('member-owner'),
+      sellerPrincipal('account-owner', 'subject-owner'),
+      20_001,
+    );
+    expect(content.contentType).toBe('image/png');
+  });
+
+  it('conceals platform attach from Staff Personal DENY and wrong organization scope without partial writes', async () => {
+    seedPlatformChatFormalOrder(database);
+    database.exec(`
+      INSERT INTO staff_permission_overrides (
+        staff_id, permission_code, effect, status, reason,
+        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
+      ) VALUES (
+        'staff-chat-owner', 'ORDER_CONFIRM', 'DENY', 'ACTIVE',
+        'platform screenshot Personal DENY', 'staff-chat-owner',
+        9000, NULL, 9000, 9000
+      )
+    `);
+    const denied = await resolvedStaff('staff-chat-owner');
+    const beforeDeny = await attachmentSideEffects();
+    await expect(attachSellerOrderChatScreenshot(
+      database,
+      {
+        formalOrderId: 'platform-formal-chat',
+        fileObjectId: 'chat-file-1',
+        expectedFileVersion: 2,
+      },
+      { actor: denied, idempotencyKey: 'platform-personal-deny', now: NOW },
+    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(await attachmentSideEffects()).toEqual(beforeDeny);
+
+    const scoped = await resolvedStaff('staff-chat-scoped');
+    database.exec(`
+      INSERT INTO seller_staff_assignments (
+        id, seller_organization_id, duty_code, staff_id, status, source,
+        assigned_by_actor_type, assigned_by_actor_id, reason, version,
+        created_at, updated_at, revoked_at
+      ) VALUES (
+        'platform-chat-wrong-org', 'org-2', 'SELLER_ACCOUNT_MANAGER',
+        'staff-chat-scoped', 'ACTIVE', 'MANUAL_REASSIGN',
+        'STAFF', 'staff-chat-owner', 'platform wrong scope', 1,
+        9000, 9000, NULL
+      )
+    `);
+    await expect(attachSellerOrderChatScreenshot(
+      database,
+      {
+        formalOrderId: 'platform-formal-chat',
+        fileObjectId: 'chat-file-1',
+        expectedFileVersion: 2,
+      },
+      { actor: scoped, idempotencyKey: 'platform-wrong-org', now: NOW },
+    )).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(await attachmentSideEffects()).toEqual(beforeDeny);
+  });
+
+  it.each(['link', 'grant', 'file', 'store', 'member'] as const)(
+    'dynamically conceals a platform screenshot after %s revocation',
+    async (authority) => {
+      seedPlatformChatFormalOrder(database);
+      if (authority === 'member') {
+        database.exec(`
+          INSERT INTO seller_member_store_scopes (
+            member_id, store_id, organization_id, status,
+            assigned_by_staff_id, assigned_at, revoked_at,
+            created_at, updated_at
+          ) VALUES (
+            'member-operator', 'store-platform-chat', 'org-1', 'ACTIVE',
+            'staff-chat-owner', 1, NULL, 1, 1
+          )
+        `);
+      }
+      await attachSellerOrderChatScreenshot(
+        database,
+        {
+          formalOrderId: 'platform-formal-chat',
+          fileObjectId: 'chat-file-1',
+          expectedFileVersion: 2,
+        },
+        { actor: staffActor(), idempotencyKey: `platform-${authority}-attach`, now: NOW },
+      );
+      const seller = authority === 'member'
+        ? sellerActor(
+            'member-operator', 'account-operator', 'subject-operator',
+            'org-1', false, ['store-1', 'store-platform-chat'],
+          )
+        : sellerActor(
+            'member-owner', 'account-owner', 'subject-owner',
+            'org-1', true, [],
+          );
+      const fileActor = authority === 'member'
+        ? sellerFileActor('member-operator')
+        : sellerFileActor('member-owner');
+      const principal = authority === 'member'
+        ? sellerPrincipal('account-operator', 'subject-operator')
+        : sellerPrincipal('account-owner', 'subject-owner');
+      const access = await requireSellerOrderChatScreenshot(
+        database,
+        seller,
+        'platform-formal-chat',
+        NOW,
+      );
+      const issued = await issue(
+        access,
+        fileActor,
+        principal,
+        `platform-${authority}-issued`,
+        NOW,
+      );
+      await revokePlatformScreenshotAuthority(authority, access, NOW + 1);
+
+      const app = routeApp(staffActor());
+      const response = await sellerReadIntentRequest(
+        app,
+        'platform-formal-chat',
+        authority === 'member' ? 'operator' : 'owner',
+        { expected_file_version: 2 },
+        `platform-${authority}-after-revoke`,
+      );
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'FORMAL_ORDER_NOT_FOUND' },
+      });
+      await expect(consume(
+        issued,
+        fileActor,
+        principal,
+        NOW + 2,
+      )).rejects.toMatchObject({
+        code: authority === 'file' ? 'FILE_READ_INTENT_NOT_FOUND' : 'FORBIDDEN',
+      });
+    },
+  );
+
+  it('conceals platform screenshots across organization and store scope', async () => {
+    seedPlatformChatFormalOrder(database);
+    await attachSellerOrderChatScreenshot(
+      database,
+      {
+        formalOrderId: 'platform-formal-chat',
+        fileObjectId: 'chat-file-1',
+        expectedFileVersion: 2,
+      },
+      { actor: staffActor(), idempotencyKey: 'platform-scope-attach', now: NOW },
+    );
+    await expect(requireSellerOrderChatScreenshot(
+      database,
+      sellerActor(
+        'member-other', 'account-other', 'subject-other', 'org-2', true, [],
+      ),
+      'platform-formal-chat',
+      NOW,
+    )).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+    await expect(requireSellerOrderChatScreenshot(
+      database,
+      sellerActor(
+        'member-operator', 'account-operator', 'subject-operator',
+        'org-1', false, ['store-1'],
+      ),
+      'platform-formal-chat',
+      NOW,
+    )).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+  });
+
+  it.each([
+    ['cross-store', 'org-1'],
+    ['cross-organization', 'org-2'],
+  ] as const)(
+    'rejects a direct %s platform evidence/file association at the 0042 guard',
+    async (suffix, organizationId) => {
+      seedPlatformChatFormalOrder(database);
+      const storeId = `store-platform-${suffix}`;
+      const productId = `platform-product-${suffix}`;
+      const orderId = `platform-order-${suffix}`;
+      const evidenceId = `platform-evidence-${suffix}`;
+      database.exec(`
+        INSERT INTO seller_stores (
+          id, organization_id, marketplace_code, display_name,
+          normalized_name, status, version, created_at, updated_at, disabled_at
+        ) VALUES (
+          '${storeId}', '${organizationId}', 'JP', '${suffix}', '${suffix}',
+          'ACTIVE', 1, 1, 1, NULL
+        );
+        UPDATE seller_store_marketplaces SET marketplace_code='RAKUTEN_JP'
+        WHERE store_id='${storeId}';
+        INSERT INTO platform_product_identities (
+          id, marketplace_code, platform_product_identifier,
+          seller_organization_id, seller_store_id, status, created_at, updated_at
+        ) VALUES (
+          '${productId}', 'RAKUTEN_JP', '${productId}',
+          '${organizationId}', '${storeId}', 'ACTIVE', 1, 1
+        );
+        INSERT INTO platform_order_identities (
+          id, marketplace_code, platform_order_identifier,
+          platform_product_identity_id, seller_organization_id,
+          seller_store_id, status, created_at, updated_at
+        ) VALUES (
+          '${orderId}', 'RAKUTEN_JP', '${orderId}', '${productId}',
+          '${organizationId}', '${storeId}', 'ACTIVE', 1, 1
+        );
+        INSERT INTO platform_order_evidence_records (
+          id, platform_order_identity_id, platform_product_identity_id,
+          marketplace_code, seller_organization_id, seller_store_id,
+          evidence_type, status, created_at, updated_at
+        ) VALUES (
+          '${evidenceId}', '${orderId}', '${productId}', 'RAKUTEN_JP',
+          '${organizationId}', '${storeId}',
+          'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'VERIFIED', 1, 1
+        );
+      `);
+      const fileObjectId = await seedFileCandidate({
+        suffix: `guard-${suffix}`,
+        purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+        visibility: 'SELLER_VISIBLE',
+        ownerStaffId: 'staff-chat-owner',
+        verified: true,
+      });
+      const linkId = `platform-link-${suffix}`;
+      database.exec(`
+        INSERT INTO file_entity_links (
+          id, file_object_id, entity_type, entity_id, purpose, visibility,
+          linked_by_actor_type, linked_by_actor_id, created_at,
+          authorization_mode, expires_at, revoked_at
+        ) VALUES (
+          '${linkId}', '${fileObjectId}', 'ORDER_EVIDENCE_SUBMISSION',
+          '${evidenceId}', 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+          'SELLER_VISIBLE', 'STAFF', 'staff-chat-owner', 2,
+          'EXPLICIT_AUDIENCES', NULL, NULL
+        );
+        INSERT INTO file_entity_audience_grants (
+          id, file_entity_link_id, subject_type, buyer_customer_id,
+          seller_organization_id, staff_permission_code, staff_scope_type,
+          staff_team_id, granted_by_actor_type, granted_by_actor_id,
+          created_at, expires_at, revoked_at
+        ) VALUES (
+          'platform-grant-${suffix}', '${linkId}', 'SELLER_ORGANIZATION',
+          NULL, '${organizationId}', NULL, NULL, NULL,
+          'STAFF', 'staff-chat-owner', 2, NULL, NULL
+        );
+      `);
+      expect(() => database.exec(`
+        INSERT INTO platform_order_evidence_internal_files (
+          id, platform_formal_order_id, platform_order_evidence_record_id,
+          slot, file_object_id, file_entity_link_id,
+          created_by_staff_id, created_at
+        ) VALUES (
+          'platform-attachment-${suffix}', 'platform-formal-chat',
+          '${evidenceId}', 1, '${fileObjectId}', '${linkId}',
+          'staff-chat-owner', 3
+        )
+      `)).toThrow('platform_order_internal_file_scope_mismatch');
+      await expect(database.prepare(`
+        SELECT COUNT(*) AS count
+        FROM platform_order_evidence_internal_files
+      `).first()).resolves.toEqual({ count: 0 });
+    },
+  );
 
   it('conceals a formal order from Staff with missing or wrong Seller Data Scope and writes nothing', async () => {
     const scoped = await resolvedStaff('staff-chat-scoped');
@@ -694,6 +1063,8 @@ async function resolvedStaff(
 
 async function attachmentSideEffects(): Promise<{
   attachments: number;
+  platformAttachments: number;
+  platformCommunicationEvidence: number;
   links: number;
   grants: number;
   audienceEvents: number;
@@ -704,6 +1075,11 @@ async function attachmentSideEffects(): Promise<{
   const row = await database.prepare(`
     SELECT
       (SELECT COUNT(*) FROM order_evidence_internal_files) AS attachments,
+      (SELECT COUNT(*) FROM platform_order_evidence_internal_files)
+        AS platform_attachments,
+      (SELECT COUNT(*) FROM platform_order_evidence_records
+        WHERE evidence_type='ORDER_EVIDENCE_INTERNAL_COMMUNICATION')
+        AS platform_communication_evidence,
       (SELECT COUNT(*) FROM file_entity_links
         WHERE purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION') AS links,
       (SELECT COUNT(*) FROM file_entity_audience_grants grant
@@ -723,6 +1099,9 @@ async function attachmentSideEffects(): Promise<{
   if (!row) throw new Error('attachment_side_effect_counts_missing');
   return {
     attachments: Number(row['attachments']),
+    platformAttachments: Number(row['platform_attachments']),
+    platformCommunicationEvidence:
+      Number(row['platform_communication_evidence']),
     links: Number(row['links']),
     grants: Number(row['grants']),
     audienceEvents: Number(row['audience_events']),
@@ -730,6 +1109,112 @@ async function attachmentSideEffects(): Promise<{
     auditEvents: Number(row['audit_events']),
     outboxEvents: Number(row['outbox_events']),
   };
+}
+
+function platformFormalOrderFilters() {
+  return {
+    store_id: null,
+    marketplace_code: 'RAKUTEN_JP' as const,
+    asin: null,
+    product_name: null,
+    review_type: null,
+    confirmed_business_date: null,
+    formal_order_id: null,
+    amazon_order_number: null,
+  };
+}
+
+function seedPlatformChatFormalOrder(db: SqliteDatabase): void {
+  db.exec(`
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code, display_name,
+      normalized_name, status, version, created_at, updated_at, disabled_at
+    ) VALUES (
+      'store-platform-chat', 'org-1', 'JP', '乐天聊天店铺',
+      '乐天聊天店铺', 'ACTIVE', 1, 1, 1, NULL
+    );
+    UPDATE seller_store_marketplaces SET marketplace_code='RAKUTEN_JP'
+    WHERE store_id='store-platform-chat';
+    INSERT INTO platform_product_identities (
+      id, marketplace_code, platform_product_identifier,
+      seller_organization_id, seller_store_id, display_name,
+      status, created_at, updated_at
+    ) VALUES (
+      'platform-product-chat', 'RAKUTEN_JP', 'rakuten-product-chat',
+      'org-1', 'store-platform-chat', '乐天聊天产品', 'ACTIVE', 1, 1
+    );
+    INSERT INTO platform_order_identities (
+      id, marketplace_code, platform_order_identifier,
+      platform_product_identity_id, seller_organization_id,
+      seller_store_id, platform_order_date, status, created_at, updated_at
+    ) VALUES (
+      'platform-order-chat', 'RAKUTEN_JP',
+      '123456-20260810-0000000099', 'platform-product-chat',
+      'org-1', 'store-platform-chat', '2026-08-10', 'ACTIVE', 1, 1
+    );
+    INSERT INTO platform_order_evidence_records (
+      id, platform_order_identity_id, platform_product_identity_id,
+      marketplace_code, seller_organization_id, seller_store_id,
+      evidence_type, status, created_at, updated_at
+    ) VALUES (
+      'platform-order-fact-chat', 'platform-order-chat',
+      'platform-product-chat', 'RAKUTEN_JP', 'org-1',
+      'store-platform-chat', 'ORDER_FACT', 'VERIFIED', 1, 1
+    );
+    INSERT INTO platform_formal_orders (
+      id, order_evidence_record_id, platform_order_identity_id,
+      platform_product_identity_id, marketplace_code,
+      seller_organization_id, seller_store_id, product_name_snapshot,
+      review_type, status, confirmed_at, confirmed_business_date, created_at
+    ) VALUES (
+      'platform-formal-chat', 'platform-order-fact-chat',
+      'platform-order-chat', 'platform-product-chat', 'RAKUTEN_JP',
+      'org-1', 'store-platform-chat', '乐天聊天产品', NULL,
+      'CONFIRMED', 5000, '2026-08-10', 5000
+    );
+  `);
+}
+
+async function revokePlatformScreenshotAuthority(
+  authority: 'link' | 'grant' | 'file' | 'store' | 'member',
+  access: SellerOrderChatScreenshotAccess,
+  now: number,
+): Promise<void> {
+  switch (authority) {
+    case 'link':
+      await database.prepare(`
+        UPDATE file_entity_links SET revoked_at=? WHERE id=?
+      `).bind(now, access.fileEntityLinkId).run();
+      return;
+    case 'grant':
+      await database.prepare(`
+        UPDATE file_entity_audience_grants SET revoked_at=?
+        WHERE file_entity_link_id=?
+      `).bind(now, access.fileEntityLinkId).run();
+      return;
+    case 'file':
+      await database.prepare(`
+        UPDATE file_objects
+        SET status='DELETION_PENDING', failure_code='ACCESS_REVOKED',
+          next_delete_at=?, verified_at=NULL, version=version+1, updated_at=?
+        WHERE id=?
+      `).bind(now, now, access.fileObjectId).run();
+      return;
+    case 'store':
+      await database.prepare(`
+        UPDATE seller_stores
+        SET status='DISABLED', disabled_at=?, updated_at=?
+        WHERE id='store-platform-chat'
+      `).bind(now, now).run();
+      return;
+    case 'member':
+      await database.prepare(`
+        UPDATE seller_member_store_scopes
+        SET status='REVOKED', revoked_at=?, updated_at=?
+        WHERE member_id='member-operator'
+          AND store_id='store-platform-chat'
+      `).bind(now, now).run();
+  }
 }
 
 async function seedFileCandidate(input: {

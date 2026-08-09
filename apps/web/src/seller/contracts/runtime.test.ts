@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  sellerFormalOrdersSchema,
   sellerOrderChatScreenshotReadIntentResponseSchema,
   sellerPayablesSchema,
   sellerProductsSchema,
@@ -70,5 +71,33 @@ describe('Seller runtime DTO allowlists', () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it('accepts a non-Amazon formal order only with null legacy projection', () => {
+    const platformOrder = {
+      formal_order_id: 'platform-formal-order-1', status: 'CONFIRMED',
+      legacy_projection: 'NONE', marketplace_code: null,
+      canonical_marketplace_code: 'TIKTOK_JP', amazon_order_number: null,
+      platform_order_identifier: '585123456789012345',
+      store: { id: 'store-1', display_name: 'Philips' }, asin: null,
+      platform_product_identifier: 'tiktokDLP2555Q', product_name: 'DLP',
+      product_version: null, review_type: null, final_paid_jpy: null,
+      payment: null, seller_expected_principal_cny_fen: null,
+      seller_principal_rate_snapshot: null,
+      seller_agreement_rate_snapshot: null,
+      locked_service_fee_snapshot: null, business_completion: null,
+      chat_screenshot: { status: 'NONE', file_version: null },
+      confirmed_at: 1, confirmed_business_date: null,
+    };
+    expect(sellerFormalOrdersSchema.safeParse({
+      items: [platformOrder], page,
+    }).success).toBe(true);
+    expect(sellerFormalOrdersSchema.safeParse({
+      items: [{
+        ...platformOrder,
+        amazon_order_number: '585123456789012345',
+      }],
+      page,
+    }).success).toBe(false);
   });
 });

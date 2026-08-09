@@ -1,4 +1,8 @@
-import type { SqlDatabase, SqlStatement } from '@ygb/contracts';
+import type {
+  BuyerSupportedMarketplaceCode,
+  SqlDatabase,
+  SqlStatement,
+} from '@ygb/contracts';
 import {
   hashCanonicalJson,
   hashCustomerPassword,
@@ -21,7 +25,7 @@ interface InvitationRow {
   token_hash: string;
   normalized_wechat: string;
   wechat_display: string;
-  marketplace_code: 'AMAZON_JP' | 'AMAZON_US' | 'COUPANG_KR';
+  marketplace_code: BuyerSupportedMarketplaceCode;
   status: string;
   version: number;
   expires_at: number;
@@ -97,7 +101,7 @@ export async function registerInvitedBuyer(
   input: {
     invitationToken: string;
     wechatId: string;
-    marketplaceCode: 'AMAZON_JP' | 'AMAZON_US' | 'COUPANG_KR';
+    marketplaceCode: BuyerSupportedMarketplaceCode;
     password: string;
     passwordConfirmation: string;
     buyerChannelId: string;

@@ -1,3 +1,5 @@
+import type { BuyerSupportedMarketplaceCode } from './customer';
+
 export const BUYER_SELF_REGISTRATION_HTTP_PATHS = Object.freeze({
   register: '/api/buyer-auth/register',
   invitationContext: '/api/buyer-auth/invitations/:token',
@@ -6,7 +8,7 @@ export const BUYER_SELF_REGISTRATION_HTTP_PATHS = Object.freeze({
 export interface BuyerSelfRegistrationRequest {
   wechat_id: string;
   invitation_token: string;
-  marketplace_code: 'AMAZON_JP' | 'AMAZON_US' | 'COUPANG_KR';
+  marketplace_code: BuyerSupportedMarketplaceCode;
   password: string;
   password_confirmation: string;
   human_verification_token?: string;
@@ -19,7 +21,7 @@ export interface BuyerSelfRegistrationIdentity {
 
 export interface BuyerInvitationContextResponse {
   invitation_valid: true;
-  marketplace_code: 'AMAZON_JP' | 'AMAZON_US' | 'COUPANG_KR';
+  marketplace_code: BuyerSupportedMarketplaceCode;
   marketplace_name: string;
   wechat_hint: string;
   expires_at: number;

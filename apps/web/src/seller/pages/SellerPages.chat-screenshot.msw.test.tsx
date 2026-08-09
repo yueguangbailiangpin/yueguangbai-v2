@@ -76,11 +76,12 @@ describe('Seller formal-order chat screenshot UI', () => {
 
 function formalOrder() {
   return {
-    formal_order_id: 'order-1', status: 'CONFIRMED', marketplace_code: 'JP', canonical_marketplace_code: 'AMAZON_JP',
+    formal_order_id: 'order-1', status: 'CONFIRMED', legacy_projection: 'AMAZON', marketplace_code: 'JP', canonical_marketplace_code: 'AMAZON_JP',
     amazon_order_number: '111-1111111-1111111', platform_order_identifier: '111-1111111-1111111',
     store: { id: 'store-1', display_name: '店铺一' }, asin: 'B012345678', platform_product_identifier: 'B012345678', product_name: '聊天截图商品',
     product_version: { id: 'product-version-1', version_no: 1 }, review_type: 'IMAGE', final_paid_jpy: '1980',
     payment: { amount_minor: '1980', currency_code: 'JPY', currency_exponent: 0 }, seller_expected_principal_cny_fen: '100',
+    seller_principal_rate_snapshot: null,
     seller_agreement_rate_snapshot: {
       rate_version_id: 'rate-1', version_no: 1, cny_per_jpy_e8: '100000000', effective_from: 1, confirmed_at: 1,
       source_currency_code: 'JPY', quote_currency_code: 'CNY', source_currency_exponent: 0, quote_currency_exponent: 2,

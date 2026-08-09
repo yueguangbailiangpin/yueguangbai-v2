@@ -1,5 +1,6 @@
 import {
   apiSuccess,
+  isMarketplaceCode,
   isPricingReviewType,
   type SellerFormalOrderPortalFilters,
 } from '@ygb/contracts';
@@ -111,10 +112,12 @@ function optionalText(
   return normalized;
 }
 
-function optionalMarketplace(value: string | null): 'JP' | null {
+function optionalMarketplace(
+  value: string | null,
+): SellerFormalOrderPortalFilters['marketplace_code'] {
   if (value === null) return null;
-  if (value !== 'JP') validation();
-  return 'JP';
+  if (!isMarketplaceCode(value)) validation();
+  return value;
 }
 
 function optionalAsin(value: string | null): string | null {

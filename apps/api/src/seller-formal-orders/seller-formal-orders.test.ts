@@ -262,6 +262,44 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     }
   });
 
+  it('preserves the global cursor across mixed legacy/platform pages without loss or duplication', async () => {
+    seedRakutenMixedPaginationOrders(database!);
+    const expected = [
+      { id: requiredOrders().storeOne, confirmedAt: FIRST_CONFIRMED_AT },
+      { id: requiredOrders().storeTwo, confirmedAt: SECOND_CONFIRMED_AT },
+      { id: 'platform-formal-page-new', confirmedAt: FIRST_CONFIRMED_AT + 1000 },
+      { id: 'platform-formal-page-tie', confirmedAt: FIRST_CONFIRMED_AT },
+      { id: 'platform-formal-page-old', confirmedAt: FIRST_CONFIRMED_AT - 1000 },
+    ].sort((left, right) => {
+      const byTime = right.confirmedAt - left.confirmedAt;
+      if (byTime !== 0) return byTime;
+      return left.id === right.id ? 0 : left.id < right.id ? 1 : -1;
+    }).map((entry) => entry.id);
+    const app = testApp();
+    const collected: string[] = [];
+    let cursor: string | null = null;
+    for (let pageNo = 0; pageNo < 10; pageNo += 1) {
+      const query = cursor === null
+        ? '?limit=2'
+        : `?limit=2&cursor=${encodeURIComponent(cursor)}`;
+      const response = await request(
+        app,
+        `/api/seller-portal/formal-orders${query}`,
+        { headers: { Cookie: await cookie('owner') } },
+      );
+      expect(response.status).toBe(200);
+      const body = await json<any>(response);
+      collected.push(...body.data.items.map(
+        (item: { formal_order_id: string }) => item.formal_order_id,
+      ));
+      cursor = body.data.page.next_cursor;
+      if (cursor === null) break;
+    }
+    expect(cursor).toBeNull();
+    expect(collected).toEqual(expected);
+    expect(new Set(collected).size).toBe(collected.length);
+  });
+
   it('returns only the seller-safe immutable order and snapshot projection', async () => {
     const app = testApp();
     const response = await request(
@@ -277,6 +315,7 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
         formal_order: {
           formal_order_id: requiredOrders().storeOne,
           status: 'CONFIRMED',
+          legacy_projection: 'AMAZON',
           marketplace_code: 'JP',
           canonical_marketplace_code: 'AMAZON_JP',
           amazon_order_number: '111-1234567-1234567',
@@ -389,6 +428,30 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       });
     },
   );
+
+  it('returns a non-Amazon formal record through the Seller HTTP API', async () => {
+    seedRakutenPlatformFormalOrder(database!);
+    const app = testApp();
+    const response = await request(
+      app,
+      '/api/seller-portal/formal-orders?marketplace_code=RAKUTEN_JP',
+      { headers: { Cookie: await cookie('owner') } },
+    );
+    expect(response.status).toBe(200);
+    const body = await json<any>(response);
+    expect(body.data.items).toEqual([expect.objectContaining({
+      formal_order_id: 'platform-formal-portal',
+      legacy_projection: 'NONE',
+      marketplace_code: null,
+      canonical_marketplace_code: 'RAKUTEN_JP',
+      amazon_order_number: null,
+      asin: null,
+      platform_order_identifier: '123456-20260810-0000000009',
+      platform_product_identifier: 'rakuten-portal-product',
+      payment: null,
+      business_completion: null,
+    })]);
+  });
 
   it('keeps historical values unchanged after product and pricing rules change', async () => {
     database!.exec(`
@@ -507,23 +570,24 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(41);
+    expect(Number(state?.schema_version)).toBe(42);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(41);
+    expect(migrations).toHaveLength(42);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-7)).toBe('0035_staff_four_role_consolidation.sql');
-    expect(migrations.at(-6)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-5)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations.at(-4)).toBe('0038_staff_mcp_production_transport_oauth.sql');
-    expect(migrations.at(-3)).toBe('0039_staff_access_binding_management.sql');
-    expect(migrations.at(-2)).toBe('0040_seller_partner_master_data_import.sql');
-    expect(migrations.at(-1)).toBe('0041_seller_principal_rate_policy.sql');
+    expect(migrations.at(-8)).toBe('0035_staff_four_role_consolidation.sql');
+    expect(migrations.at(-7)).toBe('0036_staff_acquisition_funnel_workbench.sql');
+    expect(migrations.at(-6)).toBe('0037_product_reservation_order_scheduling.sql');
+    expect(migrations.at(-5)).toBe('0038_staff_mcp_production_transport_oauth.sql');
+    expect(migrations.at(-4)).toBe('0039_staff_access_binding_management.sql');
+    expect(migrations.at(-3)).toBe('0040_seller_partner_master_data_import.sql');
+    expect(migrations.at(-2)).toBe('0041_seller_principal_rate_policy.sql');
+    expect(migrations.at(-1)).toBe('0042_rakuten_tiktok_jp_marketplace_foundation.sql');
   });
 });
 
@@ -531,6 +595,124 @@ function testApp() {
   const app = createApp();
   registerSellerFormalOrderRoutes(app);
   return app;
+}
+
+function seedRakutenPlatformFormalOrder(db: SqliteDatabase): void {
+  db.exec(`
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code, display_name,
+      normalized_name, status, version, created_at, updated_at, disabled_at
+    ) VALUES (
+      'store-portal-rakuten','org-portal','JP','Portal 乐天店',
+      'portal 乐天店','ACTIVE',1,1,1,NULL
+    );
+    UPDATE seller_store_marketplaces SET marketplace_code='RAKUTEN_JP'
+    WHERE store_id='store-portal-rakuten';
+    INSERT INTO platform_product_identities (
+      id, marketplace_code, platform_product_identifier,
+      seller_organization_id, seller_store_id, status, created_at, updated_at
+    ) VALUES (
+      'platform-product-portal','RAKUTEN_JP','rakuten-portal-product',
+      'org-portal','store-portal-rakuten','ACTIVE',1,1
+    );
+    INSERT INTO platform_order_identities (
+      id, marketplace_code, platform_order_identifier,
+      platform_product_identity_id, seller_organization_id,
+      seller_store_id, status, created_at, updated_at
+    ) VALUES (
+      'platform-order-portal','RAKUTEN_JP',
+      '123456-20260810-0000000009','platform-product-portal',
+      'org-portal','store-portal-rakuten','ACTIVE',1,1
+    );
+    INSERT INTO platform_order_evidence_records (
+      id, platform_order_identity_id, platform_product_identity_id,
+      marketplace_code, seller_organization_id, seller_store_id,
+      evidence_type, status, created_at, updated_at
+    ) VALUES (
+      'platform-evidence-portal','platform-order-portal',
+      'platform-product-portal','RAKUTEN_JP','org-portal',
+      'store-portal-rakuten','ORDER_FACT','VERIFIED',1,1
+    );
+    INSERT INTO platform_formal_orders (
+      id, order_evidence_record_id, platform_order_identity_id,
+      platform_product_identity_id, marketplace_code,
+      seller_organization_id, seller_store_id, product_name_snapshot,
+      status, confirmed_at, created_at
+    ) VALUES (
+      'platform-formal-portal','platform-evidence-portal',
+      'platform-order-portal','platform-product-portal','RAKUTEN_JP',
+      'org-portal','store-portal-rakuten','Portal 乐天产品',
+      'CONFIRMED',7000,7000
+    );
+  `);
+}
+
+function seedRakutenMixedPaginationOrders(db: SqliteDatabase): void {
+  db.exec(`
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code, display_name,
+      normalized_name, status, version, created_at, updated_at, disabled_at
+    ) VALUES (
+      'store-rakuten-pagination','org-portal','JP','分页乐天店',
+      '分页乐天店','ACTIVE',1,1,1,NULL
+    );
+    UPDATE seller_store_marketplaces SET marketplace_code='RAKUTEN_JP'
+    WHERE store_id='store-rakuten-pagination';
+    INSERT INTO platform_product_identities (
+      id, marketplace_code, platform_product_identifier,
+      seller_organization_id, seller_store_id, display_name,
+      status, created_at, updated_at
+    ) VALUES (
+      'platform-product-page','RAKUTEN_JP','rakuten-page-product',
+      'org-portal','store-rakuten-pagination','分页产品','ACTIVE',1,1
+    );
+    INSERT INTO platform_order_identities (
+      id, marketplace_code, platform_order_identifier,
+      platform_product_identity_id, seller_organization_id,
+      seller_store_id, status, created_at, updated_at
+    ) VALUES
+      ('platform-order-page-new','RAKUTEN_JP',
+       '123456-20260810-0000000101','platform-product-page',
+       'org-portal','store-rakuten-pagination','ACTIVE',1,1),
+      ('platform-order-page-tie','RAKUTEN_JP',
+       '123456-20260810-0000000102','platform-product-page',
+       'org-portal','store-rakuten-pagination','ACTIVE',1,1),
+      ('platform-order-page-old','RAKUTEN_JP',
+       '123456-20260810-0000000103','platform-product-page',
+       'org-portal','store-rakuten-pagination','ACTIVE',1,1);
+    INSERT INTO platform_order_evidence_records (
+      id, platform_order_identity_id, platform_product_identity_id,
+      marketplace_code, seller_organization_id, seller_store_id,
+      evidence_type, status, created_at, updated_at
+    ) VALUES
+      ('platform-evidence-page-new','platform-order-page-new',
+       'platform-product-page','RAKUTEN_JP','org-portal',
+       'store-rakuten-pagination','ORDER_FACT','VERIFIED',1,1),
+      ('platform-evidence-page-tie','platform-order-page-tie',
+       'platform-product-page','RAKUTEN_JP','org-portal',
+       'store-rakuten-pagination','ORDER_FACT','VERIFIED',1,1),
+      ('platform-evidence-page-old','platform-order-page-old',
+       'platform-product-page','RAKUTEN_JP','org-portal',
+       'store-rakuten-pagination','ORDER_FACT','VERIFIED',1,1);
+    INSERT INTO platform_formal_orders (
+      id, order_evidence_record_id, platform_order_identity_id,
+      platform_product_identity_id, marketplace_code,
+      seller_organization_id, seller_store_id, product_name_snapshot,
+      status, confirmed_at, created_at
+    ) VALUES
+      ('platform-formal-page-new','platform-evidence-page-new',
+       'platform-order-page-new','platform-product-page','RAKUTEN_JP',
+       'org-portal','store-rakuten-pagination','分页产品',
+       'CONFIRMED',${FIRST_CONFIRMED_AT + 1000},${FIRST_CONFIRMED_AT + 1000}),
+      ('platform-formal-page-tie','platform-evidence-page-tie',
+       'platform-order-page-tie','platform-product-page','RAKUTEN_JP',
+       'org-portal','store-rakuten-pagination','分页产品',
+       'CONFIRMED',${FIRST_CONFIRMED_AT},${FIRST_CONFIRMED_AT}),
+      ('platform-formal-page-old','platform-evidence-page-old',
+       'platform-order-page-old','platform-product-page','RAKUTEN_JP',
+       'org-portal','store-rakuten-pagination','分页产品',
+       'CONFIRMED',${FIRST_CONFIRMED_AT - 1000},${FIRST_CONFIRMED_AT - 1000});
+  `);
 }
 
 async function request(

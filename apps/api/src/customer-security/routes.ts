@@ -1,7 +1,7 @@
 import {
   apiFailure,
   apiSuccess,
-  isCanonicalMarketplaceCode,
+  isBuyerSupportedMarketplaceCode,
 } from '@ygb/contracts';
 import { parseIdempotencyKey } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
@@ -29,7 +29,9 @@ export function registerStaffCustomerSecurityRoutes(app: Hono<any>): void {
     const actor = requireStaff(context);
     const body = await exactBody(context, ['wechat_id', 'marketplace_code']);
     if (typeof body['wechat_id'] !== 'string'
-      || !isCanonicalMarketplaceCode(body['marketplace_code'])) throw validation();
+      || !isBuyerSupportedMarketplaceCode(body['marketplace_code'])) {
+      throw validation();
+    }
     await enforceStaffRateLimit(context, 'INVITATION', body['wechat_id']);
     const result = await issueBuyerInvitation(context.env.DB, {
       wechatId: body['wechat_id'],

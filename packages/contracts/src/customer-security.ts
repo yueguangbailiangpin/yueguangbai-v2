@@ -1,4 +1,4 @@
-import type { CanonicalMarketplaceCode } from './customer';
+import type { BuyerSupportedMarketplaceCode } from './customer';
 
 export const CUSTOMER_SECURITY_HTTP_PATHS = Object.freeze({
   issueBuyerInvitation: '/api/staff/customer-security/buyer-invitations',
@@ -9,7 +9,7 @@ export const CUSTOMER_SECURITY_HTTP_PATHS = Object.freeze({
 
 export interface StaffIssueBuyerInvitationRequest {
   wechat_id: string;
-  marketplace_code: CanonicalMarketplaceCode;
+  marketplace_code: BuyerSupportedMarketplaceCode;
 }
 
 export interface StaffBuyerInvitationResult {
@@ -17,7 +17,7 @@ export interface StaffBuyerInvitationResult {
   registration_token: string;
   registration_path: string;
   wechat_id: string;
-  marketplace_code: CanonicalMarketplaceCode;
+  marketplace_code: BuyerSupportedMarketplaceCode;
   status: 'ACTIVE';
   version: number;
   expires_at: number;
@@ -27,7 +27,7 @@ export interface StaffBuyerInvitationResult {
 export interface StaffBuyerInvitationView {
   invitation_id: string;
   wechat_id: string;
-  marketplace_code: CanonicalMarketplaceCode;
+  marketplace_code: BuyerSupportedMarketplaceCode;
   issued_by_staff_id: string;
   status: 'ACTIVE' | 'CONSUMED' | 'REVOKED' | 'EXPIRED';
   version: number;

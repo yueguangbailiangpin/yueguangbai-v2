@@ -12,10 +12,11 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 41, `expected 41 migrations, found ${migrations.length}`);
+assert(migrations.length === 42, `expected 42 migrations, found ${migrations.length}`);
 assert(migrations.every((file, index) => Number(file.slice(0, 4)) === index + 1),
   'migration chain is not continuous');
-assert(migrations.at(-1) === '0041_seller_principal_rate_policy.sql',
+assert(migrations.at(-2) === '0041_seller_principal_rate_policy.sql'
+  && migrations.at(-1) === '0042_rakuten_tiktok_jp_marketplace_foundation.sql',
   'unexpected migration tail');
 
 const webPackage = JSON.parse(read('apps/web/package.json'));
@@ -31,10 +32,10 @@ assert(lockedRouter?.version === '8.3.0'
 
 const productionRunbook = read('docs/runbooks/PRODUCTION_READINESS_BACKUP_RESTORE.md');
 for (const marker of [
-  '连续 `0001`–`0041`',
-  '`app_schema_state.schema_version=41`',
-  '--expected-schema 41',
-  '不得因为仓库当前末号为 `0041` 就推断线上已应用到 `0041`',
+  '连续 `0001`–`0042`',
+  '`app_schema_state.schema_version=42`',
+  '--expected-schema 42',
+  '不得因为仓库当前末号为 `0042` 就推断线上已应用到 `0042`',
 ]) assert(productionRunbook.includes(marker), `production runbook missing: ${marker}`);
 assert(!productionRunbook.includes('--expected-schema 35'),
   'production runbook still contains stale schema 35 command');
@@ -136,7 +137,7 @@ assert(mcpRuntime.includes('staffMcpProductionRuntime')
 console.log(JSON.stringify({
   status: 'PASS',
   change: 'final-production-go-local-preparation',
-  migration: '0001-0041_CONTINUOUS',
+  migration: '0001-0042_CONTINUOUS',
   react_router: '8.3.0_LOCKED_CURRENT_AUDIT_REQUIRED',
   production_config: 'LOCAL_IMPLEMENTATION_PRESENT_EXTERNAL_UNVERIFIED',
   external_integrations: 'OWNER_ACTION_REQUIRED_BLOCKED',

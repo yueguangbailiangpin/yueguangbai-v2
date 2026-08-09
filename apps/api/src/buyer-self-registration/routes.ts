@@ -1,9 +1,9 @@
 import {
   apiSuccess,
   BUYER_SELF_REGISTRATION_HTTP_PATHS,
+  isBuyerSupportedMarketplaceCode,
   type BuyerSelfRegistrationRequest,
   type BuyerSelfRegistrationResponse,
-  isCanonicalMarketplaceCode,
 } from '@ygb/contracts';
 import type { Context, Hono } from 'hono';
 import {
@@ -252,7 +252,7 @@ async function readBody(
   ]);
   if (Object.keys(record).some((key) => !allowed.has(key))
     || typeof record['invitation_token'] !== 'string'
-    || !isCanonicalMarketplaceCode(record['marketplace_code'])
+    || !isBuyerSupportedMarketplaceCode(record['marketplace_code'])
     || typeof record['wechat_id'] !== 'string'
     || typeof record['password'] !== 'string'
     || typeof record['password_confirmation'] !== 'string'
