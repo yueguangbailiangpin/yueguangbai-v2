@@ -18,6 +18,7 @@ import {
   STAFF_AUTH_CLEANUP_DELETE_LIMIT_PER_TABLE,
   STAFF_AUTH_EPHEMERAL_RETENTION_MS,
   cleanupExpiredStaffAuthEphemeralRecords,
+  FeishuStaffAuthProvider,
   generateStaffOpaqueToken,
   hashStaffOpaqueToken,
   isAllowedRelativeReturnTo,
@@ -35,7 +36,7 @@ function env(target: SqlDatabase) {
     DB: target,
     STAFF_AUTH_PROVIDER: 'FEISHU' as const,
     STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT:
-      'https://open.feishu.cn/open-apis/authen/v1/authorize',
+      'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
     STAFF_AUTH_FEISHU_TOKEN_ENDPOINT:
       'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
     STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT:
@@ -149,6 +150,28 @@ describe('Wave 13 Staff authentication and production entry', () => {
     expect(isAllowedRelativeReturnTo('//evil.example')).toBe(false);
     expect(isAllowedRelativeReturnTo('https://evil.example')).toBe(false);
     expect(isAllowedRelativeReturnTo('/staff\\evil')).toBe(false);
+  });
+
+  it('uses the current Feishu OAuth authorization parameters', () => {
+    const config = requireStaffAuthConfig(env({} as SqlDatabase));
+    const provider = new FeishuStaffAuthProvider(config);
+    const authorizationUrl = new URL(provider.createAuthorizationUrl({
+      state: 'state-value',
+      redirectUri: config.redirectUri,
+      scope: config.scope,
+    }));
+
+    expect(authorizationUrl.origin).toBe('https://accounts.feishu.cn');
+    expect(authorizationUrl.searchParams.get('client_id')).toBe(
+      'cli_wave13_test',
+    );
+    expect(authorizationUrl.searchParams.get('response_type')).toBe('code');
+    expect(authorizationUrl.searchParams.get('app_id')).toBeNull();
+    expect(authorizationUrl.searchParams.get('redirect_uri')).toBe(
+      config.redirectUri,
+    );
+    expect(authorizationUrl.searchParams.get('scope')).toBe(config.scope);
+    expect(authorizationUrl.searchParams.get('state')).toBe('state-value');
   });
 
   it('runs Fake Feishu start -> callback -> Cookie -> real Staff route', async () => {

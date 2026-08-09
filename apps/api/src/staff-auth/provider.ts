@@ -80,7 +80,8 @@ export class FeishuStaffAuthProvider implements StaffAuthProviderAdapter {
     scope: string;
   }): string {
     const url = new URL(this.config.authorizationEndpoint);
-    url.searchParams.set('app_id', this.config.appId);
+    url.searchParams.set('client_id', this.config.appId);
+    url.searchParams.set('response_type', 'code');
     url.searchParams.set('redirect_uri', input.redirectUri);
     url.searchParams.set('scope', input.scope);
     url.searchParams.set('state', input.state);
