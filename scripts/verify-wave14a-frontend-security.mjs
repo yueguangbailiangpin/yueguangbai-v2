@@ -52,6 +52,7 @@ const mountedProtectedTests = readFileSync(join(webRoot, 'auth/mounted-protected
 const staffSessionBoundary = readFileSync(join(webRoot, 'auth/staff/StaffSessionBoundary.tsx'), 'utf8');
 const sellerLayout = readFileSync(join(webRoot, 'seller/routes/SellerLayout.tsx'), 'utf8');
 const sellerPages = readFileSync(join(webRoot, 'seller/pages/SellerPages.tsx'), 'utf8');
+const sellerRouteModule = readFileSync(join(webRoot, 'seller/routes/SellerRouteModule.tsx'), 'utf8');
 const buyerRouteModule = readFileSync(join(webRoot, 'buyer/routes/BuyerRouteModule.tsx'), 'utf8');
 const staffRouteModule = readFileSync(join(webRoot, 'staff/StaffRouteModule.tsx'), 'utf8');
 const mswRoot = join(webRoot, 'test/msw');
@@ -968,11 +969,23 @@ if (app.includes('function StaffProtected')) {
   throw new Error('Staff Session Boundary must not remain an App-private function');
 }
 requireText(buyerRouteModule, [
+  "const loadBuyerInstructionRoute = () => import('./BuyerInstructionRouteModule')",
   "const loadBuyerOrderRoutes = () => import('./BuyerOrderRouteModule')",
   "const loadBuyerAfterSalesRoutes = () => import('./BuyerAfterSalesRouteModule')",
   "pathname.startsWith('/buyer/order-materials')",
   "pathname.startsWith('/buyer/reviews')",
 ], 'Buyer deferred route module integration');
+if (buyerRouteModule.includes("from '../instructions/BuyerInstructionPage'")) {
+  throw new Error('Buyer dashboard must defer instruction file-read dependencies');
+}
+requireText(sellerRouteModule, [
+  "const loadSellerSubmissionRoutes = () => import('./SellerSubmissionRouteModule')",
+  "pathname === '/seller/products/new' || pathname === '/seller/demands/new'",
+  '<RouteChunkBoundary load={loadSellerSubmissionRoutes} />',
+], 'Seller deferred submission route integration');
+if (sellerRouteModule.includes("from '../pages/SellerSubmissionPages'")) {
+  throw new Error('Seller dashboard must defer submission pages and file-upload dependencies');
+}
 for (const eagerBuyerAfterSalesImport of [
   "from '../reviews/BuyerReview", "from '../refunds/BuyerRefund",
 ]) {

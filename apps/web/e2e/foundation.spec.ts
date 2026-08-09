@@ -666,6 +666,7 @@ test('buyer product defers order materials and after-sales chunks until their ro
   await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toBeVisible();
   expect(assets.some((asset) => asset.includes('BuyerOrderRouteModule-'))).toBe(false);
   expect(assets.some((asset) => asset.includes('BuyerAfterSalesRouteModule-'))).toBe(false);
+  expect(assets.some((asset) => asset.includes('BuyerInstructionRouteModule-'))).toBe(false);
 
   await page.goto('/buyer/reviews');
   await expect(page.getByRole('heading', { name: '评论资料', exact: true })).toBeVisible();
@@ -675,6 +676,28 @@ test('buyer product defers order materials and after-sales chunks until their ro
   await page.goto('/buyer/order-materials');
   await expect(page.getByRole('heading', { name: '订单资料', exact: true })).toBeVisible();
   expect(assets.some((asset) => asset.includes('BuyerOrderRouteModule-'))).toBe(true);
+
+  await page.goto('/buyer/reservations/reservation-local/instruction');
+  await expect.poll(() => assets.some((asset) => asset.includes('BuyerInstructionRouteModule-')))
+    .toBe(true);
+});
+
+test('seller dashboard defers submission and file-upload chunks until a submission route opens', async ({ page }) => {
+  const assets: string[] = [];
+  page.on('request', (request) => {
+    const asset = request.url().split('/').at(-1) ?? '';
+    if (asset.endsWith('.js')) assets.push(asset);
+  });
+  await mockApi(page, 'seller');
+  await page.goto('/seller');
+  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
+  expect(assets.some((asset) => asset.includes('SellerSubmissionRouteModule-'))).toBe(false);
+  expect(assets.some((asset) => asset.includes('useFileUpload-'))).toBe(false);
+
+  await page.goto('/seller/products/new');
+  await expect(page.getByRole('heading', { name: '提交产品申请', exact: true })).toBeVisible();
+  expect(assets.some((asset) => asset.includes('SellerSubmissionRouteModule-'))).toBe(true);
+  expect(assets.some((asset) => asset.includes('useFileUpload-'))).toBe(true);
 });
 
 test('staff workbench defers dashboard and scheduling chunks until their routes open', async ({ page }) => {

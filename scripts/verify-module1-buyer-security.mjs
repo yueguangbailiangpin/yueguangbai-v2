@@ -188,6 +188,7 @@ const module4SellerAllowlist = new Set([
   'apps/web/src/seller/queries/keys.ts',
   'apps/web/src/seller/routes/SellerLayout.tsx',
   'apps/web/src/seller/routes/SellerRouteModule.tsx',
+  'apps/web/src/seller/routes/SellerSubmissionRouteModule.tsx',
   'apps/web/src/staff/StaffWorkbench.tsx',
   'apps/web/src/staff/StaffCallbackModule.tsx',
   'apps/web/src/staff/StaffAdminRouteModule.tsx',
@@ -208,7 +209,9 @@ const unapprovedSellerStaff = changedSellerStaff.filter((path) => !module4Seller
 assert(unapprovedSellerStaff.length === 0, `Unapproved Seller/Staff business source expanded: ${unapprovedSellerStaff.join(', ')}`);
 for (const routeModule of [
   'apps/web/src/seller/routes/SellerRouteModule.tsx',
+  'apps/web/src/seller/routes/SellerSubmissionRouteModule.tsx',
   'apps/web/src/buyer/routes/BuyerRouteModule.tsx',
+  'apps/web/src/buyer/routes/BuyerInstructionRouteModule.tsx',
   'apps/web/src/buyer/routes/BuyerOrderRouteModule.tsx',
   'apps/web/src/buyer/routes/BuyerAfterSalesRouteModule.tsx',
   'apps/web/src/staff/StaffCallbackModule.tsx',
