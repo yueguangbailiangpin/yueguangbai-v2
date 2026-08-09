@@ -418,3 +418,48 @@ export const adminDashboardDrillDownSchema = z.object({ drill_down: z.object({
 }).strict() }).strict();
 
 export type AdminDashboardSummary = z.output<typeof adminDashboardSummarySchema>['summary'];
+
+const staffAccessRoleSchema = z.discriminatedUnion('code', [
+  z.object({ code: z.literal('owner'), display_name: z.literal('总管理员') }).strict(),
+  z.object({ code: z.literal('pre_sales'), display_name: z.literal('售前') }).strict(),
+  z.object({ code: z.literal('seller_ops'), display_name: z.literal('卖家对接') }).strict(),
+  z.object({ code: z.literal('buyer_refund'), display_name: z.literal('买家返款') }).strict(),
+]);
+const staffAccessTeamSchema = z.object({
+  team_id: z.string(), team_name: z.string(), department_name: z.string(),
+}).strict();
+export const staffAccessEmployeeSchema = z.object({
+  staff_id: z.string(), display_name: z.string(),
+  status: z.enum(['ACTIVE', 'DISABLED']), version: z.number().int().positive(),
+  role: staffAccessRoleSchema,
+  feishu_binding: z.object({
+    status: z.enum(['ACTIVE', 'REVOKED', 'MISSING']),
+    verified_at: epoch.nullable(),
+  }).strict(),
+  updated_at: epoch,
+}).strict();
+export const staffBindingInvitationSchema = z.object({
+  invitation_id: z.string(), display_name: z.string(), role: staffAccessRoleSchema,
+  team: staffAccessTeamSchema.nullable(),
+  status: z.enum(['ISSUED', 'CONSUMED', 'CANCELLED', 'EXPIRED']),
+  version: z.number().int().positive(), issued_at: epoch, expires_at: epoch,
+  consumed_at: epoch.nullable(), cancelled_at: epoch.nullable(),
+}).strict();
+export const staffAccessOverviewSchema = z.object({
+  employees: z.array(staffAccessEmployeeSchema),
+  invitations: z.array(staffBindingInvitationSchema),
+  available_teams: z.array(staffAccessTeamSchema),
+}).strict();
+export const createStaffBindingInvitationSchema = z.object({
+  invitation: staffBindingInvitationSchema,
+  invitation_path: z.string().nullable(), replayed: z.boolean(),
+}).strict();
+export const cancelStaffBindingInvitationSchema = z.object({
+  invitation: staffBindingInvitationSchema, replayed: z.boolean(),
+}).strict();
+export const staffAccessMutationSchema = z.object({
+  employee: staffAccessEmployeeSchema, replayed: z.boolean(),
+}).strict();
+
+export type StaffAccessEmployee = z.output<typeof staffAccessEmployeeSchema>;
+export type StaffBindingInvitation = z.output<typeof staffBindingInvitationSchema>;

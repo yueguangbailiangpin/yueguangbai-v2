@@ -3,6 +3,7 @@ import {
   STAFF_LOGIN_STATE_TTL_MS,
   STAFF_SESSION_TTL_MS,
   type StaffAuthProviderAdapter,
+  type StaffBindingStartRequest,
   type StaffLoginStartRequest,
   type StaffLogoutAllResponse,
   type StaffLogoutResponse,
@@ -53,6 +54,13 @@ import {
   revokeStaffSession,
 } from './repository';
 import { resolveTrustedStaffSession } from './session';
+import {
+  consumeStaffBindingState,
+  isStaffBindingState,
+  provisionStaffFromBindingInvitation,
+  startStaffBinding,
+  type StaffBindingLoginStateRow,
+} from '../staff-access-management/binding';
 
 export interface RegisterStaffAuthRoutesOptions {
   providerFactory?: (
@@ -68,12 +76,71 @@ export function registerStaffAuthRoutes(
   app.post('/api/staff-auth/login/start', withStaffAuthErrors(
     (context) => loginStart(context, options),
   ));
+  app.post('/api/staff-auth/binding/start', withStaffAuthErrors(
+    (context) => bindingStart(context, options),
+  ));
   app.get('/api/staff-auth/feishu/callback', withStaffAuthErrors(
     (context) => callback(context, options),
   ));
   app.get('/api/staff-auth/session', withStaffAuthErrors(session));
   app.post('/api/staff-auth/logout', withStaffAuthErrors(logout));
   app.post('/api/staff-auth/logout-all', withStaffAuthErrors(logoutAll));
+}
+
+async function bindingStart(
+  context: Context<any>,
+  options: RegisterStaffAuthRoutesOptions,
+): Promise<Response> {
+  const config = requireStaffAuthConfig(context.env);
+  requireAllowedOrigin(context, config);
+  const body = await readExactJsonObject<StaffBindingStartRequest>(
+    context,
+    new Set(['invite_token']),
+    false,
+  );
+  if (typeof body.invite_token !== 'string') {
+    throw new StaffAuthError('VALIDATION_ERROR', 400);
+  }
+  const now = Date.now();
+  await cleanupExpiredStaffAuthEphemeralRecords(context.env.DB, now);
+  const requestId = requestIdFromContext(context);
+  const networkSource = networkSourceFromContext(context);
+  const rate = await consumeStaffAuthRateLimit(context.env.DB, {
+    action: 'LOGIN_START',
+    scopeType: 'NETWORK',
+    scopeValue: networkSource ?? 'unknown',
+    config,
+    now,
+  });
+  if (rate.limited) {
+    await recordStaffAuthSecurityEvent(context.env.DB, {
+      eventType: 'LOGIN_RATE_LIMITED',
+      outcome: 'BLOCKED',
+      config,
+      networkSource,
+      tenantKey: config.tenantKey,
+      requestId,
+      metadata: { action: 'STAFF_BINDING_START' },
+      alertSink: configuredAlertSink(context.env),
+      createdAt: now,
+    });
+    throw new StaffAuthError('RATE_LIMITED', 429, {
+      retry_after_seconds: rate.retryAfterSeconds,
+    });
+  }
+  const started = await startStaffBinding(context.env.DB, {
+    inviteToken: body.invite_token,
+    config,
+    provider: providerFor(context, config, options),
+    requestId,
+    now,
+  });
+  context.header('Cache-Control', 'no-store');
+  return context.json(apiSuccess({
+    provider: 'FEISHU' as const,
+    authorization_url: started.authorizationUrl,
+    expires_at: started.expiresAt,
+  }, requestId));
 }
 
 async function loginStart(
@@ -179,13 +246,27 @@ async function callback(
     });
   }
 
-  let loginState;
+  const stateHash = await hashStaffOpaqueToken(query.state);
+  const bindingCallback = await isStaffBindingState(
+    context.env.DB,
+    stateHash,
+  );
+  let loginState: Awaited<ReturnType<typeof consumeStaffLoginState>> | null = null;
+  let bindingState: StaffBindingLoginStateRow | null = null;
   try {
-    loginState = await consumeStaffLoginState(context.env.DB, {
-      stateHash: await hashStaffOpaqueToken(query.state),
-      expectedTenantKey: config.tenantKey,
-      now,
-    });
+    if (bindingCallback) {
+      bindingState = await consumeStaffBindingState(context.env.DB, {
+        stateHash,
+        expectedTenantKey: config.tenantKey,
+        now,
+      });
+    } else {
+      loginState = await consumeStaffLoginState(context.env.DB, {
+        stateHash,
+        expectedTenantKey: config.tenantKey,
+        now,
+      });
+    }
   } catch (error) {
     const normalized = normalizeStaffAuthError(error);
     const reason = readReason(normalized.details);
@@ -200,7 +281,9 @@ async function callback(
       networkSource,
       tenantKey: config.tenantKey,
       requestId,
-      metadata: { callback_purpose: 'STAFF_LOGIN' },
+      metadata: {
+        callback_purpose: bindingCallback ? 'STAFF_BINDING' : 'STAFF_LOGIN',
+      },
       alertSink: configuredAlertSink(context.env),
       createdAt: now,
     });
@@ -233,11 +316,18 @@ async function callback(
 
   let identity;
   try {
-    identity = await resolveVerifiedStaffIdentity(context.env.DB, {
-      tenantKey: verifiedIdentity.tenantKey,
-      openId: verifiedIdentity.openId,
-      userId: verifiedIdentity.userId,
-    });
+    identity = bindingState
+      ? await provisionStaffFromBindingInvitation(context.env.DB, {
+          state: bindingState,
+          verifiedIdentity,
+          requestId,
+          now,
+        })
+      : await resolveVerifiedStaffIdentity(context.env.DB, {
+          tenantKey: verifiedIdentity.tenantKey,
+          openId: verifiedIdentity.openId,
+          userId: verifiedIdentity.userId,
+        });
   } catch (error) {
     const normalized = normalizeStaffAuthError(error);
     const reason = readReason(normalized.details);
@@ -298,7 +388,7 @@ async function callback(
   });
   writeStaffSessionCookie(context, sessionToken);
   context.header('Cache-Control', 'no-store');
-  return context.redirect(loginState.return_to, 303);
+  return context.redirect(bindingState ? '/staff' : loginState!.return_to, 303);
 }
 
 async function session(context: Context<any>): Promise<Response> {

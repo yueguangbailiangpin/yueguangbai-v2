@@ -12,10 +12,10 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 38, `expected 38 migrations, found ${migrations.length}`);
+assert(migrations.length === 39, `expected 39 migrations, found ${migrations.length}`);
 assert(migrations.every((file, index) => Number(file.slice(0, 4)) === index + 1),
   'migration chain is not continuous');
-assert(migrations.at(-1) === '0038_staff_mcp_production_transport_oauth.sql',
+assert(migrations.at(-1) === '0039_staff_access_binding_management.sql',
   'unexpected migration tail');
 
 const webPackage = JSON.parse(read('apps/web/package.json'));
@@ -31,10 +31,10 @@ assert(lockedRouter?.version === '8.3.0'
 
 const productionRunbook = read('docs/runbooks/PRODUCTION_READINESS_BACKUP_RESTORE.md');
 for (const marker of [
-  '连续 `0001`–`0038`',
-  '`app_schema_state.schema_version=38`',
-  '--expected-schema 38',
-  '不得因为仓库当前末号为 `0038` 就推断线上已应用到 `0038`',
+  '连续 `0001`–`0039`',
+  '`app_schema_state.schema_version=39`',
+  '--expected-schema 39',
+  '不得因为仓库当前末号为 `0039` 就推断线上已应用到 `0039`',
 ]) assert(productionRunbook.includes(marker), `production runbook missing: ${marker}`);
 assert(!productionRunbook.includes('--expected-schema 35'),
   'production runbook still contains stale schema 35 command');
@@ -136,7 +136,7 @@ assert(mcpRuntime.includes('staffMcpProductionRuntime')
 console.log(JSON.stringify({
   status: 'PASS',
   change: 'final-production-go-local-preparation',
-  migration: '0001-0038_CONTINUOUS',
+  migration: '0001-0039_CONTINUOUS',
   react_router: '8.3.0_LOCKED_CURRENT_AUDIT_REQUIRED',
   production_config: 'LOCAL_IMPLEMENTATION_PRESENT_EXTERNAL_UNVERIFIED',
   external_integrations: 'OWNER_ACTION_REQUIRED_BLOCKED',

@@ -89,4 +89,4 @@ adapter 按 `client + session + requestId` 建立重放边界，请求哈希绑�
 
 ## 7. Migration 决策
 
-原 `staff-mcp-agent-access` Change 的 NO_SCHEMA_CHANGE 是当时历史事实。后续 `staff-mcp-production-transport-oauth` 评审确认生产跨实例安全状态必须持久化，因此使用当时下一连续 Migration `0038_staff_mcp_production_transport_oauth.sql`；当前仓库 schema 为 38。它只保存 HMAC 后 binding/revocation/replay/rate/control，仍复用不可变 `audit_events`；普通 replay 限 256 KiB text-only，截图 replay 不保存 response；token、Secret、Prompt、Provider identifier 或图片字节不进入 replay/audit/log。
+原 `staff-mcp-agent-access` Change 的 NO_SCHEMA_CHANGE 是当时历史事实。后续 `staff-mcp-production-transport-oauth` 评审确认生产跨实例安全状态必须持久化，因此使用当时下一连续 Migration `0038_staff_mcp_production_transport_oauth.sql`；当前仓库 schema 为 39，0038 的 MCP 归属保持不变。它只保存 HMAC 后 binding/revocation/replay/rate/control，仍复用不可变 `audit_events`；普通 replay 限 256 KiB text-only，截图 replay 不保存 response；token、Secret、Prompt、Provider identifier 或图片字节不进入 replay/audit/log。

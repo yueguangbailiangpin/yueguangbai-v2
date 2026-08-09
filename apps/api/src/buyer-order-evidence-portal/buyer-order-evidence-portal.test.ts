@@ -1003,20 +1003,21 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(38);
+    expect(migrations).toHaveLength(39);
     expect(migrations[0]).toMatch(/^0001_/u);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-4)).toBe('0035_staff_four_role_consolidation.sql');
-    expect(migrations.at(-3)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-2)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations.at(-1)).toBe('0038_staff_mcp_production_transport_oauth.sql');
+    expect(migrations.at(-5)).toBe('0035_staff_four_role_consolidation.sql');
+    expect(migrations.at(-4)).toBe('0036_staff_acquisition_funnel_workbench.sql');
+    expect(migrations.at(-3)).toBe('0037_product_reservation_order_scheduling.sql');
+    expect(migrations.at(-2)).toBe('0038_staff_mcp_production_transport_oauth.sql');
+    expect(migrations.at(-1)).toBe('0039_staff_access_binding_management.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(38);
+    expect(Number(schema?.schema_version)).toBe(39);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name

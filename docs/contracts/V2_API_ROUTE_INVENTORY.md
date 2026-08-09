@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。共有 183 个唯一端点：180 个 `/api/*`、1 个 `/health`，以及默认关闭并受 OAuth 保护的 Staff MCP metadata/resource。参数占位符使用 Hono 注册表的 `:name` 形式。
+这是默认 App 的可复现 route inventory。共有 189 个唯一端点：186 个 `/api/*`、1 个 `/health`，以及默认关闭并受 OAuth 保护的 Staff MCP metadata/resource。参数占位符使用 Hono 注册表的 `:name` 形式。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表精确比较；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都会失败。
 
@@ -49,6 +49,7 @@ GET /api/seller-portal/settlement/summary
 GET /api/seller-portal/stores
 GET /api/staff-auth/feishu/callback
 GET /api/staff-auth/session
+GET /api/staff/access-management
 GET /api/staff/assignment-fallbacks/:marketplaceCode
 GET /api/staff/acquisition/channel-assignments
 GET /api/staff/acquisition/channels
@@ -143,9 +144,14 @@ POST /api/seller-portal/files/:fileObjectId/read-intents
 POST /api/seller-portal/product-applications
 POST /api/seller-portal/product-applications/:id/withdraw
 POST /api/seller-portal/reviews/:id/files/:fileLinkId/read-intent
+POST /api/staff-auth/binding/start
 POST /api/staff-auth/login/start
 POST /api/staff-auth/logout
 POST /api/staff-auth/logout-all
+POST /api/staff/access-management/employees/:id/role
+POST /api/staff/access-management/employees/:id/status
+POST /api/staff/access-management/invitations
+POST /api/staff/access-management/invitations/:id/cancel
 POST /api/staff/assignments/reassign
 POST /api/staff/acquisition/channel-assignments
 POST /api/staff/acquisition/channel-assignments/:id/revoke

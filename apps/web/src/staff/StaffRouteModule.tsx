@@ -7,6 +7,7 @@ import { AcquisitionWorkbench } from './acquisition/AcquisitionWorkbench';
 
 const loadStaffAdminRoutes = () => import('./StaffAdminRouteModule');
 const loadStaffSchedulingRoutes = () => import('./StaffSchedulingRouteModule');
+const loadStaffAccessManagementRoutes = () => import('./StaffAccessManagementRouteModule');
 
 export { StaffShell };
 
@@ -18,6 +19,7 @@ export function StaffRoutePage(): React.JSX.Element {
   const { pathname } = useLocation();
   if (pathname.startsWith('/staff/acquisition')) return <AcquisitionWorkbench />;
   if (pathname.startsWith('/staff/admin-business-dashboard')) return <RouteChunkBoundary load={loadStaffAdminRoutes} />;
+  if (pathname.startsWith('/staff/access-management')) return <RouteChunkBoundary load={loadStaffAccessManagementRoutes} />;
   if (pathname.startsWith('/staff/products') || /^\/staff\/demands\/[^/]+\/reservations$/u.test(pathname)) return <RouteChunkBoundary load={loadStaffSchedulingRoutes} />;
   return <StaffWorkbench />;
 }

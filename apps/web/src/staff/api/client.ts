@@ -17,6 +17,8 @@ import {
   demandScheduleConfirmationSchema, demandSchedulePreviewSchema,
   productVersionMutationSchema, staffProductDetailSchema,
   staffProductPageSchema, staffReservationSchedulePageSchema,
+  staffAccessOverviewSchema, createStaffBindingInvitationSchema,
+  cancelStaffBindingInvitationSchema, staffAccessMutationSchema,
 } from '../contracts/runtime';
 
 const acquisitionChannelResultSchema = z.object({ channel: acquisitionChannelSchema, replayed: z.boolean() }).strict();
@@ -55,6 +57,28 @@ function write<T extends z.ZodType>(client: QueryClient, path: string, body: unk
 }
 
 export const staffApi = Object.freeze({
+  accessManagement: (client: QueryClient, signal?: AbortSignal) => read(
+    client, '/api/staff/access-management', staffAccessOverviewSchema, signal,
+  ),
+  createStaffBindingInvitation: (
+    client: QueryClient, body: unknown, key: string,
+  ) => write(client, '/api/staff/access-management/invitations', body,
+    createStaffBindingInvitationSchema, key),
+  cancelStaffBindingInvitation: (
+    client: QueryClient, invitationId: string, body: unknown, key: string,
+  ) => write(client,
+    `/api/staff/access-management/invitations/${encodeURIComponent(invitationId)}/cancel`,
+    body, cancelStaffBindingInvitationSchema, key),
+  changeStaffAccessStatus: (
+    client: QueryClient, staffId: string, body: unknown, key: string,
+  ) => write(client,
+    `/api/staff/access-management/employees/${encodeURIComponent(staffId)}/status`,
+    body, staffAccessMutationSchema, key),
+  changeStaffRole: (
+    client: QueryClient, staffId: string, body: unknown, key: string,
+  ) => write(client,
+    `/api/staff/access-management/employees/${encodeURIComponent(staffId)}/role`,
+    body, staffAccessMutationSchema, key),
   products: (client: QueryClient, input: { search: string; cursor: string|null }, signal?: AbortSignal) => {
     const query = new URLSearchParams({ limit: '25' });
     if (input.search) query.set('search', input.search);
