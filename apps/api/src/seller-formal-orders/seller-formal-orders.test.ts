@@ -355,6 +355,41 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     }
   });
 
+  it.each([
+    ['active', 'AVAILABLE', 2],
+    ['missing', 'NONE', null],
+    ['revoked', 'NONE', null],
+    ['expired', 'NONE', null],
+  ] as const)(
+    'fails closed in list and detail when the Seller audience grant is %s',
+    async (grantState, expectedStatus, expectedVersion) => {
+      await seedChatScreenshotProjection(database!, grantState);
+      const app = testApp();
+
+      const listBody = await list(app, 'owner');
+      const listOrder = listBody.data.items.find(
+        (item: { formal_order_id: string }) =>
+          item.formal_order_id === requiredOrders().storeOne,
+      );
+      expect(listOrder?.chat_screenshot).toEqual({
+        status: expectedStatus,
+        file_version: expectedVersion,
+      });
+
+      const detailResponse = await request(
+        app,
+        `/api/seller-portal/formal-orders/${requiredOrders().storeOne}`,
+        { headers: { Cookie: await cookie('owner') } },
+      );
+      expect(detailResponse.status).toBe(200);
+      const detailBody = await json<any>(detailResponse);
+      expect(detailBody.data.formal_order.chat_screenshot).toEqual({
+        status: expectedStatus,
+        file_version: expectedVersion,
+      });
+    },
+  );
+
   it('keeps historical values unchanged after product and pricing rules change', async () => {
     database!.exec(`
       INSERT INTO product_versions (
@@ -472,22 +507,23 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(40);
+    expect(Number(state?.schema_version)).toBe(41);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(40);
+    expect(migrations).toHaveLength(41);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-6)).toBe('0035_staff_four_role_consolidation.sql');
-    expect(migrations.at(-5)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-4)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations.at(-3)).toBe('0038_staff_mcp_production_transport_oauth.sql');
-    expect(migrations.at(-2)).toBe('0039_staff_access_binding_management.sql');
-    expect(migrations.at(-1)).toBe('0040_seller_partner_master_data_import.sql');
+    expect(migrations.at(-7)).toBe('0035_staff_four_role_consolidation.sql');
+    expect(migrations.at(-6)).toBe('0036_staff_acquisition_funnel_workbench.sql');
+    expect(migrations.at(-5)).toBe('0037_product_reservation_order_scheduling.sql');
+    expect(migrations.at(-4)).toBe('0038_staff_mcp_production_transport_oauth.sql');
+    expect(migrations.at(-3)).toBe('0039_staff_access_binding_management.sql');
+    expect(migrations.at(-2)).toBe('0040_seller_partner_master_data_import.sql');
+    expect(migrations.at(-1)).toBe('0041_seller_principal_rate_policy.sql');
   });
 });
 
@@ -635,12 +671,110 @@ async function formalOrderCounts(): Promise<{
   };
 }
 
+async function seedChatScreenshotProjection(
+  db: SqliteDatabase,
+  grantState: 'active' | 'missing' | 'revoked' | 'expired',
+): Promise<void> {
+  const fileObjectId = 'projection-chat-file';
+  const uploadIntentId = 'projection-chat-intent';
+  const fileEntityLinkId = 'projection-chat-link';
+  const grantId = 'projection-chat-grant';
+
+  db.exec(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility, status,
+      requested_file_count, manifest_hash, version, expires_at,
+      failure_code, created_at, updated_at, completed_at
+    ) VALUES (
+      '${uploadIntentId}', 'STAFF', 'staff-confirm',
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'ISSUED', 1, '${'a'.repeat(64)}', 1, 9999999999999,
+      NULL, 7000, 7000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size,
+      status, upload_token_hash, upload_expires_at, uploaded_byte_size,
+      detected_mime, uploaded_sha256, failure_code, delete_attempt_count,
+      next_delete_at, version, created_at, updated_at, uploaded_at,
+      verified_at, deleted_at
+    ) VALUES (
+      '${fileObjectId}', '${uploadIntentId}', 1,
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'files/v1/chat/projection-screenshot-000000000000000000000000000000',
+      'chat.png', 'png', 'image/png', 11, 'RESERVED',
+      '${'b'.repeat(64)}', 9999999999999, NULL, NULL, NULL,
+      NULL, 0, NULL, 1, 7000, 7000, NULL, NULL, NULL
+    );
+  `);
+  await db.prepare(`
+    UPDATE file_upload_intents
+    SET status='VERIFIED', version=2, updated_at=7001, completed_at=7001
+    WHERE id=?
+  `).bind(uploadIntentId).run();
+  await db.prepare(`
+    UPDATE file_objects
+    SET status='VERIFIED', version=2, uploaded_byte_size=11,
+        detected_mime='image/png', uploaded_sha256=?, updated_at=7001,
+        uploaded_at=7001, verified_at=7001
+    WHERE id=?
+  `).bind('c'.repeat(64), fileObjectId).run();
+  await db.prepare(`
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      ?, ?, 'ORDER_EVIDENCE_SUBMISSION', 'evidence-portal-1',
+      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'STAFF', 'staff-confirm', 7002, 'EXPLICIT_AUDIENCES', NULL, NULL
+    )
+  `).bind(fileEntityLinkId, fileObjectId).run();
+
+  if (grantState !== 'missing') {
+    await db.prepare(`
+      INSERT INTO file_entity_audience_grants (
+        id, file_entity_link_id, subject_type, buyer_customer_id,
+        seller_organization_id, staff_permission_code, staff_scope_type,
+        staff_team_id, granted_by_actor_type, granted_by_actor_id,
+        created_at, expires_at, revoked_at
+      ) VALUES (
+        ?, ?, 'SELLER_ORGANIZATION', NULL, 'org-portal',
+        NULL, NULL, NULL, 'STAFF', 'staff-confirm', 7003, ?, NULL
+      )
+    `).bind(
+      grantId,
+      fileEntityLinkId,
+      grantState === 'expired' ? 8000 : null,
+    ).run();
+    if (grantState === 'revoked') {
+      await db.prepare(`
+        UPDATE file_entity_audience_grants
+        SET revoked_at=8000
+        WHERE id=?
+      `).bind(grantId).run();
+    }
+  }
+
+  await db.prepare(`
+    INSERT INTO order_evidence_internal_files (
+      id, order_evidence_submission_id, slot,
+      file_object_id, file_entity_link_id,
+      created_by_staff_id, created_at
+    ) VALUES (
+      'projection-chat-attachment', 'evidence-portal-1', 1,
+      ?, ?, 'staff-confirm', 7004
+    )
+  `).bind(fileObjectId, fileEntityLinkId).run();
+}
+
 function command(idempotencyKey: string, now: number) {
   return {
     actor: staffActor(),
     idempotencyKey,
     requestId: `request:${idempotencyKey}`,
     now,
+    sellerPrincipalRateEnforcementEnabled: true,
   };
 }
 
@@ -1019,6 +1153,21 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
     SET status='CONFIRMED', decision_version=2,
         confirmed_by_staff_id='staff-confirm', confirmed_at=2000
     WHERE id='buyer-rate-portal-v1';
+
+    INSERT INTO buyer_daily_exchange_rates (
+      id, business_date, version_no, status, cny_per_jpy_e8,
+      submitted_by_staff_id, submitted_at, decision_version,
+      confirmed_by_staff_id, confirmed_at,
+      rejected_by_staff_id, rejected_at, rejection_reason
+    ) VALUES
+      ('buyer-rate-portal-v2', '2026-08-02', 1, 'SUBMITTED', 5500000,
+       'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL),
+      ('buyer-rate-portal-v3', '2026-08-03', 1, 'SUBMITTED', 5500000,
+       'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL);
+    UPDATE buyer_daily_exchange_rates
+    SET status='CONFIRMED', decision_version=2,
+        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
+    WHERE id IN ('buyer-rate-portal-v2', 'buyer-rate-portal-v3');
   `);
 
   await bindPhase3GEvidenceFixture(db, {
@@ -1054,6 +1203,8 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
 
   seedSellerRate(db, 'org-portal', 'seller-rate-portal-v1', 6_000_000);
   seedSellerRate(db, 'org-other', 'seller-rate-other-v1', 6_200_000);
+  seedPrincipalRate(db, 'org-portal', 'principal-rate-portal-v1', 500_000);
+  seedPrincipalRate(db, 'org-other', 'principal-rate-other-v1', 700_000);
   seedServiceFee(
     db,
     'org-portal',
@@ -1097,6 +1248,31 @@ function seedSellerRate(
       NULL, NULL, NULL, NULL, NULL
     );
     UPDATE seller_agreement_rate_versions
+    SET status='CONFIRMED', decision_version=2,
+        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
+    WHERE id='${id}';
+  `);
+}
+
+function seedPrincipalRate(
+  db: SqliteDatabase,
+  organizationId: string,
+  id: string,
+  markupRateE8: number,
+): void {
+  db.exec(`
+    INSERT INTO seller_principal_rate_policy_versions (
+      id, scope_type, seller_organization_id, source_currency_code,
+      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
+      effective_from, submitted_by_staff_id, submitted_at, decision_version,
+      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
+      rejection_reason
+    ) VALUES (
+      '${id}', 'SELLER_ORGANIZATION', '${organizationId}', 'JPY', 'CNY', 1,
+      'SUBMITTED', ${markupRateE8}, 100000000, 3000,
+      'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL
+    );
+    UPDATE seller_principal_rate_policy_versions
     SET status='CONFIRMED', decision_version=2,
         confirmed_by_staff_id='staff-confirm', confirmed_at=2000
     WHERE id='${id}';

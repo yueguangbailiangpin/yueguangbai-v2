@@ -18,7 +18,6 @@ import {
   getOrderInstructionExpiryScanCursor,
   runOrderInstructionExpiryScan,
 } from './expiry-scan';
-import { attachOrderEvidenceInternalCommunication } from './internal-files';
 import {
   ServiceBindingKeywordImageGenerator,
   type TrustedKeywordGeneratorBinding,
@@ -98,10 +97,6 @@ export function registerOrderInstructionRoutes(app: Hono<any>): void {
   app.post(
     '/api/staff/order-instructions/reconciliation/run',
     withErrors(runReconciliation),
-  );
-  app.post(
-    '/api/staff/order-evidence/:id/internal-communication-files',
-    withErrors(attachInternalFile),
   );
 }
 
@@ -341,24 +336,6 @@ async function runReconciliation(context: Context<any>): Promise<Response> {
     requestId: requestIdFromContext(context),
   });
   return success(context, { reconciliation: result });
-}
-
-async function attachInternalFile(context: Context<any>): Promise<Response> {
-  const actor = requireStaffActor(context);
-  const body = record(await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT));
-  const result = await attachOrderEvidenceInternalCommunication(
-    context.env.DB,
-    {
-      submissionId: requiredIdentifier(context.req.param('id')),
-      slot: integer(body['slot']),
-      fileObjectId: requiredIdentifier(body['file_object_id']),
-    },
-    {
-      actor,
-      idempotencyKey: requireIdempotencyKey(context),
-    },
-  );
-  return success(context, { internal_file: result }, 201);
 }
 
 function requireStaffActor(context: Context<any>): OrderInstructionStaffActor {

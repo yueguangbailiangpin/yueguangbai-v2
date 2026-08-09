@@ -462,6 +462,7 @@ async function setupDueRefund(): Promise<{
       idempotencyKey: 'formal-order:refund-fixture',
       requestId: 'request:formal-order:refund-fixture',
       now: NOW,
+      sellerPrincipalRateEnforcementEnabled: true,
     },
   );
   seedReviewFile(database, 1);
@@ -880,6 +881,22 @@ async function seedFormalOrderPrerequisites(
     SET status='CONFIRMED', decision_version=2,
         confirmed_by_staff_id='staff-review-owner', confirmed_at=2000
     WHERE id='buyer-review-rate-v1';
+
+    INSERT INTO seller_principal_rate_policy_versions (
+      id, scope_type, seller_organization_id, source_currency_code,
+      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
+      effective_from, submitted_by_staff_id, submitted_at, decision_version,
+      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
+      rejection_reason
+    ) VALUES (
+      'principal-refund-policy-v1', 'SELLER_ORGANIZATION', 'seller-org-review',
+      'JPY', 'CNY', 1, 'SUBMITTED', 500000, 100000000, 3000,
+      'staff-review-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
+    );
+    UPDATE seller_principal_rate_policy_versions
+    SET status='CONFIRMED', decision_version=2,
+        confirmed_by_staff_id='staff-review-owner', confirmed_at=2000
+    WHERE id='principal-refund-policy-v1';
 
     INSERT INTO seller_agreement_rate_versions (
       id, organization_id, review_type, version_no,

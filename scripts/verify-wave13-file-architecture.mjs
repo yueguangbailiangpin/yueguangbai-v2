@@ -26,21 +26,9 @@ assertContains(
   'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
   'historical global FilePurpose',
 );
-assertNotContains(
-  routes,
-  'staffOrderEvidenceInternalCommunication',
-  'Wave 13 active route registration',
-);
-assertNotContains(
-  routes,
-  "['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'INTERNAL_ONLY']",
-  'Wave 13 Staff upload mapping',
-);
-assertNotContains(
-  contract,
-  '/api/staff/file-uploads/order-evidence-internal-communication/intents',
-  'Wave 13 File HTTP path contract',
-);
+assertContains(routes, 'staffSellerOrderChatScreenshot', 'active Seller chat screenshot upload route');
+assertContains(routes, "['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE']", 'Staff upload mapping');
+assertContains(contract, '/api/staff/file-uploads/seller-order-chat-screenshots/intents', 'File HTTP path contract');
 for (const authorityField of [
   'purpose?:', 'visibility?:', 'owner_id:', 'staff_id:',
   'buyer_id:', 'seller_id:', 'object_key:', 'permanent_url:',
@@ -69,13 +57,13 @@ for (const evidence of [
   'FILE_HTTP_PURPOSE_ROUTES',
   'FILE_HTTP_LIFECYCLE_PATHS',
   'staffMiddlewareIndex',
-  'toHaveLength(189)',
+  'toHaveLength(195)',
 ]) assertContains(inventoryTests, evidence, 'real Hono route inventory test');
 report('wave13-file-architecture', {
-  active_purpose_routes: 5,
-  deferred_to_wave15: ['ORDER_EVIDENCE_INTERNAL_COMMUNICATION'],
+  active_purpose_routes: 6,
+  deferred_to_wave15: [],
   generic_link_routes: 0,
   generic_grant_routes: 0,
   r2_authority_fields: 0,
-  active_route_inventory: 189,
+  active_route_inventory: 195,
 });

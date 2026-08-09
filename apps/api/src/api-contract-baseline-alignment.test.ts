@@ -11,6 +11,7 @@ import {
   FILE_HTTP_PURPOSE_ROUTES,
   MARKETPLACE_FOUNDATION_HTTP_PATHS,
   SELLER_FORMAL_ORDER_PORTAL_HTTP_PATHS,
+  SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS,
   SELLER_PORTAL_HTTP_PATHS,
   SELLER_REVIEW_PORTAL_HTTP_PATHS,
   STAFF_AUTH_PATHS,
@@ -67,7 +68,7 @@ describe('API contract baseline alignment', () => {
     const documented = documentedRoutes().sort();
     expect(new Set(actual).size, 'non-contiguous duplicate registration').toBe(actual.length);
     expect(documented, 'route inventory drift').toEqual(actual);
-    expect(actual).toHaveLength(189);
+    expect(actual).toHaveLength(195);
     expect(actual.filter((route) => route.startsWith('GET /api/'))).not.toHaveLength(0);
     expect(actual.some((route) => route.includes('/api/v2/'))).toBe(false);
   });
@@ -82,6 +83,7 @@ describe('API contract baseline alignment', () => {
       STAFF_AUTH_PATHS,
       SELLER_PORTAL_HTTP_PATHS,
       SELLER_FORMAL_ORDER_PORTAL_HTTP_PATHS,
+      SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS,
       SELLER_REVIEW_PORTAL_HTTP_PATHS,
       STAFF_ORDER_EVIDENCE_PATHS,
       STAFF_BUYER_REFUND_PATHS,

@@ -25,6 +25,7 @@ export type PricingErrorCode =
   | 'NOT_FOUND'
   | 'VERSION_CONFLICT'
   | 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND'
+  | 'SELLER_PRINCIPAL_RATE_NOT_FOUND'
   | 'PRICING_RULE_NOT_FOUND'
   | 'PRICING_RULE_ALREADY_DECIDED'
   | 'PRICING_RULE_PENDING_CONFLICT'
@@ -249,11 +250,13 @@ export function normalizePricingError(error: unknown): PricingError {
   }
 
   const message = String(error);
-  if (message.includes('pricing_pending_conflict')) {
+  if (message.includes('pricing_pending_conflict')
+    || message.includes('seller_principal_rate_policy_pending')) {
     return new PricingError('PRICING_RULE_PENDING_CONFLICT', 409);
   }
   if (message.includes('pricing_confirmed_conflict')
-    || message.includes('pricing_effective_conflict')) {
+    || message.includes('pricing_effective_conflict')
+    || message.includes('seller_principal_rate_policy_confirmed_effective')) {
     return new PricingError(
       'PRICING_RULE_EFFECTIVE_TIME_CONFLICT',
       409,

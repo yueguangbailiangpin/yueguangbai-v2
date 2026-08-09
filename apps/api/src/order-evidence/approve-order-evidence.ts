@@ -48,6 +48,10 @@ import {
 } from '../order-instructions/formal-order-integration';
 import { resolveBuyerDailyExchangeRate } from '../pricing/buyer-daily-exchange-rates';
 import { resolveSellerAgreementRate } from '../pricing/seller-agreement-rates';
+import {
+  insertSellerPrincipalRateSnapshotStatement,
+  resolveSellerPrincipalRateSnapshot,
+} from '../pricing/seller-principal-rate-policy';
 import { resolveSellerServiceFee } from '../pricing/seller-service-fees';
 import { prepareSellerPayableCreation } from '../seller-settlements/payable-statements';
 import {
@@ -153,6 +157,7 @@ export async function approveOrderEvidenceAtomically(
     idempotencyKey: string;
     requestId?: string | null;
     now?: number;
+    sellerPrincipalRateEnforcementEnabled?: boolean;
   },
 ): Promise<AtomicOrderEvidenceApprovalResult> {
   requireFormalOrderConfirmationPermission(command.actor);
@@ -234,6 +239,15 @@ export async function approveOrderEvidenceAtomically(
       sellerOrganizationId: source.seller_organization_id,
       at: now,
     });
+    const sellerPrincipalRateSnapshot = command.sellerPrincipalRateEnforcementEnabled === true
+      ? await resolveSellerPrincipalRateSnapshot(database, {
+          sellerOrganizationId: source.seller_organization_id,
+          platformOrderDate: source.amazon_order_date,
+          paymentAmountMinor: source.final_paid_jpy,
+          paymentCurrencyCode: 'JPY',
+          at: now,
+        })
+      : null;
     const serviceFee = await resolveSellerServiceFee(database, {
       sellerOrganizationId: source.seller_organization_id,
       reviewType,
@@ -253,11 +267,16 @@ export async function approveOrderEvidenceAtomically(
     const buyerExpectedPrincipal = BigInt(
       buyerFinancial.buyerExpectedPrincipalCnyFen,
     );
-    const sellerExpectedPrincipal = convertJpyToCnyFen(
+    let sellerExpectedPrincipal = convertJpyToCnyFen(
       finalPaidJpy,
       sellerRateValue,
       'HALF_UP',
     );
+    if (sellerPrincipalRateSnapshot) {
+      sellerExpectedPrincipal = parseCnyFen(
+        sellerPrincipalRateSnapshot.seller_expected_principal_amount_minor,
+      );
+    }
     const buyerNumber = prepareBuyerNumberPlan(
       database,
       source,
@@ -299,6 +318,9 @@ export async function approveOrderEvidenceAtomically(
       seller_expected_principal_cny_fen:
         fixedIntegerString(sellerExpectedPrincipal),
       rounding_rule: 'HALF_UP',
+      ...(sellerPrincipalRateSnapshot
+        ? { seller_principal_rate_snapshot: sellerPrincipalRateSnapshot }
+        : {}),
     };
     const formalOrder: ConfirmFormalOrderResult = {
       formal_order_id: formalOrderId,
@@ -514,6 +536,17 @@ export async function approveOrderEvidenceAtomically(
         now,
       ),
       assertPreviousStatementChangedOnce(database),
+      ...(sellerPrincipalRateSnapshot
+        ? [
+            insertSellerPrincipalRateSnapshotStatement(
+              database,
+              formalOrderId,
+              sellerPrincipalRateSnapshot,
+              now,
+            ),
+            assertPreviousStatementChangedOnce(database),
+          ]
+        : []),
       ...principalPayable.statements,
       database.prepare(`
         INSERT INTO formal_order_events (

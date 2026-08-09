@@ -244,7 +244,8 @@ describe('Wave 13 Staff Order Evidence API', () => {
     expect(approval).toContain('const finalPaidJpy = parseJpyInteger');
     expect(approval).toContain('calculateBuyerFormalFinancials({');
     expect(approval).toContain('finalPaidJpy: source.final_paid_jpy');
-    expect(approval).toContain('sellerExpectedPrincipal = convertJpyToCnyFen');
+    expect(approval).toContain('sellerExpectedPrincipal = parseCnyFen');
+    expect(approval).toContain('sellerPrincipalRateSnapshot');
     expect(approval).not.toContain(
       'finalPaidJpy: source.reference_order_amount_jpy',
     );

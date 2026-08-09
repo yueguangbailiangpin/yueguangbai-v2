@@ -1,14 +1,22 @@
 import type { QueryClient } from '@tanstack/react-query';
+import {
+  SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS,
+  type SellerOrderChatScreenshotReadIntentRequest,
+} from '@ygb/contracts';
 import { z } from 'zod';
 import { FrontendApiError } from '../api/errors';
 import { operationHeaders } from '../api/idempotency';
 import { identityApiRequest } from '../api/identity-request';
+import type { RequestIdentity } from '../api/identity-request';
 import { createIdentityFileReadIntent } from './file-read-api';
 import {
   fileReadIntentResponseSchema,
   safeFileReferenceSchema,
   type SafeFileReference,
 } from './file-read-contracts';
+import {
+  sellerOrderChatScreenshotReadIntentResponseSchema,
+} from '../seller/contracts/runtime';
 
 export type CreatedFileReadIntent = Readonly<{
   readIntentId: string;
@@ -22,7 +30,7 @@ export type CreatedFileReadIntent = Readonly<{
 }>;
 
 export interface FileReadIntentProvider {
-  readonly identity: 'buyer';
+  readonly identity: RequestIdentity;
   create(
     client: QueryClient,
     idempotencyKey: string,
@@ -58,6 +66,47 @@ export class GenericBuyerFileReadIntentAdapter implements FileReadIntentProvider
       signal,
     });
     return verified(result.data, result.requestId);
+  }
+}
+
+export class SellerOrderChatScreenshotReadIntentAdapter
+implements FileReadIntentProvider {
+  readonly identity = 'seller' as const;
+  private readonly path: string;
+  private readonly expectedVersion: number;
+
+  constructor(formalOrderId: string, version: number) {
+    this.path = SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.sellerReadIntent
+      .replace(':id', encodeURIComponent(identifier(formalOrderId)));
+    this.expectedVersion = positiveInteger(version);
+    trustProvider(this);
+  }
+
+  async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
+    const body: SellerOrderChatScreenshotReadIntentRequest = {
+      expected_file_version: this.expectedVersion,
+    };
+    const result = await identityApiRequest('seller', client, {
+      path: this.path,
+      method: 'POST',
+      schema: sellerOrderChatScreenshotReadIntentResponseSchema,
+      body,
+      headers: operationHeaders({ key: idempotencyKey, body }),
+      signal,
+    });
+    const intent = result.data.read_intent;
+    assertTokenAvailability(intent, result.requestId);
+    if (intent.replayed) malformed(result.requestId);
+    return Object.freeze({
+      readIntentId: intent.read_intent_id,
+      accessToken: intent.access_token,
+      accessTokenAvailable: intent.access_token_available,
+      expiresAt: intent.expires_at,
+      replayed: intent.replayed,
+      fileObjectId: null,
+      authorityAssertion: 'UNVERIFIABLE_MISSING_FIELDS',
+      requestId: result.requestId,
+    });
   }
 }
 

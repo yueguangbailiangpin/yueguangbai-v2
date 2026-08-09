@@ -35,6 +35,28 @@ export function parseCnyPerJpyE8(raw: string): bigint {
   });
 }
 
+/** Parse an absolute seller-principal rate increment; zero is meaningful. */
+export function parseCnyPerJpyMarkupE8(raw: string): bigint {
+  return parseUnsignedInteger(raw, {
+    allowZero: true,
+    maximum: MAX_D1_SAFE_INTEGER,
+  });
+}
+
+export function addCnyPerJpyE8(
+  baseRateE8: bigint,
+  markupRateE8: bigint,
+): bigint {
+  if (baseRateE8 <= 0n || markupRateE8 < 0n) {
+    throw new Error('invalid_rate_increment');
+  }
+  const finalRate = baseRateE8 + markupRateE8;
+  if (finalRate > MAX_D1_SAFE_INTEGER) {
+    throw new Error('rate_out_of_range');
+  }
+  return finalRate;
+}
+
 /** Parse the display direction `1 JPY = X CNY` into e8 fixed point. */
 export function parseCnyPerJpyDecimal(raw: string): bigint {
   if (typeof raw !== 'string') throw new Error('invalid_rate_decimal');

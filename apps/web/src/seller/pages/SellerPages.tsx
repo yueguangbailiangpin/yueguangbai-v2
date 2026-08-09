@@ -1,9 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { Alert, Button, Card, Dialog, EmptyState, MetricCard, PageHeader, StatusBadge } from '../../ui/primitives';
 import { useBuyerMutation } from '../../buyer/mutations/useBuyerMutation';
 import { BuyerMutationRecovery } from '../../buyer/shared/BuyerMutationRecovery';
+import { ProtectedFileButton } from '../../buyer/shared/ProtectedFileButton';
+import { SellerOrderChatScreenshotReadIntentAdapter } from '../../files/file-read-providers';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';
 import { useSellerStoreContext } from '../routes/SellerLayout';
@@ -159,10 +161,40 @@ export function SellerOrdersPage(): React.JSX.Element {
   const query = useQuery({ queryKey: sellerQueryKeys.orders(storeId), queryFn: ({ signal }) => sellerApi.orders(client, storeId, signal).then((r) => r.data.items) });
   return <section className="seller-page"><PageHeader title="订单与业务完成" eyebrow="正式订单" />
     {query.isPending ? <p role="status">正在加载正式订单</p> : query.isError ? <Alert tone="danger">暂时无法读取正式订单。</Alert> : query.data.length === 0 ? <EmptyState title="暂无正式订单" description="正式订单确认后会显示在这里。" /> : <div className="seller-record-list">{query.data.map((item) => <RecordCard key={item.formal_order_id} title={item.product_name} meta={`${item.store.display_name} · ${item.platform_order_identifier}`} status={item.business_completion.status === 'COMPLETE' ? '业务完成' : '进行中'} statusTone={tone(item.business_completion.status)}>
-      <FactGrid><Fact label="站点" value={marketplaceLabel[item.canonical_marketplace_code]} /><Fact label="买家支付" value={money(item.payment.amount_minor, item.payment.currency_code, item.payment.currency_exponent)} /><Fact label="卖家本金" value={cny(item.seller_expected_principal_cny_fen)} /><Fact label="卖家服务费" value={cny(item.locked_service_fee_snapshot.service_fee_cny_fen)} /><Fact label="协议汇率" value={rate(item.seller_agreement_rate_snapshot.rate_value, item.seller_agreement_rate_snapshot.rate_scale, item.seller_agreement_rate_snapshot.source_currency_code)} /><Fact label="协议版本" value={`v${item.seller_agreement_rate_snapshot.version_no}`} /><Fact label="评价类型" value={taskTypeLabel[item.review_type]} /><Fact label="确认时间" value={formatShanghai(item.confirmed_at)} /></FactGrid>
+      <FactGrid><Fact label="站点" value={marketplaceLabel[item.canonical_marketplace_code]} /><Fact label="买家支付" value={money(item.payment.amount_minor, item.payment.currency_code, item.payment.currency_exponent)} /><Fact label="卖家本金" value={cny(item.seller_expected_principal_cny_fen)} /><Fact label="卖家服务费" value={cny(item.locked_service_fee_snapshot.service_fee_cny_fen)} />{item.seller_principal_rate_snapshot ? <><Fact label="平台下单日期" value={item.seller_principal_rate_snapshot.platform_order_date} /><Fact label="卖家本金基准汇率" value={rate(item.seller_principal_rate_snapshot.base_rate_value, item.seller_principal_rate_snapshot.base_rate_scale, item.seller_principal_rate_snapshot.payment_currency_code)} /><Fact label="卖家本金汇率加点" value={rate(item.seller_principal_rate_snapshot.markup_rate_value, item.seller_principal_rate_snapshot.markup_rate_scale, item.seller_principal_rate_snapshot.payment_currency_code)} /><Fact label="最终卖家本金汇率" value={rate(item.seller_principal_rate_snapshot.final_rate_value, item.seller_principal_rate_snapshot.final_rate_scale, item.seller_principal_rate_snapshot.payment_currency_code)} /><Fact label="策略版本" value={`v${item.seller_principal_rate_snapshot.policy_version_no}`} /></> : <><Fact label="协议汇率" value={rate(item.seller_agreement_rate_snapshot.rate_value, item.seller_agreement_rate_snapshot.rate_scale, item.seller_agreement_rate_snapshot.source_currency_code)} /><Fact label="协议版本" value={`v${item.seller_agreement_rate_snapshot.version_no}`} /></>}<Fact label="评价类型" value={taskTypeLabel[item.review_type]} /><Fact label="确认时间" value={formatShanghai(item.confirmed_at)} /><Fact label="聊天截图" value={<SellerChatScreenshotControl formalOrderId={item.formal_order_id} status={item.chat_screenshot.status} version={item.chat_screenshot.file_version} />} /></FactGrid>
       <ul className="completion-grid"><li><span>评论</span><strong>{componentLabel[item.business_completion.review]}</strong></li><li><span>买家返款</span><strong>{componentLabel[item.business_completion.buyer_refund]}</strong></li><li><span>卖家本金</span><strong>{componentLabel[item.business_completion.seller_principal]}</strong></li><li><span>卖家服务费</span><strong>{componentLabel[item.business_completion.seller_service_fee]}</strong></li></ul>
     </RecordCard>)}</div>}
   </section>;
+}
+
+function SellerChatScreenshotControl({
+  formalOrderId,
+  status,
+  version,
+}: {
+  formalOrderId: string;
+  status: 'AVAILABLE' | 'NONE';
+  version: number | null;
+}): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const provider = useMemo(
+    () => status === 'AVAILABLE' && version !== null
+      ? new SellerOrderChatScreenshotReadIntentAdapter(formalOrderId, version)
+      : null,
+    [formalOrderId, status, version],
+  );
+  if (!provider) return <span>暂无聊天截图</span>;
+  return <span className="seller-chat-screenshot-control">
+    <span>已上传</span>
+    <Button
+      className="secondary"
+      aria-expanded={expanded}
+      onClick={() => setExpanded((value) => !value)}
+    >{expanded ? '收起聊天截图' : '展开聊天截图'}</Button>
+    {expanded
+      ? <ProtectedFileButton provider={provider} label="查看聊天截图" />
+      : null}
+  </span>;
 }
 
 export function SellerSettlementsPage(): React.JSX.Element {

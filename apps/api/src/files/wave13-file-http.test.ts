@@ -20,8 +20,8 @@ const root = path.resolve(process.cwd());
 const source = (relative: string) => readFileSync(path.join(root, relative), 'utf8');
 
 describe('Wave 13 File HTTP contract and architecture', () => {
-  it('freezes five active purpose-bound intent routes', () => {
-    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(5);
+  it('freezes active purpose-bound intent routes', () => {
+    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(6);
     expect(FILE_HTTP_PURPOSE_ROUTES).toMatchObject({
       buyerOrderEvidence: {
         purpose: 'ORDER_EVIDENCE',
@@ -43,11 +43,13 @@ describe('Wave 13 File HTTP contract and architecture', () => {
         purpose: 'SELLER_SETTLEMENT_PROOF',
         visibility: 'INTERNAL_ONLY',
       },
+      staffSellerOrderChatScreenshot: {
+        purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+        visibility: 'SELLER_VISIBLE',
+      },
     });
-    expect(WAVE13_DEFERRED_FILE_PURPOSES).toEqual([
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
-    ]);
-    expect(JSON.stringify(FILE_HTTP_PURPOSE_ROUTES)).not.toContain(
+    expect(WAVE13_DEFERRED_FILE_PURPOSES).toEqual([]);
+    expect(JSON.stringify(FILE_HTTP_PURPOSE_ROUTES)).toContain(
       'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
     );
     for (const route of Object.values(FILE_HTTP_LIFECYCLE_PATHS)) {
@@ -56,19 +58,13 @@ describe('Wave 13 File HTTP contract and architecture', () => {
     }
   });
 
-  it('keeps the historical global purpose but does not register a Wave 13 endpoint', () => {
+  it('keeps the historical purpose and registers only the fixed Staff route', () => {
     const storage = source('packages/contracts/src/file-storage.ts');
     const routes = source('apps/api/src/files/routes.ts');
     expect(storage).toContain("'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'");
-    expect(routes).not.toContain(
-      'staffOrderEvidenceInternalCommunication',
-    );
-    expect(routes).not.toContain(
-      "['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'INTERNAL_ONLY']",
-    );
-    expect(routes).not.toContain(
-      '/api/staff/file-uploads/order-evidence-internal-communication/intents',
-    );
+    expect(routes).toContain('staffSellerOrderChatScreenshot');
+    expect(routes).toContain('ORDER_EVIDENCE_INTERNAL_COMMUNICATION');
+    expect(routes).toContain('SELLER_VISIBLE');
   });
 
   it('keeps File authority out of public request contracts and DTOs', () => {

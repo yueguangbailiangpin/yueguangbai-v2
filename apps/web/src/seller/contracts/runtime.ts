@@ -1,9 +1,22 @@
 import { z } from 'zod';
+import type { SellerOrderChatScreenshotReadIntentResponseDto } from '@ygb/contracts';
 
 const integerString = z.string().regex(/^(0|[1-9][0-9]*)$/u);
 const epoch = z.number().int().nonnegative();
 const page = z.object({ limit: z.number().int().positive(), next_cursor: z.string().nullable() }).strict();
 const component = z.enum(['PENDING', 'COMPLETE', 'NOT_APPLICABLE']);
+
+export const sellerOrderChatScreenshotReadIntentResponseSchema = z.object({
+  read_intent: z.object({
+    read_intent_id: z.string().min(1).max(120),
+    access_token: z.string().min(32).max(512).nullable(),
+    access_token_available: z.boolean(),
+    expires_at: z.number().int().nonnegative(),
+    replayed: z.boolean(),
+  }).strict(),
+}).strict() satisfies z.ZodType<
+  SellerOrderChatScreenshotReadIntentResponseDto
+>;
 
 export const sellerMeSchema = z.object({ me: z.object({
   account_id: z.string(),
@@ -31,6 +44,20 @@ export const sellerFormalOrdersSchema = z.object({ items: z.array(z.object({
   review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']), final_paid_jpy: integerString,
   payment: z.object({ amount_minor: integerString, currency_code: z.enum(['JPY', 'USD', 'KRW', 'CNY']), currency_exponent: z.union([z.literal(0), z.literal(2)]) }).strict(),
   seller_expected_principal_cny_fen: integerString,
+  seller_principal_rate_snapshot: z.object({
+    platform_order_date: z.string(), payment_amount_minor: integerString,
+    payment_currency_code: z.enum(['JPY', 'USD', 'KRW', 'CNY']),
+    base_rate_version_id: z.string(), base_rate_business_date: z.string(),
+    base_rate_confirmed_at: epoch, base_rate_value: integerString,
+    base_rate_scale: integerString, policy_version_id: z.string(),
+    policy_scope_type: z.enum(['CURRENCY_PAIR_DEFAULT', 'SELLER_ORGANIZATION']),
+    policy_seller_organization_id: z.string().nullable(),
+    policy_version_no: z.number().int().positive(), policy_effective_from: epoch,
+    policy_confirmed_at: epoch, markup_rate_value: integerString,
+    markup_rate_scale: integerString, final_rate_value: integerString,
+    final_rate_scale: integerString, rounding_rule: z.literal('HALF_UP'),
+    seller_expected_principal_amount_minor: integerString,
+  }).strict().nullable().optional(),
   seller_agreement_rate_snapshot: z.object({
     rate_version_id: z.string(), version_no: z.number().int().positive(), cny_per_jpy_e8: integerString,
     effective_from: epoch, confirmed_at: epoch, source_currency_code: z.enum(['JPY', 'USD', 'KRW', 'CNY']),
@@ -45,6 +72,7 @@ export const sellerFormalOrdersSchema = z.object({ items: z.array(z.object({
   }).strict(),
   business_completion: z.object({ status: z.enum(['IN_PROGRESS', 'COMPLETE']), review: component,
     buyer_refund: component, seller_principal: component, seller_service_fee: component }).strict(),
+  chat_screenshot: z.object({ status: z.enum(['AVAILABLE', 'NONE']), file_version: z.number().int().positive().nullable() }).strict(),
   confirmed_at: epoch, confirmed_business_date: z.string(),
 }).strict()), page }).strict();
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { sellerPayablesSchema, sellerProductsSchema } from './runtime';
+import {
+  sellerOrderChatScreenshotReadIntentResponseSchema,
+  sellerPayablesSchema,
+  sellerProductsSchema,
+} from './runtime';
 
 const page = { limit: 100, next_cursor: null };
 
@@ -37,5 +41,34 @@ describe('Seller runtime DTO allowlists', () => {
     };
     expect(sellerPayablesSchema.safeParse({ items: [payable], page }).success).toBe(true);
     expect(sellerPayablesSchema.safeParse({ items: [{ ...payable, object_key: 'private/key' }], page }).success).toBe(false);
+  });
+
+  it('accepts only the public snake_case Seller chat read-intent DTO', () => {
+    const response = {
+      read_intent: {
+        read_intent_id: 'intent-1',
+        access_token: 'x'.repeat(40),
+        access_token_available: true,
+        expires_at: 1000,
+        replayed: false,
+      },
+    };
+    expect(
+      sellerOrderChatScreenshotReadIntentResponseSchema.safeParse(response)
+        .success,
+    ).toBe(true);
+    expect(
+      sellerOrderChatScreenshotReadIntentResponseSchema.safeParse({
+        readIntent: response.read_intent,
+      }).success,
+    ).toBe(false);
+    expect(
+      sellerOrderChatScreenshotReadIntentResponseSchema.safeParse({
+        read_intent: {
+          ...response.read_intent,
+          object_key: 'files/v1/private',
+        },
+      }).success,
+    ).toBe(false);
   });
 });

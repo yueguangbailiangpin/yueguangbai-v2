@@ -47,6 +47,26 @@ interface FormalOrderRow {
   seller_cny_per_jpy_e8: number | string;
   seller_rate_effective_from: number;
   seller_rate_confirmed_at: number;
+  principal_platform_order_date: string | null;
+  principal_payment_amount_minor: number | string | null;
+  principal_payment_currency_code: 'JPY' | 'USD' | 'KRW' | 'CNY' | null;
+  principal_base_rate_version_id: string | null;
+  principal_base_rate_business_date: string | null;
+  principal_base_rate_confirmed_at: number | null;
+  principal_base_rate_value: number | string | null;
+  principal_base_rate_scale: number | string | null;
+  principal_policy_version_id: string | null;
+  principal_policy_scope_type: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION' | null;
+  principal_policy_seller_organization_id: string | null;
+  principal_policy_version_no: number | null;
+  principal_policy_effective_from: number | null;
+  principal_policy_confirmed_at: number | null;
+  principal_markup_rate_value: number | string | null;
+  principal_markup_rate_scale: number | string | null;
+  principal_final_rate_value: number | string | null;
+  principal_final_rate_scale: number | string | null;
+  principal_rounding_rule: 'HALF_UP' | null;
+  principal_amount_minor: number | string | null;
   service_fee_version_id: string;
   service_fee_version_no: number;
   service_fee_effective_from: number;
@@ -57,6 +77,8 @@ interface FormalOrderRow {
   buyer_refund_status: string | null;
   principal_status: string | null;
   service_fee_status: string | null;
+  chat_screenshot_status: 'AVAILABLE' | 'NONE';
+  chat_screenshot_file_version: number | null;
   confirmed_at: number;
   confirmed_business_date: string;
 }
@@ -223,6 +245,26 @@ function selectFormalOrderProjection(): string {
       generic.rounding_rule,
       snapshot.seller_rate_effective_from,
       snapshot.seller_rate_confirmed_at,
+      principal.platform_order_date AS principal_platform_order_date,
+      principal.payment_amount_minor AS principal_payment_amount_minor,
+      principal.payment_currency_code AS principal_payment_currency_code,
+      principal.base_rate_version_id AS principal_base_rate_version_id,
+      principal.base_rate_business_date AS principal_base_rate_business_date,
+      principal.base_rate_confirmed_at AS principal_base_rate_confirmed_at,
+      principal.base_rate_value AS principal_base_rate_value,
+      principal.base_rate_scale AS principal_base_rate_scale,
+      principal.policy_version_id AS principal_policy_version_id,
+      principal.policy_scope_type AS principal_policy_scope_type,
+      principal.policy_seller_organization_id AS principal_policy_seller_organization_id,
+      principal.policy_version_no AS principal_policy_version_no,
+      principal.policy_effective_from AS principal_policy_effective_from,
+      principal.policy_confirmed_at AS principal_policy_confirmed_at,
+      principal.markup_rate_value AS principal_markup_rate_value,
+      principal.markup_rate_scale AS principal_markup_rate_scale,
+      principal.final_rate_value AS principal_final_rate_value,
+      principal.final_rate_scale AS principal_final_rate_scale,
+      principal.rounding_rule AS principal_rounding_rule,
+      principal.seller_expected_principal_amount_minor AS principal_amount_minor,
       snapshot.service_fee_version_id,
       snapshot.service_fee_version_no,
       snapshot.service_fee_effective_from,
@@ -240,6 +282,67 @@ function selectFormalOrderProjection(): string {
       (SELECT payable.derived_status FROM seller_payable_balances payable
         WHERE payable.formal_order_id=formal_order.id
           AND payable.payable_type='SELLER_SERVICE_FEE') AS service_fee_status,
+      (SELECT file_object.version
+        FROM order_evidence_internal_files attachment
+        JOIN file_objects file_object ON file_object.id=attachment.file_object_id
+        JOIN file_upload_intents upload_intent
+          ON upload_intent.id=file_object.upload_intent_id
+          AND upload_intent.status='VERIFIED'
+        JOIN file_entity_links file_link ON file_link.id=attachment.file_entity_link_id
+        JOIN file_entity_audience_grants audience_grant
+          ON audience_grant.file_entity_link_id=file_link.id
+          AND audience_grant.subject_type='SELLER_ORGANIZATION'
+          AND audience_grant.seller_organization_id=
+            formal_order.seller_organization_id
+          AND audience_grant.revoked_at IS NULL
+          AND (audience_grant.expires_at IS NULL
+            OR audience_grant.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
+        WHERE attachment.order_evidence_submission_id=
+          formal_order.order_evidence_submission_id
+          AND attachment.slot=1
+          AND store.status='ACTIVE'
+          AND file_object.status='VERIFIED'
+          AND file_link.file_object_id=attachment.file_object_id
+          AND file_link.entity_type='ORDER_EVIDENCE_SUBMISSION'
+          AND file_link.entity_id=formal_order.order_evidence_submission_id
+          AND file_link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
+          AND file_link.visibility='SELLER_VISIBLE'
+          AND file_link.authorization_mode='EXPLICIT_AUDIENCES'
+          AND file_link.revoked_at IS NULL
+          AND (file_link.expires_at IS NULL OR file_link.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
+        LIMIT 1) AS chat_screenshot_file_version,
+      CASE WHEN EXISTS (
+        SELECT 1
+        FROM order_evidence_internal_files attachment
+        JOIN file_entity_links file_link
+          ON file_link.id=attachment.file_entity_link_id
+          AND file_link.file_object_id=attachment.file_object_id
+          AND file_link.entity_type='ORDER_EVIDENCE_SUBMISSION'
+          AND file_link.entity_id=formal_order.order_evidence_submission_id
+          AND file_link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
+          AND file_link.visibility='SELLER_VISIBLE'
+          AND file_link.authorization_mode='EXPLICIT_AUDIENCES'
+          AND file_link.revoked_at IS NULL
+          AND (file_link.expires_at IS NULL OR file_link.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
+        JOIN file_objects file_object
+          ON file_object.id=attachment.file_object_id
+          AND file_object.status='VERIFIED'
+        JOIN file_upload_intents upload_intent
+          ON upload_intent.id=file_object.upload_intent_id
+          AND upload_intent.status='VERIFIED'
+        JOIN file_entity_audience_grants audience_grant
+          ON audience_grant.file_entity_link_id=file_link.id
+          AND audience_grant.subject_type='SELLER_ORGANIZATION'
+          AND audience_grant.seller_organization_id=
+            formal_order.seller_organization_id
+          AND audience_grant.revoked_at IS NULL
+          AND (audience_grant.expires_at IS NULL
+            OR audience_grant.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
+        WHERE attachment.order_evidence_submission_id=
+          formal_order.order_evidence_submission_id
+          AND attachment.slot=1
+          AND store.status='ACTIVE'
+      ) THEN 'AVAILABLE' ELSE 'NONE' END AS chat_screenshot_status,
       formal_order.confirmed_at,
       formal_order.confirmed_business_date
     FROM formal_orders formal_order
@@ -250,6 +353,8 @@ function selectFormalOrderProjection(): string {
       ON snapshot.formal_order_id=formal_order.id
     JOIN formal_order_marketplace_money_snapshots generic
       ON generic.formal_order_id=formal_order.id
+    LEFT JOIN seller_principal_rate_snapshots principal
+      ON principal.formal_order_id=formal_order.id
   `;
 }
 
@@ -297,6 +402,31 @@ function mapFormalOrder(
     }),
     seller_expected_principal_cny_fen:
       integerString(row.seller_expected_principal_cny_fen),
+    seller_principal_rate_snapshot: row.principal_policy_version_id === null
+      ? null
+      : Object.freeze({
+          platform_order_date: row.principal_platform_order_date!,
+          payment_amount_minor: integerString(row.principal_payment_amount_minor!),
+          payment_currency_code: row.principal_payment_currency_code!,
+          base_rate_version_id: row.principal_base_rate_version_id!,
+          base_rate_business_date: row.principal_base_rate_business_date!,
+          base_rate_confirmed_at: Number(row.principal_base_rate_confirmed_at),
+          base_rate_value: integerString(row.principal_base_rate_value!),
+          base_rate_scale: integerString(row.principal_base_rate_scale!),
+          policy_version_id: row.principal_policy_version_id,
+          policy_scope_type: row.principal_policy_scope_type!,
+          policy_seller_organization_id: row.principal_policy_seller_organization_id,
+          policy_version_no: Number(row.principal_policy_version_no),
+          policy_effective_from: Number(row.principal_policy_effective_from),
+          policy_confirmed_at: Number(row.principal_policy_confirmed_at),
+          markup_rate_value: integerString(row.principal_markup_rate_value!),
+          markup_rate_scale: integerString(row.principal_markup_rate_scale!),
+          final_rate_value: integerString(row.principal_final_rate_value!),
+          final_rate_scale: integerString(row.principal_final_rate_scale!),
+          rounding_rule: row.principal_rounding_rule!,
+          seller_expected_principal_amount_minor:
+            integerString(row.principal_amount_minor!),
+        }),
     seller_agreement_rate_snapshot: Object.freeze({
       rate_version_id: row.seller_rate_version_id,
       version_no: Number(row.seller_rate_version_no),
@@ -332,6 +462,14 @@ function mapFormalOrder(
       principalStatus: row.principal_status,
       serviceFeeExpectedCnyFen: BigInt(String(row.service_fee_cny_fen)),
       serviceFeeStatus: row.service_fee_status,
+    }),
+    chat_screenshot: Object.freeze({
+      status: row.chat_screenshot_status === 'AVAILABLE'
+        ? 'AVAILABLE'
+        : 'NONE',
+      file_version: row.chat_screenshot_file_version === null
+        ? null
+        : Number(row.chat_screenshot_file_version),
     }),
     confirmed_at: Number(row.confirmed_at),
     confirmed_business_date: row.confirmed_business_date,

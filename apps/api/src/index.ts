@@ -21,6 +21,7 @@ import {
 } from './order-evidence';
 import { registerStaffReviewRoutes } from './reviews';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
+import { registerSellerOrderChatScreenshotRoutes } from './seller-order-chat-screenshots';
 import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
 import {
@@ -42,6 +43,7 @@ import { registerAcquisitionRoutes } from './acquisition';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
 import { registerStaffMcpTransportRoutes } from './staff-mcp';
 import { registerStaffAccessManagementRoutes } from './staff-access-management';
+import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
 
 const app = createApp();
 
@@ -63,6 +65,7 @@ registerFeishuWorkbenchRoutes(app);
 // This path middleware must precede every /api/staff route registration.
 app.use('/api/staff/*', staffSessionMiddleware());
 registerStaffAssignmentRoutes(app);
+registerSellerPrincipalRatePolicyRoutes(app);
 registerStaffCustomerSecurityRoutes(app);
 registerAcquisitionRoutes(app);
 registerAdminBusinessDashboardRoutes(app);
@@ -96,6 +99,7 @@ registerBuyerRefundStatusRoutes(app);
 registerBuyerReviewRoutes(app);
 registerSellerPortalRoutes(app);
 registerSellerFormalOrderRoutes(app);
+registerSellerOrderChatScreenshotRoutes(app);
 registerSellerReviewRoutes(app);
 registerSellerSettlementRoutes(app);
 

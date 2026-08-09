@@ -96,6 +96,17 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
     WHERE NOT EXISTS(SELECT 1 FROM buyer_daily_exchange_rates WHERE business_date='2026-08-01' AND version_no=1);
     UPDATE buyer_daily_exchange_rates SET status='CONFIRMED',decision_version=2,confirmed_by_staff_id='cold-archive-owner',
       confirmed_at=2000 WHERE id='cold-buyer-rate' AND status='SUBMITTED';
+    INSERT INTO seller_principal_rate_policy_versions(
+      id,scope_type,seller_organization_id,source_currency_code,quote_currency_code,
+      version_no,status,markup_rate_value,rate_scale,effective_from,
+      submitted_by_staff_id,submitted_at,decision_version,confirmed_by_staff_id,
+      confirmed_at,rejected_by_staff_id,rejected_at,rejection_reason)
+    VALUES('cold-principal-policy-${suffix}','SELLER_ORGANIZATION','${sellerOrganizationId}',
+      'JPY','CNY',1,'SUBMITTED',500000,100000000,3000,
+      'cold-archive-owner',1000,1,NULL,NULL,NULL,NULL,NULL);
+    UPDATE seller_principal_rate_policy_versions SET status='CONFIRMED',decision_version=2,
+      confirmed_by_staff_id='cold-archive-owner',confirmed_at=2000
+      WHERE id='cold-principal-policy-${suffix}';
     INSERT INTO seller_agreement_rate_versions(id,organization_id,review_type,version_no,status,cny_per_jpy_e8,effective_from,
       submitted_by_staff_id,submitted_at,decision_version,confirmed_by_staff_id,confirmed_at,rejected_by_staff_id,rejected_at,rejection_reason)
     VALUES('cold-seller-rate-${suffix}','${sellerOrganizationId}',NULL,1,'SUBMITTED',6000000,3000,'cold-archive-owner',1000,1,NULL,NULL,NULL,NULL,NULL);
