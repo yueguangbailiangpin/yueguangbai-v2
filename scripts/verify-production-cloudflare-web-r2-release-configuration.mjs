@@ -1,16 +1,18 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import {
   inspectReleaseTemplate,
   readLocalReleaseConfig,
   templatePath,
 } from './preflight-cloudflare-release.mjs';
+import {
+  invariant as assert,
+  readRepositoryFile,
+  repositoryRoot as root,
+  resolveChangeFile,
+} from './verifier-utils.mjs';
 
-const root = path.resolve(import.meta.dirname, '..');
-const read = (file) => readFileSync(path.join(root, file), 'utf8');
-const assert = (value, message) => {
-  if (!value) throw new Error(message);
-};
+const read = (file) => readRepositoryFile(file, root);
 
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
@@ -78,11 +80,13 @@ for (const file of [
   'scripts/verify-web-static-build.mjs',
   'docs/contracts/PRODUCTION_CLOUDFLARE_WEB_R2_RELEASE.md',
   'docs/runbooks/PRODUCTION_CLOUDFLARE_WEB_R2_RELEASE.md',
-  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/proposal.md',
-  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/design.md',
-  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/tasks.md',
-  'openspec/changes/archive/2026-08-09-production-cloudflare-web-r2-release-configuration/specs/production-cloudflare-web-r2-release-configuration/spec.md',
 ]) assert(existsSync(path.join(root, file)), `required local evidence missing: ${file}`);
+for (const file of [
+  'proposal.md',
+  'design.md',
+  'tasks.md',
+  'specs/production-cloudflare-web-r2-release-configuration/spec.md',
+]) resolveChangeFile('production-cloudflare-web-r2-release-configuration', file, root);
 
 const adapter = read('apps/api/src/files/r2-object-storage.ts');
 for (const marker of [

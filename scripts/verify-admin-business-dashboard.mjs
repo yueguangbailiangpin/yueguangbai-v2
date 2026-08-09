@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
+import { resolveChangeFile } from './verifier-utils.mjs';
 
 const migrations = readdirSync('migrations')
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
@@ -11,10 +12,12 @@ if (migrations.length < 37
   throw new Error('current governed migration chain is missing M14 acquisition or M16 scheduling ownership');
 }
 const dashboardProposal = readFileSync(
-  'openspec/changes/archive/2026-08-08-admin-business-dashboard/proposal.md', 'utf8',
+  resolveChangeFile('admin-business-dashboard', 'proposal.md', process.cwd()), 'utf8',
 );
 const schedulingProposal = readFileSync(
-  'openspec/changes/archive/2026-08-08-staff-product-reservation-order-scheduling/proposal.md', 'utf8',
+  resolveChangeFile(
+    'staff-product-reservation-order-scheduling', 'proposal.md', process.cwd(),
+  ), 'utf8',
 );
 const schedulingMigration = readFileSync(
   'migrations/0037_product_reservation_order_scheduling.sql', 'utf8',

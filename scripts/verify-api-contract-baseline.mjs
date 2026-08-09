@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { resolveChangeRoot } from './verifier-utils.mjs';
 
 const repo = process.cwd();
 const tracked = execFileSync('git', ['diff', '--name-only', 'origin/main', '--'], {
@@ -19,10 +21,12 @@ const allowed = new Set([
   'scripts/verify-api-contract-baseline.mjs',
   'openspec/specs/api-contract-governance/spec.md',
 ]);
-const changeRoot = 'openspec/changes/api-contract-baseline-alignment/';
-const archiveRoot = 'openspec/changes/archive/2026-08-06-api-contract-baseline-alignment/';
+const changeRoot = `${path.relative(
+  repo,
+  resolveChangeRoot('api-contract-baseline-alignment', repo),
+).split(path.sep).join('/')}/`;
 const unexpected = changed.filter((file) => !allowed.has(file)
-  && !file.startsWith(changeRoot) && !file.startsWith(archiveRoot));
+  && !file.startsWith(changeRoot));
 if (unexpected.length) {
   throw new Error(`API contract baseline must not change runtime/schema/dependencies: ${unexpected.join(', ')}`);
 }

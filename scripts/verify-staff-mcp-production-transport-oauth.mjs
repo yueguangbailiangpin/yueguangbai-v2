@@ -1,9 +1,13 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import {
+  invariant as assert,
+  readRepositoryFile,
+  repositoryRoot as root,
+  resolveChangeFile,
+} from './verifier-utils.mjs';
 
-const root = path.resolve(import.meta.dirname, '..');
-const read = (file) => readFileSync(path.join(root, file), 'utf8');
-const assert = (value, message) => { if (!value) throw new Error(message); };
+const read = (file) => readRepositoryFile(file, root);
 
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file)).sort();
@@ -115,8 +119,12 @@ for (const file of [
   'docs/runbooks/STAFF_MCP_PRODUCTION_TRANSPORT_OAUTH.md',
   'docs/acceptance/STAFF_MCP_PRODUCTION_TRANSPORT_OAUTH.md',
   'scripts/preflight-staff-mcp-production.mjs',
-  'openspec/changes/staff-mcp-production-transport-oauth/specs/staff-mcp-agent/spec.md',
 ]) assert(existsSync(path.join(root, file)), `evidence missing: ${file}`);
+resolveChangeFile(
+  'staff-mcp-production-transport-oauth',
+  'specs/staff-mcp-agent/spec.md',
+  root,
+);
 
 const evidence = read('docs/acceptance/STAFF_MCP_PRODUCTION_TRANSPORT_OAUTH.md');
 for (const marker of [

@@ -4,7 +4,7 @@ Date: 2026-08-09 (Asia/Shanghai)
 
 ## Bounded inventory
 
-The baseline inventory contained 59 `scripts/verify*.mjs` files and 9,452 lines. Manual helper classification found 24 files carrying repeated read/assert/marker mechanics; 48 files used direct exact-source `.includes(...)` markers. After the bounded extraction there are still 59 verifier files, now 9,321 lines. Three repeated helper copies were removed in favor of `verifier-utils.mjs` (24 → 21), and direct exact-marker files reduced 48 → 46 because markers moved behind the same fail-closed shared assertion. No marker requirement or caller-specific security assertion was removed.
+The baseline inventory contained 59 `scripts/verify*.mjs` files and 9,452 lines. Manual helper classification found 24 files carrying repeated read/assert/marker mechanics; 48 files used direct exact-source `.includes(...)` markers. After the bounded extraction there are still 59 verifier files, now 9,340 lines. Five repeated helper copies were removed in favor of `verifier-utils.mjs` (24 → 19), 11 current verifier files now import the shared utility, and direct exact-marker files reduced 48 → 46 because markers moved behind the same fail-closed shared assertion. No marker requirement or caller-specific security assertion was removed.
 
 The common Change resolver rejects missing evidence, more than one dated archive, active/archive coexistence, symlink directories, invalid Change names, missing/symlink evidence files, and paths escaping the Change. Nine deterministic tests cover these cases plus successful active/archive resolution. Existing exact requirements, scenarios, Migration, permission and transport assertions remain in their callers.
 
