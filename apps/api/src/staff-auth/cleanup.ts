@@ -25,8 +25,7 @@ export async function cleanupExpiredStaffAuthEphemeralRecords(
   try {
     const counts = await database.prepare(`SELECT (SELECT COUNT(*) FROM staff_login_states WHERE expires_at<? AND updated_at<?)+(SELECT COUNT(*) FROM staff_auth_rate_limits WHERE window_ends_at<? AND (blocked_until IS NULL OR blocked_until<?)) AS count`).bind(retainedAfter,retainedAfter,retainedAfter,retainedAfter).first<{count:number}>();
     if (options.dryRun) return { staffLoginStatesDeleted:0,staffAuthRateLimitsDeleted:0,hasMore:Number(counts?.count??0)>limit,dryRun:true };
-    const results = await database.batch([
-      database.prepare(`
+    const loginStates = await database.prepare(`
         DELETE FROM staff_login_states
         WHERE id IN (
           SELECT id
@@ -36,8 +35,8 @@ export async function cleanupExpiredStaffAuthEphemeralRecords(
           ORDER BY expires_at, id
           LIMIT ${limit}
         )
-      `).bind(retainedAfter, retainedAfter),
-      database.prepare(`
+      `).bind(retainedAfter, retainedAfter).run();
+    const rateLimits = await database.prepare(`
         DELETE FROM staff_auth_rate_limits
         WHERE id IN (
           SELECT id
@@ -50,11 +49,10 @@ export async function cleanupExpiredStaffAuthEphemeralRecords(
           ORDER BY window_ends_at, id
           LIMIT ${limit}
         )
-      `).bind(retainedAfter, retainedAfter),
-    ]);
+      `).bind(retainedAfter, retainedAfter).run();
     return {
-      staffLoginStatesDeleted: Number(results[0]?.meta.changes ?? 0),
-      staffAuthRateLimitsDeleted: Number(results[1]?.meta.changes ?? 0),
+      staffLoginStatesDeleted: Number(loginStates.meta.changes ?? 0),
+      staffAuthRateLimitsDeleted: Number(rateLimits.meta.changes ?? 0),
       hasMore: Number(counts?.count ?? 0) > limit,
       dryRun: false,
     };
