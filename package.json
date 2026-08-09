@@ -102,7 +102,9 @@
     "security:scan": "node scripts/scan-secrets.mjs",
     "check": "npm run security:scan && npm run verify:dependency-risk && npm run verify:customer-security && npm run typecheck && npm run db:verify && npm run verify:migration-guards && npm run verify:marketplace-money && npm run verify:wave11 && npm run verify:wave12 && npm run check:wave13 && npm run check:wave14a && npm run verify:module1:buyer && npm test && npm run build",
     "dev:api": "npm --workspace @ygb/api run dev",
-    "dev:web": "npm --workspace @ygb/web run dev"
+    "dev:web": "npm --workspace @ygb/web run dev",
+    "preview:web:local": "node scripts/local-production-preview.mjs",
+    "measure:web:runtime": "node scripts/measure-frontend-runtime-performance.mjs"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
