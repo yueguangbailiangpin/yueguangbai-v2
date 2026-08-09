@@ -8,6 +8,8 @@ Checked-in staging and production templates SHALL keep `STAFF_AUTH_ENABLED=false
 
 The Web login client SHALL accept redirects only to the exact current official Feishu authorization origin `https://accounts.feishu.cn` and SHALL reject every other origin.
 
+The production release perimeter SHALL preserve its default cross-site API deny while allowing an origin-less `GET` top-level document navigation to the exact Staff Auth Feishu callback path. It SHALL continue to reject cross-site writes, fetch/CORS modes, sibling API paths and requests carrying a foreign `Origin`. The callback SHALL gain no session authority until the existing exact query, single-use state, Provider and D1 identity checks pass.
+
 #### Scenario: Complete approved production activation
 
 - **WHEN** an operator-authorized external configuration enables Staff Auth with every exact field and managed Secret binding present
@@ -22,6 +24,11 @@ The Web login client SHALL accept redirects only to the exact current official F
 
 - **WHEN** the login-start response contains a structurally valid HTTPS authorization URL whose origin is not `https://accounts.feishu.cn`
 - **THEN** the Web client rejects the redirect and does not navigate away from the application.
+
+#### Scenario: Feishu returns through a top-level OAuth navigation
+
+- **WHEN** the browser follows a cross-site `GET` document navigation without an `Origin` header to the exact configured Staff Auth Feishu callback path
+- **THEN** the release perimeter passes the request to Staff Auth while all callback state, Provider and D1 identity checks remain mandatory.
 
 ### Requirement: Feishu production login does not change D1 authorization authority
 

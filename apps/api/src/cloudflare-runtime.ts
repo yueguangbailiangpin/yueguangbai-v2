@@ -141,7 +141,12 @@ export function isAllowedSameOriginApiRequest(
   if (url.origin !== appOrigin) return false;
   const origin = request.headers.get('Origin');
   if (origin !== null && origin !== appOrigin) return false;
-  return request.headers.get('Sec-Fetch-Site') !== 'cross-site';
+  if (request.headers.get('Sec-Fetch-Site') !== 'cross-site') return true;
+  return request.method === 'GET'
+    && origin === null
+    && url.pathname === '/api/staff-auth/feishu/callback'
+    && request.headers.get('Sec-Fetch-Mode') === 'navigate'
+    && request.headers.get('Sec-Fetch-Dest') === 'document';
 }
 
 export function withReleaseSecurityHeaders(
