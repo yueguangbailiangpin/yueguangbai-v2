@@ -14,7 +14,8 @@ describe('Staff MCP production transport migration', () => {
     expect(migrations[37]).toBe('0038_staff_mcp_production_transport_oauth.sql');
     expect(migrations[38]).toBe('0039_staff_access_binding_management.sql');
     expect(migrations[40]).toBe('0041_seller_principal_rate_policy.sql');
-    expect(migrations).toHaveLength(41);
+    expect(migrations[41]).toBe('0042_rakuten_tiktok_jp_marketplace_foundation.sql');
+    expect(migrations).toHaveLength(42);
     const foundation = readFileSync(resolve(root, 'migrations/0001_foundation.sql'), 'utf8');
     const migration = readFileSync(
       resolve(root, 'migrations/0038_staff_mcp_production_transport_oauth.sql'),
@@ -32,7 +33,7 @@ describe('Staff MCP production transport migration', () => {
       const state = await database.prepare(`
         SELECT schema_version FROM app_schema_state WHERE singleton_id=1
       `).first<{ schema_version: number }>();
-      expect(state).toEqual({ schema_version: 41 });
+      expect(state).toEqual({ schema_version: 42 });
       const control = await database.prepare(`
         SELECT enabled, reason_code FROM staff_mcp_runtime_controls
         WHERE control_type='GLOBAL' AND control_name='staff-mcp'

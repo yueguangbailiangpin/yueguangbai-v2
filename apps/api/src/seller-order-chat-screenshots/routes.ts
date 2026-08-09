@@ -77,7 +77,13 @@ async function attachScreenshot(context: Context<any>): Promise<Response> {
 }
 
 async function createReadIntent(context: Context<any>): Promise<Response> {
-  const actor = await resolveSellerPortalActor(context);
+  const actor = await resolveSellerPortalActor(context).catch((error) => {
+    const code = (error as { code?: unknown })?.code;
+    if (code === 'FORBIDDEN' || code === 'SESSION_INVALID') {
+      throw new SellerFormalOrderPortalError('FORMAL_ORDER_NOT_FOUND', 404);
+    }
+    throw error;
+  });
   const access = await requireSellerOrderChatScreenshot(
     context.env.DB,
     actor,

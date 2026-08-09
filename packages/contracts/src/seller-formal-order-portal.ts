@@ -5,6 +5,7 @@ import type {
 } from './pricing';
 import type {
   CanonicalMarketplaceCode,
+  MarketplaceCode,
 } from './customer';
 import type { CurrencyCode, CurrencyExponent } from './marketplace-money';
 import type { SellerPortalPage } from './seller-portal';
@@ -66,17 +67,27 @@ export interface SellerBusinessCompletionDto {
   seller_service_fee: SellerBusinessCompletionComponentStatus;
 }
 
-export interface SellerFormalOrderPortalDto {
+interface SellerFormalOrderPortalBaseDto {
   formal_order_id: string;
   status: FormalOrderStatus;
-  marketplace_code: 'JP';
-  canonical_marketplace_code: CanonicalMarketplaceCode;
-  amazon_order_number: string;
   platform_order_identifier: string;
   store: SellerFormalOrderStoreSummaryDto;
-  asin: string;
   platform_product_identifier: string;
   product_name: string;
+  chat_screenshot: SellerOrderChatScreenshotStatusDto;
+  confirmed_at: number;
+}
+
+export type SellerFormalOrderPortalDto = SellerFormalOrderPortalBaseDto & (
+  | {
+  legacy_projection: 'AMAZON';
+  canonical_marketplace_code: Extract<
+    CanonicalMarketplaceCode,
+    'AMAZON_JP' | 'AMAZON_US'
+  >;
+  marketplace_code: 'JP';
+  amazon_order_number: string;
+  asin: string;
   product_version: SellerFormalOrderProductVersionSummaryDto;
   review_type: PricingReviewType;
   final_paid_jpy: FixedIntegerString;
@@ -90,17 +101,36 @@ export interface SellerFormalOrderPortalDto {
   seller_agreement_rate_snapshot: SellerAgreementRateSnapshotDto;
   locked_service_fee_snapshot: LockedSellerServiceFeeSnapshotDto;
   business_completion: SellerBusinessCompletionDto;
-  chat_screenshot: SellerOrderChatScreenshotStatusDto;
-  confirmed_at: number;
   confirmed_business_date: string;
-}
+  }
+  | {
+  legacy_projection: 'NONE';
+  canonical_marketplace_code: Extract<
+    CanonicalMarketplaceCode,
+    'RAKUTEN_JP' | 'TIKTOK_JP'
+  >;
+  marketplace_code: null;
+  amazon_order_number: null;
+  asin: null;
+  product_version: null;
+  review_type: PricingReviewType | null;
+  final_paid_jpy: null;
+  payment: null;
+  seller_expected_principal_cny_fen: null;
+  seller_principal_rate_snapshot: null;
+  seller_agreement_rate_snapshot: null;
+  locked_service_fee_snapshot: null;
+  business_completion: null;
+  confirmed_business_date: string | null;
+  }
+);
 
 export type SellerFormalOrderPortalPage =
   SellerPortalPage<SellerFormalOrderPortalDto>;
 
 export interface SellerFormalOrderPortalFilters {
   store_id: string | null;
-  marketplace_code: 'JP' | null;
+  marketplace_code: MarketplaceCode | null;
   asin: string | null;
   product_name: string | null;
   review_type: PricingReviewType | null;

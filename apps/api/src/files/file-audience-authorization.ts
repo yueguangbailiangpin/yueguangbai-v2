@@ -211,14 +211,44 @@ async function activeSellerGrantExists(
     JOIN file_entity_links link
       ON link.id=grant.file_entity_link_id
     ${chatScreenshot ? `
-    JOIN order_evidence_internal_files attachment
-      ON attachment.file_entity_link_id=link.id
-    JOIN formal_orders formal_order
-      ON formal_order.order_evidence_submission_id=
-        attachment.order_evidence_submission_id
+    JOIN (
+      SELECT
+        attachment.file_entity_link_id,
+        formal_order.seller_organization_id,
+        formal_order.store_id AS seller_store_id,
+        formal_order.order_evidence_submission_id AS evidence_entity_id
+      FROM order_evidence_internal_files attachment
+      JOIN formal_orders formal_order
+        ON formal_order.order_evidence_submission_id=
+          attachment.order_evidence_submission_id
+        AND formal_order.status='CONFIRMED'
+      UNION ALL
+      SELECT
+        attachment.file_entity_link_id,
+        formal_order.seller_organization_id,
+        formal_order.seller_store_id,
+        evidence.id AS evidence_entity_id
+      FROM platform_order_evidence_internal_files attachment
+      JOIN platform_formal_orders formal_order
+        ON formal_order.id=attachment.platform_formal_order_id
+        AND formal_order.status='CONFIRMED'
+      JOIN platform_order_evidence_records evidence
+        ON evidence.id=attachment.platform_order_evidence_record_id
+        AND evidence.platform_order_identity_id=
+          formal_order.platform_order_identity_id
+        AND evidence.platform_product_identity_id=
+          formal_order.platform_product_identity_id
+        AND evidence.marketplace_code=formal_order.marketplace_code
+        AND evidence.seller_organization_id=
+          formal_order.seller_organization_id
+        AND evidence.seller_store_id=formal_order.seller_store_id
+        AND evidence.evidence_type=
+          'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
+        AND evidence.status='VERIFIED'
+    ) chat_scope ON chat_scope.file_entity_link_id=link.id
     JOIN seller_stores store
-      ON store.id=formal_order.store_id
-      AND store.organization_id=formal_order.seller_organization_id
+      ON store.id=chat_scope.seller_store_id
+      AND store.organization_id=chat_scope.seller_organization_id
     ` : ''}
     WHERE account.id=?
       AND account.identity_subject_id=?
@@ -230,10 +260,10 @@ async function activeSellerGrantExists(
       AND link.authorization_mode='EXPLICIT_AUDIENCES'
       ${chatScreenshot ? `
       AND link.entity_type='ORDER_EVIDENCE_SUBMISSION'
-      AND link.entity_id=formal_order.order_evidence_submission_id
+      AND link.entity_id=chat_scope.evidence_entity_id
       AND link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
       AND link.visibility='SELLER_VISIBLE'
-      AND formal_order.seller_organization_id=organization.id
+      AND chat_scope.seller_organization_id=organization.id
       AND store.status='ACTIVE'
       AND (
         member.role='OWNER'
@@ -242,7 +272,7 @@ async function activeSellerGrantExists(
           FROM seller_member_store_scopes scope
           WHERE scope.member_id=member.id
             AND scope.organization_id=organization.id
-            AND scope.store_id=formal_order.store_id
+            AND scope.store_id=chat_scope.seller_store_id
             AND scope.status='ACTIVE'
             AND scope.revoked_at IS NULL
         )

@@ -1,5 +1,5 @@
 import type {
-  CanonicalMarketplaceCode,
+  BuyerSupportedMarketplaceCode,
   SqlDatabase,
   SqlStatement,
   StaffBuyerInvitationView,
@@ -30,14 +30,14 @@ export const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
 interface InvitationSafeResult {
   invitation_id: string;
   wechat_id: string;
-  marketplace_code: CanonicalMarketplaceCode;
+  marketplace_code: BuyerSupportedMarketplaceCode;
   version: number;
   expires_at: number;
 }
 
 export async function issueBuyerInvitation(
   database: SqlDatabase,
-  input: { wechatId: string; marketplaceCode: CanonicalMarketplaceCode },
+  input: { wechatId: string; marketplaceCode: BuyerSupportedMarketplaceCode },
   command: {
     actor: AssignmentStaffAuthorization;
     idempotencyKey: string;
@@ -524,7 +524,7 @@ export async function completePasswordReset(
 
 async function requireActiveMarketplace(
   database: SqlDatabase,
-  code: CanonicalMarketplaceCode,
+  code: BuyerSupportedMarketplaceCode,
 ): Promise<void> {
   const row = await database.prepare(`
     SELECT status, adapter_status FROM marketplace_registry WHERE code=?

@@ -67,6 +67,40 @@ describe('customer security HTTP authorization and concealment', () => {
     });
   });
 
+  it.each(['RAKUTEN_JP', 'TIKTOK_JP'])(
+    'rejects unsupported buyer marketplace %s before any write',
+    async (marketplaceCode) => {
+      database = createDb();
+      const app = staffApp();
+      const response = await app.request(
+        `${ORIGIN}/api/staff/customer-security/buyer-invitations`, {
+          method: 'POST',
+          headers: headers(`unsupported-${marketplaceCode.toLowerCase()}-0001`),
+          body: JSON.stringify({
+            wechat_id: 'unsupported_wx',
+            marketplace_code: marketplaceCode,
+          }),
+        },
+        env(),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+      for (const table of [
+        'customer_buyer_invitations',
+        'customer_buyer_invitation_events',
+        'command_idempotency_records',
+        'audit_events',
+        'customer_security_rate_limits',
+      ]) {
+        expect(await database!.prepare(`
+          SELECT COUNT(*) AS count FROM ${table}
+        `).first()).toEqual({ count: 0 });
+      }
+    },
+  );
+
   it('rejects Staff-supplied passwords and requires explicit manual verification', async () => {
     database = createDb();
     const app = staffApp();

@@ -20,6 +20,8 @@ const marketplaceLabels = {
   AMAZON_JP: '日本站',
   AMAZON_US: '美国站',
   COUPANG_KR: '韩国站',
+  RAKUTEN_JP: '乐天日本站（未接入）',
+  TIKTOK_JP: 'TikTok 日本站（未接入）',
 } as const;
 
 const roleLabels = { OWNER: '负责人', OPERATOR: '运营成员' } as const;

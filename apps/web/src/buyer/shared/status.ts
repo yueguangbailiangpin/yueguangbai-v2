@@ -44,6 +44,8 @@ export const marketplaceLabels: Readonly<Record<string, string>> = Object.freeze
   AMAZON_US: '美国亚马逊',
   KR: '韩国站',
   COUPANG_KR: '韩国 Coupang',
+  RAKUTEN_JP: '乐天日本站（未接入）',
+  TIKTOK_JP: 'TikTok 日本站（未接入）',
 });
 
 export function marketplaceLabel(value: string): string {

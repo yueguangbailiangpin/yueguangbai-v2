@@ -80,7 +80,7 @@ describe('Phase 3H staff assignment foundation', () => {
   it('preserves Wave 12 availability behavior on schema 28', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 41 });
+      .toEqual({ schema_version: 42 });
     expect(await getStaffAvailability(d, 'pre-1')).toMatchObject({
       staff_id: 'pre-1',
       availability_status: 'AVAILABLE',

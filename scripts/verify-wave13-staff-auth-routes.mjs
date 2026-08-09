@@ -77,7 +77,7 @@ for (const evidence of [
   'app.routes',
   'duplicateRegistrations',
   'toHaveLength(195)',
-  'toHaveLength(160)',
+  'toHaveLength(164)',
   'toHaveLength(31)',
 ]) assertContains(inventoryTests, evidence, 'route inventory runtime test');
 for (const source of [index, middleware, authRoutes]) {

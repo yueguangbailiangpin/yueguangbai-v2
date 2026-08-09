@@ -2,8 +2,26 @@ export const MARKETPLACE_CODES = [
   'AMAZON_JP',
   'AMAZON_US',
   'COUPANG_KR',
+  'RAKUTEN_JP',
+  'TIKTOK_JP',
 ] as const;
 export type CanonicalMarketplaceCode = typeof MARKETPLACE_CODES[number];
+
+export const BUYER_SUPPORTED_MARKETPLACE_CODES = [
+  'AMAZON_JP',
+  'AMAZON_US',
+  'COUPANG_KR',
+] as const;
+export type BuyerSupportedMarketplaceCode =
+  typeof BUYER_SUPPORTED_MARKETPLACE_CODES[number];
+
+export const MARKETPLACE_DISPLAY_NAMES_ZH = {
+  AMAZON_JP: '亚马逊日本站',
+  AMAZON_US: '亚马逊美国站',
+  COUPANG_KR: 'Coupang 韩国站（未开通）',
+  RAKUTEN_JP: '乐天日本站',
+  TIKTOK_JP: 'TikTok 日本站',
+} as const satisfies Record<CanonicalMarketplaceCode, string>;
 
 /** Existing JP HTTP payloads remain accepted during the compatibility window. */
 export const LEGACY_MARKETPLACE_CODES = ['JP'] as const;
@@ -63,6 +81,13 @@ export function isCanonicalMarketplaceCode(
 ): value is CanonicalMarketplaceCode {
   return typeof value === 'string'
     && (MARKETPLACE_CODES as readonly string[]).includes(value);
+}
+
+export function isBuyerSupportedMarketplaceCode(
+  value: unknown,
+): value is BuyerSupportedMarketplaceCode {
+  return typeof value === 'string'
+    && (BUYER_SUPPORTED_MARKETPLACE_CODES as readonly string[]).includes(value);
 }
 
 export function isSellerMemberRole(
