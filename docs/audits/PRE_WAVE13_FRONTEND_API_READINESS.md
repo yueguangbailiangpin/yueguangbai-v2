@@ -278,3 +278,9 @@ Integration 只做验证，没有开发新业务行为；未修改源码、Contr
 - 完整门禁、Wave 13 测试、strict OpenSpec 与 fresh Local D1 已重新通过；Integration 没有开发新业务行为，main 尚未推进，生产验证项继续开放。
 
 `WAVE13_ARCHIVED_INTEGRATION_VALIDATED_READY_FOR_MAIN`
+
+## 24. FINAL_ARCHIVAL_RECONCILIATION（2026-08-09）
+
+前文保留的是 Wave 13 当时从静态证据到 Controller Closure 的完整演进。当前主线已包含该后端基线及后续正式前端，历史 `IMPLEMENTED_AWAITING_LOCAL_VALIDATION` 不被倒写；最终有效结论仍以第 21–23 节为准。真实 Provider、网络、部署和 Production GO 继续由老板清单管理，不阻止本历史审计归档。
+
+`FRONTEND_AUDIT_ARCHIVE_READY=yes`

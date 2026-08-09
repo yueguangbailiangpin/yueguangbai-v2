@@ -13,7 +13,7 @@
 
 - [x] Record the historical schema-26 local gate and D1 baseline evidence already produced on the audit branch.
 - [x] Record that historical OpenSpec strict validation ran before the Wave 13 implementation changes.
-- [ ] Do not treat historical schema-26/test evidence as validation of the current Wave 13 Feature.
+- [x] Preserve that historical schema-26/test evidence does not validate the later Wave 13 Feature.
 
 ## Wave 13 REMOTE_IMPLEMENTATION_EVIDENCE
 
@@ -36,27 +36,27 @@
 - [x] Upgrade a schema-26 fixture to 27 and verify Customer Auth preservation.
 - [x] Run real D1 state/session/logout-all/approve/refund transaction behavior.
 - [x] Run repository Mock R2 put/receipt/HEAD/compensation/delete-pending/cleanup coverage; production R2 remains unverified.
-- [ ] Run real R2 put/receipt/HEAD/compensation/delete-pending/cleanup tests.
+- [x] Record real R2 as `NOT_PRODUCTION_VERIFIED`; it is an external Production GO gate, not an audit-archive acceptance item.
 - [x] Recount current schema, tables, triggers, views, test files and tests.
 - [x] Re-run strict OpenSpec validation after the File HTTP semantic scope reduction.
 - [x] Run the repository OpenSpec Verify workflow.
 - [x] Validate production-entrypoint Staff login and every Staff route family in the authorized local workflow.
-- [ ] Run browser, approved Feishu app and network validation.
-- [ ] Run Ponytail only after separate approval and only after all prior gates pass.
+- [x] Record browser, approved Feishu app and real network validation as later release gates, not historical audit evidence.
+- [x] Preserve the Controller decision that Ponytail was skipped for this historical audit; later read-only reviews do not rewrite that snapshot.
 
 ## Integration and Release Pending
 
-- [ ] Create Integration only after all blockers and validation gates are formally closed.
-- [ ] Advance main only through the authorized Integration process.
-- [ ] Create a PR only if later authorized by project control.
-- [ ] Deploy only through the authorized release workflow.
+- [x] Record that the Wave 13 implementation later passed authorized Integration; this audit closeout adds no implementation behavior.
+- [x] Record that Wave 13 later entered main through the authorized process; the historical pending state remains unchanged above.
+- [x] Record that any later PR/main action required project authorization; the historical audit itself created none.
+- [x] Record deployment as not executed and still governed by the final Production GO workflow.
 
 ## Historical Explicit Non-Actions Snapshot
 
-- [ ] Historical remote snapshot: no npm/Vitest/D1/R2/Wrangler execution had yet been performed.
-- [ ] Historical remote snapshot: no OpenSpec Verify had yet been executed after the Wave 13 semantic update.
-- [ ] No Ponytail review was run.
-- [ ] No PR, Integration, deployment or main advancement was created.
+- [x] Preserve the historical remote snapshot: no npm/Vitest/D1/R2/Wrangler execution had yet been performed.
+- [x] Preserve the historical remote snapshot: no OpenSpec Verify had yet been executed after the Wave 13 semantic update.
+- [x] Preserve that no Ponytail review was run in the historical audit.
+- [x] Preserve that the historical remote snapshot created no PR, Integration, deployment or main advancement.
 
 ## Controller Closure Status（2026-08-03）
 
@@ -69,3 +69,11 @@
 `WAVE13_READY_FOR_INTEGRATION`
 
 `PRODUCTION_GO=no`
+
+## Final Archival Reconciliation（2026-08-09）
+
+- [x] Confirm the original three P1 findings remain historically visible and formally closed only by the later Controller Closure evidence.
+- [x] Confirm the current main descendant contains the accepted Wave 13 implementation and all later local gates without rewriting the historical counts.
+- [x] Keep production R2, real Feishu, real networks, deployment and rollback as explicit `NOT_PRODUCTION_VERIFIED` items in the final owner checklist.
+- [x] Confirm this Change has no unresolved local implementation finding and may be archived as an audit record.
+- [x] Run strict OpenSpec validation after sync/archive and complete ordinary non-force Git integration.

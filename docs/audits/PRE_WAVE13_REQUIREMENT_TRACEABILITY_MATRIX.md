@@ -256,3 +256,9 @@ Wave 13 的 Integration 先完成而 OpenSpec sync/archive 后补，属于治理
 Wave 13 Change 已归档，Pre-Wave13 Audit Change 保持 active；归档 Tasks 为 85 completed / 2 pending，两个 pending 均为 `SKIPPED_BY_CONTROLLER` 的 Ponytail 主动跳过，不是实现或验证缺口。完整门禁、Wave 13 测试、strict OpenSpec 与 fresh Local D1 均重新通过；Integration 未开发新业务行为，main 尚未推进，生产验证项仍开放。
 
 `WAVE13_ARCHIVED_INTEGRATION_VALIDATED_READY_FOR_MAIN`
+
+## 17. FINAL_ARCHIVAL_RECONCILIATION（2026-08-09）
+
+本矩阵的历史分类、52 Requirements / 104 Scenarios、51 `COMPLETE` + 1 `APPROVED_SCOPE_REDUCTION` 和原始 `NO_GO` 均保持不变。当前主线已包含 Controller Closure 与后续门禁；真实 R2、飞书、网络和部署仍属于最终 Production GO 外部证据，不重新分类为本审计缺失。
+
+`AUDIT_TRACEABILITY_ARCHIVE_READY=yes`

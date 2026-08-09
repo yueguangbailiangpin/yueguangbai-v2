@@ -354,3 +354,13 @@ Integration 最终状态：
 - 完整门禁、Wave 13 专项测试、strict OpenSpec 验证与 fresh Local D1 已重新通过；Integration 未开发任何新业务行为。main 尚未推进，生产验证项仍保持开放。
 
 `WAVE13_ARCHIVED_INTEGRATION_VALIDATED_READY_FOR_MAIN`
+
+## 19. FINAL_ARCHIVAL_RECONCILIATION（2026-08-09）
+
+本节只关闭历史审计 Change 的治理状态，不倒写前文的远程快照、当时未运行项或 `NO_GO`。当前 `origin/main` 候选 `351480af12cfc530cc77c4bf972bbdf11be90680` 已包含 Wave 13 Controller Closure、后续前端与生产适配本地门禁；原 P1-01、P1-02、P1-03 的历史记录保留，其关闭依据仍以第 16 节为准。
+
+生产 R2、真实飞书、中国大陆网络、部署、回滚和最终 GO 从来不是本审计的本地归档条件，继续在 `FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md` 中保持未执行。当前审计没有未解决的本地实现 finding，也不授权任何外部动作，因此正式状态为：
+
+`AUDIT_ARCHIVE_READY=yes`
+
+`PRODUCTION_GO=no`
