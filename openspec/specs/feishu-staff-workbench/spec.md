@@ -2,9 +2,7 @@
 
 ## Purpose
 在保持 D1 为员工身份、权限、任务和业务事实唯一真值的前提下，提供默认关闭的飞书员工工作台生产适配：仅镜像最小任务摘要与受控深链接，并将通过官方验签、解密和重放保护的低风险回调重新授权后路由到既有 D1 命令。真实飞书激活仍须老板本人完成匿名 PoC 和 Production GO。
-
 ## Requirements
-
 ### Requirement: Anonymous PoC gates real Feishu integration
 
 The system SHALL provide a production-capable but default-disabled Feishu Task v2 adapter and official callback boundary, and SHALL keep every real Feishu integration switch disabled until the final business owner verifies current application scopes, bot/task capability, callback, deep-link, administrator, quota and mainland-network behavior using anonymous data.
@@ -102,3 +100,22 @@ The system SHALL gate acquisition maintenance behind an independent `ACQUISITION
 
 - **WHEN** a rendered Feishu activation config omits `ACQUISITION_MAINTENANCE_ENABLED` or sets it to any value other than exact `false`
 - **THEN** activation preflight and release runtime fail closed without treating the configuration as Feishu-only.
+
+### Requirement: Real Feishu callback activation preserves a no-write registration boundary
+
+The system SHALL accept a Feishu callback URL-verification request without formal signature headers only when the bounded body is an exact plaintext challenge or exact encrypted wrapper, the decoded object contains only `challenge`, `token` and `type`, `type` is `url_verification`, and the Verification Token matches the managed secret in constant time. This registration path SHALL NOT read or write D1, resolve Staff authority or execute any action. Every non-registration callback SHALL continue to require all formal signature, timestamp, nonce, Encrypt Key, Verification Token, App/Tenant, replay, Staff authorization, Personal DENY, Scope, version, idempotency, Audit and Outbox controls.
+
+#### Scenario: Real console verifies the callback URL
+
+- **WHEN** Feishu sends a bounded plaintext or encrypted URL challenge without `X-Lark-*` signature headers and with the configured Verification Token
+- **THEN** the Worker returns only the same challenge within the Provider deadline and performs no D1 operation
+
+#### Scenario: Unsigned action attempts to use the registration exception
+
+- **WHEN** a request without all formal authentication headers contains an event, card action, extra field, wrong token or partially supplied authentication headers
+- **THEN** the Worker rejects it without a D1 read, write or business action
+
+#### Scenario: Formal card action remains strongly authenticated
+
+- **WHEN** Feishu delivers a non-registration card callback
+- **THEN** the existing signature window, encrypted exact contract, replay receipt, current Staff authorization, Personal DENY, Scope and versioned D1 command remain mandatory
