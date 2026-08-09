@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient } from '@tanstack/react-query';
+import { SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS } from '@ygb/contracts';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import '../test/msw/lifecycle';
@@ -10,6 +11,7 @@ import {
   BuyerOrderEvidenceFileReadIntentAdapter,
   BuyerReviewFileReadIntentAdapter,
   GenericBuyerFileReadIntentAdapter,
+  SellerOrderChatScreenshotReadIntentAdapter,
 } from './file-read-providers';
 
 const token = 'private-read-token'.padEnd(40, 'x');
@@ -91,6 +93,46 @@ describe('Module 1 narrow file read providers', () => {
     })));
     await expect(new BuyerOrderEvidenceFileReadIntentAdapter('e1', 'l1', 'f1', 1, ['CREATE_READ_INTENT'])
       .create(client(), 'replay-key', new AbortController().signal)).resolves.toMatchObject({ accessToken: null, replayed: true });
+  });
+
+  it('uses only the entity-specific Seller chat screenshot read-intent route', async () => {
+    const path = SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.sellerReadIntent
+      .replace(':id', 'order-1') as `/api/${string}`;
+    server.use(http.post(apiUrl(path), async ({ request }) => {
+      expect(await request.json()).toEqual({ expected_file_version: 3 });
+      expect(request.headers.get('Idempotency-Key')).toBe('seller-chat-key');
+      return HttpResponse.json({ data: {
+        read_intent: {
+          read_intent_id: 'seller-chat-intent',
+          access_token: token,
+          access_token_available: true,
+          expires_at: 99,
+          replayed: false,
+        },
+      }, meta: { request_id: 'seller-chat-request' } });
+    }));
+    const provider = new SellerOrderChatScreenshotReadIntentAdapter('order-1', 3);
+    await expect(provider.create(client(), 'seller-chat-key', new AbortController().signal))
+      .resolves.toMatchObject({
+        accessToken: token,
+        fileObjectId: null,
+        authorityAssertion: 'UNVERIFIABLE_MISSING_FIELDS',
+      });
+  });
+
+  it('fails closed when the Seller read-intent response is a replay without a token', async () => {
+    const path = SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.sellerReadIntent
+      .replace(':id', 'order-1') as `/api/${string}`;
+    server.use(http.post(apiUrl(path), () => HttpResponse.json({
+      data: { read_intent: {
+        read_intent_id: 'seller-chat-intent', access_token: null,
+        access_token_available: false, expires_at: 99, replayed: true,
+      } },
+      meta: { request_id: 'seller-chat-replay' },
+    })));
+    await expect(new SellerOrderChatScreenshotReadIntentAdapter('order-1', 3)
+      .create(client(), 'seller-chat-replay-key', new AbortController().signal))
+      .rejects.toMatchObject({ code: 'MALFORMED_RESPONSE' });
   });
 });
 

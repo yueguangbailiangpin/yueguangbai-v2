@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。共有 189 个唯一端点：186 个 `/api/*`、1 个 `/health`，以及默认关闭并受 OAuth 保护的 Staff MCP metadata/resource。参数占位符使用 Hono 注册表的 `:name` 形式。
+这是默认 App 的可复现 route inventory。共有 191 个唯一端点：188 个 `/api/*`、1 个 `/health`，以及默认关闭并受 OAuth 保护的 Staff MCP metadata/resource。参数占位符使用 Hono 注册表的 `:name` 形式。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表精确比较；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都会失败。
 
@@ -141,6 +141,7 @@ POST /api/seller-portal/demand-batches/:id/withdraw
 POST /api/seller-portal/file-upload-intents/:id/complete
 POST /api/seller-portal/file-uploads/product-application-images/intents
 POST /api/seller-portal/files/:fileObjectId/read-intents
+POST /api/seller-portal/formal-orders/:id/chat-screenshot/read-intent
 POST /api/seller-portal/product-applications
 POST /api/seller-portal/product-applications/:id/withdraw
 POST /api/seller-portal/reviews/:id/files/:fileLinkId/read-intent
@@ -176,11 +177,12 @@ POST /api/staff/demand-batches/:id/schedule/confirm
 POST /api/staff/demand-batches/:id/schedule/preview
 POST /api/staff/file-upload-intents/:id/complete
 POST /api/staff/file-uploads/buyer-refund-proofs/intents
+POST /api/staff/file-uploads/seller-order-chat-screenshots/intents
 POST /api/staff/file-uploads/seller-settlement-proofs/intents
 POST /api/staff/files/:fileObjectId/read-intents
 POST /api/staff/finance/exports/csv
 POST /api/staff/order-evidence/:id/approve
-POST /api/staff/order-evidence/:id/internal-communication-files
+POST /api/staff/formal-orders/:id/chat-screenshot
 POST /api/staff/order-evidence/:id/request-changes
 POST /api/staff/order-instructions/:id/assets/prepare
 POST /api/staff/order-instructions/:id/cancel
