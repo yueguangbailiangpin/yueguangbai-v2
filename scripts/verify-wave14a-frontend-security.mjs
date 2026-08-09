@@ -418,16 +418,17 @@ requireText(filePurposeConfig, [
   'maximumByteSize: 20 * MEBIBYTE',
   'requireFileUploadWorkflow(',
   'unsupported_file_upload_workflow',
-], 'five fixed Purpose-bound upload policies');
-if ((filePurposeConfig.match(/identity:/gu) ?? []).length !== 6
-  || (filePurposeConfig.match(/intentPath:/gu) ?? []).length !== 6
-  || (filePurposeConfig.match(/lifecyclePrefix:/gu) ?? []).length !== 6
-  || (filePurposeConfig.match(/purpose:/gu) ?? []).length !== 6
-  || (filePurposeConfig.match(/visibility:/gu) ?? []).length !== 6) {
-  throw new Error('file upload workflow config must contain exactly five concrete entries');
+  "'staffSellerOrderChatScreenshot'",
+  'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+], 'fixed Purpose-bound upload policies');
+if ((filePurposeConfig.match(/identity:/gu) ?? []).length !== 7
+  || (filePurposeConfig.match(/intentPath:/gu) ?? []).length !== 7
+  || (filePurposeConfig.match(/lifecyclePrefix:/gu) ?? []).length !== 7
+  || (filePurposeConfig.match(/purpose:/gu) ?? []).length !== 7
+  || (filePurposeConfig.match(/visibility:/gu) ?? []).length !== 7) {
+  throw new Error('file upload workflow config must contain exactly six concrete entries');
 }
 for (const deferred of [
-  'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
   'PRODUCT_IMAGE',
   'ORDER_INSTRUCTION_KEYWORD_IMAGE',
   'SUPPORT_ATTACHMENT',
@@ -662,7 +663,7 @@ requireText(fileUploadTests, [
   'allows a fresh selection after FILE_VALIDATION_FAILED releases the old upload',
   'explicitly replaces an ambiguous Upload and creates a new Intent/key',
   'allows a new start only after ambiguous Upload is explicitly canceled',
-  'deferred internal communication Purpose',
+  'Purpose literal',
   'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
   'rejects %s before state or network authority is created',
   "expect(requests).toBe(0)",

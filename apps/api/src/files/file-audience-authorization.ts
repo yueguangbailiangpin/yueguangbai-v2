@@ -107,6 +107,8 @@ export async function authorizeExplicitAudienceRead(
       database,
       linkId,
       principal,
+      actor.id,
+      resource,
       now,
     );
     if (!allowed) deny();
@@ -184,10 +186,15 @@ async function activeSellerGrantExists(
   database: SqlDatabase,
   linkId: string,
   principal: Extract<FileReadPrincipal, { type: 'SELLER_SESSION' }>,
+  actorMemberId: string,
+  resource: FileAuthorizationResource,
   now: number,
 ): Promise<boolean> {
   const accountId = cleanFileIdentifier(principal.accountId, 120);
   const subjectId = cleanFileIdentifier(principal.identitySubjectId, 120);
+  const memberId = cleanFileIdentifier(actorMemberId, 120);
+  const chatScreenshot = resource.purpose === 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
+    && resource.entityType === 'ORDER_EVIDENCE_SUBMISSION';
   const row = await database.prepare(`
     SELECT 1 AS allowed
     FROM customer_login_accounts account
@@ -203,13 +210,44 @@ async function activeSellerGrantExists(
       AND grant.subject_type='SELLER_ORGANIZATION'
     JOIN file_entity_links link
       ON link.id=grant.file_entity_link_id
+    ${chatScreenshot ? `
+    JOIN order_evidence_internal_files attachment
+      ON attachment.file_entity_link_id=link.id
+    JOIN formal_orders formal_order
+      ON formal_order.order_evidence_submission_id=
+        attachment.order_evidence_submission_id
+    JOIN seller_stores store
+      ON store.id=formal_order.store_id
+      AND store.organization_id=formal_order.seller_organization_id
+    ` : ''}
     WHERE account.id=?
       AND account.identity_subject_id=?
+      AND member.id=?
       AND account.status='ACTIVE'
       AND member.status='ACTIVE'
       AND organization.status='ACTIVE'
       AND link.id=?
       AND link.authorization_mode='EXPLICIT_AUDIENCES'
+      ${chatScreenshot ? `
+      AND link.entity_type='ORDER_EVIDENCE_SUBMISSION'
+      AND link.entity_id=formal_order.order_evidence_submission_id
+      AND link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
+      AND link.visibility='SELLER_VISIBLE'
+      AND formal_order.seller_organization_id=organization.id
+      AND store.status='ACTIVE'
+      AND (
+        member.role='OWNER'
+        OR EXISTS (
+          SELECT 1
+          FROM seller_member_store_scopes scope
+          WHERE scope.member_id=member.id
+            AND scope.organization_id=organization.id
+            AND scope.store_id=formal_order.store_id
+            AND scope.status='ACTIVE'
+            AND scope.revoked_at IS NULL
+        )
+      )
+      ` : ''}
       AND link.revoked_at IS NULL
       AND (link.expires_at IS NULL OR link.expires_at>?)
       AND grant.revoked_at IS NULL
@@ -218,6 +256,7 @@ async function activeSellerGrantExists(
   `).bind(
     accountId,
     subjectId,
+    memberId,
     linkId,
     now,
     now,

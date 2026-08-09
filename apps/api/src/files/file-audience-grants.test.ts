@@ -95,7 +95,7 @@ describe('explicit file audiences', () => {
     )).resolves.toBeUndefined();
     await expect(authorize(
       fixture.resource,
-      sellerActor('seller-account-1'),
+      sellerActor('seller-member-1'),
       sellerPrincipal(1),
     )).resolves.toBeUndefined();
 
@@ -106,13 +106,19 @@ describe('explicit file audiences', () => {
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(authorize(
       fixture.resource,
-      sellerActor('seller-account-2'),
+      sellerActor('seller-member-2'),
       sellerPrincipal(2),
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
     await expect(authorize(
       fixture.resource,
       sellerActor('seller-account-1'),
+      sellerPrincipal(1),
+    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+    await expect(authorize(
+      fixture.resource,
+      sellerActor('seller-member-1'),
       buyerPrincipal(1),
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(authorize(
@@ -152,7 +158,7 @@ describe('explicit file audiences', () => {
     `);
     await expect(authorize(
       fixture.resource,
-      sellerActor('seller-account-1'),
+      sellerActor('seller-member-1'),
       sellerPrincipal(1),
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
@@ -163,7 +169,7 @@ describe('explicit file audiences', () => {
     `);
     await expect(authorize(
       fixture.resource,
-      sellerActor('seller-account-2'),
+      sellerActor('seller-member-2'),
       sellerPrincipal(2),
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
@@ -268,7 +274,7 @@ describe('explicit file audiences', () => {
     );
     await expect(authorize(
       fixture.resource,
-      sellerActor('seller-account-1'),
+      sellerActor('seller-member-1'),
       sellerPrincipal(1),
       10_001,
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
@@ -307,7 +313,7 @@ describe('explicit file audiences', () => {
 
     await expect(authorize(
       fixture.resource,
-      sellerActor('seller-account-1'),
+      sellerActor('seller-member-1'),
       sellerPrincipal(1),
       20_000,
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
