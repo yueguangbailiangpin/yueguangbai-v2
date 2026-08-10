@@ -4,6 +4,7 @@ import { App } from './App';
 import { runtimeConfig } from './config/runtime-config';
 import './styles/tokens.css';
 import './styles/global.css';
+import './styles/design-freeze.css';
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
