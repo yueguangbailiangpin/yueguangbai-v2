@@ -1,5 +1,5 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { queryClient } from './api/query-client';
 import { CustomerChangePasswordPage } from './auth/customer/CustomerChangePasswordPage';
@@ -7,9 +7,9 @@ import { CustomerLoginPage } from './auth/customer/CustomerLoginPage';
 import { CustomerPasswordResetPage } from './auth/customer/CustomerPasswordResetPage';
 import { CustomerPasswordRouteBoundary } from './auth/customer/CustomerPasswordRouteBoundary';
 import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary';
+import { clearStaffTransport } from './auth/customer-transport-invalidation';
 import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary';
-import { StaffBindingPage } from './auth/staff/StaffBindingPage';
-import { StaffAuthController } from './auth/staff/staff-auth-controller';
+import { staffAuthApi } from './auth/staff/staff-auth-api';
 import { BuyerRegistrationPage } from './buyer/registration/BuyerRegistrationPage';
 import { safeReturnPath } from './routes/return-path';
 import { RouteChunkBoundary } from './routes/RouteChunkBoundary';
@@ -22,7 +22,6 @@ let staffShell: Promise<typeof import('./staff/StaffRouteModule')> | undefined;
 const loadBuyerLayout = () => buyerLayout ??= import('./buyer/routes/BuyerRouteModule');
 const loadSellerLayout = () => sellerLayout ??= import('./seller/routes/SellerRouteModule');
 const loadStaffShell = () => staffShell ??= import('./staff/StaffRouteModule');
-const loadStaffCallbackModule = () => import('./staff/StaffCallbackModule');
 
 export function RootEntry(): React.JSX.Element {
   return <main className="identity-entry">
@@ -38,25 +37,29 @@ function StaffLogin(): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const [message, setMessage] = useState<string | null>(null);
-  const controller = useRef<StaffAuthController | null>(null);
-  controller.current ??= new StaffAuthController(client);
+  const [busy, setBusy] = useState(false);
 
-  async function start(): Promise<void> {
+  async function enter(): Promise<void> {
     const returnTo = safeReturnPath(new URLSearchParams(location.search).get('return_to'), 'staff');
+    setBusy(true); setMessage(null);
     try {
-      window.location.assign(await controller.current!.startLogin(returnTo));
+      await staffAuthApi.bootstrap();
+      await clearStaffTransport(client);
+      navigate(returnTo, { replace: true });
     } catch {
-      setMessage('暂时无法开始员工登录，请稍后重试。');
-    }
+      setMessage('无法建立员工会话。请确认该邮箱已通过 Cloudflare Access，且已在月光白员工管理中启用。');
+    } finally { setBusy(false); }
   }
 
   return <main className="login-page identity-staff">
     <Card className="login-card staff-login-card">
       <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span><strong>月光白</strong></div>
-      <div className="login-heading"><p className="eyebrow">内部员工入口</p><h1>员工登录</h1><p>使用受信任的员工身份进入。</p></div>
-      {message ? <Alert tone="danger">{message}</Alert> : null}
-      <div className="entry-actions"><Button onClick={() => { void start(); }}>使用受信任身份继续</Button><Button className="secondary" onClick={() => navigate('/')}>返回</Button></div>
-      <p className="security-note">员工身份与买家、卖家账号严格分离。</p>
+      <div className="login-heading"><p className="eyebrow">内部员工入口</p><h1>员工登录</h1>
+        <p>员工身份由 Cloudflare Access 邮箱验证码保护；月光白再校验岗位、负责站点和账号状态。</p></div>
+      {message ? <Alert tone="danger">{message}</Alert> : <Alert tone="info">如果这是首次访问，Cloudflare 会先要求你用已授权邮箱完成一次性验证码验证。</Alert>}
+      <div className="entry-actions"><Button loading={busy} loadingLabel="正在进入" onClick={() => { void enter(); }}>进入员工后台</Button>
+        <Button className="secondary" onClick={() => navigate('/')}>返回</Button></div>
+      <p className="security-note">Cloudflare 只证明邮箱身份；员工角色和数据范围始终由月光白控制。</p>
     </Card>
   </main>;
 }
@@ -75,8 +78,6 @@ export function AppRoutes(): React.JSX.Element {
     <Route path="/buyer/change-password" element={<CustomerPasswordRouteBoundary target="buyer"><CustomerChangePasswordPage target="buyer" /></CustomerPasswordRouteBoundary>} />
     <Route path="/seller/change-password" element={<CustomerPasswordRouteBoundary target="seller"><CustomerChangePasswordPage target="seller" /></CustomerPasswordRouteBoundary>} />
     <Route path="/staff/login" element={<StaffLogin />} />
-    <Route path="/staff/bind" element={<StaffBindingPage />} />
-    <Route path="/staff/auth/callback" element={<StaffSessionBoundary><RouteChunkBoundary load={loadStaffCallbackModule} /></StaffSessionBoundary>} />
     <Route path="/buyer/*" element={<CustomerSessionBoundary target="buyer"><RouteChunkBoundary load={loadBuyerLayout} /></CustomerSessionBoundary>}>
       <Route index element={<BuyerRouteSlot />} />
       <Route path="products" element={<BuyerRouteSlot />} />
@@ -117,6 +118,8 @@ export function AppRoutes(): React.JSX.Element {
       <Route path="queue" element={<StaffRouteSlot />} />
       <Route path="work/:workItemId" element={<StaffRouteSlot />} />
       <Route path="acquisition" element={<StaffRouteSlot />} />
+      <Route path="buyer-customers" element={<StaffRouteSlot />} />
+      <Route path="seller-customers" element={<StaffRouteSlot />} />
       <Route path="admin-business-dashboard" element={<StaffRouteSlot />} />
       <Route path="access-management" element={<StaffRouteSlot />} />
       <Route path="seller-principal-rate-policies" element={<StaffRouteSlot />} />
