@@ -31,6 +31,7 @@ import { registerAcquisitionChannelStatsRoutes } from './acquisition/channel-sta
 import { registerAcquisitionHandoffRoutes } from './acquisition/handoff-routes';
 import { registerAcquisitionMachineRoutes } from './acquisition/machine-routes';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
+import { registerAdminAcquisitionDailyRoutes } from './admin-business-dashboard/acquisition-daily-routes';
 import { registerStaffMcpTransportRoutes } from './staff-mcp';
 import { registerStaffAccessManagementRoutes } from './staff-access-management';
 import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
@@ -54,6 +55,7 @@ registerAcquisitionRoutes(app);
 registerAcquisitionChannelStatsRoutes(app);
 registerAcquisitionHandoffRoutes(app);
 registerAdminBusinessDashboardRoutes(app);
+registerAdminAcquisitionDailyRoutes(app);
 registerStaffAccessManagementRoutes(app);
 registerStaffCatalogWorkflowRoutes(app);
 registerMarketplaceFoundationRoutes(app);
