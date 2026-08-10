@@ -16,3 +16,13 @@
 - [ ] 上线前完成隐私告知、跨境保存、永久归档与账号注销/删除流程的适用合规审查。
 
 在全部项目完成并留存批准证据前，`DRIVE_ARCHIVE_ENABLED`、copy、proxy-read、R2-delete 与 D1 阶段开关必须保持 hard-disabled。任何缺项均按发布阻断风险处理，不得以 M7 本地测试替代。
+
+## 可执行的首阶段预检
+
+预检不读取 Secret、不联网、不查询 D1/R2/Drive；它只能验证由老板在仓库外、`0600` 文件中准备的渲染配置与匿名化证据。先运行 `npm run preflight:drive-archive`，预期两个环境均为 `LOCAL_NO_GO` 且调用计数为 0。不要把该结果当作可启用。
+
+获得逐项授权后，才可把四个仓库外证据文件传入：渲染 release 配置、exact `drive.file`/owner-only/匿名回读/撤销的 OAuth 收据、加密 D1 bundle/manifest SHA-256 attestation、以及 `{ "copy_enabled": 1, "proxy_read_enabled": 0, "r2_delete_enabled": 0 }` 的 D1 控制快照。运行：
+
+`node scripts/preflight-google-drive-cold-archive.mjs --environment production --config /private/config.json --oauth-evidence /private/oauth.json --backup-evidence /private/backup.json --d1-controls /private/controls.json --declared-secret GOOGLE_DRIVE_CLIENT_SECRET --declared-secret GOOGLE_DRIVE_REFRESH_TOKEN`
+
+唯一可接受的非阻断结果是 `LOCAL_STRUCTURE_VALID_PRODUCTION_NO_GO`：它仅证明首阶段 shadow copy 的本地结构，R2 仍是读取源。代理读取和 R2 删除须分别经老板批准并在后续受控窗口验收；本预检会刻意拒绝它们为 true。
