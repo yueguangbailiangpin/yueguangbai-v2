@@ -92,10 +92,9 @@ export async function resolveAssignmentStaffAuthorization(
     (row) => row.team_status === 'ACTIVE'
       && row.department_status === 'ACTIVE',
   );
-  // Ordinary assignees must belong to an active Team/Department. The explicit
-  // Marketplace fallback Owner is allowed to sit outside an operating team;
-  // Owner Data Scope is GLOBAL and fallback validation is separately strict.
-  if (activeTeams.length < 1 && !roles.has('owner')) return null;
+  // Team membership remains a supported implementation detail for existing
+  // assignment/leader capabilities, but it is no longer a prerequisite for a
+  // small-team Staff account. Role + Marketplace are the public admin model.
   const effective = calculateEffectiveStaffAuthorization({
     roles,
     grants,
