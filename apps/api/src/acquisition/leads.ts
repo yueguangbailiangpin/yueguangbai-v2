@@ -24,8 +24,7 @@ import { addTwelveShanghaiMonths } from './time';
 interface LeadRow {
   id:string; lead_type:AcquisitionLeadType; marketplace_code:string;
   wechat_masked:string; display_name:string|null; note:string|null;
-  prospect_id:string|null; origin_mode:AcquisitionOriginMode; origin_source_url:string|null;
-  origin_channel_id:string; origin_channel_name:string; origin_staff_id:string;
+  origin_channel_id:string; channel_label:string;
   current_owner_staff_id:string; status:'ACTIVE'|'INVALIDATED'|'ANONYMIZED';
   version:number; created_business_date:string; latest_followup_at:number;
   retention_due_at:number; retention_hold_reason:'SECURITY'|'DISPUTE'|'LEGAL'|null;
@@ -56,6 +55,8 @@ export async function createAcquisitionLead(
   const channel=await database.prepare(`SELECT id,lead_type,marketplace_code,status FROM acquisition_channels WHERE id=?`).bind(channelId).first<ChannelRow>();
   if(!channel||channel.status!=='ACTIVE'||channel.marketplace_code!==marketplaceCode
     ||!(channel.lead_type===input.leadType||channel.lead_type==='BOTH'))validation();
+  const profile=await database.prepare(`SELECT intake_wechat_label FROM acquisition_channel_privacy_profiles WHERE channel_id=?`).bind(channelId).first<{intake_wechat_label:string|null}>();
+  if(!profile?.intake_wechat_label)throw new AcquisitionError('CHANNEL_CONFIGURATION_MISSING',409);
   const displayName=optionalText(input.displayName,100),note=optionalText(input.note,1000);
   let identity;
   try{identity=await protectWechatIdentity(input.wechatId,identitySecret);}catch(error){if(error instanceof AcquisitionError)throw error;validation();}
@@ -186,13 +187,28 @@ function initialLinkStatements(database:SqlDatabase,leadId:string,leadType:Acqui
     ]),
   ];
 }
-function leadProjectionSql(where:string):string{return`SELECT lead.id,lead.lead_type,lead.marketplace_code,lead.wechat_masked,lead.display_name,lead.note,lead.prospect_id,lead.origin_mode,lead.origin_source_url,lead.origin_channel_id,channel.display_name AS origin_channel_name,lead.origin_staff_id,lead.current_owner_staff_id,lead.status,lead.version,lead.created_business_date,lead.latest_followup_at,lead.retention_due_at,lead.retention_hold_reason,lead.created_at,lead.updated_at,
+function leadProjectionSql(where:string):string{return`SELECT lead.id,lead.lead_type,lead.marketplace_code,lead.wechat_masked,lead.display_name,lead.note,
+  lead.origin_channel_id,profile.staff_label AS channel_label,lead.current_owner_staff_id,
+  lead.status,lead.version,lead.created_business_date,lead.latest_followup_at,lead.retention_due_at,
+  lead.retention_hold_reason,lead.created_at,lead.updated_at,
   EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=lead.id AND link.link_type='BUYER_CUSTOMER') AS registered,
   EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=lead.id AND link.link_type='RESERVATION') AS reservation_submitted,
   (SELECT COUNT(*) FROM acquisition_lead_links link WHERE link.lead_id=lead.id AND link.link_type='FORMAL_ORDER') AS formal_order_count,
   EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=lead.id AND link.link_type='SELLER_ORGANIZATION') AS seller_cooperation
-  FROM acquisition_leads lead JOIN acquisition_channels channel ON channel.id=lead.origin_channel_id WHERE ${where}`;}
-function toLead(row:LeadRow):AcquisitionLeadDto{const reservation=Number(row.reservation_submitted)===1;return{lead_id:row.id,lead_type:row.lead_type,marketplace_code:row.marketplace_code,wechat_masked:row.wechat_masked,display_name:row.display_name,note:row.note,prospect_id:row.prospect_id,origin_mode:row.origin_mode,origin_source_url:row.origin_source_url,origin_channel_id:row.origin_channel_id,origin_channel_name:row.origin_channel_name,origin_staff_id:row.origin_staff_id,current_owner_staff_id:row.current_owner_staff_id,status:row.status,version:Number(row.version),created_business_date:row.created_business_date,latest_followup_at:Number(row.latest_followup_at),retention_due_at:Number(row.retention_due_at),retention_hold_reason:row.retention_hold_reason,registered:Number(row.registered)===1,reservation_submitted:reservation,no_participation:row.lead_type==='BUYER'&&row.status==='ACTIVE'&&!reservation,formal_order_count:Number(row.formal_order_count),seller_cooperation:Number(row.seller_cooperation)===1,created_at:Number(row.created_at),updated_at:Number(row.updated_at)}}
+  FROM acquisition_leads lead
+  JOIN acquisition_channel_privacy_profiles profile ON profile.channel_id=lead.origin_channel_id
+  WHERE ${where}`;}
+function toLead(row:LeadRow):AcquisitionLeadDto{const reservation=Number(row.reservation_submitted)===1;return{
+  lead_id:row.id,lead_type:row.lead_type,marketplace_code:row.marketplace_code,
+  wechat_masked:row.wechat_masked,display_name:row.display_name,note:row.note,
+  origin_channel_id:row.origin_channel_id,channel_label:row.channel_label,
+  current_owner_staff_id:row.current_owner_staff_id,status:row.status,version:Number(row.version),
+  created_business_date:row.created_business_date,latest_followup_at:Number(row.latest_followup_at),
+  retention_due_at:Number(row.retention_due_at),retention_hold_reason:row.retention_hold_reason,
+  registered:Number(row.registered)===1,reservation_submitted:reservation,
+  no_participation:row.lead_type==='BUYER'&&row.status==='ACTIVE'&&!reservation,
+  formal_order_count:Number(row.formal_order_count),seller_cooperation:Number(row.seller_cooperation)===1,
+  created_at:Number(row.created_at),updated_at:Number(row.updated_at)}}
 function auditActor(actor:AssignmentStaffAuthorization){return{type:'STAFF',id:actor.staffId,roles:[...actor.roles]};}
 function identifier(value:string):string{if(typeof value!=='string'||value.length<1||value.length>200||/[\u0000-\u001f\u007f]/u.test(value))validation();return value;}
 function optionalText(value:string|null,maximum:number):string|null{if(value===null)return null;const normalized=value.normalize('NFKC').trim();if(normalized.length===0)return null;if(normalized.length>maximum||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(normalized))validation();return normalized;}
