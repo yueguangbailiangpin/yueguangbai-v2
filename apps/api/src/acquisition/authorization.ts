@@ -8,6 +8,12 @@ export function requireAcquisitionAdmin(actor: AssignmentStaffAuthorization): vo
   }
 }
 
+export function requireAcquisitionOperator(actor: AssignmentStaffAuthorization): void {
+  if (!actor.roles.has('owner') && !actor.roles.has('acquisition')) {
+    throw new AcquisitionError('FORBIDDEN', 403);
+  }
+}
+
 export function requireLeadDuty(
   actor: AssignmentStaffAuthorization,
   leadType: AcquisitionLeadType,
@@ -22,9 +28,7 @@ export function requireLeadDuty(
   }
 }
 
-export function visibleLeadTypes(
-  actor: AssignmentStaffAuthorization,
-): AcquisitionLeadType[] {
+export function visibleLeadTypes(actor: AssignmentStaffAuthorization): AcquisitionLeadType[] {
   const result: AcquisitionLeadType[] = [];
   if ((actor.roles.has('owner') || actor.roles.has('pre_sales'))
     && actor.permissions.has('ACQUISITION_BUYER_LEAD')) result.push('BUYER');
