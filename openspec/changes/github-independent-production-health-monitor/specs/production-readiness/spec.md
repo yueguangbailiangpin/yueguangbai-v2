@@ -20,3 +20,12 @@ The system SHALL use independently operated GitHub Actions to read only the fixe
 
 - **WHEN** an authorized operator dispatches simulated failure followed by simulated recovery
 - **THEN** the same real GitHub Issue completes open-to-closed lifecycle evidence without contacting the production endpoint.
+
+### Requirement: Health monitoring remains separate from release authority
+
+The repository release-control audit SHALL allow only the named production health workflow, SHALL verify its bounded schedule, fixed endpoint and least privileges, and SHALL continue to reject push-triggered or deployment-capable automation.
+
+#### Scenario: Release gate inspects the health workflow
+
+- **WHEN** the aggregate release gate audits repository workflows
+- **THEN** it accepts the exact read-only health probe and Issue writer while rejecting additional workflows, push or pull-request triggers, deployment events and deploy commands.

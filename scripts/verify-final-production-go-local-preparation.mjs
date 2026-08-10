@@ -116,7 +116,29 @@ for (const marker of [
 
 const workflowFiles = readdirSync(path.join(root, '.github/workflows'))
   .filter((file) => /\.ya?ml$/u.test(file));
-assert(workflowFiles.length === 0, 'CI workflow now exists; refresh release-control audit');
+assert(workflowFiles.length === 1 && workflowFiles[0] === 'production-health-monitor.yml',
+  'only the audited production health workflow may exist');
+const productionHealthWorkflow = read('.github/workflows/production-health-monitor.yml');
+for (const marker of [
+  "cron: '17 * * * *'",
+  'workflow_dispatch:',
+  'contents: read',
+  'issues: write',
+  'timeout-minutes: 2',
+  'persist-credentials: false',
+  'https://app.yueguangbai.net/health',
+  'node scripts/production-health-monitor.mjs',
+]) assert(productionHealthWorkflow.includes(marker),
+  `production health workflow audit missing: ${marker}`);
+for (const forbidden of [
+  'push:',
+  'pull_request:',
+  'pull_request_target:',
+  'deployment:',
+  'wrangler deploy',
+  'npm run deploy',
+]) assert(!productionHealthWorkflow.includes(forbidden),
+  `production health workflow contains forbidden release capability: ${forbidden}`);
 assert(!existsSync(path.join(root, 'wrangler.production.jsonc')),
   'rendered production config exists; refresh deployment audit');
 assert(!existsSync(path.join(root, 'apps/api/wrangler.production.jsonc')),
