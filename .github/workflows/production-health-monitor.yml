@@ -1,0 +1,42 @@
+name: 生产健康监控
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      simulation:
+        description: 验收模式
+        required: true
+        default: probe
+        type: choice
+        options:
+          - probe
+          - failure
+          - recovery
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: production-health-monitor
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: 读取受控监控脚本
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: 检查生产健康并维护告警问题
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          YGB_HEALTH_SIMULATION: ${{ inputs.simulation || 'probe' }}
+          YGB_PRODUCTION_HEALTH_URL: https://app.yueguangbai.net/health
+        run: node scripts/production-health-monitor.mjs
