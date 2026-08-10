@@ -419,6 +419,77 @@ describe('TikTok Shop read adapter', () => {
     }
   });
 
+  it.each([
+    'application/json',
+    'Application/JSON',
+    ' \tApplication/JSON\t ',
+    'application/json \t; \tCharset=utf-8',
+    'application/json;charset="utf-8"',
+    'application/json; profile="a,b;c"; note="escaped\\"quote"',
+    'application/json;',
+    'application/json; ;',
+    'application/json; ; charset=utf-8',
+    'application/json; charset=utf-8;',
+    'application/json;;charset=utf-8',
+  ])('accepts only a valid exact JSON media type: %s', async (contentType) => {
+    const fetcher = vi.fn(async () => jsonResponse({
+      code: 0,
+      message: 'Success',
+      request_id: 'safe-request-id',
+      data: { next_page_token: '', products: [] },
+    }, 200, contentType));
+    await expect(adapterWith({ fetch: fetcher }).listProductsPage({
+      cursor: null,
+      page_size: 1,
+    })).resolves.toEqual({ items: [], next_cursor: null });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    null,
+    'application/jsonp',
+    'text/application/json-extra',
+    'prefix-application/json',
+    'application /json',
+    'application/ json',
+    'application/vnd.tiktok+json',
+    'application/json, text/plain',
+    'application/json; charset=utf-8, application/json',
+    'application/json; charset',
+    'application/json; charset =utf-8',
+    'application/json; charset="utf-8',
+  ])('cancels and does not retry rejected media type: %s', async (contentType) => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        setTimeout(() => {
+          if (cancelled) return;
+          controller.enqueue(new TextEncoder().encode(JSON.stringify({
+            code: 0,
+            message: 'must-not-be-accepted',
+            request_id: 'safe-request-id',
+            data: { next_page_token: '', products: [] },
+          })));
+          controller.close();
+        }, 10);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const sleep = vi.fn(async () => undefined);
+    const fetcher = vi.fn(async () => new Response(stream, {
+      headers: contentType === null ? {} : { 'Content-Type': contentType },
+    }));
+    await expect(adapterWith({ fetch: fetcher, sleep }).listProductsPage({
+      cursor: null,
+      page_size: 1,
+    })).rejects.toMatchObject({ code: 'CONTRACT' });
+    expect(cancelled).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
   it('rejects missing/unsafe configuration, bad page bounds and redirects before parsing', async () => {
     expect(() => adapterWith({ apiOrigin: 'https://example.invalid' }))
       .toThrow(MarketplaceProviderError);
@@ -558,10 +629,14 @@ function adapterWith(
   });
 }
 
-function jsonResponse(value: unknown, status = 200): Response {
+function jsonResponse(
+  value: unknown,
+  status = 200,
+  contentType = 'application/json; charset=utf-8',
+): Response {
   return new Response(JSON.stringify(value), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    headers: { 'Content-Type': contentType },
   });
 }
 

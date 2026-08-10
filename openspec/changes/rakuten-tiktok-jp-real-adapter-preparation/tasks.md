@@ -25,3 +25,9 @@
 
 - [x] 4.1 Commit only the scoped worktree diff; do not push, open a PR, merge, deploy, migrate production or write any external resource.
 - [x] 4.2 Report baseline/worktree/branch/commit, diff, Migration decision, commands/results, blockers, owner steps and exact external-write counters; stop at total-control review.
+
+## Post-review Contract Correction
+
+- [x] 5.1 Freeze exact singleton `application/json` response media-type handling and fail-closed stream cancellation in OpenSpec.
+- [x] 5.2 Implement the parser correction and regression tests, then rerun focused, strict OpenSpec and complete repository gates.
+- [x] 5.3 Create one scoped local correction commit and report the unchanged production/external-write boundary.

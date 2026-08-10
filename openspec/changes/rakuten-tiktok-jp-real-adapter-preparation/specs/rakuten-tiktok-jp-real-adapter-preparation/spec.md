@@ -58,6 +58,20 @@ Order reads MUST use `POST /order/202309/orders/search` with `seller.order.info`
 - **WHEN** the Provider reports expired credentials, missing scope, IP authorization failure, unknown business failure or a malformed success envelope
 - **THEN** the adapter emits the stable authentication, authorization or contract-drift class after one attempt and returns no partial page
 
+### Requirement: Provider JSON media type is exact and singleton
+
+A Provider JSON response MUST contain exactly one syntactically valid `Content-Type` media type whose type and subtype case-insensitively equal `application/json`. Semicolon-delimited parameters and HTTP optional whitespace MUST follow the HTTP media-type grammar: empty parameter segments MUST be accepted, while every nonempty parameter segment MUST be a syntactically valid `name=value` pair. Prefix/suffix lookalikes, alternative `+json` types, combined media types and malformed nonempty parameter syntax MUST fail as `CONTRACT`; the adapter MUST cancel the rejected response body and MUST NOT retry that contract failure.
+
+#### Scenario: valid JSON parameters are accepted without media sniffing
+
+- **WHEN** a Provider response uses `application/json`, any casing-equivalent form, a valid parameterized form such as `application/json; charset=utf-8`, or an HTTP-valid empty parameter segment such as `application/json;`
+- **THEN** the bounded JSON parser may decode the body without MIME sniffing or widening the accepted type
+
+#### Scenario: lookalike, combined or malformed media type is rejected
+
+- **WHEN** a Provider response uses `application/jsonp`, a prefixed/suffixed lookalike, more than one media type, or invalid parameter syntax
+- **THEN** the adapter cancels the response stream, fails once as `CONTRACT`, returns no page and performs no retry
+
 ### Requirement: Provider DTOs are minimum and non-authoritative
 
 The read adapter MUST runtime-validate and whitelist only platform code, platform order/product identifiers, Provider status, order timestamps and order line-item product identifiers plus product title/status. It MUST omit buyer messages, recipient/contact data, user identifiers, payment, tax, discounts and settlement data. Provider DTOs MUST NOT directly write D1 or establish Seller Organization, Store, permission, idempotency, formal-order, finance or audit authority.

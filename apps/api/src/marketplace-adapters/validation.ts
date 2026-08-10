@@ -1,6 +1,9 @@
 import type { MarketplaceReadPageInput } from '@ygb/contracts';
 import { MarketplaceProviderError } from './error';
 
+const JSON_MEDIA_TYPE = 'application/json';
+const MAX_MEDIA_TYPE_LENGTH = 4_096;
+
 export function validateReadPageInput(
   input: MarketplaceReadPageInput,
 ): Readonly<MarketplaceReadPageInput> {
@@ -68,7 +71,7 @@ export async function readBoundedProviderJson(
   maximumBytes: number,
 ): Promise<unknown> {
   const contentType = response.headers.get('content-type');
-  if (!contentType?.toLowerCase().includes('application/json')) {
+  if (!exactJsonMediaType(contentType)) {
     await discardProviderResponseBody(response);
     throw new MarketplaceProviderError('CONTRACT');
   }
@@ -127,4 +130,87 @@ export async function discardProviderResponseBody(
 
 function opaqueProviderCursor(value: unknown): value is string {
   return boundedProviderString(value, 2_048);
+}
+
+function exactJsonMediaType(value: string | null): boolean {
+  if (value === null || value.length === 0
+    || value.length > MAX_MEDIA_TYPE_LENGTH) return false;
+  let index = skipOptionalWhitespace(value, 0);
+  if (value.slice(index, index + JSON_MEDIA_TYPE.length).toLowerCase()
+    !== JSON_MEDIA_TYPE) return false;
+  index += JSON_MEDIA_TYPE.length;
+  index = skipOptionalWhitespace(value, index);
+
+  while (index < value.length) {
+    if (value[index] !== ';') return false;
+    index = skipOptionalWhitespace(value, index + 1);
+    if (index === value.length || value[index] === ';') continue;
+
+    const nameStart = index;
+    index = consumeToken(value, index);
+    if (index === nameStart || value[index] !== '=') return false;
+    index += 1;
+
+    if (value[index] === '"') {
+      index = consumeQuotedString(value, index);
+      if (index < 0) return false;
+    } else {
+      const valueStart = index;
+      index = consumeToken(value, index);
+      if (index === valueStart) return false;
+    }
+    index = skipOptionalWhitespace(value, index);
+  }
+  return true;
+}
+
+function skipOptionalWhitespace(value: string, start: number): number {
+  let index = start;
+  while (value[index] === ' ' || value[index] === '\t') index += 1;
+  return index;
+}
+
+function consumeToken(value: string, start: number): number {
+  let index = start;
+  while (index < value.length && isTokenCharacter(value.charCodeAt(index))) {
+    index += 1;
+  }
+  return index;
+}
+
+function consumeQuotedString(value: string, start: number): number {
+  let index = start + 1;
+  while (index < value.length) {
+    const code = value.charCodeAt(index);
+    if (code === 0x22) return index + 1;
+    if (code === 0x5c) {
+      index += 1;
+      if (index >= value.length
+        || !isQuotedPairCharacter(value.charCodeAt(index))) return -1;
+    } else if (!isQuotedTextCharacter(code)) {
+      return -1;
+    }
+    index += 1;
+  }
+  return -1;
+}
+
+function isTokenCharacter(code: number): boolean {
+  return (code >= 0x30 && code <= 0x39)
+    || (code >= 0x41 && code <= 0x5a)
+    || (code >= 0x61 && code <= 0x7a)
+    || "!#$%&'*+-.^_`|~".includes(String.fromCharCode(code));
+}
+
+function isQuotedTextCharacter(code: number): boolean {
+  return code === 0x09 || code === 0x20 || code === 0x21
+    || (code >= 0x23 && code <= 0x5b)
+    || (code >= 0x5d && code <= 0x7e)
+    || (code >= 0x80 && code <= 0xff);
+}
+
+function isQuotedPairCharacter(code: number): boolean {
+  return code === 0x09 || code === 0x20
+    || (code >= 0x21 && code <= 0x7e)
+    || (code >= 0x80 && code <= 0xff);
 }
