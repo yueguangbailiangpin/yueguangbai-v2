@@ -4,33 +4,23 @@ export const STAFF_ASSIGNMENT_DUTY_CODES = [
   'BUYER_AFTER_SALES_OWNER',
   'BUYER_REFUND_OWNER',
 ] as const;
-export type StaffAssignmentDutyCode =
-  typeof STAFF_ASSIGNMENT_DUTY_CODES[number];
+export type StaffAssignmentDutyCode = typeof STAFF_ASSIGNMENT_DUTY_CODES[number];
 
 export const BUYER_ASSIGNMENT_DUTY_CODES = [
   'BUYER_PRE_SALES_OWNER',
   'BUYER_AFTER_SALES_OWNER',
   'BUYER_REFUND_OWNER',
 ] as const;
-export type BuyerAssignmentDutyCode =
-  typeof BUYER_ASSIGNMENT_DUTY_CODES[number];
+export type BuyerAssignmentDutyCode = typeof BUYER_ASSIGNMENT_DUTY_CODES[number];
 
-export const STAFF_AVAILABILITY_STATUSES = [
-  'AVAILABLE',
-  'UNAVAILABLE',
-] as const;
-export type StaffAvailabilityStatus =
-  typeof STAFF_AVAILABILITY_STATUSES[number];
+export const STAFF_AVAILABILITY_STATUSES = ['AVAILABLE', 'UNAVAILABLE'] as const;
+export type StaffAvailabilityStatus = typeof STAFF_AVAILABILITY_STATUSES[number];
 
 export const STAFF_ASSIGNMENT_SOURCES = [
-  'AUTO_INITIAL',
-  'AUTO_REPLACEMENT',
-  'OWNER_FALLBACK',
-  'MANUAL_REASSIGN',
-  'BATCH_TRANSFER',
+  'AUTO_INITIAL', 'AUTO_REPLACEMENT', 'OWNER_FALLBACK',
+  'MANUAL_REASSIGN', 'BATCH_TRANSFER',
 ] as const;
-export type StaffAssignmentSource =
-  typeof STAFF_ASSIGNMENT_SOURCES[number];
+export type StaffAssignmentSource = typeof STAFF_ASSIGNMENT_SOURCES[number];
 
 export const STAFF_WORK_ITEM_TYPES = [
   'PRODUCT_APPLICATION_REVIEW',
@@ -41,35 +31,28 @@ export const STAFF_WORK_ITEM_TYPES = [
   'REVIEW_DECISION',
   'BUYER_REFUND_PROCESSING',
 ] as const;
-export type StaffWorkItemType =
-  typeof STAFF_WORK_ITEM_TYPES[number];
+export type StaffWorkItemType = typeof STAFF_WORK_ITEM_TYPES[number];
 
-export const STAFF_WORK_ITEM_STATUSES = [
-  'OPEN',
-  'COMPLETED',
-  'CANCELLED',
-] as const;
-export type StaffWorkItemStatus =
-  typeof STAFF_WORK_ITEM_STATUSES[number];
+export const STAFF_WORK_ITEM_STATUSES = ['OPEN', 'COMPLETED', 'CANCELLED'] as const;
+export type StaffWorkItemStatus = typeof STAFF_WORK_ITEM_STATUSES[number];
 
 export const STAFF_ASSIGNMENT_SUBJECT_TYPES = [
-  'BUYER_CUSTOMER',
-  'SELLER_ORGANIZATION',
+  'BUYER_CUSTOMER', 'SELLER_ORGANIZATION',
 ] as const;
-export type StaffAssignmentSubjectType =
-  typeof STAFF_ASSIGNMENT_SUBJECT_TYPES[number];
+export type StaffAssignmentSubjectType = typeof STAFF_ASSIGNMENT_SUBJECT_TYPES[number];
 
 export const STAFF_DATA_SCOPE_TYPES = [
   'GLOBAL',
+  'MARKETPLACE',
   'ASSIGNED_BUYERS',
   'ASSIGNED_SELLER_ORGANIZATIONS',
   'TEAM_ASSIGNMENTS',
 ] as const;
-export type StaffDataScopeType =
-  typeof STAFF_DATA_SCOPE_TYPES[number];
+export type StaffDataScopeType = typeof STAFF_DATA_SCOPE_TYPES[number];
 
 export interface StaffDataScope {
   type: StaffDataScopeType;
+  marketplaceCodes: readonly string[];
   buyerCustomerIds: readonly string[];
   sellerOrganizationIds: readonly string[];
   teamIds: readonly string[];
@@ -106,6 +89,7 @@ export interface StaffWorkItemDto {
   buyer_customer_id: string | null;
   seller_organization_id: string | null;
   store_id: string | null;
+  marketplace_code: string;
   duty_code: StaffAssignmentDutyCode;
   fixed_assignment_id: string;
   assigned_staff_id: string;
@@ -130,15 +114,9 @@ export interface StaffWorkItemPageDto {
 }
 
 export const STAFF_REASSIGNMENT_BATCH_STATUSES = [
-  'PENDING',
-  'RUNNING',
-  'COMPLETED',
-  'PARTIALLY_FAILED',
-  'FAILED',
-  'CANCELLED',
+  'PENDING','RUNNING','COMPLETED','PARTIALLY_FAILED','FAILED','CANCELLED',
 ] as const;
-export type StaffReassignmentBatchStatus =
-  typeof STAFF_REASSIGNMENT_BATCH_STATUSES[number];
+export type StaffReassignmentBatchStatus = typeof STAFF_REASSIGNMENT_BATCH_STATUSES[number];
 
 export interface StaffReassignmentBatchDto {
   batch_id: string;
@@ -158,23 +136,12 @@ export interface StaffReassignmentBatchDto {
   completed_at: number | null;
 }
 
-export function isStaffAssignmentDutyCode(
-  value: unknown,
-): value is StaffAssignmentDutyCode {
-  return typeof value === 'string'
-    && (STAFF_ASSIGNMENT_DUTY_CODES as readonly string[]).includes(value);
+export function isStaffAssignmentDutyCode(value: unknown): value is StaffAssignmentDutyCode {
+  return typeof value === 'string' && (STAFF_ASSIGNMENT_DUTY_CODES as readonly string[]).includes(value);
 }
-
-export function isStaffWorkItemType(
-  value: unknown,
-): value is StaffWorkItemType {
-  return typeof value === 'string'
-    && (STAFF_WORK_ITEM_TYPES as readonly string[]).includes(value);
+export function isStaffWorkItemType(value: unknown): value is StaffWorkItemType {
+  return typeof value === 'string' && (STAFF_WORK_ITEM_TYPES as readonly string[]).includes(value);
 }
-
-export function isStaffAvailabilityStatus(
-  value: unknown,
-): value is StaffAvailabilityStatus {
-  return typeof value === 'string'
-    && (STAFF_AVAILABILITY_STATUSES as readonly string[]).includes(value);
+export function isStaffAvailabilityStatus(value: unknown): value is StaffAvailabilityStatus {
+  return typeof value === 'string' && (STAFF_AVAILABILITY_STATUSES as readonly string[]).includes(value);
 }
