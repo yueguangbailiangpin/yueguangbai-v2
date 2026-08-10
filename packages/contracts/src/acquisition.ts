@@ -30,6 +30,11 @@ export interface CreateAcquisitionChannelCommand {
   display_name:string;
 }
 export interface DisableAcquisitionChannelCommand { expected_version:number; reason:string }
+export interface UpdateAcquisitionChannelPrivacyProfileCommand {
+  expected_version:number;
+  staff_label:string;
+  intake_wechat_label:string;
+}
 export interface CreateAcquisitionChannelAssignmentCommand {
   staff_id:string; lead_type:AcquisitionLeadType; channel_id:string;
   effective_from:number; effective_until:number|null;
@@ -52,6 +57,7 @@ export interface InvalidateAcquisitionLeadCommand { expected_version:number; rea
 export interface TransferAcquisitionLeadCommand { expected_version:number; new_owner_staff_id:string; reason:string }
 export interface SetAcquisitionRetentionHoldCommand { expected_version:number; hold_reason:'SECURITY'|'DISPUTE'|'LEGAL'|null; reason:string }
 
+/** Internal acquisition source record. Never return this shape to pre_sales/seller_ops. */
 export interface AcquisitionChannelDto {
   channel_id:string; code:string;
   channel_type:AcquisitionChannelType;
@@ -61,6 +67,29 @@ export interface AcquisitionChannelDto {
   display_name:string;
   status:'ACTIVE'|'DISABLED'; version:number; created_at:number; updated_at:number;
 }
+
+/** Owner/acquisition view: real source + anonymous Staff label + receiving WeChat mapping. */
+export interface AcquisitionInternalChannelViewDto extends AcquisitionChannelDto {
+  visibility:'INTERNAL';
+  staff_label:string;
+  intake_wechat_label:string|null;
+  profile_version:number;
+}
+
+/** Ordinary customer-intake Staff view. Real platform/source is deliberately absent. */
+export interface AcquisitionStaffChannelViewDto {
+  visibility:'STAFF';
+  channel_id:string;
+  staff_label:string;
+  lead_type:AcquisitionChannelAudience;
+  marketplace_code:string;
+  status:'ACTIVE'|'DISABLED';
+  version:number;
+}
+export type AcquisitionVisibleChannelDto =
+  | AcquisitionInternalChannelViewDto
+  | AcquisitionStaffChannelViewDto;
+
 export interface AcquisitionChannelAssignmentDto {
   assignment_id:string; staff_id:string; lead_type:AcquisitionLeadType;
   channel_id:string; channel_name:string; effective_from:number; effective_until:number|null;
@@ -75,6 +104,7 @@ export interface AcquisitionConsultationEventDto {
   previous_version:number|null; next_version:number; actor_staff_id:string; reason:string; created_at:number;
 }
 
+/** Full Prospect is restricted to Owner/acquisition Staff and machine acquisition APIs. */
 export interface AcquisitionProspectDto {
   prospect_id:string;
   lead_type:AcquisitionLeadType;
@@ -94,6 +124,22 @@ export interface AcquisitionProspectDto {
   created_at:number;
   updated_at:number;
 }
+
+/** Safe handoff projection sent to pre_sales/seller_ops. */
+export interface AcquisitionHandoffDto {
+  prospect_id:string;
+  lead_type:AcquisitionLeadType;
+  marketplace_code:string;
+  origin_channel_id:string;
+  channel_label:string;
+  display_name:string;
+  contact_value:string|null;
+  status:'HUMAN_HANDOFF';
+  version:number;
+  created_at:number;
+  updated_at:number;
+}
+
 export interface AcquisitionProspectSignalDto {
   signal_id:string; prospect_id:string; signal_type:string; signal_content:string;
   source_url:string|null; confidence:'LOW'|'MEDIUM'|'HIGH'|'CONFIRMED';
@@ -112,16 +158,34 @@ export interface CreateAcquisitionProspectSignalCommand {
   confidence:'LOW'|'MEDIUM'|'HIGH'|'CONFIRMED';
 }
 
+/**
+ * Formal Lead projection used by ordinary customer-intake Staff.
+ * The real platform, source URL, Codex/Human discovery mode, Prospect ID and
+ * source Staff ID intentionally never leave the API in this DTO.
+ */
 export interface AcquisitionLeadDto {
-  lead_id:string; lead_type:AcquisitionLeadType; marketplace_code:string;
-  wechat_masked:string; display_name:string|null; note:string|null;
-  prospect_id:string|null; origin_mode:AcquisitionOriginMode; origin_source_url:string|null;
-  origin_channel_id:string; origin_channel_name:string; origin_staff_id:string;
-  current_owner_staff_id:string; status:'ACTIVE'|'INVALIDATED'|'ANONYMIZED'; version:number;
-  created_business_date:string; latest_followup_at:number; retention_due_at:number;
+  lead_id:string;
+  lead_type:AcquisitionLeadType;
+  marketplace_code:string;
+  wechat_masked:string;
+  display_name:string|null;
+  note:string|null;
+  origin_channel_id:string;
+  channel_label:string;
+  current_owner_staff_id:string;
+  status:'ACTIVE'|'INVALIDATED'|'ANONYMIZED';
+  version:number;
+  created_business_date:string;
+  latest_followup_at:number;
+  retention_due_at:number;
   retention_hold_reason:'SECURITY'|'DISPUTE'|'LEGAL'|null;
-  registered:boolean; reservation_submitted:boolean; no_participation:boolean;
-  formal_order_count:number; seller_cooperation:boolean; created_at:number; updated_at:number;
+  registered:boolean;
+  reservation_submitted:boolean;
+  no_participation:boolean;
+  formal_order_count:number;
+  seller_cooperation:boolean;
+  created_at:number;
+  updated_at:number;
 }
 
 export interface AcquisitionFunnelDto {
