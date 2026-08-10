@@ -46,6 +46,7 @@ export type AppBindings = StaffAuthProviderBindings
   GOOGLE_DRIVE_OWNER_ACCOUNT_KEY?: string;
   CUSTOMER_SESSION_SECRET?: string;
   CUSTOMER_SECURITY_TOKEN_SECRET?: string;
+  ACQUISITION_MACHINE_SHARED_SECRET?: string;
   STAFF_AUTH_PROVIDER_ADAPTER?: StaffAuthProviderAdapter;
   OUTBOX_DELIVERY_ADAPTER?: { deliver(event: { id: string; eventType: string; payloadJson: string }): Promise<void> };
   SCHEDULED_OPERATIONS_ENABLED?: string;
