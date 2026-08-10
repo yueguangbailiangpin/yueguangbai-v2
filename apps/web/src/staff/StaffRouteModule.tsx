@@ -5,7 +5,7 @@ import { RouteChunkBoundary } from '../routes/RouteChunkBoundary';
 import { FrozenStaffWorkbench } from './FrozenStaffWorkbench';
 import { AcquisitionCoreWorkbench } from './acquisition/AcquisitionCoreWorkbench';
 import { BuyerCustomersWorkspace, SellerCustomersWorkspace } from './acquisition/CustomerIntakeWorkspace';
-import { SellerPrincipalRatePolicyWorkspace } from './pricing/SellerPrincipalRatePolicyWorkspace';
+import { FrozenSellerPrincipalRatePolicyWorkspace } from './pricing/FrozenSellerPrincipalRatePolicyWorkspace';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 
 const loadStaffAdminRoutes=()=>import('./StaffAdminRouteModule');
@@ -27,6 +27,6 @@ export function StaffRoutePage():React.JSX.Element{
   if(pathname.startsWith('/staff/admin-business-dashboard'))return <RouteChunkBoundary load={loadStaffAdminRoutes}/>;
   if(pathname.startsWith('/staff/access-management'))return <RouteChunkBoundary load={loadStaffAccessManagementRoutes}/>;
   if(pathname.startsWith('/staff/products')||/^\/staff\/demands\/[^/]+\/reservations$/u.test(pathname))return <RouteChunkBoundary load={loadStaffSchedulingRoutes}/>;
-  if(pathname.startsWith('/staff/seller-principal-rate-policies'))return <SellerPrincipalRatePolicyWorkspace/>;
+  if(pathname.startsWith('/staff/seller-principal-rate-policies'))return <FrozenSellerPrincipalRatePolicyWorkspace/>;
   return <FrozenStaffWorkbench/>;
 }
