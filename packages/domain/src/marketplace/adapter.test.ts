@@ -54,6 +54,17 @@ describe('marketplace adapters', () => {
     )).toThrow('PLATFORM_IDENTIFIER_PROFILE_MISMATCH');
   });
 
+  it('preserves Rakuten R-1/S-1 product identifiers without ASIN rules', () => {
+    for (const identifier of ['R-1', 'S-1']) {
+      expect(normalizePlatformIdentifier(
+        'RAKUTEN_JP', 'PRODUCT', identifier,
+      )).toBe(identifier);
+      expect(() => normalizePlatformIdentifier(
+        'AMAZON_JP', 'PRODUCT', identifier,
+      )).toThrow('PLATFORM_IDENTIFIER_PROFILE_MISMATCH');
+    }
+  });
+
   it('keeps the TikTok historical profile opt-in', () => {
     expect(normalizePlatformIdentifier(
       'TIKTOK_JP', 'ORDER', '585123456789012345',
