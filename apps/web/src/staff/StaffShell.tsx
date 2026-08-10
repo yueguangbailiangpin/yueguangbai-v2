@@ -9,6 +9,11 @@ import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from '../auth/staff/staff-auth-controller';
 import { Button, Dialog, IdentityShell, RequestIdDisplay } from '../ui/primitives';
 
+const MARKET_LABELS:Record<string,string>={
+  AMAZON_JP:'亚马逊日本站',AMAZON_US:'亚马逊美国站',COUPANG_KR:'Coupang 韩国站',
+  RAKUTEN_JP:'乐天日本站',TIKTOK_JP:'TikTok 日本站',
+};
+
 function StaffAccountActions(): React.JSX.Element {
   const client=useQueryClient();const navigate=useNavigate();const [confirming,setConfirming]=useState(false);
   const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);const [requestId,setRequestId]=useState<string|null>(null);
@@ -28,11 +33,11 @@ export function StaffShell({children}:{children?:ReactNode}={}):React.JSX.Elemen
   const pricing=location.pathname.startsWith('/staff/seller-principal-rate-policies');
   const products=location.pathname.startsWith('/staff/products')||/^\/staff\/demands\/[^/]+\/reservations$/u.test(location.pathname);
   const workQueue=!acquisition&&!buyerCustomers&&!sellerCustomers&&!dashboard&&!access&&!pricing&&!products;
-  const owner=role==='owner';
-  const home=role==='acquisition'?'/staff/acquisition':'/staff';
+  const owner=role==='owner';const home=role==='acquisition'?'/staff/acquisition':'/staff';
   const mayProducts=owner||role==='pre_sales'||role==='seller_ops';
   const title=access?'员工管理':pricing?'卖家本金汇率策略':dashboard?'经营看板':products?'产品库':acquisition?'客户开发':buyerCustomers?'买家客户':sellerCustomers?'卖家客户':'员工工作台';
-  const context=access?'员工邮箱、岗位、负责站点与状态':pricing?'默认加点、卖家覆盖与 Owner 决策':dashboard?'经营与利润事实':products?'产品库、版本与预约排期':acquisition?'渠道、潜在线索与未来 Codex 入口':buyerCustomers?'售前接住买家并确认来源':sellerCustomers?'卖家对接接住卖家并确认来源':'队列、业务事实与受控操作';
+  const context=access?'员工邮箱、岗位、负责站点与状态':pricing?'默认加点、卖家覆盖与总管理员决策':dashboard?'经营与利润事实':products?'产品库、版本与预约排期':acquisition?'渠道、潜在线索与未来 Codex 自动开发入口':buyerCustomers?'售前接入买家并确认渠道编号':sellerCustomers?'卖家对接接入卖家并确认渠道编号':'队列、业务事实与受控操作';
+  const scope=session.data_scope.type==='GLOBAL'?'全部站点':session.data_scope.marketplaceCodes.map((code)=>MARKET_LABELS[code]??'未命名站点').join(' · ')||'未配置站点';
   return <IdentityShell identity="staff" className="staff-business-shell">
     <aside className="staff-sidebar">
       <NavLink className="staff-sidebar-brand" to={home} aria-label="月光白员工首页">月光白</NavLink>
@@ -50,7 +55,7 @@ export function StaffShell({children}:{children?:ReactNode}={}):React.JSX.Elemen
     </aside>
     <div className="staff-work-area">
       <header className="staff-context-bar"><NavLink className="staff-mobile-brand" to={home}>月光白</NavLink><div><p>{context}</p><h1>{title}</h1></div>
-        <div className="staff-session-context"><span>{session.display_name}</span><strong>{session.role.display_name}</strong><small>{session.data_scope.type==='GLOBAL'?'全部站点':session.data_scope.marketplaceCodes.join(' · ')||'未配置站点'}</small></div></header>
+        <div className="staff-session-context"><span>{session.display_name}</span><strong>{session.role.display_name}</strong><small>{scope}</small></div></header>
       <div className="staff-main">{children??<Outlet/>}</div><footer className="staff-account-footer"><StaffAccountActions/></footer>
     </div>
   </IdentityShell>;
