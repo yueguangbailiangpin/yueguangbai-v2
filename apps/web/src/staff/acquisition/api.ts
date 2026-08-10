@@ -7,6 +7,8 @@ import {
   acquisitionChannelsResponseSchema,
   acquisitionConsultationsResponseSchema,
   acquisitionFunnelResponseSchema,
+  acquisitionHandoffSchema,
+  acquisitionInternalChannelViewSchema,
   acquisitionLeadSchema,
   acquisitionLeadsPageSchema,
   acquisitionProspectDetailSchema,
@@ -19,10 +21,11 @@ function read<T extends z.ZodType>(client:QueryClient,path:string,schema:T,signa
 function write<T extends z.ZodType>(client:QueryClient,path:string,body:unknown,schema:T,key:string){return identityApiRequest('staff',client,{path,method:'POST',schema,body,headers:operationHeaders({key,body})});}
 
 const channelMutation=z.object({channel:acquisitionChannelSchema,replayed:z.boolean()}).strict();
+const channelPrivacyMutation=z.object({channel:acquisitionInternalChannelViewSchema,replayed:z.boolean()}).strict();
 const prospectMutation=z.object({prospect:acquisitionProspectSchema,replayed:z.boolean()}).strict();
 const signalMutation=z.object({signal:acquisitionProspectSignalSchema,replayed:z.boolean()}).strict();
 const leadMutation=z.object({lead:acquisitionLeadSchema,replayed:z.boolean()}).strict();
-const handoffSchema=z.object({items:z.array(acquisitionProspectSchema)}).strict();
+const handoffSchema=z.object({items:z.array(acquisitionHandoffSchema)}).strict();
 const channelStatsSchema=z.object({channels:z.array(z.object({
   channel_id:z.string(),channel_name:z.string(),platform_name:z.string(),lead_type:z.enum(['BUYER','SELLER','BOTH']),marketplace_code:z.string(),
   consultation_count:z.number().int().nonnegative(),prospect_count:z.number().int().nonnegative(),codex_prospect_count:z.number().int().nonnegative(),
@@ -39,6 +42,7 @@ export const acquisitionApi=Object.freeze({
   channels:(client:QueryClient,signal?:AbortSignal)=>read(client,'/api/staff/acquisition/channels',acquisitionChannelsResponseSchema,signal),
   createChannel:(client:QueryClient,body:unknown,key:string)=>write(client,'/api/staff/acquisition/channels',body,channelMutation,key),
   disableChannel:(client:QueryClient,id:string,body:unknown,key:string)=>write(client,`/api/staff/acquisition/channels/${encodeURIComponent(id)}/disable`,body,channelMutation,key),
+  updateChannelPrivacy:(client:QueryClient,id:string,body:unknown,key:string)=>write(client,`/api/staff/acquisition/channels/${encodeURIComponent(id)}/privacy-profile`,body,channelPrivacyMutation,key),
   channelStats:(client:QueryClient,from:string,to:string,signal?:AbortSignal)=>read(client,`/api/staff/acquisition/channel-stats?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,channelStatsSchema,signal),
   prospects:(client:QueryClient,input:{leadType:string|null;status:string|null;cursor:string|null},signal?:AbortSignal)=>{
     const query=new URLSearchParams({limit:'50'});if(input.leadType)query.set('lead_type',input.leadType);if(input.status)query.set('status',input.status);if(input.cursor)query.set('cursor',input.cursor);
