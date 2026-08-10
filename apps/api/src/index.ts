@@ -26,6 +26,7 @@ import { registerMarketplaceFoundationRoutes } from './marketplaces/routes';
 import { registerScheduledOperationRoutes } from './scheduled-operations';
 import { registerColdImageArchiveRoutes } from './cold-image-archive';
 import { registerAcquisitionRoutes } from './acquisition';
+import { registerAcquisitionPrivacyRoutes } from './acquisition/privacy-routes';
 import { registerAcquisitionChannelStatsRoutes } from './acquisition/channel-stats-routes';
 import { registerAcquisitionHandoffRoutes } from './acquisition/handoff-routes';
 import { registerAcquisitionMachineRoutes } from './acquisition/machine-routes';
@@ -46,6 +47,9 @@ app.use('/api/staff/*', staffSessionMiddleware());
 registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
 registerStaffCustomerSecurityRoutes(app);
+// Privacy projection must be registered first so ordinary customer-intake Staff
+// never reach the older full channel read route.
+registerAcquisitionPrivacyRoutes(app);
 registerAcquisitionRoutes(app);
 registerAcquisitionChannelStatsRoutes(app);
 registerAcquisitionHandoffRoutes(app);
