@@ -62,7 +62,7 @@ export async function readAcquisitionChannelStats(
       JOIN acquisition_lead_links link ON link.lead_id=lead.id AND link.link_type='FORMAL_ORDER'
       JOIN internal_order_finance_positions finance ON finance.formal_order_id=link.target_id
       WHERE lead.origin_channel_id=? AND lead.status='ACTIVE'
-        AND lead.created_business_date BETWEEN ? AND ?`)
+        AND finance.confirmed_business_date BETWEEN ? AND ?`)
       .bind(channel.channel_id,from,to).all<{formal_order_id:string;projected:string|null;completed:string|null}>();
     const sellerOrders=channel.lead_type==='BUYER'?[]:await database.prepare(`SELECT DISTINCT finance.formal_order_id,
       CAST(finance.projected_gross_profit_cny_fen AS TEXT) AS projected,
@@ -71,7 +71,7 @@ export async function readAcquisitionChannelStats(
       JOIN acquisition_lead_links link ON link.lead_id=lead.id AND link.link_type='SELLER_ORGANIZATION'
       JOIN internal_order_finance_positions finance ON finance.seller_organization_id=link.target_id
       WHERE lead.origin_channel_id=? AND lead.status='ACTIVE'
-        AND lead.created_business_date BETWEEN ? AND ?`)
+        AND finance.confirmed_business_date BETWEEN ? AND ?`)
       .bind(channel.channel_id,from,to).all<{formal_order_id:string;projected:string|null;completed:string|null}>();
     const orderMap=new Map<string,{projected:string|null;completed:string|null}>();
     for(const row of [...('results' in buyerOrders?buyerOrders.results:[]),...('results' in sellerOrders?sellerOrders.results:[])]){
