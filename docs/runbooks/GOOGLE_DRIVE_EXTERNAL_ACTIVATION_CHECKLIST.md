@@ -21,7 +21,7 @@
 
 预检不读取 Secret、不联网、不查询 D1/R2/Drive；它只能验证由老板在仓库外、`0600` 文件中准备的渲染配置与匿名化证据。先运行 `npm run preflight:drive-archive`，预期两个环境均为 `LOCAL_NO_GO` 且调用计数为 0。不要把该结果当作可启用。
 
-获得逐项授权后，才可把四个仓库外证据文件传入：渲染 release 配置、exact `drive.file`/owner-only/匿名回读/撤销的 OAuth 收据、加密 D1 bundle/manifest SHA-256 attestation、以及 `{ "copy_enabled": 1, "proxy_read_enabled": 0, "r2_delete_enabled": 0 }` 的 D1 控制快照。运行：
+获得逐项授权后，才可把四个仓库外证据文件传入：渲染 release 配置、exact `drive.file`/owner-only/匿名回读/撤销的 OAuth 收据、匿名化的加密 D1 bundle/manifest SHA-256 attestation、以及 `{ "copy_enabled": 1, "proxy_read_enabled": 0, "r2_delete_enabled": 0 }` 的 D1 控制快照。预检只检查 attestation 字段结构，不能替代既有 backup/restore 的真实文件完整性和恢复演练。运行：
 
 `node scripts/preflight-google-drive-cold-archive.mjs --environment production --config /private/config.json --oauth-evidence /private/oauth.json --backup-evidence /private/backup.json --d1-controls /private/controls.json --declared-secret GOOGLE_DRIVE_CLIENT_SECRET --declared-secret GOOGLE_DRIVE_REFRESH_TOKEN`
 

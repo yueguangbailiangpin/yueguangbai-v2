@@ -19,7 +19,7 @@ This preserves R2 as the only runtime read source. A later proxy-read approval a
 ## Evidence checks
 
 - OAuth receipt: exact `drive.file` request/return, no token persistence, owner-only private folder/file checks, anonymous hash read-back, duplicate/resume proof, cleanup and revoke boundary.
-- Backup attestation: encrypted bundle and manifest SHA-256 are present and valid hexadecimal hashes, schema/release metadata are bounded, and the encrypted bundle and manifest hash values agree with the optional local manifest evidence.
+- Backup attestation: this Change validates only an anonymous, redacted attestation's bounded schema/release metadata and SHA-256 field shape. It does not read an encrypted bundle or manifest and therefore does not claim backup completeness or hash agreement; the existing backup/restore rehearsal remains the required evidence for that assertion.
 - D1 controls: only the one allowed shadow-copy bit pattern is accepted.
 - Rendered config: expected environment and enablement flags are exact; client/owner/folder identifiers are syntactically safe and non-placeholder; client secret and refresh token must be declared managed secrets and cannot appear in `vars`.
 
