@@ -87,14 +87,21 @@ async function readDaily(database:SqlDatabase,from:string,to:string){
   for(const row of [...buyerOrderRows.results,...sellerOrderRows.results])orderMap.set(key(row.business_date,row.channel_id,row.lead_type),Number(row.count));
   const registrationMap=new Map<string,number>(buyerRegistrations.results.map((row)=>[row.business_date,Number(row.count)]));
   const formalOrderMap=new Map<string,number>(formalOrders.results.map((row)=>[row.business_date,Number(row.count)]));
+  const buyerAttributedByDay=sumOrdersByDay(buyerOrderRows.results);
+  const sellerAttributedByDay=sumOrdersByDay(sellerOrderRows.results);
   const days=dateList(from,to);
-  const daily=days.map((business_date)=>({
-    business_date,
-    new_buyer_customers:sumCustomers(customerRows.results,business_date,'BUYER'),
-    new_seller_customers:sumCustomers(customerRows.results,business_date,'SELLER'),
-    buyer_portal_registrations:registrationMap.get(business_date)??0,
-    formal_orders:formalOrderMap.get(business_date)??0,
-  }));
+  const daily=days.map((business_date)=>{
+    const total=formalOrderMap.get(business_date)??0;
+    return {
+      business_date,
+      new_buyer_customers:sumCustomers(customerRows.results,business_date,'BUYER'),
+      new_seller_customers:sumCustomers(customerRows.results,business_date,'SELLER'),
+      buyer_portal_registrations:registrationMap.get(business_date)??0,
+      formal_orders:total,
+      buyer_unattributed_orders:Math.max(0,total-(buyerAttributedByDay.get(business_date)??0)),
+      seller_unattributed_orders:Math.max(0,total-(sellerAttributedByDay.get(business_date)??0)),
+    };
+  });
   const channelDaily:{
     business_date:string;channel_id:string;channel_name:string;channel_label:string;platform_name:string;
     lead_type:'BUYER'|'SELLER';marketplace_code:string;new_customer_count:number;formal_order_count:number;
@@ -122,6 +129,8 @@ async function readDaily(database:SqlDatabase,from:string,to:string){
       new_seller_customers:daily.reduce((sum,row)=>sum+row.new_seller_customers,0),
       buyer_portal_registrations:daily.reduce((sum,row)=>sum+row.buyer_portal_registrations,0),
       formal_orders:daily.reduce((sum,row)=>sum+row.formal_orders,0),
+      buyer_unattributed_orders:daily.reduce((sum,row)=>sum+row.buyer_unattributed_orders,0),
+      seller_unattributed_orders:daily.reduce((sum,row)=>sum+row.seller_unattributed_orders,0),
     }),
     daily:Object.freeze(daily),channel_daily:Object.freeze(channelDaily),
   });
@@ -140,6 +149,11 @@ function parseDate(value:string|null):string{
 function key(date:string,channel:string,type:string){return `${date}:${channel}:${type}`;}
 function sumCustomers(rows:readonly CustomerRow[],date:string,type:'BUYER'|'SELLER'){
   return rows.filter((row)=>row.business_date===date&&row.lead_type===type).reduce((sum,row)=>sum+Number(row.count),0);
+}
+function sumOrdersByDay(rows:readonly OrderRow[]):Map<string,number>{
+  const result=new Map<string,number>();
+  for(const row of rows)result.set(row.business_date,(result.get(row.business_date)??0)+Number(row.count));
+  return result;
 }
 function dateList(from:string,to:string):string[]{
   const result:string[]=[];let current=new Date(`${from}T00:00:00Z`);const end=new Date(`${to}T00:00:00Z`);
