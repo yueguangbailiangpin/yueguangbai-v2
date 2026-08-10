@@ -1,1 +1,1 @@
-export { AdminBusinessDashboard as default } from './admin-dashboard/AdminBusinessDashboard';
+export { FrozenAdminBusinessDashboard as default } from './admin-dashboard/FrozenAdminBusinessDashboard';
