@@ -1,4 +1,4 @@
-import { apiFailure, apiSuccess } from '@ygb/contracts';
+import { apiFailure, apiSuccess, type SqlDatabase } from '@ygb/contracts';
 import { parseChinaBusinessDate } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -21,7 +21,7 @@ export function registerAdminAcquisitionDailyRoutes(app:Hono<any>):void{
     const requestId=String(context.get('requestId')??crypto.randomUUID());
     try{
       const actor=requireOwner(context);
-      if(!actor.permissions.has('FINANCIAL_VIEW'))return context.json(apiFailure('FORBIDDEN','当前身份没有经营看板权限',requestId),403);
+      if(!actor.permissions.has('FINANCIAL_VIEW'))return forbidden(context,requestId);
       const url=new URL(context.req.url);
       if([...url.searchParams.keys()].some((key)=>!['from_date','to_date'].includes(key)))throw new Error('INVALID_QUERY');
       const from=parseDate(url.searchParams.get('from_date'));
@@ -31,14 +31,16 @@ export function registerAdminAcquisitionDailyRoutes(app:Hono<any>):void{
       context.header('Cache-Control','no-store');
       return context.json(apiSuccess(data,requestId));
     }catch(error){
-      const code=error instanceof Error&&['INVALID_QUERY','INVALID_RANGE'].includes(error.message)?'VALIDATION_ERROR':'DEPENDENCY_UNAVAILABLE';
-      const status=code==='VALIDATION_ERROR'?400:503;
-      return context.json(apiFailure(code,code==='VALIDATION_ERROR'?'日期范围不正确':'经营数据暂时无法加载',requestId),status);
+      if(error instanceof Error&&error.message==='FORBIDDEN')return forbidden(context,requestId);
+      if(error instanceof Error&&['INVALID_QUERY','INVALID_RANGE'].includes(error.message)){
+        return context.json(apiFailure('VALIDATION_ERROR','日期范围不正确',requestId),400);
+      }
+      return context.json(apiFailure('DEPENDENCY_UNAVAILABLE','经营数据暂时无法加载',requestId),503);
     }
   });
 }
 
-async function readDaily(database:any,from:string,to:string){
+async function readDaily(database:SqlDatabase,from:string,to:string){
   const [channelRows,customerRows,buyerOrderRows,sellerOrderRows,buyerRegistrations,formalOrders]=await Promise.all([
     database.prepare(`SELECT channel.id AS channel_id,channel.display_name AS channel_name,
       channel.platform_name,channel.lead_type,channel.marketplace_code,privacy.staff_label
@@ -78,13 +80,13 @@ async function readDaily(database:any,from:string,to:string){
       FROM formal_orders WHERE confirmed_business_date BETWEEN ? AND ?
       GROUP BY confirmed_business_date`).bind(from,to).all<DailyCountRow>(),
   ]);
-  const meta=new Map<string,ChannelMetaRow>(channelRows.results.map((row:ChannelMetaRow)=>[row.channel_id,row]));
+  const meta=new Map<string,ChannelMetaRow>(channelRows.results.map((row)=>[row.channel_id,row]));
   const customerMap=new Map<string,number>();
-  for(const row of customerRows.results as CustomerRow[])customerMap.set(key(row.business_date,row.channel_id,row.lead_type),Number(row.count));
+  for(const row of customerRows.results)customerMap.set(key(row.business_date,row.channel_id,row.lead_type),Number(row.count));
   const orderMap=new Map<string,number>();
-  for(const row of [...buyerOrderRows.results,...sellerOrderRows.results] as OrderRow[])orderMap.set(key(row.business_date,row.channel_id,row.lead_type),Number(row.count));
-  const registrationMap=new Map<string,number>((buyerRegistrations.results as DailyCountRow[]).map((row)=>[row.business_date,Number(row.count)]));
-  const formalOrderMap=new Map<string,number>((formalOrders.results as DailyCountRow[]).map((row)=>[row.business_date,Number(row.count)]));
+  for(const row of [...buyerOrderRows.results,...sellerOrderRows.results])orderMap.set(key(row.business_date,row.channel_id,row.lead_type),Number(row.count));
+  const registrationMap=new Map<string,number>(buyerRegistrations.results.map((row)=>[row.business_date,Number(row.count)]));
+  const formalOrderMap=new Map<string,number>(formalOrders.results.map((row)=>[row.business_date,Number(row.count)]));
   const days=dateList(from,to);
   const daily=days.map((business_date)=>({
     business_date,
@@ -93,10 +95,14 @@ async function readDaily(database:any,from:string,to:string){
     buyer_portal_registrations:registrationMap.get(business_date)??0,
     formal_orders:formalOrderMap.get(business_date)??0,
   }));
-  const channelDaily:unknown[]=[];
+  const channelDaily:{
+    business_date:string;channel_id:string;channel_name:string;channel_label:string;platform_name:string;
+    lead_type:'BUYER'|'SELLER';marketplace_code:string;new_customer_count:number;formal_order_count:number;
+  }[]=[];
   for(const business_date of days){
     for(const channel of meta.values()){
-      for(const leadType of channel.lead_type==='BOTH'?['BUYER','SELLER'] as const:[channel.lead_type] as const){
+      const leadTypes:readonly ('BUYER'|'SELLER')[]=channel.lead_type==='BOTH'?['BUYER','SELLER']:[channel.lead_type];
+      for(const leadType of leadTypes){
         const newCustomerCount=customerMap.get(key(business_date,channel.channel_id,leadType))??0;
         const formalOrderCount=orderMap.get(key(business_date,channel.channel_id,leadType))??0;
         if(newCustomerCount===0&&formalOrderCount===0)continue;
@@ -126,6 +132,7 @@ function requireOwner(context:Context<any>):AssignmentStaffAuthorization{
   if(!actor||!actor.roles.has('owner'))throw new Error('FORBIDDEN');
   return actor;
 }
+function forbidden(context:Context<any>,requestId:string){return context.json(apiFailure('FORBIDDEN','只有总管理员可以查看该经营数据',requestId),403);}
 function parseDate(value:string|null):string{
   if(!value)throw new Error('INVALID_QUERY');
   try{return parseChinaBusinessDate(value);}catch{throw new Error('INVALID_QUERY');}
