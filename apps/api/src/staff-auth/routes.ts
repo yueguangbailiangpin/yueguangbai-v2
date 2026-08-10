@@ -39,6 +39,7 @@ import { logoutAllStaffSessions } from './logout-all';
 import { readCommittedLogoutAllReplay } from './logout-all-replay';
 import {
   FeishuStaffAuthProvider,
+  isAllowedRelativeReturnTo,
   requireStaffAuthConfig,
   type StaffAuthRuntimeConfig,
   withStaffProviderTimeout,
@@ -594,7 +595,25 @@ function cleanReturnTo(
   value: unknown,
   config: StaffAuthRuntimeConfig,
 ): string {
-  if (typeof value !== 'string' || !config.allowedReturnTo.has(value)) {
+  if (typeof value !== 'string' || !isAllowedRelativeReturnTo(value)) {
+    throw new StaffAuthError('VALIDATION_ERROR', 400);
+  }
+  const base = 'https://staff-return.invalid';
+  const target = new URL(value, base);
+  const allowed = [...config.allowedReturnTo].some((configured) => {
+    if (configured === value) return true;
+    const root = new URL(configured, base);
+    if (root.search || root.hash) return false;
+    const rootPath = root.pathname === '/'
+      ? '/'
+      : root.pathname.replace(/\/+$/u, '');
+    return rootPath !== '/'
+      && (target.pathname === rootPath
+        || target.pathname.startsWith(`${rootPath}/`));
+  });
+  if (!allowed
+    || target.pathname.endsWith('/login')
+    || target.pathname.includes('/auth/callback')) {
     throw new StaffAuthError('VALIDATION_ERROR', 400);
   }
   return value;

@@ -134,6 +134,49 @@ async function login(target: SqliteDatabase): Promise<{
 }
 
 describe('Wave 13 Staff authentication and production entry', () => {
+  it('accepts a Staff subroute return path and rejects prefix or traversal escapes', async () => {
+    database = createMigratedTestDatabase();
+    const bindings = env(database);
+    const nested = await app.request(
+      'https://api.example.test/api/staff-auth/login/start',
+      {
+        method: 'POST',
+        headers: {
+          Origin: 'https://staff.example.test',
+          'Sec-Fetch-Site': 'same-site',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          return_to: '/staff/seller-principal-rate-policies?source_currency_code=JPY',
+        }),
+      },
+      bindings,
+    );
+    expect(nested.status).toBe(200);
+    expect(database.raw.prepare(`
+      SELECT return_to FROM staff_login_states ORDER BY created_at DESC LIMIT 1
+    `).get()).toEqual({
+      return_to: '/staff/seller-principal-rate-policies?source_currency_code=JPY',
+    });
+
+    for (const returnTo of ['/staff-evil', '/staff/../buyer', '/staff/login']) {
+      const response = await app.request(
+        'https://api.example.test/api/staff-auth/login/start',
+        {
+          method: 'POST',
+          headers: {
+            Origin: 'https://staff.example.test',
+            'Sec-Fetch-Site': 'same-site',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ return_to: returnTo }),
+        },
+        bindings,
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+
   it('uses 256-bit opaque tokens and fixed absolute TTLs', async () => {
     const token = generateStaffOpaqueToken();
     expect(token).toHaveLength(43);

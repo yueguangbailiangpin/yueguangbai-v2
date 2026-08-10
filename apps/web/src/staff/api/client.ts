@@ -19,7 +19,7 @@ import {
   staffProductPageSchema, staffReservationSchedulePageSchema,
   staffAccessOverviewSchema, createStaffBindingInvitationSchema,
   cancelStaffBindingInvitationSchema, staffAccessMutationSchema,
-  staffSellerPrincipalRatePolicySchema, staffSellerPrincipalRatePolicyMutationSchema,
+  staffSellerPrincipalRatePoliciesResponseSchema, staffSellerPrincipalRatePolicyMutationSchema,
 } from '../contracts/runtime';
 
 const acquisitionChannelResultSchema = z.object({ channel: acquisitionChannelSchema, replayed: z.boolean() }).strict();
@@ -129,7 +129,11 @@ export const staffApi = Object.freeze({
     }
     return read(client,
       `/api/staff/seller-principal-rate-policies?${parameters}`,
-      staffSellerPrincipalRatePolicySchema, signal);
+      staffSellerPrincipalRatePoliciesResponseSchema, signal)
+      .then((response) => ({
+        data: response.data.policies,
+        requestId: response.requestId,
+      }));
   },
   submitSellerPrincipalRatePolicy: (client: QueryClient, body: unknown, key: string) => write(
     client, '/api/staff/seller-principal-rate-policies/submit', body,

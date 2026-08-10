@@ -19,7 +19,7 @@ describe('卖家本金汇率策略 Staff 工作台', () => {
     const requests: { path: string; body: unknown }[] = [];
     server.use(
       http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () => HttpResponse.json({
-        data: readPayload(), meta: { request_id: 'policy-read' },
+        data: { policies: readPayload() }, meta: { request_id: 'policy-read' },
       })),
       http.post(apiUrl('/api/staff/seller-principal-rate-policies/:id/confirm'), async ({ request, params }) => {
         requests.push({ path: `confirm:${params['id']}`, body: await request.json() });
@@ -52,7 +52,10 @@ describe('卖家本金汇率策略 Staff 工作台', () => {
     let key: string | null = null;
     server.use(
       http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () => HttpResponse.json({
-        data: readPayload({ default_pending_policy: null, seller_override_pending_policy: null }),
+        data: { policies: readPayload({
+          default_pending_policy: null,
+          seller_override_pending_policy: null,
+        }) },
         meta: { request_id: 'policy-read' },
       })),
       http.post(apiUrl('/api/staff/seller-principal-rate-policies/submit'), async ({ request }) => {
@@ -85,14 +88,16 @@ describe('卖家本金汇率策略 Staff 工作台', () => {
       http.get(apiUrl('/api/staff/seller-principal-rate-policies'), ({ request }) => {
         requestedOrganization = new URL(request.url).searchParams.get('seller_organization_id');
         return HttpResponse.json({
-          data: readPayload({
-            seller_organization_id: null,
-            seller_override_policy: null,
-            default_pending_policy: null,
-            seller_override_pending_policy: null,
-            seller_override_next_version: null,
-            selected_policy: policy('default-1', 'CONFIRMED', 2, '400000', null),
-          }),
+          data: {
+            policies: readPayload({
+              seller_organization_id: null,
+              seller_override_policy: null,
+              default_pending_policy: null,
+              seller_override_pending_policy: null,
+              seller_override_next_version: null,
+              selected_policy: policy('default-1', 'CONFIRMED', 2, '400000', null),
+            }),
+          },
           meta: { request_id: 'owner-read' },
         });
       }),

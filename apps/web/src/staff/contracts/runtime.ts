@@ -35,6 +35,9 @@ export const staffSellerPrincipalRatePolicySchema = z.object({
   seller_override_next_version: z.number().int().positive().nullable(),
   selected_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
 }).strict();
+export const staffSellerPrincipalRatePoliciesResponseSchema = z.object({
+  policies: staffSellerPrincipalRatePolicySchema,
+}).strict();
 export const staffSellerPrincipalRatePolicyMutationSchema = z.object({
   policy: sellerPrincipalRatePolicyVersionSchema,
 }).strict();
