@@ -9,36 +9,22 @@ import { registerBuyerSelfRegistrationRoutes } from './buyer-self-registration';
 import { registerStaffBuyerRefundRoutes } from './buyer-refunds/staff-routes';
 import { registerFileHttpRoutes } from './files';
 import { registerCustomerAuthRoutes } from './http-auth';
-import {
-  registerPublicCustomerSecurityRoutes,
-  registerStaffCustomerSecurityRoutes,
-} from './customer-security';
+import { registerPublicCustomerSecurityRoutes, registerStaffCustomerSecurityRoutes } from './customer-security';
 import { registerStaffFinanceRoutes } from './internal-finance';
 import { staffSessionMiddleware } from './middleware/staff-auth';
-import {
-  exactOneOrderEvidenceScreenshotGuard,
-  registerStaffOrderEvidenceRoutes,
-} from './order-evidence';
+import { exactOneOrderEvidenceScreenshotGuard, registerStaffOrderEvidenceRoutes } from './order-evidence';
 import { registerStaffReviewRoutes } from './reviews';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
 import { registerSellerOrderChatScreenshotRoutes } from './seller-order-chat-screenshots';
 import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
-import {
-  registerSellerSettlementRoutes,
-  registerStaffSellerSettlementProofRoutes,
-  registerStaffSellerSettlementRoutes,
-} from './seller-settlements';
+import { registerSellerSettlementRoutes, registerStaffSellerSettlementProofRoutes, registerStaffSellerSettlementRoutes } from './seller-settlements';
 import { registerStaffAssignmentRoutes } from './staff-assignment';
-import {
-  FeishuStaffAuthProvider,
-  registerStaffAuthRoutes,
-} from './staff-auth';
+import { registerCloudflareStaffAuthRoutes } from './staff-auth/access-routes';
 import { registerStaffCatalogWorkflowRoutes } from './staff-catalog-routes';
 import { registerMarketplaceFoundationRoutes } from './marketplaces/routes';
 import { registerScheduledOperationRoutes } from './scheduled-operations';
 import { registerColdImageArchiveRoutes } from './cold-image-archive';
-import { registerFeishuWorkbenchRoutes } from './feishu-workbench';
 import { registerAcquisitionRoutes } from './acquisition';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
 import { registerStaffMcpTransportRoutes } from './staff-mcp';
@@ -48,21 +34,15 @@ import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
 const app = createApp();
 
 registerStaffMcpTransportRoutes(app);
-
-// Public authentication endpoints are intentionally registered before the
-// protected Staff namespace. They issue the internal Worker session; Staff
-// business APIs never consume Feishu headers or Provider tokens directly.
 registerCustomerAuthRoutes(app);
 registerPublicCustomerSecurityRoutes(app);
-registerStaffAuthRoutes(app, {
-  providerFactory: (config, context) => (
-    context.env.STAFF_AUTH_PROVIDER_ADAPTER
-      ?? new FeishuStaffAuthProvider(config)
-  ),
-});
-registerFeishuWorkbenchRoutes(app);
 
-// This path middleware must precede every /api/staff route registration.
+// Staff authentication is now edge-first: Cloudflare Access verifies the email
+// identity and this route exchanges the verified Access JWT for Moonwhite's
+// internal Staff session. Feishu auth/workbench routes are intentionally not
+// registered in the active production composition.
+registerCloudflareStaffAuthRoutes(app);
+
 app.use('/api/staff/*', staffSessionMiddleware());
 registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
@@ -84,14 +64,8 @@ registerFileHttpRoutes(app);
 
 registerBuyerSelfRegistrationRoutes(app);
 registerBuyerPortalRoutes(app);
-app.use(
-  '/api/buyer-portal/order-evidence',
-  exactOneOrderEvidenceScreenshotGuard(),
-);
-app.use(
-  '/api/buyer-portal/order-evidence/:id/resubmit',
-  exactOneOrderEvidenceScreenshotGuard(),
-);
+app.use('/api/buyer-portal/order-evidence', exactOneOrderEvidenceScreenshotGuard());
+app.use('/api/buyer-portal/order-evidence/:id/resubmit', exactOneOrderEvidenceScreenshotGuard());
 registerBuyerOrderEvidencePortalRoutes(app);
 registerOrderInstructionRoutes(app);
 registerBuyerFormalOrderRoutes(app);
