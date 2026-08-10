@@ -37,11 +37,13 @@ describe('Feishu workbench activation preflight', () => {
     const config = anonymousActivationConfig('staging');
     config.vars.SCHEDULED_OPERATIONS_ENABLED = 'false';
     config.vars.ACQUISITION_MAINTENANCE_ENABLED = 'true';
+    config.vars.FEISHU_OPERATIONAL_ALERT_ENABLED = 'true';
     config.vars.FEISHU_WORKBENCH_API_ORIGIN = 'https://example.invalid';
     config.vars.FEISHU_WORKBENCH_APP_SECRET = 'must-not-be-in-vars';
     const errors = validateFeishuWorkbenchActivationConfig(config, 'staging', []);
     expect(errors).toContain('scheduled_operations:must_be_enabled');
     expect(errors).toContain('acquisition_maintenance:must_be_disabled');
+    expect(errors).toContain('operational_alert:must_remain_disabled');
     expect(errors).toContain('api_origin:official_origin_required');
     expect(errors).toContain('managed_secret.FEISHU_WORKBENCH_APP_SECRET:not_declared');
     expect(errors).toContain('vars.FEISHU_WORKBENCH_APP_SECRET:managed_secret_forbidden');

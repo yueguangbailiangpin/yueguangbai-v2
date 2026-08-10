@@ -41,6 +41,23 @@ describe('Feishu staff workbench production boundary', () => {
       FEISHU_WORKBENCH_REQUEST_TIMEOUT_MS:'3000',FEISHU_WORKBENCH_MAX_ATTEMPTS:'3',
       FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND:'10',
     })).toMatchObject({syncEnabled:true,callbackEnabled:false});
+    expect(feishuWorkbenchRuntime({
+      FEISHU_OPERATIONAL_ALERT_ENABLED:'true',FEISHU_WORKBENCH_WEB_ORIGIN:WEB_ORIGIN,
+      FEISHU_WORKBENCH_API_ORIGIN:'https://open.feishu.cn',FEISHU_WORKBENCH_APP_ID:APP_ID,
+      FEISHU_WORKBENCH_APP_SECRET:APP_SECRET,FEISHU_WORKBENCH_TENANT_KEY:TENANT_KEY,
+      FEISHU_WORKBENCH_REQUEST_TIMEOUT_MS:'3000',FEISHU_WORKBENCH_MAX_ATTEMPTS:'3',
+      FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND:'10',
+      FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND:'1',
+    })).toMatchObject({alertEnabled:false,alertSink:null});
+    expect(feishuWorkbenchRuntime({
+      FEISHU_OPERATIONAL_ALERT_ENABLED:'true',FEISHU_WORKBENCH_WEB_ORIGIN:WEB_ORIGIN,
+      FEISHU_WORKBENCH_API_ORIGIN:'https://open.feishu.cn',FEISHU_WORKBENCH_APP_ID:APP_ID,
+      FEISHU_WORKBENCH_APP_SECRET:APP_SECRET,FEISHU_WORKBENCH_TENANT_KEY:TENANT_KEY,
+      FEISHU_WORKBENCH_REQUEST_TIMEOUT_MS:'3000',FEISHU_WORKBENCH_MAX_ATTEMPTS:'3',
+      FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND:'10',
+      FEISHU_OPERATIONAL_ALERT_CHAT_ID:'oc_anonymous_internal_alerts',
+      FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND:'1',
+    })).toMatchObject({alertEnabled:true,syncEnabled:false});
   });
 
   it('enforces an anonymous summary whitelist and a controlled HTTPS deep link', () => {

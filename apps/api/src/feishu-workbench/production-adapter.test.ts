@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { FeishuWorkbenchTaskSummaryDto } from '@ygb/contracts';
+import type {
+  FeishuWorkbenchTaskSummaryDto,
+  ScheduledOperationalAlertNotificationDto,
+} from '@ygb/contracts';
 import { FeishuTaskV2Adapter } from './production-adapter';
 
 const OPTIONS = {
@@ -203,6 +206,78 @@ describe('Feishu Task v2 production adapter with anonymous transport', () => {
       update_fields:['summary','description','completed_at'],
     });
   });
+
+  it('sends only a fixed Chinese operational alert with stable Provider idempotency', async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const responses = [
+      json({ code: 0, tenant_access_token: 'anonymous-token', expire: 3600 }),
+      json({ code: 0, data: { message_id: 'om_anonymous_alert_1' } }),
+      json({ code: 0, data: { message_id: 'om_anonymous_alert_1' } }),
+    ];
+    const adapter = new FeishuTaskV2Adapter({
+      ...OPTIONS,
+      operationalAlertChatId: 'oc_anonymous_internal_alerts',
+      operationalAlertWebOrigin: 'https://staff.example.test',
+      operationalAlertRateLimitPerSecond: 5,
+      fetch: async (url, init) => {
+        requests.push({
+          url: String(url),
+          body: init?.body ? JSON.parse(String(init.body)) : {},
+        });
+        return responses.shift()!;
+      },
+      now: () => 1_000,
+    });
+    await adapter.notify(alert());
+    await adapter.notify(alert());
+    expect(adapter.failureSummaryCode).toBe('FEISHU_ADAPTER_FAILURE');
+    expect(requests.map((request) => request.url)).toEqual([
+      'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
+      'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id',
+      'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id',
+    ]);
+    expect(requests[1]?.body).toMatchObject({
+      receive_id: 'oc_anonymous_internal_alerts',
+      msg_type: 'text',
+    });
+    expect(requests[1]?.body['uuid']).toBe(requests[2]?.body['uuid']);
+    expect(String(requests[1]?.body['uuid'])).toMatch(/^ygb-alert-[0-9a-f]{40}$/u);
+    const content = JSON.parse(String(requests[1]?.body['content'])) as { text: string };
+    expect(content.text).toContain('【月光白 V2 运营告警】需处理');
+    expect(content.text).toContain('北京时间：2027-01-15 16:00:00 (UTC+8)');
+    expect(content.text).toContain('处理入口：https://staff.example.test/staff');
+    expect(content.text).not.toMatch(/open_id|chat_id|app_id|tenant|token|secret|buyer|seller|amount|object_key/iu);
+  });
+
+  it('refreshes a rejected alert token, enforces alert rate limit, and rejects unsafe success', async () => {
+    const responses = [
+      json({ code: 0, tenant_access_token: 'anonymous-old', expire: 3600 }),
+      json({ code: 99991663 }),
+      json({ code: 0, tenant_access_token: 'anonymous-new', expire: 3600 }),
+      json({ code: 0, data: { message_id: 'om_anonymous_refreshed' } }),
+    ];
+    const adapter = new FeishuTaskV2Adapter({
+      ...OPTIONS,
+      operationalAlertChatId: 'oc_anonymous_internal_alerts',
+      operationalAlertWebOrigin: 'https://staff.example.test',
+      fetch: async () => responses.shift()!,
+      now: () => 1_000,
+    });
+    await adapter.notify(alert());
+    await expect(adapter.notify(alert({ incident_version: 2 })))
+      .rejects.toMatchObject({ code: 'RATE_LIMITED', message: 'RATE_LIMITED' });
+
+    const malformed = new FeishuTaskV2Adapter({
+      ...OPTIONS,
+      operationalAlertChatId: 'oc_anonymous_internal_alerts',
+      operationalAlertWebOrigin: 'https://staff.example.test',
+      fetch: async (url) => String(url).includes('/auth/')
+        ? json({ code: 0, tenant_access_token: 'anonymous-token', expire: 3600 })
+        : json({ code: 0, data: { message_id: '../../unsafe' } }),
+    });
+    await expect(malformed.notify(alert()))
+      .rejects.toMatchObject({ code: 'CONTRACT', message: 'CONTRACT' });
+  });
 });
 
 function summary(overrides: Partial<FeishuWorkbenchTaskSummaryDto> = {}): FeishuWorkbenchTaskSummaryDto {
@@ -211,6 +286,24 @@ function summary(overrides: Partial<FeishuWorkbenchTaskSummaryDto> = {}): Feishu
     assignee_open_id: 'ou_anonymous_assignee', updated_at: 1_800_000_000_000,
     safe_title: '待处理预约决策', deep_link: 'https://staff.example.test/staff/work-items/opaque-local-reference',
     time_basis: 'UTC_MS', display_timezone: 'Asia/Shanghai', ...overrides,
+  };
+}
+
+function alert(
+  overrides: Partial<ScheduledOperationalAlertNotificationDto> = {},
+): ScheduledOperationalAlertNotificationDto {
+  return {
+    signal_type: 'login_anomaly',
+    category: 'auth',
+    severity: 'CRITICAL',
+    summary_code: 'LOGIN_ANOMALY_DETECTED',
+    job_name: null,
+    notification_kind: 'OPENED',
+    status: 'OPEN',
+    observed_at: 1_800_000_000_000,
+    incident_version: 1,
+    count_value: 5,
+    ...overrides,
   };
 }
 

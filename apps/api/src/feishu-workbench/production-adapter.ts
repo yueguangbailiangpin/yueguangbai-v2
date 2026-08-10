@@ -1,8 +1,12 @@
 import {
   parseFeishuWorkbenchTaskSummaryDto,
+  parseScheduledOperationalAlertNotificationDto,
   type FeishuWorkbenchAdapter,
   type FeishuWorkbenchTaskSummaryDto,
+  type ScheduledOperationalAlertNotificationDto,
+  type ScheduledOperationalSignalSummaryCode,
 } from '@ygb/contracts';
+import { hashCanonicalJson } from '@ygb/domain';
 import { FeishuWorkbenchAdapterError } from './mock-adapter';
 
 const OFFICIAL_API_ORIGIN = 'https://open.feishu.cn';
@@ -19,6 +23,9 @@ export interface FeishuTaskV2AdapterOptions {
   requestTimeoutMs?: number;
   maxAttempts?: number;
   rateLimitPerSecond?: number;
+  operationalAlertChatId?: string;
+  operationalAlertWebOrigin?: string;
+  operationalAlertRateLimitPerSecond?: number;
   fetch?: FetchLike;
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -36,6 +43,7 @@ class RetryableProviderError extends Error {
 }
 
 export class FeishuTaskV2Adapter implements FeishuWorkbenchAdapter {
+  readonly failureSummaryCode = 'FEISHU_ADAPTER_FAILURE' as const;
   private readonly apiOrigin: string;
   private readonly fetcher: FetchLike;
   private readonly now: () => number;
@@ -43,9 +51,13 @@ export class FeishuTaskV2Adapter implements FeishuWorkbenchAdapter {
   private readonly requestTimeoutMs: number;
   private readonly maxAttempts: number;
   private readonly rateLimitPerSecond: number;
+  private readonly operationalAlertChatId: string | null;
+  private readonly operationalAlertWebOrigin: string | null;
+  private readonly operationalAlertRateLimitPerSecond: number;
   private token: TokenCache | null = null;
   private tokenRefresh: Promise<string> | null = null;
   private requestTimes: number[] = [];
+  private operationalAlertRequestTimes: number[] = [];
 
   constructor(private readonly options: FeishuTaskV2AdapterOptions) {
     this.apiOrigin = options.apiOrigin ?? OFFICIAL_API_ORIGIN;
@@ -55,6 +67,20 @@ export class FeishuTaskV2Adapter implements FeishuWorkbenchAdapter {
     this.requestTimeoutMs = boundedInteger(options.requestTimeoutMs ?? 3_000, 100, 10_000);
     this.maxAttempts = boundedInteger(options.maxAttempts ?? 3, 1, 3);
     this.rateLimitPerSecond = boundedInteger(options.rateLimitPerSecond ?? 10, 1, 10);
+    const alertChatId = options.operationalAlertChatId ?? null;
+    const alertWebOrigin = options.operationalAlertWebOrigin ?? null;
+    if ((alertChatId === null) !== (alertWebOrigin === null)
+      || (alertChatId !== null && !providerChatId(alertChatId))
+      || (alertWebOrigin !== null && exactHttpsOrigin(alertWebOrigin) === null)) {
+      throw new FeishuWorkbenchAdapterError('CONTRACT');
+    }
+    this.operationalAlertChatId = alertChatId;
+    this.operationalAlertWebOrigin = alertWebOrigin;
+    this.operationalAlertRateLimitPerSecond = boundedInteger(
+      options.operationalAlertRateLimitPerSecond ?? 1,
+      1,
+      5,
+    );
     this.fetcher = options.fetch ?? fetch;
     this.now = options.now ?? Date.now;
     this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
@@ -107,6 +133,32 @@ export class FeishuTaskV2Adapter implements FeishuWorkbenchAdapter {
     });
     if (taskGuid(updated) !== previousMirrorKey) throw new FeishuWorkbenchAdapterError('CONTRACT');
     return { mirror_key: previousMirrorKey, adapter_version: input.work_item_version };
+  }
+
+  async notify(rawInput: ScheduledOperationalAlertNotificationDto): Promise<void> {
+    const input = parseScheduledOperationalAlertNotificationDto(rawInput);
+    if (this.operationalAlertChatId === null
+      || this.operationalAlertWebOrigin === null) {
+      throw new FeishuWorkbenchAdapterError('CONTRACT');
+    }
+    this.consumeOperationalAlertRateLimit();
+    const digest = await hashCanonicalJson({
+      kind: 'FEISHU_OPERATIONAL_ALERT',
+      notification: input,
+    });
+    const response = await this.authorizedRequest(
+      'POST',
+      '/open-apis/im/v1/messages?receive_id_type=chat_id',
+      {
+        receive_id: this.operationalAlertChatId,
+        msg_type: 'text',
+        content: JSON.stringify({
+          text: operationalAlertText(input, this.operationalAlertWebOrigin),
+        }),
+        uuid: `ygb-alert-${digest.slice(0, 40)}`,
+      },
+    );
+    messageId(response);
   }
 
   private async tenantToken(): Promise<string> {
@@ -192,6 +244,17 @@ export class FeishuTaskV2Adapter implements FeishuWorkbenchAdapter {
     this.requestTimes.push(now);
   }
 
+  private consumeOperationalAlertRateLimit(): void {
+    const now = this.now();
+    this.operationalAlertRequestTimes = this.operationalAlertRequestTimes
+      .filter((value) => now - value < 1_000);
+    if (this.operationalAlertRequestTimes.length
+      >= this.operationalAlertRateLimitPerSecond) {
+      throw new FeishuWorkbenchAdapterError('RATE_LIMITED');
+    }
+    this.operationalAlertRequestTimes.push(now);
+  }
+
   private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
@@ -224,6 +287,59 @@ function taskMembers(value: unknown): ProviderMember[] {
     }
     return { id: record['id'], type: record['type'], role: record['role'] };
   });
+}
+function messageId(value: unknown): string {
+  const id = object(object(value)?.['data'])?.['message_id'];
+  if (!providerMessageId(id)) throw new FeishuWorkbenchAdapterError('CONTRACT');
+  return id;
+}
+function operationalAlertText(
+  input: ScheduledOperationalAlertNotificationDto,
+  webOrigin: string,
+): string {
+  const lifecycle = input.notification_kind === 'RESOLVED' ? '已恢复' : '需处理';
+  const severity = input.severity === 'CRITICAL' ? '严重' : '警告';
+  const job = input.job_name === null ? '全局' : jobLabel(input.job_name);
+  return [
+    `【月光白 V2 运营告警】${lifecycle}`,
+    `级别：${severity}`,
+    `摘要：${summaryLabel(input.summary_code)}`,
+    `作业：${job}`,
+    `事件版本：${input.incident_version}`,
+    `计数：${input.count_value}`,
+    `北京时间：${shanghaiTimestamp(input.observed_at)}`,
+    `处理入口：${webOrigin}/staff`,
+    '正式订单、财务、权限审批和归档操作必须回到月光白受控网页确认。',
+  ].join('\n');
+}
+function summaryLabel(value: ScheduledOperationalSignalSummaryCode): string {
+  switch (value) {
+    case 'WORKER_5XX_THRESHOLD': return '服务端错误达到阈值';
+    case 'JOB_SUCCESS_STALE': return '后台作业长时间未成功';
+    case 'JOB_LEASE_STUCK': return '后台作业租约停滞';
+    case 'JOB_BACKLOG_SUSTAINED': return '后台作业积压持续';
+    case 'FILE_PROCESSING_FAILURE': return '文件处理连续失败';
+    case 'LOGIN_ANOMALY_DETECTED': return '员工登录异常达到阈值';
+    case 'PRIMARY_ALERT_SINK_FAILURE': return '独立主告警通道失败';
+    case 'FEISHU_ADAPTER_FAILURE': return '飞书适配器连续失败';
+  }
+}
+function jobLabel(value: ScheduledOperationalAlertNotificationDto['job_name']): string {
+  switch (value) {
+    case 'reservation_expiry': return '预约到期释放';
+    case 'instruction_expiry': return '出单指令到期';
+    case 'outbox_delivery': return '通用 Outbox 投递';
+    case 'file_orphan_cleanup': return '文件孤儿清理';
+    case 'staff_auth_cleanup': return '员工认证临时数据清理';
+    case 'drive_archive': return 'Google Drive 归档';
+    case 'feishu_sync': return '飞书任务同步';
+    case null: return '全局';
+  }
+}
+function shanghaiTimestamp(value: number): string {
+  const date = new Date(value + 8 * 60 * 60 * 1_000);
+  if (!Number.isFinite(date.getTime())) throw new FeishuWorkbenchAdapterError('CONTRACT');
+  return `${date.toISOString().slice(0, 19).replace('T', ' ')} (UTC+8)`;
 }
 async function readJson(response: Response): Promise<unknown> {
   const length = response.headers.get('content-length');
@@ -258,6 +374,19 @@ function safe(value: unknown, maximum: number, minimum = 1): value is string {
 }
 function providerGuid(value: unknown): value is string {
   return safe(value, 200) && /^[A-Za-z0-9_-]+$/u.test(value);
+}
+function providerMessageId(value: unknown): value is string {
+  return safe(value, 200) && /^om_[A-Za-z0-9_-]+$/u.test(value);
+}
+function providerChatId(value: unknown): value is string {
+  return safe(value, 200) && /^oc_[A-Za-z0-9_-]+$/u.test(value);
+}
+function exactHttpsOrigin(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.origin === value
+      && !url.username && !url.password ? value : null;
+  } catch { return null; }
 }
 function boundedInteger(value: number, minimum: number, maximum: number): number {
   if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {

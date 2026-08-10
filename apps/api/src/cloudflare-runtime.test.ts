@@ -202,6 +202,38 @@ describe('production Cloudflare Worker runtime', () => {
       ...env,ACQUISITION_MAINTENANCE_ENABLED:'true',
     },executionContext)).status).toBe(503);
   });
+
+  it('accepts alerts only for one complete formal Feishu app identity', async () => {
+    const env=enabledStaffAuthBindings();
+    Object.assign(env,{
+      SCHEDULED_OPERATIONS_ENABLED:'true',
+      SCHEDULED_OPERATIONS_DISABLED_JOBS:'reservation_expiry,instruction_expiry,outbox_delivery,file_orphan_cleanup,staff_auth_cleanup,drive_archive',
+      ACQUISITION_MAINTENANCE_ENABLED:'false',
+      FEISHU_WORKBENCH_SYNC_ENABLED:'true',
+      FEISHU_WORKBENCH_CALLBACK_ENABLED:'true',
+      FEISHU_WORKBENCH_WEB_ORIGIN:origin,
+      FEISHU_WORKBENCH_API_ORIGIN:'https://open.feishu.cn',
+      FEISHU_WORKBENCH_APP_ID:'cli_anonymous_release',
+      FEISHU_WORKBENCH_APP_SECRET:'anonymous-secret-value-at-least-thirty-two-characters',
+      FEISHU_WORKBENCH_TENANT_KEY:'anonymous-tenant',
+      FEISHU_WORKBENCH_ENCRYPT_KEY:'anonymous-encrypt-key-at-least-thirty-two-characters',
+      FEISHU_WORKBENCH_VERIFICATION_TOKEN:'anonymous-verification-token',
+      FEISHU_WORKBENCH_REQUEST_TIMEOUT_MS:'3000',
+      FEISHU_WORKBENCH_MAX_ATTEMPTS:'3',
+      FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND:'10',
+      FEISHU_OPERATIONAL_ALERT_ENABLED:'true',
+      FEISHU_OPERATIONAL_ALERT_CHAT_ID:'oc_anonymous_internal_alerts',
+      FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND:'1',
+    });
+    expect((await worker.fetch(new Request(`${origin}/health`),env,executionContext)).status)
+      .toBe(200);
+    expect((await worker.fetch(new Request(`${origin}/health`),{
+      ...env,FEISHU_WORKBENCH_APP_ID:'cli_different_app',
+    },executionContext)).status).toBe(503);
+    expect((await worker.fetch(new Request(`${origin}/health`),{
+      ...env,FEISHU_OPERATIONAL_ALERT_CHAT_ID:'',
+    },executionContext)).status).toBe(503);
+  });
 });
 
 function bindings(): CloudflareWorkerBindings {
@@ -232,6 +264,7 @@ function bindings(): CloudflareWorkerBindings {
     DRIVE_ARCHIVE_R2_DELETE_ENABLED: 'false',
     FEISHU_WORKBENCH_SYNC_ENABLED: 'false',
     FEISHU_WORKBENCH_CALLBACK_ENABLED: 'false',
+    FEISHU_OPERATIONAL_ALERT_ENABLED: 'false',
     STAFF_AUTH_ENABLED: 'false',
     STAFF_MCP_ENABLED: 'false',
     STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED: 'false',

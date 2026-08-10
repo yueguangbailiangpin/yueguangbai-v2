@@ -105,14 +105,22 @@ export function resolveCloudflareRuntime(
     || (!scheduledEnabled && bindings.FEISHU_WORKBENCH_SYNC_ENABLED==='true')
     || !booleanFlag(bindings.FEISHU_WORKBENCH_SYNC_ENABLED)
     || !booleanFlag(bindings.FEISHU_WORKBENCH_CALLBACK_ENABLED)
+    || !booleanFlag(bindings.FEISHU_OPERATIONAL_ALERT_ENABLED)
     || (bindings.FEISHU_WORKBENCH_SYNC_ENABLED === 'true' && !feishu.syncEnabled)
     || (bindings.FEISHU_WORKBENCH_CALLBACK_ENABLED === 'true' && !feishu.callbackEnabled)
+    || (bindings.FEISHU_OPERATIONAL_ALERT_ENABLED === 'true'
+      && (!feishu.alertEnabled
+        || bindings.STAFF_AUTH_ENABLED !== 'true'
+        || bindings.FEISHU_WORKBENCH_SYNC_ENABLED !== 'true'
+        || bindings.FEISHU_WORKBENCH_CALLBACK_ENABLED !== 'true'
+        || bindings.STAFF_AUTH_FEISHU_APP_ID !== bindings.FEISHU_WORKBENCH_APP_ID
+        || bindings.STAFF_AUTH_FEISHU_TENANT_KEY !== bindings.FEISHU_WORKBENCH_TENANT_KEY))
     || bindings.OPERATIONAL_ALERT_MODE !== 'disabled') return null;
 
   return Object.freeze({
     environment,
     appOrigin,
-    appBindings: releaseAppBindings(bindings, storage),
+    appBindings: releaseAppBindings(bindings, storage, feishu.alertSink),
     assets: bindings.WEB_ASSETS,
   });
 }
@@ -225,10 +233,12 @@ function isStaticAssetBinding(value: unknown): value is StaticAssetBinding {
 function releaseAppBindings(
   bindings: CloudflareWorkerBindings,
   storage: ObjectStorageAdapter,
+  feishuAlertSink:AppBindings['FEISHU_OPERATIONAL_ALERT_SINK']|null,
 ): AppBindings {
   const result: Record<string, unknown> = {
     ...bindings,
     FILE_OBJECT_STORAGE: storage,
+    ...(feishuAlertSink?{FEISHU_OPERATIONAL_ALERT_SINK:feishuAlertSink}:{}),
   };
   if (bindings.STAFF_AUTH_ENABLED === 'false') {
     for (const name of DISABLED_STAFF_AUTH_BINDINGS) delete result[name];

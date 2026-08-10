@@ -46,6 +46,16 @@ adapter 的第三个入参是固定命名空间与不可变 `work_item_id` 的 S
 
 公开 callback 在读取前以 16 KiB 原始 UTF-8 body 上限流式限制，随后对同一原文验签；安全中文 toast 指示员工回月光白网页确认正式动作，响应为 `Cache-Control: no-store`。本 Change 的 Migration 决策是 `NO_SCHEMA_CHANGE`：0033 已提供 mirrors/receipts，0034 已提供三种飞书死信分类，现有 identity 表已提供 tenant/open_id 映射；不得修改历史 Migration 或新建空 Migration。
 
+## 运营告警安全消息
+
+`FEISHU_OPERATIONAL_ALERT_ENABLED` 独立且默认关闭。只有正式应用的 App/Tenant/Secret、官方 API origin、受控 Web origin、托管私有群 Chat ID 与数值边界全部有效时，production adapter 才提供告警 sink；配置不完整时不得请求 tenant token 或消息接口。
+
+告警固定调用 `POST /open-apis/im/v1/messages?receive_id_type=chat_id`，只发送严格运营通知 DTO 映射出的中文纯文本和受控 `/staff` 链接。Provider UUID 从完整 DTO 的规范哈希确定性派生，配合现有 observation 去重、阈值、冷却和恢复逻辑避免重复。不得发送客户内容、Staff/open_id、订单或财务事实、原始错误、凭证、任意 URL、@人、按钮或正式业务动作。
+
+飞书告警仅为辅助安全消息，失败固定记录为脱敏 `FEISHU_ADAPTER_FAILURE`，不得覆盖独立主告警 sink 的失败证据，也不得回滚业务或调度结果。Task v2 同步继续使用既有无 payload dead letter；告警失败从当前 incident/state 重建通知，不新增消息正文或接收方存储。正式订单、财务、权限审批和审计仍回到受控 Web/D1。
+
+同一正式应用组合激活必须通过 `npm run preflight:feishu-production-app`；精确 scope、入口、callback、可用范围、发布审批和回滚步骤见 [正式自建应用与运营告警运行手册](../runbooks/FEISHU_PRODUCTION_APP_AND_ALERTS.md)。
+
 ## 回滚
 
 关闭 outbound 或 inbound 开关即可停止相应入口；既有内部 Staff Session、受控 Web 和 D1 业务继续运行。镜像可从 D1 重建，回滚不得从飞书恢复或覆写业务事实，不得撤销已经合法完成的 D1 命令。

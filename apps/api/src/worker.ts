@@ -53,7 +53,7 @@ export default {
       const deadlineReached=()=>Date.now()-startedAt>=SCHEDULED_HANDLER_TIME_BUDGET_MS;
       const drive=driveArchiveRuntime(env);
       const feishu=feishuWorkbenchRuntime(env);
-      const sink=configuredAlertSink(env);
+      const sink=configuredAlertSink(env,feishu.alertSink);
       await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,feishuAdapter:feishu.adapter,feishuWebOrigin:feishu.webOrigin,feishuTenantKey:feishu.tenantKey,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled,...(sink?{alertSink:sink}:{}),now,deadlineReached });
       if (env.ACQUISITION_MAINTENANCE_ENABLED === 'true') {
         await runAcquisitionMaintenance(env.DB, {

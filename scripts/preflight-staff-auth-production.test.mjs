@@ -32,6 +32,7 @@ describe('Staff Auth Feishu production activation preflight', () => {
     config.vars.STAFF_AUTH_FEISHU_SCOPE = 'contact:user:readonly';
     config.vars.STAFF_AUTH_ALLOWED_ORIGINS = 'https://other.invalid';
     config.vars.FEISHU_WORKBENCH_SYNC_ENABLED = 'true';
+    config.vars.FEISHU_OPERATIONAL_ALERT_ENABLED = 'true';
     config.vars.STAFF_AUTH_HASH_SECRET = 'must-not-appear';
     const errors = validateStaffAuthActivationConfig(config, 'production', []);
     expect(errors).toEqual(expect.arrayContaining([
@@ -39,6 +40,7 @@ describe('Staff Auth Feishu production activation preflight', () => {
       'vars.STAFF_AUTH_FEISHU_SCOPE:invalid',
       'vars.STAFF_AUTH_ALLOWED_ORIGINS:origin_mismatch',
       'vars.FEISHU_WORKBENCH_SYNC_ENABLED:must_remain_false',
+      'vars.FEISHU_OPERATIONAL_ALERT_ENABLED:must_remain_false',
       'managed_secret.STAFF_AUTH_HASH_SECRET:not_declared',
       'vars.STAFF_AUTH_HASH_SECRET:managed_secret_forbidden',
     ]));
@@ -74,6 +76,7 @@ function activationConfig() {
     DRIVE_ARCHIVE_R2_DELETE_ENABLED: 'false',
     FEISHU_WORKBENCH_SYNC_ENABLED: 'false',
     FEISHU_WORKBENCH_CALLBACK_ENABLED: 'false',
+    FEISHU_OPERATIONAL_ALERT_ENABLED: 'false',
     STAFF_MCP_ENABLED: 'false',
     STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED: 'false',
     STAFF_MCP_LOCAL_MOCK_ENABLED: 'false',

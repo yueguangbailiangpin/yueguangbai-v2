@@ -17,6 +17,7 @@ export function inspectFeishuWorkbenchActivationTemplate(environment) {
   const errors = validateTemplateFields(vars, environment);
   if (vars?.FEISHU_WORKBENCH_SYNC_ENABLED !== 'false') errors.push('sync:default_must_be_disabled');
   if (vars?.FEISHU_WORKBENCH_CALLBACK_ENABLED !== 'false') errors.push('callback:default_must_be_disabled');
+  if (vars?.FEISHU_OPERATIONAL_ALERT_ENABLED !== 'false') errors.push('operational_alert:template_must_be_disabled');
   if (vars?.ACQUISITION_MAINTENANCE_ENABLED !== 'false') errors.push('acquisition_maintenance:template_must_be_disabled');
   if (vars?.STAFF_AUTH_ENABLED !== 'false') errors.push('staff_auth:template_default_must_remain_independent_and_disabled');
   return Object.freeze({
@@ -90,6 +91,7 @@ export function validateFeishuWorkbenchActivationConfig(config, environment, dec
   }
   if (vars?.FEISHU_WORKBENCH_SYNC_ENABLED !== 'true') errors.push('sync:not_enabled');
   if (vars?.FEISHU_WORKBENCH_CALLBACK_ENABLED !== 'true') errors.push('callback:not_enabled');
+  if (vars?.FEISHU_OPERATIONAL_ALERT_ENABLED !== 'false') errors.push('operational_alert:must_remain_disabled');
   const declared = new Set(declaredSecretNames);
   for (const name of feishuWorkbenchManagedSecretNames) {
     if (!declared.has(name)) errors.push(`managed_secret.${name}:not_declared`);

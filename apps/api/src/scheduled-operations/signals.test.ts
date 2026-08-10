@@ -103,6 +103,26 @@ describe('scheduled operational signal evaluation',()=>{
     expect(await count(database,'scheduled_operational_signals')).toBe(2);
   });
 
+  it('records a Feishu sink failure without overwriting primary sink identity',async()=>{
+    database=createMigratedTestDatabase();
+    const sink={
+      failureSummaryCode:'FEISHU_ADAPTER_FAILURE' as const,
+      async notify(){ throw new Error('provider detail must not persist'); },
+    };
+    const result=await ingestScheduledOperationalSignal(
+      database,workerObservation(430,1_000,3),{sink},
+    );
+    expect(result).toMatchObject({status:'OPEN',notification:'FAILED'});
+    const observations=(await database.prepare(
+      "SELECT summary_code FROM scheduled_operational_signals ORDER BY summary_code",
+    ).all()).results;
+    expect(observations).toEqual([
+      {summary_code:'FEISHU_ADAPTER_FAILURE'},
+      {summary_code:'WORKER_5XX_THRESHOLD'},
+    ]);
+    expect(JSON.stringify(observations)).not.toContain('provider detail');
+  });
+
   it('keeps primary and future Feishu adapter incidents as separate alert identities',async()=>{
     database=createMigratedTestDatabase();
     await ingestScheduledOperationalSignal(database,workerObservation(450,1_000,3),{sink:new MemoryOperationalAlertSink(()=>true)});

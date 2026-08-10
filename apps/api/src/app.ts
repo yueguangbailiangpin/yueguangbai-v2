@@ -22,7 +22,7 @@ import {
 } from './observability';
 import {
   recordWorker5xxSignal,
-  safeResolveOperationalAlertSink,
+  resolveOperationalAlertSink,
   type OperationalAlertSink,
 } from './scheduled-operations/signals';
 
@@ -66,6 +66,10 @@ export type AppBindings = StaffAuthProviderBindings
   FEISHU_WORKBENCH_MAX_ATTEMPTS?: string;
   FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND?: string;
   FEISHU_WORKBENCH_ADAPTER?: FeishuWorkbenchAdapter;
+  FEISHU_OPERATIONAL_ALERT_ENABLED?: string;
+  FEISHU_OPERATIONAL_ALERT_CHAT_ID?: string;
+  FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND?: string;
+  FEISHU_OPERATIONAL_ALERT_SINK?: OperationalAlertSink;
   SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED?: string;
 };
 
@@ -165,6 +169,19 @@ export function createApp(): Hono<AppEnv> {
   return app;
 }
 
-export function configuredAlertSink(bindings:Pick<AppBindings,'OPERATIONAL_ALERT_MODE'|'OPERATIONAL_ALERT_SINK'>):OperationalAlertSink|null {
-  return safeResolveOperationalAlertSink({...((bindings.OPERATIONAL_ALERT_MODE!==undefined)?{mode:bindings.OPERATIONAL_ALERT_MODE}:{}),...(bindings.OPERATIONAL_ALERT_SINK?{localSink:bindings.OPERATIONAL_ALERT_SINK}:{})});
+export function configuredAlertSink(
+  bindings:Pick<AppBindings,
+    'OPERATIONAL_ALERT_MODE'|'OPERATIONAL_ALERT_SINK'|'FEISHU_OPERATIONAL_ALERT_SINK'>,
+  feishuSink:OperationalAlertSink|null=bindings.FEISHU_OPERATIONAL_ALERT_SINK??null,
+):OperationalAlertSink|null {
+  try {
+    const primary=resolveOperationalAlertSink({
+      ...((bindings.OPERATIONAL_ALERT_MODE!==undefined)
+        ?{mode:bindings.OPERATIONAL_ALERT_MODE}:{}),
+      ...(bindings.OPERATIONAL_ALERT_SINK
+        ?{localSink:bindings.OPERATIONAL_ALERT_SINK}:{}),
+    });
+    if(primary!==null&&feishuSink!==null)return null;
+    return primary??feishuSink;
+  } catch { return null; }
 }

@@ -76,6 +76,7 @@ interface ComputedAlertState extends AlertStateRow {
 }
 
 export interface OperationalAlertSink {
+  readonly failureSummaryCode?: 'PRIMARY_ALERT_SINK_FAILURE'|'FEISHU_ADAPTER_FAILURE';
   notify(notification: ScheduledOperationalAlertNotificationDto): Promise<void>;
 }
 
@@ -159,7 +160,12 @@ export async function ingestScheduledOperationalSignal(
       return {disposition:'EVALUATED',notification:'SENT',status:computed.status,incident_version:computed.incident_version};
     } catch {
       await database.prepare('UPDATE scheduled_alert_states SET suppressed_until=COALESCE(cooldown_until,?),updated_at=? WHERE signal_type=? AND job_name=? AND summary_code=?').bind(input.observed_at,input.observed_at,input.signal_type,jobKey,policy.summaryCode).run();
-      await recordAlertSinkFailure(database,input,computed.incident_version).catch(()=>undefined);
+      await recordAlertSinkFailure(
+        database,
+        input,
+        computed.incident_version,
+        options.sink?.failureSummaryCode ?? 'PRIMARY_ALERT_SINK_FAILURE',
+      ).catch(()=>undefined);
       return {disposition:'EVALUATED',notification:'FAILED',status:computed.status,incident_version:computed.incident_version};
     }
   }
@@ -353,9 +359,14 @@ function validateSafeSourceFact(value:string,observedAt:number) {
   if (typeof value!=='string' || value.length<1 || value.length>200 || /[\u0000-\u001f\u007f]/u.test(value) || !Number.isSafeInteger(observedAt) || observedAt<0) throw new Error('invalid_operational_signal_source');
 }
 
-async function recordAlertSinkFailure(database:SqlDatabase,source:ScheduledOperationalSignalObservationDto,incidentVersion:number) {
-  const observationId=await hashCanonicalJson({kind:'PRIMARY_ALERT_SINK_FAILURE',source_observation_id:source.observation_id,incident_version:incidentVersion});
-  await ingestScheduledOperationalSignal(database,{observation_id:observationId,signal_type:'external_adapter_failure',summary_code:'PRIMARY_ALERT_SINK_FAILURE',job_name:null,observation_state:'BREACH',observed_at:source.observed_at,count_value:1});
+async function recordAlertSinkFailure(
+  database:SqlDatabase,
+  source:ScheduledOperationalSignalObservationDto,
+  incidentVersion:number,
+  summaryCode:'PRIMARY_ALERT_SINK_FAILURE'|'FEISHU_ADAPTER_FAILURE',
+) {
+  const observationId=await hashCanonicalJson({kind:summaryCode,source_observation_id:source.observation_id,incident_version:incidentVersion});
+  await ingestScheduledOperationalSignal(database,{observation_id:observationId,signal_type:'external_adapter_failure',summary_code:summaryCode,job_name:null,observation_state:'BREACH',observed_at:source.observed_at,count_value:1});
 }
 
 async function ingestDerived(database:SqlDatabase,evaluation:{evaluationId:string;now:number},derived:{signalType:ScheduledOperationalSignalType;summaryCode:ScheduledOperationalSignalSummaryCode;jobName:ScheduledOperationJobName;breach:boolean;countValue:number},sink:OperationalAlertSink|null|undefined) {

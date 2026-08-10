@@ -31,7 +31,7 @@ Worker 的 Cron 配置只定义触发频率；`SCHEDULED_OPERATIONS_ENABLED` 必
 
 ## 告警与排障
 
-运营摘要包含最近成功/失败、积压、租约到期和失败分类。主告警接收器必须独立于飞书；本地只使用内存/mock/disabled sink，不配置外部凭证。固定策略如下：
+运营摘要包含最近成功/失败、积压、租约到期和失败分类。主告警接收器必须独立于飞书；当前仓库内主告警只使用内存/mock/disabled sink。默认关闭的飞书正式应用机器人仅可作为辅助安全消息通道，不能代替独立主告警。固定策略如下：
 
 | 信号 | 开启阈值 | 冷却 | 级别 |
 | --- | --- | --- | --- |
@@ -47,6 +47,8 @@ Worker 的 Cron 配置只定义触发频率；`SCHEDULED_OPERATIONS_ENABLED` 必
 连续两次健康评估自动恢复；事件型信号在观察窗口安静后由定时评估补充健康事实，因此不依赖新的业务事件才能恢复。重复 observation id 不重复计数或通知；恢复后复发建立新的 incident version。告警身份为 `signal_type + job_name + summary_code`，主告警 sink 与未来飞书 adapter 等独立故障不能互相覆盖。冷却期内继续持久化状态但不重复通知。sink 失败不影响原请求或作业，只写固定 `PRIMARY_ALERT_SINK_FAILURE` 信号且不得递归通知。信号、日志和 DTO 只能包含固定枚举、哈希 observation id、UTC 毫秒、整数计数及固定 job 名；禁止路径、用户 id、token、凭证、微信号、对象 key、原始错误、金额或客户内容。
 
 `OPERATIONAL_ALERT_MODE` 默认为 `disabled`；本 Change 唯一可启用值为 `local`。`local` 可使用内置安全日志 adapter 或注入内存 mock，二者都只接受正式通知 DTO。disabled 状态配置 adapter、未知 mode 或任何外部 adapter 名均视为无效配置并安全退回不发送。这里不读取外部凭证，也不发起网络调用。
+
+`FEISHU_OPERATIONAL_ALERT_ENABLED` 是另一条独立且默认关闭的辅助 sink 开关，不扩展 `OPERATIONAL_ALERT_MODE`。只有组合正式应用 preflight、独立主告警验收和管理员批准全部具备后，外部所有者才可在受控窗口启用。它只发送严格 DTO 映射出的固定中文摘要与受控 `/staff` 链接；复用现有 observation 去重、阈值、冷却、恢复和 incident version，另以稳定 Provider UUID 与每秒 1–5 次限流约束网络重试。接收群 ID 只允许通过托管 Secret `FEISHU_OPERATIONAL_ALERT_CHAT_ID` 注入，日志、D1 状态、死信和报告均不得保存该值或消息正文。发送失败只产生 `FEISHU_ADAPTER_FAILURE`，不会递归通知或回滚业务结果。
 
 Staff 登录拒绝、频控、State 重放/无效、身份拒绝、Cookie/Session 拒绝会从既有 security event id 派生 `LOGIN_ANOMALY_DETECTED`；正常登录不触发。飞书 Provider 失败单独使用 `FEISHU_ADAPTER_FAILURE`。该派生不得保存登录名、IP 原文、密码、token、User-Agent、Provider subject 或底层错误。
 

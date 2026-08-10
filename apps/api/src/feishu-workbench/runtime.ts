@@ -1,4 +1,5 @@
 import type { FeishuWorkbenchAdapter } from '@ygb/contracts';
+import type { OperationalAlertSink } from '../scheduled-operations/signals';
 import { FeishuTaskV2Adapter } from './production-adapter';
 
 export interface FeishuWorkbenchRuntimeBindings {
@@ -15,6 +16,10 @@ export interface FeishuWorkbenchRuntimeBindings {
   FEISHU_WORKBENCH_MAX_ATTEMPTS?: string;
   FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND?: string;
   FEISHU_WORKBENCH_ADAPTER?: FeishuWorkbenchAdapter;
+  FEISHU_OPERATIONAL_ALERT_ENABLED?: string;
+  FEISHU_OPERATIONAL_ALERT_CHAT_ID?: string;
+  FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND?: string;
+  FEISHU_OPERATIONAL_ALERT_SINK?: OperationalAlertSink;
 }
 
 export function feishuWorkbenchRuntime(bindings: FeishuWorkbenchRuntimeBindings) {
@@ -23,12 +28,24 @@ export function feishuWorkbenchRuntime(bindings: FeishuWorkbenchRuntimeBindings)
   const appId = cleanValue(bindings.FEISHU_WORKBENCH_APP_ID, 128);
   const encryptKey = cleanSecret(bindings.FEISHU_WORKBENCH_ENCRYPT_KEY);
   const verificationToken = cleanSecret(bindings.FEISHU_WORKBENCH_VERIFICATION_TOKEN, 16);
-  const adapter = bindings.FEISHU_WORKBENCH_SYNC_ENABLED === 'true'
+  const syncRequested = bindings.FEISHU_WORKBENCH_SYNC_ENABLED === 'true';
+  const alertRequested = bindings.FEISHU_OPERATIONAL_ALERT_ENABLED === 'true';
+  const needsProductionAdapter = (syncRequested
+    && bindings.FEISHU_WORKBENCH_ADAPTER === undefined)
+    || (alertRequested && bindings.FEISHU_OPERATIONAL_ALERT_SINK === undefined);
+  const productionAdapter = needsProductionAdapter
     && webOrigin !== null && tenantKey !== null
-    ? bindings.FEISHU_WORKBENCH_ADAPTER ?? createProductionAdapter(bindings,tenantKey,appId) : null;
+    ? createProductionAdapter(bindings, tenantKey, appId, webOrigin)
+    : null;
+  const adapter = syncRequested && webOrigin !== null && tenantKey !== null
+    ? bindings.FEISHU_WORKBENCH_ADAPTER ?? productionAdapter : null;
+  const alertSink = alertRequested && webOrigin !== null && tenantKey !== null
+    ? bindings.FEISHU_OPERATIONAL_ALERT_SINK ?? productionAdapter : null;
   return {
     adapter,
+    alertSink,
     syncEnabled: adapter !== null,
+    alertEnabled: alertSink !== null,
     callbackEnabled: bindings.FEISHU_WORKBENCH_CALLBACK_ENABLED === 'true'
       && tenantKey !== null && appId !== null && encryptKey !== null && verificationToken !== null,
     appId,
@@ -39,14 +56,39 @@ export function feishuWorkbenchRuntime(bindings: FeishuWorkbenchRuntimeBindings)
   } as const;
 }
 
-function createProductionAdapter(bindings:FeishuWorkbenchRuntimeBindings,tenantKey:string,appId:string|null):FeishuWorkbenchAdapter|null {
+function createProductionAdapter(
+  bindings:FeishuWorkbenchRuntimeBindings,
+  tenantKey:string,
+  appId:string|null,
+  webOrigin:string,
+):FeishuTaskV2Adapter|null {
   const appSecret=cleanSecret(bindings.FEISHU_WORKBENCH_APP_SECRET);
   if(!appId||!appSecret||bindings.FEISHU_WORKBENCH_API_ORIGIN!=='https://open.feishu.cn') return null;
   const requestTimeoutMs=integer(bindings.FEISHU_WORKBENCH_REQUEST_TIMEOUT_MS,100,10_000);
   const maxAttempts=integer(bindings.FEISHU_WORKBENCH_MAX_ATTEMPTS,1,3);
   const rateLimitPerSecond=integer(bindings.FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND,1,10);
-  if(requestTimeoutMs===null||maxAttempts===null||rateLimitPerSecond===null)return null;
-  try{return new FeishuTaskV2Adapter({apiOrigin:bindings.FEISHU_WORKBENCH_API_ORIGIN,appId,appSecret,tenantKey,requestTimeoutMs,maxAttempts,rateLimitPerSecond});}catch{return null;}
+  const alertEnabled=bindings.FEISHU_OPERATIONAL_ALERT_ENABLED==='true';
+  const operationalAlertChatId=alertEnabled
+    ? cleanSecret(bindings.FEISHU_OPERATIONAL_ALERT_CHAT_ID,8) : null;
+  const operationalAlertRateLimitPerSecond=alertEnabled
+    ? integer(bindings.FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND,1,5) : null;
+  if(requestTimeoutMs===null||maxAttempts===null||rateLimitPerSecond===null
+    ||(alertEnabled&&(operationalAlertChatId===null
+      ||operationalAlertRateLimitPerSecond===null)))return null;
+  try{return new FeishuTaskV2Adapter({
+    apiOrigin:bindings.FEISHU_WORKBENCH_API_ORIGIN,
+    appId,
+    appSecret,
+    tenantKey,
+    requestTimeoutMs,
+    maxAttempts,
+    rateLimitPerSecond,
+    ...(alertEnabled?{
+      operationalAlertChatId:operationalAlertChatId!,
+      operationalAlertWebOrigin:webOrigin,
+      operationalAlertRateLimitPerSecond:operationalAlertRateLimitPerSecond!,
+    }:{}),
+  });}catch{return null;}
 }
 function cleanSecret(value: string | undefined,minimum=32): string | null {
   return typeof value === 'string' && value.length >= minimum && value.length <= 1000 && !/[\u0000-\u001f\u007f]/u.test(value) ? value : null;

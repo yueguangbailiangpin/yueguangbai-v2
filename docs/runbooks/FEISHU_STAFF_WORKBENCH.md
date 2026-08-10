@@ -30,6 +30,8 @@ adapter 连续三次失败会产生固定、脱敏的 `FEISHU_ADAPTER_FAILURE` �
 
 - `FEISHU_WORKBENCH_SYNC_ENABLED=false`
 - `FEISHU_WORKBENCH_CALLBACK_ENABLED=false`
+- `FEISHU_OPERATIONAL_ALERT_ENABLED=false`
+- `FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND=1`
 - `ACQUISITION_MAINTENANCE_ENABLED=false`（飞书激活预检要求精确为 `false`）
 - `FEISHU_WORKBENCH_WEB_ORIGIN=https://<受控员工网页 origin>`
 - `FEISHU_WORKBENCH_API_ORIGIN=https://open.feishu.cn`（仅允许此精确值）
@@ -44,8 +46,9 @@ adapter 连续三次失败会产生固定、脱敏的 `FEISHU_ADAPTER_FAILURE` �
 - `FEISHU_WORKBENCH_APP_SECRET`
 - `FEISHU_WORKBENCH_ENCRYPT_KEY`
 - `FEISHU_WORKBENCH_VERIFICATION_TOKEN`
+- `FEISHU_OPERATIONAL_ALERT_CHAT_ID`（仅在独立批准辅助告警时声明）
 
-生产 callback 路径固定为 `<APP_ORIGIN>/api/feishu-workbench/callback`。Staff Auth 的 App、Secret、Tenant、redirect 和 `STAFF_AUTH_ENABLED` 是另一套独立配置；工作台不得要求或自动打开 Staff Auth。
+生产 callback 路径固定为 `<APP_ORIGIN>/api/feishu-workbench/callback`。Staff Auth 的 App、Secret、Tenant、redirect 和 `STAFF_AUTH_ENABLED` 是独立运行时配置；工作台单独激活不得要求或自动打开 Staff Auth。正式应用组合激活时，专用 preflight 要求 Staff Auth 与 Workbench 明确使用同一 App ID/Tenant，但仍保留各自 kill switch、callback 和 Secret 名称；详见 [正式自建应用与运营告警运行手册](./FEISHU_PRODUCTION_APP_AND_ALERTS.md)。
 
 飞书专用调度只允许 `SCHEDULED_OPERATIONS_ENABLED=true`、`FEISHU_WORKBENCH_SYNC_ENABLED=true`、六个标准作业全部 disabled 且 `ACQUISITION_MAINTENANCE_ENABLED=false` 的精确组合。获客维护不是 `SCHEDULED_OPERATIONS_DISABLED_JOBS` 中的标准作业，只有其独立开关精确为 `true` 时 Worker 才运行并读取 `CUSTOMER_SECURITY_TOKEN_SECRET`；缺失、`false` 或其他值均不读取该 Secret、不获取维护租约、不匿名化线索。当前 staging/production 激活边界拒绝把它与飞书同步同时开启。
 
@@ -63,7 +66,7 @@ adapter 连续三次失败会产生固定、脱敏的 `FEISHU_ADAPTER_FAILURE` �
 
 ## 最终业务所有者外部清单（本模块未执行）
 
-1. 创建并管理真实飞书应用、App ID/Secret、Encrypt Key、Verification Token、管理员授权与最小 `task:task:write` 等实际所需 scope。
+1. 创建并管理真实飞书应用、App ID/Secret、Encrypt Key、Verification Token、管理员授权与精确 `contact:user.base:readonly`、`task:task:write`、`im:message:send_as_bot` scope；不得申请消息读取权限或订阅消息事件。
 2. 以匿名数据验证 Task v2、tenant token、加密 challenge/card callback、深链接、API 限额和八员工/二百订单容量。
 3. 验证 callback URL、生产 HTTPS 域名、DNS、移动/联通/电信与飞书移动端可用性。
 4. 在独立审批后按 Secret 名称注入，先注册/验证 callback，再在受控窗口逐项启用 callback、调度和 sync；禁止直接启用真实业务或财务动作。

@@ -15,6 +15,7 @@ const disabledFlags = [
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
   'FEISHU_WORKBENCH_SYNC_ENABLED',
   'FEISHU_WORKBENCH_CALLBACK_ENABLED',
+  'FEISHU_OPERATIONAL_ALERT_ENABLED',
   'STAFF_AUTH_ENABLED',
   'STAFF_MCP_ENABLED',
   'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
@@ -37,6 +38,7 @@ export const requiredManagedSecrets = Object.freeze({
     'FEISHU_WORKBENCH_APP_SECRET',
     'FEISHU_WORKBENCH_ENCRYPT_KEY',
     'FEISHU_WORKBENCH_VERIFICATION_TOKEN',
+    'FEISHU_OPERATIONAL_ALERT_CHAT_ID',
     'STAFF_MCP_BINDING_HASH_SECRET',
   ]),
 });
@@ -163,6 +165,7 @@ export function validateReleaseConfig(config, environment) {
     ['FEISHU_WORKBENCH_REQUEST_TIMEOUT_MS', 100, 10_000],
     ['FEISHU_WORKBENCH_MAX_ATTEMPTS', 1, 3],
     ['FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND', 1, 10],
+    ['FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND', 1, 5],
   ]) {
     const value = String(vars?.[key] ?? '');
     if (!/^\d+$/u.test(value) || Number(value) < minimum || Number(value) > maximum) {
