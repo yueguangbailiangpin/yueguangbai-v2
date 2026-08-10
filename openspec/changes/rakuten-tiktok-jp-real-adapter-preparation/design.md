@@ -46,7 +46,7 @@ Even after future activation, webhook payloads may only wake reconciliation. Off
 
 ## Preflight and Rollback
 
-Explicit `--inspect` reports only the local implementation state and blockers. The activation preflight otherwise requires an absolute manifest outside the repository, validates non-secret evidence and declared managed-secret names, redacts values and performs no network call; a missing manifest exits nonzero. TikTok can reach `LOCAL_STRUCTURE_VALID_PRODUCTION_NO_GO`; Rakuten remains `BLOCKED_OFFICIAL_SPEC` until a dated official spec bundle and digest cover every unknown contract. Registry state, routes, scheduler and Cloudflare templates remain unchanged, so rollback is deletion/revert of unused local code with no schema or external cleanup.
+Explicit `--inspect` reports only the local implementation state and blockers. The activation preflight otherwise requires an absolute manifest outside the repository, validates non-secret evidence and declared managed-secret names, redacts values and performs no network call; a missing manifest exits nonzero. TikTok can reach `LOCAL_STRUCTURE_VALID_PRODUCTION_NO_GO`; Rakuten remains `BLOCKED_OFFICIAL_SPEC` until a dated official spec bundle and digest cover every unknown contract. Registry state remains unavailable, no Provider route or scheduler wiring is added, and Cloudflare templates receive no Rakuten/TikTok Provider binding. The verifier checks these platform-specific boundaries structurally instead of byte-locking shared composition or template files, so separately approved integrations do not create false failures. Rollback is deletion/revert of unused local code with no schema or external cleanup.
 
 Rejected alternatives:
 

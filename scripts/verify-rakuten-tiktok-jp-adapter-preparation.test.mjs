@@ -48,7 +48,7 @@ describe('Rakuten/TikTok adapter static verifier', () => {
     })).toContain('migration.no_schema_change_violated');
   });
 
-  it('detects a production composition-root import or Rakuten network call', () => {
+  it('detects a production adapter import or Rakuten network call', () => {
     const appPath = 'apps/api/src/app.ts';
     const rakutenPath =
       'apps/api/src/marketplace-adapters/unavailable-adapter.ts';
@@ -58,7 +58,6 @@ describe('Rakuten/TikTok adapter static verifier', () => {
         [rakutenPath]: `${read(rakutenPath)}\nfetch('https://example.invalid');\n`,
       },
     })).toEqual(expect.arrayContaining([
-      'runtime.composition_root_changed',
       'runtime.production_adapter_imported',
       'rakuten.network_call_present',
     ]));
@@ -77,9 +76,34 @@ describe('Rakuten/TikTok adapter static verifier', () => {
         [appPath]: mutated,
       },
     })).toEqual(expect.arrayContaining([
-      'runtime.composition_root_changed',
       'runtime.provider_route_registered',
     ]));
+  });
+
+  it('allows unrelated composition-root and template changes', () => {
+    const appPath = 'apps/api/src/app.ts';
+    const productionTemplate = 'apps/api/wrangler.production.template.jsonc';
+    const stagingTemplate = 'apps/api/wrangler.staging.template.jsonc';
+    expect(verifyRakutenTikTokAdapterPreparation({
+      sources: {
+        [appPath]: `${read(appPath)}\n// unrelated approved integration change\n`,
+        [productionTemplate]: `${read(productionTemplate)}\n// unrelated approved integration change\n`,
+        [stagingTemplate]: `${read(stagingTemplate)}\n// unrelated approved integration change\n`,
+      },
+    })).toEqual([]);
+  });
+
+  it('detects provider bindings without byte-locking templates', () => {
+    for (const template of [
+      'apps/api/wrangler.production.template.jsonc',
+      'apps/api/wrangler.staging.template.jsonc',
+    ]) {
+      expect(verifyRakutenTikTokAdapterPreparation({
+        sources: {
+          [template]: `${read(template)}\n// TIKTOK_SHOP_APP_SECRET\n`,
+        },
+      })).toContain(`template.${path.basename(template)}:provider_binding_present`);
+    }
   });
 });
 

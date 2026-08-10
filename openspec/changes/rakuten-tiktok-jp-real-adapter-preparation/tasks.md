@@ -31,3 +31,8 @@
 - [x] 5.1 Freeze exact singleton `application/json` response media-type handling and fail-closed stream cancellation in OpenSpec.
 - [x] 5.2 Implement the parser correction and regression tests, then rerun focused, strict OpenSpec and complete repository gates.
 - [x] 5.3 Create one scoped local correction commit and report the unchanged production/external-write boundary.
+
+## Integration Compatibility
+
+- [x] 6.1 Replace shared-file byte locks with structural checks for platform imports, routes, jobs and bindings.
+- [x] 6.2 Add regression coverage proving unrelated approved integration edits pass while platform wiring still fails closed.

@@ -121,9 +121,14 @@ The machine preflight MUST read activation evidence only from an absolute path o
 
 ### Requirement: schema and existing security boundaries remain unchanged
 
-This Change MUST use `NO_SCHEMA_CHANGE`, MUST add no migration and MUST leave marketplace registry rows, Worker bindings/templates, routes, scheduler job names, Seller Organization/Store authorization, Personal DENY, financial snapshots, platform identity uniqueness and immutable audit behavior unchanged.
+This Change MUST use `NO_SCHEMA_CHANGE`, MUST add no migration, MUST leave marketplace registry rows unavailable, and MUST add no Rakuten/TikTok Provider binding, route or scheduler job. Seller Organization/Store authorization, Personal DENY, financial snapshots, platform identity uniqueness and immutable audit behavior MUST remain unchanged. The static verifier MUST allow unrelated approved edits to shared composition and template files while still rejecting any platform-specific production wiring.
 
 #### Scenario: adapter cannot bypass canonical ingestion
 
 - **WHEN** a local adapter page is produced for an unauthorized, unknown or mismatched store
 - **THEN** no platform identity, formal order, evidence, money snapshot, audit or idempotency row is written because this Change exposes no ingestion method
+
+#### Scenario: Unrelated integrations do not weaken or trip the platform guard
+
+- **WHEN** another approved Change modifies a shared Worker composition root or deployment template without adding a Rakuten/TikTok import, route, job or Provider binding
+- **THEN** the platform guard still passes and continues to reject any later platform-specific production wiring

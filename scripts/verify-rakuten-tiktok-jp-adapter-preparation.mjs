@@ -10,23 +10,13 @@ const BASELINE_MIGRATION_TAIL =
   '0043_seller_principal_rate_integrity_hardening.sql';
 const BASELINE_MIGRATION_TREE_SHA256 =
   '3d0b1d40cc47d27d56661b99c7302d4f0da1825745cfb3b658ec2d0f704c78bf';
-const BASELINE_API_COMPOSITION_ROOT_SHA256 =
-  'd152a2e14c80d437b46ba8708e11fd6487440af60343282a0ea5fef5a8378927';
 const BASELINE_SCHEDULED_CONTRACT_SHA256 =
   '580bf9b5b1080cf61d9ff64bf25baf56477be8c472e9e838d5d3adca3b97e272';
-const BASELINE_TEMPLATE_SHA256 = Object.freeze({
-  'apps/api/wrangler.staging.template.jsonc':
-    'd7f42cd9fb50f6fc90cc85f4fe934d22c499865c6944e8a5f167162e00299591',
-  'apps/api/wrangler.production.template.jsonc':
-    'ae60710a3f3508817d3369816d82f91a21b7771e411e339c98d86f3a59746026',
-});
 
 export function verifyRakutenTikTokAdapterPreparation(overrides = {}) {
   const errors = [];
   const read = (relative) => overrides.sources?.[relative] ?? source(relative);
   const migration = read('migrations/0042_rakuten_tiktok_jp_marketplace_foundation.sql');
-  const app = read('apps/api/src/app.ts');
-  const workerEntry = read('apps/api/src/index.ts');
   const scheduledContract = read('packages/contracts/src/scheduled-operations.ts');
   const providerContract = read('packages/contracts/src/marketplace-provider.ts');
   const tiktok = read('apps/api/src/marketplace-adapters/tiktok-read-adapter.ts');
@@ -37,10 +27,6 @@ export function verifyRakutenTikTokAdapterPreparation(overrides = {}) {
     path.join(root, 'migrations'),
   ).filter((name) => name.endsWith('.sql')).sort();
   const migrationPaths = migrationFiles.map((name) => `migrations/${name}`);
-  const compositionRootFiles = [
-    'apps/api/src/app.ts',
-    'apps/api/src/index.ts',
-  ];
   const runtimeApiFiles = recursiveFiles('apps/api/src').filter(
     (relative) => relative.endsWith('.ts')
       && !relative.endsWith('.test.ts')
@@ -64,22 +50,18 @@ export function verifyRakutenTikTokAdapterPreparation(overrides = {}) {
     || digestSources(migrationPaths, read) !== BASELINE_MIGRATION_TREE_SHA256) {
     errors.push('migration.no_schema_change_violated');
   }
-  if (digestSources(compositionRootFiles, read)
-    !== BASELINE_API_COMPOSITION_ROOT_SHA256) {
-    errors.push('runtime.composition_root_changed');
-  }
   if (digestSources([
     'packages/contracts/src/scheduled-operations.ts',
   ], read) !== BASELINE_SCHEDULED_CONTRACT_SHA256) {
     errors.push('scheduler.contract_changed');
   }
-  forbidMatch(
-    `${app}\n${workerEntry}`,
-    /marketplace-adapters/u,
-    'runtime.production_adapter_imported',
-    errors,
-  );
   for (const relative of runtimeApiFiles) {
+    forbidMatch(
+      read(relative),
+      /marketplace-adapters/u,
+      'runtime.production_adapter_imported',
+      errors,
+    );
     forbidMatch(
       read(relative),
       /\.\s*(?:get|post|put|patch|delete|use|route)\s*\(\s*['"`][^'"`\r\n]*(?:tiktok|rakuten)/iu,
@@ -104,9 +86,6 @@ export function verifyRakutenTikTokAdapterPreparation(overrides = {}) {
     'apps/api/wrangler.staging.template.jsonc',
     'apps/api/wrangler.production.template.jsonc',
   ]) {
-    if (digestSources([template], read) !== BASELINE_TEMPLATE_SHA256[template]) {
-      errors.push(`template.${path.basename(template)}:changed`);
-    }
     forbidMatch(
       read(template),
       /TIKTOK_SHOP|RAKUTEN_RMS/u,
