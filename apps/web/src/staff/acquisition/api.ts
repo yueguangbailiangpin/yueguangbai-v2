@@ -23,6 +23,13 @@ const prospectMutation=z.object({prospect:acquisitionProspectSchema,replayed:z.b
 const signalMutation=z.object({signal:acquisitionProspectSignalSchema,replayed:z.boolean()}).strict();
 const leadMutation=z.object({lead:acquisitionLeadSchema,replayed:z.boolean()}).strict();
 const handoffSchema=z.object({items:z.array(acquisitionProspectSchema)}).strict();
+const channelStatsSchema=z.object({channels:z.array(z.object({
+  channel_id:z.string(),channel_name:z.string(),platform_name:z.string(),lead_type:z.enum(['BUYER','SELLER','BOTH']),marketplace_code:z.string(),
+  consultation_count:z.number().int().nonnegative(),prospect_count:z.number().int().nonnegative(),codex_prospect_count:z.number().int().nonnegative(),
+  lead_count:z.number().int().nonnegative(),registered_count:z.number().int().nonnegative(),reservation_submitted_count:z.number().int().nonnegative(),
+  cooperation_count:z.number().int().nonnegative(),formal_order_count:z.number().int().nonnegative(),
+  projected_gross_profit_cny_fen:z.string().nullable(),completed_gross_profit_cny_fen:z.string().nullable(),
+}).strict())}).strict();
 const consultationMutation=z.object({consultation:z.object({
   consultation_id:z.string(),channel_id:z.string(),lead_type:z.enum(['BUYER','SELLER']),business_date:z.string(),
   person_count:z.number().int().nonnegative(),version:z.number().int().positive(),updated_by_staff_id:z.string(),updated_at:z.number().int().nonnegative(),
@@ -32,6 +39,7 @@ export const acquisitionApi=Object.freeze({
   channels:(client:QueryClient,signal?:AbortSignal)=>read(client,'/api/staff/acquisition/channels',acquisitionChannelsResponseSchema,signal),
   createChannel:(client:QueryClient,body:unknown,key:string)=>write(client,'/api/staff/acquisition/channels',body,channelMutation,key),
   disableChannel:(client:QueryClient,id:string,body:unknown,key:string)=>write(client,`/api/staff/acquisition/channels/${encodeURIComponent(id)}/disable`,body,channelMutation,key),
+  channelStats:(client:QueryClient,from:string,to:string,signal?:AbortSignal)=>read(client,`/api/staff/acquisition/channel-stats?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,channelStatsSchema,signal),
   prospects:(client:QueryClient,input:{leadType:string|null;status:string|null;cursor:string|null},signal?:AbortSignal)=>{
     const query=new URLSearchParams({limit:'50'});if(input.leadType)query.set('lead_type',input.leadType);if(input.status)query.set('status',input.status);if(input.cursor)query.set('cursor',input.cursor);
     return read(client,`/api/staff/acquisition/prospects?${query}`,acquisitionProspectsPageSchema,signal);
