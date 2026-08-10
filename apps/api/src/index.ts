@@ -26,6 +26,7 @@ import { registerMarketplaceFoundationRoutes } from './marketplaces/routes';
 import { registerScheduledOperationRoutes } from './scheduled-operations';
 import { registerColdImageArchiveRoutes } from './cold-image-archive';
 import { registerAcquisitionRoutes } from './acquisition';
+import { registerAcquisitionMachineRoutes } from './acquisition/machine-routes';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
 import { registerStaffMcpTransportRoutes } from './staff-mcp';
 import { registerStaffAccessManagementRoutes } from './staff-access-management';
@@ -37,10 +38,13 @@ registerStaffMcpTransportRoutes(app);
 registerCustomerAuthRoutes(app);
 registerPublicCustomerSecurityRoutes(app);
 
-// Staff authentication is now edge-first: Cloudflare Access verifies the email
+// Codex/automation has a separate narrowly-scoped machine entrance. It does
+// not receive a Staff session and cannot reach /api/staff order/refund/admin APIs.
+registerAcquisitionMachineRoutes(app);
+
+// Staff authentication is edge-first: Cloudflare Access verifies the email
 // identity and this route exchanges the verified Access JWT for Moonwhite's
-// internal Staff session. Feishu auth/workbench routes are intentionally not
-// registered in the active production composition.
+// internal Staff session. Feishu auth/workbench routes are not active.
 registerCloudflareStaffAuthRoutes(app);
 
 app.use('/api/staff/*', staffSessionMiddleware());
