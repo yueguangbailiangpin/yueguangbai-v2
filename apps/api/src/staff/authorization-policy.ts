@@ -32,6 +32,10 @@ const ROLE_DEFAULT_PERMISSIONS: Readonly<
   Record<StaffRoleCode, readonly StaffPermissionCode[]>
 > = Object.freeze({
   owner: STAFF_PERMISSION_CODES,
+  // Acquisition intentionally receives no formal Buyer/Seller business
+  // permission. Prospect discovery and daily-channel recording are guarded by
+  // the dedicated acquisition role in the Acquisition Core service.
+  acquisition: [],
   pre_sales: [
     'TASK_VIEW_OPEN',
     'TASK_CLAIM',
