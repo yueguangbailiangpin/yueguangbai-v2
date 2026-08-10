@@ -48,7 +48,7 @@ export async function listVisibleWorkItems(
   const marketSql=global?'1=1':`marketplace_code IN (${placeholders(markets)})`;
   const rows=await database.prepare(`
     SELECT id AS work_item_id,work_type,source_entity_type,source_entity_id,
-      buyer_customer_id,seller_organization_id,store_id,marketplace_code,duty_code,
+      buyer_customer_id,seller_organization_id,store_id,duty_code,
       fixed_assignment_id,assigned_staff_id,status,version,created_at,updated_at,
       completed_at,cancelled_at
     FROM staff_work_items
@@ -70,7 +70,7 @@ export async function getVisibleWorkItem(database:SqlDatabase,actor:AssignmentSt
   if(!global&&markets.length<1)throw new StaffAssignmentError('NOT_FOUND',404);
   const marketSql=global?'1=1':`marketplace_code IN (${placeholders(markets)})`;
   const row=await database.prepare(`SELECT id AS work_item_id,work_type,source_entity_type,source_entity_id,
-    buyer_customer_id,seller_organization_id,store_id,marketplace_code,duty_code,fixed_assignment_id,
+    buyer_customer_id,seller_organization_id,store_id,duty_code,fixed_assignment_id,
     assigned_staff_id,status,version,created_at,updated_at,completed_at,cancelled_at
     FROM staff_work_items WHERE id=? AND work_type IN (${placeholders(allowed)}) AND ${marketSql}`)
     .bind(workItemId,...allowed,...(global?[]:markets)).first<StaffWorkItemDto>();
