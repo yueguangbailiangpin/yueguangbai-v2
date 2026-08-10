@@ -52,6 +52,17 @@ describe('seller principal rate policy HTTP boundary', () => {
   it('enforces assigned writes, blocks local global writes, and allows owner global writes', async () => {
     database = fixture();
     const before = await countPolicyFacts();
+    const localDefaultRead = await appFor(
+      auth('seller_ops', 'staff-pricing-ops', ['SELLER_MANAGE']),
+      assignedScope('seller-org-1'),
+    ).request(
+      `${ORIGIN}/api/staff/seller-principal-rate-policies?source_currency_code=JPY`,
+      {}, { DB: database },
+    );
+    expect(localDefaultRead.status).toBe(403);
+    expect(localDefaultRead.headers.get('cache-control')).toBe('no-store');
+    expect(await countPolicyFacts()).toEqual(before);
+
     const crossWrite = await appFor(
       auth('seller_ops', 'staff-pricing-ops', ['SELLER_MANAGE']),
       assignedScope('seller-org-1'),
@@ -78,6 +89,22 @@ describe('seller principal rate policy HTTP boundary', () => {
 
     const ownerActor = auth('owner', 'staff-pricing-owner', ['SELLER_MANAGE', 'FINANCIAL_CORRECT']);
     const owner = appFor(ownerActor, await resolveStaffDataScope(database, ownerActor));
+    const ownerDefaultRead = await owner.request(
+      `${ORIGIN}/api/staff/seller-principal-rate-policies?source_currency_code=JPY`,
+      {}, { DB: database },
+    );
+    expect(ownerDefaultRead.status).toBe(200);
+    expect(ownerDefaultRead.headers.get('cache-control')).toBe('no-store');
+    expect(await ownerDefaultRead.json()).toMatchObject({
+      data: { policies: {
+        seller_organization_id: null,
+        default_policy: null,
+        seller_override_policy: null,
+        seller_override_pending_policy: null,
+        default_next_version: 1,
+        seller_override_next_version: null,
+      } },
+    });
     const ownerSubmit = await owner.request(
       `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
       submitRequest({ scope_type: 'CURRENCY_PAIR_DEFAULT', seller_organization_id: null }),

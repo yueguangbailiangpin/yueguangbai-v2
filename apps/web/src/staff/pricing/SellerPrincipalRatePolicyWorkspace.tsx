@@ -22,12 +22,12 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
   const isGlobalOwner = session.role.code === 'owner'
     && hasManage
     && session.data_scope.type === 'GLOBAL';
-  const canSubmitOverride = hasManage
+  const canSubmitOverride = organizationId.length > 0
+    && hasManage
     && (isGlobalOwner
       || (session.role.code === 'seller_ops'
         && session.data_scope.sellerOrganizationIds.includes(organizationId)));
   const canSubmitDefault = isGlobalOwner;
-  const canSubmit = canSubmitOverride;
   const canDecide = session.role.code === 'owner' && session.permissions.includes('FINANCIAL_CORRECT');
   const [sourceCurrencyCode, setSourceCurrencyCode] = useState('JPY');
   const [scopeType, setScopeType] = useState<'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION'>(
@@ -38,12 +38,13 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const authority = useMemo(() => new StaffMutationAuthority<PolicyMutationResult>(), []);
+  const selectedOrganizationId = organizationId.length > 0 ? organizationId : null;
   const query = useQuery({
-    queryKey: staffWorkbenchKeys.sellerPrincipalRatePolicies(session.authorization_version, organizationId),
+    queryKey: staffWorkbenchKeys.sellerPrincipalRatePolicies(session.authorization_version, selectedOrganizationId),
     queryFn: ({ signal }) => staffApi.sellerPrincipalRatePolicies(
-      client, sourceCurrencyCode, organizationId, signal,
+      client, sourceCurrencyCode, selectedOrganizationId, signal,
     ).then((response) => response.data),
-    enabled: canRead && organizationId.length > 0,
+    enabled: canRead && (isGlobalOwner || selectedOrganizationId !== null),
     retry: false,
   });
 
@@ -69,9 +70,17 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
 
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (!query.data || !canSubmit || !organizationId) return;
+    const canSubmit = scopeType === 'CURRENCY_PAIR_DEFAULT'
+      ? canSubmitDefault
+      : canSubmitOverride;
+    if (!query.data || !canSubmit) return;
+    if (scopeType === 'SELLER_ORGANIZATION' && selectedOrganizationId === null) return;
     const currentVersion = scopeType === 'CURRENCY_PAIR_DEFAULT'
-      ? query.data.default_next_version - 1 : query.data.seller_override_next_version - 1;
+      ? query.data.default_next_version - 1
+      : query.data.seller_override_next_version === null
+        ? null
+        : query.data.seller_override_next_version - 1;
+    if (currentVersion === null) return;
     const pending = scopeType === 'CURRENCY_PAIR_DEFAULT'
       ? query.data.default_pending_policy : query.data.seller_override_pending_policy;
     if (pending) return;
@@ -84,7 +93,9 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
       action: 'submit', path: '/api/staff/seller-principal-rate-policies/submit',
       body: {
         scope_type: scopeType,
-        seller_organization_id: scopeType === 'CURRENCY_PAIR_DEFAULT' ? null : organizationId,
+        seller_organization_id: scopeType === 'CURRENCY_PAIR_DEFAULT'
+          ? null
+          : selectedOrganizationId,
         source_currency_code: sourceCurrencyCode,
         markup_rate_value: markup.trim(), effective_from: effective,
         expected_version: currentVersion,
@@ -101,27 +112,38 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
       <Alert tone="warning">这里的“卖家本金汇率加点”是绝对汇率增量，不是百分比。确认后的策略按生效时间作用于新正式订单，历史快照不回写。</Alert>
       <form className="staff-filter-grid" onSubmit={(event) => { event.preventDefault(); void query.refetch(); }}>
         <FormField label="卖家组织编号" htmlFor="principal-rate-organization"><TextInput
-          id="principal-rate-organization" value={organizationId} onChange={(event) => setOrganizationId(event.target.value.trim())}
-          placeholder="输入已授权的组织编号" required /></FormField>
+          id="principal-rate-organization" value={organizationId} onChange={(event) => {
+            const value = event.target.value.trim();
+            setOrganizationId(value);
+            if (value.length === 0 && isGlobalOwner) {
+              setScopeType('CURRENCY_PAIR_DEFAULT');
+            }
+          }}
+          placeholder={isGlobalOwner ? '配置默认加点时可留空' : '输入已授权的组织编号'}
+          required={!isGlobalOwner} /></FormField>
         <FormField label="币种对" htmlFor="principal-rate-source"><Select id="principal-rate-source" value={sourceCurrencyCode} onChange={(event) => setSourceCurrencyCode(event.target.value)}>
           <option value="JPY">JPY → CNY</option>
         </Select></FormField>
-        <Button type="submit" className="secondary" disabled={!organizationId || query.isFetching}>读取策略</Button>
+        <Button type="submit" className="secondary" disabled={(!isGlobalOwner && !organizationId) || query.isFetching}>读取策略</Button>
       </form>
     </section>
     {query.isPending ? <p role="status">正在读取策略事实</p>
       : query.isError ? <PolicyError error={query.error} retry={() => { void query.refetch(); }} />
       : query.data ? <>
         <PolicyFacts value={query.data} />
-        {canSubmit ? <Card className="sensitive-action"><h3>提交新策略</h3>
+        {(canSubmitDefault || canSubmitOverride) ? <Card className="sensitive-action"><h3>提交新策略</h3>
           <form onSubmit={submit}>
             <FormField label="策略范围" htmlFor="principal-rate-scope"><Select id="principal-rate-scope" value={scopeType} onChange={(event) => setScopeType(event.target.value as typeof scopeType)}>
               {canSubmitDefault ? <option value="CURRENCY_PAIR_DEFAULT">币种对默认加点</option> : null}
-              <option value="SELLER_ORGANIZATION">卖家组织专属覆盖</option>
+              {selectedOrganizationId !== null || !isGlobalOwner
+                ? <option value="SELLER_ORGANIZATION">卖家组织专属覆盖</option>
+                : null}
             </Select></FormField>
             <FormField label="卖家本金汇率加点（例如 +0.004 或 0）" htmlFor="principal-rate-markup"><TextInput id="principal-rate-markup" value={markup} onChange={(event) => setMarkup(event.target.value)} inputMode="decimal" required /></FormField>
             <FormField label="生效时间（北京时间）" htmlFor="principal-rate-effective"><TextInput id="principal-rate-effective" type="datetime-local" value={effectiveAt} onChange={(event) => setEffectiveAt(event.target.value)} required /></FormField>
-            <Button className="danger" disabled={authority.canRetry() || (scopeType === 'CURRENCY_PAIR_DEFAULT' ? Boolean(query.data.default_pending_policy) : Boolean(query.data.seller_override_pending_policy))}>提交待确认策略</Button>
+            <Button className="danger" disabled={authority.canRetry()
+              || (scopeType === 'CURRENCY_PAIR_DEFAULT' ? !canSubmitDefault : !canSubmitOverride)
+              || (scopeType === 'CURRENCY_PAIR_DEFAULT' ? Boolean(query.data.default_pending_policy) : Boolean(query.data.seller_override_pending_policy))}>提交待确认策略</Button>
           </form>
         </Card> : null}
         {canDecide ? <DecisionCards value={query.data} execute={execute} busy={authority.canRetry()} /> : null}
@@ -139,8 +161,8 @@ function PolicyFacts({ value }: { value: PolicyRead }): React.JSX.Element {
   </section>;
 }
 
-function PolicyCard({ title, policy, pending, nextVersion }: { title: string; policy: Policy | null; pending: Policy | null; nextVersion: number }): React.JSX.Element {
-  return <Card className="customer-visible"><h3>{title}</h3><p>下一版本：v{nextVersion}</p>
+function PolicyCard({ title, policy, pending, nextVersion }: { title: string; policy: Policy | null; pending: Policy | null; nextVersion: number | null }): React.JSX.Element {
+  return <Card className="customer-visible"><h3>{title}</h3><p>下一版本：{nextVersion === null ? '选择组织后读取' : `v${nextVersion}`}</p>
     {policy ? <><StatusBadge tone={policy.status === 'CONFIRMED' ? 'success' : 'neutral'}>{policy.status === 'CONFIRMED' ? '已确认' : policy.status}</StatusBadge><p>加点：{markupLabel(policy.markup_rate_value)} · 生效：{formatShanghai(policy.effective_from)}</p><p>版本 v{policy.version_no} · 确认：{policy.confirmed_at === null ? '—' : formatShanghai(policy.confirmed_at)}</p></> : <p>暂无当前生效策略</p>}
     {pending ? <p className="inline-warning">待 Owner 决策：{markupLabel(pending.markup_rate_value)} · {formatShanghai(pending.effective_from)} · v{pending.version_no}</p> : null}
   </Card>;

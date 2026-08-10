@@ -26,13 +26,13 @@ const sellerPrincipalRatePolicyVersionSchema = z.object({
 }).strict();
 export const staffSellerPrincipalRatePolicySchema = z.object({
   source_currency_code: z.string(), quote_currency_code: z.literal('CNY'),
-  seller_organization_id: z.string(),
+  seller_organization_id: z.string().nullable(),
   default_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
   seller_override_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
   default_pending_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
   seller_override_pending_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
   default_next_version: z.number().int().positive(),
-  seller_override_next_version: z.number().int().positive(),
+  seller_override_next_version: z.number().int().positive().nullable(),
   selected_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
 }).strict();
 export const staffSellerPrincipalRatePolicyMutationSchema = z.object({

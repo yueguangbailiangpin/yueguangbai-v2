@@ -31,23 +31,28 @@ async function read(context: Context<any>): Promise<Response> {
   requireManage(actor);
   const parameters = new URL(context.req.url).searchParams;
   if (parameters.getAll('source_currency_code').length !== 1
-    || parameters.getAll('seller_organization_id').length !== 1) {
+    || parameters.getAll('seller_organization_id').length > 1) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
   const source = parameters.get('source_currency_code');
   const organizationId = parameters.get('seller_organization_id');
   if (!isCurrencyCode(source) || source === 'CNY'
-    || !organizationId || organizationId.length > 120) {
+    || (organizationId !== null
+      && (organizationId.length < 1 || organizationId.length > 120))) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
-  if (!scopeAllowsSellerOrganization(scope, organizationId)) {
-    throw new PricingError('NOT_FOUND', 404);
+  if (organizationId === null) {
+    requireGlobalPolicyScope(scope);
+  } else {
+    if (!scopeAllowsSellerOrganization(scope, organizationId)) {
+      throw new PricingError('NOT_FOUND', 404);
+    }
+    const activeOrganization = await context.env.DB.prepare(`
+      SELECT 1 AS present FROM seller_organizations
+      WHERE id=? AND status='ACTIVE'
+    `).bind(organizationId).first() as { present: number } | null;
+    if (!activeOrganization) throw new PricingError('NOT_FOUND', 404);
   }
-  const activeOrganization = await context.env.DB.prepare(`
-    SELECT 1 AS present FROM seller_organizations
-    WHERE id=? AND status='ACTIVE'
-  `).bind(organizationId).first() as { present: number } | null;
-  if (!activeOrganization) throw new PricingError('NOT_FOUND', 404);
   context.header('Cache-Control', 'no-store');
   return context.json(apiSuccess({
     policies: await readSellerPrincipalRatePolicies(context.env.DB, {
@@ -82,7 +87,7 @@ async function submit(context: Context<any>): Promise<Response> {
     if (body['seller_organization_id'] !== null) {
       throw new PricingError('VALIDATION_ERROR', 400);
     }
-    requireGlobalPolicyWriteScope(dataScope);
+    requireGlobalPolicyScope(dataScope);
   } else {
     if (typeof body['seller_organization_id'] !== 'string') {
       throw new PricingError('VALIDATION_ERROR', 400);
@@ -174,7 +179,7 @@ function requireSellerOrganizationWriteScope(
   }
 }
 
-function requireGlobalPolicyWriteScope(scope: StaffDataScope): void {
+function requireGlobalPolicyScope(scope: StaffDataScope): void {
   if (scope.type !== 'GLOBAL') throw new PricingError('FORBIDDEN', 403);
 }
 

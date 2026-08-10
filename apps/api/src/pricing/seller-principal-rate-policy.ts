@@ -323,19 +323,21 @@ export async function readSellerPrincipalRatePolicies(
   database: SqlDatabase,
   input: {
     sourceCurrencyCode: CurrencyCode;
-    sellerOrganizationId: string;
+    sellerOrganizationId: string | null;
     at: number;
   },
 ): Promise<SellerPrincipalRatePolicyReadDto> {
   const at = cleanEpochMilliseconds(input.at);
-  const organizationId = cleanPricingIdentifier(input.sellerOrganizationId);
+  const organizationId = input.sellerOrganizationId === null
+    ? null
+    : cleanPricingIdentifier(input.sellerOrganizationId);
   const [defaultRow, overrideRow, defaultPending, overridePending,
     defaultLatest, overrideLatest] = await Promise.all([
     resolvedPolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
       sourceCurrencyCode: input.sourceCurrencyCode, at,
     }),
-    resolvedPolicy(database, {
+    organizationId === null ? Promise.resolve(null) : resolvedPolicy(database, {
       scopeType: 'SELLER_ORGANIZATION', sellerOrganizationId: organizationId,
       sourceCurrencyCode: input.sourceCurrencyCode, at,
     }),
@@ -343,7 +345,7 @@ export async function readSellerPrincipalRatePolicies(
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
       sourceCurrencyCode: input.sourceCurrencyCode,
     }),
-    pendingPolicy(database, {
+    organizationId === null ? Promise.resolve(null) : pendingPolicy(database, {
       scopeType: 'SELLER_ORGANIZATION', sellerOrganizationId: organizationId,
       sourceCurrencyCode: input.sourceCurrencyCode,
     }),
@@ -351,10 +353,12 @@ export async function readSellerPrincipalRatePolicies(
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
       sourceCurrencyCode: input.sourceCurrencyCode,
     }),
-    latestPolicyVersion(database, {
-      scopeType: 'SELLER_ORGANIZATION', sellerOrganizationId: organizationId,
-      sourceCurrencyCode: input.sourceCurrencyCode,
-    }),
+    organizationId === null
+      ? Promise.resolve({ versionNo: 0, pendingCount: 0 })
+      : latestPolicyVersion(database, {
+          scopeType: 'SELLER_ORGANIZATION', sellerOrganizationId: organizationId,
+          sourceCurrencyCode: input.sourceCurrencyCode,
+        }),
   ]);
   return {
     source_currency_code: input.sourceCurrencyCode,
@@ -365,7 +369,9 @@ export async function readSellerPrincipalRatePolicies(
     default_pending_policy: defaultPending ? policyDto(defaultPending) : null,
     seller_override_pending_policy: overridePending ? policyDto(overridePending) : null,
     default_next_version: defaultLatest.versionNo + 1,
-    seller_override_next_version: overrideLatest.versionNo + 1,
+    seller_override_next_version: organizationId === null
+      ? null
+      : overrideLatest.versionNo + 1,
     selected_policy: overrideRow
       ? policyDto(overrideRow)
       : defaultRow ? policyDto(defaultRow) : null,

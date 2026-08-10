@@ -33,13 +33,13 @@ export interface SellerPrincipalRatePolicyVersionDto {
 export interface SellerPrincipalRatePolicyReadDto {
   source_currency_code: CurrencyCode;
   quote_currency_code: 'CNY';
-  seller_organization_id: string;
+  seller_organization_id: string | null;
   default_policy: SellerPrincipalRatePolicyVersionDto | null;
   seller_override_policy: SellerPrincipalRatePolicyVersionDto | null;
   default_pending_policy: SellerPrincipalRatePolicyVersionDto | null;
   seller_override_pending_policy: SellerPrincipalRatePolicyVersionDto | null;
   default_next_version: number;
-  seller_override_next_version: number;
+  seller_override_next_version: number | null;
   selected_policy: SellerPrincipalRatePolicyVersionDto | null;
 }
 

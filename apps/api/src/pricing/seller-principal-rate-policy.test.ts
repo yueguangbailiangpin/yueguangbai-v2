@@ -6,6 +6,7 @@ import {
 } from './buyer-daily-exchange-rates';
 import {
   confirmSellerPrincipalRatePolicy,
+  readSellerPrincipalRatePolicies,
   resolveSellerPrincipalRateSnapshot,
   submitSellerPrincipalRatePolicy,
 } from './seller-principal-rate-policy';
@@ -26,6 +27,20 @@ afterEach(() => {
 });
 
 describe('seller principal rate policy', () => {
+  it('reads the GLOBAL default target without Seller Organization master data', async () => {
+    database = createMigratedTestDatabase();
+    expect(await readSellerPrincipalRatePolicies(database, {
+      sourceCurrencyCode: 'JPY', sellerOrganizationId: null, at: 5_000,
+    })).toEqual({
+      source_currency_code: 'JPY', quote_currency_code: 'CNY',
+      seller_organization_id: null,
+      default_policy: null, seller_override_policy: null,
+      default_pending_policy: null, seller_override_pending_policy: null,
+      default_next_version: 1, seller_override_next_version: null,
+      selected_policy: null,
+    });
+  });
+
   it('uses the order-date base rate plus the absolute default markup', async () => {
     database = fixture();
     await seedBaseRate(database, '2026-08-01', '5100000');

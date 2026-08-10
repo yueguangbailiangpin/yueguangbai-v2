@@ -80,11 +80,22 @@ describe('卖家本金汇率策略 Staff 工作台', () => {
 
   it('让 Owner 通过工作台提交全局默认加点', async () => {
     let body: unknown;
+    let requestedOrganization: string | null = 'not-read';
     server.use(
-      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () => HttpResponse.json({
-        data: readPayload({ default_pending_policy: null, seller_override_pending_policy: null }),
-        meta: { request_id: 'owner-read' },
-      })),
+      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), ({ request }) => {
+        requestedOrganization = new URL(request.url).searchParams.get('seller_organization_id');
+        return HttpResponse.json({
+          data: readPayload({
+            seller_organization_id: null,
+            seller_override_policy: null,
+            default_pending_policy: null,
+            seller_override_pending_policy: null,
+            seller_override_next_version: null,
+            selected_policy: policy('default-1', 'CONFIRMED', 2, '400000', null),
+          }),
+          meta: { request_id: 'owner-read' },
+        });
+      }),
       http.post(apiUrl('/api/staff/seller-principal-rate-policies/submit'), async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({ data: { policy: policy('submitted-default', 'SUBMITTED', 1, '400000', null) }, meta: { request_id: 'owner-submit' } });
@@ -95,8 +106,9 @@ describe('卖家本金汇率策略 Staff 工作台', () => {
       route: '/staff/seller-principal-rate-policies',
     });
     await screen.findByRole('heading', { name: '卖家本金汇率策略' });
-    await user.type(screen.getByLabelText('卖家组织编号'), 'seller-1');
     await screen.findByRole('heading', { name: '币种对默认加点' });
+    expect(requestedOrganization).toBeNull();
+    expect(screen.getByText('下一版本：选择组织后读取')).toBeVisible();
     await user.click(screen.getByRole('button', { name: '提交待确认策略' }));
     await waitFor(() => expect(body).toMatchObject({
       scope_type: 'CURRENCY_PAIR_DEFAULT', seller_organization_id: null,
@@ -132,7 +144,7 @@ function policy(id: string, status: 'SUBMITTED' | 'CONFIRMED' | 'REJECTED', vers
     confirmed_at: status === 'CONFIRMED' ? 1_800_000_000_001 : null, rejection_reason: rejection, replayed: false };
 }
 
-function readPayload(overrides: Partial<Record<'default_pending_policy' | 'seller_override_pending_policy', unknown>> = {}) {
+function readPayload(overrides: Record<string, unknown> = {}) {
   return { source_currency_code: 'JPY', quote_currency_code: 'CNY', seller_organization_id: 'seller-1',
     default_policy: policy('default-1', 'CONFIRMED', 2, '400000', null),
     seller_override_policy: policy('override-1', 'CONFIRMED', 2, '0', null),

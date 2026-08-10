@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   demandReviewContextSchema,
   staffReservationSchedulePageSchema,
+  staffSellerPrincipalRatePolicySchema,
   staffWorkItemsSchema,
 } from './runtime';
 
@@ -16,6 +17,20 @@ const item = {
 describe('Staff workbench runtime DTOs', () => {
   it('accepts the bounded cursor page', () => {
     expect(staffWorkItemsSchema.parse({ work_items: [item], next_cursor: 'opaque' }).work_items).toHaveLength(1);
+  });
+
+  it('accepts a GLOBAL Owner default-only principal-rate projection', () => {
+    expect(staffSellerPrincipalRatePolicySchema.parse({
+      source_currency_code: 'JPY', quote_currency_code: 'CNY',
+      seller_organization_id: null,
+      default_policy: null, seller_override_policy: null,
+      default_pending_policy: null, seller_override_pending_policy: null,
+      default_next_version: 1, seller_override_next_version: null,
+      selected_policy: null,
+    })).toMatchObject({
+      seller_organization_id: null,
+      seller_override_next_version: null,
+    });
   });
 
   it.each(['object_key', 'session_token', 'password_hash', 'drive_file_id'])('rejects sensitive/unknown field %s', (field) => {

@@ -122,9 +122,15 @@ export const staffApi = Object.freeze({
     return read(client, `/api/staff/me/work-items?${parameters}`, staffWorkItemsSchema, signal);
   },
   sellerPrincipalRatePolicies: (client: QueryClient, sourceCurrencyCode: string,
-    sellerOrganizationId: string, signal?: AbortSignal) => read(client,
-    `/api/staff/seller-principal-rate-policies?source_currency_code=${encodeURIComponent(sourceCurrencyCode)}&seller_organization_id=${encodeURIComponent(sellerOrganizationId)}`,
-    staffSellerPrincipalRatePolicySchema, signal),
+    sellerOrganizationId: string | null, signal?: AbortSignal) => {
+    const parameters = new URLSearchParams({ source_currency_code: sourceCurrencyCode });
+    if (sellerOrganizationId !== null) {
+      parameters.set('seller_organization_id', sellerOrganizationId);
+    }
+    return read(client,
+      `/api/staff/seller-principal-rate-policies?${parameters}`,
+      staffSellerPrincipalRatePolicySchema, signal);
+  },
   submitSellerPrincipalRatePolicy: (client: QueryClient, body: unknown, key: string) => write(
     client, '/api/staff/seller-principal-rate-policies/submit', body,
     staffSellerPrincipalRatePolicyMutationSchema, key),
