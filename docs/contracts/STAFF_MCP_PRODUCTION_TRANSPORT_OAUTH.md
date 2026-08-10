@@ -2,7 +2,7 @@
 
 ## 1. 结论与真实性
 
-本 Change 只交付 production-capable 的本地代码边界、匿名合同测试、默认关闭模板和零网络 preflight。结论固定为：
+原 Change 与后续 `staff-mcp-ai-production-enablement-prep` 只交付 production-capable 的本地代码边界、匿名合同测试、默认关闭模板和零网络 preflight。结论固定为：
 
 `LOCAL_IMPLEMENTATION_READY / PRODUCTION_NO_GO`
 
@@ -12,8 +12,8 @@
 
 - Resource 为一个精确 HTTPS URL，路径固定 `/mcp`，且 `audience === resource`。
 - JSON-RPC 只接受 `POST /mcp`、`application/json`、单一对象、最大 1 MiB；拒绝 query、batch、错误 method/content type、过大或无效 JSON。
-- RFC 9728 metadata 位于 `/.well-known/oauth-protected-resource/mcp`，只发布 resource、authorization server、`staff:mcp` 与 header bearer method。
-- 401 使用 `WWW-Authenticate: Bearer resource_metadata="..."`；不反射 Authorization、token、claim 或 Provider 错误。
+- RFC 9728 metadata 位于 `/.well-known/oauth-protected-resource/mcp`，只发布 resource、authorization server、`staff:mcp`、header bearer method、同源公开开发说明 URL 与经审核的隐私/数据使用政策 URL。
+- 401 使用 `WWW-Authenticate: Bearer resource_metadata="...", scope="staff:mcp"`；不反射 Authorization、token、claim 或 Provider 错误。
 - Worker-first 路由把 `/mcp` 与 metadata 送入 Hono，不回退 SPA。MCP 缺配置/关闭只使 MCP 404/503，Web、`/health`、`/api/*` 保持独立。
 
 ## 3. OAuth/JWT/JWKS
@@ -68,9 +68,11 @@ STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED=false
 STAFF_MCP_LOCAL_MOCK_ENABLED=false
 ```
 
-公开 URL、rate/cleanup/timeout 只使用常量或 `REQUIRED_*` placeholder；Secret 只列名称 `STAFF_MCP_BINDING_HASH_SECRET`，不得写入 `vars` 或 Git。`STAFF_MCP_TOKEN_STATUS_SERVICE` 是 Cloudflare Service Binding 名称，模板只保存占位 service 名称。运行时必须同时具备 D1、由 D1 构造的 application service、metadata/JWKS provider、token-status Service Binding、显式 cleanup enabled 与 D1 GLOBAL enabled；任一缺失即仅关闭 MCP。
+公开 URL、rate/cleanup/timeout 只使用常量或 `REQUIRED_*` placeholder；Secret 只列名称 `STAFF_MCP_BINDING_HASH_SECRET`，不得写入 `vars` 或 Git。`STAFF_MCP_TOKEN_STATUS_SERVICE` 是 Cloudflare Service Binding 名称，模板只保存占位 service 名称。运行时必须同时具备 D1、由 D1 构造的 application service、metadata/JWKS provider、token-status Service Binding、同源公开 `STAFF_MCP_RESOURCE_DOCUMENTATION_URL` / `STAFF_MCP_RESOURCE_POLICY_URL`、非空 `STAFF_MCP_ENABLED_TOOLS`、显式 cleanup enabled 与 D1 GLOBAL enabled；任一缺失即仅关闭 MCP。
 
-D1 application service 直接读取现有 Staff work item、Customer、Seller、Order、Review、Refund、Settlement 权威表/视图并复用当前权限和 Data Scope，不新增业务镜像表。production factory 固定停用截图工具，直到另一个获批边界能复用 File Audience + Read Intent + 受控文件 provider；同时固定停用尚无真实 D1 exception projection 的异常列表，不得用安全空页冒充权威“无异常”。其余 11 个有限读取/草稿工具可由 D1 factory 构造；local Mock 不构成这两个工具的 production 激活能力。
+D1 application service 直接读取现有 Staff work item、Customer、Seller、Order、Review、Refund、Settlement 权威表/视图并复用当前权限和 Data Scope，不新增业务镜像表。production factory 固定停用截图工具，直到另一个获批边界能复用 File Audience + Read Intent + 受控文件 provider；同时固定停用尚无真实 D1 exception projection 的异常列表，不得用安全空页冒充权威“无异常”。其余 11 个有限读取/草稿工具只是“可构造全集”，生产必须通过 `STAFF_MCP_ENABLED_TOOLS` 显式选择非空子集；缺失、空值、重复、未知或上述两个未解析工具均使 runtime 构造失败。`STAFF_MCP_DISABLED_TOOLS` 只能进一步缩小，不能重新启用。local Mock 不构成这两个工具的 production 激活能力。
+
+Git 外激活证据必须与 rendered config 一起通过 `preflight-staff-mcp-production.mjs --config ... --evidence ...`。证据只保存非 Secret 的 registration mode、精确 redirect URI、PKCE `S256`、公开 policy/docs URL 与批准工具集合；命令永远只返回 `LOCAL_CONFIG_AND_EVIDENCE_VALID_PRODUCTION_NO_GO`，不构成真实注册或上线。
 
 ## 8. 官方依据
 

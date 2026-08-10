@@ -8,6 +8,8 @@ import { keyedHash } from './security-state';
 export const ANONYMOUS_OAUTH_CONFIG: StaffMcpOAuthConfig = {
   resource: 'https://staff-mcp.invalid/mcp',
   audience: 'https://staff-mcp.invalid/mcp',
+  resourceDocumentationUrl: 'https://staff-mcp.invalid/staff-mcp-guide',
+  resourcePolicyUrl: 'https://staff-mcp.invalid/privacy/staff-mcp',
   issuer: 'https://issuer.invalid/',
   metadataUrl: 'https://issuer.invalid/.well-known/oauth-authorization-server',
   authorizationEndpoint: 'https://issuer.invalid/authorize',

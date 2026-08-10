@@ -32,7 +32,7 @@
 
 ## 4. 工具清单
 
-所有工具版本都在工具名中固定为 `_v1`，`readOnlyHint=true`、`destructiveHint=false`、`openWorldHint=false`、`taskSupport=forbidden`。
+所有工具版本都在工具名中固定为 `_v1`，`readOnlyHint=true`、`destructiveHint=false`、`openWorldHint=false`、`taskSupport=forbidden`。生产 discovery 还必须经过显式 `STAFF_MCP_ENABLED_TOOLS` 正向门禁；缺失、空、重复、未知或未解析投影一律不构造 runtime，`STAFF_MCP_DISABLED_TOOLS` 只能继续缩小。
 
 | 工具 | 类型 | 权限/范围 | 主要输入边界 | 最小输出 |
 | --- | --- | --- | --- | --- |
@@ -70,6 +70,8 @@
 | `get_web_confirmation_step_v1` | `summary:{formal_action_executed=false,confirmation_required=true}` |
 
 Application Service 返回未知嵌套字段、错误类型、越长字符串或越界数组时，整次调用在成功审计前以稳定 `INTERNAL_ERROR` 失败关闭；结果没有 `structuredContent`，安全失败审计不保存 payload。通用敏感字段/URL blacklist 仅作为第二层防御，不替代正向白名单。
+
+当前 production factory 的可构造全集为 11 个工具；`list_staff_exceptions_v1` 等待真实 D1 异常投影，`read_task_screenshot_v1` 等待真实 File Audience + Read Intent provider。二者在依赖未解析时必须保持 disabled/`PROVIDER_UNAVAILABLE`，不得返回看似权威的空列表或 mock 图片。
 
 ## 5. 结果与不可信数据
 

@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { STAFF_MCP_REQUIRED_OAUTH_SCOPE } from '@ygb/contracts';
 import type { AppEnv } from '../app';
 import { protectedResourceMetadata } from './oauth-resource-server';
 import { staffMcpProductionRuntime } from './runtime';
@@ -90,7 +91,7 @@ function unauthorized(
     protocolError(null, -32001, '员工身份不可用'),
     401,
     {
-      'WWW-Authenticate': `Bearer resource_metadata="${metadataUrl}"`,
+      'WWW-Authenticate': `Bearer resource_metadata="${metadataUrl}", scope="${STAFF_MCP_REQUIRED_OAUTH_SCOPE}"`,
       'Cache-Control': 'no-store',
     },
   );

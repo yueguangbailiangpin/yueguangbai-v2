@@ -33,7 +33,10 @@ export interface StaffMcpProductionRuntimeBindings
 extends StaffMcpLocalRuntimeBindings {
   DB?: SqlDatabase;
   STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED?: string;
+  STAFF_MCP_ENABLED_TOOLS?: string;
   STAFF_MCP_RESOURCE?: string;
+  STAFF_MCP_RESOURCE_DOCUMENTATION_URL?: string;
+  STAFF_MCP_RESOURCE_POLICY_URL?: string;
   STAFF_MCP_OAUTH_AUDIENCE?: string;
   STAFF_MCP_OAUTH_ISSUER?: string;
   STAFF_MCP_OAUTH_METADATA_URL?: string;
@@ -110,9 +113,23 @@ export function staffMcpProductionRuntime(
       tokenStatusTimeout,
     ),
   );
-  const disabledTools = parseDisabledTools(bindings.STAFF_MCP_DISABLED_TOOLS);
+  const enabledTools = parseConfiguredTools(bindings.STAFF_MCP_ENABLED_TOOLS, false);
+  const configuredDisabledTools = parseConfiguredTools(
+    bindings.STAFF_MCP_DISABLED_TOOLS,
+    true,
+  );
+  if (!enabledTools || !configuredDisabledTools
+    || enabledTools.has('read_task_screenshot_v1')
+    || enabledTools.has('list_staff_exceptions_v1')) return null;
+  const disabledTools = new Set<StaffMcpToolName>(configuredDisabledTools);
+  for (const toolName of STAFF_MCP_TOOL_NAMES) {
+    if (!enabledTools.has(toolName)) disabledTools.add(toolName);
+  }
   disabledTools.add('read_task_screenshot_v1');
   disabledTools.add('list_staff_exceptions_v1');
+  const effectiveEnabledTools = [...enabledTools]
+    .filter((toolName) => !disabledTools.has(toolName));
+  if (effectiveEnabledTools.length === 0) return null;
   const adapter = new StaffMcpServerAdapter({
     database: bindings.DB,
     oauthVerifier: verifier,
@@ -131,6 +148,7 @@ export function staffMcpProductionRuntime(
     cleanup: new D1StaffMcpCleanup(bindings.DB),
     cleanupLimit,
     adapter,
+    enabledTools: Object.freeze(effectiveEnabledTools),
     productionActivationSupported: true as const,
   });
 }
@@ -141,6 +159,8 @@ function oauthConfig(
   const values = [
     bindings.STAFF_MCP_RESOURCE,
     bindings.STAFF_MCP_OAUTH_AUDIENCE,
+    bindings.STAFF_MCP_RESOURCE_DOCUMENTATION_URL,
+    bindings.STAFF_MCP_RESOURCE_POLICY_URL,
     bindings.STAFF_MCP_OAUTH_ISSUER,
     bindings.STAFF_MCP_OAUTH_METADATA_URL,
     bindings.STAFF_MCP_OAUTH_AUTHORIZATION_ENDPOINT,
@@ -152,12 +172,14 @@ function oauthConfig(
   const config: StaffMcpOAuthConfig = {
     resource: values[0]!,
     audience: values[1]!,
-    issuer: values[2]!,
-    metadataUrl: values[3]!,
-    authorizationEndpoint: values[4]!,
-    tokenEndpoint: values[5]!,
-    jwksUri: values[6]!,
-    revocationEndpoint: values[7]!,
+    resourceDocumentationUrl: values[2]!,
+    resourcePolicyUrl: values[3]!,
+    issuer: values[4]!,
+    metadataUrl: values[5]!,
+    authorizationEndpoint: values[6]!,
+    tokenEndpoint: values[7]!,
+    jwksUri: values[8]!,
+    revocationEndpoint: values[9]!,
   };
   try {
     assertStaffMcpOAuthConfig(config);
@@ -176,6 +198,21 @@ function parseDisabledTools(value: string | undefined): Set<StaffMcpToolName> {
     if (known.has(tool)) allowed.add(tool as StaffMcpToolName);
   }
   return allowed;
+}
+
+function parseConfiguredTools(
+  value: string | undefined,
+  allowEmpty: boolean,
+): Set<StaffMcpToolName> | null {
+  if (value === undefined) return allowEmpty ? new Set() : null;
+  if (!allowEmpty && value.trim() === '') return null;
+  if (allowEmpty && value.trim() === '') return new Set();
+  const known = new Set<string>(STAFF_MCP_TOOL_NAMES);
+  const tools = value.split(',').map((part) => part.trim());
+  if (tools.some((tool) => !known.has(tool)) || new Set(tools).size !== tools.length) {
+    return null;
+  }
+  return new Set(tools as StaffMcpToolName[]);
 }
 
 function optionalLimit(value: string | undefined, fallback: number): number | null {

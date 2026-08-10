@@ -171,6 +171,9 @@ function anonymousConfig(environment) {
     if (value.endsWith('_FEISHU_REDIRECT_URI')) return `${origin}/api/staff-auth/feishu/callback`;
     if (value.endsWith('_FEISHU_WORKBENCH_APP_ID')) return `anonymous-${environment}-workbench-app`;
     if (value.endsWith('_FEISHU_WORKBENCH_TENANT_KEY')) return `anonymous-${environment}-workbench-tenant`;
+    if (value.endsWith('_STAFF_MCP_ENABLED_TOOLS')) return 'list_staff_tasks_v1';
+    if (value.endsWith('_STAFF_MCP_RESOURCE_DOCUMENTATION_URL')) return `${origin}/staff-mcp-guide`;
+    if (value.endsWith('_STAFF_MCP_RESOURCE_POLICY_URL')) return `${origin}/privacy/staff-mcp`;
     if (value.endsWith('_STAFF_MCP_RESOURCE')) return `${origin}/mcp`;
     if (value.endsWith('_STAFF_MCP_OAUTH_ISSUER')) return 'https://issuer.example.invalid/';
     if (value.endsWith('_STAFF_MCP_OAUTH_METADATA_URL')) return 'https://issuer.example.invalid/.well-known/oauth-authorization-server';

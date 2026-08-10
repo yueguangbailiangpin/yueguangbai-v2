@@ -37,6 +37,8 @@ describe('Staff MCP HTTPS JSON-RPC transport', () => {
       scopes_supported: ['staff:mcp'],
       bearer_methods_supported: ['header'],
       resource_name: 'Yueguangbai Staff MCP',
+      resource_documentation: ANONYMOUS_OAUTH_CONFIG.resourceDocumentationUrl,
+      resource_policy_uri: ANONYMOUS_OAUTH_CONFIG.resourcePolicyUrl,
     });
     expect(serialized).not.toContain(ANONYMOUS_HASH_SECRET);
   });
@@ -48,7 +50,7 @@ describe('Staff MCP HTTPS JSON-RPC transport', () => {
     }), bindings());
     expect(missing.status).toBe(401);
     expect(missing.headers.get('WWW-Authenticate')).toBe(
-      'Bearer resource_metadata="https://staff-mcp.invalid/.well-known/oauth-protected-resource/mcp"',
+      'Bearer resource_metadata="https://staff-mcp.invalid/.well-known/oauth-protected-resource/mcp", scope="staff:mcp"',
     );
     const token = await signAnonymousToken(
       fixture.privateKey,
@@ -120,6 +122,65 @@ describe('Staff MCP HTTPS JSON-RPC transport', () => {
       .toBe(200);
   });
 
+  it('requires an explicit available tool allowlist and advertises only that subset', async () => {
+    await enableGlobal();
+    const token = await signAnonymousToken(fixture.privateKey, fixture.kid, liveClaims());
+    const env = bindings();
+    env.STAFF_MCP_ENABLED_TOOLS = [
+      'list_staff_tasks_v1',
+      'get_order_summary_v1',
+    ].join(',');
+    const listedResponse = await request('/mcp', jsonRequest({
+      jsonrpc: '2.0', id: 5, method: 'tools/list', params: {},
+    }, token), env);
+    const listed = await listedResponse.json() as {
+      result: { tools: { name: string }[] };
+    };
+    expect(listed.result.tools.map((tool) => tool.name)).toEqual([
+      'list_staff_tasks_v1',
+      'get_order_summary_v1',
+    ]);
+
+    for (const enabledTools of [
+      '',
+      'list_staff_tasks_v1,list_staff_tasks_v1',
+      'read_task_screenshot_v1',
+      'list_staff_exceptions_v1',
+      'unknown_tool_v1',
+    ]) {
+      expect(staffMcpProductionRuntime({
+        ...bindings(),
+        STAFF_MCP_ENABLED_TOOLS: enabledTools,
+      })).toBeNull();
+    }
+    const missing = bindings();
+    delete missing.STAFF_MCP_ENABLED_TOOLS;
+    expect(staffMcpProductionRuntime(missing)).toBeNull();
+    expect(staffMcpProductionRuntime({
+      ...bindings(),
+      STAFF_MCP_ENABLED_TOOLS: 'list_staff_tasks_v1',
+      STAFF_MCP_DISABLED_TOOLS: 'list_staff_tasks_v1',
+    })).toBeNull();
+  });
+
+  it('fails closed when public documentation or policy URLs are unsafe', () => {
+    const crossOrigin = {
+      ...bindings(),
+      STAFF_MCP_RESOURCE_POLICY_URL: 'https://other.invalid/privacy',
+    };
+    expect(staffMcpProductionRuntime(crossOrigin)).toBeNull();
+    const resourceAlias = {
+      ...bindings(),
+      STAFF_MCP_RESOURCE_DOCUMENTATION_URL: ANONYMOUS_OAUTH_CONFIG.resource,
+    };
+    expect(staffMcpProductionRuntime(resourceAlias)).toBeNull();
+    const rootAlias = {
+      ...bindings(),
+      STAFF_MCP_RESOURCE_DOCUMENTATION_URL: 'https://staff-mcp.invalid/',
+    };
+    expect(staffMcpProductionRuntime(rootAlias)).toBeNull();
+  });
+
   function bindings(): AppBindings {
     return {
       DB: database,
@@ -127,7 +188,24 @@ describe('Staff MCP HTTPS JSON-RPC transport', () => {
       STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED: 'true',
       STAFF_MCP_LOCAL_MOCK_ENABLED: 'false',
       STAFF_MCP_CLEANUP_ENABLED: 'true',
+      STAFF_MCP_DISABLED_TOOLS: '',
+      STAFF_MCP_ENABLED_TOOLS: [
+        'list_staff_tasks_v1',
+        'get_customer_summary_v1',
+        'get_order_summary_v1',
+        'get_review_summary_v1',
+        'get_refund_summary_v1',
+        'get_settlement_summary_v1',
+        'draft_wechat_message_v1',
+        'draft_reconciliation_v1',
+        'draft_payment_batch_v1',
+        'draft_review_recommendation_v1',
+        'get_web_confirmation_step_v1',
+      ].join(','),
       STAFF_MCP_RESOURCE: ANONYMOUS_OAUTH_CONFIG.resource,
+      STAFF_MCP_RESOURCE_DOCUMENTATION_URL:
+        ANONYMOUS_OAUTH_CONFIG.resourceDocumentationUrl,
+      STAFF_MCP_RESOURCE_POLICY_URL: ANONYMOUS_OAUTH_CONFIG.resourcePolicyUrl,
       STAFF_MCP_OAUTH_AUDIENCE: ANONYMOUS_OAUTH_CONFIG.audience,
       STAFF_MCP_OAUTH_ISSUER: ANONYMOUS_OAUTH_CONFIG.issuer,
       STAFF_MCP_OAUTH_METADATA_URL: ANONYMOUS_OAUTH_CONFIG.metadataUrl,

@@ -51,6 +51,8 @@ for (const marker of [
   'ServiceBindingStaffMcpTokenStatusProvider',
   'MAX_TOKEN_STATUS_BYTES',
   'staff_mcp_token_status_timeout',
+  'resource_documentation',
+  'resource_policy_uri',
 ]) assert(oauth.includes(marker), `OAuth verifier missing: ${marker}`);
 
 const transport = read('apps/api/src/staff-mcp/transport.ts');
@@ -62,6 +64,7 @@ for (const marker of [
   'MAX_BODY_BYTES',
   'isGloballyEnabled',
   'runtime.cleanup.run',
+  'scope=',
 ]) assert(transport.includes(marker), `transport missing: ${marker}`);
 
 const securityState = read('apps/api/src/staff-mcp/security-state.ts');
@@ -82,6 +85,8 @@ for (const marker of [
   'D1StaffMcpApplicationService',
   'STAFF_MCP_TOKEN_STATUS_SERVICE',
   "STAFF_MCP_CLEANUP_ENABLED !== 'true'",
+  'STAFF_MCP_ENABLED_TOOLS',
+  'parseConfiguredTools',
   "disabledTools.add('read_task_screenshot_v1')",
 ]) assert(runtime.includes(marker), `production runtime missing: ${marker}`);
 assert(!runtime.includes('STAFF_MCP_APPLICATION_SERVICE')
@@ -111,6 +116,9 @@ for (const environment of ['staging', 'production']) {
     '"STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED": "false"',
     '"STAFF_MCP_LOCAL_MOCK_ENABLED": "false"',
     '"STAFF_MCP_CLEANUP_ENABLED": "false"',
+    '"STAFF_MCP_ENABLED_TOOLS": "REQUIRED_',
+    '"STAFF_MCP_RESOURCE_DOCUMENTATION_URL": "REQUIRED_',
+    '"STAFF_MCP_RESOURCE_POLICY_URL": "REQUIRED_',
     '"binding": "STAFF_MCP_TOKEN_STATUS_SERVICE"',
   ]) assert(template.includes(marker), `${environment} default is unsafe: ${marker}`);
   assert(!template.includes('"STAFF_MCP_BINDING_HASH_SECRET"'),
@@ -122,9 +130,17 @@ for (const file of [
   'docs/runbooks/STAFF_MCP_PRODUCTION_TRANSPORT_OAUTH.md',
   'docs/acceptance/STAFF_MCP_PRODUCTION_TRANSPORT_OAUTH.md',
   'scripts/preflight-staff-mcp-production.mjs',
+  'docs/runbooks/STAFF_MCP_AI_PRODUCTION_ENABLEMENT.md',
+  'docs/runbooks/STAFF_MCP_ACTIVATION_EVIDENCE.example.json',
+  'docs/acceptance/STAFF_MCP_AI_PRODUCTION_ENABLEMENT_PREP.md',
 ]) assert(existsSync(path.join(root, file)), `evidence missing: ${file}`);
 resolveChangeFile(
   'staff-mcp-production-transport-oauth',
+  'specs/staff-mcp-agent/spec.md',
+  root,
+);
+resolveChangeFile(
+  'staff-mcp-ai-production-enablement-prep',
   'specs/staff-mcp-agent/spec.md',
   root,
 );
@@ -138,9 +154,23 @@ for (const marker of [
   'REMOTE_WRITES=no',
 ]) assert(evidence.includes(marker), `truthful acceptance missing: ${marker}`);
 
+const prepEvidence = read('docs/acceptance/STAFF_MCP_AI_PRODUCTION_ENABLEMENT_PREP.md');
+for (const marker of [
+  'LOCAL_IMPLEMENTATION_READY / PRODUCTION_NO_GO',
+  'NO_SCHEMA_CHANGE',
+  'OPENAI_RESOURCES_TOUCHED=no',
+  'CLOUDFLARE_RESOURCES_TOUCHED=no',
+  'GITHUB_REMOTE_TOUCHED=no',
+  'REMOTE_WRITES=no',
+  'EXTERNAL_WRITES=0',
+]) assert(prepEvidence.includes(marker), `prep acceptance missing: ${marker}`);
+
 console.log(JSON.stringify({
   status: 'PASS',
-  change: 'staff-mcp-production-transport-oauth',
+  changes: [
+    'staff-mcp-production-transport-oauth',
+    'staff-mcp-ai-production-enablement-prep',
+  ],
   migration: '0038_GUARDED',
   transport: 'HTTPS_JSON_RPC_RFC9728_LOCAL',
   oauth: 'ANONYMOUS_RS256_JWKS_ROTATION_REVOCATION_FAIL_CLOSED',

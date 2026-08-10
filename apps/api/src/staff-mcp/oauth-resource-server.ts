@@ -18,6 +18,8 @@ const TOKEN_STATUS_URL = 'https://staff-mcp-token-status.internal/v1/status';
 export interface StaffMcpOAuthConfig {
   resource: string;
   audience: string;
+  resourceDocumentationUrl: string;
+  resourcePolicyUrl: string;
   issuer: string;
   metadataUrl: string;
   authorizationEndpoint: string;
@@ -237,6 +239,8 @@ export function protectedResourceMetadata(config: StaffMcpOAuthConfig) {
     scopes_supported: Object.freeze([STAFF_MCP_REQUIRED_OAUTH_SCOPE]),
     bearer_methods_supported: Object.freeze(['header']),
     resource_name: 'Yueguangbai Staff MCP',
+    resource_documentation: config.resourceDocumentationUrl,
+    resource_policy_uri: config.resourcePolicyUrl,
   });
 }
 
@@ -247,6 +251,9 @@ export function assertStaffMcpOAuthConfig(
     || new URL(config.resource).pathname !== '/mcp'
     || !exactHttpsUrl(config.audience, true)
     || config.audience !== config.resource
+    || !validPublicResourceUrl(config.resourceDocumentationUrl, config.resource)
+    || !validPublicResourceUrl(config.resourcePolicyUrl, config.resource)
+    || config.resourceDocumentationUrl === config.resourcePolicyUrl
     || !exactHttpsUrl(config.issuer, false)
     || !exactHttpsUrl(config.metadataUrl, true)
     || !exactHttpsUrl(config.authorizationEndpoint, true)
@@ -255,6 +262,16 @@ export function assertStaffMcpOAuthConfig(
     || !exactHttpsUrl(config.revocationEndpoint, true)) {
     throw new Error('staff_mcp_oauth_config_invalid');
   }
+}
+
+function validPublicResourceUrl(value: string, resource: string): boolean {
+  if (!exactHttpsUrl(value, true)) return false;
+  const candidate = new URL(value);
+  const resourceUrl = new URL(resource);
+  return candidate.origin === resourceUrl.origin
+    && candidate.pathname !== '/'
+    && candidate.pathname !== '/mcp'
+    && candidate.pathname !== '/.well-known/oauth-protected-resource/mcp';
 }
 
 function validAuthorizationServerMetadata(

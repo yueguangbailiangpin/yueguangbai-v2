@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "environment": "REQUIRED_STAGING_OR_PRODUCTION",
+  "resource": "REQUIRED_EXACT_HTTPS_MCP_RESOURCE",
+  "documentation_url": "REQUIRED_SAME_ORIGIN_PUBLIC_DOCUMENTATION_URL",
+  "privacy_policy_url": "REQUIRED_SAME_ORIGIN_PUBLIC_PRIVACY_POLICY_URL",
+  "client_registration": {
+    "mode": "REQUIRED_client_id_metadata_document_OR_pre_registered_OR_dynamic_client_registration",
+    "client_id": "REQUIRED_PUBLIC_CLIENT_ID_OR_METADATA_DOCUMENT_URL",
+    "redirect_uris": [
+      "REQUIRED_EXACT_HTTPS_REDIRECT_URI"
+    ],
+    "pkce_method": "S256"
+  },
+  "enabled_tools": [
+    "REQUIRED_EXPLICIT_STAFF_MCP_TOOL_NAME"
+  ]
+}
