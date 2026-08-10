@@ -12,10 +12,12 @@ const dailySchema=z.object({
   totals:z.object({
     new_buyer_customers:z.number().int().nonnegative(),new_seller_customers:z.number().int().nonnegative(),
     buyer_portal_registrations:z.number().int().nonnegative(),formal_orders:z.number().int().nonnegative(),
+    buyer_unattributed_orders:z.number().int().nonnegative(),seller_unattributed_orders:z.number().int().nonnegative(),
   }).strict(),
   daily:z.array(z.object({
     business_date:z.string(),new_buyer_customers:z.number().int().nonnegative(),new_seller_customers:z.number().int().nonnegative(),
     buyer_portal_registrations:z.number().int().nonnegative(),formal_orders:z.number().int().nonnegative(),
+    buyer_unattributed_orders:z.number().int().nonnegative(),seller_unattributed_orders:z.number().int().nonnegative(),
   }).strict()),
   channel_daily:z.array(z.object({
     business_date:z.string(),channel_id:z.string(),channel_name:z.string(),channel_label:z.string(),platform_name:z.string(),
@@ -43,6 +45,7 @@ export function FrozenAdminBusinessDashboard():React.JSX.Element{
   if(summary.isPending||acquisition.isPending)return <main className="admin-dashboard"><p role="status">正在加载经营数据</p></main>;
   if(summary.isError||acquisition.isError)return <main className="admin-dashboard"><Alert tone="danger">经营数据暂时无法加载，请稍后重试。</Alert></main>;
   const business=summary.data;const value=acquisition.data;
+  const hasUnattributed=value.totals.buyer_unattributed_orders>0||value.totals.seller_unattributed_orders>0;
   return <main className="admin-dashboard frozen-admin-dashboard">
     <section className="dashboard-toolbar"><div className="dashboard-window-switch">{WINDOWS.map(([key,label])=><Button key={key} className={window===key?'':'secondary'} onClick={()=>setWindow(key)}>{label}</Button>)}</div><p>{value.from_date} 至 {value.to_date} · 北京时间</p></section>
 
@@ -55,10 +58,11 @@ export function FrozenAdminBusinessDashboard():React.JSX.Element{
       <Metric label="业务完成" value={business.cards.business_completions}/>
       <Metric label="预计利润" value={formatCny(business.projected_profit.amount_cny_fen)} detail={`${business.projected_profit.valid_order_count} 单有效`}/>
       <Metric label="已完成利润" value={formatCny(business.completed_profit.amount_cny_fen)} detail={`${business.completed_profit.valid_order_count} 单有效`}/>
-    </div></section>
+    </div>
+    {hasUnattributed?<Alert tone="warning">所选范围存在未归因订单：买家来源缺失 {value.totals.buyer_unattributed_orders} 单，卖家来源缺失 {value.totals.seller_unattributed_orders} 单。系统不会把这些订单猜测到任何渠道。</Alert>:null}</section>
 
     <section><div className="dashboard-section-heading"><div><h2>每日新增</h2><p>“新增客户”和“买家网站注册”是两个独立事实。</p></div></div>
-      {value.daily.length===0?<EmptyState title="暂无每日数据" description="所选时间范围没有新增客户或订单。"/>:<DataTable caption="每日新增客户与订单"><thead><tr><th>日期</th><th>新增买家客户</th><th>新增卖家客户</th><th>买家网站注册</th><th>新增正式订单</th></tr></thead><tbody>{[...value.daily].reverse().map((row)=><tr key={row.business_date}><td>{row.business_date}</td><td>{row.new_buyer_customers}</td><td>{row.new_seller_customers}</td><td>{row.buyer_portal_registrations}</td><td><strong>{row.formal_orders}</strong></td></tr>)}</tbody></DataTable>}
+      {value.daily.length===0?<EmptyState title="暂无每日数据" description="所选时间范围没有新增客户或订单。"/>:<DataTable caption="每日新增客户与订单"><thead><tr><th>日期</th><th>新增买家客户</th><th>新增卖家客户</th><th>买家网站注册</th><th>新增正式订单</th><th>买家来源未归因</th><th>卖家来源未归因</th></tr></thead><tbody>{[...value.daily].reverse().map((row)=><tr key={row.business_date}><td>{row.business_date}</td><td>{row.new_buyer_customers}</td><td>{row.new_seller_customers}</td><td>{row.buyer_portal_registrations}</td><td><strong>{row.formal_orders}</strong></td><td>{row.buyer_unattributed_orders}</td><td>{row.seller_unattributed_orders}</td></tr>)}</tbody></DataTable>}
     </section>
 
     <section><div className="dashboard-section-heading"><div><h2>每天各渠道新增</h2><p>同一张正式订单分别归到买家来源渠道和卖家来源渠道；全站订单总数仍只算一单。</p></div></div>
