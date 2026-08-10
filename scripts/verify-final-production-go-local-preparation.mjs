@@ -125,6 +125,7 @@ for (const marker of [
   'contents: read',
   'issues: write',
   'timeout-minutes: 2',
+  'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
   'persist-credentials: false',
   'https://app.yueguangbai.net/health',
   'node scripts/production-health-monitor.mjs',
