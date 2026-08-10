@@ -22,6 +22,7 @@ const channelMutation=z.object({channel:acquisitionChannelSchema,replayed:z.bool
 const prospectMutation=z.object({prospect:acquisitionProspectSchema,replayed:z.boolean()}).strict();
 const signalMutation=z.object({signal:acquisitionProspectSignalSchema,replayed:z.boolean()}).strict();
 const leadMutation=z.object({lead:acquisitionLeadSchema,replayed:z.boolean()}).strict();
+const handoffSchema=z.object({items:z.array(acquisitionProspectSchema)}).strict();
 const consultationMutation=z.object({consultation:z.object({
   consultation_id:z.string(),channel_id:z.string(),lead_type:z.enum(['BUYER','SELLER']),business_date:z.string(),
   person_count:z.number().int().nonnegative(),version:z.number().int().positive(),updated_by_staff_id:z.string(),updated_at:z.number().int().nonnegative(),
@@ -35,6 +36,7 @@ export const acquisitionApi=Object.freeze({
     const query=new URLSearchParams({limit:'50'});if(input.leadType)query.set('lead_type',input.leadType);if(input.status)query.set('status',input.status);if(input.cursor)query.set('cursor',input.cursor);
     return read(client,`/api/staff/acquisition/prospects?${query}`,acquisitionProspectsPageSchema,signal);
   },
+  handoffs:(client:QueryClient,leadType:'BUYER'|'SELLER',signal?:AbortSignal)=>read(client,`/api/staff/acquisition/handoffs?lead_type=${leadType}`,handoffSchema,signal),
   prospect:(client:QueryClient,id:string,signal?:AbortSignal)=>read(client,`/api/staff/acquisition/prospects/${encodeURIComponent(id)}`,acquisitionProspectDetailSchema,signal),
   createProspect:(client:QueryClient,body:unknown,key:string)=>write(client,'/api/staff/acquisition/prospects',body,prospectMutation,key),
   updateProspect:(client:QueryClient,id:string,body:unknown,key:string)=>write(client,`/api/staff/acquisition/prospects/${encodeURIComponent(id)}/update`,body,prospectMutation,key),
