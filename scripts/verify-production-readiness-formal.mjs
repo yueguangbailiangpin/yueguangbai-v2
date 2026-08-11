@@ -1,40 +1,37 @@
-import { readdirSync } from 'node:fs';
+import { readFileSync,readdirSync } from 'node:fs';
 import path from 'node:path';
-import {
-  invariant as assert,
-  readRepositoryFile as read,
-  repositoryRoot as root,
-} from './verifier-utils.mjs';
+import { pathToFileURL } from 'node:url';
+import { repositoryRoot as root } from './verifier-utils.mjs';
 
-const spec=read('openspec/specs/production-readiness/spec.md');
-const requirements=[...spec.matchAll(/^### Requirement: (.+)$/gmu)].map((match)=>match[1]);
-const scenarios=[...spec.matchAll(/^#### Scenario: (.+)$/gmu)].map((match)=>match[1]);
-assert(requirements.length===5,`expected 5 requirements, found ${requirements.length}`);
-assert(scenarios.length===11,`expected 11 scenarios, found ${scenarios.length}`);
-const purpose=spec.match(/^## Purpose\n([^\n]+)$/mu)?.[1]??'';
-assert(purpose.length>=40&&!/\bTBD\b/iu.test(purpose),'canonical Purpose must be substantive and must not contain TBD');
-const backup=read('packages/testkit/src/production-readiness-backup.ts');
-const reconcile=read('packages/testkit/src/production-readiness-file-reconciliation.ts');
-const controls=read('packages/contracts/src/production-readiness.ts');
-const tests=readdirSync(path.join(root,'apps/api/src/production-readiness')).filter((file)=>file.endsWith('.test.ts')).map((file)=>read(`apps/api/src/production-readiness/${file}`)).join('\n');
-const runbook=read('docs/runbooks/PRODUCTION_READINESS_BACKUP_RESTORE.md');
-const acceptance=read('docs/acceptance/M10_PRODUCTION_READINESS_BACKUP_VALIDATION.md');
-const security=read('docs/security/V2_REACT_ROUTER_RSC_ADVISORY_DISPOSITION.md');
-for(const marker of ['AES-256-GCM','HKDF-SHA256','createHmac','timingSafeEqual','releaseCommitSha','attestationPath','expectedReleaseCommitSha','validateBackupManifest','gzip','schema_fingerprint_sha256','financial_aggregates','PRAGMA foreign_key_check','smoke_reads']) assert(backup.includes(marker),`backup evidence missing: ${marker}`);
-for(const marker of ['MISSING','ORPHAN','DUPLICATE','SIZE_MISMATCH','MIME_MISMATCH','SHA256_MISMATCH','PUBLIC_LINK','external_calls: 0','r2_deletes: 0']) assert(reconcile.includes(marker),`reconciliation evidence missing: ${marker}`);
-for(const marker of ['worker_5xx','login_anomaly','job_stale_or_backlog','file_integrity','drive_dependency','feishu_dependency','mcp_dependency','d1_dependency','r2_dependency','capacity','PROVIDER_INDEPENDENT_REQUIRED']) assert(controls.includes(marker),`alert control missing: ${marker}`);
-for(const marker of ['attestation_hmac_mismatch','release_commit_mismatch','bundle_attestation_mismatch','invalid_backup_manifest','insecure_backup_key_permissions','restore_target_exists','R2_REHYDRATION_REQUIRED','daily_orders: 200','staff_count: 8']) assert(tests.includes(marker),`test evidence missing: ${marker}`);
-assert(runbook.includes('备份创建成功不等于可恢复'),'backup/restore distinction missing');
-assert(runbook.includes('连续 `0001`–`0043`'),'current Migration baseline missing');
-assert(runbook.includes('本最终本地准备 Change 同样不创建新 Migration'),'current no-Migration decision missing');
-assert(runbook.includes('备份与恢复 CLI 已删除 schema 34 默认值'),'explicit expected-schema boundary missing');
-assert(acceptance.includes('本地候选通过、生产未批准/未上线'),'truthful release conclusion missing');
-assert((acceptance.match(/P0-0[1-8]/gu)??[]).length===8,'external P0 matrix incomplete');
-assert(security.includes('react-router 8.3.0'),'official patched dependency disposition missing');
-const migrations=readdirSync(path.join(root,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
-assert(migrations.length===43&&migrations.at(-5)==='0039_staff_access_binding_management.sql'&&migrations.at(-4)==='0040_seller_partner_master_data_import.sql'&&migrations.at(-3)==='0041_seller_principal_rate_policy.sql'&&migrations.at(-2)==='0042_rakuten_tiktok_jp_marketplace_foundation.sql'&&migrations.at(-1)==='0043_seller_principal_rate_integrity_hardening.sql','schema must be the governed 0001-0043 chain');
-assert(migrations.every((file,index)=>Number(file.slice(0,4))===index+1),'Migration chain must be continuous');
-const webPackage=JSON.parse(read('apps/web/package.json'));
-assert(webPackage.dependencies?.['react-router']==='8.3.0','react-router must be pinned to 8.3.0');
-assert(webPackage.dependencies?.['react-router-dom']===undefined,'react-router-dom must be removed');
-console.log(JSON.stringify({status:'PASS',change:'production-readiness-backup-validation',requirements:5,scenarios:11,purpose:'NON_TBD',migration:'CURRENT_CHAIN_0001_0043',backup:'HKDF_HMAC_RELEASE_BOUND_RESTORE_REQUIRED',reconciliation:'OFFLINE_NO_DELETE',capacity:'8_STAFF_200_ORDERS',external_gates:'8_PRODUCTION_GO_BLOCKERS',production_go:'NOT_APPROVED'},null,2));
+const EXPECTED_SCHEMA=61;
+const DEFAULT_READY_URL='https://app.yueguangbai.net/ready';
+const REQUIRED_CHECKS=['schema','scheduler','acquisition_maintenance','object_storage','recovery'];
+
+export async function verifyProductionReadiness({
+  fetchImpl=fetch,
+  readyUrl=process.env.YGB_PRODUCTION_READY_URL??DEFAULT_READY_URL,
+}={}){
+  const migrations=readdirSync(path.join(root,'migrations')).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort();
+  if(migrations.length!==EXPECTED_SCHEMA||migrations.some((name,index)=>Number(name.slice(0,4))!==index+1)||migrations.at(-1)!=='0061_post_confirmation_integrity_guards.sql'){
+    throw new Error('repository_migration_chain_not_0001_0061');
+  }
+  const productionTemplate=readFileSync(path.join(root,'apps/api/wrangler.production.template.jsonc'),'utf8');
+  for(const marker of [
+    '"SCHEDULED_OPERATIONS_ENABLED": "true"','"ACQUISITION_MAINTENANCE_ENABLED": "true"',
+    '"STAFF_ACCESS_TEAM_DOMAIN": "REQUIRED_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN"',
+    '"STAFF_ACCESS_AUD": "REQUIRED_CLOUDFLARE_ACCESS_APPLICATION_AUD"',
+    '"STAFF_AUTH_ALLOWED_ORIGINS": "REQUIRED_PRODUCTION_HTTPS_ORIGIN"',
+  ])if(!productionTemplate.includes(marker))throw new Error(`production_template_missing:${marker}`);
+  for(const forbidden of ['"STAFF_AUTH_PROVIDER": "FEISHU"','"STAFF_AUTH_ENABLED": "false"'])if(productionTemplate.includes(forbidden))throw new Error(`stale_staff_auth_marker:${forbidden}`);
+
+  const url=readyEndpoint(readyUrl);let response;
+  try{response=await fetchImpl(url,{method:'GET',headers:{Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(10_000)});}catch{throw new Error('production_ready_probe_network_failure');}
+  const text=await response.text();if(text.length>16*1024)throw new Error('production_ready_response_too_large');
+  let body;try{body=JSON.parse(text);}catch{throw new Error('production_ready_response_invalid_json');}
+  if(response.status!==200||body?.data?.status!=='ready')throw new Error(`production_not_ready_http_${response.status}`);
+  for(const check of REQUIRED_CHECKS)if(body?.data?.checks?.[check]!=='ok')throw new Error(`production_readiness_check_failed:${check}`);
+  return Object.freeze({status:'PASS',schema:EXPECTED_SCHEMA,migration:'0001-0061_CONTINUOUS',staff_auth:'CLOUDFLARE_ACCESS',scheduler:'READY',acquisition_maintenance:'READY',object_storage:'READY',recovery:'SCHEMA61_ATTESTED',ready_url:url});
+}
+function readyEndpoint(value){const url=new URL(value);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/ready')throw new Error('invalid_production_ready_url');return url.href;}
+async function main(){try{console.log(JSON.stringify(await verifyProductionReadiness(),null,2));}catch(error){console.error(JSON.stringify({status:'NO_GO',reason:error instanceof Error?error.message:'production_readiness_failed'},null,2));process.exitCode=1;}}
+if(process.argv[1]&&pathToFileURL(process.argv[1]).href===import.meta.url)await main();
