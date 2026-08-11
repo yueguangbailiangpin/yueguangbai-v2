@@ -48,7 +48,8 @@ export async function createAcquisitionChannel(
   requireAcquisitionAdmin(command.actor);
   const code=normalizedCode(input.code); const platformName=text(input.platformName,100);
   const displayName=text(input.displayName,100); const marketplaceCode=identifier(input.marketplaceCode);
-  if(!['BUYER','SELLER','BOTH'].includes(input.leadType))validation();
+  // BOTH is historical-only. Operational intake always has a single Buyer or Seller audience.
+  if(input.leadType!=='BUYER'&&input.leadType!=='SELLER')validation();
   await requireMarketplace(database,marketplaceCode);
   const channelType=legacyType(platformName);
   const payload={code,channel_type:channelType,platform_name:platformName,lead_type:input.leadType,marketplace_code:marketplaceCode,display_name:displayName};
@@ -143,7 +144,8 @@ export async function listAcquisitionChannels(database:SqlDatabase,actor:Assignm
   const audience=actor.roles.has('pre_sales')?'BUYER':actor.roles.has('seller_ops')?'SELLER':null;
   const clauses=[`1=1`];const bindings:unknown[]=[];
   if(markets.length){clauses.push(`marketplace_code IN (${markets.map(()=>'?').join(',')})`);bindings.push(...markets);}
-  if(audience){clauses.push(`lead_type IN (?, 'BOTH')`);bindings.push(audience);}
+  // Historical BOTH channels stay visible only to Owner/acquisition reporting.
+  if(audience){clauses.push(`lead_type=?`);bindings.push(audience);}
   const rows=await database.prepare(`SELECT id,code,channel_type,platform_name,lead_type,marketplace_code,display_name,status,version,created_at,updated_at FROM acquisition_channels WHERE ${clauses.join(' AND ')} ORDER BY status,display_name,id`).bind(...bindings).all<ChannelRow>();
   return rows.results.map(toChannel);
 }
