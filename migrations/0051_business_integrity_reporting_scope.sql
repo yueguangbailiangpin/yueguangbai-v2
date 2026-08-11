@@ -54,8 +54,8 @@ BEFORE DELETE ON acquisition_customer_intake_facts
 BEGIN SELECT RAISE(ABORT,'acquisition_customer_intake_facts_are_immutable'); END;
 
 -- 2) One explicit reporting precision boundary separates expected historical
--- unknown source from a new-system attribution defect. Activation snapshots all
--- business subjects that already existed at cutover as historical exemptions.
+-- unknown source from a new-system attribution defect. Activation logic later
+-- snapshots only still-unattributed existing subjects as historical exemptions.
 CREATE TABLE acquisition_reporting_config (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id=1),
   precision_started_business_date TEXT CHECK (
@@ -121,7 +121,7 @@ BEGIN SELECT RAISE(ABORT,'acquisition_lead_source_corrections_are_immutable'); E
 
 -- 6) Multiple employees may cover one Role x Marketplace. Exactly one active
 -- PRIMARY is kept; other active employees are SUPPORT. Existing staff remain
--- PRIMARY so current production behavior does not change during migration.
+-- PRIMARY so current behavior remains unchanged during migration.
 ALTER TABLE staff_marketplace_scopes ADD COLUMN scope_kind TEXT NOT NULL
   DEFAULT 'PRIMARY' CHECK (scope_kind IN ('PRIMARY','SUPPORT'));
 DROP INDEX uq_staff_marketplace_role_primary;
@@ -134,8 +134,10 @@ ON staff_marketplace_scopes(role_code,marketplace_code,scope_kind,status,staff_i
 -- 12) Prepare a global Seller-customer identity above marketplace-specific
 -- Seller Organizations. Current JP business remains unchanged; future US/KR
 -- organizations can join the same global group without rewriting orders.
+-- The group id bound is deliberately wider than current UUID ids because
+-- historical organization ids may be longer and this migration prefixes them.
 CREATE TABLE seller_customer_groups (
-  id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 16 AND 160),
+  id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 16 AND 240),
   canonical_name TEXT NOT NULL CHECK (length(canonical_name) BETWEEN 1 AND 200),
   status TEXT NOT NULL CHECK (status IN ('ACTIVE','DISABLED')),
   created_at INTEGER NOT NULL CHECK (created_at>=0),
