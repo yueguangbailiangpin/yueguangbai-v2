@@ -7,6 +7,7 @@ import {
   normalizeWechatId,
   validateCustomerPassword,
 } from '@ygb/domain';
+import { hashNormalizedWechat } from '../acquisition/privacy';
 import { createAuditEventStatement } from '../foundation/audit';
 import {
   acquireIdempotency,
@@ -21,7 +22,10 @@ const INVITATION_TTL_MS=7*24*60*60*1000;
 const SYSTEM_SELLER_CHANNEL='seller-channel-portal-onboarding';
 
 export class SellerRegistrationError extends Error {
-  constructor(public readonly code:'VALIDATION_ERROR'|'FORBIDDEN'|'NOT_FOUND'|'CONFLICT'|'DEPENDENCY_UNAVAILABLE',public readonly status:400|403|404|409|503){super(code);}
+  constructor(
+    public readonly code:'VALIDATION_ERROR'|'FORBIDDEN'|'NOT_FOUND'|'CONFLICT'|'DEPENDENCY_UNAVAILABLE',
+    public readonly status:400|403|404|409|503,
+  ){super(code);}
 }
 
 type Kind='NEW_CUSTOMER'|'HISTORICAL_ACCOUNT_ONLY';
@@ -47,8 +51,8 @@ export async function issueSellerRegistrationInvitation(
   const now=command.now??Date.now();
   const wechat=normalizeWechatId(input.wechatId);
   const target=hasLead
-    ?await ensureNewSellerTarget(database,input.leadId!,wechat.display,wechat.normalized,command.actor.staffId,now)
-    :await ensureHistoricalSellerTarget(database,input.sellerOrganizationId!,wechat.display,wechat.normalized,command.actor.staffId,now);
+    ?await ensureNewSellerTarget(database,input.leadId!,wechat.display,wechat.normalized,command.tokenSecret,now)
+    :await ensureHistoricalSellerTarget(database,input.sellerOrganizationId!,wechat.display,wechat.normalized,now);
   const existingAccount=await database.prepare(`SELECT account.id FROM customer_login_accounts account
     JOIN seller_organization_members member ON member.identity_subject_id=account.identity_subject_id
     WHERE member.id=? AND account.status='ACTIVE' LIMIT 1`).bind(target.memberId).first<{id:string}>();
@@ -157,13 +161,24 @@ export async function completeSellerRegistration(
   return{...safe,replayed:false};
 }
 
-async function ensureNewSellerTarget(database:SqlDatabase,leadId:string,wechatDisplay:string,normalizedWechat:string,staffId:string,now:number){
-  const lead=await database.prepare(`SELECT id,marketplace_code,display_name,status FROM acquisition_leads
-    WHERE id=? AND lead_type='SELLER'`).bind(cleanId(leadId)).first<{id:string;marketplace_code:string;display_name:string|null;status:string}>();
+async function ensureNewSellerTarget(
+  database:SqlDatabase,
+  leadId:string,
+  wechatDisplay:string,
+  normalizedWechat:string,
+  identitySecret:string,
+  now:number,
+){
+  const lead=await database.prepare(`SELECT id,marketplace_code,display_name,status,identity_hash FROM acquisition_leads
+    WHERE id=? AND lead_type='SELLER'`).bind(cleanId(leadId)).first<{
+      id:string;marketplace_code:string;display_name:string|null;status:string;identity_hash:string|null;
+    }>();
   if(!lead||lead.status!=='ACTIVE'||lead.marketplace_code!=='AMAZON_JP')throw new SellerRegistrationError('NOT_FOUND',404);
+  const expectedHash=await hashNormalizedWechat(normalizedWechat,identitySecret);
+  if(lead.identity_hash===null||lead.identity_hash!==expectedHash)throw new SellerRegistrationError('CONFLICT',409);
   const existingLink=await database.prepare(`SELECT target_id FROM acquisition_lead_links
     WHERE lead_id=? AND link_type='SELLER_ORGANIZATION' LIMIT 1`).bind(lead.id).first<{target_id:string}>();
-  if(existingLink)return ensureHistoricalSellerTarget(database,existingLink.target_id,wechatDisplay,normalizedWechat,staffId,now,{leadId:lead.id,kind:'NEW_CUSTOMER'});
+  if(existingLink)return ensureHistoricalSellerTarget(database,existingLink.target_id,wechatDisplay,normalizedWechat,now,{leadId:lead.id,kind:'NEW_CUSTOMER'});
   const channel=await database.prepare(`SELECT prefix,next_sequence FROM seller_channels WHERE id=? AND status='ACTIVE'`)
     .bind(SYSTEM_SELLER_CHANNEL).first<{prefix:string;next_sequence:number}>();
   if(!channel)throw new SellerRegistrationError('DEPENDENCY_UNAVAILABLE',503);
@@ -183,7 +198,7 @@ async function ensureNewSellerTarget(database:SqlDatabase,leadId:string,wechatDi
     database.prepare(`INSERT INTO seller_organizations(
       id,marketplace_code,seller_code,origin_channel_id,current_channel_id,seller_sequence,
       organization_name,status,version,created_at,updated_at,activated_at,disabled_at,next_member_number
-    ) VALUES(?,'JP',?,?,?,? ,?,'ACTIVE',1,?,?,?,NULL,2)`).bind(
+    ) VALUES(?,'JP',?,?,?,?,?,'ACTIVE',1,?,?,?,NULL,2)`).bind(
       organizationId,sellerCode,SYSTEM_SELLER_CHANNEL,SYSTEM_SELLER_CHANNEL,sequence,organizationName,now,now,now),
     database.prepare(`INSERT INTO seller_organization_members(
       id,identity_subject_id,organization_id,member_number,username_fallback,display_name,
@@ -197,7 +212,14 @@ async function ensureNewSellerTarget(database:SqlDatabase,leadId:string,wechatDi
   return{organizationId,memberId,organizationName,leadId:lead.id,kind:'NEW_CUSTOMER' as const};
 }
 
-async function ensureHistoricalSellerTarget(database:SqlDatabase,organizationIdRaw:string,wechatDisplay:string,normalizedWechat:string,staffId:string,now:number,override?:{leadId:string;kind:Kind}){
+async function ensureHistoricalSellerTarget(
+  database:SqlDatabase,
+  organizationIdRaw:string,
+  wechatDisplay:string,
+  normalizedWechat:string,
+  now:number,
+  override?:{leadId:string;kind:Kind},
+){
   const organizationId=cleanId(organizationIdRaw);
   const org=await database.prepare(`SELECT id,seller_code,organization_name,marketplace_code,status,next_member_number
     FROM seller_organizations WHERE id=?`).bind(organizationId).first<OrgRow>();
@@ -247,7 +269,16 @@ async function expireOldInvitation(database:SqlDatabase,organizationId:string,no
   if(active)throw new SellerRegistrationError('CONFLICT',409);
 }
 
-function event(database:SqlDatabase,id:string,type:'ISSUED'|'CONSUMED'|'REVOKED'|'EXPIRED',actorType:'STAFF'|'CUSTOMER'|'SYSTEM',actorId:string|null,requestId:string|null,key:string|null,now:number){
+function event(
+  database:SqlDatabase,
+  id:string,
+  type:'ISSUED'|'CONSUMED'|'REVOKED'|'EXPIRED',
+  actorType:'STAFF'|'CUSTOMER'|'SYSTEM',
+  actorId:string|null,
+  requestId:string|null,
+  key:string|null,
+  now:number,
+){
   return database.prepare(`INSERT INTO customer_seller_invitation_events(
     id,invitation_id,event_type,actor_type,actor_id,request_id,idempotency_key,created_at
   ) VALUES(?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),id,type,actorType,actorId,requestId,key,now);
