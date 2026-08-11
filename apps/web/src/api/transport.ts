@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { approvedApiPath } from '../config/runtime-config';
+import { demoApiRequest } from '../review/demo-api';
+import { isReviewRuntime } from '../review/runtime';
 import { failureEnvelope, retryAfterMilliseconds } from './envelopes';
 import { FrontendApiError, categoryForStatus, projectSafeDetails } from './errors';
 
@@ -73,6 +75,9 @@ export function normalizeResponseError(
 export async function apiRequest<T extends z.ZodType>(request: ApiRequest<T>): Promise<ApiResult<z.output<T>>> {
   if (!approvedApiPath(request.path)) {
     throw new FrontendApiError('INVALID_PATH', 0, null, 'CONTRACT');
+  }
+  if (isReviewRuntime()) {
+    return demoApiRequest(request);
   }
   try {
     const init: RequestInit = {

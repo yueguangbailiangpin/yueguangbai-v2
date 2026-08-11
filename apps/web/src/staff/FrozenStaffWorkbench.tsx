@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { useLocation, useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { isFrontendApiError } from '../api/errors';
 import { useFileUpload } from '../buyer/shared/useFileUpload';
 import {
@@ -22,7 +22,7 @@ const labels:Record<StaffWorkItem['work_type'],string>={
 };
 
 export function FrozenStaffWorkbench():React.JSX.Element{
-  const client=useQueryClient();const location=useLocation();const [parameters,setParameters]=useSearchParams();
+  const client=useQueryClient();const location=useLocation();const navigate=useNavigate();const [parameters,setParameters]=useSearchParams();
   const routeId=/^\/staff\/work\/([^/]+)$/u.exec(location.pathname)?.[1];
   const selectedId=routeId?decodeURIComponent(routeId):parameters.get('work_item');
   const status=parameters.get('status')==='COMPLETED'?'COMPLETED':'OPEN';const workType=parameters.get('work_type');
@@ -30,7 +30,7 @@ export function FrozenStaffWorkbench():React.JSX.Element{
   const query=useQuery({queryKey:staffWorkbenchKeys.queue(status,workType,cursor),queryFn:({signal})=>staffApi.workItems(client,{status,workType,cursor},signal).then((r)=>r.data),retry:false});
   const selected=query.data?.work_items.find((item)=>item.work_item_id===selectedId)??null;
   function filter(name:'status'|'work_type',value:string){const next=new URLSearchParams(parameters);value?next.set(name,value):next.delete(name);next.delete('work_item');setCursor(null);setHistory([]);setParameters(next);}
-  function select(item:StaffWorkItem){const next=new URLSearchParams(parameters);next.set('work_item',item.work_item_id);setParameters(next);window.history.replaceState(null,'',`/staff/work/${encodeURIComponent(item.work_item_id)}?${next}`);}
+  function select(item:StaffWorkItem){const next=new URLSearchParams(parameters);next.set('work_item',item.work_item_id);void navigate(`/staff/work/${encodeURIComponent(item.work_item_id)}?${next}`);}
   return <main className="staff-panes staff-workbench frozen-w1">
     <section className="staff-queue"><div className="pane-heading"><div><h2>工作队列</h2><p>只显示当前岗位与负责站点的业务。</p></div><StatusBadge tone={query.data?.work_items.length?'processing':'neutral'}>{query.data?.work_items.length??0}</StatusBadge></div>
       <div className="staff-filter-grid"><label htmlFor="queue-status">状态<Select id="queue-status" value={status} onChange={(event)=>filter('status',event.target.value)}><option value="OPEN">待处理</option><option value="COMPLETED">已完成</option></Select></label><label htmlFor="queue-type">类型<Select id="queue-type" value={workType??''} onChange={(event)=>filter('work_type',event.target.value)}><option value="">全部类型</option>{Object.entries(labels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label></div>

@@ -1,7 +1,7 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
-import { queryClient } from './api/query-client';
+import { queryClient, reviewQueryClient } from './api/query-client';
 import { CustomerChangePasswordPage } from './auth/customer/CustomerChangePasswordPage';
 import { CustomerLoginPage } from './auth/customer/CustomerLoginPage';
 import { CustomerPasswordResetPage } from './auth/customer/CustomerPasswordResetPage';
@@ -16,6 +16,11 @@ import { SellerMemberRegistrationPage } from './seller/registration/SellerMember
 import { safeReturnPath } from './routes/return-path';
 import { RouteChunkBoundary } from './routes/RouteChunkBoundary';
 import { BuyerRouteSlot, SellerRouteSlot, StaffRouteSlot } from './routes/IdentityRouteSlots';
+import { ReviewHome } from './review/ReviewHome';
+import {
+  isReviewRuntime, ReviewChrome, ReviewRuntimeProvider,
+  reviewCustomerAuthApi, reviewStaffAuthApi,
+} from './review/runtime';
 import { Alert, AppShell, Button, Card, ErrorState, NotFound, PermissionDenied } from './ui/primitives';
 
 let buyerLayout: Promise<typeof import('./buyer/routes/BuyerRouteModule')> | undefined;
@@ -24,6 +29,8 @@ let staffShell: Promise<typeof import('./staff/StaffRouteModule')> | undefined;
 const loadBuyerLayout = () => buyerLayout ??= import('./buyer/routes/BuyerRouteModule');
 const loadSellerLayout = () => sellerLayout ??= import('./seller/routes/SellerRouteModule');
 const loadStaffShell = () => staffShell ??= import('./staff/StaffRouteModule');
+const reviewBuyerAuthApi = reviewCustomerAuthApi('buyer');
+const reviewSellerAuthApi = reviewCustomerAuthApi('seller');
 
 export function RootEntry(): React.JSX.Element {
   return <main className="identity-entry"><section className="dedicated-entry" aria-labelledby="brand-title"><h1 id="brand-title">月光白</h1><p>请使用工作人员发送的专属链接登录。</p></section></main>;
@@ -61,4 +68,26 @@ export function AppRoutes(): React.JSX.Element {
     <Route path="*" element={<DomainNotFound />} />
   </Routes>;
 }
-export function App():React.JSX.Element{return <QueryClientProvider client={queryClient}><BrowserRouter><AppShell><AppRoutes /></AppShell></BrowserRouter></QueryClientProvider>;}
+
+export function ReviewRoutes(): React.JSX.Element {
+  return <Routes>
+    <Route path="/" element={<ReviewHome />} />
+    <Route path="/buyer/*" element={<CustomerSessionBoundary target="buyer" adapter={reviewBuyerAuthApi}><RouteChunkBoundary load={loadBuyerLayout} /></CustomerSessionBoundary>}>
+      <Route index element={<BuyerRouteSlot />} /><Route path="products" element={<BuyerRouteSlot />} /><Route path="tasks" element={<BuyerRouteSlot />} /><Route path="demands" element={<BuyerRouteSlot />} /><Route path="demands/:demandId" element={<BuyerRouteSlot />} /><Route path="reservations" element={<BuyerRouteSlot />} /><Route path="reservations/:reservationId" element={<BuyerRouteSlot />} /><Route path="reservations/:reservationId/instruction" element={<BuyerRouteSlot />} /><Route path="order-materials" element={<BuyerRouteSlot />} /><Route path="order-materials/new" element={<BuyerRouteSlot />} /><Route path="order-materials/:submissionId" element={<BuyerRouteSlot />} /><Route path="orders" element={<BuyerRouteSlot />} /><Route path="orders/:formalOrderId" element={<BuyerRouteSlot />} /><Route path="reviews" element={<BuyerRouteSlot />} /><Route path="reviews/new" element={<BuyerRouteSlot />} /><Route path="reviews/:reviewCaseId" element={<BuyerRouteSlot />} /><Route path="refunds" element={<BuyerRouteSlot />} /><Route path="refunds/:refundId" element={<BuyerRouteSlot />} /><Route path="me" element={<BuyerRouteSlot />} /><Route path="*" element={<DomainNotFound />} />
+    </Route>
+    <Route path="/seller/*" element={<CustomerSessionBoundary target="seller" adapter={reviewSellerAuthApi}><RouteChunkBoundary load={loadSellerLayout} /></CustomerSessionBoundary>}>
+      <Route index element={<SellerRouteSlot />} /><Route path="products" element={<SellerRouteSlot />} /><Route path="products/new" element={<SellerRouteSlot />} /><Route path="products/:applicationId" element={<SellerRouteSlot />} /><Route path="demands" element={<SellerRouteSlot />} /><Route path="demands/new" element={<SellerRouteSlot />} /><Route path="orders" element={<SellerRouteSlot />} /><Route path="reviews" element={<SellerRouteSlot />} /><Route path="settlements" element={<SellerRouteSlot />} /><Route path="settings" element={<SellerRouteSlot />} /><Route path="*" element={<DomainNotFound />} />
+    </Route>
+    <Route path="/staff/*" element={<StaffSessionBoundary adapter={reviewStaffAuthApi}><RouteChunkBoundary load={loadStaffShell} /></StaffSessionBoundary>}>
+      <Route index element={<StaffRouteSlot />} /><Route path="queue" element={<StaffRouteSlot />} /><Route path="work/:workItemId" element={<StaffRouteSlot />} /><Route path="acquisition" element={<StaffRouteSlot />} /><Route path="buyer-customers" element={<StaffRouteSlot />} /><Route path="seller-customers" element={<StaffRouteSlot />} /><Route path="admin-business-dashboard" element={<StaffRouteSlot />} /><Route path="access-management" element={<StaffRouteSlot />} /><Route path="seller-principal-rate-policies" element={<StaffRouteSlot />} /><Route path="products" element={<StaffRouteSlot />} /><Route path="products/:productId" element={<StaffRouteSlot />} /><Route path="demands/:demandId/reservations" element={<StaffRouteSlot />} /><Route path="*" element={<DomainNotFound />} />
+    </Route>
+    <Route path="*" element={<DomainNotFound />} />
+  </Routes>;
+}
+
+export function App(): React.JSX.Element {
+  if (isReviewRuntime()) {
+    return <QueryClientProvider client={reviewQueryClient}><BrowserRouter basename="/review"><ReviewRuntimeProvider><AppShell><ReviewChrome><ReviewRoutes /></ReviewChrome></AppShell></ReviewRuntimeProvider></BrowserRouter></QueryClientProvider>;
+  }
+  return <QueryClientProvider client={queryClient}><BrowserRouter><AppShell><AppRoutes /></AppShell></BrowserRouter></QueryClientProvider>;
+}
