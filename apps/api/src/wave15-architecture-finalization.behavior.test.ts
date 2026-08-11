@@ -1,0 +1,218 @@
+import { afterEach,describe,expect,it } from 'vitest';
+import type { ObjectStorageAdapter,ObjectStorageHead,ObjectStoragePutInput,ObjectStoragePutResult } from '@ygb/contracts';
+import { SqliteDatabase } from '@ygb/testkit';
+import {
+  FormalOrderPolicyError,
+  readFormalOrderBusinessCapabilities,
+  requireFormalOrderAction,
+} from './formal-order-policy';
+import { prepareAdvancePrincipalSettlementStatements } from './buyer-refunds/advance-principal-settlement';
+import { reconcileUnlinkedFileRetention } from './files/retention';
+import { readFinancialReportingProjection } from './admin-business-dashboard/financial-projection';
+
+let database:SqliteDatabase|null=null;
+afterEach(()=>{database?.close();database=null;});
+
+describe('Wave 15 architecture finalization — real behavior',()=>{
+  it('central order policy blocks every gated action while abnormal and restores them after RESOLVED',async()=>{
+    database=new SqliteDatabase(':memory:');
+    database.exec(`
+      CREATE TABLE formal_orders(id TEXT PRIMARY KEY);
+      CREATE TABLE formal_order_operational_events(
+        id TEXT PRIMARY KEY,formal_order_id TEXT NOT NULL,event_type TEXT NOT NULL,
+        reason TEXT NOT NULL,actor_staff_id TEXT NOT NULL,created_at INTEGER NOT NULL
+      );
+      CREATE VIEW formal_order_effective_operational_state AS
+      SELECT formal_order.id AS formal_order_id,
+        COALESCE((SELECT CASE event.event_type WHEN 'RESOLVED' THEN 'NORMAL' ELSE event.event_type END
+          FROM formal_order_operational_events event WHERE event.formal_order_id=formal_order.id
+          ORDER BY event.created_at DESC,event.id DESC LIMIT 1),'NORMAL') AS operational_state
+      FROM formal_orders formal_order;
+      INSERT INTO formal_orders(id) VALUES('order-policy-1');
+    `);
+    const normal=await readFormalOrderBusinessCapabilities(database,'order-policy-1');
+    expect(normal.operational_state).toBe('NORMAL');
+    expect(Object.values(normal.actions).every((action)=>action.allowed)).toBe(true);
+
+    database.exec(`INSERT INTO formal_order_operational_events VALUES(
+      'event-cancel','order-policy-1','PLATFORM_CANCELLED','平台取消','staff-1',100
+    );`);
+    const cancelled=await readFormalOrderBusinessCapabilities(database,'order-policy-1');
+    expect(cancelled.operational_state).toBe('PLATFORM_CANCELLED');
+    expect(Object.values(cancelled.actions).every((action)=>!action.allowed)).toBe(true);
+    await expect(requireFormalOrderAction(database,'order-policy-1','APPROVE_REVIEW'))
+      .rejects.toMatchObject<Partial<FormalOrderPolicyError>>({
+        code:'FORMAL_ORDER_ACTION_BLOCKED',state:'PLATFORM_CANCELLED',action:'APPROVE_REVIEW',
+      });
+
+    database.exec(`INSERT INTO formal_order_operational_events VALUES(
+      'event-resolved','order-policy-1','RESOLVED','问题处理完成','staff-1',200
+    );`);
+    const resolved=await readFormalOrderBusinessCapabilities(database,'order-policy-1');
+    expect(resolved.operational_state).toBe('NORMAL');
+    expect(resolved.actions.CREATE_BUYER_REFUND.allowed).toBe(true);
+    expect(resolved.actions.RECORD_ADVANCE_PRINCIPAL.allowed).toBe(true);
+  });
+
+  it('second persona bumps session version exactly once while first persona does not',async()=>{
+    database=new SqliteDatabase(':memory:');
+    database.exec(`
+      CREATE TABLE transaction_assertions(assertion_value INTEGER NOT NULL CHECK(assertion_value=1));
+      CREATE TABLE customer_login_accounts(
+        id TEXT PRIMARY KEY,identity_subject_id TEXT NOT NULL,status TEXT NOT NULL,
+        session_version INTEGER NOT NULL,version INTEGER NOT NULL,updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE customer_account_personas(
+        account_id TEXT NOT NULL,identity_subject_id TEXT NOT NULL,persona_type TEXT NOT NULL,
+        buyer_customer_id TEXT,seller_member_id TEXT,created_at INTEGER NOT NULL,
+        PRIMARY KEY(account_id,persona_type)
+      );
+      CREATE TRIGGER trg_customer_persona_privilege_session_bump
+      AFTER INSERT ON customer_account_personas
+      WHEN EXISTS(
+        SELECT 1 FROM customer_account_personas existing
+        WHERE existing.account_id=NEW.account_id AND existing.persona_type<>NEW.persona_type
+      )
+      BEGIN
+        UPDATE customer_login_accounts
+        SET session_version=session_version+1,version=version+1,updated_at=MAX(updated_at,NEW.created_at)
+        WHERE id=NEW.account_id AND identity_subject_id=NEW.identity_subject_id AND status='ACTIVE';
+        INSERT INTO transaction_assertions(assertion_value)
+        SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END;
+      END;
+      INSERT INTO customer_login_accounts VALUES('account-1','subject-1','ACTIVE',7,3,10);
+      INSERT INTO customer_account_personas VALUES('account-1','subject-1','BUYER','buyer-1',NULL,20);
+    `);
+    let account=await database.prepare(`SELECT session_version,version FROM customer_login_accounts WHERE id='account-1'`).first<{session_version:number;version:number}>();
+    expect(account).toEqual({session_version:7,version:3});
+    await database.prepare(`INSERT INTO customer_account_personas VALUES('account-1','subject-1','SELLER_MEMBER',NULL,'member-1',30)`).run();
+    account=await database.prepare(`SELECT session_version,version FROM customer_login_accounts WHERE id='account-1'`).first<{session_version:number;version:number}>();
+    expect(account).toEqual({session_version:8,version:4});
+    await expect(database.prepare(`INSERT INTO customer_account_personas VALUES('account-1','subject-1','SELLER_MEMBER',NULL,'member-2',40)`).run()).rejects.toThrow();
+    account=await database.prepare(`SELECT session_version,version FROM customer_login_accounts WHERE id='account-1'`).first<{session_version:number;version:number}>();
+    expect(account).toEqual({session_version:8,version:4});
+  });
+
+  it('settles advance 600 against formal refund 500 and records only the excess 100 as overpayment',async()=>{
+    database=new SqliteDatabase(':memory:');
+    database.exec(`
+      CREATE TABLE buyer_advance_principal_entries(
+        id TEXT PRIMARY KEY,formal_order_id TEXT NOT NULL,entry_type TEXT NOT NULL,
+        original_payment_entry_id TEXT,amount_cny_fen INTEGER NOT NULL,paid_at INTEGER,
+        china_business_date TEXT NOT NULL,payment_channel TEXT NOT NULL,note TEXT,
+        actor_staff_id TEXT NOT NULL,created_at INTEGER NOT NULL
+      );
+      CREATE TABLE buyer_advance_principal_settlements(
+        id TEXT PRIMARY KEY,advance_payment_entry_id TEXT UNIQUE,buyer_refund_obligation_id TEXT,
+        buyer_refund_payment_entry_id TEXT UNIQUE,settled_amount_cny_fen INTEGER,settled_at INTEGER
+      );
+      CREATE TABLE buyer_advance_principal_overpayments(
+        id TEXT PRIMARY KEY,advance_payment_entry_id TEXT UNIQUE,buyer_refund_obligation_id TEXT,
+        formal_order_id TEXT,excess_amount_cny_fen INTEGER,recognized_at INTEGER
+      );
+      CREATE TABLE buyer_refund_payment_entries(
+        id TEXT PRIMARY KEY,obligation_id TEXT,entry_type TEXT,original_payment_entry_id TEXT,
+        amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER,china_business_date TEXT,
+        payment_channel TEXT,recorded_by_staff_id TEXT,public_note TEXT,internal_note TEXT,
+        idempotency_key TEXT,request_hash TEXT,created_at INTEGER
+      );
+      CREATE TABLE buyer_refund_events(
+        id TEXT PRIMARY KEY,obligation_id TEXT,payment_entry_id TEXT,event_type TEXT,
+        actor_type TEXT,actor_id TEXT,obligation_version INTEGER,amount_cny_fen INTEGER,
+        net_paid_after_cny_fen INTEGER,metadata_json TEXT,idempotency_key TEXT,created_at INTEGER
+      );
+      INSERT INTO buyer_advance_principal_entries VALUES(
+        'advance-payment-1','formal-order-1','PAYMENT',NULL,60000,1000,
+        '2026-08-01','WECHAT','提前支付','staff-refund',1000
+      );
+    `);
+    const prepared=await prepareAdvancePrincipalSettlementStatements(database,{
+      obligationId:'refund-obligation-1',formalOrderId:'formal-order-1',dueAmountCnyFen:50000,now:2000,
+    });
+    expect(prepared.netPaidCnyFen).toBe(50000);
+    expect(prepared.overpaymentCnyFen).toBe(10000);
+    expect(prepared.settlementCount).toBe(1);
+    expect(prepared.overpaymentCount).toBe(1);
+    await database.batch(prepared.statements);
+    const payment=await database.prepare(`SELECT amount_cny_fen FROM buyer_refund_payment_entries`).first<{amount_cny_fen:number}>();
+    const excess=await database.prepare(`SELECT excess_amount_cny_fen FROM buyer_advance_principal_overpayments`).first<{excess_amount_cny_fen:number}>();
+    expect(payment?.amount_cny_fen).toBe(50000);
+    expect(excess?.excess_amount_cny_fen).toBe(10000);
+  });
+
+  it('retention deletes only old unlinked files and never touches an actively linked business file',async()=>{
+    database=new SqliteDatabase(':memory:');
+    database.exec(`
+      CREATE TABLE file_upload_intents(id TEXT PRIMARY KEY,status TEXT NOT NULL);
+      CREATE TABLE file_objects(
+        id TEXT PRIMARY KEY,upload_intent_id TEXT NOT NULL,object_key TEXT NOT NULL,status TEXT NOT NULL,
+        delete_attempt_count INTEGER NOT NULL DEFAULT 0,next_delete_at INTEGER,version INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,verified_at INTEGER,upload_expires_at INTEGER NOT NULL,
+        failure_code TEXT,deleted_at INTEGER
+      );
+      CREATE TABLE file_entity_links(id TEXT PRIMARY KEY,file_object_id TEXT NOT NULL,revoked_at INTEGER);
+      CREATE TABLE order_instruction_asset_items(id TEXT PRIMARY KEY,file_object_id TEXT,status TEXT);
+      INSERT INTO file_upload_intents VALUES('intent-linked','VERIFIED'),('intent-orphan','VERIFIED');
+      INSERT INTO file_objects VALUES
+        ('file-linked','intent-linked','objects/linked','VERIFIED',0,NULL,1,1000,1000,999999999,NULL,NULL),
+        ('file-orphan','intent-orphan','objects/orphan','VERIFIED',0,NULL,1,1000,1000,999999999,NULL,NULL);
+      INSERT INTO file_entity_links VALUES('link-1','file-linked',NULL);
+    `);
+    const storage=new RecordingStorage();
+    const now=40*86_400_000;
+    const result=await reconcileUnlinkedFileRetention(database,storage,{now,limit:10});
+    expect(result.planned).toBe(1);
+    expect(result.deleted).toBe(1);
+    expect(storage.deleted).toEqual(['objects/orphan']);
+    const linked=await database.prepare(`SELECT status FROM file_objects WHERE id='file-linked'`).first<{status:string}>();
+    const orphan=await database.prepare(`SELECT status,failure_code FROM file_objects WHERE id='file-orphan'`).first<{status:string;failure_code:string}>();
+    expect(linked?.status).toBe('VERIFIED');
+    expect(orphan).toEqual({status:'DELETED',failure_code:'RETENTION_DELETED'});
+  });
+
+  it('financial projection counts real cash once when advance principal later becomes a refund ledger payment',async()=>{
+    database=new SqliteDatabase(':memory:');
+    database.exec(`
+      CREATE TABLE seller_payments(id TEXT PRIMARY KEY,amount_cny_fen INTEGER,paid_at INTEGER);
+      CREATE TABLE seller_payment_reversals(payment_id TEXT PRIMARY KEY);
+      CREATE TABLE buyer_refund_payment_entries(id TEXT PRIMARY KEY,entry_type TEXT,amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER);
+      CREATE TABLE buyer_advance_principal_settlements(advance_payment_entry_id TEXT,buyer_refund_payment_entry_id TEXT);
+      CREATE TABLE buyer_advance_principal_entries(id TEXT PRIMARY KEY,entry_type TEXT,amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER);
+      CREATE TABLE seller_payable_balances(amount_cny_fen INTEGER,paid_amount_cny_fen INTEGER,outstanding_amount_cny_fen INTEGER,due_at INTEGER);
+      CREATE TABLE buyer_refund_ledger_balances(due_amount_cny_fen INTEGER,net_paid_cny_fen INTEGER,created_at INTEGER);
+      CREATE TABLE internal_order_finance_positions(finance_status TEXT,confirmed_business_date TEXT,review_approved_business_date TEXT,projected_gross_profit_cny_fen INTEGER,completed_gross_profit_cny_fen INTEGER,confirmed_at INTEGER);
+      CREATE TABLE formal_order_financial_adjustments(adjustment_scope TEXT,amount_cny_fen INTEGER,created_at INTEGER);
+    `);
+    const at=Date.UTC(2026,7,1,4,0,0);
+    database.exec(`
+      INSERT INTO seller_payments VALUES('seller-payment-1',100000,${at});
+      INSERT INTO buyer_refund_payment_entries VALUES
+        ('refund-normal','PAYMENT',50000,${at},NULL),
+        ('refund-from-advance','PAYMENT',50000,${at},NULL);
+      INSERT INTO buyer_advance_principal_entries VALUES('advance-1','PAYMENT',60000,${at},NULL);
+      INSERT INTO buyer_advance_principal_settlements VALUES('advance-1','refund-from-advance');
+      INSERT INTO seller_payable_balances VALUES(200000,100000,100000,${at});
+      INSERT INTO buyer_refund_ledger_balances VALUES(50000,50000,${at});
+      INSERT INTO internal_order_finance_positions VALUES('COMPLETED','2026-08-01','2026-08-01',30000,20000,${at});
+      INSERT INTO formal_order_financial_adjustments VALUES('PROJECTED_GROSS_PROFIT',-5000,${at});
+      INSERT INTO formal_order_financial_adjustments VALUES('COMPLETED_GROSS_PROFIT',2000,${at});
+    `);
+    const projection=await readFinancialReportingProjection(database,{fromDate:'2026-08-01',toDate:'2026-08-01'},at+1000);
+    expect(projection.seller_cash_in_cny_fen).toBe('100000');
+    expect(projection.buyer_cash_out_cny_fen).toBe('110000');
+    expect(projection.net_cash_flow_cny_fen).toBe('-10000');
+    expect(projection.projected_profit_cny_fen).toBe('25000');
+    expect(projection.completed_profit_cny_fen).toBe('22000');
+    expect(projection.seller_payable_outstanding_cny_fen).toBe('100000');
+    expect(projection.buyer_refund_outstanding_cny_fen).toBe('0');
+  });
+});
+
+class RecordingStorage implements ObjectStorageAdapter{
+  readonly deleted:string[]=[];
+  async putObject(_input:ObjectStoragePutInput):Promise<ObjectStoragePutResult>{throw new Error('not_used');}
+  async headObject(_objectKey:string):Promise<ObjectStorageHead|null>{return null;}
+  async readPrefix(_objectKey:string,_maximumBytes:number):Promise<Uint8Array<ArrayBuffer>>{return new Uint8Array();}
+  async readObject(_objectKey:string):Promise<Uint8Array<ArrayBuffer>>{return new Uint8Array();}
+  async deleteObject(objectKey:string):Promise<void>{this.deleted.push(objectKey);}
+}
