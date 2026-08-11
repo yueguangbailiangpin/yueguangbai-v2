@@ -16,6 +16,7 @@ export * from './demand';
 export * from './errors';
 export * from './file-http';
 export * from './file-storage';
+export * from './financial-reporting';
 export * from './formal-order';
 export * from './http-auth';
 export * from './internal-finance';
