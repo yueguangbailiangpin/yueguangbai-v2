@@ -1,4 +1,4 @@
-# FINAL SCHEMA 64 CODEX HANDOFF
+# FINAL SCHEMA 64 CODEX HANDOFF — Wave 15 Finalized
 
 Branch: `feature/frozen-portals-staff-acquisition-core`
 Baseline: `d621513b8dfe7450e0af7f278cbfb17d9616b00f`
@@ -8,68 +8,135 @@ Do not redesign the product. Do not restore stale behavior to make old tests pas
 
 ## Read first
 
-1. `LATEST_CODEX_HANDOFF.md`
+1. `docs/WAVE15_ARCHITECTURE_FINALIZATION_FREEZE.md`
 2. `docs/CODE_INTEGRITY_CLEANUP_FREEZE.md`
 3. `docs/SECOND_LAYER_HARDENING_FREEZE.md`
 4. `docs/OPERATING_INTEGRITY_FREEZE.md`
-5. onboarding/privacy/product freeze docs referenced by LATEST.
+5. `LATEST_CODEX_HANDOFF.md`
+6. onboarding/privacy/product freeze docs referenced there.
 
-## What changed after Schema 61
+If an older test/doc conflicts, this file + the freeze files above win. Never restore Team authority, personal GRANT expansion, reassignment APIs, simplified Seller pages, Schema43/61 assumptions, duplicate financial ledgers, or front-end-only business guards just to make stale tests pass.
 
-### 0062 runtime authority + privilege guards
-- Any second Buyer/Seller persona on an existing customer login atomically bumps `session_version` in the same transaction that inserts the persona.
-- Current invite-completing device receives a refreshed cookie using the new version; older devices become invalid immediately.
-- Generic formal-order adjustments are profit-only.
-- Non-NORMAL formal orders block new Review APPROVED, Buyer Refund Obligation and review-driven Seller service-fee payable creation until explicitly RESOLVED.
+## Current migration tail
 
-### 0063 advance principal proof + excess
-- Advance Buyer principal requires verified `BUYER_REFUND_PROOF` files.
-- Proof files are explicitly linked to the immutable advance-payment fact.
-- Auto-settlement applies at most the later formal refund amount.
-- Any excess is recorded separately in `buyer_advance_principal_overpayments`; it does not make the formal refund ledger silently OVERPAID.
+- 0061 post-confirmation integrity guards
+- 0062 runtime authority + privilege guards
+- 0063 advance principal proof + overpayment
+- 0064 Marketplace local-date truth
 
-### 0064 Marketplace-local date truth
-- Historical AMAZON_US rows that only contain the China reporting-date compatibility fallback are cleared to unknown rather than presented as a US-local date.
-- Effective local dates are derived only where exact (+09 JP/KR) or from an explicitly persisted Marketplace-local date.
-- `marketplace_runtime_config` is a migration-controlled mirror; runtime code uses the typed Marketplace registry.
+Wave 15 adds **no migration**. Current continuous chain remains `0001 -> 0064`.
 
-## Code cleanup that must remain
+## Wave 15 — architecture finalization
 
-- Mature `SellerPages.tsx` is the active Seller portal again. It keeps withdrawal flows, real reviews, chat screenshot access, settlement detail and pagination; current live JP presentation uses Asia/Tokyo.
-- Delete/keep deleted all `apps/apps/**` marker fixtures, extension-resolution shims, probe declarations and duplicate `.ts` wrappers.
-- `StaffOperatingIntegrityTools.tsx` and `SellerRegistrationPage.tsx` are direct authoritative modules.
-- Staff runtime authority is Role defaults minus explicit DENY. Historical GRANT and Team leader data do not expand permissions.
-- Staff assignment runtime exposes queue reads only. Availability/fallback/reassignment/batch-transfer mutations are not registered.
+### 1. Central Formal Order Domain Policy
 
-## Money/state safety acceptance
+Authority:
+- `apps/api/src/formal-order-policy.ts`
+- `apps/api/src/formal-order-policy-routes.ts`
 
-- Order event, review visibility, profit adjustment, advance payment and advance reversal mutations consume server-side idempotency keys.
-- Advance principal requires verified proof; reused proof is rejected.
-- Refund auto-settlement never applies more than the obligation due.
-- Abnormal order state is consumed by downstream review/refund/service-fee state changes, not merely displayed.
-- Seller principal/service fee/Buyer refund corrections must stay in their native ledgers; generic financial adjustment accepts projected/completed company profit only.
+The following actions are allowed only when effective order operational state is NORMAL:
+- APPROVE_REVIEW
+- CREATE_BUYER_REFUND
+- ACCRUE_SELLER_SERVICE_FEE
+- RECORD_ADVANCE_PRINCIPAL
 
-## Marketplace/time acceptance
+Application services call the central policy. Schema62 triggers stay as the DB safety net. `RESOLVED` restores NORMAL.
 
-- Raw timestamps: UTC.
-- Company operating/dashboard business date: Asia/Shanghai.
-- Customer/business dates: Marketplace business timezone.
-- Current live Seller/Buyer JP: Asia/Tokyo.
-- COUPANG_KR: Asia/Seoul.
-- AMAZON_US configured as America/Los_Angeles.
-- Never use browser/IP/device timezone as business authority.
-- Never use China reporting date as a fabricated US-local date.
+### 2. Backend action capabilities
 
-## Production readiness acceptance
+Contract: `BusinessActionCapabilityDto`.
+
+Staff order-integrity lookup returns backend-computed `actions` for order event, review visibility, review approval, advance principal and profit adjustment. Web UI renders those capabilities instead of reimplementing the order state machine.
+
+Actions DTO is UI convenience only; security remains server-side Role/Marketplace/Domain Policy/DB guard.
+
+### 3. Read-only Financial Reporting Projection
+
+Authority:
+- `packages/contracts/src/financial-reporting.ts`
+- `apps/api/src/admin-business-dashboard/financial-projection.ts`
+- `/api/staff/admin-business-dashboard/financial-projection`
+
+This is NOT a new ledger. Buyer Refund, Advance Principal, Seller Payable/Payment, Financial Snapshot and Profit Adjustment remain the write authorities.
+
+Projection provides seller cash-in, buyer cash-out, net cash flow, Seller due/paid/outstanding, Buyer due/paid/outstanding, projected profit and completed profit.
+
+Cash timing is event based:
+- Seller payment counts positive on payment date;
+- Seller payment reversal counts negative on reversal date;
+- Buyer payment/reversal follows its own event timestamp;
+- Advance principal is actual cash once; the auto-created Refund Payment generated later by settlement is excluded from cash flow to prevent double counting.
+
+### 4. Conservative File Retention
+
+Authority: `apps/api/src/files/retention.ts`.
+
+No second file lifecycle table. Reuse existing `file_objects` DELETION_PENDING/DELETED state machine.
+
+Rules:
+- active business Link => never auto-delete;
+- active read intent => postpone;
+- specialized Order Instruction ORPHANED assets stay with their existing reconciler;
+- durable VERIFIED unlinked files age 30 days before retention;
+- durable UPLOADED/REJECTED unlinked files age 7 days;
+- never-uploaded RESERVED rows are not treated as R2 delete objects;
+- D1 DELETION_PENDING happens before R2 delete;
+- D1 DELETED only after R2 succeeds;
+- failed R2 delete stays pending with retry;
+- generic retention is included in the existing `file_orphan_cleanup` scheduler readiness/backlog.
+
+### 5. Real behavior tests
+
+New/extended behavior coverage:
+- `apps/api/src/wave15-architecture-finalization.behavior.test.ts`
+- `apps/api/src/formal-order-policy-routes.test.ts`
+- `apps/api/src/files/retention-current-schema.test.ts`
+- `apps/api/src/customer-security/migration-0030.test.ts`
+
+Required facts:
+- abnormal order blocks gated actions; RESOLVED restores them;
+- HTTP guard returns 409 while blocked;
+- real 0030 persona relation + 0062 trigger bumps shared-account session exactly once on second persona;
+- advance 600 → formal refund 500 → formal payment 500 + overpayment 100;
+- linked files are retained; unlinked durable old files are deleted only after D1 planning; delete failures remain pending;
+- retention succeeds against the real migrated Schema64 file constraints;
+- advance settlement does not double-count cash;
+- Seller Payment reversal is a negative cash event on reversal day, not a rewrite of the original payment day.
+
+Source-marker tests are secondary. Real DB/API behavior wins.
+
+## Product/security foundation that must remain
+
+- Buyer nav: 产品 / 任务 / 我的.
+- Seller mature portal remains active; do not replace with simplified timezone rewrite. JP customer-facing time uses Asia/Tokyo.
+- Staff: Role decides capability; Marketplace decides visibility. PRIMARY owns open queue; SUPPORT does not compete.
+- Cloudflare Access proves Staff email; Moonwhite Staff authority is final.
+- same WeChat reuses one Moonwhite login; second persona rotates session version and invalidates older sessions.
+- customer registration/historical-customer rules remain as frozen in onboarding docs.
+- acquisition ordinary Staff see only immutable 渠道N; Owner/acquisition see real source.
+- new channels BUYER or SELLER only; historical BOTH reporting-only.
+- raw timestamps UTC, company reporting Asia/Shanghai, business timestamps use Marketplace timezone.
+
+## Production readiness
 
 - `/health` = liveness only.
-- `/ready` target Schema 64 and checks schema, scheduler, acquisition maintenance, object storage, Cloudflare Access configuration, running release SHA and a recovery attestation for the same release SHA.
-- `APP_RELEASE_SHA` is required production configuration.
-- local `verify-production-readiness-formal.mjs` is offline.
-- real production network probe is explicit: `node scripts/probe-production-readiness.mjs`.
-- `release-check.mjs` must remain offline and must not include the old Feishu workbench Staff-auth gate.
+- `/ready` = Schema64 + Scheduler + Acquisition Maintenance + object storage + Cloudflare Access config + valid running `APP_RELEASE_SHA` + recovery attestation for the same release SHA.
+- local release gate must not actively probe Moonwhite production.
+- explicit real production readiness probe only: `node scripts/probe-production-readiness.mjs`.
 
-## Required clean checkout verification
+## Explicitly NOT building now
+
+Do not add without a real measured need:
+- permission cache;
+- Lead Score;
+- full Seller organization selector UI;
+- migration squash;
+- generic universal financial-events ledger;
+- complex Staff scheduling/SLA/reassignment system.
+
+Future fresh-install baseline is allowed, but production migration history `0001 -> 0064` remains immutable.
+
+## Required clean-checkout verification
 
 Use Node 24:
 
@@ -78,27 +145,34 @@ npm ci
 npm run db:verify
 npm run verify:migration-guards
 npm run db:migrate:local
-npm run typecheck
+npm run typecheck --workspace @ygb/contracts
+npm run typecheck --workspace @ygb/domain
+npm run typecheck --workspace @ygb/api
+npm run typecheck --workspace @ygb/web
+npm run test:customer-security
+npm run test:staff-acquisition
+npm run test:admin-dashboard
 npm test
 npm run build
 npm run check:production-readiness
 npm run test:wave14a:browser
+npm run test:staff-acquisition:browser
+npm run test:admin-dashboard:browser
 ```
 
-Also run targeted Seller/Staff/Acquisition/Admin browser suites and a copy of the real historical D1 database through `0001 -> 0064` / current-production-prefix -> 64.
+Also run the real historical D1 copy through current-production-prefix -> Schema64. Verify original Buyer/Seller/Store/Product/FormalOrder IDs, snapshots, file links and historical relationships remain unchanged.
 
-Must verify specifically:
-- Schema 62 persona trigger does not double-bump on first persona, does bump exactly once on second persona.
-- Buyer→Seller and Seller→Buyer shared-account session invalidation on two simulated devices.
-- abnormal order blocks approval/refund/service-fee until RESOLVED.
-- advance proof upload/link/read, idempotent retry, partial reversal and excess overpayment behavior.
-- file reads remain Role × Marketplace × Entity.
-- PRIMARY/SUPPORT queue behavior.
-- mature Seller portal features were not lost by timezone cleanup.
-- `/ready` fails when `APP_RELEASE_SHA` is missing/mismatched, recovery SHA is stale, Scheduler backlog is excessive, Access config is placeholder, or Schema is not 64.
+Targeted Wave15 checks must include:
+- central Domain Policy + HTTP guards;
+- Buyer→Seller and Seller→Buyer two-device session invalidation;
+- 600/500/100 advance settlement;
+- Capability DTO response/UI behavior;
+- financial cash projection including later reversals;
+- retention full-schema transition, linked-file protection, active-read protection and R2 retry;
+- mature Seller pages still retain withdrawal/reviews/chat screenshot/settlement/pagination.
 
-## Expected integration drift
+## Current execution status
 
-Old tests may still assert Schema 43/61, Team/leader permissions, reassignment endpoints, the simplified Seller shim, or production Feishu Staff auth. Update those old assertions. Never restore the stale runtime behavior merely for test compatibility.
+The GitHub-editing assistant implemented and statically reviewed these changes, but **did not run a full Node24/Vitest/TypeScript/Playwright/real-history-D1 green suite**. Local Codex is the execution authority for real integration failures.
 
-No full green test run has been performed by the GitHub-editing assistant. Local Codex is the execution authority for compile/migration/browser integration failures.
+Do not merge or deploy until those checks are green and the owner explicitly approves.
