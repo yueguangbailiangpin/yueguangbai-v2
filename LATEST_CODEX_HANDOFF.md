@@ -17,12 +17,13 @@ Current target schema version:
 
 ## Read first
 
-1. `docs/HISTORICAL_CUSTOMER_PORTAL_ONBOARDING_FREEZE.md`
-2. `docs/CUSTOMER_REGISTRATION_AND_CHANNEL_DASHBOARD_FREEZE.md`
-3. `docs/ACQUISITION_CHANNEL_PRIVACY_FREEZE.md`
-4. `docs/FROZEN_PRODUCT_BASELINE.md`
-5. `docs/STAFF_ACCESS_CUTOVER.md`
-6. this file
+1. `docs/CUSTOMER_MULTIPERSONA_ONBOARDING_FREEZE.md`
+2. `docs/HISTORICAL_CUSTOMER_PORTAL_ONBOARDING_FREEZE.md`
+3. `docs/CUSTOMER_REGISTRATION_AND_CHANNEL_DASHBOARD_FREEZE.md`
+4. `docs/ACQUISITION_CHANNEL_PRIVACY_FREEZE.md`
+5. `docs/FROZEN_PRODUCT_BASELINE.md`
+6. `docs/STAFF_ACCESS_CUTOVER.md`
+7. this file
 
 If older docs/tests conflict, update the older test/doc; do not revert frozen behavior.
 
@@ -38,13 +39,21 @@ Search existing WeChat → reuse existing Buyer Customer → if portal account m
 
 ### New Seller
 
-Seller ops saves Seller Lead → counts new seller immediately → same success card generates Seller registration link → creates Seller Organization + primary OWNER member and links organization to Seller Lead → customer sets password → creates SELLER_MEMBER login → enters Seller Portal.
+Seller ops saves Seller Lead → counts new seller immediately → same success card generates Seller registration link → creates Seller Organization and links organization to Seller Lead, but does **not** grant Seller persona merely by issuing the link.
+
+The customer must complete the invitation/password boundary before the primary OWNER Seller Member / Seller persona becomes active.
+
+If that WeChat already has an existing Moonwhite Buyer account, verify the existing password and add `SELLER_MEMBER` persona to the same login account. Never create a second account for the same identity.
+
+If no Moonwhite account exists, create the Seller OWNER member + SELLER_MEMBER account/password only after customer confirmation.
 
 Current Seller registration is AMAZON_JP only because the real Seller Portal business contracts are still JP-first. Do not claim US/KR seller portal support.
 
 ### Historical Seller
 
-Search WeChat using both existing member identity and historical `seller_partner_import_source_records` → reuse Seller Organization → if organization already has portal account show already open → otherwise reuse/create primary OWNER member and issue activation link → do not create new organization or acquisition Lead → historical stores/products/orders/settlements remain.
+Search WeChat using both existing member identity and historical `seller_partner_import_source_records` → reuse Seller Organization → if organization already has active Seller Portal persona show already open → otherwise issue activation link → do not create a new organization or acquisition Lead → historical stores/products/orders/settlements remain.
+
+If the historical organization lacks an OWNER member, create the first OWNER only after the customer completes the invite boundary. If legacy member identity conflicts with the confirmed WeChat, fail closed for manual identity resolution; never guess/rebind automatically.
 
 ### Duplicate protection
 
@@ -62,11 +71,12 @@ Owner dashboard separates:
 - 新增买家客户
 - 新增卖家客户
 - 买家网站注册
-- 卖家网站开通 (primary seller organization portal activation, not every future member)
+- 卖家网站开通
 - 新增正式订单
 - per-day buyer/seller channel new customers and formal orders
 - buyer/seller unattributed historical order counts
 
+Buyer/Seller portal activation metrics are based on successful invitation consumption date, not the original login-account creation date. This is required for multi-persona accounts.
 Historical customer activation must never increment new-customer counts.
 
 ## Required local verification
@@ -92,7 +102,7 @@ npm test
 npm run build
 ```
 
-Also add/fix targeted tests for migrations 0048-0050, new/historical Buyer onboarding, new/historical Seller onboarding, duplicate guards, source privacy, and dashboard date attribution.
+Also add/fix targeted tests for migrations 0048-0050, new/historical Buyer onboarding, new/historical Seller onboarding, Buyer↔Seller multi-persona reuse, duplicate guards, source privacy, and dashboard date attribution.
 
 Use a copy of a real historical D1 dataset for an upgrade dry-run before production. Verify that historical customer IDs and order relationships do not change.
 
