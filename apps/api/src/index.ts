@@ -11,6 +11,7 @@ import { registerFileHttpRoutes } from './files';
 import { registerCustomerAuthRoutes } from './http-auth';
 import { registerPublicCustomerSecurityRoutes, registerStaffCustomerSecurityRoutes } from './customer-security';
 import { registerBuyerInvitationDutyGuard } from './customer-onboarding/buyer-invitation-guard';
+import { registerNewBuyerRegistrationInvitationRoute } from './customer-onboarding/buyer-registration-route';
 import { registerExistingCustomerLeadGuard } from './customer-onboarding/lead-guard';
 import { registerCustomerOnboardingRoutes } from './customer-onboarding/routes';
 import { registerStaffFinanceRoutes } from './internal-finance';
@@ -54,6 +55,7 @@ registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
 registerBuyerInvitationDutyGuard(app);
 registerStaffCustomerSecurityRoutes(app);
+registerNewBuyerRegistrationInvitationRoute(app);
 registerCustomerOnboardingRoutes(app);
 registerExistingCustomerLeadGuard(app);
 // Privacy projection must be registered first so ordinary customer-intake Staff
