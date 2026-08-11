@@ -15,10 +15,10 @@ export async function readFrozenAdminBusinessDashboardSummary(
       EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=fact.lead_id AND link.link_type='FORMAL_ORDER' AND link.linked_at<=?) AS ordered,
       EXISTS(SELECT 1 FROM acquisition_lead_links link JOIN order_archive_closures closure ON closure.formal_order_id=link.target_id
         WHERE link.lead_id=fact.lead_id AND link.link_type='FORMAL_ORDER' AND closure.status='CLOSED' AND closure.business_closed_at<=?) AS completed,
-      CASE WHEN fact.lead_type='SELLER' AND ${sellerCooperationSql('fact.lead_id','?')} THEN 1 ELSE 0 END AS cooperation
+      CASE WHEN fact.lead_type='SELLER' AND ${sellerCooperationSql('fact.lead_id')} THEN 1 ELSE 0 END AS cooperation
     FROM acquisition_customer_intake_facts fact
     WHERE fact.business_date BETWEEN ? AND ? AND fact.recorded_at<=?`)
-    .bind(now,now,now,now,now,base.window.from_date,base.window.to_date,now).all<CohortRow>();
+    .bind(now,now,now,now,base.window.from_date,base.window.to_date,now).all<CohortRow>();
   const buyer=rows.results.filter((row)=>row.lead_type==='BUYER'),seller=rows.results.filter((row)=>row.lead_type==='SELLER');
   const buyerConsultation=stageCount(base.buyer_funnel.stages,'CONSULTATION'),sellerConsultation=stageCount(base.seller_funnel.stages,'CONSULTATION');
   const buyerStages=funnel([
@@ -37,14 +37,14 @@ export async function readFrozenAdminBusinessDashboardSummary(
     seller_funnel:Object.freeze({stages:Object.freeze(sellerStages)}),
   });
 }
-function sellerCooperationSql(leadExpression:string,nowBinding:string){return `EXISTS(
+function sellerCooperationSql(leadExpression:string){return `EXISTS(
   SELECT 1 FROM acquisition_lead_links seller_link
-  WHERE seller_link.lead_id=${leadExpression} AND seller_link.link_type='SELLER_ORGANIZATION' AND seller_link.linked_at<=${nowBinding}
+  WHERE seller_link.lead_id=${leadExpression} AND seller_link.link_type='SELLER_ORGANIZATION'
     AND (
-      EXISTS(SELECT 1 FROM products product WHERE product.organization_id=seller_link.target_id AND product.created_at<=${nowBinding})
-      OR EXISTS(SELECT 1 FROM product_applications application WHERE application.organization_id=seller_link.target_id AND application.submitted_at<=${nowBinding})
-      OR EXISTS(SELECT 1 FROM demand_batches demand WHERE demand.organization_id=seller_link.target_id AND demand.submitted_at<=${nowBinding})
-      OR EXISTS(SELECT 1 FROM formal_orders formal_order WHERE formal_order.seller_organization_id=seller_link.target_id AND formal_order.confirmed_at<=${nowBinding})
+      EXISTS(SELECT 1 FROM products product WHERE product.organization_id=seller_link.target_id)
+      OR EXISTS(SELECT 1 FROM product_applications application WHERE application.organization_id=seller_link.target_id)
+      OR EXISTS(SELECT 1 FROM demand_batches demand WHERE demand.organization_id=seller_link.target_id)
+      OR EXISTS(SELECT 1 FROM formal_orders formal_order WHERE formal_order.seller_organization_id=seller_link.target_id)
     )
 )`;}
 function stageCount(stages:readonly DashboardFunnelStageDto[],code:string){return stages.find((stage)=>stage.code===code)?.count??0;}
