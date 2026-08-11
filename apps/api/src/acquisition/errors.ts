@@ -8,7 +8,7 @@ export type AcquisitionErrorCode = ApiErrorCode
 export class AcquisitionError extends Error {
   constructor(
     public readonly code: AcquisitionErrorCode,
-    public readonly status: 400|401|403|404|409|503,
+    public readonly status: 400|401|403|404|409|429|503,
   ) {
     super(code);
     this.name = 'AcquisitionError';
