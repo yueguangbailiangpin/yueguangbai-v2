@@ -2,6 +2,7 @@ import { apiFailure, apiSuccess } from '@ygb/contracts';
 import { parseIdempotencyKey } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
+import { consumeCustomerSecurityRateLimit } from '../customer-security/rate-limit';
 import { writeCustomerSessionCookie } from '../http-auth/cookies';
 import { CUSTOMER_SESSION_TTL_MS, requireCustomerSessionSecret } from '../http-auth/config';
 import { requestIdFromContext } from '../http-auth/errors';
@@ -30,15 +31,19 @@ export function registerSellerRegistrationRoutes(app:Hono<any>):void{
   }));
 
   app.get('/api/seller-auth/invitations/:token',withErrors(async(context)=>{
+    const token=context.req.param('token')??'';const now=Date.now();
+    const limited=await publicInvitationRate(context,token,now);
+    if(limited)return limited;
     context.header('Cache-Control','no-store');
-    return context.json(apiSuccess({invitation:await readSellerInvitationContext(context.env.DB,context.req.param('token')??'',Date.now())},requestIdFromContext(context)));
+    return context.json(apiSuccess({invitation:await readSellerInvitationContext(context.env.DB,token,now)},requestIdFromContext(context)));
   }));
 
   app.post('/api/seller-auth/register',customerAuthOriginGuard(),withErrors(async(context)=>{
     const body=await exactBody(context,['invitation_token','wechat_id','password','password_confirmation']);
     if(typeof body['invitation_token']!=='string'||typeof body['wechat_id']!=='string'
       ||typeof body['password']!=='string'||typeof body['password_confirmation']!=='string')throw validation();
-    const now=Date.now();
+    const now=Date.now();const limited=await publicInvitationRate(context,body['invitation_token'],now);
+    if(limited)return limited;
     const result=await completeSellerRegistration(context.env.DB,{
       token:body['invitation_token'],wechatId:body['wechat_id'],password:body['password'],passwordConfirmation:body['password_confirmation'],
     },{requestId:requestIdFromContext(context),idempotencyKey:idempotencyKey(context),now});
@@ -52,6 +57,17 @@ export function registerSellerRegistrationRoutes(app:Hono<any>):void{
   }));
 }
 
+async function publicInvitationRate(context:Context<any>,token:string,now:number):Promise<Response|null>{
+  const rate=await consumeCustomerSecurityRateLimit(context.env.DB,{
+    operation:'INVITATION',token,
+    networkSource:context.req.header('CF-Connecting-IP')??null,
+    deviceId:context.req.header('X-Device-ID')??null,
+    secret:securitySecret(context),now,
+  });
+  if(!rate.limited)return null;
+  context.header('Cache-Control','no-store');context.header('Retry-After',String(rate.retryAfterSeconds));
+  return context.json(apiFailure('RATE_LIMITED','尝试次数过多，请稍后再试',requestIdFromContext(context)),429);
+}
 function requireStaff(context:Context<any>):AssignmentStaffAuthorization{
   const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
   if(!actor||actor.staffStatus!=='ACTIVE')throw new SellerRegistrationError('FORBIDDEN',403);return actor;
