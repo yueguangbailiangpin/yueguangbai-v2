@@ -122,7 +122,7 @@ describe('Staff MCP local server and adapter', () => {
     expect(audit?.count).toBe(13);
   });
 
-  it('recomputes ACTIVE Staff, roles, Personal DENY, Team and Customer scope on every call', async () => {
+  it('recomputes ACTIVE Staff, Role, Personal DENY and Marketplace scope on every call', async () => {
     const harness = setup();
     expect(await invoke(harness, 'afterToken', 'get_order_summary_v1', 'scope-allowed'))
       .toMatchObject({ isError: false });
@@ -156,16 +156,16 @@ describe('Staff MCP local server and adapter', () => {
       UPDATE staff_permission_overrides
       SET status='REVOKED',revoked_at=3,updated_at=3
       WHERE staff_id='mcp-after' AND permission_code='ORDER_VIEW';
-      UPDATE staff_departments
-      SET status='DISABLED',disabled_at=3,updated_at=3
-      WHERE id='phase3h-test-department';
+      UPDATE staff_marketplace_scopes
+      SET status='REVOKED',revoked_at=3,updated_at=3
+      WHERE staff_id='mcp-after' AND marketplace_code='AMAZON_JP';
     `);
     expect(errorCode(await harness.adapter.invoke({
       accessToken: harness.afterToken,
-      requestId: 'scope-disabled-department',
+      requestId: 'scope-revoked-marketplace',
       toolName: 'get_order_summary_v1',
       argumentsValue: argsFor('get_order_summary_v1'),
-    }))).toBe('UNAUTHENTICATED');
+    }))).toBe('NOT_FOUND');
   });
 
   it('conceals Store, Seller Organization, Marketplace and resource mismatches as 404', async () => {
@@ -803,11 +803,14 @@ function seedScopeFixtures(d: SqliteDatabase): void {
     ) VALUES
       ('mcp-after','buyer_refund','ACTIVE','zz-phase3h-test-owner',1,NULL,1,1),
       ('mcp-seller','seller_ops','ACTIVE','zz-phase3h-test-owner',1,NULL,1,1);
-    INSERT INTO staff_team_memberships (
-      staff_id,team_id,status,joined_at,ended_at,created_at,updated_at
+    INSERT INTO staff_marketplace_scopes (
+      id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
     ) VALUES
-      ('mcp-after','phase3h-test-team','ACTIVE',1,NULL,1,1),
-      ('mcp-seller','phase3h-test-team','ACTIVE',1,NULL,1,1);
+      ('scope-mcp-after-jp','mcp-after','buyer_refund','AMAZON_JP','ACTIVE',
+       'zz-phase3h-test-owner',1,NULL,'TEST_PRIMARY',1,1,'PRIMARY'),
+      ('scope-mcp-seller-jp','mcp-seller','seller_ops','AMAZON_JP','ACTIVE',
+       'zz-phase3h-test-owner',1,NULL,'TEST_PRIMARY',1,1,'PRIMARY');
     INSERT INTO buyer_staff_assignments (
       id,buyer_customer_id,duty_code,staff_id,status,source,
       assigned_by_actor_type,assigned_by_actor_id,reason,version,
@@ -826,6 +829,14 @@ function seedScopeFixtures(d: SqliteDatabase): void {
        'seller-channel-ido-mango',501,'卖家组织一','ACTIVE',1,1,1,1,NULL),
       ('seller-org-2','JP','mcp-seller-002','seller-channel-ido-mango',
        'seller-channel-ido-mango',502,'卖家组织二','ACTIVE',1,1,1,1,NULL);
+    INSERT INTO seller_stores (
+      id,organization_id,marketplace_code,display_name,normalized_name,
+      status,version,created_at,updated_at,disabled_at
+    ) VALUES
+      ('store-1','seller-org-1','JP','MCP 店铺一','mcp 店铺一',
+       'ACTIVE',1,1,1,NULL),
+      ('store-2','seller-org-2','JP','MCP 店铺二','mcp 店铺二',
+       'ACTIVE',1,1,1,NULL);
     INSERT INTO seller_staff_assignments (
       id,seller_organization_id,duty_code,staff_id,status,source,
       assigned_by_actor_type,assigned_by_actor_id,reason,version,

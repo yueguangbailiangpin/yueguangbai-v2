@@ -14,7 +14,8 @@ function session(role: 'owner'|'pre_sales') {
       ? { code: 'owner', display_name: '总管理员' }
       : { code: 'pre_sales', display_name: '售前' },
     permissions: role === 'owner' ? ['FINANCIAL_VIEW'] : [],
-    data_scope: { type: role === 'owner' ? 'GLOBAL' : 'ASSIGNED_BUYERS',
+    data_scope: { type: role === 'owner' ? 'GLOBAL' : 'MARKETPLACE',
+      marketplaceCodes: role === 'owner' ? [] : ['AMAZON_JP'],
       buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [] },
     authorization_version: 7,
     session_version: 1,
@@ -59,10 +60,46 @@ function summary() {
   };
 }
 
+function acquisitionDaily() {
+  return {
+    from_date: '2026-08-08', to_date: '2026-08-08', timezone: 'Asia/Shanghai',
+    data_as_of: 1_786_161_600_000,
+    reporting_precision: { configured: true, business_date: '2026-08-08' },
+    anomalies: { identity_conflicts: 0, attribution_anomalies: 0,
+      buyer_attribution_gaps: 0, seller_attribution_gaps: 0, finance_conflicts: 1 },
+    totals: { new_buyer_customers: 2, new_seller_customers: 1,
+      buyer_portal_registrations: 1, seller_portal_registrations: 1,
+      formal_orders: 1, buyer_historical_unknown_orders: 0,
+      seller_historical_unknown_orders: 0, buyer_attribution_anomaly_orders: 0,
+      seller_attribution_anomaly_orders: 0 },
+    daily: [], channel_daily: [],
+  };
+}
+
+function financialProjection() {
+  return {
+    from_date: '2026-08-08', to_date: '2026-08-08', timezone: 'Asia/Shanghai',
+    data_as_of: 1_786_161_600_000, seller_cash_in_cny_fen: '30000',
+    buyer_cash_out_cny_fen: '10000', net_cash_flow_cny_fen: '20000',
+    seller_payable_due_cny_fen: '25000', seller_payable_paid_cny_fen: '15000',
+    seller_payable_outstanding_cny_fen: '10000', buyer_refund_due_cny_fen: '12000',
+    buyer_refund_paid_cny_fen: '10000', buyer_refund_outstanding_cny_fen: '2000',
+    projected_profit_cny_fen: '12345', completed_profit_cny_fen: '2345',
+    projected_profit_adjustment_cny_fen: '0', completed_profit_adjustment_cny_fen: '0',
+  };
+}
+
 async function mock(page: Page, role: 'owner'|'pre_sales', observed?: { dashboardRequests: number }) {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/staff-auth/session') return json(route, success({ session: session(role) }));
+    if (path.endsWith('/acquisition-daily')) return json(route, success(acquisitionDaily()));
+    if (path.endsWith('/financial-projection')) return json(route, success({ financial_projection: financialProjection() }));
+    if (path === '/api/staff/acquisition/reporting-config') return json(route, success({ config: {
+      precision_started_business_date: '2026-08-08', activated_at: 1_786_161_600_000,
+      activated_by_staff_id: 'browser-owner', version: 1, updated_at: 1_786_161_600_000,
+    } }));
+    if (path === '/api/staff/customer-identity-resolution/cases') return json(route, success({ cases: [] }));
     if (path.startsWith('/api/staff/admin-business-dashboard/')) {
       if (observed) observed.dashboardRequests += 1;
       if (path.endsWith('/summary')) return json(route, success({ summary: summary() }));
@@ -85,25 +122,23 @@ async function mock(page: Page, role: 'owner'|'pre_sales', observed?: { dashboar
   });
 }
 
-test('owner dashboard is Chinese, responsive and exposes only controlled drill-down', async ({ page }) => {
+test('owner dashboard is Chinese, responsive and uses canonical finance projections', async ({ page }) => {
   await mock(page, 'owner');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/staff/admin-business-dashboard');
   await expect(page).toHaveURL(/\/staff\/admin-business-dashboard$/u);
   await expect(page.getByRole('heading', { name: '经营看板', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '经营概览' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '资金与经营口径' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '客户与订单概览' })).toBeVisible();
   await expect(page.locator('.dashboard-toolbar').getByText(/北京时间/u)).toBeVisible();
-  await expect(page.getByRole('table', { name: '经营趋势（服务端按北京时间分组）' })).toBeVisible();
-  await expect(page.getByText(/冲突订单未按零计入利润/u)).toBeVisible();
+  await expect(page.getByText('¥200.00')).toBeVisible();
+  await expect(page.getByText('财务冲突')).toBeVisible();
   const today = page.getByRole('button', { name: '今日' });
   await today.focus();
   await expect(today).toBeFocused();
   expect(await today.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
 
-  const firstMetric = page.locator('.dashboard-metric').filter({ hasText: '新增买家' });
-  await firstMetric.getByRole('button', { name: '查看明细' }).click();
-  await expect(page.getByRole('table', { name: '新增买家受控明细' })).toBeVisible();
-  await expect(page.getByText('buyer-safe-id')).toBeVisible();
+  await expect(page.getByRole('button', { name: '查看明细' })).toHaveCount(0);
   await expect(page.getByText(/private_wechat|内部备注|file_/u)).toHaveCount(0);
 
   const width = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth,
@@ -115,7 +150,7 @@ test('non-owner direct route neither exposes navigation nor requests dashboard f
   const observed = { dashboardRequests: 0 };
   await mock(page, 'pre_sales', observed);
   await page.goto('/staff/admin-business-dashboard');
-  await expect(page.getByText(/没有经营看板权限/u)).toBeVisible();
+  await expect(page.getByText('只有总管理员可以查看经营看板。')).toBeVisible();
   await expect(page.getByRole('link', { name: '经营看板' })).toHaveCount(0);
   expect(observed.dashboardRequests).toBe(0);
 });

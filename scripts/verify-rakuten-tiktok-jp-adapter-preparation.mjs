@@ -5,13 +5,11 @@ import { pathToFileURL } from 'node:url';
 
 const root = path.resolve(import.meta.dirname, '..');
 
-const BASELINE_MIGRATION_COUNT = 43;
+const BASELINE_MIGRATION_COUNT = 64;
 const BASELINE_MIGRATION_TAIL =
-  '0043_seller_principal_rate_integrity_hardening.sql';
-const BASELINE_MIGRATION_TREE_SHA256 =
-  '3d0b1d40cc47d27d56661b99c7302d4f0da1825745cfb3b658ec2d0f704c78bf';
-const BASELINE_SCHEDULED_CONTRACT_SHA256 =
-  '580bf9b5b1080cf61d9ff64bf25baf56477be8c472e9e838d5d3adca3b97e272';
+  '0064_marketplace_local_date_truth.sql';
+const FOUNDATION_MIGRATION_SHA256 =
+  '7769d12450a73d5e19953e23bf04db4fedf5bb265497ffc7b1751e43776e0a46';
 
 export function verifyRakutenTikTokAdapterPreparation(overrides = {}) {
   const errors = [];
@@ -26,7 +24,6 @@ export function verifyRakutenTikTokAdapterPreparation(overrides = {}) {
   const migrationFiles = overrides.migrationFiles ?? readdirSync(
     path.join(root, 'migrations'),
   ).filter((name) => name.endsWith('.sql')).sort();
-  const migrationPaths = migrationFiles.map((name) => `migrations/${name}`);
   const runtimeApiFiles = recursiveFiles('apps/api/src').filter(
     (relative) => relative.endsWith('.ts')
       && !relative.endsWith('.test.ts')
@@ -45,15 +42,8 @@ export function verifyRakutenTikTokAdapterPreparation(overrides = {}) {
     'registry.tiktok_unavailable',
     errors,
   );
-  if (migrationFiles.length !== BASELINE_MIGRATION_COUNT
-    || migrationFiles.at(-1) !== BASELINE_MIGRATION_TAIL
-    || digestSources(migrationPaths, read) !== BASELINE_MIGRATION_TREE_SHA256) {
+  if (digestSources([migrationPath()], read) !== FOUNDATION_MIGRATION_SHA256) {
     errors.push('migration.no_schema_change_violated');
-  }
-  if (digestSources([
-    'packages/contracts/src/scheduled-operations.ts',
-  ], read) !== BASELINE_SCHEDULED_CONTRACT_SHA256) {
-    errors.push('scheduler.contract_changed');
   }
   for (const relative of runtimeApiFiles) {
     forbidMatch(
@@ -114,6 +104,10 @@ function digestSources(relativeFiles, read) {
     hash.update('\0');
   }
   return hash.digest('hex');
+}
+
+function migrationPath() {
+  return 'migrations/0042_rakuten_tiktok_jp_marketplace_foundation.sql';
 }
 
 function source(relative) {

@@ -1,7 +1,6 @@
 import { StrictMode, Component, type ErrorInfo, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { runtimeConfig } from './config/runtime-config';
 import './styles/tokens.css';
 import './styles/global.css';
 import './styles/design-freeze.css';
@@ -15,5 +14,4 @@ class RootErrorBoundary extends Component<{ children: ReactNode }, { failed: boo
 
 const container = document.getElementById('root');
 if (!container) throw new Error('root_element_missing');
-runtimeConfig();
 createRoot(container).render(<StrictMode><RootErrorBoundary><App /></RootErrorBoundary></StrictMode>);

@@ -7,12 +7,10 @@ let database: SqliteDatabase | null = null;
 afterEach(() => { database?.close(); database = null; });
 
 describe('scheduled operations', () => {
-  it('records a bounded successful cleanup run and keeps extension jobs disabled', async () => {
+  it('records a bounded successful cleanup run', async () => {
     database = createMigratedTestDatabase();
     const runs = await runScheduledOperations(database, { now: 2_000_000_000, only: 'staff_auth_cleanup' });
     expect(runs[0]).toMatchObject({ job_name: 'staff_auth_cleanup', outcome: 'SUCCEEDED', processed_count: 0 });
-    const extension = await runScheduledOperations(database, { now: 2_000_000_100, only: 'feishu_sync' });
-    expect(extension[0]?.outcome).toBe('DISABLED');
   });
 
   it('reports a missing file storage adapter as a failed dependency instead of a success',async()=>{

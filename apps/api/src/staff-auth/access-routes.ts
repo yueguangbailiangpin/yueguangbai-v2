@@ -1,5 +1,7 @@
-import { apiSuccess, STAFF_SESSION_TTL_MS, type SqlDatabase } from '@ygb/contracts';
+import { apiSuccess, STAFF_SESSION_TTL_MS, type SqlDatabase, type StaffLogoutAllResponse } from '@ygb/contracts';
+import { hashCanonicalJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
+import { acquireIdempotency, type IdempotencyError } from '../foundation/idempotency';
 import { resolveAssignmentStaffAuthorization, resolveStaffDataScope } from '../staff-assignment';
 import { clearStaffSessionCookie, readStaffSessionCookie, writeStaffSessionCookie } from './cookies';
 import { generateStaffOpaqueToken } from './crypto';
@@ -7,10 +9,11 @@ import { requestIdFromContext, StaffAuthError, staffAuthFailure } from './errors
 import {
   createInternalStaffSession,
   projectStaffSession,
-  revokeAllStaffSessions,
   revokeStaffSession,
   type StaffIdentityRow,
 } from './repository';
+import { logoutAllStaffSessions } from './logout-all';
+import { readCommittedLogoutAllReplay } from './logout-all-replay';
 import { resolveTrustedStaffSession } from './session';
 import {
   CloudflareAccessError,
@@ -112,13 +115,20 @@ async function logoutAll(context: Context<any>): Promise<Response> {
   if(key.length<8||key.length>128||/[\u0000-\u001f\u007f]/u.test(key))throw new StaffAuthError('VALIDATION_ERROR',400);
   const cookie=readStaffSessionCookie(context);
   if(cookie.malformed||!cookie.value)throw new StaffAuthError('UNAUTHENTICATED',401);
+  const replay=await readCommittedLogoutAllReplay(context.env.DB,{sessionToken:cookie.value,idempotencyKey:key});
+  if(replay){clearStaffSessionCookie(context);context.header('Cache-Control','no-store');return context.json(apiSuccess(replay.response,requestIdFromContext(context)));}
   const trusted=await resolveTrustedStaffSession(context.env.DB,cookie.value);
-  const sessionVersion=await revokeAllStaffSessions(context.env.DB,{
-    staffId:trusted.authorization.staffId,currentSessionId:trusted.session.id,
-    requestId:requestIdFromContext(context),idempotencyKey:key,now:Date.now(),
+  const now=Date.now();
+  const requestHash=await hashCanonicalJson({action:'STAFF_LOGOUT_ALL',staff_id:trusted.authorization.staffId,issued_session_version:trusted.session.issued_session_version});
+  let acquired;
+  try{acquired=await acquireIdempotency<StaffLogoutAllResponse>(context.env.DB,{actorType:'STAFF',actorId:trusted.authorization.staffId,action:'STAFF_LOGOUT_ALL',targetType:'STAFF_USER',targetId:trusted.authorization.staffId,idempotencyKey:key,requestHash},{now});}
+  catch(error){throw normalizeIdempotencyError(error);}
+  const response=acquired.kind==='REPLAY'?acquired.response:await logoutAllStaffSessions(context.env.DB,{
+    staffId:trusted.authorization.staffId,currentSessionId:trusted.session.id,roles:[...trusted.authorization.roles],
+    requestId:requestIdFromContext(context),claim:acquired.claim,now,
   });
   clearStaffSessionCookie(context); context.header('Cache-Control','no-store');
-  return context.json(apiSuccess({logged_out:true,all_devices_logged_out:true,session_version:sessionVersion},requestIdFromContext(context)));
+  return context.json(apiSuccess(response,requestIdFromContext(context)));
 }
 
 async function emailIdentity(database:SqlDatabase, rawEmail:string):Promise<EmailIdentityRow>{
@@ -147,6 +157,7 @@ function requireAllowedOrigin(context:Context<any>):void{
   if(configured.length>0){if(!configured.includes(origin))throw new StaffAuthError('FORBIDDEN',403);return;}
   if(origin!==new URL(context.req.url).origin)throw new StaffAuthError('FORBIDDEN',403);
 }
+function normalizeIdempotencyError(error:unknown):StaffAuthError{const candidate=error as Partial<IdempotencyError>;if(candidate&&(candidate.status===400||candidate.status===409||candidate.status===503)&&typeof candidate.code==='string')return new StaffAuthError(candidate.code,candidate.status);return new StaffAuthError('DEPENDENCY_UNAVAILABLE',503);}
 function wrap(handler:(context:Context<any>)=>Promise<Response>){
   return async(context:Context<any>)=>{try{return await handler(context);}catch(error){return staffAuthFailure(context,error instanceof StaffAuthError?error:new StaffAuthError('DEPENDENCY_UNAVAILABLE',503));}};
 }

@@ -151,7 +151,7 @@ requireText(source, [
   'safeReturnPath',
   'assertFileUploadTransition',
   "path: '/api/customer-auth/logout'",
-  'staffProviderOrigin',
+  "path: '/api/staff-auth/access/bootstrap'",
   'data.session',
 ], 'required Wave 14A boundary');
 
@@ -967,8 +967,8 @@ for (const eagerBuyerAfterSalesImport of [
   }
 }
 requireText(staffRouteModule, [
-  "const loadStaffAdminRoutes = () => import('./StaffAdminRouteModule')",
-  "const loadStaffSchedulingRoutes = () => import('./StaffSchedulingRouteModule')",
+  "const loadStaffAdminRoutes=()=>import('./StaffAdminRouteModule')",
+  "const loadStaffSchedulingRoutes=()=>import('./StaffSchedulingRouteModule')",
   "pathname.startsWith('/staff/admin-business-dashboard')",
 ], 'Staff deferred route module integration');
 for (const eagerStaffHeavyImport of [
@@ -1151,7 +1151,7 @@ const browserFixtures = readFileSync(join(workspace, 'apps/web/e2e/foundation.sp
 if (!browserFixtures.includes('success({ session:')) throw new Error('Playwright fixture must use data.session');
 requireText(browserFixtures, [
   'root is a finished dedicated-link notice with no identity controls',
-  'Buyer shell is product-focused with five fixed items and no fake business data',
+  'Buyer shell is product-focused with three fixed items and no fake business data',
   'Buyer shell keeps navigation clear at 320px and safe content padding',
   'Seller store context is keyboard operable and remains visible',
   'Seller navigation is route-aware, client-side, and session-stable',

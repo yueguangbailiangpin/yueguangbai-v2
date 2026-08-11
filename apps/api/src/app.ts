@@ -1,12 +1,10 @@
 import {
   apiFailure,
   apiSuccess,
-  type StaffAuthProviderAdapter,
   type StaffAuthProviderBindings,
   type StaffDataScope,
   type ObjectStorageAdapter,
   type DriveArchiveAdapter,
-  type FeishuWorkbenchAdapter,
   type SqlDatabase,
 } from '@ygb/contracts';
 import { Hono } from 'hono';
@@ -38,30 +36,12 @@ export type AppBindings = StaffAuthProviderBindings
   GOOGLE_DRIVE_OWNER_ACCOUNT_KEY?: string;
   CUSTOMER_SESSION_SECRET?: string;
   CUSTOMER_SECURITY_TOKEN_SECRET?: string;
-  STAFF_AUTH_PROVIDER_ADAPTER?: StaffAuthProviderAdapter;
   OUTBOX_DELIVERY_ADAPTER?: { deliver(event: { id: string; eventType: string; payloadJson: string }): Promise<void> };
   SCHEDULED_OPERATIONS_ENABLED?: string;
   SCHEDULED_OPERATIONS_DISABLED_JOBS?: string;
   ACQUISITION_MAINTENANCE_ENABLED?: string;
   OPERATIONAL_ALERT_SINK?: OperationalAlertSink;
   OPERATIONAL_ALERT_MODE?: string;
-  FEISHU_WORKBENCH_SYNC_ENABLED?: string;
-  FEISHU_WORKBENCH_CALLBACK_ENABLED?: string;
-  FEISHU_WORKBENCH_WEB_ORIGIN?: string;
-  FEISHU_WORKBENCH_API_ORIGIN?: string;
-  FEISHU_WORKBENCH_APP_ID?: string;
-  FEISHU_WORKBENCH_APP_SECRET?: string;
-  FEISHU_WORKBENCH_TENANT_KEY?: string;
-  FEISHU_WORKBENCH_ENCRYPT_KEY?: string;
-  FEISHU_WORKBENCH_VERIFICATION_TOKEN?: string;
-  FEISHU_WORKBENCH_REQUEST_TIMEOUT_MS?: string;
-  FEISHU_WORKBENCH_MAX_ATTEMPTS?: string;
-  FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND?: string;
-  FEISHU_WORKBENCH_ADAPTER?: FeishuWorkbenchAdapter;
-  FEISHU_OPERATIONAL_ALERT_ENABLED?: string;
-  FEISHU_OPERATIONAL_ALERT_CHAT_ID?: string;
-  FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND?: string;
-  FEISHU_OPERATIONAL_ALERT_SINK?: OperationalAlertSink;
   SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED?: string;
 };
 
@@ -120,15 +100,12 @@ export function createApp(): Hono<AppEnv> {
 }
 
 export function configuredAlertSink(
-  bindings:Pick<AppBindings,'OPERATIONAL_ALERT_MODE'|'OPERATIONAL_ALERT_SINK'|'FEISHU_OPERATIONAL_ALERT_SINK'>,
-  feishuSink:OperationalAlertSink|null=bindings.FEISHU_OPERATIONAL_ALERT_SINK??null,
+  bindings:Pick<AppBindings,'OPERATIONAL_ALERT_MODE'|'OPERATIONAL_ALERT_SINK'>,
 ):OperationalAlertSink|null {
   try {
-    const primary=resolveOperationalAlertSink({
+    return resolveOperationalAlertSink({
       ...((bindings.OPERATIONAL_ALERT_MODE!==undefined)?{mode:bindings.OPERATIONAL_ALERT_MODE}:{}),
       ...(bindings.OPERATIONAL_ALERT_SINK?{localSink:bindings.OPERATIONAL_ALERT_SINK}:{}),
     });
-    if(primary!==null&&feishuSink!==null)return null;
-    return primary??feishuSink;
   } catch { return null; }
 }

@@ -62,6 +62,17 @@ describe('Cloudflare release preflight', () => {
     expect(errors).toContain('routes.0.pattern:origin_mismatch');
   });
 
+  it('rejects retired Feishu configuration and invalid Access settings', () => {
+    const config = anonymousConfig('production');
+    config.vars.FEISHU_WORKBENCH_SYNC_ENABLED = 'false';
+    config.vars.STAFF_ACCESS_TEAM_DOMAIN = 'http://team.cloudflareaccess.com';
+    config.vars.STAFF_ACCESS_AUD = 'short';
+    const errors = validateReleaseConfig(config, 'production');
+    expect(errors).toContain('vars.FEISHU_WORKBENCH_SYNC_ENABLED:retired_configuration_forbidden');
+    expect(errors).toContain('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_https_origin');
+    expect(errors).toContain('vars.STAFF_ACCESS_AUD:missing_or_invalid');
+  });
+
   it('rejects placeholders, missing bindings and duplicate/default resources', () => {
     const template = readLocalReleaseConfig(templatePath('production'));
     expect(validateReleaseConfig(template, 'production'))
@@ -154,6 +165,15 @@ function anonymousConfig(environment) {
   const config = structuredClone(readLocalReleaseConfig(templatePath(environment)));
   const origin = `https://${environment}.example.invalid`;
   replacePlaceholders(config, (value) => {
+    if (value === 'REQUIRED_RELEASE_COMMIT_SHA') return 'a'.repeat(40);
+    if (value.endsWith('_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN')
+      || value === 'REQUIRED_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN') {
+      return `https://${environment}-team.cloudflareaccess.com`;
+    }
+    if (value.endsWith('_CLOUDFLARE_ACCESS_APPLICATION_AUD')
+      || value === 'REQUIRED_CLOUDFLARE_ACCESS_APPLICATION_AUD') {
+      return `anonymous-${environment}-access-audience`;
+    }
     if (value.endsWith('_ACCOUNT_ID')) return 'a'.repeat(32);
     if (value.endsWith('_WORKER_NAME')) return `ygb-${environment}`;
     if (value.endsWith('_CUSTOM_DOMAIN')) return `${environment}.example.invalid`;
@@ -162,15 +182,6 @@ function anonymousConfig(environment) {
     if (value.endsWith('_D1_NAME')) return `ygb_${environment}`;
     if (value.endsWith('_D1_ID')) return '11111111-1111-4111-8111-111111111111';
     if (value.endsWith('_R2_BUCKET_NAME')) return `ygb-${environment}-files`;
-    if (value.endsWith('_FEISHU_AUTHORIZATION_ENDPOINT')) return 'https://feishu.example.invalid/authorize';
-    if (value.endsWith('_FEISHU_TOKEN_ENDPOINT')) return 'https://feishu.example.invalid/token';
-    if (value.endsWith('_FEISHU_IDENTITY_ENDPOINT')) return 'https://feishu.example.invalid/identity';
-    if (value.endsWith('_FEISHU_APP_ID')) return `anonymous-${environment}-app`;
-    if (value.endsWith('_FEISHU_SCOPE')) return 'anonymous:read';
-    if (value.endsWith('_FEISHU_TENANT_KEY')) return `anonymous-${environment}-tenant`;
-    if (value.endsWith('_FEISHU_REDIRECT_URI')) return `${origin}/api/staff-auth/feishu/callback`;
-    if (value.endsWith('_FEISHU_WORKBENCH_APP_ID')) return `anonymous-${environment}-workbench-app`;
-    if (value.endsWith('_FEISHU_WORKBENCH_TENANT_KEY')) return `anonymous-${environment}-workbench-tenant`;
     if (value.endsWith('_STAFF_MCP_ENABLED_TOOLS')) return 'list_staff_tasks_v1';
     if (value.endsWith('_STAFF_MCP_RESOURCE_DOCUMENTATION_URL')) return `${origin}/staff-mcp-guide`;
     if (value.endsWith('_STAFF_MCP_RESOURCE_POLICY_URL')) return `${origin}/privacy/staff-mcp`;

@@ -9,10 +9,9 @@ import {
   resolveRoundRobinFixedDutyCandidate,
   resolveOwnerFallback,
 } from './candidate-resolver';
-import { getStaffAvailability } from './availability-service';
 import { resolveAssignmentStaffAuthorization } from './effective-authorization';
 import { resolveStaffDataScope } from './data-scope';
-import { reassignWorkItem } from './reassignment-service';
+import { listVisibleWorkItems } from './read-model';
 
 let database: SqliteDatabase | null = null;
 afterEach(() => { database?.close(); database = null; });
@@ -25,12 +24,6 @@ function db(): SqliteDatabase {
 
 function seedFoundation(d: SqliteDatabase): void {
   d.exec(`
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-ops','ops','Ops','ACTIVE',1,1,1,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('team-ops','department-ops','ops','Ops','ACTIVE',1,1,1,NULL);
     INSERT INTO staff_users (
       id, display_name, status, authorization_version, version,
       created_at, updated_at, disabled_at
@@ -47,12 +40,17 @@ function seedFoundation(d: SqliteDatabase): void {
       ('pre-1','pre_sales','ACTIVE','owner-1',1,NULL,1,1),
       ('pre-2','pre_sales','ACTIVE','owner-1',1,NULL,1,1),
       ('after-1','buyer_refund','ACTIVE','owner-1',1,NULL,1,1);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
+    INSERT INTO staff_marketplace_scopes (
+      id, staff_id, role_code, marketplace_code, status,
+      assigned_by_staff_id, assigned_at, revoked_at, reason,
+      created_at, updated_at, scope_kind
     ) VALUES
-      ('pre-1','team-ops','ACTIVE',1,NULL,1,1),
-      ('pre-2','team-ops','ACTIVE',1,NULL,1,1),
-      ('after-1','team-ops','ACTIVE',1,NULL,1,1);
+      ('scope-pre-1-amazon-jp','pre-1','pre_sales','AMAZON_JP','ACTIVE',
+        'owner-1',1,NULL,'TEST_PRIMARY',1,1,'PRIMARY'),
+      ('scope-pre-2-amazon-jp','pre-2','pre_sales','AMAZON_JP','ACTIVE',
+        'owner-1',1,NULL,'TEST_SUPPORT',1,1,'SUPPORT'),
+      ('scope-after-1-amazon-jp','after-1','buyer_refund','AMAZON_JP','ACTIVE',
+        'owner-1',1,NULL,'TEST_PRIMARY',1,1,'PRIMARY');
     INSERT INTO buyer_channels (
       id, code, name, status, next_sequence, version,
       created_at, updated_at, disabled_at
@@ -77,21 +75,15 @@ function seedFoundation(d: SqliteDatabase): void {
 }
 
 describe('Phase 3H staff assignment foundation', () => {
-  it('preserves Wave 12 availability behavior on schema 28', async () => {
+  it('runs the assignment foundation on schema 64', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 43 });
-    expect(await getStaffAvailability(d, 'pre-1')).toMatchObject({
-      staff_id: 'pre-1',
-      availability_status: 'AVAILABLE',
-      effective_default: true,
-      version: 0,
-    });
+      .toEqual({ schema_version: 64 });
     expect(d.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(d.raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
   });
 
-  it('round-robins deterministically and personal DENY removes a candidate', async () => {
+  it('assigns only the Marketplace PRIMARY and personal DENY removes it', async () => {
     const d = db();
     const first = await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
@@ -105,19 +97,19 @@ describe('Phase 3H staff assignment foundation', () => {
       workType: 'RESERVATION_DECISION',
       marketplaceCode: 'JP',
     });
-    expect(second?.staff.staffId).toBe('pre-2');
+    expect(second?.staff.staffId).toBe('pre-1');
 
     d.exec(`INSERT INTO staff_permission_overrides (
       staff_id, permission_code, effect, status, reason,
       assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('pre-2','ASSIGNMENT_ELIGIBLE_BUYER_PRE_SALES','DENY','ACTIVE',
+    ) VALUES ('pre-1','ASSIGNMENT_ELIGIBLE_BUYER_PRE_SALES','DENY','ACTIVE',
       'test deny','owner-1',20,NULL,20,20)`);
     const afterDeny = await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
       marketplaceCode: 'JP',
     });
-    expect(afterDeny?.staff.staffId).toBe('pre-1');
+    expect(afterDeny).toBeNull();
   });
 
   it('creates a directly assigned work item and preserves fixed owner on replay', async () => {
@@ -148,7 +140,7 @@ describe('Phase 3H staff assignment foundation', () => {
     expect(replay.statements).toHaveLength(0);
   });
 
-  it('replaces an unavailable fixed owner only when the next work arrives', async () => {
+  it('ignores retired Availability state and keeps the PRIMARY owner', async () => {
     const d = db();
     const first = await prepareDirectWorkItem(d, {
       workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
@@ -166,13 +158,13 @@ describe('Phase 3H staff assignment foundation', () => {
       buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 120,
     });
     await d.batch(second.statements);
-    expect(second.assignedStaffId).toBe('pre-2');
+    expect(second.assignedStaffId).toBe('pre-1');
     expect(d.raw.prepare(`SELECT COUNT(*) AS count FROM buyer_staff_assignments
       WHERE buyer_customer_id='buyer-1' AND duty_code='BUYER_PRE_SALES_OWNER'`).get())
-      .toEqual({ count: 2 });
+      .toEqual({ count: 1 });
     expect(d.raw.prepare(`SELECT staff_id FROM buyer_staff_assignments
       WHERE buyer_customer_id='buyer-1' AND duty_code='BUYER_PRE_SALES_OWNER'
-        AND status='ACTIVE'`).get()).toEqual({ staff_id: 'pre-2' });
+        AND status='ACTIVE'`).get()).toEqual({ staff_id: 'pre-1' });
   });
 
   it('does not select an arbitrary owner when fallback is absent or invalid', async () => {
@@ -191,7 +183,7 @@ describe('Phase 3H staff assignment foundation', () => {
     })).staffId).toBe('owner-1');
   });
 
-  it('resolves own data scope from assignments and open work items', async () => {
+  it('resolves business visibility from Role × Marketplace instead of assignment ownership', async () => {
     const d = db();
     const prepared = await prepareDirectWorkItem(d, {
       workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
@@ -203,7 +195,24 @@ describe('Phase 3H staff assignment foundation', () => {
     expect(actor).not.toBeNull();
     const scope = await resolveStaffDataScope(d, actor!, { requiredPermission: 'BUYER_VIEW' });
     expect(scope.buyerCustomerIds).toContain('buyer-1');
-    expect(scope.buyerCustomerIds).not.toContain('buyer-2');
+    expect(scope.buyerCustomerIds).toContain('buyer-2');
+  });
+
+  it('shows the OPEN queue to PRIMARY while SUPPORT remains business-visible only', async () => {
+    const d = db();
+    const prepared = await prepareDirectWorkItem(d, {
+      workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
+      sourceEntityId: 'reservation-primary-queue', marketplaceCode: 'JP',
+      buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
+    });
+    await d.batch(prepared.statements);
+    const primary = await resolveAssignmentStaffAuthorization(d, 'pre-1');
+    const support = await resolveAssignmentStaffAuthorization(d, 'pre-2');
+    expect((await listVisibleWorkItems(d, primary!)).work_items).toHaveLength(1);
+    expect((await listVisibleWorkItems(d, support!)).work_items).toEqual([]);
+    expect((await resolveStaffDataScope(d, support!, {
+      requiredPermission: 'BUYER_VIEW',
+    })).buyerCustomerIds).toContain('buyer-1');
   });
 
   it('applies business-permission DENY inside SQL candidate selection', async () => {
@@ -218,10 +227,10 @@ describe('Phase 3H staff assignment foundation', () => {
       workType: 'RESERVATION_DECISION',
       marketplaceCode: 'JP',
     });
-    expect(candidate?.staff.staffId).toBe('pre-2');
+    expect(candidate).toBeNull();
   });
 
-  it('requires every fixed-duty business permission despite personal grants', async () => {
+  it('never expands fixed-duty eligibility through legacy personal grants', async () => {
     const d = db();
     const support = await resolveAssignmentStaffAuthorization(d, 'owner-1');
     expect(support?.permissions.has('ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT')).toBe(true);
@@ -234,36 +243,25 @@ describe('Phase 3H staff assignment foundation', () => {
         staff_id, role_code, status, assigned_by_staff_id, assigned_at,
         revoked_at, created_at, updated_at
       ) VALUES ('support-1','pre_sales','ACTIVE','owner-1',1,NULL,1,1);
-      INSERT INTO staff_team_memberships (
-        staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-      ) VALUES ('support-1','team-ops','ACTIVE',1,NULL,1,1);
-      INSERT INTO staff_permission_overrides (
-        staff_id, permission_code, effect, status, reason,
-        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-      ) VALUES
-        ('support-1','ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT','GRANT','ACTIVE','test',
-          'owner-1',2,NULL,2,2),
-        ('support-1','PRODUCT_REVIEW','GRANT','ACTIVE','test',
-          'owner-1',2,NULL,2,2);
     `);
     const supportAuthorization = await resolveAssignmentStaffAuthorization(d, 'support-1');
-    expect(supportAuthorization?.permissions.has('ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT')).toBe(true);
+    expect(supportAuthorization?.permissions.has('ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT')).toBe(false);
     expect(await resolveRoundRobinFixedDutyCandidate(d, {
       dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'JP',
     })).toBeNull();
 
-    d.exec(`
+    expect(() => d.exec(`
       INSERT INTO staff_permission_overrides (
         staff_id, permission_code, effect, status, reason,
         assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
       ) VALUES
         ('support-1','DEMAND_PUBLISH','GRANT','ACTIVE','test',
           'owner-1',3,NULL,3,3);
-    `);
+    `)).toThrow('staff_permission_active_grant_forbidden');
     const candidate = await resolveRoundRobinFixedDutyCandidate(d, {
       dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'JP',
     });
-    expect(candidate?.staff.staffId).toBe('support-1');
+    expect(candidate).toBeNull();
   });
 
   it('rejects a fixed-duty candidate when any required permission is personally denied', async () => {
@@ -276,20 +274,25 @@ describe('Phase 3H staff assignment foundation', () => {
     const candidate = await resolveRoundRobinFixedDutyCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER', marketplaceCode: 'JP',
     });
-    expect(candidate?.staff.staffId).toBe('pre-2');
+    expect(candidate).toBeNull();
   });
 
-  it('skips unavailable and disabled staff without rewriting assignments', async () => {
+  it('ignores retired Availability but excludes disabled PRIMARY staff', async () => {
     const d = db();
     d.exec(`
       INSERT INTO staff_availability (
         staff_id, availability_status, reason, changed_by_staff_id,
         version, created_at, updated_at
       ) VALUES ('pre-1','UNAVAILABLE','leave','pre-1',1,20,20);
-      UPDATE staff_users
-      SET status='DISABLED', disabled_at=20, version=version+1, updated_at=20
-      WHERE id='pre-2';
     `);
+    expect((await resolveRoundRobinCandidate(d, {
+      dutyCode: 'BUYER_PRE_SALES_OWNER',
+      workType: 'RESERVATION_DECISION',
+      marketplaceCode: 'JP',
+    }))?.staff.staffId).toBe('pre-1');
+    d.exec(`UPDATE staff_users
+      SET status='DISABLED', disabled_at=20, version=version+1, updated_at=20
+      WHERE id='pre-1'`);
     expect(await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
@@ -300,12 +303,9 @@ describe('Phase 3H staff assignment foundation', () => {
   it('uses explicit fallback without advancing the round-robin cursor', async () => {
     const d = db();
     d.exec(`
-      INSERT INTO staff_availability (
-        staff_id, availability_status, reason, changed_by_staff_id,
-        version, created_at, updated_at
-      ) VALUES
-        ('pre-1','UNAVAILABLE','leave','pre-1',1,20,20),
-        ('pre-2','UNAVAILABLE','leave','pre-2',1,20,20);
+      UPDATE staff_users
+      SET status='DISABLED', disabled_at=20, version=version+1, updated_at=20
+      WHERE id='pre-1';
       INSERT INTO staff_assignment_fallbacks (
         marketplace_code, staff_id, version, configured_by_staff_id,
         created_at, updated_at
@@ -334,13 +334,14 @@ describe('Phase 3H staff assignment foundation', () => {
       requiredPermission: 'BUYER_VIEW',
     })).toEqual({
       type: 'GLOBAL',
+      marketplaceCodes: [],
       buyerCustomerIds: [],
       sellerOrganizationIds: [],
       teamIds: [],
     });
   });
 
-  it('writes assignment/work-item Outbox events and rejects destructive history edits', async () => {
+  it('writes only the assignment Outbox event and rejects destructive history edits', async () => {
     const d = db();
     const prepared = await prepareDirectWorkItem(d, {
       workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
@@ -350,41 +351,15 @@ describe('Phase 3H staff assignment foundation', () => {
     });
     await d.batch(prepared.statements);
     expect(d.raw.prepare(`SELECT COUNT(*) AS count FROM integration_outbox
-      WHERE aggregate_type IN ('STAFF_ASSIGNMENT','STAFF_WORK_ITEM')`).get())
-      .toEqual({ count: 2 });
+      WHERE aggregate_type='STAFF_ASSIGNMENT'`).get())
+      .toEqual({ count: 1 });
+    expect(d.raw.prepare(`SELECT COUNT(*) AS count FROM integration_outbox
+      WHERE aggregate_type='STAFF_WORK_ITEM'`).get())
+      .toEqual({ count: 0 });
     expect(() => d.exec(`DELETE FROM staff_work_items
       WHERE id='${prepared.workItemId}'`)).toThrow('staff_work_items_are_immutable');
     expect(() => d.exec(`DELETE FROM buyer_staff_assignments
       WHERE id='${prepared.assignmentId}'`)).toThrow('buyer_staff_assignments_are_immutable');
-  });
-
-  it('reassigns one Work Item without changing its fixed owner', async () => {
-    const d = db();
-    const prepared = await prepareDirectWorkItem(d, {
-      workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
-      sourceEntityId: 'reservation-reassign', marketplaceCode: 'JP',
-      buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
-    });
-    await d.batch(prepared.statements);
-    const owner = await resolveAssignmentStaffAuthorization(d, 'owner-1');
-    const result = await reassignWorkItem(d, {
-      workItemId: prepared.workItemId,
-      targetStaffId: 'pre-2',
-      expectedVersion: 1,
-      reason: 'manual workload balance',
-    }, {
-      actor: owner!,
-      idempotencyKey: 'reassign-work-item-1',
-      now: 120,
-    });
-    expect(result.assigned_staff_id).toBe('pre-2');
-    expect(d.raw.prepare(`SELECT assigned_staff_id, fixed_assignment_id
-      FROM staff_work_items WHERE id=?`).get(prepared.workItemId)).toEqual({
-      assigned_staff_id: 'pre-2',
-      fixed_assignment_id: prepared.assignmentId,
-    });
-    expect(d.raw.prepare(`SELECT staff_id FROM buyer_staff_assignments
-      WHERE id=?`).get(prepared.assignmentId)).toEqual({ staff_id: 'pre-1' });
   });
 
 });

@@ -10,11 +10,7 @@ import { StaffAssignmentError } from './errors';
 import { decodeStaffWorkItemCursor,encodeStaffWorkItemCursor } from './pagination';
 import { getVisibleWorkItem,listMyAssignments,listVisibleWorkItems } from './read-model';
 
-/**
- * Frozen Staff V1 exposes only read-only work-queue endpoints. Historical
- * availability/fallback/reassignment/batch-transfer services remain source
- * compatibility code but are intentionally not registered into the runtime.
- */
+/** Frozen Staff V1 exposes only read-only Role × Marketplace work queues. */
 export function registerStaffAssignmentRoutes(app:Hono<any>):void{
   app.get('/api/staff/me/assignments',withStaffErrors(async(context)=>{
     const actor=requireStaffActor(context);

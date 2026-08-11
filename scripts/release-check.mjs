@@ -8,6 +8,7 @@ export const RELEASE_COMMANDS=Object.freeze([
   'check',
   'check:production-readiness',
   'check:drive-archive',
+  'check:staff-auth-production',
   'check:staff-mcp-production',
   'verify:cloudflare-release',
   'dry-run:cloudflare-release',

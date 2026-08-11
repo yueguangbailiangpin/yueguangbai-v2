@@ -26,7 +26,6 @@ import {
   readScheduledOperationalAlerts,
 } from './alerts';
 import { driveArchiveRuntime } from '../cold-image-archive/runtime';
-import { feishuWorkbenchRuntime } from '../feishu-workbench/runtime';
 
 const BODY_LIMIT=4096;
 
@@ -44,9 +43,8 @@ async function health(context: Context<AppEnv>): Promise<Response> {
   const rows=await context.env.DB.prepare('SELECT job_name,enabled,last_started_at,last_succeeded_at,last_failed_at,last_failure_category,last_backlog_count AS backlog_count,lease_expires_at FROM scheduled_job_states ORDER BY job_name').all<{job_name:string;enabled:number;last_started_at:number|null;last_succeeded_at:number|null;last_failed_at:number|null;last_failure_category:string|null;backlog_count:number;lease_expires_at:number|null}>();
   const states=new Map(rows.results.map((row)=>[row.job_name,row]));
   const drive=driveArchiveRuntime(context.env);
-  const feishu=feishuWorkbenchRuntime(context.env);
   const driveEnabled=drive.enabled&&drive.copyEnabled&&Boolean(drive.adapter)&&Boolean(context.env.FILE_OBJECT_STORAGE);
-  const jobs=SCHEDULED_JOB_NAMES.map((jobName)=>{ const row=states.get(jobName); const hardDisabled=(jobName==='feishu_sync'&&!feishu.syncEnabled)||(jobName==='drive_archive'&&!driveEnabled); return parseScheduledOperationHealthDto({job_name:jobName,enabled:hardDisabled?false:row?.enabled!==0,last_started_at:row?.last_started_at??null,last_succeeded_at:row?.last_succeeded_at??null,last_failed_at:row?.last_failed_at??null,last_failure_category:row?.last_failure_category??null,backlog_count:Number(row?.backlog_count??0),lease_expires_at:row?.lease_expires_at??null,capability_scope:jobName==='instruction_expiry'?'LEGACY_JP_ONLY':hardDisabled?'HARD_DISABLED':'ALL_ENABLED_MARKETPLACES'}); });
+  const jobs=SCHEDULED_JOB_NAMES.map((jobName)=>{ const row=states.get(jobName); const hardDisabled=jobName==='drive_archive'&&!driveEnabled; return parseScheduledOperationHealthDto({job_name:jobName,enabled:hardDisabled?false:row?.enabled!==0,last_started_at:row?.last_started_at??null,last_succeeded_at:row?.last_succeeded_at??null,last_failed_at:row?.last_failed_at??null,last_failure_category:row?.last_failure_category??null,backlog_count:Number(row?.backlog_count??0),lease_expires_at:row?.lease_expires_at??null,capability_scope:jobName==='instruction_expiry'?'LEGACY_JP_ONLY':hardDisabled?'HARD_DISABLED':'ALL_ENABLED_MARKETPLACES'}); });
   const alerts=await readScheduledOperationalAlerts(context.env.DB);
   return context.json(apiSuccess({jobs,alerts,time_basis:'UTC_MS' as const,display_timezone:'Asia/Shanghai' as const},context.get('requestId')));
 }
@@ -79,7 +77,7 @@ function requireIdempotencyKey(context:Context<AppEnv>) { const value=context.re
 function parseManualBody(value:unknown) { try { return parseScheduledOperationManualRunCommand(value); } catch { throw new ScheduledOperationCommandError('VALIDATION_ERROR',400); } }
 function parseReplayBody(value:unknown) { try { return parseScheduledOperationDeadLetterReplayCommand(value); } catch { throw new ScheduledOperationCommandError('VALIDATION_ERROR',400); } }
 function parseAlertAckBody(value:unknown) { try { return parseScheduledOperationalAlertAckCommandDto(value); } catch { throw new ScheduledOperationCommandError('VALIDATION_ERROR',400); } }
-function runtime(context:Context<AppEnv>) { const drive=driveArchiveRuntime(context.env); const feishu=feishuWorkbenchRuntime(context.env); return {enabled:context.env.SCHEDULED_OPERATIONS_ENABLED==='true',disabledJobs:disabledJobs(context.env.SCHEDULED_OPERATIONS_DISABLED_JOBS),storage:context.env.FILE_OBJECT_STORAGE??null,outboxAdapter:context.env.OUTBOX_DELIVERY_ADAPTER??null,feishuAdapter:feishu.adapter,feishuWebOrigin:feishu.webOrigin,feishuTenantKey:feishu.tenantKey,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled}; }
+function runtime(context:Context<AppEnv>) { const drive=driveArchiveRuntime(context.env); return {enabled:context.env.SCHEDULED_OPERATIONS_ENABLED==='true',disabledJobs:disabledJobs(context.env.SCHEDULED_OPERATIONS_DISABLED_JOBS),storage:context.env.FILE_OBJECT_STORAGE??null,outboxAdapter:context.env.OUTBOX_DELIVERY_ADAPTER??null,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled}; }
 function disabledJobs(value:string|undefined):ScheduledOperationJobName[] { return (value??'').split(',').map((job)=>job.trim()).filter(isScheduledOperationJobName); }
 function withErrors(handler:(context:Context<AppEnv>)=>Promise<Response>) { return async(context:Context<AppEnv>)=>{ try { return await handler(context); } catch(error) { const codeValue=error!==null && (typeof error==='object' || typeof error==='function')?Reflect.get(error,'code'):undefined; const statusValue=error!==null && (typeof error==='object' || typeof error==='function')?Reflect.get(error,'status'):undefined; const code=isApiErrorCode(codeValue)?codeValue:'DEPENDENCY_UNAVAILABLE'; return context.json(apiFailure(code,message(code),context.get('requestId')),safeStatus(statusValue)); } }; }
 function safeStatus(value:unknown):400|403|404|409|503 { switch(value) { case 400:return 400; case 403:return 403; case 404:return 404; case 409:return 409; default:return 503; } }

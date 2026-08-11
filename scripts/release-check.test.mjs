@@ -25,7 +25,7 @@ describe('release aggregate gate', () => {
     expect(RELEASE_COMMANDS).toEqual(expect.arrayContaining([
       'check', 'verify:final-production-go:local', 'verify:cloudflare-release',
       'dry-run:cloudflare-release', 'check:production-readiness', 'check:drive-archive',
-      'check:feishu-workbench', 'check:staff-mcp-production', 'test:wave14a:browser',
+      'check:staff-auth-production', 'check:staff-mcp-production', 'test:wave14a:browser',
     ]));
   });
 

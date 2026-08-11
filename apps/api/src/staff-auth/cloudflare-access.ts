@@ -115,10 +115,11 @@ function jsonSegment<T>(value: string): T {
     return parsed as T;
   } catch { throw new CloudflareAccessError('UNAUTHENTICATED'); }
 }
-function base64UrlBytes(value: string): Uint8Array {
+function base64UrlBytes(value: string): Uint8Array<ArrayBuffer> {
   if (!/^[A-Za-z0-9_-]+$/u.test(value)) throw new CloudflareAccessError('UNAUTHENTICATED');
   const padded = value.replace(/-/gu, '+').replace(/_/gu, '/') + '='.repeat((4 - value.length % 4) % 4);
-  const decoded = atob(padded); const bytes = new Uint8Array(decoded.length);
+  const decoded = atob(padded);
+  const bytes = new Uint8Array(new ArrayBuffer(decoded.length));
   for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
   return bytes;
 }

@@ -30,13 +30,13 @@ describe('Rakuten/TikTok adapter static verifier', () => {
     }
   });
 
-  it('detects any added migration despite a textual NO_SCHEMA_CHANGE claim', () => {
+  it('allows later unrelated migrations without weakening the frozen 0042 bytes', () => {
     const migrationFiles = readdirSync(path.join(root, 'migrations'))
       .filter((name) => name.endsWith('.sql'))
       .sort();
     expect(verifyRakutenTikTokAdapterPreparation({
       migrationFiles: [...migrationFiles, '0044_forbidden_adapter_state.sql'],
-    })).toContain('migration.no_schema_change_violated');
+    })).toEqual([]);
   });
 
   it('detects schema edits appended to an existing baseline migration', () => {
@@ -67,8 +67,8 @@ describe('Rakuten/TikTok adapter static verifier', () => {
     const appPath = 'apps/api/src/app.ts';
     const app = read(appPath);
     const mutated = app.replace(
-      "  app.notFound((context) => {",
-      "  app.get('/api/tiktok-shop/orders', (context) => context.json({ ok: true }));\n\n  app.notFound((context) => {",
+      "  app.notFound((context) => context.json(apiFailure('NOT_FOUND','请求的资源不存在',context.get('requestId')),404));",
+      "  app.get('/api/tiktok-shop/orders', (context) => context.json({ ok: true }));\n  app.notFound((context) => context.json(apiFailure('NOT_FOUND','请求的资源不存在',context.get('requestId')),404));",
     );
     expect(mutated).not.toBe(app);
     expect(verifyRakutenTikTokAdapterPreparation({

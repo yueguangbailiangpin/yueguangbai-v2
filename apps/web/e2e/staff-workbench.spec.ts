@@ -7,7 +7,7 @@ const success = (data: unknown, requestId = 'm5-browser') => ({ data, meta: { re
 const session = {
   staff_id: 'staff-m5', display_name: '售前员工', role: { code: 'pre_sales', display_name: '售前' },
   permissions: ['ORDER_VIEW', 'ORDER_CONFIRM'], data_scope: {
-    type: 'ASSIGNED_BUYERS', buyerCustomerIds: ['buyer-m5'], sellerOrganizationIds: [], teamIds: [],
+    type: 'MARKETPLACE', marketplaceCodes: ['AMAZON_JP'], buyerCustomerIds: ['buyer-m5'], sellerOrganizationIds: [], teamIds: [],
   }, authorization_version: 2, session_version: 3, expires_at: 9_999_999_999_999,
 };
 const item = {
@@ -64,15 +64,15 @@ test('Staff completes queue to authoritative order detail and sees explicit conf
   const staffContext = page.locator('.staff-context-bar');
   await expect(staffContext.getByText('售前员工', { exact: true })).toBeVisible();
   await expect(staffContext.getByText('售前', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /订单证据核对/u }).click();
-  await expect(page.getByRole('heading', { name: '客户可见内容' })).toBeVisible();
+  await page.getByRole('button', { name: /订单资料核对/u }).click();
+  await expect(page.getByRole('heading', { name: '订单资料', exact: true, level: 3 })).toBeVisible();
   await expect(page.getByText('123-1234567-1234567')).toBeVisible();
   await expect(page.getByText('12880 JPY')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '内部内容' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '内部核对' })).toBeVisible();
   await expect(page.getByText('-120 JPY')).toBeVisible();
-  await page.getByLabel('已核对截图并确认价差').check();
+  await page.getByLabel('已核对价格差异').check();
   await page.getByLabel('价差确认原因').fill('截图清晰显示平台折扣后的实付金额');
-  await page.getByRole('button', { name: '确认并形成正式订单' }).click();
+  await page.getByRole('button', { name: '通过', exact: true }).click();
   await expect(page.getByText(/m5-version-conflict/u)).toBeVisible();
   expect(observed.approveBody).toEqual({ expected_version: 2, price_mismatch_acknowledged: true, price_mismatch_reason: '截图清晰显示平台折扣后的实付金额' });
   expect(observed.key).toMatch(/^[0-9a-f-]{36}$/u);
@@ -95,15 +95,15 @@ test('Staff explicit retry preserves ambiguous request authority and changed bod
     return json(route, { error: { code: 'NOT_FOUND', message: 'not found', details: null }, meta: { request_id: 'retry-unhandled' } }, 404);
   });
   await page.goto('/staff');
-  await page.getByRole('button', { name: /订单证据核对/u }).click();
-  await page.getByLabel('已核对截图并确认价差').check();
+  await page.getByRole('button', { name: /订单资料核对/u }).click();
+  await page.getByLabel('已核对价格差异').check();
   await page.getByLabel('价差确认原因').fill('第一次提交的稳定原因');
-  await page.getByRole('button', { name: '确认并形成正式订单' }).click();
+  await page.getByRole('button', { name: '通过', exact: true }).click();
   await page.getByRole('button', { name: '重试原请求' }).click();
   await expect(page.getByText(/retry-deterministic-2/u)).toBeVisible();
   expect(calls[1]).toEqual(calls[0]);
   await page.getByLabel('价差确认原因').fill('确定性失败后修改的新原因');
-  await page.getByRole('button', { name: '确认并形成正式订单' }).click();
+  await page.getByRole('button', { name: '通过', exact: true }).click();
   await expect(page.getByText(/retry-deterministic-3/u)).toBeVisible();
   expect(calls[2]?.key).not.toBe(calls[1]?.key);
   expect(calls[2]?.body).toMatchObject({ price_mismatch_reason: '确定性失败后修改的新原因' });
@@ -126,15 +126,15 @@ test('Staff workbench remains operable at 200% and with reduced motion', async (
   await page.goto('/staff');
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
   await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
-  await page.getByRole('button', { name: /订单证据核对/u }).focus();
-  await expect(page.getByRole('button', { name: /订单证据核对/u })).toBeFocused();
+  await page.getByRole('button', { name: /订单资料核对/u }).focus();
+  await expect(page.getByRole('button', { name: /订单资料核对/u })).toBeFocused();
   await noOverflow(page);
 });
 
 test('capture deterministic Staff workbench desktop and narrow views', async ({ page }) => {
   await mockWorkbench(page); await page.setViewportSize({ width: 1600, height: 1000 }); await page.goto('/staff');
-  await page.getByRole('button', { name: /订单证据核对/u }).click();
-  await expect(page.getByRole('heading', { name: '客户可见内容' })).toBeVisible();
+  await page.getByRole('button', { name: /订单资料核对/u }).click();
+  await expect(page.getByRole('heading', { name: '订单资料', exact: true, level: 3 })).toBeVisible();
   if (screenshotDirectory) {
     mkdirSync(screenshotDirectory, { recursive: true });
     await page.screenshot({ path: join(screenshotDirectory, 'staff-workbench-desktop-1600x1000.png'), fullPage: true });

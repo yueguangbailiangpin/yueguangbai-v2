@@ -72,6 +72,7 @@ function actor(
     permissions: new Set(permissions),
     dataScope: {
       type: 'GLOBAL', buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [],
+      marketplaceCodes: [],
     },
     memberTeamIds: [],
     leaderTeamIds: [],

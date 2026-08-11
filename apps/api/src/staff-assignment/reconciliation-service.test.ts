@@ -20,6 +20,22 @@ describe('historical staff work-item reconciliation', () => {
 
     database = createMigratedTestDatabase();
     database.exec(`
+      INSERT INTO staff_users (
+        id,display_name,status,authorization_version,version,
+        created_at,updated_at,disabled_at
+      ) VALUES ('reconcile-seller-ops','Reconciliation Seller Ops',
+        'ACTIVE',1,1,1000,1000,NULL);
+      INSERT INTO staff_role_assignments (
+        staff_id,role_code,status,assigned_by_staff_id,
+        assigned_at,revoked_at,created_at,updated_at
+      ) VALUES ('reconcile-seller-ops','seller_ops','ACTIVE',
+        'zz-phase3h-test-owner',1000,NULL,1000,1000);
+      INSERT INTO staff_marketplace_scopes (
+        id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+        assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
+      ) VALUES ('scope-reconcile-seller-jp','reconcile-seller-ops','seller_ops',
+        'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
+        'TEST_PRIMARY',1000,1000,'PRIMARY');
       INSERT INTO seller_organizations (
         id, marketplace_code, seller_code,
         origin_channel_id, current_channel_id, seller_sequence,

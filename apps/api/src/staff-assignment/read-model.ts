@@ -9,7 +9,6 @@ import type {
 import { businessPermissionForWorkItem, eligibilityPermissionForDuty } from '@ygb/domain';
 import type { AssignmentStaffAuthorization } from './effective-authorization';
 import { StaffAssignmentError } from './errors';
-import { representativeWorkType } from './reassignment-service';
 
 const DUTIES: readonly StaffAssignmentDutyCode[] = [
   'SELLER_ACCOUNT_MANAGER','BUYER_PRE_SALES_OWNER','BUYER_AFTER_SALES_OWNER','BUYER_REFUND_OWNER',
@@ -18,6 +17,15 @@ const WORK_TYPES: readonly StaffWorkItemType[] = [
   'PRODUCT_APPLICATION_REVIEW','DEMAND_REVIEW','RESERVATION_DECISION',
   'ORDER_INSTRUCTION_PUBLISH','ORDER_EVIDENCE_REVIEW','REVIEW_DECISION','BUYER_REFUND_PROCESSING',
 ];
+
+function representativeWorkType(dutyCode: StaffAssignmentDutyCode): StaffWorkItemType {
+  switch (dutyCode) {
+    case 'SELLER_ACCOUNT_MANAGER': return 'PRODUCT_APPLICATION_REVIEW';
+    case 'BUYER_PRE_SALES_OWNER': return 'RESERVATION_DECISION';
+    case 'BUYER_AFTER_SALES_OWNER': return 'REVIEW_DECISION';
+    case 'BUYER_REFUND_OWNER': return 'BUYER_REFUND_PROCESSING';
+  }
+}
 
 export async function listMyAssignments(database: SqlDatabase, actor: AssignmentStaffAuthorization): Promise<readonly StaffAssignmentDto[]> {
   const allowedDuties = DUTIES.filter((duty) => actor.permissions.has(eligibilityPermissionForDuty(duty))

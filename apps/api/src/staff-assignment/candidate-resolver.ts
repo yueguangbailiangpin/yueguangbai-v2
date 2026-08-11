@@ -7,6 +7,7 @@ import type {
 import {
   businessPermissionForWorkItem,
   businessPermissionsForDuty,
+  canonicalMarketplaceCode,
   eligibilityPermissionForDuty,
 } from '@ygb/domain';
 import {
@@ -20,10 +21,7 @@ interface CursorRow {
   version: number;
 }
 interface CandidateRow { staff_id: string }
-interface AvailabilityRow {
-  staff_status: string;
-  availability_status: string | null;
-}
+interface StaffStateRow { staff_status: string }
 interface FallbackRow { staff_id: string }
 
 export interface ResolvedRoundRobinCandidate {
@@ -45,12 +43,10 @@ export async function resolveRoundRobinCandidate(
     dutyCode: StaffAssignmentDutyCode;
     workType: StaffWorkItemType;
     marketplaceCode: string;
-    teamId?: string | null;
     excludedStaffIds?: readonly string[];
   },
 ): Promise<ResolvedRoundRobinCandidate | null> {
-  const teamId = input.teamId ?? null;
-  const candidatePoolKey = teamId ?? 'DEFAULT';
+  const candidatePoolKey = 'DEFAULT';
   const cursor = await database.prepare(`
     SELECT last_assigned_staff_id, version
     FROM staff_assignment_cursors
@@ -63,8 +59,8 @@ export async function resolveRoundRobinCandidate(
   const candidate = await selectCandidate(database, {
     eligibilityPermission: eligibilityPermissionForDuty(input.dutyCode),
     requiredBusinessPermissions: [businessPermissionForWorkItem(input.workType)],
+    marketplaceCode: canonicalMarketplaceCode(input.marketplaceCode),
     lastAssignedStaffId: cursor?.last_assigned_staff_id ?? null,
-    teamId,
     excluded: [...new Set(input.excludedStaffIds ?? [])],
   });
   if (!candidate) return null;
@@ -82,7 +78,7 @@ export async function resolveRoundRobinCandidate(
       dutyCode: input.dutyCode,
       marketplaceCode: input.marketplaceCode,
       candidatePoolKey,
-      teamId,
+      teamId: null,
       previousStaffId: cursor?.last_assigned_staff_id ?? null,
       expectedVersion: Number(cursor?.version ?? 0),
     },
@@ -94,12 +90,10 @@ export async function resolveRoundRobinFixedDutyCandidate(
   input: {
     dutyCode: StaffAssignmentDutyCode;
     marketplaceCode: string;
-    teamId?: string | null;
     excludedStaffIds?: readonly string[];
   },
 ): Promise<ResolvedRoundRobinCandidate | null> {
-  const teamId = input.teamId ?? null;
-  const candidatePoolKey = teamId ?? 'DEFAULT';
+  const candidatePoolKey = 'DEFAULT';
   const cursor = await database.prepare(`
     SELECT last_assigned_staff_id, version
     FROM staff_assignment_cursors
@@ -109,8 +103,8 @@ export async function resolveRoundRobinFixedDutyCandidate(
   const candidate = await selectCandidate(database, {
     eligibilityPermission: eligibilityPermissionForDuty(input.dutyCode),
     requiredBusinessPermissions: businessPermissionsForDuty(input.dutyCode),
+    marketplaceCode: canonicalMarketplaceCode(input.marketplaceCode),
     lastAssignedStaffId: cursor?.last_assigned_staff_id ?? null,
-    teamId,
     excluded: [...new Set(input.excludedStaffIds ?? [])],
   });
   if (!candidate) return null;
@@ -128,7 +122,7 @@ export async function resolveRoundRobinFixedDutyCandidate(
       dutyCode: input.dutyCode,
       marketplaceCode: input.marketplaceCode,
       candidatePoolKey,
-      teamId,
+      teamId: null,
       previousStaffId: cursor?.last_assigned_staff_id ?? null,
       expectedVersion: Number(cursor?.version ?? 0),
     },
@@ -140,8 +134,8 @@ async function selectCandidate(
   input: {
     eligibilityPermission: StaffPermissionCode;
     requiredBusinessPermissions: readonly StaffPermissionCode[];
+    marketplaceCode: string;
     lastAssignedStaffId: string | null;
-    teamId: string | null;
     excluded: readonly string[];
   },
 ): Promise<CandidateRow | null> {
@@ -156,20 +150,12 @@ async function selectCandidate(
     JOIN staff_effective_assignment_permissions permission
       ON permission.staff_id=staff.id
       AND permission.permission_code=?
-    JOIN staff_team_memberships membership
-      ON membership.staff_id=staff.id
-      AND membership.status='ACTIVE'
-    JOIN staff_teams team
-      ON team.id=membership.team_id
-      AND team.status='ACTIVE'
-    JOIN staff_departments department
-      ON department.id=team.department_id
-      AND department.status='ACTIVE'
-    LEFT JOIN staff_availability availability
-      ON availability.staff_id=staff.id
+    JOIN staff_marketplace_scopes scope
+      ON scope.staff_id=staff.id
+      AND scope.status='ACTIVE'
+      AND scope.scope_kind='PRIMARY'
+      AND scope.marketplace_code=?
     WHERE staff.status='ACTIVE'
-      AND COALESCE(availability.availability_status, 'AVAILABLE')='AVAILABLE'
-      AND (? IS NULL OR membership.team_id=?)
       ${excludedSql}
       AND (
         SELECT COUNT(DISTINCT business_permission.permission_code)
@@ -187,8 +173,7 @@ async function selectCandidate(
     LIMIT 1
   `).bind(
     input.eligibilityPermission,
-    input.teamId,
-    input.teamId,
+    input.marketplaceCode,
     ...input.excluded,
     ...input.requiredBusinessPermissions,
     input.requiredBusinessPermissions.length,
@@ -197,25 +182,21 @@ async function selectCandidate(
   ).first<CandidateRow>();
 }
 
-export async function isStaffAvailableForDuty(
+export async function isStaffEligibleForDuty(
   database: SqlDatabase,
   input: {
     staffId: string;
     dutyCode: StaffAssignmentDutyCode;
     workType: StaffWorkItemType;
+    marketplaceCode: string;
   },
 ): Promise<boolean> {
   const state = await database.prepare(`
-    SELECT staff.status AS staff_status,
-      availability.availability_status
+    SELECT staff.status AS staff_status
     FROM staff_users staff
-    LEFT JOIN staff_availability availability
-      ON availability.staff_id=staff.id
     WHERE staff.id=?
-  `).bind(input.staffId).first<AvailabilityRow>();
-  if (!state
-    || state.staff_status !== 'ACTIVE'
-    || (state.availability_status ?? 'AVAILABLE') !== 'AVAILABLE') {
+  `).bind(input.staffId).first<StaffStateRow>();
+  if (!state || state.staff_status !== 'ACTIVE') {
     return false;
   }
   const authorization = await resolveAssignmentStaffAuthorization(
@@ -223,28 +204,50 @@ export async function isStaffAvailableForDuty(
     input.staffId,
   );
   const requiredPermissions = businessPermissionsForDuty(input.dutyCode);
-  return Boolean(authorization
+  const hasPrimaryScope = authorization?.roles.has('owner') || Boolean(
+    await database.prepare(`SELECT 1 AS allowed
+      FROM staff_marketplace_scopes
+      WHERE staff_id=? AND marketplace_code=?
+        AND status='ACTIVE' AND scope_kind='PRIMARY'
+      LIMIT 1`).bind(
+        input.staffId,
+        canonicalMarketplaceCode(input.marketplaceCode),
+      ).first<{allowed:number}>(),
+  );
+  return Boolean(authorization && hasPrimaryScope
     && authorization.permissions.has(
       eligibilityPermissionForDuty(input.dutyCode),
     )
     && requiredPermissions.every((permission) => authorization.permissions.has(permission)));
 }
 
-export async function isStaffAvailableForFixedDuty(
+export async function isStaffEligibleForFixedDuty(
   database: SqlDatabase,
-  input: { staffId: string; dutyCode: StaffAssignmentDutyCode },
+  input: {
+    staffId: string;
+    dutyCode: StaffAssignmentDutyCode;
+    marketplaceCode: string;
+  },
 ): Promise<boolean> {
   const state = await database.prepare(`
-    SELECT staff.status AS staff_status, availability.availability_status
+    SELECT staff.status AS staff_status
     FROM staff_users staff
-    LEFT JOIN staff_availability availability ON availability.staff_id=staff.id
     WHERE staff.id=?
-  `).bind(input.staffId).first<AvailabilityRow>();
-  if (!state || state.staff_status !== 'ACTIVE'
-    || (state.availability_status ?? 'AVAILABLE') !== 'AVAILABLE') return false;
+  `).bind(input.staffId).first<StaffStateRow>();
+  if (!state || state.staff_status !== 'ACTIVE') return false;
   const authorization = await resolveAssignmentStaffAuthorization(database, input.staffId);
   const requiredPermissions = businessPermissionsForDuty(input.dutyCode);
-  return Boolean(authorization
+  const hasPrimaryScope = authorization?.roles.has('owner') || Boolean(
+    await database.prepare(`SELECT 1 AS allowed
+      FROM staff_marketplace_scopes
+      WHERE staff_id=? AND marketplace_code=?
+        AND status='ACTIVE' AND scope_kind='PRIMARY'
+      LIMIT 1`).bind(
+        input.staffId,
+        canonicalMarketplaceCode(input.marketplaceCode),
+      ).first<{allowed:number}>(),
+  );
+  return Boolean(authorization && hasPrimaryScope
     && authorization.permissions.has(eligibilityPermissionForDuty(input.dutyCode))
     && requiredPermissions.every((permission) => authorization.permissions.has(permission)));
 }
@@ -259,9 +262,10 @@ export async function resolveOwnerFallbackForFixedDuty(
   if (!fallback) throw new StaffAssignmentError('OWNER_FALLBACK_NOT_CONFIGURED', 503);
   const authorization = await resolveAssignmentStaffAuthorization(database, fallback.staff_id);
   if (!authorization || !authorization.roles.has('owner')
-    || !await isStaffAvailableForFixedDuty(database, {
+    || !await isStaffEligibleForFixedDuty(database, {
       staffId: fallback.staff_id,
       dutyCode: input.dutyCode,
+      marketplaceCode: input.marketplaceCode,
     })) throw new StaffAssignmentError('OWNER_FALLBACK_INVALID', 503);
   return authorization;
 }
@@ -291,9 +295,10 @@ export async function resolveOwnerFallback(
   );
   if (!authorization
     || !authorization.roles.has('owner')
-    || !await isStaffAvailableForFixedDuty(database, {
+    || !await isStaffEligibleForFixedDuty(database, {
       staffId: fallback.staff_id,
       dutyCode: input.dutyCode,
+      marketplaceCode: input.marketplaceCode,
     })
     || !authorization.permissions.has(businessPermissionForWorkItem(input.workType))) {
     throw new StaffAssignmentError('OWNER_FALLBACK_INVALID', 503);

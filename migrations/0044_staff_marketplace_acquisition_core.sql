@@ -98,23 +98,13 @@ WITH role_permissions AS (
   JOIN staff_assignment_role_permission_defaults defaults
     ON defaults.role_code=assignment.role_code
   WHERE assignment.status='ACTIVE'
-),
-explicit_grants AS (
-  SELECT staff_id, permission_code
-  FROM staff_permission_overrides
-  WHERE status='ACTIVE' AND effect='GRANT'
-),
-combined AS (
-  SELECT staff_id, permission_code FROM role_permissions
-  UNION
-  SELECT staff_id, permission_code FROM explicit_grants
 )
-SELECT combined.staff_id, combined.permission_code
-FROM combined
+SELECT role_permissions.staff_id, role_permissions.permission_code
+FROM role_permissions
 WHERE NOT EXISTS (
   SELECT 1 FROM staff_permission_overrides denied
-  WHERE denied.staff_id=combined.staff_id
-    AND denied.permission_code=combined.permission_code
+  WHERE denied.staff_id=role_permissions.staff_id
+    AND denied.permission_code=role_permissions.permission_code
     AND denied.status='ACTIVE' AND denied.effect='DENY'
 );
 

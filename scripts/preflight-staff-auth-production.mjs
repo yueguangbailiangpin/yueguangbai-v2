@@ -8,34 +8,26 @@ import {
 
 const environments = new Set(['staging', 'production']);
 const placeholders = /REQUIRED|REPLACE|PLACEHOLDER|CHANGEME|TODO/iu;
+const retiredFeishuKey = /^(?:FEISHU_|STAFF_AUTH_FEISHU)|^(?:STAFF_AUTH_PROVIDER|STAFF_AUTH_ENABLED|STAFF_AUTH_HASH_SECRET)$/u;
 
-export const staffAuthManagedSecrets = Object.freeze([
-  'STAFF_AUTH_FEISHU_APP_SECRET',
-  'STAFF_AUTH_HASH_SECRET',
-]);
+// Cloudflare Access JWT verification uses the public team JWKS. Staff Auth
+// therefore has no application Secret of its own.
+export const staffAuthManagedSecrets = Object.freeze([]);
 
 export function inspectStaffAuthTemplate(environment) {
   requireEnvironment(environment);
   const config = readLocalReleaseConfig(templatePath(environment));
   const vars = record(config.vars);
-  const errors = [];
-  if (vars?.STAFF_AUTH_ENABLED !== 'false') {
-    errors.push('vars.STAFF_AUTH_ENABLED:template_must_be_false');
-  }
-  for (const name of staffAuthManagedSecrets) {
-    if (Object.hasOwn(vars ?? {}, name)) {
-      errors.push(`vars.${name}:managed_secret_forbidden`);
-    }
-  }
+  const errors = validateTemplateShape(vars);
   return Object.freeze({
     status: errors.length === 0 ? 'LOCAL_NO_GO' : 'INVALID_TEMPLATE',
     environment,
     migration_decision: 'NO_SCHEMA_CHANGE',
     required_managed_secret_names: staffAuthManagedSecrets,
     blockers: Object.freeze([
-      'managed_secret_presence_not_checked_locally',
-      'real_feishu_redirect_not_checked_locally',
-      'real_known_staff_login_not_checked_locally',
+      'real_cloudflare_access_application_not_checked_locally',
+      'real_cloudflare_access_policy_not_checked_locally',
+      'real_known_staff_email_mapping_not_checked_locally',
       'owner_activation_approval_not_recorded_locally',
     ]),
     external_calls: 0,
@@ -60,64 +52,45 @@ export function validateStaffAuthActivationConfig(
   }
   const origin = exactHttpsOrigin(vars.APP_ORIGIN);
   if (!origin) errors.push('vars.APP_ORIGIN:invalid_https_origin');
-  if (vars.STAFF_AUTH_ENABLED !== 'true') {
-    errors.push('vars.STAFF_AUTH_ENABLED:must_be_true');
-  }
-  if (vars.STAFF_AUTH_PROVIDER !== 'FEISHU') {
-    errors.push('vars.STAFF_AUTH_PROVIDER:must_be_FEISHU');
-  }
-  const exact = {
-    STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT:
-      'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
-    STAFF_AUTH_FEISHU_TOKEN_ENDPOINT:
-      'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
-    STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT:
-      'https://open.feishu.cn/open-apis/authen/v1/user_info',
-    STAFF_AUTH_FEISHU_SCOPE: 'contact:user.base:readonly',
-    STAFF_AUTH_ALLOWED_RETURN_TO: '/staff',
-  };
-  for (const [key, expected] of Object.entries(exact)) {
-    if (vars[key] !== expected) errors.push(`vars.${key}:invalid`);
-  }
-  for (const key of ['STAFF_AUTH_FEISHU_APP_ID', 'STAFF_AUTH_FEISHU_TENANT_KEY']) {
-    if (!safe(vars[key], key.endsWith('APP_ID') ? 128 : 200)) {
-      errors.push(`vars.${key}:missing_or_invalid`);
-    }
-  }
-  if (!origin || vars.STAFF_AUTH_ALLOWED_ORIGINS !== origin) {
+  if (vars.STAFF_AUTH_ALLOWED_ORIGINS !== origin) {
     errors.push('vars.STAFF_AUTH_ALLOWED_ORIGINS:origin_mismatch');
   }
-  if (!origin || vars.STAFF_AUTH_FEISHU_REDIRECT_URI
-    !== `${origin}/api/staff-auth/feishu/callback`) {
-    errors.push('vars.STAFF_AUTH_FEISHU_REDIRECT_URI:origin_mismatch');
+  if (!exactHttpsOrigin(vars.STAFF_ACCESS_TEAM_DOMAIN)) {
+    errors.push('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_https_origin');
   }
-  for (const key of [
-    'SCHEDULED_OPERATIONS_ENABLED',
-    'ACQUISITION_MAINTENANCE_ENABLED',
-    'DRIVE_ARCHIVE_ENABLED',
-    'DRIVE_ARCHIVE_COPY_ENABLED',
-    'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
-    'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-    'FEISHU_WORKBENCH_SYNC_ENABLED',
-    'FEISHU_WORKBENCH_CALLBACK_ENABLED',
-    'FEISHU_OPERATIONAL_ALERT_ENABLED',
-    'STAFF_MCP_ENABLED',
-    'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
-    'STAFF_MCP_LOCAL_MOCK_ENABLED',
-    'STAFF_MCP_CLEANUP_ENABLED',
-  ]) {
-    if (vars[key] !== 'false') errors.push(`vars.${key}:must_remain_false`);
-  }
-  const declared = new Set(declaredSecretNames);
-  for (const name of staffAuthManagedSecrets) {
-    if (!declared.has(name)) errors.push(`managed_secret.${name}:not_declared`);
+  if (!safe(vars.STAFF_ACCESS_AUD, 200, 8)) {
+    errors.push('vars.STAFF_ACCESS_AUD:missing_or_invalid');
   }
   for (const key of Object.keys(vars)) {
+    if (retiredFeishuKey.test(key)) errors.push(`vars.${key}:retired_configuration_forbidden`);
     if (/SECRET|PASSWORD|(?:ACCESS|REFRESH)_TOKEN/iu.test(key)) {
       errors.push(`vars.${key}:managed_secret_forbidden`);
     }
   }
+  for (const name of declaredSecretNames) {
+    errors.push(`managed_secret.${name}:not_required_for_staff_access`);
+  }
   return Object.freeze([...new Set(errors)].sort());
+}
+
+function validateTemplateShape(vars) {
+  if (!vars) return ['vars:missing'];
+  const errors = [];
+  for (const key of [
+    'APP_ENVIRONMENT',
+    'APP_ORIGIN',
+    'STAFF_AUTH_ALLOWED_ORIGINS',
+    'STAFF_ACCESS_TEAM_DOMAIN',
+    'STAFF_ACCESS_AUD',
+  ]) {
+    if (typeof vars[key] !== 'string' || vars[key].length === 0) {
+      errors.push(`vars.${key}:missing`);
+    }
+  }
+  for (const key of Object.keys(vars)) {
+    if (retiredFeishuKey.test(key)) errors.push(`vars.${key}:retired_configuration_forbidden`);
+  }
+  return errors;
 }
 
 function exactHttpsOrigin(value) {
@@ -125,12 +98,13 @@ function exactHttpsOrigin(value) {
   try {
     const url = new URL(value);
     return url.protocol === 'https:' && url.origin === value
+      && url.pathname === '/' && !url.search && !url.hash
       && !url.username && !url.password ? value : null;
   } catch { return null; }
 }
 
-function safe(value, maximum) {
-  return typeof value === 'string' && value.length >= 1 && value.length <= maximum
+function safe(value, maximum, minimum = 1) {
+  return typeof value === 'string' && value.length >= minimum && value.length <= maximum
     && !/[\u0000-\u001f\u007f]/u.test(value) && !placeholders.test(value);
 }
 

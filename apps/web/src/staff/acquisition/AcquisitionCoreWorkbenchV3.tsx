@@ -27,7 +27,7 @@ export function AcquisitionCoreWorkbenchV3():React.JSX.Element{
     {queryKey:['staff','acquisition-core','source-corrections',session.authorization_version],queryFn:({signal})=>acquisitionApi.sourceCorrectionCandidates(client,signal).then((r)=>r.data.items),enabled:operator,retry:false},
   ]});
   if(!operator)return <main className="acquisition-workbench"><Alert tone="danger">当前岗位不使用客户开发中心。</Alert></main>;
-  const tabs:readonly [Tab,string][]=[['overview','概览'],['prospects','潜在线索'],['daily','每日渠道数据'],['channels','渠道信息'],['stats','渠道统计'],['corrections','来源纠错'],...(owner?[['codex','Codex 自动开发接入'] as const]:[])];
+  const tabs:readonly (readonly [Tab,string])[]=[['overview','概览'],['prospects','潜在线索'],['daily','每日渠道数据'],['channels','渠道信息'],['stats','渠道统计'],['corrections','来源纠错'],...(owner?[['codex','Codex 自动开发接入'] as const]:[])];
   return <main className="acquisition-workbench acquisition-core">
     <header className="acquisition-core-heading"><div><p className="eyebrow">月光白客户开发中心</p><h2>客户开发中心</h2><p>渠道 → 潜在线索 → 正式客户登记 → 订单 / 利润。真实开发来源仅总管理员和获客岗位可见。</p></div></header>
     <nav className="acquisition-core-tabs" aria-label="客户开发中心导航">{tabs.map(([key,label])=><Button key={key} className={tab===key?'':'secondary'} onClick={()=>setTab(key)}>{label}</Button>)}</nav>

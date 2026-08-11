@@ -20,7 +20,7 @@ export function AcquisitionCoreWorkbenchV4():React.JSX.Element{
     {queryKey:['staff','acquisition-v4','corrections',session.authorization_version],queryFn:({signal})=>acquisitionApi.sourceCorrectionCandidates(client,signal).then((r)=>r.data.items),enabled:operator,retry:false},
   ]});
   if(!operator)return <main className="acquisition-workbench"><Alert tone="danger">当前岗位不使用客户开发中心。</Alert></main>;
-  const tabs:readonly [Tab,string][]=[['overview','概览'],['prospects','潜在线索'],['daily','每日渠道数据'],['channels','渠道管理'],['stats','渠道统计'],['corrections','来源纠错'],...(owner?[['codex','Codex 接入'] as const]:[])];
+  const tabs:readonly (readonly [Tab,string])[]=[['overview','概览'],['prospects','潜在线索'],['daily','每日渠道数据'],['channels','渠道管理'],['stats','渠道统计'],['corrections','来源纠错'],...(owner?[['codex','Codex 接入'] as const]:[])];
   return <main className="acquisition-workbench acquisition-core"><header className="acquisition-core-heading"><div><p className="eyebrow">月光白客户开发中心</p><h2>客户开发中心</h2><p>真实平台和开发方法只对总管理员、获客岗位开放；业务员工始终只看到“渠道N”。</p></div></header>
     <nav className="acquisition-core-tabs" aria-label="客户开发中心导航">{tabs.map(([key,label])=><Button key={key} className={tab===key?'':'secondary'} onClick={()=>setTab(key)}>{label}</Button>)}</nav>
     {channels.isError||prospects.isError||consultations.isError||funnel.isError||stats.isError?<Alert tone="warning">部分客户开发数据暂时无法加载。</Alert>:null}

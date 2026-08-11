@@ -7,7 +7,6 @@ import { reconcileUnlinkedFileRetention } from './files/retention';
 import { hashCanonicalJson } from '@ygb/domain';
 import { evaluatePersistedScheduledJobSignals } from './scheduled-operations/signals';
 import { driveArchiveRuntime } from './cold-image-archive/runtime';
-import { feishuWorkbenchRuntime } from './feishu-workbench';
 import { runAcquisitionMaintenance } from './acquisition/maintenance';
 import {
   isAllowedSameOriginApiRequest,
@@ -53,9 +52,8 @@ export default {
       const startedAt=Date.now();
       const deadlineReached=()=>Date.now()-startedAt>=SCHEDULED_HANDLER_TIME_BUDGET_MS;
       const drive=driveArchiveRuntime(env);
-      const feishu=feishuWorkbenchRuntime(env);
-      const sink=configuredAlertSink(env,feishu.alertSink);
-      const runs=await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,feishuAdapter:feishu.adapter,feishuWebOrigin:feishu.webOrigin,feishuTenantKey:feishu.tenantKey,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled,...(sink?{alertSink:sink}:{}),now,deadlineReached });
+      const sink=configuredAlertSink(env);
+      const runs=await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled,now,deadlineReached });
       const fileJob=runs.find((run)=>run.job_name==='file_orphan_cleanup');
       if(fileJob&&fileJob.outcome!=='DISABLED'&&env.FILE_OBJECT_STORAGE&&!deadlineReached()){
         try{
@@ -80,8 +78,7 @@ export default {
         });
       }
       const evaluationId=await hashCanonicalJson({kind:'SCHEDULED_OPERATIONS_EVALUATION',scheduled_time:now});
-      const evaluationDisabledJobs: ScheduledOperationJobName[]=feishu.syncEnabled?disabledJobs:[...disabledJobs,'feishu_sync'];
-      await evaluatePersistedScheduledJobSignals(env.DB,{evaluationId,now,disabledJobs:evaluationDisabledJobs,...(sink?{sink}:{})});
+      await evaluatePersistedScheduledJobSignals(env.DB,{evaluationId,now,disabledJobs,...(sink?{sink}:{})});
     })());
   },
 };

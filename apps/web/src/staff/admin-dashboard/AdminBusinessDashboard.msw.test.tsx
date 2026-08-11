@@ -117,8 +117,8 @@ function profit(amount: string, valid: number, conflicts: number) {
   return { amount_cny_fen: amount, valid_order_count: valid, conflict_order_count: conflicts };
 }
 function adapter(value: StaffSession): StaffAuthApiAdapter {
-  return { readSession: async () => ({ data: { session: value }, requestId: 'session' }),
-    loginStart: async () => ({ data: { provider: 'FEISHU', authorization_url: 'https://example.test', expires_at: 1 }, requestId: 'login' }),
+  return { bootstrap: async () => ({ data: { session: value, access_email: 'staff@example.com' }, requestId: 'bootstrap' }),
+    readSession: async () => ({ data: { session: value }, requestId: 'session' }),
     logout: async () => ({ data: { logged_out: true, all_devices_logged_out: false }, requestId: 'logout' }),
     logoutAll: async () => ({ data: { logged_out: true, all_devices_logged_out: true, session_version: 2 }, requestId: 'logout-all' }) };
 }
@@ -132,7 +132,8 @@ function session(role: 'owner'|'pre_sales', permissions: string[]): StaffSession
   return { staff_id: 'staff-1', display_name: '测试员工',
     role: role === 'owner' ? { code: 'owner', display_name: '总管理员' }
       : { code: 'pre_sales', display_name: '售前' }, permissions,
-    data_scope: { type: role === 'owner' ? 'GLOBAL' : 'ASSIGNED_BUYERS', buyerCustomerIds: [],
+    data_scope: { type: role === 'owner' ? 'GLOBAL' : 'ASSIGNED_BUYERS',
+      marketplaceCodes: role === 'owner' ? [] : ['AMAZON_JP'], buyerCustomerIds: [],
       sellerOrganizationIds: [], teamIds: [] }, authorization_version: 1, session_version: 1,
     expires_at: Date.now() + 100_000 };
 }

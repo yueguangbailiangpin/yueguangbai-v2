@@ -13,7 +13,6 @@ export async function prepareStaffAssignmentOutboxStatements(
       | 'STAFF_AVAILABILITY'
       | 'STAFF_ASSIGNMENT'
       | 'STAFF_ASSIGNMENT_FALLBACK'
-      | 'STAFF_WORK_ITEM'
       | 'STAFF_REASSIGNMENT_BATCH';
     aggregateId: string;
     payload: unknown;

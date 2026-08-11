@@ -6,15 +6,15 @@ async function json(route: Route, body: unknown, status = 200): Promise<void> {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-function session(role: 'pre_sales' | 'buyer_refund') {
+function session(role: 'acquisition' | 'buyer_refund') {
   return {
-    staff_id: `browser-${role}`, display_name: role === 'pre_sales' ? '浏览器售前' : '浏览器返款',
-    role: role === 'pre_sales'
-      ? { code: 'pre_sales', display_name: '售前' }
+    staff_id: `browser-${role}`, display_name: role === 'acquisition' ? '浏览器获客' : '浏览器返款',
+    role: role === 'acquisition'
+      ? { code: 'acquisition', display_name: '获客' }
       : { code: 'buyer_refund', display_name: '买家返款' },
-    permissions: role === 'pre_sales' ? ['ACQUISITION_BUYER_LEAD'] : [],
-    data_scope: { type: 'ASSIGNED_BUYERS', buyerCustomerIds: [],
-      sellerOrganizationIds: [], teamIds: [] },
+    permissions: role === 'acquisition' ? ['ACQUISITION_BUYER_LEAD', 'ACQUISITION_SELLER_LEAD'] : [],
+    data_scope: { type: 'MARKETPLACE', buyerCustomerIds: [],
+      marketplaceCodes: ['AMAZON_JP'], sellerOrganizationIds: [], teamIds: [] },
     authorization_version: 1, session_version: 1, expires_at: 9_999_999_999_999,
   };
 }
@@ -27,50 +27,62 @@ function funnel() {
     seller: null };
 }
 
-function lead() {
-  return { lead_id: 'browser-lead', lead_type: 'BUYER', wechat_masked: 'br***wx',
-    display_name: '浏览器买家', note: null, origin_channel_id: 'browser-channel',
-    origin_channel_name: '小红书浏览器号', origin_staff_id: 'browser-pre_sales',
-    current_owner_staff_id: 'browser-pre_sales', status: 'ACTIVE', version: 1,
-    created_business_date: '2026-08-08', latest_followup_at: 1_786_000_000_000,
-    retention_due_at: 1_817_536_000_000, retention_hold_reason: null,
-    registered: false, reservation_submitted: false, no_participation: true,
-    formal_order_count: 0, seller_cooperation: false,
+function channel() {
+  return { channel_id: 'browser-channel', code: 'XHS_BROWSER', channel_type: 'XIAOHONGSHU',
+    platform_name: '小红书', lead_type: 'BUYER', marketplace_code: 'AMAZON_JP',
+    display_name: '小红书浏览器号', status: 'ACTIVE', version: 1,
+    created_at: 1_786_000_000_000, updated_at: 1_786_000_000_000,
+    visibility: 'INTERNAL', staff_label: '渠道1', intake_wechat_label: '月光白客服1', profile_version: 1 };
+}
+
+function prospect() {
+  return { prospect_id: 'browser-prospect', lead_type: 'BUYER', marketplace_code: 'AMAZON_JP',
+    origin_channel_id: 'browser-channel', origin_channel_name: '小红书浏览器号',
+    display_name: '浏览器买家', contact_value: 'browser_private_wx', source_url: null,
+    origin_mode: 'HUMAN', status: 'NEW', ai_score: null, note: null,
+    discovered_at: 1_786_000_000_000, converted_lead_id: null, version: 1,
     created_at: 1_786_000_000_000, updated_at: 1_786_000_000_000 };
 }
 
-async function mock(page: Page, role: 'pre_sales' | 'buyer_refund', observed?: { body?: unknown }) {
+async function mock(page: Page, role: 'acquisition' | 'buyer_refund', observed?: { body?: unknown }) {
   let created = false;
   await page.route('**/api/**', async (route) => {
     const request = route.request(); const path = new URL(request.url()).pathname;
     if (path === '/api/staff-auth/session') return json(route, success({ session: session(role) }));
-    if (path === '/api/staff/acquisition/leads' && request.method() === 'GET') {
-      return json(route, success({ items: created ? [lead()] : [], next_cursor: null }));
-    }
+    if (path === '/api/staff/acquisition/channels') return json(route, success({ channels: [channel()] }));
+    if (path === '/api/staff/acquisition/prospects' && request.method() === 'GET')
+      return json(route, success({ items: created ? [prospect()] : [], next_cursor: null }));
+    if (path === '/api/staff/acquisition/consultations') return json(route, success({ consultations: [] }));
     if (path === '/api/staff/acquisition/funnel') return json(route, success({ funnel: funnel() }));
-    if (path === '/api/staff/acquisition/leads' && request.method() === 'POST') {
+    if (path === '/api/staff/acquisition/channel-stats') return json(route, success({ channels: [] }));
+    if (path === '/api/staff/acquisition/source-corrections/candidates') return json(route, success({ items: [] }));
+    if (path === '/api/staff/acquisition/prospects' && request.method() === 'POST') {
       if (observed) observed.body = request.postDataJSON(); created = true;
-      return json(route, success({ lead: lead(), replayed: false }), 201);
+      return json(route, success({ prospect: prospect(), replayed: false }), 201);
     }
     return json(route, { error: { code: 'NOT_FOUND', message: 'not found', details: null },
       meta: { request_id: 'acquisition-browser-unhandled' } }, 404);
   });
 }
 
-test('bookmarkable acquisition route registers a Buyer without client channel authority', async ({ page }) => {
-  const observed: { body?: unknown } = {}; await mock(page, 'pre_sales', observed);
+test('bookmarkable acquisition route creates a controlled human prospect', async ({ page }) => {
+  const observed: { body?: unknown } = {}; await mock(page, 'acquisition', observed);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/staff/acquisition');
   await expect(page).toHaveURL(/\/staff\/acquisition$/u);
-  await expect(page.getByRole('heading', { name: '获客登记' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '添加微信后登记' })).toBeVisible();
-  await expect(page.getByLabel('渠道')).toHaveCount(0);
-  await page.getByLabel('微信号').fill('browser_private_wx');
-  await page.getByRole('button', { name: '登记线索' }).click();
+  await expect(page.getByRole('heading', { name: '客户开发中心' })).toBeVisible();
+  await page.getByRole('button', { name: '潜在线索' }).click();
+  await page.getByRole('button', { name: '新增潜在线索' }).click();
+  await page.getByLabel('客户类型').selectOption('BUYER');
+  await page.getByLabel('真实来源渠道').selectOption('browser-channel');
+  await page.getByLabel('客户 / 公司名称').fill('浏览器买家');
+  await page.getByLabel('联系方式（可空）').fill('browser_private_wx');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('浏览器买家')).toBeVisible();
-  expect(observed.body).toEqual({ lead_type: 'BUYER', wechat_id: 'browser_private_wx',
-    display_name: null, note: null });
-  expect(observed.body).not.toHaveProperty('channel_id');
+  expect(observed.body).toEqual({ lead_type: 'BUYER', marketplace_code: 'AMAZON_JP',
+    channel_id: 'browser-channel', display_name: '浏览器买家',
+    contact_value: 'browser_private_wx', source_url: null, origin_mode: 'HUMAN',
+    note: null, ai_score: null });
   const width = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth }));
   expect(width.content).toBeLessThanOrEqual(width.viewport + 1);
@@ -78,7 +90,6 @@ test('bookmarkable acquisition route registers a Buyer without client channel au
 
 test('buyer_refund direct route exposes no acquisition command', async ({ page }) => {
   await mock(page, 'buyer_refund'); await page.goto('/staff/acquisition');
-  await expect(page.getByText('当前角色不参与获客登记')).toBeVisible();
-  await expect(page.getByLabel('微信号')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '登记线索' })).toHaveCount(0);
+  await expect(page.getByText('当前岗位不使用客户开发中心。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '新增潜在线索' })).toHaveCount(0);
 });

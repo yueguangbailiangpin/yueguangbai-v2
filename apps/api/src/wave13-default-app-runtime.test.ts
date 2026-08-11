@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 describe('Wave 13 default application runtime boundary', () => {
-  it('uses Fake Feishu login, internal Cookie, middleware and nine Staff route families', async () => {
+  it('uses an internal test Session, middleware and protected Staff route families', async () => {
     const owner = await login('owner');
     expect((await request(owner, '/api/staff/me/work-items/runtime-work-item')).status)
       .toBe(200);
@@ -275,7 +275,7 @@ async function createSellerSettlementProof(
 function representativeNoSessionRequests() {
   const env = runtimeBindings(database!, 'owner', storage!);
   return ([
-    ['Assignment', '/api/staff/assignment-fallbacks/JP', 'GET'],
+    ['Assignment', '/api/staff/me/work-items', 'GET'],
     ['Catalog', '/api/staff/catalog/products', 'POST'],
     ['Review', '/api/staff/reviews/runtime-review', 'GET'],
     ['Seller Settlement', '/api/staff/seller-settlements/runtime-org/summary', 'GET'],
@@ -307,7 +307,6 @@ function permissionRequests(
     },
   );
   return [
-    { family: 'Assignment', request: get('/api/staff/assignment-fallbacks/JP') },
     { family: 'Catalog', request: post(
       '/api/staff/catalog/products',
       'limited-catalog',

@@ -1,7 +1,6 @@
 import type { ObjectStorageAdapter, SqlDatabase } from '@ygb/contracts';
 import type { AppBindings } from './app';
 import { createR2ObjectStorageAdapter } from './files/r2-object-storage';
-import { feishuWorkbenchRuntime } from './feishu-workbench/runtime';
 
 export type ReleaseEnvironment = 'local' | 'staging' | 'production';
 
@@ -16,7 +15,6 @@ export type CloudflareWorkerBindings = Omit<AppBindings, 'FILE_OBJECT_STORAGE'> 
   FILE_OBJECT_STORAGE?: ObjectStorageAdapter;
   FILE_OBJECT_STORAGE_R2?: unknown;
   WEB_ASSETS?: StaticAssetBinding;
-  STAFF_AUTH_ENABLED?: string;
   STAFF_MCP_ENABLED?: string;
   STAFF_MCP_LOCAL_MOCK_ENABLED?: string;
   STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED?: string;
@@ -35,22 +33,6 @@ const DISABLED_RELEASE_FLAGS = [
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
   'STAFF_MCP_LOCAL_MOCK_ENABLED',
-] as const;
-
-const DISABLED_STAFF_AUTH_BINDINGS = [
-  'STAFF_AUTH_PROVIDER',
-  'STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT',
-  'STAFF_AUTH_FEISHU_TOKEN_ENDPOINT',
-  'STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT',
-  'STAFF_AUTH_FEISHU_APP_ID',
-  'STAFF_AUTH_FEISHU_APP_SECRET',
-  'STAFF_AUTH_FEISHU_SCOPE',
-  'STAFF_AUTH_FEISHU_TENANT_KEY',
-  'STAFF_AUTH_FEISHU_REDIRECT_URI',
-  'STAFF_AUTH_ALLOWED_ORIGINS',
-  'STAFF_AUTH_ALLOWED_RETURN_TO',
-  'STAFF_AUTH_HASH_SECRET',
-  'STAFF_AUTH_PROVIDER_ADAPTER',
 ] as const;
 
 export function resolveCloudflareRuntime(
@@ -75,8 +57,6 @@ export function resolveCloudflareRuntime(
   const storage = createR2ObjectStorageAdapter(
     bindings.FILE_OBJECT_STORAGE_R2,
   );
-  const feishu = feishuWorkbenchRuntime(bindings);
-  const scheduledEnabled=bindings.SCHEDULED_OPERATIONS_ENABLED==='true';
   if (!appOrigin
     || allowedOrigins.length !== 1
     || allowedOrigins[0] !== appOrigin
@@ -84,9 +64,7 @@ export function resolveCloudflareRuntime(
     || !storage
     || !isStaticAssetBinding(bindings.WEB_ASSETS)
     || DISABLED_RELEASE_FLAGS.some((name) => bindings[name] !== 'false')
-    || !booleanFlag(bindings.STAFF_AUTH_ENABLED)
-    || (bindings.STAFF_AUTH_ENABLED === 'true'
-      && !validStaffAuthReleaseBindings(bindings, appOrigin))
+    || !validStaffAccessReleaseBindings(bindings, appOrigin)
     || !booleanFlag(bindings.STAFF_MCP_ENABLED)
     || !booleanFlag(bindings.STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED)
     || !booleanFlag(bindings.STAFF_MCP_CLEANUP_ENABLED)
@@ -99,39 +77,17 @@ export function resolveCloudflareRuntime(
         || bindings.STAFF_MCP_CLEANUP_ENABLED !== 'false'))
     || !booleanFlag(bindings.SCHEDULED_OPERATIONS_ENABLED)
     || !booleanFlag(bindings.ACQUISITION_MAINTENANCE_ENABLED)
-    || (scheduledEnabled && (bindings.FEISHU_WORKBENCH_SYNC_ENABLED!=='true'
-      || bindings.ACQUISITION_MAINTENANCE_ENABLED !== 'false'
-      || !feishuOnlySchedule(bindings.SCHEDULED_OPERATIONS_DISABLED_JOBS)))
-    || (!scheduledEnabled && bindings.FEISHU_WORKBENCH_SYNC_ENABLED==='true')
-    || !booleanFlag(bindings.FEISHU_WORKBENCH_SYNC_ENABLED)
-    || !booleanFlag(bindings.FEISHU_WORKBENCH_CALLBACK_ENABLED)
-    || !booleanFlag(bindings.FEISHU_OPERATIONAL_ALERT_ENABLED)
-    || (bindings.FEISHU_WORKBENCH_SYNC_ENABLED === 'true' && !feishu.syncEnabled)
-    || (bindings.FEISHU_WORKBENCH_CALLBACK_ENABLED === 'true' && !feishu.callbackEnabled)
-    || (bindings.FEISHU_OPERATIONAL_ALERT_ENABLED === 'true'
-      && (!feishu.alertEnabled
-        || bindings.STAFF_AUTH_ENABLED !== 'true'
-        || bindings.FEISHU_WORKBENCH_SYNC_ENABLED !== 'true'
-        || bindings.FEISHU_WORKBENCH_CALLBACK_ENABLED !== 'true'
-        || bindings.STAFF_AUTH_FEISHU_APP_ID !== bindings.FEISHU_WORKBENCH_APP_ID
-        || bindings.STAFF_AUTH_FEISHU_TENANT_KEY !== bindings.FEISHU_WORKBENCH_TENANT_KEY))
     || bindings.OPERATIONAL_ALERT_MODE !== 'disabled') return null;
 
   return Object.freeze({
     environment,
     appOrigin,
-    appBindings: releaseAppBindings(bindings, storage, feishu.alertSink),
+    appBindings: releaseAppBindings(bindings, storage),
     assets: bindings.WEB_ASSETS,
   });
 }
 
 function booleanFlag(value:unknown):value is 'true'|'false' { return value==='true'||value==='false'; }
-function feishuOnlySchedule(value:unknown):boolean {
-  if(typeof value!=='string')return false;
-  const actual=new Set(value.split(',').map((name)=>name.trim()).filter(Boolean));
-  const required=['reservation_expiry','instruction_expiry','outbox_delivery','file_orphan_cleanup','staff_auth_cleanup','drive_archive'];
-  return actual.size===required.length&&required.every((name)=>actual.has(name));
-}
 
 export function isApiRequestPath(pathname: string): boolean {
   return pathname === '/health'
@@ -149,12 +105,7 @@ export function isAllowedSameOriginApiRequest(
   if (url.origin !== appOrigin) return false;
   const origin = request.headers.get('Origin');
   if (origin !== null && origin !== appOrigin) return false;
-  if (request.headers.get('Sec-Fetch-Site') !== 'cross-site') return true;
-  return request.method === 'GET'
-    && origin === null
-    && url.pathname === '/api/staff-auth/feishu/callback'
-    && request.headers.get('Sec-Fetch-Mode') === 'navigate'
-    && request.headers.get('Sec-Fetch-Dest') === 'document';
+  return request.headers.get('Sec-Fetch-Site') !== 'cross-site';
 }
 
 export function withReleaseSecurityHeaders(
@@ -233,41 +184,22 @@ function isStaticAssetBinding(value: unknown): value is StaticAssetBinding {
 function releaseAppBindings(
   bindings: CloudflareWorkerBindings,
   storage: ObjectStorageAdapter,
-  feishuAlertSink:AppBindings['FEISHU_OPERATIONAL_ALERT_SINK']|null,
 ): AppBindings {
   const result: Record<string, unknown> = {
     ...bindings,
     FILE_OBJECT_STORAGE: storage,
-    ...(feishuAlertSink?{FEISHU_OPERATIONAL_ALERT_SINK:feishuAlertSink}:{}),
   };
-  if (bindings.STAFF_AUTH_ENABLED === 'false') {
-    for (const name of DISABLED_STAFF_AUTH_BINDINGS) delete result[name];
-  } else {
-    delete result['STAFF_AUTH_PROVIDER_ADAPTER'];
-  }
   return Object.freeze(result) as unknown as AppBindings;
 }
 
-function validStaffAuthReleaseBindings(
+function validStaffAccessReleaseBindings(
   bindings: CloudflareWorkerBindings,
   appOrigin: string,
 ): boolean {
-  return bindings.STAFF_AUTH_PROVIDER === 'FEISHU'
-    && bindings.STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT
-      === 'https://accounts.feishu.cn/open-apis/authen/v1/authorize'
-    && bindings.STAFF_AUTH_FEISHU_TOKEN_ENDPOINT
-      === 'https://open.feishu.cn/open-apis/authen/v2/oauth/token'
-    && bindings.STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT
-      === 'https://open.feishu.cn/open-apis/authen/v1/user_info'
-    && safeStaffAuthValue(bindings.STAFF_AUTH_FEISHU_APP_ID, 128)
-    && safeStaffAuthValue(bindings.STAFF_AUTH_FEISHU_APP_SECRET, 4096)
-    && bindings.STAFF_AUTH_FEISHU_SCOPE === 'contact:user.base:readonly'
-    && safeStaffAuthValue(bindings.STAFF_AUTH_FEISHU_TENANT_KEY, 200)
-    && bindings.STAFF_AUTH_FEISHU_REDIRECT_URI
-      === `${appOrigin}/api/staff-auth/feishu/callback`
+  return exactHttpsOrigin(bindings.STAFF_ACCESS_TEAM_DOMAIN) !== null
+    && safeStaffAuthValue(bindings.STAFF_ACCESS_AUD, 200, 8)
     && bindings.STAFF_AUTH_ALLOWED_ORIGINS === appOrigin
-    && bindings.STAFF_AUTH_ALLOWED_RETURN_TO === '/staff'
-    && safeStaffAuthValue(bindings.STAFF_AUTH_HASH_SECRET, 4096, 32);
+    && exactOriginList(bindings.STAFF_AUTH_ALLOWED_ORIGINS).length === 1;
 }
 
 function safeStaffAuthValue(

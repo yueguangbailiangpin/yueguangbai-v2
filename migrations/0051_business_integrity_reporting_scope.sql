@@ -131,6 +131,138 @@ WHERE status='ACTIVE' AND scope_kind='PRIMARY';
 CREATE INDEX idx_staff_marketplace_scope_support
 ON staff_marketplace_scopes(role_code,marketplace_code,scope_kind,status,staff_id);
 
+-- Assignment authority is Role x Marketplace PRIMARY. Historical Team and
+-- Availability records remain readable audit facts but cannot affect routing.
+DROP TRIGGER trg_buyer_staff_assignments_staff_guard;
+DROP TRIGGER trg_seller_staff_assignments_staff_guard;
+DROP TRIGGER trg_staff_assignment_fallbacks_insert_guard;
+DROP TRIGGER trg_staff_assignment_fallbacks_update_guard;
+
+CREATE TRIGGER trg_buyer_staff_assignments_staff_guard
+BEFORE INSERT ON buyer_staff_assignments
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM staff_users staff
+  JOIN buyer_marketplace_assignments market
+    ON market.buyer_customer_id=NEW.buyer_customer_id
+  JOIN staff_effective_assignment_permissions permission
+    ON permission.staff_id=staff.id
+    AND permission.permission_code=CASE NEW.duty_code
+      WHEN 'BUYER_PRE_SALES_OWNER' THEN 'ASSIGNMENT_ELIGIBLE_BUYER_PRE_SALES'
+      WHEN 'BUYER_AFTER_SALES_OWNER' THEN 'ASSIGNMENT_ELIGIBLE_BUYER_AFTER_SALES'
+      WHEN 'BUYER_REFUND_OWNER' THEN 'ASSIGNMENT_ELIGIBLE_BUYER_REFUND'
+    END
+  WHERE staff.id=NEW.staff_id AND staff.status='ACTIVE'
+    AND (
+      EXISTS (SELECT 1 FROM staff_role_assignments role
+        WHERE role.staff_id=staff.id AND role.status='ACTIVE'
+          AND role.role_code='owner')
+      OR EXISTS (SELECT 1 FROM staff_marketplace_scopes scope
+        WHERE scope.staff_id=staff.id AND scope.status='ACTIVE'
+          AND scope.scope_kind='PRIMARY'
+          AND scope.marketplace_code=market.marketplace_code)
+    )
+    AND (
+      (NEW.duty_code='BUYER_PRE_SALES_OWNER' AND 5=(
+        SELECT COUNT(DISTINCT required.permission_code)
+        FROM staff_effective_assignment_permissions required
+        WHERE required.staff_id=staff.id AND required.permission_code IN (
+          'BUYER_VIEW','RESERVATION_VIEW','RESERVATION_DECIDE',
+          'ORDER_VIEW','ORDER_CONFIRM')))
+      OR (NEW.duty_code='BUYER_AFTER_SALES_OWNER' AND 3=(
+        SELECT COUNT(DISTINCT required.permission_code)
+        FROM staff_effective_assignment_permissions required
+        WHERE required.staff_id=staff.id AND required.permission_code IN (
+          'BUYER_VIEW','REVIEW_VIEW','REVIEW_DECIDE')))
+      OR (NEW.duty_code='BUYER_REFUND_OWNER' AND 3=(
+        SELECT COUNT(DISTINCT required.permission_code)
+        FROM staff_effective_assignment_permissions required
+        WHERE required.staff_id=staff.id AND required.permission_code IN (
+          'BUYER_VIEW','BUYER_REFUND_VIEW','BUYER_REFUND_RECORD')))
+    )
+)
+BEGIN SELECT RAISE(ABORT,'buyer_staff_assignment_target_ineligible'); END;
+
+CREATE TRIGGER trg_seller_staff_assignments_staff_guard
+BEFORE INSERT ON seller_staff_assignments
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM staff_users staff
+  JOIN seller_organizations organization
+    ON organization.id=NEW.seller_organization_id
+  LEFT JOIN marketplace_legacy_aliases alias
+    ON alias.legacy_code=organization.marketplace_code
+  JOIN staff_effective_assignment_permissions permission
+    ON permission.staff_id=staff.id
+    AND permission.permission_code='ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT'
+  WHERE staff.id=NEW.staff_id AND staff.status='ACTIVE'
+    AND (
+      EXISTS (SELECT 1 FROM staff_role_assignments role
+        WHERE role.staff_id=staff.id AND role.status='ACTIVE'
+          AND role.role_code='owner')
+      OR EXISTS (SELECT 1 FROM staff_marketplace_scopes scope
+        WHERE scope.staff_id=staff.id AND scope.status='ACTIVE'
+          AND scope.scope_kind='PRIMARY'
+          AND scope.marketplace_code=COALESCE(
+            alias.marketplace_code,organization.marketplace_code))
+    )
+    AND 4=(
+      SELECT COUNT(DISTINCT required.permission_code)
+      FROM staff_effective_assignment_permissions required
+      WHERE required.staff_id=staff.id AND required.permission_code IN (
+        'PRODUCT_VIEW','PRODUCT_REVIEW','DEMAND_VIEW','DEMAND_PUBLISH'))
+)
+BEGIN SELECT RAISE(ABORT,'seller_staff_assignment_target_ineligible'); END;
+
+CREATE TRIGGER trg_staff_assignment_fallbacks_insert_guard
+BEFORE INSERT ON staff_assignment_fallbacks
+WHEN NOT EXISTS (
+  SELECT 1 FROM staff_users staff
+  WHERE staff.id=NEW.staff_id AND staff.status='ACTIVE'
+    AND EXISTS (SELECT 1 FROM staff_role_assignments role
+      WHERE role.staff_id=staff.id AND role.role_code='owner'
+        AND role.status='ACTIVE')
+    AND 17=(SELECT COUNT(DISTINCT permission.permission_code)
+      FROM staff_effective_assignment_permissions permission
+      WHERE permission.staff_id=staff.id AND permission.permission_code IN (
+        'ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT',
+        'ASSIGNMENT_ELIGIBLE_BUYER_PRE_SALES',
+        'ASSIGNMENT_ELIGIBLE_BUYER_AFTER_SALES',
+        'ASSIGNMENT_ELIGIBLE_BUYER_REFUND',
+        'PRODUCT_VIEW','PRODUCT_REVIEW','DEMAND_VIEW','DEMAND_PUBLISH',
+        'BUYER_VIEW','RESERVATION_VIEW','RESERVATION_DECIDE',
+        'ORDER_VIEW','ORDER_CONFIRM','REVIEW_VIEW','REVIEW_DECIDE',
+        'BUYER_REFUND_VIEW','BUYER_REFUND_RECORD'))
+)
+BEGIN SELECT RAISE(ABORT,'staff_assignment_fallback_invalid'); END;
+
+CREATE TRIGGER trg_staff_assignment_fallbacks_update_guard
+BEFORE UPDATE ON staff_assignment_fallbacks
+WHEN NOT (
+  NEW.marketplace_code IS OLD.marketplace_code
+  AND NEW.version=OLD.version+1
+  AND NEW.updated_at>=OLD.updated_at
+  AND EXISTS (
+    SELECT 1 FROM staff_users staff
+    WHERE staff.id=NEW.staff_id AND staff.status='ACTIVE'
+      AND EXISTS (SELECT 1 FROM staff_role_assignments role
+        WHERE role.staff_id=staff.id AND role.role_code='owner'
+          AND role.status='ACTIVE')
+      AND 17=(SELECT COUNT(DISTINCT permission.permission_code)
+        FROM staff_effective_assignment_permissions permission
+        WHERE permission.staff_id=staff.id AND permission.permission_code IN (
+          'ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT',
+          'ASSIGNMENT_ELIGIBLE_BUYER_PRE_SALES',
+          'ASSIGNMENT_ELIGIBLE_BUYER_AFTER_SALES',
+          'ASSIGNMENT_ELIGIBLE_BUYER_REFUND',
+          'PRODUCT_VIEW','PRODUCT_REVIEW','DEMAND_VIEW','DEMAND_PUBLISH',
+          'BUYER_VIEW','RESERVATION_VIEW','RESERVATION_DECIDE',
+          'ORDER_VIEW','ORDER_CONFIRM','REVIEW_VIEW','REVIEW_DECIDE',
+          'BUYER_REFUND_VIEW','BUYER_REFUND_RECORD'))
+  )
+)
+BEGIN SELECT RAISE(ABORT,'staff_assignment_fallback_invalid'); END;
+
 -- 12) Prepare a global Seller-customer identity above marketplace-specific
 -- Seller Organizations. Current JP business remains unchanged; future US/KR
 -- organizations can join the same global group without rewriting orders.

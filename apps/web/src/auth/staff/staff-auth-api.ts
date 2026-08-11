@@ -3,12 +3,6 @@ import type { ApiResult } from '../../api/transport';
 import { apiRequest } from '../../api/transport';
 import { staffLogoutAllResponseSchema, staffLogoutResponseSchema } from './staff-logout-schemas';
 
-// Legacy Feishu start schema remains for migration-only tests; active UI uses
-// Cloudflare Access bootstrap below.
-export const staffLoginStartResponseSchema = z.object({
-  provider: z.literal('FEISHU'), authorization_url: z.string().url(), expires_at: z.number().int(),
-}).strict();
-
 export const staffSessionSchema = z.object({
   staff_id: z.string(), display_name: z.string(),
   role: z.discriminatedUnion('code', [
@@ -32,10 +26,8 @@ export const staffSessionSchema = z.object({
 const staffSessionResponseSchema = z.object({ session: staffSessionSchema }).strict();
 const staffAccessBootstrapSchema = z.object({ session: staffSessionSchema, access_email: z.string().email() }).strict();
 export type StaffSession = z.output<typeof staffSessionSchema>;
-export type StaffLoginStart = z.output<typeof staffLoginStartResponseSchema>;
 
 export interface StaffAuthApiAdapter {
-  loginStart(returnTo: string, signal?: AbortSignal): Promise<ApiResult<StaffLoginStart>>;
   bootstrap(signal?: AbortSignal): Promise<ApiResult<z.output<typeof staffAccessBootstrapSchema>>>;
   readSession(signal?: AbortSignal): Promise<ApiResult<{ session: StaffSession }>>;
   logout(signal?: AbortSignal): Promise<ApiResult<{ logged_out: true; all_devices_logged_out: false }>>;
@@ -43,10 +35,6 @@ export interface StaffAuthApiAdapter {
 }
 
 export const staffAuthApi: StaffAuthApiAdapter = Object.freeze({
-  loginStart: (returnTo: string, signal?: AbortSignal) => apiRequest({
-    path: '/api/staff-auth/login/start', method: 'POST', schema: staffLoginStartResponseSchema,
-    body: { return_to: returnTo }, ...(signal ? { signal } : {}),
-  }),
   bootstrap: (signal?: AbortSignal) => apiRequest({
     path: '/api/staff-auth/access/bootstrap', method: 'POST', schema: staffAccessBootstrapSchema,
     body: {}, ...(signal ? { signal } : {}),
@@ -64,8 +52,3 @@ export const staffAuthApi: StaffAuthApiAdapter = Object.freeze({
     body: {}, headers: { 'Idempotency-Key': idempotencyKey }, ...(signal ? { signal } : {}),
   }),
 });
-
-export function startStaffBinding(inviteToken: string, signal?: AbortSignal): Promise<ApiResult<StaffLoginStart>> {
-  return apiRequest({ path: '/api/staff-auth/binding/start', method: 'POST', schema: staffLoginStartResponseSchema,
-    body: { invite_token: inviteToken }, ...(signal ? { signal } : {}) });
-}

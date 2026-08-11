@@ -47,26 +47,19 @@ export async function resolveStaffDataScope(
     };
   }
   const placeholders = marketplaceCodes.map(() => '?').join(',');
-  const role = [...actor.roles][0];
-  const maySeeBuyers = role === 'pre_sales' || role === 'buyer_refund';
-  const maySeeSellers = role === 'seller_ops';
   const [buyers, sellers] = await Promise.all([
-    maySeeBuyers
-      ? database.prepare(`
+    database.prepare(`
           SELECT buyer_customer_id AS id
           FROM buyer_marketplace_assignments
           WHERE marketplace_code IN (${placeholders})
           ORDER BY buyer_customer_id
-        `).bind(...marketplaceCodes).all<IdRow>()
-      : Promise.resolve({ results: [] as IdRow[] }),
-    maySeeSellers
-      ? database.prepare(`
+        `).bind(...marketplaceCodes).all<IdRow>(),
+    database.prepare(`
           SELECT DISTINCT seller_organization_id AS id
           FROM seller_store_marketplaces
           WHERE marketplace_code IN (${placeholders})
           ORDER BY seller_organization_id
-        `).bind(...marketplaceCodes).all<IdRow>()
-      : Promise.resolve({ results: [] as IdRow[] }),
+        `).bind(...marketplaceCodes).all<IdRow>(),
   ]);
 
   return {

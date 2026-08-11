@@ -5,9 +5,9 @@ import type {
   StaffAssignmentSource,
   StaffWorkItemType,
 } from '@ygb/contracts';
-import { dutyForWorkItem } from '@ygb/domain';
+import { canonicalMarketplaceCode, dutyForWorkItem } from '@ygb/domain';
 import {
-  isStaffAvailableForDuty,
+  isStaffEligibleForDuty,
   resolveOwnerFallback,
   resolveOwnerFallbackForFixedDuty,
   resolveRoundRobinCandidate,
@@ -49,7 +49,6 @@ export interface DirectWorkItemInput {
   idempotencyKey?: string | null;
   reason?: string | null;
   now: number;
-  teamId?: string | null;
 }
 
 export interface PreparedDirectWorkItem {
@@ -89,22 +88,13 @@ export async function prepareDirectWorkItem(
   }
 
   const active = await readActiveAssignment(database, input, dutyCode);
-  if (active && await isStaffAvailableForDuty(database, {
+  if (active && await isStaffEligibleForDuty(database, {
     staffId: active.staff_id,
     dutyCode,
     workType: input.workType,
+    marketplaceCode: input.marketplaceCode,
   })) {
     const workItemId = crypto.randomUUID();
-    const workItemPayload = {
-      work_item_id: workItemId,
-      work_type: input.workType,
-      source_entity_type: input.sourceEntityType,
-      source_entity_id: input.sourceEntityId,
-      duty_code: dutyCode,
-      assignment_id: active.id,
-      assigned_staff_id: active.staff_id,
-      status: 'OPEN',
-    } as const;
     return {
       workItemId,
       assignmentId: active.id,
@@ -120,14 +110,6 @@ export async function prepareDirectWorkItem(
           assignedStaffId: active.staff_id,
           workItemId,
         }),
-        ...await prepareStaffAssignmentOutboxStatements(database, {
-          dedupKey: `staff-work-item:${workItemId}:created`,
-          eventType: 'WORK_ITEM_CREATED',
-          aggregateType: 'STAFF_WORK_ITEM',
-          aggregateId: workItemId,
-          payload: workItemPayload,
-          now: input.now,
-        }),
       ],
     };
   }
@@ -136,7 +118,6 @@ export async function prepareDirectWorkItem(
     dutyCode,
     workType: input.workType,
     marketplaceCode: input.marketplaceCode,
-    teamId: input.teamId ?? null,
   });
   const fallback = candidate === null
     ? await resolveFallbackWithFailureEvent(database, {
@@ -196,16 +177,6 @@ export async function prepareDirectWorkItem(
     assigned_staff_id: assignedStaffId,
     source: assignmentSource,
   } as const;
-  const workItemPayload = {
-    work_item_id: workItemId,
-    work_type: input.workType,
-    source_entity_type: input.sourceEntityType,
-    source_entity_id: input.sourceEntityId,
-    duty_code: dutyCode,
-    assignment_id: assignmentId,
-    assigned_staff_id: assignedStaffId,
-    status: 'OPEN',
-  } as const;
   statements.push(
     assignmentEventStatement(database, {
       eventType: assignmentEventType,
@@ -229,14 +200,6 @@ export async function prepareDirectWorkItem(
       aggregateType: 'STAFF_ASSIGNMENT',
       aggregateId: assignmentId,
       payload: assignmentPayload,
-      now: input.now,
-    }),
-    ...await prepareStaffAssignmentOutboxStatements(database, {
-      dedupKey: `staff-work-item:${workItemId}:created`,
-      eventType: 'WORK_ITEM_CREATED',
-      aggregateType: 'STAFF_WORK_ITEM',
-      aggregateId: workItemId,
-      payload: workItemPayload,
       now: input.now,
     }),
   );
@@ -274,7 +237,6 @@ export async function prepareInitialSellerAssignment(
     idempotencyKey?: string | null;
     reason?: string | null;
     now: number;
-    teamId?: string | null;
   },
 ): Promise<PreparedFixedAssignment> {
   const existing = await database.prepare(`
@@ -298,7 +260,6 @@ export async function prepareInitialSellerAssignment(
   const candidate = await resolveRoundRobinFixedDutyCandidate(database, {
     dutyCode,
     marketplaceCode: input.marketplaceCode,
-    teamId: input.teamId ?? null,
   });
   const fallback = candidate === null
     ? await resolveFixedFallbackWithFailureEvent(database, {
@@ -331,7 +292,6 @@ export async function prepareInitialSellerAssignment(
     idempotencyKey: input.idempotencyKey ?? null,
     reason: input.reason ?? null,
     now: input.now,
-    teamId: input.teamId ?? null,
   };
   const statements: SqlStatement[] = [
     insertAssignmentStatement(database, {
@@ -496,24 +456,6 @@ export async function prepareWorkItemCompletionStatements(
   const eventType = input.outcome === 'COMPLETED'
     ? 'WORK_ITEM_COMPLETED'
     : 'WORK_ITEM_CANCELLED';
-  const outbox = await prepareStaffAssignmentOutboxStatements(database, {
-    dedupKey: `staff-work-item:${item.id}:${input.outcome.toLowerCase()}`,
-    eventType,
-    aggregateType: 'STAFF_WORK_ITEM',
-    aggregateId: item.id,
-    payload: {
-      work_item_id: item.id,
-      work_type: input.workType,
-      source_entity_type: input.sourceEntityType,
-      source_entity_id: input.sourceEntityId,
-      duty_code: item.duty_code,
-      assignment_id: item.fixed_assignment_id,
-      assigned_staff_id: item.assigned_staff_id,
-      status: input.outcome,
-      reason: input.reason ?? null,
-    },
-    now: input.now,
-  });
   return [
     database.prepare(`
       UPDATE staff_work_items
@@ -546,7 +488,6 @@ export async function prepareWorkItemCompletionStatements(
       input.idempotencyKey ?? null,
       input.now,
     ),
-    ...outbox,
     database.prepare(`
       INSERT INTO transaction_assertions (assertion_value)
       SELECT CASE WHEN
@@ -865,15 +806,16 @@ function createWorkItemStatements(
     workItemId: string;
   },
 ): readonly SqlStatement[] {
+  const marketplaceCode = canonicalMarketplaceCode(input.marketplaceCode);
   return [
     database.prepare(`
       INSERT INTO staff_work_items (
         id, work_type, source_entity_type, source_entity_id,
         buyer_customer_id, seller_organization_id, store_id,
         duty_code, fixed_assignment_type, fixed_assignment_id,
-        assigned_staff_id, status, version, created_at, updated_at,
+        assigned_staff_id, marketplace_code, status, version, created_at, updated_at,
         completed_at, cancelled_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', 1, ?, ?, NULL, NULL)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', 1, ?, ?, NULL, NULL)
     `).bind(
       input.workItemId,
       input.workType,
@@ -886,6 +828,7 @@ function createWorkItemStatements(
       input.assignmentType,
       input.assignmentId,
       input.assignedStaffId,
+      marketplaceCode,
       input.now,
       input.now,
     ),
