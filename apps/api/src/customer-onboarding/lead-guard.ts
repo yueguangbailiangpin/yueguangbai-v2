@@ -1,6 +1,6 @@
 import { apiFailure } from '@ygb/contracts';
 import { normalizeWechatId } from '@ygb/domain';
-import type { Context, Hono } from 'hono';
+import type { Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 
 export function registerExistingCustomerLeadGuard(app:Hono<any>):void{
@@ -16,15 +16,19 @@ export function registerExistingCustomerLeadGuard(app:Hono<any>):void{
           JOIN buyer_customers buyer ON buyer.identity_subject_id=claim.identity_subject_id
           WHERE claim.normalized_wechat=? AND claim.status='ACTIVE' AND buyer.access_status='ACTIVE' LIMIT 1`)
           .bind(wechat.normalized).first()
-        :await context.env.DB.prepare(`SELECT organization.id FROM wechat_identity_claims claim
+        :await context.env.DB.prepare(`SELECT subject_id FROM (
+          SELECT organization.id AS subject_id
+          FROM wechat_identity_claims claim
           JOIN seller_organization_members member ON member.identity_subject_id=claim.identity_subject_id
           JOIN seller_organizations organization ON organization.id=member.organization_id
-          WHERE claim.normalized_wechat=? AND claim.status='ACTIVE' AND member.status='ACTIVE'
-            AND organization.status='ACTIVE' LIMIT 1`).bind(wechat.normalized).first();
-      if(exists){
-        context.header('Cache-Control','no-store');
-        return context.json(apiFailure('CONFLICT','该微信已经对应历史客户，请使用“历史客户开通账号”，不要重复新增',requestIdFromContext(context)),409);
-      }
+          WHERE claim.normalized_wechat=? AND claim.status='ACTIVE' AND member.status='ACTIVE' AND organization.status='ACTIVE'
+          UNION
+          SELECT organization.id AS subject_id
+          FROM seller_partner_import_source_records source
+          JOIN seller_organizations organization ON organization.seller_code=source.source_seller_code
+          WHERE source.seller_wechat_normalized=? AND source.status IN ('VALID','IMPORTED') AND organization.status='ACTIVE'
+        ) LIMIT 1`).bind(wechat.normalized,wechat.normalized).first();
+      if(exists){context.header('Cache-Control','no-store');return context.json(apiFailure('CONFLICT','该微信已经对应历史客户，请使用“历史客户开通账号”，不要重复新增',requestIdFromContext(context)),409);}
     }catch{/* Validation remains owned by the canonical acquisition route. */}
     return next();
   });
