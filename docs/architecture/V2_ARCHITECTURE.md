@@ -22,7 +22,7 @@ Cloudflare Workers + Hono
   ├─ Pending Order Evidence
   ├─ Formal Orders
   ├─ Reviews
-  ├─ Financial Ledger
+  ├─ Financial Facts / Reporting
   ├─ Staff Work Items / Outbox
   └─ Audit / Observability
         │
@@ -32,7 +32,7 @@ Cloudflare Workers + Hono
 Cloudflare Access ──验证邮箱──▶ Staff Access Auth
 ```
 
-## 2. 应用目录建议
+## 2. 应用目录
 
 ```text
 apps/
@@ -43,7 +43,7 @@ packages/
   domain/       纯领域函数、状态机、金额、身份规范化
   ui/           通用 UI
   testkit/      D1/R2/Access 匿名测试工具
-migrations/     V2 全新 D1 Migration
+migrations/     V2 D1 Migration 历史
 docs/
 scripts/
 test/
@@ -55,8 +55,7 @@ test/
 |---|---|
 | 客户、产品、订单、评论、财务 | D1 |
 | 正式图片 | R2 + D1 Manifest |
-| 员工身份映射、角色、权限 | D1 |
-| 员工登录邮箱、角色、权限、负责站点 | D1；Access 只证明邮箱 |
+| 员工账号、角色、权限、负责站点 | D1；Cloudflare Access 只证明邮箱身份 |
 | 员工任务 | D1 权威，通过受控员工 Web/API 操作 |
 | 私人微信聊天 | 非正式沟通，不自动入库 |
 | 必要微信截图 | R2，按业务对象关联 |
@@ -64,7 +63,7 @@ test/
 
 ## 4. 模块边界
 
-每个模块必须只通过明确的 Application Service/Command 调用下游，不允许页面或路由直接跨模块随意更新表。
+每个模块必须只通过明确的 Application Service / Command 调用下游，不允许页面或路由直接跨模块随意更新表。
 
 推荐分层：
 
@@ -84,11 +83,11 @@ Route
 
 D1 的关键命令使用：
 
-- 条件 INSERT/UPDATE；
+- 条件 INSERT / UPDATE；
 - `db.batch()`；
 - 唯一约束；
 - 版本字段；
-- 断言表/断言触发器；
+- 断言表 / 断言触发器；
 - 事务内事件；
 - 幂等记录；
 - 冲突后重新读取并映射为稳定错误码。
@@ -101,7 +100,7 @@ D1 的关键命令使用：
 
 ```text
 预检查
-→ 写上传意图/租约
+→ 写上传意图 / 租约
 → R2 put
 → R2 head 校验
 → D1 最终条件提交
@@ -112,26 +111,28 @@ D1 的关键命令使用：
 
 ## 7. 员工身份与工作台
 
-- Cloudflare Access 只校验签名、团队域名、应用 Audience 和邮箱。
-- 员工账号、唯一岗位、负责站点、PRIMARY/SUPPORT 和 Personal DENY 每次由 D1 计算。
+- Cloudflare Access 校验签名、团队域名、应用 Audience 和邮箱等身份声明。
+- 员工账号状态、唯一岗位、负责站点、PRIMARY/SUPPORT 和 Personal DENY 每次由 D1 计算。
 - 任务、领取、处理和正式状态写入均在月光白受控 Web/API 内完成。
-- 现行系统不注册飞书认证、同步、回调或告警运行入口。
+- 现行系统不注册飞书认证、同步、回调、任务或告警运行入口。
 
 ## 8. 部署环境
 
-至少：
+至少区分：
 
 - local
 - staging
 - production
 
-每个环境使用不同的：
+各环境应使用隔离的：
 
 - D1；
 - R2；
 - Secrets；
 - Cloudflare Access 应用与策略；
-- 域名/路由；
+- 域名 / 路由；
 - Rate Limit namespace。
 
-模块 0 不包含任何真实资源 ID。
+真实资源 ID、生产状态和生产验收结果不得写成仓库内默认事实；生产操作必须单独授权。
+
+当前文档描述现行 V2 架构边界，不再代表早期“模块 0”冻结阶段。业务实现与完成度以 `docs/CURRENT_SYSTEM_STATE.md`、Contracts、Acceptance Matrix、当前 OpenSpec 和真实测试结果为准。
