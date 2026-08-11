@@ -24,3 +24,8 @@
 - [x] 4.1 Update base specs and current docs to the final non-Feishu architecture.
 - [x] 4.2 Run targeted tests, all typechecks, OpenSpec strict, complete repository check/build and browser acceptance.
 - [x] 4.3 Review the final diff, commit by concern and push only `feature/frozen-portals-staff-acquisition-core`.
+
+## 5. First production deployment repair
+
+- [x] 5.1 Remove disabled Staff MCP Provider variables and service binding from release templates.
+- [x] 5.2 Re-run release preflight tests, OpenSpec strict, repository gates and production dry-run.

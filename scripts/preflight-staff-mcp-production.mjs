@@ -49,7 +49,7 @@ export function inspectStaffMcpTemplate(environment) {
   const requiredBindings = mcpPlaceholderBindings(config);
   return Object.freeze({
     status: errors.length === 0
-      ? 'BLOCKED_NEEDS_OPERATOR_INPUT'
+      ? 'DISABLED_BY_DEFAULT'
       : 'INVALID_TEMPLATE',
     environment,
     required_fields: Object.freeze(requiredFields),
@@ -232,9 +232,18 @@ function validateDisabledTemplate(config, environment) {
   for (const secret of staffMcpManagedSecrets) {
     if (Object.hasOwn(vars, secret)) errors.push(`vars.${secret}:managed_secret_forbidden`);
   }
-  const service = tokenStatusService(config);
-  if (!service || !placeholders.test(service.service)) {
-    errors.push('services.STAFF_MCP_TOKEN_STATUS_SERVICE:placeholder_required');
+  for (const key of Object.keys(vars)) {
+    if (key.startsWith('STAFF_MCP_') && ![
+      'STAFF_MCP_ENABLED',
+      'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
+      'STAFF_MCP_LOCAL_MOCK_ENABLED',
+      'STAFF_MCP_CLEANUP_ENABLED',
+      'STAFF_MCP_CLEANUP_LIMIT',
+    ].includes(key)) errors.push(`vars.${key}:forbidden_while_disabled`);
+  }
+  const services = record(config)?.services;
+  if (services !== undefined && (!Array.isArray(services) || services.length !== 0)) {
+    errors.push('services:forbidden_while_staff_mcp_disabled');
   }
   return errors;
 }

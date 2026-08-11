@@ -156,11 +156,9 @@ export function validateReleaseConfig(config, environment) {
   if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u.test(String(r2?.bucket_name ?? ''))) {
     errors.push('r2_buckets.0.bucket_name:invalid');
   }
-  const tokenStatus = exactOne(record?.services);
-  if (!tokenStatus
-    || tokenStatus.binding !== 'STAFF_MCP_TOKEN_STATUS_SERVICE'
-    || !isResourceName(tokenStatus.service)) {
-    errors.push('services:staff_mcp_token_status_binding_invalid');
+  const services = record?.services;
+  if (services !== undefined && (!Array.isArray(services) || services.length !== 0)) {
+    errors.push('services:forbidden_while_staff_mcp_disabled');
   }
   for (const key of Object.keys(vars ?? {})) {
     if (retiredFeishuKey.test(key)) {

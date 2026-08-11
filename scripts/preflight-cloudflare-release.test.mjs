@@ -80,7 +80,10 @@ describe('Cloudflare release preflight', () => {
 
     const config = anonymousConfig('production');
     config.d1_databases = [];
-    config.services = [];
+    config.services = [{
+      binding: 'STAFF_MCP_TOKEN_STATUS_SERVICE',
+      service: 'obsolete-token-status-service',
+    }];
     config.r2_buckets = [
       { binding: 'FILE_OBJECT_STORAGE_R2', bucket_name: 'default' },
       { binding: 'FILE_OBJECT_STORAGE_R2', bucket_name: 'duplicate' },
@@ -88,7 +91,7 @@ describe('Cloudflare release preflight', () => {
     const errors = validateReleaseConfig(config, 'production');
     expect(errors).toContain('d1_databases:binding_invalid');
     expect(errors).toContain('r2_buckets:binding_invalid');
-    expect(errors).toContain('services:staff_mcp_token_status_binding_invalid');
+    expect(errors).toContain('services:forbidden_while_staff_mcp_disabled');
   });
 
   it('allows only real files outside the repository by lexical and real path', () => {
@@ -182,17 +185,6 @@ function anonymousConfig(environment) {
     if (value.endsWith('_D1_NAME')) return `ygb_${environment}`;
     if (value.endsWith('_D1_ID')) return '11111111-1111-4111-8111-111111111111';
     if (value.endsWith('_R2_BUCKET_NAME')) return `ygb-${environment}-files`;
-    if (value.endsWith('_STAFF_MCP_ENABLED_TOOLS')) return 'list_staff_tasks_v1';
-    if (value.endsWith('_STAFF_MCP_RESOURCE_DOCUMENTATION_URL')) return `${origin}/staff-mcp-guide`;
-    if (value.endsWith('_STAFF_MCP_RESOURCE_POLICY_URL')) return `${origin}/privacy/staff-mcp`;
-    if (value.endsWith('_STAFF_MCP_RESOURCE')) return `${origin}/mcp`;
-    if (value.endsWith('_STAFF_MCP_OAUTH_ISSUER')) return 'https://issuer.example.invalid/';
-    if (value.endsWith('_STAFF_MCP_OAUTH_METADATA_URL')) return 'https://issuer.example.invalid/.well-known/oauth-authorization-server';
-    if (value.endsWith('_STAFF_MCP_OAUTH_AUTHORIZATION_ENDPOINT')) return 'https://issuer.example.invalid/authorize';
-    if (value.endsWith('_STAFF_MCP_OAUTH_TOKEN_ENDPOINT')) return 'https://issuer.example.invalid/token';
-    if (value.endsWith('_STAFF_MCP_OAUTH_JWKS_URI')) return 'https://issuer.example.invalid/jwks';
-    if (value.endsWith('_STAFF_MCP_OAUTH_REVOCATION_ENDPOINT')) return 'https://issuer.example.invalid/revoke';
-    if (value.endsWith('_STAFF_MCP_TOKEN_STATUS_SERVICE')) return `ygb-${environment}-token-status`;
     throw new Error(`unmapped_placeholder:${value}`);
   });
   return config;

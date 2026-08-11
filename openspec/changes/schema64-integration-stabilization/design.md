@@ -15,3 +15,7 @@ Owner creates Staff accounts directly with email, one role and explicit Marketpl
 ## Verification
 
 Verification covers migration byte guards and local application through 0064, Access JWT/issuer/audience/JWKS failures, unknown-email concealment, origin checks, Staff account isolation, duplicate route inventory, acquisition scope, financial invariants, OpenSpec strict, typecheck, full tests/build and browser journeys. All external mutation counters remain zero; the final operation is a normal push of this feature branch only.
+
+## Disabled Staff MCP release boundary
+
+When Staff MCP is disabled, release templates contain only the explicit disabled switches and no MCP Provider endpoint, OAuth, tool registry or Worker service binding. Enabling MCP remains a separate reviewed release configuration and cannot be simulated with a placeholder Worker during the core application deployment.

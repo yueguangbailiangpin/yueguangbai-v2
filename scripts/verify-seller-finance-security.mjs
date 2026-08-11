@@ -50,27 +50,21 @@ assert(!sources.match(/public\s+queue|claim\s+api/iu));
 // A GLOBAL grant is only an audience marker. The common file authorization
 // layer must dynamically re-resolve Staff permission and Seller scope.
 for (const token of [
-  'activeSellerSettlementProofScopeExists',
   'resolveAssignmentStaffAuthorization',
-  "authorization.permissions.has('SELLER_SETTLEMENT_VIEW')",
-  "assignment.duty_code='SELLER_ACCOUNT_MANAGER'",
-  "assignment.status='ACTIVE'",
+  'grant.staff_permission_code',
+  'isStaffPermissionCode(row.staff_permission_code)',
+  'authorization.permissions.has(row.staff_permission_code as StaffPermissionCode)',
   "authorization.roles.has('owner')",
-  "authorization.permissions.has('TASK_VIEW_TEAM')",
-  'seller_payment_proofs proof',
+  'resolveStaffMarketplaceCodes',
+  'resolveResourceMarketplace',
+  "resource.entityType==='SELLER_SETTLEMENT'",
   'seller_payments payment',
-  'payment.seller_organization_id=proof.seller_organization_id',
-  "link.entity_type='SELLER_SETTLEMENT'",
-  "link.purpose='SELLER_SETTLEMENT_PROOF'",
-  "object.status='VERIFIED'",
-  "intent.status='VERIFIED'",
-  'JOIN staff_users assigned_staff',
-  "assigned_staff.status='ACTIVE'",
-  'SELECT COUNT(*)',
+  'payment.seller_organization_id',
+  "grant.subject_type='STAFF_INTERNAL'",
+  "grant.staff_scope_type='GLOBAL'",
+  "link.authorization_mode='EXPLICIT_AUDIENCES'",
+  'authorization.staffStatus',
 ]) assert(fileAuthorization.includes(token));
-assert(fileAuthorization.includes(
-  "settlementProof && principal.type !== 'STAFF_SESSION'",
-));
 assert((fileReadService.match(/await authorizeFileRead\(/gu) ?? []).length >= 2);
 assert(fileReadService.indexOf('await authorizeFileRead(')
   < fileReadService.indexOf('const expiresAt = now + ttlMs'));

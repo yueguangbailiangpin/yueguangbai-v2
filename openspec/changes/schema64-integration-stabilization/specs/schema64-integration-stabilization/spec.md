@@ -26,3 +26,12 @@ Migrations 0001–0043 SHALL remain byte-identical while 0044–0064 form the re
 
 - **WHEN** migration integrity is checked
 - **THEN** the historical byte is retained for upgrade continuity but grants no active Feishu runtime authority.
+
+### Requirement: Disabled Staff MCP is absent from the core release graph
+
+When Staff MCP is disabled, the release configuration SHALL NOT require MCP Provider variables, OAuth endpoints, tool lists, Secrets or a token-status Worker service binding.
+
+#### Scenario: Core production deploys with Staff MCP disabled
+
+- **WHEN** release preflight validates the production configuration
+- **THEN** it accepts no MCP service binding and the core Worker remains fail-closed on MCP routes.

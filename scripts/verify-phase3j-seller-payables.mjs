@@ -25,9 +25,9 @@ for (const token of [
   'PAYABLE_RECONCILED',
   'lower(hex(randomblob(16)))',
 ]) assert(migration.includes(token));
-assert(formal.includes("payableType: 'SELLER_PRINCIPAL'"));
+assert(/payableType\s*:\s*'SELLER_PRINCIPAL'/u.test(formal));
 assert(formal.includes('seller_expected_principal_cny_fen'));
-assert(approval.includes("payableType: 'SELLER_SERVICE_FEE'"));
+assert(/payableType\s*:\s*'SELLER_SERVICE_FEE'/u.test(approval));
 assert(approval.includes('service_fee_cny_fen'));
 assert(payableStatements.includes('const payableId = crypto.randomUUID()'));
 assert(payableStatements.includes('const eventId = crypto.randomUUID()'));

@@ -10,11 +10,12 @@ The integrated Staff acquisition branch contains the intended Schema 64 business
 - Make Cloudflare Access email proof plus Moonwhite Staff accounts the only Staff authentication composition.
 - Align Staff account management with email, one role and explicit Marketplace PRIMARY/SUPPORT responsibility.
 - Repair duplicate acquisition route registration and update runtime contracts, release preflight, UI tests, OpenSpec and current documentation.
+- Keep disabled Staff MCP completely absent from production provider variables and service bindings so it cannot block the first release.
 - Stabilize migrations 0044–0064, authorization behavior and affected Contract/API/Web tests without touching production resources.
 
 ## Non-Goals
 
-- No production Migration, deployment, D1/R2 mutation, Provider setup, Secret write, PR or main merge.
+- This code Change does not itself authorize production Mutation; the separate owner deployment instruction controls those operations.
 - No Feishu replacement integration, new alert Provider, Team/Leader authority, arbitrary GRANT expansion, reassignment UI or availability scheduler.
 - No rewrite of historical migrations 0001–0043 or archived Change evidence.
 

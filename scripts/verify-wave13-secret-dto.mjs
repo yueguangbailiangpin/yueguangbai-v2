@@ -12,7 +12,7 @@ const publicContracts = [
   'packages/contracts/src/staff-buyer-refund.ts',
 ].map(read).join('\n');
 const responseRoutes = [
-  'apps/api/src/staff-auth/routes.ts',
+  'apps/api/src/staff-auth/access-routes.ts',
   'apps/api/src/files/routes.ts',
   'apps/api/src/order-evidence/staff-routes.ts',
   'apps/api/src/buyer-refunds/staff-routes.ts',

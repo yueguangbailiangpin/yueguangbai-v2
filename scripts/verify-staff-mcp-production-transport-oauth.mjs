@@ -11,13 +11,11 @@ const read = (file) => readRepositoryFile(file, root);
 
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file)).sort();
-assert(migrations.length === 43
+assert(migrations.length === 64
   && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
-  && migrations.at(-3) === '0041_seller_principal_rate_policy.sql'
-  && migrations.at(-2) === '0042_rakuten_tiktok_jp_marketplace_foundation.sql'
-  && migrations.at(-1) === '0043_seller_principal_rate_integrity_hardening.sql'
+  && migrations.at(-1) === '0064_marketplace_local_date_truth.sql'
   && migrations.every((file, index) => Number(file.slice(0, 4)) === index + 1),
-'Staff MCP Migration must remain at 0038 in the continuous 0001-0043 chain');
+'Staff MCP Migration must remain at 0038 in the continuous 0001-0064 chain');
 
 const migration = read('migrations/0038_staff_mcp_production_transport_oauth.sql');
 for (const marker of [
@@ -116,11 +114,13 @@ for (const environment of ['staging', 'production']) {
     '"STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED": "false"',
     '"STAFF_MCP_LOCAL_MOCK_ENABLED": "false"',
     '"STAFF_MCP_CLEANUP_ENABLED": "false"',
-    '"STAFF_MCP_ENABLED_TOOLS": "REQUIRED_',
-    '"STAFF_MCP_RESOURCE_DOCUMENTATION_URL": "REQUIRED_',
-    '"STAFF_MCP_RESOURCE_POLICY_URL": "REQUIRED_',
-    '"binding": "STAFF_MCP_TOKEN_STATUS_SERVICE"',
   ]) assert(template.includes(marker), `${environment} default is unsafe: ${marker}`);
+  for (const forbidden of [
+    'STAFF_MCP_ENABLED_TOOLS',
+    'STAFF_MCP_RESOURCE',
+    'STAFF_MCP_OAUTH_',
+    'STAFF_MCP_TOKEN_STATUS_SERVICE',
+  ]) assert(!template.includes(forbidden), `${environment} disabled MCP dependency remains: ${forbidden}`);
   assert(!template.includes('"STAFF_MCP_BINDING_HASH_SECRET"'),
     `${environment} template contains managed Secret`);
 }
