@@ -21,6 +21,8 @@ import { AcquisitionError, validation } from './errors';
 import { protectWechatIdentity } from './privacy';
 import { addTwelveShanghaiMonths } from './time';
 
+const SYSTEM_SELLER_CHANNEL='seller-channel-portal-onboarding';
+
 interface LeadRow {
   id:string; lead_type:AcquisitionLeadType; marketplace_code:string;
   wechat_masked:string; display_name:string|null; note:string|null;
@@ -67,12 +69,18 @@ export async function createAcquisitionLead(
   }
   const originMode=prospect?.origin_mode??'HUMAN';const originSourceUrl=prospect?.source_url??null;
   const acquired=await acquireAcquisitionCommand<{lead_id:string}>(database,command,'CREATE_ACQUISITION_LEAD','ACQUISITION_LEAD',
-    `${input.leadType}:${identity.hash}`,{lead_type:input.leadType,marketplace_code:marketplaceCode,channel_id:channelId,
+    `${input.leadType}:${marketplaceCode}:${identity.hash}`,{lead_type:input.leadType,marketplace_code:marketplaceCode,channel_id:channelId,
       prospect_id:prospect?.id??null,identity_hash:identity.hash,display_name:displayName,note});
   if(acquired.acquired.kind==='REPLAY')return{lead:await readAcquisitionLead(database,command.actor,acquired.acquired.response.lead_id),replayed:true};
-  const duplicate=await database.prepare(`SELECT id FROM acquisition_leads WHERE lead_type=? AND identity_hash=? AND status='ACTIVE'`).bind(input.leadType,identity.hash).first<{id:string}>();
+  // One person/company may have separate formal Lead relationships per Marketplace.
+  const duplicate=await database.prepare(`SELECT id FROM acquisition_leads
+    WHERE lead_type=? AND marketplace_code=? AND identity_hash=? AND status='ACTIVE'`)
+    .bind(input.leadType,marketplaceCode,identity.hash).first<{id:string}>();
   if(duplicate){await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);throw new AcquisitionError('DUPLICATE_LEAD',409);}
   const id=crypto.randomUUID(),retentionDueAt=addTwelveShanghaiMonths(acquired.now);
+  const sellerFormalization=input.leadType==='SELLER'&&marketplaceCode==='AMAZON_JP'
+    ?await prepareSellerFormalization(database,id,displayName??identity.masked,acquired.now)
+    :null;
   const statements:SqlStatement[]=[
     database.prepare(`INSERT INTO acquisition_leads(
       id,lead_type,identity_hash,identity_ciphertext,identity_iv,wechat_masked,display_name,note,
@@ -88,10 +96,12 @@ export async function createAcquisitionLead(
       crypto.randomUUID(),id,command.actor.staffId,command.idempotencyKey,acquired.requestHash,null,
       canonicalJson({origin_channel_id:channelId,marketplace_code:marketplaceCode,prospect_id:prospect?.id??null,origin_mode:originMode}),acquired.now),
     ...initialLinkStatements(database,id,input.leadType,identity.normalized,acquired.now),
+    ...(sellerFormalization?.statements??[]),
     createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'ACQUISITION_LEAD',aggregateId:id,eventType:'ACQUISITION_LEAD_CREATED',
       actor:auditActor(command.actor),requestId:command.requestId,idempotencyKey:command.idempotencyKey,
       nextState:{lead_id:id,lead_type:input.leadType,marketplace_code:marketplaceCode,wechat_masked:identity.masked,
-        origin_channel_id:channelId,prospect_id:prospect?.id??null,origin_mode:originMode,origin_staff_id:command.actor.staffId,version:1},createdAt:acquired.now}),
+        origin_channel_id:channelId,prospect_id:prospect?.id??null,origin_mode:originMode,origin_staff_id:command.actor.staffId,
+        seller_organization_id:sellerFormalization?.organizationId??null,version:1},createdAt:acquired.now}),
   ];
   if(prospect){
     statements.push(database.prepare(`UPDATE acquisition_prospects SET status='CONVERTED',converted_lead_id=?,version=version+1,updated_at=?
@@ -173,6 +183,27 @@ async function canSeeLead(database:SqlDatabase,actor:AssignmentStaffAuthorizatio
 async function requireStaffMarket(database:SqlDatabase,actor:AssignmentStaffAuthorization,market:string):Promise<void>{if(actor.roles.has('owner'))return;const markets=await resolveStaffMarketplaceCodes(database,actor);if(!markets.includes(market))throw new AcquisitionError('FORBIDDEN',403);}
 async function prospectSource(database:SqlDatabase,id:string):Promise<ProspectSourceRow>{const row=await database.prepare(`SELECT id,lead_type,marketplace_code,origin_channel_id,source_url,origin_mode,status,version FROM acquisition_prospects WHERE id=?`).bind(id).first<ProspectSourceRow>();if(!row)throw new AcquisitionError('NOT_FOUND',404);return row;}
 
+async function prepareSellerFormalization(database:SqlDatabase,leadId:string,name:string,now:number):Promise<{organizationId:string;statements:SqlStatement[]}>{
+  const channel=await database.prepare(`SELECT prefix,next_sequence FROM seller_channels WHERE id=? AND status='ACTIVE'`)
+    .bind(SYSTEM_SELLER_CHANNEL).first<{prefix:string;next_sequence:number}>();
+  if(!channel)throw new AcquisitionError('DEPENDENCY_UNAVAILABLE',503);
+  const sequence=Number(channel.next_sequence);if(!Number.isSafeInteger(sequence)||sequence<1)throw new AcquisitionError('DEPENDENCY_UNAVAILABLE',503);
+  const organizationId=crypto.randomUUID();const sellerCode=`${channel.prefix}-${String(sequence).padStart(6,'0')}`;
+  const organizationName=(name.trim()||'未命名卖家').slice(0,200);
+  return{organizationId,statements:[
+    database.prepare(`UPDATE seller_channels SET next_sequence=next_sequence+1,version=version+1,updated_at=?
+      WHERE id=? AND status='ACTIVE' AND next_sequence=?`).bind(now,SYSTEM_SELLER_CHANNEL,sequence),
+    database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END`),
+    database.prepare(`INSERT INTO seller_organizations(
+      id,marketplace_code,seller_code,origin_channel_id,current_channel_id,seller_sequence,
+      organization_name,status,version,created_at,updated_at,activated_at,disabled_at,next_member_number
+    ) VALUES(?,'JP',?,?,?,?,?,'ACTIVE',1,?,?,?,NULL,1)`).bind(
+      organizationId,sellerCode,SYSTEM_SELLER_CHANNEL,SYSTEM_SELLER_CHANNEL,sequence,organizationName,now,now,now),
+    database.prepare(`INSERT INTO acquisition_lead_links(id,lead_id,link_type,target_id,linked_at)
+      VALUES(?,?,'SELLER_ORGANIZATION',?,?)`).bind(crypto.randomUUID(),leadId,organizationId,now),
+  ]};
+}
+
 function initialLinkStatements(database:SqlDatabase,leadId:string,leadType:AcquisitionLeadType,normalizedWechat:string,now:number):SqlStatement[]{
   const insert=(linkType:string,targetSql:string,bindings:unknown[])=>database.prepare(`INSERT OR IGNORE INTO acquisition_lead_links(id,lead_id,link_type,target_id,linked_at) SELECT lower(hex(randomblob(16))),?,'${linkType}',target.id,? FROM (${targetSql}) target`).bind(leadId,now,...bindings);
   return[
@@ -188,15 +219,19 @@ function initialLinkStatements(database:SqlDatabase,leadId:string,leadType:Acqui
   ];
 }
 function leadProjectionSql(where:string):string{return`SELECT lead.id,lead.lead_type,lead.marketplace_code,lead.wechat_masked,lead.display_name,lead.note,
-  lead.origin_channel_id,profile.staff_label AS channel_label,lead.current_owner_staff_id,
-  lead.status,lead.version,lead.created_business_date,lead.latest_followup_at,lead.retention_due_at,
+  COALESCE((SELECT correction.new_channel_id FROM acquisition_lead_source_corrections correction
+    WHERE correction.lead_id=lead.id ORDER BY correction.corrected_at DESC,correction.id DESC LIMIT 1),lead.origin_channel_id) AS origin_channel_id,
+  COALESCE((SELECT profile.staff_label FROM acquisition_lead_source_corrections correction
+    JOIN acquisition_channel_privacy_profiles profile ON profile.channel_id=correction.new_channel_id
+    WHERE correction.lead_id=lead.id ORDER BY correction.corrected_at DESC,correction.id DESC LIMIT 1),original_profile.staff_label) AS channel_label,
+  lead.current_owner_staff_id,lead.status,lead.version,lead.created_business_date,lead.latest_followup_at,lead.retention_due_at,
   lead.retention_hold_reason,lead.created_at,lead.updated_at,
   EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=lead.id AND link.link_type='BUYER_CUSTOMER') AS registered,
   EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=lead.id AND link.link_type='RESERVATION') AS reservation_submitted,
   (SELECT COUNT(*) FROM acquisition_lead_links link WHERE link.lead_id=lead.id AND link.link_type='FORMAL_ORDER') AS formal_order_count,
   EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=lead.id AND link.link_type='SELLER_ORGANIZATION') AS seller_cooperation
   FROM acquisition_leads lead
-  JOIN acquisition_channel_privacy_profiles profile ON profile.channel_id=lead.origin_channel_id
+  JOIN acquisition_channel_privacy_profiles original_profile ON original_profile.channel_id=lead.origin_channel_id
   WHERE ${where}`;}
 function toLead(row:LeadRow):AcquisitionLeadDto{const reservation=Number(row.reservation_submitted)===1;return{
   lead_id:row.id,lead_type:row.lead_type,marketplace_code:row.marketplace_code,
