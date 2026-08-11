@@ -1,7 +1,7 @@
 import { apiSuccess, type ObjectStorageAdapter, type SqlDatabase } from '@ygb/contracts';
 import type { Hono } from 'hono';
 
-const TARGET_SCHEMA=60;
+const TARGET_SCHEMA=61;
 const MAX_JOB_STALENESS_MS=6*60*60*1000;
 const MAX_ACQUISITION_STALENESS_MS=24*60*60*1000;
 const REQUIRED_JOBS=['reservation_expiry','instruction_expiry','outbox_delivery','file_orphan_cleanup','staff_auth_cleanup'] as const;
