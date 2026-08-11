@@ -52,9 +52,9 @@ export async function readFinancialReportingProjection(
       WHERE ledger.created_at>=? AND ledger.created_at<? AND ledger.created_at<=?`).bind(range.fromEpoch,range.toExclusiveEpoch,now).first<ThreeAmountRow>(),
     database.prepare(`SELECT
         CAST(COALESCE(SUM(CASE WHEN finance_status IN('PROJECTED_ONLY','COMPLETED') AND confirmed_business_date BETWEEN ? AND ? THEN projected_gross_profit_cny_fen ELSE 0 END),0) AS TEXT) AS projected,
-        CAST(COALESCE(SUM(CASE WHEN finance_status='COMPLETED' AND review_approved_business_date BETWEEN ? AND ? THEN completed_gross_profit_cny_fen ELSE 0 END),0) AS TEXT) AS completed
+        CAST(COALESCE(SUM(CASE WHEN finance_status='COMPLETED' AND review_approved_business_date BETWEEN ? AND ? AND review_approved_at<=? THEN completed_gross_profit_cny_fen ELSE 0 END),0) AS TEXT) AS completed
       FROM internal_order_finance_positions WHERE confirmed_at<=?`).bind(
-        range.fromDate,range.toDate,range.fromDate,range.toDate,now,
+        range.fromDate,range.toDate,range.fromDate,range.toDate,now,now,
       ).first<ProfitRow>(),
     database.prepare(`SELECT
         CAST(COALESCE(SUM(CASE WHEN adjustment_scope='PROJECTED_GROSS_PROFIT' THEN amount_cny_fen ELSE 0 END),0) AS TEXT) AS projected,
