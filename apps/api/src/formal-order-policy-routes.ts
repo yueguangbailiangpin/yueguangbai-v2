@@ -1,5 +1,5 @@
 import { apiFailure } from '@ygb/contracts';
-import type { Context,Hono } from 'hono';
+import type { Context,Hono,Next } from 'hono';
 import { requestIdFromContext } from './http-auth/errors';
 import {
   FormalOrderPolicyError,
@@ -12,11 +12,11 @@ export function registerFormalOrderPolicyGuards(app:Hono<any>):void{
   app.use('/api/staff/reviews/:reviewCaseId/approve',guardReviewApproval);
 }
 
-async function guardAdvancePrincipal(context:Context<any>,next:()=>Promise<void>):Promise<Response|void>{
+async function guardAdvancePrincipal(context:Context<any>,next:Next):Promise<Response|void>{
   return guard(context,context.req.param('formalOrderId')??'','RECORD_ADVANCE_PRINCIPAL',next);
 }
 
-async function guardReviewApproval(context:Context<any>,next:()=>Promise<void>):Promise<Response|void>{
+async function guardReviewApproval(context:Context<any>,next:Next):Promise<Response|void>{
   const reviewCaseId=(context.req.param('reviewCaseId')??'').normalize('NFKC').trim();
   if(reviewCaseId.length<1||reviewCaseId.length>200)return blocked(context,'VALIDATION_ERROR',400,'评论记录不正确');
   const row=await context.env.DB.prepare(`SELECT formal_order_id FROM review_cases WHERE id=? LIMIT 1`).bind(reviewCaseId).first<{formal_order_id:string}>();
@@ -28,7 +28,7 @@ async function guard(
   context:Context<any>,
   formalOrderId:string,
   action:FormalOrderGatedAction,
-  next:()=>Promise<void>,
+  next:Next,
 ):Promise<Response|void>{
   try{
     await requireFormalOrderAction(context.env.DB,formalOrderId,action);
