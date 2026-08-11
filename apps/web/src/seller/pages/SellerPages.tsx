@@ -1,1 +1,1 @@
-PROBE
+export * from './SellerPagesMarketplace';
