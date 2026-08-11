@@ -23,3 +23,5 @@ When Staff MCP is disabled, release templates contain only the explicit disabled
 ## Readiness routing boundary
 
 The production Worker treats both `/health` and `/ready` as dynamic Hono routes. `/ready` must never be served by the SPA fallback because an HTML success would conceal failed scheduler, recovery, storage or Access readiness.
+
+The Scheduled Handler resolves the same production runtime bindings as the fetch handler before executing any job. This ensures file cleanup and retention receive the validated R2 adapter instead of treating the raw R2 bucket binding as an absent application adapter.

@@ -44,3 +44,12 @@ The production Worker SHALL route `/ready` to the dynamic readiness handler and 
 
 - **WHEN** a production request reaches `/ready` while one or more readiness dependencies are not ready
 - **THEN** the Worker returns the structured readiness response with a non-success status rather than HTML.
+
+### Requirement: Scheduled runtime uses validated production bindings
+
+The production Scheduled Handler SHALL resolve the same validated database and object-storage bindings as the request runtime before running jobs.
+
+#### Scenario: File cleanup runs in production
+
+- **WHEN** the production scheduler invokes file orphan cleanup with a valid R2 bucket binding
+- **THEN** the job receives the R2 object-storage adapter and SHALL NOT report the adapter as unavailable merely because the raw Worker binding uses the R2 interface.

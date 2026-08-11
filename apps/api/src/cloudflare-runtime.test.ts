@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createMigratedTestDatabase } from '@ygb/testkit';
 import { AnonymousR2Bucket } from '../test-support/anonymous-r2-binding';
 import worker from './worker';
 import {
@@ -72,6 +73,19 @@ describe('production Cloudflare Worker runtime',()=>{
   it('allows scheduler and acquisition maintenance independently of retired Feishu integration',()=>{
     expect(resolveCloudflareRuntime({...bindings(),SCHEDULED_OPERATIONS_ENABLED:'true',ACQUISITION_MAINTENANCE_ENABLED:'true'})).not.toBeNull();
     expect(resolveCloudflareRuntime({...bindings(),SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'true'})).not.toBeNull();
+  });
+
+  it('adapts the production R2 binding before scheduled file cleanup runs',async()=>{
+    const database=createMigratedTestDatabase();
+    try{
+      const pending:Promise<unknown>[]=[];
+      await worker.scheduled({scheduledTime:2_000_000_000},{
+        ...bindings(),DB:database,SCHEDULED_OPERATIONS_ENABLED:'true',
+        SCHEDULED_OPERATIONS_DISABLED_JOBS:'reservation_expiry,instruction_expiry,outbox_delivery,staff_auth_cleanup',
+      },{waitUntil(promise){pending.push(promise)}});
+      await Promise.all(pending);
+      expect(await database.prepare("SELECT last_succeeded_at,last_failure_category FROM scheduled_job_states WHERE job_name='file_orphan_cleanup'").first()).toEqual({last_succeeded_at:2_000_000_000,last_failure_category:null});
+    }finally{database.close()}
   });
 });
 
