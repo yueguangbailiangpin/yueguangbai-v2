@@ -1,39 +1,48 @@
-# 生产候选备份、恢复、对账与回滚 Runbook
+# 月光白 V2 — 生产备份、恢复与发布 Readiness Runbook
+
+## 当前权威基线
+
+本分支目标数据库为连续 Migration `0001`–`0058`，`app_schema_state.schema_version=58`。
+
+生产上线前必须同时证明：
+
+1. release SHA 与待部署代码一致；
+2. D1 从生产只读导出后可以恢复到全新隔离数据库；
+3. 恢复库 `schema_version=58`、`integrity_check=ok`、`foreign_key_check=0`；
+4. D1 row counts、关键财务聚合、Buyer/Seller/Staff/订单/文件/调度 smoke read 与 Manifest 一致；
+5. R2 Manifest 与 D1 `file_objects` 对账无 missing/orphan/hash/size/MIME 冲突；
+6. 至少抽样读取真实备份对应的 R2 对象并校验 byte size + SHA-256；
+7. 生成与 release SHA、Schema 58、D1 Manifest SHA、R2 Manifest SHA 绑定的恢复证明；
+8. `/ready` 返回 `ready`，包括数据库、Scheduler、获客维护、对象存储和恢复证明全部通过。
+
+任何一项失败都保持 Production NO-GO。
 
 ## 安全边界
 
-本 Runbook 当前只允许本地或经批准的隔离环境。不得由本地通过推断生产授权；不得部署、写线上 D1、删除 R2、调用真实 Google/飞书/OpenAI、修改域名/DNS 或配置真实接收人。所有时间事实为 UTC 毫秒，员工展示使用 `Asia/Shanghai`。
+真实 SQL、SQLite、R2 Manifest、加密包、密钥、OAuth/Provider 配置、客户数据、真实金额和对象 key 均不得进入 Git。工作目录必须位于仓库外并限制权限。备份密钥与密文分开保存。
 
-真实 D1 SQL、SQLite、压缩包、加密包、Manifest、密钥、OAuth/Provider 配置和含真实行数/金额的结果均不得进入 Git。Git 只提交匿名 Fixture 的汇总证据。备份创建成功不等于可恢复；只有隔离恢复报告为 `PASS` 才可把该备份标为可用。
+恢复演练只允许写入新的隔离数据库，不覆盖任何生产数据库，不删除 R2，不部署 Worker，不修改 DNS/Cloudflare Access，不调用真实业务写接口。
 
-## Migration 决定与当前发布基线
+## D1 备份
 
-M10 当时不增加业务事实、权限、状态机或审计表，因此没有为发布证据创建 Migration；本最终本地准备 Change 同样不创建新 Migration。备份 Manifest 继续保存在加密外部包中，Git 只保存匿名发布证据。后续业务 Change 已把当前仓库 Migration 链推进为连续 `0001`–`0043`，当前本地候选的 `app_schema_state.schema_version=43`。乐天与 TikTok 日本站基础模块由 Migration 0042 追加平台注册和平台中性身份承载；Migration 0043 只前向强化卖家本金策略审计与快照一致性，两者均不写入真实历史业务数据。任何生产操作都必须在窗口开始时重新核验候选 SHA、连续 Migration 末号和线上 ledger，并把核验出的当前 schema 作为 `--expected-schema` 显式传入。备份与恢复 CLI 已删除 schema 34 默认值；省略、非整数或非正数均在读写数据库前失败关闭。不得因为仓库当前末号为 `0043` 就推断线上已应用到 `0043`。如果未来必须在 D1 持久化生产发布事实，必须另建 OpenSpec Change，并使用届时下一连续 Migration。
+```text
+npm run backup:d1:local -- \
+  --database /outside-git/source.sqlite \
+  --output-dir /outside-git/backup-candidate \
+  --key-file /outside-git/keys/d1-backup.key \
+  --release-commit-sha 40位小写候选Git提交SHA \
+  --expected-schema 58
+```
 
-## 本地/隔离备份
+要求：
 
-1. 在仓库外创建权限受限的工作目录和 32 字节随机主密钥；密钥与备份分开保管。POSIX 上密钥路径必须是普通文件，且 group/other 不得有任何权限（使用 `0600` 或 `0400`），否则工具 fail-closed。
-2. 输入必须是本地或隔离 SQLite/D1 导出，不得直接把生产数据库路径或 Secret 写进命令历史、日志或 PR。
-3. 执行：
+- release SHA 必须显式传入，禁止从 HEAD 猜；
+- 输出使用 AES-256-GCM，派生认证密钥与加密密钥分离；
+- 完整 Manifest 包含 schema inventory、全部表行数、关键财务汇总、完整性与 smoke read；
+- 明文 dump/Manifest 只存在于受控临时目录；
+- 最终密文、attestation 使用私有文件权限。
 
-   ```text
-   npm run backup:d1:local -- \
-     --database /outside-git/source.sqlite \
-     --output-dir /outside-git/backup-candidate \
-     --key-file /outside-git/keys/d1-backup.key \
-     --release-commit-sha 40位小写候选Git提交SHA \
-     --expected-schema 43
-   ```
-
-4. `--release-commit-sha` 必须由操作者显式提供，严格为 40 位小写 Git SHA；工具不读取当前 HEAD、不猜测候选版本。该 SHA 同时进入 Manifest 与 attestation。
-5. 工具先创建一致快照，再执行完整 SQL dump、gzip、SHA-256、schema/table/view/trigger/index inventory、全部表行数、关键财务聚合、关系完整性、关键应用 smoke read 和 Node/npm/SQLite/Wrangler 版本采集。
-6. 主密钥只作为 HKDF-SHA256 输入，分别派生 AES-256-GCM encryption subkey 与 attestation HMAC-SHA256 authentication subkey；两个算法不直接复用同一密钥。attestation 的 release/schema/time/key-id/bundle bytes+SHA/Manifest SHA 等核心字段全部受 HMAC 保护。
-7. 明文 SQL、压缩包和完整 Manifest 只存在于受限临时目录；最终写出 AES-256-GCM 加密包和最小 attestation，文件权限为 `0600`。attestation 不含数据库路径、对象 key、Drive ID、客户字段或财务行内容。
-8. 若未来经逐项授权执行真实 D1 export，先把远程 SQL 导出到仓库外受限目录，再导入新的隔离 SQLite，运行本工具；不得直接访问旧生产资源或提交导出物。
-
-## 隔离恢复
-
-执行：
+## D1 隔离恢复
 
 ```text
 npm run restore:d1:local -- \
@@ -42,66 +51,93 @@ npm run restore:d1:local -- \
   --restore-database /outside-git/restore-rehearsal/restored.sqlite \
   --key-file /outside-git/keys/d1-backup.key \
   --expected-release-commit-sha 40位小写候选Git提交SHA \
-  --expected-schema 43
+  --expected-schema 58
 ```
 
-恢复目标必须不存在，工具禁止覆盖。创建目标数据库之前，工具先把 attestation、bundle 和 Manifest 当作不可信外部输入，依次验证：attestation 精确 schema/字段上限、HMAC、派生 key-id、bundle bytes/SHA、Manifest SHA、显式 expected release SHA，以及 Manifest 与 attestation 的 schema/time/release/fixture 一致性。随后验证 AES-GCM auth tag、压缩/明文 SHA-256、schema version/fingerprint、四类 schema inventory、全部 row counts、关键财务聚合、`integrity_check`、`foreign_key_check` 和 Staff/Buyer/Seller/订单/文件/调度 smoke reads。
+恢复目标必须不存在。恢复完成后再次检查：
 
-Manifest runtime validator 拒绝 unknown 字段、错类型、重复/非法 inventory、未覆盖 table row counts、非法对象键、非规范财务十进制字符串、错误 tools/integrity/smoke/source/timezone/release SHA，以及超过固定数组、Record、Manifest、bundle 或解压大小上限的输入。任一差异直接拒绝且不得创建恢复目标，不能把备份标为 usable。attestation 是恢复必需输入，不是旁路文档。
+- `app_schema_state.schema_version=58`；
+- Migration `0001`–`0058` 连续；
+- `PRAGMA integrity_check=ok`；
+- `PRAGMA foreign_key_check` 无结果；
+- 所有 Manifest 表行数一致；
+- 关键财务聚合一致；
+- Staff Cloudflare Access 身份表、Marketplace scope、Buyer/Seller、正式订单、渠道归因、Schema 51–58 新完整性表均可读。
 
-恢复环境保持 Scheduler、Drive、飞书和 MCP hard-disabled，不配置回调或接收人。恢复演练输出只保留匿名汇总；隔离数据库完成审计后按受控临时数据流程销毁。
+## R2 Manifest 与抽样恢复
 
-## R2 / Drive 离线对账
+恢复证明必须与 D1 同一 release SHA 生成 R2 Manifest。Manifest 对每个稳定文件保存受保护引用、byte size、MIME、SHA-256，不把对象 key 或公开 URL写入 Git。
 
-只允许离线 JSON Fixture/Manifest；脚本不调用 Provider、不删除 R2。每项格式为：
-
-```json
-{
-  "authority_hash": "64位小写SHA-256",
-  "protected_ref": "64位小写SHA-256",
-  "byte_size": 1024,
-  "mime_type": "image/jpeg",
-  "sha256": "64位小写SHA-256",
-  "public_url": null
-}
-```
-
-`authority_hash` 由 D1 file ID 单向保护生成；`protected_ref` 由 R2 object key 或 Drive file ID 加存储类型前缀后单向保护生成。命令：
+离线对账：
 
 ```text
 npm run reconcile:files:offline -- \
-  --database /outside-git/isolated.sqlite \
+  --database /outside-git/restore-rehearsal/restored.sqlite \
   --r2-manifest /outside-git/r2-manifest.json \
   --drive-manifest /outside-git/drive-manifest.json
 ```
 
-报告固定覆盖 missing、orphan、duplicate、protected-ref、size、MIME、SHA-256 mismatch 和裸公开链接；只输出哈希 authority，不输出原始存储标识或 URL。任何 finding 阻断 Production GO。`DRIVE_ARCHIVED` 期望 Drive，其余稳定状态期望 R2；影子双副本必须在阶段证据中显式处置，不能静默当成最终稳定状态。
+必须无 missing、orphan、duplicate、size/MIME/SHA mismatch。随后从 R2 抽样 read-back 并校验 D1/Manifest 的 size + SHA。没有真实 read-back 只能说明“Manifest 自洽”，不能生成生产恢复证明。
 
-## 容量与峰值
+## 恢复证明
 
-`npm run dry-run:production-readiness` 使用 8 Staff、200 订单/日、15 分钟 50 单峰值、每单 4 个文件（共 800）、50 个可处理摘要、50 条批次上限运行匿名对账。必须得到 4 个订单批次、16 个文件批次、每 Staff 最多 25 单、零 finding、零外部调用。该结果证明本地算法在冻结规模内可执行，不替代真实 Provider 配额、D1/R2 容量或大陆网络验收。
+Migration 0058 的 `production_recovery_attestations` 是当前 Schema 的恢复证明记录。只有完成真实隔离恢复 + R2 抽样后才允许写入：
 
-## 告警、kill switch 与独立升级
+- release SHA；
+- schema_version=58；
+- D1 Manifest SHA-256；
+- R2 Manifest SHA-256；
+- restored database integrity/fk 均通过；
+- R2 sample read-back 通过；
+- 证据说明与确认人。
 
-发布合同固定覆盖 Worker 5xx、登录异常、job stale/backlog、文件、Drive、飞书、MCP、D1、R2 和容量。每项必须有阈值、低敏诊断、kill switch、恢复方法和 `PROVIDER_INDEPENDENT_REQUIRED` 升级通道。不得在仓库配置真实接收人；飞书失败时主升级通道必须独立于飞书。没有真实接收人和时间戳投递证据时保持 `OWNER_ACTION_REQUIRED / PRODUCTION_GO_BLOCKED`。
+该记录 append-only。旧 Schema 的恢复演练不会满足新版 `/ready`。
 
-关键 kill switch：
+## Scheduler / Acquisition Maintenance 上线 Gate
 
-- Scheduler：全局和逐 Job 禁用，等待租约到期后有界重放。
-- Drive：copy、proxy-read、R2-delete 分阶段关闭；永不自动删除 Drive 永久副本。
-- 飞书：sync 与 callback 分别关闭，D1/Web 继续权威运行。
-- MCP：全局和逐工具关闭，受控 Web 不受影响。
-- 文件/R2：停止新上传与 archive delete；只在 HEAD/SHA 验证后补偿或回灌。
-- D1/发布：停止新写入，切回 schema-compatible Worker 或从已隔离验证的备份恢复。
+生产模板要求：
 
-## 部署与回滚边界
+```text
+SCHEDULED_OPERATIONS_ENABLED=true
+ACQUISITION_MAINTENANCE_ENABLED=true
+```
 
-本任务不执行部署。经最终批准后的顺序必须是：确认 release SHA/配置快照/备份可恢复 → 保持外部开关关闭 → 只读核验线上 Migration ledger → 按 `0001`–`0043` 连续顺序应用获批且尚未应用的 Migration → 部署 schema-compatible Worker → 匿名 smoke → 分阶段启用 Provider/Job。Migration、部署、Scheduler、Drive delete、Provider 和 Production GO 必须分别批准；不得因为仓库当前末号为 `0043` 就推断线上已应用到 `0043`。
+发布后不得只看 Worker 200。`/ready` 要求关键 Job 有近期成功运行记录，并要求 Acquisition Maintenance 有近期成功记录。未实际成功运行过时 Production GO 不成立。
 
-首次 R2 删除前可切回 R2-only Worker。首次 R2 删除后，目标 Worker 必须支持 Drive proxy；否则必须按不可变 Manifest 将所有受影响对象 Drive→R2 回灌并 HEAD/SHA 验证，少一个都阻断回滚。已提交业务/财务事实不覆写或删除，只走领域前向补偿、更正或审计重放。
+关键 Job：
 
-## 保留、加密与责任
+- reservation_expiry
+- instruction_expiry
+- outbox_delivery
+- file_orphan_cleanup
+- staff_auth_cleanup
 
-- 备份密钥与密文分离，最小权限、MFA、双人恢复可用性和轮换由业务所有者在生产前确认。
-- 备份保留周期、异地副本、恢复负责人、演练频率和销毁审批属于老板外部清单；未批准前不推断默认值。
-- 任何删除前必须有最近一次隔离恢复成功证据、明确目标和可恢复性；本任务不删除任何真实数据。
+## Cloudflare Access Gate
+
+Staff 正式认证是 Cloudflare Access + Moonwhite Staff email/role/Marketplace authority。生产必须配置：
+
+```text
+STAFF_ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com
+STAFF_ACCESS_AUD=<Access Application AUD>
+STAFF_AUTH_ALLOWED_ORIGINS=https://正式域名
+```
+
+不得再使用旧 Feishu Staff Auth Provider 作为生产登录路径。Feishu Workbench 旧兼容变量保持关闭，不等于 Staff 登录依赖飞书。
+
+## 发布顺序
+
+1. checkout 精确 release SHA；
+2. 运行 Migration/contract/typecheck/test/build/browser 全量验收；
+3. 使用生产 D1 只读副本执行 0001–0058 升级 dry-run；
+4. 完成 D1 + R2 恢复演练并记录 Schema 58 recovery attestation；
+5. 校验 Cloudflare Access 配置与 Owner email；
+6. 校验 Scheduler 与 Acquisition Maintenance 生产开关；
+7. 仅在明确批准后执行生产 Migration；
+8. 部署 schema-compatible Worker；
+9. 验证 `/health` 与 `/ready`；
+10. Scheduler 至少成功运行并重新检查 `/ready`；
+11. 才可进入 Production GO。
+
+## 回滚原则
+
+已经确认的订单、财务快照、客户登记、渠道来源事实不得删除或覆写。业务异常使用前向补偿/冲正/审计事件。数据库灾难恢复只能恢复到新隔离目标并经核验后按批准流程切换，不允许工具自动覆盖生产。
