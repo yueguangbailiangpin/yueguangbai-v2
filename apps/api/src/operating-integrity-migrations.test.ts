@@ -4,36 +4,39 @@ import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null;});
 
-describe('frozen operating integrity migrations 0051-0053',()=>{
-  it('reaches schema 53 with immutable facts reporting and identity resolution objects',async()=>{
+describe('frozen operating integrity migrations 0051-0061',()=>{
+  it('reaches schema 61 with both operating-integrity generations installed',async()=>{
     database=createMigratedTestDatabase();
     const state=await database.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).first<{schema_version:number}>();
-    expect(Number(state?.schema_version)).toBe(53);
-    const names=await database.prepare(`SELECT type,name,sql FROM sqlite_schema WHERE name IN (
+    expect(Number(state?.schema_version)).toBe(61);
+    const required=[
       'acquisition_customer_intake_facts','acquisition_reporting_config','acquisition_historical_source_exemptions',
       'acquisition_lead_source_corrections','seller_customer_groups','seller_customer_group_marketplaces',
       'customer_identity_manual_bindings','customer_identity_resolution_cases','customer_identity_resolution_events',
-      'uq_staff_marketplace_role_primary','uq_acquisition_lead_active_identity_market',
-      'trg_staff_reactivated_restore_primary_scope','trg_acquisition_reporting_precision_immutable',
-      'trg_acquisition_source_correction_guard','trg_acquisition_intake_facts_no_update'
-    )`).all<{type:string;name:string;sql:string}>();
-    const found=new Set(names.results.map((row)=>row.name));
-    for(const required of [
-      'acquisition_customer_intake_facts','acquisition_reporting_config','acquisition_historical_source_exemptions',
-      'acquisition_lead_source_corrections','seller_customer_groups','seller_customer_group_marketplaces',
-      'customer_identity_manual_bindings','customer_identity_resolution_cases','customer_identity_resolution_events',
+      'marketplace_runtime_config','formal_order_operational_events','formal_order_financial_adjustments',
+      'review_visibility_observations','buyer_advance_principal_entries','buyer_advance_principal_settlements',
+      'customer_login_identifier_change_events','seller_member_invitations','seller_member_invitation_events',
+      'acquisition_machine_credentials','acquisition_machine_marketplaces','acquisition_machine_channels','acquisition_machine_rate_buckets',
+      'production_recovery_attestations','seller_member_portal_store_grants','formal_order_effective_dates',
       'uq_staff_marketplace_role_primary','uq_acquisition_lead_active_identity_market',
       'trg_staff_reactivated_restore_primary_scope','trg_acquisition_reporting_precision_immutable',
       'trg_acquisition_source_correction_guard','trg_acquisition_intake_facts_no_update',
-    ])expect(found.has(required),required).toBe(true);
-    const legacy=await database.prepare(`SELECT name FROM sqlite_schema
-      WHERE type='index' AND name='uq_acquisition_active_identity_per_type'`).first();
+      'trg_staff_permission_override_deny_only_insert','trg_acquisition_channel_no_new_both','trg_acquisition_channel_staff_label_immutable',
+      'trg_review_visibility_requires_approved_review','trg_advance_principal_payment_before_obligation',
+      'trg_formal_order_financial_adjustment_event_guard','trg_seller_member_portal_grant_scope_guard','trg_acquisition_machine_channel_scope_guard',
+    ];
+    const rows=await database.prepare(`SELECT type,name,sql FROM sqlite_schema WHERE name IN (${required.map(()=>'?').join(',')})`).bind(...required).all<{type:string;name:string;sql:string}>();
+    const found=new Set(rows.results.map((row)=>row.name));
+    for(const name of required)expect(found.has(name),name).toBe(true);
+    const legacy=await database.prepare(`SELECT name FROM sqlite_schema WHERE type='index' AND name='uq_acquisition_active_identity_per_type'`).first();
     expect(legacy).toBeNull();
-    const marketIndex=await database.prepare(`SELECT sql FROM sqlite_schema
-      WHERE type='index' AND name='uq_acquisition_lead_active_identity_market'`).first<{sql:string}>();
+    const marketIndex=await database.prepare(`SELECT sql FROM sqlite_schema WHERE type='index' AND name='uq_acquisition_lead_active_identity_market'`).first<{sql:string}>();
     expect(marketIndex?.sql).toContain('lead_type,marketplace_code,identity_hash');
-    const column=await database.prepare(`SELECT name,type,"notnull",dflt_value FROM pragma_table_info('staff_marketplace_scopes') WHERE name='scope_kind'`).first<any>();
-    expect(column).toMatchObject({name:'scope_kind',type:'TEXT',notnull:1,dflt_value:"'PRIMARY'"});
+    const scope=await database.prepare(`SELECT name,type,"notnull",dflt_value FROM pragma_table_info('staff_marketplace_scopes') WHERE name='scope_kind'`).first<any>();
+    expect(scope).toMatchObject({name:'scope_kind',type:'TEXT',notnull:1,dflt_value:"'PRIMARY'"});
+    const canonical=await database.prepare(`SELECT name FROM pragma_table_info('formal_orders') WHERE name='canonical_marketplace_code'`).first();
+    const localDate=await database.prepare(`SELECT name FROM pragma_table_info('formal_orders') WHERE name='marketplace_business_date'`).first();
+    expect(canonical).not.toBeNull();expect(localDate).not.toBeNull();
   });
 
   it('allows support coverage while keeping exactly one active primary per role and marketplace',async()=>{
@@ -52,9 +55,7 @@ describe('frozen operating integrity migrations 0051-0053',()=>{
         ('integrity-scope-support','integrity-staff-support','pre_sales','AMAZON_JP','ACTIVE','integrity-staff-primary',1,NULL,'TEST',1,1,'SUPPORT'),
         ('integrity-scope-support2','integrity-staff-support2','pre_sales','AMAZON_JP','ACTIVE','integrity-staff-primary',1,NULL,'TEST',1,1,'SUPPORT');
     `);
-    const supportCount=await database.prepare(`SELECT COUNT(*) AS count FROM staff_marketplace_scopes
-      WHERE role_code='pre_sales' AND marketplace_code='AMAZON_JP' AND status='ACTIVE' AND scope_kind='SUPPORT'`)
-      .first<{count:number}>();
+    const supportCount=await database.prepare(`SELECT COUNT(*) AS count FROM staff_marketplace_scopes WHERE role_code='pre_sales' AND marketplace_code='AMAZON_JP' AND status='ACTIVE' AND scope_kind='SUPPORT'`).first<{count:number}>();
     expect(Number(supportCount?.count)).toBe(2);
     await expect(database.prepare(`INSERT INTO staff_marketplace_scopes(
       id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
@@ -73,5 +74,15 @@ describe('frozen operating integrity migrations 0051-0053',()=>{
     `);
     const scope=await database.prepare(`SELECT scope_kind FROM staff_marketplace_scopes WHERE id='integrity-reactivate-scope'`).first<{scope_kind:string}>();
     expect(scope?.scope_kind).toBe('PRIMARY');
+  });
+
+  it('keeps operational channel audience and staff label safeguards in the database',async()=>{
+    database=createMigratedTestDatabase();
+    const activeGrant=await database.prepare(`SELECT COUNT(*) AS count FROM staff_permission_overrides WHERE status='ACTIVE' AND effect='GRANT'`).first<{count:number}>();
+    expect(Number(activeGrant?.count)).toBe(0);
+    const channelTrigger=await database.prepare(`SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='trg_acquisition_channel_no_new_both'`).first<{sql:string}>();
+    const labelTrigger=await database.prepare(`SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='trg_acquisition_channel_staff_label_immutable'`).first<{sql:string}>();
+    expect(channelTrigger?.sql).toContain("NEW.lead_type='BOTH'");
+    expect(labelTrigger?.sql).toContain('staff_label');
   });
 });
