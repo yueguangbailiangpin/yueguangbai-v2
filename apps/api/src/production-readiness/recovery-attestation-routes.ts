@@ -5,7 +5,7 @@ import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 
-const TARGET_SCHEMA=60;
+const TARGET_SCHEMA=61;
 class RecoveryAttestationError extends Error{constructor(public code:'VALIDATION_ERROR'|'FORBIDDEN'|'CONFLICT'|'DEPENDENCY_UNAVAILABLE',public status:400|403|409|503){super(code)}}
 
 export function registerProductionRecoveryAttestationRoutes(app:Hono<any>):void{
@@ -14,9 +14,7 @@ export function registerProductionRecoveryAttestationRoutes(app:Hono<any>):void{
     return success(context,{attestation:row?project(row):null});
   }));
   app.post('/api/staff/production-readiness/recovery-attestations',customerAuthOriginGuard(),wrap(async(context)=>{
-    const actor=owner(context);const body=await exact(context,[
-      'release_sha','schema_version','d1_manifest_sha256','r2_manifest_sha256','restored_database_integrity_ok','restored_foreign_keys_ok','r2_sample_readback_ok','evidence_note',
-    ]);
+    const actor=owner(context);const body=await exact(context,['release_sha','schema_version','d1_manifest_sha256','r2_manifest_sha256','restored_database_integrity_ok','restored_foreign_keys_ok','r2_sample_readback_ok','evidence_note']);
     const releaseSha=sha(body['release_sha'],7,64),schemaVersion=integer(body['schema_version']),d1=sha(body['d1_manifest_sha256'],64,64),r2=sha(body['r2_manifest_sha256'],64,64),note=text(body['evidence_note'],8,2000);
     if(body['restored_database_integrity_ok']!==true||body['restored_foreign_keys_ok']!==true||body['r2_sample_readback_ok']!==true||schemaVersion!==TARGET_SCHEMA)validation();
     const state=await context.env.DB.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).first<{schema_version:number}>();if(Number(state?.schema_version)!==TARGET_SCHEMA)throw new RecoveryAttestationError('CONFLICT',409);
