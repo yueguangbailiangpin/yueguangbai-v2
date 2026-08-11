@@ -4,9 +4,9 @@
 
 分支：`feature/frozen-portals-staff-acquisition-core`
 
-当前目标 Schema：**64**。Wave 15 不新增 Migration；它把现有 Schema64 的业务规则收成单一运行权威。
+Wave 15 验收时目标 Schema 为 **64**，且当时不新增 Migration；当前目标已由前向飞书清理提升为 Schema 65，业务规则仍沿用本快照。
 
-本文件高于旧文档中与 Domain Guard、前端业务判断、财务统一查询、行为测试、文件 Retention 冲突的描述。
+本文件记录 Wave 15 的 Schema 64 验收事实；当前权威与冲突处理遵循根目录 `AGENTS.md` 的顺序。
 
 ## 1. Formal Order Domain Policy 是应用层业务允许性权威
 

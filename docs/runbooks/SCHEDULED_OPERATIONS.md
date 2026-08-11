@@ -12,7 +12,7 @@ Worker 的 Cron 配置只定义触发频率；`SCHEDULED_OPERATIONS_ENABLED` 必
 
 ## 作业、恢复与人工操作
 
-`reservation_expiry`、`instruction_expiry`、`outbox_delivery`、`file_orphan_cleanup`、`staff_auth_cleanup` 与经独立开关控制的 `drive_archive` 运行既有领域服务。每次 Scheduled Handler 设 25 秒墙钟预算，每次作业持有 90 秒 D1 租约；预算耗尽时不再启动新作业，批次内保存“最后已尝试”游标后续跑。进程中断后仅在租约到期后被接管；旧 token 迟到完成只能记为 `lease_lost` 的部分运行，不能覆盖新 owner、游标或成功事实。业务幂等键、版本和唯一约束仍是最终副作用防线。
+`reservation_expiry`、`instruction_expiry`、`outbox_delivery`、`file_orphan_cleanup` 与经独立开关控制的 `drive_archive` 运行既有领域服务。每次 Scheduled Handler 设 25 秒墙钟预算，每次作业持有 90 秒 D1 租约；预算耗尽时不再启动新作业，批次内保存“最后已尝试”游标后续跑。进程中断后仅在租约到期后被接管；旧 token 迟到完成只能记为 `lease_lost` 的部分运行，不能覆盖新 owner、游标或成功事实。业务幂等键、版本和唯一约束仍是最终副作用防线。
 
 受已登录 ACTIVE Staff 且完成 scope、hard deny 与 Personal DENY 计算后保护的接口：
 

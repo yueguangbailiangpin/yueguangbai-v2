@@ -25,8 +25,9 @@ describe('release aggregate gate', () => {
     expect(RELEASE_COMMANDS).toEqual(expect.arrayContaining([
       'check', 'verify:final-production-go:local', 'verify:cloudflare-release',
       'dry-run:cloudflare-release', 'check:production-readiness', 'check:drive-archive',
-      'check:staff-auth-production', 'check:staff-mcp-production', 'test:wave14a:browser',
+      'check:staff-auth-production', 'test:wave14a:browser',
     ]));
+    expect(RELEASE_COMMANDS).not.toContain('check:staff-mcp-production');
   });
 
   it('runs in order and stops on the first failed sub-gate', () => {

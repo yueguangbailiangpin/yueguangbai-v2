@@ -15,9 +15,6 @@ export type CloudflareWorkerBindings = Omit<AppBindings, 'FILE_OBJECT_STORAGE'> 
   FILE_OBJECT_STORAGE?: ObjectStorageAdapter;
   FILE_OBJECT_STORAGE_R2?: unknown;
   WEB_ASSETS?: StaticAssetBinding;
-  STAFF_MCP_ENABLED?: string;
-  STAFF_MCP_LOCAL_MOCK_ENABLED?: string;
-  STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED?: string;
 };
 
 export interface ResolvedCloudflareRuntime {
@@ -32,7 +29,6 @@ const DISABLED_RELEASE_FLAGS = [
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-  'STAFF_MCP_LOCAL_MOCK_ENABLED',
 ] as const;
 
 export function resolveCloudflareRuntime(
@@ -64,17 +60,8 @@ export function resolveCloudflareRuntime(
     || !storage
     || !isStaticAssetBinding(bindings.WEB_ASSETS)
     || DISABLED_RELEASE_FLAGS.some((name) => bindings[name] !== 'false')
+    || Object.keys(bindings).some((name) => name.startsWith('STAFF_MCP_'))
     || !validStaffAccessReleaseBindings(bindings, appOrigin)
-    || !booleanFlag(bindings.STAFF_MCP_ENABLED)
-    || !booleanFlag(bindings.STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED)
-    || !booleanFlag(bindings.STAFF_MCP_CLEANUP_ENABLED)
-    || (bindings.STAFF_MCP_ENABLED === 'true'
-      && (bindings.STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED !== 'true'
-        || bindings.STAFF_MCP_CLEANUP_ENABLED !== 'true'
-        || !isStaticAssetBinding(bindings.STAFF_MCP_TOKEN_STATUS_SERVICE)))
-    || (bindings.STAFF_MCP_ENABLED === 'false'
-      && (bindings.STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED !== 'false'
-        || bindings.STAFF_MCP_CLEANUP_ENABLED !== 'false'))
     || !booleanFlag(bindings.SCHEDULED_OPERATIONS_ENABLED)
     || !booleanFlag(bindings.ACQUISITION_MAINTENANCE_ENABLED)
     || bindings.OPERATIONAL_ALERT_MODE !== 'disabled') return null;

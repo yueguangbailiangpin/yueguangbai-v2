@@ -4,7 +4,7 @@
 
 状态：已纳入 `feature/frozen-portals-staff-acquisition-core` 实现。
 
-本文件高于此前与下列 12 项冲突的旧描述。它不是新产品重设计，而是对已经冻结的 Buyer / Seller / Staff / Acquisition Core 补齐长期数据正确性、权限边界和真实运营闭环。
+本文件记录下列 12 项在 Schema 64 的验收事实，不自行覆盖更高权威文档。当前权威与冲突处理遵循根目录 `AGENTS.md` 的顺序。
 
 ## 1. 新增客户是不可变经营事实
 

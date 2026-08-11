@@ -11,12 +11,8 @@ const disabledFlags = [
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-  'STAFF_MCP_ENABLED',
-  'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
-  'STAFF_MCP_LOCAL_MOCK_ENABLED',
-  'STAFF_MCP_CLEANUP_ENABLED',
 ];
-const retiredFeishuKey = /^(?:FEISHU_|STAFF_AUTH_FEISHU)|^(?:STAFF_AUTH_PROVIDER|STAFF_AUTH_ENABLED|STAFF_AUTH_HASH_SECRET)$/u;
+const retiredCoreRuntimeKey = /^(?:FEISHU_|STAFF_AUTH_FEISHU|STAFF_MCP_)|^(?:STAFF_AUTH_PROVIDER|STAFF_AUTH_ENABLED|STAFF_AUTH_HASH_SECRET)$/u;
 
 export const requiredManagedSecrets = Object.freeze({
   initial_auth: Object.freeze([
@@ -28,7 +24,6 @@ export const requiredManagedSecrets = Object.freeze({
     'KEYWORD_HMAC_SECRET',
     'GOOGLE_DRIVE_CLIENT_SECRET',
     'GOOGLE_DRIVE_REFRESH_TOKEN',
-    'STAFF_MCP_BINDING_HASH_SECRET',
   ]),
 });
 
@@ -158,11 +153,11 @@ export function validateReleaseConfig(config, environment) {
   }
   const services = record?.services;
   if (services !== undefined && (!Array.isArray(services) || services.length !== 0)) {
-    errors.push('services:forbidden_while_staff_mcp_disabled');
+    errors.push('services:forbidden_in_core_release');
   }
   for (const key of Object.keys(vars ?? {})) {
-    if (retiredFeishuKey.test(key)) {
-      errors.push(`vars.${key}:retired_configuration_forbidden`);
+    if (retiredCoreRuntimeKey.test(key)) {
+      errors.push(`vars.${key}:core_runtime_configuration_forbidden`);
     }
     if (/SECRET|PASSWORD|REFRESH_TOKEN|CLIENT_SECRET/iu.test(key)) {
       errors.push(`vars.${key}:managed_secret_forbidden`);
@@ -197,8 +192,8 @@ function validateFrozenDefaults(config, environment) {
     if (vars?.[flag] !== 'false') errors.push(`vars.${flag}:must_be_false`);
   }
   for (const key of Object.keys(vars ?? {})) {
-    if (retiredFeishuKey.test(key)) {
-      errors.push(`vars.${key}:retired_configuration_forbidden`);
+    if (retiredCoreRuntimeKey.test(key)) {
+      errors.push(`vars.${key}:core_runtime_configuration_forbidden`);
     }
   }
   const assets = asRecord(record.assets);

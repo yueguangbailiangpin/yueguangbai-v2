@@ -2,7 +2,7 @@
 
 Status: **FROZEN** for the implementation branch `feature/frozen-portals-staff-acquisition-core`.
 
-This document is the product source of truth.  Integration work may fix compile errors, schema drift, browser defects, accessibility, tests and real API mismatches.  It must not redesign the frozen product without an explicit new product decision.
+This document is a Schema 64 product acceptance snapshot. Current authority and conflicts follow `AGENTS.md`, the Decision Register, Product Rules, Contracts and Architecture in that order. Integration work may fix compile errors, schema drift, browser defects, accessibility, tests and real API mismatches, but it must not redesign the product without an explicit new product decision.
 
 ## 1. Buyer Portal
 

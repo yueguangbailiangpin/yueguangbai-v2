@@ -6,7 +6,7 @@ import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 
-const TARGET_SCHEMA=64;
+const TARGET_SCHEMA=65;
 class RecoveryAttestationError extends Error{constructor(public code:'VALIDATION_ERROR'|'FORBIDDEN'|'CONFLICT'|'DEPENDENCY_UNAVAILABLE',public status:400|403|409|503){super(code)}}
 
 export function registerProductionRecoveryAttestationRoutes(app:Hono<AppEnv>):void{

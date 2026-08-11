@@ -20,8 +20,8 @@ describe('scheduled operation Staff HTTP contract',()=>{
     const response=await app.request('http://local/api/staff/operations/health',{headers:{'X-Test-Permission':'audit'}},bindings);
     expect(response.status).toBe(200);
     const body=await response.json() as {data:{jobs:Array<Record<string,unknown>>;alerts:Array<Record<string,unknown>>;time_basis:string;display_timezone:string}};
-    expect(body.data.jobs).toHaveLength(6);
-    expect(Object.fromEntries(body.data.jobs.map(j=>[j['job_name'],j['capability_scope']]))).toEqual({reservation_expiry:'ALL_ENABLED_MARKETPLACES',instruction_expiry:'LEGACY_JP_ONLY',outbox_delivery:'ALL_ENABLED_MARKETPLACES',file_orphan_cleanup:'ALL_ENABLED_MARKETPLACES',staff_auth_cleanup:'ALL_ENABLED_MARKETPLACES',drive_archive:'HARD_DISABLED'});
+    expect(body.data.jobs).toHaveLength(5);
+    expect(Object.fromEntries(body.data.jobs.map(j=>[j['job_name'],j['capability_scope']]))).toEqual({reservation_expiry:'ALL_ENABLED_MARKETPLACES',instruction_expiry:'LEGACY_JP_ONLY',outbox_delivery:'ALL_ENABLED_MARKETPLACES',file_orphan_cleanup:'ALL_ENABLED_MARKETPLACES',drive_archive:'HARD_DISABLED'});
     expect(body.data.jobs.filter((job)=>job['capability_scope']==='HARD_DISABLED').every((job)=>job['enabled']===false)).toBe(true);
     expect(body.data.alerts).toEqual([expect.objectContaining({signal_type:'login_anomaly',category:'auth',severity:'CRITICAL',summary_code:'LOGIN_ANOMALY_DETECTED',status:'OPEN',time_basis:'UTC_MS',display_timezone:'Asia/Shanghai'})]);
     expect([body.data.time_basis,body.data.display_timezone]).toEqual(['UTC_MS','Asia/Shanghai']);

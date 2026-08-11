@@ -18,7 +18,7 @@ Verification covers migration byte guards and local application through 0064, Ac
 
 ## Disabled Staff MCP release boundary
 
-When Staff MCP is disabled, release templates contain only the explicit disabled switches and no MCP Provider endpoint, OAuth, tool registry or Worker service binding. Enabling MCP remains a separate reviewed release configuration and cannot be simulated with a placeholder Worker during the core application deployment.
+The core release templates contain no Staff MCP switch, Provider endpoint, OAuth field, tool registry or Worker service binding, and the core Worker does not register the MCP transport. Enabling MCP remains a separate reviewed code and release configuration and cannot be simulated with a placeholder Worker during the core application deployment.
 
 ## Readiness routing boundary
 

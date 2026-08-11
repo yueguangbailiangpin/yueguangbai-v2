@@ -2,7 +2,7 @@
 
 日期：2026-08-11
 分支：`feature/frozen-portals-staff-acquisition-core`
-当前目标 Schema：**64**
+当前目标 Schema：**65**；本文件主体记录 Schema 64 清理验收快照。
 
 本文件用于解决第二层 14 项实现以后审计出的代码层技术债。它不重新设计产品；它把已经冻结的业务规则收成单一、可测试、无旁路的运行实现。
 
@@ -87,17 +87,17 @@ Seller Principal、Seller Service Fee、Buyer Refund 必须使用各自正式账
 ## 9. 生产 readiness 必须绑定当前 release
 
 `/ready` 只有同时满足以下条件才 200：
-- Schema 64；
+- Schema 65；
 - Scheduler enabled、最近成功、失败不晚于成功、backlog 在上限内；
 - Acquisition Maintenance enabled 且最近成功；
 - Object Storage 可读；
 - Cloudflare Access 配置不是 placeholder；
 - `APP_RELEASE_SHA` 有效；
-- Recovery Attestation 的 `schema_version=64` 且 `release_sha=APP_RELEASE_SHA`。
+- Recovery Attestation 的 `schema_version=65` 且 `release_sha=APP_RELEASE_SHA`。
 
 本地 release check 不得联网生产。真实 `/ready` 网络探测只能显式执行 `node scripts/probe-production-readiness.mjs`。
 
-## 10. 当前 Schema 64 Migration 尾部
+## 10. Schema 64 业务 Migration 尾部与当前 0065 清理尾部
 
 - 0061 post-confirmation integrity guards
 - 0062 runtime authority + privilege guards

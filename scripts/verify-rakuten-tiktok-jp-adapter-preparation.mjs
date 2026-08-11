@@ -5,9 +5,9 @@ import { pathToFileURL } from 'node:url';
 
 const root = path.resolve(import.meta.dirname, '..');
 
-const BASELINE_MIGRATION_COUNT = 64;
+const BASELINE_MIGRATION_COUNT = 65;
 const BASELINE_MIGRATION_TAIL =
-  '0064_marketplace_local_date_truth.sql';
+  '0065_retire_feishu_artifacts.sql';
 const FOUNDATION_MIGRATION_SHA256 =
   '7769d12450a73d5e19953e23bf04db4fedf5bb265497ffc7b1751e43776e0a46';
 

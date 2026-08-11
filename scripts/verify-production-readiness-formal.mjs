@@ -2,11 +2,11 @@ import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { invariant as assert,readRepositoryFile as read,repositoryRoot as root } from './verifier-utils.mjs';
 
-const EXPECTED_SCHEMA=64;
+const EXPECTED_SCHEMA=65;
 const migrations=readdirSync(path.join(root,'migrations')).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort();
-assert(migrations.length===EXPECTED_SCHEMA,'repository migration count must match schema 64');
+assert(migrations.length===EXPECTED_SCHEMA,'repository migration count must match schema 65');
 assert(migrations.every((name,index)=>Number(name.slice(0,4))===index+1),'Migration chain must be continuous');
-assert(migrations.at(-1)==='0064_marketplace_local_date_truth.sql','latest migration must be 0064 marketplace local-date truth');
+assert(migrations.at(-1)==='0065_retire_feishu_artifacts.sql','latest migration must retire Feishu artifacts');
 
 const template=read('apps/api/wrangler.production.template.jsonc');
 for(const marker of [
@@ -20,10 +20,10 @@ assert(!template.includes('"STAFF_AUTH_PROVIDER": "FEISHU"'),'Feishu must not be
 assert(!template.includes('FEISHU_WORKBENCH_APP_ID'),'production template must not require legacy Feishu workbench identity');
 
 const readiness=read('apps/api/src/operational-readiness/routes.ts');
-for(const marker of ['const TARGET_SCHEMA=64','APP_RELEASE_SHA','production_recovery_attestations','last_backlog_count','staff_access','release'])
+for(const marker of ['const TARGET_SCHEMA=65','APP_RELEASE_SHA','production_recovery_attestations','last_backlog_count','staff_access','release'])
   assert(readiness.includes(marker),`readiness boundary missing ${marker}`);
 const recovery=read('apps/api/src/production-readiness/recovery-attestation-routes.ts');
-assert(recovery.includes('const TARGET_SCHEMA=64'),'recovery attestation must target schema 64');
+assert(recovery.includes('const TARGET_SCHEMA=65'),'recovery attestation must target schema 65');
 assert(recovery.includes('APP_RELEASE_SHA'),'recovery attestation must bind current release SHA');
 const monitor=read('.github/workflows/production-health-monitor.yml');
 assert(monitor.includes('https://app.yueguangbai.net/ready'),'external health monitor must probe readiness');
@@ -32,7 +32,7 @@ console.log(JSON.stringify({
   status:'PASS',
   check:'production-readiness-local-static',
   schema:EXPECTED_SCHEMA,
-  migrations:'0001-0064_CONTINUOUS',
+  migrations:'0001-0065_CONTINUOUS',
   staff_auth:'CLOUDFLARE_ACCESS',
   scheduler:'REQUIRED',
   acquisition_maintenance:'REQUIRED',

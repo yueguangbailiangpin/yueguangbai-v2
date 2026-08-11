@@ -6,9 +6,9 @@ let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null;});
 
 describe('frozen operating integrity migrations 0051-0064',()=>{
-  it('reaches schema 64 with integrity, proof and local-date guards installed',async()=>{
+  it('reaches schema 65 with integrity, proof and local-date guards installed',async()=>{
     database=createMigratedTestDatabase();
-    const state=await database.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).first<{schema_version:number}>();expect(Number(state?.schema_version)).toBe(64);
+    const state=await database.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).first<{schema_version:number}>();expect(Number(state?.schema_version)).toBe(65);
     const required=[
       'acquisition_customer_intake_facts','acquisition_reporting_config','acquisition_historical_source_exemptions','acquisition_lead_source_corrections','seller_customer_groups','seller_customer_group_marketplaces','customer_identity_manual_bindings','customer_identity_resolution_cases','customer_identity_resolution_events',
       'marketplace_runtime_config','formal_order_operational_events','formal_order_financial_adjustments','review_visibility_observations','buyer_advance_principal_entries','buyer_advance_principal_settlements','buyer_advance_principal_entry_files','buyer_advance_principal_overpayments',

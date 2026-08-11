@@ -1,6 +1,6 @@
 export const SCHEDULED_OPERATION_JOB_NAMES = [
   'reservation_expiry', 'instruction_expiry', 'outbox_delivery',
-  'file_orphan_cleanup', 'staff_auth_cleanup', 'drive_archive',
+  'file_orphan_cleanup', 'drive_archive',
 ] as const;
 export type ScheduledOperationJobName = typeof SCHEDULED_OPERATION_JOB_NAMES[number];
 export const SCHEDULED_OPERATION_OUTCOMES = ['SUCCEEDED','PARTIAL','FAILED','SKIPPED','DISABLED'] as const;

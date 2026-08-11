@@ -37,6 +37,8 @@ Exact `gzip -9` baseline:
 
 ## 3. Screenshot Matrix and Per-image Review
 
+The paths, counts and hashes below record the original acceptance matrix. The current tree retains two representative final-state images; the other historical binaries remain recoverable from Git commit `8cb39ed870df1fc5c6874dd4e5b86e12e22c39d2`. See `openspec/changes/archive/VISUAL_EVIDENCE_RETENTION.md`.
+
 The Contract-valid deterministic fixture in `apps/web/e2e/staff-visual-refresh.spec.ts` fixes locale `zh-CN`, timezone `Asia/Shanghai`, light mode, reduced motion, clock, four Staff Sessions, permissions, scoped IDs, queue/detail, acquisition, product/schedule and dashboard endpoint responses. It makes no production or external request.
 
 - Before: `references/visuals/before`, 26 PNGs, 4,166,040 bytes, aggregate manifest SHA-256 `cfe07f2a6355b5540418060cda385c100d3a2d6a0190c41603c010f764a10e51`.

@@ -16,10 +16,6 @@ const forbiddenTrackedFiles = new Set([
   'apps/web/.env.local',
 ]);
 
-const ignoredFiles = new Set([
-  'CODEX_BOOTSTRAP_PROMPT.md',
-]);
-
 const patterns = [
   {
     label: 'OpenAI/DeepSeek API key',
@@ -122,7 +118,7 @@ for (const file of forbiddenTrackedFiles) {
 }
 
 for (const file of projectFiles) {
-  if (ignoredFiles.has(file) || !existsSync(file)) continue;
+  if (!existsSync(file)) continue;
   const stats = statSync(file);
   if (!stats.isFile() || stats.size > 2 * 1024 * 1024) continue;
 

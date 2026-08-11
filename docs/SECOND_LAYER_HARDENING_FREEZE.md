@@ -2,18 +2,18 @@
 
 日期：2026-08-11
 分支：`feature/frozen-portals-staff-acquisition-core`
-当前目标 Schema：**64**
+当前目标 Schema：**65**；本文件主体仍是 Schema 64 第二层验收快照。
 
-本文件与 `docs/CODE_INTEGRITY_CLEANUP_FREEZE.md` 共同高于旧文档中与生产认证、Schema、文件权限、订单异常、评论展示、提前本金、员工主/协助、渠道、客户换微信、Seller 多成员、Agent 密钥、Marketplace/时区冲突的描述。代码收口细节以 `CODE_INTEGRITY_CLEANUP_FREEZE.md` 为最高优先级。
+本文件与 `docs/CODE_INTEGRITY_CLEANUP_FREEZE.md` 记录 Schema 64 第二层验收事实，不自行建立文档优先级；当前权威与冲突处理遵循根目录 `AGENTS.md` 的顺序。
 
 ## 1. Staff 登录
 生产 Staff 身份：Cloudflare Access + Moonwhite Staff Authority。Cloudflare 证明邮箱，Moonwhite active/status/role/Marketplace 决定最终权限。旧 Feishu Staff Auth 不再是正式依赖。
 
 ## 2. 恢复证明
-Production GO 必须覆盖当前 **Schema64 + 当前 APP_RELEASE_SHA**：D1 加密备份/隔离恢复、integrity/FK/业务 smoke/财务聚合、R2 manifest 对账和抽样 read-back，并登记不可变 recovery attestation。旧 39/43/61 proof 不能证明当前 release 可恢复。
+Production GO 必须覆盖当前 **Schema65 + 当前 APP_RELEASE_SHA**：D1 加密备份/隔离恢复、integrity/FK/业务 smoke/财务聚合、R2 manifest 对账和抽样 read-back，并登记不可变 recovery attestation。旧 39/43/61/64 proof 不能证明当前 release 可恢复。
 
 ## 3. health/readiness
-`/health` 仅 liveness。`/ready` 同时要求 Schema64、Scheduler、Acquisition Maintenance、对象存储、Cloudflare Access 配置、APP_RELEASE_SHA，以及同一个 release SHA 的 Schema64 恢复证明。
+`/health` 仅 liveness。`/ready` 同时要求 Schema65、Scheduler、Acquisition Maintenance、对象存储、Cloudflare Access 配置、APP_RELEASE_SHA，以及同一个 release SHA 的 Schema65 恢复证明。
 
 ## 4. Scheduler
 生产必须 `SCHEDULED_OPERATIONS_ENABLED=true`、`ACQUISITION_MAINTENANCE_ENABLED=true`。关键 job 未成功、失败晚于成功、过期或 backlog 超限时 readiness 失败。
@@ -87,7 +87,7 @@ Seller OWNER 可邀请 OPERATIONS / FINANCE / VIEWER，不通过邀请创建第�
 - 0063 advance principal proof + overpayment
 - 0064 Marketplace local-date truth
 
-当前目标：**Schema64 / 0001→0064 continuous**。
+当前目标：**Schema65 / 0001→0065 continuous**。
 
 ## 本地 Codex 验收
 干净 checkout + Node24：migration guards、local migration、contracts/domain/api/web typecheck、full Vitest、web build、Buyer/Seller/Staff Playwright、真实历史 D1 副本升级。

@@ -16,6 +16,8 @@
 
 ## 2. Screenshot Matrix and Review
 
+The paths, counts and hashes below record the original acceptance matrix. The current tree retains two representative final-state images; the other historical binaries remain recoverable from Git commit `8cb39ed870df1fc5c6874dd4e5b86e12e22c39d2`. See `openspec/changes/archive/VISUAL_EVIDENCE_RETENTION.md`.
+
 Deterministic fixture settings are fixed UTC facts, `zh-CN`, `Asia/Shanghai`, light color scheme, reduced motion, stable DTO-valid responses, stable routes, and stable filenames.
 
 - Before: `references/visuals/before` — 40 PNG files.

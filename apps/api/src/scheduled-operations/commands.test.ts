@@ -104,9 +104,9 @@ describe('scheduled operation manual commands',()=>{
 
   it('requires an ACTIVE effective actor with the dedicated permission',async()=>{
     database=createMigratedTestDatabase();
-    await expect(runScheduledOperationManually(database,{enabled:true},{jobName:'staff_auth_cleanup',command:{reason_code:'OPERATOR_RETRY'}},{...commandContext('missing-permission-key'),actor:actor([])})).rejects.toMatchObject({code:'FORBIDDEN',status:403});
+    await expect(runScheduledOperationManually(database,{enabled:true},{jobName:'reservation_expiry',command:{reason_code:'OPERATOR_RETRY'}},{...commandContext('missing-permission-key'),actor:actor([])})).rejects.toMatchObject({code:'FORBIDDEN',status:403});
     const inactive=actor(['SCHEDULED_OPERATIONS_RUN']); Reflect.set(inactive,'staffStatus','DISABLED');
-    await expect(runScheduledOperationManually(database,{enabled:true},{jobName:'staff_auth_cleanup',command:{reason_code:'OPERATOR_RETRY'}},{...commandContext('inactive-actor-key'),actor:inactive})).rejects.toMatchObject({code:'FORBIDDEN',status:403});
+    await expect(runScheduledOperationManually(database,{enabled:true},{jobName:'reservation_expiry',command:{reason_code:'OPERATOR_RETRY'}},{...commandContext('inactive-actor-key'),actor:inactive})).rejects.toMatchObject({code:'FORBIDDEN',status:403});
     expect(await count(database,'scheduled_manual_commands')).toBe(0);
   });
 });

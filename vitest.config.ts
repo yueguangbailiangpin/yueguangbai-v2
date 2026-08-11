@@ -10,6 +10,7 @@ export default defineConfig({
       'apps/**/*.{test,spec}.{ts,tsx}',
       'packages/**/*.{test,spec}.{ts,tsx}',
       'scripts/**/*.{test,spec}.mjs',
+      'tools/**/*.{test,spec}.{ts,tsx}',
     ],
     exclude: [
       'apps/web/e2e/**',

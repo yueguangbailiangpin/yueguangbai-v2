@@ -25,10 +25,10 @@
 
 1. `PROJECT.md`
 2. `AGENTS.md`
-3. `docs/decisions/V2_DECISION_REGISTER.md`
-4. `docs/product/V2_PRODUCT_RULES.md`
-5. `docs/architecture/V2_ARCHITECTURE.md`
-6. `docs/contracts/*`
-7. `docs/acceptance/V2_ACCEPTANCE_MATRIX.md`
-8. `docs/migration/V2_LEGACY_CODE_REUSE.md`
-9. `CODEX_BOOTSTRAP_PROMPT.md`
+3. `docs/CURRENT_SYSTEM_STATE.md`
+4. `docs/decisions/V2_DECISION_REGISTER.md`
+5. `docs/product/V2_PRODUCT_RULES.md`
+6. `docs/architecture/V2_ARCHITECTURE.md`
+7. `docs/contracts/*`
+8. `docs/acceptance/V2_ACCEPTANCE_MATRIX.md`
+9. `docs/migration/V2_LEGACY_CODE_REUSE.md`

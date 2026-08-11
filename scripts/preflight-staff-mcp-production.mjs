@@ -44,12 +44,12 @@ export const staffMcpManagedSecrets = Object.freeze([
 export function inspectStaffMcpTemplate(environment) {
   requireEnvironment(environment);
   const config = readLocalReleaseConfig(templatePath(environment));
-  const errors = validateDisabledTemplate(config, environment);
+  const errors = validateCoreTemplateAbsence(config, environment);
   const requiredFields = mcpPlaceholderFields(config);
   const requiredBindings = mcpPlaceholderBindings(config);
   return Object.freeze({
     status: errors.length === 0
-      ? 'DISABLED_BY_DEFAULT'
+      ? 'ABSENT_FROM_CORE_RELEASE'
       : 'INVALID_TEMPLATE',
     environment,
     required_fields: Object.freeze(requiredFields),
@@ -216,34 +216,17 @@ export function validateStaffMcpActivationEvidence(
   return [...new Set(errors)].sort();
 }
 
-function validateDisabledTemplate(config, environment) {
+function validateCoreTemplateAbsence(config, environment) {
   const vars = record(record(config)?.vars);
   const errors = [];
   if (!vars) return ['vars:missing'];
   if (vars.APP_ENVIRONMENT !== environment) errors.push('vars.APP_ENVIRONMENT:wrong_environment');
-  for (const key of [
-    'STAFF_MCP_ENABLED',
-    'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
-    'STAFF_MCP_LOCAL_MOCK_ENABLED',
-    'STAFF_MCP_CLEANUP_ENABLED',
-  ]) {
-    if (vars[key] !== 'false') errors.push(`vars.${key}:must_be_false`);
-  }
-  for (const secret of staffMcpManagedSecrets) {
-    if (Object.hasOwn(vars, secret)) errors.push(`vars.${secret}:managed_secret_forbidden`);
-  }
   for (const key of Object.keys(vars)) {
-    if (key.startsWith('STAFF_MCP_') && ![
-      'STAFF_MCP_ENABLED',
-      'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
-      'STAFF_MCP_LOCAL_MOCK_ENABLED',
-      'STAFF_MCP_CLEANUP_ENABLED',
-      'STAFF_MCP_CLEANUP_LIMIT',
-    ].includes(key)) errors.push(`vars.${key}:forbidden_while_disabled`);
+    if (key.startsWith('STAFF_MCP_')) errors.push(`vars.${key}:forbidden_in_core_release`);
   }
   const services = record(config)?.services;
   if (services !== undefined && (!Array.isArray(services) || services.length !== 0)) {
-    errors.push('services:forbidden_while_staff_mcp_disabled');
+    errors.push('services:forbidden_in_core_release');
   }
   return errors;
 }

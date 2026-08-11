@@ -13,9 +13,9 @@ import {
 
 describe('Staff MCP production preflight', () => {
   for (const environment of ['staging', 'production']) {
-    it(`keeps ${environment} template absent, disabled and zero-network`, () => {
+    it(`keeps ${environment} core template free of Staff MCP and zero-network`, () => {
       const report = inspectStaffMcpTemplate(environment);
-      expect(report.status).toBe('DISABLED_BY_DEFAULT');
+      expect(report.status).toBe('ABSENT_FROM_CORE_RELEASE');
       expect(report.required_fields).toEqual([]);
       expect(report.required_binding_fields).toEqual([]);
       expect(report.required_managed_secret_names)

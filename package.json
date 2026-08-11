@@ -8,7 +8,8 @@
   },
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "tools/*"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
@@ -24,7 +25,7 @@
     "verify:module1:buyer": "node scripts/verify-module1-buyer-security.mjs && node scripts/verify-module1-migration-0028.mjs",
     "verify:api-contract": "node scripts/verify-api-contract-baseline.mjs && vitest run apps/api/src/api-contract-baseline-alignment.test.ts",
     "check:module1:buyer": "node scripts/verify-module1-buyer-security.mjs && node scripts/verify-module1-migration-0028.mjs && npm run test:module1:buyer && npm run typecheck --workspace @ygb/web && npm run build --workspace @ygb/web",
-    "check:wave14a": "node scripts/verify-wave14a-frontend-security.mjs && npm run test:wave14a && npm run typecheck --workspace @ygb/web && npm run build --workspace @ygb/web && npm run verify:web-static-build",
+    "check:wave14a": "node scripts/verify-web-source-boundaries.mjs && npm run test:wave14a && npm run typecheck --workspace @ygb/web && npm run build --workspace @ygb/web && npm run verify:web-static-build",
     "db:migrate:local": "wrangler d1 migrations apply yueguangbai-v2-local --local --config apps/api/wrangler.local.jsonc",
     "db:verify": "node scripts/verify-migrations.mjs",
     "verify:migration-guards": "node scripts/verify-migration-version-guards.mjs",
@@ -96,11 +97,11 @@
     "verify:production-readiness:formal": "node scripts/verify-production-readiness-formal.mjs",
     "verify:final-production-go:local": "node scripts/verify-final-production-go-local-preparation.mjs",
     "verify:openspec:strict": "openspec validate --all --strict",
-    "dry-run:historical-order-migration": "python3 scripts/historical_order_master_migration.py",
-    "test:historical-order-migration": "python3 scripts/historical_order_master_migration.py --negative-tests",
+    "dry-run:historical-order-migration": "python3 tools/imports/historical-order/historical_order_master_migration.py",
+    "test:historical-order-migration": "python3 tools/imports/historical-order/historical_order_master_migration.py --negative-tests",
     "dry-run:seller-partner-import": "node scripts/dry-run-seller-partner-import.mjs",
     "dry-run:current-product-seller-mapping": "node scripts/dry-run-current-reservable-product-seller-mapping.mjs",
-    "test:seller-partner-import": "vitest run apps/api/src/seller-partner-import/seller-partner-import.test.ts",
+    "test:seller-partner-import": "vitest run tools/imports/seller-partner/seller-partner-import.test.ts",
     "preflight:seller-principal-rate": "node scripts/preflight-seller-principal-rate-activation.mjs",
     "test:seller-principal-rate-bootstrap": "vitest run scripts/preflight-seller-principal-rate-activation.test.mjs packages/domain/src/pricing/fixed-point.test.ts apps/api/src/pricing/seller-principal-rate-policy.test.ts apps/api/src/pricing/routes.test.ts apps/api/src/pricing/migration-0043.test.ts apps/api/src/formal-orders/formal-orders.test.ts apps/web/src/staff/pricing/SellerPrincipalRatePolicyWorkspace.msw.test.tsx apps/web/src/staff/contracts/runtime.test.ts",
     "check:seller-principal-rate-bootstrap": "npm run db:verify && npm run verify:migration-guards && npm run preflight:seller-principal-rate && npm run test:seller-principal-rate-bootstrap && npm run typecheck --workspace @ygb/contracts && npm run typecheck --workspace @ygb/domain && npm run typecheck --workspace @ygb/api && npm run typecheck --workspace @ygb/web",

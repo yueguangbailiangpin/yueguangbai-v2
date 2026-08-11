@@ -62,13 +62,15 @@ describe('Cloudflare release preflight', () => {
     expect(errors).toContain('routes.0.pattern:origin_mismatch');
   });
 
-  it('rejects retired Feishu configuration and invalid Access settings', () => {
+  it('rejects retired and optional runtime configuration in the core release', () => {
     const config = anonymousConfig('production');
     config.vars.FEISHU_WORKBENCH_SYNC_ENABLED = 'false';
+    config.vars.STAFF_MCP_ENABLED = 'false';
     config.vars.STAFF_ACCESS_TEAM_DOMAIN = 'http://team.cloudflareaccess.com';
     config.vars.STAFF_ACCESS_AUD = 'short';
     const errors = validateReleaseConfig(config, 'production');
-    expect(errors).toContain('vars.FEISHU_WORKBENCH_SYNC_ENABLED:retired_configuration_forbidden');
+    expect(errors).toContain('vars.FEISHU_WORKBENCH_SYNC_ENABLED:core_runtime_configuration_forbidden');
+    expect(errors).toContain('vars.STAFF_MCP_ENABLED:core_runtime_configuration_forbidden');
     expect(errors).toContain('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_https_origin');
     expect(errors).toContain('vars.STAFF_ACCESS_AUD:missing_or_invalid');
   });
@@ -91,7 +93,7 @@ describe('Cloudflare release preflight', () => {
     const errors = validateReleaseConfig(config, 'production');
     expect(errors).toContain('d1_databases:binding_invalid');
     expect(errors).toContain('r2_buckets:binding_invalid');
-    expect(errors).toContain('services:forbidden_while_staff_mcp_disabled');
+    expect(errors).toContain('services:forbidden_in_core_release');
   });
 
   it('allows only real files outside the repository by lexical and real path', () => {

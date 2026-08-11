@@ -60,15 +60,7 @@ cleanup 必须显式开启才能装配 production runtime。每个 MCP 请求先
 
 ## 7. 配置与 Secrets
 
-staging/production 模板必须同时保持：
-
-```text
-STAFF_MCP_ENABLED=false
-STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED=false
-STAFF_MCP_LOCAL_MOCK_ENABLED=false
-```
-
-公开 URL、rate/cleanup/timeout 只使用常量或 `REQUIRED_*` placeholder；Secret 只列名称 `STAFF_MCP_BINDING_HASH_SECRET`，不得写入 `vars` 或 Git。`STAFF_MCP_TOKEN_STATUS_SERVICE` 是 Cloudflare Service Binding 名称，模板只保存占位 service 名称。运行时必须同时具备 D1、由 D1 构造的 application service、metadata/JWKS provider、token-status Service Binding、同源公开 `STAFF_MCP_RESOURCE_DOCUMENTATION_URL` / `STAFF_MCP_RESOURCE_POLICY_URL`、非空 `STAFF_MCP_ENABLED_TOOLS`、显式 cleanup enabled 与 D1 GLOBAL enabled；任一缺失即仅关闭 MCP。
+核心 staging/production 模板不得包含任何 `STAFF_MCP_*` 变量或 Service Binding，核心 Worker 也不注册 MCP transport。未来若重新批准该能力，必须使用独立评审的 Git 外 rendered config；公开 URL、rate/cleanup/timeout 只使用常量或 `REQUIRED_*` placeholder，Secret 只列名称 `STAFF_MCP_BINDING_HASH_SECRET`，不得写入 `vars` 或 Git。`STAFF_MCP_TOKEN_STATUS_SERVICE` 是独立配置中的 Cloudflare Service Binding 名称。运行时必须同时具备 D1、由 D1 构造的 application service、metadata/JWKS provider、token-status Service Binding、同源公开 `STAFF_MCP_RESOURCE_DOCUMENTATION_URL` / `STAFF_MCP_RESOURCE_POLICY_URL`、非空 `STAFF_MCP_ENABLED_TOOLS`、显式 cleanup enabled 与 D1 GLOBAL enabled；任一缺失即不构造 MCP runtime。
 
 D1 application service 直接读取现有 Staff work item、Customer、Seller、Order、Review、Refund、Settlement 权威表/视图并复用当前权限和 Data Scope，不新增业务镜像表。production factory 固定停用截图工具，直到另一个获批边界能复用 File Audience + Read Intent + 受控文件 provider；同时固定停用尚无真实 D1 exception projection 的异常列表，不得用安全空页冒充权威“无异常”。其余 11 个有限读取/草稿工具只是“可构造全集”，生产必须通过 `STAFF_MCP_ENABLED_TOOLS` 显式选择非空子集；缺失、空值、重复、未知或上述两个未解析工具均使 runtime 构造失败。`STAFF_MCP_DISABLED_TOOLS` 只能进一步缩小，不能重新启用。local Mock 不构成这两个工具的 production 激活能力。
 

@@ -3,11 +3,10 @@ import { reconcileDriveArchiveBatch, runDriveArchiveBatch } from '../cold-image-
 import { claimNextOutboxEvent, markOutboxFailed, markOutboxSent } from '../foundation/outbox';
 import { reconcileInstructionAssetOrphans } from '../order-instructions/asset-reconciliation';
 import { countOrderInstructionExpiryCandidates, runOrderInstructionExpiryScan } from '../order-instructions/expiry-scan';
-import { cleanupExpiredStaffAuthEphemeralRecords } from '../staff-auth/cleanup';
 import { expireReservation } from '../reservations/expire-reservation';
 
 export const SCHEDULED_JOB_NAMES = [
-  'reservation_expiry', 'instruction_expiry', 'outbox_delivery', 'file_orphan_cleanup', 'staff_auth_cleanup',
+  'reservation_expiry', 'instruction_expiry', 'outbox_delivery', 'file_orphan_cleanup',
   'drive_archive',
 ] as const;
 export type ScheduledJobName = typeof SCHEDULED_JOB_NAMES[number];
@@ -94,7 +93,6 @@ async function execute(database: SqlDatabase, job: ScheduledJobName, input: Para
     const backlog=await countOrderInstructionExpiryCandidates(database,'JP',input.now);
     return { processed:r.attempted, succeeded:r.expired + r.unchanged, failed:r.failed, backlog, cursorJson:r.completed ? undefined : JSON.stringify({marketplace_code:'JP',next_deadline_at:r.next_deadline_at,next_instruction_id:r.next_instruction_id}), failureCategory:r.failed ? 'job_item_failed' : undefined };
   }
-  if (job === 'staff_auth_cleanup') { const r = await cleanupExpiredStaffAuthEphemeralRecords(database, input.now, {limit:batchSize,dryRun:input.dryRun === true}); return { processed:r.staffLoginStatesDeleted+r.staffAuthRateLimitsDeleted, succeeded:r.staffLoginStatesDeleted+r.staffAuthRateLimitsDeleted, failed:0, backlog:r.hasMore ? batchSize+1 : 0 }; }
   if (job === 'file_orphan_cleanup') { if (!input.storage) return {processed:0,succeeded:0,failed:1,backlog:await countFileOrphanCleanupCandidates(database,input.now),failureCategory:'adapter_unavailable'}; const state=await database.prepare('SELECT cursor_json FROM scheduled_job_states WHERE job_name=?').bind(job).first<{cursor_json:string|null}>(); const cursor=parseFileCursor(state?.cursor_json); const r = await reconcileInstructionAssetOrphans(database, input.storage, {limit:batchSize,cursor,dryRun:input.dryRun === true,...(input.deadlineReached ? {deadlineReached:input.deadlineReached} : {})}, {actor, idempotencyKey:`scheduled:file-orphan:${Math.floor(input.now/60_000)}`, now:input.now}); return {processed:r.scanned,succeeded:r.deleted,failed:r.deferred,backlog:r.backlog_count,failureCategory:r.deferred?'file_cleanup_deferred':undefined,cursorJson:r.next_cursor ? JSON.stringify(r.next_cursor) : undefined}; }
   if (job === 'drive_archive') {
     if (!input.storage || !input.driveAdapter) return {processed:0,succeeded:0,failed:1,backlog:0,failureCategory:'adapter_unavailable'};

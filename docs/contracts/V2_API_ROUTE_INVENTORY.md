@@ -1,13 +1,12 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。共有 236 个唯一端点：232 个 `/api/*`，以及 `/health`、`/ready` 和默认关闭并受 OAuth 保护的 Staff MCP metadata/resource。
+这是默认 App 的可复现 route inventory。共有 234 个唯一端点：232 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP 不属于核心 App route table。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表核对；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都必须经过合同更新与复核。
 
 ## GET
 
 ```text
-GET /.well-known/oauth-protected-resource/mcp
 GET /api/buyer-auth/invitations/:token
 GET /api/buyer-portal/demands
 GET /api/buyer-portal/demands/:id
@@ -249,7 +248,6 @@ POST /api/staff/seller-principal-rate-policies/:id/reject
 POST /api/staff/seller-principal-rate-policies/submit
 POST /api/staff/seller-settlements/:organizationId/payments
 POST /api/staff/seller-settlements/:organizationId/reconciliation
-POST /mcp
 ```
 
 ## PUT

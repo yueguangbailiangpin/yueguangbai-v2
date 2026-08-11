@@ -18,7 +18,7 @@ import {
 
 describe('scheduled operations public contract', () => {
   it('uses finite low-cardinality enums and no payload-shaped DTO fields', () => {
-    expect(SCHEDULED_OPERATION_JOB_NAMES).toHaveLength(6);
+    expect(SCHEDULED_OPERATION_JOB_NAMES).toHaveLength(5);
     expect(SCHEDULED_OPERATION_OUTCOMES).toContain('PARTIAL');
     expect(SCHEDULED_OPERATION_FAILURE_CATEGORIES).not.toContain('payload');
   });

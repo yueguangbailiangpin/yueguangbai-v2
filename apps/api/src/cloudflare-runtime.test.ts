@@ -61,7 +61,7 @@ describe('production Cloudflare Worker runtime',()=>{
       {...bindings(),STAFF_AUTH_ALLOWED_ORIGINS:'https://other.invalid'},
       {...bindings(),SCHEDULED_OPERATIONS_ENABLED:'invalid'},
       {...bindings(),ACQUISITION_MAINTENANCE_ENABLED:undefined},
-      {...bindings(),STAFF_MCP_ENABLED:'true'},
+      {...bindings(),STAFF_MCP_ENABLED:'false'},
     ] as unknown as CloudflareWorkerBindings[];
     for(const env of cases){
       const response=await worker.fetch(new Request(`${origin}/health`),env,executionContext);
@@ -81,7 +81,7 @@ describe('production Cloudflare Worker runtime',()=>{
       const pending:Promise<unknown>[]=[];
       await worker.scheduled({scheduledTime:2_000_000_000},{
         ...bindings(),DB:database,SCHEDULED_OPERATIONS_ENABLED:'true',
-        SCHEDULED_OPERATIONS_DISABLED_JOBS:'reservation_expiry,instruction_expiry,outbox_delivery,staff_auth_cleanup',
+        SCHEDULED_OPERATIONS_DISABLED_JOBS:'reservation_expiry,instruction_expiry,outbox_delivery',
       },{waitUntil(promise){pending.push(promise)}});
       await Promise.all(pending);
       expect(await database.prepare("SELECT last_succeeded_at,last_failure_category FROM scheduled_job_states WHERE job_name='file_orphan_cleanup'").first()).toEqual({last_succeeded_at:2_000_000_000,last_failure_category:null});
@@ -98,7 +98,6 @@ function bindings():CloudflareWorkerBindings{return {
   STAFF_ACCESS_AUD:'staff-access-audience-001',STAFF_AUTH_ALLOWED_ORIGINS:origin,
   SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
   DRIVE_ARCHIVE_ENABLED:'false',DRIVE_ARCHIVE_COPY_ENABLED:'false',DRIVE_ARCHIVE_PROXY_READ_ENABLED:'false',DRIVE_ARCHIVE_R2_DELETE_ENABLED:'false',
-  STAFF_MCP_ENABLED:'false',STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED:'false',STAFF_MCP_LOCAL_MOCK_ENABLED:'false',STAFF_MCP_CLEANUP_ENABLED:'false',
   OPERATIONAL_ALERT_MODE:'disabled',
 };}
 function fetchWorker(pathname:string,init?:RequestInit):Promise<Response>{return worker.fetch(new Request(`${origin}${pathname}`,init),bindings(),executionContext);}

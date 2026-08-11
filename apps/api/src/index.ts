@@ -44,7 +44,6 @@ import { registerAcquisitionMachineCredentialRoutes } from './acquisition/machin
 import { registerAcquisitionReportingOperationRoutes } from './acquisition/reporting-operations-routes';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
 import { registerAdminAcquisitionDailyRoutes } from './admin-business-dashboard/acquisition-daily-routes';
-import { registerStaffMcpTransportRoutes } from './staff-mcp';
 import { registerStaffAccessManagementRoutes } from './staff-access-management';
 import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
 import { registerOperationalReadinessRoutes } from './operational-readiness/routes';
@@ -56,7 +55,6 @@ import { registerFormalOrderPolicyGuards } from './formal-order-policy-routes';
 const app = createApp();
 
 registerOperationalReadinessRoutes(app);
-registerStaffMcpTransportRoutes(app);
 registerCustomerAuthRoutes(app);
 registerPublicCustomerSecurityRoutes(app);
 registerAcquisitionMachineRoutes(app);

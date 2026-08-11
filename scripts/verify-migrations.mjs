@@ -16,15 +16,15 @@ const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-v2-migrations-'),
 );
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 64;
+const expectedLatestSchema = 65;
 const expectedLastMigration =
-  '0064_marketplace_local_date_truth.sql';
+  '0065_retire_feishu_artifacts.sql';
 const expectedSchemaInventory = {
-  table: 222,
-  index: 643,
-  trigger: 423,
+  table: 214,
+  index: 612,
+  trigger: 406,
   view: 12,
-  sha256: '8c2f371d2f470b1c5602000db7726192d89fc45fc6e2143b66b33d08165964dd',
+  sha256: '88b93ce12164731809e235c94ff3e97f24b9db27e2756992292bfda627bbd199',
 };
 
 const requiredTables = [
@@ -36,7 +36,6 @@ const requiredTables = [
   'staff_departments',
   'staff_teams',
   'staff_users',
-  'feishu_staff_identities',
   'staff_team_memberships',
   'staff_role_assignments',
   'staff_role_consolidation_cutovers',
@@ -150,8 +149,6 @@ const requiredTables = [
   'customer_password_reset_tokens',
   'customer_password_reset_events',
   'customer_security_rate_limits',
-  'feishu_workbench_mirrors',
-  'feishu_workbench_callback_receipts',
   'seller_principal_rate_policy_versions',
   'seller_principal_rate_policy_events',
   'seller_principal_rate_snapshots',
@@ -416,12 +413,6 @@ const requiredTriggers = [
   'trg_formal_order_marketplace_money_no_update',
   'trg_formal_order_marketplace_money_no_delete',
   'trg_formal_order_marketplace_money_legacy_insert',
-  'trg_feishu_workbench_mirrors_insert_guard',
-  'trg_feishu_workbench_mirrors_update_guard',
-  'trg_feishu_workbench_mirrors_no_delete',
-  'trg_feishu_workbench_callback_receipts_insert_guard',
-  'trg_feishu_workbench_callback_receipts_update_guard',
-  'trg_feishu_workbench_callback_receipts_no_delete',
   'trg_platform_product_identity_scope_guard',
   'trg_platform_product_identity_no_key_update',
   'trg_platform_product_identities_no_delete',
@@ -697,7 +688,7 @@ try {
   if (migrationFiles.length !== expectedLatestSchema
     || migrationFiles.at(-1) !== expectedLastMigration
     || migrationNumbers.some((number, index) => number !== index + 1)) {
-    throw new Error('Migration 必须是唯一连续的 0001-0064');
+    throw new Error('Migration 必须是唯一连续的 0001-0065');
   }
 
   const database = new DatabaseSync(databasePath);

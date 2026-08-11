@@ -8,10 +8,10 @@ const bundle = await build({
   stdin: {
     contents: `
       import { anonymousSellerPartnerFixture } from ${JSON.stringify(
-        path.resolve('apps/api/src/seller-partner-import/fixtures/anonymous-fixture.ts'),
+        path.resolve('tools/imports/seller-partner/fixtures/anonymous-fixture.ts'),
       )};
       import { previewSellerPartnerImport } from ${JSON.stringify(
-        path.resolve('apps/api/src/seller-partner-import/index.ts'),
+        path.resolve('tools/imports/seller-partner/index.ts'),
       )};
       export { anonymousSellerPartnerFixture, previewSellerPartnerImport };
     `,
