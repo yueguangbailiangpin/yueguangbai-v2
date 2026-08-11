@@ -1,88 +1,89 @@
 # production-backup-recovery Specification
 
 ## Purpose
-TBD - created by archiving change google-drive-private-backup-recovery-activation. Update Purpose after archive.
+
+Prove that the current Moonwhite production candidate is recoverable as a complete business system, not merely that a Worker returns HTTP 200. Recovery evidence is release-bound, secret-separated, and covers the current D1 schema plus authoritative file storage.
+
 ## Requirements
-### Requirement: Private Drive backup evidence is secret-separated
 
-The recovery process SHALL use a private owner-controlled Drive hierarchy with no link sharing, SHALL keep the backup key separate from encrypted content, SHALL keep the production application's OAuth credentials separate from any Codex connector credentials, and SHALL use the minimum approved Drive scope without silent expansion.
+### Requirement: Private backup evidence is secret-separated
 
-#### Scenario: Drive identity is only a connector identity
+The recovery process SHALL keep encryption/authentication keys separate from encrypted content and manifests, SHALL keep provider credentials out of Git/logs/evidence, and SHALL use only owner-controlled private storage with no link sharing.
 
-- **WHEN** the connected Drive profile is inspected before activation
-- **THEN** the evidence labels it as a connector identity and does not treat it as a production application refresh token or OAuth grant.
+#### Scenario: Secret or provider permission is unsafe
 
-#### Scenario: Folder is not private
+- **WHEN** a key file has unsafe permissions, a target artifact is link-shared, or credentials would be persisted in Git/logs
+- **THEN** the process fails closed before accepting a backup.
 
-- **WHEN** a target folder or uploaded artifact has link sharing or an unexpected external permission
-- **THEN** the process stops before backup upload and Production GO remains blocked.
+### Requirement: Production D1 backup is release-bound and current-schema recoverable
 
-### Requirement: Anonymous Provider behavior is proven before production backup upload
+The process SHALL verify the production release SHA and a continuous `0001`–`0058` migration chain, SHALL create an encrypted D1 backup and authenticated manifest bound to that release, and SHALL restore into a fresh isolated target without overwriting an existing database.
 
-The process SHALL use only generated anonymous content for the initial Provider PoC and SHALL verify byte count, MIME, SHA-256, duplicate, interruption/resume, and revoke-boundary behavior before any production backup upload.
+#### Scenario: Production D1 backup restores
 
-#### Scenario: Anonymous read-back matches
+- **WHEN** the candidate backup is restored into a new isolated database
+- **THEN** `app_schema_state.schema_version=58`, full schema inventory, table row counts, `integrity_check`, `foreign_key_check`, key financial aggregates, and Staff/Buyer/Seller/order/file/scheduler/acquisition smoke reads match the backup evidence.
 
-- **WHEN** the fixture is uploaded and read back
-- **THEN** bytes, MIME, and SHA-256 match exactly and no real business content is involved.
+#### Scenario: Schema evidence is stale
 
-#### Scenario: Minimum scope is insufficient
+- **WHEN** the newest successful recovery evidence has a schema version lower than the candidate schema
+- **THEN** the candidate is not ready for production even if an older backup previously restored successfully.
 
-- **WHEN** a required PoC operation fails under the approved minimum scope
-- **THEN** the exact failure is reported and no broader scope is requested or used automatically.
+### Requirement: R2 file authority is included in recovery evidence
 
-### Requirement: Production D1 backup is release-bound and recoverable
+The recovery process SHALL generate an R2 manifest reconciled with D1 file authority and SHALL perform bounded real read-back sampling against authoritative R2 objects without deleting or modifying them.
 
-The process SHALL read-only verify the production release SHA, schema 39, and continuous migration ledger through 0039, SHALL create an encrypted backup and authenticated attestation bound to that release, SHALL verify Drive upload/download hashes, and SHALL restore into a fresh isolated target without overwriting a database.
+#### Scenario: R2 manifest and sample read-back pass
 
-#### Scenario: Production backup restores
+- **WHEN** D1 file authority reconciles with the R2 manifest and sampled objects match expected byte size, MIME, and SHA-256
+- **THEN** the R2 portion may be marked recovered for that release.
 
-- **WHEN** the downloaded backup is restored into a new isolated database
-- **THEN** schema 39, full table row counts, integrity, foreign keys, financial aggregates, and Staff/Buyer/Seller/order/file/scheduler smoke reads match the backup evidence.
+#### Scenario: R2 mismatch exists
 
-#### Scenario: Backup or recovery assertion fails
+- **WHEN** any missing, orphan, duplicate, byte-size, MIME, SHA-256, or protected-reference mismatch is found
+- **THEN** Production GO remains blocked and no R2 delete/proxy switch is enabled as a side effect.
 
-- **WHEN** export completeness, attestation, hash, schema, row, financial, integrity, foreign-key, or smoke assertions fail
-- **THEN** the backup is not accepted, production facts are unchanged, and Production GO remains blocked.
+### Requirement: Recovery proof is persisted as an immutable current-release attestation
 
-### Requirement: R2 remains authoritative during recovery activation
+After a real isolated D1 restore and R2 sample read-back pass, the owner-controlled process SHALL append a `production_recovery_attestations` row containing release SHA, schema version, D1 manifest SHA-256, R2 manifest SHA-256, integrity/FK pass facts, R2 sample pass fact, verification time, and evidence note.
 
-The process SHALL keep Drive proxy-read, scheduler activation, and every R2 delete switch disabled during the PoC, backup, upload, download, and restore rehearsal, and SHALL perform no R2 deletion.
+#### Scenario: Readiness checks recovery
 
-#### Scenario: Recovery rehearsal completes
+- **WHEN** `/ready` evaluates a Schema 58 release
+- **THEN** recovery passes only when an attestation exists with `schema_version>=58`; an older-schema rehearsal is insufficient.
 
-- **WHEN** Drive upload/download and isolated restore pass
-- **THEN** the result proves recoverability only; it does not enable proxy reads, delete R2 content, or modify production configuration.
+### Requirement: Operational readiness is stronger than liveness
 
-### Requirement: Remote export output does not disclose provider credentials
+`/health` MAY prove only that the Worker process responds. `/ready` SHALL fail unless database schema, required scheduled jobs, acquisition maintenance, object storage, and current recovery evidence are all ready.
 
-The release process SHALL use a no-shell local export wrapper that requires an explicit local or remote mode, refuses repository output paths, captures Wrangler output, redacts complete URLs and credential-like values before terminal emission, does not persist child output, and writes a successful export with private file permissions.
+#### Scenario: Worker is alive but scheduler is stale
 
-#### Scenario: Wrangler prints a signed export URL
+- **WHEN** `/health` returns 200 but a required scheduled job has never succeeded or is stale/failed
+- **THEN** `/ready` returns not-ready and Production GO is blocked.
 
-- **WHEN** the wrapped export subprocess emits a provider signed URL or credential-like query value
-- **THEN** terminal output contains only a redaction marker and no complete URL, token, or signature.
+### Requirement: Staff production authentication is Cloudflare Access
 
-#### Scenario: Export output targets the repository
+Production Staff login SHALL be gated by Cloudflare Access JWT verification and Moonwhite active Staff email/role/Marketplace authority. Legacy Feishu Staff Auth provider configuration SHALL NOT be required for the active login path.
 
-- **WHEN** an operator supplies an output path inside the repository or a non-private parent directory
-- **THEN** the wrapper fails before invoking Wrangler.
+#### Scenario: Access configuration is missing
 
-### Requirement: OAuth acceptance is exact-scope, PKCE-bound, and non-persistent
+- **WHEN** the production candidate lacks Access team domain, application audience, or allowed origin configuration
+- **THEN** the release preflight fails before production activation.
 
-The OAuth acceptance tool SHALL accept only a repository-external private Desktop client JSON, request exactly `https://www.googleapis.com/auth/drive.file` with loopback PKCE and offline access, create and read only app-owned anonymous test objects, verify duplicate objects and owner-only permissions, record redacted scope/resumable/revoke receipts without IDs or URLs, revoke the refresh token, verify refresh failure after revocation, and persist no usable token.
+### Requirement: Scheduler and acquisition maintenance are release gates
 
-#### Scenario: Scope is wider than drive.file
+The production candidate SHALL enable scheduled operations and acquisition maintenance, then prove successful runtime execution before final readiness.
 
-- **WHEN** the token response returns any scope other than the exact requested `drive.file` scope
-- **THEN** the acceptance fails closed and does not continue with Drive objects or broader authorization.
+#### Scenario: Scheduler switch is disabled
 
-#### Scenario: Resumable upload, duplicate, private permission, and revoke pass
+- **WHEN** `SCHEDULED_OPERATIONS_ENABLED` or `ACQUISITION_MAINTENANCE_ENABLED` is not true in the rendered production candidate
+- **THEN** production release validation fails closed.
 
-- **WHEN** the app-created fixture receives a 308 offset response, a final upload response, exact read-back hash, successful revocation, and `invalid_grant` on refresh
-- **THEN** the redacted receipt records those statuses without any token, session URL, file ID, or folder ID.
+### Requirement: Provider PoC and OAuth tooling remain non-persistent and least-privilege
 
-#### Scenario: Token persistence is attempted
+Drive/Provider acceptance tooling SHALL use generated anonymous fixtures, exact approved scope, PKCE where applicable, bounded responses, redacted receipts, and no persisted usable token.
 
-- **WHEN** the flow would write client credentials, authorization code, access token, or refresh token to Git, logs, evidence, or a non-private file
-- **THEN** the flow fails closed; after revocation no usable token remains persisted.
+#### Scenario: Scope silently expands
+
+- **WHEN** a provider returns broader scope than approved
+- **THEN** the acceptance flow fails without requesting or using broader authorization automatically.
