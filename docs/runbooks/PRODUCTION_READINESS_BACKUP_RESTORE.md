@@ -2,17 +2,17 @@
 
 ## 当前权威基线
 
-本分支目标数据库为连续 Migration `0001`–`0058`，`app_schema_state.schema_version=58`。
+本分支目标数据库为连续 Migration `0001`–`0061`，`app_schema_state.schema_version=61`。
 
 生产上线前必须同时证明：
 
 1. release SHA 与待部署代码一致；
 2. D1 从生产只读导出后可以恢复到全新隔离数据库；
-3. 恢复库 `schema_version=58`、`integrity_check=ok`、`foreign_key_check=0`；
-4. D1 row counts、关键财务聚合、Buyer/Seller/Staff/订单/文件/调度 smoke read 与 Manifest 一致；
+3. 恢复库 `schema_version=61`、`integrity_check=ok`、`foreign_key_check=0`；
+4. D1 row counts、关键财务聚合、Buyer/Seller/Staff/订单/文件/调度/获客 smoke read 与 Manifest 一致；
 5. R2 Manifest 与 D1 `file_objects` 对账无 missing/orphan/hash/size/MIME 冲突；
 6. 至少抽样读取真实备份对应的 R2 对象并校验 byte size + SHA-256；
-7. 生成与 release SHA、Schema 58、D1 Manifest SHA、R2 Manifest SHA 绑定的恢复证明；
+7. 生成与 release SHA、Schema 61、D1 Manifest SHA、R2 Manifest SHA 绑定的恢复证明；
 8. `/ready` 返回 `ready`，包括数据库、Scheduler、获客维护、对象存储和恢复证明全部通过。
 
 任何一项失败都保持 Production NO-GO。
@@ -31,7 +31,7 @@ npm run backup:d1:local -- \
   --output-dir /outside-git/backup-candidate \
   --key-file /outside-git/keys/d1-backup.key \
   --release-commit-sha 40位小写候选Git提交SHA \
-  --expected-schema 58
+  --expected-schema 61
 ```
 
 要求：
@@ -51,22 +51,22 @@ npm run restore:d1:local -- \
   --restore-database /outside-git/restore-rehearsal/restored.sqlite \
   --key-file /outside-git/keys/d1-backup.key \
   --expected-release-commit-sha 40位小写候选Git提交SHA \
-  --expected-schema 58
+  --expected-schema 61
 ```
 
 恢复目标必须不存在。恢复完成后再次检查：
 
-- `app_schema_state.schema_version=58`；
-- Migration `0001`–`0058` 连续；
+- `app_schema_state.schema_version=61`；
+- Migration `0001`–`0061` 连续；
 - `PRAGMA integrity_check=ok`；
 - `PRAGMA foreign_key_check` 无结果；
 - 所有 Manifest 表行数一致；
 - 关键财务聚合一致；
-- Staff Cloudflare Access 身份表、Marketplace scope、Buyer/Seller、正式订单、渠道归因、Schema 51–58 新完整性表均可读。
+- Staff Cloudflare Access 身份、Role×Marketplace、Buyer/Seller、多成员、正式订单、订单补偿、评论展示状态、提前本金、渠道归因、Codex machine scope、文件 authority、Scheduler 和 Schema 51–61 新完整性对象均可读。
 
 ## R2 Manifest 与抽样恢复
 
-恢复证明必须与 D1 同一 release SHA 生成 R2 Manifest。Manifest 对每个稳定文件保存受保护引用、byte size、MIME、SHA-256，不把对象 key 或公开 URL写入 Git。
+恢复证明必须与 D1 同一 release SHA 生成 R2 Manifest。Manifest 对每个稳定文件保存受保护引用、byte size、MIME、SHA-256，不把对象 key 或公开 URL 写入 Git。
 
 离线对账：
 
@@ -81,17 +81,26 @@ npm run reconcile:files:offline -- \
 
 ## 恢复证明
 
-Migration 0058 的 `production_recovery_attestations` 是当前 Schema 的恢复证明记录。只有完成真实隔离恢复 + R2 抽样后才允许写入：
+Migration 0058 引入的 `production_recovery_attestations` 是当前 Schema 的恢复证明记录；Schema 59–61 的新对象也必须包含在恢复演练中。只有完成真实隔离恢复 + R2 抽样后才允许调用 Owner 受控接口：
+
+```text
+POST /api/staff/production-readiness/recovery-attestations
+```
+
+请求事实必须是：
 
 - release SHA；
-- schema_version=58；
+- `schema_version=61`；
 - D1 Manifest SHA-256；
 - R2 Manifest SHA-256；
-- restored database integrity/fk 均通过；
-- R2 sample read-back 通过；
-- 证据说明与确认人。
+- restored database integrity = true；
+- restored foreign keys = true；
+- R2 sample read-back = true；
+- 证据说明。
 
-该记录 append-only。旧 Schema 的恢复演练不会满足新版 `/ready`。
+该接口只允许总管理员且要求审计权限，写入 append-only 证明。它不会自己执行备份，也不能把“没做过恢复”变成通过；提供虚假布尔值属于人工流程违规，发布证据仍必须保留在受控外部位置。
+
+旧 Schema 的恢复演练不会满足新版 `/ready`。
 
 ## Scheduler / Acquisition Maintenance 上线 Gate
 
@@ -128,8 +137,8 @@ STAFF_AUTH_ALLOWED_ORIGINS=https://正式域名
 
 1. checkout 精确 release SHA；
 2. 运行 Migration/contract/typecheck/test/build/browser 全量验收；
-3. 使用生产 D1 只读副本执行 0001–0058 升级 dry-run；
-4. 完成 D1 + R2 恢复演练并记录 Schema 58 recovery attestation；
+3. 使用生产 D1 只读副本执行 `0001`–`0061` 升级 dry-run；
+4. 完成 D1 + R2 恢复演练并登记 Schema 61 recovery attestation；
 5. 校验 Cloudflare Access 配置与 Owner email；
 6. 校验 Scheduler 与 Acquisition Maintenance 生产开关；
 7. 仅在明确批准后执行生产 Migration；
