@@ -14,7 +14,16 @@
 6. 当前模块验收文件。
 7. 旧仓库代码仅为参考，不是权威规则。
 
-## 2. 禁止自行重设计
+## 2. Git 与开发基线治理
+
+- 当前唯一正式开发基线是最新 `main`。
+- 每个新任务先同步并确认最新 `main`，再创建短生命周期 `feature/*`、`fix/*` 或 `chore/*` 分支。
+- 历史 `feature/frozen-*`、`chore/final-*`、旧 V3/V4、handoff 或阶段性 SHA 只用于追溯，不得作为新任务默认起点。
+- 一个任务只建立必要的工作分支和 active OpenSpec；不要用 `V3`、`V4`、`final`、`final-final` 等长期分支表达产品版本。
+- 功能完成后通过普通 PR 回到 `main`；不得为了整理历史默认 force push、rebase 已共享历史或重写迁移历史。
+- 合并后的临时分支不再拥有“权威基线”地位。删除远程分支前必须确认其提交已被 `main` 包含或已明确判定无需保留。
+
+## 3. 禁止自行重设计
 
 Agent 不得：
 
@@ -28,7 +37,7 @@ Agent 不得：
 
 遇到合同不清楚时停止该模块并报告，不自行猜测。
 
-## 3. 远程操作默认禁止
+## 4. 远程操作默认禁止
 
 除非用户在当前会话中明确授权具体动作，否则不得：
 
@@ -44,7 +53,7 @@ Agent 不得：
 
 本地 `wrangler dev`、本地 D1、匿名测试数据和 dry-run 可以在明确的本地执行任务中使用。
 
-## 4. 旧仓库边界
+## 5. 旧仓库边界
 
 只允许读取固定 Commit：
 
@@ -68,7 +77,7 @@ e211dff657dbcb100b111ba69a75f8e51268aef3
 docs/migration/V2_LEGACY_CODE_REUSE.md
 ```
 
-## 5. 数据与财务硬约束
+## 6. 数据与财务硬约束
 
 - 所有时间点以 UTC 毫秒整数存储，显示和业务日期使用 `Asia/Shanghai`。
 - JPY 使用整数日元。
@@ -79,9 +88,10 @@ docs/migration/V2_LEGACY_CODE_REUSE.md
 - 错误财务通过冲正、更正和重新入账处理。
 - 财务写入必须有幂等键、版本或唯一业务约束和审计事件。
 
-## 6. 身份和权限硬约束
+## 7. 身份和权限硬约束
 
 - Staff 使用独立 Staff 身份、可信后端会话和权限模型，不使用旧共享角色链接。
+- Cloudflare Access 只证明 Staff 邮箱身份；D1 Staff 状态、唯一角色、Marketplace Scope 和个人授权 / 禁用决定最终业务权限。
 - 飞书已退出当前及计划运行架构；历史 Migration 与 archived Change 只保留升级和审计历史，不得形成登录、绑定、同步、回调、任务或告警运行能力。
 - 未来如重新引入飞书，必须有用户新的明确决定、独立 OpenSpec Change 和总控批准；不得把历史代码或配置开关直接复活。
 - 每名 ACTIVE Staff 恰有一个 ACTIVE 角色；零角色、多角色、旧角色或未知角色均失败关闭。
@@ -95,7 +105,7 @@ docs/migration/V2_LEGACY_CODE_REUSE.md
 - 未来卖家侧导出必须通过独立 OpenSpec Change，使用单独的 Seller-safe Contract 和 Permission，只输出该 Seller Organization 被允许的字段；不得复用内部公司财务 API 或 `FINANCIAL_EXPORT`，也不得输出内部利润或 Buyer Refund 成本。
 - 买家隐私、买家返款和内部利润不得出现在卖家可见 DTO 中。
 
-## 7. API 和并发硬约束
+## 8. API 和并发硬约束
 
 所有关键写操作必须具备：
 
@@ -103,21 +113,21 @@ docs/migration/V2_LEGACY_CODE_REUSE.md
 - 请求哈希
 - `expected_version` 或等效条件更新
 - 状态机校验
-- 事务/批处理中的最终断言
+- 事务 / 批处理中的最终断言
 - 审计事件
 - 重放相同响应或明确冲突
 
 R2 上传类操作必须：
 
 1. 先做权限、重复、容量和业务预检查；
-2. 建立上传意图/租约；
+2. 建立上传意图 / 租约；
 3. 上传；
 4. `head` 校验；
 5. 最终提交前再次检查；
 6. 失败时补偿删除；
 7. 对残留对象可安全重试清理。
 
-## 8. 测试要求
+## 9. 测试要求
 
 每个模块至少需要：
 
@@ -132,7 +142,7 @@ R2 上传类操作必须：
 
 不得报告未执行的测试为通过。
 
-## 9. 每次执行后的报告格式
+## 10. 每次执行后的报告格式
 
 ```text
 TASK=
@@ -148,7 +158,7 @@ OPEN_RISKS=
 NEXT_SAFE_STEP=
 ```
 
-## 10. OpenSpec 治理入口
+## 11. OpenSpec 治理入口
 
 - 变更规划遵循 `openspec/config.yaml` 与 `docs/AI_ENGINEERING_GOVERNANCE.md`。
 - 总控对话是业务规则的最终决策者；Spec 与代码冲突必须交回总控判断。
