@@ -13,7 +13,10 @@ import { registerPublicCustomerSecurityRoutes, registerStaffCustomerSecurityRout
 import { registerBuyerInvitationDutyGuard } from './customer-onboarding/buyer-invitation-guard';
 import { registerNewBuyerRegistrationInvitationRoute } from './customer-onboarding/buyer-registration-route';
 import { registerExistingCustomerLeadGuard } from './customer-onboarding/lead-guard';
+import { registerLegacyPasswordResetOwnerGuard } from './customer-onboarding/legacy-password-reset-guard';
 import { registerCustomerOnboardingRoutes } from './customer-onboarding/routes';
+import { registerScopedCustomerPasswordResetRoutes } from './customer-onboarding/password-reset-routes';
+import { registerIdentityResolutionRoutes } from './customer-onboarding/identity-resolution-routes';
 import { registerStaffFinanceRoutes } from './internal-finance';
 import { staffSessionMiddleware } from './middleware/staff-auth';
 import { exactOneOrderEvidenceScreenshotGuard, registerStaffOrderEvidenceRoutes } from './order-evidence';
@@ -35,6 +38,7 @@ import { registerAcquisitionPrivacyRoutes } from './acquisition/privacy-routes';
 import { registerAcquisitionChannelStatsRoutes } from './acquisition/channel-stats-routes';
 import { registerAcquisitionHandoffRoutes } from './acquisition/handoff-routes';
 import { registerAcquisitionMachineRoutes } from './acquisition/machine-routes';
+import { registerAcquisitionReportingOperationRoutes } from './acquisition/reporting-operations-routes';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
 import { registerAdminAcquisitionDailyRoutes } from './admin-business-dashboard/acquisition-daily-routes';
 import { registerStaffMcpTransportRoutes } from './staff-mcp';
@@ -54,13 +58,17 @@ registerSellerRegistrationRoutes(app);
 registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
 registerBuyerInvitationDutyGuard(app);
+registerLegacyPasswordResetOwnerGuard(app);
 registerStaffCustomerSecurityRoutes(app);
 registerNewBuyerRegistrationInvitationRoute(app);
 registerCustomerOnboardingRoutes(app);
+registerScopedCustomerPasswordResetRoutes(app);
+registerIdentityResolutionRoutes(app);
 registerExistingCustomerLeadGuard(app);
 // Privacy projection must be registered first so ordinary customer-intake Staff
 // never reach the older full channel read route.
 registerAcquisitionPrivacyRoutes(app);
+registerAcquisitionReportingOperationRoutes(app);
 registerAcquisitionRoutes(app);
 registerAcquisitionChannelStatsRoutes(app);
 registerAcquisitionHandoffRoutes(app);
