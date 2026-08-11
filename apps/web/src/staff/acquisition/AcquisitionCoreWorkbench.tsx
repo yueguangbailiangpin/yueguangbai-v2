@@ -1,1 +1,1 @@
-export { AcquisitionCoreWorkbenchV3 as AcquisitionCoreWorkbench } from './AcquisitionCoreWorkbenchV3';
+export { AcquisitionCoreWorkbenchV4 as AcquisitionCoreWorkbench } from './AcquisitionCoreWorkbenchV4';
