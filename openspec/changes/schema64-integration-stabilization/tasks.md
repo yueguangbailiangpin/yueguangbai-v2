@@ -31,3 +31,9 @@
 - [x] 5.2 Re-run release preflight tests, OpenSpec strict, repository gates and production dry-run.
 - [x] 5.3 Route production `/ready` through the Worker readiness handler and prove it cannot fall through to the SPA shell.
 - [x] 5.4 Resolve production bindings for the Scheduled Handler and prove file cleanup receives the R2 adapter.
+
+## 6. First Owner production sign-in repair
+
+- [x] 6.1 Add privacy-safe Cloudflare Access JWT rejection diagnostics without logging the token, email or claims.
+- [ ] 6.2 Reproduce the production rejection, fix the evidenced validation boundary and retain fail-closed signature, issuer, audience, time and email checks.
+- [ ] 6.3 Re-run Staff authentication gates, deploy the exact pushed commit and verify Owner session creation through the real Access flow.

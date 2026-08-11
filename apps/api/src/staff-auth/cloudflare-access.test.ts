@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import app from '../index';
-import { CloudflareAccessError, verifyCloudflareAccessIdentity } from './cloudflare-access';
+import { verifyCloudflareAccessIdentity } from './cloudflare-access';
 
 let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null;vi.restoreAllMocks()});
@@ -18,12 +18,12 @@ describe('Cloudflare Access Staff identity',()=>{
   it('fails closed for wrong audience, bad signature and unavailable keys',async()=>{
     const fixture=await jwtFixture('https://team-two.cloudflareaccess.com','audience-staff-002','staff@example.test');
     mockJwks(fixture.jwk);
-    await expect(verifyCloudflareAccessIdentity(request(fixture.token),{STAFF_ACCESS_TEAM_DOMAIN:fixture.issuer,STAFF_ACCESS_AUD:'different-audience'},fixture.now)).rejects.toBeInstanceOf(CloudflareAccessError);
+    await expect(verifyCloudflareAccessIdentity(request(fixture.token),{STAFF_ACCESS_TEAM_DOMAIN:fixture.issuer,STAFF_ACCESS_AUD:'different-audience'},fixture.now)).rejects.toMatchObject({code:'UNAUTHENTICATED',reason:'AUDIENCE'});
     const tampered=`${fixture.token.slice(0,-2)}aa`;
-    await expect(verifyCloudflareAccessIdentity(request(tampered),{STAFF_ACCESS_TEAM_DOMAIN:fixture.issuer,STAFF_ACCESS_AUD:fixture.audience},fixture.now)).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+    await expect(verifyCloudflareAccessIdentity(request(tampered),{STAFF_ACCESS_TEAM_DOMAIN:fixture.issuer,STAFF_ACCESS_AUD:fixture.audience},fixture.now)).rejects.toMatchObject({code:'UNAUTHENTICATED',reason:'SIGNATURE'});
     vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response('{}',{status:503}));
     const third=await jwtFixture('https://team-three.cloudflareaccess.com','audience-staff-003','staff@example.test');
-    await expect(verifyCloudflareAccessIdentity(request(third.token),{STAFF_ACCESS_TEAM_DOMAIN:third.issuer,STAFF_ACCESS_AUD:third.audience},third.now)).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+    await expect(verifyCloudflareAccessIdentity(request(third.token),{STAFF_ACCESS_TEAM_DOMAIN:third.issuer,STAFF_ACCESS_AUD:third.audience},third.now)).rejects.toMatchObject({code:'UNAUTHENTICATED',reason:'JWKS_HTTP'});
   });
 
   it('bootstraps only a pre-existing active Moonwhite email identity and issues an opaque session',async()=>{

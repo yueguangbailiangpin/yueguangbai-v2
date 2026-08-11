@@ -45,6 +45,15 @@ async function bootstrap(context: Context<any>): Promise<Response> {
   try {
     access = await verifyCloudflareAccessIdentity(context.req.raw, context.env, Date.now());
   } catch (error) {
+    if (error instanceof CloudflareAccessError) {
+      console.warn(JSON.stringify({
+        event: 'STAFF_ACCESS_BOOTSTRAP_REJECTED',
+        reason: error.reason,
+        request_id: requestIdFromContext(context),
+        access_jwt_present: Boolean(context.req.header('Cf-Access-Jwt-Assertion')),
+        access_email_header_present: Boolean(context.req.header('Cf-Access-Authenticated-User-Email')),
+      }));
+    }
     if (error instanceof CloudflareAccessError && error.code === 'CONFIGURATION') {
       throw new StaffAuthError('DEPENDENCY_UNAVAILABLE', 503);
     }
