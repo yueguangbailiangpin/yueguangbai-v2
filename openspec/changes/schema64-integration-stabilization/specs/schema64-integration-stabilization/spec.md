@@ -35,3 +35,12 @@ When Staff MCP is disabled, the release configuration SHALL NOT require MCP Prov
 
 - **WHEN** release preflight validates the production configuration
 - **THEN** it accepts no MCP service binding and the core Worker remains fail-closed on MCP routes.
+
+### Requirement: Production readiness cannot fall through to the SPA
+
+The production Worker SHALL route `/ready` to the dynamic readiness handler and SHALL NOT serve the SPA shell for that path.
+
+#### Scenario: Readiness dependencies are unavailable
+
+- **WHEN** a production request reaches `/ready` while one or more readiness dependencies are not ready
+- **THEN** the Worker returns the structured readiness response with a non-success status rather than HTML.

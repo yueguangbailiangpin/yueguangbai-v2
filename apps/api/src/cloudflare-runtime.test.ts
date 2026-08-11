@@ -16,6 +16,10 @@ describe('production Cloudflare Worker runtime',()=>{
     expect(health.status).toBe(200);
     expect(health.headers.get('content-type')).toContain('application/json');
     expect(health.headers.get('strict-transport-security')).toContain('max-age=31536000');
+    const readiness=await fetchWorker('/ready');
+    expect(readiness.status).toBe(503);
+    expect(readiness.headers.get('content-type')).toContain('application/json');
+    expect(await readiness.text()).not.toContain('<!doctype html>');
     const missing=await fetchWorker('/api/not-registered');
     expect(missing.status).toBe(404);
     expect(await missing.text()).not.toContain('<!doctype html>');

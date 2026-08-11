@@ -91,6 +91,7 @@ function booleanFlag(value:unknown):value is 'true'|'false' { return value==='tr
 
 export function isApiRequestPath(pathname: string): boolean {
   return pathname === '/health'
+    || pathname === '/ready'
     || pathname === '/api'
     || pathname.startsWith('/api/')
     || pathname === '/mcp'

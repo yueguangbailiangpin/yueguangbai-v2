@@ -29,3 +29,4 @@
 
 - [x] 5.1 Remove disabled Staff MCP Provider variables and service binding from release templates.
 - [x] 5.2 Re-run release preflight tests, OpenSpec strict, repository gates and production dry-run.
+- [x] 5.3 Route production `/ready` through the Worker readiness handler and prove it cannot fall through to the SPA shell.
