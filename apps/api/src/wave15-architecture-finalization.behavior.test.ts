@@ -161,7 +161,7 @@ describe('Wave 15 architecture finalization — real behavior',()=>{
       INSERT INTO buyer_advance_principal_settlements VALUES('advance-1','refund-from-advance');
       INSERT INTO seller_payable_balances VALUES(200000,100000,100000,${at});
       INSERT INTO buyer_refund_ledger_balances VALUES(50000,50000,${at});
-      INSERT INTO internal_order_finance_positions VALUES('COMPLETED','2026-08-01','2026-08-01',30000,20000,${at});
+      INSERT INTO internal_order_finance_positions VALUES('COMPLETED','2026-08-01','2026-08-01',30000,20000,${at},${at});
       INSERT INTO formal_order_financial_adjustments VALUES('PROJECTED_GROSS_PROFIT',-5000,${at});
       INSERT INTO formal_order_financial_adjustments VALUES('COMPLETED_GROSS_PROFIT',2000,${at});
     `);
@@ -225,7 +225,7 @@ function seedFinancialProjectionSchema(db:SqliteDatabase):void{
     CREATE TABLE buyer_advance_principal_entries(id TEXT PRIMARY KEY,entry_type TEXT,amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER);
     CREATE TABLE seller_payable_balances(amount_cny_fen INTEGER,paid_amount_cny_fen INTEGER,outstanding_amount_cny_fen INTEGER,due_at INTEGER);
     CREATE TABLE buyer_refund_ledger_balances(due_amount_cny_fen INTEGER,net_paid_cny_fen INTEGER,created_at INTEGER);
-    CREATE TABLE internal_order_finance_positions(finance_status TEXT,confirmed_business_date TEXT,review_approved_business_date TEXT,projected_gross_profit_cny_fen INTEGER,completed_gross_profit_cny_fen INTEGER,confirmed_at INTEGER);
+    CREATE TABLE internal_order_finance_positions(finance_status TEXT,confirmed_business_date TEXT,review_approved_business_date TEXT,projected_gross_profit_cny_fen INTEGER,completed_gross_profit_cny_fen INTEGER,review_approved_at INTEGER,confirmed_at INTEGER);
     CREATE TABLE formal_order_financial_adjustments(adjustment_scope TEXT,amount_cny_fen INTEGER,created_at INTEGER);
   `);
 }
