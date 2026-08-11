@@ -13,9 +13,18 @@ export async function readFinancialReportingProjection(
 ):Promise<FinancialReportingProjectionDto>{
   const range=dashboardDateRange(input.fromDate,input.toDate);
   const [sellerCash,buyerCash,advanceCash,sellerPayables,buyerRefunds,profit,adjustments]=await Promise.all([
-    database.prepare(`SELECT CAST(COALESCE(SUM(CASE WHEN reversal.payment_id IS NULL THEN payment.amount_cny_fen ELSE 0 END),0) AS TEXT) AS amount
-      FROM seller_payments payment LEFT JOIN seller_payment_reversals reversal ON reversal.payment_id=payment.id
-      WHERE payment.paid_at>=? AND payment.paid_at<? AND payment.paid_at<=?`).bind(range.fromEpoch,range.toExclusiveEpoch,now).first<AmountRow>(),
+    database.prepare(`SELECT CAST(COALESCE(SUM(flow.amount_cny_fen),0) AS TEXT) AS amount FROM (
+        SELECT payment.amount_cny_fen AS amount_cny_fen
+        FROM seller_payments payment
+        WHERE payment.paid_at>=? AND payment.paid_at<? AND payment.paid_at<=?
+        UNION ALL
+        SELECT -reversal.amount_cny_fen AS amount_cny_fen
+        FROM seller_payment_reversals reversal
+        WHERE reversal.reversed_at>=? AND reversal.reversed_at<? AND reversal.reversed_at<=?
+      ) flow`).bind(
+        range.fromEpoch,range.toExclusiveEpoch,now,
+        range.fromEpoch,range.toExclusiveEpoch,now,
+      ).first<AmountRow>(),
     database.prepare(`SELECT CAST(COALESCE(SUM(CASE entry.entry_type WHEN 'PAYMENT' THEN entry.amount_cny_fen ELSE -entry.amount_cny_fen END),0) AS TEXT) AS amount
       FROM buyer_refund_payment_entries entry
       WHERE NOT EXISTS(SELECT 1 FROM buyer_advance_principal_settlements settlement WHERE settlement.buyer_refund_payment_entry_id=entry.id)
