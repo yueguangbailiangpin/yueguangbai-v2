@@ -49,6 +49,8 @@ import { registerStaffAccessManagementRoutes } from './staff-access-management';
 import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
 import { registerOperationalReadinessRoutes } from './operational-readiness/routes';
 import { registerOperatingIntegrityRoutes } from './operating-integrity/routes';
+import { registerAdvancePrincipalLookupRoute } from './operating-integrity/advance-principal-lookup-route';
+import { registerProductionRecoveryAttestationRoutes } from './production-readiness/recovery-attestation-routes';
 
 const app = createApp();
 
@@ -74,6 +76,8 @@ registerIdentityResolutionRoutes(app);
 registerCustomerLoginIdentifierChangeRoutes(app);
 registerExistingCustomerLeadGuard(app);
 registerOperatingIntegrityRoutes(app);
+registerAdvancePrincipalLookupRoute(app);
+registerProductionRecoveryAttestationRoutes(app);
 registerAcquisitionPrivacyRoutes(app);
 registerAcquisitionReportingOperationRoutes(app);
 registerAcquisitionMachineCredentialRoutes(app);
