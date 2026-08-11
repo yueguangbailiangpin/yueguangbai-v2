@@ -12,8 +12,6 @@ import { AcquisitionError, validation } from './errors';
 const BODY_LIMIT=16*1024;
 
 export function registerAcquisitionPrivacyRoutes(app:Hono<any>):void{
-  // Registered before the legacy acquisition router so every Staff role receives
-  // the correct projection. pre_sales/seller_ops never receive real source data.
   app.get('/api/staff/acquisition/channels',withErrors(async(context)=>{
     return context.json(apiSuccess({
       channels:await listAcquisitionVisibleChannels(context.env.DB,actor(context)),
@@ -28,7 +26,6 @@ export function registerAcquisitionPrivacyRoutes(app:Hono<any>):void{
       const result=await updateAcquisitionChannelPrivacyProfile(context.env.DB,{
         channelId:required(context.req.param('id')),
         expectedVersion:integer(body['expected_version']),
-        staffLabel:required(body['staff_label']),
         intakeWechatLabel:required(body['intake_wechat_label']),
       },command(context));
       return context.json(apiSuccess(result,requestIdFromContext(context)));
@@ -51,8 +48,8 @@ async function readBody(context:Context<any>):Promise<Record<string,unknown>>{
   const value=await readBoundedJson(context.req.raw,BODY_LIMIT);
   if(!value||typeof value!=='object'||Array.isArray(value))validation();
   const record=value as Record<string,unknown>;
-  const allowed=new Set(['expected_version','staff_label','intake_wechat_label']);
-  if(Object.keys(record).some((key)=>!allowed.has(key))||Object.keys(record).length!==3)validation();
+  const allowed=new Set(['expected_version','intake_wechat_label']);
+  if(Object.keys(record).some((key)=>!allowed.has(key))||Object.keys(record).length!==2)validation();
   return record;
 }
 function required(value:unknown):string{
@@ -80,7 +77,7 @@ function message(code:ApiErrorCode):string{
   if(code==='UNAUTHENTICATED')return'员工会话无效';
   if(code==='FORBIDDEN')return'当前岗位无权查看或修改渠道配置';
   if(code==='NOT_FOUND')return'渠道不存在';
-  if(code==='CONFLICT')return'渠道编号或接待微信已被其他渠道使用';
+  if(code==='CONFLICT')return'接待微信已被其他渠道使用';
   if(code==='VERSION_CONFLICT')return'渠道配置已更新，请刷新后重试';
   if(code==='VALIDATION_ERROR')return'渠道配置内容不正确';
   return'服务暂时不可用，请稍后重试';
