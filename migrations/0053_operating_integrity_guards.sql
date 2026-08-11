@@ -6,11 +6,10 @@ SELECT CASE WHEN EXISTS (
   SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=52
 ) THEN 1 ELSE 0 END;
 
--- 12) The original funnel migration made Lead identity globally unique by
--- customer type. A single real person/company may now have independent formal
--- relationships in different Marketplaces, so the database authority must
--- match the service rule: type x Marketplace x protected identity.
-DROP INDEX uq_acquisition_lead_active_identity;
+-- 12) Migration 0036 created uq_acquisition_active_identity_per_type, which
+-- made active Lead identity globally unique by customer type. Replace that real
+-- database authority with type x Marketplace x protected identity.
+DROP INDEX uq_acquisition_active_identity_per_type;
 CREATE UNIQUE INDEX uq_acquisition_lead_active_identity_market
 ON acquisition_leads(lead_type,marketplace_code,identity_hash)
 WHERE status='ACTIVE';
@@ -65,7 +64,7 @@ END;
 INSERT INTO transaction_assertions (assertion_value)
 SELECT CASE WHEN
   EXISTS(SELECT 1 FROM sqlite_schema WHERE type='index' AND name='uq_acquisition_lead_active_identity_market')
-  AND NOT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='index' AND name='uq_acquisition_lead_active_identity')
+  AND NOT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='index' AND name='uq_acquisition_active_identity_per_type')
   AND EXISTS(SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name='trg_staff_reactivated_restore_primary_scope')
   AND EXISTS(SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name='trg_acquisition_reporting_precision_immutable')
   AND EXISTS(SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name='trg_acquisition_source_correction_guard')
