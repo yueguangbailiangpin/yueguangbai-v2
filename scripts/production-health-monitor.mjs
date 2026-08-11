@@ -1,91 +1,26 @@
 import { pathToFileURL } from 'node:url';
 
-export const HEALTH_ISSUE_TITLE = '[自动监控] 月光白 V2 生产 Readiness 异常';
-const HEALTH_BODY_LIMIT = 16 * 1024;
-const GITHUB_BODY_LIMIT = 1024 * 1024;
+export const HEALTH_ISSUE_TITLE='[自动监控] 月光白 V2 生产 Readiness 异常';
+const HEALTH_BODY_LIMIT=16*1024,GITHUB_BODY_LIMIT=1024*1024;
+const REQUIRED_CHECKS=['schema','scheduler','acquisition_maintenance','object_storage','recovery','staff_access','release'];
 
-export async function probeProductionHealth({ endpoint, fetchImpl = fetch, simulation = 'probe' }) {
-  const url = healthUrl(endpoint);
-  if (simulation === 'failure') return { healthy: false, reason: 'SIMULATED_FAILURE', checkedAt: Date.now() };
-  if (simulation === 'recovery') return { healthy: true, reason: 'SIMULATED_RECOVERY', checkedAt: Date.now() };
-  if (simulation !== 'probe') throw new Error('invalid_health_simulation');
-  try {
-    const response = await fetchImpl(url, {
-      method: 'GET', headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(10_000),
-    });
-    if (response.status !== 200) return { healthy: false, reason: `HTTP_${response.status}`, checkedAt: Date.now() };
-    const payload = JSON.parse(await boundedText(response, HEALTH_BODY_LIMIT));
-    if (!isReadyEnvelope(payload)) return { healthy: false, reason: 'MALFORMED_OR_NOT_READY_RESPONSE', checkedAt: Date.now() };
-    return { healthy: true, reason: 'READY', checkedAt: Date.now() };
-  } catch {
-    return { healthy: false, reason: 'NETWORK_OR_TIMEOUT', checkedAt: Date.now() };
-  }
+export async function probeProductionHealth({endpoint,fetchImpl=fetch,simulation='probe'}){
+  const url=healthUrl(endpoint);if(simulation==='failure')return{healthy:false,reason:'SIMULATED_FAILURE',checkedAt:Date.now()};if(simulation==='recovery')return{healthy:true,reason:'SIMULATED_RECOVERY',checkedAt:Date.now()};if(simulation!=='probe')throw new Error('invalid_health_simulation');
+  try{const response=await fetchImpl(url,{method:'GET',headers:{Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(10_000)});if(response.status!==200)return{healthy:false,reason:`HTTP_${response.status}`,checkedAt:Date.now()};const payload=JSON.parse(await boundedText(response,HEALTH_BODY_LIMIT));if(!isReadyEnvelope(payload))return{healthy:false,reason:'MALFORMED_OR_NOT_READY_RESPONSE',checkedAt:Date.now()};return{healthy:true,reason:'READY',checkedAt:Date.now()};}catch{return{healthy:false,reason:'NETWORK_OR_TIMEOUT',checkedAt:Date.now()};}
 }
-
-export async function reconcileHealthIssue({ fetchImpl = fetch, outcome, repository, token }) {
-  const repo = repositoryPath(repository);
-  if (typeof token !== 'string' || token.length < 1) throw new Error('github_token_missing');
-  const request = (path, init = {}) => githubRequest(fetchImpl, repo, token, path, init);
-  const issues = await request('/issues?state=all&per_page=100');
-  if (!Array.isArray(issues)) throw new Error('github_issues_malformed');
-  const matching = issues.filter((issue) => issue && typeof issue === 'object' && !('pull_request' in issue) && issue.title === HEALTH_ISSUE_TITLE);
-  const open = matching.find((issue) => issue.state === 'open');
-  const existing = open ?? matching[0];
-  if (!outcome.healthy) {
-    if (open) return { action: 'ALREADY_OPEN' };
-    const body = failureBody(outcome);
-    if (existing && Number.isSafeInteger(existing.number)) {
-      await request(`/issues/${existing.number}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
-      await request(`/issues/${existing.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
-      return { action: 'REOPENED' };
-    }
-    await request('/issues', { method: 'POST', body: JSON.stringify({ title: HEALTH_ISSUE_TITLE, body }) });
-    return { action: 'CREATED' };
-  }
-  if (!open || !Number.isSafeInteger(open.number)) return { action: 'NO_OPEN_ISSUE' };
-  await request(`/issues/${open.number}/comments`, { method: 'POST', body: JSON.stringify({ body: recoveryBody(outcome) }) });
-  await request(`/issues/${open.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
-  return { action: 'CLOSED' };
+export async function reconcileHealthIssue({fetchImpl=fetch,outcome,repository,token}){
+  const repo=repositoryPath(repository);if(typeof token!=='string'||token.length<1)throw new Error('github_token_missing');const request=(path,init={})=>githubRequest(fetchImpl,repo,token,path,init);const issues=await request('/issues?state=all&per_page=100');if(!Array.isArray(issues))throw new Error('github_issues_malformed');
+  const matching=issues.filter((issue)=>issue&&typeof issue==='object'&&!('pull_request' in issue)&&issue.title===HEALTH_ISSUE_TITLE),open=matching.find((issue)=>issue.state==='open'),existing=open??matching[0];
+  if(!outcome.healthy){if(open)return{action:'ALREADY_OPEN'};const body=failureBody(outcome);if(existing&&Number.isSafeInteger(existing.number)){await request(`/issues/${existing.number}/comments`,{method:'POST',body:JSON.stringify({body})});await request(`/issues/${existing.number}`,{method:'PATCH',body:JSON.stringify({state:'open'})});return{action:'REOPENED'};}await request('/issues',{method:'POST',body:JSON.stringify({title:HEALTH_ISSUE_TITLE,body})});return{action:'CREATED'};}
+  if(!open||!Number.isSafeInteger(open.number))return{action:'NO_OPEN_ISSUE'};await request(`/issues/${open.number}/comments`,{method:'POST',body:JSON.stringify({body:recoveryBody(outcome)})});await request(`/issues/${open.number}`,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})});return{action:'CLOSED'};
 }
-
-async function githubRequest(fetchImpl, repository, token, path, init) {
-  const response = await fetchImpl(`https://api.github.com/repos/${repository}${path}`, {
-    method: init.method ?? 'GET', headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
-    ...(init.body === undefined ? {} : { body: init.body }),
-  });
-  if (!response.ok) throw new Error(`github_api_${response.status}`);
-  if (response.status === 204) return null;
-  return JSON.parse(await boundedText(response, GITHUB_BODY_LIMIT));
-}
-async function boundedText(response, limit) { const text = await response.text(); if (text.length > limit) throw new Error('response_too_large'); return text; }
-function healthUrl(value) {
-  if (typeof value !== 'string') throw new Error('health_url_missing');
-  const url = new URL(value);
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/ready') throw new Error('invalid_health_url');
-  return url.href;
-}
-function repositoryPath(value) {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(value)) throw new Error('invalid_github_repository');
-  return value;
-}
-function isReadyEnvelope(value) {
-  const checks=value?.data?.checks;
-  return value !== null && typeof value === 'object'
-    && value.data !== null && typeof value.data === 'object'
-    && value.data.status === 'ready'
-    && checks !== null && typeof checks === 'object'
-    && ['schema','scheduler','acquisition_maintenance','object_storage','recovery'].every((key)=>checks[key]==='ok')
-    && value.meta !== null && typeof value.meta === 'object'
-    && typeof value.meta.request_id === 'string' && value.meta.request_id.length > 0;
-}
-function failureBody(outcome) { return ['独立生产 Readiness 监控检测到异常。','',`- 结果：${safeReason(outcome.reason)}`,`- 检测时间：${new Date(outcome.checkedAt).toISOString()}`,'- 检查目标：生产站 /ready','','该检查覆盖数据库、Scheduler、获客维护、对象存储与恢复证明；恢复后问题会自动关闭。'].join('\n'); }
-function recoveryBody(outcome) { return ['生产 Readiness 已恢复。','',`- 结果：${safeReason(outcome.reason)}`,`- 恢复时间：${new Date(outcome.checkedAt).toISOString()}`].join('\n'); }
-function safeReason(value) { return /^(READY|SIMULATED_FAILURE|SIMULATED_RECOVERY|MALFORMED_OR_NOT_READY_RESPONSE|NETWORK_OR_TIMEOUT|HTTP_[1-5][0-9]{2})$/u.test(value) ? value : 'UNKNOWN'; }
-
-async function main() {
-  const outcome = await probeProductionHealth({ endpoint: process.env['YGB_PRODUCTION_HEALTH_URL'], simulation: process.env['YGB_HEALTH_SIMULATION'] ?? 'probe' });
-  const reconciliation = await reconcileHealthIssue({ outcome, repository: process.env['GITHUB_REPOSITORY'], token: process.env['GH_TOKEN'] });
-  console.log(JSON.stringify({ status: outcome.healthy ? 'READY' : 'NOT_READY', reason: outcome.reason, issue_action: reconciliation.action }));
-  if (!outcome.healthy) process.exitCode = 1;
-}
-if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) await main();
+async function githubRequest(fetchImpl,repository,token,path,init){const response=await fetchImpl(`https://api.github.com/repos/${repository}${path}`,{method:init.method??'GET',headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${token}`,'Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},...(init.body===undefined?{}:{body:init.body})});if(!response.ok)throw new Error(`github_api_${response.status}`);if(response.status===204)return null;return JSON.parse(await boundedText(response,GITHUB_BODY_LIMIT));}
+async function boundedText(response,limit){const text=await response.text();if(text.length>limit)throw new Error('response_too_large');return text;}
+function healthUrl(value){if(typeof value!=='string')throw new Error('health_url_missing');const url=new URL(value);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/ready')throw new Error('invalid_health_url');return url.href;}
+function repositoryPath(value){if(typeof value!=='string'||!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(value))throw new Error('invalid_github_repository');return value;}
+function isReadyEnvelope(value){const checks=value?.data?.checks;return value!==null&&typeof value==='object'&&value.data!==null&&typeof value.data==='object'&&value.data.status==='ready'&&checks!==null&&typeof checks==='object'&&REQUIRED_CHECKS.every((key)=>checks[key]==='ok')&&value.meta!==null&&typeof value.meta==='object'&&typeof value.meta.request_id==='string'&&value.meta.request_id.length>0;}
+function failureBody(outcome){return['独立生产 Readiness 监控检测到异常。','',`- 结果：${safeReason(outcome.reason)}`,`- 检测时间：${new Date(outcome.checkedAt).toISOString()}`,'- 检查目标：生产站 /ready','','该检查覆盖当前 Schema、Scheduler、获客维护、对象存储、Cloudflare Access 配置、当前 release 与对应 D1+R2 恢复证明；恢复后问题会自动关闭。'].join('\n');}
+function recoveryBody(outcome){return['生产 Readiness 已恢复。','',`- 结果：${safeReason(outcome.reason)}`,`- 恢复时间：${new Date(outcome.checkedAt).toISOString()}`].join('\n');}
+function safeReason(value){return /^(READY|SIMULATED_FAILURE|SIMULATED_RECOVERY|MALFORMED_OR_NOT_READY_RESPONSE|NETWORK_OR_TIMEOUT|HTTP_[1-5][0-9]{2})$/u.test(value)?value:'UNKNOWN';}
+async function main(){const outcome=await probeProductionHealth({endpoint:process.env['YGB_PRODUCTION_HEALTH_URL'],simulation:process.env['YGB_HEALTH_SIMULATION']??'probe'});const reconciliation=await reconcileHealthIssue({outcome,repository:process.env['GITHUB_REPOSITORY'],token:process.env['GH_TOKEN']});console.log(JSON.stringify({status:outcome.healthy?'READY':'NOT_READY',reason:outcome.reason,issue_action:reconciliation.action}));if(!outcome.healthy)process.exitCode=1;}
+if(process.argv[1]&&pathToFileURL(process.argv[1]).href===import.meta.url)await main();
