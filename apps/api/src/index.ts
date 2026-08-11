@@ -10,6 +10,7 @@ import { registerStaffBuyerRefundRoutes } from './buyer-refunds/staff-routes';
 import { registerFileHttpRoutes } from './files';
 import { registerCustomerAuthRoutes } from './http-auth';
 import { registerPublicCustomerSecurityRoutes, registerStaffCustomerSecurityRoutes } from './customer-security';
+import { registerCustomerOnboardingRoutes } from './customer-onboarding/routes';
 import { registerStaffFinanceRoutes } from './internal-finance';
 import { staffSessionMiddleware } from './middleware/staff-auth';
 import { exactOneOrderEvidenceScreenshotGuard, registerStaffOrderEvidenceRoutes } from './order-evidence';
@@ -18,6 +19,7 @@ import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
 import { registerSellerOrderChatScreenshotRoutes } from './seller-order-chat-screenshots';
 import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
+import { registerSellerRegistrationRoutes } from './seller-registration/routes';
 import { registerSellerSettlementRoutes, registerStaffSellerSettlementProofRoutes, registerStaffSellerSettlementRoutes } from './seller-settlements';
 import { registerStaffAssignmentRoutes } from './staff-assignment';
 import { registerCloudflareStaffAuthRoutes } from './staff-auth/access-routes';
@@ -41,6 +43,7 @@ const app = createApp();
 registerStaffMcpTransportRoutes(app);
 registerCustomerAuthRoutes(app);
 registerPublicCustomerSecurityRoutes(app);
+registerSellerRegistrationRoutes(app);
 registerAcquisitionMachineRoutes(app);
 registerCloudflareStaffAuthRoutes(app);
 
@@ -48,6 +51,7 @@ app.use('/api/staff/*', staffSessionMiddleware());
 registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
 registerStaffCustomerSecurityRoutes(app);
+registerCustomerOnboardingRoutes(app);
 // Privacy projection must be registered first so ordinary customer-intake Staff
 // never reach the older full channel read route.
 registerAcquisitionPrivacyRoutes(app);
