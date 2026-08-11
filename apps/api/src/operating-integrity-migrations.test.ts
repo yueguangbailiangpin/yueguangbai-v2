@@ -26,8 +26,12 @@ describe('frozen operating integrity migrations 0051-0053',()=>{
       'trg_staff_reactivated_restore_primary_scope','trg_acquisition_reporting_precision_immutable',
       'trg_acquisition_source_correction_guard','trg_acquisition_intake_facts_no_update',
     ])expect(found.has(required),required).toBe(true);
-    const legacy=await database.prepare(`SELECT name FROM sqlite_schema WHERE type='index' AND name='uq_acquisition_lead_active_identity'`).first();
+    const legacy=await database.prepare(`SELECT name FROM sqlite_schema
+      WHERE type='index' AND name='uq_acquisition_active_identity_per_type'`).first();
     expect(legacy).toBeNull();
+    const marketIndex=await database.prepare(`SELECT sql FROM sqlite_schema
+      WHERE type='index' AND name='uq_acquisition_lead_active_identity_market'`).first<{sql:string}>();
+    expect(marketIndex?.sql).toContain('lead_type,marketplace_code,identity_hash');
     const column=await database.prepare(`SELECT name,type,"notnull",dflt_value FROM pragma_table_info('staff_marketplace_scopes') WHERE name='scope_kind'`).first<any>();
     expect(column).toMatchObject({name:'scope_kind',type:'TEXT',notnull:1,dflt_value:"'PRIMARY'"});
   });
@@ -39,7 +43,8 @@ describe('frozen operating integrity migrations 0051-0053',()=>{
       VALUES
         ('integrity-staff-primary','主负责人','ACTIVE',1,1,1,1,1,NULL),
         ('integrity-staff-support','协助一','ACTIVE',1,1,1,1,1,NULL),
-        ('integrity-staff-support2','协助二','ACTIVE',1,1,1,1,1,NULL);
+        ('integrity-staff-support2','协助二','ACTIVE',1,1,1,1,1,NULL),
+        ('integrity-staff-primary2','第二主候选','ACTIVE',1,1,1,1,1,NULL);
       INSERT INTO staff_marketplace_scopes(
         id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
       ) VALUES
@@ -47,9 +52,13 @@ describe('frozen operating integrity migrations 0051-0053',()=>{
         ('integrity-scope-support','integrity-staff-support','pre_sales','AMAZON_JP','ACTIVE','integrity-staff-primary',1,NULL,'TEST',1,1,'SUPPORT'),
         ('integrity-scope-support2','integrity-staff-support2','pre_sales','AMAZON_JP','ACTIVE','integrity-staff-primary',1,NULL,'TEST',1,1,'SUPPORT');
     `);
+    const supportCount=await database.prepare(`SELECT COUNT(*) AS count FROM staff_marketplace_scopes
+      WHERE role_code='pre_sales' AND marketplace_code='AMAZON_JP' AND status='ACTIVE' AND scope_kind='SUPPORT'`)
+      .first<{count:number}>();
+    expect(Number(supportCount?.count)).toBe(2);
     await expect(database.prepare(`INSERT INTO staff_marketplace_scopes(
       id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
-    ) VALUES('integrity-second-primary','integrity-staff-support','pre_sales','AMAZON_JP','ACTIVE','integrity-staff-primary',2,NULL,'TEST',2,2,'PRIMARY')`).run()).rejects.toThrow();
+    ) VALUES('integrity-second-primary','integrity-staff-primary2','pre_sales','AMAZON_JP','ACTIVE','integrity-staff-primary',2,NULL,'TEST',2,2,'PRIMARY')`).run()).rejects.toThrow();
   });
 
   it('restores a re-enabled employee as primary only when no other active primary exists',async()=>{
