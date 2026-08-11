@@ -48,27 +48,28 @@ async function buyerMatches(database:SqlDatabase,wechat:string,markets:readonly 
 }
 
 async function sellerMatches(database:SqlDatabase,wechat:string,markets:readonly string[]|null){
+  const accountSql=`(SELECT account.id FROM seller_organization_members portal_member
+      JOIN customer_login_accounts account ON account.identity_subject_id=portal_member.identity_subject_id
+      WHERE portal_member.organization_id=organization.id AND portal_member.status='ACTIVE'
+        AND account.status='ACTIVE' AND account.account_type='SELLER_MEMBER'
+      ORDER BY portal_member.primary_owner DESC,portal_member.member_number,portal_member.id LIMIT 1)`;
   const identityRows=await database.prepare(`SELECT organization.id AS subject_id,organization.organization_name AS display_name,
-      organization.marketplace_code,account.id AS account_id,
+      organization.marketplace_code,${accountSql} AS account_id,
       (SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.seller_organization_id=organization.id) AS formal_order_count
     FROM wechat_identity_claims claim
     JOIN seller_organization_members member ON member.identity_subject_id=claim.identity_subject_id
     JOIN seller_organizations organization ON organization.id=member.organization_id
-    LEFT JOIN customer_login_accounts account ON account.identity_subject_id=member.identity_subject_id AND account.status='ACTIVE'
     WHERE claim.normalized_wechat=? AND claim.status='ACTIVE' AND member.status='ACTIVE' AND organization.status='ACTIVE'
     ORDER BY member.primary_owner DESC,organization.activated_at,organization.id`).bind(wechat).all<SellerRow>();
   const importedRows=await database.prepare(`SELECT organization.id AS subject_id,organization.organization_name AS display_name,
-      organization.marketplace_code,NULL AS account_id,
+      organization.marketplace_code,${accountSql} AS account_id,
       (SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.seller_organization_id=organization.id) AS formal_order_count
     FROM seller_partner_import_source_records source
     JOIN seller_organizations organization ON organization.seller_code=source.source_seller_code
     WHERE source.seller_wechat_normalized=? AND source.status IN ('VALID','IMPORTED') AND organization.status='ACTIVE'
     GROUP BY organization.id,organization.organization_name,organization.marketplace_code
     ORDER BY organization.activated_at,organization.id`).bind(wechat).all<SellerRow>();
-  const dedup=new Map<string,SellerRow>();
-  for(const row of [...importedRows.results,...identityRows.results]){
-    const current=dedup.get(row.subject_id);if(!current||row.account_id!==null)dedup.set(row.subject_id,row);
-  }
+  const dedup=new Map<string,SellerRow>();for(const row of [...importedRows.results,...identityRows.results])dedup.set(row.subject_id,row);
   return [...dedup.values()].filter((row)=>{const canonical=row.marketplace_code==='JP'?'AMAZON_JP':row.marketplace_code;return markets===null||markets.includes(canonical);}).map((row)=>({
     customer_type:'SELLER' as const,subject_id:row.subject_id,display_name:row.display_name,
     marketplace_code:row.marketplace_code==='JP'?'AMAZON_JP':row.marketplace_code,has_portal_account:row.account_id!==null,
