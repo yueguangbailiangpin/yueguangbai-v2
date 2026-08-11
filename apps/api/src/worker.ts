@@ -3,6 +3,7 @@ import type { ExecutionContext } from 'hono';
 import { isScheduledOperationJobName, type ScheduledOperationJobName } from '@ygb/contracts';
 import { configuredAlertSink, type AppBindings } from './app';
 import { runScheduledOperations } from './scheduled-operations';
+import { reconcileUnlinkedFileRetention } from './files/retention';
 import { hashCanonicalJson } from '@ygb/domain';
 import { evaluatePersistedScheduledJobSignals } from './scheduled-operations/signals';
 import { driveArchiveRuntime } from './cold-image-archive/runtime';
@@ -54,7 +55,24 @@ export default {
       const drive=driveArchiveRuntime(env);
       const feishu=feishuWorkbenchRuntime(env);
       const sink=configuredAlertSink(env,feishu.alertSink);
-      await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,feishuAdapter:feishu.adapter,feishuWebOrigin:feishu.webOrigin,feishuTenantKey:feishu.tenantKey,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled,...(sink?{alertSink:sink}:{}),now,deadlineReached });
+      const runs=await runScheduledOperations(env.DB, { enabled: true, disabledJobs, storage: env.FILE_OBJECT_STORAGE ?? null, outboxAdapter: env.OUTBOX_DELIVERY_ADAPTER ?? null,feishuAdapter:feishu.adapter,feishuWebOrigin:feishu.webOrigin,feishuTenantKey:feishu.tenantKey,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled,...(sink?{alertSink:sink}:{}),now,deadlineReached });
+      const fileJob=runs.find((run)=>run.job_name==='file_orphan_cleanup');
+      if(fileJob&&fileJob.outcome!=='DISABLED'&&env.FILE_OBJECT_STORAGE&&!deadlineReached()){
+        try{
+          const retention=await reconcileUnlinkedFileRetention(env.DB,env.FILE_OBJECT_STORAGE,{now,limit:25,deadlineReached});
+          const combinedBacklog=fileJob.backlog_count+retention.backlog;
+          const retentionFailed=retention.deferred>0;
+          await env.DB.prepare(`UPDATE scheduled_job_states
+            SET last_backlog_count=?,
+              last_failed_at=CASE WHEN ?=1 THEN ? ELSE last_failed_at END,
+              last_failure_category=CASE WHEN ?=1 THEN 'file_retention_deferred' ELSE last_failure_category END,
+              updated_at=MAX(?,updated_at)
+            WHERE job_name='file_orphan_cleanup'`).bind(combinedBacklog,retentionFailed?1:0,now,retentionFailed?1:0,now).run();
+        }catch(error){
+          await env.DB.prepare(`UPDATE scheduled_job_states SET last_failed_at=?,last_failure_category='file_retention_failed',updated_at=MAX(?,updated_at) WHERE job_name='file_orphan_cleanup'`).bind(now,now).run().catch(()=>undefined);
+          throw error;
+        }
+      }
       if (env.ACQUISITION_MAINTENANCE_ENABLED === 'true') {
         await runAcquisitionMaintenance(env.DB, {
           identitySecret: String(env.CUSTOMER_SECURITY_TOKEN_SECRET ?? ''),
