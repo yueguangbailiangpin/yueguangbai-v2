@@ -1,28 +1,33 @@
-import { readFileSync } from 'node:fs';
+import { existsSync,readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe,expect,it } from 'vitest';
 
-const root=path.resolve(import.meta.dirname,'../../..');
+const root=path.resolve(import.meta.dirname,'../../../..');
 const read=(file:string)=>readFileSync(path.join(root,file),'utf8');
 
 describe('second layer active UI routing',()=>{
-  it('routes extensionless SellerPages imports through the marketplace-local implementation',()=>{
-    const entry=read('apps/web/src/seller/pages/SellerPages.ts');
-    expect(entry).toContain("from './SellerPagesMarketplace'");
-    const implementation=read('apps/web/src/seller/pages/SellerPagesMarketplace.tsx');
-    expect(implementation).toContain("timeZone:'Asia/Tokyo'");
-    expect(implementation).toContain('（日本时间）');
-    expect(implementation).not.toContain("timeZone:'Asia/Shanghai'");
+  it('keeps the mature Seller portal directly active while presenting JP-local time',()=>{
+    const seller=read('apps/web/src/seller/pages/SellerPages.tsx');
+    expect(seller).toContain("timeZone: 'Asia/Tokyo'");
+    expect(seller).toContain('（日本时间）');
+    expect(seller).toContain('withdrawApplication');
+    expect(seller).toContain('withdrawDemand');
+    expect(seller).toContain('SellerOrderChatScreenshotReadIntentAdapter');
+    expect(seller).toContain('sellerQueryKeys.payablesPage');
+    expect(seller).not.toContain("timeZone: 'Asia/Shanghai'");
+    expect(existsSync(path.join(root,'apps/web/src/seller/pages/SellerPages.ts'))).toBe(false);
+    expect(existsSync(path.join(root,'apps/apps'))).toBe(false);
   });
 
-  it('routes integrity tools through the ledger-safe implementation',()=>{
-    const entry=read('apps/web/src/staff/StaffOperatingIntegrityTools.ts');
-    expect(entry).toContain("from './StaffOperatingIntegrityToolsV2'");
-    const implementation=read('apps/web/src/staff/StaffOperatingIntegrityToolsV2.tsx');
+  it('uses the direct ledger-safe Staff integrity tool with advance payment proof',()=>{
+    const implementation=read('apps/web/src/staff/StaffOperatingIntegrityTools.tsx');
     expect(implementation).toContain('PROJECTED_GROSS_PROFIT');
     expect(implementation).toContain('COMPLETED_GROSS_PROFIT');
+    expect(implementation).toContain("uploader.start('staffBuyerRefundProof'");
+    expect(implementation).toContain('proof_files');
     expect(implementation).not.toContain('<option value="SELLER_PRINCIPAL_DUE">');
     expect(implementation).not.toContain('<option value="SELLER_SERVICE_FEE_DUE">');
     expect(implementation).not.toContain('<option value="BUYER_REFUND_DUE">');
+    expect(existsSync(path.join(root,'apps/web/src/staff/StaffOperatingIntegrityTools.ts'))).toBe(false);
   });
 });
