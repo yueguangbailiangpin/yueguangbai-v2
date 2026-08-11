@@ -37,6 +37,7 @@ export const staffSessionFixture = Object.freeze({
   permissions: [],
   data_scope: {
     type: 'GLOBAL',
+    marketplaceCodes: [],
     buyerCustomerIds: [],
     sellerOrganizationIds: [],
     teamIds: [],

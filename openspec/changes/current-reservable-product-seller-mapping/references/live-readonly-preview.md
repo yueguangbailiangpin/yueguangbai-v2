@@ -9,7 +9,7 @@
 - 有效标识行 109：Amazon 合法 ASIN 107 行，Rakuten `R-1`/`S-1` 2 行。
 - 缺标识隔离行 5：工作表1 第 53、54、69、70、71 行。
 - 唯一当前产品 88：Amazon ASIN 86，Rakuten 产品标识 2。
-- 完整本地快照由 [full-readonly-manifest.mjs](../../../../apps/api/src/current-reservable-product-seller-mapping/fixtures/full-readonly-manifest.mjs) 组装，包含 114 条 current、157 条历史命中行和 184 条历史文件索引。
+- 完整本地快照由 [full-readonly-manifest.mjs](../../../../tools/imports/current-product-seller-mapping/fixtures/full-readonly-manifest.mjs) 组装，包含 114 条 current、157 条历史命中行和 184 条历史文件索引。
 - 这里的“157 条历史命中行”是先扫描 184 个历史文件，再按 marketplace-aware 产品键与当前 88 个产品匹配得到的相关历史行；它不是旧的 1,695 行全量历史事实的缩写或照抄。其余文件按稳定 `scanStatus` 保持隔离，详见四份 inventory JSON。
 
 ## 88 个当前产品逐项结果

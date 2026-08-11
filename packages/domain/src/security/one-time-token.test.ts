@@ -17,9 +17,14 @@ describe('one-time security tokens', () => {
     const other = await deriveOneTimeToken(
       secret, 'PASSWORD_RESET', 'staff-1', 'idem-key-123', 'a'.repeat(64),
     );
+    const seller = await deriveOneTimeToken(
+      secret, 'SELLER_INVITATION', 'staff-1', 'idem-key-123', 'a'.repeat(64),
+    );
 
     expect(first).toBe(replay);
     expect(first).not.toBe(other);
+    expect(seller).not.toBe(first);
+    expect(seller).not.toBe(other);
     expect(isOneTimeToken(first)).toBe(true);
     expect(await hashOneTimeToken(first)).toMatch(/^[0-9a-f]{64}$/u);
     await expect(hashOneTimeToken('not-a-token')).rejects.toThrow();

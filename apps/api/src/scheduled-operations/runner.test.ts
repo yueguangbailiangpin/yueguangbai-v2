@@ -7,14 +7,6 @@ let database: SqliteDatabase | null = null;
 afterEach(() => { database?.close(); database = null; });
 
 describe('scheduled operations', () => {
-  it('records a bounded successful cleanup run and keeps extension jobs disabled', async () => {
-    database = createMigratedTestDatabase();
-    const runs = await runScheduledOperations(database, { now: 2_000_000_000, only: 'staff_auth_cleanup' });
-    expect(runs[0]).toMatchObject({ job_name: 'staff_auth_cleanup', outcome: 'SUCCEEDED', processed_count: 0 });
-    const extension = await runScheduledOperations(database, { now: 2_000_000_100, only: 'feishu_sync' });
-    expect(extension[0]?.outcome).toBe('DISABLED');
-  });
-
   it('reports a missing file storage adapter as a failed dependency instead of a success',async()=>{
     database=createMigratedTestDatabase();
     const run=await runScheduledOperations(database,{now:2_000,only:'file_orphan_cleanup'});
@@ -24,10 +16,10 @@ describe('scheduled operations', () => {
 
   it('uses an expiring lease so duplicate scheduler delivery is skipped then recoverable', async () => {
     database = createMigratedTestDatabase();
-    database.exec("INSERT INTO scheduled_job_states (job_name,lease_token,lease_expires_at,updated_at) VALUES ('staff_auth_cleanup','other',2000,1)");
-    const blocked = await runScheduledOperations(database, { now: 1_999, only: 'staff_auth_cleanup' });
+    database.exec("INSERT INTO scheduled_job_states (job_name,lease_token,lease_expires_at,updated_at) VALUES ('outbox_delivery','other',2000,1)");
+    const blocked = await runScheduledOperations(database, { now: 1_999, only: 'outbox_delivery' });
     expect(blocked[0]?.outcome).toBe('SKIPPED');
-    const recovered = await runScheduledOperations(database, { now: 2_000, only: 'staff_auth_cleanup' });
+    const recovered = await runScheduledOperations(database, { now: 2_000, only: 'outbox_delivery' });
     expect(recovered[0]?.outcome).toBe('SUCCEEDED');
   });
 
@@ -60,18 +52,18 @@ describe('scheduled operations', () => {
 
   it('skips before lease expiry, takes over after expiry, and rejects stale completion', async () => {
     database=createMigratedTestDatabase();
-    database.exec("INSERT INTO scheduled_job_states(job_name,lease_token,lease_expires_at,version,cursor_json,last_started_at,last_succeeded_at,last_failed_at,last_failure_category,last_backlog_count,updated_at) VALUES('staff_auth_cleanup','old-token',2000,4,'{\"due\":1}',10,11,NULL,NULL,0,11)");
-    expect((await runScheduledOperations(database,{now:1999,only:'staff_auth_cleanup'}))[0]?.outcome).toBe('SKIPPED');
-    expect((await runScheduledOperations(database,{now:2000,only:'staff_auth_cleanup'}))[0]?.outcome).toBe('SUCCEEDED');
-    const current=await database.prepare("SELECT lease_token,version,last_succeeded_at FROM scheduled_job_states WHERE job_name='staff_auth_cleanup'").first<{lease_token:string|null;version:number;last_succeeded_at:number}>();
-    const stale=await database.prepare("UPDATE scheduled_job_states SET cursor_json='stale',last_succeeded_at=999999 WHERE job_name='staff_auth_cleanup' AND lease_token='old-token'").run();
+    database.exec("INSERT INTO scheduled_job_states(job_name,lease_token,lease_expires_at,version,cursor_json,last_started_at,last_succeeded_at,last_failed_at,last_failure_category,last_backlog_count,updated_at) VALUES('outbox_delivery','old-token',2000,4,'{\"due\":1}',10,11,NULL,NULL,0,11)");
+    expect((await runScheduledOperations(database,{now:1999,only:'outbox_delivery'}))[0]?.outcome).toBe('SKIPPED');
+    expect((await runScheduledOperations(database,{now:2000,only:'outbox_delivery'}))[0]?.outcome).toBe('SUCCEEDED');
+    const current=await database.prepare("SELECT lease_token,version,last_succeeded_at FROM scheduled_job_states WHERE job_name='outbox_delivery'").first<{lease_token:string|null;version:number;last_succeeded_at:number}>();
+    const stale=await database.prepare("UPDATE scheduled_job_states SET cursor_json='stale',last_succeeded_at=999999 WHERE job_name='outbox_delivery' AND lease_token='old-token'").run();
     expect(stale.meta.changes).toBe(0); expect(current?.lease_token).toBeNull(); expect(current?.version).toBeGreaterThan(4);
   });
 
   it('does not write leases, runs, or business facts when disabled', async () => {
     database=createMigratedTestDatabase();
-    const disabled=await runScheduledOperations(database,{now:2000,only:'staff_auth_cleanup',enabled:false});
-    const perJob=await runScheduledOperations(database,{now:2000,only:'staff_auth_cleanup',disabledJobs:['staff_auth_cleanup']});
+    const disabled=await runScheduledOperations(database,{now:2000,only:'reservation_expiry',enabled:false});
+    const perJob=await runScheduledOperations(database,{now:2000,only:'reservation_expiry',disabledJobs:['reservation_expiry']});
     const hard=await runScheduledOperations(database,{now:2000,only:'drive_archive'});
     expect([disabled[0]?.outcome,perJob[0]?.outcome,hard[0]?.outcome]).toEqual(['DISABLED','DISABLED','DISABLED']);
     expect((await database.prepare('SELECT COUNT(*) AS count FROM scheduled_job_runs').first<{count:number}>())?.count).toBe(0);

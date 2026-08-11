@@ -59,36 +59,21 @@ function StaffProtectedProbe({
   return <div>{session.status}</div>;
 }
 
-describe('Staff login/start and Session formal MSW chain', () => {
-  it('sends the exact login/start body and accepts only the configured Provider Origin', async () => {
+describe('Cloudflare Access Staff bootstrap and Session formal MSW chain', () => {
+  it('sends the exact bootstrap body and parses the Access email with the Staff Session', async () => {
     let body: unknown;
-    server.use(http.post(apiUrl('/api/staff-auth/login/start'), async ({ request }) => {
+    server.use(http.post(apiUrl('/api/staff-auth/access/bootstrap'), async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
-        data: {
-          provider: 'FEISHU',
-          authorization_url: 'https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=test',
-          expires_at: 1_700_000_600_000,
-        },
-        meta: { request_id: 'request-staff-start' },
+        data: { session: staffSessionFixture, access_email: 'staff@example.com' },
+        meta: { request_id: 'request-staff-bootstrap' },
       });
     }));
-    const url = await new StaffAuthController(createMswQueryClient()).startLogin('/staff');
-    expect(body).toEqual({ return_to: '/staff' });
-    expect(url).toBe('https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=test');
-  });
-
-  it('rejects an arbitrary HTTPS Provider Origin after the real response is validated', async () => {
-    server.use(http.post(apiUrl('/api/staff-auth/login/start'), () => HttpResponse.json({
-      data: {
-        provider: 'FEISHU',
-        authorization_url: 'https://attacker.invalid/authorize',
-        expires_at: 1_700_000_600_000,
-      },
-      meta: { request_id: 'request-staff-unsafe-origin' },
-    })));
-    await expect(new StaffAuthController(createMswQueryClient()).startLogin('/staff'))
-      .rejects.toThrow('unsafe_provider_url');
+    await expect(staffAuthApi.bootstrap()).resolves.toEqual({
+      data: { session: staffSessionFixture, access_email: 'staff@example.com' },
+      requestId: 'request-staff-bootstrap',
+    });
+    expect(body).toEqual({});
   });
 
   it('reads a real data.session Staff Session', async () => {

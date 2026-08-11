@@ -42,7 +42,7 @@ The zero-network preflight SHALL validate a Git-external rendered configuration 
 #### Scenario: Checked-in templates are inspected
 
 - **WHEN** preflight reads the staging or production template without external files
-- **THEN** it reports `BLOCKED_NEEDS_OPERATOR_INPUT`, names required fields/evidence/managed Secrets and records zero external calls, Provider calls, deployments and resource mutations.
+- **THEN** it reports `ABSENT_FROM_CORE_RELEASE`, finds no Staff MCP variable or service binding and records zero external calls, Provider calls, deployments and resource mutations.
 
 #### Scenario: Local external files are structurally valid
 

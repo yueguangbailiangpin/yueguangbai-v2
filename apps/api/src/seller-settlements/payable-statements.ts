@@ -5,7 +5,9 @@ import type {
 } from '@ygb/contracts';
 import { canonicalJson } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
+import { requireFormalOrderAction,FormalOrderPolicyError } from '../formal-order-policy';
 import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
+import { SellerSettlementError } from './shared';
 
 export interface PreparedSellerPayable {
   payableId: string;
@@ -34,6 +36,25 @@ export async function prepareSellerPayableCreation(
     idempotencyKey: string;
   },
 ): Promise<PreparedSellerPayable> {
+  if (input.payableType === 'SELLER_SERVICE_FEE') {
+    try {
+      await requireFormalOrderAction(
+        database,
+        input.formalOrderId,
+        'ACCRUE_SELLER_SERVICE_FEE',
+      );
+    } catch (error) {
+      if (error instanceof FormalOrderPolicyError) {
+        throw new SellerSettlementError(
+          error.code === 'FORMAL_ORDER_NOT_FOUND'
+            ? 'NOT_FOUND'
+            : 'SELLER_SETTLEMENT_CONFLICT',
+          error.code === 'FORMAL_ORDER_NOT_FOUND' ? 404 : 409,
+        );
+      }
+      throw error;
+    }
+  }
   const payableId = crypto.randomUUID();
   const eventId = crypto.randomUUID();
   const payload = {

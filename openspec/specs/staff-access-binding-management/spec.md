@@ -1,74 +1,52 @@
 # staff-access-binding-management Specification
 
 ## Purpose
-TBD - created by archiving change staff-access-binding-management. Update Purpose after archive.
+
+Let the total administrator manage Moonwhite Staff email accounts, one canonical role and explicit Marketplace responsibility without a Feishu binding or invitation workflow.
+
 ## Requirements
-### Requirement: Only the total administrator manages Staff access
 
-The system SHALL expose Staff access management only to a current Staff Session whose sole role is `owner` and whose effective authorization includes both `STAFF_MANAGE` and `PERMISSION_MANAGE`. Personal DENY SHALL remain final, and UI visibility SHALL never replace backend authorization.
+### Requirement: Only the total administrator manages Staff accounts
 
-#### Scenario: Authorized owner opens the module
+The system SHALL expose Staff account management only to a current ACTIVE owner whose effective authorization contains `STAFF_MANAGE` and `PERMISSION_MANAGE`. Personal DENY SHALL remain final and UI visibility SHALL never replace backend authorization.
 
-- **WHEN** the current unique owner retains both required permissions
-- **THEN** the system returns the minimal employee and pending-invitation projection and renders the management workspace
+#### Scenario: Unauthorized direct request
 
-#### Scenario: Hidden route is called directly
+- **WHEN** a non-owner, missing-permission or personally denied Staff calls any account-management endpoint
+- **THEN** the backend returns a generic forbidden response without returning employee data.
 
-- **WHEN** any non-owner, multi-role, missing-permission or personally denied Staff calls a management API
-- **THEN** the backend rejects the request without returning Staff or Feishu binding data
+### Requirement: Owner creates explicit email-based Staff accounts
 
-### Requirement: Employee provisioning uses a single-use verified Feishu invitation
+The system SHALL let an authorized owner create an employee with a display name, normalized unique login email, exactly one canonical role and explicit ACTIVE Marketplace codes. It SHALL NOT create a Feishu binding, invitation token, Team selection, arbitrary permission grant or Provider identity.
 
-The system SHALL let an owner issue a 24-hour invitation containing only a display name, one canonical role and, for a non-owner, exactly one explicitly selected ACTIVE Team. It SHALL NOT default an invited employee into every Team. It SHALL return the opaque invitation token once, SHALL store only its hash, and SHALL require the invited employee to complete Provider verification through the existing single Feishu application before reusing the existing provision command. Normal unknown-identity login SHALL continue to be rejected.
+#### Scenario: New employee is created
 
-#### Scenario: Invited employee binds successfully
+- **WHEN** a valid exact request supplies one role and allowed Marketplace codes
+- **THEN** one Staff account, one ACTIVE role, one ACTIVE email identity and the requested Marketplace scopes are created atomically, with prior sessions absent.
 
-- **WHEN** an unexpired ISSUED invitation starts a single-use OAuth state and the configured Feishu Provider verifies a unique subject
-- **THEN** exactly one ACTIVE Staff, one canonical ACTIVE role, the invited Team membership for a non-owner, and one ACTIVE Feishu identity are created, the invitation becomes CONSUMED, and an internal Staff Session is issued
+### Requirement: Marketplace responsibility uses PRIMARY and SUPPORT
 
-#### Scenario: Unknown employee attempts ordinary login
+For each non-owner `role × Marketplace`, the first ACTIVE employee SHALL be PRIMARY and later ACTIVE employees SHALL be SUPPORT. Disabling a PRIMARY SHALL atomically promote a deterministic eligible SUPPORT when one exists. PRIMARY changes SHALL affect queue ownership only; SUPPORT visibility SHALL remain identical for the same role and Marketplace.
 
-- **WHEN** a verified Feishu subject has no D1 binding and no valid binding invitation state
-- **THEN** login remains rejected and no Staff, role, permission, identity or Session is created
+#### Scenario: Primary employee is disabled
 
-#### Scenario: Invite or callback is replayed
+- **WHEN** an authorized owner disables a PRIMARY account
+- **THEN** its sessions are revoked and one eligible SUPPORT is promoted without expanding any role or Marketplace visibility.
 
-- **WHEN** a cancelled, expired, consumed or repeated invitation/state is presented
-- **THEN** the request fails closed and deterministic idempotency prevents duplicate Staff creation
+### Requirement: Account changes invalidate authority predictably
 
-### Requirement: Staff lifecycle preserves one role and owner continuity
+Role, email, Marketplace and status mutations SHALL require `expected_version`, preserve exactly one ACTIVE role, reject self-disable or unsafe final-owner removal and advance authorization/session versions so previous Sessions fail closed.
 
-The system SHALL require `expected_version` and Idempotency-Key for role and status mutations, SHALL keep each ACTIVE Staff on exactly one canonical ACTIVE role, SHALL invalidate prior sessions after authority/status changes, and SHALL prohibit self-disable, self-role-change and removal of the last ACTIVE owner.
+#### Scenario: Stale account update
 
-#### Scenario: Owner changes another employee role
-
-- **WHEN** the target version matches and owner continuity remains valid
-- **THEN** the old role becomes historical, exactly one target role becomes ACTIVE, authorization/session versions advance and prior sessions are revoked
-
-#### Scenario: Owner disables or enables another employee
-
-- **WHEN** the target version matches and all enable/disable preconditions hold
-- **THEN** Staff status, versions, sessions, authorization event, audit and outbox change atomically
-
-#### Scenario: Unsafe owner continuity change is attempted
-
-- **WHEN** an owner targets themselves or would disable/demote the final ACTIVE owner
-- **THEN** the command is rejected without partial role, status, identity or Session changes
+- **WHEN** the supplied version does not match the current account
+- **THEN** the mutation is rejected without partial identity, role, scope, Session, audit or outbox changes.
 
 ### Requirement: Management projections minimize identity data
 
-The system SHALL return only Staff ID, display name, status, version, canonical role, Feishu binding status, verification time, active Team options and safe invitation lifecycle fields. It SHALL NOT return Feishu `open_id`, `user_id`, tenant key, token/state hashes, Provider tokens, full claims, Cookie/session hashes or arbitrary permission internals.
+The account list SHALL return only Staff ID, display name, normalized login email, status, version, canonical role, Marketplace codes/scopes, last login time and update time with `Cache-Control: no-store`. It SHALL NOT return Provider subjects, tokens, hashes, Cookie values, Feishu identifiers or arbitrary permission internals.
 
 #### Scenario: Owner reads the employee list
 
-- **WHEN** an authorized owner loads or refreshes the module
-- **THEN** the response contains only the bounded safe projection with `Cache-Control: no-store`
-
-### Requirement: Employee management remains an access module, not an HR system
-
-The Web workspace SHALL reuse `tokens.css`, preserve the employee high-density visual direction, work responsively, and expose only invitation, role, binding status and enable/disable controls. It SHALL NOT add a new UI framework, external font, arbitrary permission builder, employee phone/department directory, payroll or attendance facts.
-
-#### Scenario: Owner uses desktop or mobile management
-
-- **WHEN** the module is rendered at supported responsive widths
-- **THEN** the same authoritative fields and guarded actions remain usable without inventing HR or Provider data
+- **WHEN** an authorized owner loads the workspace
+- **THEN** the Web displays employee, email, role, Marketplace PRIMARY/SUPPORT and status without exposing identity secrets or a Feishu workflow.

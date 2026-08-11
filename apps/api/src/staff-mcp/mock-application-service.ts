@@ -347,12 +347,10 @@ implements StaffMcpApplicationService {
     if (!actor.permissions.has(record.requiredPermission)) return false;
     if (record.objectType === 'TASK' || record.objectType === 'EXCEPTION') {
       const direct = record.assignedStaffId === actor.staffId;
-      const team = record.teamId !== undefined
-        && actor.permissions.has('TASK_VIEW_TEAM')
-        && actor.leaderTeamIds.includes(record.teamId);
-      if (!direct && !team && actor.dataScope.type !== 'GLOBAL') return false;
+      if (!direct && actor.dataScope.type !== 'GLOBAL') return false;
     }
     if (actor.dataScope.type === 'GLOBAL') return true;
+    if (!actor.dataScope.marketplaceCodes.includes(record.marketplaceCode)) return false;
     if (record.buyerCustomerId
       && !actor.dataScope.buyerCustomerIds.includes(record.buyerCustomerId)) return false;
     if (record.sellerOrganizationId

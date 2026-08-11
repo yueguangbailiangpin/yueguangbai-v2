@@ -186,6 +186,13 @@ export function normalizeReviewError(error: unknown): ReviewError {
   if (record?.code === 'VERSION_CONFLICT') {
     return new ReviewError('VERSION_CONFLICT', 409);
   }
+  if (record?.code === 'BUYER_REFUND_STATE_CONFLICT'
+    || record?.code === 'SELLER_SETTLEMENT_CONFLICT') {
+    return new ReviewError('FORMAL_ORDER_STATE_CONFLICT', 409);
+  }
+  if (record?.code === 'BUYER_REFUND_NOT_FOUND') {
+    return new ReviewError('FORMAL_ORDER_NOT_FOUND', 404);
+  }
   if (record?.code === 'FILE_OBJECT_NOT_FOUND'
     || record?.code === 'NOT_FOUND') {
     return new ReviewError('FILE_OBJECT_NOT_FOUND', 404);

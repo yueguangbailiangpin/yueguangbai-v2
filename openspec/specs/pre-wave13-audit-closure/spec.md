@@ -8,7 +8,7 @@ Defines the evidence-based closure conditions and residual-risk reporting for th
 
 ### Requirement: P1-01 closes only after trusted Staff production authentication is implemented and verified
 
-The existing Pre-Wave 13 audit SHALL retain P1-01 until Staff login start/callback Contracts, D1 identity mapping, Worker internal Session, current-session APIs, revocation/version semantics, default Staff Session Middleware and production entrypoint E2E are implemented and verified. Every existing Staff and Internal Finance route SHALL receive `staffAuthorization` from the trusted middleware, and direct test Actor or Feishu header injection SHALL not satisfy closure.
+The existing Pre-Wave 13 audit SHALL retain P1-01 until Cloudflare Access assertion verification, D1 email identity mapping, Worker internal Session, current-session APIs, revocation/version semantics, default Staff Session Middleware and production entrypoint E2E are implemented and verified. Every existing Staff and Internal Finance route SHALL receive `staffAuthorization` from the trusted middleware, and direct test Actor or client identity-header injection SHALL not satisfy closure.
 
 #### Scenario: P1-01 closure evidence is complete
 
@@ -36,7 +36,7 @@ The existing audit SHALL retain P1-02 until the default production app registers
 
 ### Requirement: P1-03 closes through a formal decision clarification that preserves history
 
-The implementation stage SHALL update `docs/decisions/V2_DECISION_REGISTER.md` by preserving D-004 history and adding an explicit clarification or revision: Feishu is the first-release Staff authentication Provider; D1 `staff_users` and related D1 authorization records are the Staff subject/permission authority; Worker issues the internal Staff Session; Staff APIs do not directly trust Feishu claims; Feishu is not the business/financial database; Feishu messages, queues and reminders remain later scope.
+The implementation stage SHALL update `docs/decisions/V2_DECISION_REGISTER.md` by preserving D-004 history and adding an explicit superseding decision: Cloudflare Access is the Staff authentication perimeter and proves email only; D1 `staff_users`, email identity and related authorization records are the Staff subject/permission authority; Worker issues the internal Staff Session; Staff APIs do not directly trust Access or client claims; and the former Feishu runtime is retired.
 
 #### Scenario: Decision conflict is formally resolved
 
@@ -45,7 +45,7 @@ The implementation stage SHALL update `docs/decisions/V2_DECISION_REGISTER.md` b
 
 #### Scenario: History is deleted or boundary remains ambiguous
 
-- **WHEN** D-004 is silently removed, Feishu is still described as permission/Session authority, or the clarification is not formally recorded
+- **WHEN** D-004 is silently removed, an external Provider is still described as permission/Session authority, or the superseding decision is not formally recorded
 - **THEN** P1-03 and `GOVERNANCE_CONFLICT` remain open.
 
 ### Requirement: Audit closure recounts endpoints and frontend readiness from the implemented production app

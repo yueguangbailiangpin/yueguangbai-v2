@@ -16,15 +16,15 @@ const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-v2-migrations-'),
 );
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 43;
+const expectedLatestSchema = 65;
 const expectedLastMigration =
-  '0043_seller_principal_rate_integrity_hardening.sql';
+  '0065_retire_feishu_artifacts.sql';
 const expectedSchemaInventory = {
-  table: 187,
-  index: 550,
-  trigger: 357,
-  view: 10,
-  sha256: '71ea6d9142575ca6de4e33b1eb8b1ea729921f8e2ae5a0dd78ea6c13defacb51',
+  table: 214,
+  index: 612,
+  trigger: 406,
+  view: 12,
+  sha256: '88b93ce12164731809e235c94ff3e97f24b9db27e2756992292bfda627bbd199',
 };
 
 const requiredTables = [
@@ -36,7 +36,6 @@ const requiredTables = [
   'staff_departments',
   'staff_teams',
   'staff_users',
-  'feishu_staff_identities',
   'staff_team_memberships',
   'staff_role_assignments',
   'staff_role_consolidation_cutovers',
@@ -150,8 +149,6 @@ const requiredTables = [
   'customer_password_reset_tokens',
   'customer_password_reset_events',
   'customer_security_rate_limits',
-  'feishu_workbench_mirrors',
-  'feishu_workbench_callback_receipts',
   'seller_principal_rate_policy_versions',
   'seller_principal_rate_policy_events',
   'seller_principal_rate_snapshots',
@@ -174,6 +171,41 @@ const requiredTables = [
   'acquisition_lead_links',
   'acquisition_maintenance_state',
   'acquisition_maintenance_runs',
+  'staff_email_identities',
+  'staff_marketplace_scopes',
+  'acquisition_channel_privacy_profiles',
+  'acquisition_prospects',
+  'acquisition_prospect_signals',
+  'acquisition_customer_attributions',
+  'customer_seller_invitations',
+  'customer_seller_invitation_events',
+  'customer_buyer_invitation_lead_links',
+  'acquisition_customer_intake_facts',
+  'acquisition_reporting_config',
+  'acquisition_historical_source_exemptions',
+  'customer_identity_resolution_cases',
+  'customer_identity_resolution_events',
+  'customer_identity_manual_bindings',
+  'acquisition_lead_source_corrections',
+  'seller_customer_groups',
+  'seller_customer_group_marketplaces',
+  'formal_order_operational_events',
+  'review_visibility_observations',
+  'formal_order_financial_adjustments',
+  'buyer_advance_principal_entries',
+  'buyer_advance_principal_settlements',
+  'seller_member_invitations',
+  'seller_member_invitation_events',
+  'customer_login_identifier_change_events',
+  'acquisition_machine_credentials',
+  'acquisition_machine_marketplaces',
+  'acquisition_machine_channels',
+  'acquisition_machine_rate_buckets',
+  'production_recovery_attestations',
+  'seller_member_portal_store_grants',
+  'buyer_advance_principal_entry_files',
+  'buyer_advance_principal_overpayments',
+  'marketplace_runtime_config',
 ];
 
 const requiredTriggers = [
@@ -381,12 +413,6 @@ const requiredTriggers = [
   'trg_formal_order_marketplace_money_no_update',
   'trg_formal_order_marketplace_money_no_delete',
   'trg_formal_order_marketplace_money_legacy_insert',
-  'trg_feishu_workbench_mirrors_insert_guard',
-  'trg_feishu_workbench_mirrors_update_guard',
-  'trg_feishu_workbench_mirrors_no_delete',
-  'trg_feishu_workbench_callback_receipts_insert_guard',
-  'trg_feishu_workbench_callback_receipts_update_guard',
-  'trg_feishu_workbench_callback_receipts_no_delete',
   'trg_platform_product_identity_scope_guard',
   'trg_platform_product_identity_no_key_update',
   'trg_platform_product_identities_no_delete',
@@ -423,6 +449,72 @@ const requiredTriggers = [
   'trg_seller_principal_rate_policy_future_effective_guard',
   'trg_seller_principal_rate_policy_event_fidelity_guard',
   'trg_seller_principal_rate_snapshot_confirmation_guard',
+  'trg_staff_work_item_marketplace_after_insert',
+  'trg_acquisition_lead_prospect_guard',
+  'trg_acquisition_lead_prospect_insert_guard',
+  'trg_acquisition_lead_prospect_source_update_guard',
+  'trg_acquisition_channel_privacy_profile_scope_guard',
+  'trg_acquisition_channel_privacy_profile_after_insert',
+  'trg_buyer_invitation_consumed_link_acquisition_lead',
+  'trg_acquisition_intake_fact_after_lead',
+  'trg_acquisition_intake_facts_no_update',
+  'trg_acquisition_intake_facts_no_delete',
+  'trg_acquisition_reporting_precision_immutable',
+  'trg_acquisition_historical_exemptions_no_update',
+  'trg_acquisition_historical_exemptions_no_delete',
+  'trg_customer_identity_resolution_events_no_update',
+  'trg_customer_identity_resolution_events_no_delete',
+  'trg_acquisition_source_correction_guard',
+  'trg_acquisition_source_corrections_no_update',
+  'trg_acquisition_source_corrections_no_delete',
+  'trg_acquisition_channel_no_new_both',
+  'trg_acquisition_channel_staff_label_immutable',
+  'trg_seller_customer_group_after_org',
+  'trg_review_visibility_requires_approved_review',
+  'trg_review_visibility_observations_no_update',
+  'trg_review_visibility_observations_no_delete',
+  'trg_formal_order_operational_events_no_update',
+  'trg_formal_order_operational_events_no_delete',
+  'trg_formal_order_financial_adjustment_event_guard',
+  'trg_formal_order_financial_adjustment_profit_only',
+  'trg_formal_order_financial_adjustments_no_update',
+  'trg_formal_order_financial_adjustments_no_delete',
+  'trg_buyer_advance_principal_entries_no_update',
+  'trg_buyer_advance_principal_entries_no_delete',
+  'trg_advance_principal_reversal_source_guard',
+  'trg_buyer_advance_principal_settlements_no_update',
+  'trg_buyer_advance_principal_settlements_no_delete',
+  'trg_acquisition_lead_link_first_touch_attribution',
+  'trg_seller_member_invitation_events_no_update',
+  'trg_seller_member_invitation_events_no_delete',
+  'trg_customer_login_identifier_change_events_no_update',
+  'trg_customer_login_identifier_change_events_no_delete',
+  'trg_acquisition_machine_scope_no_update',
+  'trg_acquisition_machine_scope_no_delete',
+  'trg_acquisition_machine_channel_scope_guard',
+  'trg_acquisition_machine_channel_no_update',
+  'trg_acquisition_machine_channel_no_delete',
+  'trg_production_recovery_attestations_no_update',
+  'trg_production_recovery_attestations_no_delete',
+  'trg_seller_member_portal_grant_scope_guard',
+  'trg_seller_member_portal_grant_no_update',
+  'trg_seller_member_portal_grant_no_delete',
+  'trg_review_approval_requires_normal_order',
+  'trg_buyer_refund_obligation_requires_normal_order',
+  'trg_review_service_fee_requires_normal_order',
+  'trg_staff_permission_override_deny_only_insert',
+  'trg_staff_permission_override_deny_only_update',
+  'trg_customer_persona_privilege_session_bump',
+  'trg_staff_reactivated_restore_primary_scope',
+  'trg_advance_principal_payment_before_obligation',
+  'trg_buyer_advance_principal_entry_files_guard',
+  'trg_buyer_advance_principal_entry_files_no_update',
+  'trg_buyer_advance_principal_entry_files_no_delete',
+  'trg_buyer_advance_principal_overpayments_no_update',
+  'trg_buyer_advance_principal_overpayments_no_delete',
+  'trg_marketplace_runtime_config_no_update',
+  'trg_marketplace_runtime_config_no_delete',
+  'trg_formal_order_non_jp_local_date_required',
 ];
 
 function schemaInventory(database) {
@@ -596,7 +688,7 @@ try {
   if (migrationFiles.length !== expectedLatestSchema
     || migrationFiles.at(-1) !== expectedLastMigration
     || migrationNumbers.some((number, index) => number !== index + 1)) {
-    throw new Error('Migration 必须是唯一连续的 0001-0043');
+    throw new Error('Migration 必须是唯一连续的 0001-0065');
   }
 
   const database = new DatabaseSync(databasePath);
@@ -737,9 +829,10 @@ try {
     )) {
       throw new Error('seller_organizations 缺少 next_member_number');
     }
-    if (sellerChannels.length !== 5
+    if (sellerChannels.length !== 6
       || sellerChannels.map((row) => row.code).join(',')
-        !== 'ido-mango,queshengai,ygbceping,yinghua1942,yueguangbaiai') {
+        !== 'ido-mango,portal-onboarding,queshengai,ygbceping,'
+          + 'yinghua1942,yueguangbaiai') {
       throw new Error('卖家渠道种子或编号顺序不正确');
     }
 

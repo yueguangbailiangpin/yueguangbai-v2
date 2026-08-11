@@ -222,12 +222,12 @@ The transport SHALL expose no new formal write tool. Existing Personal DENY, Tea
 
 ### Requirement: Templates, preflight and evidence are local and truthful
 
-Checked-in staging and production templates SHALL keep MCP disabled and contain placeholders only. Preflight SHALL be zero-network, accept only local template or Git-external rendered configuration, print field/Secret names rather than values, reject placeholders/missing/unsafe/enabled-with-incomplete configuration and have no deploy mode. Acceptance SHALL say `LOCAL_IMPLEMENTATION_READY / PRODUCTION_NO_GO` and SHALL not describe anonymous mocks/templates as real OpenAI/ChatGPT/provider verification.
+Checked-in staging and production templates SHALL keep MCP disabled and SHALL omit MCP Provider variables, OAuth endpoints, tool lists, Secrets and service bindings. Preflight SHALL be zero-network, accept only local template or Git-external rendered configuration, print field/Secret names rather than values, reject placeholders/missing/unsafe configuration and have no deploy mode. A separate approved activation configuration must supply and validate the complete MCP dependency graph. Acceptance SHALL not describe anonymous mocks/templates as real OpenAI/ChatGPT/provider verification.
 
 #### Scenario: Checked-in template is inspected
 
 - **WHEN** preflight reads a repository template
-- **THEN** it reports blocked operator fields and Secret names, performs no fetch and emits no supplied values.
+- **THEN** it reports MCP disabled by default with no Provider field or service binding, performs no fetch and emits no supplied values.
 
 #### Scenario: Local gates pass
 

@@ -17,8 +17,7 @@ import {
   demandScheduleConfirmationSchema, demandSchedulePreviewSchema,
   productVersionMutationSchema, staffProductDetailSchema,
   staffProductPageSchema, staffReservationSchedulePageSchema,
-  staffAccessOverviewSchema, createStaffBindingInvitationSchema,
-  cancelStaffBindingInvitationSchema, staffAccessMutationSchema,
+  staffAccessOverviewSchema, staffAccessMutationSchema,
   staffSellerPrincipalRatePoliciesResponseSchema, staffSellerPrincipalRatePolicyMutationSchema,
 } from '../contracts/runtime';
 
@@ -61,15 +60,6 @@ export const staffApi = Object.freeze({
   accessManagement: (client: QueryClient, signal?: AbortSignal) => read(
     client, '/api/staff/access-management', staffAccessOverviewSchema, signal,
   ),
-  createStaffBindingInvitation: (
-    client: QueryClient, body: unknown, key: string,
-  ) => write(client, '/api/staff/access-management/invitations', body,
-    createStaffBindingInvitationSchema, key),
-  cancelStaffBindingInvitation: (
-    client: QueryClient, invitationId: string, body: unknown, key: string,
-  ) => write(client,
-    `/api/staff/access-management/invitations/${encodeURIComponent(invitationId)}/cancel`,
-    body, cancelStaffBindingInvitationSchema, key),
   changeStaffAccessStatus: (
     client: QueryClient, staffId: string, body: unknown, key: string,
   ) => write(client,

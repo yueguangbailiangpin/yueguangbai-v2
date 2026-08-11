@@ -1,5 +1,6 @@
 export const STAFF_ROLE_CODES = [
   'owner',
+  'acquisition',
   'pre_sales',
   'seller_ops',
   'buyer_refund',
@@ -9,16 +10,17 @@ export type StaffRoleCode = typeof STAFF_ROLE_CODES[number];
 
 export const STAFF_ROLE_DISPLAY_NAMES: Readonly<Record<
   StaffRoleCode,
-  '总管理员' | '售前' | '卖家对接' | '买家返款'
+  '总管理员' | '获客' | '售前' | '卖家对接' | '买家返款'
 >> = Object.freeze({
   owner: '总管理员',
+  acquisition: '获客',
   pre_sales: '售前',
   seller_ops: '卖家对接',
   buyer_refund: '买家返款',
 });
 
 export const STAFF_ROLE_CONSOLIDATION_MAPPING_VERSION =
-  'staff-four-role-v1' as const;
+  'staff-five-role-v2' as const;
 export const STAFF_ROLE_CONSOLIDATION_PERMISSION_CATALOG_VERSION =
   'staff-permissions-schema-35-v1' as const;
 export const STAFF_ROLE_CONSOLIDATION_PERMISSION_CATALOG_HASH =

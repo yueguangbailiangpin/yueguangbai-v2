@@ -491,6 +491,7 @@ function productActor(): CatalogStaffActor {
       buyerCustomerIds: [],
       sellerOrganizationIds: ['seller-org-profile'],
       teamIds: [],
+      marketplaceCodes: ['AMAZON_JP'],
     },
   };
 }
@@ -513,6 +514,16 @@ function seed(database: SqliteDatabase): void {
        1000, NULL, 1000, 1000),
       ('staff-product-profile-denied', 'seller_ops', 'ACTIVE', NULL,
        1000, NULL, 1000, 1000);
+    INSERT INTO staff_marketplace_scopes (
+      id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
+    ) VALUES
+      ('scope-product-profile-jp','staff-product-profile','seller_ops',
+       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
+       'TEST_PRIMARY',1000,1000,'PRIMARY'),
+      ('scope-product-denied-jp','staff-product-profile-denied','seller_ops',
+       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
+       'TEST_SUPPORT',1000,1000,'SUPPORT');
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
       origin_channel_id, current_channel_id, seller_sequence,

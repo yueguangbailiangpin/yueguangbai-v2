@@ -18,7 +18,7 @@ import {
 
 describe('scheduled operations public contract', () => {
   it('uses finite low-cardinality enums and no payload-shaped DTO fields', () => {
-    expect(SCHEDULED_OPERATION_JOB_NAMES).toHaveLength(7);
+    expect(SCHEDULED_OPERATION_JOB_NAMES).toHaveLength(5);
     expect(SCHEDULED_OPERATION_OUTCOMES).toContain('PARTIAL');
     expect(SCHEDULED_OPERATION_FAILURE_CATEGORIES).not.toContain('payload');
   });
@@ -38,7 +38,7 @@ describe('scheduled operations public contract', () => {
   it('publishes only the fixed low-cardinality operational signal vocabulary', () => {
     expect(SCHEDULED_OPERATIONAL_SIGNAL_TYPES).toEqual(['worker_5xx','job_stale','lease_stuck','backlog_sustained','file_failure','login_anomaly','external_adapter_failure']);
     expect(SCHEDULED_OPERATIONAL_SIGNAL_CATEGORIES).toEqual(['worker','scheduler','file','auth','external']);
-    expect(SCHEDULED_OPERATIONAL_SIGNAL_SUMMARY_CODES).toHaveLength(8);
+    expect(SCHEDULED_OPERATIONAL_SIGNAL_SUMMARY_CODES).toHaveLength(7);
   });
 
   it('strictly parses opaque operational observations without detail fields', () => {

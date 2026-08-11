@@ -1,6 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { approvedApiPath } from '../config/runtime-config';
 import { FrontendApiError } from '../api/errors';
+import { demoFileBytes } from '../review/demo-api';
+import { isReviewRuntime } from '../review/runtime';
 import {
   withIdentity401Invalidation,
   type RequestIdentity,
@@ -43,6 +45,19 @@ export function consumeIdentityFileReadIntent(input: {
     const path = `${fileReadLifecyclePrefix(input.identity)}/file-read-intents/${input.readIntentId}/content`;
     if (!approvedApiPath(path)) {
       throw new FrontendApiError('INVALID_PATH', 0, null, 'CONTRACT');
+    }
+    if (isReviewRuntime()) {
+      const bytes = demoFileBytes();
+      input.onProgress(Object.freeze({
+        loadedBytes: bytes.byteLength,
+        totalBytes: bytes.byteLength,
+        percent: 100,
+      }));
+      return Object.freeze({
+        bytes,
+        contentType: 'image/png',
+        byteSize: bytes.byteLength,
+      });
     }
     try {
       const response = await fetch(path, {

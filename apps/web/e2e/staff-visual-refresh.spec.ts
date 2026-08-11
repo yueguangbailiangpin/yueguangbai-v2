@@ -9,18 +9,19 @@ test.use({
   timezoneId: 'Asia/Shanghai',
 });
 
-type Role = 'owner' | 'pre_sales' | 'seller_ops' | 'buyer_refund';
+type Role = 'owner' | 'acquisition' | 'pre_sales' | 'seller_ops' | 'buyer_refund';
 
 const screenshotDirectory = process.env['STAFF_VISUAL_SCREENSHOT_DIR'];
 const fixedNow = Date.parse('2026-08-09T04:00:00.000Z');
 const success = (data: unknown) => ({ data, meta: { request_id: 'staff-visual-refresh' } });
 const roleNames: Record<Role, string> = {
-  owner: '总管理员', pre_sales: '售前', seller_ops: '卖家对接', buyer_refund: '买家返款',
+  owner: '总管理员', acquisition: '获客', pre_sales: '售前', seller_ops: '卖家对接', buyer_refund: '买家返款',
 };
 const rolePermissions: Record<Role, string[]> = {
   owner: ['ACQUISITION_ADMIN', 'ACQUISITION_BUYER_LEAD', 'ACQUISITION_SELLER_LEAD',
     'PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH', 'FINANCIAL_VIEW',
     'ORDER_VIEW', 'ORDER_CONFIRM'],
+  acquisition: ['ACQUISITION_BUYER_LEAD', 'ACQUISITION_SELLER_LEAD'],
   pre_sales: ['ACQUISITION_BUYER_LEAD', 'PRODUCT_VIEW', 'ORDER_VIEW', 'ORDER_CONFIRM'],
   seller_ops: ['ACQUISITION_SELLER_LEAD', 'PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH'],
   buyer_refund: ['REVIEW_VIEW', 'REVIEW_APPROVE', 'BUYER_REFUND_VIEW', 'BUYER_REFUND_PAY'],
@@ -32,8 +33,8 @@ function staffSession(role: Role) {
     display_name: role === 'owner' ? '白月光' : `视觉${roleNames[role]}`,
     role: { code: role, display_name: roleNames[role] },
     permissions: rolePermissions[role],
-    data_scope: { type: role === 'owner' ? 'GLOBAL' : role === 'seller_ops'
-      ? 'ASSIGNED_SELLER_ORGANIZATIONS' : 'ASSIGNED_BUYERS',
+    data_scope: { type: role === 'owner' ? 'GLOBAL' : 'MARKETPLACE',
+    marketplaceCodes: role === 'owner' ? [] : ['AMAZON_JP'],
     buyerCustomerIds: role === 'seller_ops' ? [] : ['buyer-visual'],
     sellerOrganizationIds: role === 'pre_sales' || role === 'buyer_refund' ? [] : ['seller-visual'],
     teamIds: [] },
@@ -142,6 +143,26 @@ function dashboardSummary() {
   };
 }
 
+function acquisitionDaily() {
+  return { from_date: '2026-08-09', to_date: '2026-08-09', timezone: 'Asia/Shanghai', data_as_of: fixedNow,
+    reporting_precision: { configured: true, business_date: '2026-08-09' },
+    anomalies: { identity_conflicts: 0, attribution_anomalies: 0, buyer_attribution_gaps: 0,
+      seller_attribution_gaps: 0, finance_conflicts: 0 },
+    totals: { new_buyer_customers: 9, new_seller_customers: 2, buyer_portal_registrations: 9,
+      seller_portal_registrations: 2, formal_orders: 5, buyer_historical_unknown_orders: 0,
+      seller_historical_unknown_orders: 0, buyer_attribution_anomaly_orders: 0,
+      seller_attribution_anomaly_orders: 0 }, daily: [], channel_daily: [] };
+}
+
+function financialProjection() {
+  return { from_date: '2026-08-09', to_date: '2026-08-09', timezone: 'Asia/Shanghai', data_as_of: fixedNow,
+    seller_cash_in_cny_fen: '300000', buyer_cash_out_cny_fen: '120000', net_cash_flow_cny_fen: '180000',
+    seller_payable_due_cny_fen: '200000', seller_payable_paid_cny_fen: '150000', seller_payable_outstanding_cny_fen: '50000',
+    buyer_refund_due_cny_fen: '130000', buyer_refund_paid_cny_fen: '120000', buyer_refund_outstanding_cny_fen: '10000',
+    projected_profit_cny_fen: '168800', completed_profit_cny_fen: '88600',
+    projected_profit_adjustment_cny_fen: '0', completed_profit_adjustment_cny_fen: '0' };
+}
+
 async function json(route: Route, body: unknown, status = 200): Promise<void> {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
@@ -154,6 +175,7 @@ async function installStaffFixture(page: Page, role: Role = 'owner'): Promise<vo
     if (path === '/api/staff/me/work-items') return json(route, success({ work_items: [workItem], next_cursor: null }));
     if (path === '/api/staff/order-evidence/evidence-visual') return json(route, success({ order_evidence: orderEvidence }));
     if (path === '/api/staff/acquisition/leads') return json(route, success({ items: [lead], next_cursor: null }));
+    if (path === '/api/staff/acquisition/prospects') return json(route, success({ items: [], next_cursor: null }));
     if (path === '/api/staff/acquisition/funnel') return json(route, success({ funnel: {
       from_date: '2026-08-01', to_date: '2026-08-31', data_as_of: fixedNow,
       buyer: { consultation_count: 20, wechat_added_count: 12, registered_count: 9,
@@ -162,8 +184,9 @@ async function installStaffFixture(page: Page, role: Role = 'owner'): Promise<vo
       seller: { consultation_count: 8, wechat_added_count: 4, cooperation_count: 2 },
     } }));
     if (path === '/api/staff/acquisition/channels') return json(route, success({ channels: [] }));
-    if (path === '/api/staff/acquisition/channel-assignments') return json(route, success({ assignments: [] }));
     if (path === '/api/staff/acquisition/consultations') return json(route, success({ consultations: [] }));
+    if (path === '/api/staff/acquisition/channel-stats') return json(route, success({ channels: [] }));
+    if (path === '/api/staff/acquisition/source-corrections/candidates') return json(route, success({ items: [] }));
     if (path === '/api/staff/catalog/products') return json(route, success({ page: {
       items: [product], next_cursor: null, data_as_of: fixedNow,
     } }));
@@ -189,12 +212,13 @@ async function installStaffFixture(page: Page, role: Role = 'owner'): Promise<vo
       next_cursor: null, timezone: 'Asia/Shanghai', sorting: 'submitted_at ASC, id ASC', data_as_of: fixedNow,
     } }));
     if (path === '/api/staff/admin-business-dashboard/summary') return json(route, success({ summary: dashboardSummary() }));
-    if (path === '/api/staff/admin-business-dashboard/trends') return json(route, success({ trend: {
-      granularity: 'DAY', from_date: '2026-08-09', to_date: '2026-08-09', timezone: 'Asia/Shanghai',
-      data_as_of: fixedNow, points: [{ from_date: '2026-08-09', to_date: '2026-08-09',
-        new_buyers: 9, reservations: 7, formal_orders: 5, business_completions: 3,
-        projected_profit: dashboardProfit('168800', 5, 1), completed_profit: dashboardProfit('88600', 3, 0) }],
+    if (path === '/api/staff/admin-business-dashboard/acquisition-daily') return json(route, success(acquisitionDaily()));
+    if (path === '/api/staff/admin-business-dashboard/financial-projection') return json(route, success({ financial_projection: financialProjection() }));
+    if (path === '/api/staff/acquisition/reporting-config') return json(route, success({ config: {
+      precision_started_business_date: '2026-08-09', activated_at: fixedNow,
+      activated_by_staff_id: 'visual-owner', version: 1, updated_at: fixedNow,
     } }));
+    if (path === '/api/staff/customer-identity-resolution/cases') return json(route, success({ cases: [] }));
     return json(route, { error: { code: 'NOT_FOUND', message: 'not found', details: null },
       meta: { request_id: 'staff-visual-unhandled' } }, 404);
   });
@@ -247,12 +271,12 @@ const extendedViewports = [
   { width: 1600, height: 1000 },
 ] as const;
 const surfaces = [
-  ['workbench', '/staff?work_item=work-visual', '客户可见内容'],
-  ['acquisition', '/staff/acquisition', '添加微信后登记'],
+  ['workbench', '/staff?work_item=work-visual', '订单资料'],
+  ['acquisition', '/staff/acquisition', '客户开发中心'],
   ['products', '/staff/products', '员工产品库'],
   ['product-detail', '/staff/products/product-visual', '月光白经典手链'],
   ['reservation-schedule', '/staff/demands/demand-visual/reservations', '预约排名与预计下单日期'],
-  ['dashboard', '/staff/admin-business-dashboard', '经营概览'],
+  ['dashboard', '/staff/admin-business-dashboard', '资金与经营口径'],
 ] as const;
 
 test('Staff visual refresh captures the deterministic responsive matrix', async ({ page }) => {
@@ -283,11 +307,12 @@ test('Staff visual refresh captures the deterministic responsive matrix', async 
   }
 });
 
-test('Staff navigation follows all four role projections', async ({ browser }) => {
+test('Staff navigation follows all five role projections', async ({ browser }) => {
   const expected: Record<Role, string[]> = {
-    owner: ['工作队列', '获客登记', '产品预约', '经营看板'],
-    pre_sales: ['工作队列', '获客登记', '产品预约'],
-    seller_ops: ['工作队列', '获客登记', '产品预约'],
+    owner: ['工作队列', '客户开发', '买家客户', '卖家客户', '产品库', '经营看板'],
+    acquisition: ['客户开发'],
+    pre_sales: ['工作队列', '买家客户', '产品库'],
+    seller_ops: ['工作队列', '卖家客户', '产品库'],
     buyer_refund: ['工作队列'],
   };
   for (const role of Object.keys(expected) as Role[]) {
@@ -297,7 +322,7 @@ test('Staff navigation follows all four role projections', async ({ browser }) =
     await page.goto('/staff');
     await expect(page.getByText(roleNames[role], { exact: true }).first()).toBeVisible();
     const navigation = page.getByRole('navigation', { name: '员工工作台导航' });
-    for (const label of ['工作队列', '获客登记', '产品预约', '经营看板']) {
+    for (const label of ['工作队列', '客户开发', '买家客户', '卖家客户', '产品库', '经营看板']) {
       const link = navigation.getByRole('link', { name: label, exact: true });
       if (expected[role].includes(label)) await expect(link).toBeVisible();
       else await expect(link).toHaveCount(0);
@@ -326,20 +351,20 @@ test('Staff pages preserve keyboard, zoom, reduced motion, targets, and disclosu
   for (const viewport of primaryViewports) {
     await page.setViewportSize(viewport);
     await page.goto('/staff/admin-business-dashboard');
-    const detailButtons = page.getByRole('button', { name: '查看明细' });
-    await expect(detailButtons.first()).toBeVisible();
-    const heights = await detailButtons.evaluateAll((buttons) =>
+    const dashboardButtons = page.locator('.dashboard-window-switch button');
+    await expect(dashboardButtons.first()).toBeVisible();
+    const heights = await dashboardButtons.evaluateAll((buttons) =>
       buttons.map((button) => button.getBoundingClientRect().height));
-    expect(heights).toHaveLength(6);
+    expect(heights).toHaveLength(3);
     for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/staff/acquisition');
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
   await noHorizontalOverflow(page);
-  await page.getByLabel('微信号').focus();
-  await expect(page.getByLabel('微信号')).toBeFocused();
-  expect(await page.getByLabel('微信号').evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
+  await page.getByRole('button', { name: '潜在线索' }).focus();
+  await expect(page.getByRole('button', { name: '潜在线索' })).toBeFocused();
+  expect(await page.getByRole('button', { name: '潜在线索' }).evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
   await expect(page.locator('body')).not.toContainText(/object_key|drive_file_id|password_hash|session_token/u);
 });
 
@@ -351,6 +376,6 @@ test('Staff lazy routes remain isolated on cold loads', async ({ page }) => {
   });
   await installStaffFixture(page);
   await page.goto('/staff?work_item=work-visual');
-  await expect(page.getByText('客户可见内容', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '订单资料', level: 3 })).toBeVisible();
   expect([...scripts].some((name) => /BuyerRouteModule|BuyerOrderRouteModule|BuyerAfterSalesRouteModule|SellerRouteModule|StaffAdminRouteModule|StaffSchedulingRouteModule/u.test(name))).toBe(false);
 });

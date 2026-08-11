@@ -4,10 +4,10 @@ import { createMigratedTestDatabase,type SqliteDatabase } from '@ygb/testkit';
 let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null;});
 describe('Migration 0032 cold archive facts',()=>{
-  it('installs guarded state, manifest, recovery and indexes at schema 32',async()=>{
+  it('preserves guarded schema 32 archive facts beneath current schema 65',async()=>{
     database=createMigratedTestDatabase();
     expect(await database.prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1').first())
-      .toEqual({schema_version:43});
+      .toEqual({schema_version:65});
     const objects=await database.prepare(`SELECT type,name FROM sqlite_schema WHERE name IN (
       'order_archive_closures','drive_archive_controls','file_drive_archives','file_drive_archive_manifests',
       'file_drive_archive_events','file_drive_rehydrations','idx_file_drive_archives_due',

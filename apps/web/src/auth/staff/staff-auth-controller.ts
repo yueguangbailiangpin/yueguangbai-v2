@@ -1,6 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { isFrontendApiError } from '../../api/errors';
-import { runtimeConfig } from '../../config/runtime-config';
 import { clearStaffTransport } from '../customer-transport-invalidation';
 import { staffAuthApi, type StaffAuthApiAdapter } from './staff-auth-api';
 
@@ -19,15 +18,6 @@ export class StaffAuthController {
     private readonly api: StaffAuthApiAdapter = staffAuthApi,
     private readonly keyFactory: () => string = () => crypto.randomUUID(),
   ) {}
-
-  async startLogin(returnTo: string, signal?: AbortSignal): Promise<string> {
-    const response = await this.api.loginStart(returnTo, signal);
-    const url = new URL(response.data.authorization_url);
-    if (url.protocol !== 'https:' || url.origin !== runtimeConfig().staffProviderOrigin) {
-      throw new Error('unsafe_provider_url');
-    }
-    return url.toString();
-  }
 
   async logout(signal?: AbortSignal): Promise<StaffLogoutResult> {
     try {

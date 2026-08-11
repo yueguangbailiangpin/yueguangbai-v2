@@ -9,13 +9,13 @@ import {
 const index = read('apps/api/src/index.ts');
 const middleware = read('apps/api/src/middleware/staff-auth.ts');
 const session = read('apps/api/src/staff-auth/session.ts');
-const authRoutes = read('apps/api/src/staff-auth/routes.ts');
+const authRoutes = read('apps/api/src/staff-auth/access-routes.ts');
 const contracts = read('packages/contracts/src/staff-auth.ts');
 const migration = read('migrations/0027_staff_auth_sessions.sql');
-const authTests = read('apps/api/src/staff-auth/staff-auth.test.ts');
+const authTests = read('apps/api/src/staff-auth/cloudflare-access.test.ts');
 const inventoryTests = read('apps/api/src/wave13-default-app-security.test.ts');
 
-const authPosition = index.indexOf('registerStaffAuthRoutes(app');
+const authPosition = index.indexOf('registerCloudflareStaffAuthRoutes(app');
 const middlewarePosition = index.indexOf("app.use('/api/staff/*', staffSessionMiddleware())");
 assert(authPosition >= 0 && middlewarePosition > authPosition,
   'Staff Auth must be registered before Staff middleware');
@@ -54,31 +54,29 @@ for (const forbiddenColumn of [
   'role_code TEXT', 'permission_code TEXT', 'team_id TEXT', 'scope_json',
 ]) assertNotContains(migration.split('CREATE TABLE staff_sessions')[1] ?? '',
   forbiddenColumn, 'staff_sessions');
-assertNotContains(contracts, 'staff_id?:', 'login start request');
-assertContains(authRoutes, "provider: 'FEISHU'", 'auth routes');
-assertContains(authRoutes, 'resolveVerifiedStaffIdentity', 'auth routes');
+assertNotContains(contracts, 'staff_id?:', 'Access bootstrap request');
+assertContains(authRoutes, 'verifyCloudflareAccessIdentity', 'auth routes');
+assertContains(authRoutes, 'staff_email_identities', 'auth routes');
 assertContains(authRoutes, 'createInternalStaffSession', 'auth routes');
 const logout = authRoutes.slice(
   authRoutes.indexOf('async function logout('),
   authRoutes.indexOf('async function logoutAll('),
 );
-const logoutOrigin = logout.indexOf('requireAllowedOrigin(context, config)');
+const logoutOrigin = logout.indexOf('requireAllowedOrigin(context)');
 assert(logoutOrigin >= 0
   && logoutOrigin < logout.indexOf('readStaffSessionCookie(context)')
   && logoutOrigin < logout.indexOf('clearStaffSessionCookie(context)'),
   'ordinary logout must validate Origin before cookie/session side effects');
 for (const evidence of [
-  'requires an allowed Origin before logout has any side effect',
-  "Origin: 'https://evil.example.test'",
-  "'Sec-Fetch-Site': 'cross-site'",
-  "status: string",
-]) assertContains(authTests, evidence, 'ordinary logout runtime tests');
+  'fails closed for wrong audience, bad signature and unavailable keys',
+  'pre-existing active Moonwhite email identity',
+  'rejects a foreign Origin before Staff session side effects',
+]) assertContains(authTests, evidence, 'Cloudflare Access runtime tests');
 for (const evidence of [
   'app.routes',
   'duplicateRegistrations',
-  'toHaveLength(195)',
-  'toHaveLength(164)',
-  'toHaveLength(31)',
+  '/api/staff-auth/access/bootstrap',
+  'toHaveLength(30)',
 ]) assertContains(inventoryTests, evidence, 'route inventory runtime test');
 for (const source of [index, middleware, authRoutes]) {
   assertNotContains(source, '/api/v2/', 'Wave13 Staff routing');
@@ -87,5 +85,5 @@ report('wave13-staff-auth-route-guard', {
   middleware_before_staff_routes: true,
   header_actor_paths: 0,
   api_v2_routes: 0,
-  active_routes: 195,
+  auth_provider: 'CLOUDFLARE_ACCESS',
 });

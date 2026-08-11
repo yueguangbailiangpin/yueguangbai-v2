@@ -17,12 +17,14 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 43, `expected 43 migrations, found ${migrations.length}`);
+assert(migrations.length === 65, `expected 65 migrations, found ${migrations.length}`);
 assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
   && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
   && migrations[40] === '0041_seller_principal_rate_policy.sql'
   && migrations[41] === '0042_rakuten_tiktok_jp_marketplace_foundation.sql'
-  && migrations[42] === '0043_seller_principal_rate_integrity_hardening.sql',
+  && migrations[42] === '0043_seller_principal_rate_integrity_hardening.sql'
+  && migrations[63] === '0064_marketplace_local_date_truth.sql'
+  && migrations[64] === '0065_retire_feishu_artifacts.sql',
   'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {
@@ -37,6 +39,8 @@ for (const environment of ['staging', 'production']) {
     'routes.0.pattern',
     'triggers.crons.0',
     'vars.APP_ORIGIN',
+    'vars.STAFF_ACCESS_TEAM_DOMAIN',
+    'vars.STAFF_ACCESS_AUD',
     'd1_databases.0.database_id',
     'r2_buckets.0.bucket_name',
   ]) assert(report.required_fields.includes(field),
@@ -53,25 +57,26 @@ for (const environment of ['staging', 'production']) {
     && config.assets?.not_found_handling === 'single-page-application'
     && config.assets?.run_worker_first === true,
   `${environment} template SPA asset contract mismatch`);
+  const expectedScheduled = environment === 'production' ? 'true' : 'false';
+  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {
+    assert(config.vars?.[flag] === expectedScheduled,
+      `${environment} template scheduled default drift: ${flag}`);
+  }
   for (const flag of [
-    'SCHEDULED_OPERATIONS_ENABLED',
-    'ACQUISITION_MAINTENANCE_ENABLED',
     'DRIVE_ARCHIVE_ENABLED',
     'DRIVE_ARCHIVE_COPY_ENABLED',
     'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
     'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-    'FEISHU_WORKBENCH_SYNC_ENABLED',
-    'FEISHU_WORKBENCH_CALLBACK_ENABLED',
-    'FEISHU_OPERATIONAL_ALERT_ENABLED',
-    'STAFF_AUTH_ENABLED',
-    'STAFF_MCP_ENABLED',
-    'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
-    'STAFF_MCP_LOCAL_MOCK_ENABLED',
   ]) assert(config.vars?.[flag] === 'false',
     `${environment} template kill switch not frozen: ${flag}`);
   assert(Object.keys(config.vars ?? {}).every(
     (key) => !/SECRET|PASSWORD|REFRESH_TOKEN|CLIENT_SECRET/iu.test(key),
   ), `${environment} template contains a managed Secret key in vars`);
+  assert(Object.keys(config.vars ?? {}).every(
+    (key) => !/^(?:FEISHU_|STAFF_AUTH_FEISHU)|^(?:STAFF_AUTH_PROVIDER|STAFF_AUTH_ENABLED|STAFF_AUTH_HASH_SECRET)$/u.test(key),
+  ), `${environment} template contains retired Feishu Staff configuration`);
+  assert(Object.keys(config.vars ?? {}).every((key) => !key.startsWith('STAFF_MCP_')),
+    `${environment} core template contains optional Staff MCP configuration`);
 }
 
 for (const file of [
@@ -152,7 +157,7 @@ console.log(JSON.stringify({
   status: 'PASS',
   change: 'production-cloudflare-web-r2-release-configuration',
   schema_change: 'NO_SCHEMA_CHANGE',
-  migration: '0001-0043_CONTINUOUS',
+  migration: '0001-0065_CONTINUOUS',
   release_templates: 'BLOCKED_NEEDS_OPERATOR_INPUT',
   local_implementation: 'PRESENT',
   external_acceptance: 'UNVERIFIED',

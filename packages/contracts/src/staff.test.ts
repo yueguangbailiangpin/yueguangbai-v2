@@ -8,15 +8,17 @@ import {
 } from './staff';
 
 describe('staff contracts', () => {
-  it('publishes the four frozen internal roles and Chinese displays', () => {
+  it('publishes the five frozen internal roles and Chinese displays', () => {
     expect(STAFF_ROLE_CODES).toEqual([
       'owner',
+      'acquisition',
       'pre_sales',
       'seller_ops',
       'buyer_refund',
     ]);
     expect(STAFF_ROLE_DISPLAY_NAMES).toEqual({
       owner: '总管理员',
+      acquisition: '获客',
       pre_sales: '售前',
       seller_ops: '卖家对接',
       buyer_refund: '买家返款',

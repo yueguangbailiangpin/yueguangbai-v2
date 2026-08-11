@@ -55,24 +55,24 @@ The repository SHALL provide distinct staging and production templates. Each SHA
 - **WHEN** `--config` is relative, lexically inside the repository, is an in-repository symlink, or resolves through an outside symlink back into the repository
 - **THEN** preflight rejects it before reading content, reports only a fixed path error field and accepts only an absolute path whose real file is outside the repository.
 
-### Requirement: External and destructive capabilities remain disabled
+### Requirement: External and destructive capabilities remain explicitly controlled
 
-Staging and production templates SHALL set Scheduler, Staff Auth/Feishu, Drive copy, Drive proxy, Drive R2 delete, Feishu workbench sync/callback, Staff MCP and external alert delivery to disabled/false. A capability MAY be enabled only through its own approved OpenSpec Change and dedicated fail-closed activation preflight. R2 deletion required only for failed-upload compensation remains governed by the existing compensation contract.
+Staging SHALL keep Scheduler and acquisition maintenance disabled, while production SHALL enable only the reviewed internal scheduled operations and acquisition maintenance defaults. Both templates SHALL keep Drive copy/proxy/delete, Staff MCP and external alert delivery disabled. Staff authentication SHALL use required Cloudflare Access team/audience placeholders and SHALL contain no Feishu switch or Secret. A remaining external capability MAY be enabled only through its own approved OpenSpec Change and dedicated fail-closed activation preflight. R2 deletion required only for failed-upload compensation remains governed by the existing compensation contract.
 
 #### Scenario: Template defaults are reviewed
 
 - **WHEN** either environment template is parsed
-- **THEN** every frozen kill switch is explicitly disabled and no provider credential is stored in vars.
+- **THEN** every environment-specific default is exact, all unrelated external kill switches are disabled and no provider credential is stored in vars.
 
 #### Scenario: A capability is enabled in release input
 
 - **WHEN** the generic Cloudflare release preflight sees any frozen switch enabled
 - **THEN** it rejects the input and identifies the switch name without echoing any configuration value; a separately approved capability must instead use its dedicated activation preflight.
 
-#### Scenario: Staff Auth has a separately approved activation
+#### Scenario: Staff Access configuration is rendered
 
-- **WHEN** an external production config enables only Staff Auth and passes its dedicated activation preflight
-- **THEN** the generic template remains unchanged while the reviewed runtime may accept the enabled capability; every unrelated external/destructive switch remains false.
+- **WHEN** an external production config supplies the approved Access team domain, application audience and same-origin Staff origin
+- **THEN** the runtime may verify Access assertions without a Staff auth Secret while every unrelated external/destructive switch remains false.
 
 #### Scenario: A capability lacks its dedicated activation approval
 

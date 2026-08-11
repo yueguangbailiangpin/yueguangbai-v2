@@ -4,7 +4,7 @@
 
 本合同只定义可审查的本地实现和操作者输入，不授权创建或修改 Cloudflare 资源。`apps/api/wrangler.staging.template.jsonc` 与 `apps/api/wrangler.production.template.jsonc` 故意保留 `REQUIRED_*`，不能部署。真实渲染配置必须保存在 Git 外并通过本地 preflight；任何本地通过都不等于真实 staging/production 验收。
 
-本 Change 为 `NO_SCHEMA_CHANGE`。Migration 仍为连续 `0001`–`0037`，不得创建 `0038`，不得从仓库连续性推断生产 ledger。
+当前发布候选要求 Migration 连续为 `0001`–`0064`；仓库连续性只证明本地候选结构，不能据此推断生产 ledger。
 
 ## 环境与 binding
 
@@ -50,7 +50,7 @@ Custom Domain 只接受操作者填入的精确 hostname；本 Change 不选择�
 
 ## 默认关闭与 Secret
 
-两个模板都必须显式保持以下项目关闭：Scheduler、Staff Auth/Feishu、Drive total/copy/proxy/R2-delete、Feishu workbench sync/callback、Staff MCP/local mock、外部告警投递。独立 Change 和老板逐项批准前不得改为 `true`。
+Staff Auth 只使用 Cloudflare Access 与 Moonwhite Staff 数据库，模板不得包含任何飞书登录、绑定、同步、回调或告警配置；重新出现即由 preflight 阻断。Staging 保持 Scheduler 与获客维护关闭；production 仅启用已审查的内部 Scheduler 与获客维护。Drive copy/proxy/R2-delete、Staff MCP/local mock 和外部告警投递继续默认关闭，独立 Change 和老板逐项批准前不得启用。
 
 Secret 只能通过 Cloudflare managed Secret 或批准的受管渠道注入，不得放在 `vars`、JSON、日志、dry-run 输出、测试 Fixture 或 Git。Preflight 只输出 Secret 名称，不读取或打印值。
 

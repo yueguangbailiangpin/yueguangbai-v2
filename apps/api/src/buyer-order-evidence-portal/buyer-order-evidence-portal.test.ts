@@ -1003,25 +1003,18 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(43);
+    expect(migrations).toHaveLength(65);
     expect(migrations[0]).toMatch(/^0001_/u);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-9)).toBe('0035_staff_four_role_consolidation.sql');
-    expect(migrations.at(-8)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-7)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations.at(-6)).toBe('0038_staff_mcp_production_transport_oauth.sql');
-    expect(migrations.at(-5)).toBe('0039_staff_access_binding_management.sql');
-    expect(migrations.at(-4)).toBe('0040_seller_partner_master_data_import.sql');
-    expect(migrations.at(-3)).toBe('0041_seller_principal_rate_policy.sql');
-    expect(migrations.at(-2)).toBe('0042_rakuten_tiktok_jp_marketplace_foundation.sql');
-    expect(migrations.at(-1)).toBe('0043_seller_principal_rate_integrity_hardening.sql');
+    expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
+    expect(migrations.at(-1)).toBe('0065_retire_feishu_artifacts.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(43);
+    expect(Number(schema?.schema_version)).toBe(65);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name
@@ -1251,6 +1244,12 @@ async function seedFixture(
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
     ) VALUES ('staff-pre-sales','pre_sales','ACTIVE',NULL,1000,NULL,1000,1000);
+    INSERT INTO staff_marketplace_scopes (
+      id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
+    ) VALUES ('scope-order-portal-pre-jp','staff-pre-sales','pre_sales',
+      'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
+      'TEST_PRIMARY',1000,1000,'PRIMARY');
     INSERT INTO staff_team_memberships (
       staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
     ) VALUES

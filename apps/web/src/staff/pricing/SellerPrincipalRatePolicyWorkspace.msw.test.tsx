@@ -123,8 +123,8 @@ describe('卖家本金汇率策略 Staff 工作台', () => {
 });
 
 function adapter(value: StaffSession): StaffAuthApiAdapter {
-  return { readSession: async () => ({ data: { session: value }, requestId: 'session' }),
-    loginStart: async () => ({ data: { provider: 'FEISHU', authorization_url: 'https://example.test', expires_at: 1 }, requestId: 'login' }),
+  return { bootstrap: async () => ({ data: { session: value, access_email: 'staff@example.com' }, requestId: 'bootstrap' }),
+    readSession: async () => ({ data: { session: value }, requestId: 'session' }),
     logout: async () => ({ data: { logged_out: true, all_devices_logged_out: false }, requestId: 'logout' }),
     logoutAll: async () => ({ data: { logged_out: true, all_devices_logged_out: true, session_version: 2 }, requestId: 'logout-all' }) };
 }
@@ -133,8 +133,8 @@ function session(role: 'owner' | 'seller_ops', permissions: string[]): StaffSess
   return { staff_id: 'staff-1', display_name: '测试员工',
     role: role === 'owner' ? { code: 'owner', display_name: '总管理员' } : { code: 'seller_ops', display_name: '卖家对接' },
     permissions, data_scope: role === 'owner'
-      ? { type: 'GLOBAL', buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [] }
-      : { type: 'ASSIGNED_SELLER_ORGANIZATIONS', buyerCustomerIds: [], sellerOrganizationIds: ['seller-1'], teamIds: [] },
+      ? { type: 'GLOBAL', marketplaceCodes: [], buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [] }
+      : { type: 'ASSIGNED_SELLER_ORGANIZATIONS', marketplaceCodes: ['AMAZON_JP'], buyerCustomerIds: [], sellerOrganizationIds: ['seller-1'], teamIds: [] },
     authorization_version: 1, session_version: 1, expires_at: Date.now() + 100_000 };
 }
 

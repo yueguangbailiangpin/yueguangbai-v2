@@ -14,6 +14,7 @@ export * from './money/fixed-decimal';
 export * from './money/currency';
 export * from './money/signed-integer';
 export * from './marketplace/adapter';
+export * from './marketplace/runtime';
 export * from './numbering/customer-number';
 export * from './pricing/business-date';
 export * from './pricing/fixed-point';

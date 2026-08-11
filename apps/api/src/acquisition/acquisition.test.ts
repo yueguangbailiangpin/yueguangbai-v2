@@ -33,24 +33,25 @@ describe('staff acquisition funnel commands', () => {
     await seedAssignment(database, 'staff-pre', 'BUYER', channel.channel.channel_id);
     await seedAssignment(database, 'staff-seller', 'SELLER', sellerChannel.channel.channel_id);
 
-    const buyer = await createAcquisitionLead(database, {
+    const buyer = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: '  ＹＧＢ_Test-01  ',
       displayName: '买家甲', note: '已添加私人微信',
-    }, command(preSales(), 'lead-create-0001', JAN_1_2025), SECRET);
+    }), command(preSales(), 'lead-create-0001', JAN_1_2025), SECRET);
     expect(buyer.lead).toMatchObject({
       lead_type: 'BUYER', origin_channel_id: channel.channel.channel_id,
-      origin_staff_id: 'staff-pre', current_owner_staff_id: 'staff-pre',
+      current_owner_staff_id: 'staff-pre',
       wechat_masked: 'YG***01', no_participation: true,
     });
+    expect(buyer.lead).not.toHaveProperty('origin_staff_id');
 
-    await expect(createAcquisitionLead(database, {
+    await expect(createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'ygb_test-01', displayName: null, note: null,
-    }, command(preSales(), 'lead-create-0002', JAN_1_2025 + 1), SECRET))
+    }), command(preSales(), 'lead-create-0002', JAN_1_2025 + 1), SECRET))
       .rejects.toMatchObject({ code: 'DUPLICATE_LEAD' });
 
-    const seller = await createAcquisitionLead(database, {
+    const seller = await createAcquisitionLead(database, leadInput(sellerChannel.channel.channel_id, {
       leadType: 'SELLER', wechatId: 'ygb_test-01', displayName: null, note: null,
-    }, command(sellerOps(), 'lead-create-0003', JAN_1_2025 + 2), SECRET);
+    }), command(sellerOps(), 'lead-create-0003', JAN_1_2025 + 2), SECRET);
     expect(seller.lead.lead_type).toBe('SELLER');
 
     const stored = database.raw.prepare(`SELECT identity_hash,identity_ciphertext,
@@ -60,7 +61,7 @@ describe('staff acquisition funnel commands', () => {
     expect(JSON.stringify(stored)).not.toContain('ygb_test-01');
     await expect(import('./leads').then((module) => module.readAcquisitionLead(
       database!, auth('pre_sales','staff-pre-other'), buyer.lead.lead_id,
-    ))).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    ))).resolves.toMatchObject({lead_id:buyer.lead.lead_id,marketplace_code:'AMAZON_JP'});
     expect(() => database!.raw.prepare(`UPDATE acquisition_leads
       SET origin_staff_id='staff-seller',version=version+1,updated_at=updated_at+1
       WHERE id=?`).run(buyer.lead.lead_id)).toThrow(/immutable_origin/iu);
@@ -70,18 +71,18 @@ describe('staff acquisition funnel commands', () => {
     database = db();
     const channel = await seedChannel(database);
     await seedAssignment(database, 'staff-pre', 'BUYER', channel.channel.channel_id);
-    const first = await createAcquisitionLead(database, {
+    const first = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'replay_wx', displayName: null, note: null,
-    }, command(preSales(), 'lead-replay-0001', JAN_1_2025), SECRET);
-    const replay = await createAcquisitionLead(database, {
+    }), command(preSales(), 'lead-replay-0001', JAN_1_2025), SECRET);
+    const replay = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'replay_wx', displayName: null, note: null,
-    }, command(preSales(), 'lead-replay-0001', JAN_1_2025), SECRET);
+    }), command(preSales(), 'lead-replay-0001', JAN_1_2025), SECRET);
     expect(replay.replayed).toBe(true);
     expect(replay.lead.lead_id).toBe(first.lead.lead_id);
 
-    await expect(createAcquisitionLead(database, {
+    await expect(createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'different_wx', displayName: null, note: null,
-    }, command(preSales(), 'lead-replay-0001', JAN_1_2025), SECRET))
+    }), command(preSales(), 'lead-replay-0001', JAN_1_2025), SECRET))
       .rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
 
     const followed = await followUpAcquisitionLead(database, {
@@ -97,16 +98,16 @@ describe('staff acquisition funnel commands', () => {
   it('applies staff scope before pagination and keeps origin attribution after transfer', async () => {
     database = db();
     const ownChannel = await seedChannel(database, 'XHS_OWN');
-    const otherChannel = await seedChannel(database, 'XHS_OTHER');
+    const otherChannel = await seedChannel(database, 'XHS_OTHER', 'BUYER', 'AMAZON_US');
     await seedAssignment(database, 'staff-pre', 'BUYER', ownChannel.channel.channel_id);
     await seedAssignment(database, 'staff-pre-other', 'BUYER', otherChannel.channel.channel_id);
-    const own = await createAcquisitionLead(database, {
+    const own = await createAcquisitionLead(database, leadInput(ownChannel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'own_page_wx', displayName: null, note: null,
-    }, command(preSales(), 'page-own-0001', JAN_1_2025), SECRET);
+    }), command(preSales(), 'page-own-0001', JAN_1_2025), SECRET);
     for (const [index, wechat] of ['other_page_1','other_page_2'].entries()) {
-      await createAcquisitionLead(database, {
+      await createAcquisitionLead(database, leadInput(otherChannel.channel.channel_id, {
         leadType: 'BUYER', wechatId: wechat, displayName: null, note: null,
-      }, command(auth('pre_sales','staff-pre-other'), `page-other-000${index + 1}`,
+      }, 'AMAZON_US'), command(auth('pre_sales','staff-pre-other'), `page-other-000${index + 1}`,
         JAN_1_2025 + index + 1), SECRET);
     }
     const page = await listAcquisitionLeads(database, preSales(), {
@@ -118,9 +119,9 @@ describe('staff acquisition funnel commands', () => {
       leadId: own.lead.lead_id, expectedVersion: 1,
       newOwnerStaffId: 'staff-pre-other', reason: '负责人调整',
     }, command(preSales(), 'transfer-origin-0001', JAN_1_2025 + 10));
-    expect(transferred.lead).toMatchObject({
-      origin_staff_id: 'staff-pre', current_owner_staff_id: 'staff-pre-other',
-    });
+    expect(transferred.lead).toMatchObject({ current_owner_staff_id: 'staff-pre-other' });
+    expect(database.raw.prepare(`SELECT origin_staff_id FROM acquisition_leads WHERE id=?`)
+      .get(own.lead.lead_id)).toEqual({ origin_staff_id: 'staff-pre' });
   });
 
   it('records Beijing-date aggregate corrections with immutable event history', async () => {
@@ -164,13 +165,14 @@ describe('staff acquisition funnel commands', () => {
   it('fails closed for missing/overlapping configuration and buyer_refund', async () => {
     database = db();
     await expect(createAcquisitionChannel(database, {
-      code: 'FORBIDDEN_CHANNEL', channelType: 'OTHER', displayName: '无权渠道',
+      code: 'FORBIDDEN_CHANNEL', platformName: '其他', leadType: 'BUYER',
+      marketplaceCode: 'AMAZON_JP', displayName: '无权渠道',
     }, command(preSales(), 'forbidden-channel-0001', JAN_1_2025)))
       .rejects.toMatchObject({ code: 'FORBIDDEN' });
-    await expect(createAcquisitionLead(database, {
+    await expect(createAcquisitionLead(database, leadInput('missing-channel', {
       leadType: 'BUYER', wechatId: 'missing_channel', displayName: null, note: null,
-    }, command(preSales(), 'missing-channel-0001', JAN_1_2025), SECRET))
-      .rejects.toMatchObject({ code: 'CHANNEL_CONFIGURATION_MISSING' });
+    }), command(preSales(), 'missing-channel-0001', JAN_1_2025), SECRET))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
 
     const channel = await seedChannel(database);
     await seedAssignment(database, 'staff-pre', 'BUYER', channel.channel.channel_id);
@@ -185,13 +187,13 @@ describe('staff acquisition funnel commands', () => {
     }, command(owner(), 'assignment-cross-type-0001', JAN_1_2025)))
       .rejects.toMatchObject({ code: 'CONFLICT' });
 
-    await expect(createAcquisitionLead(database, {
+    await expect(createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'refund_forbidden', displayName: null, note: null,
-    }, command(buyerRefund(), 'refund-forbidden-0001', JAN_1_2025), SECRET))
+    }), command(buyerRefund(), 'refund-forbidden-0001', JAN_1_2025), SECRET))
       .rejects.toMatchObject({ code: 'FORBIDDEN' });
-    await expect(createAcquisitionLead(database, {
+    await expect(createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'SELLER', wechatId: 'wrong_duty', displayName: null, note: null,
-    }, command(preSales(), 'wrong-duty-0001', JAN_1_2025), SECRET))
+    }), command(preSales(), 'wrong-duty-0001', JAN_1_2025), SECRET))
       .rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });
@@ -202,9 +204,9 @@ describe('acquisition automatic linking and retention', () => {
     seedBuyerIdentity(database, 'linked_wx');
     const channel = await seedChannel(database);
     await seedAssignment(database, 'staff-pre', 'BUYER', channel.channel.channel_id);
-    const result = await createAcquisitionLead(database, {
+    const result = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'linked_wx', displayName: null, note: null,
-    }, command(preSales(), 'linked-lead-0001', JAN_1_2025), SECRET);
+    }), command(preSales(), 'linked-lead-0001', JAN_1_2025), SECRET);
     expect(result.lead.registered).toBe(true);
     expect(result.lead.no_participation).toBe(true);
     database.raw.prepare(`INSERT INTO acquisition_lead_links (
@@ -219,15 +221,15 @@ describe('acquisition automatic linking and retention', () => {
     expect(after.created_business_date).toBe('2025-01-01');
   });
 
-  it('records Seller cooperation when the linked identity first becomes an ACTIVE member', async () => {
+  it('records Seller cooperation when the Seller lead is formally provisioned', async () => {
     database = db();
     seedSellerIdentity(database, 'seller_linked_wx');
-    const channel = await seedChannel(database);
+    const channel = await seedChannel(database, 'XHS_SELLER');
     await seedAssignment(database, 'staff-seller', 'SELLER', channel.channel.channel_id);
-    const result = await createAcquisitionLead(database, {
+    const result = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'SELLER', wechatId: 'seller_linked_wx', displayName: null, note: null,
-    }, command(sellerOps(), 'seller-linked-0001', JAN_1_2025), SECRET);
-    expect(result.lead.seller_cooperation).toBe(false);
+    }), command(sellerOps(), 'seller-linked-0001', JAN_1_2025), SECRET);
+    expect(result.lead.seller_cooperation).toBe(true);
 
     database.raw.prepare(`UPDATE seller_organization_members SET
       status='ACTIVE',version=version+1,activated_at=?,disabled_at=NULL,updated_at=?
@@ -255,12 +257,12 @@ describe('acquisition automatic linking and retention', () => {
     const sellerChannel = await seedChannel(database, 'XHS_SELLER');
     await seedAssignment(database, 'staff-owner-acq', 'BUYER', channel.channel.channel_id);
     await seedAssignment(database, 'staff-owner-acq', 'SELLER', sellerChannel.channel.channel_id);
-    const buyer = await createAcquisitionLead(database, {
+    const buyer = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'profit_buyer_wx', displayName: null, note: null,
-    }, command(owner(), 'profit-buyer-0001', JAN_1_2025), SECRET);
-    const seller = await createAcquisitionLead(database, {
+    }), command(owner(), 'profit-buyer-0001', JAN_1_2025), SECRET);
+    const seller = await createAcquisitionLead(database, leadInput(sellerChannel.channel.channel_id, {
       leadType: 'SELLER', wechatId: 'profit_seller_wx', displayName: null, note: null,
-    }, command(owner(), 'profit-seller-0001', JAN_1_2025 + 1), SECRET);
+    }), command(owner(), 'profit-seller-0001', JAN_1_2025 + 1), SECRET);
     database.raw.prepare(`INSERT INTO acquisition_lead_links
       (id,lead_id,link_type,target_id,linked_at) VALUES
       ('profit-link-buyer',?,'FORMAL_ORDER','shared-order',?),
@@ -295,12 +297,12 @@ describe('acquisition automatic linking and retention', () => {
     const channel = await seedChannel(database);
     await seedAssignment(database, 'staff-pre', 'BUYER', channel.channel.channel_id);
     const old = Date.UTC(2023,1,28,16);
-    const preserved = await createAcquisitionLead(database, {
+    const preserved = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'old_preserved', displayName: null, note: null,
-    }, command(preSales(), 'old-lead-0001', old), SECRET);
-    const anonymous = await createAcquisitionLead(database, {
+    }), command(preSales(), 'old-lead-0001', old), SECRET);
+    const anonymous = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'old_unconverted', displayName: '应删除姓名', note: '应删除备注',
-    }, command(preSales(), 'old-lead-0002', old + 1), SECRET);
+    }), command(preSales(), 'old-lead-0002', old + 1), SECRET);
     database.raw.prepare(`INSERT INTO acquisition_lead_links (
       id,lead_id,link_type,target_id,linked_at
     ) VALUES ('buyer-link-preserved',?,'BUYER_CUSTOMER','buyer-fact',?)`)
@@ -327,9 +329,9 @@ describe('acquisition automatic linking and retention', () => {
     database = db();
     const channel = await seedChannel(database);
     await seedAssignment(database, 'staff-pre', 'BUYER', channel.channel.channel_id);
-    const lead = await createAcquisitionLead(database, {
+    const lead = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
       leadType: 'BUYER', wechatId: 'late_link_wx', displayName: null, note: null,
-    }, command(preSales(), 'late-link-lead-0001', JAN_1_2025), SECRET);
+    }), command(preSales(), 'late-link-lead-0001', JAN_1_2025), SECRET);
     database.exec(`
       INSERT INTO customer_identity_subjects (id,subject_type,created_at)
         VALUES ('subject-dummy','BUYER_CUSTOMER',1000);
@@ -383,14 +385,43 @@ function db(): SqliteDatabase {
       ('staff-pre','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
       ('staff-seller','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
       ('staff-refund','phase3h-test-team','ACTIVE',1000,NULL,1000,1000);
+    INSERT INTO staff_marketplace_scopes (
+      id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
+    ) VALUES
+      ('scope-test-pre-primary','staff-pre','pre_sales','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
+      ('scope-test-pre-support','staff-pre-other','pre_sales','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'SUPPORT'),
+      ('scope-test-pre-us-primary','staff-pre-other','pre_sales','AMAZON_US','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
+      ('scope-test-seller-primary','staff-seller','seller_ops','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
+      ('scope-test-refund-primary','staff-refund','buyer_refund','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY');
+    UPDATE seller_channels SET created_at=1000,updated_at=1000
+    WHERE id='seller-channel-portal-onboarding';
   `);
   return value;
 }
 
-async function seedChannel(db: SqliteDatabase, code = 'XHS_A') {
-  return createAcquisitionChannel(db, {
-    code, channelType: 'XIAOHONGSHU', displayName: `小红书账号 ${code}`,
+async function seedChannel(
+  db: SqliteDatabase,
+  code = 'XHS_A',
+  leadType: AcquisitionLeadType = code.includes('SELLER') ? 'SELLER' : 'BUYER',
+  marketplaceCode = 'AMAZON_JP',
+) {
+  const result = await createAcquisitionChannel(db, {
+    code, platformName: '小红书', leadType,
+    marketplaceCode, displayName: `小红书账号 ${code}`,
   }, command(owner(), `channel-${crypto.randomUUID()}`, JAN_1_2025));
+  db.raw.prepare(`UPDATE acquisition_channel_privacy_profiles
+    SET intake_wechat_label=?,version=version+1,updated_at=? WHERE channel_id=?`)
+    .run(`${code}-测试工作微信`, JAN_1_2025, result.channel.channel_id);
+  return result;
+}
+function leadInput<T extends { leadType: AcquisitionLeadType; wechatId: string;
+  displayName: string|null; note: string|null }>(
+  channelId: string,
+  input: T,
+  marketplaceCode = 'AMAZON_JP',
+) {
+  return { ...input, marketplaceCode, channelId, prospectId: null };
 }
 async function seedAssignment(
   db: SqliteDatabase,

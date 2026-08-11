@@ -76,7 +76,7 @@ interface ComputedAlertState extends AlertStateRow {
 }
 
 export interface OperationalAlertSink {
-  readonly failureSummaryCode?: 'PRIMARY_ALERT_SINK_FAILURE'|'FEISHU_ADAPTER_FAILURE';
+  readonly failureSummaryCode?: 'PRIMARY_ALERT_SINK_FAILURE';
   notify(notification: ScheduledOperationalAlertNotificationDto): Promise<void>;
 }
 
@@ -214,15 +214,6 @@ export async function recordLoginAnomalySignal(
   return ingestScheduledOperationalSignal(database,{observation_id:observationId,signal_type:'login_anomaly',summary_code:'LOGIN_ANOMALY_DETECTED',job_name:null,observation_state:'BREACH',observed_at:input.observedAt,count_value:1},input.sink===undefined?{}:{sink:input.sink});
 }
 
-export async function recordFeishuAdapterFailureSignal(
-  database:SqlDatabase,
-  input:{securityEventId:string;observedAt:number;sink?:OperationalAlertSink|null},
-) {
-  validateSafeSourceFact(input.securityEventId,input.observedAt);
-  const observationId=await hashCanonicalJson({kind:'FEISHU_ADAPTER_FAILURE',security_event_id:input.securityEventId});
-  return ingestScheduledOperationalSignal(database,{observation_id:observationId,signal_type:'external_adapter_failure',summary_code:'FEISHU_ADAPTER_FAILURE',job_name:null,observation_state:'BREACH',observed_at:input.observedAt,count_value:1},input.sink===undefined?{}:{sink:input.sink});
-}
-
 function policyFor(input: ScheduledOperationalSignalObservationDto): SignalPolicy {
   switch (input.signal_type) {
     case 'worker_5xx':
@@ -247,7 +238,6 @@ function policyFor(input: ScheduledOperationalSignalObservationDto): SignalPolic
     case 'external_adapter_failure':
       assertShape(input,input.summary_code,false);
       if (input.summary_code==='PRIMARY_ALERT_SINK_FAILURE') return policy('external','CRITICAL','PRIMARY_ALERT_SINK_FAILURE',1,5*MINUTE_MS,30*MINUTE_MS,'COUNT');
-      if (input.summary_code==='FEISHU_ADAPTER_FAILURE') return policy('external','WARNING','FEISHU_ADAPTER_FAILURE',3,15*MINUTE_MS,60*MINUTE_MS,'COUNT');
       throw new Error('invalid_scheduled_operational_signal_summary');
   }
 }
@@ -363,7 +353,7 @@ async function recordAlertSinkFailure(
   database:SqlDatabase,
   source:ScheduledOperationalSignalObservationDto,
   incidentVersion:number,
-  summaryCode:'PRIMARY_ALERT_SINK_FAILURE'|'FEISHU_ADAPTER_FAILURE',
+  summaryCode:'PRIMARY_ALERT_SINK_FAILURE',
 ) {
   const observationId=await hashCanonicalJson({kind:summaryCode,source_observation_id:source.observation_id,incident_version:incidentVersion});
   await ingestScheduledOperationalSignal(database,{observation_id:observationId,signal_type:'external_adapter_failure',summary_code:summaryCode,job_name:null,observation_state:'BREACH',observed_at:source.observed_at,count_value:1});
@@ -379,7 +369,6 @@ const GLOBAL_RECOVERY_SIGNALS = [
   {signalType:'worker_5xx',summaryCode:'WORKER_5XX_THRESHOLD',quietWindowMs:5*MINUTE_MS},
   {signalType:'login_anomaly',summaryCode:'LOGIN_ANOMALY_DETECTED',quietWindowMs:10*MINUTE_MS},
   {signalType:'external_adapter_failure',summaryCode:'PRIMARY_ALERT_SINK_FAILURE',quietWindowMs:5*MINUTE_MS},
-  {signalType:'external_adapter_failure',summaryCode:'FEISHU_ADAPTER_FAILURE',quietWindowMs:15*MINUTE_MS},
 ] as const satisfies readonly {signalType:ScheduledOperationalSignalType;summaryCode:ScheduledOperationalSignalSummaryCode;quietWindowMs:number}[];
 
 async function ingestGlobalHealthy(database:SqlDatabase,evaluation:{evaluationId:string;now:number},global:(typeof GLOBAL_RECOVERY_SIGNALS)[number],sink:OperationalAlertSink|null|undefined) {

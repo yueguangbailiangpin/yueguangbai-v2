@@ -2811,8 +2811,19 @@ select:disabled {
 
 .acquisition-workbench {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-5) var(--space-8);
+}
+
+.acquisition-workbench > *,
+.acquisition-workbench .data-table {
+  min-width: 0;
+}
+
+.acquisition-workbench .data-table {
+  width: 100%;
 }
 
 .acquisition-summary,

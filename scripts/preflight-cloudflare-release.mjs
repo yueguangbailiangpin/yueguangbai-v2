@@ -7,39 +7,23 @@ const rootReal = realpathSync.native(root);
 const environments = new Set(['staging', 'production']);
 const placeholderPattern = /REQUIRED|REPLACE|PLACEHOLDER|CHANGEME|TODO/iu;
 const disabledFlags = [
-  'SCHEDULED_OPERATIONS_ENABLED',
-  'ACQUISITION_MAINTENANCE_ENABLED',
   'DRIVE_ARCHIVE_ENABLED',
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-  'FEISHU_WORKBENCH_SYNC_ENABLED',
-  'FEISHU_WORKBENCH_CALLBACK_ENABLED',
-  'FEISHU_OPERATIONAL_ALERT_ENABLED',
-  'STAFF_AUTH_ENABLED',
-  'STAFF_MCP_ENABLED',
-  'STAFF_MCP_PRODUCTION_TRANSPORT_ENABLED',
-  'STAFF_MCP_LOCAL_MOCK_ENABLED',
-  'STAFF_MCP_CLEANUP_ENABLED',
 ];
+const retiredCoreRuntimeKey = /^(?:FEISHU_|STAFF_AUTH_FEISHU|STAFF_MCP_)|^(?:STAFF_AUTH_PROVIDER|STAFF_AUTH_ENABLED|STAFF_AUTH_HASH_SECRET)$/u;
 
 export const requiredManagedSecrets = Object.freeze({
   initial_auth: Object.freeze([
     'CUSTOMER_SESSION_SECRET',
     'CUSTOMER_SECURITY_TOKEN_SECRET',
-    'STAFF_AUTH_HASH_SECRET',
-    'STAFF_AUTH_FEISHU_APP_SECRET',
   ]),
   capability_specific_before_separate_approval: Object.freeze([
     'KEYWORD_GENERATOR_SHARED_SECRET',
     'KEYWORD_HMAC_SECRET',
     'GOOGLE_DRIVE_CLIENT_SECRET',
     'GOOGLE_DRIVE_REFRESH_TOKEN',
-    'FEISHU_WORKBENCH_APP_SECRET',
-    'FEISHU_WORKBENCH_ENCRYPT_KEY',
-    'FEISHU_WORKBENCH_VERIFICATION_TOKEN',
-    'FEISHU_OPERATIONAL_ALERT_CHAT_ID',
-    'STAFF_MCP_BINDING_HASH_SECRET',
   ]),
 });
 
@@ -135,42 +119,14 @@ export function validateReleaseConfig(config, environment) {
   for (const key of [
     'APP_ALLOWED_ORIGINS',
     'STAFF_AUTH_ALLOWED_ORIGINS',
-    'FEISHU_WORKBENCH_WEB_ORIGIN',
   ]) {
     if (vars?.[key] !== origin) errors.push(`vars.${key}:origin_mismatch`);
   }
-  if (origin && vars?.STAFF_AUTH_FEISHU_REDIRECT_URI
-    !== `${origin}/api/staff-auth/feishu/callback`) {
-    errors.push('vars.STAFF_AUTH_FEISHU_REDIRECT_URI:origin_mismatch');
+  if (!exactHttpsOrigin(vars?.STAFF_ACCESS_TEAM_DOMAIN)) {
+    errors.push('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_https_origin');
   }
-  for (const key of [
-    'STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT',
-    'STAFF_AUTH_FEISHU_TOKEN_ENDPOINT',
-    'STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT',
-  ]) {
-    if (!exactHttpsUrl(vars?.[key])) errors.push(`vars.${key}:invalid_https_url`);
-  }
-  for (const key of [
-    'STAFF_AUTH_FEISHU_APP_ID',
-    'STAFF_AUTH_FEISHU_SCOPE',
-    'STAFF_AUTH_FEISHU_TENANT_KEY',
-  ]) requiredString(vars, key, errors, 'vars.');
-  if (vars?.FEISHU_WORKBENCH_API_ORIGIN !== 'https://open.feishu.cn') {
-    errors.push('vars.FEISHU_WORKBENCH_API_ORIGIN:official_origin_required');
-  }
-  for (const key of ['FEISHU_WORKBENCH_APP_ID', 'FEISHU_WORKBENCH_TENANT_KEY']) {
-    requiredString(vars, key, errors, 'vars.');
-  }
-  for (const [key, minimum, maximum] of [
-    ['FEISHU_WORKBENCH_REQUEST_TIMEOUT_MS', 100, 10_000],
-    ['FEISHU_WORKBENCH_MAX_ATTEMPTS', 1, 3],
-    ['FEISHU_WORKBENCH_RATE_LIMIT_PER_SECOND', 1, 10],
-    ['FEISHU_OPERATIONAL_ALERT_RATE_LIMIT_PER_SECOND', 1, 5],
-  ]) {
-    const value = String(vars?.[key] ?? '');
-    if (!/^\d+$/u.test(value) || Number(value) < minimum || Number(value) > maximum) {
-      errors.push(`vars.${key}:invalid_integer`);
-    }
+  if (!safeReleaseValue(vars?.STAFF_ACCESS_AUD, 200, 8)) {
+    errors.push('vars.STAFF_ACCESS_AUD:missing_or_invalid');
   }
 
   const route = exactOne(record?.routes);
@@ -195,13 +151,14 @@ export function validateReleaseConfig(config, environment) {
   if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u.test(String(r2?.bucket_name ?? ''))) {
     errors.push('r2_buckets.0.bucket_name:invalid');
   }
-  const tokenStatus = exactOne(record?.services);
-  if (!tokenStatus
-    || tokenStatus.binding !== 'STAFF_MCP_TOKEN_STATUS_SERVICE'
-    || !isResourceName(tokenStatus.service)) {
-    errors.push('services:staff_mcp_token_status_binding_invalid');
+  const services = record?.services;
+  if (services !== undefined && (!Array.isArray(services) || services.length !== 0)) {
+    errors.push('services:forbidden_in_core_release');
   }
   for (const key of Object.keys(vars ?? {})) {
+    if (retiredCoreRuntimeKey.test(key)) {
+      errors.push(`vars.${key}:core_runtime_configuration_forbidden`);
+    }
     if (/SECRET|PASSWORD|REFRESH_TOKEN|CLIENT_SECRET/iu.test(key)) {
       errors.push(`vars.${key}:managed_secret_forbidden`);
     }
@@ -222,8 +179,22 @@ function validateFrozenDefaults(config, environment) {
   if (vars?.OPERATIONAL_ALERT_MODE !== 'disabled') {
     errors.push('vars.OPERATIONAL_ALERT_MODE:must_be_disabled');
   }
+  const scheduledExpected = environment === 'production' ? 'true' : 'false';
+  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {
+    if (vars?.[flag] !== scheduledExpected) {
+      errors.push(`vars.${flag}:must_be_${scheduledExpected}`);
+    }
+  }
+  if (vars?.SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED !== 'false') {
+    errors.push('vars.SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED:must_be_false');
+  }
   for (const flag of disabledFlags) {
     if (vars?.[flag] !== 'false') errors.push(`vars.${flag}:must_be_false`);
+  }
+  for (const key of Object.keys(vars ?? {})) {
+    if (retiredCoreRuntimeKey.test(key)) {
+      errors.push(`vars.${key}:core_runtime_configuration_forbidden`);
+    }
   }
   const assets = asRecord(record.assets);
   if (assets?.directory !== '../web/dist'
@@ -234,8 +205,9 @@ function validateFrozenDefaults(config, environment) {
   if (d1?.migrations_dir !== '../../migrations') {
     errors.push('d1_databases.0.migrations_dir:invalid');
   }
-  if (asRecord(record.observability)?.enabled !== false) {
-    errors.push('observability.enabled:must_be_false_until_alert_change');
+  const observabilityExpected = environment === 'production';
+  if (asRecord(record.observability)?.enabled !== observabilityExpected) {
+    errors.push(`observability.enabled:must_be_${String(observabilityExpected)}`);
   }
   return errors;
 }
@@ -301,12 +273,12 @@ function exactHttpsOrigin(value) {
   } catch { return null; }
 }
 
-function exactHttpsUrl(value) {
-  if (typeof value !== 'string' || placeholderPattern.test(value)) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && !url.username && !url.password && !url.hash;
-  } catch { return false; }
+function safeReleaseValue(value, maximum, minimum = 1) {
+  return typeof value === 'string'
+    && value.length >= minimum
+    && value.length <= maximum
+    && !/[\u0000-\u001f\u007f]/u.test(value)
+    && !placeholderPattern.test(value);
 }
 
 function asRecord(value) {

@@ -26,6 +26,8 @@ Verified at the M5 head before archive. Ponytail remained off.
 
 ## Visual review
 
+The two representative final-state screenshots below remain in the current tree. See `openspec/changes/archive/VISUAL_EVIDENCE_RETENTION.md` for the repository-wide archived-binary policy.
+
 - `staff-workbench-desktop-1600x1000.png`: queue, authoritative detail, customer/internal/sensitive separation and customer-security tools are legible with no clipping.
 - `staff-workbench-narrow-390x844.png`: source order is queue → detail → tools, controls remain reachable, and no horizontal page overflow is present.
 

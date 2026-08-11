@@ -15,7 +15,7 @@ const read = (relative: string) => readFileSync(path.join(root, relative), 'utf8
 describe('Wave 13 default app and route security boundaries', () => {
   it('registers public Staff Auth before middleware and every Staff family after it', () => {
     const index = read('apps/api/src/index.ts');
-    const auth = index.indexOf('registerStaffAuthRoutes(app');
+    const auth = index.indexOf('registerCloudflareStaffAuthRoutes(app');
     const middleware = index.indexOf("app.use('/api/staff/*', staffSessionMiddleware())");
     expect(auth).toBeGreaterThanOrEqual(0);
     expect(middleware).toBeGreaterThan(auth);
@@ -37,7 +37,7 @@ describe('Wave 13 default app and route security boundaries', () => {
   it('does not register /api/v2 aliases', () => {
     const applicationSources = [
       'apps/api/src/index.ts',
-      'apps/api/src/staff-auth/routes.ts',
+      'apps/api/src/staff-auth/access-routes.ts',
       'apps/api/src/files/routes.ts',
       'apps/api/src/order-evidence/staff-routes.ts',
       'apps/api/src/buyer-refunds/staff-routes.ts',
@@ -67,7 +67,7 @@ describe('Wave 13 default app and route security boundaries', () => {
     expect(session).not.toContain('idle');
   });
 
-  it('reproduces the audited API, health and protected MCP route inventory', () => {
+  it('reproduces the audited API and health route inventory', () => {
     const businessMethods = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
     const entries = app.routes
       .map((route, index) => ({
@@ -99,7 +99,7 @@ describe('Wave 13 default app and route security boundaries', () => {
 
     const inventory = blocks.map((block) => block.key).sort();
     const inventoryDump = inventory.join('\n');
-    expect(inventory, inventoryDump).toHaveLength(195);
+    expect(inventory, inventoryDump).toHaveLength(234);
     expect(inventory.some((route) => route.includes('/api/v2'))).toBe(false);
     expect(inventory.some((route) => /\/(?:links?|grants?)(?:\/|$)/u
       .test(route))).toBe(false);
@@ -111,8 +111,7 @@ describe('Wave 13 default app and route security boundaries', () => {
     const add = (method: string, path: string) => {
       wave13.add(`${method} ${normalizeRoutePath(path)}`);
     };
-    add('POST', '/api/staff-auth/login/start');
-    add('GET', '/api/staff-auth/feishu/callback');
+    add('POST', '/api/staff-auth/access/bootstrap');
     add('GET', '/api/staff-auth/session');
     add('POST', '/api/staff-auth/logout');
     add('POST', '/api/staff-auth/logout-all');
@@ -133,7 +132,7 @@ describe('Wave 13 default app and route security boundaries', () => {
     add('POST', STAFF_BUYER_REFUND_PATHS.reversal);
 
     expect([...wave13].filter((route) => route.includes('/staff-auth/')))
-      .toHaveLength(5);
+      .toHaveLength(4);
     expect([...wave13].filter((route) => route.includes('/file-uploads/')
       && route.endsWith('/intents'))).toHaveLength(6);
     expect([...wave13].filter((route) =>
@@ -148,11 +147,11 @@ describe('Wave 13 default app and route security boundaries', () => {
       Object.values(STAFF_BUYER_REFUND_PATHS).some((path) =>
         route.endsWith(path),
       ))).toHaveLength(4);
-    expect(wave13).toHaveLength(31);
+    expect(wave13).toHaveLength(30);
     const inventorySet = new Set(inventory);
     expect([...wave13].every((route) => inventorySet.has(route))).toBe(true);
     expect(inventory.filter((route) => !wave13.has(route)), inventoryDump)
-      .toHaveLength(164);
+      .toHaveLength(204);
 
     const staffMiddlewareIndex = app.routes.findIndex((route) =>
       route.method === 'ALL' && route.path === '/api/staff/*',

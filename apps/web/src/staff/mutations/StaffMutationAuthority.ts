@@ -56,7 +56,7 @@ export class StaffMutationAuthority<TResult> {
       this.release();
       return result;
     }).catch((error: unknown) => {
-      if (!isAmbiguous(error)) this.release();
+      if (!isAmbiguousStaffMutationError(error)) this.release();
       throw error;
     }).finally(() => {
       if (this.active === promise) this.active = null;
@@ -78,7 +78,7 @@ function cloneRequest(request: StaffMutationRequest): StaffMutationRequest {
   });
 }
 
-function isAmbiguous(error: unknown): boolean {
+export function isAmbiguousStaffMutationError(error: unknown): boolean {
   return isFrontendApiError(error)
     && (error.code === 'NETWORK_FAILURE' || error.code === 'MALFORMED_RESPONSE'
       || error.category === 'NETWORK' || error.category === 'CONTRACT');

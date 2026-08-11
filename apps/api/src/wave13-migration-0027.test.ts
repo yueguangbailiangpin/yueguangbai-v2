@@ -1,10 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  createMigratedTestDatabase,
-  SqliteDatabase,
-} from '@ygb/testkit';
+import { SqliteDatabase } from '@ygb/testkit';
 
 let database: SqliteDatabase | null = null;
 afterEach(() => {
@@ -87,7 +84,8 @@ describe('Migration 0027 Staff authentication persistence', () => {
   });
 
   it('rejects duplicate state and session token hashes', async () => {
-    database = createMigratedTestDatabase();
+    database = new SqliteDatabase();
+    applyThrough(database, 27);
     seedStaff(database);
     const stateHash = 'a'.repeat(64);
     await database.prepare(`
@@ -135,7 +133,8 @@ describe('Migration 0027 Staff authentication persistence', () => {
   });
 
   it('rejects illegal lifecycle, time ordering, and missing Staff foreign keys', async () => {
-    database = createMigratedTestDatabase();
+    database = new SqliteDatabase();
+    applyThrough(database, 27);
     seedStaff(database);
     await expect(database.prepare(`
       INSERT INTO staff_login_states (
@@ -170,7 +169,8 @@ describe('Migration 0027 Staff authentication persistence', () => {
   });
 
   it('keeps Staff authentication security events immutable', async () => {
-    database = createMigratedTestDatabase();
+    database = new SqliteDatabase();
+    applyThrough(database, 27);
     await database.prepare(`
       INSERT INTO staff_auth_security_events (
         id,event_type,outcome,provider,metadata_json,created_at

@@ -42,13 +42,13 @@ Reservation + Daily Rate + Seller Agreement
                  ├─> Internal Settlement
                  └─> Profit Reporting
 
-All business modules ─> Task/Outbox ─> Feishu Sync
+All business modules ─> Staff Work Item / Audit / Outbox
 ```
 
 ## 3. 强制开发顺序
 
 1. Foundation。
-2. Staff/Feishu Identity 与权限引擎。
+2. Cloudflare Access / Staff Identity 与权限引擎。
 3. Customer Auth、买家、卖家、成员和编号池。
 4. 店铺、产品、产品版本和产品申请。
 5. 需求批次。
@@ -58,7 +58,7 @@ All business modules ─> Task/Outbox ─> Feishu Sync
 9. 买卖家门户。
 10. 评论工作流。
 11. 财务账本、返款、卖家结算、内部结算和利润。
-12. 飞书全量联调。
+12. 员工工作台与 Cloudflare Access 联调。
 13. 迁移、备份、灰度和上线。
 
 ## 4. 禁止倒置
@@ -67,4 +67,4 @@ All business modules ─> Task/Outbox ─> Feishu Sync
 - 未完成正式订单快照前，不开发评论和财务。
 - 未完成不可变财务账本前，不开发利润报表。
 - 未完成 R2 补偿测试前，不允许真实图片上传。
-- 未完成匿名飞书 PoC 前，不允许真实员工或客户数据同步。
+- 未完成 Access 策略、已知员工邮箱和权限隔离验收前，不允许真实员工登录。

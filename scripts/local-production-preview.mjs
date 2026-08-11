@@ -22,7 +22,7 @@ const sourceLoader = await createServer({
 
 const [
   { default: app },
-  { runtimeBindings, seedWave13RuntimeAuthority },
+  { loginThroughDefaultApp, runtimeBindings, seedWave13RuntimeAuthority },
   { createBuyerCustomer },
   { createSellerOrganization },
   { activateBuyerCustomer },
@@ -111,15 +111,15 @@ async function appResponse(url, init = {}) {
 }
 
 async function localStaffLogin() {
-  const start = await appResponse('/api/staff-auth/login/start', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{}',
+  const identity = await loginThroughDefaultApp(database, 'owner');
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: '/staff',
+      'Set-Cookie': `${identity.cookie}; Path=/; HttpOnly; Secure; SameSite=Lax`,
+      'Cache-Control': 'no-store',
+    },
   });
-  const body = await start.json();
-  const state = new URL(body.data.authorization_url).searchParams.get('state');
-  if (!state) throw new Error('local_staff_state_missing');
-  return appResponse(`/api/staff-auth/feishu/callback?code=local-preview&state=${encodeURIComponent(state)}`);
 }
 
 async function send(response, result) {

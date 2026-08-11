@@ -6,185 +6,106 @@ import type {
   StaffWorkItemPageDto,
   StaffWorkItemType,
 } from '@ygb/contracts';
-import {
-  businessPermissionForWorkItem,
-  eligibilityPermissionForDuty,
-} from '@ygb/domain';
+import { businessPermissionForWorkItem, eligibilityPermissionForDuty } from '@ygb/domain';
 import type { AssignmentStaffAuthorization } from './effective-authorization';
 import { StaffAssignmentError } from './errors';
-import { isOwner } from './permission-policy';
-import { representativeWorkType } from './reassignment-service';
 
 const DUTIES: readonly StaffAssignmentDutyCode[] = [
-  'SELLER_ACCOUNT_MANAGER',
-  'BUYER_PRE_SALES_OWNER',
-  'BUYER_AFTER_SALES_OWNER',
-  'BUYER_REFUND_OWNER',
+  'SELLER_ACCOUNT_MANAGER','BUYER_PRE_SALES_OWNER','BUYER_AFTER_SALES_OWNER','BUYER_REFUND_OWNER',
 ];
 const WORK_TYPES: readonly StaffWorkItemType[] = [
-  'PRODUCT_APPLICATION_REVIEW',
-  'DEMAND_REVIEW',
-  'RESERVATION_DECISION',
-  'ORDER_INSTRUCTION_PUBLISH',
-  'ORDER_EVIDENCE_REVIEW',
-  'REVIEW_DECISION',
-  'BUYER_REFUND_PROCESSING',
+  'PRODUCT_APPLICATION_REVIEW','DEMAND_REVIEW','RESERVATION_DECISION',
+  'ORDER_INSTRUCTION_PUBLISH','ORDER_EVIDENCE_REVIEW','REVIEW_DECISION','BUYER_REFUND_PROCESSING',
 ];
 
-export async function listMyAssignments(
-  database: SqlDatabase,
-  actor: AssignmentStaffAuthorization,
-): Promise<readonly StaffAssignmentDto[]> {
-  const allowedDuties = DUTIES.filter((duty) =>
-    actor.permissions.has(eligibilityPermissionForDuty(duty))
-    && actor.permissions.has(
-      businessPermissionForWorkItem(representativeWorkType(duty)),
-    ));
+function representativeWorkType(dutyCode: StaffAssignmentDutyCode): StaffWorkItemType {
+  switch (dutyCode) {
+    case 'SELLER_ACCOUNT_MANAGER': return 'PRODUCT_APPLICATION_REVIEW';
+    case 'BUYER_PRE_SALES_OWNER': return 'RESERVATION_DECISION';
+    case 'BUYER_AFTER_SALES_OWNER': return 'REVIEW_DECISION';
+    case 'BUYER_REFUND_OWNER': return 'BUYER_REFUND_PROCESSING';
+  }
+}
+
+export async function listMyAssignments(database: SqlDatabase, actor: AssignmentStaffAuthorization): Promise<readonly StaffAssignmentDto[]> {
+  const allowedDuties = DUTIES.filter((duty) => actor.permissions.has(eligibilityPermissionForDuty(duty))
+    && actor.permissions.has(businessPermissionForWorkItem(representativeWorkType(duty))));
   if (allowedDuties.length < 1) return [];
   const dutySql = placeholders(allowedDuties);
   const [buyer, seller] = await Promise.all([
-    database.prepare(`
-      SELECT id AS assignment_id, 'BUYER_CUSTOMER' AS subject_type,
-        buyer_customer_id AS subject_id, duty_code, staff_id,
-        status, source, reason, version, created_at, revoked_at
-      FROM buyer_staff_assignments
-      WHERE staff_id=? AND status='ACTIVE'
-        AND duty_code IN (${dutySql})
-      ORDER BY duty_code, buyer_customer_id
-    `).bind(actor.staffId, ...allowedDuties).all<StaffAssignmentDto>(),
-    database.prepare(`
-      SELECT id AS assignment_id, 'SELLER_ORGANIZATION' AS subject_type,
-        seller_organization_id AS subject_id, duty_code, staff_id,
-        status, source, reason, version, created_at, revoked_at
-      FROM seller_staff_assignments
-      WHERE staff_id=? AND status='ACTIVE'
-        AND duty_code IN (${dutySql})
-      ORDER BY seller_organization_id
-    `).bind(actor.staffId, ...allowedDuties).all<StaffAssignmentDto>(),
+    database.prepare(`SELECT id AS assignment_id,'BUYER_CUSTOMER' AS subject_type,buyer_customer_id AS subject_id,duty_code,staff_id,status,source,reason,version,created_at,revoked_at FROM buyer_staff_assignments WHERE staff_id=? AND status='ACTIVE' AND duty_code IN (${dutySql}) ORDER BY duty_code,buyer_customer_id`).bind(actor.staffId,...allowedDuties).all<StaffAssignmentDto>(),
+    database.prepare(`SELECT id AS assignment_id,'SELLER_ORGANIZATION' AS subject_type,seller_organization_id AS subject_id,duty_code,staff_id,status,source,reason,version,created_at,revoked_at FROM seller_staff_assignments WHERE staff_id=? AND status='ACTIVE' AND duty_code IN (${dutySql}) ORDER BY seller_organization_id`).bind(actor.staffId,...allowedDuties).all<StaffAssignmentDto>(),
   ]);
-  return [...buyer.results, ...seller.results];
+  return [...buyer.results,...seller.results];
 }
 
 export async function listVisibleWorkItems(
   database: SqlDatabase,
   actor: AssignmentStaffAuthorization,
-  options: {
-    limit?: number;
-    status?: 'OPEN' | 'COMPLETED' | 'CANCELLED';
-    workType?: StaffWorkItemType | null;
-    cursor?: { createdAt: number; id: string } | null;
-  } = {},
+  options: { limit?: number; status?: 'OPEN'|'COMPLETED'|'CANCELLED'; workType?: StaffWorkItemType|null; cursor?: { createdAt:number; id:string }|null } = {},
 ): Promise<StaffWorkItemPageDto> {
-  const limit = options.limit ?? 50;
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
-    throw new StaffAssignmentError('VALIDATION_ERROR', 400);
-  }
-  const allowedWorkTypes = visibleWorkTypes(actor);
-  const requestedWorkTypes = options.workType === null || options.workType === undefined
-    ? allowedWorkTypes
-    : allowedWorkTypes.filter((workType) => workType === options.workType);
-  if (requestedWorkTypes.length < 1) return { work_items: [], next_cursor: null };
-  const status = options.status ?? 'OPEN';
-  const visibilityScope = await visibility(database, actor);
-  const rows = await database.prepare(`
-    SELECT id AS work_item_id, work_type, source_entity_type,
-      source_entity_id, buyer_customer_id, seller_organization_id,
-      store_id, duty_code, fixed_assignment_id, assigned_staff_id,
-      status, version, created_at, updated_at, completed_at, cancelled_at
+  const limit=options.limit??50;
+  if(!Number.isSafeInteger(limit)||limit<1||limit>100) throw new StaffAssignmentError('VALIDATION_ERROR',400);
+  const allowedWorkTypes=visibleWorkTypes(actor);
+  const requested=options.workType==null?allowedWorkTypes:allowedWorkTypes.filter((value)=>value===options.workType);
+  if(requested.length<1)return {work_items:[],next_cursor:null};
+  const global=actor.roles.has('owner');
+  const markets=global?[]:await primaryMarketplaceCodes(database,actor.staffId);
+  if(!global&&markets.length<1)return {work_items:[],next_cursor:null};
+  const marketSql=global?'1=1':`marketplace_code IN (${placeholders(markets)})`;
+  const hideSettled=options.status==='COMPLETED'||options.status==='CANCELLED'?'1=1':refundStillNeedsWorkSql('staff_work_items');
+  const rows=await database.prepare(`
+    SELECT id AS work_item_id,work_type,source_entity_type,source_entity_id,
+      buyer_customer_id,seller_organization_id,store_id,duty_code,
+      fixed_assignment_id,assigned_staff_id,status,version,created_at,updated_at,
+      completed_at,cancelled_at
     FROM staff_work_items
-    WHERE status=?
-      AND work_type IN (${placeholders(requestedWorkTypes)})
-      AND (?=1 OR assigned_staff_id IN (${placeholders(visibilityScope.staffIds)}))
-      ${options.cursor ? 'AND (created_at>? OR (created_at=? AND id>?))' : ''}
-    ORDER BY created_at, id
-    LIMIT ?
+    WHERE status=? AND work_type IN (${placeholders(requested)})
+      AND ${marketSql}
+      AND ${hideSettled}
+      ${options.cursor?'AND (created_at>? OR (created_at=? AND id>?))':''}
+    ORDER BY created_at,id LIMIT ?
   `).bind(
-    status,
-    ...requestedWorkTypes,
-    visibilityScope.global ? 1 : 0,
-    ...visibilityScope.staffIds,
-    ...(options.cursor ? [options.cursor.createdAt, options.cursor.createdAt, options.cursor.id] : []),
-    limit + 1,
+    options.status??'OPEN',...requested,...(global?[]:markets),
+    ...(options.cursor?[options.cursor.createdAt,options.cursor.createdAt,options.cursor.id]:[]),limit+1,
   ).all<StaffWorkItemDto>();
-  const hasMore = rows.results.length > limit;
-  const workItems = rows.results.slice(0, limit);
-  const last = workItems.at(-1);
-  return {
-    work_items: workItems,
-    next_cursor: hasMore && last
-      ? JSON.stringify({ createdAt: Number(last.created_at), id: last.work_item_id })
-      : null,
-  };
+  const hasMore=rows.results.length>limit; const items=rows.results.slice(0,limit); const last=items.at(-1);
+  return {work_items:items,next_cursor:hasMore&&last?JSON.stringify({createdAt:Number(last.created_at),id:last.work_item_id}):null};
 }
 
-export async function getVisibleWorkItem(
-  database: SqlDatabase,
-  actor: AssignmentStaffAuthorization,
-  workItemId: string,
-): Promise<StaffWorkItemDto> {
-  const allowedWorkTypes = visibleWorkTypes(actor);
-  if (allowedWorkTypes.length < 1) {
-    throw new StaffAssignmentError('NOT_FOUND', 404);
-  }
-  const scope = await visibility(database, actor);
-  const row = await database.prepare(`
-    SELECT id AS work_item_id, work_type, source_entity_type,
-      source_entity_id, buyer_customer_id, seller_organization_id,
-      store_id, duty_code, fixed_assignment_id, assigned_staff_id,
-      status, version, created_at, updated_at, completed_at, cancelled_at
-    FROM staff_work_items
-    WHERE id=?
-      AND work_type IN (${placeholders(allowedWorkTypes)})
-      AND (?=1 OR assigned_staff_id IN (${placeholders(scope.staffIds)}))
-  `).bind(
-    workItemId,
-    ...allowedWorkTypes,
-    scope.global ? 1 : 0,
-    ...scope.staffIds,
-  ).first<StaffWorkItemDto>();
-  if (!row) throw new StaffAssignmentError('NOT_FOUND', 404);
-  return row;
+export async function getVisibleWorkItem(database:SqlDatabase,actor:AssignmentStaffAuthorization,workItemId:string):Promise<StaffWorkItemDto>{
+  const allowed=visibleWorkTypes(actor); if(allowed.length<1)throw new StaffAssignmentError('NOT_FOUND',404);
+  const global=actor.roles.has('owner');
+  const markets=global?[]:await primaryMarketplaceCodes(database,actor.staffId);
+  if(!global&&markets.length<1)throw new StaffAssignmentError('NOT_FOUND',404);
+  const marketSql=global?'1=1':`marketplace_code IN (${placeholders(markets)})`;
+  const row=await database.prepare(`SELECT id AS work_item_id,work_type,source_entity_type,source_entity_id,
+    buyer_customer_id,seller_organization_id,store_id,duty_code,fixed_assignment_id,
+    assigned_staff_id,status,version,created_at,updated_at,completed_at,cancelled_at
+    FROM staff_work_items WHERE id=? AND work_type IN (${placeholders(allowed)}) AND ${marketSql}
+      AND (status<>'OPEN' OR ${refundStillNeedsWorkSql('staff_work_items')})`)
+    .bind(workItemId,...allowed,...(global?[]:markets)).first<StaffWorkItemDto>();
+  if(!row)throw new StaffAssignmentError('NOT_FOUND',404); return row;
 }
 
-function visibleWorkTypes(
-  actor: AssignmentStaffAuthorization,
-): StaffWorkItemType[] {
-  return WORK_TYPES.filter((workType) =>
-    actor.permissions.has(businessPermissionForWorkItem(workType)));
+function refundStillNeedsWorkSql(alias:string){return `(
+  ${alias}.work_type<>'BUYER_REFUND_PROCESSING'
+  OR NOT EXISTS(
+    SELECT 1 FROM buyer_refund_obligations obligation
+    WHERE (obligation.id=${alias}.source_entity_id OR obligation.formal_order_id=${alias}.source_entity_id)
+      AND COALESCE((SELECT SUM(CASE entry.entry_type WHEN 'PAYMENT' THEN entry.amount_cny_fen ELSE -entry.amount_cny_fen END)
+        FROM buyer_refund_payment_entries entry WHERE entry.obligation_id=obligation.id),0)>=obligation.due_amount_cny_fen
+  )
+)`;}
+async function primaryMarketplaceCodes(database:SqlDatabase,staffId:string):Promise<string[]>{
+  const rows=await database.prepare(`SELECT scope.marketplace_code
+    FROM staff_marketplace_scopes scope
+    JOIN staff_users staff ON staff.id=scope.staff_id AND staff.status='ACTIVE'
+    WHERE scope.staff_id=? AND scope.status='ACTIVE' AND scope.scope_kind='PRIMARY'
+    ORDER BY scope.marketplace_code`).bind(staffId).all<{marketplace_code:string}>();
+  return rows.results.map((row)=>row.marketplace_code);
 }
-
-async function visibility(
-  database: SqlDatabase,
-  actor: AssignmentStaffAuthorization,
-): Promise<{ global: boolean; staffIds: readonly string[] }> {
-  if (isOwner(actor)) return { global: true, staffIds: [] };
-  const teamStaffIds = actor.permissions.has('TASK_VIEW_TEAM')
-    ? await visibleTeamStaffIds(database, actor.leaderTeamIds)
-    : [];
-  return {
-    global: false,
-    staffIds: [...new Set([actor.staffId, ...teamStaffIds])],
-  };
+function visibleWorkTypes(actor:AssignmentStaffAuthorization):StaffWorkItemType[]{
+  return WORK_TYPES.filter((workType)=>actor.permissions.has(businessPermissionForWorkItem(workType)));
 }
-
-async function visibleTeamStaffIds(
-  database: SqlDatabase,
-  leaderTeamIds: readonly string[],
-): Promise<string[]> {
-  if (leaderTeamIds.length < 1) return [];
-  const rows = await database.prepare(`
-    SELECT DISTINCT membership.staff_id AS id
-    FROM staff_team_memberships membership
-    JOIN staff_teams team ON team.id=membership.team_id AND team.status='ACTIVE'
-    JOIN staff_departments department
-      ON department.id=team.department_id AND department.status='ACTIVE'
-    WHERE membership.status='ACTIVE'
-      AND membership.team_id IN (${placeholders(leaderTeamIds)})
-    ORDER BY membership.staff_id
-  `).bind(...leaderTeamIds).all<{ id: string }>();
-  return rows.results.map((row) => row.id);
-}
-
-function placeholders(values: readonly unknown[]): string {
-  return values.length > 0 ? values.map(() => '?').join(', ') : "''";
-}
+function placeholders(values:readonly unknown[]):string{return values.length>0?values.map(()=>'?').join(', '):"''";}

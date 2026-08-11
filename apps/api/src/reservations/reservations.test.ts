@@ -685,6 +685,12 @@ function seedReservationFixture(
       'staff-pre-sales', 'pre_sales', 'ACTIVE', NULL,
       1000, NULL, 1000, 1000
     );
+    INSERT INTO staff_marketplace_scopes (
+      id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
+    ) VALUES ('scope-reservation-pre-jp','staff-pre-sales','pre_sales',
+      'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
+      'TEST_PRIMARY',1000,1000,'PRIMARY');
     INSERT INTO staff_departments (
       id, code, name, status, version, created_at, updated_at, disabled_at
     ) VALUES ('department-pre-sales','pre-sales','Pre Sales',
@@ -926,6 +932,7 @@ function ownerScheduleActor(): SchedulingStaffActor {
       buyerCustomerIds: [],
       sellerOrganizationIds: [],
       teamIds: [],
+      marketplaceCodes: [],
     },
   };
 }
@@ -941,6 +948,7 @@ function preSalesScheduleActor(): SchedulingStaffActor {
       buyerCustomerIds: ['buyer-1'],
       sellerOrganizationIds: [],
       teamIds: [],
+      marketplaceCodes: ['AMAZON_JP'],
     },
   };
 }
@@ -961,6 +969,7 @@ function sellerOpsScheduleActor(
       buyerCustomerIds: [],
       sellerOrganizationIds,
       teamIds: [],
+      marketplaceCodes: ['AMAZON_JP'],
     },
   };
 }
@@ -978,6 +987,7 @@ function buyerRefundActor(): SchedulingStaffActor {
       buyerCustomerIds: [],
       sellerOrganizationIds: [],
       teamIds: [],
+      marketplaceCodes: [],
     },
   };
 }

@@ -33,10 +33,10 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-      - name: 检查生产健康并维护告警问题
+      - name: 检查生产 Readiness 并维护告警问题
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           YGB_HEALTH_SIMULATION: ${{ inputs.simulation || 'probe' }}
-          YGB_PRODUCTION_HEALTH_URL: https://app.yueguangbai.net/health
+          YGB_PRODUCTION_HEALTH_URL: https://app.yueguangbai.net/ready
         run: node scripts/production-health-monitor.mjs

@@ -37,7 +37,9 @@ Side-by-side self-review against the approved direction:
 
 ## 3. Deterministic Screenshot Evidence
 
-Screenshots are persistent OpenSpec acceptance evidence and remain outside runtime application assets:
+The following paths and counts record the original acceptance matrix. The current tree retains two representative final-state images; the other historical binaries remain recoverable from Git commit `8cb39ed870df1fc5c6874dd4e5b86e12e22c39d2`. See `openspec/changes/archive/VISUAL_EVIDENCE_RETENTION.md`.
+
+Original screenshot matrix:
 
 - Before: `openspec/changes/frontend-ui-visual-governance/references/visuals/before/`
 - Rejected iteration 1: `openspec/changes/frontend-ui-visual-governance/references/visuals/iteration-1/`

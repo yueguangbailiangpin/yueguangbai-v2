@@ -35,7 +35,8 @@ function staffSession() {
     role: { code: 'pre_sales', display_name: '售前' },
     permissions: [],
     data_scope: {
-      type: 'GLOBAL',
+      type: 'MARKETPLACE',
+      marketplaceCodes: ['AMAZON_JP'],
       buyerCustomerIds: [],
       sellerOrganizationIds: [],
       teamIds: [],
@@ -308,13 +309,13 @@ test('legacy customer login path cannot silently select the Buyer identity', asy
   await expect(page.getByRole('button', { name: '登录' })).toHaveCount(0);
 });
 
-test('staff login has only the trusted provider action and no customer form', async ({ page }) => {
+test('staff login uses Cloudflare Access and has no customer form', async ({ page }) => {
   await page.goto('/staff/login');
   await expect(page.getByRole('heading', { name: '员工登录' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '使用受信任身份继续' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '进入员工后台' })).toBeVisible();
   await expect(page.getByLabel('账号')).toHaveCount(0);
   await expect(page.getByLabel('密码')).toHaveCount(0);
-  await expect(page.getByText('员工身份与买家、卖家账号严格分离。')).toBeVisible();
+  await expect(page.getByText(/Cloudflare Access 邮箱验证码保护/u)).toBeVisible();
 });
 
 test('buyer login tab order and focus ring remain keyboard-visible', async ({ page }) => {
@@ -357,17 +358,17 @@ test('password_change_required routes Buyer to the password flow', async ({ page
   await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible();
 });
 
-test('Buyer shell is product-focused with five fixed items and no fake business data', async ({ page }) => {
+test('Buyer shell is product-focused with three fixed items and no fake business data', async ({ page }) => {
   await mockApi(page, 'buyer');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/buyer');
   const navigation = page.getByRole('navigation', { name: '买家导航' });
-  await expect(navigation.getByRole('link')).toHaveCount(5);
-  for (const label of ['首页', '产品', '订单资料', '评论', '我的']) {
+  await expect(navigation.getByRole('link')).toHaveCount(3);
+  for (const label of ['产品', '任务', '我的']) {
     await expect(navigation.getByText(label, { exact: true })).toBeVisible();
   }
   await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toBeVisible();
-  await expect(page.getByText('产品暂时无法读取')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '暂时无法读取内容' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
@@ -533,11 +534,11 @@ test('Staff desktop shell preserves queue-detail-action DOM order and separation
   await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
   const headings = await page.locator(
-    '.staff-panes > section > .pane-heading h2, .staff-panes > aside > h2',
+    '.staff-panes > section h2, .staff-panes > aside h2',
   ).allTextContents();
-  expect(headings).toEqual(['待处理队列', '详情', '客户安全与账户']);
+  expect(headings.slice(0, 4)).toEqual(['工作队列', '当前队列为空', '请选择工作项', '等待选择']);
   await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '客户邀请与账号恢复' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '等待选择' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
@@ -548,9 +549,9 @@ test('Staff narrow shell preserves queue-detail-tools order without overflow', a
   await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
   const headings = await page.locator(
-    '.staff-panes > section > .pane-heading h2, .staff-panes > aside > h2',
+    '.staff-panes > section h2, .staff-panes > aside h2',
   ).allTextContents();
-  expect(headings.slice(0, 3)).toEqual(['待处理队列', '详情', '客户安全与账户']);
+  expect(headings.slice(0, 4)).toEqual(['工作队列', '当前队列为空', '请选择工作项', '等待选择']);
   await page.getByLabel('状态').focus();
   await expect(page.getByLabel('状态')).toBeFocused();
   await expectNoCriticalHorizontalOverflow(page);
@@ -713,7 +714,7 @@ test('staff workbench defers dashboard and scheduling chunks until their routes 
   expect(assets.some((asset) => asset.includes('StaffSchedulingRouteModule-'))).toBe(false);
 
   await page.goto('/staff/admin-business-dashboard');
-  await expect(page.getByText('当前员工身份没有经营看板权限。')).toBeVisible();
+  await expect(page.getByText('只有总管理员可以查看经营看板。')).toBeVisible();
   expect(assets.some((asset) => asset.includes('StaffAdminRouteModule-'))).toBe(true);
   expect(assets.some((asset) => asset.includes('StaffSchedulingRouteModule-'))).toBe(false);
 

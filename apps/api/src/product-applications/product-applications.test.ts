@@ -679,6 +679,12 @@ function seedProductApplicationFixture(
       'staff-reviewer', 'seller_ops', 'ACTIVE', NULL,
       1000, NULL, 1000, 1000
     );
+    INSERT INTO staff_marketplace_scopes (
+      id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
+    ) VALUES ('scope-product-reviewer-jp','staff-reviewer','seller_ops',
+      'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
+      'TEST_PRIMARY',1000,1000,'PRIMARY');
     INSERT INTO staff_departments (
       id, code, name, status, version, created_at, updated_at, disabled_at
     ) VALUES ('department-product-review','product-review','Product Review',

@@ -42,7 +42,7 @@ Secrets 只存于本地安全环境或 Cloudflare Secret，不进入 Git。
 - GitHub Token；
 - OAuth Secret；
 - Session Secret；
-- 飞书 App Secret；
+- Cloudflare Access 与其他外部 Provider Secret；
 - 真实账号和密码；
 - 旧资源 ID 和旧域名。
 
@@ -51,7 +51,7 @@ Secrets 只存于本地安全环境或 Cloudflare Secret，不进入 Git。
 ## 4. Session
 
 - 客户 Session 签名且可撤销。
-- 员工飞书 Session 短期有效。
+- 员工内部 Session 短期有效，并在每次请求重新核验 D1 Staff 状态、版本、Role 与 Marketplace。
 - 密码哈希使用经过测试的 Workers 兼容算法。
 - 登录限流按 IP 和账号组合。
 - 账号不存在时执行等价密码验证成本，减少枚举。

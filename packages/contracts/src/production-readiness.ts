@@ -162,7 +162,7 @@ export const PRODUCTION_ALERT_CONTROLS: readonly ProductionAlertControl[] = [
   { signal: 'job_stale_or_backlog', threshold: 'stale>=6h or 3 breaches/30m', diagnostic: 'job health/lease/backlog', kill_switch: 'global or per-job disable', recovery: 'lease takeover and bounded replay', escalation: 'PROVIDER_INDEPENDENT_REQUIRED' },
   { signal: 'file_integrity', threshold: '30m>=3 or any checksum mismatch', diagnostic: 'D1 authority plus protected manifest refs', kill_switch: 'file mutation/archive delete disable', recovery: 'verified compensation or rehydration', escalation: 'PROVIDER_INDEPENDENT_REQUIRED' },
   { signal: 'drive_dependency', threshold: 'any authorization/manifest failure', diagnostic: 'safe provider category and manifest hash', kill_switch: 'copy/proxy/delete disable', recovery: 'OAuth repair then read-back verification', escalation: 'PROVIDER_INDEPENDENT_REQUIRED' },
-  { signal: 'feishu_dependency', threshold: '15m>=3', diagnostic: 'safe adapter category/backlog', kill_switch: 'sync and callback disable', recovery: 'D1-authoritative replay/rebuild', escalation: 'PROVIDER_INDEPENDENT_REQUIRED' },
+  { signal: 'cloudflare_access_dependency', threshold: '15m>=3', diagnostic: 'safe Access authentication category', kill_switch: 'Cloudflare Access policy or deployment rollback', recovery: 'verify Access policy/JWKS then reauthenticate', escalation: 'PROVIDER_INDEPENDENT_REQUIRED' },
   { signal: 'mcp_dependency', threshold: 'any auth/audit outage or sustained failures', diagnostic: 'safe tool/outcome aggregate', kill_switch: 'global or per-tool disable', recovery: 'Web remains authoritative; re-enable after conformance', escalation: 'PROVIDER_INDEPENDENT_REQUIRED' },
   { signal: 'd1_dependency', threshold: 'any integrity/FK failure or sustained errors', diagnostic: 'integrity, FK and request aggregate', kill_switch: 'stop new writes/deployment rollback', recovery: 'isolated verified restore or forward recovery', escalation: 'PROVIDER_INDEPENDENT_REQUIRED' },
   { signal: 'r2_dependency', threshold: 'any protected read/write/delete failure burst', diagnostic: 'safe storage operation category', kill_switch: 'upload/archive-delete disable', recovery: 'retry only after HEAD/checksum validation', escalation: 'PROVIDER_INDEPENDENT_REQUIRED' },
@@ -170,11 +170,11 @@ export const PRODUCTION_ALERT_CONTROLS: readonly ProductionAlertControl[] = [
 ] as const;
 
 export const EXTERNAL_RELEASE_GATES = [
-  'FEISHU_REAL_APPLICATION_CALLBACK_CREDENTIALS_AND_INDEPENDENT_ALERT_RECEIVER',
+  'CLOUDFLARE_ACCESS_APPLICATION_POLICY_AND_KNOWN_STAFF_EMAILS',
   'GOOGLE_DRIVE_OWNER_OAUTH_AND_REAL_PROXY_READ_DELETE',
   'OPENAI_CHATGPT_OAUTH_MCP_REGISTRATION_AND_AI_PRIVACY_APPROVAL',
   'CLOUDFLARE_ACCOUNT_DOMAIN_DNS_AND_PRODUCTION_SECRETS',
-  'ONLINE_MIGRATION_DEPLOYMENT_SCHEDULER_QUEUE_R2_DRIVE_FEISHU_MCP_ENABLEMENT',
+  'ONLINE_MIGRATION_DEPLOYMENT_SCHEDULER_QUEUE_R2_DRIVE_MCP_ENABLEMENT',
   'CHINA_MOBILE_UNICOM_TELECOM_AND_WECHAT_BROWSER_MATRIX',
   'PRIVACY_RETENTION_DELETION_AND_HISTORICAL_IMPORT_PREVIEW_APPROVAL',
   'FINAL_PRODUCTION_GO',
@@ -185,7 +185,7 @@ export function validateProductionAlertControls(
 ): void {
   const required = [
     'worker_5xx', 'login_anomaly', 'job_stale_or_backlog', 'file_integrity',
-    'drive_dependency', 'feishu_dependency', 'mcp_dependency',
+    'drive_dependency', 'cloudflare_access_dependency', 'mcp_dependency',
     'd1_dependency', 'r2_dependency', 'capacity',
   ];
   if (controls.length !== required.length

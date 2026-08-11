@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { resolveChangeRoot } from './verifier-utils.mjs';
 import { assert, assertContains, assertNotContains, read, relative, report, root } from './wave13-verifier-lib.mjs';
 
@@ -115,57 +114,10 @@ assert(!/name="evidence_file"[^>]*\bmultiple\b/u.test(evidenceForm), 'order evid
 const reviewForm = read('apps/web/src/buyer/reviews/BuyerReviewFormPage.tsx');
 assertContains(reviewForm, 'files.current.length > 3', 'review three-file command limit');
 const buyerFrame = read('apps/web/src/buyer/routes/BuyerFrame.tsx');
-for (const label of ['首页', '产品', '订单资料', '评论', '我的']) assertContains(buyerFrame, label, 'Buyer five-item navigation');
-assert((buyerFrame.match(/label:/gu) ?? []).length === 5, 'Buyer navigation must contain exactly five items');
+for (const label of ['产品', '任务', '我的']) assertContains(buyerFrame, label, 'Buyer three-item navigation');
+assert((buyerFrame.match(/label:/gu) ?? []).length === 3, 'Buyer navigation must contain exactly three items');
 assertNotContains(read('apps/web/src/App.tsx').split('<Route path="/buyer/login"')[0], '/buyer/register', 'root page registration entry');
 
-const sellerStaffScopes = [
-  'apps/api/src/seller-portal', 'apps/api/src/staff-auth', 'apps/web/src/seller', 'apps/web/src/staff',
-];
-const trackedSellerStaff = execFileSync('git', [
-  'diff', '--name-only', 'origin/main', '--', ...sellerStaffScopes,
-], { encoding: 'utf8' }).trim().split('\n');
-const untrackedSellerStaff = execFileSync('git', [
-  'ls-files', '--others', '--exclude-standard', '--', ...sellerStaffScopes,
-], { encoding: 'utf8' }).trim().split('\n');
-const changedSellerStaff = [...new Set([...trackedSellerStaff, ...untrackedSellerStaff])]
-  .filter((path) => path.length > 0 && !path.includes('.test.'));
-const module4SellerAllowlist = new Set([
-  'apps/api/src/staff-auth/cleanup.ts',
-  'apps/api/src/staff-auth/repository.ts',
-  'apps/api/src/staff-auth/routes.ts',
-  'apps/api/src/seller-portal/queries.ts',
-  'apps/api/src/seller-portal/routes.ts',
-  'apps/web/src/seller/api/client.ts',
-  'apps/web/src/seller/contracts/runtime.ts',
-  'apps/web/src/seller/pages/SellerPages.tsx',
-  'apps/web/src/seller/pages/SellerSubmissionPages.tsx',
-  'apps/web/src/seller/queries/keys.ts',
-  'apps/web/src/seller/queries/useSellerCursorPages.ts',
-  'apps/web/src/seller/routes/SellerLayout.tsx',
-  'apps/web/src/seller/routes/SellerRouteModule.tsx',
-  'apps/web/src/seller/routes/SellerSubmissionRouteModule.tsx',
-  'apps/web/src/staff/StaffWorkbench.tsx',
-  'apps/web/src/staff/StaffCallbackModule.tsx',
-  'apps/web/src/staff/StaffAdminRouteModule.tsx',
-  'apps/web/src/staff/StaffAccessManagementRouteModule.tsx',
-  'apps/web/src/staff/StaffRouteModule.tsx',
-  'apps/web/src/staff/StaffSchedulingRouteModule.tsx',
-  'apps/web/src/staff/StaffShell.tsx',
-  'apps/web/src/staff/admin-dashboard/AdminBusinessDashboard.tsx',
-  'apps/web/src/staff/acquisition/AcquisitionWorkbench.tsx',
-  'apps/web/src/staff/access-management/StaffAccessManagementWorkspace.tsx',
-  'apps/web/src/staff/api/client.ts',
-  'apps/web/src/staff/contracts/runtime.ts',
-  'apps/web/src/staff/mutations/StaffMutationAuthority.ts',
-  'apps/web/src/staff/pricing/SellerPrincipalRatePolicyWorkspace.tsx',
-  'apps/web/src/staff/product-scheduling/ProductSchedulingWorkspace.tsx',
-  'apps/web/src/staff/queries/keys.ts',
-  'apps/web/src/staff/shared/StaffProtectedFileButton.tsx',
-  'apps/web/src/staff/shared/format.ts',
-]);
-const unapprovedSellerStaff = changedSellerStaff.filter((path) => !module4SellerAllowlist.has(path));
-assert(unapprovedSellerStaff.length === 0, `Unapproved Seller/Staff business source expanded: ${unapprovedSellerStaff.join(', ')}`);
 const sellerCursorAdapter = read(
   'apps/web/src/seller/queries/useSellerCursorPages.ts',
 );
@@ -211,6 +163,5 @@ report('module1-buyer-security', {
   new_api_count: 1,
   arbitrary_read_paths: 0,
   token_storage: 0,
-  approved_seller_business_files: changedSellerStaff.length,
-  unapproved_seller_staff_business_expansion: unapprovedSellerStaff.length,
+  cross_module_git_diff_allowlist: 'RETIRED_AFTER_INTEGRATION',
 });

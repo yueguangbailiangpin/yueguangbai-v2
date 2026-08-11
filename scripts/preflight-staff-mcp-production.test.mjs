@@ -13,13 +13,11 @@ import {
 
 describe('Staff MCP production preflight', () => {
   for (const environment of ['staging', 'production']) {
-    it(`keeps ${environment} template blocked, disabled and zero-network`, () => {
+    it(`keeps ${environment} core template free of Staff MCP and zero-network`, () => {
       const report = inspectStaffMcpTemplate(environment);
-      expect(report.status).toBe('BLOCKED_NEEDS_OPERATOR_INPUT');
-      expect(report.required_fields).toContain('vars.STAFF_MCP_RESOURCE');
-      expect(report.required_binding_fields).toEqual([
-        'services.STAFF_MCP_TOKEN_STATUS_SERVICE.service',
-      ]);
+      expect(report.status).toBe('ABSENT_FROM_CORE_RELEASE');
+      expect(report.required_fields).toEqual([]);
+      expect(report.required_binding_fields).toEqual([]);
       expect(report.required_managed_secret_names)
         .toEqual(['STAFF_MCP_BINDING_HASH_SECRET']);
       expect(report).toMatchObject({

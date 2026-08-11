@@ -167,6 +167,7 @@ function assignedScope(...sellerOrganizationIds: string[]): StaffDataScope {
   return {
     type: 'ASSIGNED_SELLER_ORGANIZATIONS',
     buyerCustomerIds: [], sellerOrganizationIds, teamIds: [],
+    marketplaceCodes: ['AMAZON_JP'],
   };
 }
 

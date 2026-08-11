@@ -27,7 +27,7 @@
 
 1. OpenSpec strict all 与高等级依赖审计；
 2. 当前主线 `npm run check`；
-3. production-readiness、Drive、Feishu、Staff MCP 的本地 verifier/preflight；
+3. production-readiness、Drive、Staff Auth、Staff MCP 的本地 verifier/preflight；
 4. Cloudflare 静态 verifier 与 staging/production 零调用 dry-run；
 5. final-production-go 本地 verifier；
 6. Chromium/Playwright Wave 14A 验收。
@@ -53,7 +53,7 @@
 1. 无老板批准的真实 Cloudflare account、D1/R2、Worker、域名/DNS、Git 外配置、Secrets、部署、HTTPS 与三网验收。
 2. 无生产 D1 ledger 只读核验、release-bound 备份、隔离恢复、线上 Migration 窗口与回滚证据。
 3. 无真实 R2/Drive Manifest 对账、Drive read-back、恢复与首次 R2 删除批准。
-4. Feishu production-capable adapter 已具备且默认关闭，但无真实应用、租户、scope、callback、机器人、移动端与 Provider 告警证据。
+4. 旧 Feishu Staff Auth、同步、回调与告警 adapter 已退出现行架构；发布模板禁止重新引入相关配置。
 5. Staff MCP production-capable HTTPS/OAuth/D1/Service Binding/bounded-cleanup 边界已具备且默认关闭，但无真实 issuer、JWKS、token-status、ChatGPT/OpenAI 注册、部署或安全验收。
 6. 无真实 Buyer/Seller/Staff 权限隔离、Personal DENY、文件 Audience、财务、渗透、容量与网络验收。
 7. 无隐私、外部 AI、跨境、保存/删除/注销和平台政策批准。

@@ -7,7 +7,6 @@ import {
   LocalOperationalAlertSink,
   MemoryOperationalAlertSink,
   resolveOperationalAlertSink,
-  recordFeishuAdapterFailureSignal,
   recordLoginAnomalySignal,
 } from './signals';
 
@@ -81,15 +80,13 @@ describe('scheduled operational signal evaluation',()=>{
     expect(await alertState(database,'file_failure','file_orphan_cleanup')).toMatchObject({status:'OPEN',category:'file',threshold_count:3});
   });
 
-  it('uses fixed auth and future Feishu adapter policies without adapter-specific delivery',async()=>{
+  it('uses a fixed authentication anomaly policy',async()=>{
     database=createMigratedTestDatabase();
     const sink=new MemoryOperationalAlertSink();
     for (let index=0;index<5;index+=1) await recordLoginAnomalySignal(database,{securityEventId:`safe-login-event-${index}`,observedAt:1_000+index,sink});
     expect((await recordLoginAnomalySignal(database,{securityEventId:'safe-login-event-0',observedAt:1_000,sink})).disposition).toBe('DUPLICATE');
-    for (let index=0;index<3;index+=1) await recordFeishuAdapterFailureSignal(database,{securityEventId:`safe-provider-event-${index}`,observedAt:2_000+index,sink});
     expect(sink.notifications).toEqual([
       expect.objectContaining({signal_type:'login_anomaly',category:'auth',severity:'CRITICAL',summary_code:'LOGIN_ANOMALY_DETECTED'}),
-      expect.objectContaining({signal_type:'external_adapter_failure',category:'external',severity:'WARNING',summary_code:'FEISHU_ADAPTER_FAILURE'}),
     ]);
   });
 
@@ -101,37 +98,6 @@ describe('scheduled operational signal evaluation',()=>{
     expect(sink.notifications).toHaveLength(0);
     expect(await alertState(database,'external_adapter_failure','')).toMatchObject({status:'OPEN',summary_code:'PRIMARY_ALERT_SINK_FAILURE',category:'external',severity:'CRITICAL',incident_version:1});
     expect(await count(database,'scheduled_operational_signals')).toBe(2);
-  });
-
-  it('records a Feishu sink failure without overwriting primary sink identity',async()=>{
-    database=createMigratedTestDatabase();
-    const sink={
-      failureSummaryCode:'FEISHU_ADAPTER_FAILURE' as const,
-      async notify(){ throw new Error('provider detail must not persist'); },
-    };
-    const result=await ingestScheduledOperationalSignal(
-      database,workerObservation(430,1_000,3),{sink},
-    );
-    expect(result).toMatchObject({status:'OPEN',notification:'FAILED'});
-    const observations=(await database.prepare(
-      "SELECT summary_code FROM scheduled_operational_signals ORDER BY summary_code",
-    ).all()).results;
-    expect(observations).toEqual([
-      {summary_code:'FEISHU_ADAPTER_FAILURE'},
-      {summary_code:'WORKER_5XX_THRESHOLD'},
-    ]);
-    expect(JSON.stringify(observations)).not.toContain('provider detail');
-  });
-
-  it('keeps primary and future Feishu adapter incidents as separate alert identities',async()=>{
-    database=createMigratedTestDatabase();
-    await ingestScheduledOperationalSignal(database,workerObservation(450,1_000,3),{sink:new MemoryOperationalAlertSink(()=>true)});
-    for (let index=0;index<3;index+=1) await recordFeishuAdapterFailureSignal(database,{securityEventId:`coexisting-feishu-${index}`,observedAt:2_000+index});
-    const states=(await database.prepare("SELECT summary_code,status FROM scheduled_alert_states WHERE signal_type='external_adapter_failure' ORDER BY summary_code").all()).results;
-    expect(states).toEqual([
-      {summary_code:'FEISHU_ADAPTER_FAILURE',status:'OPEN'},
-      {summary_code:'PRIMARY_ALERT_SINK_FAILURE',status:'OPEN'},
-    ]);
   });
 
   it('automatically resolves event-based alerts after two quiet scheduled evaluations',async()=>{

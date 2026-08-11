@@ -11,7 +11,8 @@ function staff(role: 'owner'|'buyer_refund') {
     role: role === 'owner' ? { code: 'owner', display_name: '总管理员' }
       : { code: 'buyer_refund', display_name: '买家返款' },
     permissions: role === 'owner' ? ['PRODUCT_VIEW','PRODUCT_REVIEW','DEMAND_PUBLISH'] : [],
-    data_scope: { type: role === 'owner' ? 'GLOBAL' : 'ASSIGNED_BUYERS',
+    data_scope: { type: role === 'owner' ? 'GLOBAL' : 'MARKETPLACE',
+      marketplaceCodes: role === 'owner' ? [] : ['AMAZON_JP'],
       buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [] },
     authorization_version: 7, session_version: 1, expires_at: 9_999_999_999_999 };
 }
@@ -151,7 +152,7 @@ test('product and reservation deep links are Chinese, responsive and keyboard us
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/staff/products?q=%E6%9C%88%E5%85%89');
   await expect(page).toHaveURL(/\/staff\/products\?q=/u);
-  await expect(page.getByRole('heading', { name: '产品预约排期' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '产品库', exact: true })).toBeVisible();
   await expect(page.getByRole('table', { name: '员工产品库' })).toBeVisible();
   await page.getByRole('link', { name: '查看详情' }).click();
   await expect(page).toHaveURL(/\/staff\/products\/product-1$/u);
@@ -181,7 +182,7 @@ test('buyer_refund direct route exposes neither navigation nor schedule data', a
   await mock(page, 'buyer_refund', observed);
   await page.goto('/staff/demands/demand-1/reservations');
   await expect(page.getByText('当前角色无权查看产品排期')).toBeVisible();
-  await expect(page.getByRole('link', { name: '产品预约' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '产品库' })).toHaveCount(0);
   expect(observed.schedule).toBe(0);
 });
 
@@ -190,16 +191,14 @@ test('demand review deep link publishes the authoritative version with a first o
   await mock(page, 'owner', observed);
   await page.goto('/staff?work_item=work-demand');
   await expect(page.getByRole('heading', { name: '需求发布事实' })).toBeVisible();
-  await expect(page.getByText('月光测试产品 · 版本 2')).toBeVisible();
-  await expect(page.getByText('每隔 2 个自然日，每次 5 单')).toBeVisible();
-  await expect(page.getByText(/北京时间填写.*自然日连续计入/u)).toBeVisible();
+  await expect(page.getByText('月光测试产品 · v2')).toBeVisible();
+  await expect(page.getByText('每 2 天 / 5 单')).toBeVisible();
   await page.getByLabel('首个下单日期').fill('2026-08-11');
-  const publish = page.getByRole('button', { name: '确认发布需求' });
+  const publish = page.getByRole('button', { name: '通过并发布' });
   await publish.focus();
   await expect(publish).toBeFocused();
   await publish.click();
-  await expect(page.getByText(/需求已发布并锁定/u)).toBeVisible();
-  expect(observed.demandReviewBody).toEqual({
+  await expect.poll(() => observed.demandReviewBody).toEqual({
     expected_version: 3,
     decision: 'PUBLISH',
     first_order_date: '2026-08-11',

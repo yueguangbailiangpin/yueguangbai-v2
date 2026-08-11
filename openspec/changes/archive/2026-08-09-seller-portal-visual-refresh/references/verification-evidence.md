@@ -34,6 +34,8 @@ Exact `gzip -9` baseline:
 
 ## 3. Screenshot Matrix and Review
 
+The paths, counts and hashes below record the original acceptance matrix. The current tree retains two representative final-state images; the other historical binaries remain recoverable from Git commit `8cb39ed870df1fc5c6874dd4e5b86e12e22c39d2`. See `openspec/changes/archive/VISUAL_EVIDENCE_RETENTION.md`.
+
 The Contract-valid deterministic fixture in `apps/web/e2e/seller-visual-refresh.spec.ts` fixes the clock, Session, Seller organization/member/access, authorized Stores, products/applications, demand batches, formal orders, reviews, and settlement facts. It makes no production or external request.
 
 - Before: `references/visuals/before`, 39 PNGs, 2,235,147 bytes, aggregate manifest SHA-256 `01ed55270ab448362a292c48edc5e72dcc140f0f8d6a543225e4214adce9adcf`.

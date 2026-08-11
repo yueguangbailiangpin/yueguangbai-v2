@@ -415,6 +415,14 @@ function seedStaffAndBuyerChannel(
         'staff-seller-ops', 'seller_ops', 'ACTIVE', NULL,
         1000, NULL, 1000, 1000
       );
+    INSERT INTO staff_marketplace_scopes (
+      id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
+    ) VALUES
+      ('scope-customer-pre-jp','staff-pre-sales','pre_sales','AMAZON_JP',
+       'ACTIVE','zz-phase3h-test-owner',1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY'),
+      ('scope-customer-seller-jp','staff-seller-ops','seller_ops','AMAZON_JP',
+       'ACTIVE','zz-phase3h-test-owner',1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY');
 
     INSERT INTO buyer_channels (
       id, code, name, status, next_sequence, version,

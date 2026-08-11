@@ -792,22 +792,19 @@ describe('Phase 4C1 seller portal HTTP API', () => {
         );
     `);
     for (const role of ['finance', 'viewer'] as const) {
-      const roleDenied = await request(
+      const roleRead = await request(
         app,
         readIntentPath('portal-application-image'),
         {
           method: 'POST',
           headers: await stateHeaders(
             role,
-            `role-denied-file-read-${role}-0001`,
+            `role-file-read-${role}-0001`,
           ),
           body: readBody,
         },
       );
-      expect(roleDenied.status).toBe(404);
-      await expect(json(roleDenied)).resolves.toMatchObject({
-        error: { code: 'NOT_FOUND' },
-      });
+      expect(roleRead.status).toBe(200);
     }
     const scopedRead = await request(
       app,
@@ -851,25 +848,18 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(43);
+    expect(Number(state?.schema_version)).toBe(65);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(43);
+    expect(migrations).toHaveLength(65);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-9)).toBe('0035_staff_four_role_consolidation.sql');
-    expect(migrations.at(-8)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-7)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations.at(-6)).toBe('0038_staff_mcp_production_transport_oauth.sql');
-    expect(migrations.at(-5)).toBe('0039_staff_access_binding_management.sql');
-    expect(migrations.at(-4)).toBe('0040_seller_partner_master_data_import.sql');
-    expect(migrations.at(-3)).toBe('0041_seller_principal_rate_policy.sql');
-    expect(migrations.at(-2)).toBe('0042_rakuten_tiktok_jp_marketplace_foundation.sql');
-    expect(migrations.at(-1)).toBe('0043_seller_principal_rate_integrity_hardening.sql');
+    expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
+    expect(migrations.at(-1)).toBe('0065_retire_feishu_artifacts.sql');
   });
 });
 
@@ -988,6 +978,22 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
     ) VALUES (
       'staff-portal', 'Portal staff', 'ACTIVE', 1,
       1, 1000, 1000, NULL
+    );
+    INSERT INTO staff_role_assignments (
+      staff_id, role_code, status, assigned_by_staff_id,
+      assigned_at, revoked_at, created_at, updated_at
+    ) VALUES (
+      'staff-portal', 'seller_ops', 'ACTIVE',
+      'zz-phase3h-test-owner', 1000, NULL, 1000, 1000
+    );
+    INSERT INTO staff_marketplace_scopes (
+      id, staff_id, role_code, marketplace_code, status,
+      assigned_by_staff_id, assigned_at, revoked_at, reason,
+      created_at, updated_at, scope_kind
+    ) VALUES (
+      'scope-staff-portal-jp', 'staff-portal', 'seller_ops',
+      'AMAZON_JP', 'ACTIVE', 'zz-phase3h-test-owner',
+      1000, NULL, 'TEST_PRIMARY', 1000, 1000, 'PRIMARY'
     );
 
     INSERT INTO buyer_channels (

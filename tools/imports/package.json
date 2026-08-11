@@ -1,0 +1,17 @@
+{
+  "name": "@ygb/offline-imports",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ygb/contracts": "0.1.0",
+    "@ygb/domain": "0.1.0"
+  },
+  "devDependencies": {
+    "@ygb/testkit": "0.2.0",
+    "vitest": "4.1.10"
+  }
+}

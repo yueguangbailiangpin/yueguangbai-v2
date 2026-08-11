@@ -453,6 +453,7 @@ describe('seller stores and product catalog', () => {
       buyerCustomerIds: [],
       sellerOrganizationIds: ['seller-org-1'],
       teamIds: [],
+      marketplaceCodes: ['AMAZON_JP'],
     };
     const forbidden = [
       actor({ staffId: 'staff-refund', displayName: '返款', roles: ['buyer_refund'],
@@ -505,7 +506,8 @@ describe('seller stores and product catalog', () => {
       actor: actor({
         staffId: 'zz-phase3h-test-owner', displayName: '总管理员', roles: ['owner'],
         permissions: ['PRODUCT_REVIEW', 'DEMAND_PUBLISH'],
-        dataScope: { type: 'GLOBAL', buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [] },
+        dataScope: { type: 'GLOBAL', buyerCustomerIds: [], sellerOrganizationIds: [],
+          teamIds: [], marketplaceCodes: [] },
       }),
       idempotencyKey: 'product:version:permission:owner-allowed',
       now: 2400,
@@ -646,6 +648,7 @@ function productReviewerActor(): CatalogStaffActor {
       buyerCustomerIds: [],
       sellerOrganizationIds: ['seller-org-1', 'seller-org-2'],
       teamIds: [],
+      marketplaceCodes: ['AMAZON_JP'],
     },
   });
 }

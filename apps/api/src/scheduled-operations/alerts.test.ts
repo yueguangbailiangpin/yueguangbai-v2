@@ -47,16 +47,6 @@ describe('scheduled operational alert Staff services',()=>{
     expect((await database.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type='SCHEDULED_OPERATION_ALERT_ACKNOWLEDGED'").first<{count:number}>())?.count).toBe(1);
   });
 
-  it('acknowledges one external adapter summary without changing the other',async()=>{
-    database=createMigratedTestDatabase();
-    await ingestScheduledOperationalSignal(database,{observation_id:id(20),signal_type:'external_adapter_failure',summary_code:'PRIMARY_ALERT_SINK_FAILURE',job_name:null,observation_state:'BREACH',observed_at:1_000,count_value:1});
-    await ingestScheduledOperationalSignal(database,{observation_id:id(21),signal_type:'external_adapter_failure',summary_code:'FEISHU_ADAPTER_FAILURE',job_name:null,observation_state:'BREACH',observed_at:1_100,count_value:3});
-    await acknowledgeScheduledOperationalAlert(database,{signal_type:'external_adapter_failure',summary_code:'FEISHU_ADAPTER_FAILURE',job_name:null,incident_version:1},context('external-alert-ack'));
-    expect((await database.prepare("SELECT summary_code,status FROM scheduled_alert_states WHERE signal_type='external_adapter_failure' ORDER BY summary_code").all()).results).toEqual([
-      {summary_code:'FEISHU_ADAPTER_FAILURE',status:'ACKNOWLEDGED'},
-      {summary_code:'PRIMARY_ALERT_SINK_FAILURE',status:'OPEN'},
-    ]);
-  });
 });
 
 async function openLoginAlert(db:SqliteDatabase) {

@@ -6,31 +6,24 @@ import type {
   SqlStatement,
 } from '@ygb/contracts';
 import type { SqliteDatabase } from '@ygb/testkit';
-import app from '../src/index';
-import { FakeStaffAuthProvider } from '../src/staff-auth/provider';
+import { STAFF_SESSION_COOKIE_NAME, STAFF_SESSION_TTL_MS } from '@ygb/contracts';
+import { generateStaffOpaqueToken } from '../src/staff-auth/crypto';
+import { createInternalStaffSession } from '../src/staff-auth/repository';
 
 export type RuntimeStaff = 'owner' | 'limited' | 'scoped' | 'sellerScoped';
 
 const STAFF = Object.freeze({
   owner: {
     staffId: 'zz-phase3h-test-owner',
-    openId: 'wave13-open-owner',
-    userId: 'wave13-user-owner',
   },
   limited: {
     staffId: 'wave13-runtime-limited',
-    openId: 'wave13-open-limited',
-    userId: 'wave13-user-limited',
   },
   scoped: {
     staffId: 'wave13-runtime-scoped',
-    openId: 'wave13-open-scoped',
-    userId: 'wave13-user-scoped',
   },
   sellerScoped: {
     staffId: 'wave13-runtime-seller-scoped',
-    openId: 'wave13-open-seller-scoped',
-    userId: 'wave13-user-seller-scoped',
   },
 });
 
@@ -84,7 +77,7 @@ class OverlayStatement implements SqlStatement {
       return (this.sql.includes('0=1') ? null : refundDetailRow()) as T | null;
     }
     if (this.kind === 'WORK_ITEM') {
-      const globallyVisible = this.bindings.some((value) => value === 1);
+      const globallyVisible = this.sql.includes('AND 1=1');
       return (globallyVisible ? workItemRow() : null) as T | null;
     }
     return null;
@@ -452,24 +445,7 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
       ('wave13-runtime-limited','REVIEW_VIEW','DENY','ACTIVE',
        'runtime deny','zz-phase3h-test-owner',2,NULL,2,2),
       ('wave13-runtime-limited','BUYER_REFUND_VIEW','DENY','ACTIVE',
-       'runtime deny','zz-phase3h-test-owner',2,NULL,2,2),
-      ('wave13-runtime-scoped','ORDER_CONFIRM','GRANT','ACTIVE',
-       'runtime scoped order review','zz-phase3h-test-owner',2,NULL,2,2),
-      ('wave13-runtime-scoped','PRODUCT_VIEW','GRANT','ACTIVE',
-       'runtime scoped catalog read','zz-phase3h-test-owner',2,NULL,2,2);
-    INSERT INTO feishu_staff_identities (
-      id, staff_id, tenant_key, open_id, user_id, status,
-      verified_at, created_at, updated_at, revoked_at
-    ) VALUES
-      ('wave13-feishu-owner','zz-phase3h-test-owner','wave13-runtime-tenant',
-       'wave13-open-owner','wave13-user-owner','ACTIVE',2,2,2,NULL),
-      ('wave13-feishu-limited','wave13-runtime-limited','wave13-runtime-tenant',
-       'wave13-open-limited','wave13-user-limited','ACTIVE',2,2,2,NULL),
-      ('wave13-feishu-scoped','wave13-runtime-scoped','wave13-runtime-tenant',
-       'wave13-open-scoped','wave13-user-scoped','ACTIVE',2,2,2,NULL),
-      ('wave13-feishu-seller-scoped','wave13-runtime-seller-scoped',
-       'wave13-runtime-tenant','wave13-open-seller-scoped',
-       'wave13-user-seller-scoped','ACTIVE',2,2,2,NULL);
+       'runtime deny','zz-phase3h-test-owner',2,NULL,2,2);
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
       origin_channel_id, current_channel_id, seller_sequence,
@@ -497,33 +473,11 @@ export function runtimeBindings(
   staff: RuntimeStaff,
   storage?: ObjectStorageAdapter,
 ): Record<string, unknown> {
-  const identity = STAFF[staff];
+  void staff;
   return {
     DB: database,
     FILE_OBJECT_STORAGE: storage,
-    STAFF_AUTH_PROVIDER: 'FEISHU',
-    STAFF_AUTH_FEISHU_AUTHORIZATION_ENDPOINT:
-      'https://open.feishu.cn/open-apis/authen/v1/authorize',
-    STAFF_AUTH_FEISHU_TOKEN_ENDPOINT:
-      'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
-    STAFF_AUTH_FEISHU_IDENTITY_ENDPOINT:
-      'https://open.feishu.cn/open-apis/authen/v1/user_info',
-    STAFF_AUTH_FEISHU_APP_ID: 'cli_wave13_runtime',
-    STAFF_AUTH_FEISHU_APP_SECRET: 'test-only-runtime-secret',
-    STAFF_AUTH_FEISHU_SCOPE: 'contact:user.base:readonly',
-    STAFF_AUTH_FEISHU_TENANT_KEY: 'wave13-runtime-tenant',
-    STAFF_AUTH_FEISHU_REDIRECT_URI:
-      'https://api.example.test/api/staff-auth/feishu/callback',
     STAFF_AUTH_ALLOWED_ORIGINS: 'https://staff.example.test',
-    STAFF_AUTH_ALLOWED_RETURN_TO: '/staff',
-    STAFF_AUTH_HASH_SECRET:
-      'wave13-runtime-hash-secret-at-least-thirty-two-characters',
-    STAFF_AUTH_PROVIDER_ADAPTER: new FakeStaffAuthProvider({
-      provider: 'FEISHU',
-      tenantKey: 'wave13-runtime-tenant',
-      openId: identity.openId,
-      userId: identity.userId,
-    }),
   };
 }
 
@@ -533,42 +487,13 @@ export async function loginThroughDefaultApp(
   storage?: ObjectStorageAdapter,
 ): Promise<{ cookie: string; env: Record<string, unknown> }> {
   const env = runtimeBindings(database, staff, storage);
-  const start = await app.request(
-    'https://api.example.test/api/staff-auth/login/start',
-    {
-      method: 'POST',
-      headers: {
-        Origin: 'https://staff.example.test',
-        'Sec-Fetch-Site': 'same-site',
-        'Content-Type': 'application/json',
-      },
-      body: '{}',
-    },
-    env,
-  );
-  if (start.status !== 200) throw new Error(`login_start_${start.status}`);
-  const startBody = await start.json() as {
-    data: { authorization_url: string };
-  };
-  const state = new URL(startBody.data.authorization_url)
-    .searchParams.get('state');
-  if (!state) throw new Error('login_state_missing');
-  const callback = await app.request(
-    `https://api.example.test/api/staff-auth/feishu/callback?code=runtime&state=${state}`,
-    { method: 'GET', redirect: 'manual' },
-    env,
-  );
-  if (callback.status !== 303) {
-    throw new Error(`login_callback_${callback.status}`);
-  }
-  const cookie = callback.headers.getSetCookie()
-    .map((header) => header.split(';')[0] ?? '')
-    .find((candidate) => candidate.startsWith(
-      '__Host-ygb_staff_session=',
-    ) && candidate !== '__Host-ygb_staff_session=') ?? '';
-  if (!cookie.includes('__Host-ygb_staff_session=')) {
-    throw new Error('staff_cookie_missing');
-  }
+  const identity=STAFF[staff];
+  const token=generateStaffOpaqueToken();
+  const row=await database.prepare('SELECT display_name,authorization_version,session_version,status FROM staff_users WHERE id=?').bind(identity.staffId).first<{display_name:string;authorization_version:number;session_version:number;status:'ACTIVE'|'DISABLED'}>();
+  if(!row||row.status!=='ACTIVE')throw new Error('staff_identity_missing');
+  const now=Date.now();
+  await createInternalStaffSession(database,{token,identity:{identity_id:`test-email:${identity.staffId}`,staff_id:identity.staffId,identity_status:'ACTIVE',identity_user_id:null,display_name:row.display_name,staff_status:row.status,authorization_version:Number(row.authorization_version),session_version:Number(row.session_version)},requestId:`test-login:${identity.staffId}`,now,expiresAt:now+STAFF_SESSION_TTL_MS});
+  const cookie=`${STAFF_SESSION_COOKIE_NAME}=${token}`;
   return { cookie, env };
 }
 

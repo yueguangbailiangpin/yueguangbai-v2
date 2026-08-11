@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { approvedApiPath } from '../config/runtime-config';
 import { FrontendApiError } from '../api/errors';
+import { isReviewRuntime } from '../review/runtime';
 import { withIdentity401Invalidation, type RequestIdentity } from '../api/identity-request';
 import {
   normalizeResponseError,
@@ -59,6 +60,28 @@ export function uploadSingleFileMultipart(input: {
     const path = `${input.lifecyclePrefix}/file-uploads/${input.fileObjectId}/content`;
     if (!approvedApiPath(path)) {
       return Promise.reject(new FrontendApiError('INVALID_PATH', 0, null, 'CONTRACT'));
+    }
+    if (isReviewRuntime()) {
+      input.onProgress(Object.freeze({
+        mode: 'DETERMINATE',
+        loadedBytes: input.file.size,
+        totalBytes: input.file.size,
+        percent: 100,
+      }));
+      const data = uploadContentResponseSchema.parse({
+          file_object_id: input.fileObjectId,
+          upload_intent_id: input.intentId,
+          status: 'UPLOADED' as const,
+          detected_mime: input.file.type,
+          byte_size: input.file.size,
+          sha256: '0'.repeat(64),
+          version: 1,
+          replayed: false,
+        });
+      return Promise.resolve(Object.freeze({
+        data,
+        requestId: 'review-file-upload',
+      }));
     }
     return xhrUpload(path, input);
   });

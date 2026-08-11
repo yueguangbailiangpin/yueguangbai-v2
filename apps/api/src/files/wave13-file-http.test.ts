@@ -134,6 +134,7 @@ describe('Wave 13 File HTTP contract and architecture', () => {
       buyerCustomerIds: [],
       sellerOrganizationIds: [],
       teamIds: [],
+      marketplaceCodes: [],
     } as const;
     await expect(new RouteBoundFileAuthorizationService(
       authorityDatabase,
@@ -152,6 +153,7 @@ describe('Wave 13 File HTTP contract and architecture', () => {
       buyerCustomerIds: ['buyer-in-scope'],
       sellerOrganizationIds: [],
       teamIds: [],
+      marketplaceCodes: ['AMAZON_JP'],
     } as const;
     await expect(new RouteBoundFileAuthorizationService(
       authorityDatabase,

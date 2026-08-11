@@ -21,7 +21,7 @@ describe('staff authorization formula', () => {
     expect(deniedOwner.permissions.has('SCHEDULED_OPERATIONS_RUN')).toBe(false);
     expect(grantedNonOwner.permissions.has('SCHEDULED_OPERATIONS_RUN')).toBe(false);
   });
-  it('rejects role unions and keeps one role plus personal grants', () => {
+  it('rejects role unions and ignores legacy personal grants', () => {
     expect(() => calculateEffectiveStaffAuthorization({
       roles: set<StaffRoleCode>('pre_sales', 'buyer_refund'),
       grants: set<StaffPermissionCode>(),
@@ -37,7 +37,7 @@ describe('staff authorization formula', () => {
       leaderTeamIds: [],
     });
     expect(result.permissions.has('ORDER_CONFIRM')).toBe(true);
-    expect(result.permissions.has('SELLER_VIEW')).toBe(true);
+    expect(result.permissions.has('SELLER_VIEW')).toBe(false);
     expect(result.memberTeamIds).toEqual(['team-a', 'team-b']);
   });
 
@@ -63,7 +63,7 @@ describe('staff authorization formula', () => {
     }
   });
 
-  it('applies hard owner-only prohibitions after grants', () => {
+  it('keeps owner-only prohibitions even when legacy grants exist', () => {
     const result = calculateEffectiveStaffAuthorization({
       roles: set<StaffRoleCode>('seller_ops'),
       grants: set<StaffPermissionCode>(
@@ -82,7 +82,7 @@ describe('staff authorization formula', () => {
     expect(isOwnerOnlyPermission('FINANCIAL_CORRECT')).toBe(true);
   });
 
-  it('applies personal denies after role defaults and leader grants', () => {
+  it('applies personal denies after role defaults', () => {
     const result = calculateEffectiveStaffAuthorization({
       roles: set<StaffRoleCode>('owner'),
       grants: set<StaffPermissionCode>(),

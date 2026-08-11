@@ -4,201 +4,44 @@ import {
   type SqlDatabase,
   type StaffAccessEmployeeDto,
   type StaffAccessManagementOverviewDto,
-  type StaffAccessTeamOptionDto,
-  type StaffBindingInvitationDto,
 } from '@ygb/contracts';
 import { StaffAccessManagementError } from './errors';
 
 interface EmployeeRow {
-  staff_id: string;
-  display_name: string;
-  status: string;
-  version: number;
-  role_code: string | null;
-  active_role_count: number;
-  active_identity_count: number;
-  identity_count: number;
-  verified_at: number | null;
-  updated_at: number;
+  staff_id:string;display_name:string;status:string;version:number;role_code:string|null;active_role_count:number;
+  email:string|null;last_login_at:number|null;marketplace_codes:string|null;marketplace_scopes:string|null;updated_at:number;
 }
+interface MarketplaceRow {code:string;display_name_zh:string;status:'ACTIVE'|'DISABLED'}
 
-interface InvitationRow {
-  invitation_id: string;
-  display_name: string;
-  role_code: string;
-  team_id: string | null;
-  team_name: string | null;
-  department_name: string | null;
-  status: string;
-  version: number;
-  issued_at: number;
-  expires_at: number;
-  consumed_at: number | null;
-  cancelled_at: number | null;
-}
-
-interface TeamRow {
-  team_id: string;
-  team_name: string;
-  department_name: string;
-}
-
-export async function readStaffAccessManagementOverview(
-  database: SqlDatabase,
-  now = Date.now(),
-): Promise<StaffAccessManagementOverviewDto> {
-  const [employees, invitations, teams] = await Promise.all([
-    database.prepare(`
-      SELECT staff.id AS staff_id,staff.display_name,staff.status,
-        staff.version,staff.updated_at,
-        (SELECT role.role_code FROM staff_role_assignments role
-          WHERE role.staff_id=staff.id AND role.status='ACTIVE'
-          ORDER BY role.role_code LIMIT 1) AS role_code,
-        (SELECT COUNT(*) FROM staff_role_assignments role
-          WHERE role.staff_id=staff.id AND role.status='ACTIVE')
-          AS active_role_count,
-        (SELECT COUNT(*) FROM feishu_staff_identities identity
-          WHERE identity.staff_id=staff.id AND identity.status='ACTIVE')
-          AS active_identity_count,
-        (SELECT COUNT(*) FROM feishu_staff_identities identity
-          WHERE identity.staff_id=staff.id) AS identity_count,
-        (SELECT MAX(identity.verified_at) FROM feishu_staff_identities identity
-          WHERE identity.staff_id=staff.id AND identity.status='ACTIVE')
-          AS verified_at
-      FROM staff_users staff
-      ORDER BY CASE staff.status WHEN 'ACTIVE' THEN 0 ELSE 1 END,
-        staff.display_name,staff.id
-      LIMIT 200
-    `).all<EmployeeRow>(),
-    database.prepare(`
-      SELECT invitation.id AS invitation_id,invitation.display_name,
-        invitation.role_code,invitation.team_id,team.name AS team_name,
-        department.name AS department_name,invitation.status,invitation.version,
-        invitation.created_at AS issued_at,invitation.expires_at,
-        invitation.consumed_at,invitation.cancelled_at
-      FROM staff_binding_invitations invitation
-      LEFT JOIN staff_teams team ON team.id=invitation.team_id
-      LEFT JOIN staff_departments department ON department.id=team.department_id
-      WHERE invitation.status='ISSUED' AND invitation.expires_at>?
-      ORDER BY CASE invitation.status WHEN 'ISSUED' THEN 0 ELSE 1 END,
-        invitation.created_at DESC,invitation.id DESC
-      LIMIT 200
-    `).bind(now).all<InvitationRow>(),
-    database.prepare(`
-      SELECT team.id AS team_id,team.name AS team_name,
-        department.name AS department_name
-      FROM staff_teams team
-      JOIN staff_departments department ON department.id=team.department_id
-      WHERE team.status='ACTIVE' AND department.status='ACTIVE'
-      ORDER BY department.name,team.name,team.id
-      LIMIT 200
-    `).all<TeamRow>(),
+export async function readStaffAccessManagementOverview(database:SqlDatabase):Promise<StaffAccessManagementOverviewDto>{
+  const [employees,markets]=await Promise.all([
+    employeeQuery(database,'1=1',[]).all<EmployeeRow>(),
+    database.prepare(`SELECT code,display_name_zh,status FROM marketplace_registry ORDER BY
+      CASE code WHEN 'AMAZON_JP' THEN 0 WHEN 'AMAZON_US' THEN 1 WHEN 'COUPANG_KR' THEN 2 ELSE 3 END,
+      display_name_zh,code`).all<MarketplaceRow>(),
   ]);
-  return Object.freeze({
-    employees: Object.freeze(employees.results.map(projectEmployee)),
-    invitations: Object.freeze(invitations.results.map((row) =>
-      projectInvitation(row, now))),
-    available_teams: Object.freeze(teams.results.map(projectTeam)),
-  });
+  return Object.freeze({employees:Object.freeze(employees.results.map(projectEmployee)),available_marketplaces:Object.freeze(markets.results.map((row)=>Object.freeze({code:row.code,display_name:row.display_name_zh,status:row.status})))});
 }
-
-export async function readStaffAccessEmployee(
-  database: SqlDatabase,
-  staffId: string,
-): Promise<StaffAccessEmployeeDto> {
-  const result = await database.prepare(`
-    SELECT staff.id AS staff_id,staff.display_name,staff.status,
-      staff.version,staff.updated_at,
-      (SELECT role.role_code FROM staff_role_assignments role
-        WHERE role.staff_id=staff.id AND role.status='ACTIVE'
-        ORDER BY role.role_code LIMIT 1) AS role_code,
-      (SELECT COUNT(*) FROM staff_role_assignments role
-        WHERE role.staff_id=staff.id AND role.status='ACTIVE')
-        AS active_role_count,
-      (SELECT COUNT(*) FROM feishu_staff_identities identity
-        WHERE identity.staff_id=staff.id AND identity.status='ACTIVE')
-        AS active_identity_count,
-      (SELECT COUNT(*) FROM feishu_staff_identities identity
-        WHERE identity.staff_id=staff.id) AS identity_count,
-      (SELECT MAX(identity.verified_at) FROM feishu_staff_identities identity
-        WHERE identity.staff_id=staff.id AND identity.status='ACTIVE')
-        AS verified_at
-    FROM staff_users staff WHERE staff.id=?
-  `).bind(staffId).first<EmployeeRow>();
-  if (!result) throw new StaffAccessManagementError('NOT_FOUND', 404);
-  return projectEmployee(result);
+export async function readStaffAccessEmployee(database:SqlDatabase,staffId:string):Promise<StaffAccessEmployeeDto>{const row=await employeeQuery(database,'staff.id=?',[staffId]).first<EmployeeRow>();if(!row)throw new StaffAccessManagementError('NOT_FOUND',404);return projectEmployee(row);}
+function employeeQuery(database:SqlDatabase,where:string,bindings:unknown[]){
+  return database.prepare(`SELECT staff.id AS staff_id,staff.display_name,staff.status,staff.version,staff.updated_at,
+      (SELECT role.role_code FROM staff_role_assignments role WHERE role.staff_id=staff.id AND role.status='ACTIVE' ORDER BY role.role_code LIMIT 1) AS role_code,
+      (SELECT COUNT(*) FROM staff_role_assignments role WHERE role.staff_id=staff.id AND role.status='ACTIVE') AS active_role_count,
+      (SELECT identity.normalized_email FROM staff_email_identities identity WHERE identity.staff_id=staff.id AND identity.status='ACTIVE' LIMIT 1) AS email,
+      (SELECT identity.last_login_at FROM staff_email_identities identity WHERE identity.staff_id=staff.id AND identity.status='ACTIVE' LIMIT 1) AS last_login_at,
+      (SELECT group_concat(scope.marketplace_code,',') FROM staff_marketplace_scopes scope WHERE scope.staff_id=staff.id AND scope.status='ACTIVE') AS marketplace_codes,
+      (SELECT group_concat(scope.marketplace_code||':'||scope.scope_kind,',') FROM staff_marketplace_scopes scope WHERE scope.staff_id=staff.id AND scope.status='ACTIVE') AS marketplace_scopes
+    FROM staff_users staff WHERE ${where}
+    ORDER BY CASE staff.status WHEN 'ACTIVE' THEN 0 ELSE 1 END,staff.display_name,staff.id LIMIT 200`).bind(...bindings);
 }
-
-function projectEmployee(row: EmployeeRow): StaffAccessEmployeeDto {
-  if ((row.status !== 'ACTIVE' && row.status !== 'DISABLED')
-    || Number(row.active_role_count) !== 1
-    || !isStaffRoleCode(row.role_code)
-    || Number(row.active_identity_count) > 1) {
-    throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
-  }
-  const bindingStatus = Number(row.active_identity_count) === 1
-    ? 'ACTIVE' as const
-    : Number(row.identity_count) > 0 ? 'REVOKED' as const : 'MISSING' as const;
-  return Object.freeze({
-    staff_id: row.staff_id,
-    display_name: row.display_name,
-    status: row.status,
-    version: Number(row.version),
-    role: Object.freeze({
-      code: row.role_code,
-      display_name: STAFF_ROLE_DISPLAY_NAMES[row.role_code],
-    }),
-    feishu_binding: Object.freeze({
-      status: bindingStatus,
-      verified_at: bindingStatus === 'ACTIVE'
-        ? Number(row.verified_at)
-        : null,
-    }),
-    updated_at: Number(row.updated_at),
-  });
-}
-
-function projectTeam(row: TeamRow): StaffAccessTeamOptionDto {
-  if (!row.team_id || !row.team_name || !row.department_name) {
-    throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
-  }
-  return Object.freeze({
-    team_id: row.team_id,
-    team_name: row.team_name,
-    department_name: row.department_name,
-  });
-}
-
-function projectInvitation(
-  row: InvitationRow,
-  now: number,
-): StaffBindingInvitationDto {
-  if (!isStaffRoleCode(row.role_code)
-    || !['ISSUED', 'CONSUMED', 'CANCELLED', 'EXPIRED'].includes(row.status)) {
-    throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
-  }
-  const status = row.status === 'ISSUED' && Number(row.expires_at) <= now
-    ? 'EXPIRED' as const
-    : row.status as StaffBindingInvitationDto['status'];
-  return Object.freeze({
-    invitation_id: row.invitation_id,
-    display_name: row.display_name,
-    role: Object.freeze({
-      code: row.role_code,
-      display_name: STAFF_ROLE_DISPLAY_NAMES[row.role_code],
-    }),
-    team: row.team_id === null
-      ? null
-      : projectTeam({
-          team_id: row.team_id,
-          team_name: row.team_name ?? '',
-          department_name: row.department_name ?? '',
-        }),
-    status,
-    version: Number(row.version),
-    issued_at: Number(row.issued_at),
-    expires_at: Number(row.expires_at),
-    consumed_at: row.consumed_at === null ? null : Number(row.consumed_at),
-    cancelled_at: row.cancelled_at === null ? null : Number(row.cancelled_at),
-  });
+function projectEmployee(row:EmployeeRow):StaffAccessEmployeeDto{
+  if((row.status!=='ACTIVE'&&row.status!=='DISABLED')||Number(row.active_role_count)!==1||!isStaffRoleCode(row.role_code))throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE',503);
+  const markets=(row.marketplace_codes??'').split(',').map((value)=>value.trim()).filter(Boolean).sort();
+  const scopes=(row.marketplace_scopes??'').split(',').map((value)=>value.trim()).filter(Boolean).map((value)=>{
+    const [code,kind]=value.split(':');if(!code||(kind!=='PRIMARY'&&kind!=='SUPPORT'))throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE',503);
+    return Object.freeze({code,scope_kind:kind});
+  }).sort((a,b)=>a.code.localeCompare(b.code));
+  return Object.freeze({staff_id:row.staff_id,display_name:row.display_name,email:row.email,status:row.status,version:Number(row.version),
+    role:Object.freeze({code:row.role_code,display_name:STAFF_ROLE_DISPLAY_NAMES[row.role_code]}),marketplace_codes:Object.freeze(row.role_code==='owner'?[]:markets),
+    marketplace_scopes:Object.freeze(row.role_code==='owner'?[]:scopes),last_login_at:row.last_login_at===null?null:Number(row.last_login_at),updated_at:Number(row.updated_at)});
 }

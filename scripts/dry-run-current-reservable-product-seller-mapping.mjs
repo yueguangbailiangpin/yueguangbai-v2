@@ -8,10 +8,10 @@ const bundle = await build({
   stdin: {
     contents: `
       import { fullReadonlyManifest } from ${JSON.stringify(
-        path.resolve('apps/api/src/current-reservable-product-seller-mapping/fixtures/full-readonly-manifest.mjs'),
+        path.resolve('tools/imports/current-product-seller-mapping/fixtures/full-readonly-manifest.mjs'),
       )};
       import { previewCurrentReservableProductSellerMapping } from ${JSON.stringify(
-        path.resolve('apps/api/src/current-reservable-product-seller-mapping/index.ts'),
+        path.resolve('tools/imports/current-product-seller-mapping/index.ts'),
       )};
       export { fullReadonlyManifest, previewCurrentReservableProductSellerMapping };
     `,
