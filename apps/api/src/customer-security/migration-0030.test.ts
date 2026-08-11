@@ -66,6 +66,51 @@ describe('Migration 0030 customer identity upgrade and rollback boundary', () =>
       WHERE id='account-dual'
     `)).toThrow(/owner_conflict_workflow/iu);
   });
+
+  it('uses the real 0030 persona trigger plus 0062 privilege trigger to revoke older sessions exactly once', () => {
+    database = new SqliteDatabase();
+    applyThrough(database, 30);
+    seedSellerForDual(database);
+    applyRange(database,31,62);
+
+    expect(database.raw.prepare(`
+      SELECT session_version,version FROM customer_login_accounts
+      WHERE id='account-dual'
+    `).get()).toEqual({session_version:1,version:1});
+    expect(database.raw.prepare(`
+      SELECT persona_type FROM customer_account_personas
+      WHERE account_id='account-dual'
+    `).all()).toEqual([{persona_type:'SELLER_MEMBER'}]);
+
+    database.exec(`
+      INSERT INTO buyer_customers (
+        id, identity_subject_id, marketplace_code, buyer_channel_id,
+        buyer_customer_no, buyer_sequence, first_valid_order_business_date,
+        display_name, access_status, identity_review_status,
+        version, created_at, updated_at, activated_at, disabled_at
+      ) VALUES ('buyer-dual-current', 'subject-dual', 'JP', 'buyer-channel-dual',
+        NULL, NULL, NULL, '双身份当前版', 'ACTIVE', 'CLEAR',
+        1, 62000, 62000, 62000, NULL);
+    `);
+
+    expect(database.raw.prepare(`
+      SELECT persona_type FROM customer_account_personas
+      WHERE account_id='account-dual' ORDER BY persona_type
+    `).all()).toEqual([
+      {persona_type:'BUYER'},
+      {persona_type:'SELLER_MEMBER'},
+    ]);
+    expect(database.raw.prepare(`
+      SELECT session_version,version FROM customer_login_accounts
+      WHERE id='account-dual'
+    `).get()).toEqual({session_version:2,version:2});
+
+    applyRange(database,63,64);
+    expect(database.raw.prepare(`
+      SELECT schema_version FROM app_schema_state WHERE singleton_id=1
+    `).get()).toEqual({schema_version:64});
+    expect(database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
 });
 
 function migrations() {
@@ -79,6 +124,15 @@ function migrations() {
 
 function applyThrough(db: SqliteDatabase, count: number): void {
   for (const name of migrations().files.slice(0, count)) apply(db, name);
+}
+
+function applyRange(db:SqliteDatabase,from:number,to:number):void{
+  const {files}=migrations();
+  for(let version=from;version<=to;version+=1){
+    const name=files[version-1];
+    if(!name||Number(name.slice(0,4))!==version)throw new Error(`missing_migration_${version}`);
+    apply(db,name);
+  }
 }
 
 function apply(db: SqliteDatabase, name: string): void {
