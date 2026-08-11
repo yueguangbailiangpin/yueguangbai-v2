@@ -17,12 +17,12 @@ The recovery process SHALL keep encryption/authentication keys separate from enc
 
 ### Requirement: Production D1 backup is release-bound and current-schema recoverable
 
-The process SHALL verify the production release SHA and a continuous `0001`–`0058` migration chain, SHALL create an encrypted D1 backup and authenticated manifest bound to that release, and SHALL restore into a fresh isolated target without overwriting an existing database.
+The process SHALL verify the production release SHA and a continuous `0001`–`0061` migration chain, SHALL create an encrypted D1 backup and authenticated manifest bound to that release, and SHALL restore into a fresh isolated target without overwriting an existing database.
 
 #### Scenario: Production D1 backup restores
 
 - **WHEN** the candidate backup is restored into a new isolated database
-- **THEN** `app_schema_state.schema_version=58`, full schema inventory, table row counts, `integrity_check`, `foreign_key_check`, key financial aggregates, and Staff/Buyer/Seller/order/file/scheduler/acquisition smoke reads match the backup evidence.
+- **THEN** `app_schema_state.schema_version=61`, full schema inventory, table row counts, `integrity_check`, `foreign_key_check`, key financial aggregates, and Staff/Buyer/Seller/order/file/scheduler/acquisition smoke reads match the backup evidence.
 
 #### Scenario: Schema evidence is stale
 
@@ -49,8 +49,8 @@ After a real isolated D1 restore and R2 sample read-back pass, the owner-control
 
 #### Scenario: Readiness checks recovery
 
-- **WHEN** `/ready` evaluates a Schema 58 release
-- **THEN** recovery passes only when an attestation exists with `schema_version>=58`; an older-schema rehearsal is insufficient.
+- **WHEN** `/ready` evaluates a Schema 61 release
+- **THEN** recovery passes only when an attestation exists with `schema_version>=61`; an older-schema rehearsal is insufficient.
 
 ### Requirement: Operational readiness is stronger than liveness
 
