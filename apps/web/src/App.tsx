@@ -11,6 +11,7 @@ import { clearStaffTransport } from './auth/customer-transport-invalidation';
 import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary';
 import { staffAuthApi } from './auth/staff/staff-auth-api';
 import { BuyerRegistrationPage } from './buyer/registration/BuyerRegistrationPage';
+import { SellerRegistrationPage } from './seller/registration/SellerRegistrationPage';
 import { safeReturnPath } from './routes/return-path';
 import { RouteChunkBoundary } from './routes/RouteChunkBoundary';
 import { BuyerRouteSlot, SellerRouteSlot, StaffRouteSlot } from './routes/IdentityRouteSlots';
@@ -75,6 +76,7 @@ export function AppRoutes(): React.JSX.Element {
     <Route path="/buyer/register" element={<BuyerRegistrationPage />} />
     <Route path="/customer/reset-password" element={<CustomerPasswordResetPage />} />
     <Route path="/seller/login" element={<CustomerLoginPage target="seller" />} />
+    <Route path="/seller/register" element={<SellerRegistrationPage />} />
     <Route path="/buyer/change-password" element={<CustomerPasswordRouteBoundary target="buyer"><CustomerChangePasswordPage target="buyer" /></CustomerPasswordRouteBoundary>} />
     <Route path="/seller/change-password" element={<CustomerPasswordRouteBoundary target="seller"><CustomerChangePasswordPage target="seller" /></CustomerPasswordRouteBoundary>} />
     <Route path="/staff/login" element={<StaffLogin />} />
