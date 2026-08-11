@@ -8,8 +8,12 @@ export const FORMAL_ORDER_OPERATIONAL_EVENT_TYPES=[
   'PLATFORM_CANCELLED','RETURN_REFUND','BUSINESS_VOID','MANUAL_INVESTIGATION','RESOLVED',
 ] as const;
 export type FormalOrderOperationalEventType=typeof FORMAL_ORDER_OPERATIONAL_EVENT_TYPES[number];
+
+// Generic formal-order adjustment is intentionally limited to company profit
+// reporting. Buyer refunds and Seller principal/service-fee cash ledgers have
+// their own correction/reversal flows and must not be shadow-adjusted here.
 export const FORMAL_ORDER_ADJUSTMENT_SCOPES=[
-  'PROJECTED_GROSS_PROFIT','COMPLETED_GROSS_PROFIT','SELLER_PRINCIPAL_DUE','SELLER_SERVICE_FEE_DUE','BUYER_REFUND_DUE',
+  'PROJECTED_GROSS_PROFIT','COMPLETED_GROSS_PROFIT',
 ] as const;
 export type FormalOrderAdjustmentScope=typeof FORMAL_ORDER_ADJUSTMENT_SCOPES[number];
 
