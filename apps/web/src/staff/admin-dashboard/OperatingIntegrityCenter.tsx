@@ -3,19 +3,15 @@ import { useState, type FormEvent } from 'react';
 import { z } from 'zod';
 import { identityApiRequest } from '../../api/identity-request';
 import { operationHeaders } from '../../api/idempotency';
-import { Alert, Button, Card, DataTable, EmptyState, FormField, StatusBadge, TextInput } from '../../ui/primitives';
+import { Alert, Button, Card, DataTable, EmptyState, FormField, Select, StatusBadge, TextInput } from '../../ui/primitives';
 
-const caseItem=z.object({
-  id:z.string(),identity_masked:z.string(),customer_type:z.enum(['BUYER','SELLER']),marketplace_code:z.string(),reason_code:z.string(),
-  staff_note:z.string().nullable(),status:z.enum(['OPEN','RESOLVED','CANCELLED']),reported_by_staff_id:z.string(),resolved_subject_id:z.string().nullable(),
-  resolution_note:z.string().nullable(),resolved_by_staff_id:z.string().nullable(),created_at:z.number().int(),resolved_at:z.number().int().nullable(),
-}).strict();
+const caseItem=z.object({id:z.string(),identity_masked:z.string(),customer_type:z.enum(['BUYER','SELLER']),marketplace_code:z.string(),reason_code:z.string(),staff_note:z.string().nullable(),status:z.enum(['OPEN','RESOLVED','CANCELLED']),reported_by_staff_id:z.string(),resolved_subject_id:z.string().nullable(),resolution_note:z.string().nullable(),resolved_by_staff_id:z.string().nullable(),created_at:z.number().int(),resolved_at:z.number().int().nullable()}).strict();
 const casesSchema=z.object({cases:z.array(caseItem)}).strict();
 const candidate=z.object({customer_type:z.enum(['BUYER','SELLER']),subject_id:z.string(),display_name:z.string(),marketplace_code:z.string(),reference_code:z.string().nullable(),order_count:z.number().int().nonnegative()}).strict();
 const candidatesSchema=z.object({items:z.array(candidate)}).strict();
 const resolutionSchema=z.object({case:caseItem}).strict();
+const changeWechatSchema=z.object({changed:z.literal(true),customer_type:z.enum(['BUYER','SELLER']),subject_id:z.string(),marketplace_code:z.string(),new_wechat_id:z.string(),all_previous_sessions_revoked:z.literal(true),changed_at:z.number().int()}).strict();
 type CaseItem=z.output<typeof caseItem>;type Candidate=z.output<typeof candidate>;
-
 const MARKET:Record<string,string>={AMAZON_JP:'亚马逊日本站',AMAZON_US:'亚马逊美国站',COUPANG_KR:'Coupang 韩国站',RAKUTEN_JP:'乐天日本站',TIKTOK_JP:'TikTok 日本站'};
 
 export function OperatingIntegrityCenter({anomalies}:{anomalies:{identity_conflicts:number;attribution_anomalies:number;finance_conflicts:number}}){
@@ -27,15 +23,30 @@ export function OperatingIntegrityCenter({anomalies}:{anomalies:{identity_confli
     <div className="dashboard-metric-grid"><IssueMetric label="身份冲突" value={anomalies.identity_conflicts} tone={anomalies.identity_conflicts>0?'danger':'success'}/><IssueMetric label="新系统归因异常" value={anomalies.attribution_anomalies} tone={anomalies.attribution_anomalies>0?'danger':'success'}/><IssueMetric label="财务冲突" value={anomalies.finance_conflicts} tone={anomalies.finance_conflicts>0?'danger':'success'}/></div>
     {cases.isError?<Alert tone="danger">身份冲突列表暂时无法加载。</Alert>:cases.isPending?<p role="status">正在加载身份冲突</p>:cases.data.length===0?<EmptyState title="没有待处理身份冲突" description="出现历史身份无法唯一确认时会显示在这里。"/>:<DataTable caption="待处理客户身份冲突"><thead><tr><th>客户</th><th>类型</th><th>站点</th><th>原因</th><th>提交时间</th><th>操作</th></tr></thead><tbody>{cases.data.map((item)=><tr key={item.id}><td>{item.identity_masked}</td><td>{item.customer_type==='BUYER'?'买家':'卖家'}</td><td>{MARKET[item.marketplace_code]??item.marketplace_code}</td><td>{reasonLabel(item.reason_code)}</td><td>{new Date(item.created_at).toLocaleString('zh-CN')}</td><td><Button className="secondary" onClick={()=>{setSelected(item);setCandidates([]);}}>人工核对</Button></td></tr>)}</tbody></DataTable>}
     {selected?<ResolutionCard item={selected} busy={search.isPending||resolve.isPending} candidates={candidates} onSearch={(query)=>search.mutate({type:selected.customer_type,query})} onResolve={(subjectId,reason)=>resolve.mutate({caseId:selected.id,subjectId,reason})} onClose={()=>{setSelected(null);setCandidates([]);}}/>:null}
+    <WechatChangeCard/>
   </section>;
 }
 
 function ResolutionCard({item,busy,candidates,onSearch,onResolve,onClose}:{item:CaseItem;busy:boolean;candidates:readonly Candidate[];onSearch:(query:string)=>void;onResolve:(subjectId:string,reason:string)=>void;onClose:()=>void}){
   const [reason,setReason]=useState('已人工核对历史业务资料，确认该微信对应此客户主体。');
   function searchSubmit(event:FormEvent<HTMLFormElement>){event.preventDefault();const query=String(new FormData(event.currentTarget).get('query')??'').trim();if(query.length>=2)onSearch(query);}
-  return <Card className="dashboard-drill-down"><h3>人工核对身份 · {item.identity_masked}</h3><Alert tone="warning">这里只建立历史身份映射，不修改历史订单、不补获客渠道。确认前请用买家编号、卖家代码、公司名称或店铺名称核对。</Alert><form onSubmit={searchSubmit}><FormField label="搜索历史客户" htmlFor={`identity-query-${item.id}`}><TextInput id={`identity-query-${item.id}`} name="query" minLength={2} required/></FormField><Button className="secondary" loading={busy}>搜索</Button></form>
-    {candidates.length>0?<DataTable caption="候选历史客户"><thead><tr><th>客户</th><th>编号</th><th>站点</th><th>历史订单</th><th>确认</th></tr></thead><tbody>{candidates.filter((candidate)=>candidate.marketplace_code===item.marketplace_code).map((candidate)=><tr key={candidate.subject_id}><td>{candidate.display_name}</td><td>{candidate.reference_code??'—'}</td><td>{MARKET[candidate.marketplace_code]??candidate.marketplace_code}</td><td>{candidate.order_count}</td><td><Button disabled={reason.trim().length<3} loading={busy} onClick={()=>onResolve(candidate.subject_id,reason)}>确认绑定</Button></td></tr>)}</tbody></DataTable>:null}
+  return <Card className="dashboard-drill-down"><h3>人工核对身份 · {item.identity_masked}</h3><Alert tone="warning">这里只建立历史身份映射，不修改历史订单、不补获客渠道。</Alert><form onSubmit={searchSubmit}><FormField label="搜索历史客户" htmlFor={`identity-query-${item.id}`}><TextInput id={`identity-query-${item.id}`} name="query" minLength={2} required/></FormField><Button className="secondary" loading={busy}>搜索</Button></form>
+    {candidates.length>0?<DataTable caption="候选历史客户"><thead><tr><th>客户</th><th>编号</th><th>站点</th><th>历史订单</th><th>确认</th></tr></thead><tbody>{candidates.filter((value)=>value.marketplace_code===item.marketplace_code).map((value)=><tr key={value.subject_id}><td>{value.display_name}</td><td>{value.reference_code??'—'}</td><td>{MARKET[value.marketplace_code]??value.marketplace_code}</td><td>{value.order_count}</td><td><Button disabled={reason.trim().length<3} loading={busy} onClick={()=>onResolve(value.subject_id,reason)}>确认绑定</Button></td></tr>)}</tbody></DataTable>:null}
     <FormField label="确认依据" htmlFor={`identity-reason-${item.id}`}><TextInput id={`identity-reason-${item.id}`} value={reason} onChange={(event)=>setReason(event.target.value)}/></FormField><Button className="secondary" onClick={onClose}>关闭</Button></Card>;
+}
+
+function WechatChangeCard(){
+  const client=useQueryClient();const [type,setType]=useState<'BUYER'|'SELLER'>('BUYER'),[items,setItems]=useState<readonly Candidate[]>([]),[target,setTarget]=useState<Candidate|null>(null),[message,setMessage]=useState<string|null>(null);
+  const search=useMutation({mutationFn:(query:string)=>identityApiRequest('staff',client,{path:`/api/staff/customer-identity-resolution/candidates?customer_type=${type}&query=${encodeURIComponent(query)}`,method:'GET',schema:candidatesSchema}),onSuccess:(response)=>{setItems(response.data.items);setTarget(null);setMessage(null);}});
+  const change=useMutation({mutationFn:({target,newWechat,note}:{target:Candidate;newWechat:string;note:string})=>{const body={new_wechat_id:newWechat,verification_note:note};return identityApiRequest('staff',client,{path:`/api/staff/customer-onboarding/${target.customer_type}/${encodeURIComponent(target.subject_id)}/change-wechat`,method:'POST',schema:changeWechatSchema,body,headers:operationHeaders({key:crypto.randomUUID(),body})});},onSuccess:(response)=>{setMessage(`已更换为 ${response.data.new_wechat_id}，该账号所有旧登录会话已失效。`);setTarget(null);setItems([]);}});
+  function submitSearch(event:FormEvent<HTMLFormElement>){event.preventDefault();const query=String(new FormData(event.currentTarget).get('query')??'').trim();if(query.length>=2)search.mutate(query);}
+  function submitChange(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!target)return;const data=new FormData(event.currentTarget);change.mutate({target,newWechat:String(data.get('new_wechat_id')),note:String(data.get('verification_note'))});}
+  return <Card className="dashboard-drill-down"><h3>客户登录微信更换</h3><p>只更换登录身份，不新建客户，不迁移订单，不改变渠道来源。仅总管理员可执行。</p><Alert tone="warning">操作前必须通过现有业务资料人工确认客户身份；成功后所有旧登录会话立即失效。</Alert>
+    <form onSubmit={submitSearch}><FormField label="客户类型" htmlFor="wechat-change-type"><Select id="wechat-change-type" value={type} onChange={(event)=>{setType(event.target.value as 'BUYER'|'SELLER');setItems([]);setTarget(null);}}><option value="BUYER">买家</option><option value="SELLER">卖家</option></Select></FormField><FormField label="搜索客户" htmlFor="wechat-change-search"><TextInput id="wechat-change-search" name="query" placeholder="买家编号 / 卖家代码 / 名称 / 店铺" minLength={2} required/></FormField><Button className="secondary" loading={search.isPending}>搜索</Button></form>
+    {items.length>0?<DataTable caption="选择需要换微信的客户"><thead><tr><th>客户</th><th>编号</th><th>站点</th><th>历史订单</th><th>操作</th></tr></thead><tbody>{items.map((item)=><tr key={`${item.marketplace_code}:${item.subject_id}`}><td>{item.display_name}</td><td>{item.reference_code??'—'}</td><td>{MARKET[item.marketplace_code]??item.marketplace_code}</td><td>{item.order_count}</td><td><Button className="secondary" onClick={()=>{setTarget(item);setMessage(null);}}>更换微信</Button></td></tr>)}</tbody></DataTable>:null}
+    {target?<form onSubmit={submitChange}><p><strong>{target.display_name}</strong> · {MARKET[target.marketplace_code]??target.marketplace_code}</p><FormField label="新微信号" htmlFor="new-wechat"><TextInput id="new-wechat" name="new_wechat_id" required/></FormField><FormField label="人工核验说明" htmlFor="wechat-verification" description="至少 8 个字"><TextInput id="wechat-verification" name="verification_note" minLength={8} required/></FormField><Button loading={change.isPending}>确认更换并注销旧会话</Button><Button type="button" className="secondary" onClick={()=>setTarget(null)}>取消</Button></form>:null}
+    {change.isError?<Alert tone="danger">换绑失败。新微信可能已被其他账号占用，或该客户尚未开通网站账号。</Alert>:null}{message?<Alert tone="success">{message}</Alert>:null}
+  </Card>;
 }
 function IssueMetric({label,value,tone}:{label:string;value:number;tone:'danger'|'success'}){return <Card className="dashboard-metric"><p>{label}</p><strong>{value}</strong><StatusBadge tone={tone}>{value>0?'需要处理':'正常'}</StatusBadge></Card>}
 function reasonLabel(value:string){return({AMBIGUOUS_HISTORY:'历史数据匹配多个客户',IDENTITY_CONFLICT:'身份关系冲突',LEGACY_MISSING_IDENTITY:'历史身份资料缺失',STAFF_REPORTED:'员工提交核对'} as Record<string,string>)[value]??value;}
