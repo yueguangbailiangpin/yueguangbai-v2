@@ -25,8 +25,7 @@ export async function readAcquisitionChannelStats(
   let from:string,to:string;try{from=parseChinaBusinessDate(input.fromDate);to=parseChinaBusinessDate(input.toDate);}catch{validation();}
   if(from>to)validation();
   const fromEpoch=chinaBusinessDateStartEpoch(from),toExclusive=chinaBusinessDateStartEpoch(to)+24*60*60*1000;
-  // listAcquisitionChannels already enforces the operator's Marketplace scope.
-  // Do not filter DISABLED here: disabling affects future intake, not historical reporting.
+  // Disabled channels remain in historical reporting. Disabling only stops future intake.
   const channels=await listAcquisitionChannels(database,actor);const result:AcquisitionChannelStatsDto[]=[];
   for(const channel of channels){
     const meta=await database.prepare(`SELECT created_at,disabled_at,status FROM acquisition_channels WHERE id=?`)
@@ -47,8 +46,7 @@ export async function readAcquisitionChannelStats(
         WHERE link.lead_id=fact.lead_id AND link.link_type='BUYER_CUSTOMER') THEN 1 ELSE 0 END),0) AS registered,
       COALESCE(SUM(CASE WHEN EXISTS(SELECT 1 FROM acquisition_lead_links link
         WHERE link.lead_id=fact.lead_id AND link.link_type='RESERVATION') THEN 1 ELSE 0 END),0) AS reserved,
-      COALESCE(SUM(CASE WHEN EXISTS(SELECT 1 FROM acquisition_lead_links link
-        WHERE link.lead_id=fact.lead_id AND link.link_type='SELLER_ORGANIZATION') THEN 1 ELSE 0 END),0) AS cooperation
+      COALESCE(SUM(CASE WHEN fact.lead_type='SELLER' AND ${sellerCooperationSql('fact.lead_id')} THEN 1 ELSE 0 END),0) AS cooperation
       FROM acquisition_customer_intake_facts fact
       WHERE COALESCE((SELECT correction.new_channel_id FROM acquisition_lead_source_corrections correction
         WHERE correction.lead_id=fact.lead_id ORDER BY correction.corrected_at DESC,correction.id DESC LIMIT 1),fact.original_channel_id)=?
@@ -90,6 +88,16 @@ async function ordersForChannel(database:SqlDatabase,type:'BUYER'|'SELLER',chann
     .bind(subjectType,channelId,from,to).all<OrderFinanceRow>();
   return rows.results;
 }
+function sellerCooperationSql(leadExpression:string){return `EXISTS(
+  SELECT 1 FROM acquisition_lead_links seller_link
+  WHERE seller_link.lead_id=${leadExpression} AND seller_link.link_type='SELLER_ORGANIZATION'
+    AND (
+      EXISTS(SELECT 1 FROM products product WHERE product.organization_id=seller_link.target_id)
+      OR EXISTS(SELECT 1 FROM product_applications application WHERE application.organization_id=seller_link.target_id)
+      OR EXISTS(SELECT 1 FROM demand_batches demand WHERE demand.organization_id=seller_link.target_id)
+      OR EXISTS(SELECT 1 FROM formal_orders formal_order WHERE formal_order.seller_organization_id=seller_link.target_id)
+    )
+)`;}
 function profit(rows:readonly OrderFinanceRow[]){let projected=0n,completed=0n,hasProjected=false,hasCompleted=false;const seen=new Set<string>();for(const row of rows){if(seen.has(row.formal_order_id))continue;seen.add(row.formal_order_id);if(row.projected!==null){projected+=BigInt(row.projected);hasProjected=true;}if(row.completed!==null){completed+=BigInt(row.completed);hasCompleted=true;}}return{projected:hasProjected?projected.toString():null,completed:hasCompleted?completed.toString():null};}
 function expectedConsultationDays(from:string,to:string,createdAt:number,disabledAt:number|null){const created=shanghaiDate(createdAt),disabled=disabledAt===null?null:shanghaiDate(disabledAt);const start=created>from?created:from;const end=disabled!==null&&disabled<to?disabled:to;if(start>end)return 0;return Math.floor((Date.parse(`${end}T00:00:00Z`)-Date.parse(`${start}T00:00:00Z`))/86_400_000)+1;}
 function shanghaiDate(epoch:number){return new Date(epoch+8*60*60*1000).toISOString().slice(0,10);}
