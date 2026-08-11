@@ -1,4 +1,5 @@
 import type { AdminBusinessDashboardSummaryDto, DashboardFunnelStageDto, SqlDatabase } from '@ygb/contracts';
+import { chinaBusinessDateStartEpoch } from '@ygb/domain';
 import { readAdminBusinessDashboardSummary } from './read-model';
 
 interface CohortRow{
@@ -32,9 +33,23 @@ export async function readFrozenAdminBusinessDashboardSummary(
     ['CONSULTATION','咨询',sellerConsultation],['WECHAT_ADDED','加微信',seller.length],
     ['COOPERATION','确认合作',seller.filter((row)=>Number(row.cooperation)===1).length],
   ]);
+  const fromEpoch=chinaBusinessDateStartEpoch(base.window.from_date);
+  const toEpoch=chinaBusinessDateStartEpoch(base.window.to_date)+86_400_000;
+  const adjustments=await database.prepare(`SELECT adjustment_scope,COALESCE(SUM(amount_cny_fen),0) AS amount
+    FROM formal_order_financial_adjustments
+    WHERE created_at>=? AND created_at<? AND adjustment_scope IN ('PROJECTED_GROSS_PROFIT','COMPLETED_GROSS_PROFIT')
+    GROUP BY adjustment_scope`).bind(fromEpoch,toEpoch).all<{adjustment_scope:string;amount:number|string}>();
+  let projectedAdjustment=0n,completedAdjustment=0n;
+  for(const row of adjustments.results){
+    if(row.adjustment_scope==='PROJECTED_GROSS_PROFIT')projectedAdjustment+=BigInt(row.amount);
+    if(row.adjustment_scope==='COMPLETED_GROSS_PROFIT')completedAdjustment+=BigInt(row.amount);
+  }
   return Object.freeze({...base,
+    cards:Object.freeze({...base.cards,new_buyers:buyer.length}),
     buyer_funnel:Object.freeze({stages:Object.freeze(buyerStages),no_participation_count:Math.max(0,buyer.length-buyer.filter((row)=>Number(row.reserved)===1).length)}),
     seller_funnel:Object.freeze({stages:Object.freeze(sellerStages)}),
+    projected_profit:Object.freeze({...base.projected_profit,amount_cny_fen:(BigInt(base.projected_profit.amount_cny_fen)+projectedAdjustment).toString()}),
+    completed_profit:Object.freeze({...base.completed_profit,amount_cny_fen:(BigInt(base.completed_profit.amount_cny_fen)+completedAdjustment).toString()}),
   });
 }
 function sellerCooperationSql(leadExpression:string){return `EXISTS(
