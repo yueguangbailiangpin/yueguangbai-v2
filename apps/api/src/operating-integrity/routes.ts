@@ -10,6 +10,7 @@ import {
   acquireIdempotency,assertIdempotencyCompletionStatement,completeIdempotencyStatement,
   markIdempotencyFailed,type IdempotencyClaim,
 } from '../foundation/idempotency';
+import { FormalOrderPolicyError,requireFormalOrderAction } from '../formal-order-policy';
 import type { FileAuthorizationResource,FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
 import { requestIdFromContext } from '../http-auth/errors';
@@ -115,6 +116,7 @@ async function readAdvancePrincipal(context:Context<any>){
 async function recordAdvancePayment(context:Context<any>){
   const actor=staff(context);if(!actor.roles.has('owner')&&!actor.roles.has('buyer_refund'))forbidden();
   const order=await orderRow(context.env.DB,id(context.req.param('formalOrderId')));await market(context.env.DB,actor,order.market);
+  await requireAdvanceAction(context.env.DB,order.id);
   const obligation=await context.env.DB.prepare(`SELECT 1 AS present FROM buyer_refund_obligations WHERE formal_order_id=? LIMIT 1`).bind(order.id).first();if(obligation)throw new IntegrityError('CONFLICT',409);
   const body=await json(context,['amount_cny_fen','paid_at','payment_channel','note','proof_files']);const amount=positiveMoney(body['amount_cny_fen']);const paid=timestamp(body['paid_at']);const channel=paymentChannel(body['payment_channel']);const note=optionalText(body['note'],2000);const proofs=parseProofFiles(body['proof_files']);const now=Date.now();
   const acquired=await command(context,actor,'RECORD_BUYER_ADVANCE_PRINCIPAL','FORMAL_ORDER',order.id,{amount_cny_fen:amount,paid_at:paid,payment_channel:channel,note,proof_files:proofs},now);if(acquired.kind==='REPLAY')return ok(context,acquired.response,201);
@@ -153,6 +155,10 @@ class AdvanceProofAuthorization implements FileAuthorizationService{
   assertCanCreateUpload():never{throw new IntegrityError('FORBIDDEN',403)}assertCanUpload():never{throw new IntegrityError('FORBIDDEN',403)}assertCanCompleteUpload():never{throw new IntegrityError('FORBIDDEN',403)}assertCanRead():never{throw new IntegrityError('FORBIDDEN',403)}
 }
 
+async function requireAdvanceAction(database:SqlDatabase,formalOrderId:string):Promise<void>{
+  try{await requireFormalOrderAction(database,formalOrderId,'RECORD_ADVANCE_PRINCIPAL');}
+  catch(error){if(error instanceof FormalOrderPolicyError){if(error.code==='FORMAL_ORDER_NOT_FOUND')throw new IntegrityError('NOT_FOUND',404);throw new IntegrityError('CONFLICT',409);}throw error;}
+}
 async function command(context:Context<any>,actor:AssignmentStaffAuthorization,action:string,targetType:string,targetId:string,payload:unknown,now:number){
   try{return await acquireIdempotency<any>(context.env.DB,{actorType:'STAFF',actorId:actor.staffId,action,targetType,targetId,idempotencyKey:idempotencyKey(context),requestHash:await hashCanonicalJson({action,target_type:targetType,target_id:targetId,payload})},{now});}
   catch(error){if(error&&typeof error==='object'&&'code' in error){const code=String((error as {code:unknown}).code);if(code==='IDEMPOTENCY_CONFLICT')throw new IntegrityError('IDEMPOTENCY_CONFLICT',409);if(code==='REQUEST_IN_PROGRESS')throw new IntegrityError('REQUEST_IN_PROGRESS',409);if(code==='VALIDATION_ERROR')validation();}throw new IntegrityError('DEPENDENCY_UNAVAILABLE',503);}
