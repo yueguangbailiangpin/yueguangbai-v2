@@ -5,10 +5,12 @@ import type {
   StaffRoleCode,
 } from '@ygb/contracts';
 import { createAuditEventStatement } from '../foundation/audit';
+import { requireFormalOrderAction,FormalOrderPolicyError } from '../formal-order-policy';
 import { createOutboxStatements,prepareOutboxEvent } from '../foundation/outbox';
 import { prepareSellerPayableCreation } from '../seller-settlements/payable-statements';
 import { prepareAdvancePrincipalSettlementStatements } from './advance-principal-settlement';
 import { insertBuyerRefundEventStatement } from './buyer-refund-events';
+import { BuyerRefundError } from './buyer-refund-shared';
 
 export interface PreparedBuyerRefundObligation{
   obligationId:string;eventId:string;auditId:string;statements:readonly SqlStatement[];result:EnsureBuyerRefundObligationResult;sellerServiceFeePayableId?:string;
@@ -19,6 +21,7 @@ export async function prepareBuyerRefundObligationFromReviewApproval(
   database:SqlDatabase,
   input:{sourceReviewEventId:string;reviewCaseId:string;formalOrderId:string;buyerCustomerId:string;dueAmountCnyFen:number;actorStaffId:string;actorRoles:readonly StaffRoleCode[];requestId:string|null;idempotencyKey:string;now:number},
 ):Promise<PreparedBuyerRefundObligation>{
+  await requireRefundAction(database,input.formalOrderId);
   const base=await prepareBuyerRefundObligationStatements(database,{
     sourceReviewEventId:input.sourceReviewEventId,reviewCaseId:input.reviewCaseId,formalOrderId:input.formalOrderId,buyerCustomerId:input.buyerCustomerId,dueAmountCnyFen:input.dueAmountCnyFen,
     actorType:'STAFF',actorId:input.actorStaffId,actorRoles:input.actorRoles,requestId:input.requestId,idempotencyKey:input.idempotencyKey,now:input.now,
@@ -37,6 +40,7 @@ export async function prepareBuyerRefundObligationStatements(
   input:{sourceReviewEventId:string;reviewCaseId:string;formalOrderId:string;buyerCustomerId:string;dueAmountCnyFen:number;actorType:'STAFF'|'SYSTEM';actorId:string;actorRoles:readonly StaffRoleCode[];requestId:string|null;idempotencyKey:string;now:number},
 ):Promise<PreparedBuyerRefundObligation>{
   if(!Number.isSafeInteger(input.dueAmountCnyFen)||input.dueAmountCnyFen<0||!Number.isSafeInteger(input.now)||input.now<0)throw new Error('invalid_buyer_refund_obligation_facts');
+  await requireRefundAction(database,input.formalOrderId);
   const obligationId=crypto.randomUUID(),eventId=crypto.randomUUID(),auditId=crypto.randomUUID();
   const advance=await prepareAdvancePrincipalSettlementStatements(database,{obligationId,formalOrderId:input.formalOrderId,dueAmountCnyFen:input.dueAmountCnyFen,now:input.now});
   const paid=advance.netPaidCnyFen;const status=paid===0?'DUE':paid<input.dueAmountCnyFen?'PARTIALLY_PAID':'PAID';
@@ -58,6 +62,17 @@ export async function prepareBuyerRefundObligationStatements(
       AND EXISTS(SELECT 1 FROM audit_events WHERE id=? AND aggregate_type='BUYER_REFUND_OBLIGATION' AND aggregate_id=?) THEN 1 ELSE 0 END`).bind(
         obligationId,input.sourceReviewEventId,input.reviewCaseId,input.formalOrderId,input.buyerCustomerId,input.dueAmountCnyFen,eventId,obligationId,input.dueAmountCnyFen,input.sourceReviewEventId,input.dueAmountCnyFen,auditId,obligationId),
   ]};
+}
+
+async function requireRefundAction(database:SqlDatabase,formalOrderId:string):Promise<void>{
+  try{await requireFormalOrderAction(database,formalOrderId,'CREATE_BUYER_REFUND');}
+  catch(error){
+    if(error instanceof FormalOrderPolicyError){
+      if(error.code==='FORMAL_ORDER_NOT_FOUND')throw new BuyerRefundError('BUYER_REFUND_NOT_FOUND',404);
+      throw new BuyerRefundError('BUYER_REFUND_STATE_CONFLICT',409);
+    }
+    throw error;
+  }
 }
 
 async function requireServiceFeeFacts(database:SqlDatabase,reviewCaseId:string,formalOrderId:string):Promise<ServiceFeeFacts>{
