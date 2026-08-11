@@ -13,7 +13,7 @@ import { useSellerCursorPages } from '../queries/useSellerCursorPages';
 import { useSellerStoreContext } from '../routes/SellerLayout';
 
 const shanghai = new Intl.DateTimeFormat('zh-CN', {
-  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', hour12: false,
 });
 const cny = (fen: string): string => {
@@ -33,7 +33,7 @@ const rate = (value: string, scale: string, source: string): string => {
   const fraction = (scaled % multiplier).toString().padStart(Number(precision), '0').replace(/0+$/u, '');
   return `1 ${source} = ${scaled / multiplier}${fraction ? `.${fraction}` : ''} CNY`;
 };
-const formatShanghai = (value: number): string => `${shanghai.format(new Date(value))}（北京时间）`;
+const formatShanghai = (value: number): string => `${shanghai.format(new Date(value))}（日本时间）`;
 const componentLabel = { PENDING: '待完成', COMPLETE: '已完成', NOT_APPLICABLE: '不适用' } as const;
 const productStatusLabel = { ACTIVE: '启用中', DISABLED: '已停用' } as const;
 const applicationStatusLabel = { SUBMITTED: '待审核', APPROVED: '已通过', REJECTED: '未通过', WITHDRAWN: '已撤回' } as const;
