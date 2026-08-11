@@ -2,7 +2,8 @@ import { useLocation } from 'react-router';
 import { SellerLayout } from './SellerLayout';
 import { SellerRouteProvider } from '../../routes/IdentityRouteSlots';
 import { RouteChunkBoundary } from '../../routes/RouteChunkBoundary';
-import { SellerDashboardPage, SellerDemandsPage, SellerOrdersPage, SellerProductApplicationDetailPage, SellerProductsPage, SellerReviewsPage, SellerSettingsPage, SellerSettlementsPage } from '../pages/SellerPages';
+import { SellerDashboardPage, SellerDemandsPage, SellerOrdersPage, SellerProductApplicationDetailPage, SellerProductsPage, SellerReviewsPage, SellerSettlementsPage } from '../pages/SellerPages';
+import { SellerSettingsV2Page } from '../pages/SellerSettingsV2Page';
 
 const loadSellerSubmissionRoutes = () => import('./SellerSubmissionRouteModule');
 
@@ -23,6 +24,6 @@ export function SellerRoutePage(): React.JSX.Element {
   if (pathname === '/seller/orders') return <SellerOrdersPage />;
   if (pathname === '/seller/reviews') return <SellerReviewsPage />;
   if (pathname === '/seller/settlements') return <SellerSettlementsPage />;
-  if (pathname === '/seller/settings') return <SellerSettingsPage />;
+  if (pathname === '/seller/settings') return <SellerSettingsV2Page />;
   return <SellerDashboardPage />;
 }
