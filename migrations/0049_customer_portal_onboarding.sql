@@ -32,7 +32,11 @@ CREATE TABLE customer_seller_invitations (
   marketplace_code TEXT NOT NULL REFERENCES marketplace_registry(code),
   acquisition_lead_id TEXT REFERENCES acquisition_leads(id),
   seller_organization_id TEXT NOT NULL REFERENCES seller_organizations(id),
-  seller_member_id TEXT NOT NULL REFERENCES seller_organization_members(id),
+  -- NEW_CUSTOMER and imported historical organizations may not have a member
+  -- identity yet. The OWNER member is created only after the customer proves
+  -- the invitation + WeChat/password boundary. This avoids granting a Seller
+  -- persona to an existing Buyer account before customer confirmation.
+  seller_member_id TEXT REFERENCES seller_organization_members(id),
   onboarding_kind TEXT NOT NULL CHECK (onboarding_kind IN ('NEW_CUSTOMER','HISTORICAL_ACCOUNT_ONLY')),
   issued_by_staff_id TEXT NOT NULL REFERENCES staff_users(id),
   status TEXT NOT NULL CHECK (status IN ('ACTIVE','CONSUMED','REVOKED','EXPIRED')),
