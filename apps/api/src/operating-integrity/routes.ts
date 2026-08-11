@@ -174,6 +174,15 @@ function positiveMoney(value:unknown){const n=signedMoney(value);if(n<=0)validat
 function paymentChannel(value:unknown){if(typeof value!=='string'||!['WECHAT','ALIPAY','BANK_TRANSFER','OTHER_MANUAL'].includes(value))validation();return value;}
 function idempotencyKey(context:Context<any>){const key=context.req.header('Idempotency-Key')?.trim()??'';if(key.length<8||key.length>128||key.includes(',')||/[\u0000-\u001f\u007f]/u.test(key))validation();return key;}
 function normalizeIntegrityError(error:unknown){return error instanceof IntegrityError?error:new IntegrityError('DEPENDENCY_UNAVAILABLE',503);}
+function publicMessage(code:IntegrityError['code']):string{switch(code){
+  case 'FORBIDDEN':return '当前岗位无权执行该操作';
+  case 'NOT_FOUND':return '没有找到对应业务记录';
+  case 'CONFLICT':return '当前业务状态或凭证状态不允许该操作';
+  case 'IDEMPOTENCY_CONFLICT':return '同一个操作编号对应了不同请求，请重新操作';
+  case 'REQUEST_IN_PROGRESS':return '该操作正在处理中，请稍后刷新';
+  case 'VALIDATION_ERROR':return '提交内容不正确';
+  default:return '服务暂时不可用';
+}}
 function validation():never{throw new IntegrityError('VALIDATION_ERROR',400)}function forbidden():never{throw new IntegrityError('FORBIDDEN',403)}
 function ok(context:Context<any>,data:unknown,status=200){context.header('Cache-Control','no-store');return context.json(apiSuccess(data,requestIdFromContext(context)),status as 200|201);}
-function wrap(handler:(context:Context<any>)=>Promise<Response>){return async(context:Context<any>)=>{try{return await handler(context);}catch(error){const e=normalizeIntegrityError(error);return context.json(apiFailure(e.code,e.code==='FORBIDDEN'?'当前岗位无权执行该操作':e.code==='NOT_FOUND'?'没有找到对应业务记录':e.code==='CONFLICT'?'当前业务状态或凭证状态不允许该操作':e.code==='IDEMPOTENCY_CONFLICT'?'同一个操作编号对应了不同请求，请重新操作':e.code==='REQUEST_IN_PROGRESS'?'该操作正在处理中，请稍后刷新':'提交内容不正确'===e.code?'提交内容不正确':e.code==='VALIDATION_ERROR'?'提交内容不正确':'服务暂时不可用',requestIdFromContext(context)),e.status);}};}
+function wrap(handler:(context:Context<any>)=>Promise<Response>){return async(context:Context<any>)=>{try{return await handler(context);}catch(error){const e=normalizeIntegrityError(error);return context.json(apiFailure(e.code,publicMessage(e.code),requestIdFromContext(context)),e.status);}};}
