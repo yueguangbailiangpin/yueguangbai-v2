@@ -21,6 +21,7 @@ export type AppBindings = StaffAuthProviderBindings
   & StaffMcpProductionRuntimeBindings
   & {
   DB: SqlDatabase;
+  APP_RELEASE_SHA?: string;
   KEYWORD_IMAGE_GENERATOR?: unknown;
   KEYWORD_GENERATOR_SHARED_SECRET?: string;
   KEYWORD_HMAC_SECRET?: string;
@@ -37,7 +38,6 @@ export type AppBindings = StaffAuthProviderBindings
   GOOGLE_DRIVE_OWNER_ACCOUNT_KEY?: string;
   CUSTOMER_SESSION_SECRET?: string;
   CUSTOMER_SECURITY_TOKEN_SECRET?: string;
-  ACQUISITION_MACHINE_SHARED_SECRET?: string;
   STAFF_AUTH_PROVIDER_ADAPTER?: StaffAuthProviderAdapter;
   OUTBOX_DELIVERY_ADAPTER?: { deliver(event: { id: string; eventType: string; payloadJson: string }): Promise<void> };
   SCHEDULED_OPERATIONS_ENABLED?: string;
@@ -96,8 +96,8 @@ export function createApp(): Hono<AppEnv> {
     }
   });
 
-  // Runs around the member-registration route that will be registered later in
-  // index.ts. It replaces the just-issued cookie after a privilege-version bump.
+  // Registration privilege changes are committed atomically by migration 0062.
+  // This middleware only reissues the current-device cookie at the new version.
   installSellerMemberPrivilegeSessionRotation(app);
 
   app.onError(async (_error, context) => {
