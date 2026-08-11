@@ -45,7 +45,9 @@ export async function listAcquisitionVisibleChannels(
   const audience=actor.roles.has('pre_sales')?'BUYER':actor.roles.has('seller_ops')?'SELLER':null;
   const conditions:string[]=[];const bindings:unknown[]=[];
   if(markets.length){conditions.push(`channel.marketplace_code IN (${markets.map(()=>'?').join(',')})`);bindings.push(...markets);}
-  if(audience){conditions.push(`channel.lead_type IN (?, 'BOTH')`);bindings.push(audience);}
+  // Historical BOTH channels remain internal reporting rows only. Ordinary
+  // intake staff never see them, avoiding duplicate anonymous labels.
+  if(audience){conditions.push(`channel.lead_type=?`);bindings.push(audience);}
   if(!internal){
     conditions.push(`channel.status='ACTIVE'`);
     conditions.push(`profile.intake_wechat_label IS NOT NULL`);
@@ -71,13 +73,12 @@ export async function listAcquisitionVisibleChannels(
 
 export async function updateAcquisitionChannelPrivacyProfile(
   database:SqlDatabase,
-  input:{channelId:string;expectedVersion:number;staffLabel:string;intakeWechatLabel:string},
+  input:{channelId:string;expectedVersion:number;intakeWechatLabel:string},
   command:AcquisitionCommandContext,
 ):Promise<{channel:AcquisitionInternalChannelViewDto;replayed:boolean}>{
   requireAcquisitionAdmin(command.actor);
   const channelId=identifier(input.channelId);
   if(!Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<1)validation();
-  const staffLabel=text(input.staffLabel,40);
   const intakeWechatLabel=text(input.intakeWechatLabel,100);
   const before=await readInternalChannel(database,channelId);
   if(!before)throw new AcquisitionError('NOT_FOUND',404);
@@ -86,7 +87,6 @@ export async function updateAcquisitionChannelPrivacyProfile(
     database,command,'UPDATE_ACQUISITION_CHANNEL_PRIVACY_PROFILE',
     'ACQUISITION_CHANNEL',channelId,{
       expected_version:input.expectedVersion,
-      staff_label:staffLabel,
       intake_wechat_label:intakeWechatLabel,
     },
   );
@@ -99,11 +99,11 @@ export async function updateAcquisitionChannelPrivacyProfile(
     await database.batch([
       database.prepare(`
         UPDATE acquisition_channel_privacy_profiles
-        SET staff_label=?,intake_wechat_label=?,version=version+1,
+        SET intake_wechat_label=?,version=version+1,
           updated_by_staff_id=?,updated_at=?
         WHERE channel_id=? AND version=?
       `).bind(
-        staffLabel,intakeWechatLabel,command.actor.staffId,acquired.now,
+        intakeWechatLabel,command.actor.staffId,acquired.now,
         channelId,input.expectedVersion,
       ),
       createAuditEventStatement(database,{
@@ -112,7 +112,7 @@ export async function updateAcquisitionChannelPrivacyProfile(
         actor:{type:'STAFF',id:command.actor.staffId,roles:[...command.actor.roles]},
         requestId:command.requestId,idempotencyKey:command.idempotencyKey,
         previousState:{staff_label:before.staff_label,intake_wechat_label:before.intake_wechat_label,profile_version:before.profile_version},
-        nextState:{staff_label:staffLabel,intake_wechat_label:intakeWechatLabel,profile_version:input.expectedVersion+1},
+        nextState:{staff_label:before.staff_label,intake_wechat_label:intakeWechatLabel,profile_version:input.expectedVersion+1},
         createdAt:acquired.now,
       }),
       ...finishAcquisitionCommand(database,acquired.acquired.claim,{channel_id:channelId},acquired.now,{channel_id:channelId}),
@@ -120,7 +120,7 @@ export async function updateAcquisitionChannelPrivacyProfile(
         SELECT CASE WHEN EXISTS(
           SELECT 1 FROM acquisition_channel_privacy_profiles
           WHERE channel_id=? AND staff_label=? AND intake_wechat_label=? AND version=?
-        ) THEN 1 ELSE 0 END`).bind(channelId,staffLabel,intakeWechatLabel,input.expectedVersion+1),
+        ) THEN 1 ELSE 0 END`).bind(channelId,before.staff_label,intakeWechatLabel,input.expectedVersion+1),
     ]);
   }catch(error){
     await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);
