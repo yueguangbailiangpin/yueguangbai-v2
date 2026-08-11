@@ -10,7 +10,6 @@ import { businessPermissionForWorkItem, eligibilityPermissionForDuty } from '@yg
 import type { AssignmentStaffAuthorization } from './effective-authorization';
 import { StaffAssignmentError } from './errors';
 import { representativeWorkType } from './reassignment-service';
-import { resolveStaffMarketplaceCodes } from './data-scope';
 
 const DUTIES: readonly StaffAssignmentDutyCode[] = [
   'SELLER_ACCOUNT_MANAGER','BUYER_PRE_SALES_OWNER','BUYER_AFTER_SALES_OWNER','BUYER_REFUND_OWNER',
@@ -42,8 +41,10 @@ export async function listVisibleWorkItems(
   const allowedWorkTypes=visibleWorkTypes(actor);
   const requested=options.workType==null?allowedWorkTypes:allowedWorkTypes.filter((value)=>value===options.workType);
   if(requested.length<1)return {work_items:[],next_cursor:null};
-  const markets=await resolveStaffMarketplaceCodes(database,actor);
   const global=actor.roles.has('owner');
+  const markets=global?[]:await primaryMarketplaceCodes(database,actor.staffId);
+  // SUPPORT staff retain customer/product visibility through normal Marketplace
+  // scope, but the open operational queue belongs to the current PRIMARY only.
   if(!global&&markets.length<1)return {work_items:[],next_cursor:null};
   const marketSql=global?'1=1':`marketplace_code IN (${placeholders(markets)})`;
   const rows=await database.prepare(`
@@ -66,7 +67,8 @@ export async function listVisibleWorkItems(
 
 export async function getVisibleWorkItem(database:SqlDatabase,actor:AssignmentStaffAuthorization,workItemId:string):Promise<StaffWorkItemDto>{
   const allowed=visibleWorkTypes(actor); if(allowed.length<1)throw new StaffAssignmentError('NOT_FOUND',404);
-  const markets=await resolveStaffMarketplaceCodes(database,actor); const global=actor.roles.has('owner');
+  const global=actor.roles.has('owner');
+  const markets=global?[]:await primaryMarketplaceCodes(database,actor.staffId);
   if(!global&&markets.length<1)throw new StaffAssignmentError('NOT_FOUND',404);
   const marketSql=global?'1=1':`marketplace_code IN (${placeholders(markets)})`;
   const row=await database.prepare(`SELECT id AS work_item_id,work_type,source_entity_type,source_entity_id,
@@ -77,6 +79,14 @@ export async function getVisibleWorkItem(database:SqlDatabase,actor:AssignmentSt
   if(!row)throw new StaffAssignmentError('NOT_FOUND',404); return row;
 }
 
+async function primaryMarketplaceCodes(database:SqlDatabase,staffId:string):Promise<string[]>{
+  const rows=await database.prepare(`SELECT scope.marketplace_code
+    FROM staff_marketplace_scopes scope
+    JOIN staff_users staff ON staff.id=scope.staff_id AND staff.status='ACTIVE'
+    WHERE scope.staff_id=? AND scope.status='ACTIVE' AND scope.scope_kind='PRIMARY'
+    ORDER BY scope.marketplace_code`).bind(staffId).all<{marketplace_code:string}>();
+  return rows.results.map((row)=>row.marketplace_code);
+}
 function visibleWorkTypes(actor:AssignmentStaffAuthorization):StaffWorkItemType[]{
   return WORK_TYPES.filter((workType)=>actor.permissions.has(businessPermissionForWorkItem(workType)));
 }
