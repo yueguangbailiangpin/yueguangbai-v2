@@ -10,8 +10,7 @@ import {
   type EffectiveStaffAuthorization,
 } from '../staff/authorization-policy';
 
-export interface AssignmentStaffAuthorization
-  extends EffectiveStaffAuthorization {
+export interface AssignmentStaffAuthorization extends EffectiveStaffAuthorization {
   staffId: string;
   displayName: string;
   staffStatus: 'ACTIVE';
@@ -26,50 +25,22 @@ interface StaffRow {
 }
 interface RoleRow { role_code: string }
 interface OverrideRow { permission_code: string; effect: string }
-interface TeamRow {
-  team_id: string;
-  team_status: string;
-  department_status: string;
-  is_leader: number;
-}
 
 export async function resolveAssignmentStaffAuthorization(
   database: SqlDatabase,
   staffId: string,
 ): Promise<AssignmentStaffAuthorization | null> {
   const staff = await database.prepare(`
-    SELECT id, display_name, status, authorization_version
-    FROM staff_users
-    WHERE id=?
+    SELECT id,display_name,status,authorization_version
+    FROM staff_users WHERE id=?
   `).bind(staffId).first<StaffRow>();
   if (!staff || staff.status !== 'ACTIVE') return null;
 
-  const [roleResult, overrideResult, teamResult] = await Promise.all([
-    database.prepare(`
-      SELECT role_code FROM staff_role_assignments
-      WHERE staff_id=? AND status='ACTIVE'
-      ORDER BY role_code
-    `).bind(staffId).all<RoleRow>(),
-    database.prepare(`
-      SELECT permission_code, effect FROM staff_permission_overrides
-      WHERE staff_id=? AND status='ACTIVE'
-      ORDER BY permission_code
-    `).bind(staffId).all<OverrideRow>(),
-    database.prepare(`
-      SELECT membership.team_id,
-        team.status AS team_status,
-        department.status AS department_status,
-        CASE WHEN leader.staff_id IS NULL THEN 0 ELSE 1 END AS is_leader
-      FROM staff_team_memberships membership
-      JOIN staff_teams team ON team.id=membership.team_id
-      JOIN staff_departments department ON department.id=team.department_id
-      LEFT JOIN staff_team_leaders leader
-        ON leader.staff_id=membership.staff_id
-        AND leader.team_id=membership.team_id
-        AND leader.status='ACTIVE'
-      WHERE membership.staff_id=? AND membership.status='ACTIVE'
-      ORDER BY membership.team_id
-    `).bind(staffId).all<TeamRow>(),
+  const [roleResult, overrideResult] = await Promise.all([
+    database.prepare(`SELECT role_code FROM staff_role_assignments
+      WHERE staff_id=? AND status='ACTIVE' ORDER BY role_code`).bind(staffId).all<RoleRow>(),
+    database.prepare(`SELECT permission_code,effect FROM staff_permission_overrides
+      WHERE staff_id=? AND status='ACTIVE' ORDER BY permission_code`).bind(staffId).all<OverrideRow>(),
   ]);
 
   const roles = new Set<StaffRoleCode>();
@@ -79,30 +50,21 @@ export async function resolveAssignmentStaffAuthorization(
   }
   if (roles.size !== 1) return null;
 
-  const grants = new Set<StaffPermissionCode>();
   const denies = new Set<StaffPermissionCode>();
+  const legacyGrants = new Set<StaffPermissionCode>();
   for (const row of overrideResult.results) {
     if (!isStaffPermissionCode(row.permission_code)
-      || (row.effect !== 'GRANT' && row.effect !== 'DENY')) {
-      return null;
-    }
-    (row.effect === 'GRANT' ? grants : denies).add(row.permission_code);
+      || (row.effect !== 'GRANT' && row.effect !== 'DENY')) return null;
+    if (row.effect === 'DENY') denies.add(row.permission_code);
+    else legacyGrants.add(row.permission_code);
   }
-  const activeTeams = teamResult.results.filter(
-    (row) => row.team_status === 'ACTIVE'
-      && row.department_status === 'ACTIVE',
-  );
-  // Team membership remains a supported implementation detail for existing
-  // assignment/leader capabilities, but it is no longer a prerequisite for a
-  // small-team Staff account. Role + Marketplace are the public admin model.
+
   const effective = calculateEffectiveStaffAuthorization({
     roles,
-    grants,
+    grants: legacyGrants,
     denies,
-    memberTeamIds: activeTeams.map((row) => row.team_id),
-    leaderTeamIds: activeTeams
-      .filter((row) => Number(row.is_leader) === 1)
-      .map((row) => row.team_id),
+    memberTeamIds: [],
+    leaderTeamIds: [],
   });
   return Object.freeze({
     staffId: staff.id,
