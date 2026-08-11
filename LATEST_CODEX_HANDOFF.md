@@ -1,7 +1,8 @@
 # LATEST CODEX HANDOFF — 2026-08-11
 
-This file supersedes stale migration/version statements in earlier handoff files on this feature branch.
-Do not redesign the product. Fix only real integration, type, migration, test, and browser failures.
+This file supersedes stale migration/version and operating-flow statements in earlier handoff files on this feature branch.
+
+**Do not redesign the product.** Fix real integration, type, migration, test, accessibility, and browser failures only.
 
 ## Branch
 
@@ -13,56 +14,99 @@ Baseline when work started:
 
 Current target schema version:
 
-`50`
+**`53`**
 
-## Read first
+## Read first, in this order
 
-1. `docs/CUSTOMER_MULTIPERSONA_ONBOARDING_FREEZE.md`
-2. `docs/HISTORICAL_CUSTOMER_PORTAL_ONBOARDING_FREEZE.md`
-3. `docs/CUSTOMER_REGISTRATION_AND_CHANNEL_DASHBOARD_FREEZE.md`
-4. `docs/ACQUISITION_CHANNEL_PRIVACY_FREEZE.md`
-5. `docs/FROZEN_PRODUCT_BASELINE.md`
-6. `docs/STAFF_ACCESS_CUTOVER.md`
-7. this file
+1. `docs/OPERATING_INTEGRITY_FREEZE.md`
+2. `docs/CUSTOMER_MULTIPERSONA_ONBOARDING_FREEZE.md`
+3. `docs/HISTORICAL_CUSTOMER_PORTAL_ONBOARDING_FREEZE.md`
+4. `docs/CUSTOMER_REGISTRATION_AND_CHANNEL_DASHBOARD_FREEZE.md`
+5. `docs/ACQUISITION_CHANNEL_PRIVACY_FREEZE.md`
+6. `docs/FROZEN_PRODUCT_BASELINE.md`
+7. `docs/STAFF_ACCESS_CUTOVER.md`
+8. this file
 
-If older docs/tests conflict, update the older test/doc; do not revert frozen behavior.
+If an older test/doc conflicts, update the older test/doc. Do not revert the current frozen behavior merely to satisfy stale assertions.
 
 ## Latest customer onboarding acceptance
 
 ### New Buyer
 
-Staff pre-sales saves Buyer Lead → counts new buyer immediately → same success card generates Buyer registration link → invitation is bound to the exact saved Buyer Lead → buyer registration creates/reuses Buyer Customer/account → invitation consumption links Buyer Customer to Lead for source attribution.
+Pre-sales saves Buyer Lead → immutable new-buyer intake fact is written immediately → success card may generate Buyer registration link → invite binds to exact Buyer Lead → registration creates/reuses Buyer Customer/account → invite consumption links Buyer Customer to Lead → source attribution remains traceable.
+
+Website registration is independent from new-customer count.
 
 ### Historical Buyer
 
-Search existing WeChat → reuse existing Buyer Customer → if portal account missing, issue account activation link using the existing Buyer invitation flow → do not create Lead/channel → do not count new buyer → historical orders remain.
+Search existing WeChat → reuse existing Buyer Customer → do not create Lead/channel → do not count new buyer → historical orders remain.
+
+If portal account missing, issue account activation link. If portal account exists, password recovery must use the exact Buyer Customer subject-scoped endpoint, not ordinary Staff WeChat-only reset.
 
 ### New Seller
 
-Seller ops saves Seller Lead → counts new seller immediately → same success card generates Seller registration link → creates Seller Organization and links organization to Seller Lead, but does **not** grant Seller persona merely by issuing the link.
+Seller Ops saves Seller Lead → immutable new-seller intake fact is written immediately → **AMAZON_JP Seller Organization is created in the same formal customer-intake transaction** and linked to Seller Lead.
 
-The customer must complete the invitation/password boundary before the primary OWNER Seller Member / Seller persona becomes active.
+Seller Portal invitation happens afterwards and controls website access only. Issuing or not issuing the website link does not decide whether the Seller is already a formal business customer.
 
-If that WeChat already has an existing Moonwhite Buyer account, verify the existing password and add `SELLER_MEMBER` persona to the same login account. Never create a second account for the same identity.
+The invite itself does not grant Seller persona. Customer confirmation/password boundary activates the primary OWNER Seller Member / Seller persona.
 
-If no Moonwhite account exists, create the Seller OWNER member + SELLER_MEMBER account/password only after customer confirmation.
+If WeChat already has a Moonwhite Buyer login, verify the existing password and add `SELLER_MEMBER` persona to that same login. Never create a second login account for the same identity.
 
-Current Seller registration is AMAZON_JP only because the real Seller Portal business contracts are still JP-first. Do not claim US/KR seller portal support.
+Current Seller Portal onboarding is AMAZON_JP only. Do not fake US/KR Seller Portal support.
 
 ### Historical Seller
 
-Search WeChat using both existing member identity and historical `seller_partner_import_source_records` → reuse Seller Organization → if organization already has active Seller Portal persona show already open → otherwise issue activation link → do not create a new organization or acquisition Lead → historical stores/products/orders/settlements remain.
+Search WeChat using existing Seller identity plus historical `seller_partner_import_source_records` and any Owner-confirmed manual binding → reuse Seller Organization → never create a second historical organization → historical stores/products/orders/settlements remain.
 
-If the historical organization lacks an OWNER member, create the first OWNER only after the customer completes the invite boundary. If legacy member identity conflicts with the confirmed WeChat, fail closed for manual identity resolution; never guess/rebind automatically.
+If identity is ambiguous, fail closed and create an Owner identity-resolution case. Ordinary Staff must not guess.
 
-### Duplicate protection
+### Seller invitation lifecycle
 
-Direct POST to new acquisition Lead must be rejected when WeChat already belongs to existing Buyer/Seller or imported historical Seller.
+Staff can:
+
+- issue
+- inspect current status without seeing token
+- revoke
+- reissue after revoke/expiry
+
+Invitation token remains hash-only. After a Staff page refresh an ACTIVE historical token cannot be recovered as plaintext; Staff must revoke the old invite then create a new link.
+
+### Password recovery
+
+Daily Staff recovery is subject-scoped:
+
+- pre_sales → Buyer only, in assigned Marketplace
+- seller_ops → Seller only, in assigned Marketplace
+- owner → both
+- acquisition / buyer_refund → denied
+
+The old generic WeChat-only reset endpoint is Owner emergency compatibility only.
+
+## Operating integrity acceptance — 12 frozen fixes
+
+`docs/OPERATING_INTEGRITY_FREEZE.md` is authoritative. In particular:
+
+1. new customer counts come from immutable `acquisition_customer_intake_facts`, not current ACTIVE Lead state;
+2. precision cutover separates normal historical unknown source from post-cutover attribution anomaly;
+3. password recovery is customer/role/Marketplace scoped;
+4. Seller business subject exists independently of Seller Portal registration;
+5. Seller invite lifecycle includes safe status/revoke/reissue;
+6. multiple Staff may cover one Role×Marketplace; exactly one ACTIVE PRIMARY, others SUPPORT;
+7. Owner has audited historical identity conflict resolution;
+8. source correction is append-only; reporting uses latest confirmed source while original remains;
+9. consultation missing is not zero; completeness is explicit;
+10. Buyer-source and Seller-source profits are separate attribution views and must never be summed as company profit;
+11. Owner has only a minimal operating-integrity anomaly center, not a new ERP/task system;
+12. Lead active uniqueness is `lead_type × marketplace_code × identity_hash`, and Seller global customer grouping is prepared for future Marketplace expansion.
 
 ## Channel privacy
 
-Ordinary pre-sales/seller-ops responses must contain only anonymous `渠道N` labels. They must not contain platform name, real channel name, source URL, CODEX/HUMAN origin, AI score, signal details, or Prospect IDs.
+Ordinary pre-sales/seller-ops responses contain only anonymous `渠道N` source labels. They must not receive real platform, real source name, source URL, CODEX/HUMAN origin, AI score, Signal details, or Prospect research data.
+
 Owner/acquisition may see full source details.
+
+A disabled channel remains visible in historical Owner/acquisition reporting; disabling affects future intake only.
 
 ## Dashboard acceptance
 
@@ -73,15 +117,42 @@ Owner dashboard separates:
 - 买家网站注册
 - 卖家网站开通
 - 新增正式订单
-- per-day buyer/seller channel new customers and formal orders
-- buyer/seller unattributed historical order counts
+- 历史客户 / 来源未知（normal historical category）
+- 新系统归因异常（error requiring attention）
+- identity conflicts
+- finance conflicts
+- per-day Buyer/Seller channel new customers/orders
 
-Buyer/Seller portal activation metrics are based on successful invitation consumption date, not the original login-account creation date. This is required for multi-persona accounts.
-Historical customer activation must never increment new-customer counts.
+Portal activation is based on successful invitation consumption date.
+Historical portal activation never increments new-customer counts.
+
+Past new-customer counts must remain stable after Lead invalidation/anonymization or Channel disable.
+
+## Staff management acceptance
+
+Owner still sees one simple Staff account page.
+
+No scheduling/team/availability system is added.
+
+For each Role×Marketplace:
+
+- first active coverage is PRIMARY / 主负责人
+- later coverage is SUPPORT / 协助
+- only one ACTIVE PRIMARY is allowed
+- disabling the PRIMARY promotes an active SUPPORT when available
+- re-enabling a lone SUPPORT restores PRIMARY if the slot has no active PRIMARY
+
+## Database migrations added by operating-integrity pass
+
+- `0051_business_integrity_reporting_scope.sql`
+- `0052_identity_resolution_and_reporting_ops.sql`
+- `0053_operating_integrity_guards.sql`
+
+Target migration chain is now **0001 → 0053**.
 
 ## Required local verification
 
-Run from a clean checkout of this branch with Node 24:
+Run from a clean checkout with Node 24:
 
 ```bash
 npm ci
@@ -102,8 +173,37 @@ npm test
 npm run build
 ```
 
-Also add/fix targeted tests for migrations 0048-0050, new/historical Buyer onboarding, new/historical Seller onboarding, Buyer↔Seller multi-persona reuse, duplicate guards, source privacy, and dashboard date attribution.
+Also run/update targeted tests for:
 
-Use a copy of a real historical D1 dataset for an upgrade dry-run before production. Verify that historical customer IDs and order relationships do not change.
+- migrations 0051–0053
+- immutable intake after Lead invalidation and Channel disable
+- precision boundary + historical exemptions + post-cutover anomalies
+- same protected identity across different Marketplaces, while same Marketplace duplicate still fails
+- scoped Buyer/Seller password recovery permissions and multi-persona warning/behavior
+- Seller Organization created at formal Seller intake, not invitation issuance
+- Seller invite current-state / revoke / reissue
+- Owner identity conflict report/search/resolve/manual binding
+- append-only source correction and effective reporting source
+- consultation missing vs explicit zero
+- disabled-channel historical reporting
+- split Buyer-source/Seller-source profit attribution with company profit counted only once
+- PRIMARY/SUPPORT staff behavior
 
-Do not merge main and do not deploy production until all failures are resolved and the owner explicitly approves.
+Use a copy of the real historical D1 dataset for an upgrade dry-run before production. Confirm all historical Buyer Customer IDs, Seller Organization IDs, Order IDs, store/product/order relations, and financial facts remain unchanged.
+
+## Explicit prohibitions
+
+Do not restore any of these stale behaviors to make old tests pass:
+
+- ACTIVE Lead count as historical new-customer total
+- disabling Channel erases historical performance
+- post-cutover missing source treated as ordinary historical unknown
+- ordinary Staff WeChat-only password reset
+- Seller Organization created only when Seller invite is issued
+- one and only one Staff total per Role×Marketplace
+- direct overwrite of source attribution without correction history
+- missing consultation silently treated as zero
+- Buyer-source + Seller-source channel profit summed as company profit
+- global Lead uniqueness across all Marketplaces
+
+Do not merge `main` and do not deploy production until all local verification failures are resolved and the owner explicitly approves.
