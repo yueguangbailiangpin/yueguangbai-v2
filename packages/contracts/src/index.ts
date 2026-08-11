@@ -1,4 +1,5 @@
 export * from './api';
+export * from './capabilities';
 export * from './acquisition';
 export * from './admin-business-dashboard';
 export * from './buyer-formal-order-portal';
