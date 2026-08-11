@@ -5,7 +5,7 @@ import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 
-const TARGET_SCHEMA=61;
+const TARGET_SCHEMA=64;
 class RecoveryAttestationError extends Error{constructor(public code:'VALIDATION_ERROR'|'FORBIDDEN'|'CONFLICT'|'DEPENDENCY_UNAVAILABLE',public status:400|403|409|503){super(code)}}
 
 export function registerProductionRecoveryAttestationRoutes(app:Hono<any>):void{
@@ -17,6 +17,7 @@ export function registerProductionRecoveryAttestationRoutes(app:Hono<any>):void{
     const actor=owner(context);const body=await exact(context,['release_sha','schema_version','d1_manifest_sha256','r2_manifest_sha256','restored_database_integrity_ok','restored_foreign_keys_ok','r2_sample_readback_ok','evidence_note']);
     const releaseSha=sha(body['release_sha'],7,64),schemaVersion=integer(body['schema_version']),d1=sha(body['d1_manifest_sha256'],64,64),r2=sha(body['r2_manifest_sha256'],64,64),note=text(body['evidence_note'],8,2000);
     if(body['restored_database_integrity_ok']!==true||body['restored_foreign_keys_ok']!==true||body['r2_sample_readback_ok']!==true||schemaVersion!==TARGET_SCHEMA)validation();
+    const runningRelease=runtimeReleaseSha(context.env.APP_RELEASE_SHA);if(runningRelease===null||releaseSha!==runningRelease)throw new RecoveryAttestationError('CONFLICT',409);
     const state=await context.env.DB.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).first<{schema_version:number}>();if(Number(state?.schema_version)!==TARGET_SCHEMA)throw new RecoveryAttestationError('CONFLICT',409);
     const duplicate=await context.env.DB.prepare(`SELECT id FROM production_recovery_attestations WHERE release_sha=? AND schema_version=? AND d1_manifest_sha256=? AND r2_manifest_sha256=? LIMIT 1`).bind(releaseSha,schemaVersion,d1,r2).first();if(duplicate)throw new RecoveryAttestationError('CONFLICT',409);
     const now=Date.now(),id=crypto.randomUUID();await context.env.DB.batch([
@@ -30,8 +31,9 @@ function project(row:any){return{attestation_id:String(row.id),release_sha:Strin
 function owner(context:Context<any>){const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;if(!actor||actor.staffStatus!=='ACTIVE'||!actor.roles.has('owner')||!actor.permissions.has('AUDIT_VIEW'))throw new RecoveryAttestationError('FORBIDDEN',403);return actor;}
 async function exact(context:Context<any>,keys:string[]){let value:unknown;try{value=await context.req.json();}catch{validation();}if(!value||typeof value!=='object'||Array.isArray(value))validation();const body=value as Record<string,unknown>;if(Object.keys(body).length!==keys.length||keys.some((key)=>!Object.hasOwn(body,key)))validation();return body;}
 function sha(value:unknown,min:number,max:number){if(typeof value!=='string')validation();const normalized=value.trim().toLowerCase();if(normalized.length<min||normalized.length>max||!/^[0-9a-f]+$/u.test(normalized))validation();return normalized;}
+function runtimeReleaseSha(value:unknown):string|null{if(typeof value!=='string')return null;const normalized=value.trim().toLowerCase();return /^[0-9a-f]{7,64}$/u.test(normalized)?normalized:null;}
 function integer(value:unknown){if(typeof value!=='number'||!Number.isSafeInteger(value)||value<1)validation();return value;}
 function text(value:unknown,min:number,max:number){if(typeof value!=='string')validation();const normalized=value.normalize('NFKC').trim();if(normalized.length<min||normalized.length>max||/[\u0000-\u001f\u007f]/u.test(normalized))validation();return normalized;}
 function validation():never{throw new RecoveryAttestationError('VALIDATION_ERROR',400)}
 function success(context:Context<any>,data:unknown,status=200){context.header('Cache-Control','no-store');return context.json(apiSuccess(data,requestIdFromContext(context)),status as 200|201);}
-function wrap(handler:(context:Context<any>)=>Promise<Response>){return async(context:Context<any>)=>{try{return await handler(context);}catch(error){const e=error instanceof RecoveryAttestationError?error:new RecoveryAttestationError('DEPENDENCY_UNAVAILABLE',503);return context.json(apiFailure(e.code,e.code==='FORBIDDEN'?'只有总管理员可以登记生产恢复证明':e.code==='CONFLICT'?'恢复证明与当前 Schema 不一致或已经登记':e.code==='VALIDATION_ERROR'?'恢复证明内容不正确':'生产恢复证明服务暂时不可用',requestIdFromContext(context)),e.status);}};}
+function wrap(handler:(context:Context<any>)=>Promise<Response>){return async(context:Context<any>)=>{try{return await handler(context);}catch(error){const e=error instanceof RecoveryAttestationError?error:new RecoveryAttestationError('DEPENDENCY_UNAVAILABLE',503);return context.json(apiFailure(e.code,e.code==='FORBIDDEN'?'只有总管理员可以登记生产恢复证明':e.code==='CONFLICT'?'恢复证明必须对应当前 Schema 和当前部署版本，且不能重复登记':e.code==='VALIDATION_ERROR'?'恢复证明内容不正确':'生产恢复证明服务暂时不可用',requestIdFromContext(context)),e.status);}};}
