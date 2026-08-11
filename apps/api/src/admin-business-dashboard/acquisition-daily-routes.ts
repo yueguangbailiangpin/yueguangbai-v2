@@ -36,8 +36,8 @@ async function readDaily(database:SqlDatabase,from:string,to:string){
       FROM formal_orders formal_order JOIN acquisition_customer_attributions attribution
         ON attribution.subject_type='SELLER_ORGANIZATION' AND attribution.subject_id=formal_order.seller_organization_id
       WHERE formal_order.confirmed_business_date BETWEEN ? AND ? GROUP BY formal_order.confirmed_business_date,attribution.origin_channel_id`).bind(from,to).all<OrderRow>(),
-    portalRegistrationQuery(database,'BUYER',from,to),
-    portalRegistrationQuery(database,'SELLER_MEMBER',from,to),
+    buyerPortalRegistrationQuery(database,from,to),
+    sellerPortalRegistrationQuery(database,from,to),
     database.prepare(`SELECT confirmed_business_date AS business_date,COUNT(*) AS count FROM formal_orders
       WHERE confirmed_business_date BETWEEN ? AND ? GROUP BY confirmed_business_date`).bind(from,to).all<DailyCountRow>(),
   ]);
@@ -59,11 +59,21 @@ async function readDaily(database:SqlDatabase,from:string,to:string){
   }),daily:Object.freeze(daily),channel_daily:Object.freeze(channelDaily)});
 }
 
-function portalRegistrationQuery(database:SqlDatabase,type:'BUYER'|'SELLER_MEMBER',from:string,to:string){
+function buyerPortalRegistrationQuery(database:SqlDatabase,from:string,to:string){
   return database.prepare(`SELECT date(account.activated_at/1000,'unixepoch','+8 hours') AS business_date,COUNT(*) AS count
-    FROM customer_login_accounts account WHERE account.account_type=? AND account.status='ACTIVE'
+    FROM customer_login_accounts account WHERE account.account_type='BUYER' AND account.status='ACTIVE'
       AND date(account.activated_at/1000,'unixepoch','+8 hours') BETWEEN ? AND ?
-    GROUP BY date(account.activated_at/1000,'unixepoch','+8 hours')`).bind(type,from,to).all<DailyCountRow>();
+    GROUP BY date(account.activated_at/1000,'unixepoch','+8 hours')`).bind(from,to).all<DailyCountRow>();
+}
+function sellerPortalRegistrationQuery(database:SqlDatabase,from:string,to:string){
+  return database.prepare(`SELECT date(account.activated_at/1000,'unixepoch','+8 hours') AS business_date,
+      COUNT(DISTINCT member.organization_id) AS count
+    FROM customer_login_accounts account
+    JOIN seller_organization_members member ON member.identity_subject_id=account.identity_subject_id
+    WHERE account.account_type='SELLER_MEMBER' AND account.status='ACTIVE'
+      AND member.status='ACTIVE' AND member.primary_owner=1
+      AND date(account.activated_at/1000,'unixepoch','+8 hours') BETWEEN ? AND ?
+    GROUP BY date(account.activated_at/1000,'unixepoch','+8 hours')`).bind(from,to).all<DailyCountRow>();
 }
 function requireOwner(context:Context<any>):AssignmentStaffAuthorization{const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;if(!actor||!actor.roles.has('owner'))throw new Error('FORBIDDEN');return actor;}
 function forbidden(context:Context<any>,requestId:string){return context.json(apiFailure('FORBIDDEN','只有总管理员可以查看该经营数据',requestId),403);}
