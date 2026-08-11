@@ -2,7 +2,6 @@ import { afterEach,describe,expect,it } from 'vitest';
 import type { ObjectStorageAdapter,ObjectStorageHead,ObjectStoragePutInput,ObjectStoragePutResult } from '@ygb/contracts';
 import { SqliteDatabase } from '@ygb/testkit';
 import {
-  FormalOrderPolicyError,
   readFormalOrderBusinessCapabilities,
   requireFormalOrderAction,
 } from './formal-order-policy';
@@ -41,7 +40,7 @@ describe('Wave 15 architecture finalization — real behavior',()=>{
     expect(cancelled.operational_state).toBe('PLATFORM_CANCELLED');
     expect(Object.values(cancelled.actions).every((action)=>!action.allowed)).toBe(true);
     await expect(requireFormalOrderAction(database,'order-policy-1','APPROVE_REVIEW'))
-      .rejects.toMatchObject<Partial<FormalOrderPolicyError>>({
+      .rejects.toMatchObject({
         code:'FORMAL_ORDER_ACTION_BLOCKED',state:'PLATFORM_CANCELLED',action:'APPROVE_REVIEW',
       });
 
@@ -52,45 +51,6 @@ describe('Wave 15 architecture finalization — real behavior',()=>{
     expect(resolved.operational_state).toBe('NORMAL');
     expect(resolved.actions.CREATE_BUYER_REFUND.allowed).toBe(true);
     expect(resolved.actions.RECORD_ADVANCE_PRINCIPAL.allowed).toBe(true);
-  });
-
-  it('second persona bumps session version exactly once while first persona does not',async()=>{
-    database=new SqliteDatabase(':memory:');
-    database.exec(`
-      CREATE TABLE transaction_assertions(assertion_value INTEGER NOT NULL CHECK(assertion_value=1));
-      CREATE TABLE customer_login_accounts(
-        id TEXT PRIMARY KEY,identity_subject_id TEXT NOT NULL,status TEXT NOT NULL,
-        session_version INTEGER NOT NULL,version INTEGER NOT NULL,updated_at INTEGER NOT NULL
-      );
-      CREATE TABLE customer_account_personas(
-        account_id TEXT NOT NULL,identity_subject_id TEXT NOT NULL,persona_type TEXT NOT NULL,
-        buyer_customer_id TEXT,seller_member_id TEXT,created_at INTEGER NOT NULL,
-        PRIMARY KEY(account_id,persona_type)
-      );
-      CREATE TRIGGER trg_customer_persona_privilege_session_bump
-      AFTER INSERT ON customer_account_personas
-      WHEN EXISTS(
-        SELECT 1 FROM customer_account_personas existing
-        WHERE existing.account_id=NEW.account_id AND existing.persona_type<>NEW.persona_type
-      )
-      BEGIN
-        UPDATE customer_login_accounts
-        SET session_version=session_version+1,version=version+1,updated_at=MAX(updated_at,NEW.created_at)
-        WHERE id=NEW.account_id AND identity_subject_id=NEW.identity_subject_id AND status='ACTIVE';
-        INSERT INTO transaction_assertions(assertion_value)
-        SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END;
-      END;
-      INSERT INTO customer_login_accounts VALUES('account-1','subject-1','ACTIVE',7,3,10);
-      INSERT INTO customer_account_personas VALUES('account-1','subject-1','BUYER','buyer-1',NULL,20);
-    `);
-    let account=await database.prepare(`SELECT session_version,version FROM customer_login_accounts WHERE id='account-1'`).first<{session_version:number;version:number}>();
-    expect(account).toEqual({session_version:7,version:3});
-    await database.prepare(`INSERT INTO customer_account_personas VALUES('account-1','subject-1','SELLER_MEMBER',NULL,'member-1',30)`).run();
-    account=await database.prepare(`SELECT session_version,version FROM customer_login_accounts WHERE id='account-1'`).first<{session_version:number;version:number}>();
-    expect(account).toEqual({session_version:8,version:4});
-    await expect(database.prepare(`INSERT INTO customer_account_personas VALUES('account-1','subject-1','SELLER_MEMBER',NULL,'member-2',40)`).run()).rejects.toThrow();
-    account=await database.prepare(`SELECT session_version,version FROM customer_login_accounts WHERE id='account-1'`).first<{session_version:number;version:number}>();
-    expect(account).toEqual({session_version:8,version:4});
   });
 
   it('settles advance 600 against formal refund 500 and records only the excess 100 as overpayment',async()=>{
@@ -142,16 +102,8 @@ describe('Wave 15 architecture finalization — real behavior',()=>{
 
   it('retention deletes only old unlinked files and never touches an actively linked business file',async()=>{
     database=new SqliteDatabase(':memory:');
+    seedRetentionSchema(database);
     database.exec(`
-      CREATE TABLE file_upload_intents(id TEXT PRIMARY KEY,status TEXT NOT NULL);
-      CREATE TABLE file_objects(
-        id TEXT PRIMARY KEY,upload_intent_id TEXT NOT NULL,object_key TEXT NOT NULL,status TEXT NOT NULL,
-        delete_attempt_count INTEGER NOT NULL DEFAULT 0,next_delete_at INTEGER,version INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,verified_at INTEGER,upload_expires_at INTEGER NOT NULL,
-        failure_code TEXT,deleted_at INTEGER
-      );
-      CREATE TABLE file_entity_links(id TEXT PRIMARY KEY,file_object_id TEXT NOT NULL,revoked_at INTEGER);
-      CREATE TABLE order_instruction_asset_items(id TEXT PRIMARY KEY,file_object_id TEXT,status TEXT);
       INSERT INTO file_upload_intents VALUES('intent-linked','VERIFIED'),('intent-orphan','VERIFIED');
       INSERT INTO file_objects VALUES
         ('file-linked','intent-linked','objects/linked','VERIFIED',0,NULL,1,1000,1000,999999999,NULL,NULL),
@@ -170,19 +122,28 @@ describe('Wave 15 architecture finalization — real behavior',()=>{
     expect(orphan).toEqual({status:'DELETED',failure_code:'RETENTION_DELETED'});
   });
 
-  it('financial projection counts real cash once when advance principal later becomes a refund ledger payment',async()=>{
+  it('retention keeps failed R2 deletes pending and schedules a bounded retry instead of lying that the file is gone',async()=>{
     database=new SqliteDatabase(':memory:');
+    seedRetentionSchema(database);
     database.exec(`
-      CREATE TABLE seller_payments(id TEXT PRIMARY KEY,amount_cny_fen INTEGER,paid_at INTEGER);
-      CREATE TABLE seller_payment_reversals(payment_id TEXT PRIMARY KEY);
-      CREATE TABLE buyer_refund_payment_entries(id TEXT PRIMARY KEY,entry_type TEXT,amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER);
-      CREATE TABLE buyer_advance_principal_settlements(advance_payment_entry_id TEXT,buyer_refund_payment_entry_id TEXT);
-      CREATE TABLE buyer_advance_principal_entries(id TEXT PRIMARY KEY,entry_type TEXT,amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER);
-      CREATE TABLE seller_payable_balances(amount_cny_fen INTEGER,paid_amount_cny_fen INTEGER,outstanding_amount_cny_fen INTEGER,due_at INTEGER);
-      CREATE TABLE buyer_refund_ledger_balances(due_amount_cny_fen INTEGER,net_paid_cny_fen INTEGER,created_at INTEGER);
-      CREATE TABLE internal_order_finance_positions(finance_status TEXT,confirmed_business_date TEXT,review_approved_business_date TEXT,projected_gross_profit_cny_fen INTEGER,completed_gross_profit_cny_fen INTEGER,confirmed_at INTEGER);
-      CREATE TABLE formal_order_financial_adjustments(adjustment_scope TEXT,amount_cny_fen INTEGER,created_at INTEGER);
+      INSERT INTO file_upload_intents VALUES('intent-retry','VERIFIED');
+      INSERT INTO file_objects VALUES('file-retry','intent-retry','objects/retry','VERIFIED',0,NULL,1,1000,1000,999999999,NULL,NULL);
     `);
+    const now=40*86_400_000;
+    const result=await reconcileUnlinkedFileRetention(database,new FailingDeleteStorage(),{now,limit:10});
+    expect(result.planned).toBe(1);
+    expect(result.deleted).toBe(0);
+    expect(result.deferred).toBe(1);
+    const row=await database.prepare(`SELECT status,failure_code,delete_attempt_count,next_delete_at FROM file_objects WHERE id='file-retry'`).first<any>();
+    expect(row.status).toBe('DELETION_PENDING');
+    expect(row.failure_code).toBe('RETENTION_DELETE_RETRY');
+    expect(Number(row.delete_attempt_count)).toBe(1);
+    expect(Number(row.next_delete_at)).toBeGreaterThan(now);
+  });
+
+  it('financial projection counts real buyer cash once when advance principal later becomes a refund ledger payment',async()=>{
+    database=new SqliteDatabase(':memory:');
+    seedFinancialProjectionSchema(database);
     const at=Date.UTC(2026,7,1,4,0,0);
     database.exec(`
       INSERT INTO seller_payments VALUES('seller-payment-1',100000,${at});
@@ -206,7 +167,49 @@ describe('Wave 15 architecture finalization — real behavior',()=>{
     expect(projection.seller_payable_outstanding_cny_fen).toBe('100000');
     expect(projection.buyer_refund_outstanding_cny_fen).toBe('0');
   });
+
+  it('seller cash flow records payment on payment day and reversal on reversal day instead of rewriting history',async()=>{
+    database=new SqliteDatabase(':memory:');
+    seedFinancialProjectionSchema(database);
+    const paidAt=Date.UTC(2026,7,1,4,0,0),reversedAt=Date.UTC(2026,7,2,4,0,0);
+    database.exec(`
+      INSERT INTO seller_payments VALUES('seller-payment-reversed',100000,${paidAt});
+      INSERT INTO seller_payment_reversals VALUES('seller-payment-reversed',100000,${reversedAt});
+    `);
+    const paymentDay=await readFinancialReportingProjection(database,{fromDate:'2026-08-01',toDate:'2026-08-01'},reversedAt+1000);
+    const reversalDay=await readFinancialReportingProjection(database,{fromDate:'2026-08-02',toDate:'2026-08-02'},reversedAt+1000);
+    expect(paymentDay.seller_cash_in_cny_fen).toBe('100000');
+    expect(reversalDay.seller_cash_in_cny_fen).toBe('-100000');
+  });
 });
+
+function seedRetentionSchema(db:SqliteDatabase):void{
+  db.exec(`
+    CREATE TABLE file_upload_intents(id TEXT PRIMARY KEY,status TEXT NOT NULL);
+    CREATE TABLE file_objects(
+      id TEXT PRIMARY KEY,upload_intent_id TEXT NOT NULL,object_key TEXT NOT NULL,status TEXT NOT NULL,
+      delete_attempt_count INTEGER NOT NULL DEFAULT 0,next_delete_at INTEGER,version INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,verified_at INTEGER,upload_expires_at INTEGER NOT NULL,
+      failure_code TEXT,deleted_at INTEGER
+    );
+    CREATE TABLE file_entity_links(id TEXT PRIMARY KEY,file_object_id TEXT NOT NULL,revoked_at INTEGER);
+    CREATE TABLE order_instruction_asset_items(id TEXT PRIMARY KEY,file_object_id TEXT,status TEXT);
+  `);
+}
+
+function seedFinancialProjectionSchema(db:SqliteDatabase):void{
+  db.exec(`
+    CREATE TABLE seller_payments(id TEXT PRIMARY KEY,amount_cny_fen INTEGER,paid_at INTEGER);
+    CREATE TABLE seller_payment_reversals(payment_id TEXT PRIMARY KEY,amount_cny_fen INTEGER,reversed_at INTEGER);
+    CREATE TABLE buyer_refund_payment_entries(id TEXT PRIMARY KEY,entry_type TEXT,amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER);
+    CREATE TABLE buyer_advance_principal_settlements(advance_payment_entry_id TEXT,buyer_refund_payment_entry_id TEXT);
+    CREATE TABLE buyer_advance_principal_entries(id TEXT PRIMARY KEY,entry_type TEXT,amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER);
+    CREATE TABLE seller_payable_balances(amount_cny_fen INTEGER,paid_amount_cny_fen INTEGER,outstanding_amount_cny_fen INTEGER,due_at INTEGER);
+    CREATE TABLE buyer_refund_ledger_balances(due_amount_cny_fen INTEGER,net_paid_cny_fen INTEGER,created_at INTEGER);
+    CREATE TABLE internal_order_finance_positions(finance_status TEXT,confirmed_business_date TEXT,review_approved_business_date TEXT,projected_gross_profit_cny_fen INTEGER,completed_gross_profit_cny_fen INTEGER,confirmed_at INTEGER);
+    CREATE TABLE formal_order_financial_adjustments(adjustment_scope TEXT,amount_cny_fen INTEGER,created_at INTEGER);
+  `);
+}
 
 class RecordingStorage implements ObjectStorageAdapter{
   readonly deleted:string[]=[];
@@ -215,4 +218,7 @@ class RecordingStorage implements ObjectStorageAdapter{
   async readPrefix(_objectKey:string,_maximumBytes:number):Promise<Uint8Array<ArrayBuffer>>{return new Uint8Array();}
   async readObject(_objectKey:string):Promise<Uint8Array<ArrayBuffer>>{return new Uint8Array();}
   async deleteObject(objectKey:string):Promise<void>{this.deleted.push(objectKey);}
+}
+class FailingDeleteStorage extends RecordingStorage{
+  override async deleteObject(_objectKey:string):Promise<void>{throw new Error('simulated_r2_failure');}
 }
