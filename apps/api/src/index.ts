@@ -44,9 +44,12 @@ import { registerAdminAcquisitionDailyRoutes } from './admin-business-dashboard/
 import { registerStaffMcpTransportRoutes } from './staff-mcp';
 import { registerStaffAccessManagementRoutes } from './staff-access-management';
 import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
+import { registerOperationalReadinessRoutes } from './operational-readiness/routes';
+import { registerOperatingIntegrityRoutes } from './operating-integrity/routes';
 
 const app = createApp();
 
+registerOperationalReadinessRoutes(app);
 registerStaffMcpTransportRoutes(app);
 registerCustomerAuthRoutes(app);
 registerPublicCustomerSecurityRoutes(app);
@@ -65,6 +68,7 @@ registerCustomerOnboardingRoutes(app);
 registerScopedCustomerPasswordResetRoutes(app);
 registerIdentityResolutionRoutes(app);
 registerExistingCustomerLeadGuard(app);
+registerOperatingIntegrityRoutes(app);
 // Privacy projection must be registered first so ordinary customer-intake Staff
 // never reach the older full channel read route.
 registerAcquisitionPrivacyRoutes(app);
