@@ -43,10 +43,9 @@ export async function listVisibleWorkItems(
   if(requested.length<1)return {work_items:[],next_cursor:null};
   const global=actor.roles.has('owner');
   const markets=global?[]:await primaryMarketplaceCodes(database,actor.staffId);
-  // SUPPORT staff retain customer/product visibility through normal Marketplace
-  // scope, but the open operational queue belongs to the current PRIMARY only.
   if(!global&&markets.length<1)return {work_items:[],next_cursor:null};
   const marketSql=global?'1=1':`marketplace_code IN (${placeholders(markets)})`;
+  const hideSettled=options.status==='COMPLETED'||options.status==='CANCELLED'?'1=1':refundStillNeedsWorkSql('staff_work_items');
   const rows=await database.prepare(`
     SELECT id AS work_item_id,work_type,source_entity_type,source_entity_id,
       buyer_customer_id,seller_organization_id,store_id,duty_code,
@@ -55,6 +54,7 @@ export async function listVisibleWorkItems(
     FROM staff_work_items
     WHERE status=? AND work_type IN (${placeholders(requested)})
       AND ${marketSql}
+      AND ${hideSettled}
       ${options.cursor?'AND (created_at>? OR (created_at=? AND id>?))':''}
     ORDER BY created_at,id LIMIT ?
   `).bind(
@@ -74,11 +74,21 @@ export async function getVisibleWorkItem(database:SqlDatabase,actor:AssignmentSt
   const row=await database.prepare(`SELECT id AS work_item_id,work_type,source_entity_type,source_entity_id,
     buyer_customer_id,seller_organization_id,store_id,duty_code,fixed_assignment_id,
     assigned_staff_id,status,version,created_at,updated_at,completed_at,cancelled_at
-    FROM staff_work_items WHERE id=? AND work_type IN (${placeholders(allowed)}) AND ${marketSql}`)
+    FROM staff_work_items WHERE id=? AND work_type IN (${placeholders(allowed)}) AND ${marketSql}
+      AND (status<>'OPEN' OR ${refundStillNeedsWorkSql('staff_work_items')})`)
     .bind(workItemId,...allowed,...(global?[]:markets)).first<StaffWorkItemDto>();
   if(!row)throw new StaffAssignmentError('NOT_FOUND',404); return row;
 }
 
+function refundStillNeedsWorkSql(alias:string){return `(
+  ${alias}.work_type<>'BUYER_REFUND_PROCESSING'
+  OR NOT EXISTS(
+    SELECT 1 FROM buyer_refund_obligations obligation
+    WHERE (obligation.id=${alias}.source_entity_id OR obligation.formal_order_id=${alias}.source_entity_id)
+      AND COALESCE((SELECT SUM(CASE entry.entry_type WHEN 'PAYMENT' THEN entry.amount_cny_fen ELSE -entry.amount_cny_fen END)
+        FROM buyer_refund_payment_entries entry WHERE entry.obligation_id=obligation.id),0)>=obligation.due_amount_cny_fen
+  )
+)`;}
 async function primaryMarketplaceCodes(database:SqlDatabase,staffId:string):Promise<string[]>{
   const rows=await database.prepare(`SELECT scope.marketplace_code
     FROM staff_marketplace_scopes scope
