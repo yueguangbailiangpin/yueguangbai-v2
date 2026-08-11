@@ -7,6 +7,7 @@ import type {
 import { createAuditEventStatement } from '../foundation/audit';
 import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import { prepareSellerPayableCreation } from '../seller-settlements/payable-statements';
+import { prepareAdvancePrincipalSettlementStatements } from './advance-principal-settlement';
 import { insertBuyerRefundEventStatement } from './buyer-refund-events';
 
 export interface PreparedBuyerRefundObligation {
@@ -24,11 +25,6 @@ interface ServiceFeeFacts {
   service_fee_cny_fen: number;
 }
 
-/**
- * Approval creates both financial obligations from the same immutable formal
- * snapshot. The caller appends these statements after the three approval
- * review events in one D1 batch.
- */
 export async function prepareBuyerRefundObligationFromReviewApproval(
   database: SqlDatabase,
   input: {
@@ -57,11 +53,7 @@ export async function prepareBuyerRefundObligationFromReviewApproval(
     idempotencyKey: input.idempotencyKey,
     now: input.now,
   });
-  const facts = await requireServiceFeeFacts(
-    database,
-    input.reviewCaseId,
-    input.formalOrderId,
-  );
+  const facts = await requireServiceFeeFacts(database,input.reviewCaseId,input.formalOrderId);
   const payable = await prepareSellerPayableCreation(database, {
     sellerOrganizationId: facts.seller_organization_id,
     formalOrderId: input.formalOrderId,
@@ -72,11 +64,7 @@ export async function prepareBuyerRefundObligationFromReviewApproval(
     sourceId: input.reviewCaseId,
     dueAt: input.now,
     createdAt: input.now,
-    actor: {
-      type: 'STAFF',
-      id: input.actorStaffId,
-      roles: input.actorRoles,
-    },
+    actor: {type:'STAFF',id:input.actorStaffId,roles:input.actorRoles},
     requestId: input.requestId,
     idempotencyKey: input.idempotencyKey,
   });
@@ -112,6 +100,11 @@ export async function prepareBuyerRefundObligationStatements(
   const obligationId = crypto.randomUUID();
   const eventId = crypto.randomUUID();
   const auditId = crypto.randomUUID();
+  const advance=await prepareAdvancePrincipalSettlementStatements(database,{
+    obligationId,formalOrderId:input.formalOrderId,now:input.now,
+  });
+  const paid=advance.netPaidCnyFen;
+  const status=paid===0?'DUE':paid<input.dueAmountCnyFen?'PARTIALLY_PAID':paid===input.dueAmountCnyFen?'PAID':'OVERPAID';
   const response: EnsureBuyerRefundObligationResult = {
     obligation_id: obligationId,
     source_review_event_id: input.sourceReviewEventId,
@@ -119,10 +112,10 @@ export async function prepareBuyerRefundObligationStatements(
     formal_order_id: input.formalOrderId,
     buyer_customer_id: input.buyerCustomerId,
     due_amount_cny_fen: String(input.dueAmountCnyFen),
-    gross_paid_cny_fen: '0',
+    gross_paid_cny_fen: String(paid),
     reversed_cny_fen: '0',
-    net_paid_cny_fen: '0',
-    status: 'DUE' as const,
+    net_paid_cny_fen: String(paid),
+    status,
     version: 1 as const,
     replayed: false,
   };
@@ -136,126 +129,55 @@ export async function prepareBuyerRefundObligationStatements(
     createdAt: input.now,
   });
   return {
-    obligationId,
-    eventId,
-    auditId,
-    result: response,
+    obligationId,eventId,auditId,result:response,
     statements: [
       database.prepare(`
         INSERT INTO buyer_refund_obligations (
           id, source_review_event_id, review_case_id, formal_order_id,
           buyer_customer_id, due_amount_cny_fen, version, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-      `).bind(
-        obligationId,
-        input.sourceReviewEventId,
-        input.reviewCaseId,
-        input.formalOrderId,
-        input.buyerCustomerId,
-        input.dueAmountCnyFen,
-        input.now,
-        input.now,
-      ),
+      `).bind(obligationId,input.sourceReviewEventId,input.reviewCaseId,input.formalOrderId,input.buyerCustomerId,input.dueAmountCnyFen,input.now,input.now),
       insertBuyerRefundEventStatement(database, {
-        eventId,
-        obligationId,
-        eventType: 'BUYER_REFUND_OBLIGATION_CREATED',
-        actorType: input.actorType,
-        actorId: input.actorId,
-        obligationVersion: 1,
-        amountCnyFen: input.dueAmountCnyFen,
-        netPaidAfterCnyFen: 0,
-        metadata: {
-          source_review_event_id: input.sourceReviewEventId,
-          source: 'BUYER_REFUND_BECAME_DUE.amount_cny_fen',
-        },
-        idempotencyKey: input.idempotencyKey,
-        createdAt: input.now,
+        eventId,obligationId,eventType:'BUYER_REFUND_OBLIGATION_CREATED',actorType:input.actorType,actorId:input.actorId,
+        obligationVersion:1,amountCnyFen:input.dueAmountCnyFen,netPaidAfterCnyFen:0,
+        metadata:{source_review_event_id:input.sourceReviewEventId,source:'BUYER_REFUND_BECAME_DUE.amount_cny_fen',advance_principal_settlement_count:advance.settlementCount},
+        idempotencyKey:input.idempotencyKey,createdAt:input.now,
       }),
+      ...advance.statements,
       createAuditEventStatement(database, {
-        id: auditId,
-        aggregateType: 'BUYER_REFUND_OBLIGATION',
-        aggregateId: obligationId,
-        eventType: 'BUYER_REFUND_OBLIGATION_CREATED',
-        actor: {
-          type: input.actorType,
-          id: input.actorId,
-          roles: input.actorRoles,
-        },
-        requestId: input.requestId,
-        idempotencyKey: input.idempotencyKey,
-        previousState: null,
-        nextState: response,
-        metadata: { source_review_event_id: input.sourceReviewEventId },
-        createdAt: input.now,
+        id:auditId,aggregateType:'BUYER_REFUND_OBLIGATION',aggregateId:obligationId,eventType:'BUYER_REFUND_OBLIGATION_CREATED',
+        actor:{type:input.actorType,id:input.actorId,roles:input.actorRoles},requestId:input.requestId,idempotencyKey:input.idempotencyKey,
+        previousState:null,nextState:response,metadata:{source_review_event_id:input.sourceReviewEventId,advance_principal_settled_cny_fen:String(paid)},createdAt:input.now,
       }),
       ...createOutboxStatements(database, outbox),
       database.prepare(`
         INSERT INTO transaction_assertions (assertion_value)
         SELECT CASE WHEN
-          EXISTS (
-            SELECT 1 FROM buyer_refund_obligations
-            WHERE id=? AND source_review_event_id=? AND review_case_id=?
-              AND formal_order_id=? AND buyer_customer_id=?
-              AND due_amount_cny_fen=? AND version=1
-          )
-          AND EXISTS (
-            SELECT 1 FROM buyer_refund_events
-            WHERE id=? AND obligation_id=?
-              AND event_type='BUYER_REFUND_OBLIGATION_CREATED'
-              AND amount_cny_fen=? AND net_paid_after_cny_fen=0
-          )
-          AND (
-            SELECT COUNT(*) FROM review_events
-            WHERE id=? AND event_type='BUYER_REFUND_BECAME_DUE'
-              AND amount_cny_fen=?
-          )=1
-          AND EXISTS (
-            SELECT 1 FROM audit_events
-            WHERE id=? AND aggregate_type='BUYER_REFUND_OBLIGATION'
-              AND aggregate_id=?
-          )
+          EXISTS (SELECT 1 FROM buyer_refund_obligations WHERE id=? AND source_review_event_id=? AND review_case_id=?
+              AND formal_order_id=? AND buyer_customer_id=? AND due_amount_cny_fen=? AND version=1)
+          AND EXISTS (SELECT 1 FROM buyer_refund_events WHERE id=? AND obligation_id=?
+              AND event_type='BUYER_REFUND_OBLIGATION_CREATED' AND amount_cny_fen=? AND net_paid_after_cny_fen=0)
+          AND (SELECT COUNT(*) FROM review_events WHERE id=? AND event_type='BUYER_REFUND_BECAME_DUE' AND amount_cny_fen=?)=1
+          AND EXISTS (SELECT 1 FROM audit_events WHERE id=? AND aggregate_type='BUYER_REFUND_OBLIGATION' AND aggregate_id=?)
         THEN 1 ELSE 0 END
-      `).bind(
-        obligationId,
-        input.sourceReviewEventId,
-        input.reviewCaseId,
-        input.formalOrderId,
-        input.buyerCustomerId,
-        input.dueAmountCnyFen,
-        eventId,
-        obligationId,
-        input.dueAmountCnyFen,
-        input.sourceReviewEventId,
-        input.dueAmountCnyFen,
-        auditId,
-        obligationId,
-      ),
+      `).bind(obligationId,input.sourceReviewEventId,input.reviewCaseId,input.formalOrderId,input.buyerCustomerId,input.dueAmountCnyFen,
+        eventId,obligationId,input.dueAmountCnyFen,input.sourceReviewEventId,input.dueAmountCnyFen,auditId,obligationId),
     ],
   };
 }
 
 async function requireServiceFeeFacts(
-  database: SqlDatabase,
-  reviewCaseId: string,
-  formalOrderId: string,
+  database: SqlDatabase,reviewCaseId: string,formalOrderId: string,
 ): Promise<ServiceFeeFacts> {
   const row = await database.prepare(`
-    SELECT
-      review_case.seller_organization_id,
-      snapshot.id AS financial_snapshot_id,
-      snapshot.service_fee_cny_fen
+    SELECT review_case.seller_organization_id,snapshot.id AS financial_snapshot_id,snapshot.service_fee_cny_fen
     FROM review_cases review_case
-    JOIN formal_orders formal_order
-      ON formal_order.id=review_case.formal_order_id
+    JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id
       AND formal_order.seller_organization_id=review_case.seller_organization_id
-    JOIN formal_order_financial_snapshots snapshot
-      ON snapshot.formal_order_id=formal_order.id
+    JOIN formal_order_financial_snapshots snapshot ON snapshot.formal_order_id=formal_order.id
     WHERE review_case.id=? AND formal_order.id=?
   `).bind(reviewCaseId, formalOrderId).first<ServiceFeeFacts>();
-  if (!row
-    || !Number.isSafeInteger(Number(row.service_fee_cny_fen))
-    || Number(row.service_fee_cny_fen) < 0) {
+  if (!row||!Number.isSafeInteger(Number(row.service_fee_cny_fen))||Number(row.service_fee_cny_fen)<0) {
     throw new Error('invalid_seller_service_fee_payable_facts');
   }
   return { ...row, service_fee_cny_fen: Number(row.service_fee_cny_fen) };
