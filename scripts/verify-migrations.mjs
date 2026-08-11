@@ -24,7 +24,7 @@ const expectedSchemaInventory = {
   index: 643,
   trigger: 423,
   view: 12,
-  sha256: 'f84e30c4beb706ab44c82d410286e19458c473159f862d553e4f94f9186316fb',
+  sha256: '8c2f371d2f470b1c5602000db7726192d89fc45fc6e2143b66b33d08165964dd',
 };
 
 const requiredTables = [

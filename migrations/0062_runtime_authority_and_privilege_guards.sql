@@ -22,8 +22,7 @@ BEGIN
       updated_at=MAX(updated_at,NEW.created_at)
   WHERE id=NEW.account_id AND identity_subject_id=NEW.identity_subject_id
     AND status='ACTIVE';
-  INSERT INTO transaction_assertions(assertion_value)
-  SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END;
+  INSERT INTO transaction_assertions(assertion_value) VALUES(changes());
 END;
 
 -- Company-profit adjustments are the only generic adjustment scopes. Seller
