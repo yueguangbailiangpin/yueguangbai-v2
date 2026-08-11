@@ -103,42 +103,49 @@ describe('Wave 15 architecture finalization — real behavior',()=>{
   it('retention deletes only old unlinked files and never touches an actively linked business file',async()=>{
     database=new SqliteDatabase(':memory:');
     seedRetentionSchema(database);
-    database.exec(`
-      INSERT INTO file_upload_intents VALUES('intent-linked','VERIFIED'),('intent-orphan','VERIFIED');
-      INSERT INTO file_objects VALUES
-        ('file-linked','intent-linked','objects/linked','VERIFIED',0,NULL,1,1000,1000,999999999,NULL,NULL),
-        ('file-orphan','intent-orphan','objects/orphan','VERIFIED',0,NULL,1,1000,1000,999999999,NULL,NULL);
-      INSERT INTO file_entity_links VALUES('link-1','file-linked',NULL);
-    `);
+    seedVerifiedRetentionFile(database,'file-linked','intent-linked','objects/linked',1000);
+    seedVerifiedRetentionFile(database,'file-orphan','intent-orphan','objects/orphan',1000);
+    database.exec(`INSERT INTO file_entity_links VALUES('link-1','file-linked',NULL);`);
     const storage=new RecordingStorage();
     const now=40*86_400_000;
     const result=await reconcileUnlinkedFileRetention(database,storage,{now,limit:10});
     expect(result.planned).toBe(1);
     expect(result.deleted).toBe(1);
     expect(storage.deleted).toEqual(['objects/orphan']);
-    const linked=await database.prepare(`SELECT status FROM file_objects WHERE id='file-linked'`).first<{status:string}>();
-    const orphan=await database.prepare(`SELECT status,failure_code FROM file_objects WHERE id='file-orphan'`).first<{status:string;failure_code:string}>();
-    expect(linked?.status).toBe('VERIFIED');
-    expect(orphan).toEqual({status:'DELETED',failure_code:'RETENTION_DELETED'});
+    const linked=await database.prepare(`SELECT status,verified_at FROM file_objects WHERE id='file-linked'`).first<{status:string;verified_at:number|null}>();
+    const orphan=await database.prepare(`SELECT status,failure_code,verified_at FROM file_objects WHERE id='file-orphan'`).first<{status:string;failure_code:string;verified_at:number|null}>();
+    expect(linked).toEqual({status:'VERIFIED',verified_at:1000});
+    expect(orphan).toEqual({status:'DELETED',failure_code:'RETENTION_DELETED',verified_at:null});
   });
 
   it('retention keeps failed R2 deletes pending and schedules a bounded retry instead of lying that the file is gone',async()=>{
     database=new SqliteDatabase(':memory:');
     seedRetentionSchema(database);
-    database.exec(`
-      INSERT INTO file_upload_intents VALUES('intent-retry','VERIFIED');
-      INSERT INTO file_objects VALUES('file-retry','intent-retry','objects/retry','VERIFIED',0,NULL,1,1000,1000,999999999,NULL,NULL);
-    `);
+    seedVerifiedRetentionFile(database,'file-retry','intent-retry','objects/retry',1000);
     const now=40*86_400_000;
     const result=await reconcileUnlinkedFileRetention(database,new FailingDeleteStorage(),{now,limit:10});
     expect(result.planned).toBe(1);
     expect(result.deleted).toBe(0);
     expect(result.deferred).toBe(1);
-    const row=await database.prepare(`SELECT status,failure_code,delete_attempt_count,next_delete_at FROM file_objects WHERE id='file-retry'`).first<any>();
+    const row=await database.prepare(`SELECT status,failure_code,delete_attempt_count,next_delete_at,verified_at FROM file_objects WHERE id='file-retry'`).first<any>();
     expect(row.status).toBe('DELETION_PENDING');
     expect(row.failure_code).toBe('RETENTION_DELETE_RETRY');
     expect(Number(row.delete_attempt_count)).toBe(1);
     expect(Number(row.next_delete_at)).toBeGreaterThan(now);
+    expect(row.verified_at).toBeNull();
+  });
+
+  it('an active read intent postpones retention even when the file is old and unlinked',async()=>{
+    database=new SqliteDatabase(':memory:');
+    seedRetentionSchema(database);
+    seedVerifiedRetentionFile(database,'file-reading','intent-reading','objects/reading',1000);
+    const now=40*86_400_000;
+    database.prepare(`INSERT INTO file_read_intents VALUES('file-reading','ISSUED',?)`).bind(now+60_000).run();
+    const storage=new RecordingStorage();
+    const result=await reconcileUnlinkedFileRetention(database,storage,{now,limit:10});
+    expect(result.planned).toBe(0);
+    expect(result.deleted).toBe(0);
+    expect(storage.deleted).toEqual([]);
   });
 
   it('financial projection counts real buyer cash once when advance principal later becomes a refund ledger payment',async()=>{
@@ -189,12 +196,24 @@ function seedRetentionSchema(db:SqliteDatabase):void{
     CREATE TABLE file_objects(
       id TEXT PRIMARY KEY,upload_intent_id TEXT NOT NULL,object_key TEXT NOT NULL,status TEXT NOT NULL,
       delete_attempt_count INTEGER NOT NULL DEFAULT 0,next_delete_at INTEGER,version INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,verified_at INTEGER,upload_expires_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,verified_at INTEGER,uploaded_byte_size INTEGER,detected_mime TEXT,
+      uploaded_sha256 TEXT,uploaded_at INTEGER,upload_expires_at INTEGER NOT NULL,
       failure_code TEXT,deleted_at INTEGER
     );
     CREATE TABLE file_entity_links(id TEXT PRIMARY KEY,file_object_id TEXT NOT NULL,revoked_at INTEGER);
+    CREATE TABLE file_read_intents(file_object_id TEXT NOT NULL,status TEXT NOT NULL,expires_at INTEGER NOT NULL);
     CREATE TABLE order_instruction_asset_items(id TEXT PRIMARY KEY,file_object_id TEXT,status TEXT);
   `);
+}
+function seedVerifiedRetentionFile(db:SqliteDatabase,id:string,intentId:string,key:string,at:number):void{
+  db.prepare(`INSERT INTO file_upload_intents VALUES(?,'VERIFIED')`).bind(intentId).run();
+  db.prepare(`INSERT INTO file_objects(
+    id,upload_intent_id,object_key,status,delete_attempt_count,next_delete_at,version,
+    updated_at,verified_at,uploaded_byte_size,detected_mime,uploaded_sha256,uploaded_at,
+    upload_expires_at,failure_code,deleted_at
+  ) VALUES(?,?,?,'VERIFIED',0,NULL,1,?,?,8,'image/png',?, ?, ?,NULL,NULL)`).bind(
+    id,intentId,key,at,at,'a'.repeat(64),at,at+100_000,
+  ).run();
 }
 
 function seedFinancialProjectionSchema(db:SqliteDatabase):void{
