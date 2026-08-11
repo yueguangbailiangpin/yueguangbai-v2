@@ -9,7 +9,7 @@ import {
 
 export function registerFormalOrderPolicyGuards(app:Hono<any>):void{
   app.use('/api/staff/buyer-advance-principal/:formalOrderId/payments',guardAdvancePrincipal);
-  app.use('/api/staff/reviews/:reviewCaseId/approve',guardReviewApproval);
+  app.use('/api/staff/reviews/:id/approve',guardReviewApproval);
 }
 
 async function guardAdvancePrincipal(context:Context<any>,next:Next):Promise<Response|void>{
@@ -17,7 +17,7 @@ async function guardAdvancePrincipal(context:Context<any>,next:Next):Promise<Res
 }
 
 async function guardReviewApproval(context:Context<any>,next:Next):Promise<Response|void>{
-  const reviewCaseId=(context.req.param('reviewCaseId')??'').normalize('NFKC').trim();
+  const reviewCaseId=(context.req.param('id')??'').normalize('NFKC').trim();
   if(reviewCaseId.length<1||reviewCaseId.length>200)return blocked(context,'VALIDATION_ERROR',400,'评论记录不正确');
   const row=await context.env.DB.prepare(`SELECT formal_order_id FROM review_cases WHERE id=? LIMIT 1`).bind(reviewCaseId).first<{formal_order_id:string}>();
   if(!row)return blocked(context,'NOT_FOUND',404,'没有找到对应评论');
