@@ -10,6 +10,7 @@ import { registerStaffBuyerRefundRoutes } from './buyer-refunds/staff-routes';
 import { registerFileHttpRoutes } from './files';
 import { registerCustomerAuthRoutes } from './http-auth';
 import { registerPublicCustomerSecurityRoutes, registerStaffCustomerSecurityRoutes } from './customer-security';
+import { registerExistingCustomerLeadGuard } from './customer-onboarding/lead-guard';
 import { registerCustomerOnboardingRoutes } from './customer-onboarding/routes';
 import { registerStaffFinanceRoutes } from './internal-finance';
 import { staffSessionMiddleware } from './middleware/staff-auth';
@@ -43,15 +44,16 @@ const app = createApp();
 registerStaffMcpTransportRoutes(app);
 registerCustomerAuthRoutes(app);
 registerPublicCustomerSecurityRoutes(app);
-registerSellerRegistrationRoutes(app);
 registerAcquisitionMachineRoutes(app);
 registerCloudflareStaffAuthRoutes(app);
 
 app.use('/api/staff/*', staffSessionMiddleware());
+registerSellerRegistrationRoutes(app);
 registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
 registerStaffCustomerSecurityRoutes(app);
 registerCustomerOnboardingRoutes(app);
+registerExistingCustomerLeadGuard(app);
 // Privacy projection must be registered first so ordinary customer-intake Staff
 // never reach the older full channel read route.
 registerAcquisitionPrivacyRoutes(app);
