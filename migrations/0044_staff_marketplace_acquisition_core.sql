@@ -52,8 +52,13 @@ SELECT id,staff_id,role_code,status,assigned_by_staff_id,assigned_at,
   revoked_at,revoked_by_staff_id,revoked_reason,created_at,updated_at
 FROM staff_role_assignments;
 
+-- SQLite reparses triggers on unrelated tables while dropping a referenced
+-- table.  Keep their SQL text intact during this in-place constraint rebuild;
+-- the replacement table immediately reclaims the same canonical name.
+PRAGMA legacy_alter_table = ON;
 DROP TABLE staff_role_assignments;
 ALTER TABLE staff_role_assignments_next RENAME TO staff_role_assignments;
+PRAGMA legacy_alter_table = OFF;
 
 CREATE UNIQUE INDEX uq_staff_role_assignment_one_active
 ON staff_role_assignments(staff_id) WHERE status='ACTIVE';
