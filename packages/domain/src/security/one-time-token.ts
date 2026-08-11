@@ -5,7 +5,7 @@ const TOKEN_BYTES = 32;
 
 export async function deriveOneTimeToken(
   secret: string,
-  purpose: 'BUYER_INVITATION' | 'PASSWORD_RESET',
+  purpose: 'BUYER_INVITATION' | 'SELLER_INVITATION' | 'PASSWORD_RESET',
   issuerId: string,
   idempotencyKey: string,
   requestHash: string,

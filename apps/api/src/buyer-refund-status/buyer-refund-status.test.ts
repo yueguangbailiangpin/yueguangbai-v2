@@ -208,17 +208,10 @@ describe('Phase 4B5 buyer refund status read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(43);
+    expect(migrations).toHaveLength(64);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations.at(-9)).toBe('0035_staff_four_role_consolidation.sql');
-    expect(migrations.at(-8)).toBe('0036_staff_acquisition_funnel_workbench.sql');
-    expect(migrations.at(-7)).toBe('0037_product_reservation_order_scheduling.sql');
-    expect(migrations.at(-6)).toBe('0038_staff_mcp_production_transport_oauth.sql');
-    expect(migrations.at(-5)).toBe('0039_staff_access_binding_management.sql');
-    expect(migrations.at(-4)).toBe('0040_seller_partner_master_data_import.sql');
-    expect(migrations.at(-3)).toBe('0041_seller_principal_rate_policy.sql');
-    expect(migrations.at(-2)).toBe('0042_rakuten_tiktok_jp_marketplace_foundation.sql');
-    expect(migrations.at(-1)).toBe('0043_seller_principal_rate_integrity_hardening.sql');
+    expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
+    expect(migrations.at(-1)).toBe('0064_marketplace_local_date_truth.sql');
   });
 });
 

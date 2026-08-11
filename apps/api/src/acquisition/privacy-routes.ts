@@ -1,6 +1,7 @@
 import { apiFailure, apiSuccess, type ApiErrorCode } from '@ygb/contracts';
 import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
+import type { AppEnv } from '../app';
 import { IdempotencyError } from '../foundation/idempotency';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
@@ -11,7 +12,7 @@ import { AcquisitionError, validation } from './errors';
 
 const BODY_LIMIT=16*1024;
 
-export function registerAcquisitionPrivacyRoutes(app:Hono<any>):void{
+export function registerAcquisitionPrivacyRoutes(app:Hono<AppEnv>):void{
   app.get('/api/staff/acquisition/channels',withErrors(async(context)=>{
     return context.json(apiSuccess({
       channels:await listAcquisitionVisibleChannels(context.env.DB,actor(context)),
@@ -33,18 +34,18 @@ export function registerAcquisitionPrivacyRoutes(app:Hono<any>):void{
   );
 }
 
-function actor(context:Context<any>):AssignmentStaffAuthorization{
+function actor(context:Context<AppEnv>):AssignmentStaffAuthorization{
   const value=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
   if(!value||value.staffStatus!=='ACTIVE')throw new AcquisitionError('UNAUTHENTICATED',401);
   return value;
 }
-function command(context:Context<any>):AcquisitionCommandContext{
+function command(context:Context<AppEnv>):AcquisitionCommandContext{
   let key:string|null=null;
   try{key=parseIdempotencyKey(context.req.header('Idempotency-Key'));}catch{validation();}
   if(!key)validation();
   return{actor:actor(context),idempotencyKey:key,requestId:requestIdFromContext(context)};
 }
-async function readBody(context:Context<any>):Promise<Record<string,unknown>>{
+async function readBody(context:Context<AppEnv>):Promise<Record<string,unknown>>{
   const value=await readBoundedJson(context.req.raw,BODY_LIMIT);
   if(!value||typeof value!=='object'||Array.isArray(value))validation();
   const record=value as Record<string,unknown>;
@@ -60,15 +61,15 @@ function integer(value:unknown):number{
   if(typeof value!=='number'||!Number.isSafeInteger(value)||value<1)validation();
   return value;
 }
-function withErrors(handler:(context:Context<any>)=>Promise<Response>){
-  return async(context:Context<any>)=>{
+function withErrors(handler:(context:Context<AppEnv>)=>Promise<Response>){
+  return async(context:Context<AppEnv>)=>{
     try{return await handler(context);}catch(error){
       const normalized=normalize(error);
       return context.json(apiFailure(normalized.code,message(normalized.code),requestIdFromContext(context)),normalized.status);
     }
   };
 }
-function normalize(error:unknown):{code:ApiErrorCode;status:400|401|403|404|409|503}{
+function normalize(error:unknown):{code:ApiErrorCode;status:400|401|403|404|409|429|503}{
   if(error instanceof AcquisitionError)return error;
   if(error instanceof IdempotencyError)return error;
   return{code:'DEPENDENCY_UNAVAILABLE',status:503};

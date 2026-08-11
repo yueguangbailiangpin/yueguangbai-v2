@@ -234,7 +234,17 @@ export async function registerInvitedBuyer(
       ? ['SELLER_MEMBER' as const]
       : []),
   ];
-  const sessionVersion = Number(identity?.account_session_version ?? 1);
+  const addsSecondPersona = Boolean(identity?.account_id && needsBuyer
+    && await database.prepare(`
+      SELECT 1 AS present FROM customer_account_personas
+      WHERE account_id=? AND persona_type<>'BUYER' LIMIT 1
+    `).bind(accountId).first<{ present: number }>());
+  // Migration 0062 revokes older devices in the same transaction when this
+  // Buyer persona is inserted. The current registration response and issuance
+  // must use that committed version, otherwise the newly issued cookie is
+  // invalid before it reaches the browser.
+  const sessionVersion = Number(identity?.account_session_version ?? 1)
+    + (addsSecondPersona ? 1 : 0);
   const safeResult = {
     buyerNumber: identity?.buyer_customer_no ?? null,
     wechatDisplay: wechat.display,

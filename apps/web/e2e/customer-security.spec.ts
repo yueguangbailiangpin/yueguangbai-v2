@@ -26,7 +26,7 @@ function staffSession() {
     staff_id: 'ordinary-staff', display_name: '普通员工',
     role: { code: 'pre_sales', display_name: '售前' },
     permissions: [], data_scope: {
-      type: 'GLOBAL', buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [],
+      type: 'MARKETPLACE', marketplaceCodes: ['AMAZON_JP'], buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [],
     }, authorization_version: 1, session_version: 1,
     expires_at: 9_999_999_999_999,
   };
@@ -142,17 +142,15 @@ test('密码恢复在 320px 和键盘路径可用，并回到服务端确定的�
   await noHorizontalOverflow(page);
 });
 
-test('普通 ACTIVE Staff 可见邀请与恢复界面，但不提供密码字段', async ({ page }) => {
+test('普通 ACTIVE Staff 从买家客户页处理邀请与恢复，且不提供密码字段', async ({ page }) => {
   await page.route('**/api/staff-auth/session', (route) =>
     json(route, success({ session: staffSession() })));
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto('/staff/auth/callback');
-  await expect(page.getByRole('heading', { name: '客户邀请与账号恢复' }))
+  await page.goto('/staff/buyer-customers');
+  await expect(page.getByRole('heading', { name: '买家客户', exact: true, level: 2 }))
     .toBeVisible();
-  await expect(page.getByRole('button', { name: '签发七天买家邀请' }))
-    .toBeVisible();
-  await expect(page.getByRole('button', { name: '签发一次性密码恢复链接' }))
-    .toBeVisible();
+  await expect(page.getByRole('heading', { name: '历史客户 / 已有客户查询' })).toBeVisible();
+  await expect(page.getByText(/账号开通、密码恢复都从具体客户记录发起/u)).toBeVisible();
   await expect(page.getByLabel(/新密码|旧密码/u)).toHaveCount(0);
   await noHorizontalOverflow(page);
 });

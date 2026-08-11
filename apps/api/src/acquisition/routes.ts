@@ -9,6 +9,7 @@ import {
 } from '@ygb/contracts';
 import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
+import type { AppEnv } from '../app';
 import { IdempotencyError } from '../foundation/idempotency';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
@@ -18,7 +19,6 @@ import {
   createAcquisitionChannel,
   disableAcquisitionChannel,
   listAcquisitionAssignments,
-  listAcquisitionChannels,
   listAcquisitionConsultations,
   listAcquisitionConsultationHistory,
   recordAcquisitionConsultation,
@@ -48,8 +48,7 @@ import { requireAcquisitionSecret } from './privacy';
 
 const BODY_LIMIT=32*1024;
 
-export function registerAcquisitionRoutes(app:Hono<any>):void{
-  app.get('/api/staff/acquisition/channels',withErrors(async(context)=>success(context,{channels:await listAcquisitionChannels(context.env.DB,actor(context))})));
+export function registerAcquisitionRoutes(app:Hono<AppEnv>):void{
   app.post('/api/staff/acquisition/channels',customerAuthOriginGuard(),withErrors(async(context)=>{
     const body=await exactBody(context,['code','platform_name','lead_type','marketplace_code','display_name']);
     if(typeof body['code']!=='string'||typeof body['platform_name']!=='string'||!isAcquisitionChannelAudience(body['lead_type'])
@@ -127,12 +126,12 @@ export function registerAcquisitionRoutes(app:Hono<any>):void{
   app.get('/api/staff/acquisition/funnel',withErrors(async(context)=>{exactQuery(context,['from_date','to_date']);const from=context.req.query('from_date'),to=context.req.query('to_date');if(!from||!to)validation();return success(context,{funnel:await readAcquisitionFunnel(context.env.DB,actor(context),{fromDate:from,toDate:to})});}));
 }
 
-function actor(context:Context<any>):AssignmentStaffAuthorization{const value=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;if(!value||value.staffStatus!=='ACTIVE')throw new AcquisitionError('UNAUTHENTICATED',401);return value;}
-function paramId(context:Context<any>):string{const value=context.req.param('id');if(!value)validation();return value;}
-function command(context:Context<any>):AcquisitionCommandContext{let key;try{key=parseIdempotencyKey(context.req.header('Idempotency-Key'));}catch{validation();}if(!key)validation();return{actor:actor(context),idempotencyKey:key,requestId:requestIdFromContext(context)};}
-async function exactBody(context:Context<any>,keys:readonly string[]){const value=await readBoundedJson(context.req.raw,BODY_LIMIT);if(!value||typeof value!=='object'||Array.isArray(value))validation();const record=value as Record<string,unknown>;if(Object.keys(record).length!==keys.length||keys.some((key)=>!Object.hasOwn(record,key)))validation();return record;}
-function exactQuery(context:Context<any>,keys:readonly string[]):void{const url=new URL(context.req.url);if([...url.searchParams.keys()].some((key)=>!keys.includes(key)))validation();}
-function success(context:Context<any>,data:unknown):Response{return context.json(apiSuccess(data,requestIdFromContext(context)));}
-function withErrors(handler:(context:Context<any>)=>Promise<Response>){return async(context:Context<any>)=>{try{return await handler(context);}catch(error){const normalized=normalize(error);return context.json(apiFailure(normalized.code,message(normalized.code),requestIdFromContext(context)),normalized.status);}};}
-function normalize(error:unknown):{code:ApiErrorCode;status:400|401|403|404|409|503}{if(error instanceof AcquisitionError)return error;if(error instanceof IdempotencyError)return error;return{code:'DEPENDENCY_UNAVAILABLE',status:503};}
+function actor(context:Context<AppEnv>):AssignmentStaffAuthorization{const value=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;if(!value||value.staffStatus!=='ACTIVE')throw new AcquisitionError('UNAUTHENTICATED',401);return value;}
+function paramId(context:Context<AppEnv>):string{const value=context.req.param('id');if(!value)validation();return value;}
+function command(context:Context<AppEnv>):AcquisitionCommandContext{let key;try{key=parseIdempotencyKey(context.req.header('Idempotency-Key'));}catch{validation();}if(!key)validation();return{actor:actor(context),idempotencyKey:key,requestId:requestIdFromContext(context)};}
+async function exactBody(context:Context<AppEnv>,keys:readonly string[]){const value=await readBoundedJson(context.req.raw,BODY_LIMIT);if(!value||typeof value!=='object'||Array.isArray(value))validation();const record=value as Record<string,unknown>;if(Object.keys(record).length!==keys.length||keys.some((key)=>!Object.hasOwn(record,key)))validation();return record;}
+function exactQuery(context:Context<AppEnv>,keys:readonly string[]):void{const url=new URL(context.req.url);if([...url.searchParams.keys()].some((key)=>!keys.includes(key)))validation();}
+function success(context:Context<AppEnv>,data:unknown):Response{return context.json(apiSuccess(data,requestIdFromContext(context)));}
+function withErrors(handler:(context:Context<AppEnv>)=>Promise<Response>){return async(context:Context<AppEnv>)=>{try{return await handler(context);}catch(error){const normalized=normalize(error);return context.json(apiFailure(normalized.code,message(normalized.code),requestIdFromContext(context)),normalized.status);}};}
+function normalize(error:unknown):{code:ApiErrorCode;status:400|401|403|404|409|429|503}{if(error instanceof AcquisitionError)return error;if(error instanceof IdempotencyError)return error;return{code:'DEPENDENCY_UNAVAILABLE',status:503};}
 function message(code:ApiErrorCode):string{if(code==='UNAUTHENTICATED')return'员工会话无效';if(code==='FORBIDDEN')return'当前岗位或负责站点不允许此操作';if(code==='NOT_FOUND')return'记录不存在或不在当前站点范围';if(code==='CHANNEL_CONFIGURATION_MISSING')return'当前没有可用获客渠道';if(code==='CHANNEL_CONFIGURATION_AMBIGUOUS')return'获客渠道配置存在冲突';if(code==='DUPLICATE_LEAD')return'该微信身份已有同类型有效线索';if(code==='VERSION_CONFLICT')return'记录已更新，请刷新后重试';if(code==='IDEMPOTENCY_CONFLICT')return'幂等键已用于其他请求';if(code==='REQUEST_IN_PROGRESS')return'相同请求正在处理中';if(code==='VALIDATION_ERROR')return'请求内容不正确';return'获客服务暂时不可用';}

@@ -174,14 +174,8 @@ describe('explicit file audiences', () => {
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
-  it('requires active staff permission and active team scope', async () => {
-    const fixture = await explicitFixture({
-      staffGrant: {
-        subjectType: 'STAFF_INTERNAL',
-        permissionCode: 'ORDER_VIEW',
-        scope: { type: 'TEAM', teamId: 'team-files' },
-      },
-    });
+  it('requires active role permission and ignores retired Team authority', async () => {
+    const fixture = await explicitFixture();
     await expect(authorize(
       fixture.resource,
       staffActor,
@@ -197,7 +191,7 @@ describe('explicit file audiences', () => {
       fixture.resource,
       staffActor,
       { type: 'STAFF_SESSION', staffId: staffActor.id },
-    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    )).resolves.toBeUndefined();
 
     await expect(authorize(
       fixture.resource,
@@ -348,11 +342,6 @@ describe('explicit file audiences', () => {
 
 async function explicitFixture(options: {
   linkExpiresAt?: number | null;
-  staffGrant?: {
-    subjectType: 'STAFF_INTERNAL';
-    permissionCode: 'ORDER_VIEW';
-    scope: { type: 'TEAM'; teamId: string };
-  };
 } = {}) {
   const storage = new MockObjectStorage();
   const intent = await createFileUploadIntent(
@@ -422,7 +411,7 @@ async function explicitFixture(options: {
           subjectType: 'SELLER_ORGANIZATION',
           sellerOrganizationId: 'seller-org-1',
         },
-        options.staffGrant ?? {
+        {
           subjectType: 'STAFF_INTERNAL',
           permissionCode: 'ORDER_VIEW',
           scope: { type: 'GLOBAL' },

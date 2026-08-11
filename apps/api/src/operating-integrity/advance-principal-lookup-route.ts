@@ -1,17 +1,18 @@
 import { apiFailure,apiSuccess,type BusinessActionCapabilityDto } from '@ygb/contracts';
 import { normalizeAmazonOrderNumber } from '@ygb/domain';
 import type { Context,Hono } from 'hono';
+import type { AppEnv } from '../app';
 import { readFormalOrderBusinessCapabilities } from '../formal-order-policy';
 import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 
-export function registerAdvancePrincipalLookupRoute(app:Hono<any>):void{
+export function registerAdvancePrincipalLookupRoute(app:Hono<AppEnv>):void{
   app.get('/api/staff/operating-integrity/order-lookup',lookup);
   app.get('/api/staff/buyer-advance-principal-lookup',lookup);
 }
 
-async function lookup(context:Context<any>){
+async function lookup(context:Context<AppEnv>){
   const requestId=requestIdFromContext(context);
   const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
   if(!actor||actor.staffStatus!=='ACTIVE'||![...actor.roles].some((role)=>['owner','seller_ops','pre_sales','buyer_refund'].includes(role)))return context.json(apiFailure('FORBIDDEN','当前岗位不能查询该业务',requestId),403);

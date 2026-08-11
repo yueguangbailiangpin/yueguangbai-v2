@@ -556,13 +556,8 @@ function normalizeGrants(
       };
     }
 
-    const staffTeamId = input.scope.type === 'TEAM'
-      ? cleanFileIdentifier(input.scope.teamId, 120)
-      : null;
     assertUnique(seen, 'STAFF_INTERNAL');
-    const subjectAuthorityId = input.scope.type === 'TEAM'
-      ? `staff:${input.permissionCode}:team:${staffTeamId}`
-      : `staff:${input.permissionCode}:global`;
+    const subjectAuthorityId = `staff:${input.permissionCode}:global`;
     return {
       result: {
         grantId,
@@ -573,8 +568,8 @@ function normalizeGrants(
       buyerCustomerId: null,
       sellerOrganizationId: null,
       staffPermissionCode: input.permissionCode,
-      staffScopeType: input.scope.type,
-      staffTeamId,
+      staffScopeType: 'GLOBAL',
+      staffTeamId: null,
     };
   });
 }

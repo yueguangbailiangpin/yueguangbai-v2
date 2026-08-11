@@ -249,18 +249,6 @@ describe('seller order chat screenshot access Change', () => {
     expect(await attachmentSideEffects()).toEqual(beforeDeny);
 
     const scoped = await resolvedStaff('staff-chat-scoped');
-    database.exec(`
-      INSERT INTO seller_staff_assignments (
-        id, seller_organization_id, duty_code, staff_id, status, source,
-        assigned_by_actor_type, assigned_by_actor_id, reason, version,
-        created_at, updated_at, revoked_at
-      ) VALUES (
-        'platform-chat-wrong-org', 'org-2', 'SELLER_ACCOUNT_MANAGER',
-        'staff-chat-scoped', 'ACTIVE', 'MANUAL_REASSIGN',
-        'STAFF', 'staff-chat-owner', 'platform wrong scope', 1,
-        9000, 9000, NULL
-      )
-    `);
     await expect(attachSellerOrderChatScreenshot(
       database,
       {
@@ -490,19 +478,6 @@ describe('seller order chat screenshot access Change', () => {
       { actor: scoped, idempotencyKey: 'missing-data-scope', now: NOW },
     )).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(await attachmentSideEffects()).toEqual(before);
-
-    database.exec(`
-      INSERT INTO seller_staff_assignments (
-        id, seller_organization_id, duty_code, staff_id, status, source,
-        assigned_by_actor_type, assigned_by_actor_id, reason, version,
-        created_at, updated_at, revoked_at
-      ) VALUES (
-        'chat-scoped-wrong-org', 'org-2', 'SELLER_ACCOUNT_MANAGER',
-        'staff-chat-scoped', 'ACTIVE', 'MANUAL_REASSIGN',
-        'STAFF', 'staff-chat-owner', 'wrong scope regression', 1,
-        9000, 9000, NULL
-      )
-    `);
     await expect(attachSellerOrderChatScreenshot(
       database,
       {
@@ -1548,19 +1523,6 @@ async function seedChatFixture(
     DROP TRIGGER trg_formal_order_source_guard;
     DROP TRIGGER trg_formal_order_instruction_guard;
     DROP TRIGGER trg_order_evidence_submission_reservation_guard;
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES (
-      'department-chat', 'chat', '聊天截图测试部门',
-      'ACTIVE', 1, 1, 1, NULL
-    );
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status,
-      version, created_at, updated_at, disabled_at
-    ) VALUES (
-      'team-chat', 'department-chat', 'chat', '聊天截图测试组',
-      'ACTIVE', 1, 1, 1, NULL
-    );
     INSERT INTO staff_users (
       id, display_name, status, authorization_version,
       version, created_at, updated_at, disabled_at
@@ -1573,21 +1535,16 @@ async function seedChatFixture(
     ) VALUES
       ('role-chat-owner', 'staff-chat-owner', 'owner', 'ACTIVE',
        'staff-chat-owner', 1, NULL, NULL, NULL, 1, 1),
-      ('role-chat-scoped', 'staff-chat-scoped', 'seller_ops', 'ACTIVE',
+      ('role-chat-scoped', 'staff-chat-scoped', 'pre_sales', 'ACTIVE',
        'staff-chat-owner', 1, NULL, NULL, NULL, 1, 1);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at,
-      ended_at, created_at, updated_at
+    INSERT INTO staff_marketplace_scopes (
+      id, staff_id, role_code, marketplace_code, status,
+      assigned_by_staff_id, assigned_at, revoked_at, reason,
+      created_at, updated_at, scope_kind
     ) VALUES (
-      'staff-chat-scoped', 'team-chat', 'ACTIVE', 1, NULL, 1, 1
-    );
-    INSERT INTO staff_permission_overrides (
-      staff_id, permission_code, effect, status, reason,
-      assigned_by_staff_id, assigned_at, revoked_at,
-      created_at, updated_at
-    ) VALUES (
-      'staff-chat-scoped', 'ORDER_CONFIRM', 'GRANT', 'ACTIVE',
-      'entity command test scope', 'staff-chat-owner', 1, NULL, 1, 1
+      'scope-chat-scoped-us', 'staff-chat-scoped', 'pre_sales',
+      'AMAZON_US', 'ACTIVE', 'staff-chat-owner', 1, NULL,
+      'TEST_PRIMARY', 1, 1, 'PRIMARY'
     );
     INSERT INTO customer_identity_subjects (id, subject_type, created_at) VALUES
       ('subject-owner', 'SELLER_ORG_MEMBER', 1),

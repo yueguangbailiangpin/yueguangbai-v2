@@ -1,4 +1,6 @@
 import type { Hono } from 'hono';
+import type { SqlDatabase } from '@ygb/contracts';
+import type { AppEnv } from '../app';
 import { hashOneTimeToken } from '@ygb/domain';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
 import { writeCustomerSessionCookie } from '../http-auth/cookies';
@@ -14,13 +16,13 @@ type RegistrationPath='/api/buyer-auth/register'|'/api/seller-auth/register'|'/a
  * device is invalid immediately, while the device that completed the invite can
  * continue with the newly selected persona.
  */
-export function installSellerMemberPrivilegeSessionRotation(app:Hono<any>):void{
+export function installSellerMemberPrivilegeSessionRotation(app:Hono<AppEnv>):void{
   install(app,'/api/buyer-auth/register');
   install(app,'/api/seller-auth/register');
   install(app,'/api/seller-auth/member-register');
 }
 
-function install(app:Hono<any>,path:RegistrationPath):void{
+function install(app:Hono<AppEnv>,path:RegistrationPath):void{
   app.use(path,async(context,next)=>{
     let invitationToken:string|null=null;
     try{
@@ -47,7 +49,7 @@ function install(app:Hono<any>,path:RegistrationPath):void{
   });
 }
 
-async function consumedAccountId(database:any,path:RegistrationPath,tokenHash:string):Promise<string|null>{
+async function consumedAccountId(database:SqlDatabase,path:RegistrationPath,tokenHash:string):Promise<string|null>{
   if(path==='/api/buyer-auth/register'){
     const row=await database.prepare(`SELECT consumed_by_account_id AS account_id FROM customer_buyer_invitations
       WHERE token_hash=? AND status='CONSUMED' AND consumed_by_account_id IS NOT NULL`).bind(tokenHash).first<{account_id:string}>();

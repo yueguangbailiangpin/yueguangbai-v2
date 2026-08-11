@@ -57,7 +57,7 @@ describe('file retention on current migrated schema',()=>{
     expect(Number(row.delete_attempt_count)).toBe(1);
     expect(row.failure_code).toBe('RETENTION_DELETED');
     expect(Number(row.deleted_at)).toBe(now);
-    expect(await database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(await database.prepare('PRAGMA foreign_key_check').all()).toEqual({ results: [] });
   });
 });
 

@@ -279,26 +279,26 @@ test('Dashboard lists only server-authoritative reservable products', async ({ p
 
 test('Dashboard shows a product-only failure safely', async ({ page }) => {
   await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/demands': 503 } });
-  await expect(page.getByText('产品暂时无法读取')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '暂时无法读取内容' })).toBeVisible();
 });
 
 test('Dashboard reload restores the product list', async ({ page }) => {
   let demandReads = 0;
   page.on('request', (request) => { if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/buyer-portal/demands') demandReads += 1; });
   await gotoBuyer(page, '/buyer', { failureOnce: '/api/buyer-portal/demands' });
-  await expect(page.getByText('产品暂时无法读取')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '暂时无法读取内容' })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: '月白护肤套装', exact: true })).toBeVisible(); expect(demandReads).toBe(2);
 });
 
 for (const [path, owner] of [
-  ['/buyer/demands/demand-1', '产品'], ['/buyer/reservations/reservation-1/instruction', '产品'],
-  ['/buyer/order-materials/evidence-1', '订单资料'], ['/buyer/orders/formal-1', '订单资料'],
-  ['/buyer/reviews/review-1', '评论'], ['/buyer/refunds/refund-1', '我的'], ['/buyer/change-password', '我的'],
+  ['/buyer/demands/demand-1', '产品'], ['/buyer/reservations/reservation-1/instruction', '任务'],
+  ['/buyer/order-materials/evidence-1', '任务'], ['/buyer/orders/formal-1', '任务'],
+  ['/buyer/reviews/review-1', '任务'], ['/buyer/refunds/refund-1', '任务'], ['/buyer/change-password', '我的'],
 ] as const) {
   test(`Nested Buyer route ${path} has one ${owner} navigation owner`, async ({ page }) => {
     await gotoBuyer(page, path); const nav = page.getByRole('navigation', { name: '买家导航' });
-    await expect(nav.getByRole('link')).toHaveCount(5); await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(nav.getByRole('link')).toHaveCount(3); await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     await expect(nav.getByRole('link', { name: owner })).toHaveAttribute('aria-current', 'page');
   });
 }
@@ -415,7 +415,7 @@ for (const [status, path, message] of [[403, '/api/buyer-portal/me', '当前账�
 for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 800 }]) {
   test(`Buyer layout reflows without horizontal overflow at ${viewport.width}px`, async ({ page }) => { await page.setViewportSize(viewport); await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await noOverflow(page); await expect(page.getByRole('navigation', { name: '买家导航' })).toBeVisible(); });
 }
-test('Buyer remains readable at 200 percent text zoom', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer/me'); await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; }); await noOverflow(page); await expect(page.getByText('月白买家')).toBeVisible(); });
+test('Buyer remains readable at 200 percent text zoom', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer/me'); await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; }); await noOverflow(page); await expect(page.getByRole('heading', { name: '月白买家', level: 2 })).toBeVisible(); });
 test('Buyer respects reduced motion', async ({ page }) => { await page.emulateMedia({ reducedMotion: 'reduce' }); await gotoBuyer(page, '/buyer'); const duration = await page.evaluate(() => { const element = document.createElement('span'); element.className = 'buyer-loading-mark'; document.body.append(element); return getComputedStyle(element).animationDuration; }); expect(duration).not.toBe('0.9s'); });
 test('Buyer keyboard focus remains visible', async ({ page }) => { await gotoBuyer(page, '/buyer/me'); const focused = page.getByRole('link', { name: '正式订单' }); await focused.focus(); await expect(focused).toBeFocused(); const outline = await focused.evaluate((element) => getComputedStyle(element).outlineStyle); expect(outline).not.toBe('none'); });
 
@@ -444,7 +444,7 @@ for (const [name, path] of [
   });
 }
 
-test('capture Module1 partial failure mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/demands': 503 } }); await expect(page.getByText('产品暂时无法读取')).toBeVisible(); await captureAcceptance(page, 'buyer-dashboard-partial-error-mobile-390x844.png'); });
+test('capture Module1 partial failure mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer', { failures: { '/api/buyer-portal/demands': 503 } }); await expect(page.getByRole('heading', { name: '暂时无法读取内容' })).toBeVisible(); await captureAcceptance(page, 'buyer-dashboard-partial-error-mobile-390x844.png'); });
 test('capture Module1 320 reflow acceptance', async ({ page }) => { await page.setViewportSize({ width: 320, height: 800 }); await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await noOverflow(page); await captureAcceptance(page, 'buyer-320-reflow-320x800.png'); });
-test('capture Module1 200 percent acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer/me'); await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; }); await expect(page.getByText('月白买家')).toBeVisible(); await noOverflow(page); await captureAcceptance(page, 'buyer-200-percent-390x844.png'); });
+test('capture Module1 200 percent acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer/me'); await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; }); await expect(page.getByRole('heading', { name: '月白买家', level: 2 })).toBeVisible(); await noOverflow(page); await captureAcceptance(page, 'buyer-200-percent-390x844.png'); });
 test('capture Module1 permission error mobile acceptance', async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await gotoBuyer(page, '/buyer/me', { failures: { '/api/buyer-portal/me': 403 } }); await expect(page.getByText(/当前账号没有查看/u)).toBeVisible(); await captureAcceptance(page, 'buyer-permission-error-mobile-390x844.png'); });

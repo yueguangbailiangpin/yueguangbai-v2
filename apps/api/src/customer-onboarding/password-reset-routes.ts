@@ -1,6 +1,7 @@
 import { apiFailure, apiSuccess } from '@ygb/contracts';
 import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
-import type { Context, Hono } from 'hono';
+import type { Hono } from 'hono';
+import type { AppEnv } from '../app';
 import { CustomerSecurityError, normalizeCustomerSecurityError } from '../customer-security/errors';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
@@ -9,7 +10,7 @@ import { issueCustomerPasswordResetForSubject } from './password-reset';
 
 const BODY_LIMIT=8*1024;
 
-export function registerScopedCustomerPasswordResetRoutes(app:Hono<any>):void{
+export function registerScopedCustomerPasswordResetRoutes(app:Hono<AppEnv>):void{
   app.post('/api/staff/customer-onboarding/:customerType/:subjectId/password-reset',customerAuthOriginGuard(),async(context)=>{
     const requestId=requestIdFromContext(context);
     try{

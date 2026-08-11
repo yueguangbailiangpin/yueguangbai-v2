@@ -519,7 +519,7 @@ describe('Phase 5A review evidence workflow', () => {
     const state = await database!.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(state?.schema_version).toBe(43);
+    expect(state?.schema_version).toBe(64);
   });
 });
 
@@ -656,6 +656,16 @@ async function seedFormalOrderPrerequisites(
       ('staff-review-owner','owner','ACTIVE',NULL,1000,NULL,1000,1000),
       ('staff-review-after-sales','buyer_refund','ACTIVE','staff-review-owner',1000,NULL,1000,1000),
       ('staff-review-other','seller_ops','ACTIVE','staff-review-owner',1000,NULL,1000,1000);
+    INSERT INTO staff_marketplace_scopes (
+      id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
+    ) VALUES
+      ('scope-review-pre-jp','staff-review-pre-sales','pre_sales','AMAZON_JP',
+       'ACTIVE','staff-review-owner',1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY'),
+      ('scope-review-after-jp','staff-review-after-sales','buyer_refund','AMAZON_JP',
+       'ACTIVE','staff-review-owner',1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY'),
+      ('scope-review-other-jp','staff-review-other','seller_ops','AMAZON_JP',
+       'ACTIVE','staff-review-owner',1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY');
     INSERT INTO staff_team_memberships (
       staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
     ) VALUES

@@ -5,6 +5,7 @@ import {
 } from '@ygb/contracts';
 import { normalizeWechatId, parseIdempotencyKey } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
+import type { AppEnv } from '../app';
 import { hashNormalizedWechat, requireAcquisitionSecret } from '../acquisition/privacy';
 import { issueBuyerInvitation } from '../customer-security/service';
 import { requestIdFromContext } from '../http-auth/errors';
@@ -21,7 +22,7 @@ interface LeadRow {
   status:string;
 }
 
-export function registerNewBuyerRegistrationInvitationRoute(app:Hono<any>):void{
+export function registerNewBuyerRegistrationInvitationRoute(app:Hono<AppEnv>):void{
   app.post(
     '/api/staff/customer-onboarding/buyer-registration-invitations',
     customerAuthOriginGuard(),
@@ -73,21 +74,21 @@ export function registerNewBuyerRegistrationInvitationRoute(app:Hono<any>):void{
   );
 }
 
-function requireActor(context:Context<any>):AssignmentStaffAuthorization{
+function requireActor(context:Context<AppEnv>):AssignmentStaffAuthorization{
   const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
   if(!actor||actor.staffStatus!=='ACTIVE'||(!actor.roles.has('owner')&&!actor.roles.has('pre_sales')))throw new Error('FORBIDDEN');
   return actor;
 }
-async function requireMarket(context:Context<any>,actor:AssignmentStaffAuthorization,market:string){
+async function requireMarket(context:Context<AppEnv>,actor:AssignmentStaffAuthorization,market:string){
   if(actor.roles.has('owner'))return;
   const markets=await resolveStaffMarketplaceCodes(context.env.DB,actor);
   if(!markets.includes(market))throw new Error('FORBIDDEN');
 }
-function idempotencyKey(context:Context<any>):string{
+function idempotencyKey(context:Context<AppEnv>):string{
   try{const value=parseIdempotencyKey(context.req.header('Idempotency-Key'));if(!value)throw new Error('missing');return value;}
   catch{throw new Error('VALIDATION');}
 }
-async function exactBody(context:Context<any>,keys:readonly string[]):Promise<Record<string,unknown>>{
+async function exactBody(context:Context<AppEnv>,keys:readonly string[]):Promise<Record<string,unknown>>{
   const type=context.req.header('Content-Type')??'';
   if(!/^application\/json(?:\s*;\s*charset=utf-8)?$/iu.test(type))throw new Error('VALIDATION');
   const raw=await context.req.text();if(new TextEncoder().encode(raw).byteLength>BODY_LIMIT)throw new Error('VALIDATION');

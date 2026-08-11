@@ -1,6 +1,7 @@
 import { apiFailure,apiSuccess,type SqlDatabase } from '@ygb/contracts';
 import { canonicalMarketplaceCode,normalizeWechatId } from '@ygb/domain';
 import type { Context,Hono } from 'hono';
+import type { AppEnv } from '../app';
 import { createAuditEventStatement } from '../foundation/audit';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
@@ -9,9 +10,9 @@ import type { AssignmentStaffAuthorization } from '../staff-assignment';
 class IdentifierChangeError extends Error{constructor(public code:'VALIDATION_ERROR'|'FORBIDDEN'|'NOT_FOUND'|'CONFLICT'|'DEPENDENCY_UNAVAILABLE',public status:400|403|404|409|503){super(code)}}
 interface Target{subjectId:string;accountId:string;display:string;normalized:string;claimId:string;claimVersion:number;identitySubjectType:string;marketplaceCodes:readonly string[]}
 
-export function registerCustomerLoginIdentifierChangeRoutes(app:Hono<any>):void{app.post('/api/staff/customer-onboarding/:customerType/:subjectId/change-wechat',customerAuthOriginGuard(),wrap(changeWechat));}
+export function registerCustomerLoginIdentifierChangeRoutes(app:Hono<AppEnv>):void{app.post('/api/staff/customer-onboarding/:customerType/:subjectId/change-wechat',customerAuthOriginGuard(),wrap(changeWechat));}
 
-async function changeWechat(context:Context<any>){
+async function changeWechat(context:Context<AppEnv>){
   const actor=owner(context),customerType=String(context.req.param('customerType')??'').toUpperCase();if(customerType!=='BUYER'&&customerType!=='SELLER')validation();
   const subjectId=clean(context.req.param('subjectId')??''),body=await bodyExact(context,['new_wechat_id','verification_note']);if(typeof body['new_wechat_id']!=='string'||typeof body['verification_note']!=='string')validation();
   const note=body['verification_note'].normalize('NFKC').trim();if(note.length<8||note.length>2000)validation();const next=normalizeWechatId(body['new_wechat_id']),target=await resolveTarget(context.env.DB,customerType,subjectId);if(next.normalized===target.normalized)throw new IdentifierChangeError('CONFLICT',409);
@@ -50,8 +51,8 @@ async function resolveTarget(database:SqlDatabase,type:'BUYER'|'SELLER',business
   return project(rows.results[0],[canonicalMarketplaceCode(String(rows.results[0]!.marketplace_code))]);
 }
 function project(row:any,marketplaceCodes:readonly string[]):Target{return{subjectId:String(row.subject_id),accountId:String(row.account_id),claimId:String(row.claim_id),display:String(row.display_wechat),normalized:String(row.normalized_wechat),claimVersion:Number(row.claim_version),identitySubjectType:String(row.identity_subject_type),marketplaceCodes:Object.freeze([...new Set(marketplaceCodes)].sort())};}
-function owner(context:Context<any>){const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;if(!actor||actor.staffStatus!=='ACTIVE'||!actor.roles.has('owner'))throw new IdentifierChangeError('FORBIDDEN',403);return actor;}
-async function bodyExact(context:Context<any>,keys:string[]){let value:unknown;try{value=await context.req.json();}catch{validation();}if(!value||typeof value!=='object'||Array.isArray(value))validation();const record=value as Record<string,unknown>;if(Object.keys(record).length!==keys.length||keys.some((key)=>!Object.hasOwn(record,key)))validation();return record;}
+function owner(context:Context<AppEnv>){const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;if(!actor||actor.staffStatus!=='ACTIVE'||!actor.roles.has('owner'))throw new IdentifierChangeError('FORBIDDEN',403);return actor;}
+async function bodyExact(context:Context<AppEnv>,keys:string[]){let value:unknown;try{value=await context.req.json();}catch{validation();}if(!value||typeof value!=='object'||Array.isArray(value))validation();const record=value as Record<string,unknown>;if(Object.keys(record).length!==keys.length||keys.some((key)=>!Object.hasOwn(record,key)))validation();return record;}
 function clean(value:string){const v=value.normalize('NFKC').trim();if(v.length<1||v.length>200||/[\u0000-\u001f\u007f]/u.test(v))validation();return v;}
 function validation():never{throw new IdentifierChangeError('VALIDATION_ERROR',400)}
-function wrap(handler:(context:Context<any>)=>Promise<Response>){return async(context:Context<any>)=>{try{return await handler(context);}catch(error){const e=error instanceof IdentifierChangeError?error:new IdentifierChangeError('DEPENDENCY_UNAVAILABLE',503);return context.json(apiFailure(e.code,e.code==='FORBIDDEN'?'只有总管理员可以更换客户登录微信':e.code==='NOT_FOUND'?'没有找到已开通的网站账号':e.code==='CONFLICT'?'新微信已被占用、客户身份不唯一或当前状态不允许换绑':e.code==='VALIDATION_ERROR'?'提交内容不正确':'账号服务暂时不可用',requestIdFromContext(context)),e.status);}};}
+function wrap(handler:(context:Context<AppEnv>)=>Promise<Response>){return async(context:Context<AppEnv>)=>{try{return await handler(context);}catch(error){const e=error instanceof IdentifierChangeError?error:new IdentifierChangeError('DEPENDENCY_UNAVAILABLE',503);return context.json(apiFailure(e.code,e.code==='FORBIDDEN'?'只有总管理员可以更换客户登录微信':e.code==='NOT_FOUND'?'没有找到已开通的网站账号':e.code==='CONFLICT'?'新微信已被占用、客户身份不唯一或当前状态不允许换绑':e.code==='VALIDATION_ERROR'?'提交内容不正确':'账号服务暂时不可用',requestIdFromContext(context)),e.status);}};}

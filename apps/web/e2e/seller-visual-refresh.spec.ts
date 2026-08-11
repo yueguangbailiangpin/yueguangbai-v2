@@ -112,7 +112,7 @@ const surfaces = [
   ['orders', '/seller/orders', '订单与业务完成'],
   ['reviews', '/seller/reviews', '评论'],
   ['settlements', '/seller/settlements', '本金与服务费'],
-  ['account', '/seller/settings', '账户'],
+  ['account', '/seller/settings', '账户与团队'],
 ] as const;
 
 test('Seller visual refresh captures deterministic before and after matrix', async ({ page }) => {

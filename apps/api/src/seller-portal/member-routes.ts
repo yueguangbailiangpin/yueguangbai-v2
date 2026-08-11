@@ -1,8 +1,9 @@
-import { apiFailure,apiSuccess,type SellerMemberRole,type SqlDatabase,type SqlStatement } from '@ygb/contracts';
+import { apiFailure,apiSuccess,type SqlDatabase,type SqlStatement } from '@ygb/contracts';
 import {
   hashCustomerPassword,hashOneTimeToken,normalizeWechatId,validateCustomerPassword,verifyCustomerPassword,
 } from '@ygb/domain';
 import type { Context,Hono } from 'hono';
+import type { AppEnv } from '../app';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
 import { consumeCustomerSecurityRateLimit } from '../customer-security/rate-limit';
 import { writeCustomerSessionCookie } from '../http-auth/cookies';
@@ -17,7 +18,7 @@ class MemberError extends Error{constructor(public code:'VALIDATION_ERROR'|'FORB
 interface Invitation{ id:string;token_hash:string;organization_id:string;invited_wechat_normalized:string;invited_wechat_display:string;invited_display_name:string;invited_role:'OPERATIONS'|'FINANCE'|'VIEWER';store_scope_json:string;issued_by_member_id:string;status:string;version:number;issued_at:number;expires_at:number }
 interface ExistingIdentity{identity_subject_id:string;account_id:string|null;account_status:string|null;session_version:number|null;algorithm:'PBKDF2_SHA256'|null;iterations:number|null;salt_base64url:string|null;hash_base64url:string|null}
 
-export function registerSellerMemberRoutes(app:Hono<any>):void{
+export function registerSellerMemberRoutes(app:Hono<AppEnv>):void{
   const session=customerSessionMiddleware(),origin=customerAuthOriginGuard();
   app.get('/api/seller-portal/members',session,wrap(listMembers));
   app.get('/api/seller-portal/member-invitations',session,wrap(listInvitations));
@@ -27,7 +28,7 @@ export function registerSellerMemberRoutes(app:Hono<any>):void{
   app.post('/api/seller-auth/member-register',origin,wrap(completeInvitation));
 }
 
-async function listMembers(context:Context<any>){
+async function listMembers(context:Context<AppEnv>){
   const actor=await ownerActor(context);const rows=await context.env.DB.prepare(`SELECT member.id,member.display_name,member.role,member.primary_owner,member.status,member.member_number,
       claim.display_wechat AS wechat_id
     FROM seller_organization_members member
@@ -35,13 +36,13 @@ async function listMembers(context:Context<any>){
     WHERE member.organization_id=? ORDER BY member.primary_owner DESC,member.member_number,member.id`).bind(actor.sellerOrganizationId).all<any>();
   return ok(context,{members:rows.results.map((row)=>({member_id:String(row.id),display_name:String(row.display_name),role:row.role,wechat_id:row.wechat_id===null?null:String(row.wechat_id),primary_owner:Number(row.primary_owner)===1,status:row.status,member_number:Number(row.member_number)}))});
 }
-async function listInvitations(context:Context<any>){
+async function listInvitations(context:Context<AppEnv>){
   const actor=await ownerActor(context);await expireInvitations(context.env.DB,actor.sellerOrganizationId,Date.now());
   const rows=await context.env.DB.prepare(`SELECT id,invited_wechat_display,invited_display_name,invited_role,store_scope_json,status,version,issued_at,expires_at,consumed_at,revoked_at
     FROM seller_member_invitations WHERE organization_id=? ORDER BY issued_at DESC,id DESC LIMIT 100`).bind(actor.sellerOrganizationId).all<any>();
   return ok(context,{invitations:rows.results.map((row)=>({invitation_id:String(row.id),wechat_id:String(row.invited_wechat_display),display_name:String(row.invited_display_name),role:row.invited_role,store_ids:parseStores(row.store_scope_json),status:row.status,version:Number(row.version),issued_at:Number(row.issued_at),expires_at:Number(row.expires_at),consumed_at:row.consumed_at===null?null:Number(row.consumed_at),revoked_at:row.revoked_at===null?null:Number(row.revoked_at)}))});
 }
-async function issueInvitation(context:Context<any>){
+async function issueInvitation(context:Context<AppEnv>){
   const actor=await ownerActor(context);const body=await exact(context,['wechat_id','display_name','role','store_ids']);
   if(typeof body['wechat_id']!=='string'||typeof body['display_name']!=='string'||typeof body['role']!=='string'||!Array.isArray(body['store_ids'])||body['store_ids'].some((v)=>typeof v!=='string'))validation();
   const role=body['role'];if(!['OPERATIONS','FINANCE','VIEWER'].includes(role))validation();
@@ -57,16 +58,16 @@ async function issueInvitation(context:Context<any>){
   ]);
   return ok(context,{invitation:{invitation_id:id,registration_token:token,registration_path:`/seller/member-register?token=${encodeURIComponent(token)}`,wechat_id:wechat.display,display_name:display,role,store_ids:stores,status:'ACTIVE',version:1,expires_at:expires}},201);
 }
-async function revokeInvitation(context:Context<any>){
+async function revokeInvitation(context:Context<AppEnv>){
   const actor=await ownerActor(context);const body=await exact(context,['expected_version']);if(!Number.isSafeInteger(body['expected_version']))validation();const now=Date.now();
   const result=await context.env.DB.prepare(`UPDATE seller_member_invitations SET status='REVOKED',version=version+1,revoked_at=?,updated_at=? WHERE id=? AND organization_id=? AND status='ACTIVE' AND version=?`).bind(now,now,clean(context.req.param('id')??''),actor.sellerOrganizationId,Number(body['expected_version'])).run();if(Number(result.meta.changes)!==1)throw new MemberError('CONFLICT',409);
   await event(context.env.DB,clean(context.req.param('id')??''),'REVOKED','SELLER_MEMBER',actor.memberId,now).run();return ok(context,{revoked:true,revoked_at:now});
 }
-async function readPublicInvitation(context:Context<any>){
+async function readPublicInvitation(context:Context<AppEnv>){
   const token=context.req.param('token')??'';await rate(context,token);const invitation=await invitationByToken(context.env.DB,token,Date.now());
   return ok(context,{invitation:{invitation_valid:true,organization_name:invitation.organizationName,wechat_hint:mask(invitation.row.invited_wechat_display),display_name:invitation.row.invited_display_name,role:invitation.row.invited_role,expires_at:invitation.row.expires_at,existing_moonwhite_account:(await existingIdentity(context.env.DB,invitation.row.invited_wechat_normalized))?.account_id!=null}});
 }
-async function completeInvitation(context:Context<any>){
+async function completeInvitation(context:Context<AppEnv>){
   const body=await exact(context,['invitation_token','wechat_id','password','password_confirmation']);if(typeof body['invitation_token']!=='string'||typeof body['wechat_id']!=='string'||typeof body['password']!=='string'||typeof body['password_confirmation']!=='string'||body['password']!==body['password_confirmation'])validation();
   await rate(context,body['invitation_token']);try{validateCustomerPassword(body['password']);}catch{validation();}
   const now=Date.now(),wechat=normalizeWechatId(body['wechat_id']),invitation=await invitationByToken(context.env.DB,body['invitation_token'],now);if(invitation.row.invited_wechat_normalized!==wechat.normalized)throw new MemberError('CONFLICT',409);
@@ -90,18 +91,18 @@ async function completeInvitation(context:Context<any>){
   return ok(context,{session_established:true,next_path:'/seller',seller_organization_id:invitation.row.organization_id,seller_member_id:memberId},201);
 }
 
-async function ownerActor(context:Context<any>){const actor=await resolveSellerPortalActor(context);if(actor.role!=='OWNER')throw new MemberError('FORBIDDEN',403);return actor;}
+async function ownerActor(context:Context<AppEnv>){const actor=await resolveSellerPortalActor(context);if(actor.role!=='OWNER')throw new MemberError('FORBIDDEN',403);return actor;}
 async function invitationByToken(database:SqlDatabase,token:string,now:number){const hash=await hashOneTimeToken(token);const row=await database.prepare(`SELECT * FROM seller_member_invitations WHERE token_hash=? AND status='ACTIVE' AND expires_at>?`).bind(hash,now).first<Invitation>();if(!row)throw new MemberError('CONFLICT',409);const org=await database.prepare(`SELECT organization_name,status FROM seller_organizations WHERE id=?`).bind(row.organization_id).first<{organization_name:string;status:string}>();if(!org||org.status!=='ACTIVE')throw new MemberError('CONFLICT',409);return{row,organizationName:org.organization_name};}
 async function existingIdentity(database:SqlDatabase,wechat:string){const rows=await database.prepare(`SELECT claim.identity_subject_id,account.id AS account_id,account.status AS account_status,account.session_version,credential.algorithm,credential.iterations,credential.salt_base64url,credential.hash_base64url FROM wechat_identity_claims claim LEFT JOIN customer_login_accounts account ON account.identity_subject_id=claim.identity_subject_id LEFT JOIN customer_password_credentials credential ON credential.account_id=account.id WHERE claim.normalized_wechat=? AND claim.status IN('ACTIVE','RESERVED')`).bind(wechat).all<ExistingIdentity>();if(rows.results.length>1)throw new MemberError('CONFLICT',409);return rows.results[0]??null;}
 async function expireInvitations(database:SqlDatabase,org:string,now:number){await database.prepare(`UPDATE seller_member_invitations SET status='EXPIRED',version=version+1,updated_at=? WHERE organization_id=? AND status='ACTIVE' AND expires_at<=?`).bind(now,org,now).run();}
 function event(database:SqlDatabase,id:string,type:'ISSUED'|'CONSUMED'|'REVOKED'|'EXPIRED',actorType:'SELLER_MEMBER'|'CUSTOMER'|'SYSTEM',actorId:string|null,now:number){return database.prepare(`INSERT INTO seller_member_invitation_events(id,invitation_id,event_type,actor_type,actor_id,created_at) VALUES(?,?,?,?,?,?)`).bind(crypto.randomUUID(),id,type,actorType,actorId,now);}
-async function rate(context:Context<any>,token:string){const secret=String(context.env.CUSTOMER_SECURITY_TOKEN_SECRET??'');if(new TextEncoder().encode(secret).byteLength<32)throw new MemberError('DEPENDENCY_UNAVAILABLE',503);const result=await consumeCustomerSecurityRateLimit(context.env.DB,{operation:'INVITATION',token,networkSource:context.req.header('CF-Connecting-IP')??null,deviceId:context.req.header('X-Device-ID')??null,secret,now:Date.now()});if(result.limited)throw new MemberError('RATE_LIMITED',429);}
+async function rate(context:Context<AppEnv>,token:string){const secret=String(context.env.CUSTOMER_SECURITY_TOKEN_SECRET??'');if(new TextEncoder().encode(secret).byteLength<32)throw new MemberError('DEPENDENCY_UNAVAILABLE',503);const result=await consumeCustomerSecurityRateLimit(context.env.DB,{operation:'INVITATION',token,networkSource:context.req.header('CF-Connecting-IP')??null,deviceId:context.req.header('X-Device-ID')??null,secret,now:Date.now()});if(result.limited)throw new MemberError('RATE_LIMITED',429);}
 function randomToken(){const bytes=crypto.getRandomValues(new Uint8Array(32));let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/u,'');}
 function parseStores(value:string){try{const parsed=JSON.parse(value);return Array.isArray(parsed)&&parsed.every((v)=>typeof v==='string')?parsed:[];}catch{return[];}}
-async function exact(context:Context<any>,keys:string[]){let value:unknown;try{value=await context.req.json();}catch{validation();}if(!value||typeof value!=='object'||Array.isArray(value))validation();const body=value as Record<string,unknown>;if(Object.keys(body).length!==keys.length||keys.some((key)=>!Object.hasOwn(body,key)))validation();return body;}
+async function exact(context:Context<AppEnv>,keys:string[]){let value:unknown;try{value=await context.req.json();}catch{validation();}if(!value||typeof value!=='object'||Array.isArray(value))validation();const body=value as Record<string,unknown>;if(Object.keys(body).length!==keys.length||keys.some((key)=>!Object.hasOwn(body,key)))validation();return body;}
 function clean(value:string){const v=String(value).normalize('NFKC').trim();if(v.length<1||v.length>200||/[\u0000-\u001f\u007f]/u.test(v))validation();return v;}
 function text(value:string,max:number){const v=clean(value);if(v.length>max)validation();return v;}
 function mask(value:string){return value.length<=4?'***':`${value.slice(0,2)}***${value.slice(-2)}`;}
 function validation():never{throw new MemberError('VALIDATION_ERROR',400)}
-function ok(context:Context<any>,data:unknown,status=200){context.header('Cache-Control','no-store');return context.json(apiSuccess(data,requestIdFromContext(context)),status as 200|201);}
-function wrap(handler:(context:Context<any>)=>Promise<Response>){return async(context:Context<any>)=>{try{return await handler(context);}catch(error){const e=error instanceof MemberError?error:new MemberError('DEPENDENCY_UNAVAILABLE',503);return context.json(apiFailure(e.code,e.code==='FORBIDDEN'?'只有卖家主账号可以管理员工成员':e.code==='RATE_LIMITED'?'尝试次数过多，请稍后再试':e.code==='NOT_FOUND'?'没有找到对应记录':e.code==='CONFLICT'?'邀请已失效、身份已占用或密码验证失败':e.code==='VALIDATION_ERROR'?'提交信息不正确':'卖家成员服务暂时不可用',requestIdFromContext(context)),e.status);}};}
+function ok(context:Context<AppEnv>,data:unknown,status=200){context.header('Cache-Control','no-store');return context.json(apiSuccess(data,requestIdFromContext(context)),status as 200|201);}
+function wrap(handler:(context:Context<AppEnv>)=>Promise<Response>){return async(context:Context<AppEnv>)=>{try{return await handler(context);}catch(error){const e=error instanceof MemberError?error:new MemberError('DEPENDENCY_UNAVAILABLE',503);return context.json(apiFailure(e.code,e.code==='FORBIDDEN'?'只有卖家主账号可以管理员工成员':e.code==='RATE_LIMITED'?'尝试次数过多，请稍后再试':e.code==='NOT_FOUND'?'没有找到对应记录':e.code==='CONFLICT'?'邀请已失效、身份已占用或密码验证失败':e.code==='VALIDATION_ERROR'?'提交信息不正确':'卖家成员服务暂时不可用',requestIdFromContext(context)),e.status);}};}

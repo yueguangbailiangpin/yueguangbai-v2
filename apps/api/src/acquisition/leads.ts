@@ -197,7 +197,7 @@ async function prepareSellerFormalization(database:SqlDatabase,leadId:string,nam
     database.prepare(`INSERT INTO seller_organizations(
       id,marketplace_code,seller_code,origin_channel_id,current_channel_id,seller_sequence,
       organization_name,status,version,created_at,updated_at,activated_at,disabled_at,next_member_number
-    ) VALUES(?,'JP',?,?,?,?,?,'ACTIVE',1,?,?,?,NULL,1)`).bind(
+    ) VALUES(?,'JP',?,?,?,?,?,'ACTIVE',1,?,?,?,NULL,2)`).bind(
       organizationId,sellerCode,SYSTEM_SELLER_CHANNEL,SYSTEM_SELLER_CHANNEL,sequence,organizationName,now,now,now),
     database.prepare(`INSERT INTO acquisition_lead_links(id,lead_id,link_type,target_id,linked_at)
       VALUES(?,?,'SELLER_ORGANIZATION',?,?)`).bind(crypto.randomUUID(),leadId,organizationId,now),

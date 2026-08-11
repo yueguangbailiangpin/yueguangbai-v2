@@ -19,7 +19,7 @@ const viewports = [
   { width: 1440, height: 900 },
   { width: 1600, height: 1000 },
 ] as const;
-const buyerNavigationLabels = ['首页', '产品', '订单资料', '评论', '我的'] as const;
+const buyerNavigationLabels = ['产品', '任务', '我的'] as const;
 
 const product = {
   demand_id: 'demand-visual-1',
@@ -207,12 +207,12 @@ test('Buyer product pilot excludes adjacent and internal content', async ({ page
   await installBuyerFixture(page);
   await page.goto('/buyer/products');
   await expect(page.getByRole('heading', { name: '当前开放产品' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '下一步' })).toBeVisible();
+  await expect(page.getByText(/需要你处理的事情统一放在“任务”/u)).toBeVisible();
   await expect(page.getByRole('heading', { name: product.product_name, exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: secondProduct.product_name, exact: true })).toBeVisible();
   await expect(page.locator('main').getByText(/客户编号|会话到期|内部说明|内部业务时间|预约排名|预计下单日期|返款金额/u)).toHaveCount(0);
   await expect(page.locator('main').getByText(/进行中的产品|已预约|已下单|等待下单/u)).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: '买家导航' }).getByRole('link')).toHaveCount(5);
+  await expect(page.getByRole('navigation', { name: '买家导航' }).getByRole('link')).toHaveCount(3);
   await assertMinimumTarget(page, '.bottom-nav a');
 });
 

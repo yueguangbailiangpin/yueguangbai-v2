@@ -1,6 +1,7 @@
 import { apiFailure, apiSuccess } from '@ygb/contracts';
 import { normalizeWechatId, parseIdempotencyKey } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
+import type { AppEnv } from '../app';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
 import { consumeCustomerSecurityRateLimit } from '../customer-security/rate-limit';
 import { writeCustomerSessionCookie } from '../http-auth/cookies';
@@ -20,7 +21,7 @@ import {
 
 const BODY_LIMIT=16*1024;
 
-export function registerSellerRegistrationRoutes(app:Hono<any>):void{
+export function registerSellerRegistrationRoutes(app:Hono<AppEnv>):void{
   app.post('/api/staff/customer-security/seller-invitations',customerAuthOriginGuard(),withErrors(async(context)=>{
     const actor=requireStaff(context);
     const body=await exactBody(context,['lead_id','seller_organization_id','wechat_id','marketplace_code']);
@@ -90,7 +91,7 @@ export function registerSellerRegistrationRoutes(app:Hono<any>):void{
   }));
 }
 
-async function prevalidateHistoricalSellerIdentity(context:Context<any>,organizationId:string,wechatId:string):Promise<void>{
+async function prevalidateHistoricalSellerIdentity(context:Context<AppEnv>,organizationId:string,wechatId:string):Promise<void>{
   const wechat=normalizeWechatId(wechatId);
   const owners=await context.env.DB.prepare(`SELECT member.identity_subject_id
     FROM seller_organization_members member
@@ -114,7 +115,7 @@ async function prevalidateHistoricalSellerIdentity(context:Context<any>,organiza
     if(existing.results.length>1||(existing.results.length===1&&existing.results[0]!.identity_subject_id!==ownerSubject))throw new SellerRegistrationError('CONFLICT',409);
   }
 }
-async function publicInvitationRate(context:Context<any>,token:string,now:number):Promise<Response|null>{
+async function publicInvitationRate(context:Context<AppEnv>,token:string,now:number):Promise<Response|null>{
   const rate=await consumeCustomerSecurityRateLimit(context.env.DB,{
     operation:'INVITATION',token,networkSource:context.req.header('CF-Connecting-IP')??null,
     deviceId:context.req.header('X-Device-ID')??null,secret:securitySecret(context),now,
@@ -123,12 +124,12 @@ async function publicInvitationRate(context:Context<any>,token:string,now:number
   context.header('Cache-Control','no-store');context.header('Retry-After',String(rate.retryAfterSeconds));
   return context.json(apiFailure('RATE_LIMITED','尝试次数过多，请稍后再试',requestIdFromContext(context)),429);
 }
-function requireStaff(context:Context<any>):AssignmentStaffAuthorization{
+function requireStaff(context:Context<AppEnv>):AssignmentStaffAuthorization{
   const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
   if(!actor||actor.staffStatus!=='ACTIVE')throw new SellerRegistrationError('FORBIDDEN',403);return actor;
 }
-function securitySecret(context:Context<any>):string{const value=String(context.env.CUSTOMER_SECURITY_TOKEN_SECRET??'');if(new TextEncoder().encode(value).byteLength<32)throw new SellerRegistrationError('DEPENDENCY_UNAVAILABLE',503);return value;}
-function idempotencyKey(context:Context<any>):string{try{const value=parseIdempotencyKey(context.req.header('Idempotency-Key'));if(!value)throw new Error('missing');return value;}catch{throw validation();}}
-async function exactBody(context:Context<any>,keys:readonly string[]):Promise<Record<string,any>>{const type=context.req.header('Content-Type')??'';if(!/^application\/json(?:\s*;\s*charset=utf-8)?$/iu.test(type))throw validation();const raw=await context.req.text();if(new TextEncoder().encode(raw).byteLength>BODY_LIMIT)throw validation();let value:unknown;try{value=JSON.parse(raw);}catch{throw validation();}if(!value||typeof value!=='object'||Array.isArray(value))throw validation();const record=value as Record<string,any>;if(Object.keys(record).length!==keys.length||keys.some((key)=>!Object.hasOwn(record,key)))throw validation();return record;}
+function securitySecret(context:Context<AppEnv>):string{const value=String(context.env.CUSTOMER_SECURITY_TOKEN_SECRET??'');if(new TextEncoder().encode(value).byteLength<32)throw new SellerRegistrationError('DEPENDENCY_UNAVAILABLE',503);return value;}
+function idempotencyKey(context:Context<AppEnv>):string{try{const value=parseIdempotencyKey(context.req.header('Idempotency-Key'));if(!value)throw new Error('missing');return value;}catch{throw validation();}}
+async function exactBody(context:Context<AppEnv>,keys:readonly string[]):Promise<Record<string,unknown>>{const type=context.req.header('Content-Type')??'';if(!/^application\/json(?:\s*;\s*charset=utf-8)?$/iu.test(type))throw validation();const raw=await context.req.text();if(new TextEncoder().encode(raw).byteLength>BODY_LIMIT)throw validation();let value:unknown;try{value=JSON.parse(raw);}catch{throw validation();}if(!value||typeof value!=='object'||Array.isArray(value))throw validation();const record=value as Record<string,unknown>;if(Object.keys(record).length!==keys.length||keys.some((key)=>!Object.hasOwn(record,key)))throw validation();return record;}
 function validation(){return new SellerRegistrationError('VALIDATION_ERROR',400);}
-function withErrors(handler:(context:Context<any>)=>Promise<Response>){return async(context:Context<any>)=>{try{return await handler(context);}catch(error){const normalized=error instanceof SellerRegistrationError?error:new SellerRegistrationError('DEPENDENCY_UNAVAILABLE',503);const message=normalized.code==='FORBIDDEN'?'当前岗位不允许操作卖家账号':normalized.code==='NOT_FOUND'?'没有找到对应卖家客户':normalized.code==='CONFLICT'?'客户现有身份与登记微信不一致、客户已开通账号或邀请状态冲突，请核对后再操作':normalized.code==='VALIDATION_ERROR'?'提交信息不正确':'卖家账号服务暂时不可用';context.header('Cache-Control','no-store');return context.json(apiFailure(normalized.code,message,requestIdFromContext(context)),normalized.status);}};}
+function withErrors(handler:(context:Context<AppEnv>)=>Promise<Response>){return async(context:Context<AppEnv>)=>{try{return await handler(context);}catch(error){const normalized=error instanceof SellerRegistrationError?error:new SellerRegistrationError('DEPENDENCY_UNAVAILABLE',503);const message=normalized.code==='FORBIDDEN'?'当前岗位不允许操作卖家账号':normalized.code==='NOT_FOUND'?'没有找到对应卖家客户':normalized.code==='CONFLICT'?'客户现有身份与登记微信不一致、客户已开通账号或邀请状态冲突，请核对后再操作':normalized.code==='VALIDATION_ERROR'?'提交信息不正确':'卖家账号服务暂时不可用';context.header('Cache-Control','no-store');return context.json(apiFailure(normalized.code,message,requestIdFromContext(context)),normalized.status);}};}

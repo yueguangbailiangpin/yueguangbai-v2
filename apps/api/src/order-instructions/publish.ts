@@ -229,7 +229,6 @@ export async function publishOrderInstruction(
 
     const nextVersionNo = source.current_version_no + 1;
     const nextAggregateVersion = source.instruction_version + 1;
-    const staffGrantScope = requireUniqueStaffGrantScope(command.actor);
     const instructionVersionId = crypto.randomUUID();
     const mainImageLinkId = crypto.randomUUID();
     const mainBuyerGrantId = crypto.randomUUID();
@@ -300,7 +299,7 @@ export async function publishOrderInstruction(
       insertBuyerGrant(database, mainBuyerGrantId, mainImageLinkId,
         source.buyer_customer_id, command.actor.staffId, now),
       insertStaffGrant(database, mainStaffGrantId, mainImageLinkId,
-        command.actor.staffId, staffGrantScope, now),
+        command.actor.staffId, now),
 
       database.prepare(`
         INSERT INTO order_instruction_versions (
@@ -354,7 +353,7 @@ export async function publishOrderInstruction(
         insertBuyerGrant(database, row.buyerGrantId, row.fileEntityLinkId,
           source.buyer_customer_id, command.actor.staffId, now),
         insertStaffGrant(database, row.staffGrantId, row.fileEntityLinkId,
-          command.actor.staffId, staffGrantScope, now),
+          command.actor.staffId, now),
         database.prepare(`
           INSERT INTO order_instruction_keyword_images (
             id, order_instruction_version_id, keyword_position,
@@ -640,7 +639,6 @@ function insertStaffGrant(
   grantId: string,
   linkId: string,
   staffId: string,
-  scope: { scopeType: 'GLOBAL' | 'TEAM'; teamId: string | null },
   now: number,
 ): SqlStatement {
   return database.prepare(`
@@ -655,24 +653,11 @@ function insertStaffGrant(
   `).bind(
     grantId,
     linkId,
-    scope.scopeType,
-    scope.teamId,
+    'GLOBAL',
+    null,
     staffId,
     now,
   );
-}
-
-function requireUniqueStaffGrantScope(
-  actor: OrderInstructionStaffActor,
-): { scopeType: 'GLOBAL' | 'TEAM'; teamId: string | null } {
-  if (actor.roles.has('owner')) {
-    return { scopeType: 'GLOBAL', teamId: null };
-  }
-  const [verifiedTeamId] = actor.memberTeamIds;
-  if (actor.memberTeamIds.length !== 1 || verifiedTeamId === undefined) {
-    throw new OrderInstructionError('FORBIDDEN', 403);
-  }
-  return { scopeType: 'TEAM', teamId: verifiedTeamId };
 }
 
 function summary(source: {

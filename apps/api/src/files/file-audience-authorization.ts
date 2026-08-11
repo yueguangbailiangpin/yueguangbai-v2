@@ -57,6 +57,7 @@ async function authorizeStaff(database:SqlDatabase,linkId:string,staffIdRaw:stri
   const staffId=cleanFileIdentifier(staffIdRaw,120);const authorization=await resolveAssignmentStaffAuthorization(database,staffId);if(!authorization||authorization.staffStatus!=='ACTIVE')deny();
   const grants=await database.prepare(`SELECT grant.staff_permission_code FROM file_entity_audience_grants grant JOIN file_entity_links link ON link.id=grant.file_entity_link_id
     WHERE grant.file_entity_link_id=? AND grant.subject_type='STAFF_INTERNAL' AND grant.revoked_at IS NULL AND (grant.expires_at IS NULL OR grant.expires_at>?)
+      AND grant.staff_scope_type='GLOBAL' AND grant.staff_team_id IS NULL
       AND link.authorization_mode='EXPLICIT_AUDIENCES' AND link.revoked_at IS NULL AND (link.expires_at IS NULL OR link.expires_at>?)`).bind(linkId,now,now).all<StaffGrantRow>();
   const permission=grants.results.find((row)=>isStaffPermissionCode(row.staff_permission_code)&&authorization.permissions.has(row.staff_permission_code as StaffPermissionCode));if(!permission)deny();if(authorization.roles.has('owner'))return;
   const market=await resolveResourceMarketplace(database,resource);if(!market)deny();const allowed=await resolveStaffMarketplaceCodes(database,authorization);if(!allowed.includes(market))deny();
@@ -65,7 +66,16 @@ async function authorizeStaff(database:SqlDatabase,linkId:string,staffIdRaw:stri
 async function resolveResourceMarketplace(database:SqlDatabase,resource:FileAuthorizationResource):Promise<string|null>{
   if(!resource.entityType||!resource.entityId)return null;const id=resource.entityId;let raw:string|null=null;
   if(resource.entityType==='ORDER')raw=(await database.prepare(`SELECT COALESCE(canonical_marketplace_code,marketplace_code) AS market FROM formal_orders WHERE id=?`).bind(id).first<{market:string}>())?.market??null;
-  else if(resource.entityType==='ORDER_EVIDENCE_SUBMISSION')raw=(await database.prepare(`SELECT COALESCE(formal_order.canonical_marketplace_code,submission.marketplace_code) AS market FROM order_evidence_submissions submission LEFT JOIN formal_orders formal_order ON formal_order.order_evidence_submission_id=submission.id WHERE submission.id=?`).bind(id).first<{market:string}>())?.market??null;
+  else if(resource.entityType==='ORDER_EVIDENCE_SUBMISSION')raw=(await database.prepare(`
+    SELECT COALESCE(formal_order.canonical_marketplace_code,submission.marketplace_code) AS market
+    FROM order_evidence_submissions submission
+    LEFT JOIN formal_orders formal_order ON formal_order.order_evidence_submission_id=submission.id
+    WHERE submission.id=?
+    UNION ALL
+    SELECT evidence.marketplace_code AS market
+    FROM platform_order_evidence_records evidence
+    WHERE evidence.id=? AND evidence.status='VERIFIED'
+    LIMIT 1`).bind(id,id).first<{market:string}>())?.market??null;
   else if(resource.entityType==='REVIEW')raw=(await database.prepare(`SELECT formal_order.canonical_marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`).bind(id).first<{market:string}>())?.market??null;
   else if(resource.entityType==='BUYER_REFUND')raw=(await database.prepare(`
     SELECT formal_order.canonical_marketplace_code AS market FROM buyer_refund_obligations obligation JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE obligation.id=?
@@ -80,11 +90,24 @@ async function resolveResourceMarketplace(database:SqlDatabase,resource:FileAuth
 
 async function resolveSellerEntityScope(database:SqlDatabase,resource:FileAuthorizationResource):Promise<SellerScope|null>{
   if(!resource.entityType||!resource.entityId)return null;const id=resource.entityId;
-  if(resource.entityType==='PRODUCT_APPLICATION')return database.prepare(`SELECT organization_id AS organizationId,store_id AS storeId FROM product_applications WHERE id=?`).bind(id).first<SellerScope>();
-  if(resource.entityType==='PRODUCT_VERSION')return database.prepare(`SELECT product.organization_id AS organizationId,product.store_id AS storeId FROM product_versions version JOIN products product ON product.id=version.product_id WHERE version.id=?`).bind(id).first<SellerScope>();
-  if(resource.entityType==='REVIEW')return database.prepare(`SELECT formal_order.seller_organization_id AS organizationId,formal_order.store_id AS storeId FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`).bind(id).first<SellerScope>();
-  if(resource.entityType==='ORDER')return database.prepare(`SELECT seller_organization_id AS organizationId,store_id AS storeId FROM formal_orders WHERE id=?`).bind(id).first<SellerScope>();
-  if(resource.entityType==='ORDER_EVIDENCE_SUBMISSION')return database.prepare(`SELECT seller_organization_id AS organizationId,store_id AS storeId FROM formal_orders WHERE order_evidence_submission_id=?`).bind(id).first<SellerScope>();
+  if(resource.entityType==='PRODUCT_APPLICATION')return database.prepare(`SELECT application.organization_id AS organizationId,application.store_id AS storeId FROM product_applications application JOIN seller_organizations organization ON organization.id=application.organization_id AND organization.status='ACTIVE' JOIN seller_stores store ON store.id=application.store_id AND store.organization_id=application.organization_id AND store.status='ACTIVE' WHERE application.id=?`).bind(id).first<SellerScope>();
+  if(resource.entityType==='PRODUCT_VERSION')return database.prepare(`SELECT product.organization_id AS organizationId,product.store_id AS storeId FROM product_versions version JOIN products product ON product.id=version.product_id JOIN seller_organizations organization ON organization.id=product.organization_id AND organization.status='ACTIVE' JOIN seller_stores store ON store.id=product.store_id AND store.organization_id=product.organization_id AND store.status='ACTIVE' WHERE version.id=?`).bind(id).first<SellerScope>();
+  if(resource.entityType==='REVIEW')return database.prepare(`SELECT formal_order.seller_organization_id AS organizationId,formal_order.store_id AS storeId FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id JOIN seller_organizations organization ON organization.id=formal_order.seller_organization_id AND organization.status='ACTIVE' JOIN seller_stores store ON store.id=formal_order.store_id AND store.organization_id=formal_order.seller_organization_id AND store.status='ACTIVE' WHERE review_case.id=?`).bind(id).first<SellerScope>();
+  if(resource.entityType==='ORDER')return database.prepare(`SELECT formal_order.seller_organization_id AS organizationId,formal_order.store_id AS storeId FROM formal_orders formal_order JOIN seller_organizations organization ON organization.id=formal_order.seller_organization_id AND organization.status='ACTIVE' JOIN seller_stores store ON store.id=formal_order.store_id AND store.organization_id=formal_order.seller_organization_id AND store.status='ACTIVE' WHERE formal_order.id=?`).bind(id).first<SellerScope>();
+  if(resource.entityType==='ORDER_EVIDENCE_SUBMISSION')return database.prepare(`
+    SELECT formal_order.seller_organization_id AS organizationId,formal_order.store_id AS storeId
+    FROM formal_orders formal_order
+    JOIN seller_organizations organization ON organization.id=formal_order.seller_organization_id AND organization.status='ACTIVE'
+    JOIN seller_stores store ON store.id=formal_order.store_id AND store.organization_id=formal_order.seller_organization_id AND store.status='ACTIVE'
+    WHERE formal_order.order_evidence_submission_id=?
+    UNION ALL
+    SELECT evidence.seller_organization_id AS organizationId,evidence.seller_store_id AS storeId
+    FROM platform_order_evidence_records evidence
+    JOIN seller_organizations organization ON organization.id=evidence.seller_organization_id AND organization.status='ACTIVE'
+    JOIN seller_stores store ON store.id=evidence.seller_store_id AND store.organization_id=evidence.seller_organization_id AND store.status='ACTIVE'
+    JOIN seller_store_marketplaces market ON market.store_id=evidence.seller_store_id AND market.seller_organization_id=evidence.seller_organization_id AND market.marketplace_code=evidence.marketplace_code
+    WHERE evidence.id=? AND evidence.status='VERIFIED'
+    LIMIT 1`).bind(id,id).first<SellerScope>();
   return null;
 }
 function deny():never{throw new FileStorageError('FORBIDDEN',403)}

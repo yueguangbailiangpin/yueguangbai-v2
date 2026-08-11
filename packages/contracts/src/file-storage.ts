@@ -220,9 +220,7 @@ export type ExplicitFileAudienceGrantInput =
   | {
       subjectType: 'STAFF_INTERNAL';
       permissionCode: import('./staff').StaffPermissionCode;
-      scope:
-        | { type: 'GLOBAL' }
-        | { type: 'TEAM'; teamId: string };
+      scope: { type: 'GLOBAL' };
       expiresAt?: number | null;
     };
 

@@ -5,6 +5,7 @@ import {
 } from '@ygb/contracts';
 import { chinaBusinessDate,hashCanonicalJson } from '@ygb/domain';
 import type { Context,Hono } from 'hono';
+import type { AppEnv } from '../app';
 import { createAuditEventStatement } from '../foundation/audit';
 import {
   acquireIdempotency,assertIdempotencyCompletionStatement,completeIdempotencyStatement,
@@ -25,7 +26,7 @@ import {
 class IntegrityError extends Error{constructor(public code:'VALIDATION_ERROR'|'FORBIDDEN'|'NOT_FOUND'|'CONFLICT'|'IDEMPOTENCY_CONFLICT'|'REQUEST_IN_PROGRESS'|'DEPENDENCY_UNAVAILABLE',public status:400|403|404|409|503){super(code)}}
 type ProofInput={fileObjectId:string;expectedFileVersion:number};
 
-export function registerOperatingIntegrityRoutes(app:Hono<any>):void{
+export function registerOperatingIntegrityRoutes(app:Hono<AppEnv>):void{
   app.get('/api/staff/order-integrity/:id',wrap(readOrderIntegrity));
   app.post('/api/staff/order-integrity/:id/events',customerAuthOriginGuard(),wrap(recordOrderEvent));
   app.post('/api/staff/order-integrity/:id/financial-adjustments',customerAuthOriginGuard(),wrap(recordFinancialAdjustment));
@@ -36,8 +37,8 @@ export function registerOperatingIntegrityRoutes(app:Hono<any>):void{
   app.post('/api/staff/buyer-advance-principal/:formalOrderId/payments/:paymentId/reversals',customerAuthOriginGuard(),wrap(reverseAdvancePayment));
 }
 
-async function readOrderIntegrity(context:Context<any>){
-  const actor=staff(context);const order=await orderRow(context.env.DB,id(context.req.param('id')));await market(context.env.DB,actor,order.market);
+async function readOrderIntegrity(context:Context<AppEnv>){
+  const actor=staff(context);const order=await orderRow(context.env.DB,id(context.req.param('id')??''));await market(context.env.DB,actor,order.market);
   const [events,adjustments,state]=await Promise.all([
     context.env.DB.prepare(`SELECT id AS event_id,formal_order_id,event_type,reason,actor_staff_id,created_at FROM formal_order_operational_events WHERE formal_order_id=? ORDER BY created_at,id`).bind(order.id).all<any>(),
     context.env.DB.prepare(`SELECT id AS adjustment_id,formal_order_id,source_operational_event_id,adjustment_scope,CAST(amount_cny_fen AS TEXT) AS amount_cny_fen,reason,actor_staff_id,created_at FROM formal_order_financial_adjustments WHERE formal_order_id=? ORDER BY created_at,id`).bind(order.id).all<any>(),
@@ -46,9 +47,9 @@ async function readOrderIntegrity(context:Context<any>){
   return ok(context,{order_integrity:{formal_order_id:order.id,canonical_marketplace_code:order.market,operational_state:state?.operational_state??'NORMAL',events:events.results,adjustments:adjustments.results}});
 }
 
-async function recordOrderEvent(context:Context<any>){
+async function recordOrderEvent(context:Context<AppEnv>){
   const actor=staff(context);if(!actor.roles.has('owner')&&!actor.roles.has('seller_ops'))forbidden();
-  const order=await orderRow(context.env.DB,id(context.req.param('id')));await market(context.env.DB,actor,order.market);
+  const order=await orderRow(context.env.DB,id(context.req.param('id')??''));await market(context.env.DB,actor,order.market);
   const body=await json(context,['event_type','reason']);const type=body['event_type'];
   if(typeof type!=='string'||!FORMAL_ORDER_OPERATIONAL_EVENT_TYPES.includes(type as FormalOrderOperationalEventType))validation();
   const reason=text(body['reason'],3,2000);const now=Date.now();
@@ -64,9 +65,9 @@ async function recordOrderEvent(context:Context<any>){
   return ok(context,response,201);
 }
 
-async function recordFinancialAdjustment(context:Context<any>){
+async function recordFinancialAdjustment(context:Context<AppEnv>){
   const actor=staff(context);if(!actor.roles.has('owner')||!actor.permissions.has('FINANCIAL_CORRECT'))forbidden();
-  const order=await orderRow(context.env.DB,id(context.req.param('id')));
+  const order=await orderRow(context.env.DB,id(context.req.param('id')??''));
   const body=await json(context,['adjustment_scope','amount_cny_fen','reason','source_operational_event_id']);const scope=body['adjustment_scope'];
   if(scope!=='PROJECTED_GROSS_PROFIT'&&scope!=='COMPLETED_GROSS_PROFIT')validation();
   const amount=signedMoney(body['amount_cny_fen']);const reason=text(body['reason'],3,2000);const source=body['source_operational_event_id'];if(!(source===null||typeof source==='string'))validation();
@@ -83,15 +84,15 @@ async function recordFinancialAdjustment(context:Context<any>){
   return ok(context,response,201);
 }
 
-async function readReviewVisibility(context:Context<any>){
-  const actor=staff(context);const review=await reviewRow(context.env.DB,id(context.req.param('id')));await market(context.env.DB,actor,review.market);
+async function readReviewVisibility(context:Context<AppEnv>){
+  const actor=staff(context);const review=await reviewRow(context.env.DB,id(context.req.param('id')??''));await market(context.env.DB,actor,review.market);
   const rows=await context.env.DB.prepare(`SELECT id AS observation_id,review_case_id,formal_order_id,visibility_status,note,observed_at,actor_staff_id,created_at FROM review_visibility_observations WHERE review_case_id=? ORDER BY observed_at,id`).bind(review.id).all<any>();
   return ok(context,{observations:rows.results});
 }
 
-async function recordReviewVisibility(context:Context<any>){
+async function recordReviewVisibility(context:Context<AppEnv>){
   const actor=staff(context);if(!actor.roles.has('owner')&&!actor.roles.has('pre_sales'))forbidden();
-  const review=await reviewRow(context.env.DB,id(context.req.param('id')));await market(context.env.DB,actor,review.market);
+  const review=await reviewRow(context.env.DB,id(context.req.param('id')??''));await market(context.env.DB,actor,review.market);
   const body=await json(context,['visibility_status','note','observed_at']);const status=body['visibility_status'];if(typeof status!=='string'||!REVIEW_VISIBILITY_STATUSES.includes(status as ReviewVisibilityStatus))validation();
   const note=optionalText(body['note'],2000);const observed=timestamp(body['observed_at']);const now=Date.now();
   const acquired=await command(context,actor,'RECORD_REVIEW_VISIBILITY','REVIEW_CASE',review.id,{visibility_status:status,note,observed_at:observed},now);if(acquired.kind==='REPLAY')return ok(context,acquired.response,201);
@@ -104,18 +105,18 @@ async function recordReviewVisibility(context:Context<any>){
   return ok(context,response,201);
 }
 
-async function readAdvancePrincipal(context:Context<any>){
+async function readAdvancePrincipal(context:Context<AppEnv>){
   const actor=staff(context);if(!actor.roles.has('owner')&&!actor.roles.has('buyer_refund'))forbidden();
-  const order=await orderRow(context.env.DB,id(context.req.param('formalOrderId')));await market(context.env.DB,actor,order.market);
+  const order=await orderRow(context.env.DB,id(context.req.param('formalOrderId')??''));await market(context.env.DB,actor,order.market);
   const rows=await context.env.DB.prepare(`SELECT entry.id AS entry_id,entry.formal_order_id,entry.buyer_customer_id,entry.entry_type,entry.original_payment_entry_id,CAST(entry.amount_cny_fen AS TEXT) AS amount_cny_fen,entry.paid_at,entry.reversed_at,entry.china_business_date,entry.payment_channel,entry.note,entry.actor_staff_id,entry.created_at,
       (SELECT COUNT(*) FROM buyer_advance_principal_entry_files proof WHERE proof.advance_payment_entry_id=entry.id) AS proof_count
     FROM buyer_advance_principal_entries entry WHERE entry.formal_order_id=? ORDER BY entry.created_at,entry.id`).bind(order.id).all<any>();
   return ok(context,{entries:rows.results});
 }
 
-async function recordAdvancePayment(context:Context<any>){
+async function recordAdvancePayment(context:Context<AppEnv>){
   const actor=staff(context);if(!actor.roles.has('owner')&&!actor.roles.has('buyer_refund'))forbidden();
-  const order=await orderRow(context.env.DB,id(context.req.param('formalOrderId')));await market(context.env.DB,actor,order.market);
+  const order=await orderRow(context.env.DB,id(context.req.param('formalOrderId')??''));await market(context.env.DB,actor,order.market);
   await requireAdvanceAction(context.env.DB,order.id);
   const obligation=await context.env.DB.prepare(`SELECT 1 AS present FROM buyer_refund_obligations WHERE formal_order_id=? LIMIT 1`).bind(order.id).first();if(obligation)throw new IntegrityError('CONFLICT',409);
   const body=await json(context,['amount_cny_fen','paid_at','payment_channel','note','proof_files']);const amount=positiveMoney(body['amount_cny_fen']);const paid=timestamp(body['paid_at']);const channel=paymentChannel(body['payment_channel']);const note=optionalText(body['note'],2000);const proofs=parseProofFiles(body['proof_files']);const now=Date.now();
@@ -134,9 +135,9 @@ async function recordAdvancePayment(context:Context<any>){
   }catch(error){await markIdempotencyFailed(context.env.DB,acquired.claim,'ADVANCE_PRINCIPAL_PAYMENT_FAILED',now).catch(()=>false);throw normalizeIntegrityError(error);}
 }
 
-async function reverseAdvancePayment(context:Context<any>){
-  const actor=staff(context);if(!actor.roles.has('owner')&&!actor.roles.has('buyer_refund'))forbidden();const order=await orderRow(context.env.DB,id(context.req.param('formalOrderId')));await market(context.env.DB,actor,order.market);
-  const paymentId=id(context.req.param('paymentId'));const original=await context.env.DB.prepare(`SELECT id,amount_cny_fen,payment_channel FROM buyer_advance_principal_entries WHERE id=? AND formal_order_id=? AND entry_type='PAYMENT'`).bind(paymentId,order.id).first<{id:string;amount_cny_fen:number;payment_channel:string}>();if(!original)throw new IntegrityError('NOT_FOUND',404);
+async function reverseAdvancePayment(context:Context<AppEnv>){
+  const actor=staff(context);if(!actor.roles.has('owner')&&!actor.roles.has('buyer_refund'))forbidden();const order=await orderRow(context.env.DB,id(context.req.param('formalOrderId')??''));await market(context.env.DB,actor,order.market);
+  const paymentId=id(context.req.param('paymentId')??'');const original=await context.env.DB.prepare(`SELECT id,amount_cny_fen,payment_channel FROM buyer_advance_principal_entries WHERE id=? AND formal_order_id=? AND entry_type='PAYMENT'`).bind(paymentId,order.id).first<{id:string;amount_cny_fen:number;payment_channel:string}>();if(!original)throw new IntegrityError('NOT_FOUND',404);
   const settled=await context.env.DB.prepare(`SELECT 1 AS present FROM buyer_advance_principal_settlements WHERE advance_payment_entry_id=?`).bind(paymentId).first();if(settled)throw new IntegrityError('CONFLICT',409);
   const body=await json(context,['amount_cny_fen','reason']);const amount=positiveMoney(body['amount_cny_fen']);const reason=text(body['reason'],3,2000);const prior=await context.env.DB.prepare(`SELECT COALESCE(SUM(amount_cny_fen),0) AS total FROM buyer_advance_principal_entries WHERE entry_type='REVERSAL' AND original_payment_entry_id=?`).bind(paymentId).first<{total:number}>();if(Number(prior?.total??0)+amount>Number(original.amount_cny_fen))throw new IntegrityError('CONFLICT',409);
   const now=Date.now();const acquired=await command(context,actor,'REVERSE_BUYER_ADVANCE_PRINCIPAL','BUYER_ADVANCE_PRINCIPAL',paymentId,{amount_cny_fen:amount,reason},now);if(acquired.kind==='REPLAY')return ok(context,acquired.response,201);
@@ -159,18 +160,18 @@ async function requireAdvanceAction(database:SqlDatabase,formalOrderId:string):P
   try{await requireFormalOrderAction(database,formalOrderId,'RECORD_ADVANCE_PRINCIPAL');}
   catch(error){if(error instanceof FormalOrderPolicyError){if(error.code==='FORMAL_ORDER_NOT_FOUND')throw new IntegrityError('NOT_FOUND',404);throw new IntegrityError('CONFLICT',409);}throw error;}
 }
-async function command(context:Context<any>,actor:AssignmentStaffAuthorization,action:string,targetType:string,targetId:string,payload:unknown,now:number){
+async function command(context:Context<AppEnv>,actor:AssignmentStaffAuthorization,action:string,targetType:string,targetId:string,payload:unknown,now:number){
   try{return await acquireIdempotency<any>(context.env.DB,{actorType:'STAFF',actorId:actor.staffId,action,targetType,targetId,idempotencyKey:idempotencyKey(context),requestHash:await hashCanonicalJson({action,target_type:targetType,target_id:targetId,payload})},{now});}
   catch(error){if(error&&typeof error==='object'&&'code' in error){const code=String((error as {code:unknown}).code);if(code==='IDEMPOTENCY_CONFLICT')throw new IntegrityError('IDEMPOTENCY_CONFLICT',409);if(code==='REQUEST_IN_PROGRESS')throw new IntegrityError('REQUEST_IN_PROGRESS',409);if(code==='VALIDATION_ERROR')validation();}throw new IntegrityError('DEPENDENCY_UNAVAILABLE',503);}
 }
-async function commit(context:Context<any>,claim:IdempotencyClaim,failureCode:string,statements:readonly SqlStatement[],now:number){try{await context.env.DB.batch(statements);}catch(error){await markIdempotencyFailed(context.env.DB,claim,failureCode,now).catch(()=>false);throw normalizeIntegrityError(error);}}
+async function commit(context:Context<AppEnv>,claim:IdempotencyClaim,failureCode:string,statements:readonly SqlStatement[],now:number){try{await context.env.DB.batch(statements);}catch(error){await markIdempotencyFailed(context.env.DB,claim,failureCode,now).catch(()=>false);throw normalizeIntegrityError(error);}}
 function validateProofRows(rows:readonly BuyerRefundProofFileRow[],proofs:readonly ProofInput[],staffId:string){if(rows.length!==proofs.length)throw new IntegrityError('CONFLICT',409);const map=new Map(rows.map((row)=>[row.id,row]));for(const proof of proofs){const row=map.get(proof.fileObjectId);if(!row||row.status!=='VERIFIED'||row.intent_status!=='VERIFIED'||row.purpose!=='BUYER_REFUND_PROOF'||row.intent_purpose!=='BUYER_REFUND_PROOF'||row.visibility!=='INTERNAL_ONLY'||row.intent_visibility!=='INTERNAL_ONLY'||row.owner_actor_type!=='STAFF'||row.owner_actor_id!==staffId||Number(row.version)!==proof.expectedFileVersion)throw new IntegrityError('CONFLICT',409);}}
 function parseProofFiles(value:unknown):ProofInput[]{if(!Array.isArray(value)||value.length<1||value.length>6)validation();const seen=new Set<string>();return value.map((item)=>{if(!item||typeof item!=='object'||Array.isArray(item))validation();const record=item as Record<string,unknown>;if(Object.keys(record).sort().join(',')!=='expected_file_version,file_object_id')validation();const fileObjectId=id(String(record['file_object_id']??''));const expectedFileVersion=record['expected_file_version'];if(typeof expectedFileVersion!=='number'||!Number.isSafeInteger(expectedFileVersion)||expectedFileVersion<1||seen.has(fileObjectId))validation();seen.add(fileObjectId);return{fileObjectId,expectedFileVersion};});}
 async function orderRow(database:SqlDatabase,orderId:string){const row=await database.prepare(`SELECT id,buyer_customer_id,canonical_marketplace_code AS market FROM formal_orders WHERE id=?`).bind(orderId).first<{id:string;buyer_customer_id:string;market:string}>();if(!row)throw new IntegrityError('NOT_FOUND',404);return{id:row.id,buyerCustomerId:row.buyer_customer_id,market:row.market};}
 async function reviewRow(database:SqlDatabase,reviewId:string){const row=await database.prepare(`SELECT review_case.id,review_case.formal_order_id,formal_order.canonical_marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`).bind(reviewId).first<{id:string;formal_order_id:string;market:string}>();if(!row)throw new IntegrityError('NOT_FOUND',404);return{id:row.id,formalOrderId:row.formal_order_id,market:row.market};}
 async function market(database:SqlDatabase,actor:AssignmentStaffAuthorization,code:string){if(actor.roles.has('owner'))return;const allowed=await resolveStaffMarketplaceCodes(database,actor);if(!allowed.includes(code))throw new IntegrityError('NOT_FOUND',404);}
-function staff(context:Context<any>){const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;if(!actor||actor.staffStatus!=='ACTIVE')forbidden();return actor;}
-async function json(context:Context<any>,keys:string[]){let body:unknown;try{body=await context.req.json();}catch{validation();}if(!body||typeof body!=='object'||Array.isArray(body))validation();const record=body as Record<string,unknown>;if(Object.keys(record).length!==keys.length||keys.some((key)=>!Object.hasOwn(record,key)))validation();return record;}
+function staff(context:Context<AppEnv>){const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;if(!actor||actor.staffStatus!=='ACTIVE')forbidden();return actor;}
+async function json(context:Context<AppEnv>,keys:string[]){let body:unknown;try{body=await context.req.json();}catch{validation();}if(!body||typeof body!=='object'||Array.isArray(body))validation();const record=body as Record<string,unknown>;if(Object.keys(record).length!==keys.length||keys.some((key)=>!Object.hasOwn(record,key)))validation();return record;}
 function id(value:string){const v=value.normalize('NFKC').trim();if(v.length<1||v.length>200||/[\u0000-\u001f\u007f]/u.test(v))validation();return v;}
 function text(value:unknown,min:number,max:number){if(typeof value!=='string')validation();const v=value.normalize('NFKC').trim();if(v.length<min||v.length>max||/[\u0000-\u001f\u007f]/u.test(v))validation();return v;}
 function optionalText(value:unknown,max:number){if(value===null)return null;if(typeof value!=='string')validation();const v=value.normalize('NFKC').trim();if(!v)return null;if(v.length>max)validation();return v;}
@@ -178,7 +179,7 @@ function timestamp(value:unknown){if(typeof value!=='number'||!Number.isSafeInte
 function signedMoney(value:unknown){const number=typeof value==='string'&&/^-?[1-9][0-9]*$/u.test(value)?Number(value):value;if(typeof number!=='number'||!Number.isSafeInteger(number)||number===0)validation();return number;}
 function positiveMoney(value:unknown){const n=signedMoney(value);if(n<=0)validation();return n;}
 function paymentChannel(value:unknown){if(typeof value!=='string'||!['WECHAT','ALIPAY','BANK_TRANSFER','OTHER_MANUAL'].includes(value))validation();return value;}
-function idempotencyKey(context:Context<any>){const key=context.req.header('Idempotency-Key')?.trim()??'';if(key.length<8||key.length>128||key.includes(',')||/[\u0000-\u001f\u007f]/u.test(key))validation();return key;}
+function idempotencyKey(context:Context<AppEnv>){const key=context.req.header('Idempotency-Key')?.trim()??'';if(key.length<8||key.length>128||key.includes(',')||/[\u0000-\u001f\u007f]/u.test(key))validation();return key;}
 function normalizeIntegrityError(error:unknown){return error instanceof IntegrityError?error:new IntegrityError('DEPENDENCY_UNAVAILABLE',503);}
 function publicMessage(code:IntegrityError['code']):string{switch(code){
   case 'FORBIDDEN':return '当前岗位无权执行该操作';
@@ -190,5 +191,5 @@ function publicMessage(code:IntegrityError['code']):string{switch(code){
   default:return '服务暂时不可用';
 }}
 function validation():never{throw new IntegrityError('VALIDATION_ERROR',400)}function forbidden():never{throw new IntegrityError('FORBIDDEN',403)}
-function ok(context:Context<any>,data:unknown,status=200){context.header('Cache-Control','no-store');return context.json(apiSuccess(data,requestIdFromContext(context)),status as 200|201);}
-function wrap(handler:(context:Context<any>)=>Promise<Response>){return async(context:Context<any>)=>{try{return await handler(context);}catch(error){const e=normalizeIntegrityError(error);return context.json(apiFailure(e.code,publicMessage(e.code),requestIdFromContext(context)),e.status);}};}
+function ok(context:Context<AppEnv>,data:unknown,status=200){context.header('Cache-Control','no-store');return context.json(apiSuccess(data,requestIdFromContext(context)),status as 200|201);}
+function wrap(handler:(context:Context<AppEnv>)=>Promise<Response>){return async(context:Context<AppEnv>)=>{try{return await handler(context);}catch(error){const e=normalizeIntegrityError(error);return context.json(apiFailure(e.code,publicMessage(e.code),requestIdFromContext(context)),e.status);}};}

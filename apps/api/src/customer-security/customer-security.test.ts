@@ -35,12 +35,12 @@ describe('customer multi-persona invitation and recovery', () => {
     database = createDb();
     expect(await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).first()).toEqual({ schema_version: 43 });
+    `).first()).toEqual({ schema_version: 64 });
     const triggerNames = (await database.prepare(`
       SELECT name FROM sqlite_schema WHERE type='trigger'
         AND name LIKE 'trg_customer_account_persona%'
       ORDER BY name
-    `).all()).results.map((row: any) => row.name);
+    `).all<{ name: string }>()).results.map((row) => row.name);
     expect(triggerNames).toContain('trg_customer_account_persona_source_guard');
     await invite('immutable_wx', 'AMAZON_JP', 'invite-immutable-0001');
     expect(() => database!.exec(`

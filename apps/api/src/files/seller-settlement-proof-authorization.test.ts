@@ -31,6 +31,9 @@ interface Scenario {
   authorityOrganizationId: string | null;
   directOrganizationId: string | null;
   teamOrganizationId: string | null;
+  marketplaceCodes: readonly string[];
+  resourceMarketplace: string | null;
+  staffAudienceGrantActive: boolean;
   readIntentTokenHash?: string;
 }
 
@@ -70,6 +73,9 @@ function scenario(overrides: Partial<Scenario> = {}): Scenario {
     authorityOrganizationId: 'seller-1',
     directOrganizationId: 'seller-1',
     teamOrganizationId: null,
+    marketplaceCodes: ['AMAZON_JP'],
+    resourceMarketplace: 'JP',
+    staffAudienceGrantActive: true,
     ...overrides,
   };
 }
@@ -98,19 +104,21 @@ describe('seller settlement proof dynamic file authorization', () => {
     await expect(authorize(scenario())).resolves.toBeUndefined();
   });
 
-  it('allows a legal Team Manager over the assigned account manager', async () => {
+  it('does not let retired Team leadership replace Marketplace scope', async () => {
     await expect(authorize(scenario({
       grants: ['SELLER_SETTLEMENT_VIEW', 'TASK_VIEW_TEAM'],
       leader: true,
       directOrganizationId: null,
       teamOrganizationId: 'seller-1',
-    }))).resolves.toBeUndefined();
+      marketplaceCodes: [],
+    }))).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('rejects VIEW permission without responsibility for the organization', async () => {
     await expect(authorize(scenario({
       directOrganizationId: null,
       teamOrganizationId: null,
+      marketplaceCodes: [],
     }))).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
@@ -124,16 +132,16 @@ describe('seller settlement proof dynamic file authorization', () => {
     }))).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
-  it('rejects cross Seller Organization access', async () => {
+  it('rejects cross-Marketplace access', async () => {
     await expect(authorize(scenario({
-      authorityOrganizationId: 'seller-2',
-      directOrganizationId: 'seller-1',
+      resourceMarketplace: 'US',
     }))).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('rejects guessed file or link identifiers', async () => {
     await expect(authorize(scenario({
-      authorityOrganizationId: null,
+      resourceMarketplace: null,
+      staffAudienceGrantActive: false,
     }))).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
@@ -191,6 +199,7 @@ describe('seller settlement proof dynamic file authorization', () => {
       fakeDatabase(scenario({
         directOrganizationId: null,
         teamOrganizationId: null,
+        marketplaceCodes: [],
       })),
       new DenyAllFileAuthorizationService(),
       {
@@ -211,6 +220,7 @@ describe('seller settlement proof dynamic file authorization', () => {
     const token = generateOpaqueFileToken();
     const input = scenario({
       directOrganizationId: null,
+      marketplaceCodes: [],
       readIntentTokenHash: await hashOpaqueFileToken(token),
     });
     await expect(consumeFileReadIntent(
@@ -264,7 +274,7 @@ function fakeDatabase(input: Scenario): SqlDatabase {
             && sql.includes('FROM staff_users')) {
             return { status: input.staffStatus } as T;
           }
-          if (sql.includes('SELECT id, display_name, status, authorization_version')) {
+          if (sql.includes('SELECT id,display_name,status,authorization_version')) {
             return input.staffStatus === 'ACTIVE'
               ? {
                   id: 'staff-1',
@@ -273,6 +283,12 @@ function fakeDatabase(input: Scenario): SqlDatabase {
                   authorization_version: 1,
                 } as T
               : null;
+          }
+          if (sql.includes('FROM seller_payments payment')
+            && sql.includes('organization.marketplace_code AS market')) {
+            return input.resourceMarketplace === null
+              ? null
+              : { market: input.resourceMarketplace } as T;
           }
           if (sql.includes('FROM seller_payment_proofs proof')) {
             const linkId = String(bindings[1] ?? '');
@@ -307,7 +323,7 @@ function fakeDatabase(input: Scenario): SqlDatabase {
               results: input.roles.map((role_code) => ({ role_code })) as T[],
             };
           }
-          if (sql.includes('SELECT permission_code, effect')) {
+          if (sql.includes('SELECT permission_code,effect')) {
             return {
               results: [
                 ...input.grants.map((permission_code) => ({
@@ -335,11 +351,18 @@ function fakeDatabase(input: Scenario): SqlDatabase {
           }
           if (sql.includes('grant.staff_permission_code')) {
             return {
-              results: [{
+              results: input.staffAudienceGrantActive ? [{
                 staff_permission_code: 'SELLER_SETTLEMENT_VIEW',
                 staff_scope_type: 'GLOBAL',
                 staff_team_id: null,
-              }] as T[],
+              }] as T[] : [],
+            };
+          }
+          if (sql.includes('FROM staff_marketplace_scopes')) {
+            return {
+              results: input.marketplaceCodes.map((marketplace_code) => ({
+                marketplace_code,
+              })) as T[],
             };
           }
           return { results: [] };

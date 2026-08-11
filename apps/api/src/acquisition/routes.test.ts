@@ -18,8 +18,7 @@ describe('acquisition HTTP authority and privacy boundary', () => {
     for (const actor of [auth('buyer_refund','staff-refund'), deniedPreSales()]) {
       const response = await request(actor, '/api/staff/acquisition/leads', {
         method: 'POST', headers: headers(`forbidden-${actor.staffId}`),
-        body: JSON.stringify({ lead_type: 'BUYER', wechat_id: 'forbidden_wx',
-          display_name: null, note: null }),
+        body: JSON.stringify(leadBody('forbidden-channel', 'forbidden_wx')),
       });
       expect(response.status).toBe(403);
     }
@@ -27,39 +26,39 @@ describe('acquisition HTTP authority and privacy boundary', () => {
       .toEqual({ count: 0 });
   });
 
-  it('rejects client channel authority and cross-site writes', async () => {
+  it('rejects unknown channel authority and cross-site writes', async () => {
     database = db();
     await seedChannelAndAssignment(database);
     const clientAuthority = await request(auth('pre_sales','staff-pre'),
       '/api/staff/acquisition/leads', {
         method: 'POST', headers: headers('client-channel-0001'),
-        body: JSON.stringify({ lead_type: 'BUYER', wechat_id: 'route_wx',
-          display_name: null, note: null, channel_id: 'forged-channel' }),
+        body: JSON.stringify(leadBody('forged-channel', 'route_wx')),
       });
     expect(clientAuthority.status).toBe(400);
     const crossSite = await request(auth('pre_sales','staff-pre'),
       '/api/staff/acquisition/leads', {
         method: 'POST', headers: { ...headers('cross-site-lead-0001'),
           Origin: 'https://evil.example', 'Sec-Fetch-Site': 'cross-site' },
-        body: JSON.stringify({ lead_type: 'BUYER', wechat_id: 'route_wx',
-          display_name: null, note: null }),
+        body: JSON.stringify(leadBody('forged-channel', 'route_wx')),
       });
     expect(crossSite.status).toBe(403);
     expect(database.raw.prepare('SELECT COUNT(*) AS count FROM acquisition_leads').get())
       .toEqual({ count: 0 });
   });
 
-  it('creates a lead with server-derived channel and never returns protected fields', async () => {
+  it('creates a lead with an explicit approved channel and never returns protected fields', async () => {
     database = db();
     const channel = await seedChannelAndAssignment(database);
     const response = await request(auth('pre_sales','staff-pre'),
       '/api/staff/acquisition/leads', {
         method: 'POST', headers: headers('route-lead-0001'),
-        body: JSON.stringify({ lead_type: 'BUYER', wechat_id: 'route_secret_wx',
-          display_name: '路由买家', note: null }),
+        body: JSON.stringify({ ...leadBody(channel, 'route_secret_wx'),
+          display_name: '路由买家' }),
       });
     expect(response.status).toBe(201);
-    const body = await response.json() as any;
+    const body = await response.json() as {
+      data: { lead: { origin_channel_id: string; wechat_masked: string } };
+    };
     expect(body.data.lead).toMatchObject({
       origin_channel_id: channel, wechat_masked: 'ro***wx',
     });
@@ -100,21 +99,35 @@ function db() {
       created_at,updated_at) VALUES
       ('staff-pre','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
       ('staff-refund','phase3h-test-team','ACTIVE',1000,NULL,1000,1000);
+    INSERT INTO staff_marketplace_scopes (
+      id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
+    ) VALUES
+      ('scope-route-pre-primary','staff-pre','pre_sales','AMAZON_JP','ACTIVE','staff-owner-route',1000,NULL,'TEST',1000,1000,'PRIMARY'),
+      ('scope-route-refund-primary','staff-refund','buyer_refund','AMAZON_JP','ACTIVE','staff-owner-route',1000,NULL,'TEST',1000,1000,'PRIMARY');
   `);
   return value;
 }
 async function seedChannelAndAssignment(db: SqliteDatabase) {
   const owner = auth('owner','staff-owner-route');
   const channel = await createAcquisitionChannel(db, {
-    code: 'ROUTE_XHS', channelType: 'XIAOHONGSHU', displayName: '路由账号',
+    code: 'ROUTE_XHS', platformName: '小红书', leadType: 'BUYER',
+    marketplaceCode: 'AMAZON_JP', displayName: '路由账号',
   }, { actor: owner, idempotencyKey: 'route-channel-0001',
     requestId: 'route-channel-request', now: 1000 });
+  db.raw.prepare(`UPDATE acquisition_channel_privacy_profiles
+    SET intake_wechat_label='路由测试工作微信',version=version+1,updated_at=1000
+    WHERE channel_id=?`).run(channel.channel.channel_id);
   await createAcquisitionAssignment(db, {
     staffId: 'staff-pre', leadType: 'BUYER', channelId: channel.channel.channel_id,
     effectiveFrom: 0, effectiveUntil: null,
   }, { actor: owner, idempotencyKey: 'route-assignment-0001',
     requestId: 'route-assignment-request', now: 1000 });
   return channel.channel.channel_id;
+}
+function leadBody(channelId: string, wechatId: string) {
+  return { lead_type: 'BUYER', marketplace_code: 'AMAZON_JP', channel_id: channelId,
+    prospect_id: null, wechat_id: wechatId, display_name: null, note: null };
 }
 function auth(role: StaffRoleCode, staffId: string): AssignmentStaffAuthorization {
   const effective = calculateEffectiveStaffAuthorization({ roles: new Set([role]),

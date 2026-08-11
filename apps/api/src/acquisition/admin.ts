@@ -103,11 +103,20 @@ export async function createAcquisitionAssignment(
   const acquired=await acquireAcquisitionCommand<{assignment:AcquisitionChannelAssignmentDto}>(database,command,'CREATE_ACQUISITION_CHANNEL_ASSIGNMENT','STAFF_ACQUISITION_ASSIGNMENT',`${staffId}:${input.leadType}:${effectiveFrom}`,{staff_id:staffId,lead_type:input.leadType,channel_id:channelId,effective_from:effectiveFrom,effective_until:effectiveUntil});
   if(acquired.acquired.kind==='REPLAY')return {...acquired.acquired.response,replayed:true}; const id=crypto.randomUUID();
   const assignment:AcquisitionChannelAssignmentDto={assignment_id:id,staff_id:staffId,lead_type:input.leadType,channel_id:channelId,channel_name:channel.display_name,effective_from:effectiveFrom,effective_until:effectiveUntil,status:'ACTIVE',version:1};
-  await database.batch([
-    database.prepare(`INSERT INTO acquisition_staff_channel_assignments(id,staff_id,lead_type,channel_id,effective_from,effective_until,status,version,created_by_staff_id,created_at,updated_at,revoked_at,revoke_reason)
-      VALUES(?,?,?,?,?,?,'ACTIVE',1,?,?,?,NULL,NULL)`).bind(id,staffId,input.leadType,channelId,effectiveFrom,effectiveUntil,command.actor.staffId,acquired.now,acquired.now),
-    ...finishAcquisitionCommand(database,acquired.acquired.claim,{assignment},acquired.now,{assignment_id:id}),
-  ]);return {assignment,replayed:false};
+  try {
+    await database.batch([
+      database.prepare(`INSERT INTO acquisition_staff_channel_assignments(id,staff_id,lead_type,channel_id,effective_from,effective_until,status,version,created_by_staff_id,created_at,updated_at,revoked_at,revoke_reason)
+        VALUES(?,?,?,?,?,?,'ACTIVE',1,?,?,?,NULL,NULL)`).bind(id,staffId,input.leadType,channelId,effectiveFrom,effectiveUntil,command.actor.staffId,acquired.now,acquired.now),
+      ...finishAcquisitionCommand(database,acquired.acquired.claim,{assignment},acquired.now,{assignment_id:id}),
+    ]);
+  } catch (error) {
+    await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);
+    if (/assignment_invalid|assignment_overlap|unique/iu.test(String(error))) {
+      throw new AcquisitionError('CONFLICT',409);
+    }
+    throw error;
+  }
+  return {assignment,replayed:false};
 }
 export async function revokeAcquisitionAssignment(
   database:SqlDatabase,input:{assignmentId:string;expectedVersion:number;reason:string},command:AcquisitionCommandContext,

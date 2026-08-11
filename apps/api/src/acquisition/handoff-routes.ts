@@ -1,10 +1,11 @@
 import { apiFailure, apiSuccess, isAcquisitionLeadType } from '@ygb/contracts';
-import type { Context, Hono } from 'hono';
+import type { Hono } from 'hono';
+import type { AppEnv } from '../app';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { AcquisitionError } from './errors';
 import { listAcquisitionHandoffs } from './handoffs';
 
-export function registerAcquisitionHandoffRoutes(app:Hono<any>):void{
+export function registerAcquisitionHandoffRoutes(app:Hono<AppEnv>):void{
   app.get('/api/staff/acquisition/handoffs',async(context)=>{
     const requestId=String(context.get('requestId')??crypto.randomUUID());
     try{

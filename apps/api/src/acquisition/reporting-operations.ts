@@ -80,7 +80,7 @@ export async function listSourceCorrectionCandidates(database:SqlDatabase,actor:
   return Object.freeze(rows.results.map((row)=>Object.freeze({lead_id:String(row.lead_id),lead_type:row.lead_type as 'BUYER'|'SELLER',
     marketplace_code:String(row.marketplace_code),business_date:String(row.business_date),display_name:row.display_name===null?null:String(row.display_name),
     wechat_masked:String(row.wechat_masked),original_channel_id:String(row.original_channel_id),original_channel_name:String(row.original_channel_name),
-    effective_channel_id:String(row.effective_channel_id),effective_channel_name:String(row.effective_channel_name),correction_count:Number(row.correction_count)}))));
+    effective_channel_id:String(row.effective_channel_id),effective_channel_name:String(row.effective_channel_name),correction_count:Number(row.correction_count)})));
 }
 
 export async function correctLeadSource(
