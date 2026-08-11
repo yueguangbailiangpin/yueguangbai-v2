@@ -43,7 +43,7 @@ The system SHALL acquire versioned expiring D1 leases before scanning a job, SHA
 
 ### Requirement: Required lifecycle jobs progress automatically
 
-The system SHALL schedule reservation/instruction expiry, integration Outbox delivery, file compensation/orphan cleanup and authentication ephemeral cleanup, and SHALL provide registered extension points for approved Drive archive and Feishu jobs.
+The system SHALL schedule reservation/instruction expiry, integration Outbox delivery, file compensation/orphan cleanup and authentication ephemeral cleanup, and SHALL provide a registered extension point for an approved Drive archive job.
 
 #### Scenario: Expired business hold
 
@@ -70,11 +70,10 @@ Signal ingestion SHALL accept only opaque 64-character lowercase hexadecimal obs
 | File failure | 3 failures in 30 minutes | 60 minutes | Warning |
 | Login anomaly | 5 failures in 10 minutes | 30 minutes | Critical |
 | Primary alert sink failure | 1 failure in 5 minutes | 30 minutes | Critical |
-| Future Feishu adapter failure | 3 failures in 15 minutes | 60 minutes | Warning |
 
-Every signal SHALL resolve after two consecutive healthy evaluations. Event-driven signals SHALL receive scheduler-owned healthy evaluations after their observation window becomes quiet so they can recover without a new business event. Duplicate observation IDs SHALL NOT advance thresholds or resend notifications; a resolved problem MAY open a new incident when it breaches again. Alert delivery failure SHALL NOT fail the originating request or job and SHALL create only the fixed primary-sink-failure signal without recursively invoking the failed sink. Alert identity SHALL include the fixed signal type, fixed or empty job name, and fixed summary code so independent adapter failures cannot overwrite one another.
+Every signal SHALL resolve after two consecutive healthy evaluations. Event-driven signals SHALL receive scheduler-owned healthy evaluations after their observation window becomes quiet so they can recover without a new business event. Duplicate observation IDs SHALL NOT advance thresholds or resend notifications; a resolved problem MAY open a new incident when it breaches again. Alert delivery failure SHALL NOT fail the originating request or job and SHALL create only the fixed primary-sink-failure signal without recursively invoking the failed sink. Alert identity SHALL include the fixed signal type, fixed or empty job name, and fixed summary code.
 
-Staff authentication rejection, replay, rate-limit and invalid-session facts SHALL enter the login-anomaly policy through an opaque hash of the existing security-event id. Successful authentication SHALL NOT emit an anomaly. The operational signal SHALL NOT contain a login identifier, network address, token, password, User-Agent, Provider subject or raw error. Provider delivery failure SHALL use the fixed future-Feishu-adapter signal instead of a dynamic error label.
+Staff authentication rejection and invalid-session facts SHALL enter the login-anomaly policy through an opaque hash of the existing security-event id. Successful authentication SHALL NOT emit an anomaly. The operational signal SHALL NOT contain a login identifier, network address, token, password, User-Agent, Provider subject or raw error.
 
 The primary alert adapter SHALL default to disabled and SHALL support only an explicit local adapter or injected local mock in this Change. Unknown modes and an adapter supplied while disabled SHALL fail configuration validation. No mode in this Change SHALL accept external credentials or perform an external network call.
 

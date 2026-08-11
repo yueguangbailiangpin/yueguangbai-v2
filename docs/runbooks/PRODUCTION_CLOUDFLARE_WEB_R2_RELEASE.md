@@ -7,9 +7,9 @@
 ## 发布前备份点与只读核验
 
 1. 冻结唯一 release SHA、Web build digest、Worker dry-run digest、Git 外渲染配置的加密快照和开关矩阵。
-2. 保持 Scheduler、Staff Auth/Feishu、Drive copy/proxy/delete、Feishu workbench、MCP 与外部告警关闭。
+2. 保持未获授权的 Scheduler、Drive copy/proxy/delete、MCP 与外部告警关闭；Staff 入口仅允许经批准的 Cloudflare Access 应用与策略。
 3. 记录当前线上 Worker/Web release、D1 ledger、D1 可恢复备份、R2/Drive Manifest 和最近隔离恢复证据；不得把 bucket key、Drive ID 或真实行/金额写入 Git。
-4. 只读比较生产 D1 ledger 与 release 的连续 `0001`–`0037`。未知、跳号、重复、并行、部分 Migration 或 schema 不匹配立即停止。
+4. 只读比较生产 D1 ledger 与 release 的连续 `0001`–`0064`。未知、跳号、重复、并行、部分 Migration 或 schema 不匹配立即停止。
 5. 若 D1 有数据，先做完整加密备份，并在全新隔离目标通过 attestation、schema、rows、finance、integrity、foreign keys、Staff/Buyer/Seller/file smoke；恢复目标不得覆盖。
 
 ## 本地配置准备
@@ -28,13 +28,13 @@
 4. 先部署 schema-compatible Worker/Web，再验证 `/health`、根页、三类登录页、深链、API JSON 404 与跨源拒绝。
 5. 使用匿名账号验证 R2 put → receipt → HEAD/prefix → D1 final assertion → read-intent/Audience read；分别注入 D1 final failure、PUT 后 Provider rejection 和非 null 回执 metadata/checksum/ETag 异常，验证补偿删除；再注入 delete failure，验证不暴露 key 的 `DELETION_PENDING` 与 cleanup 重试。
 6. 所有 smoke 绑定 release SHA、环境、UTC/北京时间、request ID 与操作者证据。失败立即停止后续开关。
-7. Scheduler、Drive、Feishu、MCP、外部告警和首次 R2 归档删除必须在各自 Change/清单中再次单独批准，不随 Worker/Web 部署自动启用。
+7. Scheduler、Drive、MCP、外部告警和首次 R2 归档删除必须在各自 Change/清单中再次单独批准，不随 Worker/Web 部署自动启用。
 
 ## Kill switches
 
 - Worker/Web：停止新写入；切回 schema-compatible release。
 - Scheduler：`SCHEDULED_OPERATIONS_ENABLED=false`；必要时逐 Job disabled，等待 90 秒租约后重放。
-- Staff Auth/Feishu：`STAFF_AUTH_ENABLED=false`；sync 与 callback 各自 false。
+- Staff Access：撤销或收紧 Cloudflare Access 应用策略；必要时回滚 Worker，并通过 Moonwhite Staff 状态/Session 版本即时拒绝账号。
 - Drive：total、copy、proxy、R2-delete 全部分离；任何失败先关闭 delete，再关闭 proxy/copy。
 - MCP：global 与 local mock 都 false；未来生产 transport/逐工具另有开关。
 - 文件/R2：停止新上传；保留 D1 intent/manifest；只通过现有补偿/cleanup 重试，禁止人工公开 key 或 URL。

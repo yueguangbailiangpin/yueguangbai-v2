@@ -90,7 +90,7 @@ Key 格式：8–128 字符，仅允许字母、数字、点、下划线、冒�
 
 ## 7. 鉴权与信息隐藏
 
-- 员工：飞书 OAuth/身份交换后获得短期内部 Session；每次请求重新计算或读取当前 D1 权限上下文。
+- 员工：Cloudflare Access 验证邮箱后，由 Worker 签发短期内部 Session；每次请求重新计算当前 D1 岗位、权限、Marketplace Scope 与 Personal DENY。
 - 客户：买家和卖家成员使用客户账号 Session；Session 可撤销，客户停用或安全变更后立即失效。
 - 未授权资源统一返回 404。
 - 卖家 DTO 使用字段白名单。

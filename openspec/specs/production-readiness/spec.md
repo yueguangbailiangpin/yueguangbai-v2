@@ -38,11 +38,11 @@ The release process SHALL reconcile every formal D1 file object to exactly its e
 
 ### Requirement: Production controls detect and contain failures
 
-The system SHALL alert on Worker 5xx, authentication anomalies, stale/failed jobs, Outbox backlog, file/Drive/Feishu/MCP dependency failures and capacity thresholds, SHALL provide independent escalation when Feishu fails, and SHALL document tested kill switches and recovery runbooks.
+The system SHALL alert on Worker 5xx, authentication anomalies, stale/failed jobs, Outbox backlog, file/Drive/Cloudflare Access/MCP dependency failures and capacity thresholds, SHALL use a provider-independent operational receiver, and SHALL document tested kill switches and recovery runbooks.
 
 #### Scenario: External Provider fails
 
-- **WHEN** Drive, Feishu or MCP becomes unavailable
+- **WHEN** Drive, Cloudflare Access or MCP becomes unavailable
 - **THEN** an independent alert identifies the dependency, affected scope and safe kill switch while D1 business integrity is preserved.
 
 #### Scenario: Alert path is untested

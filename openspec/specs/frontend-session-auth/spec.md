@@ -64,19 +64,19 @@ The frontend SHALL document that Buyer and Seller use the same HttpOnly `__Host-
 - **WHEN** Customer logout/401 occurs or old opposite-domain data exists while the active Cookie identity changes
 - **THEN** Buyer and Seller requests/caches are both removed and states reset/re-resolved, no stale opposite-domain data renders, and Staff remains unchanged.
 
-### Requirement: Staff auth uses login start, backend callback, and Worker Session
+### Requirement: Staff auth uses Cloudflare Access bootstrap and Worker Session
 
-`/staff/login` SHALL call `POST /api/staff-auth/login/start` with an allowlisted relative `return_to`, validate the returned Feishu authorization URL, and navigate the browser. The backend callback SHALL establish the HttpOnly Staff Cookie; the frontend SHALL then call `GET /api/staff-auth/session` before entering Staff Shell. Wave 14A tests SHALL use Fake Provider and SHALL NOT connect real Feishu.
+The Staff entry SHALL call `POST /api/staff-auth/access/bootstrap` after Cloudflare Access has admitted the request, then SHALL read `GET /api/staff-auth/session` before entering Staff Shell. The frontend SHALL never receive or validate a Provider authorization URL, callback code, Access JWT or Feishu identity.
 
-#### Scenario: Valid Fake Provider flow
+#### Scenario: Valid Access bootstrap
 
-- **WHEN** local login start, redirect/callback, Cookie establishment, and Session read succeed
-- **THEN** Staff state becomes AUTHENTICATED and the allowlisted Staff return route renders.
+- **WHEN** Access admits a known ACTIVE Staff email and the bootstrap establishes the HttpOnly Staff Cookie
+- **THEN** the fresh Worker Session is validated and Staff state becomes AUTHENTICATED.
 
-#### Scenario: Invalid return, callback, or dependency
+#### Scenario: Access or Session dependency fails
 
-- **WHEN** return path is unsafe, callback state fails, Provider configuration is unavailable, or Session read returns a dependency failure
-- **THEN** no Staff protected data renders, secrets/tokens are not exposed, and state is UNAUTHENTICATED or DEPENDENCY_ERROR according to the real response.
+- **WHEN** bootstrap is unauthenticated/forbidden or Session read returns a dependency failure
+- **THEN** no Staff protected data renders and state becomes UNAUTHENTICATED or DEPENDENCY_ERROR according to the validated response.
 
 ### Requirement: Session status transitions preserve HTTP semantics
 

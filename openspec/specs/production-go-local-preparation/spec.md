@@ -9,7 +9,7 @@ The release audit SHALL classify every finding as repository-evidenced, locally 
 
 #### Scenario: A local provider dry-run passes
 
-- **WHEN** Drive, Feishu or Staff MCP passes against a mock, disabled template, or local adapter with zero external calls
+- **WHEN** Drive, Cloudflare Access or Staff MCP passes against a mock, disabled template, or local adapter with zero external calls
 - **THEN** the local capability may be marked repository-evidenced while real Provider activation remains owner-authorized and Production GO blocked.
 
 #### Scenario: Change evidence has moved or is ambiguous
@@ -24,7 +24,7 @@ The release audit SHALL classify every finding as repository-evidenced, locally 
 
 ### Requirement: Local release gate is aggregate and candidate-bound
 
-The repository SHALL provide one release-specific local gate that runs the current main gate plus final-production, Cloudflare, production-readiness, Drive, Feishu, and Staff MCP verifier/preflight coverage, SHALL stop on any failing command, and SHALL emit the current clean candidate commit and Git tree without a hard-coded historical candidate SHA.
+The repository SHALL provide one release-specific local gate that runs the current main gate plus final-production, Cloudflare, production-readiness, Drive, Staff authentication, and Staff MCP verifier/preflight coverage, SHALL stop on any failing command, and SHALL emit the current clean candidate commit and Git tree without a hard-coded historical candidate SHA.
 
 #### Scenario: A local release candidate is checked
 
@@ -71,7 +71,7 @@ The audit SHALL require an explicit production hosting and Worker configuration,
 - **THEN** the owner must approve and evidence an alternative release-control process or complete an independent automation Change before GO.
 
 ### Requirement: External integrations activate in reversible phases
-Drive, Feishu, Scheduler and Staff MCP SHALL remain disabled until their own prerequisites pass, SHALL use separate kill switches and approvals, and SHALL preserve D1/Web authority when disabled.
+Drive, Scheduler and Staff MCP SHALL remain disabled until their own prerequisites pass, SHALL use separate kill switches and approvals, and SHALL preserve D1/Web authority when disabled. Cloudflare Access SHALL separately prove only Staff email while Moonwhite D1 remains the authorization authority.
 
 #### Scenario: Drive archive is enabled
 - **WHEN** the owner authorizes archive rollout

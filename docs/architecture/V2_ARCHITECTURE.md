@@ -14,7 +14,7 @@
         ▼
 Cloudflare Workers + Hono
   ├─ Customer Auth
-  ├─ Staff/Feishu Auth
+  ├─ Staff Access Auth
   ├─ Permission Engine
   ├─ Catalog
   ├─ Demand Batches
@@ -23,13 +23,13 @@ Cloudflare Workers + Hono
   ├─ Formal Orders
   ├─ Reviews
   ├─ Financial Ledger
-  ├─ Feishu Sync Outbox
+  ├─ Staff Work Items / Outbox
   └─ Audit / Observability
         │
         ├──────── D1（权威事实）
         └──────── R2（正式图片）
-                         │
-飞书员工工作台 ◀──── 同步/回调
+
+Cloudflare Access ──验证邮箱──▶ Staff Access Auth
 ```
 
 ## 2. 应用目录建议
@@ -42,7 +42,7 @@ packages/
   contracts/    API DTO、错误码、事件合同
   domain/       纯领域函数、状态机、金额、身份规范化
   ui/           通用 UI
-  testkit/      D1/R2/飞书匿名测试工具
+  testkit/      D1/R2/Access 匿名测试工具
 migrations/     V2 全新 D1 Migration
 docs/
 scripts/
@@ -56,8 +56,8 @@ test/
 | 客户、产品、订单、评论、财务 | D1 |
 | 正式图片 | R2 + D1 Manifest |
 | 员工身份映射、角色、权限 | D1 |
-| 飞书用户 ID | D1 映射 |
-| 飞书任务卡片 | 飞书镜像，D1 任务为权威 |
+| 员工登录邮箱、角色、权限、负责站点 | D1；Access 只证明邮箱 |
+| 员工任务 | D1 权威，通过受控员工 Web/API 操作 |
 | 私人微信聊天 | 非正式沟通，不自动入库 |
 | 必要微信截图 | R2，按业务对象关联 |
 | Google Drive | 后期第二备份，不是在线源 |
@@ -110,13 +110,12 @@ D1 的关键命令使用：
 
 失败时删除已上传对象。重试必须能识别已完成、正在处理和残留对象。
 
-## 7. 飞书集成
+## 7. 员工身份与工作台
 
-- 飞书用于员工 OAuth、任务摘要和提醒。
-- 正式权限每次由 D1 计算。
-- 任务领取、分派和正式状态写入必须先落 D1。
-- 飞书卡片或多维表格通过 Outbox 异步更新。
-- 飞书更新负责人、协作者、优先级、截止时间时，通过回调进入 D1 命令；版本冲突则拒绝并回写最新状态。
+- Cloudflare Access 只校验签名、团队域名、应用 Audience 和邮箱。
+- 员工账号、唯一岗位、负责站点、PRIMARY/SUPPORT 和 Personal DENY 每次由 D1 计算。
+- 任务、领取、处理和正式状态写入均在月光白受控 Web/API 内完成。
+- 现行系统不注册飞书认证、同步、回调或告警运行入口。
 
 ## 8. 部署环境
 
@@ -131,7 +130,7 @@ D1 的关键命令使用：
 - D1；
 - R2；
 - Secrets；
-- 飞书应用；
+- Cloudflare Access 应用与策略；
 - 域名/路由；
 - Rate Limit namespace。
 

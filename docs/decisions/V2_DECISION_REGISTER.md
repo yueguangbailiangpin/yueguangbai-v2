@@ -5,11 +5,11 @@
 ### D-001 技术路线
 
 ```text
-Feishu + Private WeChat + Cloudflare Workers/D1/R2
-              + Google Drive cold archive
+Cloudflare Access + Private WeChat + Cloudflare Workers/D1/R2
+                         + Google Drive cold archive
 ```
 
-状态：Accepted
+状态：Accepted（Staff 部分由 D-032细化）
 
 ### D-002 私人微信
 
@@ -27,7 +27,7 @@ Feishu + Private WeChat + Cloudflare Workers/D1/R2
 
 飞书用于员工身份、任务摘要、队列和提醒。D1 是任务和权限权威源。
 
-状态：Accepted
+状态：Superseded by D-032
 
 ### D-005 数据和图片
 
@@ -101,7 +101,7 @@ D1 中的 `staff_users`、角色、Permission、Personal DENY、Team、Departmen
 
 Worker 只把经服务端交换和校验的飞书身份映射到已经存在的 ACTIVE D1 Staff，并签发自己的 opaque、hashed、可撤销内部 Staff Session。Staff API 只信任该内部 Session Middleware 生成的 `staffAuthorization`，不得信任飞书 Header、客户端 `staff_id`、role、Permission、Team 或 Scope。未知、冲突或 inactive identity 不自动创建 Staff，必须 fail closed。
 
-状态：Accepted
+状态：Superseded by D-032
 
 ### D-015 多站点、平台与域名
 
@@ -149,7 +149,7 @@ Staff 身份继续与 Customer 身份严格分离。一个规范化微信身份�
 
 系统按最多八名员工、每日最高二百订单设计。飞书只同步需要处理、异常或逾期的任务和聚合摘要，不镜像每一个订单状态变化。
 
-状态：Accepted
+状态：Superseded by D-032
 
 ### D-021 Staff MCP与Agent边界
 
@@ -251,11 +251,21 @@ Seller 门户不提供“退出登录”入口，不新增 Seller 退出按钮�
 
 状态：Accepted by business owner
 
+### D-032 Staff使用Cloudflare Access且退出飞书运行链
+
+Cloudflare Access 是唯一生产 Staff 前置认证边界，只验证签名、team domain、application audience 和规范化邮箱。月光白 D1 中的 ACTIVE 员工账号、唯一岗位、岗位默认权限、负责 Marketplace、PRIMARY/SUPPORT 与 Personal DENY 是唯一授权权威；Access 不自动创建员工，也不提供岗位、权限、任务或业务事实。
+
+员工由总管理员直接以姓名、登录邮箱、唯一岗位和负责站点创建。系统不再使用飞书绑定邀请、OAuth 回调、员工工作台同步、卡片回调或飞书告警。员工任务和正式动作都在月光白受控 Web/API 完成。历史 Migration 和归档 Change 中的飞书表名/决策仅为升级与审计连续性保留，不构成现行运行入口。
+
+D-032 取代 D-004、D-014 和 D-020 中关于飞书 Staff 身份、任务、同步及提醒的运行设计；它不改变私人微信的日常沟通边界。
+
+状态：Accepted by business owner
+
 ## 上线前必须关闭的风险项
 
-### R-001 飞书免费版和 API 实测
+### R-001 Cloudflare Access真实策略验收
 
-必须完成匿名 PoC，不能依赖未经验证的额度记忆。
+生产前必须验证真实 Access 应用、邮箱策略、Audience、JWKS、已知员工邮箱映射、撤销和故障恢复；本地测试不能替代真实策略验收。
 
 ### R-002 中国大陆访问
 
