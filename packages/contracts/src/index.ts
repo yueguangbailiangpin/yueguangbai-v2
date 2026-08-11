@@ -20,6 +20,7 @@ export * from './http-auth';
 export * from './internal-finance';
 export * from './marketplace-money';
 export * from './marketplace-provider';
+export * from './marketplace-runtime';
 export * from './platform-identifiers';
 export * from './order-evidence';
 export * from './order-instruction';
