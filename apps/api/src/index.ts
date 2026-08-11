@@ -17,6 +17,7 @@ import { registerLegacyPasswordResetOwnerGuard } from './customer-onboarding/leg
 import { registerCustomerOnboardingRoutes } from './customer-onboarding/routes';
 import { registerScopedCustomerPasswordResetRoutes } from './customer-onboarding/password-reset-routes';
 import { registerIdentityResolutionRoutes } from './customer-onboarding/identity-resolution-routes';
+import { registerCustomerLoginIdentifierChangeRoutes } from './customer-onboarding/login-identifier-change-routes';
 import { registerStaffFinanceRoutes } from './internal-finance';
 import { staffSessionMiddleware } from './middleware/staff-auth';
 import { exactOneOrderEvidenceScreenshotGuard, registerStaffOrderEvidenceRoutes } from './order-evidence';
@@ -25,6 +26,7 @@ import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
 import { registerSellerOrderChatScreenshotRoutes } from './seller-order-chat-screenshots';
 import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
+import { registerSellerMemberRoutes } from './seller-portal/member-routes';
 import { registerSellerRegistrationRoutes } from './seller-registration/routes';
 import { registerSellerSettlementRoutes, registerStaffSellerSettlementProofRoutes, registerStaffSellerSettlementRoutes } from './seller-settlements';
 import { registerStaffAssignmentRoutes } from './staff-assignment';
@@ -38,6 +40,7 @@ import { registerAcquisitionPrivacyRoutes } from './acquisition/privacy-routes';
 import { registerAcquisitionChannelStatsRoutes } from './acquisition/channel-stats-routes';
 import { registerAcquisitionHandoffRoutes } from './acquisition/handoff-routes';
 import { registerAcquisitionMachineRoutes } from './acquisition/machine-routes';
+import { registerAcquisitionMachineCredentialRoutes } from './acquisition/machine-credential-routes';
 import { registerAcquisitionReportingOperationRoutes } from './acquisition/reporting-operations-routes';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
 import { registerAdminAcquisitionDailyRoutes } from './admin-business-dashboard/acquisition-daily-routes';
@@ -55,6 +58,7 @@ registerCustomerAuthRoutes(app);
 registerPublicCustomerSecurityRoutes(app);
 registerAcquisitionMachineRoutes(app);
 registerCloudflareStaffAuthRoutes(app);
+registerSellerMemberRoutes(app);
 
 app.use('/api/staff/*', staffSessionMiddleware());
 registerSellerRegistrationRoutes(app);
@@ -67,12 +71,12 @@ registerNewBuyerRegistrationInvitationRoute(app);
 registerCustomerOnboardingRoutes(app);
 registerScopedCustomerPasswordResetRoutes(app);
 registerIdentityResolutionRoutes(app);
+registerCustomerLoginIdentifierChangeRoutes(app);
 registerExistingCustomerLeadGuard(app);
 registerOperatingIntegrityRoutes(app);
-// Privacy projection must be registered first so ordinary customer-intake Staff
-// never reach the older full channel read route.
 registerAcquisitionPrivacyRoutes(app);
 registerAcquisitionReportingOperationRoutes(app);
+registerAcquisitionMachineCredentialRoutes(app);
 registerAcquisitionRoutes(app);
 registerAcquisitionChannelStatsRoutes(app);
 registerAcquisitionHandoffRoutes(app);
