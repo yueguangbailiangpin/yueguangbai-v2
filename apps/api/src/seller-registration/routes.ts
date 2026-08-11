@@ -8,6 +8,7 @@ import { CUSTOMER_SESSION_TTL_MS, requireCustomerSessionSecret } from '../http-a
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import { readCurrentSellerInvitation } from './staff-read';
 import {
   completeSellerRegistration,
   issueSellerRegistrationInvitation,
@@ -33,6 +34,21 @@ export function registerSellerRegistrationRoutes(app:Hono<any>):void{
       leadId:body['lead_id'],sellerOrganizationId:body['seller_organization_id'],wechatId:body['wechat_id'],marketplaceCode:body['marketplace_code'],
     },{actor,idempotencyKey:idempotencyKey(context),requestId:requestIdFromContext(context),tokenSecret:securitySecret(context)});
     return context.json(apiSuccess({invitation:{...result,registration_path:`/seller/register?token=${encodeURIComponent(result.registration_token)}`,status:'ACTIVE' as const}},requestIdFromContext(context)),201);
+  }));
+
+  // Specific route MUST stay before /:id. The token itself is hash-only and is
+  // never recoverable; this endpoint only tells Staff whether an old invite
+  // must be revoked before generating a fresh link.
+  app.get('/api/staff/customer-security/seller-invitations/current',withErrors(async(context)=>{
+    const actor=requireStaff(context);const url=new URL(context.req.url);
+    if([...url.searchParams.keys()].some((key)=>!['lead_id','seller_organization_id'].includes(key)))throw validation();
+    const leadId=url.searchParams.get('lead_id'),sellerOrganizationId=url.searchParams.get('seller_organization_id');
+    if((leadId===null)===(sellerOrganizationId===null))throw validation();
+    const invitation=await readCurrentSellerInvitation(context.env.DB,actor,{
+      leadId,sellerOrganizationId,
+    });
+    context.header('Cache-Control','no-store');
+    return context.json(apiSuccess({invitation},requestIdFromContext(context)));
   }));
 
   app.get('/api/staff/customer-security/seller-invitations/:id',withErrors(async(context)=>{
