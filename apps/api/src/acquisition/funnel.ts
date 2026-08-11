@@ -31,7 +31,7 @@ async function counts(database:SqlDatabase,type:'BUYER'|'SELLER',from:string,to:
     SUM(CASE WHEN EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=fact.lead_id AND link.link_type='RESERVATION') THEN 1 ELSE 0 END) AS reserved,
     SUM(CASE WHEN fact.lead_type='BUYER' AND NOT EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=fact.lead_id AND link.link_type='RESERVATION') THEN 1 ELSE 0 END) AS no_participation,
     SUM((SELECT COUNT(*) FROM acquisition_lead_links link WHERE link.lead_id=fact.lead_id AND link.link_type='FORMAL_ORDER')) AS formal_orders,
-    SUM(CASE WHEN EXISTS(SELECT 1 FROM acquisition_lead_links link WHERE link.lead_id=fact.lead_id AND link.link_type='SELLER_ORGANIZATION') THEN 1 ELSE 0 END) AS cooperation
+    SUM(CASE WHEN fact.lead_type='SELLER' AND ${sellerCooperationSql('fact.lead_id')} THEN 1 ELSE 0 END) AS cooperation
     FROM acquisition_customer_intake_facts fact
     WHERE fact.lead_type=? AND fact.business_date BETWEEN ? AND ? ${marketSql}`)
     .bind(type,from,to,...markets).first<CountRow>();
@@ -52,3 +52,13 @@ async function buyerProfit(database:SqlDatabase,from:string,to:string):Promise<{
     WHERE fact.lead_type='BUYER' AND fact.business_date BETWEEN ? AND ?`).bind(from,to).all<{projected_gross_profit_cny_fen:string|null;completed_gross_profit_cny_fen:string|null}>();
   let projected=0n,completed=0n;for(const row of rows.results){if(row.projected_gross_profit_cny_fen!==null)projected+=BigInt(row.projected_gross_profit_cny_fen);if(row.completed_gross_profit_cny_fen!==null)completed+=BigInt(row.completed_gross_profit_cny_fen);}return{projected:projected.toString(),completed:completed.toString()};
 }
+function sellerCooperationSql(leadExpression:string){return `EXISTS(
+  SELECT 1 FROM acquisition_lead_links seller_link
+  WHERE seller_link.lead_id=${leadExpression} AND seller_link.link_type='SELLER_ORGANIZATION'
+    AND (
+      EXISTS(SELECT 1 FROM products product WHERE product.organization_id=seller_link.target_id)
+      OR EXISTS(SELECT 1 FROM product_applications application WHERE application.organization_id=seller_link.target_id)
+      OR EXISTS(SELECT 1 FROM demand_batches demand WHERE demand.organization_id=seller_link.target_id)
+      OR EXISTS(SELECT 1 FROM formal_orders formal_order WHERE formal_order.seller_organization_id=seller_link.target_id)
+    )
+)`;}
