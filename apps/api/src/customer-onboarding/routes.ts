@@ -1,4 +1,4 @@
-import { apiFailure, apiSuccess } from '@ygb/contracts';
+import { apiFailure, apiSuccess, type SqlDatabase } from '@ygb/contracts';
 import { normalizeWechatId } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
@@ -34,7 +34,7 @@ export function registerCustomerOnboardingRoutes(app:Hono<any>):void{
   });
 }
 
-async function buyerMatches(database:any,wechat:string,markets:readonly string[]|null){
+async function buyerMatches(database:SqlDatabase,wechat:string,markets:readonly string[]|null){
   const rows=await database.prepare(`SELECT buyer.id AS subject_id,buyer.display_name,
       assignment.marketplace_code,account.id AS account_id,
       (SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.buyer_customer_id=buyer.id) AS formal_order_count
@@ -51,7 +51,7 @@ async function buyerMatches(database:any,wechat:string,markets:readonly string[]
   }));
 }
 
-async function sellerMatches(database:any,wechat:string,markets:readonly string[]|null){
+async function sellerMatches(database:SqlDatabase,wechat:string,markets:readonly string[]|null){
   const rows=await database.prepare(`SELECT organization.id AS subject_id,organization.organization_name AS display_name,
       organization.marketplace_code,account.id AS account_id,
       (SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.seller_organization_id=organization.id) AS formal_order_count
