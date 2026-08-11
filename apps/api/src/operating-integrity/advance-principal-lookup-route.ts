@@ -13,11 +13,13 @@ export function registerAdvancePrincipalLookupRoute(app:Hono<any>):void{
 
 async function lookup(context:Context<any>){
   const requestId=requestIdFromContext(context);
+  const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
+  if(!actor||actor.staffStatus!=='ACTIVE'||![...actor.roles].some((role)=>['owner','seller_ops','pre_sales','buyer_refund'].includes(role)))return context.json(apiFailure('FORBIDDEN','当前岗位不能查询该业务',requestId),403);
+  const url=new URL(context.req.url);if([...url.searchParams.keys()].some((key)=>key!=='amazon_order_number'))return context.json(apiFailure('VALIDATION_ERROR','查询参数不正确',requestId),400);
+  let orderNumber:string;
+  try{orderNumber=normalizeAmazonOrderNumber(url.searchParams.get('amazon_order_number')??'');}
+  catch{return context.json(apiFailure('VALIDATION_ERROR','Amazon 订单号格式不正确',requestId),400);}
   try{
-    const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
-    if(!actor||actor.staffStatus!=='ACTIVE'||![...actor.roles].some((role)=>['owner','seller_ops','pre_sales','buyer_refund'].includes(role)))return context.json(apiFailure('FORBIDDEN','当前岗位不能查询该业务',requestId),403);
-    const url=new URL(context.req.url);if([...url.searchParams.keys()].some((key)=>key!=='amazon_order_number'))return context.json(apiFailure('VALIDATION_ERROR','查询参数不正确',requestId),400);
-    const orderNumber=normalizeAmazonOrderNumber(url.searchParams.get('amazon_order_number')??'');
     const rows=await context.env.DB.prepare(`SELECT formal_order.id AS formal_order_id,formal_order.amazon_order_number_normalized,
         formal_order.buyer_customer_id,formal_order.seller_organization_id,formal_order.canonical_marketplace_code,
         formal_order.product_name_snapshot,formal_order.confirmed_at,formal_order.marketplace_business_date,
@@ -54,7 +56,9 @@ async function lookup(context:Context<any>){
     context.header('Cache-Control','no-store');return context.json(apiSuccess({order:{
       formal_order_id:String(value.formal_order_id),amazon_order_number:String(value.amazon_order_number_normalized),buyer_customer_id:String(value.buyer_customer_id),seller_organization_id:String(value.seller_organization_id),marketplace_code:String(value.canonical_marketplace_code),product_name:String(value.product_name_snapshot),confirmed_at:Number(value.confirmed_at),marketplace_business_date:value.marketplace_business_date===null?null:String(value.marketplace_business_date),review_case_id:value.review_case_id===null?null:String(value.review_case_id),review_status:value.review_status===null?null:String(value.review_status),has_refund_obligation:Number(value.has_refund_obligation)===1,advance_net_cny_fen:String(value.advance_net_cny_fen),operational_state:String(value.operational_state),actions,
     }},requestId));
-  }catch{return context.json(apiFailure('VALIDATION_ERROR','Amazon 订单号格式不正确',requestId),400);}
+  }catch{
+    return context.json(apiFailure('DEPENDENCY_UNAVAILABLE','订单业务能力暂时无法读取，请稍后重试',requestId),503);
+  }
 }
 
 function capability(allowed:boolean,reason:string|null):BusinessActionCapabilityDto{return Object.freeze({allowed,reason});}
