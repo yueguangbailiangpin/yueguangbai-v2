@@ -51,6 +51,7 @@ import { registerOperationalReadinessRoutes } from './operational-readiness/rout
 import { registerOperatingIntegrityRoutes } from './operating-integrity/routes';
 import { registerAdvancePrincipalLookupRoute } from './operating-integrity/advance-principal-lookup-route';
 import { registerProductionRecoveryAttestationRoutes } from './production-readiness/recovery-attestation-routes';
+import { registerFormalOrderPolicyGuards } from './formal-order-policy-routes';
 
 const app = createApp();
 
@@ -63,6 +64,7 @@ registerCloudflareStaffAuthRoutes(app);
 registerSellerMemberRoutes(app);
 
 app.use('/api/staff/*', staffSessionMiddleware());
+registerFormalOrderPolicyGuards(app);
 registerSellerRegistrationRoutes(app);
 registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
