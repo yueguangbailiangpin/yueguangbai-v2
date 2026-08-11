@@ -41,8 +41,8 @@ async function lookup(context:Context<any>){
         !role('owner','pre_sales')?'ROLE_NOT_ALLOWED':value.review_case_id===null?'REVIEW_NOT_AVAILABLE':String(value.review_status)!=='APPROVED'?'REVIEW_NOT_APPROVED':null,
       ),
       approve_review:capability(
-        role('owner','pre_sales')&&value.review_case_id!==null&&String(value.review_status)==='PENDING_REVIEW'&&policy.actions.APPROVE_REVIEW.allowed,
-        !role('owner','pre_sales')?'ROLE_NOT_ALLOWED':value.review_case_id===null?'REVIEW_NOT_AVAILABLE':String(value.review_status)!=='PENDING_REVIEW'?'REVIEW_NOT_PENDING':policy.actions.APPROVE_REVIEW.reason,
+        role('owner','buyer_refund')&&actor.permissions.has('REVIEW_DECIDE')&&value.review_case_id!==null&&String(value.review_status)==='PENDING_REVIEW'&&policy.actions.APPROVE_REVIEW.allowed,
+        !role('owner','buyer_refund')||!actor.permissions.has('REVIEW_DECIDE')?'ROLE_OR_PERMISSION_NOT_ALLOWED':value.review_case_id===null?'REVIEW_NOT_AVAILABLE':String(value.review_status)!=='PENDING_REVIEW'?'REVIEW_NOT_PENDING':policy.actions.APPROVE_REVIEW.reason,
       ),
       record_advance_principal:capability(
         role('owner','buyer_refund')&&Number(value.has_refund_obligation)!==1&&policy.actions.RECORD_ADVANCE_PRINCIPAL.allowed,
