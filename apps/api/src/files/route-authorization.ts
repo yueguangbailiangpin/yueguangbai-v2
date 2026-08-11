@@ -24,14 +24,12 @@ export class RouteBoundFileAuthorizationService implements FileAuthorizationServ
     private readonly staffAuthorization?:AssignmentStaffAuthorization,
     private readonly staffDataScope?:StaffDataScope,
   ){}
-
   assertCanCreateUpload(actor:FileActor,input:{purpose:FilePurpose;visibility:FileVisibility}):void{this.assertActor(actor);if(this.allowedUploads.get(input.purpose)!==input.visibility)deny();this.assertStaffUploadPermission(input.purpose);}
   assertCanUpload(actor:FileActor,resource:FileAuthorizationResource):void{this.assertOwnedUpload(actor,resource);}
   assertCanCompleteUpload(actor:FileActor,resource:FileAuthorizationResource):void{this.assertOwnedUpload(actor,resource);}
   assertCanLink():never{deny();}
   async assertCanRead(actor:FileActor,resource:FileAuthorizationResource):Promise<void>{
-    this.assertActor(actor);
-    if(resource.linkRevokedAt!==null||(resource.linkExpiresAt!==undefined&&resource.linkExpiresAt!==null&&resource.linkExpiresAt<=Date.now()))deny();
+    this.assertActor(actor);if(resource.linkRevokedAt!==null||(resource.linkExpiresAt!==undefined&&resource.linkExpiresAt!==null&&resource.linkExpiresAt<=Date.now()))deny();
     if(resource.ownerActorType===actor.type&&resource.ownerActorId===actor.id)return;
     if(actor.type!=='STAFF'||!this.staffAuthorization||!this.staffDataScope||this.principal?.type!=='STAFF_SESSION'||this.principal.staffId!==actor.id)deny();
     if(!this.staffAuthorization.permissions.has(readPermissionForPurpose(resource.purpose)))deny();await this.assertStaffEntityScope(resource);
@@ -58,6 +56,7 @@ async function resolveEntityAuthority(database:SqlDatabase,entityType:string,ent
     case 'BUYER_REFUND':return authority(await database.prepare(`SELECT obligation.buyer_customer_id,formal_order.seller_organization_id FROM buyer_refund_obligations obligation JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE obligation.id=? UNION ALL SELECT obligation.buyer_customer_id,formal_order.seller_organization_id FROM buyer_refund_payment_entries payment JOIN buyer_refund_obligations obligation ON obligation.id=payment.obligation_id JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE payment.id=? UNION ALL SELECT advance.buyer_customer_id,formal_order.seller_organization_id FROM buyer_advance_principal_entries advance JOIN formal_orders formal_order ON formal_order.id=advance.formal_order_id WHERE advance.id=? LIMIT 1`).bind(entityId,entityId,entityId).first<AuthorityRow>());
     case 'SELLER_SETTLEMENT':return authority(await database.prepare(`SELECT NULL AS buyer_customer_id,seller_organization_id FROM seller_payments WHERE id=? UNION ALL SELECT NULL AS buyer_customer_id,seller_organization_id FROM seller_payables WHERE id=? LIMIT 1`).bind(entityId,entityId).first<AuthorityRow>());
     case 'PRODUCT_APPLICATION':return authority(await database.prepare(`SELECT NULL AS buyer_customer_id,organization_id AS seller_organization_id FROM product_applications WHERE id=?`).bind(entityId).first<AuthorityRow>());
+    case 'PRODUCT_VERSION':return authority(await database.prepare(`SELECT NULL AS buyer_customer_id,product.organization_id AS seller_organization_id FROM product_versions version JOIN products product ON product.id=version.product_id WHERE version.id=?`).bind(entityId).first<AuthorityRow>());
     default:return{buyerCustomerId:null,sellerOrganizationId:null};
   }
 }
