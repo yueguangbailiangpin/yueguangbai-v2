@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { buyerNavigationOwner } from './BuyerLayout';
+import { BUYER_NAVIGATION, buyerNavigationOwner } from './BuyerLayout';
 
 describe('buyer semantic navigation ownership', () => {
+  it('keeps the exact three-item canonical primary navigation', () => {
+    expect(BUYER_NAVIGATION.map(({ label, path }) => ({ label, path }))).toEqual([
+      { label: '产品', path: '/buyer/products' },
+      { label: '任务', path: '/buyer/tasks' },
+      { label: '我的', path: '/buyer/me' },
+    ]);
+  });
+
   it.each([
     ['/buyer', '/buyer/products'],
     ['/buyer/tasks', '/buyer/tasks'],
