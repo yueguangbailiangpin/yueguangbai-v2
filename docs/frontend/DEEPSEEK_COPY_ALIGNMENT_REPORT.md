@@ -2,7 +2,7 @@
 
 ## Provenance and counting
 
-- Source: `/Users/yueguangbai/Documents/codex/YUEGUANGBAI_V2_FRONTEND_COPY_FOR_DEEPSEEK_FINAL.md`
+- Source: `docs/frontend/audit/YUEGUANGBAI_V2_FRONTEND_COPY_FOR_DEEPSEEK_FINAL.md` (repository-relative; fixed SHA-256 below)
 - Source SHA-256: `38fad334f08601a0e6ac757f9ab3bc8f3c784ee2b66de268d2dd30b40a7bc01`
 - FINAL snapshot: 2026-08-12; canonical base/current main: `48163b68a32f6e860d1bbd9fc1ceb5fd1d10f9b3` (2026-08-13).
 - Scope: reachable `apps/web` runtime only; no API, contracts, migrations, deployment, production, or real-data changes.
