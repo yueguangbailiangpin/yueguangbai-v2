@@ -78,7 +78,7 @@ const webV4Source = source('apps/web/src/staff/acquisition/AcquisitionCoreWorkbe
 const browserEvidence = source('apps/web/e2e/staff-acquisition.spec.ts');
 const packageManifest = source('package.json');
 const decision = source('docs/decisions/V2_DECISION_REGISTER.md');
-const changeSpec = source('openspec/changes/acquisition-source-authority-alignment/specs/staff-acquisition-funnel/spec.md');
+const canonicalSpec = source('openspec/specs/staff-acquisition-funnel/spec.md');
 
 assert(routeRegistry.includes('registerAcquisitionRoutes(app);'),
   'acquisition route registration is missing');
@@ -133,16 +133,17 @@ assert(packageManifest.includes('"test:staff-acquisition:browser"')
 assert(decision.includes('### D-035 获客来源显式受控声明')
   && decision.includes('D-026 的历史正文永久保留'),
   'D-035 or D-026 preservation evidence is missing');
-assert(changeSpec.includes('Explicit controlled source declaration')
-  && changeSpec.includes('Prospect-to-Lead inherits the exact origin channel'),
-  'active OpenSpec source-authority delta is missing');
+assert(canonicalSpec.includes('Explicit controlled source declaration')
+  && canonicalSpec.includes('Prospect-to-Lead inherits the exact origin channel')
+  && canonicalSpec.includes('Original source is immutable and correction is controlled'),
+  'canonical OpenSpec source-authority requirements are missing');
 
 console.log(JSON.stringify({
   status: 'PASS', schema: 36, migration: acquisitionMigrations.at(-1),
   explicit_source_command: true, route_registered: true, exact_field_closed: true,
   source_authority_guards: true, behavior_evidence: true, contract_doc_aligned: true,
   seller_profit_isolation: true, maintenance_dry_run_gate: true,
-  worker_maintenance_fail_closed: true, v4_browser_evidence: true, decision_and_openspec: true,
+  worker_maintenance_fail_closed: true, v4_browser_evidence: true, decision_and_canonical_spec: true,
   buyer_refund_authority: false, production_resources_touched: 0,
   pre_upgrade_restore: true,
 }, null, 2));

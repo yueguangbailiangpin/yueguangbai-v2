@@ -51,3 +51,9 @@ The initial CRITICAL was not an implementation defect: `tasks.md` V3 deferred th
 | Findings | 0 critical, 0 warnings, 1 suggestion |
 
 Final assessment: all blocking findings are resolved. The Change is eligible for its governed spec sync and archive. The suggestion above is retained but non-blocking.
+
+## Post-archive addendum
+
+An independent review of Draft PR #55 found a P2 after this Formal Verify and the governed sync/archive had completed: `scripts/verify-staff-acquisition-funnel.mjs` read the then-active `openspec/changes/acquisition-source-authority-alignment/...` delta path. Archive normally removes that path, so the verifier raised `ENOENT` after archive. This does not alter the time-bounded Formal Verify conclusion above; it records the missed post-archive executability check.
+
+The verifier now reads the stable `openspec/specs/staff-acquisition-funnel/spec.md` and asserts the current Explicit controlled source declaration, Prospect-to-Lead exact-origin, and immutable-original-source/controlled-correction requirements. Post-archive verifier execution passed on 2026-08-12. No production runtime, Contract semantics, Migration, or remote/production resource changed.
