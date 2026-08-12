@@ -182,6 +182,7 @@ export async function confirmDemandSchedule(
         SET version=version+1, updated_at=MAX(?, updated_at+1)
         WHERE id=? AND status='PUBLISHED' AND version=?
       `).bind(now, proposal.demandBatchId, proposal.expectedVersion),
+      assertDemandVersionUpdateChangedOnceStatement(database),
       insertScheduleStatement(database, header, schedule),
       createAuditEventStatement(database, {
         id: crypto.randomUUID(),
@@ -410,6 +411,15 @@ function insertScheduleStatement(
     schedule.changed_by_staff_id,
     schedule.created_at,
   );
+}
+
+function assertDemandVersionUpdateChangedOnceStatement(
+  database: SqlDatabase,
+): SqlStatement {
+  return database.prepare(`
+    INSERT INTO transaction_assertions (assertion_value)
+    SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END
+  `);
 }
 
 function assertScheduleCommittedStatement(
