@@ -127,7 +127,7 @@ describe('API contract baseline alignment', () => {
 
   it('keeps live contract documentation on /api and cursor semantics', () => {
     const conventions = readFileSync(path.join(root, 'docs/contracts/V2_API_CONVENTIONS.md'), 'utf8');
-    const codeBlocks = [...conventions.matchAll(/```[\\s\\S]*?```/gu)].map((match) => match[0]).join('\\n');
+    const codeBlocks = [...conventions.matchAll(/```[\s\S]*?```/gu)].map((match) => match[0]).join('\\n');
     expect(codeBlocks).not.toContain('/api/v2');
     expect(codeBlocks).not.toContain('page_size');
     expect(codeBlocks).not.toContain('total_pages');

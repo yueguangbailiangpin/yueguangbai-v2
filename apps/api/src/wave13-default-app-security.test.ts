@@ -22,6 +22,7 @@ describe('Wave 13 default app and route security boundaries', () => {
     for (const registration of [
       'registerStaffAssignmentRoutes(app)',
       'registerStaffCatalogWorkflowRoutes(app)',
+      'registerStaffWorkflowClosureRoutes(app)',
       'registerStaffReviewRoutes(app)',
       'registerStaffSellerSettlementRoutes(app)',
       'registerStaffSellerSettlementProofRoutes(app)',
