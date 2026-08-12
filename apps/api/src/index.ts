@@ -32,6 +32,7 @@ import { registerSellerSettlementRoutes, registerStaffSellerSettlementProofRoute
 import { registerStaffAssignmentRoutes } from './staff-assignment';
 import { registerCloudflareStaffAuthRoutes } from './staff-auth/access-routes';
 import { registerStaffCatalogWorkflowRoutes } from './staff-catalog-routes';
+import { registerStaffWorkflowClosureRoutes } from './staff-workflow-closure-routes';
 import { registerMarketplaceFoundationRoutes } from './marketplaces/routes';
 import { registerScheduledOperationRoutes } from './scheduled-operations';
 import { registerColdImageArchiveRoutes } from './cold-image-archive';
@@ -88,6 +89,7 @@ registerAdminBusinessDashboardRoutes(app);
 registerAdminAcquisitionDailyRoutes(app);
 registerStaffAccessManagementRoutes(app);
 registerStaffCatalogWorkflowRoutes(app);
+registerStaffWorkflowClosureRoutes(app);
 registerMarketplaceFoundationRoutes(app);
 registerStaffReviewRoutes(app);
 registerStaffSellerSettlementRoutes(app);
