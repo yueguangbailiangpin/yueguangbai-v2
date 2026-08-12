@@ -6,6 +6,7 @@ import { calculateEffectiveStaffAuthorization } from '../staff/authorization-pol
 import {
   createAcquisitionAssignment,
   createAcquisitionChannel,
+  disableAcquisitionChannel,
   recordAcquisitionConsultation,
 } from './admin';
 import {
@@ -17,6 +18,7 @@ import {
 } from './leads';
 import { runAcquisitionMaintenance } from './maintenance';
 import { readAcquisitionFunnel } from './funnel';
+import { createAcquisitionProspect } from './prospects';
 import { addTwelveShanghaiMonths } from './time';
 
 const SECRET = 'acquisition-test-secret-with-at-least-thirty-two-bytes';
@@ -26,7 +28,7 @@ let database: SqliteDatabase|null = null;
 afterEach(() => { database?.close(); database = null; });
 
 describe('staff acquisition funnel commands', () => {
-  it('derives the channel, protects WeChat, freezes origin and deduplicates per type', async () => {
+  it('accepts an explicit legal direct source, protects WeChat, freezes origin and deduplicates per type', async () => {
     database = db();
     const channel = await seedChannel(database, 'XHS_BUYER');
     const sellerChannel = await seedChannel(database, 'XHS_SELLER');
@@ -65,6 +67,63 @@ describe('staff acquisition funnel commands', () => {
     expect(() => database!.raw.prepare(`UPDATE acquisition_leads
       SET origin_staff_id='staff-seller',version=version+1,updated_at=updated_at+1
       WHERE id=?`).run(buyer.lead.lead_id)).toThrow(/immutable_origin/iu);
+  });
+
+  it('fails closed for disabled, wrong-audience, wrong-market and out-of-scope declared channels', async () => {
+    database = db();
+    const activeBuyer = await seedChannel(database, 'SOURCE_ACTIVE');
+    const disabledBuyer = await seedChannel(database, 'SOURCE_DISABLED');
+    const seller = await seedChannel(database, 'SOURCE_SELLER');
+    const usBuyer = await seedChannel(database, 'SOURCE_US', 'BUYER', 'AMAZON_US');
+    await disableAcquisitionChannel(database, {
+      channelId: disabledBuyer.channel.channel_id, expectedVersion: 1, reason: '渠道已停用',
+    }, command(owner(), 'disable-source-0001', JAN_1_2025));
+
+    await expect(createAcquisitionLead(database, leadInput(disabledBuyer.channel.channel_id, {
+      leadType: 'BUYER', wechatId: 'disabled_source_wx', displayName: null, note: null,
+    }), command(preSales(), 'disabled-source-0001', JAN_1_2025), SECRET))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(createAcquisitionLead(database, leadInput(seller.channel.channel_id, {
+      leadType: 'BUYER', wechatId: 'wrong_audience_wx', displayName: null, note: null,
+    }), command(preSales(), 'wrong-audience-0001', JAN_1_2025), SECRET))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(createAcquisitionLead(database, leadInput(activeBuyer.channel.channel_id, {
+      leadType: 'BUYER', wechatId: 'wrong_market_wx', displayName: null, note: null,
+    }, 'AMAZON_US'), command(preSales(), 'wrong-market-0001', JAN_1_2025), SECRET))
+      .rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(createAcquisitionLead(database, leadInput(usBuyer.channel.channel_id, {
+      leadType: 'BUYER', wechatId: 'out_of_scope_wx', displayName: null, note: null,
+    }, 'AMAZON_US'), command(preSales(), 'out-of-scope-0001', JAN_1_2025), SECRET))
+      .rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('inherits a Prospect exact origin and rejects a mismatched declared channel', async () => {
+    database = db();
+    const prospectChannel = await seedChannel(database, 'SOURCE_PROSPECT');
+    const otherChannel = await seedChannel(database, 'SOURCE_OTHER');
+    const prospect = await createAcquisitionProspect(database, {
+      leadType: 'BUYER', marketplaceCode: 'AMAZON_JP', channelId: prospectChannel.channel.channel_id,
+      displayName: '待转买家', contactValue: null, sourceUrl: 'https://example.test/prospect',
+      originMode: 'HUMAN', note: null, aiScore: null,
+    }, command(owner(), 'prospect-source-0001', JAN_1_2025));
+
+    await expect(createAcquisitionLead(database, {
+      leadType: 'BUYER', marketplaceCode: 'AMAZON_JP', channelId: otherChannel.channel.channel_id,
+      prospectId: prospect.prospect.prospect_id, wechatId: 'mismatched_prospect_wx', displayName: null, note: null,
+    }, command(preSales(), 'prospect-source-mismatch-0001', JAN_1_2025 + 1), SECRET))
+      .rejects.toMatchObject({ code: 'STATE_CONFLICT' });
+
+    const inherited = await createAcquisitionLead(database, {
+      leadType: 'BUYER', marketplaceCode: 'AMAZON_JP', channelId: prospectChannel.channel.channel_id,
+      prospectId: prospect.prospect.prospect_id, wechatId: 'inherited_prospect_wx', displayName: null, note: null,
+    }, command(preSales(), 'prospect-source-inherit-0001', JAN_1_2025 + 2), SECRET);
+    expect(inherited.lead).toMatchObject({ origin_channel_id: prospectChannel.channel.channel_id });
+    expect(database.raw.prepare(`SELECT prospect_id,origin_channel_id,origin_source_url FROM acquisition_leads WHERE id=?`)
+      .get(inherited.lead.lead_id)).toEqual({
+        prospect_id: prospect.prospect.prospect_id,
+        origin_channel_id: prospectChannel.channel.channel_id,
+        origin_source_url: 'https://example.test/prospect',
+      });
   });
 
   it('replays identical commands, rejects hash reuse and enforces versions', async () => {

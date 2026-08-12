@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
@@ -124,9 +125,11 @@ for (const area of [
   }
 }
 
-const inventory = source('docs/contracts/V2_API_ROUTE_INVENTORY.md');
-assert(inventory.includes('180 个 API 路由加 `/health`')
-  || inventory.includes('180 个 `/api/*`'), 'route inventory count drift');
+execFileSync(
+  path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'vitest.cmd' : 'vitest'),
+  ['run', 'apps/api/src/api-contract-baseline-alignment.test.ts'],
+  { cwd: root, stdio: 'inherit' },
+);
 
 console.log(JSON.stringify({
   status: 'PASS',
@@ -135,6 +138,7 @@ console.log(JSON.stringify({
   authoritative_formula: true,
   immutable_schedule_versions: true,
   buyer_seller_internal_schedule_fields: false,
+  route_inventory_verified_by: 'api-contract-baseline-alignment.test.ts',
   production_resources_touched: 0,
 }, null, 2));
 

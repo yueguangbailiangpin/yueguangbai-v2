@@ -8,9 +8,10 @@ owner 使用 `ACQUISITION_ADMIN` 管理渠道、Staff 渠道生效期和北京�
 
 ## 身份、渠道与统计口径
 
-- 创建线索的请求不包含 `channel_id`。后端依据可信 Staff、线索类型和 UTC 创建时点，解析唯一生效渠道；零条或多条均失败关闭。
+- 没有 Prospect 的直接 Lead 可以提交或确认显式 `channel_id` 作为来源声明；该字段不授予权限。后端依据可信 Staff 的 Lead 职责和当前 Marketplace scope，失败关闭地校验渠道存在且 ACTIVE、Buyer/Seller audience 与线索类型一致、Marketplace 与请求一致。未知、停用、跨类型、跨站点或越当前 scope 的渠道不得创建线索。
+- 从 Prospect 创建 Lead 时，请求的类型、Marketplace 和 `channel_id` 必须与 Prospect 的原始渠道精确一致；Staff 不得借此改写来源，不一致即失败关闭。
 - 微信号复用 Customer Identity 规范化规则，使用服务端秘钥的 HMAC 做同类型去重，并以 AES-GCM 加密保存。列表、API、Audit 和运行事实仅允许掩码，秘钥缺失或无效时失败关闭。
-- 同一规范化身份在 BUYER 和 SELLER 类型内各至多一条有效线索。首条有效线索的来源渠道和创建 Staff 永不覆盖；责任人转移只更新 current owner 并写入事件。
+- 同一规范化身份在 BUYER 和 SELLER 类型内各至多一条有效线索。首条有效线索的来源渠道和创建 Staff 永不覆盖；责任人转移只更新 current owner 并写入事件。来源更正只能通过追加式、版本化、审计的受控更正历史表达，不得覆盖原始来源。
 - 咨询人数是“渠道 + `Asia/Shanghai` 自然日”的人工去重汇总；同人同渠道当日只计一次，跨渠道各计一次。更正必须提供当前版本与原因，旧值保留在不可变事件中。
 
 ## 自动关联和归因
@@ -24,7 +25,7 @@ owner 使用 `ACQUISITION_ADMIN` 管理渠道、Staff 渠道生效期和北京�
 
 ## 写入、隐私和留存
 
-所有关键写入使用 `Idempotency-Key`、规范请求哈希、`expected_version` 或唯一业务条件、事务最终断言、不可变领域事件和 Audit。相同幂等键只能重放相同请求与结果；不同请求哈希返回稳定冲突。请求多余字段失败，防止客户端偷渡渠道或私密投影。
+所有关键写入使用 `Idempotency-Key`、规范请求哈希、`expected_version` 或唯一业务条件、事务最终断言、不可变领域事件和 Audit。相同幂等键只能重放相同请求与结果；不同请求哈希返回稳定冲突。请求多余字段失败，防止客户端偷渡未声明字段或私密投影；合法 `channel_id` 仍只按上述受控来源规则处理。
 
 未转化线索从最后跟进的北京日历时点起满十二个月后，由租约保护、可重试的维护作业清除微信哈希/密文/IV、显示名和备注。已有 Buyer、预约、正式订单、Seller 组织、Customer 安全事件，或显式 `SECURITY` / `DISPUTE` / `LEGAL` hold 的线索严格豁免。作业 dry-run 只读返回低基数计数，不获取租约、不改业务事实、不输出身份。
 
