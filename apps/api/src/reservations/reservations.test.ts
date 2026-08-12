@@ -5,6 +5,9 @@ import {
   it,
 } from 'vitest';
 import type {
+  SqlDatabase,
+  SqlRunResult,
+  SqlStatement,
   StaffPermissionCode,
   StaffRoleCode,
 } from '@ygb/contracts';
@@ -278,6 +281,80 @@ describe('buyer reservations and atomic demand capacity', () => {
     )).rejects.toMatchObject({
       code: 'RESERVATION_ALREADY_EXISTS',
       status: 409,
+    });
+  });
+
+  it('rejects a schedule confirm when a reservation wins after its re-read', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+
+    const owner = ownerScheduleActor();
+    const preview = await previewDemandSchedule(database, owner, {
+      demandBatchId: 'demand-1',
+      expectedVersion: 2,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 3,
+      reason: '确认 re-read 与 batch commit 竞态',
+    });
+    const racingDatabase = new CommitWindowRaceDatabase(database);
+
+    await expect(confirmDemandSchedule(racingDatabase, owner, {
+      demandBatchId: 'demand-1',
+      expectedVersion: 2,
+      firstOrderDate: '1970-01-01',
+      orderIntervalDays: 1,
+      ordersPerRun: 3,
+      reason: '确认 re-read 与 batch commit 竞态',
+      previewHash: preview.preview_hash,
+    }, {
+      idempotencyKey: 'schedule:race-window',
+      now: 6100,
+    })).rejects.toMatchObject({
+      code: 'VERSION_CONFLICT',
+      status: 409,
+    });
+
+    const state = await database.prepare(`
+      SELECT
+        version,
+        held_reservation_count AS held,
+        (SELECT COUNT(*) FROM product_reservations
+          WHERE demand_batch_id='demand-1') AS reservations,
+        (SELECT COUNT(*) FROM demand_order_schedule_versions
+          WHERE demand_batch_id='demand-1') AS schedules
+      FROM demand_batches
+      WHERE id='demand-1'
+    `).first<{
+      version: number;
+      held: number;
+      reservations: number;
+      schedules: number;
+    }>();
+    expect(state).toEqual({
+      version: 3,
+      held: 1,
+      reservations: 1,
+      schedules: 0,
+    });
+
+    const idempotency = await database.prepare(`
+      SELECT status, error_code, response_json, result_references_json
+      FROM command_idempotency_records
+      WHERE actor_type='STAFF'
+        AND actor_id=?
+        AND idempotency_key='schedule:race-window'
+    `).bind(owner.staffId).first<{
+      status: string;
+      error_code: string | null;
+      response_json: string | null;
+      result_references_json: string | null;
+    }>();
+    expect(idempotency).toEqual({
+      status: 'FAILED',
+      error_code: 'VERSION_CONFLICT',
+      response_json: null,
+      result_references_json: null,
     });
   });
 
@@ -895,6 +972,33 @@ function seedReservationFixture(
         0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       );
   `);
+}
+
+class CommitWindowRaceDatabase implements SqlDatabase {
+  private injected = false;
+
+  constructor(private readonly database: SqliteDatabase) {}
+
+  prepare(sql: string): SqlStatement {
+    return this.database.prepare(sql);
+  }
+
+  async batch(
+    statements: readonly SqlStatement[],
+  ): Promise<SqlRunResult[]> {
+    if (!this.injected) {
+      this.injected = true;
+      await submitReservation(this.database, {
+        demandBatchId: 'demand-1',
+        expectedDemandVersion: 2,
+      }, {
+        actor: buyerActor('buyer-3'),
+        idempotencyKey: 'reservation:race-window',
+        now: 6050,
+      });
+    }
+    return this.database.batch(statements);
+  }
 }
 
 function buyerActor(
