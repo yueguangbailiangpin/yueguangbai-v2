@@ -261,6 +261,30 @@ D-032 取代 D-004、D-014 和 D-020 中关于飞书 Staff 身份、任务、同
 
 状态：Accepted by business owner
 
+### D-033 Buyer当前三导航与任务中心规范
+
+D-025 作为历史产品入口与文案裁决继续保留，不改写其历史正文。当前正式 Buyer canonical model 明确为：主导航严格只有“产品、任务、我的”；`/buyer` 进入 `/buyer/products`；产品区只展示当前 Buyer 实际可预约产品；任务区聚合当前 reservation、order evidence、review、refund 等真实 API 证据；“需要 Buyer 本人处理”的事项才属于 actionable，审核中、处理中等 system-processing 状态单独展示且不计入 actionable 数量。
+
+旧 Buyer Dashboard 页面、`rankBuyerTasks` 的 deadline ranking/global dedupe，以及 newly reservable demand dashboard 语义均只作为保留的历史/兼容证据；除非新的正式产品 Change 明确要求，不得重新定义为当前产品 requirement。
+
+状态：Accepted by business owner；Supersedes the current Buyer surface interpretation where it conflicts, without rewriting D-025
+
+### D-034 Staff当前五角色规范
+
+D-024 的四角色迁移历史、审批规则和历史含义继续保留，不改写其历史正文。当前正式 Staff canonical role model 严格为五个角色：`owner`、`acquisition`、`pre_sales`、`seller_ops`、`buyer_refund`。Migration 0035 的“四角色”是历史迁移阶段，必须永久保留；Migration 0044 正式引入的 `acquisition` 是当前第五个 canonical role。
+
+当前 ACTIVE Staff 仍必须恰好有一个 ACTIVE 角色，后端权限仍为唯一真值；五角色裁决不改变历史 Migration、历史 Decision、Personal DENY、数据范围或 fail-closed 规则。
+
+状态：Accepted by business owner；Supersedes the current role-set interpretation where it conflicts, without rewriting D-024
+
+### D-035 获客来源显式受控声明
+
+D-026 的历史正文永久保留。本 Decision 仅取代 D-026 中“渠道必须由 Staff assignment 自动派生、请求不得包含渠道”这一条。当前 Prospect 和正式 Lead 的 `channel_id` 是客户端提交或确认的显式来源声明，不构成任何授权；后端仍是唯一权威，必须失败关闭地校验渠道存在且 ACTIVE、渠道 Buyer/Seller audience 与 Lead 类型相符、渠道 Marketplace 与请求 Marketplace 相符、当前 Staff 的 Marketplace scope，以及带 Prospect 时 Prospect 的类型、Marketplace 和原始渠道完全一致。未知、停用、跨类型、跨站点或与 Prospect 不一致的渠道不得创建事实。
+
+没有 Prospect 的直接 Lead 可由具有对应 Lead 职责且当前 Marketplace scope 合法的 Staff 从合法渠道中选择或确认；有 Prospect 的正式 Lead 必须继承该 Prospect 的精确原始渠道，Staff 不得改写。创建后原始来源和创建 Staff 继续不可直接覆盖；任何来源更正只能通过既有受控、追加式、可审计的版本化更正历史表达。D-026 关于渠道归因、首触来源不可变、去重、系统事实转换、角色与 Marketplace 边界、Personal DENY 最终优先及 Staff-safe projection/privacy 的其余规则继续有效。
+
+状态：Accepted by business owner；Supersedes only the server-derived/no-channel-in-request clause of D-026 without rewriting D-026
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

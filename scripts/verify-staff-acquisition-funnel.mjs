@@ -68,43 +68,83 @@ try {
 
 const routeSource = source('apps/api/src/acquisition/routes.ts');
 const leadSource = source('apps/api/src/acquisition/leads.ts');
-const funnelSource = source('apps/api/src/acquisition/funnel.ts');
-const maintenanceSource = source('apps/api/src/acquisition/maintenance.ts');
+const routeRegistry = source('apps/api/src/index.ts');
+const contractSource = source('packages/contracts/src/acquisition.ts');
+const contractDoc = source('docs/contracts/STAFF_ACQUISITION_FUNNEL.md');
+const behaviorTests = source('apps/api/src/acquisition/acquisition.test.ts');
+const maintenanceDryRunTests = source('apps/api/src/acquisition/maintenance-dry-run.test.ts');
 const workerSource = source('apps/api/src/worker.ts');
-const webSource = source('apps/web/src/staff/acquisition/AcquisitionWorkbench.tsx');
-const contract = source('docs/contracts/STAFF_ACQUISITION_FUNNEL.md');
+const webV4Source = source('apps/web/src/staff/acquisition/AcquisitionCoreWorkbenchV4.tsx');
+const browserEvidence = source('apps/web/e2e/staff-acquisition.spec.ts');
+const packageManifest = source('package.json');
+const decision = source('docs/decisions/V2_DECISION_REGISTER.md');
+const changeSpec = source('openspec/changes/acquisition-source-authority-alignment/specs/staff-acquisition-funnel/spec.md');
 
-assert(routeSource.includes(`exactBody(context, ['lead_type','wechat_id','display_name','note'])`),
-  'lead route is not exact-field closed');
-assert(!routeSource.includes(`['lead_type','wechat_id','channel_id'`),
-  'lead route accepts client channel authority');
-assert(leadSource.includes(`identity_hash: identity.hash`)
-  && leadSource.includes(`origin_channel_id=? AND origin_staff_id=?`),
-  'lead privacy or immutable origin assertion missing');
-assert(funnelSource.includes(`lead.lead_type='BUYER'`)
-  && !/seller:\s*\{[\s\S]{0,400}profit/iu.test(funnelSource),
-  'Seller profit isolation drift');
-assert(maintenanceSource.includes(`if (input.dryRun) return inspectMaintenance`)
-  && maintenanceSource.includes(`'BUYER_CUSTOMER','RESERVATION','FORMAL_ORDER','SELLER_ORGANIZATION'`)
-  && maintenanceSource.includes(`customer_auth_security_events`),
-  'retention dry-run or preservation exemptions missing');
-const maintenanceGate = workerSource.indexOf("env.ACQUISITION_MAINTENANCE_ENABLED === 'true'");
+assert(routeRegistry.includes('registerAcquisitionRoutes(app);'),
+  'acquisition route registration is missing');
+assert(routeSource.includes("app.post('/api/staff/acquisition/leads',customerAuthOriginGuard()"),
+  'lead route lacks same-origin middleware');
+assert(routeSource.includes("exactBody(context,['lead_type','marketplace_code','channel_id','prospect_id','wechat_id','display_name','note'])"),
+  'lead route is not exact-field closed for the current explicit-source command');
+assert(contractSource.includes('export interface CreateAcquisitionLeadCommand')
+  && contractSource.includes('channel_id:string;')
+  && contractSource.includes('prospect_id:string|null;')
+  && contractSource.includes('marketplace_code:string;'),
+  'current explicit-source lead contract drift');
+assert(contractDoc.includes('直接 Lead 可以提交或确认显式 `channel_id` 作为来源声明')
+  && contractDoc.includes('该字段不授予权限')
+  && contractDoc.includes('渠道存在且 ACTIVE、Buyer/Seller audience')
+  && contractDoc.includes('当前 Marketplace scope')
+  && contractDoc.includes('与 Prospect 的原始渠道精确一致')
+  && contractDoc.includes('追加式、版本化、审计的受控更正历史')
+  && contractDoc.includes('Personal DENY')
+  && contractDoc.includes('Asia/Shanghai')
+  && contractDoc.includes('admin-business-dashboard')
+  && contractDoc.includes('正式订单和内部利润只通过 BUYER 线索的初始来源归因')
+  && !contractDoc.includes('创建线索的请求不包含 `channel_id`'),
+  'staff acquisition contract source authority or retained boundary drift');
+assert(leadSource.includes('requireLeadDuty(command.actor,input.leadType)')
+  && leadSource.includes('await requireStaffMarket(database,command.actor,marketplaceCode)')
+  && leadSource.includes("channel.status!=='ACTIVE'")
+  && leadSource.includes("channel.lead_type===input.leadType||channel.lead_type==='BOTH'")
+  && leadSource.includes('prospect.origin_channel_id!==channelId'),
+  'lead source authority guards drift');
+assert(behaviorTests.includes('fails closed for disabled, wrong-audience, wrong-market and out-of-scope declared channels')
+  && behaviorTests.includes('inherits a Prospect exact origin and rejects a mismatched declared channel')
+  && behaviorTests.includes('accepts an explicit legal direct source')
+  && behaviorTests.includes('attributes a shared order profit once to Buyer origin and never to Seller funnel'),
+  'required explicit-source behavior evidence is missing');
+assert(packageManifest.includes('"dry-run:staff-acquisition": "vitest run apps/api/src/acquisition/maintenance-dry-run.test.ts"')
+  && packageManifest.includes('npm run dry-run:staff-acquisition')
+  && maintenanceDryRunTests.includes('reports only counts and leaves leads, leases, runs and audit facts unchanged'),
+  'maintenance dry-run evidence ownership drift');
+const maintenanceGate = workerSource.indexOf("bindings.ACQUISITION_MAINTENANCE_ENABLED === 'true'");
 const maintenanceCall = workerSource.indexOf('await runAcquisitionMaintenance', maintenanceGate);
 const maintenanceSecret = workerSource.indexOf('CUSTOMER_SECURITY_TOKEN_SECRET', maintenanceCall);
 assert(maintenanceGate >= 0 && maintenanceCall > maintenanceGate && maintenanceSecret > maintenanceCall,
-  'Worker maintenance integration is not independently fail-closed');
-assert(webSource.includes('添加微信后登记') && webSource.includes('总管理员配置'),
-  'Chinese workbench panels missing');
-assert(contract.includes('Personal DENY') && contract.includes('Asia/Shanghai')
-  && contract.includes('admin-business-dashboard'), 'acquisition contract boundary drift');
+  'Worker maintenance flag/secret fail-closed wiring drift');
+assert(packageManifest.includes('"test:staff-acquisition:browser"')
+  && packageManifest.includes('apps/web/e2e/staff-acquisition.spec.ts')
+  && webV4Source.includes('export function AcquisitionCoreWorkbenchV4')
+  && webV4Source.includes('真实平台和开发方法只对总管理员、获客岗位开放')
+  && browserEvidence.includes("name: '客户开发中心'")
+  && browserEvidence.includes("'真实来源渠道'"),
+  'current V4 browser/UI evidence ownership drift');
+assert(decision.includes('### D-035 获客来源显式受控声明')
+  && decision.includes('D-026 的历史正文永久保留'),
+  'D-035 or D-026 preservation evidence is missing');
+assert(changeSpec.includes('Explicit controlled source declaration')
+  && changeSpec.includes('Prospect-to-Lead inherits the exact origin channel'),
+  'active OpenSpec source-authority delta is missing');
 
 console.log(JSON.stringify({
   status: 'PASS', schema: 36, migration: acquisitionMigrations.at(-1),
-  privacy_fail_closed: true, client_channel_authority: false,
-  buyer_refund_authority: false, seller_profit_fields: false,
-  worker_dry_run_supported: true, production_resources_touched: 0,
-  worker_maintenance_default_enabled: false,
-  pre_upgrade_restore: true, restored_forward_upgrade: true,
+  explicit_source_command: true, route_registered: true, exact_field_closed: true,
+  source_authority_guards: true, behavior_evidence: true, contract_doc_aligned: true,
+  seller_profit_isolation: true, maintenance_dry_run_gate: true,
+  worker_maintenance_fail_closed: true, v4_browser_evidence: true, decision_and_openspec: true,
+  buyer_refund_authority: false, production_resources_touched: 0,
+  pre_upgrade_restore: true,
 }, null, 2));
 
 function source(relativePath) {

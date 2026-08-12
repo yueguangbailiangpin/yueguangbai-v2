@@ -36,19 +36,19 @@ Each `/buyer/**`, `/seller/**`, and `/staff/**` protected tree SHALL use only it
 - **WHEN** Session is unresolved, Customer account type mismatches, or a return path is absolute/cross-identity
 - **THEN** protected data remains hidden and the route shows loading or same-domain login with an unsafe return discarded.
 
-### Requirement: Buyer shell is mobile-first with fixed five-item navigation
+### Requirement: Buyer shell is mobile-first with exactly three canonical items
 
-The Buyer shell SHALL prioritize current stage, next action, and deadline, SHALL have no persistent desktop sidebar, and SHALL expose bottom navigation in exactly this order: 首页、任务、订单资料、评论、我的. Fixed navigation SHALL not obscure content and SHALL remain usable at 320px and 200% zoom.
+The Buyer shell SHALL remain mobile-first, shall not use a persistent desktop sidebar, and SHALL expose exactly `产品`, `任务`, and `我的` in that order. The shell SHALL preserve accessible fixed-navigation behavior at narrow widths and 200% zoom without restoring the legacy Dashboard navigation model.
 
 #### Scenario: Buyer shell at mobile width
 
-- **WHEN** an authenticated Buyer opens a Buyer foundation route at 320px
-- **THEN** one focused content column and all five keyboard-operable bottom items remain visible without covering the page end.
+- **WHEN** an authenticated Buyer opens a Buyer route at 320px or 200% zoom
+- **THEN** one focused content column and all three keyboard-operable primary items remain visible without covering the page end.
 
-#### Scenario: Navigation overflow or extra primary action
+#### Scenario: Buyer opens a contextual business route
 
-- **WHEN** translated/zoomed content would overlap the fixed navigation or a view introduces multiple competing primary actions
-- **THEN** responsive layout/review fails until content remains reachable and the next-action hierarchy is restored.
+- **WHEN** a Buyer opens a reservation, order-material, formal-order, review, or refund route
+- **THEN** the route remains in the Buyer shell and selects one of the three semantic owners without adding a primary item.
 
 ### Requirement: Seller shell preserves list context through a right detail drawer
 
