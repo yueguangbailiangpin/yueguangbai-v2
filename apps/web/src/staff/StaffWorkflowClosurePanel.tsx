@@ -74,7 +74,7 @@ export function StaffWorkflowClosurePanel(): React.JSX.Element | null {
   const client = useQueryClient();
   const params = useParams();
   const [search] = useSearchParams();
-  const workItemId = params.id ?? search.get('work_item');
+  const workItemId = params['id'] ?? search.get('work_item');
   const item = useQuery({
     queryKey: ['staff-workflow-closure', 'work-item', workItemId],
     enabled: Boolean(workItemId),
