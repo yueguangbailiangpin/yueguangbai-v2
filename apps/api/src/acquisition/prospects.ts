@@ -8,16 +8,9 @@ import type {
   SqlDatabase,
   SqlStatement,
 } from '@ygb/contracts';
-import { hashCanonicalJson } from '@ygb/domain';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 import { createAuditEventStatement } from '../foundation/audit';
-import {
-  acquireIdempotency,
-  assertIdempotencyCompletionStatement,
-  completeIdempotencyStatement,
-  markIdempotencyFailed,
-} from '../foundation/idempotency';
 import {
   createOutboxStatements,
   prepareOutboxEvent,
@@ -25,9 +18,11 @@ import {
 import { requireAcquisitionOperator } from './authorization';
 import {
   acquireAcquisitionCommand,
+  acquireAcquisitionMachineCommand,
   failAcquisitionCommand,
   finishAcquisitionCommand,
   type AcquisitionCommandContext,
+  type AcquisitionMachineCommandContext,
 } from './command';
 import { AcquisitionError, validation } from './errors';
 
@@ -45,6 +40,7 @@ interface SignalRow {
   created_by_actor_type:'STAFF'|'CODEX'; created_by_actor_id:string; created_at:number;
 }
 interface ChannelRow { id:string; lead_type:'BUYER'|'SELLER'|'BOTH'; marketplace_code:string; status:'ACTIVE'|'DISABLED' }
+type MachineAnalysisStatus='NEW'|'RESEARCHING'|'QUALIFIED'|'READY_CONTACT';
 
 export async function createAcquisitionProspect(
   database:SqlDatabase,
@@ -81,35 +77,32 @@ export async function createMachineProspect(
   database:SqlDatabase,
   input:{ leadType:AcquisitionLeadType; marketplaceCode:string; channelId:string; displayName:string;
     contactValue:string|null; sourceUrl:string|null; note:string|null; aiScore:number|null },
-  machineId:string,
-  idempotencyKey:string,
+  command:AcquisitionMachineCommandContext,
 ):Promise<{prospect:AcquisitionProspectDto;replayed:boolean}>{
   const normalized=await validateProspectInput(database,{...input,originMode:'CODEX'});
-  const now=Date.now();
-  const requestHash=await hashCanonicalJson({action:'CODEX_CREATE_ACQUISITION_PROSPECT',input:normalized});
-  const acquired=await acquireIdempotency<{prospect_id:string}>(database,{
-    actorType:'CODEX',actorId:identifier(machineId),action:'CODEX_CREATE_ACQUISITION_PROSPECT',
-    targetType:'ACQUISITION_PROSPECT',targetId:`${normalized.leadType}:${normalized.marketplaceCode}:${normalized.channelId}:${normalized.displayName}`,
-    idempotencyKey,requestHash,
-  },{now});
-  if(acquired.kind==='REPLAY')return{prospect:await readProspectById(database,acquired.response.prospect_id),replayed:true};
+  const target=`${normalized.leadType}:${normalized.marketplaceCode}:${normalized.channelId}:${normalized.displayName}`;
+  const acquired=await acquireAcquisitionMachineCommand<{prospect_id:string}>(database,command,'CODEX_CREATE_ACQUISITION_PROSPECT','ACQUISITION_PROSPECT',target,normalized);
+  if(acquired.acquired.kind==='REPLAY')return{prospect:await readProspectById(database,acquired.acquired.response.prospect_id),replayed:true};
   const id=crypto.randomUUID();
   try{
     const response={prospect_id:id};
+    const outbox=await prepareOutboxEvent({id:crypto.randomUUID(),dedupKey:`codex-acquisition-prospect-created:${id}`,eventType:'CODEX_ACQUISITION_PROSPECT_CREATED',aggregateType:'ACQUISITION_PROSPECT',aggregateId:id,payload:{prospect_id:id,lead_type:normalized.leadType,marketplace_code:normalized.marketplaceCode,origin_channel_id:normalized.channelId,status:'NEW',version:1},createdAt:acquired.now});
     await database.batch([
       database.prepare(`INSERT INTO acquisition_prospects(
         id,lead_type,marketplace_code,origin_channel_id,display_name,contact_value,source_url,origin_mode,status,
         ai_score,note,created_by_actor_type,created_by_actor_id,discovered_at,converted_lead_id,version,created_at,updated_at
       ) VALUES(?,?,?,?,?,?,?,'CODEX','NEW',?,?, 'CODEX', ?, ?, NULL,1,?,?)`).bind(
         id,normalized.leadType,normalized.marketplaceCode,normalized.channelId,normalized.displayName,
-        normalized.contactValue,normalized.sourceUrl,normalized.aiScore,normalized.note,machineId,now,now,now),
+        normalized.contactValue,normalized.sourceUrl,normalized.aiScore,normalized.note,command.machineId,acquired.now,acquired.now,acquired.now),
+      changedOnce(database),
       createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'ACQUISITION_PROSPECT',aggregateId:id,
-        eventType:'CODEX_ACQUISITION_PROSPECT_CREATED',actor:{type:'CODEX',id:machineId,roles:[]},
-        idempotencyKey,nextState:{...normalized,status:'NEW',version:1},createdAt:now}),
-      completeIdempotencyStatement(database,acquired.claim,response,{now,resultReferences:{prospect_id:id}}),
-      assertIdempotencyCompletionStatement(database,acquired.claim),
+        eventType:'CODEX_ACQUISITION_PROSPECT_CREATED',actor:{type:'CODEX',id:command.machineId,roles:[]},requestId:command.requestId,
+        idempotencyKey:command.idempotencyKey,nextState:{...normalized,status:'NEW',version:1},createdAt:acquired.now}),
+      ...createOutboxStatements(database,outbox),
+      ...finishAcquisitionCommand(database,acquired.acquired.claim,response,acquired.now,{prospect_id:id}),
+      database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN (SELECT COUNT(*) FROM acquisition_prospects WHERE id=? AND created_by_actor_type='CODEX' AND created_by_actor_id=? AND version=1)=1 THEN 1 ELSE 0 END`).bind(id,command.machineId),
     ]);
-  }catch(error){await markIdempotencyFailed(database,acquired.claim,'ACQUISITION_COMMAND_FAILED',now).catch(()=>undefined);throw error;}
+  }catch(error){await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);throw error;}
   return{prospect:await readProspectById(database,id),replayed:false};
 }
 
@@ -160,8 +153,10 @@ export async function updateAcquisitionProspect(
   }catch(error){
     await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);
     if(error instanceof AcquisitionError)throw error;
-    const latest=await database.prepare(`SELECT version FROM acquisition_prospects WHERE id=?`).bind(id).first<{version:number}>().catch(()=>null);
-    if(latest&&Number(latest.version)!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    if(String(error).includes('transaction_assertion_failed')){
+      const latest=await database.prepare(`SELECT version FROM acquisition_prospects WHERE id=?`).bind(id).first<{version:number}>().catch(()=>null);
+      if(latest&&Number(latest.version)!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    }
     throw error;
   }
 }
@@ -191,12 +186,64 @@ export async function addAcquisitionProspectSignal(
 }
 
 export async function addMachineProspectSignal(
-  database:SqlDatabase,prospectId:string,input:{signalType:string;signalContent:string;sourceUrl:string|null;confidence:'LOW'|'MEDIUM'|'HIGH'|'CONFIRMED'},machineId:string,
-):Promise<AcquisitionProspectSignalDto>{
-  await readProspectById(database,prospectId);const id=crypto.randomUUID(),now=Date.now();const signalType=text(input.signalType,100),signalContent=text(input.signalContent,4000),sourceUrl=optionalUrl(input.sourceUrl);
-  await database.prepare(`INSERT INTO acquisition_prospect_signals(id,prospect_id,signal_type,signal_content,source_url,confidence,created_by_actor_type,created_by_actor_id,created_at)
-    VALUES(?,?,?,?,?,?,'CODEX',?,?)`).bind(id,prospectId,signalType,signalContent,sourceUrl,input.confidence,machineId,now).run();
-  return{signal_id:id,prospect_id:prospectId,signal_type:signalType,signal_content:signalContent,source_url:sourceUrl,confidence:input.confidence,created_by_actor_type:'CODEX',created_by_actor_id:machineId,created_at:now};
+  database:SqlDatabase,prospectId:string,input:{signalType:string;signalContent:string;sourceUrl:string|null;confidence:'LOW'|'MEDIUM'|'HIGH'|'CONFIRMED'},command:AcquisitionMachineCommandContext,
+):Promise<{signal:AcquisitionProspectSignalDto;replayed:boolean}>{
+  const id=identifier(prospectId),signalType=text(input.signalType,100),signalContent=text(input.signalContent,4000),sourceUrl=optionalUrl(input.sourceUrl);
+  if(!['LOW','MEDIUM','HIGH','CONFIRMED'].includes(input.confidence))validation();
+  const payload={signal_type:signalType,signal_content:signalContent,source_url:sourceUrl,confidence:input.confidence};
+  const acquired=await acquireAcquisitionMachineCommand<{signal:AcquisitionProspectSignalDto}>(database,command,'CODEX_ADD_ACQUISITION_PROSPECT_SIGNAL','ACQUISITION_PROSPECT',id,payload);
+  if(acquired.acquired.kind==='REPLAY')return{...acquired.acquired.response,replayed:true};
+  const signalId=crypto.randomUUID();const signal:AcquisitionProspectSignalDto={signal_id:signalId,prospect_id:id,signal_type:signalType,signal_content:signalContent,source_url:sourceUrl,confidence:input.confidence,created_by_actor_type:'CODEX',created_by_actor_id:command.machineId,created_at:acquired.now};
+  try{
+    await assertMachineProspectScope(database,command,id);
+    const outbox=await prepareOutboxEvent({id:crypto.randomUUID(),dedupKey:`codex-acquisition-prospect-signal:${signalId}`,eventType:'CODEX_ACQUISITION_PROSPECT_SIGNAL_ADDED',aggregateType:'ACQUISITION_PROSPECT',aggregateId:id,payload:{...signal},createdAt:acquired.now});
+    await database.batch([
+      database.prepare(`INSERT INTO acquisition_prospect_signals(id,prospect_id,signal_type,signal_content,source_url,confidence,created_by_actor_type,created_by_actor_id,created_at)
+        VALUES(?,?,?,?,?,?,'CODEX',?,?)`).bind(signalId,id,signalType,signalContent,sourceUrl,input.confidence,command.machineId,acquired.now),
+      changedOnce(database),
+      createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'ACQUISITION_PROSPECT',aggregateId:id,eventType:'CODEX_ACQUISITION_PROSPECT_SIGNAL_ADDED',actor:{type:'CODEX',id:command.machineId,roles:[]},requestId:command.requestId,idempotencyKey:command.idempotencyKey,nextState:{signal_id:signalId,...payload},createdAt:acquired.now}),
+      ...createOutboxStatements(database,outbox),
+      ...finishAcquisitionCommand(database,acquired.acquired.claim,{signal},acquired.now,{prospect_id:id,signal_id:signalId}),
+      database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN (SELECT COUNT(*) FROM acquisition_prospect_signals WHERE id=? AND prospect_id=? AND created_by_actor_type='CODEX' AND created_by_actor_id=?)=1 THEN 1 ELSE 0 END`).bind(signalId,id,command.machineId),
+    ]);
+    return{signal,replayed:false};
+  }catch(error){await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);throw error;}
+}
+
+export async function updateMachineProspectAnalysis(
+  database:SqlDatabase,prospectId:string,input:{expectedVersion:number;status:MachineAnalysisStatus;aiScore:number|null;note:string|null},command:AcquisitionMachineCommandContext,
+):Promise<{prospect:AcquisitionProspectDto;replayed:boolean}>{
+  const id=identifier(prospectId),expected=input.expectedVersion;
+  if(!Number.isSafeInteger(expected)||expected<1)validation();
+  const aiScore=score(input.aiScore),note=optionalText(input.note,4000);
+  const payload={expected_version:expected,status:input.status,ai_score:aiScore,note};
+  const acquired=await acquireAcquisitionMachineCommand<{prospect:AcquisitionProspectDto}>(database,command,'CODEX_UPDATE_ACQUISITION_PROSPECT_ANALYSIS','ACQUISITION_PROSPECT',id,payload);
+  if(acquired.acquired.kind==='REPLAY')return{...acquired.acquired.response,replayed:true};
+  try{
+    await assertMachineProspectScope(database,command,id);
+    const current=await readProspectById(database,id);
+    if(current.version!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    if(current.status==='CONVERTED'||current.status==='LOST')throw new AcquisitionError('STATE_CONFLICT',409);
+    const prospect:AcquisitionProspectDto={...current,status:input.status,ai_score:aiScore,note,version:expected+1,updated_at:acquired.now};
+    const outbox=await prepareOutboxEvent({id:crypto.randomUUID(),dedupKey:`codex-acquisition-prospect-analysis:${id}:${expected+1}`,eventType:'CODEX_PROSPECT_ANALYSIS_UPDATED',aggregateType:'ACQUISITION_PROSPECT',aggregateId:id,payload:{prospect_id:id,...payload,version:expected+1},createdAt:acquired.now});
+    await database.batch([
+      database.prepare(`UPDATE acquisition_prospects SET status=?,ai_score=?,note=?,version=version+1,updated_at=? WHERE id=? AND version=? AND status NOT IN ('CONVERTED','LOST')`).bind(input.status,aiScore,note,acquired.now,id,expected),
+      changedOnce(database),
+      createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'ACQUISITION_PROSPECT',aggregateId:id,eventType:'CODEX_PROSPECT_ANALYSIS_UPDATED',actor:{type:'CODEX',id:command.machineId,roles:[]},requestId:command.requestId,idempotencyKey:command.idempotencyKey,previousState:{status:current.status,ai_score:current.ai_score,note:current.note,version:expected},nextState:{status:input.status,ai_score:aiScore,note,version:expected+1},createdAt:acquired.now}),
+      ...createOutboxStatements(database,outbox),
+      ...finishAcquisitionCommand(database,acquired.acquired.claim,{prospect},acquired.now,{prospect_id:id}),
+      database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN (SELECT COUNT(*) FROM acquisition_prospects WHERE id=? AND version=? AND status=? AND ai_score IS ? AND note IS ?)=1 THEN 1 ELSE 0 END`).bind(id,expected+1,input.status,aiScore,note),
+    ]);
+    return{prospect,replayed:false};
+  }catch(error){
+    await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);
+    if(error instanceof AcquisitionError)throw error;
+    if(String(error).includes('transaction_assertion_failed')){
+      const latest=await database.prepare(`SELECT version FROM acquisition_prospects WHERE id=?`).bind(id).first<{version:number}>().catch(()=>null);
+      if(latest&&Number(latest.version)!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    }
+    throw error;
+  }
 }
 
 export async function listProspectSignals(database:SqlDatabase,actor:AssignmentStaffAuthorization,prospectId:string):Promise<readonly AcquisitionProspectSignalDto[]>{
@@ -212,6 +259,7 @@ async function validateProspectInput(database:SqlDatabase,input:{leadType:Acquis
 }
 async function assertStaffMarketplace(database:SqlDatabase,actor:AssignmentStaffAuthorization,market:string){if(actor.roles.has('owner'))return;const markets=await resolveStaffMarketplaceCodes(database,actor);if(!markets.includes(market))throw new AcquisitionError('FORBIDDEN',403);}
 async function readProspectById(database:SqlDatabase,id:string):Promise<AcquisitionProspectDto>{const row=await database.prepare(prospectSql('prospect.id=?')).bind(identifier(id)).first<ProspectRow>();if(!row)throw new AcquisitionError('NOT_FOUND',404);return toProspect(row);}
+async function assertMachineProspectScope(database:SqlDatabase,command:AcquisitionMachineCommandContext,id:string):Promise<void>{if(command.marketplaceCodes.length===0||command.channelIds.length===0)throw new AcquisitionError('NOT_FOUND',404);const row=await database.prepare(`SELECT id FROM acquisition_prospects WHERE id=? AND marketplace_code IN (${command.marketplaceCodes.map(()=>'?').join(',')}) AND origin_channel_id IN (${command.channelIds.map(()=>'?').join(',')})`).bind(id,...command.marketplaceCodes,...command.channelIds).first<{id:string}>();if(!row)throw new AcquisitionError('NOT_FOUND',404);}
 function prospectSql(where:string){return`SELECT prospect.id,prospect.lead_type,prospect.marketplace_code,prospect.origin_channel_id,channel.display_name AS origin_channel_name,prospect.display_name,prospect.contact_value,prospect.source_url,prospect.origin_mode,prospect.status,prospect.ai_score,prospect.note,prospect.discovered_at,prospect.converted_lead_id,prospect.version,prospect.created_at,prospect.updated_at FROM acquisition_prospects prospect JOIN acquisition_channels channel ON channel.id=prospect.origin_channel_id WHERE ${where}`;}
 function toProspect(row:ProspectRow):AcquisitionProspectDto{return{prospect_id:row.id,lead_type:row.lead_type,marketplace_code:row.marketplace_code,origin_channel_id:row.origin_channel_id,origin_channel_name:row.origin_channel_name,display_name:row.display_name,contact_value:row.contact_value,source_url:row.source_url,origin_mode:row.origin_mode,status:row.status,ai_score:row.ai_score===null?null:Number(row.ai_score),note:row.note,discovered_at:Number(row.discovered_at),converted_lead_id:row.converted_lead_id,version:Number(row.version),created_at:Number(row.created_at),updated_at:Number(row.updated_at)}}
 function toSignal(row:SignalRow):AcquisitionProspectSignalDto{return{signal_id:row.id,prospect_id:row.prospect_id,signal_type:row.signal_type,signal_content:row.signal_content,source_url:row.source_url,confidence:row.confidence,created_by_actor_type:row.created_by_actor_type,created_by_actor_id:row.created_by_actor_id,created_at:Number(row.created_at)}}

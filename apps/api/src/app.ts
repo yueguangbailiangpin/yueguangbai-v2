@@ -19,6 +19,7 @@ export type AppBindings = StaffAuthProviderBindings
   & StaffMcpProductionRuntimeBindings
   & {
   DB: SqlDatabase;
+  APP_ENVIRONMENT?: string;
   APP_RELEASE_SHA?: string;
   KEYWORD_IMAGE_GENERATOR?: unknown;
   KEYWORD_GENERATOR_SHARED_SECRET?: string;
@@ -42,7 +43,8 @@ export type AppBindings = StaffAuthProviderBindings
   ACQUISITION_MAINTENANCE_ENABLED?: string;
   OPERATIONAL_ALERT_SINK?: OperationalAlertSink;
   OPERATIONAL_ALERT_MODE?: string;
-  OPERATIONAL_ALERT_SINK_VERIFIED?: string;
+  OPERATIONAL_ALERT_SINK_IDENTITY?: string;
+  OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT?: string;
   SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED?: string;
 };
 
@@ -101,12 +103,16 @@ export function createApp(): Hono<AppEnv> {
 }
 
 export function configuredAlertSink(
-  bindings:Pick<AppBindings,'OPERATIONAL_ALERT_MODE'|'OPERATIONAL_ALERT_SINK'>,
+  bindings:Pick<AppBindings,'APP_ENVIRONMENT'|'OPERATIONAL_ALERT_MODE'|'OPERATIONAL_ALERT_SINK'>,
 ):OperationalAlertSink|null {
   try {
+    const mode=bindings.OPERATIONAL_ALERT_MODE;
+    if(mode==='local'&&bindings.APP_ENVIRONMENT!=='local')return null;
+    if(mode==='bound'&&bindings.APP_ENVIRONMENT!=='production')return null;
     return resolveOperationalAlertSink({
-      ...((bindings.OPERATIONAL_ALERT_MODE!==undefined)?{mode:bindings.OPERATIONAL_ALERT_MODE}:{}),
-      ...(bindings.OPERATIONAL_ALERT_SINK?{localSink:bindings.OPERATIONAL_ALERT_SINK}:{}),
+      ...(mode!==undefined?{mode}:{}),
+      ...(bindings.OPERATIONAL_ALERT_SINK&&mode==='bound'?{boundSink:bindings.OPERATIONAL_ALERT_SINK}:{}),
+      ...(bindings.OPERATIONAL_ALERT_SINK&&mode!=='bound'?{localSink:bindings.OPERATIONAL_ALERT_SINK}:{}),
     });
   } catch { return null; }
 }

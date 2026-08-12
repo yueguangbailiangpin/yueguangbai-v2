@@ -50,7 +50,7 @@ Custom Domain 只接受操作者填入的精确 hostname；本 Change 不选择�
 
 ## 默认关闭与 Secret
 
-Staff Auth 只使用 Cloudflare Access 与 Moonwhite Staff 数据库，模板不得包含任何飞书登录、绑定、同步、回调或告警配置；重新出现即由 preflight 阻断。Staging 保持 Scheduler、获客维护与 operational alert sink 关闭；production 仅启用已审查的内部 Scheduler、获客维护和安全结构化日志 alert sink，并要求独立演练后设置 `OPERATIONAL_ALERT_SINK_VERIFIED=true`，否则 preflight 与 `/ready` 失败关闭。Drive copy/proxy/R2-delete、Staff MCP/local mock 和外部告警投递继续默认关闭，独立 Change 和老板逐项批准前不得启用。
+Staff Auth 只使用 Cloudflare Access 与 Moonwhite Staff 数据库，模板不得包含任何飞书登录、绑定、同步或回调配置；重新出现即由 preflight 阻断。Staging 保持 Scheduler、获客维护与 operational alert sink 关闭；production 要求 `OPERATIONAL_ALERT_MODE=bound`、唯一 `OPERATIONAL_ALERT_SINK` service binding、操作者填写 sink identity 和配置 SHA-256 指纹。完成带时间戳的投递/失败/恢复演练后，总管理员必须通过正式 Staff session 登记与当前 release 和 sink 配置完全匹配、最长七天有效的不可变结构化证明；缺失、过期、失败或不匹配时 `/ready` 一律失败关闭。仓库模板不包含真实 binding 名称或证明，本 Change 也未执行线上演练。Drive copy/proxy/R2-delete 与 Staff MCP/local mock 继续默认关闭，独立 Change 和老板逐项批准前不得启用。
 
 Secret 只能通过 Cloudflare managed Secret 或批准的受管渠道注入，不得放在 `vars`、JSON、日志、dry-run 输出、测试 Fixture 或 Git。Preflight 只输出 Secret 名称，不读取或打印值。
 

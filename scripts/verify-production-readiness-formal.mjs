@@ -13,6 +13,9 @@ for(const marker of [
   '"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"',
   '"SCHEDULED_OPERATIONS_ENABLED": "true"',
   '"ACQUISITION_MAINTENANCE_ENABLED": "true"',
+  '"OPERATIONAL_ALERT_MODE": "bound"',
+  '"OPERATIONAL_ALERT_SINK_IDENTITY": "REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_IDENTITY"',
+  '"binding": "OPERATIONAL_ALERT_SINK"',
   '"STAFF_ACCESS_TEAM_DOMAIN": "REQUIRED_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN"',
   '"STAFF_ACCESS_AUD": "REQUIRED_CLOUDFLARE_ACCESS_APPLICATION_AUD"',
 ])assert(template.includes(marker),`production template missing ${marker}`);
@@ -20,11 +23,13 @@ assert(!template.includes('"STAFF_AUTH_PROVIDER": "FEISHU"'),'Feishu must not be
 assert(!template.includes('FEISHU_WORKBENCH_APP_ID'),'production template must not require legacy Feishu workbench identity');
 
 const readiness=read('apps/api/src/operational-readiness/routes.ts');
-for(const marker of ['const TARGET_SCHEMA=65','APP_RELEASE_SHA','production_recovery_attestations','last_backlog_count','staff_access','release'])
+for(const marker of ['const TARGET_SCHEMA=65','APP_RELEASE_SHA','production_recovery_attestations','operationalAlertAttestationReady','last_backlog_count','staff_access','release'])
   assert(readiness.includes(marker),`readiness boundary missing ${marker}`);
 const recovery=read('apps/api/src/production-readiness/recovery-attestation-routes.ts');
 assert(recovery.includes('const TARGET_SCHEMA=65'),'recovery attestation must target schema 65');
 assert(recovery.includes('APP_RELEASE_SHA'),'recovery attestation must bind current release SHA');
+const alertAttestation=read('apps/api/src/operational-readiness/alert-attestation.ts');
+for(const marker of ['release_sha','sink_identity','sink_config_fingerprint','delivery_result','failure_result','recovery_result','expires_at'])assert(alertAttestation.includes(marker),`operational alert attestation missing ${marker}`);
 const monitor=read('.github/workflows/production-health-monitor.yml');
 assert(monitor.includes('https://app.yueguangbai.net/ready'),'external health monitor must probe readiness');
 
@@ -37,6 +42,7 @@ console.log(JSON.stringify({
   scheduler:'REQUIRED',
   acquisition_maintenance:'REQUIRED',
   recovery:'CURRENT_RELEASE_SHA_REQUIRED',
+  operational_alerts:'BOUND_SINK_AND_CURRENT_IMMUTABLE_ATTESTATION_REQUIRED',
   external_calls:0,
   production_go:'NOT_PROBED',
 },null,2));

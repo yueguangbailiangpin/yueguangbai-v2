@@ -119,6 +119,8 @@ const runtime = read('apps/api/src/cloudflare-runtime.ts');
 for (const marker of [
   'FILE_OBJECT_STORAGE_R2',
   'FILE_OBJECT_STORAGE: storage',
+  'OPERATIONAL_ALERT_MODE',
+  'OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT',
   'isAllowedSameOriginApiRequest',
   'Content-Security-Policy',
   'Strict-Transport-Security',

@@ -1,16 +1,21 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  STAFF_SESSION_COOKIE_NAME,
+} from '@ygb/contracts';
+import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
 import { createApp } from '../app';
-import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
-import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import { staffSessionMiddleware } from '../middleware/staff-auth';
+import { generateStaffOpaqueToken } from '../staff-auth/crypto';
+import { createInternalStaffSession } from '../staff-auth/repository';
 import { registerOrderInstructionRoutes } from './routes';
 
 const ORIGIN = 'https://staff.local.test';
 
 let database: SqliteDatabase | null = null;
+let staffToken='';
 
 afterEach(() => {
   database?.close();
@@ -20,7 +25,8 @@ afterEach(() => {
 describe('order instruction strict write boundary', () => {
   it('enforces same-origin and exact bodies on every staff write route', async () => {
     database = createMigratedTestDatabase();
-    const app = testApp(owner());
+    staffToken=await seedOwnerSession();
+    const app = testApp();
     const cases = [
       {
         path: '/api/staff/order-instructions/missing/assets/prepare',
@@ -86,32 +92,14 @@ describe('order instruction strict write boundary', () => {
   });
 });
 
-function testApp(actor: AssignmentStaffAuthorization) {
+function testApp() {
   const app = createApp();
-  app.use('*', async (context, next) => {
-    context.set('staffAuthorization', actor);
-    await next();
-  });
+  app.use('/api/staff/*',staffSessionMiddleware());
   registerOrderInstructionRoutes(app);
   return app;
 }
 
-function owner(): AssignmentStaffAuthorization {
-  const effective = calculateEffectiveStaffAuthorization({
-    roles: new Set(['owner']),
-    grants: new Set(),
-    denies: new Set(),
-    memberTeamIds: [],
-    leaderTeamIds: [],
-  });
-  return {
-    staffId: 'order-boundary-owner',
-    displayName: 'Order Boundary Owner',
-    staffStatus: 'ACTIVE',
-    authorizationVersion: 1,
-    ...effective,
-  };
-}
+async function seedOwnerSession():Promise<string>{if(!database)throw new Error('test_database_missing');database.exec(`INSERT INTO staff_users(id,display_name,status,authorization_version,version,created_at,updated_at,disabled_at,session_version) VALUES('order-boundary-owner','Order Boundary Owner','ACTIVE',1,1,1000,1000,NULL,1);INSERT INTO staff_role_assignments(staff_id,role_code,status,assigned_by_staff_id,assigned_at,revoked_at,created_at,updated_at) VALUES('order-boundary-owner','owner','ACTIVE',NULL,1000,NULL,1000,1000);`);const token=generateStaffOpaqueToken(),now=Date.now();await createInternalStaffSession(database,{token,identity:{identity_id:'order-boundary-identity',staff_id:'order-boundary-owner',identity_status:'ACTIVE',identity_user_id:null,display_name:'Order Boundary Owner',staff_status:'ACTIVE',authorization_version:1,session_version:1},requestId:'order-boundary-session',now,expiresAt:now+60_000});return token;}
 
 function sameOriginHeaders(idempotencyKey: string): Record<string, string> {
   return {
@@ -132,6 +120,7 @@ async function writeRequest(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Cookie:`${STAFF_SESSION_COOKIE_NAME}=${staffToken}`,
       ...headers,
     },
     body: JSON.stringify(body),

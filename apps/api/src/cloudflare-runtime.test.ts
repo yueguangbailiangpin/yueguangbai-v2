@@ -62,7 +62,9 @@ describe('production Cloudflare Worker runtime',()=>{
       {...bindings(),SCHEDULED_OPERATIONS_ENABLED:'invalid'},
       {...bindings(),ACQUISITION_MAINTENANCE_ENABLED:undefined},
       {...bindings(),OPERATIONAL_ALERT_MODE:'disabled'},
-      {...bindings(),OPERATIONAL_ALERT_SINK_VERIFIED:'false'},
+      {...bindings(),OPERATIONAL_ALERT_SINK:undefined},
+      {...bindings(),OPERATIONAL_ALERT_SINK_IDENTITY:'REQUIRED_ALERT_SINK'},
+      {...bindings(),OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:'not-a-sha256'},
       {...bindings(),STAFF_MCP_ENABLED:'false'},
     ] as unknown as CloudflareWorkerBindings[];
     for(const env of cases){
@@ -100,6 +102,8 @@ function bindings():CloudflareWorkerBindings{return {
   STAFF_ACCESS_AUD:'staff-access-audience-001',STAFF_AUTH_ALLOWED_ORIGINS:origin,
   SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
   DRIVE_ARCHIVE_ENABLED:'false',DRIVE_ARCHIVE_COPY_ENABLED:'false',DRIVE_ARCHIVE_PROXY_READ_ENABLED:'false',DRIVE_ARCHIVE_R2_DELETE_ENABLED:'false',
-  OPERATIONAL_ALERT_MODE:'local',OPERATIONAL_ALERT_SINK_VERIFIED:'true',
+  OPERATIONAL_ALERT_MODE:'bound',OPERATIONAL_ALERT_SINK:{async notify(){}},
+  OPERATIONAL_ALERT_SINK_IDENTITY:'service:operations-primary',
+  OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:'b'.repeat(64),
 };}
 function fetchWorker(pathname:string,init?:RequestInit):Promise<Response>{return worker.fetch(new Request(`${origin}${pathname}`,init),bindings(),executionContext);}

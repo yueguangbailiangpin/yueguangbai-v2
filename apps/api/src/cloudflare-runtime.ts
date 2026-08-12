@@ -64,8 +64,7 @@ export function resolveCloudflareRuntime(
     || !validStaffAccessReleaseBindings(bindings, appOrigin)
     || !booleanFlag(bindings.SCHEDULED_OPERATIONS_ENABLED)
     || !booleanFlag(bindings.ACQUISITION_MAINTENANCE_ENABLED)
-    || bindings.OPERATIONAL_ALERT_MODE !== (environment==='production'?'local':'disabled')
-    || bindings.OPERATIONAL_ALERT_SINK_VERIFIED !== (environment==='production'?'true':'false')) return null;
+    || !validOperationalAlertReleaseBindings(bindings,environment)) return null;
 
   return Object.freeze({
     environment,
@@ -76,6 +75,20 @@ export function resolveCloudflareRuntime(
 }
 
 function booleanFlag(value:unknown):value is 'true'|'false' { return value==='true'||value==='false'; }
+
+function validOperationalAlertReleaseBindings(bindings:CloudflareWorkerBindings,environment:ReleaseEnvironment):boolean{
+  if(environment==='production')return bindings.OPERATIONAL_ALERT_MODE==='bound'
+    &&isOperationalAlertSink(bindings.OPERATIONAL_ALERT_SINK)
+    &&safeSinkIdentity(bindings.OPERATIONAL_ALERT_SINK_IDENTITY)
+    &&typeof bindings.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT==='string'
+    &&/^[0-9a-f]{64}$/u.test(bindings.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT);
+  return bindings.OPERATIONAL_ALERT_MODE==='disabled'
+    &&bindings.OPERATIONAL_ALERT_SINK===undefined
+    &&bindings.OPERATIONAL_ALERT_SINK_IDENTITY===undefined
+    &&bindings.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT===undefined;
+}
+function isOperationalAlertSink(value:unknown):value is NonNullable<AppBindings['OPERATIONAL_ALERT_SINK']>{return Boolean(value&&typeof value==='object'&&'notify' in value&&typeof (value as {notify?:unknown}).notify==='function');}
+function safeSinkIdentity(value:unknown):boolean{return typeof value==='string'&&value.length>=8&&value.length<=200&&!value.startsWith('REQUIRED_')&&/^[A-Za-z0-9._:/@-]+$/u.test(value);}
 
 export function isApiRequestPath(pathname: string): boolean {
   return pathname === '/health'

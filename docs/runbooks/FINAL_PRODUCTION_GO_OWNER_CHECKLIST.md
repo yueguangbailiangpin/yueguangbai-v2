@@ -33,7 +33,7 @@ Gate 1 未通过：`NO-GO`。
 - [ ] Staging 保持 Scheduler、获客维护和 operational alert sink 关闭；production 仅启用已审查的内部 Scheduler、获客维护和安全结构化日志 alert sink。Drive copy/proxy/delete、MCP 和外部告警投递继续保持 disabled。
 - [ ] 通过 Secret 管理写入并轮换 Customer Session、安全 token、Drive OAuth、关键词服务 Secret 及经独立 Change 批准的其他 Secret；绝不复制到命令日志或 Git。
 - [ ] 配置并验证 Cloudflare Access application、policy、team domain、audience、已登记 Staff 邮箱及同源 allowed origins；模板和运行配置不得出现飞书认证或同步键。
-- [ ] 配置主告警 sink，执行一次带时间戳的投递、失败和恢复演练；证据成立后才设置 `OPERATIONAL_ALERT_SINK_VERIFIED=true`，并确认 `/ready` 的 `operational_alerts=ok`。
+- [ ] 配置唯一 `OPERATIONAL_ALERT_SINK` service binding、sink identity 与配置 SHA-256 指纹，核对它们和当前 release；执行带时间戳的投递、失败和恢复演练，通过正式总管理员 Staff session 登记最长七天有效的结构化证明，再确认 `/ready` 的 `operational_alerts=ok`。不得用环境布尔值、console 日志或旧 release 的证明顶替。
 
 Gate 2 未通过：`NO-GO`。
 

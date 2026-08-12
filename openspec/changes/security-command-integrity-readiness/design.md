@@ -16,11 +16,17 @@ Create batches the credential, immutable scopes, Audit, Outbox/completion where 
 
 Prospect update uses `expected_version` in the guarded mutation and never reads a winner's state as the loser's response. Prospect signals hash the complete normalized accepted body and replay the committed signal without inserting another fact. Assignment revoke uses the existing expected version and emits its immutable assignment event, Audit and Outbox in the command batch.
 
+The machine Prospect routes require Bearer authentication and `Idempotency-Key`, then construct a CODEX command identity containing the authenticated machine id and immutable scope snapshot. Signal and analysis acquire the canonical command before resource-level scope lookup so committed replay is stable. An acquired command must still pass the scope-constrained lookup. Out-of-scope marketplace/channel/Prospect ids and random ids share the same public 404; only a missing global capability is rejected as 403 before any resource query.
+
 Lead-source correction uses `expected_correction_sequence`, defined as the count returned by the candidate read model. Its batch inserts only when the current correction count and effective previous channel still match the submitted sequence, then asserts the inserted correction is the unique next sequence winner before Audit/Outbox/completion. No migration is required because the append-only correction count is the authoritative sequence.
 
 ## Production alert readiness
 
-`/ready` exposes `checks.operational_alerts`. Production is ready only when the alert mode is an explicitly supported enabled mode and the operational alert adapter is configured and validated by the existing runtime policy. Local and isolated non-production configurations may explicitly remain disabled, but a production release config cannot do so. The production health monitor requires the new check and release preflight validates the same policy, keeping runbook, runtime and release gates aligned.
+`/ready` exposes `checks.operational_alerts`. Production requires a real `bound` service adapter plus operator-supplied sink identity and a SHA-256 configuration fingerprint. A bare environment boolean is not evidence and the local console adapter is never accepted in staging or production.
+
+The attestation trust source is the existing formal Staff session followed by an owner-only, strict-origin, exact-body, idempotent route. It commits a structured attestation as an immutable D1 Audit event together with Outbox, command completion and final assertions. This avoids adding a signing secret or a migration: the authenticated Staff principal and the existing no-update/no-delete Audit triggers are the trusted boundary. The accepted evidence is bound to the exact running 40-character release SHA, sink identity and configuration fingerprint, contains operator evidence reference plus explicit PASS results for delivery, failure and recovery exercises, and has a bounded seven-day lifetime. `/ready` fails closed for missing, malformed, expired, future, failed or mismatched evidence.
+
+Release preflight verifies the same `bound` service binding, identity and fingerprint configuration but cannot manufacture or validate an online exercise. The runtime policy requires the binding, and the production health monitor consumes the attestation-backed `/ready` check. The production template deliberately retains operator placeholders. No production attestation is created by this change; that external operator exercise remains an incomplete deployment gate. Local may use the console adapter or disabled policy, while staging remains disabled.
 
 ## Strict browser write boundary
 

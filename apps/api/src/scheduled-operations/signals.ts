@@ -97,17 +97,24 @@ export class LocalOperationalAlertSink implements OperationalAlertSink {
   }
 }
 
-export function resolveOperationalAlertSink(input:{mode?:string;localSink?:OperationalAlertSink}):OperationalAlertSink|null {
+export function resolveOperationalAlertSink(input:{mode?:string;localSink?:OperationalAlertSink;boundSink?:OperationalAlertSink}):OperationalAlertSink|null {
   const mode=input.mode??'disabled';
   if (mode==='disabled') {
-    if (input.localSink!==undefined) throw new Error('operational_alert_sink_disabled_with_adapter');
+    if (input.localSink!==undefined||input.boundSink!==undefined) throw new Error('operational_alert_sink_disabled_with_adapter');
     return null;
   }
-  if (mode==='local') return input.localSink??new LocalOperationalAlertSink();
+  if (mode==='local') {
+    if(input.boundSink!==undefined)throw new Error('operational_alert_local_with_bound_adapter');
+    return input.localSink??new LocalOperationalAlertSink();
+  }
+  if(mode==='bound'){
+    if(input.localSink!==undefined||input.boundSink===undefined)throw new Error('operational_alert_bound_adapter_required');
+    return input.boundSink;
+  }
   throw new Error('invalid_operational_alert_mode');
 }
 
-export function safeResolveOperationalAlertSink(input:{mode?:string;localSink?:OperationalAlertSink}):OperationalAlertSink|null {
+export function safeResolveOperationalAlertSink(input:{mode?:string;localSink?:OperationalAlertSink;boundSink?:OperationalAlertSink}):OperationalAlertSink|null {
   try { return resolveOperationalAlertSink(input); } catch { return null; }
 }
 

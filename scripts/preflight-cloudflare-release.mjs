@@ -151,10 +151,6 @@ export function validateReleaseConfig(config, environment) {
   if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u.test(String(r2?.bucket_name ?? ''))) {
     errors.push('r2_buckets.0.bucket_name:invalid');
   }
-  const services = record?.services;
-  if (services !== undefined && (!Array.isArray(services) || services.length !== 0)) {
-    errors.push('services:forbidden_in_core_release');
-  }
   for (const key of Object.keys(vars ?? {})) {
     if (retiredCoreRuntimeKey.test(key)) {
       errors.push(`vars.${key}:core_runtime_configuration_forbidden`);
@@ -176,17 +172,23 @@ function validateFrozenDefaults(config, environment) {
   if (record.workers_dev !== false) errors.push('workers_dev:must_be_false');
   if (record.preview_urls !== false) errors.push('preview_urls:must_be_false');
   if (vars?.APP_ENVIRONMENT !== environment) errors.push('vars.APP_ENVIRONMENT:wrong_environment');
-  const alertModeExpected = environment === 'production' ? 'local' : 'disabled';
+  validateAlertService(record.services, environment, errors);
+  const alertModeExpected = environment === 'production' ? 'bound' : 'disabled';
   if (vars?.OPERATIONAL_ALERT_MODE !== alertModeExpected) {
     errors.push(`vars.OPERATIONAL_ALERT_MODE:must_be_${alertModeExpected}`);
   }
-  const alertVerifiedExpected = environment === 'production' ? 'true' : 'false';
-  const alertVerifiedValue = vars?.OPERATIONAL_ALERT_SINK_VERIFIED;
-  if (alertVerifiedValue !== alertVerifiedExpected
-    && !(environment === 'production'
-      && typeof alertVerifiedValue === 'string'
-      && placeholderPattern.test(alertVerifiedValue))) {
-    errors.push(`vars.OPERATIONAL_ALERT_SINK_VERIFIED:must_be_${alertVerifiedExpected}`);
+  if (environment === 'production') {
+    if (!safeOrPlaceholderSinkIdentity(vars?.OPERATIONAL_ALERT_SINK_IDENTITY)) {
+      errors.push('vars.OPERATIONAL_ALERT_SINK_IDENTITY:missing_or_invalid');
+    }
+    if (!(typeof vars?.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT === 'string'
+      && (/^[0-9a-f]{64}$/u.test(vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT)
+        || placeholderPattern.test(vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT)))) {
+      errors.push('vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:must_be_sha256');
+    }
+  } else if (vars?.OPERATIONAL_ALERT_SINK_IDENTITY !== undefined
+    || vars?.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT !== undefined) {
+    errors.push('vars.OPERATIONAL_ALERT_ATTESTATION:forbidden_outside_production');
   }
   const scheduledExpected = environment === 'production' ? 'true' : 'false';
   for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {
@@ -280,6 +282,28 @@ function exactHttpsOrigin(value) {
     return url.protocol === 'https:' && url.origin === value
       && !url.username && !url.password ? value : null;
   } catch { return null; }
+}
+
+function validateAlertService(value, environment, errors) {
+  if (environment === 'production') {
+    const service = exactOne(value);
+    if (!service || service.binding !== 'OPERATIONAL_ALERT_SINK'
+      || !(isResourceName(service.service)
+        || (typeof service.service === 'string' && placeholderPattern.test(service.service)))) {
+      errors.push('services:operational_alert_sink_binding_required');
+    }
+    return;
+  }
+  if (value !== undefined && (!Array.isArray(value) || value.length !== 0)) {
+    errors.push('services:forbidden_outside_production');
+  }
+}
+
+function safeOrPlaceholderSinkIdentity(value) {
+  return typeof value === 'string'
+    && (placeholderPattern.test(value)
+      || (value.length >= 8 && value.length <= 200
+        && /^[A-Za-z0-9._:/@-]+$/u.test(value)));
 }
 
 function safeReleaseValue(value, maximum, minimum = 1) {

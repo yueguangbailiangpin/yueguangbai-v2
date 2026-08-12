@@ -25,6 +25,8 @@ Machine credential create and revoke SHALL require an Idempotency-Key and canoni
 
 Prospect update and signal, assignment revoke and source correction SHALL use the shared command claim, canonical complete-body hash, guarded or unique mutation, exact-one assertion, Audit, required Outbox, completion and final assertion boundary. Unknown D1 errors SHALL remain dependency failures and SHALL NOT be translated into business conflicts.
 
+Machine Prospect signal and analysis routes SHALL require Bearer authentication and `Idempotency-Key`, construct the CODEX command context from the authenticated machine, and enforce the same atomic command boundary. Resource-level machine or Staff marketplace/channel/scope denial SHALL be indistinguishable from a random id as 404. A missing global Staff capability SHALL remain a pre-query 403.
+
 #### Scenario: Prospect update loses an OCC race
 
 - **WHEN** another command wins the submitted Prospect expected version before the guarded batch commits
@@ -34,6 +36,16 @@ Prospect update and signal, assignment revoke and source correction SHALL use th
 
 - **WHEN** the same signal key and normalized body is retried
 - **THEN** the original signal is replayed with no duplicate fact; when the body differs, the system returns `IDEMPOTENCY_CONFLICT`.
+
+#### Scenario: Machine Prospect analysis loses a controlled race
+
+- **WHEN** two Bearer-authenticated machine commands read the same expected Prospect version and are released to commit concurrently
+- **THEN** exactly one guarded batch commits and the loser returns `VERSION_CONFLICT` without returning the winner's state or leaving Audit, Outbox or committed-command ghosts.
+
+#### Scenario: A scoped resource id is probed
+
+- **WHEN** a machine or marketplace-scoped Staff principal submits either a real out-of-scope id or a random id
+- **THEN** status, public error code and public message are the same 404 response.
 
 #### Scenario: Source corrections race at one sequence
 

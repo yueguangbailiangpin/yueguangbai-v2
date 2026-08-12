@@ -143,8 +143,10 @@ export async function revokeAcquisitionAssignment(
   }catch(error){
     await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);
     if(error instanceof AcquisitionError)throw error;
-    const latest=await database.prepare(`SELECT version FROM acquisition_staff_channel_assignments WHERE id=?`).bind(id).first<{version:number}>().catch(()=>null);
-    if(latest&&Number(latest.version)!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    if(String(error).includes('transaction_assertion_failed')){
+      const latest=await database.prepare(`SELECT version FROM acquisition_staff_channel_assignments WHERE id=?`).bind(id).first<{version:number}>().catch(()=>null);
+      if(latest&&Number(latest.version)!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    }
     throw error;
   }
 }

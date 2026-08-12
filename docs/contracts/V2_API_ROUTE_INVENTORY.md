@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。共有 237 个唯一端点：235 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP 不属于核心 App route table。
+这是默认 App 的可复现 route inventory。共有 238 个唯一端点：236 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP 不属于核心 App route table。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表核对；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都必须经过合同更新与复核。
 
@@ -235,6 +235,7 @@ POST /api/staff/order-instructions/reconciliation/run
 POST /api/staff/order-integrity/:id/events
 POST /api/staff/order-integrity/:id/financial-adjustments
 POST /api/staff/product-applications/:id/review
+POST /api/staff/production-readiness/operational-alert-attestations
 POST /api/staff/production-readiness/recovery-attestations
 POST /api/staff/reservations/:id/decision
 POST /api/staff/reviews/:id/approve

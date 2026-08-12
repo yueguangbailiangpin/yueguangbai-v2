@@ -130,10 +130,10 @@ describe('scheduled operational signal evaluation',()=>{
     app.get('/unhandled',()=>{ throw new Error('token=private-customer-secret'); });
     vi.spyOn(console,'error').mockImplementation(()=>undefined);
     for (let index=0;index<3;index+=1) {
-      const response=await app.request(`/private/customer/customer-${index}`,{}, {DB:database,OPERATIONAL_ALERT_MODE:'local',OPERATIONAL_ALERT_SINK:sink});
+      const response=await app.request(`/private/customer/customer-${index}`,{}, {DB:database,APP_ENVIRONMENT:'local',OPERATIONAL_ALERT_MODE:'local',OPERATIONAL_ALERT_SINK:sink});
       expect(response.status).toBe(503);
     }
-    expect((await app.request('/unhandled',{}, {DB:database,OPERATIONAL_ALERT_MODE:'local',OPERATIONAL_ALERT_SINK:sink})).status).toBe(500);
+    expect((await app.request('/unhandled',{}, {DB:database,APP_ENVIRONMENT:'local',OPERATIONAL_ALERT_MODE:'local',OPERATIONAL_ALERT_SINK:sink})).status).toBe(500);
     expect(sink.notifications).toEqual([expect.objectContaining({signal_type:'worker_5xx',summary_code:'WORKER_5XX_THRESHOLD',category:'worker'})]);
     const serialized=JSON.stringify((await database.prepare('SELECT * FROM scheduled_operational_signals').all()).results);
     expect(serialized).not.toMatch(/private|customer|object_key|safe failure|token/u);

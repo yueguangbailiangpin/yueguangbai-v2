@@ -62,16 +62,19 @@ describe('Cloudflare release preflight', () => {
     expect(errors).toContain('routes.0.pattern:origin_mismatch');
   });
 
-  it('blocks production when the operational alert sink is disabled or unverified', () => {
+  it('requires a bound production sink identity and config fingerprint', () => {
     const config = anonymousConfig('production');
     config.vars.OPERATIONAL_ALERT_MODE = 'disabled';
-    config.vars.OPERATIONAL_ALERT_SINK_VERIFIED = 'false';
+    delete config.vars.OPERATIONAL_ALERT_SINK_IDENTITY;
+    config.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT = 'invalid';
+    config.services = [];
     const errors = validateReleaseConfig(config, 'production');
-    expect(errors).toContain('vars.OPERATIONAL_ALERT_MODE:must_be_local');
-    expect(errors).toContain('vars.OPERATIONAL_ALERT_SINK_VERIFIED:must_be_true');
+    expect(errors).toContain('vars.OPERATIONAL_ALERT_MODE:must_be_bound');
+    expect(errors).toContain('vars.OPERATIONAL_ALERT_SINK_IDENTITY:missing_or_invalid');
+    expect(errors).toContain('vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:must_be_sha256');
+    expect(errors).toContain('services:operational_alert_sink_binding_required');
     const staging = anonymousConfig('staging');
-    expect(staging.vars).toMatchObject({ OPERATIONAL_ALERT_MODE: 'disabled',
-      OPERATIONAL_ALERT_SINK_VERIFIED: 'false' });
+    expect(staging.vars).toMatchObject({ OPERATIONAL_ALERT_MODE: 'disabled' });
     expect(validateReleaseConfig(staging, 'staging')).toEqual([]);
   });
 
@@ -106,7 +109,7 @@ describe('Cloudflare release preflight', () => {
     const errors = validateReleaseConfig(config, 'production');
     expect(errors).toContain('d1_databases:binding_invalid');
     expect(errors).toContain('r2_buckets:binding_invalid');
-    expect(errors).toContain('services:forbidden_in_core_release');
+    expect(errors).toContain('services:operational_alert_sink_binding_required');
   });
 
   it('allows only real files outside the repository by lexical and real path', () => {
@@ -184,7 +187,9 @@ function anonymousConfig(environment) {
   const origin = `https://${environment}.example.invalid`;
   replacePlaceholders(config, (value) => {
     if (value === 'REQUIRED_RELEASE_COMMIT_SHA') return 'a'.repeat(40);
-    if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_VERIFIED') return 'true';
+    if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_IDENTITY') return 'service:operations-primary';
+    if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_CONFIG_SHA256') return 'b'.repeat(64);
+    if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SERVICE') return 'ygb-operational-alerts';
     if (value.endsWith('_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN')
       || value === 'REQUIRED_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN') {
       return `https://${environment}-team.cloudflareaccess.com`;

@@ -1,6 +1,7 @@
 import { apiSuccess,type ObjectStorageAdapter,type SqlDatabase } from '@ygb/contracts';
 import type { Hono } from 'hono';
 import { safeResolveOperationalAlertSink, type OperationalAlertSink } from '../scheduled-operations/signals';
+import { operationalAlertAttestationReady } from './alert-attestation';
 
 const TARGET_SCHEMA=65;
 const MAX_JOB_STALENESS_MS=6*60*60*1000;
@@ -39,7 +40,7 @@ async function evaluateReadiness(database:SqlDatabase,storage:ObjectStorageAdapt
   const maintenance=await database.prepare(`SELECT last_succeeded_at,last_failed_at FROM acquisition_maintenance_state WHERE singleton_id=1`).first<{last_succeeded_at:number|null;last_failed_at:number|null}>();
   const maintenanceSucceeded=maintenance?.last_succeeded_at==null?null:Number(maintenance.last_succeeded_at),maintenanceFailed=maintenance?.last_failed_at==null?null:Number(maintenance.last_failed_at);
   const acquisition_maintenance=bindings['ACQUISITION_MAINTENANCE_ENABLED']==='true'&&maintenanceSucceeded!==null&&now-maintenanceSucceeded<=MAX_ACQUISITION_STALENESS_MS&&(maintenanceFailed===null||maintenanceSucceeded>=maintenanceFailed);
-  const operational_alerts=operationalAlertsReady(bindings);
+  const operational_alerts=await operationalAlertsReady(database,bindings,now);
   const object_storage=await storageReady(database,storage);
   const runningRelease=releaseSha(bindings['APP_RELEASE_SHA']);const release=runningRelease!==null;
   const recoveryRow=await database.prepare(`SELECT release_sha,schema_version FROM production_recovery_attestations WHERE schema_version=? ORDER BY verified_at DESC,id DESC LIMIT 1`).bind(TARGET_SCHEMA).first<{release_sha:string;schema_version:number}>();
@@ -48,16 +49,18 @@ async function evaluateReadiness(database:SqlDatabase,storage:ObjectStorageAdapt
   return{ready:schema&&scheduler&&acquisition_maintenance&&operational_alerts&&object_storage&&recovery&&staff_access&&release,schema,scheduler,acquisition_maintenance,operational_alerts,object_storage,recovery,staff_access,release};
 }
 
-function operationalAlertsReady(bindings:Record<string,unknown>):boolean{
+async function operationalAlertsReady(database:SqlDatabase,bindings:Record<string,unknown>,now:number):Promise<boolean>{
   const environment=bindings['APP_ENVIRONMENT'];
   const mode=bindings['OPERATIONAL_ALERT_MODE'];
   const injected=bindings['OPERATIONAL_ALERT_SINK'];
   const sink=safeResolveOperationalAlertSink({
     ...(typeof mode==='string'?{mode}:{}),
-    ...(injected&&typeof injected==='object'&&'notify' in injected?{localSink:injected as OperationalAlertSink}:{}),
+    ...(injected&&typeof injected==='object'&&'notify' in injected&&mode==='bound'?{boundSink:injected as OperationalAlertSink}:{}),
+    ...(injected&&typeof injected==='object'&&'notify' in injected&&mode!=='bound'?{localSink:injected as OperationalAlertSink}:{}),
   });
-  if(environment==='production')return mode==='local'&&bindings['OPERATIONAL_ALERT_SINK_VERIFIED']==='true'&&sink!==null;
-  if(environment==='local'||environment==='staging')return(mode==='disabled'&&injected===undefined)||(mode==='local'&&sink!==null);
+  if(environment==='production')return mode==='bound'&&sink!==null&&await operationalAlertAttestationReady(database,bindings,now);
+  if(environment==='local')return(mode==='disabled'&&injected===undefined)||(mode==='local'&&sink!==null);
+  if(environment==='staging')return mode==='disabled'&&injected===undefined;
   return false;
 }
 

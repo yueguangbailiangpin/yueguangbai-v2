@@ -38,16 +38,16 @@ export async function createMachineCredential(
 ){
   const name=text(input.machineName,100),markets=unique(input.marketplaceCodes),channels=unique(input.channelIds);
   if(markets.length<1||channels.length<1||!Number.isSafeInteger(input.hourlyRequestLimit)||input.hourlyRequestLimit<1||input.hourlyRequestLimit>10000)validation();
-  const placeholders=markets.map(()=>'?').join(','),marketCount=await database.prepare(`SELECT COUNT(*) AS count FROM marketplace_registry WHERE code IN (${placeholders})`).bind(...markets).first<{count:number}>();
-  if(Number(marketCount?.count??0)!==markets.length)validation();
-  const channelPlaceholders=channels.map(()=>'?').join(','),channelRows=await database.prepare(`SELECT id,marketplace_code,status FROM acquisition_channels WHERE id IN (${channelPlaceholders})`).bind(...channels).all<{id:string;marketplace_code:string;status:string}>();
-  if(channelRows.results.length!==channels.length||channelRows.results.some((row)=>row.status!=='ACTIVE'||!markets.includes(row.marketplace_code)))validation();
   const payload={machine_name:name,marketplace_codes:markets,channel_ids:channels,hourly_request_limit:input.hourlyRequestLimit};
   const acquired=await acquireAcquisitionCommand<{machine:MachineCredentialPublic}>(database,command,'CREATE_ACQUISITION_MACHINE_CREDENTIAL','ACQUISITION_MACHINE_CREDENTIAL','new',payload);
   if(acquired.acquired.kind==='REPLAY')return{machine:{...acquired.acquired.response.machine,machine_secret:null,secret_available:false as const},replayed:true};
-  const secret=`mw_machine_${base64Url(crypto.getRandomValues(new Uint8Array(32)))}`,hash=await sha256(secret),id=crypto.randomUUID();
-  const machine:MachineCredentialPublic={machine_id:id,machine_name:name,status:'ACTIVE',hourly_request_limit:input.hourlyRequestLimit,marketplace_codes:markets,channel_ids:channels,created_at:acquired.now};
   try{
+    const placeholders=markets.map(()=>'?').join(','),marketCount=await database.prepare(`SELECT COUNT(*) AS count FROM marketplace_registry WHERE code IN (${placeholders})`).bind(...markets).first<{count:number}>();
+    if(Number(marketCount?.count??0)!==markets.length)validation();
+    const channelPlaceholders=channels.map(()=>'?').join(','),channelRows=await database.prepare(`SELECT id,marketplace_code,status FROM acquisition_channels WHERE id IN (${channelPlaceholders})`).bind(...channels).all<{id:string;marketplace_code:string;status:string}>();
+    if(channelRows.results.length!==channels.length||channelRows.results.some((row)=>row.status!=='ACTIVE'||!markets.includes(row.marketplace_code)))validation();
+    const secret=`mw_machine_${base64Url(crypto.getRandomValues(new Uint8Array(32)))}`,hash=await sha256(secret),id=crypto.randomUUID();
+    const machine:MachineCredentialPublic={machine_id:id,machine_name:name,status:'ACTIVE',hourly_request_limit:input.hourlyRequestLimit,marketplace_codes:markets,channel_ids:channels,created_at:acquired.now};
     const outbox=await prepareOutboxEvent({
       id:crypto.randomUUID(),dedupKey:`acquisition-machine-created:${id}`,
       eventType:'ACQUISITION_MACHINE_CREDENTIAL_CREATED',aggregateType:'ACQUISITION_MACHINE_CREDENTIAL',aggregateId:id,
@@ -68,8 +68,8 @@ export async function createMachineCredential(
         AND (SELECT COUNT(*) FROM acquisition_machine_channels WHERE machine_id=?)=?
         THEN 1 ELSE 0 END`).bind(id,id,markets.length,id,channels.length),
     ]);
+    return{machine:{...machine,machine_secret:secret,secret_available:true as const},replayed:false};
   }catch(error){await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);throw error;}
-  return{machine:{...machine,machine_secret:secret,secret_available:true as const},replayed:false};
 }
 
 export async function listMachineCredentials(database:SqlDatabase){
@@ -127,7 +127,7 @@ export async function authenticateAcquisitionMachine(database:SqlDatabase,reques
   ]);
   return{machineId:row.id,machineName:row.machine_name,marketplaceCodes:markets.results.map((value)=>value.marketplace_code),channelIds:channels.results.map((value)=>value.channel_id)};
 }
-export function requireMachineScope(machine:AcquisitionMachineIdentity,marketplaceCode:string,channelId:string){if(!machine.marketplaceCodes.includes(marketplaceCode)||!machine.channelIds.includes(channelId))throw new AcquisitionError('FORBIDDEN',403);}
+export function requireMachineScope(machine:AcquisitionMachineIdentity,marketplaceCode:string,channelId:string){if(!machine.marketplaceCodes.includes(marketplaceCode)||!machine.channelIds.includes(channelId))throw new AcquisitionError('NOT_FOUND',404);}
 function changedOnce(database:SqlDatabase):SqlStatement{return database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END`);}
 async function sha256(value:string){const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)));return [...bytes].map((byte)=>byte.toString(16).padStart(2,'0')).join('');}
 function base64Url(bytes:Uint8Array){let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/u,'');}

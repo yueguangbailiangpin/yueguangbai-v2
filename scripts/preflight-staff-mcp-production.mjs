@@ -225,8 +225,13 @@ function validateCoreTemplateAbsence(config, environment) {
     if (key.startsWith('STAFF_MCP_')) errors.push(`vars.${key}:forbidden_in_core_release`);
   }
   const services = record(config)?.services;
-  if (services !== undefined && (!Array.isArray(services) || services.length !== 0)) {
-    errors.push('services:forbidden_in_core_release');
+  if (services !== undefined && !Array.isArray(services)) {
+    errors.push('services:invalid');
+  } else if (Array.isArray(services)) {
+    for (const value of services) {
+      const service=record(value);
+      if(typeof service?.binding==='string'&&service.binding.startsWith('STAFF_MCP_'))errors.push(`services.${service.binding}:forbidden_in_core_release`);
+    }
   }
   return errors;
 }

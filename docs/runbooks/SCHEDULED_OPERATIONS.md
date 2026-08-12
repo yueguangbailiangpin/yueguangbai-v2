@@ -45,7 +45,11 @@ Worker 的 Cron 配置只定义触发频率；`SCHEDULED_OPERATIONS_ENABLED` 必
 
 连续两次健康评估自动恢复；事件型信号在观察窗口安静后由定时评估补充健康事实，因此不依赖新的业务事件才能恢复。重复 observation id 不重复计数或通知；恢复后复发建立新的 incident version。告警身份为 `signal_type + job_name + summary_code`。冷却期内继续持久化状态但不重复通知。sink 失败不影响原请求或作业，只写固定 `PRIMARY_ALERT_SINK_FAILURE` 信号且不得递归通知。信号、日志和 DTO 只能包含固定枚举、哈希 observation id、UTC 毫秒、整数计数及固定 job 名；禁止路径、用户 id、token、凭证、微信号、对象 key、原始错误、金额或客户内容。
 
-`OPERATIONAL_ALERT_MODE` 在 local/staging 默认为 `disabled`；当前唯一可启用值为 `local`。production 必须为 `local`，并且只有在操作者完成带时间戳的投递/失败/恢复演练后，才可把非 Secret 配置 `OPERATIONAL_ALERT_SINK_VERIFIED` 设为 `true`。`/ready` 同时要求 production mode 已启用、验证标志为 true 且 adapter 可解析，否则 `operational_alerts=failed` 并返回 503。`local` 可使用内置安全结构化日志 adapter 或注入内存 mock，二者都只接受正式通知 DTO。disabled 状态配置 adapter、未知 mode 或任何外部 adapter 名均视为无效配置并安全退回不发送。这里不读取外部凭证，也不发起网络调用；该本地实现不冒充外部通知接收器。
+`OPERATIONAL_ALERT_MODE` 在 local/staging 默认为 `disabled`。`local` 模式只允许 local 环境使用内置安全结构化日志 adapter 或注入内存 mock；staging 不允许 console adapter。production 必须为 `bound`，并解析唯一 `OPERATIONAL_ALERT_SINK` service binding；同时必须配置稳定的 sink identity 和由操作者按实际 adapter 配置计算的 SHA-256 指纹。
+
+生产证明不是布尔开关。操作者完成真实投递、模拟 sink 失败和恢复后三项演练后，用正式总管理员 Staff session、同源 Origin、`Idempotency-Key` 和 exact body 调用 `/api/staff/production-readiness/operational-alert-attestations`。body 必须包含当前 40 位 `release_sha`、`sink_identity`、`sink_config_fingerprint`、`verified_at`、`expires_at`、三项值均为 `PASS` 的结果和非敏感 `evidence_reference`；有效期最长七天。服务把证明作为不可变 Audit，并与 Outbox、command completion 和 final assertion 同批提交。证明不得包含告警凭据或 Secret。
+
+`/ready` 对当前 release、identity、fingerprint、时间和三项结果逐项重验；缺失、格式错误、未来时间、过期、演练失败或任一绑定不匹配都会返回 `operational_alerts=failed` 和 503。preflight 只证明静态模板/配置满足机制要求，production health monitor 只消费 `/ready` 结果；两者都不会生成真实证明。disabled 状态配置 adapter、未知 mode、production 使用 local、或非 production 使用 bound 都视为无效配置并安全退回不发送。
 
 Staff 登录拒绝、Access JWT 无效、未知邮箱、Cookie/Session 拒绝会从既有安全事实派生 `LOGIN_ANOMALY_DETECTED`；正常登录不触发。该派生不得保存登录名、IP 原文、密码、token、User-Agent、Provider subject 或底层错误。
 

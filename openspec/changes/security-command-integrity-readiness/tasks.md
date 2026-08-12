@@ -7,3 +7,9 @@
 - [x] 5. Apply strict Origin and exact-body enforcement to password change and order-instruction writes while preserving direct scheduled-service calls.
 - [x] 6. Run targeted strict verification, all strict verification, `git diff --check`, then one full `npm run check`.
 - [x] 7. Self-review secrets, production writes and migration diff; commit, push and open a Draft PR without merging.
+- [x] 8. Verify machine Bearer Prospect signal/analysis command semantics, controlled OCC, concealment and atomic failure cleanup through real routes.
+- [x] 9. Replace production boolean self-attestation with bound-sink configuration and immutable structured Staff attestation; align `/ready`, runtime, preflight and monitor policy.
+- [x] 10. Verify credential replay before mutable channel validation and Staff source-correction concealment through formal sessions.
+- [x] 11. Verify key Staff and order-instruction boundaries through cookie-to-session-to-D1 middleware, plus exact ghost-count assertions.
+- [x] 12. Run final API/Web typecheck, targeted tests, strict OpenSpec gates, diff check and exactly one full repository check for this review revision.
+- [ ] 13. Production operator supplies the real sink identity/fingerprint, performs delivery/failure/recovery exercises and records a current attestation. Not performed: production access is not authorized by this change.
