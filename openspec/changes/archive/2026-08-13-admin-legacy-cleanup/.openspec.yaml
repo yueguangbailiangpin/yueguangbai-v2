@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-13
+goal: Retire the obsolete Admin drilldown frontend evidence while preserving the
+  canonical Frozen dashboard and all retained backend dashboard capabilities.
+skip_specs: true

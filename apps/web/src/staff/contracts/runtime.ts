@@ -431,26 +431,6 @@ export const adminDashboardSummarySchema = z.object({ summary: z.object({
   staff_performance: z.array(dashboardPerformanceSchema),
   channel_performance: z.array(dashboardPerformanceSchema),
 }).strict() }).strict();
-const trendPointSchema = z.object({
-  from_date: z.string(), to_date: z.string(), new_buyers: z.number().int().nonnegative(),
-  reservations: z.number().int().nonnegative(), formal_orders: z.number().int().nonnegative(),
-  business_completions: z.number().int().nonnegative(),
-  projected_profit: dashboardProfitSchema, completed_profit: dashboardProfitSchema,
-}).strict();
-export const adminDashboardTrendSchema = z.object({ trend: z.object({
-  granularity: z.enum(['DAY','WEEK','MONTH']), from_date: z.string(), to_date: z.string(),
-  timezone: z.literal('Asia/Shanghai'), data_as_of: epoch, points: z.array(trendPointSchema),
-}).strict() }).strict();
-export const adminDashboardDrillDownSchema = z.object({ drill_down: z.object({
-  metric: z.enum(['NEW_BUYERS','RESERVATIONS','FORMAL_ORDERS','BUSINESS_COMPLETIONS',
-    'PROJECTED_PROFIT_CONFLICTS','COMPLETED_PROFIT_CONFLICTS']),
-  from_date: z.string(), to_date: z.string(), timezone: z.literal('Asia/Shanghai'),
-  data_as_of: epoch, items: z.array(z.object({ reference_id: z.string(),
-    business_date: z.string(), status: z.string() }).strict()), next_cursor: z.string().nullable(),
-}).strict() }).strict();
-
-export type AdminDashboardSummary = z.output<typeof adminDashboardSummarySchema>['summary'];
-
 const staffAccessRoleSchema = z.discriminatedUnion('code', [
   z.object({ code: z.literal('owner'), display_name: z.literal('总管理员') }).strict(),
   z.object({ code: z.literal('acquisition'), display_name: z.literal('获客') }).strict(),

@@ -311,6 +311,16 @@ D-024、D-025 和 D-034 的历史正文与当前五角色裁决继续有效。�
 
 状态：Accepted by business owner；Records canonical evidence migration and alias retirement, without rewriting D-026 or D-035
 
+### D-039 Admin canonical证据迁移与旧前端退役
+
+D-025 的历史正文和 `admin-business-dashboard` 当前 Specification 继续有效。正式 Admin 运行链固定为 `App /staff/* → StaffRouteModule → StaffAdminRouteModule → FrozenAdminBusinessDashboard`；旧 `AdminBusinessDashboard`、其 MSW 证据及仅服务于该旧页面的 trend/drilldown frontend client、runtime schema 和 query-key helpers 已由 Frozen canonical MSW、route 和 browser evidence 取代并从运行源码移除。
+
+当前 Frozen UI 覆盖今日/本周/本月、客户订单概览、Buyer/Seller funnel、渠道每日事实、预计/完成利润和经营完整性。旧 frontend drilldown 与 trend UI 不是当前 requirement，不因退役而恢复。后端 trend/drilldown routes、read model、shared contracts、D1 query-plan proof 及其 API/D1 tests 继续保留，后续 consumer audit 必须单独治理；它们不是 Frozen frontend 的替身证据。
+
+本退役不改变 Admin API、runtime、权限、Personal DENY、财务公式、D1 schema 或 Migration，也不改变 Buyer、Seller 或其他 Staff 运行能力。Owner + `FINANCIAL_VIEW` 的客户端 gating 仍只减少无效请求；可信 Staff Session、Active 状态、Personal DENY 和后端失败关闭仍是唯一授权真值。
+
+状态：Accepted by business owner；Records Admin evidence migration and legacy frontend retirement without rewriting D-025 or archived Changes
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收
