@@ -285,6 +285,14 @@ D-026 的历史正文永久保留。本 Decision 仅取代 D-026 中“渠道必
 
 状态：Accepted by business owner；Supersedes only the server-derived/no-channel-in-request clause of D-026 without rewriting D-026
 
+### D-036 Buyer旧Dashboard证据退役
+
+D-033 的三导航、`/buyer` 入口、当前可预约产品和任务中心裁决继续有效。旧 `BuyerDashboardPage`、`rankBuyerTasks` 及其 deadline ranking/global dedupe 测试已经由 canonical Buyer 路由、导航和任务中心行为证据替代并从运行源码移除；它们不再作为兼容、验收或运行证据存在。
+
+本退役不改变 reservation、order evidence、review、refund 的 API、合同、人工预约审核流程或业务状态机；也不恢复旧 Dashboard，亦不把 newly reservable demand dashboard 语义写回当前 requirement。D-033 的历史正文不改写，本 Decision 仅取代其“旧 Dashboard 文件仍保留”的当时实现状态。
+
+状态：Accepted by business owner；Supersedes only D-033's retained-legacy-file implementation status without rewriting D-033
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

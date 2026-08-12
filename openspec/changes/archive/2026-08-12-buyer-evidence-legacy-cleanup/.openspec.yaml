@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-12
+goal: Retire obsolete Buyer dashboard evidence without changing Buyer product
+  behavior.
+skip_specs: true

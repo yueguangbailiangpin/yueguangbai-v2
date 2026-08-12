@@ -5,14 +5,7 @@ import { Alert, Card, EmptyState, PageHeader, StatusBadge } from '../../ui/primi
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys } from '../queries/keys';
 import { reviewTypeLabel } from '../shared/status';
-
-interface BuyerTask {
-  id: string;
-  title: string;
-  detail: string;
-  href: string;
-  kind: 'urgent' | 'action' | 'system';
-}
+import { classifyBuyerTasks, type BuyerTask } from './task-classification';
 
 export function BuyerTasksPage(): React.JSX.Element {
   const client = useQueryClient();
@@ -34,76 +27,9 @@ export function BuyerTasksPage(): React.JSX.Element {
   const reviews = results[4]?.data?.items ?? [];
   const refunds = results[5]?.data?.items ?? [];
 
-  const urgent: BuyerTask[] = [
-    ...evidence.filter((item) => item.status === 'CHANGES_REQUESTED').map((item) => ({
-      id: `evidence-change-${item.submission_id}`,
-      title: '修改订单资料',
-      detail: `${item.reservation.product_name}${item.public_change_reason ? ` · ${item.public_change_reason}` : ''}`,
-      href: `/buyer/order-materials/${encodeURIComponent(item.submission_id)}`,
-      kind: 'urgent' as const,
-    })),
-    ...reviews.filter((item) => item.status === 'CHANGES_REQUESTED').map((item) => ({
-      id: `review-change-${item.review_case_id}`,
-      title: '修改评论资料',
-      detail: `${item.order.product_name}${item.public_change_reason ? ` · ${item.public_change_reason}` : ''}`,
-      href: `/buyer/reviews/${encodeURIComponent(item.review_case_id)}`,
-      kind: 'urgent' as const,
-    })),
-  ];
-
-  const evidenceReservationIds = new Set(eligibleEvidence.map((item) => item.reservation_id));
-  const action: BuyerTask[] = [
-    ...eligibleEvidence.filter((item) => item.allowed_actions.includes('SUBMIT')).map((item) => ({
-      id: `evidence-submit-${item.reservation_id}`,
-      title: '提交订单资料',
-      detail: `${item.product_name} · ${reviewTypeLabel(item.review_type)}`,
-      href: `/buyer/order-materials/new?reservation_id=${encodeURIComponent(item.reservation_id)}`,
-      kind: 'action' as const,
-    })),
-    ...eligibleReviews.filter((item) => item.allowed_actions.includes('SUBMIT')).map((item) => ({
-      id: `review-submit-${item.order.formal_order_id}`,
-      title: '提交评论资料',
-      detail: `${item.order.product_name} · ${reviewTypeLabel(item.order.review_type)}`,
-      href: `/buyer/reviews/new?formal_order_id=${encodeURIComponent(item.order.formal_order_id)}`,
-      kind: 'action' as const,
-    })),
-    ...reservations.filter((item) => item.status === 'APPROVED' && !evidenceReservationIds.has(item.reservation_id)).map((item) => ({
-      id: `instruction-${item.reservation_id}`,
-      title: '查看下单指引',
-      detail: item.demand.product_name,
-      href: `/buyer/reservations/${encodeURIComponent(item.reservation_id)}/instruction`,
-      kind: 'action' as const,
-    })),
-  ];
-
-  const system: BuyerTask[] = [
-    ...reservations.filter((item) => item.status === 'PENDING_REVIEW').map((item) => ({
-      id: `reservation-pending-${item.reservation_id}`,
-      title: '预约审核中', detail: item.demand.product_name,
-      href: `/buyer/reservations/${encodeURIComponent(item.reservation_id)}`,
-      kind: 'system' as const,
-    })),
-    ...evidence.filter((item) => item.status === 'PENDING_VERIFICATION').map((item) => ({
-      id: `evidence-pending-${item.submission_id}`,
-      title: '订单资料审核中', detail: item.reservation.product_name,
-      href: `/buyer/order-materials/${encodeURIComponent(item.submission_id)}`,
-      kind: 'system' as const,
-    })),
-    ...reviews.filter((item) => item.status === 'PENDING_REVIEW').map((item) => ({
-      id: `review-pending-${item.review_case_id}`,
-      title: '评论审核中', detail: item.order.product_name,
-      href: `/buyer/reviews/${encodeURIComponent(item.review_case_id)}`,
-      kind: 'system' as const,
-    })),
-    ...refunds.filter((item) => item.status === 'DUE' || item.status === 'PARTIALLY_PAID').map((item) => ({
-      id: `refund-pending-${item.refund_obligation_id}`,
-      title: '返款处理中', detail: item.order.product_name,
-      href: `/buyer/refunds/${encodeURIComponent(item.refund_obligation_id)}`,
-      kind: 'system' as const,
-    })),
-  ];
-
-  const actionableCount = urgent.length + action.length;
+  const { urgent, action, system, actionableCount } = classifyBuyerTasks({
+    reservations, eligibleEvidence, evidence, eligibleReviews, reviews, refunds,
+  }, reviewTypeLabel);
   return <section className="buyer-page buyer-tasks-page">
     <PageHeader eyebrow="买家任务" title={actionableCount > 0 ? `你有 ${actionableCount} 件需要处理` : '当前没有需要处理的事项'}
       description="只把需要你本人操作的事项计入待办；审核和返款处理中会单独显示。" />

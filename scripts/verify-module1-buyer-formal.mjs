@@ -60,8 +60,11 @@ const mappings = Object.freeze({
   ],
   'buyer-routing-dashboard': [
     'apps/web/src/App.tsx',
-    'apps/web/src/buyer/routes/BuyerLayout.tsx',
-    'apps/web/src/buyer/dashboard/tasks.test.ts',
+    'apps/web/src/buyer/routes/BuyerRouteModule.tsx',
+    'apps/web/src/buyer/routes/BuyerFrame.tsx',
+    'apps/web/src/buyer/routes/BuyerLayout.test.ts',
+    'apps/web/src/buyer/tasks/BuyerTasksPage.tsx',
+    'apps/web/src/buyer/tasks/task-classification.test.ts',
     'apps/web/e2e/module1-buyer.spec.ts',
   ],
   'buyer-testing-quality': [
