@@ -101,7 +101,7 @@ async function readProductApplicationReviewContext(
       AND store.organization_id=application.organization_id
     WHERE application.id=?
     LIMIT 1
-  `).bind(applicationId).first<ProductApplicationContextRow>();
+  `).bind(applicationId).first() as ProductApplicationContextRow | null;
   if (!row) throw httpError('NOT_FOUND', 404);
 
   const actor = await requireAssignedWorkflowActor(context.env.DB, {
@@ -174,7 +174,7 @@ async function readReservationReviewContext(
       AND store.organization_id=reservation.organization_id
     WHERE reservation.id=?
     LIMIT 1
-  `).bind(reservationId).first<ReservationContextRow>();
+  `).bind(reservationId).first() as ReservationContextRow | null;
   if (!row) throw httpError('NOT_FOUND', 404);
 
   const actor = await requireAssignedWorkflowActor(context.env.DB, {
