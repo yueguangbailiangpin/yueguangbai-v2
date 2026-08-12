@@ -37,7 +37,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
       <div><dt>Amazon 订单号</dt><dd>{item.order.amazon_order_number}</dd></div><div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.order.amazon_order_date)}</dd></div>
       <div><dt>证据版本</dt><dd>{item.current_evidence_version_no}</dd></div><div><dt>文件数量</dt><dd>{item.file_count}</dd></div>
       <div><dt>提交时间</dt><dd>{formatShanghai(item.submitted_at)}</dd></div><div><dt>更新时间</dt><dd>{formatShanghai(item.updated_at)}</dd></div>
-      <div><dt>评论链接</dt><dd>{item.review_url ? <a href={item.review_url} target="_blank" rel="noreferrer">打开评论链接</a> : '未提供'}</dd></div></dl></Card>
+      <div><dt>评论链接</dt><dd>{item.review_url ? <a href={item.review_url} target="_blank" rel="noreferrer">打开评论链接</a> : '暂未提供'}</dd></div></dl></Card>
     <Card className="buyer-support-card"><h2>证据文件</h2>{item.files.map((file) => <ReviewFile key={file.file_entity_link_id} reviewId={item.review_case_id} file={file} />)}</Card>
     {item.allowed_actions.includes('RESUBMIT') ? <ReviewResubmitForm review={item} onRefresh={() => { void query.refetch(); }} /> : null}
     {item.allowed_actions.includes('WITHDRAW') ? <Button className="danger" onClick={() => setConfirmWithdraw(true)}>撤回评论资料</Button> : null}

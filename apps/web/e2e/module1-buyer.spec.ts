@@ -309,7 +309,7 @@ test('Demand cursor loads and retains three pages', async ({ page }) => {
   await page.getByRole('button', { name: '加载更多' }).click(); await page.getByRole('button', { name: '加载更多' }).click();
   await expect(page.getByText('月白护肤套装')).toBeVisible(); await expect(page.getByText('月白补充装')).toBeVisible(); await expect(page.getByText('月白旅行装')).toBeVisible();
 });
-test('Demand confirmation defaults unchecked', async ({ page }) => { await gotoBuyer(page, '/buyer/demands/demand-1'); await expect(page.getByRole('checkbox')).not.toBeChecked(); await expect(page.getByRole('button', { name: '确认并预约' })).toBeDisabled(); });
+test('Demand confirmation defaults unchecked', async ({ page }) => { await gotoBuyer(page, '/buyer/demands/demand-1'); await expect(page.getByText('提交前确认一下当前自费比例哦，如果产品信息有变化需要重新确认。')).toBeVisible(); await expect(page.getByRole('checkbox')).not.toBeChecked(); await expect(page.getByRole('button', { name: '确认并预约' })).toBeDisabled(); });
 test('Demand version conflict resets acceptance', async ({ page }) => { await gotoBuyer(page, '/buyer/demands/demand-1', { reservationConflict: true }); await page.getByRole('checkbox').check(); await page.getByRole('button', { name: '确认并预约' }).click(); await expect(page.getByRole('checkbox')).not.toBeChecked(); });
 test('Ambiguous reservation retry preserves the exact idempotency key and body', async ({ page }) => {
   const operations: { key: string | undefined; body: string | null }[] = [];
@@ -352,7 +352,7 @@ test('Evidence form input is exact-one screenshot', async ({ page }) => { await 
 test('Evidence upload and submit completes the business command', async ({ page }) => {
   await gotoBuyer(page, '/buyer/order-materials/new?reservation_id=reservation-1');
   await page.getByLabel('Amazon 订单号').fill('123-1234567-1234567'); await page.getByLabel('Amazon 下单日期').fill('2026-08-06');
-  await page.getByLabel('最终支付金额 JPY').fill('4100'); await page.getByLabel('订单截图').setInputFiles({ name: 'evidence.png', mimeType: 'image/png', buffer: Buffer.from('png') });
+  await page.getByLabel('最终支付金额（JPY）').fill('4100'); await page.getByLabel('订单截图').setInputFiles({ name: 'evidence.png', mimeType: 'image/png', buffer: Buffer.from('png') });
   await page.getByRole('button', { name: '提交资料' }).click(); await expect(page).toHaveURL(/\/buyer\/order-materials\/evidence-1$/u);
 });
 test('Evidence detail shows fixed PRICE_MISMATCH copy and signed direction', async ({ page }) => { await gotoBuyer(page, '/buyer/order-materials/evidence-1'); await expect(page.getByText('实际支付金额与参考金额不一致')).toBeVisible(); await expect(page.getByText('+¥120 JPY（实际支付高于参考金额）')).toBeVisible(); });
@@ -366,8 +366,8 @@ for (const status of [429, 503] as const) {
     const tokens: string[] = []; page.on('request', (request) => { if (new URL(request.url()).pathname.includes('/file-read-intents/')) tokens.push(request.headers()['x-file-read-token'] ?? ''); });
     await gotoBuyer(page, '/buyer/order-materials/evidence-1', { fileContentFailureOnce: status });
     await page.getByRole('button', { name: '查看文件' }).click();
-    await expect(page.getByRole('button', { name: '重试读取' })).toBeVisible({ timeout: status === 429 ? 2_500 : 1_000 });
-    await page.getByRole('button', { name: '重试读取' }).click(); await expect(page.getByRole('link', { name: '打开文件' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '重试' })).toBeVisible({ timeout: status === 429 ? 2_500 : 1_000 });
+    await page.getByRole('button', { name: '重试' }).click(); await expect(page.getByRole('link', { name: '打开文件' })).toBeVisible();
     expect(tokens).toHaveLength(2); expect(tokens[0]).toBe(tokens[1]);
   });
 }

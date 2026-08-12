@@ -16,6 +16,18 @@ import { ProductSchedulingWorkspace } from './ProductSchedulingWorkspace';
 afterEach(cleanup);
 
 describe('产品预约排期工作区', () => {
+  it('labels the reset-cursor action as returning to the first page', async () => {
+    server.use(http.get(apiUrl('/api/staff/catalog/products'), () => HttpResponse.json({ data: { page: {
+      items: [{ product_id: 'product-1', seller_organization_id: 'seller-1', store_id: 'store-1',
+        store_name: '测试店铺', marketplace_code: 'US', asin: 'B000TEST', status: 'ACTIVE',
+        aggregate_version: 1, current_version_no: 1, product_name: '测试产品',
+        cadence: { order_interval_days: 7, orders_per_run: 1 }, updated_at: 1 }],
+      next_cursor: 'cursor-2', data_as_of: 1,
+    } }, meta: { request_id: 'products' } })));
+    renderWorkspace(owner(), '/staff/products?cursor=cursor-1');
+    expect(await screen.findByRole('button', { name: '返回第一页' })).toBeEnabled();
+  });
+
   it('shows scoped identity and requires preview before schedule confirmation', async () => {
     let confirmBody: Record<string, unknown>|null = null;
     server.use(
@@ -75,8 +87,8 @@ describe('产品预约排期工作区', () => {
     for (const testCase of cases) {
       renderWorkspace(testCase.value, '/staff/products/product-1');
       expect(await screen.findByText('当前产品版本')).toBeVisible();
-      if (testCase.visible) expect(screen.getByRole('heading', { name: '新增产品版本' })).toBeVisible();
-      else expect(screen.queryByRole('heading', { name: '新增产品版本' })).not.toBeInTheDocument();
+      if (testCase.visible) expect(screen.getByRole('heading', { name: '新增版本' })).toBeVisible();
+      else expect(screen.queryByRole('heading', { name: '新增版本' })).not.toBeInTheDocument();
       cleanup();
     }
   });
@@ -95,14 +107,14 @@ describe('产品预约排期工作区', () => {
     );
     const user = userEvent.setup();
     renderWorkspace(owner(), '/staff/products/product-1');
-    await screen.findByRole('heading', { name: '新增产品版本' });
+    await screen.findByRole('heading', { name: '新增版本' });
     await user.click(screen.getByRole('button', { name: '保存为新版本' }));
-    expect(await screen.findByRole('button', { name: '重试原请求' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: '重试' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: '保存为新版本' }));
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[1]).toEqual(calls[0]);
     expect(await screen.findByText(/新产品版本已保存/u)).toBeVisible();
-    expect(screen.queryByRole('button', { name: '重试原请求' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '保存为新版本' }));
     await waitFor(() => expect(calls).toHaveLength(3));
     expect(calls[2]!.key).not.toBe(calls[0]!.key);
@@ -130,9 +142,9 @@ describe('产品预约排期工作区', () => {
     renderWorkspace(owner(), '/staff/products/product-1');
     const productName = await screen.findByLabelText('产品名称');
     await user.click(screen.getByRole('button', { name: '保存为新版本' }));
-    expect(await screen.findByRole('button', { name: '重试原请求' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: '重试' })).toBeVisible();
     await user.clear(productName); await user.type(productName, '修改后的产品');
-    expect(screen.queryByRole('button', { name: '重试原请求' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '保存为新版本' }));
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[1]!.key).not.toBe(calls[0]!.key);
@@ -156,17 +168,17 @@ describe('产品预约排期工作区', () => {
     renderWorkspace(owner(), '/staff/products/product-1');
     const productName = await screen.findByLabelText('产品名称');
     await user.click(screen.getByRole('button', { name: '保存为新版本' }));
-    expect(await screen.findByRole('button', { name: '重试原请求' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: '重试' })).toBeVisible();
     productName.focus(); await user.keyboard('{Enter}');
     await waitFor(() => expect(calls).toHaveLength(2));
-    const retry = screen.getByRole('button', { name: '重试原请求' });
+    const retry = screen.getByRole('button', { name: '重试' });
     await waitFor(() => expect(retry).toBeEnabled());
     await user.click(retry);
     await waitFor(() => expect(calls).toHaveLength(3));
     expect(calls[1]).toEqual(calls[0]);
     expect(calls[2]).toEqual(calls[0]);
     expect(await screen.findByText(/新产品版本已保存/u)).toBeVisible();
-    expect(screen.queryByRole('button', { name: '重试原请求' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
   });
 
   it('retries schedule confirmation from the main button with the exact original body and key', async () => {
@@ -239,6 +251,7 @@ describe('产品预约排期工作区', () => {
 
 function renderWorkspace(value: StaffSession, route: string): void {
   renderWithMsw(<StaffSessionBoundary adapter={adapter(value)}><Routes>
+    <Route path="/staff/products" element={<ProductSchedulingWorkspace />} />
     <Route path="/staff/demands/:demandId/reservations"
       element={<ProductSchedulingWorkspace />} />
     <Route path="/staff/products/:productId"

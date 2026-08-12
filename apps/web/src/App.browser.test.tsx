@@ -14,7 +14,7 @@ describe('foundation accessibility components', () => {
     const heading = screen.getByRole('heading', { name: '月光白' });
     expect(heading).toBeVisible();
     expect(heading.closest('section')).toHaveTextContent(
-      /^月光白请使用工作人员发送的专属链接登录。$/u,
+      /^月光白请使用工作人员发给您的专属链接登录。$/u,
     );
     expect(screen.queryByText('专属访问')).toBeNull();
     expect(screen.queryByText('链接将自动确认您的访问身份')).toBeNull();

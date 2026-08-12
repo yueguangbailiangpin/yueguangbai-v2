@@ -201,7 +201,7 @@ describe('Customer password operation controller chain', () => {
     await fillForm(user);
     await user.click(screen.getByRole('button', { name: '修改密码' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('该账号不适用于此登录入口，请确认账号或联系工作人员。');
+    expect(await screen.findByRole('alert')).toHaveTextContent('这个账号不能在这儿登录，请确认后重试，或联系工作人员。');
     expect(logout).toHaveBeenCalledOnce();
     expect(readSession).not.toHaveBeenCalled();
     expect(client.getQueryData(['buyer', 'fixture'])).toBeUndefined();
@@ -220,7 +220,7 @@ describe('Customer password operation controller chain', () => {
     await fillForm(user);
     await user.click(screen.getByRole('button', { name: '修改密码' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('该账号不适用于此登录入口，请确认账号或联系工作人员。');
+    expect(await screen.findByRole('alert')).toHaveTextContent('这个账号不能在这儿登录，请确认后重试，或联系工作人员。');
     expect(readSession).toHaveBeenCalledOnce();
     expect(logout).toHaveBeenCalledOnce();
     expect(screen.queryByText('BUYER SHELL')).not.toBeInTheDocument();
@@ -291,7 +291,7 @@ describe('Customer password operation controller chain', () => {
     await fillForm(user);
     await user.click(screen.getByRole('button', { name: '修改密码' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('密码修改状态尚未确认，请留在此页面。');
+    expect(await screen.findByRole('alert')).toHaveTextContent('密码修改状态尚未确认，请先别离开当前页面。');
     expect(screen.getByRole('heading', { name: '修改密码' })).toBeVisible();
     expect(screen.queryByText('BUYER SHELL')).not.toBeInTheDocument();
   });

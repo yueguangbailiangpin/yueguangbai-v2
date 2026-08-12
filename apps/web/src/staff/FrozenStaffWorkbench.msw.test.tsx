@@ -40,7 +40,7 @@ describe('canonical Frozen Staff workbench', () => {
     renderWorkbench('/staff?status=OPEN');
     expect(await screen.findByRole('button', { name: /订单资料核对/u })).toBeVisible();
     await user.click(screen.getByRole('button', { name: /订单资料核对/u }));
-    expect(await screen.findByText('资源不存在或当前无权访问')).toBeVisible();
+    expect(await screen.findByText('资源不存在或无权访问')).toBeVisible();
     expect(screen.getByText(/detail-hidden/u)).toBeVisible();
     expect(screen.getByRole('button', { name: /订单资料核对/u })).toBeVisible();
   });

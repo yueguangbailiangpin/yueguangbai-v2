@@ -17,7 +17,7 @@ export function BuyerRefundsPage(): React.JSX.Element {
     queryFn: (cursor, signal) => buyerApi.refunds(client, cursorQuery({ limit: 20, cursor }), signal).then((r) => r.data) });
   return <section className="buyer-page buyer-flow-page buyer-list-page">
     <BuyerJourney current={null} />
-    <PageHeader eyebrow="返款阶段" title="返款记录" description="查看返款金额、付款与冲正记录。" />
+    <PageHeader eyebrow="返款阶段" title="返款记录" description="查看返款金额、付款和冲正记录。" />
     {pages.isInitialPending ? <BuyerLoading /> : pages.initialError ? <BuyerQueryError error={pages.initialError} />
       : pages.items.length === 0 ? <BuyerEmpty title="暂无返款记录" description="评论审核通过并形成返款义务后会显示。" />
         : <div className="buyer-card-list">{pages.items.map((item) => <Link className="buyer-record-card buyer-stage-card" key={item.refund_obligation_id} to={`/buyer/refunds/${item.refund_obligation_id}`}>

@@ -28,7 +28,7 @@ export function BuyerFormalOrderDetailPage(): React.JSX.Element {
       <div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.amazon_order_date)}</dd></div>
       <div><dt>确认业务日期</dt><dd>{item.confirmed_business_date}</dd></div>
       <div><dt>市场</dt><dd>{marketplaceLabel(item.marketplace)}</dd></div><div><dt>评论类型</dt><dd>{reviewTypeLabel(item.review_type)}</dd></div>
-      <div><dt>最终支付</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div>
+      <div><dt>最终支付金额</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div>
       <div><dt>自费比例</dt><dd>{formatBps(item.buyer_self_pay_bps)}</dd></div>
       <div><dt>自费金额</dt><dd>{formatJpy(item.buyer_self_pay_jpy)}</dd></div>
       <div><dt>可返本金</dt><dd>{formatJpy(item.buyer_refundable_principal_jpy)}</dd></div>

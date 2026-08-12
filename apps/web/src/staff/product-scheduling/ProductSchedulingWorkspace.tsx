@@ -56,10 +56,10 @@ function ProductList(): React.JSX.Element {
       </FormField>
       <Button type="submit">搜索</Button>
     </form>
-    {query.isPending ? <p role="status">正在加载产品库</p>
+    {query.isPending ? <p role="status">加载中…</p>
       : query.isError ? <QueryError error={query.error} retry={() => { void query.refetch(); }} />
       : query.data.items.length === 0 ? <EmptyState title="没有可查看的产品"
-        description="请检查搜索条件，或确认产品所在卖家/买家已进入您的有效数据范围。" />
+        description="请检查搜索条件，或确认产品所在卖家/买家在您的有效数据范围内。" />
       : <Card><DataTable caption="员工产品库"><thead><tr>
           <th scope="col">产品</th><th scope="col">店铺 / ASIN</th>
           <th scope="col">下单节奏</th><th scope="col">状态</th><th scope="col">操作</th>
@@ -102,7 +102,7 @@ function ProductDetail({ productId }: { productId: string }): React.JSX.Element 
     retry: false,
   });
   if (!authorized) return <PermissionMessage />;
-  if (query.isPending) return <main className="product-scheduling-workspace"><p role="status">正在加载产品详情</p></main>;
+  if (query.isPending) return <main className="product-scheduling-workspace"><p role="status">加载中…</p></main>;
   if (query.isError) return <main className="product-scheduling-workspace"><QueryError error={query.error}
     retry={() => { void query.refetch(); }} /></main>;
   const product = query.data;
@@ -192,8 +192,8 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
     void execute({ action: 'add-product-version',
       path: `/api/staff/catalog/products/${encodeURIComponent(product.product_id)}/versions`, body });
   }
-  return <Card className="product-version-form"><h2>新增产品版本</h2>
-    <Alert tone="warning">修改下单节奏会新增版本，只影响未来发布的需求；已发布需求不会静默继承。</Alert>
+  return <Card className="product-version-form"><h2>新增版本</h2>
+    <Alert tone="warning">修改下单节奏会新增版本，只影响未来发布的需求，已发布需求不会静默继承。</Alert>
     <form onSubmit={submit} onChange={() => {
       if (busy) return;
       authority.release(); setMessage(null); setRequestId(null);
@@ -204,25 +204,25 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
         <FormField label="搜索关键词（每行一个）" htmlFor="version-keywords"><textarea id="version-keywords"
         name="search_keywords" required defaultValue={current.search_keywords.join('\n')} /></FormField>
         <div className="schedule-form-grid">
-          <FormField label="每隔 N 个自然日" htmlFor="version-interval"><TextInput id="version-interval"
+          <FormField label="间隔（天）" htmlFor="version-interval"><TextInput id="version-interval"
           name="interval" type="number" min={1} max={36500} required
           defaultValue={current.cadence?.order_interval_days ?? 1} /></FormField>
-          <FormField label="每次 M 单" htmlFor="version-per-run"><TextInput id="version-per-run"
+          <FormField label="每次下单数" htmlFor="version-per-run"><TextInput id="version-per-run"
           name="per_run" type="number" min={1} max={100000} required
           defaultValue={current.cadence?.orders_per_run ?? 1} /></FormField>
-          <FormField label="参考下单金额（日元）" htmlFor="version-amount"><TextInput id="version-amount"
+          <FormField label="参考金额（JPY）" htmlFor="version-amount"><TextInput id="version-amount"
           name="amount" type="number" min={0} required
           defaultValue={current.ordering_guide_expected_amount_jpy} /></FormField>
-          <FormField label="买家自费比例（基点）" htmlFor="version-self-pay"><TextInput id="version-self-pay"
+          <FormField label="买家自费比例（bps）" htmlFor="version-self-pay"><TextInput id="version-self-pay"
           name="self_pay_bps" type="number" min={0} max={10000} required
           defaultValue={current.default_buyer_self_pay_bps} /></FormField>
         </div>
         <FormField label="颜色规格" htmlFor="version-color"><Select id="version-color" name="color_mode"
-        defaultValue={current.color_spec_mode}><option value="MAIN_IMAGE_VARIANT">主图对应规格</option>
+        defaultValue={current.color_spec_mode}><option value="MAIN_IMAGE_VARIANT">按主图规格</option>
         <option value="ANY_VARIANT">任意规格</option></Select></FormField>
         <FormField label="产品链接" htmlFor="version-url"><TextInput id="version-url" name="product_url"
         type="url" defaultValue={current.product_url ?? ''} /></FormField>
-        <FormField label="买家可见说明" htmlFor="version-buyer-notes"><textarea id="version-buyer-notes"
+        <FormField label="买家说明" htmlFor="version-buyer-notes"><textarea id="version-buyer-notes"
         name="buyer_notes" defaultValue={current.buyer_visible_notes ?? ''} /></FormField>
         <FormField label="内部说明" htmlFor="version-internal-notes"><textarea id="version-internal-notes"
         name="internal_notes" defaultValue={current.internal_notes ?? ''} /></FormField>
@@ -231,8 +231,8 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
       {message ? <Alert tone={message.startsWith('新产品') ? 'success' : 'danger'}>{message}</Alert> : null}
       <RequestIdDisplay requestId={requestId} />
       {authority.canRetry() ? <Button type="button" className="secondary"
-        disabled={busy} onClick={() => { void execute(null); }}>重试原请求</Button> : null}
-      <Button type="submit" loading={busy} loadingLabel="正在保存">保存为新版本</Button>
+        disabled={busy} onClick={() => { void execute(null); }}>重试</Button> : null}
+      <Button type="submit" loading={busy} loadingLabel="保存中…">保存为新版本</Button>
     </form>
   </Card>;
 }

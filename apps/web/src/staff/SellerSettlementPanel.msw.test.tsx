@@ -27,7 +27,7 @@ describe('canonical Seller Settlement panel', () => {
     expect(screen.getAllByText('¥120.00 CNY').length).toBeGreaterThan(0);
     expect(screen.getAllByText('本金').length).toBeGreaterThan(0);
     expect(screen.getAllByText('服务费').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: '查看卖家结算凭证' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '查看凭证' })).toBeVisible();
     expect(screen.getByLabelText('卖家结算付款凭证')).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp');
     expect(screen.getByRole('button', { name: '确认记录卖家付款' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: '整笔冲正' })).not.toBeInTheDocument();

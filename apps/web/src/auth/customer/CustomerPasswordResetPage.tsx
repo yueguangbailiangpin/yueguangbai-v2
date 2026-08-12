@@ -41,7 +41,7 @@ export function CustomerPasswordResetPage(): React.JSX.Element {
       password_confirmation: values.get('password_confirmation'),
     });
     if (!parsed.success || !token) {
-      setMessage('请确认两次输入一致，且密码至少为 12 位。');
+      setMessage('请确认两次输入一致，且密码至少12位。');
       return;
     }
     setBusy(true);
@@ -57,7 +57,7 @@ export function CustomerPasswordResetPage(): React.JSX.Element {
       });
       setNextPath(result.data.next_path);
       setDone(true);
-      setMessage('密码已更新，所有旧登录会话均已失效。');
+      setMessage('密码已更新，所有旧会话均已失效。');
     } catch (error: unknown) {
       setRequestId(isFrontendApiError(error) ? error.requestId : null);
       setMessage(isFrontendApiError(error) && error.httpStatus === 429
@@ -74,7 +74,7 @@ export function CustomerPasswordResetPage(): React.JSX.Element {
         <strong>月光白</strong></div>
       <div className="login-heading"><p className="eyebrow">账号安全</p>
         <h1>设置新密码</h1>
-        <p>此链接仅可使用一次。成功后旧密码和所有旧会话立即失效。</p></div>
+        <p>此链接只能使用一次，设置成功后旧密码和所有旧会话立即失效。</p></div>
       <form onSubmit={(event) => { void submit(event); }}>
         <FormField label="新密码" htmlFor="customer-reset-password" description="至少 12 位" required>
           <TextInput id="customer-reset-password" name="new_password" type="password"
@@ -86,12 +86,12 @@ export function CustomerPasswordResetPage(): React.JSX.Element {
         </FormField>
         {message ? <Alert tone={done ? 'success' : 'danger'}>{message}</Alert> : null}
         <RequestIdDisplay requestId={requestId} />
-        {!done ? <Button type="submit" disabled={!token} loading={busy} loadingLabel="正在更新密码">
+        {!done ? <Button type="submit" disabled={!token} loading={busy} loadingLabel="更新中…">
           更新密码
         </Button> : null}
       </form>
       {done && nextPath ? <Button className="secondary" onClick={() => navigate(nextPath)}>
-        前往登录
+        去登录
       </Button> : null}
     </Card>
   </main>;

@@ -47,7 +47,7 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
       : query.items.length === 0 ? <BuyerEmpty title="暂无正式订单" description="资料确认后会显示正式订单。" />
         : <div className="buyer-card-list">{query.items.map((item) => <Link className="buyer-record-card buyer-stage-card" key={item.formal_order_id} to={`/buyer/orders/${item.formal_order_id}`}>
           <strong>{item.product_name}</strong><dl className="compact-facts"><div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.amazon_order_date)}</dd></div>
-            <div><dt>确认业务日期</dt><dd>{item.confirmed_business_date}</dd></div><div><dt>最终支付</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div></dl>
+            <div><dt>确认业务日期</dt><dd>{item.confirmed_business_date}</dd></div><div><dt>最终支付金额</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div></dl>
         </Link>)}</div>}
     <BuyerPagination hasMore={query.hasMore} isLoadingMore={query.isLoadingMore} laterError={query.laterError}
       onLoadMore={query.loadMore} onRetry={query.retryLater} />

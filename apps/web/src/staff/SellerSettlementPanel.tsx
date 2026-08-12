@@ -75,18 +75,18 @@ export function SellerSettlementPanel({ item }: { item: StaffWorkItem }): React.
   return <>
     <section className="staff-detail">
       <div className="pane-heading"><div><p className="eyebrow">业务事实与证据</p><h2>卖家结算</h2></div></div>
-      <Card className="customer-visible"><h3>卖家组织上下文</h3><Fact label="组织" value={organizationId} /><Fact label="店铺" value={item.store_id ?? '当前工作项未绑定店铺'} /><Fact label="Marketplace" value="以业务详情返回事实为准；韩国站不可用" /></Card>
+      <Card className="customer-visible"><h3>组织和店铺</h3><Fact label="组织" value={organizationId} /><Fact label="店铺" value={item.store_id ?? '当前工作项未绑定店铺'} /><Fact label="Marketplace" value="以业务详情返回数据为准；韩国站不可用" /></Card>
       {summary.isError
         ? <StaffPanelError error={summary.error} retry={() => { void summary.refetch(); }} />
         : <div className="finance-separation"><Card><h3>卖家本金</h3><p>{summary.data ? formatCny(summary.data.outstanding_principal_cny_fen) : '加载中'}</p></Card><Card><h3>卖家服务费</h3><p>{summary.data ? formatCny(summary.data.outstanding_service_fee_cny_fen) : '加载中'}</p></Card></div>}
       {payables.isError
         ? <StaffPanelError error={payables.error} retry={() => { void payables.refetch(); }} />
-        : <Card className="internal-note"><h3>独立应结项目</h3>{payables.data?.map((row) => <section key={row.payable_id}><strong>{row.payable_type === 'SELLER_PRINCIPAL' ? '本金' : '服务费'}</strong><p>{formatCny(row.outstanding_amount_cny_fen)} · {row.status}</p></section>)}</Card>}
+        : <Card className="internal-note"><h3>应结项目</h3>{payables.data?.map((row) => <section key={row.payable_id}><strong>{row.payable_type === 'SELLER_PRINCIPAL' ? '本金' : '服务费'}</strong><p>{formatCny(row.outstanding_amount_cny_fen)} · {row.status}</p></section>)}</Card>}
       {payments.isError
         ? <StaffPanelError error={payments.error} retry={() => { void payments.refetch(); }} />
-        : <Card className="internal-note"><h3>付款、分配与凭证</h3>{payments.data?.length === 0 ? <p>暂无付款事实。</p> : payments.data?.map((payment) => <section key={payment.payment_id}>
+        : <Card className="internal-note"><h3>付款、分配与凭证</h3>{payments.data?.length === 0 ? <p>暂无付款记录。</p> : payments.data?.map((payment) => <section key={payment.payment_id}>
           <Fact label="付款" value={`${formatCny(payment.amount_cny_fen)} · ${formatShanghai(payment.paid_at)} · ${payment.status}`} />
-          <StaffProtectedFileButton reference={payment.proof} label="查看卖家结算凭证" />
+          <StaffProtectedFileButton reference={payment.proof} label="查看凭证" />
           {capabilities.canRecord && payment.status !== 'REVERSED' && payment.unallocated_amount_cny_fen !== '0' ? <form onSubmit={(event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);

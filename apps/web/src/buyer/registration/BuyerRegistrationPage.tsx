@@ -72,7 +72,7 @@ export function BuyerRegistrationPage({
       password_confirmation: values.get('password_confirmation'),
     });
     if (!parsed.success) {
-      setMessage('请检查微信号、密码和确认密码。密码至少为 12 位。');
+    setMessage('请检查微信号、密码和确认密码——密码至少需要12位。');
       return;
     }
     setBusy(true);
@@ -109,7 +109,7 @@ export function BuyerRegistrationPage({
     <Card className="login-card buyer-login-card buyer-registration-card">
       <div className="login-brand"><strong>月光白</strong></div>
       <div className="login-heading"><h1>邀请注册</h1>
-        <p>仅限工作人员发送的专属一次性邀请。</p></div>
+        <p>仅限工作人员发送的专属邀请，一次性有效。</p></div>
       {invitation ? <Alert tone="info">
         站点：{invitation.marketplace_name}；邀请微信：{invitation.wechat_hint}
       </Alert> : null}
@@ -125,7 +125,7 @@ export function BuyerRegistrationPage({
         </FormField>
         {message ? <Alert tone="danger">{message}</Alert> : null}
         <RequestIdDisplay requestId={requestId} />
-        <Button type="submit" disabled={!invitation} loading={busy} loadingLabel="正在创建账号">完成注册</Button>
+        <Button type="submit" disabled={!invitation} loading={busy} loadingLabel="创建中…">完成注册</Button>
       </form>
       <Button className="secondary buyer-registration-back" onClick={() => navigate('/buyer/login')}>返回登录</Button>
     </Card>

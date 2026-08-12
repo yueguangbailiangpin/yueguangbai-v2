@@ -40,10 +40,10 @@ export function BuyerDemandsPage(): React.JSX.Element {
   function changeFilter(value: Filter): void { setFilter(value); setPage(1); }
 
   return <section className="buyer-page buyer-products-page buyer-products-s3">
-    <PageHeader eyebrow="买家产品" title="当前开放产品" description="产品页只展示可预约商品；需要你处理的事情统一放在“任务”。" />
+    <PageHeader eyebrow="买家产品" title="当前开放产品" description="产品页只展示可以预约的商品；需要您处理的事情都收在“任务”里～" />
     <div className="buyer-product-toolbar">
-      <SearchInput value={search} onChange={(event) => changeSearch(event.target.value)} placeholder="搜索产品或店铺" label="搜索产品或店铺" />
-      <Select aria-label="筛选产品任务类型" value={filter} onChange={(event) => changeFilter(event.target.value as Filter)}>
+      <SearchInput value={search} onChange={(event) => changeSearch(event.target.value)} placeholder="搜产品或店铺" label="搜产品或店铺" />
+      <Select aria-label="筛选任务类型" value={filter} onChange={(event) => changeFilter(event.target.value as Filter)}>
         <option value="ALL">全部</option><option value="IMAGE">图文</option><option value="TEXT">文字</option>
         <option value="RATING">评分</option><option value="VIDEO">视频</option><option value="TONIGHT">今晚截止</option>
       </Select>
@@ -51,14 +51,14 @@ export function BuyerDemandsPage(): React.JSX.Element {
     {pages.isInitialPending ? <BuyerLoading /> : pages.initialError
       ? <BuyerQueryError error={pages.initialError} />
       : filtered.length === 0
-        ? <BuyerEmpty title="没有符合条件的产品" description="可以更换搜索词或筛选条件。" />
+        ? <BuyerEmpty title="暂时还没找到合适的产品～" description="要不换个关键词再搜搜看？" />
         : <div className="buyer-product-rows">{visible.map((item) => <Link
             className="buyer-product-row" key={item.demand_id} to={`/buyer/demands/${item.demand_id}`}>
             <span className="buyer-product-icon" aria-hidden="true"><Tag /></span>
             <div className="buyer-product-row-main"><div className="buyer-product-row-title"><div><p>{item.store_display_name}</p><h2>{item.product_name}</h2></div>
               <StatusBadge tone="processing">{reviewTypeLabel(item.task_type)}</StatusBadge></div>
               <div className="buyer-product-row-facts"><span>{formatJpy(item.reference_order_amount_jpy)}</span><span>自费 {formatBps(item.buyer_self_pay_bps)}</span>
-                <span><UsersRound aria-hidden="true" />剩余 {item.remaining_quantity}</span><span><Clock3 aria-hidden="true" />{formatShanghai(item.reservation_deadline)}</span></div></div>
+                <span><UsersRound aria-hidden="true" />剩 {item.remaining_quantity}</span><span><Clock3 aria-hidden="true" />{formatShanghai(item.reservation_deadline)}</span></div></div>
             <ArrowRight className="buyer-product-row-arrow" aria-hidden="true" />
           </Link>)}</div>}
     {!pages.isInitialPending && !pages.initialError && filtered.length > 0 ? <nav className="buyer-local-pagination" aria-label="产品分页">
@@ -66,8 +66,8 @@ export function BuyerDemandsPage(): React.JSX.Element {
       <span>第 {currentPage} / {totalPages} 页</span>
       <Button className="secondary" disabled={currentPage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>下一页</Button>
     </nav> : null}
-    {pages.hasMore ? <div className="buyer-server-pagination"><Button className="secondary" loading={pages.isLoadingMore} loadingLabel="正在加载" onClick={pages.loadMore}>加载更多产品</Button></div> : null}
-    {pages.laterError ? <div className="buyer-server-pagination"><Button className="secondary" onClick={pages.retryLater}>重新加载更多</Button></div> : null}
+    {pages.hasMore ? <div className="buyer-server-pagination"><Button className="secondary" loading={pages.isLoadingMore} loadingLabel="加载中…" onClick={pages.loadMore}>加载更多</Button></div> : null}
+    {pages.laterError ? <div className="buyer-server-pagination"><Button className="secondary" onClick={pages.retryLater}>重新加载</Button></div> : null}
   </section>;
 }
 

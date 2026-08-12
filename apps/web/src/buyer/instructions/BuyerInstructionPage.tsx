@@ -26,7 +26,7 @@ export function BuyerInstructionPage(): React.JSX.Element {
     enabled: shouldReadContent,
   });
 
-  if (state.isPending) return <BuyerLoading label="正在读取指引状态" />;
+  if (state.isPending) return <BuyerLoading label="读取指引状态中…" />;
   if (state.isError) return <BuyerQueryError error={state.error} />;
   const fact = state.data;
   if (!shouldReadContent) return <section className="buyer-page buyer-flow-page buyer-detail-page">
@@ -36,7 +36,7 @@ export function BuyerInstructionPage(): React.JSX.Element {
     <Card className="buyer-summary-card"><h2>当前状态</h2><p>{instructionStateMessage(fact.status)}</p>
       <DeadlineFacts initial={fact.initial_deadline_at} resubmission={fact.resubmission_deadline_at} /></Card>
   </section>;
-  if (content.isPending) return <BuyerLoading label="正在读取指引内容" />;
+  if (content.isPending) return <BuyerLoading label="读取指引内容中…" />;
   if (content.isError) return <BuyerQueryError error={content.error} />;
   const instruction = content.data;
   return <section className="buyer-page buyer-flow-page buyer-detail-page buyer-instruction-page">
@@ -90,8 +90,8 @@ function KeywordImage({ reservationId, image }: {
 }
 
 function DeadlineFacts({ initial, resubmission }: { initial: number | null; resubmission: number | null }): React.JSX.Element {
-  return <dl className="buyer-facts"><div><dt>初始提交期限</dt><dd>{formatShanghai(initial)}</dd></div>
-    <div><dt>修改资料期限</dt><dd>{formatShanghai(resubmission)}</dd></div></dl>;
+  return <dl className="buyer-facts"><div><dt>初次提交截止</dt><dd>{formatShanghai(initial)}</dd></div>
+    <div><dt>修改截止</dt><dd>{formatShanghai(resubmission)}</dd></div></dl>;
 }
 
 function instructionStateMessage(status: string): string {

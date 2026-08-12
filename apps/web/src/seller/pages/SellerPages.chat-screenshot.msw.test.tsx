@@ -139,7 +139,7 @@ describe('Seller formal-order chat screenshot UI', () => {
 
     renderWithMsw(<SellerDashboardPage />, { route: '/seller' });
     expect(await screen.findByText(
-      '订单进度暂时不可用，请刷新后重试。',
+      '订单进度暂时不可用，刷新后重试。',
     )).toBeVisible();
     expect(screen.getAllByText('—')).toHaveLength(2);
     expect(screen.queryByText('暂无待完成订单')).not.toBeInTheDocument();
@@ -165,7 +165,7 @@ describe('Seller formal-order chat screenshot UI', () => {
       route: '/seller/settlements',
     });
     expect(await screen.findByText(
-      '结算项目暂时不可用，请刷新后重试。',
+      '结算项目暂时用不了，刷新后重试。',
     )).toBeVisible();
     expect(screen.queryByText('暂无结算项目')).not.toBeInTheDocument();
   });

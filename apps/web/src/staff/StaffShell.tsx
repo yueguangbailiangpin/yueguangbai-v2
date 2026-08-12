@@ -18,9 +18,9 @@ function StaffAccountActions(): React.JSX.Element {
   const client=useQueryClient();const navigate=useNavigate();const [confirming,setConfirming]=useState(false);
   const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);const [requestId,setRequestId]=useState<string|null>(null);
   const controller=useRef<StaffAuthController|null>(null);controller.current??=new StaffAuthController(client);
-  async function finishLogout(all:boolean):Promise<void>{setBusy(true);setMessage(null);const result=all?await controller.current!.logoutAll():await controller.current!.logout();setRequestId(result.requestId);if(result.kind==='LOGGED_OUT')navigate('/staff/login',{replace:true});else setMessage(result.kind==='IDEMPOTENCY_CONFLICT'?'该操作发生冲突，请结束后重新发起。':result.kind==='REQUEST_IN_PROGRESS'||result.kind==='ALREADY_SUBMITTING'?'操作正在处理中，请勿重复提交。':'退出未完成，请重试。');setBusy(false);}
+  async function finishLogout(all:boolean):Promise<void>{setBusy(true);setMessage(null);const result=all?await controller.current!.logoutAll():await controller.current!.logout();setRequestId(result.requestId);if(result.kind==='LOGGED_OUT')navigate('/staff/login',{replace:true});else setMessage(result.kind==='IDEMPOTENCY_CONFLICT'?'操作冲突，请结束后重新发起。':result.kind==='REQUEST_IN_PROGRESS'||result.kind==='ALREADY_SUBMITTING'?'操作处理中，不要重复提交。':'退出没成功，再试一次。');setBusy(false);}
   const cancel=():void=>{if(!busy){controller.current!.cancelLogoutAll();setConfirming(false);setMessage(null);}};
-  return <section className="staff-account-actions" aria-label="账户操作"><Button className="secondary" disabled={busy} onClick={()=>{void finishLogout(false);}}>退出登录</Button><Button className="danger" disabled={busy} onClick={()=>setConfirming(true)}>退出所有设备</Button>{message?<p className="inline-error" role="alert">{message}</p>:null}<RequestIdDisplay requestId={requestId}/><Dialog open={confirming} title="退出所有设备" description="这会使其他设备上的员工会话立即失效。" busy={busy} onClose={cancel}><div className="entry-actions"><Button className="secondary" disabled={busy} onClick={cancel}>取消</Button><Button className="danger" loading={busy} loadingLabel="正在退出" onClick={()=>{void finishLogout(true);}}>确认退出所有设备</Button></div></Dialog></section>;
+  return <section className="staff-account-actions" aria-label="账户"><Button className="secondary" disabled={busy} onClick={()=>{void finishLogout(false);}}>退出登录</Button><Button className="danger" disabled={busy} onClick={()=>setConfirming(true)}>退出所有设备</Button>{message?<p className="inline-error" role="alert">{message}</p>:null}<RequestIdDisplay requestId={requestId}/><Dialog open={confirming} title="退出所有设备" description="这会使其他设备上的员工会话立即失效。" busy={busy} onClose={cancel}><div className="entry-actions"><Button className="secondary" disabled={busy} onClick={cancel}>取消</Button><Button className="danger" loading={busy} loadingLabel="退出中…" onClick={()=>{void finishLogout(true);}}>确认退出所有设备</Button></div></Dialog></section>;
 }
 
 export function StaffShell({children}:{children?:ReactNode}={}):React.JSX.Element{
@@ -36,7 +36,7 @@ export function StaffShell({children}:{children?:ReactNode}={}):React.JSX.Elemen
   const owner=role==='owner';const home=role==='acquisition'?'/staff/acquisition':'/staff';
   const mayProducts=owner||role==='pre_sales'||role==='seller_ops';
   const title=access?'员工管理':pricing?'卖家本金汇率策略':dashboard?'经营看板':products?'产品库':acquisition?'客户开发':buyerCustomers?'买家客户':sellerCustomers?'卖家客户':'员工工作台';
-  const context=access?'员工邮箱、岗位、负责站点与状态':pricing?'默认加点、卖家覆盖与总管理员决策':dashboard?'经营与利润事实':products?'产品库、版本与预约排期':acquisition?'渠道、潜在线索与未来 Codex 自动开发入口':buyerCustomers?'售前接入买家并确认渠道编号':sellerCustomers?'卖家对接接入卖家并确认渠道编号':'队列、业务事实与受控操作';
+  const context=access?'邮箱、岗位、负责站点与状态':pricing?'默认加点、卖家覆盖与总管理员决策':dashboard?'经营与利润数据':products?'产品库、版本与预约排期':acquisition?'渠道、潜在线索与自动开发入口':buyerCustomers?'售前：接入买家并确认渠道':sellerCustomers?'卖家对接：接入卖家并确认渠道':'队列、业务事实与受控操作';
   const scope=session.data_scope.type==='GLOBAL'?'全部站点':session.data_scope.marketplaceCodes.map((code)=>MARKET_LABELS[code]??'未命名站点').join(' · ')||'未配置站点';
   return <IdentityShell identity="staff" className="staff-business-shell">
     <aside className="staff-sidebar">

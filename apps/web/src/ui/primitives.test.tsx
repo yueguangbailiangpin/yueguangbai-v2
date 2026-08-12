@@ -230,8 +230,8 @@ describe('navigation and structured content', () => {
       /><BottomNavigation label="买家导航"><a href="#home">首页</a></BottomNavigation></>;
     }
     render(<MemoryRouter><Harness /></MemoryRouter>);
-    await user.click(screen.getByRole('button', { name: '收起侧边导航' }));
-    expect(screen.getByRole('button', { name: '展开侧边导航' })).toHaveAttribute(
+    await user.click(screen.getByRole('button', { name: '收起侧边栏' }));
+    expect(screen.getByRole('button', { name: '展开侧边栏' })).toHaveAttribute(
       'aria-expanded', 'false',
     );
     expect(screen.getByRole('navigation', { name: '买家导航' })).toHaveClass(
@@ -299,7 +299,7 @@ describe('feedback and system states', () => {
 
   it('marks Skeleton as loading while its visual lines stay hidden', () => {
     render(<Skeleton lines={3} />);
-    const status = screen.getByRole('status', { name: '内容加载中' });
+    const status = screen.getByRole('status', { name: '加载中…' });
     expect(status).toHaveClass('skeleton');
     expect(status.querySelectorAll('[aria-hidden="true"]')).toHaveLength(3);
   });
