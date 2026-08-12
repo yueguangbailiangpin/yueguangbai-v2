@@ -83,16 +83,16 @@ export function CustomerChangePasswordPage({
       return;
     }
     if (result.kind === 'MISMATCH_CLEANED') {
-      setMessage('该账号不适用于此登录入口，请确认账号或联系工作人员。');
+      setMessage('这个账号不能在这儿登录，请确认后重试，或联系工作人员。');
       return;
     }
     if (result.kind === 'MISMATCH_CLEANUP_FAILED') {
       setCleanupFailed(true);
-      setMessage('会话清理失败，请重试或刷新');
+      setMessage('会话清理失败，请刷新页面或重试。');
       return;
     }
     if (result.kind === 'PASSWORD_STILL_REQUIRED') {
-      setMessage('密码修改状态尚未确认，请留在此页面。');
+      setMessage('密码修改状态尚未确认，请先别离开当前页面。');
       return;
     }
     if (result.kind === 'IDEMPOTENCY_CONFLICT') {
@@ -100,7 +100,7 @@ export function CustomerChangePasswordPage({
       return;
     }
     if (result.kind === 'REQUEST_IN_PROGRESS') {
-      setMessage('操作可能仍在处理中，请勿并发提交。');
+      setMessage('操作可能还在处理中，不要重复提交。');
       return;
     }
     if (result.kind === 'DEPENDENCY_ERROR') {
@@ -108,18 +108,18 @@ export function CustomerChangePasswordPage({
       return;
     }
     if (result.kind === 'FAILED_RETRYABLE') {
-      setMessage('修改密码未完成，请由您决定是否重试。');
+      setMessage('修改密码未完成，您可以决定要不要重试。');
       return;
     }
     if (result.kind === 'FAILED_TERMINAL') {
-      setMessage('修改密码未完成，请检查信息后重新发起。');
+      setMessage('修改密码未完成，请检查信息后重新提交。');
     }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!currentPassword || !newPassword || newPassword !== confirmation) {
-      setMessage('请完整填写并确认新密码。');
+      setMessage('请完整填好并确认新密码。');
       return;
     }
     setMessage(null);
@@ -145,7 +145,7 @@ export function CustomerChangePasswordPage({
     setCurrentPassword('');
     setNewPassword('');
     setConfirmation('');
-    setMessage('本次操作已取消。');
+    setMessage('已取消本次操作。');
     setCleanupFailed(false);
     sync();
   }
@@ -169,7 +169,7 @@ export function CustomerChangePasswordPage({
         {target === 'buyer' ? null : <div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span>
           <strong>月光白</strong></div>}
         <div className="login-heading"><h1>修改密码</h1>
-          <p>首次登录或安全状态变化后，需要先设置新密码。</p></div>
+          <p>首次登录或安全状态变更后，需要先设置一个新密码。</p></div>
         <form onSubmit={(event) => { void submit(event); }}>
           <FormField label="当前密码" htmlFor={`${target}-current-password`} required>
             <TextInput
@@ -185,7 +185,7 @@ export function CustomerChangePasswordPage({
           <FormField
             label="新密码"
             htmlFor={`${target}-new-password`}
-            description="请使用独立且不易猜测的新密码。"
+            description="请用一个独立且不容易被猜到的密码。"
             required
           >
             <TextInput
@@ -202,7 +202,7 @@ export function CustomerChangePasswordPage({
             label="确认新密码"
             htmlFor={`${target}-confirm-password`}
             {...(confirmation && newPassword !== confirmation
-              ? { error: '两次输入的新密码不一致。' }
+              ? { error: '两次输入的密码不一致。' }
               : {})}
             required
           >

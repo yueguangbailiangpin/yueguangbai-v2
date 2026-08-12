@@ -29,8 +29,8 @@ describe('canonical Frozen Admin business dashboard', () => {
 
     expect(await screen.findByRole('heading', { name: '资金与经营口径' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '客户与订单概览' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '买家业务事实' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '卖家业务事实' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '买家漏斗' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '卖家漏斗' })).toBeVisible();
     expect(screen.getByText('¥200.00 CNY')).toBeVisible();
     expect(screen.getByText('每日不可变新增客户、网站开通与订单')).toBeVisible();
     expect(screen.getByText('今日渠道事实')).toBeVisible();

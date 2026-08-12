@@ -47,8 +47,8 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
     <Card className="buyer-summary-card"><h2>已提交信息</h2><dl className="buyer-facts"><div><dt>Amazon 订单号</dt><dd className="copyable-fact">{item.amazon_order_number_display}
       <Button className="secondary compact-button" onClick={() => { void navigator.clipboard.writeText(item.amazon_order_number_display); }}>复制</Button></dd></div>
       <div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.amazon_order_date)}</dd></div>
-      <div><dt>最终支付</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div>
-      <div><dt>金额差异</dt><dd>{formatSignedJpyDifference(item.price_difference_jpy)}（{priceDifferenceDirection(item.price_difference_jpy)}）</dd></div>
+      <div><dt>最终支付金额</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div>
+      <div><dt>价差</dt><dd>{formatSignedJpyDifference(item.price_difference_jpy)}（{priceDifferenceDirection(item.price_difference_jpy)}）</dd></div>
       <div><dt>自费比例</dt><dd>{formatBps(item.buyer_self_pay_bps)}</dd></div>
       <div><dt>自费金额</dt><dd>{formatJpy(item.buyer_self_pay_jpy)}</dd></div>
       <div><dt>可返本金</dt><dd>{formatJpy(item.buyer_refundable_principal_jpy)}</dd></div>
@@ -129,7 +129,7 @@ function EvidenceResubmitForm({ evidence, onRefresh }: { evidence: OrderEvidence
   return <Card className="buyer-action-panel"><h2>按说明重新提交</h2><form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
     <FormField label="Amazon 订单号" htmlFor="resubmit-order" required><TextInput name="amazon_order_number" defaultValue={evidence.amazon_order_number_display} required /></FormField>
     <FormField label="Amazon 下单日期" htmlFor="resubmit-date" required><TextInput name="amazon_order_date" type="date" lang="zh-CN" defaultValue={evidence.amazon_order_date ?? ''} required /></FormField>
-    <FormField label="最终支付金额 JPY" htmlFor="resubmit-paid" required><TextInput name="final_paid_jpy" type="number" min="0" step="1" defaultValue={evidence.final_paid_jpy} required /></FormField>
+    <FormField label="最终支付金额（JPY）" htmlFor="resubmit-paid" required><TextInput name="final_paid_jpy" type="number" min="0" step="1" defaultValue={evidence.final_paid_jpy} required /></FormField>
     <FormField label="新的订单截图" htmlFor="resubmit-file" description="必须且只能选择一张图片" required><BuyerFilePicker name="file" accept="image/jpeg,image/png,image/webp" required
       buttonLabel="选择新的订单截图" emptyLabel="尚未选择截图" onChange={(event) => { file.current = event.currentTarget.files?.[0] ?? null; }} /></FormField>
     <FormField label="备注（可选）" htmlFor="resubmit-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>

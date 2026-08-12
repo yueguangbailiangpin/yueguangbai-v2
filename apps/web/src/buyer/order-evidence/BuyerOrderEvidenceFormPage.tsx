@@ -90,8 +90,8 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
   return <section className="buyer-page buyer-flow-page buyer-form-page">
     <BuyerJourney current="materials" />
     <PageHeader eyebrow="订单资料阶段" title="提交订单资料" description={current.product_name} />
-    <Card className="buyer-action-panel"><div className="buyer-form-intro"><strong>填写订单信息</strong>
-      <p>请按 Amazon 订单页面填写，并上传一张订单截图。</p></div>
+    <Card className="buyer-action-panel"><div className="buyer-form-intro"><strong>填订单信息</strong>
+      <p>照着 Amazon 订单页面填，然后上传一张订单截图就好～</p></div>
       <form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
       <FormField label="Amazon 订单号" htmlFor="evidence-order-number" description="格式：123-1234567-1234567" required>
         <TextInput name="amazon_order_number" inputMode="numeric" placeholder="123-1234567-1234567" required />
@@ -99,7 +99,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
       <FormField label="Amazon 下单日期" htmlFor="evidence-order-date" description="按 Amazon 订单页面显示的日期填写" required>
         <TextInput name="amazon_order_date" type="date" lang="zh-CN" required />
       </FormField>
-      <FormField label="最终支付金额 JPY" htmlFor="evidence-paid" required>
+      <FormField label="最终支付金额（JPY）" htmlFor="evidence-paid" required>
         <TextInput name="final_paid_jpy" type="number" inputMode="numeric" min="0" step="1" required />
       </FormField>
       <FormField label="订单截图" htmlFor="evidence-file" description="必须且只能选择一张 JPG、PNG 或 WebP 图片" required>
@@ -111,7 +111,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
       {message ? <Alert tone="danger">{message}</Alert> : null}<RequestIdDisplay requestId={requestId} />
       <BuyerMutationRecovery mutation={mutation} onRefresh={() => { void Promise.all([eligible.refetch(), instruction.refetch()]); }} />
       <Button type="submit" loading={mutation.isPending || !upload.canStartNewOperation}
-        loadingLabel={upload.state === 'VERIFIED' ? '正在提交' : '正在上传截图'}>提交资料</Button>
+        loadingLabel={upload.state === 'VERIFIED' ? '提交中…' : '上传中…'}>提交资料</Button>
     </form></Card>
   </section>;
 }

@@ -23,7 +23,7 @@ export function BuyerMePage(): React.JSX.Element {
   const me = query.data;
   return <section className="buyer-page buyer-account-page buyer-business-center">
     <PageHeader eyebrow="我的" title={me.buyer.display_name} description="账户、业务进度和常用服务都在这里。">
-      <StatusBadge tone={me.buyer.identity_review_status === 'CLEAR' ? 'success' : 'warning'}>{me.buyer.identity_review_status === 'CLEAR' ? '身份状态正常' : '需要身份复核'}</StatusBadge>
+      <StatusBadge tone={me.buyer.identity_review_status === 'CLEAR' ? 'success' : 'warning'}>{me.buyer.identity_review_status === 'CLEAR' ? '身份状态正常' : '需复核'}</StatusBadge>
     </PageHeader>
     {me.buyer.identity_review_status === 'REVIEW_REQUIRED' ? <Alert tone="warning">当前账号需要完成身份复核，部分业务操作会受到限制。请联系工作人员。</Alert> : null}
     <Card className="buyer-summary-card buyer-account-summary"><div><p className="eyebrow">业务身份</p><h2>{me.buyer.display_name}</h2></div>

@@ -68,13 +68,13 @@ function CustomerIntakeWorkspace({leadType}:{leadType:'BUYER'|'SELLER'}):React.J
   return <main className="customer-intake-workspace">
     <header className="staff-customer-heading"><div><p className="eyebrow">{buyer?'买家客户接入':'卖家客户接入'}</p><h2>{buyer?'买家客户':'卖家客户'}</h2>
       <p>先查历史客户，再新增。账号开通、密码恢复都从具体客户记录发起。</p></div></header>
-    <Alert tone="info">普通员工只看到“渠道1、渠道2”等匿名编号。历史客户不补渠道、不重新计新增；身份不明确时提交总管理员处理，不允许员工猜测绑定。</Alert>
+    <Alert tone="info">普通员工只看到“渠道1、渠道2”等匿名编号。历史客户不补渠道、不重新计入新增；身份不明确时提交总管理员处理，不允许员工猜测绑定。</Alert>
     <HistoricalCustomerOnboarding leadType={leadType}/>
     {handoffs.data&&handoffs.data.length>0?<HandoffStrip leadType={leadType} items={handoffs.data}/>:null}
     <div className="customer-intake-grid">
       <LeadCreateCard leadType={leadType} channels={channels.data??[]} handoffs={handoffs.data??[]}/>
       <Card className="customer-intake-list"><h3>正式{buyer?'买家':'卖家'}客户登记</h3>
-        {leads.isPending?<p role="status">正在加载</p>:leads.isError?<Alert tone="danger">客户记录暂时无法加载。</Alert>:leads.data.items.length===0?<EmptyState title={`暂无${buyer?'买家':'卖家'}客户`} description="加微信后在左侧保存新客户。"/>:<DataTable caption={`${buyer?'买家':'卖家'}客户与业务进度`}><thead><tr><th>客户</th><th>站点</th><th>渠道</th><th>{buyer?'业务进度':'业务主体'}</th></tr></thead><tbody>{leads.data.items.map((lead)=><tr key={lead.lead_id}><td><strong>{lead.display_name??lead.wechat_masked}</strong><small>{lead.wechat_masked}</small></td><td>{marketLabel(lead.marketplace_code)}</td><td><StatusBadge tone="neutral">{lead.channel_label}</StatusBadge></td><td>{buyer?`${lead.registered?'网站已开通':'网站未开通'} · ${lead.formal_order_count} 单`:lead.seller_cooperation?'卖家组织已建立':'数据异常：组织未建立'}</td></tr>)}</tbody></DataTable>}
+        {leads.isPending?<p role="status">加载中…</p>:leads.isError?<Alert tone="danger">客户记录暂时加载不了。</Alert>:leads.data.items.length===0?<EmptyState title={`暂无${buyer?'买家':'卖家'}客户`} description="加微信后在左侧保存新客户。"/>:<DataTable caption={`${buyer?'买家':'卖家'}客户与业务进度`}><thead><tr><th>客户</th><th>站点</th><th>渠道</th><th>{buyer?'业务进度':'业务主体'}</th></tr></thead><tbody>{leads.data.items.map((lead)=><tr key={lead.lead_id}><td><strong>{lead.display_name??lead.wechat_masked}</strong><small>{lead.wechat_masked}</small></td><td>{marketLabel(lead.marketplace_code)}</td><td><StatusBadge tone="neutral">{lead.channel_label}</StatusBadge></td><td>{buyer?`${lead.registered?'网站已开通':'网站未开通'} · ${lead.formal_order_count} 单`:lead.seller_cooperation?'卖家组织已建立':'数据异常：组织未建立'}</td></tr>)}</tbody></DataTable>}
       </Card>
     </div>
   </main>;

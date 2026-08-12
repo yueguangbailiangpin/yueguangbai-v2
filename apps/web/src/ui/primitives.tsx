@@ -47,7 +47,7 @@ export function IdentityShell({
 
 export function Button({
   loading = false,
-  loadingLabel = '正在处理',
+  loadingLabel = '处理中…',
   disabled,
   className,
   children,
@@ -234,7 +234,7 @@ export function Sidebar({
   return <aside className={classes('sidebar', collapsed && 'is-collapsed')}>
     <div className="sidebar-brand"><strong>{brand}</strong>
       {onCollapsedChange ? <IconButton
-        label={collapsed ? '展开侧边导航' : '收起侧边导航'}
+        label={collapsed ? '展开侧边栏' : '收起侧边栏'}
         aria-expanded={!collapsed}
         onClick={() => onCollapsedChange(!collapsed)}
       >{collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronLeft aria-hidden="true" />}</IconButton> : null}
@@ -606,7 +606,7 @@ function StateFrame({
 
 export function EmptyState({
   title = '暂无内容',
-  description = '当前没有可显示的内容。',
+  description = '没有可显示的内容。',
   children,
 }: PropsWithChildren<{
   title?: string;
@@ -642,7 +642,7 @@ export function RequestIdDisplay({
 }
 
 export function ErrorState({
-  title = '暂时无法完成请求',
+  title = '请求暂时没成功',
   description = '请稍后重试。不会显示内部错误详情。',
   requestId = null,
   children,
@@ -660,7 +660,7 @@ export function PermissionDenied({
   requestId = null,
 }: { requestId?: string | null }): React.JSX.Element {
   return <StateFrame icon="!" title="无权访问" role="alert">
-    <p>您没有执行此操作所需的权限。会话仍然有效。</p>
+    <p>您没有执行此操作的权限，当前会话仍然有效。</p>
     <RequestIdDisplay requestId={requestId} />
   </StateFrame>;
 }
@@ -669,7 +669,7 @@ export function NotFound({
   requestId = null,
 }: { requestId?: string | null }): React.JSX.Element {
   return <StateFrame icon="?" title="页面未找到">
-    <p>此内容不存在，或当前身份无权了解它是否存在。</p>
+    <p>该内容不存在，或当前身份无权了解它是否存在。</p>
     <RequestIdDisplay requestId={requestId} />
   </StateFrame>;
 }
@@ -679,14 +679,14 @@ export function DependencyUnavailable({
 }: { requestId?: string | null }): React.JSX.Element {
   return <ErrorState
     title="服务暂时不可用"
-    description="依赖服务暂时没有响应，请稍后重试。"
+    description="依赖服务暂无响应，请稍后重试。"
     requestId={requestId}
   />;
 }
 
 export function Skeleton({
   lines = 1,
-  label = '内容加载中',
+  label = '加载中…',
   announce = true,
 }: {
   lines?: number;

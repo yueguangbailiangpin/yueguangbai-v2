@@ -24,7 +24,7 @@ export function BuyerOrderMaterialsPage(): React.JSX.Element {
   });
   return <section className="buyer-page buyer-flow-page buyer-list-page">
     <BuyerJourney current="materials" />
-    <PageHeader eyebrow="订单资料阶段" title="订单资料" description="查看、提交或按审核意见修改资料。" />
+    <PageHeader eyebrow="订单资料阶段" title="订单资料" description="可以查看、提交资料，或根据审核意见修改。" />
     <section className="buyer-work-section buyer-action-section" aria-labelledby="evidence-ready-title"><h2 id="evidence-ready-title">现在可提交</h2>
       {eligible.isInitialPending ? <BuyerLoading label="正在读取可提交资料" />
         : eligible.initialError ? <BuyerQueryError error={eligible.initialError} title="提交资格暂时无法读取" />
@@ -37,13 +37,13 @@ export function BuyerOrderMaterialsPage(): React.JSX.Element {
     </section>
     <section className="buyer-work-section" aria-labelledby="evidence-history-title"><h2 id="evidence-history-title">已提交资料</h2>
       {evidence.isInitialPending ? <BuyerLoading /> : evidence.initialError ? <BuyerQueryError error={evidence.initialError} />
-        : evidence.items.length === 0 ? <BuyerEmpty title="暂无订单资料" description="符合条件的预约会显示提交入口。" />
+        : evidence.items.length === 0 ? <BuyerEmpty title="暂无订单资料" description="符合条件的预约会出现提交入口哦。" />
           : <><div className="buyer-card-list">{evidence.items.map((item) => <Link className="buyer-record-card buyer-stage-card"
             key={item.submission_id} to={`/buyer/order-materials/${item.submission_id}`}>
             <div className="record-card-heading"><strong>{item.reservation.product_name}</strong>
               <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></div>
             <dl className="compact-facts"><div><dt>Amazon 下单日期</dt><dd>{formatDateOnly(item.amazon_order_date)}</dd></div>
-              <div><dt>最终支付</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div></dl>
+              <div><dt>最终支付金额</dt><dd>{formatJpy(item.final_paid_jpy)}</dd></div></dl>
           </Link>)}</div><BuyerPagination hasMore={evidence.hasMore} isLoadingMore={evidence.isLoadingMore}
             laterError={evidence.laterError} onLoadMore={evidence.loadMore} onRetry={evidence.retryLater} /></>}
     </section>

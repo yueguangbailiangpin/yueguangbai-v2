@@ -41,14 +41,14 @@ describe('客户邀请与密码恢复中文界面', () => {
     await user.type(screen.getByLabelText('新密码'), 'New-Password-2026!');
     await user.type(screen.getByLabelText('确认新密码'), 'New-Password-2026!');
     await user.click(screen.getByRole('button', { name: '更新密码' }));
-    expect(await screen.findByText('密码已更新，所有旧登录会话均已失效。'))
+    expect(await screen.findByText('密码已更新，所有旧会话均已失效。'))
       .toBeVisible();
     expect(body).toEqual({
       token: 'reset-token', new_password: 'New-Password-2026!',
       password_confirmation: 'New-Password-2026!',
     });
     expect(key).toMatch(/^customer-reset:/u);
-    await user.click(screen.getByRole('button', { name: '前往登录' }));
+    await user.click(screen.getByRole('button', { name: '去登录' }));
     expect(await screen.findByText('SELLER LOGIN')).toBeVisible();
   });
 

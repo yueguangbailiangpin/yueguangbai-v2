@@ -31,12 +31,12 @@ export function BuyerTasksPage(): React.JSX.Element {
     reservations, eligibleEvidence, evidence, eligibleReviews, reviews, refunds,
   }, reviewTypeLabel);
   return <section className="buyer-page buyer-tasks-page">
-    <PageHeader eyebrow="买家任务" title={actionableCount > 0 ? `你有 ${actionableCount} 件需要处理` : '当前没有需要处理的事项'}
-      description="只把需要你本人操作的事项计入待办；审核和返款处理中会单独显示。" />
-    {pending ? <Card className="buyer-task-loading"><RefreshCw aria-hidden="true" /><span>正在整理你的业务任务</span></Card> : null}
+    <PageHeader eyebrow="买家任务" title={actionableCount > 0 ? `您有 ${actionableCount} 件待办事项` : '暂时没有待办事项，休息一下～'}
+      description="待办只统计您需要亲手操作的事情；审核中或返款中的项目会单独列出来。" />
+    {pending ? <Card className="buyer-task-loading"><RefreshCw aria-hidden="true" /><span>正在整理您的任务…</span></Card> : null}
     {failed ? <Alert tone="warning">部分任务状态暂时无法加载，请稍后刷新；已成功读取的事项仍可继续处理。</Alert> : null}
     {!pending && urgent.length === 0 && action.length === 0 && system.length === 0
-      ? <EmptyState title="暂无任务" description="新的预约、订单资料、评论或返款状态会显示在这里。" />
+      ? <EmptyState title="暂无任务" description="新的预约、订单资料、评论或返款状态会出现在这里哦。" />
       : <div className="buyer-task-sections">
         {urgent.length > 0 ? <TaskSection title="紧急" icon={<AlertTriangle aria-hidden="true" />} items={urgent} /> : null}
         {action.length > 0 ? <TaskSection title="今天 / 接下来" icon={<CheckCircle2 aria-hidden="true" />} items={action} /> : null}

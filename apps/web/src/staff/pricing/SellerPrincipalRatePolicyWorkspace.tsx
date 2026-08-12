@@ -104,12 +104,12 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
   }
 
   if (!canRead) return <main className="staff-pricing-workspace">
-    <Alert tone="danger">当前员工身份没有卖家本金汇率策略权限，后端也会拒绝直接访问。</Alert>
+    <Alert tone="danger">当前员工没有此权限，后端会拒绝访问。</Alert>
   </main>;
   return <main className="staff-pricing-workspace">
     <section aria-labelledby="seller-principal-rate-title">
       <p className="eyebrow">财务配置 · 仅 Staff</p><h2 id="seller-principal-rate-title">卖家本金汇率策略</h2>
-      <Alert tone="warning">这里的“卖家本金汇率加点”是绝对汇率增量，不是百分比。确认后的策略按生效时间作用于新正式订单，历史快照不回写。</Alert>
+      <Alert tone="warning">“卖家本金汇率加点”是绝对汇率增量，不是百分比。确认后的策略按生效时间作用于新正式订单，历史快照不回写。</Alert>
       <form className="staff-filter-grid" onSubmit={(event) => { event.preventDefault(); void query.refetch(); }}>
         <FormField label="卖家组织编号" htmlFor="principal-rate-organization"><TextInput
           id="principal-rate-organization" value={organizationId} onChange={(event) => {
@@ -154,7 +154,7 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
 }
 
 function PolicyFacts({ value }: { value: PolicyRead }): React.JSX.Element {
-  return <section className="staff-pricing-policy-grid" aria-label="当前策略事实">
+  return <section className="staff-pricing-policy-grid" aria-label="当前策略">
     <PolicyCard title="币种对默认加点" policy={value.default_policy} pending={value.default_pending_policy} nextVersion={value.default_next_version} />
     <PolicyCard title="卖家组织专属覆盖" policy={value.seller_override_policy} pending={value.seller_override_pending_policy} nextVersion={value.seller_override_next_version} />
     <Card className="customer-visible"><h3>确认时采用</h3><p>{value.selected_policy ? `${value.selected_policy.scope_type === 'SELLER_ORGANIZATION' ? '卖家组织覆盖' : '币种对默认'} · ${markupLabel(value.selected_policy.markup_rate_value)} · v${value.selected_policy.version_no}` : '当前没有已生效策略'}</p></Card>

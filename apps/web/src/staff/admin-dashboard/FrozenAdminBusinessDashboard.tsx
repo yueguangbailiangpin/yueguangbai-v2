@@ -37,8 +37,8 @@ export function FrozenAdminBusinessDashboard():React.JSX.Element{
   const precision=useQuery({queryKey:['staff','frozen-dashboard','precision-config',session.authorization_version],queryFn:({signal})=>acquisitionApi.reportingConfig(client,signal).then((r)=>r.data.config),enabled:authorized,retry:false});
   const activate=useMutation({mutationFn:({date,version}:{date:string;version:number})=>acquisitionApi.activateReportingConfig(client,{business_date:date,expected_version:version},crypto.randomUUID()),onSuccess:async()=>{await Promise.all([client.invalidateQueries({queryKey:['staff','frozen-dashboard']}),client.invalidateQueries({queryKey:['staff','acquisition-core']})]);}});
   if(!authorized)return <main className="admin-dashboard"><Alert tone="danger">只有总管理员可以查看经营看板。</Alert></main>;
-  if(summary.isPending||acquisition.isPending||financial.isPending||precision.isPending)return <main className="admin-dashboard"><p role="status">正在加载经营数据</p></main>;
-  if(summary.isError||acquisition.isError||financial.isError||precision.isError)return <main className="admin-dashboard"><Alert tone="danger">经营数据暂时无法加载，请稍后重试。</Alert></main>;
+  if(summary.isPending||acquisition.isPending||financial.isPending||precision.isPending)return <main className="admin-dashboard"><p role="status">加载中…</p></main>;
+  if(summary.isError||acquisition.isError||financial.isError||precision.isError)return <main className="admin-dashboard"><Alert tone="danger">数据加载失败，请重试。</Alert></main>;
   const business=summary.data,value=acquisition.data,money=financial.data,config=precision.data;
   const historicalUnknown=value.totals.buyer_historical_unknown_orders+value.totals.seller_historical_unknown_orders;
   return <main className="admin-dashboard frozen-admin-dashboard">
@@ -68,7 +68,7 @@ export function FrozenAdminBusinessDashboard():React.JSX.Element{
     <section><div className="dashboard-section-heading"><div><h2>每天各渠道新增</h2><p>来源纠错后按最后确认来源展示；原始来源仍永久保留在审计记录。已停用渠道的历史成绩不会消失。</p></div></div>
       {value.channel_daily.length===0?<EmptyState title="暂无渠道归因数据" description="新系统客户形成订单后按确认来源自动汇总。"/>:<DataTable caption="每日渠道新增客户与订单"><thead><tr><th>日期</th><th>类型</th><th>员工渠道</th><th>真实渠道</th><th>平台</th><th>站点</th><th>渠道状态</th><th>新增客户</th><th>新增订单</th></tr></thead><tbody>{[...value.channel_daily].reverse().map((row)=><tr key={`${row.business_date}:${row.channel_id}:${row.lead_type}`}><td>{row.business_date}</td><td>{row.lead_type==='BUYER'?'买家':'卖家'}</td><td>{row.channel_label}</td><td><strong>{row.channel_name}</strong></td><td>{row.platform_name}</td><td>{MARKETS[row.marketplace_code]??row.marketplace_code}</td><td><StatusBadge tone={row.channel_status==='ACTIVE'?'success':'neutral'}>{row.channel_status==='ACTIVE'?'启用':'已停用'}</StatusBadge></td><td>{row.new_customer_count}</td><td><strong>{row.formal_order_count}</strong></td></tr>)}</tbody></DataTable>}
     </section>
-    <section className="dashboard-two-column" aria-label="业务漏斗"><Funnel title="买家业务事实" stages={business.buyer_funnel.stages}/><Funnel title="卖家业务事实" stages={business.seller_funnel.stages}/></section>
+    <section className="dashboard-two-column" aria-label="业务漏斗"><Funnel title="买家漏斗" stages={business.buyer_funnel.stages}/><Funnel title="卖家漏斗" stages={business.seller_funnel.stages}/></section>
     <Alert tone="info">漏斗这里只展示事实数量。咨询人数是否完整请到“客户开发 → 渠道统计”查看；数据未完整时系统不会在这里展示容易误导的转化率。</Alert>
   </main>;
 }

@@ -33,12 +33,12 @@ const reviewBuyerAuthApi = reviewCustomerAuthApi('buyer');
 const reviewSellerAuthApi = reviewCustomerAuthApi('seller');
 
 export function RootEntry(): React.JSX.Element {
-  return <main className="identity-entry"><section className="dedicated-entry" aria-labelledby="brand-title"><h1 id="brand-title">月光白</h1><p>请使用工作人员发送的专属链接登录。</p></section></main>;
+  return <main className="identity-entry"><section className="dedicated-entry" aria-labelledby="brand-title"><h1 id="brand-title">月光白</h1><p>请使用工作人员发给您的专属链接登录。</p></section></main>;
 }
 function StaffLogin(): React.JSX.Element {
   const client=useQueryClient(),navigate=useNavigate(),location=useLocation();const [message,setMessage]=useState<string|null>(null),[busy,setBusy]=useState(false);
-  async function enter(){const returnTo=safeReturnPath(new URLSearchParams(location.search).get('return_to'),'staff');setBusy(true);setMessage(null);try{await staffAuthApi.bootstrap();await clearStaffTransport(client);navigate(returnTo,{replace:true});}catch{setMessage('无法建立员工会话。请确认该邮箱已通过 Cloudflare Access，且已在月光白员工管理中启用。');}finally{setBusy(false);}}
-  return <main className="login-page identity-staff"><Card className="login-card staff-login-card"><div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span><strong>月光白</strong></div><div className="login-heading"><p className="eyebrow">内部员工入口</p><h1>员工登录</h1><p>员工身份由 Cloudflare Access 邮箱验证码保护；月光白再校验岗位、负责站点和账号状态。</p></div>{message?<Alert tone="danger">{message}</Alert>:<Alert tone="info">如果这是首次访问，Cloudflare 会先要求你用已授权邮箱完成一次性验证码验证。</Alert>}<div className="entry-actions"><Button loading={busy} onClick={()=>{void enter();}}>进入员工后台</Button><Button className="secondary" onClick={()=>navigate('/')}>返回</Button></div><p className="security-note">Cloudflare 只证明邮箱身份；员工角色和数据范围始终由月光白控制。</p></Card></main>;
+  async function enter(){const returnTo=safeReturnPath(new URLSearchParams(location.search).get('return_to'),'staff');setBusy(true);setMessage(null);try{await staffAuthApi.bootstrap();await clearStaffTransport(client);navigate(returnTo,{replace:true});}catch{setMessage('无法建立员工会话，请确认该邮箱已通过 Cloudflare Access 验证，且已在月光白员工管理中启用。');}finally{setBusy(false);}}
+  return <main className="login-page identity-staff"><Card className="login-card staff-login-card"><div className="login-brand"><span className="brand-mark" aria-hidden="true">月</span><strong>月光白</strong></div><div className="login-heading"><p className="eyebrow">内部员工入口</p><h1>员工登录</h1><p>员工身份通过 Cloudflare Access 邮箱验证码验证，月光白会再校验岗位、负责站点和账号状态。</p></div>{message?<Alert tone="danger">{message}</Alert>:<Alert tone="info">首次访问时，Cloudflare 会先要求您用已授权的邮箱完成一次性验证码验证。</Alert>}<div className="entry-actions"><Button loading={busy} onClick={()=>{void enter();}}>进入员工后台</Button><Button className="secondary" onClick={()=>navigate('/')}>返回</Button></div><p className="security-note">Cloudflare 只证明邮箱身份；员工角色和数据范围始终由月光白控制。</p></Card></main>;
 }
 function DomainNotFound(){return <main className="centered"><NotFound /></main>;}
 

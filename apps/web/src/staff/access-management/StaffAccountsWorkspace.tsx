@@ -31,7 +31,7 @@ export function StaffAccountsWorkspace():React.JSX.Element{
   const statusMutation=useMutation({mutationFn:({id,body}:{id:string;body:unknown})=>write(client,`/api/staff/access-management/employees/${encodeURIComponent(id)}/status`,body),onSuccess:async()=>{setDisabling(null);await refresh();}});
   if(!authorized)return <main className="staff-access-management"><Alert tone="danger">仅总管理员可以管理员工账号。</Alert></main>;
   if(query.isPending)return <main className="staff-access-management"><p role="status">正在加载员工</p></main>;
-  if(query.isError)return <main className="staff-access-management"><Alert tone="danger">员工列表暂时无法加载。</Alert></main>;
+  if(query.isError)return <main className="staff-access-management"><Alert tone="danger">员工列表暂时加载不了。</Alert></main>;
   return <main className="staff-access-management staff-accounts-simple">
     <section className="staff-access-heading"><div><p className="eyebrow">仅总管理员</p><h2>员工管理</h2><p>岗位决定能做什么，站点决定能看什么。同岗位同站点可以多人覆盖，但系统只保留一个主负责人。</p></div><Button onClick={()=>setCreating(true)}>新增员工</Button></section>
     <Alert tone="info">第一个进入某“岗位 × 站点”的员工自动成为主负责人；后续员工自动显示“协助”。主负责人停用时，系统会自动提升一名协助员工，不增加排班页面。</Alert>

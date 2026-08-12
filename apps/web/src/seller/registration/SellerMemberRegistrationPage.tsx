@@ -26,7 +26,7 @@ export function SellerMemberRegistrationPage():React.JSX.Element{
     catch{setMessage(invitation?.existing_moonwhite_account?'成员开通失败。请确认输入的是该微信现有月光白密码。':'成员开通失败。请确认微信与邀请一致，或让主账号重新邀请。');}finally{setBusy(false);}}
   const existing=invitation?.existing_moonwhite_account===true;
   return <main className="login-page identity-seller"><Card className="login-card seller-login-card">
-    <div className="login-brand"><strong>月光白</strong></div><div className="login-heading"><h1>加入卖家团队</h1><p>仅限卖家主账号发送的专属一次性邀请。</p></div>
+    <div className="login-brand"><strong>月光白</strong></div><div className="login-heading"><h1>加入卖家团队</h1><p>仅限卖家主账号发送的专属邀请，一次性有效。</p></div>
     {invitation?<Alert tone="info"><strong>{invitation.organization_name}</strong><br/>成员：{invitation.display_name} · {roleLabel[invitation.role]}<br/>邀请微信：{invitation.wechat_hint}<br/>{existing?'该微信已有月光白账号：使用原密码确认后增加卖家成员身份。':'该微信尚无月光白账号：请设置新密码。'}</Alert>:null}
     <form onSubmit={(event)=>{void submit(event);}}><FormField label="微信号" htmlFor="seller-member-wechat" required><TextInput id="seller-member-wechat" name="wechat_id" autoComplete="username" required/></FormField>
       <FormField label={existing?'现有月光白密码':'设置密码'} htmlFor="seller-member-password" description={existing?'用于确认现有账号归属':'至少 12 位'} required><TextInput id="seller-member-password" name="password" type="password" autoComplete={existing?'current-password':'new-password'} minLength={12} required/></FormField>

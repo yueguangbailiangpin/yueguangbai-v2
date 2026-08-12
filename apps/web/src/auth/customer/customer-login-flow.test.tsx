@@ -95,7 +95,7 @@ describe('Customer login mismatch controller chain', () => {
     const { adapter } = createAdapter('SELLER_MEMBER', logout);
     await renderMismatch('buyer', adapter, client);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('该账号不适用于此登录入口，请确认账号或联系工作人员。');
+    expect(await screen.findByRole('alert')).toHaveTextContent('这个账号不能在这儿登录，请确认后重试，或联系工作人员。');
     expect(logout).toHaveBeenCalledOnce();
     expect(client.getQueryData(['buyer', 'fixture'])).toBeUndefined();
     expect(client.getQueryData(['seller', 'fixture'])).toBeUndefined();
@@ -110,7 +110,7 @@ describe('Customer login mismatch controller chain', () => {
     const { adapter } = createAdapter('BUYER', logout);
     await renderMismatch('seller', adapter, client);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('该账号不适用于此登录入口，请确认账号或联系工作人员。');
+    expect(await screen.findByRole('alert')).toHaveTextContent('这个账号不能在这儿登录，请确认后重试，或联系工作人员。');
     expect(logout).toHaveBeenCalledOnce();
     expect(client.getQueryData(['buyer', 'fixture'])).toBeUndefined();
     expect(client.getQueryData(['seller', 'fixture'])).toBeUndefined();
@@ -126,7 +126,7 @@ describe('Customer login mismatch controller chain', () => {
     const { adapter } = createAdapter('SELLER_MEMBER', logout);
     const user = await renderMismatch('buyer', adapter, client);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('会话清理失败，请重试或刷新');
+    expect(await screen.findByRole('alert')).toHaveTextContent('会话清理失败，请刷新页面或重试。');
     expect(screen.getByText('请求编号：request-cleanup')).toBeVisible();
     expect(client.getQueryData(queryKeys.buyer.root)).toBeUndefined();
     expect(client.getQueryData(queryKeys.seller.root)).toBeUndefined();
@@ -135,6 +135,6 @@ describe('Customer login mismatch controller chain', () => {
 
     await user.click(screen.getByRole('button', { name: '重新清理' }));
     await waitFor(() => expect(logout).toHaveBeenCalledTimes(2));
-    expect(await screen.findByRole('alert')).toHaveTextContent('该账号不适用于此登录入口，请确认账号或联系工作人员。');
+    expect(await screen.findByRole('alert')).toHaveTextContent('这个账号不能在这儿登录，请确认后重试，或联系工作人员。');
   });
 });

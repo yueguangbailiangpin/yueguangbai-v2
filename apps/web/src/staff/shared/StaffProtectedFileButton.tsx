@@ -12,7 +12,7 @@ export function StaffProtectedFileButton({ reference, label = '查看受保护�
   return <div className="protected-file-control">
     {state.ephemeralObjectUrl
       ? <a className="button secondary" href={state.ephemeralObjectUrl} target="_blank" rel="noreferrer">打开文件</a>
-      : <Button loading={busy} loadingLabel="正在安全读取" onClick={() => { void controller.start('staff', reference); }}>{label}</Button>}
+      : <Button loading={busy} loadingLabel="安全读取中…" onClick={() => { void controller.start('staff', reference); }}>{label}</Button>}
     {state.canRetry ? <Button className="secondary" onClick={() => { void controller.retry(); }}>重试</Button> : null}
     {state.restartRequired ? <Button className="secondary" onClick={() => { void controller.restart(); }}>重新开始</Button> : null}
     {state.canRelease ? <Button className="secondary" onClick={() => controller.release()}>关闭文件</Button> : null}

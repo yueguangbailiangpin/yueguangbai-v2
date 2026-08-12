@@ -25,12 +25,12 @@ export function ProtectedFileButton({ provider, label = '查看文件' }: {
 
   return <div className="protected-file-control">
     {snapshot.ephemeralObjectUrl ? <a className="button secondary" href={snapshot.ephemeralObjectUrl} target="_blank" rel="noreferrer">打开文件</a>
-      : <Button loading={busy} loadingLabel={progress === null ? '正在准备' : `正在读取 ${progress}%`}
+      : <Button loading={busy} loadingLabel={progress === null ? '准备中…' : `读取中 ${progress}%`}
           onClick={() => { void controller.startWithProvider(provider); }}>{label}</Button>}
-    {snapshot.canRetry ? <Button className="secondary" onClick={() => { void controller.retry(); }}>重试读取</Button> : null}
+    {snapshot.canRetry ? <Button className="secondary" onClick={() => { void controller.retry(); }}>重试</Button> : null}
     {snapshot.restartRequired ? <Button className="secondary" onClick={() => { void controller.restart(); }}>重新开始</Button> : null}
-    {snapshot.canCancel ? <Button className="secondary" onClick={() => controller.cancel()}>取消读取</Button> : null}
-    {snapshot.canRelease ? <Button className="secondary" onClick={() => controller.release()}>关闭文件</Button> : null}
+    {snapshot.canCancel ? <Button className="secondary" onClick={() => controller.cancel()}>取消</Button> : null}
+    {snapshot.canRelease ? <Button className="secondary" onClick={() => controller.release()}>关闭</Button> : null}
     {message ? <Alert tone="danger">{message}</Alert> : null}
     <RequestIdDisplay requestId={snapshot.requestId} />
   </div>;

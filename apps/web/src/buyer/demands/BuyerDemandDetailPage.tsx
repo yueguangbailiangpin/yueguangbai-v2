@@ -46,8 +46,8 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
     <Card className="buyer-fact-card">
       <h2>预约信息</h2>
       <dl className="buyer-facts"><div><dt>评论类型</dt><dd>{reviewTypeLabel(demand.task_type)}</dd></div>
-        <div><dt>参考订单金额</dt><dd>{formatJpy(demand.reference_order_amount_jpy)}</dd></div>
-        <div><dt>买家自费比例</dt><dd>{formatBps(demand.buyer_self_pay_bps)}</dd></div>
+        <div><dt>参考金额</dt><dd>{formatJpy(demand.reference_order_amount_jpy)}</dd></div>
+        <div><dt>自费比例</dt><dd>{formatBps(demand.buyer_self_pay_bps)}</dd></div>
         <div><dt>预计自费</dt><dd>{formatJpy(demand.estimated_buyer_self_pay_jpy)}</dd></div>
         <div><dt>预计可返本金</dt><dd>{formatJpy(demand.estimated_refundable_principal_jpy)}</dd></div>
         <div><dt>预约截止</dt><dd>{formatShanghai(demand.reservation_deadline)}</dd></div>
@@ -55,12 +55,12 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
       {demand.buyer_visible_notes ? <p className="buyer-public-note">{demand.buyer_visible_notes}</p> : null}
     </Card>
     <Card className="buyer-confirm-card">
-      <h2>确认预约</h2><p>提交前请确认当前自费比例。产品信息变化后需要重新确认。</p>
+      <h2>确认预约</h2><p>提交前确认一下当前自费比例哦，如果产品信息有变化需要重新确认。</p>
       <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.currentTarget.checked)}
-        label={`我确认接受 ${formatBps(demand.buyer_self_pay_bps)} 的买家自费比例`} />
+        label={`我确认接受 ${formatBps(demand.buyer_self_pay_bps)} 的自费比例`} />
       <BuyerMutationRecovery mutation={mutation} deterministicMessage="需求事实已变化，请刷新事实后重新确认。"
         onRefresh={() => { void query.refetch(); }} />
-      <Button disabled={!confirmed} loading={mutation.isPending} loadingLabel="正在预约"
+      <Button disabled={!confirmed} loading={mutation.isPending} loadingLabel="预约中…"
         onClick={() => mutation.mutate({ expected_demand_version: demand.demand_version,
           accepted_buyer_self_pay_bps: demand.buyer_self_pay_bps })}>确认并预约</Button>
     </Card>

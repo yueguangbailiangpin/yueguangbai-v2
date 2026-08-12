@@ -28,8 +28,8 @@ const marketplaceLabels = {
 
 const roleLabels = {
   OWNER: '负责人',
-  OPERATIONS: '运营成员',
-  FINANCE: '财务成员',
+  OPERATIONS: '运营',
+  FINANCE: '财务',
   VIEWER: '查看成员',
 } as const;
 
@@ -68,11 +68,11 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
         <SellerNavigation />
         <div className="seller-sidebar-member">
           <UserRound aria-hidden="true" />
-          <span><strong>{member?.display_name ?? '正在核验身份'}</strong>{member ? <small>{roleLabels[member.role]}</small> : null}</span>
+          <span><strong>{member?.display_name ?? '验证身份中…'}</strong>{member ? <small>{roleLabels[member.role]}</small> : null}</span>
         </div>
       </aside>
       <div className="seller-work-area">
-        <header className="seller-context-bar" aria-label="组织和店铺上下文">
+        <header className="seller-context-bar" aria-label="组织和店铺">
           <NavLink className="seller-mobile-brand" to="/seller">月光白</NavLink>
           <div className="seller-context-summary">
             <strong>{selectedStore ? marketplaceLabels[selectedStore.canonical_marketplace_code] : '全部站点'}</strong>
@@ -88,10 +88,10 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
               </option>)}
             </Select>
           </label>
-          {stores.initialError ? <button type="button" className="button secondary" onClick={stores.retryInitial}>重试店铺列表</button>
+          {stores.initialError ? <button type="button" className="button secondary" onClick={stores.retryInitial}>重试</button>
             : <CursorPagination {...stores} onLoadMore={stores.loadMore} onRetry={stores.retryLater}
-              loadLabel="加载更多店铺" loadingLabel="正在加载更多店铺" retryLabel="重试店铺列表"
-              errorMessage="后一页店铺暂时无法读取，已加载店铺仍可使用。" />}
+              loadLabel="加载更多" loadingLabel="加载中…" retryLabel="重试"
+              errorMessage="后一页店铺暂时加载不出来，已经加载的还能继续用。" />}
           <div className="seller-context-member">
             <UserRound aria-hidden="true" /><span><strong>{member?.display_name ?? '核验中'}</strong>{member ? <small>{roleLabels[member.role]}</small> : null}</span>
           </div>

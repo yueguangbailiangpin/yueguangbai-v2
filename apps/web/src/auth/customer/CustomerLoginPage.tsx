@@ -64,12 +64,12 @@ export function CustomerLoginPage({
     if (result.kind === 'MISMATCH_CLEANED') {
       setCleanupFailed(false);
       setRequestId(null);
-      setMessage('该账号不适用于此登录入口，请确认账号或联系工作人员。');
+      setMessage('这个账号不能在这儿登录，请确认后重试，或联系工作人员。');
       return;
     }
     setCleanupFailed(true);
     setRequestId(result.requestId);
-    setMessage('会话清理失败，请重试或刷新');
+    setMessage('会话清理失败，请刷新页面或重试。');
   }
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -83,7 +83,7 @@ export function CustomerLoginPage({
       password: data.get('password'),
     });
     if (!payload.success) {
-      setMessage('请输入登录标识和密码。');
+      setMessage('请输入账号和密码。');
       return;
     }
 
@@ -100,8 +100,8 @@ export function CustomerLoginPage({
         setRequestId(isFrontendApiError(error) ? error.requestId : null);
         setMessage(
           isFrontendApiError(error) && error.code === 'PASSWORD_CHANGE_REQUIRED'
-            ? '需要先修改密码。'
-            : '登录未完成，请检查信息后重试。',
+            ? '请先修改密码，然后再登录。'
+            : '登录失败，请检查账号和密码后重试。',
         );
       }
     } finally {
@@ -141,7 +141,7 @@ export function CustomerLoginPage({
           <Button
             type="submit"
             loading={busy}
-            loadingLabel="正在登录"
+            loadingLabel="登录中…"
             disabled={cleanupFailed}
           >登录</Button>
         </form>
