@@ -38,7 +38,7 @@ Resource server 不签发 token、不实现 authorization endpoint，也不从 O
 
 `STAFF_MCP_BINDING_HASH_SECRET` 只作为 managed Secret 名称存在于 Git；运行时用 HMAC-SHA-256 保存 issuer、subject、JTI、client/session/replay/rate 标识。bearer token、Secret 和原始 claim 不落 D1、不进入日志/审计。
 
-`issuer_hash + subject_hash` 只能命中一个 ACTIVE binding，且其 `staff_users` 必须当前 ACTIVE。之后每次 catalog/call 仍通过既有 D1 resolver 重算四角色、权限、Personal DENY、Team/Department、Customer、Seller Organization、Store、Marketplace、资源与 File Audience。OAuth claim 不能扩大权限；越权继续统一 404/`NOT_FOUND`。
+`issuer_hash + subject_hash` 只能命中一个 ACTIVE binding，且其 `staff_users` 必须当前 ACTIVE。之后每次 catalog/call 仍通过既有 D1 resolver 重算当前五个 canonical Staff 角色、权限、Personal DENY、Team/Department、Customer、Seller Organization、Store、Marketplace、资源与 File Audience。OAuth claim 不能扩大权限；越权继续统一 404/`NOT_FOUND`。
 
 ## 5. Durable State 与审计
 

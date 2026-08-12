@@ -13,6 +13,7 @@ const authorization = read('apps/api/src/files/route-authorization.ts');
 const errors = read('packages/contracts/src/errors.ts');
 const app = read('apps/api/src/index.ts');
 const inventoryTests = read('apps/api/src/wave13-default-app-security.test.ts');
+const packageManifest = JSON.parse(read('package.json'));
 
 for (const purpose of [
   'ORDER_EVIDENCE',
@@ -57,13 +58,18 @@ for (const evidence of [
   'FILE_HTTP_PURPOSE_ROUTES',
   'FILE_HTTP_LIFECYCLE_PATHS',
   'staffMiddlewareIndex',
-  'toHaveLength(237)',
 ]) assertContains(inventoryTests, evidence, 'real Hono route inventory test');
+assert(
+  packageManifest.scripts?.['check:wave13']?.includes(
+    'vitest run apps/api/src/api-contract-baseline-alignment.test.ts',
+  ),
+  'Wave13 check must run the canonical runtime-backed route inventory test',
+);
 report('wave13-file-architecture', {
   active_purpose_routes: 6,
   deferred_to_wave15: [],
   generic_link_routes: 0,
   generic_grant_routes: 0,
   r2_authority_fields: 0,
-  active_route_inventory: 237,
+  route_inventory_baseline: 'api-contract-baseline-alignment.test.ts',
 });

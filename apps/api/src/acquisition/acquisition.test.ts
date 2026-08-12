@@ -1,12 +1,21 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
-import type { AcquisitionLeadType, StaffPermissionCode, StaffRoleCode } from '@ygb/contracts';
+import type {
+  AcquisitionLeadType,
+  SqlDatabase,
+  SqlRunResult,
+  SqlStatement,
+  StaffPermissionCode,
+  StaffRoleCode,
+} from '@ygb/contracts';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
 import {
   createAcquisitionAssignment,
   createAcquisitionChannel,
   disableAcquisitionChannel,
+  listAcquisitionConsultationHistory,
+  listAcquisitionConsultations,
   recordAcquisitionConsultation,
 } from './admin';
 import {
@@ -183,42 +192,196 @@ describe('staff acquisition funnel commands', () => {
       .get(own.lead.lead_id)).toEqual({ origin_staff_id: 'staff-pre' });
   });
 
-  it('records Beijing-date aggregate corrections with immutable event history', async () => {
+  it('lets only owner record, replay and correct consultation counts with complete integrity facts', async () => {
     database = db();
     const channel = await seedChannel(database, 'XHS_BUYER');
-    const sellerChannel = await seedChannel(database, 'XHS_SELLER');
-    await seedAssignment(database, 'staff-pre', 'BUYER', channel.channel.channel_id);
-    await seedAssignment(database, 'staff-seller', 'SELLER', sellerChannel.channel.channel_id);
-    const first = await recordAcquisitionConsultation(database, {
+    const recordInput = {
       channelId: channel.channel.channel_id, businessDate: '2025-01-01',
       personCount: 12, expectedVersion: 0, reason: '每日汇总',
-    }, command(owner(), 'consultation-0001', JAN_1_2025));
+    };
+    const first = await recordAcquisitionConsultation(database, recordInput,
+      command(owner(), 'consultation-0001', JAN_1_2025));
+    const replay = await recordAcquisitionConsultation(database, recordInput,
+      command(owner(), 'consultation-0001', JAN_1_2025 + 1));
+    expect(replay).toMatchObject({ replayed: true,
+      consultation: { consultation_id: first.consultation.consultation_id, version: 1 } });
+    await expect(recordAcquisitionConsultation(database, {
+      ...recordInput, personCount: 13,
+    }, command(owner(), 'consultation-0001', JAN_1_2025 + 2)))
+      .rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+
     const corrected = await recordAcquisitionConsultation(database, {
       channelId: channel.channel.channel_id, businessDate: '2025-01-01',
       personCount: 11, expectedVersion: 1, reason: '去除渠道内重复咨询',
     }, command(owner(), 'consultation-0002', JAN_1_2025 + 1000));
-    expect(first.consultation.version).toBe(1);
     expect(corrected.consultation).toMatchObject({
       lead_type: 'BUYER', person_count: 11, version: 2,
     });
-    expect(database.raw.prepare(`SELECT previous_count,next_count
-      FROM acquisition_daily_consultation_events ORDER BY created_at`).all())
-      .toEqual([{ previous_count: null, next_count: 12 }, { previous_count: 12, next_count: 11 }]);
     await expect(recordAcquisitionConsultation(database, {
       channelId: channel.channel.channel_id, businessDate: '2025-01-01',
       personCount: 10, expectedVersion: 1, reason: '过期版本',
     }, command(owner(), 'consultation-0003', JAN_1_2025 + 2000)))
       .rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
 
-    await recordAcquisitionConsultation(database, {
-      channelId: sellerChannel.channel.channel_id, businessDate: '2025-01-01',
-      personCount: 7, expectedVersion: 0, reason: '卖家每日汇总',
-    }, command(owner(), 'consultation-seller-0001', JAN_1_2025));
-    const funnel = await readAcquisitionFunnel(database, owner(), {
-      fromDate: '2025-01-01', toDate: '2025-01-01',
-    });
-    expect(funnel.buyer?.consultation_count).toBe(11);
-    expect(funnel.seller?.consultation_count).toBe(7);
+    const forgedAcquisitionAdmin = { ...acquisition(),
+      permissions: new Set<StaffPermissionCode>(['ACQUISITION_ADMIN']) };
+    for (const [index, actor] of [acquisition(), forgedAcquisitionAdmin,
+      preSales(), sellerOps(), buyerRefund()].entries()) {
+      await expect(recordAcquisitionConsultation(database, {
+        ...recordInput, businessDate: `2025-01-${String(index + 2).padStart(2, '0')}`,
+      }, command(actor, `consultation-forbidden-${index}`, JAN_1_2025 + 3000 + index)))
+        .rejects.toMatchObject({ code: 'FORBIDDEN' });
+    }
+
+    expect(database.raw.prepare(`SELECT previous_count,next_count
+      FROM acquisition_daily_consultation_events ORDER BY created_at`).all())
+      .toEqual([{ previous_count: null, next_count: 12 }, { previous_count: 12, next_count: 11 }]);
+    expect(database.raw.prepare(`SELECT event_type,previous_state_json,next_state_json
+      FROM audit_events WHERE aggregate_type='ACQUISITION_DAILY_CONSULTATION'
+      ORDER BY created_at`).all()).toEqual([
+      { event_type: 'ACQUISITION_CONSULTATION_RECORDED', previous_state_json: null,
+        next_state_json: expect.stringContaining('"person_count":12') },
+      { event_type: 'ACQUISITION_CONSULTATION_CORRECTED',
+        previous_state_json: expect.stringContaining('"person_count":12'),
+        next_state_json: expect.stringContaining('"person_count":11') },
+    ]);
+    expect(database.raw.prepare(`SELECT status,error_code,COUNT(*) AS count
+      FROM command_idempotency_records WHERE action='RECORD_ACQUISITION_CONSULTATION'
+      GROUP BY status,error_code ORDER BY status`).all()).toEqual([
+      { status: 'COMMITTED', error_code: null, count: 2 },
+      { status: 'FAILED', error_code: 'ACQUISITION_COMMAND_FAILED', count: 1 },
+    ]);
+  });
+
+  it('rolls back consultation facts and cleans idempotency when the final assertion fails', async () => {
+    database = db();
+    const channel = await seedChannel(database, 'XHS_ASSERTION');
+    database.exec(`CREATE TRIGGER test_corrupt_consultation_after_insert
+      AFTER INSERT ON acquisition_daily_consultations
+      BEGIN
+        UPDATE acquisition_daily_consultations
+        SET person_count=NEW.person_count+1 WHERE id=NEW.id;
+      END;`);
+
+    let failure: unknown;
+    try {
+      await recordAcquisitionConsultation(database, {
+        channelId: channel.channel.channel_id, businessDate: '2025-01-01',
+        personCount: 12, expectedVersion: 0, reason: '锁定事务最终断言',
+      }, command(owner(), 'consultation-assertion-0001', JAN_1_2025));
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toMatchObject({ code: 'VERSION_CONFLICT' });
+
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_daily_consultations) AS consultations,
+      (SELECT COUNT(*) FROM acquisition_daily_consultation_events) AS events,
+      (SELECT COUNT(*) FROM audit_events
+        WHERE aggregate_type='ACQUISITION_DAILY_CONSULTATION') AS audits,
+      (SELECT COUNT(*) FROM command_idempotency_records
+        WHERE action='RECORD_ACQUISITION_CONSULTATION' AND status='COMMITTED') AS committed`).get())
+      .toEqual({ consultations: 0, events: 0, audits: 0, committed: 0 });
+    expect(database.raw.prepare(`SELECT status,error_code,response_json
+      FROM command_idempotency_records
+      WHERE action='RECORD_ACQUISITION_CONSULTATION'`).get())
+      .toEqual({ status: 'FAILED', error_code: 'ACQUISITION_COMMAND_FAILED', response_json: null });
+  });
+
+  it('rejects a stale same-target correction in the commit window without ghost facts', async () => {
+    database = db();
+    const channel = await seedChannel(database, 'XHS_COMMIT_RACE');
+    const initial = await recordAcquisitionConsultation(database, {
+      channelId: channel.channel.channel_id, businessDate: '2025-01-01',
+      personCount: 12, expectedVersion: 0, reason: '初始咨询人数',
+    }, command(owner(), 'consultation-race-initial', JAN_1_2025));
+    const targetCount = 15;
+    const winnerKey = 'consultation-race-winner';
+    const loserKey = 'consultation-race-loser';
+    const racingDatabase = new ConsultationCommitWindowRaceDatabase(
+      database,
+      async () => recordAcquisitionConsultation(database!, {
+        channelId: channel.channel.channel_id, businessDate: '2025-01-01',
+        personCount: targetCount, expectedVersion: 1, reason: '竞争胜出请求',
+      }, command(owner(), winnerKey, JAN_1_2025 + 1)),
+    );
+
+    let failure: unknown;
+    try {
+      await recordAcquisitionConsultation(racingDatabase, {
+        channelId: channel.channel.channel_id, businessDate: '2025-01-01',
+        personCount: targetCount, expectedVersion: 1, reason: '竞争落败请求',
+      }, command(owner(), loserKey, JAN_1_2025 + 2));
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toMatchObject({ code: 'VERSION_CONFLICT' });
+    expect(database.raw.prepare(`SELECT person_count,version
+      FROM acquisition_daily_consultations WHERE id=?`)
+      .get(initial.consultation.consultation_id)).toEqual({ person_count: targetCount, version: 2 });
+    expect(database.raw.prepare(`SELECT idempotency_key,COUNT(*) AS count
+      FROM acquisition_daily_consultation_events
+      WHERE consultation_id=? GROUP BY idempotency_key ORDER BY idempotency_key`)
+      .all(initial.consultation.consultation_id)).toEqual([
+      { idempotency_key: 'consultation-race-initial', count: 1 },
+      { idempotency_key: winnerKey, count: 1 },
+    ]);
+    expect(database.raw.prepare(`SELECT idempotency_key,COUNT(*) AS count
+      FROM audit_events WHERE aggregate_type='ACQUISITION_DAILY_CONSULTATION'
+      GROUP BY idempotency_key ORDER BY idempotency_key`).all()).toEqual([
+      { idempotency_key: 'consultation-race-initial', count: 1 },
+      { idempotency_key: winnerKey, count: 1 },
+    ]);
+    expect(database.raw.prepare(`SELECT idempotency_key,status,error_code,response_json
+      FROM command_idempotency_records
+      WHERE action='RECORD_ACQUISITION_CONSULTATION'
+      ORDER BY idempotency_key`).all()).toEqual([
+      { idempotency_key: 'consultation-race-initial', status: 'COMMITTED',
+        error_code: null, response_json: expect.any(String) },
+      { idempotency_key: loserKey, status: 'FAILED',
+        error_code: 'ACQUISITION_COMMAND_FAILED', response_json: null },
+      { idempotency_key: winnerKey, status: 'COMMITTED',
+        error_code: null, response_json: expect.any(String) },
+    ]);
+  });
+
+  it('keeps acquisition operator reads scoped and conceals cross-market consultation history', async () => {
+    database = db();
+    const jp = await seedChannel(database, 'XHS_JP');
+    const us = await seedChannel(database, 'XHS_US', 'BUYER', 'AMAZON_US');
+    const jpConsultation = await recordAcquisitionConsultation(database, {
+      channelId: jp.channel.channel_id, businessDate: '2025-01-01',
+      personCount: 12, expectedVersion: 0, reason: '日本站汇总',
+    }, command(owner(), 'consultation-history-jp', JAN_1_2025));
+    const usConsultation = await recordAcquisitionConsultation(database, {
+      channelId: us.channel.channel_id, businessDate: '2025-01-01',
+      personCount: 7, expectedVersion: 0, reason: '美国站汇总',
+    }, command(owner(), 'consultation-history-us', JAN_1_2025 + 1));
+
+    await expect(listAcquisitionConsultations(database, acquisition(),
+      '2025-01-01', '2025-01-01')).resolves.toMatchObject([
+      { consultation_id: jpConsultation.consultation.consultation_id, person_count: 12 },
+    ]);
+    await expect(listAcquisitionConsultationHistory(database, acquisition(),
+      jpConsultation.consultation.consultation_id)).resolves.toMatchObject([
+      { event_type: 'RECORDED', next_count: 12 },
+    ]);
+    await expect(listAcquisitionConsultationHistory(database, acquisition(),
+      usConsultation.consultation.consultation_id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(listAcquisitionConsultationHistory(database, acquisition(),
+      'missing-consultation')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    const prospect = await createAcquisitionProspect(database, {
+      leadType: 'BUYER', marketplaceCode: 'AMAZON_JP', channelId: jp.channel.channel_id,
+      displayName: '获客角色潜在线索', contactValue: null, sourceUrl: null,
+      originMode: 'HUMAN', note: null, aiScore: null,
+    }, command(acquisition(), 'acquisition-prospect-0001', JAN_1_2025 + 2));
+    expect(prospect.prospect.marketplace_code).toBe('AMAZON_JP');
+    await expect(listAcquisitionLeads(database, acquisition(), {
+      leadType: null, cursor: null, limit: 25,
+    })).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('fails closed for missing/overlapping configuration and buyer_refund', async () => {
@@ -430,6 +593,7 @@ function db(): SqliteDatabase {
       ('staff-owner-acq','总管理员','ACTIVE',1,1,1000,1000,NULL,1),
       ('staff-pre','售前','ACTIVE',1,1,1000,1000,NULL,1),
       ('staff-pre-other','售前乙','ACTIVE',1,1,1000,1000,NULL,1),
+      ('staff-acquisition','获客','ACTIVE',1,1,1000,1000,NULL,1),
       ('staff-seller','卖家对接','ACTIVE',1,1,1000,1000,NULL,1),
       ('staff-refund','买家返款','ACTIVE',1,1,1000,1000,NULL,1);
     INSERT INTO staff_role_assignments (staff_id,role_code,status,assigned_by_staff_id,
@@ -437,11 +601,13 @@ function db(): SqliteDatabase {
       ('staff-owner-acq','owner','ACTIVE',NULL,1000,NULL,1000,1000),
       ('staff-pre','pre_sales','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
       ('staff-pre-other','pre_sales','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
+      ('staff-acquisition','acquisition','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
       ('staff-seller','seller_ops','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
       ('staff-refund','buyer_refund','ACTIVE','staff-owner-acq',1000,NULL,1000,1000);
     INSERT INTO staff_team_memberships (staff_id,team_id,status,joined_at,ended_at,
       created_at,updated_at) VALUES
       ('staff-pre','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
+      ('staff-acquisition','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
       ('staff-seller','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
       ('staff-refund','phase3h-test-team','ACTIVE',1000,NULL,1000,1000);
     INSERT INTO staff_marketplace_scopes (
@@ -451,6 +617,7 @@ function db(): SqliteDatabase {
       ('scope-test-pre-primary','staff-pre','pre_sales','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
       ('scope-test-pre-support','staff-pre-other','pre_sales','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'SUPPORT'),
       ('scope-test-pre-us-primary','staff-pre-other','pre_sales','AMAZON_US','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
+      ('scope-test-acquisition-primary','staff-acquisition','acquisition','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
       ('scope-test-seller-primary','staff-seller','seller_ops','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
       ('scope-test-refund-primary','staff-refund','buyer_refund','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY');
     UPDATE seller_channels SET created_at=1000,updated_at=1000
@@ -505,9 +672,31 @@ function auth(role: StaffRoleCode, staffId: string): AssignmentStaffAuthorizatio
     authorizationVersion: 1, ...effective };
 }
 function owner() { return auth('owner','staff-owner-acq'); }
+function acquisition() { return auth('acquisition','staff-acquisition'); }
 function preSales() { return auth('pre_sales','staff-pre'); }
 function sellerOps() { return auth('seller_ops','staff-seller'); }
 function buyerRefund() { return auth('buyer_refund','staff-refund'); }
+
+class ConsultationCommitWindowRaceDatabase implements SqlDatabase {
+  private injected = false;
+
+  constructor(
+    private readonly target: SqlDatabase,
+    private readonly win: () => Promise<unknown>,
+  ) {}
+
+  prepare(sql: string): SqlStatement {
+    return this.target.prepare(sql);
+  }
+
+  async batch(statements: readonly SqlStatement[]): Promise<SqlRunResult[]> {
+    if (!this.injected) {
+      this.injected = true;
+      await this.win();
+    }
+    return this.target.batch(statements);
+  }
+}
 
 function seedBuyerIdentity(db: SqliteDatabase, wechat: string): void {
   db.exec(`

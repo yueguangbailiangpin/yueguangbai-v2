@@ -4,7 +4,7 @@
 
 `/staff/acquisition` 是员工工作台内的稳定中文入口。D1 中的渠道、有效期、日咨询汇总、线索、关联和事件是权威事实；飞书、微信私聊和未来看板都不是权威源。本合同不包含 `admin-business-dashboard` 最终看板。
 
-owner 使用 `ACQUISITION_ADMIN` 管理渠道、Staff 渠道生效期和北京日咨询汇总。pre_sales 只能建立 BUYER 线索，seller_ops 只能建立 SELLER 线索，buyer_refund 没有获客权限。角色默认、个人 GRANT、团队范围和 Personal DENY 依照统一 Staff 授权模型重算，DENY 最终优先。越范围读统一返回 `NOT_FOUND`。
+owner 使用 `ACQUISITION_ADMIN` 管理渠道、Staff 渠道生效期并登记或更正北京日咨询人数。`acquisition` 只在本人 Marketplace Scope 内读取渠道、来源、Prospect、漏斗、日咨询及其历史，并操作 Prospect；它没有 `ACQUISITION_ADMIN`，不得登记/更正日咨询，也不得创建、查看或管理正式 Buyer/Seller Lead。pre_sales 只能建立 BUYER 线索，seller_ops 只能建立 SELLER 线索，buyer_refund 没有获客权限。历史 Personal `GRANT` 和 Team/Leader 权限包仅作审计，不参与当前 effective permissions；Personal DENY 最终优先。越范围读统一返回 `NOT_FOUND`。
 
 ## 身份、渠道与统计口径
 
@@ -25,7 +25,7 @@ owner 使用 `ACQUISITION_ADMIN` 管理渠道、Staff 渠道生效期和北京�
 
 ## 写入、隐私和留存
 
-所有关键写入使用 `Idempotency-Key`、规范请求哈希、`expected_version` 或唯一业务条件、事务最终断言、不可变领域事件和 Audit。相同幂等键只能重放相同请求与结果；不同请求哈希返回稳定冲突。请求多余字段失败，防止客户端偷渡未声明字段或私密投影；合法 `channel_id` 仍只按上述受控来源规则处理。
+所有关键写入使用 `Idempotency-Key`、规范请求哈希、`expected_version` 或唯一业务条件、事务最终断言、不可变领域事件和 Audit。日咨询登记/更正必须在同一 D1 batch 末尾断言最终 `state/version/count`，batch 失败必须把幂等占位清理为可重试失败状态，且不得留下 consultation、event、Audit 或成功幂等脏数据。相同幂等键只能重放相同请求与结果；不同请求哈希返回稳定冲突。请求多余字段失败，防止客户端偷渡未声明字段或私密投影；合法 `channel_id` 仍只按上述受控来源规则处理。
 
 未转化线索从最后跟进的北京日历时点起满十二个月后，由租约保护、可重试的维护作业清除微信哈希/密文/IV、显示名和备注。已有 Buyer、预约、正式订单、Seller 组织、Customer 安全事件，或显式 `SECURITY` / `DISPUTE` / `LEGAL` hold 的线索严格豁免。作业 dry-run 只读返回低基数计数，不获取租约、不改业务事实、不输出身份。
 

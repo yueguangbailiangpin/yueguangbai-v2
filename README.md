@@ -69,6 +69,19 @@ git diff --check
 
 任何 PASS / FAIL 必须来自当前 checkout 的真实执行结果，历史审计不能替代当前验证。
 
+`npm run check` 是仓库级本地门禁：它覆盖静态安全扫描、Node safety tests、类型检查、Migration/verifier、Vitest 与各 workspace build。它不证明 staging、pilot、生产资源、真实 Cloudflare Access、真实 D1/R2、真实数据或网络验收；这些仍须单独授权并按对应 runbook/Change 验收。
+
+## 业务链最短定位路径
+
+先按上面的权威顺序确定规则，再从运行入口向下追，不要把 archived OpenSpec、`FREEZE` 文件或历史审计当成当前实现入口。
+
+- Web：`apps/web/src/main.tsx` → `App.tsx`。Buyer 由 `buyer/routes/BuyerRouteModule.tsx` 负责，Seller 由 `seller/routes/SellerRouteModule.tsx` 负责，Staff 由 `staff/StaffRouteModule.tsx` 负责；Staff Admin 的 canonical 前端是 `StaffAdminRouteModule.tsx` → `admin-dashboard/FrozenAdminBusinessDashboard.tsx`。
+- API：`apps/api/src/worker.ts` → `apps/api/src/index.ts`。正式 HTTP 路径以 `docs/contracts/V2_API_ROUTE_INVENTORY.md` 为唯一清单；`apps/api/src/api-contract-baseline-alignment.test.ts` 直接将该清单与运行时 `app.routes` 对照，并由 `test:wave13`、`check:wave13` 接入。Wave13 门禁保留自身安全路由覆盖，但不得另存全局 route count。
+- 业务事实与边界：先看对应 `docs/contracts/`，再看 `packages/contracts/`、`packages/domain/`、API route/service 与其定向测试；Migration 的唯一事实是 `migrations/` 连续 ledger，当前基线/发布边界见 `docs/CURRENT_SYSTEM_STATE.md`。
+- 变更治理：Decision Register、active OpenSpec、Acceptance Matrix 依次界定已决策事项、当前变更和验收；历史 Migration、archived OpenSpec、`FREEZE`/audit 文档只提供追溯证据，不能反向覆盖现行规则。
+
+对单一修改先运行受影响的定向 test/verifier；完成后再运行 `npm run verify:openspec:strict`、`npm run check` 与 `git diff --check`。`/review` 是 demo/pilot 评审边界，staging 与 production 是独立资源和批准边界，三者都不能由本地全绿替代。
+
 ## 必读顺序
 
 1. `AGENTS.md` — Agent / 开发执行硬边界
