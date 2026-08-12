@@ -6,6 +6,7 @@ import type {
   AcquisitionProspectSignalDto,
   AcquisitionProspectStatus,
   SqlDatabase,
+  SqlStatement,
 } from '@ygb/contracts';
 import { hashCanonicalJson } from '@ygb/domain';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -17,6 +18,10 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
+import {
+  createOutboxStatements,
+  prepareOutboxEvent,
+} from '../foundation/outbox';
 import { requireAcquisitionOperator } from './authorization';
 import {
   acquireAcquisitionCommand,
@@ -133,24 +138,56 @@ export async function readAcquisitionProspect(database:SqlDatabase,actor:Assignm
 export async function updateAcquisitionProspect(
   database:SqlDatabase,prospectId:string,input:{expectedVersion:number;status:AcquisitionProspectStatus;aiScore:number|null;note:string|null},command:AcquisitionCommandContext,
 ):Promise<{prospect:AcquisitionProspectDto;replayed:boolean}>{
-  requireAcquisitionOperator(command.actor);const current=await readAcquisitionProspect(database,command.actor,prospectId);
-  if(current.version!==input.expectedVersion)throw new AcquisitionError('VERSION_CONFLICT',409);
-  if(current.status==='CONVERTED'||input.status==='CONVERTED')throw new AcquisitionError('STATE_CONFLICT',409);
-  const aiScore=score(input.aiScore);const note=optionalText(input.note,4000);const now=Date.now();
-  await database.prepare(`UPDATE acquisition_prospects SET status=?,ai_score=?,note=?,version=version+1,updated_at=? WHERE id=? AND version=?`)
-    .bind(input.status,aiScore,note,now,current.prospect_id,current.version).run();
-  return{prospect:await readAcquisitionProspect(database,command.actor,current.prospect_id),replayed:false};
+  requireAcquisitionOperator(command.actor);const id=identifier(prospectId);const current=await readAcquisitionProspect(database,command.actor,id);
+  const expected=input.expectedVersion;if(!Number.isSafeInteger(expected)||expected<1)validation();
+  const aiScore=score(input.aiScore);const note=optionalText(input.note,4000);
+  const acquired=await acquireAcquisitionCommand<{prospect:AcquisitionProspectDto}>(database,command,'UPDATE_ACQUISITION_PROSPECT','ACQUISITION_PROSPECT',id,{expected_version:expected,status:input.status,ai_score:aiScore,note});
+  if(acquired.acquired.kind==='REPLAY')return{...acquired.acquired.response,replayed:true};
+  try{
+    if(current.version!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    if(current.status==='CONVERTED'||input.status==='CONVERTED')throw new AcquisitionError('STATE_CONFLICT',409);
+    const prospect:AcquisitionProspectDto={...current,status:input.status,ai_score:aiScore,note,version:expected+1,updated_at:acquired.now};
+    const outbox=await prepareOutboxEvent({id:crypto.randomUUID(),dedupKey:`acquisition-prospect-updated:${id}:${expected+1}`,eventType:'ACQUISITION_PROSPECT_UPDATED',aggregateType:'ACQUISITION_PROSPECT',aggregateId:id,payload:{prospect_id:id,status:input.status,ai_score:aiScore,note,version:expected+1},createdAt:acquired.now});
+    await database.batch([
+      database.prepare(`UPDATE acquisition_prospects SET status=?,ai_score=?,note=?,version=version+1,updated_at=? WHERE id=? AND version=? AND status<>'CONVERTED'`).bind(input.status,aiScore,note,acquired.now,id,expected),
+      changedOnce(database),
+      createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'ACQUISITION_PROSPECT',aggregateId:id,eventType:'ACQUISITION_PROSPECT_UPDATED',actor:auditActor(command.actor),requestId:command.requestId,idempotencyKey:command.idempotencyKey,previousState:{status:current.status,ai_score:current.ai_score,note:current.note,version:expected},nextState:{status:input.status,ai_score:aiScore,note,version:expected+1},createdAt:acquired.now}),
+      ...createOutboxStatements(database,outbox),
+      ...finishAcquisitionCommand(database,acquired.acquired.claim,{prospect},acquired.now,{prospect_id:id}),
+      database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN (SELECT COUNT(*) FROM acquisition_prospects WHERE id=? AND version=? AND status=? AND ai_score IS ? AND note IS ?)=1 THEN 1 ELSE 0 END`).bind(id,expected+1,input.status,aiScore,note),
+    ]);
+    return{prospect,replayed:false};
+  }catch(error){
+    await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);
+    if(error instanceof AcquisitionError)throw error;
+    const latest=await database.prepare(`SELECT version FROM acquisition_prospects WHERE id=?`).bind(id).first<{version:number}>().catch(()=>null);
+    if(latest&&Number(latest.version)!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    throw error;
+  }
 }
 
 export async function addAcquisitionProspectSignal(
   database:SqlDatabase,prospectId:string,input:{signalType:string;signalContent:string;sourceUrl:string|null;confidence:'LOW'|'MEDIUM'|'HIGH'|'CONFIRMED'},command:AcquisitionCommandContext,
 ):Promise<{signal:AcquisitionProspectSignalDto;replayed:boolean}>{
-  requireAcquisitionOperator(command.actor);await readAcquisitionProspect(database,command.actor,prospectId);
+  requireAcquisitionOperator(command.actor);const prospect=await readAcquisitionProspect(database,command.actor,prospectId);
   const signalType=text(input.signalType,100),signalContent=text(input.signalContent,4000),sourceUrl=optionalUrl(input.sourceUrl);
-  const now=Date.now(),id=crypto.randomUUID();
-  await database.prepare(`INSERT INTO acquisition_prospect_signals(id,prospect_id,signal_type,signal_content,source_url,confidence,created_by_actor_type,created_by_actor_id,created_at)
-    VALUES(?,?,?,?,?,?,'STAFF',?,?)`).bind(id,prospectId,signalType,signalContent,sourceUrl,input.confidence,command.actor.staffId,now).run();
-  return{signal:{signal_id:id,prospect_id:prospectId,signal_type:signalType,signal_content:signalContent,source_url:sourceUrl,confidence:input.confidence,created_by_actor_type:'STAFF',created_by_actor_id:command.actor.staffId,created_at:now},replayed:false};
+  if(!['LOW','MEDIUM','HIGH','CONFIRMED'].includes(input.confidence))validation();
+  const acquired=await acquireAcquisitionCommand<{signal:AcquisitionProspectSignalDto}>(database,command,'ADD_ACQUISITION_PROSPECT_SIGNAL','ACQUISITION_PROSPECT',prospect.prospect_id,{signal_type:signalType,signal_content:signalContent,source_url:sourceUrl,confidence:input.confidence});
+  if(acquired.acquired.kind==='REPLAY')return{...acquired.acquired.response,replayed:true};
+  const id=crypto.randomUUID();const signal:AcquisitionProspectSignalDto={signal_id:id,prospect_id:prospect.prospect_id,signal_type:signalType,signal_content:signalContent,source_url:sourceUrl,confidence:input.confidence,created_by_actor_type:'STAFF',created_by_actor_id:command.actor.staffId,created_at:acquired.now};
+  try{
+    const outbox=await prepareOutboxEvent({id:crypto.randomUUID(),dedupKey:`acquisition-prospect-signal:${id}`,eventType:'ACQUISITION_PROSPECT_SIGNAL_ADDED',aggregateType:'ACQUISITION_PROSPECT',aggregateId:prospect.prospect_id,payload:{...signal},createdAt:acquired.now});
+    await database.batch([
+      database.prepare(`INSERT INTO acquisition_prospect_signals(id,prospect_id,signal_type,signal_content,source_url,confidence,created_by_actor_type,created_by_actor_id,created_at)
+        VALUES(?,?,?,?,?,?,'STAFF',?,?)`).bind(id,prospect.prospect_id,signalType,signalContent,sourceUrl,input.confidence,command.actor.staffId,acquired.now),
+      changedOnce(database),
+      createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'ACQUISITION_PROSPECT',aggregateId:prospect.prospect_id,eventType:'ACQUISITION_PROSPECT_SIGNAL_ADDED',actor:auditActor(command.actor),requestId:command.requestId,idempotencyKey:command.idempotencyKey,nextState:{signal_id:id,signal_type:signalType,signal_content:signalContent,source_url:sourceUrl,confidence:input.confidence},createdAt:acquired.now}),
+      ...createOutboxStatements(database,outbox),
+      ...finishAcquisitionCommand(database,acquired.acquired.claim,{signal},acquired.now,{prospect_id:prospect.prospect_id,signal_id:id}),
+      database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN (SELECT COUNT(*) FROM acquisition_prospect_signals WHERE id=? AND prospect_id=? AND created_by_actor_type='STAFF' AND created_by_actor_id=?)=1 THEN 1 ELSE 0 END`).bind(id,prospect.prospect_id,command.actor.staffId),
+    ]);
+    return{signal,replayed:false};
+  }catch(error){await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);throw error;}
 }
 
 export async function addMachineProspectSignal(
@@ -178,6 +215,8 @@ async function readProspectById(database:SqlDatabase,id:string):Promise<Acquisit
 function prospectSql(where:string){return`SELECT prospect.id,prospect.lead_type,prospect.marketplace_code,prospect.origin_channel_id,channel.display_name AS origin_channel_name,prospect.display_name,prospect.contact_value,prospect.source_url,prospect.origin_mode,prospect.status,prospect.ai_score,prospect.note,prospect.discovered_at,prospect.converted_lead_id,prospect.version,prospect.created_at,prospect.updated_at FROM acquisition_prospects prospect JOIN acquisition_channels channel ON channel.id=prospect.origin_channel_id WHERE ${where}`;}
 function toProspect(row:ProspectRow):AcquisitionProspectDto{return{prospect_id:row.id,lead_type:row.lead_type,marketplace_code:row.marketplace_code,origin_channel_id:row.origin_channel_id,origin_channel_name:row.origin_channel_name,display_name:row.display_name,contact_value:row.contact_value,source_url:row.source_url,origin_mode:row.origin_mode,status:row.status,ai_score:row.ai_score===null?null:Number(row.ai_score),note:row.note,discovered_at:Number(row.discovered_at),converted_lead_id:row.converted_lead_id,version:Number(row.version),created_at:Number(row.created_at),updated_at:Number(row.updated_at)}}
 function toSignal(row:SignalRow):AcquisitionProspectSignalDto{return{signal_id:row.id,prospect_id:row.prospect_id,signal_type:row.signal_type,signal_content:row.signal_content,source_url:row.source_url,confidence:row.confidence,created_by_actor_type:row.created_by_actor_type,created_by_actor_id:row.created_by_actor_id,created_at:Number(row.created_at)}}
+function changedOnce(database:SqlDatabase):SqlStatement{return database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END`);}
+function auditActor(actor:AssignmentStaffAuthorization){return{type:'STAFF',id:actor.staffId,roles:[...actor.roles]};}
 function score(value:number|null):number|null{if(value===null)return null;if(!Number.isSafeInteger(value)||value<0||value>100)validation();return value;}
 function optionalUrl(value:string|null):string|null{const textValue=optionalText(value,2000);if(textValue===null)return null;try{const url=new URL(textValue);if(url.protocol!=='https:'&&url.protocol!=='http:')validation();return url.toString();}catch{validation();}}
 function optionalText(value:string|null,maximum:number):string|null{if(value===null)return null;const normalized=value.normalize('NFKC').trim();if(normalized.length===0)return null;if(normalized.length>maximum||/[\u0000-\u001f\u007f]/u.test(normalized))validation();return normalized;}

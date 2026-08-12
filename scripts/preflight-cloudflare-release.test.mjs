@@ -62,6 +62,19 @@ describe('Cloudflare release preflight', () => {
     expect(errors).toContain('routes.0.pattern:origin_mismatch');
   });
 
+  it('blocks production when the operational alert sink is disabled or unverified', () => {
+    const config = anonymousConfig('production');
+    config.vars.OPERATIONAL_ALERT_MODE = 'disabled';
+    config.vars.OPERATIONAL_ALERT_SINK_VERIFIED = 'false';
+    const errors = validateReleaseConfig(config, 'production');
+    expect(errors).toContain('vars.OPERATIONAL_ALERT_MODE:must_be_local');
+    expect(errors).toContain('vars.OPERATIONAL_ALERT_SINK_VERIFIED:must_be_true');
+    const staging = anonymousConfig('staging');
+    expect(staging.vars).toMatchObject({ OPERATIONAL_ALERT_MODE: 'disabled',
+      OPERATIONAL_ALERT_SINK_VERIFIED: 'false' });
+    expect(validateReleaseConfig(staging, 'staging')).toEqual([]);
+  });
+
   it('rejects retired and optional runtime configuration in the core release', () => {
     const config = anonymousConfig('production');
     config.vars.FEISHU_WORKBENCH_SYNC_ENABLED = 'false';
@@ -171,6 +184,7 @@ function anonymousConfig(environment) {
   const origin = `https://${environment}.example.invalid`;
   replacePlaceholders(config, (value) => {
     if (value === 'REQUIRED_RELEASE_COMMIT_SHA') return 'a'.repeat(40);
+    if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_VERIFIED') return 'true';
     if (value.endsWith('_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN')
       || value === 'REQUIRED_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN') {
       return `https://${environment}-team.cloudflareaccess.com`;

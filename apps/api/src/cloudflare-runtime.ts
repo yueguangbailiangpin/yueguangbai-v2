@@ -64,7 +64,8 @@ export function resolveCloudflareRuntime(
     || !validStaffAccessReleaseBindings(bindings, appOrigin)
     || !booleanFlag(bindings.SCHEDULED_OPERATIONS_ENABLED)
     || !booleanFlag(bindings.ACQUISITION_MAINTENANCE_ENABLED)
-    || bindings.OPERATIONAL_ALERT_MODE !== 'disabled') return null;
+    || bindings.OPERATIONAL_ALERT_MODE !== (environment==='production'?'local':'disabled')
+    || bindings.OPERATIONAL_ALERT_SINK_VERIFIED !== (environment==='production'?'true':'false')) return null;
 
   return Object.freeze({
     environment,

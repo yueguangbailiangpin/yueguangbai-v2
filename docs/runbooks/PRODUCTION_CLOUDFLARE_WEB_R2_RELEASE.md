@@ -38,7 +38,7 @@
 - Drive：total、copy、proxy、R2-delete 全部分离；任何失败先关闭 delete，再关闭 proxy/copy。
 - MCP：global 与 local mock 都 false；未来生产 transport/逐工具另有开关。
 - 文件/R2：停止新上传；保留 D1 intent/manifest；只通过现有补偿/cleanup 重试，禁止人工公开 key 或 URL。
-- 告警：未完成独立接收器 Change 前 `OPERATIONAL_ALERT_MODE=disabled`，因此仍是 Production GO 阻断，不能把“关闭”写成“已验收”。
+- 告警：production 模板要求 `OPERATIONAL_ALERT_MODE=local`，并把 `OPERATIONAL_ALERT_SINK_VERIFIED` 保留为操作者必填占位；未完成带时间戳的投递、失败和恢复演练前不得填 `true`，preflight 与 `/ready` 均保持阻断。local/staging 可以显式 disabled，但不能借此绕过 production。当前 `local` 是安全结构化日志 sink，不冒充外部通知接收器；外部接收器仍需独立 Change 和授权。
 
 ## Worker/Web 兼容回滚
 

@@ -42,6 +42,7 @@ export type AppBindings = StaffAuthProviderBindings
   ACQUISITION_MAINTENANCE_ENABLED?: string;
   OPERATIONAL_ALERT_SINK?: OperationalAlertSink;
   OPERATIONAL_ALERT_MODE?: string;
+  OPERATIONAL_ALERT_SINK_VERIFIED?: string;
   SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED?: string;
 };
 

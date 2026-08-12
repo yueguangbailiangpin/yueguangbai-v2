@@ -2,7 +2,7 @@ import { describe,expect,it,vi } from 'vitest';
 import { HEALTH_ISSUE_TITLE,probeProductionHealth,reconcileHealthIssue } from './production-health-monitor.mjs';
 
 const endpoint='https://app.example.test/ready';
-const checks={schema:'ok',scheduler:'ok',acquisition_maintenance:'ok',object_storage:'ok',recovery:'ok',staff_access:'ok',release:'ok'};
+const checks={schema:'ok',scheduler:'ok',acquisition_maintenance:'ok',operational_alerts:'ok',object_storage:'ok',recovery:'ok',staff_access:'ok',release:'ok'};
 
 describe('independent production readiness monitor',()=>{
   it('accepts only the bounded full readiness envelope',async()=>{

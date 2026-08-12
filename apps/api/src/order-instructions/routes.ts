@@ -68,6 +68,7 @@ export function registerOrderInstructionRoutes(app: Hono<any>): void {
   );
   app.post(
     '/api/staff/order-instructions/:id/assets/prepare',
+    customerAuthOriginGuard(),
     withErrors(prepareAssets),
   );
   app.get(
@@ -76,14 +77,17 @@ export function registerOrderInstructionRoutes(app: Hono<any>): void {
   );
   app.post(
     '/api/staff/order-instructions/:id/publish',
+    customerAuthOriginGuard(),
     withErrors(publishInstruction),
   );
   app.post(
     '/api/staff/order-instructions/:id/cancel',
+    customerAuthOriginGuard(),
     withErrors(cancelInstruction),
   );
   app.post(
     '/api/staff/order-instructions/expiry-scan/run',
+    customerAuthOriginGuard(),
     withErrors(runExpiryScan),
   );
   app.get(
@@ -92,10 +96,12 @@ export function registerOrderInstructionRoutes(app: Hono<any>): void {
   );
   app.post(
     '/api/staff/order-instructions/assets/reconciliation/run',
+    customerAuthOriginGuard(),
     withErrors(runAssetReconciliation),
   );
   app.post(
     '/api/staff/order-instructions/reconciliation/run',
+    customerAuthOriginGuard(),
     withErrors(runReconciliation),
   );
 }
@@ -167,7 +173,11 @@ async function getStaffInstructionVersions(
 
 async function prepareAssets(context: Context<any>): Promise<Response> {
   const actor = requireStaffActor(context);
-  const body = record(await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT));
+  const body = exactBody(
+    await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
+    ['expected_version'],
+    ['render_profile'],
+  );
   const generatorBinding = context.env.KEYWORD_IMAGE_GENERATOR as
     | TrustedKeywordGeneratorBinding
     | null
@@ -243,7 +253,11 @@ async function getAssetBatch(context: Context<any>): Promise<Response> {
 
 async function publishInstruction(context: Context<any>): Promise<Response> {
   const actor = requireStaffActor(context);
-  const body = record(await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT));
+  const body = exactBody(
+    await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
+    ['asset_batch_id', 'expected_version'],
+    ['staff_public_note'],
+  );
   const result = await publishOrderInstruction(context.env.DB, {
     instructionId: requiredIdentifier(context.req.param('id')),
     assetBatchId: requiredIdentifier(body['asset_batch_id']),
@@ -259,7 +273,10 @@ async function publishInstruction(context: Context<any>): Promise<Response> {
 
 async function cancelInstruction(context: Context<any>): Promise<Response> {
   const actor = requireStaffActor(context);
-  const body = record(await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT));
+  const body = exactBody(
+    await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
+    ['expected_version', 'reason'],
+  );
   const result = await cancelOrderInstruction(context.env.DB, {
     instructionId: requiredIdentifier(context.req.param('id')),
     expectedVersion: integer(body['expected_version']),
@@ -274,7 +291,11 @@ async function cancelInstruction(context: Context<any>): Promise<Response> {
 
 async function runExpiryScan(context: Context<any>): Promise<Response> {
   const actor = requireStaffActor(context);
-  const body = record(await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT));
+  const body = exactBody(
+    await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
+    [],
+    ['limit'],
+  );
   const result = await runOrderInstructionExpiryScan(context.env.DB, {
     marketplaceCode: 'JP',
     ...(body['limit'] == null ? {} : { limit: integer(body['limit']) }),
@@ -300,7 +321,11 @@ async function runAssetReconciliation(
   context: Context<any>,
 ): Promise<Response> {
   const actor = requireStaffActor(context);
-  const body = record(await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT));
+  const body = exactBody(
+    await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
+    [],
+    ['limit'],
+  );
   const objectStorage = context.env.FILE_OBJECT_STORAGE as
     | ObjectStorageAdapter
     | null
@@ -323,7 +348,11 @@ async function runReconciliation(context: Context<any>): Promise<Response> {
   if (!actor.permissions.has('ORDER_INSTRUCTION_MANAGE')) {
     throw new OrderInstructionError('FORBIDDEN', 403);
   }
-  const body = record(await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT));
+  const body = exactBody(
+    await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
+    [],
+    ['after_reservation_id', 'limit'],
+  );
   const result = await reconcileApprovedReservations(context.env.DB, {
     marketplaceCode: 'JP',
     ...(optionalString(body['after_reservation_id']) === null
@@ -421,11 +450,21 @@ function requireIdempotencyKey(context: Context<any>): string {
   }
 }
 
-function record(value: unknown): Record<string, unknown> {
+function exactBody(
+  value: unknown,
+  requiredKeys: readonly string[],
+  optionalKeys: readonly string[] = [],
+): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new OrderInstructionError('VALIDATION_ERROR', 400);
   }
-  return value as Record<string, unknown>;
+  const body = value as Record<string, unknown>;
+  const allowedKeys = new Set([...requiredKeys, ...optionalKeys]);
+  if (Object.keys(body).some((key) => !allowedKeys.has(key))
+    || requiredKeys.some((key) => !Object.prototype.hasOwnProperty.call(body, key))) {
+    throw new OrderInstructionError('VALIDATION_ERROR', 400);
+  }
+  return body;
 }
 
 function requiredIdentifier(value: unknown, maximum = 200): string {

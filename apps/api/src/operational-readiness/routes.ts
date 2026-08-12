@@ -1,5 +1,6 @@
 import { apiSuccess,type ObjectStorageAdapter,type SqlDatabase } from '@ygb/contracts';
 import type { Hono } from 'hono';
+import { safeResolveOperationalAlertSink, type OperationalAlertSink } from '../scheduled-operations/signals';
 
 const TARGET_SCHEMA=65;
 const MAX_JOB_STALENESS_MS=6*60*60*1000;
@@ -11,13 +12,13 @@ export function registerOperationalReadinessRoutes(app:Hono<any>):void{
   app.get('/ready',async(context)=>{
     const now=Date.now();
     const result=await evaluateReadiness(context.env.DB,context.env.FILE_OBJECT_STORAGE??null,context.env,now)
-      .catch(()=>({ready:false,schema:false,scheduler:false,acquisition_maintenance:false,object_storage:false,recovery:false,staff_access:false,release:false}));
+      .catch(()=>({ready:false,schema:false,scheduler:false,acquisition_maintenance:false,operational_alerts:false,object_storage:false,recovery:false,staff_access:false,release:false}));
     context.header('Cache-Control','no-store');
     return context.json(apiSuccess({
       status:result.ready?'ready' as const:'not_ready' as const,
       checks:{
         schema:result.schema?'ok':'failed',scheduler:result.scheduler?'ok':'failed',
-        acquisition_maintenance:result.acquisition_maintenance?'ok':'failed',object_storage:result.object_storage?'ok':'failed',
+        acquisition_maintenance:result.acquisition_maintenance?'ok':'failed',operational_alerts:result.operational_alerts?'ok':'failed',object_storage:result.object_storage?'ok':'failed',
         recovery:result.recovery?'ok':'failed',staff_access:result.staff_access?'ok':'failed',release:result.release?'ok':'failed',
       },timestamp:now,
     },String(context.get('requestId')??crypto.randomUUID())),result.ready?200:503);
@@ -38,12 +39,26 @@ async function evaluateReadiness(database:SqlDatabase,storage:ObjectStorageAdapt
   const maintenance=await database.prepare(`SELECT last_succeeded_at,last_failed_at FROM acquisition_maintenance_state WHERE singleton_id=1`).first<{last_succeeded_at:number|null;last_failed_at:number|null}>();
   const maintenanceSucceeded=maintenance?.last_succeeded_at==null?null:Number(maintenance.last_succeeded_at),maintenanceFailed=maintenance?.last_failed_at==null?null:Number(maintenance.last_failed_at);
   const acquisition_maintenance=bindings['ACQUISITION_MAINTENANCE_ENABLED']==='true'&&maintenanceSucceeded!==null&&now-maintenanceSucceeded<=MAX_ACQUISITION_STALENESS_MS&&(maintenanceFailed===null||maintenanceSucceeded>=maintenanceFailed);
+  const operational_alerts=operationalAlertsReady(bindings);
   const object_storage=await storageReady(database,storage);
   const runningRelease=releaseSha(bindings['APP_RELEASE_SHA']);const release=runningRelease!==null;
   const recoveryRow=await database.prepare(`SELECT release_sha,schema_version FROM production_recovery_attestations WHERE schema_version=? ORDER BY verified_at DESC,id DESC LIMIT 1`).bind(TARGET_SCHEMA).first<{release_sha:string;schema_version:number}>();
   const recovery=release&&Number(recoveryRow?.schema_version??0)===TARGET_SCHEMA&&String(recoveryRow?.release_sha??'').toLowerCase()===runningRelease;
   const staff_access=validAccessConfig(bindings['STAFF_ACCESS_TEAM_DOMAIN'],bindings['STAFF_ACCESS_AUD']);
-  return{ready:schema&&scheduler&&acquisition_maintenance&&object_storage&&recovery&&staff_access&&release,schema,scheduler,acquisition_maintenance,object_storage,recovery,staff_access,release};
+  return{ready:schema&&scheduler&&acquisition_maintenance&&operational_alerts&&object_storage&&recovery&&staff_access&&release,schema,scheduler,acquisition_maintenance,operational_alerts,object_storage,recovery,staff_access,release};
+}
+
+function operationalAlertsReady(bindings:Record<string,unknown>):boolean{
+  const environment=bindings['APP_ENVIRONMENT'];
+  const mode=bindings['OPERATIONAL_ALERT_MODE'];
+  const injected=bindings['OPERATIONAL_ALERT_SINK'];
+  const sink=safeResolveOperationalAlertSink({
+    ...(typeof mode==='string'?{mode}:{}),
+    ...(injected&&typeof injected==='object'&&'notify' in injected?{localSink:injected as OperationalAlertSink}:{}),
+  });
+  if(environment==='production')return mode==='local'&&bindings['OPERATIONAL_ALERT_SINK_VERIFIED']==='true'&&sink!==null;
+  if(environment==='local'||environment==='staging')return(mode==='disabled'&&injected===undefined)||(mode==='local'&&sink!==null);
+  return false;
 }
 
 async function storageReady(database:SqlDatabase,storage:ObjectStorageAdapter|null):Promise<boolean>{

@@ -19,6 +19,8 @@ import {
   createAcquisitionChannel,
   recordAcquisitionConsultation,
 } from './admin';
+import { registerAcquisitionMachineCredentialRoutes } from './machine-credential-routes';
+import { registerAcquisitionReportingOperationRoutes } from './reporting-operations-routes';
 import { registerAcquisitionRoutes } from './routes';
 
 const ORIGIN = 'https://api.local.test';
@@ -252,6 +254,235 @@ describe('acquisition HTTP authority and privacy boundary', () => {
         'trusted-version-drift-0001'
       )`).get()).toEqual({ count: 0 });
   });
+
+  it('creates and revokes a machine credential with non-secret replay and atomic cleanup', async () => {
+    database = db();
+    const channel = await seedChannelAndAssignment(database);
+    const createBody = { machine_name: '日本买家 Agent', marketplace_codes: ['AMAZON_JP'],
+      channel_ids: [channel], hourly_request_limit: 120 };
+    const first = await request(auth('owner','staff-owner-route'),
+      '/api/staff/acquisition/machines', {
+        method: 'POST', headers: headers('route-machine-create-0001'),
+        body: JSON.stringify(createBody),
+      });
+    expect(first.status).toBe(201);
+    const firstBody = await first.json() as { data: { machine: {
+      machine_id: string; machine_secret: string|null; secret_available: boolean;
+    }; replayed: boolean } };
+    expect(firstBody.data.replayed).toBe(false);
+    expect(firstBody.data.machine.secret_available).toBe(true);
+    expect(firstBody.data.machine.machine_secret).toMatch(/^mw_machine_/u);
+
+    const replay = await request(auth('owner','staff-owner-route'),
+      '/api/staff/acquisition/machines', {
+        method: 'POST', headers: headers('route-machine-create-0001'),
+        body: JSON.stringify(createBody),
+      });
+    expect(replay.status).toBe(201);
+    await expect(replay.json()).resolves.toMatchObject({ data: { replayed: true,
+      machine: { machine_id: firstBody.data.machine.machine_id,
+        machine_secret: null, secret_available: false } } });
+
+    const conflict = await request(auth('owner','staff-owner-route'),
+      '/api/staff/acquisition/machines', {
+        method: 'POST', headers: headers('route-machine-create-0001'),
+        body: JSON.stringify({ ...createBody, hourly_request_limit: 121 }),
+      });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_CONFLICT' } });
+
+    database.raw.prepare(`INSERT INTO acquisition_machine_rate_buckets(
+      machine_id,bucket_hour,request_count,updated_at) VALUES(?,?,?,?)`)
+      .run(firstBody.data.machine.machine_id, 1, 3, 1000);
+    const revoke = await request(auth('owner','staff-owner-route'),
+      `/api/staff/acquisition/machines/${firstBody.data.machine.machine_id}/revoke`, {
+        method: 'POST', headers: headers('route-machine-revoke-0001'), body: '{}',
+      });
+    expect(revoke.status).toBe(200);
+    const revoked = await revoke.json() as { data: { machine: {
+      machine_id: string; status: string; revoked_at: number;
+    }; replayed: boolean } };
+    expect(revoked.data).toMatchObject({ replayed: false,
+      machine: { machine_id: firstBody.data.machine.machine_id, status: 'REVOKED' } });
+    const revokeReplay = await request(auth('owner','staff-owner-route'),
+      `/api/staff/acquisition/machines/${firstBody.data.machine.machine_id}/revoke`, {
+        method: 'POST', headers: headers('route-machine-revoke-0001'), body: '{}',
+      });
+    expect(revokeReplay.status).toBe(200);
+    await expect(revokeReplay.json()).resolves.toMatchObject({ data: { replayed: true,
+      machine: { revoked_at: revoked.data.machine.revoked_at } } });
+
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_machine_credentials) AS credentials,
+      (SELECT COUNT(*) FROM acquisition_machine_rate_buckets) AS buckets,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_type='ACQUISITION_MACHINE_CREDENTIAL') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_type='ACQUISITION_MACHINE_CREDENTIAL') AS outbox,
+      (SELECT COUNT(*) FROM command_idempotency_records WHERE action LIKE '%ACQUISITION_MACHINE_CREDENTIAL' AND status='COMMITTED') AS commands`).get())
+      .toEqual({ credentials: 1, buckets: 0, audits: 2, outbox: 2, commands: 2 });
+    const persisted = JSON.stringify(database.raw.prepare(`SELECT
+      (SELECT group_concat(response_json) FROM command_idempotency_records WHERE action LIKE '%ACQUISITION_MACHINE_CREDENTIAL') AS responses,
+      (SELECT group_concat(next_state_json) FROM audit_events WHERE aggregate_type='ACQUISITION_MACHINE_CREDENTIAL') AS audits,
+      (SELECT group_concat(payload_json) FROM integration_outbox WHERE aggregate_type='ACQUISITION_MACHINE_CREDENTIAL') AS outbox`).get());
+    expect(persisted).not.toContain(firstBody.data.machine.machine_secret);
+  });
+
+  it('guards Prospect update and replays Prospect signals through the real route chain', async () => {
+    database = db();
+    const channel = await seedChannelAndAssignment(database);
+    const ownerActor = auth('owner','staff-owner-route');
+    const created = await request(ownerActor, '/api/staff/acquisition/prospects', {
+      method: 'POST', headers: headers('route-prospect-create-0001'),
+      body: JSON.stringify({ lead_type: 'BUYER', marketplace_code: 'AMAZON_JP',
+        channel_id: channel, display_name: '并发潜客', contact_value: null,
+        source_url: null, origin_mode: 'HUMAN', note: null, ai_score: null }),
+    });
+    expect(created.status).toBe(201);
+    const prospectId = ((await created.json()) as { data: {
+      prospect: { prospect_id: string } } }).data.prospect.prospect_id;
+
+    const update = (key:string,status:'RESEARCHING'|'QUALIFIED')=>request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/update`, {
+        method: 'POST', headers: headers(key), body: JSON.stringify({
+          expected_version: 1, status, ai_score: 60, note: status,
+        }),
+      });
+    const raced = await Promise.all([
+      update('route-prospect-update-race-a','RESEARCHING'),
+      update('route-prospect-update-race-b','QUALIFIED'),
+    ]);
+    expect(raced.map((response)=>response.status).sort()).toEqual([200,409]);
+    const winner = raced.find((response)=>response.status===200)!;
+    const winnerBody = await winner.json() as { data: { prospect: {
+      status: string; version: number }; replayed: boolean } };
+    expect(winnerBody.data).toMatchObject({ replayed: false,
+      prospect: { version: 2 } });
+    const loser = raced.find((response)=>response.status===409)!;
+    expect(await loser.json()).toMatchObject({ error: { code: 'VERSION_CONFLICT' } });
+    expect(database.raw.prepare(`SELECT status,version FROM acquisition_prospects WHERE id=?`)
+      .get(prospectId)).toEqual({ status: winnerBody.data.prospect.status, version: 2 });
+
+    const signalBody = { signal_type: 'PUBLIC_POST', signal_content: '同一条公开信号',
+      source_url: 'https://example.test/post/1', confidence: 'HIGH' };
+    const signal = await request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/signals`, {
+        method: 'POST', headers: headers('route-prospect-signal-0001'),
+        body: JSON.stringify(signalBody),
+      });
+    expect(signal.status).toBe(201);
+    const signalBodyFirst = await signal.json() as { data: { signal: {
+      signal_id: string }; replayed: boolean } };
+    const signalReplay = await request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/signals`, {
+        method: 'POST', headers: headers('route-prospect-signal-0001'),
+        body: JSON.stringify(signalBody),
+      });
+    expect(signalReplay.status).toBe(201);
+    await expect(signalReplay.json()).resolves.toMatchObject({ data: { replayed: true,
+      signal: { signal_id: signalBodyFirst.data.signal.signal_id } } });
+    const signalConflict = await request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/signals`, {
+        method: 'POST', headers: headers('route-prospect-signal-0001'),
+        body: JSON.stringify({ ...signalBody, confidence: 'CONFIRMED' }),
+      });
+    expect(signalConflict.status).toBe(409);
+    expect(await signalConflict.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_CONFLICT' } });
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_prospect_signals WHERE prospect_id=?) AS signals,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='ACQUISITION_PROSPECT_SIGNAL_ADDED') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='ACQUISITION_PROSPECT_SIGNAL_ADDED') AS outbox`).get(prospectId,prospectId,prospectId))
+      .toEqual({ signals: 1, audits: 1, outbox: 1 });
+
+    const unknownFailure = await request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/update`, {
+        method: 'POST', headers: headers('route-prospect-update-dependency-0001'),
+        body: JSON.stringify({ expected_version: 2, status: 'CONTACTED',
+          ai_score: 70, note: '依赖故障不得伪装冲突' }),
+      }, new ConsultationBatchFailureDatabase(database));
+    expect(unknownFailure.status).toBe(503);
+    expect(await unknownFailure.json()).toMatchObject({
+      error: { code: 'DEPENDENCY_UNAVAILABLE' },
+    });
+    expect(database.raw.prepare(`SELECT status,error_code FROM command_idempotency_records
+      WHERE idempotency_key='route-prospect-update-dependency-0001'`).get())
+      .toEqual({ status: 'FAILED', error_code: 'ACQUISITION_COMMAND_FAILED' });
+    expect(database.raw.prepare(`SELECT version FROM acquisition_prospects WHERE id=?`)
+      .get(prospectId)).toEqual({ version: 2 });
+  });
+
+  it('replays assignment revoke and serializes source correction by expected sequence', async () => {
+    database = db();
+    const channel = await seedChannelAndAssignment(database);
+    const ownerActor = auth('owner','staff-owner-route');
+    const assignment = database.raw.prepare(`SELECT id FROM acquisition_staff_channel_assignments
+      WHERE staff_id='staff-pre' AND channel_id=?`).get(channel) as { id: string };
+    const revokeBody = { expected_version: 1, reason: '迁移兼容分配停用' };
+    const revoked = await request(ownerActor,
+      `/api/staff/acquisition/channel-assignments/${assignment.id}/revoke`, {
+        method: 'POST', headers: headers('route-assignment-revoke-0001'),
+        body: JSON.stringify(revokeBody),
+      });
+    expect(revoked.status).toBe(200);
+    const replay = await request(ownerActor,
+      `/api/staff/acquisition/channel-assignments/${assignment.id}/revoke`, {
+        method: 'POST', headers: headers('route-assignment-revoke-0001'),
+        body: JSON.stringify(revokeBody),
+      });
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({ data: { replayed: true,
+      assignment: { assignment_id: assignment.id, status: 'REVOKED', version: 2 } } });
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_assignment_events WHERE assignment_id=? AND event_type='REVOKED') AS events,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='ACQUISITION_ASSIGNMENT_REVOKED') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='ACQUISITION_ASSIGNMENT_REVOKED') AS outbox`).get(assignment.id,assignment.id,assignment.id))
+      .toEqual({ events: 1, audits: 1, outbox: 1 });
+
+    const correctionTarget = await createAcquisitionChannel(database, {
+      code: 'ROUTE_CORRECTION', platformName: '小红书', leadType: 'BUYER',
+      marketplaceCode: 'AMAZON_JP', displayName: '来源更正目标',
+    }, { actor: ownerActor, idempotencyKey: 'route-correction-channel-0001',
+      requestId: 'route-correction-channel-request', now: 2000 });
+    const lead = await request(ownerActor, '/api/staff/acquisition/leads', {
+      method: 'POST', headers: headers('route-correction-lead-0001'),
+      body: JSON.stringify(leadBody(channel, 'route_correction_wx')),
+    });
+    expect(lead.status).toBe(201);
+    const leadId = ((await lead.json()) as { data: { lead: { lead_id: string } } })
+      .data.lead.lead_id;
+    const correctionBody = { lead_id: leadId,
+      new_channel_id: correctionTarget.channel.channel_id,
+      expected_correction_sequence: 0, reason: '首次登记渠道选择错误' };
+    const correction = await request(ownerActor,
+      '/api/staff/acquisition/source-corrections', {
+        method: 'POST', headers: headers('route-source-correction-0001'),
+        body: JSON.stringify(correctionBody),
+      });
+    expect(correction.status).toBe(201);
+    const correctionResponse = await correction.json() as { data: { correction: {
+      correction_id: string; correction_sequence: number }; replayed: boolean } };
+    expect(correctionResponse.data).toMatchObject({ replayed: false,
+      correction: { correction_sequence: 1 } });
+    const correctionReplay = await request(ownerActor,
+      '/api/staff/acquisition/source-corrections', {
+        method: 'POST', headers: headers('route-source-correction-0001'),
+        body: JSON.stringify(correctionBody),
+      });
+    expect(correctionReplay.status).toBe(201);
+    await expect(correctionReplay.json()).resolves.toMatchObject({ data: { replayed: true,
+      correction: { correction_id: correctionResponse.data.correction.correction_id } } });
+    const stale = await request(ownerActor,
+      '/api/staff/acquisition/source-corrections', {
+        method: 'POST', headers: headers('route-source-correction-stale-0001'),
+        body: JSON.stringify({ ...correctionBody,
+          new_channel_id: channel }),
+      });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: { code: 'VERSION_CONFLICT' } });
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_lead_source_corrections WHERE lead_id=?) AS corrections,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='ACQUISITION_SOURCE_CORRECTED') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='ACQUISITION_SOURCE_CORRECTED') AS outbox`).get(leadId,leadId,leadId))
+      .toEqual({ corrections: 1, audits: 1, outbox: 1 });
+  });
 });
 
 async function request(
@@ -265,6 +496,8 @@ async function request(
     context.set('staffAuthorization', actor); await next();
   });
   registerAcquisitionRoutes(app);
+  registerAcquisitionMachineCredentialRoutes(app);
+  registerAcquisitionReportingOperationRoutes(app);
   return app.request(`${ORIGIN}${path}`, init, {
     DB: boundDatabase, CUSTOMER_SECURITY_TOKEN_SECRET: SECRET,
   });

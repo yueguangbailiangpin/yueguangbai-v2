@@ -50,7 +50,7 @@ Custom Domain 只接受操作者填入的精确 hostname；本 Change 不选择�
 
 ## 默认关闭与 Secret
 
-Staff Auth 只使用 Cloudflare Access 与 Moonwhite Staff 数据库，模板不得包含任何飞书登录、绑定、同步、回调或告警配置；重新出现即由 preflight 阻断。Staging 保持 Scheduler 与获客维护关闭；production 仅启用已审查的内部 Scheduler 与获客维护。Drive copy/proxy/R2-delete、Staff MCP/local mock 和外部告警投递继续默认关闭，独立 Change 和老板逐项批准前不得启用。
+Staff Auth 只使用 Cloudflare Access 与 Moonwhite Staff 数据库，模板不得包含任何飞书登录、绑定、同步、回调或告警配置；重新出现即由 preflight 阻断。Staging 保持 Scheduler、获客维护与 operational alert sink 关闭；production 仅启用已审查的内部 Scheduler、获客维护和安全结构化日志 alert sink，并要求独立演练后设置 `OPERATIONAL_ALERT_SINK_VERIFIED=true`，否则 preflight 与 `/ready` 失败关闭。Drive copy/proxy/R2-delete、Staff MCP/local mock 和外部告警投递继续默认关闭，独立 Change 和老板逐项批准前不得启用。
 
 Secret 只能通过 Cloudflare managed Secret 或批准的受管渠道注入，不得放在 `vars`、JSON、日志、dry-run 输出、测试 Fixture 或 Git。Preflight 只输出 Secret 名称，不读取或打印值。
 

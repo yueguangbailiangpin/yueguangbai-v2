@@ -11,7 +11,7 @@
 5. R2 Manifest 与 D1 `file_objects` 无 missing/orphan/hash/size/MIME 冲突；
 6. 抽样读取真实 R2 对象并校验 byte size + SHA-256；
 7. recovery attestation 同时绑定当前 release SHA、Schema65、D1 Manifest SHA、R2 Manifest SHA；
-8. `/ready` 返回 ready，并通过 schema/scheduler/acquisition_maintenance/object_storage/staff_access/release/recovery 全部检查。
+8. `/ready` 返回 ready，并通过 schema/scheduler/acquisition_maintenance/operational_alerts/object_storage/staff_access/release/recovery 全部检查。
 
 任何一项失败都保持 Production NO-GO。
 

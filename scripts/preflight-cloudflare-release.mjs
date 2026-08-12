@@ -176,8 +176,17 @@ function validateFrozenDefaults(config, environment) {
   if (record.workers_dev !== false) errors.push('workers_dev:must_be_false');
   if (record.preview_urls !== false) errors.push('preview_urls:must_be_false');
   if (vars?.APP_ENVIRONMENT !== environment) errors.push('vars.APP_ENVIRONMENT:wrong_environment');
-  if (vars?.OPERATIONAL_ALERT_MODE !== 'disabled') {
-    errors.push('vars.OPERATIONAL_ALERT_MODE:must_be_disabled');
+  const alertModeExpected = environment === 'production' ? 'local' : 'disabled';
+  if (vars?.OPERATIONAL_ALERT_MODE !== alertModeExpected) {
+    errors.push(`vars.OPERATIONAL_ALERT_MODE:must_be_${alertModeExpected}`);
+  }
+  const alertVerifiedExpected = environment === 'production' ? 'true' : 'false';
+  const alertVerifiedValue = vars?.OPERATIONAL_ALERT_SINK_VERIFIED;
+  if (alertVerifiedValue !== alertVerifiedExpected
+    && !(environment === 'production'
+      && typeof alertVerifiedValue === 'string'
+      && placeholderPattern.test(alertVerifiedValue))) {
+    errors.push(`vars.OPERATIONAL_ALERT_SINK_VERIFIED:must_be_${alertVerifiedExpected}`);
   }
   const scheduledExpected = environment === 'production' ? 'true' : 'false';
   for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {

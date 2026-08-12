@@ -13,6 +13,7 @@ import { chinaBusinessDateStartEpoch, parseChinaBusinessDate } from '@ygb/domain
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 import { createAuditEventStatement } from '../foundation/audit';
+import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import { requireAcquisitionAdmin, requireAcquisitionOperator } from './authorization';
 import {
   acquireAcquisitionCommand,
@@ -121,11 +122,31 @@ export async function createAcquisitionAssignment(
 export async function revokeAcquisitionAssignment(
   database:SqlDatabase,input:{assignmentId:string;expectedVersion:number;reason:string},command:AcquisitionCommandContext,
 ):Promise<Result<{assignment:AcquisitionChannelAssignmentDto}>>{
-  requireAcquisitionAdmin(command.actor);const existing=await readAssignment(database,identifier(input.assignmentId));if(!existing)throw new AcquisitionError('NOT_FOUND',404);
-  if(existing.status!=='ACTIVE'||existing.version!==version(input.expectedVersion))throw new AcquisitionError('VERSION_CONFLICT',409);const reason=text(input.reason,1000);
-  const assignment={...toAssignment(existing),status:'REVOKED' as const,version:existing.version+1};
-  await database.prepare(`UPDATE acquisition_staff_channel_assignments SET status='REVOKED',version=version+1,updated_at=?,revoked_at=?,revoke_reason=? WHERE id=? AND version=?`)
-    .bind(Date.now(),Date.now(),reason,existing.id,existing.version).run();return {assignment,replayed:false};
+  requireAcquisitionAdmin(command.actor);const id=identifier(input.assignmentId),expected=version(input.expectedVersion),reason=text(input.reason,1000);
+  const existing=await readAssignment(database,id);if(!existing)throw new AcquisitionError('NOT_FOUND',404);
+  const acquired=await acquireAcquisitionCommand<{assignment:AcquisitionChannelAssignmentDto}>(database,command,'REVOKE_ACQUISITION_CHANNEL_ASSIGNMENT','STAFF_ACQUISITION_ASSIGNMENT',id,{expected_version:expected,reason});
+  if(acquired.acquired.kind==='REPLAY')return{...acquired.acquired.response,replayed:true};
+  try{
+    if(existing.status!=='ACTIVE'||existing.version!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    const assignment={...toAssignment(existing),status:'REVOKED' as const,version:expected+1};
+    const outbox=await prepareOutboxEvent({id:crypto.randomUUID(),dedupKey:`acquisition-assignment-revoked:${id}`,eventType:'ACQUISITION_ASSIGNMENT_REVOKED',aggregateType:'STAFF_ACQUISITION_ASSIGNMENT',aggregateId:id,payload:{assignment_id:id,staff_id:existing.staff_id,lead_type:existing.lead_type,channel_id:existing.channel_id,status:'REVOKED',version:expected+1},createdAt:acquired.now});
+    await database.batch([
+      database.prepare(`UPDATE acquisition_staff_channel_assignments SET status='REVOKED',version=version+1,updated_at=?,revoked_at=?,revoke_reason=? WHERE id=? AND status='ACTIVE' AND version=?`).bind(acquired.now,acquired.now,reason,id,expected),
+      assertPreviousStatementChangedOnce(database),
+      database.prepare(`INSERT INTO acquisition_assignment_events(id,assignment_id,event_type,actor_staff_id,idempotency_key,request_hash,reason,created_at) VALUES(?,?,'REVOKED',?,?,?,?,?)`).bind(crypto.randomUUID(),id,command.actor.staffId,command.idempotencyKey,acquired.requestHash,reason,acquired.now),
+      audit(database,command,'STAFF_ACQUISITION_ASSIGNMENT',id,'ACQUISITION_ASSIGNMENT_REVOKED',toAssignment(existing),assignment,reason,acquired.now),
+      ...createOutboxStatements(database,outbox),
+      ...finishAcquisitionCommand(database,acquired.acquired.claim,{assignment},acquired.now,{assignment_id:id}),
+      assertion(database,`SELECT 1 FROM acquisition_staff_channel_assignments WHERE id=? AND status='REVOKED' AND version=? AND revoked_at=? AND revoke_reason=?`,[id,expected+1,acquired.now,reason]),
+    ]);
+    return{assignment,replayed:false};
+  }catch(error){
+    await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);
+    if(error instanceof AcquisitionError)throw error;
+    const latest=await database.prepare(`SELECT version FROM acquisition_staff_channel_assignments WHERE id=?`).bind(id).first<{version:number}>().catch(()=>null);
+    if(latest&&Number(latest.version)!==expected)throw new AcquisitionError('VERSION_CONFLICT',409);
+    throw error;
+  }
 }
 
 export async function recordAcquisitionConsultation(
