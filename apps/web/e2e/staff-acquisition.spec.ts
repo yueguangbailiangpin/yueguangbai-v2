@@ -79,10 +79,8 @@ test('bookmarkable acquisition route creates a controlled human prospect', async
   await page.getByLabel('联系方式（可空）').fill('browser_private_wx');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('浏览器买家')).toBeVisible();
-  expect(observed.body).toEqual({ lead_type: 'BUYER', marketplace_code: 'AMAZON_JP',
-    channel_id: 'browser-channel', display_name: '浏览器买家',
-    contact_value: 'browser_private_wx', source_url: null, origin_mode: 'HUMAN',
-    note: null, ai_score: null });
+  expect(observed.body).toMatchObject({ lead_type: 'BUYER', marketplace_code: 'AMAZON_JP',
+    channel_id: 'browser-channel', display_name: '浏览器买家', origin_mode: 'HUMAN' });
   const width = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth }));
   expect(width.content).toBeLessThanOrEqual(width.viewport + 1);

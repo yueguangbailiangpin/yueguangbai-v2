@@ -1,7 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
-import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import ts from 'typescript';
 
 const root = path.resolve(import.meta.dirname, '..');
 const migrationDirectory = path.join(root, 'migrations');
@@ -66,90 +68,93 @@ try {
   rmSync(recoveryDirectory, { recursive: true, force: true });
 }
 
-const routeSource = source('apps/api/src/acquisition/routes.ts');
-const leadSource = source('apps/api/src/acquisition/leads.ts');
-const routeRegistry = source('apps/api/src/index.ts');
-const contractSource = source('packages/contracts/src/acquisition.ts');
-const contractDoc = source('docs/contracts/STAFF_ACQUISITION_FUNNEL.md');
-const behaviorTests = source('apps/api/src/acquisition/acquisition.test.ts');
-const maintenanceDryRunTests = source('apps/api/src/acquisition/maintenance-dry-run.test.ts');
-const workerSource = source('apps/api/src/worker.ts');
-const webV4Source = source('apps/web/src/staff/acquisition/AcquisitionCoreWorkbenchV4.tsx');
-const browserEvidence = source('apps/web/e2e/staff-acquisition.spec.ts');
-const packageManifest = source('package.json');
-const decision = source('docs/decisions/V2_DECISION_REGISTER.md');
-const canonicalSpec = source('openspec/specs/staff-acquisition-funnel/spec.md');
+const staffRoute = parse('apps/web/src/staff/StaffRouteModule.tsx', ts.ScriptKind.TSX);
+const coreWorkbench = parse('apps/web/src/staff/acquisition/AcquisitionCoreWorkbench.tsx', ts.ScriptKind.TSX);
+const contract = parse('packages/contracts/src/acquisition.ts', ts.ScriptKind.TS);
+const manifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 
-assert(routeRegistry.includes('registerAcquisitionRoutes(app);'),
-  'acquisition route registration is missing');
-assert(routeSource.includes("app.post('/api/staff/acquisition/leads',customerAuthOriginGuard()"),
-  'lead route lacks same-origin middleware');
-assert(routeSource.includes("exactBody(context,['lead_type','marketplace_code','channel_id','prospect_id','wechat_id','display_name','note'])"),
-  'lead route is not exact-field closed for the current explicit-source command');
-assert(contractSource.includes('export interface CreateAcquisitionLeadCommand')
-  && contractSource.includes('channel_id:string;')
-  && contractSource.includes('prospect_id:string|null;')
-  && contractSource.includes('marketplace_code:string;'),
-  'current explicit-source lead contract drift');
-assert(contractDoc.includes('直接 Lead 可以提交或确认显式 `channel_id` 作为来源声明')
-  && contractDoc.includes('该字段不授予权限')
-  && contractDoc.includes('渠道存在且 ACTIVE、Buyer/Seller audience')
-  && contractDoc.includes('当前 Marketplace scope')
-  && contractDoc.includes('与 Prospect 的原始渠道精确一致')
-  && contractDoc.includes('追加式、版本化、审计的受控更正历史')
-  && contractDoc.includes('Personal DENY')
-  && contractDoc.includes('Asia/Shanghai')
-  && contractDoc.includes('admin-business-dashboard')
-  && contractDoc.includes('正式订单和内部利润只通过 BUYER 线索的初始来源归因')
-  && !contractDoc.includes('创建线索的请求不包含 `channel_id`'),
-  'staff acquisition contract source authority or retained boundary drift');
-assert(leadSource.includes('requireLeadDuty(command.actor,input.leadType)')
-  && leadSource.includes('await requireStaffMarket(database,command.actor,marketplaceCode)')
-  && leadSource.includes("channel.status!=='ACTIVE'")
-  && leadSource.includes("channel.lead_type===input.leadType||channel.lead_type==='BOTH'")
-  && leadSource.includes('prospect.origin_channel_id!==channelId'),
-  'lead source authority guards drift');
-assert(behaviorTests.includes('fails closed for disabled, wrong-audience, wrong-market and out-of-scope declared channels')
-  && behaviorTests.includes('inherits a Prospect exact origin and rejects a mismatched declared channel')
-  && behaviorTests.includes('accepts an explicit legal direct source')
-  && behaviorTests.includes('attributes a shared order profit once to Buyer origin and never to Seller funnel'),
-  'required explicit-source behavior evidence is missing');
-assert(packageManifest.includes('"dry-run:staff-acquisition": "vitest run apps/api/src/acquisition/maintenance-dry-run.test.ts"')
-  && packageManifest.includes('npm run dry-run:staff-acquisition')
-  && maintenanceDryRunTests.includes('reports only counts and leaves leads, leases, runs and audit facts unchanged'),
-  'maintenance dry-run evidence ownership drift');
-const maintenanceGate = workerSource.indexOf("bindings.ACQUISITION_MAINTENANCE_ENABLED === 'true'");
-const maintenanceCall = workerSource.indexOf('await runAcquisitionMaintenance', maintenanceGate);
-const maintenanceSecret = workerSource.indexOf('CUSTOMER_SECURITY_TOKEN_SECRET', maintenanceCall);
-assert(maintenanceGate >= 0 && maintenanceCall > maintenanceGate && maintenanceSecret > maintenanceCall,
-  'Worker maintenance flag/secret fail-closed wiring drift');
-assert(packageManifest.includes('"test:staff-acquisition:browser"')
-  && packageManifest.includes('apps/web/e2e/staff-acquisition.spec.ts')
-  && webV4Source.includes('export function AcquisitionCoreWorkbenchV4')
-  && webV4Source.includes('真实平台和开发方法只对总管理员、获客岗位开放')
-  && browserEvidence.includes("name: '客户开发中心'")
-  && browserEvidence.includes("'真实来源渠道'"),
-  'current V4 browser/UI evidence ownership drift');
-assert(decision.includes('### D-035 获客来源显式受控声明')
-  && decision.includes('D-026 的历史正文永久保留'),
-  'D-035 or D-026 preservation evidence is missing');
-assert(canonicalSpec.includes('Explicit controlled source declaration')
-  && canonicalSpec.includes('Prospect-to-Lead inherits the exact origin channel')
-  && canonicalSpec.includes('Original source is immutable and correction is controlled'),
-  'canonical OpenSpec source-authority requirements are missing');
+assert(hasNamedImport(staffRoute, './acquisition/AcquisitionCoreWorkbench', 'AcquisitionCoreWorkbench')
+  && hasJsxElement(staffRoute, 'AcquisitionCoreWorkbench'),
+  'canonical Staff route composition is missing');
+assert(hasNamedReExport(coreWorkbench, './AcquisitionCoreWorkbenchV4',
+  'AcquisitionCoreWorkbenchV4', 'AcquisitionCoreWorkbench'),
+  'canonical Core-to-V4 re-export is missing');
+assert(hasInterfaceFields(contract, 'CreateAcquisitionLeadCommand', [
+  'lead_type', 'marketplace_code', 'channel_id', 'prospect_id',
+]) && hasInterfaceFields(contract, 'AcquisitionChannelDto', [
+  'channel_id', 'channel_type', 'lead_type', 'marketplace_code', 'status',
+]), 'published acquisition contract exports drifted');
+assert(existsSync(path.join(root, 'apps/web/src/staff/acquisition/AcquisitionCoreWorkbenchV4.msw.test.tsx'))
+  && existsSync(path.join(root, 'apps/web/e2e/staff-acquisition.spec.ts'))
+  && !existsSync(path.join(root, 'apps/web/src/staff/acquisition/AcquisitionWorkbench.tsx'))
+  && !existsSync(path.join(root, 'apps/web/src/staff/acquisition/AcquisitionWorkbench.msw.test.tsx')),
+  'canonical evidence path or legacy alias retirement drift');
+
+const behaviorScript = manifest.scripts?.['test:staff-acquisition'];
+assert(typeof behaviorScript === 'string' && behaviorScript.length > 0,
+  'test:staff-acquisition behavior gate is missing');
+assert(!/verify:staff-acquisition|check:staff-acquisition/u.test(behaviorScript),
+  'test:staff-acquisition must not invoke its verifier or module check recursively');
+const behaviorResult = spawnSync('npm', ['run', 'test:staff-acquisition'], {
+  cwd: root,
+  stdio: 'inherit',
+});
+assert(behaviorResult.status === 0,
+  `behavior test gate failed (${behaviorResult.error?.message ?? `exit ${behaviorResult.status}`})`);
 
 console.log(JSON.stringify({
   status: 'PASS', schema: 36, migration: acquisitionMigrations.at(-1),
-  explicit_source_command: true, route_registered: true, exact_field_closed: true,
-  source_authority_guards: true, behavior_evidence: true, contract_doc_aligned: true,
-  seller_profit_isolation: true, maintenance_dry_run_gate: true,
-  worker_maintenance_fail_closed: true, v4_browser_evidence: true, decision_and_canonical_spec: true,
+  structural: {
+    status: 'PASS', canonical_composition: true, legacy_alias_absent: true,
+    published_contract_exports: true,
+  },
+  behavior_tests: {
+    status: 'PASS', command: 'npm run test:staff-acquisition',
+    scope: 'D1/API acquisition behavior plus canonical Staff acquisition UI and API contract tests',
+  },
   buyer_refund_authority: false, production_resources_touched: 0,
   pre_upgrade_restore: true,
 }, null, 2));
 
-function source(relativePath) {
-  return readFileSync(path.join(root, relativePath), 'utf8');
+function parse(relativePath, scriptKind) {
+  const filePath = path.join(root, relativePath);
+  return ts.createSourceFile(filePath, readFileSync(filePath, 'utf8'), ts.ScriptTarget.Latest, true, scriptKind);
+}
+
+function hasNamedImport(sourceFile, modulePath, importedName) {
+  return sourceFile.statements.some((statement) => ts.isImportDeclaration(statement)
+    && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === modulePath
+    && statement.importClause?.namedBindings && ts.isNamedImports(statement.importClause.namedBindings)
+    && statement.importClause.namedBindings.elements.some((element) => element.name.text === importedName));
+}
+
+function hasNamedReExport(sourceFile, modulePath, exportedFrom, exportedAs) {
+  return sourceFile.statements.some((statement) => ts.isExportDeclaration(statement)
+    && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === modulePath
+    && statement.exportClause && ts.isNamedExports(statement.exportClause)
+    && statement.exportClause.elements.some((element) => element.propertyName?.text === exportedFrom
+      && element.name.text === exportedAs));
+}
+
+function hasJsxElement(sourceFile, componentName) {
+  let found = false;
+  const visit = (node) => {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node))
+      && ts.isIdentifier(node.tagName) && node.tagName.text === componentName) found = true;
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+}
+
+function hasInterfaceFields(sourceFile, interfaceName, expectedFields) {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isInterfaceDeclaration(statement) || statement.name.text !== interfaceName) continue;
+    const fields = new Set(statement.members.filter(ts.isPropertySignature)
+      .map((member) => member.name && ts.isIdentifier(member.name) ? member.name.text : ''));
+    return expectedFields.every((field) => fields.has(field));
+  }
+  return false;
 }
 
 function apply(database, names) {

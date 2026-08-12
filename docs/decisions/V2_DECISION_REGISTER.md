@@ -303,6 +303,14 @@ D-024、D-025 和 D-034 的历史正文与当前五角色裁决继续有效。�
 
 状态：Accepted by business owner；Supersedes only the retained legacy Staff Settlement frontend/evidence implementation status without rewriting D-024, D-025 or D-034
 
+### D-038 Acquisition canonical证据迁移与旧别名退役
+
+当前 Acquisition canonical evidence chain 固定为 `StaffRouteModule → AcquisitionCoreWorkbench → AcquisitionCoreWorkbenchV4`。旧 `AcquisitionWorkbench` re-export 及其同名 MSW 证据已由 V4 的 canonical MSW、route 和 browser evidence 取代并从运行源码移除；该退役不改变任何 API、DTO、schema、Migration、权限、来源归因、审计、去重或 Staff-safe projection 行为。
+
+当前 `channel_id` 语义仍以 D-035 为准：它是受控的客户端来源声明而非授权，后端继续校验 ACTIVE、类型、Marketplace、Staff scope 和 Prospect 原始来源一致性并失败关闭。D-026 历史正文与其未被 D-035 取代的归因、不可变来源、审计与去重边界永久保留；本 Decision 不重复发明产品规则。
+
+状态：Accepted by business owner；Records canonical evidence migration and alias retirement, without rewriting D-026 or D-035
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收
