@@ -68,7 +68,7 @@ describe('API contract baseline alignment', () => {
     const documented = documentedRoutes().sort();
     expect(new Set(actual).size, 'non-contiguous duplicate registration').toBe(actual.length);
     expect(documented, 'route inventory drift').toEqual(actual);
-    expect(actual).toHaveLength(234);
+    expect(actual).toHaveLength(237);
     expect(actual.filter((route) => route.startsWith('GET /api/'))).not.toHaveLength(0);
     expect(actual.some((route) => route.includes('/api/v2/'))).toBe(false);
   });
@@ -127,7 +127,7 @@ describe('API contract baseline alignment', () => {
 
   it('keeps live contract documentation on /api and cursor semantics', () => {
     const conventions = readFileSync(path.join(root, 'docs/contracts/V2_API_CONVENTIONS.md'), 'utf8');
-    const codeBlocks = [...conventions.matchAll(/```[\\s\\S]*?```/gu)].map((match) => match[0]).join('\\n');
+    const codeBlocks = [...conventions.matchAll(/```[\s\S]*?```/gu)].map((match) => match[0]).join('\n');
     expect(codeBlocks).not.toContain('/api/v2');
     expect(codeBlocks).not.toContain('page_size');
     expect(codeBlocks).not.toContain('total_pages');
