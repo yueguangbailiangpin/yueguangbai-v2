@@ -22,6 +22,7 @@ describe('Wave 13 default app and route security boundaries', () => {
     for (const registration of [
       'registerStaffAssignmentRoutes(app)',
       'registerStaffCatalogWorkflowRoutes(app)',
+      'registerStaffWorkflowClosureRoutes(app)',
       'registerStaffReviewRoutes(app)',
       'registerStaffSellerSettlementRoutes(app)',
       'registerStaffSellerSettlementProofRoutes(app)',
@@ -77,20 +78,13 @@ describe('Wave 13 default app and route security boundaries', () => {
       }))
       .filter((route) => businessMethods.has(route.method));
 
-    // Hono records each handler in one route's middleware chain separately.
-    // Treat one contiguous METHOD/PATH block as one registration, and fail if
-    // the same endpoint appears again in a second registration block.
     const blocks: { key: string; firstIndex: number }[] = [];
     for (const entry of entries) {
       const key = `${entry.method} ${entry.path}`;
-      if (blocks.at(-1)?.key !== key) {
-        blocks.push({ key, firstIndex: entry.index });
-      }
+      if (blocks.at(-1)?.key !== key) blocks.push({ key, firstIndex: entry.index });
     }
     const blockCounts = new Map<string, number>();
-    for (const block of blocks) {
-      blockCounts.set(block.key, (blockCounts.get(block.key) ?? 0) + 1);
-    }
+    for (const block of blocks) blockCounts.set(block.key, (blockCounts.get(block.key) ?? 0) + 1);
     const duplicateRegistrations = [...blockCounts]
       .filter(([, count]) => count > 1)
       .map(([key]) => key)
@@ -99,25 +93,18 @@ describe('Wave 13 default app and route security boundaries', () => {
 
     const inventory = blocks.map((block) => block.key).sort();
     const inventoryDump = inventory.join('\n');
-    expect(inventory, inventoryDump).toHaveLength(234);
+    expect(inventory, inventoryDump).toHaveLength(237);
     expect(inventory.some((route) => route.includes('/api/v2'))).toBe(false);
-    expect(inventory.some((route) => /\/(?:links?|grants?)(?:\/|$)/u
-      .test(route))).toBe(false);
-    expect(inventory.some((route) => route.includes(
-      '/file-uploads/seller-order-chat-screenshots/',
-    ))).toBe(true);
+    expect(inventory.some((route) => /\/(?:links?|grants?)(?:\/|$)/u.test(route))).toBe(false);
+    expect(inventory.some((route) => route.includes('/file-uploads/seller-order-chat-screenshots/'))).toBe(true);
 
     const wave13 = new Set<string>();
-    const add = (method: string, path: string) => {
-      wave13.add(`${method} ${normalizeRoutePath(path)}`);
-    };
+    const add = (method: string, path: string) => wave13.add(`${method} ${normalizeRoutePath(path)}`);
     add('POST', '/api/staff-auth/access/bootstrap');
     add('GET', '/api/staff-auth/session');
     add('POST', '/api/staff-auth/logout');
     add('POST', '/api/staff-auth/logout-all');
-    for (const route of Object.values(FILE_HTTP_PURPOSE_ROUTES)) {
-      add('POST', route.path);
-    }
+    for (const route of Object.values(FILE_HTTP_PURPOSE_ROUTES)) add('POST', route.path);
     for (const [name, route] of Object.entries(FILE_HTTP_LIFECYCLE_PATHS)) {
       add(name.toLowerCase().endsWith('upload') ? 'PUT'
         : name.toLowerCase().endsWith('read') ? 'GET' : 'POST', route);
@@ -131,27 +118,16 @@ describe('Wave 13 default app and route security boundaries', () => {
     add('POST', STAFF_BUYER_REFUND_PATHS.payment);
     add('POST', STAFF_BUYER_REFUND_PATHS.reversal);
 
-    expect([...wave13].filter((route) => route.includes('/staff-auth/')))
-      .toHaveLength(4);
-    expect([...wave13].filter((route) => route.includes('/file-uploads/')
-      && route.endsWith('/intents'))).toHaveLength(6);
-    expect([...wave13].filter((route) =>
-      Object.values(FILE_HTTP_LIFECYCLE_PATHS).some((path) =>
-        route.endsWith(path),
-      ))).toHaveLength(12);
-    expect([...wave13].filter((route) =>
-      Object.values(STAFF_ORDER_EVIDENCE_PATHS).some((path) =>
-        route.endsWith(path),
-      ))).toHaveLength(4);
-    expect([...wave13].filter((route) =>
-      Object.values(STAFF_BUYER_REFUND_PATHS).some((path) =>
-        route.endsWith(path),
-      ))).toHaveLength(4);
+    expect([...wave13].filter((route) => route.includes('/staff-auth/'))).toHaveLength(4);
+    expect([...wave13].filter((route) => route.includes('/file-uploads/') && route.endsWith('/intents'))).toHaveLength(6);
+    expect([...wave13].filter((route) => Object.values(FILE_HTTP_LIFECYCLE_PATHS).some((path) => route.endsWith(path)))).toHaveLength(12);
+    expect([...wave13].filter((route) => Object.values(STAFF_ORDER_EVIDENCE_PATHS).some((path) => route.endsWith(path)))).toHaveLength(4);
+    expect([...wave13].filter((route) => Object.values(STAFF_BUYER_REFUND_PATHS).some((path) => route.endsWith(path)))).toHaveLength(4);
     expect(wave13).toHaveLength(30);
+
     const inventorySet = new Set(inventory);
     expect([...wave13].every((route) => inventorySet.has(route))).toBe(true);
-    expect(inventory.filter((route) => !wave13.has(route)), inventoryDump)
-      .toHaveLength(204);
+    expect(inventory.filter((route) => !wave13.has(route)), inventoryDump).toHaveLength(207);
 
     const staffMiddlewareIndex = app.routes.findIndex((route) =>
       route.method === 'ALL' && route.path === '/api/staff/*',
