@@ -97,11 +97,16 @@ assert(staffRoutes.includes("import('./StaffSchedulingRouteModule')"),
   'scheduling route module is not lazy-loaded from the Staff route module');
 assert(schedulingRoutes.includes("ProductSchedulingWorkspace as default"),
   'scheduling route module no longer owns the scheduling workspace');
-const workbench = source('apps/web/src/staff/StaffWorkbench.tsx');
-for (const required of ['DemandReviewPanel', 'demandReviewContext', 'first_order_date',
-  'expected_version', 'can_publish', '北京时间']) {
-  assert(workbench.includes(required), `demand review panel missing: ${required}`);
-}
+const workbench = source('apps/web/src/staff/FrozenStaffWorkbench.tsx');
+const workbenchBehavior = source('apps/web/src/staff/FrozenStaffWorkbench.msw.test.tsx');
+assert(workbench.includes('function DemandColumns'),
+  'canonical Frozen workbench no longer owns demand review rendering');
+assert(workbench.includes('demandReviewContext'),
+  'canonical Frozen workbench no longer reads the demand review contract');
+assert(workbenchBehavior.includes('publishes a demand with its authoritative version'),
+  'canonical demand publish behavior evidence is missing');
+assert(workbenchBehavior.includes('lets a base demand reviewer reject while hiding publication'),
+  'canonical base-reviewer permission behavior evidence is missing');
 const schedulingWeb = source(
   'apps/web/src/staff/product-scheduling/ProductSchedulingWorkspace.tsx',
 );

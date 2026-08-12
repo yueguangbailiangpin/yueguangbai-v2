@@ -293,6 +293,16 @@ D-033 的三导航、`/buyer` 入口、当前可预约产品和任务中心裁�
 
 状态：Accepted by business owner；Supersedes only D-033's retained-legacy-file implementation status without rewriting D-033
 
+### D-037 Seller Settlement canonical接管与Staff旧证据退役
+
+D-024、D-025 和 D-034 的历史正文与当前五角色裁决继续有效。正式 Staff 运行组合 `StaffRouteModule → FrozenStaffWorkbenchV2 → FrozenStaffWorkbench` 已接管 Seller Settlement 的汇总、独立应结项目、付款、分配、整笔冲正和受保护凭证行为；`StaffWorkbench` 及其 MSW 证据已由 canonical component、角色权限和 Frozen workbench 行为证据替代并从运行源码移除。
+
+该前端只对具有 `SELLER_SETTLEMENT_VIEW` 的 `owner` 或 `seller_ops` 挂载结算面板，记录与分配还要求 `SELLER_SETTLEMENT_RECORD`，整笔冲正还要求 `FINANCIAL_CORRECT`；`acquisition`、`pre_sales`、`buyer_refund` 或缺少有效查看权限的会话不挂载且不发起结算请求。客户端 gating 不是授权：ACTIVE Staff、Personal DENY、Marketplace/Seller Organization scope、concealed 404、凭证 audience、幂等、版本、事务、Audit 与 Outbox 仍由现有后端逐请求失败关闭地裁决。
+
+本接管不改变 Seller Settlement API、合同、金额计算、状态机、后端权限、数据库 Schema 或 Migration，也不改变 Acquisition、Admin、Buyer 或 Seller 运行能力。旧上传框提供 PDF 而后端付款凭证只接受 JPEG/PNG/WebP 属于接管前 UI 合同冲突；canonical chooser 已与现有后端合同对齐。
+
+状态：Accepted by business owner；Supersedes only the retained legacy Staff Settlement frontend/evidence implementation status without rewriting D-024, D-025 or D-034
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收
