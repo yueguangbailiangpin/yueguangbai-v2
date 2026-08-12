@@ -321,6 +321,16 @@ D-025 的历史正文和 `admin-business-dashboard` 当前 Specification 继续�
 
 状态：Accepted by business owner；Records Admin evidence migration and legacy frontend retirement without rewriting D-025 or archived Changes
 
+### D-040 日咨询写权限与Acquisition完整性边界
+
+D-026、D-034、D-035 和 D-038 的历史正文永久保留。当前渠道日咨询人数的登记与更正严格为 `owner` 专属写能力；D-034 只确认当前五角色集合，不授予 `acquisition` 日咨询写权限，也不把 `ACQUISITION_ADMIN` 授予 `acquisition`。`acquisition` 继续作为 Marketplace-scoped 客户开发操作员读取本人站点内的渠道、来源、Prospect、漏斗、日咨询及其历史，并在该范围内操作 Prospect；它不得创建、查看或管理正式 Buyer/Seller Lead。
+
+历史 Personal `GRANT` 记录和 Team/Leader 权限包只保留审计与兼容读取，不参与当前 effective permissions，也不得把 owner-only 日咨询写、`ACQUISITION_ADMIN` 或正式 Lead 职责扩给非 owner。当前权限只由唯一 canonical role 默认能力形成，再应用 Personal `DENY` 与系统硬禁止；Marketplace、组织、客户、资源归属和字段投影继续逐请求失败关闭。越 Marketplace scope 的咨询历史统一伪装为 `NOT_FOUND`。
+
+渠道日咨询关键写必须在同一 D1 batch 中完成条件写、不可变 consultation event、通用 `audit_events`、幂等成功状态和事务末尾最终 `state/version/count` 断言；任何 batch 失败都必须清理幂等占位为可安全重试的失败状态，不得留下业务事实、领域事件、Audit 或成功幂等脏数据。本 Decision 不改变 Migration、Schema、Prospect 来源规则或其他 Acquisition redesign。
+
+状态：Accepted by business owner；Narrows consultation writes to owner and records the current audit-only legacy authorization boundary without rewriting D-026, D-034, D-035 or D-038
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

@@ -41,7 +41,7 @@ describe('staff authorization formula', () => {
     expect(result.memberTeamIds).toEqual(['team-a', 'team-b']);
   });
 
-  it('applies the leader pack only when a leader scope exists', () => {
+  it('keeps legacy leader membership audit-only without a permission pack', () => {
     const ordinary = calculateEffectiveStaffAuthorization({
       roles: set<StaffRoleCode>('seller_ops'),
       grants: set<StaffPermissionCode>(),
@@ -58,9 +58,9 @@ describe('staff authorization formula', () => {
       memberTeamIds: ['team-a'],
       leaderTeamIds: ['team-a'],
     });
-    for (const permission of leaderPermissionPack()) {
-      expect(leader.permissions.has(permission)).toBe(true);
-    }
+    expect(leaderPermissionPack()).toEqual(new Set());
+    expect(leader.leaderTeamIds).toEqual(['team-a']);
+    expect(leader.permissions.has('TASK_ASSIGN_TEAM')).toBe(false);
   });
 
   it('keeps owner-only prohibitions even when legacy grants exist', () => {
@@ -70,6 +70,7 @@ describe('staff authorization formula', () => {
         'FINANCIAL_CORRECT',
         'FINANCIAL_EXPORT',
         'STAFF_MANAGE',
+        'ACQUISITION_ADMIN',
       ),
       denies: set<StaffPermissionCode>(),
       memberTeamIds: [],
@@ -79,6 +80,7 @@ describe('staff authorization formula', () => {
     expect(result.permissions.has('FINANCIAL_CORRECT')).toBe(false);
     expect(result.permissions.has('FINANCIAL_EXPORT')).toBe(false);
     expect(result.permissions.has('STAFF_MANAGE')).toBe(false);
+    expect(result.permissions.has('ACQUISITION_ADMIN')).toBe(false);
     expect(isOwnerOnlyPermission('FINANCIAL_CORRECT')).toBe(true);
   });
 

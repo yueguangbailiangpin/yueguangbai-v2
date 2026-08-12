@@ -14,20 +14,16 @@ Staff login, protected shell, work queue/detail/action, customer-security tools,
 - **WHEN** the direction includes a search, source, customer field, amount, time, count, status, action, or permission absent from the current route's Staff DTO and behavior
 - **THEN** the implementation omits it and preserves the authoritative Contract and backend action projection.
 
-### Requirement: Staff navigation follows the four-role backend projection
-The protected shell SHALL display 总管理员、售前、卖家对接、买家返款 from the trusted Session, SHALL preserve the existing real routes, and SHALL show optional navigation only when current role duties and effective backend-projected permissions authorize the area.
+### Requirement: Staff navigation follows the five-role backend projection
+The protected shell SHALL display 总管理员、获客、售前、卖家对接、买家返款 from the trusted Session, SHALL preserve the existing real routes, and SHALL show optional navigation only when current canonical role duties and backend-projected scope authorize the area.
 
-#### Scenario: Four canonical roles open Staff
-- **WHEN** owner, pre_sales, seller_ops, or buyer_refund enters with one valid ACTIVE role and current permissions
-- **THEN** the shell shows that exact Chinese role, never asks for role selection, and exposes only the permitted navigation while direct backend requests remain independently authorized.
+#### Scenario: Five canonical roles open Staff
+- **WHEN** owner, acquisition, pre_sales, seller_ops, or buyer_refund enters with one valid ACTIVE role
+- **THEN** the shell shows that exact Chinese role, never asks for role selection, and exposes only the role's permitted navigation while direct backend requests remain independently authorized.
 
 #### Scenario: Buyer-refund Staff views navigation
 - **WHEN** the current role is buyer_refund, even with stale client state
-- **THEN** 获客登记 is absent, no acquisition registration control renders, and direct acquisition API calls continue to fail closed.
-
-#### Scenario: Optional permission is denied
-- **WHEN** PRODUCT_VIEW, an acquisition permission, or owner plus FINANCIAL_VIEW is absent or personally denied
-- **THEN** the corresponding 产品预约、获客登记 or 经营看板 entry and cached sensitive content are absent without weakening backend 403/404 enforcement.
+- **THEN** 客户开发 is absent, no acquisition control renders, and direct acquisition API calls continue to fail closed.
 
 ### Requirement: Queue, detail, and controlled action order is preserved
 The workbench SHALL retain the queue as its navigation spine, exact status/work-type filters and opaque cursor traversal, authoritative detail panels, and existing controlled actions in queue → detail → action DOM and keyboard order.
@@ -56,15 +52,23 @@ Order/review/refund/settlement/demand actions and invitation/recovery controls S
 - **THEN** the one-time link remains ephemeral and hideable, Staff neither enters nor sees a Customer password, and request-ID/error/revoke recovery stays keyboard-operable.
 
 ### Requirement: Acquisition remains hybrid, scoped, and bookmarkable
-`/staff/acquisition` SHALL remain a stable bookmarkable route and SHALL present only the existing owner administration, pre_sales Buyer-lead, and seller_ops Seller-lead panels allowed by trusted role and effective permissions.
+`/staff/acquisition` SHALL remain a stable bookmarkable route. Owner SHALL receive administration and consultation-write controls. Acquisition SHALL receive Marketplace-scoped Prospect/source/read workflows and a read-only daily consultation surface without `ACQUISITION_ADMIN` or formal Buyer/Seller Lead permissions. Other roles SHALL NOT receive the customer-development operator surface.
 
 #### Scenario: Authorized acquisition role opens the route
-- **WHEN** owner, pre_sales, or seller_ops has the matching effective acquisition permission
-- **THEN** the page shows its existing summary, lead registration/list, and owner administration as applicable, while channel selection, conversion facts, attribution, and counts remain server-derived.
+- **WHEN** acquisition with a current Marketplace scope opens the route with an empty permission array
+- **THEN** scoped source, Prospect, funnel and daily-consultation reads and Prospect commands remain available, while consultation-write, channel-admin, machine-admin and formal Lead controls are absent.
+
+#### Scenario: Owner opens the route
+- **WHEN** owner opens the route with current backend authority
+- **THEN** the existing owner administration and daily consultation record/correct form are available and direct API calls remain independently authorized.
+
+#### Scenario: Owner has Personal DENY for acquisition administration
+- **WHEN** a trusted owner session can read the owner surface but its projected permissions omit `ACQUISITION_ADMIN`
+- **THEN** the daily-consultation and channel-management tabs remain available as read-only owner surfaces, while consultation/channel write forms and buttons and the machine-administration tab are absent.
 
 #### Scenario: Acquisition is denied
-- **WHEN** buyer_refund or a personally denied Staff opens the stable route directly
-- **THEN** no registration/admin control or prior sensitive cached result appears and the backend continues to reject unauthorized reads/writes.
+- **WHEN** pre_sales, seller_ops, buyer_refund or an invalid Staff session opens the stable route directly
+- **THEN** no customer-development operator/admin control or prior sensitive cached result appears and the backend rejects unauthorized reads/writes.
 
 ### Requirement: Scheduling and dashboard facts remain distinct and truthful
 Product/scheduling pages SHALL preserve product cadence, stable reservation rank, planned dates, preview/confirm authority, and legacy unconfigured states; the owner dashboard SHALL preserve Beijing windows, cohort metrics, and separate projected/completed profit facts.
@@ -103,16 +107,16 @@ Representative login, queue, acquisition, scheduling, and dashboard surfaces SHA
 - **WHEN** a keyboard user traverses navigation, filters, rows, forms, dialogs, and actions or reduced motion is requested
 - **THEN** focus remains visible and clear of fixed navigation, source order remains logical, controls meet 44px, and nonessential motion is removed.
 
-### Requirement: Four-role visual evidence is deterministic and reviewed
-The Change SHALL produce comparable deterministic before/after screenshots for the frozen Staff route/viewport matrix and SHALL record per-image review plus independent four-role, permission, security, accessibility, and disclosure assertions.
+### Requirement: Five-role visual evidence is deterministic and reviewed
+The Change SHALL keep deterministic Staff fixtures for owner, acquisition, pre_sales, seller_ops and buyer_refund and SHALL independently assert role, permission, security, accessibility and disclosure boundaries. Acquisition fixtures SHALL use `permissions=[]` so operator access is not confused with formal Lead or admin permission.
 
 #### Scenario: Evidence matrix is generated
-- **WHEN** before and after suites run with the same Contract-valid fixtures, locale, timezone, motion, viewport, and filenames
-- **THEN** comparable evidence exists outside runtime assets for every representative Staff surface and required width.
+- **WHEN** the Staff role/browser suites run with Contract-valid fixtures, locale, timezone, motion and viewport settings
+- **THEN** all five role projections are covered, acquisition retains scoped Prospect workflow, and no acquisition fixture receives `ACQUISITION_BUYER_LEAD` or `ACQUISITION_SELLER_LEAD`.
 
 #### Scenario: Evidence is handed to controller review
 - **WHEN** implementation is reported complete
-- **THEN** every final image has a PASS/FAIL result, all failures and retries are explicit, and no unexecuted check is reported as passed.
+- **THEN** executed checks have explicit PASS/FAIL results and no unexecuted Formal, sync or archive step is reported as passed.
 
 ### Requirement: Staff route isolation and presentation-only scope are preserved
 The Change SHALL add no runtime dependency, keep the existing Staff identity/page lazy boundaries, keep every JavaScript chunk below 500 kB raw or report a blocker, and introduce no Buyer, Seller, Contract, Domain, API, Migration, Schema, permission, session, cache, file, production, or external-resource change.

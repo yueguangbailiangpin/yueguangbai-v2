@@ -33,7 +33,7 @@
 
 ## Security and Privacy Review
 
-审查从 route 的可信身份入口追到 Application Service、数据库 query/transaction 与 DTO，确认客户端不能指定 Staff、Seller Organization、Store、Buyer、owner、audience 或财务权威。Staff 权限按唯一 active role、默认授权、个人授权、负责人包、Personal DENY、系统硬禁止和 Data Scope 顺序计算。Seller 查询与文件读取必须同时验证 active account/subject/member/organization/store scope；OWNER 也只限本组织 active store。无权资源保持 concealed 404，写入按现有 Contract 返回 403/受控错误，不泄漏另一组织存在性。
+审查从 route 的可信身份入口追到 Application Service、数据库 query/transaction 与 DTO，确认客户端不能指定 Staff、Seller Organization、Store、Buyer、owner、audience 或财务权威。Staff 当前 effective permissions 按唯一 active role 的默认权限减去 Personal DENY 和系统硬禁止计算；历史 Personal GRANT、Team membership 与 Leader 权限包仅保留作审计兼容输入，不得扩权，之后再应用 Data Scope。Seller 查询与文件读取必须同时验证 active account/subject/member/organization/store scope；OWNER 也只限本组织 active store。无权资源保持 concealed 404，写入按现有 Contract 返回 403/受控错误，不泄漏另一组织存在性。
 
 文件链固定为 upload intent → verified object → entity link → explicit audience grant → short read intent。intent 创建与字节消费都重新计算当前权限、link/grant/file version 和撤销状态；Seller 文件还必须从 `purpose + entity_type` 回到当前业务实体、ACTIVE Store 与成员角色/Store scope。单次 intent 的条件消费必须断言本次确实取得消费权；Customer 路由把不存在、未链接、无 audience 与撤销统一隐藏为 404。响应不得包含 object key、Drive ID、永久 URL 或可复用 token。
 

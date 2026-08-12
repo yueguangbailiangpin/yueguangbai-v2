@@ -44,11 +44,50 @@ describe('canonical Staff acquisition workbench', () => {
     await user.click(screen.getByRole('button', { name: '每日渠道数据' }));
     expect(await screen.findByRole('heading', { name: '今天的渠道数据' })).toBeVisible();
     expect(screen.getByText('小红书买家推广一组')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '填写 / 更正今天数据' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '保存' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: '渠道管理' }));
     expect(await screen.findByRole('table', { name: '真实渠道与员工匿名编号' })).toBeVisible();
     expect(screen.getByText('渠道1')).toBeVisible();
     expect(screen.getByText('小红书')).toBeVisible();
     expect(screen.getByText('买家微信1')).toBeVisible();
+  });
+
+  it('keeps acquisition scoped Prospect workflow but makes daily consultation read-only', async () => {
+    installOwnerHandlers();
+    const user = userEvent.setup();
+    renderWithMsw(<StaffSessionBoundary adapter={adapter(session('acquisition'))}>
+      <AcquisitionCoreWorkbenchV4 />
+    </StaffSessionBoundary>, { route: '/staff/acquisition' });
+
+    expect(await screen.findByRole('heading', { name: '客户开发中心' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '潜在线索' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '每日渠道数据' }));
+    expect(await screen.findByRole('heading', { name: '今天的渠道数据' })).toBeVisible();
+    expect(screen.getByText('小红书买家推广一组')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '日咨询只读' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '填写 / 更正今天数据' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a Personal-DENY owner on read surfaces without admin forms', async () => {
+    installOwnerHandlers();
+    const user = userEvent.setup();
+    renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner', false))}>
+      <AcquisitionCoreWorkbenchV4 />
+    </StaffSessionBoundary>, { route: '/staff/acquisition' });
+
+    expect(await screen.findByRole('heading', { name: '客户开发中心' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Codex 接入' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '每日渠道数据' }));
+    expect(await screen.findByText('小红书买家推广一组')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '日咨询只读' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: '填写 / 更正今天数据' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '渠道管理' }));
+    expect(await screen.findByRole('table', { name: '真实渠道与员工匿名编号' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '新增真实渠道' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '配置接待微信' })).not.toBeInTheDocument();
   });
 });
 
@@ -84,16 +123,21 @@ function adapter(value: StaffSession): StaffAuthApiAdapter {
   };
 }
 
-function session(role: 'owner'|'pre_sales'|'buyer_refund'): StaffSession {
+function session(
+  role: 'owner'|'acquisition'|'pre_sales'|'buyer_refund',
+  acquisitionAdmin = role === 'owner',
+): StaffSession {
   const roleValue: StaffSession['role'] = role === 'owner'
     ? { code: 'owner', display_name: '总管理员' }
+    : role === 'acquisition'
+      ? { code: 'acquisition', display_name: '获客' }
     : role === 'pre_sales'
       ? { code: 'pre_sales', display_name: '售前' }
       : { code: 'buyer_refund', display_name: '买家返款' };
   return {
     staff_id: 'staff-1', display_name: '测试员工', role: roleValue,
-    permissions: role === 'owner' ? ['ACQUISITION_ADMIN'] : [],
-    data_scope: { type: role === 'owner' ? 'GLOBAL' : 'ASSIGNED_BUYERS',
+    permissions: acquisitionAdmin ? ['ACQUISITION_ADMIN'] : [],
+    data_scope: { type: role === 'owner' ? 'GLOBAL' : role === 'acquisition' ? 'MARKETPLACE' : 'ASSIGNED_BUYERS',
       marketplaceCodes: role === 'owner' ? [] : ['AMAZON_JP'],
       buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [] },
     authorization_version: 1, session_version: 1, expires_at: Date.now() + 100_000,

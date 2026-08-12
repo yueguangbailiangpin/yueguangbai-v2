@@ -96,7 +96,8 @@ docs/migration/V2_LEGACY_CODE_REUSE.md
 - 未来如重新引入飞书，必须有用户新的明确决定、独立 OpenSpec Change 和总控批准；不得把历史代码或配置开关直接复活。
 - 每名 ACTIVE Staff 恰有一个 ACTIVE 角色；零角色、多角色、旧角色或未知角色均失败关闭。
 - 最终权限：
-  `(角色默认权限并集 + 个人授权 + 负责人权限包) - 个人禁用 - 系统硬禁止`
+  `单一角色默认权限 - Personal DENY - 系统硬禁止`
+- 历史 Personal GRANT、Team membership 与 Leader 权限包仅保留作审计兼容输入，不得扩张当前 effective permissions。
 - 权限之后仍必须检查组织、部门、团队、客户、店铺、资源归属和字段投影。
 - 无权访问其他客户资源时统一返回 404，避免信息泄露。
 - 内部公司财务查看仅允许 Active Staff、system owner role 和 `FINANCIAL_VIEW`，且 Personal DENY 最终优先。

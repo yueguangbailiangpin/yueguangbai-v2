@@ -12,7 +12,7 @@ function session(role: 'acquisition' | 'buyer_refund') {
     role: role === 'acquisition'
       ? { code: 'acquisition', display_name: '获客' }
       : { code: 'buyer_refund', display_name: '买家返款' },
-    permissions: role === 'acquisition' ? ['ACQUISITION_BUYER_LEAD', 'ACQUISITION_SELLER_LEAD'] : [],
+    permissions: [],
     data_scope: { type: 'MARKETPLACE', buyerCustomerIds: [],
       marketplaceCodes: ['AMAZON_JP'], sellerOrganizationIds: [], teamIds: [] },
     authorization_version: 1, session_version: 1, expires_at: 9_999_999_999_999,
@@ -44,7 +44,7 @@ function prospect() {
     created_at: 1_786_000_000_000, updated_at: 1_786_000_000_000 };
 }
 
-async function mock(page: Page, role: 'acquisition' | 'buyer_refund', observed?: { body?: unknown }) {
+async function mock(page: Page, role: 'acquisition' | 'buyer_refund', observed?: { body?: unknown; consultationWrites?: number }) {
   let created = false;
   await page.route('**/api/**', async (route) => {
     const request = route.request(); const path = new URL(request.url()).pathname;
@@ -52,7 +52,13 @@ async function mock(page: Page, role: 'acquisition' | 'buyer_refund', observed?:
     if (path === '/api/staff/acquisition/channels') return json(route, success({ channels: [channel()] }));
     if (path === '/api/staff/acquisition/prospects' && request.method() === 'GET')
       return json(route, success({ items: created ? [prospect()] : [], next_cursor: null }));
-    if (path === '/api/staff/acquisition/consultations') return json(route, success({ consultations: [] }));
+    if (path === '/api/staff/acquisition/consultations' && request.method() === 'GET')
+      return json(route, success({ consultations: [] }));
+    if (path === '/api/staff/acquisition/consultations' && request.method() === 'POST') {
+      if (observed) observed.consultationWrites = (observed.consultationWrites ?? 0) + 1;
+      return json(route, { error: { code: 'FORBIDDEN', message: 'forbidden', details: null },
+        meta: { request_id: 'acquisition-browser-owner-only' } }, 403);
+    }
     if (path === '/api/staff/acquisition/funnel') return json(route, success({ funnel: funnel() }));
     if (path === '/api/staff/acquisition/channel-stats') return json(route, success({ channels: [] }));
     if (path === '/api/staff/acquisition/source-corrections/candidates') return json(route, success({ items: [] }));
@@ -65,22 +71,27 @@ async function mock(page: Page, role: 'acquisition' | 'buyer_refund', observed?:
   });
 }
 
-test('bookmarkable acquisition route creates a controlled human prospect', async ({ page }) => {
-  const observed: { body?: unknown } = {}; await mock(page, 'acquisition', observed);
+test('bookmarkable acquisition route keeps consultation read-only and creates a controlled human prospect', async ({ page }) => {
+  const observed: { body?: unknown; consultationWrites?: number } = { consultationWrites: 0 };
+  await mock(page, 'acquisition', observed);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/staff/acquisition');
   await expect(page).toHaveURL(/\/staff\/acquisition$/u);
   await expect(page.getByRole('heading', { name: '客户开发中心' })).toBeVisible();
+  await page.getByRole('button', { name: '每日渠道数据' }).click();
+  await expect(page.getByRole('heading', { name: '日咨询只读' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '潜在线索' }).click();
-  await page.getByRole('button', { name: '新增潜在线索' }).click();
+  await page.getByRole('button', { name: '新增线索' }).click();
   await page.getByLabel('客户类型').selectOption('BUYER');
   await page.getByLabel('真实来源渠道').selectOption('browser-channel');
   await page.getByLabel('客户 / 公司名称').fill('浏览器买家');
   await page.getByLabel('联系方式（可空）').fill('browser_private_wx');
-  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await page.getByRole('button', { name: '保存线索' }).click();
   await expect(page.getByText('浏览器买家')).toBeVisible();
   expect(observed.body).toMatchObject({ lead_type: 'BUYER', marketplace_code: 'AMAZON_JP',
     channel_id: 'browser-channel', display_name: '浏览器买家', origin_mode: 'HUMAN' });
+  expect(observed.consultationWrites).toBe(0);
   const width = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth }));
   expect(width.content).toBeLessThanOrEqual(width.viewport + 1);

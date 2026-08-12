@@ -3,11 +3,13 @@
 ## 1. 内部角色
 
 - `owner`：总管理员
+- `acquisition`：获客
 - `pre_sales`：售前
 - `seller_ops`：卖家对接
 - `buyer_refund`：买家返款
 
-每名 ACTIVE Staff 恰有一个 ACTIVE 角色。后端遇到零角色、多角色、旧角色或
+当前 canonical Staff 角色严格为上述五个；`acquisition` 由 Migration 0044
+引入。每名 ACTIVE Staff 恰有一个 ACTIVE 角色。后端遇到零角色、多角色、旧角色或
 未知角色时失败关闭，不签发 Staff Session。历史 `seller_support`、
 `buyer_support`、`after_sales` 分配只允许作为已撤销审计事实保留。
 
@@ -22,11 +24,13 @@ Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发�
 有效权限
 =
 唯一角色默认权限
-+ 个人额外授权
-+ 部门负责人权限包
 - 个人明确禁用
 - 系统硬禁止
 ```
+
+历史 Personal `GRANT` 与部门/团队负责人权限包仅保留审计和兼容读取，不参与当前
+effective permissions；它们不得扩张 canonical role 的默认能力。Personal `DENY`
+仍在角色默认能力之后扣除并最终优先。
 
 之后继续应用：
 
@@ -42,6 +46,18 @@ Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发�
 ### owner
 
 全系统管理、身份冲突、合并、权限、财务冲正、导出和审计。
+
+### acquisition
+
+- 在本人 Marketplace Scope 内操作客户开发中心：查看内部渠道和来源、买卖双方漏斗、
+  渠道统计、日咨询记录及其历史；无 Scope 时不返回业务记录，越 Scope 的单条历史返回 404。
+- 在本人 Marketplace Scope 内创建、查看和更新 Prospect，记录信号和人工交接；可对
+  现有 Lead 作带原因、可审计的来源更正。来源更正新增更正记录，不改写原始来源。
+- 该操作员门禁只允许 `owner` 或 `acquisition`，不能由个人额外授权替代；每次请求仍由
+  后端重算 ACTIVE 角色和 Marketplace Scope。
+- 不具有 `ACQUISITION_ADMIN`、`ACQUISITION_BUYER_LEAD` 或
+  `ACQUISITION_SELLER_LEAD` 默认权限：不得管理渠道、渠道分配/生效期、接待微信、
+  留存豁免或机器凭证；也不得创建、查看或管理正式 Buyer/Seller Lead。
 
 ### pre_sales
 
@@ -90,9 +106,11 @@ Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发�
 
 ### 获客专项权限
 
-- `ACQUISITION_ADMIN`：仅 owner，用于渠道、Staff 渠道生效期、北京日咨询汇总和留存豁免。
+- `ACQUISITION_ADMIN`：仅 owner，用于渠道、Staff 渠道生效期、北京日咨询人数登记/更正和留存豁免。
 - `ACQUISITION_BUYER_LEAD`：owner 和 pre_sales 默认权限，仍受个人 DENY 与数据范围限制。
 - `ACQUISITION_SELLER_LEAD`：owner 和 seller_ops 默认权限，仍受个人 DENY 与数据范围限制。
+- `acquisition` 没有上述三项默认权限。其客户开发中心访问是独立的
+  `owner`/`acquisition` 角色门禁，不授予 owner 管理权或正式 Buyer/Seller Lead 职责。
 - `buyer_refund` 没有任何获客默认权限；Personal DENY 始终在角色默认权限之后扣除。
 
 历史映射为 `owner→owner`、`pre_sales→pre_sales`、
@@ -100,7 +118,10 @@ Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发�
 `buyer_support→pre_sales` 与 `seller_support→seller_ops` 只有在总管理员对
 具体员工、目标角色、有效权限差异及版本化哈希逐一批准后才可激活。
 
-## 4. 部门负责人权限包
+## 4. 历史部门负责人权限包
+
+以下能力仅描述历史职责包和审计事实，不参与当前 effective permissions。当前需要这些
+能力时必须由 canonical role 默认能力明确承载，不得通过旧 Team/Leader 记录恢复授权。
 
 负责人可在团队范围内：
 
