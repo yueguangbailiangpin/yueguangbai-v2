@@ -113,10 +113,10 @@
 - [x] 员工工作台中文入口、`/staff/acquisition` 可收藏路由、窄屏浏览器与 buyer_refund 隐藏控件通过。
 - [ ] 正式 Implementation Verify、总控验收、归档与 Production GO（不属于本地实现授权）。
 
-## K. GitHub CI 与治理状态（2026-08-13，基线 `7e125a9bb53d8ffa6c1011a0dffd119596b62df2`）
+## K. GitHub CI 与治理状态（2026-08-13，canonical main `1870c031a136a20e2bf96165e7d15a1da9d6dbbb`）
 
-- [x] Code-verified/local（2026-08-13，审查起点 `73682b84ef361261d79677d629292efa00cb619a`）：PR 与 `main` push 的非生产 CI workflow 使用 locked `npm ci`、Node `24.19.0`、runner 临时 Wrangler/XDG 目录、只读 GitHub token、concurrency/cancel，并调用 canonical `check:ci:static` / `check:ci:test-build`。
-- [x] Code-verified/local（2026-08-13）：两个 CI job 都在 `npm ci` 前以 Node builtin verifier/self-test 精确批准 lifecycle 的 name/version/path/optional/resolved/integrity，之后 static job 再执行显式含 dev 的 dependency audit；CI 还覆盖 OpenSpec all strict、typecheck、migration guards/schema verification、Node safety、一次全量 Vitest、一次 workspace build 与 Cloudflare release template dry-run。不读 production Secrets、不执行非 dry-run deploy、不执行远程 D1/R2 或真实业务操作。
-- [ ] External-unverified：该 workflow 的真实 GitHub Actions run 必须在推送本分支并建立 PR 后读取结论；未触发或 `none` 不得记为通过。
+- [x] External-evidenced（2026-08-13）：canonical main 的 GitHub Actions [run 31660766794](https://github.com/yueguangbailiangpin/yueguangbai-v2/actions/runs/31660766794) 在 `1870c031a136a20e2bf96165e7d15a1da9d6dbbb` 的 push 上完成；`static-governance` 与 `tests-and-build` 两个 job 均为 `success`。
+- [x] Code-verified/local（2026-08-13）：PR 与 `main` push 的非生产 CI workflow 使用 locked `npm ci`、Node `24.19.0`、runner 临时 Wrangler/XDG 目录、最小 GitHub token、concurrency/cancel，并调用 canonical `check:ci:static` / `check:ci:test-build`。`static-governance` 现额外只运行 final-go workflow 的 Node 负向 fixture/verifier；不增加第二次全量 Vitest、workspace build 或 E2E。
+- [ ] External-pending：`fix/final-go-governance-alignment` 的 Draft PR 尚待其新 HEAD 的两个 GitHub Actions job 实际完成；`pending` 不是通过，必须回读两项结论。
 - [ ] External-unverified：GitHub branch protection / rulesets 查询因当前私有仓库套餐返回 403，required checks enforcement 未能确认或配置。
 - [ ] Production-operator gate：真实 Playwright E2E、staging/production、Cloudflare Access、D1/R2、DNS、Secrets、Scheduler、数据和网络验收均不属于此 CI，须逐项独立授权与验收。
