@@ -18,6 +18,7 @@ type MockOptions = {
   failureOnce?: string;
   networkFailureOnce?: string;
   cursorPages?: boolean;
+  taskCursorPages?: boolean;
   fileContentFailureOnce?: 429 | 503;
 };
 
@@ -178,8 +179,12 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
     if (path.endsWith('/order-instruction/state')) { await json(route, success({ order_instruction: instructionState(options.instructionStatus) })); return; }
     if (path.endsWith('/order-instruction')) { await json(route, success({ order_instruction: instruction(options.invalidInstructionPath) })); return; }
     if (path.includes('/order-instruction/images/') && path.endsWith('/read-intent')) { await json(route, success({ read_intent: { read_intent_id: 'image-intent', access_token: 'x'.repeat(40), access_token_available: true, expires_at: now + 1000 } }), 201); return; }
-    if (path === '/api/buyer-portal/order-evidence/eligible-reservations') { await json(route, success({ items: [{ ...evidence.reservation, current_order_evidence_status: null, current_order_evidence_version: null, allowed_actions: ['SUBMIT'] }], next_cursor: null })); return; }
-    if (path === '/api/buyer-portal/order-evidence' && request.method() === 'GET') { await json(route, success({ items: [evidence], next_cursor: 'more-evidence' })); return; }
+    if (path === '/api/buyer-portal/order-evidence/eligible-reservations') {
+      const cursor = url.searchParams.get('cursor');
+      if (options.taskCursorPages && cursor === 'task-eligible-2') { await json(route, success({ items: [{ ...evidence.reservation, reservation_id: 'reservation-2', product_name: '后续任务产品', current_order_evidence_status: null, current_order_evidence_version: null, allowed_actions: ['SUBMIT'] }], next_cursor: null })); return; }
+      await json(route, success({ items: options.taskCursorPages ? [] : [{ ...evidence.reservation, current_order_evidence_status: null, current_order_evidence_version: null, allowed_actions: ['SUBMIT'] }], next_cursor: options.taskCursorPages ? 'task-eligible-2' : null })); return;
+    }
+    if (path === '/api/buyer-portal/order-evidence' && request.method() === 'GET') { await json(route, success({ items: [evidence], next_cursor: null })); return; }
     if (path === '/api/buyer-portal/order-evidence' && request.method() === 'POST') { await json(route, success({ order_evidence: { ...evidence, status: 'PENDING_VERIFICATION', allowed_actions: ['WITHDRAW'], price_mismatch: false, price_difference_jpy: 0 }, replayed: false }), 201); return; }
     if (path === '/api/buyer-portal/order-evidence/evidence-1') { await json(route, success({ order_evidence: evidence })); return; }
     if (path.endsWith('/order-evidence/evidence-1/resubmit')) { await json(route, success({ order_evidence: { ...evidence, status: 'PENDING_VERIFICATION', version: 3, allowed_actions: ['WITHDRAW'] }, replayed: false })); return; }
@@ -289,6 +294,12 @@ test('Dashboard reload restores the product list', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '暂时无法读取内容' })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: '月白护肤套装', exact: true })).toBeVisible(); expect(demandReads).toBe(2);
+});
+
+test('Task center follows an empty cursor page to actionable Buyer work', async ({ page }) => {
+  await gotoBuyer(page, '/buyer/tasks', { taskCursorPages: true });
+  await expect(page.getByRole('heading', { name: '您有 5 件待办事项' })).toBeVisible();
+  await expect(page.getByText('后续任务产品')).toBeVisible();
 });
 
 for (const [path, owner] of [
