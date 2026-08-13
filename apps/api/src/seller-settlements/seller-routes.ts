@@ -19,6 +19,7 @@ import {
 import {
   cleanSettlementIdentifier,
   normalizeSettlementError,
+  SellerSettlementError,
 } from './shared';
 
 export function registerSellerSettlementRoutes(app: Hono<any>): void {
@@ -52,6 +53,7 @@ export function registerSellerSettlementRoutes(app: Hono<any>): void {
 
 async function summary(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
+  requireSellerFinancialReadRole(actor);
   return success(context, {
     settlement: await readSellerSettlementSummary(
       context.env.DB,
@@ -62,6 +64,7 @@ async function summary(context: Context<any>): Promise<Response> {
 
 async function payables(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
+  requireSellerFinancialReadRole(actor);
   const pagination = parseSellerPortalPagination(new URL(context.req.url));
   return success(context, await listSellerPayables(
     context.env.DB,
@@ -72,6 +75,7 @@ async function payables(context: Context<any>): Promise<Response> {
 
 async function payable(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
+  requireSellerFinancialReadRole(actor);
   return success(context, {
     payable: await getSellerPayable(
       context.env.DB,
@@ -79,6 +83,14 @@ async function payable(context: Context<any>): Promise<Response> {
       cleanSettlementIdentifier(context.req.param('id')),
     ),
   });
+}
+
+function requireSellerFinancialReadRole(
+  actor: Awaited<ReturnType<typeof resolveSellerPortalActor>>,
+): void {
+  if (actor.role !== 'OWNER' && actor.role !== 'FINANCE') {
+    throw new SellerSettlementError('NOT_FOUND', 404);
+  }
 }
 
 async function payments(context: Context<any>): Promise<Response> {

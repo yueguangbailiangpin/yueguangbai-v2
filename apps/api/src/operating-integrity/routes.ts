@@ -39,13 +39,20 @@ export function registerOperatingIntegrityRoutes(app:Hono<AppEnv>):void{
 
 async function readOrderIntegrity(context:Context<AppEnv>){
   const actor=staff(context);const order=await orderRow(context.env.DB,id(context.req.param('id')??''));await market(context.env.DB,actor,order.market);
+  const canViewFinancialAdjustments=canViewOrderFinancialAdjustments(actor);
   const [events,adjustments,state]=await Promise.all([
     context.env.DB.prepare(`SELECT id AS event_id,formal_order_id,event_type,reason,actor_staff_id,created_at FROM formal_order_operational_events WHERE formal_order_id=? ORDER BY created_at,id`).bind(order.id).all<any>(),
-    context.env.DB.prepare(`SELECT id AS adjustment_id,formal_order_id,source_operational_event_id,adjustment_scope,CAST(amount_cny_fen AS TEXT) AS amount_cny_fen,reason,actor_staff_id,created_at FROM formal_order_financial_adjustments WHERE formal_order_id=? ORDER BY created_at,id`).bind(order.id).all<any>(),
+    canViewFinancialAdjustments
+      ? context.env.DB.prepare(`SELECT id AS adjustment_id,formal_order_id,source_operational_event_id,adjustment_scope,CAST(amount_cny_fen AS TEXT) AS amount_cny_fen,reason,actor_staff_id,created_at FROM formal_order_financial_adjustments WHERE formal_order_id=? ORDER BY created_at,id`).bind(order.id).all<any>()
+      : Promise.resolve({results:[]}),
     context.env.DB.prepare(`SELECT operational_state FROM formal_order_effective_operational_state WHERE formal_order_id=?`).bind(order.id).first<{operational_state:string}>(),
   ]);
   return ok(context,{order_integrity:{formal_order_id:order.id,canonical_marketplace_code:order.market,operational_state:state?.operational_state??'NORMAL',events:events.results,adjustments:adjustments.results}});
 }
+
+export function canViewOrderFinancialAdjustments(
+  actor:Pick<AssignmentStaffAuthorization,'roles'|'permissions'>,
+):boolean{return actor.roles.has('owner')&&actor.permissions.has('FINANCIAL_VIEW');}
 
 async function recordOrderEvent(context:Context<AppEnv>){
   const actor=staff(context);if(!actor.roles.has('owner')&&!actor.roles.has('seller_ops'))forbidden();

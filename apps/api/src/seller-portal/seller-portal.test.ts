@@ -17,6 +17,7 @@ import { issueCustomerSession } from '../customer-auth/authenticate-customer';
 import { MockObjectStorage } from '../files/mock-object-storage';
 import { registerFileHttpRoutes } from '../files/routes';
 import { registerSellerPortalRoutes } from './routes';
+import { registerSellerSettlementRoutes } from '../seller-settlements';
 
 const ORIGIN = 'https://portal.local.test';
 const SESSION_SECRET =
@@ -488,6 +489,41 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(crossOrigin.status).toBe(403);
   });
 
+  it('limits seller settlement financial reads to OWNER and FINANCE members', async () => {
+    const app = testApp();
+    for (const role of ['owner', 'finance'] as const) {
+      const summary = await request(app, '/api/seller-portal/settlement/summary', {
+        headers: { Cookie: await cookie(role) },
+      });
+      expect(summary.status).toBe(200);
+      expect(summary.headers.get('Cache-Control')).toBe('no-store');
+      expect(await json(summary)).toMatchObject({ data: { settlement: {
+        outstanding_principal_cny_fen: '0', outstanding_service_fee_cny_fen: '0',
+      } } });
+      const payables = await request(app, '/api/seller-portal/settlement/payables', {
+        headers: { Cookie: await cookie(role) },
+      });
+      expect(payables.status).toBe(200);
+      expect(await json(payables)).toMatchObject({ data: { items: [] } });
+    }
+
+    for (const role of ['ops', 'viewer'] as const) {
+      for (const path of [
+        '/api/seller-portal/settlement/summary',
+        '/api/seller-portal/settlement/payables',
+        '/api/seller-portal/settlement/payables/payable-1',
+      ]) {
+        const response = await request(app, path, {
+          headers: { Cookie: await cookie(role) },
+        });
+        expect(response.status).toBe(404);
+        expect(JSON.stringify(await json(response))).not.toMatch(
+          /outstanding|amount_cny_fen|payable_type/iu,
+        );
+      }
+    }
+  });
+
   it('allows file upload intents only for OWNER and OPERATIONS', async () => {
     const app = testApp();
     const payload = JSON.stringify({
@@ -866,6 +902,7 @@ describe('Phase 4C1 seller portal HTTP API', () => {
 function testApp() {
   const app = createApp();
   registerSellerPortalRoutes(app);
+  registerSellerSettlementRoutes(app);
   registerFileHttpRoutes(app);
   return app;
 }

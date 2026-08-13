@@ -9,6 +9,7 @@ import { SellerOrderChatScreenshotReadIntentAdapter } from '../../files/file-rea
 import { CursorPagination } from '../../ui/CursorPagination';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';
+import { canViewSellerFinancials } from '../authorization';
 import { useSellerCursorPages } from '../queries/useSellerCursorPages';
 import { useSellerStoreContext } from '../routes/SellerLayout';
 
@@ -87,7 +88,8 @@ export function SellerDashboardPage(): React.JSX.Element {
     queryKey: (cursor) => sellerQueryKeys.ordersPage(storeId, cursor),
     queryFn: (cursor, signal) => sellerApi.orders(client, storeId, cursor, signal),
   });
-  const settlement = useQuery({ queryKey: sellerQueryKeys.settlement, queryFn: ({ signal }) => sellerApi.settlement(client, signal).then((r) => r.data.settlement) });
+  const canViewSettlement=canViewSellerFinancials(me.data?.member.role);
+  const settlement = useQuery({ queryKey: sellerQueryKeys.settlement, queryFn: ({ signal }) => sellerApi.settlement(client, signal).then((r) => r.data.settlement),enabled:canViewSettlement });
   const complete = orders.items.filter((item) => item.business_completion?.status === 'COMPLETE').length;
   const inProgress = orders.items.filter((item) => item.business_completion?.status === 'IN_PROGRESS');
   const ordersUnavailable = orders.initialError !== null;
@@ -97,8 +99,8 @@ export function SellerDashboardPage(): React.JSX.Element {
       {me.data?.access.can_submit_product_applications ? <Link className="button secondary" to="/seller/products/new">提交产品申请</Link> : null}
       {me.data?.access.can_submit_demand_batches ? <Link className="button" to="/seller/demands/new">提交需求</Link> : null}
     </PageHeader>
-    {orders.initialError || settlement.isError ? <Alert tone="danger">业务摘要暂时无法完整读取，请刷新后重试。</Alert> : null}
-    <div className="seller-metrics"><MetricCard label="正式订单" value={orders.isInitialPending || ordersUnavailable ? '—' : count(orders.items.length)} detail={ordersUnavailable ? '订单数据暂时不可用' : orders.hasMore ? '当前已加载，仍有后一页' : '当前授权范围'} /><MetricCard label="业务完成" value={orders.isInitialPending || ordersUnavailable ? '—' : count(complete)} detail={ordersUnavailable ? '订单数据暂时不可用' : orders.hasMore ? '当前已加载订单，非最终总数' : '四项均完成或不适用'} /><MetricCard label="待结算" value={settlement.data ? cny(settlement.data.total_outstanding_cny_fen) : '—'} detail="卖家本金与卖家服务费" /></div>
+    {orders.initialError || (canViewSettlement&&settlement.isError) ? <Alert tone="danger">业务摘要暂时无法完整读取，请刷新后重试。</Alert> : null}
+    <div className="seller-metrics"><MetricCard label="正式订单" value={orders.isInitialPending || ordersUnavailable ? '—' : count(orders.items.length)} detail={ordersUnavailable ? '订单数据暂时不可用' : orders.hasMore ? '当前已加载，仍有后一页' : '当前授权范围'} /><MetricCard label="业务完成" value={orders.isInitialPending || ordersUnavailable ? '—' : count(complete)} detail={ordersUnavailable ? '订单数据暂时不可用' : orders.hasMore ? '当前已加载订单，非最终总数' : '四项均完成或不适用'} />{canViewSettlement?<MetricCard label="待结算" value={settlement.data ? cny(settlement.data.total_outstanding_cny_fen) : '—'} detail="卖家本金与卖家服务费" />:null}</div>
     <Card className="seller-attention-card"><div className="seller-section-heading"><div><p className="eyebrow">待关注</p><h2>订单进度</h2></div><Link to="/seller/orders">查看全部订单</Link></div>
       {orders.isInitialPending ? <p role="status">读取订单进度中…</p> : ordersUnavailable ? <Alert tone="warning">订单进度暂时不可用，刷新后重试。</Alert> : inProgress.length === 0 && !orders.hasMore ? <EmptyState title="暂无待完成订单" description="当前授权范围内没有待办事项。" /> : inProgress.length === 0 ? <Alert tone="info">当前已加载的订单没有待办项，后面还有，去订单页继续看。</Alert> : <ul className="seller-attention-list">{inProgress.slice(0, 4).map((item) => <li key={item.formal_order_id}><span><strong>{item.product_name}</strong><small>{item.store.display_name} · {item.platform_order_identifier}</small></span><StatusBadge tone="processing">进行中</StatusBadge></li>)}</ul>}
     </Card>

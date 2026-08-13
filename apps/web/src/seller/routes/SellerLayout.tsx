@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Home, MessageSquareText, PackageSearch, ReceiptText, Settings, ShoppingBag, UserRound } from 'lucide-react';
+import type { SellerMemberRole } from '@ygb/contracts';
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { BottomNavigation, IdentityShell, Select } from '../../ui/primitives';
@@ -7,6 +8,7 @@ import { CursorPagination } from '../../ui/CursorPagination';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';
 import { useSellerCursorPages } from '../queries/useSellerCursorPages';
+import { canViewSellerFinancials } from '../authorization';
 
 const navigation = [
   { path: '/seller', label: '首页', icon: Home },
@@ -33,11 +35,12 @@ const roleLabels = {
   VIEWER: '查看成员',
 } as const;
 
-const SellerContext = createContext<{ storeId: string | null }>({ storeId: null });
-export function useSellerStoreContext(): { storeId: string | null } { return useContext(SellerContext); }
+interface SellerContextValue{storeId:string|null;memberRole:SellerMemberRole|undefined;identityPending:boolean;identityError:boolean}
+const SellerContext = createContext<SellerContextValue>({storeId:null,memberRole:undefined,identityPending:true,identityError:false});
+export function useSellerStoreContext():SellerContextValue{return useContext(SellerContext);}
 
-function SellerNavigation({ mobile = false }: { mobile?: boolean }): React.JSX.Element {
-  const links = navigation.map((item) => {
+function SellerNavigation({ mobile = false,memberRole }: { mobile?: boolean;memberRole:SellerMemberRole|undefined }): React.JSX.Element {
+  const links = navigation.filter((item)=>item.path!=='/seller/settlements'||canViewSellerFinancials(memberRole)).map((item) => {
     const Icon = item.icon;
     return <NavLink key={item.path} to={item.path} end={item.path === '/seller'}>
       <Icon aria-hidden="true" /><span>{item.label}</span>
@@ -58,14 +61,14 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
     queryFn: (cursor, signal) => sellerApi.stores(client, cursor, signal),
   });
   const selectedStore = stores.items.find((store) => store.id === storeId) ?? null;
-  const value = useMemo(() => ({ storeId }), [storeId]);
   const organization = me.data?.organization;
   const member = me.data?.member;
+  const value = useMemo<SellerContextValue>(() => ({storeId,memberRole:member?.role,identityPending:me.isPending,identityError:me.isError}), [storeId,member?.role,me.isPending,me.isError]);
   return <SellerContext.Provider value={value}>
     <IdentityShell identity="seller" className="seller-business-shell">
       <aside className="seller-sidebar">
         <NavLink className="seller-sidebar-brand" to="/seller" aria-label="月光白首页">月光白</NavLink>
-        <SellerNavigation />
+        <SellerNavigation memberRole={member?.role}/>
         <div className="seller-sidebar-member">
           <UserRound aria-hidden="true" />
           <span><strong>{member?.display_name ?? '验证身份中…'}</strong>{member ? <small>{roleLabels[member.role]}</small> : null}</span>
@@ -98,7 +101,7 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
         </header>
         <main className="seller-main">{children ?? <Outlet />}</main>
       </div>
-      <SellerNavigation mobile />
+      <SellerNavigation mobile memberRole={member?.role}/>
     </IdentityShell>
   </SellerContext.Provider>;
 }
