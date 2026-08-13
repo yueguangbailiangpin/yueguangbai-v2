@@ -117,6 +117,6 @@
 
 - [x] External-evidenced（2026-08-13）：canonical main 的 GitHub Actions [run 31660766794](https://github.com/yueguangbailiangpin/yueguangbai-v2/actions/runs/31660766794) 在 `1870c031a136a20e2bf96165e7d15a1da9d6dbbb` 的 push 上完成；`static-governance` 与 `tests-and-build` 两个 job 均为 `success`。
 - [x] Code-verified/local（2026-08-13）：PR 与 `main` push 的非生产 CI workflow 使用 locked `npm ci`、Node `24.19.0`、runner 临时 Wrangler/XDG 目录、最小 GitHub token、concurrency/cancel，并调用 canonical `check:ci:static` / `check:ci:test-build`。`static-governance` 现额外只运行 final-go workflow 的 Node 负向 fixture/verifier；不增加第二次全量 Vitest、workspace build 或 E2E。
-- [ ] External-pending：`fix/final-go-governance-alignment` 的 Draft PR 尚待其新 HEAD 的两个 GitHub Actions job 实际完成；`pending` 不是通过，必须回读两项结论。
+- [x] External-evidenced（2026-08-13）：Draft PR [#65](https://github.com/yueguangbailiangpin/yueguangbai-v2/pull/65) 的固定 HEAD `0186da0110292fcd90c36d2a2fa718b022a0a4e6` 已回读 GitHub Actions [run 31662560068](https://github.com/yueguangbailiangpin/yueguangbai-v2/actions/runs/31662560068)：`static-governance` 于 03:02:20Z、`tests-and-build` 于 03:10:06Z 均为 `success`；后者固定记录为 239 个测试文件、1,588 项测试通过。该 run 的 job 数为 2；它只证明固定 HEAD 的 CI，后续 commit 必须单独回读，`pending` 不算通过。
 - [ ] External-unverified：GitHub branch protection / rulesets 查询因当前私有仓库套餐返回 403，required checks enforcement 未能确认或配置。
 - [ ] Production-operator gate：真实 Playwright E2E、staging/production、Cloudflare Access、D1/R2、DNS、Secrets、Scheduler、数据和网络验收均不属于此 CI，须逐项独立授权与验收。
