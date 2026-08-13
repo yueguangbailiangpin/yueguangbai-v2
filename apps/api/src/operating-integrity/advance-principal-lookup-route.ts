@@ -54,12 +54,22 @@ async function lookup(context:Context<AppEnv>){
         actor.roles.has('owner')&&actor.permissions.has('FINANCIAL_CORRECT')?null:'ROLE_OR_PERMISSION_NOT_ALLOWED',
       ),
     } as const;
+    const refundFinancials=advancePrincipalFinancialsForActor(actor,value);
     context.header('Cache-Control','no-store');return context.json(apiSuccess({order:{
-      formal_order_id:String(value.formal_order_id),amazon_order_number:String(value.amazon_order_number_normalized),buyer_customer_id:String(value.buyer_customer_id),seller_organization_id:String(value.seller_organization_id),marketplace_code:String(value.canonical_marketplace_code),product_name:String(value.product_name_snapshot),confirmed_at:Number(value.confirmed_at),marketplace_business_date:value.marketplace_business_date===null?null:String(value.marketplace_business_date),review_case_id:value.review_case_id===null?null:String(value.review_case_id),review_status:value.review_status===null?null:String(value.review_status),has_refund_obligation:Number(value.has_refund_obligation)===1,advance_net_cny_fen:String(value.advance_net_cny_fen),operational_state:String(value.operational_state),actions,
+      formal_order_id:String(value.formal_order_id),amazon_order_number:String(value.amazon_order_number_normalized),buyer_customer_id:String(value.buyer_customer_id),seller_organization_id:String(value.seller_organization_id),marketplace_code:String(value.canonical_marketplace_code),product_name:String(value.product_name_snapshot),confirmed_at:Number(value.confirmed_at),marketplace_business_date:value.marketplace_business_date===null?null:String(value.marketplace_business_date),review_case_id:value.review_case_id===null?null:String(value.review_case_id),review_status:value.review_status===null?null:String(value.review_status),operational_state:String(value.operational_state),actions,
+      ...refundFinancials,
     }},requestId));
   }catch{
     return context.json(apiFailure('DEPENDENCY_UNAVAILABLE','订单业务能力暂时无法读取，请稍后重试',requestId),503);
   }
+}
+
+export function advancePrincipalFinancialsForActor(
+  actor:Pick<AssignmentStaffAuthorization,'roles'>,
+  value:{has_refund_obligation:unknown;advance_net_cny_fen:unknown},
+):{has_refund_obligation:boolean|null;advance_net_cny_fen:string|null}{
+  if(!actor.roles.has('owner')&&!actor.roles.has('buyer_refund'))return{has_refund_obligation:null,advance_net_cny_fen:null};
+  return{has_refund_obligation:Number(value.has_refund_obligation)===1,advance_net_cny_fen:String(value.advance_net_cny_fen)};
 }
 
 function capability(allowed:boolean,reason:string|null):BusinessActionCapabilityDto{return Object.freeze({allowed,reason});}

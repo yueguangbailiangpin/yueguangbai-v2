@@ -30,6 +30,28 @@ const demandReviewContext = {
   timezone: 'Asia/Shanghai', data_as_of: 1_787_000_000_000,
 };
 
+const refundWorkItem = {
+  ...staffTestWorkItem,
+  work_item_id: 'work-refund', work_type: 'BUYER_REFUND_PROCESSING' as const,
+  source_entity_type: 'BUYER_REFUND_OBLIGATION', source_entity_id: 'refund-1',
+  duty_code: 'BUYER_REFUND_OWNER' as const,
+};
+
+const buyerRefund = {
+  obligation_id: 'refund-1', buyer_customer_id: 'buyer-1', formal_order_id: 'order-1',
+  due_amount_cny_fen: '10000', gross_paid_cny_fen: '5000', reversed_cny_fen: '0',
+  net_paid_cny_fen: '5000', outstanding_amount_cny_fen: '5000', overpaid_amount_cny_fen: '0',
+  status: 'PARTIALLY_PAID' as const, version: 2, created_at: 1_787_000_000_000,
+  updated_at: 1_787_000_000_000, buyer: { buyer_customer_id: 'buyer-1', buyer_customer_no: 'B-1' },
+  order: { formal_order_id: 'order-1', marketplace: 'JP' as const,
+    amazon_order_number_normalized: '503-5555555-6666666', product_id: 'product-1', asin: 'B000000001' },
+  workflow: { work_item_id: 'work-refund', assigned_staff_id: 'staff-1', assigned_team_id: null,
+    fixed_assignment_id: 'assignment-1' }, source_review_event_id: 'review-event-1', review_case_id: 'review-1',
+  payments: [{ payment_entry_id: 'payment-1', amount_cny_fen: '5000', paid_at: 1_787_000_000_000,
+    china_business_date: '2026-08-12', payment_channel: 'WECHAT' as const, public_note: null,
+    internal_note: null, proofs: [] }], reversals: [],
+};
+
 describe('canonical Frozen Staff workbench', () => {
   it('keeps the scoped queue usable when the selected detail is concealed', async () => {
     server.use(
@@ -99,6 +121,34 @@ describe('canonical Frozen Staff workbench', () => {
     expect(screen.queryByRole('button', { name: '通过并发布' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '拒绝' })).toBeVisible();
   });
+
+  it('keeps refund confirmation disabled while a financial request is pending', async () => {
+    let requestCount=0;let finish:()=>void=()=>{};
+    const gate=new Promise<void>((resolve)=>{finish=resolve;});
+    installRefundHandlers(async()=>{requestCount+=1;await gate;return refundConflict();});
+    const user=userEvent.setup();
+    renderWorkbench('/staff?work_item=work-refund');
+
+    await user.click(await screen.findByRole('button',{name:'冲正'}));
+    await user.click(screen.getByRole('button',{name:'确认'}));
+    expect(await screen.findByRole('button',{name:'处理中…'})).toBeDisabled();
+    expect(screen.getByRole('button',{name:'取消'})).toBeDisabled();
+    screen.getByRole('button',{name:'处理中…'}).click();
+    expect(requestCount).toBe(1);
+    finish();
+    expect(await screen.findByText('返款操作未完成。系统不会自动创建第二笔付款，请按错误类型重试原请求或刷新返款事实。')).toBeVisible();
+  });
+
+  it('shows the request id and a server-fact refresh after a rejected refund mutation', async () => {
+    installRefundHandlers(async()=>refundConflict());
+    const user=userEvent.setup();
+    renderWorkbench('/staff?work_item=work-refund');
+
+    await user.click(await screen.findByRole('button',{name:'冲正'}));
+    await user.click(screen.getByRole('button',{name:'确认'}));
+    expect(await screen.findByText(/refund-version-conflict/u)).toBeVisible();
+    expect(screen.getByRole('button',{name:'刷新返款事实'})).toBeVisible();
+  });
 });
 
 function renderWorkbench(route: string): void {
@@ -115,3 +165,13 @@ function installDemandHandlers(
     http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), ({ request }) => mutation(request)),
   );
 }
+
+function installRefundHandlers(mutation:()=>Promise<Response>):void{
+  server.use(
+    http.get(apiUrl('/api/staff/me/work-items'),()=>HttpResponse.json({data:{work_items:[refundWorkItem],next_cursor:null},meta:{request_id:'queue-refund'}})),
+    http.get(apiUrl('/api/staff/buyer-refunds/refund-1'),()=>HttpResponse.json({data:{buyer_refund:buyerRefund},meta:{request_id:'refund-detail'}})),
+    http.post(apiUrl('/api/staff/buyer-refunds/refund-1/payments/payment-1/reversals'),()=>mutation()),
+  );
+}
+
+function refundConflict():Response{return HttpResponse.json({error:{code:'VERSION_CONFLICT',message:'version conflict',details:null},meta:{request_id:'refund-version-conflict'}},{status:409});}
