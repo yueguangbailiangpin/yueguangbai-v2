@@ -2,7 +2,7 @@ import { existsSync,readdirSync } from 'node:fs';
 import path from 'node:path';
 import { invariant as assert,readRepositoryFile,repositoryRoot as root } from './verifier-utils.mjs';
 import { resolveProductionSchemaBaseline,verifyProductionSchemaDocuments } from './verify-production-schema-documents.mjs';
-import { verifyFinalProductionGoWorkflows } from './final-production-go-workflow-governance.mjs';
+import { discoverCanonicalWorkspacePackages,verifyFinalProductionGoWorkflows } from './final-production-go-workflow-governance.mjs';
 
 const read=(file)=>readRepositoryFile(file,root);
 const {schema,latestMigration}=resolveProductionSchemaBaseline();
@@ -23,16 +23,11 @@ const localVerifier=read('scripts/verify-production-readiness-formal.mjs');asser
 assert(existsSync(path.join(root,'scripts/probe-production-readiness.mjs')),'explicit external readiness probe missing');
 
 const workflowFiles=readdirSync(path.join(root,'.github/workflows')).filter((file)=>/\.ya?ml$/u.test(file));
-verifyFinalProductionGoWorkflows(Object.fromEntries(workflowFiles.map((file)=>[file,read(`.github/workflows/${file}`)])),JSON.parse(read('package.json')),readWorkspacePackageManifests());
+const rootPackageManifest=JSON.parse(read('package.json'));
+verifyFinalProductionGoWorkflows(Object.fromEntries(workflowFiles.map((file)=>[file,read(`.github/workflows/${file}`)])),rootPackageManifest,discoverCanonicalWorkspacePackages(root,rootPackageManifest));
 const monitor=read('scripts/production-health-monitor.mjs');for(const marker of ["url.pathname!=='/ready'",'value.data.status','operational_alerts','staff_access','release'])assert(monitor.includes(marker),`production monitor does not validate current readiness: ${marker}`);
 
 assert(!existsSync(path.join(root,'wrangler.production.jsonc')),'rendered production config exists; refresh deployment audit');
 assert(!existsSync(path.join(root,'apps/api/wrangler.production.jsonc')),'rendered API production config exists; refresh deployment audit');
 assert(!existsSync(path.join(root,'apps/api/wrangler.staging.jsonc')),'rendered API staging config exists; refresh deployment audit');
 console.log(JSON.stringify({status:'PASS',migration:`0001-${String(schema).padStart(4,'0')}_CONTINUOUS`,staff_auth:'CLOUDFLARE_ACCESS_REQUIRED',scheduler:'PRODUCTION_REQUIRED',readiness:'/ready',recovery:`SCHEMA${schema}_CURRENT_RELEASE_D1_R2_ATTESTATION_REQUIRED`,local_external_calls:0,production_go:'OWNER_APPROVAL_AND_EXPLICIT_PROBE_REQUIRED'},null,2));
-
-function readWorkspacePackageManifests(){
-  return ['apps','packages','tools'].flatMap((directory)=>readdirSync(path.join(root,directory),{withFileTypes:true})
-    .filter((entry)=>entry.isDirectory()&&existsSync(path.join(root,directory,entry.name,'package.json')))
-    .map((entry)=>JSON.parse(read(`${directory}/${entry.name}/package.json`))));
-}

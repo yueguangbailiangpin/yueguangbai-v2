@@ -1,8 +1,12 @@
+import { existsSync,lstatSync,readFileSync,readdirSync,realpathSync } from 'node:fs';
+import path from 'node:path';
 import { parseDocument } from 'yaml';
 import { parse as parseShell } from 'shell-quote';
 import { invariant as assert } from './verifier-utils.mjs';
 
 const CANONICAL_WORKFLOWS=Object.freeze(['ci.yml','production-health-monitor.yml']);
+const CANONICAL_WORKSPACE_GLOBS=Object.freeze(['apps/*','packages/*','tools/*']);
+const NPM_CI_LIFECYCLE_SCRIPTS=Object.freeze(['preinstall','install','postinstall','prepublish','preprepare','prepare','postprepare']);
 const MAX_NPM_SCRIPT_DEPTH=12;
 const CI_JOB_POLICY=Object.freeze({
   'static-governance':20,
@@ -60,16 +64,59 @@ const SAFE_ENV_LINES=new Set([
 ]);
 const SAFE_MKDIR_LINE='mkdir -p "$RUNNER_TEMP/ygb-xdg-config" "$RUNNER_TEMP/ygb-xdg-cache"';
 
-export function verifyFinalProductionGoWorkflows(workflows,packageManifest,workspaceManifests=[]){
+export function verifyFinalProductionGoWorkflows(workflows,packageManifest,workspacePackages=[]){
   assertPlainRecord(workflows,'workflow inventory');
-  assertPlainRecord(packageManifest,'package manifest');
-  assertPlainRecord(packageManifest.scripts,'package manifest scripts');
-  assert(Array.isArray(workspaceManifests),'workspace manifests must be an array');
-  for(const manifest of workspaceManifests){assertPlainRecord(manifest,'workspace package manifest');assertPlainRecord(manifest.scripts,'workspace package manifest scripts');}
+  assertRootManifestExecutionMetadata(packageManifest);
+  const workspaceManifests=verifyWorkspacePackageDescriptors(workspacePackages);
   assertExactSet(Object.keys(workflows),CANONICAL_WORKFLOWS,'workflow inventory');
   const analysis={rootPackageManifest:packageManifest,currentPackageManifest:packageManifest,workspaceManifests,scriptStack:new Set(),scriptDepth:0};
   verifyCiWorkflow(parseWorkflow(workflows['ci.yml'],'ci.yml'),analysis);
   verifyHealthWorkflow(parseWorkflow(workflows['production-health-monitor.yml'],'production-health-monitor.yml'),analysis);
+}
+
+export function discoverCanonicalWorkspacePackages(repositoryRoot,packageManifest){
+  assertRootManifestExecutionMetadata(packageManifest);
+  assert(typeof repositoryRoot==='string'&&path.isAbsolute(repositoryRoot),'repository root must be an absolute path');
+  const rootPath=path.resolve(repositoryRoot);
+  const rootStat=lstatSync(rootPath);
+  assert(rootStat.isDirectory()&&!rootStat.isSymbolicLink(),'repository root must be a real directory');
+  const rootRealPath=realpathSync(rootPath);
+  assert(!existsSync(path.join(rootPath,'.npmrc')),'repository .npmrc is not permitted in the canonical npm execution surface');
+  assert(!existsSync(path.join(rootPath,'binding.gyp')),'root binding.gyp would create an implicit npm install lifecycle');
+  const workspacePackages=[];
+  const seenRealPaths=new Set();
+  const seenNames=new Set();
+  for(const workspaceGlob of CANONICAL_WORKSPACE_GLOBS){
+    const workspaceRootName=workspaceGlob.slice(0,-2);
+    const workspaceRoot=path.join(rootPath,workspaceRootName);
+    const workspaceRootStat=lstatSync(workspaceRoot);
+    assert(workspaceRootStat.isDirectory()&&!workspaceRootStat.isSymbolicLink(),`${workspaceGlob} root must be a real directory`);
+    const workspaceRootRealPath=realpathSync(workspaceRoot);
+    assert(isWithin(rootRealPath,workspaceRootRealPath),`${workspaceGlob} root resolves outside the repository`);
+    for(const entry of readdirSync(workspaceRoot,{withFileTypes:true}).sort((left,right)=>left.name.localeCompare(right.name))){
+      const entryPath=path.join(workspaceRoot,entry.name);
+      assert(!entry.isSymbolicLink(),`${workspaceGlob} contains symlink ${entry.name}`);
+      if(!entry.isDirectory())continue;
+      const manifestPath=path.join(entryPath,'package.json');
+      if(!existsSync(manifestPath))continue;
+      const manifestStat=lstatSync(manifestPath);
+      assert(manifestStat.isFile()&&!manifestStat.isSymbolicLink(),`${workspaceGlob}/${entry.name}/package.json must be a real file`);
+      const realPath=realpathSync(entryPath);
+      assert(path.dirname(realPath)===workspaceRootRealPath&&isWithin(rootRealPath,realPath),`${workspaceGlob}/${entry.name} is nested or resolves outside the repository`);
+      assert(!seenRealPaths.has(realPath),`duplicate workspace real path ${realPath}`);
+      seenRealPaths.add(realPath);
+      assert(!existsSync(path.join(entryPath,'.npmrc')),`${workspaceGlob}/${entry.name}/.npmrc may not alter canonical npm execution`);
+      assert(!existsSync(path.join(entryPath,'binding.gyp')),`${workspaceGlob}/${entry.name} binding.gyp would create an implicit npm install lifecycle`);
+      let manifest;
+      try{manifest=JSON.parse(readFileSync(manifestPath,'utf8'));}catch(error){throw new Error(`${workspaceGlob}/${entry.name}/package.json parse failed: ${error instanceof Error?error.message:String(error)}`);}
+      assertWorkspaceManifestExecutionMetadata(manifest,`${workspaceRootName}/${entry.name}`);
+      assert(!seenNames.has(manifest.name),`duplicate workspace package name ${manifest.name}`);
+      seenNames.add(manifest.name);
+      workspacePackages.push({relativePath:`${workspaceRootName}/${entry.name}`,manifest});
+    }
+  }
+  verifyLockfileWorkspaceTopology(rootPath,workspacePackages);
+  return workspacePackages;
 }
 
 function verifyCiWorkflow(workflow,analysis){
@@ -282,7 +329,11 @@ function analyzeNpm(words,analysis,label,mode){
   let index=1;let allWorkspaces=false;
   while(NPM_GLOBAL_FLAGS.has(words[index])){if(words[index]==='--workspaces'||words[index]==='-ws')allWorkspaces=true;index+=1;}
   const subcommand=words[index];
-  if(subcommand==='ci')return assert(index===1&&words.length===2,`${label} npm ci is not canonical`);
+  if(subcommand==='ci'){
+    assert(index===1&&words.length===2,`${label} npm ci is not canonical and may not branch with --ignore-scripts or workspace selectors`);
+    assertNpmCiExecutionSurface(analysis,label);
+    return;
+  }
   if(subcommand==='test'){
     assert(!allWorkspaces&&words.length===index+1,`${label} npm test arguments are not canonical`);
     return analyzeNpmScript('test',analysis,`${label} npm test`,mode);
@@ -339,7 +390,12 @@ function analyzeNpmScript(scriptName,analysis,label,mode,packageManifest=analysi
   const source=packageManifest.scripts[scriptName];
   assert(typeof source==='string'&&source.trim().length>0,`${label} npm script is missing or not a fixed string`);
   const next={...analysis,currentPackageManifest:packageManifest,scriptStack:new Set([...analysis.scriptStack,identity]),scriptDepth:analysis.scriptDepth+1};
-  analyzeShellProgram(source,next,`${packageName(packageManifest)} package.json scripts.${scriptName}`,mode);
+  for(const hookName of [`pre${scriptName}`,scriptName,`post${scriptName}`]){
+    const hookSource=packageManifest.scripts[hookName];
+    if(hookName!==scriptName&&hookSource===undefined)continue;
+    assert(typeof hookSource==='string'&&hookSource.trim().length>0,`${label} npm hook ${hookName} is not a fixed non-empty string`);
+    analyzeShellProgram(hookSource,next,`${packageName(packageManifest)} package.json scripts.${hookName}`,mode);
+  }
 }
 
 function analyzeWrangler(args,label){
@@ -368,7 +424,84 @@ function assertAllowedWranglerDeployArguments(args,label){
   }
 }
 
-function commandName(tokens){return tokens.find((token)=>typeof token==='string'&&token.length>0)||'';}
+function assertRootManifestExecutionMetadata(manifest){
+  assertPlainRecord(manifest,'root package manifest');
+  assertPlainRecord(manifest.scripts,'root package manifest scripts');
+  assert(typeof manifest.name==='string'&&manifest.name.length>0,'root package manifest name must be fixed');
+  assert(JSON.stringify(manifest.workspaces)===JSON.stringify(CANONICAL_WORKSPACE_GLOBS),'root package manifest workspaces must exactly equal apps/*, packages/*, tools/*');
+  assertPlainRecord(manifest.engines,'root package manifest engines');
+  assertExactSet(Object.keys(manifest.engines),['node'],'root package manifest engines');
+  assert(manifest.engines.node==='>=24 <25','root package manifest Node engine must remain >=24 <25');
+  assertManifestExecutionMetadata(manifest,'root package manifest');
+}
+
+function assertWorkspaceManifestExecutionMetadata(manifest,relativePath){
+  assertPlainRecord(manifest,`${relativePath} package manifest`);
+  assertPlainRecord(manifest.scripts,`${relativePath} package manifest scripts`);
+  assert(typeof manifest.name==='string'&&manifest.name.length>0,`${relativePath} package name must be fixed`);
+  assert(manifest.workspaces===undefined,`${relativePath} may not define nested workspaces`);
+  assertManifestExecutionMetadata(manifest,`${relativePath} package manifest`);
+}
+
+function assertManifestExecutionMetadata(manifest,label){
+  for(const lifecycle of NPM_CI_LIFECYCLE_SCRIPTS){
+    assert(manifest.scripts[lifecycle]===undefined,`${label} scripts.${lifecycle} would execute implicitly during npm ci`);
+  }
+  assert(manifest.packageManager===undefined,`${label} packageManager must remain absent for the canonical npm runner`);
+  assert(manifest.devEngines===undefined,`${label} devEngines must remain absent for the canonical npm runner`);
+  assert(manifest.config===undefined,`${label} config must remain absent from the CI execution environment`);
+  assert(manifest.installConfig===undefined,`${label} installConfig must remain absent from the CI install graph`);
+  assert(manifest.bin===undefined,`${label} bin must remain absent so workspace packages cannot shadow approved tools`);
+  assert(manifest.directories===undefined||manifest.directories.bin===undefined,`${label} directories.bin must remain absent so workspace packages cannot shadow approved tools`);
+  assert(manifest.engines===undefined||manifest.engines.npm===undefined,`${label} engines.npm must remain absent; setup-node supplies the canonical npm`);
+}
+
+function verifyWorkspacePackageDescriptors(workspacePackages){
+  assert(Array.isArray(workspacePackages),'workspace packages must be a topology-verified array');
+  const manifests=[];const paths=new Set();const names=new Set();
+  for(const workspacePackage of workspacePackages){
+    assertPlainRecord(workspacePackage,'workspace package descriptor');
+    assertExactSet(Object.keys(workspacePackage),['relativePath','manifest'],'workspace package descriptor keys');
+    const {relativePath,manifest}=workspacePackage;
+    assert(typeof relativePath==='string'&&isCanonicalWorkspaceRelativePath(relativePath),`workspace path ${String(relativePath)} is outside the canonical one-level globs`);
+    assert(!paths.has(relativePath),`duplicate workspace path ${relativePath}`);paths.add(relativePath);
+    assertWorkspaceManifestExecutionMetadata(manifest,relativePath);
+    assert(!names.has(manifest.name),`duplicate workspace package name ${manifest.name}`);names.add(manifest.name);
+    manifests.push(manifest);
+  }
+  return manifests;
+}
+
+function assertNpmCiExecutionSurface(analysis,label){
+  assertRootManifestExecutionMetadata(analysis.rootPackageManifest);
+  for(const manifest of analysis.workspaceManifests)assertWorkspaceManifestExecutionMetadata(manifest,`workspace ${packageName(manifest)}`);
+  assert(analysis.workspaceManifests.length>0,`${label} npm ci requires a verified non-empty canonical workspace topology`);
+}
+
+function verifyLockfileWorkspaceTopology(rootPath,workspacePackages){
+  const lockfilePath=path.join(rootPath,'package-lock.json');
+  assert(existsSync(lockfilePath),'canonical npm ci requires package-lock.json');
+  const lockfileStat=lstatSync(lockfilePath);
+  assert(lockfileStat.isFile()&&!lockfileStat.isSymbolicLink(),'package-lock.json must be a real file');
+  let lockfile;
+  try{lockfile=JSON.parse(readFileSync(lockfilePath,'utf8'));}catch(error){throw new Error(`package-lock.json parse failed: ${error instanceof Error?error.message:String(error)}`);}
+  assert(lockfile.lockfileVersion===3,'package-lock.json lockfileVersion must remain 3 for canonical npm ci semantics');
+  const lockRoot=requireRecord(requireRecord(lockfile.packages,'package-lock.json packages')[''],'package-lock.json root package');
+  assert(JSON.stringify(lockRoot.workspaces)===JSON.stringify(CANONICAL_WORKSPACE_GLOBS),'package-lock.json root workspaces must match the canonical globs');
+  const discoveredPaths=workspacePackages.map(({relativePath})=>relativePath).sort();
+  const lockedPaths=Object.keys(lockfile.packages).filter(isCanonicalWorkspaceRelativePath).sort();
+  assert(JSON.stringify(lockedPaths)===JSON.stringify(discoveredPaths),'package-lock.json workspace package paths must exactly match filesystem discovery');
+}
+
+function isCanonicalWorkspaceRelativePath(value){
+  return typeof value==='string'&&/^(apps|packages|tools)\/[^/]+$/u.test(value)&&!value.includes('..')&&!path.isAbsolute(value);
+}
+
+function isWithin(rootPath,candidatePath){
+  const relative=path.relative(rootPath,candidatePath);
+  return relative===''||(!relative.startsWith(`..${path.sep}`)&&relative!=='..'&&!path.isAbsolute(relative));
+}
+
 function packageName(manifest){return typeof manifest.name==='string'&&manifest.name.length>0?manifest.name:'root';}
 function assertExactPermissions(actual,expected,name){
   assertPlainRecord(actual,`${name} permissions`);
