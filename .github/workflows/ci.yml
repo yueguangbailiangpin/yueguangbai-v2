@@ -13,16 +13,15 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-env:
-  WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler.log
-  XDG_CONFIG_HOME: ${{ runner.temp }}/xdg-config
-  XDG_CACHE_HOME: ${{ runner.temp }}/xdg-cache
-
 jobs:
   static-governance:
     name: static-governance
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler.log
+      XDG_CONFIG_HOME: ${{ runner.temp }}/xdg-config
+      XDG_CACHE_HOME: ${{ runner.temp }}/xdg-cache
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v7.0.1
@@ -44,6 +43,10 @@ jobs:
     name: tests-and-build
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler.log
+      XDG_CONFIG_HOME: ${{ runner.temp }}/xdg-config
+      XDG_CACHE_HOME: ${{ runner.temp }}/xdg-cache
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v7.0.1
