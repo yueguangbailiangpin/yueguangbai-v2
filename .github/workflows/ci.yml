@@ -36,6 +36,10 @@ jobs:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Verify locked lifecycle provenance before install
+        run: |
+          node scripts/verify-dependency-lifecycle.mjs
+          node --test scripts/verify-dependency-lifecycle.node-test.mjs
       - name: Install locked dependencies
         run: npm ci
       - name: Run static and local-only release gates
@@ -63,6 +67,10 @@ jobs:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Verify locked lifecycle provenance before install
+        run: |
+          node scripts/verify-dependency-lifecycle.mjs
+          node --test scripts/verify-dependency-lifecycle.node-test.mjs
       - name: Install locked dependencies
         run: npm ci
       - name: Run repository tests and builds once
