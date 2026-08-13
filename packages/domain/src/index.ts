@@ -27,6 +27,7 @@ export * from './security/customer-password';
 export * from './security/customer-session';
 export * from './security/one-time-token';
 export * from './serialization/canonical-json';
+export * from './operational-alert-binding';
 export * from './time/business-clock';
 export * from './time/date-only';
 export * from './staff-assignment';

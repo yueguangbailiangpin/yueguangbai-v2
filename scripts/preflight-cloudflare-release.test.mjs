@@ -12,11 +12,13 @@ import { spawnSync } from 'node:child_process';
 import {
   externalReleaseConfigPath,
   inspectReleaseTemplate,
+  operationalAlertFingerprint,
   readLocalReleaseConfig,
   requiredManagedSecrets,
   templatePath,
   validateReleaseConfig,
 } from './preflight-cloudflare-release.mjs';
+import { operationalAlertDescriptorFromService } from '../packages/domain/src/operational-alert-binding.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const script = path.join(root, 'scripts/preflight-cloudflare-release.mjs');
@@ -62,7 +64,7 @@ describe('Cloudflare release preflight', () => {
     expect(errors).toContain('routes.0.pattern:origin_mismatch');
   });
 
-  it('requires a bound production sink identity and config fingerprint', () => {
+  it('requires a canonical bound production sink descriptor and derived fingerprint', () => {
     const config = anonymousConfig('production');
     config.vars.OPERATIONAL_ALERT_MODE = 'disabled';
     delete config.vars.OPERATIONAL_ALERT_SINK_IDENTITY;
@@ -70,12 +72,35 @@ describe('Cloudflare release preflight', () => {
     config.services = [];
     const errors = validateReleaseConfig(config, 'production');
     expect(errors).toContain('vars.OPERATIONAL_ALERT_MODE:must_be_bound');
-    expect(errors).toContain('vars.OPERATIONAL_ALERT_SINK_IDENTITY:missing_or_invalid');
-    expect(errors).toContain('vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:must_be_sha256');
     expect(errors).toContain('services:operational_alert_sink_binding_required');
     const staging = anonymousConfig('staging');
     expect(staging.vars).toMatchObject({ OPERATIONAL_ALERT_MODE: 'disabled' });
     expect(validateReleaseConfig(staging, 'staging')).toEqual([]);
+  });
+
+  it('rejects stale fingerprints after service, entrypoint, props, identity or deployment-version drift',()=>{
+    const mutations=[
+      (config)=>{config.services[0].service='ygb-operational-alerts-b';config.services[0].props.service_target='ygb-operational-alerts-b';config.vars.OPERATIONAL_ALERT_SINK_SERVICE='ygb-operational-alerts-b';},
+      (config)=>{config.services[0].entrypoint='OtherEntrypoint';config.services[0].props.entrypoint='OtherEntrypoint';config.vars.OPERATIONAL_ALERT_SINK_ENTRYPOINT='OtherEntrypoint';},
+      (config)=>{config.services[0].props.extra='not-allowed';},
+      (config)=>{config.services[0].props.sink_identity='service:operations-other';config.vars.OPERATIONAL_ALERT_SINK_IDENTITY='service:operations-other';},
+      (config)=>{config.services[0].props.sink_deployment_version='deploy-002';config.vars.OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION='deploy-002';},
+    ];
+    for(const mutate of mutations){const config=anonymousConfig('production');mutate(config);expect(validateReleaseConfig(config,'production')).not.toEqual([]);}
+  });
+
+  it('canonicalizes an omitted service entrypoint as the explicit runtime default',()=>{
+    const config=anonymousConfig('production');delete config.services[0].entrypoint;config.services[0].props.entrypoint=null;config.vars.OPERATIONAL_ALERT_SINK_ENTRYPOINT='default';config.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT=operationalAlertFingerprint(operationalAlertDescriptorFromService(config.services[0]));
+    expect(validateReleaseConfig(config,'production')).toEqual([]);
+  });
+
+  it('requires an exact 40-character hexadecimal release SHA while treating the template placeholder as operator input',()=>{
+    expect(inspectReleaseTemplate('production')).toMatchObject({status:'BLOCKED_NEEDS_OPERATOR_INPUT',errors:[]});
+    for(const value of [undefined,'abc1234','g'.repeat(40),'a'.repeat(39),'a'.repeat(41),'REQUIRED_RELEASE_COMMIT_SHA']){
+      const config=anonymousConfig('production');
+      if(value===undefined)delete config.vars.APP_RELEASE_SHA;else config.vars.APP_RELEASE_SHA=value;
+      expect(validateReleaseConfig(config,'production')).toContain(value==='REQUIRED_RELEASE_COMMIT_SHA'?'vars.APP_RELEASE_SHA:placeholder':'vars.APP_RELEASE_SHA:must_be_exact_git_sha');
+    }
   });
 
   it('rejects retired and optional runtime configuration in the core release', () => {
@@ -188,7 +213,8 @@ function anonymousConfig(environment) {
   replacePlaceholders(config, (value) => {
     if (value === 'REQUIRED_RELEASE_COMMIT_SHA') return 'a'.repeat(40);
     if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_IDENTITY') return 'service:operations-primary';
-    if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_CONFIG_SHA256') return 'b'.repeat(64);
+    if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_CONFIG_SHA256') return '0'.repeat(64);
+    if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION') return 'deploy-001';
     if (value === 'REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SERVICE') return 'ygb-operational-alerts';
     if (value.endsWith('_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN')
       || value === 'REQUIRED_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN') {
@@ -208,6 +234,7 @@ function anonymousConfig(environment) {
     if (value.endsWith('_R2_BUCKET_NAME')) return `ygb-${environment}-files`;
     throw new Error(`unmapped_placeholder:${value}`);
   });
+  if(environment==='production')config.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT=operationalAlertFingerprint(operationalAlertDescriptorFromService(config.services[0]));
   return config;
 }
 

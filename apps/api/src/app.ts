@@ -14,6 +14,7 @@ import type { StaffMcpProductionRuntimeBindings } from './staff-mcp/runtime';
 import { errorLogEvent,routeGroup,writeErrorLog } from './observability';
 import { recordWorker5xxSignal,resolveOperationalAlertSink,type OperationalAlertSink } from './scheduled-operations/signals';
 import { installSellerMemberPrivilegeSessionRotation } from './seller-portal/member-privilege-session-rotation';
+import type { OperationalAlertServiceBinding } from './operational-readiness/alert-sink-contract';
 
 export type AppBindings = StaffAuthProviderBindings
   & StaffMcpProductionRuntimeBindings
@@ -41,9 +42,12 @@ export type AppBindings = StaffAuthProviderBindings
   SCHEDULED_OPERATIONS_ENABLED?: string;
   SCHEDULED_OPERATIONS_DISABLED_JOBS?: string;
   ACQUISITION_MAINTENANCE_ENABLED?: string;
-  OPERATIONAL_ALERT_SINK?: OperationalAlertSink;
+  OPERATIONAL_ALERT_SINK?: OperationalAlertSink|OperationalAlertServiceBinding;
   OPERATIONAL_ALERT_MODE?: string;
+  OPERATIONAL_ALERT_SINK_SERVICE?: string;
+  OPERATIONAL_ALERT_SINK_ENTRYPOINT?: string;
   OPERATIONAL_ALERT_SINK_IDENTITY?: string;
+  OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION?: string;
   OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT?: string;
   SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED?: string;
 };

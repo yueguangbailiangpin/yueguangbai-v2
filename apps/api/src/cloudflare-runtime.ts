@@ -1,6 +1,8 @@
 import type { ObjectStorageAdapter, SqlDatabase } from '@ygb/contracts';
 import type { AppBindings } from './app';
 import { createR2ObjectStorageAdapter } from './files/r2-object-storage';
+import { parseExactGitCommitSha } from '@ygb/domain';
+import { resolveOperationalAlertRuntimeConfiguration } from './operational-readiness/alert-runtime';
 
 export type ReleaseEnvironment = 'local' | 'staging' | 'production';
 
@@ -31,9 +33,9 @@ const DISABLED_RELEASE_FLAGS = [
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
 ] as const;
 
-export function resolveCloudflareRuntime(
+export async function resolveCloudflareRuntime(
   bindings: CloudflareWorkerBindings,
-): ResolvedCloudflareRuntime | null {
+): Promise<ResolvedCloudflareRuntime | null> {
   const environment = bindings.APP_ENVIRONMENT;
   if (environment !== 'local'
     && environment !== 'staging'
@@ -50,6 +52,7 @@ export function resolveCloudflareRuntime(
 
   const appOrigin = exactHttpsOrigin(bindings.APP_ORIGIN);
   const allowedOrigins = exactOriginList(bindings.APP_ALLOWED_ORIGINS);
+  const releaseSha=parseExactGitCommitSha(bindings.APP_RELEASE_SHA);
   const storage = createR2ObjectStorageAdapter(
     bindings.FILE_OBJECT_STORAGE_R2,
   );
@@ -64,7 +67,8 @@ export function resolveCloudflareRuntime(
     || !validStaffAccessReleaseBindings(bindings, appOrigin)
     || !booleanFlag(bindings.SCHEDULED_OPERATIONS_ENABLED)
     || !booleanFlag(bindings.ACQUISITION_MAINTENANCE_ENABLED)
-    || !validOperationalAlertReleaseBindings(bindings,environment)) return null;
+    || !releaseSha
+    || !await validOperationalAlertReleaseBindings(bindings,environment)) return null;
 
   return Object.freeze({
     environment,
@@ -76,19 +80,16 @@ export function resolveCloudflareRuntime(
 
 function booleanFlag(value:unknown):value is 'true'|'false' { return value==='true'||value==='false'; }
 
-function validOperationalAlertReleaseBindings(bindings:CloudflareWorkerBindings,environment:ReleaseEnvironment):boolean{
-  if(environment==='production')return bindings.OPERATIONAL_ALERT_MODE==='bound'
-    &&isOperationalAlertSink(bindings.OPERATIONAL_ALERT_SINK)
-    &&safeSinkIdentity(bindings.OPERATIONAL_ALERT_SINK_IDENTITY)
-    &&typeof bindings.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT==='string'
-    &&/^[0-9a-f]{64}$/u.test(bindings.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT);
+async function validOperationalAlertReleaseBindings(bindings:CloudflareWorkerBindings,environment:ReleaseEnvironment):Promise<boolean>{
+  if(environment==='production')return await resolveOperationalAlertRuntimeConfiguration(bindings)!==null;
   return bindings.OPERATIONAL_ALERT_MODE==='disabled'
     &&bindings.OPERATIONAL_ALERT_SINK===undefined
+    &&bindings.OPERATIONAL_ALERT_SINK_SERVICE===undefined
+    &&bindings.OPERATIONAL_ALERT_SINK_ENTRYPOINT===undefined
     &&bindings.OPERATIONAL_ALERT_SINK_IDENTITY===undefined
+    &&bindings.OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION===undefined
     &&bindings.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT===undefined;
 }
-function isOperationalAlertSink(value:unknown):value is NonNullable<AppBindings['OPERATIONAL_ALERT_SINK']>{return Boolean(value&&typeof value==='object'&&'notify' in value&&typeof (value as {notify?:unknown}).notify==='function');}
-function safeSinkIdentity(value:unknown):boolean{return typeof value==='string'&&value.length>=8&&value.length<=200&&!value.startsWith('REQUIRED_')&&/^[A-Za-z0-9._:/@-]+$/u.test(value);}
 
 export function isApiRequestPath(pathname: string): boolean {
   return pathname === '/health'

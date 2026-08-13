@@ -12,4 +12,5 @@
 - [x] 10. Verify credential replay before mutable channel validation and Staff source-correction concealment through formal sessions.
 - [x] 11. Verify key Staff and order-instruction boundaries through cookie-to-session-to-D1 middleware, plus exact ghost-count assertions.
 - [x] 12. Run final API/Web typecheck, targeted tests, strict OpenSpec gates, diff check and exactly one full repository check for this review revision.
-- [ ] 13. Production operator supplies the real sink identity/fingerprint, performs delivery/failure/recovery exercises and records a current attestation. Not performed: production access is not authorized by this change.
+- [ ] 13. Production operator implements/provisions the real sink RPC, independently verifies its canonical descriptor/derived fingerprint, performs delivery/safe-failure/recovery exercises and records a current attestation. Not performed: production access is not authorized by this change.
+- [x] 14. Derive the binding fingerprint from the exact rendered service descriptor, require exact release SHA, and replace client PASS claims with three nonce-bound RPC receipts plus fail-closed tests.

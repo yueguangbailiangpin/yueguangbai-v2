@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase } from '@ygb/testkit';
 import { AnonymousR2Bucket } from '../test-support/anonymous-r2-binding';
+import { hashCanonicalJson,operationalAlertDescriptorFromRuntime } from '@ygb/domain';
 import worker from './worker';
 import {
   isAllowedSameOriginApiRequest,
@@ -10,6 +11,8 @@ import {
 
 const origin='https://release.example.invalid';
 const executionContext={waitUntil(){},passThroughOnException(){},props:{}};
+const alertDescriptor=operationalAlertDescriptorFromRuntime({serviceTarget:'ygb-operational-alerts',entrypoint:'OperationalAlertSinkEntrypoint',sinkIdentity:'service:operations-primary',sinkDeploymentVersion:'deploy-001'})!;
+const alertFingerprint=await hashCanonicalJson(alertDescriptor);
 
 describe('production Cloudflare Worker runtime',()=>{
   it('routes API to Hono and serves SPA content with security headers',async()=>{
@@ -41,8 +44,8 @@ describe('production Cloudflare Worker runtime',()=>{
     ])expect(isAllowedSameOriginApiRequest(request,origin)).toBe(false);
   });
 
-  it('uses only Cloudflare Access plus Moonwhite Staff DB configuration',()=>{
-    const runtime=resolveCloudflareRuntime(bindings());
+  it('uses only Cloudflare Access plus Moonwhite Staff DB configuration',async()=>{
+    const runtime=await resolveCloudflareRuntime(bindings());
     expect(runtime).not.toBeNull();
     expect(runtime?.appBindings).toMatchObject({
       STAFF_ACCESS_TEAM_DOMAIN:'https://moonwhite.cloudflareaccess.com',
@@ -63,7 +66,14 @@ describe('production Cloudflare Worker runtime',()=>{
       {...bindings(),ACQUISITION_MAINTENANCE_ENABLED:undefined},
       {...bindings(),OPERATIONAL_ALERT_MODE:'disabled'},
       {...bindings(),OPERATIONAL_ALERT_SINK:undefined},
+      {...bindings(),APP_RELEASE_SHA:undefined},
+      {...bindings(),APP_RELEASE_SHA:'abc1234'},
+      {...bindings(),APP_RELEASE_SHA:'g'.repeat(40)},
+      {...bindings(),APP_RELEASE_SHA:'REQUIRED_RELEASE_COMMIT_SHA'},
+      {...bindings(),OPERATIONAL_ALERT_SINK_SERVICE:'ygb-operational-alerts-other'},
+      {...bindings(),OPERATIONAL_ALERT_SINK_ENTRYPOINT:'OtherEntrypoint'},
       {...bindings(),OPERATIONAL_ALERT_SINK_IDENTITY:'REQUIRED_ALERT_SINK'},
+      {...bindings(),OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION:'deploy-002'},
       {...bindings(),OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:'not-a-sha256'},
       {...bindings(),STAFF_MCP_ENABLED:'false'},
     ] as unknown as CloudflareWorkerBindings[];
@@ -74,9 +84,9 @@ describe('production Cloudflare Worker runtime',()=>{
     }
   });
 
-  it('allows scheduler and acquisition maintenance independently of retired Feishu integration',()=>{
-    expect(resolveCloudflareRuntime({...bindings(),SCHEDULED_OPERATIONS_ENABLED:'true',ACQUISITION_MAINTENANCE_ENABLED:'true'})).not.toBeNull();
-    expect(resolveCloudflareRuntime({...bindings(),SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'true'})).not.toBeNull();
+  it('allows scheduler and acquisition maintenance independently of retired Feishu integration',async()=>{
+    expect(await resolveCloudflareRuntime({...bindings(),SCHEDULED_OPERATIONS_ENABLED:'true',ACQUISITION_MAINTENANCE_ENABLED:'true'})).not.toBeNull();
+    expect(await resolveCloudflareRuntime({...bindings(),SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'true'})).not.toBeNull();
   });
 
   it('adapts the production R2 binding before scheduled file cleanup runs',async()=>{
@@ -95,6 +105,7 @@ describe('production Cloudflare Worker runtime',()=>{
 
 function bindings():CloudflareWorkerBindings{return {
   APP_ENVIRONMENT:'production',APP_ORIGIN:origin,APP_ALLOWED_ORIGINS:origin,
+  APP_RELEASE_SHA:'a'.repeat(40),
   DB:{prepare(){throw new Error('database_not_used')},async batch(){throw new Error('database_not_used')}},
   FILE_OBJECT_STORAGE_R2:new AnonymousR2Bucket(),
   WEB_ASSETS:{async fetch(request:Request){return new URL(request.url).pathname.startsWith('/assets/')?new Response('export {};',{headers:{'Content-Type':'text/javascript'}}):new Response('<!doctype html><div id="root"></div>',{headers:{'Content-Type':'text/html; charset=utf-8'}})}},
@@ -102,8 +113,11 @@ function bindings():CloudflareWorkerBindings{return {
   STAFF_ACCESS_AUD:'staff-access-audience-001',STAFF_AUTH_ALLOWED_ORIGINS:origin,
   SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
   DRIVE_ARCHIVE_ENABLED:'false',DRIVE_ARCHIVE_COPY_ENABLED:'false',DRIVE_ARCHIVE_PROXY_READ_ENABLED:'false',DRIVE_ARCHIVE_R2_DELETE_ENABLED:'false',
-  OPERATIONAL_ALERT_MODE:'bound',OPERATIONAL_ALERT_SINK:{async notify(){}},
+  OPERATIONAL_ALERT_MODE:'bound',OPERATIONAL_ALERT_SINK:{async notify(){},async verifyOperationalAlertChallenge(){return null}},
+  OPERATIONAL_ALERT_SINK_SERVICE:'ygb-operational-alerts',
+  OPERATIONAL_ALERT_SINK_ENTRYPOINT:'OperationalAlertSinkEntrypoint',
   OPERATIONAL_ALERT_SINK_IDENTITY:'service:operations-primary',
-  OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:'b'.repeat(64),
+  OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION:'deploy-001',
+  OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:alertFingerprint,
 };}
 function fetchWorker(pathname:string,init?:RequestInit):Promise<Response>{return worker.fetch(new Request(`${origin}${pathname}`,init),bindings(),executionContext);}

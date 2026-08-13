@@ -47,7 +47,9 @@ Worker 的 Cron 配置只定义触发频率；`SCHEDULED_OPERATIONS_ENABLED` 必
 
 `OPERATIONAL_ALERT_MODE` 在 local/staging 默认为 `disabled`。`local` 模式只允许 local 环境使用内置安全结构化日志 adapter 或注入内存 mock；staging 不允许 console adapter。production 必须为 `bound`，并解析唯一 `OPERATIONAL_ALERT_SINK` service binding；同时必须配置稳定的 sink identity 和由操作者按实际 adapter 配置计算的 SHA-256 指纹。
 
-生产证明不是布尔开关。操作者完成真实投递、模拟 sink 失败和恢复后三项演练后，用正式总管理员 Staff session、同源 Origin、`Idempotency-Key` 和 exact body 调用 `/api/staff/production-readiness/operational-alert-attestations`。body 必须包含当前 40 位 `release_sha`、`sink_identity`、`sink_config_fingerprint`、`verified_at`、`expires_at`、三项值均为 `PASS` 的结果和非敏感 `evidence_reference`；有效期最长七天。服务把证明作为不可变 Audit，并与 Outbox、command completion 和 final assertion 同批提交。证明不得包含告警凭据或 Secret。
+生产证明不是布尔开关，也不是操作者自己填三个 `PASS`。渲染配置必须让唯一 service binding 的 target、entrypoint 与 exact props 相互镜像；props 仅允许 `service_target`、`entrypoint`、`sink_identity`、`sink_deployment_version`。preflight 从该真实条目做稳定 canonical JSON + SHA-256，声明 fingerprint 不一致即阻断。生产 sink Worker（本仓库不提供）必须实现 typed `verifyOperationalAlertChallenge` RPC，并从自己的 `ctx.props` 校验相同 descriptor。
+
+操作者获得生产授权并完成 sink provisioning 后，用正式总管理员 Staff session、同源 Origin、`Idempotency-Key` 和 exact body 调用 `/api/staff/production-readiness/operational-alert-attestations`；body 只允许 `expires_at` 与非敏感 `evidence_reference`，有效期最长七天。API 自行发起 delivery、`SAFE_NO_PRODUCTION_DISRUPTION` failure-path simulation、recovery 三个随机 nonce challenge。sink receipt 必须逐项绑定 challenge id/type/nonce、当前精确 40 位 release SHA、derived fingerprint、identity、deployment version、outcome 和有效期。任一 RPC/receipt 失败返回 503，不能写成功 Audit；成功时仅保存经验证的 receipt summary，不保存 nonce、凭据或 Secret，并与 Outbox、command completion、final assertion 同批提交。真实 sink 实现和真实三项演练仍是未完成 operator gate。
 
 `/ready` 对当前 release、identity、fingerprint、时间和三项结果逐项重验；缺失、格式错误、未来时间、过期、演练失败或任一绑定不匹配都会返回 `operational_alerts=failed` 和 503。preflight 只证明静态模板/配置满足机制要求，production health monitor 只消费 `/ready` 结果；两者都不会生成真实证明。disabled 状态配置 adapter、未知 mode、production 使用 local、或非 production 使用 bound 都视为无效配置并安全退回不发送。
 

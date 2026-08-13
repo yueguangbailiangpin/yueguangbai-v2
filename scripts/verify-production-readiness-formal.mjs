@@ -15,6 +15,7 @@ for(const marker of [
   '"ACQUISITION_MAINTENANCE_ENABLED": "true"',
   '"OPERATIONAL_ALERT_MODE": "bound"',
   '"OPERATIONAL_ALERT_SINK_IDENTITY": "REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_IDENTITY"',
+  '"OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION": "REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION"',
   '"binding": "OPERATIONAL_ALERT_SINK"',
   '"STAFF_ACCESS_TEAM_DOMAIN": "REQUIRED_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN"',
   '"STAFF_ACCESS_AUD": "REQUIRED_CLOUDFLARE_ACCESS_APPLICATION_AUD"',
@@ -29,7 +30,8 @@ const recovery=read('apps/api/src/production-readiness/recovery-attestation-rout
 assert(recovery.includes('const TARGET_SCHEMA=65'),'recovery attestation must target schema 65');
 assert(recovery.includes('APP_RELEASE_SHA'),'recovery attestation must bind current release SHA');
 const alertAttestation=read('apps/api/src/operational-readiness/alert-attestation.ts');
-for(const marker of ['release_sha','sink_identity','sink_config_fingerprint','delivery_result','failure_result','recovery_result','expires_at'])assert(alertAttestation.includes(marker),`operational alert attestation missing ${marker}`);
+for(const marker of ['verifyOperationalAlertChallenge','OPERATIONAL_ALERT_CHALLENGE_TYPES','nonce','release_sha','sink_identity','sink_deployment_version','sink_config_fingerprint','verified_receipts','expires_at'])assert(alertAttestation.includes(marker),`operational alert attestation missing ${marker}`);
+for(const forbidden of ['delivery_result','failure_result','recovery_result'])assert(!alertAttestation.includes(`body['${forbidden}']`),`client controls ${forbidden}`);
 const monitor=read('.github/workflows/production-health-monitor.yml');
 assert(monitor.includes('https://app.yueguangbai.net/ready'),'external health monitor must probe readiness');
 
