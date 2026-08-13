@@ -12,6 +12,10 @@ const CI_JOB_POLICY=Object.freeze({
   'static-governance':20,
   'tests-and-build':25,
 });
+const CI_FINAL_STEPS=Object.freeze({
+  'static-governance':Object.freeze({name:'Run static and local-only release gates',run:'npm run check:ci:static'}),
+  'tests-and-build':Object.freeze({name:'Run repository tests and builds once',run:'npm run check:ci:test-build'}),
+});
 const CI_ROOT_KEYS=['name','on','permissions','concurrency','jobs'];
 const HEALTH_ROOT_KEYS=['name','on','permissions','concurrency','jobs'];
 const CI_NODE_COMMANDS=new Set([
@@ -177,19 +181,33 @@ function collectCiJob(job,jobName,timeout){
   assert(job['runs-on']==='ubuntu-latest',`ci.yml ${jobName} must use ubuntu-latest`);
   assert(job['timeout-minutes']===timeout,`ci.yml ${jobName} timeout is not canonical`);
   const steps=requireSequence(job.steps,`ci.yml.jobs.${jobName}.steps`);
-  const runs=[];
-  for(const [index,step] of steps.entries()){
-    assertPlainRecord(step,`ci.yml.jobs.${jobName}.steps[${index}]`);
-    const hasRun=step.run!==undefined,hasUses=step.uses!==undefined;
-    assert(hasRun!==hasUses,`ci.yml.jobs.${jobName}.steps[${index}] must contain exactly one of run or uses`);
-    if(hasUses){assertCiAction(step,`ci.yml.jobs.${jobName}.steps[${index}]`);continue;}
-    assertExactSet(Object.keys(step),['name','run'],`ci.yml.jobs.${jobName}.steps[${index}] run keys`);
-    assert(typeof step.name==='string'&&step.name.length>0,`ci.yml.jobs.${jobName}.steps[${index}] run name must be fixed`);
-    assert(typeof step.run==='string'&&step.run.trim().length>0,`ci.yml.jobs.${jobName}.steps[${index}].run must be a fixed non-empty string`);
-    runs.push({index,run:step.run});
-  }
-  assert(runs.length>0,`ci.yml ${jobName} must contain audited run steps`);
-  return runs;
+  assert(steps.length===6,`ci.yml ${jobName} must keep the six canonical execution steps`);
+  assertCiAction(steps[0],`ci.yml.jobs.${jobName}.steps[0]`);
+  assert(steps[0].name==='Checkout',`ci.yml ${jobName} checkout step name is not canonical`);
+  const configure=assertCiRunStep(steps[1],jobName,1,'Configure local tool directories');
+  assertExactShellLines(configure,[SAFE_MKDIR_LINE,...SAFE_ENV_LINES],`ci.yml ${jobName} runner setup`);
+  assertCiAction(steps[2],`ci.yml.jobs.${jobName}.steps[2]`);
+  assert(steps[2].name==='Set up Node',`ci.yml ${jobName} setup-node step name is not canonical`);
+  const lifecycle=assertCiRunStep(steps[3],jobName,3,'Verify locked lifecycle provenance before install');
+  assertExactShellLines(lifecycle,['node scripts/verify-dependency-lifecycle.mjs','node --test scripts/verify-dependency-lifecycle.node-test.mjs'],`ci.yml ${jobName} dependency lifecycle proof`);
+  const install=assertCiRunStep(steps[4],jobName,4,'Install locked dependencies');
+  const finalStep=CI_FINAL_STEPS[jobName];
+  const finalRun=assertCiRunStep(steps[5],jobName,5,finalStep.name);
+  assert(finalRun===finalStep.run,`ci.yml ${jobName} final command is not canonical`);
+  return [{index:1,run:configure},{index:3,run:lifecycle},{index:4,run:install},{index:5,run:finalRun}];
+}
+
+function assertCiRunStep(step,jobName,index,expectedName){
+  assertPlainRecord(step,`ci.yml.jobs.${jobName}.steps[${index}]`);
+  assertExactSet(Object.keys(step),['name','run'],`ci.yml.jobs.${jobName}.steps[${index}] run keys`);
+  assert(step.name===expectedName,`ci.yml ${jobName} step ${index} name is not canonical`);
+  assert(typeof step.run==='string'&&step.run.trim().length>0,`ci.yml.jobs.${jobName}.steps[${index}].run must be a fixed non-empty string`);
+  return step.run;
+}
+
+function assertExactShellLines(source,expected,label){
+  const lines=source.split(/\r?\n/u).map((line)=>line.trim()).filter(Boolean);
+  assert(JSON.stringify(lines)===JSON.stringify(expected),`${label} commands are not canonical or are out of order`);
 }
 
 function assertCiAction(step,label){

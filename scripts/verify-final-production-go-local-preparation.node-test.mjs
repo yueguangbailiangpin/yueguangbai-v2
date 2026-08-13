@@ -105,6 +105,21 @@ test('rejects npm ci semantic flags instead of hiding lifecycle execution',()=>{
   assert.throws(()=>verify({ci:withCiRun('npm --workspace @ygb/api ci')}),/npm subcommand|allowlist/u);
 });
 
+test('requires dependency lifecycle provenance before the install execution edge',()=>{
+  const lifecycleStep=`      - name: Verify locked lifecycle provenance before install
+        run: |
+          node scripts/verify-dependency-lifecycle.mjs
+          node --test scripts/verify-dependency-lifecycle.node-test.mjs
+`;
+  assert.throws(()=>verify({ci:canonicalCi.replace(lifecycleStep,'')}),/six canonical execution steps/u);
+  const reordered=canonicalCi.replace(`${lifecycleStep}      - name: Install locked dependencies
+        run: npm ci
+`,`      - name: Install locked dependencies
+        run: npm ci
+${lifecycleStep}`);
+  assert.throws(()=>verify({ci:reordered}),/step 3 name|canonical/u);
+});
+
 test('rejects symlink and out-of-root workspace topology',t=>{
   const {fixtureRoot,fixtureManifest}=createTopologyFixture(t);
   const outsideRoot=mkdtempSync(path.join(tmpdir(),'ygb-final-go-outside-'));
