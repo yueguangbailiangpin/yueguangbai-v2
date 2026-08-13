@@ -18,16 +18,18 @@ jobs:
     name: static-governance
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler.log
-      XDG_CONFIG_HOME: ${{ runner.temp }}/xdg-config
-      XDG_CACHE_HOME: ${{ runner.temp }}/xdg-cache
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
+      - name: Configure local tool directories
+        run: |
+          mkdir -p "$RUNNER_TEMP/ygb-xdg-config" "$RUNNER_TEMP/ygb-xdg-cache"
+          echo "WRANGLER_LOG_PATH=$RUNNER_TEMP/ygb-wrangler.log" >> "$GITHUB_ENV"
+          echo "XDG_CONFIG_HOME=$RUNNER_TEMP/ygb-xdg-config" >> "$GITHUB_ENV"
+          echo "XDG_CACHE_HOME=$RUNNER_TEMP/ygb-xdg-cache" >> "$GITHUB_ENV"
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -43,16 +45,18 @@ jobs:
     name: tests-and-build
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    env:
-      WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler.log
-      XDG_CONFIG_HOME: ${{ runner.temp }}/xdg-config
-      XDG_CACHE_HOME: ${{ runner.temp }}/xdg-cache
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
+      - name: Configure local tool directories
+        run: |
+          mkdir -p "$RUNNER_TEMP/ygb-xdg-config" "$RUNNER_TEMP/ygb-xdg-cache"
+          echo "WRANGLER_LOG_PATH=$RUNNER_TEMP/ygb-wrangler.log" >> "$GITHUB_ENV"
+          echo "XDG_CONFIG_HOME=$RUNNER_TEMP/ygb-xdg-config" >> "$GITHUB_ENV"
+          echo "XDG_CACHE_HOME=$RUNNER_TEMP/ygb-xdg-cache" >> "$GITHUB_ENV"
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
