@@ -46,8 +46,42 @@ describe('operational alert production readiness',()=>{
     database=createMigratedTestDatabase();
     expect(await alertCheck({APP_ENVIRONMENT:'local',OPERATIONAL_ALERT_MODE:'disabled'},NOW)).toBe('ok');
     expect(await alertCheck({APP_ENVIRONMENT:'local',OPERATIONAL_ALERT_MODE:'local'},NOW)).toBe('ok');
-    expect(await alertCheck({APP_ENVIRONMENT:'staging',OPERATIONAL_ALERT_MODE:'disabled'},NOW)).toBe('ok');
+    expect(await alertCheck({APP_ENVIRONMENT:'staging',OPERATIONAL_ALERT_MODE:'disabled'},NOW)).toBe('not_required');
     expect(await alertCheck({APP_ENVIRONMENT:'staging',OPERATIONAL_ALERT_MODE:'local'},NOW)).toBe('failed');
+  });
+
+  it('reports disabled staging-only production gates as not required without weakening production',async()=>{
+    database=createMigratedTestDatabase();
+    const response=await ready({
+      APP_ENVIRONMENT:'staging',APP_RELEASE_SHA:RELEASE,
+      SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
+      OPERATIONAL_ALERT_MODE:'disabled',
+      STAFF_ACCESS_TEAM_DOMAIN:'https://staging-team.cloudflareaccess.com',
+      STAFF_ACCESS_AUD:'staging-access-audience',
+      FILE_OBJECT_STORAGE:{headObject:async()=>null} as any,
+    },NOW);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({data:{status:'ready',checks:{
+      schema:'ok',scheduler:'not_required',acquisition_maintenance:'not_required',
+      operational_alerts:'not_required',object_storage:'ok',recovery:'not_required',
+      staff_access:'ok',release:'ok',
+    }}});
+    for(const enabled of [
+      {SCHEDULED_OPERATIONS_ENABLED:'true'},
+      {ACQUISITION_MAINTENANCE_ENABLED:'true'},
+      {OPERATIONAL_ALERT_MODE:'local'},
+    ]){
+      const blocked=await ready({
+        APP_ENVIRONMENT:'staging',APP_RELEASE_SHA:RELEASE,
+        SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
+        OPERATIONAL_ALERT_MODE:'disabled',
+        STAFF_ACCESS_TEAM_DOMAIN:'https://staging-team.cloudflareaccess.com',
+        STAFF_ACCESS_AUD:'staging-access-audience',
+        FILE_OBJECT_STORAGE:{headObject:async()=>null} as any,
+        ...enabled,
+      },NOW);
+      expect(blocked.status).toBe(503);
+    }
   });
 
   it('calls all three safe RPC challenges and atomically records only verified receipt summaries',async()=>{
