@@ -6,6 +6,6 @@
 - [x] 4. Remove staging Cron, enable observability and align release preflight/tests.
 - [x] 5. Document staging resource, migration, identity, fixed-SHA deployment, backup/restore and monitoring order.
 - [x] 6. Run target tests, API typecheck, OpenSpec target/all strict, `git diff --check` and one full `npm run check`.
-- [ ] 7. Verify implementation consistency, self-review migrations/secrets/remote writes, then create a Draft PR without merging.
+- [x] 7. Verify implementation consistency, self-review migrations/secrets/remote writes, then create a Draft PR without merging.
 - [ ] 8. Obtain fixed-SHA independent review before any remote staging resource write.
 - [ ] 9. Under separate explicit operator authorization, create isolated staging resources, apply migrations 0001-0065, bootstrap identities, deploy the reviewed SHA and execute network/backup/role-chain acceptance.
