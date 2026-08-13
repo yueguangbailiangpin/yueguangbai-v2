@@ -71,6 +71,8 @@ git diff --check
 
 `npm run check` 是仓库级本地门禁：它覆盖静态安全扫描、Node safety tests、类型检查、Migration/verifier、Vitest 与各 workspace build。它不证明 staging、pilot、生产资源、真实 Cloudflare Access、真实 D1/R2、真实数据或网络验收；这些仍须单独授权并按对应 runbook/Change 验收。
 
+GitHub 的非生产 CI 入口、当前 branch enforcement 可验证性和人工合并准则见 [`docs/governance/GITHUB_CI_MERGE_CRITERIA.md`](docs/governance/GITHUB_CI_MERGE_CRITERIA.md)。CI 仅验证仓库代码，不能部署或替代任何外部/生产验收。
+
 ## 业务链最短定位路径
 
 先按上面的权威顺序确定规则，再从运行入口向下追，不要把 archived OpenSpec、`FREEZE` 文件或历史审计当成当前实现入口。

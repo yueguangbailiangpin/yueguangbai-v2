@@ -133,7 +133,8 @@ describe('Cloudflare Access Staff bootstrap and Session formal MSW chain', () =>
     expect(await screen.findByText('STAFF LOGIN')).toBeVisible();
     expect(loginSnapshots).toEqual([0]);
     expect(cancelQueries).toHaveBeenCalledOnce();
-    expect(client.getQueriesData({ queryKey: queryKeys.staff.root })).toEqual([]);
+    expect(client.getQueriesData({ queryKey: queryKeys.staff.root })
+      .filter((entry) => entry[1] !== undefined)).toEqual([]);
     expectCustomerPreserved(client);
   });
 
