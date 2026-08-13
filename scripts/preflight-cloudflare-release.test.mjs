@@ -90,8 +90,32 @@ describe('Cloudflare release preflight', () => {
   });
 
   it('canonicalizes an omitted service entrypoint as the explicit runtime default',()=>{
-    const config=anonymousConfig('production');delete config.services[0].entrypoint;config.services[0].props.entrypoint=null;config.vars.OPERATIONAL_ALERT_SINK_ENTRYPOINT='default';config.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT=operationalAlertFingerprint(operationalAlertDescriptorFromService(config.services[0]));
+    const config=anonymousConfig('production');delete config.services[0].entrypoint;config.services[0].props.entrypoint='default';config.vars.OPERATIONAL_ALERT_SINK_ENTRYPOINT='default';config.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT=operationalAlertFingerprint(operationalAlertDescriptorFromService(config.services[0]));
     expect(validateReleaseConfig(config,'production')).toEqual([]);
+  });
+
+  it('fails closed for the previous null mirror input and missing runtime mirror',()=>{
+    const previousInput=anonymousConfig('production');delete previousInput.services[0].entrypoint;previousInput.services[0].props.entrypoint=null;previousInput.vars.OPERATIONAL_ALERT_SINK_ENTRYPOINT='default';
+    expect(validateReleaseConfig(previousInput,'production')).not.toEqual([]);
+    const missingRuntime=anonymousConfig('production');delete missingRuntime.vars.OPERATIONAL_ALERT_SINK_ENTRYPOINT;
+    expect(validateReleaseConfig(missingRuntime,'production')).not.toEqual([]);
+  });
+
+  it('uses one strict named-entrypoint algorithm for rendered and runtime mirrors',()=>{
+    const dollar=anonymousConfig('production');setEntrypoint(dollar,'$sink');
+    expect(validateReleaseConfig(dollar,'production')).toContain('vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:derived_mismatch');
+    dollar.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT=operationalAlertFingerprint(operationalAlertDescriptorFromService(dollar.services[0]));
+    expect(validateReleaseConfig(dollar,'production')).toEqual([]);
+
+    const underscoreDollar=anonymousConfig('production');setEntrypoint(underscoreDollar,'_$sink');
+    underscoreDollar.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT=operationalAlertFingerprint(operationalAlertDescriptorFromService(underscoreDollar.services[0]));
+    expect(validateReleaseConfig(underscoreDollar,'production')).toEqual([]);
+    expect(underscoreDollar.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT).not.toBe(dollar.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT);
+
+    for(const entrypoint of [' white','with.dot']){
+      const invalid=anonymousConfig('production');setEntrypoint(invalid,entrypoint);
+      expect(validateReleaseConfig(invalid,'production')).not.toEqual([]);
+    }
   });
 
   it('requires an exact 40-character hexadecimal release SHA while treating the template placeholder as operator input',()=>{
@@ -236,6 +260,12 @@ function anonymousConfig(environment) {
   });
   if(environment==='production')config.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT=operationalAlertFingerprint(operationalAlertDescriptorFromService(config.services[0]));
   return config;
+}
+
+function setEntrypoint(config,entrypoint){
+  config.services[0].entrypoint=entrypoint;
+  config.services[0].props.entrypoint=entrypoint;
+  config.vars.OPERATIONAL_ALERT_SINK_ENTRYPOINT=entrypoint;
 }
 
 function replacePlaceholders(value, replacement) {

@@ -84,6 +84,18 @@ describe('production Cloudflare Worker runtime',()=>{
     }
   });
 
+  it('uses the canonical entrypoint descriptor at runtime and rejects stale fingerprints',async()=>{
+    const named=operationalAlertDescriptorFromRuntime({serviceTarget:'ygb-operational-alerts',entrypoint:'$sink',sinkIdentity:'service:operations-primary',sinkDeploymentVersion:'deploy-001'})!;
+    const namedFingerprint=await hashCanonicalJson(named);
+    expect(await resolveCloudflareRuntime({...bindings(),OPERATIONAL_ALERT_SINK_ENTRYPOINT:'$sink',OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:namedFingerprint})).not.toBeNull();
+    expect(await resolveCloudflareRuntime({...bindings(),OPERATIONAL_ALERT_SINK_ENTRYPOINT:'$sink'})).toBeNull();
+    const missing=bindings();delete missing.OPERATIONAL_ALERT_SINK_ENTRYPOINT;
+    expect(await resolveCloudflareRuntime(missing)).toBeNull();
+    for(const entrypoint of [' white','with.dot']){
+      expect(await resolveCloudflareRuntime({...bindings(),OPERATIONAL_ALERT_SINK_ENTRYPOINT:entrypoint})).toBeNull();
+    }
+  });
+
   it('allows scheduler and acquisition maintenance independently of retired Feishu integration',async()=>{
     expect(await resolveCloudflareRuntime({...bindings(),SCHEDULED_OPERATIONS_ENABLED:'true',ACQUISITION_MAINTENANCE_ENABLED:'true'})).not.toBeNull();
     expect(await resolveCloudflareRuntime({...bindings(),SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'true'})).not.toBeNull();

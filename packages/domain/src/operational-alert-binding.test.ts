@@ -1,16 +1,32 @@
 import { describe,expect,it } from 'vitest';
+import { hashCanonicalJson } from './crypto/request-hash';
 import { canonicalJson } from './serialization/canonical-json';
 import { operationalAlertDescriptorFromRuntime,operationalAlertDescriptorFromService,parseExactGitCommitSha,runtimeEntrypointValue } from './operational-alert-binding';
 
 describe('operational alert binding descriptor',()=>{
   it('normalizes the exact rendered service descriptor and canonical default entrypoint',()=>{
-    const service={binding:'OPERATIONAL_ALERT_SINK',service:'alerts-primary',entrypoint:null,props:{sink_deployment_version:'deploy-001',entrypoint:null,sink_identity:'service:alerts-primary',service_target:'alerts-primary'}};
+    const service={binding:'OPERATIONAL_ALERT_SINK',service:'alerts-primary',props:{sink_deployment_version:'deploy-001',entrypoint:'default',sink_identity:'service:alerts-primary',service_target:'alerts-primary'}};
     const descriptor=operationalAlertDescriptorFromService(service);
     expect(descriptor).not.toBeNull();
-    expect(canonicalJson(descriptor)).toBe('{"binding":"OPERATIONAL_ALERT_SINK","entrypoint":null,"props":{"entrypoint":null,"service_target":"alerts-primary","sink_deployment_version":"deploy-001","sink_identity":"service:alerts-primary"},"service_target":"alerts-primary"}');
+    expect(canonicalJson(descriptor)).toBe('{"binding":"OPERATIONAL_ALERT_SINK","entrypoint":null,"props":{"entrypoint":"default","service_target":"alerts-primary","sink_deployment_version":"deploy-001","sink_identity":"service:alerts-primary"},"service_target":"alerts-primary"}');
     expect(operationalAlertDescriptorFromRuntime({serviceTarget:'alerts-primary',entrypoint:'default',sinkIdentity:'service:alerts-primary',sinkDeploymentVersion:'deploy-001'})).toEqual(descriptor);
     expect(runtimeEntrypointValue(null)).toBe('default');
-    expect(operationalAlertDescriptorFromService({binding:'OPERATIONAL_ALERT_SINK',service:'alerts-primary',props:{sink_deployment_version:'deploy-001',entrypoint:null,sink_identity:'service:alerts-primary',service_target:'alerts-primary'}})).toEqual(descriptor);
+  });
+
+  it('distinguishes omitted default, named and invalid or missing entrypoint forms',async()=>{
+    const props={service_target:'alerts-primary',entrypoint:'$sink',sink_identity:'service:alerts-primary',sink_deployment_version:'deploy-001'};
+    const dollar=operationalAlertDescriptorFromService({binding:'OPERATIONAL_ALERT_SINK',service:'alerts-primary',entrypoint:'$sink',props});
+    const underscoreDollar=operationalAlertDescriptorFromService({binding:'OPERATIONAL_ALERT_SINK',service:'alerts-primary',entrypoint:'_$sink',props:{...props,entrypoint:'_$sink'}});
+    expect(dollar).not.toBeNull();
+    expect(underscoreDollar).not.toBeNull();
+    expect(await hashCanonicalJson(dollar)).not.toBe(await hashCanonicalJson(underscoreDollar));
+    for(const entrypoint of [null,undefined,'default',' white','with.dot']){
+      expect(operationalAlertDescriptorFromService({binding:'OPERATIONAL_ALERT_SINK',service:'alerts-primary',entrypoint,props:{...props,entrypoint}})).toBeNull();
+    }
+    for(const entrypoint of [undefined,null,' white','with.dot']){
+      expect(operationalAlertDescriptorFromRuntime({serviceTarget:'alerts-primary',entrypoint,sinkIdentity:'service:alerts-primary',sinkDeploymentVersion:'deploy-001'})).toBeNull();
+    }
+    expect(operationalAlertDescriptorFromService({binding:'OPERATIONAL_ALERT_SINK',service:'alerts-primary',props:{...props,entrypoint:null}})).toBeNull();
   });
 
   it('rejects extra props, mismatched mirrors, placeholders and non-exact release SHAs',()=>{

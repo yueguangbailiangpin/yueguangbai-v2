@@ -3,7 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../packages/domain/src/serialization/canonical-json.ts';
-import { operationalAlertDescriptorFromService,parseExactGitCommitSha,runtimeEntrypointValue } from '../packages/domain/src/operational-alert-binding.ts';
+import { DEFAULT_OPERATIONAL_ALERT_ENTRYPOINT,operationalAlertDescriptorFromService,parseExactGitCommitSha } from '../packages/domain/src/operational-alert-binding.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const rootReal = realpathSync.native(root);
@@ -293,10 +293,11 @@ function validateAlertService(value, vars, environment, errors) {
       errors.push('services:operational_alert_sink_binding_required');
       return;
     }
-    const entrypoint=service.entrypoint??null;
-    const rawMatches=props.service_target===service.service&&props.entrypoint===entrypoint
+    const entrypointMirror=Object.hasOwn(service,'entrypoint')
+      ?service.entrypoint:DEFAULT_OPERATIONAL_ALERT_ENTRYPOINT;
+    const rawMatches=props.service_target===service.service&&props.entrypoint===entrypointMirror
       &&vars?.OPERATIONAL_ALERT_SINK_SERVICE===service.service
-      &&vars?.OPERATIONAL_ALERT_SINK_ENTRYPOINT===runtimeEntrypointValue(entrypoint)
+      &&vars?.OPERATIONAL_ALERT_SINK_ENTRYPOINT===entrypointMirror
       &&vars?.OPERATIONAL_ALERT_SINK_IDENTITY===props.sink_identity
       &&vars?.OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION===props.sink_deployment_version;
     if(!rawMatches)errors.push('services:operational_alert_descriptor_mismatch');
