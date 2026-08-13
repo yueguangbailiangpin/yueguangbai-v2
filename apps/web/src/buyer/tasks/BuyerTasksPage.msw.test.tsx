@@ -69,6 +69,32 @@ describe('BuyerTasksPage cursor aggregation', () => {
     expect(screen.getByText('51')).toBeVisible();
   });
 
+  it('keeps a completed actionable source visible while a necessary source fails', async () => {
+    useEmptySources();
+    let successfulSourceCompleted = false;
+    vi.mocked(buyerApi.evidenceEligible).mockImplementation(async (_client, query) => {
+      expect(query).toBe('limit=50');
+      successfulSourceCompleted = true;
+      return page([eligibleEvidence('surviving-action')]) as never;
+    });
+    vi.mocked(buyerApi.reservations).mockImplementation(async (_client, query) => {
+      expect(query).toBe('limit=50');
+      throw new Error('network down');
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(successfulSourceCompleted).toBe(true);
+      expect(vi.mocked(buyerApi.reservations)).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('提交订单资料')).toBeVisible();
+    });
+    expect(screen.getByText('产品 surviving-action · 图片评论')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '任务状态暂时无法完整读取' })).toBeVisible();
+    expect(screen.getByText('部分任务状态暂时无法加载，请稍后刷新；已成功读取的事项仍可继续处理。')).toBeVisible();
+    expect(screen.queryByText(/您有 \d+ 件待办事项/u)).not.toBeInTheDocument();
+  });
+
   it('uses limit and cursor parameters for every one of the six sources', async () => {
     for (const [index, method] of methods.entries()) {
       vi.mocked(method).mockImplementation(async (_client, query) => page([], query?.includes(`cursor=source-${index}`) ? null : `source-${index}`) as never);
