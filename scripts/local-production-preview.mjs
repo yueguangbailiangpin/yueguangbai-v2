@@ -56,6 +56,13 @@ database.exec(`
     created_at, updated_at, disabled_at
   ) VALUES ('local-preview-buyer-channel','DEMO','本地测试渠道',
     'ACTIVE',1,1,${now},${now},NULL);
+  INSERT INTO staff_assignment_fallbacks (
+    marketplace_code, staff_id, version, configured_by_staff_id,
+    created_at, updated_at
+  ) VALUES (
+    'JP','zz-phase3h-test-owner',1,'zz-phase3h-test-owner',
+    ${now},${now}
+  );
 `);
 
 const buyer = await createBuyerCustomer(database, {
