@@ -64,6 +64,16 @@ describe('Cloudflare release preflight', () => {
     expect(errors).toContain('routes.0.pattern:origin_mismatch');
   });
 
+  it('keeps staging scheduler triggers absent and observability enabled',()=>{
+    const staging=anonymousConfig('staging');
+    expect(staging.triggers).toBeUndefined();
+    expect(staging.observability).toEqual({enabled:true});
+    expect(validateReleaseConfig(staging,'staging')).toEqual([]);
+    staging.triggers={crons:['0 * * * *']};
+    expect(validateReleaseConfig(staging,'staging'))
+      .toContain('triggers:forbidden_when_scheduler_disabled');
+  });
+
   it('requires a canonical bound production sink descriptor and derived fingerprint', () => {
     const config = anonymousConfig('production');
     config.vars.OPERATIONAL_ALERT_MODE = 'disabled';

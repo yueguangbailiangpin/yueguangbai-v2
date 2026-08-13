@@ -10,20 +10,17 @@ const MAX_JOB_STALENESS_MS=6*60*60*1000;
 const MAX_ACQUISITION_STALENESS_MS=24*60*60*1000;
 const MAX_JOB_BACKLOG=1000;
 const REQUIRED_JOBS=['reservation_expiry','instruction_expiry','outbox_delivery','file_orphan_cleanup'] as const;
+type CheckStatus='ok'|'failed'|'not_required';
 
 export function registerOperationalReadinessRoutes(app:Hono<any>):void{
   app.get('/ready',async(context)=>{
     const now=Date.now();
     const result=await evaluateReadiness(context.env.DB,context.env.FILE_OBJECT_STORAGE??null,context.env,now)
-      .catch(()=>({ready:false,schema:false,scheduler:false,acquisition_maintenance:false,operational_alerts:false,object_storage:false,recovery:false,staff_access:false,release:false}));
+      .catch(()=>failedReadiness());
     context.header('Cache-Control','no-store');
     return context.json(apiSuccess({
       status:result.ready?'ready' as const:'not_ready' as const,
-      checks:{
-        schema:result.schema?'ok':'failed',scheduler:result.scheduler?'ok':'failed',
-        acquisition_maintenance:result.acquisition_maintenance?'ok':'failed',operational_alerts:result.operational_alerts?'ok':'failed',object_storage:result.object_storage?'ok':'failed',
-        recovery:result.recovery?'ok':'failed',staff_access:result.staff_access?'ok':'failed',release:result.release?'ok':'failed',
-      },timestamp:now,
+      checks:result.checks,timestamp:now,
     },String(context.get('requestId')??crypto.randomUUID())),result.ready?200:503);
   });
 }
@@ -34,22 +31,41 @@ async function evaluateReadiness(database:SqlDatabase,storage:ObjectStorageAdapt
   const jobs=await database.prepare(`SELECT job_name,last_succeeded_at,last_failed_at,last_backlog_count FROM scheduled_job_states WHERE job_name IN (${REQUIRED_JOBS.map(()=>'?').join(',')})`).bind(...REQUIRED_JOBS).all<{job_name:string;last_succeeded_at:number|null;last_failed_at:number|null;last_backlog_count:number|null}>();
   const byName=new Map(jobs.results.map((row)=>[row.job_name,row]));
   const schedulerEnabled=bindings['SCHEDULED_OPERATIONS_ENABLED']==='true';
-  const scheduler=schedulerEnabled&&REQUIRED_JOBS.every((name)=>{
+  const schedulerHealthy=schedulerEnabled&&REQUIRED_JOBS.every((name)=>{
     const row=byName.get(name);if(!row||row.last_succeeded_at===null)return false;
     const succeeded=Number(row.last_succeeded_at),failed=row.last_failed_at===null?null:Number(row.last_failed_at),backlog=row.last_backlog_count===null?0:Number(row.last_backlog_count);
     return now-succeeded<=MAX_JOB_STALENESS_MS&&(failed===null||succeeded>=failed)&&Number.isSafeInteger(backlog)&&backlog>=0&&backlog<=MAX_JOB_BACKLOG;
   });
   const maintenance=await database.prepare(`SELECT last_succeeded_at,last_failed_at FROM acquisition_maintenance_state WHERE singleton_id=1`).first<{last_succeeded_at:number|null;last_failed_at:number|null}>();
   const maintenanceSucceeded=maintenance?.last_succeeded_at==null?null:Number(maintenance.last_succeeded_at),maintenanceFailed=maintenance?.last_failed_at==null?null:Number(maintenance.last_failed_at);
-  const acquisition_maintenance=bindings['ACQUISITION_MAINTENANCE_ENABLED']==='true'&&maintenanceSucceeded!==null&&now-maintenanceSucceeded<=MAX_ACQUISITION_STALENESS_MS&&(maintenanceFailed===null||maintenanceSucceeded>=maintenanceFailed);
-  const operational_alerts=await operationalAlertsReady(database,bindings,now);
-  const object_storage=await storageReady(database,storage);
+  const acquisitionHealthy=bindings['ACQUISITION_MAINTENANCE_ENABLED']==='true'&&maintenanceSucceeded!==null&&now-maintenanceSucceeded<=MAX_ACQUISITION_STALENESS_MS&&(maintenanceFailed===null||maintenanceSucceeded>=maintenanceFailed);
+  const operationalAlertsHealthy=await operationalAlertsReady(database,bindings,now);
+  const objectStorageHealthy=await storageReady(database,storage);
   const runningRelease=parseExactGitCommitSha(bindings.APP_RELEASE_SHA);const release=runningRelease!==null;
   const recoveryRow=await database.prepare(`SELECT release_sha,schema_version FROM production_recovery_attestations WHERE schema_version=? ORDER BY verified_at DESC,id DESC LIMIT 1`).bind(TARGET_SCHEMA).first<{release_sha:string;schema_version:number}>();
-  const recovery=release&&Number(recoveryRow?.schema_version??0)===TARGET_SCHEMA&&String(recoveryRow?.release_sha??'').toLowerCase()===runningRelease;
-  const staff_access=validAccessConfig(bindings['STAFF_ACCESS_TEAM_DOMAIN'],bindings['STAFF_ACCESS_AUD']);
-  return{ready:schema&&scheduler&&acquisition_maintenance&&operational_alerts&&object_storage&&recovery&&staff_access&&release,schema,scheduler,acquisition_maintenance,operational_alerts,object_storage,recovery,staff_access,release};
+  const recoveryHealthy=release&&Number(recoveryRow?.schema_version??0)===TARGET_SCHEMA&&String(recoveryRow?.release_sha??'').toLowerCase()===runningRelease;
+  const staffAccessHealthy=validAccessConfig(bindings['STAFF_ACCESS_TEAM_DOMAIN'],bindings['STAFF_ACCESS_AUD']);
+  const environment=bindings.APP_ENVIRONMENT;
+  if(environment==='production'){
+    const checks={schema:status(schema),scheduler:status(schedulerHealthy),acquisition_maintenance:status(acquisitionHealthy),operational_alerts:status(operationalAlertsHealthy),object_storage:status(objectStorageHealthy),recovery:status(recoveryHealthy),staff_access:status(staffAccessHealthy),release:status(release)};
+    return{ready:Object.values(checks).every((value)=>value==='ok'),checks};
+  }
+  if(environment==='staging'){
+    const scheduler=bindings['SCHEDULED_OPERATIONS_ENABLED']==='false'?'not_required' as const:'failed' as const;
+    const acquisition_maintenance=bindings['ACQUISITION_MAINTENANCE_ENABLED']==='false'?'not_required' as const:'failed' as const;
+    const operational_alerts=operationalAlertsHealthy?'not_required' as const:'failed' as const;
+    const checks={schema:status(schema),scheduler,acquisition_maintenance,operational_alerts,object_storage:status(objectStorageHealthy),recovery:'not_required' as const,staff_access:status(staffAccessHealthy),release:status(release)};
+    return{ready:checks.schema==='ok'&&checks.scheduler==='not_required'&&checks.acquisition_maintenance==='not_required'&&checks.operational_alerts==='not_required'&&checks.object_storage==='ok'&&checks.recovery==='not_required'&&checks.staff_access==='ok'&&checks.release==='ok',checks};
+  }
+  if(environment==='local'){
+    const checks={schema:status(schema),scheduler:status(schedulerHealthy),acquisition_maintenance:status(acquisitionHealthy),operational_alerts:status(operationalAlertsHealthy),object_storage:status(objectStorageHealthy),recovery:status(recoveryHealthy),staff_access:status(staffAccessHealthy),release:status(release)};
+    return{ready:Object.values(checks).every((value)=>value==='ok'),checks};
+  }
+  return failedReadiness();
 }
+
+function status(value:boolean):CheckStatus{return value?'ok':'failed';}
+function failedReadiness(){return{ready:false,checks:{schema:'failed',scheduler:'failed',acquisition_maintenance:'failed',operational_alerts:'failed',object_storage:'failed',recovery:'failed',staff_access:'failed',release:'failed'} as const};}
 
 async function operationalAlertsReady(database:SqlDatabase,bindings:AppBindings,now:number):Promise<boolean>{
   const environment=bindings.APP_ENVIRONMENT;

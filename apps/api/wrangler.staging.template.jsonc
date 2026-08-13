@@ -12,9 +12,6 @@
       "custom_domain": true
     }
   ],
-  "triggers": {
-    "crons": ["REQUIRED_STAGING_CRON"]
-  },
   "assets": {
     "directory": "../web/dist",
     "binding": "WEB_ASSETS",
@@ -22,7 +19,7 @@
     "run_worker_first": true
   },
   "observability": {
-    "enabled": false
+    "enabled": true
   },
   "vars": {
     "APP_ENVIRONMENT": "staging",

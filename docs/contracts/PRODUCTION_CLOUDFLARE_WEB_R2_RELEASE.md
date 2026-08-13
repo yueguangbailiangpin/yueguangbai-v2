@@ -14,7 +14,7 @@ staging 和 production 必须是两个不同环境，并由操作者显式提供
 - 一个精确 HTTPS application origin 和对应 Custom Domain hostname；
 - 已存在且环境独立的 D1 database name/ID；
 - 已存在且环境独立的 R2 bucket name；
-- Cron 表达式；
+- production Cron 表达式；staging 在 Scheduler 关闭时不得配置 Cron；
 - `DB`、`FILE_OBJECT_STORAGE_R2`、`WEB_ASSETS` 三个固定 binding；
 - 受管 Secret 名单的值、负责人、轮换与吊销证据。
 
@@ -50,7 +50,7 @@ Custom Domain 只接受操作者填入的精确 hostname；本 Change 不选择�
 
 ## 默认关闭与 Secret
 
-Staff Auth 只使用 Cloudflare Access 与 Moonwhite Staff 数据库，模板不得包含任何飞书登录、绑定、同步或回调配置；重新出现即由 preflight 阻断。Staging 保持 Scheduler、获客维护与 operational alert sink 关闭；production 要求 `OPERATIONAL_ALERT_MODE=bound` 和唯一 `OPERATIONAL_ALERT_SINK` RPC service binding。rendered target、canonical entrypoint、exact props、sink identity、sink deployment/version 构成单一 descriptor；preflight 用 stable canonical JSON + SHA-256 派生 fingerprint，任一漂移或任意自报 hex 都阻断。正式 Owner route 不接受 client PASS，而是顺序发起 delivery、安全 failure simulation、recovery 三项 nonce challenge；只有 current exact release/fingerprint/version 的完整 receipt 集合才可原子写入不可变 Audit。缺失、过期、RPC 失败或不匹配时 `/ready` 一律失败关闭。仓库不包含生产 sink Worker、真实 binding 或证明，本 Change 未执行线上演练。Drive copy/proxy/R2-delete 与 Staff MCP/local mock 继续默认关闭，独立 Change 和老板逐项批准前不得启用。
+Staff Auth 只使用 Cloudflare Access 与 Moonwhite Staff 数据库，模板不得包含任何飞书登录、绑定、同步或回调配置；重新出现即由 preflight 阻断。Staging 保持 Scheduler、获客维护与 operational alert sink 关闭，不配置 Cron，并开启 Worker observability；对应 `/ready` check 明确为 `not_required`，不得伪造为运行成功。production 要求 `OPERATIONAL_ALERT_MODE=bound` 和唯一 `OPERATIONAL_ALERT_SINK` RPC service binding。rendered target、canonical entrypoint、exact props、sink identity、sink deployment/version 构成单一 descriptor；preflight 用 stable canonical JSON + SHA-256 派生 fingerprint，任一漂移或任意自报 hex 都阻断。正式 Owner route 不接受 client PASS，而是顺序发起 delivery、安全 failure simulation、recovery 三项 nonce challenge；只有 current exact release/fingerprint/version 的完整 receipt 集合才可原子写入不可变 Audit。缺失、过期、RPC 失败或不匹配时 production `/ready` 一律失败关闭。仓库不包含生产 sink Worker、真实 binding 或证明，本 Change 未执行线上演练。Drive copy/proxy/R2-delete 与 Staff MCP/local mock 继续默认关闭，独立 Change 和老板逐项批准前不得启用。
 
 Secret 只能通过 Cloudflare managed Secret 或批准的受管渠道注入，不得放在 `vars`、JSON、日志、dry-run 输出、测试 Fixture 或 Git。Preflight 只输出 Secret 名称，不读取或打印值。
 

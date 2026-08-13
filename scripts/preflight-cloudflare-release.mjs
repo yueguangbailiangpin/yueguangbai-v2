@@ -139,8 +139,12 @@ export function validateReleaseConfig(config, environment) {
     errors.push('routes.0.pattern:origin_mismatch');
   }
   const cron = exactOne(asRecord(record?.triggers)?.crons);
-  if (typeof cron !== 'string' || cron.trim().split(/\s+/u).length !== 5) {
-    errors.push('triggers.crons:invalid');
+  if (environment === 'production') {
+    if (typeof cron !== 'string' || cron.trim().split(/\s+/u).length !== 5) {
+      errors.push('triggers.crons:invalid');
+    }
+  } else if (record?.triggers !== undefined) {
+    errors.push('triggers:forbidden_when_scheduler_disabled');
   }
   const d1 = exactOne(record?.d1_databases);
   if (!d1 || d1.binding !== 'DB') errors.push('d1_databases:binding_invalid');
@@ -215,7 +219,7 @@ function validateFrozenDefaults(config, environment) {
   if (d1?.migrations_dir !== '../../migrations') {
     errors.push('d1_databases.0.migrations_dir:invalid');
   }
-  const observabilityExpected = environment === 'production';
+  const observabilityExpected = true;
   if (asRecord(record.observability)?.enabled !== observabilityExpected) {
     errors.push(`observability.enabled:must_be_${String(observabilityExpected)}`);
   }
