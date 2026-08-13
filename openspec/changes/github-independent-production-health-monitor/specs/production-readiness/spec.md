@@ -4,16 +4,16 @@
 
 ### Requirement: Production health has an independent non-Feishu receiver
 
-The system SHALL use independently operated GitHub Actions to read only the fixed production `/health` endpoint on a bounded schedule, SHALL open at most one fixed operational Issue while unhealthy, and SHALL close it only after a healthy recovery observation.
+The system SHALL use independently operated GitHub Actions to read only the fixed production `/ready` readiness envelope on a bounded schedule, SHALL open at most one fixed operational Issue while unhealthy, and SHALL close it only after a healthy recovery observation. `/health` liveness evidence SHALL NOT be represented as `/ready` readiness evidence.
 
 #### Scenario: Health endpoint fails repeatedly
 
-- **WHEN** the endpoint times out, returns non-200, exceeds the response bound or violates the health envelope
+- **WHEN** the endpoint times out, returns non-200, exceeds the response bound or violates the readiness envelope
 - **THEN** the workflow records only a fixed reason, creates or reopens one Issue, remains failed, and does not duplicate an already-open incident.
 
 #### Scenario: Health endpoint recovers
 
-- **WHEN** a later check receives the valid health envelope
+- **WHEN** a later check receives the valid readiness envelope
 - **THEN** the workflow adds one fixed recovery note and closes the open Issue without invoking Cloudflare, Feishu, D1, R2 or business commands.
 
 #### Scenario: Independent receiver acceptance
@@ -23,7 +23,7 @@ The system SHALL use independently operated GitHub Actions to read only the fixe
 
 ### Requirement: Health monitoring remains separate from release authority
 
-The repository release-control audit SHALL allow only the named production health workflow, SHALL verify its bounded schedule, fixed endpoint and least privileges, and SHALL continue to reject push-triggered or deployment-capable automation.
+The repository release-control audit SHALL allow only `ci.yml` and the named production health workflow, SHALL verify each workflow's exact trigger set, fixed endpoint and least privileges, and SHALL continue to reject unknown workflows, `pull_request_target`, deployment-capable automation and production mutation commands.
 
 #### Scenario: Release gate inspects the health workflow
 

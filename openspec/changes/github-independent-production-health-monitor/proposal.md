@@ -6,9 +6,9 @@
 
 ## What Changes
 
-- 新增每小时一次的 GitHub Actions 健康检查，只读取生产 `/health`。
+- 新增每小时一次的 GitHub Actions readiness 检查，只读取生产 `/ready` 的完整 readiness envelope。
 - 检查失败时创建或重新打开一个固定标题的 GitHub Issue；持续失败不重复创建，恢复时记录固定恢复事实并关闭。
-- 提供手动故障/恢复演练模式，用真实 Issue 生命周期证明独立接收器可用。
+- 提供手动故障/恢复演练模式，用真实 Issue 生命周期证明独立接收器可用；它不能替代 current-SHA 的真实 `/ready` 连续观察。
 - 所有输出只含固定低基数原因和 UTC 时间，不保存响应正文、请求编号、客户、订单、财务、文件或凭证。
 
 ## Non-goals
