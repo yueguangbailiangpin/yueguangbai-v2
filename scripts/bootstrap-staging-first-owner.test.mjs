@@ -70,4 +70,37 @@ describe('staging first owner operator entrypoint', () => {
       expect(JSON.stringify(fetchImpl.mock.calls)).not.toContain('owner@example.test');
     }finally{rmSync(directory,{recursive:true,force:true});}
   });
+
+  it('drives the real bootstrap through string-only REST parameters',async()=>{
+    const directory=mkdtempSync(path.join(tmpdir(),'ygb-staging-wire-'));
+    try{
+      const inputFile=path.join(directory,'owner.json');
+      writeFileSync(inputFile,JSON.stringify({display_name:'Staging Owner',email:'owner@example.test',idempotency_key:'staging:first-owner:wire-v1'}),{mode:0o600});
+      const batches=[];
+      const fetchImpl=vi.fn(async(_url,init={})=>{
+        if(!init.method)return Response.json({success:true,result:{uuid:'11111111-1111-4111-8111-111111111111',name:'yueguangbai-v2-staging'}});
+        const body=JSON.parse(String(init.body));
+        const queries=Array.isArray(body.batch)?body.batch:[body];
+        expect(queries.every((query)=>Array.isArray(query.params)
+          &&query.params.every((value)=>typeof value==='string'))).toBe(true);
+        if(Array.isArray(body.batch))batches.push(body.batch);
+        const result=queries.map((query)=>({
+          success:true,
+          results:String(query.sql).includes('SELECT schema_version FROM app_schema_state')
+            ?[{schema_version:65}]
+            :[],
+          meta:{changes:String(query.sql).includes('INSERT OR IGNORE INTO command_idempotency_records')?1:0},
+        }));
+        return Response.json({success:true,result});
+      });
+      await expect(executeStagingFirstOwnerBootstrap({
+        accountId:'a'.repeat(32),databaseId:'11111111-1111-4111-8111-111111111111',
+        databaseName:'yueguangbai-v2-staging',inputFile,
+      },{token:'operator-token-value-that-is-never-logged',fetchImpl})).resolves.toMatchObject({
+        status:'STAGING_FIRST_OWNER_BOOTSTRAPPED',role_code:'owner',remote_writes:1,
+      });
+      expect(batches).toHaveLength(1);
+      expect(batches[0]).toHaveLength(10);
+    }finally{rmSync(directory,{recursive:true,force:true});}
+  });
 });

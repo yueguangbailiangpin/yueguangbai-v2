@@ -7,7 +7,7 @@ The checked-in staging release profile deliberately disables production-only Sch
 ## What Changes
 
 - Publish an explicit staging readiness profile that reports production-only gates as `not_required` while keeping Schema, isolated object storage, staging Access configuration and exact release identity mandatory.
-- Add a one-time, parameterized and atomic operator tool for the first Owner on a completely empty Schema 65 staging D1.
+- Add a one-time, parameterized and atomic operator tool for the first Owner and synthetic Buyer registration channel on a completely empty Schema 65 staging D1.
 - Remove the contradictory staging Cron requirement, enable staging observability and keep all production-only/external switches disabled.
 - Document the fixed-SHA staging provisioning, formal test-account creation, backup/restore, role-chain and monitoring sequence.
 

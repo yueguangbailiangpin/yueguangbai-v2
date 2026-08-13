@@ -63,12 +63,15 @@ class CloudflareD1RestStatement {
   }
 
   bind(...params) {
-    if (params.some((value) => value !== null
-      && typeof value !== 'string'
+    if (params.some((value) => typeof value !== 'string'
       && typeof value !== 'number')) {
       throw new Error('unsupported_d1_rest_binding');
     }
-    return new CloudflareD1RestStatement(this.database, this.query.sql, params);
+    return new CloudflareD1RestStatement(
+      this.database,
+      this.query.sql,
+      params.map((value) => String(value)),
+    );
   }
 
   async first() {

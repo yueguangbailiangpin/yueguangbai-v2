@@ -74,6 +74,38 @@ describe('Cloudflare release preflight', () => {
       .toContain('triggers:forbidden_when_scheduler_disabled');
   });
 
+  it('rejects a staging rendering that points every deployable resource at production',()=>{
+    const staging=anonymousConfig('staging');
+    staging.name='yueguangbai-v2-production';
+    staging.vars.APP_ORIGIN='https://app.yueguangbai.net';
+    staging.vars.APP_ALLOWED_ORIGINS=staging.vars.APP_ORIGIN;
+    staging.vars.STAFF_AUTH_ALLOWED_ORIGINS=staging.vars.APP_ORIGIN;
+    staging.vars.STAFF_ACCESS_AUD='production-access-audience';
+    staging.routes[0].pattern='app.yueguangbai.net';
+    staging.d1_databases[0].database_name='yueguangbai-v2-production';
+    staging.r2_buckets[0].bucket_name='yueguangbai-v2-production-files';
+    const errors=validateReleaseConfig(staging,'staging');
+    expect(errors).toEqual(expect.arrayContaining([
+      'name:staging_resource_required',
+      'vars.APP_ORIGIN:staging_hostname_required',
+      'vars.STAFF_ACCESS_AUD:staging_resource_required',
+      'd1_databases.0.database_name:staging_resource_required',
+      'r2_buckets.0.bucket_name:staging_resource_required',
+    ]));
+  });
+
+  it('requires the governed synthetic Buyer registration configuration in staging',()=>{
+    const staging=anonymousConfig('staging');
+    delete staging.vars.BUYER_SELF_REGISTRATION_ENABLED;
+    staging.vars.BUYER_SELF_REGISTRATION_CHANNEL_ID='production-buyer-channel';
+    staging.vars.BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED='true';
+    expect(validateReleaseConfig(staging,'staging')).toEqual(expect.arrayContaining([
+      'vars.BUYER_SELF_REGISTRATION_ENABLED:must_be_true',
+      'vars.BUYER_SELF_REGISTRATION_CHANNEL_ID:invalid',
+      'vars.BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED:must_be_false',
+    ]));
+  });
+
   it('requires a canonical bound production sink descriptor and derived fingerprint', () => {
     const config = anonymousConfig('production');
     config.vars.OPERATIONAL_ALERT_MODE = 'disabled';
@@ -259,13 +291,13 @@ function anonymousConfig(environment) {
       return `anonymous-${environment}-access-audience`;
     }
     if (value.endsWith('_ACCOUNT_ID')) return 'a'.repeat(32);
-    if (value.endsWith('_WORKER_NAME')) return `ygb-${environment}`;
+    if (value.endsWith('_WORKER_NAME')) return environment==='staging'?'yueguangbai-v2-staging':`ygb-${environment}`;
     if (value.endsWith('_CUSTOM_DOMAIN')) return `${environment}.example.invalid`;
     if (value.endsWith('_CRON')) return '0 * * * *';
     if (value.endsWith('_HTTPS_ORIGIN')) return origin;
-    if (value.endsWith('_D1_NAME')) return `ygb_${environment}`;
+    if (value.endsWith('_D1_NAME')) return environment==='staging'?'yueguangbai-v2-staging':`ygb_${environment}`;
     if (value.endsWith('_D1_ID')) return '11111111-1111-4111-8111-111111111111';
-    if (value.endsWith('_R2_BUCKET_NAME')) return `ygb-${environment}-files`;
+    if (value.endsWith('_R2_BUCKET_NAME')) return environment==='staging'?'yueguangbai-v2-staging-files':`ygb-${environment}-files`;
     throw new Error(`unmapped_placeholder:${value}`);
   });
   if(environment==='production')config.vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT=operationalAlertFingerprint(operationalAlertDescriptorFromService(config.services[0]));

@@ -131,6 +131,17 @@ export function validateReleaseConfig(config, environment) {
   if (!safeReleaseValue(vars?.STAFF_ACCESS_AUD, 200, 8)) {
     errors.push('vars.STAFF_ACCESS_AUD:missing_or_invalid');
   }
+  if (environment === 'staging') {
+    if (!/^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u.test(String(record?.name ?? ''))) {
+      errors.push('name:staging_resource_required');
+    }
+    if (!origin || !hasEnvironmentToken(new URL(origin).hostname, 'staging')) {
+      errors.push('vars.APP_ORIGIN:staging_hostname_required');
+    }
+    if (!hasEnvironmentToken(vars?.STAFF_ACCESS_AUD, 'staging')) {
+      errors.push('vars.STAFF_ACCESS_AUD:staging_resource_required');
+    }
+  }
 
   const route = exactOne(record?.routes);
   if (!route || route.custom_domain !== true || typeof route.pattern !== 'string') {
@@ -151,12 +162,20 @@ export function validateReleaseConfig(config, environment) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
     .test(String(d1?.database_id ?? ''))) errors.push('d1_databases.0.database_id:invalid');
   if (!isResourceName(d1?.database_name)) errors.push('d1_databases.0.database_name:invalid');
+  if (environment === 'staging'
+    && !/^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u.test(String(d1?.database_name ?? ''))) {
+    errors.push('d1_databases.0.database_name:staging_resource_required');
+  }
   const r2 = exactOne(record?.r2_buckets);
   if (!r2 || r2.binding !== 'FILE_OBJECT_STORAGE_R2') {
     errors.push('r2_buckets:binding_invalid');
   }
   if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u.test(String(r2?.bucket_name ?? ''))) {
     errors.push('r2_buckets.0.bucket_name:invalid');
+  }
+  if (environment === 'staging'
+    && !/^yueguangbai-v2-staging-files(?:-[a-z0-9-]+)?$/u.test(String(r2?.bucket_name ?? ''))) {
+    errors.push('r2_buckets.0.bucket_name:staging_resource_required');
   }
   for (const key of Object.keys(vars ?? {})) {
     if (retiredCoreRuntimeKey.test(key)) {
@@ -197,6 +216,17 @@ function validateFrozenDefaults(config, environment) {
   for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {
     if (vars?.[flag] !== scheduledExpected) {
       errors.push(`vars.${flag}:must_be_${scheduledExpected}`);
+    }
+  }
+  if (environment === 'staging') {
+    if (vars?.BUYER_SELF_REGISTRATION_ENABLED !== 'true') {
+      errors.push('vars.BUYER_SELF_REGISTRATION_ENABLED:must_be_true');
+    }
+    if (vars?.BUYER_SELF_REGISTRATION_CHANNEL_ID !== 'staging-buyer-channel') {
+      errors.push('vars.BUYER_SELF_REGISTRATION_CHANNEL_ID:invalid');
+    }
+    if (vars?.BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED !== 'false') {
+      errors.push('vars.BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED:must_be_false');
     }
   }
   if (vars?.SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED !== 'false') {
@@ -240,6 +270,15 @@ function placeholderPaths(value, prefix = '') {
     }
   }
   return result.sort();
+}
+
+function hasEnvironmentToken(value, token) {
+  if (typeof value !== 'string') return false;
+  const tokens = value.toLowerCase().split(/[^a-z0-9]+/u).filter(Boolean);
+  return tokens.includes(token)
+    && !tokens.includes('production')
+    && !tokens.includes('prod')
+    && !tokens.includes('default');
 }
 
 function stripJsonComments(input) {

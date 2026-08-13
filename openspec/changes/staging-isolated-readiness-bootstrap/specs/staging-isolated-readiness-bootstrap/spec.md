@@ -27,12 +27,12 @@ Staging SHALL report Scheduler, Acquisition Maintenance, operational alerts and 
 
 ### Requirement: First staging Owner bootstrap is one-time and atomic
 
-The operator tool SHALL accept only an exact staging D1 identity and Git-external owner-only input, require Schema 65 and empty Staff authority, then atomically create exactly one active Owner, role, email identity, authorization event and immutable Audit with command idempotency and final assertions. It SHALL expose no HTTP route, password or Access bypass.
+The operator tool SHALL accept only an exact staging D1 identity and Git-external owner-only input, require Schema 65, empty Staff authority and no Buyer channel, then atomically create exactly one active Owner, role, email identity, synthetic staging Buyer channel, authorization event and immutable Audit with command idempotency and final assertions. Its REST parameter arrays SHALL contain only strings. It SHALL expose no HTTP route, password or Access bypass.
 
 #### Scenario: Empty staging D1 is bootstrapped
 
 - **WHEN** an authorized operator submits a valid normalized identity and idempotency key to a fully migrated empty staging D1
-- **THEN** exactly one Owner authority commits and a same-request replay returns the same non-PII result without duplicate facts.
+- **THEN** exactly one Owner authority and one deterministic synthetic Buyer channel commit, and a same-request replay returns the same non-PII result without duplicate facts.
 
 #### Scenario: Target, state or transaction is unsafe
 
@@ -41,7 +41,7 @@ The operator tool SHALL accept only an exact staging D1 identity and Git-externa
 
 ### Requirement: Staging test identities use formal lifecycle paths
 
-After first-owner bootstrap, the remaining canonical Staff accounts SHALL be created through the formal Owner-only Staff management API and authenticate through distinct Access-capable emails. Buyer and Seller synthetic accounts SHALL use formal onboarding, activation and password paths. Committed files and command output SHALL contain no real email, password, OTP, token or Secret.
+After first-owner bootstrap, the remaining canonical Staff accounts SHALL be created through the formal Owner-only Staff management API and authenticate through distinct Access-capable emails. The staging release SHALL explicitly enable invitation-based Buyer registration using the bootstrapped synthetic Buyer channel. Buyer and Seller synthetic accounts SHALL use formal onboarding, activation and password paths. Committed files and command output SHALL contain no real email, password, OTP, token or Secret.
 
 #### Scenario: Operator prepares role-chain acceptance
 

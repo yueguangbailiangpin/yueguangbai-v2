@@ -1,6 +1,5 @@
 import type { SqlDatabase, SqlStatement } from '@ygb/contracts';
-import { hashCanonicalJson } from '@ygb/domain';
-import { createAuditEventStatement } from '../foundation/audit';
+import { canonicalJson, hashCanonicalJson } from '@ygb/domain';
 import {
   acquireIdempotency,
   assertIdempotencyCompletionStatement,
@@ -11,6 +10,7 @@ import {
 import { normalizeStaffEmail } from '../staff-auth/cloudflare-access';
 
 const TARGET_SCHEMA = 65;
+const STAGING_BUYER_CHANNEL_ID = 'staging-buyer-channel';
 const STAGING_DATABASE_NAME = /^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -36,6 +36,7 @@ export class StagingFirstOwnerError extends Error {
       | 'INVALID_INPUT'
       | 'SCHEMA_NOT_READY'
       | 'STAFF_AUTHORITY_NOT_EMPTY'
+      | 'STAGING_FOUNDATION_NOT_EMPTY'
       | 'IDEMPOTENCY_CONFLICT'
       | 'REQUEST_IN_PROGRESS'
       | 'DEPENDENCY_UNAVAILABLE',
@@ -124,25 +125,18 @@ export async function bootstrapStagingFirstOwner(
       }),
       now,
     ),
-    createAuditEventStatement(database, {
-      id: `staging-audit-${crypto.randomUUID()}`,
-      aggregateType: 'STAFF',
-      aggregateId: staffId,
-      eventType: 'STAGING_FIRST_OWNER_BOOTSTRAPPED',
-      actor: { type: 'SYSTEM', id: null, roles: [] },
-      idempotencyKey: input.idempotencyKey,
-      nextState: {
-        email_identity_created: true,
-        role_code: 'owner',
-        staff_id: staffId,
-        status: 'ACTIVE',
-      },
-      metadata: {
-        environment: 'staging',
-        schema_version: TARGET_SCHEMA,
-      },
-      createdAt: now,
-    }),
+    database.prepare(`INSERT INTO buyer_channels(
+      id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at
+    ) VALUES(?,'STG','Staging synthetic buyer','ACTIVE',1,1,?,?,NULL)`).bind(
+      STAGING_BUYER_CHANNEL_ID, now, now,
+    ),
+    stagingBootstrapAuditStatement(
+      database,
+      `staging-audit-${crypto.randomUUID()}`,
+      staffId,
+      input.idempotencyKey,
+      now,
+    ),
     completeIdempotencyStatement(database, acquired.claim, result, {
       resultReferences: { staff_id: staffId },
       now,
@@ -161,8 +155,13 @@ export async function bootstrapStagingFirstOwner(
       'STAGING_FIRST_OWNER_BOOTSTRAP_FAILED',
       now,
     ).catch(() => false);
-    const empty = await authorityIsEmpty(database).catch(() => false);
-    if (!empty) throw new StagingFirstOwnerError('STAFF_AUTHORITY_NOT_EMPTY');
+    const state = await bootstrapState(database).catch(() => null);
+    if (!state?.staffEmpty) {
+      throw new StagingFirstOwnerError('STAFF_AUTHORITY_NOT_EMPTY');
+    }
+    if (!state.buyerFoundationEmpty) {
+      throw new StagingFirstOwnerError('STAGING_FOUNDATION_NOT_EMPTY');
+    }
     throw normalizeError(error);
   }
 }
@@ -219,6 +218,7 @@ function emptyAuthorityAssertion(database: SqlDatabase): SqlStatement {
       AND NOT EXISTS(SELECT 1 FROM staff_work_items)
       AND NOT EXISTS(SELECT 1 FROM staff_role_consolidation_mappings)
       AND NOT EXISTS(SELECT 1 FROM staff_authorization_events)
+      AND NOT EXISTS(SELECT 1 FROM buyer_channels)
     THEN 1 ELSE 0 END`);
 }
 
@@ -237,6 +237,10 @@ function finalAuthorityAssertion(
         WHERE id=? AND staff_id=? AND status='ACTIVE')=1
       AND (SELECT COUNT(*) FROM staff_marketplace_scopes)=0
       AND (SELECT COUNT(*) FROM staff_sessions)=0
+      AND (SELECT COUNT(*) FROM buyer_channels)=1
+      AND (SELECT COUNT(*) FROM buyer_channels
+        WHERE id='staging-buyer-channel' AND code='STG'
+          AND status='ACTIVE' AND version=1)=1
       AND (SELECT COUNT(*) FROM staff_authorization_events
         WHERE staff_id=? AND authorization_version=1
           AND event_type='STAGING_FIRST_OWNER_BOOTSTRAPPED')=1
@@ -248,7 +252,10 @@ function finalAuthorityAssertion(
     );
 }
 
-async function authorityIsEmpty(database: SqlDatabase): Promise<boolean> {
+async function bootstrapState(database: SqlDatabase): Promise<{
+  staffEmpty: boolean;
+  buyerFoundationEmpty: boolean;
+}> {
   const row = await database.prepare(`SELECT
     (SELECT COUNT(*) FROM staff_users)
     +(SELECT COUNT(*) FROM staff_role_assignments)
@@ -270,9 +277,41 @@ async function authorityIsEmpty(database: SqlDatabase): Promise<boolean> {
     +(SELECT COUNT(*) FROM staff_reassignment_batch_items)
     +(SELECT COUNT(*) FROM staff_work_items)
     +(SELECT COUNT(*) FROM staff_role_consolidation_mappings)
-    +(SELECT COUNT(*) FROM staff_authorization_events) AS total`
-  ).first<{total:number}>();
-  return Number(row?.total ?? -1) === 0;
+    +(SELECT COUNT(*) FROM staff_authorization_events) AS staff_total,
+    (SELECT COUNT(*) FROM buyer_channels) AS buyer_channel_total`
+  ).first<{staff_total:number;buyer_channel_total:number}>();
+  return {
+    staffEmpty: Number(row?.staff_total ?? -1) === 0,
+    buyerFoundationEmpty: Number(row?.buyer_channel_total ?? -1) === 0,
+  };
+}
+
+function stagingBootstrapAuditStatement(
+  database: SqlDatabase,
+  id: string,
+  staffId: string,
+  idempotencyKey: string,
+  now: number,
+): SqlStatement {
+  return database.prepare(`INSERT INTO audit_events(
+    id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,
+    actor_roles_json,request_id,idempotency_key,previous_state_json,
+    next_state_json,reason,metadata_json,created_at
+  ) VALUES(?,'STAFF',?,'STAGING_FIRST_OWNER_BOOTSTRAPPED','SYSTEM',NULL,
+    '[]',NULL,?,NULL,?,NULL,?,?)`).bind(
+      id,
+      staffId,
+      idempotencyKey,
+      canonicalJson({
+        buyer_registration_channel_id: STAGING_BUYER_CHANNEL_ID,
+        email_identity_created: true,
+        role_code: 'owner',
+        staff_id: staffId,
+        status: 'ACTIVE',
+      }),
+      canonicalJson({ environment: 'staging', schema_version: TARGET_SCHEMA }),
+      now,
+    );
 }
 
 function text(value: unknown, maximum: number): string {

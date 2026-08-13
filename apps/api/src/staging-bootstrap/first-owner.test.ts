@@ -33,6 +33,8 @@ describe('staging first owner bootstrap', () => {
       (SELECT COUNT(*) FROM staff_email_identities WHERE status='ACTIVE') AS emails,
       (SELECT COUNT(*) FROM staff_marketplace_scopes) AS scopes,
       (SELECT COUNT(*) FROM staff_sessions) AS sessions,
+      (SELECT COUNT(*) FROM buyer_channels
+        WHERE id='staging-buyer-channel' AND code='STG' AND status='ACTIVE') AS buyer_channels,
       (SELECT COUNT(*) FROM staff_authorization_events) AS authorization_events,
       (SELECT COUNT(*) FROM audit_events
         WHERE event_type='STAGING_FIRST_OWNER_BOOTSTRAPPED') AS audits
@@ -42,6 +44,7 @@ describe('staging first owner bootstrap', () => {
       emails: 1,
       scopes: 0,
       sessions: 0,
+      buyer_channels: 1,
       authorization_events: 1,
       audits: 1,
     });
@@ -103,6 +106,19 @@ describe('staging first owner bootstrap', () => {
       .toEqual({total:0});
   });
 
+  it('fails closed when the staging synthetic Buyer foundation already exists',async()=>{
+    database=migratedEmptyDatabase();
+    database.raw.prepare(`INSERT INTO buyer_channels(
+      id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at
+    ) VALUES('unexpected-channel','OLD','Unexpected','ACTIVE',1,1,1,1,NULL)`).run();
+    await expect(bootstrapStagingFirstOwner(database,INPUT,1000))
+      .rejects.toMatchObject({code:'STAGING_FOUNDATION_NOT_EMPTY'});
+    expect(database.raw.prepare('SELECT COUNT(*) AS total FROM staff_users').get())
+      .toEqual({total:0});
+    expect(database.raw.prepare('SELECT COUNT(*) AS total FROM buyer_channels').get())
+      .toEqual({total:1});
+  });
+
   it('rejects a different identity under the same bootstrap key', async () => {
     database = migratedEmptyDatabase();
     await bootstrapStagingFirstOwner(database, INPUT, 1000);
@@ -126,12 +142,14 @@ describe('staging first owner bootstrap', () => {
       (SELECT COUNT(*) FROM staff_users) AS staff,
       (SELECT COUNT(*) FROM staff_role_assignments) AS roles,
       (SELECT COUNT(*) FROM staff_email_identities) AS emails,
+      (SELECT COUNT(*) FROM buyer_channels) AS buyer_channels,
       (SELECT COUNT(*) FROM staff_authorization_events) AS authorization_events,
       (SELECT COUNT(*) FROM audit_events) AS audits
     `).get()).toEqual({
       staff: 0,
       roles: 0,
       emails: 0,
+      buyer_channels: 0,
       authorization_events: 0,
       audits: 0,
     });

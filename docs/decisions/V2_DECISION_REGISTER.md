@@ -337,7 +337,7 @@ Staging 是生产前的隔离验收环境，允许与 production 位于同一 Cl
 
 Staging 继续按既有裁决关闭 Scheduler、Acquisition Maintenance 与 operational alert sink，因此不得为了让 `/ready` 返回 200 而伪造这些能力已经运行成功。Staging `/ready` 必须把这三项以及 release-bound production recovery attestation 显式报告为 `not_required`，同时仍强制要求 Schema 65、真实隔离 R2 binding、有效的 staging Cloudflare Access team/audience 和精确 40 位 release SHA。Production `/ready` 的八项 `ok` 语义保持不变；未知环境、staging 错误启用生产能力或缺少必需 staging 证据时继续失败关闭。
 
-全新 staging D1 的首任 Owner 只能由一次性 operator bootstrap 创建。该操作只接受显式 staging 数据库名称/ID和 Git 外、仅 Owner 可读的姓名/邮箱输入；执行前必须验证 Schema 65、远程数据库名称/ID一致且所有 Staff 身份/角色/Scope/Session/授权事实为空。它以参数化 D1 batch 原子创建唯一 ACTIVE Owner、唯一 ACTIVE role、唯一 ACTIVE email identity、授权事件和不可变 Audit，并提供幂等重放、冲突和最终数量断言；不得新增公网 HTTP bootstrap、密码、测试后门、Migration 写死邮箱或散装 SQL。首任 Owner 登录后，另外四个 canonical Staff 角色只能通过正式 Owner Staff management API 创建；Staff 使用 Cloudflare Access 邮箱 OTP，不存在测试密码。
+全新 staging D1 的首任 Owner 只能由一次性 operator bootstrap 创建。该操作只接受显式 staging 数据库名称/ID和 Git 外、仅 Owner 可读的姓名/邮箱输入；执行前必须验证 Schema 65、远程数据库名称/ID一致且所有 Staff 身份/角色/Scope/Session/授权事实及 Buyer channel 为空。它以符合 D1 REST 字符串参数契约的参数化 batch 原子创建唯一 ACTIVE Owner、唯一 ACTIVE role、唯一 ACTIVE email identity、唯一 `staging-buyer-channel`、授权事件和不可变 Audit，并提供幂等重放、冲突和最终数量断言；不得新增公网 HTTP bootstrap、密码、测试后门、Migration 写死邮箱或散装 SQL。staging release 显式开启 invitation-based Buyer registration 并只使用该 synthetic channel。首任 Owner 登录后，另外四个 canonical Staff 角色只能通过正式 Owner Staff management API 创建；Staff 使用 Cloudflare Access 邮箱 OTP，不存在测试密码。
 
 Staging Buyer/Seller 测试身份必须使用 synthetic 标记和正式 onboarding、activation、password 流程创建，并能够由 operator 禁用或重置。账号、密码、邮箱、OTP、Token 和 Secret 不进入 Git、命令输出或审计明文。远程资源创建、Migration、Secret、Access、DNS、部署和测试身份激活仍需逐阶段显式授权与固定 SHA 验收；本 Decision 不授权 production 操作。
 
