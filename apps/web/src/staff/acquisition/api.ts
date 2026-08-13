@@ -26,11 +26,11 @@ const reportingConfig=z.object({precision_started_business_date:z.string().nulla
 const reportingConfigEnvelope=z.object({config:reportingConfig}).strict();
 const sourceCorrectionCandidate=z.object({lead_id:z.string(),lead_type:z.enum(['BUYER','SELLER']),marketplace_code:z.string(),business_date:z.string(),display_name:z.string().nullable(),wechat_masked:z.string(),original_channel_id:z.string(),original_channel_name:z.string(),effective_channel_id:z.string(),effective_channel_name:z.string(),correction_count:z.number().int().nonnegative()}).strict();
 const correctionCandidatesEnvelope=z.object({items:z.array(sourceCorrectionCandidate)}).strict();
-const sourceCorrectionEnvelope=z.object({correction:z.object({correction_id:z.string(),lead_id:z.string(),previous_channel_id:z.string(),new_channel_id:z.string(),new_channel_name:z.string(),reason:z.string(),corrected_at:z.number().int().nonnegative()}).strict()}).strict();
+const sourceCorrectionEnvelope=z.object({correction:z.object({correction_id:z.string(),lead_id:z.string(),previous_channel_id:z.string(),new_channel_id:z.string(),new_channel_name:z.string(),reason:z.string(),corrected_at:z.number().int().nonnegative(),correction_sequence:z.number().int().positive()}).strict(),replayed:z.boolean()}).strict();
 const machine=z.object({machine_id:z.string(),machine_name:z.string(),status:z.enum(['ACTIVE','REVOKED']),hourly_request_limit:z.number().int().positive(),marketplace_codes:z.array(z.string()),channel_ids:z.array(z.string()),created_at:z.number().int().nonnegative(),revoked_at:z.number().int().nonnegative().nullable()}).strict();
 const machinesEnvelope=z.object({machines:z.array(machine)}).strict();
-const machineCreatedEnvelope=z.object({machine:z.object({machine_id:z.string(),machine_name:z.string(),machine_secret:z.string(),status:z.literal('ACTIVE'),hourly_request_limit:z.number().int().positive(),marketplace_codes:z.array(z.string()),channel_ids:z.array(z.string()),created_at:z.number().int().nonnegative()}).strict()}).strict();
-const machineRevokedEnvelope=z.object({machine:z.object({machine_id:z.string(),status:z.literal('REVOKED'),revoked_at:z.number().int().nonnegative()}).strict()}).strict();
+const machineCreatedEnvelope=z.object({machine:z.object({machine_id:z.string(),machine_name:z.string(),machine_secret:z.string().nullable(),secret_available:z.boolean(),status:z.literal('ACTIVE'),hourly_request_limit:z.number().int().positive(),marketplace_codes:z.array(z.string()),channel_ids:z.array(z.string()),created_at:z.number().int().nonnegative()}).strict(),replayed:z.boolean()}).strict();
+const machineRevokedEnvelope=z.object({machine:z.object({machine_id:z.string(),status:z.literal('REVOKED'),revoked_at:z.number().int().nonnegative()}).strict(),replayed:z.boolean()}).strict();
 
 export type AcquisitionChannelStat=z.output<typeof channelStat>;
 export type SourceCorrectionCandidate=z.output<typeof sourceCorrectionCandidate>;

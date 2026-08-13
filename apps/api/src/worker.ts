@@ -24,7 +24,7 @@ export default {
     env: CloudflareWorkerBindings,
     ctx: ExecutionContext,
   ): Promise<Response> {
-    const runtime = resolveCloudflareRuntime(env);
+    const runtime = await resolveCloudflareRuntime(env);
     const pathname = new URL(request.url).pathname;
     if (!runtime) return releaseFailure(pathname, 503);
     if (runtime.environment === 'local') {
@@ -45,7 +45,7 @@ export default {
     );
   },
   async scheduled(event: {scheduledTime?:number}, env: CloudflareWorkerBindings, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
-    const runtime=resolveCloudflareRuntime(env);
+    const runtime=await resolveCloudflareRuntime(env);
     if(!runtime)return;
     const bindings=runtime.appBindings;
     if (bindings.SCHEDULED_OPERATIONS_ENABLED !== 'true') return;

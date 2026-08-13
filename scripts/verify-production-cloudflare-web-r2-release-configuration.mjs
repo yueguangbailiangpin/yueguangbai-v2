@@ -119,10 +119,14 @@ const runtime = read('apps/api/src/cloudflare-runtime.ts');
 for (const marker of [
   'FILE_OBJECT_STORAGE_R2',
   'FILE_OBJECT_STORAGE: storage',
+  'OPERATIONAL_ALERT_MODE',
   'isAllowedSameOriginApiRequest',
   'Content-Security-Policy',
   'Strict-Transport-Security',
 ]) assert(runtime.includes(marker), `release runtime contract missing: ${marker}`);
+const alertRuntime=read('apps/api/src/operational-readiness/alert-runtime.ts');
+for(const marker of ['operationalAlertDescriptorFromRuntime','parseExactGitCommitSha','hashCanonicalJson','OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT'])assert(alertRuntime.includes(marker),`operational alert runtime contract missing: ${marker}`);
+assert(read('apps/api/src/operational-readiness/alert-sink-contract.ts').includes('verifyOperationalAlertChallenge'),'operational alert RPC contract missing');
 assert(!runtime.includes('unsafe-inline'), 'release CSP must not allow unsafe-inline');
 
 const storagePort = read('packages/contracts/src/file-storage.ts');
@@ -140,6 +144,9 @@ for (const marker of [
   'path.isAbsolute(file)',
   'realpathSync.native(lexical)',
   'config_path:repository_location_forbidden',
+  'operationalAlertDescriptorFromService',
+  'operationalAlertFingerprint',
+  'parseExactGitCommitSha',
 ]) assert(preflight.includes(marker), `Git-external config gate missing: ${marker}`);
 const webVerifier = read('scripts/verify-web-static-build.mjs');
 assert(webVerifier.includes('jsx_inline_style_forbidden'),

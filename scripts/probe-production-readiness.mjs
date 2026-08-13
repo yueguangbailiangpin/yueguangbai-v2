@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 
 const DEFAULT_READY_URL='https://app.yueguangbai.net/ready';
-const REQUIRED_CHECKS=['schema','scheduler','acquisition_maintenance','object_storage','recovery','staff_access','release'];
+const REQUIRED_CHECKS=['schema','scheduler','acquisition_maintenance','operational_alerts','object_storage','recovery','staff_access','release'];
 
 export async function probeProductionReadiness({fetchImpl=fetch,readyUrl=process.env.YGB_PRODUCTION_READY_URL??DEFAULT_READY_URL}={}){
   const url=readyEndpoint(readyUrl);let response;

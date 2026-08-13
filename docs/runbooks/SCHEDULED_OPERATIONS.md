@@ -45,7 +45,13 @@ Worker 的 Cron 配置只定义触发频率；`SCHEDULED_OPERATIONS_ENABLED` 必
 
 连续两次健康评估自动恢复；事件型信号在观察窗口安静后由定时评估补充健康事实，因此不依赖新的业务事件才能恢复。重复 observation id 不重复计数或通知；恢复后复发建立新的 incident version。告警身份为 `signal_type + job_name + summary_code`。冷却期内继续持久化状态但不重复通知。sink 失败不影响原请求或作业，只写固定 `PRIMARY_ALERT_SINK_FAILURE` 信号且不得递归通知。信号、日志和 DTO 只能包含固定枚举、哈希 observation id、UTC 毫秒、整数计数及固定 job 名；禁止路径、用户 id、token、凭证、微信号、对象 key、原始错误、金额或客户内容。
 
-`OPERATIONAL_ALERT_MODE` 默认为 `disabled`；本 Change 唯一可启用值为 `local`。`local` 可使用内置安全日志 adapter 或注入内存 mock，二者都只接受正式通知 DTO。disabled 状态配置 adapter、未知 mode 或任何外部 adapter 名均视为无效配置并安全退回不发送。这里不读取外部凭证，也不发起网络调用。
+`OPERATIONAL_ALERT_MODE` 在 local/staging 默认为 `disabled`。`local` 模式只允许 local 环境使用内置安全结构化日志 adapter 或注入内存 mock；staging 不允许 console adapter。production 必须为 `bound`，并解析唯一 `OPERATIONAL_ALERT_SINK` service binding；同时必须配置稳定的 sink identity 和由操作者按实际 adapter 配置计算的 SHA-256 指纹。
+
+生产证明不是布尔开关，也不是操作者自己填三个 `PASS`。渲染配置必须让唯一 service binding 的 target、entrypoint 与 exact props 相互镜像；props 仅允许 `service_target`、`entrypoint`、`sink_identity`、`sink_deployment_version`。preflight 从该真实条目做稳定 canonical JSON + SHA-256，声明 fingerprint 不一致即阻断。生产 sink Worker（本仓库不提供）必须实现 typed `verifyOperationalAlertChallenge` RPC，并从自己的 `ctx.props` 校验相同 descriptor。
+
+操作者获得生产授权并完成 sink provisioning 后，用正式总管理员 Staff session、同源 Origin、`Idempotency-Key` 和 exact body 调用 `/api/staff/production-readiness/operational-alert-attestations`；body 只允许 `expires_at` 与非敏感 `evidence_reference`，有效期最长七天。API 自行发起 delivery、`SAFE_NO_PRODUCTION_DISRUPTION` failure-path simulation、recovery 三个随机 nonce challenge。sink receipt 必须逐项绑定 challenge id/type/nonce、当前精确 40 位 release SHA、derived fingerprint、identity、deployment version、outcome 和有效期。任一 RPC/receipt 失败返回 503，不能写成功 Audit；成功时仅保存经验证的 receipt summary，不保存 nonce、凭据或 Secret，并与 Outbox、command completion、final assertion 同批提交。真实 sink 实现和真实三项演练仍是未完成 operator gate。
+
+`/ready` 对当前 release、identity、fingerprint、时间和三项结果逐项重验；缺失、格式错误、未来时间、过期、演练失败或任一绑定不匹配都会返回 `operational_alerts=failed` 和 503。preflight 只证明静态模板/配置满足机制要求，production health monitor 只消费 `/ready` 结果；两者都不会生成真实证明。disabled 状态配置 adapter、未知 mode、production 使用 local、或非 production 使用 bound 都视为无效配置并安全退回不发送。
 
 Staff 登录拒绝、Access JWT 无效、未知邮箱、Cookie/Session 拒绝会从既有安全事实派生 `LOGIN_ANOMALY_DETECTED`；正常登录不触发。该派生不得保存登录名、IP 原文、密码、token、User-Agent、Provider subject 或底层错误。
 

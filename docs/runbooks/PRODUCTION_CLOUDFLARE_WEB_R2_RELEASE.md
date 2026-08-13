@@ -38,7 +38,7 @@
 - Drive：total、copy、proxy、R2-delete 全部分离；任何失败先关闭 delete，再关闭 proxy/copy。
 - MCP：global 与 local mock 都 false；未来生产 transport/逐工具另有开关。
 - 文件/R2：停止新上传；保留 D1 intent/manifest；只通过现有补偿/cleanup 重试，禁止人工公开 key 或 URL。
-- 告警：未完成独立接收器 Change 前 `OPERATIONAL_ALERT_MODE=disabled`，因此仍是 Production GO 阻断，不能把“关闭”写成“已验收”。
+- 告警：production 模板要求 `OPERATIONAL_ALERT_MODE=bound` 和唯一 `OPERATIONAL_ALERT_SINK` RPC service binding。target、entrypoint、exact props、sink identity、sink deployment/version 构成 canonical descriptor；preflight 从 rendered `services` 条目稳定派生 SHA-256 fingerprint，任一字段漂移或任意 64 hex 自报都阻断。生产 sink Worker 不在本仓库，必须由 operator 实现/provision，并从 `ctx.props` 校验 descriptor。正式总管理员调用 attestation route 时 body 只含 expiry/evidence；API 自行发送 delivery、安全 failure-path simulation、recovery 三个 nonce challenge，验证 current release/fingerprint/version receipt 后才原子写 Audit/Outbox。任一 RPC/receipt 失败或旧 Audit 不匹配时 `/ready` 阻断。local 可以 disabled/console；staging 只能 disabled；真实 production provisioning/演练仍未完成。
 
 ## Worker/Web 兼容回滚
 

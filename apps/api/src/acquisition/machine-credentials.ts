@@ -1,27 +1,75 @@
-import type { SqlDatabase } from '@ygb/contracts';
+import type { SqlDatabase, SqlStatement } from '@ygb/contracts';
+import { createAuditEventStatement } from '../foundation/audit';
+import {
+  createOutboxStatements,
+  prepareOutboxEvent,
+} from '../foundation/outbox';
+import {
+  acquireAcquisitionCommand,
+  failAcquisitionCommand,
+  finishAcquisitionCommand,
+  type AcquisitionCommandContext,
+} from './command';
 import { AcquisitionError } from './errors';
 
-export interface AcquisitionMachineIdentity{
-  machineId:string;machineName:string;marketplaceCodes:readonly string[];channelIds:readonly string[];
+export interface AcquisitionMachineIdentity {
+  machineId:string;
+  machineName:string;
+  marketplaceCodes:readonly string[];
+  channelIds:readonly string[];
 }
+
+interface MachineCredentialPublic {
+  machine_id:string;
+  machine_name:string;
+  status:'ACTIVE';
+  hourly_request_limit:number;
+  marketplace_codes:string[];
+  channel_ids:string[];
+  created_at:number;
+}
+
 const RATE_BUCKET_RETENTION_HOURS=24*90;
 
 export async function createMachineCredential(
   database:SqlDatabase,
-  input:{machineName:string;marketplaceCodes:readonly string[];channelIds:readonly string[];hourlyRequestLimit:number;createdByStaffId:string},
+  input:{machineName:string;marketplaceCodes:readonly string[];channelIds:readonly string[];hourlyRequestLimit:number},
+  command:AcquisitionCommandContext,
 ){
   const name=text(input.machineName,100),markets=unique(input.marketplaceCodes),channels=unique(input.channelIds);
   if(markets.length<1||channels.length<1||!Number.isSafeInteger(input.hourlyRequestLimit)||input.hourlyRequestLimit<1||input.hourlyRequestLimit>10000)validation();
-  const placeholders=markets.map(()=>'?').join(','),marketCount=await database.prepare(`SELECT COUNT(*) AS count FROM marketplace_registry WHERE code IN (${placeholders})`).bind(...markets).first<{count:number}>();if(Number(marketCount?.count??0)!==markets.length)validation();
-  const channelPlaceholders=channels.map(()=>'?').join(','),channelRows=await database.prepare(`SELECT id,marketplace_code,status FROM acquisition_channels WHERE id IN (${channelPlaceholders})`).bind(...channels).all<{id:string;marketplace_code:string;status:string}>();
-  if(channelRows.results.length!==channels.length||channelRows.results.some((row)=>row.status!=='ACTIVE'||!markets.includes(row.marketplace_code)))validation();
-  const secret=`mw_machine_${base64Url(crypto.getRandomValues(new Uint8Array(32)))}`,hash=await sha256(secret),id=crypto.randomUUID(),now=Date.now();
-  await database.batch([
-    database.prepare(`INSERT INTO acquisition_machine_credentials(id,machine_name,secret_sha256,status,hourly_request_limit,created_by_staff_id,created_at,updated_at,revoked_at,revoked_by_staff_id) VALUES(?,?,?,'ACTIVE',?,?,?, ?,NULL,NULL)`).bind(id,name,hash,input.hourlyRequestLimit,input.createdByStaffId,now,now),
-    ...markets.map((market)=>database.prepare(`INSERT INTO acquisition_machine_marketplaces(machine_id,marketplace_code,created_at) VALUES(?,?,?)`).bind(id,market,now)),
-    ...channels.map((channel)=>database.prepare(`INSERT INTO acquisition_machine_channels(machine_id,channel_id,created_at) VALUES(?,?,?)`).bind(id,channel,now)),
-  ]);
-  return{machine_id:id,machine_name:name,machine_secret:secret,status:'ACTIVE' as const,hourly_request_limit:input.hourlyRequestLimit,marketplace_codes:markets,channel_ids:channels,created_at:now};
+  const payload={machine_name:name,marketplace_codes:markets,channel_ids:channels,hourly_request_limit:input.hourlyRequestLimit};
+  const acquired=await acquireAcquisitionCommand<{machine:MachineCredentialPublic}>(database,command,'CREATE_ACQUISITION_MACHINE_CREDENTIAL','ACQUISITION_MACHINE_CREDENTIAL','new',payload);
+  if(acquired.acquired.kind==='REPLAY')return{machine:{...acquired.acquired.response.machine,machine_secret:null,secret_available:false as const},replayed:true};
+  try{
+    const placeholders=markets.map(()=>'?').join(','),marketCount=await database.prepare(`SELECT COUNT(*) AS count FROM marketplace_registry WHERE code IN (${placeholders})`).bind(...markets).first<{count:number}>();
+    if(Number(marketCount?.count??0)!==markets.length)validation();
+    const channelPlaceholders=channels.map(()=>'?').join(','),channelRows=await database.prepare(`SELECT id,marketplace_code,status FROM acquisition_channels WHERE id IN (${channelPlaceholders})`).bind(...channels).all<{id:string;marketplace_code:string;status:string}>();
+    if(channelRows.results.length!==channels.length||channelRows.results.some((row)=>row.status!=='ACTIVE'||!markets.includes(row.marketplace_code)))validation();
+    const secret=`mw_machine_${base64Url(crypto.getRandomValues(new Uint8Array(32)))}`,hash=await sha256(secret),id=crypto.randomUUID();
+    const machine:MachineCredentialPublic={machine_id:id,machine_name:name,status:'ACTIVE',hourly_request_limit:input.hourlyRequestLimit,marketplace_codes:markets,channel_ids:channels,created_at:acquired.now};
+    const outbox=await prepareOutboxEvent({
+      id:crypto.randomUUID(),dedupKey:`acquisition-machine-created:${id}`,
+      eventType:'ACQUISITION_MACHINE_CREDENTIAL_CREATED',aggregateType:'ACQUISITION_MACHINE_CREDENTIAL',aggregateId:id,
+      payload:{machine_id:id,machine_name:name,marketplace_codes:markets,channel_ids:channels,hourly_request_limit:input.hourlyRequestLimit,status:'ACTIVE'},
+      createdAt:acquired.now,
+    });
+    await database.batch([
+      database.prepare(`INSERT INTO acquisition_machine_credentials(id,machine_name,secret_sha256,status,hourly_request_limit,created_by_staff_id,created_at,updated_at,revoked_at,revoked_by_staff_id) VALUES(?,?,?,'ACTIVE',?,?,?, ?,NULL,NULL)`).bind(id,name,hash,input.hourlyRequestLimit,command.actor.staffId,acquired.now,acquired.now),
+      changedOnce(database),
+      ...markets.map((market)=>database.prepare(`INSERT INTO acquisition_machine_marketplaces(machine_id,marketplace_code,created_at) VALUES(?,?,?)`).bind(id,market,acquired.now)),
+      ...channels.map((channel)=>database.prepare(`INSERT INTO acquisition_machine_channels(machine_id,channel_id,created_at) VALUES(?,?,?)`).bind(id,channel,acquired.now)),
+      createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'ACQUISITION_MACHINE_CREDENTIAL',aggregateId:id,eventType:'ACQUISITION_MACHINE_CREDENTIAL_CREATED',actor:{type:'STAFF',id:command.actor.staffId,roles:[...command.actor.roles]},requestId:command.requestId,idempotencyKey:command.idempotencyKey,nextState:{...machine,secret_available:false},createdAt:acquired.now}),
+      ...createOutboxStatements(database,outbox),
+      ...finishAcquisitionCommand(database,acquired.acquired.claim,{machine},acquired.now,{machine_id:id}),
+      database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN
+        (SELECT COUNT(*) FROM acquisition_machine_credentials WHERE id=? AND status='ACTIVE')=1
+        AND (SELECT COUNT(*) FROM acquisition_machine_marketplaces WHERE machine_id=?)=?
+        AND (SELECT COUNT(*) FROM acquisition_machine_channels WHERE machine_id=?)=?
+        THEN 1 ELSE 0 END`).bind(id,id,markets.length,id,channels.length),
+    ]);
+    return{machine:{...machine,machine_secret:secret,secret_available:true as const},replayed:false};
+  }catch(error){await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);throw error;}
 }
 
 export async function listMachineCredentials(database:SqlDatabase){
@@ -32,11 +80,37 @@ export async function listMachineCredentials(database:SqlDatabase){
   return rows.results.map((row)=>({machine_id:String(row.id),machine_name:String(row.machine_name),status:row.status as 'ACTIVE'|'REVOKED',hourly_request_limit:Number(row.hourly_request_limit),marketplace_codes:jsonArray(row.marketplaces_json),channel_ids:jsonArray(row.channels_json),created_at:Number(row.created_at),revoked_at:row.revoked_at===null?null:Number(row.revoked_at)}));
 }
 
-export async function revokeMachineCredential(database:SqlDatabase,machineId:string,staffId:string){
-  const now=Date.now(),id=clean(machineId),result=await database.prepare(`UPDATE acquisition_machine_credentials SET status='REVOKED',revoked_at=?,revoked_by_staff_id=?,updated_at=? WHERE id=? AND status='ACTIVE'`).bind(now,staffId,now,id).run();
-  if(Number(result.meta.changes)!==1)throw new AcquisitionError('STATE_CONFLICT',409);
-  await database.prepare(`DELETE FROM acquisition_machine_rate_buckets WHERE machine_id=?`).bind(id).run();
-  return{machine_id:machineId,status:'REVOKED' as const,revoked_at:now};
+export async function revokeMachineCredential(
+  database:SqlDatabase,
+  machineId:string,
+  command:AcquisitionCommandContext,
+){
+  const id=clean(machineId);
+  const acquired=await acquireAcquisitionCommand<{machine:{machine_id:string;status:'REVOKED';revoked_at:number} }>(database,command,'REVOKE_ACQUISITION_MACHINE_CREDENTIAL','ACQUISITION_MACHINE_CREDENTIAL',id,{});
+  if(acquired.acquired.kind==='REPLAY')return{...acquired.acquired.response,replayed:true};
+  try{
+    const existing=await database.prepare(`SELECT id,machine_name,status,hourly_request_limit FROM acquisition_machine_credentials WHERE id=?`).bind(id).first<{id:string;machine_name:string;status:'ACTIVE'|'REVOKED';hourly_request_limit:number}>();
+    if(!existing||existing.status!=='ACTIVE')throw new AcquisitionError('STATE_CONFLICT',409);
+    const machine={machine_id:id,status:'REVOKED' as const,revoked_at:acquired.now};
+    const outbox=await prepareOutboxEvent({
+      id:crypto.randomUUID(),dedupKey:`acquisition-machine-revoked:${id}`,
+      eventType:'ACQUISITION_MACHINE_CREDENTIAL_REVOKED',aggregateType:'ACQUISITION_MACHINE_CREDENTIAL',aggregateId:id,
+      payload:{machine_id:id,machine_name:existing.machine_name,status:'REVOKED'},createdAt:acquired.now,
+    });
+    await database.batch([
+      database.prepare(`UPDATE acquisition_machine_credentials SET status='REVOKED',revoked_at=?,revoked_by_staff_id=?,updated_at=? WHERE id=? AND status='ACTIVE'`).bind(acquired.now,command.actor.staffId,acquired.now,id),
+      changedOnce(database),
+      database.prepare(`DELETE FROM acquisition_machine_rate_buckets WHERE machine_id=?`).bind(id),
+      createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'ACQUISITION_MACHINE_CREDENTIAL',aggregateId:id,eventType:'ACQUISITION_MACHINE_CREDENTIAL_REVOKED',actor:{type:'STAFF',id:command.actor.staffId,roles:[...command.actor.roles]},requestId:command.requestId,idempotencyKey:command.idempotencyKey,previousState:{status:'ACTIVE',machine_name:existing.machine_name,hourly_request_limit:Number(existing.hourly_request_limit)},nextState:{status:'REVOKED',machine_name:existing.machine_name,revoked_at:acquired.now},createdAt:acquired.now}),
+      ...createOutboxStatements(database,outbox),
+      ...finishAcquisitionCommand(database,acquired.acquired.claim,{machine},acquired.now,{machine_id:id}),
+      database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN
+        (SELECT COUNT(*) FROM acquisition_machine_credentials WHERE id=? AND status='REVOKED' AND revoked_by_staff_id=? AND revoked_at=?)=1
+        AND (SELECT COUNT(*) FROM acquisition_machine_rate_buckets WHERE machine_id=?)=0
+        THEN 1 ELSE 0 END`).bind(id,command.actor.staffId,acquired.now,id),
+    ]);
+    return{machine,replayed:false};
+  }catch(error){await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);throw error;}
 }
 
 export async function authenticateAcquisitionMachine(database:SqlDatabase,request:Request,now=Date.now()):Promise<AcquisitionMachineIdentity>{
@@ -53,7 +127,8 @@ export async function authenticateAcquisitionMachine(database:SqlDatabase,reques
   ]);
   return{machineId:row.id,machineName:row.machine_name,marketplaceCodes:markets.results.map((value)=>value.marketplace_code),channelIds:channels.results.map((value)=>value.channel_id)};
 }
-export function requireMachineScope(machine:AcquisitionMachineIdentity,marketplaceCode:string,channelId:string){if(!machine.marketplaceCodes.includes(marketplaceCode)||!machine.channelIds.includes(channelId))throw new AcquisitionError('FORBIDDEN',403);}
+export function requireMachineScope(machine:AcquisitionMachineIdentity,marketplaceCode:string,channelId:string){if(!machine.marketplaceCodes.includes(marketplaceCode)||!machine.channelIds.includes(channelId))throw new AcquisitionError('NOT_FOUND',404);}
+function changedOnce(database:SqlDatabase):SqlStatement{return database.prepare(`INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END`);}
 async function sha256(value:string){const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)));return [...bytes].map((byte)=>byte.toString(16).padStart(2,'0')).join('');}
 function base64Url(bytes:Uint8Array){let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/u,'');}
 function unique(values:readonly string[]){return [...new Set(values.map(clean))].sort();}

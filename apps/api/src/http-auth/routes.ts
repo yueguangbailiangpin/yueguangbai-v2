@@ -1,4 +1,5 @@
 import { apiSuccess } from '@ygb/contracts';
+import { readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import {
   authenticateCustomerPassword,
@@ -26,6 +27,8 @@ import {
 } from './errors';
 import { consumeCustomerLoginRateLimit } from './rate-limit';
 import { recordCustomerAuthSecurityEvent } from './security-events';
+
+const AUTH_WRITE_BODY_LIMIT = 32 * 1024;
 
 export function registerCustomerAuthRoutes(
   app: Hono<any>,
@@ -306,16 +309,16 @@ async function readPasswordChangeBody(
   currentPassword: string;
   newPassword: string;
 }> {
-  let body: unknown;
-  try {
-    body = await context.req.json();
-  } catch {
-    throw new CustomerHttpAuthError(
-      'VALIDATION_ERROR',
-      400,
-    );
+  const record = await readBoundedJson(
+    context.req.raw,
+    AUTH_WRITE_BODY_LIMIT,
+  );
+  if (!record
+    || Object.keys(record).length !== 2
+    || !Object.prototype.hasOwnProperty.call(record, 'current_password')
+    || !Object.prototype.hasOwnProperty.call(record, 'new_password')) {
+    throw new CustomerHttpAuthError('VALIDATION_ERROR', 400);
   }
-  const record = body as Record<string, unknown>;
   if (typeof record?.['current_password'] !== 'string'
     || typeof record?.['new_password'] !== 'string') {
     throw new CustomerHttpAuthError(

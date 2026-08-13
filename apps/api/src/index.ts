@@ -48,6 +48,7 @@ import { registerAdminAcquisitionDailyRoutes } from './admin-business-dashboard/
 import { registerStaffAccessManagementRoutes } from './staff-access-management';
 import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
 import { registerOperationalReadinessRoutes } from './operational-readiness/routes';
+import { registerOperationalAlertAttestationRoutes } from './operational-readiness/alert-attestation';
 import { registerOperatingIntegrityRoutes } from './operating-integrity/routes';
 import { registerAdvancePrincipalLookupRoute } from './operating-integrity/advance-principal-lookup-route';
 import { registerProductionRecoveryAttestationRoutes } from './production-readiness/recovery-attestation-routes';
@@ -79,6 +80,7 @@ registerExistingCustomerLeadGuard(app);
 registerOperatingIntegrityRoutes(app);
 registerAdvancePrincipalLookupRoute(app);
 registerProductionRecoveryAttestationRoutes(app);
+registerOperationalAlertAttestationRoutes(app);
 registerAcquisitionPrivacyRoutes(app);
 registerAcquisitionReportingOperationRoutes(app);
 registerAcquisitionMachineCredentialRoutes(app);

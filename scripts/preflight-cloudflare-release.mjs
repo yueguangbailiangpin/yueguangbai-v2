@@ -1,6 +1,9 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { canonicalJson } from '../packages/domain/src/serialization/canonical-json.ts';
+import { DEFAULT_OPERATIONAL_ALERT_ENTRYPOINT,operationalAlertDescriptorFromService,parseExactGitCommitSha } from '../packages/domain/src/operational-alert-binding.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const rootReal = realpathSync.native(root);
@@ -151,10 +154,6 @@ export function validateReleaseConfig(config, environment) {
   if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u.test(String(r2?.bucket_name ?? ''))) {
     errors.push('r2_buckets.0.bucket_name:invalid');
   }
-  const services = record?.services;
-  if (services !== undefined && (!Array.isArray(services) || services.length !== 0)) {
-    errors.push('services:forbidden_in_core_release');
-  }
   for (const key of Object.keys(vars ?? {})) {
     if (retiredCoreRuntimeKey.test(key)) {
       errors.push(`vars.${key}:core_runtime_configuration_forbidden`);
@@ -176,8 +175,19 @@ function validateFrozenDefaults(config, environment) {
   if (record.workers_dev !== false) errors.push('workers_dev:must_be_false');
   if (record.preview_urls !== false) errors.push('preview_urls:must_be_false');
   if (vars?.APP_ENVIRONMENT !== environment) errors.push('vars.APP_ENVIRONMENT:wrong_environment');
-  if (vars?.OPERATIONAL_ALERT_MODE !== 'disabled') {
-    errors.push('vars.OPERATIONAL_ALERT_MODE:must_be_disabled');
+  if (!parseExactGitCommitSha(vars?.APP_RELEASE_SHA)
+    && !(typeof vars?.APP_RELEASE_SHA==='string'&&placeholderPattern.test(vars.APP_RELEASE_SHA))) {
+    errors.push('vars.APP_RELEASE_SHA:must_be_exact_git_sha');
+  }
+  validateAlertService(record.services, vars, environment, errors);
+  const alertModeExpected = environment === 'production' ? 'bound' : 'disabled';
+  if (vars?.OPERATIONAL_ALERT_MODE !== alertModeExpected) {
+    errors.push(`vars.OPERATIONAL_ALERT_MODE:must_be_${alertModeExpected}`);
+  }
+  if (environment === 'production') {
+    // The rendered service descriptor validator below owns every sink field.
+  } else if (['OPERATIONAL_ALERT_SINK_SERVICE','OPERATIONAL_ALERT_SINK_ENTRYPOINT','OPERATIONAL_ALERT_SINK_IDENTITY','OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION','OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT'].some((key)=>vars?.[key]!==undefined)) {
+    errors.push('vars.OPERATIONAL_ALERT_ATTESTATION:forbidden_outside_production');
   }
   const scheduledExpected = environment === 'production' ? 'true' : 'false';
   for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {
@@ -273,6 +283,43 @@ function exactHttpsOrigin(value) {
   } catch { return null; }
 }
 
+function validateAlertService(value, vars, environment, errors) {
+  if (environment === 'production') {
+    const service = exactOne(value);
+    const props=asRecord(service?.props);
+    if (!service||!allowedKeys(service,['binding','service','props'],['entrypoint'])||!props
+      ||!exactKeys(props,['service_target','entrypoint','sink_identity','sink_deployment_version'])
+      ||service.binding!=='OPERATIONAL_ALERT_SINK') {
+      errors.push('services:operational_alert_sink_binding_required');
+      return;
+    }
+    const entrypointMirror=Object.hasOwn(service,'entrypoint')
+      ?service.entrypoint:DEFAULT_OPERATIONAL_ALERT_ENTRYPOINT;
+    const rawMatches=props.service_target===service.service&&props.entrypoint===entrypointMirror
+      &&vars?.OPERATIONAL_ALERT_SINK_SERVICE===service.service
+      &&vars?.OPERATIONAL_ALERT_SINK_ENTRYPOINT===entrypointMirror
+      &&vars?.OPERATIONAL_ALERT_SINK_IDENTITY===props.sink_identity
+      &&vars?.OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION===props.sink_deployment_version;
+    if(!rawMatches)errors.push('services:operational_alert_descriptor_mismatch');
+    const containsPlaceholder=placeholderPaths(service).length>0
+      ||['OPERATIONAL_ALERT_SINK_SERVICE','OPERATIONAL_ALERT_SINK_IDENTITY','OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION','OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT'].some((key)=>typeof vars?.[key]==='string'&&placeholderPattern.test(vars[key]));
+    if(containsPlaceholder){
+      if(!(typeof vars?.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT==='string'&&placeholderPattern.test(vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT)))errors.push('vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:operator_input_required');
+      return;
+    }
+    const descriptor=operationalAlertDescriptorFromService(service);
+    if(!descriptor){errors.push('services:operational_alert_descriptor_invalid');return;}
+    const fingerprint=operationalAlertFingerprint(descriptor);
+    if(vars?.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT!==fingerprint)errors.push('vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:derived_mismatch');
+    return;
+  }
+  if (value !== undefined && (!Array.isArray(value) || value.length !== 0)) {
+    errors.push('services:forbidden_outside_production');
+  }
+}
+
+export function operationalAlertFingerprint(descriptor){return createHash('sha256').update(canonicalJson(descriptor),'utf8').digest('hex');}
+
 function safeReleaseValue(value, maximum, minimum = 1) {
   return typeof value === 'string'
     && value.length >= minimum
@@ -287,6 +334,16 @@ function asRecord(value) {
 
 function exactOne(value) {
   return Array.isArray(value) && value.length === 1 ? asRecord(value[0]) ?? value[0] : null;
+}
+
+function exactKeys(value, expected) {
+  const actual=Object.keys(value).sort(),keys=[...expected].sort();
+  return actual.length===keys.length&&actual.every((key,index)=>key===keys[index]);
+}
+
+function allowedKeys(value, required, optional) {
+  return required.every((key)=>Object.hasOwn(value,key))
+    &&Object.keys(value).every((key)=>required.includes(key)||optional.includes(key));
 }
 
 function requiredString(record, key, errors, prefix = '') {

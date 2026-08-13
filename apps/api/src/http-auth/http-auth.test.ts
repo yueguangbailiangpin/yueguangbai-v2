@@ -115,6 +115,60 @@ describe('Phase 4A customer HTTP authentication', () => {
       requiredHeader(loginResponse, 'set-cookie'),
     );
 
+    const passwordBody = {
+      current_password: TEMPORARY_PASSWORD,
+      new_password: NEW_PASSWORD,
+    };
+    const missingOrigin = await request(
+      app,
+      '/api/customer-auth/change-password',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: oldCookie,
+          'Idempotency-Key': 'customer-password-http-missing-origin',
+        },
+        body: JSON.stringify(passwordBody),
+      },
+    );
+    expect(missingOrigin.status).toBe(403);
+
+    const foreignOrigin = await request(
+      app,
+      '/api/customer-auth/change-password',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'https://attacker.invalid',
+          'Sec-Fetch-Site': 'cross-site',
+          Cookie: oldCookie,
+          'Idempotency-Key': 'customer-password-http-foreign-origin',
+        },
+        body: JSON.stringify(passwordBody),
+      },
+    );
+    expect(foreignOrigin.status).toBe(403);
+
+    const extraBodyKey = await request(
+      app,
+      '/api/customer-auth/change-password',
+      {
+        method: 'POST',
+        headers: {
+          ...stateHeaders('203.0.113.20'),
+          Cookie: oldCookie,
+          'Idempotency-Key': 'customer-password-http-extra-body',
+        },
+        body: JSON.stringify({
+          ...passwordBody,
+          revoke_other_sessions: false,
+        }),
+      },
+    );
+    expect(extraBodyKey.status).toBe(400);
+
     const changed = await request(
       app,
       '/api/customer-auth/change-password',
@@ -125,10 +179,7 @@ describe('Phase 4A customer HTTP authentication', () => {
           Cookie: oldCookie,
           'Idempotency-Key': 'customer-password-http-0001',
         },
-        body: JSON.stringify({
-          current_password: TEMPORARY_PASSWORD,
-          new_password: NEW_PASSWORD,
-        }),
+        body: JSON.stringify(passwordBody),
       },
     );
     expect(changed.status).toBe(200);

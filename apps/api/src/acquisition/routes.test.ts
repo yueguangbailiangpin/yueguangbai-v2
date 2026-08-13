@@ -3,6 +3,7 @@ import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import {
   STAFF_SESSION_COOKIE_NAME,
   type SqlDatabase,
+  type SqlAllResult,
   type SqlRunResult,
   type SqlStatement,
   type StaffPermissionCode,
@@ -17,8 +18,12 @@ import { calculateEffectiveStaffAuthorization } from '../staff/authorization-pol
 import {
   createAcquisitionAssignment,
   createAcquisitionChannel,
+  disableAcquisitionChannel,
   recordAcquisitionConsultation,
 } from './admin';
+import { registerAcquisitionMachineCredentialRoutes } from './machine-credential-routes';
+import { registerAcquisitionMachineRoutes } from './machine-routes';
+import { registerAcquisitionReportingOperationRoutes } from './reporting-operations-routes';
 import { registerAcquisitionRoutes } from './routes';
 
 const ORIGIN = 'https://api.local.test';
@@ -252,6 +257,362 @@ describe('acquisition HTTP authority and privacy boundary', () => {
         'trusted-version-drift-0001'
       )`).get()).toEqual({ count: 0 });
   });
+
+  it('creates and revokes a machine credential with non-secret replay and atomic cleanup', async () => {
+    database = db();
+    const channel = await seedChannelAndAssignment(database);
+    const token=await seedTrustedSession('staff-owner-route');
+    const createBody = { machine_name: '日本买家 Agent', marketplace_codes: ['AMAZON_JP'],
+      channel_ids: [channel], hourly_request_limit: 120 };
+    const first = await trustedRequest(
+      '/api/staff/acquisition/machines', {
+        method: 'POST', headers: trustedHeaders('route-machine-create-0001',token),
+        body: JSON.stringify(createBody),
+      });
+    expect(first.status).toBe(201);
+    const firstBody = await first.json() as { data: { machine: {
+      machine_id: string; machine_secret: string|null; secret_available: boolean;
+    }; replayed: boolean } };
+    expect(firstBody.data.replayed).toBe(false);
+    expect(firstBody.data.machine.secret_available).toBe(true);
+    expect(firstBody.data.machine.machine_secret).toMatch(/^mw_machine_/u);
+
+    await disableAcquisitionChannel(database,{channelId:channel,expectedVersion:1,reason:'验证 credential replay 不依赖可变渠道状态'},{actor:auth('owner','staff-owner-route'),idempotencyKey:'route-channel-disable-replay',requestId:'route-channel-disable-replay',now:2000});
+    const replay = await trustedRequest(
+      '/api/staff/acquisition/machines', {
+        method: 'POST', headers: trustedHeaders('route-machine-create-0001',token),
+        body: JSON.stringify(createBody),
+      });
+    expect(replay.status).toBe(201);
+    await expect(replay.json()).resolves.toMatchObject({ data: { replayed: true,
+      machine: { machine_id: firstBody.data.machine.machine_id,
+        machine_secret: null, secret_available: false } } });
+
+    const conflict = await trustedRequest(
+      '/api/staff/acquisition/machines', {
+        method: 'POST', headers: trustedHeaders('route-machine-create-0001',token),
+        body: JSON.stringify({ ...createBody, hourly_request_limit: 121 }),
+      });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_CONFLICT' } });
+
+    database.raw.prepare(`INSERT INTO acquisition_machine_rate_buckets(
+      machine_id,bucket_hour,request_count,updated_at) VALUES(?,?,?,?)`)
+      .run(firstBody.data.machine.machine_id, 1, 3, 1000);
+    const revoke = await trustedRequest(
+      `/api/staff/acquisition/machines/${firstBody.data.machine.machine_id}/revoke`, {
+        method: 'POST', headers: trustedHeaders('route-machine-revoke-0001',token), body: '{}',
+      });
+    expect(revoke.status).toBe(200);
+    const revoked = await revoke.json() as { data: { machine: {
+      machine_id: string; status: string; revoked_at: number;
+    }; replayed: boolean } };
+    expect(revoked.data).toMatchObject({ replayed: false,
+      machine: { machine_id: firstBody.data.machine.machine_id, status: 'REVOKED' } });
+    const revokeReplay = await trustedRequest(
+      `/api/staff/acquisition/machines/${firstBody.data.machine.machine_id}/revoke`, {
+        method: 'POST', headers: trustedHeaders('route-machine-revoke-0001',token), body: '{}',
+      });
+    expect(revokeReplay.status).toBe(200);
+    await expect(revokeReplay.json()).resolves.toMatchObject({ data: { replayed: true,
+      machine: { revoked_at: revoked.data.machine.revoked_at } } });
+
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_machine_credentials) AS credentials,
+      (SELECT COUNT(*) FROM acquisition_machine_rate_buckets) AS buckets,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_type='ACQUISITION_MACHINE_CREDENTIAL') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_type='ACQUISITION_MACHINE_CREDENTIAL') AS outbox,
+      (SELECT COUNT(*) FROM command_idempotency_records WHERE action LIKE '%ACQUISITION_MACHINE_CREDENTIAL' AND status='COMMITTED') AS commands`).get())
+      .toEqual({ credentials: 1, buckets: 0, audits: 2, outbox: 2, commands: 2 });
+    const persisted = JSON.stringify(database.raw.prepare(`SELECT
+      (SELECT group_concat(response_json) FROM command_idempotency_records WHERE action LIKE '%ACQUISITION_MACHINE_CREDENTIAL') AS responses,
+      (SELECT group_concat(next_state_json) FROM audit_events WHERE aggregate_type='ACQUISITION_MACHINE_CREDENTIAL') AS audits,
+      (SELECT group_concat(payload_json) FROM integration_outbox WHERE aggregate_type='ACQUISITION_MACHINE_CREDENTIAL') AS outbox`).get());
+    expect(persisted).not.toContain(firstBody.data.machine.machine_secret);
+  });
+
+  it('runs machine Prospect commands through Bearer auth with replay, concealment, OCC and atomic failure cleanup',async()=>{
+    database=db();
+    const channel=await seedChannelAndAssignment(database);
+    const token=await seedTrustedSession('staff-owner-route');
+    const credential=await trustedRequest('/api/staff/acquisition/machines',{method:'POST',headers:trustedHeaders('machine-route-create-0001',token),body:JSON.stringify({machine_name:'正式 Bearer Agent',marketplace_codes:['AMAZON_JP'],channel_ids:[channel],hourly_request_limit:120})});
+    expect(credential.status).toBe(201);
+    const credentialBody=await credential.json() as {data:{machine:{machine_secret:string;machine_id:string}}};
+    const secret=credentialBody.data.machine.machine_secret;
+
+    const prospect=await machineRequest('/api/acquisition-machine/prospects',{method:'POST',headers:machineHeaders(secret,'machine-prospect-create-0001'),body:JSON.stringify({lead_type:'BUYER',marketplace_code:'AMAZON_JP',channel_id:channel,display_name:'Bearer 并发潜客',contact_value:null,source_url:null,note:null,ai_score:null})});
+    expect(prospect.status).toBe(201);
+    const prospectId=((await prospect.json()) as {data:{prospect:{prospect_id:string}}}).data.prospect.prospect_id;
+    const signalBody={signal_type:'PUBLIC_POST',signal_content:'机器发现的公开事实',source_url:'https://example.test/machine/1',confidence:'HIGH'};
+    const missingKey=await machineRequest(`/api/acquisition-machine/prospects/${prospectId}/signals`,{method:'POST',headers:machineHeaders(secret),body:JSON.stringify(signalBody)});
+    expect(missingKey.status).toBe(400);
+    const firstSignal=await machineRequest(`/api/acquisition-machine/prospects/${prospectId}/signals`,{method:'POST',headers:machineHeaders(secret,'machine-signal-0001'),body:JSON.stringify(signalBody)});
+    expect(firstSignal.status).toBe(201);
+    const firstSignalBody=await firstSignal.json() as {data:{signal:{signal_id:string};replayed:boolean}};
+    expect(firstSignalBody.data.replayed).toBe(false);
+    const signalReplay=await machineRequest(`/api/acquisition-machine/prospects/${prospectId}/signals`,{method:'POST',headers:machineHeaders(secret,'machine-signal-0001'),body:JSON.stringify(signalBody)});
+    expect(signalReplay.status).toBe(201);
+    await expect(signalReplay.json()).resolves.toMatchObject({data:{replayed:true,signal:{signal_id:firstSignalBody.data.signal.signal_id}}});
+    const signalConflict=await machineRequest(`/api/acquisition-machine/prospects/${prospectId}/signals`,{method:'POST',headers:machineHeaders(secret,'machine-signal-0001'),body:JSON.stringify({...signalBody,confidence:'CONFIRMED'})});
+    expect(signalConflict.status).toBe(409);
+    expect(await signalConflict.json()).toMatchObject({error:{code:'IDEMPOTENCY_CONFLICT'}});
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_prospect_signals WHERE prospect_id=? AND created_by_actor_type='CODEX') AS signals,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='CODEX_ACQUISITION_PROSPECT_SIGNAL_ADDED') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='CODEX_ACQUISITION_PROSPECT_SIGNAL_ADDED') AS outbox,
+      (SELECT COUNT(*) FROM command_idempotency_records WHERE idempotency_key='machine-signal-0001' AND status='COMMITTED') AS committed`).get(prospectId,prospectId,prospectId)).toEqual({signals:1,audits:1,outbox:1,committed:1});
+
+    const us=await createAcquisitionChannel(database,{code:'MACHINE_SCOPE_US',platformName:'小红书',leadType:'BUYER',marketplaceCode:'AMAZON_US',displayName:'越范围渠道'},{actor:auth('owner','staff-owner-route'),idempotencyKey:'machine-scope-us-channel',requestId:'machine-scope-us-channel',now:3000});
+    const outside=await request(auth('owner','staff-owner-route'),'/api/staff/acquisition/prospects',{method:'POST',headers:headers('machine-scope-us-prospect'),body:JSON.stringify({lead_type:'BUYER',marketplace_code:'AMAZON_US',channel_id:us.channel.channel_id,display_name:'越范围潜客',contact_value:null,source_url:null,origin_mode:'HUMAN',note:null,ai_score:null})});
+    const outsideId=((await outside.json()) as {data:{prospect:{prospect_id:string}}}).data.prospect.prospect_id;
+    const concealed=[] as Array<{status:number;code:string;message:string}>;
+    for(const [id,key] of [[outsideId,'machine-scope-real-0001'],['random-prospect-id','machine-scope-random-0001']] as const){const response=await machineRequest(`/api/acquisition-machine/prospects/${id}/signals`,{method:'POST',headers:machineHeaders(secret,key),body:JSON.stringify(signalBody)});const body=await response.json() as {error:{code:string;message:string}};concealed.push({status:response.status,code:body.error.code,message:body.error.message});}
+    expect(concealed[0]).toEqual(concealed[1]);
+    expect(concealed[0]).toEqual({status:404,code:'NOT_FOUND',message:'潜在线索不存在'});
+
+    const barrier=new ProspectReadBarrierDatabase(database);
+    const analysis=(key:string,status:string)=>machineRequest(`/api/acquisition-machine/prospects/${prospectId}/analysis`,{method:'POST',headers:machineHeaders(secret,key),body:JSON.stringify({expected_version:1,status,ai_score:70,note:status})},barrier);
+    const raced=await Promise.all([analysis('machine-analysis-race-a','RESEARCHING'),analysis('machine-analysis-race-b','QUALIFIED')]);
+    expect(barrier.arrivals).toBe(2);
+    expect(raced.map((value)=>value.status).sort()).toEqual([200,409]);
+    const winner=raced.find((value)=>value.status===200)!;const loser=raced.find((value)=>value.status===409)!;
+    const winnerBody=await winner.json() as {data:{prospect:{status:string;version:number}}};
+    expect(winnerBody.data.prospect.version).toBe(2);
+    expect(await loser.json()).toMatchObject({error:{code:'VERSION_CONFLICT'}});
+    expect(database.raw.prepare('SELECT status,version FROM acquisition_prospects WHERE id=?').get(prospectId)).toEqual({status:winnerBody.data.prospect.status,version:2});
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='CODEX_PROSPECT_ANALYSIS_UPDATED') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='CODEX_PROSPECT_ANALYSIS_UPDATED') AS outbox,
+      (SELECT COUNT(*) FROM command_idempotency_records WHERE action='CODEX_UPDATE_ACQUISITION_PROSPECT_ANALYSIS' AND status='COMMITTED') AS committed`).get(prospectId,prospectId)).toEqual({audits:1,outbox:1,committed:1});
+
+    const failed=await machineRequest(`/api/acquisition-machine/prospects/${prospectId}/signals`,{method:'POST',headers:machineHeaders(secret,'machine-signal-failure-0001'),body:JSON.stringify({...signalBody,signal_content:'故障注入事实'})},new ConsultationBatchFailureDatabase(database));
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toMatchObject({error:{code:'DEPENDENCY_UNAVAILABLE'}});
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_prospect_signals WHERE prospect_id=? AND signal_content='故障注入事实') AS signals,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND idempotency_key='machine-signal-failure-0001') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND payload_json LIKE '%故障注入事实%') AS outbox,
+      (SELECT COUNT(*) FROM command_idempotency_records WHERE idempotency_key='machine-signal-failure-0001' AND status='COMMITTED') AS committed`).get(prospectId,prospectId,prospectId)).toEqual({signals:0,audits:0,outbox:0,committed:0});
+    expect(database.raw.prepare(`SELECT status,error_code FROM command_idempotency_records WHERE idempotency_key='machine-signal-failure-0001'`).get()).toEqual({status:'FAILED',error_code:'ACQUISITION_COMMAND_FAILED'});
+  });
+
+  it('guards Prospect update and replays Prospect signals through the real route chain', async () => {
+    database = db();
+    const channel = await seedChannelAndAssignment(database);
+    const ownerActor = auth('owner','staff-owner-route');
+    const created = await request(ownerActor, '/api/staff/acquisition/prospects', {
+      method: 'POST', headers: headers('route-prospect-create-0001'),
+      body: JSON.stringify({ lead_type: 'BUYER', marketplace_code: 'AMAZON_JP',
+        channel_id: channel, display_name: '并发潜客', contact_value: null,
+        source_url: null, origin_mode: 'HUMAN', note: null, ai_score: null }),
+    });
+    expect(created.status).toBe(201);
+    const prospectId = ((await created.json()) as { data: {
+      prospect: { prospect_id: string } } }).data.prospect.prospect_id;
+
+    const update = (key:string,status:'RESEARCHING'|'QUALIFIED')=>request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/update`, {
+        method: 'POST', headers: headers(key), body: JSON.stringify({
+          expected_version: 1, status, ai_score: 60, note: status,
+        }),
+      });
+    const raced = await Promise.all([
+      update('route-prospect-update-race-a','RESEARCHING'),
+      update('route-prospect-update-race-b','QUALIFIED'),
+    ]);
+    expect(raced.map((response)=>response.status).sort()).toEqual([200,409]);
+    const winner = raced.find((response)=>response.status===200)!;
+    const winnerBody = await winner.json() as { data: { prospect: {
+      status: string; version: number }; replayed: boolean } };
+    expect(winnerBody.data).toMatchObject({ replayed: false,
+      prospect: { version: 2 } });
+    const loser = raced.find((response)=>response.status===409)!;
+    expect(await loser.json()).toMatchObject({ error: { code: 'VERSION_CONFLICT' } });
+    expect(database.raw.prepare(`SELECT status,version FROM acquisition_prospects WHERE id=?`)
+      .get(prospectId)).toEqual({ status: winnerBody.data.prospect.status, version: 2 });
+
+    const signalBody = { signal_type: 'PUBLIC_POST', signal_content: '同一条公开信号',
+      source_url: 'https://example.test/post/1', confidence: 'HIGH' };
+    const signal = await request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/signals`, {
+        method: 'POST', headers: headers('route-prospect-signal-0001'),
+        body: JSON.stringify(signalBody),
+      });
+    expect(signal.status).toBe(201);
+    const signalBodyFirst = await signal.json() as { data: { signal: {
+      signal_id: string }; replayed: boolean } };
+    const signalReplay = await request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/signals`, {
+        method: 'POST', headers: headers('route-prospect-signal-0001'),
+        body: JSON.stringify(signalBody),
+      });
+    expect(signalReplay.status).toBe(201);
+    await expect(signalReplay.json()).resolves.toMatchObject({ data: { replayed: true,
+      signal: { signal_id: signalBodyFirst.data.signal.signal_id } } });
+    const signalConflict = await request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/signals`, {
+        method: 'POST', headers: headers('route-prospect-signal-0001'),
+        body: JSON.stringify({ ...signalBody, confidence: 'CONFIRMED' }),
+      });
+    expect(signalConflict.status).toBe(409);
+    expect(await signalConflict.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_CONFLICT' } });
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_prospect_signals WHERE prospect_id=?) AS signals,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='ACQUISITION_PROSPECT_SIGNAL_ADDED') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='ACQUISITION_PROSPECT_SIGNAL_ADDED') AS outbox`).get(prospectId,prospectId,prospectId))
+      .toEqual({ signals: 1, audits: 1, outbox: 1 });
+
+    const unknownFailure = await request(ownerActor,
+      `/api/staff/acquisition/prospects/${prospectId}/update`, {
+        method: 'POST', headers: headers('route-prospect-update-dependency-0001'),
+        body: JSON.stringify({ expected_version: 2, status: 'CONTACTED',
+          ai_score: 70, note: '依赖故障不得伪装冲突' }),
+      }, new ConsultationBatchFailureDatabase(database));
+    expect(unknownFailure.status).toBe(503);
+    expect(await unknownFailure.json()).toMatchObject({
+      error: { code: 'DEPENDENCY_UNAVAILABLE' },
+    });
+    expect(database.raw.prepare(`SELECT status,error_code FROM command_idempotency_records
+      WHERE idempotency_key='route-prospect-update-dependency-0001'`).get())
+      .toEqual({ status: 'FAILED', error_code: 'ACQUISITION_COMMAND_FAILED' });
+    expect(database.raw.prepare(`SELECT version FROM acquisition_prospects WHERE id=?`)
+      .get(prospectId)).toEqual({ version: 2 });
+  });
+
+  it('replays assignment revoke and serializes source correction by expected sequence', async () => {
+    database = db();
+    const channel = await seedChannelAndAssignment(database);
+    const ownerActor = auth('owner','staff-owner-route');
+    const token=await seedTrustedSession('staff-owner-route');
+    const assignment = database.raw.prepare(`SELECT id FROM acquisition_staff_channel_assignments
+      WHERE staff_id='staff-pre' AND channel_id=?`).get(channel) as { id: string };
+    const revokeBody = { expected_version: 1, reason: '迁移兼容分配停用' };
+    const revoked = await trustedRequest(
+      `/api/staff/acquisition/channel-assignments/${assignment.id}/revoke`, {
+        method: 'POST', headers: trustedHeaders('route-assignment-revoke-0001',token),
+        body: JSON.stringify(revokeBody),
+      });
+    expect(revoked.status).toBe(200);
+    const replay = await trustedRequest(
+      `/api/staff/acquisition/channel-assignments/${assignment.id}/revoke`, {
+        method: 'POST', headers: trustedHeaders('route-assignment-revoke-0001',token),
+        body: JSON.stringify(revokeBody),
+      });
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({ data: { replayed: true,
+      assignment: { assignment_id: assignment.id, status: 'REVOKED', version: 2 } } });
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_assignment_events WHERE assignment_id=? AND event_type='REVOKED') AS events,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='ACQUISITION_ASSIGNMENT_REVOKED') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='ACQUISITION_ASSIGNMENT_REVOKED') AS outbox`).get(assignment.id,assignment.id,assignment.id))
+      .toEqual({ events: 1, audits: 1, outbox: 1 });
+    database.exec(`INSERT INTO staff_users(id,display_name,status,authorization_version,version,created_at,updated_at,disabled_at,session_version) VALUES('staff-pre-failure','故障注入售前','ACTIVE',1,1,1000,1000,NULL,1);INSERT INTO staff_role_assignments(staff_id,role_code,status,assigned_by_staff_id,assigned_at,revoked_at,created_at,updated_at) VALUES('staff-pre-failure','pre_sales','ACTIVE','staff-owner-route',1000,NULL,1000,1000);INSERT INTO staff_team_memberships(staff_id,team_id,status,joined_at,ended_at,created_at,updated_at) VALUES('staff-pre-failure','phase3h-test-team','ACTIVE',1000,NULL,1000,1000);INSERT INTO staff_marketplace_scopes(id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,assigned_at,revoked_at,reason,created_at,updated_at,scope_kind) VALUES('scope-route-pre-failure','staff-pre-failure','pre_sales','AMAZON_JP','ACTIVE','staff-owner-route',1000,NULL,'TEST',1000,1000,'SUPPORT');`);
+    const failureAssignment=await createAcquisitionAssignment(database,{staffId:'staff-pre-failure',leadType:'BUYER',channelId:channel,effectiveFrom:10,effectiveUntil:null},{actor:ownerActor,idempotencyKey:'route-assignment-failure-create',requestId:'route-assignment-failure-create',now:1100});
+    const failedRevoke=await trustedRequest(`/api/staff/acquisition/channel-assignments/${failureAssignment.assignment.assignment_id}/revoke`,{method:'POST',headers:trustedHeaders('route-assignment-revoke-failure',token),body:JSON.stringify(revokeBody)},new ConsultationBatchFailureDatabase(database));
+    expect(failedRevoke.status).toBe(503);expect(await failedRevoke.json()).toMatchObject({error:{code:'DEPENDENCY_UNAVAILABLE'}});
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_assignment_events WHERE assignment_id=? AND event_type='REVOKED') AS events,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND idempotency_key='route-assignment-revoke-failure') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='ACQUISITION_ASSIGNMENT_REVOKED') AS outbox,
+      (SELECT COUNT(*) FROM command_idempotency_records WHERE idempotency_key='route-assignment-revoke-failure' AND status='COMMITTED') AS committed,
+      (SELECT COUNT(*) FROM acquisition_staff_channel_assignments WHERE id=? AND status='ACTIVE' AND version=1) AS active`).get(failureAssignment.assignment.assignment_id,failureAssignment.assignment.assignment_id,failureAssignment.assignment.assignment_id,failureAssignment.assignment.assignment_id)).toEqual({events:0,audits:0,outbox:0,committed:0,active:1});
+
+    const correctionTarget = await createAcquisitionChannel(database, {
+      code: 'ROUTE_CORRECTION', platformName: '小红书', leadType: 'BUYER',
+      marketplaceCode: 'AMAZON_JP', displayName: '来源更正目标',
+    }, { actor: ownerActor, idempotencyKey: 'route-correction-channel-0001',
+      requestId: 'route-correction-channel-request', now: 2000 });
+    const lead = await request(ownerActor, '/api/staff/acquisition/leads', {
+      method: 'POST', headers: headers('route-correction-lead-0001'),
+      body: JSON.stringify(leadBody(channel, 'route_correction_wx')),
+    });
+    expect(lead.status).toBe(201);
+    const leadId = ((await lead.json()) as { data: { lead: { lead_id: string } } })
+      .data.lead.lead_id;
+    const correctionBody = { lead_id: leadId,
+      new_channel_id: correctionTarget.channel.channel_id,
+      expected_correction_sequence: 0, reason: '首次登记渠道选择错误' };
+    const correction = await trustedRequest(
+      '/api/staff/acquisition/source-corrections', {
+        method: 'POST', headers: trustedHeaders('route-source-correction-0001',token),
+        body: JSON.stringify(correctionBody),
+      });
+    expect(correction.status).toBe(201);
+    const correctionResponse = await correction.json() as { data: { correction: {
+      correction_id: string; correction_sequence: number }; replayed: boolean } };
+    expect(correctionResponse.data).toMatchObject({ replayed: false,
+      correction: { correction_sequence: 1 } });
+    const correctionReplay = await trustedRequest(
+      '/api/staff/acquisition/source-corrections', {
+        method: 'POST', headers: trustedHeaders('route-source-correction-0001',token),
+        body: JSON.stringify(correctionBody),
+      });
+    expect(correctionReplay.status).toBe(201);
+    await expect(correctionReplay.json()).resolves.toMatchObject({ data: { replayed: true,
+      correction: { correction_id: correctionResponse.data.correction.correction_id } } });
+    const stale = await trustedRequest(
+      '/api/staff/acquisition/source-corrections', {
+        method: 'POST', headers: trustedHeaders('route-source-correction-stale-0001',token),
+        body: JSON.stringify({ ...correctionBody,
+          new_channel_id: channel }),
+      });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: { code: 'VERSION_CONFLICT' } });
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_lead_source_corrections WHERE lead_id=?) AS corrections,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='ACQUISITION_SOURCE_CORRECTED') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='ACQUISITION_SOURCE_CORRECTED') AS outbox`).get(leadId,leadId,leadId))
+      .toEqual({ corrections: 1, audits: 1, outbox: 1 });
+
+    const raceA=await createAcquisitionChannel(database,{code:'ROUTE_CORRECTION_RACE_A',platformName:'小红书',leadType:'BUYER',marketplaceCode:'AMAZON_JP',displayName:'来源更正竞态 A'},{actor:ownerActor,idempotencyKey:'route-correction-race-channel-a',requestId:'route-correction-race-channel-a',now:2100});
+    const raceB=await createAcquisitionChannel(database,{code:'ROUTE_CORRECTION_RACE_B',platformName:'小红书',leadType:'BUYER',marketplaceCode:'AMAZON_JP',displayName:'来源更正竞态 B'},{actor:ownerActor,idempotencyKey:'route-correction-race-channel-b',requestId:'route-correction-race-channel-b',now:2101});
+    const barrier=new SourceCorrectionReadBarrierDatabase(database);
+    const race=(key:string,target:string)=>trustedRequest('/api/staff/acquisition/source-corrections',{method:'POST',headers:trustedHeaders(key,token),body:JSON.stringify({lead_id:leadId,new_channel_id:target,expected_correction_sequence:1,reason:'受控并发来源更正'})},barrier);
+    const raced=await Promise.all([race('route-source-correction-race-a',raceA.channel.channel_id),race('route-source-correction-race-b',raceB.channel.channel_id)]);
+    expect(barrier.arrivals).toBe(2);expect(raced.map((value)=>value.status).sort()).toEqual([201,409]);
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_lead_source_corrections WHERE lead_id=?) AS corrections,
+      (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='ACQUISITION_SOURCE_CORRECTED') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND event_type='ACQUISITION_SOURCE_CORRECTED') AS outbox,
+      (SELECT COUNT(*) FROM command_idempotency_records WHERE action='CORRECT_ACQUISITION_LEAD_SOURCE' AND status='COMMITTED') AS committed`).get(leadId,leadId,leadId)).toEqual({corrections:2,audits:2,outbox:2,committed:2});
+
+    const failureTarget=await createAcquisitionChannel(database,{code:'ROUTE_CORRECTION_FAILURE',platformName:'小红书',leadType:'BUYER',marketplaceCode:'AMAZON_JP',displayName:'来源更正故障目标'},{actor:ownerActor,idempotencyKey:'route-correction-failure-channel',requestId:'route-correction-failure-channel',now:2200});
+    const failed=await trustedRequest('/api/staff/acquisition/source-corrections',{method:'POST',headers:trustedHeaders('route-source-correction-failure',token),body:JSON.stringify({lead_id:leadId,new_channel_id:failureTarget.channel.channel_id,expected_correction_sequence:2,reason:'注入 batch 故障'})},new ConsultationBatchFailureDatabase(database));
+    expect(failed.status).toBe(503);expect(await failed.json()).toMatchObject({error:{code:'DEPENDENCY_UNAVAILABLE'}});
+    expect(database.raw.prepare(`SELECT
+      (SELECT COUNT(*) FROM acquisition_lead_source_corrections WHERE lead_id=?) AS corrections,
+      (SELECT COUNT(*) FROM audit_events WHERE idempotency_key='route-source-correction-failure') AS audits,
+      (SELECT COUNT(*) FROM integration_outbox WHERE aggregate_id=? AND payload_json LIKE '%注入 batch 故障%') AS outbox,
+      (SELECT COUNT(*) FROM command_idempotency_records WHERE idempotency_key='route-source-correction-failure' AND status='COMMITTED') AS committed`).get(leadId,leadId)).toEqual({corrections:2,audits:0,outbox:0,committed:0});
+    expect(database.raw.prepare(`SELECT status,error_code FROM command_idempotency_records WHERE idempotency_key='route-source-correction-failure'`).get()).toEqual({status:'FAILED',error_code:'ACQUISITION_COMMAND_FAILED'});
+  });
+
+  it('uses formal Staff sessions and conceals source-correction resource scope as not found',async()=>{
+    database=db();const jpChannel=await seedChannelAndAssignment(database);const ownerActor=auth('owner','staff-owner-route');
+    const usChannel=await createAcquisitionChannel(database,{code:'CORRECTION_SCOPE_US',platformName:'小红书',leadType:'BUYER',marketplaceCode:'AMAZON_US',displayName:'美国更正渠道'},{actor:ownerActor,idempotencyKey:'correction-scope-us-channel',requestId:'correction-scope-us-channel',now:4000});
+    database.raw.prepare(`UPDATE acquisition_channel_privacy_profiles SET intake_wechat_label='美国范围测试工作微信',version=version+1,updated_at=4000 WHERE channel_id=?`).run(usChannel.channel.channel_id);
+    const usTarget=await createAcquisitionChannel(database,{code:'CORRECTION_SCOPE_US_TARGET',platformName:'小红书',leadType:'BUYER',marketplaceCode:'AMAZON_US',displayName:'美国更正目标'},{actor:ownerActor,idempotencyKey:'correction-scope-us-target',requestId:'correction-scope-us-target',now:4001});
+    const usLead=await request(ownerActor,'/api/staff/acquisition/leads',{method:'POST',headers:headers('correction-scope-us-lead'),body:JSON.stringify({lead_type:'BUYER',marketplace_code:'AMAZON_US',channel_id:usChannel.channel.channel_id,prospect_id:null,wechat_id:'correction_scope_us_wx',display_name:null,note:null})});
+    expect(usLead.status).toBe(201);
+    const usLeadId=((await usLead.json()) as {data:{lead:{lead_id:string}}}).data.lead.lead_id;
+    const jpLead=await request(ownerActor,'/api/staff/acquisition/leads',{method:'POST',headers:headers('correction-scope-jp-lead'),body:JSON.stringify(leadBody(jpChannel,'correction_scope_jp_wx'))});
+    expect(jpLead.status).toBe(201);
+    const jpLeadId=((await jpLead.json()) as {data:{lead:{lead_id:string}}}).data.lead.lead_id;
+    const acquisitionToken=await seedTrustedSession('staff-acquisition-route');
+    const invoke=async(body:Record<string,unknown>,key:string,token=acquisitionToken)=>{const response=await trustedRequest('/api/staff/acquisition/source-corrections',{method:'POST',headers:trustedHeaders(key,token),body:JSON.stringify(body)});const value=await response.json() as {error:{code:string;message:string}};return{status:response.status,code:value.error.code,message:value.error.message};};
+    const common={expected_correction_sequence:0,reason:'验证越范围资源统一隐藏'};
+    const realLead=await invoke({...common,lead_id:usLeadId,new_channel_id:usTarget.channel.channel_id},'correction-scope-real-lead');
+    const randomLead=await invoke({...common,lead_id:'random-lead-id',new_channel_id:usTarget.channel.channel_id},'correction-scope-random-lead');
+    expect(realLead).toEqual(randomLead);expect(realLead).toEqual({status:404,code:'NOT_FOUND',message:'没有找到对应记录'});
+    const realChannel=await invoke({...common,lead_id:jpLeadId,new_channel_id:usTarget.channel.channel_id},'correction-scope-real-channel');
+    const randomChannel=await invoke({...common,lead_id:jpLeadId,new_channel_id:'random-channel-id'},'correction-scope-random-channel');
+    expect(realChannel).toEqual(randomChannel);expect(realChannel).toEqual({status:404,code:'NOT_FOUND',message:'没有找到对应记录'});
+
+    const deniedToken=await seedTrustedSession('staff-refund');
+    const denied=await invoke({...common,lead_id:'random-lead-id',new_channel_id:'random-channel-id'},'correction-global-capability-denied',deniedToken);
+    expect(denied.status).toBe(403);
+    expect(database.raw.prepare(`SELECT COUNT(*) AS count FROM command_idempotency_records WHERE idempotency_key='correction-global-capability-denied'`).get()).toEqual({count:0});
+  });
 });
 
 async function request(
@@ -265,18 +626,24 @@ async function request(
     context.set('staffAuthorization', actor); await next();
   });
   registerAcquisitionRoutes(app);
+  registerAcquisitionMachineCredentialRoutes(app);
+  registerAcquisitionReportingOperationRoutes(app);
   return app.request(`${ORIGIN}${path}`, init, {
     DB: boundDatabase, CUSTOMER_SECURITY_TOKEN_SECRET: SECRET,
   });
 }
-async function trustedRequest(path: string, init: RequestInit) {
+async function trustedRequest(path: string, init: RequestInit,boundDatabase:SqlDatabase=database!) {
   const app = createApp();
   app.use('/api/staff/*', staffSessionMiddleware());
   registerAcquisitionRoutes(app);
+  registerAcquisitionMachineCredentialRoutes(app);
+  registerAcquisitionReportingOperationRoutes(app);
   return app.request(`${ORIGIN}${path}`, init, {
-    DB: database!, CUSTOMER_SECURITY_TOKEN_SECRET: SECRET,
+    DB: boundDatabase, CUSTOMER_SECURITY_TOKEN_SECRET: SECRET,
   });
 }
+async function machineRequest(path:string,init:RequestInit,boundDatabase:SqlDatabase=database!){const app=createApp();registerAcquisitionMachineRoutes(app);return app.request(`${ORIGIN}${path}`,init,{DB:boundDatabase,CUSTOMER_SECURITY_TOKEN_SECRET:SECRET});}
+function machineHeaders(secret:string,key?:string){return{'Content-Type':'application/json',Authorization:`Bearer ${secret}`,...(key?{'Idempotency-Key':key}:{})};}
 function headers(key: string) {
   return { 'Content-Type': 'application/json', 'Idempotency-Key': key,
     Origin: ORIGIN, 'Sec-Fetch-Site': 'same-origin' };
@@ -420,4 +787,26 @@ class ConsultationBatchFailureDatabase implements SqlDatabase {
   batch(_statements: readonly SqlStatement[]): Promise<SqlRunResult[]> {
     return Promise.reject(new Error('injected_consultation_dependency_failure'));
   }
+}
+
+class ProspectReadBarrierDatabase implements SqlDatabase{
+  arrivals=0;private released=false;private readonly waiters:Array<()=>void>=[];
+  constructor(private readonly target:SqlDatabase){}
+  prepare(sql:string):SqlStatement{const statement=this.target.prepare(sql);return sql.includes('FROM acquisition_prospects prospect JOIN acquisition_channels channel')?new BarrierStatement(statement,()=>this.arrive()):statement;}
+  batch(statements:readonly SqlStatement[]):Promise<SqlRunResult[]>{return this.target.batch(statements);}
+  private arrive():Promise<void>{this.arrivals+=1;if(this.arrivals>=2){this.released=true;for(const release of this.waiters.splice(0))release();return Promise.resolve();}if(this.released)return Promise.resolve();return new Promise((resolve)=>this.waiters.push(resolve));}
+}
+class SourceCorrectionReadBarrierDatabase implements SqlDatabase{
+  arrivals=0;private released=false;private readonly waiters:Array<()=>void>=[];
+  constructor(private readonly target:SqlDatabase){}
+  prepare(sql:string):SqlStatement{const statement=this.target.prepare(sql);return sql.includes('SELECT COUNT(*) AS sequence,(SELECT new_channel_id FROM acquisition_lead_source_corrections')?new BarrierStatement(statement,()=>this.arrive()):statement;}
+  batch(statements:readonly SqlStatement[]):Promise<SqlRunResult[]>{return this.target.batch(statements);}
+  private arrive():Promise<void>{this.arrivals+=1;if(this.arrivals>=2){this.released=true;for(const release of this.waiters.splice(0))release();return Promise.resolve();}if(this.released)return Promise.resolve();return new Promise((resolve)=>this.waiters.push(resolve));}
+}
+class BarrierStatement implements SqlStatement{
+  constructor(private readonly target:SqlStatement,private readonly wait:()=>Promise<void>){}
+  bind(...values:unknown[]):SqlStatement{return new BarrierStatement(this.target.bind(...values),this.wait);}
+  async first<T=Record<string,unknown>>():Promise<T|null>{const result=await this.target.first<T>();await this.wait();return result;}
+  all<T=Record<string,unknown>>():Promise<SqlAllResult<T>>{return this.target.all<T>();}
+  run():Promise<SqlRunResult>{return this.target.run();}
 }

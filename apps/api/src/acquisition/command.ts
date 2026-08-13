@@ -16,6 +16,15 @@ export interface AcquisitionCommandContext {
   now?: number;
 }
 
+export interface AcquisitionMachineCommandContext {
+  machineId: string;
+  marketplaceCodes: readonly string[];
+  channelIds: readonly string[];
+  idempotencyKey: string;
+  requestId: string;
+  now?: number;
+}
+
 export async function acquireAcquisitionCommand<T>(
   database: SqlDatabase,
   command: AcquisitionCommandContext,
@@ -27,6 +36,23 @@ export async function acquireAcquisitionCommand<T>(
   const requestHash = await hashCanonicalJson({ action, payload });
   const acquired = await acquireIdempotency<T>(database, {
     actorType: 'STAFF', actorId: command.actor.staffId,
+    action, targetType, targetId,
+    idempotencyKey: command.idempotencyKey, requestHash,
+  }, command.now === undefined ? {} : { now: command.now });
+  return { acquired, requestHash, now: command.now ?? Date.now() };
+}
+
+export async function acquireAcquisitionMachineCommand<T>(
+  database: SqlDatabase,
+  command: AcquisitionMachineCommandContext,
+  action: string,
+  targetType: string,
+  targetId: string,
+  payload: unknown,
+) {
+  const requestHash = await hashCanonicalJson({ action, payload });
+  const acquired = await acquireIdempotency<T>(database, {
+    actorType: 'CODEX', actorId: command.machineId,
     action, targetType, targetId,
     idempotencyKey: command.idempotencyKey, requestHash,
   }, command.now === undefined ? {} : { now: command.now });
