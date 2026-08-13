@@ -115,8 +115,8 @@
 
 ## K. GitHub CI 与治理状态（2026-08-13，基线 `7e125a9bb53d8ffa6c1011a0dffd119596b62df2`）
 
-- [x] Code-verified/local：PR 与 `main` push 的非生产 CI workflow 使用 locked `npm ci`、Node `24.19.0`、runner 临时 Wrangler/XDG 目录、只读 GitHub token、concurrency/cancel，并调用 canonical `check:ci:static` / `check:ci:test-build`。
-- [x] Code-verified/local：CI 覆盖 OpenSpec all strict、typecheck、migration guards/schema verification、Node safety、Vitest、workspace build 与 Cloudflare release template dry-run；不读 production Secrets、不执行非 dry-run deploy、不执行远程 D1/R2 或真实业务操作。
+- [x] Code-verified/local（2026-08-13，审查起点 `73682b84ef361261d79677d629292efa00cb619a`）：PR 与 `main` push 的非生产 CI workflow 使用 locked `npm ci`、Node `24.19.0`、runner 临时 Wrangler/XDG 目录、只读 GitHub token、concurrency/cancel，并调用 canonical `check:ci:static` / `check:ci:test-build`。
+- [x] Code-verified/local（2026-08-13）：CI 覆盖 OpenSpec all strict、显式含 dev 的 dependency audit、lockfile lifecycle allowlist、typecheck、migration guards/schema verification、Node safety、一次全量 Vitest、一次 workspace build 与 Cloudflare release template dry-run；不读 production Secrets、不执行非 dry-run deploy、不执行远程 D1/R2 或真实业务操作。
 - [ ] External-unverified：该 workflow 的真实 GitHub Actions run 必须在推送本分支并建立 PR 后读取结论；未触发或 `none` 不得记为通过。
 - [ ] External-unverified：GitHub branch protection / rulesets 查询因当前私有仓库套餐返回 403，required checks enforcement 未能确认或配置。
 - [ ] Production-operator gate：真实 Playwright E2E、staging/production、Cloudflare Access、D1/R2、DNS、Secrets、Scheduler、数据和网络验收均不属于此 CI，须逐项独立授权与验收。
