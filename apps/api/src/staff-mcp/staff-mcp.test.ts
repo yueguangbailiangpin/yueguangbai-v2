@@ -599,8 +599,11 @@ describe('Staff MCP local server and adapter', () => {
     const base = setup();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
+    let enteredService!: () => void;
+    const serviceEntered = new Promise<void>((resolve) => { enteredService = resolve; });
     const delayed: StaffMcpApplicationService = {
       execute: async (...args) => {
+        enteredService();
         await gate;
         return base.service.execute(...args);
       },
@@ -615,7 +618,7 @@ describe('Staff MCP local server and adapter', () => {
       toolName: 'get_order_summary_v1',
       argumentsValue: argsFor('get_order_summary_v1'),
     });
-    await Promise.resolve();
+    await serviceEntered;
     expect(errorCode(await adapter.invoke({
       accessToken: base.afterToken,
       requestId: 'concurrent-001',
