@@ -80,7 +80,7 @@ describe('Cloudflare release preflight', () => {
     staging.vars.APP_ORIGIN='https://app.yueguangbai.net';
     staging.vars.APP_ALLOWED_ORIGINS=staging.vars.APP_ORIGIN;
     staging.vars.STAFF_AUTH_ALLOWED_ORIGINS=staging.vars.APP_ORIGIN;
-    staging.vars.STAFF_ACCESS_AUD='production-access-audience';
+    staging.vars.STAFF_ACCESS_AUD='a'.repeat(64);
     staging.routes[0].pattern='app.yueguangbai.net';
     staging.d1_databases[0].database_name='yueguangbai-v2-production';
     staging.r2_buckets[0].bucket_name='yueguangbai-v2-production-files';
@@ -88,10 +88,15 @@ describe('Cloudflare release preflight', () => {
     expect(errors).toEqual(expect.arrayContaining([
       'name:staging_resource_required',
       'vars.APP_ORIGIN:staging_hostname_required',
-      'vars.STAFF_ACCESS_AUD:staging_resource_required',
       'd1_databases.0.database_name:staging_resource_required',
       'r2_buckets.0.bucket_name:staging_resource_required',
     ]));
+  });
+
+  it('accepts an opaque Cloudflare-generated staging Access audience',()=>{
+    const staging=anonymousConfig('staging');
+    staging.vars.STAFF_ACCESS_AUD='a'.repeat(64);
+    expect(validateReleaseConfig(staging,'staging')).toEqual([]);
   });
 
   it('requires the governed synthetic Buyer registration configuration in staging',()=>{
@@ -288,7 +293,7 @@ function anonymousConfig(environment) {
     }
     if (value.endsWith('_CLOUDFLARE_ACCESS_APPLICATION_AUD')
       || value === 'REQUIRED_CLOUDFLARE_ACCESS_APPLICATION_AUD') {
-      return `anonymous-${environment}-access-audience`;
+      return environment==='staging'?'a'.repeat(64):'b'.repeat(64);
     }
     if (value.endsWith('_ACCOUNT_ID')) return 'a'.repeat(32);
     if (value.endsWith('_WORKER_NAME')) return environment==='staging'?'yueguangbai-v2-staging':`ygb-${environment}`;

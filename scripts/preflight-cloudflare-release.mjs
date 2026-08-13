@@ -138,9 +138,6 @@ export function validateReleaseConfig(config, environment) {
     if (!origin || !hasEnvironmentToken(new URL(origin).hostname, 'staging')) {
       errors.push('vars.APP_ORIGIN:staging_hostname_required');
     }
-    if (!hasEnvironmentToken(vars?.STAFF_ACCESS_AUD, 'staging')) {
-      errors.push('vars.STAFF_ACCESS_AUD:staging_resource_required');
-    }
   }
 
   const route = exactOne(record?.routes);

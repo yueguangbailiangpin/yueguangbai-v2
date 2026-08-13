@@ -2,7 +2,7 @@
 
 ## Isolation boundary
 
-Staging may share a Cloudflare account with production but must use different Worker, D1, R2, custom domain, Access application/audience, Secrets and identities. The operator preflight validates explicit names/IDs and refuses placeholders, defaults and production-like database names. This is resource isolation, not account-level trust isolation.
+Staging may share a Cloudflare account with production but must use different Worker, D1, R2, custom domain, Access application/audience, Secrets and identities. The local preflight validates explicit operator-named resources and refuses placeholders, defaults and production-like names. Cloudflare generates Access audience tags as opaque values, so audience separation is proved by current-session read-only Access inventory and exact inequality with the production audience, never by guessing meaning from the tag text. This is resource isolation, not account-level trust isolation.
 
 ## Readiness profiles
 

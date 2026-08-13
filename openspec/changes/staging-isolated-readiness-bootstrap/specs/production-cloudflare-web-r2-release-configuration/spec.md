@@ -4,7 +4,7 @@
 
 ### Requirement: Release configuration is explicit, separated and fail closed
 
-The repository SHALL provide distinct staging and production templates. Each SHALL require an operator-supplied account ID, Worker name, exact HTTPS origin/custom-domain hostname, D1 name/ID, R2 bucket name and managed Secrets outside Git. Production SHALL additionally require its reviewed Cron. Staging SHALL omit Cron while scheduled operations are disabled, enable observability, use staging-specific Worker/D1/R2/hostname/Access-audience identities and explicitly configure invitation-based Buyer registration against `staging-buyer-channel`. Missing values, placeholder markers, production/default or automatic staging resources, duplicate/wrong bindings, origin mismatch, wrong environment or a staging Cron SHALL fail preflight.
+The repository SHALL provide distinct staging and production templates. Each SHALL require an operator-supplied account ID, Worker name, exact HTTPS origin/custom-domain hostname, D1 name/ID, R2 bucket name and managed Secrets outside Git. Production SHALL additionally require its reviewed Cron. Staging SHALL omit Cron while scheduled operations are disabled, enable observability, use staging-specific Worker/D1/R2/hostname identities and explicitly configure invitation-based Buyer registration against `staging-buyer-channel`. Its Cloudflare-generated opaque Access audience SHALL be compared against current-session production Access inventory rather than name heuristics. Missing values, placeholder markers, production/default or automatic staging resources, duplicate/wrong bindings, origin mismatch, wrong environment or a staging Cron SHALL fail preflight.
 
 #### Scenario: Placeholder template is inspected
 

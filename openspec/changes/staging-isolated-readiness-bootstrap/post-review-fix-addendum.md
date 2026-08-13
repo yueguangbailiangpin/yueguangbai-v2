@@ -12,7 +12,7 @@ The review returned `BLOCKED` with one P0 and two P1 findings:
 
 ## Implemented corrections
 
-- Staging preflight now requires the canonical staging Worker and D1 name families, the canonical staging R2 bucket family, a staging hostname token and a staging Access audience token. A full production-target rendering is a negative test.
+- Staging preflight now requires the canonical staging Worker and D1 name families, the canonical staging R2 bucket family and a staging hostname token. A full production-target rendering is a negative test. Cloudflare-generated opaque Access audiences are intentionally not interpreted by name; exact separation remains a current-session read-only inventory precondition.
 - The D1 REST adapter now accepts only string/number caller values, serializes every number to its canonical decimal string and rejects `null` or other types before the request. The bootstrap Audit uses fixed SQL `NULL` literals, so operator values never require nullable REST parameters.
 - A real bootstrap-to-adapter test captures every query and the ten-statement provider batch and asserts that every REST parameter is a string.
 - The first-Owner batch now also asserts no Buyer channel exists and atomically creates exactly one deterministic `staging-buyer-channel`; rollback tests assert no Buyer-channel ghost.

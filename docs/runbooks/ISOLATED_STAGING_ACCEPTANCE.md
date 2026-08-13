@@ -21,7 +21,7 @@ D1:     yueguangbai-v2-staging
 R2:     yueguangbai-v2-staging-files
 ```
 
-任何名称/ID 与 production/default 重合、配置仍含 `REQUIRED_*`、Git SHA 漂移或工作树不干净时立即停止。
+任何名称/ID 与 production/default 重合、配置仍含 `REQUIRED_*`、Git SHA 漂移或工作树不干净时立即停止。Access Audience 是 Cloudflare 自动生成的 opaque tag，不要求包含 `staging` 文本；必须从当前会话只读 Access Application 清单中取得，并与 production Audience 做精确不等比较。
 
 ## 2. 远程阶段顺序
 
