@@ -3,19 +3,20 @@ import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, RefreshCw } from 'luci
 import { Link } from 'react-router';
 import { Alert, Card, EmptyState, PageHeader, StatusBadge } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
-import { buyerQueryKeys } from '../queries/keys';
+import { buyerQueryKeys, cursorQuery } from '../queries/keys';
 import { reviewTypeLabel } from '../shared/status';
+import { BUYER_TASK_CURSOR_PAGE_LIMIT, fetchAllCursorPages } from './fetchAllCursorPages';
 import { classifyBuyerTasks, type BuyerTask } from './task-classification';
 
 export function BuyerTasksPage(): React.JSX.Element {
   const client = useQueryClient();
   const results = useQueries({ queries: [
-    { queryKey: buyerQueryKeys.reservationsPage({ limit: 50, cursor: null }), queryFn: ({ signal }) => buyerApi.reservations(client, 'limit=50', signal).then((r) => r.data) },
-    { queryKey: buyerQueryKeys.evidenceEligiblePage({ limit: 50, cursor: null }), queryFn: ({ signal }) => buyerApi.evidenceEligible(client, 'limit=50', signal).then((r) => r.data) },
-    { queryKey: buyerQueryKeys.evidenceListPage({ limit: 50, cursor: null }), queryFn: ({ signal }) => buyerApi.evidenceList(client, 'limit=50', signal).then((r) => r.data) },
-    { queryKey: buyerQueryKeys.reviewEligiblePage({ limit: 50, cursor: null }), queryFn: ({ signal }) => buyerApi.reviewEligible(client, 'limit=50', signal).then((r) => r.data) },
-    { queryKey: buyerQueryKeys.reviewsPage({ limit: 50, cursor: null }), queryFn: ({ signal }) => buyerApi.reviews(client, 'limit=50', signal).then((r) => r.data) },
-    { queryKey: buyerQueryKeys.refundsPage({ limit: 50, cursor: null }), queryFn: ({ signal }) => buyerApi.refunds(client, 'limit=50', signal).then((r) => r.data) },
+    { queryKey: buyerQueryKeys.reservationsPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'reservations', signal, fetchPage: (cursor) => buyerApi.reservations(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `reservation:${item.reservation_id}` }) },
+    { queryKey: buyerQueryKeys.evidenceEligiblePage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'eligible order evidence', signal, fetchPage: (cursor) => buyerApi.evidenceEligible(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `eligible-evidence-reservation:${item.reservation_id}` }) },
+    { queryKey: buyerQueryKeys.evidenceListPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'order evidence', signal, fetchPage: (cursor) => buyerApi.evidenceList(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `order-evidence:${item.submission_id}` }) },
+    { queryKey: buyerQueryKeys.reviewEligiblePage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'eligible reviews', signal, fetchPage: (cursor) => buyerApi.reviewEligible(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `eligible-review-order:${item.order.formal_order_id}` }) },
+    { queryKey: buyerQueryKeys.reviewsPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'reviews', signal, fetchPage: (cursor) => buyerApi.reviews(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `review:${item.review_case_id}` }) },
+    { queryKey: buyerQueryKeys.refundsPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'refunds', signal, fetchPage: (cursor) => buyerApi.refunds(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `refund:${item.refund_obligation_id}` }) },
   ] });
 
   const pending = results.some((result) => result.isPending);
@@ -30,12 +31,13 @@ export function BuyerTasksPage(): React.JSX.Element {
   const { urgent, action, system, actionableCount } = classifyBuyerTasks({
     reservations, eligibleEvidence, evidence, eligibleReviews, reviews, refunds,
   }, reviewTypeLabel);
+  const title = failed ? '任务状态暂时无法完整读取' : actionableCount > 0 ? `您有 ${actionableCount} 件待办事项` : '暂时没有待办事项，休息一下～';
   return <section className="buyer-page buyer-tasks-page">
-    <PageHeader eyebrow="买家任务" title={actionableCount > 0 ? `您有 ${actionableCount} 件待办事项` : '暂时没有待办事项，休息一下～'}
+    <PageHeader eyebrow="买家任务" title={title}
       description="待办只统计您需要亲手操作的事情；审核中或返款中的项目会单独列出来。" />
     {pending ? <Card className="buyer-task-loading"><RefreshCw aria-hidden="true" /><span>正在整理您的任务…</span></Card> : null}
     {failed ? <Alert tone="warning">部分任务状态暂时无法加载，请稍后刷新；已成功读取的事项仍可继续处理。</Alert> : null}
-    {!pending && urgent.length === 0 && action.length === 0 && system.length === 0
+    {!pending && !failed && urgent.length === 0 && action.length === 0 && system.length === 0
       ? <EmptyState title="暂无任务" description="新的预约、订单资料、评论或返款状态会出现在这里哦。" />
       : <div className="buyer-task-sections">
         {urgent.length > 0 ? <TaskSection title="紧急" icon={<AlertTriangle aria-hidden="true" />} items={urgent} /> : null}

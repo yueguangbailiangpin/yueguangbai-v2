@@ -1,0 +1,137 @@
+// @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import '@testing-library/jest-dom/vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../api/client', () => ({
+  buyerApi: {
+    reservations: vi.fn(), evidenceEligible: vi.fn(), evidenceList: vi.fn(),
+    reviewEligible: vi.fn(), reviews: vi.fn(), refunds: vi.fn(),
+  },
+}));
+
+import { buyerApi } from '../api/client';
+import { BuyerTasksPage } from './BuyerTasksPage';
+
+const methods = [
+  buyerApi.reservations, buyerApi.evidenceEligible, buyerApi.evidenceList,
+  buyerApi.reviewEligible, buyerApi.reviews, buyerApi.refunds,
+];
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe('BuyerTasksPage cursor aggregation', () => {
+  it('shows and counts an actionable task after more than 50 earlier source records', async () => {
+    useEmptySources();
+    const firstPage = Array.from({ length: 50 }, (_, index) => eligibleEvidence(`first-${index}`));
+    vi.mocked(buyerApi.evidenceEligible).mockImplementation(async (_client, query) => page(
+      query?.includes('cursor=next') ? [eligibleEvidence('page-two')] : firstPage,
+      query?.includes('cursor=next') ? null : 'next',
+    ) as never);
+
+    renderPage();
+
+    expect(await screen.findByText('您有 51 件待办事项')).toBeVisible();
+    expect(document.querySelectorAll('.buyer-task-row')).toHaveLength(51);
+  });
+
+  it('continues an empty first page when the next page contains actionable work', async () => {
+    useEmptySources();
+    vi.mocked(buyerApi.evidenceEligible).mockImplementation(async (_client, query) => page(
+      query?.includes('cursor=page-two') ? [eligibleEvidence('later-action')] : [],
+      query?.includes('cursor=page-two') ? null : 'page-two',
+    ) as never);
+
+    renderPage();
+
+    expect(await screen.findByText('您有 1 件待办事项')).toBeVisible();
+    expect(screen.getByText('提交订单资料')).toBeVisible();
+  });
+
+  it('keeps processing-only later pages out of the actionable count', async () => {
+    useEmptySources();
+    vi.mocked(buyerApi.refunds).mockImplementation(async (_client, query) => page(
+      query?.includes('cursor=refund-two')
+        ? [refund('refund-50')]
+        : Array.from({ length: 50 }, (_, index) => refund(`refund-${index}`)),
+      query?.includes('cursor=refund-two') ? null : 'refund-two',
+    ) as never);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: '系统处理中' })).toBeVisible());
+    expect(screen.getByText('暂时没有待办事项，休息一下～')).toBeVisible();
+    expect(screen.getByText('51')).toBeVisible();
+  });
+
+  it('uses limit and cursor parameters for every one of the six sources', async () => {
+    for (const [index, method] of methods.entries()) {
+      vi.mocked(method).mockImplementation(async (_client, query) => page([], query?.includes(`cursor=source-${index}`) ? null : `source-${index}`) as never);
+    }
+
+    renderPage();
+    await waitFor(() => expect(methods.every((method) => vi.mocked(method).mock.calls.length === 2)).toBe(true));
+
+    for (const [index, method] of methods.entries()) {
+      expect(vi.mocked(method).mock.calls.map(([, query]) => query)).toEqual([
+        'limit=50', `limit=50&cursor=source-${index}`,
+      ]);
+    }
+  });
+
+  it('deduplicates a resource within one source but fails closed for a cyclic cursor', async () => {
+    useEmptySources();
+    vi.mocked(buyerApi.evidenceEligible).mockImplementation(async (_client, query) => page(
+      [eligibleEvidence('once')], query?.includes('cursor=dedupe') ? null : 'dedupe',
+    ) as never);
+    renderPage();
+    expect(await screen.findByText('您有 1 件待办事项')).toBeVisible();
+    expect(document.querySelectorAll('.buyer-task-row')).toHaveLength(1);
+    cleanup();
+
+    useEmptySources();
+    vi.mocked(buyerApi.evidenceEligible).mockResolvedValue(page([], 'cycle') as never);
+    renderPage();
+    expect(await screen.findByText('任务状态暂时无法完整读取')).toBeVisible();
+    expect(screen.queryByText(/您有 \d+ 件待办事项/u)).not.toBeInTheDocument();
+  });
+
+  it('passes the query signal to the source request and aborts it on unmount', async () => {
+    useEmptySources();
+    let sourceSignal: AbortSignal | undefined;
+    vi.mocked(buyerApi.reservations).mockImplementation(async (_client, _query, signal) => {
+      sourceSignal = signal;
+      return await new Promise((_, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    });
+    const rendered = renderPage();
+    await waitFor(() => expect(sourceSignal).toBeDefined());
+    rendered.unmount();
+    await waitFor(() => expect(sourceSignal?.aborted).toBe(true));
+  });
+});
+
+function renderPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<MemoryRouter><QueryClientProvider client={client}><BuyerTasksPage /></QueryClientProvider></MemoryRouter>);
+}
+
+function useEmptySources(): void {
+  for (const method of methods) vi.mocked(method).mockResolvedValue(page([]) as never);
+}
+
+function page(items: readonly unknown[], next_cursor: string | null = null) {
+  return { data: { items, next_cursor } };
+}
+
+function eligibleEvidence(reservation_id: string) {
+  return { reservation_id, product_name: `产品 ${reservation_id}`, review_type: 'IMAGE', allowed_actions: ['SUBMIT'] };
+}
+
+function refund(refund_obligation_id: string) {
+  return { refund_obligation_id, status: 'DUE', order: { product_name: `返款产品 ${refund_obligation_id}` } };
+}
