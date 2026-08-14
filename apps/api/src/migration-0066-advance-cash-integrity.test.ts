@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { InternalFinanceFilters } from '@ygb/contracts';
@@ -150,6 +150,47 @@ describe('Migration 0066 advance cash integrity', () => {
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).get()).toEqual({ schema_version: 65 });
   });
+
+  it('enforces the cumulative reversal boundary after the real 0001-0066 chain', async () => {
+    database = fullSchema65Database();
+
+    // The fixture bypasses only unrelated parent FKs so this focused migration
+    // test can exercise the real full-chain table and trigger definitions.
+    // Route/command tests independently cover the authoritative parent graph.
+    database.exec(`
+      PRAGMA foreign_keys=OFF;
+      INSERT INTO buyer_advance_principal_entries(
+        id,formal_order_id,buyer_customer_id,entry_type,
+        original_payment_entry_id,amount_cny_fen,paid_at,reversed_at,
+        china_business_date,payment_channel,note,actor_staff_id,created_at
+      ) VALUES
+        ('advance-payment-full-chain','formal-order-full-chain',
+          'buyer-full-chain','PAYMENT',NULL,100,1000,NULL,'1970-01-01',
+          'WECHAT',NULL,'staff-full-chain',1000),
+        ('advance-reversal-full-chain-a','formal-order-full-chain',
+          'buyer-full-chain','REVERSAL','advance-payment-full-chain',40,
+          NULL,2000,'1970-01-01','WECHAT',NULL,'staff-full-chain',2000);
+    `);
+
+    applyMigration0066(database);
+
+    await expect(insertFullChainReversal(database, 'b', 61, 3000))
+      .rejects.toThrow('advance_principal_reversal_exceeds_payment');
+    await expect(insertFullChainReversal(database, 'c', 60, 4000))
+      .resolves.toMatchObject({ meta: { changes: 1 } });
+    await expect(insertFullChainReversal(database, 'd', 1, 5000))
+      .rejects.toThrow('advance_principal_reversal_exceeds_payment');
+
+    expect(await database.prepare(`
+      SELECT SUM(amount_cny_fen) AS reversed
+      FROM buyer_advance_principal_entries
+      WHERE original_payment_entry_id='advance-payment-full-chain'
+    `).first()).toEqual({ reversed: 100 });
+    expect(await database.prepare(`
+      SELECT schema_version FROM app_schema_state WHERE singleton_id=1
+    `).first()).toEqual({ schema_version: 66 });
+    database.exec('PRAGMA foreign_keys=ON;');
+  });
 });
 
 function schema65Database(): SqliteDatabase {
@@ -216,6 +257,46 @@ function applyMigration0066(target: SqliteDatabase): void {
     target.exec('ROLLBACK;');
     throw error;
   }
+}
+
+function fullSchema65Database(): SqliteDatabase {
+  const value = new SqliteDatabase();
+  const migrationDirectory = path.resolve(process.cwd(), 'migrations');
+  const files = readdirSync(migrationDirectory)
+    .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
+    .sort()
+    .slice(0, 65);
+  for (const file of files) {
+    value.exec('BEGIN IMMEDIATE;');
+    try {
+      value.exec(readFileSync(path.join(migrationDirectory, file), 'utf8'));
+      value.exec('COMMIT;');
+    } catch (error) {
+      value.exec('ROLLBACK;');
+      value.close();
+      throw error;
+    }
+  }
+  return value;
+}
+
+function insertFullChainReversal(
+  target: SqliteDatabase,
+  suffix: string,
+  amount: number,
+  now: number,
+) {
+  return target.prepare(`
+    INSERT INTO buyer_advance_principal_entries(
+      id,formal_order_id,buyer_customer_id,entry_type,
+      original_payment_entry_id,amount_cny_fen,paid_at,reversed_at,
+      china_business_date,payment_channel,note,actor_staff_id,created_at
+    ) VALUES(
+      ?,'formal-order-full-chain','buyer-full-chain','REVERSAL',
+      'advance-payment-full-chain',?,NULL,?,'1970-01-01','WECHAT',NULL,
+      'staff-full-chain',?
+    )
+  `).bind(`advance-reversal-full-chain-${suffix}`, amount, now, now).run();
 }
 
 function cashFilters(): InternalFinanceFilters {
