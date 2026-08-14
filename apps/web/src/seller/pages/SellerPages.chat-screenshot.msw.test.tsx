@@ -69,9 +69,12 @@ describe('Seller formal-order chat screenshot UI', () => {
     );
 
     renderWithMsw(<SellerLayout><SellerSettlementsPage /></SellerLayout>, { route: '/seller/settlements' });
-    expect(await screen.findByText('结算为全组织范围，不随当前店铺选择切换。')).toBeVisible();
+    expect(await screen.findByText('结算为全组织财务历史范围，含已停用店铺的历史结算，不随当前店铺选择切换。')).toBeVisible();
     expect(settlementRequests).toHaveLength(2);
     expect(settlementRequests.every((url) => !new URL(url).searchParams.has('store_id'))).toBe(true);
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '店铺' }), 'store-1');
+    expect(screen.getByRole('combobox', { name: '店铺' })).toHaveValue('store-1');
+    expect(settlementRequests).toHaveLength(2);
   });
 
   it('renders list status without issuing a screenshot read until the user asks', async () => {

@@ -260,7 +260,7 @@ export function SellerSettlementsPage(): React.JSX.Element {
     queryFn: (cursor, signal) => sellerApi.payables(client, cursor, signal),
   });
   const settlementScope = readScope === 'ORGANIZATION'
-    ? '结算为全组织范围，不随当前店铺选择切换。'
+    ? '结算为全组织财务历史范围，含已停用店铺的历史结算，不随当前店铺选择切换。'
     : readScope === 'ASSIGNED_STORES'
       ? '结算按已授权店铺范围汇总，不随当前店铺选择切换。'
       : '结算按当前授权范围汇总。';
