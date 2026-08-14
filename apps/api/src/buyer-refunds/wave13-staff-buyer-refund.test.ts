@@ -121,6 +121,8 @@ describe('Wave 13 Staff Buyer Refund API', () => {
         outstanding_amount_cny_fen: '200',
         overpaid_amount_cny_fen: '0',
         status: 'PARTIALLY_PAID',
+        reminder_count: 2,
+        last_reminded_at: 11_500,
         payments: [{
           internal_note: 'Staff-only payment note',
         }],
@@ -174,6 +176,8 @@ describe('Wave 13 Staff Buyer Refund API', () => {
         net_paid_cny_fen: '0',
         outstanding_amount_cny_fen: '1000',
         overpaid_amount_cny_fen: '0',
+        reminder_count: 2,
+        last_reminded_at: Date.parse('2026-07-31T16:00:00.000Z') + 50,
         buyer: {
           buyer_customer_id: 'runtime-buyer',
           buyer_customer_no: 'P202608020001',
