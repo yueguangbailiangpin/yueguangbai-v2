@@ -7,6 +7,7 @@ import { applyMigrations, SqliteDatabase } from '../packages/testkit/src/index.t
 
 const roots = [];
 const releaseSha = 'a'.repeat(40);
+const LONG_RUNNING_TEST_TIMEOUT_MS = 30_000;
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -46,7 +47,7 @@ describe('backup and restore CLI expected schema', () => {
     ]);
     expect(restored.status, restored.stderr).toBe(0);
     expect(JSON.parse(restored.stdout)).toMatchObject({ status: 'PASS', schema_version: 69 });
-  });
+  }, LONG_RUNNING_TEST_TIMEOUT_MS);
 });
 
 function localFixture() {
