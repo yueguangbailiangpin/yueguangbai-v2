@@ -25,6 +25,9 @@ describe('second layer active UI routing',()=>{
     expect(implementation).toContain('COMPLETED_GROSS_PROFIT');
     expect(implementation).toContain("uploader.start('staffBuyerRefundProof'");
     expect(implementation).toContain('proof_files');
+    expect(implementation).toContain('本次全额付款');
+    expect(implementation).toContain('整笔冲正提前返本金');
+    expect(implementation).not.toContain('name="amount_cny_fen"');
     expect(implementation).not.toContain('<option value="SELLER_PRINCIPAL_DUE">');
     expect(implementation).not.toContain('<option value="SELLER_SERVICE_FEE_DUE">');
     expect(implementation).not.toContain('<option value="BUYER_REFUND_DUE">');

@@ -2,11 +2,11 @@ import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { invariant as assert,readRepositoryFile as read,repositoryRoot as root } from './verifier-utils.mjs';
 
-const EXPECTED_SCHEMA=66;
+const EXPECTED_SCHEMA=67;
 const migrations=readdirSync(path.join(root,'migrations')).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort();
-assert(migrations.length===EXPECTED_SCHEMA,'repository migration count must match schema 66');
+assert(migrations.length===EXPECTED_SCHEMA,'repository migration count must match schema 67');
 assert(migrations.every((name,index)=>Number(name.slice(0,4))===index+1),'Migration chain must be continuous');
-assert(migrations.at(-1)==='0066_advance_cash_integrity.sql','latest migration must enforce advance cash integrity');
+assert(migrations.at(-1)==='0067_advance_v1_full_payment.sql','latest migration must enforce Advance V1 full payment');
 
 const template=read('apps/api/wrangler.production.template.jsonc');
 for(const marker of [
@@ -24,10 +24,10 @@ assert(!template.includes('"STAFF_AUTH_PROVIDER": "FEISHU"'),'Feishu must not be
 assert(!template.includes('FEISHU_WORKBENCH_APP_ID'),'production template must not require legacy Feishu workbench identity');
 
 const readiness=read('apps/api/src/operational-readiness/routes.ts');
-for(const marker of ['const TARGET_SCHEMA=66','APP_RELEASE_SHA','production_recovery_attestations','operationalAlertAttestationReady','last_backlog_count','staff_access','release'])
+for(const marker of ['const TARGET_SCHEMA=67','APP_RELEASE_SHA','production_recovery_attestations','operationalAlertAttestationReady','last_backlog_count','staff_access','release'])
   assert(readiness.includes(marker),`readiness boundary missing ${marker}`);
 const recovery=read('apps/api/src/production-readiness/recovery-attestation-routes.ts');
-assert(recovery.includes('const TARGET_SCHEMA=66'),'recovery attestation must target schema 66');
+assert(recovery.includes('const TARGET_SCHEMA=67'),'recovery attestation must target schema 67');
 assert(recovery.includes('APP_RELEASE_SHA'),'recovery attestation must bind current release SHA');
 const alertAttestation=read('apps/api/src/operational-readiness/alert-attestation.ts');
 for(const marker of ['verifyOperationalAlertChallenge','OPERATIONAL_ALERT_CHALLENGE_TYPES','nonce','release_sha','sink_identity','sink_deployment_version','sink_config_fingerprint','verified_receipts','expires_at'])assert(alertAttestation.includes(marker),`operational alert attestation missing ${marker}`);
@@ -39,7 +39,7 @@ console.log(JSON.stringify({
   status:'PASS',
   check:'production-readiness-local-static',
   schema:EXPECTED_SCHEMA,
-  migrations:'0001-0066_CONTINUOUS',
+  migrations:'0001-0067_CONTINUOUS',
   staff_auth:'CLOUDFLARE_ACCESS',
   scheduler:'REQUIRED',
   acquisition_maintenance:'REQUIRED',

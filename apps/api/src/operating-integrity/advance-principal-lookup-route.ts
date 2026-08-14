@@ -27,8 +27,10 @@ async function lookup(context:Context<AppEnv>){
         (SELECT review_case.id FROM review_cases review_case WHERE review_case.formal_order_id=formal_order.id ORDER BY review_case.created_at DESC,review_case.id DESC LIMIT 1) AS review_case_id,
         (SELECT review_case.status FROM review_cases review_case WHERE review_case.formal_order_id=formal_order.id ORDER BY review_case.created_at DESC,review_case.id DESC LIMIT 1) AS review_status,
         EXISTS(SELECT 1 FROM buyer_refund_obligations obligation WHERE obligation.formal_order_id=formal_order.id) AS has_refund_obligation,
+        (SELECT CAST(snapshot.buyer_expected_principal_cny_fen AS TEXT) FROM formal_order_financial_snapshots snapshot WHERE snapshot.formal_order_id=formal_order.id) AS advance_full_amount_cny_fen,
         COALESCE((SELECT SUM(CASE advance.entry_type WHEN 'PAYMENT' THEN advance.amount_cny_fen ELSE -advance.amount_cny_fen END)
           FROM buyer_advance_principal_entries advance WHERE advance.formal_order_id=formal_order.id),0) AS advance_net_cny_fen,
+        (SELECT payment.id FROM buyer_advance_principal_entries payment WHERE payment.formal_order_id=formal_order.id AND payment.entry_type='PAYMENT' AND payment.amount_cny_fen>COALESCE((SELECT SUM(reversal.amount_cny_fen) FROM buyer_advance_principal_entries reversal WHERE reversal.entry_type='REVERSAL' AND reversal.original_payment_entry_id=payment.id),0) ORDER BY payment.created_at DESC,payment.id DESC LIMIT 1) AS active_advance_payment_id,
         COALESCE((SELECT state.operational_state FROM formal_order_effective_operational_state state WHERE state.formal_order_id=formal_order.id),'NORMAL') AS operational_state
       FROM formal_orders formal_order WHERE formal_order.amazon_order_number_normalized=? LIMIT 2`).bind(orderNumber).all<any>();
     if(rows.results.length!==1)return context.json(apiFailure('NOT_FOUND','没有找到唯一的正式订单',requestId),404);
@@ -46,8 +48,8 @@ async function lookup(context:Context<AppEnv>){
         !role('owner','buyer_refund')||!actor.permissions.has('REVIEW_DECIDE')?'ROLE_OR_PERMISSION_NOT_ALLOWED':value.review_case_id===null?'REVIEW_NOT_AVAILABLE':String(value.review_status)!=='PENDING_REVIEW'?'REVIEW_NOT_PENDING':policy.actions.APPROVE_REVIEW.reason,
       ),
       record_advance_principal:capability(
-        role('owner','buyer_refund')&&Number(value.has_refund_obligation)!==1&&policy.actions.RECORD_ADVANCE_PRINCIPAL.allowed,
-        !role('owner','buyer_refund')?'ROLE_NOT_ALLOWED':Number(value.has_refund_obligation)===1?'REFUND_OBLIGATION_EXISTS':policy.actions.RECORD_ADVANCE_PRINCIPAL.reason,
+        role('owner','buyer_refund')&&Number(value.has_refund_obligation)!==1&&BigInt(String(value.advance_net_cny_fen))===0n&&policy.actions.RECORD_ADVANCE_PRINCIPAL.allowed,
+        !role('owner','buyer_refund')?'ROLE_NOT_ALLOWED':Number(value.has_refund_obligation)===1?'REFUND_OBLIGATION_EXISTS':BigInt(String(value.advance_net_cny_fen))!==0n?'ADVANCE_PAYMENT_EXISTS':policy.actions.RECORD_ADVANCE_PRINCIPAL.reason,
       ),
       record_profit_adjustment:capability(
         actor.roles.has('owner')&&actor.permissions.has('FINANCIAL_CORRECT'),
@@ -66,10 +68,10 @@ async function lookup(context:Context<AppEnv>){
 
 export function advancePrincipalFinancialsForActor(
   actor:Pick<AssignmentStaffAuthorization,'roles'>,
-  value:{has_refund_obligation:unknown;advance_net_cny_fen:unknown},
-):{has_refund_obligation:boolean|null;advance_net_cny_fen:string|null}{
-  if(!actor.roles.has('owner')&&!actor.roles.has('buyer_refund'))return{has_refund_obligation:null,advance_net_cny_fen:null};
-  return{has_refund_obligation:Number(value.has_refund_obligation)===1,advance_net_cny_fen:String(value.advance_net_cny_fen)};
+  value:{has_refund_obligation:unknown;advance_full_amount_cny_fen:unknown;advance_net_cny_fen:unknown;active_advance_payment_id:unknown},
+):{has_refund_obligation:boolean|null;advance_full_amount_cny_fen:string|null;advance_net_cny_fen:string|null;active_advance_payment_id:string|null}{
+  if(!actor.roles.has('owner')&&!actor.roles.has('buyer_refund'))return{has_refund_obligation:null,advance_full_amount_cny_fen:null,advance_net_cny_fen:null,active_advance_payment_id:null};
+  return{has_refund_obligation:Number(value.has_refund_obligation)===1,advance_full_amount_cny_fen:value.advance_full_amount_cny_fen===null?null:String(value.advance_full_amount_cny_fen),advance_net_cny_fen:String(value.advance_net_cny_fen),active_advance_payment_id:value.active_advance_payment_id===null?null:String(value.active_advance_payment_id)};
 }
 
 function capability(allowed:boolean,reason:string|null):BusinessActionCapabilityDto{return Object.freeze({allowed,reason});}

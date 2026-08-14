@@ -10,10 +10,10 @@
 生产 Staff 身份：Cloudflare Access + Moonwhite Staff Authority。Cloudflare 证明邮箱，Moonwhite active/status/role/Marketplace 决定最终权限。旧 Feishu Staff Auth 不再是正式依赖。
 
 ## 2. 恢复证明
-Production GO 必须覆盖当前 **Schema66 + 当前 APP_RELEASE_SHA**：D1 加密备份/隔离恢复、integrity/FK/业务 smoke/财务聚合、R2 manifest 对账和抽样 read-back，并登记不可变 recovery attestation。旧 39/43/61/64/65 proof 不能证明当前 release 可恢复。
+Production GO 必须覆盖当前 **Schema67 + 当前 APP_RELEASE_SHA**：D1 加密备份/隔离恢复、integrity/FK/业务 smoke/财务聚合、R2 manifest 对账和抽样 read-back，并登记不可变 recovery attestation。旧 39/43/61/64/65/66 proof 不能证明当前 release 可恢复。
 
 ## 3. health/readiness
-`/health` 仅 liveness。`/ready` 同时要求 Schema66、Scheduler、Acquisition Maintenance、对象存储、Cloudflare Access 配置、APP_RELEASE_SHA，以及同一个 release SHA 的 Schema66 恢复证明。
+`/health` 仅 liveness。`/ready` 同时要求 Schema67、Scheduler、Acquisition Maintenance、对象存储、Cloudflare Access 配置、APP_RELEASE_SHA，以及同一个 release SHA 的 Schema67 恢复证明。
 
 ## 4. Scheduler
 生产必须 `SCHEDULED_OPERATIONS_ENABLED=true`、`ACQUISITION_MAINTENANCE_ENABLED=true`。关键 job 未成功、失败晚于成功、过期或 backlog 超限时 readiness 失败。
@@ -87,7 +87,7 @@ Seller OWNER 可邀请 OPERATIONS / FINANCE / VIEWER，不通过邀请创建第�
 - 0063 advance principal proof + overpayment
 - 0064 Marketplace local-date truth
 
-当前目标：**Schema66 / 0001→0066 continuous**；0065 继续证明飞书退役，0066 前向补充 Advance 资金完整性。
+当前目标：**Schema67 / 0001→0067 continuous**；0065 继续证明飞书退役，0066 前向补充 Advance 资金完整性，0067 前向冻结 Advance V1 全额付款/整笔冲正。
 
 ## 本地 Codex 验收
 干净 checkout + Node24：migration guards、local migration、contracts/domain/api/web typecheck、full Vitest、web build、Buyer/Seller/Staff Playwright、真实历史 D1 副本升级。

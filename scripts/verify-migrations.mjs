@@ -16,15 +16,15 @@ const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-v2-migrations-'),
 );
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 66;
+const expectedLatestSchema = 67;
 const expectedLastMigration =
-  '0066_advance_cash_integrity.sql';
+  '0067_advance_v1_full_payment.sql';
 const expectedSchemaInventory = {
   table: 214,
   index: 612,
-  trigger: 407,
+  trigger: 410,
   view: 12,
-  sha256: '873ace6d1463dfadcd1f069482f849e718dc449b605c18c16edfdcf9d9defc2d',
+  sha256: '969f0a7e930cb9c4ede979fa2e557de3faa5a9f1bfb8b035d4115eeb2651bf65',
 };
 
 const requiredTables = [
@@ -482,6 +482,9 @@ const requiredTriggers = [
   'trg_buyer_advance_principal_entries_no_update',
   'trg_buyer_advance_principal_entries_no_delete',
   'trg_advance_principal_reversal_source_guard',
+  'trg_advance_principal_full_payment_amount_guard',
+  'trg_advance_principal_single_outstanding_payment_guard',
+  'trg_advance_principal_full_reversal_guard',
   'trg_buyer_advance_principal_settlements_no_update',
   'trg_buyer_advance_principal_settlements_no_delete',
   'trg_acquisition_lead_link_first_touch_attribution',
@@ -688,7 +691,7 @@ try {
   if (migrationFiles.length !== expectedLatestSchema
     || migrationFiles.at(-1) !== expectedLastMigration
     || migrationNumbers.some((number, index) => number !== index + 1)) {
-    throw new Error('Migration 必须是唯一连续的 0001-0066');
+    throw new Error('Migration 必须是唯一连续的 0001-0067');
   }
 
   const database = new DatabaseSync(databasePath);

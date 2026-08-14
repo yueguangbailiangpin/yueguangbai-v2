@@ -9,7 +9,7 @@ const {schema,latestMigration}=resolveProductionSchemaBaseline();
 const migrations=readdirSync(path.join(root,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
 assert(migrations.length===schema,`expected ${schema} migrations, found ${migrations.length}`);
 assert(migrations.every((file,index)=>Number(file.slice(0,4))===index+1),'migration chain is not continuous');
-assert(latestMigration==='0066_advance_cash_integrity.sql','current production schema baseline must enforce advance cash integrity in 0066');
+assert(latestMigration==='0067_advance_v1_full_payment.sql','current production schema baseline must enforce Advance V1 full payment in 0067');
 verifyProductionSchemaDocuments();
 
 const production=read('apps/api/wrangler.production.template.jsonc');
