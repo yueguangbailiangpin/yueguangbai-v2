@@ -524,6 +524,136 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     }
   });
 
+  it('preserves disabled-store settlement history for OWNER without widening FINANCE scope', async () => {
+    if (!database) throw new Error('test_database_missing');
+    seedSellerSettlementHistoryScope(database);
+    const app = testApp();
+
+    const ownerSummary = await request(
+      app,
+      '/api/seller-portal/settlement/summary',
+      { headers: { Cookie: await cookie('owner') } },
+    );
+    expect(ownerSummary.status).toBe(200);
+    await expect(json(ownerSummary)).resolves.toMatchObject({
+      data: { settlement: {
+        outstanding_principal_cny_fen: '400',
+        outstanding_service_fee_cny_fen: '0',
+        total_outstanding_cny_fen: '400',
+      } },
+    });
+    const ownerPayables = await request(
+      app,
+      '/api/seller-portal/settlement/payables',
+      { headers: { Cookie: await cookie('owner') } },
+    );
+    expect(ownerPayables.status).toBe(200);
+    const ownerPayablesBody = await json<any>(ownerPayables);
+    expect(ownerPayablesBody.data.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        payable_id: 'payable-active-history',
+        store: { id: 'store-1', display_name: 'Alpha 店铺' },
+        outstanding_amount_cny_fen: '100',
+      }),
+      expect.objectContaining({
+        payable_id: 'payable-disabled-history',
+        store: { id: 'store-3', display_name: 'Gamma 店铺' },
+        outstanding_amount_cny_fen: '300',
+      }),
+    ]));
+    const ownerDisabledPayable = await request(
+      app,
+      '/api/seller-portal/settlement/payables/payable-disabled-history',
+      { headers: { Cookie: await cookie('owner') } },
+    );
+    expect(ownerDisabledPayable.status).toBe(200);
+    await expect(json(ownerDisabledPayable)).resolves.toMatchObject({
+      data: { payable: {
+        payable_id: 'payable-disabled-history',
+        store: { id: 'store-3', display_name: 'Gamma 店铺' },
+        outstanding_amount_cny_fen: '300',
+      } },
+    });
+
+    const ownerPayments = await request(
+      app,
+      '/api/seller-portal/settlement/payments',
+      { headers: { Cookie: await cookie('owner') } },
+    );
+    expect(ownerPayments.status).toBe(200);
+    await expect(json(ownerPayments)).resolves.toMatchObject({
+      data: { items: [{
+        payment_id: 'payment-organization-history',
+        amount_cny_fen: '500',
+        unallocated_amount_cny_fen: '500',
+      }] },
+    });
+
+    const financeMe = await request(
+      app,
+      '/api/seller-portal/me',
+      { headers: { Cookie: await cookie('finance') } },
+    );
+    expect(financeMe.status).toBe(200);
+    await expect(json(financeMe)).resolves.toMatchObject({
+      data: { me: { access: {
+        read_scope: 'ASSIGNED_STORES',
+        store_ids: ['store-1'],
+      } } },
+    });
+    const financeSummary = await request(
+      app,
+      '/api/seller-portal/settlement/summary',
+      { headers: { Cookie: await cookie('finance') } },
+    );
+    expect(financeSummary.status).toBe(200);
+    await expect(json(financeSummary)).resolves.toMatchObject({
+      data: { settlement: {
+        outstanding_principal_cny_fen: '100',
+        outstanding_service_fee_cny_fen: '0',
+        total_outstanding_cny_fen: '100',
+        unallocated_credit_cny_fen: '0',
+      } },
+    });
+    const financePayables = await request(
+      app,
+      '/api/seller-portal/settlement/payables',
+      { headers: { Cookie: await cookie('finance') } },
+    );
+    expect(financePayables.status).toBe(200);
+    const financePayablesBody = await json<any>(financePayables);
+    expect(financePayablesBody.data.items).toEqual([
+      expect.objectContaining({
+        payable_id: 'payable-active-history',
+        store: { id: 'store-1', display_name: 'Alpha 店铺' },
+        outstanding_amount_cny_fen: '100',
+      }),
+    ]);
+    expect(JSON.stringify(financePayablesBody)).not.toContain('store-3');
+    expect(JSON.stringify(financePayablesBody)).not.toContain('payable-disabled-history');
+
+    const financeDisabledPayable = await request(
+      app,
+      '/api/seller-portal/settlement/payables/payable-disabled-history',
+      { headers: { Cookie: await cookie('finance') } },
+    );
+    expect(financeDisabledPayable.status).toBe(404);
+    const financePayments = await request(
+      app,
+      '/api/seller-portal/settlement/payments',
+      { headers: { Cookie: await cookie('finance') } },
+    );
+    expect(financePayments.status).toBe(404);
+
+    const financeStores = await request(
+      app,
+      '/api/seller-portal/stores',
+      { headers: { Cookie: await cookie('finance') } },
+    );
+    expect(financeStores.status).toBe(200);
+    expect(JSON.stringify(await json(financeStores))).not.toContain('store-3');
+  });
+
   it('allows file upload intents only for OWNER and OPERATIONS', async () => {
     const app = testApp();
     const payload = JSON.stringify({
@@ -1271,6 +1401,85 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
     UPDATE file_upload_intents SET status='VERIFIED', completed_at=1001, updated_at=1001 WHERE id='portal-application-intent';
     UPDATE file_objects SET status='VERIFIED', uploaded_byte_size=10, detected_mime='image/png',
       uploaded_sha256=upload_token_hash, uploaded_at=1001, verified_at=1001, updated_at=1001 WHERE id='portal-application-image';
+  `);
+}
+
+function seedSellerSettlementHistoryScope(target: SqliteDatabase): void {
+  // These synthetic immutable facts exercise the migrated read schema and real
+  // HTTP authorization. Unrelated order-source guards and foreign keys are
+  // bypassed only while constructing the historical read fixture.
+  target.exec(`
+    PRAGMA foreign_keys=OFF;
+    DROP TRIGGER trg_formal_order_source_guard;
+    DROP TRIGGER trg_formal_order_instruction_guard;
+    DROP TRIGGER trg_seller_payable_source_guard;
+
+    INSERT INTO formal_orders (
+      id, order_evidence_submission_id, order_evidence_version_id,
+      reservation_id, demand_batch_id, buyer_customer_id, buyer_customer_no,
+      seller_organization_id, store_id, marketplace_code,
+      product_id, product_version_id, product_version_no,
+      asin_display, asin_normalized, product_name_snapshot, review_type,
+      amazon_order_number_raw, amazon_order_number_normalized,
+      final_paid_jpy, status, version, confirmed_by_staff_id,
+      confirmed_at, confirmed_business_date, created_at
+    ) VALUES
+      (
+        'formal-active-history', 'submission-active-history',
+        'evidence-active-history', 'reservation-active-history',
+        'demand-active-history', 'buyer-active-history', 'buyer-active-history',
+        'org-1', 'store-1', 'JP', 'product-active-history',
+        'product-version-active-history', 1,
+        'B000000011', 'B000000011', '启用店铺历史结算', 'TEXT',
+        '111-1111111-1111111', '111-1111111-1111111',
+        1980, 'CONFIRMED', 1, 'staff-portal',
+        5000, '2026-08-01', 5000
+      ),
+      (
+        'formal-disabled-history', 'submission-disabled-history',
+        'evidence-disabled-history', 'reservation-disabled-history',
+        'demand-disabled-history', 'buyer-disabled-history', 'buyer-disabled-history',
+        'org-1', 'store-3', 'JP', 'product-disabled-history',
+        'product-version-disabled-history', 1,
+        'B000000012', 'B000000012', '停用店铺历史结算', 'TEXT',
+        '222-2222222-2222222', '222-2222222-2222222',
+        1980, 'CONFIRMED', 1, 'staff-portal',
+        6000, '2026-08-02', 6000
+      );
+
+    INSERT INTO seller_payables (
+      id, seller_organization_id, formal_order_id, payable_type,
+      amount_cny_fen, financial_snapshot_id, source_type, source_id,
+      due_at, created_at
+    ) VALUES
+      (
+        'payable-active-history', 'org-1', 'formal-active-history',
+        'SELLER_PRINCIPAL', 100, 'snapshot-active-history',
+        'FORMAL_ORDER', 'formal-active-history', 5000, 5000
+      ),
+      (
+        'payable-disabled-history', 'org-1', 'formal-disabled-history',
+        'SELLER_PRINCIPAL', 300, 'snapshot-disabled-history',
+        'FORMAL_ORDER', 'formal-disabled-history', 6000, 6000
+      );
+
+    INSERT INTO seller_payments (
+      id, seller_organization_id, amount_cny_fen, paid_at,
+      recorded_at, recorded_by_staff_id, version, created_at, updated_at
+    ) VALUES (
+      'payment-organization-history', 'org-1', 500, 7000,
+      7000, 'staff-portal', 1, 7000, 7000
+    );
+
+    INSERT INTO seller_member_store_scopes (
+      member_id, store_id, organization_id, status,
+      assigned_by_staff_id, assigned_at, revoked_at,
+      created_at, updated_at
+    ) VALUES (
+      'member-finance', 'store-3', 'org-1', 'ACTIVE',
+      'staff-portal', 1000, NULL, 1000, 1000
+    );
+    PRAGMA foreign_keys=ON;
   `);
 }
 
