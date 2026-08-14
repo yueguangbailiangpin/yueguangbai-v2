@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 import '../test/msw/lifecycle';
 import { StaffSessionBoundary } from '../auth/staff/StaffSessionBoundary';
+import { queryKeys } from '../api/query-client';
 import { apiUrl } from '../test/msw/handlers';
 import { renderWithMsw } from '../test/msw/render';
 import { server } from '../test/msw/server';
@@ -143,6 +144,38 @@ describe('canonical Frozen Staff workbench', () => {
     expect(await screen.findByText('请选择工作项')).toBeVisible();
   });
 
+  it('clears retained selection and refetches the same queue when the trusted Staff authorization changes', async () => {
+    let queueReads=0;let published=false;
+    const initialSession=staffTestSession('owner', ['SELLER_SETTLEMENT_VIEW', 'SELLER_SETTLEMENT_RECORD', 'FINANCIAL_CORRECT']);
+    let currentSession=initialSession;
+    const adapter={...staffTestAdapter(initialSession),readSession:async()=>({data:{session:currentSession},requestId:`session-v${currentSession.authorization_version}`})};
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items'), () => {
+        queueReads+=1;
+        return HttpResponse.json({ data: { work_items: published?[]:[demandWorkItem], next_cursor: null }, meta: { request_id: `queue-${queueReads}` } });
+      }),
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/review-context'), () => HttpResponse.json({ data: { review_context: demandReviewContext }, meta: { request_id: 'demand-context' } })),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), () => {
+        published=true;
+        return HttpResponse.json({ data: { demand_review: { demand_batch_id: 'demand-1', status: 'PUBLISHED', version: 4, review_reason: null, replayed: false, schedule: null } }, meta: { request_id: 'demand-published' } });
+      }),
+    );
+    const user=userEvent.setup();
+    const {client}=renderWorkbench('/staff?work_item=work-demand',adapter);
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
+    await user.click(screen.getByRole('button', { name: '通过并发布' }));
+    await waitFor(()=>expect(queueReads).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByText('需求审核结果')).toBeVisible();
+
+    currentSession={...initialSession,authorization_version:2};
+    await client.invalidateQueries({queryKey:queryKeys.staff.session});
+
+    expect(await screen.findByText('请选择工作项')).toBeVisible();
+    await waitFor(()=>expect(queueReads).toBeGreaterThanOrEqual(3));
+    expect(screen.queryByText('需求审核结果')).not.toBeInTheDocument();
+  });
+
   it('rejects a demand through the dedicated review action', async () => {
     let body: unknown;
     installDemandHandlers(async (request) => {
@@ -198,9 +231,8 @@ describe('canonical Frozen Staff workbench', () => {
   });
 });
 
-function renderWorkbench(route: string) {
-  const session = staffTestSession('owner', ['SELLER_SETTLEMENT_VIEW', 'SELLER_SETTLEMENT_RECORD', 'FINANCIAL_CORRECT']);
-  return renderWithMsw(<StaffSessionBoundary adapter={staffTestAdapter(session)}><FrozenStaffWorkbench /></StaffSessionBoundary>, { route });
+function renderWorkbench(route: string, adapter = staffTestAdapter(staffTestSession('owner', ['SELLER_SETTLEMENT_VIEW', 'SELLER_SETTLEMENT_RECORD', 'FINANCIAL_CORRECT']))) {
+  return renderWithMsw(<StaffSessionBoundary adapter={adapter}><FrozenStaffWorkbench /></StaffSessionBoundary>, { route });
 }
 
 function installDemandHandlers(

@@ -31,15 +31,16 @@ type RetainedSelection = Readonly<{
 }>;
 
 export function FrozenStaffWorkbench():React.JSX.Element{
-  const client=useQueryClient();const location=useLocation();const navigate=useNavigate();const [parameters]=useSearchParams();
+  const client=useQueryClient();const session=useCurrentStaffSession();const location=useLocation();const navigate=useNavigate();const [parameters]=useSearchParams();
   const routeId=/^\/staff\/work\/([^/]+)$/u.exec(location.pathname)?.[1];
   const selectedId=routeId?decodeURIComponent(routeId):parameters.get('work_item');
   const status=parameters.get('status')==='COMPLETED'?'COMPLETED':'OPEN';const workType=parameters.get('work_type');
   const [cursor,setCursor]=useState<string|null>(null);const [history,setHistory]=useState<(string|null)[]>([]);const retainedSelectedRef=useRef<RetainedSelection|null>(null);
-  const query=useQuery({queryKey:staffWorkbenchKeys.queue(status,workType,cursor),queryFn:({signal})=>staffApi.workItems(client,{status,workType,cursor},signal).then((r)=>r.data),retry:false});
+  const effectiveScopeFingerprint=JSON.stringify({role:session.role.code,permissions:[...session.permissions].sort(),data_scope:{type:session.data_scope.type,marketplaceCodes:[...session.data_scope.marketplaceCodes].sort(),buyerCustomerIds:[...session.data_scope.buyerCustomerIds].sort(),sellerOrganizationIds:[...session.data_scope.sellerOrganizationIds].sort(),teamIds:[...session.data_scope.teamIds].sort()}});
+  const query=useQuery({queryKey:staffWorkbenchKeys.queue(session.staff_id,session.authorization_version,session.session_version,effectiveScopeFingerprint,status,workType,cursor),queryFn:({signal})=>staffApi.workItems(client,{status,workType,cursor},signal).then((r)=>r.data),retry:false});
   const hasCurrentQueue=query.isSuccess&&!query.isFetching;
   const selectedFromQueue=hasCurrentQueue?query.data.work_items.find((item)=>item.work_item_id===selectedId)??null:null;
-  const queueIdentity=JSON.stringify({selectedId,status,workType,cursor});
+  const queueIdentity=JSON.stringify({selectedId,status,workType,cursor,staffId:session.staff_id,authorizationVersion:session.authorization_version,sessionVersion:session.session_version,effectiveScopeFingerprint});
   const retained=retainedSelectedRef.current;
   if(retained&&retained.queueIdentity!==queueIdentity)retainedSelectedRef.current=null;
   if(retainedSelectedRef.current&&query.isError)retainedSelectedRef.current=null;

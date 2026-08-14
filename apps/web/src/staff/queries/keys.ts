@@ -11,8 +11,16 @@ export const staffWorkbenchKeys = Object.freeze({
     ['staff', 'products', authorizationVersion, 'detail', id] as const,
   reservationSchedule: (authorizationVersion: number, id: string, cursor: string|null) =>
     ['staff', 'products', authorizationVersion, 'reservation-schedule', id, cursor] as const,
-  queue: (status: string, workType: string | null, cursor: string | null) =>
-    ['staff', 'workbench', 'queue', status, workType, cursor] as const,
+  queue: (
+    staffId: string,
+    authorizationVersion: number,
+    sessionVersion: number,
+    effectiveScopeFingerprint: string,
+    status: string,
+    workType: string | null,
+    cursor: string | null,
+  ) => ['staff', 'workbench', 'queue', staffId, authorizationVersion, sessionVersion,
+    effectiveScopeFingerprint, status, workType, cursor] as const,
   demandReview: (id: string) => ['staff', 'workbench', 'demand-review', id] as const,
   orderEvidence: (id: string) => ['staff', 'workbench', 'order-evidence', id] as const,
   review: (id: string) => ['staff', 'workbench', 'review', id] as const,
