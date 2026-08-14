@@ -26,7 +26,8 @@ assert(existsSync(path.join(root,'scripts/probe-production-readiness.mjs')),'exp
 const workflowFiles=readdirSync(path.join(root,'.github/workflows')).filter((file)=>/\.ya?ml$/u.test(file));
 const rootPackageManifest=JSON.parse(read('package.json'));
 verifyFinalProductionGoWorkflows(Object.fromEntries(workflowFiles.map((file)=>[file,read(`.github/workflows/${file}`)])),rootPackageManifest,discoverCanonicalWorkspacePackages(root,rootPackageManifest));
-const monitor=read('scripts/production-health-monitor.mjs');for(const marker of ["url.pathname!=='/ready'",'value.data.status','operational_alerts','staff_access','release'])assert(monitor.includes(marker),`production monitor does not validate current readiness: ${marker}`);
+const monitor=read('scripts/production-health-monitor.mjs');for(const marker of ["url.pathname!=='/ready'",'value.data.status','outbox_delivery','not_required','operational_alerts','staff_access','release'])assert(monitor.includes(marker),`production monitor does not validate current readiness: ${marker}`);
+const productionProbe=read('scripts/probe-production-readiness.mjs');for(const marker of ['outbox_delivery','not_required'])assert(productionProbe.includes(marker),`production readiness probe does not enforce governed Outbox deferral: ${marker}`);
 
 assert(!existsSync(path.join(root,'wrangler.production.jsonc')),'rendered production config exists; refresh deployment audit');
 assert(!existsSync(path.join(root,'apps/api/wrangler.production.jsonc')),'rendered API production config exists; refresh deployment audit');
