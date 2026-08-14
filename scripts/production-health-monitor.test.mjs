@@ -2,7 +2,7 @@ import { describe,expect,it,vi } from 'vitest';
 import { HEALTH_ISSUE_TITLE,probeProductionHealth,reconcileHealthIssue } from './production-health-monitor.mjs';
 
 const endpoint='https://app.example.test/ready';
-const checks={schema:'ok',scheduler:'ok',acquisition_maintenance:'ok',operational_alerts:'ok',object_storage:'ok',recovery:'ok',staff_access:'ok',release:'ok'};
+const checks={schema:'ok',scheduler:'ok',outbox_delivery:'not_required',acquisition_maintenance:'ok',operational_alerts:'ok',object_storage:'ok',recovery:'ok',staff_access:'ok',release:'ok'};
 
 describe('independent production readiness monitor',()=>{
   it('accepts only the bounded full readiness envelope',async()=>{
@@ -12,6 +12,10 @@ describe('independent production readiness monitor',()=>{
     expect(missingRelease).toMatchObject({healthy:false,reason:'MALFORMED_OR_NOT_READY_RESPONSE'});
     const unverifiedAlerts=await probeProductionHealth({endpoint,fetchImpl:vi.fn(async()=>Response.json({data:{status:'ready',checks:{...checks,operational_alerts:'failed'}},meta:{request_id:'request-alerts'}}))});
     expect(unverifiedAlerts).toMatchObject({healthy:false,reason:'MALFORMED_OR_NOT_READY_RESPONSE'});
+    for(const outbox_delivery of [undefined,'failed','ok']){
+      const invalidOutbox=await probeProductionHealth({endpoint,fetchImpl:vi.fn(async()=>Response.json({data:{status:'ready',checks:{...checks,outbox_delivery},timestamp:1},meta:{request_id:'request-outbox'}}))});
+      expect(invalidOutbox).toMatchObject({healthy:false,reason:'MALFORMED_OR_NOT_READY_RESPONSE'});
+    }
     const malformed=await probeProductionHealth({endpoint,fetchImpl:vi.fn(async()=>Response.json({status:'ready'}))});
     expect(malformed).toMatchObject({healthy:false,reason:'MALFORMED_OR_NOT_READY_RESPONSE'});
   });
