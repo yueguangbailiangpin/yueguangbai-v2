@@ -152,7 +152,7 @@ test('Seller shell keeps context, navigation, entries, and disclosure boundaries
   await page.goto('/seller');
   await expect(page.getByText(me.organization.name, { exact: true })).toBeVisible();
   await expect(page.getByText(me.organization.seller_code, { exact: true })).toBeVisible();
-  await expect(page.getByLabel('组织和店铺上下文').getByText(me.member.display_name, { exact: true })).toBeVisible();
+  await expect(page.getByLabel('组织和店铺').getByText(me.member.display_name, { exact: true })).toBeVisible();
   await expect(page.getByLabel('店铺', { exact: true })).toBeVisible();
   const navigation = page.getByRole('navigation', { name: '卖家导航' });
   for (const label of navigationLabels) await expect(navigation.getByRole('link', { name: label, exact: true })).toBeVisible();
@@ -173,9 +173,9 @@ test('Seller permission-projected entries disappear without access', async ({ pa
   await expect(page.getByRole('link', { name: '提交需求' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: '提交产品申请' })).toHaveCount(0);
   await page.goto('/seller/products/new');
-  await expect(page.getByText('当前账号无权提交产品申请。')).toBeVisible();
+  await expect(page.getByText('当前账号没有提交产品申请的权限。')).toBeVisible();
   await page.goto('/seller/demands/new');
-  await expect(page.getByText('当前账号无权提交需求。')).toBeVisible();
+  await expect(page.getByText('当前账号没有提交需求的权限。')).toBeVisible();
 });
 
 test('Seller pages preserve keyboard, zoom, reduced motion, targets, and overflow', async ({ page }) => {
