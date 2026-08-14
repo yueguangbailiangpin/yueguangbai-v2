@@ -70,6 +70,25 @@ describe('scheduled operation Staff HTTP contract',()=>{
     expect((await app.request('http://local/api/staff/operations/jobs/not-a-job/retry',{...authorized,headers:{...authorized.headers,'Idempotency-Key':'http-invalid-job'}},bindings)).status).toBe(400);
   });
 
+  it('keeps Staff-triggered outbox delivery inert while governed off',async()=>{
+    database=createMigratedTestDatabase();
+    seedOutbox(database,'http-manual-disabled-event');
+    let sends=0;
+    const bindings:AppBindings={DB:database,SCHEDULED_OPERATIONS_ENABLED:'true',OUTBOX_DELIVERY_ENABLED:'false',OUTBOX_DELIVERY_ADAPTER:{deliver:async()=>{sends+=1;throw new Error('must_not_deliver')}}};
+    const app=createTestApp();
+    const response=await app.request('http://local/api/staff/operations/jobs/outbox_delivery/retry',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Idempotency-Key':'http-manual-disabled-key','X-Test-Permission':'run'},
+      body:JSON.stringify({reason_code:'OPERATOR_RETRY'}),
+    },bindings);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({data:{command:{outcome:'DISABLED'}}});
+    expect(sends).toBe(0);
+    expect(await database.prepare("SELECT status,attempt_count,last_error,lease_token,lease_expires_at FROM integration_outbox WHERE id='http-manual-disabled-event'").first()).toEqual({status:'PENDING',attempt_count:0,last_error:null,lease_token:null,lease_expires_at:null});
+    expect(await database.prepare("SELECT COUNT(*) AS count FROM scheduled_job_runs WHERE job_name='outbox_delivery'").first()).toEqual({count:0});
+    expect(await database.prepare("SELECT COUNT(*) AS count FROM scheduled_dead_letters WHERE source_id='http-manual-disabled-event'").first()).toEqual({count:0});
+  });
+
   it('conceals missing or handled dead letters and applies the replay kill switch',async()=>{
     database=createMigratedTestDatabase();
     seedDeadLetter(database,'http-dead','http-poison-event');
@@ -81,6 +100,12 @@ describe('scheduled operation Staff HTTP contract',()=>{
     expect(await disabled.json()).toMatchObject({data:{command:{outcome:'DISABLED'}}});
     expect(await database.prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='http-dead'").first()).toEqual({replay_status:'QUARANTINED'});
     bindings.SCHEDULED_OPERATIONS_ENABLED='true';
+    bindings.OUTBOX_DELIVERY_ENABLED='false';
+    const governedOff=await app.request('http://local/api/staff/operations/dead-letters/http-dead/replay',{...request,headers:{...request.headers,'Idempotency-Key':'http-replay-governed-off'}},bindings);
+    expect(governedOff.status).toBe(200);
+    await expect(governedOff.json()).resolves.toMatchObject({data:{command:{outcome:'DISABLED'}}});
+    expect(await database.prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='http-dead'").first()).toEqual({replay_status:'QUARANTINED'});
+    bindings.OUTBOX_DELIVERY_ENABLED='true';
     const replayed=await app.request('http://local/api/staff/operations/dead-letters/http-dead/replay',{...request,headers:{...request.headers,'Idempotency-Key':'http-replay-success'}},bindings);
     expect(replayed.status).toBe(200);
     const handled=await app.request('http://local/api/staff/operations/dead-letters/http-dead/replay',{...request,headers:{...request.headers,'Idempotency-Key':'http-replay-handled'}},bindings);
