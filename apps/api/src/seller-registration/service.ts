@@ -390,7 +390,7 @@ function event(database:SqlDatabase,id:string,type:'ISSUED'|'CONSUMED'|'REVOKED'
     id,invitation_id,event_type,actor_type,actor_id,request_id,idempotency_key,created_at
   ) VALUES(?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),id,type,actorType,actorId,requestId,key,now);
 }
-function requireSellerDuty(actor:AssignmentStaffAuthorization){if(!actor.roles.has('owner')&&!actor.roles.has('seller_ops'))throw new SellerRegistrationError('FORBIDDEN',403);}
+function requireSellerDuty(actor:AssignmentStaffAuthorization){if((!actor.roles.has('owner')&&!actor.roles.has('seller_ops'))||!actor.permissions.has('SELLER_MANAGE'))throw new SellerRegistrationError('FORBIDDEN',403);}
 async function requireStaffMarket(database:SqlDatabase,actor:AssignmentStaffAuthorization,market:string){if(actor.roles.has('owner'))return;const markets=await resolveStaffMarketplaceCodes(database,actor);if(!markets.includes(market))throw new SellerRegistrationError('FORBIDDEN',403);}
 function cleanId(value:string){const normalized=value.normalize('NFKC').trim();if(normalized.length<1||normalized.length>200||/[\u0000-\u001f\u007f]/u.test(normalized))throw new SellerRegistrationError('VALIDATION_ERROR',400);return normalized;}
 function maskWechat(value:string){if(value.length<=4)return'***';return`${value.slice(0,2)}***${value.slice(-2)}`;}

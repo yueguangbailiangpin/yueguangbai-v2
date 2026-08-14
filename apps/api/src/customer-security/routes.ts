@@ -110,7 +110,8 @@ export function registerPublicCustomerSecurityRoutes(app: Hono<any>): void {
       const tokenSecret = securitySecret(context);
       const now = Date.now();
       const rate = await consumeCustomerSecurityRateLimit(context.env.DB, {
-        operation: 'PASSWORD_RESET', token: body['token'],
+        operation: 'PASSWORD_RESET',
+        primaryScope: { type: 'TOKEN', value: body['token'] },
         networkSource: context.req.header('CF-Connecting-IP') ?? null,
         deviceId: context.req.header('X-Device-ID') ?? null,
         secret: tokenSecret, now,
@@ -157,7 +158,7 @@ async function enforceStaffRateLimit(
   identity: string,
 ): Promise<void> {
   const rate = await consumeCustomerSecurityRateLimit(context.env.DB, {
-    operation, token: identity, primaryScopeType: 'WECHAT_ID',
+    operation, primaryScope: { type: 'WECHAT_ID', value: identity },
     networkSource: context.req.header('CF-Connecting-IP') ?? null,
     deviceId: context.req.header('X-Device-ID') ?? null,
     secret: securitySecret(context), now: Date.now(),

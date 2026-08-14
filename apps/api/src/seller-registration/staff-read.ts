@@ -15,7 +15,7 @@ export async function readCurrentSellerInvitation(
   input:{sellerOrganizationId:string|null;leadId:string|null},
   now=Date.now(),
 ){
-  if(!actor.roles.has('owner')&&!actor.roles.has('seller_ops'))throw new SellerRegistrationError('FORBIDDEN',403);
+  if((!actor.roles.has('owner')&&!actor.roles.has('seller_ops'))||!actor.permissions.has('SELLER_MANAGE'))throw new SellerRegistrationError('FORBIDDEN',403);
   const hasOrg=Boolean(input.sellerOrganizationId?.trim()),hasLead=Boolean(input.leadId?.trim());
   if(hasOrg===hasLead)throw new SellerRegistrationError('VALIDATION_ERROR',400);
   const clause=hasOrg?'invitation.seller_organization_id=?':'invitation.acquisition_lead_id=?';

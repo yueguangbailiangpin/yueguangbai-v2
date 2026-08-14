@@ -4,7 +4,7 @@
 
 分支：`feature/frozen-portals-staff-acquisition-core`
 
-Wave 15 验收时目标 Schema 为 **64**，且当时不新增 Migration；后续先由前向飞书清理提升为 Schema 65，再由 Advance 资金完整性守卫提升为 Schema 66，并由 Advance V1 全额模式前向提升为当前 Schema 67；历史业务规则仍按各阶段快照解释。
+Wave 15 验收时目标 Schema 为 **64**，且当时不新增 Migration；后续先由前向飞书清理提升为 Schema 65，再由 Advance 资金完整性守卫提升为 Schema 66，由 Advance V1 全额模式提升为 Schema 67，并由 Customer security DENY/改密限流前向提升为当前 Schema 68；历史业务规则仍按各阶段快照解释。
 
 本文件记录 Wave 15 的 Schema 64 验收事实；当前权威与冲突处理遵循根目录 `AGENTS.md` 的顺序。
 

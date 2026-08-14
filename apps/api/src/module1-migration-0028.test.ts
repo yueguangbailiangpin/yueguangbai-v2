@@ -17,7 +17,7 @@ describe('Migration 0028 Amazon order date facts', () => {
     database = createMigratedTestDatabase();
     expect(await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).first()).toEqual({ schema_version: 67 });
+    `).first()).toEqual({ schema_version: 68 });
     const tables = await database.prepare(`
       SELECT name FROM sqlite_schema
       WHERE type='table' AND name NOT LIKE 'sqlite_%'

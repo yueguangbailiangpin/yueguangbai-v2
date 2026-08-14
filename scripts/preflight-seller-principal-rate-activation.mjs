@@ -81,8 +81,8 @@ export function inspectSellerPrincipalRateActivation(database, input) {
     errors.push('phase:invalid');
   }
   if (!Number.isSafeInteger(expectedSchemaVersion)
-    || expectedSchemaVersion !== 67) {
-    errors.push('expected_schema:must_be_66');
+    || expectedSchemaVersion !== 68) {
+    errors.push('expected_schema:must_be_68');
   }
   if (!Number.isSafeInteger(asOf) || asOf < 0) {
     errors.push('as_of:invalid');

@@ -5,11 +5,11 @@ let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null;});
 
 describe('customer portal onboarding migrations 0049-0050',()=>{
-  it('preserves the onboarding schema beneath current schema 67',async()=>{
+  it('preserves the onboarding schema beneath current schema 68',async()=>{
     database=createMigratedTestDatabase();
     const state=await database.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`)
       .first<{schema_version:number}>();
-    expect(Number(state?.schema_version)).toBe(67);
+    expect(Number(state?.schema_version)).toBe(68);
   });
 
   it('creates seller invitation persistence and buyer lead attribution mapping',async()=>{

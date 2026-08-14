@@ -32,7 +32,7 @@ const ERROR_MESSAGES: Readonly<
   INVALID_CREDENTIALS: '登录标识或密码不正确',
   PASSWORD_CHANGE_REQUIRED: '请先修改初始密码',
   SESSION_INVALID: '登录状态已失效，请重新登录',
-  RATE_LIMITED: '登录尝试过多，请稍后重试',
+  RATE_LIMITED: '尝试次数过多，请稍后重试',
   IDEMPOTENCY_CONFLICT: '重复请求内容不一致',
   REQUEST_IN_PROGRESS: '请求正在处理中',
   DEPENDENCY_UNAVAILABLE: '服务暂时不可用，请稍后重试',

@@ -9,7 +9,7 @@ import {
 } from '../foundation/idempotency';
 import { normalizeStaffEmail } from '../staff-auth/cloudflare-access';
 
-const TARGET_SCHEMA = 67;
+const TARGET_SCHEMA = 68;
 const STAGING_BUYER_CHANNEL_ID = 'staging-buyer-channel';
 const STAGING_DATABASE_NAME = /^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -196,7 +196,7 @@ function normalizeInput(input: StagingFirstOwnerInput): StagingFirstOwnerInput {
 function emptyAuthorityAssertion(database: SqlDatabase): SqlStatement {
   return database.prepare(`INSERT INTO transaction_assertions(assertion_value)
     SELECT CASE WHEN
-      EXISTS(SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=67)
+      EXISTS(SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=68)
       AND NOT EXISTS(SELECT 1 FROM staff_users)
       AND NOT EXISTS(SELECT 1 FROM staff_role_assignments)
       AND NOT EXISTS(SELECT 1 FROM staff_email_identities)

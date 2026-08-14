@@ -8,4 +8,4 @@
 - [x] 6. Run target tests, API typecheck, OpenSpec target/all strict, `git diff --check` and one full `npm run check`.
 - [x] 7. Verify implementation consistency, self-review migrations/secrets/remote writes, then create a Draft PR without merging.
 - [ ] 8. Obtain fixed-SHA independent review before any remote staging resource write.
-- [ ] 9. Under separate explicit operator authorization, create isolated staging resources, apply migrations 0001-0067, bootstrap identities, deploy the reviewed SHA and execute network/backup/role-chain acceptance.
+- [ ] 9. Under separate explicit operator authorization, create isolated staging resources, apply migrations 0001–0068, bootstrap identities, deploy the reviewed SHA and execute network/backup/role-chain acceptance.
