@@ -17,4 +17,4 @@
 
 - [x] 4.1 Run focused Seller Portal API and SellerPages Web tests plus API/Web typecheck.
 - [x] 4.2 Run strict OpenSpec validation and fixed-range diff checks.
-- [x] 4.3 Keep this Change active without sync/archive; create one local-only commit for Formal Verify and independent review.
+- [x] 4.3 Keep this Change active through implementation verification; after all findings are resolved, sync and archive it before the final fixed-SHA review.
