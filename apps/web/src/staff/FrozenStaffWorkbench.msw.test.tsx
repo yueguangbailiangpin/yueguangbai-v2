@@ -97,14 +97,17 @@ describe('canonical Frozen Staff workbench', () => {
   });
 
   it('retains the selected demand context after its authoritative mutation removes it from the filtered queue', async () => {
-    let queueReads=0;
+    let queueReads=0;let published=false;
     server.use(
       http.get(apiUrl('/api/staff/me/work-items'), () => {
         queueReads+=1;
-        return HttpResponse.json({ data: { work_items: queueReads===1?[demandWorkItem]:[], next_cursor: null }, meta: { request_id: `queue-${queueReads}` } });
+        return HttpResponse.json({ data: { work_items: published?[]:[demandWorkItem], next_cursor: null }, meta: { request_id: `queue-${queueReads}` } });
       }),
       http.get(apiUrl('/api/staff/demand-batches/demand-1/review-context'), () => HttpResponse.json({ data: { review_context: demandReviewContext }, meta: { request_id: 'demand-context' } })),
-      http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), () => HttpResponse.json({ data: { demand_review: { demand_batch_id: 'demand-1', status: 'PUBLISHED', version: 4, review_reason: null, replayed: false, schedule: null } }, meta: { request_id: 'demand-published' } })),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), () => {
+        published=true;
+        return HttpResponse.json({ data: { demand_review: { demand_batch_id: 'demand-1', status: 'PUBLISHED', version: 4, review_reason: null, replayed: false, schedule: null } }, meta: { request_id: 'demand-published' } });
+      }),
     );
     const user=userEvent.setup();
     renderWorkbench('/staff?work_item=work-demand');
@@ -112,9 +115,12 @@ describe('canonical Frozen Staff workbench', () => {
     await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
     await user.click(screen.getByRole('button', { name: '通过并发布' }));
     await waitFor(()=>expect(queueReads).toBeGreaterThanOrEqual(2));
-    expect(screen.getByText('需求发布事实')).toBeVisible();
-    expect(screen.getByText('月光产品 · v2')).toBeVisible();
+    expect(await screen.findByText('需求审核结果')).toBeVisible();
+    expect(screen.getByText('PUBLISHED')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '通过并发布' })).not.toBeInTheDocument();
     expect(screen.queryByText('请选择工作项')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('状态'), 'COMPLETED');
+    expect(await screen.findByText('请选择工作项')).toBeVisible();
   });
 
   it('rejects a demand through the dedicated review action', async () => {

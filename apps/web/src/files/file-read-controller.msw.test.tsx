@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import '../test/msw/lifecycle';
 import {
   captureSessionCycle,
+  createSessionInvalidationMarker,
   establishFreshSessionCycle,
 } from '../auth/session-invalidation';
 import { failureEnvelopeFixture } from '../test/msw/fixtures';
@@ -756,7 +757,8 @@ describe('identity 401 generation and Object URL lifecycle', () => {
     const running = target.start('buyer', reference);
     await waitFor(() => expect(target.getSnapshot().state).toBe('DOWNLOADING'));
     const cycle = captureSessionCycle(client, 'buyer');
-    expect(establishFreshSessionCycle(client, 'buyer', cycle)).not.toBeNull();
+    const marker=await createSessionInvalidationMarker('buyer','buyer-fresh',1,1);
+    expect(establishFreshSessionCycle(client, 'buyer', cycle, marker)).not.toBeNull();
     release();
     await running;
     expect(client.getQueryData(['buyer', 'session'])).toBe('buyer');

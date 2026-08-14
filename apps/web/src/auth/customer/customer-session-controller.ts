@@ -6,8 +6,10 @@ import { CUSTOMER_TRANSPORT_INVALIDATION_GROUP } from '../customer-transport-inv
 import {
   broadcastSessionInvalidation,
   captureSessionCycle,
+  createSessionInvalidationMarker,
   establishFreshSessionCycle,
   retrySessionInvalidation,
+  type SessionCycle,
   useSessionInvalidation,
 } from '../session-invalidation';
 import {
@@ -55,6 +57,7 @@ export function useCustomerSessionController(
   );
   const mountedRef = useRef(true);
   const verifiedGenerationRef = useRef<number | null>(null);
+  const sessionReadCycleRef = useRef<SessionCycle | null>(null);
   const [cleanup, setCleanup] = useState<CleanupView>({ state: 'IDLE', requestId: null });
   const [unauthenticatedCleanup, setUnauthenticatedCleanup] = useState<UnauthenticatedCleanupView>({
     state: 'IDLE',
@@ -68,12 +71,17 @@ export function useCustomerSessionController(
     queryKey: queryKeys[target].session,
     queryFn: async ({ signal }) => {
       const requestCycle = captureSessionCycle(client, target);
+      sessionReadCycleRef.current = requestCycle;
       const session = (await adapter.readSession(signal)).data.session;
-      const generation = establishFreshSessionCycle(client, target, requestCycle);
+      const marker = await createSessionInvalidationMarker(
+        target, session.account_id, session.session_version, session.issued_at,
+      );
+      const generation = establishFreshSessionCycle(client, target, requestCycle, marker);
       if (generation === null) {
         throw new FrontendApiError('CANCELED', 0, null, 'CANCELED');
       }
       verifiedGenerationRef.current = generation;
+      sessionReadCycleRef.current = null;
       mayResolveInvalidatedMountRef.current = false;
       return session;
     },
@@ -117,7 +125,8 @@ export function useCustomerSessionController(
       || !(isFrontendApiError(query.error) && query.error.httpStatus === 401)
       || unauthenticatedCleanup.state !== 'IDLE') return;
     const requestId = query.error.requestId;
-    broadcastSessionInvalidation(client, target, requestId);
+    const requestCycle = sessionReadCycleRef.current;
+    if (requestCycle) broadcastSessionInvalidation(client, target, requestCycle, requestId);
     setUnauthenticatedCleanup({ state: 'CLEARING', requestId });
     void CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client).then(() => {
       if (mountedRef.current) setUnauthenticatedCleanup({ state: 'CLEARED', requestId });

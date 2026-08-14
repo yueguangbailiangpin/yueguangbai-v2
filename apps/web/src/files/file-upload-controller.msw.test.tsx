@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import '../test/msw/lifecycle';
-import { establishFreshSessionCycle, captureSessionCycle } from '../auth/session-invalidation';
+import { createSessionInvalidationMarker, establishFreshSessionCycle, captureSessionCycle } from '../auth/session-invalidation';
 import { failureEnvelopeFixture } from '../test/msw/fixtures';
 import { apiUrl } from '../test/msw/handlers';
 import { createMswQueryClient } from '../test/msw/render';
@@ -467,7 +467,8 @@ describe('XHR upload retry, cancel, errors, and stale 401 generation', () => {
     const running = target.start('buyerOrderEvidence', [file()]);
     await waitFor(() => expect(started).toBe(true));
     const cycle = captureSessionCycle(client, 'buyer');
-    expect(establishFreshSessionCycle(client, 'buyer', cycle)).not.toBeNull();
+    const marker=await createSessionInvalidationMarker('buyer','buyer-fresh',1,1);
+    expect(establishFreshSessionCycle(client, 'buyer', cycle, marker)).not.toBeNull();
     client.setQueryData(['buyer', 'session'], 'buyer-fresh');
     client.setQueryData(['seller', 'session'], 'seller-fresh');
     release();
