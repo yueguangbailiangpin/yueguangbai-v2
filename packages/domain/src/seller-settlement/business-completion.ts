@@ -5,8 +5,6 @@ import type {
 
 export interface SellerBusinessCompletionFacts {
   reviewStatus: string | null;
-  buyerRefundExpectedCnyFen: bigint;
-  buyerRefundStatus: string | null;
   principalExpectedCnyFen: bigint;
   principalStatus: string | null;
   serviceFeeExpectedCnyFen: bigint;
@@ -19,12 +17,6 @@ export function sellerBusinessCompletion(
   const review = facts.reviewStatus === 'APPROVED'
     ? 'COMPLETE'
     : 'PENDING';
-  const buyerRefund = financialComponent(
-    facts.reviewStatus === 'APPROVED',
-    facts.buyerRefundExpectedCnyFen,
-    facts.buyerRefundStatus,
-    'PAID',
-  );
   const sellerPrincipal = financialComponent(
     true,
     facts.principalExpectedCnyFen,
@@ -39,7 +31,6 @@ export function sellerBusinessCompletion(
   );
   const components = [
     review,
-    buyerRefund,
     sellerPrincipal,
     sellerServiceFee,
   ];
@@ -48,7 +39,6 @@ export function sellerBusinessCompletion(
       ? 'COMPLETE'
       : 'IN_PROGRESS',
     review,
-    buyer_refund: buyerRefund,
     seller_principal: sellerPrincipal,
     seller_service_fee: sellerServiceFee,
   });

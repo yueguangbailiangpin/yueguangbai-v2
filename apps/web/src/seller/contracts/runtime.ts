@@ -77,7 +77,7 @@ const sellerAmazonFormalOrderSchema = z.object({
     marketplace_code: canonicalMarketplace, currency_code: z.literal('CNY'), currency_exponent: z.literal(2),
   }).strict(),
   business_completion: z.object({ status: z.enum(['IN_PROGRESS', 'COMPLETE']), review: component,
-    buyer_refund: component, seller_principal: component, seller_service_fee: component }).strict(),
+    seller_principal: component, seller_service_fee: component }).strict(),
   confirmed_business_date: z.string(),
 }).strict();
 const sellerPlatformFormalOrderSchema = z.object({
