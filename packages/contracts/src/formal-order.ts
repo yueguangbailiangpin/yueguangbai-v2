@@ -30,11 +30,6 @@ export interface FormalOrderFinancialSnapshotProjection {
   buyer_rate_business_date: string;
   buyer_rate_confirmed_at: number;
   buyer_cny_per_jpy_e8: FixedIntegerString;
-  seller_rate_version_id: string;
-  seller_rate_version_no: number;
-  seller_rate_effective_from: number;
-  seller_rate_confirmed_at: number;
-  seller_cny_per_jpy_e8: FixedIntegerString;
   service_fee_version_id: string;
   service_fee_version_no: number;
   service_fee_effective_from: number;
@@ -48,7 +43,7 @@ export interface FormalOrderFinancialSnapshotProjection {
   buyer_expected_principal_cny_fen: FixedIntegerString;
   seller_expected_principal_cny_fen: FixedIntegerString;
   rounding_rule: FormalOrderRoundingRule;
-  seller_principal_rate_snapshot?: SellerPrincipalRateSnapshotDto;
+  seller_principal_rate_snapshot: SellerPrincipalRateSnapshotDto;
 }
 
 export interface ConfirmFormalOrderResult {

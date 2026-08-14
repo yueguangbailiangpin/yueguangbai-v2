@@ -9,7 +9,8 @@ const {schema,latestMigration}=resolveProductionSchemaBaseline();
 const migrations=readdirSync(path.join(root,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
 assert(migrations.length===schema,`expected ${schema} migrations, found ${migrations.length}`);
 assert(migrations.every((file,index)=>Number(file.slice(0,4))===index+1),'migration chain is not continuous');
-assert(latestMigration==='0068_customer_security_deny_password_rate_limit.sql','current production schema baseline must enforce Customer security DENY and password-change rate limiting in 0068');
+assert(latestMigration==='0069_retire_seller_agreement_rate_runtime.sql','current production schema baseline must retire the legacy Seller Agreement Rate runtime in 0069');
+assert(migrations.includes('0068_customer_security_deny_password_rate_limit.sql'),'immutable Customer security DENY and password-change rate-limit migration 0068 is missing');
 verifyProductionSchemaDocuments();
 
 const production=read('apps/api/wrangler.production.template.jsonc');

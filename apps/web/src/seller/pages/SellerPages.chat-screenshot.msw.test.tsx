@@ -234,11 +234,14 @@ function formalOrder() {
     store: { id: 'store-1', display_name: '店铺一' }, asin: 'B012345678', platform_product_identifier: 'B012345678', product_name: '聊天截图商品',
     product_version: { id: 'product-version-1', version_no: 1 }, review_type: 'IMAGE', final_paid_jpy: '1980',
     payment: { amount_minor: '1980', currency_code: 'JPY', currency_exponent: 0 }, seller_expected_principal_cny_fen: '100',
-    seller_principal_rate_snapshot: null,
-    seller_agreement_rate_snapshot: {
-      rate_version_id: 'rate-1', version_no: 1, cny_per_jpy_e8: '100000000', effective_from: 1, confirmed_at: 1,
-      source_currency_code: 'JPY', quote_currency_code: 'CNY', source_currency_exponent: 0, quote_currency_exponent: 2,
-      rate_value: '1', rate_scale: '1', rounding_rule: 'HALF_UP',
+    seller_principal_rate_snapshot: {
+      platform_order_date: '2026-08-01', payment_amount_minor: '1980', payment_currency_code: 'JPY',
+      base_rate_version_id: 'base-rate-1', base_rate_business_date: '2026-08-01', base_rate_confirmed_at: 1,
+      base_rate_value: '5000000', base_rate_scale: '100000000', policy_version_id: 'policy-1',
+      policy_scope_type: 'SELLER_ORGANIZATION', policy_seller_organization_id: 'seller-organization',
+      policy_version_no: 1, policy_effective_from: 1, policy_confirmed_at: 1,
+      markup_rate_value: '0', markup_rate_scale: '100000000', final_rate_value: '5000000',
+      final_rate_scale: '100000000', rounding_rule: 'HALF_UP', seller_expected_principal_amount_minor: '100',
     },
     locked_service_fee_snapshot: {
       fee_version_id: 'fee-1', version_no: 1, review_type: 'IMAGE', service_fee_cny_fen: '1', effective_from: 1,

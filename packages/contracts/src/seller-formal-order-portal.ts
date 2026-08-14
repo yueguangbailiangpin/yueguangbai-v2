@@ -27,21 +27,6 @@ export interface SellerFormalOrderProductVersionSummaryDto {
   version_no: number;
 }
 
-export interface SellerAgreementRateSnapshotDto {
-  rate_version_id: string;
-  version_no: number;
-  cny_per_jpy_e8: FixedIntegerString;
-  effective_from: number;
-  confirmed_at: number;
-  source_currency_code: CurrencyCode;
-  quote_currency_code: 'CNY';
-  source_currency_exponent: CurrencyExponent;
-  quote_currency_exponent: 2;
-  rate_value: FixedIntegerString;
-  rate_scale: FixedIntegerString;
-  rounding_rule: 'HALF_UP';
-}
-
 export interface LockedSellerServiceFeeSnapshotDto {
   fee_version_id: string;
   version_no: number;
@@ -97,8 +82,7 @@ export type SellerFormalOrderPortalDto = SellerFormalOrderPortalBaseDto & (
     currency_exponent: CurrencyExponent;
   };
   seller_expected_principal_cny_fen: FixedIntegerString;
-  seller_principal_rate_snapshot: SellerPrincipalRateSnapshotDto | null;
-  seller_agreement_rate_snapshot: SellerAgreementRateSnapshotDto;
+  seller_principal_rate_snapshot: SellerPrincipalRateSnapshotDto;
   locked_service_fee_snapshot: LockedSellerServiceFeeSnapshotDto;
   business_completion: SellerBusinessCompletionDto;
   confirmed_business_date: string;
@@ -118,7 +102,6 @@ export type SellerFormalOrderPortalDto = SellerFormalOrderPortalBaseDto & (
   payment: null;
   seller_expected_principal_cny_fen: null;
   seller_principal_rate_snapshot: null;
-  seller_agreement_rate_snapshot: null;
   locked_service_fee_snapshot: null;
   business_completion: null;
   confirmed_business_date: string | null;

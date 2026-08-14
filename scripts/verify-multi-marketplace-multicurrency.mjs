@@ -96,7 +96,7 @@ try {
     'packages/contracts/src/marketplace-money.ts',
     'apps/api/src/pricing/currency-rate-foundation.ts',
     'apps/api/src/pricing/marketplace-service-fee.ts',
-    'apps/api/src/marketplaces/lock-money-snapshot.ts',
+    'apps/api/src/order-evidence/approve-order-evidence.ts',
   ]) {
     const code = readFileSync(path.join(root, file), 'utf8');
     assert(!/\b(?:parseFloat|toFixed)\s*\(/u.test(code), `${file}: float API`);

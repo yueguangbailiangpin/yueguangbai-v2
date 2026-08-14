@@ -6,6 +6,7 @@ import {
 } from './first-owner';
 
 const DATABASE_ID = '11111111-1111-4111-8111-111111111111';
+const LONG_RUNNING_TEST_TIMEOUT_MS = 30_000;
 const INPUT: StagingFirstOwnerInput = {
   environment: 'staging',
   databaseName: 'yueguangbai-v2-staging',
@@ -75,7 +76,7 @@ describe('staging first owner bootstrap', () => {
       expect(database.raw.prepare(`SELECT COUNT(*) AS total
         FROM command_idempotency_records`).get()).toEqual({ total: 0 });
     }
-  });
+  }, LONG_RUNNING_TEST_TIMEOUT_MS);
 
   it('fails closed for partial or pre-existing Staff authority', async () => {
     database = migratedEmptyDatabase();

@@ -226,9 +226,6 @@ function validateFrozenDefaults(config, environment) {
       errors.push('vars.BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED:must_be_false');
     }
   }
-  if (vars?.SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED !== 'false') {
-    errors.push('vars.SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED:must_be_false');
-  }
   for (const flag of disabledFlags) {
     if (vars?.[flag] !== 'false') errors.push(`vars.${flag}:must_be_false`);
   }

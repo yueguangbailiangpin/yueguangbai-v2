@@ -55,7 +55,6 @@ describe('Wave 13 service-level D1 rollback boundaries', () => {
         idempotencyKey: 'fault-atomic-approval',
         requestId: 'fault-atomic-approval-request',
         now: 1_722_528_000_000,
-        sellerPrincipalRateEnforcementEnabled: true,
       },
     )).rejects.toMatchObject({ status: 503 });
     expect(count(base, 'formal_orders')).toBe(0);
@@ -254,10 +253,6 @@ function readOverlay(sql: string, mode: Mode): OverlayResult | null {
         confirmed_at: 1_700_000_000_001,
         rejection_reason: null,
       });
-    }
-    if (sql.includes('FROM seller_agreement_rate_versions')
-      && sql.includes("status='CONFIRMED'")) {
-      return first(sellerRule('fault-seller-rate', null, 5_000_000));
     }
     if (sql.includes('FROM seller_service_fee_versions')
       && sql.includes("status='CONFIRMED'")) {

@@ -16,11 +16,6 @@ import {
   submitBuyerDailyExchangeRate,
 } from './buyer-daily-exchange-rates';
 import {
-  confirmSellerAgreementRate,
-  resolveSellerAgreementRate,
-  submitSellerAgreementRate,
-} from './seller-agreement-rates';
-import {
   confirmSellerServiceFee,
   resolveSellerServiceFee,
   submitSellerServiceFee,
@@ -220,81 +215,6 @@ describe('Phase 3E pricing rules', () => {
         AND event_type='BUYER_DAILY_EXCHANGE_RATE_CONFIRMED'
     `).bind(submitted.rate_id).first<{ count: number }>();
     expect(Number(events?.count)).toBe(1);
-  });
-
-  it('versions seller agreement rates and resolves only future-effective facts', async () => {
-    database = pricingDatabase();
-    const first = await submitSellerAgreementRate(
-      database,
-      {
-        sellerOrganizationId: 'seller-org-1',
-        cnyPerJpyE8: '5200000',
-        effectiveFrom: 10_000,
-        expectedVersion: 0,
-      },
-      command(sellerOps, 'pricing:agreement:submit:0001', 1_000),
-    );
-    await confirmSellerAgreementRate(
-      database,
-      { rateVersionId: first.rate_version_id, expectedVersion: 1 },
-      command(owner, 'pricing:agreement:confirm:0001', 2_000),
-    );
-
-    await expect(resolveSellerAgreementRate(database, {
-      sellerOrganizationId: 'seller-org-1',
-      at: 9_999,
-    })).rejects.toMatchObject({
-      code: 'PRICING_RULE_NOT_FOUND',
-      status: 404,
-    });
-    expect((await resolveSellerAgreementRate(database, {
-      sellerOrganizationId: 'seller-org-1',
-      at: 10_000,
-    })).cny_per_jpy_e8).toBe('5200000');
-
-    const second = await submitSellerAgreementRate(
-      database,
-      {
-        sellerOrganizationId: 'seller-org-1',
-        cnyPerJpyE8: '5300000',
-        effectiveFrom: 20_000,
-        expectedVersion: 1,
-      },
-      command(sellerOps, 'pricing:agreement:submit:0002', 3_000),
-    );
-    await confirmSellerAgreementRate(
-      database,
-      { rateVersionId: second.rate_version_id, expectedVersion: 1 },
-      command(owner, 'pricing:agreement:confirm:0002', 4_000),
-    );
-
-    expect((await resolveSellerAgreementRate(database, {
-      sellerOrganizationId: 'seller-org-1',
-      at: 19_999,
-    })).rate_version_id).toBe(first.rate_version_id);
-    expect((await resolveSellerAgreementRate(database, {
-      sellerOrganizationId: 'seller-org-1',
-      at: 20_000,
-    })).rate_version_id).toBe(second.rate_version_id);
-
-    const notFuture = await submitSellerAgreementRate(
-      database,
-      {
-        sellerOrganizationId: 'seller-org-1',
-        cnyPerJpyE8: '5400000',
-        effectiveFrom: 30_000,
-        expectedVersion: 2,
-      },
-      command(sellerOps, 'pricing:agreement:submit:0003', 29_000),
-    );
-    await expect(confirmSellerAgreementRate(
-      database,
-      { rateVersionId: notFuture.rate_version_id, expectedVersion: 1 },
-      command(owner, 'pricing:agreement:confirm:0003', 30_000),
-    )).rejects.toMatchObject({
-      code: 'PRICING_RULE_EFFECTIVE_TIME_CONFLICT',
-      status: 409,
-    });
   });
 
   it('versions service fees independently by review type and permits zero fen', async () => {

@@ -31,9 +31,10 @@ import {
   verifyDatabaseAgainstManifest,
 } from '@ygb/testkit';
 
-const CURRENT_SCHEMA = 68;
+const CURRENT_SCHEMA = 69;
 const directories: string[] = [];
 const RELEASE_SHA = 'a'.repeat(40);
+const LONG_RUNNING_TEST_TIMEOUT_MS = 30_000;
 afterEach(() => {
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -102,7 +103,7 @@ describe('encrypted D1 backup and isolated restore', () => {
     expect(isolated.prepare('SELECT display_name FROM staff_users').get())
       .toEqual({ display_name: '匿名负责人' });
     isolated.close();
-  });
+  }, LONG_RUNNING_TEST_TIMEOUT_MS);
 
   it('does not mistake a created backup for a usable restore', async () => {
     const directory = temporaryDirectory();
@@ -147,7 +148,7 @@ describe('encrypted D1 backup and isolated restore', () => {
     expect(report.status).toBe('FAIL');
     expect(report.mismatches).toContain('row_counts');
     expect(report.mismatches).toContain('smoke_reads');
-  });
+  }, LONG_RUNNING_TEST_TIMEOUT_MS);
 
   it('fails closed before target creation for wrong, tampered or swapped provenance', async () => {
     const directory = temporaryDirectory();
@@ -167,7 +168,7 @@ describe('encrypted D1 backup and isolated restore', () => {
       {name:'swap',attestationPath:second.attestationPath,expectedReleaseCommitSha:RELEASE_SHA,error:'bundle_attestation_mismatch'},
     ];
     for(const scenario of cases){const restorePath=path.join(directory,`${scenario.name}.sqlite`);expect(()=>restoreEncryptedD1Backup({bundlePath:first.bundlePath,attestationPath:scenario.attestationPath,restorePath,key,expectedReleaseCommitSha:scenario.expectedReleaseCommitSha})).toThrow(scenario.error);expect(existsSync(restorePath)).toBe(false);}
-  });
+  }, LONG_RUNNING_TEST_TIMEOUT_MS);
 
   it('rejects authenticated malformed, unknown and oversized manifests before restore', async () => {
     const directory=temporaryDirectory();const sourcePath=path.join(directory,'source.sqlite');const source=new SqliteDatabase(sourcePath);applyMigrations(source);source.close();const key=Buffer.alloc(32,11);

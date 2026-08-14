@@ -32,18 +32,6 @@ export interface BuyerDailyExchangeRateVersion {
   confirmed_at: number | null;
 }
 
-export interface SellerAgreementRateVersion {
-  rate_version_id: string;
-  seller_organization_id: string;
-  version_no: number;
-  decision_version: number;
-  status: PricingRuleStatus;
-  cny_per_jpy_e8: FixedIntegerString;
-  effective_from: number;
-  rejection_reason: string | null;
-  confirmed_at: number | null;
-}
-
 export interface SellerServiceFeeVersion {
   fee_version_id: string;
   seller_organization_id: string;
@@ -62,15 +50,6 @@ export interface ResolvedBuyerDailyExchangeRate {
   business_date: string;
   version_no: number;
   cny_per_jpy_e8: FixedIntegerString;
-  confirmed_at: number;
-}
-
-export interface ResolvedSellerAgreementRate {
-  rate_version_id: string;
-  seller_organization_id: string;
-  version_no: number;
-  cny_per_jpy_e8: FixedIntegerString;
-  effective_from: number;
   confirmed_at: number;
 }
 

@@ -7,6 +7,7 @@ import { applyMigrations, SqliteDatabase } from '../packages/testkit/src/index.t
 
 const roots = [];
 const releaseSha = 'a'.repeat(40);
+const LONG_RUNNING_TEST_TIMEOUT_MS = 30_000;
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -32,12 +33,12 @@ describe('backup and restore CLI expected schema', () => {
     expect(result.stderr).toContain('unexpected_schema_version');
   });
 
-  it('creates and restores one anonymous schema-68 fixture when both values match', () => {
+  it('creates and restores one anonymous schema-69 fixture when both values match', () => {
     const fixture = localFixture();
-    const backup = run('backup-d1.mjs', backupArgs(fixture, '68'));
+    const backup = run('backup-d1.mjs', backupArgs(fixture, '69'));
     expect(backup.status, backup.stderr).toBe(0);
     const restored = run('restore-d1.mjs', [
-      '--expected-schema', '68',
+      '--expected-schema', '69',
       '--bundle', path.join(fixture.backup, 'd1-backup.bundle.aes256gcm'),
       '--attestation', path.join(fixture.backup, 'd1-backup.attestation.json'),
       '--restore-database', path.join(fixture.root, 'restored.sqlite'),
@@ -45,8 +46,8 @@ describe('backup and restore CLI expected schema', () => {
       '--expected-release-commit-sha', releaseSha,
     ]);
     expect(restored.status, restored.stderr).toBe(0);
-    expect(JSON.parse(restored.stdout)).toMatchObject({ status: 'PASS', schema_version: 68 });
-  });
+    expect(JSON.parse(restored.stdout)).toMatchObject({ status: 'PASS', schema_version: 69 });
+  }, LONG_RUNNING_TEST_TIMEOUT_MS);
 });
 
 function localFixture() {

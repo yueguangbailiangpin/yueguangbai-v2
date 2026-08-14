@@ -375,6 +375,18 @@ Staff 的 canonical role 只提供默认能力，Personal `DENY` 必须继续最
 
 状态：Accepted by business owner；Closes remaining Personal DENY bypasses and adds an independent password-change abuse boundary
 
+### D-045 单一正式订单确认权威与旧卖家协议汇率退役
+
+D-031 的卖家本金公式继续有效：正式订单只使用平台下单日对应币种的权威日基准汇率，加上当时有效且已确认的卖家本金汇率策略；组织覆盖优先于币种对默认，显式零加点与缺少策略必须区分，金额继续使用整数刻度、BigInt 与 `HALF_UP`。当前唯一正式订单确认权威固定为 Staff 订单证据审核通过事务；该事务必须同时完成证据状态、正式订单、买家汇率与服务费财务快照、卖家本金策略快照、卖家本金应付、不可变事件、Audit、幂等、Outbox 和最终断言。任何下单日日汇率或有效策略缺失都必须失败关闭且零部分业务写入。
+
+本 Decision 仅覆盖 D-031 中“`SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED` 默认关闭、关闭时回退 0040 兼容计算路径、旧 Seller Agreement 字段保留为兼容投影”的过渡条款。当前代码、Contract、Seller DTO/UI、配置、Verifier 和数据库不得再保留旧 Seller Agreement Rate 作为备用或第二权威，也不得保留可绕过订单证据审核事务的并行正式订单确认服务。Seller 只读查看已锁定的下单日、基准汇率、策略范围/版本、加点、最终汇率、舍入规则和本金结果；Seller 不获得策略写权限，既有组织/Store Scope、Personal DENY、文件动态授权、Buyer/Seller/Staff DTO 隔离继续有效。
+
+仅前向 Migration 0069 把当前候选提升为 Schema 69。执行前必须确认旧协议汇率版本、事件、多币种投影及引用这些事实的正式订单/财务快照存量全部为空；任一存量非空立即整体失败，不猜测转换、不删除、不回填、不导入历史业务。0069 以前向 rebuild 移除旧 FK、列、同步 trigger 和索引，再按依赖顺序删除旧表，并以完整对象断言、行数守恒、`changes()=1`、fresh/sequential/wrong-order/repeat/dirty-stock rollback、integrity 和 foreign-key 检查证明退役完成。Migration 0001–0068、D-001–D-044、历史 OpenSpec Change 与归档证据永久保持原文。
+
+本 Change 不扩展 Seller Allocation、Outbox 语义、历史订单导入或其他 P2；不授权 production/staging 部署、远程 D1/R2、Secrets、DNS、Access 或真实业务数据操作。生产或 staging 若实际存在与“空存量”前提冲突的事实，必须停止并另开受权的数据对账与迁移 Decision。
+
+状态：Accepted by business owner；Supersedes only D-031's compatibility flag, legacy fallback and retained Seller Agreement Rate projection, and advances the local candidate to Schema 69
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

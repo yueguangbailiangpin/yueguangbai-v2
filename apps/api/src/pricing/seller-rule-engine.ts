@@ -23,7 +23,6 @@ import {
   cleanFeeFen,
   cleanPricingIdentifier,
   cleanPricingReason,
-  cleanRateE8,
   insertPricingEventStatement,
   normalizePricingError,
   PricingError,
@@ -34,14 +33,10 @@ import {
 } from './pricing-shared';
 
 export interface SellerRuleConfiguration {
-  kind: 'SELLER_AGREEMENT_RATE' | 'SELLER_SERVICE_FEE';
-  table:
-    | 'seller_agreement_rate_versions'
-    | 'seller_service_fee_versions';
-  eventTable:
-    | 'seller_agreement_rate_events'
-    | 'seller_service_fee_events';
-  valueColumn: 'cny_per_jpy_e8' | 'fee_cny_fen';
+  kind: 'SELLER_SERVICE_FEE';
+  table: 'seller_service_fee_versions';
+  eventTable: 'seller_service_fee_events';
+  valueColumn: 'fee_cny_fen';
   submittedEvent: string;
   confirmedEvent: string;
   rejectedEvent: string;
@@ -98,9 +93,7 @@ export async function submitSellerRuleVersion(
     input.sellerOrganizationId,
   );
   const reviewType = normalizeReviewType(config, input.reviewType);
-  const parsed = config.valueColumn === 'cny_per_jpy_e8'
-    ? cleanRateE8(input.rawValue)
-    : cleanFeeFen(input.rawValue);
+  const parsed = cleanFeeFen(input.rawValue);
   const effectiveFrom = cleanEpochMilliseconds(input.effectiveFrom);
   const expectedVersion = cleanExpectedVersion(
     input.expectedVersion,

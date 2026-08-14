@@ -8,7 +8,6 @@ import type {
 import {
   canonicalJson,
   chinaBusinessDate,
-  convertJpyToCnyFen,
   fixedIntegerString,
   formatBuyerCustomerNumber,
   hashCanonicalJson,
@@ -47,7 +46,6 @@ import {
   requireProvisionalOrderNumberClaim,
 } from '../order-instructions/formal-order-integration';
 import { resolveBuyerDailyExchangeRate } from '../pricing/buyer-daily-exchange-rates';
-import { resolveSellerAgreementRate } from '../pricing/seller-agreement-rates';
 import {
   insertSellerPrincipalRateSnapshotStatement,
   resolveSellerPrincipalRateSnapshot,
@@ -136,6 +134,9 @@ export class AtomicOrderEvidenceApprovalError extends Error {
       | 'STATE_CONFLICT'
       | 'IDEMPOTENCY_CONFLICT'
       | 'REQUEST_IN_PROGRESS'
+      | 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND'
+      | 'PRICING_RULE_NOT_FOUND'
+      | 'SELLER_PRINCIPAL_RATE_NOT_FOUND'
       | 'DEPENDENCY_UNAVAILABLE',
     readonly status: 400 | 403 | 404 | 409 | 503,
   ) {
@@ -157,7 +158,6 @@ export async function approveOrderEvidenceAtomically(
     idempotencyKey: string;
     requestId?: string | null;
     now?: number;
-    sellerPrincipalRateEnforcementEnabled?: boolean;
   },
 ): Promise<AtomicOrderEvidenceApprovalResult> {
   requireFormalOrderConfirmationPermission(command.actor);
@@ -235,19 +235,16 @@ export async function approveOrderEvidenceAtomically(
       businessDate,
       asOf: now,
     });
-    const sellerRate = await resolveSellerAgreementRate(database, {
-      sellerOrganizationId: source.seller_organization_id,
-      at: now,
-    });
-    const sellerPrincipalRateSnapshot = command.sellerPrincipalRateEnforcementEnabled === true
-      ? await resolveSellerPrincipalRateSnapshot(database, {
-          sellerOrganizationId: source.seller_organization_id,
-          platformOrderDate: source.amazon_order_date,
-          paymentAmountMinor: source.final_paid_jpy,
-          paymentCurrencyCode: 'JPY',
-          at: now,
-        })
-      : null;
+    const sellerPrincipalRateSnapshot = await resolveSellerPrincipalRateSnapshot(
+      database,
+      {
+        sellerOrganizationId: source.seller_organization_id,
+        platformOrderDate: source.amazon_order_date,
+        paymentAmountMinor: source.final_paid_jpy,
+        paymentCurrencyCode: 'JPY',
+        at: now,
+      },
+    );
     const serviceFee = await resolveSellerServiceFee(database, {
       sellerOrganizationId: source.seller_organization_id,
       reviewType,
@@ -255,7 +252,6 @@ export async function approveOrderEvidenceAtomically(
     });
     const finalPaidJpy = parseJpyInteger(String(source.final_paid_jpy));
     const buyerRateValue = parseCnyPerJpyE8(buyerRate.cny_per_jpy_e8);
-    const sellerRateValue = parseCnyPerJpyE8(sellerRate.cny_per_jpy_e8);
     const serviceFeeValue = parseCnyFen(serviceFee.fee_cny_fen);
     const buyerFinancial = calculateBuyerFormalFinancials({
       finalPaidJpy: source.final_paid_jpy,
@@ -267,16 +263,9 @@ export async function approveOrderEvidenceAtomically(
     const buyerExpectedPrincipal = BigInt(
       buyerFinancial.buyerExpectedPrincipalCnyFen,
     );
-    let sellerExpectedPrincipal = convertJpyToCnyFen(
-      finalPaidJpy,
-      sellerRateValue,
-      'HALF_UP',
+    const sellerExpectedPrincipal = parseCnyFen(
+      sellerPrincipalRateSnapshot.seller_expected_principal_amount_minor,
     );
-    if (sellerPrincipalRateSnapshot) {
-      sellerExpectedPrincipal = parseCnyFen(
-        sellerPrincipalRateSnapshot.seller_expected_principal_amount_minor,
-      );
-    }
     const buyerNumber = prepareBuyerNumberPlan(
       database,
       source,
@@ -295,11 +284,6 @@ export async function approveOrderEvidenceAtomically(
       buyer_rate_business_date: buyerRate.business_date,
       buyer_rate_confirmed_at: buyerRate.confirmed_at,
       buyer_cny_per_jpy_e8: fixedIntegerString(buyerRateValue),
-      seller_rate_version_id: sellerRate.rate_version_id,
-      seller_rate_version_no: sellerRate.version_no,
-      seller_rate_effective_from: sellerRate.effective_from,
-      seller_rate_confirmed_at: sellerRate.confirmed_at,
-      seller_cny_per_jpy_e8: fixedIntegerString(sellerRateValue),
       service_fee_version_id: serviceFee.fee_version_id,
       service_fee_version_no: serviceFee.version_no,
       service_fee_effective_from: serviceFee.effective_from,
@@ -318,9 +302,7 @@ export async function approveOrderEvidenceAtomically(
       seller_expected_principal_cny_fen:
         fixedIntegerString(sellerExpectedPrincipal),
       rounding_rule: 'HALF_UP',
-      ...(sellerPrincipalRateSnapshot
-        ? { seller_principal_rate_snapshot: sellerPrincipalRateSnapshot }
-        : {}),
+      seller_principal_rate_snapshot: sellerPrincipalRateSnapshot,
     };
     const formalOrder: ConfirmFormalOrderResult = {
       formal_order_id: formalOrderId,
@@ -536,17 +518,21 @@ export async function approveOrderEvidenceAtomically(
         now,
       ),
       assertPreviousStatementChangedOnce(database),
-      ...(sellerPrincipalRateSnapshot
-        ? [
-            insertSellerPrincipalRateSnapshotStatement(
-              database,
-              formalOrderId,
-              sellerPrincipalRateSnapshot,
-              now,
-            ),
-            assertPreviousStatementChangedOnce(database),
-          ]
-        : []),
+      insertSellerPrincipalRateSnapshotStatement(
+        database,
+        formalOrderId,
+        sellerPrincipalRateSnapshot,
+        now,
+      ),
+      assertPreviousStatementChangedOnce(database),
+      marketplaceMoneySnapshotStatement(
+        database,
+        formalOrderId,
+        source,
+        financialSnapshot,
+        now,
+      ),
+      assertPreviousStatementChangedOnce(database),
       ...principalPayable.statements,
       database.prepare(`
         INSERT INTO formal_order_events (
@@ -854,9 +840,7 @@ function financialSnapshotStatement(
       id, formal_order_id, snapshot_version,
       buyer_rate_version_id, buyer_rate_version_no,
       buyer_rate_business_date, buyer_rate_confirmed_at,
-      buyer_cny_per_jpy_e8, seller_rate_version_id,
-      seller_rate_version_no, seller_rate_effective_from,
-      seller_rate_confirmed_at, seller_cny_per_jpy_e8,
+      buyer_cny_per_jpy_e8,
       service_fee_version_id, service_fee_version_no,
       service_fee_effective_from, service_fee_confirmed_at,
       service_fee_cny_fen, buyer_self_pay_bps, buyer_self_pay_jpy,
@@ -865,7 +849,7 @@ function financialSnapshotStatement(
       buyer_expected_principal_cny_fen,
       seller_expected_principal_cny_fen, rounding_rule, created_at
     ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'HALF_UP', ?)
+      ?, ?, ?, ?, ?, ?, ?, 'HALF_UP', ?)
   `).bind(
     snapshot.snapshot_id,
     formalOrderId,
@@ -874,11 +858,6 @@ function financialSnapshotStatement(
     snapshot.buyer_rate_business_date,
     snapshot.buyer_rate_confirmed_at,
     Number(snapshot.buyer_cny_per_jpy_e8),
-    snapshot.seller_rate_version_id,
-    snapshot.seller_rate_version_no,
-    snapshot.seller_rate_effective_from,
-    snapshot.seller_rate_confirmed_at,
-    Number(snapshot.seller_cny_per_jpy_e8),
     snapshot.service_fee_version_id,
     snapshot.service_fee_version_no,
     snapshot.service_fee_effective_from,
@@ -889,6 +868,56 @@ function financialSnapshotStatement(
     instruction.buyer_refundable_principal_jpy,
     Number(snapshot.buyer_gross_principal_cny_fen),
     Number(snapshot.buyer_self_pay_contribution_cny_fen),
+    Number(snapshot.buyer_expected_principal_cny_fen),
+    Number(snapshot.seller_expected_principal_cny_fen),
+    now,
+  );
+}
+
+function marketplaceMoneySnapshotStatement(
+  database: SqlDatabase,
+  formalOrderId: string,
+  source: AtomicApprovalSource,
+  snapshot: FormalOrderFinancialSnapshotProjection,
+  now: number,
+): SqlStatement {
+  return database.prepare(`
+    INSERT INTO formal_order_marketplace_money_snapshots (
+      formal_order_id,buyer_customer_id,seller_organization_id,store_id,
+      marketplace_code,review_type,platform_order_identifier,
+      platform_product_identifier,platform_order_date,payment_amount_minor,
+      payment_currency_code,payment_currency_exponent,buyer_rate_version_id,
+      buyer_rate_version_no,buyer_rate_confirmed_at,buyer_rate_value,
+      buyer_rate_scale,source_currency_code,quote_currency_code,
+      source_currency_exponent,quote_currency_exponent,rounding_rule,
+      service_fee_rule_version_id,service_fee_rule_version_no,
+      service_fee_effective_from,service_fee_confirmed_at,
+      service_fee_amount_minor,service_fee_currency_code,
+      buyer_expected_principal_amount_minor,
+      seller_expected_principal_amount_minor,created_at
+    ) VALUES (
+      ?,?,?,?,'AMAZON_JP',?,?,?,?,?,'JPY',0,?,?,?, ?,100000000,
+      'JPY','CNY',0,2,'HALF_UP',?,?,?,?,?,'CNY',?,?,?
+    )
+  `).bind(
+    formalOrderId,
+    source.buyer_customer_id,
+    source.seller_organization_id,
+    source.store_id,
+    source.review_type,
+    source.amazon_order_number_normalized,
+    source.asin_normalized,
+    source.amazon_order_date,
+    source.final_paid_jpy,
+    `currency-${snapshot.buyer_rate_version_id}`,
+    snapshot.buyer_rate_version_no,
+    snapshot.buyer_rate_confirmed_at,
+    Number(snapshot.buyer_cny_per_jpy_e8),
+    `marketplace-${snapshot.service_fee_version_id}`,
+    snapshot.service_fee_version_no,
+    snapshot.service_fee_effective_from,
+    snapshot.service_fee_confirmed_at,
+    Number(snapshot.service_fee_cny_fen),
     Number(snapshot.buyer_expected_principal_cny_fen),
     Number(snapshot.seller_expected_principal_cny_fen),
     now,
@@ -1014,6 +1043,13 @@ function assertAtomicApprovalStatement(
         WHERE id=? AND formal_order_id=?
           AND buyer_gross_principal_cny_fen=?
           AND seller_expected_principal_cny_fen=?)
+      AND EXISTS (SELECT 1 FROM seller_principal_rate_snapshots
+        WHERE formal_order_id=? AND policy_version_id=?
+          AND seller_expected_principal_amount_minor=?)
+      AND EXISTS (SELECT 1 FROM formal_order_marketplace_money_snapshots
+        WHERE formal_order_id=?
+          AND buyer_expected_principal_amount_minor=?
+          AND seller_expected_principal_amount_minor=?)
       AND EXISTS (SELECT 1 FROM seller_payables
         WHERE id=? AND formal_order_id=? AND payable_type='SELLER_PRINCIPAL')
       AND EXISTS (SELECT 1 FROM order_evidence_submissions
@@ -1039,6 +1075,13 @@ function assertAtomicApprovalStatement(
     formalOrder.financial_snapshot.snapshot_id,
     formalOrder.formal_order_id,
     Number(formalOrder.financial_snapshot.buyer_gross_principal_cny_fen),
+    Number(formalOrder.financial_snapshot.seller_expected_principal_cny_fen),
+    formalOrder.formal_order_id,
+    formalOrder.financial_snapshot.seller_principal_rate_snapshot
+      .policy_version_id,
+    Number(formalOrder.financial_snapshot.seller_expected_principal_cny_fen),
+    formalOrder.formal_order_id,
+    Number(formalOrder.financial_snapshot.buyer_expected_principal_cny_fen),
     Number(formalOrder.financial_snapshot.seller_expected_principal_cny_fen),
     payableId,
     formalOrder.formal_order_id,
@@ -1103,6 +1146,9 @@ function normalizeAtomicApprovalError(
       || code === 'VERSION_CONFLICT'
       || code === 'IDEMPOTENCY_CONFLICT'
       || code === 'REQUEST_IN_PROGRESS'
+      || code === 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND'
+      || code === 'PRICING_RULE_NOT_FOUND'
+      || code === 'SELLER_PRINCIPAL_RATE_NOT_FOUND'
       || code === 'DEPENDENCY_UNAVAILABLE') {
       return new AtomicOrderEvidenceApprovalError(code, error.status);
     }
@@ -1116,6 +1162,9 @@ function normalizeAtomicApprovalError(
     || formal.code === 'VERSION_CONFLICT'
     || formal.code === 'IDEMPOTENCY_CONFLICT'
     || formal.code === 'REQUEST_IN_PROGRESS'
+    || formal.code === 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND'
+    || formal.code === 'PRICING_RULE_NOT_FOUND'
+    || formal.code === 'SELLER_PRINCIPAL_RATE_NOT_FOUND'
     || formal.code === 'DEPENDENCY_UNAVAILABLE') {
     return new AtomicOrderEvidenceApprovalError(formal.code, formal.status);
   }

@@ -5,6 +5,10 @@ import {
   it,
 } from 'vitest';
 import type {
+  SqlAllResult,
+  SqlDatabase,
+  SqlRunResult,
+  SqlStatement,
   StaffPermissionCode,
   StaffRoleCode,
 } from '@ygb/contracts';
@@ -12,7 +16,7 @@ import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
-import { confirmFormalOrder } from './confirm-formal-order';
+import { confirmFormalOrderForTest as confirmFormalOrder } from '../../test-support/confirm-formal-order-fixture';
 import type { FormalOrderStaffActor } from './formal-order-shared';
 import {
   bindPhase3GEvidenceFixture,
@@ -22,6 +26,7 @@ import { approveOrderEvidenceAtomically } from '../order-evidence/approve-order-
 
 const NOW = Date.UTC(2026, 7, 1, 0, 0, 0);
 const BUSINESS_DATE = '2026-08-01';
+const LONG_RUNNING_TEST_TIMEOUT_MS = 30_000;
 
 let database: SqliteDatabase | null = null;
 
@@ -53,7 +58,6 @@ describe('Phase 3F formal order confirmation', () => {
       financial_snapshot: {
         snapshot_version: 1,
         buyer_cny_per_jpy_e8: '5500000',
-        seller_cny_per_jpy_e8: '6000000',
         service_fee_cny_fen: '2500',
         buyer_expected_principal_cny_fen: '48840',
         seller_expected_principal_cny_fen: '53280',
@@ -138,7 +142,7 @@ describe('Phase 3F formal order confirmation', () => {
       confirmationInput('evidence-submission-1'),
       command(preSalesActor(), 'formal-order:state:reservation'),
     )).rejects.toMatchObject({
-      code: 'FORMAL_ORDER_STATE_CONFLICT',
+      code: 'ORDER_EVIDENCE_STATE_CONFLICT',
       status: 409,
     });
 
@@ -153,7 +157,7 @@ describe('Phase 3F formal order confirmation', () => {
       code: 'VERSION_CONFLICT',
       status: 409,
     });
-  });
+  }, LONG_RUNNING_TEST_TIMEOUT_MS);
 
   it('replays the same command and rejects an idempotency payload conflict', async () => {
     database = createMigratedTestDatabase();
@@ -199,7 +203,7 @@ describe('Phase 3F formal order confirmation', () => {
       confirmationInput('evidence-submission-1', 3),
       command(preSalesActor(), 'formal-order:unique:second'),
     )).rejects.toMatchObject({
-      code: 'FORMAL_ORDER_ALREADY_EXISTS',
+      code: 'ORDER_EVIDENCE_STATE_CONFLICT',
       status: 409,
     });
 
@@ -238,16 +242,16 @@ describe('Phase 3F formal order confirmation', () => {
     await expectNoPartialFacts(database, 'evidence-submission-1');
   });
 
-  it('blocks confirmation when seller rate or Review Type fee is missing', async () => {
+  it('blocks confirmation when principal policy or Review Type fee is missing', async () => {
     database = createMigratedTestDatabase();
-    await seedFormalOrderFixture(database, { omitSellerRate: true });
+    await seedFormalOrderFixture(database, { omitPrincipalPolicy: true });
 
     await expect(confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-1'),
       command(preSalesActor(), 'formal-order:pricing:missing-rate'),
     )).rejects.toMatchObject({
-      code: 'PRICING_RULE_NOT_FOUND',
+      code: 'SELLER_PRINCIPAL_RATE_NOT_FOUND',
       status: 404,
     });
     await expectNoPartialFacts(database, 'evidence-submission-1');
@@ -266,55 +270,38 @@ describe('Phase 3F formal order confirmation', () => {
     await expectNoPartialFacts(database, 'evidence-submission-3');
   });
 
-  it('keeps the seller-principal policy independent from the legacy agreement version', async () => {
+  it('contains no legacy agreement-rate schema or financial projection', async () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database);
-    seedConfirmedSellerRate(database, {
-      id: 'seller-rate-v2',
-      versionNo: 2,
-      value: 6_500_000,
-      submittedAt: 10_000,
-      confirmedAt: 11_000,
-      effectiveFrom: 12_000,
-    });
 
     const result = await confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-1'),
-      command(preSalesActor(), 'formal-order:seller-rate:v2'),
+      command(preSalesActor(), 'formal-order:principal-only'),
     );
-    expect(result.financial_snapshot).toMatchObject({
-      seller_rate_version_id: 'seller-rate-v2',
-      seller_rate_version_no: 2,
-      seller_cny_per_jpy_e8: '6500000',
-      seller_expected_principal_cny_fen: '53280',
-    });
+    expect(result.financial_snapshot.seller_principal_rate_snapshot)
+      .toMatchObject({
+        policy_version_id: 'principal-policy-override-v1',
+        final_rate_value: '6000000',
+        seller_expected_principal_amount_minor: '53280',
+      });
+    expect(Object.keys(result.financial_snapshot).some(
+      (key) => key.startsWith('seller_rate_')
+        || key === 'seller_cny_per_jpy_e8',
+    )).toBe(false);
+    expect((await database.prepare(`
+      SELECT COUNT(*) AS count FROM sqlite_schema
+      WHERE name LIKE '%seller_agreement%'
+    `).first<{ count: number }>())).toEqual({ count: 0 });
   });
 
-  it('uses the explicit fail-closed enforcement switch for missing and existing policies', async () => {
-    database = createMigratedTestDatabase();
-    await seedFormalOrderFixture(database, { omitPrincipalPolicy: true });
-    const legacyResult = await confirmFormalOrder(
-      database,
-      confirmationInput('evidence-submission-1'),
-      command(preSalesActor(), 'formal-order:policy-switch:off', NOW, false),
-    );
-    expect(legacyResult.financial_snapshot.seller_principal_rate_snapshot).toBeUndefined();
-    expect(await database.prepare(`
-      SELECT COUNT(*) AS count FROM seller_principal_rate_snapshots
-      WHERE formal_order_id=?
-    `).bind(legacyResult.formal_order_id).first<{ count: number }>()).toEqual({ count: 0 });
-
-    database.close();
+  it('always requires an eligible principal policy without a runtime switch', async () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database, { omitPrincipalPolicy: true });
     await expect(confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-1'),
-      {
-        ...command(preSalesActor(), 'formal-order:policy-switch:on-missing'),
-        sellerPrincipalRateEnforcementEnabled: true,
-      },
+      command(preSalesActor(), 'formal-order:policy:missing'),
     )).rejects.toMatchObject({
       code: 'SELLER_PRINCIPAL_RATE_NOT_FOUND',
       status: 404,
@@ -329,10 +316,7 @@ describe('Phase 3F formal order confirmation', () => {
     const enforcedResult = await confirmFormalOrder(
       database,
       confirmationInput('evidence-submission-1'),
-      {
-        ...command(preSalesActor(), 'formal-order:policy-switch:on-existing'),
-        sellerPrincipalRateEnforcementEnabled: true,
-      },
+      command(preSalesActor(), 'formal-order:policy:existing'),
     );
     expect(enforcedResult.financial_snapshot.seller_principal_rate_snapshot).toMatchObject({
       policy_version_id: 'principal-policy-override-v1',
@@ -361,10 +345,9 @@ describe('Phase 3F formal order confirmation', () => {
         idempotencyKey: 'atomic-policy-switch:on-missing',
         requestId: 'request:atomic-policy-switch:on-missing',
         now: NOW,
-        sellerPrincipalRateEnforcementEnabled: true,
       },
     )).rejects.toMatchObject({
-      code: 'NOT_FOUND',
+      code: 'SELLER_PRINCIPAL_RATE_NOT_FOUND',
       status: 404,
     });
 
@@ -397,7 +380,6 @@ describe('Phase 3F formal order confirmation', () => {
         idempotencyKey: 'atomic-policy-switch:on-existing',
         requestId: 'request:atomic-policy-switch:on-existing',
         now: NOW,
-        sellerPrincipalRateEnforcementEnabled: true,
       },
     );
 
@@ -427,6 +409,42 @@ describe('Phase 3F formal order confirmation', () => {
       principal_amount: 53280,
       payable_amount: 53280,
     });
+  });
+
+  it.each([
+    ['buyer rate', { binding: 12, value: 5_500_001 }, 'VALIDATION_ERROR', 400],
+    ['service fee', { binding: 17, value: 2_501 }, 'VALIDATION_ERROR', 400],
+    ['principal snapshot', { binding: 19, value: 53_281 }, 'VALIDATION_ERROR', 400],
+    ['payment amount', { binding: 8, value: 8_881 }, 'VALIDATION_ERROR', 400],
+    ['order date', { binding: 7, value: '2026-08-02' }, 'VALIDATION_ERROR', 400],
+    ['currency', { sqlCurrency: true }, 'DEPENDENCY_UNAVAILABLE', 503],
+    ['created timestamp', { binding: 20, value: NOW + 1 }, 'VALIDATION_ERROR', 400],
+  ] as const)('rejects a marketplace snapshot with mismatched %s', async (
+    _label,
+    mutation,
+    code,
+    status,
+  ) => {
+    database = createMigratedTestDatabase();
+    await seedFormalOrderFixture(database, { leaveEvidencePending: true });
+    seedAtomicApprovalWorkItem(database);
+    const tampered = new MarketplaceSnapshotTamperDatabase(database, mutation);
+
+    await expect(approveOrderEvidenceAtomically(
+      tampered,
+      {
+        submissionId: 'evidence-submission-1',
+        expectedVersion: 1,
+        priceMismatchAcknowledged: true,
+        priceMismatchReason: 'fixture amount differs from reference',
+      },
+      {
+        actor: atomicApprovalOwnerActor(),
+        idempotencyKey: `atomic-guard:${_label}`,
+        now: NOW,
+      },
+    )).rejects.toMatchObject({ code, status });
+    await expectNoPartialFacts(database, 'evidence-submission-1');
   });
 
   it('resolves the service fee by seller organization and Review Type', async () => {
@@ -559,7 +577,7 @@ describe('Phase 3F formal order confirmation', () => {
       confirmationInput('evidence-submission-2'),
       command(preSalesActor(), 'formal-order:duplicate:two'),
     )).rejects.toMatchObject({
-      code: 'ORDER_NUMBER_ALREADY_CLAIMED',
+      code: 'ORDER_EVIDENCE_STATE_CONFLICT',
       status: 409,
     });
 
@@ -596,24 +614,26 @@ describe('Phase 3F formal order confirmation', () => {
         formal_order.asin_normalized,
         formal_order.product_name_snapshot,
         snapshot.buyer_cny_per_jpy_e8,
-        snapshot.seller_cny_per_jpy_e8,
+        principal.final_rate_value AS seller_principal_final_rate_value,
         snapshot.service_fee_cny_fen
       FROM formal_orders formal_order
       JOIN formal_order_financial_snapshots snapshot
         ON snapshot.formal_order_id=formal_order.id
+      JOIN seller_principal_rate_snapshots principal
+        ON principal.formal_order_id=formal_order.id
       WHERE formal_order.id=?
     `).bind(result.formal_order_id).first<{
       asin_normalized: string;
       product_name_snapshot: string;
       buyer_cny_per_jpy_e8: number;
-      seller_cny_per_jpy_e8: number;
+      seller_principal_final_rate_value: number;
       service_fee_cny_fen: number;
     }>();
     expect(frozen).toEqual({
       asin_normalized: 'B0FORM0001',
       product_name_snapshot: '正式订单产品一',
       buyer_cny_per_jpy_e8: 5_500_000,
-      seller_cny_per_jpy_e8: 6_000_000,
+      seller_principal_final_rate_value: 6_000_000,
       service_fee_cny_fen: 2500,
     });
   });
@@ -804,14 +824,12 @@ function command(
   actor: FormalOrderStaffActor,
   idempotencyKey: string,
   now = NOW,
-  sellerPrincipalRateEnforcementEnabled = true,
 ) {
   return {
     actor,
     idempotencyKey,
     requestId: `request:${idempotencyKey}`,
     now,
-    sellerPrincipalRateEnforcementEnabled,
   };
 }
 
@@ -826,6 +844,63 @@ function actor(
     roles,
     permissions: new Set(permissions),
   };
+}
+
+type SnapshotMutation = Readonly<{
+  binding?: number;
+  value?: unknown;
+  sqlCurrency?: boolean;
+}>;
+
+class MarketplaceSnapshotTamperDatabase implements SqlDatabase {
+  constructor(
+    private readonly target: SqlDatabase,
+    private readonly mutation: SnapshotMutation,
+  ) {}
+
+  prepare(sql: string): SqlStatement {
+    if (!sql.includes('INSERT INTO formal_order_marketplace_money_snapshots')) {
+      return this.target.prepare(sql);
+    }
+    const preparedSql = this.mutation.sqlCurrency === true
+      ? sql.replaceAll("'JPY'", "'USD'")
+      : sql;
+    return new MarketplaceSnapshotTamperStatement(
+      this.target.prepare(preparedSql),
+      this.mutation,
+    );
+  }
+
+  batch(statements: readonly SqlStatement[]): Promise<SqlRunResult[]> {
+    return this.target.batch(statements);
+  }
+}
+
+class MarketplaceSnapshotTamperStatement implements SqlStatement {
+  constructor(
+    private readonly target: SqlStatement,
+    private readonly mutation: SnapshotMutation,
+  ) {}
+
+  bind(...values: unknown[]): SqlStatement {
+    const changed = [...values];
+    if (this.mutation.binding !== undefined) {
+      changed[this.mutation.binding] = this.mutation.value;
+    }
+    return this.target.bind(...changed);
+  }
+
+  first<T = Record<string, unknown>>(): Promise<T | null> {
+    return this.target.first<T>();
+  }
+
+  all<T = Record<string, unknown>>(): Promise<SqlAllResult<T>> {
+    return this.target.all<T>();
+  }
+
+  run(): Promise<SqlRunResult> {
+    return this.target.run();
+  }
 }
 
 function preSalesActor(): FormalOrderStaffActor {
@@ -885,7 +960,7 @@ async function expectNoPartialFacts(
     number_events: 0,
     buyer_number: null,
     next_sequence: 1,
-    evidence_status: 'VERIFIED',
+    evidence_status: 'PENDING_VERIFICATION',
   });
 }
 
@@ -897,7 +972,6 @@ async function seedFormalOrderFixture(
     sellerRateE8?: number;
     omitPrincipalPolicy?: boolean;
     duplicateAmazonOrder?: boolean;
-    omitSellerRate?: boolean;
     omitVideoServiceFee?: boolean;
     leaveEvidencePending?: boolean;
   } = {},
@@ -909,25 +983,6 @@ async function seedFormalOrderFixture(
   const secondOrder = options.duplicateAmazonOrder
     ? '123-1234567-1234567'
     : '456-1234567-1234567';
-  const sellerRateSql = options.omitSellerRate
-    ? ''
-    : `
-      INSERT INTO seller_agreement_rate_versions (
-        id, organization_id, review_type, version_no,
-        status, cny_per_jpy_e8, effective_from,
-        submitted_by_staff_id, submitted_at, decision_version,
-        confirmed_by_staff_id, confirmed_at,
-        rejected_by_staff_id, rejected_at, rejection_reason
-      ) VALUES (
-        'seller-rate-v1', 'seller-org-formal', NULL, 1,
-        'SUBMITTED', ${sellerRateE8}, 3000,
-        'staff-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
-      );
-      UPDATE seller_agreement_rate_versions
-      SET status='CONFIRMED', decision_version=2,
-          confirmed_by_staff_id='staff-owner', confirmed_at=2000
-      WHERE id='seller-rate-v1';
-    `;
   const principalPolicySql = options.omitPrincipalPolicy
     ? ''
     : `
@@ -1249,7 +1304,6 @@ async function seedFormalOrderFixture(
 
     ${principalPolicySql}
 
-    ${sellerRateSql}
   `);
 
   await bindPhase3GEvidenceFixture(db, {
@@ -1353,37 +1407,5 @@ function seedConfirmedServiceFee(
     SET status='CONFIRMED', decision_version=2,
         confirmed_by_staff_id='staff-owner', confirmed_at=2000
     WHERE id='${id}';
-  `);
-}
-
-function seedConfirmedSellerRate(
-  db: SqliteDatabase,
-  input: {
-    id: string;
-    versionNo: number;
-    value: number;
-    submittedAt: number;
-    confirmedAt: number;
-    effectiveFrom: number;
-  },
-): void {
-  db.exec(`
-    INSERT INTO seller_agreement_rate_versions (
-      id, organization_id, review_type, version_no,
-      status, cny_per_jpy_e8, effective_from,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
-    ) VALUES (
-      '${input.id}', 'seller-org-formal', NULL, ${input.versionNo},
-      'SUBMITTED', ${input.value}, ${input.effectiveFrom},
-      'staff-owner', ${input.submittedAt}, 1,
-      NULL, NULL, NULL, NULL, NULL
-    );
-    UPDATE seller_agreement_rate_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-owner',
-        confirmed_at=${input.confirmedAt}
-    WHERE id='${input.id}';
   `);
 }

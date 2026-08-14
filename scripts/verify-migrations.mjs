@@ -16,15 +16,15 @@ const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-v2-migrations-'),
 );
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 68;
+const expectedLatestSchema = 69;
 const expectedLastMigration =
-  '0068_customer_security_deny_password_rate_limit.sql';
+  '0069_retire_seller_agreement_rate_runtime.sql';
 const expectedSchemaInventory = {
-  table: 214,
-  index: 612,
-  trigger: 410,
+  table: 211,
+  index: 601,
+  trigger: 398,
   view: 12,
-  sha256: '0192d1534733c26654cd883ba361428e11a044c4a6380d36b6112962214edea8',
+  sha256: '0132366ecb08eb8f91680e51d135ac2b238b9b6b737c0dc13f32fac12dc43a0f',
 };
 
 const requiredTables = [
@@ -79,8 +79,6 @@ const requiredTables = [
   'file_events',
   'buyer_daily_exchange_rates',
   'buyer_daily_exchange_rate_events',
-  'seller_agreement_rate_versions',
-  'seller_agreement_rate_events',
   'seller_service_fee_versions',
   'seller_service_fee_events',
   'customer_login_rate_limits',
@@ -139,7 +137,6 @@ const requiredTables = [
   'seller_store_marketplaces',
   'buyer_marketplace_correction_events',
   'buyer_daily_currency_rate_versions',
-  'seller_agreement_currency_rate_versions',
   'seller_service_fee_rule_versions',
   'order_evidence_marketplace_money',
   'formal_order_marketplace_money_snapshots',
@@ -285,8 +282,6 @@ const requiredTriggers = [
   'trg_file_events_no_delete',
   'trg_buyer_daily_rate_events_no_update',
   'trg_buyer_daily_rate_events_no_delete',
-  'trg_seller_agreement_rate_events_no_update',
-  'trg_seller_agreement_rate_events_no_delete',
   'trg_seller_service_fee_events_no_update',
   'trg_seller_service_fee_events_no_delete',
   'trg_customer_auth_security_events_no_update',
@@ -398,10 +393,6 @@ const requiredTriggers = [
   'trg_buyer_daily_currency_rate_legacy_update',
   'trg_buyer_daily_currency_rate_update_guard',
   'trg_buyer_daily_currency_rate_no_delete',
-  'trg_seller_agreement_currency_rate_legacy_insert',
-  'trg_seller_agreement_currency_rate_legacy_update',
-  'trg_seller_agreement_currency_rate_update_guard',
-  'trg_seller_agreement_currency_rate_no_delete',
   'trg_seller_service_fee_rule_legacy_insert',
   'trg_seller_service_fee_rule_legacy_update',
   'trg_seller_service_fee_rule_update_guard',
@@ -412,7 +403,6 @@ const requiredTriggers = [
   'trg_formal_order_marketplace_money_source_guard',
   'trg_formal_order_marketplace_money_no_update',
   'trg_formal_order_marketplace_money_no_delete',
-  'trg_formal_order_marketplace_money_legacy_insert',
   'trg_platform_product_identity_scope_guard',
   'trg_platform_product_identity_no_key_update',
   'trg_platform_product_identities_no_delete',
@@ -691,7 +681,7 @@ try {
   if (migrationFiles.length !== expectedLatestSchema
     || migrationFiles.at(-1) !== expectedLastMigration
     || migrationNumbers.some((number, index) => number !== index + 1)) {
-    throw new Error('Migration 必须是唯一连续的 0001-0068');
+    throw new Error('Migration 必须是唯一连续的 0001-0069');
   }
 
   const database = new DatabaseSync(databasePath);
@@ -781,6 +771,32 @@ try {
     }
     for (const trigger of requiredTriggers) {
       if (!triggers.has(trigger)) throw new Error(`缺少触发器: ${trigger}`);
+    }
+    for (const table of [
+      'seller_agreement_rate_versions',
+      'seller_agreement_rate_events',
+      'seller_agreement_currency_rate_versions',
+    ]) {
+      if (tables.has(table)) throw new Error(`禁止遗留表: ${table}`);
+    }
+    for (const [table, forbiddenColumns] of [
+      ['formal_order_financial_snapshots', [
+        'seller_rate_version_id', 'seller_rate_version_no',
+        'seller_rate_effective_from', 'seller_rate_confirmed_at',
+        'seller_cny_per_jpy_e8',
+      ]],
+      ['formal_order_marketplace_money_snapshots', [
+        'seller_rate_version_id', 'seller_rate_version_no',
+        'seller_rate_effective_from', 'seller_rate_confirmed_at',
+        'seller_rate_value', 'seller_rate_scale',
+      ]],
+    ]) {
+      const columns = new Set(database.prepare(
+        `PRAGMA table_info(${table})`,
+      ).all().map((column) => String(column.name)));
+      for (const column of forbiddenColumns) {
+        if (columns.has(column)) throw new Error(`禁止遗留列: ${table}.${column}`);
+      }
     }
     if (!sequentialInventory.some((object) =>
       object.type === 'index'
@@ -878,7 +894,6 @@ try {
         'default_buyer_self_pay_bps',
       ]],
       ['buyer_daily_exchange_rates', ['cny_per_jpy_e8']],
-      ['seller_agreement_rate_versions', ['cny_per_jpy_e8']],
       ['seller_service_fee_versions', ['fee_cny_fen']],
       ['order_evidence_versions', [
         'final_paid_jpy', 'reference_order_amount_jpy_snapshot',
@@ -889,7 +904,6 @@ try {
       ['formal_orders', ['final_paid_jpy']],
       ['formal_order_financial_snapshots', [
         'buyer_cny_per_jpy_e8',
-        'seller_cny_per_jpy_e8',
         'service_fee_cny_fen',
         'buyer_self_pay_bps', 'buyer_self_pay_jpy',
         'buyer_refundable_principal_jpy',

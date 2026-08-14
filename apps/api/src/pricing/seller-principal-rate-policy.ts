@@ -43,11 +43,6 @@ import {
 const RATE_SCALE = 100_000_000;
 const POLICY_KIND = 'SELLER_PRINCIPAL_RATE_POLICY';
 
-/** The enforcement switch is explicit and fail-closed: absent is disabled. */
-export function isSellerPrincipalRateEnforcementEnabled(value: unknown): boolean {
-  return value === 'true';
-}
-
 function requireSellerPrincipalPolicySubmitter(actor: PricingStaffActor): void {
   if (!actor.roles.includes('seller_ops') && !actor.roles.includes('owner')) {
     throw new PricingError('FORBIDDEN', 403);

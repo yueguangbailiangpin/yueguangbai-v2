@@ -50,7 +50,6 @@ describe('non-Amazon Seller formal-order projection', () => {
       payment: null,
       seller_expected_principal_cny_fen: null,
       seller_principal_rate_snapshot: null,
-      seller_agreement_rate_snapshot: null,
       locked_service_fee_snapshot: null,
       business_completion: null,
       chat_screenshot: { status: 'NONE', file_version: null },

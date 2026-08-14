@@ -446,7 +446,7 @@ describe('Phase 3E2 product ordering profiles', () => {
   it('keeps formal-order code independent from current ordering profile fields', () => {
     const root = path.resolve(import.meta.dirname, '../../../..');
     for (const relative of [
-      'apps/api/src/formal-orders/confirm-formal-order.ts',
+      'apps/api/src/order-evidence/approve-order-evidence.ts',
       'apps/api/src/buyer-formal-orders/read-model.ts',
       'apps/api/src/seller-formal-orders/read-model.ts',
     ]) {

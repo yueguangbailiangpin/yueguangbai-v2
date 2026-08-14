@@ -5,18 +5,7 @@ import {
 } from '@ygb/testkit';
 import { createSellerStore } from '../catalog/create-store';
 import { createApp } from '../app';
-import {
-  confirmBuyerDailyCurrencyRate,
-  confirmSellerAgreementCurrencyRate,
-  submitBuyerDailyCurrencyRate,
-  submitSellerAgreementCurrencyRate,
-} from '../pricing/currency-rate-foundation';
-import {
-  confirmMarketplaceServiceFee,
-  submitMarketplaceServiceFee,
-} from '../pricing/marketplace-service-fee';
 import { correctBuyerMarketplace } from './correct-buyer-marketplace';
-import { lockFormalOrderMarketplaceMoneySnapshot } from './lock-money-snapshot';
 import { resolveMarketplace } from './registry';
 import { registerMarketplaceFoundationRoutes } from './routes';
 
@@ -214,131 +203,6 @@ describe('marketplace and multi-currency application foundation', () => {
     });
   });
 
-  it('confirms USD/CNY rules, locks an immutable snapshot and blocks later correction', async () => {
-    database = createMigratedTestDatabase();
-    seedOrganization(database);
-    seedBuyer(database);
-    const store = await createSellerStore(database, {
-      sellerOrganizationId: 'seller-org-global',
-      marketplaceCode: 'AMAZON_US',
-      storeName: '美国正式事实店',
-    }, command('seller-us-snapshot-store'));
-    await correctBuyerMarketplace(database, {
-      buyerCustomerId: 'buyer-fact-free', marketplaceCode: 'AMAZON_US',
-      expectedVersion: 1, reason: '正式事实前受控纠正到美国站',
-    }, correctionCommand('buyer-us-before-snapshot'));
-
-    const buyerSubmitted = await submitBuyerDailyCurrencyRate(database, {
-      businessDate: '2026-08-06', sourceCurrencyCode: 'USD',
-      rateValue: '7000000', rateScale: '1000000', expectedVersion: 0,
-    }, pricingCommand('submit-us-buyer-rate', ['seller_ops'], 1000));
-    await expect(confirmBuyerDailyCurrencyRate(database, {
-      rateVersionId: buyerSubmitted.rate_version_id, expectedVersion: 1,
-    }, pricingCommand('ordinary-cannot-confirm-rate', ['seller_ops'], 2000)))
-      .rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
-    const buyerRate = await confirmBuyerDailyCurrencyRate(database, {
-      rateVersionId: buyerSubmitted.rate_version_id, expectedVersion: 1,
-    }, pricingCommand('confirm-us-buyer-rate', ['owner'], 2000));
-
-    const sellerSubmitted = await submitSellerAgreementCurrencyRate(database, {
-      sellerOrganizationId: 'seller-org-global', sourceCurrencyCode: 'USD',
-      rateValue: '6800000', rateScale: '1000000', effectiveFrom: 3000,
-      expectedVersion: 0,
-    }, pricingCommand('submit-us-seller-rate', ['seller_ops'], 1000));
-    const sellerRate = await confirmSellerAgreementCurrencyRate(database, {
-      rateVersionId: sellerSubmitted.rate_version_id, expectedVersion: 1,
-    }, pricingCommand('confirm-us-seller-rate', ['owner'], 2000));
-
-    const feeSubmitted = await submitMarketplaceServiceFee(database, {
-      sellerOrganizationId: 'seller-org-global', marketplaceCode: 'AMAZON_US',
-      reviewType: 'TEXT', feeAmountMinor: '2500', effectiveFrom: 3000,
-      expectedVersion: 0,
-    }, pricingCommand('submit-us-fee', ['seller_ops'], 1000));
-    const fee = await confirmMarketplaceServiceFee(database, {
-      feeRuleVersionId: feeSubmitted.fee_rule_version_id, expectedVersion: 1,
-    }, pricingCommand('confirm-us-fee', ['owner'], 2000));
-
-    const snapshot = await lockFormalOrderMarketplaceMoneySnapshot(database, {
-      formalOrderId: 'us-formal-fact-1',
-      buyerCustomerId: 'buyer-fact-free',
-      sellerOrganizationId: 'seller-org-global', storeId: store.store_id,
-      marketplaceCode: 'AMAZON_US', reviewType: 'TEXT',
-      platformOrderIdentifier: '123-1234567-1234567',
-      platformProductIdentifier: 'B012345678',
-      platformOrderDate: '2026-08-06',
-      payment: { amount_minor: '12345', currency_code: 'USD',
-        currency_exponent: 2 },
-      buyerRateVersionId: buyerRate.rate_version_id,
-      sellerRateVersionId: sellerRate.rate_version_id,
-      serviceFeeRuleVersionId: fee.fee_rule_version_id,
-    }, pricingCommand('lock-us-money-snapshot', ['seller_ops'], 4500));
-    expect(snapshot).toMatchObject({
-      marketplace_code: 'AMAZON_US',
-      payment: { amount_minor: '12345', currency_code: 'USD',
-        currency_exponent: 2 },
-      buyer_rate: { rate_version_id: buyerRate.rate_version_id,
-        rate_value: '7000000', rate_scale: '1000000' },
-      seller_rate: { rate_version_id: sellerRate.rate_version_id,
-        rate_value: '6800000', rate_scale: '1000000' },
-      buyer_expected_principal: { amount_minor: '86415',
-        currency_code: 'CNY' },
-      seller_expected_principal: { amount_minor: '83946',
-        currency_code: 'CNY' },
-    });
-    const replay = await lockFormalOrderMarketplaceMoneySnapshot(database, {
-      formalOrderId: 'us-formal-fact-1', buyerCustomerId: 'buyer-fact-free',
-      sellerOrganizationId: 'seller-org-global', storeId: store.store_id,
-      marketplaceCode: 'AMAZON_US', reviewType: 'TEXT',
-      platformOrderIdentifier: '123-1234567-1234567',
-      platformProductIdentifier: 'B012345678',
-      platformOrderDate: '2026-08-06',
-      payment: { amount_minor: '12345', currency_code: 'USD',
-        currency_exponent: 2 },
-      buyerRateVersionId: buyerRate.rate_version_id,
-      sellerRateVersionId: sellerRate.rate_version_id,
-      serviceFeeRuleVersionId: fee.fee_rule_version_id,
-    }, pricingCommand('lock-us-money-snapshot', ['seller_ops'], 4000));
-    expect(replay.replayed).toBe(true);
-
-    const laterSellerRate = await submitSellerAgreementCurrencyRate(database, {
-      sellerOrganizationId: 'seller-org-global', sourceCurrencyCode: 'USD',
-      rateValue: '6900000', rateScale: '1000000', effectiveFrom: 6000,
-      expectedVersion: 1,
-    }, pricingCommand('submit-later-us-seller-rate', ['seller_ops'], 4600));
-    await confirmSellerAgreementCurrencyRate(database, {
-      rateVersionId: laterSellerRate.rate_version_id, expectedVersion: 1,
-    }, pricingCommand('confirm-later-us-seller-rate', ['owner'], 5000));
-
-    await expect(correctBuyerMarketplace(database, {
-      buyerCustomerId: 'buyer-fact-free', marketplaceCode: 'AMAZON_JP',
-      expectedVersion: 2, reason: '已有财务快照后不得静默跨站重写',
-    }, correctionCommand('buyer-after-us-snapshot')))
-      .rejects.toMatchObject({ code: 'STATE_CONFLICT', status: 409 });
-    await expect(database.prepare(`
-      UPDATE formal_order_marketplace_money_snapshots
-      SET buyer_rate_value=1 WHERE formal_order_id='us-formal-fact-1'
-    `).run()).rejects.toThrow('formal_order_marketplace_money_is_immutable');
-    await expect(database.prepare(`
-      UPDATE buyer_marketplace_assignments
-      SET marketplace_code='AMAZON_JP'
-      WHERE buyer_customer_id='buyer-fact-free'
-    `).run()).rejects.toThrow('buyer_marketplace_has_formal_facts');
-    await expect(database.prepare(`
-      SELECT marketplace_code, payment_amount_minor, payment_currency_code,
-        buyer_rate_version_id, seller_rate_version_id,
-        buyer_expected_principal_amount_minor,
-        seller_expected_principal_amount_minor
-      FROM formal_order_marketplace_money_snapshots
-      WHERE formal_order_id='us-formal-fact-1'
-    `).first()).resolves.toEqual({
-      marketplace_code: 'AMAZON_US', payment_amount_minor: 12345,
-      payment_currency_code: 'USD',
-      buyer_rate_version_id: buyerRate.rate_version_id,
-      seller_rate_version_id: sellerRate.rate_version_id,
-      buyer_expected_principal_amount_minor: 86415,
-      seller_expected_principal_amount_minor: 83946,
-    });
-  });
 });
 
 function seedOrganization(result: SqliteDatabase): void {
@@ -354,22 +218,6 @@ function seedOrganization(result: SqliteDatabase): void {
       '全局测试卖家','ACTIVE',1,1000,1000,1000,NULL,2
     );
   `);
-}
-
-function pricingCommand(
-  idempotencyKey: string,
-  roles: readonly ('owner' | 'seller_ops')[],
-  now: number,
-) {
-  return {
-    actor: {
-      staffId: 'zz-phase3h-test-owner',
-      displayName: '多币种测试员工',
-      roles,
-    },
-    idempotencyKey,
-    now,
-  };
 }
 
 function seedBuyer(result: SqliteDatabase): void {
