@@ -1,6 +1,10 @@
 # staging-isolated-readiness-bootstrap Specification
 
-## ADDED Requirements
+## Purpose
+
+TBD: Define the long-term purpose after isolated staging activation and acceptance are complete.
+
+## Requirements
 
 ### Requirement: Staging resources are isolated from production
 

@@ -47,6 +47,7 @@ Staging 配置必须位于 Git 仓库外。模板保持：
 
 ```text
 SCHEDULED_OPERATIONS_ENABLED=false
+OUTBOX_DELIVERY_ENABLED=false
 ACQUISITION_MAINTENANCE_ENABLED=false
 OPERATIONAL_ALERT_MODE=disabled
 BUYER_SELF_REGISTRATION_ENABLED=true
@@ -120,6 +121,7 @@ Staging `/ready` 成功时必须是：
 ```text
 schema=ok
 scheduler=not_required
+outbox_delivery=not_required
 acquisition_maintenance=not_required
 operational_alerts=not_required
 object_storage=ok
@@ -128,7 +130,7 @@ staff_access=ok
 release=ok
 ```
 
-这里的 `not_required` 表示 staging profile 明确不运行生产能力，不等于能力健康。Production `/ready` 和 production health monitor 仍要求八项全部 `ok`；任何 `not_required` 都不能进入 Production GO。
+这里的 `not_required` 表示 staging profile 明确不运行生产能力，不等于能力健康。Staging 这里有五项 `not_required` 和四项 `ok`；Production `/ready` 和 production health monitor 仍按生产合同独立判定，不能拿任何 staging `not_required` 充当 Production GO 证据。Production 自身在 `OUTBOX_DELIVERY_ENABLED=false` 时保留独立的 `outbox_delivery=not_required` 合同，不得被误写为 `ok`。
 
 ## 7. 最低验收证据
 
@@ -143,3 +145,14 @@ release=ok
 - 至少一个连续观察窗口的 5xx、Access、D1、R2 和 readiness 监控。
 
 以上通过只能标记 `STAGING_ACCEPTED`，不能自动标记 `PRODUCTION_GO`。
+
+## 8. Evidence and change boundaries
+
+远程证据必须按独立 Change/PR 分层，不能把基础部署、业务验收和恢复演练写成一份“全量通过”报告：
+
+- **T8 基础激活**只证明隔离 Worker/D1/R2/Access/DNS/Secrets、Schema 70、migrations `0001`–`0070`、first-owner、固定 SHA 部署、`/health`/`/ready` 基线和 disabled/not_required 能力。T8 不包含 A–H 67 项业务验收，也不包含备份恢复。
+- **T9 A–H 验收**单独记录 67 项真实 staging 操作结果，引用 T8 的部署基线；不创建资源，不重复写 T8 基础部署，不混入恢复结果。
+- **T10 隔离恢复**单独记录备份、恢复到新隔离目标、Schema/ledger、完整性/FK、Manifest/hash、行数、财务聚合和 smoke read；不混入 A–H 业务验收。
+- **T11 CI**是独立代码 PR，只纳入本地 Playwright 13-spec 测试，不访问 staging、production、Cloudflare 资源或真实数据。
+
+T8 激活前只保留本地代码/准备任务为已完成；远程激活、A–H 验收、隔离恢复和 CI 接入均须在各自实际执行并完成独立证据复核后勾选。资源 ID、Access audience、Secret 值、测试邮箱和原始远程日志必须留在 Git 外；提交到 Git 的只能是脱敏摘要和外部证据引用。
