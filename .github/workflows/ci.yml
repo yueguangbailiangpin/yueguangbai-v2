@@ -75,3 +75,48 @@ jobs:
         run: npm ci
       - name: Run repository tests and builds once
         run: npm run check:ci:test-build
+
+  browser-e2e:
+    name: browser-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Configure local tool directories
+        run: |
+          mkdir -p "$RUNNER_TEMP/ygb-xdg-config" "$RUNNER_TEMP/ygb-xdg-cache"
+          echo "WRANGLER_LOG_PATH=$RUNNER_TEMP/ygb-wrangler.log" >> "$GITHUB_ENV"
+          echo "XDG_CONFIG_HOME=$RUNNER_TEMP/ygb-xdg-config" >> "$GITHUB_ENV"
+          echo "XDG_CACHE_HOME=$RUNNER_TEMP/ygb-xdg-cache" >> "$GITHUB_ENV"
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Verify locked lifecycle provenance before install
+        run: |
+          node scripts/verify-dependency-lifecycle.mjs
+          node --test scripts/verify-dependency-lifecycle.node-test.mjs
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install Chromium browser dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Build web
+        run: npm run build --workspace @ygb/web
+      - name: Run browser Playwright tests
+        run: npm run test:browser
+      - name: Upload Playwright report and test results
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report-and-test-results
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7

@@ -187,6 +187,11 @@ const refund = {
     review_type: 'IMAGE',
     status: 'CONFIRMED',
   },
+  reminder: {
+    reminder_count: 0,
+    last_reminded_at: null,
+    next_reminder_at: null,
+  },
   allowed_actions: [],
 };
 

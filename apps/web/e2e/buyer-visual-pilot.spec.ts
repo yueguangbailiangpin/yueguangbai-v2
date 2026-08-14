@@ -199,7 +199,7 @@ test('Buyer login core stays minimal, labeled, and recoverable', async ({ page }
     bubbles: true,
     cancelable: true,
   })));
-  await expect(page.getByRole('alert')).toContainText('请输入登录标识和密码');
+  await expect(page.getByRole('alert')).toContainText('请输入账号和密码');
   await assertMinimumTarget(page, '.login-card button, .login-card input');
 });
 
@@ -207,7 +207,7 @@ test('Buyer product pilot excludes adjacent and internal content', async ({ page
   await installBuyerFixture(page);
   await page.goto('/buyer/products');
   await expect(page.getByRole('heading', { name: '当前开放产品' })).toBeVisible();
-  await expect(page.getByText(/需要你处理的事情统一放在“任务”/u)).toBeVisible();
+  await expect(page.getByText(/需要您处理的事情都收在“任务”里/u)).toBeVisible();
   await expect(page.getByRole('heading', { name: product.product_name, exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: secondProduct.product_name, exact: true })).toBeVisible();
   await expect(page.locator('main').getByText(/客户编号|会话到期|内部说明|内部业务时间|预约排名|预计下单日期|返款金额/u)).toHaveCount(0);

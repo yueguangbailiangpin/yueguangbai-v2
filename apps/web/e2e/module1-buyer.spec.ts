@@ -122,7 +122,8 @@ const refund = (status: MockOptions['refundStatus'] = 'PARTIALLY_PAID') => ({
   refund_obligation_id: 'refund-1', due_amount_cny_fen: '19734', net_paid_cny_fen: status === 'OVERPAID' ? '21000' : '10000',
   remaining_amount_cny_fen: status === 'PARTIALLY_PAID' ? '9734' : '0', overpaid_amount_cny_fen: status === 'OVERPAID' ? '1266' : '0', status,
   order: { formal_order_id: 'formal-1', marketplace: 'JP', amazon_order_number: evidence.amazon_order_number_display,
-    product_name: demand.product_name, review_type: 'IMAGE', status: 'CONFIRMED' }, allowed_actions: [],
+    product_name: demand.product_name, review_type: 'IMAGE', status: 'CONFIRMED' },
+  reminder: { reminder_count: 0, last_reminded_at: null, next_reminder_at: null }, allowed_actions: [],
 });
 const refundDetail = (status: MockOptions['refundStatus'] = 'PARTIALLY_PAID') => ({ ...refund(status), activities: [
   { activity_id: 'pay-1', activity_type: 'PAYMENT_RECORDED', amount_cny_fen: '12000', occurred_at: now - 600,
