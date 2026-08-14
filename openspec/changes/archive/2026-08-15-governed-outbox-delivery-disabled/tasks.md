@@ -13,5 +13,5 @@
 
 ## Handoff
 
-- [x] Keep the Change active: do not sync or archive without the later implementation review workflow.
+- [x] Keep the Change active until the implementation review workflow completes; then sync and archive only after the review findings are resolved.
 - [x] Do not push, create a PR, merge, deploy, or access remote resources.
