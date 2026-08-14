@@ -4,9 +4,12 @@ import { FrontendApiError, isFrontendApiError } from '../api/errors';
 import { queryKeys } from '../api/query-client';
 import { clearStaffTransport } from './customer-transport-invalidation';
 import {
+  broadcastSessionInvalidation,
   captureSessionCycle,
+  createSessionInvalidationMarker,
   establishFreshSessionCycle,
   retrySessionInvalidation,
+  type SessionCycle,
   useSessionInvalidation,
 } from './session-invalidation';
 import { customerSessionSchema, type CustomerSession } from './customer/customer-auth-api';
@@ -37,6 +40,7 @@ export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): St
   const client = useQueryClient();
   const mountedRef = useRef(true);
   const verifiedGenerationRef = useRef<number | null>(null);
+  const sessionReadCycleRef = useRef<SessionCycle | null>(null);
   const [clearing, setClearing] = useState<StaffCleanupView>({ state: 'IDLE', requestId: null });
   const invalidation = useSessionInvalidation(client, 'staff');
   const mayResolveInvalidatedMountRef = useRef(invalidation.status === 'INVALIDATED');
@@ -46,12 +50,17 @@ export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): St
     queryKey: queryKeys.staff.session,
     queryFn: async ({ signal }) => {
       const requestCycle = captureSessionCycle(client, 'staff');
+      sessionReadCycleRef.current = requestCycle;
       const session = (await adapter.readSession(signal)).data.session;
-      const generation = establishFreshSessionCycle(client, 'staff', requestCycle);
+      const marker = await createSessionInvalidationMarker(
+        'staff', session.staff_id, session.session_version, session.expires_at,
+      );
+      const generation = establishFreshSessionCycle(client, 'staff', requestCycle, marker);
       if (generation === null) {
         throw new FrontendApiError('CANCELED', 0, null, 'CANCELED');
       }
       verifiedGenerationRef.current = generation;
+      sessionReadCycleRef.current = null;
       mayResolveInvalidatedMountRef.current = false;
       return session;
     },
@@ -76,6 +85,8 @@ export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): St
       && isFrontendApiError(query.error)
       && query.error.httpStatus === 401) {
       const requestId = query.error.requestId;
+      const requestCycle = sessionReadCycleRef.current;
+      if (requestCycle) broadcastSessionInvalidation(client, 'staff', requestCycle, requestId);
       setClearing({ state: 'CLEARING', requestId });
       void clearStaffTransport(client).then(() => {
         if (mountedRef.current) setClearing({ state: 'CLEARED', requestId });

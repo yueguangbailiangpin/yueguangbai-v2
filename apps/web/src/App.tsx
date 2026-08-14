@@ -8,6 +8,7 @@ import { CustomerPasswordResetPage } from './auth/customer/CustomerPasswordReset
 import { CustomerPasswordRouteBoundary } from './auth/customer/CustomerPasswordRouteBoundary';
 import { CustomerSessionBoundary } from './auth/customer/CustomerSessionBoundary';
 import { clearStaffTransport } from './auth/customer-transport-invalidation';
+import { SessionInvalidationClientLifecycle } from './auth/session-invalidation';
 import { StaffSessionBoundary } from './auth/staff/StaffSessionBoundary';
 import { staffAuthApi } from './auth/staff/staff-auth-api';
 import { BuyerRegistrationPage } from './buyer/registration/BuyerRegistrationPage';
@@ -87,7 +88,7 @@ export function ReviewRoutes(): React.JSX.Element {
 
 export function App(): React.JSX.Element {
   if (isReviewRuntime()) {
-    return <QueryClientProvider client={reviewQueryClient}><BrowserRouter basename="/review"><ReviewRuntimeProvider><AppShell><ReviewChrome><ReviewRoutes /></ReviewChrome></AppShell></ReviewRuntimeProvider></BrowserRouter></QueryClientProvider>;
+    return <QueryClientProvider client={reviewQueryClient}><SessionInvalidationClientLifecycle><BrowserRouter basename="/review"><ReviewRuntimeProvider><AppShell><ReviewChrome><ReviewRoutes /></ReviewChrome></AppShell></ReviewRuntimeProvider></BrowserRouter></SessionInvalidationClientLifecycle></QueryClientProvider>;
   }
-  return <QueryClientProvider client={queryClient}><BrowserRouter><AppShell><AppRoutes /></AppShell></BrowserRouter></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><SessionInvalidationClientLifecycle><BrowserRouter><AppShell><AppRoutes /></AppShell></BrowserRouter></SessionInvalidationClientLifecycle></QueryClientProvider>;
 }

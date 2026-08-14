@@ -37,7 +37,9 @@ describe('Cloudflare Access Staff identity',()=>{
       method:'POST',headers:{Origin:'https://app.example.test','Cf-Access-Jwt-Assertion':fixture.token},
     },env);
     expect(response.status).toBe(200);
-    const cookie=response.headers.getSetCookie().find((value)=>value.startsWith('__Host-ygb_staff_session='));
+    const sessionCookies=response.headers.getSetCookie().filter((value)=>value.startsWith('__Host-ygb_staff_session='));
+    expect(sessionCookies).toHaveLength(1);
+    const cookie=sessionCookies[0];
     expect(cookie).toContain('HttpOnly');expect(cookie).toContain('Secure');
     expect(await database.prepare("SELECT status,staff_id FROM staff_sessions WHERE staff_id='zz-phase3h-test-owner'").first()).toEqual({status:'ACTIVE',staff_id:'zz-phase3h-test-owner'});
     expect(await database.prepare("SELECT verified_at,last_login_at FROM staff_email_identities WHERE id='owner-email-identity-0001'").first()).toMatchObject({verified_at:expect.any(Number),last_login_at:expect.any(Number)});
