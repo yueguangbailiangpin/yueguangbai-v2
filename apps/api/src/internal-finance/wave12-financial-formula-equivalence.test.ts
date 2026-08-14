@@ -30,6 +30,7 @@ type FinancePosition = {
 const STAFF_ID = 'zz-phase3h-test-owner';
 const AT = 1_700_000_000_000;
 const HASH = 'a'.repeat(64);
+const EXACT_INTEGER_BOUNDARY_RESULT = '9007199254740993';
 
 let database: SqliteDatabase | null = null;
 
@@ -100,11 +101,11 @@ describe('Wave 12 financial formulas execute against the production SQL view', (
       {
         id: 'integer-boundary',
         sellerExpectedPrincipalCnyFen: 9_007_199_254_740_991n,
-        serviceFeeCnyFen: 0n,
-        buyerExpectedPrincipalCnyFen: 9_007_199_254_740_991n,
+        serviceFeeCnyFen: 2n,
+        buyerExpectedPrincipalCnyFen: 0n,
         sellerAllocationGrossCnyFen: 9_007_199_254_740_991n,
         sellerAllocationReversalCnyFen: 0n,
-        buyerRefundPaymentGrossCnyFen: 9_007_199_254_740_991n,
+        buyerRefundPaymentGrossCnyFen: 0n,
         buyerRefundPaymentReversalCnyFen: 0n,
       },
     ];
@@ -152,6 +153,26 @@ describe('Wave 12 financial formulas execute against the production SQL view', (
         }),
       ));
     }
+
+    const boundaryFacts = cases.find((facts) => facts.id === 'integer-boundary');
+    if (boundaryFacts === undefined) throw new Error('integer_boundary_fixture_missing');
+    expect(BigInt(EXACT_INTEGER_BOUNDARY_RESULT))
+      .toBeGreaterThan(BigInt(Number.MAX_SAFE_INTEGER));
+    expect(String(projectedGrossProfit({
+      sellerExpectedPrincipalCnyFen: String(boundaryFacts.sellerExpectedPrincipalCnyFen),
+      serviceFeeCnyFen: String(boundaryFacts.serviceFeeCnyFen),
+      buyerExpectedPrincipalCnyFen: String(boundaryFacts.buyerExpectedPrincipalCnyFen),
+    }))).toBe(EXACT_INTEGER_BOUNDARY_RESULT);
+    expect(String(completedGrossProfit({
+      sellerPrincipalPayableCnyFen: String(boundaryFacts.sellerExpectedPrincipalCnyFen),
+      sellerServiceFeePayableCnyFen: String(boundaryFacts.serviceFeeCnyFen),
+      buyerRefundDueCnyFen: String(boundaryFacts.buyerExpectedPrincipalCnyFen),
+    }))).toBe(EXACT_INTEGER_BOUNDARY_RESULT);
+    expect(positions.find((row) => row.formal_order_id === 'formula-integer-boundary'))
+      .toMatchObject({
+        projected_gross_profit_cny_fen: EXACT_INTEGER_BOUNDARY_RESULT,
+        completed_gross_profit_cny_fen: EXACT_INTEGER_BOUNDARY_RESULT,
+      });
 
     expect(positions.find((row) => row.formal_order_id === 'formula-partial'))
       .toMatchObject({
