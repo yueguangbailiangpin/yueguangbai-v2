@@ -20,4 +20,4 @@
 - [x] 4.1 Add real local-D1 coverage for ownership concealment, replay, rate-limit rollback, same-key in-progress/different-target conflict 409s, a batch-window Staff-payment race, immutable Audit, and migration guards.
 - [x] 4.2 Add focused rendered Buyer DUE/PAID and Staff bounded-display coverage; preserve Buyer/Seller projection isolation.
 - [x] 4.3 Run focused Vitest, Domain/Contracts/API/Web typechecks, migration tests, strict OpenSpec validation, and `git diff --check`.
-- [x] 4.4 Record local test evidence in `test-evidence.md`; do not sync/archive or create Formal Verify in this Change.
+- [x] 4.4 Record local test evidence, keep the Change active through independent review and Formal Verify, then sync/archive before the final fixed-SHA review.
