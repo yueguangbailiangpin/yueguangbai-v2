@@ -273,12 +273,12 @@ test('root is a finished dedicated-link notice with no identity controls', async
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '月光白' })).toBeVisible();
-  await expect(page.getByText('请使用工作人员发送的专属链接登录。')).toBeVisible();
+  await expect(page.getByText('请使用工作人员发给您的专属链接登录。')).toBeVisible();
   await expect(page.getByRole('link')).toHaveCount(0);
   await expect(page.getByRole('button')).toHaveCount(0);
   await expect(page.locator('form')).toHaveCount(0);
   await expect(page.locator('.dedicated-entry')).toHaveText(
-    '月光白请使用工作人员发送的专属链接登录。',
+    '月光白请使用工作人员发给您的专属链接登录。',
   );
   await expect(page.getByText('专属访问')).toHaveCount(0);
   await expect(page.getByText('链接将自动确认您的访问身份')).toHaveCount(0);
@@ -315,7 +315,7 @@ test('staff login uses Cloudflare Access and has no customer form', async ({ pag
   await expect(page.getByRole('button', { name: '进入员工后台' })).toBeVisible();
   await expect(page.getByLabel('账号')).toHaveCount(0);
   await expect(page.getByLabel('密码')).toHaveCount(0);
-  await expect(page.getByText(/Cloudflare Access 邮箱验证码保护/u)).toBeVisible();
+  await expect(page.getByText(/Cloudflare Access 邮箱验证码验证/u)).toBeVisible();
 });
 
 test('buyer login tab order and focus ring remain keyboard-visible', async ({ page }) => {
@@ -476,8 +476,8 @@ test('Seller demand form submits a new batch with Beijing time values', async ({
   await page.getByLabel('任务类型').selectOption('IMAGE');
   await page.getByLabel('目标数量').fill('8');
   await page.getByLabel('开放时间（北京时间）').fill('2026-08-09T09:00');
-  await page.getByLabel('预约截止时间（北京时间）').fill('2026-08-10T09:00');
-  await page.getByLabel('下单截止时间（北京时间）').fill('2026-08-11T09:00');
+  await page.getByLabel('预约截止（北京时间）').fill('2026-08-10T09:00');
+  await page.getByLabel('下单截止（北京时间）').fill('2026-08-11T09:00');
   await page.getByRole('button', { name: '提交需求' }).click();
   await expect(page).toHaveURL(/\/seller\/demands$/u);
   expect(state.demandBodies).toEqual([{

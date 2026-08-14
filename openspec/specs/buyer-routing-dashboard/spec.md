@@ -12,7 +12,7 @@ The Web application SHALL keep `/` as the exact dedicated-link notice, expose `/
 
 #### Scenario: Root or login is inspected for discovery links
 - **WHEN** an unauthenticated visitor opens `/` or `/buyer/login`
-- **THEN** no registration, Seller, or Staff link is present and the root still shows only `月光白` and `请使用工作人员发送的专属链接登录。`.
+- **THEN** no registration, Seller, or Staff link is present and the root still shows only `月光白` and `请使用工作人员发给您的专属链接登录。`.
 
 ### Requirement: Buyer route tree separates business journeys
 The Buyer route tree SHALL provide the current `/buyer/products`, `/buyer/tasks`, `/buyer/me`, demand, reservation, order-material, formal-order, review, and refund journeys. `/buyer` SHALL enter `/buyer/products`; the product journey SHALL not be represented as a legacy Dashboard. Existing detail and mutation routes remain authoritative business implementation paths.

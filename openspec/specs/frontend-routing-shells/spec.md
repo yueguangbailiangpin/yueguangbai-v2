@@ -10,7 +10,7 @@ TBD: Define this capability's long-term purpose after the Wave 14A archive is co
 
 ### Requirement: Public routing preserves dedicated-link semantics
 
-React Router SHALL own `/`, `/buyer/login`, `/seller/login`, and `/staff/login`. The root SHALL show only `月光白` and `请使用工作人员发送的专属链接登录。`; it SHALL NOT show Buyer, Seller, or Staff login controls or identity links. All three login routes SHALL remain directly reachable. Hidden navigation SHALL NOT be represented as a security control.
+React Router SHALL own `/`, `/buyer/login`, `/seller/login`, and `/staff/login`. The root SHALL show only `月光白` and `请使用工作人员发给您的专属链接登录。`; it SHALL NOT show Buyer, Seller, or Staff login controls or identity links. All three login routes SHALL remain directly reachable. Hidden navigation SHALL NOT be represented as a security control.
 
 #### Scenario: Root entry
 

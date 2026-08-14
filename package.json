@@ -22,6 +22,7 @@
     "test:wave13": "vitest run apps/api/src/api-contract-baseline-alignment.test.ts apps/api/src/wave13-migration-0027.test.ts apps/api/src/staff-auth/cloudflare-access.test.ts apps/api/src/staff-access-management/routes.test.ts apps/api/src/files/wave13-file-http.test.ts apps/api/src/files/wave13-r2-runtime-boundaries.test.ts apps/api/src/order-evidence/wave13-staff-order-evidence.test.ts apps/api/src/buyer-refunds/wave13-staff-buyer-refund.test.ts apps/api/src/wave13-default-app-security.test.ts apps/api/src/wave13-default-app-runtime.test.ts apps/api/src/wave13-d1-service-rollback.test.ts apps/api/src/wave13-recursive-dto-runtime.test.ts",
     "test:wave14a": "vitest run apps/web/src",
     "test:wave14a:browser": "npm run build --workspace @ygb/web && playwright test -c apps/web/playwright.config.ts",
+    "test:browser": "playwright test -c apps/web/playwright.config.ts --reporter=line,html",
     "test:module1:buyer": "vitest run apps/api/src/module1-migration-0028.test.ts apps/api/src/buyer-order-evidence-portal apps/api/src/buyer-formal-orders apps/api/src/buyer-reviews packages/domain/src apps/web/src/buyer apps/web/src/files/file-read-providers.msw.test.ts",
     "test:module1:buyer:browser": "npm run build --workspace @ygb/web && playwright test -c apps/web/playwright.config.ts apps/web/e2e/module1-buyer.spec.ts",
     "verify:module1:buyer:formal": "node scripts/verify-module1-buyer-formal.mjs",
