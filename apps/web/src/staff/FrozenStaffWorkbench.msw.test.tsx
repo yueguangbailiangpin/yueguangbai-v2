@@ -10,6 +10,7 @@ import { apiUrl } from '../test/msw/handlers';
 import { renderWithMsw } from '../test/msw/render';
 import { server } from '../test/msw/server';
 import { FrozenStaffWorkbench } from './FrozenStaffWorkbench';
+import { staffWorkbenchKeys } from './queries/keys';
 import { staffTestAdapter, staffTestSession, staffTestWorkItem } from './test-fixtures';
 
 afterEach(cleanup);
@@ -73,6 +74,25 @@ describe('canonical Frozen Staff workbench', () => {
     expect(await screen.findByRole('button', { name: /订单资料核对/u })).toBeVisible();
     expect(screen.queryByText(/共 1|总计 1/u)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '下一页' })).toBeEnabled();
+  });
+
+  it.each([
+    ['returns 403', () => HttpResponse.json({ error: { code: 'FORBIDDEN', message: 'forbidden', details: null }, meta: { request_id: 'queue-forbidden' } }, { status: 403 })],
+    ['returns an invalid envelope', () => HttpResponse.json({ data: { work_items: 'not-an-array', next_cursor: null }, meta: { request_id: 'queue-invalid-envelope' } })],
+  ])('removes a cached selected detail when the current queue %s', async (_case, failedQueue) => {
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items'), () => HttpResponse.json({ data: { work_items: [demandWorkItem], next_cursor: null }, meta: { request_id: 'queue-initial' } })),
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/review-context'), () => HttpResponse.json({ data: { review_context: demandReviewContext }, meta: { request_id: 'demand-context' } })),
+    );
+    const { client }=renderWorkbench('/staff?work_item=work-demand');
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    server.use(http.get(apiUrl('/api/staff/me/work-items'), failedQueue));
+
+    await client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('当前面板加载失败');
+    expect(screen.getByText('请选择工作项')).toBeVisible();
+    expect(screen.queryByText('需求发布事实')).not.toBeInTheDocument();
   });
 
   it('publishes a demand with its authoritative version, first date and idempotency key', async () => {
@@ -178,9 +198,9 @@ describe('canonical Frozen Staff workbench', () => {
   });
 });
 
-function renderWorkbench(route: string): void {
+function renderWorkbench(route: string) {
   const session = staffTestSession('owner', ['SELLER_SETTLEMENT_VIEW', 'SELLER_SETTLEMENT_RECORD', 'FINANCIAL_CORRECT']);
-  renderWithMsw(<StaffSessionBoundary adapter={staffTestAdapter(session)}><FrozenStaffWorkbench /></StaffSessionBoundary>, { route });
+  return renderWithMsw(<StaffSessionBoundary adapter={staffTestAdapter(session)}><FrozenStaffWorkbench /></StaffSessionBoundary>, { route });
 }
 
 function installDemandHandlers(

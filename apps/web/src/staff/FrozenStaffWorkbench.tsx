@@ -37,16 +37,18 @@ export function FrozenStaffWorkbench():React.JSX.Element{
   const status=parameters.get('status')==='COMPLETED'?'COMPLETED':'OPEN';const workType=parameters.get('work_type');
   const [cursor,setCursor]=useState<string|null>(null);const [history,setHistory]=useState<(string|null)[]>([]);const retainedSelectedRef=useRef<RetainedSelection|null>(null);
   const query=useQuery({queryKey:staffWorkbenchKeys.queue(status,workType,cursor),queryFn:({signal})=>staffApi.workItems(client,{status,workType,cursor},signal).then((r)=>r.data),retry:false});
-  const selectedFromQueue=query.data?.work_items.find((item)=>item.work_item_id===selectedId)??null;
+  const hasCurrentQueue=query.isSuccess&&!query.isFetching;
+  const selectedFromQueue=hasCurrentQueue?query.data.work_items.find((item)=>item.work_item_id===selectedId)??null:null;
   const queueIdentity=JSON.stringify({selectedId,status,workType,cursor});
   const retained=retainedSelectedRef.current;
   if(retained&&retained.queueIdentity!==queueIdentity)retainedSelectedRef.current=null;
-  if(retainedSelectedRef.current&&query.isSuccess&&query.dataUpdatedAt>retainedSelectedRef.current.sourceQueueUpdatedAt){
+  if(retainedSelectedRef.current&&query.isError)retainedSelectedRef.current=null;
+  if(retainedSelectedRef.current&&hasCurrentQueue&&query.dataUpdatedAt>retainedSelectedRef.current.sourceQueueUpdatedAt){
     if(retainedSelectedRef.current.retainedQueueUpdatedAt===null){
       retainedSelectedRef.current=selectedFromQueue?null:{...retainedSelectedRef.current,retainedQueueUpdatedAt:query.dataUpdatedAt};
     }else if(retainedSelectedRef.current.retainedQueueUpdatedAt!==query.dataUpdatedAt){retainedSelectedRef.current=null;}
   }
-  const selected=selectedFromQueue??retainedSelectedRef.current?.item??null;
+  const selected=hasCurrentQueue?(selectedFromQueue??retainedSelectedRef.current?.item??null):null;
   function retainAfterSuccessfulMutation(item:StaffWorkItem){if(item.work_item_id!==selectedId)return;retainedSelectedRef.current={queueIdentity,item,sourceQueueUpdatedAt:query.dataUpdatedAt,retainedQueueUpdatedAt:null};}
   function filter(name:'status'|'work_type',value:string){const next=new URLSearchParams(parameters);value?next.set(name,value):next.delete(name);next.delete('work_item');retainedSelectedRef.current=null;setCursor(null);setHistory([]);void navigate(`/staff?${next}`);}
   function select(item:StaffWorkItem){const next=new URLSearchParams(parameters);next.set('work_item',item.work_item_id);void navigate(`/staff/work/${encodeURIComponent(item.work_item_id)}?${next}`);}
