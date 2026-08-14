@@ -1,6 +1,10 @@
-# Advance Cash Integrity Delta
+# Advance Cash Integrity Specification
 
-## ADDED Requirements
+## Purpose
+
+Defines the integrity boundaries for advance-principal reversals, Buyer cash-movement reporting, and manual payment occurrence timestamps so immutable financial facts remain bounded and each real cash movement is reported exactly once.
+
+## Requirements
 
 ### Requirement: Advance reversals cannot exceed the original payment
 
