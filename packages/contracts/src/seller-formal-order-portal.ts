@@ -47,7 +47,6 @@ export type SellerBusinessCompletionComponentStatus =
 export interface SellerBusinessCompletionDto {
   status: 'IN_PROGRESS' | 'COMPLETE';
   review: SellerBusinessCompletionComponentStatus;
-  buyer_refund: SellerBusinessCompletionComponentStatus;
   seller_principal: SellerBusinessCompletionComponentStatus;
   seller_service_fee: SellerBusinessCompletionComponentStatus;
 }

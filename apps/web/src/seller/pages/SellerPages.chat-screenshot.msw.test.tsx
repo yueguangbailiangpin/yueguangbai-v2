@@ -276,7 +276,7 @@ function formalOrder() {
       fee_version_id: 'fee-1', version_no: 1, review_type: 'IMAGE', service_fee_cny_fen: '1', effective_from: 1,
       confirmed_at: 1, marketplace_code: 'AMAZON_JP', currency_code: 'CNY', currency_exponent: 2,
     },
-    business_completion: { status: 'IN_PROGRESS', review: 'PENDING', buyer_refund: 'PENDING', seller_principal: 'PENDING', seller_service_fee: 'PENDING' },
+    business_completion: { status: 'IN_PROGRESS', review: 'PENDING', seller_principal: 'PENDING', seller_service_fee: 'PENDING' },
     chat_screenshot: { status: 'AVAILABLE', file_version: 2 }, confirmed_at: 1, confirmed_business_date: '2026-08-01',
   };
 }

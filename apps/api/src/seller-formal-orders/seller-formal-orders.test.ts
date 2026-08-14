@@ -382,7 +382,6 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
           business_completion: {
             status: 'IN_PROGRESS',
             review: 'PENDING',
-            buyer_refund: 'PENDING',
             seller_principal: 'PENDING',
             seller_service_fee: 'PENDING',
           },

@@ -226,14 +226,14 @@ export async function previewCurrentReservableProductSellerMapping(
   const fieldConflicts = findFieldConflicts(currentByProduct);
 
   const standardProducts = [...currentByProduct.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => left.localeCompare(right, 'en'))
     .map(([productKey, rows]) => ({
       productKey,
       marketplaceCode: rows[0]!.marketplaceCode,
       platformProductIdentifier: rows[0]!.platformProductIdentifier!,
       asinNormalized: rows[0]!.asinNormalized,
       canonicalName: [...new Set(rows.map((row) => row.productName!))]
-        .sort((left, right) => left.localeCompare(right))[0]!,
+        .sort((left, right) => left.localeCompare(right, 'en'))[0]!,
       currentRows: rows.map((row) => row.sourceRow).sort((a, b) => a - b),
       historicalRows: (historicalByProduct.get(productKey) ?? [])
         .map((row) => `${row.sourceFileId}:${row.sourceLocator}`)
@@ -308,7 +308,7 @@ export async function previewCurrentReservableProductSellerMapping(
     }
 
     const offers = [...candidates.values()].sort((left, right) =>
-      left.organizationKey.localeCompare(right.organizationKey));
+      left.organizationKey.localeCompare(right.organizationKey, 'en'));
     if (offers.length === 0) {
       unresolvedCurrentProducts.push(product.productKey);
     } else {
@@ -341,7 +341,7 @@ export async function previewCurrentReservableProductSellerMapping(
   };
 
   const historicalFileInventory = [...(manifest.historicalFileInventory ?? [])]
-    .sort((left, right) => left.sourceFileId.localeCompare(right.sourceFileId));
+    .sort((left, right) => left.sourceFileId.localeCompare(right.sourceFileId, 'en'));
   const unreadHistoricalFiles = historicalFileInventory
     .filter((file) => file.scanStatus !== 'MATCHED')
     .map((file) => file.sourceFileId);
@@ -534,14 +534,14 @@ function findFieldConflicts(
 }
 
 function compareOfferings(left: SellerSupplyPreview, right: SellerSupplyPreview): number {
-  return left.productKey.localeCompare(right.productKey)
-    || left.organizationKey.localeCompare(right.organizationKey);
+  return left.productKey.localeCompare(right.productKey, 'en')
+    || left.organizationKey.localeCompare(right.organizationKey, 'en');
 }
 
 function compareAnomalies(left: MappingAnomaly, right: MappingAnomaly): number {
-  return (left.productKey ?? '').localeCompare(right.productKey ?? '')
-    || left.code.localeCompare(right.code)
-    || left.detail.localeCompare(right.detail);
+  return (left.productKey ?? '').localeCompare(right.productKey ?? '', 'en')
+    || left.code.localeCompare(right.code, 'en')
+    || left.detail.localeCompare(right.detail, 'en');
 }
 
 function productKey(marketplaceCode: MarketplaceCode, platformProductIdentifier: string): string {
