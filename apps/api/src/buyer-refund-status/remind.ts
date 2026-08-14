@@ -77,13 +77,21 @@ export async function remindBuyerRefund(
           id,obligation_id,buyer_customer_id,idempotency_key,reminded_at,created_at
         )
         SELECT ?,?,?,?, ?,?
-        WHERE NOT EXISTS (
+        WHERE EXISTS (
+          SELECT 1
+          FROM buyer_refund_ledger_balances
+          WHERE obligation_id=?
+            AND buyer_customer_id=?
+            AND status IN ('DUE','PARTIALLY_PAID')
+        )
+        AND NOT EXISTS (
           SELECT 1 FROM buyer_refund_reminders
           WHERE obligation_id=? AND reminded_at>?
         )
       `).bind(
         reminderId, input.obligationId, buyer.buyerCustomerId,
         acquired.claim.idempotencyKey, now, now,
+        input.obligationId, buyer.buyerCustomerId,
         input.obligationId, now - REMINDER_WINDOW_MS,
       ),
       database.prepare(`
@@ -124,15 +132,31 @@ export async function remindBuyerRefund(
     }
     return response;
   } catch (error) {
+    let failureCode = error instanceof BuyerRefundPortalError
+      ? error.code
+      : 'DEPENDENCY_UNAVAILABLE';
+    let normalizedError: BuyerRefundPortalError | null = null;
+    if (String(error).includes('transaction_assertion_failed')) {
+      const current = await database.prepare(`
+        SELECT obligation_id,status
+        FROM buyer_refund_ledger_balances
+        WHERE obligation_id=? AND buyer_customer_id=?
+        LIMIT 1
+      `).bind(input.obligationId, buyer.buyerCustomerId)
+        .first<ReminderTargetRow>();
+      normalizedError = !current
+        || (current.status !== 'DUE' && current.status !== 'PARTIALLY_PAID')
+        ? new BuyerRefundPortalError('NOT_FOUND', 404)
+        : new BuyerRefundPortalError('RATE_LIMITED', 429);
+      failureCode = normalizedError.code;
+    }
     await markIdempotencyFailed(
       database,
       acquired.claim,
-      error instanceof BuyerRefundPortalError ? error.code : 'DEPENDENCY_UNAVAILABLE',
+      failureCode,
       now,
     ).catch(() => undefined);
-    if (String(error).includes('transaction_assertion_failed')) {
-      throw new BuyerRefundPortalError('RATE_LIMITED', 429);
-    }
+    if (normalizedError) throw normalizedError;
     throw error;
   }
 }

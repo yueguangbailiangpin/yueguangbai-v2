@@ -583,7 +583,7 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(await formalOrderCounts()).toEqual(before);
   });
 
-  it('retains the schema 26 history beneath current schema 69', async () => {
+  it('retains the schema 26 history beneath current schema 70', async () => {
     const state = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state

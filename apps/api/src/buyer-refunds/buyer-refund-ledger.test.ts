@@ -6,9 +6,13 @@ import {
 } from 'vitest';
 import type {
   FilePurpose,
+  SqlDatabase,
+  SqlRunResult,
+  SqlStatement,
   StaffPermissionCode,
   StaffRoleCode,
 } from '@ygb/contracts';
+import { hashCanonicalJson } from '@ygb/domain';
 import {
   createMigratedTestDatabase,
   type SqliteDatabase,
@@ -32,6 +36,8 @@ import { recordBuyerRefundPayment } from './record-buyer-refund-payment';
 import { reverseBuyerRefundPayment } from './reverse-buyer-refund-payment';
 import type { BuyerRefundStaffActor } from './buyer-refund-shared';
 import { remindBuyerRefund } from '../buyer-refund-status/remind';
+import { normalizeBuyerRefundPortalError } from '../buyer-refund-status/errors';
+import { acquireIdempotency } from '../foundation/idempotency';
 
 const NOW = Date.UTC(2026, 7, 1, 0, 0, 0);
 const BUSINESS_DATE = '2026-08-01';
@@ -155,6 +161,90 @@ describe('Phase 5B immutable buyer refund ledger', () => {
     expect(await database!.prepare(`
       SELECT COUNT(*) AS count FROM buyer_refund_reminders WHERE obligation_id=?
     `).bind(obligation.obligation_id).first()).toEqual({ count: 0 });
+  });
+
+  it('rechecks live eligibility inside the reminder batch after Staff completes payment', async () => {
+    const fixture = await setupDueRefund();
+    const obligation = await createObligation(fixture.dueEventId);
+    seedRefundProof(database!, 61);
+    const racingDatabase = new ReminderCommitWindowRaceDatabase(database!, async () => {
+      await recordPayment(
+        obligation.obligation_id,
+        1,
+        48_840,
+        61,
+        'buyer-refund:payment:reminder-race',
+      );
+    });
+
+    await expect(remindBuyerRefund(racingDatabase, buyerRefundPortalContext('buyer-review-1'), {
+      obligationId: obligation.obligation_id,
+      idempotencyKey: 'buyer-reminder-paid-race-0001',
+      requestId: 'request:buyer-reminder-paid-race',
+    }, { now: NOW + 40_000 })).rejects.toMatchObject({
+      code: 'NOT_FOUND', status: 404,
+    });
+
+    expect(await database!.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM buyer_refund_reminders WHERE obligation_id=?) AS reminders,
+        (SELECT COUNT(*) FROM audit_events
+          WHERE aggregate_id=? AND event_type='BUYER_REFUND_REMINDER_REQUESTED') AS reminder_audits,
+        (SELECT status FROM command_idempotency_records
+          WHERE actor_type='BUYER' AND actor_id='buyer-review-1'
+            AND idempotency_key='buyer-reminder-paid-race-0001') AS command_status,
+        (SELECT response_json FROM command_idempotency_records
+          WHERE actor_type='BUYER' AND actor_id='buyer-review-1'
+            AND idempotency_key='buyer-reminder-paid-race-0001') AS response_json
+    `).bind(obligation.obligation_id, obligation.obligation_id).first()).toEqual({
+      reminders: 0,
+      reminder_audits: 0,
+      command_status: 'FAILED',
+      response_json: null,
+    });
+  });
+
+  it('keeps same-key in-progress and different-target conflicts as precise 409 errors', async () => {
+    const fixture = await setupDueRefund();
+    const obligation = await createObligation(fixture.dueEventId);
+    const buyer = buyerRefundPortalContext('buyer-review-1');
+    const key = 'buyer-reminder-conflict-0001';
+    const requestHash = await hashCanonicalJson({
+      action: 'REMIND_BUYER_REFUND', obligation_id: obligation.obligation_id,
+    });
+    await acquireIdempotency(database!, {
+      actorType: 'BUYER', actorId: buyer.buyerCustomerId,
+      action: 'REMIND_BUYER_REFUND', targetType: 'BUYER_REFUND_OBLIGATION',
+      targetId: obligation.obligation_id, idempotencyKey: key, requestHash,
+    }, { now: NOW + 40_000 });
+
+    const inProgress = await remindBuyerRefund(database!, buyer, {
+      obligationId: obligation.obligation_id,
+      idempotencyKey: key,
+      requestId: 'request:buyer-reminder-in-progress',
+    }, { now: NOW + 40_001 }).catch((error: unknown) => error);
+    expect(inProgress).toMatchObject({ code: 'REQUEST_IN_PROGRESS', status: 409 });
+    expect(normalizeBuyerRefundPortalError(inProgress)).toMatchObject({
+      code: 'REQUEST_IN_PROGRESS', status: 409,
+    });
+
+    const conflict = await remindBuyerRefund(database!, buyer, {
+      obligationId: 'different-refund-obligation',
+      idempotencyKey: key,
+      requestId: 'request:buyer-reminder-conflict',
+    }, { now: NOW + 40_002 }).catch((error: unknown) => error);
+    expect(conflict).toMatchObject({ code: 'IDEMPOTENCY_CONFLICT', status: 409 });
+    expect(normalizeBuyerRefundPortalError(conflict)).toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT', status: 409,
+    });
+    expect(await database!.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM buyer_refund_reminders WHERE obligation_id=?) AS reminders,
+        (SELECT COUNT(*) FROM audit_events
+          WHERE aggregate_id=? AND event_type='BUYER_REFUND_REMINDER_REQUESTED') AS audits
+    `).bind(obligation.obligation_id, obligation.obligation_id).first()).toEqual({
+      reminders: 0, audits: 0,
+    });
   });
 
   it('creates one obligation from BUYER_REFUND_BECAME_DUE and replays exactly', async () => {
@@ -769,6 +859,27 @@ function buyerRefundPortalContext(buyerCustomerId: string) {
     displayName: '返款买家',
     sessionExpiresAt: NOW + 86_400_000,
   };
+}
+
+class ReminderCommitWindowRaceDatabase implements SqlDatabase {
+  private injected = false;
+
+  constructor(
+    private readonly target: SqliteDatabase,
+    private readonly beforeFirstBatch: () => Promise<void>,
+  ) {}
+
+  prepare(sql: string): SqlStatement {
+    return this.target.prepare(sql);
+  }
+
+  async batch(statements: readonly SqlStatement[]): Promise<SqlRunResult[]> {
+    if (!this.injected) {
+      this.injected = true;
+      await this.beforeFirstBatch();
+    }
+    return this.target.batch(statements);
+  }
 }
 
 async function refundFactCounts(obligationId: string) {

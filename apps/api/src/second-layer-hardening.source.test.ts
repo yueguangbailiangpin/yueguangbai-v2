@@ -6,7 +6,7 @@ const root=path.resolve(import.meta.dirname,'../../..');
 const read=(file:string)=>readFileSync(path.join(root,file),'utf8');
 
 describe('second layer hardening freeze',()=>{
-  it('keeps production release authority on schema 69, Access and release-bound readiness',()=>{
+  it('keeps production release authority on schema 70, Access and release-bound readiness',()=>{
     const migrations=readdirSync(path.join(root,'migrations')).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort();
     expect(migrations).toHaveLength(70);expect(migrations.at(-1)).toBe('0070_buyer_refund_reminders.sql');
     const template=read('apps/api/wrangler.production.template.jsonc');

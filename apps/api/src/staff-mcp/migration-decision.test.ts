@@ -6,7 +6,7 @@ import { createMigratedTestDatabase } from '@ygb/testkit';
 const root = resolve(import.meta.dirname, '../../../..');
 
 describe('Staff MCP production transport migration', () => {
-  it('preserves guarded schema 38 beneath the current schema 69 authority', async () => {
+  it('preserves guarded schema 38 beneath the current schema 70 authority', async () => {
     const migrations = readdirSync(resolve(root, 'migrations'))
       .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
       .sort();

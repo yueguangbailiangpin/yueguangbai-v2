@@ -35,6 +35,8 @@ const ERROR_MESSAGES: Readonly<Partial<Record<ApiErrorCode, string>>> =
     NOT_FOUND: '请求的返款资料不存在',
     CUSTOMER_NOT_ACTIVE: '当前账号不可用',
     IDENTITY_REVIEW_REQUIRED: '账号资料需要先完成审核',
+    IDEMPOTENCY_CONFLICT: '幂等键不能用于不同催办请求',
+    REQUEST_IN_PROGRESS: '相同催办请求正在处理中',
     RATE_LIMITED: '该返款已催办，请 24 小时后再试',
     DEPENDENCY_UNAVAILABLE: '服务暂时不可用，请稍后重试',
   });
@@ -79,7 +81,9 @@ export function normalizeBuyerRefundPortalError(
     return new BuyerRefundPortalError(code, 403);
   }
   if (code === 'CUSTOMER_NOT_ACTIVE'
-    || code === 'IDENTITY_REVIEW_REQUIRED') {
+    || code === 'IDENTITY_REVIEW_REQUIRED'
+    || code === 'IDEMPOTENCY_CONFLICT'
+    || code === 'REQUEST_IN_PROGRESS') {
     return new BuyerRefundPortalError(code, 409);
   }
   if (code === 'RATE_LIMITED') {

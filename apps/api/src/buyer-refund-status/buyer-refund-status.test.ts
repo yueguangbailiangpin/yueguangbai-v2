@@ -174,13 +174,19 @@ describe('Phase 4B5 buyer refund status read model', () => {
     }
   });
 
-  it('normalizes ledger not-found errors without disclosing ownership', () => {
+  it('normalizes concealment and foundation idempotency conflicts without losing 409 semantics', () => {
     expect(normalizeBuyerRefundPortalError({
       code: 'BUYER_REFUND_NOT_FOUND',
     })).toMatchObject({ code: 'NOT_FOUND', status: 404 });
     expect(normalizeBuyerRefundPortalError({
       code: 'FORBIDDEN',
     })).toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    expect(normalizeBuyerRefundPortalError({
+      code: 'REQUEST_IN_PROGRESS',
+    })).toMatchObject({ code: 'REQUEST_IN_PROGRESS', status: 409 });
+    expect(normalizeBuyerRefundPortalError({
+      code: 'IDEMPOTENCY_CONFLICT',
+    })).toMatchObject({ code: 'IDEMPOTENCY_CONFLICT', status: 409 });
   });
 
   it('keeps read endpoints file-blind and registers only the scoped reminder command', () => {

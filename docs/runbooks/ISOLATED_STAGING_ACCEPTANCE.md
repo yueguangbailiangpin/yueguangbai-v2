@@ -30,7 +30,7 @@ R2:     yueguangbai-v2-staging-files
 1. 创建 distinct staging D1 与 R2；确认没有 production binding。
 2. 在 Cloudflare Zero Trust 创建 distinct staging Access Application、Audience 和五个测试 Staff 邮箱的 allow policy。验证码由邮箱所有者输入，不能交给 Agent。
 3. 在 Git 外渲染 staging Wrangler config，运行 release preflight；此时不部署。
-4. 只对 staging D1 应用 migrations `0001`–`0069`，核对 `app_schema_state=69` 和 Migration ledger。
+4. 只对 staging D1 应用 migrations `0001`–`0070`，核对 `app_schema_state=70` 和 Migration ledger。
 5. 执行一次性 first-owner bootstrap；同一原子 batch 同时建立唯一的 `staging-buyer-channel`，不得另行手搓 SQL。
 6. Owner 首次通过 Access OTP 登录后，用正式 Staff 账号管理界面创建另外四个角色。
 7. 用正式 Staff customer onboarding/activation/password 流程创建 synthetic Buyer 和 Seller；不得直写业务表。
@@ -95,7 +95,7 @@ node scripts/bootstrap-staging-first-owner.mjs \
   --input /absolute/outside-git/staging-owner.json
 ```
 
-工具先只读验证 D1 name/ID，再以仅含字符串的参数数组和单个 D1 transaction batch 写入。数字以十进制字符串绑定，固定 SQL `NULL` 不承载 operator input。成功输出只包含 Staff ID、role/status 和安全状态，不返回邮箱、OAuth token 或 input 内容。重复同一请求安全重放；目标不符、Schema 非 65、已有任何 Staff authority/Buyer channel、输入变化或批处理失败均停止。
+工具先只读验证 D1 name/ID，再以仅含字符串的参数数组和单个 D1 transaction batch 写入。数字以十进制字符串绑定，固定 SQL `NULL` 不承载 operator input。成功输出只包含 Staff ID、role/status 和安全状态，不返回邮箱、OAuth token 或 input 内容。重复同一请求安全重放；目标不符、Schema 非 70、已有任何 Staff authority/Buyer channel、输入变化或批处理失败均停止。
 
 ## 5. 测试身份矩阵
 
