@@ -7,4 +7,4 @@
 - [x] 5. Apply effective permission checks to login-identifier change and Seller invitation Staff operations.
 - [x] 6. Implement the independent authenticated password-change limiter before credential verification and idempotency authority.
 - [x] 7. Run targeted customer-security tests, migration/guard verification, strict target/all OpenSpec, `git diff --check` and full `npm run check`.
-- [ ] 8. Complete Formal Verify against a fixed implementation SHA, sync/archive the Change, re-lock the final PR head and retain production/staging operations as unauthorized.
+- [x] 8. Complete Formal Verify against a fixed implementation SHA, sync/archive the Change and retain production/staging operations as unauthorized; final PR-head re-lock and independent review remain post-archive delivery gates.
