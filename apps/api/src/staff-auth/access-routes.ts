@@ -73,7 +73,6 @@ async function bootstrap(context: Context<any>): Promise<Response> {
       requestId: requestIdFromContext(context), now,
     });
   }
-  clearStaffSessionCookie(context);
   const token = generateStaffOpaqueToken();
   const sessionRow = await createInternalStaffSession(context.env.DB, {
     token,

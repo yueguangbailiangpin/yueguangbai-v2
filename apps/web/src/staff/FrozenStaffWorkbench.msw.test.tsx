@@ -6,10 +6,12 @@ import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 import '../test/msw/lifecycle';
 import { StaffSessionBoundary } from '../auth/staff/StaffSessionBoundary';
+import { queryKeys } from '../api/query-client';
 import { apiUrl } from '../test/msw/handlers';
 import { renderWithMsw } from '../test/msw/render';
 import { server } from '../test/msw/server';
 import { FrozenStaffWorkbench } from './FrozenStaffWorkbench';
+import { staffWorkbenchKeys } from './queries/keys';
 import { staffTestAdapter, staffTestSession, staffTestWorkItem } from './test-fixtures';
 
 afterEach(cleanup);
@@ -75,6 +77,25 @@ describe('canonical Frozen Staff workbench', () => {
     expect(screen.getByRole('button', { name: '下一页' })).toBeEnabled();
   });
 
+  it.each([
+    ['returns 403', () => HttpResponse.json({ error: { code: 'FORBIDDEN', message: 'forbidden', details: null }, meta: { request_id: 'queue-forbidden' } }, { status: 403 })],
+    ['returns an invalid envelope', () => HttpResponse.json({ data: { work_items: 'not-an-array', next_cursor: null }, meta: { request_id: 'queue-invalid-envelope' } })],
+  ])('removes a cached selected detail when the current queue %s', async (_case, failedQueue) => {
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items'), () => HttpResponse.json({ data: { work_items: [demandWorkItem], next_cursor: null }, meta: { request_id: 'queue-initial' } })),
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/review-context'), () => HttpResponse.json({ data: { review_context: demandReviewContext }, meta: { request_id: 'demand-context' } })),
+    );
+    const { client }=renderWorkbench('/staff?work_item=work-demand');
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    server.use(http.get(apiUrl('/api/staff/me/work-items'), failedQueue));
+
+    await client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('当前面板加载失败');
+    expect(screen.getByText('请选择工作项')).toBeVisible();
+    expect(screen.queryByText('需求发布事实')).not.toBeInTheDocument();
+  });
+
   it('publishes a demand with its authoritative version, first date and idempotency key', async () => {
     let body: unknown;
     let key: string | null = null;
@@ -94,6 +115,65 @@ describe('canonical Frozen Staff workbench', () => {
     await user.click(screen.getByRole('button', { name: '通过并发布' }));
     await waitFor(() => expect(body).toEqual({ expected_version: 3, decision: 'PUBLISH', first_order_date: '2026-08-11' }));
     expect(key).toMatch(/\S/u);
+  });
+
+  it('retains the selected demand context after its authoritative mutation removes it from the filtered queue', async () => {
+    let queueReads=0;let published=false;
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items'), () => {
+        queueReads+=1;
+        return HttpResponse.json({ data: { work_items: published?[]:[demandWorkItem], next_cursor: null }, meta: { request_id: `queue-${queueReads}` } });
+      }),
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/review-context'), () => HttpResponse.json({ data: { review_context: demandReviewContext }, meta: { request_id: 'demand-context' } })),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), () => {
+        published=true;
+        return HttpResponse.json({ data: { demand_review: { demand_batch_id: 'demand-1', status: 'PUBLISHED', version: 4, review_reason: null, replayed: false, schedule: null } }, meta: { request_id: 'demand-published' } });
+      }),
+    );
+    const user=userEvent.setup();
+    renderWorkbench('/staff?work_item=work-demand');
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
+    await user.click(screen.getByRole('button', { name: '通过并发布' }));
+    await waitFor(()=>expect(queueReads).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByText('需求审核结果')).toBeVisible();
+    expect(screen.getByText('PUBLISHED')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '通过并发布' })).not.toBeInTheDocument();
+    expect(screen.queryByText('请选择工作项')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('状态'), 'COMPLETED');
+    expect(await screen.findByText('请选择工作项')).toBeVisible();
+  });
+
+  it('clears retained selection and refetches the same queue when the trusted Staff authorization changes', async () => {
+    let queueReads=0;let published=false;
+    const initialSession=staffTestSession('owner', ['SELLER_SETTLEMENT_VIEW', 'SELLER_SETTLEMENT_RECORD', 'FINANCIAL_CORRECT']);
+    let currentSession=initialSession;
+    const adapter={...staffTestAdapter(initialSession),readSession:async()=>({data:{session:currentSession},requestId:`session-v${currentSession.authorization_version}`})};
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items'), () => {
+        queueReads+=1;
+        return HttpResponse.json({ data: { work_items: published?[]:[demandWorkItem], next_cursor: null }, meta: { request_id: `queue-${queueReads}` } });
+      }),
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/review-context'), () => HttpResponse.json({ data: { review_context: demandReviewContext }, meta: { request_id: 'demand-context' } })),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), () => {
+        published=true;
+        return HttpResponse.json({ data: { demand_review: { demand_batch_id: 'demand-1', status: 'PUBLISHED', version: 4, review_reason: null, replayed: false, schedule: null } }, meta: { request_id: 'demand-published' } });
+      }),
+    );
+    const user=userEvent.setup();
+    const {client}=renderWorkbench('/staff?work_item=work-demand',adapter);
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
+    await user.click(screen.getByRole('button', { name: '通过并发布' }));
+    await waitFor(()=>expect(queueReads).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByText('需求审核结果')).toBeVisible();
+
+    currentSession={...initialSession,authorization_version:2};
+    await client.invalidateQueries({queryKey:queryKeys.staff.session});
+
+    expect(await screen.findByText('请选择工作项')).toBeVisible();
+    await waitFor(()=>expect(queueReads).toBeGreaterThanOrEqual(3));
+    expect(screen.queryByText('需求审核结果')).not.toBeInTheDocument();
   });
 
   it('rejects a demand through the dedicated review action', async () => {
@@ -151,9 +231,8 @@ describe('canonical Frozen Staff workbench', () => {
   });
 });
 
-function renderWorkbench(route: string): void {
-  const session = staffTestSession('owner', ['SELLER_SETTLEMENT_VIEW', 'SELLER_SETTLEMENT_RECORD', 'FINANCIAL_CORRECT']);
-  renderWithMsw(<StaffSessionBoundary adapter={staffTestAdapter(session)}><FrozenStaffWorkbench /></StaffSessionBoundary>, { route });
+function renderWorkbench(route: string, adapter = staffTestAdapter(staffTestSession('owner', ['SELLER_SETTLEMENT_VIEW', 'SELLER_SETTLEMENT_RECORD', 'FINANCIAL_CORRECT']))) {
+  return renderWithMsw(<StaffSessionBoundary adapter={adapter}><FrozenStaffWorkbench /></StaffSessionBoundary>, { route });
 }
 
 function installDemandHandlers(
