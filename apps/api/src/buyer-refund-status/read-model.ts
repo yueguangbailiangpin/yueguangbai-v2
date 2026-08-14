@@ -23,6 +23,7 @@ import {
   encodeBuyerRefundPortalCursor,
   type BuyerRefundPortalCursor,
 } from './pagination';
+import { reminderSummary } from './remind';
 
 interface BuyerRefundPortalRow {
   refund_obligation_id: string;
@@ -175,7 +176,8 @@ export async function getBuyerRefund(
     refundObligationId,
     safeNonNegativeInteger(row.due_amount_cny_fen),
   );
-  return { ...summary, activities };
+  const reminders = await reminderSummary(database, refundObligationId);
+  return { ...summary, reminder: reminderDto(reminders), activities };
 }
 
 async function listBuyerRefundActivities(
@@ -239,7 +241,26 @@ function toSummaryDto(
       status: 'CONFIRMED',
     },
     ...balance,
+    reminder: {
+      reminder_count: 0,
+      last_reminded_at: null,
+      next_reminder_at: null,
+    },
     allowed_actions: [],
+  };
+}
+
+function reminderDto(summary: {
+  reminder_count: number;
+  last_reminded_at: number | null;
+}) {
+  const last = summary.last_reminded_at === null
+    ? null
+    : safeNonNegativeInteger(summary.last_reminded_at);
+  return {
+    reminder_count: safeNonNegativeInteger(summary.reminder_count),
+    last_reminded_at: last,
+    next_reminder_at: last === null ? null : last + 24 * 60 * 60 * 1000,
   };
 }
 

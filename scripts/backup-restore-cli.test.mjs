@@ -33,12 +33,12 @@ describe('backup and restore CLI expected schema', () => {
     expect(result.stderr).toContain('unexpected_schema_version');
   });
 
-  it('creates and restores one anonymous schema-69 fixture when both values match', () => {
+  it('creates and restores one anonymous schema-70 fixture when both values match', () => {
     const fixture = localFixture();
-    const backup = run('backup-d1.mjs', backupArgs(fixture, '69'));
+    const backup = run('backup-d1.mjs', backupArgs(fixture, '70'));
     expect(backup.status, backup.stderr).toBe(0);
     const restored = run('restore-d1.mjs', [
-      '--expected-schema', '69',
+      '--expected-schema', '70',
       '--bundle', path.join(fixture.backup, 'd1-backup.bundle.aes256gcm'),
       '--attestation', path.join(fixture.backup, 'd1-backup.attestation.json'),
       '--restore-database', path.join(fixture.root, 'restored.sqlite'),
@@ -46,7 +46,7 @@ describe('backup and restore CLI expected schema', () => {
       '--expected-release-commit-sha', releaseSha,
     ]);
     expect(restored.status, restored.stderr).toBe(0);
-    expect(JSON.parse(restored.stdout)).toMatchObject({ status: 'PASS', schema_version: 69 });
+    expect(JSON.parse(restored.stdout)).toMatchObject({ status: 'PASS', schema_version: 70 });
   }, LONG_RUNNING_TEST_TIMEOUT_MS);
 });
 

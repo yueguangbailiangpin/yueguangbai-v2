@@ -3,9 +3,7 @@
 ## Purpose
 
 Defines the scoped Staff API and immutable ledger behavior for Buyer Refund processing without exposing refund costs to Seller identities.
-
 ## Requirements
-
 ### Requirement: Staff can list Buyer Refund obligations within current scope
 
 The system SHALL expose `GET /api/staff/buyer-refunds` for an authenticated Staff Session with effective `BUYER_REFUND_VIEW`. The route SHALL apply Personal DENY and current D1 assignment/team/global Data Scope in SQL, SHALL support strict bounded cursor pagination and allowed status/date filters, and SHALL project obligation amount, paid, reversed, outstanding, overpaid, status, buyer/order summary, assignment, version and timestamps as safe fields.
@@ -131,3 +129,12 @@ Staff list/detail DTOs SHALL contain only fields required for refund operations 
 
 - **WHEN** dedicated route and recursive DTO verifiers scan Buyer and Seller responses
 - **THEN** Buyer Refund internal cost, Staff-only notes, proof storage details and cross-customer identifiers are absent, otherwise Wave 13 cannot pass audit closure.
+
+### Requirement: Staff refund detail exposes bounded reminder observability
+
+The scoped Staff Buyer Refund list/detail projection SHALL include only each obligation's immutable reminder count and last reminder timestamp. It SHALL preserve existing pagination and ordering, SHALL NOT create or reorder a Staff work item, and SHALL NOT expose Buyer idempotency keys, request ids, Audit metadata, external-delivery state, or Seller-visible reminder data.
+
+#### Scenario: Staff reads a refund with reminders
+
+- **WHEN** authorized Staff reads a visible Buyer Refund obligation with two committed Buyer reminders
+- **THEN** the detail reports count two and the latest reminder timestamp while existing payment, reversal, scope, and ordering behavior remains unchanged

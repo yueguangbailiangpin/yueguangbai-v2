@@ -1,6 +1,7 @@
 import {
   apiSuccess,
 } from '@ygb/contracts';
+import { parseIdempotencyKey } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { requireBuyerPortalContext } from '../buyer-portal/buyer-context';
 import { requestIdFromContext } from '../http-auth/errors';
@@ -18,6 +19,7 @@ import {
   getBuyerRefund,
   listBuyerRefunds,
 } from './read-model';
+import { remindBuyerRefund } from './remind';
 
 const MAX_IDENTIFIER_LENGTH = 120;
 const ALLOWED_LIST_QUERY_KEYS = new Set(['limit', 'cursor']);
@@ -33,6 +35,11 @@ export function registerBuyerRefundStatusRoutes(app: Hono<any>): void {
     '/api/buyer-portal/refunds/:id',
     session,
     withBuyerRefundErrors(getOwnRefund),
+  );
+  app.post(
+    '/api/buyer-portal/refunds/:id/remind',
+    session,
+    withBuyerRefundErrors(remindOwnRefund),
   );
 }
 
@@ -65,6 +72,24 @@ async function getOwnRefund(context: Context<any>): Promise<Response> {
   return success(context, { refund });
 }
 
+async function remindOwnRefund(context: Context<any>): Promise<Response> {
+  const buyer = await requireBuyerPortalContext(context);
+  const result = await remindBuyerRefund(context.env.DB, buyer, {
+    obligationId: requireRouteId(context),
+    idempotencyKey: requireIdempotencyKey(context),
+    requestId: requestIdFromContext(context),
+  });
+  return success(context, {
+    reminder: {
+      refund_obligation_id: result.refund_obligation_id,
+      reminder_count: result.reminder_count,
+      last_reminded_at: result.last_reminded_at,
+      next_reminder_at: result.next_reminder_at,
+    },
+    replayed: result.replayed,
+  });
+}
+
 function rejectUnknownOrRepeatedQuery(url: URL): void {
   for (const key of url.searchParams.keys()) {
     if (!ALLOWED_LIST_QUERY_KEYS.has(key)
@@ -86,6 +111,12 @@ function requireRouteId(context: Context<any>): string {
     || /[\u0000-\u001f\u007f]/u.test(value)) {
     throw new BuyerRefundPortalError('NOT_FOUND', 404);
   }
+  return value;
+}
+
+function requireIdempotencyKey(context: Context<any>): string {
+  const value = parseIdempotencyKey(context.req.header('Idempotency-Key'));
+  if (!value) validationError();
   return value;
 }
 

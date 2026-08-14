@@ -333,9 +333,15 @@ const refundOrderSchema = z.object({
   review_type: reviewType,
   status: z.literal('CONFIRMED'),
 }).strict();
+const refundReminderSchema = z.object({
+  reminder_count: nonnegativeIntegerSchema,
+  last_reminded_at: nullableEpoch,
+  next_reminder_at: nullableEpoch,
+}).strict();
 export const refundSchema = refundBalanceSchema.extend({
   refund_obligation_id: identifierSchema,
   order: refundOrderSchema,
+  reminder: refundReminderSchema,
   allowed_actions: z.tuple([]),
 }).strict();
 export const refundDetailValueSchema = refundSchema.extend({
@@ -350,6 +356,14 @@ export const refundDetailValueSchema = refundSchema.extend({
 }).strict();
 export const refundsPageSchema = page(refundSchema);
 export const refundDetailSchema = z.object({ refund: refundDetailValueSchema }).strict();
+export const refundReminderMutationSchema = z.object({
+  reminder: refundReminderSchema.extend({
+    refund_obligation_id: identifierSchema,
+    last_reminded_at: epoch,
+    next_reminder_at: epoch,
+  }).strict(),
+  replayed: z.boolean(),
+}).strict();
 
 export const fileReadIntentSchema = z.object({
   read_intent_id: identifierSchema,
