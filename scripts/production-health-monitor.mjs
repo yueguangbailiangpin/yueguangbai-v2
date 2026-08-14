@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url';
 
 export const HEALTH_ISSUE_TITLE='[自动监控] 月光白 V2 生产 Readiness 异常';
 const HEALTH_BODY_LIMIT=16*1024,GITHUB_BODY_LIMIT=1024*1024;
-const REQUIRED_CHECKS=['schema','scheduler','acquisition_maintenance','operational_alerts','object_storage','recovery','staff_access','release'];
+const REQUIRED_OK_CHECKS=['schema','scheduler','acquisition_maintenance','operational_alerts','object_storage','recovery','staff_access','release'];
 
 export async function probeProductionHealth({endpoint,fetchImpl=fetch,simulation='probe'}){
   const url=healthUrl(endpoint);if(simulation==='failure')return{healthy:false,reason:'SIMULATED_FAILURE',checkedAt:Date.now()};if(simulation==='recovery')return{healthy:true,reason:'SIMULATED_RECOVERY',checkedAt:Date.now()};if(simulation!=='probe')throw new Error('invalid_health_simulation');
@@ -18,8 +18,8 @@ async function githubRequest(fetchImpl,repository,token,path,init){const respons
 async function boundedText(response,limit){const text=await response.text();if(text.length>limit)throw new Error('response_too_large');return text;}
 function healthUrl(value){if(typeof value!=='string')throw new Error('health_url_missing');const url=new URL(value);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/ready')throw new Error('invalid_health_url');return url.href;}
 function repositoryPath(value){if(typeof value!=='string'||!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(value))throw new Error('invalid_github_repository');return value;}
-function isReadyEnvelope(value){const checks=value?.data?.checks;return value!==null&&typeof value==='object'&&value.data!==null&&typeof value.data==='object'&&value.data.status==='ready'&&checks!==null&&typeof checks==='object'&&REQUIRED_CHECKS.every((key)=>checks[key]==='ok')&&value.meta!==null&&typeof value.meta==='object'&&typeof value.meta.request_id==='string'&&value.meta.request_id.length>0;}
-function failureBody(outcome){return['独立生产 Readiness 监控检测到异常。','',`- 结果：${safeReason(outcome.reason)}`,`- 检测时间：${new Date(outcome.checkedAt).toISOString()}`,'- 检查目标：生产站 /ready','','该检查覆盖当前 Schema、Scheduler、获客维护、运营告警 sink、对象存储、Cloudflare Access 配置、当前 release 与对应 D1+R2 恢复证明；恢复后问题会自动关闭。'].join('\n');}
+function isReadyEnvelope(value){const checks=value?.data?.checks;return value!==null&&typeof value==='object'&&value.data!==null&&typeof value.data==='object'&&value.data.status==='ready'&&checks!==null&&typeof checks==='object'&&REQUIRED_OK_CHECKS.every((key)=>checks[key]==='ok')&&checks.outbox_delivery==='not_required'&&value.meta!==null&&typeof value.meta==='object'&&typeof value.meta.request_id==='string'&&value.meta.request_id.length>0;}
+function failureBody(outcome){return['独立生产 Readiness 监控检测到异常。','',`- 结果：${safeReason(outcome.reason)}`,`- 检测时间：${new Date(outcome.checkedAt).toISOString()}`,'- 检查目标：生产站 /ready','','该检查覆盖当前 Schema、Scheduler、Outbox Delivery 明确延后、获客维护、运营告警 sink、对象存储、Cloudflare Access 配置、当前 release 与对应 D1+R2 恢复证明；恢复后问题会自动关闭。'].join('\n');}
 function recoveryBody(outcome){return['生产 Readiness 已恢复。','',`- 结果：${safeReason(outcome.reason)}`,`- 恢复时间：${new Date(outcome.checkedAt).toISOString()}`].join('\n');}
 function safeReason(value){return /^(READY|SIMULATED_FAILURE|SIMULATED_RECOVERY|MALFORMED_OR_NOT_READY_RESPONSE|NETWORK_OR_TIMEOUT|HTTP_[1-5][0-9]{2})$/u.test(value)?value:'UNKNOWN';}
 async function main(){const outcome=await probeProductionHealth({endpoint:process.env['YGB_PRODUCTION_HEALTH_URL'],simulation:process.env['YGB_HEALTH_SIMULATION']??'probe'});const reconciliation=await reconcileHealthIssue({outcome,repository:process.env['GITHUB_REPOSITORY'],token:process.env['GH_TOKEN']});console.log(JSON.stringify({status:outcome.healthy?'READY':'NOT_READY',reason:outcome.reason,issue_action:reconciliation.action}));if(!outcome.healthy)process.exitCode=1;}
