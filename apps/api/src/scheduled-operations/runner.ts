@@ -24,7 +24,7 @@ const SYSTEM_SCHEDULER_ACTOR = Object.freeze({
   permissions: new Set<StaffPermissionCode>(['ORDER_INSTRUCTION_EXPIRY_RUN','ORDER_INSTRUCTION_MANAGE']),
 });
 
-export async function runScheduledOperations(database: SqlDatabase, input: { now?: number; enabled?: boolean; disabledJobs?: readonly string[]; storage?: ObjectStorageAdapter | null; driveAdapter?: DriveArchiveAdapter | null; driveArchiveEnabled?: boolean; driveArchiveCopyEnabled?: boolean; driveArchiveProxyReadEnabled?: boolean; driveArchiveR2DeleteEnabled?: boolean; outboxAdapter?: OutboxDeliveryAdapter | null; trigger?: ScheduledTrigger; only?: ScheduledJobName; dryRun?: boolean; deadlineReached?: () => boolean; batchSize?: number; }): Promise<SafeJobRun[]> {
+export async function runScheduledOperations(database: SqlDatabase, input: { now?: number; enabled?: boolean; disabledJobs?: readonly string[]; storage?: ObjectStorageAdapter | null; driveAdapter?: DriveArchiveAdapter | null; driveArchiveEnabled?: boolean; driveArchiveCopyEnabled?: boolean; driveArchiveProxyReadEnabled?: boolean; driveArchiveR2DeleteEnabled?: boolean; outboxDeliveryEnabled?: boolean; outboxAdapter?: OutboxDeliveryAdapter | null; trigger?: ScheduledTrigger; only?: ScheduledJobName; dryRun?: boolean; deadlineReached?: () => boolean; batchSize?: number; }): Promise<SafeJobRun[]> {
   const now = input.now ?? Date.now();
   const names = input.only ? [input.only] : SCHEDULED_JOB_NAMES;
   const output: SafeJobRun[] = [];
@@ -41,7 +41,8 @@ export async function runScheduledOperations(database: SqlDatabase, input: { now
 async function runOne(database: SqlDatabase, job: ScheduledJobName, input: Required<Pick<Parameters<typeof runScheduledOperations>[1], 'now'>> & Parameters<typeof runScheduledOperations>[1]): Promise<SafeJobRun> {
   const driveHardDisabled=job==='drive_archive' && (input.driveArchiveEnabled!==true
     || input.driveArchiveCopyEnabled!==true || !input.storage || !input.driveAdapter);
-  if (input.enabled === false || input.disabledJobs?.includes(job) || driveHardDisabled) return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
+  const outboxHardDisabled=job==='outbox_delivery' && input.outboxDeliveryEnabled===false;
+  if (input.enabled === false || input.disabledJobs?.includes(job) || driveHardDisabled || outboxHardDisabled) return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
   const configured=await database.prepare('SELECT enabled FROM scheduled_job_states WHERE job_name=?').bind(job).first<{enabled:number}>();
   if (configured?.enabled===0) return {job_name:job,outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null};
   const token = `scheduled:${crypto.randomUUID()}`;
