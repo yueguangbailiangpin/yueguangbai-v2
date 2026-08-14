@@ -56,7 +56,7 @@ export default {
       const deadlineReached=()=>Date.now()-startedAt>=SCHEDULED_HANDLER_TIME_BUDGET_MS;
       const drive=driveArchiveRuntime(bindings);
       const sink=configuredAlertSink(bindings);
-      const runs=await runScheduledOperations(bindings.DB, { enabled: true, disabledJobs, storage: bindings.FILE_OBJECT_STORAGE ?? null, outboxAdapter: bindings.OUTBOX_DELIVERY_ADAPTER ?? null,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled,now,deadlineReached });
+      const runs=await runScheduledOperations(bindings.DB, { enabled: true, disabledJobs, storage: bindings.FILE_OBJECT_STORAGE ?? null, outboxDeliveryEnabled:bindings.OUTBOX_DELIVERY_ENABLED==='true',outboxAdapter: bindings.OUTBOX_DELIVERY_ADAPTER ?? null,driveAdapter:drive.adapter,driveArchiveEnabled:drive.enabled,driveArchiveCopyEnabled:drive.copyEnabled,driveArchiveProxyReadEnabled:drive.proxyReadEnabled,driveArchiveR2DeleteEnabled:drive.r2DeleteEnabled,now,deadlineReached });
       const fileJob=runs.find((run)=>run.job_name==='file_orphan_cleanup');
       if(fileJob&&fileJob.outcome!=='DISABLED'&&bindings.FILE_OBJECT_STORAGE&&!deadlineReached()){
         try{

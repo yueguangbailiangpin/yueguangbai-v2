@@ -55,7 +55,7 @@ describe('operational alert production readiness',()=>{
     database=createMigratedTestDatabase();
     const response=await ready({
       APP_ENVIRONMENT:'staging',APP_RELEASE_SHA:RELEASE,
-      SCHEDULED_OPERATIONS_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
+      SCHEDULED_OPERATIONS_ENABLED:'false',OUTBOX_DELIVERY_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
       OPERATIONAL_ALERT_MODE:'disabled',
       STAFF_ACCESS_TEAM_DOMAIN:'https://staging-team.cloudflareaccess.com',
       STAFF_ACCESS_AUD:'staging-access-audience',
@@ -63,12 +63,13 @@ describe('operational alert production readiness',()=>{
     },NOW);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({data:{status:'ready',checks:{
-      schema:'ok',scheduler:'not_required',acquisition_maintenance:'not_required',
+      schema:'ok',scheduler:'not_required',outbox_delivery:'not_required',acquisition_maintenance:'not_required',
       operational_alerts:'not_required',object_storage:'ok',recovery:'not_required',
       staff_access:'ok',release:'ok',
     }}});
     for(const enabled of [
       {SCHEDULED_OPERATIONS_ENABLED:'true'},
+      {OUTBOX_DELIVERY_ENABLED:'true'},
       {ACQUISITION_MAINTENANCE_ENABLED:'true'},
       {OPERATIONAL_ALERT_MODE:'local'},
     ]){
