@@ -10,6 +10,7 @@ const rootReal = realpathSync.native(root);
 const environments = new Set(['staging', 'production']);
 const placeholderPattern = /REQUIRED|REPLACE|PLACEHOLDER|CHANGEME|TODO/iu;
 const disabledFlags = [
+  'OUTBOX_DELIVERY_ENABLED',
   'DRIVE_ARCHIVE_ENABLED',
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
