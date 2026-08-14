@@ -11,6 +11,7 @@ const MAX_ACQUISITION_STALENESS_MS=24*60*60*1000;
 const MAX_JOB_BACKLOG=1000;
 const REQUIRED_JOBS=['reservation_expiry','instruction_expiry','outbox_delivery','file_orphan_cleanup'] as const;
 const REQUIRED_SCHEDULER_JOBS=['reservation_expiry','instruction_expiry','file_orphan_cleanup'] as const;
+const OBJECT_STORAGE_READINESS_PROBE_KEY='__ygb_readiness__/binding-probe';
 type CheckStatus='ok'|'failed'|'not_required';
 
 export function registerOperationalReadinessRoutes(app:Hono<any>):void{
@@ -90,7 +91,8 @@ async function operationalAlertsReady(database:SqlDatabase,bindings:AppBindings,
 async function storageReady(database:SqlDatabase,storage:ObjectStorageAdapter|null):Promise<boolean>{
   if(!storage)return false;
   const row=await database.prepare(`SELECT object_key,uploaded_byte_size,uploaded_sha256 FROM file_objects WHERE status='VERIFIED' AND uploaded_byte_size IS NOT NULL AND uploaded_sha256 IS NOT NULL ORDER BY rowid DESC LIMIT 1`).first<{object_key:string;uploaded_byte_size:number;uploaded_sha256:string}>();
-  if(!row)return true;const head=await storage.headObject(row.object_key).catch(()=>null);
+  if(!row){try{await storage.headObject(OBJECT_STORAGE_READINESS_PROBE_KEY);return true;}catch{return false;}}
+  const head=await storage.headObject(row.object_key).catch(()=>null);
   return Boolean(head&&head.byteSize===Number(row.uploaded_byte_size)&&head.checksumSha256===row.uploaded_sha256);
 }
 function validAccessConfig(domain:unknown,aud:unknown):boolean{

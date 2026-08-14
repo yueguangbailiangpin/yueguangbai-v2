@@ -13,6 +13,37 @@ const TARGET_SCHEMA = 70;
 const STAGING_BUYER_CHANNEL_ID = 'staging-buyer-channel';
 const STAGING_DATABASE_NAME = /^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const STAGING_ZERO_STOCK_TABLES = [
+  'acquisition_channels',
+  'acquisition_leads',
+  'acquisition_prospects',
+  'audit_events',
+  'buyer_channels',
+  'buyer_customers',
+  'buyer_refund_obligations',
+  'customer_account_personas',
+  'customer_identity_subjects',
+  'customer_login_accounts',
+  'demand_batches',
+  'file_objects',
+  'formal_orders',
+  'integration_outbox',
+  'order_evidence_submissions',
+  'order_instructions',
+  'platform_order_identities',
+  'product_applications',
+  'product_reservations',
+  'products',
+  'review_cases',
+  'seller_member_invitations',
+  'seller_organization_members',
+  'seller_organizations',
+  'seller_partner_import_batches',
+  'seller_payables',
+  'seller_payments',
+  'seller_stores',
+  'standard_products',
+] as const;
 
 export interface StagingFirstOwnerInput {
   environment: string;
@@ -92,7 +123,7 @@ export async function bootstrapStagingFirstOwner(
     status: 'ACTIVE',
   };
   const statements: SqlStatement[] = [
-    emptyAuthorityAssertion(database),
+    emptyStagingAssertion(database),
     database.prepare(`INSERT INTO staff_users(
       id,display_name,status,authorization_version,version,
       created_at,updated_at,disabled_at,session_version
@@ -159,7 +190,7 @@ export async function bootstrapStagingFirstOwner(
     if (!state?.staffEmpty) {
       throw new StagingFirstOwnerError('STAFF_AUTHORITY_NOT_EMPTY');
     }
-    if (!state.buyerFoundationEmpty) {
+    if (!state.businessStockEmpty) {
       throw new StagingFirstOwnerError('STAGING_FOUNDATION_NOT_EMPTY');
     }
     throw normalizeError(error);
@@ -193,7 +224,7 @@ function normalizeInput(input: StagingFirstOwnerInput): StagingFirstOwnerInput {
   };
 }
 
-function emptyAuthorityAssertion(database: SqlDatabase): SqlStatement {
+function emptyStagingAssertion(database: SqlDatabase): SqlStatement {
   return database.prepare(`INSERT INTO transaction_assertions(assertion_value)
     SELECT CASE WHEN
       EXISTS(SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=70)
@@ -218,7 +249,8 @@ function emptyAuthorityAssertion(database: SqlDatabase): SqlStatement {
       AND NOT EXISTS(SELECT 1 FROM staff_work_items)
       AND NOT EXISTS(SELECT 1 FROM staff_role_consolidation_mappings)
       AND NOT EXISTS(SELECT 1 FROM staff_authorization_events)
-      AND NOT EXISTS(SELECT 1 FROM buyer_channels)
+      ${STAGING_ZERO_STOCK_TABLES.map((table) =>
+        `AND NOT EXISTS(SELECT 1 FROM ${table})`).join('\n      ')}
     THEN 1 ELSE 0 END`);
 }
 
@@ -254,7 +286,7 @@ function finalAuthorityAssertion(
 
 async function bootstrapState(database: SqlDatabase): Promise<{
   staffEmpty: boolean;
-  buyerFoundationEmpty: boolean;
+  businessStockEmpty: boolean;
 }> {
   const row = await database.prepare(`SELECT
     (SELECT COUNT(*) FROM staff_users)
@@ -278,11 +310,12 @@ async function bootstrapState(database: SqlDatabase): Promise<{
     +(SELECT COUNT(*) FROM staff_work_items)
     +(SELECT COUNT(*) FROM staff_role_consolidation_mappings)
     +(SELECT COUNT(*) FROM staff_authorization_events) AS staff_total,
-    (SELECT COUNT(*) FROM buyer_channels) AS buyer_channel_total`
-  ).first<{staff_total:number;buyer_channel_total:number}>();
+    ${STAGING_ZERO_STOCK_TABLES.map((table) =>
+      `(SELECT COUNT(*) FROM ${table})`).join('\n    +')} AS business_total`
+  ).first<{staff_total:number;business_total:number}>();
   return {
     staffEmpty: Number(row?.staff_total ?? -1) === 0,
-    buyerFoundationEmpty: Number(row?.buyer_channel_total ?? -1) === 0,
+    businessStockEmpty: Number(row?.business_total ?? -1) === 0,
   };
 }
 

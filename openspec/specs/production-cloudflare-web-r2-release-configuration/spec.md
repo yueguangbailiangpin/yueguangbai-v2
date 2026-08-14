@@ -5,12 +5,12 @@ Define the fail-closed local implementation and configuration contract for adapt
 ## Requirements
 ### Requirement: The Change makes no schema or remote-resource change
 
-The Change SHALL declare `NO_SCHEMA_CHANGE`, SHALL preserve the continuous `0001`–`0037 Migration chain, SHALL NOT create `0038`, and SHALL NOT call Cloudflare APIs, deploy, mutate DNS/domains/routes, apply remote Migration, read real Secrets or access production data.
+The repository-side staging bootstrap implementation SHALL declare `NO_SCHEMA_CHANGE`, SHALL preserve the continuous `0001`–`0070` Migration chain without modifying those Migration files, and SHALL NOT create `0071`. Repository validation SHALL NOT call Cloudflare APIs, deploy, mutate DNS/domains/routes, apply a remote Migration, read real Secrets or access production data. Any separately authorized staging activation SHALL use an independently reviewed fixed SHA and Git-external configuration/evidence, and SHALL remain outside production resources and real business data.
 
 #### Scenario: Local implementation is complete
 
 - **WHEN** all source, template, test and runbook work passes locally
-- **THEN** the repository Migration tail remains `0037`, remote writes remain zero and production remains unmodified.
+- **THEN** the repository Migration tail remains `0070`, repository validation performs zero remote writes and Production GO remains blocked.
 
 #### Scenario: A required external value is unavailable
 
@@ -38,16 +38,16 @@ The Worker SHALL adapt one explicit R2 binding into the existing `ObjectStorageA
 
 ### Requirement: Release configuration is explicit, separated and fail closed
 
-The repository SHALL provide distinct staging and production templates. Each SHALL require an operator-supplied account ID, Worker name, exact HTTPS origin/custom-domain hostname, D1 name/ID, R2 bucket name, cron and managed Secrets outside Git. Missing values, placeholder markers, automatic/default resources, duplicate/wrong bindings, origin mismatch or wrong environment SHALL fail preflight.
+The repository SHALL provide distinct staging and production templates. Each SHALL require an operator-supplied account ID, Worker name, exact HTTPS origin/custom-domain hostname, D1 name/ID, R2 bucket name and managed Secrets outside Git. Production SHALL additionally require its reviewed Cron. Staging SHALL omit Cron while scheduled operations are disabled, enable observability, use staging-specific Worker/D1/R2/hostname identities and explicitly configure invitation-based Buyer registration against `staging-buyer-channel`. Its Cloudflare-generated opaque Access audience SHALL be compared against current-session production Access inventory rather than name heuristics. Missing values, placeholder markers, production/default or automatic staging resources, duplicate/wrong bindings, origin mismatch, wrong environment or a staging Cron SHALL fail preflight.
 
 #### Scenario: Placeholder template is inspected
 
 - **WHEN** the dry-run reads a checked-in template
-- **THEN** it reports only the required field and Secret names, marks the configuration blocked for operator input and performs no network or deploy action.
+- **THEN** it reports only the environment-applicable required field and Secret names, marks the configuration blocked for operator input and performs no network or deploy action.
 
 #### Scenario: Rendered configuration is invalid
 
-- **WHEN** a local rendered config retains a placeholder, omits a binding, selects another environment, allows automatic provisioning or mismatches origin and domain
+- **WHEN** a local rendered config retains a placeholder, omits a binding, selects another environment, targets production/default resources, lacks the governed Buyer registration configuration, allows automatic provisioning, mismatches origin and domain, disables observability or configures a staging Cron
 - **THEN** preflight exits non-zero without printing supplied values or Secrets.
 
 #### Scenario: Rendered configuration is located in the repository

@@ -53,13 +53,14 @@ describe('operational alert production readiness',()=>{
 
   it('reports disabled staging-only production gates as not required without weakening production',async()=>{
     database=createMigratedTestDatabase();
+    let storageHeadCalls=0;
     const response=await ready({
       APP_ENVIRONMENT:'staging',APP_RELEASE_SHA:RELEASE,
       SCHEDULED_OPERATIONS_ENABLED:'false',OUTBOX_DELIVERY_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
       OPERATIONAL_ALERT_MODE:'disabled',
       STAFF_ACCESS_TEAM_DOMAIN:'https://staging-team.cloudflareaccess.com',
       STAFF_ACCESS_AUD:'staging-access-audience',
-      FILE_OBJECT_STORAGE:{headObject:async()=>null} as any,
+      FILE_OBJECT_STORAGE:{headObject:async()=>{storageHeadCalls+=1;return null;}} as any,
     },NOW);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({data:{status:'ready',checks:{
@@ -67,6 +68,7 @@ describe('operational alert production readiness',()=>{
       operational_alerts:'not_required',object_storage:'ok',recovery:'not_required',
       staff_access:'ok',release:'ok',
     }}});
+    expect(storageHeadCalls).toBe(1);
     for(const enabled of [
       {SCHEDULED_OPERATIONS_ENABLED:'true'},
       {OUTBOX_DELIVERY_ENABLED:'true'},
@@ -84,6 +86,20 @@ describe('operational alert production readiness',()=>{
       },NOW);
       expect(blocked.status).toBe(503);
     }
+  });
+
+  it('fails staging readiness when the empty-bucket object storage probe rejects',async()=>{
+    database=createMigratedTestDatabase();let storageHeadCalls=0;
+    const response=await ready({
+      APP_ENVIRONMENT:'staging',APP_RELEASE_SHA:RELEASE,
+      SCHEDULED_OPERATIONS_ENABLED:'false',OUTBOX_DELIVERY_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
+      OPERATIONAL_ALERT_MODE:'disabled',
+      STAFF_ACCESS_TEAM_DOMAIN:'https://staging-team.cloudflareaccess.com',
+      STAFF_ACCESS_AUD:'staging-access-audience',
+      FILE_OBJECT_STORAGE:{headObject:async()=>{storageHeadCalls+=1;throw new Error('r2_unavailable');}} as any,
+    },NOW);
+    expect(response.status).toBe(503);expect(storageHeadCalls).toBe(1);
+    await expect(response.json()).resolves.toMatchObject({data:{status:'not_ready',checks:{object_storage:'failed'}}});
   });
 
   it('calls all three safe RPC challenges and atomically records only verified receipt summaries',async()=>{

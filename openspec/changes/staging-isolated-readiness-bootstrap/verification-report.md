@@ -1,6 +1,6 @@
 # Verification Report: staging-isolated-readiness-bootstrap
 
-Verified on 2026-08-13 after Draft PR publication. This report records local implementation evidence only. It does not claim remote staging acceptance, Formal Verify, archive readiness or Production GO.
+Verified on 2026-08-13 after Draft PR publication. The original snapshot below is preserved as historical local evidence and is superseded by the 2026-08-15 post-review addendum. Neither snapshot claims remote staging acceptance, Formal Verify, archive readiness or Production GO.
 
 ## Summary
 
@@ -43,3 +43,32 @@ Verified on 2026-08-13 after Draft PR publication. This report records local imp
 ## Final assessment
 
 Local implementation is coherent and ready for fixed-SHA independent review. Two critical workflow tasks remain before archive. `READY_FOR_REMOTE_STAGING_WRITES=NO`, `READY_FOR_ARCHIVE=NO`, `PRODUCTION_GO=NO`.
+
+## 2026-08-15 post-review remediation addendum
+
+The first fixed-SHA review found two P1 issues: an empty `file_objects` table
+allowed `/ready` to report object storage healthy without calling R2, and the
+first-owner transaction inferred an empty staging database from Staff authority
+plus `buyer_channels` alone. Both findings were fixed before any remote staging
+write.
+
+- Empty-bucket readiness now performs a real read-only `head` probe and fails
+  closed when the R2 binding rejects it. Existing verified-object receipt checks
+  remain unchanged.
+- First-owner bootstrap now asserts zero business stock across 29 explicit
+  acquisition, Audit/Outbox, Buyer/Customer, file, order, product, review,
+  Seller and finance entry tables in the same atomic batch as the Owner write.
+  Independent Customer, Seller, Product and Order dirty-stock fixtures each
+  prove failure before any Staff fact is created.
+- `npm run test:staging-governance`: PASS, 5 files / 45 tests.
+- API typecheck: PASS.
+- `npm run db:verify`: PASS, migrations `0001`-`0070`, Schema 70, 212 tables,
+  604 indexes, 401 triggers, 12 views, integrity `ok`, zero FK errors.
+- Migration guards: PASS, 70 migrations, 69 wrong-order and 70 repeat cases,
+  139 failed snapshots unchanged.
+- OpenSpec all strict: PASS, 71/71; `git diff --check`: PASS.
+
+The original 2026-08-13 full-check counts remain historical and are not reused
+as current-SHA evidence. A new fixed SHA review and GitHub CI are still required
+before remote staging writes. `READY_FOR_REMOTE_STAGING_WRITES=NO`,
+`READY_FOR_ARCHIVE=NO`, `PRODUCTION_GO=NO`.
