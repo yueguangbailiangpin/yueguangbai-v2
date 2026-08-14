@@ -252,13 +252,19 @@ function SellerChatScreenshotControl({
 
 export function SellerSettlementsPage(): React.JSX.Element {
   const client = useQueryClient();
+  const { readScope } = useSellerStoreContext();
   const summary = useQuery({ queryKey: sellerQueryKeys.settlement, queryFn: ({ signal }) => sellerApi.settlement(client, signal).then((r) => r.data.settlement) });
   const payables = useSellerCursorPages({
     resetKey: 'seller-payables:100',
     queryKey: sellerQueryKeys.payablesPage,
     queryFn: (cursor, signal) => sellerApi.payables(client, cursor, signal),
   });
-  return <section className="seller-page"><PageHeader title="本金与服务费" eyebrow="结算" />
+  const settlementScope = readScope === 'ORGANIZATION'
+    ? '结算为全组织财务历史范围，含已停用店铺的历史结算，不随当前店铺选择切换。'
+    : readScope === 'ASSIGNED_STORES'
+      ? '结算按已授权店铺范围汇总，不随当前店铺选择切换。'
+      : '结算按当前授权范围汇总。';
+  return <section className="seller-page"><PageHeader title="本金与服务费" eyebrow="结算" description={settlementScope} />
     {summary.isError || payables.initialError ? <Alert tone="danger">结算信息暂时无法完整读取，请刷新后重试。</Alert> : null}
     <div className="seller-metrics"><MetricCard label="待结卖家本金" value={summary.data ? cny(summary.data.outstanding_principal_cny_fen) : '—'} /><MetricCard label="待结卖家服务费" value={summary.data ? cny(summary.data.outstanding_service_fee_cny_fen) : '—'} /><MetricCard label="未分配来款" value={summary.data ? cny(summary.data.unallocated_credit_cny_fen) : '—'} /></div>
     {payables.isInitialPending ? <p role="status">加载中…</p> : payables.initialError ? <Alert tone="warning">结算项目暂时用不了，刷新后重试。</Alert> : payables.items.length === 0 ? <EmptyState title="暂无结算项目" description="产生卖家本金或服务费后会显示在这里。" /> : <div className="seller-record-list">{payables.items.map((item) => <RecordCard key={item.payable_id} title={item.product.name} meta={`${item.store.display_name} · ${item.amazon_order_number}`} status={payableStatusLabel[item.status]} statusTone={tone(item.status)}>
