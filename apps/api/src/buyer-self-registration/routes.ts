@@ -50,7 +50,8 @@ export function registerBuyerSelfRegistrationRoutes(
         const token = context.req.param('token');
         const secret = customerSecuritySecret(context);
         const rate = await consumeCustomerSecurityRateLimit(context.env.DB, {
-          operation: 'INVITATION', token,
+          operation: 'INVITATION',
+          primaryScope: { type: 'TOKEN', value: token },
           networkSource: context.req.header('CF-Connecting-IP') ?? null,
           deviceId: context.req.header('X-Device-ID') ?? null,
           secret, now,
@@ -146,7 +147,8 @@ async function register(
   const tokenRateLimit = await consumeCustomerSecurityRateLimit(
     context.env.DB,
     {
-      operation: 'INVITATION', token: body.invitation_token,
+      operation: 'INVITATION',
+      primaryScope: { type: 'TOKEN', value: body.invitation_token },
       networkSource, deviceId, secret: securitySecret, now,
     },
   );

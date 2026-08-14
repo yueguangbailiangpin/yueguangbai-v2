@@ -17,7 +17,7 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 67, `expected 67 migrations, found ${migrations.length}`);
+assert(migrations.length === 68, `expected 68 migrations, found ${migrations.length}`);
 assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
   && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
   && migrations[40] === '0041_seller_principal_rate_policy.sql'
@@ -25,7 +25,8 @@ assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
   && migrations[42] === '0043_seller_principal_rate_integrity_hardening.sql'
   && migrations[63] === '0064_marketplace_local_date_truth.sql'
   && migrations[65] === '0066_advance_cash_integrity.sql'
-  && migrations[66] === '0067_advance_v1_full_payment.sql',
+  && migrations[66] === '0067_advance_v1_full_payment.sql'
+  && migrations[67] === '0068_customer_security_deny_password_rate_limit.sql',
   'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {
@@ -38,7 +39,6 @@ for (const environment of ['staging', 'production']) {
   for (const field of [
     'account_id',
     'routes.0.pattern',
-    'triggers.crons.0',
     'vars.APP_ORIGIN',
     'vars.STAFF_ACCESS_TEAM_DOMAIN',
     'vars.STAFF_ACCESS_AUD',
@@ -46,6 +46,13 @@ for (const environment of ['staging', 'production']) {
     'r2_buckets.0.bucket_name',
   ]) assert(report.required_fields.includes(field),
     `${environment} template missing operator field: ${field}`);
+  if (environment === 'production') {
+    assert(report.required_fields.includes('triggers.crons.0'),
+      'production template must require an explicit Cron');
+  } else {
+    assert(!report.required_fields.includes('triggers.crons.0'),
+      'staging template must not require a production Cron');
+  }
 
   const config = readLocalReleaseConfig(templatePath(environment));
   assert(config.vars.APP_ENVIRONMENT === environment,
@@ -165,7 +172,7 @@ console.log(JSON.stringify({
   status: 'PASS',
   change: 'production-cloudflare-web-r2-release-configuration',
   schema_change: 'NO_SCHEMA_CHANGE',
-  migration: '0001-0067_CONTINUOUS',
+  migration: '0001-0068_CONTINUOUS',
   release_templates: 'BLOCKED_NEEDS_OPERATOR_INPUT',
   local_implementation: 'PRESENT',
   external_acceptance: 'UNVERIFIED',

@@ -6,6 +6,7 @@ export type CustomerAuthSecurityEventType =
   | 'LOGIN_RATE_LIMITED'
   | 'SESSION_REJECTED'
   | 'PASSWORD_CHANGED'
+  | 'PASSWORD_CHANGE_RATE_LIMITED'
   | 'LOGOUT';
 
 export async function recordCustomerAuthSecurityEvent(

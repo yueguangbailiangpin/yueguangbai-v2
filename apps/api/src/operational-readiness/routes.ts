@@ -5,7 +5,7 @@ import { operationalAlertAttestationReady } from './alert-attestation';
 import type { AppBindings } from '../app';
 import { parseExactGitCommitSha } from '@ygb/domain';
 
-const TARGET_SCHEMA=67;
+const TARGET_SCHEMA=68;
 const MAX_JOB_STALENESS_MS=6*60*60*1000;
 const MAX_ACQUISITION_STALENESS_MS=24*60*60*1000;
 const MAX_JOB_BACKLOG=1000;

@@ -1,16 +1,16 @@
 # 月光白 V2 — 生产备份、恢复与发布 Readiness Runbook
 
 ## 当前权威基线
-本分支目标数据库为连续 Migration `0001`–`0067`，`app_schema_state.schema_version=67`。
+本分支目标数据库为连续 Migration `0001`–`0068`，`app_schema_state.schema_version=68`。
 
 生产上线前必须同时证明：
 1. `APP_RELEASE_SHA` 与待部署代码精确一致；
 2. D1 生产只读导出可恢复到全新隔离数据库；
-3. 恢复库 `schema_version=67`、`integrity_check=ok`、`foreign_key_check=0`；
+3. 恢复库 `schema_version=68`、`integrity_check=ok`、`foreign_key_check=0`；
 4. D1 row counts、关键财务聚合、Buyer/Seller/Staff/订单/文件/调度/获客 smoke read 与 Manifest 一致；
 5. R2 Manifest 与 D1 `file_objects` 无 missing/orphan/hash/size/MIME 冲突；
 6. 抽样读取真实 R2 对象并校验 byte size + SHA-256；
-7. recovery attestation 同时绑定当前 release SHA、Schema67、D1 Manifest SHA、R2 Manifest SHA；
+7. recovery attestation 同时绑定当前 release SHA、Schema 68、D1 Manifest SHA、R2 Manifest SHA；
 8. `/ready` 返回 ready，并通过 schema/scheduler/acquisition_maintenance/operational_alerts/object_storage/staff_access/release/recovery 全部检查。
 
 任何一项失败都保持 Production NO-GO。
@@ -27,7 +27,7 @@ npm run backup:d1:local -- \
   --output-dir /outside-git/backup-candidate \
   --key-file /outside-git/keys/d1-backup.key \
   --release-commit-sha 40位小写候选Git提交SHA \
-  --expected-schema 67
+  --expected-schema 68
 ```
 
 release SHA 必须显式传入；输出使用既有 AES-256-GCM + release-bound attestation。Manifest 必须覆盖 schema inventory、表行数、财务汇总、完整性和 smoke read。
@@ -40,10 +40,10 @@ npm run restore:d1:local -- \
   --restore-database /outside-git/restore-rehearsal/restored.sqlite \
   --key-file /outside-git/keys/d1-backup.key \
   --expected-release-commit-sha 40位小写候选Git提交SHA \
-  --expected-schema 67
+  --expected-schema 68
 ```
 
-恢复目标必须不存在。恢复后确认：Schema67、Migration 0001–0067 连续、integrity/FK、Manifest row counts、财务聚合，以及 Cloudflare Access Staff、Role×Marketplace、Buyer/Seller 多身份、Seller 多成员、订单异常、评论展示、提前本金凭证/超额余额、渠道归因、Agent scope、文件权限和调度对象可读。
+恢复目标必须不存在。恢复后确认：Schema 68、Migration 0001–0068 连续、integrity/FK、Manifest row counts、财务聚合，以及 Cloudflare Access Staff、Role×Marketplace、Buyer/Seller 多身份、Seller 多成员、订单异常、评论展示、提前本金凭证/超额余额、渠道归因、Agent scope、文件权限和调度对象可读。
 
 ## R2 Manifest 与抽样恢复
 ```text
@@ -63,7 +63,7 @@ POST /api/staff/production-readiness/recovery-attestations
 
 请求必须包含：
 - `release_sha = 当前 APP_RELEASE_SHA`
-- `schema_version=67`
+- `schema_version=68`
 - D1 Manifest SHA-256
 - R2 Manifest SHA-256
 - restored database integrity=true
@@ -115,7 +115,7 @@ node scripts/probe-production-readiness.mjs
 3. 真实历史 D1 副本 current-prefix → 64 upgrade dry-run；
 4. D1 + R2 recovery rehearsal；
 5. 部署配置填入精确 `APP_RELEASE_SHA`、Access、Scheduler；
-6. 只有在候选 release 已可验证的受控阶段登记同 SHA 的 Schema67 recovery attestation；
+6. 只有在候选 release 已可验证的受控阶段登记同 SHA 的 Schema 68 recovery attestation；
 7. 明确批准后执行生产 Migration / Worker 部署；
 8. 验证 `/health`（liveness）与 `/ready`（release-bound readiness）；
 9. Scheduler/Acquisition Maintenance 实际成功后再次检查 `/ready`；

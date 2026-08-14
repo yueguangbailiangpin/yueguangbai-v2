@@ -6,12 +6,12 @@ const root=path.resolve(import.meta.dirname,'../../..');
 const read=(file:string)=>readFileSync(path.join(root,file),'utf8');
 
 describe('second layer hardening freeze',()=>{
-  it('keeps production release authority on schema 67, Access and release-bound readiness',()=>{
+  it('keeps production release authority on schema 68, Access and release-bound readiness',()=>{
     const migrations=readdirSync(path.join(root,'migrations')).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort();
-    expect(migrations).toHaveLength(67);expect(migrations.at(-1)).toBe('0067_advance_v1_full_payment.sql');
+    expect(migrations).toHaveLength(68);expect(migrations.at(-1)).toBe('0068_customer_security_deny_password_rate_limit.sql');
     const template=read('apps/api/wrangler.production.template.jsonc');
     expect(template).toContain('"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"');expect(template).toContain('"SCHEDULED_OPERATIONS_ENABLED": "true"');expect(template).toContain('"ACQUISITION_MAINTENANCE_ENABLED": "true"');expect(template).toContain('STAFF_ACCESS_TEAM_DOMAIN');expect(template).toContain('STAFF_ACCESS_AUD');expect(template).not.toContain('FEISHU_WORKBENCH_APP_ID');
-    const readiness=read('apps/api/src/operational-readiness/routes.ts');expect(readiness).toContain('const TARGET_SCHEMA=67');expect(readiness).toContain('APP_RELEASE_SHA');expect(readiness).toContain('last_backlog_count');expect(readiness).toContain('staff_access');
+    const readiness=read('apps/api/src/operational-readiness/routes.ts');expect(readiness).toContain('const TARGET_SCHEMA=68');expect(readiness).toContain('APP_RELEASE_SHA');expect(readiness).toContain('last_backlog_count');expect(readiness).toContain('staff_access');
     const verifier=read('scripts/verify-production-readiness-formal.mjs');expect(verifier).toContain('external_calls:0');expect(verifier).not.toContain('fetchImpl');
     expect(read('scripts/probe-production-readiness.mjs')).toContain('fetchImpl=fetch');
   });

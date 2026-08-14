@@ -23,7 +23,7 @@ const BODY_LIMIT=16*1024;
 
 export function registerSellerRegistrationRoutes(app:Hono<AppEnv>):void{
   app.post('/api/staff/customer-security/seller-invitations',customerAuthOriginGuard(),withErrors(async(context)=>{
-    const actor=requireStaff(context);
+    const actor=requireSellerManagementStaff(context);
     const body=await exactBody(context,['lead_id','seller_organization_id','wechat_id','marketplace_code']);
     if(!(body['lead_id']===null||typeof body['lead_id']==='string')
       ||!(body['seller_organization_id']===null||typeof body['seller_organization_id']==='string')
@@ -41,7 +41,7 @@ export function registerSellerRegistrationRoutes(app:Hono<AppEnv>):void{
   // never recoverable; this endpoint only tells Staff whether an old invite
   // must be revoked before generating a fresh link.
   app.get('/api/staff/customer-security/seller-invitations/current',withErrors(async(context)=>{
-    const actor=requireStaff(context);const url=new URL(context.req.url);
+    const actor=requireSellerManagementStaff(context);const url=new URL(context.req.url);
     if([...url.searchParams.keys()].some((key)=>!['lead_id','seller_organization_id'].includes(key)))throw validation();
     const leadId=url.searchParams.get('lead_id'),sellerOrganizationId=url.searchParams.get('seller_organization_id');
     if((leadId===null)===(sellerOrganizationId===null))throw validation();
@@ -53,12 +53,12 @@ export function registerSellerRegistrationRoutes(app:Hono<AppEnv>):void{
   }));
 
   app.get('/api/staff/customer-security/seller-invitations/:id',withErrors(async(context)=>{
-    const invitation=await readSellerInvitationForStaff(context.env.DB,context.req.param('id')??'',requireStaff(context));
+    const invitation=await readSellerInvitationForStaff(context.env.DB,context.req.param('id')??'',requireSellerManagementStaff(context));
     return context.json(apiSuccess({invitation},requestIdFromContext(context)));
   }));
 
   app.post('/api/staff/customer-security/seller-invitations/:id/revoke',customerAuthOriginGuard(),withErrors(async(context)=>{
-    const actor=requireStaff(context);const body=await exactBody(context,['expected_version']);
+    const actor=requireSellerManagementStaff(context);const body=await exactBody(context,['expected_version']);
     if(!Number.isSafeInteger(body['expected_version']))throw validation();
     const invitation=await revokeSellerRegistrationInvitation(context.env.DB,{
       invitationId:context.req.param('id')??'',expectedVersion:Number(body['expected_version']),
@@ -117,7 +117,7 @@ async function prevalidateHistoricalSellerIdentity(context:Context<AppEnv>,organ
 }
 async function publicInvitationRate(context:Context<AppEnv>,token:string,now:number):Promise<Response|null>{
   const rate=await consumeCustomerSecurityRateLimit(context.env.DB,{
-    operation:'INVITATION',token,networkSource:context.req.header('CF-Connecting-IP')??null,
+    operation:'INVITATION',primaryScope:{type:'TOKEN',value:token},networkSource:context.req.header('CF-Connecting-IP')??null,
     deviceId:context.req.header('X-Device-ID')??null,secret:securitySecret(context),now,
   });
   if(!rate.limited)return null;
@@ -127,6 +127,11 @@ async function publicInvitationRate(context:Context<AppEnv>,token:string,now:num
 function requireStaff(context:Context<AppEnv>):AssignmentStaffAuthorization{
   const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
   if(!actor||actor.staffStatus!=='ACTIVE')throw new SellerRegistrationError('FORBIDDEN',403);return actor;
+}
+function requireSellerManagementStaff(context:Context<AppEnv>):AssignmentStaffAuthorization{
+  const actor=requireStaff(context);
+  if((!actor.roles.has('owner')&&!actor.roles.has('seller_ops'))||!actor.permissions.has('SELLER_MANAGE'))throw new SellerRegistrationError('FORBIDDEN',403);
+  return actor;
 }
 function securitySecret(context:Context<AppEnv>):string{const value=String(context.env.CUSTOMER_SECURITY_TOKEN_SECRET??'');if(new TextEncoder().encode(value).byteLength<32)throw new SellerRegistrationError('DEPENDENCY_UNAVAILABLE',503);return value;}
 function idempotencyKey(context:Context<AppEnv>):string{try{const value=parseIdempotencyKey(context.req.header('Idempotency-Key'));if(!value)throw new Error('missing');return value;}catch{throw validation();}}

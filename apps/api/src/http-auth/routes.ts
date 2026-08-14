@@ -6,6 +6,7 @@ import {
   issueCustomerSession,
 } from '../customer-auth/authenticate-customer';
 import { changeCustomerPassword } from '../customer-auth/change-password';
+import { consumeCustomerSecurityRateLimit } from '../customer-security/rate-limit';
 import {
   customerSessionMiddleware,
   requireCustomerSessionFromContext,
@@ -173,6 +174,38 @@ async function changePassword(context: Context<any>): Promise<Response> {
 
   const now = Date.now();
   const requestId = requestIdFromContext(context);
+  const rateLimit = await consumeCustomerSecurityRateLimit(
+    context.env.DB,
+    {
+      operation: 'PASSWORD_CHANGE',
+      primaryScope: {
+        type: 'ACCOUNT_ID',
+        value: sessionContext.accountId,
+      },
+      networkSource:
+        context.req.header('CF-Connecting-IP') ?? null,
+      deviceId: context.req.header('X-Device-ID') ?? null,
+      secret: requireSecurityTokenSecret(
+        context.env.CUSTOMER_SECURITY_TOKEN_SECRET,
+      ),
+      now,
+    },
+  );
+  if (rateLimit.limited) {
+    await recordCustomerAuthSecurityEvent(context.env.DB, {
+      eventType: 'PASSWORD_CHANGE_RATE_LIMITED',
+      outcome: 'BLOCKED',
+      accountId: sessionContext.accountId,
+      networkSourceHash: rateLimit.networkSourceHash,
+      requestId,
+      createdAt: now,
+    });
+    throw new CustomerHttpAuthError(
+      'RATE_LIMITED',
+      429,
+      rateLimit.retryAfterSeconds,
+    );
+  }
   const result = await changeCustomerPassword(
     context.env.DB,
     {
@@ -221,6 +254,17 @@ async function changePassword(context: Context<any>): Promise<Response> {
       expiresAt: now + CUSTOMER_SESSION_TTL_MS,
     }),
   }, requestId));
+}
+
+function requireSecurityTokenSecret(value: unknown): string {
+  const secret = String(value ?? '');
+  if (new TextEncoder().encode(secret).byteLength < 32) {
+    throw new CustomerHttpAuthError(
+      'DEPENDENCY_UNAVAILABLE',
+      503,
+    );
+  }
+  return secret;
 }
 
 async function logout(context: Context<any>): Promise<Response> {

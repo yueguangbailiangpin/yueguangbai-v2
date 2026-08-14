@@ -17,6 +17,8 @@ import { registerCustomerAuthRoutes } from './routes';
 const ORIGIN = 'https://portal.local.test';
 const SESSION_SECRET =
   'phase4a-test-session-secret-with-at-least-thirty-two-bytes';
+const SECURITY_SECRET =
+  'phase4a-test-security-secret-with-at-least-thirty-two-bytes';
 const TEMPORARY_PASSWORD = 'Temporary-Password-2026!';
 const NEW_PASSWORD = 'Changed-Password-2026!';
 
@@ -412,6 +414,112 @@ describe('Phase 4A customer HTTP authentication', () => {
     expect(JSON.stringify(events)).not.toContain(sourceIp);
   });
 
+  it('rate limits password change independently before credential or idempotency mutation', async () => {
+    database = await createPhase4aDatabase();
+    await seedBuyerAccount(database, {
+      loginIdentifier: 'buyer_password_rate_01',
+      password: TEMPORARY_PASSWORD,
+      passwordChangeRequired: false,
+    });
+    const app = testApp();
+    const loginResponse = await login(
+      app,
+      'buyer_password_rate_01',
+      TEMPORARY_PASSWORD,
+      '192.0.2.91',
+    );
+    const cookie = cookiePair(requiredHeader(loginResponse, 'set-cookie'));
+
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      const response = await request(
+        app,
+        '/api/customer-auth/change-password',
+        {
+          method: 'POST',
+          headers: {
+            ...stateHeaders('192.0.2.91'),
+            Cookie: cookie,
+            'Idempotency-Key': `password-rate-${attempt}-0001`,
+          },
+          body: JSON.stringify({
+            current_password: 'Wrong-Current-Password-2026!',
+            new_password: NEW_PASSWORD,
+          }),
+        },
+      );
+      expect(response.status).toBe(401);
+    }
+
+    const beforeBlocked = await database.prepare(`
+      SELECT
+        (SELECT password_version FROM customer_password_credentials
+          WHERE account_id='buyer-http-account-1') AS password_version,
+        (SELECT session_version FROM customer_login_accounts
+          WHERE id='buyer-http-account-1') AS session_version,
+        (SELECT COUNT(*) FROM command_idempotency_records) AS commands
+    `).first();
+    const blocked = await request(
+      app,
+      '/api/customer-auth/change-password',
+      {
+        method: 'POST',
+        headers: {
+          ...stateHeaders('192.0.2.91'),
+          Cookie: cookie,
+          'Idempotency-Key': 'password-rate-blocked-0001',
+        },
+        body: JSON.stringify({
+          current_password: TEMPORARY_PASSWORD,
+          new_password: NEW_PASSWORD,
+        }),
+      },
+    );
+    expect(blocked.status).toBe(429);
+    expect(Number(requiredHeader(blocked, 'retry-after'))).toBeGreaterThan(0);
+    await expect(json(blocked)).resolves.toMatchObject({
+      error: { code: 'RATE_LIMITED' },
+    });
+    expect(await database.prepare(`
+      SELECT
+        (SELECT password_version FROM customer_password_credentials
+          WHERE account_id='buyer-http-account-1') AS password_version,
+        (SELECT session_version FROM customer_login_accounts
+          WHERE id='buyer-http-account-1') AS session_version,
+        (SELECT COUNT(*) FROM command_idempotency_records) AS commands
+    `).first()).toEqual(beforeBlocked);
+
+    const rateRows = await database.prepare(`
+      SELECT scope_type,scope_hash,attempt_count
+      FROM customer_security_rate_limits
+      WHERE operation='PASSWORD_CHANGE'
+      ORDER BY scope_type
+    `).all<{ scope_type: string; scope_hash: string; attempt_count: number }>();
+    expect(rateRows.results.map((row) => row.scope_type)).toEqual([
+      'ACCOUNT_ID', 'DEVICE', 'NETWORK_SOURCE',
+    ]);
+    expect(rateRows.results.every((row) => row.attempt_count === 9)).toBe(true);
+    expect(rateRows.results.every((row) => /^[0-9a-f]{64}$/u.test(row.scope_hash)))
+      .toBe(true);
+    expect(JSON.stringify(rateRows.results)).not.toContain('buyer-http-account-1');
+    expect(JSON.stringify(rateRows.results)).not.toContain('192.0.2.91');
+    expect(JSON.stringify(rateRows.results)).not.toContain('device-http-test');
+
+    const event = await database.prepare(`
+      SELECT event_type,outcome,account_id,login_identifier_hash,
+        network_source_hash,metadata_json
+      FROM customer_auth_security_events
+      WHERE event_type='PASSWORD_CHANGE_RATE_LIMITED'
+    `).first();
+    expect(event).toMatchObject({
+      event_type: 'PASSWORD_CHANGE_RATE_LIMITED',
+      outcome: 'BLOCKED',
+      account_id: 'buyer-http-account-1',
+      login_identifier_hash: null,
+      metadata_json: '{}',
+    });
+    expect(event).not.toHaveProperty('current_password');
+  });
+
   it('re-reads D1 and rejects revoked buyer and seller organization sessions', async () => {
     database = await createPhase4aDatabase();
     await seedBuyerAccount(database, {
@@ -684,6 +792,7 @@ function stateHeaders(sourceIp: string): Record<string, string> {
     Origin: ORIGIN,
     'Sec-Fetch-Site': 'same-origin',
     'CF-Connecting-IP': sourceIp,
+    'X-Device-ID': 'device-http-test',
   };
 }
 
@@ -716,6 +825,7 @@ async function request(
     {
       DB: database,
       CUSTOMER_SESSION_SECRET: SESSION_SECRET,
+      CUSTOMER_SECURITY_TOKEN_SECRET: SECURITY_SECRET,
     } as any,
   );
 }

@@ -365,6 +365,16 @@ Advance 冲正同样只支持整笔。Staff 仅提交冲正原因，服务端从
 
 状态：Accepted by business owner；Supersedes only the partial Advance payment/reversal behavior permitted before D-043
 
+### D-044 客户高风险身份操作与改密限流
+
+Staff 的 canonical role 只提供默认能力，Personal `DENY` 必须继续最终优先。客户登录微信换绑属于高风险身份更正，只允许 ACTIVE `owner` 且有效权限仍包含 `BUYER_IDENTITY_HIGH_RISK_MANAGE`；卖家注册邀请的签发、受控读取与撤销只允许 ACTIVE `owner` 或 `seller_ops` 且有效权限仍包含 `SELLER_MANAGE`。只命中岗位而缺少有效权限时必须在读取或写入客户安全事实前失败关闭，前端可见性不构成授权。
+
+已认证 Customer 修改密码必须在密码校验和幂等命令取得权威前，按服务端会话账户、脱敏网络来源和设备维度执行独立的固定窗口限流。限流键只保存带服务端 Secret 的不可逆哈希，超限返回稳定 `RATE_LIMITED` 和 `Retry-After`，追加脱敏安全事件，不读取或写入密码、凭据、幂等、Session 版本或业务事实。登录限流、邀请/重置限流与改密限流互不挤占额度。
+
+该规则通过仅前向 Migration 0068 扩展既有 Customer security rate-limit 和 auth security-event 合同，并将当前发布候选提升为 Schema 68。Migration 必须完整保留已有邀请、密码重置、登录和安全事件事实，不修改 Migration 0001–0067。本 Decision 不改变“所有 ACTIVE Staff 可签发密码重置链接”的既有语义，不扩大角色默认权限，不授权 production/staging 部署、远程 D1/R2 写入、Secret、Access、DNS 或 Scheduler 操作。
+
+状态：Accepted by business owner；Closes remaining Personal DENY bypasses and adds an independent password-change abuse boundary
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

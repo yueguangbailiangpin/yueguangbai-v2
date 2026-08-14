@@ -16,15 +16,15 @@ const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-v2-migrations-'),
 );
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 67;
+const expectedLatestSchema = 68;
 const expectedLastMigration =
-  '0067_advance_v1_full_payment.sql';
+  '0068_customer_security_deny_password_rate_limit.sql';
 const expectedSchemaInventory = {
   table: 214,
   index: 612,
   trigger: 410,
   view: 12,
-  sha256: '969f0a7e930cb9c4ede979fa2e557de3faa5a9f1bfb8b035d4115eeb2651bf65',
+  sha256: '0192d1534733c26654cd883ba361428e11a044c4a6380d36b6112962214edea8',
 };
 
 const requiredTables = [
@@ -691,7 +691,7 @@ try {
   if (migrationFiles.length !== expectedLatestSchema
     || migrationFiles.at(-1) !== expectedLastMigration
     || migrationNumbers.some((number, index) => number !== index + 1)) {
-    throw new Error('Migration 必须是唯一连续的 0001-0067');
+    throw new Error('Migration 必须是唯一连续的 0001-0068');
   }
 
   const database = new DatabaseSync(databasePath);

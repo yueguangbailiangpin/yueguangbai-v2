@@ -7,20 +7,28 @@ const WINDOW_MS = 15 * 60 * 1000;
 export async function consumeCustomerSecurityRateLimit(
   database: SqlDatabase,
   input: {
-    operation: 'INVITATION' | 'PASSWORD_RESET';
-    token: string;
-    primaryScopeType?: 'TOKEN' | 'WECHAT_ID';
+    operation: 'INVITATION' | 'PASSWORD_RESET' | 'PASSWORD_CHANGE';
+    primaryScope: {
+      type: 'TOKEN' | 'WECHAT_ID' | 'ACCOUNT_ID';
+      value: string;
+    };
     networkSource: string | null;
     deviceId: string | null;
     secret: string;
     now: number;
   },
-): Promise<{ limited: boolean; retryAfterSeconds: number }> {
+): Promise<{
+  limited: boolean;
+  retryAfterSeconds: number;
+  primaryScopeHash: string;
+  networkSourceHash: string;
+  deviceHash: string;
+}> {
   const windowStartedAt = Math.floor(input.now / WINDOW_MS) * WINDOW_MS;
   const windowExpiresAt = windowStartedAt + WINDOW_MS;
   const scopes = await Promise.all([
-    scope(input.secret, input.primaryScopeType ?? 'TOKEN',
-      input.token.slice(0, 160), 8),
+    scope(input.secret, input.primaryScope.type,
+      input.primaryScope.value.slice(0, 160), 8),
     scope(input.secret, 'NETWORK_SOURCE',
       normalizeNetworkSource(input.networkSource), 40),
     scope(input.secret, 'DEVICE', normalizeDevice(input.deviceId), 20),
@@ -62,12 +70,15 @@ export async function consumeCustomerSecurityRateLimit(
     retryAfterSeconds: blockedUntil > input.now
       ? Math.max(1, Math.ceil((blockedUntil - input.now) / 1000))
       : 0,
+    primaryScopeHash: scopes[0].hash,
+    networkSourceHash: scopes[1].hash,
+    deviceHash: scopes[2].hash,
   };
 }
 
 async function scope(
   secret: string,
-  type: 'TOKEN' | 'WECHAT_ID' | 'NETWORK_SOURCE' | 'DEVICE',
+  type: 'TOKEN' | 'WECHAT_ID' | 'ACCOUNT_ID' | 'NETWORK_SOURCE' | 'DEVICE',
   value: string,
   limit: number,
 ) {
