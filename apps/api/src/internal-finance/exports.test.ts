@@ -64,6 +64,8 @@ describe('Wave 12 export output-row limits', () => {
     );
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]?.['seller_cash_inflow_cny_fen']).toBe('50001');
+    expect(result.rows[0]?.['buyer_advance_outflow_cny_fen']).toBe('0');
+    expect(result.rows[0]?.['buyer_advance_reversal_cny_fen']).toBe('0');
     expect(result.rows[0]?.['net_cash_flow_cny_fen']).toBe('50001');
   });
 });

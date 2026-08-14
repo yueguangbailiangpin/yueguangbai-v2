@@ -343,6 +343,8 @@ function cashColumns() {
     fen('seller_payment_reversal_cny_fen'),
     fen('buyer_refund_outflow_cny_fen'),
     fen('buyer_refund_reversal_cny_fen'),
+    fen('buyer_advance_outflow_cny_fen'),
+    fen('buyer_advance_reversal_cny_fen'),
     fen('net_cash_flow_cny_fen'), text('from_date'), text('to_date'),
     integer('data_as_of'),
   ] as const;

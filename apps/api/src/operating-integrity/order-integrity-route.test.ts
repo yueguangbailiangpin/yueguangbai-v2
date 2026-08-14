@@ -2,7 +2,11 @@ import { describe,expect,it } from 'vitest';
 import type { SqlAllResult,SqlDatabase,SqlRunResult,SqlStatement,StaffPermissionCode,StaffRoleCode } from '@ygb/contracts';
 import { createApp } from '../app';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { canViewOrderFinancialAdjustments,registerOperatingIntegrityRoutes } from './routes';
+import {
+  canViewOrderFinancialAdjustments,
+  cleanOperatingPaymentTimestamp,
+  registerOperatingIntegrityRoutes,
+} from './routes';
 
 describe('order integrity financial projection',()=>{
   it('recognizes only owner plus FINANCIAL_VIEW as financial authority',()=>{
@@ -10,6 +14,39 @@ describe('order integrity financial projection',()=>{
     expect(canViewOrderFinancialAdjustments(actor('owner',[]))).toBe(false);
     expect(canViewOrderFinancialAdjustments(actor('pre_sales',[]))).toBe(false);
     expect(canViewOrderFinancialAdjustments(actor('seller_ops',[]))).toBe(false);
+  });
+
+  it('rejects a future advance payment timestamp',()=>{
+    expect(cleanOperatingPaymentTimestamp(999,1000)).toBe(999);
+    expect(()=>cleanOperatingPaymentTimestamp(1001,1000))
+      .toThrow('VALIDATION_ERROR');
+  });
+
+  it('rejects a future advance payment before claiming idempotency',async()=>{
+    const database=new IntegrityDatabase();const app=createApp();
+    app.use('/api/staff/*',async(context,next)=>{
+      context.set('staffAuthorization',actor('owner',['BUYER_REFUND_RECORD']));
+      await next();
+    });
+    registerOperatingIntegrityRoutes(app);
+    const response=await app.request(
+      'https://api.example.test/api/staff/buyer-advance-principal/order-1/payments',
+      {
+        method:'POST',
+        headers:{'Content-Type':'application/json',Origin:'https://api.example.test'},
+        body:JSON.stringify({
+          amount_cny_fen:'100',paid_at:Number.MAX_SAFE_INTEGER,
+          payment_channel:'WECHAT',note:null,
+          proof_files:[{file_object_id:'proof-file-1',expected_file_version:1}],
+        }),
+      },
+      {DB:database},
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({error:{code:'VALIDATION_ERROR'}});
+    expect(database.sql.some((sql)=>sql.includes('command_idempotency_records')))
+      .toBe(false);
+    expect(database.batchCalls).toBe(0);
   });
 
   it('returns financial adjustments only to an owner with FINANCIAL_VIEW',async()=>{
@@ -40,8 +77,9 @@ function actor(role:StaffRoleCode,permissions:readonly StaffPermissionCode[]):As
 };}
 
 class IntegrityDatabase implements SqlDatabase{
-  prepare(sql:string):SqlStatement{return new IntegrityStatement(sql);}
-  batch(_statements:readonly SqlStatement[]):Promise<SqlRunResult[]>{throw new Error('unexpected_batch');}
+  readonly sql:string[]=[];batchCalls=0;
+  prepare(sql:string):SqlStatement{this.sql.push(sql);return new IntegrityStatement(sql);}
+  batch(_statements:readonly SqlStatement[]):Promise<SqlRunResult[]>{this.batchCalls+=1;throw new Error('unexpected_batch');}
   exec():Promise<void>{throw new Error('unexpected_exec');}
 }
 
@@ -49,7 +87,9 @@ class IntegrityStatement implements SqlStatement{
   constructor(private readonly sql:string){}
   bind():SqlStatement{return this;}
   first<T>():Promise<T|null>{
+    if(this.sql.includes('LEFT JOIN formal_order_effective_operational_state'))return Promise.resolve({id:'order-1',operational_state:'NORMAL'} as T);
     if(this.sql.includes('FROM formal_orders'))return Promise.resolve({id:'order-1',buyer_customer_id:'buyer-1',market:'AMAZON_JP'} as T);
+    if(this.sql.includes('FROM buyer_refund_obligations'))return Promise.resolve(null);
     if(this.sql.includes('formal_order_effective_operational_state'))return Promise.resolve({operational_state:'NORMAL'} as T);
     throw new Error(`unexpected_first:${this.sql}`);
   }

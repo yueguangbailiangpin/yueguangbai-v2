@@ -412,6 +412,27 @@ describe('Phase 5B immutable buyer refund ledger', () => {
     )).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
   });
 
+  it('rejects a future buyer refund payment before claiming idempotency', async () => {
+    const fixture = await setupDueRefund();
+    const obligation = await createObligation(fixture.dueEventId);
+    seedRefundProof(database!, 12);
+    const input = paymentInput(obligation.obligation_id, 1, 100, 12);
+    const before = await database!.prepare(`
+      SELECT COUNT(*) AS count FROM command_idempotency_records
+    `).first<{ count: number }>();
+
+    await expect(recordBuyerRefundPayment(
+      database!,
+      allowAllFiles,
+      input,
+      refundCommand('buyer-refund:future-payment', input.paidAt - 1),
+    )).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+
+    expect(await database!.prepare(`
+      SELECT COUNT(*) AS count FROM command_idempotency_records
+    `).first()).toEqual(before);
+  });
+
   it('keeps payments, reversals, proof bindings, and events immutable', async () => {
     const fixture = await setupDueRefund();
     const obligation = await createObligation(fixture.dueEventId);

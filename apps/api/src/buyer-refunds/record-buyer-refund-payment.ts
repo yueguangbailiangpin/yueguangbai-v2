@@ -84,7 +84,9 @@ export async function recordBuyerRefundPayment(
     input.expectedVersion,
   );
   const amountCnyFen = cleanBuyerRefundAmount(input.amountCnyFen);
+  const now = cleanBuyerRefundTimestamp(command.now ?? Date.now());
   const paidAt = cleanBuyerRefundTimestamp(input.paidAt);
+  if (paidAt > now) throw new BuyerRefundError('VALIDATION_ERROR', 400);
   const chinaBusinessDate = cleanBuyerRefundBusinessDate(
     input.chinaBusinessDate,
   );
@@ -94,7 +96,6 @@ export async function recordBuyerRefundPayment(
   const proofFiles = normalizeBuyerRefundProofFiles(input.proofFiles);
   const publicNote = cleanOptionalBuyerRefundText(input.publicNote, 2000);
   const internalNote = cleanOptionalBuyerRefundText(input.internalNote, 4000);
-  const now = cleanBuyerRefundTimestamp(command.now ?? Date.now());
   const requestHash = await hashCanonicalJson({
     action: 'RECORD_BUYER_REFUND_PAYMENT',
     obligation_id: obligationId,

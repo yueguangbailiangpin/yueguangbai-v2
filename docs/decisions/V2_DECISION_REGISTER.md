@@ -343,6 +343,16 @@ Staging Buyer/Seller 测试身份必须使用 synthetic 标记和正式 onboardi
 
 状态：Accepted by business owner；Defines isolated staging acceptance without weakening production readiness or D-032/D-034 Staff authority
 
+### D-042 Advance资金完整性与Schema 66
+
+D-041 记录的 Schema 65 staging 要求和 Migration 0001–0065 是当时的正式基线，历史正文永久保留。当前发布候选由仅前向 Migration 0066 提升为 Schema 66：数据库必须在序列化写入边界拒绝累计 Advance Principal 冲正超过原付款，且升级前若已经存在超额冲正，Migration 必须失败关闭，不得自动删除、覆盖或伪造补偿历史。
+
+内部公司现金流必须按真实付款/冲正发生时间同时统计普通 Buyer Refund 和 Advance Principal，并分开报告两类金额。Advance 后续自动抵扣正式返款义务时产生的 Buyer Refund 账本镜像不代表第二次真实付款，不得重复计入现金流；其引用冲正同样不得制造虚假现金流。手工 Buyer Refund 和 Advance Principal 的 `paid_at` 不得晚于服务端命令时间，并须在取得幂等权威前失败关闭。
+
+本 Decision 不修改 Migration 0001–0065，不重写不可变财务事实，不改变返款义务、Advance 自动抵扣、Seller Settlement、利润公式、角色或权限。D-041 的 staging 资源隔离、首任 Owner、production 禁止和外部授权边界继续有效，仅其中当前 Schema 数字由 65 前向取代为 66。
+
+状态：Accepted by business owner；Supersedes only D-041's current Schema 65 release baseline without rewriting D-041
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

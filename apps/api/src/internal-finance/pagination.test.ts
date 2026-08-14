@@ -240,13 +240,17 @@ describe('Wave 12 bounded financial reads', () => {
     const movements = Array.from({ length: 1_501 }, (_, index) => ({
       occurred_at: index + 1,
       movement_id: `movement-${String(index).padStart(6, '0')}`,
-      movement_type: index % 4 === 0
+      movement_type: index % 6 === 0
         ? 'SELLER_PAYMENT'
-        : index % 4 === 1
+        : index % 6 === 1
           ? 'SELLER_PAYMENT_REVERSAL'
-          : index % 4 === 2
+          : index % 6 === 2
             ? 'BUYER_REFUND_PAYMENT'
-            : 'BUYER_REFUND_REVERSAL',
+            : index % 6 === 3
+              ? 'BUYER_REFUND_REVERSAL'
+              : index % 6 === 4
+                ? 'BUYER_ADVANCE_PAYMENT'
+                : 'BUYER_ADVANCE_REVERSAL',
       amount_cny_fen: huge,
       cash_business_date: index < 1_000 ? '2026-07-01' : '2026-07-05',
       seller_organization_id: 'seller-0',
@@ -482,6 +486,8 @@ function cashExpectation(rows: readonly RawCashMovement[]) {
   let sellerReversal = 0n;
   let buyerOut = 0n;
   let buyerReversal = 0n;
+  let buyerAdvanceOut = 0n;
+  let buyerAdvanceReversal = 0n;
   for (const row of rows) {
     const amount = BigInt(row.amount_cny_fen);
     if (row.movement_type === 'SELLER_PAYMENT') sellerIn += amount;
@@ -491,6 +497,10 @@ function cashExpectation(rows: readonly RawCashMovement[]) {
       buyerOut += amount;
     } else if (row.movement_type === 'BUYER_REFUND_REVERSAL') {
       buyerReversal += amount;
+    } else if (row.movement_type === 'BUYER_ADVANCE_PAYMENT') {
+      buyerAdvanceOut += amount;
+    } else if (row.movement_type === 'BUYER_ADVANCE_REVERSAL') {
+      buyerAdvanceReversal += amount;
     }
   }
   return {
@@ -498,8 +508,11 @@ function cashExpectation(rows: readonly RawCashMovement[]) {
     seller_payment_reversal_cny_fen: sellerReversal.toString(10),
     buyer_refund_outflow_cny_fen: buyerOut.toString(10),
     buyer_refund_reversal_cny_fen: buyerReversal.toString(10),
+    buyer_advance_outflow_cny_fen: buyerAdvanceOut.toString(10),
+    buyer_advance_reversal_cny_fen: buyerAdvanceReversal.toString(10),
     net_cash_flow_cny_fen: (
       sellerIn - sellerReversal - buyerOut + buyerReversal
+        - buyerAdvanceOut + buyerAdvanceReversal
     ).toString(10),
   };
 }

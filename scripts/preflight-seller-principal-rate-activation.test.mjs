@@ -73,7 +73,7 @@ describe('seller-principal rate activation preflight', () => {
     expect(first).toMatchObject({
       status: 'LOCAL_READY_STAFF_CONFIGURATION_REQUIRED',
       migration_decision: 'NONE',
-      schema_version: 65,
+      schema_version: 66,
       integrity_check: 'ok',
       foreign_key_errors: 0,
       database_writes: 0,
@@ -333,7 +333,7 @@ function inspect({ phase, businessDates = [] }) {
   try {
     return inspectSellerPrincipalRateActivation(reader, {
       phase,
-      expectedSchemaVersion: 65,
+      expectedSchemaVersion: 66,
       asOf: AS_OF,
       enforcementState: 'false',
       businessDates,

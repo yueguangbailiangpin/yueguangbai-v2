@@ -6,15 +6,15 @@ let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null;});
 
 describe('frozen operating integrity migrations 0051-0064',()=>{
-  it('reaches schema 65 with integrity, proof and local-date guards installed',async()=>{
+  it('reaches schema 66 with advance cash and local-date guards installed',async()=>{
     database=createMigratedTestDatabase();
-    const state=await database.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).first<{schema_version:number}>();expect(Number(state?.schema_version)).toBe(65);
+    const state=await database.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).first<{schema_version:number}>();expect(Number(state?.schema_version)).toBe(66);
     const required=[
       'acquisition_customer_intake_facts','acquisition_reporting_config','acquisition_historical_source_exemptions','acquisition_lead_source_corrections','seller_customer_groups','seller_customer_group_marketplaces','customer_identity_manual_bindings','customer_identity_resolution_cases','customer_identity_resolution_events',
       'marketplace_runtime_config','formal_order_operational_events','formal_order_financial_adjustments','review_visibility_observations','buyer_advance_principal_entries','buyer_advance_principal_settlements','buyer_advance_principal_entry_files','buyer_advance_principal_overpayments',
       'customer_login_identifier_change_events','seller_member_invitations','seller_member_invitation_events','acquisition_machine_credentials','acquisition_machine_marketplaces','acquisition_machine_channels','acquisition_machine_rate_buckets','production_recovery_attestations','seller_member_portal_store_grants','formal_order_effective_dates','uq_staff_marketplace_role_primary','uq_acquisition_lead_active_identity_market',
       'trg_staff_reactivated_restore_primary_scope','trg_acquisition_reporting_precision_immutable','trg_acquisition_source_correction_guard','trg_acquisition_intake_facts_no_update','trg_staff_permission_override_deny_only_insert','trg_acquisition_channel_no_new_both','trg_acquisition_channel_staff_label_immutable','trg_review_visibility_requires_approved_review','trg_advance_principal_payment_before_obligation','trg_formal_order_financial_adjustment_event_guard','trg_seller_member_portal_grant_scope_guard','trg_acquisition_machine_channel_scope_guard',
-      'trg_customer_persona_privilege_session_bump','trg_formal_order_financial_adjustment_profit_only','trg_review_approval_requires_normal_order','trg_buyer_refund_obligation_requires_normal_order','trg_review_service_fee_requires_normal_order','trg_buyer_advance_principal_entry_files_guard','trg_marketplace_runtime_config_no_update',
+      'trg_customer_persona_privilege_session_bump','trg_formal_order_financial_adjustment_profit_only','trg_review_approval_requires_normal_order','trg_buyer_refund_obligation_requires_normal_order','trg_review_service_fee_requires_normal_order','trg_buyer_advance_principal_entry_files_guard','trg_advance_principal_reversal_total_guard','trg_marketplace_runtime_config_no_update',
     ];
     const rows=await database.prepare(`SELECT type,name,sql FROM sqlite_schema WHERE name IN (${required.map(()=>'?').join(',')})`).bind(...required).all<{type:string;name:string;sql:string}>();const found=new Set(rows.results.map((row)=>row.name));for(const name of required)expect(found.has(name),name).toBe(true);
     expect(await database.prepare(`SELECT name FROM sqlite_schema WHERE type='index' AND name='uq_acquisition_active_identity_per_type'`).first()).toBeNull();

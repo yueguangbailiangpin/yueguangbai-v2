@@ -87,13 +87,13 @@ Seller Principal、Seller Service Fee、Buyer Refund 必须使用各自正式账
 ## 9. 生产 readiness 必须绑定当前 release
 
 `/ready` 只有同时满足以下条件才 200：
-- Schema 65；
+- Schema 66；
 - Scheduler enabled、最近成功、失败不晚于成功、backlog 在上限内；
 - Acquisition Maintenance enabled 且最近成功；
 - Object Storage 可读；
 - Cloudflare Access 配置不是 placeholder；
 - `APP_RELEASE_SHA` 有效；
-- Recovery Attestation 的 `schema_version=65` 且 `release_sha=APP_RELEASE_SHA`。
+- Recovery Attestation 的 `schema_version=66` 且 `release_sha=APP_RELEASE_SHA`。
 
 本地 release check 不得联网生产。真实 `/ready` 网络探测只能显式执行 `node scripts/probe-production-readiness.mjs`。
 
