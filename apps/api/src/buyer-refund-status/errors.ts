@@ -12,6 +12,7 @@ export type BuyerRefundPortalStatus =
   | 403
   | 404
   | 409
+  | 429
   | 503;
 
 export class BuyerRefundPortalError extends Error {
@@ -34,6 +35,7 @@ const ERROR_MESSAGES: Readonly<Partial<Record<ApiErrorCode, string>>> =
     NOT_FOUND: '请求的返款资料不存在',
     CUSTOMER_NOT_ACTIVE: '当前账号不可用',
     IDENTITY_REVIEW_REQUIRED: '账号资料需要先完成审核',
+    RATE_LIMITED: '该返款已催办，请 24 小时后再试',
     DEPENDENCY_UNAVAILABLE: '服务暂时不可用，请稍后重试',
   });
 
@@ -79,6 +81,9 @@ export function normalizeBuyerRefundPortalError(
   if (code === 'CUSTOMER_NOT_ACTIVE'
     || code === 'IDENTITY_REVIEW_REQUIRED') {
     return new BuyerRefundPortalError(code, 409);
+  }
+  if (code === 'RATE_LIMITED') {
+    return new BuyerRefundPortalError(code, 429);
   }
   if (code === 'DEPENDENCY_UNAVAILABLE') {
     return dependencyUnavailable();

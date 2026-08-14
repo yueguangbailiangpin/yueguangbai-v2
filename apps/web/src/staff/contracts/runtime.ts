@@ -114,7 +114,7 @@ const refundBase = z.object({
   reversed_cny_fen: integerString, net_paid_cny_fen: integerString,
   outstanding_amount_cny_fen: integerString, overpaid_amount_cny_fen: integerString,
   status: z.enum(['DUE', 'PARTIALLY_PAID', 'PAID', 'OVERPAID']), version: z.number().int().positive(),
-  created_at: epoch, updated_at: epoch,
+  created_at: epoch, updated_at: epoch, reminder_count: z.number().int().nonnegative(), last_reminded_at: epoch.nullable(),
   buyer: z.object({ buyer_customer_id: z.string(), buyer_customer_no: z.string().nullable() }).strict(),
   order: z.object({ formal_order_id: z.string(), marketplace: z.literal('JP'),
     amazon_order_number_normalized: z.string(), product_id: z.string(), asin: z.string() }).strict(),

@@ -183,7 +183,7 @@ describe('Phase 4B5 buyer refund status read model', () => {
     })).toMatchObject({ code: 'FORBIDDEN', status: 403 });
   });
 
-  it('keeps the API read-only, file-blind, and schema26-compatible', () => {
+  it('keeps read endpoints file-blind and registers only the scoped reminder command', () => {
     const root = path.resolve(import.meta.dirname, '../../../..');
     const routeSource = readFileSync(
       path.join(root, 'apps/api/src/buyer-refund-status/routes.ts'),
@@ -195,9 +195,11 @@ describe('Phase 4B5 buyer refund status read model', () => {
     );
     expect(routeSource).toContain("'/api/buyer-portal/refunds'");
     expect(routeSource).toContain("'/api/buyer-portal/refunds/:id'");
+    expect(routeSource).toContain("'/api/buyer-portal/refunds/:id/remind'");
     expect(routeSource).toContain('customerSessionMiddleware()');
     expect(routeSource).toContain('requireBuyerPortalContext(context)');
-    expect(routeSource).not.toMatch(/app\.(post|put|patch|delete)\(/u);
+    expect(routeSource).toContain('remindBuyerRefund');
+    expect(routeSource).not.toMatch(/app\.(put|patch|delete)\(/u);
     expect(routeSource).not.toContain('createFileReadIntent');
     expect(readModelSource).toContain('buyer_refund_ledger_balances');
     expect(readModelSource).toContain('buyerRefundStatusFromAmounts');
@@ -208,10 +210,10 @@ describe('Phase 4B5 buyer refund status read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(69);
+    expect(migrations).toHaveLength(70);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
     expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0069_retire_seller_agreement_rate_runtime.sql');
+    expect(migrations.at(-1)).toBe('0070_buyer_refund_reminders.sql');
   });
 });
 

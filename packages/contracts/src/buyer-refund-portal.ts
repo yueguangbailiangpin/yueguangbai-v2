@@ -32,11 +32,25 @@ export interface BuyerRefundPortalBalanceDto {
   status: BuyerRefundStatus;
 }
 
+export interface BuyerRefundPortalReminderDto {
+  reminder_count: number;
+  last_reminded_at: number | null;
+  next_reminder_at: number | null;
+}
+
 export interface BuyerRefundPortalSummaryDto
 extends BuyerRefundPortalBalanceDto {
   refund_obligation_id: string;
   order: BuyerRefundPortalOrderSummaryDto;
+  reminder: BuyerRefundPortalReminderDto;
   allowed_actions: readonly [];
+}
+
+export interface BuyerRefundPortalReminderMutationDto {
+  reminder: BuyerRefundPortalReminderDto & {
+    refund_obligation_id: string;
+  };
+  replayed: boolean;
 }
 
 export interface BuyerRefundPortalActivityDto {

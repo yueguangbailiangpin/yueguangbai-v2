@@ -15,6 +15,7 @@ import {
   orderEvidenceMutationSchema,
   orderEvidencePageSchema,
   refundDetailSchema,
+  refundReminderMutationSchema,
   refundsPageSchema,
   reservationDetailSchema,
   reservationMutationSchema,
@@ -81,4 +82,5 @@ export const buyerApi = Object.freeze({
   withdrawReview: (client: QueryClient, id: string, version: number, key: string, signal?: Signal) => post(client, `/api/buyer-portal/reviews/${encodeURIComponent(id)}/withdraw`, reviewMutationSchema, { expected_version: version }, key, signal),
   refunds: (client: QueryClient, query = 'limit=20', signal?: Signal) => get(client, `/api/buyer-portal/refunds?${query}`, refundsPageSchema, signal),
   refund: (client: QueryClient, id: string, signal?: Signal) => get(client, `/api/buyer-portal/refunds/${encodeURIComponent(id)}`, refundDetailSchema, signal),
+  remindRefund: (client: QueryClient, id: string, key: string, signal?: Signal) => post(client, `/api/buyer-portal/refunds/${encodeURIComponent(id)}/remind`, refundReminderMutationSchema, {}, key, signal),
 });

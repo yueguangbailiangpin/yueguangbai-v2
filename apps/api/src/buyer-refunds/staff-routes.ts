@@ -45,6 +45,8 @@ interface RefundListRow {
   version: number;
   created_at: number;
   updated_at: number;
+  reminder_count: number;
+  last_reminded_at: number | null;
   buyer_customer_no: string | null;
   marketplace_code: 'JP';
   amazon_order_number_normalized: string;
@@ -130,6 +132,10 @@ async function listStaffBuyerRefunds(context: Context<AppEnv>): Promise<Response
       ledger.gross_paid_cny_fen, ledger.reversed_cny_fen,
       ledger.net_paid_cny_fen, ledger.status, ledger.version,
       ledger.created_at, ledger.updated_at,
+      (SELECT COUNT(*) FROM buyer_refund_reminders reminder
+        WHERE reminder.obligation_id=ledger.obligation_id) AS reminder_count,
+      (SELECT MAX(reminded_at) FROM buyer_refund_reminders reminder
+        WHERE reminder.obligation_id=ledger.obligation_id) AS last_reminded_at,
       buyer.buyer_customer_no, formal_order.marketplace_code,
       formal_order.amazon_order_number_normalized,
       formal_order.product_id, formal_order.asin_normalized,
@@ -316,6 +322,10 @@ async function readRefundDetail(
       ledger.gross_paid_cny_fen, ledger.reversed_cny_fen,
       ledger.net_paid_cny_fen, ledger.status, ledger.version,
       ledger.created_at, ledger.updated_at,
+      (SELECT COUNT(*) FROM buyer_refund_reminders reminder
+        WHERE reminder.obligation_id=ledger.obligation_id) AS reminder_count,
+      (SELECT MAX(reminded_at) FROM buyer_refund_reminders reminder
+        WHERE reminder.obligation_id=ledger.obligation_id) AS last_reminded_at,
       buyer.buyer_customer_no, formal_order.marketplace_code,
       formal_order.amazon_order_number_normalized,
       formal_order.product_id, formal_order.asin_normalized,
@@ -427,10 +437,16 @@ function projectListItem(row: RefundListRow): StaffBuyerRefundListItemDto {
   const gross = Number(row.gross_paid_cny_fen);
   const reversed = Number(row.reversed_cny_fen);
   const net = Number(row.net_paid_cny_fen);
+  const reminderCount = Number(row.reminder_count);
+  const lastRemindedAt = row.last_reminded_at === null
+    ? null : Number(row.last_reminded_at);
   if (!Number.isSafeInteger(due) || due < 0
     || !Number.isSafeInteger(gross) || gross < 0
     || !Number.isSafeInteger(reversed) || reversed < 0
-    || !Number.isSafeInteger(net) || net < 0) {
+    || !Number.isSafeInteger(net) || net < 0
+    || !Number.isSafeInteger(reminderCount) || reminderCount < 0
+    || (lastRemindedAt !== null
+      && (!Number.isSafeInteger(lastRemindedAt) || lastRemindedAt < 0))) {
     throw new BuyerRefundHttpError('DEPENDENCY_UNAVAILABLE', 503);
   }
   return {
@@ -447,6 +463,8 @@ function projectListItem(row: RefundListRow): StaffBuyerRefundListItemDto {
     version: Number(row.version),
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
+    reminder_count: reminderCount,
+    last_reminded_at: lastRemindedAt,
     buyer: {
       buyer_customer_id: row.buyer_customer_id,
       buyer_customer_no: row.buyer_customer_no,

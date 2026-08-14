@@ -31,6 +31,7 @@ import { getBuyerRefundLedger } from './get-buyer-refund-ledger';
 import { recordBuyerRefundPayment } from './record-buyer-refund-payment';
 import { reverseBuyerRefundPayment } from './reverse-buyer-refund-payment';
 import type { BuyerRefundStaffActor } from './buyer-refund-shared';
+import { remindBuyerRefund } from '../buyer-refund-status/remind';
 
 const NOW = Date.UTC(2026, 7, 1, 0, 0, 0);
 const BUSINESS_DATE = '2026-08-01';
@@ -106,6 +107,54 @@ describe('Phase 5B immutable buyer refund ledger', () => {
       FROM buyer_advance_principal_settlements
       WHERE advance_payment_entry_id='advance-refund-payment-1'
     `).first()).toEqual({ settled_amount_cny_fen: 48840 });
+  });
+
+  it('records one buyer-owned reminder, replays it, and fails closed during the 24 hour window', async () => {
+    const fixture = await setupDueRefund();
+    const obligation = await createObligation(fixture.dueEventId);
+    const buyer = buyerRefundPortalContext('buyer-review-1');
+    const first = await remindBuyerRefund(database!, buyer, {
+      obligationId: obligation.obligation_id,
+      idempotencyKey: 'buyer-reminder-first-0001',
+      requestId: 'request:buyer-reminder-first',
+    }, { now: NOW + 40_000 });
+    expect(first).toMatchObject({
+      refund_obligation_id: obligation.obligation_id,
+      reminder_count: 1,
+      last_reminded_at: NOW + 40_000,
+      replayed: false,
+    });
+    const replay = await remindBuyerRefund(database!, buyer, {
+      obligationId: obligation.obligation_id,
+      idempotencyKey: 'buyer-reminder-first-0001',
+      requestId: 'request:buyer-reminder-replay',
+    }, { now: NOW + 40_001 });
+    expect(replay).toEqual({ ...first, replayed: true });
+    await expect(remindBuyerRefund(database!, buyer, {
+      obligationId: obligation.obligation_id,
+      idempotencyKey: 'buyer-reminder-limited-0001',
+      requestId: 'request:buyer-reminder-limited',
+    }, { now: NOW + 40_002 })).rejects.toMatchObject({
+      code: 'RATE_LIMITED', status: 429,
+    });
+    expect(await database!.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM buyer_refund_reminders WHERE obligation_id=?) AS reminders,
+        (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='BUYER_REFUND_REMINDER_REQUESTED') AS audits
+    `).bind(obligation.obligation_id, obligation.obligation_id).first()).toEqual({ reminders: 1, audits: 1 });
+  });
+
+  it('conceals another buyer refund and creates no reminder or audit fact', async () => {
+    const fixture = await setupDueRefund();
+    const obligation = await createObligation(fixture.dueEventId);
+    await expect(remindBuyerRefund(database!, buyerRefundPortalContext('buyer-other'), {
+      obligationId: obligation.obligation_id,
+      idempotencyKey: 'buyer-reminder-foreign-0001',
+      requestId: 'request:buyer-reminder-foreign',
+    }, { now: NOW + 40_000 })).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+    expect(await database!.prepare(`
+      SELECT COUNT(*) AS count FROM buyer_refund_reminders WHERE obligation_id=?
+    `).bind(obligation.obligation_id).first()).toEqual({ count: 0 });
   });
 
   it('creates one obligation from BUYER_REFUND_BECAME_DUE and replays exactly', async () => {
@@ -707,6 +756,18 @@ function reviewOwnerActor(): StaffReviewActor {
     displayName: '负责人',
     roles: ['owner'],
     permissions: new Set(['REVIEW_DECIDE']),
+  };
+}
+
+function buyerRefundPortalContext(buyerCustomerId: string) {
+  return {
+    buyerCustomerId,
+    marketplaceCode: 'JP' as const,
+    accessStatus: 'ACTIVE' as const,
+    identityReviewStatus: 'CLEAR' as const,
+    customerNumber: null,
+    displayName: '返款买家',
+    sessionExpiresAt: NOW + 86_400_000,
   };
 }
 

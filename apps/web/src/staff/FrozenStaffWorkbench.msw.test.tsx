@@ -42,7 +42,7 @@ const buyerRefund = {
   due_amount_cny_fen: '10000', gross_paid_cny_fen: '5000', reversed_cny_fen: '0',
   net_paid_cny_fen: '5000', outstanding_amount_cny_fen: '5000', overpaid_amount_cny_fen: '0',
   status: 'PARTIALLY_PAID' as const, version: 2, created_at: 1_787_000_000_000,
-  updated_at: 1_787_000_000_000, buyer: { buyer_customer_id: 'buyer-1', buyer_customer_no: 'B-1' },
+  updated_at: 1_787_000_000_000, reminder_count: 2, last_reminded_at: 1_787_000_100_000, buyer: { buyer_customer_id: 'buyer-1', buyer_customer_no: 'B-1' },
   order: { formal_order_id: 'order-1', marketplace: 'JP' as const,
     amazon_order_number_normalized: '503-5555555-6666666', product_id: 'product-1', asin: 'B000000001' },
   workflow: { work_item_id: 'work-refund', assigned_staff_id: 'staff-1', assigned_team_id: null,
@@ -148,6 +148,15 @@ describe('canonical Frozen Staff workbench', () => {
     await user.click(screen.getByRole('button',{name:'确认'}));
     expect(await screen.findByText(/refund-version-conflict/u)).toBeVisible();
     expect(screen.getByRole('button',{name:'刷新返款事实'})).toBeVisible();
+  });
+
+  it('shows buyer reminder facts without changing queue ordering or adding a task action', async () => {
+    installRefundHandlers(async()=>refundConflict());
+    renderWorkbench('/staff?work_item=work-refund');
+    expect(await screen.findByText('催办次数')).toBeVisible();
+    expect(screen.getByText('2')).toBeVisible();
+    expect(screen.getByText('最后催办时间')).toBeVisible();
+    expect(screen.queryByRole('button',{name:/催返款/u})).not.toBeInTheDocument();
   });
 });
 

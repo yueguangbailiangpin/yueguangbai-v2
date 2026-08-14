@@ -134,7 +134,7 @@ release=ok
 
 - 固定 deployed SHA 与 GitHub reviewed SHA 一致；
 - staging D1/R2/Worker/Access/域名和 production 清单无 ID 重合；
-- migrations `0001`–`0069`、Schema 69、integrity/FK checks；
+- migrations `0001`–`0070`、Schema 70、integrity/FK checks；
 - `/health=200` 与上述 staging `/ready=200` envelope；
 - 五个 Staff 角色的允许/禁止路径，Personal DENY 和 Marketplace concealment；
 - Buyer 登录、产品、预约、任务，Seller 登录、组织、产品申请、需求批次；

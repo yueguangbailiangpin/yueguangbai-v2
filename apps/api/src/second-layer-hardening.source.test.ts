@@ -8,10 +8,10 @@ const read=(file:string)=>readFileSync(path.join(root,file),'utf8');
 describe('second layer hardening freeze',()=>{
   it('keeps production release authority on schema 69, Access and release-bound readiness',()=>{
     const migrations=readdirSync(path.join(root,'migrations')).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort();
-    expect(migrations).toHaveLength(69);expect(migrations.at(-1)).toBe('0069_retire_seller_agreement_rate_runtime.sql');
+    expect(migrations).toHaveLength(70);expect(migrations.at(-1)).toBe('0070_buyer_refund_reminders.sql');
     const template=read('apps/api/wrangler.production.template.jsonc');
     expect(template).toContain('"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"');expect(template).toContain('"SCHEDULED_OPERATIONS_ENABLED": "true"');expect(template).toContain('"ACQUISITION_MAINTENANCE_ENABLED": "true"');expect(template).toContain('STAFF_ACCESS_TEAM_DOMAIN');expect(template).toContain('STAFF_ACCESS_AUD');expect(template).not.toContain('FEISHU_WORKBENCH_APP_ID');
-    const readiness=read('apps/api/src/operational-readiness/routes.ts');expect(readiness).toContain('const TARGET_SCHEMA=69');expect(readiness).toContain('APP_RELEASE_SHA');expect(readiness).toContain('last_backlog_count');expect(readiness).toContain('staff_access');
+    const readiness=read('apps/api/src/operational-readiness/routes.ts');expect(readiness).toContain('const TARGET_SCHEMA=70');expect(readiness).toContain('APP_RELEASE_SHA');expect(readiness).toContain('last_backlog_count');expect(readiness).toContain('staff_access');
     const verifier=read('scripts/verify-production-readiness-formal.mjs');expect(verifier).toContain('external_calls:0');expect(verifier).not.toContain('fetchImpl');
     expect(read('scripts/probe-production-readiness.mjs')).toContain('fetchImpl=fetch');
   });

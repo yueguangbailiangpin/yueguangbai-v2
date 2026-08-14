@@ -34,6 +34,8 @@ export interface StaffBuyerRefundListItemDto {
   version: number;
   created_at: number;
   updated_at: number;
+  reminder_count: number;
+  last_reminded_at: number | null;
   buyer: StaffBuyerRefundBuyerSummaryDto;
   order: StaffBuyerRefundOrderSummaryDto;
   workflow: StaffBuyerRefundWorkflowDto;
