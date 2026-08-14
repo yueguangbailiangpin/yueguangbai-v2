@@ -39,9 +39,11 @@ describe('Seller formal-order chat screenshot UI', () => {
     server.use(
       http.get(apiUrl('/api/seller-portal/me'),()=>HttpResponse.json({data:{me:{...sellerMe(),member:{...sellerMe().member,role:'FINANCE'}}},meta:{request_id:'seller-me-finance'}})),
       http.get(apiUrl('/api/seller-portal/stores'),()=>HttpResponse.json({data:{items:[],page:{limit:100,next_cursor:null}},meta:{request_id:'seller-stores'}})),
+      http.get(apiUrl('/api/seller-portal/settlement/summary'),()=>HttpResponse.json({data:{settlement:{outstanding_principal_cny_fen:'0',outstanding_service_fee_cny_fen:'0',total_outstanding_cny_fen:'0',unallocated_credit_cny_fen:'0'}},meta:{request_id:'seller-settlement-finance'}})),
+      http.get(apiUrl('/api/seller-portal/settlement/payables'),()=>HttpResponse.json({data:{items:[],page:{limit:100,next_cursor:null}},meta:{request_id:'seller-payables-finance'}})),
     );
-    renderWithMsw(<SellerLayout><div>财务首页</div></SellerLayout>,{route:'/seller'});
-    expect(await screen.findByText('财务首页')).toBeVisible();
+    renderWithMsw(<SellerLayout><SellerSettlementsPage/></SellerLayout>,{route:'/seller/settlements'});
+    expect(await screen.findByText('结算按已授权店铺范围汇总，不随当前店铺选择切换。')).toBeVisible();
     expect(await screen.findAllByRole('link',{name:'结算'})).toHaveLength(2);
   });
 
