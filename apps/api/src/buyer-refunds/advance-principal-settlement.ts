@@ -45,7 +45,7 @@ export async function prepareAdvancePrincipalSettlementStatements(
         ) VALUES(?,?,?,?,?,?)`).bind(settlementId,row.id,input.obligationId,refundPaymentId,applied,input.now),
         insertBuyerRefundEventStatement(database,{
           obligationId:input.obligationId,paymentEntryId:refundPaymentId,eventType:'BUYER_REFUND_PAYMENT_RECORDED',
-          actorType:'SYSTEM',actorId:'advance-principal-settlement',obligationVersion:1,amountCnyFen:applied,
+          actorType:'STAFF',actorId:row.actor_staff_id,obligationVersion:1,amountCnyFen:applied,
           netPaidAfterCnyFen:appliedTotal,metadata:{source:'ADVANCE_PRINCIPAL',advance_payment_entry_id:row.id,original_advance_net_cny_fen:net},
           idempotencyKey:key,createdAt:input.now,
         }),

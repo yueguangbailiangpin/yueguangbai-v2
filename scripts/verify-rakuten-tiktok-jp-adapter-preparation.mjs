@@ -5,9 +5,6 @@ import { pathToFileURL } from 'node:url';
 
 const root = path.resolve(import.meta.dirname, '..');
 
-const BASELINE_MIGRATION_COUNT = 65;
-const BASELINE_MIGRATION_TAIL =
-  '0065_retire_feishu_artifacts.sql';
 const FOUNDATION_MIGRATION_SHA256 =
   '7769d12450a73d5e19953e23bf04db4fedf5bb265497ffc7b1751e43776e0a46';
 
@@ -124,6 +121,9 @@ function forbidMatch(value, pattern, code, errors) {
 
 function main() {
   const errors = verifyRakutenTikTokAdapterPreparation();
+  const migrations = readdirSync(path.join(root, 'migrations'))
+    .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
+    .sort();
   process.stdout.write(`${JSON.stringify({
     status: errors.length === 0 ? 'PASS' : 'FAIL',
     migration_decision: 'NO_SCHEMA_CHANGE',
@@ -131,8 +131,8 @@ function main() {
     production_routes_registered: 0,
     scheduled_jobs_registered: 0,
     platform_write_methods: 0,
-    migration_count: BASELINE_MIGRATION_COUNT,
-    migration_tail: BASELINE_MIGRATION_TAIL,
+    migration_count: migrations.length,
+    migration_tail: migrations.at(-1) ?? null,
     external_calls: 0,
     provider_calls: 0,
     resource_mutations: 0,

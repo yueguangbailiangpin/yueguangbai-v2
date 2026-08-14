@@ -13,7 +13,7 @@ Staging SHALL use distinct Worker, D1, R2, custom domain, Cloudflare Access appl
 
 ### Requirement: Staging readiness is truthful and profile-specific
 
-Staging SHALL report Scheduler, Acquisition Maintenance, operational alerts and production recovery as `not_required`, not `ok`. It SHALL return ready only when Schema 65, isolated object storage, valid staging Access configuration and exact release SHA are `ok`, while every production-only switch remains disabled. Production SHALL continue to require all eight published checks to equal `ok`.
+Staging SHALL report Scheduler, Acquisition Maintenance, operational alerts and production recovery as `not_required`, not `ok`. It SHALL return ready only when Schema 66, isolated object storage, valid staging Access configuration and exact release SHA are `ok`, while every production-only switch remains disabled. Production SHALL continue to require all eight published checks to equal `ok`.
 
 #### Scenario: Disabled staging production gates are intentional
 
@@ -27,7 +27,7 @@ Staging SHALL report Scheduler, Acquisition Maintenance, operational alerts and 
 
 ### Requirement: First staging Owner bootstrap is one-time and atomic
 
-The operator tool SHALL accept only an exact staging D1 identity and Git-external owner-only input, require Schema 65, empty Staff authority and no Buyer channel, then atomically create exactly one active Owner, role, email identity, synthetic staging Buyer channel, authorization event and immutable Audit with command idempotency and final assertions. Its REST parameter arrays SHALL contain only strings. It SHALL expose no HTTP route, password or Access bypass.
+The operator tool SHALL accept only an exact staging D1 identity and Git-external owner-only input, require Schema 66, empty Staff authority and no Buyer channel, then atomically create exactly one active Owner, role, email identity, synthetic staging Buyer channel, authorization event and immutable Audit with command idempotency and final assertions. Its REST parameter arrays SHALL contain only strings. It SHALL expose no HTTP route, password or Access bypass.
 
 #### Scenario: Empty staging D1 is bootstrapped
 

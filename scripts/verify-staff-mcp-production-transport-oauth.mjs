@@ -11,11 +11,11 @@ const read = (file) => readRepositoryFile(file, root);
 
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file)).sort();
-assert(migrations.length === 65
+assert(migrations.length === 66
   && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
-  && migrations.at(-1) === '0065_retire_feishu_artifacts.sql'
+  && migrations.at(-1) === '0066_advance_cash_integrity.sql'
   && migrations.every((file, index) => Number(file.slice(0, 4)) === index + 1),
-'Staff MCP Migration must remain at 0038 in the continuous 0001-0065 chain');
+'Staff MCP Migration must remain at 0038 in the continuous 0001-0066 chain');
 
 const migration = read('migrations/0038_staff_mcp_production_transport_oauth.sql');
 for (const marker of [

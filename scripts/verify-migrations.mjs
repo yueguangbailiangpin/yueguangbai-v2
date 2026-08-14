@@ -16,15 +16,15 @@ const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-v2-migrations-'),
 );
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 65;
+const expectedLatestSchema = 66;
 const expectedLastMigration =
-  '0065_retire_feishu_artifacts.sql';
+  '0066_advance_cash_integrity.sql';
 const expectedSchemaInventory = {
   table: 214,
   index: 612,
-  trigger: 406,
+  trigger: 407,
   view: 12,
-  sha256: '88b93ce12164731809e235c94ff3e97f24b9db27e2756992292bfda627bbd199',
+  sha256: '873ace6d1463dfadcd1f069482f849e718dc449b605c18c16edfdcf9d9defc2d',
 };
 
 const requiredTables = [
@@ -688,7 +688,7 @@ try {
   if (migrationFiles.length !== expectedLatestSchema
     || migrationFiles.at(-1) !== expectedLastMigration
     || migrationNumbers.some((number, index) => number !== index + 1)) {
-    throw new Error('Migration 必须是唯一连续的 0001-0065');
+    throw new Error('Migration 必须是唯一连续的 0001-0066');
   }
 
   const database = new DatabaseSync(databasePath);

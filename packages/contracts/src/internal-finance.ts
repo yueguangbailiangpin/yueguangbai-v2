@@ -195,6 +195,8 @@ export interface InternalFinanceCashFlowDto {
   seller_payment_reversal_cny_fen: FixedIntegerString;
   buyer_refund_outflow_cny_fen: FixedIntegerString;
   buyer_refund_reversal_cny_fen: FixedIntegerString;
+  buyer_advance_outflow_cny_fen: FixedIntegerString;
+  buyer_advance_reversal_cny_fen: FixedIntegerString;
   net_cash_flow_cny_fen: SignedIntegerString;
   from_date: string;
   to_date: string;

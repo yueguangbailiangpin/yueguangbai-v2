@@ -30,7 +30,7 @@ R2:     yueguangbai-v2-staging-files
 1. 创建 distinct staging D1 与 R2；确认没有 production binding。
 2. 在 Cloudflare Zero Trust 创建 distinct staging Access Application、Audience 和五个测试 Staff 邮箱的 allow policy。验证码由邮箱所有者输入，不能交给 Agent。
 3. 在 Git 外渲染 staging Wrangler config，运行 release preflight；此时不部署。
-4. 只对 staging D1 应用 migrations `0001`–`0065`，核对 `app_schema_state=65` 和 Migration ledger。
+4. 只对 staging D1 应用 migrations `0001`–`0066`，核对 `app_schema_state=66` 和 Migration ledger。
 5. 执行一次性 first-owner bootstrap；同一原子 batch 同时建立唯一的 `staging-buyer-channel`，不得另行手搓 SQL。
 6. Owner 首次通过 Access OTP 登录后，用正式 Staff 账号管理界面创建另外四个角色。
 7. 用正式 Staff customer onboarding/activation/password 流程创建 synthetic Buyer 和 Seller；不得直写业务表。
@@ -134,7 +134,7 @@ release=ok
 
 - 固定 deployed SHA 与 GitHub reviewed SHA 一致；
 - staging D1/R2/Worker/Access/域名和 production 清单无 ID 重合；
-- migrations `0001`–`0065`、Schema 65、integrity/FK checks；
+- migrations `0001`–`0066`、Schema 66、integrity/FK checks；
 - `/health=200` 与上述 staging `/ready=200` envelope；
 - 五个 Staff 角色的允许/禁止路径，Personal DENY 和 Marketplace concealment；
 - Buyer 登录、产品、预约、任务，Seller 登录、组织、产品申请、需求批次；

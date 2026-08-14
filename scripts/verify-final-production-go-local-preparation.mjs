@@ -9,7 +9,7 @@ const {schema,latestMigration}=resolveProductionSchemaBaseline();
 const migrations=readdirSync(path.join(root,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
 assert(migrations.length===schema,`expected ${schema} migrations, found ${migrations.length}`);
 assert(migrations.every((file,index)=>Number(file.slice(0,4))===index+1),'migration chain is not continuous');
-assert(latestMigration==='0065_retire_feishu_artifacts.sql','current production schema baseline must retire Feishu artifacts in 0065');
+assert(latestMigration==='0066_advance_cash_integrity.sql','current production schema baseline must enforce advance cash integrity in 0066');
 verifyProductionSchemaDocuments();
 
 const production=read('apps/api/wrangler.production.template.jsonc');

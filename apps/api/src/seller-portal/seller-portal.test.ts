@@ -17,6 +17,7 @@ import { issueCustomerSession } from '../customer-auth/authenticate-customer';
 import { MockObjectStorage } from '../files/mock-object-storage';
 import { registerFileHttpRoutes } from '../files/routes';
 import { registerSellerPortalRoutes } from './routes';
+import { registerSellerSettlementRoutes } from '../seller-settlements';
 
 const ORIGIN = 'https://portal.local.test';
 const SESSION_SECRET =
@@ -488,6 +489,41 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(crossOrigin.status).toBe(403);
   });
 
+  it('limits seller settlement financial reads to OWNER and FINANCE members', async () => {
+    const app = testApp();
+    for (const role of ['owner', 'finance'] as const) {
+      const summary = await request(app, '/api/seller-portal/settlement/summary', {
+        headers: { Cookie: await cookie(role) },
+      });
+      expect(summary.status).toBe(200);
+      expect(summary.headers.get('Cache-Control')).toBe('no-store');
+      expect(await json(summary)).toMatchObject({ data: { settlement: {
+        outstanding_principal_cny_fen: '0', outstanding_service_fee_cny_fen: '0',
+      } } });
+      const payables = await request(app, '/api/seller-portal/settlement/payables', {
+        headers: { Cookie: await cookie(role) },
+      });
+      expect(payables.status).toBe(200);
+      expect(await json(payables)).toMatchObject({ data: { items: [] } });
+    }
+
+    for (const role of ['ops', 'viewer'] as const) {
+      for (const path of [
+        '/api/seller-portal/settlement/summary',
+        '/api/seller-portal/settlement/payables',
+        '/api/seller-portal/settlement/payables/payable-1',
+      ]) {
+        const response = await request(app, path, {
+          headers: { Cookie: await cookie(role) },
+        });
+        expect(response.status).toBe(404);
+        expect(JSON.stringify(await json(response))).not.toMatch(
+          /outstanding|amount_cny_fen|payable_type/iu,
+        );
+      }
+    }
+  });
+
   it('allows file upload intents only for OWNER and OPERATIONS', async () => {
     const app = testApp();
     const payload = JSON.stringify({
@@ -848,24 +884,25 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(65);
+    expect(Number(state?.schema_version)).toBe(66);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(65);
+    expect(migrations).toHaveLength(66);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
     expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0065_retire_feishu_artifacts.sql');
+    expect(migrations.at(-1)).toBe('0066_advance_cash_integrity.sql');
   });
 });
 
 function testApp() {
   const app = createApp();
   registerSellerPortalRoutes(app);
+  registerSellerSettlementRoutes(app);
   registerFileHttpRoutes(app);
   return app;
 }

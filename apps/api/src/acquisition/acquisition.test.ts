@@ -27,6 +27,7 @@ import {
 } from './leads';
 import { runAcquisitionMaintenance } from './maintenance';
 import { readAcquisitionFunnel } from './funnel';
+import { channelProfitForActor } from './channel-stats';
 import { createAcquisitionProspect } from './prospects';
 import { addTwelveShanghaiMonths } from './time';
 
@@ -37,6 +38,17 @@ let database: SqliteDatabase|null = null;
 afterEach(() => { database?.close(); database = null; });
 
 describe('staff acquisition funnel commands', () => {
+  it('exposes channel profit only to an owner with FINANCIAL_VIEW', () => {
+    const rows = [{ formal_order_id: 'order-1', projected: '2500', completed: '2100' }];
+    expect(channelProfitForActor(owner(), rows)).toEqual({ projected: '2500', completed: '2100' });
+    expect(channelProfitForActor(acquisition(), rows)).toEqual({ projected: null, completed: null });
+    const deniedOwner = calculateEffectiveStaffAuthorization({
+      roles: new Set<StaffRoleCode>(['owner']), grants: new Set<StaffPermissionCode>(),
+      denies: new Set<StaffPermissionCode>(['FINANCIAL_VIEW']), memberTeamIds: [], leaderTeamIds: [],
+    });
+    expect(channelProfitForActor(deniedOwner, rows)).toEqual({ projected: null, completed: null });
+  });
+
   it('accepts an explicit legal direct source, protects WeChat, freezes origin and deduplicates per type', async () => {
     database = db();
     const channel = await seedChannel(database, 'XHS_BUYER');

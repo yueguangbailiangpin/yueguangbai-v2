@@ -39,13 +39,20 @@ export function registerOperatingIntegrityRoutes(app:Hono<AppEnv>):void{
 
 async function readOrderIntegrity(context:Context<AppEnv>){
   const actor=staff(context);const order=await orderRow(context.env.DB,id(context.req.param('id')??''));await market(context.env.DB,actor,order.market);
+  const canViewFinancialAdjustments=canViewOrderFinancialAdjustments(actor);
   const [events,adjustments,state]=await Promise.all([
     context.env.DB.prepare(`SELECT id AS event_id,formal_order_id,event_type,reason,actor_staff_id,created_at FROM formal_order_operational_events WHERE formal_order_id=? ORDER BY created_at,id`).bind(order.id).all<any>(),
-    context.env.DB.prepare(`SELECT id AS adjustment_id,formal_order_id,source_operational_event_id,adjustment_scope,CAST(amount_cny_fen AS TEXT) AS amount_cny_fen,reason,actor_staff_id,created_at FROM formal_order_financial_adjustments WHERE formal_order_id=? ORDER BY created_at,id`).bind(order.id).all<any>(),
+    canViewFinancialAdjustments
+      ? context.env.DB.prepare(`SELECT id AS adjustment_id,formal_order_id,source_operational_event_id,adjustment_scope,CAST(amount_cny_fen AS TEXT) AS amount_cny_fen,reason,actor_staff_id,created_at FROM formal_order_financial_adjustments WHERE formal_order_id=? ORDER BY created_at,id`).bind(order.id).all<any>()
+      : Promise.resolve({results:[]}),
     context.env.DB.prepare(`SELECT operational_state FROM formal_order_effective_operational_state WHERE formal_order_id=?`).bind(order.id).first<{operational_state:string}>(),
   ]);
   return ok(context,{order_integrity:{formal_order_id:order.id,canonical_marketplace_code:order.market,operational_state:state?.operational_state??'NORMAL',events:events.results,adjustments:adjustments.results}});
 }
+
+export function canViewOrderFinancialAdjustments(
+  actor:Pick<AssignmentStaffAuthorization,'roles'|'permissions'>,
+):boolean{return actor.roles.has('owner')&&actor.permissions.has('FINANCIAL_VIEW');}
 
 async function recordOrderEvent(context:Context<AppEnv>){
   const actor=staff(context);if(!actor.roles.has('owner')&&!actor.roles.has('seller_ops'))forbidden();
@@ -119,7 +126,7 @@ async function recordAdvancePayment(context:Context<AppEnv>){
   const order=await orderRow(context.env.DB,id(context.req.param('formalOrderId')??''));await market(context.env.DB,actor,order.market);
   await requireAdvanceAction(context.env.DB,order.id);
   const obligation=await context.env.DB.prepare(`SELECT 1 AS present FROM buyer_refund_obligations WHERE formal_order_id=? LIMIT 1`).bind(order.id).first();if(obligation)throw new IntegrityError('CONFLICT',409);
-  const body=await json(context,['amount_cny_fen','paid_at','payment_channel','note','proof_files']);const amount=positiveMoney(body['amount_cny_fen']);const paid=timestamp(body['paid_at']);const channel=paymentChannel(body['payment_channel']);const note=optionalText(body['note'],2000);const proofs=parseProofFiles(body['proof_files']);const now=Date.now();
+  const body=await json(context,['amount_cny_fen','paid_at','payment_channel','note','proof_files']);const now=Date.now();const amount=positiveMoney(body['amount_cny_fen']);const paid=cleanOperatingPaymentTimestamp(body['paid_at'],now);const channel=paymentChannel(body['payment_channel']);const note=optionalText(body['note'],2000);const proofs=parseProofFiles(body['proof_files']);
   const acquired=await command(context,actor,'RECORD_BUYER_ADVANCE_PRINCIPAL','FORMAL_ORDER',order.id,{amount_cny_fen:amount,paid_at:paid,payment_channel:channel,note,proof_files:proofs},now);if(acquired.kind==='REPLAY')return ok(context,acquired.response,201);
   try{
     const rows=await listBuyerRefundProofFiles(context.env.DB,proofs.map((proof)=>proof.fileObjectId));validateProofRows(rows,proofs,actor.staffId);
@@ -176,6 +183,7 @@ function id(value:string){const v=value.normalize('NFKC').trim();if(v.length<1||
 function text(value:unknown,min:number,max:number){if(typeof value!=='string')validation();const v=value.normalize('NFKC').trim();if(v.length<min||v.length>max||/[\u0000-\u001f\u007f]/u.test(v))validation();return v;}
 function optionalText(value:unknown,max:number){if(value===null)return null;if(typeof value!=='string')validation();const v=value.normalize('NFKC').trim();if(!v)return null;if(v.length>max)validation();return v;}
 function timestamp(value:unknown){if(typeof value!=='number'||!Number.isSafeInteger(value)||value<0)validation();return value;}
+export function cleanOperatingPaymentTimestamp(value:unknown,now:number){const parsed=timestamp(value);if(!Number.isSafeInteger(now)||now<0||parsed>now)validation();return parsed;}
 function signedMoney(value:unknown){const number=typeof value==='string'&&/^-?[1-9][0-9]*$/u.test(value)?Number(value):value;if(typeof number!=='number'||!Number.isSafeInteger(number)||number===0)validation();return number;}
 function positiveMoney(value:unknown){const n=signedMoney(value);if(n<=0)validation();return n;}
 function paymentChannel(value:unknown){if(typeof value!=='string'||!['WECHAT','ALIPAY','BANK_TRANSFER','OTHER_MANUAL'].includes(value))validation();return value;}

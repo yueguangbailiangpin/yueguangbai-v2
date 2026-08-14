@@ -16,7 +16,7 @@ export interface AcquisitionChannelStatsDto {
   buyer_projected_gross_profit_cny_fen:string|null;buyer_completed_gross_profit_cny_fen:string|null;
   seller_projected_gross_profit_cny_fen:string|null;seller_completed_gross_profit_cny_fen:string|null;
 }
-interface OrderFinanceRow{formal_order_id:string;projected:string|null;completed:string|null}
+export interface OrderFinanceRow{formal_order_id:string;projected:string|null;completed:string|null}
 
 export async function readAcquisitionChannelStats(
   database:SqlDatabase,actor:AssignmentStaffAuthorization,input:{fromDate:string;toDate:string},
@@ -55,7 +55,7 @@ export async function readAcquisitionChannelStats(
     const buyerOrders=channel.lead_type==='SELLER'?[]:await ordersForChannel(database,'BUYER',channel.channel_id,from,to);
     const sellerOrders=channel.lead_type==='BUYER'?[]:await ordersForChannel(database,'SELLER',channel.channel_id,from,to);
     const allOrderIds=new Set<string>([...buyerOrders,...sellerOrders].map((row)=>row.formal_order_id));
-    const buyerProfit=profit(buyerOrders),sellerProfit=profit(sellerOrders);
+    const buyerProfit=channelProfitForActor(actor,buyerOrders),sellerProfit=channelProfitForActor(actor,sellerOrders);
     result.push({
       channel_id:channel.channel_id,channel_name:channel.display_name,platform_name:channel.platform_name,
       channel_status:meta.status,lead_type:channel.lead_type,marketplace_code:channel.marketplace_code,
@@ -98,6 +98,9 @@ function sellerCooperationSql(leadExpression:string){return `EXISTS(
       OR EXISTS(SELECT 1 FROM formal_orders formal_order WHERE formal_order.seller_organization_id=seller_link.target_id)
     )
 )`;}
-function profit(rows:readonly OrderFinanceRow[]){let projected=0n,completed=0n,hasProjected=false,hasCompleted=false;const seen=new Set<string>();for(const row of rows){if(seen.has(row.formal_order_id))continue;seen.add(row.formal_order_id);if(row.projected!==null){projected+=BigInt(row.projected);hasProjected=true;}if(row.completed!==null){completed+=BigInt(row.completed);hasCompleted=true;}}return{projected:hasProjected?projected.toString():null,completed:hasCompleted?completed.toString():null};}
+export function channelProfitForActor(actor:Pick<AssignmentStaffAuthorization,'roles'|'permissions'>,rows:readonly OrderFinanceRow[]){
+  if(!actor.roles.has('owner')||!actor.permissions.has('FINANCIAL_VIEW'))return{projected:null,completed:null};
+  let projected=0n,completed=0n,hasProjected=false,hasCompleted=false;const seen=new Set<string>();for(const row of rows){if(seen.has(row.formal_order_id))continue;seen.add(row.formal_order_id);if(row.projected!==null){projected+=BigInt(row.projected);hasProjected=true;}if(row.completed!==null){completed+=BigInt(row.completed);hasCompleted=true;}}return{projected:hasProjected?projected.toString():null,completed:hasCompleted?completed.toString():null};
+}
 function expectedConsultationDays(from:string,to:string,createdAt:number,disabledAt:number|null){const created=shanghaiDate(createdAt),disabled=disabledAt===null?null:shanghaiDate(disabledAt);const start=created>from?created:from;const end=disabled!==null&&disabled<to?disabled:to;if(start>end)return 0;return Math.floor((Date.parse(`${end}T00:00:00Z`)-Date.parse(`${start}T00:00:00Z`))/86_400_000)+1;}
 function shanghaiDate(epoch:number){return new Date(epoch+8*60*60*1000).toISOString().slice(0,10);}

@@ -15,10 +15,36 @@ import {
   SellerOrdersPage,
   SellerSettlementsPage,
 } from './SellerPages';
+import { SellerLayout } from '../routes/SellerLayout';
+import { SellerRoutePage } from '../routes/SellerRouteModule';
 
 afterEach(cleanup);
 
 describe('Seller formal-order chat screenshot UI', () => {
+  it('hides every settlement entry and route payload from OPERATIONS members',async()=>{
+    let settlementRequests=0;
+    server.use(
+      http.get(apiUrl('/api/seller-portal/me'),()=>HttpResponse.json({data:{me:sellerMe()},meta:{request_id:'seller-me-ops'}})),
+      http.get(apiUrl('/api/seller-portal/stores'),()=>HttpResponse.json({data:{items:[],page:{limit:100,next_cursor:null}},meta:{request_id:'seller-stores'}})),
+      http.get(apiUrl('/api/seller-portal/settlement/summary'),()=>{settlementRequests+=1;return HttpResponse.json({data:{settlement:{outstanding_principal_cny_fen:'100',outstanding_service_fee_cny_fen:'200',total_outstanding_cny_fen:'300',unallocated_credit_cny_fen:'0'}},meta:{request_id:'unexpected-settlement'}});}),
+    );
+    renderWithMsw(<SellerLayout><SellerRoutePage/></SellerLayout>,{route:'/seller/settlements'});
+    expect(await screen.findByText('当前成员角色不能查看财务结算。')).toBeVisible();
+    expect(screen.queryByRole('link',{name:'结算'})).not.toBeInTheDocument();
+    expect(screen.queryByText('本金与服务费')).not.toBeInTheDocument();
+    expect(settlementRequests).toBe(0);
+  });
+
+  it('keeps settlement navigation available to FINANCE members',async()=>{
+    server.use(
+      http.get(apiUrl('/api/seller-portal/me'),()=>HttpResponse.json({data:{me:{...sellerMe(),member:{...sellerMe().member,role:'FINANCE'}}},meta:{request_id:'seller-me-finance'}})),
+      http.get(apiUrl('/api/seller-portal/stores'),()=>HttpResponse.json({data:{items:[],page:{limit:100,next_cursor:null}},meta:{request_id:'seller-stores'}})),
+    );
+    renderWithMsw(<SellerLayout><div>财务首页</div></SellerLayout>,{route:'/seller'});
+    expect(await screen.findByText('财务首页')).toBeVisible();
+    expect(await screen.findAllByRole('link',{name:'结算'})).toHaveLength(2);
+  });
+
   it('renders list status without issuing a screenshot read until the user asks', async () => {
     let readIntentRequests = 0;
     let contentRequests = 0;

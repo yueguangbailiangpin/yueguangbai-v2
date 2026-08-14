@@ -70,6 +70,31 @@ describe('canonical Staff acquisition workbench', () => {
     expect(screen.queryByRole('heading', { name: '填写 / 更正今天数据' })).not.toBeInTheDocument();
   });
 
+  it('hides channel profit from acquisition staff even when a response contains it', async () => {
+    installOwnerHandlers([channelStat()]);
+    const user = userEvent.setup();
+    renderWithMsw(<StaffSessionBoundary adapter={adapter(session('acquisition'))}>
+      <AcquisitionCoreWorkbenchV4 />
+    </StaffSessionBoundary>, { route: '/staff/acquisition' });
+
+    await user.click(await screen.findByRole('button', { name: '渠道统计' }));
+    expect(await screen.findByRole('table', { name: '渠道统计' })).toBeVisible();
+    expect(screen.queryByRole('columnheader', { name: '来源利润' })).not.toBeInTheDocument();
+    expect(screen.queryByText('¥2865.00')).not.toBeInTheDocument();
+  });
+
+  it('shows channel profit to an owner with FINANCIAL_VIEW', async () => {
+    installOwnerHandlers([channelStat()]);
+    const user = userEvent.setup();
+    renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
+      <AcquisitionCoreWorkbenchV4 />
+    </StaffSessionBoundary>, { route: '/staff/acquisition' });
+
+    await user.click(await screen.findByRole('button', { name: '渠道统计' }));
+    expect(await screen.findByRole('columnheader', { name: '来源利润' })).toBeVisible();
+    expect(screen.getByText('¥2865.00')).toBeVisible();
+  });
+
   it('keeps a Personal-DENY owner on read surfaces without admin forms', async () => {
     installOwnerHandlers();
     const user = userEvent.setup();
@@ -91,7 +116,7 @@ describe('canonical Staff acquisition workbench', () => {
   });
 });
 
-function installOwnerHandlers(): void {
+function installOwnerHandlers(stats:readonly ReturnType<typeof channelStat>[]=[]): void {
   server.use(
     http.get(apiUrl('/api/staff/acquisition/channels'), () => HttpResponse.json({
       data: { channels: [channel()] }, meta: { request_id: 'channels' },
@@ -106,7 +131,7 @@ function installOwnerHandlers(): void {
       data: { funnel: funnel() }, meta: { request_id: 'funnel' },
     })),
     http.get(apiUrl('/api/staff/acquisition/channel-stats'), () => HttpResponse.json({
-      data: { channels: [] }, meta: { request_id: 'stats' },
+      data: { channels: stats }, meta: { request_id: 'stats' },
     })),
     http.get(apiUrl('/api/staff/acquisition/source-corrections/candidates'), () => HttpResponse.json({
       data: { items: [] }, meta: { request_id: 'corrections' },
@@ -136,11 +161,25 @@ function session(
       : { code: 'buyer_refund', display_name: '买家返款' };
   return {
     staff_id: 'staff-1', display_name: '测试员工', role: roleValue,
-    permissions: acquisitionAdmin ? ['ACQUISITION_ADMIN'] : [],
+    permissions: [...(acquisitionAdmin ? ['ACQUISITION_ADMIN' as const] : []),
+      ...(role === 'owner' ? ['FINANCIAL_VIEW' as const] : [])],
     data_scope: { type: role === 'owner' ? 'GLOBAL' : role === 'acquisition' ? 'MARKETPLACE' : 'ASSIGNED_BUYERS',
       marketplaceCodes: role === 'owner' ? [] : ['AMAZON_JP'],
       buyerCustomerIds: [], sellerOrganizationIds: [], teamIds: [] },
     authorization_version: 1, session_version: 1, expires_at: Date.now() + 100_000,
+  };
+}
+
+function channelStat() {
+  return {
+    channel_id: 'channel-1', channel_name: '小红书买家推广一组', platform_name: '小红书',
+    channel_status: 'ACTIVE' as const, lead_type: 'BUYER' as const, marketplace_code: 'AMAZON_JP',
+    consultation_count: 10, consultation_data_complete: true, consultation_days_recorded: 1,
+    consultation_days_expected: 1, prospect_count: 2, codex_prospect_count: 0, lead_count: 1,
+    registered_count: 1, reservation_submitted_count: 1, cooperation_count: 0,
+    formal_order_count: 1, buyer_formal_order_count: 1, seller_formal_order_count: 0,
+    buyer_projected_gross_profit_cny_fen: '286500', buyer_completed_gross_profit_cny_fen: '168800',
+    seller_projected_gross_profit_cny_fen: null, seller_completed_gross_profit_cny_fen: null,
   };
 }
 

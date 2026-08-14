@@ -50,6 +50,64 @@ afterEach(() => {
 });
 
 describe('Phase 5B immutable buyer refund ledger', () => {
+  it('settles advance principal atomically when the review is approved', async () => {
+    const pending = await setupPendingRefundReview();
+    database!.exec(`
+      INSERT INTO buyer_advance_principal_entries (
+        id, formal_order_id, buyer_customer_id, entry_type,
+        original_payment_entry_id, amount_cny_fen, paid_at, reversed_at,
+        china_business_date, payment_channel, note, actor_staff_id, created_at
+      ) VALUES (
+        'advance-refund-payment-1', '${pending.formalOrderId}',
+        'buyer-review-1', 'PAYMENT', NULL, 20000, ${NOW + 15_000}, NULL,
+        '${BUSINESS_DATE}', 'WECHAT', '审核前提前返本金',
+        'staff-review-owner', ${NOW + 15_000}
+      );
+    `);
+
+    const approved = await approveReview(
+      database!,
+      {
+        reviewCaseId: pending.reviewCaseId,
+        expectedVersion: 1,
+      },
+      {
+        actor: reviewOwnerActor(),
+        idempotencyKey: 'review:advance-refund:approve',
+        now: NOW + 20_000,
+      },
+    );
+
+    expect(approved.status).toBe('APPROVED');
+    expect(await database!.prepare(`
+      SELECT
+        balance.status,
+        CAST(balance.net_paid_cny_fen AS TEXT) AS net_paid_cny_fen,
+        payment.recorded_by_staff_id,
+        event.actor_type,
+        event.actor_id
+      FROM buyer_refund_ledger_balances balance
+      JOIN buyer_refund_payment_entries payment
+        ON payment.obligation_id=balance.obligation_id
+        AND payment.entry_type='PAYMENT'
+      JOIN buyer_refund_events event
+        ON event.payment_entry_id=payment.id
+        AND event.event_type='BUYER_REFUND_PAYMENT_RECORDED'
+      WHERE balance.formal_order_id=?
+    `).bind(pending.formalOrderId).first()).toEqual({
+      status: 'PARTIALLY_PAID',
+      net_paid_cny_fen: '20000',
+      recorded_by_staff_id: 'staff-review-owner',
+      actor_type: 'STAFF',
+      actor_id: 'staff-review-owner',
+    });
+    expect(await database!.prepare(`
+      SELECT settled_amount_cny_fen
+      FROM buyer_advance_principal_settlements
+      WHERE advance_payment_entry_id='advance-refund-payment-1'
+    `).first()).toEqual({ settled_amount_cny_fen: 20000 });
+  });
+
   it('creates one obligation from BUYER_REFUND_BECAME_DUE and replays exactly', async () => {
     const fixture = await setupDueRefund();
     const first = await createObligation(fixture.dueEventId);
@@ -354,6 +412,27 @@ describe('Phase 5B immutable buyer refund ledger', () => {
     )).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
   });
 
+  it('rejects a future buyer refund payment before claiming idempotency', async () => {
+    const fixture = await setupDueRefund();
+    const obligation = await createObligation(fixture.dueEventId);
+    seedRefundProof(database!, 12);
+    const input = paymentInput(obligation.obligation_id, 1, 100, 12);
+    const before = await database!.prepare(`
+      SELECT COUNT(*) AS count FROM command_idempotency_records
+    `).first<{ count: number }>();
+
+    await expect(recordBuyerRefundPayment(
+      database!,
+      allowAllFiles,
+      input,
+      refundCommand('buyer-refund:future-payment', input.paidAt - 1),
+    )).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+
+    expect(await database!.prepare(`
+      SELECT COUNT(*) AS count FROM command_idempotency_records
+    `).first()).toEqual(before);
+  });
+
   it('keeps payments, reversals, proof bindings, and events immutable', async () => {
     const fixture = await setupDueRefund();
     const obligation = await createObligation(fixture.dueEventId);
@@ -444,6 +523,37 @@ async function setupDueRefund(): Promise<{
   reviewCaseId: string;
   dueEventId: string;
 }> {
+  const pending = await setupPendingRefundReview();
+  await approveReview(
+    database!,
+    {
+      reviewCaseId: pending.reviewCaseId,
+      expectedVersion: 1,
+    },
+    {
+      actor: reviewOwnerActor(),
+      idempotencyKey: 'review:refund-fixture:approve',
+      now: NOW + 20_000,
+    },
+  );
+  const due = await database!.prepare(`
+    SELECT id
+    FROM review_events
+    WHERE review_case_id=?
+      AND event_type='BUYER_REFUND_BECAME_DUE'
+  `).bind(pending.reviewCaseId).first<{ id: string }>();
+  if (!due) throw new Error('due_event_missing');
+  return {
+    formalOrderId: pending.formalOrderId,
+    reviewCaseId: pending.reviewCaseId,
+    dueEventId: due.id,
+  };
+}
+
+async function setupPendingRefundReview(): Promise<{
+  formalOrderId: string;
+  reviewCaseId: string;
+}> {
   database = createMigratedTestDatabase();
   await seedFormalOrderPrerequisites(database);
   const formalOrder = await confirmFormalOrder(
@@ -485,29 +595,9 @@ async function setupDueRefund(): Promise<{
       now: NOW + 10_000,
     },
   );
-  await approveReview(
-    database,
-    {
-      reviewCaseId: submitted.review_case_id,
-      expectedVersion: 1,
-    },
-    {
-      actor: reviewOwnerActor(),
-      idempotencyKey: 'review:refund-fixture:approve',
-      now: NOW + 20_000,
-    },
-  );
-  const due = await database.prepare(`
-    SELECT id
-    FROM review_events
-    WHERE review_case_id=?
-      AND event_type='BUYER_REFUND_BECAME_DUE'
-  `).bind(submitted.review_case_id).first<{ id: string }>();
-  if (!due) throw new Error('due_event_missing');
   return {
     formalOrderId: formalOrder.formal_order_id,
     reviewCaseId: submitted.review_case_id,
-    dueEventId: due.id,
   };
 }
 

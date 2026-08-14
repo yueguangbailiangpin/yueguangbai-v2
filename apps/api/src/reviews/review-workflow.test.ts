@@ -519,7 +519,7 @@ describe('Phase 5A review evidence workflow', () => {
     const state = await database!.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(state?.schema_version).toBe(65);
+    expect(state?.schema_version).toBe(66);
   });
 });
 

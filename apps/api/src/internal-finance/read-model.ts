@@ -323,6 +323,8 @@ export async function readFinanceCashFlow(
   let sellerReversal = 0n;
   let buyerOut = 0n;
   let buyerReversal = 0n;
+  let buyerAdvanceOut = 0n;
+  let buyerAdvanceReversal = 0n;
   for await (const row of iterateCashMovements(database, filters)) {
     const amount = databaseIntegerToBigInt(row.amount_cny_fen);
     if (row.movement_type === 'SELLER_PAYMENT') sellerIn += amount;
@@ -332,6 +334,10 @@ export async function readFinanceCashFlow(
       buyerOut += amount;
     } else if (row.movement_type === 'BUYER_REFUND_REVERSAL') {
       buyerReversal += amount;
+    } else if (row.movement_type === 'BUYER_ADVANCE_PAYMENT') {
+      buyerAdvanceOut += amount;
+    } else if (row.movement_type === 'BUYER_ADVANCE_REVERSAL') {
+      buyerAdvanceReversal += amount;
     }
   }
   return Object.freeze({
@@ -339,8 +345,13 @@ export async function readFinanceCashFlow(
     seller_payment_reversal_cny_fen: signedIntegerString(sellerReversal),
     buyer_refund_outflow_cny_fen: signedIntegerString(buyerOut),
     buyer_refund_reversal_cny_fen: signedIntegerString(buyerReversal),
+    buyer_advance_outflow_cny_fen: signedIntegerString(buyerAdvanceOut),
+    buyer_advance_reversal_cny_fen: signedIntegerString(
+      buyerAdvanceReversal,
+    ),
     net_cash_flow_cny_fen: signedIntegerString(
-      sellerIn - sellerReversal - buyerOut + buyerReversal,
+      sellerIn - sellerReversal - buyerOut + buyerReversal
+        - buyerAdvanceOut + buyerAdvanceReversal,
     ),
     from_date: filters.from_date,
     to_date: filters.to_date,

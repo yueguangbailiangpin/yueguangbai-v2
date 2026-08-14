@@ -20,7 +20,7 @@ The process SHALL verify the production release SHA and a continuous `0001`–`0
 
 #### Scenario: Production D1 backup restores
 - **WHEN** the candidate backup is restored into a new isolated database
-- **THEN** `app_schema_state.schema_version=65`, full schema inventory, table row counts, `integrity_check`, `foreign_key_check`, key financial aggregates, and Staff/Buyer/Seller/order/file/scheduler/acquisition smoke reads match the backup evidence.
+- **THEN** `app_schema_state.schema_version=66`, full schema inventory, table row counts, `integrity_check`, `foreign_key_check`, key financial aggregates, and Staff/Buyer/Seller/order/file/scheduler/acquisition smoke reads match the backup evidence.
 
 #### Scenario: Schema evidence is stale
 - **WHEN** the newest successful recovery evidence has a schema version lower than the candidate schema
@@ -43,8 +43,8 @@ The recovery process SHALL generate an R2 manifest reconciled with D1 file autho
 After a real isolated D1 restore and R2 sample read-back pass, the owner-controlled process SHALL append a `production_recovery_attestations` row containing release SHA, schema version, D1 manifest SHA-256, R2 manifest SHA-256, integrity/FK pass facts, R2 sample pass fact, verification time, and evidence note.
 
 #### Scenario: Readiness checks recovery
-- **WHEN** `/ready` evaluates the running Schema 65 release
-- **THEN** recovery passes only when an attestation exists with `schema_version=65` and `release_sha=APP_RELEASE_SHA`; older schema or another release SHA is insufficient.
+- **WHEN** `/ready` evaluates the running Schema 66 release
+- **THEN** recovery passes only when an attestation exists with `schema_version=66` and `release_sha=APP_RELEASE_SHA`; older schema or another release SHA is insufficient.
 
 ### Requirement: Operational readiness is stronger than liveness
 
@@ -55,7 +55,7 @@ After a real isolated D1 restore and R2 sample read-back pass, the owner-control
 - **THEN** `/ready` returns not-ready and Production GO is blocked.
 
 #### Scenario: Recovery belongs to another release
-- **WHEN** Schema 65 is current but the latest recovery attestation release SHA differs from `APP_RELEASE_SHA`
+- **WHEN** Schema 66 is current but the latest recovery attestation release SHA differs from `APP_RELEASE_SHA`
 - **THEN** `/ready` returns not-ready.
 
 ### Requirement: Staff production authentication is Cloudflare Access
