@@ -45,6 +45,33 @@ describe('Seller formal-order chat screenshot UI', () => {
     expect(await screen.findAllByRole('link',{name:'结算'})).toHaveLength(2);
   });
 
+  it('labels OWNER settlement as organization-wide and keeps it independent of store selection', async () => {
+    const settlementRequests: string[] = [];
+    server.use(
+      http.get(apiUrl('/api/seller-portal/me'), () => HttpResponse.json({
+        data: { me: { ...sellerMe(), member: { ...sellerMe().member, role: 'OWNER' }, access: {
+          ...sellerMe().access, read_scope: 'ORGANIZATION', store_ids: ['store-1', 'store-2'],
+        } } }, meta: { request_id: 'seller-me-owner' },
+      })),
+      http.get(apiUrl('/api/seller-portal/stores'), () => HttpResponse.json({
+        data: { items: [{ id: 'store-1', marketplace_code: 'JP', display_name: '店铺一', canonical_marketplace_code: 'AMAZON_JP', transaction_currency_code: 'JPY', transaction_currency_exponent: 0, marketplace_status: 'ACTIVE', adapter_status: 'AVAILABLE', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }, { id: 'store-2', marketplace_code: 'JP', display_name: '店铺二', canonical_marketplace_code: 'AMAZON_JP', transaction_currency_code: 'JPY', transaction_currency_exponent: 0, marketplace_status: 'ACTIVE', adapter_status: 'AVAILABLE', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }], page: { limit: 100, next_cursor: null } },
+        meta: { request_id: 'seller-stores-owner' },
+      })),
+      http.get(apiUrl('/api/seller-portal/settlement/summary'), ({ request }) => { settlementRequests.push(request.url); return HttpResponse.json({
+        data: { settlement: { outstanding_principal_cny_fen: '100', outstanding_service_fee_cny_fen: '200', total_outstanding_cny_fen: '300', unallocated_credit_cny_fen: '0' } },
+        meta: { request_id: 'seller-settlement-owner' },
+      }); }),
+      http.get(apiUrl('/api/seller-portal/settlement/payables'), ({ request }) => { settlementRequests.push(request.url); return HttpResponse.json({
+        data: { items: [], page: { limit: 100, next_cursor: null } }, meta: { request_id: 'seller-payables-owner' },
+      }); }),
+    );
+
+    renderWithMsw(<SellerLayout><SellerSettlementsPage /></SellerLayout>, { route: '/seller/settlements' });
+    expect(await screen.findByText('结算为全组织范围，不随当前店铺选择切换。')).toBeVisible();
+    expect(settlementRequests).toHaveLength(2);
+    expect(settlementRequests.every((url) => !new URL(url).searchParams.has('store_id'))).toBe(true);
+  });
+
   it('renders list status without issuing a screenshot read until the user asks', async () => {
     let readIntentRequests = 0;
     let contentRequests = 0;

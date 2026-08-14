@@ -35,8 +35,8 @@ const roleLabels = {
   VIEWER: '查看成员',
 } as const;
 
-interface SellerContextValue{storeId:string|null;memberRole:SellerMemberRole|undefined;identityPending:boolean;identityError:boolean}
-const SellerContext = createContext<SellerContextValue>({storeId:null,memberRole:undefined,identityPending:true,identityError:false});
+interface SellerContextValue{storeId:string|null;memberRole:SellerMemberRole|undefined;readScope:'ORGANIZATION'|'ASSIGNED_STORES'|undefined;identityPending:boolean;identityError:boolean}
+const SellerContext = createContext<SellerContextValue>({storeId:null,memberRole:undefined,readScope:undefined,identityPending:true,identityError:false});
 export function useSellerStoreContext():SellerContextValue{return useContext(SellerContext);}
 
 function SellerNavigation({ mobile = false,memberRole }: { mobile?: boolean;memberRole:SellerMemberRole|undefined }): React.JSX.Element {
@@ -63,7 +63,7 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
   const selectedStore = stores.items.find((store) => store.id === storeId) ?? null;
   const organization = me.data?.organization;
   const member = me.data?.member;
-  const value = useMemo<SellerContextValue>(() => ({storeId,memberRole:member?.role,identityPending:me.isPending,identityError:me.isError}), [storeId,member?.role,me.isPending,me.isError]);
+  const value = useMemo<SellerContextValue>(() => ({storeId,memberRole:member?.role,readScope:me.data?.access.read_scope,identityPending:me.isPending,identityError:me.isError}), [storeId,member?.role,me.data?.access.read_scope,me.isPending,me.isError]);
   return <SellerContext.Provider value={value}>
     <IdentityShell identity="seller" className="seller-business-shell">
       <aside className="seller-sidebar">
