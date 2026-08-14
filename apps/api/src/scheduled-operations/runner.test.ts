@@ -81,6 +81,18 @@ describe('scheduled operations', () => {
     expect(row).toEqual({ status: 'FAILED', last_error: 'adapter_unavailable', available_at: 62_000 });
   });
 
+  it('leaves due outbox events untouched when governed delivery is disabled', async () => {
+    database=createMigratedTestDatabase();
+    database.exec("INSERT INTO integration_outbox (id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES ('outbox-disabled-1','scheduled:disabled:1','TEST','TEST','1','{\"secret\":\"never-log\"}','ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff','PENDING',1,NULL,NULL,4,NULL,1,1,NULL)");
+    let sends=0;
+    const run=await runScheduledOperations(database,{now:2_000,only:'outbox_delivery',outboxDeliveryEnabled:false,outboxAdapter:{deliver:async()=>{sends+=1;throw new Error('must_not_deliver');}}});
+    expect(run[0]).toEqual({job_name:'outbox_delivery',outcome:'DISABLED',processed_count:0,succeeded_count:0,failed_count:0,backlog_count:0,failure_category:null});
+    expect(sends).toBe(0);
+    expect(await database.prepare("SELECT status,attempt_count,last_error,lease_token,lease_expires_at FROM integration_outbox WHERE id='outbox-disabled-1'").first()).toEqual({status:'PENDING',attempt_count:4,last_error:null,lease_token:null,lease_expires_at:null});
+    expect(await database.prepare("SELECT COUNT(*) AS count FROM scheduled_dead_letters WHERE source_id='outbox-disabled-1'").first()).toEqual({count:0});
+    expect(await database.prepare("SELECT COUNT(*) AS count FROM scheduled_job_runs WHERE job_name='outbox_delivery'").first()).toEqual({count:0});
+  });
+
   it('quarantines a poison outbox event and dry-run never claims it', async () => {
     database = createMigratedTestDatabase();
     database.exec("INSERT INTO integration_outbox (id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES ('outbox-poison-1','scheduled:poison:1','TEST','TEST','1','{}','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','PENDING',1,NULL,NULL,4,NULL,1,1,NULL)");
