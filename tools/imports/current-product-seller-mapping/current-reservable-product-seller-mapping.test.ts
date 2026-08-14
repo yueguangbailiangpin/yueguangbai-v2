@@ -58,8 +58,7 @@ describe('current reservable product and seller mapping', () => {
     };
     const preview = await previewCurrentReservableProductSellerMapping(manifest);
     expect(preview.sameAsinMultiSeller).toEqual(['JP_AMAZON:B0ABC12345']);
-    expect(preview.mappedSellerOfferings.map((offer) => offer.organizationKey)
-      .sort((left, right) => left.localeCompare(right, 'en'))).toEqual([
+    expect(preview.mappedSellerOfferings.map((offer) => offer.organizationKey)).toEqual([
       'dDUYsBOrYoEk:same-wx',
       'dJwldHrckeFY:same-wx',
     ]);

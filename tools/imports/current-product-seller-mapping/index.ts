@@ -257,8 +257,7 @@ export async function previewCurrentReservableProductSellerMapping(
       if (prior) {
         candidates.set(key, {
           ...prior,
-          sourceRefs: [...new Set([...prior.sourceRefs, sourceRef])]
-            .sort((left, right) => left.localeCompare(right, 'en')),
+          sourceRefs: [...new Set([...prior.sourceRefs, sourceRef])].sort(),
           currentRows: [...new Set([...prior.currentRows,
             ...current.map((item) => item.sourceRow)])].sort((a, b) => a - b),
         });
@@ -355,10 +354,8 @@ export async function previewCurrentReservableProductSellerMapping(
     mappedSellerOfferings: mappedSellerOfferings.sort(compareOfferings),
     sameAsinMultiSeller: multiSellerProducts,
     quarantinedHistorical: historicalRows.filter((row) => row.status !== 'VALID'),
-    confirmedSellerWithoutHistory: confirmedSellerWithoutHistory
-      .sort((left, right) => left.localeCompare(right, 'en')),
-    unresolvedCurrentProducts: unresolvedCurrentProducts
-      .sort((left, right) => left.localeCompare(right, 'en')),
+    confirmedSellerWithoutHistory: confirmedSellerWithoutHistory.sort(),
+    unresolvedCurrentProducts: unresolvedCurrentProducts.sort(),
     fieldConflicts,
     historicalFileInventory,
     unreadHistoricalFiles,
