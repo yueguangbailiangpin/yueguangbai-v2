@@ -67,9 +67,7 @@ interface FormalOrderRow {
   service_fee_effective_from: number | null;
   service_fee_confirmed_at: number | null;
   service_fee_cny_fen: number | string | null;
-  refund_expected_cny_fen: number | string | null;
   review_status: string | null;
-  buyer_refund_status: string | null;
   principal_status: string | null;
   service_fee_status: string | null;
   chat_screenshot_status: 'AVAILABLE' | 'NONE';
@@ -288,12 +286,8 @@ function selectFormalOrderProjection(): string {
       snapshot.service_fee_effective_from,
       snapshot.service_fee_confirmed_at,
       snapshot.service_fee_cny_fen,
-      generic.buyer_expected_principal_amount_minor
-        AS refund_expected_cny_fen,
       (SELECT review.status FROM review_cases review
         WHERE review.formal_order_id=formal_order.id) AS review_status,
-      (SELECT refund.status FROM buyer_refund_ledger_balances refund
-        WHERE refund.formal_order_id=formal_order.id) AS buyer_refund_status,
       (SELECT payable.derived_status FROM seller_payable_balances payable
         WHERE payable.formal_order_id=formal_order.id
           AND payable.payable_type='SELLER_PRINCIPAL') AS principal_status,
@@ -497,9 +491,7 @@ function selectPlatformFormalOrderProjection(): string {
       NULL AS service_fee_effective_from,
       NULL AS service_fee_confirmed_at,
       NULL AS service_fee_cny_fen,
-      NULL AS refund_expected_cny_fen,
       NULL AS review_status,
-      NULL AS buyer_refund_status,
       NULL AS principal_status,
       NULL AS service_fee_status,
       (SELECT file_object.version
@@ -742,9 +734,6 @@ function mapFormalOrder(
     }),
     business_completion: sellerBusinessCompletion({
       reviewStatus: row.review_status,
-      buyerRefundExpectedCnyFen:
-        BigInt(String(row.refund_expected_cny_fen)),
-      buyerRefundStatus: row.buyer_refund_status,
       principalExpectedCnyFen:
         BigInt(String(row.seller_expected_principal_cny_fen)),
       principalStatus: row.principal_status,
