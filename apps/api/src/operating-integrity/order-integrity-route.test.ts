@@ -3,6 +3,7 @@ import type { SqlAllResult,SqlDatabase,SqlRunResult,SqlStatement,StaffPermission
 import { createApp } from '../app';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
+  authoritativeAdvanceAmount,
   canViewOrderFinancialAdjustments,
   cleanOperatingPaymentTimestamp,
   registerOperatingIntegrityRoutes,
@@ -22,6 +23,11 @@ describe('order integrity financial projection',()=>{
       .toThrow('VALIDATION_ERROR');
   });
 
+  it('reads the full advance amount only from the immutable order snapshot',async()=>{
+    await expect(authoritativeAdvanceAmount(new IntegrityDatabase(),'order-1'))
+      .resolves.toBe(48840);
+  });
+
   it('rejects a future advance payment before claiming idempotency',async()=>{
     const database=new IntegrityDatabase();const app=createApp();
     app.use('/api/staff/*',async(context,next)=>{
@@ -35,10 +41,59 @@ describe('order integrity financial projection',()=>{
         method:'POST',
         headers:{'Content-Type':'application/json',Origin:'https://api.example.test'},
         body:JSON.stringify({
-          amount_cny_fen:'100',paid_at:Number.MAX_SAFE_INTEGER,
+          paid_at:Number.MAX_SAFE_INTEGER,
           payment_channel:'WECHAT',note:null,
           proof_files:[{file_object_id:'proof-file-1',expected_file_version:1}],
         }),
+      },
+      {DB:database},
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({error:{code:'VALIDATION_ERROR'}});
+    expect(database.sql.some((sql)=>sql.includes('command_idempotency_records')))
+      .toBe(false);
+    expect(database.batchCalls).toBe(0);
+  });
+
+  it('rejects a legacy client-selected advance amount before idempotency',async()=>{
+    const database=new IntegrityDatabase();const app=createApp();
+    app.use('/api/staff/*',async(context,next)=>{
+      context.set('staffAuthorization',actor('owner',['BUYER_REFUND_RECORD']));
+      await next();
+    });
+    registerOperatingIntegrityRoutes(app);
+    const response=await app.request(
+      'https://api.example.test/api/staff/buyer-advance-principal/order-1/payments',
+      {
+        method:'POST',
+        headers:{'Content-Type':'application/json',Origin:'https://api.example.test'},
+        body:JSON.stringify({
+          amount_cny_fen:'48840',paid_at:1,payment_channel:'WECHAT',note:null,
+          proof_files:[{file_object_id:'proof-file-1',expected_file_version:1}],
+        }),
+      },
+      {DB:database},
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({error:{code:'VALIDATION_ERROR'}});
+    expect(database.sql.some((sql)=>sql.includes('command_idempotency_records')))
+      .toBe(false);
+    expect(database.batchCalls).toBe(0);
+  });
+
+  it('rejects a legacy client-selected reversal amount before idempotency',async()=>{
+    const database=new IntegrityDatabase();const app=createApp();
+    app.use('/api/staff/*',async(context,next)=>{
+      context.set('staffAuthorization',actor('owner',['BUYER_REFUND_RECORD']));
+      await next();
+    });
+    registerOperatingIntegrityRoutes(app);
+    const response=await app.request(
+      'https://api.example.test/api/staff/buyer-advance-principal/order-1/payments/advance-payment-1/reversals',
+      {
+        method:'POST',
+        headers:{'Content-Type':'application/json',Origin:'https://api.example.test'},
+        body:JSON.stringify({amount_cny_fen:'24420',reason:'旧客户端部分冲正'}),
       },
       {DB:database},
     );
@@ -89,7 +144,10 @@ class IntegrityStatement implements SqlStatement{
   first<T>():Promise<T|null>{
     if(this.sql.includes('LEFT JOIN formal_order_effective_operational_state'))return Promise.resolve({id:'order-1',operational_state:'NORMAL'} as T);
     if(this.sql.includes('FROM formal_orders'))return Promise.resolve({id:'order-1',buyer_customer_id:'buyer-1',market:'AMAZON_JP'} as T);
+    if(this.sql.includes("FROM buyer_advance_principal_entries WHERE id=? AND formal_order_id=? AND entry_type='PAYMENT'"))return Promise.resolve({id:'advance-payment-1',amount_cny_fen:48840,payment_channel:'WECHAT'} as T);
+    if(this.sql.includes('FROM buyer_advance_principal_settlements'))return Promise.resolve(null);
     if(this.sql.includes('FROM buyer_refund_obligations'))return Promise.resolve(null);
+    if(this.sql.includes('FROM formal_order_financial_snapshots'))return Promise.resolve({amount:48840} as T);
     if(this.sql.includes('formal_order_effective_operational_state'))return Promise.resolve({operational_state:'NORMAL'} as T);
     throw new Error(`unexpected_first:${this.sql}`);
   }

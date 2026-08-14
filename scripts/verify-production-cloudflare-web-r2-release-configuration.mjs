@@ -17,14 +17,15 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 66, `expected 66 migrations, found ${migrations.length}`);
+assert(migrations.length === 67, `expected 67 migrations, found ${migrations.length}`);
 assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
   && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
   && migrations[40] === '0041_seller_principal_rate_policy.sql'
   && migrations[41] === '0042_rakuten_tiktok_jp_marketplace_foundation.sql'
   && migrations[42] === '0043_seller_principal_rate_integrity_hardening.sql'
   && migrations[63] === '0064_marketplace_local_date_truth.sql'
-  && migrations[65] === '0066_advance_cash_integrity.sql',
+  && migrations[65] === '0066_advance_cash_integrity.sql'
+  && migrations[66] === '0067_advance_v1_full_payment.sql',
   'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {
@@ -164,7 +165,7 @@ console.log(JSON.stringify({
   status: 'PASS',
   change: 'production-cloudflare-web-r2-release-configuration',
   schema_change: 'NO_SCHEMA_CHANGE',
-  migration: '0001-0066_CONTINUOUS',
+  migration: '0001-0067_CONTINUOUS',
   release_templates: 'BLOCKED_NEEDS_OPERATOR_INPUT',
   local_implementation: 'PRESENT',
   external_acceptance: 'UNVERIFIED',

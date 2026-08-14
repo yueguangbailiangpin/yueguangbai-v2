@@ -59,7 +59,7 @@ describe('admin business dashboard D1 cohort read model', () => {
     );
   });
 
-  it('executes the frozen 8 Staff / 200 attributed-order daily scale on schema 66', async () => {
+  it('executes the frozen 8 Staff / 200 attributed-order daily scale on schema 67', async () => {
     database = db();
     seedCapacityFacts(database, 8, 200);
     const summary = await readAdminBusinessDashboardSummary(
@@ -72,7 +72,7 @@ describe('admin business dashboard D1 cohort read model', () => {
     expect(summary.staff_performance).toHaveLength(8);
     expect(database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
-    ).get()).toEqual({ schema_version: 66 });
+    ).get()).toEqual({ schema_version: 67 });
   });
 
   it('aggregates decimal-string BigInt profit and excludes missing or conflicting facts', async () => {

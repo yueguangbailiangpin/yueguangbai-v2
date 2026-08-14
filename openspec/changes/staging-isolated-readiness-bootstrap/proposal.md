@@ -7,7 +7,7 @@ The checked-in staging release profile deliberately disables production-only Sch
 ## What Changes
 
 - Publish an explicit staging readiness profile that reports production-only gates as `not_required` while keeping Schema, isolated object storage, staging Access configuration and exact release identity mandatory.
-- Add a one-time, parameterized and atomic operator tool for the first Owner and synthetic Buyer registration channel on a completely empty Schema 66 staging D1.
+- Add a one-time, parameterized and atomic operator tool for the first Owner and synthetic Buyer registration channel on a completely empty Schema 67 staging D1.
 - Remove the contradictory staging Cron requirement, enable staging observability and keep all production-only/external switches disabled.
 - Document the fixed-SHA staging provisioning, formal test-account creation, backup/restore, role-chain and monitoring sequence.
 
@@ -15,13 +15,13 @@ The checked-in staging release profile deliberately disables production-only Sch
 
 - No production deployment, Migration, D1/R2 read or write, Secret, DNS, Cloudflare Access mutation, scheduler activation or real customer/order/fund operation.
 - No remote staging resource creation or deployment in this Change implementation PR.
-- This staging bootstrap change adds no schema change and does not modify migrations 0001-0066.
+- This staging bootstrap change adds no schema change and does not modify migrations 0001-0067.
 - No public bootstrap endpoint, Staff password, Access bypass or test authentication backdoor.
 - No automatic creation of Staff or Customer test identities from committed personal data.
 
 ## Migration Decision
 
-`NO_SCHEMA_CHANGE`. Current Schema 66 already contains Staff identity, role, authorization event, Audit, idempotency and transaction assertion facts required for a governed first-owner bootstrap.
+`NO_SCHEMA_CHANGE`. Current Schema 67 already contains Staff identity, role, authorization event, Audit, idempotency and transaction assertion facts required for a governed first-owner bootstrap.
 
 ## Rollback
 

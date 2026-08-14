@@ -59,7 +59,7 @@ describe('Phase 5B immutable buyer refund ledger', () => {
         china_business_date, payment_channel, note, actor_staff_id, created_at
       ) VALUES (
         'advance-refund-payment-1', '${pending.formalOrderId}',
-        'buyer-review-1', 'PAYMENT', NULL, 20000, ${NOW + 15_000}, NULL,
+        'buyer-review-1', 'PAYMENT', NULL, 48840, ${NOW + 15_000}, NULL,
         '${BUSINESS_DATE}', 'WECHAT', '审核前提前返本金',
         'staff-review-owner', ${NOW + 15_000}
       );
@@ -95,8 +95,8 @@ describe('Phase 5B immutable buyer refund ledger', () => {
         AND event.event_type='BUYER_REFUND_PAYMENT_RECORDED'
       WHERE balance.formal_order_id=?
     `).bind(pending.formalOrderId).first()).toEqual({
-      status: 'PARTIALLY_PAID',
-      net_paid_cny_fen: '20000',
+      status: 'PAID',
+      net_paid_cny_fen: '48840',
       recorded_by_staff_id: 'staff-review-owner',
       actor_type: 'STAFF',
       actor_id: 'staff-review-owner',
@@ -105,7 +105,7 @@ describe('Phase 5B immutable buyer refund ledger', () => {
       SELECT settled_amount_cny_fen
       FROM buyer_advance_principal_settlements
       WHERE advance_payment_entry_id='advance-refund-payment-1'
-    `).first()).toEqual({ settled_amount_cny_fen: 20000 });
+    `).first()).toEqual({ settled_amount_cny_fen: 48840 });
   });
 
   it('creates one obligation from BUYER_REFUND_BECAME_DUE and replays exactly', async () => {

@@ -353,6 +353,18 @@ D-041 记录的 Schema 65 staging 要求和 Migration 0001–0065 是当时的�
 
 状态：Accepted by business owner；Supersedes only D-041's current Schema 65 release baseline without rewriting D-041
 
+### D-043 Advance V1全额提前返模式
+
+首发 Advance Principal 只支持一次性全额提前返。权威付款金额由服务端读取正式订单不可变财务快照中的 `buyer_expected_principal_cny_fen`，Staff 客户端不得提交、覆盖或拆分金额；同一正式订单同一时间最多存在一笔尚未整笔冲正的 Advance Payment。
+
+Advance 冲正同样只支持整笔。Staff 仅提交冲正原因，服务端从原 Payment 派生全部冲正金额；不允许部分冲正、重复冲正或多笔 Payment 拼接一笔返款义务。整笔冲正后允许重新录入一笔新的全额 Advance。后续正式返款义务形成时，仍由既有不可变 settlement 账本自动抵扣，真实现金流继续只计算 Advance Payment/Reversal 一次。
+
+该规则通过仅前向 Migration 0067 和服务端命令共同失败关闭；升级前若存在不符合全额模式的 Advance 历史，Migration 必须停止，不得删除、覆盖或伪造补偿。Migration 0061 已有的同订单、同 Buyer、原记录必须为 Payment 的来源约束和 Migration 0066 已有的累计冲正上限继续保留，不重复重写历史 Migration。
+
+本 Decision 不改变普通 Buyer Refund、Seller Settlement、Seller Allocation、利润公式、角色或权限，不授权 production/staging 部署、远程 D1/R2 写入或历史数据导入。
+
+状态：Accepted by business owner；Supersedes only the partial Advance payment/reversal behavior permitted before D-043
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收
