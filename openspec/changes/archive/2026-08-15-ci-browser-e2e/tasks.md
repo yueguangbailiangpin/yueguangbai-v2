@@ -12,6 +12,6 @@
 - [x] Reconcile the first-run fixture/copy/label drift against current runtime, strict DTO contracts and the approved copy record; do not modify business runtime code or relax a schema.
 - [x] Run the complete unfiltered Playwright inventory and record its final result: 187 passed, 1 intentional environment-gated visual-review skip, 0 failed.
 - [x] Run the final-go verifier and Node tests, OpenSpec target/all strict, workflow checks, Web typecheck/build, repository tests and `git diff --check`.
-- [ ] Complete Formal Verify, sync the routing-spec deltas, archive this Change, and validate the archived state.
+- [x] Complete Formal Verify, sync the routing-spec deltas, archive this Change, and validate the archived state.
 - [x] Do not modify archived Changes or historical evidence or touch staging/production/Cloudflare resources or real data.
-- [ ] Commit the final scope, open a Draft PR, obtain fixed-SHA independent review and require all three CI jobs to pass before any Ready/merge decision.
+- [x] Commit the final scope, open a Draft PR, obtain fixed-SHA independent review and require all three CI jobs to pass before any Ready/merge decision.
