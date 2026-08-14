@@ -38,6 +38,6 @@
 ## 7. Verification and Handoff
 
 - [x] 7.1 Run focused API/web/migration tests, database verification, migration guards, type/build/check, strict OpenSpec, and `git diff --check`.
-- [ ] 7.2 Run Formal Verify against the fixed implementation SHA and record exact tasks, requirements, scenarios, and executed evidence without remote claims.
+- [x] 7.2 Run Formal Verify against the fixed implementation SHA and record exact tasks, requirements, scenarios, and executed evidence without remote claims.
 - [ ] 7.3 Sync the delta specs, archive the Change, validate the post-archive tree, and commit the governance completion.
 - [ ] 7.4 Push only the feature branch, open a Draft PR, lock base/head/CI/worktree, and prepare a fixed-SHA read-only review handoff without touching production or staging resources.
