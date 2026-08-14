@@ -41,6 +41,21 @@ afterEach(() => {
 describe('Wave 12 financial formulas execute against the production SQL view', () => {
   it('matches domain formulas for zero, partial, reversal, overpayment, and integer-boundary facts', () => {
     database = createFormulaFixtureDatabase();
+    expect(database.raw.prepare(`
+      SELECT schema_version FROM app_schema_state WHERE singleton_id=1
+    `).get()).toMatchObject({ schema_version: 69 });
+    expect(database.raw.prepare('PRAGMA foreign_keys').get())
+      .toMatchObject({ foreign_keys: 1 });
+    for (const trigger of [
+      'trg_formal_order_source_guard',
+      'trg_formal_order_instruction_guard',
+      'trg_formal_order_financial_snapshot_guard',
+      'trg_formal_order_financial_self_pay_guard',
+    ]) {
+      expect(database.raw.prepare(`
+        SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name=?
+      `).get(trigger)).toBeDefined();
+    }
     const cases: readonly FinanceFacts[] = [
       {
         id: 'zero',
@@ -94,6 +109,7 @@ describe('Wave 12 financial formulas execute against the production SQL view', (
       },
     ];
     for (const facts of cases) seedFinanceFacts(database, facts);
+    expect(database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
 
     const positions = database.raw.prepare(`
       SELECT formal_order_id, projected_gross_profit_cny_fen,
@@ -166,13 +182,19 @@ describe('Wave 12 financial formulas execute against the production SQL view', (
 
 function createFormulaFixtureDatabase(): SqliteDatabase {
   const fixture = createMigratedTestDatabase();
-  fixture.exec(`
-    PRAGMA foreign_keys = OFF;
-    DROP TRIGGER trg_formal_order_source_guard;
-    DROP TRIGGER trg_formal_order_instruction_guard;
-    DROP TRIGGER trg_formal_order_financial_snapshot_guard;
-    DROP TRIGGER trg_formal_order_financial_self_pay_guard;
-  `);
+  fixture.raw.prepare(`
+    INSERT INTO buyer_daily_exchange_rates (
+      id, business_date, version_no, status, cny_per_jpy_e8, submitted_by_staff_id,
+      submitted_at, decision_version, confirmed_by_staff_id, confirmed_at,
+      rejected_by_staff_id, rejected_at, rejection_reason
+    ) VALUES ('formula-buyer-rate', '2023-11-14', 1, 'SUBMITTED', 1, ?, ?, 1,
+      NULL, NULL, NULL, NULL, NULL)
+  `).run(STAFF_ID, AT - 1);
+  fixture.raw.prepare(`
+    UPDATE buyer_daily_exchange_rates
+    SET status='CONFIRMED', decision_version=2, confirmed_by_staff_id=?, confirmed_at=?
+    WHERE id='formula-buyer-rate'
+  `).run(STAFF_ID, AT);
   return fixture;
 }
 
@@ -190,6 +212,11 @@ function seedFinanceFacts(database: SqliteDatabase, facts: FinanceFacts): void {
   ).padStart(7, '0')}`;
   const raw = database.raw;
 
+  seedLegalFormalOrderSources(database, facts, {
+    prefix,
+    orderNumber,
+  });
+
   raw.prepare(`
     INSERT INTO formal_orders (
       id, order_evidence_submission_id, order_evidence_version_id,
@@ -200,14 +227,16 @@ function seedFinanceFacts(database: SqliteDatabase, facts: FinanceFacts): void {
       amazon_order_number_normalized, final_paid_jpy, status, version,
       confirmed_by_staff_id, confirmed_at, confirmed_business_date, created_at,
       amazon_order_date
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'JP', ?, ?, 1, 'B000000001',
-      'B000000001', 'Formula fixture', 'TEXT', ?, ?, ?, 'CONFIRMED', 1, ?,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'JP', ?, ?, 1, ?, ?, 'Formula fixture',
+      'TEXT', ?, ?, ?, 'CONFIRMED', 1, ?,
       ?, '2023-11-14', ?, '2023-11-14')
   `).run(
     prefix, `${prefix}-submission`, `${prefix}-order-evidence`,
     `${prefix}-reservation`, `${prefix}-demand`, `${prefix}-buyer`,
-    `${prefix}-buyer-no`, `${prefix}-seller`, `${prefix}-store`,
-    `${prefix}-product`, `${prefix}-product-version`, orderNumber, orderNumber,
+    `P20231114F${['zero', 'partial', 'reversal', 'overpayment', 'integer-boundary']
+      .indexOf(facts.id) + 1}`, `${prefix}-seller`, `${prefix}-store`,
+    `${prefix}-product`, `${prefix}-product-version`, formulaAsin(facts.id),
+    formulaAsin(facts.id), orderNumber, orderNumber,
     facts.sellerExpectedPrincipalCnyFen, STAFF_ID, AT, AT,
   );
   raw.prepare(`
@@ -221,8 +250,8 @@ function seedFinanceFacts(database: SqliteDatabase, facts: FinanceFacts): void {
     ) VALUES (?, ?, 1, ?, 1, '2023-11-14', ?, 1, ?, 1, ?, ?, ?, ?, ?,
       'HALF_UP', ?)
   `).run(
-    snapshotId, prefix, `${prefix}-buyer-rate`, AT, `${prefix}-fee-version`,
-    AT, AT, facts.serviceFeeCnyFen, facts.buyerExpectedPrincipalCnyFen,
+    snapshotId, prefix, 'formula-buyer-rate', AT, `${prefix}-fee-version`,
+    AT - 1, AT - 2, facts.serviceFeeCnyFen, facts.buyerExpectedPrincipalCnyFen,
     facts.sellerExpectedPrincipalCnyFen, AT,
   );
   raw.prepare(`
@@ -293,6 +322,178 @@ function seedFinanceFacts(database: SqliteDatabase, facts: FinanceFacts): void {
 
   seedSellerAllocation(database, facts, prefix, principalPayableId);
   seedBuyerRefundPayment(database, facts, prefix, refundObligationId);
+}
+
+function seedLegalFormalOrderSources(
+  database: SqliteDatabase,
+  facts: FinanceFacts,
+  input: { prefix: string; orderNumber: string },
+): void {
+  const { prefix, orderNumber } = input;
+  const raw = database.raw;
+  const sequence = ['zero', 'partial', 'reversal', 'overpayment', 'integer-boundary']
+    .indexOf(facts.id) + 1;
+  const buyerNo = `P20231114F${sequence}`;
+  const subjectId = `${prefix}-buyer-subject`;
+  const channelId = `${prefix}-buyer-channel`;
+  const buyerId = `${prefix}-buyer`;
+  const sellerId = `${prefix}-seller`;
+  const storeId = `${prefix}-store`;
+  const productId = `${prefix}-product`;
+  const productVersionId = `${prefix}-product-version`;
+  const demandId = `${prefix}-demand`;
+  const reservationId = `${prefix}-reservation`;
+  const memberId = `${prefix}-member`;
+  const submissionId = `${prefix}-submission`;
+  const evidenceId = `${prefix}-order-evidence`;
+  const feeId = `${prefix}-fee-version`;
+  const asin = formulaAsin(facts.id);
+
+  executeFixtureSql(raw, `
+    INSERT INTO seller_organizations (
+      id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
+      seller_sequence, organization_name, status, version, created_at, updated_at,
+      activated_at, disabled_at, next_member_number
+    ) VALUES (?, 'JP', ?, 'seller-channel-ido-mango', 'seller-channel-ido-mango', ?,
+      'Formula seller', 'ACTIVE', 1, ?, ?, ?, NULL, 2);
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+    VALUES (?, 'SELLER_ORG_MEMBER', ?), (?, 'BUYER_CUSTOMER', ?);
+    INSERT INTO seller_organization_members (
+      id, identity_subject_id, organization_id, member_number, username_fallback,
+      display_name, role, primary_owner, status, version, created_at, updated_at,
+      activated_at, disabled_at
+    ) VALUES (?, ?, ?, 1, ?, 'Formula owner', 'OWNER', 1, 'ACTIVE', 1, ?, ?, ?, NULL);
+    INSERT INTO buyer_channels (
+      id, code, name, status, next_sequence, version, created_at, updated_at, disabled_at
+    ) VALUES (?, ?, 'Formula channel', 'ACTIVE', 2, 1, ?, ?, NULL);
+    INSERT INTO buyer_customers (
+      id, identity_subject_id, marketplace_code, buyer_channel_id, buyer_customer_no,
+      buyer_sequence, first_valid_order_business_date, display_name, access_status,
+      identity_review_status, version, created_at, updated_at, activated_at, disabled_at
+    ) VALUES (?, ?, 'JP', ?, ?, 1, '2023-11-14', 'Formula buyer', 'ACTIVE', 'CLEAR',
+      1, ?, ?, ?, NULL);
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code, display_name, normalized_name, status,
+      version, created_at, updated_at, disabled_at
+    ) VALUES (?, ?, 'JP', 'Formula store', 'Formula store', 'ACTIVE', 1, ?, ?, NULL);
+    INSERT INTO products (
+      id, organization_id, store_id, marketplace_code, asin_display, asin_normalized,
+      status, current_version_no, version, created_at, updated_at, disabled_at
+    ) VALUES (?, ?, ?, 'JP', ?, ?, 'ACTIVE', 1, 1, ?, ?, NULL);
+    INSERT INTO product_versions (
+      id, product_id, version_no, product_name, search_keywords_json, product_url,
+      buyer_visible_notes, internal_notes, created_by_staff_id, created_at,
+      ordering_guide_expected_amount_jpy, color_spec_mode
+    ) VALUES (?, ?, 1, 'Formula fixture', '[]', NULL, NULL, NULL, ?, ?, 1980,
+      'MAIN_IMAGE_VARIANT');
+    INSERT INTO demand_batches (
+      id, organization_id, store_id, marketplace_code, product_id, product_version_no,
+      submitted_by_member_id, task_type, target_quantity, buyer_visible_notes, seller_notes,
+      open_at, reservation_deadline, order_deadline, status, review_reason, close_reason,
+      reviewed_by_staff_id, closed_by_staff_id, version, submitted_at, updated_at,
+      reviewed_at, published_at, withdrawn_at, closed_at, held_reservation_count,
+      approved_reservation_count
+    ) VALUES (?, ?, ?, 'JP', ?, 1, ?, 'TEXT', 1, NULL, NULL, ?, ?, ?, 'PUBLISHED',
+      NULL, NULL, ?, NULL, 2, ?, ?, ?, ?, NULL, NULL, 0, 1);
+    INSERT INTO product_reservations (
+      id, demand_batch_id, buyer_customer_id, organization_id, store_id, product_id,
+      product_version_no, marketplace_code, status, precheck_snapshot_json, hold_expires_at,
+      order_deadline_snapshot, version, submitted_at, updated_at, decided_by_staff_id,
+      decision_reason, decided_at, cancelled_at, expired_at, reopened_count,
+      buyer_self_pay_bps_snapshot, reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot, estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at, buyer_self_pay_accepted_demand_version
+    ) VALUES (?, ?, ?, ?, ?, ?, 1, 'JP', 'APPROVED', '{}', ?, ?, 2, ?, ?, ?, NULL,
+      ?, NULL, NULL, 0, 0, 1980, 0, 1980, ?, 2);
+    INSERT INTO order_instruction_reconciliation_markers (
+      id, reservation_id, instruction_id, disposition, metadata_json, created_at
+    ) VALUES (?, ?, NULL, 'HISTORICAL_EVIDENCE_CONTEXT',
+      '{"controlled_reconciliation":1,"schema_version":21}', ?);
+  `, [
+    sellerId, `${prefix}-seller-code`, sequence, AT, AT, AT,
+    `${prefix}-seller-subject`, AT, subjectId, AT,
+    memberId, `${prefix}-seller-subject`, sellerId, `${prefix}-member`, AT, AT, AT,
+    channelId, `F${sequence}`, AT, AT,
+    buyerId, subjectId, channelId, buyerNo, AT, AT, AT,
+    storeId, sellerId, AT, AT,
+    productId, sellerId, storeId, asin, asin, AT, AT,
+    productVersionId, productId, STAFF_ID, AT,
+    demandId, sellerId, storeId, productId, memberId, AT - 3, AT - 2, AT + 10,
+    STAFF_ID, AT - 4, AT - 1, AT - 2, AT - 2,
+    reservationId, demandId, buyerId, sellerId, storeId, productId, AT + 1, AT + 10,
+    AT - 4, AT - 1, STAFF_ID, AT - 1, AT - 4,
+    `${prefix}-historical-marker`, reservationId, AT,
+  ]);
+
+  raw.prepare(`
+    INSERT INTO order_evidence_submissions (
+      id, reservation_id, buyer_customer_id, marketplace_code, status, current_version_no,
+      version, public_change_reason, internal_review_note, submitted_at, updated_at,
+      verified_by_staff_id, verified_at, withdrawn_at, consumed_at, created_at
+    ) VALUES (?, ?, ?, 'JP', 'PENDING_VERIFICATION', 1, 1, NULL, NULL, ?, ?, NULL,
+      NULL, NULL, NULL, ?)
+  `).run(submissionId, reservationId, buyerId, AT, AT, AT);
+  raw.prepare(`
+    INSERT INTO order_evidence_versions (
+      id, submission_id, reservation_id, buyer_customer_id, marketplace_code, version_no,
+      amazon_order_number_raw, amazon_order_number_normalized, amazon_order_date,
+      final_paid_jpy, submitted_by_buyer_id, buyer_note, order_instruction_id,
+      order_instruction_version_id, instruction_deadline_snapshot,
+      reference_order_amount_jpy_snapshot, buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
+      buyer_refundable_principal_jpy, price_mismatch, price_difference_jpy,
+      submitted_before_deadline, evidence_file_object_id, created_at
+    ) VALUES (?, ?, ?, ?, 'JP', 1, ?, ?, '2023-11-14', ?, ?, NULL, NULL, NULL, NULL,
+      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)
+  `).run(evidenceId, submissionId, reservationId, buyerId, orderNumber, orderNumber,
+    facts.sellerExpectedPrincipalCnyFen, buyerId, AT);
+  raw.prepare(`
+    UPDATE order_evidence_submissions
+    SET status='VERIFIED', version=2, verified_by_staff_id=?, verified_at=?, updated_at=?
+    WHERE id=?
+  `).run(STAFF_ID, AT, AT, submissionId);
+  raw.prepare(`
+    INSERT INTO seller_service_fee_versions (
+      id, organization_id, review_type, version_no, status, fee_cny_fen, effective_from,
+      submitted_by_staff_id, submitted_at, decision_version, confirmed_by_staff_id,
+      confirmed_at, rejected_by_staff_id, rejected_at, rejection_reason
+    ) VALUES (?, ?, 'TEXT', 1, 'SUBMITTED', ?, ?, ?, ?, 1, NULL, NULL, NULL, NULL, NULL)
+  `).run(feeId, sellerId, facts.serviceFeeCnyFen, AT - 1, STAFF_ID, AT - 3);
+  raw.prepare(`
+    UPDATE seller_service_fee_versions
+    SET status='CONFIRMED', decision_version=2, confirmed_by_staff_id=?, confirmed_at=?
+    WHERE id=?
+  `).run(STAFF_ID, AT - 2, feeId);
+}
+
+function formulaAsin(caseId: string): string {
+  return `B00000000${['zero', 'partial', 'reversal', 'overpayment', 'integer-boundary']
+    .indexOf(caseId) + 1}`;
+}
+
+function executeFixtureSql(
+  raw: SqliteDatabase['raw'],
+  sql: string,
+  values: readonly (string | number | bigint)[],
+): void {
+  let next = 0;
+  const statement = sql.replaceAll('?', () => {
+    const value = values[next];
+    next += 1;
+    if (value === undefined) throw new Error('fixture_sql_binding_mismatch');
+    if (typeof value === 'bigint' || typeof value === 'number') return String(value);
+    return `'${value.replaceAll("'", "''")}'`;
+  });
+  if (next !== values.length) throw new Error('fixture_sql_binding_mismatch');
+  for (const clause of statement.split(';')) {
+    if (clause.trim() === '') continue;
+    try {
+      raw.exec(clause);
+    } catch (error) {
+      throw new Error(`fixture_sql_failed: ${clause.trim().slice(0, 80)}`, {
+        cause: error,
+      });
+    }
+  }
 }
 
 function seedSellerAllocation(
