@@ -9,15 +9,21 @@ let database: SqliteDatabase | null = null;
 afterEach(() => { database?.close(); database = null; });
 
 describe('Migration 0070 buyer refund reminders', () => {
-  it('advances a real non-empty Schema 69 database to 70 and preserves representative immutable facts', async () => {
+  it('advances a real non-empty Schema 69 database to 70 and preserves every preexisting user-table schema and row', async () => {
     database = schema69();
     await seedRepresentativeFacts(database);
-    const beforeFacts = await representativeFacts(database);
+    const before = await canonicalSnapshot(database, {
+      normalizeSchemaVersion: true,
+    });
 
     applyMigration(database);
 
     expect(await schemaVersion(database)).toBe(70);
-    expect(await representativeFacts(database)).toEqual(beforeFacts);
+    expect(await canonicalSnapshot(database, {
+      schemaObjectKeys: new Set(before.schema.map(schemaObjectKey)),
+      tableNames: new Set(before.tables.map((table) => table.name)),
+      normalizeSchemaVersion: true,
+    })).toEqual(before);
     expect(await database.prepare(`SELECT type FROM sqlite_schema WHERE name='idx_buyer_refund_reminders_obligation_recent'`).first()).toEqual({ type: 'index' });
     expect(await database.prepare(`SELECT type FROM sqlite_schema WHERE name='trg_buyer_refund_reminders_no_update'`).first()).toEqual({ type: 'trigger' });
     await expect(database.prepare(`
@@ -32,7 +38,7 @@ describe('Migration 0070 buyer refund reminders', () => {
     database = schema69();
     await seedRepresentativeFacts(database);
     database.exec(`UPDATE app_schema_state SET schema_version=68 WHERE singleton_id=1`);
-    const before = await snapshot(database);
+    const before = await canonicalSnapshot(database);
 
     expect(() => applyMigration(database!)).toThrow(/transaction_assertion_failed/u);
 
@@ -43,7 +49,7 @@ describe('Migration 0070 buyer refund reminders', () => {
     database = schema69();
     await seedRepresentativeFacts(database);
     applyMigration(database);
-    const before = await snapshot(database);
+    const before = await canonicalSnapshot(database);
 
     expect(() => applyMigration(database!)).toThrow(/transaction_assertion_failed/u);
 
@@ -61,7 +67,7 @@ describe('Migration 0070 buyer refund reminders', () => {
       INSERT INTO buyer_refund_reminders (id,dirty_marker)
       VALUES ('partial-0070-reminder','non-empty-preexisting-stock');
     `);
-    const before = await snapshot(database);
+    const before = await canonicalSnapshot(database);
 
     expect(() => applyMigration(database!)).toThrow(/buyer_refund_reminders.*already exists/iu);
 
@@ -140,42 +146,122 @@ async function schemaVersion(target: SqliteDatabase): Promise<number> {
   `).first<{ schema_version: number }>())?.schema_version);
 }
 
-async function representativeFacts(target: SqliteDatabase): Promise<unknown> {
-  const buyerChannel = await target.prepare(`
-    SELECT id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at
-    FROM buyer_channels WHERE id='migration-0070-channel'
-  `).all();
-  const command = await target.prepare(`
-    SELECT actor_type,actor_id,idempotency_key,action,target_type,target_id,
-      request_hash,status,lease_token,lease_expires_at,attempt_count,
-      response_json,result_references_json,error_code,created_at,updated_at,
-      completed_at
-    FROM command_idempotency_records
-    WHERE actor_id='migration-0070-preservation'
-  `).all();
-  const audit = await target.prepare(`
-    SELECT id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,
-      actor_roles_json,request_id,idempotency_key,previous_state_json,
-      next_state_json,reason,metadata_json,created_at
-    FROM audit_events WHERE id='migration-0070-audit'
-  `).all();
-  return {
-    buyerChannel: buyerChannel.results,
-    command: command.results,
-    audit: audit.results,
-  };
+interface CanonicalSchemaObject {
+  type: string;
+  name: string;
+  table: string;
+  sql: string | null;
 }
 
-async function snapshot(target: SqliteDatabase): Promise<string> {
-  const schema = await target.prepare(`
+interface CanonicalColumn {
+  cid: number;
+  name: string;
+  type: string;
+  notnull: number;
+  dflt_value: string | null;
+  pk: number;
+}
+
+type CanonicalValue = readonly [kind: string, value: string];
+
+interface CanonicalTable {
+  name: string;
+  columns: readonly CanonicalColumn[];
+  rows: readonly (readonly [column: string, value: CanonicalValue])[][];
+}
+
+interface CanonicalSnapshot {
+  schema: readonly CanonicalSchemaObject[];
+  tables: readonly CanonicalTable[];
+}
+
+interface SnapshotScope {
+  schemaObjectKeys?: ReadonlySet<string>;
+  tableNames?: ReadonlySet<string>;
+  normalizeSchemaVersion?: boolean;
+}
+
+async function canonicalSnapshot(
+  target: SqliteDatabase,
+  scope: SnapshotScope = {},
+): Promise<CanonicalSnapshot> {
+  const schemaRows = await target.prepare(`
     SELECT type,name,tbl_name,sql FROM sqlite_schema
     WHERE name NOT LIKE 'sqlite_%'
     ORDER BY type,name
-  `).all();
-  return JSON.stringify({
-    schema: schema.results,
-    facts: await representativeFacts(target),
-  });
+  `).all<{
+    type: string;
+    name: string;
+    tbl_name: string;
+    sql: string | null;
+  }>();
+  const schema = schemaRows.results
+    .map((row): CanonicalSchemaObject => ({
+      type: String(row.type),
+      name: String(row.name),
+      table: String(row.tbl_name),
+      sql: row.sql === null ? null : String(row.sql),
+    }))
+    .filter((object) => !scope.schemaObjectKeys
+      || scope.schemaObjectKeys.has(schemaObjectKey(object)));
+  const tableNames = schema
+    .filter((object) => object.type === 'table')
+    .map((object) => object.name)
+    .filter((name) => !scope.tableNames || scope.tableNames.has(name));
+  const tables = await Promise.all(tableNames.map(async (name) => {
+    const columns = (await target.prepare(
+      `PRAGMA table_info(${quoteIdentifier(name)})`,
+    ).all<{
+      cid: number;
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+      pk: number;
+    }>()).results.map((column): CanonicalColumn => ({
+      cid: Number(column.cid),
+      name: String(column.name),
+      type: String(column.type),
+      notnull: Number(column.notnull),
+      dflt_value: column.dflt_value === null ? null : String(column.dflt_value),
+      pk: Number(column.pk),
+    }));
+    const rows = (await target.prepare(
+      `SELECT * FROM ${quoteIdentifier(name)}`,
+    ).all<Record<string, unknown>>()).results.map((row) => columns.map(
+      (column): readonly [string, CanonicalValue] => [
+        column.name,
+        serializeValue(
+          scope.normalizeSchemaVersion
+            && name === 'app_schema_state'
+            && column.name === 'schema_version'
+            ? '__CURRENT_SCHEMA_VERSION__'
+            : row[column.name],
+        ),
+      ],
+    ));
+    rows.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    return { name, columns, rows } satisfies CanonicalTable;
+  }));
+  return { schema, tables };
+}
+
+function schemaObjectKey(object: CanonicalSchemaObject): string {
+  return `${object.type}\u0000${object.name}`;
+}
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function serializeValue(value: unknown): CanonicalValue {
+  if (value === null) return ['null', ''];
+  if (value instanceof Uint8Array) return ['blob', Buffer.from(value).toString('hex')];
+  if (typeof value === 'number') {
+    return ['number', Object.is(value, -0) ? '-0' : String(value)];
+  }
+  if (typeof value === 'bigint') return ['bigint', value.toString()];
+  return [typeof value, String(value)];
 }
 
 async function assertHealthy(target: SqliteDatabase): Promise<void> {
@@ -187,10 +273,10 @@ async function assertHealthy(target: SqliteDatabase): Promise<void> {
 
 async function expectUnchangedAndHealthy(
   target: SqliteDatabase,
-  before: string,
+  before: CanonicalSnapshot,
   expectedSchema: number,
 ): Promise<void> {
-  expect(await snapshot(target)).toBe(before);
+  expect(await canonicalSnapshot(target)).toEqual(before);
   expect(await schemaVersion(target)).toBe(expectedSchema);
   await assertHealthy(target);
 }

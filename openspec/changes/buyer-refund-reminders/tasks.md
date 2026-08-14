@@ -2,7 +2,7 @@
 
 - [x] 1.1 Confirm current Buyer session, concealment, refund status, Audit, idempotency, Staff projection, and no-Outbox boundaries.
 - [x] 1.2 Add forward-only Migration 0070 with Schema 69 predecessor assertion, immutable reminder table, source and immutable triggers, index, and Schema 70 assertion.
-- [x] 1.3 Update local migration guards/inventory and add real non-empty Schema 69→70 success preservation plus wrong-order, repeat, and explicitly non-empty partial-0070 dirty-stock full schema/data snapshot evidence with integrity/FK checks.
+- [x] 1.3 Update local migration guards/inventory and add real non-empty Schema 69→70 preservation over every preexisting user table plus wrong-order, repeat, and explicitly non-empty partial-0070 dirty-stock canonical schema/column/full-table-data snapshot evidence with integrity/FK checks.
 
 ## 2. Contracts and command
 
