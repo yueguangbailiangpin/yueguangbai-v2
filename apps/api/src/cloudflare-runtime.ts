@@ -66,6 +66,7 @@ export async function resolveCloudflareRuntime(
     || Object.keys(bindings).some((name) => name.startsWith('STAFF_MCP_'))
     || !validStaffAccessReleaseBindings(bindings, appOrigin)
     || !booleanFlag(bindings.SCHEDULED_OPERATIONS_ENABLED)
+    || !booleanFlag(bindings.OUTBOX_DELIVERY_ENABLED)
     || !booleanFlag(bindings.ACQUISITION_MAINTENANCE_ENABLED)
     || !releaseSha
     || !await validOperationalAlertReleaseBindings(bindings,environment)) return null;
