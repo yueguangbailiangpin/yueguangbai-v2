@@ -42,23 +42,8 @@ export interface CurrencyRateVersionResult {
   replayed: boolean;
 }
 
-type RateKind = 'BUYER_DAILY_CURRENCY_RATE' | 'SELLER_AGREEMENT_CURRENCY_RATE';
-
-interface RateConfiguration {
-  kind: RateKind;
-  table: 'buyer_daily_currency_rate_versions'
-    | 'seller_agreement_currency_rate_versions';
-}
-
-const BUYER_CONFIG: RateConfiguration = {
-  kind: 'BUYER_DAILY_CURRENCY_RATE',
-  table: 'buyer_daily_currency_rate_versions',
-};
-
-const SELLER_CONFIG: RateConfiguration = {
-  kind: 'SELLER_AGREEMENT_CURRENCY_RATE',
-  table: 'seller_agreement_currency_rate_versions',
-};
+const RATE_KIND = 'BUYER_DAILY_CURRENCY_RATE';
+const RATE_TABLE = 'buyer_daily_currency_rate_versions';
 
 export function submitBuyerDailyCurrencyRate(
   database: SqlDatabase,
@@ -72,7 +57,7 @@ export function submitBuyerDailyCurrencyRate(
   command: RateCommand,
 ): Promise<CurrencyRateVersionResult> {
   requireSellerOpsSubmitter(command.actor);
-  return submitCurrencyRate(database, BUYER_CONFIG, {
+  return submitCurrencyRate(database, {
     businessDate: cleanBusinessDate(input.businessDate),
     sellerOrganizationId: null,
     sourceCurrencyCode: input.sourceCurrencyCode,
@@ -83,44 +68,12 @@ export function submitBuyerDailyCurrencyRate(
   }, command);
 }
 
-export function submitSellerAgreementCurrencyRate(
-  database: SqlDatabase,
-  input: {
-    sellerOrganizationId: string;
-    sourceCurrencyCode: CurrencyCode;
-    rateValue: string;
-    rateScale: string;
-    effectiveFrom: number;
-    expectedVersion: number;
-  },
-  command: RateCommand,
-): Promise<CurrencyRateVersionResult> {
-  requireSellerOpsSubmitter(command.actor);
-  return submitCurrencyRate(database, SELLER_CONFIG, {
-    businessDate: null,
-    sellerOrganizationId: cleanPricingIdentifier(input.sellerOrganizationId),
-    sourceCurrencyCode: input.sourceCurrencyCode,
-    rateValue: input.rateValue,
-    rateScale: input.rateScale,
-    effectiveFrom: cleanEpochMilliseconds(input.effectiveFrom),
-    expectedVersion: input.expectedVersion,
-  }, command);
-}
-
 export function confirmBuyerDailyCurrencyRate(
   database: SqlDatabase,
   input: { rateVersionId: string; expectedVersion: number },
   command: RateCommand,
 ): Promise<CurrencyRateVersionResult> {
-  return confirmCurrencyRate(database, BUYER_CONFIG, input, command);
-}
-
-export function confirmSellerAgreementCurrencyRate(
-  database: SqlDatabase,
-  input: { rateVersionId: string; expectedVersion: number },
-  command: RateCommand,
-): Promise<CurrencyRateVersionResult> {
-  return confirmCurrencyRate(database, SELLER_CONFIG, input, command);
+  return confirmCurrencyRate(database, input, command);
 }
 
 interface RateCommand {
@@ -142,7 +95,6 @@ interface SubmitRateInput {
 
 async function submitCurrencyRate(
   database: SqlDatabase,
-  config: RateConfiguration,
   input: SubmitRateInput,
   command: RateCommand,
 ): Promise<CurrencyRateVersionResult> {
@@ -154,11 +106,8 @@ async function submitCurrencyRate(
   const rateValue = positiveInteger(input.rateValue);
   const rateScale = positiveInteger(input.rateScale);
   await requireActiveSourceCurrency(database, input.sourceCurrencyCode);
-  if (input.sellerOrganizationId) {
-    await requireActiveSeller(database, input.sellerOrganizationId);
-  }
-  const targetId = rateTarget(config, input);
-  const action = `SUBMIT_${config.kind}`;
+  const targetId = `${input.businessDate}:${input.sourceCurrencyCode}:CNY`;
+  const action = `SUBMIT_${RATE_KIND}`;
   const requestHash = await hashCanonicalJson({
     action,
     business_date: input.businessDate,
@@ -174,7 +123,7 @@ async function submitCurrencyRate(
     database,
     {
       actorType: 'STAFF', actorId: command.actor.staffId,
-      action, targetType: config.kind, targetId,
+      action, targetType: RATE_KIND, targetId,
       idempotencyKey: command.idempotencyKey, requestHash,
     },
     { now },
@@ -184,7 +133,7 @@ async function submitCurrencyRate(
   }
 
   try {
-    const latest = await latestVersion(database, config, input);
+    const latest = await latestVersion(database, input);
     if (latest.latestVersion !== expectedVersion) {
       throw new PricingError('VERSION_CONFLICT', 409);
     }
@@ -208,8 +157,7 @@ async function submitCurrencyRate(
       confirmed_at: null,
       replayed: false,
     };
-    const insert = config === BUYER_CONFIG
-      ? database.prepare(`
+    const insert = database.prepare(`
           INSERT INTO buyer_daily_currency_rate_versions (
             id, legacy_rate_id, business_date, source_currency_code,
             quote_currency_code, version_no, status, rate_value, rate_scale,
@@ -220,26 +168,12 @@ async function submitCurrencyRate(
             NULL,NULL,NULL,NULL,NULL)
         `).bind(id, input.businessDate, input.sourceCurrencyCode,
           response.version_no, rateValue.databaseValue,
-          rateScale.databaseValue, command.actor.staffId, now)
-      : database.prepare(`
-          INSERT INTO seller_agreement_currency_rate_versions (
-            id, legacy_rate_id, seller_organization_id,
-            source_currency_code, quote_currency_code, version_no, status,
-            rate_value, rate_scale, rounding_rule, effective_from,
-            submitted_by_staff_id, submitted_at, decision_version,
-            confirmed_by_staff_id, confirmed_at, rejected_by_staff_id,
-            rejected_at, rejection_reason
-          ) VALUES (?,NULL,?,?, 'CNY',?,'SUBMITTED',?,?,'HALF_UP',?,?,?,1,
-            NULL,NULL,NULL,NULL,NULL)
-        `).bind(id, input.sellerOrganizationId, input.sourceCurrencyCode,
-          response.version_no, rateValue.databaseValue,
-          rateScale.databaseValue, input.effectiveFrom,
-          command.actor.staffId, now);
+          rateScale.databaseValue, command.actor.staffId, now);
     await database.batch([
       insert,
       createAuditEventStatement(database, {
-        id: crypto.randomUUID(), aggregateType: config.kind,
-        aggregateId: id, eventType: `${config.kind}_SUBMITTED`,
+        id: crypto.randomUUID(), aggregateType: RATE_KIND,
+        aggregateId: id, eventType: `${RATE_KIND}_SUBMITTED`,
         actor: { type: 'STAFF', id: command.actor.staffId,
           roles: command.actor.roles },
         requestId: command.requestId ?? null,
@@ -249,7 +183,7 @@ async function submitCurrencyRate(
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { rate_version_id: id }, now,
       }),
-      assertRateState(database, config, acquired.claim, response),
+      assertRateState(database, acquired.claim, response),
       assertIdempotencyCompletionStatement(database, acquired.claim),
     ]);
     return response;
@@ -262,7 +196,6 @@ async function submitCurrencyRate(
 
 async function confirmCurrencyRate(
   database: SqlDatabase,
-  config: RateConfiguration,
   input: { rateVersionId: string; expectedVersion: number },
   command: RateCommand,
 ): Promise<CurrencyRateVersionResult> {
@@ -270,7 +203,7 @@ async function confirmCurrencyRate(
   const id = cleanPricingIdentifier(input.rateVersionId);
   const expectedVersion = cleanExpectedVersion(input.expectedVersion);
   const now = cleanEpochMilliseconds(command.now ?? Date.now());
-  const action = `CONFIRM_${config.kind}`;
+  const action = `CONFIRM_${RATE_KIND}`;
   const requestHash = await hashCanonicalJson({
     action, rate_version_id: id, expected_version: expectedVersion,
   });
@@ -278,7 +211,7 @@ async function confirmCurrencyRate(
     database,
     {
       actorType: 'STAFF', actorId: command.actor.staffId,
-      action, targetType: config.kind, targetId: id,
+      action, targetType: RATE_KIND, targetId: id,
       idempotencyKey: command.idempotencyKey, requestHash,
     },
     { now },
@@ -287,7 +220,7 @@ async function confirmCurrencyRate(
     return { ...acquired.response, replayed: true };
   }
   try {
-    const source = await requireRate(database, config, id);
+    const source = await requireRate(database, id);
     if (source.decision_version !== expectedVersion) {
       throw new PricingError('VERSION_CONFLICT', 409);
     }
@@ -314,7 +247,7 @@ async function confirmCurrencyRate(
       replayed: false,
     };
     const update = database.prepare(`
-      UPDATE ${config.table}
+      UPDATE ${RATE_TABLE}
       SET status='CONFIRMED', decision_version=decision_version+1,
         confirmed_by_staff_id=?, confirmed_at=?
       WHERE id=? AND status='SUBMITTED' AND decision_version=?
@@ -326,8 +259,8 @@ async function confirmCurrencyRate(
         SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END
       `),
       createAuditEventStatement(database, {
-        id: crypto.randomUUID(), aggregateType: config.kind,
-        aggregateId: id, eventType: `${config.kind}_CONFIRMED`,
+        id: crypto.randomUUID(), aggregateType: RATE_KIND,
+        aggregateId: id, eventType: `${RATE_KIND}_CONFIRMED`,
         actor: { type: 'STAFF', id: command.actor.staffId,
           roles: command.actor.roles },
         requestId: command.requestId ?? null,
@@ -338,7 +271,7 @@ async function confirmCurrencyRate(
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { rate_version_id: id }, now,
       }),
-      assertRateState(database, config, acquired.claim, response),
+      assertRateState(database, acquired.claim, response),
       assertIdempotencyCompletionStatement(database, acquired.claim),
     ]);
     return response;
@@ -364,16 +297,13 @@ interface CanonicalRateRow {
 
 async function requireRate(
   database: SqlDatabase,
-  config: RateConfiguration,
   id: string,
 ): Promise<CanonicalRateRow> {
-  const columns = config === BUYER_CONFIG
-    ? 'business_date, NULL AS seller_organization_id, NULL AS effective_from'
-    : 'NULL AS business_date, seller_organization_id, effective_from';
   const row = await database.prepare(`
-    SELECT id, ${columns}, source_currency_code, version_no, status,
+    SELECT id, business_date, NULL AS seller_organization_id,
+      NULL AS effective_from, source_currency_code, version_no, status,
       rate_value, rate_scale, decision_version
-    FROM ${config.table} WHERE id=?
+    FROM ${RATE_TABLE} WHERE id=?
   `).bind(id).first<CanonicalRateRow>();
   if (!row) throw new PricingError('PRICING_RULE_NOT_FOUND', 404);
   return {
@@ -388,20 +318,15 @@ async function requireRate(
 
 async function latestVersion(
   database: SqlDatabase,
-  config: RateConfiguration,
   input: SubmitRateInput,
 ): Promise<{ latestVersion: number; pendingCount: number }> {
-  const predicate = config === BUYER_CONFIG
-    ? 'business_date=? AND source_currency_code=?'
-    : 'seller_organization_id=? AND source_currency_code=?';
-  const key = config === BUYER_CONFIG
-    ? input.businessDate : input.sellerOrganizationId;
   const row = await database.prepare(`
     SELECT COALESCE(MAX(version_no),0) AS latest_version,
       COALESCE(SUM(status='SUBMITTED'),0) AS pending_count
-    FROM ${config.table}
-    WHERE ${predicate} AND quote_currency_code='CNY'
-  `).bind(key, input.sourceCurrencyCode).first<{
+    FROM ${RATE_TABLE}
+    WHERE business_date=? AND source_currency_code=?
+      AND quote_currency_code='CNY'
+  `).bind(input.businessDate, input.sourceCurrencyCode).first<{
     latest_version: number; pending_count: number;
   }>();
   return {
@@ -412,7 +337,6 @@ async function latestVersion(
 
 function assertRateState(
   database: SqlDatabase,
-  config: RateConfiguration,
   claim: { actorType: string; actorId: string; idempotencyKey: string;
     leaseToken: string },
   response: CurrencyRateVersionResult,
@@ -420,7 +344,7 @@ function assertRateState(
   return database.prepare(`
     INSERT INTO transaction_assertions (assertion_value)
     SELECT CASE WHEN
-      EXISTS (SELECT 1 FROM ${config.table}
+      EXISTS (SELECT 1 FROM ${RATE_TABLE}
         WHERE id=? AND status=? AND decision_version=?)
       AND EXISTS (SELECT 1 FROM command_idempotency_records
         WHERE actor_type=? AND actor_id=? AND idempotency_key=?
@@ -444,17 +368,6 @@ async function requireActiveSourceCurrency(
   }
 }
 
-async function requireActiveSeller(
-  database: SqlDatabase,
-  id: string,
-): Promise<void> {
-  const row = await database.prepare(`
-    SELECT status FROM seller_organizations WHERE id=?
-  `).bind(id).first<{ status: string }>();
-  if (!row) throw new PricingError('NOT_FOUND', 404);
-  if (row.status !== 'ACTIVE') throw new PricingError('VALIDATION_ERROR', 400);
-}
-
 function positiveInteger(raw: string): {
   databaseValue: number; serialized: string;
 } {
@@ -464,10 +377,4 @@ function positiveInteger(raw: string): {
   const value = BigInt(raw);
   if (value > MAX_SAFE) throw new PricingError('VALIDATION_ERROR', 400);
   return { databaseValue: Number(value), serialized: value.toString(10) };
-}
-
-function rateTarget(config: RateConfiguration, input: SubmitRateInput): string {
-  const first = config === BUYER_CONFIG
-    ? input.businessDate : input.sellerOrganizationId;
-  return `${first}:${input.sourceCurrencyCode}:CNY`;
 }

@@ -158,7 +158,6 @@ export function insertPricingEventStatement(
   input: {
     table:
       | 'buyer_daily_exchange_rate_events'
-      | 'seller_agreement_rate_events'
       | 'seller_service_fee_events';
     versionId: string;
     organizationId?: string | null;

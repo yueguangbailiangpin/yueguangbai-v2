@@ -49,7 +49,6 @@ export type AppBindings = StaffAuthProviderBindings
   OPERATIONAL_ALERT_SINK_IDENTITY?: string;
   OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION?: string;
   OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT?: string;
-  SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED?: string;
 };
 
 export type AppVariables = {

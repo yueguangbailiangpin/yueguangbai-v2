@@ -40,15 +40,8 @@ interface FormalOrderRow {
   quote_currency_code: 'CNY' | null;
   source_currency_exponent: 0 | 2 | null;
   quote_currency_exponent: 2 | null;
-  seller_rate_value: number | string | null;
-  seller_rate_scale: number | string | null;
   rounding_rule: 'HALF_UP' | null;
   seller_expected_principal_cny_fen: number | string | null;
-  seller_rate_version_id: string | null;
-  seller_rate_version_no: number | null;
-  seller_cny_per_jpy_e8: number | string | null;
-  seller_rate_effective_from: number | null;
-  seller_rate_confirmed_at: number | null;
   principal_platform_order_date: string | null;
   principal_payment_amount_minor: number | string | null;
   principal_payment_currency_code: 'JPY' | 'USD' | 'KRW' | 'CNY' | null;
@@ -265,18 +258,11 @@ function selectFormalOrderProjection(): string {
       generic.payment_currency_code,
       generic.payment_currency_exponent,
       snapshot.seller_expected_principal_cny_fen,
-      snapshot.seller_rate_version_id,
-      snapshot.seller_rate_version_no,
-      snapshot.seller_cny_per_jpy_e8,
       generic.source_currency_code,
       generic.quote_currency_code,
       generic.source_currency_exponent,
       generic.quote_currency_exponent,
-      generic.seller_rate_value,
-      generic.seller_rate_scale,
       generic.rounding_rule,
-      snapshot.seller_rate_effective_from,
-      snapshot.seller_rate_confirmed_at,
       principal.platform_order_date AS principal_platform_order_date,
       principal.payment_amount_minor AS principal_payment_amount_minor,
       principal.payment_currency_code AS principal_payment_currency_code,
@@ -386,7 +372,7 @@ function selectFormalOrderProjection(): string {
       ON snapshot.formal_order_id=formal_order.id
     JOIN formal_order_marketplace_money_snapshots generic
       ON generic.formal_order_id=formal_order.id
-    LEFT JOIN seller_principal_rate_snapshots principal
+    JOIN seller_principal_rate_snapshots principal
       ON principal.formal_order_id=formal_order.id
   `;
 }
@@ -481,18 +467,11 @@ function selectPlatformFormalOrderProjection(): string {
       NULL AS payment_currency_code,
       NULL AS payment_currency_exponent,
       NULL AS seller_expected_principal_cny_fen,
-      NULL AS seller_rate_version_id,
-      NULL AS seller_rate_version_no,
-      NULL AS seller_cny_per_jpy_e8,
       NULL AS source_currency_code,
       NULL AS quote_currency_code,
       NULL AS source_currency_exponent,
       NULL AS quote_currency_exponent,
-      NULL AS seller_rate_value,
-      NULL AS seller_rate_scale,
       NULL AS rounding_rule,
-      NULL AS seller_rate_effective_from,
-      NULL AS seller_rate_confirmed_at,
       NULL AS principal_platform_order_date,
       NULL AS principal_payment_amount_minor,
       NULL AS principal_payment_currency_code,
@@ -698,7 +677,6 @@ function mapFormalOrder(
       payment: null,
       seller_expected_principal_cny_fen: null,
       seller_principal_rate_snapshot: null,
-      seller_agreement_rate_snapshot: null,
       locked_service_fee_snapshot: null,
       business_completion: null,
       confirmed_business_date: row.confirmed_business_date,
@@ -728,9 +706,7 @@ function mapFormalOrder(
     }),
     seller_expected_principal_cny_fen:
       integerString(row.seller_expected_principal_cny_fen!),
-    seller_principal_rate_snapshot: row.principal_policy_version_id === null
-      ? null
-      : Object.freeze({
+    seller_principal_rate_snapshot: Object.freeze({
           platform_order_date: row.principal_platform_order_date!,
           payment_amount_minor: integerString(row.principal_payment_amount_minor!),
           payment_currency_code: row.principal_payment_currency_code!,
@@ -739,7 +715,7 @@ function mapFormalOrder(
           base_rate_confirmed_at: Number(row.principal_base_rate_confirmed_at),
           base_rate_value: integerString(row.principal_base_rate_value!),
           base_rate_scale: integerString(row.principal_base_rate_scale!),
-          policy_version_id: row.principal_policy_version_id,
+          policy_version_id: row.principal_policy_version_id!,
           policy_scope_type: row.principal_policy_scope_type!,
           policy_seller_organization_id: row.principal_policy_seller_organization_id,
           policy_version_no: Number(row.principal_policy_version_no),
@@ -753,20 +729,6 @@ function mapFormalOrder(
           seller_expected_principal_amount_minor:
             integerString(row.principal_amount_minor!),
         }),
-    seller_agreement_rate_snapshot: Object.freeze({
-      rate_version_id: row.seller_rate_version_id!,
-      version_no: Number(row.seller_rate_version_no),
-      cny_per_jpy_e8: integerString(row.seller_cny_per_jpy_e8!),
-      effective_from: Number(row.seller_rate_effective_from),
-      confirmed_at: Number(row.seller_rate_confirmed_at),
-      source_currency_code: row.source_currency_code!,
-      quote_currency_code: row.quote_currency_code!,
-      source_currency_exponent: Number(row.source_currency_exponent) as 0 | 2,
-      quote_currency_exponent: 2,
-      rate_value: integerString(row.seller_rate_value!),
-      rate_scale: integerString(row.seller_rate_scale!),
-      rounding_rule: row.rounding_rule!,
-    }),
     locked_service_fee_snapshot: Object.freeze({
       fee_version_id: row.service_fee_version_id!,
       version_no: Number(row.service_fee_version_no),

@@ -17,7 +17,7 @@ import {
 } from '@ygb/testkit';
 import { createApp } from '../app';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
-import { confirmFormalOrder } from '../formal-orders/confirm-formal-order';
+import { confirmFormalOrderForTest as confirmFormalOrder } from '../../test-support/confirm-formal-order-fixture';
 import type { FormalOrderStaffActor } from '../formal-orders/formal-order-shared';
 import {
   bindPhase3GEvidenceFixture,
@@ -361,14 +361,13 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
             currency_exponent: 0,
           },
           seller_expected_principal_cny_fen: '53280',
-          seller_agreement_rate_snapshot: {
-            rate_version_id: 'seller-rate-portal-v1',
-            version_no: 1,
-            cny_per_jpy_e8: '6000000',
-            source_currency_code: 'JPY',
-            quote_currency_code: 'CNY',
-            rate_value: '6000000',
-            rate_scale: '100000000',
+          seller_principal_rate_snapshot: {
+            policy_version_id: 'principal-rate-portal-v1',
+            policy_version_no: 1,
+            base_rate_value: '5500000',
+            markup_rate_value: '500000',
+            final_rate_value: '6000000',
+            final_rate_scale: '100000000',
             rounding_rule: 'HALF_UP',
           },
           locked_service_fee_snapshot: {
@@ -494,22 +493,21 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       SET current_version_no=2, version=2, updated_at=9900
       WHERE id='product-portal-1';
 
-      INSERT INTO seller_agreement_rate_versions (
-        id, organization_id, review_type, version_no,
-        status, cny_per_jpy_e8, effective_from,
-        submitted_by_staff_id, submitted_at, decision_version,
-        confirmed_by_staff_id, confirmed_at,
+      INSERT INTO seller_principal_rate_policy_versions (
+        id, scope_type, seller_organization_id, source_currency_code,
+        quote_currency_code, version_no, status, markup_rate_value,
+        rate_scale, effective_from, submitted_by_staff_id, submitted_at,
+        decision_version, confirmed_by_staff_id, confirmed_at,
         rejected_by_staff_id, rejected_at, rejection_reason
       ) VALUES (
-        'seller-rate-portal-v2', 'org-portal', NULL, 2,
-        'SUBMITTED', 9000000, 9800,
-        'staff-confirm', 9700, 1,
-        NULL, NULL, NULL, NULL, NULL
+        'principal-rate-portal-v2', 'SELLER_ORGANIZATION', 'org-portal',
+        'JPY', 'CNY', 2, 'SUBMITTED', 3500000, 100000000, 9800,
+        'staff-confirm', 9700, 1, NULL, NULL, NULL, NULL, NULL
       );
-      UPDATE seller_agreement_rate_versions
+      UPDATE seller_principal_rate_policy_versions
       SET status='CONFIRMED', decision_version=2,
           confirmed_by_staff_id='staff-confirm', confirmed_at=9750
-      WHERE id='seller-rate-portal-v2';
+      WHERE id='principal-rate-portal-v2';
 
       INSERT INTO seller_service_fee_versions (
         id, organization_id, review_type, version_no,
@@ -543,9 +541,9 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
         version_no: 1,
       },
       seller_expected_principal_cny_fen: '53280',
-      seller_agreement_rate_snapshot: {
-        rate_version_id: 'seller-rate-portal-v1',
-        cny_per_jpy_e8: '6000000',
+      seller_principal_rate_snapshot: {
+        policy_version_id: 'principal-rate-portal-v1',
+        final_rate_value: '6000000',
       },
       locked_service_fee_snapshot: {
         fee_version_id: 'service-fee-portal-image-v1',
@@ -555,8 +553,8 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(body.data.formal_order.product_name)
       .not.toBe('Portal 产品一新规则名称');
     expect(
-      body.data.formal_order.seller_agreement_rate_snapshot
-        .cny_per_jpy_e8,
+      body.data.formal_order.seller_principal_rate_snapshot
+        .final_rate_value,
     ).not.toBe('9000000');
     expect(
       body.data.formal_order.locked_service_fee_snapshot
@@ -586,24 +584,24 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(await formalOrderCounts()).toEqual(before);
   });
 
-  it('retains the schema 26 history beneath current schema 28', async () => {
+  it('retains the schema 26 history beneath current schema 69', async () => {
     const state = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(68);
+    expect(Number(state?.schema_version)).toBe(69);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(68);
+    expect(migrations).toHaveLength(69);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
     expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0068_customer_security_deny_password_rate_limit.sql');
+    expect(migrations.at(-1)).toBe('0069_retire_seller_agreement_rate_runtime.sql');
   });
 });
 
@@ -972,7 +970,6 @@ function command(idempotencyKey: string, now: number) {
     idempotencyKey,
     requestId: `request:${idempotencyKey}`,
     now,
-    sellerPrincipalRateEnforcementEnabled: true,
   };
 }
 
@@ -1399,8 +1396,6 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
     at: 5_000,
   });
 
-  seedSellerRate(db, 'org-portal', 'seller-rate-portal-v1', 6_000_000);
-  seedSellerRate(db, 'org-other', 'seller-rate-other-v1', 6_200_000);
   seedPrincipalRate(db, 'org-portal', 'principal-rate-portal-v1', 500_000);
   seedPrincipalRate(db, 'org-other', 'principal-rate-other-v1', 700_000);
   seedServiceFee(
@@ -1424,32 +1419,6 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
     'service-fee-other-video-v1',
     3_500,
   );
-}
-
-function seedSellerRate(
-  db: SqliteDatabase,
-  organizationId: string,
-  id: string,
-  cnyPerJpyE8: number,
-): void {
-  db.exec(`
-    INSERT INTO seller_agreement_rate_versions (
-      id, organization_id, review_type, version_no,
-      status, cny_per_jpy_e8, effective_from,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
-    ) VALUES (
-      '${id}', '${organizationId}', NULL, 1,
-      'SUBMITTED', ${cnyPerJpyE8}, 3000,
-      'staff-confirm', 1000, 1,
-      NULL, NULL, NULL, NULL, NULL
-    );
-    UPDATE seller_agreement_rate_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
-    WHERE id='${id}';
-  `);
 }
 
 function seedPrincipalRate(

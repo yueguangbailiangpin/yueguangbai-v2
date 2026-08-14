@@ -6,7 +6,7 @@
 
 - [ ] 总控完成当前收口 Changes 审查、本地提交、干净 Integration 与非强制快进；重新 fetch 并记录最终 `origin/main` 40 位 SHA。
 - [ ] 在最终干净候选执行 `npm run release:check`，把其动态输出的 commit 与 tree 绑定到不可变证据；不得沿用历史文档 SHA。
-- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、`0001`–`0068` 连续且尾部为 `0068_customer_security_deny_password_rate_limit.sql`、全量本地/Chromium/OpenSpec 门禁通过。
+- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、`0001`–`0069` 连续且尾部为 `0069_retire_seller_agreement_rate_runtime.sql`、全量本地/Chromium/OpenSpec 门禁通过。
 - [ ] 确认已归档 `pre-wave13-baseline-conformance-audit` 的本地任务状态和仍未完成的外部阻断被分别读取；不得把 archive 状态写成 active，也不得伪勾真实生产项。
 - [ ] 选择并批准发布控制：受保护 CI，或有时间戳、双人复核和不可变日志的人工流程。
 
@@ -43,7 +43,7 @@ Gate 2 未通过：`NO-GO`。
 
 1. [ ] 冻结写入，记录当前线上 Worker SHA、配置快照、D1 ledger、R2/Drive Manifest 和所有开关。
 2. [ ] 若目标 D1 已有任何数据，先做迁移前完整导出、加密、SHA-256/Manifest/attestation，并在全新隔离目标恢复通过；恢复目标不得覆盖。
-3. [ ] 只读比较线上 ledger 与 release SHA 的完整 `0001`–`0068` 链（尾部为 `0068_customer_security_deny_password_rate_limit.sql`）；线上可以是该链的连续前缀，但发现未知、跳号、重复、并行或部分 Migration 立即停止。
+3. [ ] 只读比较线上 ledger 与 release SHA 的完整 `0001`–`0069` 链（尾部为 `0069_retire_seller_agreement_rate_runtime.sql`）；线上可以是该链的连续前缀，但发现未知、跳号、重复、并行或部分 Migration 立即停止。
 4. [ ] 老板单独批准 Migration 窗口；只按连续顺序应用尚未应用的 Migration，逐步核验 schema_version、integrity、foreign keys、关键表/触发器/视图和权限事实。
 5. [ ] 生成迁移后、绑定最终 release SHA 的 D1 加密备份，并再次在新隔离目标恢复；核对 schema、全表行数、关键财务聚合、Staff/Buyer/Seller/订单/文件/调度 smoke。
 6. [ ] 保持所有外部开关关闭，老板另行批准部署 schema-compatible API Worker 与 Web 制品。

@@ -15,7 +15,6 @@ import {
   approveOrderEvidenceAtomically,
   AtomicOrderEvidenceApprovalError,
 } from './approve-order-evidence';
-import { isSellerPrincipalRateEnforcementEnabled } from '../pricing/seller-principal-rate-policy';
 
 const BODY_LIMIT_BYTES = 16 * 1024;
 const CURSOR_MAX_LENGTH = 2048;
@@ -314,10 +313,6 @@ async function approve(context: Context<AppEnv>): Promise<Response> {
       actor: toFormalOrderActor(actor),
       idempotencyKey: requireIdempotencyKey(context),
       requestId: requestId(context),
-      sellerPrincipalRateEnforcementEnabled:
-        isSellerPrincipalRateEnforcementEnabled(
-          context.env.SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED,
-        ),
     },
   );
   return success(context, result.approval);

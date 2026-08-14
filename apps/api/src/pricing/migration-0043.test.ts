@@ -264,19 +264,16 @@ describe('Migration 0043 seller-principal integrity hardening', () => {
       createdAt: confirmedAt,
     })).rejects.toThrow('seller_principal_rate_snapshot_source_mismatch');
 
-    const inserted = await insertPrincipalSnapshot(database, {
-      formalOrderId: order.formalOrderId,
-      sellerOrganizationId: order.sellerOrganizationId,
-      policyVersionId: 'cold-principal-policy-migration-0043',
-      policyVersionNo: 1,
-      policyEffectiveFrom: 3000,
-      policyConfirmedAt: 2000,
-      markupRateValue: 500000,
-      finalRateValue: 6000000,
-      amount: 11880,
-      createdAt: confirmedAt,
+    await expect(database.prepare(`
+      SELECT policy_version_id,final_rate_value,
+        seller_expected_principal_amount_minor,created_at
+      FROM seller_principal_rate_snapshots WHERE formal_order_id=?
+    `).bind(order.formalOrderId).first()).resolves.toEqual({
+      policy_version_id: 'cold-principal-policy-migration-0043',
+      final_rate_value: 6000000,
+      seller_expected_principal_amount_minor: 11880,
+      created_at: confirmedAt,
     });
-    expect(inserted.meta.changes).toBe(1);
   });
 });
 

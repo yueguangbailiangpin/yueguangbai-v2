@@ -70,13 +70,6 @@ const sellerAmazonFormalOrderSchema = z.object({
     markup_rate_scale: integerString, final_rate_value: integerString,
     final_rate_scale: integerString, rounding_rule: z.literal('HALF_UP'),
     seller_expected_principal_amount_minor: integerString,
-  }).strict().nullable(),
-  seller_agreement_rate_snapshot: z.object({
-    rate_version_id: z.string(), version_no: z.number().int().positive(), cny_per_jpy_e8: integerString,
-    effective_from: epoch, confirmed_at: epoch, source_currency_code: z.enum(['JPY', 'USD', 'KRW', 'CNY']),
-    quote_currency_code: z.literal('CNY'), source_currency_exponent: z.union([z.literal(0), z.literal(2)]),
-    quote_currency_exponent: z.literal(2), rate_value: integerString, rate_scale: integerString,
-    rounding_rule: z.literal('HALF_UP'),
   }).strict(),
   locked_service_fee_snapshot: z.object({
     fee_version_id: z.string(), version_no: z.number().int().positive(), review_type: z.string(),
@@ -96,7 +89,6 @@ const sellerPlatformFormalOrderSchema = z.object({
   final_paid_jpy: z.null(), payment: z.null(),
   seller_expected_principal_cny_fen: z.null(),
   seller_principal_rate_snapshot: z.null(),
-  seller_agreement_rate_snapshot: z.null(),
   locked_service_fee_snapshot: z.null(), business_completion: z.null(),
   confirmed_business_date: z.string().nullable(),
 }).strict();

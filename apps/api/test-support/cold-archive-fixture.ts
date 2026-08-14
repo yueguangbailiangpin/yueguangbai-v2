@@ -1,5 +1,5 @@
 import type { AssignmentStaffAuthorization } from '../src/staff-assignment';
-import { confirmFormalOrder } from '../src/formal-orders/confirm-formal-order';
+import { confirmFormalOrderForTest as confirmFormalOrder } from './confirm-formal-order-fixture';
 import type { SqliteDatabase } from '@ygb/testkit';
 import { bindPhase3GEvidenceFixture,seedPhase3GInstructionFixture } from './phase3g-test-fixtures';
 import { sha256Hex } from '@ygb/domain';
@@ -107,11 +107,6 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
     UPDATE seller_principal_rate_policy_versions SET status='CONFIRMED',decision_version=2,
       confirmed_by_staff_id='cold-archive-owner',confirmed_at=2000
       WHERE id='cold-principal-policy-${suffix}';
-    INSERT INTO seller_agreement_rate_versions(id,organization_id,review_type,version_no,status,cny_per_jpy_e8,effective_from,
-      submitted_by_staff_id,submitted_at,decision_version,confirmed_by_staff_id,confirmed_at,rejected_by_staff_id,rejected_at,rejection_reason)
-    VALUES('cold-seller-rate-${suffix}','${sellerOrganizationId}',NULL,1,'SUBMITTED',6000000,3000,'cold-archive-owner',1000,1,NULL,NULL,NULL,NULL,NULL);
-    UPDATE seller_agreement_rate_versions SET status='CONFIRMED',decision_version=2,confirmed_by_staff_id='cold-archive-owner',
-      confirmed_at=2000 WHERE id='cold-seller-rate-${suffix}';
     INSERT INTO seller_service_fee_versions(id,organization_id,review_type,version_no,status,fee_cny_fen,effective_from,
       submitted_by_staff_id,submitted_at,decision_version,confirmed_by_staff_id,confirmed_at,rejected_by_staff_id,rejected_at,rejection_reason)
     VALUES('cold-service-fee-${suffix}','${sellerOrganizationId}','IMAGE',1,'SUBMITTED',2500,3000,'cold-archive-owner',1000,1,NULL,NULL,NULL,NULL,NULL);

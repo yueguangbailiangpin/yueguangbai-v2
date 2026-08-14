@@ -71,7 +71,6 @@ export interface FormalOrderMarketplaceMoneySnapshot {
   platform_order_date: string | null;
   payment: Money;
   buyer_rate: CurrencyRateSnapshot;
-  seller_rate: CurrencyRateSnapshot;
   service_fee: MarketplaceFeeSnapshot;
   buyer_expected_principal: Money & {
     currency_code: 'CNY'; currency_exponent: 2;

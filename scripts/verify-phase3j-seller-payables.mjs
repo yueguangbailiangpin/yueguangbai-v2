@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const migration = read('migrations/0023_seller_payables.sql');
-const formal = read('apps/api/src/formal-orders/confirm-formal-order.ts');
+const formal = read('apps/api/src/order-evidence/approve-order-evidence.ts');
 const approval = read('apps/api/src/buyer-refunds/prepare-buyer-refund-obligation.ts');
 const payableStatements = read(
   'apps/api/src/seller-settlements/payable-statements.ts',

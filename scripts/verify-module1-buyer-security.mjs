@@ -100,7 +100,7 @@ for (const path of [
   'packages/contracts/src/buyer-formal-order-portal.ts',
   'packages/domain/src/time/date-only.ts',
   'apps/api/src/order-evidence/submit-order-evidence.ts',
-  'apps/api/src/formal-orders/confirm-formal-order.ts',
+  'apps/api/src/order-evidence/approve-order-evidence.ts',
   'apps/api/src/buyer-order-evidence-portal/read-model.ts',
   'apps/web/src/buyer/contracts/runtime.ts',
 ]) {

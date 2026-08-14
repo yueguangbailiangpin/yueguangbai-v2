@@ -31,7 +31,7 @@ import {
   verifyDatabaseAgainstManifest,
 } from '@ygb/testkit';
 
-const CURRENT_SCHEMA = 68;
+const CURRENT_SCHEMA = 69;
 const directories: string[] = [];
 const RELEASE_SHA = 'a'.repeat(40);
 afterEach(() => {
