@@ -4,6 +4,7 @@ import { FrontendApiError, isFrontendApiError } from '../../api/errors';
 import { queryKeys } from '../../api/query-client';
 import { CUSTOMER_TRANSPORT_INVALIDATION_GROUP } from '../customer-transport-invalidation';
 import {
+  broadcastSessionInvalidation,
   captureSessionCycle,
   establishFreshSessionCycle,
   retrySessionInvalidation,
@@ -116,6 +117,7 @@ export function useCustomerSessionController(
       || !(isFrontendApiError(query.error) && query.error.httpStatus === 401)
       || unauthenticatedCleanup.state !== 'IDLE') return;
     const requestId = query.error.requestId;
+    broadcastSessionInvalidation(client, target, requestId);
     setUnauthenticatedCleanup({ state: 'CLEARING', requestId });
     void CUSTOMER_TRANSPORT_INVALIDATION_GROUP.clear(client).then(() => {
       if (mountedRef.current) setUnauthenticatedCleanup({ state: 'CLEARED', requestId });

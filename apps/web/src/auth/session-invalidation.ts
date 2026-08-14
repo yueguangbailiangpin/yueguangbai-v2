@@ -22,23 +22,44 @@ type Channel = {
   snapshot: SessionInvalidationSnapshot;
   listeners: Set<() => void>;
   active: ActiveInvalidation | null;
+  broadcast: BroadcastChannel | null;
 };
 type ClientChannels = Readonly<{ customer: Channel; staff: Channel }>;
+type BroadcastMessage = Readonly<{ type: 'SESSION_INVALIDATED'; identity: SessionInvalidationIdentity; requestId: string | null }>;
 
 const channelsByClient = new WeakMap<QueryClient, ClientChannels>();
 
-function createChannel(): Channel {
-  return {
+function isBroadcastMessage(value: unknown): value is BroadcastMessage {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<BroadcastMessage>;
+  return candidate.type === 'SESSION_INVALIDATED'
+    && (candidate.identity === 'buyer' || candidate.identity === 'seller' || candidate.identity === 'staff')
+    && (candidate.requestId === null || typeof candidate.requestId === 'string');
+}
+
+function createChannel(client: QueryClient, kind: 'customer' | 'staff'): Channel {
+  const channel: Channel = {
     snapshot: Object.freeze({ status: 'STABLE', generation: 0, requestId: null }),
     listeners: new Set(),
     active: null,
+    broadcast: null,
   };
+  if (typeof BroadcastChannel !== 'undefined') {
+    channel.broadcast = new BroadcastChannel('ygb-session-invalidation-v1');
+    channel.broadcast.onmessage = (event: MessageEvent<unknown>) => {
+      if (!isBroadcastMessage(event.data)) return;
+      if ((kind === 'staff') !== (event.data.identity === 'staff')) return;
+      const current = captureSessionCycle(client, event.data.identity);
+      void beginInvalidation(client, event.data.identity, current.generation, event.data.requestId);
+    };
+  }
+  return channel;
 }
 
 function clientChannels(client: QueryClient): ClientChannels {
   const existing = channelsByClient.get(client);
   if (existing) return existing;
-  const created = Object.freeze({ customer: createChannel(), staff: createChannel() });
+  const created = Object.freeze({ customer: createChannel(client, 'customer'), staff: createChannel(client, 'staff') });
   channelsByClient.set(client, created);
   return created;
 }
@@ -140,7 +161,17 @@ export function invalidateSessionCycle(
   requestCycle: SessionCycle,
   requestId: string | null,
 ): Promise<void> {
-  return beginInvalidation(client, identity, requestCycle.generation, requestId);
+  const invalidation = beginInvalidation(client, identity, requestCycle.generation, requestId);
+  broadcastSessionInvalidation(client, identity, requestId);
+  return invalidation;
+}
+
+export function broadcastSessionInvalidation(
+  client: QueryClient,
+  identity: SessionInvalidationIdentity,
+  requestId: string | null,
+): void {
+  channelFor(client, identity).broadcast?.postMessage({ type: 'SESSION_INVALIDATED', identity, requestId } satisfies BroadcastMessage);
 }
 
 export function retrySessionInvalidation(

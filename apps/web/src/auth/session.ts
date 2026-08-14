@@ -4,6 +4,7 @@ import { FrontendApiError, isFrontendApiError } from '../api/errors';
 import { queryKeys } from '../api/query-client';
 import { clearStaffTransport } from './customer-transport-invalidation';
 import {
+  broadcastSessionInvalidation,
   captureSessionCycle,
   establishFreshSessionCycle,
   retrySessionInvalidation,
@@ -76,6 +77,7 @@ export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): St
       && isFrontendApiError(query.error)
       && query.error.httpStatus === 401) {
       const requestId = query.error.requestId;
+      broadcastSessionInvalidation(client, 'staff', requestId);
       setClearing({ state: 'CLEARING', requestId });
       void clearStaffTransport(client).then(() => {
         if (mountedRef.current) setClearing({ state: 'CLEARED', requestId });

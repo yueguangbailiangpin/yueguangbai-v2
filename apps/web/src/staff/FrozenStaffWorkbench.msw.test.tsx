@@ -96,6 +96,27 @@ describe('canonical Frozen Staff workbench', () => {
     expect(key).toMatch(/\S/u);
   });
 
+  it('retains the selected demand context after its authoritative mutation removes it from the filtered queue', async () => {
+    let queueReads=0;
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items'), () => {
+        queueReads+=1;
+        return HttpResponse.json({ data: { work_items: queueReads===1?[demandWorkItem]:[], next_cursor: null }, meta: { request_id: `queue-${queueReads}` } });
+      }),
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/review-context'), () => HttpResponse.json({ data: { review_context: demandReviewContext }, meta: { request_id: 'demand-context' } })),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), () => HttpResponse.json({ data: { demand_review: { demand_batch_id: 'demand-1', status: 'PUBLISHED', version: 4, review_reason: null, replayed: false, schedule: null } }, meta: { request_id: 'demand-published' } })),
+    );
+    const user=userEvent.setup();
+    renderWorkbench('/staff?work_item=work-demand');
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
+    await user.click(screen.getByRole('button', { name: '通过并发布' }));
+    await waitFor(()=>expect(queueReads).toBeGreaterThanOrEqual(2));
+    expect(screen.getByText('需求发布事实')).toBeVisible();
+    expect(screen.getByText('月光产品 · v2')).toBeVisible();
+    expect(screen.queryByText('请选择工作项')).not.toBeInTheDocument();
+  });
+
   it('rejects a demand through the dedicated review action', async () => {
     let body: unknown;
     installDemandHandlers(async (request) => {
