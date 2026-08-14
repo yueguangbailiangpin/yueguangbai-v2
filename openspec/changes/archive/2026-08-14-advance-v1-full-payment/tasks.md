@@ -7,4 +7,4 @@
 - [x] 5. Expose the authoritative amount through the protected lookup DTO and replace the editable Staff amount input with read-only confirmation copy.
 - [x] 6. Advance current schema/verifier/runbook baselines to 67 without modifying historical decisions, migrations or archived changes.
 - [x] 7. Run targeted tests, full migration/guard verification, strict OpenSpec validation, `git diff --check` and full `npm run check`.
-- [ ] 8. Complete implementation consistency review, Formal Verify, sync/archive and fixed-final-SHA review while keeping production and staging operations blocked.
+- [x] 8. Complete implementation consistency review and Formal Verify against the fixed implementation SHA while keeping production and staging operations blocked; sync/archive and external fixed-final-SHA review remain subsequent governance gates.
