@@ -33,8 +33,9 @@ durable evidence pointer; this addendum closes that documentation gap.
   dry-run, and Node safety tests.
 - GitHub CI run `31767182571` on the implementation SHA: `static-governance`
   and `tests-and-build` both SUCCESS.
-- OpenSpec verification: 7/7 tasks, 3/3 requirements, and 5/5 scenarios
-  covered; completeness, correctness, and coherence reported no CRITICAL,
+- OpenSpec verification: `formal-verify-report.md` maps 7/7 tasks, 3/3
+  requirements, and 5/5 scenarios to concrete implementation and test line
+  ranges; completeness, correctness, and coherence report no CRITICAL,
   WARNING, or SUGGESTION issue.
 - OpenSpec strict validation after sync and archive: 68 passed, 0 failed.
 - Archive/main-spec equivalence review: 3 requirements and 5 scenarios are
