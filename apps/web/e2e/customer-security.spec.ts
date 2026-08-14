@@ -131,13 +131,13 @@ test('密码恢复在 320px 和键盘路径可用，并回到服务端确定的�
   await page.getByLabel('新密码', { exact: true }).fill('New-Strong-Password-2026!');
   await page.getByLabel('确认新密码').fill('New-Strong-Password-2026!');
   await page.getByRole('button', { name: '更新密码' }).click();
-  await expect(page.getByText('密码已更新，所有旧登录会话均已失效。'))
+  await expect(page.getByText('密码已更新，所有旧会话均已失效。'))
     .toBeVisible();
   expect(resetBody).toEqual({
     token: 'reset-token-browser', new_password: 'New-Strong-Password-2026!',
     password_confirmation: 'New-Strong-Password-2026!',
   });
-  await page.getByRole('button', { name: '前往登录' }).click();
+  await page.getByRole('button', { name: '去登录' }).click();
   await expect(page).toHaveURL(/\/seller\/login$/u);
   await noHorizontalOverflow(page);
 });

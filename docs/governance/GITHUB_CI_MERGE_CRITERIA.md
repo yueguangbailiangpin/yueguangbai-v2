@@ -4,12 +4,13 @@
 
 ## CI 入口
 
-`.github/workflows/ci.yml` 在 Pull Request 和 `main` push 上运行两个互不重复的 job：
+`.github/workflows/ci.yml` 在 Pull Request 和 `main` push 上运行三个互不重复的 job：
 
 - `static-governance`：OpenSpec 全量 strict、secret 扫描、`npm audit --include=dev --audit-level=high`、lockfile 生命周期批准、Node safety、workspace typecheck、本地 schema/migration guards，以及 staging/production 模板的本地 dry-run。它没有非 dry-run Wrangler deploy、远程 D1/R2 操作或 Secrets 读取。
 - `tests-and-build`：先运行纯领域 verifier/preflight，再只运行一次全量 Vitest、一次 workspace build，并在 build 后验证 web 静态产物；不运行 Playwright E2E。
+- `browser-e2e`：在独立 runner 上安装 Chromium 及系统依赖，构建 Web 产物并运行 13 个仅访问 loopback `127.0.0.1` 的 Playwright spec；失败时上传受限保留期的报告和测试结果。该 job 不读取 Secrets、不访问 staging/production，也不与 `tests-and-build` 共享 runner 资源。
 
-两个 job 都固定 Node `24.19.0`、使用 `npm ci` 和 npm cache，并把 `WRANGLER_LOG_PATH`、`XDG_CONFIG_HOME`、`XDG_CACHE_HOME` 指到 runner 临时目录。更关键的是，两者都在 `npm ci` 之前直接以 Node 运行 lifecycle provenance verifier 及其 Node builtin self-test；未知 lifecycle package 不能先执行再审。CI token 只有 `contents: read`，因此不能写 GitHub 内容、创建 issue 或发布。
+三个 job 都固定 Node `24.19.0`、使用 `npm ci` 和 npm cache，并把 `WRANGLER_LOG_PATH`、`XDG_CONFIG_HOME`、`XDG_CACHE_HOME` 指到 runner 临时目录。更关键的是，三个 job 都在 `npm ci` 之前直接以 Node 运行 lifecycle provenance verifier 及其 Node builtin self-test；未知 lifecycle package 不能先执行再审。CI token 只有 `contents: read`，因此不能写 GitHub 内容、创建 issue 或发布。
 
 `npm run check` 是相同的 canonical 总门禁，由 `check:ci:static` 与 `check:ci:test-build` 串联；CI 为缩短反馈，把两段并行运行。`tests-and-build` 为避免重复，不调用带 Vitest/build 聚合的 `check:*` 脚本，而是只调用下面保留的 canonical 纯 verifier。`npm run release:check` 仍是更宽的本地 release 证据，不是 PR CI 的替代品。
 
@@ -40,7 +41,7 @@
 
 只有负责人确认以下每项后，才可普通 PR 合并到 `main`：
 
-1. PR 的 `static-governance` 与 `tests-and-build` 对该 HEAD 均为真实 `success`；`none`、未触发、取消或过期 run 均不算通过。
+1. PR 的 `static-governance`、`tests-and-build` 与 `browser-e2e` 对该 HEAD 均为真实 `success`；`none`、未触发、取消或过期 run 均不算通过。
 2. PR 基于最新 `main`，范围、OpenSpec 状态和验收矩阵已被审阅；没有未授权的 migration、生产配置或资源变更。
 3. 与变更相称的本地验收已如实记录；需要的浏览器、staging、Access、D1/R2 或生产验证由独立授权和对应 runbook 处理，不能被 CI 代替。
 4. 使用普通、非强制合并；不启用 auto-merge，不重写共享历史。

@@ -201,3 +201,13 @@ test('rejects a health workflow context or command drift',()=>{
   assert.throws(()=>verify({health:canonicalHealth.replace('    timeout-minutes: 2\n','    environment: production\n    timeout-minutes: 2\n')}),/health job keys|environment/u);
   assert.throws(()=>verify({health:canonicalHealth.replace('run: node scripts/production-health-monitor.mjs','run: node scripts/production-deploy.mjs')}),/canonical monitor|health monitor/u);
 });
+
+test('rejects an unapproved browser artifact action SHA',()=>{
+  const ci=canonicalCi.replace('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02','actions/upload-artifact@0000000000000000000000000000000000000000');
+  assert.throws(()=>verify({ci}),/approved SHA-pinned action/u);
+});
+
+test('rejects browser commands that leave the local-only contract',()=>{
+  assert.throws(()=>verify({ci:canonicalCi.replace('run: npm run test:browser','run: npm run test:browser --staging')}),/browser test command is not canonical|npm run script is missing/u);
+  assert.throws(()=>verify({ci:canonicalCi.replace('run: npx playwright install --with-deps chromium','run: npx playwright install --with-deps webkit')}),/Chromium install|canonical/u);
+});

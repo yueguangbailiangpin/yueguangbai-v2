@@ -11,6 +11,7 @@ const MAX_NPM_SCRIPT_DEPTH=12;
 const CI_JOB_POLICY=Object.freeze({
   'static-governance':20,
   'tests-and-build':25,
+  'browser-e2e':30,
 });
 const CI_FINAL_STEPS=Object.freeze({
   'static-governance':Object.freeze({name:'Run static and local-only release gates',run:'npm run check:ci:static'}),
@@ -136,7 +137,7 @@ function verifyCiWorkflow(workflow,analysis){
   assertExactSet(Object.keys(requireRecord(workflow.jobs,'ci.yml.jobs')),Object.keys(CI_JOB_POLICY),'ci.yml jobs');
   for(const [jobName,timeout] of Object.entries(CI_JOB_POLICY)){
     const runSteps=collectCiJob(requireRecord(workflow.jobs[jobName],`ci.yml.jobs.${jobName}`),jobName,timeout);
-    for(const step of runSteps)analyzeShellProgram(step.run,analysis,`ci.yml job ${jobName} step ${step.index}`,'ci');
+    for(const step of runSteps)analyzeShellProgram(step.run,analysis,`ci.yml job ${jobName} step ${step.index}`,jobName==='browser-e2e'?'browser':'ci');
   }
 }
 
@@ -181,6 +182,7 @@ function collectCiJob(job,jobName,timeout){
   assert(job['runs-on']==='ubuntu-latest',`ci.yml ${jobName} must use ubuntu-latest`);
   assert(job['timeout-minutes']===timeout,`ci.yml ${jobName} timeout is not canonical`);
   const steps=requireSequence(job.steps,`ci.yml.jobs.${jobName}.steps`);
+  if(jobName==='browser-e2e')return collectBrowserCiJob(steps,jobName);
   assert(steps.length===6,`ci.yml ${jobName} must keep the six canonical execution steps`);
   assertCiAction(steps[0],`ci.yml.jobs.${jobName}.steps[0]`);
   assert(steps[0].name==='Checkout',`ci.yml ${jobName} checkout step name is not canonical`);
@@ -195,6 +197,27 @@ function collectCiJob(job,jobName,timeout){
   const finalRun=assertCiRunStep(steps[5],jobName,5,finalStep.name);
   assert(finalRun===finalStep.run,`ci.yml ${jobName} final command is not canonical`);
   return [{index:1,run:configure},{index:3,run:lifecycle},{index:4,run:install},{index:5,run:finalRun}];
+}
+
+function collectBrowserCiJob(steps,jobName){
+  assert(steps.length===9,`ci.yml ${jobName} must keep the nine canonical execution steps`);
+  assertCanonicalCheckout(steps[0],`ci.yml.jobs.${jobName}.steps[0]`,'actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09');
+  assert(steps[0].name==='Checkout',`ci.yml ${jobName} checkout step name is not canonical`);
+  const configure=assertCiRunStep(steps[1],jobName,1,'Configure local tool directories');
+  assertExactShellLines(configure,[SAFE_MKDIR_LINE,...SAFE_ENV_LINES],`ci.yml ${jobName} runner setup`);
+  assertCiAction(steps[2],`ci.yml.jobs.${jobName}.steps[2]`);
+  assert(steps[2].name==='Set up Node',`ci.yml ${jobName} setup-node step name is not canonical`);
+  const lifecycle=assertCiRunStep(steps[3],jobName,3,'Verify locked lifecycle provenance before install');
+  assertExactShellLines(lifecycle,['node scripts/verify-dependency-lifecycle.mjs','node --test scripts/verify-dependency-lifecycle.node-test.mjs'],`ci.yml ${jobName} dependency lifecycle proof`);
+  const install=assertCiRunStep(steps[4],jobName,4,'Install locked dependencies');
+  const browserInstall=assertCiRunStep(steps[5],jobName,5,'Install Chromium browser dependencies');
+  assert(browserInstall==='npx playwright install --with-deps chromium',`ci.yml ${jobName} browser dependency installation is not canonical`);
+  const build=assertCiRunStep(steps[6],jobName,6,'Build web');
+  assert(build==='npm run build --workspace @ygb/web',`ci.yml ${jobName} web build is not canonical`);
+  const tests=assertCiRunStep(steps[7],jobName,7,'Run browser Playwright tests');
+  assert(tests==='npm run test:browser',`ci.yml ${jobName} browser test command is not canonical`);
+  assertUploadArtifactStep(steps[8],`ci.yml.jobs.${jobName}.steps[8]`);
+  return [{index:1,run:configure},{index:3,run:lifecycle},{index:4,run:install},{index:5,run:browserInstall},{index:6,run:build},{index:7,run:tests}];
 }
 
 function assertCiRunStep(step,jobName,index,expectedName){
@@ -216,6 +239,19 @@ function assertCiAction(step,label){
   assert(step.uses==='actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',`${label}.uses is not an approved SHA-pinned action`);
   assertExactSet(Object.keys(requireRecord(step.with,`${label}.with`)),['node-version','cache','cache-dependency-path'],`${label}.with keys`);
   assert(step.with['node-version']==='24.19.0'&&step.with.cache==='npm'&&step.with['cache-dependency-path']==='package-lock.json',`${label} setup-node configuration is not canonical`);
+}
+
+function assertUploadArtifactStep(step,label){
+  assertPlainRecord(step,label);
+  assertExactSet(Object.keys(step),['name','if','uses','with'],`${label} action keys`);
+  assert(step.name==='Upload Playwright report and test results',`${label} name is not canonical`);
+  assert(step.if==='${{ failure() }}',`${label}.if must upload only after a failed browser job`);
+  assert(step.uses==='actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',`${label}.uses is not the approved SHA-pinned action`);
+  const withValue=requireRecord(step.with,`${label}.with`);
+  assertExactSet(Object.keys(withValue),['name','path','if-no-files-found','retention-days'],`${label}.with keys`);
+  assert(withValue.name==='playwright-report-and-test-results',`${label} artifact name is not canonical`);
+  assert(withValue.path==='apps/web/playwright-report\napps/web/test-results\n',`${label} artifact paths are not canonical`);
+  assert(withValue['if-no-files-found']==='ignore'&&withValue['retention-days']===7,`${label} artifact retention is not canonical`);
 }
 
 function assertCanonicalCheckout(step,label,expectedUses){
@@ -301,12 +337,13 @@ function analyzeCommand(tokens,analysis,label,mode,rawLine){
   if(command==='echo')return assert(SAFE_ENV_LINES.has(rawLine),`${label} echo is not canonical runner setup`);
   if(command==='node')return analyzeNode(words,label,mode);
   if(command==='npm')return analyzeNpm(words,analysis,label,mode);
-  if(command==='npx')return analyzeNpx(words,label);
+  if(command==='npx')return analyzeNpx(words,label,mode);
   if(command==='wrangler')return analyzeWrangler(words.slice(1),label);
   if(command==='openspec')return assert(JSON.stringify(words)===JSON.stringify(['openspec','validate','--all','--strict']),`${label} openspec command is not canonical`);
   if(command==='tsc')return analyzeTsc(words,label);
   if(command==='vitest')return analyzeVitest(words,label);
   if(command==='vite')return assert(JSON.stringify(words)===JSON.stringify(['vite','build']),`${label} vite command is not canonical`);
+  if(command==='playwright')return assert(mode==='browser'&&JSON.stringify(words)===JSON.stringify(['playwright','test','-c','apps/web/playwright.config.ts','--reporter=line,html']),`${label} Playwright command is not canonical`);
   throw new Error(`${label} command ${command} is not in the canonical workflow allowlist`);
 }
 
@@ -344,6 +381,11 @@ function analyzeVitest(words,label){
 }
 
 function analyzeNpm(words,analysis,label,mode){
+  if(JSON.stringify(words)===JSON.stringify(['npm','run','build','--workspace','@ygb/web'])){
+    const webManifest=analysis.workspaceManifests.find((manifest)=>manifest.name==='@ygb/web');
+    assert(webManifest!==undefined,`${label} @ygb/web workspace is missing`);
+    return analyzeNpmScript('build',analysis,`${label} npm run build --workspace @ygb/web`,mode,webManifest);
+  }
   let index=1;let allWorkspaces=false;
   while(NPM_GLOBAL_FLAGS.has(words[index])){if(words[index]==='--workspaces'||words[index]==='-ws')allWorkspaces=true;index+=1;}
   const subcommand=words[index];
@@ -388,11 +430,11 @@ function unwrapNpmExec(args,label){
   return values;
 }
 
-function analyzeNpx(words,label){
+function analyzeNpx(words,label,mode){
   let index=1;
   while(['--yes','-y','--no-install'].includes(words[index]))index+=1;
-  assert(words[index]==='wrangler',`${label} npx may invoke only wrangler`);
-  analyzeWrangler(words.slice(index+1),label);
+  if(words[index]==='wrangler')return analyzeWrangler(words.slice(index+1),label);
+  assert(mode==='browser'&&words[index]==='playwright'&&JSON.stringify(words.slice(index+1))===JSON.stringify(['install','--with-deps','chromium']),`${label} npx may invoke only the canonical Chromium install`);
 }
 
 function analyzeWorkspaceScripts(scriptName,analysis,label,mode){
