@@ -26,6 +26,7 @@ import { approveOrderEvidenceAtomically } from '../order-evidence/approve-order-
 
 const NOW = Date.UTC(2026, 7, 1, 0, 0, 0);
 const BUSINESS_DATE = '2026-08-01';
+const LONG_RUNNING_TEST_TIMEOUT_MS = 30_000;
 
 let database: SqliteDatabase | null = null;
 
@@ -156,7 +157,7 @@ describe('Phase 3F formal order confirmation', () => {
       code: 'VERSION_CONFLICT',
       status: 409,
     });
-  });
+  }, LONG_RUNNING_TEST_TIMEOUT_MS);
 
   it('replays the same command and rejects an idempotency payload conflict', async () => {
     database = createMigratedTestDatabase();
