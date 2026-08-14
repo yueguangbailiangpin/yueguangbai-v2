@@ -53,7 +53,7 @@ describe('scheduled operation Staff HTTP contract',()=>{
     database=createMigratedTestDatabase();
     seedOutbox(database,'http-manual-event');
     let sends=0;
-    const bindings:AppBindings={DB:database,SCHEDULED_OPERATIONS_ENABLED:'true',OUTBOX_DELIVERY_ADAPTER:{deliver:async()=>{sends+=1}}};
+    const bindings:AppBindings={DB:database,SCHEDULED_OPERATIONS_ENABLED:'true',OUTBOX_DELIVERY_ENABLED:'true',OUTBOX_DELIVERY_ADAPTER:{deliver:async()=>{sends+=1}}};
     const app=createTestApp();
     const request={method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':'http-manual-key'},body:JSON.stringify({reason_code:'OPERATOR_RETRY'})};
     expect((await app.request('http://local/api/staff/operations/jobs/outbox_delivery/retry',request,bindings)).status).toBe(403);
@@ -74,7 +74,7 @@ describe('scheduled operation Staff HTTP contract',()=>{
     database=createMigratedTestDatabase();
     seedDeadLetter(database,'http-dead','http-poison-event');
     const app=createTestApp();
-    const bindings:AppBindings={DB:database,SCHEDULED_OPERATIONS_ENABLED:'false'};
+    const bindings:AppBindings={DB:database,SCHEDULED_OPERATIONS_ENABLED:'false',OUTBOX_DELIVERY_ENABLED:'true'};
     const request={method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':'http-replay-disabled','X-Test-Permission':'run'},body:JSON.stringify({event_id:'http-poison-event',reason_code:'POISON_RECOVERY'})};
     const disabled=await app.request('http://local/api/staff/operations/dead-letters/http-dead/replay',request,bindings);
     expect(disabled.status).toBe(200);
