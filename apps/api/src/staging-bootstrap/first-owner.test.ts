@@ -120,6 +120,31 @@ describe('staging first owner bootstrap', () => {
       .toEqual({total:1});
   });
 
+  it.each([
+    ['Customer',`INSERT INTO customer_identity_subjects(id,subject_type,created_at)
+      VALUES('dirty-customer','BUYER_CUSTOMER',1)`],
+    ['Seller',`INSERT INTO seller_organizations(
+      id,marketplace_code,seller_code,origin_channel_id,current_channel_id,
+      seller_sequence,organization_name,status,version,created_at,updated_at
+    ) VALUES('dirty-seller','JP','S01','dirty-origin','dirty-current',1,
+      'Dirty seller','DISABLED',1,1,1)`],
+    ['Product',`INSERT INTO products(
+      id,organization_id,store_id,marketplace_code,asin_display,
+      asin_normalized,status,current_version_no,version,created_at,updated_at
+    ) VALUES('dirty-product','missing-seller','missing-store','JP','B000000001',
+      'B000000001','ACTIVE',1,1,1,1)`],
+    ['Order',`INSERT INTO platform_order_identities(
+      id,marketplace_code,platform_order_identifier,status,created_at,updated_at
+    ) VALUES('dirty-order-identity','AMAZON_JP','dirty-order','ACTIVE',1,1)`],
+  ])('fails closed for pre-existing %s business stock',async(_label,insertSql)=>{
+    database=migratedEmptyDatabase();database.raw.exec('PRAGMA foreign_keys=OFF');
+    database.raw.exec(insertSql);database.raw.exec('PRAGMA foreign_keys=ON');
+    await expect(bootstrapStagingFirstOwner(database,INPUT,1000))
+      .rejects.toMatchObject({code:'STAGING_FOUNDATION_NOT_EMPTY'});
+    expect(database.raw.prepare('SELECT COUNT(*) AS total FROM staff_users').get())
+      .toEqual({total:0});
+  });
+
   it('rejects a different identity under the same bootstrap key', async () => {
     database = migratedEmptyDatabase();
     await bootstrapStagingFirstOwner(database, INPUT, 1000);

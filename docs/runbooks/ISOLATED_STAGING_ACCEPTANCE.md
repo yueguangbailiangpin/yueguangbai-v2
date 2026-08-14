@@ -96,7 +96,7 @@ node scripts/bootstrap-staging-first-owner.mjs \
   --input /absolute/outside-git/staging-owner.json
 ```
 
-工具先只读验证 D1 name/ID，再以仅含字符串的参数数组和单个 D1 transaction batch 写入。数字以十进制字符串绑定，固定 SQL `NULL` 不承载 operator input。成功输出只包含 Staff ID、role/status 和安全状态，不返回邮箱、OAuth token 或 input 内容。重复同一请求安全重放；目标不符、Schema 非 70、已有任何 Staff authority/Buyer channel、输入变化或批处理失败均停止。
+工具先只读验证 D1 name/ID，再以仅含字符串的参数数组和单个 D1 transaction batch 写入。数字以十进制字符串绑定，固定 SQL `NULL` 不承载 operator input。成功输出只包含 Staff ID、role/status 和安全状态，不返回邮箱、OAuth token 或 input 内容。重复同一请求安全重放；目标不符、Schema 非 70、已有任何 Staff authority，或 acquisition、Audit/Outbox、Buyer/Customer、file、order、product、review、Seller、finance 受守卫入口表存在业务存量时，均在写入 Owner 前停止；输入变化或批处理失败同样失败关闭。
 
 ## 5. 测试身份矩阵
 
@@ -130,7 +130,7 @@ staff_access=ok
 release=ok
 ```
 
-这里的 `not_required` 表示 staging profile 明确不运行生产能力，不等于能力健康。Staging 这里有五项 `not_required` 和四项 `ok`；Production `/ready` 和 production health monitor 仍按生产合同独立判定，不能拿任何 staging `not_required` 充当 Production GO 证据。Production 自身在 `OUTBOX_DELIVERY_ENABLED=false` 时保留独立的 `outbox_delivery=not_required` 合同，不得被误写为 `ok`。
+这里的 `not_required` 表示 staging profile 明确不运行生产能力，不等于能力健康。即使 `file_objects` 还没有 `VERIFIED` 行，`object_storage=ok` 也必须来自一次真实、只读的 R2 `head` binding probe；未调用 R2 或 probe 抛错都必须报告 `failed`。Staging 这里有五项 `not_required` 和四项 `ok`；Production `/ready` 和 production health monitor 仍按生产合同独立判定，不能拿任何 staging `not_required` 充当 Production GO 证据。Production 自身在 `OUTBOX_DELIVERY_ENABLED=false` 时保留独立的 `outbox_delivery=not_required` 合同，不得被误写为 `ok`。
 
 ## 7. 最低验收证据
 

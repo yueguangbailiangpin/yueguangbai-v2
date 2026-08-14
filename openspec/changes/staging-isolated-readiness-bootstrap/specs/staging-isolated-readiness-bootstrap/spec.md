@@ -27,7 +27,7 @@ Staging SHALL report Scheduler, Outbox Delivery, Acquisition Maintenance, operat
 
 ### Requirement: First staging Owner bootstrap is one-time and atomic
 
-The operator tool SHALL accept only an exact staging D1 identity and Git-external owner-only input, require Schema 70, empty Staff authority and no Buyer channel, then atomically create exactly one active Owner, role, email identity, synthetic staging Buyer channel, authorization event and immutable Audit with command idempotency and final assertions. Its REST parameter arrays SHALL contain only strings. It SHALL expose no HTTP route, password or Access bypass.
+The operator tool SHALL accept only an exact staging D1 identity and Git-external owner-only input, require Schema 70, empty Staff authority and zero business stock across the guarded acquisition, Audit/Outbox, Buyer/Customer, file, order, product, review, Seller and finance entry tables, then atomically create exactly one active Owner, role, email identity, synthetic staging Buyer channel, authorization event and immutable Audit with command idempotency and final assertions. Its REST parameter arrays SHALL contain only strings. It SHALL expose no HTTP route, password or Access bypass.
 
 #### Scenario: Empty staging D1 is bootstrapped
 
@@ -36,7 +36,7 @@ The operator tool SHALL accept only an exact staging D1 identity and Git-externa
 
 #### Scenario: Target, state or transaction is unsafe
 
-- **WHEN** the environment resembles production/default, Schema is incomplete, any Staff authority exists, the same key has different input, or any batch statement fails
+- **WHEN** the environment resembles production/default, Schema is incomplete, any Staff authority or guarded business stock exists, the same key has different input, or any batch statement fails
 - **THEN** the operation fails closed without partial Staff, identity, role, authorization or Audit facts.
 
 ### Requirement: Staging test identities use formal lifecycle paths
