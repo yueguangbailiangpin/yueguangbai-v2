@@ -14,12 +14,24 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('BuyerRefundDetailPage reminders', () => {
   it('shows and submits a reminder only while the refund remains due', async () => {
-    vi.mocked(buyerApi.refund).mockResolvedValue({ data: { refund: refund('DUE') } } as never);
-    vi.mocked(buyerApi.remindRefund).mockResolvedValue({ data: { reminder: { refund_obligation_id: 'refund-1', reminder_count: 1, last_reminded_at: 2000, next_reminder_at: 86_402_000 }, replayed: false } } as never);
+    const remindedAt = Date.now();
+    const nextReminderAt = remindedAt + 86_400_000;
+    vi.mocked(buyerApi.refund)
+      .mockResolvedValueOnce({ data: { refund: refund('DUE') } } as never)
+      .mockResolvedValueOnce({ data: { refund: refund('DUE', {
+        reminder_count: 1,
+        last_reminded_at: remindedAt,
+        next_reminder_at: nextReminderAt,
+      }) } } as never);
+    vi.mocked(buyerApi.remindRefund).mockResolvedValue({ data: { reminder: { refund_obligation_id: 'refund-1', reminder_count: 1, last_reminded_at: remindedAt, next_reminder_at: nextReminderAt }, replayed: false } } as never);
     renderPage();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: '催返款' }));
+    const button = await screen.findByRole('button', { name: '催返款' });
+    await user.click(button);
     await waitFor(() => expect(buyerApi.remindRefund).toHaveBeenCalledWith(expect.anything(), 'refund-1', expect.any(String)));
+    expect(await screen.findByText(/本单 24 小时内不能重复催办/)).toBeInTheDocument();
+    expect(button).toBeDisabled();
+    expect(buyerApi.refund).toHaveBeenCalledTimes(2);
   });
 
   it('hides the reminder control after payment', async () => {
@@ -35,11 +47,14 @@ function renderPage(): void {
   render(<MemoryRouter initialEntries={['/buyer/refunds/refund-1']}><QueryClientProvider client={client}><Routes><Route path="/buyer/refunds/:refundId" element={<BuyerRefundDetailPage />} /></Routes></QueryClientProvider></MemoryRouter>);
 }
 
-function refund(status: 'DUE' | 'PAID') {
+function refund(
+  status: 'DUE' | 'PAID',
+  reminder = { reminder_count: 0, last_reminded_at: null as number | null, next_reminder_at: null as number | null },
+) {
   return {
     refund_obligation_id: 'refund-1', due_amount_cny_fen: '100', net_paid_cny_fen: status === 'PAID' ? '100' : '0',
     remaining_amount_cny_fen: status === 'PAID' ? '0' : '100', overpaid_amount_cny_fen: '0', status,
     order: { formal_order_id: 'order-1', marketplace: 'JP', amazon_order_number: '123-1234567-1234567', product_name: '返款产品', review_type: 'IMAGE', status: 'CONFIRMED' },
-    reminder: { reminder_count: 0, last_reminded_at: null, next_reminder_at: null }, allowed_actions: [], activities: [],
+    reminder, allowed_actions: [], activities: [],
   };
 }
