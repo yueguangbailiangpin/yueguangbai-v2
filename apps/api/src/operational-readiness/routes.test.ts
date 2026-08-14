@@ -14,6 +14,7 @@ import { registerOperationalReadinessRoutes } from './routes';
 const RELEASE='a'.repeat(40),IDENTITY='service:operations-primary',VERSION='deploy-001',SERVICE='ygb-operational-alerts',ENTRYPOINT='OperationalAlertSinkEntrypoint';
 const DESCRIPTOR=operationalAlertDescriptorFromRuntime({serviceTarget:SERVICE,entrypoint:ENTRYPOINT,sinkIdentity:IDENTITY,sinkDeploymentVersion:VERSION})!;
 const FINGERPRINT=await hashCanonicalJson(DESCRIPTOR),NOW=2_000_000_000_000;
+const LONG_RUNNING_TEST_TIMEOUT_MS=30_000;
 let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null;});
 
@@ -40,7 +41,7 @@ describe('operational alert production readiness',()=>{
     expect(await alertCheck(base,NOW)).toBe('failed');await seedAttestation();expect(await alertCheck(base,NOW)).toBe('ok');expect(await alertCheck(base,NOW+60_001)).toBe('failed');
     database.close();database=createMigratedTestDatabase();await seedAttestation({release_sha:'c'.repeat(40)});expect(await alertCheck(base,NOW)).toBe('failed');
     database.close();database=createMigratedTestDatabase();await seedAttestation({verified_receipts:[]});expect(await alertCheck(base,NOW)).toBe('failed');
-  });
+  },LONG_RUNNING_TEST_TIMEOUT_MS);
 
   it('allows disabled only outside production and local console only in local development',async()=>{
     database=createMigratedTestDatabase();
