@@ -38,11 +38,69 @@ describe('Migration 0070 buyer refund reminders', () => {
     })).toEqual(before);
     expect(await database.prepare(`SELECT type FROM sqlite_schema WHERE name='idx_buyer_refund_reminders_obligation_recent'`).first()).toEqual({ type: 'index' });
     expect(await database.prepare(`SELECT type FROM sqlite_schema WHERE name='trg_buyer_refund_reminders_no_update'`).first()).toEqual({ type: 'trigger' });
+    await assertHealthy(database);
+  });
+
+  it('preserves absent, mismatched-Buyer, and exact-match source behavior', async () => {
+    database = schema69();
+    applyMigration(database);
+
     await expect(database.prepare(`
       INSERT INTO buyer_refund_reminders (
         id,obligation_id,buyer_customer_id,idempotency_key,reminded_at,created_at
       ) VALUES ('reminder-invalid','missing','reminder-buyer','buyer-reminder-invalid-0001',2000,2000)
     `).run()).rejects.toThrow(/source_invalid/u);
+
+    const obligationGuard = await database.prepare(`
+      SELECT sql FROM sqlite_schema
+      WHERE type='trigger' AND name='trg_buyer_refund_obligation_source_guard'
+    `).first<{ sql: string }>();
+    expect(obligationGuard?.sql).toBeTruthy();
+    database.exec('PRAGMA foreign_keys=OFF;');
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      database.exec('DROP TRIGGER trg_buyer_refund_obligation_source_guard;');
+      database.exec(`
+        INSERT INTO buyer_refund_obligations (
+          id,source_review_event_id,review_case_id,formal_order_id,
+          buyer_customer_id,due_amount_cny_fen,version,created_at,updated_at
+        ) VALUES (
+          'reminder-obligation','reminder-event','reminder-case',
+          'reminder-order','reminder-buyer',100,1,2000,2000
+        );
+      `);
+      database.exec(`${obligationGuard!.sql};`);
+
+      await expect(database.prepare(`
+        INSERT INTO buyer_refund_reminders (
+          id,obligation_id,buyer_customer_id,idempotency_key,reminded_at,created_at
+        ) VALUES (
+          'reminder-wrong-buyer','reminder-obligation','different-buyer',
+          'buyer-reminder-wrong-0001',2001,2001
+        )
+      `).run()).rejects.toThrow(/source_invalid/u);
+      await expect(database.prepare(`
+        INSERT INTO buyer_refund_reminders (
+          id,obligation_id,buyer_customer_id,idempotency_key,reminded_at,created_at
+        ) VALUES (
+          'reminder-valid','reminder-obligation','reminder-buyer',
+          'buyer-reminder-valid-0001',2002,2002
+        )
+      `).run()).resolves.toBeTruthy();
+      expect(await database.prepare(`
+        SELECT obligation_id,buyer_customer_id
+        FROM buyer_refund_reminders WHERE id='reminder-valid'
+      `).first()).toEqual({
+        obligation_id: 'reminder-obligation',
+        buyer_customer_id: 'reminder-buyer',
+      });
+      database.exec('ROLLBACK;');
+    } catch (error) {
+      try { database.exec('ROLLBACK;'); } catch {}
+      throw error;
+    } finally {
+      database.exec('PRAGMA foreign_keys=ON;');
+    }
     await assertHealthy(database);
   });
 

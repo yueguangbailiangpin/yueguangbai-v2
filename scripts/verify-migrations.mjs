@@ -27,6 +27,69 @@ const expectedSchemaInventory = {
   sha256: '1cefaf2c75e40cfc411368e669912a14cfde561c5a927d37c89d2d2562d0f6db',
 };
 
+function sqlCodeOnly(source) {
+  let result = '';
+  let index = 0;
+  while (index < source.length) {
+    const current = source[index];
+    const next = source[index + 1];
+    if (current === '-' && next === '-') {
+      index += 2;
+      while (index < source.length && source[index] !== '\n') index += 1;
+      result += '\n';
+      index += 1;
+      continue;
+    }
+    if (current === '/' && next === '*') {
+      index += 2;
+      while (index < source.length
+        && !(source[index] === '*' && source[index + 1] === '/')) {
+        if (source[index] === '\n') result += '\n';
+        index += 1;
+      }
+      index += 2;
+      continue;
+    }
+    if (current === "'" || current === '"') {
+      const quote = current;
+      result += ' ';
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === quote && source[index + 1] === quote) {
+          index += 2;
+          continue;
+        }
+        if (source[index] === quote) {
+          index += 1;
+          break;
+        }
+        if (source[index] === '\n') result += '\n';
+        index += 1;
+      }
+      result += ' ';
+      continue;
+    }
+    result += current;
+    index += 1;
+  }
+  return result;
+}
+
+function containsIncompatibleTriggerRaise(source) {
+  return /SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu
+    .test(sqlCodeOnly(source));
+}
+
+const longTriggerProbe = `SELECT CASE WHEN ${'condition AND '.repeat(80)}true
+THEN RAISE(ABORT, 'blocked') END;`;
+if (!containsIncompatibleTriggerRaise(longTriggerProbe)
+  || containsIncompatibleTriggerRaise(`
+    -- SELECT CASE WHEN true THEN RAISE(ABORT, 'comment') END;
+    SELECT 'SELECT CASE WHEN true THEN RAISE(ABORT, ''string'') END';
+  `)) {
+  throw new Error('D1 trigger compatibility detector self-check failed');
+}
+
 const requiredTables = [
   'app_schema_state',
   'transaction_assertions',
@@ -696,8 +759,7 @@ try {
         + '应导出后在原生 SQLite 中验证',
       );
     }
-    if (/SELECT\s+CASE\s+WHEN[\s\S]{0,500}THEN\s+RAISE\s*\(/iu
-      .test(source)) {
+    if (containsIncompatibleTriggerRaise(source)) {
       throw new Error(
         `${file}: Cloudflare D1 不接受 trigger 中的 CASE...THEN RAISE；`
         + '应使用 SELECT RAISE(...) WHERE ... 的等价形式',

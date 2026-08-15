@@ -12,6 +12,22 @@ const migrationPath = path.resolve(
   process.cwd(),
   'migrations/0069_retire_seller_agreement_rate_runtime.sql',
 );
+const zeroStockTables = [
+  'seller_agreement_rate_versions',
+  'seller_agreement_rate_events',
+  'seller_agreement_currency_rate_versions',
+  'formal_orders',
+  'formal_order_financial_snapshots',
+  'formal_order_marketplace_money_snapshots',
+  'seller_principal_rate_snapshots',
+  'formal_order_events',
+  'review_cases',
+  'review_events',
+  'seller_payables',
+  'buyer_refund_obligations',
+  'buyer_advance_principal_entries',
+  'order_archive_closures',
+] as const;
 let database: SqliteDatabase | null = null;
 
 afterEach(() => {
@@ -29,6 +45,31 @@ describe('Migration 0069 Seller Agreement Rate retirement', () => {
     expect(source.match(/pragma_foreign_key_check/giu)).toHaveLength(2);
     expect(source).toContain('exporting the D1 database');
     expect(source).toContain('reconstructing it in native');
+  });
+
+  it('enumerates every owner-confirmed dirty-stock table exactly once', () => {
+    const source = readFileSync(migrationPath, 'utf8');
+    const start = source.indexOf(
+      '(SELECT COUNT(*) FROM seller_agreement_rate_versions)=0',
+    );
+    const end = source.indexOf('THEN 1 ELSE 0 END;', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const stockGuard = source.slice(start, end);
+    const enumerated = [...stockGuard.matchAll(
+      /\(SELECT COUNT\(\*\) FROM ([a-z_]+)\)=0/gu,
+    )].map((match) => match[1]);
+
+    expect(enumerated).toEqual(zeroStockTables);
+    expect(stockGuard).toMatch(
+      /aggregate_type IN \(\s*'SELLER_AGREEMENT_RATE',\s*'SELLER_AGREEMENT_CURRENCY_RATE'\s*\)/u,
+    );
+    expect(stockGuard).toMatch(
+      /event_type LIKE 'SELLER_AGREEMENT_RATE_%'/u,
+    );
+    expect(stockGuard).toMatch(
+      /action IN \(\s*'SUBMIT_SELLER_AGREEMENT_RATE'/u,
+    );
   });
 
   it('builds fresh from 0001 through 0069 with exact health', async () => {
@@ -83,7 +124,7 @@ describe('Migration 0069 Seller Agreement Rate retirement', () => {
     expect(await schemaVersion(database)).toBe(69);
   });
 
-  it('rejects non-empty legacy stock and preserves Schema 68 exactly', async () => {
+  it('rejects a dirty legacy rate definition and preserves Schema 68 exactly', async () => {
     database = schemaDatabase(68);
     seedLegacyAgreementRate(database);
     const before = await snapshot(database);
@@ -486,15 +527,39 @@ async function snapshot(target: SqliteDatabase): Promise<string> {
   const schema = await target.prepare(`
     SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name
   `).all();
-  const counts = await target.prepare(`
-    SELECT
-      (SELECT schema_version FROM app_schema_state WHERE singleton_id=1)
-        AS schema_version,
-      (SELECT COUNT(*) FROM formal_orders) AS formal_orders,
-      (SELECT COUNT(*) FROM formal_order_financial_snapshots)
-        AS financial_snapshots,
-      (SELECT COUNT(*) FROM formal_order_marketplace_money_snapshots)
-        AS marketplace_snapshots
-  `).first();
-  return JSON.stringify({ schema: schema.results, counts });
+  const tableNames = schema.results
+    .filter((object) => object['type'] === 'table')
+    .map((object) => String(object['name']));
+  const tables = [];
+  for (const name of tableNames) {
+    const columns = (await target.prepare(
+      `PRAGMA table_info(${quoteIdentifier(name)})`,
+    ).all<{ name: string }>()).results.map((column) => String(column.name));
+    const rows = (await target.prepare(
+      `SELECT * FROM ${quoteIdentifier(name)}`,
+    ).all<Record<string, unknown>>()).results.map((row) => columns.map(
+      (column) => [column, serializeSnapshotValue(row[column])] as const,
+    ));
+    rows.sort((left, right) => JSON.stringify(left).localeCompare(
+      JSON.stringify(right),
+    ));
+    tables.push({ name, columns, rows });
+  }
+  return JSON.stringify({ schema: schema.results, tables });
+}
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function serializeSnapshotValue(value: unknown): readonly [string, string] {
+  if (value === null) return ['null', ''];
+  if (value instanceof Uint8Array) {
+    return ['blob', Buffer.from(value).toString('hex')];
+  }
+  if (typeof value === 'number') {
+    return ['number', Object.is(value, -0) ? '-0' : String(value)];
+  }
+  if (typeof value === 'bigint') return ['bigint', value.toString()];
+  return [typeof value, String(value)];
 }
