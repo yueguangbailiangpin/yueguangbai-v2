@@ -6,7 +6,7 @@ Verified on 2026-08-15 against implementation commit `e9cc3aa4bcda036f27fc992683
 
 | Dimension | Status |
 | --- | --- |
-| Completeness | 15/17 tasks complete; 3/3 requirements implemented |
+| Completeness | 17/17 tasks complete; 3/3 requirements implemented |
 | Correctness | 3/3 requirements and 10/10 scenarios covered |
 | Coherence | Design followed; no business-semantic divergence |
 
@@ -40,14 +40,14 @@ Verified on 2026-08-15 against implementation commit `e9cc3aa4bcda036f27fc992683
 - Migration verifier: Schema 70, 212 tables, 604 indexes, 401 triggers, 12 views, integrity `ok`, zero FK errors.
 - Migration guards: 70 sequential steps, 69 wrong-order rejections, 70 repeat rejections and 139 failed snapshots unchanged.
 - OpenSpec strict: 73/73 PASS; secret scan and dependency audit PASS; `git diff --check` PASS.
+- Draft PR #85 was created from `fix/migration-0069-cloudflare-d1-compat` into `main`. Its implementation-and-evidence head `07aa4e57e01705bd60a0a276924f9a0790d38e9f` passed all three required CI jobs: static governance, tests/build and browser E2E.
 - External writes were limited to two disposable D1 canaries. Both were deleted. No Worker, R2, DNS, Secrets, Access policy, real staging data or production resource was mutated.
 
 ## Issues by priority
 
 ### CRITICAL
 
-1. Task 4.1 is incomplete: push the independent branch and create the Draft PR.
-2. Task 4.2 is incomplete: wait for CI and hand off the final fixed head SHA.
+None.
 
 ### WARNING
 
@@ -59,4 +59,4 @@ None.
 
 ## Final assessment
 
-Implementation and disposable D1 compatibility checks pass with no correctness or coherence issue. Two publication workflow tasks remain before archive. `READY_FOR_DRAFT_PR=YES`, `READY_FOR_REAL_STAGING_MIGRATION=NO`, `READY_FOR_ARCHIVE=NO`, `PRODUCTION_GO=NO`.
+Implementation, disposable D1 compatibility and Draft PR CI checks pass with no correctness or coherence issue. The change is ready for fixed-SHA independent review, but not for archive, real staging migration or production. `READY_FOR_FIXED_SHA_REVIEW=YES`, `READY_FOR_REAL_STAGING_MIGRATION=NO`, `READY_FOR_ARCHIVE=NO`, `PRODUCTION_GO=NO`.

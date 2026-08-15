@@ -25,6 +25,6 @@
 
 ## 4. Review handoff
 
-- [ ] 4.1 Commit by concern, push the independent branch and create a Draft PR.
-- [ ] 4.2 Wait for CI and hand off the fixed head SHA plus local/canary evidence for independent review.
+- [x] 4.1 Commit by concern, push the independent branch and create Draft PR #85.
+- [x] 4.2 Wait for CI and hand off the fixed head SHA plus local/canary evidence for independent review.
 - [x] 4.3 Keep the real staging D1 at Schema 68 until review and ordinary merge authorize resuming T8.
