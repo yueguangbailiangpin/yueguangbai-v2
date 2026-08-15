@@ -28,6 +28,50 @@ const zeroStockTables = [
   'buyer_advance_principal_entries',
   'order_archive_closures',
 ] as const;
+type ZeroStockTable = typeof zeroStockTables[number];
+type DirtyStockScenario =
+  | { label: string; table: ZeroStockTable }
+  | { label: string; auditAggregate: string }
+  | { label: string; outboxAggregate: string }
+  | { label: string; outboxEvent: string }
+  | { label: string; idempotencyAction: string };
+const dirtyStockScenarios: readonly DirtyStockScenario[] = [
+  ...zeroStockTables.map((table) => ({ label: table, table })),
+  {
+    label: 'Audit SELLER_AGREEMENT_RATE',
+    auditAggregate: 'SELLER_AGREEMENT_RATE',
+  },
+  {
+    label: 'Audit SELLER_AGREEMENT_CURRENCY_RATE',
+    auditAggregate: 'SELLER_AGREEMENT_CURRENCY_RATE',
+  },
+  {
+    label: 'Outbox aggregate SELLER_AGREEMENT_RATE',
+    outboxAggregate: 'SELLER_AGREEMENT_RATE',
+  },
+  {
+    label: 'Outbox aggregate SELLER_AGREEMENT_CURRENCY_RATE',
+    outboxAggregate: 'SELLER_AGREEMENT_CURRENCY_RATE',
+  },
+  {
+    label: 'Outbox event SELLER_AGREEMENT_RATE',
+    outboxEvent: 'SELLER_AGREEMENT_RATE_SUBMITTED',
+  },
+  {
+    label: 'Outbox event SELLER_AGREEMENT_CURRENCY_RATE',
+    outboxEvent: 'SELLER_AGREEMENT_CURRENCY_RATE_CONFIRMED',
+  },
+  ...[
+    'SUBMIT_SELLER_AGREEMENT_RATE',
+    'CONFIRM_SELLER_AGREEMENT_RATE',
+    'REJECT_SELLER_AGREEMENT_RATE',
+    'SUBMIT_SELLER_AGREEMENT_CURRENCY_RATE',
+    'CONFIRM_SELLER_AGREEMENT_CURRENCY_RATE',
+  ].map((idempotencyAction) => ({
+    label: `idempotency ${idempotencyAction}`,
+    idempotencyAction,
+  })),
+];
 let database: SqliteDatabase | null = null;
 
 afterEach(() => {
@@ -48,14 +92,7 @@ describe('Migration 0069 Seller Agreement Rate retirement', () => {
   });
 
   it('enumerates every owner-confirmed dirty-stock table exactly once', () => {
-    const source = readFileSync(migrationPath, 'utf8');
-    const start = source.indexOf(
-      '(SELECT COUNT(*) FROM seller_agreement_rate_versions)=0',
-    );
-    const end = source.indexOf('THEN 1 ELSE 0 END;', start);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
-    const stockGuard = source.slice(start, end);
+    const stockGuard = stockGuardExpression();
     const enumerated = [...stockGuard.matchAll(
       /\(SELECT COUNT\(\*\) FROM ([a-z_]+)\)=0/gu,
     )].map((match) => match[1]);
@@ -71,6 +108,19 @@ describe('Migration 0069 Seller Agreement Rate retirement', () => {
       /action IN \(\s*'SUBMIT_SELLER_AGREEMENT_RATE'/u,
     );
   });
+
+  it('accepts the owner-authorized completely empty stock boundary', async () => {
+    database = new SqliteDatabase();
+    expect(await evaluateStockGuard(database)).toBe(1);
+  });
+
+  it.each(dirtyStockScenarios)(
+    'rejects the isolated $label stock branch',
+    async (scenario) => {
+      database = new SqliteDatabase();
+      expect(await evaluateStockGuard(database, scenario)).toBe(0);
+    },
+  );
 
   it('builds fresh from 0001 through 0069 with exact health', async () => {
     database = schemaDatabase(69);
@@ -562,4 +612,62 @@ function serializeSnapshotValue(value: unknown): readonly [string, string] {
   }
   if (typeof value === 'bigint') return ['bigint', value.toString()];
   return [typeof value, String(value)];
+}
+
+function stockGuardExpression(): string {
+  const source = readFileSync(migrationPath, 'utf8')
+    .replace(/--[^\r\n]*/gu, '')
+    .replace(/\/\*[\s\S]*?\*\//gu, '');
+  const firstPredicate = source.indexOf(
+    '(SELECT COUNT(*) FROM seller_agreement_rate_versions)=0',
+  );
+  const start = source.lastIndexOf('SELECT CASE WHEN', firstPredicate);
+  const end = source.indexOf('THEN 1 ELSE 0 END;', firstPredicate);
+  if (start < 0 || end < 0) throw new Error('migration_0069_stock_guard_missing');
+  return source.slice(start + 'SELECT CASE WHEN'.length, end).trim();
+}
+
+async function evaluateStockGuard(
+  target: SqliteDatabase,
+  dirty?: DirtyStockScenario,
+): Promise<number> {
+  const tableCtes = zeroStockTables.map((table) =>
+    `${table} AS (SELECT 1 AS marker${
+      dirty && 'table' in dirty && dirty.table === table ? '' : ' WHERE 0'
+    })`);
+  const auditValue = dirty && 'auditAggregate' in dirty
+    ? `'${dirty.auditAggregate}'`
+    : 'CAST(NULL AS TEXT)';
+  const outboxAggregate = dirty && 'outboxAggregate' in dirty
+    ? `'${dirty.outboxAggregate}'`
+    : 'CAST(NULL AS TEXT)';
+  const outboxEvent = dirty && 'outboxEvent' in dirty
+    ? `'${dirty.outboxEvent}'`
+    : 'CAST(NULL AS TEXT)';
+  const idempotencyAction = dirty && 'idempotencyAction' in dirty
+    ? `'${dirty.idempotencyAction}'`
+    : 'CAST(NULL AS TEXT)';
+  const result = await target.prepare(`
+    WITH
+      ${tableCtes.join(',\n      ')},
+      audit_events(aggregate_type) AS (
+        SELECT ${auditValue}${
+          dirty && 'auditAggregate' in dirty ? '' : ' WHERE 0'
+        }
+      ),
+      integration_outbox(aggregate_type,event_type) AS (
+        SELECT ${outboxAggregate},${outboxEvent}${
+          dirty && ('outboxAggregate' in dirty || 'outboxEvent' in dirty)
+            ? '' : ' WHERE 0'
+        }
+      ),
+      command_idempotency_records(action) AS (
+        SELECT ${idempotencyAction}${
+          dirty && 'idempotencyAction' in dirty ? '' : ' WHERE 0'
+        }
+      )
+    SELECT CASE WHEN ${stockGuardExpression()}
+      THEN 1 ELSE 0 END AS assertion_value
+  `).first<{ assertion_value: number }>();
+  return Number(result?.assertion_value);
 }
