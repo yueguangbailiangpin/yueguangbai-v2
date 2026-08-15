@@ -24,7 +24,7 @@ const expectedSchemaInventory = {
   index: 604,
   trigger: 401,
   view: 12,
-  sha256: 'fba2ddb4fab77ecc713c96e9d62d4463872f2d1061b22cd7c25e595383e3c082',
+  sha256: '1cefaf2c75e40cfc411368e669912a14cfde561c5a927d37c89d2d2562d0f6db',
 };
 
 const requiredTables = [
@@ -694,6 +694,13 @@ try {
       throw new Error(
         `${file}: 禁止在 Cloudflare D1 migration 事务内执行整库检查；`
         + '应导出后在原生 SQLite 中验证',
+      );
+    }
+    if (/SELECT\s+CASE\s+WHEN[\s\S]{0,500}THEN\s+RAISE\s*\(/iu
+      .test(source)) {
+      throw new Error(
+        `${file}: Cloudflare D1 不接受 trigger 中的 CASE...THEN RAISE；`
+        + '应使用 SELECT RAISE(...) WHERE ... 的等价形式',
       );
     }
   }

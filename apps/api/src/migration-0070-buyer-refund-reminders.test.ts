@@ -9,6 +9,18 @@ let database: SqliteDatabase | null = null;
 afterEach(() => { database?.close(); database = null; });
 
 describe('Migration 0070 buyer refund reminders', () => {
+  it('uses Cloudflare D1-compatible trigger RAISE syntax', () => {
+    const source = readFileSync(migrationPath, 'utf8');
+
+    expect(source).toContain(
+      "SELECT RAISE(ABORT, 'buyer_refund_reminder_source_invalid')",
+    );
+    expect(source).toContain('WHERE NOT EXISTS (');
+    expect(source).not.toMatch(
+      /SELECT\s+CASE\s+WHEN[\s\S]{0,500}THEN\s+RAISE\s*\(/iu,
+    );
+  });
+
   it('advances a real non-empty Schema 69 database to 70 and preserves every preexisting user-table schema and row', async () => {
     database = schema69();
     await seedRepresentativeFacts(database);

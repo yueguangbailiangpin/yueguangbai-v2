@@ -19,6 +19,16 @@ Migration SQL SHALL NOT execute whole-database integrity or quick checks inside 
 - **WHEN** all zero-stock assertions, pre-DDL FK checks and required-object assertions pass
 - **THEN** the migration removes only the retired agreement-rate runtime, preserves required dependent objects, passes post-DDL FK checks and advances exactly once to Schema 69.
 
+#### Scenario: A trigger uses CASE to invoke RAISE
+
+- **WHEN** repository migration verification scans a trigger containing `CASE ... THEN RAISE`
+- **THEN** it fails before remote application and requires the D1-compatible `SELECT RAISE(...) WHERE ...` equivalent.
+
+#### Scenario: Migration 0070 validates a reminder source
+
+- **WHEN** a reminder references an absent obligation or a different Buyer
+- **THEN** the D1-compatible source trigger aborts with the unchanged `buyer_refund_reminder_source_invalid` code.
+
 ### Requirement: Full database health is verified outside the D1 transaction
 
 The staging migration procedure SHALL export the D1 database before and after Migration `0069`, reconstruct each dump in native SQLite, and require full integrity success plus zero FK failures.

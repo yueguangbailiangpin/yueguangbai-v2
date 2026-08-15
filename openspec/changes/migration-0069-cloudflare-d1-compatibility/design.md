@@ -20,6 +20,12 @@ Migration `0069` keeps only bounded, migration-relevant checks inside D1:
 
 No migration source may run a whole-database integrity or quick check inside the transaction. A repository verifier enforces that rule across all migration SQL files.
 
+## Migration 0070 parser compatibility
+
+The first disposable canary proved `0069` succeeds on D1 and advances cleanly to Schema 69, then exposed an independent `0070` parser error. A read-only D1 `EXPLAIN` reproduced `incomplete input` for `SELECT CASE WHEN ... THEN RAISE(...) END` while accepting `SELECT RAISE(...) WHERE ...` with zero writes.
+
+Migration `0070` uses the accepted form without changing the trigger condition or abort code. Its table, columns, FKs, uniqueness, immutability triggers, schema guard and Schema 69 to 70 transition remain unchanged. Targeted tests and the repository migration verifier reject the incompatible trigger form.
+
 ## External full-health proof
 
 The disposable canary is advanced in two phases:
@@ -32,6 +38,8 @@ The disposable canary is advanced in two phases:
 6. Record only redacted status/count evidence and delete the canary. Confirm its ID is absent afterwards.
 
 The canary is not the real staging database and cannot establish staging acceptance or Production GO.
+
+The first canary was deleted after capturing its Schema 68 and Schema 69 exports. A new canary is required after the authorized `0070` syntax amendment so the final evidence proves one exact continuous `0001`–`0070` chain.
 
 ## Rejected alternatives
 

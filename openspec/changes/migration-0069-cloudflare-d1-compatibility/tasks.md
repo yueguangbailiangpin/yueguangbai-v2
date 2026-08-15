@@ -6,6 +6,7 @@
 - [x] 1.2 Record the owner-authorized `0069`-only exception and remote safety boundary.
 - [x] 1.3 Remove unsupported whole-database checks while retaining every bounded failure-closed guard.
 - [x] 1.4 Add migration-source compatibility tests, repository verification and the current staging runbook boundary.
+- [x] 1.5 Diagnose the first canary's `0070` parser failure read-only, delete that canary, and apply the owner-authorized syntax-equivalent trigger repair.
 
 ## 2. Local verification
 
