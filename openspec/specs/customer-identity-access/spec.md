@@ -50,9 +50,9 @@ The system SHALL require a cryptographically random invitation bound to normaliz
 - **WHEN** a valid invitation matches an identity with a high-risk claim, merge, correction or prior-release conflict
 - **THEN** registration fails before activation and only the owner-governed conflict workflow may resolve it.
 
-### Requirement: All active Staff can issue auditable password reset links
+### Requirement: Designated active Staff can issue auditable password reset links
 
-The system SHALL allow every ACTIVE Staff user with a valid Staff Session to issue a bounded single-use Customer password reset link after manual identity verification, SHALL prevent Staff from reading or choosing the new password, and SHALL revoke all Customer Sessions after successful reset.
+The system SHALL allow an ACTIVE owner with a valid Staff Session to issue a bounded single-use password reset link for a Buyer or Seller Customer after manual identity verification, SHALL allow an ACTIVE pre_sales Staff user to issue such a link only for a Buyer Customer, SHALL allow an ACTIVE seller_ops Staff user to issue such a link only for a Seller Customer, SHALL prevent Staff from reading or choosing the new password, and SHALL revoke all Customer Sessions after successful reset.
 
 #### Scenario: Successful reset
 
