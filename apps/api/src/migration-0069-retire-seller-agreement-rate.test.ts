@@ -20,6 +20,17 @@ afterEach(() => {
 });
 
 describe('Migration 0069 Seller Agreement Rate retirement', () => {
+  it('uses bounded checks that Cloudflare D1 accepts in a migration', () => {
+    const source = readFileSync(migrationPath, 'utf8');
+
+    expect(source).not.toMatch(
+      /pragma_(?:integrity|quick)_check|PRAGMA\s+(?:integrity|quick)_check/iu,
+    );
+    expect(source.match(/pragma_foreign_key_check/giu)).toHaveLength(2);
+    expect(source).toContain('exporting the D1 database');
+    expect(source).toContain('reconstructing it in native');
+  });
+
   it('builds fresh from 0001 through 0069 with exact health', async () => {
     database = schemaDatabase(69);
 

@@ -676,6 +676,10 @@ try {
   const migrationFiles = readdirSync(migrationsDirectory)
     .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
     .sort();
+  const migrationSources = new Map(migrationFiles.map((file) => [
+    file,
+    readFileSync(path.join(migrationsDirectory, file), 'utf8'),
+  ]));
 
   const migrationNumbers = migrationFiles.map((name) => Number(name.slice(0, 4)));
   if (migrationFiles.length !== expectedLatestSchema
@@ -684,16 +688,23 @@ try {
     throw new Error('Migration 必须是唯一连续的 0001-0070');
   }
 
+  for (const [file, source] of migrationSources) {
+    if (/pragma_(?:integrity|quick)_check|PRAGMA\s+(?:integrity|quick)_check/iu
+      .test(source)) {
+      throw new Error(
+        `${file}: 禁止在 Cloudflare D1 migration 事务内执行整库检查；`
+        + '应导出后在原生 SQLite 中验证',
+      );
+    }
+  }
+
   const database = new DatabaseSync(databasePath);
   try {
     database.exec('PRAGMA foreign_keys = ON;');
     for (const file of migrationFiles) {
       database.exec('BEGIN IMMEDIATE;');
       try {
-        database.exec(readFileSync(
-          path.join(migrationsDirectory, file),
-          'utf8',
-        ));
+        database.exec(migrationSources.get(file));
         database.exec('COMMIT;');
       } catch (error) {
         try { database.exec('ROLLBACK;'); } catch { /* no open tx */ }
@@ -726,10 +737,7 @@ try {
       freshDatabase.exec('BEGIN IMMEDIATE;');
       try {
         for (const file of migrationFiles) {
-          freshDatabase.exec(readFileSync(
-            path.join(migrationsDirectory, file),
-            'utf8',
-          ));
+          freshDatabase.exec(migrationSources.get(file));
         }
         freshDatabase.exec('COMMIT;');
       } catch (error) {

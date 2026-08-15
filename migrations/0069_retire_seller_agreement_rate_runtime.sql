@@ -7,10 +7,13 @@ SELECT CASE WHEN EXISTS(
 ) THEN 1 ELSE 0 END;
 
 INSERT INTO transaction_assertions(assertion_value)
-SELECT CASE WHEN
-  (SELECT COUNT(*) FROM pragma_integrity_check WHERE integrity_check='ok')=1
-  AND NOT EXISTS(SELECT 1 FROM pragma_foreign_key_check)
+SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM pragma_foreign_key_check)
 THEN 1 ELSE 0 END;
+
+-- Cloudflare D1 rejects whole-database validation PRAGMAs inside a remote
+-- migration transaction. Full database health is verified outside this
+-- transaction by exporting the D1 database and reconstructing it in native
+-- SQLite before and after this migration. The bounded FK guard remains here.
 
 INSERT INTO transaction_assertions(assertion_value)
 SELECT CASE WHEN
@@ -292,8 +295,6 @@ SELECT CASE WHEN
       'seller_rate_value','seller_rate_scale'
     )
   )
-  AND (SELECT COUNT(*) FROM pragma_integrity_check
-    WHERE integrity_check='ok')=1
   AND NOT EXISTS(SELECT 1 FROM pragma_foreign_key_check)
 THEN 1 ELSE 0 END;
 
