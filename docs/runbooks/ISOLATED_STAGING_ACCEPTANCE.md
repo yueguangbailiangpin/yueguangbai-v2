@@ -41,6 +41,8 @@ R2:     yueguangbai-v2-staging-files
 
 生产资源、生产数据、生产 Secret、生产 DNS、生产 Access、生产 Scheduler 和真实业务账号在以上全部阶段都不得接触。
 
+Migration `0069` 的整库健康检查不得嵌入 D1 migration 事务。应用前后必须分别导出 staging D1，在隔离的原生 SQLite 数据库中重建并执行完整性与外键检查；远程事务自身保留 schema 版本、零存量、对象清单、外键和 `changes()=1` 等有界失败关闭断言。`quick_check` 不能作为替代，因为它在当前完整 Schema 的真实 D1 执行中可能耗尽内存。
+
 ## 3. Release preflight
 
 Staging 配置必须位于 Git 仓库外。模板保持：

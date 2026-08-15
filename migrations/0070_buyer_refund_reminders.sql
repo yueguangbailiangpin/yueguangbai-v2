@@ -20,11 +20,12 @@ ON buyer_refund_reminders (obligation_id, reminded_at DESC, id DESC);
 CREATE TRIGGER trg_buyer_refund_reminders_source_guard
 BEFORE INSERT ON buyer_refund_reminders
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
+  SELECT RAISE(ABORT, 'buyer_refund_reminder_source_invalid')
+  WHERE NOT EXISTS (
     SELECT 1 FROM buyer_refund_obligations obligation
     WHERE obligation.id=NEW.obligation_id
       AND obligation.buyer_customer_id=NEW.buyer_customer_id
-  ) THEN RAISE(ABORT, 'buyer_refund_reminder_source_invalid') END;
+  );
 END;
 
 CREATE TRIGGER trg_buyer_refund_reminders_no_update

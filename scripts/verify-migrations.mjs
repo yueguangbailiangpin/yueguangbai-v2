@@ -24,8 +24,71 @@ const expectedSchemaInventory = {
   index: 604,
   trigger: 401,
   view: 12,
-  sha256: 'fba2ddb4fab77ecc713c96e9d62d4463872f2d1061b22cd7c25e595383e3c082',
+  sha256: '1cefaf2c75e40cfc411368e669912a14cfde561c5a927d37c89d2d2562d0f6db',
 };
+
+function sqlCodeOnly(source) {
+  let result = '';
+  let index = 0;
+  while (index < source.length) {
+    const current = source[index];
+    const next = source[index + 1];
+    if (current === '-' && next === '-') {
+      index += 2;
+      while (index < source.length && source[index] !== '\n') index += 1;
+      result += '\n';
+      index += 1;
+      continue;
+    }
+    if (current === '/' && next === '*') {
+      index += 2;
+      while (index < source.length
+        && !(source[index] === '*' && source[index + 1] === '/')) {
+        if (source[index] === '\n') result += '\n';
+        index += 1;
+      }
+      index += 2;
+      continue;
+    }
+    if (current === "'" || current === '"') {
+      const quote = current;
+      result += ' ';
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === quote && source[index + 1] === quote) {
+          index += 2;
+          continue;
+        }
+        if (source[index] === quote) {
+          index += 1;
+          break;
+        }
+        if (source[index] === '\n') result += '\n';
+        index += 1;
+      }
+      result += ' ';
+      continue;
+    }
+    result += current;
+    index += 1;
+  }
+  return result;
+}
+
+function containsIncompatibleTriggerRaise(source) {
+  return /SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu
+    .test(sqlCodeOnly(source));
+}
+
+const longTriggerProbe = `SELECT CASE WHEN ${'condition AND '.repeat(80)}true
+THEN RAISE(ABORT, 'blocked') END;`;
+if (!containsIncompatibleTriggerRaise(longTriggerProbe)
+  || containsIncompatibleTriggerRaise(`
+    -- SELECT CASE WHEN true THEN RAISE(ABORT, 'comment') END;
+    SELECT 'SELECT CASE WHEN true THEN RAISE(ABORT, ''string'') END';
+  `)) {
+  throw new Error('D1 trigger compatibility detector self-check failed');
+}
 
 const requiredTables = [
   'app_schema_state',
@@ -676,6 +739,10 @@ try {
   const migrationFiles = readdirSync(migrationsDirectory)
     .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
     .sort();
+  const migrationSources = new Map(migrationFiles.map((file) => [
+    file,
+    readFileSync(path.join(migrationsDirectory, file), 'utf8'),
+  ]));
 
   const migrationNumbers = migrationFiles.map((name) => Number(name.slice(0, 4)));
   if (migrationFiles.length !== expectedLatestSchema
@@ -684,16 +751,29 @@ try {
     throw new Error('Migration 必须是唯一连续的 0001-0070');
   }
 
+  for (const [file, source] of migrationSources) {
+    if (/pragma_(?:integrity|quick)_check|PRAGMA\s+(?:integrity|quick)_check/iu
+      .test(source)) {
+      throw new Error(
+        `${file}: 禁止在 Cloudflare D1 migration 事务内执行整库检查；`
+        + '应导出后在原生 SQLite 中验证',
+      );
+    }
+    if (containsIncompatibleTriggerRaise(source)) {
+      throw new Error(
+        `${file}: Cloudflare D1 不接受 trigger 中的 CASE...THEN RAISE；`
+        + '应使用 SELECT RAISE(...) WHERE ... 的等价形式',
+      );
+    }
+  }
+
   const database = new DatabaseSync(databasePath);
   try {
     database.exec('PRAGMA foreign_keys = ON;');
     for (const file of migrationFiles) {
       database.exec('BEGIN IMMEDIATE;');
       try {
-        database.exec(readFileSync(
-          path.join(migrationsDirectory, file),
-          'utf8',
-        ));
+        database.exec(migrationSources.get(file));
         database.exec('COMMIT;');
       } catch (error) {
         try { database.exec('ROLLBACK;'); } catch { /* no open tx */ }
@@ -726,10 +806,7 @@ try {
       freshDatabase.exec('BEGIN IMMEDIATE;');
       try {
         for (const file of migrationFiles) {
-          freshDatabase.exec(readFileSync(
-            path.join(migrationsDirectory, file),
-            'utf8',
-          ));
+          freshDatabase.exec(migrationSources.get(file));
         }
         freshDatabase.exec('COMMIT;');
       } catch (error) {

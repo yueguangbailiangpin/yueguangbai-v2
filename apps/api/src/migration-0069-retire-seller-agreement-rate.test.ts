@@ -12,6 +12,66 @@ const migrationPath = path.resolve(
   process.cwd(),
   'migrations/0069_retire_seller_agreement_rate_runtime.sql',
 );
+const zeroStockTables = [
+  'seller_agreement_rate_versions',
+  'seller_agreement_rate_events',
+  'seller_agreement_currency_rate_versions',
+  'formal_orders',
+  'formal_order_financial_snapshots',
+  'formal_order_marketplace_money_snapshots',
+  'seller_principal_rate_snapshots',
+  'formal_order_events',
+  'review_cases',
+  'review_events',
+  'seller_payables',
+  'buyer_refund_obligations',
+  'buyer_advance_principal_entries',
+  'order_archive_closures',
+] as const;
+type ZeroStockTable = typeof zeroStockTables[number];
+type DirtyStockScenario =
+  | { label: string; table: ZeroStockTable }
+  | { label: string; auditAggregate: string }
+  | { label: string; outboxAggregate: string }
+  | { label: string; outboxEvent: string }
+  | { label: string; idempotencyAction: string };
+const dirtyStockScenarios: readonly DirtyStockScenario[] = [
+  ...zeroStockTables.map((table) => ({ label: table, table })),
+  {
+    label: 'Audit SELLER_AGREEMENT_RATE',
+    auditAggregate: 'SELLER_AGREEMENT_RATE',
+  },
+  {
+    label: 'Audit SELLER_AGREEMENT_CURRENCY_RATE',
+    auditAggregate: 'SELLER_AGREEMENT_CURRENCY_RATE',
+  },
+  {
+    label: 'Outbox aggregate SELLER_AGREEMENT_RATE',
+    outboxAggregate: 'SELLER_AGREEMENT_RATE',
+  },
+  {
+    label: 'Outbox aggregate SELLER_AGREEMENT_CURRENCY_RATE',
+    outboxAggregate: 'SELLER_AGREEMENT_CURRENCY_RATE',
+  },
+  {
+    label: 'Outbox event SELLER_AGREEMENT_RATE',
+    outboxEvent: 'SELLER_AGREEMENT_RATE_SUBMITTED',
+  },
+  {
+    label: 'Outbox event SELLER_AGREEMENT_CURRENCY_RATE',
+    outboxEvent: 'SELLER_AGREEMENT_CURRENCY_RATE_CONFIRMED',
+  },
+  ...[
+    'SUBMIT_SELLER_AGREEMENT_RATE',
+    'CONFIRM_SELLER_AGREEMENT_RATE',
+    'REJECT_SELLER_AGREEMENT_RATE',
+    'SUBMIT_SELLER_AGREEMENT_CURRENCY_RATE',
+    'CONFIRM_SELLER_AGREEMENT_CURRENCY_RATE',
+  ].map((idempotencyAction) => ({
+    label: `idempotency ${idempotencyAction}`,
+    idempotencyAction,
+  })),
+];
 let database: SqliteDatabase | null = null;
 
 afterEach(() => {
@@ -20,6 +80,48 @@ afterEach(() => {
 });
 
 describe('Migration 0069 Seller Agreement Rate retirement', () => {
+  it('uses bounded checks that Cloudflare D1 accepts in a migration', () => {
+    const source = readFileSync(migrationPath, 'utf8');
+
+    expect(source).not.toMatch(
+      /pragma_(?:integrity|quick)_check|PRAGMA\s+(?:integrity|quick)_check/iu,
+    );
+    expect(source.match(/pragma_foreign_key_check/giu)).toHaveLength(2);
+    expect(source).toContain('exporting the D1 database');
+    expect(source).toContain('reconstructing it in native');
+  });
+
+  it('enumerates every owner-confirmed dirty-stock table exactly once', () => {
+    const stockGuard = stockGuardExpression();
+    const enumerated = [...stockGuard.matchAll(
+      /\(SELECT COUNT\(\*\) FROM ([a-z_]+)\)=0/gu,
+    )].map((match) => match[1]);
+
+    expect(enumerated).toEqual(zeroStockTables);
+    expect(stockGuard).toMatch(
+      /aggregate_type IN \(\s*'SELLER_AGREEMENT_RATE',\s*'SELLER_AGREEMENT_CURRENCY_RATE'\s*\)/u,
+    );
+    expect(stockGuard).toMatch(
+      /event_type LIKE 'SELLER_AGREEMENT_RATE_%'/u,
+    );
+    expect(stockGuard).toMatch(
+      /action IN \(\s*'SUBMIT_SELLER_AGREEMENT_RATE'/u,
+    );
+  });
+
+  it('accepts the owner-authorized completely empty stock boundary', async () => {
+    database = new SqliteDatabase();
+    expect(await evaluateStockGuard(database)).toBe(1);
+  });
+
+  it.each(dirtyStockScenarios)(
+    'rejects the isolated $label stock branch',
+    async (scenario) => {
+      database = new SqliteDatabase();
+      expect(await evaluateStockGuard(database, scenario)).toBe(0);
+    },
+  );
+
   it('builds fresh from 0001 through 0069 with exact health', async () => {
     database = schemaDatabase(69);
 
@@ -72,7 +174,7 @@ describe('Migration 0069 Seller Agreement Rate retirement', () => {
     expect(await schemaVersion(database)).toBe(69);
   });
 
-  it('rejects non-empty legacy stock and preserves Schema 68 exactly', async () => {
+  it('rejects a dirty legacy rate definition and preserves Schema 68 exactly', async () => {
     database = schemaDatabase(68);
     seedLegacyAgreementRate(database);
     const before = await snapshot(database);
@@ -475,15 +577,97 @@ async function snapshot(target: SqliteDatabase): Promise<string> {
   const schema = await target.prepare(`
     SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name
   `).all();
-  const counts = await target.prepare(`
-    SELECT
-      (SELECT schema_version FROM app_schema_state WHERE singleton_id=1)
-        AS schema_version,
-      (SELECT COUNT(*) FROM formal_orders) AS formal_orders,
-      (SELECT COUNT(*) FROM formal_order_financial_snapshots)
-        AS financial_snapshots,
-      (SELECT COUNT(*) FROM formal_order_marketplace_money_snapshots)
-        AS marketplace_snapshots
-  `).first();
-  return JSON.stringify({ schema: schema.results, counts });
+  const tableNames = schema.results
+    .filter((object) => object['type'] === 'table')
+    .map((object) => String(object['name']));
+  const tables = [];
+  for (const name of tableNames) {
+    const columns = (await target.prepare(
+      `PRAGMA table_info(${quoteIdentifier(name)})`,
+    ).all<{ name: string }>()).results.map((column) => String(column.name));
+    const rows = (await target.prepare(
+      `SELECT * FROM ${quoteIdentifier(name)}`,
+    ).all<Record<string, unknown>>()).results.map((row) => columns.map(
+      (column) => [column, serializeSnapshotValue(row[column])] as const,
+    ));
+    rows.sort((left, right) => JSON.stringify(left).localeCompare(
+      JSON.stringify(right),
+    ));
+    tables.push({ name, columns, rows });
+  }
+  return JSON.stringify({ schema: schema.results, tables });
+}
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function serializeSnapshotValue(value: unknown): readonly [string, string] {
+  if (value === null) return ['null', ''];
+  if (value instanceof Uint8Array) {
+    return ['blob', Buffer.from(value).toString('hex')];
+  }
+  if (typeof value === 'number') {
+    return ['number', Object.is(value, -0) ? '-0' : String(value)];
+  }
+  if (typeof value === 'bigint') return ['bigint', value.toString()];
+  return [typeof value, String(value)];
+}
+
+function stockGuardExpression(): string {
+  const source = readFileSync(migrationPath, 'utf8')
+    .replace(/--[^\r\n]*/gu, '')
+    .replace(/\/\*[\s\S]*?\*\//gu, '');
+  const firstPredicate = source.indexOf(
+    '(SELECT COUNT(*) FROM seller_agreement_rate_versions)=0',
+  );
+  const start = source.lastIndexOf('SELECT CASE WHEN', firstPredicate);
+  const end = source.indexOf('THEN 1 ELSE 0 END;', firstPredicate);
+  if (start < 0 || end < 0) throw new Error('migration_0069_stock_guard_missing');
+  return source.slice(start + 'SELECT CASE WHEN'.length, end).trim();
+}
+
+async function evaluateStockGuard(
+  target: SqliteDatabase,
+  dirty?: DirtyStockScenario,
+): Promise<number> {
+  const tableCtes = zeroStockTables.map((table) =>
+    `${table} AS (SELECT 1 AS marker${
+      dirty && 'table' in dirty && dirty.table === table ? '' : ' WHERE 0'
+    })`);
+  const auditValue = dirty && 'auditAggregate' in dirty
+    ? `'${dirty.auditAggregate}'`
+    : 'CAST(NULL AS TEXT)';
+  const outboxAggregate = dirty && 'outboxAggregate' in dirty
+    ? `'${dirty.outboxAggregate}'`
+    : 'CAST(NULL AS TEXT)';
+  const outboxEvent = dirty && 'outboxEvent' in dirty
+    ? `'${dirty.outboxEvent}'`
+    : 'CAST(NULL AS TEXT)';
+  const idempotencyAction = dirty && 'idempotencyAction' in dirty
+    ? `'${dirty.idempotencyAction}'`
+    : 'CAST(NULL AS TEXT)';
+  const result = await target.prepare(`
+    WITH
+      ${tableCtes.join(',\n      ')},
+      audit_events(aggregate_type) AS (
+        SELECT ${auditValue}${
+          dirty && 'auditAggregate' in dirty ? '' : ' WHERE 0'
+        }
+      ),
+      integration_outbox(aggregate_type,event_type) AS (
+        SELECT ${outboxAggregate},${outboxEvent}${
+          dirty && ('outboxAggregate' in dirty || 'outboxEvent' in dirty)
+            ? '' : ' WHERE 0'
+        }
+      ),
+      command_idempotency_records(action) AS (
+        SELECT ${idempotencyAction}${
+          dirty && 'idempotencyAction' in dirty ? '' : ' WHERE 0'
+        }
+      )
+    SELECT CASE WHEN ${stockGuardExpression()}
+      THEN 1 ELSE 0 END AS assertion_value
+  `).first<{ assertion_value: number }>();
+  return Number(result?.assertion_value);
 }
