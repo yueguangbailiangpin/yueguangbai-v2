@@ -34,11 +34,11 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | D02 | 同店铺重复和跨店铺冲突正确。 | PENDING | REMOTE_HTTP | Minimal disclosure in conflict responses. |
 | D03 | R2 上传失败无残留业务记录。 | PENDING | REMOTE_R2 | Isolated staging R2 compensation case. |
 | D04 | 需求追加不覆盖旧批次。 | PASS | REMOTE_D1 | Two demand batches (10 and 20) coexist; prior batch unchanged. Evidence T9-D04-DEMAND-APPEND-PASS.md. |
-| D05 | 普通买家只看到公开需求。 | PENDING | REMOTE_HTTP | Public versus unpublished/closed synthetic demand. |
-| D06 | 预约预检正确。 | PENDING | REMOTE_HTTP | Eligible/full/duplicate/ineligible cases. |
-| D07 | 同一名额并发批准最多成功一次。 | PENDING | REMOTE_HTTP | Two Staff commands and final capacity. |
-| D08 | 过期释放名额。 | PENDING | REMOTE_D1 | Scheduler is disabled; use governed manual command only. |
-| D09 | 预约重开保留历史事件。 | PENDING | REMOTE_D1 | Append-only event/version readback. |
+| D05 | 普通买家只看到公开需求。 | PASS | REMOTE_HTTP | Public open demand visible; unpublished (SUBMITTED) and not-yet-open (PUBLISHED open_at future) demands return uniform 404. Evidence T9-D05-BUYER-PUBLIC-DEMANDS-PASS.md. |
+| D06 | 预约预检正确。 | PASS | REMOTE_HTTP | Eligible x5 (201 PENDING_REVIEW incl. approve->order-instruction chain), full (6th buyer 409 CAPACITY_FULL), duplicate (409 RESERVATION_ALREADY_EXISTS), ineligible (404 concealment). Evidence T9-D06-RESERVATION-PRECHECK-PASS.md. |
+| D07 | 同一名额并发批准最多成功一次。 | PASS | REMOTE_HTTP | Two concurrent APPROVE commands: one 200 (v2), other 503; final reservation APPROVED once, capacity decremented once. Evidence T9-D07-CONCURRENT-APPROVAL-PASS.md. |
+| D08 | 过期释放名额。 | PASS | REMOTE_D1 | Scheduler disabled; governed manual command POST /api/staff/operations/jobs/reservation_expiry/retry (OPERATOR_RETRY) expired hold and released one slot. Evidence T9-D08-EXPIRY-RELEASE-PASS.md. |
+| D09 | 预约重开保留历史事件。 | PASS | REMOTE_D1 | Gap found: reopenReservation had no HTTP route. Fixed PR #98 (POST /api/staff/reservations/:id/reopen + work item rebuild). Append-only events SUBMITTED->REJECTED/EXPIRED->REOPENED, version 1->2->3, reopened_count 1. Evidence T9-D09-REOPEN-EVENT-HISTORY-PASS.md. |
 | E01 | 买家提交先进入待核对。 | PENDING | REMOTE_HTTP | Buyer evidence submission plus Staff queue. |
 | E02 | 售前确认才生成正式订单。 | PENDING | REMOTE_D1 | Pre/post-confirmation readback. |
 | E03 | 无对应日期汇率时拒绝确认。 | PENDING | REMOTE_HTTP | Missing-date failure with zero partial facts. |
