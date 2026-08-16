@@ -1,4 +1,10 @@
-export const CUSTOMER_PASSWORD_DEFAULT_ITERATIONS = 310_000;
+// Workerd (Cloudflare Workers runtime) hard-caps PBKDF2 iterations at 100,000
+// (crypto-impl-pbkdf2.c++: "PBKDF2 iteration counts above 100000 are not
+// supported"); values above the cap throw DOMNotSupportedError on Workers.
+// 100,000 is the platform maximum; OWASP 2023 recommends 600k for
+// PBKDF2-SHA-256, which Workers cannot execute — 100k is the accepted
+// platform-bound tradeoff.
+export const CUSTOMER_PASSWORD_DEFAULT_ITERATIONS = 100_000;
 const MIN_ITERATIONS = 10_000;
 const MAX_ITERATIONS = 1_000_000;
 const SALT_BYTES = 16;
