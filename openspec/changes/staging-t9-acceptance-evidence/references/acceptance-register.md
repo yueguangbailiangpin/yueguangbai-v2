@@ -7,12 +7,12 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | A01 | 从空目录初始化全新 Git。 | CONFLICT | GOVERNANCE | Existing governed repository; do not replace it with a new Git history. |
 | A02 | 无远程 origin。 | CONFLICT | GOVERNANCE | Current repository requires GitHub origin; do not remove it. |
 | A03 | 无旧 Migration、资源 ID、Secrets 或真实数据。 | CONFLICT | GOVERNANCE | Historical migrations are immutable; staging IDs/Secrets remain Git-external and data must be synthetic. |
-| A04 | TypeScript 严格检查通过。 | PENDING | LOCAL_FIXED_SHA | Run at final T9 head. |
-| A05 | Secret/PII 扫描通过。 | PENDING | LOCAL_FIXED_SHA | Run at final T9 head and inspect managed evidence permissions separately. |
-| A06 | Hono `/health` 本地通过。 | PENDING | LOCAL_FIXED_SHA | Local behavior plus authenticated staging probe. |
-| A07 | 所有 Migration 从空库连续执行。 | PENDING | REMOTE_D1 | Reference real staging 0001-0070 ledger and fresh-chain verifier. |
-| A08 | `PRAGMA integrity_check=ok`。 | PENDING | REMOTE_D1 | Use reconstructed staging export, not D1 quick_check. |
-| A09 | `PRAGMA foreign_key_check` 为 0。 | PENDING | REMOTE_D1 | Use reconstructed staging export. |
+| A04 | TypeScript 严格检查通过。 | PASS | LOCAL_FIXED_SHA | typecheck exit 0 at 9cd4a113 rebased T9 head (2026-08-16). |
+| A05 | Secret/PII 扫描通过。 | PASS | LOCAL_FIXED_SHA | security:scan passed 1712 files at 9cd4a113; managed evidence dirs 0600. |
+| A06 | Hono `/health` 本地通过。 | PASS | LOCAL_FIXED_SHA | Local app.test.ts 3/3 (200 + x-request-id + security headers). Authenticated staging probe pending. |
+| A07 | 所有 Migration 从空库连续执行。 | PASS | REMOTE_D1 | db:verify PASS (70 migrations, schema 70, fresh sequential match); staging ledger 70/70; remote business tables == local chain (diff empty). |
+| A08 | `PRAGMA integrity_check=ok`。 | PASS | REMOTE_D1 | Reconstructed from wrangler d1 export: integrity_check=ok. |
+| A09 | `PRAGMA foreign_key_check` 为 0。 | PASS | REMOTE_D1 | Reconstructed from wrangler d1 export: foreign_key_check returns 0 rows. |
 | B01 | Cloudflare Access 邮箱唯一映射到 ACTIVE Staff。 | PENDING | REMOTE_HTTP | Five synthetic Staff identities. |
 | B02 | Role 权限与 Marketplace 可见范围正确组合。 | PENDING | REMOTE_HTTP | Five canonical Staff roles. |
 | B03 | 个人 deny 优先。 | PENDING | REMOTE_HTTP | Server rejection plus no-side-effect readback. |
@@ -60,7 +60,7 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | G01 | D1 是任务权威源。 | PENDING | REMOTE_D1 | Page/API versus D1 final state. |
 | G02 | 任务领取原子。 | PENDING | REMOTE_HTTP | Concurrent claim and final version. |
 | G03 | 工作项命令重复请求保持幂等。 | PENDING | REMOTE_HTTP | Same-key replay and changed-request conflict. |
-| G04 | 不存在飞书登录、绑定、同步、回调或告警运行入口。 | PENDING | LOCAL_FIXED_SHA | Runtime route probes plus current-source inventory. |
+| G04 | 不存在飞书登录、绑定、同步、回调或告警运行入口。 | PASS | LOCAL_FIXED_SHA | Source-level: zero feishu/lark imports or routes in index.ts; no non-test refs in apps/packages. Runtime probes pending. |
 | G05 | 内部任务异常进入受控重试或人工处理。 | PENDING | REMOTE_D1 | Governed manual failure because scheduler is disabled. |
 | G06 | 外部独立健康告警不包含完整敏感数据。 | PENDING | REMOTE_HTTP | Staging alert mode remains disabled; inspect safe health payload. |
 | G07 | 正式动作必须打开受控 Web 页面。 | PENDING | REMOTE_HTTP | Execute formal actions from Staff Web; no external task authority. |
@@ -77,5 +77,5 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 - Total: 67
 - Initial terminal conflicts: 3
 - Initial external/dependency blockers: 5
-- Pending execution: 59
-- Passed/failed: 0/0
+- Pending execution: 54
+- Passed/failed: 6/0
