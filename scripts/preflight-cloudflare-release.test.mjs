@@ -56,6 +56,20 @@ describe('Cloudflare release preflight', () => {
       expect(validateReleaseConfig(config, environment))
         .toContain('vars.DRIVE_ARCHIVE_R2_DELETE_ENABLED:must_be_false');
     });
+
+    it(`requires ${environment} public Worker-to-Worker fetch routing for Access JWKS`, () => {
+      const config = anonymousConfig(environment);
+      expect(config.compatibility_flags).toEqual(['global_fetch_strictly_public']);
+      delete config.compatibility_flags;
+      expect(validateReleaseConfig(config, environment))
+        .toContain('compatibility_flags:must_exactly_enable_global_fetch_strictly_public');
+      config.compatibility_flags = ['global_fetch_private_origin'];
+      expect(validateReleaseConfig(config, environment))
+        .toContain('compatibility_flags:must_exactly_enable_global_fetch_strictly_public');
+      config.compatibility_flags = ['global_fetch_strictly_public', 'nodejs_compat'];
+      expect(validateReleaseConfig(config, environment))
+        .toContain('compatibility_flags:must_exactly_enable_global_fetch_strictly_public');
+    });
   }
 
   it('rejects embedded secrets and never serializes their values', () => {
@@ -111,6 +125,21 @@ describe('Cloudflare release preflight', () => {
     staging.vars.STAFF_ACCESS_AUD='a'.repeat(64);
     expect(validateReleaseConfig(staging,'staging')).toEqual([]);
   });
+
+  for (const environment of ['staging', 'production']) {
+    it(`rejects ${environment} self-origin or arbitrary-host Access team domains`, () => {
+      for (const domain of [
+        `https://${environment}.example.invalid`,
+        'https://arbitrary.example.com',
+        'https://nested.team.cloudflareaccess.com',
+      ]) {
+        const config = anonymousConfig(environment);
+        config.vars.STAFF_ACCESS_TEAM_DOMAIN = domain;
+        expect(validateReleaseConfig(config, environment))
+          .toContain('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_access_team_origin');
+      }
+    });
+  }
 
   it('requires the governed synthetic Buyer registration configuration in staging',()=>{
     const staging=anonymousConfig('staging');
@@ -196,7 +225,7 @@ describe('Cloudflare release preflight', () => {
     const errors = validateReleaseConfig(config, 'production');
     expect(errors).toContain('vars.FEISHU_WORKBENCH_SYNC_ENABLED:core_runtime_configuration_forbidden');
     expect(errors).toContain('vars.STAFF_MCP_ENABLED:core_runtime_configuration_forbidden');
-    expect(errors).toContain('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_https_origin');
+    expect(errors).toContain('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_access_team_origin');
     expect(errors).toContain('vars.STAFF_ACCESS_AUD:missing_or_invalid');
   });
 

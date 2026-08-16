@@ -5,6 +5,7 @@ import {
   readLocalReleaseConfig,
   templatePath,
 } from './preflight-cloudflare-release.mjs';
+import { exactCloudflareAccessTeamOrigin } from '../packages/domain/src/security/cloudflare-access-team-origin.ts';
 
 const environments = new Set(['staging', 'production']);
 const placeholders = /REQUIRED|REPLACE|PLACEHOLDER|CHANGEME|TODO/iu;
@@ -55,8 +56,8 @@ export function validateStaffAuthActivationConfig(
   if (vars.STAFF_AUTH_ALLOWED_ORIGINS !== origin) {
     errors.push('vars.STAFF_AUTH_ALLOWED_ORIGINS:origin_mismatch');
   }
-  if (!exactHttpsOrigin(vars.STAFF_ACCESS_TEAM_DOMAIN)) {
-    errors.push('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_https_origin');
+  if (!exactCloudflareAccessTeamOrigin(vars.STAFF_ACCESS_TEAM_DOMAIN)) {
+    errors.push('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_access_team_origin');
   }
   if (!safe(vars.STAFF_ACCESS_AUD, 200, 8)) {
     errors.push('vars.STAFF_ACCESS_AUD:missing_or_invalid');
