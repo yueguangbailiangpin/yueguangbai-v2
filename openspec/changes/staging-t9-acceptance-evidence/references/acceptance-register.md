@@ -31,8 +31,8 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | C06 | ASIN Marketplace 唯一。 | PENDING | REMOTE_HTTP | Same-Marketplace duplicate and cross-Marketplace scope. |
 | C07 | 订单号 Claim 并发测试通过。 | PENDING | REMOTE_HTTP | Concurrent requests plus final D1 claim state. |
 | D01 | 产品申请与需求批次分表。 | PASS | REMOTE_D1 | Product application full lifecycle verified 2026-08-16 (submit->queue->approve->product ACTIVE); demand batch submission path PASS. Evidence T9-D01-PRODUCT-APPLICATION-PASS.md. |
-| D02 | 同店铺重复和跨店铺冲突正确。 | PENDING | REMOTE_HTTP | Minimal disclosure in conflict responses. |
-| D03 | R2 上传失败无残留业务记录。 | PENDING | REMOTE_R2 | Isolated staging R2 compensation case. |
+| D02 | 同店铺重复和跨店铺冲突正确。 | PASS | REMOTE_HTTP | Same-store duplicate 409 DUPLICATE_PRODUCT; cross-store 409 ASIN_STORE_CONFLICT; in-flight resubmit 409 PRODUCT_APPLICATION_CONFLICT; minimal disclosure. Evidence T9-D02-STORE-CONFLICT-PASS.md. |
+| D03 | R2 上传失败无残留业务记录。 | PASS | REMOTE_R2 | Wrong-token upload 403: file_object stays RESERVED, zero links, zero idempotency residue; correct-token retry succeeds to VERIFIED. Evidence T9-D03-UPLOAD-FAILURE-NO-RESIDUE-PASS.md. |
 | D04 | 需求追加不覆盖旧批次。 | PASS | REMOTE_D1 | Two demand batches (10 and 20) coexist; prior batch unchanged. Evidence T9-D04-DEMAND-APPEND-PASS.md. |
 | D05 | 普通买家只看到公开需求。 | PASS | REMOTE_HTTP | Public open demand visible; unpublished (SUBMITTED) and not-yet-open (PUBLISHED open_at future) demands return uniform 404. Evidence T9-D05-BUYER-PUBLIC-DEMANDS-PASS.md. |
 | D06 | 预约预检正确。 | PASS | REMOTE_HTTP | Eligible x5 (201 PENDING_REVIEW incl. approve->order-instruction chain), full (6th buyer 409 CAPACITY_FULL), duplicate (409 RESERVATION_ALREADY_EXISTS), ineligible (404 concealment). Evidence T9-D06-RESERVATION-PRECHECK-PASS.md. |
