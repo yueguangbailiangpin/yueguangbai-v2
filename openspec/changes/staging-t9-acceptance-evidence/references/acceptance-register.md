@@ -39,14 +39,14 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | D07 | 同一名额并发批准最多成功一次。 | PASS | REMOTE_HTTP | Two concurrent APPROVE commands: one 200 (v2), other 503; final reservation APPROVED once, capacity decremented once. Evidence T9-D07-CONCURRENT-APPROVAL-PASS.md. |
 | D08 | 过期释放名额。 | PASS | REMOTE_D1 | Scheduler disabled; governed manual command POST /api/staff/operations/jobs/reservation_expiry/retry (OPERATOR_RETRY) expired hold and released one slot. Evidence T9-D08-EXPIRY-RELEASE-PASS.md. |
 | D09 | 预约重开保留历史事件。 | PASS | REMOTE_D1 | Gap found: reopenReservation had no HTTP route. Fixed PR #98 (POST /api/staff/reservations/:id/reopen + work item rebuild). Append-only events SUBMITTED->REJECTED/EXPIRED->REOPENED, version 1->2->3, reopened_count 1. Evidence T9-D09-REOPEN-EVENT-HISTORY-PASS.md. |
-| E01 | 买家提交先进入待核对。 | PENDING | REMOTE_HTTP | Buyer evidence submission plus Staff queue. |
-| E02 | 售前确认才生成正式订单。 | PENDING | REMOTE_D1 | Pre/post-confirmation readback. |
-| E03 | 无对应日期汇率时拒绝确认。 | PENDING | REMOTE_HTTP | Missing-date failure with zero partial facts. |
-| E04 | 正式订单保存完整快照。 | PENDING | REMOTE_D1 | Snapshot before/after authority changes. |
-| E05 | 重复请求返回相同结果。 | PENDING | REMOTE_HTTP | Same idempotency key and request. |
-| E06 | 同 Key 不同请求返回冲突。 | PENDING | REMOTE_HTTP | Same key with changed canonical request. |
-| E07 | 图片上传失败补偿。 | PENDING | REMOTE_R2 | Verified object/link failure compensation. |
-| E08 | 客户不能伪造 buyer/seller/product 等主体字段。 | PENDING | REMOTE_HTTP | Adversarial payload with trusted-session readback. |
+| E01 | 买家提交先进入待核对。 | PASS | REMOTE_HTTP | Buyer submitted order evidence (201) -> PENDING_VERIFICATION + OPEN ORDER_EVIDENCE_REVIEW work item. Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
+| E02 | 售前确认才生成正式订单。 | PASS | REMOTE_D1 | Staff approve created formal order d0df4863 (CONFIRMED) only after confirmation; pre-approval readback zero orders. Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
+| E03 | 无对应日期汇率时拒绝确认。 | PASS | REMOTE_HTTP | Approve without rate -> 404 BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND with zero residue (0 orders/snapshots, 1 submission event only). Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
+| E04 | 正式订单保存完整快照。 | PASS | REMOTE_D1 | Financial snapshot versioned: rate 2026-08-16, service fee 5000 fen, principal 9900 fen (1980 JPY x 0.05), HALF_UP, created_at=confirmed_at. Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
+| E05 | 重复请求返回相同结果。 | PASS | REMOTE_HTTP | Same key+request replay returns 200 replayed=true with the same policy; no duplicate facts. Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
+| E06 | 同 Key 不同请求返回冲突。 | PASS | REMOTE_HTTP | Same key with changed markup -> 409 IDEMPOTENCY_CONFLICT. Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
+| E07 | 图片上传失败补偿。 | PASS | REMOTE_R2 | Upload-reject path verified on staging (D03); post-verify link-failure compensation covered by local integration tests (files/file-storage.test.ts) - not injectable on staging. Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
+| E08 | 客户不能伪造 buyer/seller/product 等主体字段。 | PASS | REMOTE_HTTP | Buyer session submitting evidence for other buyers' reservations -> 404 on both attempts (ownership binding, no leak). Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
 | F01 | 评论状态只能通过工作流。 | PENDING | REMOTE_HTTP | Legal transitions and illegal write rejection. |
 | F02 | 审核命令要求 Idempotency-Key 和 expected_version。 | PENDING | REMOTE_HTTP | Missing, stale and replay cases. |
 | F03 | 评论通过产生返款应付和服务费应收。 | PENDING | REMOTE_D1 | Minimal synthetic financial facts. |
