@@ -74,12 +74,14 @@ export async function createSellerStore(
   // Reject out-of-scope store creation: the actor's data scope must include
   // the target marketplace. Marketplace codes come from
   // staff_marketplace_scopes and do not depend on existing stores, so a
-  // brand-new organization without stores is not falsely blocked. Missing
-  // dataScope is treated as forbidden.
-  if (!command.actor.dataScope) {
+  // brand-new organization without stores is not falsely blocked. A missing
+  // dataScope matches resolveStaffDataScope semantics: owner roles are GLOBAL
+  // (unrestricted), any other role without a scope is forbidden.
+  if (command.actor.dataScope) {
+    requireMarketplaceScope(command.actor.dataScope, marketplace.code);
+  } else if (!command.actor.roles.includes('owner')) {
     throw new CatalogError('FORBIDDEN', 403);
   }
-  requireMarketplaceScope(command.actor.dataScope, marketplace.code);
   const storeName = parseCatalogInput(
     () => normalizeStoreName(input.storeName),
   );

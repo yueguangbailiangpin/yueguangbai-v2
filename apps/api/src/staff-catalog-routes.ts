@@ -289,9 +289,8 @@ async function createProductVersion(context: Context<any>): Promise<Response> {
 async function createStore(context: Context<any>): Promise<Response> {
   const authorization = requireAuthorization(context);
   // SELLER_MANAGE is enforced inside createSellerStore via
-  // requireCatalogPermission; dataScope is resolved here so
-  // requireCatalogOrganizationScope inside the command can reject
-  // cross-organization store creation.
+  // requireCatalogPermission; dataScope is resolved here so the marketplace
+  // scope check inside the command can reject out-of-scope store creation.
   const actor: CatalogStaffActor = {
     ...workflowActor(authorization),
     dataScope: await resolveStaffDataScope(context.env.DB, authorization, {
