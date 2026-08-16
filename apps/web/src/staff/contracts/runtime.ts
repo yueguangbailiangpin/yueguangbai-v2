@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
 export const epoch = z.number().int().nonnegative();
+// Backend returns the Marketplace-configured business timezone
+// (PRODUCT_SCHEDULE_TIMEZONE; AMAZON_JP = Asia/Tokyo). Staff code never
+// consumes .timezone (validation only), so accept any IANA string instead of
+// hard-coding a zone set that would break again when a future Marketplace
+// (e.g. AMAZON_US America/Los_Angeles) is enabled.
+export const businessTimezoneSchema = z.string();
 export const integerString = z.string().regex(/^(0|[1-9][0-9]*)$/u);
 export const signedIntegerString = z.string().regex(/^-?(0|[1-9][0-9]*)$/u);
 export const workTypeSchema = z.enum([
@@ -306,7 +312,7 @@ export const staffProductDetailSchema = z.object({ product:
   staffProductListItemSchema.extend({
     versions: z.array(staffProductVersionSchema),
     demands: z.array(staffProductDemandSchema),
-    timezone: z.literal('Asia/Shanghai'), data_as_of: epoch,
+    timezone: businessTimezoneSchema, data_as_of: epoch,
   }).strict(),
 }).strict();
 export const demandReviewContextSchema = z.object({ review_context: z.object({
@@ -318,7 +324,7 @@ export const demandReviewContextSchema = z.object({ review_context: z.object({
   target_quantity: z.number().int().positive(),
   reservation_deadline: epoch, order_deadline: epoch,
   cadence: orderCadenceSchema.nullable(), can_publish: z.boolean(),
-  timezone: z.literal('Asia/Shanghai'),
+  timezone: businessTimezoneSchema,
   data_as_of: epoch,
 }).strict() }).strict();
 export const demandOrderScheduleVersionSchema = orderCadenceSchema.extend({
@@ -345,7 +351,7 @@ export const staffReservationSchedulePageSchema = z.object({ page: z.object({
     buyer_customer_id: z.string().nullable(), buyer_display_name: z.string().nullable(),
     actual_order_status: z.string().nullable(), actual_order_date: z.string().nullable(),
   }).strict()),
-  next_cursor: z.string().nullable(), timezone: z.literal('Asia/Shanghai'),
+  next_cursor: z.string().nullable(), timezone: businessTimezoneSchema,
   sorting: z.literal('submitted_at ASC, id ASC'), data_as_of: epoch,
 }).strict() }).strict();
 export const demandSchedulePreviewSchema = z.object({ preview:
@@ -359,7 +365,7 @@ export const demandSchedulePreviewSchema = z.object({ preview:
     before_first_order_date: z.string().nullable(),
     before_theoretical_last_order_date: z.string().nullable(),
     preview_hash: z.string().regex(/^[0-9a-f]{64}$/u),
-    timezone: z.literal('Asia/Shanghai'), data_as_of: epoch,
+    timezone: businessTimezoneSchema, data_as_of: epoch,
   }).strict(),
 }).strict();
 export const demandScheduleConfirmationSchema = z.object({
@@ -420,7 +426,7 @@ const dashboardPerformanceSchema = z.object({
 }).strict();
 export const adminDashboardSummarySchema = z.object({ summary: z.object({
   window: z.object({ key: z.enum(['TODAY','WEEK','MONTH']), from_date: z.string(),
-    to_date: z.string(), timezone: z.literal('Asia/Shanghai'), data_as_of: epoch }).strict(),
+    to_date: z.string(), timezone: businessTimezoneSchema, data_as_of: epoch }).strict(),
   cards: z.object({ new_buyers: z.number().int().nonnegative(),
     reservations: z.number().int().nonnegative(), formal_orders: z.number().int().nonnegative(),
     business_completions: z.number().int().nonnegative() }).strict(),

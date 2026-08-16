@@ -5,8 +5,12 @@
 // PBKDF2-SHA-256, which Workers cannot execute — 100k is the accepted
 // platform-bound tradeoff.
 export const CUSTOMER_PASSWORD_DEFAULT_ITERATIONS = 100_000;
+// Workerd caps PBKDF2 at 100,000; mirror the platform maximum here so the
+// constraint is explicit at validation time (fail-fast) instead of surfacing
+// as a runtime DOMNotSupportedError on Workers. verifyCustomerPassword uses
+// this too: stored credentials above the cap fail closed (return false).
 const MIN_ITERATIONS = 10_000;
-const MAX_ITERATIONS = 1_000_000;
+const MAX_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const HASH_BYTES = 32;
 const TEMPORARY_PASSWORD_LENGTH = 20;
