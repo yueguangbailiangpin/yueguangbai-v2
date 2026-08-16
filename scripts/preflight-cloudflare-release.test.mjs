@@ -56,6 +56,20 @@ describe('Cloudflare release preflight', () => {
       expect(validateReleaseConfig(config, environment))
         .toContain('vars.DRIVE_ARCHIVE_R2_DELETE_ENABLED:must_be_false');
     });
+
+    it(`requires ${environment} public Worker-to-Worker fetch routing for Access JWKS`, () => {
+      const config = anonymousConfig(environment);
+      expect(config.compatibility_flags).toEqual(['global_fetch_strictly_public']);
+      delete config.compatibility_flags;
+      expect(validateReleaseConfig(config, environment))
+        .toContain('compatibility_flags:must_exactly_enable_global_fetch_strictly_public');
+      config.compatibility_flags = ['global_fetch_private_origin'];
+      expect(validateReleaseConfig(config, environment))
+        .toContain('compatibility_flags:must_exactly_enable_global_fetch_strictly_public');
+      config.compatibility_flags = ['global_fetch_strictly_public', 'nodejs_compat'];
+      expect(validateReleaseConfig(config, environment))
+        .toContain('compatibility_flags:must_exactly_enable_global_fetch_strictly_public');
+    });
   }
 
   it('rejects embedded secrets and never serializes their values', () => {

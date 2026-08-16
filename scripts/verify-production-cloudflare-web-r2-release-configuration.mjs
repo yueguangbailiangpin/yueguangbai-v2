@@ -57,6 +57,10 @@ for (const environment of ['staging', 'production']) {
   const config = readLocalReleaseConfig(templatePath(environment));
   assert(config.vars.APP_ENVIRONMENT === environment,
     `${environment} template environment mismatch`);
+  assert(Array.isArray(config.compatibility_flags)
+    && config.compatibility_flags.length === 1
+    && config.compatibility_flags[0] === 'global_fetch_strictly_public',
+  `${environment} template Access JWKS public fetch routing drift`);
   assert(config.d1_databases?.[0]?.binding === 'DB',
     `${environment} template D1 binding mismatch`);
   assert(config.r2_buckets?.[0]?.binding === 'FILE_OBJECT_STORAGE_R2',

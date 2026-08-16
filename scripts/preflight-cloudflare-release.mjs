@@ -16,6 +16,9 @@ const disabledFlags = [
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
 ];
+const requiredCompatibilityFlags = Object.freeze([
+  'global_fetch_strictly_public',
+]);
 const retiredCoreRuntimeKey = /^(?:FEISHU_|STAFF_AUTH_FEISHU|STAFF_MCP_)|^(?:STAFF_AUTH_PROVIDER|STAFF_AUTH_ENABLED|STAFF_AUTH_HASH_SECRET)$/u;
 
 export const requiredManagedSecrets = Object.freeze({
@@ -193,6 +196,11 @@ function validateFrozenDefaults(config, environment) {
   if (!record) return ['config:not_object'];
   if (record.env !== undefined) errors.push('env:forbidden_use_separate_templates');
   if (record.main !== 'src/worker.ts') errors.push('main:invalid');
+  if (!Array.isArray(record.compatibility_flags)
+    || record.compatibility_flags.length !== requiredCompatibilityFlags.length
+    || !requiredCompatibilityFlags.every((flag) => record.compatibility_flags.includes(flag))) {
+    errors.push('compatibility_flags:must_exactly_enable_global_fetch_strictly_public');
+  }
   if (record.workers_dev !== false) errors.push('workers_dev:must_be_false');
   if (record.preview_urls !== false) errors.push('preview_urls:must_be_false');
   if (vars?.APP_ENVIRONMENT !== environment) errors.push('vars.APP_ENVIRONMENT:wrong_environment');
