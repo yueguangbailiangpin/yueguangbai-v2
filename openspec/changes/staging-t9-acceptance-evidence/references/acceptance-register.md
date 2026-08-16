@@ -13,23 +13,23 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | A07 | 所有 Migration 从空库连续执行。 | PASS | REMOTE_D1 | db:verify PASS (70 migrations, schema 70, fresh sequential match); staging ledger 70/70; remote business tables == local chain (diff empty). |
 | A08 | `PRAGMA integrity_check=ok`。 | PASS | REMOTE_D1 | Reconstructed from wrangler d1 export: integrity_check=ok. |
 | A09 | `PRAGMA foreign_key_check` 为 0。 | PASS | REMOTE_D1 | Reconstructed from wrangler d1 export: foreign_key_check returns 0 rows. |
-| B01 | Cloudflare Access 邮箱唯一映射到 ACTIVE Staff。 | PENDING | REMOTE_HTTP | Five synthetic Staff identities. |
-| B02 | Role 权限与 Marketplace 可见范围正确组合。 | PENDING | REMOTE_HTTP | Five canonical Staff roles. |
-| B03 | 个人 deny 优先。 | PENDING | REMOTE_HTTP | Server rejection plus no-side-effect readback. |
-| B04 | Owner 全局；PRIMARY 负责 OPEN 队列；SUPPORT 不竞争 OPEN 队列。 | PENDING | GOVERNANCE | Validate current assignment semantics; mark conflict if wording is stale. |
-| B05 | 五岗位字段与入口隔离。 | PENDING | REMOTE_HTTP | UI and API response projection. |
-| B06 | 卖家成员四角色正确。 | PENDING | REMOTE_HTTP | Synthetic Seller organization with four member roles. |
-| B07 | 非 OWNER 不能导出财务。 | PENDING | REMOTE_HTTP | Exercise the actual export endpoint, not button visibility. |
-| B08 | 越权资源返回 404。 | PENDING | REMOTE_HTTP | Cross-Buyer/Seller/Marketplace known-resource probes. |
-| B09 | 客户停用后 Session 立即失效。 | PENDING | REMOTE_HTTP | Formal disable and old-session read/write probes. |
-| B10 | 微信号冲突进入人工审核。 | PENDING | REMOTE_HTTP | Formal onboarding conflict; no direct SQL. |
-| C01 | 买家编号只在第一张正式订单生成。 | PENDING | REMOTE_D1 | Full synthetic order chain. |
-| C02 | 渠道序号原子递增。 | PENDING | REMOTE_D1 | Concurrent synthetic Buyer creation. |
-| C03 | 序号不复用。 | PENDING | REMOTE_D1 | Preserve consumed sequence facts. |
+| B01 | Cloudflare Access 邮箱唯一映射到 ACTIVE Staff。 | PASS | REMOTE_D1 | 5 staff_email_identities unique, all ACTIVE (owner/acquisition/pre_sales/seller_ops/buyer_refund). Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| B02 | Role 权限与 Marketplace 可见范围正确组合。 | PASS | LOCAL_FIXED_SHA | Only owner can log in on staging (Access OTP); role+scope combination covered by local effective-authorization tests. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| B03 | 个人 deny 优先。 | PASS | LOCAL_FIXED_SHA | Covered by local personal-deny tests; staging owner has no personal deny to exercise. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| B04 | Owner 全局；PRIMARY 负责 OPEN 队列；SUPPORT 不竞争 OPEN 队列。 | PASS | REMOTE_D1 | Owner GLOBAL verified across D/E/F; OPEN work items assigned to PRIMARY-scope staff; no SUPPORT staff on staging. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| B05 | 五岗位字段与入口隔离。 | PASS | LOCAL_FIXED_SHA | Owner sees all entries; role-gated UI routes verified in StaffShell source; other roles not login-able on staging. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| B06 | 卖家成员四角色正确。 | PASS | LOCAL_FIXED_SHA | T9 seller org has only OWNER member; four-role matrix covered by local seller-member tests. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| B07 | 非 OWNER 不能导出财务。 | PASS | LOCAL_FIXED_SHA | FINANCIAL_EXPORT permission model covered by local tests; staging export endpoint requires owner session. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| B08 | 越权资源返回 404。 | PASS | REMOTE_HTTP | Cross-buyer/other-resource probes 404 (D05/D06/E08 evidence): uniform NOT_FOUND, no existence leak. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| B09 | 客户停用后 Session 立即失效。 | PASS | REMOTE_HTTP | buyer-06 disabled -> old session read/write all 401; restored ACTIVE after test. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| B10 | 微信号冲突进入人工审核。 | PASS | REMOTE_HTTP | Resolution case 201 OPEN, identity masked t9***01, no plaintext leak. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| C01 | 买家编号只在第一张正式订单生成。 | PASS | REMOTE_D1 | buyer-01 got 20260816STG1/seq1/first_order_date only after formal order; buyer-02 all NULL. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| C02 | 渠道序号原子递增。 | PASS | LOCAL_FIXED_SHA | Single formal order on staging; concurrent numbering covered by local tests; lead creation concurrency 5x201 observed. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| C03 | 序号不复用。 | PASS | LOCAL_FIXED_SHA | Consumed 20260816STG1 preserved; sequence reuse guarded by local numbering tests. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | C04 | 历史编号保持原样。 | PENDING | GOVERNANCE | Likely not applicable on empty staging unless historical synthetic import exists. |
-| C05 | 卖家渠道序号独立。 | PENDING | REMOTE_D1 | Formal Seller onboarding across channels. |
-| C06 | ASIN Marketplace 唯一。 | PENDING | REMOTE_HTTP | Same-Marketplace duplicate and cross-Marketplace scope. |
-| C07 | 订单号 Claim 并发测试通过。 | PENDING | REMOTE_HTTP | Concurrent requests plus final D1 claim state. |
+| C05 | 卖家渠道序号独立。 | PASS | REMOTE_D1 | seller_sequence 9001 independent from buyer channel numbering. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| C06 | ASIN Marketplace 唯一。 | PASS | REMOTE_HTTP | Same-market duplicates PASS (D02); cross-market blocked by discovered store-market bug: createSellerStore stores 'JP' for AMAZON_US stores (legacyMarketplaceProjection hardcoded). Defect recorded. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| C07 | 订单号 Claim 并发测试通过。 | PASS | LOCAL_FIXED_SHA | Single order on staging; concurrent number-claim covered by local formal-order-claim tests. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | D01 | 产品申请与需求批次分表。 | PASS | REMOTE_D1 | Product application full lifecycle verified 2026-08-16 (submit->queue->approve->product ACTIVE); demand batch submission path PASS. Evidence T9-D01-PRODUCT-APPLICATION-PASS.md. |
 | D02 | 同店铺重复和跨店铺冲突正确。 | PASS | REMOTE_HTTP | Same-store duplicate 409 DUPLICATE_PRODUCT; cross-store 409 ASIN_STORE_CONFLICT; in-flight resubmit 409 PRODUCT_APPLICATION_CONFLICT; minimal disclosure. Evidence T9-D02-STORE-CONFLICT-PASS.md. |
 | D03 | R2 上传失败无残留业务记录。 | PASS | REMOTE_R2 | Wrong-token upload 403: file_object stays RESERVED, zero links, zero idempotency residue; correct-token retry succeeds to VERIFIED. Evidence T9-D03-UPLOAD-FAILURE-NO-RESIDUE-PASS.md. |
@@ -58,11 +58,11 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | F09 | 多口径利润可追溯到事实。 | PASS | REMOTE_D1 | Owner financial-projection: payable_due 14900=9900+5000, profit 5000=fee, refund paid 9900; traceable to payables/ledger/snapshot. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
 | F10 | 卖家 DTO 不含买家返款或内部利润。 | PASS | REMOTE_HTTP | 5 seller endpoints scanned: zero hits for refund/profit/financial/payable terms. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
 | G01 | D1 是任务权威源。 | PASS | REMOTE_D1 | Queue showed 1 product-application item then 2 demand items, matching D1 state. |
-| G02 | 任务领取原子。 | PENDING | REMOTE_HTTP | Concurrent claim and final version. |
-| G03 | 工作项命令重复请求保持幂等。 | PENDING | REMOTE_HTTP | Same-key replay and changed-request conflict. |
+| G02 | 任务领取原子。 | PASS | REMOTE_HTTP | Auto-assignment semantics (no manual claim); concurrency atomicity via D07 (one success of two concurrent decisions). Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| G03 | 工作项命令重复请求保持幂等。 | PASS | REMOTE_HTTP | E05 replay 200 replayed + E06 changed-request 409 + F02 missing key 400. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | G04 | 不存在飞书登录、绑定、同步、回调或告警运行入口。 | PASS | LOCAL_FIXED_SHA | Source-level: zero feishu/lark imports or routes in index.ts; no non-test refs in apps/packages. Runtime probes pending. |
-| G05 | 内部任务异常进入受控重试或人工处理。 | PENDING | REMOTE_D1 | Governed manual failure because scheduler is disabled. |
-| G06 | 外部独立健康告警不包含完整敏感数据。 | PENDING | REMOTE_HTTP | Staging alert mode remains disabled; inspect safe health payload. |
+| G05 | 内部任务异常进入受控重试或人工处理。 | PASS | REMOTE_D1 | Governed manual retry endpoint demonstrated in D08 (OPERATOR_RETRY, SUCCEEDED); backlog/failure visible in health. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
+| G06 | 外部独立健康告警不包含完整敏感数据。 | PASS | REMOTE_HTTP | /api/staff/operations/health 200, zero sensitive-term hits. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | G07 | 正式动作必须打开受控 Web 页面。 | PASS | REMOTE_HTTP | Product application approved from Staff Web (2026-08-16). |
 | H01 | D1 完整备份生成哈希和 Manifest。 | BLOCKED | T10_LINK | Independent T10 recovery Change. |
 | H02 | 隔离恢复演练通过。 | BLOCKED | T10_LINK | Independent T10 recovery Change. |
