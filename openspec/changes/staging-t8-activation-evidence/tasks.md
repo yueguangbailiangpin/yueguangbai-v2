@@ -11,6 +11,6 @@
 - [x] 9. Verify authenticated `/health=200` and staging `/ready=200`, including the real empty-bucket R2 head probe.
 - [x] 10. Record only redacted T8 evidence and retain raw provider evidence outside Git at mode `0600`.
 - [x] 11. Keep T9, T10, T11 and all production operations outside this Change.
-- [ ] 12. Run Formal Verify, strict OpenSpec validation and repository checks at the final evidence SHA.
-- [ ] 13. Publish a Draft PR at the final evidence SHA.
+- [x] 12. Run Formal Verify, strict OpenSpec validation and repository checks at the final evidence SHA.
+- [x] 13. Publish Draft PR #86 at the final evidence SHA.
 - [ ] 14. Obtain independent fixed-SHA review before Ready/merge or archive.

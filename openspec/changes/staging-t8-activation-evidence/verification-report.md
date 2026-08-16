@@ -6,13 +6,13 @@ This verification covers only the redacted T8 activation evidence and the linked
 
 `IMPLEMENTATION_AND_EVIDENCE=PASS`
 
-`READY_FOR_DRAFT_PR=YES`
+`DRAFT_PR_PUBLISHED=YES (#86)`
 
 `READY_FOR_READY_OR_MERGE=NO`
 
 `READY_FOR_ARCHIVE=NO`
 
-The remaining gates are Draft PR publication and independent fixed-SHA review.
+The remaining gate is independent fixed-SHA review.
 
 ## Release identity
 
@@ -27,7 +27,8 @@ The remaining gates are Draft PR publication and independent fixed-SHA review.
 - Change planning artifacts are complete.
 - T8 execution tasks 1-11 are complete.
 - Formal checks passed on the candidate evidence tree.
-- Draft PR publication and independent fixed-SHA review remain incomplete governance gates.
+- Draft PR #86 was published from evidence commit `a843f5cb98ede7780c7b0d5a765b323cf3d95442`.
+- Independent fixed-SHA review remains the only incomplete governance gate.
 
 ## Correctness evidence
 
@@ -65,4 +66,4 @@ The remaining gates are Draft PR publication and independent fixed-SHA review.
 - P0: 0.
 - P1: 0.
 - P2: 0 in the committed T8 evidence scope.
-- Governance pending: Draft PR and independent fixed-SHA review. These block Ready, merge and archive.
+- Governance pending: independent fixed-SHA review blocks Ready, merge and archive.
