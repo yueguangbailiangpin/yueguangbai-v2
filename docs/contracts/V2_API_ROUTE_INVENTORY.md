@@ -242,6 +242,7 @@ POST /api/staff/product-applications/:id/review
 POST /api/staff/production-readiness/operational-alert-attestations
 POST /api/staff/production-readiness/recovery-attestations
 POST /api/staff/reservations/:id/decision
+POST /api/staff/reservations/:id/reopen
 POST /api/staff/reviews/:id/approve
 POST /api/staff/reviews/:id/reject
 POST /api/staff/reviews/:id/request-changes

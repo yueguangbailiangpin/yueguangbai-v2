@@ -10,8 +10,11 @@ import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from './http-auth/errors';
 import { decideReservation } from './reservations/decide-reservation';
+import { reopenReservation } from './reservations/reopen-reservation';
 import type { ReservationStaffActor } from './reservations/reservation-shared';
 import {
+  batchWithAssignmentRetry,
+  prepareDirectWorkItem,
   requireAssignedWorkflowActor,
   requireSellerOrganizationScope,
   resolveStaffDataScope,
@@ -71,6 +74,10 @@ export function registerStaffWorkflowClosureRoutes(app: Hono<any>): void {
   app.post(
     '/api/staff/reservations/:id/decision',
     withErrors(decideReservationHttp),
+  );
+  app.post(
+    '/api/staff/reservations/:id/reopen',
+    withErrors(reopenReservationHttp),
   );
 }
 
@@ -244,6 +251,64 @@ async function decideReservationHttp(context: Context<any>): Promise<Response> {
     requestId: requestIdFromContext(context),
   });
   return success(context, { reservation_decision: result });
+}
+
+interface ReservationWorkItemSourceRow {
+  organization_id: string;
+  store_id: string;
+  marketplace_code: string;
+  buyer_customer_id: string;
+}
+
+async function reopenReservationHttp(context: Context<any>): Promise<Response> {
+  const session = requireAuthorization(context);
+  const body = record(await readBoundedJson(context.req.raw, BODY_LIMIT));
+  rejectUnknown(body, ['expected_version', 'reason']);
+  const reservationId = requiredString(context.req.param('id'));
+  const expectedVersion = positiveInteger(body['expected_version']);
+  const reason = requiredString(body['reason'], 500);
+  const idempotencyKeyValue = idempotencyKey(context);
+  const requestId = requestIdFromContext(context);
+
+  const result = await reopenReservation(context.env.DB, {
+    reservationId,
+    expectedVersion,
+    reason,
+  }, {
+    actor: reservationActor(session),
+    idempotencyKey: idempotencyKeyValue,
+    requestId,
+  });
+
+  const source = await context.env.DB.prepare(`
+    SELECT organization_id, store_id, marketplace_code, buyer_customer_id
+    FROM product_reservations
+    WHERE id=?
+    LIMIT 1
+  `).bind(reservationId).first<ReservationWorkItemSourceRow | null>();
+  if (!source) throw httpError('NOT_FOUND', 404);
+
+  await batchWithAssignmentRetry(
+    context.env.DB,
+    () => prepareDirectWorkItem(context.env.DB, {
+      workType: 'RESERVATION_DECISION',
+      sourceEntityType: 'RESERVATION',
+      sourceEntityId: reservationId,
+      marketplaceCode: source.marketplace_code,
+      buyerCustomerId: source.buyer_customer_id,
+      sellerOrganizationId: source.organization_id,
+      storeId: source.store_id,
+      actorType: 'STAFF',
+      actorId: session.staffId,
+      requestId,
+      idempotencyKey: idempotencyKeyValue,
+      reason: 'reservation reopened',
+      now: Date.now(),
+    }),
+    [],
+  );
+
+  return success(context, { reservation_reopen: result });
 }
 
 function reservationActor(
