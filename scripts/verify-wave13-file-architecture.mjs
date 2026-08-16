@@ -66,7 +66,7 @@ assert(
   'Wave13 check must run the canonical runtime-backed route inventory test',
 );
 report('wave13-file-architecture', {
-  active_purpose_routes: 6,
+  active_purpose_routes: 7,
   deferred_to_wave15: [],
   generic_link_routes: 0,
   generic_grant_routes: 0,

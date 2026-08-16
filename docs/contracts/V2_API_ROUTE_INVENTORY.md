@@ -197,8 +197,10 @@ POST /api/staff/buyer-advance-principal/:formalOrderId/payments/:paymentId/rever
 POST /api/staff/buyer-refunds/:id/payments
 POST /api/staff/buyer-refunds/:id/payments/:paymentEntryId/reversals
 POST /api/staff/buyers/:id/marketplace-correction
+POST /api/staff/catalog/product-versions/:versionId/main-image
 POST /api/staff/catalog/products
 POST /api/staff/catalog/products/:id/versions
+POST /api/staff/catalog/stores
 POST /api/staff/customer-identity-resolution/cases
 POST /api/staff/customer-identity-resolution/cases/:id/resolve
 POST /api/staff/customer-onboarding/:customerType/:subjectId/change-wechat
@@ -216,6 +218,7 @@ POST /api/staff/file-upload-intents/:id/complete
 POST /api/staff/file-uploads/buyer-refund-proofs/intents
 POST /api/staff/file-uploads/seller-order-chat-screenshots/intents
 POST /api/staff/file-uploads/seller-settlement-proofs/intents
+POST /api/staff/file-uploads/product-images/intents
 POST /api/staff/files/:fileObjectId/read-intents
 POST /api/staff/finance/exports/csv
 POST /api/staff/formal-orders/:id/chat-screenshot
