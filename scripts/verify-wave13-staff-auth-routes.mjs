@@ -76,7 +76,7 @@ for (const evidence of [
   'app.routes',
   'duplicateRegistrations',
   '/api/staff-auth/access/bootstrap',
-  'toHaveLength(30)',
+  'toHaveLength(31)',
 ]) assertContains(inventoryTests, evidence, 'route inventory runtime test');
 for (const source of [index, middleware, authRoutes]) {
   assertNotContains(source, '/api/v2/', 'Wave13 Staff routing');
