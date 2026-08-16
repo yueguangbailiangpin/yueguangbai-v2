@@ -84,7 +84,7 @@ async function signingKeys(teamDomain: string, now: number, force = false): Prom
   let response: Response;
   try {
     response = await fetch(`${teamDomain}/cdn-cgi/access/certs`, {
-      method: 'GET', redirect: 'error', headers: { Accept: 'application/json' },
+      method: 'GET', redirect: 'manual', headers: { Accept: 'application/json' },
     });
   } catch { throw new CloudflareAccessError('UNAUTHENTICATED','JWKS_FETCH'); }
   if (!response.ok) throw new CloudflareAccessError('UNAUTHENTICATED','JWKS_HTTP');
