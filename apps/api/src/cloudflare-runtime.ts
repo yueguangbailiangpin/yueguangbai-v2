@@ -1,7 +1,7 @@
 import type { ObjectStorageAdapter, SqlDatabase } from '@ygb/contracts';
 import type { AppBindings } from './app';
 import { createR2ObjectStorageAdapter } from './files/r2-object-storage';
-import { parseExactGitCommitSha } from '@ygb/domain';
+import { exactCloudflareAccessTeamOrigin, parseExactGitCommitSha } from '@ygb/domain';
 import { resolveOperationalAlertRuntimeConfiguration } from './operational-readiness/alert-runtime';
 
 export type ReleaseEnvironment = 'local' | 'staging' | 'production';
@@ -200,7 +200,7 @@ function validStaffAccessReleaseBindings(
   bindings: CloudflareWorkerBindings,
   appOrigin: string,
 ): boolean {
-  return exactHttpsOrigin(bindings.STAFF_ACCESS_TEAM_DOMAIN) !== null
+  return exactCloudflareAccessTeamOrigin(bindings.STAFF_ACCESS_TEAM_DOMAIN) !== null
     && safeStaffAuthValue(bindings.STAFF_ACCESS_AUD, 200, 8)
     && bindings.STAFF_AUTH_ALLOWED_ORIGINS === appOrigin
     && exactOriginList(bindings.STAFF_AUTH_ALLOWED_ORIGINS).length === 1;

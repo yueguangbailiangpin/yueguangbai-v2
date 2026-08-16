@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../packages/domain/src/serialization/canonical-json.ts';
+import { exactCloudflareAccessTeamOrigin } from '../packages/domain/src/security/cloudflare-access-team-origin.ts';
 import { DEFAULT_OPERATIONAL_ALERT_ENTRYPOINT,operationalAlertDescriptorFromService,parseExactGitCommitSha } from '../packages/domain/src/operational-alert-binding.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -129,8 +130,8 @@ export function validateReleaseConfig(config, environment) {
   ]) {
     if (vars?.[key] !== origin) errors.push(`vars.${key}:origin_mismatch`);
   }
-  if (!exactHttpsOrigin(vars?.STAFF_ACCESS_TEAM_DOMAIN)) {
-    errors.push('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_https_origin');
+  if (!exactCloudflareAccessTeamOrigin(vars?.STAFF_ACCESS_TEAM_DOMAIN)) {
+    errors.push('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_access_team_origin');
   }
   if (!safeReleaseValue(vars?.STAFF_ACCESS_AUD, 200, 8)) {
     errors.push('vars.STAFF_ACCESS_AUD:missing_or_invalid');

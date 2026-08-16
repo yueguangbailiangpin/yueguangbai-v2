@@ -126,6 +126,21 @@ describe('Cloudflare release preflight', () => {
     expect(validateReleaseConfig(staging,'staging')).toEqual([]);
   });
 
+  for (const environment of ['staging', 'production']) {
+    it(`rejects ${environment} self-origin or arbitrary-host Access team domains`, () => {
+      for (const domain of [
+        `https://${environment}.example.invalid`,
+        'https://arbitrary.example.com',
+        'https://nested.team.cloudflareaccess.com',
+      ]) {
+        const config = anonymousConfig(environment);
+        config.vars.STAFF_ACCESS_TEAM_DOMAIN = domain;
+        expect(validateReleaseConfig(config, environment))
+          .toContain('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_access_team_origin');
+      }
+    });
+  }
+
   it('requires the governed synthetic Buyer registration configuration in staging',()=>{
     const staging=anonymousConfig('staging');
     delete staging.vars.BUYER_SELF_REGISTRATION_ENABLED;
@@ -210,7 +225,7 @@ describe('Cloudflare release preflight', () => {
     const errors = validateReleaseConfig(config, 'production');
     expect(errors).toContain('vars.FEISHU_WORKBENCH_SYNC_ENABLED:core_runtime_configuration_forbidden');
     expect(errors).toContain('vars.STAFF_MCP_ENABLED:core_runtime_configuration_forbidden');
-    expect(errors).toContain('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_https_origin');
+    expect(errors).toContain('vars.STAFF_ACCESS_TEAM_DOMAIN:invalid_access_team_origin');
     expect(errors).toContain('vars.STAFF_ACCESS_AUD:missing_or_invalid');
   });
 

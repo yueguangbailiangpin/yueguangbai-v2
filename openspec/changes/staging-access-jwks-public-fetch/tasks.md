@@ -5,6 +5,7 @@
 - [x] 1.3 Audit API global outbound fetch usage and select the minimum compatibility flag.
 - [x] 1.4 Require the exact flag in staging and production templates, release preflight and the static release-configuration verifier.
 - [x] 1.5 Add fail-closed tests for missing, private-origin and expanded flag sets.
+- [x] 1.6 After independent review, pin one exact Access team origin across shared validation, runtime, readiness and both preflight layers; add self-loop and arbitrary-host negatives.
 
 ## 2. Verification and delivery
 

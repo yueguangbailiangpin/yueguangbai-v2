@@ -3,7 +3,7 @@ import type { Hono } from 'hono';
 import { safeResolveOperationalAlertSink, type OperationalAlertSink } from '../scheduled-operations/signals';
 import { operationalAlertAttestationReady } from './alert-attestation';
 import type { AppBindings } from '../app';
-import { parseExactGitCommitSha } from '@ygb/domain';
+import { exactCloudflareAccessTeamOrigin,parseExactGitCommitSha } from '@ygb/domain';
 
 const TARGET_SCHEMA=70;
 const MAX_JOB_STALENESS_MS=6*60*60*1000;
@@ -97,5 +97,5 @@ async function storageReady(database:SqlDatabase,storage:ObjectStorageAdapter|nu
 }
 function validAccessConfig(domain:unknown,aud:unknown):boolean{
   if(typeof domain!=='string'||typeof aud!=='string'||aud.trim().length<8||aud.startsWith('REQUIRED_'))return false;
-  try{const url=new URL(domain.trim());return url.protocol==='https:'&&url.pathname==='/'&&!url.search&&!url.hash&&!url.username&&!url.password&&!domain.includes('REQUIRED_');}catch{return false;}
+  return exactCloudflareAccessTeamOrigin(domain)!==null;
 }

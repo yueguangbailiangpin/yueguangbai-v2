@@ -29,6 +29,16 @@ describe('Cloudflare Access Staff identity',()=>{
     await expect(verifyCloudflareAccessIdentity(request(third.token),{STAFF_ACCESS_TEAM_DOMAIN:third.issuer,STAFF_ACCESS_AUD:third.audience},third.now)).rejects.toMatchObject({code:'UNAUTHENTICATED',reason:'JWKS_HTTP'});
   });
 
+  it('rejects a self-origin or arbitrary JWKS authority before fetch',async()=>{
+    const fetchSpy=vi.spyOn(globalThis,'fetch');
+    for(const teamDomain of ['https://app.example.test','https://arbitrary.example.com','https://nested.team.cloudflareaccess.com']){
+      await expect(verifyCloudflareAccessIdentity(new Request('https://app.example.test'),{
+        STAFF_ACCESS_TEAM_DOMAIN:teamDomain,STAFF_ACCESS_AUD:'audience-staff-invalid-team',
+      })).rejects.toMatchObject({code:'CONFIGURATION',reason:'BINDINGS'});
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('bootstraps only a pre-existing active Moonwhite email identity and issues an opaque session',async()=>{
     database=createMigratedTestDatabase();
     database.raw.prepare(`INSERT INTO staff_email_identities(id,staff_id,normalized_email,status,verified_at,last_login_at,created_at,updated_at,revoked_at)

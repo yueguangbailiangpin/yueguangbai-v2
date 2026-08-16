@@ -1,3 +1,5 @@
+import { exactCloudflareAccessTeamOrigin } from '@ygb/domain';
+
 interface AccessBindings {
   STAFF_ACCESS_TEAM_DOMAIN?: string;
   STAFF_ACCESS_AUD?: string;
@@ -34,7 +36,7 @@ export async function verifyCloudflareAccessIdentity(
   bindings: AccessBindings,
   now = Date.now(),
 ): Promise<{ email: string; subject: string | null }> {
-  const teamDomain = exactOrigin(bindings.STAFF_ACCESS_TEAM_DOMAIN);
+  const teamDomain = exactCloudflareAccessTeamOrigin(bindings.STAFF_ACCESS_TEAM_DOMAIN);
   const audience = clean(bindings.STAFF_ACCESS_AUD, 512);
   if (!teamDomain || !audience) throw new CloudflareAccessError('CONFIGURATION','BINDINGS');
   const token = request.headers.get('Cf-Access-Jwt-Assertion')?.trim() ?? '';
@@ -129,11 +131,6 @@ function base64UrlBytes(value: string): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(new ArrayBuffer(decoded.length));
   for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
   return bytes;
-}
-function exactOrigin(value: string | undefined): string | null {
-  if (!value) return null;
-  try { const url = new URL(value.trim()); return url.protocol === 'https:' && url.pathname === '/' && !url.search && !url.hash && !url.username && !url.password ? url.origin : null; }
-  catch { return null; }
 }
 function clean(value: string | undefined, maximum: number): string | null {
   const normalized = value?.trim() ?? '';

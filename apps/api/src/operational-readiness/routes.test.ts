@@ -69,6 +69,16 @@ describe('operational alert production readiness',()=>{
       staff_access:'ok',release:'ok',
     }}});
     expect(storageHeadCalls).toBe(1);
+    const selfOriginTeam=await ready({
+      APP_ENVIRONMENT:'staging',APP_RELEASE_SHA:RELEASE,
+      SCHEDULED_OPERATIONS_ENABLED:'false',OUTBOX_DELIVERY_ENABLED:'false',ACQUISITION_MAINTENANCE_ENABLED:'false',
+      OPERATIONAL_ALERT_MODE:'disabled',
+      STAFF_ACCESS_TEAM_DOMAIN:'https://staging.yueguangbai.net',
+      STAFF_ACCESS_AUD:'staging-access-audience',
+      FILE_OBJECT_STORAGE:{headObject:async()=>null} as any,
+    },NOW);
+    expect(selfOriginTeam.status).toBe(503);
+    await expect(selfOriginTeam.json()).resolves.toMatchObject({data:{checks:{staff_access:'failed'}}});
     for(const enabled of [
       {SCHEDULED_OPERATIONS_ENABLED:'true'},
       {OUTBOX_DELIVERY_ENABLED:'true'},

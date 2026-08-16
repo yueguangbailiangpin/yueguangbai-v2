@@ -6,6 +6,7 @@ After the reviewed redirect-mode repair was merged and deployed, real staging st
 
 - Require `global_fetch_strictly_public` in the staging and production release templates used by the same Staff Access runtime.
 - Make release preflight and the release-configuration verifier fail closed when that exact compatibility contract is absent or drifted.
+- Pin the JWKS authority to one exact `https://<team>.cloudflareaccess.com` origin in shared domain validation, runtime and release gates.
 - Deploy only the ordinarily merged SHA to the existing isolated staging Worker and verify authenticated Owner bootstrap before T9 resumes.
 
 ## Capabilities
@@ -22,4 +23,4 @@ None. The Staff Access contract still requires signature, issuer, audience, time
 
 - Changes checked-in staging and production templates plus repository-local release verifiers/tests; production is not deployed or queried.
 - Does not change authentication fallbacks, permissions, D1, R2, migrations, secrets or business data.
-- Existing binding-based fetches are unaffected; the only global outbound `fetch()` in the API source is the pinned Access JWKS request.
+- Existing binding-based fetches are unaffected. In the current staging/production core active path, the pinned Access JWKS request is the only global outbound fetch; disabled or uncomposed optional adapters are not activation evidence.

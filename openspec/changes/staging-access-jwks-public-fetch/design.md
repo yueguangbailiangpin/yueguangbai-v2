@@ -7,7 +7,7 @@ The merged redirect repair changed the fixed JWKS request from an unsupported re
 **Goals:**
 
 - Make the exact configured Access team JWKS endpoint reachable through Cloudflare's public routing path.
-- Preserve exact team-domain pinning, manual redirect rejection, bounded JWKS parsing and complete JWT verification.
+- Pin one exact `https://<team>.cloudflareaccess.com` authority and preserve manual redirect rejection, bounded JWKS parsing and complete JWT verification.
 - Keep configuration drift fail-closed in both deployable templates and release preflight.
 
 **Non-Goals:**
@@ -24,9 +24,12 @@ Release preflight and the static release-configuration verifier require the exac
 
 The production template is updated because it invokes the same Staff Access runtime and would otherwise retain a known-broken deployment contract. This is repository configuration only; production remains `NO_GO` and is not deployed or inspected.
 
+A shared pure domain validator accepts one non-empty team label under `cloudflareaccess.com` and rejects the application origin, arbitrary HTTPS hosts, nested subdomains, ports, credentials, paths, queries, fragments, trailing slashes and surrounding whitespace. Staff bootstrap runtime, Worker release resolution, `/ready`, release preflight and Staff Auth preflight all consume this authority contract.
+
 ## Risks / Trade-offs
 
-- [Global fetch routing changes] -> The API source audit shows the JWKS request is the only global outbound `fetch()`; other outbound calls use explicit bindings. Preflight pins the exact compatibility set.
+- [Global fetch routing changes] -> In the current staging/production core active path, JWKS is the only global outbound fetch. Drive is disabled, Staff MCP is forbidden from the core release, and the TikTok adapter is not composed. Preflight pins the exact compatibility set.
+- [Self-loop after configuration drift] -> Shared validation rejects the application origin and every authority outside one exact `cloudflareaccess.com` team origin before any JWKS fetch.
 - [Public endpoint redirects or returns non-2xx] -> `redirect: 'manual'` plus the existing `response.ok` check fails closed.
 - [Local simulation differs from edge] -> Require deployment of the reviewed merge commit only to the existing staging Worker and a real authenticated Owner bootstrap.
 
