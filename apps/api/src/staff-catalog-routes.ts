@@ -3,6 +3,7 @@ import {
   apiSuccess,
   isApiErrorCode,
   isDemandReviewDecision,
+  isMarketplaceCode,
   isProductApplicationReviewDecision,
   PRODUCT_COLOR_SPEC_MODES,
   STAFF_PRODUCT_PAGE_DEFAULT_LIMIT,
@@ -18,6 +19,7 @@ import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { addProductVersion } from './catalog/add-product-version';
 import { createApprovedProduct } from './catalog/create-product';
+import { createSellerStore } from './catalog/create-store';
 import type { CatalogStaffActor } from './catalog/catalog-shared';
 import {
   readDemandReviewContext,
@@ -75,6 +77,10 @@ export function registerStaffCatalogWorkflowRoutes(app: Hono<any>): void {
   app.post(
     '/api/staff/catalog/products/:id/versions',
     withStaffWorkflowErrors(createProductVersion),
+  );
+  app.post(
+    '/api/staff/catalog/stores',
+    withStaffWorkflowErrors(createStore),
   );
   app.post(
     '/api/staff/demand-batches/:id/review',
@@ -278,6 +284,34 @@ async function createProductVersion(context: Context<any>): Promise<Response> {
     requestId: requestIdFromContext(context),
   });
   return success(context, { product_version: result }, 201);
+}
+
+async function createStore(context: Context<any>): Promise<Response> {
+  const authorization = requireAuthorization(context);
+  // SELLER_MANAGE is enforced inside createSellerStore via
+  // requireCatalogPermission; dataScope is resolved here so
+  // requireCatalogOrganizationScope inside the command can reject
+  // cross-organization store creation.
+  const actor: CatalogStaffActor = {
+    ...workflowActor(authorization),
+    dataScope: await resolveStaffDataScope(context.env.DB, authorization, {
+      requiredPermission: 'SELLER_MANAGE',
+    }),
+  };
+  const body = await bodyRecord(context);
+  rejectUnknown(body, ['seller_organization_id', 'marketplace_code', 'store_name']);
+  const marketplace = requiredString(body['marketplace_code'], 20);
+  if (!isMarketplaceCode(marketplace)) throw validationError();
+  const result = await createSellerStore(context.env.DB, {
+    sellerOrganizationId: requiredString(body['seller_organization_id']),
+    marketplaceCode: marketplace,
+    storeName: requiredString(body['store_name'], 200),
+  }, {
+    actor,
+    idempotencyKey: idempotencyKey(context),
+    requestId: requestIdFromContext(context),
+  });
+  return success(context, { store: result }, 201);
 }
 
 async function reviewDemand(context: Context<any>): Promise<Response> {

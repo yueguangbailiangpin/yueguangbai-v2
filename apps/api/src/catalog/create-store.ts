@@ -8,6 +8,7 @@ import {
   normalizeStoreName,
 } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
+import { requireMarketplaceScope } from '../staff-assignment';
 import {
   acquireIdempotency,
   assertIdempotencyCompletionStatement,
@@ -70,6 +71,15 @@ export async function createSellerStore(
     input.marketplaceCode,
     { requireActive: true, requireAdapter: true },
   );
+  // Reject out-of-scope store creation: the actor's data scope must include
+  // the target marketplace. Marketplace codes come from
+  // staff_marketplace_scopes and do not depend on existing stores, so a
+  // brand-new organization without stores is not falsely blocked. Missing
+  // dataScope is treated as forbidden.
+  if (!command.actor.dataScope) {
+    throw new CatalogError('FORBIDDEN', 403);
+  }
+  requireMarketplaceScope(command.actor.dataScope, marketplace.code);
   const storeName = parseCatalogInput(
     () => normalizeStoreName(input.storeName),
   );
