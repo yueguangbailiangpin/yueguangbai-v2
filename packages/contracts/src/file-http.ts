@@ -35,6 +35,11 @@ export const FILE_HTTP_PURPOSE_ROUTES = Object.freeze({
     purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
     visibility: 'SELLER_VISIBLE',
   },
+  staffProductImage: {
+    path: '/api/staff/file-uploads/product-images/intents',
+    purpose: 'PRODUCT_IMAGE',
+    visibility: 'SELLER_VISIBLE',
+  },
 } as const satisfies Record<string, {
   path: string;
   purpose: FilePurpose;

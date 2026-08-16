@@ -100,6 +100,14 @@ export function registerFileHttpRoutes(app: Hono<AppEnv>): void {
     'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
     'SELLER_VISIBLE',
   );
+  registerIntentRoute(
+    app,
+    FILE_HTTP_PURPOSE_ROUTES.staffProductImage.path,
+    undefined,
+    'STAFF',
+    'PRODUCT_IMAGE',
+    'SELLER_VISIBLE',
+  );
 
   registerLifecycleRoutes(app, 'BUYER', '/api/buyer-portal', customerSession);
   registerLifecycleRoutes(app, 'SELLER', '/api/seller-portal', customerSession);
