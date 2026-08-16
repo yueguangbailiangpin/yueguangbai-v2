@@ -8,11 +8,11 @@ This verification covers only the redacted T8 activation evidence and the linked
 
 `DRAFT_PR_PUBLISHED=YES (#86)`
 
-`READY_FOR_READY_OR_MERGE=NO`
+`READY_FOR_READY_OR_MERGE=YES`
 
-`READY_FOR_ARCHIVE=NO`
+`READY_FOR_ARCHIVE_AFTER_MERGE=YES`
 
-The remaining gate is independent fixed-SHA review.
+The independent fixed-SHA review gate passed at `0647c862085a2b1dfdb9c1cb888015c05b9fae41` with P0/P1/P2 = 0/0/0 and `FINAL_VERDICT=APPROVE`. The later governance-only commit records that result and requires re-lock plus CI before merge.
 
 ## Release identity
 
@@ -28,7 +28,7 @@ The remaining gate is independent fixed-SHA review.
 - T8 execution tasks 1-11 are complete.
 - Formal checks passed on the candidate evidence tree.
 - Draft PR #86 was published from evidence commit `a843f5cb98ede7780c7b0d5a765b323cf3d95442`.
-- Independent fixed-SHA review remains the only incomplete governance gate.
+- Independent fixed-SHA review passed with no findings; no implementation or evidence-content changes followed it.
 
 ## Correctness evidence
 
@@ -66,4 +66,4 @@ The remaining gate is independent fixed-SHA review.
 - P0: 0.
 - P1: 0.
 - P2: 0 in the committed T8 evidence scope.
-- Governance pending: independent fixed-SHA review blocks Ready, merge and archive.
+- Governance complete: independent fixed-SHA review passed. Re-lock and CI for the governance-only recording commit remain operational pre-merge checks.
