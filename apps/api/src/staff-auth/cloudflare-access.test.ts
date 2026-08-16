@@ -9,10 +9,13 @@ afterEach(()=>{database?.close();database=null;vi.restoreAllMocks()});
 describe('Cloudflare Access Staff identity',()=>{
   it('verifies RS256, issuer, audience, time and normalized email',async()=>{
     const fixture=await jwtFixture('https://team-one.cloudflareaccess.com','audience-staff-001',' Staff.Owner@Example.Test ');
-    mockJwks(fixture.jwk);
+    const fetchSpy=mockJwks(fixture.jwk);
     await expect(verifyCloudflareAccessIdentity(new Request('https://app.example.test',{headers:{'Cf-Access-Jwt-Assertion':fixture.token}}),{
       STAFF_ACCESS_TEAM_DOMAIN:fixture.issuer,STAFF_ACCESS_AUD:fixture.audience,
     },fixture.now)).resolves.toEqual({email:'staff.owner@example.test',subject:'access-subject'});
+    expect(fetchSpy).toHaveBeenCalledWith(`${fixture.issuer}/cdn-cgi/access/certs`,{
+      method:'GET',redirect:'manual',headers:{Accept:'application/json'},
+    });
   });
 
   it('fails closed for wrong audience, bad signature and unavailable keys',async()=>{
@@ -64,7 +67,7 @@ describe('Cloudflare Access Staff identity',()=>{
 });
 
 function request(token:string){return new Request('https://app.example.test',{headers:{'Cf-Access-Jwt-Assertion':token}})}
-function mockJwks(jwk:JsonWebKey){vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({keys:[jwk]}),{status:200,headers:{'Content-Type':'application/json'}}))}
+function mockJwks(jwk:JsonWebKey){return vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({keys:[jwk]}),{status:200,headers:{'Content-Type':'application/json'}}))}
 async function jwtFixture(issuer:string,audience:string,email:string){
   const now=Date.now();const nowSeconds=Math.floor(now/1000);const kid=crypto.randomUUID();
   const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
