@@ -30,10 +30,10 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | C05 | 卖家渠道序号独立。 | PENDING | REMOTE_D1 | Formal Seller onboarding across channels. |
 | C06 | ASIN Marketplace 唯一。 | PENDING | REMOTE_HTTP | Same-Marketplace duplicate and cross-Marketplace scope. |
 | C07 | 订单号 Claim 并发测试通过。 | PENDING | REMOTE_HTTP | Concurrent requests plus final D1 claim state. |
-| D01 | 产品申请与需求批次分表。 | PENDING | REMOTE_D1 | Formal Seller submission and Staff demand path. |
+| D01 | 产品申请与需求批次分表。 | PASS | REMOTE_D1 | Product application full lifecycle verified 2026-08-16 (submit->queue->approve->product ACTIVE); demand batch submission path PASS. Evidence T9-D01-PRODUCT-APPLICATION-PASS.md. |
 | D02 | 同店铺重复和跨店铺冲突正确。 | PENDING | REMOTE_HTTP | Minimal disclosure in conflict responses. |
 | D03 | R2 上传失败无残留业务记录。 | PENDING | REMOTE_R2 | Isolated staging R2 compensation case. |
-| D04 | 需求追加不覆盖旧批次。 | PENDING | REMOTE_D1 | Append and compare immutable prior batch/event. |
+| D04 | 需求追加不覆盖旧批次。 | PASS | REMOTE_D1 | Two demand batches (10 and 20) coexist; prior batch unchanged. Evidence T9-D04-DEMAND-APPEND-PASS.md. |
 | D05 | 普通买家只看到公开需求。 | PENDING | REMOTE_HTTP | Public versus unpublished/closed synthetic demand. |
 | D06 | 预约预检正确。 | PENDING | REMOTE_HTTP | Eligible/full/duplicate/ineligible cases. |
 | D07 | 同一名额并发批准最多成功一次。 | PENDING | REMOTE_HTTP | Two Staff commands and final capacity. |
@@ -57,13 +57,13 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | F08 | 差额由系统计算。 | PENDING | REMOTE_HTTP | Reject client authority and inspect computed delta. |
 | F09 | 多口径利润可追溯到事实。 | PENDING | REMOTE_D1 | Owner-only synthetic financial projection. |
 | F10 | 卖家 DTO 不含买家返款或内部利润。 | PENDING | REMOTE_HTTP | Inspect actual Seller responses/exports. |
-| G01 | D1 是任务权威源。 | PENDING | REMOTE_D1 | Page/API versus D1 final state. |
+| G01 | D1 是任务权威源。 | PASS | REMOTE_D1 | Queue showed 1 product-application item then 2 demand items, matching D1 state. |
 | G02 | 任务领取原子。 | PENDING | REMOTE_HTTP | Concurrent claim and final version. |
 | G03 | 工作项命令重复请求保持幂等。 | PENDING | REMOTE_HTTP | Same-key replay and changed-request conflict. |
 | G04 | 不存在飞书登录、绑定、同步、回调或告警运行入口。 | PASS | LOCAL_FIXED_SHA | Source-level: zero feishu/lark imports or routes in index.ts; no non-test refs in apps/packages. Runtime probes pending. |
 | G05 | 内部任务异常进入受控重试或人工处理。 | PENDING | REMOTE_D1 | Governed manual failure because scheduler is disabled. |
 | G06 | 外部独立健康告警不包含完整敏感数据。 | PENDING | REMOTE_HTTP | Staging alert mode remains disabled; inspect safe health payload. |
-| G07 | 正式动作必须打开受控 Web 页面。 | PENDING | REMOTE_HTTP | Execute formal actions from Staff Web; no external task authority. |
+| G07 | 正式动作必须打开受控 Web 页面。 | PASS | REMOTE_HTTP | Product application approved from Staff Web (2026-08-16). |
 | H01 | D1 完整备份生成哈希和 Manifest。 | BLOCKED | T10_LINK | Independent T10 recovery Change. |
 | H02 | 隔离恢复演练通过。 | BLOCKED | T10_LINK | Independent T10 recovery Change. |
 | H03 | R2 Manifest 可核对。 | BLOCKED | T10_LINK | Independent T10 recovery Change. |
@@ -77,5 +77,5 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 - Total: 67
 - Initial terminal conflicts: 3
 - Initial external/dependency blockers: 5
-- Pending execution: 54
-- Passed/failed: 6/0
+- Pending execution: 51
+- Passed/failed: 9/0
