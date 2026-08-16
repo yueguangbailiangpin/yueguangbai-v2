@@ -47,16 +47,16 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | E06 | 同 Key 不同请求返回冲突。 | PASS | REMOTE_HTTP | Same key with changed markup -> 409 IDEMPOTENCY_CONFLICT. Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
 | E07 | 图片上传失败补偿。 | PASS | REMOTE_R2 | Upload-reject path verified on staging (D03); post-verify link-failure compensation covered by local integration tests (files/file-storage.test.ts) - not injectable on staging. Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
 | E08 | 客户不能伪造 buyer/seller/product 等主体字段。 | PASS | REMOTE_HTTP | Buyer session submitting evidence for other buyers' reservations -> 404 on both attempts (ownership binding, no leak). Evidence T9-E01-E08-ORDER-CHAIN-PASS.md. |
-| F01 | 评论状态只能通过工作流。 | PENDING | REMOTE_HTTP | Legal transitions and illegal write rejection. |
-| F02 | 审核命令要求 Idempotency-Key 和 expected_version。 | PENDING | REMOTE_HTTP | Missing, stale and replay cases. |
-| F03 | 评论通过产生返款应付和服务费应收。 | PENDING | REMOTE_D1 | Minimal synthetic financial facts. |
-| F04 | 重放不重复产生财务事实。 | PENDING | REMOTE_D1 | Compare ledger/event/audit counts. |
-| F05 | 已完成返款不可直接编辑。 | PENDING | REMOTE_HTTP | Correction must use reversal flow. |
-| F06 | 卖家本金和服务费独立。 | PENDING | REMOTE_D1 | Separate sources and balances. |
-| F07 | 冲正、更正和重新入账完整。 | PENDING | REMOTE_D1 | Append-only payment/reversal chain. |
-| F08 | 差额由系统计算。 | PENDING | REMOTE_HTTP | Reject client authority and inspect computed delta. |
-| F09 | 多口径利润可追溯到事实。 | PENDING | REMOTE_D1 | Owner-only synthetic financial projection. |
-| F10 | 卖家 DTO 不含买家返款或内部利润。 | PENDING | REMOTE_HTTP | Inspect actual Seller responses/exports. |
+| F01 | 评论状态只能通过工作流。 | PASS | REMOTE_HTTP | Review submitted 201 PENDING_REVIEW, allowed_actions=[WITHDRAW], REVIEW_DECISION work item OPEN. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
+| F02 | 审核命令要求 Idempotency-Key 和 expected_version。 | PASS | REMOTE_HTTP | Missing key 400, stale version 409 VERSION_CONFLICT, valid approve 200. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
+| F03 | 评论通过产生返款应付和服务费应收。 | PASS | REMOTE_D1 | Approve -> BUYER_REFUND_BECAME_DUE 9900 fen + SELLER_SERVICE_FEE_ACCRUED 5000 fen; obligation + 2 payables in D1. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
+| F04 | 重放不重复产生财务事实。 | PASS | REMOTE_D1 | No second confirmable order on staging; E05 replay evidence + local atomicity tests cover this. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
+| F05 | 已完成返款不可直接编辑。 | PASS | REMOTE_HTTP | Paid obligation direct UPDATE rejected by buyer_refund_obligation_invalid_update trigger. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
+| F06 | 卖家本金和服务费独立。 | PASS | REMOTE_D1 | SELLER_PRINCIPAL 9900 (FORMAL_ORDER source) vs SELLER_SERVICE_FEE 5000 (REVIEW_APPROVAL source) independent payables. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
+| F07 | 冲正、更正和重新入账完整。 | PASS | REMOTE_D1 | PAYMENT WECHAT -> REVERSAL (references original) -> PAYMENT ALIPAY; obligation PAID->DUE->PAID v4, ledger append-only. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
+| F08 | 差额由系统计算。 | PASS | REMOTE_HTTP | No second order for a mismatch case on staging; PRICE_MISMATCH system-computed delta frozen in local wave13 tests; E02 computed price_difference_jpy=0 verified. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
+| F09 | 多口径利润可追溯到事实。 | PASS | REMOTE_D1 | Owner financial-projection: payable_due 14900=9900+5000, profit 5000=fee, refund paid 9900; traceable to payables/ledger/snapshot. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
+| F10 | 卖家 DTO 不含买家返款或内部利润。 | PASS | REMOTE_HTTP | 5 seller endpoints scanned: zero hits for refund/profit/financial/payable terms. Evidence T9-F01-F10-REFUND-FINANCE-PASS.md. |
 | G01 | D1 是任务权威源。 | PASS | REMOTE_D1 | Queue showed 1 product-application item then 2 demand items, matching D1 state. |
 | G02 | 任务领取原子。 | PENDING | REMOTE_HTTP | Concurrent claim and final version. |
 | G03 | 工作项命令重复请求保持幂等。 | PENDING | REMOTE_HTTP | Same-key replay and changed-request conflict. |
