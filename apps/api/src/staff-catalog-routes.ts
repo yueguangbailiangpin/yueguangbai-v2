@@ -638,6 +638,7 @@ function publicMessage(code: ApiErrorCode): string {
     || code.endsWith('_NOT_FOUND')) return '资源不存在';
   if (code === 'VALIDATION_ERROR') return '请求参数不正确';
   if (code === 'VERSION_CONFLICT') return '数据已发生变化，请刷新后重试';
+  if (code === 'MARKETPLACE_NOT_SUPPORTED') return '该站点暂不支持开店';
   return '当前状态无法执行该操作';
 }
 

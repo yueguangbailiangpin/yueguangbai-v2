@@ -168,6 +168,17 @@ export async function submitProductApplication(
       storeId,
       command.actor.sellerOrganizationId,
     );
+    // The application/product business tables are JP-only today
+    // (marketplaces(code) has a single 'JP' row; product commands type
+    // marketplace_code as 'JP'). A store on any other marketplace exists at
+    // the catalog level, but its product application cannot be persisted -
+    // reject it explicitly instead of failing the FK inside the batch.
+    if (store.marketplace_code !== 'JP') {
+      throw new ProductApplicationError(
+        'MARKETPLACE_NOT_SUPPORTED',
+        409,
+      );
+    }
     await assertNoFormalProduct(
       database,
       store,

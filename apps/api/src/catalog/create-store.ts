@@ -71,6 +71,16 @@ export async function createSellerStore(
     input.marketplaceCode,
     { requireActive: true, requireAdapter: true },
   );
+  // The business layer is JP-only today: seller_stores/products/
+  // demand_batches reference marketplaces(code), which admits a single 'JP'
+  // row, and product commands type marketplace_code as 'JP'. The old code
+  // hardcoded the JP legacy projection for every store, so an AMAZON_US
+  // store was silently stored as 'JP' and its product applications entered
+  // the JP conflict check. Reject non-JP store creation loudly until the
+  // business tables are migrated to canonical marketplace codes.
+  if (marketplace.code !== 'AMAZON_JP') {
+    throw new CatalogError('MARKETPLACE_NOT_SUPPORTED', 409);
+  }
   // Reject out-of-scope store creation: the actor's data scope must include
   // the target marketplace. Marketplace codes come from
   // staff_marketplace_scopes and do not depend on existing stores, so a
