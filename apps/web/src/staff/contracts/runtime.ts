@@ -2,12 +2,11 @@ import { z } from 'zod';
 
 export const epoch = z.number().int().nonnegative();
 // Backend returns the Marketplace-configured business timezone
-// (PRODUCT_SCHEDULE_TIMEZONE; AMAZON_JP = Asia/Tokyo). Accept the known set
-// rather than hard-coding a single zone.
-export const businessTimezoneSchema = z.enum([
-  'Asia/Shanghai',
-  'Asia/Tokyo',
-]);
+// (PRODUCT_SCHEDULE_TIMEZONE; AMAZON_JP = Asia/Tokyo). Staff code never
+// consumes .timezone (validation only), so accept any IANA string instead of
+// hard-coding a zone set that would break again when a future Marketplace
+// (e.g. AMAZON_US America/Los_Angeles) is enabled.
+export const businessTimezoneSchema = z.string();
 export const integerString = z.string().regex(/^(0|[1-9][0-9]*)$/u);
 export const signedIntegerString = z.string().regex(/^-?(0|[1-9][0-9]*)$/u);
 export const workTypeSchema = z.enum([
