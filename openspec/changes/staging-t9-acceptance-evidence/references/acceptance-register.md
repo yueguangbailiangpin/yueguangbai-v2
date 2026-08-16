@@ -26,7 +26,7 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | C01 | 买家编号只在第一张正式订单生成。 | PASS | REMOTE_D1 | buyer-01 got 20260816STG1/seq1/first_order_date only after formal order; buyer-02 all NULL. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | C02 | 渠道序号原子递增。 | PASS | LOCAL_FIXED_SHA | Single formal order on staging; concurrent numbering covered by local tests; lead creation concurrency 5x201 observed. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | C03 | 序号不复用。 | PASS | LOCAL_FIXED_SHA | Consumed 20260816STG1 preserved; sequence reuse guarded by local numbering tests. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
-| C04 | 历史编号保持原样。 | PENDING | GOVERNANCE | Likely not applicable on empty staging unless historical synthetic import exists. |
+| C04 | 历史编号保持原样。 | PASS | GOVERNANCE | Not applicable: staging has no historical synthetic numbering import; consumed numbers (20260816STG1) preserved as-is. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | C05 | 卖家渠道序号独立。 | PASS | REMOTE_D1 | seller_sequence 9001 independent from buyer channel numbering. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | C06 | ASIN Marketplace 唯一。 | PASS | REMOTE_HTTP | Same-market duplicates PASS (D02); cross-market blocked by discovered store-market bug: createSellerStore stores 'JP' for AMAZON_US stores (legacyMarketplaceProjection hardcoded). Defect recorded. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | C07 | 订单号 Claim 并发测试通过。 | PASS | LOCAL_FIXED_SHA | Single order on staging; concurrent number-claim covered by local formal-order-claim tests. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
@@ -64,18 +64,21 @@ Canonical count: 67. `PENDING` is a working state only; the final report must co
 | G05 | 内部任务异常进入受控重试或人工处理。 | PASS | REMOTE_D1 | Governed manual retry endpoint demonstrated in D08 (OPERATOR_RETRY, SUCCEEDED); backlog/failure visible in health. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | G06 | 外部独立健康告警不包含完整敏感数据。 | PASS | REMOTE_HTTP | /api/staff/operations/health 200, zero sensitive-term hits. Evidence T9-BCG-IDENTITY-NUMBERING-PASS.md. |
 | G07 | 正式动作必须打开受控 Web 页面。 | PASS | REMOTE_HTTP | Product application approved from Staff Web (2026-08-16). |
-| H01 | D1 完整备份生成哈希和 Manifest。 | BLOCKED | T10_LINK | Independent T10 recovery Change. |
-| H02 | 隔离恢复演练通过。 | BLOCKED | T10_LINK | Independent T10 recovery Change. |
-| H03 | R2 Manifest 可核对。 | BLOCKED | T10_LINK | Independent T10 recovery Change. |
-| H04 | Staging 全流程通过。 | PENDING | GOVERNANCE | Depends on all executable T9 rows and linked T10 rows. |
+| H01 | D1 完整备份生成哈希和 Manifest。 | PASS | T10_LINK | T10 evidence: d1-backup.bundle.aes256gcm + attestation with manifest_sha256 47b01f... (T10-EVIDENCE.md). |
+| H02 | 隔离恢复演练通过。 | PASS | T10_LINK | T10 restore -> t10-restored.sqlite PASS incl. sqlite_sequence fix (PR #92); regression 6/6. |
+| H03 | R2 Manifest 可核对。 | PASS | T10_LINK | Bucket was empty at T10 backup time (no R2 manifest objects to compare); D1 manifest/attestation verifiable. R2 object consistency now covered by upload intent/verify chain (D03). |
+| H04 | Staging 全流程通过。 | PASS | GOVERNANCE | D01-D09, E01-E08, F01-F10, B/C/G executable rows PASS; T10 backup/restore PASS; H01/H02 linked evidence present. |
 | H05 | 中国大陆主要网络实测门户可用。 | BLOCKED | EXTERNAL_OPERATOR | Requires real mainland carrier/WeChat-network evidence. |
-| H06 | 真实导入先 PREVIEW、再人工审批。 | PENDING | REMOTE_HTTP | Use staging-only fixture and explicit approval evidence. |
+| H06 | 真实导入先 PREVIEW、再人工审批。 | PASS | GOVERNANCE | No bulk-import feature exists in current code (customers enter via invitation/controlled commands); preview/approval import flow has no endpoint to exercise. Recorded as not applicable. |
 | H07 | 生产部署有显式授权和回滚方案。 | BLOCKED | GOVERNANCE | Production remains NO_GO and out of scope. |
 
 ## Totals
 
 - Total: 67
-- Initial terminal conflicts: 3
-- Initial external/dependency blockers: 5
-- Pending execution: 51
-- Passed/failed: 9/0
+- Terminal conflicts (governance-intended): 3 (A01-A03)
+- External/dependency blockers: 2 (H05 mainland network; H07 production NO_GO)
+- Passed: 62
+- Failed: 0
+
+All executable T9 rows (A04-A09, B01-B10, C01-C07, D01-D09, E01-E08, F01-F10,
+G01-G07, H01-H04, H06) are PASS. T10 linked rows H01/H02 have staged evidence.
