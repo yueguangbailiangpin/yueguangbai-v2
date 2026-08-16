@@ -33,7 +33,7 @@ describe('marketplace and multi-currency application foundation', () => {
     })).rejects.toMatchObject({ code: 'MARKETPLACE_DISABLED' });
   });
 
-  it('allows one global seller organization to own JP and US stores', async () => {
+  it('allows one global seller organization to own JP stores; rejects US stores until the business layer supports them', async () => {
     database = createMigratedTestDatabase();
     seedOrganization(database);
     const jp = await createSellerStore(database, {
@@ -41,20 +41,26 @@ describe('marketplace and multi-currency application foundation', () => {
       marketplaceCode: 'JP',
       storeName: '日本店',
     }, command('seller-store-jp'));
-    const us = await createSellerStore(database, {
+    expect(jp.marketplace_code).toBe('JP');
+    // Regression: seller_stores.marketplace_code used to be hardcoded to the
+    // JP legacy projection, so an AMAZON_US store was silently stored as
+    // 'JP' (and its product applications entered the JP conflict check).
+    // The business tables are JP-only (marketplaces(code) admits one 'JP'
+    // row), so non-JP store creation is rejected loudly for now.
+    await expect(createSellerStore(database, {
       sellerOrganizationId: 'seller-org-global',
       marketplaceCode: 'AMAZON_US',
       storeName: '美国店',
-    }, command('seller-store-us'));
-    expect(jp.marketplace_code).toBe('JP');
-    expect(us.marketplace_code).toBe('AMAZON_US');
+    }, command('seller-store-us'))).rejects.toMatchObject({
+      code: 'MARKETPLACE_NOT_SUPPORTED',
+      status: 409,
+    });
     await expect(database.prepare(`
       SELECT marketplace_code FROM seller_store_marketplaces
       WHERE seller_organization_id=? ORDER BY marketplace_code
     `).bind('seller-org-global').all()).resolves.toEqual({
       results: [
         { marketplace_code: 'AMAZON_JP' },
-        { marketplace_code: 'AMAZON_US' },
       ],
     });
   });

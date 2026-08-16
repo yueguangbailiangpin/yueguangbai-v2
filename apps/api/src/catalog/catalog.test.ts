@@ -119,6 +119,57 @@ describe('seller stores and product catalog', () => {
     expect(stored?.default_buyer_self_pay_bps).toBe(10000);
   });
 
+  it('rejects non-JP store creation until the business layer supports other markets', async () => {
+    database = createMigratedTestDatabase();
+    seedCatalogActorsAndOrganizations(database);
+
+    // AMAZON_US is ACTIVE/AVAILABLE in the registry, but the business tables
+    // (seller_stores/products/demand_batches reference marketplaces(code)
+    // which admits a single 'JP' row) are JP-only. The old code hardcoded the
+    // JP legacy projection for every store, so a US store was silently stored
+    // as 'JP' and its product applications entered the JP conflict check.
+    // Creation must fail loudly instead.
+    await expect(createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'AMAZON_US',
+      storeName: '美国店铺',
+    }, {
+      actor: actor({
+        staffId: 'zz-phase3h-test-owner',
+        displayName: '总管理员',
+        roles: ['owner'],
+        permissions: ['SELLER_MANAGE'],
+        dataScope: {
+          type: 'GLOBAL',
+          buyerCustomerIds: [],
+          sellerOrganizationIds: [],
+          teamIds: [],
+          marketplaceCodes: [],
+        },
+      }),
+      idempotencyKey: 'store:create:market:us',
+      now: 2000,
+    })).rejects.toMatchObject({
+      code: 'MARKETPLACE_NOT_SUPPORTED',
+      status: 409,
+    });
+
+    // JP store creation remains unaffected.
+    const jp = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'JP',
+      storeName: '日本店铺',
+    }, {
+      actor: sellerOpsActor(),
+      idempotencyKey: 'store:create:market:jp',
+      now: 2100,
+    });
+    expect(jp).toMatchObject({
+      marketplace_code: 'JP',
+      status: 'ACTIVE',
+    });
+  });
+
   it('creates normalized stores idempotently and rejects duplicates in the same organization', async () => {
     database = createMigratedTestDatabase();
     seedCatalogActorsAndOrganizations(database);

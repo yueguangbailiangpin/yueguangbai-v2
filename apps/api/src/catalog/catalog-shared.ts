@@ -24,6 +24,7 @@ export class CatalogError extends Error {
       | 'PRODUCT_NOT_FOUND'
       | 'DUPLICATE_PRODUCT'
       | 'ASIN_STORE_CONFLICT'
+      | 'MARKETPLACE_NOT_SUPPORTED'
       | 'IDEMPOTENCY_CONFLICT'
       | 'REQUEST_IN_PROGRESS'
       | 'DEPENDENCY_UNAVAILABLE',
