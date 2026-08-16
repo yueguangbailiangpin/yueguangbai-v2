@@ -8,7 +8,7 @@
 ## 2. Identity and synthetic data
 
 - [ ] 2.1 Establish Owner Staff session and create the other four Staff roles through formal access management.
-- [ ] 2.2 Create synthetic Buyer and Seller identities through formal onboarding, invitation, activation and password flows.
+- [x] 2.2 Create synthetic Buyer and Seller identities through formal onboarding, invitation, activation and password flows. (Seller done 2026-08-16 via PR #93 fix; evidence T9-SELLER-REGISTRATION-PASS.md. Buyer pending.)
 - [ ] 2.3 Execute B01-B10, including allow/deny, Marketplace concealment, Personal DENY and session invalidation.
 
 ## 3. Business workflows
