@@ -330,6 +330,9 @@ async function createStore(context: Context<any>): Promise<Response> {
  * enforcement is done by linkProductVersionMainImage via
  * requireCatalogOrganizationScope; the file ownership check here mirrors the
  * purpose/visibility/entity contract of the product main-image fact.
+ * Staff share the product-image pool: an actor may link an image uploaded by
+ * another staff member (files are SELLER_VISIBLE and the target organization
+ * scope is enforced by the command), so no uploader-ownership check applies.
  */
 class MainImageLinkAuthorization implements FileAuthorizationService {
   constructor(private readonly actor: FileActor) {}
