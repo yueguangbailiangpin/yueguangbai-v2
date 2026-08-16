@@ -560,7 +560,18 @@ function dumpDatabase(databasePath: string): Buffer {
     maxBuffer: MAX_DUMP_BYTES,
   });
   if (result.error || result.status !== 0) throw new Error('sqlite_dump_failed');
-  return Buffer.from(result.stdout);
+  // sqlite3 CLI emits sqlite_sequence (AUTOINCREMENT counter) as CREATE TABLE /
+  // DELETE / INSERT statements. Node's DatabaseSync rejects creating the
+  // reserved internal table on restore, and the counter is not business data:
+  // AUTOINCREMENT tables rebuild it from max(rowid)+1 on the next insert.
+  // Drop those lines from the dump so a real database containing AUTOINCREMENT
+  // tables (e.g. D1's d1_migrations ledger) can be restored.
+  const filtered = Buffer.from(result.stdout)
+    .toString('utf8')
+    .split('\n')
+    .filter((line) => !/^(CREATE TABLE IF NOT EXISTS sqlite_sequence|DELETE FROM sqlite_sequence|INSERT INTO sqlite_sequence)\b/.test(line))
+    .join('\n');
+  return Buffer.from(filtered);
 }
 
 function inventoryFor(
