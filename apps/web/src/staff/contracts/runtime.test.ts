@@ -75,4 +75,19 @@ describe('Staff workbench runtime DTOs', () => {
       ...reviewContext, work_item_version: 99,
     } }).success).toBe(false);
   });
+
+  it('accepts the Marketplace-configured Asia/Tokyo business timezone (regression for PR #96)', () => {
+    const reviewContext = {
+      demand_batch_id: 'demand-1', demand_version: 2, status: 'SUBMITTED',
+      seller_organization_id: 'seller-1', store_id: 'store-1',
+      product_id: 'product-1', product_version_no: 3, product_name: '产品',
+      task_type: 'IMAGE', target_quantity: 10, reservation_deadline: 1,
+      order_deadline: 2, cadence: { order_interval_days: 2, orders_per_run: 5 },
+      can_publish: true,
+      // Backend returns PRODUCT_SCHEDULE_TIMEZONE (AMAZON_JP = Asia/Tokyo)
+      timezone: 'Asia/Tokyo', data_as_of: 1,
+    };
+    expect(demandReviewContextSchema.safeParse({ review_context: reviewContext }).success)
+      .toBe(true);
+  });
 });
