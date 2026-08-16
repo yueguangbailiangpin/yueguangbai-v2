@@ -65,3 +65,17 @@ The repository SHALL record a T8-only staging activation summary that proves the
 
 - **WHEN** a T8 report includes T9 role/business acceptance, T10 recovery, production evidence, raw provider identifiers or unverified health claims
 - **THEN** the Change is not ready for independent review or archive.
+
+### Requirement: T9 acceptance evidence is stable-ID keyed, redacted and independently reviewable
+
+The repository SHALL record the T9 staging acceptance outcome as a 67-row register with stable IDs (A01–H07), a final denominator summary (Passed/Failed/Conflict/Blocker), and Git-external `0600` evidence files for every executed row. Committed evidence SHALL exclude Cloudflare resource IDs, Access policy IDs, emails, tokens, passwords, request IDs and raw provider logs; buyer/seller identifiers SHALL be masked in committed documents. Environment-limited rows (missing staging adapters, single-order concurrency, external-network blockers) SHALL be classified with explicit evidence instead of being silently dropped. T10 recovery evidence and Production GO gates SHALL remain separate.
+
+#### Scenario: T9 register is complete and evidence is verifiable
+
+- **WHEN** all executable A–H rows have been exercised on staging (or explicitly classified) and the register reports 62 PASS / 0 FAIL with 3 governance conflicts and 2 external blockers
+- **THEN** the register and evidence index are the review entry point, every PASS row maps to a 0600 evidence file, masked identifiers appear as `t9***01`-style projections, and no raw credentials or provider identifiers appear in the commit.
+
+#### Scenario: Acceptance evidence is incomplete or overclaims
+
+- **WHEN** a T9 row claims PASS without staging evidence, a count omits its denominator, environment limits are not recorded, or raw identifiers leak into committed documents
+- **THEN** the Change is not ready for independent review or archive.
