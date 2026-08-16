@@ -645,6 +645,124 @@ describe('seller stores and product catalog', () => {
     );
     expect(outOfScope.status).toBe(404);
   });
+
+  it('wires the staff main-image route with auth, file contract and replay safety', async () => {
+    database = createMigratedTestDatabase();
+    seedCatalogActorsAndOrganizations(database);
+
+    // Seed an approved product + version (via the domain commands) and a
+    // verified PRODUCT_IMAGE file upload intent owned by staff.
+    const store = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'JP',
+      storeName: '主图测试店铺',
+    }, {
+      actor: sellerOpsActor(),
+      idempotencyKey: 'main-image:store',
+      now: 3000,
+    });
+    const product = await createApprovedProduct(database, {
+      storeId: store.store_id,
+      asin: 'B0MAINIMG0',
+      version: productVersion('主图测试产品'),
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'main-image:product',
+      now: 3100,
+    });
+    seedStaffProductImage(database, 'file-main-image-1', 3200);
+
+    // 401 without staff authorization
+    const anonymousApp = createApp();
+    registerStaffCatalogWorkflowRoutes(anonymousApp);
+    const anonymous = await anonymousApp.request(
+      'https://api.test/api/staff/catalog/product-versions/'
+        + `${product.product_version_id}/main-image`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_object_id: 'file-main-image-1',
+          expected_file_version: 1,
+        }),
+      },
+      { DB: database } as any,
+    );
+    expect(anonymous.status).toBe(401);
+
+    // Authorized seller_ops staff (AMAZON_JP scope + PRODUCT_REVIEW) links
+    const authorization = await resolveAssignmentStaffAuthorization(
+      database,
+      'staff-seller-ops',
+    );
+    expect(authorization).not.toBeNull();
+    const app = createApp();
+    app.use('/api/staff/*', async (context, next) => {
+      (context as any).set('staffAuthorization', authorization);
+      await next();
+    });
+    registerStaffCatalogWorkflowRoutes(app);
+
+    const requestInit = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'main-image:link',
+      },
+      body: JSON.stringify({
+        file_object_id: 'file-main-image-1',
+        expected_file_version: 1,
+      }),
+    };
+    const verRow = database.prepare(`SELECT version.id, version.product_id, product.organization_id, product.status FROM product_versions version JOIN products product ON product.id=version.product_id WHERE version.id=?`).bind(product.product_version_id).first();
+    const fileRow = database.prepare(`SELECT id, status, purpose, visibility FROM file_objects WHERE id='file-main-image-1'`).first();
+    const intentRow = database.prepare(`SELECT id, status FROM file_upload_intents WHERE id='intent-file-main-image-1'`).first();
+    const linked = await app.request(
+      'https://api.test/api/staff/catalog/product-versions/'
+        + `${product.product_version_id}/main-image`,
+      requestInit,
+      { DB: database } as any,
+    );
+    expect(linked.status).toBe(201);
+    const payload = await linked.json() as any;
+    expect(payload.data.main_image).toMatchObject({
+      product_version_id: product.product_version_id,
+      file_object_id: 'file-main-image-1',
+      seller_organization_id: 'seller-org-1',
+      authorization_mode: 'EXPLICIT_AUDIENCES',
+    });
+
+    // Replay returns the same fact
+    const replay = await app.request(
+      'https://api.test/api/staff/catalog/product-versions/'
+        + `${product.product_version_id}/main-image`,
+      requestInit,
+      { DB: database } as any,
+    );
+    expect(replay.status).toBe(201);
+    const replayPayload = await replay.json() as any;
+    expect(replayPayload.data.main_image.file_object_id).toBe('file-main-image-1');
+    expect(replayPayload.data.main_image.replayed).toBe(true);
+
+    // A pre_sales actor (no PRODUCT_REVIEW) is forbidden
+    const preSales = await resolveAssignmentStaffAuthorization(
+      database,
+      'staff-pre-sales',
+    );
+    const app2 = createApp();
+    app2.use('/api/staff/*', async (context, next) => {
+      (context as any).set('staffAuthorization', preSales);
+      await next();
+    });
+    registerStaffCatalogWorkflowRoutes(app2);
+    const forbidden = await app2.request(
+      'https://api.test/api/staff/catalog/product-versions/'
+        + `${product.product_version_id}/main-image`,
+      requestInit,
+      { DB: database } as any,
+    );
+    expect(forbidden.status).toBe(403);
+  });
 });
 
 function seedCatalogActorsAndOrganizations(
@@ -822,4 +940,55 @@ function productVersion(
     buyerVisibleNotes: '买家可见',
     internalNotes: '内部说明',
   };
+}
+
+function seedStaffProductImage(
+  database: SqliteDatabase,
+  fileObjectId: string,
+  now: number,
+): void {
+  const intentId = `intent-${fileObjectId}`;
+  const objectKey = `files/v1/2026/08/${fileObjectId.padEnd(40, 'x')}`;
+  database.prepare(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility,
+      status, requested_file_count, manifest_hash, version,
+      expires_at, failure_code, created_at, updated_at, completed_at
+    ) VALUES (
+      ?, 'STAFF', 'staff-product-reviewer', 'PRODUCT_IMAGE', 'SELLER_VISIBLE',
+      'ISSUED', 1, ?, 1, ?, NULL, ?, ?, NULL
+    )
+  `).bind(intentId, 'a'.repeat(64), now + 10000, now, now).run();
+  database.prepare(`
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility,
+      object_key, client_file_name, extension, declared_mime,
+      expected_byte_size, status, upload_token_hash,
+      upload_expires_at, uploaded_byte_size, detected_mime,
+      uploaded_sha256, failure_code, delete_attempt_count,
+      next_delete_at, version, created_at, updated_at,
+      uploaded_at, verified_at, deleted_at
+    ) VALUES (
+      ?, ?, 1, 'PRODUCT_IMAGE', 'SELLER_VISIBLE', ?, 'product.webp',
+      'webp', 'image/webp', 100, 'RESERVED', ?, ?, NULL,
+      NULL, NULL, NULL, 0, NULL, 1, ?, ?, NULL, NULL, NULL
+    )
+  `).bind(
+    fileObjectId, intentId, objectKey, 'b'.repeat(64),
+    now + 10000, now, now,
+  ).run();
+  database.prepare(`
+    UPDATE file_upload_intents
+    SET status='VERIFIED', completed_at=?, updated_at=?
+    WHERE id=? AND status='ISSUED'
+  `).bind(now + 1, now + 1, intentId).run();
+  database.prepare(`
+    UPDATE file_objects
+    SET status='VERIFIED', uploaded_byte_size=100,
+        detected_mime='image/webp', uploaded_sha256=?,
+        uploaded_at=?, verified_at=?, updated_at=?
+    WHERE id=? AND status='RESERVED'
+  `).bind(
+    'c'.repeat(64), now + 1, now + 1, now + 1, fileObjectId,
+  ).run();
 }

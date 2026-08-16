@@ -20,7 +20,13 @@ import type { Context, Hono } from 'hono';
 import { addProductVersion } from './catalog/add-product-version';
 import { createApprovedProduct } from './catalog/create-product';
 import { createSellerStore } from './catalog/create-store';
+import { linkProductVersionMainImage } from './catalog/link-product-version-main-image';
 import type { CatalogStaffActor } from './catalog/catalog-shared';
+import type { FileActor } from '@ygb/contracts';
+import type {
+  FileAuthorizationResource,
+  FileAuthorizationService,
+} from './files/authorization';
 import {
   readDemandReviewContext,
   reviewDemandBatch,
@@ -81,6 +87,10 @@ export function registerStaffCatalogWorkflowRoutes(app: Hono<any>): void {
   app.post(
     '/api/staff/catalog/stores',
     withStaffWorkflowErrors(createStore),
+  );
+  app.post(
+    '/api/staff/catalog/product-versions/:versionId/main-image',
+    withStaffWorkflowErrors(linkMainImage),
   );
   app.post(
     '/api/staff/demand-batches/:id/review',
@@ -311,6 +321,71 @@ async function createStore(context: Context<any>): Promise<Response> {
     requestId: requestIdFromContext(context),
   });
   return success(context, { store: result }, 201);
+}
+
+/**
+ * Production file authorization for linking a PRODUCT_IMAGE as the main
+ * image of a product version. Allows only STAFF actors linking SELLER_VISIBLE
+ * PRODUCT_IMAGE uploads to a PRODUCT_VERSION entity. Organization/data-scope
+ * enforcement is done by linkProductVersionMainImage via
+ * requireCatalogOrganizationScope; the file ownership check here mirrors the
+ * purpose/visibility/entity contract of the product main-image fact.
+ */
+class MainImageLinkAuthorization implements FileAuthorizationService {
+  constructor(private readonly actor: FileActor) {}
+
+  assertCanCreateUpload(): void {}
+  assertCanUpload(): void {}
+  assertCanCompleteUpload(): void {}
+  assertCanRead(): void {}
+
+  assertCanLink(
+    actor: FileActor,
+    resource: FileAuthorizationResource,
+  ): void {
+    if (actor.type !== 'STAFF'
+      || actor.id !== this.actor.id
+      || resource.purpose !== 'PRODUCT_IMAGE'
+      || resource.visibility !== 'SELLER_VISIBLE'
+      || resource.entityType !== 'PRODUCT_VERSION') {
+      throw Object.assign(new Error('forbidden'), {
+        code: 'FORBIDDEN', status: 403,
+      });
+    }
+  }
+}
+
+async function linkMainImage(context: Context<any>): Promise<Response> {
+  const authorization = requireAuthorization(context);
+  const actor = await catalogActor(context, authorization);
+  const body = await bodyRecord(context);
+  rejectUnknown(body, ['file_object_id', 'expected_file_version']);
+  const fileObjectId = requiredString(body['file_object_id'], 120);
+  const expectedFileVersion = positiveInteger(body['expected_file_version']);
+  const productVersionId = requiredString(
+    context.req.param('versionId'),
+    120,
+  );
+  const fileActor: FileActor = {
+    type: 'STAFF',
+    id: authorization.staffId,
+    roles: [...authorization.roles],
+  };
+  const result = await linkProductVersionMainImage(
+    context.env.DB,
+    new MainImageLinkAuthorization(fileActor),
+    {
+      productVersionId,
+      fileObjectId,
+      expectedFileVersion,
+    },
+    {
+      actor,
+      idempotencyKey: idempotencyKey(context),
+      requestId: requestIdFromContext(context),
+    },
+  );
+  return success(context, { main_image: result }, 201);
 }
 
 async function reviewDemand(context: Context<any>): Promise<Response> {
