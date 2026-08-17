@@ -86,6 +86,7 @@ export function useCustomerSessionController(
       return session;
     },
     retry: false,
+    staleTime: 0,
     refetchOnMount: 'always',
     enabled: cleanup.state === 'IDLE'
       && unauthenticatedCleanup.state === 'IDLE'

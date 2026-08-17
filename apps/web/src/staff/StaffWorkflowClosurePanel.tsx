@@ -83,6 +83,7 @@ export function StaffWorkflowClosurePanel(): React.JSX.Element | null {
       method: 'GET', schema: workItemSchema,
     }).then((response) => response.data.work_item),
     retry: false,
+    staleTime: 0,
   });
   if (!workItemId || item.isPending || item.isError || !item.data || item.data.status !== 'OPEN') return null;
   if (item.data.work_type === 'PRODUCT_APPLICATION_REVIEW') return <ProductApplicationReview item={item.data} />;
@@ -94,7 +95,7 @@ export function StaffWorkflowClosurePanel(): React.JSX.Element | null {
 function ProductApplicationReview({ item }: { item: WorkItem }): React.JSX.Element {
   const client = useQueryClient();
   const query = useQuery({ queryKey: ['staff-workflow-closure', 'product', item.source_entity_id],
-    queryFn: () => identityApiRequest('staff', client, { path: `/api/staff/product-applications/${encodeURIComponent(item.source_entity_id)}/review-context`, method: 'GET', schema: productContextSchema }).then((r) => r.data.review_context), retry: false });
+    queryFn: () => identityApiRequest('staff', client, { path: `/api/staff/product-applications/${encodeURIComponent(item.source_entity_id)}/review-context`, method: 'GET', schema: productContextSchema }).then((r) => r.data.review_context), retry: false, staleTime: 0 });
   const mutation = useMutation({ mutationFn: ({ body, key }: { body: Record<string, unknown>; key: string }) => identityApiRequest('staff', client, {
     path: `/api/staff/product-applications/${encodeURIComponent(item.source_entity_id)}/review`, method: 'POST', schema: productDecisionSchema, body, headers: operationHeaders({ body, key }),
   }), onSuccess: async () => { await Promise.all([client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot }), query.refetch()]); } });
@@ -124,7 +125,7 @@ function ProductApplicationReview({ item }: { item: WorkItem }): React.JSX.Eleme
 function ReservationDecision({ item }: { item: WorkItem }): React.JSX.Element {
   const client = useQueryClient();
   const query = useQuery({ queryKey: ['staff-workflow-closure', 'reservation', item.source_entity_id],
-    queryFn: () => identityApiRequest('staff', client, { path: `/api/staff/reservations/${encodeURIComponent(item.source_entity_id)}/review-context`, method: 'GET', schema: reservationContextSchema }).then((r) => r.data.review_context), retry: false });
+    queryFn: () => identityApiRequest('staff', client, { path: `/api/staff/reservations/${encodeURIComponent(item.source_entity_id)}/review-context`, method: 'GET', schema: reservationContextSchema }).then((r) => r.data.review_context), retry: false, staleTime: 0 });
   const mutation = useMutation({ mutationFn: ({ body, key }: { body: Record<string, unknown>; key: string }) => identityApiRequest('staff', client, {
     path: `/api/staff/reservations/${encodeURIComponent(item.source_entity_id)}/decision`, method: 'POST', schema: reservationDecisionSchema, body, headers: operationHeaders({ body, key }),
   }), onSuccess: async () => { await Promise.all([client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot }), query.refetch()]); } });
@@ -139,7 +140,7 @@ function ReservationDecision({ item }: { item: WorkItem }): React.JSX.Element {
 function OrderInstructionPublish({ item }: { item: WorkItem }): React.JSX.Element {
   const client = useQueryClient(); const [assetBatchId, setAssetBatchId] = useState<string | null>(null);
   const query = useQuery({ queryKey: ['staff-workflow-closure', 'instruction', item.source_entity_id],
-    queryFn: () => identityApiRequest('staff', client, { path: `/api/staff/order-instructions/${encodeURIComponent(item.source_entity_id)}`, method: 'GET', schema: instructionSchema }).then((r) => r.data.order_instruction), retry: false });
+    queryFn: () => identityApiRequest('staff', client, { path: `/api/staff/order-instructions/${encodeURIComponent(item.source_entity_id)}`, method: 'GET', schema: instructionSchema }).then((r) => r.data.order_instruction), retry: false, staleTime: 0 });
   const prepare = useMutation({ mutationFn: ({ body, key }: { body: Record<string, unknown>; key: string }) => identityApiRequest('staff', client, { path: `/api/staff/order-instructions/${encodeURIComponent(item.source_entity_id)}/assets/prepare`, method: 'POST', schema: preparedSchema, body, headers: operationHeaders({ body, key }) }), onSuccess: (response) => setAssetBatchId(response.data.asset_batch.asset_batch_id) });
   const publish = useMutation({ mutationFn: ({ body, key }: { body: Record<string, unknown>; key: string }) => identityApiRequest('staff', client, { path: `/api/staff/order-instructions/${encodeURIComponent(item.source_entity_id)}/publish`, method: 'POST', schema: publicationSchema, body, headers: operationHeaders({ body, key }) }), onSuccess: async () => { setAssetBatchId(null); await Promise.all([client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot }), query.refetch()]); } });
   if (query.isPending) return <ClosureCard title="下单指引发布"><p role="status">正在加载下单指引</p></ClosureCard>;

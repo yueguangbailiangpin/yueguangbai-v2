@@ -65,6 +65,7 @@ export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): St
       return session;
     },
     retry: false,
+    staleTime: 0,
     refetchOnMount: 'always',
     enabled: clearing.state === 'IDLE' && invalidationAllowsSessionRead,
   });

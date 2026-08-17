@@ -60,6 +60,7 @@ export function useCustomerPasswordRouteController(
     queryKey: queryKeys[target].session,
     queryFn: async ({ signal }) => (await adapter.readSession(signal)).data.session,
     retry: false,
+    staleTime: 0,
     refetchOnMount: 'always',
     enabled: cleanup.state === 'IDLE' && unauthenticatedCleanup.state === 'IDLE',
   });
