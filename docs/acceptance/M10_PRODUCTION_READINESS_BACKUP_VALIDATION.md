@@ -1,5 +1,7 @@
 # M10 Production Readiness / Backup Validation 验收证据
 
+> Historical / supporting evidence（G3 备份/恢复证据快照）。Final Production GO/NO-GO authority: `docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`
+
 > 历史验收快照：其中飞书激活项已被 D-032 与 Schema64 stabilization 取代，不再是现行 Production GO 条件。
 
 ## 最终结论语义

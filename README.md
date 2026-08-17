@@ -44,9 +44,8 @@
 
 ## 数据库与迁移
 
-- 当前 Schema：65
-- `migrations/0001`–`0065` 是已建立的迁移历史，不得为“整理代码”重写
-- 后续数据库变化从新的前向 Migration 开始（当前基线之后即 `0066+`）
+- 当前 Schema：70（迁移链 `0001`–`0070`）；权威 schema / migration 状态请参见 `docs/CURRENT_SYSTEM_STATE.md`
+- 既有迁移历史不得为“整理代码”重写；后续数据库变化一律从新的前向 Migration 开始
 
 ## 开发入口
 

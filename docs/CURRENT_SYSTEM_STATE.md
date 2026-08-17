@@ -14,6 +14,35 @@
 
 历史 frozen / cleanup 分支和对应 SHA 用于追溯，不再作为新开发入口。新任务必须从最新 `main` 开始。
 
+## 当前生产状态（2026-08-17）
+
+- 生产状态：**NO-GO**（`PRODUCTION_GO=NO`，owner 尚未批准；`LOCAL_RELEASE_CANDIDATE` 不等于生产放行）
+- Authoritative Production Gate：`docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`（仓库唯一最终 GO/NO-GO 判断入口；其他 checklist/runbook 均为 supporting evidence）
+- STAGING acceptance（T9 register：62 PASS / 3 CONFLICT / 2 BLOCKED，2026-08-16/17）≠ PRODUCTION acceptance；staging PASS 不构成生产放行证据
+- 当前缺失（未执行；不因本地 / staging 通过而视为完成）：
+  - 生产 D1/R2/Worker/Access/Secrets/DNS 配置证据与受管清单
+  - 生产 Migration ledger 只读核验、迁移窗口与 release-bound 备份 / 恢复证据
+  - 中国大陆主要网络 / 微信内置浏览器实测（T9 H05，BLOCKED）
+  - 历史数据导入 PREVIEW 与人工批准、reconciliation
+  - 生产 owner 逐项批准与 `PRODUCTION_GO=APPROVED` 书面签字
+  - 远程 CI 证据（当前 GitHub-hosted CI 不可用，见下）
+  - Google Drive 冷归档 / Staff MCP 生产激活（M10 P0-02 / P0-03 未执行）
+- 已检测到 `app.yueguangbai.net` 存在运行中的部署：**Detected running deployment requiring ownership/inventory confirmation.** 尚未确认其 Worker/Pages binding、D1/R2 binding、真实数据状态与部署 owner；在确认前不得称其为正式 production、production incident 或废弃部署，也不得请求、修改或删除该部署。
+
+## 当前 CI 状态（2026-08-17）
+
+- GitHub-hosted CI：**BLOCKED_BY_BILLING_POLICY**（job annotation：The job was not started because recent account payments have failed or your spending limit needs to be increased；GitHub Actions budget 有意保持 $0，owner 不计划增加付费预算）
+- 因此 Remote CI：**NOT VERIFIED**（job 未启动；不是代码失败，也不得写为 CI PASS）
+- PR #103（fix: closure route type safety）：本地验证 PASS（production/test tsconfig、targeted tests 14/14、workspace typecheck、check:ci:static、git diff --check），但本地 PASS ≠ Remote CI PASS
+- 最后一次远端全绿 CI：2026-08-16 09:51 UTC（run 31940127005，main `e02682f`）
+
+## 当前 Marketplace / Amazon US 状态（2026-08-17）
+
+- canonical marketplace code（foundation / 注册表层）包含 `AMAZON_JP`、`AMAZON_US`、`COUPANG_KR`、`RAKUTEN_JP`、`TIKTOK_JP`；foundation / canonical code preparation 可以存在
+- 业务写路径当前 **JP-only**；`AMAZON_US` 当前 **NOT ENABLED**（未开店、未发布产品）
+- 非 JP 的 store / product 写请求失败关闭（409 `MARKETPLACE_NOT_SUPPORTED`，PR #99 修复后在 staging 验证，2026-08-17）；`MARKETPLACE_NOT_SUPPORTED` 守卫必须保留
+- Provider Adapter（Rakuten/TikTok 等）的本地准备与 preflight 不代表 Provider 已可用
+
 ## 当前身份与权限
 
 - Staff：Cloudflare Access 只证明邮箱；Moonwhite D1 Staff 状态、唯一角色、Marketplace 范围、PRIMARY/SUPPORT 和 Personal DENY 决定最终权限

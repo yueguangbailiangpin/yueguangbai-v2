@@ -16,26 +16,15 @@
 
 ## 本地机器预检
 
-先确认仓库模板继续保持关闭：
+先确认仓库模板继续保持关闭。注意：`npm run preflight:seller-principal-rate` 脚本已从 main 移除（随 0069 卖家协议费率运行时退役清理），不再存在；当前真实可用的本地门禁为：
 
 ```text
-npm run preflight:seller-principal-rate
+npm run check:seller-principal-rate-bootstrap
 ```
 
-预期状态为 `LOCAL_TEMPLATE_SAFE_PRODUCTION_BLOCKED`，并且 external/database write、policy mutation、deployment 和 resource mutation 全部为 0。
+该门禁包含 db:verify、verify:migration-guards、verify:seller-agreement-rate-retirement、test:seller-principal-rate-bootstrap 与相关 workspace typecheck；它不再输出旧的 `LOCAL_TEMPLATE_SAFE_PRODUCTION_BLOCKED` 状态。
 
-snapshot 模式只接受绝对路径的本地恢复 SQLite 普通文件；它以 read-only 和 `query_only` 打开，没有 apply/remote/deploy/mutation 模式。恢复副本的备份、attestation、保管与销毁必须先按生产备份恢复流程获得单独授权。示例：
-
-```text
-npm run preflight:seller-principal-rate -- \
-  --database /absolute/outside-repository/restored.sqlite \
-  --expected-schema 43 \
-  --phase bootstrap \
-  --as-of 1786377600000 \
-  --enforcement-state false
-```
-
-`--as-of` 必须是本次窗口明确记录的 UTC epoch 毫秒。该结果只证明所给本地副本，不证明当前线上 D1、Worker、配置或 Staff 账号。
+snapshot 模式（`--database/--expected-schema/--phase/--as-of/--enforcement-state`）preflight 已随脚本移除而不可执行；其历史设计与守恒要求见 archived Change `2026-08-17-seller-principal-rate-production-bootstrap-preflight`（设计记录，不代表 main 存在可执行脚本）。恢复副本的备份、attestation、保管与销毁仍必须先按生产备份恢复流程获得单独授权。该模式的结果只证明所给本地副本，不证明当前线上 D1、Worker、配置或 Staff 账号。
 
 ### 预检动作与预期守恒
 
@@ -62,17 +51,7 @@ npm run preflight:seller-principal-rate -- \
    - `OWNER_CONFIRM_EXISTING`：核对 pending 正是 `+0.004`、未来生效、默认范围，再确认。
    - 其他动作按表格停止、等待或不写。
 6. 保存页面 request ID，并只读复核实际行数增量与策略/event/Audit/Outbox/idempotency 守恒；不得把失败命令或重放重复计为成功事实。
-7. 到达生效边界后，以至少一个明确的受控 smoke 平台下单日期运行 enablement preflight：
-
-```text
-npm run preflight:seller-principal-rate -- \
-  --database /absolute/outside-repository/post-configuration-restored.sqlite \
-  --expected-schema 43 \
-  --phase enablement \
-  --as-of 1786464000000 \
-  --enforcement-state false \
-  --business-date 2026-08-11
-```
+7. 到达生效边界后，以至少一个明确的受控 smoke 平台下单日期运行 enablement 验证——旧 `preflight:seller-principal-rate` 命令已不存在；当前真实可用验证为 `npm run test:seller-principal-rate-bootstrap` 与 `npm run check:seller-principal-rate-bootstrap`（针对本地恢复 SQLite 副本的只读断言仍须按生产备份恢复流程单独授权）。
 
 8. 只有状态为 `LOCAL_READY_PRODUCTION_BLOCKED`、指定每个日期都 `available=true`、开关仍为 false，且真实线上配置/账号/资源另行复核后，才能申请单独授权把开关改为 `true`。
 9. 单独批准受控 smoke，分别覆盖独立正式订单确认和审核原子确认路径。验证正式财务快照、新本金策略快照和 Seller Principal payable 金额完全相等；不使用历史订单做重算。

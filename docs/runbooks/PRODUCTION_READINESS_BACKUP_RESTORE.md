@@ -112,7 +112,7 @@ node scripts/probe-production-readiness.mjs
 ## 发布顺序
 1. checkout 精确候选 release SHA；
 2. 全量 migration/typecheck/Vitest/build/Playwright；
-3. 真实历史 D1 副本 current-prefix → 64 upgrade dry-run；
+3. 真实历史 D1 副本前向 upgrade dry-run（历史副本 → 当前 Schema 70）；
 4. D1 + R2 recovery rehearsal；
 5. 部署配置填入精确 `APP_RELEASE_SHA`、Access、Scheduler；
 6. 只有在候选 release 已可验证的受控阶段登记同 SHA 的 Schema 70 recovery attestation；

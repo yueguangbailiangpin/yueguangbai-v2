@@ -1,5 +1,7 @@
 # Google Drive 外部接入清单
 
+> Historical / supporting evidence（G4 外部接入子清单）。Final Production GO/NO-GO authority: `docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`
+
 以下项目已由 M7 正式转交 M10/最终老板验收，必须由业务所有者在生产启用前完成；本模块没有创建真实 OAuth、凭证、目录、外部文件或生产资源。OpenSpec Change 的本地完成/归档不代表下列外部事项完成。
 
 - [ ] 业务所有者普通 Google 账号启用 MFA、恢复邮箱/电话并保存账号恢复流程。
