@@ -8,7 +8,7 @@ import {
 } from './reservations/submit-reservation';
 import { decideReservation } from './reservations/decide-reservation';
 import type { BuyerReservationActor } from './reservations/reservation-shared';
-import type { StaffPermissionCode } from '@ygb/contracts';
+import { isStaffPermissionCode, type StaffPermissionCode } from '@ygb/contracts';
 
 let database: SqliteDatabase | null = null;
 afterEach(() => {
@@ -34,13 +34,16 @@ function createTestApp() {
     context.set('requestId', 'request-closure-http');
     const permission = context.req.header('X-Test-Permission');
     if (permission) {
+      const permissionCodes = permission
+        .split(',')
+        .filter(isStaffPermissionCode);
       context.set('staffAuthorization', {
         staffId: 'zz-phase3h-test-owner',
         displayName: '总管理员',
         staffStatus: 'ACTIVE',
         authorizationVersion: 1,
         roles: new Set(['owner']),
-        permissions: new Set(permission.split(',').filter(Boolean)),
+        permissions: new Set(permissionCodes),
         memberTeamIds: [],
         leaderTeamIds: [],
       });
