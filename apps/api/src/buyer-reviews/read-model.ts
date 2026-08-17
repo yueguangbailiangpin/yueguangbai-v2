@@ -259,11 +259,15 @@ export async function listBuyerReviews(
   options: {
     limit: number;
     cursor: BuyerReviewCursor | null;
+    status?: readonly ReviewCaseStatus[];
   },
 ): Promise<BuyerReviewPageDto<BuyerReviewSummaryDto>> {
   assertBuyerReviewBusinessAccess(buyer);
   validateLimit(options.limit);
 
+  const statusSql = options.status && options.status.length > 0
+    ? `AND review_case.status IN (${options.status.map(() => '?').join(',')})`
+    : '';
   const cursorSql = options.cursor
     ? `
       AND (
@@ -276,6 +280,9 @@ export async function listBuyerReviews(
     `
     : '';
   const bindings: unknown[] = [buyer.buyerCustomerId];
+  if (options.status && options.status.length > 0) {
+    bindings.push(...options.status);
+  }
   if (options.cursor) {
     bindings.push(
       options.cursor.updatedAt,
@@ -288,6 +295,7 @@ export async function listBuyerReviews(
   const result = await database.prepare(`
     ${REVIEW_SELECT}
     WHERE review_case.buyer_customer_id=?
+      ${statusSql}
       ${cursorSql}
     ORDER BY review_case.updated_at DESC, review_case.id DESC
     LIMIT ?

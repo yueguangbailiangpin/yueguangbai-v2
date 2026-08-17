@@ -1,6 +1,8 @@
 export type CursorPageParameters = Readonly<{
   limit: number;
   cursor: string | null;
+  status?: readonly string[] | null;
+  outstandingOnly?: boolean | null;
 }>;
 
 export type FormalOrderPageParameters = CursorPageParameters & Readonly<{
@@ -15,6 +17,10 @@ export type FormalOrderPageParameters = CursorPageParameters & Readonly<{
 const page = (parameters: CursorPageParameters) => Object.freeze({
   limit: parameters.limit,
   cursor: parameters.cursor,
+  ...(parameters.status && parameters.status.length > 0
+    ? { status: [...parameters.status].sort() }
+    : {}),
+  ...(parameters.outstandingOnly ? { outstandingOnly: true } : {}),
 });
 
 const formalPage = (parameters: FormalOrderPageParameters) => Object.freeze({
@@ -60,6 +66,10 @@ export const buyerQueryKeys = Object.freeze({
 export function cursorQuery(parameters: CursorPageParameters): string {
   const search = new URLSearchParams({ limit: String(parameters.limit) });
   if (parameters.cursor !== null) search.set('cursor', parameters.cursor);
+  if (parameters.status && parameters.status.length > 0) {
+    search.set('status', parameters.status.join(','));
+  }
+  if (parameters.outstandingOnly) search.set('outstanding_only', 'true');
   return search.toString();
 }
 

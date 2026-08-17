@@ -1,8 +1,10 @@
 import {
   apiSuccess,
+  ORDER_EVIDENCE_STATUSES,
   type BuyerOrderEvidenceFileReadIntentDto,
   type BuyerOrderEvidenceMutationDto,
   type CreateBuyerOrderEvidenceFileReadIntentRequest,
+  type OrderEvidenceStatus,
   type ResubmitBuyerOrderEvidenceRequest,
   type SubmitBuyerOrderEvidenceRequest,
   type WithdrawBuyerOrderEvidenceRequest,
@@ -165,9 +167,25 @@ async function listOwnOrderEvidence(
       cursor: decodeOrderEvidenceCursor(
         context.req.query('cursor'),
       ),
+      ...parseOrderEvidenceStatusFilter(context.req.query('status')),
     },
   );
   return success(context, page);
+}
+
+function parseOrderEvidenceStatusFilter(
+  raw: string | undefined,
+): { status?: readonly OrderEvidenceStatus[] } {
+  if (raw === undefined || raw === '') return {};
+  const statuses = [...new Set(
+    raw.split(',').map((value) => value.trim()),
+  )];
+  if (statuses.length === 0 || statuses.some(
+    (value) => !ORDER_EVIDENCE_STATUSES.includes(value as OrderEvidenceStatus),
+  )) {
+    throw new BuyerOrderEvidencePortalError('VALIDATION_ERROR', 400);
+  }
+  return { status: statuses as readonly OrderEvidenceStatus[] };
 }
 
 async function getOwnOrderEvidence(

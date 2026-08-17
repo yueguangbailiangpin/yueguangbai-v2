@@ -105,6 +105,7 @@ export async function listBuyerRefunds(
   options: {
     limit: number;
     cursor: BuyerRefundPortalCursor | null;
+    outstandingOnly?: boolean;
   },
 ): Promise<BuyerRefundPortalPageDto> {
   assertBuyerRefundBusinessAccess(buyer);
@@ -112,6 +113,10 @@ export async function listBuyerRefunds(
 
   const where = ['ledger.buyer_customer_id=?'];
   const bindings: unknown[] = [buyer.buyerCustomerId];
+  if (options.outstandingOnly) {
+    where.push('ledger.status IN (?,?)');
+    bindings.push('DUE', 'PARTIALLY_PAID');
+  }
   if (options.cursor) {
     where.push(`(
       ledger.updated_at<?
