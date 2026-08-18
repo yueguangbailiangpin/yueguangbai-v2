@@ -10,7 +10,7 @@
 
 | Gate | Requirement | Evidence Scope | Evidence | Status | Blocker / Next Action |
 |---|---|---|---|---|---|
-| G0 | Release candidate / CI 冻结 | LOCAL | 本地 production/test tsconfig、targeted tests 14/14、workspace typecheck、check:ci:static、git diff --check 全 PASS（PR #103 本地验证，2026-08-17）；远程 CI job 未启动（billing annotation） | NOT VERIFIED | 缺远程 CI 证据（GitHub Actions budget 有意 $0 → BLOCKED_BY_BILLING_POLICY）；缺最终候选 `release:check` 输出；open PR #102 / #103 未合并；工作树未冻结 |
+| G0 | Release candidate / CI 冻结 | LOCAL | 2026-08-18：6 个 closure PR（#103/#102/#104/#105/#106/#107）已按 owner 豁免合并，main=`ace7319`；合并后树与 Phase 8A 本地验证树一致；本地 0 TS 错误、1746/1746 测试、187/187 e2e、check:ci:static PASS、build PASS、`release:check` PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE，2026-08-18） | NOT VERIFIED | 缺远程 CI 证据（GitHub Actions budget 有意 $0 → BLOCKED_BY_BILLING_POLICY）；最终候选 `release:check` 需在 main 干净候选上绑定 40 位 SHA 回读；受保护 CI 或已批准人工发布控制未配置 |
 | G1 | Owner / privacy approvals | — | 无任何指定或批准记录（M10 P0-01 / P0-06 未配置未批准） | NOT VERIFIED | 未指定发布/D1/R2/安全负责人与告警接收人；未批准隐私告知、AI 处理、保留期、删除流程、备份保留与平台政策风险 |
 | G2 | Production Cloudflare configuration | — | 无生产绑定证据；`app.yueguangbai.net` 为 Detected running deployment requiring ownership/inventory confirmation（身份/binding/真实数据/owner 均未确认） | NOT VERIFIED | 未创建/验收生产 D1/R2/Worker/Access/Secrets/DNS/域名/ALERT_SINK；不得以本地模板或 preflight 替代 |
 | G3 | Production database migration + backup | STAGING / LOCAL | T10 备份/恢复证据（隔离 staging：bundle + attestation + restored.sqlite，2026-08-16，Production accessed: false）；本地 db:verify 70 migrations / schema 70 | NOT VERIFIED | 无生产 D1 ledger 只读核验、无迁移窗口、无 release-bound 生产备份与隔离恢复证据 |
