@@ -418,3 +418,11 @@ M7 只交付本地 Migration、合同、Adapter、mock、受控命令、真实 r
 ### R-007 前端首屏性能预算
 
 M14 后的前端生产构建主包基线为 605.54 kB（gzip 167.31 kB），超过默认 500 kB 警告阈值。该风险不阻止 M14–M16 的功能集成，但必须按 D-029 的独立 Change 完成身份/路由按需加载、三类入口冷启动实测和回归验收，才能进入最终 Production GO；不得通过仅提高阈值关闭风险。
+
+## 状态记录（2026-08-17，非决策）
+
+以下仅记录已发生的事实，不构成新的架构决策，也不修改任何既有 D/R 条目：
+
+- 迁移 `0070_buyer_refund_reminders.sql`（T7 买家发起的返款提醒）已合入 `main`；当前迁移链为 `0001`–`0070`，`app_schema_state.schema_version=70`（db:verify 实测 70 migrations / schema 70，见 `docs/CURRENT_SYSTEM_STATE.md`）。
+- 本记录将 D-045 记载的 Schema 69 候选状态推进到 Schema 70 的既成事实；0069 退役条款不受影响。
+- 权威 schema / migration 状态以 `migrations/` 连续 ledger 与 `docs/CURRENT_SYSTEM_STATE.md` 为准，不以本 Register 的数字为准。

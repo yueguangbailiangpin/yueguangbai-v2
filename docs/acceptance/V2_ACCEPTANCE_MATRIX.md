@@ -1,95 +1,101 @@
 # V2 验收矩阵
 
+> 状态同步（2026-08-17）：A–H 各项状态逐项映射自 T9 staging acceptance register
+> （`openspec/changes/archive/2026-08-17-staging-t9-acceptance-evidence/references/acceptance-register.md`，
+> 共 67 项：62 PASS / 3 CONFLICT / 2 BLOCKED，证据日期 2026-08-16/17）。
+> 这些状态属于 STAGING / LOCAL 证据范围，不构成生产放行；生产门禁须另行独立验收（当前 Production 状态 NO-GO）。
+> PASS 项已勾选，CONFLICT / BLOCKED 项保持未勾选。I/J/K 为本地交付与 CI 治理区，保持原有记录。
+
 ## A. 基础
 
-- [ ] 从空目录初始化全新 Git。
-- [ ] 无远程 origin。
-- [ ] 无旧 Migration、资源 ID、Secrets 或真实数据。
-- [ ] TypeScript 严格检查通过。
-- [ ] Secret/PII 扫描通过。
-- [ ] Hono `/health` 本地通过。
-- [ ] 所有 Migration 从空库连续执行。
-- [ ] `PRAGMA integrity_check=ok`。
-- [ ] `PRAGMA foreign_key_check` 为 0。
+- [ ] 从空目录初始化全新 Git。（CONFLICT — register A01：既有受管仓库，不重建 Git 历史）
+- [ ] 无远程 origin。（CONFLICT — register A02：当前仓库要求 GitHub origin，不得移除）
+- [ ] 无旧 Migration、资源 ID、Secrets 或真实数据。（CONFLICT — register A03：历史 migration 不可变，staging 数据须为合成）
+- [x] TypeScript 严格检查通过。（PASS — register A04，LOCAL_FIXED_SHA：typecheck exit 0 at 9cd4a113，2026-08-16）
+- [x] Secret/PII 扫描通过。（PASS — register A05，LOCAL_FIXED_SHA：security:scan 1712 文件，2026-08-16）
+- [x] Hono `/health` 本地通过。（PASS — register A06，LOCAL_FIXED_SHA：app.test.ts 3/3；staging 认证探针 pending）
+- [x] 所有 Migration 从空库连续执行。（PASS — register A07，REMOTE_D1：db:verify 70 migrations / schema 70；staging ledger 70/70）
+- [x] `PRAGMA integrity_check=ok`。（PASS — register A08，REMOTE_D1：wrangler d1 export 重构核验）
+- [x] `PRAGMA foreign_key_check` 为 0。（PASS — register A09，REMOTE_D1：wrangler d1 export 重构核验）
 
 ## B. 身份与权限
 
-- [ ] Cloudflare Access 邮箱唯一映射到 ACTIVE Staff。
-- [ ] Role 权限与 Marketplace 可见范围正确组合。
-- [ ] 个人 deny 优先。
-- [ ] Owner 全局；PRIMARY 负责 OPEN 队列；SUPPORT 不竞争 OPEN 队列。
-- [ ] 五岗位字段与入口隔离。
-- [ ] 卖家成员四角色正确。
-- [ ] 非 OWNER 不能导出财务。
-- [ ] 越权资源返回 404。
-- [ ] 客户停用后 Session 立即失效。
-- [ ] 微信号冲突进入人工审核。
+- [x] Cloudflare Access 邮箱唯一映射到 ACTIVE Staff。（PASS — register B01，REMOTE_D1：5 个 email identity 唯一且 ACTIVE）
+- [x] Role 权限与 Marketplace 可见范围正确组合。（PASS — register B02，LOCAL_FIXED_SHA）
+- [x] 个人 deny 优先。（PASS — register B03，LOCAL_FIXED_SHA：本地 personal-deny 测试）
+- [x] Owner 全局；PRIMARY 负责 OPEN 队列；SUPPORT 不竞争 OPEN 队列。（PASS — register B04，REMOTE_D1）
+- [x] 五岗位字段与入口隔离。（PASS — register B05，LOCAL_FIXED_SHA）
+- [x] 卖家成员四角色正确。（PASS — register B06，LOCAL_FIXED_SHA）
+- [x] 非 OWNER 不能导出财务。（PASS — register B07，LOCAL_FIXED_SHA：FINANCIAL_EXPORT 权限模型本地测试覆盖）
+- [x] 越权资源返回 404。（PASS — register B08，REMOTE_HTTP：统一 NOT_FOUND，无存在性泄露）
+- [x] 客户停用后 Session 立即失效。（PASS — register B09，REMOTE_HTTP：停用后读写全 401）
+- [x] 微信号冲突进入人工审核。（PASS — register B10，REMOTE_HTTP：resolution case 201 OPEN，身份脱敏）
 
 ## C. 编号
 
-- [ ] 买家编号只在第一张正式订单生成。
-- [ ] 渠道序号原子递增。
-- [ ] 序号不复用。
-- [ ] 历史编号保持原样。
-- [ ] 卖家渠道序号独立。
-- [ ] ASIN Marketplace 唯一。
-- [ ] 订单号 Claim 并发测试通过。
+- [x] 买家编号只在第一张正式订单生成。（PASS — register C01，REMOTE_D1）
+- [x] 渠道序号原子递增。（PASS — register C02，LOCAL_FIXED_SHA + staging 并发 5x201）
+- [x] 序号不复用。（PASS — register C03，LOCAL_FIXED_SHA）
+- [x] 历史编号保持原样。（PASS — register C04，GOVERNANCE：staging 无历史编号导入，已消耗号保留原样）
+- [x] 卖家渠道序号独立。（PASS — register C05，REMOTE_D1：seller_sequence 9001 独立）
+- [x] ASIN Marketplace 唯一。（PASS — register C06，REMOTE_HTTP：同市场重复 409；跨市场缺陷 PR #99 修复，非 JP 创建 409 MARKETPLACE_NOT_SUPPORTED）
+- [x] 订单号 Claim 并发测试通过。（PASS — register C07，LOCAL_FIXED_SHA）
 
 ## D. 产品、需求和预约
 
-- [ ] 产品申请与需求批次分表。
-- [ ] 同店铺重复和跨店铺冲突正确。
-- [ ] R2 上传失败无残留业务记录。
-- [ ] 需求追加不覆盖旧批次。
-- [ ] 普通买家只看到公开需求。
-- [ ] 预约预检正确。
-- [ ] 同一名额并发批准最多成功一次。
-- [ ] 过期释放名额。
-- [ ] 预约重开保留历史事件。
+- [x] 产品申请与需求批次分表。（PASS — register D01，REMOTE_D1：产品申请全生命周期 2026-08-16）
+- [x] 同店铺重复和跨店铺冲突正确。（PASS — register D02，REMOTE_HTTP：409 DUPLICATE_PRODUCT / ASIN_STORE_CONFLICT）
+- [x] R2 上传失败无残留业务记录。（PASS — register D03，REMOTE_R2：403 时 file_object 保持 RESERVED、零残留）
+- [x] 需求追加不覆盖旧批次。（PASS — register D04，REMOTE_D1：批次 10/20 共存）
+- [x] 普通买家只看到公开需求。（PASS — register D05，REMOTE_HTTP：未公开/未开放统一 404）
+- [x] 预约预检正确。（PASS — register D06，REMOTE_HTTP：eligible/full/duplicate/ineligible 全覆盖）
+- [x] 同一名额并发批准最多成功一次。（PASS — register D07，REMOTE_HTTP：并发一 200 一 503，名额只减一次）
+- [x] 过期释放名额。（PASS — register D08，REMOTE_D1：受控 OPERATOR_RETRY 释放名额）
+- [x] 预约重开保留历史事件。（PASS — register D09，REMOTE_D1：PR #98 补 HTTP 路由，append-only 事件链 1→2→3）
 
 ## E. 订单
 
-- [ ] 买家提交先进入待核对。
-- [ ] 售前确认才生成正式订单。
-- [ ] 无对应日期汇率时拒绝确认。
-- [ ] 正式订单保存完整快照。
-- [ ] 重复请求返回相同结果。
-- [ ] 同 Key 不同请求返回冲突。
-- [ ] 图片上传失败补偿。
-- [ ] 客户不能伪造 buyer/seller/product 等主体字段。
+- [x] 买家提交先进入待核对。（PASS — register E01，REMOTE_HTTP）
+- [x] 售前确认才生成正式订单。（PASS — register E02，REMOTE_D1：正式订单 d0df4863 确认后才生成）
+- [x] 无对应日期汇率时拒绝确认。（PASS — register E03，REMOTE_HTTP：404 且零残留）
+- [x] 正式订单保存完整快照。（PASS — register E04，REMOTE_D1：rate/service fee 5000 分/principal 9900 分，HALF_UP）
+- [x] 重复请求返回相同结果。（PASS — register E05，REMOTE_HTTP：replayed=true，无重复事实）
+- [x] 同 Key 不同请求返回冲突。（PASS — register E06，REMOTE_HTTP：409 IDEMPOTENCY_CONFLICT）
+- [x] 图片上传失败补偿。（PASS — register E07，REMOTE_R2 + 本地 file-storage.test.ts 覆盖补偿路径）
+- [x] 客户不能伪造 buyer/seller/product 等主体字段。（PASS — register E08，REMOTE_HTTP：跨主体 404，无泄露）
 
 ## F. 评论与财务
 
-- [ ] 评论状态只能通过工作流。
-- [ ] 审核命令要求 Idempotency-Key 和 expected_version。
-- [ ] 评论通过产生返款应付和服务费应收。
-- [ ] 重放不重复产生财务事实。
-- [ ] 已完成返款不可直接编辑。
-- [ ] 卖家本金和服务费独立。
-- [ ] 冲正、更正和重新入账完整。
-- [ ] 差额由系统计算。
-- [ ] 多口径利润可追溯到事实。
-- [ ] 卖家 DTO 不含买家返款或内部利润。
+- [x] 评论状态只能通过工作流。（PASS — register F01，REMOTE_HTTP）
+- [x] 审核命令要求 Idempotency-Key 和 expected_version。（PASS — register F02，REMOTE_HTTP：缺 key 400、旧版本 409）
+- [x] 评论通过产生返款应付和服务费应收。（PASS — register F03，REMOTE_D1：9900 分 + 5000 分）
+- [x] 重放不重复产生财务事实。（PASS — register F04，REMOTE_D1 + 本地原子性测试）
+- [x] 已完成返款不可直接编辑。（PASS — register F05，REMOTE_HTTP：trigger 拒绝直接 UPDATE）
+- [x] 卖家本金和服务费独立。（PASS — register F06，REMOTE_D1：SELLER_PRINCIPAL 9900 vs SELLER_SERVICE_FEE 5000）
+- [x] 冲正、更正和重新入账完整。（PASS — register F07，REMOTE_D1：WECHAT→REVERSAL→ALIPAY，ledger append-only）
+- [x] 差额由系统计算。（PASS — register F08，REMOTE_HTTP + 本地 wave13 PRICE_MISMATCH 测试）
+- [x] 多口径利润可追溯到事实。（PASS — register F09，REMOTE_D1：payable_due 14900 = 9900 + 5000）
+- [x] 卖家 DTO 不含买家返款或内部利润。（PASS — register F10，REMOTE_HTTP：5 个 seller 端点扫描零命中）
 
 ## G. 内部任务与告警
 
-- [ ] D1 是任务权威源。
-- [ ] 任务领取原子。
-- [ ] 工作项命令重复请求保持幂等。
-- [ ] 不存在飞书登录、绑定、同步、回调或告警运行入口。
-- [ ] 内部任务异常进入受控重试或人工处理。
-- [ ] 外部独立健康告警不包含完整敏感数据。
-- [ ] 正式动作必须打开受控 Web 页面。
+- [x] D1 是任务权威源。（PASS — register G01，REMOTE_D1）
+- [x] 任务领取原子。（PASS — register G02，REMOTE_HTTP：并发原子性经 D07 证明）
+- [x] 工作项命令重复请求保持幂等。（PASS — register G03，REMOTE_HTTP：E05/E06/F02）
+- [x] 不存在飞书登录、绑定、同步、回调或告警运行入口。（PASS — register G04，LOCAL_FIXED_SHA：源码零 feishu 引用；运行时探针 pending）
+- [x] 内部任务异常进入受控重试或人工处理。（PASS — register G05，REMOTE_D1：D08 OPERATOR_RETRY）
+- [x] 外部独立健康告警不包含完整敏感数据。（PASS — register G06，REMOTE_HTTP：零敏感词命中）
+- [x] 正式动作必须打开受控 Web 页面。（PASS — register G07，REMOTE_HTTP：Staff Web 批准产品申请 2026-08-16）
 
 ## H. 备份与上线
 
-- [ ] D1 完整备份生成哈希和 Manifest。
-- [ ] 隔离恢复演练通过。
-- [ ] R2 Manifest 可核对。
-- [ ] Staging 全流程通过。
-- [ ] 中国大陆主要网络实测门户可用。
-- [ ] 真实导入先 PREVIEW、再人工审批。
-- [ ] 生产部署有显式授权和回滚方案。
+- [x] D1 完整备份生成哈希和 Manifest。（PASS — register H01，T10_LINK：backup bundle + attestation manifest_sha256，2026-08-16）
+- [x] 隔离恢复演练通过。（PASS — register H02，T10_LINK：t10-restored.sqlite 含 sqlite_sequence 修复 PR #92，回归 6/6）
+- [x] R2 Manifest 可核对。（PASS — register H03，T10_LINK：备份时 bucket 为空；D1 manifest/attestation 可核对；R2 一致性由 upload intent/verify 链覆盖）
+- [x] Staging 全流程通过。（PASS — register H04，GOVERNANCE：D/E/F/B/C/G 可执行项全 PASS，T10 PASS）
+- [ ] 中国大陆主要网络实测门户可用。（BLOCKED — register H05，EXTERNAL_OPERATOR：需真实大陆运营商/微信网络证据）
+- [x] 真实导入先 PREVIEW、再人工审批。（PASS — register H06，GOVERNANCE：当前代码无批量导入功能端点可测，记 not applicable；生产导入 PREVIEW/批准仍属 Production Gate 未执行项）
+- [ ] 生产部署有显式授权和回滚方案。（BLOCKED — register H07，GOVERNANCE：Production 保持 NO-GO，out of scope）
 
 ## I. Staff MCP 本地交付（M9）
 
@@ -120,3 +126,4 @@
 - [x] External-evidenced（2026-08-13）：Draft PR [#65](https://github.com/yueguangbailiangpin/yueguangbai-v2/pull/65) 的本轮代码证据 HEAD `3123b50f5f610924b124f527e47905fdc35f778c` 已回读 GitHub Actions [run 31667120494](https://github.com/yueguangbailiangpin/yueguangbai-v2/actions/runs/31667120494)：`static-governance` 于 04:30:21Z、`tests-and-build` 于 04:39:07Z 均为 `success`；后者固定记录为 239 个测试文件、1,588 项测试通过，`static-governance` 的 final-go Node fixture/verifier 为 23/23 通过。该 run 的 job 数为 2；它只证明该固定代码 HEAD 的 CI，记录此证据的后续文档 commit 仍必须单独回读，`pending` 不算通过。
 - [ ] External-unverified：GitHub branch protection / rulesets 查询因当前私有仓库套餐返回 403，required checks enforcement 未能确认或配置。
 - [ ] Production-operator gate：真实 Playwright E2E、staging/production、Cloudflare Access、D1/R2、DNS、Secrets、Scheduler、数据和网络验收均不属于此 CI，须逐项独立授权与验收。
+- [ ] Current CI status（2026-08-17）：PR #103（fix: closure route type safety）本地验证 PASS（production/test tsconfig、targeted tests 14/14、workspace typecheck、check:ci:static、git diff --check）；GitHub-hosted CI **BLOCKED_BY_BILLING_POLICY**（job 未启动：recent account payments have failed or your spending limit needs to be increased；Actions budget 有意保持 $0）；Remote CI = **NOT VERIFIED**，不写为 PASS，也不写为 CODE FAIL。最后一次远端全绿 CI：2026-08-16 09:51 UTC（run 31940127005，main `e02682f`）。

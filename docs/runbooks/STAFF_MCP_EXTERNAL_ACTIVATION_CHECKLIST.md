@@ -1,5 +1,7 @@
 # Staff MCP 外部激活老板清单
 
+> Historical / supporting evidence（G5 外部集成子清单）。Final Production GO/NO-GO authority: `docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`
+
 本清单全部未执行。OpenSpec 本地 Change 的完成或归档不代表以下事项已批准或已上线；全部完成前，生产 Staff MCP 必须 hard-disabled。
 
 ## 隐私与业务批准

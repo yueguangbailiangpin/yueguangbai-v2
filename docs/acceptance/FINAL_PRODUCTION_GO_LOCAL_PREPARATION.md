@@ -1,5 +1,7 @@
 # 最终 Production GO 本地准备证据审计
 
+> Historical / supporting evidence（本地准备审计）。Final Production GO/NO-GO authority: `docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`
+
 审计日期：2026-08-13（Asia/Shanghai）
 
 当前收口 Change：`release-gate-evidence-alignment` 及其边界清晰的配套 Change
@@ -61,4 +63,4 @@
 
 ## 7. 当前决定
 
-`NO-GO`。本任务只允许完成本地代码、规范、测试与本地提交；没有部署、线上 Migration、生产数据/Secret 读取、Provider 调用、推送、PR 或合入 main。后续每个真实资源或写动作必须由老板单独授权，并按[老板最终 Production GO 分阶段清单](../runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md)留存可回读证据。
+`NO-GO`。本任务只允许完成本地代码、规范、测试与本地提交；没有部署、线上 Migration、生产数据/Secret 读取、Provider 调用、推送、PR 或合入 main。后续每个真实资源或写动作必须由老板单独授权，并按[老板最终 Production GO/NO-GO Gate](../runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md)留存可回读证据。

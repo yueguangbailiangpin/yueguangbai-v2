@@ -1,5 +1,7 @@
 # Production Cloudflare / Web / R2 发布与回滚 Runbook
 
+> Historical / supporting evidence（G2 发布与回滚 runbook）。Final Production GO/NO-GO authority: `docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`
+
 ## 当前状态
 
 当前只完成本地 adapter、模板、preflight、Web hosting 合同和匿名测试。没有真实 Cloudflare 配置、资源、Secret、域名、网络或部署证据，Production GO 保持 `NO-GO`。本 Runbook 不授权任何远程动作。
