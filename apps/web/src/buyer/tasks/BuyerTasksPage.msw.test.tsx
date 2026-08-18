@@ -13,6 +13,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { buyerApi } from '../api/client';
+import { buyerQueryKeys } from '../queries/keys';
 import { BuyerTasksPage } from './BuyerTasksPage';
 
 const methods = [
@@ -103,11 +104,40 @@ describe('BuyerTasksPage cursor aggregation', () => {
     renderPage();
     await waitFor(() => expect(methods.every((method) => vi.mocked(method).mock.calls.length === 2)).toBe(true));
 
+    const expectedQueries = [
+      ['limit=50', 'limit=50&cursor=source-0'],
+      ['limit=50', 'limit=50&cursor=source-1'],
+      ['limit=50&status=CHANGES_REQUESTED%2CPENDING_VERIFICATION', 'limit=50&cursor=source-2&status=CHANGES_REQUESTED%2CPENDING_VERIFICATION'],
+      ['limit=50', 'limit=50&cursor=source-3'],
+      ['limit=50&status=CHANGES_REQUESTED%2CPENDING_REVIEW', 'limit=50&cursor=source-4&status=CHANGES_REQUESTED%2CPENDING_REVIEW'],
+      ['limit=50&outstanding_only=true', 'limit=50&cursor=source-5&outstanding_only=true'],
+    ];
     for (const [index, method] of methods.entries()) {
-      expect(vi.mocked(method).mock.calls.map(([, query]) => query)).toEqual([
-        'limit=50', `limit=50&cursor=source-${index}`,
-      ]);
+      expect(vi.mocked(method).mock.calls.map(([, query]) => query))
+        .toEqual(expectedQueries[index]);
     }
+  });
+
+  it('requests active-status filters for history sources and keeps filter-aware cache keys', async () => {
+    useEmptySources();
+    renderPage();
+    await waitFor(() => expect(methods.every((method) => vi.mocked(method).mock.calls.length === 1)).toBe(true));
+
+    const queriesFor = (method: (typeof methods)[number]) =>
+      vi.mocked(method).mock.calls.map(([, query]) => query);
+    expect(queriesFor(buyerApi.reservations)).toEqual(['limit=50']);
+    expect(queriesFor(buyerApi.evidenceEligible)).toEqual(['limit=50']);
+    expect(queriesFor(buyerApi.evidenceList)).toEqual(['limit=50&status=CHANGES_REQUESTED%2CPENDING_VERIFICATION']);
+    expect(queriesFor(buyerApi.reviewEligible)).toEqual(['limit=50']);
+    expect(queriesFor(buyerApi.reviews)).toEqual(['limit=50&status=CHANGES_REQUESTED%2CPENDING_REVIEW']);
+    expect(queriesFor(buyerApi.refunds)).toEqual(['limit=50&outstanding_only=true']);
+
+    expect(buyerQueryKeys.evidenceListPage({ limit: 50, cursor: null, status: ['CHANGES_REQUESTED', 'PENDING_VERIFICATION'] }))
+      .not.toEqual(buyerQueryKeys.evidenceListPage({ limit: 50, cursor: null }));
+    expect(buyerQueryKeys.reviewsPage({ limit: 50, cursor: null, status: ['CHANGES_REQUESTED', 'PENDING_REVIEW'] }))
+      .not.toEqual(buyerQueryKeys.reviewsPage({ limit: 50, cursor: null }));
+    expect(buyerQueryKeys.refundsPage({ limit: 50, cursor: null, outstandingOnly: true }))
+      .not.toEqual(buyerQueryKeys.refundsPage({ limit: 50, cursor: null }));
   });
 
   it('deduplicates a resource within one source but fails closed for a cyclic cursor', async () => {

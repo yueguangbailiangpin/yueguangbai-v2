@@ -126,6 +126,34 @@ describe('Phase 4B4 buyer review API read projection', () => {
     expect(database.calls[0]?.bindings[0]).toBe('buyer-1');
   });
 
+  it('filters the own-reviews list by status at the SQL layer', async () => {
+    const database = fakeDatabase({ all: [[approvedReviewRow]] });
+    const page = await listBuyerReviews(database, buyer, {
+      limit: 2,
+      cursor: null,
+      status: ['CHANGES_REQUESTED', 'PENDING_REVIEW'],
+    });
+    expect(page.items.map((item) => item.review_case_id))
+      .toEqual(['review-1']);
+    expect(database.calls[0]?.sql).toContain(
+      'review_case.status IN (?,?)',
+    );
+    expect(database.calls[0]?.bindings).toEqual([
+      'buyer-1',
+      'CHANGES_REQUESTED',
+      'PENDING_REVIEW',
+      3,
+    ]);
+
+    const unfiltered = fakeDatabase({ all: [[approvedReviewRow]] });
+    await listBuyerReviews(unfiltered, buyer, {
+      limit: 2,
+      cursor: null,
+    });
+    expect(unfiltered.calls[0]?.sql).not.toContain('status IN');
+    expect(unfiltered.calls[0]?.bindings).toEqual(['buyer-1', 3]);
+  });
+
   it('projects only buyer-public review and due-obligation fields', async () => {
     const database = fakeDatabase({ all: [[approvedReviewRow]] });
     const result = await listBuyerReviews(

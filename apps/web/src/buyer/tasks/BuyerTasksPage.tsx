@@ -8,15 +8,18 @@ import { reviewTypeLabel } from '../shared/status';
 import { BUYER_TASK_CURSOR_PAGE_LIMIT, fetchAllCursorPages } from './fetchAllCursorPages';
 import { classifyBuyerTasks, type BuyerTask } from './task-classification';
 
+const ACTIVE_EVIDENCE_STATUSES = ['CHANGES_REQUESTED', 'PENDING_VERIFICATION'];
+const ACTIVE_REVIEW_STATUSES = ['CHANGES_REQUESTED', 'PENDING_REVIEW'];
+
 export function BuyerTasksPage(): React.JSX.Element {
   const client = useQueryClient();
   const results = useQueries({ queries: [
     { queryKey: buyerQueryKeys.reservationsPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'reservations', signal, fetchPage: (cursor) => buyerApi.reservations(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `reservation:${item.reservation_id}` }) },
     { queryKey: buyerQueryKeys.evidenceEligiblePage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'eligible order evidence', signal, fetchPage: (cursor) => buyerApi.evidenceEligible(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `eligible-evidence-reservation:${item.reservation_id}` }) },
-    { queryKey: buyerQueryKeys.evidenceListPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'order evidence', signal, fetchPage: (cursor) => buyerApi.evidenceList(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `order-evidence:${item.submission_id}` }) },
+    { queryKey: buyerQueryKeys.evidenceListPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null, status: ACTIVE_EVIDENCE_STATUSES }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'order evidence', signal, fetchPage: (cursor) => buyerApi.evidenceList(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor, status: ACTIVE_EVIDENCE_STATUSES }), signal).then((r) => r.data), itemKey: (item) => `order-evidence:${item.submission_id}` }) },
     { queryKey: buyerQueryKeys.reviewEligiblePage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'eligible reviews', signal, fetchPage: (cursor) => buyerApi.reviewEligible(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `eligible-review-order:${item.order.formal_order_id}` }) },
-    { queryKey: buyerQueryKeys.reviewsPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'reviews', signal, fetchPage: (cursor) => buyerApi.reviews(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `review:${item.review_case_id}` }) },
-    { queryKey: buyerQueryKeys.refundsPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'refunds', signal, fetchPage: (cursor) => buyerApi.refunds(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor }), signal).then((r) => r.data), itemKey: (item) => `refund:${item.refund_obligation_id}` }) },
+    { queryKey: buyerQueryKeys.reviewsPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null, status: ACTIVE_REVIEW_STATUSES }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'reviews', signal, fetchPage: (cursor) => buyerApi.reviews(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor, status: ACTIVE_REVIEW_STATUSES }), signal).then((r) => r.data), itemKey: (item) => `review:${item.review_case_id}` }) },
+    { queryKey: buyerQueryKeys.refundsPage({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor: null, outstandingOnly: true }), queryFn: ({ signal }) => fetchAllCursorPages({ source: 'refunds', signal, fetchPage: (cursor) => buyerApi.refunds(client, cursorQuery({ limit: BUYER_TASK_CURSOR_PAGE_LIMIT, cursor, outstandingOnly: true }), signal).then((r) => r.data), itemKey: (item) => `refund:${item.refund_obligation_id}` }) },
   ] });
 
   const pending = results.some((result) => result.isPending);

@@ -636,6 +636,131 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     },
   );
 
+  it(
+    'filters the own-evidence list by active statuses at the SQL layer',
+    async () => {
+      await setup();
+      seedEvidenceFile(database!, {
+        suffix: 1,
+        ownerBuyerId: 'buyer-1',
+      });
+      seedEvidenceFile(database!, {
+        suffix: 2,
+        ownerBuyerId: 'buyer-1',
+      });
+      seedEvidenceFile(database!, {
+        suffix: 3,
+        ownerBuyerId: 'buyer-1',
+      });
+      const app = testApp();
+      const cookie = await buyerCookie('1');
+
+      const pending = await submitViaApi(app, cookie, {
+        reservationId: 'reservation-a',
+        orderNumber: '601-1234567-1234567',
+        fileObjectId: 'file-object-1',
+        idempotencyKey: 'phase4b2-filter-pending-0001',
+      });
+      const pendingId = pending.data.order_evidence.submission_id;
+      const changes = await submitViaApi(app, cookie, {
+        reservationId: 'reservation-b',
+        orderNumber: '602-1234567-1234567',
+        fileObjectId: 'file-object-2',
+        idempotencyKey: 'phase4b2-filter-changes-0001',
+      });
+      const changesId = changes.data.order_evidence.submission_id;
+      await requestOrderEvidenceChanges(database!, {
+        submissionId: changesId,
+        expectedVersion: 1,
+        publicReason: '请补充清晰的付款截图',
+        internalNote: '内部审核说明不得出现在门户',
+      }, {
+        actor: staffActor(),
+        idempotencyKey: 'phase4b2-filter-changes-staff-0001',
+        now: Date.now() + 1000,
+      });
+      const withdrawn = await submitViaApi(app, cookie, {
+        reservationId: 'reservation-c',
+        orderNumber: '603-1234567-1234567',
+        fileObjectId: 'file-object-3',
+        idempotencyKey: 'phase4b2-filter-withdraw-0001',
+      });
+      const withdrawalId = withdrawn.data.order_evidence.submission_id;
+      const withdrawal = await withdrawViaApi(app, cookie, {
+        submissionId: withdrawalId,
+        expectedVersion: 1,
+        idempotencyKey: 'phase4b2-filter-withdraw-op-0001',
+      });
+      expect(withdrawal.status).toBe(200);
+
+      // 无 filter：行为与修改前一致，返回全部三份提交
+      const unfiltered = await request(
+        app,
+        '/api/buyer-portal/order-evidence?limit=10',
+        { headers: { Cookie: cookie } },
+      );
+      expect(unfiltered.status).toBe(200);
+      const unfilteredBody = await json<any>(unfiltered);
+      expect(new Set(unfilteredBody.data.items.map(
+        (item: any) => item.submission_id,
+      ))).toEqual(new Set([pendingId, changesId, withdrawalId]));
+
+      // filter：只返回 PENDING_VERIFICATION + CHANGES_REQUESTED，排除 WITHDRAWN
+      const filtered = await request(
+        app,
+        '/api/buyer-portal/order-evidence?limit=10&status=CHANGES_REQUESTED,PENDING_VERIFICATION',
+        { headers: { Cookie: cookie } },
+      );
+      expect(filtered.status).toBe(200);
+      const filteredBody = await json<any>(filtered);
+      const filteredIds = filteredBody.data.items.map(
+        (item: any) => item.submission_id,
+      );
+      expect(filteredIds).toContain(pendingId);
+      expect(filteredIds).toContain(changesId);
+      expect(filteredIds).not.toContain(withdrawalId);
+      expect(filteredBody.data.items.map((item: any) => item.status))
+        .toEqual(expect.arrayContaining([
+          'PENDING_VERIFICATION',
+          'CHANGES_REQUESTED',
+        ]));
+
+      // filter + cursor pagination 仍正确：limit=1 走两页
+      const filteredPageOne = await request(
+        app,
+        '/api/buyer-portal/order-evidence?limit=1&status=CHANGES_REQUESTED,PENDING_VERIFICATION',
+        { headers: { Cookie: cookie } },
+      );
+      expect(filteredPageOne.status).toBe(200);
+      const filteredPageOneBody = await json<any>(filteredPageOne);
+      expect(filteredPageOneBody.data.items).toHaveLength(1);
+      expect(filteredPageOneBody.data.next_cursor).toEqual(expect.any(String));
+      const filteredPageTwo = await request(
+        app,
+        '/api/buyer-portal/order-evidence?limit=1&status=CHANGES_REQUESTED,PENDING_VERIFICATION&cursor='
+          + encodeURIComponent(filteredPageOneBody.data.next_cursor),
+        { headers: { Cookie: cookie } },
+      );
+      expect(filteredPageTwo.status).toBe(200);
+      const filteredPageTwoBody = await json<any>(filteredPageTwo);
+      expect(filteredPageTwoBody.data.items).toHaveLength(1);
+      expect(filteredPageTwoBody.data.next_cursor).toBeNull();
+      expect(new Set([
+        ...filteredPageOneBody.data.items,
+        ...filteredPageTwoBody.data.items,
+      ].map((item: any) => item.submission_id)))
+        .toEqual(new Set([pendingId, changesId]));
+
+      // 非法 status → 400
+      const invalid = await request(
+        app,
+        '/api/buyer-portal/order-evidence?status=NOT_A_STATUS',
+        { headers: { Cookie: cookie } },
+      );
+      expect(invalid.status).toBe(400);
+    },
+  );
+
   it('creates a concealed, version-bound file read intent with replay safety', async () => {
     await setup();
     seedEvidenceFile(database!, {

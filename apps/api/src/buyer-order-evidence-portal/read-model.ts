@@ -257,11 +257,15 @@ export async function listBuyerOrderEvidence(
   options: {
     limit: number;
     cursor: OrderEvidenceCursor | null;
+    status?: readonly OrderEvidenceStatus[];
   },
 ): Promise<BuyerOrderEvidencePageDto<BuyerOrderEvidenceDto>> {
   assertBuyerBusinessAccess(buyer);
   validateLimit(options.limit);
 
+  const statusSql = options.status && options.status.length > 0
+    ? `AND submission.status IN (${options.status.map(() => '?').join(',')})`
+    : '';
   const cursorSql = options.cursor
     ? `
       AND (
@@ -274,6 +278,9 @@ export async function listBuyerOrderEvidence(
     `
     : '';
   const bindings: unknown[] = [buyer.buyerCustomerId];
+  if (options.status && options.status.length > 0) {
+    bindings.push(...options.status);
+  }
   if (options.cursor) {
     bindings.push(
       options.cursor.updatedAt,
@@ -286,6 +293,7 @@ export async function listBuyerOrderEvidence(
   const result = await database.prepare(`
     ${ORDER_EVIDENCE_SELECT}
     WHERE submission.buyer_customer_id=?
+      ${statusSql}
       ${cursorSql}
     ORDER BY submission.updated_at DESC, submission.id DESC
     LIMIT ?

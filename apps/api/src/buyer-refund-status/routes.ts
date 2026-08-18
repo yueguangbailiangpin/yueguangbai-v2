@@ -22,7 +22,7 @@ import {
 import { remindBuyerRefund } from './remind';
 
 const MAX_IDENTIFIER_LENGTH = 120;
-const ALLOWED_LIST_QUERY_KEYS = new Set(['limit', 'cursor']);
+const ALLOWED_LIST_QUERY_KEYS = new Set(['limit', 'cursor', 'outstanding_only']);
 
 export function registerBuyerRefundStatusRoutes(app: Hono<any>): void {
   const session = customerSessionMiddleware();
@@ -57,9 +57,20 @@ async function listOwnRefunds(context: Context<any>): Promise<Response> {
       cursor: decodeBuyerRefundPortalCursor(
         singleQuery(url, 'cursor') ?? undefined,
       ),
+      ...parseOutstandingOnlyFilter(
+        singleQuery(url, 'outstanding_only') ?? undefined,
+      ),
     },
   );
   return success(context, page);
+}
+
+function parseOutstandingOnlyFilter(
+  raw: string | undefined,
+): { outstandingOnly?: true } {
+  if (raw === undefined || raw === '') return {};
+  if (raw !== 'true') validationError();
+  return { outstandingOnly: true };
 }
 
 async function getOwnRefund(context: Context<any>): Promise<Response> {

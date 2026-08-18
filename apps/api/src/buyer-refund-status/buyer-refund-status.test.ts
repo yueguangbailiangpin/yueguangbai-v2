@@ -51,6 +51,60 @@ describe('Phase 4B5 buyer refund status read model', () => {
     expect(database.calls[0]?.bindings).toEqual(['buyer-1', 3]);
   });
 
+  it('filters to outstanding obligations exactly like DUE + PARTIALLY_PAID', async () => {
+    const database = fakeDatabase({
+      all: [[
+        refundRow('due', 4000, 48_840, 0, 'DUE'),
+        refundRow('partial', 3000, 48_840, 10_000, 'PARTIALLY_PAID'),
+      ]],
+    });
+    const page = await listBuyerRefunds(database, BUYER, {
+      limit: 2,
+      cursor: null,
+      outstandingOnly: true,
+    });
+    expect(page.items.map((item) => item.refund_obligation_id))
+      .toEqual(['due', 'partial']);
+    expect(database.calls[0]?.sql).toContain(
+      'ledger.status IN (?,?)',
+    );
+    expect(database.calls[0]?.bindings).toEqual([
+      'buyer-1',
+      'DUE',
+      'PARTIALLY_PAID',
+      3,
+    ]);
+
+    const unfiltered = fakeDatabase({ all: [[refundRow('paid', 2000, 48_840, 48_840, 'PAID')]] });
+    const unfilteredPage = await listBuyerRefunds(unfiltered, BUYER, {
+      limit: 2,
+      cursor: null,
+    });
+    expect(unfilteredPage.items.map((item) => item.refund_obligation_id))
+      .toEqual(['paid']);
+    expect(unfiltered.calls[0]?.sql).not.toContain('status IN');
+    expect(unfiltered.calls[0]?.bindings).toEqual(['buyer-1', 3]);
+
+    // cursor + outstanding_only 组合：绑定顺序与 SQL 一致
+    const paged = fakeDatabase({ all: [[refundRow('partial2', 2500, 48_840, 10_000, 'PARTIALLY_PAID')]] });
+    const pagedResult = await listBuyerRefunds(paged, BUYER, {
+      limit: 1,
+      cursor: { updatedAt: 3000, id: 'partial' },
+      outstandingOnly: true,
+    });
+    expect(pagedResult.items.map((item) => item.refund_obligation_id))
+      .toEqual(['partial2']);
+    expect(paged.calls[0]?.bindings).toEqual([
+      'buyer-1',
+      'DUE',
+      'PARTIALLY_PAID',
+      3000,
+      3000,
+      'partial',
+      2,
+    ]);
+  });
+
   it('projects due, partial, paid, and overpaid balances truthfully', async () => {
     const database = fakeDatabase({
       all: [[

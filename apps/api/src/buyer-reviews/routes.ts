@@ -1,11 +1,13 @@
 import {
   apiSuccess,
   isPricingReviewType,
+  isReviewCaseStatus,
   type BuyerReviewFileReadIntentDto,
   type BuyerReviewMutationDto,
   type CreateBuyerReviewFileReadIntentRequest,
   type PricingReviewType,
   type ResubmitBuyerReviewRequest,
+  type ReviewCaseStatus,
   type SubmitBuyerReviewRequest,
   type WithdrawBuyerReviewRequest,
 } from '@ygb/contracts';
@@ -50,7 +52,7 @@ const SUBMIT_BODY_LIMIT_BYTES = 24 * 1024;
 const SMALL_BODY_LIMIT_BYTES = 2048;
 const MAX_IDENTIFIER_LENGTH = 120;
 const MAX_FILES = 3;
-const ALLOWED_LIST_QUERY_KEYS = new Set(['limit', 'cursor']);
+const ALLOWED_LIST_QUERY_KEYS = new Set(['limit', 'cursor', 'status']);
 const denyLegacyFileRead = new DenyAllFileAuthorizationService();
 
 export function registerBuyerReviewRoutes(app: Hono<any>): void {
@@ -113,8 +115,24 @@ async function listOwnReviews(context: Context<any>): Promise<Response> {
   const page = await listBuyerReviews(context.env.DB, buyer, {
     limit: parseBuyerReviewPageLimit(singleQuery(url, 'limit') ?? undefined),
     cursor: decodeBuyerReviewCursor(singleQuery(url, 'cursor') ?? undefined),
+    ...parseReviewStatusFilter(singleQuery(url, 'status') ?? undefined),
   });
   return success(context, await attachBuyerReviewPageUrls(context.env.DB, buyer, page));
+}
+
+function parseReviewStatusFilter(
+  raw: string | undefined,
+): { status?: readonly ReviewCaseStatus[] } {
+  if (raw === undefined || raw === '') return {};
+  const statuses = [...new Set(
+    raw.split(',').map((value) => value.trim()),
+  )];
+  if (statuses.length === 0 || statuses.some(
+    (value) => !isReviewCaseStatus(value),
+  )) {
+    validationError();
+  }
+  return { status: statuses as readonly ReviewCaseStatus[] };
 }
 
 async function getOwnReview(context: Context<any>): Promise<Response> {
