@@ -29,11 +29,13 @@
   - Google Drive 冷归档 / Staff MCP 生产激活（M10 P0-02 / P0-03 未执行）
 - 已检测到 `app.yueguangbai.net` 存在运行中的部署：**Detected running deployment requiring ownership/inventory confirmation.** 尚未确认其 Worker/Pages binding、D1/R2 binding、真实数据状态与部署 owner；在确认前不得称其为正式 production、production incident 或废弃部署，也不得请求、修改或删除该部署。
 
-## 当前 CI 状态（2026-08-17）
+## 当前 CI 状态（2026-08-18）
 
-- GitHub-hosted CI：**BLOCKED_BY_BILLING_POLICY**（job annotation：The job was not started because recent account payments have failed or your spending limit needs to be increased；GitHub Actions budget 有意保持 $0，owner 不计划增加付费预算）
+- GitHub-hosted CI：**BLOCKED_BY_BILLING_POLICY**（job annotation：The job was not started because recent account payments have failed or your spending limit needs to be increased；GitHub Actions budget 有意保持 $0）
 - 因此 Remote CI：**NOT VERIFIED**（job 未启动；不是代码失败，也不得写为 CI PASS）
-- PR #103（fix: closure route type safety）：本地验证 PASS（production/test tsconfig、targeted tests 14/14、workspace typecheck、check:ci:static、git diff --check），但本地 PASS ≠ Remote CI PASS
+- 2026-08-18：6 个 closure PR 已按 owner 豁免合并进入 `main`（PR #103 TS 基线修复、#102 verifier archive 路径、#104 文档收口、#105/#106/#107 三个性能修复），当前 main = `ace7319`
+- 合并依据：owner 豁免（本地完整证据）；合并后 main 树与 Phase 8A 本地验证过的集成树完全一致（git diff 为空）；本地验证：0 TypeScript 错误、1746/1746 单元测试、187/187 browser e2e、check:ci:static PASS、build PASS、release:check PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE）
+- 本地 PASS ≠ Remote CI PASS；远程 CI 恢复前 Remote CI 保持 NOT VERIFIED
 - 最后一次远端全绿 CI：2026-08-16 09:51 UTC（run 31940127005，main `e02682f`）
 
 ## 当前 Marketplace / Amazon US 状态（2026-08-17）
