@@ -3,7 +3,7 @@ import { retryDelay, shouldRetryQuery } from './retry';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: shouldRetryQuery, retryDelay, staleTime: 0, gcTime: 5 * 60_000 },
+    queries: { retry: shouldRetryQuery, retryDelay, staleTime: 15_000, gcTime: 5 * 60_000 },
     mutations: { retry: false },
   },
 });
