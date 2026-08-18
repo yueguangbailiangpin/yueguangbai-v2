@@ -14,20 +14,28 @@
 
 历史 frozen / cleanup 分支和对应 SHA 用于追溯，不再作为新开发入口。新任务必须从最新 `main` 开始。
 
-## 当前生产状态（2026-08-17）
+## 当前生产状态（2026-08-17，决策更新 2026-08-18）
 
 - 生产状态：**NO-GO**（`PRODUCTION_GO=NO`，owner 尚未批准；`LOCAL_RELEASE_CANDIDATE` 不等于生产放行）
+- Owner 决策（2026-08-18）：① 开始推进 Production Gates（G1/G7/G8/G9 不依赖部署的事项优先，
+  执行清单见 `docs/acceptance/PRODUCTION_GATE_OWNER_ACTIONS.md`）；② `app.yueguangbai.net`
+  未文档化部署决定**清理**（程序见 `docs/runbooks/PRODUCTION_CLEANUP_APP_YUEGUANGBAI_NET.md`，
+  需 Cloudflare 账号访问）；③ GitHub Actions billing 维持 $0（Remote CI 保持 NOT VERIFIED）
 - Authoritative Production Gate：`docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`（仓库唯一最终 GO/NO-GO 判断入口；其他 checklist/runbook 均为 supporting evidence）
 - STAGING acceptance（T9 register：62 PASS / 3 CONFLICT / 2 BLOCKED，2026-08-16/17）≠ PRODUCTION acceptance；staging PASS 不构成生产放行证据
 - 当前缺失（未执行；不因本地 / staging 通过而视为完成）：
   - 生产 D1/R2/Worker/Access/Secrets/DNS 配置证据与受管清单
   - 生产 Migration ledger 只读核验、迁移窗口与 release-bound 备份 / 恢复证据
   - 中国大陆主要网络 / 微信内置浏览器实测（T9 H05，BLOCKED）
-  - 历史数据导入 PREVIEW 与人工批准、reconciliation
+  - 历史数据导入 PREVIEW 与人工批准、reconciliation（dry-run 工具已实测失败关闭/0 写入；
+    真实 PREVIEW 待 Owner 提供源文件并批准范围）
   - 生产 owner 逐项批准与 `PRODUCTION_GO=APPROVED` 书面签字
   - 远程 CI 证据（当前 GitHub-hosted CI 不可用，见下）
   - Google Drive 冷归档 / Staff MCP 生产激活（M10 P0-02 / P0-03 未执行）
-- 已检测到 `app.yueguangbai.net` 存在运行中的部署：**Detected running deployment requiring ownership/inventory confirmation.** 尚未确认其 Worker/Pages binding、D1/R2 binding、真实数据状态与部署 owner；在确认前不得称其为正式 production、production incident 或废弃部署，也不得请求、修改或删除该部署。
+- `app.yueguangbai.net`：Owner 已决定清理（2026-08-18）；当前仍为
+  **Detected running deployment requiring ownership/inventory confirmation.**，清理执行前
+  不得称其为正式 production、production incident 或废弃部署；清理需 Cloudflare 账号访问
+  （本机 wrangler 未认证），执行后更新本节状态。
 
 ## 当前 CI 状态（2026-08-18）
 
