@@ -765,9 +765,6 @@ describe('seller stores and product catalog', () => {
         expected_file_version: 1,
       }),
     };
-    const verRow = database.prepare(`SELECT version.id, version.product_id, product.organization_id, product.status FROM product_versions version JOIN products product ON product.id=version.product_id WHERE version.id=?`).bind(product.product_version_id).first();
-    const fileRow = database.prepare(`SELECT id, status, purpose, visibility FROM file_objects WHERE id='file-main-image-1'`).first();
-    const intentRow = database.prepare(`SELECT id, status FROM file_upload_intents WHERE id='intent-file-main-image-1'`).first();
     const linked = await app.request(
       'https://api.test/api/staff/catalog/product-versions/'
         + `${product.product_version_id}/main-image`,

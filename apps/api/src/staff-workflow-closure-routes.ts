@@ -7,6 +7,7 @@ import {
   type StaffRoleCode,
 } from '@ygb/contracts';
 import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
+import type { AppEnv } from './app';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from './http-auth/errors';
 import { decideReservation } from './reservations/decide-reservation';
@@ -260,7 +261,7 @@ interface ReservationWorkItemSourceRow {
   buyer_customer_id: string;
 }
 
-async function reopenReservationHttp(context: Context<any>): Promise<Response> {
+async function reopenReservationHttp(context: Context<AppEnv>): Promise<Response> {
   const session = requireAuthorization(context);
   const body = record(await readBoundedJson(context.req.raw, BODY_LIMIT));
   rejectUnknown(body, ['expected_version', 'reason']);
