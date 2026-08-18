@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { resolveChangeFile } from './verifier-utils.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -17,7 +18,11 @@ export function verifyRakutenTikTokAdapterPreparation(overrides = {}) {
   const tiktok = read('apps/api/src/marketplace-adapters/tiktok-read-adapter.ts');
   const tiktokSignature = read('apps/api/src/marketplace-adapters/tiktok-signature.ts');
   const rakuten = read('apps/api/src/marketplace-adapters/unavailable-adapter.ts');
-  const proposal = read('openspec/changes/rakuten-tiktok-jp-real-adapter-preparation/proposal.md');
+  const proposal = read(path.relative(root, resolveChangeFile(
+    'rakuten-tiktok-jp-real-adapter-preparation',
+    'proposal.md',
+    root,
+  )));
   const migrationFiles = overrides.migrationFiles ?? readdirSync(
     path.join(root, 'migrations'),
   ).filter((name) => name.endsWith('.sql')).sort();
