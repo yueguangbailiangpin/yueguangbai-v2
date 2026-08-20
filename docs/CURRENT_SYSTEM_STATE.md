@@ -14,13 +14,13 @@
 
 历史 frozen / cleanup 分支和对应 SHA 用于追溯，不再作为新开发入口。新任务必须从最新 `main` 开始。
 
-## 当前生产状态（2026-08-17，决策更新 2026-08-18）
+## 当前生产状态（2026-08-20）
 
-- 生产状态：**NO-GO**（`PRODUCTION_GO=NO`，owner 尚未批准；`LOCAL_RELEASE_CANDIDATE` 不等于生产放行）
+- 生产状态：**NO-GO**（G1 已获 Owner 直接批准；`PRODUCTION_GO=NO`，尚未完成生产放行；`LOCAL_RELEASE_CANDIDATE` 不等于生产放行）
 - Owner 决策（2026-08-18）：① 开始推进 Production Gates（G1/G7/G8/G9 不依赖部署的事项优先，
   执行清单见 `docs/acceptance/PRODUCTION_GATE_OWNER_ACTIONS.md`）；② `app.yueguangbai.net`
-  未文档化部署决定**清理**（程序见 `docs/runbooks/PRODUCTION_CLEANUP_APP_YUEGUANGBAI_NET.md`，
-  需 Cloudflare 账号访问）；③ GitHub Actions billing 维持 $0（Remote CI 保持 NOT VERIFIED）
+  未文档化部署决定**清理**（程序见 `docs/runbooks/PRODUCTION_CLEANUP_APP_YUEGUANGBAI_NET.md`）；
+  2026-08-20 已完成清理；③ GitHub Actions billing 维持 $0（Remote CI 保持 NOT VERIFIED）
 - Authoritative Production Gate：`docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`（仓库唯一最终 GO/NO-GO 判断入口；其他 checklist/runbook 均为 supporting evidence）
 - STAGING acceptance（T9 register：62 PASS / 3 CONFLICT / 2 BLOCKED，2026-08-16/17）≠ PRODUCTION acceptance；staging PASS 不构成生产放行证据
 - 当前缺失（未执行；不因本地 / staging 通过而视为完成）：
@@ -29,20 +29,19 @@
   - 中国大陆主要网络 / 微信内置浏览器实测（T9 H05，BLOCKED）
   - 历史数据导入 PREVIEW 与人工批准、reconciliation（dry-run 工具已实测失败关闭/0 写入；
     真实 PREVIEW 待 Owner 提供源文件并批准范围）
-  - 生产 owner 逐项批准与 `PRODUCTION_GO=APPROVED` 书面签字
+  - 正式 production 上线前补齐 G1 五个责任角色的姓名/邮箱；Owner 已于 2026-08-20 直接批准 G1（签名豁免）
   - 远程 CI 证据（当前 GitHub-hosted CI 不可用，见下）
   - Google Drive 冷归档 / Staff MCP 生产激活（M10 P0-02 / P0-03 未执行）
-- `app.yueguangbai.net`：Owner 已决定清理（2026-08-18）；当前仍为
-  **Detected running deployment requiring ownership/inventory confirmation.**，清理执行前
-  不得称其为正式 production、production incident 或废弃部署；清理需 Cloudflare 账号访问
-  （本机 wrangler 未认证），执行后更新本节状态。
+- `app.yueguangbai.net`：未文档化部署已按 Owner 决定于 2026-08-20 清理完成。
+  Worker `yueguangbai-v2-production`、生产 D1/R2 和自定义域名绑定均已删除；DNS 无解析，
+  staging 资源未触碰。该域名不再是运行中的部署；本记录不代表正式 production 已上线。
 
 ## 当前 CI 状态（2026-08-18）
 
 - GitHub-hosted CI：**BLOCKED_BY_BILLING_POLICY**（job annotation：The job was not started because recent account payments have failed or your spending limit needs to be increased；GitHub Actions budget 有意保持 $0）
 - 因此 Remote CI：**NOT VERIFIED**（job 未启动；不是代码失败，也不得写为 CI PASS）
-- 2026-08-18：6 个 closure PR 已按 owner 豁免合并进入 `main`（PR #103 TS 基线修复、#102 verifier archive 路径、#104 文档收口、#105/#106/#107 三个性能修复），当前 main = `ace7319`
-- 合并依据：owner 豁免（本地完整证据）；合并后 main 树与 Phase 8A 本地验证过的集成树完全一致（git diff 为空）；本地验证：0 TypeScript 错误、1746/1746 单元测试、187/187 browser e2e、check:ci:static PASS、build PASS、release:check PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE）
+- 2026-08-18：6 个 closure PR 已按 owner 豁免合并进入 `main`（PR #103 TS 基线修复、#102 verifier archive 路径、#104 文档收口、#105/#106/#107 三个性能修复）；这 6 个 PR 的代码验证树为 `ace731918f2e29d7ff1f60e6095d549eba43c4c2`。随后 PR #109（owner gate 决策与清理计划）以 docs-only 形式合并，当前远端 `main` = `f61527e04533a9053e237be2bd6bbcce8b2219c8`
+- 合并依据：owner 豁免（本地完整证据）；上述代码验证树与 Phase 8A 本地验证过的集成树完全一致（git diff 为空）；PR #109 未改变代码。上述验证树上的本地证据为：0 TypeScript 错误、1746/1746 单元测试、187/187 browser e2e、check:ci:static PASS、build PASS、release:check PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE）
 - 本地 PASS ≠ Remote CI PASS；远程 CI 恢复前 Remote CI 保持 NOT VERIFIED
 - 最后一次远端全绿 CI：2026-08-16 09:51 UTC（run 31940127005，main `e02682f`）
 
