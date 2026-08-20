@@ -6,13 +6,13 @@
 > `LOCAL PASS` ≠ `CI PASS`；`STAGING PASS` ≠ `PRODUCTION PASS`。任何 `PASS` 必须有真实、可回读、带日期的证据；不得使用"应该""预计""代码已存在所以 PASS"作为证据。
 > 本文件只记录真实状态与判定，不授权执行任何生产动作；每项执行仍须单独批准。
 
-## 当前判定（2026-08-17）
+## 当前判定（2026-08-20）
 
 | Gate | Requirement | Evidence Scope | Evidence | Status | Blocker / Next Action |
 |---|---|---|---|---|---|
-| G0 | Release candidate / CI 冻结 | LOCAL | 2026-08-18：6 个 closure PR（#103/#102/#104/#105/#106/#107）已按 owner 豁免合并，main=`ace7319`；合并后树与 Phase 8A 本地验证树一致；本地 0 TS 错误、1746/1746 测试、187/187 e2e、check:ci:static PASS、build PASS、`release:check` PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE，2026-08-18） | NOT VERIFIED | 缺远程 CI 证据（GitHub Actions budget 有意 $0 → BLOCKED_BY_BILLING_POLICY）；最终候选 `release:check` 需在 main 干净候选上绑定 40 位 SHA 回读；受保护 CI 或已批准人工发布控制未配置 |
-| G1 | Owner / privacy approvals | — | 无任何指定或批准记录（M10 P0-01 / P0-06 未配置未批准） | NOT VERIFIED | 未指定发布/D1/R2/安全负责人与告警接收人；未批准隐私告知、AI 处理、保留期、删除流程、备份保留与平台政策风险 |
-| G2 | Production Cloudflare configuration | — | 无生产绑定证据；`app.yueguangbai.net`：Owner 已决定清理（2026-08-18，见 `docs/runbooks/PRODUCTION_CLEANUP_APP_YUEGUANGBAI_NET.md`），清理执行前仍为 Detected running deployment requiring ownership/inventory confirmation（身份/binding/真实数据/owner 未确认；本机无 Cloudflare 认证，待 Owner 执行或授权） | NOT VERIFIED | 未创建/验收生产 D1/R2/Worker/Access/Secrets/DNS/域名/ALERT_SINK；不得以本地模板或 preflight 替代；清理完成前该部署状态不闭合 |
+| G0 | Release candidate / CI 冻结 | LOCAL | 2026-08-18：6 个 closure PR（#103/#102/#104/#105/#106/#107）已按 owner 豁免合并；其代码验证树为 `ace731918f2e29d7ff1f60e6095d549eba43c4c2`。随后 PR #109 以 docs-only 形式合并，当前远端 `main=f61527e04533a9053e237be2bd6bbcce8b2219c8`；PR #109 未改变代码。上述代码验证树上的本地 0 TS 错误、1746/1746 测试、187/187 e2e、check:ci:static PASS、build PASS、`release:check` PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE，2026-08-18） | NOT VERIFIED | 缺远程 CI 证据（GitHub Actions budget 有意 $0 → BLOCKED_BY_BILLING_POLICY）；最终候选 `release:check` 需在 main 干净候选上绑定 40 位 SHA 回读；受保护 CI 或已批准人工发布控制未配置 |
+| G1 | Owner / privacy approvals | — | Owner 于 2026-08-20 在对话中直接批准 G1，并明确豁免另行签名；隐私、AI 处理、保留/删除、备份与平台政策风险均按该批准记录为已批准。姓名/邮箱未提供，未虚构 | PASS | 后续 Production operational preparation 中补齐五个责任角色的姓名与邮箱；不阻塞当前 G1 PASS；本批准不授权 G2–G6 或 Production GO |
+| G2 | Production Cloudflare configuration | — | 未创建正式生产配置。`app.yueguangbai.net` 未文档化部署已按 Owner 决定于 2026-08-20 清理完成；Worker、生产 D1/R2、自定义域名绑定均已删除，staging 未触碰（详见 `docs/runbooks/PRODUCTION_CLEANUP_APP_YUEGUANGBAI_NET.md`） | NOT VERIFIED | Managed production resources have not yet been created and accepted；清理完成不等于生产配置或上线验收通过 |
 | G3 | Production database migration + backup | STAGING / LOCAL | T10 备份/恢复证据（隔离 staging：bundle + attestation + restored.sqlite，2026-08-16，Production accessed: false）；本地 db:verify 70 migrations / schema 70 | NOT VERIFIED | 无生产 D1 ledger 只读核验、无迁移窗口、无 release-bound 生产备份与隔离恢复证据 |
 | G4 | R2 / file / archive readiness | LOCAL | Drive 冷归档本地实现、dry-run、模板写侧关闭；R2 delete 保持关闭（合规） | NOT VERIFIED | 无真实 Drive OAuth/MFA/专用目录/shadow copy/read-back/Manifest/proxy/rehydration/R2-delete 验收（M10 P0-02） |
 | G5 | External integration readiness | LOCAL | Staff MCP production-capable runtime 本地就绪、开关默认关闭；Rakuten/TikTok Adapter 未接入核心运行入口 | NOT VERIFIED | 无真实 OAuth 2.1/JWKS/token-status/ChatGPT 注册/分阶段启用（M10 P0-03）；Provider 本地准备 ≠ Provider 可用 |
@@ -22,7 +22,7 @@
 | G9 | Staff pilot | — | 无证据 | NOT VERIFIED | 未执行生产 Staff 试用（受控样本 8 Staff / 200 单每日与峰值、容量、告警） |
 | G10 | Final Production GO / NO-GO | — | 无 owner 批准记录 | FAIL | `PRODUCTION_GO=NO`；owner 未写下 `PRODUCTION_GO=APPROVED`、release SHA、批准时间、范围与回滚负责人 |
 
-**结论：PRODUCTION = NO-GO**（G8 / G10 为 FAIL，其余 NOT VERIFIED；没有证据可自动升 PASS。staging / 本地全绿不改变此结论。）
+**结论：PRODUCTION = NO-GO**（G8 / G10 为 FAIL；G1 为 Owner 直接批准的 PASS；G2–G7 / G9 仍 NOT VERIFIED。staging / 本地全绿不改变此结论。）
 
 ---
 
@@ -42,13 +42,13 @@ G0 未通过：`NO-GO`。
 
 ## G1：隐私、责任和恢复人
 
-- [ ] 指定发布负责人、D1 恢复负责人、R2/Drive 恢复负责人、安全负责人和独立告警接收人。
-- [ ] 批准隐私告知、外部 AI 处理、跨境、永久冷归档、普通附件与安全记录保留期、删除/注销流程。
-- [ ] 记录评论/返款业务的平台政策风险；不能标为“无风险”。
-- [ ] 批准备份保留期、异地副本、密钥分离、MFA、轮换、恢复演练频率和销毁审批。
+- [x] Owner 已直接批准 G1；五个责任角色的姓名/邮箱按 Owner 指令暂缓，正式 production 上线前补齐。
+- [x] 批准隐私告知、外部 AI 处理、跨境、永久冷归档、普通附件与安全记录保留期、删除/注销流程。
+- [x] 记录评论/返款业务的平台政策风险；不能标为“无风险”。
+- [x] 批准备份保留期、异地副本、密钥分离、MFA、轮换、恢复演练频率和销毁审批。
 - [ ] 若要迁移旧数据，先单独批准只读 AUDIT/PREVIEW；本清单不授权导入。
 
-G1 未通过：`NO-GO`。
+G1：Owner 已直接批准，签名栏按 Owner 指令豁免；责任人姓名/邮箱仍须在正式 production 上线前补齐。
 
 ## G2：Cloudflare、域名和生产配置
 
@@ -62,7 +62,7 @@ G1 未通过：`NO-GO`。
 - [ ] 通过 Secret 管理写入并轮换 Customer Session、安全 token、Drive OAuth、关键词服务 Secret 及经独立 Change 批准的其他 Secret；绝不复制到命令日志或 Git。
 - [ ] 配置并验证 Cloudflare Access application、policy、team domain、audience、已登记 Staff 邮箱及同源 allowed origins；模板和运行配置不得出现飞书认证或同步键。
 - [ ] 实现并配置唯一 `OPERATIONAL_ALERT_SINK` RPC service binding；核对 target、entrypoint、exact props、sink identity、sink deployment/version 以及 preflight 派生 fingerprint。通过 Owner endpoint 触发带随机 nonce 的 delivery、安全 failure-path simulation、recovery receipt 验证，再确认 `/ready` 的 `operational_alerts=ok`。不得用自填 PASS、任意 64 hex、console 日志或旧 release/旧 descriptor 的证明顶替。
-- [ ] `app.yueguangbai.net`：完成 ownership/inventory confirmation（身份、Worker/Pages binding、D1/R2 binding、真实数据状态、部署 owner）后再决定受管化或清理；确认前不得称其为正式 production、production incident 或废弃部署。
+- [x] `app.yueguangbai.net`：已完成 ownership/inventory confirmation，并按 Owner 决定于 2026-08-20 清理 Worker、生产 D1/R2 与自定义域名绑定；staging 未触碰。该清理记录不构成正式 production 上线验收。
 
 G2 未通过：`NO-GO`。
 

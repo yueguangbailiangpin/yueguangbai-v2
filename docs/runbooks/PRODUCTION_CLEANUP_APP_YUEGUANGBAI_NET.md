@@ -1,10 +1,21 @@
 # app.yueguangbai.net 未文档化部署清理 Runbook
 
-> 状态：2026-08-18，Owner 已决定**清理**该部署。
+> 状态：2026-08-20，Owner 已决定并授权**清理**该部署；Cloudflare 清理已完成。
 > 背景：`https://app.yueguangbai.net` 上存在未文档化部署（08-11 时代旧构建、`/ready` 自 08-11 起
 > 持续 not_ready：scheduler/recovery 检查失败；生产健康监控 issue #50 持续 RED）。
-> 本 Runbook 由 Owner 本人或 Owner 授权的 Cloudflare 账号持有者执行；本机当前无 Cloudflare 认证
-> （`wrangler whoami` = 未登录），因此执行前必须完成第一步。
+> 本 Runbook 由 Owner 本人或 Owner 授权的 Cloudflare 账号持有者执行；原始编写时本机无 Cloudflare 认证，
+> 本次执行已使用已授权的 `cf` profile 完成。
+
+## 已完成执行记录（2026-08-20）
+
+- 执行人：Owner 授权的 Cloudflare 账号操作者（`cf v0.6.0`，默认 profile）
+- 已删除自定义域名绑定：`app.yueguangbai.net`，domain ID `1c54c610b3d4ceb1907f9964bb4a9cf058e05a9c`
+- 已删除 Worker：`yueguangbai-v2-production`
+- 已删除 D1：`yueguangbai-v2-production`，UUID `24b04d7f-00ad-4671-8520-ce6ff2c328b1`
+- 已删除 R2：`yueguangbai-v2-production-files`
+- 删除前只读核验：生产业务表均为 0；另有 1 条 Staff 记录、335 条审计事件、64 条 migration 记录；按 Owner 决定未导出
+- 删除后核验：生产 Worker / D1 / R2 / 自定义域名均不再列出；`app.yueguangbai.net` 无 DNS 解析；staging 资源仍保留
+- 不可逆性：上述 D1、R2、Worker 删除不可恢复；未保留备份（按 Owner 明确决定）
 
 ## 前置：获得 Cloudflare 账号访问
 
