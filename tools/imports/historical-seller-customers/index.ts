@@ -20,7 +20,11 @@ export interface HistoricalSellerCustomer {
   organizationId: string;
   sellerCode: string;
   channelCode: string;
-  sources: readonly HistoricalSellerFile[];
+  sources: readonly HistoricalSellerProductSource[];
+}
+
+export interface HistoricalSellerProductSource extends HistoricalSellerFile {
+  productName: string;
 }
 
 export interface HistoricalSellerDirectoryPlan {
@@ -203,7 +207,7 @@ export const SELLER_WECHAT_BY_SOURCE_FILE = Object.freeze({
 export function buildHistoricalSellerDirectoryPlan(
   files: readonly HistoricalSellerFile[],
 ): HistoricalSellerDirectoryPlan {
-  const grouped = new Map<string, { displayWechat: string; sources: HistoricalSellerFile[] }>();
+  const grouped = new Map<string, { displayWechat: string; sources: HistoricalSellerProductSource[] }>();
   const unresolvedFiles: HistoricalSellerFile[] = [];
   for (const file of files) {
     const seller = SELLER_WECHAT_BY_SOURCE_FILE[file.sourceFileId as keyof typeof SELLER_WECHAT_BY_SOURCE_FILE];
@@ -213,7 +217,7 @@ export function buildHistoricalSellerDirectoryPlan(
     }
     const normalizedWechat = seller.normalize('NFKC').trim().toLocaleLowerCase('en-US');
     const current = grouped.get(normalizedWechat) ?? { displayWechat: seller, sources: [] };
-    current.sources.push(file);
+    current.sources.push({ ...file, productName: extractHistoricalProductName(file, seller) });
     grouped.set(normalizedWechat, current);
   }
   const customers = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(
@@ -240,4 +244,31 @@ export function buildHistoricalSellerDirectoryPlan(
     sourceFileCount: files.length,
     resolvedFileCount: files.length - unresolvedFiles.length,
   });
+}
+
+export function extractHistoricalProductName(
+  file: HistoricalSellerFile,
+  sellerWechat: string,
+): string {
+  let value = file.sourceFileTitle.normalize('NFKC');
+  const index = value.toLocaleLowerCase('en-US').indexOf(
+    sellerWechat.normalize('NFKC').toLocaleLowerCase('en-US'),
+  );
+  if (index >= 0) value = `${value.slice(0, index)} ${value.slice(index + sellerWechat.length)}`;
+  value = value
+    .replace(/ido[- ]?ma(?:n|m)?go|idomamgo|dio|\bido\b/giu, ' ')
+    .replace(/ygbce(?:p|o)ing|ygcceping|yueguangbaiceping|yueguangbaiai|yueguangbai|yuegungbai|yinghua1942ai|yinghua1942|quesheng520ai|queshengai|\bygb\b|\bygc\b|\bybg\b|\bgyb\b|月光白/giu, ' ')
+    .replace(/订单详情|下单模板|测评返款模板|周四返款(?:\(\d+\))?|日亚|日本|乐天|发单号|真人测评|差评/gu, ' ')
+    .replace(/\b(?:miss|unique)\b/giu, ' ')
+    .replace(/\b\d{10,}\b/gu, ' ')
+    .replace(/[+&\-]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .replace(/^[123]\s*(?=贴纸)/u, '')
+    .replace(/^chengren(?:\s+\d+)?$/iu, '成人')
+    .replace(/^成人\s+\d+$/u, '成人');
+  const words = value.split(' ').filter(Boolean);
+  const deduplicated = words.filter((word, wordIndex) =>
+    words.findIndex((candidate) => candidate.toLocaleLowerCase('en-US') === word.toLocaleLowerCase('en-US')) === wordIndex);
+  return deduplicated.join(' ') || '未标注产品';
 }

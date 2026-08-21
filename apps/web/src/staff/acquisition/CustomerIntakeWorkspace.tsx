@@ -23,7 +23,7 @@ const lookupSchema=z.object({matches:z.array(matchSchema),resolution_required:z.
 const sellerDirectorySchema=z.object({items:z.array(z.object({
   seller_organization_id:z.string(),seller_code:z.string(),display_name:z.string(),wechat_masked:z.string(),marketplace_code:z.string(),
   source_status:z.enum(['HISTORICAL_FROZEN_IMPORT','CURRENT_OR_NEW']),source_file_count:z.number().int().nonnegative(),
-  active_offering_count:z.number().int().nonnegative(),has_portal_account:z.boolean(),
+  product_names:z.array(z.string()),active_offering_count:z.number().int().nonnegative(),has_portal_account:z.boolean(),
 }).strict())}).strict();
 const buyerInvitationSchema=z.object({invitation:z.object({
   invitation_id:z.string(),registration_token:z.string(),registration_path:z.string(),wechat_id:z.string(),marketplace_code:z.string(),
@@ -82,7 +82,7 @@ function CustomerIntakeWorkspace({leadType}:{leadType:'BUYER'|'SELLER'}):React.J
       {buyer?<Card className="customer-intake-list"><h3>正式买家客户登记</h3>
         {leads.isPending?<p role="status">加载中…</p>:leads.isError?<Alert tone="danger">客户记录暂时加载不了。</Alert>:leads.data.items.length===0?<EmptyState title="暂无买家客户" description="加微信后在左侧保存新客户。"/>:<DataTable caption="买家客户与业务进度"><thead><tr><th>客户</th><th>站点</th><th>渠道</th><th>业务进度</th></tr></thead><tbody>{leads.data.items.map((lead)=><tr key={lead.lead_id}><td><strong>{lead.display_name??lead.wechat_masked}</strong><small>{lead.wechat_masked}</small></td><td>{marketLabel(lead.marketplace_code)}</td><td><StatusBadge tone="neutral">{lead.channel_label}</StatusBadge></td><td>{`${lead.registered?'网站已开通':'网站未开通'} · ${lead.formal_order_count} 单`}</td></tr>)}</tbody></DataTable>}
       </Card>:<Card className="customer-intake-list"><h3>全部卖家客户{sellerDirectory.data?`（${sellerDirectory.data.length} 个）`:''}</h3>
-        {sellerDirectory.isPending?<p role="status">加载中…</p>:sellerDirectory.isError?<Alert tone="danger">卖家客户目录暂时加载不了。</Alert>:sellerDirectory.data.length===0?<EmptyState title="暂无卖家客户" description="历史资料导入或新增客户后会显示在这里。"/>:<DataTable caption="卖家客户、历史来源与网站账号"><thead><tr><th>客户</th><th>站点</th><th>来源</th><th>网站账号</th></tr></thead><tbody>{sellerDirectory.data.map((seller)=><tr key={seller.seller_organization_id}><td><strong>{seller.display_name}</strong><small>{seller.wechat_masked}</small></td><td>{marketLabel(seller.marketplace_code)}</td><td>{seller.source_status==='HISTORICAL_FROZEN_IMPORT'?<StatusBadge tone="neutral">历史资料 · {seller.source_file_count} 个文件</StatusBadge>:<StatusBadge tone="success">当前 / 新增</StatusBadge>}</td><td>{seller.has_portal_account?'已开通':'未开通'}</td></tr>)}</tbody></DataTable>}
+        {sellerDirectory.isPending?<p role="status">加载中…</p>:sellerDirectory.isError?<Alert tone="danger">卖家客户目录暂时加载不了。</Alert>:sellerDirectory.data.length===0?<EmptyState title="暂无卖家客户" description="历史资料导入或新增客户后会显示在这里。"/>:<DataTable caption="卖家客户、合作产品、历史来源与网站账号"><thead><tr><th>客户</th><th>站点</th><th>合作产品</th><th>来源</th><th>网站账号</th></tr></thead><tbody>{sellerDirectory.data.map((seller)=><tr key={seller.seller_organization_id}><td><strong>{seller.display_name}</strong><small>{seller.wechat_masked}</small></td><td>{marketLabel(seller.marketplace_code)}</td><td>{seller.product_names.length>0?seller.product_names.join('、'):'未录入产品'}</td><td>{seller.source_status==='HISTORICAL_FROZEN_IMPORT'?<StatusBadge tone="neutral">历史资料 · {seller.source_file_count} 个文件</StatusBadge>:<StatusBadge tone="success">当前 / 新增</StatusBadge>}</td><td>{seller.has_portal_account?'已开通':'未开通'}</td></tr>)}</tbody></DataTable>}
       </Card>}
     </div>
   </main>;

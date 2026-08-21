@@ -50,6 +50,7 @@ describe('historical seller directory', () => {
       wechat_masked: 'Mi***er',
       source_status: 'HISTORICAL_FROZEN_IMPORT',
       source_file_count: 3,
+      product_names: ['紫光灯'],
       has_portal_account: false,
     }));
     const leadCount = database.raw.prepare(`SELECT COUNT(*) AS count FROM acquisition_leads`).get() as { count: number };

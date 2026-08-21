@@ -1,6 +1,7 @@
 import type { SqlDatabase } from '@ygb/contracts';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
+import { FROZEN_HISTORICAL_SELLER_PRODUCTS } from './frozen-historical-seller-products';
 
 interface HistoricalSellerDirectoryRow {
   organization_id: string;
@@ -89,6 +90,9 @@ export async function listHistoricalSellerDirectory(
       : row.organization_name.toLocaleLowerCase('en-US') === row.normalized_wechat
         ? maskWechat(row.display_wechat)
         : row.organization_name;
+    const productNames = FROZEN_HISTORICAL_SELLER_PRODUCTS[
+      row.normalized_wechat.toLocaleLowerCase('en-US') as keyof typeof FROZEN_HISTORICAL_SELLER_PRODUCTS
+    ] ?? Object.freeze([]);
     return Object.freeze({
       seller_organization_id: row.organization_id,
       seller_code: row.seller_code,
@@ -97,6 +101,7 @@ export async function listHistoricalSellerDirectory(
       marketplace_code: canonicalMarketplace,
       source_status: historical ? 'HISTORICAL_FROZEN_IMPORT' as const : 'CURRENT_OR_NEW' as const,
       source_file_count: sourceCount,
+      product_names: productNames,
       active_offering_count: Number(row.active_offering_count),
       has_portal_account: row.account_id !== null,
     });

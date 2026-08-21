@@ -20,5 +20,9 @@ describe('frozen historical seller customer directory', () => {
       .toHaveLength(4);
     expect(plan.customers.find((seller) => seller.normalizedWechat === 'michael_er'))
       .toMatchObject({ displayWechat: 'Michael_er', channelCode: 'ido-mango' });
+    expect(plan.customers.find((seller) => seller.normalizedWechat === 'michael_er')?.sources)
+      .toContainEqual(expect.objectContaining({ productName: '紫光灯' }));
+    expect([...new Set(plan.customers.find((seller) => seller.normalizedWechat === 'yinxc520')
+      ?.sources.map((source) => source.productName))]).toEqual(['贴纸']);
   });
 });
