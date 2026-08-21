@@ -17,9 +17,9 @@
 | 原聚合入口（CI 不调用） | CI 保留的纯 verifier / preflight | 由统一阶段覆盖的旧嵌入步骤 |
 | --- | --- | --- |
 | `check:marketplace-adapters` | `verify:marketplace-adapters`、`preflight:marketplace-adapters` | `test:marketplace-adapters` 由一次 `npm test` 覆盖；其 API/contracts/domain typecheck 由 static job 的一次全 workspace `typecheck` 覆盖。 |
-| `check:wave13` | `check:wave13:migration`、`staff-auth`、`dto`、`file`、`price-mismatch`、`buyer-refund` | `api-contract-baseline-alignment.test.ts` 由一次 `npm test` 覆盖。 |
-| `check:wave14a` | `verify:web-source-boundaries` | `test:wave14a` 由一次 `npm test` 覆盖；web typecheck 由 static job 覆盖；web build 由最终一次 `npm run build` 覆盖；`verify:web-static-build` 在该统一 build 后执行。 |
-| `check:module1:buyer` | `verify:module1:buyer` | `test:module1:buyer` 由一次 `npm test` 覆盖；web typecheck/build 分别由 static job 和统一 build 覆盖。 |
+| `check:wave13`（聚合已于 2026-08-21 删除） | `check:wave13:migration`、`staff-auth`、`dto`、`file`、`price-mismatch`、`buyer-refund` | `api-contract-baseline-alignment.test.ts` 由一次 `npm test` 覆盖。 |
+| `check:wave14a`（聚合已于 2026-08-21 删除） | `verify:web-source-boundaries` | 旧 `test:wave14a` 步骤由一次 `npm test` 覆盖；web typecheck 由 static job 覆盖；web build 由最终一次 `npm run build` 覆盖；`verify:web-static-build` 在该统一 build 后执行。 |
+| `check:module1:buyer`（聚合已于 2026-08-21 删除） | `verify:module1:buyer` | 旧 `test:module1:buyer` 步骤由一次 `npm test` 覆盖；web typecheck/build 分别由 static job 和统一 build 覆盖。 |
 
 `verify:wave11`、`verify:wave12`、`verify:customer-security` 与 `verify:marketplace-money` 本身只串联 Node verifier，因此可以直接作为领域证据保留。由此 `tests-and-build` 的全量 Vitest 和 workspace build 均各只执行一次；别再拿旧聚合的“没有重复”说法糊弄人了。
 

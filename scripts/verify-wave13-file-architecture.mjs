@@ -60,10 +60,8 @@ for (const evidence of [
   'staffMiddlewareIndex',
 ]) assertContains(inventoryTests, evidence, 'real Hono route inventory test');
 assert(
-  packageManifest.scripts?.['check:wave13']?.includes(
-    'vitest run apps/api/src/api-contract-baseline-alignment.test.ts',
-  ),
-  'Wave13 check must run the canonical runtime-backed route inventory test',
+  packageManifest.scripts?.['test'] === 'vitest run',
+  'default test suite (vitest run over apps/**) must keep covering the canonical runtime-backed route inventory test',
 );
 report('wave13-file-architecture', {
   active_purpose_routes: 7,
