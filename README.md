@@ -77,7 +77,7 @@ GitHub 的非生产 CI 入口、当前 branch enforcement 可验证性和人工�
 先按上面的权威顺序确定规则，再从运行入口向下追，不要把 archived OpenSpec、`FREEZE` 文件或历史审计当成当前实现入口。
 
 - Web：`apps/web/src/main.tsx` → `App.tsx`。Buyer 由 `buyer/routes/BuyerRouteModule.tsx` 负责，Seller 由 `seller/routes/SellerRouteModule.tsx` 负责，Staff 由 `staff/StaffRouteModule.tsx` 负责；Staff Admin 的 canonical 前端是 `StaffAdminRouteModule.tsx` → `admin-dashboard/FrozenAdminBusinessDashboard.tsx`。
-- API：`apps/api/src/worker.ts` → `apps/api/src/index.ts`。正式 HTTP 路径以 `docs/contracts/V2_API_ROUTE_INVENTORY.md` 为唯一清单；`apps/api/src/api-contract-baseline-alignment.test.ts` 直接将该清单与运行时 `app.routes` 对照，由默认 `npm test`（Vitest 全量）接入。CI 保留的 Wave13 专项子门禁（`check:wave13:*`）只验证安全路由覆盖，但不得另存全局 route count。
+- API：`apps/api/src/worker.ts` → `apps/api/src/index.ts`。正式 HTTP 路径以 `docs/contracts/V2_API_ROUTE_INVENTORY.md` 为唯一清单；`apps/api/src/architecture-guards/api-contract-baseline-alignment.test.ts` 直接将该清单与运行时 `app.routes` 对照，由默认 `npm test`（Vitest 全量）接入。CI 保留的 Wave13 专项子门禁（`check:wave13:*`）只验证安全路由覆盖，但不得另存全局 route count。
 - 业务事实与边界：先看对应 `docs/contracts/`，再看 `packages/contracts/`、`packages/domain/`、API route/service 与其定向测试；Migration 的唯一事实是 `migrations/` 连续 ledger，当前基线/发布边界见 `docs/CURRENT_SYSTEM_STATE.md`。
 - 变更治理：Decision Register、active OpenSpec、Acceptance Matrix 依次界定已决策事项、当前变更和验收；历史 Migration、archived OpenSpec、`FREEZE`/audit 文档只提供追溯证据，不能反向覆盖现行规则。
 

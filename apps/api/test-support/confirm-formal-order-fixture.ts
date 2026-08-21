@@ -7,7 +7,7 @@ import {
   FormalOrderError,
   requireFormalOrderConfirmationPermission,
   type FormalOrderStaffActor,
-} from '../src/formal-orders/formal-order-shared';
+} from '../src/formal-order-shared/formal-order-shared';
 
 /**
  * Test-only adapter that exercises the sole runtime confirmation authority.

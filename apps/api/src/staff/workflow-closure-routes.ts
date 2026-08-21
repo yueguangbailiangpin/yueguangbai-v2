@@ -7,12 +7,12 @@ import {
   type StaffRoleCode,
 } from '@ygb/contracts';
 import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
-import type { AppEnv } from './app';
+import type { AppEnv } from '../app';
 import type { Context, Hono } from 'hono';
-import { requestIdFromContext } from './http-auth/errors';
-import { decideReservation } from './reservations/decide-reservation';
-import { reopenReservation } from './reservations/reopen-reservation';
-import type { ReservationStaffActor } from './reservations/reservation-shared';
+import { requestIdFromContext } from '../http-auth/errors';
+import { decideReservation } from '../reservations/decide-reservation';
+import { reopenReservation } from '../reservations/reopen-reservation';
+import type { ReservationStaffActor } from '../reservations/reservation-shared';
 import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
@@ -20,7 +20,7 @@ import {
   requireSellerOrganizationScope,
   resolveStaffDataScope,
   type AssignmentStaffAuthorization,
-} from './staff-assignment';
+} from '../staff-assignment';
 
 const BODY_LIMIT = 8 * 1024;
 

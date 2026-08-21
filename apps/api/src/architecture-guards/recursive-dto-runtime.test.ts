@@ -3,14 +3,14 @@ import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
-import app from './index';
-import { MockObjectStorage } from './files/mock-object-storage';
+import app from '../index';
+import { MockObjectStorage } from '../files/mock-object-storage';
 import {
   loginThroughDefaultApp,
   onePixelPng,
   seedWave13RuntimeAuthority,
   Wave13RuntimeDatabase,
-} from '../test-support/wave13-runtime';
+} from '../../test-support/wave13-runtime';
 
 let base: SqliteDatabase | null = null;
 let database: Wave13RuntimeDatabase | null = null;

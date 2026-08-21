@@ -37,7 +37,7 @@ import {
   requireFormalOrderConfirmationPermission,
   requireFormalOrderReviewType,
   type FormalOrderStaffActor,
-} from '../formal-orders/formal-order-shared';
+} from '../formal-order-shared/formal-order-shared';
 import {
   calculateBuyerFormalFinancials,
   completeFormalInstructionStatements,

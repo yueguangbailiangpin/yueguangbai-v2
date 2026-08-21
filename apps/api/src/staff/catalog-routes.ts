@@ -17,41 +17,41 @@ import {
 } from '@ygb/contracts';
 import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
-import { addProductVersion } from './catalog/add-product-version';
-import { createApprovedProduct } from './catalog/create-product';
-import { createSellerStore } from './catalog/create-store';
-import { linkProductVersionMainImage } from './catalog/link-product-version-main-image';
-import type { CatalogStaffActor } from './catalog/catalog-shared';
+import { addProductVersion } from '../catalog/add-product-version';
+import { createApprovedProduct } from '../catalog/create-product';
+import { createSellerStore } from '../catalog/create-store';
+import { linkProductVersionMainImage } from '../catalog/link-product-version-main-image';
+import type { CatalogStaffActor } from '../catalog/catalog-shared';
 import type { FileActor } from '@ygb/contracts';
 import type {
   FileAuthorizationResource,
   FileAuthorizationService,
-} from './files/authorization';
+} from '../files/authorization';
 import {
   readDemandReviewContext,
   reviewDemandBatch,
-} from './demand-batches/review-demand-batch';
-import type { DemandStaffActor } from './demand-batches/demand-shared';
-import { requestIdFromContext } from './http-auth/errors';
-import { reviewProductApplication } from './product-applications/review-product-application';
-import type { ProductApplicationStaffActor } from './product-applications/product-application-shared';
+} from '../demand-batches/review-demand-batch';
+import type { DemandStaffActor } from '../demand-batches/demand-shared';
+import { requestIdFromContext } from '../http-auth/errors';
+import { reviewProductApplication } from '../product-applications/review-product-application';
+import type { ProductApplicationStaffActor } from '../product-applications/product-application-shared';
 import {
   listStaffProducts,
   readStaffProduct,
   readStaffReservationSchedule,
-} from './product-reservation-scheduling/read-model';
+} from '../product-reservation-scheduling/read-model';
 import {
   confirmDemandSchedule,
   previewDemandSchedule,
-} from './product-reservation-scheduling/schedule-command';
+} from '../product-reservation-scheduling/schedule-command';
 import {
   parsePageLimit,
   type SchedulingStaffActor,
-} from './product-reservation-scheduling/shared';
+} from '../product-reservation-scheduling/shared';
 import {
   resolveStaffDataScope,
   type AssignmentStaffAuthorization,
-} from './staff-assignment';
+} from '../staff-assignment';
 
 const BODY_LIMIT = 32 * 1024;
 

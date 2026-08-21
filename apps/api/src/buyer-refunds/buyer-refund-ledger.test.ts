@@ -19,7 +19,7 @@ import {
 } from '@ygb/testkit';
 import type { FileAuthorizationService } from '../files/authorization';
 import { confirmFormalOrderForTest as confirmFormalOrder } from '../../test-support/confirm-formal-order-fixture';
-import type { FormalOrderStaffActor } from '../formal-orders/formal-order-shared';
+import type { FormalOrderStaffActor } from '../formal-order-shared/formal-order-shared';
 import {
   bindPhase3GEvidenceFixture,
   seedPhase3GInstructionFixture,

@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
-import type { AppBindings, AppEnv } from './app';
-import { registerStaffWorkflowClosureRoutes } from './staff-workflow-closure-routes';
+import type { AppBindings, AppEnv } from '../app';
+import { registerStaffWorkflowClosureRoutes } from './workflow-closure-routes';
 import {
   submitReservation as submitReservationService,
-} from './reservations/submit-reservation';
-import { decideReservation } from './reservations/decide-reservation';
-import type { BuyerReservationActor } from './reservations/reservation-shared';
+} from '../reservations/submit-reservation';
+import { decideReservation } from '../reservations/decide-reservation';
+import type { BuyerReservationActor } from '../reservations/reservation-shared';
 import { isStaffPermissionCode, type StaffPermissionCode } from '@ygb/contracts';
 
 let database: SqliteDatabase | null = null;

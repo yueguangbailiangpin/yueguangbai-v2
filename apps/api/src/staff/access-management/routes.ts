@@ -1,6 +1,6 @@
 import { apiFailure, apiSuccess, isStaffRoleCode, type ApiErrorCode } from '@ygb/contracts';
 import type { Context, Hono } from 'hono';
-import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import type { AssignmentStaffAuthorization } from '../../staff-assignment';
 import { requireStaffAccessManager } from './authorization';
 import { createStaffAccount, updateStaffAccount, changeStaffAccountStatus } from './accounts';
 import { StaffAccessManagementError } from './errors';

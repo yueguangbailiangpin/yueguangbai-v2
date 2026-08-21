@@ -6,9 +6,9 @@ import {
   type StaffRoleCode,
 } from '@ygb/contracts';
 import { canonicalJson } from '@ygb/domain';
-import { createAuditEventStatement } from '../foundation/audit';
-import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { normalizeStaffEmail } from '../staff-auth/cloudflare-access';
+import { createAuditEventStatement } from '../../foundation/audit';
+import type { AssignmentStaffAuthorization } from '../../staff-assignment';
+import { normalizeStaffEmail } from '../../staff-auth/cloudflare-access';
 import { StaffAccessManagementError } from './errors';
 import { readStaffAccessEmployee } from './read-model';
 

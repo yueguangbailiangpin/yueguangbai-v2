@@ -15,7 +15,7 @@ import {
 } from '@ygb/testkit';
 import { createApp } from '../app';
 import { resolveAssignmentStaffAuthorization } from '../staff-assignment';
-import { registerStaffCatalogWorkflowRoutes } from '../staff-catalog-routes';
+import { registerStaffCatalogWorkflowRoutes } from '../staff/catalog-routes';
 import {
   closeDemandBatch,
 } from './close-demand-batch';

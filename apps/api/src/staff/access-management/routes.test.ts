@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import type { StaffPermissionCode } from '@ygb/contracts';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
-import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
-import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import { calculateEffectiveStaffAuthorization } from '../../staff/authorization-policy';
+import type { AssignmentStaffAuthorization } from '../../staff-assignment';
 import { registerStaffAccessManagementRoutes } from './routes';
 
 let database:SqliteDatabase|null=null;

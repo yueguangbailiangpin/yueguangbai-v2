@@ -6,7 +6,7 @@ import {
   createMigratedTestDatabase,
   SqliteDatabase,
 } from '@ygb/testkit';
-import { seedConfirmedColdArchiveOrder } from '../test-support/cold-archive-fixture';
+import { seedConfirmedColdArchiveOrder } from '../../test-support/cold-archive-fixture';
 
 const migrationPath = path.resolve(
   process.cwd(),
