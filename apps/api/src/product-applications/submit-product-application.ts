@@ -78,6 +78,7 @@ export async function submitProductApplication(
     asin: string;
     product: ProductDescriptiveFields;
     sellerNotes: string | null;
+    orderingGuideExpectedAmountJpy: number;
     imageFiles: readonly ProductApplicationImageFile[];
   },
   command: {
@@ -116,6 +117,15 @@ export async function submitProductApplication(
   const sellerNotes = cleanOptionalSellerNotes(
     input.sellerNotes,
   );
+  const orderingGuideExpectedAmountJpy =
+    input.orderingGuideExpectedAmountJpy;
+  if (!Number.isSafeInteger(orderingGuideExpectedAmountJpy)
+    || orderingGuideExpectedAmountJpy < 1) {
+    throw new ProductApplicationError(
+      'VALIDATION_ERROR',
+      400,
+    );
+  }
   const imageFiles = normalizeImageFiles(input.imageFiles);
   const now = command.now ?? Date.now();
   if (!Number.isSafeInteger(now) || now < 0) {
@@ -133,6 +143,8 @@ export async function submitProductApplication(
     asin,
     product,
     seller_notes: sellerNotes,
+    ordering_guide_expected_amount_jpy:
+      orderingGuideExpectedAmountJpy,
     image_files: imageFiles,
   });
   const targetHash = await hashCanonicalJson({
@@ -244,6 +256,8 @@ export async function submitProductApplication(
         product_name: snapshot.product_name,
         status: 'SUBMITTED',
         version: 1,
+        ordering_guide_expected_amount_jpy:
+          orderingGuideExpectedAmountJpy,
       },
       createdAt: now,
     });
@@ -263,6 +277,7 @@ export async function submitProductApplication(
           product_url,
           buyer_visible_notes,
           seller_notes,
+          ordering_guide_expected_amount_jpy,
           status,
           review_reason,
           reviewed_by_staff_id,
@@ -273,7 +288,7 @@ export async function submitProductApplication(
           reviewed_at,
           withdrawn_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           'SUBMITTED', NULL, NULL, NULL, 1, ?, ?, NULL, NULL
         )
       `).bind(
@@ -289,6 +304,7 @@ export async function submitProductApplication(
         snapshot.product_url,
         snapshot.buyer_visible_notes,
         sellerNotes,
+        orderingGuideExpectedAmountJpy,
         now,
         now,
       ),

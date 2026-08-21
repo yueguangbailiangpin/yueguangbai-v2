@@ -25,6 +25,43 @@ After a reservation decision succeeds, the frontend MUST close the current work 
 - **WHEN** the reservation decision command succeeds and completes the review work item
 - **THEN** the current panel closes, the queue refreshes, and a follow-up 404 cannot replace the success with an error.
 
+### Requirement: successful product application decisions do not become false failures
+
+After a product application decision succeeds, the frontend MUST close the current work item locally and refresh the queue without refetching completed application-review facts.
+
+#### Scenario: approval creates the formal product
+
+- **WHEN** the product application approval succeeds and completes the review work item
+- **THEN** the current panel closes, the queue refreshes, and a follow-up forbidden or not-found response cannot replace the success with “申请事实读取失败”.
+
+### Requirement: Seller product applications carry a positive JPY amount
+
+Every new Seller product application MUST include a positive JavaScript-safe integer `ordering_guide_expected_amount_jpy`. The application, Seller projection and assigned Staff review context MUST preserve that value. The review UI MUST prefill it while allowing authorized Staff to verify or adjust the final product version amount. Historical applications without this field MUST remain readable and be labeled as historical missing data.
+
+#### Scenario: Seller submits a product application amount
+
+- **WHEN** a Seller submits a valid product application with `2999` JPY
+- **THEN** the immutable command hash and application fact preserve `2999`, and the assigned review form initially displays `2999` JPY.
+
+#### Scenario: amount is absent, zero, fractional or unsafe
+
+- **WHEN** a new product application supplies an absent, non-integer, zero, negative or JavaScript-unsafe amount
+- **THEN** the application is rejected with validation failure and no application, file link or review task is committed.
+
+### Requirement: an approved product is followed by an explicit reservable demand
+
+Product approval MUST NOT fabricate Buyer availability without quantity and scheduling facts. Seller product and approved-application views MUST provide a direct “创建预约需求” action, preselect the approved product, and continue to require target quantity, task type, open time, reservation deadline and order deadline. Buyer products remain limited to current published reservable demand projections.
+
+#### Scenario: product is approved but has no demand batch
+
+- **WHEN** a formal product exists without a published demand batch
+- **THEN** it remains absent from Buyer products and the Seller receives a direct preselected path to create the missing demand.
+
+#### Scenario: demand is published and currently reservable
+
+- **WHEN** the Seller submits the quantity and schedule and authorized Staff publishes the demand
+- **THEN** the existing Buyer reservable projection may expose it according to capacity, marketplace and time-window rules.
+
 ### Requirement: order evidence begins only after instruction publication
 
 The buyer eligible-reservation read model MUST require an `ACTIVE` order instruction bound to the same reservation, buyer customer, and marketplace. The submission command MUST retain its authoritative instruction checks.

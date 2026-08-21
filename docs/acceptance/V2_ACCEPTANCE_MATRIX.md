@@ -14,7 +14,7 @@
 - [x] TypeScript 严格检查通过。（PASS — register A04，LOCAL_FIXED_SHA：typecheck exit 0 at 9cd4a113，2026-08-16）
 - [x] Secret/PII 扫描通过。（PASS — register A05，LOCAL_FIXED_SHA：security:scan 1712 文件，2026-08-16）
 - [x] Hono `/health` 本地通过。（PASS — register A06，LOCAL_FIXED_SHA：app.test.ts 3/3；staging 认证探针 pending）
-- [x] 所有 Migration 从空库连续执行。（PASS — register A07，REMOTE_D1：db:verify 70 migrations / schema 70；staging ledger 70/70）
+- [x] 所有 Migration 从空库连续执行。（PASS — register A07，LOCAL：db:verify 71 migrations / schema 71；staging ledger 仍待授权升级核验）
 - [x] `PRAGMA integrity_check=ok`。（PASS — register A08，REMOTE_D1：wrangler d1 export 重构核验）
 - [x] `PRAGMA foreign_key_check` 为 0。（PASS — register A09，REMOTE_D1：wrangler d1 export 重构核验）
 

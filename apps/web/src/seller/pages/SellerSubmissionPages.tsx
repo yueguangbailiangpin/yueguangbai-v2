@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Alert,
   Button,
@@ -101,14 +101,17 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
       .map((v) => v.trim())
       .filter(Boolean);
     const selectedStore = String(data.get('store_id') ?? '');
+    const amount = Number(data.get('ordering_guide_expected_amount_jpy'));
     if (
       !selectedStore ||
       !/^[A-Z0-9]{10}$/u.test(asin) ||
       !String(data.get('product_name') ?? '').trim() ||
+      !Number.isSafeInteger(amount) ||
+      amount < 1 ||
       files.current.length < 1 ||
       files.current.length > 8
     ) {
-      setMessage('请填写店铺、10 位产品标识、中文名，且选择 1 至 8 张图片。');
+      setMessage('请填写店铺、10 位产品标识、中文名、正整数日元金额，且选择 1 至 8 张图片。');
       return;
     }
     const selectedFiles = files.current;
@@ -135,6 +138,7 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
       product_url: String(data.get('product_url') ?? '').trim() || null,
       buyer_visible_notes: String(data.get('buyer_visible_notes') ?? '').trim() || null,
       seller_notes: String(data.get('seller_notes') ?? '').trim() || null,
+      ordering_guide_expected_amount_jpy: amount,
       image_files: manifest.files.map((file) => ({
         file_object_id: file.file_object_id,
         expected_file_version: file.file_version,
@@ -287,6 +291,21 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
               <TextInput id="application-name" name="product_name" maxLength={200} required />
             </FormField>
             <FormField
+              label="产品金额（JPY）"
+              htmlFor="application-amount"
+              description="填写买家下单时参考的日元整数金额，审核人员可核对调整"
+              required
+            >
+              <TextInput
+                id="application-amount"
+                name="ordering_guide_expected_amount_jpy"
+                type="number"
+                min="1"
+                step="1"
+                required
+              />
+            </FormField>
+            <FormField
               label="搜索词"
               htmlFor="application-keywords"
               description="多个搜索词用逗号分隔"
@@ -419,7 +438,9 @@ export function productApplicationErrorMessage(error: unknown): string {
 export function SellerDemandFormPage(): React.JSX.Element {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const [search] = useSearchParams();
   const { storeId } = useSellerStoreContext();
+  const requestedProductId = search.get('product_id') ?? '';
   const [message, setMessage] = useState<string | null>(null);
   const me = useQuery({
     queryKey: sellerQueryKeys.me,
@@ -499,7 +520,7 @@ export function SellerDemandFormPage(): React.JSX.Element {
         ) : (
           <form className="seller-form" onSubmit={submit}>
             <FormField label="已通过产品" htmlFor="demand-product" required>
-              <Select name="product_id" required defaultValue="">
+              <Select name="product_id" required defaultValue={requestedProductId}>
                 <option value="">请选择产品</option>
                 {products.items
                   .filter((product) => product.status === 'ACTIVE')

@@ -9,7 +9,7 @@ const {schema,latestMigration}=resolveProductionSchemaBaseline();
 const migrations=readdirSync(path.join(root,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
 assert(migrations.length===schema,`expected ${schema} migrations, found ${migrations.length}`);
 assert(migrations.every((file,index)=>Number(file.slice(0,4))===index+1),'migration chain is not continuous');
-assert(latestMigration==='0070_buyer_refund_reminders.sql','current production schema baseline must include Buyer Refund reminders in 0070');
+assert(latestMigration==='0071_product_application_amount.sql','current production schema baseline must include Seller product application amount in 0071');
 assert(migrations.includes('0068_customer_security_deny_password_rate_limit.sql'),'immutable Customer security DENY and password-change rate-limit migration 0068 is missing');
 verifyProductionSchemaDocuments();
 

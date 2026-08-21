@@ -119,6 +119,7 @@ export interface SellerPortalProductApplicationDto {
   product_url: string | null;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
+  ordering_guide_expected_amount_jpy: number | null;
   status: ProductApplicationStatus;
   review_reason: string | null;
   product_id: string | null;
@@ -174,6 +175,7 @@ export interface SubmitSellerPortalProductApplicationBody {
   product_url: string | null;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
+  ordering_guide_expected_amount_jpy: number;
   image_files: readonly {
     file_object_id: string;
     expected_file_version: number;

@@ -16,15 +16,15 @@ const workDirectory = mkdtempSync(
   path.join(tmpdir(), 'ygb-v2-migrations-'),
 );
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 70;
+const expectedLatestSchema = 71;
 const expectedLastMigration =
-  '0070_buyer_refund_reminders.sql';
+  '0071_product_application_amount.sql';
 const expectedSchemaInventory = {
   table: 212,
   index: 604,
   trigger: 401,
   view: 12,
-  sha256: '1cefaf2c75e40cfc411368e669912a14cfde561c5a927d37c89d2d2562d0f6db',
+  sha256: 'be907a5a4e6306d14a786aa712268c09e3e0e334ff727d9a1a36e60635f934d8',
 };
 
 function sqlCodeOnly(source) {
@@ -748,7 +748,7 @@ try {
   if (migrationFiles.length !== expectedLatestSchema
     || migrationFiles.at(-1) !== expectedLastMigration
     || migrationNumbers.some((number, index) => number !== index + 1)) {
-    throw new Error('Migration 必须是唯一连续的 0001-0070');
+    throw new Error('Migration 必须是唯一连续的 0001-0071');
   }
 
   for (const [file, source] of migrationSources) {

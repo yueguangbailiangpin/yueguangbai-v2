@@ -20,8 +20,13 @@ let database: SqliteDatabase | null = null;
 
 function submitProductApplication(
   database: SqliteDatabase,
-  input: Omit<Parameters<typeof submitProductApplicationImpl>[2], 'imageFiles'> &
-    Partial<Pick<Parameters<typeof submitProductApplicationImpl>[2], 'imageFiles'>>,
+  input: Omit<
+    Parameters<typeof submitProductApplicationImpl>[2],
+    'imageFiles' | 'orderingGuideExpectedAmountJpy'
+  > & Partial<Pick<
+    Parameters<typeof submitProductApplicationImpl>[2],
+    'imageFiles' | 'orderingGuideExpectedAmountJpy'
+  >>,
   command: Parameters<typeof submitProductApplicationImpl>[3],
 ) {
   return submitProductApplicationImpl(
@@ -29,6 +34,8 @@ function submitProductApplication(
     productApplicationFileAuthorization,
     {
       ...input,
+      orderingGuideExpectedAmountJpy:
+        input.orderingGuideExpectedAmountJpy ?? 1980,
       imageFiles: input.imageFiles ?? [
         {
           fileObjectId:
@@ -142,6 +149,11 @@ describe('seller product applications and staff review', () => {
       audits: 2,
       outbox_events: 2,
     });
+    await expect(database.prepare(`
+      SELECT ordering_guide_expected_amount_jpy AS amount
+      FROM product_applications
+      WHERE id=?
+    `).bind(submitted.application_id).first()).resolves.toEqual({ amount: 1980 });
 
     await expect(
       submitProductApplication(
@@ -198,6 +210,40 @@ describe('seller product applications and staff review', () => {
       },
     );
     expect(ownerSubmission.store_id).toBe('store-1');
+  });
+
+  it('rejects missing, zero, fractional and unsafe Seller amounts before persistence', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+    for (const [suffix, amount] of [
+      ['zero', 0],
+      ['fractional', 19.8],
+      ['unsafe', Number.MAX_SAFE_INTEGER + 1],
+    ] as const) {
+      await expect(submitProductApplicationImpl(
+        database,
+        productApplicationFileAuthorization,
+        {
+          storeId: 'store-1',
+          asin: `B0AMT${suffix === 'fractional' ? 'FRAC1' : suffix === 'unsafe' ? 'UNSA1' : 'ZERO1'}`,
+          product: productVersion(`金额校验-${suffix}`),
+          sellerNotes: null,
+          orderingGuideExpectedAmountJpy: amount,
+          imageFiles: [{
+            fileObjectId: 'application-image-owner-1',
+            expectedFileVersion: 1,
+          }],
+        },
+        {
+          actor: ownerActor(),
+          idempotencyKey: `product-application:amount:${suffix}`,
+          now: 1900,
+        },
+      )).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    await expect(database.prepare(
+      `SELECT COUNT(*) AS count FROM product_applications`,
+    ).first()).resolves.toEqual({ count: 0 });
   });
 
   it('rejects another active submission for the same marketplace ASIN', async () => {
@@ -808,6 +854,7 @@ describe('seller product applications and staff review', () => {
           productApplicationFileAuthorization,
           {
             ...input,
+            orderingGuideExpectedAmountJpy: 1980,
             imageFiles,
           },
           { actor: ownerActor(), idempotencyKey: `product-application:image:${suffix}`, now: 3000 },
@@ -825,6 +872,7 @@ describe('seller product applications and staff review', () => {
         productApplicationFileAuthorization,
         {
           ...input,
+          orderingGuideExpectedAmountJpy: 1980,
           imageFiles: [{ fileObjectId: 'application-image-owner-1', expectedFileVersion: 1 }],
         },
         { actor: ownerActor(), idempotencyKey: 'product-application:image:unverified', now: 3100 },

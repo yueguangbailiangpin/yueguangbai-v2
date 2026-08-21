@@ -281,6 +281,8 @@ async function createProductApplication(
         internalNotes: null,
       },
       sellerNotes: body.seller_notes,
+      orderingGuideExpectedAmountJpy:
+        body.ordering_guide_expected_amount_jpy,
       imageFiles: body.image_files.map((file) => ({
         fileObjectId: file.file_object_id,
         expectedFileVersion: file.expected_file_version,
@@ -465,6 +467,8 @@ async function readProductApplicationBody(
     product_url: nullableString(body, 'product_url'),
     buyer_visible_notes: nullableString(body, 'buyer_visible_notes'),
     seller_notes: nullableString(body, 'seller_notes'),
+    ordering_guide_expected_amount_jpy:
+      requiredInteger(body, 'ordering_guide_expected_amount_jpy'),
     image_files: requiredFileReferences(body, 'image_files'),
   };
 }

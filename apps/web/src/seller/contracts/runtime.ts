@@ -292,6 +292,7 @@ const sellerApplication = z
     product_url: z.string().nullable(),
     buyer_visible_notes: z.string().nullable(),
     seller_notes: z.string().nullable(),
+    ordering_guide_expected_amount_jpy: z.number().int().positive().nullable(),
     status: z.enum(['SUBMITTED', 'APPROVED', 'REJECTED', 'WITHDRAWN']),
     review_reason: z.string().nullable(),
     product_id: z.string().nullable(),

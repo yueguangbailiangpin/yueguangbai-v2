@@ -42,6 +42,7 @@ const productContextSchema = z
         product_url: z.string().nullable(),
         buyer_visible_notes: z.string().nullable(),
         seller_notes: z.string().nullable(),
+        ordering_guide_expected_amount_jpy: z.string().nullable(),
         status: z.string(),
         version: z.number().int().positive(),
         submitted_at: z.number().int().nonnegative(),
@@ -224,10 +225,11 @@ function ProductApplicationReview({ item }: { item: WorkItem }): React.JSX.Eleme
         headers: operationHeaders({ body, key }),
       }),
     onSuccess: async () => {
-      await Promise.all([
-        client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot }),
-        query.refetch(),
-      ]);
+      client.setQueryData<WorkItem>(
+        ['staff-workflow-closure', 'work-item', item.work_item_id],
+        (current) => current ? { ...current, status: 'COMPLETED' } : current,
+      );
+      await client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
     },
   });
   if (query.isPending)
@@ -276,10 +278,24 @@ function ProductApplicationReview({ item }: { item: WorkItem }): React.JSX.Eleme
       <Fact label="产品" value={`${value.product_name} · ${value.asin}`} />
       <Fact label="店铺" value={value.store.display_name} />
       <Fact label="搜索词" value={value.search_keywords.join('、') || '未填写'} />
+      <Fact
+        label="卖家填写金额"
+        value={value.ordering_guide_expected_amount_jpy === null
+          ? '历史申请未填写'
+          : `${value.ordering_guide_expected_amount_jpy} JPY`}
+      />
       <Fact label="卖家备注" value={value.seller_notes ?? '无'} />
       <form onSubmit={approve}>
         <FormField label="下单参考金额（JPY）" htmlFor="product-review-amount">
-          <TextInput id="product-review-amount" name="amount" inputMode="numeric" required />
+          <TextInput
+            id="product-review-amount"
+            name="amount"
+            type="number"
+            min="1"
+            step="1"
+            defaultValue={value.ordering_guide_expected_amount_jpy ?? ''}
+            required
+          />
         </FormField>
         <FormField label="颜色规格" htmlFor="product-review-color">
           <Select id="product-review-color" name="color_mode" defaultValue="ANY_VARIANT">

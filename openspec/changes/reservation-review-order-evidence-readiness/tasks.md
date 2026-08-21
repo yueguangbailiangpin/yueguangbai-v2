@@ -1,6 +1,6 @@
 ## Specification and implementation
 
-- [x] Record the no-schema-change and privacy boundary.
+- [x] Record the privacy boundary and forward-only Schema 71 application-amount migration.
 - [x] Add buyer identity facts to assigned Staff reservation review context.
 - [x] Close the successful reservation action locally without refetching completed review facts.
 - [x] Surface safe API error code and request ID on mutation failure.
@@ -19,6 +19,10 @@
 - [x] Allow all active Seller members and scoped Staff to create authorized Stores before the first product application.
 - [x] Replace every current image or evidence file input with the shared select, drag, paste, preview and remove control.
 - [x] Configure the isolated staging first Owner as the explicit JP assignment fallback so product applications can create review work items after a rebuild.
+- [x] Close successful product application review locally without rereading a completed task.
+- [x] Require and persist the Seller-entered positive JPY product amount and prefill it for Staff review.
+- [x] Add a direct preselected “创建预约需求” path without bypassing demand quantity or schedule authority.
+- [x] Advance local migration guards and readiness targets to the continuous 0001-0071 chain.
 
 ## Remote boundary
 

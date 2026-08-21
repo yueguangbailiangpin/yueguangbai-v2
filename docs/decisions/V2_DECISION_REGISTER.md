@@ -427,6 +427,16 @@ D-041 的隔离、身份、无密码和生产禁止边界继续有效。全新 s
 
 状态：Accepted by business owner；Closes the rebuilt-staging assignment gap without changing Schema 70 or runtime authorization
 
+### D-050 产品申请金额与预约需求衔接（Migration 0071）
+
+卖家提交新产品申请时必须填写正整数日元参考金额。该金额以 `ordering_guide_expected_amount_jpy` 保存于产品申请事实，进入幂等请求哈希、Seller 只读投影和分配后的 Staff 审核上下文；审核页默认带出卖家金额，授权审核人员仍可核对并调整最终产品版本金额。历史申请保持可读，缺失金额时明确标为历史未填写，不回填或猜测。
+
+产品批准只创建正式产品，不自动制造预约数量和时间。没有已发布需求批次的产品继续不进入 Buyer 当前可预约投影；Seller 商品列表和已批准申请详情提供“创建预约需求”入口并自动选中产品，仍必须提交任务类型、目标数量、开放时间、预约截止和下单截止，再由既有审核发布流程决定 Buyer 可见性。
+
+前向 Migration 0071 只为 `product_applications` 增加可空、正整数、JavaScript-safe 的申请金额列，并将本地候选推进到 Schema 71。该 Decision 不授权 production/staging 部署、远程 Migration、远程 SQL、真实业务数据修改或 GitHub 写入；生产继续保持 NO-GO。
+
+状态：Accepted by business owner；Closes the product-amount and approved-product-to-demand handoff gaps
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

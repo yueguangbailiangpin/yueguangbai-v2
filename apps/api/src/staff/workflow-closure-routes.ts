@@ -36,6 +36,7 @@ interface ProductApplicationContextRow {
   product_url: string | null;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
+  ordering_guide_expected_amount_jpy: number | null;
   status: string;
   version: number;
   submitted_at: number;
@@ -104,6 +105,7 @@ async function readProductApplicationReviewContext(
       application.product_url,
       application.buyer_visible_notes,
       application.seller_notes,
+      application.ordering_guide_expected_amount_jpy,
       application.status,
       application.version,
       application.submitted_at
@@ -143,6 +145,10 @@ async function readProductApplicationReviewContext(
       product_url: row.product_url,
       buyer_visible_notes: row.buyer_visible_notes,
       seller_notes: row.seller_notes,
+      ordering_guide_expected_amount_jpy:
+        row.ordering_guide_expected_amount_jpy === null
+          ? null
+          : String(row.ordering_guide_expected_amount_jpy),
       status: row.status,
       version: Number(row.version),
       submitted_at: Number(row.submitted_at),

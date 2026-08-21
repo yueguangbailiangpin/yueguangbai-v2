@@ -13,7 +13,7 @@
 | G0 | Release candidate / CI 冻结 | LOCAL | 2026-08-18：6 个 closure PR（#103/#102/#104/#105/#106/#107）已按 owner 豁免合并；其代码验证树为 `ace731918f2e29d7ff1f60e6095d549eba43c4c2`。随后 PR #109 以 docs-only 形式合并，当前远端 `main=f61527e04533a9053e237be2bd6bbcce8b2219c8`；PR #109 未改变代码。上述代码验证树上的本地 0 TS 错误、1746/1746 测试、187/187 e2e、check:ci:static PASS、build PASS、`release:check` PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE，2026-08-18） | NOT VERIFIED | 缺远程 CI 证据（GitHub Actions budget 有意 $0 → BLOCKED_BY_BILLING_POLICY）；最终候选 `release:check` 需在 main 干净候选上绑定 40 位 SHA 回读；受保护 CI 或已批准人工发布控制未配置 |
 | G1 | Owner / privacy approvals | — | Owner 于 2026-08-20 在对话中直接批准 G1，并明确豁免另行签名；隐私、AI 处理、保留/删除、备份与平台政策风险均按该批准记录为已批准。姓名/邮箱未提供，未虚构 | PASS | 后续 Production operational preparation 中补齐五个责任角色的姓名与邮箱；不阻塞当前 G1 PASS；本批准不授权 G2–G6 或 Production GO |
 | G2 | Production Cloudflare configuration | — | 未创建正式生产配置。`app.yueguangbai.net` 未文档化部署已按 Owner 决定于 2026-08-20 清理完成；Worker、生产 D1/R2、自定义域名绑定均已删除，staging 未触碰（详见 `docs/runbooks/PRODUCTION_CLEANUP_APP_YUEGUANGBAI_NET.md`） | NOT VERIFIED | Managed production resources have not yet been created and accepted；清理完成不等于生产配置或上线验收通过 |
-| G3 | Production database migration + backup | STAGING / LOCAL | T10 备份/恢复证据（隔离 staging：bundle + attestation + restored.sqlite，2026-08-16，Production accessed: false）；本地 db:verify 70 migrations / schema 70 | NOT VERIFIED | 无生产 D1 ledger 只读核验、无迁移窗口、无 release-bound 生产备份与隔离恢复证据 |
+| G3 | Production database migration + backup | STAGING / LOCAL | T10 备份/恢复证据（隔离 staging：bundle + attestation + restored.sqlite，2026-08-16，Production accessed: false）；本地 db:verify 71 migrations / schema 71 | NOT VERIFIED | 无生产 D1 ledger 只读核验、无迁移窗口、无 release-bound 生产备份与隔离恢复证据 |
 | G4 | R2 / file / archive readiness | LOCAL | Drive 冷归档本地实现、dry-run、模板写侧关闭；R2 delete 保持关闭（合规） | NOT VERIFIED | 无真实 Drive OAuth/MFA/专用目录/shadow copy/read-back/Manifest/proxy/rehydration/R2-delete 验收（M10 P0-02） |
 | G5 | External integration readiness | LOCAL | Staff MCP production-capable runtime 本地就绪、开关默认关闭；Rakuten/TikTok Adapter 未接入核心运行入口 | NOT VERIFIED | 无真实 OAuth 2.1/JWKS/token-status/ChatGPT 注册/分阶段启用（M10 P0-03）；Provider 本地准备 ≠ Provider 可用 |
 | G6 | Core business flow acceptance | STAGING | T9 register：62 PASS / 3 CONFLICT（A01–A03 治理固有）/ 2 BLOCKED（H05、H07），证据 2026-08-16/17；A–H 67 项逐项映射见 `docs/acceptance/V2_ACCEPTANCE_MATRIX.md` | NOT VERIFIED | staging 证据充分但属 STAGING scope；生产层未执行任何真实业务验收（生产测试账号、越权 404、权限/财务可见性、恢复/回滚演练） |
@@ -34,7 +34,7 @@
 
 - [ ] 总控完成当前收口 Changes 审查、本地提交、干净 Integration 与非强制快进；重新 fetch 并记录最终 `origin/main` 40 位 SHA。
 - [ ] 在最终干净候选执行 `npm run release:check`，把其动态输出的 commit 与 tree 绑定到不可变证据；不得沿用历史文档 SHA。
-- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、`0001`–`0070` 连续且尾部为 `0070_buyer_refund_reminders.sql`、全量本地/Chromium/OpenSpec 门禁通过。
+- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、`0001`–`0071` 连续且尾部为 `0071_product_application_amount.sql`、全量本地/Chromium/OpenSpec 门禁通过。
 - [ ] 确认已归档 `pre-wave13-baseline-conformance-audit` 的本地任务状态和仍未完成的外部阻断被分别读取；不得把 archive 状态写成 active，也不得伪勾真实生产项。
 - [ ] 选择并批准发布控制：受保护 CI，或有时间戳、双人复核和不可变日志的人工流程。远程 CI 当前 BLOCKED_BY_BILLING_POLICY（Actions budget 有意 $0），因此该项当前 NOT VERIFIED。
 
@@ -72,7 +72,7 @@ G2 未通过：`NO-GO`。
 
 1. [ ] 冻结写入，记录当前线上 Worker SHA、配置快照、D1 ledger、R2/Drive Manifest 和所有开关。
 2. [ ] 若目标 D1 已有任何数据，先做迁移前完整导出、加密、SHA-256/Manifest/attestation，并在全新隔离目标恢复通过；恢复目标不得覆盖。
-3. [ ] 只读比较线上 ledger 与 release SHA 的完整 `0001`–`0070` 链（尾部为 `0070_buyer_refund_reminders.sql`）；线上可以是该链的连续前缀，但发现未知、跳号、重复、并行或部分 Migration 立即停止。
+3. [ ] 只读比较线上 ledger 与 release SHA 的完整 `0001`–`0071` 链（尾部为 `0071_product_application_amount.sql`）；线上可以是该链的连续前缀，但发现未知、跳号、重复、并行或部分 Migration 立即停止。
 4. [ ] 老板单独批准 Migration 窗口；只按连续顺序应用尚未应用的 Migration，逐步核验 schema_version、integrity、foreign keys、关键表/触发器/视图和权限事实。
 5. [ ] 生成迁移后、绑定最终 release SHA 的 D1 加密备份，并再次在新隔离目标恢复；核对 schema、全表行数、关键财务聚合、Staff/Buyer/Seller/订单/文件/调度 smoke。
 6. [ ] 保持所有外部开关关闭，老板另行批准部署 schema-compatible API Worker 与 Web 制品。

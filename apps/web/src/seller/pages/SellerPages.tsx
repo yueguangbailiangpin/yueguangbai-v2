@@ -329,6 +329,13 @@ export function SellerProductsPage(): React.JSX.Element {
               meta={`${item.store.display_name} · ${item.asin}`}
               status={productStatusLabel[item.status]}
               statusTone={tone(item.status)}
+              actions={
+                item.status === 'ACTIVE' && me.data?.access.can_submit_demand_batches ? (
+                  <Link className="button" to={`/seller/demands/new?product_id=${encodeURIComponent(item.id)}`}>
+                    创建预约需求
+                  </Link>
+                ) : null
+              }
             >
               <FactGrid>
                 <Fact label="类型" value="已通过商品" />
@@ -336,6 +343,12 @@ export function SellerProductsPage(): React.JSX.Element {
                 <Fact
                   label="搜索词"
                   value={item.current_version.search_keywords.join('、') || '未填'}
+                />
+                <Fact
+                  label="产品金额"
+                  value={item.current_version.ordering_guide_expected_amount_jpy === null
+                    ? '未设置'
+                    : `${item.current_version.ordering_guide_expected_amount_jpy} JPY`}
                 />
                 <Fact label="更新时间" value={formatShanghai(item.updated_at)} />
               </FactGrid>
@@ -369,6 +382,12 @@ export function SellerProductsPage(): React.JSX.Element {
                 <Fact label="类型" value="产品申请" />
                 <Fact label="提交时间" value={formatShanghai(item.submitted_at)} />
                 <Fact label="搜索词" value={item.search_keywords.join('、') || '未填'} />
+                <Fact
+                  label="申请金额"
+                  value={item.ordering_guide_expected_amount_jpy === null
+                    ? '历史申请未填写'
+                    : `${item.ordering_guide_expected_amount_jpy} JPY`}
+                />
                 <Fact label="审核说明" value={item.review_reason ?? '暂无'} />
               </FactGrid>
             </RecordCard>
@@ -579,9 +598,25 @@ export function SellerProductApplicationDetailPage(): React.JSX.Element {
         meta={`${item.store.display_name} · ${item.asin}`}
         status={applicationStatusLabel[item.status]}
         statusTone={tone(item.status)}
+        actions={
+          item.status === 'APPROVED' && item.product_id ? (
+            <Link
+              className="button"
+              to={`/seller/demands/new?product_id=${encodeURIComponent(item.product_id)}`}
+            >
+              创建预约需求
+            </Link>
+          ) : null
+        }
       >
         <FactGrid>
           <Fact label="搜索词" value={item.search_keywords.join('、') || '未填写'} />
+          <Fact
+            label="申请金额"
+            value={item.ordering_guide_expected_amount_jpy === null
+              ? '历史申请未填写'
+              : `${item.ordering_guide_expected_amount_jpy} JPY`}
+          />
           <Fact label="提交时间" value={formatShanghai(item.submitted_at)} />
           <Fact label="更新时间" value={formatShanghai(item.updated_at)} />
           <Fact
