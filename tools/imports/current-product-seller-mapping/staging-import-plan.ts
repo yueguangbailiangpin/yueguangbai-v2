@@ -21,6 +21,8 @@ export interface LiveCurrentRecord {
   platformProductIdentifier?: string | null;
   asin: string | null;
   productName: string;
+  /** Exact search terms from the source worksheet's 搜索关键词 column. */
+  searchKeywords?: string | null;
   reservationStatus?: 'ACTIVE' | 'PAUSED' | 'ABNORMAL' | null;
   orderTotal?: string | number | null;
   reviewRequirements?: string | null;
@@ -204,6 +206,24 @@ export async function readLiveManifest(path: string): Promise<LiveManifest> {
   return parsed as LiveManifest;
 }
 
+/**
+ * The source worksheet stores one or more search terms in a single cell.
+ * Product versions use one term per array item, so preserve the source order
+ * while splitting line-separated entries and removing only worksheet labels.
+ */
+export function parseSourceSearchKeywords(value: string | null | undefined): readonly string[] {
+  if (!value) return [];
+  const unique = new Set<string>();
+  for (const line of value.split(/\r?\n/u)) {
+    const keyword = line
+      .trim()
+      .replace(/^(?:搜索)?关键词\s*\d*\s*[:：]\s*/u, '')
+      .trim();
+    if (keyword) unique.add(keyword);
+  }
+  return [...unique];
+}
+
 export async function createStagingImportPlan(
   manifest: LiveManifest,
   options: { now: number },
@@ -237,17 +257,24 @@ export async function createStagingImportPlan(
     .filter((product): product is StandardProductPlan & {
       productId: string; productVersionId: string; versionNo: 1;
     } => product.marketplaceCode === 'JP_AMAZON')
-    .map((product) => ({
+    .map((product) => {
+      const searchKeywords = [...new Set(product.currentSourceRows.flatMap((sourceRow) =>
+        parseSourceSearchKeywords(currentByRow.get(sourceRow)?.searchKeywords)))];
+      return {
     productId: product.productId,
     productVersionId: product.productVersionId,
     versionNo: 1,
     productName: product.productName,
-    searchKeywordsJson: JSON.stringify([product.productName, product.platformProductIdentifier]),
+    // The ASIN identifies the product; it is not a buyer search instruction.
+    // Retain a name-only fallback for incomplete future source rows, but never
+    // publish the ASIN as a search keyword.
+    searchKeywordsJson: JSON.stringify(searchKeywords.length > 0 ? searchKeywords : [product.productName]),
     productUrl: null,
     buyerVisibleNotes: 'Staging plan only; staff review required before publication.',
     internalNotes: `Source current rows: ${product.currentSourceRows.join(',')}`,
     createdByStaffId: 'STAGING_STAFF_CONFIRMATION_REQUIRED',
-    }));
+      };
+    });
   const platformProductIdentities: PlatformProductIdentityPlan[] = standardProducts
     .filter((product): product is StandardProductPlan & { marketplaceCode: 'JP_RAKUTEN' } =>
       product.marketplaceCode === 'JP_RAKUTEN')
