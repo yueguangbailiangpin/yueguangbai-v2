@@ -147,7 +147,7 @@ export interface ProductVersionPlan {
 
 export interface OpenProductSellerMappingPlan {
   productKey: string;
-  productId: string | null;
+  productId: string;
   sellerOrganizationKey: string;
   sellerStoreKey: string;
   sellerWechat: string;
@@ -317,7 +317,7 @@ export async function createStagingImportPlan(
       .filter(Boolean).sort();
     const offers = mappedByProduct.get(product.productKey) ?? [];
     const positiveRows = activeRows.filter((row) => parsePositiveInteger(row.orderTotal) !== null);
-    const productReasons: NotOpenedProductPlan['reasons'] = [];
+    const productReasons: NotOpenedProductPlan['reasons'][number][] = [];
     if (offers.length === 0) productReasons.push('UNMAPPED_SELLER');
     if (activeRows.length === 0) productReasons.push('EXCLUDED_OR_QUARANTINED');
     if (positiveRows.length === 0) productReasons.push('NO_POSITIVE_INTEGER_ORDER_TOTAL');
@@ -332,6 +332,7 @@ export async function createStagingImportPlan(
       });
       continue;
     }
+    if (product.productId === null) continue;
     for (const offer of offers) {
       const sellerOrganizationId = `staging-seller-org-${await sha256Hex(offer.organizationKey)}`;
       const sellerStoreId = `staging-seller-store-${await sha256Hex(`${offer.organizationKey}:store`)}`;
