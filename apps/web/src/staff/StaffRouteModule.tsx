@@ -2,7 +2,9 @@ import { Navigate, useLocation } from 'react-router';
 import { StaffShell } from './StaffShell';
 import { StaffRouteProvider } from '../routes/IdentityRouteSlots';
 import { RouteChunkBoundary } from '../routes/RouteChunkBoundary';
-import { FrozenStaffWorkbenchV2 } from './FrozenStaffWorkbenchV2';
+import { FrozenStaffWorkbench } from './FrozenStaffWorkbench';
+import { StaffOperatingIntegrityTools } from './StaffOperatingIntegrityTools';
+import { StaffWorkflowClosurePanel } from './StaffWorkflowClosurePanel';
 import { AcquisitionCoreWorkbench } from './acquisition/AcquisitionCoreWorkbench';
 import { BuyerCustomersWorkspace, SellerCustomersWorkspace } from './acquisition/CustomerIntakeWorkspace';
 import { FrozenSellerPrincipalRatePolicyWorkspace } from './pricing/FrozenSellerPrincipalRatePolicyWorkspace';
@@ -28,5 +30,5 @@ export function StaffRoutePage():React.JSX.Element{
   if(pathname.startsWith('/staff/access-management'))return <RouteChunkBoundary load={loadStaffAccessManagementRoutes}/>;
   if(pathname.startsWith('/staff/products')||/^\/staff\/demands\/[^/]+\/reservations$/u.test(pathname))return <RouteChunkBoundary load={loadStaffSchedulingRoutes}/>;
   if(pathname.startsWith('/staff/seller-principal-rate-policies'))return <FrozenSellerPrincipalRatePolicyWorkspace/>;
-  return <FrozenStaffWorkbenchV2/>;
+  return <><FrozenStaffWorkbench/><StaffWorkflowClosurePanel/><StaffOperatingIntegrityTools/></>;
 }

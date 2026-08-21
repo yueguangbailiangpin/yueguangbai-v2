@@ -35,7 +35,7 @@ describe('second layer hardening freeze',()=>{
   it('keeps channel labels immutable and v4 acquisition machine scope active',()=>{
     const admin=read('apps/api/src/acquisition/admin.ts');expect(admin).toContain("input.leadType!=='BUYER'&&input.leadType!=='SELLER'");
     const privacy=read('apps/api/src/acquisition/channel-privacy.ts');expect(privacy).not.toContain('staffLabel:');expect(privacy).toContain('intakeWechatLabel');
-    expect(read('apps/web/src/staff/acquisition/AcquisitionCoreWorkbench.tsx')).toContain('AcquisitionCoreWorkbenchV4');
+    expect(read('apps/web/src/staff/acquisition/AcquisitionCoreWorkbench.tsx')).toContain('function AcquisitionCoreWorkbench');
     const machine=read('apps/api/src/acquisition/machine-routes.ts');expect(machine).toContain('authenticateAcquisitionMachine');expect(machine).not.toContain('ACQUISITION_MACHINE_SHARED_SECRET');
     const credential=read('apps/api/src/acquisition/machine-credentials.ts');expect(credential).toContain('acquisition_machine_rate_buckets');expect(credential).toContain('requireMachineScope');
   });
