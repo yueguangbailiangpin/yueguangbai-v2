@@ -119,11 +119,11 @@
 - [x] 员工工作台中文入口、`/staff/acquisition` 可收藏路由、窄屏浏览器与 buyer_refund 隐藏控件通过。
 - [ ] 正式 Implementation Verify、总控验收、归档与 Production GO（不属于本地实现授权）。
 
-## K. GitHub CI 与治理状态（2026-08-13，canonical main `1870c031a136a20e2bf96165e7d15a1da9d6dbbb`）
+## K. GitHub CI 与治理状态（2026-08-13，canonical main `1870c031a136a20e2bf96165e7d15a1da9d6dbbb`；当前 canonical main = `f7d321c`，2026-08-21）
 
 - [x] External-evidenced（2026-08-13）：canonical main 的 GitHub Actions [run 31660766794](https://github.com/yueguangbailiangpin/yueguangbai-v2/actions/runs/31660766794) 在 `1870c031a136a20e2bf96165e7d15a1da9d6dbbb` 的 push 上完成；`static-governance` 与 `tests-and-build` 两个 job 均为 `success`。
 - [x] Code-verified/local（2026-08-13）：PR 与 `main` push 的非生产 CI workflow 使用 locked `npm ci`、Node `24.19.0`、runner 临时 Wrangler/XDG 目录、最小 GitHub token、concurrency/cancel，并调用 canonical `check:ci:static` / `check:ci:test-build`。`static-governance` 现额外只运行 final-go workflow 的 Node 负向 fixture/verifier；不增加第二次全量 Vitest、workspace build 或 E2E。
 - [x] External-evidenced（2026-08-13）：Draft PR [#65](https://github.com/yueguangbailiangpin/yueguangbai-v2/pull/65) 的本轮代码证据 HEAD `3123b50f5f610924b124f527e47905fdc35f778c` 已回读 GitHub Actions [run 31667120494](https://github.com/yueguangbailiangpin/yueguangbai-v2/actions/runs/31667120494)：`static-governance` 于 04:30:21Z、`tests-and-build` 于 04:39:07Z 均为 `success`；后者固定记录为 239 个测试文件、1,588 项测试通过，`static-governance` 的 final-go Node fixture/verifier 为 23/23 通过。该 run 的 job 数为 2；它只证明该固定代码 HEAD 的 CI，记录此证据的后续文档 commit 仍必须单独回读，`pending` 不算通过。
 - [ ] External-unverified：GitHub branch protection / rulesets 查询因当前私有仓库套餐返回 403，required checks enforcement 未能确认或配置。
 - [ ] Production-operator gate：真实 Playwright E2E、staging/production、Cloudflare Access、D1/R2、DNS、Secrets、Scheduler、数据和网络验收均不属于此 CI，须逐项独立授权与验收。
-- [ ] Current CI status（2026-08-17）：PR #103（fix: closure route type safety）本地验证 PASS（production/test tsconfig、targeted tests 14/14、workspace typecheck、check:ci:static、git diff --check）；GitHub-hosted CI **BLOCKED_BY_BILLING_POLICY**（job 未启动：recent account payments have failed or your spending limit needs to be increased；Actions budget 有意保持 $0）；Remote CI = **NOT VERIFIED**，不写为 PASS，也不写为 CODE FAIL。最后一次远端全绿 CI：2026-08-16 09:51 UTC（run 31940127005，main `e02682f`）。
+- [x] Current CI status（2026-08-21）：GitHub Actions billing 阻断已解除，CI 恢复可用。PR #112（Merge commit `f7d321c`）远端 CI 三项全部 `success`（run 32466985887：browser-e2e / static-governance / tests-and-build，2026-08-21）。billing 阻断期（2026-08-16 13:42 – 2026-08-21）的 #103–#111 合并依据为 owner 豁免 + 本地完整证据（详见 `docs/CURRENT_SYSTEM_STATE.md` CI 节），该期间 Remote CI = NOT VERIFIED 的历史事实不变。阻断前最后一次远端全绿：2026-08-16 09:51 UTC（run 31940127005，main `e02682f`）。
