@@ -14,4 +14,5 @@
 ## Remote boundary
 
 - [ ] GitHub push or PR (not authorized).
-- [ ] Deploy the fixed main staging Worker and verify health/readiness.
+- [x] Deploy the fixed main staging Worker with the rebuilt D1, R2 and private keyword-image service binding.
+- [ ] Verify application `/health` and `/ready` through an authenticated Cloudflare Access session; unauthenticated probes redirect to Access by policy.
