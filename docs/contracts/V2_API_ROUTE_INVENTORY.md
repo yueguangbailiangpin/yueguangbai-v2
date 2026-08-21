@@ -80,6 +80,7 @@ GET /api/staff/catalog/products/:id
 GET /api/staff/customer-identity-resolution/candidates
 GET /api/staff/customer-identity-resolution/cases
 GET /api/staff/customer-onboarding/lookup
+GET /api/staff/customer-onboarding/seller-directory
 GET /api/staff/customer-security/buyer-invitations/:id
 GET /api/staff/customer-security/seller-invitations/:id
 GET /api/staff/customer-security/seller-invitations/current
