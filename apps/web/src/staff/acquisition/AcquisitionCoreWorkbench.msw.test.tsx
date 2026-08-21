@@ -10,14 +10,14 @@ import type { StaffAuthApiAdapter, StaffSession } from '../../auth/staff/staff-a
 import { apiUrl } from '../../test/msw/handlers';
 import { renderWithMsw } from '../../test/msw/render';
 import { server } from '../../test/msw/server';
-import { AcquisitionCoreWorkbenchV4 } from './AcquisitionCoreWorkbenchV4';
+import { AcquisitionCoreWorkbench } from './AcquisitionCoreWorkbench';
 
 afterEach(cleanup);
 
 describe('canonical Staff acquisition workbench', () => {
   it('keeps real acquisition source data closed to pre-sales', async () => {
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('pre_sales'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
     expect(await screen.findByText('当前岗位不使用客户开发中心。')).toBeVisible();
     expect(screen.queryByText('真实来源渠道')).not.toBeInTheDocument();
@@ -26,7 +26,7 @@ describe('canonical Staff acquisition workbench', () => {
 
   it('keeps every acquisition control closed to buyer refund staff', async () => {
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('buyer_refund'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
     expect(await screen.findByText('当前岗位不使用客户开发中心。')).toBeVisible();
     expect(screen.queryByRole('button', { name: '新增潜在线索' })).not.toBeInTheDocument();
@@ -36,7 +36,7 @@ describe('canonical Staff acquisition workbench', () => {
     installOwnerHandlers();
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     expect(await screen.findByRole('heading', { name: '客户开发中心' })).toBeVisible();
@@ -57,7 +57,7 @@ describe('canonical Staff acquisition workbench', () => {
     installOwnerHandlers();
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('acquisition'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     expect(await screen.findByRole('heading', { name: '客户开发中心' })).toBeVisible();
@@ -74,7 +74,7 @@ describe('canonical Staff acquisition workbench', () => {
     installOwnerHandlers([channelStat()]);
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('acquisition'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     await user.click(await screen.findByRole('button', { name: '渠道统计' }));
@@ -87,7 +87,7 @@ describe('canonical Staff acquisition workbench', () => {
     installOwnerHandlers([channelStat()]);
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     await user.click(await screen.findByRole('button', { name: '渠道统计' }));
@@ -99,7 +99,7 @@ describe('canonical Staff acquisition workbench', () => {
     installOwnerHandlers();
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner', false))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     expect(await screen.findByRole('heading', { name: '客户开发中心' })).toBeVisible();
@@ -210,7 +210,7 @@ describe('precise acquisition invalidation after mutations', () => {
     });
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     await waitFor(() => expect(counters.get('prospects')).toBe(1));
@@ -232,7 +232,7 @@ describe('precise acquisition invalidation after mutations', () => {
     });
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     await waitFor(() => expect(counters.get('prospects')).toBe(1));
@@ -257,7 +257,7 @@ describe('precise acquisition invalidation after mutations', () => {
     });
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     await waitFor(() => expect(counters.get('channels')).toBe(1));
@@ -282,7 +282,7 @@ describe('precise acquisition invalidation after mutations', () => {
     });
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     await waitFor(() => expect(counters.get('channels')).toBe(1));
@@ -307,7 +307,7 @@ describe('precise acquisition invalidation after mutations', () => {
     });
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     await waitFor(() => expect(counters.get('channels')).toBe(1));
@@ -329,7 +329,7 @@ describe('precise acquisition invalidation after mutations', () => {
     });
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     await waitFor(() => expect(counters.get('channels')).toBe(1));
@@ -355,7 +355,7 @@ describe('precise acquisition invalidation after mutations', () => {
     });
     const user = userEvent.setup();
     renderWithMsw(<StaffSessionBoundary adapter={adapter(session('owner'))}>
-      <AcquisitionCoreWorkbenchV4 />
+      <AcquisitionCoreWorkbench />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     await waitFor(() => expect(counters.get('channels')).toBe(1));

@@ -436,3 +436,11 @@ M14 后的前端生产构建主包基线为 605.54 kB（gzip 167.31 kB），超�
 - 迁移 `0070_buyer_refund_reminders.sql`（T7 买家发起的返款提醒）已合入 `main`；当前迁移链为 `0001`–`0070`，`app_schema_state.schema_version=70`（db:verify 实测 70 migrations / schema 70，见 `docs/CURRENT_SYSTEM_STATE.md`）。
 - 本记录将 D-045 记载的 Schema 69 候选状态推进到 Schema 70 的既成事实；0069 退役条款不受影响。
 - 权威 schema / migration 状态以 `migrations/` 连续 ledger 与 `docs/CURRENT_SYSTEM_STATE.md` 为准，不以本 Register 的数字为准。
+
+## 状态记录（2026-08-21，非决策）
+
+以下仅记录已发生的前端命名清理事实，不构成新的架构决策，也不修改任何既有 D/R 条目：
+
+- `FrozenStaffWorkbenchV2.tsx`（6 行三段组合壳）已内联进 `StaffRouteModule.tsx` 并删除；D-298 记载的 canonical 链 `StaffRouteModule → FrozenStaffWorkbenchV2 → FrozenStaffWorkbench` 现为 `StaffRouteModule → FrozenStaffWorkbench`（组合内容不变：工作台 + 闭环面板 + 完整性工具）。
+- `AcquisitionCoreWorkbenchV4.tsx` 与其 1 行别名 `AcquisitionCoreWorkbench.tsx` 已合并为单一 `AcquisitionCoreWorkbench.tsx`（D-308 记载的别名机制退役，canonical 名称不变）；内部 react-query key `acquisition-v4` 保留原值以维持缓存与测试断言稳定。
+- 同日：`apps/api/src/formal-orders/` 更名为 `formal-order-shared/`（该目录仅含共享逻辑与测试，无路由）。
