@@ -30,4 +30,5 @@
 - [ ] GitHub push or PR (not authorized).
 - [x] Deploy the fixed main staging Worker with the rebuilt D1, R2 and private keyword-image service binding.
 - [x] Deploy commit `253b6c2d6b0ca8a6b40d9faaabd10d9568731ad9` (demand review publish outcome visibility) to staging via release worktree `release-253b6c2`; preflight `LOCAL_CONFIG_VALID`; version `919b1ac4-ec5c-4691-8f91-83bb3c35a5c6` at 100%.
+- [x] Deploy commit `706c04860e0d077849e3b837d769fdd45b244a54` (failing publish readiness field surfaced via safe error details) to staging via release worktree `release-706c048`; preflight `LOCAL_CONFIG_VALID`; version `66c8ba45-3b5e-4a70-8af0-fcc0b16fe968` at 100%.
 - [ ] Verify application `/health` and `/ready` through an authenticated Cloudflare Access session; unauthenticated probes redirect to Access by policy.
