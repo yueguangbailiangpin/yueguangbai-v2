@@ -109,6 +109,18 @@ describe('seller stores and product catalog', () => {
     expect(payload.data.product.product_version)
       .toMatchObject({ defaultBuyerSelfPayBps: 10000 });
 
+    const detail = await app.request(
+      `https://api.test/api/staff/catalog/products/${encodeURIComponent(
+        payload.data.product.product_id,
+      )}`,
+      { method: 'GET' },
+      { DB: database } as any,
+    );
+    expect(detail.status).toBe(200);
+    expect((await detail.json()).data.product).toMatchObject({
+      product_id: payload.data.product.product_id,
+    });
+
     const stored = await database.prepare(`
       SELECT default_buyer_self_pay_bps
       FROM product_versions
