@@ -12,7 +12,7 @@ const routes = read('apps/api/src/files/routes.ts');
 const authorization = read('apps/api/src/files/route-authorization.ts');
 const errors = read('packages/contracts/src/errors.ts');
 const app = read('apps/api/src/index.ts');
-const inventoryTests = read('apps/api/src/wave13-default-app-security.test.ts');
+const inventoryTests = read('apps/api/src/architecture-guards/app-security-registration.test.ts');
 const packageManifest = JSON.parse(read('package.json'));
 
 for (const purpose of [
@@ -69,5 +69,5 @@ report('wave13-file-architecture', {
   generic_link_routes: 0,
   generic_grant_routes: 0,
   r2_authority_fields: 0,
-  route_inventory_baseline: 'api-contract-baseline-alignment.test.ts',
+  route_inventory_baseline: 'architecture-guards/api-contract-baseline-alignment.test.ts',
 });

@@ -22,7 +22,7 @@ for (const required of [
   'SET schema_version=37',
 ]) assert(migration.includes(required), `migration boundary missing: ${required}`);
 
-const routes = source('apps/api/src/staff-catalog-routes.ts');
+const routes = source('apps/api/src/staff/catalog-routes.ts');
 for (const route of [
   '/api/staff/catalog/products',
   '/api/staff/catalog/products/:id',
@@ -132,7 +132,7 @@ for (const area of [
 
 execFileSync(
   path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'vitest.cmd' : 'vitest'),
-  ['run', 'apps/api/src/api-contract-baseline-alignment.test.ts'],
+  ['run', 'apps/api/src/architecture-guards/api-contract-baseline-alignment.test.ts'],
   { cwd: root, stdio: 'inherit' },
 );
 
@@ -143,7 +143,7 @@ console.log(JSON.stringify({
   authoritative_formula: true,
   immutable_schedule_versions: true,
   buyer_seller_internal_schedule_fields: false,
-  route_inventory_verified_by: 'api-contract-baseline-alignment.test.ts',
+  route_inventory_verified_by: 'architecture-guards/api-contract-baseline-alignment.test.ts',
   production_resources_touched: 0,
 }, null, 2));
 

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { InternalFinanceFilters } from '@ygb/contracts';
 import { SqliteDatabase } from '@ygb/testkit';
-import { readFinanceCashFlow } from './internal-finance/read-model';
+import { readFinanceCashFlow } from './read-model';
 
 const migrationPath = path.resolve(
   process.cwd(),

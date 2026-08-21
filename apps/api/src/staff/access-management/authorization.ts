@@ -1,4 +1,4 @@
-import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import type { AssignmentStaffAuthorization } from '../../staff-assignment';
 import { StaffAccessManagementError } from './errors';
 
 export function requireStaffAccessManager(

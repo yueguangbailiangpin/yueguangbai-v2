@@ -10,10 +10,10 @@ import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
-import type { FileAuthorizationService } from './files/authorization';
-import { approveOrderEvidenceAtomically } from './order-evidence/approve-order-evidence';
-import { recordBuyerRefundPayment } from './buyer-refunds/record-buyer-refund-payment';
-import { reverseBuyerRefundPayment } from './buyer-refunds/reverse-buyer-refund-payment';
+import type { FileAuthorizationService } from '../files/authorization';
+import { approveOrderEvidenceAtomically } from '../order-evidence/approve-order-evidence';
+import { recordBuyerRefundPayment } from '../buyer-refunds/record-buyer-refund-payment';
+import { reverseBuyerRefundPayment } from '../buyer-refunds/reverse-buyer-refund-payment';
 
 let base: SqliteDatabase | null = null;
 afterEach(() => {

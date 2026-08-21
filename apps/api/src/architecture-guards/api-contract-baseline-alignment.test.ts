@@ -18,7 +18,7 @@ import {
   STAFF_BUYER_REFUND_PATHS,
   STAFF_ORDER_EVIDENCE_PATHS,
 } from '@ygb/contracts';
-import app from './index';
+import app from '../index';
 
 const root = path.resolve(process.cwd());
 const inventoryPath = path.join(root, 'docs/contracts/V2_API_ROUTE_INVENTORY.md');

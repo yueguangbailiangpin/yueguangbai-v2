@@ -4,10 +4,10 @@ import { SqliteDatabase } from '@ygb/testkit';
 import {
   readFormalOrderBusinessCapabilities,
   requireFormalOrderAction,
-} from './formal-order-policy';
-import { prepareAdvancePrincipalSettlementStatements } from './buyer-refunds/advance-principal-settlement';
-import { reconcileUnlinkedFileRetention } from './files/retention';
-import { readFinancialReportingProjection } from './admin-business-dashboard/financial-projection';
+} from '../formal-order-policy';
+import { prepareAdvancePrincipalSettlementStatements } from '../buyer-refunds/advance-principal-settlement';
+import { reconcileUnlinkedFileRetention } from '../files/retention';
+import { readFinancialReportingProjection } from '../admin-business-dashboard/financial-projection';
 
 let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null;});

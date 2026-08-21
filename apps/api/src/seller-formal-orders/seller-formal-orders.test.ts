@@ -18,7 +18,7 @@ import {
 import { createApp } from '../app';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
 import { confirmFormalOrderForTest as confirmFormalOrder } from '../../test-support/confirm-formal-order-fixture';
-import type { FormalOrderStaffActor } from '../formal-orders/formal-order-shared';
+import type { FormalOrderStaffActor } from '../formal-order-shared/formal-order-shared';
 import {
   bindPhase3GEvidenceFixture,
   seedPhase3GInstructionFixture,

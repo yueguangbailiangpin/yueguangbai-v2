@@ -2,7 +2,7 @@ import { existsSync,readFileSync,readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe,expect,it } from 'vitest';
 
-const root=path.resolve(import.meta.dirname,'../../..');
+const root=path.resolve(import.meta.dirname,'../../../..');
 const read=(file:string)=>readFileSync(path.join(root,file),'utf8');
 
 describe('second layer hardening freeze',()=>{

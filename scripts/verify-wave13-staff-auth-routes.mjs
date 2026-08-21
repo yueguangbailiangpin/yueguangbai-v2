@@ -13,7 +13,7 @@ const authRoutes = read('apps/api/src/staff-auth/access-routes.ts');
 const contracts = read('packages/contracts/src/staff-auth.ts');
 const migration = read('migrations/0027_staff_auth_sessions.sql');
 const authTests = read('apps/api/src/staff-auth/cloudflare-access.test.ts');
-const inventoryTests = read('apps/api/src/wave13-default-app-security.test.ts');
+const inventoryTests = read('apps/api/src/architecture-guards/app-security-registration.test.ts');
 
 const authPosition = index.indexOf('registerCloudflareStaffAuthRoutes(app');
 const middlewarePosition = index.indexOf("app.use('/api/staff/*', staffSessionMiddleware())");
