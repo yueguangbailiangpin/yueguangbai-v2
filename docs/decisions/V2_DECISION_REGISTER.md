@@ -407,6 +407,16 @@ D-031 的卖家本金公式继续有效：正式订单只使用平台下单日�
 
 状态：Accepted by business owner；Closes the first-Seller-store onboarding gap without changing Schema 70
 
+### D-048 全站图片入口统一支持选择、拖拽和粘贴
+
+所有 Buyer、Seller 与 Staff 的文件证据入口统一使用同一个前端选择控件。控件必须支持点击文件选择器、拖拽文件、从系统剪贴板粘贴图片、已选文件预览和逐个删除；多文件入口必须继续执行各自业务张数上限，单文件入口不得因拖拽或粘贴变成多文件入口。
+
+该交互增强不得绕过既有上传意图、MIME/扩展名/内容签名校验、文件大小与数量限制、R2 验证、权限、最终提交校验和失败补偿。PDF 只在原本允许 PDF 的证据入口继续允许；仅图片入口不得因统一控件扩大格式范围。
+
+本 Decision 不增加 Migration，不修改 D1/R2 数据、文件可见性或保存期限，也不授权 production、staging 部署、真实文件上传或 GitHub 写入。
+
+状态：Accepted by business owner；Unifies all current image and evidence entry interactions without changing storage semantics
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

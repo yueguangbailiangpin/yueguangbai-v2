@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { isFrontendApiError } from '../api/errors';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { useFileUpload } from '../buyer/shared/useFileUpload';
+import { FileDropZone } from '../ui/FileDropZone';
 import {
   Alert,
   Button,
@@ -845,16 +846,21 @@ function RefundColumns({
         {value ? (
           <Card>
             <h3>记录返款</h3>
-            <input
-              type="file"
+            <FileDropZone
+              id="buyer-refund-proof"
+              aria-label="买家返款凭证"
               accept="image/jpeg,image/png,image/webp,application/pdf"
               disabled={mutation.isPending}
-              onChange={(event) => {
+              maximumFiles={1}
+              maximumBytes={20 * 1024 * 1024}
+              buttonLabel="选择返款凭证"
+              emptyLabel="尚未选择返款凭证"
+              onFilesChange={(files) => {
                 if (!mutation.isPending) {
                   authority.release();
                   mutation.reset();
                 }
-                const file = event.target.files?.[0];
+                const file = files[0];
                 if (file) void uploader.start('staffBuyerRefundProof', [file]);
               }}
             />

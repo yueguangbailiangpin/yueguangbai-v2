@@ -17,7 +17,7 @@ import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatCnyFen, formatDateOnly, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { BuyerFilePicker } from '../shared/BuyerFilePicker';
+import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { reviewTypeLabel, statusLabel, statusTone } from '../shared/status';
@@ -255,15 +255,17 @@ function ReviewResubmitForm({
           description="必须选择 1–3 个文件"
           required
         >
-          <BuyerFilePicker
-            name="files"
+          <FileDropZone
+            id="review-resubmit-files"
             multiple
             required
             accept="image/jpeg,image/png,image/webp,application/pdf"
+            maximumFiles={3}
+            maximumBytes={20 * 1024 * 1024}
             buttonLabel="选择新的评论证据"
             emptyLabel="尚未选择文件"
-            onChange={(event) => {
-              files.current = Array.from(event.currentTarget.files ?? []).slice(0, 4);
+            onFilesChange={(selectedFiles) => {
+              files.current = [...selectedFiles];
             }}
           />
         </FormField>

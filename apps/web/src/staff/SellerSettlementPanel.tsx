@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import type { StaffSession } from '../auth/staff/staff-auth-api';
 import { useFileUpload } from '../buyer/shared/useFileUpload';
+import { FileDropZone } from '../ui/FileDropZone';
 import { Alert, Button, Card, FormField, Select, TextInput } from '../ui/primitives';
 import { staffApi } from './api/client';
 import type { StaffWorkItem } from './contracts/runtime';
@@ -260,12 +261,16 @@ export function SellerSettlementPanel({ item }: { item: StaffWorkItem }): React.
           <Card className="sensitive-action">
             <h3>记录卖家付款</h3>
             <Alert tone="info">付款入账后再明确分配到本金或服务费；两类应结事实不会合并。</Alert>
-            <input
+            <FileDropZone
+              id="seller-settlement-proof"
               aria-label="卖家结算付款凭证"
-              type="file"
               accept="image/jpeg,image/png,image/webp"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
+              maximumFiles={1}
+              maximumBytes={20 * 1024 * 1024}
+              buttonLabel="选择卖家结算付款凭证"
+              emptyLabel="尚未选择付款凭证"
+              onFilesChange={(files) => {
+                const file = files[0];
                 if (file) void uploader.start('staffSellerSettlementProof', [file]);
               }}
             />

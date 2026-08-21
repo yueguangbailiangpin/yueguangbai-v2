@@ -5,6 +5,7 @@ import { identityApiRequest } from '../api/identity-request';
 import { operationHeaders } from '../api/idempotency';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { useFileUpload } from '../buyer/shared/useFileUpload';
+import { FileDropZone } from '../ui/FileDropZone';
 import {
   Alert,
   Button,
@@ -468,12 +469,15 @@ export function AdvancePrincipalCard({
           </p>
           <p>金额由订单财务快照锁定，不支持分批提前返。</p>
           <FormField label="付款凭证" htmlFor="advance-proof">
-            <input
+            <FileDropZone
               id="advance-proof"
-              type="file"
               accept="image/jpeg,image/png,image/webp,application/pdf"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
+              maximumFiles={1}
+              maximumBytes={20 * 1024 * 1024}
+              buttonLabel="选择付款凭证"
+              emptyLabel="尚未选择付款凭证"
+              onFilesChange={(files) => {
+                const file = files[0];
                 if (file) onFile(file);
               }}
             />

@@ -7,7 +7,7 @@ import { dateOnlySchema, identifierSchema } from '../contracts/runtime';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { BuyerFilePicker } from '../shared/BuyerFilePicker';
+import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { useFileUpload } from '../shared/useFileUpload';
@@ -103,9 +103,10 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
         <TextInput name="final_paid_jpy" type="number" inputMode="numeric" min="0" step="1" required />
       </FormField>
       <FormField label="订单截图" htmlFor="evidence-file" description="必须且只能选择一张 JPG、PNG 或 WebP 图片" required>
-        <BuyerFilePicker name="evidence_file" accept="image/jpeg,image/png,image/webp" required
+        <FileDropZone id="evidence-file" accept="image/jpeg,image/png,image/webp" required
+          maximumFiles={1} maximumBytes={20 * 1024 * 1024}
           buttonLabel="选择订单截图" emptyLabel="尚未选择截图"
-          onChange={(event) => { selected.current = event.currentTarget.files?.[0] ?? null; }} />
+          onFilesChange={(files) => { selected.current = files[0] ?? null; }} />
       </FormField>
       <FormField label="备注（可选）" htmlFor="evidence-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>
       {message ? <Alert tone="danger">{message}</Alert> : null}<RequestIdDisplay requestId={requestId} />

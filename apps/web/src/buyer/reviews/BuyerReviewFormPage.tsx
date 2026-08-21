@@ -7,7 +7,7 @@ import { identifierSchema } from '../contracts/runtime';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { BuyerFilePicker } from '../shared/BuyerFilePicker';
+import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { useFileUpload } from '../shared/useFileUpload';
 import { BuyerJourney } from '../shared/BuyerJourney';
@@ -117,15 +117,17 @@ export function BuyerReviewFormPage(): React.JSX.Element {
             description="请选择 1–3 个图片或 PDF 文件"
             required
           >
-            <BuyerFilePicker
-              name="review_files"
+            <FileDropZone
+              id="review-files"
               multiple
               accept="image/jpeg,image/png,image/webp,application/pdf"
               required
+              maximumFiles={3}
+              maximumBytes={20 * 1024 * 1024}
               buttonLabel="选择评论证据"
               emptyLabel="尚未选择文件"
-              onChange={(event) => {
-                files.current = Array.from(event.currentTarget.files ?? []).slice(0, 4);
+              onFilesChange={(selectedFiles) => {
+                files.current = [...selectedFiles];
               }}
             />
           </FormField>

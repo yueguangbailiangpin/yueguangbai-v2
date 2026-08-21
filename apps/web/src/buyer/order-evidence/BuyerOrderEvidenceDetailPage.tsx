@@ -25,7 +25,7 @@ import {
   priceDifferenceDirection,
 } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { BuyerFilePicker } from '../shared/BuyerFilePicker';
+import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { statusLabel, statusTone } from '../shared/status';
@@ -321,14 +321,16 @@ function EvidenceResubmitForm({
           description="必须且只能选择一张图片"
           required
         >
-          <BuyerFilePicker
-            name="file"
+          <FileDropZone
+            id="resubmit-file"
             accept="image/jpeg,image/png,image/webp"
             required
+            maximumFiles={1}
+            maximumBytes={20 * 1024 * 1024}
             buttonLabel="选择新的订单截图"
             emptyLabel="尚未选择截图"
-            onChange={(event) => {
-              file.current = event.currentTarget.files?.[0] ?? null;
+            onFilesChange={(files) => {
+              file.current = files[0] ?? null;
             }}
           />
         </FormField>

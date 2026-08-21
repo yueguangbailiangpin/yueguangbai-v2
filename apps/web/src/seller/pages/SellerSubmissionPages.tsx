@@ -12,6 +12,7 @@ import {
   TextInput,
 } from '../../ui/primitives';
 import { CursorPagination } from '../../ui/CursorPagination';
+import { FileDropZone } from '../../ui/FileDropZone';
 import { isFrontendApiError } from '../../api/errors';
 import { useFileUpload } from '../../buyer/shared/useFileUpload';
 import { BuyerMutationRecovery } from '../../buyer/shared/BuyerMutationRecovery';
@@ -301,15 +302,17 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
               description="1 至 8 张 JPG、PNG 或 WebP 图片，每张不超过 10 MiB"
               required
             >
-              <TextInput
+              <FileDropZone
                 id="application-images"
-                name="images"
-                type="file"
                 accept="image/jpeg,image/png,image/webp"
                 multiple
                 required
-                onChange={(event) => {
-                  files.current = Array.from(event.currentTarget.files ?? []);
+                maximumFiles={8}
+                maximumBytes={10 * 1024 * 1024}
+                buttonLabel="选择申请图片"
+                emptyLabel="尚未选择图片"
+                onFilesChange={(selectedFiles) => {
+                  files.current = [...selectedFiles];
                   uploadedSelection.current = null;
                   setMessage(null);
                 }}

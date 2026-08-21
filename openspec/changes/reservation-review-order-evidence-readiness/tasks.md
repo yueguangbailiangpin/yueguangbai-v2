@@ -17,6 +17,7 @@
 - [x] Allow Staff to generate or safely replace a Seller registration link from the directory.
 - [x] Keep Buyer Tasks and Me navigation interactive across route and focus changes.
 - [x] Allow all active Seller members and scoped Staff to create authorized Stores before the first product application.
+- [x] Replace every current image or evidence file input with the shared select, drag, paste, preview and remove control.
 
 ## Remote boundary
 

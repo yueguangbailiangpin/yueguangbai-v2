@@ -109,6 +109,20 @@ Every active Seller member MUST be able to create an ACTIVE Store only inside th
 - **WHEN** a Seller member opens the product application page with no selectable Store
 - **THEN** the page does not present an unusable product form and instead provides Store creation to that Seller member.
 
+### Requirement: every image and evidence entry supports the same selection interactions
+
+Every current Buyer, Seller and Staff image or evidence file entry MUST support file-picker selection, drag and drop, clipboard image paste, selected-file preview and individual removal. The shared interaction MUST preserve the entry's existing MIME, maximum byte size, maximum file count and business submission rules, and MUST NOT bypass the existing upload intent, verification, authorization or compensation flow.
+
+#### Scenario: a user pastes or drags an allowed image
+
+- **WHEN** the user focuses an image entry and pastes a clipboard image, or drags an allowed image onto that entry
+- **THEN** the image is selected exactly as if it came from the native file picker and is shown in the removable preview list.
+
+#### Scenario: an unsupported or excessive file is supplied
+
+- **WHEN** the file MIME, byte size or resulting file count exceeds that entry's existing policy
+- **THEN** the file is rejected or bounded before upload and the user receives an explicit local message without starting the upload workflow for the rejected file.
+
 ### Requirement: mounted Buyer primary navigation remains interactive
 
 The mounted Buyer portal MUST keep the bottom navigation interactive across repeated route changes and window focus changes. Every lazy route transition MUST receive a fresh route boundary so stale loading or error state cannot retain the previous page.
