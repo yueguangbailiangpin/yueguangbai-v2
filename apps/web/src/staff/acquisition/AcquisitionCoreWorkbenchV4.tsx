@@ -32,10 +32,10 @@ export function AcquisitionCoreWorkbenchV4():React.JSX.Element{
   const channels=useQuery({queryKey:['staff','acquisition-v4','channels',session.authorization_version],queryFn:({signal})=>acquisitionApi.channels(client,signal).then((r)=>r.data.channels.filter((channel):channel is AcquisitionInternalChannel=>channel.visibility==='INTERNAL')),enabled:operator,retry:false});
   const [prospects,consultations,funnel,stats,corrections]=useQueries({queries:[
     {queryKey:['staff','acquisition-v4','prospects',session.authorization_version],queryFn:({signal})=>acquisitionApi.prospects(client,{leadType:null,status:null,cursor:null},signal).then((r)=>r.data),enabled:operator,retry:false},
-    {queryKey:['staff','acquisition-v4','consultations',range.from,range.to,session.authorization_version],queryFn:({signal})=>acquisitionApi.consultations(client,range.from,range.to,signal).then((r)=>r.data.consultations),enabled:operator,retry:false},
+    {queryKey:['staff','acquisition-v4','consultations',range.from,range.to,session.authorization_version],queryFn:({signal})=>acquisitionApi.consultations(client,range.from,range.to,signal).then((r)=>r.data.consultations),enabled:operator&&tab==='daily',retry:false},
     {queryKey:['staff','acquisition-v4','funnel',range.from,range.to,session.authorization_version],queryFn:({signal})=>acquisitionApi.funnel(client,range.from,range.to,signal).then((r)=>r.data.funnel),enabled:operator,retry:false},
-    {queryKey:['staff','acquisition-v4','stats',range.from,range.to,session.authorization_version],queryFn:({signal})=>acquisitionApi.channelStats(client,range.from,range.to,signal).then((r)=>r.data.channels),enabled:operator,retry:false},
-    {queryKey:['staff','acquisition-v4','corrections',session.authorization_version],queryFn:({signal})=>acquisitionApi.sourceCorrectionCandidates(client,signal).then((r)=>r.data.items),enabled:operator,retry:false},
+    {queryKey:['staff','acquisition-v4','stats',range.from,range.to,session.authorization_version],queryFn:({signal})=>acquisitionApi.channelStats(client,range.from,range.to,signal).then((r)=>r.data.channels),enabled:operator&&tab==='stats',retry:false},
+    {queryKey:['staff','acquisition-v4','corrections',session.authorization_version],queryFn:({signal})=>acquisitionApi.sourceCorrectionCandidates(client,signal).then((r)=>r.data.items),enabled:operator&&tab==='corrections',retry:false},
   ]});
   if(!operator)return <main className="acquisition-workbench"><Alert tone="danger">当前岗位不使用客户开发中心。</Alert></main>;
   const tabs:readonly (readonly [Tab,string])[]=[['overview','概览'],['prospects','潜在线索'],['daily','每日渠道数据'],['channels','渠道管理'],['stats','渠道统计'],['corrections','来源纠错'],...(canAdmin?[['codex','Codex 接入'] as const]:[])];

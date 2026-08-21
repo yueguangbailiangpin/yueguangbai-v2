@@ -218,11 +218,11 @@ describe('precise acquisition invalidation after mutations', () => {
     await user.click(await screen.findByRole('button', { name: '交给业务员工' }));
 
     await waitFor(() => expect(counters.get('prospects')).toBe(2));
-    expect(counters.get('stats')).toBe(1);
     expect(counters.get('funnel')).toBe(1);
     expect(counters.get('channels')).toBe(1);
-    expect(counters.get('consultations')).toBe(1);
-    expect(counters.get('corrections')).toBe(1);
+    expect(counters.get('stats')).toBe(0);
+    expect(counters.get('consultations')).toBe(0);
+    expect(counters.get('corrections')).toBe(0);
   });
 
   it('createProspect refetches prospects and stats only', async () => {
@@ -243,11 +243,12 @@ describe('precise acquisition invalidation after mutations', () => {
     await user.click(screen.getByRole('button', { name: '保存线索' }));
 
     await waitFor(() => expect(counters.get('prospects')).toBe(2));
-    await waitFor(() => expect(counters.get('stats')).toBe(2));
+    await user.click(screen.getByRole('button', { name: '渠道统计' }));
+    await waitFor(() => expect(counters.get('stats')).toBe(1));
     expect(counters.get('funnel')).toBe(1);
     expect(counters.get('channels')).toBe(1);
-    expect(counters.get('consultations')).toBe(1);
-    expect(counters.get('corrections')).toBe(1);
+    expect(counters.get('consultations')).toBe(0);
+    expect(counters.get('corrections')).toBe(0);
   });
 
   it('recordConsultation refetches consultations, funnel and stats only', async () => {
@@ -259,18 +260,20 @@ describe('precise acquisition invalidation after mutations', () => {
       <AcquisitionCoreWorkbenchV4 />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
-    await waitFor(() => expect(counters.get('consultations')).toBe(1));
+    await waitFor(() => expect(counters.get('channels')).toBe(1));
     await user.click(screen.getByRole('button', { name: '每日渠道数据' }));
+    await waitFor(() => expect(counters.get('consultations')).toBe(1));
     await user.selectOptions(await screen.findByLabelText('真实渠道'), 'channel-1');
     await user.type(screen.getByLabelText('咨询人数'), '3');
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => expect(counters.get('consultations')).toBe(2));
     await waitFor(() => expect(counters.get('funnel')).toBe(2));
-    await waitFor(() => expect(counters.get('stats')).toBe(2));
+    await user.click(screen.getByRole('button', { name: '渠道统计' }));
+    await waitFor(() => expect(counters.get('stats')).toBe(1));
     expect(counters.get('channels')).toBe(1);
     expect(counters.get('prospects')).toBe(1);
-    expect(counters.get('corrections')).toBe(1);
+    expect(counters.get('corrections')).toBe(0);
   });
 
   it('updateChannelPrivacy refetches channels only', async () => {
@@ -291,11 +294,11 @@ describe('precise acquisition invalidation after mutations', () => {
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => expect(counters.get('channels')).toBe(2));
-    expect(counters.get('stats')).toBe(1);
+    expect(counters.get('stats')).toBe(0);
     expect(counters.get('funnel')).toBe(1);
     expect(counters.get('prospects')).toBe(1);
-    expect(counters.get('consultations')).toBe(1);
-    expect(counters.get('corrections')).toBe(1);
+    expect(counters.get('consultations')).toBe(0);
+    expect(counters.get('corrections')).toBe(0);
   });
 
   it('disableChannel refetches channels and stats only', async () => {
@@ -312,11 +315,12 @@ describe('precise acquisition invalidation after mutations', () => {
     await user.click((await screen.findAllByRole('button', { name: '停用' }))[0]!);
 
     await waitFor(() => expect(counters.get('channels')).toBe(2));
-    await waitFor(() => expect(counters.get('stats')).toBe(2));
+    await user.click(screen.getByRole('button', { name: '渠道统计' }));
+    await waitFor(() => expect(counters.get('stats')).toBe(1));
     expect(counters.get('funnel')).toBe(1);
     expect(counters.get('prospects')).toBe(1);
-    expect(counters.get('consultations')).toBe(1);
-    expect(counters.get('corrections')).toBe(1);
+    expect(counters.get('consultations')).toBe(0);
+    expect(counters.get('corrections')).toBe(0);
   });
 
   it('createChannel refetches channels and stats only', async () => {
@@ -336,11 +340,12 @@ describe('precise acquisition invalidation after mutations', () => {
     await user.click(screen.getByRole('button', { name: '建立渠道' }));
 
     await waitFor(() => expect(counters.get('channels')).toBe(2));
-    await waitFor(() => expect(counters.get('stats')).toBe(2));
+    await user.click(screen.getByRole('button', { name: '渠道统计' }));
+    await waitFor(() => expect(counters.get('stats')).toBe(1));
     expect(counters.get('funnel')).toBe(1);
     expect(counters.get('prospects')).toBe(1);
-    expect(counters.get('consultations')).toBe(1);
-    expect(counters.get('corrections')).toBe(1);
+    expect(counters.get('consultations')).toBe(0);
+    expect(counters.get('corrections')).toBe(0);
   });
 
   it('correctSource refetches stats and corrections only', async () => {
@@ -353,19 +358,21 @@ describe('precise acquisition invalidation after mutations', () => {
       <AcquisitionCoreWorkbenchV4 />
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
-    await waitFor(() => expect(counters.get('corrections')).toBe(1));
+    await waitFor(() => expect(counters.get('channels')).toBe(1));
     await user.click(screen.getByRole('button', { name: '来源纠错' }));
+    await waitFor(() => expect(counters.get('corrections')).toBe(1));
     await user.click(await screen.findByRole('button', { name: '修正' }));
     await user.selectOptions(await screen.findByLabelText('新的真实渠道'), 'channel-2');
     await user.type(screen.getByLabelText('更正原因'), '确认纠错');
     await user.click(screen.getByRole('button', { name: '确认追加更正' }));
 
     await waitFor(() => expect(counters.get('corrections')).toBe(2));
-    await waitFor(() => expect(counters.get('stats')).toBe(2));
+    await user.click(screen.getByRole('button', { name: '渠道统计' }));
+    await waitFor(() => expect(counters.get('stats')).toBe(1));
     expect(counters.get('channels')).toBe(1);
     expect(counters.get('prospects')).toBe(1);
     expect(counters.get('funnel')).toBe(1);
-    expect(counters.get('consultations')).toBe(1);
+    expect(counters.get('consultations')).toBe(0);
   });
 });
 
