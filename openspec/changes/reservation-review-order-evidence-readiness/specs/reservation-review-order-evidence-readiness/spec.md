@@ -66,3 +66,12 @@ The customer-intake form MUST derive selectable sites from channels available to
 
 - **WHEN** Staff changes the selected site
 - **THEN** the channel selector contains only channels bound to that site.
+
+### Requirement: returning to a mounted Staff tab does not replace the page with session loading
+
+The Staff session MUST still be verified on the first protected mount, and explicit session invalidation MUST still clear protected state. Merely returning focus to an already mounted Staff tab MUST NOT refetch the session or replace the current page with a full-screen loading state.
+
+#### Scenario: Staff switches away and returns to the tab
+
+- **WHEN** an authenticated Staff tab loses focus and later regains focus without a session-invalidated event
+- **THEN** the mounted Staff page remains visible and no additional session request is issued.

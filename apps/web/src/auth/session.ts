@@ -67,6 +67,7 @@ export function useStaffSession(adapter: StaffAuthApiAdapter = staffAuthApi): St
     retry: false,
     staleTime: 0,
     refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
     enabled: clearing.state === 'IDLE' && invalidationAllowsSessionRead,
   });
   const freshSessionResolved = query.isFetchedAfterMount && !query.isFetching;

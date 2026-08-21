@@ -12,6 +12,7 @@
 - [x] Recreate staging D1, apply migrations 0001-0070 and restore the test Owner.
 - [x] Explain an empty customer-intake site selector and scope channels to the selected site.
 - [x] Seed audited staging-only manual Buyer and Seller intake channels for `AMAZON_JP`.
+- [x] Keep the mounted Staff shell visible when its browser tab regains focus.
 
 ## Remote boundary
 
