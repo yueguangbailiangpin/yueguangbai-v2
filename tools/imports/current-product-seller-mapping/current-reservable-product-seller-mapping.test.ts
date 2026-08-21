@@ -88,6 +88,64 @@ describe('current reservable product and seller mapping', () => {
     ]);
   });
 
+  it('applies owner availability corrections without deleting historical evidence', async () => {
+    const preview = await previewCurrentReservableProductSellerMapping({
+      current: [
+        ...[1, 2, 3, 4].map((sourceRow) => ({
+          sourceSheet: '工作表1' as const, sourceRow,
+          sourceLocator: `fixture://somiso/${sourceRow}`,
+          marketplaceCode: 'JP_AMAZON' as const, storeName: 'Somiso JP',
+          asin: 'B0GR5C43PG', productName: `Somiso ${sourceRow}`,
+        })),
+        {
+          sourceSheet: '工作表1', sourceRow: 5, sourceLocator: 'fixture://paused/5',
+          marketplaceCode: 'JP_AMAZON', storeName: 'paused', asin: 'B0ABC12345',
+          productName: '暂停产品', reservationStatus: 'PAUSED' as const,
+        },
+        {
+          sourceSheet: '飞利浦产品', sourceRow: 6, sourceLocator: 'fixture://philips/6',
+          marketplaceCode: 'JP_AMAZON', storeName: '', asin: '', productName: '',
+        },
+        {
+          sourceSheet: '工作表1', sourceRow: 7, sourceLocator: 'fixture://multi-seller/7',
+          marketplaceCode: 'JP_AMAZON', storeName: 'current', asin: 'B0GRMRV64K',
+          productName: '美容棒',
+        },
+      ],
+      historical: [
+        {
+          sourceFolderId: 'dDUYsBOrYoEk', sourceFileId: 'ygb-history',
+          sourceFileTitle: '历史卖家', sourceLocator: 'fixture://ygb-history',
+          marketplaceCode: 'JP_AMAZON', sellerWechat: 'shiguo0317',
+          asin: 'B0GRMRV64K', productName: '美容棒',
+        },
+        {
+          sourceFolderId: 'dJwldHrckeFY', sourceFileId: 'ido-history',
+          sourceFileTitle: '历史卖家', sourceLocator: 'fixture://ido-history',
+          marketplaceCode: 'JP_AMAZON', sellerWechat: 'szgavin68',
+          asin: 'B0GRMRV64K', productName: '美容棒',
+        },
+      ],
+    });
+    expect(preview.standardProducts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ productKey: 'JP_AMAZON:B0GR5C43PG', currentRows: [1, 2, 3, 4] }),
+    ]));
+    expect(preview.currentRows).toContainEqual(expect.objectContaining({
+      sourceRow: 5, status: 'EXCLUDED', exceptionCode: 'EXCLUDED_PAUSED_PRODUCT',
+    }));
+    expect(preview.currentRows).toContainEqual(expect.objectContaining({
+      sourceRow: 6, status: 'EXCLUDED', exceptionCode: 'EXCLUDED_ABNORMAL_EMPTY_PHILIPS_ROW',
+    }));
+    expect(preview.mappedSellerOfferings.map((offer) => offer.organizationKey))
+      .toEqual(['dJwldHrckeFY:szgavin68']);
+    expect(preview.sameAsinMultiSeller).toEqual([]);
+    expect(preview.excludedSellerOfferings).toEqual([
+      expect.objectContaining({
+        productKey: 'JP_AMAZON:B0GRMRV64K', organizationKey: 'dDUYsBOrYoEk:shiguo0317',
+      }),
+    ]);
+  });
+
   it('accepts only the explicit channel alias map and quarantines unknown aliases', async () => {
     const preview = await previewCurrentReservableProductSellerMapping({
       current: [],
@@ -129,7 +187,7 @@ describe('current reservable product and seller mapping', () => {
     const first = await previewCurrentReservableProductSellerMapping(fullReadonlyManifest);
     const second = await previewCurrentReservableProductSellerMapping(fullReadonlyManifest);
     const frozenManifestHash =
-      '1172e8410024a508306e2db150439537fc3c5b75db10a82f423bd9fbb830e393';
+      '9298997ed69f7d83fdca00daa5e8c3a185b57f8072e8125967883b1fe032ec7c';
     expect(first).toEqual(second);
     expect(first.manifestHash).toBe(frozenManifestHash);
     expect(first.counts).toMatchObject({
@@ -163,9 +221,14 @@ describe('current reservable product and seller mapping', () => {
     const unresolvedProductKeys = new Set(first.unresolvedCurrentProducts);
     expect(mappedProductKeys.size).toBe(51);
     expect(unresolvedProductKeys.size).toBe(37);
-    expect(first.mappedSellerOfferings.length).toBe(52);
+    expect(first.mappedSellerOfferings.length).toBe(51);
     expect(new Set(first.mappedSellerOfferings.map((offer) =>
-      `${offer.productKey}:${offer.organizationKey}`))).toHaveLength(52);
+      `${offer.productKey}:${offer.organizationKey}`))).toHaveLength(51);
+    expect(first.excludedSellerOfferings).toEqual([
+      expect.objectContaining({
+        productKey: 'JP_AMAZON:B0GRMRV64K', organizationKey: 'dDUYsBOrYoEk:shiguo0317',
+      }),
+    ]);
     expect([...mappedProductKeys].filter((productKey) =>
       unresolvedProductKeys.has(productKey))).toHaveLength(0);
     expect(new Set([...mappedProductKeys, ...unresolvedProductKeys])).toEqual(productKeys);
