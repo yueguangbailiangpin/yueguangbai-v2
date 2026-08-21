@@ -13,10 +13,7 @@ function failure(code: string, requestId: string) {
   };
 }
 
-function customerSession(
-  identity: 'buyer' | 'seller',
-  passwordChangeRequired = false,
-) {
+function customerSession(identity: 'buyer' | 'seller', passwordChangeRequired = false) {
   return {
     account_id: `${identity}-local`,
     identity_subject_id: 'subject-local',
@@ -79,18 +76,71 @@ async function mockApi(
       return;
     }
     if (path === '/api/customer-auth/logout') {
-      await fulfillJson(route, success({
-        logged_out: true,
-        all_devices_logged_out: false,
-      }, 'browser-customer-logout'));
+      await fulfillJson(
+        route,
+        success(
+          {
+            logged_out: true,
+            all_devices_logged_out: false,
+          },
+          'browser-customer-logout',
+        ),
+      );
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/me') {
-      await fulfillJson(route, success({ me: { account_id: 'seller-local', member: { id: 'member-local', display_name: '本地卖家', role: 'OWNER', primary_owner: true }, organization: { id: 'org-local', seller_code: 'seller-local', name: '本地卖家组织', marketplace_code: 'JP', status: 'ACTIVE' }, access: { read_scope: 'ORGANIZATION', store_ids: ['store-local'], can_submit_product_applications: true, can_submit_demand_batches: true } } }));
+      await fulfillJson(
+        route,
+        success({
+          me: {
+            account_id: 'seller-local',
+            member: {
+              id: 'member-local',
+              display_name: '本地卖家',
+              role: 'OWNER',
+              primary_owner: true,
+            },
+            organization: {
+              id: 'org-local',
+              seller_code: 'seller-local',
+              name: '本地卖家组织',
+              marketplace_code: 'JP',
+              status: 'ACTIVE',
+            },
+            access: {
+              read_scope: 'ORGANIZATION',
+              store_ids: ['store-local'],
+              can_submit_product_applications: true,
+              can_submit_demand_batches: true,
+            },
+          },
+        }),
+      );
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/stores') {
-      await fulfillJson(route, success({ items: [{ id: 'store-local', marketplace_code: 'JP', canonical_marketplace_code: 'AMAZON_JP', transaction_currency_code: 'JPY', transaction_currency_exponent: 0, marketplace_status: 'ACTIVE', adapter_status: 'AVAILABLE', display_name: '日本一号店', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }], page: { limit: 100, next_cursor: null } }));
+      await fulfillJson(
+        route,
+        success({
+          items: [
+            {
+              id: 'store-local',
+              marketplace_code: 'JP',
+              canonical_marketplace_code: 'AMAZON_JP',
+              transaction_currency_code: 'JPY',
+              transaction_currency_exponent: 0,
+              marketplace_status: 'ACTIVE',
+              adapter_status: 'AVAILABLE',
+              display_name: '日本一号店',
+              status: 'ACTIVE',
+              version: 1,
+              created_at: 1,
+              updated_at: 1,
+            },
+          ],
+          page: { limit: 100, next_cursor: null },
+        }),
+      );
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/formal-orders') {
@@ -98,26 +148,57 @@ async function mockApi(
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/settlement/summary') {
-      await fulfillJson(route, success({ settlement: { outstanding_principal_cny_fen: '0', outstanding_service_fee_cny_fen: '0', total_outstanding_cny_fen: '0', unallocated_credit_cny_fen: '0' } }));
+      await fulfillJson(
+        route,
+        success({
+          settlement: {
+            outstanding_principal_cny_fen: '0',
+            outstanding_service_fee_cny_fen: '0',
+            total_outstanding_cny_fen: '0',
+            unallocated_credit_cny_fen: '0',
+          },
+        }),
+      );
       return;
     }
-    if (identity === 'seller' && ['/api/seller-portal/products', '/api/seller-portal/product-applications', '/api/seller-portal/demand-batches', '/api/seller-portal/reviews', '/api/seller-portal/settlement/payables'].includes(path)) {
+    if (
+      identity === 'seller' &&
+      [
+        '/api/seller-portal/products',
+        '/api/seller-portal/product-applications',
+        '/api/seller-portal/demand-batches',
+        '/api/seller-portal/reviews',
+        '/api/seller-portal/settlement/payables',
+      ].includes(path)
+    ) {
       await fulfillJson(route, success({ items: [], page: { limit: 100, next_cursor: null } }));
       return;
     }
     if (path === '/api/staff-auth/logout') {
-      await fulfillJson(route, success({
-        logged_out: true,
-        all_devices_logged_out: false,
-      }, 'browser-staff-logout'));
+      await fulfillJson(
+        route,
+        success(
+          {
+            logged_out: true,
+            all_devices_logged_out: false,
+          },
+          'browser-staff-logout',
+        ),
+      );
       return;
     }
     if (path === '/api/staff-auth/logout-all') {
-      await fulfillJson(route, success({
-        logged_out: true,
-        all_devices_logged_out: true,
-        session_version: 2,
-      }, 'browser-staff-logout-all'));
+      await fulfillJson(
+        route,
+        success(
+          {
+            logged_out: true,
+            all_devices_logged_out: true,
+            session_version: 2,
+          },
+          'browser-staff-logout-all',
+        ),
+      );
       return;
     }
     if (identity === 'staff' && path === '/api/staff/me/work-items') {
@@ -130,40 +211,108 @@ async function mockApi(
 
 async function mockSellerStatusRecords(page: Page): Promise<void> {
   const pageInfo = { limit: 100, next_cursor: null };
-  await page.route('**/api/seller-portal/products**', (route) => fulfillJson(route, success({
-    items: (['ACTIVE', 'DISABLED'] as const).map((status, index) => ({
-      id: `product-status-${status}`, store: { id: 'store-local', display_name: '日本一号店' },
-      marketplace_code: 'JP', seller_code: 'seller-local', asin: `B0000000${index}`,
-      status, current_version_no: 1, version: 1, created_at: 1, updated_at: 1,
-      current_version: {
-        id: `product-version-${status}`, version_no: 1, product_name: `商品${index + 1}`,
-        search_keywords: [], ordering_guide_expected_amount_jpy: null,
-        color_spec_mode: null, main_image: null, product_url: null,
-        buyer_visible_notes: null, created_at: 1,
-      },
-    })), page: pageInfo,
-  })));
-  await page.route('**/api/seller-portal/demand-batches**', (route) => fulfillJson(route, success({
-    items: (['SUBMITTED', 'PUBLISHED', 'REJECTED', 'WITHDRAWN', 'CLOSED'] as const).map((status, index) => ({
-      id: `demand-status-${status}`, store: { id: 'store-local', display_name: '日本一号店' },
-      product: { id: 'product-status', version_no: 1, asin: 'B00000001', product_name: `需求商品${index + 1}`, search_keywords: [], product_url: null },
-      marketplace_code: 'JP', task_type: 'TEXT', target_quantity: 1, held_quantity: 0,
-      approved_quantity: 0, remaining_quantity: 1, buyer_visible_notes: null,
-      seller_notes: null, open_at: 1, reservation_deadline: 2, order_deadline: 3,
-      status, review_reason: null, close_reason: null, version: 1, submitted_at: 1,
-      updated_at: 1, reviewed_at: null, published_at: null, withdrawn_at: null, closed_at: null,
-    })), page: pageInfo,
-  })));
-  await page.route('**/api/seller-portal/reviews**', (route) => fulfillJson(route, success({
-    items: (['PENDING_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'WITHDRAWN', 'APPROVED'] as const).map((status, index) => ({
-      review_case_id: `review-status-${status}`, formal_order: { id: 'order-status', amazon_order_number: '111-1111111-1111111' },
-      store: { id: 'store-local', display_name: '日本一号店' }, marketplace_code: 'JP',
-      asin: 'B00000001', product_name: `评论商品${index + 1}`, review_type: 'TEXT', status,
-      version: 1, review_url: null, submitted_at: 1, approved_at: null,
-      evidence: { version_id: `evidence-${status}`, version_no: 1, submitted_at: 1, files: [] },
-      service_fee_accrued: null, allowed_actions: ['VIEW'],
-    })), page: pageInfo,
-  })));
+  await page.route('**/api/seller-portal/products**', (route) =>
+    fulfillJson(
+      route,
+      success({
+        items: (['ACTIVE', 'DISABLED'] as const).map((status, index) => ({
+          id: `product-status-${status}`,
+          store: { id: 'store-local', display_name: '日本一号店' },
+          marketplace_code: 'JP',
+          seller_code: 'seller-local',
+          asin: `B0000000${index}`,
+          status,
+          current_version_no: 1,
+          version: 1,
+          created_at: 1,
+          updated_at: 1,
+          current_version: {
+            id: `product-version-${status}`,
+            version_no: 1,
+            product_name: `商品${index + 1}`,
+            search_keywords: [],
+            ordering_guide_expected_amount_jpy: null,
+            color_spec_mode: null,
+            main_image: null,
+            product_url: null,
+            buyer_visible_notes: null,
+            created_at: 1,
+          },
+        })),
+        page: pageInfo,
+      }),
+    ),
+  );
+  await page.route('**/api/seller-portal/demand-batches**', (route) =>
+    fulfillJson(
+      route,
+      success({
+        items: (['SUBMITTED', 'PUBLISHED', 'REJECTED', 'WITHDRAWN', 'CLOSED'] as const).map(
+          (status, index) => ({
+            id: `demand-status-${status}`,
+            store: { id: 'store-local', display_name: '日本一号店' },
+            product: {
+              id: 'product-status',
+              version_no: 1,
+              asin: 'B00000001',
+              product_name: `需求商品${index + 1}`,
+              search_keywords: [],
+              product_url: null,
+            },
+            marketplace_code: 'JP',
+            task_type: 'TEXT',
+            target_quantity: 1,
+            held_quantity: 0,
+            approved_quantity: 0,
+            remaining_quantity: 1,
+            buyer_visible_notes: null,
+            seller_notes: null,
+            open_at: 1,
+            reservation_deadline: 2,
+            order_deadline: 3,
+            status,
+            review_reason: null,
+            close_reason: null,
+            version: 1,
+            submitted_at: 1,
+            updated_at: 1,
+            reviewed_at: null,
+            published_at: null,
+            withdrawn_at: null,
+            closed_at: null,
+          }),
+        ),
+        page: pageInfo,
+      }),
+    ),
+  );
+  await page.route('**/api/seller-portal/reviews**', (route) =>
+    fulfillJson(
+      route,
+      success({
+        items: (
+          ['PENDING_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'WITHDRAWN', 'APPROVED'] as const
+        ).map((status, index) => ({
+          review_case_id: `review-status-${status}`,
+          formal_order: { id: 'order-status', amazon_order_number: '111-1111111-1111111' },
+          store: { id: 'store-local', display_name: '日本一号店' },
+          marketplace_code: 'JP',
+          asin: 'B00000001',
+          product_name: `评论商品${index + 1}`,
+          review_type: 'TEXT',
+          status,
+          version: 1,
+          review_url: null,
+          submitted_at: 1,
+          approved_at: null,
+          evidence: { version_id: `evidence-${status}`, version_no: 1, submitted_at: 1, files: [] },
+          service_fee_accrued: null,
+          allowed_actions: ['VIEW'],
+        })),
+        page: pageInfo,
+      }),
+    ),
+  );
 }
 
 async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
@@ -174,87 +323,249 @@ async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
     demandBodies: unknown[];
     applicationWithdrawBodies: unknown[];
     demandWithdrawBodies: unknown[];
-  } = { intentCount: 0, uploadAttempts: 0, applicationBodies: [], demandBodies: [], applicationWithdrawBodies: [], demandWithdrawBodies: [] };
+  } = {
+    intentCount: 0,
+    uploadAttempts: 0,
+    applicationBodies: [],
+    demandBodies: [],
+    applicationWithdrawBodies: [],
+    demandWithdrawBodies: [],
+  };
   const product = {
-    id: 'product-new', store: { id: 'store-local', display_name: '日本一号店' },
-    marketplace_code: 'JP', seller_code: 'seller-local', asin: 'B000000001',
-    status: 'ACTIVE', current_version_no: 1, version: 1, created_at: 1, updated_at: 1,
-    current_version: { id: 'product-version-new', version_no: 1, product_name: '已通过产品',
-      search_keywords: [], ordering_guide_expected_amount_jpy: null, color_spec_mode: null,
-      main_image: null, product_url: null, buyer_visible_notes: null, created_at: 1 },
+    id: 'product-new',
+    store: { id: 'store-local', display_name: '日本一号店' },
+    marketplace_code: 'JP',
+    seller_code: 'seller-local',
+    asin: 'B000000001',
+    status: 'ACTIVE',
+    current_version_no: 1,
+    version: 1,
+    created_at: 1,
+    updated_at: 1,
+    current_version: {
+      id: 'product-version-new',
+      version_no: 1,
+      product_name: '已通过产品',
+      search_keywords: [],
+      ordering_guide_expected_amount_jpy: null,
+      color_spec_mode: null,
+      main_image: null,
+      product_url: null,
+      buyer_visible_notes: null,
+      created_at: 1,
+    },
   };
   const application = {
-    id: 'application-new', store: product.store, marketplace_code: 'JP', asin: 'B000000002',
-    product_name: '新品申请', search_keywords: ['关键词一', '关键词二'], product_url: null,
-    buyer_visible_notes: null, seller_notes: null, status: 'SUBMITTED', review_reason: null,
-    product_id: null, version: 1, submitted_at: 1, updated_at: 1,
-    reviewed_at: null, withdrawn_at: null,
+    id: 'application-new',
+    store: product.store,
+    marketplace_code: 'JP',
+    asin: 'B000000002',
+    product_name: '新品申请',
+    search_keywords: ['关键词一', '关键词二'],
+    product_url: null,
+    buyer_visible_notes: null,
+    seller_notes: null,
+    status: 'SUBMITTED',
+    review_reason: null,
+    product_id: null,
+    version: 1,
+    submitted_at: 1,
+    updated_at: 1,
+    reviewed_at: null,
+    withdrawn_at: null,
   };
   const demand = {
-    id: 'demand-new', store: product.store,
-    product: { id: product.id, version_no: 1, asin: product.asin, product_name: product.current_version.product_name,
-      search_keywords: [], product_url: null }, marketplace_code: 'JP', task_type: 'IMAGE',
-    target_quantity: 8, held_quantity: 0, approved_quantity: 0, remaining_quantity: 8,
-    buyer_visible_notes: null, seller_notes: null, open_at: 1_786_236_000_000,
-    reservation_deadline: 1_786_322_400_000, order_deadline: 1_786_408_800_000,
-    status: 'SUBMITTED', review_reason: null, close_reason: null, version: 1,
-    submitted_at: 1, updated_at: 1, reviewed_at: null, published_at: null,
-    withdrawn_at: null, closed_at: null,
+    id: 'demand-new',
+    store: product.store,
+    product: {
+      id: product.id,
+      version_no: 1,
+      asin: product.asin,
+      product_name: product.current_version.product_name,
+      search_keywords: [],
+      product_url: null,
+    },
+    marketplace_code: 'JP',
+    task_type: 'IMAGE',
+    target_quantity: 8,
+    held_quantity: 0,
+    approved_quantity: 0,
+    remaining_quantity: 8,
+    buyer_visible_notes: null,
+    seller_notes: null,
+    open_at: 1_786_236_000_000,
+    reservation_deadline: 1_786_322_400_000,
+    order_deadline: 1_786_408_800_000,
+    status: 'SUBMITTED',
+    review_reason: null,
+    close_reason: null,
+    version: 1,
+    submitted_at: 1,
+    updated_at: 1,
+    reviewed_at: null,
+    published_at: null,
+    withdrawn_at: null,
+    closed_at: null,
   };
   await page.route('**/api/seller-portal/**', async (route) => {
-    const request = route.request(); const path = new URL(request.url()).pathname;
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
     if (path === '/api/seller-portal/products') {
-      await fulfillJson(route, success({ items: [product], page: { limit: 100, next_cursor: null } })); return;
+      await fulfillJson(
+        route,
+        success({ items: [product], page: { limit: 100, next_cursor: null } }),
+      );
+      return;
     }
     if (path === '/api/seller-portal/file-uploads/product-application-images/intents') {
       state.intentCount += 1;
-      await fulfillJson(route, success({ upload_intent_id: 'application-intent', purpose: 'PRODUCT_APPLICATION_IMAGE',
-        visibility: 'SELLER_VISIBLE', status: 'ISSUED', version: 1, expires_at: 9_999_999_999_999,
-        uploads: [{ file_object_id: 'application-file', slot_no: 1, upload_token: 'u'.repeat(40),
-          upload_token_available: true, expires_at: 9_999_999_999_999 }], replayed: false }), 201); return;
+      await fulfillJson(
+        route,
+        success({
+          upload_intent_id: 'application-intent',
+          purpose: 'PRODUCT_APPLICATION_IMAGE',
+          visibility: 'SELLER_VISIBLE',
+          status: 'ISSUED',
+          version: 1,
+          expires_at: 9_999_999_999_999,
+          uploads: [
+            {
+              file_object_id: 'application-file',
+              slot_no: 1,
+              upload_token: 'u'.repeat(40),
+              upload_token_available: true,
+              expires_at: 9_999_999_999_999,
+            },
+          ],
+          replayed: false,
+        }),
+        201,
+      );
+      return;
     }
     if (path === '/api/seller-portal/file-uploads/application-file/content') {
       state.uploadAttempts += 1;
       if (failFirstUpload && state.uploadAttempts === 1) {
-        await fulfillJson(route, failure('DEPENDENCY_UNAVAILABLE', 'seller-upload-retry'), 503); return;
+        await fulfillJson(route, failure('DEPENDENCY_UNAVAILABLE', 'seller-upload-retry'), 503);
+        return;
       }
-      await fulfillJson(route, success({ file_object_id: 'application-file', upload_intent_id: 'application-intent',
-        status: 'UPLOADED', detected_mime: 'image/png', byte_size: 3, sha256: 'a'.repeat(64),
-        version: 2, replayed: false })); return;
+      await fulfillJson(
+        route,
+        success({
+          file_object_id: 'application-file',
+          upload_intent_id: 'application-intent',
+          status: 'UPLOADED',
+          detected_mime: 'image/png',
+          byte_size: 3,
+          sha256: 'a'.repeat(64),
+          version: 2,
+          replayed: false,
+        }),
+      );
+      return;
     }
     if (path === '/api/seller-portal/file-upload-intents/application-intent/complete') {
-      await fulfillJson(route, success({ upload_intent_id: 'application-intent', status: 'VERIFIED', version: 2,
-        files: [{ file_object_id: 'application-file', purpose: 'PRODUCT_APPLICATION_IMAGE', visibility: 'SELLER_VISIBLE',
-          detected_mime: 'image/png', byte_size: 3, sha256: 'a'.repeat(64), version: 3 }], replayed: false })); return;
+      await fulfillJson(
+        route,
+        success({
+          upload_intent_id: 'application-intent',
+          status: 'VERIFIED',
+          version: 2,
+          files: [
+            {
+              file_object_id: 'application-file',
+              purpose: 'PRODUCT_APPLICATION_IMAGE',
+              visibility: 'SELLER_VISIBLE',
+              detected_mime: 'image/png',
+              byte_size: 3,
+              sha256: 'a'.repeat(64),
+              version: 3,
+            },
+          ],
+          replayed: false,
+        }),
+      );
+      return;
     }
     if (path === '/api/seller-portal/product-applications' && request.method() === 'POST') {
       state.applicationBodies.push(request.postDataJSON());
-      await fulfillJson(route, success({ application, replayed: false }), 201); return;
+      await fulfillJson(route, success({ application, replayed: false }), 201);
+      return;
     }
     if (path === '/api/seller-portal/product-applications' && request.method() === 'GET') {
-      await fulfillJson(route, success({ items: [application], page: { limit: 100, next_cursor: null } })); return;
+      await fulfillJson(
+        route,
+        success({ items: [application], page: { limit: 100, next_cursor: null } }),
+      );
+      return;
     }
     if (path === '/api/seller-portal/product-applications/application-new') {
-      await fulfillJson(route, success({ application })); return;
+      await fulfillJson(route, success({ application }));
+      return;
     }
     if (path === '/api/seller-portal/product-applications/application-new/withdraw') {
       state.applicationWithdrawBodies.push(request.postDataJSON());
-      await fulfillJson(route, success({ application: { ...application, status: 'WITHDRAWN', version: 2, updated_at: 2, withdrawn_at: 2 }, replayed: false })); return;
+      await fulfillJson(
+        route,
+        success({
+          application: {
+            ...application,
+            status: 'WITHDRAWN',
+            version: 2,
+            updated_at: 2,
+            withdrawn_at: 2,
+          },
+          replayed: false,
+        }),
+      );
+      return;
     }
     if (path === '/api/seller-portal/demand-batches' && request.method() === 'POST') {
-      const body = request.postDataJSON() as Record<string, unknown>; state.demandBodies.push(body);
-      await fulfillJson(route, success({ demand_batch: { ...demand, task_type: body['task_type'],
-        target_quantity: body['target_quantity'], remaining_quantity: body['target_quantity'],
-        buyer_visible_notes: body['buyer_visible_notes'], seller_notes: body['seller_notes'],
-        open_at: body['open_at'], reservation_deadline: body['reservation_deadline'],
-        order_deadline: body['order_deadline'] }, replayed: false }), 201); return;
+      const body = request.postDataJSON() as Record<string, unknown>;
+      state.demandBodies.push(body);
+      await fulfillJson(
+        route,
+        success({
+          demand_batch: {
+            ...demand,
+            task_type: body['task_type'],
+            target_quantity: body['target_quantity'],
+            remaining_quantity: body['target_quantity'],
+            buyer_visible_notes: body['buyer_visible_notes'],
+            seller_notes: body['seller_notes'],
+            open_at: body['open_at'],
+            reservation_deadline: body['reservation_deadline'],
+            order_deadline: body['order_deadline'],
+          },
+          replayed: false,
+        }),
+        201,
+      );
+      return;
     }
     if (path === '/api/seller-portal/demand-batches' && request.method() === 'GET') {
-      await fulfillJson(route, success({ items: [demand], page: { limit: 100, next_cursor: null } })); return;
+      await fulfillJson(
+        route,
+        success({ items: [demand], page: { limit: 100, next_cursor: null } }),
+      );
+      return;
     }
     if (path === '/api/seller-portal/demand-batches/demand-new/withdraw') {
       state.demandWithdrawBodies.push(request.postDataJSON());
-      await fulfillJson(route, success({ demand_batch: { ...demand, status: 'WITHDRAWN', version: 2, updated_at: 2, withdrawn_at: 2 }, replayed: false })); return;
+      await fulfillJson(
+        route,
+        success({
+          demand_batch: {
+            ...demand,
+            status: 'WITHDRAWN',
+            version: 2,
+            updated_at: 2,
+            withdrawn_at: 2,
+          },
+          replayed: false,
+        }),
+      );
+      return;
     }
     await route.fallback();
   });
@@ -290,17 +601,19 @@ for (const [path, other] of [
   ['/buyer/login', 'buyer'],
   ['/seller/login', 'seller'],
 ] as const) {
-test(`${path} renders a polished customer login with no cross-identity entry`, async ({ page }) => {
-  await page.goto(path);
-  await expect(page.getByText('月光白')).toBeVisible();
-  await expect(page.getByLabel('账号')).toBeVisible();
-  await expect(page.getByLabel('密码')).toBeVisible();
-  await expect(page.getByRole('button', { name: '登录' })).toBeVisible();
-  await expect(page.locator('body')).not.toContainText(
-    other === 'buyer' ? '卖家登录' : '买家登录',
-  );
-  await expect(page.getByLabel('进入身份')).toHaveCount(0);
-});
+  test(`${path} renders a polished customer login with no cross-identity entry`, async ({
+    page,
+  }) => {
+    await page.goto(path);
+    await expect(page.getByText('月光白')).toBeVisible();
+    await expect(page.getByLabel('账号')).toBeVisible();
+    await expect(page.getByLabel('密码')).toBeVisible();
+    await expect(page.getByRole('button', { name: '登录' })).toBeVisible();
+    await expect(page.locator('body')).not.toContainText(
+      other === 'buyer' ? '卖家登录' : '买家登录',
+    );
+    await expect(page.getByLabel('进入身份')).toHaveCount(0);
+  });
 }
 
 test('legacy customer login path cannot silently select the Buyer identity', async ({ page }) => {
@@ -338,27 +651,28 @@ for (const [identity, path] of [
   ['buyer', '/buyer/change-password'],
   ['seller', '/seller/change-password'],
 ] as const) {
-test(`${identity} password change renders only after a matching session`, async ({ page }) => {
-  await mockApi(page, identity);
-  await page.goto(path);
-  await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible();
-  await expect(page.getByLabel('当前密码')).toBeVisible();
-  await expect(page.getByLabel('新密码', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('确认新密码', { exact: true })).toBeVisible();
-});
+  test(`${identity} password change renders only after a matching session`, async ({ page }) => {
+    await mockApi(page, identity);
+    await page.goto(path);
+    await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible();
+    await expect(page.getByLabel('当前密码')).toBeVisible();
+    await expect(page.getByLabel('新密码', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('确认新密码', { exact: true })).toBeVisible();
+  });
 }
 
 test('password_change_required routes Buyer to the password flow', async ({ page }) => {
-  await page.route('**/api/customer-auth/session', (route) => fulfillJson(
-    route,
-    success({ session: customerSession('buyer', true) }),
-  ));
+  await page.route('**/api/customer-auth/session', (route) =>
+    fulfillJson(route, success({ session: customerSession('buyer', true) })),
+  );
   await page.goto('/buyer');
   await expect(page).toHaveURL(/\/buyer\/change-password$/u);
   await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible();
 });
 
-test('Buyer shell is product-focused with three fixed items and no fake business data', async ({ page }) => {
+test('Buyer shell is product-focused with three fixed items and no fake business data', async ({
+  page,
+}) => {
   await mockApi(page, 'buyer');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/buyer');
@@ -381,14 +695,17 @@ test('Buyer shell keeps navigation clear at 320px and safe content padding', asy
   await expectNoCriticalHorizontalOverflow(page);
 });
 
-test('Seller shell exposes organization/store context and truthful business metrics', async ({ page }) => {
+test('Seller shell exposes organization/store context and truthful business metrics', async ({
+  page,
+}) => {
   await mockApi(page, 'seller');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/seller');
   await expect(page.getByRole('navigation', { name: '卖家导航' })).toBeVisible();
   await expect(page.getByLabel('店铺', { exact: true })).toBeVisible();
   await expect(page.getByText(/本地卖家组织/u)).toBeVisible();
-  for (const label of ['正式订单', '业务完成', '待结算']) await expect(page.getByText(label, { exact: true })).toBeVisible();
+  for (const label of ['正式订单', '业务完成', '待结算'])
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
   await expect(page.getByText('状态来自服务器业务事实；结算确认由员工控制。')).toHaveCount(0);
   await expectNoCriticalHorizontalOverflow(page);
 });
@@ -401,7 +718,8 @@ test('Seller navigation is route-aware, client-side, and session-stable', async 
   const expectCurrent = async (label: string): Promise<void> => {
     await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
     await expect(navigation.getByRole('link', { name: label })).toHaveAttribute(
-      'aria-current', 'page',
+      'aria-current',
+      'page',
     );
   };
   await expectCurrent('首页');
@@ -422,10 +740,13 @@ test('Seller navigation is route-aware, client-side, and session-stable', async 
   }
 });
 
-test('Seller record pages render every frozen status in Chinese without exposing status codes', async ({ page }) => {
+test('Seller record pages render every frozen status in Chinese without exposing status codes', async ({
+  page,
+}) => {
   await mockApi(page, 'seller');
   await mockSellerStatusRecords(page);
-  const rawStatus = /ACTIVE|DISABLED|SUBMITTED|PUBLISHED|REJECTED|WITHDRAWN|CLOSED|PENDING_REVIEW|CHANGES_REQUESTED|APPROVED/u;
+  const rawStatus =
+    /ACTIVE|DISABLED|SUBMITTED|PUBLISHED|REJECTED|WITHDRAWN|CLOSED|PENDING_REVIEW|CHANGES_REQUESTED|APPROVED/u;
 
   await page.goto('/seller/products');
   for (const label of ['启用中', '已停用']) {
@@ -446,31 +767,44 @@ test('Seller record pages render every frozen status in Chinese without exposing
   await expect(page.locator('.seller-record-list')).not.toContainText(rawStatus);
 });
 
-test('Seller product application recovers one upload and reuses the verified manifest', async ({ page }) => {
-  await mockApi(page, 'seller'); const state = await mockSellerSubmissions(page, true);
+test('Seller product application recovers one upload and reuses the verified manifest', async ({
+  page,
+}) => {
+  await mockApi(page, 'seller');
+  const state = await mockSellerSubmissions(page, true);
   await page.goto('/seller/products/new');
   await page.locator('#application-store').selectOption('store-local');
   await page.getByLabel('产品标识').fill('B000000002');
   await page.getByLabel('中文名').fill('新品申请');
   await page.getByLabel('搜索词').fill('关键词一，关键词二');
-  await page.getByLabel('申请图片').setInputFiles({ name: 'product.png', mimeType: 'image/png', buffer: Buffer.from('png') });
+  await page
+    .getByLabel('申请图片')
+    .setInputFiles({ name: 'product.png', mimeType: 'image/png', buffer: Buffer.from('png') });
   await page.getByRole('button', { name: '提交申请' }).click();
   await expect(page.getByRole('button', { name: '继续上传' })).toBeVisible();
   await page.getByRole('button', { name: '继续上传' }).click();
   await expect(page.getByRole('button', { name: '继续上传' })).toHaveCount(0);
   await page.getByRole('button', { name: '提交申请' }).click();
   await expect(page).toHaveURL(/\/seller\/products\/application-new$/u);
-  expect(state.intentCount).toBe(1); expect(state.uploadAttempts).toBe(2);
-  expect(state.applicationBodies).toEqual([{
-    store_id: 'store-local', asin: 'B000000002', product_name: '新品申请',
-    search_keywords: ['关键词一', '关键词二'], product_url: null,
-    buyer_visible_notes: null, seller_notes: null,
-    image_files: [{ file_object_id: 'application-file', expected_file_version: 3 }],
-  }]);
+  expect(state.intentCount).toBe(1);
+  expect(state.uploadAttempts).toBe(2);
+  expect(state.applicationBodies).toEqual([
+    {
+      store_id: 'store-local',
+      asin: 'B000000002',
+      product_name: '新品申请',
+      search_keywords: ['关键词一', '关键词二'],
+      product_url: null,
+      buyer_visible_notes: null,
+      seller_notes: null,
+      image_files: [{ file_object_id: 'application-file', expected_file_version: 3 }],
+    },
+  ]);
 });
 
 test('Seller demand form submits a new batch with Beijing time values', async ({ page }) => {
-  await mockApi(page, 'seller'); const state = await mockSellerSubmissions(page);
+  await mockApi(page, 'seller');
+  const state = await mockSellerSubmissions(page);
   await page.goto('/seller/demands/new');
   await page.getByLabel('已通过产品').selectOption('product-new');
   await page.getByLabel('任务类型').selectOption('IMAGE');
@@ -480,21 +814,28 @@ test('Seller demand form submits a new batch with Beijing time values', async ({
   await page.getByLabel('下单截止（北京时间）').fill('2026-08-11T09:00');
   await page.getByRole('button', { name: '提交需求' }).click();
   await expect(page).toHaveURL(/\/seller\/demands$/u);
-  expect(state.demandBodies).toEqual([{
-    product_id: 'product-new', task_type: 'IMAGE', target_quantity: 8,
-    open_at: Date.parse('2026-08-09T09:00:00+08:00'),
-    reservation_deadline: Date.parse('2026-08-10T09:00:00+08:00'),
-    order_deadline: Date.parse('2026-08-11T09:00:00+08:00'),
-    buyer_visible_notes: null, seller_notes: null,
-  }]);
+  expect(state.demandBodies).toEqual([
+    {
+      product_id: 'product-new',
+      task_type: 'IMAGE',
+      target_quantity: 8,
+      open_at: Date.parse('2026-08-09T09:00:00+08:00'),
+      reservation_deadline: Date.parse('2026-08-10T09:00:00+08:00'),
+      order_deadline: Date.parse('2026-08-11T09:00:00+08:00'),
+      buyer_visible_notes: null,
+      seller_notes: null,
+    },
+  ]);
 });
 
 test('Seller withdrawals require confirmation and submit the server version', async ({ page }) => {
-  await mockApi(page, 'seller'); const state = await mockSellerSubmissions(page);
+  await mockApi(page, 'seller');
+  const state = await mockSellerSubmissions(page);
   await page.goto('/seller/products');
   await page.getByRole('button', { name: '撤回申请' }).click();
   const applicationDialog = page.getByRole('dialog', { name: '撤回产品申请' });
-  await expect(applicationDialog).toBeVisible(); expect(state.applicationWithdrawBodies).toEqual([]);
+  await expect(applicationDialog).toBeVisible();
+  expect(state.applicationWithdrawBodies).toEqual([]);
   await applicationDialog.getByRole('button', { name: '确认撤回' }).click();
   await expect(applicationDialog).toHaveCount(0);
   expect(state.applicationWithdrawBodies).toEqual([{ expected_version: 1 }]);
@@ -502,7 +843,8 @@ test('Seller withdrawals require confirmation and submit the server version', as
   await page.goto('/seller/demands');
   await page.getByRole('button', { name: '撤回需求' }).click();
   const demandDialog = page.getByRole('dialog', { name: '撤回需求' });
-  await expect(demandDialog).toBeVisible(); expect(state.demandWithdrawBodies).toEqual([]);
+  await expect(demandDialog).toBeVisible();
+  expect(state.demandWithdrawBodies).toEqual([]);
   await demandDialog.getByRole('button', { name: '确认撤回' }).click();
   await expect(demandDialog).toHaveCount(0);
   expect(state.demandWithdrawBodies).toEqual([{ expected_version: 1 }]);
@@ -527,15 +869,17 @@ test('Seller small screen uses the business dashboard without page overflow', as
   await expectNoCriticalHorizontalOverflow(page);
 });
 
-test('Staff desktop shell preserves queue-detail-action DOM order and separation', async ({ page }) => {
+test('Staff desktop shell preserves queue-detail-action DOM order and separation', async ({
+  page,
+}) => {
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
   await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
-  const headings = await page.locator(
-    '.staff-panes > section h2, .staff-panes > aside h2',
-  ).allTextContents();
+  const headings = await page
+    .locator('.staff-panes > section h2, .staff-panes > aside h2')
+    .allTextContents();
   expect(headings.slice(0, 4)).toEqual(['工作队列', '当前队列为空', '请选择工作项', '等待选择']);
   await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '等待选择' })).toBeVisible();
@@ -548,9 +892,9 @@ test('Staff narrow shell preserves queue-detail-tools order without overflow', a
   await page.goto('/staff');
   await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
-  const headings = await page.locator(
-    '.staff-panes > section h2, .staff-panes > aside h2',
-  ).allTextContents();
+  const headings = await page
+    .locator('.staff-panes > section h2, .staff-panes > aside h2')
+    .allTextContents();
   expect(headings.slice(0, 4)).toEqual(['工作队列', '当前队列为空', '请选择工作项', '等待选择']);
   await page.getByLabel('状态').focus();
   await expect(page.getByLabel('状态')).toBeFocused();
@@ -577,11 +921,9 @@ test('Staff logout-all requires a busy-safe Dialog and completes explicitly', as
 });
 
 test('401 route guard redirects without rendering Buyer shell content', async ({ page }) => {
-  await page.route('**/api/customer-auth/session', (route) => fulfillJson(
-    route,
-    failure('UNAUTHENTICATED', 'browser-401'),
-    401,
-  ));
+  await page.route('**/api/customer-auth/session', (route) =>
+    fulfillJson(route, failure('UNAUTHENTICATED', 'browser-401'), 401),
+  );
   await page.goto('/buyer/orders');
   await expect(page.getByText('月光白')).toBeVisible();
   await expect(page.getByRole('navigation', { name: '买家导航' })).toHaveCount(0);
@@ -595,10 +937,13 @@ test('mismatch fails closed, logs out, and returns to the correct login', async 
       await fulfillJson(route, success({ session: customerSession('seller') }));
     } else if (path === '/api/customer-auth/logout') {
       logoutRequests += 1;
-      await fulfillJson(route, success({
-        logged_out: true,
-        all_devices_logged_out: false,
-      }));
+      await fulfillJson(
+        route,
+        success({
+          logged_out: true,
+          all_devices_logged_out: false,
+        }),
+      );
     } else {
       await fulfillJson(route, failure('NOT_FOUND', 'browser-mismatch'), 404);
     }
@@ -614,7 +959,9 @@ test('403 state is durable, explicit, and retains a safe request ID', async ({ p
   await expect(page.getByText(/local-permission-request/u)).toBeVisible();
 });
 
-test('identity chunk failure is Chinese, hides protected content, and retries only after an explicit reload', async ({ page }) => {
+test('identity chunk failure is Chinese, hides protected content, and retries only after an explicit reload', async ({
+  page,
+}) => {
   let chunkRequests = 0;
   await mockApi(page, 'buyer');
   await page.route('**/assets/BuyerRouteModule-*.js', async (route) => {
@@ -638,9 +985,27 @@ test('identity chunk failure is Chinese, hides protected content, and retries on
 });
 
 for (const [identity, path, heading, ownChunk, foreignChunks] of [
-  ['buyer', '/buyer', '当前开放产品', 'BuyerRouteModule-', ['SellerRouteModule-', 'StaffRouteModule-']],
-  ['seller', '/seller', '业务进度', 'SellerRouteModule-', ['BuyerRouteModule-', 'StaffRouteModule-']],
-  ['staff', '/staff', '员工工作台', 'StaffRouteModule-', ['BuyerRouteModule-', 'SellerRouteModule-']],
+  [
+    'buyer',
+    '/buyer',
+    '当前开放产品',
+    'BuyerRouteModule-',
+    ['SellerRouteModule-', 'StaffRouteModule-'],
+  ],
+  [
+    'seller',
+    '/seller',
+    '业务进度',
+    'SellerRouteModule-',
+    ['BuyerRouteModule-', 'StaffRouteModule-'],
+  ],
+  [
+    'staff',
+    '/staff',
+    '员工工作台',
+    'StaffRouteModule-',
+    ['BuyerRouteModule-', 'SellerRouteModule-'],
+  ],
 ] as const) {
   test(`${identity} only downloads its own protected route chunk`, async ({ page }) => {
     const assets: string[] = [];
@@ -652,11 +1017,14 @@ for (const [identity, path, heading, ownChunk, foreignChunks] of [
     await page.goto(path);
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
     expect(assets.some((asset) => asset.includes(ownChunk))).toBe(true);
-    for (const foreignChunk of foreignChunks) expect(assets.some((asset) => asset.includes(foreignChunk))).toBe(false);
+    for (const foreignChunk of foreignChunks)
+      expect(assets.some((asset) => asset.includes(foreignChunk))).toBe(false);
   });
 }
 
-test('buyer product defers order materials and after-sales chunks until their routes open', async ({ page }) => {
+test('buyer product defers order materials and after-sales chunks until their routes open', async ({
+  page,
+}) => {
   const assets: string[] = [];
   page.on('request', (request) => {
     const asset = request.url().split('/').at(-1) ?? '';
@@ -679,11 +1047,14 @@ test('buyer product defers order materials and after-sales chunks until their ro
   expect(assets.some((asset) => asset.includes('BuyerOrderRouteModule-'))).toBe(true);
 
   await page.goto('/buyer/reservations/reservation-local/instruction');
-  await expect.poll(() => assets.some((asset) => asset.includes('BuyerInstructionRouteModule-')))
+  await expect
+    .poll(() => assets.some((asset) => asset.includes('BuyerInstructionRouteModule-')))
     .toBe(true);
 });
 
-test('seller dashboard defers submission and file-upload chunks until a submission route opens', async ({ page }) => {
+test('seller dashboard defers submission and file-upload chunks until a submission route opens', async ({
+  page,
+}) => {
   const assets: string[] = [];
   page.on('request', (request) => {
     const asset = request.url().split('/').at(-1) ?? '';
@@ -701,7 +1072,9 @@ test('seller dashboard defers submission and file-upload chunks until a submissi
   expect(assets.some((asset) => asset.includes('useFileUpload-'))).toBe(true);
 });
 
-test('staff workbench defers dashboard and scheduling chunks until their routes open', async ({ page }) => {
+test('staff workbench defers dashboard and scheduling chunks until their routes open', async ({
+  page,
+}) => {
   const assets: string[] = [];
   page.on('request', (request) => {
     const asset = request.url().split('/').at(-1) ?? '';
@@ -730,11 +1103,9 @@ test('404 state does not disclose protected resource detail', async ({ page }) =
 });
 
 test('503 session state is persistent and carries request_id', async ({ page }) => {
-  await page.route('**/api/customer-auth/session', (route) => fulfillJson(
-    route,
-    failure('DEPENDENCY_UNAVAILABLE', 'browser-503'),
-    503,
-  ));
+  await page.route('**/api/customer-auth/session', (route) =>
+    fulfillJson(route, failure('DEPENDENCY_UNAVAILABLE', 'browser-503'), 503),
+  );
   await page.goto('/buyer');
   await expect(page.getByRole('heading', { name: '服务暂时不可用' })).toBeVisible();
   await expect(page.getByText(/browser-503/u)).toBeVisible();
@@ -743,9 +1114,9 @@ test('503 session state is persistent and carries request_id', async ({ page }) 
 test('reduced-motion removes meaningful animation duration', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/dependency-error');
-  const duration = await page.locator('.state').evaluate((element) =>
-    getComputedStyle(element).transitionDuration,
-  );
+  const duration = await page
+    .locator('.state')
+    .evaluate((element) => getComputedStyle(element).transitionDuration);
   expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.00001);
 });
 
@@ -768,10 +1139,10 @@ for (const [width, height] of [
   [1440, 900],
   [1600, 1000],
 ] as const) {
-test(`${width}x${height} viewport retains the root notice without clipping`, async ({ page }) => {
-  await page.setViewportSize({ width, height });
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: '月光白' })).toBeVisible();
-  await expectNoCriticalHorizontalOverflow(page);
-});
+  test(`${width}x${height} viewport retains the root notice without clipping`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: '月光白' })).toBeVisible();
+    await expectNoCriticalHorizontalOverflow(page);
+  });
 }

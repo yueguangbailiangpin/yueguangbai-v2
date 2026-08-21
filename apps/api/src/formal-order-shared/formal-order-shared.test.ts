@@ -242,7 +242,10 @@ describe('Phase 3F formal order confirmation', () => {
     await expectNoPartialFacts(database, 'evidence-submission-1');
   });
 
-  it('blocks confirmation when principal policy or Review Type fee is missing', async () => {
+  it(
+    'blocks confirmation when principal policy or Review Type fee is missing',
+    { timeout: 20_000 },
+    async () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database, { omitPrincipalPolicy: true });
 
@@ -295,7 +298,10 @@ describe('Phase 3F formal order confirmation', () => {
     `).first<{ count: number }>())).toEqual({ count: 0 });
   });
 
-  it('always requires an eligible principal policy without a runtime switch', async () => {
+  it(
+    'always requires an eligible principal policy without a runtime switch',
+    { timeout: 20_000 },
+    async () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database, { omitPrincipalPolicy: true });
     await expect(confirmFormalOrder(

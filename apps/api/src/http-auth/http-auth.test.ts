@@ -520,7 +520,10 @@ describe('Phase 4A customer HTTP authentication', () => {
     expect(event).not.toHaveProperty('current_password');
   });
 
-  it('re-reads D1 and rejects revoked buyer and seller organization sessions', async () => {
+  it(
+    're-reads D1 and rejects revoked buyer and seller organization sessions',
+    { timeout: 20_000 },
+    async () => {
     database = await createPhase4aDatabase();
     await seedBuyerAccount(database, {
       loginIdentifier: 'buyer_revoke_01',

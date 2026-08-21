@@ -1,7 +1,4 @@
-import type {
-  ObjectStorageAdapter,
-  SqlDatabase,
-} from '@ygb/contracts';
+import type { ObjectStorageAdapter, SqlDatabase } from '@ygb/contracts';
 import { canonicalJson, sha256Hex } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
 import {
@@ -10,10 +7,7 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
+import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import {
   normalizeOrderInstructionError,
   OrderInstructionError,
@@ -47,7 +41,12 @@ export interface ReconcileInstructionAssetOrphansResult {
 export async function reconcileInstructionAssetOrphans(
   database: SqlDatabase,
   objectStorage: ObjectStorageAdapter | null,
-  input: { limit?: number; cursor?: { next_delete_at: number; updated_at: number; item_id: string } | null; dryRun?: boolean; deadlineReached?: () => boolean },
+  input: {
+    limit?: number;
+    cursor?: { next_delete_at: number; updated_at: number; item_id: string } | null;
+    dryRun?: boolean;
+    deadlineReached?: () => boolean;
+  },
   command: {
     actor: OrderInstructionStaffActor;
     idempotencyKey: string;
@@ -64,7 +63,9 @@ export async function reconcileInstructionAssetOrphans(
     throw new OrderInstructionError('VALIDATION_ERROR', 400);
   }
   const now = validateTimestamp(command.now ?? Date.now());
-  const rows = await database.prepare(`
+  const rows = await database
+    .prepare(
+      `
     SELECT item.id AS item_id, object.id AS file_object_id,
            object.object_key, object.delete_attempt_count, object.next_delete_at, item.updated_at
     FROM order_instruction_asset_items item
@@ -82,25 +83,51 @@ export async function reconcileInstructionAssetOrphans(
       AND (? IS NULL OR object.next_delete_at>? OR (object.next_delete_at=? AND (item.updated_at>? OR (item.updated_at=? AND item.id>?))))
     ORDER BY object.next_delete_at, item.updated_at, item.id
     LIMIT ?
-  `).bind(now,input.cursor?.next_delete_at ?? null,input.cursor?.next_delete_at ?? 0,input.cursor?.next_delete_at ?? 0,input.cursor?.updated_at ?? 0,input.cursor?.updated_at ?? 0,input.cursor?.item_id ?? '', limit + 1).all<OrphanAssetRow & {next_delete_at:number;updated_at:number}>();
+  `,
+    )
+    .bind(
+      now,
+      input.cursor?.next_delete_at ?? null,
+      input.cursor?.next_delete_at ?? 0,
+      input.cursor?.next_delete_at ?? 0,
+      input.cursor?.updated_at ?? 0,
+      input.cursor?.updated_at ?? 0,
+      input.cursor?.item_id ?? '',
+      limit + 1,
+    )
+    .all<OrphanAssetRow & { next_delete_at: number; updated_at: number }>();
   const visible = rows.results.slice(0, limit);
-  const initialBacklog = await countEligibleOrphans(database,now);
-  if (input.dryRun) return { scanned: visible.length, deleted: 0, deferred: 0, has_more: rows.results.length > limit, replayed: false, backlog_count:initialBacklog, next_cursor:null, dry_run:true };
-  const requestHash = await sha256Hex(canonicalJson({
-    action: 'RECONCILE_ORDER_INSTRUCTION_ASSET_ORPHANS',
-    limit,
-  }));
-  const acquired = await acquireIdempotency<
-    ReconcileInstructionAssetOrphansResult
-  >(database, {
-    actorType: 'STAFF',
-    actorId: command.actor.staffId,
-    action: 'RECONCILE_ORDER_INSTRUCTION_ASSET_ORPHANS',
-    targetType: 'ORDER_INSTRUCTION_ASSET_BATCH',
-    targetId: 'orphan-cleanup',
-    idempotencyKey: command.idempotencyKey,
-    requestHash,
-  }, { now });
+  const initialBacklog = await countEligibleOrphans(database, now);
+  if (input.dryRun)
+    return {
+      scanned: visible.length,
+      deleted: 0,
+      deferred: 0,
+      has_more: rows.results.length > limit,
+      replayed: false,
+      backlog_count: initialBacklog,
+      next_cursor: null,
+      dry_run: true,
+    };
+  const requestHash = await sha256Hex(
+    canonicalJson({
+      action: 'RECONCILE_ORDER_INSTRUCTION_ASSET_ORPHANS',
+      limit,
+    }),
+  );
+  const acquired = await acquireIdempotency<ReconcileInstructionAssetOrphansResult>(
+    database,
+    {
+      actorType: 'STAFF',
+      actorId: command.actor.staffId,
+      action: 'RECONCILE_ORDER_INSTRUCTION_ASSET_ORPHANS',
+      targetType: 'ORDER_INSTRUCTION_ASSET_BATCH',
+      targetId: 'orphan-cleanup',
+      idempotencyKey: command.idempotencyKey,
+      requestHash,
+    },
+    { now },
+  );
   if (acquired.kind === 'REPLAY') {
     return { ...acquired.response, replayed: true };
   }
@@ -116,11 +143,13 @@ export async function reconcileInstructionAssetOrphans(
         stoppedForBudget = true;
         break;
       }
-      lastAttempted=row;
+      lastAttempted = row;
       try {
         await objectStorage.deleteObject(row.object_key);
         await database.batch([
-          database.prepare(`
+          database
+            .prepare(
+              `
             UPDATE file_objects
             SET status='DELETED', delete_attempt_count=delete_attempt_count+1,
                 next_delete_at=NULL, failure_code='ORPHAN_CLEANED',
@@ -132,38 +161,57 @@ export async function reconcileInstructionAssetOrphans(
                 WHERE link.file_object_id=file_objects.id
                   AND link.revoked_at IS NULL
               )
-          `).bind(now, now, row.file_object_id),
-          database.prepare(`
+          `,
+            )
+            .bind(now, now, row.file_object_id),
+          database
+            .prepare(
+              `
             UPDATE order_instruction_asset_items
             SET status='FAILED', error_code='ORPHAN_CLEANED',
                 updated_at=MAX(?, updated_at+1)
             WHERE id=? AND file_object_id=? AND status='ORPHANED'
-          `).bind(now, row.item_id, row.file_object_id),
+          `,
+            )
+            .bind(now, row.item_id, row.file_object_id),
         ]);
         deleted += 1;
       } catch {
         const attempts = Number(row.delete_attempt_count) + 1;
         const delay = Math.min(60 * 60 * 1000, 30_000 * 2 ** Math.min(attempts, 7));
-        await database.prepare(`
+        await database
+          .prepare(
+            `
           UPDATE file_objects
           SET delete_attempt_count=delete_attempt_count+1,
               next_delete_at=?, failure_code='ORPHAN_DELETE_RETRY',
               version=version+1, updated_at=MAX(?, updated_at+1)
           WHERE id=? AND status='DELETION_PENDING'
-        `).bind(now + delay, now, row.file_object_id).run();
+        `,
+          )
+          .bind(now + delay, now, row.file_object_id)
+          .run();
         deferred += 1;
       }
     }
 
-    const hasMore=stoppedForBudget || rows.results.length > limit;
+    const hasMore = stoppedForBudget || rows.results.length > limit;
     const response: ReconcileInstructionAssetOrphansResult = {
       scanned: deleted + deferred,
       deleted,
       deferred,
       has_more: hasMore,
       replayed: false,
-      backlog_count: await countEligibleOrphans(database,now),
-      next_cursor: hasMore ? lastAttempted ? { next_delete_at: Number(lastAttempted.next_delete_at), updated_at: Number(lastAttempted.updated_at), item_id: lastAttempted.item_id } : input.cursor ?? null : null,
+      backlog_count: await countEligibleOrphans(database, now),
+      next_cursor: hasMore
+        ? lastAttempted
+          ? {
+              next_delete_at: Number(lastAttempted.next_delete_at),
+              updated_at: Number(lastAttempted.updated_at),
+              item_id: lastAttempted.item_id,
+            }
+          : (input.cursor ?? null)
+        : null,
       dry_run: false,
     };
     const outbox = await prepareOutboxEvent({
@@ -205,17 +253,17 @@ export async function reconcileInstructionAssetOrphans(
     return response;
   } catch (error) {
     const normalized = normalizeOrderInstructionError(error);
-    await markIdempotencyFailed(
-      database,
-      acquired.claim,
-      normalized.code,
-      now,
-    ).catch(() => false);
+    await markIdempotencyFailed(database, acquired.claim, normalized.code, now).catch(() => false);
     throw normalized;
   }
 }
 
-async function countEligibleOrphans(database:SqlDatabase,now:number):Promise<number> {
-  const row=await database.prepare(`SELECT COUNT(*) AS count FROM order_instruction_asset_items item JOIN order_instruction_asset_batches batch ON batch.id=item.asset_batch_id JOIN file_objects object ON object.id=item.file_object_id WHERE item.status='ORPHANED' AND batch.status IN ('FAILED','CANCELLED') AND object.status='DELETION_PENDING' AND object.next_delete_at<=? AND NOT EXISTS (SELECT 1 FROM file_entity_links link WHERE link.file_object_id=object.id AND link.revoked_at IS NULL)`).bind(now).first<{count:number}>();
-  return Number(row?.count??0);
+async function countEligibleOrphans(database: SqlDatabase, now: number): Promise<number> {
+  const row = await database
+    .prepare(
+      `SELECT COUNT(*) AS count FROM order_instruction_asset_items item JOIN order_instruction_asset_batches batch ON batch.id=item.asset_batch_id JOIN file_objects object ON object.id=item.file_object_id WHERE item.status='ORPHANED' AND batch.status IN ('FAILED','CANCELLED') AND object.status='DELETION_PENDING' AND object.next_delete_at<=? AND NOT EXISTS (SELECT 1 FROM file_entity_links link WHERE link.file_object_id=object.id AND link.revoked_at IS NULL)`,
+    )
+    .bind(now)
+    .first<{ count: number }>();
+  return Number(row?.count ?? 0);
 }

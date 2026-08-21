@@ -24,7 +24,8 @@ export function BuyerReviewFormPage(): React.JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
   const eligible = useQuery({
     queryKey: buyerQueryKeys.reviewEligiblePage({ limit: 100, cursor: null }),
-    queryFn: ({ signal }) => buyerApi.reviewEligible(client, 'limit=100', signal).then((r) => r.data),
+    queryFn: ({ signal }) =>
+      buyerApi.reviewEligible(client, 'limit=100', signal).then((r) => r.data),
     enabled: formalOrderId.length > 0,
   });
   const current = eligible.data?.items.find((item) => item.order.formal_order_id === formalOrderId);
@@ -45,13 +46,19 @@ export function BuyerReviewFormPage(): React.JSX.Element {
     event.preventDefault();
     const form = event.currentTarget;
     setMessage(null);
-    if (!current?.allowed_actions.includes('SUBMIT') || files.current.length < 1 || files.current.length > 3) {
-      setMessage('请选择 1–3 个文件。'); return;
+    if (
+      !current?.allowed_actions.includes('SUBMIT') ||
+      files.current.length < 1 ||
+      files.current.length > 3
+    ) {
+      setMessage('请选择 1–3 个文件。');
+      return;
     }
     await uploader.start('buyerReviewEvidence', files.current);
     const manifest = uploader.getSnapshot().manifest;
     if (!manifest || manifest.files.length < 1 || manifest.files.length > 3) {
-      setMessage('文件上传未完成，请重新选择。'); return;
+      setMessage('文件上传未完成，请重新选择。');
+      return;
     }
     const values = new FormData(form);
     const reviewUrl = String(values.get('review_url') ?? '').trim();
@@ -70,24 +77,73 @@ export function BuyerReviewFormPage(): React.JSX.Element {
   if (!formalOrderId) return <BuyerQueryError error={null} title="无法打开评论提交页面" />;
   if (eligible.isPending) return <BuyerLoading label="正在确认评论资格" />;
   if (eligible.isError) return <BuyerQueryError error={eligible.error} />;
-  if (!current?.allowed_actions.includes('SUBMIT')) return <BuyerQueryError error={null} title="无法打开评论提交页面" />;
-  return <section className="buyer-page buyer-flow-page buyer-form-page">
-    <BuyerJourney current="reviews" />
-    <PageHeader eyebrow="评论阶段" title="提交评论资料" description={current.order.product_name} />
-    <Card className="buyer-action-panel"><div className="buyer-form-intro"><strong>准备评论资料</strong>
-      <p>请提交 1–3 个已验证文件；评论链接可稍后补充。</p></div>
-      <dl className="buyer-facts"><div><dt>评论类型</dt><dd>{reviewTypeLabel(current.order.review_type)}</dd></div><div><dt>Amazon 订单号</dt><dd>{current.order.amazon_order_number}</dd></div></dl>
-      <form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
-        <FormField label="评论链接（可选）" htmlFor="review-url"><TextInput name="review_url" type="url" /></FormField>
-        <FormField label="评论证据" htmlFor="review-files" description="请选择 1–3 个图片或 PDF 文件" required>
-          <BuyerFilePicker name="review_files" multiple accept="image/jpeg,image/png,image/webp,application/pdf" required
-            buttonLabel="选择评论证据" emptyLabel="尚未选择文件"
-            onChange={(event) => { files.current = Array.from(event.currentTarget.files ?? []).slice(0, 4); }} />
-        </FormField>
-        <FormField label="备注（可选）" htmlFor="review-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>
-        {message ? <Alert tone="danger">{message}</Alert> : null}
-        <BuyerMutationRecovery mutation={mutation} onRefresh={() => { void eligible.refetch(); }} />
-        <Button type="submit" loading={mutation.isPending || !upload.canStartNewOperation}>提交评论资料</Button>
-      </form></Card>
-  </section>;
+  if (!current?.allowed_actions.includes('SUBMIT'))
+    return <BuyerQueryError error={null} title="无法打开评论提交页面" />;
+  return (
+    <section className="buyer-page buyer-flow-page buyer-form-page">
+      <BuyerJourney current="reviews" />
+      <PageHeader
+        eyebrow="评论阶段"
+        title="提交评论资料"
+        description={current.order.product_name}
+      />
+      <Card className="buyer-action-panel">
+        <div className="buyer-form-intro">
+          <strong>准备评论资料</strong>
+          <p>请提交 1–3 个已验证文件；评论链接可稍后补充。</p>
+        </div>
+        <dl className="buyer-facts">
+          <div>
+            <dt>评论类型</dt>
+            <dd>{reviewTypeLabel(current.order.review_type)}</dd>
+          </div>
+          <div>
+            <dt>Amazon 订单号</dt>
+            <dd>{current.order.amazon_order_number}</dd>
+          </div>
+        </dl>
+        <form
+          className="buyer-form"
+          onSubmit={(event) => {
+            void submit(event);
+          }}
+        >
+          <FormField label="评论链接（可选）" htmlFor="review-url">
+            <TextInput name="review_url" type="url" />
+          </FormField>
+          <FormField
+            label="评论证据"
+            htmlFor="review-files"
+            description="请选择 1–3 个图片或 PDF 文件"
+            required
+          >
+            <BuyerFilePicker
+              name="review_files"
+              multiple
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              required
+              buttonLabel="选择评论证据"
+              emptyLabel="尚未选择文件"
+              onChange={(event) => {
+                files.current = Array.from(event.currentTarget.files ?? []).slice(0, 4);
+              }}
+            />
+          </FormField>
+          <FormField label="备注（可选）" htmlFor="review-note">
+            <TextInput name="buyer_note" maxLength={1000} />
+          </FormField>
+          {message ? <Alert tone="danger">{message}</Alert> : null}
+          <BuyerMutationRecovery
+            mutation={mutation}
+            onRefresh={() => {
+              void eligible.refetch();
+            }}
+          />
+          <Button type="submit" loading={mutation.isPending || !upload.canStartNewOperation}>
+            提交评论资料
+          </Button>
+        </form>
+      </Card>
+    </section>
+  );
 }

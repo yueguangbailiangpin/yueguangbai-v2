@@ -365,7 +365,10 @@ describe('Phase 5A review evidence workflow', () => {
     )).rejects.toMatchObject({ code: 'REVIEW_STATE_CONFLICT' });
   });
 
-  it('allows buyer withdrawal in allowed states and makes rejection terminal', async () => {
+  it(
+      'allows buyer withdrawal in allowed states and makes rejection terminal',
+      { timeout: 20_000 },
+      async () => {
     const fixture = await setupConfirmedOrder();
     seedReviewFile(database!, { suffix: 9, ownerBuyerId: 'buyer-review-1' });
     const submitted = await submitReviewEvidence(

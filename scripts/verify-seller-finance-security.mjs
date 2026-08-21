@@ -57,7 +57,7 @@ for (const token of [
   "authorization.roles.has('owner')",
   'resolveStaffMarketplaceCodes',
   'resolveResourceMarketplace',
-  "resource.entityType==='SELLER_SETTLEMENT'",
+  "resource.entityType === 'SELLER_SETTLEMENT'",
   'seller_payments payment',
   'payment.seller_organization_id',
   "grant.subject_type='STAFF_INTERNAL'",

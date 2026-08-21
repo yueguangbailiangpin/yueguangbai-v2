@@ -10,7 +10,11 @@ afterEach(cleanup);
 
 describe('foundation accessibility components', () => {
   it('shows exactly the two approved visible strings at root', () => {
-    render(<BrowserRouter><RootEntry /></BrowserRouter>);
+    render(
+      <BrowserRouter>
+        <RootEntry />
+      </BrowserRouter>,
+    );
     const heading = screen.getByRole('heading', { name: '月光白' });
     expect(heading).toBeVisible();
     expect(heading.closest('section')).toHaveTextContent(
@@ -23,5 +27,14 @@ describe('foundation accessibility components', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('names and closes a drawer with Escape', () => { const close = vi.fn(); render(<Drawer open title="详情结构" onClose={close}>内容</Drawer>); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); expect(close).toHaveBeenCalledOnce(); });
+  it('names and closes a drawer with Escape', () => {
+    const close = vi.fn();
+    render(
+      <Drawer open title="详情结构" onClose={close}>
+        内容
+      </Drawer>,
+    );
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(close).toHaveBeenCalledOnce();
+  });
 });

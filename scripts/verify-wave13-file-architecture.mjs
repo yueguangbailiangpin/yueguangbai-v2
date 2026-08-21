@@ -45,7 +45,7 @@ for (const path of [
 assertNotContains(routes, '{buyer-portal|seller-portal|staff}', 'routes');
 assertNotContains(routes, '/links', 'generic Link route');
 assertNotContains(routes, '/grants', 'generic Grant route');
-assertContains(authorization, 'assertCanLink():never', 'route authorization');
+assertContains(authorization, 'assertCanLink(): never', 'route authorization');
 assertContains(errors, "'FILE_COMPENSATION_REQUIRED'", 'error catalog');
 assertContains(routes, "keys.length !== 1 || keys[0] !== 'file'", 'multipart parser');
 assert(!/context\.json\([\s\S]{0,300}object_key/u.test(routes),

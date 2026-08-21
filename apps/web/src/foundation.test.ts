@@ -17,9 +17,45 @@ describe('Wave 14A foundation policy', () => {
     expect(approvedApiPath('/api/buyer-portal/demands?bad-key=1')).toBe(false);
     expect(approvedApiPath('/api/buyer-portal/../staff/private')).toBe(false);
   });
-  it('validates a success envelope and rejects missing request metadata', () => { const schema = successEnvelope(z.object({ name: z.string() })); expect(schema.safeParse({ data: { name: 'ok' }, meta: { request_id: 'r-1' } }).success).toBe(true); expect(schema.safeParse({ data: { name: 'ok' }, meta: {} }).success).toBe(false); });
-  it('bounds Retry-After and semantic retry policy', () => { expect(retryAfterMilliseconds('3')).toBe(3000); expect(retryAfterMilliseconds('61')).toBeNull(); expect(shouldRetryQuery(0, new FrontendApiError('FORBIDDEN', 403, 'r', 'PERMISSION'))).toBe(false); expect(shouldRetryQuery(0, new FrontendApiError('DEPENDENCY_UNAVAILABLE', 503, 'r', 'DEPENDENCY'))).toBe(false); });
-  it('keeps query keys identity-rooted', () => { expect(queryKeys.buyer.session[0]).toBe('buyer'); expect(queryKeys.seller.session[0]).toBe('seller'); expect(queryKeys.staff.session[0]).toBe('staff'); });
-  it('creates new idempotency keys for new logical operations', () => { expect(startOperation({ value: 1 }).key).not.toBe(startOperation({ value: 1 }).key); });
-  it('keeps request id when a successful envelope has malformed business data', async () => { const original = globalThis.fetch; globalThis.fetch = async () => new Response(JSON.stringify({ data: { wrong: true }, meta: { request_id: 'request-contract' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }); await expect(apiRequest({ path: '/api/customer-auth/session', method: 'GET', schema: z.object({ session: z.string() }) })).rejects.toMatchObject({ code: 'MALFORMED_RESPONSE', requestId: 'request-contract' }); globalThis.fetch = original; });
+  it('validates a success envelope and rejects missing request metadata', () => {
+    const schema = successEnvelope(z.object({ name: z.string() }));
+    expect(schema.safeParse({ data: { name: 'ok' }, meta: { request_id: 'r-1' } }).success).toBe(
+      true,
+    );
+    expect(schema.safeParse({ data: { name: 'ok' }, meta: {} }).success).toBe(false);
+  });
+  it('bounds Retry-After and semantic retry policy', () => {
+    expect(retryAfterMilliseconds('3')).toBe(3000);
+    expect(retryAfterMilliseconds('61')).toBeNull();
+    expect(shouldRetryQuery(0, new FrontendApiError('FORBIDDEN', 403, 'r', 'PERMISSION'))).toBe(
+      false,
+    );
+    expect(
+      shouldRetryQuery(0, new FrontendApiError('DEPENDENCY_UNAVAILABLE', 503, 'r', 'DEPENDENCY')),
+    ).toBe(false);
+  });
+  it('keeps query keys identity-rooted', () => {
+    expect(queryKeys.buyer.session[0]).toBe('buyer');
+    expect(queryKeys.seller.session[0]).toBe('seller');
+    expect(queryKeys.staff.session[0]).toBe('staff');
+  });
+  it('creates new idempotency keys for new logical operations', () => {
+    expect(startOperation({ value: 1 }).key).not.toBe(startOperation({ value: 1 }).key);
+  });
+  it('keeps request id when a successful envelope has malformed business data', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({ data: { wrong: true }, meta: { request_id: 'request-contract' } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    await expect(
+      apiRequest({
+        path: '/api/customer-auth/session',
+        method: 'GET',
+        schema: z.object({ session: z.string() }),
+      }),
+    ).rejects.toMatchObject({ code: 'MALFORMED_RESPONSE', requestId: 'request-contract' });
+    globalThis.fetch = original;
+  });
 });

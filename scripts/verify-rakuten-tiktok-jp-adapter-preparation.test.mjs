@@ -67,8 +67,8 @@ describe('Rakuten/TikTok adapter static verifier', () => {
     const appPath = 'apps/api/src/app.ts';
     const app = read(appPath);
     const mutated = app.replace(
-      "  app.notFound((context) => context.json(apiFailure('NOT_FOUND','请求的资源不存在',context.get('requestId')),404));",
-      "  app.get('/api/tiktok-shop/orders', (context) => context.json({ ok: true }));\n  app.notFound((context) => context.json(apiFailure('NOT_FOUND','请求的资源不存在',context.get('requestId')),404));",
+      `  app.notFound((context) =>\n    context.json(apiFailure('NOT_FOUND', '请求的资源不存在', context.get('requestId')), 404),\n  );`,
+      `  app.get('/api/tiktok-shop/orders', (context) => context.json({ ok: true }));\n  app.notFound((context) =>\n    context.json(apiFailure('NOT_FOUND', '请求的资源不存在', context.get('requestId')), 404),\n  );`,
     );
     expect(mutated).not.toBe(app);
     expect(verifyRakutenTikTokAdapterPreparation({
