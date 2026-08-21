@@ -1,8 +1,10 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { isFrontendApiError } from '../../api/errors';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
+import { useFileUpload } from '../../buyer/shared/useFileUpload';
+import { FileDropZone } from '../../ui/FileDropZone';
 import {
   Alert, Button, Card, DataTable, EmptyState, FormField,
   RequestIdDisplay, Select, StatusBadge, TextInput,
@@ -18,6 +20,7 @@ import {
   StaffMutationAuthority,
   type StaffMutationRequest,
 } from '../mutations/StaffMutationAuthority';
+import { StaffProtectedFileButton } from '../shared/StaffProtectedFileButton';
 import { formatShanghai } from '../shared/format';
 
 export function ProductSchedulingWorkspace(): React.JSX.Element {
@@ -118,6 +121,7 @@ function ProductDetail({ productId }: { productId: string }): React.JSX.Element 
         <CadenceExamples /></Card>
     </section>
     {canEdit ? <ProductVersionForm product={product} /> : null}
+    {product.versions.length > 0 ? <MainImageCard product={product} canEdit={canEdit} /> : null}
     <section aria-labelledby="product-demands-title"><h2 id="product-demands-title">需求与预约</h2>
       {product.demands.length === 0 ? <EmptyState title="暂无需求" description="该产品还没有需求记录。" />
         : <Card><DataTable caption="产品需求排期"><thead><tr><th scope="col">需求</th>
@@ -138,8 +142,106 @@ function ProductDetail({ productId }: { productId: string }): React.JSX.Element 
       <ol className="version-history">{product.versions.map((version) => <li key={version.product_version_id}>
         <strong>版本 {version.version_no} · {version.product_name}</strong>
         <span>{cadenceLabel(version.cadence)} · {formatShanghai(version.created_at)}</span>
+        <span>{version.main_image
+          ? `已绑定主图（${version.main_image.client_file_name}）`
+          : '未绑定主图'}</span>
       </li>)}</ol></section>
   </main>;
+}
+
+function MainImageCard({ product, canEdit }: {
+  product: StaffProductDetail;
+  canEdit: boolean;
+}): React.JSX.Element | null {
+  const client = useQueryClient();
+  const [uploader, upload] = useFileUpload();
+  const current = product.versions[0]!;
+  const authority = useMemo(
+    () => new StaffMutationAuthority<Awaited<ReturnType<typeof staffApi.linkMainImage>>>(),
+    [],
+  );
+  const mutation = useMutation({
+    mutationFn: (request: StaffMutationRequest | null) =>
+      request === null
+        ? authority.retry()
+        : authority.execute(request, ({ body }, key) =>
+            staffApi.linkMainImage(client, current.product_version_id, body, key)),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: staffWorkbenchKeys.productsRoot });
+    },
+  });
+  const bound = current.main_image;
+  const uploaded = upload.manifest?.files[0] ?? null;
+  function bind(): void {
+    if (!uploaded) return;
+    mutation.mutate({
+      action: 'link-product-version-main-image',
+      path: `/api/staff/catalog/product-versions/${encodeURIComponent(current.product_version_id)}/main-image`,
+      body: {
+        file_object_id: uploaded.file_object_id,
+        expected_file_version: uploaded.file_version,
+      },
+    });
+  }
+  return <Card className="product-main-image">
+    <h2>当前版本主图（版本 {current.version_no}）</h2>
+    {bound ? <>
+      <dl><dt>文件</dt><dd>{bound.client_file_name}</dd>
+        <dt>绑定时间</dt><dd>{formatShanghai(bound.bound_at)}</dd></dl>
+      <StaffProtectedFileButton
+        label="查看主图"
+        reference={{
+          file_object_id: bound.file_object_id,
+          file_version: bound.file_version,
+          purpose: 'PRODUCT_IMAGE',
+          visibility: 'SELLER_VISIBLE',
+        }}
+      />
+      <p>主图与产品版本一次绑定，不可改写；如需更换，请新增产品版本后为新版本绑定。</p>
+    </> : <>
+      <Alert tone="warning">该版本尚未绑定主图；未绑定主图的版本不能通过需求发布审核。</Alert>
+      {canEdit ? <>
+        <FileDropZone
+          id="staff-product-main-image"
+          aria-label="产品主图"
+          accept="image/jpeg,image/png,image/webp"
+          disabled={mutation.isPending}
+          maximumFiles={1}
+          maximumBytes={10 * 1024 * 1024}
+          buttonLabel="选择主图"
+          emptyLabel="尚未选择主图"
+          onFilesChange={(files) => {
+            if (!mutation.isPending) {
+              authority.release();
+              mutation.reset();
+            }
+            const file = files[0];
+            if (file) void uploader.start('staffProductImage', [file]);
+          }}
+        />
+        <p className="staff-upload-state">上传状态：{upload.state}</p>
+        <Button
+          disabled={upload.state !== 'VERIFIED' || !uploaded || mutation.isPending}
+          loading={mutation.isPending}
+          loadingLabel="绑定中…"
+          onClick={bind}
+        >
+          绑定为主图
+        </Button>
+      </> : <p>需要具有商品审核权限的员工补齐主图。</p>}
+    </>}
+    {mutation.isError ? <>
+      <Alert tone="danger">主图绑定未完成。（错误码：{mainImageError(mutation.error)}）</Alert>
+      <RequestIdDisplay
+        requestId={isFrontendApiError(mutation.error) ? mutation.error.requestId : null}
+      />
+    </> : null}
+  </Card>;
+}
+
+function mainImageError(error: unknown): string {
+  if (!isFrontendApiError(error)) return 'UNKNOWN';
+  return error.code;
 }
 
 function ProductVersionForm({ product }: { product: StaffProductDetail }): React.JSX.Element {

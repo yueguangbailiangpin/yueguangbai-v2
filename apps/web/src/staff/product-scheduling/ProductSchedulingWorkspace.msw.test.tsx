@@ -181,6 +181,106 @@ describe('产品预约排期工作区', () => {
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
   });
 
+  it('shows the bound main image with a protected view entry', async () => {
+    server.use(http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+      HttpResponse.json({
+        data: { product: productDetail({
+          file_object_id: 'product-image-1', file_version: 2,
+          client_file_name: 'main.webp', bound_at: 1_786_161_600_000,
+        }) },
+        meta: { request_id: 'product' },
+      })));
+    renderWorkspace(owner(), '/staff/products/product-1');
+    expect(await screen.findByRole('heading', { name: /当前版本主图/u })).toBeVisible();
+    expect(screen.getByText('main.webp')).toBeVisible();
+    expect(screen.getByRole('button', { name: '查看主图' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '选择主图' })).not.toBeInTheDocument();
+    expect(screen.getByText(/不可改写/u)).toBeVisible();
+  });
+
+  it('uploads and binds a main image for the unbound current version', async () => {
+    const calls: Array<{ body: unknown; key: string | null }> = [];
+    let bound = false;
+    server.use(
+      http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+        HttpResponse.json({
+          data: { product: productDetail(bound ? {
+            file_object_id: 'product-image-1', file_version: 2,
+            client_file_name: 'main.png', bound_at: 1_786_161_600_001,
+          } : null) },
+          meta: { request_id: 'product' },
+        })),
+      http.post(apiUrl('/api/staff/file-uploads/product-images/intents'), () =>
+        HttpResponse.json({
+          data: {
+            upload_intent_id: 'product-image-intent-1',
+            purpose: 'PRODUCT_IMAGE', visibility: 'SELLER_VISIBLE',
+            status: 'ISSUED', version: 1, expires_at: 1_900_000_000_000,
+            uploads: [{
+              file_object_id: 'product-image-1', slot_no: 1,
+              upload_token: 'x'.repeat(40), upload_token_available: true,
+              expires_at: 1_900_000_000_000,
+            }],
+            replayed: false,
+          },
+          meta: { request_id: 'image-intent' },
+        })),
+      http.put(apiUrl('/api/staff/file-uploads/product-image-1/content'), () =>
+        HttpResponse.json({
+          data: {
+            file_object_id: 'product-image-1',
+            upload_intent_id: 'product-image-intent-1', status: 'UPLOADED',
+            detected_mime: 'image/png', byte_size: 5, sha256: 'a'.repeat(64),
+            version: 2, replayed: false,
+          },
+          meta: { request_id: 'image-content' },
+        })),
+      http.post(apiUrl('/api/staff/file-upload-intents/product-image-intent-1/complete'), () =>
+        HttpResponse.json({
+          data: {
+            upload_intent_id: 'product-image-intent-1', status: 'VERIFIED',
+            version: 2,
+            files: [{
+              file_object_id: 'product-image-1', purpose: 'PRODUCT_IMAGE',
+              visibility: 'SELLER_VISIBLE', detected_mime: 'image/png',
+              byte_size: 5, sha256: 'a'.repeat(64), version: 3,
+            }],
+            replayed: false,
+          },
+          meta: { request_id: 'image-complete' },
+        })),
+      http.post(apiUrl('/api/staff/catalog/product-versions/version-2/main-image'), async ({ request }) => {
+        calls.push({ body: await request.json(), key: request.headers.get('Idempotency-Key') });
+        bound = true;
+        return HttpResponse.json({
+          data: { main_image: {
+            product_id: 'product-1', product_version_id: 'version-2',
+            product_version_no: 2, file_entity_link_id: 'link-1',
+            file_object_id: 'product-image-1', seller_organization_id: 'seller-1',
+            store_id: 'store-1', authorization_mode: 'EXPLICIT_AUDIENCES',
+            replayed: false,
+          } },
+          meta: { request_id: 'main-image-linked' },
+        }, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWorkspace(owner(), '/staff/products/product-1');
+    expect(await screen.findByText(/尚未绑定主图/u)).toBeVisible();
+    await user.upload(await screen.findByLabelText('产品主图'),
+      new File(['image'], 'main.png', { type: 'image/png' }));
+    expect(await screen.findByText('上传状态：VERIFIED')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '绑定为主图' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]!.body).toEqual({
+      file_object_id: 'product-image-1',
+      expected_file_version: 3,
+    });
+    expect(calls[0]!.key).toMatch(/\S/u);
+    expect(await screen.findByRole('button', { name: '查看主图' })).toBeVisible();
+    expect(screen.getByText(/已绑定主图/u)).toBeVisible();
+  });
+
   it('retries schedule confirmation from the main button with the exact original body and key', async () => {
     const calls: Array<{ body: unknown; key: string|null }> = [];
     server.use(
@@ -259,7 +359,12 @@ function renderWorkspace(value: StaffSession, route: string): void {
   </Routes></StaffSessionBoundary>, { route });
 }
 
-function productDetail() {
+function productDetail(mainImage: {
+  file_object_id: string;
+  file_version: number;
+  client_file_name: string;
+  bound_at: number;
+} | null = null) {
   return {
     product_id: 'product-1', seller_organization_id: 'seller-1', store_id: 'store-1',
     store_name: '测试店铺', marketplace_code: 'JP', asin: 'B0TEST0001',
@@ -271,7 +376,8 @@ function productDetail() {
       search_keywords: ['测试'], ordering_guide_expected_amount_jpy: 1980,
       color_spec_mode: 'MAIN_IMAGE_VARIANT', default_buyer_self_pay_bps: 0,
       product_url: null, buyer_visible_notes: null, internal_notes: null,
-      cadence: { order_interval_days: 2, orders_per_run: 5 }, created_at: 1_786_161_600_000,
+      cadence: { order_interval_days: 2, orders_per_run: 5 }, main_image: mainImage,
+      created_at: 1_786_161_600_000,
     }],
     demands: [], timezone: 'Asia/Shanghai', data_as_of: 1_786_161_600_000,
   };

@@ -15,6 +15,7 @@ export const FILE_UPLOAD_WORKFLOW_KEYS = [
   'staffBuyerRefundProof',
   'staffSellerSettlementProof',
   'staffSellerOrderChatScreenshot',
+  'staffProductImage',
 ] as const;
 
 export type FileUploadWorkflowKey = typeof FILE_UPLOAD_WORKFLOW_KEYS[number];
@@ -99,6 +100,16 @@ export const fileUploadWorkflows = Object.freeze({
     visibility: 'SELLER_VISIBLE',
     maximumFileCount: 1,
     maximumByteSize: 20 * MEBIBYTE,
+    allowedMimes: IMAGE_MIMES,
+  }),
+  staffProductImage: Object.freeze({
+    identity: 'staff',
+    intentPath: FILE_HTTP_PURPOSE_ROUTES.staffProductImage.path,
+    lifecyclePrefix: '/api/staff',
+    purpose: 'PRODUCT_IMAGE',
+    visibility: 'SELLER_VISIBLE',
+    maximumFileCount: 1,
+    maximumByteSize: 10 * MEBIBYTE,
     allowedMimes: IMAGE_MIMES,
   }),
 } as const satisfies Record<FileUploadWorkflowKey, FileUploadWorkflow>);

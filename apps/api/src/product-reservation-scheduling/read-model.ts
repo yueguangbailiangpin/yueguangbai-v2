@@ -56,6 +56,10 @@ interface ProductVersionRow {
   order_interval_days: number | null;
   orders_per_run: number | null;
   created_at: number;
+  main_image_file_object_id: string | null;
+  main_image_file_version: number | null;
+  main_image_client_file_name: string | null;
+  main_image_bound_at: number | null;
 }
 
 interface DemandRow {
@@ -226,14 +230,30 @@ export async function readStaffProduct(
   const [versions, demands] = await Promise.all([
     database.prepare(`
       SELECT
-        id AS product_version_id, version_no, product_name,
-        search_keywords_json, ordering_guide_expected_amount_jpy,
-        color_spec_mode, default_buyer_self_pay_bps, product_url,
-        buyer_visible_notes, internal_notes,
-        order_interval_days, orders_per_run, created_at
-      FROM product_versions
-      WHERE product_id=?
-      ORDER BY version_no DESC
+        version.id AS product_version_id, version.version_no, version.product_name,
+        version.search_keywords_json, version.ordering_guide_expected_amount_jpy,
+        version.color_spec_mode, version.default_buyer_self_pay_bps, version.product_url,
+        version.buyer_visible_notes, version.internal_notes,
+        version.order_interval_days, version.orders_per_run, version.created_at,
+        image_link.file_object_id AS main_image_file_object_id,
+        image_file.version AS main_image_file_version,
+        image_file.client_file_name AS main_image_client_file_name,
+        main_image.created_at AS main_image_bound_at
+      FROM product_versions version
+      LEFT JOIN product_version_main_images main_image
+        ON main_image.product_version_id=version.id
+      LEFT JOIN file_entity_links image_link
+        ON image_link.id=main_image.file_entity_link_id
+        AND image_link.entity_type='PRODUCT_VERSION'
+        AND image_link.entity_id=version.id
+        AND image_link.purpose='PRODUCT_IMAGE'
+        AND image_link.revoked_at IS NULL
+      LEFT JOIN file_objects image_file
+        ON image_file.id=image_link.file_object_id
+        AND image_file.status='VERIFIED'
+        AND image_file.purpose='PRODUCT_IMAGE'
+      WHERE version.product_id=?
+      ORDER BY version.version_no DESC
     `).bind(productId).all<ProductVersionRow>(),
     database.prepare(`
       SELECT
@@ -460,6 +480,16 @@ function versionDto(row: ProductVersionRow): StaffProductVersionDto {
       : {
           order_interval_days: Number(row.order_interval_days),
           orders_per_run: Number(row.orders_per_run),
+        },
+    main_image: row.main_image_file_object_id === null
+      || row.main_image_file_version === null
+      || row.main_image_bound_at === null
+      ? null
+      : {
+          file_object_id: row.main_image_file_object_id,
+          file_version: Number(row.main_image_file_version),
+          client_file_name: row.main_image_client_file_name ?? '',
+          bound_at: Number(row.main_image_bound_at),
         },
     created_at: Number(row.created_at),
   };

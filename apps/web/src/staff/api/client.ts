@@ -26,6 +26,7 @@ import {
   demandReviewMutationSchema,
   demandScheduleConfirmationSchema,
   demandSchedulePreviewSchema,
+  mainImageMutationSchema,
   productVersionMutationSchema,
   staffProductDetailSchema,
   staffProductPageSchema,
@@ -193,6 +194,19 @@ export const staffApi = Object.freeze({
       `/api/staff/catalog/products/${encodeURIComponent(id)}/versions`,
       body,
       productVersionMutationSchema,
+      key,
+    ),
+  linkMainImage: (
+    client: QueryClient,
+    versionId: string,
+    body: unknown,
+    key: string,
+  ) =>
+    write(
+      client,
+      `/api/staff/catalog/product-versions/${encodeURIComponent(versionId)}/main-image`,
+      body,
+      mainImageMutationSchema,
       key,
     ),
   reservationSchedule: (

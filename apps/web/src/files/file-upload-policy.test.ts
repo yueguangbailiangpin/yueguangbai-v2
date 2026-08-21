@@ -38,6 +38,7 @@ describe('purpose-bound frontend file policies', () => {
       'staffBuyerRefundProof',
       'staffSellerSettlementProof',
       'staffSellerOrderChatScreenshot',
+      'staffProductImage',
     ]);
     expect(Object.keys(fileUploadWorkflows)).toEqual(FILE_UPLOAD_WORKFLOW_KEYS);
     expect(() => requireFileUploadWorkflow('ORDER_EVIDENCE')).toThrow();
@@ -53,6 +54,7 @@ describe('purpose-bound frontend file policies', () => {
     ['staffBuyerRefundProof', 'staff', '/api/staff/file-uploads/buyer-refund-proofs/intents', 'BUYER_REFUND_PROOF', 'INTERNAL_ONLY', 6, 20],
     ['staffSellerSettlementProof', 'staff', '/api/staff/file-uploads/seller-settlement-proofs/intents', 'SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY', 6, 20],
     ['staffSellerOrderChatScreenshot', 'staff', '/api/staff/file-uploads/seller-order-chat-screenshots/intents', 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE', 1, 20],
+    ['staffProductImage', 'staff', '/api/staff/file-uploads/product-images/intents', 'PRODUCT_IMAGE', 'SELLER_VISIBLE', 1, 10],
   ] as const)('%s matches the frozen route and policy', (
     key, identity, path, purpose, visibility, count, mib,
   ) => {

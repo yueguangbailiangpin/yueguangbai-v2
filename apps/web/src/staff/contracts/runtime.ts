@@ -297,8 +297,20 @@ export const staffProductVersionSchema = z.object({
   default_buyer_self_pay_bps: z.number().int().min(0).max(10_000),
   product_url: z.string().nullable(), buyer_visible_notes: z.string().nullable(),
   internal_notes: z.string().nullable(), cadence: orderCadenceSchema.nullable(),
+  main_image: z.object({
+    file_object_id: z.string(), file_version: z.number().int().positive(),
+    client_file_name: z.string(), bound_at: epoch,
+  }).nullable(),
   created_at: epoch,
 }).strict();
+export const mainImageMutationSchema = z.object({ main_image: z.object({
+  product_id: z.string(), product_version_id: z.string(),
+  product_version_no: z.number().int().positive(),
+  file_entity_link_id: z.string(), file_object_id: z.string(),
+  seller_organization_id: z.string(), store_id: z.string(),
+  authorization_mode: z.literal('EXPLICIT_AUDIENCES'),
+  replayed: z.boolean(),
+}).strict() }).strict();
 export const staffProductDemandSchema = z.object({
   demand_batch_id: z.string(),
   status: z.enum(['SUBMITTED','PUBLISHED','REJECTED','WITHDRAWN','CLOSED']),

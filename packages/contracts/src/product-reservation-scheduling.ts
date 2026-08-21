@@ -36,6 +36,12 @@ export interface StaffProductPageDto {
   next_cursor: string | null;
   data_as_of: number;
 }
+export interface StaffProductVersionMainImageDto {
+  file_object_id: string;
+  file_version: number;
+  client_file_name: string;
+  bound_at: number;
+}
 export interface StaffProductVersionDto {
   product_version_id: string;
   version_no: number;
@@ -48,6 +54,7 @@ export interface StaffProductVersionDto {
   buyer_visible_notes: string | null;
   internal_notes: string | null;
   cadence: OrderCadenceDto | null;
+  main_image: StaffProductVersionMainImageDto | null;
   created_at: number;
 }
 export interface StaffProductDemandDto {

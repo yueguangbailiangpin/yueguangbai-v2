@@ -996,6 +996,16 @@ describe('demand batch workflow', () => {
     });
     expect(JSON.stringify(payload)).not.toContain('sellerNotes');
     expect(JSON.stringify(payload)).not.toContain('internal_notes');
+
+    // 未绑定主图的版本在产品详情读模型中返回 main_image: null。
+    const productDetail = await app.request(
+      `https://api.test/api/staff/catalog/products/product-3`,
+      { method: 'GET' },
+      { DB: database } as any,
+    );
+    expect(productDetail.status).toBe(200);
+    const detailPayload = await productDetail.json() as any;
+    expect(detailPayload.data.product.versions[0].main_image).toBeNull();
   });
 
   it('wires the review route contract: publish, replay, conflicts, invalid date, permission, and concealment', async () => {
@@ -1172,6 +1182,23 @@ describe('demand batch workflow', () => {
     );
     expect(forbidden.status).toBe(403);
     expect((await forbidden.json() as any).error.code).toBe('FORBIDDEN');
+
+    // 产品详情读模型按版本暴露主图事实：绑定的版本可见文件信息，
+    // 未绑定的版本返回 null，员工端据此提示补齐。
+    const productDetail = await app.request(
+      `${base}/api/staff/catalog/products/product-2`,
+      { method: 'GET' },
+      env,
+    );
+    expect(productDetail.status).toBe(200);
+    const detailPayload = await productDetail.json() as any;
+    expect(detailPayload.data.product.versions[0]).toMatchObject({
+      product_version_id: 'product-version-2-v1',
+      main_image: {
+        file_object_id: 'file-main-image-2',
+        client_file_name: 'main.webp',
+      },
+    });
   });
 });
 
