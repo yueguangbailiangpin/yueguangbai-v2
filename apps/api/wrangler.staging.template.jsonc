@@ -56,5 +56,11 @@
       "binding": "FILE_OBJECT_STORAGE_R2",
       "bucket_name": "REQUIRED_STAGING_R2_BUCKET_NAME"
     }
+  ],
+  "services": [
+    {
+      "binding": "KEYWORD_IMAGE_GENERATOR",
+      "service": "yueguangbai-keyword-image-generator-staging"
+    }
   ]
 }

@@ -43,6 +43,10 @@ interface ProductApplicationContextRow {
 
 interface ReservationContextRow {
   reservation_id: string;
+  buyer_customer_id: string;
+  buyer_customer_no: string | null;
+  buyer_display_name: string;
+  buyer_display_wechat: string | null;
   organization_id: string;
   store_id: string;
   store_display_name: string;
@@ -154,6 +158,10 @@ async function readReservationReviewContext(
   const row = await context.env.DB.prepare(`
     SELECT
       reservation.id AS reservation_id,
+      buyer.id AS buyer_customer_id,
+      buyer.buyer_customer_no,
+      buyer.display_name AS buyer_display_name,
+      buyer_wechat.display_wechat AS buyer_display_wechat,
       reservation.organization_id,
       reservation.store_id,
       store.display_name AS store_display_name,
@@ -173,6 +181,12 @@ async function readReservationReviewContext(
       demand.reservation_deadline,
       demand.order_deadline
     FROM product_reservations reservation
+    JOIN buyer_customers buyer
+      ON buyer.id=reservation.buyer_customer_id
+      AND buyer.marketplace_code=reservation.marketplace_code
+    LEFT JOIN wechat_identity_claims buyer_wechat
+      ON buyer_wechat.identity_subject_id=buyer.identity_subject_id
+      AND buyer_wechat.status='ACTIVE'
     JOIN demand_batches demand ON demand.id=reservation.demand_batch_id
     JOIN product_versions version
       ON version.product_id=reservation.product_id
@@ -201,6 +215,12 @@ async function readReservationReviewContext(
     review_context: {
       reservation_id: row.reservation_id,
       organization_id: row.organization_id,
+      buyer: {
+        id: row.buyer_customer_id,
+        customer_no: row.buyer_customer_no,
+        name: row.buyer_display_name,
+        wechat: row.buyer_display_wechat,
+      },
       store: {
         id: row.store_id,
         display_name: row.store_display_name,

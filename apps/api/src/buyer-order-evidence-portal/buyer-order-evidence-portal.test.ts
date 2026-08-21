@@ -24,6 +24,7 @@ import {
   verifyOrderEvidence,
 } from '../order-evidence/review-order-evidence';
 import { seedPhase3GInstructionFixture } from '../../test-support/phase3g-test-fixtures';
+import { expireInstructionIfDue } from '../order-instructions/expiry';
 import { registerBuyerOrderEvidencePortalRoutes } from './routes';
 
 const ORIGIN = 'https://portal.local.test';
@@ -214,6 +215,26 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
         current_order_evidence_version: null,
         allowed_actions: ['SUBMIT'],
       });
+
+      await expireInstructionIfDue(
+        database!,
+        'phase3g-instruction-buyer-portal-b',
+        {
+          actorType: 'SYSTEM',
+          actorId: 'eligible-reservation-test',
+          now: fixtureNow + 7 * 60 * 60 * 1000,
+        },
+      );
+      const unpublished = await request(
+        app,
+        '/api/buyer-portal/order-evidence/eligible-reservations?limit=10',
+        { headers: { Cookie: cookie } },
+      );
+      expect(unpublished.status).toBe(200);
+      const unpublishedBody = await json<any>(unpublished);
+      expect(unpublishedBody.data.items.map(
+        (item: { reservation_id: string }) => item.reservation_id,
+      )).not.toContain('reservation-b');
 
       const serialized = JSON.stringify(items);
       for (const forbidden of [

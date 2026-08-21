@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
+import { isFrontendApiError } from '../api/errors';
 import { identityApiRequest } from '../api/identity-request';
 import { operationHeaders } from '../api/idempotency';
 import { Alert, Button, Card, FormField, Select, StatusBadge, TextInput } from '../ui/primitives';
@@ -70,6 +71,14 @@ const reservationContextSchema = z
     review_context: z
       .object({
         reservation_id: z.string(),
+        buyer: z
+          .object({
+            id: z.string(),
+            customer_no: z.string().nullable(),
+            name: z.string(),
+            wechat: z.string().nullable(),
+          })
+          .strict(),
         store: z.object({ id: z.string(), display_name: z.string() }).strict(),
         marketplace_code: z.string(),
         status: z.string(),
@@ -345,10 +354,11 @@ function ReservationDecision({ item }: { item: WorkItem }): React.JSX.Element {
         headers: operationHeaders({ body, key }),
       }),
     onSuccess: async () => {
-      await Promise.all([
-        client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot }),
-        query.refetch(),
-      ]);
+      client.setQueryData<WorkItem>(
+        ['staff-workflow-closure', 'work-item', item.work_item_id],
+        (current) => current ? { ...current, status: 'COMPLETED' } : current,
+      );
+      await client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
     },
   });
   if (query.isPending)
@@ -366,6 +376,10 @@ function ReservationDecision({ item }: { item: WorkItem }): React.JSX.Element {
   const value = query.data;
   return (
     <ClosureCard title="预约审核">
+      <Fact label="买家姓名" value={value.buyer.name} />
+      <Fact label="微信号" value={value.buyer.wechat ?? '未设置'} />
+      <Fact label="买家编号" value={value.buyer.customer_no ?? '首次正式订单后生成'} />
+      <Fact label="内部买家 ID" value={value.buyer.id} />
       <Fact label="产品" value={value.demand.product_name} />
       <Fact label="店铺" value={value.store.display_name} />
       <Fact label="参考金额" value={`${value.reference_order_amount_jpy_snapshot} JPY`} />
@@ -538,10 +552,19 @@ function Fact({ label, value }: { label: string; value: string }): React.JSX.Ele
 function MutationState({
   mutation,
 }: {
-  mutation: { isError: boolean; isSuccess: boolean };
+  mutation: { isError: boolean; isSuccess: boolean; error?: unknown };
 }): React.JSX.Element | null {
-  if (mutation.isError)
-    return <Alert tone="danger">操作失败。数据可能已变化，请刷新后按最新事实重试。</Alert>;
+  if (mutation.isError) {
+    if (isFrontendApiError(mutation.error)) {
+      const request = mutation.error.requestId ? `；请求编号：${mutation.error.requestId}` : '';
+      return (
+        <Alert tone="danger">
+          操作失败（错误码：{mutation.error.code}{request}）。请按提示检查后重试。
+        </Alert>
+      );
+    }
+    return <Alert tone="danger">操作失败（错误码：UNKNOWN）。请刷新后重试。</Alert>;
+  }
   if (mutation.isSuccess) return <Alert tone="success">操作已提交并按服务器规则完成。</Alert>;
   return null;
 }

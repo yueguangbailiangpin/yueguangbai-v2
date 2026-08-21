@@ -157,6 +157,16 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       1000, 1000, 1000, NULL
     );
 
+    INSERT INTO wechat_identity_claims (
+      id, identity_subject_id, display_wechat, normalized_wechat,
+      status, version, acquired_at, reserved_at, released_at,
+      created_at, updated_at, identity_subject_type
+    ) VALUES (
+      'buyer-wechat-1', 'buyer-subject-1', 'buyer_wechat_001',
+      'buyer_wechat_001', 'ACTIVE', 1, 1000, NULL, NULL,
+      1000, 1000, 'BUYER_CUSTOMER'
+    );
+
     INSERT INTO seller_stores (
       id, organization_id, marketplace_code,
       display_name, normalized_name, status,
@@ -227,6 +237,39 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
 }
 
 describe('staff workflow closure HTTP contract', () => {
+  it('returns assigned buyer identity facts without inventing a customer number', async () => {
+    database = createMigratedTestDatabase();
+    seedWorkflowFixture(database);
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-1',
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'reservation:http:review-context:submit',
+      now: 5000,
+    });
+    const app = createTestApp();
+    const response = await app.request(
+      `http://local/api/staff/reservations/${submitted.reservation_id}/review-context`,
+      { headers: { 'X-Test-Permission': 'RESERVATION_DECIDE' } },
+      { DB: database },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        review_context: {
+          reservation_id: submitted.reservation_id,
+          buyer: {
+            id: 'buyer-1',
+            customer_no: null,
+            name: '买家一',
+            wechat: 'buyer_wechat_001',
+          },
+        },
+      },
+    });
+  });
+
   it('reopens a terminal reservation and recreates an OPEN decision work item', async () => {
     database = createMigratedTestDatabase();
     seedWorkflowFixture(database);

@@ -216,6 +216,11 @@ export async function listEligibleOrderEvidenceReservations(
       submission.version AS submission_version
     FROM product_reservations reservation
     ${RESERVATION_RELATION_JOINS}
+    JOIN order_instructions instruction
+      ON instruction.reservation_id=reservation.id
+      AND instruction.buyer_customer_id=reservation.buyer_customer_id
+      AND instruction.marketplace_code=reservation.marketplace_code
+      AND instruction.status='ACTIVE'
     LEFT JOIN order_evidence_submissions submission
       ON submission.reservation_id=reservation.id
       AND submission.buyer_customer_id=reservation.buyer_customer_id
