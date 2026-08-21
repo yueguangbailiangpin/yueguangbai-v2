@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type {
-  MarketplaceProviderOrderDto,
-  MarketplaceProviderProductDto,
-} from '@ygb/contracts';
+import type { MarketplaceProviderOrderDto, MarketplaceProviderProductDto } from '@ygb/contracts';
 import { MarketplaceProviderError } from './error';
 import { FakeMarketplaceReadAdapter } from './fake-adapter';
 import {
@@ -10,10 +7,7 @@ import {
   TIKTOK_SHOP_ORDER_SEARCH_PATH,
   TIKTOK_SHOP_PRODUCT_SEARCH_PATH,
 } from './tiktok-read-adapter';
-import {
-  signTikTokShopRequest,
-  TIKTOK_SHOP_OFFICIAL_API_ORIGIN,
-} from './tiktok-signature';
+import { signTikTokShopRequest, TIKTOK_SHOP_OFFICIAL_API_ORIGIN } from './tiktok-signature';
 import { verifyTikTokShopWebhook } from './tiktok-webhook';
 import { RakutenUnavailableReadAdapter } from './unavailable-adapter';
 
@@ -25,13 +19,13 @@ const TIKTOK_SHOP_CIPHER = 'local-test-shop-cipher';
 
 describe('TikTok Shop official signatures', () => {
   it('passes the official OpenAPI signing vector', async () => {
-    await expect(signTikTokShopRequest({
-      appSecret: 'e59af819cc',
-      path: '/authorization/202309/shops',
-      query: { timestamp: '1623812664', app_key: '29a39d' },
-    })).resolves.toBe(
-      'b596b73e0cc6de07ac26f036364178ab16b0a907af13d43f0a0cd2345f582dc8',
-    );
+    await expect(
+      signTikTokShopRequest({
+        appSecret: 'e59af819cc',
+        path: '/authorization/202309/shops',
+        query: { timestamp: '1623812664', app_key: '29a39d' },
+      }),
+    ).resolves.toBe('b596b73e0cc6de07ac26f036364178ab16b0a907af13d43f0a0cd2345f582dc8');
   });
 
   it('excludes sign/access_token but signs path, query and exact body', async () => {
@@ -47,30 +41,36 @@ describe('TikTok Shop official signatures', () => {
       bodyText: '{}',
     } as const;
     const signature = await signTikTokShopRequest(base);
-    await expect(signTikTokShopRequest({
-      ...base,
-      query: { ...base.query, access_token: 'different', sign: 'different' },
-    })).resolves.toBe(signature);
-    await expect(signTikTokShopRequest({ ...base, bodyText: '{ }' }))
-      .resolves.not.toBe(signature);
-    await expect(signTikTokShopRequest({
-      ...base,
-      path: TIKTOK_SHOP_PRODUCT_SEARCH_PATH,
-    })).resolves.not.toBe(signature);
+    await expect(
+      signTikTokShopRequest({
+        ...base,
+        query: { ...base.query, access_token: 'different', sign: 'different' },
+      }),
+    ).resolves.toBe(signature);
+    await expect(signTikTokShopRequest({ ...base, bodyText: '{ }' })).resolves.not.toBe(signature);
+    await expect(
+      signTikTokShopRequest({
+        ...base,
+        path: TIKTOK_SHOP_PRODUCT_SEARCH_PATH,
+      }),
+    ).resolves.not.toBe(signature);
   });
 
   it('rejects control characters in a signing path', async () => {
-    await expect(signTikTokShopRequest({
-      appSecret: TIKTOK_APP_SECRET,
-      path: '/order/202309/orders/\u0085search',
-      query: { timestamp: '1800000000', app_key: TIKTOK_APP_KEY },
-      bodyText: '{}',
-    })).rejects.toMatchObject({ code: 'CONFIGURATION' });
+    await expect(
+      signTikTokShopRequest({
+        appSecret: TIKTOK_APP_SECRET,
+        path: '/order/202309/orders/\u0085search',
+        query: { timestamp: '1800000000', app_key: TIKTOK_APP_KEY },
+        bodyText: '{}',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFIGURATION' });
   });
 });
 
 describe('TikTok Shop webhook verifier', () => {
-  const rawPayload = '{"type":1,"tts_notification_id":"7380066284010030890","shop_id":"7495540735365777507","timestamp":1718305585,"data":{"is_on_hold_order":true,"order_id":"576653688135258178","order_status":"UNPAID","update_time":1718305585}}';
+  const rawPayload =
+    '{"type":1,"tts_notification_id":"7380066284010030890","shop_id":"7495540735365777507","timestamp":1718305585,"data":{"is_on_hold_order":true,"order_id":"576653688135258178","order_status":"UNPAID","update_time":1718305585}}';
   const expected = '5dec0f11ec2f6783b8deee53c9ffbf8d024302f7c7e7fa55a35d17629031ac05';
 
   it('passes the official raw-body golden vector and exposes only a safe envelope', async () => {
@@ -91,31 +91,23 @@ describe('TikTok Shop webhook verifier', () => {
   });
 
   it('rejects one changed raw byte or signature without parsing an event', async () => {
-    const tampered = new TextEncoder().encode(
-      rawPayload.replace('UNPAID', 'CANCELLED'),
-    );
-    await expect(verifyTikTokShopWebhook(
-      tampered,
-      expected,
-      'abcdef',
-      '123',
-    )).rejects.toMatchObject({ code: 'AUTHENTICATION' });
-    await expect(verifyTikTokShopWebhook(
-      new TextEncoder().encode(rawPayload),
-      `${expected.slice(0, -1)}6`,
-      'abcdef',
-      '123',
-    )).rejects.toMatchObject({ code: 'AUTHENTICATION' });
+    const tampered = new TextEncoder().encode(rawPayload.replace('UNPAID', 'CANCELLED'));
+    await expect(
+      verifyTikTokShopWebhook(tampered, expected, 'abcdef', '123'),
+    ).rejects.toMatchObject({ code: 'AUTHENTICATION' });
+    await expect(
+      verifyTikTokShopWebhook(
+        new TextEncoder().encode(rawPayload),
+        `${expected.slice(0, -1)}6`,
+        'abcdef',
+        '123',
+      ),
+    ).rejects.toMatchObject({ code: 'AUTHENTICATION' });
   });
 
   it('signs and parses one immutable byte snapshot', async () => {
     const mutableBody = new TextEncoder().encode(rawPayload);
-    const verification = verifyTikTokShopWebhook(
-      mutableBody,
-      expected,
-      'abcdef',
-      '123',
-    );
+    const verification = verifyTikTokShopWebhook(mutableBody, expected, 'abcdef', '123');
     const changed = new TextEncoder().encode(
       rawPayload.replace('7495540735365777507', '1495540735365777507'),
     );
@@ -142,33 +134,37 @@ describe('TikTok Shop read adapter', () => {
         data: {
           next_page_token: 'opaque+/=cursor',
           total_count: 1,
-          orders: [{
-            id: '585123456789012345',
-            status: 'AWAITING_SHIPMENT',
-            create_time: 1_718_305_500,
-            update_time: 1_718_305_585,
-            buyer_email: 'must-not-leave-provider-parser@example.invalid',
-            payment: { currency: 'JPY', total_amount: '999999' },
-            recipient_address: { phone_number: 'must-not-leave-parser' },
-            line_items: [
-              { id: 'line-1', product_id: '7495540735365777507' },
-              { id: 'line-2', product_id: '7495540735365777507' },
-            ],
-          }],
+          orders: [
+            {
+              id: '585123456789012345',
+              status: 'AWAITING_SHIPMENT',
+              create_time: 1_718_305_500,
+              update_time: 1_718_305_585,
+              buyer_email: 'must-not-leave-provider-parser@example.invalid',
+              payment: { currency: 'JPY', total_amount: '999999' },
+              recipient_address: { phone_number: 'must-not-leave-parser' },
+              line_items: [
+                { id: 'line-1', product_id: '7495540735365777507' },
+                { id: 'line-2', product_id: '7495540735365777507' },
+              ],
+            },
+          ],
         },
       });
     });
     const adapter = adapterWith({ fetch: fetcher });
     const page = await adapter.listOrdersPage({ cursor: null, page_size: 20 });
     expect(page).toEqual({
-      items: [{
-        marketplace_code: 'TIKTOK_JP',
-        platform_order_identifier: '585123456789012345',
-        provider_status: 'AWAITING_SHIPMENT',
-        created_at_unix_ms: 1_718_305_500_000,
-        updated_at_unix_ms: 1_718_305_585_000,
-        platform_product_identifiers: ['7495540735365777507'],
-      }],
+      items: [
+        {
+          marketplace_code: 'TIKTOK_JP',
+          platform_order_identifier: '585123456789012345',
+          provider_status: 'AWAITING_SHIPMENT',
+          created_at_unix_ms: 1_718_305_500_000,
+          updated_at_unix_ms: 1_718_305_585_000,
+          platform_product_identifiers: ['7495540735365777507'],
+        },
+      ],
       next_cursor: 'opaque+/=cursor',
     });
     expect(page.items[0]).not.toHaveProperty('buyer_email');
@@ -185,21 +181,24 @@ describe('TikTok Shop read adapter', () => {
     expect(url.searchParams.get('timestamp')).toBe('1800000000');
     expect(url.searchParams.has('access_token')).toBe(false);
     expect(seenInit).toMatchObject({
-      method: 'POST', redirect: 'manual', credentials: 'omit', body: '{}',
+      method: 'POST',
+      redirect: 'manual',
+      credentials: 'omit',
+      body: '{}',
     });
-    expect(new Headers(seenInit?.headers).get('x-tts-access-token'))
-      .toBe(TIKTOK_ACCESS_TOKEN);
-    expect(new Headers(seenInit?.headers).get('content-type'))
-      .toBe('application/json');
+    expect(new Headers(seenInit?.headers).get('x-tts-access-token')).toBe(TIKTOK_ACCESS_TOKEN);
+    expect(new Headers(seenInit?.headers).get('content-type')).toBe('application/json');
     const query = Object.fromEntries(url.searchParams.entries());
     const receivedSignature = query['sign'];
     delete query['sign'];
-    await expect(signTikTokShopRequest({
-      appSecret: TIKTOK_APP_SECRET,
-      path: url.pathname,
-      query,
-      bodyText: String(seenInit?.body),
-    })).resolves.toBe(receivedSignature);
+    await expect(
+      signTikTokShopRequest({
+        appSecret: TIKTOK_APP_SECRET,
+        path: url.pathname,
+        query,
+        bodyText: String(seenInit?.body),
+      }),
+    ).resolves.toBe(receivedSignature);
   });
 
   it('returns an opaque cursor byte-for-byte and sends it only as page_token', async () => {
@@ -210,12 +209,17 @@ describe('TikTok Shop read adapter', () => {
         code: 0,
         message: 'Success',
         request_id: 'safe-request-id',
-        data: { next_page_token: '', products: [{
-          id: '7495540735365777507',
-          title: '月光白本地测试产品',
-          status: 'LIVE',
-          seller_sku: 'must-not-be-promoted-without-source-mapping',
-        }] },
+        data: {
+          next_page_token: '',
+          products: [
+            {
+              id: '7495540735365777507',
+              title: '月光白本地测试产品',
+              status: 'LIVE',
+              seller_sku: 'must-not-be-promoted-without-source-mapping',
+            },
+          ],
+        },
       });
     });
     const page = await adapterWith({ fetch: fetcher }).listProductsPage({
@@ -223,12 +227,14 @@ describe('TikTok Shop read adapter', () => {
       page_size: 1,
     });
     expect(page).toEqual({
-      items: [{
-        marketplace_code: 'TIKTOK_JP',
-        platform_product_identifier: '7495540735365777507',
-        title: '月光白本地测试产品',
-        provider_status: 'LIVE',
-      }],
+      items: [
+        {
+          marketplace_code: 'TIKTOK_JP',
+          platform_product_identifier: '7495540735365777507',
+          title: '月光白本地测试产品',
+          provider_status: 'LIVE',
+        },
+      ],
       next_cursor: null,
     });
     expect(page.items[0]).not.toHaveProperty('seller_sku');
@@ -258,11 +264,8 @@ describe('TikTok Shop read adapter', () => {
     };
     const adapter = new TikTokShopReadAdapter(mutableOptions);
     const serialized = JSON.stringify(adapter);
-    for (const sensitive of [
-      TIKTOK_APP_SECRET,
-      TIKTOK_ACCESS_TOKEN,
-      TIKTOK_SHOP_CIPHER,
-    ]) expect(serialized).not.toContain(sensitive);
+    for (const sensitive of [TIKTOK_APP_SECRET, TIKTOK_ACCESS_TOKEN, TIKTOK_SHOP_CIPHER])
+      expect(serialized).not.toContain(sensitive);
 
     mutableOptions.appKey = 'mutated-app-key';
     mutableOptions.appSecret = 'mutated-app-secret';
@@ -276,31 +279,40 @@ describe('TikTok Shop read adapter', () => {
     const query = Object.fromEntries(url.searchParams.entries());
     const receivedSignature = query['sign'];
     delete query['sign'];
-    await expect(signTikTokShopRequest({
-      appSecret: TIKTOK_APP_SECRET,
-      path: TIKTOK_SHOP_PRODUCT_SEARCH_PATH,
-      query,
-      bodyText: '{}',
-    })).resolves.toBe(receivedSignature);
+    await expect(
+      signTikTokShopRequest({
+        appSecret: TIKTOK_APP_SECRET,
+        path: TIKTOK_SHOP_PRODUCT_SEARCH_PATH,
+        query,
+        bodyText: '{}',
+      }),
+    ).resolves.toBe(receivedSignature);
   });
 
   it('honors Retry-After as a minimum and retries only a read request', async () => {
     const sleep = vi.fn(async () => undefined);
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(new Response('', {
-        status: 429,
-        headers: { 'Retry-After': '2' },
-      }))
-      .mockResolvedValueOnce(jsonResponse({
-        code: 0,
-        message: 'Success',
-        request_id: 'safe-request-id',
-        data: { next_page_token: '', orders: [] },
-      }));
-    await expect(adapterWith({ fetch: fetcher, sleep }).listOrdersPage({
-      cursor: null,
-      page_size: 20,
-    })).resolves.toEqual({ items: [], next_cursor: null });
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('', {
+          status: 429,
+          headers: { 'Retry-After': '2' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: 'Success',
+          request_id: 'safe-request-id',
+          data: { next_page_token: '', orders: [] },
+        }),
+      );
+    await expect(
+      adapterWith({ fetch: fetcher, sleep }).listOrdersPage({
+        cursor: null,
+        page_size: 20,
+      }),
+    ).resolves.toEqual({ items: [], next_cursor: null });
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(2_000);
   });
@@ -308,14 +320,19 @@ describe('TikTok Shop read adapter', () => {
   it('does not retry earlier than an over-cap or malformed Retry-After', async () => {
     for (const retryAfter of ['61', 'not-a-valid-http-date']) {
       const sleep = vi.fn(async () => undefined);
-      const fetcher = vi.fn(async () => new Response('', {
-        status: 429,
-        headers: { 'Retry-After': retryAfter },
-      }));
-      await expect(adapterWith({ fetch: fetcher, sleep }).listOrdersPage({
-        cursor: null,
-        page_size: 20,
-      })).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+      const fetcher = vi.fn(
+        async () =>
+          new Response('', {
+            status: 429,
+            headers: { 'Retry-After': retryAfter },
+          }),
+      );
+      await expect(
+        adapterWith({ fetch: fetcher, sleep }).listOrdersPage({
+          cursor: null,
+          page_size: 20,
+        }),
+      ).rejects.toMatchObject({ code: 'RATE_LIMITED' });
       expect(fetcher).toHaveBeenCalledTimes(1);
       expect(sleep).not.toHaveBeenCalled();
     }
@@ -325,15 +342,22 @@ describe('TikTok Shop read adapter', () => {
     'does not invent retry semantics for unfrozen HTTP status %s',
     async (status) => {
       const sleep = vi.fn(async () => undefined);
-      const fetcher = vi.fn(async () => jsonResponse({
-        code: 0,
-        message: 'not-authoritative-for-http-failure',
-        request_id: 'safe-request-id',
-      }, status));
-      await expect(adapterWith({ fetch: fetcher, sleep }).listOrdersPage({
-        cursor: null,
-        page_size: 20,
-      })).rejects.toMatchObject({ code: 'CONTRACT' });
+      const fetcher = vi.fn(async () =>
+        jsonResponse(
+          {
+            code: 0,
+            message: 'not-authoritative-for-http-failure',
+            request_id: 'safe-request-id',
+          },
+          status,
+        ),
+      );
+      await expect(
+        adapterWith({ fetch: fetcher, sleep }).listOrdersPage({
+          cursor: null,
+          page_size: 20,
+        }),
+      ).rejects.toMatchObject({ code: 'CONTRACT' });
       expect(fetcher).toHaveBeenCalledTimes(1);
       expect(sleep).not.toHaveBeenCalled();
     },
@@ -349,47 +373,60 @@ describe('TikTok Shop read adapter', () => {
     [36009004, 'CONTRACT'],
     [36009014, 'CONTRACT'],
   ] as const)('maps provider code %s to %s without retry', async (code, expected) => {
-    const fetcher = vi.fn(async () => jsonResponse({
-      code,
-      message: 'provider-message-is-not-surfaced',
-      request_id: 'safe-request-id',
-    }));
-    await expect(adapterWith({ fetch: fetcher }).listOrdersPage({
-      cursor: null,
-      page_size: 20,
-    })).rejects.toMatchObject({ code: expected });
+    const fetcher = vi.fn(async () =>
+      jsonResponse({
+        code,
+        message: 'provider-message-is-not-surfaced',
+        request_id: 'safe-request-id',
+      }),
+    );
+    await expect(
+      adapterWith({ fetch: fetcher }).listOrdersPage({
+        cursor: null,
+        page_size: 20,
+      }),
+    ).rejects.toMatchObject({ code: expected });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('retries a documented transient body code and rejects oversized output', async () => {
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({
-        code: 36009007,
-        message: 'timeout',
-        request_id: 'safe-request-id',
-      }))
-      .mockResolvedValueOnce(jsonResponse({
-        code: 0,
-        message: 'Success',
-        request_id: 'safe-request-id',
-        data: { next_page_token: '', orders: [] },
-      }));
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 36009007,
+          message: 'timeout',
+          request_id: 'safe-request-id',
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: 'Success',
+          request_id: 'safe-request-id',
+          data: { next_page_token: '', orders: [] },
+        }),
+      );
     const sleep = vi.fn(async () => undefined);
-    await expect(adapterWith({ fetch: fetcher, sleep }).listOrdersPage({
-      cursor: null,
-      page_size: 20,
-    })).resolves.toEqual({ items: [], next_cursor: null });
+    await expect(
+      adapterWith({ fetch: fetcher, sleep }).listOrdersPage({
+        cursor: null,
+        page_size: 20,
+      }),
+    ).resolves.toEqual({ items: [], next_cursor: null });
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(1_000);
 
     const oversized = adapterWith({
       maxResponseBytes: 1_024,
-      fetch: async () => new Response(JSON.stringify({ value: 'x'.repeat(2_000) }), {
-        headers: { 'Content-Type': 'application/json' },
-      }),
+      fetch: async () =>
+        new Response(JSON.stringify({ value: 'x'.repeat(2_000) }), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
     });
-    await expect(oversized.listProductsPage({ cursor: null, page_size: 1 }))
-      .rejects.toMatchObject({ code: 'CONTRACT' });
+    await expect(oversized.listProductsPage({ cursor: null, page_size: 1 })).rejects.toMatchObject({
+      code: 'CONTRACT',
+    });
   });
 
   it('cancels rejected Provider bodies at both header and streaming bounds', async () => {
@@ -406,15 +443,17 @@ describe('TikTok Shop read adapter', () => {
       const adapter = adapterWith({
         maxAttempts: 1,
         maxResponseBytes: 1_024,
-        fetch: async () => new Response(stream, {
-          headers: {
-            'Content-Type': 'application/json',
-            ...(declaredLength ? { 'Content-Length': '2048' } : {}),
-          },
-        }),
+        fetch: async () =>
+          new Response(stream, {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(declaredLength ? { 'Content-Length': '2048' } : {}),
+            },
+          }),
       });
-      await expect(adapter.listProductsPage({ cursor: null, page_size: 1 }))
-        .rejects.toMatchObject({ code: 'CONTRACT' });
+      await expect(adapter.listProductsPage({ cursor: null, page_size: 1 })).rejects.toMatchObject({
+        code: 'CONTRACT',
+      });
       expect(cancelled).toBe(true);
     }
   });
@@ -432,16 +471,24 @@ describe('TikTok Shop read adapter', () => {
     'application/json; charset=utf-8;',
     'application/json;;charset=utf-8',
   ])('accepts only a valid exact JSON media type: %s', async (contentType) => {
-    const fetcher = vi.fn(async () => jsonResponse({
-      code: 0,
-      message: 'Success',
-      request_id: 'safe-request-id',
-      data: { next_page_token: '', products: [] },
-    }, 200, contentType));
-    await expect(adapterWith({ fetch: fetcher }).listProductsPage({
-      cursor: null,
-      page_size: 1,
-    })).resolves.toEqual({ items: [], next_cursor: null });
+    const fetcher = vi.fn(async () =>
+      jsonResponse(
+        {
+          code: 0,
+          message: 'Success',
+          request_id: 'safe-request-id',
+          data: { next_page_token: '', products: [] },
+        },
+        200,
+        contentType,
+      ),
+    );
+    await expect(
+      adapterWith({ fetch: fetcher }).listProductsPage({
+        cursor: null,
+        page_size: 1,
+      }),
+    ).resolves.toEqual({ items: [], next_cursor: null });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
@@ -464,12 +511,16 @@ describe('TikTok Shop read adapter', () => {
       start(controller) {
         setTimeout(() => {
           if (cancelled) return;
-          controller.enqueue(new TextEncoder().encode(JSON.stringify({
-            code: 0,
-            message: 'must-not-be-accepted',
-            request_id: 'safe-request-id',
-            data: { next_page_token: '', products: [] },
-          })));
+          controller.enqueue(
+            new TextEncoder().encode(
+              JSON.stringify({
+                code: 0,
+                message: 'must-not-be-accepted',
+                request_id: 'safe-request-id',
+                data: { next_page_token: '', products: [] },
+              }),
+            ),
+          );
           controller.close();
         }, 10);
       },
@@ -478,82 +529,98 @@ describe('TikTok Shop read adapter', () => {
       },
     });
     const sleep = vi.fn(async () => undefined);
-    const fetcher = vi.fn(async () => new Response(stream, {
-      headers: contentType === null ? {} : { 'Content-Type': contentType },
-    }));
-    await expect(adapterWith({ fetch: fetcher, sleep }).listProductsPage({
-      cursor: null,
-      page_size: 1,
-    })).rejects.toMatchObject({ code: 'CONTRACT' });
+    const fetcher = vi.fn(
+      async () =>
+        new Response(stream, {
+          headers: contentType === null ? {} : { 'Content-Type': contentType },
+        }),
+    );
+    await expect(
+      adapterWith({ fetch: fetcher, sleep }).listProductsPage({
+        cursor: null,
+        page_size: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'CONTRACT' });
     expect(cancelled).toBe(true);
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
   });
 
   it('rejects missing/unsafe configuration, bad page bounds and redirects before parsing', async () => {
-    expect(() => adapterWith({ apiOrigin: 'https://example.invalid' }))
-      .toThrow(MarketplaceProviderError);
-    expect(() => adapterWith({ appSecret: '' }))
-      .toThrow(MarketplaceProviderError);
+    expect(() => adapterWith({ apiOrigin: 'https://example.invalid' })).toThrow(
+      MarketplaceProviderError,
+    );
+    expect(() => adapterWith({ appSecret: '' })).toThrow(MarketplaceProviderError);
 
-    const fetcher = vi.fn(async () => new Response('', {
-      status: 302,
-      headers: { Location: 'https://example.invalid/leak' },
-    }));
+    const fetcher = vi.fn(
+      async () =>
+        new Response('', {
+          status: 302,
+          headers: { Location: 'https://example.invalid/leak' },
+        }),
+    );
     const adapter = adapterWith({ fetch: fetcher });
-    await expect(adapter.listOrdersPage({ cursor: null, page_size: 0 }))
-      .rejects.toMatchObject({ code: 'CONTRACT' });
-    await expect(adapter.listOrdersPage({ cursor: 'bad\u0085cursor', page_size: 1 }))
-      .rejects.toMatchObject({ code: 'CONTRACT' });
+    await expect(adapter.listOrdersPage({ cursor: null, page_size: 0 })).rejects.toMatchObject({
+      code: 'CONTRACT',
+    });
+    await expect(
+      adapter.listOrdersPage({ cursor: 'bad\u0085cursor', page_size: 1 }),
+    ).rejects.toMatchObject({ code: 'CONTRACT' });
     expect(fetcher).not.toHaveBeenCalled();
-    await expect(adapter.listOrdersPage({ cursor: null, page_size: 1 }))
-      .rejects.toMatchObject({ code: 'CONTRACT' });
+    await expect(adapter.listOrdersPage({ cursor: null, page_size: 1 })).rejects.toMatchObject({
+      code: 'CONTRACT',
+    });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('rejects C1 controls in Provider display values', async () => {
     const adapter = adapterWith({
       maxAttempts: 1,
-      fetch: async () => jsonResponse({
-        code: 0,
-        message: 'Success',
-        request_id: 'safe-request-id',
-        data: {
-          next_page_token: '',
-          products: [{
-            id: '7495540735365777507',
-            title: 'bad\u009ftitle',
-            status: 'LIVE',
-          }],
-        },
-      }),
+      fetch: async () =>
+        jsonResponse({
+          code: 0,
+          message: 'Success',
+          request_id: 'safe-request-id',
+          data: {
+            next_page_token: '',
+            products: [
+              {
+                id: '7495540735365777507',
+                title: 'bad\u009ftitle',
+                status: 'LIVE',
+              },
+            ],
+          },
+        }),
     });
-    await expect(adapter.listProductsPage({ cursor: null, page_size: 1 }))
-      .rejects.toMatchObject({ code: 'CONTRACT' });
+    await expect(adapter.listProductsPage({ cursor: null, page_size: 1 })).rejects.toMatchObject({
+      code: 'CONTRACT',
+    });
   });
 
   it('keeps the timeout active while the bounded response body is read', async () => {
-    const fetcher = vi.fn(async (
-      _input: string | URL | Request,
-      init?: RequestInit,
-    ) => {
+    const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       const signal = init?.signal;
-      return new Response(new ReadableStream({
-        start(controller) {
-          signal?.addEventListener('abort', () => {
-            controller.error(new DOMException('aborted', 'AbortError'));
-          });
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            signal?.addEventListener('abort', () => {
+              controller.error(new DOMException('aborted', 'AbortError'));
+            });
+          },
+        }),
+        {
+          headers: { 'Content-Type': 'application/json' },
         },
-      }), {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      );
     });
-    await expect(adapterWith({
-      fetch: fetcher,
-      requestTimeoutMs: 100,
-      maxAttempts: 1,
-    }).listProductsPage({ cursor: null, page_size: 1 }))
-      .rejects.toMatchObject({ code: 'TRANSIENT' });
+    await expect(
+      adapterWith({
+        fetch: fetcher,
+        requestTimeoutMs: 100,
+        maxAttempts: 1,
+      }).listProductsPage({ cursor: null, page_size: 1 }),
+    ).rejects.toMatchObject({ code: 'TRANSIENT' });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
@@ -565,10 +632,12 @@ describe('unavailable and fake provider boundaries', () => {
     expect(adapter.blocker).toBe('RAKUTEN_CURRENT_OFFICIAL_CONTRACT_BLOCKED');
     expect(adapter).not.toHaveProperty('fetch');
     expect(adapter).not.toHaveProperty('createOrder');
-    await expect(adapter.listOrdersPage({ cursor: null, page_size: 20 }))
-      .rejects.toMatchObject({ code: 'UNAVAILABLE' });
-    await expect(adapter.listProductsPage({ cursor: null, page_size: 20 }))
-      .rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    await expect(adapter.listOrdersPage({ cursor: null, page_size: 20 })).rejects.toMatchObject({
+      code: 'UNAVAILABLE',
+    });
+    await expect(adapter.listProductsPage({ cursor: null, page_size: 20 })).rejects.toMatchObject({
+      code: 'UNAVAILABLE',
+    });
   });
 
   it('paginates deterministic local fixtures while preserving R-1/S-1 and TikTok strings', async () => {
@@ -587,28 +656,36 @@ describe('unavailable and fake provider boundaries', () => {
     });
     const first = await adapter.listOrdersPage({ cursor: null, page_size: 1 });
     expect(first).toEqual({ items: [orders[0]], next_cursor: 'fake:orders:1' });
-    await expect(adapter.listOrdersPage({
-      cursor: first.next_cursor,
-      page_size: 1,
-    })).resolves.toEqual({ items: [orders[1]], next_cursor: null });
-    await expect(adapter.listProductsPage({ cursor: null, page_size: 2 }))
-      .resolves.toEqual({ items: products, next_cursor: null });
+    await expect(
+      adapter.listOrdersPage({
+        cursor: first.next_cursor,
+        page_size: 1,
+      }),
+    ).resolves.toEqual({ items: [orders[1]], next_cursor: null });
+    await expect(adapter.listProductsPage({ cursor: null, page_size: 2 })).resolves.toEqual({
+      items: products,
+      next_cursor: null,
+    });
     expect(adapter.orderInputs).toHaveLength(2);
     expect(adapter.productInputs).toHaveLength(1);
 
     const tiktokSourceCompatibility = new FakeMarketplaceReadAdapter({
       marketplaceCode: 'TIKTOK_JP',
-      products: [{
-        marketplace_code: 'TIKTOK_JP',
-        platform_product_identifier: 'tiktokDLP2555Q',
-        title: '来源字段兼容夹具',
-        provider_status: 'LOCAL_FIXTURE',
-      }],
+      products: [
+        {
+          marketplace_code: 'TIKTOK_JP',
+          platform_product_identifier: 'tiktokDLP2555Q',
+          title: '来源字段兼容夹具',
+          provider_status: 'LOCAL_FIXTURE',
+        },
+      ],
     });
-    await expect(tiktokSourceCompatibility.listProductsPage({
-      cursor: null,
-      page_size: 1,
-    })).resolves.toMatchObject({
+    await expect(
+      tiktokSourceCompatibility.listProductsPage({
+        cursor: null,
+        page_size: 1,
+      }),
+    ).resolves.toMatchObject({
       items: [{ platform_product_identifier: 'tiktokDLP2555Q' }],
     });
   });
@@ -640,10 +717,7 @@ function jsonResponse(
   });
 }
 
-function rakutenOrder(
-  identifier: string,
-  productIdentifier: string,
-): MarketplaceProviderOrderDto {
+function rakutenOrder(identifier: string, productIdentifier: string): MarketplaceProviderOrderDto {
   return Object.freeze({
     marketplace_code: 'RAKUTEN_JP',
     platform_order_identifier: identifier,

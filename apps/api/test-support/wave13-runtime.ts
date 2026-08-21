@@ -33,9 +33,7 @@ export class Wave13RuntimeDatabase implements SqlDatabase {
   prepare(sql: string): SqlStatement {
     const normalized = sql.replace(/\s+/gu, ' ').trim();
     const kind = overlayKind(normalized);
-    return kind === null
-      ? this.base.prepare(sql)
-      : new OverlayStatement(kind, normalized, []);
+    return kind === null ? this.base.prepare(sql) : new OverlayStatement(kind, normalized, []);
   }
 
   batch(statements: readonly SqlStatement[]): Promise<SqlRunResult[]> {
@@ -88,33 +86,36 @@ class OverlayStatement implements SqlStatement {
       return { results: [reviewVersionRow() as T] };
     }
     if (this.kind === 'ORDER_HISTORY') {
-      return { results: [{
-        evidence_version_id: 'runtime-evidence-version',
-        version_no: 1,
-        final_paid_jpy: 1980,
-        submitted_at: 10_000,
-      } as T] };
+      return {
+        results: [
+          {
+            evidence_version_id: 'runtime-evidence-version',
+            version_no: 1,
+            final_paid_jpy: 1980,
+            submitted_at: 10_000,
+          } as T,
+        ],
+      };
     }
     if (this.kind === 'ORDER_LIST') {
       if (this.sql.includes('0=1')) return { results: [] };
-      return { results: [
-        orderListRow() as T,
-        {
-          ...orderListRow(),
-          submission_id: 'runtime-evidence-no-mismatch',
-          price_difference_jpy: 0,
-          price_mismatch: 0,
-          resubmission_deadline_at: null,
-          submitted_at: 11_000,
-          updated_at: 11_000,
-        } as T,
-      ] };
+      return {
+        results: [
+          orderListRow() as T,
+          {
+            ...orderListRow(),
+            submission_id: 'runtime-evidence-no-mismatch',
+            price_difference_jpy: 0,
+            price_mismatch: 0,
+            resubmission_deadline_at: null,
+            submitted_at: 11_000,
+            updated_at: 11_000,
+          } as T,
+        ],
+      };
     }
     if (this.kind === 'REFUND_LIST') {
-      return { results: filteredRefundListRows(
-        this.sql,
-        this.bindings,
-      ) as T[] };
+      return { results: filteredRefundListRows(this.sql, this.bindings) as T[] };
     }
     if (this.kind === 'REFUND_PAYMENTS') {
       return { results: [refundPaymentRow() as T] };
@@ -140,15 +141,24 @@ function overlayKind(sql: string): OverlayKind | null {
   if (sql.includes('FROM review_evidence_version_files')) {
     return 'REVIEW_FILES';
   }
-  if (sql.includes('FROM order_evidence_submissions submission')
-    && sql.includes('ORDER BY submission.submitted_at')) return 'ORDER_LIST';
+  if (
+    sql.includes('FROM order_evidence_submissions submission') &&
+    sql.includes('ORDER BY submission.submitted_at')
+  )
+    return 'ORDER_LIST';
   if (sql.includes('AS screenshot_file_object_id')) return 'ORDER_DETAIL';
-  if (sql.includes('FROM order_evidence_versions')
-    && sql.includes('created_at AS submitted_at')) return 'ORDER_HISTORY';
-  if (sql.includes('FROM buyer_refund_ledger_balances ledger')
-    && sql.includes('WHERE ledger.obligation_id=?')) return 'REFUND_DETAIL';
-  if (sql.includes('FROM buyer_refund_ledger_balances ledger')
-    && sql.includes('ORDER BY ledger.created_at')) return 'REFUND_LIST';
+  if (sql.includes('FROM order_evidence_versions') && sql.includes('created_at AS submitted_at'))
+    return 'ORDER_HISTORY';
+  if (
+    sql.includes('FROM buyer_refund_ledger_balances ledger') &&
+    sql.includes('WHERE ledger.obligation_id=?')
+  )
+    return 'REFUND_DETAIL';
+  if (
+    sql.includes('FROM buyer_refund_ledger_balances ledger') &&
+    sql.includes('ORDER BY ledger.created_at')
+  )
+    return 'REFUND_LIST';
   if (sql.includes("entry_type='PAYMENT'")) return 'REFUND_PAYMENTS';
   if (sql.includes("entry_type='REVERSAL'")) return 'REFUND_REVERSALS';
   if (sql.includes('FROM buyer_refund_payment_entry_files')) {
@@ -324,10 +334,7 @@ function refundReversalRow() {
   };
 }
 
-function filteredRefundListRows(
-  sql: string,
-  bindings: readonly unknown[],
-) {
+function filteredRefundListRows(sql: string, bindings: readonly unknown[]) {
   if (sql.includes('0=1')) return [];
   const start = Date.parse('2026-07-31T16:00:00.000Z');
   const rows = [
@@ -354,18 +361,16 @@ function filteredRefundListRows(
     const createdAt = Number(bindings[index++]);
     index += 1;
     const id = String(bindings[index++]);
-    filtered = filtered.filter((row) => row.created_at > createdAt
-      || (row.created_at === createdAt && row.obligation_id > id));
+    filtered = filtered.filter(
+      (row) =>
+        row.created_at > createdAt || (row.created_at === createdAt && row.obligation_id > id),
+    );
   }
   const limit = Number(bindings.at(-1));
   return filtered.slice(0, limit);
 }
 
-function refundListRow(
-  obligationId: string,
-  createdAt: number,
-  status: 'DUE' | 'PAID',
-) {
+function refundListRow(obligationId: string, createdAt: number, status: 'DUE' | 'PAID') {
   const paid = status === 'PAID' ? 1000 : 0;
   return {
     obligation_id: obligationId,
@@ -491,13 +496,38 @@ export async function loginThroughDefaultApp(
   storage?: ObjectStorageAdapter,
 ): Promise<{ cookie: string; env: Record<string, unknown> }> {
   const env = runtimeBindings(database, staff, storage);
-  const identity=STAFF[staff];
-  const token=generateStaffOpaqueToken();
-  const row=await database.prepare('SELECT display_name,authorization_version,session_version,status FROM staff_users WHERE id=?').bind(identity.staffId).first<{display_name:string;authorization_version:number;session_version:number;status:'ACTIVE'|'DISABLED'}>();
-  if(!row||row.status!=='ACTIVE')throw new Error('staff_identity_missing');
-  const now=Date.now();
-  await createInternalStaffSession(database,{token,identity:{identity_id:`test-email:${identity.staffId}`,staff_id:identity.staffId,identity_status:'ACTIVE',identity_user_id:null,display_name:row.display_name,staff_status:row.status,authorization_version:Number(row.authorization_version),session_version:Number(row.session_version)},requestId:`test-login:${identity.staffId}`,now,expiresAt:now+STAFF_SESSION_TTL_MS});
-  const cookie=`${STAFF_SESSION_COOKIE_NAME}=${token}`;
+  const identity = STAFF[staff];
+  const token = generateStaffOpaqueToken();
+  const row = await database
+    .prepare(
+      'SELECT display_name,authorization_version,session_version,status FROM staff_users WHERE id=?',
+    )
+    .bind(identity.staffId)
+    .first<{
+      display_name: string;
+      authorization_version: number;
+      session_version: number;
+      status: 'ACTIVE' | 'DISABLED';
+    }>();
+  if (!row || row.status !== 'ACTIVE') throw new Error('staff_identity_missing');
+  const now = Date.now();
+  await createInternalStaffSession(database, {
+    token,
+    identity: {
+      identity_id: `test-email:${identity.staffId}`,
+      staff_id: identity.staffId,
+      identity_status: 'ACTIVE',
+      identity_user_id: null,
+      display_name: row.display_name,
+      staff_status: row.status,
+      authorization_version: Number(row.authorization_version),
+      session_version: Number(row.session_version),
+    },
+    requestId: `test-login:${identity.staffId}`,
+    now,
+    expiresAt: now + STAFF_SESSION_TTL_MS,
+  });
+  const cookie = `${STAFF_SESSION_COOKIE_NAME}=${token}`;
   return { cookie, env };
 }
 

@@ -5,7 +5,11 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import '../test/msw/lifecycle';
-import { createSessionInvalidationMarker, establishFreshSessionCycle, captureSessionCycle } from '../auth/session-invalidation';
+import {
+  createSessionInvalidationMarker,
+  establishFreshSessionCycle,
+  captureSessionCycle,
+} from '../auth/session-invalidation';
 import { failureEnvelopeFixture } from '../test/msw/fixtures';
 import { apiUrl } from '../test/msw/handlers';
 import { createMswQueryClient } from '../test/msw/render';
@@ -19,11 +23,14 @@ import {
 } from './file-purpose-config';
 
 const digest = 'a'.repeat(64);
-const file = (name = 'proof.png', modified = 1) => new File(['safe'], name, {
-  type: 'image/png', lastModified: modified,
-});
+const file = (name = 'proof.png', modified = 1) =>
+  new File(['safe'], name, {
+    type: 'image/png',
+    lastModified: modified,
+  });
 const success = (data: unknown, requestId: string) => ({
-  data, meta: { request_id: requestId },
+  data,
+  meta: { request_id: requestId },
 });
 const tokenFor = (id: string) => `upload-token-${id}`.padEnd(40, 'x');
 
@@ -41,9 +48,15 @@ type Evidence = {
 
 function evidence(): Evidence {
   return {
-    intentBodies: [], intentKeys: [], uploadKeys: [], uploadTokens: [],
-    uploadCredentials: [], uploadContentTypes: [], uploadParts: [],
-    completeBodies: [], completeKeys: [],
+    intentBodies: [],
+    intentKeys: [],
+    uploadKeys: [],
+    uploadTokens: [],
+    uploadCredentials: [],
+    uploadContentTypes: [],
+    uploadParts: [],
+    completeBodies: [],
+    completeKeys: [],
   };
 }
 
@@ -67,56 +80,81 @@ function installHappyChain(
       record.intentBodies.push(await request.json());
       record.intentKeys.push(request.headers.get('Idempotency-Key') ?? '');
       expect(request.credentials).toBe('include');
-      return HttpResponse.json(success({
-        upload_intent_id: intentId,
-        purpose: workflow.purpose,
-        visibility: workflow.visibility,
-        status: 'ISSUED',
-        version: 1,
-        expires_at: 1_900_000_000_000,
-        uploads: slots,
-        replayed: false,
-      }, `request-intent-${key}`));
+      return HttpResponse.json(
+        success(
+          {
+            upload_intent_id: intentId,
+            purpose: workflow.purpose,
+            visibility: workflow.visibility,
+            status: 'ISSUED',
+            version: 1,
+            expires_at: 1_900_000_000_000,
+            uploads: slots,
+            replayed: false,
+          },
+          `request-intent-${key}`,
+        ),
+      );
     }),
-    http.put(apiUrl(`${workflow.lifecyclePrefix}/file-uploads/:fileObjectId/content`), async ({ request, params }) => {
-      record.uploadKeys.push(request.headers.get('Idempotency-Key') ?? '');
-      record.uploadTokens.push(request.headers.get('X-Upload-Token') ?? '');
-      record.uploadCredentials.push(request.credentials);
-      record.uploadContentTypes.push(request.headers.get('Content-Type'));
-      const multipart = new TextDecoder().decode(await request.arrayBuffer());
-      record.uploadParts.push([...multipart.matchAll(/;\sname="([^"]+)"/gu)].map((match) => match[1]!));
-      const slot = slots.find((candidate) => candidate.file_object_id === params['fileObjectId'])!;
-      return HttpResponse.json(success({
-        file_object_id: slot.file_object_id,
-        upload_intent_id: intentId,
-        status: 'UPLOADED',
-        detected_mime: 'image/png',
-        byte_size: 4,
-        sha256: digest,
-        version: 2,
-        replayed: false,
-      }, `request-upload-${String(params['fileObjectId'])}`));
-    }),
-    http.post(apiUrl(`${workflow.lifecyclePrefix}/file-upload-intents/:id/complete`), async ({ request }) => {
-      record.completeBodies.push(await request.json());
-      record.completeKeys.push(request.headers.get('Idempotency-Key') ?? '');
-      expect(request.credentials).toBe('include');
-      return HttpResponse.json(success({
-        upload_intent_id: intentId,
-        status: 'VERIFIED',
-        version: 2,
-        files: slots.map((slot) => ({
-          file_object_id: slot.file_object_id,
-          purpose: workflow.purpose,
-          visibility: workflow.visibility,
-          detected_mime: 'image/png',
-          byte_size: 4,
-          sha256: digest,
-          version: 3,
-        })),
-        replayed: false,
-      }, `request-complete-${key}`));
-    }),
+    http.put(
+      apiUrl(`${workflow.lifecyclePrefix}/file-uploads/:fileObjectId/content`),
+      async ({ request, params }) => {
+        record.uploadKeys.push(request.headers.get('Idempotency-Key') ?? '');
+        record.uploadTokens.push(request.headers.get('X-Upload-Token') ?? '');
+        record.uploadCredentials.push(request.credentials);
+        record.uploadContentTypes.push(request.headers.get('Content-Type'));
+        const multipart = new TextDecoder().decode(await request.arrayBuffer());
+        record.uploadParts.push(
+          [...multipart.matchAll(/;\sname="([^"]+)"/gu)].map((match) => match[1]!),
+        );
+        const slot = slots.find(
+          (candidate) => candidate.file_object_id === params['fileObjectId'],
+        )!;
+        return HttpResponse.json(
+          success(
+            {
+              file_object_id: slot.file_object_id,
+              upload_intent_id: intentId,
+              status: 'UPLOADED',
+              detected_mime: 'image/png',
+              byte_size: 4,
+              sha256: digest,
+              version: 2,
+              replayed: false,
+            },
+            `request-upload-${String(params['fileObjectId'])}`,
+          ),
+        );
+      },
+    ),
+    http.post(
+      apiUrl(`${workflow.lifecyclePrefix}/file-upload-intents/:id/complete`),
+      async ({ request }) => {
+        record.completeBodies.push(await request.json());
+        record.completeKeys.push(request.headers.get('Idempotency-Key') ?? '');
+        expect(request.credentials).toBe('include');
+        return HttpResponse.json(
+          success(
+            {
+              upload_intent_id: intentId,
+              status: 'VERIFIED',
+              version: 2,
+              files: slots.map((slot) => ({
+                file_object_id: slot.file_object_id,
+                purpose: workflow.purpose,
+                visibility: workflow.visibility,
+                detected_mime: 'image/png',
+                byte_size: 4,
+                sha256: digest,
+                version: 3,
+              })),
+              replayed: false,
+            },
+            `request-complete-${key}`,
+          ),
+        );
+      },
+    ),
   );
   return { intentId, slots };
 }
@@ -133,40 +171,61 @@ function seed(client: QueryClient): void {
 }
 
 describe('formal MSW purpose-bound upload chain', () => {
-  it.each(FILE_UPLOAD_WORKFLOW_KEYS)('%s traverses Controller to exact Intent/XHR/Complete routes', async (key) => {
-    const record = evidence();
-    installHappyChain(key, record);
-    const client = createMswQueryClient();
-    const target = controller(client);
-    const observed: ReturnType<FileUploadController['getSnapshot']>[] = [];
-    const unsubscribe = target.subscribe(() => observed.push(target.getSnapshot()));
-    await target.start(key, [file()]);
-    unsubscribe();
-    const snapshot = target.getSnapshot();
-    expect(snapshot.state).toBe('VERIFIED');
-    expect(snapshot.manifest).toMatchObject({
-      intent_version: 2,
-      request_id: `request-complete-${key}`,
-      files: [{ file_version: 3, purpose: fileUploadWorkflows[key].purpose }],
-    });
-    expect(record.intentBodies).toEqual([{ files: [{
-      client_file_name: 'proof.png', extension: 'png', declared_mime: 'image/png', byte_size: 4,
-    }] }]);
-    expect(record.intentKeys[0]).toMatch(/^operation-key-/u);
-    expect(record.uploadCredentials).toEqual(['include']);
-    expect(record.uploadTokens).toEqual([tokenFor(`${key}-1`)]);
-    expect(record.uploadParts).toEqual([['file']]);
-    expect(record.uploadContentTypes[0]).toMatch(/^multipart\/form-data; boundary=/iu);
-    expect(record.completeBodies).toEqual([{ expected_version: 1 }]);
-    expect(record.completeKeys[0]).toMatch(/^operation-key-/u);
-    expect(JSON.stringify(snapshot)).not.toMatch(/upload-token|operation-key|"upload_token"|Idempotency-Key/iu);
-    expect(observed.some((value) => value.progress.mode === 'DETERMINATE'
-      && value.progress.loadedBytes !== null
-      && value.progress.totalBytes !== null)).toBe(true);
-    expect(JSON.stringify(client.getQueryCache().getAll())).not.toMatch(/upload-token|operation-key/iu);
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
-  });
+  it.each(FILE_UPLOAD_WORKFLOW_KEYS)(
+    '%s traverses Controller to exact Intent/XHR/Complete routes',
+    async (key) => {
+      const record = evidence();
+      installHappyChain(key, record);
+      const client = createMswQueryClient();
+      const target = controller(client);
+      const observed: ReturnType<FileUploadController['getSnapshot']>[] = [];
+      const unsubscribe = target.subscribe(() => observed.push(target.getSnapshot()));
+      await target.start(key, [file()]);
+      unsubscribe();
+      const snapshot = target.getSnapshot();
+      expect(snapshot.state).toBe('VERIFIED');
+      expect(snapshot.manifest).toMatchObject({
+        intent_version: 2,
+        request_id: `request-complete-${key}`,
+        files: [{ file_version: 3, purpose: fileUploadWorkflows[key].purpose }],
+      });
+      expect(record.intentBodies).toEqual([
+        {
+          files: [
+            {
+              client_file_name: 'proof.png',
+              extension: 'png',
+              declared_mime: 'image/png',
+              byte_size: 4,
+            },
+          ],
+        },
+      ]);
+      expect(record.intentKeys[0]).toMatch(/^operation-key-/u);
+      expect(record.uploadCredentials).toEqual(['include']);
+      expect(record.uploadTokens).toEqual([tokenFor(`${key}-1`)]);
+      expect(record.uploadParts).toEqual([['file']]);
+      expect(record.uploadContentTypes[0]).toMatch(/^multipart\/form-data; boundary=/iu);
+      expect(record.completeBodies).toEqual([{ expected_version: 1 }]);
+      expect(record.completeKeys[0]).toMatch(/^operation-key-/u);
+      expect(JSON.stringify(snapshot)).not.toMatch(
+        /upload-token|operation-key|"upload_token"|Idempotency-Key/iu,
+      );
+      expect(
+        observed.some(
+          (value) =>
+            value.progress.mode === 'DETERMINATE' &&
+            value.progress.loadedBytes !== null &&
+            value.progress.totalBytes !== null,
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(client.getQueryCache().getAll())).not.toMatch(
+        /upload-token|operation-key/iu,
+      );
+      expect(localStorage.length).toBe(0);
+      expect(sessionStorage.length).toBe(0);
+    },
+  );
 
   it('uploads each multi-slot file separately, uses distinct keys, then completes once', async () => {
     const record = evidence();
@@ -184,11 +243,9 @@ describe('formal MSW purpose-bound upload chain', () => {
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
     const target = controller();
-    render(<FileUploadTestHarness
-      controller={target}
-      workflow="buyerOrderEvidence"
-      files={[file()]}
-    />);
+    render(
+      <FileUploadTestHarness controller={target} workflow="buyerOrderEvidence" files={[file()]} />,
+    );
     fireEvent.click(screen.getByRole('button', { name: '开始上传' }));
     expect(await screen.findByText('VERIFIED 1')).toBeVisible();
     expect(screen.getByText('VERIFIED', { selector: 'p' })).toBeVisible();
@@ -196,12 +253,15 @@ describe('formal MSW purpose-bound upload chain', () => {
 
   it('rejects invalid selection without sending any network request', async () => {
     let requests = 0;
-    server.events.on('request:start', () => { requests += 1; });
+    server.events.on('request:start', () => {
+      requests += 1;
+    });
     try {
       const target = controller();
       await target.start('buyerOrderEvidence', [new File([], 'empty.png', { type: 'image/png' })]);
       expect(target.getSnapshot()).toMatchObject({
-        state: 'ERROR', error: { code: 'VALIDATION_ERROR' },
+        state: 'ERROR',
+        error: { code: 'VALIDATION_ERROR' },
       });
       expect(requests).toBe(0);
     } finally {
@@ -214,23 +274,36 @@ describe('formal MSW purpose-bound upload chain', () => {
     const { slots, intentId } = installHappyChain('buyerOrderEvidence', record);
     let uploads = 0;
     const uploadKeys: string[] = [];
-    server.use(http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), async ({ request }) => {
-      uploads += 1;
-      uploadKeys.push(request.headers.get('Idempotency-Key') ?? '');
-      if (uploads === 1) await delay(80);
-      return HttpResponse.json(success({
-        file_object_id: slots[0]!.file_object_id, upload_intent_id: intentId,
-        status: 'UPLOADED', detected_mime: 'image/png', byte_size: 4,
-        sha256: digest, version: 2, replayed: false,
-      }, `request-replaced-upload-${uploads}`));
-    }));
+    server.use(
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), async ({ request }) => {
+        uploads += 1;
+        uploadKeys.push(request.headers.get('Idempotency-Key') ?? '');
+        if (uploads === 1) await delay(80);
+        return HttpResponse.json(
+          success(
+            {
+              file_object_id: slots[0]!.file_object_id,
+              upload_intent_id: intentId,
+              status: 'UPLOADED',
+              detected_mime: 'image/png',
+              byte_size: 4,
+              sha256: digest,
+              version: 2,
+              replayed: false,
+            },
+            `request-replaced-upload-${uploads}`,
+          ),
+        );
+      }),
+    );
     const target = controller();
     const first = target.start('buyerOrderEvidence', [file('old.png')]);
     await waitFor(() => expect(target.getSnapshot().state).toBe('UPLOADING'));
     await target.replaceFiles('buyerOrderEvidence', [file('new.png', 2)]);
     await first;
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', slots: [{ clientFileName: 'new.png' }],
+      state: 'VERIFIED',
+      slots: [{ clientFileName: 'new.png' }],
     });
     expect(record.intentKeys).toHaveLength(2);
     expect(record.intentKeys[0]).not.toBe(record.intentKeys[1]);
@@ -243,21 +316,57 @@ describe('Intent contract, replay, and identity invalidation', () => {
     ['purpose', { purpose: 'REVIEW_EVIDENCE' }],
     ['visibility', { visibility: 'SELLER_VISIBLE' }],
     ['slot count', { uploads: [] }],
-    ['duplicate slot', { uploads: [
-      { file_object_id: 'file-a', slot_no: 1, upload_token: tokenFor('a'), upload_token_available: true, expires_at: 2 },
-      { file_object_id: 'file-a', slot_no: 1, upload_token: tokenFor('b'), upload_token_available: true, expires_at: 2 },
-    ] }],
+    [
+      'duplicate slot',
+      {
+        uploads: [
+          {
+            file_object_id: 'file-a',
+            slot_no: 1,
+            upload_token: tokenFor('a'),
+            upload_token_available: true,
+            expires_at: 2,
+          },
+          {
+            file_object_id: 'file-a',
+            slot_no: 1,
+            upload_token: tokenFor('b'),
+            upload_token_available: true,
+            expires_at: 2,
+          },
+        ],
+      },
+    ],
   ])('rejects mismatched %s before upload', async (_label, override) => {
     let uploads = 0;
     const workflow = fileUploadWorkflows.buyerOrderEvidence;
     server.use(
-      http.post(apiUrl(workflow.intentPath), () => HttpResponse.json(success({
-        upload_intent_id: 'intent-bad', purpose: workflow.purpose,
-        visibility: workflow.visibility, status: 'ISSUED', version: 1, expires_at: 2,
-        uploads: [{ file_object_id: 'file-a', slot_no: 1, upload_token: tokenFor('a'), upload_token_available: true, expires_at: 2 }],
-        replayed: false,
-        ...override,
-      }, 'request-bad-intent'))),
+      http.post(apiUrl(workflow.intentPath), () =>
+        HttpResponse.json(
+          success(
+            {
+              upload_intent_id: 'intent-bad',
+              purpose: workflow.purpose,
+              visibility: workflow.visibility,
+              status: 'ISSUED',
+              version: 1,
+              expires_at: 2,
+              uploads: [
+                {
+                  file_object_id: 'file-a',
+                  slot_no: 1,
+                  upload_token: tokenFor('a'),
+                  upload_token_available: true,
+                  expires_at: 2,
+                },
+              ],
+              replayed: false,
+              ...override,
+            },
+            'request-bad-intent',
+          ),
+        ),
+      ),
       http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
         uploads += 1;
         return HttpResponse.error();
@@ -265,7 +374,10 @@ describe('Intent contract, replay, and identity invalidation', () => {
     );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
-    expect(target.getSnapshot()).toMatchObject({ state: 'RESTART_REQUIRED', restartRequired: true });
+    expect(target.getSnapshot()).toMatchObject({
+      state: 'RESTART_REQUIRED',
+      restartRequired: true,
+    });
     expect(uploads).toBe(0);
   });
 
@@ -273,19 +385,41 @@ describe('Intent contract, replay, and identity invalidation', () => {
     const keys: string[] = [];
     let calls = 0;
     const workflow = fileUploadWorkflows.buyerOrderEvidence;
-    server.use(http.post(apiUrl(workflow.intentPath), ({ request }) => {
-      calls += 1;
-      keys.push(request.headers.get('Idempotency-Key') ?? '');
-      return HttpResponse.json(success({
-        upload_intent_id: `intent-replay-${calls}`, purpose: workflow.purpose,
-        visibility: workflow.visibility, status: 'ISSUED', version: 1, expires_at: 2,
-        uploads: [{ file_object_id: `file-replay-${calls}`, slot_no: 1, upload_token: null, upload_token_available: false, expires_at: 2 }],
-        replayed: true,
-      }, `request-replay-${calls}`));
-    }));
+    server.use(
+      http.post(apiUrl(workflow.intentPath), ({ request }) => {
+        calls += 1;
+        keys.push(request.headers.get('Idempotency-Key') ?? '');
+        return HttpResponse.json(
+          success(
+            {
+              upload_intent_id: `intent-replay-${calls}`,
+              purpose: workflow.purpose,
+              visibility: workflow.visibility,
+              status: 'ISSUED',
+              version: 1,
+              expires_at: 2,
+              uploads: [
+                {
+                  file_object_id: `file-replay-${calls}`,
+                  slot_no: 1,
+                  upload_token: null,
+                  upload_token_available: false,
+                  expires_at: 2,
+                },
+              ],
+              replayed: true,
+            },
+            `request-replay-${calls}`,
+          ),
+        );
+      }),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
-    expect(target.getSnapshot()).toMatchObject({ state: 'RESTART_REQUIRED', restartRequired: true });
+    expect(target.getSnapshot()).toMatchObject({
+      state: 'RESTART_REQUIRED',
+      restartRequired: true,
+    });
     expect(calls).toBe(1);
     await target.restart();
     expect(calls).toBe(2);
@@ -300,10 +434,14 @@ describe('Intent contract, replay, and identity invalidation', () => {
     const client = createMswQueryClient();
     seed(client);
     const workflow = fileUploadWorkflows[key];
-    server.use(http.post(apiUrl(workflow.intentPath), () => HttpResponse.json(
-      failureEnvelopeFixture('UNAUTHENTICATED', 'login', null, `request-${key}-401`),
-      { status: 401 },
-    )));
+    server.use(
+      http.post(apiUrl(workflow.intentPath), () =>
+        HttpResponse.json(
+          failureEnvelopeFixture('UNAUTHENTICATED', 'login', null, `request-${key}-401`),
+          { status: 401 },
+        ),
+      ),
+    );
     const target = controller(client);
     await target.start(key, [file()]);
     for (const root of cleared) expect(client.getQueriesData({ queryKey: [root] })).toEqual([]);
@@ -316,18 +454,33 @@ describe('XHR upload retry, cancel, errors, and stale 401 generation', () => {
     const record = evidence();
     const { slots, intentId } = installHappyChain('buyerOrderEvidence', record);
     let calls = 0;
-    server.use(http.put(apiUrl('/api/buyer-portal/file-uploads/:fileObjectId/content'), async ({ request }) => {
-      calls += 1;
-      record.uploadKeys.push(request.headers.get('Idempotency-Key') ?? '');
-      record.uploadTokens.push(request.headers.get('X-Upload-Token') ?? '');
-      if (calls === 1) return HttpResponse.error();
-      await request.arrayBuffer();
-      return HttpResponse.json(success({
-        file_object_id: slots[0]!.file_object_id, upload_intent_id: intentId,
-        status: 'UPLOADED', detected_mime: 'image/png',
-        byte_size: 4, sha256: digest, version: 2, replayed: false,
-      }, 'request-upload-retry'));
-    }));
+    server.use(
+      http.put(
+        apiUrl('/api/buyer-portal/file-uploads/:fileObjectId/content'),
+        async ({ request }) => {
+          calls += 1;
+          record.uploadKeys.push(request.headers.get('Idempotency-Key') ?? '');
+          record.uploadTokens.push(request.headers.get('X-Upload-Token') ?? '');
+          if (calls === 1) return HttpResponse.error();
+          await request.arrayBuffer();
+          return HttpResponse.json(
+            success(
+              {
+                file_object_id: slots[0]!.file_object_id,
+                upload_intent_id: intentId,
+                status: 'UPLOADED',
+                detected_mime: 'image/png',
+                byte_size: 4,
+                sha256: digest,
+                version: 2,
+                replayed: false,
+              },
+              'request-upload-retry',
+            ),
+          );
+        },
+      ),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({ state: 'ERROR', canRetry: true });
@@ -374,9 +527,11 @@ describe('XHR upload retry, cancel, errors, and stale 401 generation', () => {
     installHappyChain('buyerOrderEvidence', record);
     let completeCalls = 0;
     server.use(
-      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => HttpResponse.json(
-        failureEnvelopeFixture(code, 'safe', null, `request-upload-${code}`), { status },
-      )),
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () =>
+        HttpResponse.json(failureEnvelopeFixture(code, 'safe', null, `request-upload-${code}`), {
+          status,
+        }),
+      ),
       http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => {
         completeCalls += 1;
         return HttpResponse.error();
@@ -396,9 +551,15 @@ describe('XHR upload retry, cancel, errors, and stale 401 generation', () => {
     server.use(
       http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
         uploadCalls += 1;
-        return HttpResponse.json(failureEnvelopeFixture(
-          'FILE_VALIDATION_FAILED', 'unsafe', null, 'request-first-slot-failed',
-        ), { status: 422 });
+        return HttpResponse.json(
+          failureEnvelopeFixture(
+            'FILE_VALIDATION_FAILED',
+            'unsafe',
+            null,
+            'request-first-slot-failed',
+          ),
+          { status: 422 },
+        );
       }),
       http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => {
         completeCalls += 1;
@@ -415,30 +576,41 @@ describe('XHR upload retry, cancel, errors, and stale 401 generation', () => {
   it.each([
     ['buyerOrderEvidence', ['buyer', 'seller'], ['staff']],
     ['staffBuyerRefundProof', ['staff'], ['buyer', 'seller']],
-  ] as const)('%s Upload 401 uses the existing identity cleanup cycle', async (key, cleared, preserved) => {
-    const client = createMswQueryClient();
-    seed(client);
-    const record = evidence();
-    installHappyChain(key, record);
-    const workflow = fileUploadWorkflows[key];
-    server.use(http.put(apiUrl(`${workflow.lifecyclePrefix}/file-uploads/:id/content`), () => HttpResponse.json(
-      failureEnvelopeFixture('UNAUTHENTICATED', 'login', null, `request-${key}-upload-401`),
-      { status: 401 },
-    )));
-    const target = controller(client);
-    await target.start(key, [file()]);
-    for (const root of cleared) expect(client.getQueriesData({ queryKey: [root] })).toEqual([]);
-    for (const root of preserved) expect(client.getQueryData([root, 'session'])).toBe(root);
-    expect(target.getSnapshot().error).toMatchObject({ code: 'UNAUTHENTICATED' });
-  });
+  ] as const)(
+    '%s Upload 401 uses the existing identity cleanup cycle',
+    async (key, cleared, preserved) => {
+      const client = createMswQueryClient();
+      seed(client);
+      const record = evidence();
+      installHappyChain(key, record);
+      const workflow = fileUploadWorkflows[key];
+      server.use(
+        http.put(apiUrl(`${workflow.lifecyclePrefix}/file-uploads/:id/content`), () =>
+          HttpResponse.json(
+            failureEnvelopeFixture('UNAUTHENTICATED', 'login', null, `request-${key}-upload-401`),
+            { status: 401 },
+          ),
+        ),
+      );
+      const target = controller(client);
+      await target.start(key, [file()]);
+      for (const root of cleared) expect(client.getQueriesData({ queryKey: [root] })).toEqual([]);
+      for (const root of preserved) expect(client.getQueryData([root, 'session'])).toBe(root);
+      expect(target.getSnapshot().error).toMatchObject({ code: 'UNAUTHENTICATED' });
+    },
+  );
 
   it('rejects a malformed Upload success envelope while preserving its trusted request_id', async () => {
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
-    server.use(http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => HttpResponse.json({
-      data: { file_object_id: 'wrong-only' },
-      meta: { request_id: 'request-malformed-upload' },
-    })));
+    server.use(
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () =>
+        HttpResponse.json({
+          data: { file_object_id: 'wrong-only' },
+          meta: { request_id: 'request-malformed-upload' },
+        }),
+      ),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({
@@ -454,20 +626,24 @@ describe('XHR upload retry, cancel, errors, and stale 401 generation', () => {
     installHappyChain('buyerOrderEvidence', record);
     let started = false;
     let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    server.use(http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), async () => {
-      started = true;
-      await gate;
-      return HttpResponse.json(
-        failureEnvelopeFixture('UNAUTHENTICATED', 'login', null, 'request-old-upload-401'),
-        { status: 401 },
-      );
-    }));
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), async () => {
+        started = true;
+        await gate;
+        return HttpResponse.json(
+          failureEnvelopeFixture('UNAUTHENTICATED', 'login', null, 'request-old-upload-401'),
+          { status: 401 },
+        );
+      }),
+    );
     const target = controller(client);
     const running = target.start('buyerOrderEvidence', [file()]);
     await waitFor(() => expect(started).toBe(true));
     const cycle = captureSessionCycle(client, 'buyer');
-    const marker=await createSessionInvalidationMarker('buyer','buyer-fresh',1,1);
+    const marker = await createSessionInvalidationMarker('buyer', 'buyer-fresh', 1, 1);
     expect(establishFreshSessionCycle(client, 'buyer', cycle, marker)).not.toBeNull();
     client.setQueryData(['buyer', 'session'], 'buyer-fresh');
     client.setQueryData(['seller', 'session'], 'seller-fresh');
@@ -484,15 +660,36 @@ describe('Complete validation and explicit safe retry', () => {
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
     let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), async () => {
-      await gate;
-      return HttpResponse.json(success({
-        upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 2,
-        files: [{ file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE', visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4, sha256: digest, version: 3 }],
-        replayed: false,
-      }, 'request-complete-delayed'));
-    }));
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), async () => {
+        await gate;
+        return HttpResponse.json(
+          success(
+            {
+              upload_intent_id: 'intent-buyerOrderEvidence',
+              status: 'VERIFIED',
+              version: 2,
+              files: [
+                {
+                  file_object_id: 'file-buyerOrderEvidence-1',
+                  purpose: 'ORDER_EVIDENCE',
+                  visibility: 'BUYER_VISIBLE',
+                  detected_mime: 'image/png',
+                  byte_size: 4,
+                  sha256: digest,
+                  version: 3,
+                },
+              ],
+              replayed: false,
+            },
+            'request-complete-delayed',
+          ),
+        );
+      }),
+    );
     const target = controller();
     const running = target.start('buyerOrderEvidence', [file()]);
     await waitFor(() => expect(target.getSnapshot().state).toBe('COMPLETING'));
@@ -506,16 +703,35 @@ describe('Complete validation and explicit safe retry', () => {
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
     let calls = 0;
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), ({ request }) => {
-      calls += 1;
-      record.completeKeys.push(request.headers.get('Idempotency-Key') ?? '');
-      if (calls === 1) return HttpResponse.error();
-      return HttpResponse.json(success({
-        upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 2,
-        files: [{ file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE', visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4, sha256: digest, version: 3 }],
-        replayed: true,
-      }, 'request-complete-replay'));
-    }));
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), ({ request }) => {
+        calls += 1;
+        record.completeKeys.push(request.headers.get('Idempotency-Key') ?? '');
+        if (calls === 1) return HttpResponse.error();
+        return HttpResponse.json(
+          success(
+            {
+              upload_intent_id: 'intent-buyerOrderEvidence',
+              status: 'VERIFIED',
+              version: 2,
+              files: [
+                {
+                  file_object_id: 'file-buyerOrderEvidence-1',
+                  purpose: 'ORDER_EVIDENCE',
+                  visibility: 'BUYER_VISIBLE',
+                  detected_mime: 'image/png',
+                  byte_size: 4,
+                  sha256: digest,
+                  version: 3,
+                },
+              ],
+              replayed: true,
+            },
+            'request-complete-replay',
+          ),
+        );
+      }),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({ state: 'ERROR', canRetry: true });
@@ -533,27 +749,82 @@ describe('Complete validation and explicit safe retry', () => {
   ] as const)('maps Complete %s to distinct %s state', async (status, code, state, canRetry) => {
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => HttpResponse.json(
-      failureEnvelopeFixture(code, 'safe', null, `request-complete-${code}`), { status },
-    )));
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () =>
+        HttpResponse.json(failureEnvelopeFixture(code, 'safe', null, `request-complete-${code}`), {
+          status,
+        }),
+      ),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({ state, canRetry, error: { code } });
   });
 
   it.each([
-    ['wrong purpose', { files: [{ file_object_id: 'file-buyerOrderEvidence-1', purpose: 'REVIEW_EVIDENCE', visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4, sha256: digest, version: 3 }] }],
-    ['unknown file', { files: [{ file_object_id: 'file-unknown', purpose: 'ORDER_EVIDENCE', visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4, sha256: digest, version: 3 }] }],
+    [
+      'wrong purpose',
+      {
+        files: [
+          {
+            file_object_id: 'file-buyerOrderEvidence-1',
+            purpose: 'REVIEW_EVIDENCE',
+            visibility: 'BUYER_VISIBLE',
+            detected_mime: 'image/png',
+            byte_size: 4,
+            sha256: digest,
+            version: 3,
+          },
+        ],
+      },
+    ],
+    [
+      'unknown file',
+      {
+        files: [
+          {
+            file_object_id: 'file-unknown',
+            purpose: 'ORDER_EVIDENCE',
+            visibility: 'BUYER_VISIBLE',
+            detected_mime: 'image/png',
+            byte_size: 4,
+            sha256: digest,
+            version: 3,
+          },
+        ],
+      },
+    ],
     ['malformed envelope data', { status: 'UPLOADED' }],
   ])('rejects %s manifest and preserves trustworthy request_id', async (_label, override) => {
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => HttpResponse.json(success({
-      upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 2,
-      files: [{ file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE', visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4, sha256: digest, version: 3 }],
-      replayed: false,
-      ...override,
-    }, 'request-malformed-manifest'))));
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () =>
+        HttpResponse.json(
+          success(
+            {
+              upload_intent_id: 'intent-buyerOrderEvidence',
+              status: 'VERIFIED',
+              version: 2,
+              files: [
+                {
+                  file_object_id: 'file-buyerOrderEvidence-1',
+                  purpose: 'ORDER_EVIDENCE',
+                  visibility: 'BUYER_VISIBLE',
+                  detected_mime: 'image/png',
+                  byte_size: 4,
+                  sha256: digest,
+                  version: 3,
+                },
+              ],
+              replayed: false,
+              ...override,
+            },
+            'request-malformed-manifest',
+          ),
+        ),
+      ),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({
@@ -582,36 +853,72 @@ describe('A5AR terminal cancel and operation occupancy boundaries', () => {
     installHappyChain('buyerOrderEvidence', record);
     let intentCalls = 0;
     server.use(
-      http.post(apiUrl('/api/buyer-portal/file-uploads/order-evidence/intents'), async ({ request }) => {
-        intentCalls += 1;
-        record.intentBodies.push(await request.json());
-        return HttpResponse.json(success({
-          upload_intent_id: 'intent-compensation', purpose: 'ORDER_EVIDENCE',
-          visibility: 'BUYER_VISIBLE', status: 'ISSUED', version: 1,
-          expires_at: 1_900_000_000_000,
-          uploads: [{
-            file_object_id: 'file-compensation', slot_no: 1,
-            upload_token: tokenFor('compensation'), upload_token_available: true,
-            expires_at: 1_900_000_000_000,
-          }], replayed: false,
-        }, 'request-compensation-intent'));
-      }),
-      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => HttpResponse.json(success({
-        file_object_id: 'file-compensation', upload_intent_id: 'intent-compensation',
-        status: 'UPLOADED', detected_mime: 'image/png', byte_size: 4,
-        sha256: digest, version: 2, replayed: false,
-      }, 'request-compensation-upload'))),
-      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => HttpResponse.json(
-        failureEnvelopeFixture(
-          'FILE_COMPENSATION_REQUIRED', 'support', null, 'request-compensation-terminal',
-        ), { status: 503 },
-      )),
+      http.post(
+        apiUrl('/api/buyer-portal/file-uploads/order-evidence/intents'),
+        async ({ request }) => {
+          intentCalls += 1;
+          record.intentBodies.push(await request.json());
+          return HttpResponse.json(
+            success(
+              {
+                upload_intent_id: 'intent-compensation',
+                purpose: 'ORDER_EVIDENCE',
+                visibility: 'BUYER_VISIBLE',
+                status: 'ISSUED',
+                version: 1,
+                expires_at: 1_900_000_000_000,
+                uploads: [
+                  {
+                    file_object_id: 'file-compensation',
+                    slot_no: 1,
+                    upload_token: tokenFor('compensation'),
+                    upload_token_available: true,
+                    expires_at: 1_900_000_000_000,
+                  },
+                ],
+                replayed: false,
+              },
+              'request-compensation-intent',
+            ),
+          );
+        },
+      ),
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () =>
+        HttpResponse.json(
+          success(
+            {
+              file_object_id: 'file-compensation',
+              upload_intent_id: 'intent-compensation',
+              status: 'UPLOADED',
+              detected_mime: 'image/png',
+              byte_size: 4,
+              sha256: digest,
+              version: 2,
+              replayed: false,
+            },
+            'request-compensation-upload',
+          ),
+        ),
+      ),
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () =>
+        HttpResponse.json(
+          failureEnvelopeFixture(
+            'FILE_COMPENSATION_REQUIRED',
+            'support',
+            null,
+            'request-compensation-terminal',
+          ),
+          { status: 503 },
+        ),
+      ),
     );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     const terminal = target.getSnapshot();
     expect(terminal).toMatchObject({
-      state: 'FILE_COMPENSATION_REQUIRED', canCancel: false, canRetry: false,
+      state: 'FILE_COMPENSATION_REQUIRED',
+      canCancel: false,
+      canRetry: false,
       requestId: 'request-compensation-terminal',
     });
     expect(JSON.stringify(terminal)).not.toMatch(/upload-token|operation-key/iu);
@@ -629,24 +936,50 @@ describe('A5AR terminal cancel and operation occupancy boundaries', () => {
     installHappyChain('buyerOrderEvidence', record);
     let release!: () => void;
     let completeAborted = false;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), async ({ request }) => {
-      request.signal.addEventListener('abort', () => { completeAborted = true; });
-      await gate;
-      return HttpResponse.json(success({
-        upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 2,
-        files: [{
-          file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE',
-          visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-          sha256: digest, version: 3,
-        }], replayed: false,
-      }, 'request-completing-cancel'));
-    }));
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.post(
+        apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'),
+        async ({ request }) => {
+          request.signal.addEventListener('abort', () => {
+            completeAborted = true;
+          });
+          await gate;
+          return HttpResponse.json(
+            success(
+              {
+                upload_intent_id: 'intent-buyerOrderEvidence',
+                status: 'VERIFIED',
+                version: 2,
+                files: [
+                  {
+                    file_object_id: 'file-buyerOrderEvidence-1',
+                    purpose: 'ORDER_EVIDENCE',
+                    visibility: 'BUYER_VISIBLE',
+                    detected_mime: 'image/png',
+                    byte_size: 4,
+                    sha256: digest,
+                    version: 3,
+                  },
+                ],
+                replayed: false,
+              },
+              'request-completing-cancel',
+            ),
+          );
+        },
+      ),
+    );
     const target = controller();
     const running = target.start('buyerOrderEvidence', [file()]);
-    await waitFor(() => expect(target.getSnapshot()).toMatchObject({
-      state: 'COMPLETING', canCancel: false,
-    }));
+    await waitFor(() =>
+      expect(target.getSnapshot()).toMatchObject({
+        state: 'COMPLETING',
+        canCancel: false,
+      }),
+    );
     target.cancel();
     expect(target.getSnapshot().state).toBe('COMPLETING');
     expect(completeAborted).toBe(false);
@@ -660,18 +993,36 @@ describe('A5AR terminal cancel and operation occupancy boundaries', () => {
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
     let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), async () => {
-      await gate;
-      return HttpResponse.json(success({
-        upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 2,
-        files: [{
-          file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE',
-          visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-          sha256: digest, version: 3,
-        }], replayed: false,
-      }, 'request-completing-replace'));
-    }));
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), async () => {
+        await gate;
+        return HttpResponse.json(
+          success(
+            {
+              upload_intent_id: 'intent-buyerOrderEvidence',
+              status: 'VERIFIED',
+              version: 2,
+              files: [
+                {
+                  file_object_id: 'file-buyerOrderEvidence-1',
+                  purpose: 'ORDER_EVIDENCE',
+                  visibility: 'BUYER_VISIBLE',
+                  detected_mime: 'image/png',
+                  byte_size: 4,
+                  sha256: digest,
+                  version: 3,
+                },
+              ],
+              replayed: false,
+            },
+            'request-completing-replace',
+          ),
+        );
+      }),
+    );
     const target = controller();
     const running = target.start('buyerOrderEvidence', [file('original.png')]);
     await waitFor(() => expect(target.getSnapshot().state).toBe('COMPLETING'));
@@ -682,7 +1033,8 @@ describe('A5AR terminal cancel and operation occupancy boundaries', () => {
     await Promise.all([running, replacing]);
     expect(record.intentBodies).toHaveLength(1);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', slots: [{ clientFileName: 'original.png' }],
+      state: 'VERIFIED',
+      slots: [{ clientFileName: 'original.png' }],
     });
   });
 
@@ -709,16 +1061,21 @@ describe('A5AR multi-slot authority release and ambiguous Upload recovery', () =
     const record = evidence();
     installHappyChain('buyerReviewEvidence', record, { files: 2 });
     let uploadCalls = 0;
-    server.use(http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
-      uploadCalls += 1;
-      return HttpResponse.json(failureEnvelopeFixture(
-        'UNAUTHENTICATED', 'login', null, 'request-multislot-401',
-      ), { status: 401 });
-    }));
+    server.use(
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
+        uploadCalls += 1;
+        return HttpResponse.json(
+          failureEnvelopeFixture('UNAUTHENTICATED', 'login', null, 'request-multislot-401'),
+          { status: 401 },
+        );
+      }),
+    );
     const target = controller(client);
     await target.start('buyerReviewEvidence', [file('one.png', 1), file('two.png', 2)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'RESTART_REQUIRED', canRetry: false, restartRequired: true,
+      state: 'RESTART_REQUIRED',
+      canRetry: false,
+      restartRequired: true,
     });
     expect(uploadCalls).toBe(1);
     await target.retry();
@@ -731,16 +1088,21 @@ describe('A5AR multi-slot authority release and ambiguous Upload recovery', () =
     const record = evidence();
     installHappyChain('buyerReviewEvidence', record, { files: 2 });
     let uploadCalls = 0;
-    server.use(http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
-      uploadCalls += 1;
-      return HttpResponse.json(failureEnvelopeFixture(
-        'FILE_VALIDATION_FAILED', 'unsafe', null, 'request-multislot-422',
-      ), { status: 422 });
-    }));
+    server.use(
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
+        uploadCalls += 1;
+        return HttpResponse.json(
+          failureEnvelopeFixture('FILE_VALIDATION_FAILED', 'unsafe', null, 'request-multislot-422'),
+          { status: 422 },
+        );
+      }),
+    );
     const target = controller();
     await target.start('buyerReviewEvidence', [file('one.png', 1), file('two.png', 2)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', canRetry: false, restartRequired: false,
+      state: 'ERROR',
+      canRetry: false,
+      restartRequired: false,
       requiresFileReselection: true,
     });
     await target.retry();
@@ -762,34 +1124,59 @@ describe('A5AR multi-slot authority release and ambiguous Upload recovery', () =
         keys.push(request.headers.get('Idempotency-Key') ?? '');
         tokens.push(request.headers.get('X-Upload-Token') ?? '');
         if (uploadCalls === 1) {
-          return HttpResponse.json(success(
-            { file_object_id: slots[0]!.file_object_id },
-            'request-multislot-malformed-upload',
-          ));
+          return HttpResponse.json(
+            success(
+              { file_object_id: slots[0]!.file_object_id },
+              'request-multislot-malformed-upload',
+            ),
+          );
         }
         const slot = uploadCalls === 2 ? slots[0]! : slots[1]!;
-        return HttpResponse.json(success({
-          file_object_id: slot.file_object_id, upload_intent_id: intentId,
-          status: 'UPLOADED', detected_mime: 'image/png', byte_size: 4,
-          sha256: digest, version: 2, replayed: false,
-        }, `request-multislot-upload-${uploadCalls}`));
+        return HttpResponse.json(
+          success(
+            {
+              file_object_id: slot.file_object_id,
+              upload_intent_id: intentId,
+              status: 'UPLOADED',
+              detected_mime: 'image/png',
+              byte_size: 4,
+              sha256: digest,
+              version: 2,
+              replayed: false,
+            },
+            `request-multislot-upload-${uploadCalls}`,
+          ),
+        );
       }),
       http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => {
         completeCalls += 1;
-        return HttpResponse.json(success({
-          upload_intent_id: intentId, status: 'VERIFIED', version: 2,
-          files: slots.map((slot) => ({
-            file_object_id: slot.file_object_id, purpose: 'REVIEW_EVIDENCE',
-            visibility: 'SELLER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-            sha256: digest, version: 3,
-          })), replayed: false,
-        }, 'request-multislot-complete'));
+        return HttpResponse.json(
+          success(
+            {
+              upload_intent_id: intentId,
+              status: 'VERIFIED',
+              version: 2,
+              files: slots.map((slot) => ({
+                file_object_id: slot.file_object_id,
+                purpose: 'REVIEW_EVIDENCE',
+                visibility: 'SELLER_VISIBLE',
+                detected_mime: 'image/png',
+                byte_size: 4,
+                sha256: digest,
+                version: 3,
+              })),
+              replayed: false,
+            },
+            'request-multislot-complete',
+          ),
+        );
       }),
     );
     const target = controller();
     await target.start('buyerReviewEvidence', [file('one.png', 1), file('two.png', 2)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', canRetry: true,
+      state: 'ERROR',
+      canRetry: true,
       error: { code: 'MALFORMED_RESPONSE', requestId: 'request-multislot-malformed-upload' },
     });
     expect(uploadCalls).toBe(1);
@@ -807,17 +1194,21 @@ describe('A5AR multi-slot authority release and ambiguous Upload recovery', () =
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
     let calls = 0;
-    server.use(http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
-      calls += 1;
-      return new HttpResponse('damaged', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }));
+    server.use(
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
+        calls += 1;
+        return new HttpResponse('damaged', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', canRetry: true, error: { code: 'MALFORMED_RESPONSE' },
+      state: 'ERROR',
+      canRetry: true,
+      error: { code: 'MALFORMED_RESPONSE' },
     });
     expect(calls).toBe(1);
     target.cancel();
@@ -832,33 +1223,68 @@ describe('A5AR Complete ambiguity, FILE_NOT_VERIFIED, and receipt-bound Manifest
     let calls = 0;
     const keys: string[] = [];
     const bodies: unknown[] = [];
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), async ({ request }) => {
-      calls += 1;
-      keys.push(request.headers.get('Idempotency-Key') ?? '');
-      bodies.push(await request.json());
-      if (calls === 1) {
-        return HttpResponse.json(success({
-          upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 2,
-          files: [{
-            file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE',
-            visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-            sha256: 'b'.repeat(64), version: 3,
-          }], replayed: false,
-        }, 'request-malformed-complete-receipt'));
-      }
-      return HttpResponse.json(success({
-        upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 2,
-        files: [{
-          file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE',
-          visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-          sha256: digest, version: 3,
-        }], replayed: true,
-      }, 'request-complete-recovered'));
-    }));
+    server.use(
+      http.post(
+        apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'),
+        async ({ request }) => {
+          calls += 1;
+          keys.push(request.headers.get('Idempotency-Key') ?? '');
+          bodies.push(await request.json());
+          if (calls === 1) {
+            return HttpResponse.json(
+              success(
+                {
+                  upload_intent_id: 'intent-buyerOrderEvidence',
+                  status: 'VERIFIED',
+                  version: 2,
+                  files: [
+                    {
+                      file_object_id: 'file-buyerOrderEvidence-1',
+                      purpose: 'ORDER_EVIDENCE',
+                      visibility: 'BUYER_VISIBLE',
+                      detected_mime: 'image/png',
+                      byte_size: 4,
+                      sha256: 'b'.repeat(64),
+                      version: 3,
+                    },
+                  ],
+                  replayed: false,
+                },
+                'request-malformed-complete-receipt',
+              ),
+            );
+          }
+          return HttpResponse.json(
+            success(
+              {
+                upload_intent_id: 'intent-buyerOrderEvidence',
+                status: 'VERIFIED',
+                version: 2,
+                files: [
+                  {
+                    file_object_id: 'file-buyerOrderEvidence-1',
+                    purpose: 'ORDER_EVIDENCE',
+                    visibility: 'BUYER_VISIBLE',
+                    detected_mime: 'image/png',
+                    byte_size: 4,
+                    sha256: digest,
+                    version: 3,
+                  },
+                ],
+                replayed: true,
+              },
+              'request-complete-recovered',
+            ),
+          );
+        },
+      ),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', canRetry: true, canCancel: false,
+      state: 'ERROR',
+      canRetry: true,
+      canCancel: false,
       error: { code: 'MALFORMED_RESPONSE', requestId: 'request-malformed-complete-receipt' },
     });
     expect(calls).toBe(1);
@@ -872,16 +1298,21 @@ describe('A5AR Complete ambiguity, FILE_NOT_VERIFIED, and receipt-bound Manifest
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
     let completeCalls = 0;
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => {
-      completeCalls += 1;
-      return HttpResponse.json(failureEnvelopeFixture(
-        'FILE_NOT_VERIFIED', 'support', null, 'request-file-not-verified',
-      ), { status: 409 });
-    }));
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => {
+        completeCalls += 1;
+        return HttpResponse.json(
+          failureEnvelopeFixture('FILE_NOT_VERIFIED', 'support', null, 'request-file-not-verified'),
+          { status: 409 },
+        );
+      }),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'FILE_NOT_VERIFIED', canRetry: false, canCancel: false,
+      state: 'FILE_NOT_VERIFIED',
+      canRetry: false,
+      canCancel: false,
       restartRequired: true,
       error: { code: 'FILE_NOT_VERIFIED', requestId: 'request-file-not-verified' },
       manifest: null,
@@ -903,37 +1334,78 @@ describe('A5AR Complete ambiguity, FILE_NOT_VERIFIED, and receipt-bound Manifest
   ])('rejects Manifest %s mismatch against the Upload receipt', async (_label, fileOverride) => {
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => HttpResponse.json(success({
-      upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 2,
-      files: [{
-        file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE',
-        visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-        sha256: digest, version: 3, ...fileOverride,
-      }], replayed: false,
-    }, `request-manifest-${String(_label).toLowerCase().replaceAll(' ', '-')}`))));
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () =>
+        HttpResponse.json(
+          success(
+            {
+              upload_intent_id: 'intent-buyerOrderEvidence',
+              status: 'VERIFIED',
+              version: 2,
+              files: [
+                {
+                  file_object_id: 'file-buyerOrderEvidence-1',
+                  purpose: 'ORDER_EVIDENCE',
+                  visibility: 'BUYER_VISIBLE',
+                  detected_mime: 'image/png',
+                  byte_size: 4,
+                  sha256: digest,
+                  version: 3,
+                  ...fileOverride,
+                },
+              ],
+              replayed: false,
+            },
+            `request-manifest-${String(_label).toLowerCase().replaceAll(' ', '-')}`,
+          ),
+        ),
+      ),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', canRetry: true, canCancel: false,
-      error: { code: 'MALFORMED_RESPONSE' }, manifest: null,
+      state: 'ERROR',
+      canRetry: true,
+      canCancel: false,
+      error: { code: 'MALFORMED_RESPONSE' },
+      manifest: null,
     });
   });
 
   it('rejects Complete Intent Version that is not Intent version plus one', async () => {
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
-    server.use(http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () => HttpResponse.json(success({
-      upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 3,
-      files: [{
-        file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE',
-        visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-        sha256: digest, version: 3,
-      }], replayed: false,
-    }, 'request-manifest-intent-version'))));
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), () =>
+        HttpResponse.json(
+          success(
+            {
+              upload_intent_id: 'intent-buyerOrderEvidence',
+              status: 'VERIFIED',
+              version: 3,
+              files: [
+                {
+                  file_object_id: 'file-buyerOrderEvidence-1',
+                  purpose: 'ORDER_EVIDENCE',
+                  visibility: 'BUYER_VISIBLE',
+                  detected_mime: 'image/png',
+                  byte_size: 4,
+                  sha256: digest,
+                  version: 3,
+                },
+              ],
+              replayed: false,
+            },
+            'request-manifest-intent-version',
+          ),
+        ),
+      ),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', canRetry: true,
+      state: 'ERROR',
+      canRetry: true,
       error: { code: 'MALFORMED_RESPONSE', requestId: 'request-manifest-intent-version' },
       manifest: null,
     });
@@ -945,7 +1417,8 @@ describe('A5AR Complete ambiguity, FILE_NOT_VERIFIED, and receipt-bound Manifest
     const target = controller();
     await target.start('buyerOrderEvidence', [file()]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', canCancel: false,
+      state: 'VERIFIED',
+      canCancel: false,
       manifest: { intent_version: 2, files: [{ file_version: 3 }] },
     });
   });
@@ -957,47 +1430,70 @@ type CompleteRecoveryKind =
   | 'REQUEST_IN_PROGRESS'
   | 'DEPENDENCY_UNAVAILABLE';
 
-function installCompleteRecovery(
-  kind: CompleteRecoveryKind,
-  record: Evidence,
-) {
+function installCompleteRecovery(kind: CompleteRecoveryKind, record: Evidence) {
   const { intentId, slots } = installHappyChain('buyerOrderEvidence', record);
   let calls = 0;
-  server.use(http.post(
-    apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'),
-    async ({ request }) => {
+  server.use(
+    http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), async ({ request }) => {
       calls += 1;
       record.completeKeys.push(request.headers.get('Idempotency-Key') ?? '');
       record.completeBodies.push(await request.json());
       if (calls === 1) {
         if (kind === 'NETWORK_FAILURE') return HttpResponse.error();
         if (kind === 'REQUEST_IN_PROGRESS' || kind === 'DEPENDENCY_UNAVAILABLE') {
-          return HttpResponse.json(failureEnvelopeFixture(
-            kind,
-            'safe',
-            null,
-            `request-complete-lock-${kind.toLowerCase()}`,
-          ), { status: kind === 'REQUEST_IN_PROGRESS' ? 409 : 503 });
+          return HttpResponse.json(
+            failureEnvelopeFixture(
+              kind,
+              'safe',
+              null,
+              `request-complete-lock-${kind.toLowerCase()}`,
+            ),
+            { status: kind === 'REQUEST_IN_PROGRESS' ? 409 : 503 },
+          );
         }
-        return HttpResponse.json(success({
-          upload_intent_id: intentId, status: 'VERIFIED', version: 2,
-          files: slots.map((slot) => ({
-            file_object_id: slot.file_object_id, purpose: 'ORDER_EVIDENCE',
-            visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-            sha256: 'b'.repeat(64), version: 3,
-          })), replayed: false,
-        }, 'request-complete-lock-malformed'));
+        return HttpResponse.json(
+          success(
+            {
+              upload_intent_id: intentId,
+              status: 'VERIFIED',
+              version: 2,
+              files: slots.map((slot) => ({
+                file_object_id: slot.file_object_id,
+                purpose: 'ORDER_EVIDENCE',
+                visibility: 'BUYER_VISIBLE',
+                detected_mime: 'image/png',
+                byte_size: 4,
+                sha256: 'b'.repeat(64),
+                version: 3,
+              })),
+              replayed: false,
+            },
+            'request-complete-lock-malformed',
+          ),
+        );
       }
-      return HttpResponse.json(success({
-        upload_intent_id: intentId, status: 'VERIFIED', version: 2,
-        files: slots.map((slot) => ({
-          file_object_id: slot.file_object_id, purpose: 'ORDER_EVIDENCE',
-          visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-          sha256: digest, version: 3,
-        })), replayed: true,
-      }, `request-complete-lock-recovered-${kind.toLowerCase()}`));
-    },
-  ));
+      return HttpResponse.json(
+        success(
+          {
+            upload_intent_id: intentId,
+            status: 'VERIFIED',
+            version: 2,
+            files: slots.map((slot) => ({
+              file_object_id: slot.file_object_id,
+              purpose: 'ORDER_EVIDENCE',
+              visibility: 'BUYER_VISIBLE',
+              detected_mime: 'image/png',
+              byte_size: 4,
+              sha256: digest,
+              version: 3,
+            })),
+            replayed: true,
+          },
+          `request-complete-lock-recovered-${kind.toLowerCase()}`,
+        ),
+      );
+    }),
+  );
   return { calls: () => calls };
 }
 
@@ -1039,14 +1535,13 @@ describe('A5AR2 Complete recovery lock and public operation capabilities', () =>
 
     await target.retry();
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', canStartNewOperation: true, canReplaceFiles: true,
+      state: 'VERIFIED',
+      canStartNewOperation: true,
+      canReplaceFiles: true,
     });
     expect(record.completeKeys).toHaveLength(2);
     expect(record.completeKeys[0]).toBe(record.completeKeys[1]);
-    expect(record.completeBodies).toEqual([
-      { expected_version: 1 },
-      { expected_version: 1 },
-    ]);
+    expect(record.completeBodies).toEqual([{ expected_version: 1 }, { expected_version: 1 }]);
     expect(generated).toBe(3);
   });
 
@@ -1054,15 +1549,14 @@ describe('A5AR2 Complete recovery lock and public operation capabilities', () =>
     const record = evidence();
     installCompleteRecovery('MALFORMED_RESPONSE', record);
     const target = controller();
-    const rendered = render(<FileUploadTestHarness
-      controller={target}
-      workflow="buyerOrderEvidence"
-      files={[file()]}
-    />);
+    const rendered = render(
+      <FileUploadTestHarness controller={target} workflow="buyerOrderEvidence" files={[file()]} />,
+    );
     await act(async () => target.start('buyerOrderEvidence', [file()]));
     expect(rendered.container.querySelector('button')).toBeDisabled();
     expect(target.getSnapshot()).toMatchObject({
-      canStartNewOperation: false, canReplaceFiles: false,
+      canStartNewOperation: false,
+      canReplaceFiles: false,
     });
   });
 
@@ -1070,30 +1564,49 @@ describe('A5AR2 Complete recovery lock and public operation capabilities', () =>
     const record = evidence();
     installHappyChain('buyerOrderEvidence', record);
     let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    server.use(http.post(
-      apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'),
-      async () => {
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/file-upload-intents/:id/complete'), async () => {
         await gate;
-        return HttpResponse.json(success({
-          upload_intent_id: 'intent-buyerOrderEvidence', status: 'VERIFIED', version: 2,
-          files: [{
-            file_object_id: 'file-buyerOrderEvidence-1', purpose: 'ORDER_EVIDENCE',
-            visibility: 'BUYER_VISIBLE', detected_mime: 'image/png', byte_size: 4,
-            sha256: digest, version: 3,
-          }], replayed: false,
-        }, 'request-complete-occupied'));
-      },
-    ));
+        return HttpResponse.json(
+          success(
+            {
+              upload_intent_id: 'intent-buyerOrderEvidence',
+              status: 'VERIFIED',
+              version: 2,
+              files: [
+                {
+                  file_object_id: 'file-buyerOrderEvidence-1',
+                  purpose: 'ORDER_EVIDENCE',
+                  visibility: 'BUYER_VISIBLE',
+                  detected_mime: 'image/png',
+                  byte_size: 4,
+                  sha256: digest,
+                  version: 3,
+                },
+              ],
+              replayed: false,
+            },
+            'request-complete-occupied',
+          ),
+        );
+      }),
+    );
     let generated = 0;
     const target = new FileUploadController(
       createMswQueryClient(),
       () => `occupied-key-${++generated}`,
     );
     const running = target.start('buyerOrderEvidence', [file('original.png')]);
-    await waitFor(() => expect(target.getSnapshot()).toMatchObject({
-      state: 'COMPLETING', canStartNewOperation: false, canReplaceFiles: false,
-    }));
+    await waitFor(() =>
+      expect(target.getSnapshot()).toMatchObject({
+        state: 'COMPLETING',
+        canStartNewOperation: false,
+        canReplaceFiles: false,
+      }),
+    );
     const startAttempt = target.start('buyerOrderEvidence', [file('start.png', 2)]);
     const replaceAttempt = target.replaceFiles('buyerOrderEvidence', [file('replace.png', 3)]);
     const restartAttempt = target.restart();
@@ -1104,7 +1617,8 @@ describe('A5AR2 Complete recovery lock and public operation capabilities', () =>
     release();
     await Promise.all([running, replaceAttempt]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', slots: [{ clientFileName: 'original.png' }],
+      state: 'VERIFIED',
+      slots: [{ clientFileName: 'original.png' }],
     });
     expect(record.intentBodies).toHaveLength(1);
   });
@@ -1115,11 +1629,14 @@ describe('A5AR2 Complete recovery lock and public operation capabilities', () =>
     const target = controller();
     await target.start('buyerOrderEvidence', [file('first.png', 1)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', canStartNewOperation: true, canReplaceFiles: true,
+      state: 'VERIFIED',
+      canStartNewOperation: true,
+      canReplaceFiles: true,
     });
     await target.start('buyerOrderEvidence', [file('second.png', 2)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', slots: [{ clientFileName: 'second.png' }],
+      state: 'VERIFIED',
+      slots: [{ clientFileName: 'second.png' }],
     });
     expect(record.intentBodies).toHaveLength(2);
     expect(record.intentKeys[0]).not.toBe(record.intentKeys[1]);
@@ -1133,29 +1650,48 @@ describe('A5AR2 Upload replacement and fresh-file recovery', () => {
     const record = evidence();
     const { intentId, slots } = installHappyChain('buyerOrderEvidence', record);
     let uploads = 0;
-    server.use(http.put(
-      apiUrl('/api/buyer-portal/file-uploads/:id/content'),
-      () => {
+    server.use(
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
         uploads += 1;
-        if (uploads === 1) return HttpResponse.json(failureEnvelopeFixture(
-          'FILE_VALIDATION_FAILED', 'unsafe', null, 'request-reselection-first',
-        ), { status: 422 });
-        return HttpResponse.json(success({
-          file_object_id: slots[0]!.file_object_id, upload_intent_id: intentId,
-          status: 'UPLOADED', detected_mime: 'image/png', byte_size: 4,
-          sha256: digest, version: 2, replayed: false,
-        }, 'request-reselection-upload'));
-      },
-    ));
+        if (uploads === 1)
+          return HttpResponse.json(
+            failureEnvelopeFixture(
+              'FILE_VALIDATION_FAILED',
+              'unsafe',
+              null,
+              'request-reselection-first',
+            ),
+            { status: 422 },
+          );
+        return HttpResponse.json(
+          success(
+            {
+              file_object_id: slots[0]!.file_object_id,
+              upload_intent_id: intentId,
+              status: 'UPLOADED',
+              detected_mime: 'image/png',
+              byte_size: 4,
+              sha256: digest,
+              version: 2,
+              replayed: false,
+            },
+            'request-reselection-upload',
+          ),
+        );
+      }),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file('rejected.png', 1)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', requiresFileReselection: true,
-      canStartNewOperation: true, canReplaceFiles: true,
+      state: 'ERROR',
+      requiresFileReselection: true,
+      canStartNewOperation: true,
+      canReplaceFiles: true,
     });
     await target.replaceFiles('buyerOrderEvidence', [file('fresh.png', 2)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', slots: [{ clientFileName: 'fresh.png' }],
+      state: 'VERIFIED',
+      slots: [{ clientFileName: 'fresh.png' }],
     });
     expect(record.intentBodies).toHaveLength(2);
     expect(uploads).toBe(2);
@@ -1166,30 +1702,44 @@ describe('A5AR2 Upload replacement and fresh-file recovery', () => {
     const { intentId, slots } = installHappyChain('buyerOrderEvidence', record);
     let uploads = 0;
     const keys: string[] = [];
-    server.use(http.put(
-      apiUrl('/api/buyer-portal/file-uploads/:id/content'),
-      ({ request }) => {
+    server.use(
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), ({ request }) => {
         uploads += 1;
         keys.push(request.headers.get('Idempotency-Key') ?? '');
-        if (uploads === 1) return new HttpResponse('damaged', {
-          status: 200, headers: { 'Content-Type': 'application/json' },
-        });
-        return HttpResponse.json(success({
-          file_object_id: slots[0]!.file_object_id, upload_intent_id: intentId,
-          status: 'UPLOADED', detected_mime: 'image/png', byte_size: 4,
-          sha256: digest, version: 2, replayed: false,
-        }, 'request-upload-replaced'));
-      },
-    ));
+        if (uploads === 1)
+          return new HttpResponse('damaged', {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        return HttpResponse.json(
+          success(
+            {
+              file_object_id: slots[0]!.file_object_id,
+              upload_intent_id: intentId,
+              status: 'UPLOADED',
+              detected_mime: 'image/png',
+              byte_size: 4,
+              sha256: digest,
+              version: 2,
+              replayed: false,
+            },
+            'request-upload-replaced',
+          ),
+        );
+      }),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file('ambiguous.png', 1)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', canCancel: true,
-      canStartNewOperation: false, canReplaceFiles: true,
+      state: 'ERROR',
+      canCancel: true,
+      canStartNewOperation: false,
+      canReplaceFiles: true,
     });
     await target.replaceFiles('buyerOrderEvidence', [file('replacement.png', 2)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', slots: [{ clientFileName: 'replacement.png' }],
+      state: 'VERIFIED',
+      slots: [{ clientFileName: 'replacement.png' }],
     });
     expect(record.intentBodies).toHaveLength(2);
     expect(record.intentKeys[0]).not.toBe(record.intentKeys[1]);
@@ -1200,30 +1750,44 @@ describe('A5AR2 Upload replacement and fresh-file recovery', () => {
     const record = evidence();
     const { intentId, slots } = installHappyChain('buyerOrderEvidence', record);
     let uploads = 0;
-    server.use(http.put(
-      apiUrl('/api/buyer-portal/file-uploads/:id/content'),
-      () => {
+    server.use(
+      http.put(apiUrl('/api/buyer-portal/file-uploads/:id/content'), () => {
         uploads += 1;
         if (uploads === 1) return HttpResponse.error();
-        return HttpResponse.json(success({
-          file_object_id: slots[0]!.file_object_id, upload_intent_id: intentId,
-          status: 'UPLOADED', detected_mime: 'image/png', byte_size: 4,
-          sha256: digest, version: 2, replayed: false,
-        }, 'request-upload-after-cancel'));
-      },
-    ));
+        return HttpResponse.json(
+          success(
+            {
+              file_object_id: slots[0]!.file_object_id,
+              upload_intent_id: intentId,
+              status: 'UPLOADED',
+              detected_mime: 'image/png',
+              byte_size: 4,
+              sha256: digest,
+              version: 2,
+              replayed: false,
+            },
+            'request-upload-after-cancel',
+          ),
+        );
+      }),
+    );
     const target = controller();
     await target.start('buyerOrderEvidence', [file('lost.png', 1)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', canCancel: true, canStartNewOperation: false,
+      state: 'ERROR',
+      canCancel: true,
+      canStartNewOperation: false,
     });
     target.cancel();
     expect(target.getSnapshot()).toMatchObject({
-      state: 'CANCELED', canStartNewOperation: true, canReplaceFiles: true,
+      state: 'CANCELED',
+      canStartNewOperation: true,
+      canReplaceFiles: true,
     });
     await target.start('buyerOrderEvidence', [file('after-cancel.png', 2)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', slots: [{ clientFileName: 'after-cancel.png' }],
+      state: 'VERIFIED',
+      slots: [{ clientFileName: 'after-cancel.png' }],
     });
     expect(record.intentBodies).toHaveLength(2);
   });
@@ -1243,13 +1807,17 @@ describe('A5AR2 runtime workflow fail-closed boundary', () => {
     seed(client);
     let requests = 0;
     let generated = 0;
-    server.events.on('request:start', () => { requests += 1; });
+    server.events.on('request:start', () => {
+      requests += 1;
+    });
     try {
       const target = new FileUploadController(client, () => `invalid-key-${++generated}`);
       await expect(target.start(value, [file()])).resolves.toBeUndefined();
       expect(target.getSnapshot()).toMatchObject({
-        state: 'ERROR', workflow: null,
-        canStartNewOperation: true, canReplaceFiles: true,
+        state: 'ERROR',
+        workflow: null,
+        canStartNewOperation: true,
+        canReplaceFiles: true,
         error: {
           code: 'VALIDATION_ERROR',
           safeDetails: { field: 'workflow', reason: 'unsupported_workflow' },
@@ -1276,12 +1844,15 @@ describe('A5AR2 runtime workflow fail-closed boundary', () => {
     );
     await target.start('ORDER_EVIDENCE_INTERNAL_COMMUNICATION', [file()]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'ERROR', workflow: null, error: { code: 'VALIDATION_ERROR' },
+      state: 'ERROR',
+      workflow: null,
+      error: { code: 'VALIDATION_ERROR' },
     });
     expect(generated).toBe(0);
     await target.start('buyerOrderEvidence', [file('legal.png', 2)]);
     expect(target.getSnapshot()).toMatchObject({
-      state: 'VERIFIED', workflow: 'buyerOrderEvidence',
+      state: 'VERIFIED',
+      workflow: 'buyerOrderEvidence',
       slots: [{ clientFileName: 'legal.png' }],
     });
     expect(record.intentBodies).toHaveLength(1);

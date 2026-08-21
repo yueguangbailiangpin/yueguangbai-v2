@@ -1,13 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type {
-  FileActor,
-  FileReadPrincipal,
-} from '@ygb/contracts';
+import type { FileActor, FileReadPrincipal } from '@ygb/contracts';
 import { SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS } from '@ygb/contracts';
-import {
-  createMigratedTestDatabase,
-  type SqliteDatabase,
-} from '@ygb/testkit';
+import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import { sha256Hex } from '@ygb/domain';
 import { createApp } from '../app';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
@@ -16,10 +10,7 @@ import {
   type AssignmentStaffAuthorization,
 } from '../staff-assignment';
 import { DenyAllFileAuthorizationService } from '../files/authorization';
-import {
-  consumeFileReadIntent,
-  createFileReadIntent,
-} from '../files/file-read-service';
+import { consumeFileReadIntent, createFileReadIntent } from '../files/file-read-service';
 import { MockObjectStorage } from '../files/mock-object-storage';
 import { attachSellerOrderChatScreenshot } from './command';
 import {
@@ -32,8 +23,7 @@ import { listSellerFormalOrders } from '../seller-formal-orders/read-model';
 const BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
 const NOW = 10_000;
 const ORIGIN = 'https://portal.local.test';
-const SESSION_SECRET =
-  'seller-order-chat-screenshot-secret-at-least-thirty-two-bytes';
+const SESSION_SECRET = 'seller-order-chat-screenshot-secret-at-least-thirty-two-bytes';
 
 let database: SqliteDatabase;
 let storage: MockObjectStorage;
@@ -59,19 +49,18 @@ describe('seller order chat screenshot access Change', () => {
         'staff-chat-owner', 9000, NULL, 9000, 9000
       )
     `);
-    const denied = await resolveAssignmentStaffAuthorization(
-      database,
-      'staff-chat-owner',
-    );
+    const denied = await resolveAssignmentStaffAuthorization(database, 'staff-chat-owner');
     expect(denied).not.toBeNull();
     expect(denied?.roles).toEqual(new Set(['owner']));
     expect(denied?.permissions.has('ORDER_CONFIRM')).toBe(false);
     const before = await attachmentSideEffects();
-    await expect(attachSellerOrderChatScreenshot(
-      database,
-      { formalOrderId: 'formal-order-1', fileObjectId: 'chat-file-1', expectedFileVersion: 2 },
-      { actor: denied!, idempotencyKey: 'chat-denied', now: NOW },
-    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      attachSellerOrderChatScreenshot(
+        database,
+        { formalOrderId: 'formal-order-1', fileObjectId: 'chat-file-1', expectedFileVersion: 2 },
+        { actor: denied!, idempotencyKey: 'chat-denied', now: NOW },
+      ),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(await attachmentSideEffects()).toEqual(before);
   });
 
@@ -86,21 +75,33 @@ describe('seller order chat screenshot access Change', () => {
       file_object_id: 'chat-file-1',
       replayed: false,
     });
-    const attachment = await database.prepare(`
+    const attachment = await database
+      .prepare(
+        `
       SELECT order_evidence_submission_id, file_entity_link_id
       FROM order_evidence_internal_files
       WHERE id=?
-    `).bind(result.screenshot_id).first<{
-      order_evidence_submission_id: string;
-      file_entity_link_id: string;
-    }>();
+    `,
+      )
+      .bind(result.screenshot_id)
+      .first<{
+        order_evidence_submission_id: string;
+        file_entity_link_id: string;
+      }>();
     expect(attachment).toMatchObject({
       order_evidence_submission_id: 'submission-1',
     });
-    await expect(database.prepare(`
+    await expect(
+      database
+        .prepare(
+          `
       SELECT visibility, purpose, authorization_mode
       FROM file_entity_links WHERE id=?
-    `).bind(attachment?.file_entity_link_id).first()).resolves.toMatchObject({
+    `,
+        )
+        .bind(attachment?.file_entity_link_id)
+        .first(),
+    ).resolves.toMatchObject({
       visibility: 'SELLER_VISIBLE',
       purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
       authorization_mode: 'EXPLICIT_AUDIENCES',
@@ -109,9 +110,7 @@ describe('seller order chat screenshot access Change', () => {
 
   it('attaches a platform screenshot, projects AVAILABLE, and issues an opaque one-time short read intent', async () => {
     seedPlatformChatFormalOrder(database);
-    const owner = sellerActor(
-      'member-owner', 'account-owner', 'subject-owner', 'org-1', true, [],
-    );
+    const owner = sellerActor('member-owner', 'account-owner', 'subject-owner', 'org-1', true, []);
     const before = await listSellerFormalOrders(
       database,
       owner,
@@ -120,11 +119,12 @@ describe('seller order chat screenshot access Change', () => {
     );
     expect(before.items).toHaveLength(1);
     expect(before.items[0]?.chat_screenshot).toEqual({
-      status: 'NONE', file_version: null,
+      status: 'NONE',
+      file_version: null,
     });
-    await expect(requireSellerOrderChatScreenshot(
-      database, owner, 'platform-formal-chat', NOW,
-    )).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+    await expect(
+      requireSellerOrderChatScreenshot(database, owner, 'platform-formal-chat', NOW),
+    ).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
 
     const attached = await attachSellerOrderChatScreenshot(
       database,
@@ -140,7 +140,10 @@ describe('seller order chat screenshot access Change', () => {
       file_object_id: 'chat-file-1',
       replayed: false,
     });
-    await expect(database.prepare(`
+    await expect(
+      database
+        .prepare(
+          `
       SELECT
         attachment.platform_formal_order_id,
         evidence.evidence_type,
@@ -158,7 +161,10 @@ describe('seller order chat screenshot access Change', () => {
         ON file_link.id=attachment.file_entity_link_id
       JOIN file_entity_audience_grants grant
         ON grant.file_entity_link_id=file_link.id
-    `).first()).resolves.toMatchObject({
+    `,
+        )
+        .first(),
+    ).resolves.toMatchObject({
       platform_formal_order_id: 'platform-formal-chat',
       evidence_type: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
       seller_organization_id: 'org-1',
@@ -177,7 +183,8 @@ describe('seller order chat screenshot access Change', () => {
       platformFormalOrderFilters(),
     );
     expect(after.items[0]?.chat_screenshot).toEqual({
-      status: 'AVAILABLE', file_version: 2,
+      status: 'AVAILABLE',
+      file_version: 2,
     });
 
     const app = routeApp(staffActor());
@@ -189,7 +196,7 @@ describe('seller order chat screenshot access Change', () => {
       'platform-chat-read-intent',
     );
     expect(response.status).toBe(201);
-    const body = await response.json() as any;
+    const body = (await response.json()) as any;
     expect(body.data.read_intent).toMatchObject({
       read_intent_id: expect.any(String),
       access_token: expect.any(String),
@@ -205,7 +212,10 @@ describe('seller order chat screenshot access Change', () => {
     expect(serialized).not.toContain('https://');
 
     const access = await requireSellerOrderChatScreenshot(
-      database, owner, 'platform-formal-chat', NOW,
+      database,
+      owner,
+      'platform-formal-chat',
+      NOW,
     );
     const issued = await issue(
       access,
@@ -237,27 +247,31 @@ describe('seller order chat screenshot access Change', () => {
     `);
     const denied = await resolvedStaff('staff-chat-owner');
     const beforeDeny = await attachmentSideEffects();
-    await expect(attachSellerOrderChatScreenshot(
-      database,
-      {
-        formalOrderId: 'platform-formal-chat',
-        fileObjectId: 'chat-file-1',
-        expectedFileVersion: 2,
-      },
-      { actor: denied, idempotencyKey: 'platform-personal-deny', now: NOW },
-    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      attachSellerOrderChatScreenshot(
+        database,
+        {
+          formalOrderId: 'platform-formal-chat',
+          fileObjectId: 'chat-file-1',
+          expectedFileVersion: 2,
+        },
+        { actor: denied, idempotencyKey: 'platform-personal-deny', now: NOW },
+      ),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(await attachmentSideEffects()).toEqual(beforeDeny);
 
     const scoped = await resolvedStaff('staff-chat-scoped');
-    await expect(attachSellerOrderChatScreenshot(
-      database,
-      {
-        formalOrderId: 'platform-formal-chat',
-        fileObjectId: 'chat-file-1',
-        expectedFileVersion: 2,
-      },
-      { actor: scoped, idempotencyKey: 'platform-wrong-org', now: NOW },
-    )).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      attachSellerOrderChatScreenshot(
+        database,
+        {
+          formalOrderId: 'platform-formal-chat',
+          fileObjectId: 'chat-file-1',
+          expectedFileVersion: 2,
+        },
+        { actor: scoped, idempotencyKey: 'platform-wrong-org', now: NOW },
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(await attachmentSideEffects()).toEqual(beforeDeny);
   });
 
@@ -286,34 +300,28 @@ describe('seller order chat screenshot access Change', () => {
         },
         { actor: staffActor(), idempotencyKey: `platform-${authority}-attach`, now: NOW },
       );
-      const seller = authority === 'member'
-        ? sellerActor(
-            'member-operator', 'account-operator', 'subject-operator',
-            'org-1', false, ['store-1', 'store-platform-chat'],
-          )
-        : sellerActor(
-            'member-owner', 'account-owner', 'subject-owner',
-            'org-1', true, [],
-          );
-      const fileActor = authority === 'member'
-        ? sellerFileActor('member-operator')
-        : sellerFileActor('member-owner');
-      const principal = authority === 'member'
-        ? sellerPrincipal('account-operator', 'subject-operator')
-        : sellerPrincipal('account-owner', 'subject-owner');
+      const seller =
+        authority === 'member'
+          ? sellerActor('member-operator', 'account-operator', 'subject-operator', 'org-1', false, [
+              'store-1',
+              'store-platform-chat',
+            ])
+          : sellerActor('member-owner', 'account-owner', 'subject-owner', 'org-1', true, []);
+      const fileActor =
+        authority === 'member'
+          ? sellerFileActor('member-operator')
+          : sellerFileActor('member-owner');
+      const principal =
+        authority === 'member'
+          ? sellerPrincipal('account-operator', 'subject-operator')
+          : sellerPrincipal('account-owner', 'subject-owner');
       const access = await requireSellerOrderChatScreenshot(
         database,
         seller,
         'platform-formal-chat',
         NOW,
       );
-      const issued = await issue(
-        access,
-        fileActor,
-        principal,
-        `platform-${authority}-issued`,
-        NOW,
-      );
+      const issued = await issue(access, fileActor, principal, `platform-${authority}-issued`, NOW);
       await revokePlatformScreenshotAuthority(authority, access, NOW + 1);
 
       const app = routeApp(staffActor());
@@ -328,12 +336,7 @@ describe('seller order chat screenshot access Change', () => {
       await expect(response.json()).resolves.toMatchObject({
         error: { code: 'FORMAL_ORDER_NOT_FOUND' },
       });
-      await expect(consume(
-        issued,
-        fileActor,
-        principal,
-        NOW + 2,
-      )).rejects.toMatchObject({
+      await expect(consume(issued, fileActor, principal, NOW + 2)).rejects.toMatchObject({
         code: authority === 'file' ? 'FILE_READ_INTENT_NOT_FOUND' : 'FORBIDDEN',
       });
     },
@@ -350,23 +353,24 @@ describe('seller order chat screenshot access Change', () => {
       },
       { actor: staffActor(), idempotencyKey: 'platform-scope-attach', now: NOW },
     );
-    await expect(requireSellerOrderChatScreenshot(
-      database,
-      sellerActor(
-        'member-other', 'account-other', 'subject-other', 'org-2', true, [],
+    await expect(
+      requireSellerOrderChatScreenshot(
+        database,
+        sellerActor('member-other', 'account-other', 'subject-other', 'org-2', true, []),
+        'platform-formal-chat',
+        NOW,
       ),
-      'platform-formal-chat',
-      NOW,
-    )).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
-    await expect(requireSellerOrderChatScreenshot(
-      database,
-      sellerActor(
-        'member-operator', 'account-operator', 'subject-operator',
-        'org-1', false, ['store-1'],
+    ).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+    await expect(
+      requireSellerOrderChatScreenshot(
+        database,
+        sellerActor('member-operator', 'account-operator', 'subject-operator', 'org-1', false, [
+          'store-1',
+        ]),
+        'platform-formal-chat',
+        NOW,
       ),
-      'platform-formal-chat',
-      NOW,
-    )).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+    ).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
   });
 
   it.each([
@@ -445,7 +449,8 @@ describe('seller order chat screenshot access Change', () => {
           'STAFF', 'staff-chat-owner', 2, NULL, NULL
         );
       `);
-      expect(() => database.exec(`
+      expect(() =>
+        database.exec(`
         INSERT INTO platform_order_evidence_internal_files (
           id, platform_formal_order_id, platform_order_evidence_record_id,
           slot, file_object_id, file_entity_link_id,
@@ -455,11 +460,18 @@ describe('seller order chat screenshot access Change', () => {
           '${evidenceId}', 1, '${fileObjectId}', '${linkId}',
           'staff-chat-owner', 3
         )
-      `)).toThrow('platform_order_internal_file_scope_mismatch');
-      await expect(database.prepare(`
+      `),
+      ).toThrow('platform_order_internal_file_scope_mismatch');
+      await expect(
+        database
+          .prepare(
+            `
         SELECT COUNT(*) AS count
         FROM platform_order_evidence_internal_files
-      `).first()).resolves.toEqual({ count: 0 });
+      `,
+          )
+          .first(),
+      ).resolves.toEqual({ count: 0 });
     },
   );
 
@@ -468,25 +480,29 @@ describe('seller order chat screenshot access Change', () => {
     expect(scoped.permissions.has('ORDER_CONFIRM')).toBe(true);
     const before = await attachmentSideEffects();
 
-    await expect(attachSellerOrderChatScreenshot(
-      database,
-      {
-        formalOrderId: 'formal-order-1',
-        fileObjectId: 'chat-file-1',
-        expectedFileVersion: 2,
-      },
-      { actor: scoped, idempotencyKey: 'missing-data-scope', now: NOW },
-    )).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      attachSellerOrderChatScreenshot(
+        database,
+        {
+          formalOrderId: 'formal-order-1',
+          fileObjectId: 'chat-file-1',
+          expectedFileVersion: 2,
+        },
+        { actor: scoped, idempotencyKey: 'missing-data-scope', now: NOW },
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(await attachmentSideEffects()).toEqual(before);
-    await expect(attachSellerOrderChatScreenshot(
-      database,
-      {
-        formalOrderId: 'formal-order-1',
-        fileObjectId: 'chat-file-1',
-        expectedFileVersion: 2,
-      },
-      { actor: scoped, idempotencyKey: 'wrong-data-scope', now: NOW },
-    )).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      attachSellerOrderChatScreenshot(
+        database,
+        {
+          formalOrderId: 'formal-order-1',
+          fileObjectId: 'chat-file-1',
+          expectedFileVersion: 2,
+        },
+        { actor: scoped, idempotencyKey: 'wrong-data-scope', now: NOW },
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(await attachmentSideEffects()).toEqual(before);
   });
 
@@ -534,33 +550,37 @@ describe('seller order chat screenshot access Change', () => {
   ])('rejects a $name source file with no business partial write', async (testCase) => {
     const fileObjectId = await seedFileCandidate(testCase);
     const before = await attachmentSideEffects();
-    await expect(attachSellerOrderChatScreenshot(
-      database,
-      {
-        formalOrderId: 'formal-order-1',
-        fileObjectId,
-        expectedFileVersion: testCase.expectedVersion,
-      },
-      {
-        actor: staffActor(),
-        idempotencyKey: `reject-${testCase.suffix}`,
-        now: NOW,
-      },
-    )).rejects.toMatchObject({ code: testCase.code });
+    await expect(
+      attachSellerOrderChatScreenshot(
+        database,
+        {
+          formalOrderId: 'formal-order-1',
+          fileObjectId,
+          expectedFileVersion: testCase.expectedVersion,
+        },
+        {
+          actor: staffActor(),
+          idempotencyKey: `reject-${testCase.suffix}`,
+          now: NOW,
+        },
+      ),
+    ).rejects.toMatchObject({ code: testCase.code });
     expect(await attachmentSideEffects()).toEqual(before);
   });
 
   it('rejects a stale expected file version before attachment writes', async () => {
     const before = await attachmentSideEffects();
-    await expect(attachSellerOrderChatScreenshot(
-      database,
-      {
-        formalOrderId: 'formal-order-1',
-        fileObjectId: 'chat-file-1',
-        expectedFileVersion: 1,
-      },
-      { actor: staffActor(), idempotencyKey: 'stale-file-version', now: NOW },
-    )).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
+    await expect(
+      attachSellerOrderChatScreenshot(
+        database,
+        {
+          formalOrderId: 'formal-order-1',
+          fileObjectId: 'chat-file-1',
+          expectedFileVersion: 1,
+        },
+        { actor: staffActor(), idempotencyKey: 'stale-file-version', now: NOW },
+      ),
+    ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
     expect(await attachmentSideEffects()).toEqual(before);
   });
 
@@ -594,15 +614,17 @@ describe('seller order chat screenshot access Change', () => {
       ownerStaffId: 'staff-chat-owner',
       verified: true,
     });
-    await expect(attachSellerOrderChatScreenshot(
-      database,
-      {
-        formalOrderId: 'formal-order-1',
-        fileObjectId: differentFile,
-        expectedFileVersion: 2,
-      },
-      { actor: staffActor(), idempotencyKey: 'attach-replay-key', now: NOW + 2 },
-    )).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    await expect(
+      attachSellerOrderChatScreenshot(
+        database,
+        {
+          formalOrderId: 'formal-order-1',
+          fileObjectId: differentFile,
+          expectedFileVersion: 2,
+        },
+        { actor: staffActor(), idempotencyKey: 'attach-replay-key', now: NOW + 2 },
+      ),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
     expect(await attachmentSideEffects()).toEqual(afterFirst);
   });
 
@@ -616,42 +638,63 @@ describe('seller order chat screenshot access Change', () => {
       verified: true,
     });
     const beforeDuplicate = await attachmentSideEffects();
-    await expect(attachSellerOrderChatScreenshot(
-      database,
-      {
-        formalOrderId: 'formal-order-1',
-        fileObjectId: replacement,
-        expectedFileVersion: 2,
-      },
-      { actor: staffActor(), idempotencyKey: 'duplicate-attachment', now: NOW + 1 },
-    )).rejects.toMatchObject({ code: 'FILE_STORAGE_CONFLICT' });
+    await expect(
+      attachSellerOrderChatScreenshot(
+        database,
+        {
+          formalOrderId: 'formal-order-1',
+          fileObjectId: replacement,
+          expectedFileVersion: 2,
+        },
+        { actor: staffActor(), idempotencyKey: 'duplicate-attachment', now: NOW + 1 },
+      ),
+    ).rejects.toMatchObject({ code: 'FILE_STORAGE_CONFLICT' });
     expect(await attachmentSideEffects()).toEqual(beforeDuplicate);
   });
 
   it('conceals cross-organization, cross-store, and revoked store-scope access', async () => {
     await attach();
     const owner = sellerActor('member-owner', 'account-owner', 'subject-owner', 'org-1', true, []);
-    const otherOrganization = sellerActor('member-other', 'account-other', 'subject-other', 'org-2', true, []);
-    const operator = sellerActor('member-operator', 'account-operator', 'subject-operator', 'org-1', false, ['store-1']);
+    const otherOrganization = sellerActor(
+      'member-other',
+      'account-other',
+      'subject-other',
+      'org-2',
+      true,
+      [],
+    );
+    const operator = sellerActor(
+      'member-operator',
+      'account-operator',
+      'subject-operator',
+      'org-1',
+      false,
+      ['store-1'],
+    );
 
-    await expect(requireSellerOrderChatScreenshot(
-      database, otherOrganization, 'formal-order-1', NOW,
-    )).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
-    await expect(requireSellerOrderChatScreenshot(
-      database, operator, 'formal-order-2', NOW,
-    )).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
-    await expect(requireSellerOrderChatScreenshot(
-      database, owner, 'formal-order-1', NOW,
-    )).resolves.toMatchObject({ formalOrderId: 'formal-order-1' });
+    await expect(
+      requireSellerOrderChatScreenshot(database, otherOrganization, 'formal-order-1', NOW),
+    ).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+    await expect(
+      requireSellerOrderChatScreenshot(database, operator, 'formal-order-2', NOW),
+    ).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+    await expect(
+      requireSellerOrderChatScreenshot(database, owner, 'formal-order-1', NOW),
+    ).resolves.toMatchObject({ formalOrderId: 'formal-order-1' });
 
-    await database.prepare(`
+    await database
+      .prepare(
+        `
       UPDATE seller_member_store_scopes
       SET status='REVOKED', revoked_at=?, updated_at=?
       WHERE member_id='member-operator' AND store_id='store-1'
-    `).bind(NOW, NOW).run();
-    await expect(requireSellerOrderChatScreenshot(
-      database, operator, 'formal-order-1', NOW,
-    )).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+    `,
+      )
+      .bind(NOW, NOW)
+      .run();
+    await expect(
+      requireSellerOrderChatScreenshot(database, operator, 'formal-order-1', NOW),
+    ).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
   });
 
   it('binds read-intent creation and consumption to the exact Seller member actor and session principal', async () => {
@@ -665,20 +708,24 @@ describe('seller order chat screenshot access Change', () => {
       NOW,
     );
 
-    await expect(issue(
-      access,
-      sellerFileActor('member-operator'),
-      ownerPrincipal,
-      'intent-wrong-create-actor',
-      20_000,
-    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
-    await expect(issue(
-      access,
-      ownerActor,
-      sellerPrincipal('account-operator', 'subject-operator'),
-      'intent-wrong-create-principal',
-      20_001,
-    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      issue(
+        access,
+        sellerFileActor('member-operator'),
+        ownerPrincipal,
+        'intent-wrong-create-actor',
+        20_000,
+      ),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      issue(
+        access,
+        ownerActor,
+        sellerPrincipal('account-operator', 'subject-operator'),
+        'intent-wrong-create-principal',
+        20_001,
+      ),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
     const issued = await issue(
       access,
@@ -687,18 +734,12 @@ describe('seller order chat screenshot access Change', () => {
       'intent-wrong-consume-actor',
       20_002,
     );
-    await expect(consume(
-      issued,
-      sellerFileActor('member-operator'),
-      ownerPrincipal,
-      20_003,
-    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
-    await expect(consume(
-      issued,
-      ownerActor,
-      sellerPrincipal('account-operator', 'subject-operator'),
-      20_004,
-    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      consume(issued, sellerFileActor('member-operator'), ownerPrincipal, 20_003),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      consume(issued, ownerActor, sellerPrincipal('account-operator', 'subject-operator'), 20_004),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it.each(['link', 'audience'] as const)(
@@ -708,32 +749,33 @@ describe('seller order chat screenshot access Change', () => {
       const actor = sellerFileActor('member-owner');
       const principal = sellerPrincipal('account-owner', 'subject-owner');
       const access = await ownerAccess(NOW);
-      const issued = await issue(
-        access,
-        actor,
-        principal,
-        `intent-${authority}-revoked`,
-        21_000,
-      );
+      const issued = await issue(access, actor, principal, `intent-${authority}-revoked`, 21_000);
       if (authority === 'link') {
-        await database.prepare(`
+        await database
+          .prepare(
+            `
           UPDATE file_entity_links SET revoked_at=? WHERE id=?
-        `).bind(21_001, access.fileEntityLinkId).run();
+        `,
+          )
+          .bind(21_001, access.fileEntityLinkId)
+          .run();
       } else {
-        await database.prepare(`
+        await database
+          .prepare(
+            `
           UPDATE file_entity_audience_grants
           SET revoked_at=? WHERE file_entity_link_id=?
-        `).bind(21_001, access.fileEntityLinkId).run();
+        `,
+          )
+          .bind(21_001, access.fileEntityLinkId)
+          .run();
       }
-      await expect(issue(
-        access,
-        actor,
-        principal,
-        `intent-${authority}-after-revoke`,
-        21_002,
-      )).rejects.toMatchObject({ code: 'FORBIDDEN' });
-      await expect(consume(issued, actor, principal, 21_002))
-        .rejects.toMatchObject({ code: 'FORBIDDEN' });
+      await expect(
+        issue(access, actor, principal, `intent-${authority}-after-revoke`, 21_002),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      await expect(consume(issued, actor, principal, 21_002)).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+      });
     },
   );
 
@@ -747,24 +789,14 @@ describe('seller order chat screenshot access Change', () => {
       const actor = sellerFileActor('member-owner');
       const principal = sellerPrincipal('account-owner', 'subject-owner');
       const access = await ownerAccess(15_000);
-      const issued = await issue(
-        access,
-        actor,
-        principal,
-        `intent-${authority}-expires`,
-        15_000,
-      );
-      await expect(issue(
-        access,
-        actor,
-        principal,
-        `intent-${authority}-after-expiry`,
-        20_001,
-      )).rejects.toMatchObject({ code: 'FORBIDDEN' });
-      await expect(consume(issued, actor, principal, 20_001))
-        .rejects.toMatchObject({ code: 'FORBIDDEN' });
-      await expect(ownerAccess(20_001))
-        .rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
+      const issued = await issue(access, actor, principal, `intent-${authority}-expires`, 15_000);
+      await expect(
+        issue(access, actor, principal, `intent-${authority}-after-expiry`, 20_001),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      await expect(consume(issued, actor, principal, 20_001)).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+      });
+      await expect(ownerAccess(20_001)).rejects.toMatchObject({ code: 'FORMAL_ORDER_NOT_FOUND' });
     },
   );
 
@@ -784,22 +816,10 @@ describe('seller order chat screenshot access Change', () => {
         ? sellerPrincipal('account-operator', 'subject-operator')
         : sellerPrincipal('account-owner', 'subject-owner');
       const portalActor = operator
-        ? sellerActor(
-            'member-operator',
-            'account-operator',
-            'subject-operator',
-            'org-1',
-            false,
-            ['store-1'],
-          )
-        : sellerActor(
-            'member-owner',
-            'account-owner',
-            'subject-owner',
-            'org-1',
-            true,
-            [],
-          );
+        ? sellerActor('member-operator', 'account-operator', 'subject-operator', 'org-1', false, [
+            'store-1',
+          ])
+        : sellerActor('member-owner', 'account-owner', 'subject-owner', 'org-1', true, []);
       const access = await requireSellerOrderChatScreenshot(
         database,
         portalActor,
@@ -815,15 +835,12 @@ describe('seller order chat screenshot access Change', () => {
       );
 
       await revokeSellerAuthority(authority, 22_001);
-      await expect(issue(
-        access,
-        actor,
-        principal,
-        `intent-${authority.replace(' ', '-')}-revoked`,
-        22_002,
-      )).rejects.toMatchObject({ code: 'FORBIDDEN' });
-      await expect(consume(issued, actor, principal, 22_002))
-      .rejects.toMatchObject({ code: 'FORBIDDEN' });
+      await expect(
+        issue(access, actor, principal, `intent-${authority.replace(' ', '-')}-revoked`, 22_002),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      await expect(consume(issued, actor, principal, 22_002)).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+      });
     },
   );
 
@@ -872,8 +889,7 @@ describe('seller order chat screenshot access Change', () => {
     for (const testCase of cases) {
       const response = await routeRequest(
         app,
-        SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.staffAttach
-          .replace(':id', 'formal-order-1'),
+        SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.staffAttach.replace(':id', 'formal-order-1'),
         {
           method: 'POST',
           headers: testCase.headers,
@@ -917,7 +933,7 @@ describe('seller order chat screenshot access Change', () => {
     );
     expect(successful.status).toBe(201);
     expect(successful.headers.get('cache-control')).toBe('no-store');
-    const successfulBody = await successful.json() as any;
+    const successfulBody = (await successful.json()) as any;
     expect(successfulBody.data.read_intent).toMatchObject({
       read_intent_id: expect.any(String),
       access_token: expect.any(String),
@@ -987,8 +1003,8 @@ describe('seller order chat screenshot access Change', () => {
     );
     expect(crossOrganization.status).toBe(404);
     expect(crossStore.status).toBe(404);
-    const crossOrganizationBody = await crossOrganization.json() as any;
-    const crossStoreBody = await crossStore.json() as any;
+    const crossOrganizationBody = (await crossOrganization.json()) as any;
+    const crossStoreBody = (await crossStore.json()) as any;
     expect(crossOrganizationBody.error).toMatchObject({
       code: 'FORMAL_ORDER_NOT_FOUND',
       message: expect.any(String),
@@ -1017,20 +1033,20 @@ describe('seller order chat screenshot access Change', () => {
     );
     const expired = await issue(access, actor, principal, 'intent-expired', 30_000);
     expect(expired.accessToken).toEqual(expect.any(String));
-    await expect(consume(expired, actor, principal, 60_001))
-      .rejects.toMatchObject({ code: 'FILE_UPLOAD_EXPIRED' });
+    await expect(consume(expired, actor, principal, 60_001)).rejects.toMatchObject({
+      code: 'FILE_UPLOAD_EXPIRED',
+    });
 
     const usable = await issue(access, actor, principal, 'intent-usable', 31_000);
     const first = await consume(usable, actor, principal, 31_001);
     expect(first.contentType).toBe('image/png');
-    await expect(consume(usable, actor, principal, 31_002))
-      .rejects.toMatchObject({ code: 'FILE_UPLOAD_EXPIRED' });
+    await expect(consume(usable, actor, principal, 31_002)).rejects.toMatchObject({
+      code: 'FILE_UPLOAD_EXPIRED',
+    });
   });
 });
 
-async function resolvedStaff(
-  staffId: string,
-): Promise<AssignmentStaffAuthorization> {
+async function resolvedStaff(staffId: string): Promise<AssignmentStaffAuthorization> {
   const actor = await resolveAssignmentStaffAuthorization(database, staffId);
   if (!actor) throw new Error(`staff_authorization_missing:${staffId}`);
   return actor;
@@ -1047,7 +1063,9 @@ async function attachmentSideEffects(): Promise<{
   auditEvents: number;
   outboxEvents: number;
 }> {
-  const row = await database.prepare(`
+  const row = await database
+    .prepare(
+      `
     SELECT
       (SELECT COUNT(*) FROM order_evidence_internal_files) AS attachments,
       (SELECT COUNT(*) FROM platform_order_evidence_internal_files)
@@ -1070,13 +1088,14 @@ async function attachmentSideEffects(): Promise<{
         WHERE event_type='SELLER_ORDER_CHAT_SCREENSHOT_ATTACHED') AS audit_events,
       (SELECT COUNT(*) FROM integration_outbox
         WHERE event_type='SELLER_ORDER_CHAT_SCREENSHOT_ATTACHED') AS outbox_events
-  `).first<Record<string, number>>();
+  `,
+    )
+    .first<Record<string, number>>();
   if (!row) throw new Error('attachment_side_effect_counts_missing');
   return {
     attachments: Number(row['attachments']),
     platformAttachments: Number(row['platform_attachments']),
-    platformCommunicationEvidence:
-      Number(row['platform_communication_evidence']),
+    platformCommunicationEvidence: Number(row['platform_communication_evidence']),
     links: Number(row['links']),
     grants: Number(row['grants']),
     audienceEvents: Number(row['audience_events']),
@@ -1157,38 +1176,63 @@ async function revokePlatformScreenshotAuthority(
 ): Promise<void> {
   switch (authority) {
     case 'link':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE file_entity_links SET revoked_at=? WHERE id=?
-      `).bind(now, access.fileEntityLinkId).run();
+      `,
+        )
+        .bind(now, access.fileEntityLinkId)
+        .run();
       return;
     case 'grant':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE file_entity_audience_grants SET revoked_at=?
         WHERE file_entity_link_id=?
-      `).bind(now, access.fileEntityLinkId).run();
+      `,
+        )
+        .bind(now, access.fileEntityLinkId)
+        .run();
       return;
     case 'file':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE file_objects
         SET status='DELETION_PENDING', failure_code='ACCESS_REVOKED',
           next_delete_at=?, verified_at=NULL, version=version+1, updated_at=?
         WHERE id=?
-      `).bind(now, now, access.fileObjectId).run();
+      `,
+        )
+        .bind(now, now, access.fileObjectId)
+        .run();
       return;
     case 'store':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE seller_stores
         SET status='DISABLED', disabled_at=?, updated_at=?
         WHERE id='store-platform-chat'
-      `).bind(now, now).run();
+      `,
+        )
+        .bind(now, now)
+        .run();
       return;
     case 'member':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE seller_member_store_scopes
         SET status='REVOKED', revoked_at=?, updated_at=?
         WHERE member_id='member-operator'
           AND store_id='store-platform-chat'
-      `).bind(now, now).run();
+      `,
+        )
+        .bind(now, now)
+        .run();
   }
 }
 
@@ -1202,21 +1246,22 @@ async function seedFileCandidate(input: {
   const uploadIntentId = `chat-intent-${input.suffix}`;
   const fileObjectId = `chat-file-${input.suffix}`;
   const objectKey = `files/v1/chat/${input.suffix}-0000000000000000000000000000000000000000`;
-  await database.prepare(`
+  await database
+    .prepare(
+      `
     INSERT INTO file_upload_intents (
       id, owner_actor_type, owner_actor_id, purpose, visibility, status,
       requested_file_count, manifest_hash, version, expires_at,
       failure_code, created_at, updated_at, completed_at
     ) VALUES (?, 'STAFF', ?, ?, ?, 'ISSUED', 1, ?, 1,
       9999999999999, NULL, 2, 2, NULL)
-  `).bind(
-    uploadIntentId,
-    input.ownerStaffId,
-    input.purpose,
-    input.visibility,
-    'd'.repeat(64),
-  ).run();
-  await database.prepare(`
+  `,
+    )
+    .bind(uploadIntentId, input.ownerStaffId, input.purpose, input.visibility, 'd'.repeat(64))
+    .run();
+  await database
+    .prepare(
+      `
     INSERT INTO file_objects (
       id, upload_intent_id, slot_no, purpose, visibility, object_key,
       client_file_name, extension, declared_mime, expected_byte_size,
@@ -1227,27 +1272,33 @@ async function seedFileCandidate(input: {
     ) VALUES (?, ?, 1, ?, ?, ?, 'chat.png', 'png', 'image/png', 11,
       'RESERVED', ?, 9999999999999, NULL, NULL, NULL,
       NULL, 0, NULL, 1, 2, 2, NULL, NULL, NULL)
-  `).bind(
-    fileObjectId,
-    uploadIntentId,
-    input.purpose,
-    input.visibility,
-    objectKey,
-    'e'.repeat(64),
-  ).run();
+  `,
+    )
+    .bind(fileObjectId, uploadIntentId, input.purpose, input.visibility, objectKey, 'e'.repeat(64))
+    .run();
   if (input.verified) {
-    await database.prepare(`
+    await database
+      .prepare(
+        `
       UPDATE file_upload_intents
       SET status='VERIFIED', version=2, updated_at=3, completed_at=3
       WHERE id=?
-    `).bind(uploadIntentId).run();
-    await database.prepare(`
+    `,
+      )
+      .bind(uploadIntentId)
+      .run();
+    await database
+      .prepare(
+        `
       UPDATE file_objects
       SET status='VERIFIED', version=2, uploaded_byte_size=11,
           detected_mime='image/png', uploaded_sha256=?, updated_at=3,
           uploaded_at=3, verified_at=3
       WHERE id=?
-    `).bind('f'.repeat(64), fileObjectId).run();
+    `,
+      )
+      .bind('f'.repeat(64), fileObjectId)
+      .run();
   }
   return fileObjectId;
 }
@@ -1256,7 +1307,9 @@ async function seedDirectAttachment(input: {
   linkExpiresAt: number | null;
   grantExpiresAt: number | null;
 }): Promise<void> {
-  await database.prepare(`
+  await database
+    .prepare(
+      `
     INSERT INTO file_entity_links (
       id, file_object_id, entity_type, entity_id, purpose, visibility,
       linked_by_actor_type, linked_by_actor_id, created_at,
@@ -1267,8 +1320,13 @@ async function seedDirectAttachment(input: {
       'SELLER_VISIBLE', 'STAFF', 'staff-chat-owner', 12000,
       'EXPLICIT_AUDIENCES', ?, NULL
     )
-  `).bind(input.linkExpiresAt).run();
-  await database.prepare(`
+  `,
+    )
+    .bind(input.linkExpiresAt)
+    .run();
+  await database
+    .prepare(
+      `
     INSERT INTO file_entity_audience_grants (
       id, file_entity_link_id, subject_type, buyer_customer_id,
       seller_organization_id, staff_permission_code, staff_scope_type,
@@ -1279,7 +1337,10 @@ async function seedDirectAttachment(input: {
       NULL, 'org-1', NULL, NULL, NULL,
       'STAFF', 'staff-chat-owner', 12001, ?, NULL
     )
-  `).bind(input.grantExpiresAt).run();
+  `,
+    )
+    .bind(input.grantExpiresAt)
+    .run();
   database.exec(`
     INSERT INTO order_evidence_internal_files (
       id, order_evidence_submission_id, slot, file_object_id,
@@ -1294,14 +1355,7 @@ async function seedDirectAttachment(input: {
 async function ownerAccess(now: number): Promise<SellerOrderChatScreenshotAccess> {
   return requireSellerOrderChatScreenshot(
     database,
-    sellerActor(
-      'member-owner',
-      'account-owner',
-      'subject-owner',
-      'org-1',
-      true,
-      [],
-    ),
+    sellerActor('member-owner', 'account-owner', 'subject-owner', 'org-1', true, []),
     'formal-order-1',
     now,
   );
@@ -1313,39 +1367,64 @@ async function revokeSellerAuthority(
 ): Promise<void> {
   switch (authority) {
     case 'account':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE customer_login_accounts
         SET status='DISABLED', disabled_at=?, updated_at=?
         WHERE id='account-owner'
-      `).bind(now, now).run();
+      `,
+        )
+        .bind(now, now)
+        .run();
       return;
     case 'organization':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE seller_organizations
         SET status='DISABLED', disabled_at=?, updated_at=?
         WHERE id='org-1'
-      `).bind(now, now).run();
+      `,
+        )
+        .bind(now, now)
+        .run();
       return;
     case 'store':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE seller_stores
         SET status='DISABLED', disabled_at=?, updated_at=?
         WHERE id='store-1'
-      `).bind(now, now).run();
+      `,
+        )
+        .bind(now, now)
+        .run();
       return;
     case 'member':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE seller_organization_members
         SET status='DISABLED', disabled_at=?, updated_at=?
         WHERE id='member-owner'
-      `).bind(now, now).run();
+      `,
+        )
+        .bind(now, now)
+        .run();
       return;
     case 'store scope':
-      await database.prepare(`
+      await database
+        .prepare(
+          `
         UPDATE seller_member_store_scopes
         SET status='REVOKED', revoked_at=?, updated_at=?
         WHERE member_id='member-operator' AND store_id='store-1'
-      `).bind(now, now).run();
+      `,
+        )
+        .bind(now, now)
+        .run();
   }
 }
 
@@ -1416,8 +1495,10 @@ async function sellerReadIntentRequest(
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   return routeRequest(
     app,
-    SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.sellerReadIntent
-      .replace(':id', encodeURIComponent(formalOrderId)),
+    SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.sellerReadIntent.replace(
+      ':id',
+      encodeURIComponent(formalOrderId),
+    ),
     {
       method: 'POST',
       headers,
@@ -1589,14 +1670,21 @@ async function seedChatFixture(
     INSERT INTO file_objects (id, upload_intent_id, slot_no, purpose, visibility, object_key, client_file_name, extension, declared_mime, expected_byte_size, status, upload_token_hash, upload_expires_at, uploaded_byte_size, detected_mime, uploaded_sha256, failure_code, delete_attempt_count, next_delete_at, version, created_at, updated_at, uploaded_at, verified_at, deleted_at)
       VALUES ('chat-file-1', 'chat-intent-1', 1, 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE', 'files/v1/chat/screenshot-fixture-000000000000000000000000000000', 'chat.png', 'png', 'image/png', 11, 'RESERVED', '${'b'.repeat(64)}', 9999999999999, NULL, NULL, NULL, NULL, 0, NULL, 1, 1, 1, NULL, NULL, NULL);
   `);
-  await db.prepare(
-    "UPDATE file_upload_intents SET status='VERIFIED', version=2, updated_at=2, completed_at=2 WHERE id='chat-intent-1'",
-  ).run();
-  await db.prepare(`
+  await db
+    .prepare(
+      "UPDATE file_upload_intents SET status='VERIFIED', version=2, updated_at=2, completed_at=2 WHERE id='chat-intent-1'",
+    )
+    .run();
+  await db
+    .prepare(
+      `
     UPDATE file_objects SET status='VERIFIED', version=2, uploaded_byte_size=11,
       detected_mime='image/png', uploaded_sha256=?, updated_at=2,
       uploaded_at=2, verified_at=2 WHERE id='chat-file-1'
-  `).bind(hash).run();
+  `,
+    )
+    .bind(hash)
+    .run();
   await objectStorage.putObject({
     objectKey: 'files/v1/chat/screenshot-fixture-000000000000000000000000000000',
     bytes: BYTES,

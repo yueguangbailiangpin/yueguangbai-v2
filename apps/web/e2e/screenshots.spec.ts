@@ -35,15 +35,10 @@ function staffSession() {
   };
 }
 
-async function mockSession(
-  page: Page,
-  identity: 'buyer' | 'seller' | 'staff',
-): Promise<void> {
+async function mockSession(page: Page, identity: 'buyer' | 'seller' | 'staff'): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    const session = identity === 'staff'
-      ? staffSession()
-      : customerSession(identity);
+    const session = identity === 'staff' ? staffSession() : customerSession(identity);
     if (path.endsWith('/session')) {
       await route.fulfill({
         contentType: 'application/json',
@@ -55,23 +50,101 @@ async function mockSession(
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/me') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { me: { account_id: 'seller-screenshot', member: { id: 'member-shot', display_name: '演示卖家', role: 'OWNER', primary_owner: true }, organization: { id: 'org-shot', seller_code: 'seller-shot', name: '演示卖家组织', marketplace_code: 'JP', status: 'ACTIVE' }, access: { read_scope: 'ORGANIZATION', store_ids: ['store-shot'], can_submit_product_applications: true, can_submit_demand_batches: true } } }, meta: { request_id: 'screenshot-local' } }) });
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            me: {
+              account_id: 'seller-screenshot',
+              member: {
+                id: 'member-shot',
+                display_name: '演示卖家',
+                role: 'OWNER',
+                primary_owner: true,
+              },
+              organization: {
+                id: 'org-shot',
+                seller_code: 'seller-shot',
+                name: '演示卖家组织',
+                marketplace_code: 'JP',
+                status: 'ACTIVE',
+              },
+              access: {
+                read_scope: 'ORGANIZATION',
+                store_ids: ['store-shot'],
+                can_submit_product_applications: true,
+                can_submit_demand_batches: true,
+              },
+            },
+          },
+          meta: { request_id: 'screenshot-local' },
+        }),
+      });
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/stores') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { items: [{ id: 'store-shot', marketplace_code: 'JP', canonical_marketplace_code: 'AMAZON_JP', transaction_currency_code: 'JPY', transaction_currency_exponent: 0, marketplace_status: 'ACTIVE', adapter_status: 'AVAILABLE', display_name: '日本演示店', status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1 }], page: { limit: 100, next_cursor: null } }, meta: { request_id: 'screenshot-local' } }) });
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            items: [
+              {
+                id: 'store-shot',
+                marketplace_code: 'JP',
+                canonical_marketplace_code: 'AMAZON_JP',
+                transaction_currency_code: 'JPY',
+                transaction_currency_exponent: 0,
+                marketplace_status: 'ACTIVE',
+                adapter_status: 'AVAILABLE',
+                display_name: '日本演示店',
+                status: 'ACTIVE',
+                version: 1,
+                created_at: 1,
+                updated_at: 1,
+              },
+            ],
+            page: { limit: 100, next_cursor: null },
+          },
+          meta: { request_id: 'screenshot-local' },
+        }),
+      });
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/formal-orders') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { items: [], page: { limit: 100, next_cursor: null } }, meta: { request_id: 'screenshot-local' } }) });
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: { items: [], page: { limit: 100, next_cursor: null } },
+          meta: { request_id: 'screenshot-local' },
+        }),
+      });
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/settlement/summary') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { settlement: { outstanding_principal_cny_fen: '0', outstanding_service_fee_cny_fen: '0', total_outstanding_cny_fen: '0', unallocated_credit_cny_fen: '0' } }, meta: { request_id: 'screenshot-local' } }) });
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            settlement: {
+              outstanding_principal_cny_fen: '0',
+              outstanding_service_fee_cny_fen: '0',
+              total_outstanding_cny_fen: '0',
+              unallocated_credit_cny_fen: '0',
+            },
+          },
+          meta: { request_id: 'screenshot-local' },
+        }),
+      });
       return;
     }
     if (identity === 'staff' && path === '/api/staff/me/work-items') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { work_items: [], next_cursor: null }, meta: { request_id: 'screenshot-local' } }) });
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: { work_items: [], next_cursor: null },
+          meta: { request_id: 'screenshot-local' },
+        }),
+      });
       return;
     }
     await route.fulfill({

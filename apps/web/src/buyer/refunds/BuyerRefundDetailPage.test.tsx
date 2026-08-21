@@ -10,7 +10,10 @@ vi.mock('../api/client', () => ({ buyerApi: { refund: vi.fn(), remindRefund: vi.
 import { buyerApi } from '../api/client';
 import { BuyerRefundDetailPage } from './BuyerRefundDetailPage';
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 describe('BuyerRefundDetailPage reminders', () => {
   it('shows and submits a reminder only while the refund remains due', async () => {
@@ -18,17 +21,37 @@ describe('BuyerRefundDetailPage reminders', () => {
     const nextReminderAt = remindedAt + 86_400_000;
     vi.mocked(buyerApi.refund)
       .mockResolvedValueOnce({ data: { refund: refund('DUE') } } as never)
-      .mockResolvedValueOnce({ data: { refund: refund('DUE', {
-        reminder_count: 1,
-        last_reminded_at: remindedAt,
-        next_reminder_at: nextReminderAt,
-      }) } } as never);
-    vi.mocked(buyerApi.remindRefund).mockResolvedValue({ data: { reminder: { refund_obligation_id: 'refund-1', reminder_count: 1, last_reminded_at: remindedAt, next_reminder_at: nextReminderAt }, replayed: false } } as never);
+      .mockResolvedValueOnce({
+        data: {
+          refund: refund('DUE', {
+            reminder_count: 1,
+            last_reminded_at: remindedAt,
+            next_reminder_at: nextReminderAt,
+          }),
+        },
+      } as never);
+    vi.mocked(buyerApi.remindRefund).mockResolvedValue({
+      data: {
+        reminder: {
+          refund_obligation_id: 'refund-1',
+          reminder_count: 1,
+          last_reminded_at: remindedAt,
+          next_reminder_at: nextReminderAt,
+        },
+        replayed: false,
+      },
+    } as never);
     renderPage();
     const user = userEvent.setup();
     const button = await screen.findByRole('button', { name: '催返款' });
     await user.click(button);
-    await waitFor(() => expect(buyerApi.remindRefund).toHaveBeenCalledWith(expect.anything(), 'refund-1', expect.any(String)));
+    await waitFor(() =>
+      expect(buyerApi.remindRefund).toHaveBeenCalledWith(
+        expect.anything(),
+        'refund-1',
+        expect.any(String),
+      ),
+    );
     expect(await screen.findByText(/本单 24 小时内不能重复催办/)).toBeInTheDocument();
     expect(button).toBeDisabled();
     expect(buyerApi.refund).toHaveBeenCalledTimes(2);
@@ -44,17 +67,42 @@ describe('BuyerRefundDetailPage reminders', () => {
 
 function renderPage(): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<MemoryRouter initialEntries={['/buyer/refunds/refund-1']}><QueryClientProvider client={client}><Routes><Route path="/buyer/refunds/:refundId" element={<BuyerRefundDetailPage />} /></Routes></QueryClientProvider></MemoryRouter>);
+  render(
+    <MemoryRouter initialEntries={['/buyer/refunds/refund-1']}>
+      <QueryClientProvider client={client}>
+        <Routes>
+          <Route path="/buyer/refunds/:refundId" element={<BuyerRefundDetailPage />} />
+        </Routes>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
 }
 
 function refund(
   status: 'DUE' | 'PAID',
-  reminder = { reminder_count: 0, last_reminded_at: null as number | null, next_reminder_at: null as number | null },
+  reminder = {
+    reminder_count: 0,
+    last_reminded_at: null as number | null,
+    next_reminder_at: null as number | null,
+  },
 ) {
   return {
-    refund_obligation_id: 'refund-1', due_amount_cny_fen: '100', net_paid_cny_fen: status === 'PAID' ? '100' : '0',
-    remaining_amount_cny_fen: status === 'PAID' ? '0' : '100', overpaid_amount_cny_fen: '0', status,
-    order: { formal_order_id: 'order-1', marketplace: 'JP', amazon_order_number: '123-1234567-1234567', product_name: '返款产品', review_type: 'IMAGE', status: 'CONFIRMED' },
-    reminder, allowed_actions: [], activities: [],
+    refund_obligation_id: 'refund-1',
+    due_amount_cny_fen: '100',
+    net_paid_cny_fen: status === 'PAID' ? '100' : '0',
+    remaining_amount_cny_fen: status === 'PAID' ? '0' : '100',
+    overpaid_amount_cny_fen: '0',
+    status,
+    order: {
+      formal_order_id: 'order-1',
+      marketplace: 'JP',
+      amazon_order_number: '123-1234567-1234567',
+      product_name: '返款产品',
+      review_type: 'IMAGE',
+      status: 'CONFIRMED',
+    },
+    reminder,
+    allowed_actions: [],
+    activities: [],
   };
 }

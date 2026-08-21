@@ -13,7 +13,9 @@ const integration = readFileSync(
 
 describe('formal order number claim model', () => {
   it('uses a database unique active marketplace/order key', () => {
-    expect(migration).toMatch(/CREATE UNIQUE INDEX\s+uq_formal_order_number_claims_active[\s\S]+marketplace_code\s*,\s*amazon_order_number_normalized[\s\S]+WHERE status IN \('PROVISIONAL','FINAL'\)/u);
+    expect(migration).toMatch(
+      /CREATE UNIQUE INDEX\s+uq_formal_order_number_claims_active[\s\S]+marketplace_code\s*,\s*amazon_order_number_normalized[\s\S]+WHERE status IN \('PROVISIONAL','FINAL'\)/u,
+    );
   });
 
   it('records historical conflicts separately', () => {
@@ -22,7 +24,9 @@ describe('formal order number claim model', () => {
   });
 
   it('does not add a breaking unique index to formal_orders', () => {
-    expect(migration).not.toMatch(/CREATE UNIQUE INDEX[^;]+ON formal_orders[^;]+amazon_order_number/su);
+    expect(migration).not.toMatch(
+      /CREATE UNIQUE INDEX[^;]+ON formal_orders[^;]+amazon_order_number/su,
+    );
   });
 
   it('creates provisional claims and finalizes them in the confirmation transaction', () => {

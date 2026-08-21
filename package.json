@@ -90,11 +90,14 @@
     "dev:api": "npm --workspace @ygb/api run dev",
     "dev:web": "npm --workspace @ygb/web run dev",
     "preview:web:local": "node scripts/local-production-preview.mjs",
-    "measure:web:runtime": "node scripts/measure-frontend-runtime-performance.mjs"
+    "measure:web:runtime": "node scripts/measure-frontend-runtime-performance.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@fission-ai/openspec": "1.8.0",
     "@types/node": "24.13.3",
+    "prettier": "^3.6.2",
     "shell-quote": "1.10.0",
     "typescript": "6.0.3",
     "vite": "8.1.5",

@@ -12,7 +12,7 @@ const CURRENT_PRODUCTION_DOCUMENTS=Object.freeze([
 export function resolveProductionSchemaBaseline(repositoryRoot=root){
   const migrations=readdirSync(path.join(repositoryRoot,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
   const runtime=read('apps/api/src/operational-readiness/routes.ts',repositoryRoot);
-  const runtimeMatch=runtime.match(/const TARGET_SCHEMA=(\d+)/u);
+  const runtimeMatch=runtime.match(/const TARGET_SCHEMA\s*=\s*(\d+)/u);
   assert(runtimeMatch,'operational readiness TARGET_SCHEMA baseline is missing');
   const schema=Number(runtimeMatch[1]);
   const latestMigration=migrations.at(-1);

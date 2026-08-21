@@ -320,10 +320,10 @@ describe('Phase 4C3 route and schema guardrails', () => {
     expect(routeSource).not.toContain('requestReviewChanges');
     expect(routeSource).not.toContain('rejectReview');
 
-    expect(actorSource).toContain("session.accountType!=='SELLER_MEMBER'");
+    expect(actorSource).toContain("session.accountType !== 'SELLER_MEMBER'");
     expect(actorSource).toContain("member.status='ACTIVE'");
     expect(actorSource).toContain("organization.status='ACTIVE'");
-    expect(actorSource).toContain('rows.results.length!==1');
+    expect(actorSource).toContain('rows.results.length !== 1');
   });
 
   it('keeps the Wave 12 schema and does not add refund or mutable profit storage', () => {

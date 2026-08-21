@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  StaffPermissionCode,
-  StaffRoleCode,
-} from '@ygb/contracts';
+import type { StaffPermissionCode, StaffRoleCode } from '@ygb/contracts';
 import {
   calculateEffectiveStaffAuthorization,
   isOwnerOnlyPermission,
@@ -16,19 +13,33 @@ function set<T>(...values: T[]): ReadonlySet<T> {
 
 describe('staff authorization formula', () => {
   it('keeps scheduled operation execution owner-only and personal deny final', () => {
-    const deniedOwner = calculateEffectiveStaffAuthorization({ roles: set<StaffRoleCode>('owner'), grants: set<StaffPermissionCode>(), denies: set<StaffPermissionCode>('SCHEDULED_OPERATIONS_RUN'), memberTeamIds: [], leaderTeamIds: [] });
-    const grantedNonOwner = calculateEffectiveStaffAuthorization({ roles: set<StaffRoleCode>('pre_sales'), grants: set<StaffPermissionCode>('SCHEDULED_OPERATIONS_RUN'), denies: set<StaffPermissionCode>(), memberTeamIds: ['team-1'], leaderTeamIds: [] });
+    const deniedOwner = calculateEffectiveStaffAuthorization({
+      roles: set<StaffRoleCode>('owner'),
+      grants: set<StaffPermissionCode>(),
+      denies: set<StaffPermissionCode>('SCHEDULED_OPERATIONS_RUN'),
+      memberTeamIds: [],
+      leaderTeamIds: [],
+    });
+    const grantedNonOwner = calculateEffectiveStaffAuthorization({
+      roles: set<StaffRoleCode>('pre_sales'),
+      grants: set<StaffPermissionCode>('SCHEDULED_OPERATIONS_RUN'),
+      denies: set<StaffPermissionCode>(),
+      memberTeamIds: ['team-1'],
+      leaderTeamIds: [],
+    });
     expect(deniedOwner.permissions.has('SCHEDULED_OPERATIONS_RUN')).toBe(false);
     expect(grantedNonOwner.permissions.has('SCHEDULED_OPERATIONS_RUN')).toBe(false);
   });
   it('rejects role unions and ignores legacy personal grants', () => {
-    expect(() => calculateEffectiveStaffAuthorization({
-      roles: set<StaffRoleCode>('pre_sales', 'buyer_refund'),
-      grants: set<StaffPermissionCode>(),
-      denies: set<StaffPermissionCode>(),
-      memberTeamIds: [],
-      leaderTeamIds: [],
-    })).toThrow('invalid_active_staff_role_count');
+    expect(() =>
+      calculateEffectiveStaffAuthorization({
+        roles: set<StaffRoleCode>('pre_sales', 'buyer_refund'),
+        grants: set<StaffPermissionCode>(),
+        denies: set<StaffPermissionCode>(),
+        memberTeamIds: [],
+        leaderTeamIds: [],
+      }),
+    ).toThrow('invalid_active_staff_role_count');
     const result = calculateEffectiveStaffAuthorization({
       roles: set<StaffRoleCode>('pre_sales'),
       grants: set<StaffPermissionCode>('SELLER_VIEW'),
@@ -88,10 +99,7 @@ describe('staff authorization formula', () => {
     const result = calculateEffectiveStaffAuthorization({
       roles: set<StaffRoleCode>('owner'),
       grants: set<StaffPermissionCode>(),
-      denies: set<StaffPermissionCode>(
-        'FINANCIAL_EXPORT',
-        'TASK_ASSIGN_TEAM',
-      ),
+      denies: set<StaffPermissionCode>('FINANCIAL_EXPORT', 'TASK_ASSIGN_TEAM'),
       memberTeamIds: ['team-a'],
       leaderTeamIds: ['team-a'],
     });
@@ -103,18 +111,20 @@ describe('staff authorization formula', () => {
 
   it('bounds buyer_refund to review, refund and necessary Buyer duties', () => {
     const defaults = roleDefaultPermissions('buyer_refund');
-    expect(defaults).toEqual(new Set([
-      'TASK_VIEW_OPEN',
-      'TASK_CLAIM',
-      'BUYER_VIEW',
-      'ORDER_VIEW',
-      'REVIEW_VIEW',
-      'REVIEW_DECIDE',
-      'BUYER_REFUND_VIEW',
-      'BUYER_REFUND_RECORD',
-      'ASSIGNMENT_ELIGIBLE_BUYER_AFTER_SALES',
-      'ASSIGNMENT_ELIGIBLE_BUYER_REFUND',
-    ]));
+    expect(defaults).toEqual(
+      new Set([
+        'TASK_VIEW_OPEN',
+        'TASK_CLAIM',
+        'BUYER_VIEW',
+        'ORDER_VIEW',
+        'REVIEW_VIEW',
+        'REVIEW_DECIDE',
+        'BUYER_REFUND_VIEW',
+        'BUYER_REFUND_RECORD',
+        'ASSIGNMENT_ELIGIBLE_BUYER_AFTER_SALES',
+        'ASSIGNMENT_ELIGIBLE_BUYER_REFUND',
+      ]),
+    );
     for (const excluded of [
       'FINANCIAL_VIEW',
       'SELLER_VIEW',
@@ -123,6 +133,7 @@ describe('staff authorization formula', () => {
       'PERMISSION_MANAGE',
       'BUYER_IDENTITY_HIGH_RISK_MANAGE',
       'SCHEDULED_OPERATIONS_RUN',
-    ] as const) expect(defaults.has(excluded)).toBe(false);
+    ] as const)
+      expect(defaults.has(excluded)).toBe(false);
   });
 });

@@ -1,28 +1,46 @@
-import { readFileSync,readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach,describe,expect,it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { SqliteDatabase } from '@ygb/testkit';
 
-const migrationPath=path.resolve(process.cwd(),'migrations/0067_advance_v1_full_payment.sql');
-let database:SqliteDatabase|null=null;
-afterEach(()=>{database?.close();database=null;});
+const migrationPath = path.resolve(process.cwd(), 'migrations/0067_advance_v1_full_payment.sql');
+let database: SqliteDatabase | null = null;
+afterEach(() => {
+  database?.close();
+  database = null;
+});
 
-describe('Migration 0067 Advance V1 full payment',()=>{
-  it('enforces one full payment, one full reversal and replacement after reversal',async()=>{
-    database=schema66Database();applyMigration0067(database);
+describe('Migration 0067 Advance V1 full payment', () => {
+  it('enforces one full payment, one full reversal and replacement after reversal', async () => {
+    database = schema66Database();
+    applyMigration0067(database);
     expect(await schemaVersion(database)).toBe(67);
 
-    await expect(insertPayment(database,'payment-wrong',99)).rejects.toThrow('advance_principal_payment_must_equal_snapshot');
-    await expect(insertPayment(database,'payment-a',100)).resolves.toMatchObject({meta:{changes:1}});
-    await expect(insertPayment(database,'payment-b',100)).rejects.toThrow('advance_principal_outstanding_payment_exists');
-    await expect(insertReversal(database,'reversal-partial','payment-a',40)).rejects.toThrow('advance_principal_reversal_must_be_one_full_entry');
-    await expect(insertReversal(database,'reversal-full','payment-a',100)).resolves.toMatchObject({meta:{changes:1}});
-    await expect(insertReversal(database,'reversal-repeat','payment-a',100)).rejects.toThrow('advance_principal_reversal_must_be_one_full_entry');
-    await expect(insertPayment(database,'payment-replacement',100)).resolves.toMatchObject({meta:{changes:1}});
+    await expect(insertPayment(database, 'payment-wrong', 99)).rejects.toThrow(
+      'advance_principal_payment_must_equal_snapshot',
+    );
+    await expect(insertPayment(database, 'payment-a', 100)).resolves.toMatchObject({
+      meta: { changes: 1 },
+    });
+    await expect(insertPayment(database, 'payment-b', 100)).rejects.toThrow(
+      'advance_principal_outstanding_payment_exists',
+    );
+    await expect(insertReversal(database, 'reversal-partial', 'payment-a', 40)).rejects.toThrow(
+      'advance_principal_reversal_must_be_one_full_entry',
+    );
+    await expect(
+      insertReversal(database, 'reversal-full', 'payment-a', 100),
+    ).resolves.toMatchObject({ meta: { changes: 1 } });
+    await expect(insertReversal(database, 'reversal-repeat', 'payment-a', 100)).rejects.toThrow(
+      'advance_principal_reversal_must_be_one_full_entry',
+    );
+    await expect(insertPayment(database, 'payment-replacement', 100)).resolves.toMatchObject({
+      meta: { changes: 1 },
+    });
   });
 
-  it('fails closed at schema 66 when immutable history contains a partial reversal',()=>{
-    database=schema66Database();
+  it('fails closed at schema 66 when immutable history contains a partial reversal', () => {
+    database = schema66Database();
     database.exec(`
       INSERT INTO buyer_advance_principal_entries VALUES(
         'payment-dirty','order-1','buyer-1','PAYMENT',NULL,100,1000,NULL,
@@ -33,12 +51,16 @@ describe('Migration 0067 Advance V1 full payment',()=>{
         NULL,2000,'1970-01-01','WECHAT',NULL,'staff-1',2000
       );
     `);
-    expect(()=>applyMigration0067(database!)).toThrow();
-    expect(database.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get()).toEqual({schema_version:66});
+    expect(() => applyMigration0067(database!)).toThrow();
+    expect(
+      database.raw
+        .prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`)
+        .get(),
+    ).toEqual({ schema_version: 66 });
   });
 
-  it('installs the full-payment guards after the real 0001-0066 chain',async()=>{
-    database=fullSchema66Database();
+  it('installs the full-payment guards after the real 0001-0066 chain', async () => {
+    database = fullSchema66Database();
     database.exec(`
       PRAGMA foreign_keys=OFF;
       DROP TRIGGER trg_formal_order_financial_snapshot_guard;
@@ -68,13 +90,32 @@ describe('Migration 0067 Advance V1 full payment',()=>{
     `);
     applyMigration0067(database);
     expect(await schemaVersion(database)).toBe(67);
-    await expect(insertReversal(database,'reversal-full-chain','payment-full-chain',100,'order-full-chain','buyer-full-chain')).resolves.toMatchObject({meta:{changes:1}});
-    await expect(insertReversal(database,'reversal-full-chain-repeat','payment-full-chain',100,'order-full-chain','buyer-full-chain')).rejects.toThrow('advance_principal_reversal_must_be_one_full_entry');
+    await expect(
+      insertReversal(
+        database,
+        'reversal-full-chain',
+        'payment-full-chain',
+        100,
+        'order-full-chain',
+        'buyer-full-chain',
+      ),
+    ).resolves.toMatchObject({ meta: { changes: 1 } });
+    await expect(
+      insertReversal(
+        database,
+        'reversal-full-chain-repeat',
+        'payment-full-chain',
+        100,
+        'order-full-chain',
+        'buyer-full-chain',
+      ),
+    ).rejects.toThrow('advance_principal_reversal_must_be_one_full_entry');
   });
 });
 
-function schema66Database():SqliteDatabase{
-  const value=new SqliteDatabase();value.exec(`
+function schema66Database(): SqliteDatabase {
+  const value = new SqliteDatabase();
+  value.exec(`
     CREATE TABLE app_schema_state(singleton_id INTEGER PRIMARY KEY,schema_version INTEGER NOT NULL,installed_at INTEGER NOT NULL);
     INSERT INTO app_schema_state VALUES(1,66,0);
     CREATE TABLE transaction_assertions(assertion_value INTEGER NOT NULL CHECK(assertion_value=1));
@@ -107,18 +148,62 @@ function schema66Database():SqliteDatabase{
             AND reversal.original_payment_entry_id=payment.id
         ),0)
     ) BEGIN SELECT RAISE(ABORT,'advance_principal_reversal_exceeds_payment'); END;
-  `);return value;
-}
-
-function fullSchema66Database():SqliteDatabase{
-  const value=new SqliteDatabase(),directory=path.resolve(process.cwd(),'migrations');
-  const files=readdirSync(directory).filter((name)=>/^\d{4}_.+\.sql$/u.test(name)).sort().slice(0,66);
-  for(const file of files)applySql(value,readFileSync(path.join(directory,file),'utf8'));
+  `);
   return value;
 }
 
-function applyMigration0067(target:SqliteDatabase):void{applySql(target,readFileSync(migrationPath,'utf8'));}
-function applySql(target:SqliteDatabase,sql:string):void{target.exec('BEGIN IMMEDIATE;');try{target.exec(sql);target.exec('COMMIT;');}catch(error){try{target.exec('ROLLBACK;');}catch{}throw error;}}
-async function schemaVersion(target:SqliteDatabase):Promise<number>{const row=await target.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).first<{schema_version:number}>();return Number(row?.schema_version);}
-function insertPayment(target:SqliteDatabase,id:string,amount:number){return target.prepare(`INSERT INTO buyer_advance_principal_entries VALUES(?,'order-1','buyer-1','PAYMENT',NULL,?,1000,NULL,'1970-01-01','WECHAT',NULL,'staff-1',1000)`).bind(id,amount).run();}
-function insertReversal(target:SqliteDatabase,id:string,paymentId:string,amount:number,orderId='order-1',buyerId='buyer-1'){return target.prepare(`INSERT INTO buyer_advance_principal_entries VALUES(?,?,?,'REVERSAL',?,?,NULL,2000,'1970-01-01','WECHAT',NULL,'staff-1',2000)`).bind(id,orderId,buyerId,paymentId,amount).run();}
+function fullSchema66Database(): SqliteDatabase {
+  const value = new SqliteDatabase(),
+    directory = path.resolve(process.cwd(), 'migrations');
+  const files = readdirSync(directory)
+    .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
+    .sort()
+    .slice(0, 66);
+  for (const file of files) applySql(value, readFileSync(path.join(directory, file), 'utf8'));
+  return value;
+}
+
+function applyMigration0067(target: SqliteDatabase): void {
+  applySql(target, readFileSync(migrationPath, 'utf8'));
+}
+function applySql(target: SqliteDatabase, sql: string): void {
+  target.exec('BEGIN IMMEDIATE;');
+  try {
+    target.exec(sql);
+    target.exec('COMMIT;');
+  } catch (error) {
+    try {
+      target.exec('ROLLBACK;');
+    } catch {}
+    throw error;
+  }
+}
+async function schemaVersion(target: SqliteDatabase): Promise<number> {
+  const row = await target
+    .prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`)
+    .first<{ schema_version: number }>();
+  return Number(row?.schema_version);
+}
+function insertPayment(target: SqliteDatabase, id: string, amount: number) {
+  return target
+    .prepare(
+      `INSERT INTO buyer_advance_principal_entries VALUES(?,'order-1','buyer-1','PAYMENT',NULL,?,1000,NULL,'1970-01-01','WECHAT',NULL,'staff-1',1000)`,
+    )
+    .bind(id, amount)
+    .run();
+}
+function insertReversal(
+  target: SqliteDatabase,
+  id: string,
+  paymentId: string,
+  amount: number,
+  orderId = 'order-1',
+  buyerId = 'buyer-1',
+) {
+  return target
+    .prepare(
+      `INSERT INTO buyer_advance_principal_entries VALUES(?,?,?,'REVERSAL',?,?,NULL,2000,'1970-01-01','WECHAT',NULL,'staff-1',2000)`,
+    )
+    .bind(id, orderId, buyerId, paymentId, amount)
+    .run();
+}
