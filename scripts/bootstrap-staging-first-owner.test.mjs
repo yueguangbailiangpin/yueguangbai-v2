@@ -100,7 +100,7 @@ describe('staging first owner operator entrypoint', () => {
         status:'STAGING_FIRST_OWNER_BOOTSTRAPPED',role_code:'owner',remote_writes:1,
       });
       expect(batches).toHaveLength(1);
-      expect(batches[0]).toHaveLength(10);
+      expect(batches[0]).toHaveLength(11);
     }finally{rmSync(directory,{recursive:true,force:true});}
   });
 });

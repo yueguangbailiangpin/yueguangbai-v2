@@ -131,3 +131,17 @@ The mounted Buyer portal MUST keep the bottom navigation interactive across repe
 
 - **WHEN** an authenticated Buyer selects Tasks, Me, Tasks, and Me without reloading the browser
 - **THEN** each selected page is rendered and returning window focus does not issue an additional session request.
+
+### Requirement: rebuilt staging has an explicit Staff assignment fallback
+
+The isolated staging first-Owner bootstrap MUST explicitly configure its single active Owner as the `JP` assignment fallback in the same atomic and idempotent batch. It MUST NOT create a Marketplace Scope, infer an arbitrary Owner, change production initialization or weaken work-item integrity.
+
+#### Scenario: the first Seller product application creates a review task
+
+- **WHEN** staging has been rebuilt, only the bootstrapped Owner exists, and a Seller submits a valid product application
+- **THEN** the application and its review work item are committed atomically with the explicit staging Owner fallback as assignee.
+
+#### Scenario: bootstrap fails after preparing the fallback
+
+- **WHEN** any later statement in the staging first-Owner bootstrap batch fails
+- **THEN** the Owner, role, email identity, assignment fallback, synthetic Buyer channel, authorization event and audit fact are all rolled back together.

@@ -18,6 +18,7 @@
 - [x] Keep Buyer Tasks and Me navigation interactive across route and focus changes.
 - [x] Allow all active Seller members and scoped Staff to create authorized Stores before the first product application.
 - [x] Replace every current image or evidence file input with the shared select, drag, paste, preview and remove control.
+- [x] Configure the isolated staging first Owner as the explicit JP assignment fallback so product applications can create review work items after a rebuild.
 
 ## Remote boundary
 

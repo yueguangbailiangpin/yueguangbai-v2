@@ -142,6 +142,12 @@ export async function bootstrapStagingFirstOwner(
     ) VALUES(?,?,?,'ACTIVE',NULL,NULL,?,?,NULL)`).bind(
       identityId, staffId, input.email, now, now,
     ),
+    database.prepare(`INSERT INTO staff_assignment_fallbacks(
+      marketplace_code,staff_id,version,configured_by_staff_id,
+      created_at,updated_at
+    ) VALUES('JP',?,1,?,?,?)`).bind(
+      staffId, staffId, now, now,
+    ),
     database.prepare(`INSERT INTO staff_authorization_events(
       id,staff_id,authorization_version,event_type,actor_staff_id,
       request_id,idempotency_key,change_summary_json,created_at
@@ -150,6 +156,7 @@ export async function bootstrapStagingFirstOwner(
       staffId,
       input.idempotencyKey,
       JSON.stringify({
+        assignment_fallback_configured: true,
         email_identity_created: true,
         role_code: 'owner',
         source: 'STAGING_FIRST_OWNER_BOOTSTRAP',
@@ -268,6 +275,8 @@ function finalAuthorityAssertion(
       AND (SELECT COUNT(*) FROM staff_email_identities
         WHERE id=? AND staff_id=? AND status='ACTIVE')=1
       AND (SELECT COUNT(*) FROM staff_marketplace_scopes)=0
+      AND (SELECT COUNT(*) FROM staff_assignment_fallbacks
+        WHERE marketplace_code='JP' AND staff_id=? AND version=1)=1
       AND (SELECT COUNT(*) FROM staff_sessions)=0
       AND (SELECT COUNT(*) FROM buyer_channels)=1
       AND (SELECT COUNT(*) FROM buyer_channels
@@ -280,7 +289,7 @@ function finalAuthorityAssertion(
         WHERE aggregate_type='STAFF' AND aggregate_id=?
           AND event_type='STAGING_FIRST_OWNER_BOOTSTRAPPED')=1
     THEN 1 ELSE 0 END`).bind(
-      staffId, staffId, identityId, staffId, staffId, staffId,
+      staffId, staffId, identityId, staffId, staffId, staffId, staffId,
     );
 }
 
@@ -336,6 +345,7 @@ function stagingBootstrapAuditStatement(
       staffId,
       idempotencyKey,
       canonicalJson({
+        assignment_fallback_configured: true,
         buyer_registration_channel_id: STAGING_BUYER_CHANNEL_ID,
         email_identity_created: true,
         role_code: 'owner',

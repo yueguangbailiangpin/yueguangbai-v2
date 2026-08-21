@@ -8,12 +8,27 @@ import '../../test/msw/lifecycle';
 import { apiUrl } from '../../test/msw/handlers';
 import { renderWithMsw } from '../../test/msw/render';
 import { server } from '../../test/msw/server';
-import { SellerProductApplicationFormPage } from './SellerSubmissionPages';
+import { FrontendApiError } from '../../api/errors';
+import {
+  productApplicationErrorMessage,
+  SellerProductApplicationFormPage,
+} from './SellerSubmissionPages';
 import { SellerLayout } from '../routes/SellerLayout';
 
 afterEach(cleanup);
 
 describe('Seller first product application store setup', () => {
+  it('explains assignment outages and product conflicts instead of reporting stale facts', () => {
+    expect(productApplicationErrorMessage(new FrontendApiError(
+      'DEPENDENCY_UNAVAILABLE', 503, 'request-dependency', 'DEPENDENCY',
+    ))).toBe(
+      '系统暂时无法分配审核任务，产品申请尚未创建，请稍后重试或联系总管理员。',
+    );
+    expect(productApplicationErrorMessage(new FrontendApiError(
+      'PRODUCT_APPLICATION_CONFLICT', 409, 'request-conflict', 'CONFLICT',
+    ))).toBe('这个产品标识已有待审核申请，请不要重复提交。');
+  });
+
   it('lets the Seller OWNER create the first store before showing the product form', async () => {
     let created = false;
     let requestBody: unknown;

@@ -83,7 +83,7 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
       await client.invalidateQueries({ queryKey: sellerQueryKeys.applications(storeId) });
       navigate(`/seller/products/${result.data.application.id}`, { replace: true });
     },
-    onError: () => setMessage('提交未完成，请刷新页面事实后重试。'),
+    onError: (error) => setMessage(productApplicationErrorMessage(error)),
   });
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -328,7 +328,9 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
             <FormField label="备注" htmlFor="application-seller-notes">
               <TextInput id="application-seller-notes" name="seller_notes" maxLength={2000} />
             </FormField>
-            {message ? <Alert tone="danger">{message}</Alert> : null}
+            {message && mutation.state !== 'FAILED' ? (
+              <Alert tone="danger">{message}</Alert>
+            ) : null}
             {upload.canRetry ? (
               <Button
                 type="button"
@@ -360,6 +362,7 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
             <RequestIdDisplay requestId={upload.requestId} />
             <BuyerMutationRecovery
               mutation={mutation}
+              deterministicMessage={message ?? '产品申请未创建，请刷新后重试。'}
               onRefresh={() => {
                 void me.refetch();
                 stores.retryInitial();
@@ -391,6 +394,26 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
       </Card>
     </section>
   );
+}
+
+export function productApplicationErrorMessage(error: unknown): string {
+  if (!isFrontendApiError(error)) {
+    return '产品申请未创建，请稍后重试。';
+  }
+  switch (error.code) {
+    case 'PRODUCT_APPLICATION_CONFLICT':
+      return '这个产品标识已有待审核申请，请不要重复提交。';
+    case 'DUPLICATE_PRODUCT':
+      return '这个产品已经创建，无需再次申请。';
+    case 'ASIN_STORE_CONFLICT':
+      return '这个产品标识已经归属其他店铺，请核对店铺。';
+    case 'FORBIDDEN':
+      return '当前账号无权提交产品申请。';
+    case 'DEPENDENCY_UNAVAILABLE':
+      return '系统暂时无法分配审核任务，产品申请尚未创建，请稍后重试或联系总管理员。';
+    default:
+      return `产品申请未创建（${error.code}），请核对页面信息后重试。`;
+  }
 }
 
 export function SellerDemandFormPage(): React.JSX.Element {

@@ -417,6 +417,16 @@ D-031 的卖家本金公式继续有效：正式订单只使用平台下单日�
 
 状态：Accepted by business owner；Unifies all current image and evidence entry interactions without changing storage semantics
 
+### D-049 Staging 首任 Owner 同时承担显式审核兜底
+
+D-041 的隔离、身份、无密码和生产禁止边界继续有效。全新 staging D1 的一次性首任 Owner bootstrap 必须在同一参数化原子 batch 中，把该唯一 ACTIVE Owner 明确配置为 `JP` 的 Staff assignment fallback。该 fallback 是 staging 测试环境的显式任务兜底事实，不新增 Staff Marketplace Scope、不扩张角色权限，也不允许从数据库中任意猜测一个 Owner。
+
+这样，在重建 staging 后尚未创建其他内部员工或 Marketplace Scope 时，卖家产品申请、需求、预约等需要 Staff work item 的正式事务仍可把任务分配给明确配置的首任 Owner，而不会因为 `OWNER_FALLBACK_NOT_CONFIGURED` 回滚业务提交。bootstrap 的最终断言、审计摘要、幂等重放和失败全回滚测试必须同时覆盖该 fallback；既有 staging 数据只能通过单独授权的受控远程修复补入，不由前端绕过任务完整性。
+
+本 Decision 不增加 Migration，不开放已冻结的 fallback 管理 HTTP，不修改 production 初始化，不授权 production、staging 部署、远程 SQL、真实数据导入或 GitHub 写入。
+
+状态：Accepted by business owner；Closes the rebuilt-staging assignment gap without changing Schema 70 or runtime authorization
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收
