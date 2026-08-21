@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Alert,
@@ -12,6 +12,7 @@ import {
   TextInput,
 } from '../../ui/primitives';
 import { CursorPagination } from '../../ui/CursorPagination';
+import { isFrontendApiError } from '../../api/errors';
 import { useFileUpload } from '../../buyer/shared/useFileUpload';
 import { BuyerMutationRecovery } from '../../buyer/shared/BuyerMutationRecovery';
 import { useBuyerMutation } from '../../buyer/mutations/useBuyerMutation';
@@ -28,6 +29,10 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
   const files = useRef<File[]>([]);
   const uploadedSelection = useRef<readonly File[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState(storeId ?? '');
+  const [showStoreCreator, setShowStoreCreator] = useState(false);
+  const [storeName, setStoreName] = useState('');
+  const [storeMessage, setStoreMessage] = useState<string | null>(null);
   const me = useQuery({
     queryKey: sellerQueryKeys.me,
     queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me),
@@ -37,6 +42,39 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
     queryKey: sellerQueryKeys.storesPage,
     queryFn: (cursor, signal) => sellerApi.stores(client, cursor, signal),
   });
+  const createStore = useBuyerMutation({
+    operation: (body: unknown, key, signal) => sellerApi.createStore(client, body, key, signal),
+    onSuccess: async (result) => {
+      setSelectedStoreId(result.data.store.store_id);
+      setStoreName('');
+      setStoreMessage('店铺已创建并自动选中，可以继续提交产品申请。');
+      setShowStoreCreator(false);
+      await client.invalidateQueries({ queryKey: sellerQueryKeys.stores });
+    },
+    onError: (error) =>
+      setStoreMessage(
+        isFrontendApiError(error) && error.code === 'DUPLICATE_STORE'
+          ? '这个店铺已经存在，请刷新店铺列表后选择。'
+          : '店铺创建未完成，请核对名称后重试。',
+      ),
+  });
+  const selectableStores = useMemo(
+    () =>
+      stores.items.filter(
+        (store) =>
+          store.status === 'ACTIVE' &&
+          store.marketplace_status === 'ACTIVE' &&
+          store.adapter_status === 'AVAILABLE',
+      ),
+    [stores.items],
+  );
+  useEffect(() => {
+    if (storeId && selectableStores.some((store) => store.id === storeId)) {
+      setSelectedStoreId(storeId);
+    } else if (!selectedStoreId && selectableStores.length === 1) {
+      setSelectedStoreId(selectableStores[0]!.id);
+    }
+  }, [selectedStoreId, selectableStores, storeId]);
   const mutation = useBuyerMutation({
     operation: (body: unknown, key, signal) =>
       sellerApi.submitApplication(client, body, key, signal),
@@ -133,17 +171,93 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
               重新读取
             </Button>
           </>
-        ) : !me.data?.access.can_submit_product_applications ? (
-          <Alert tone="warning">当前账号没有提交产品申请的权限。</Alert>
         ) : (
-          <form
-            className="seller-form"
-            onSubmit={(event) => {
-              void submit(event);
-            }}
-          >
+          <>
+            {selectableStores.length === 0 || showStoreCreator ? (
+              <form
+                className="seller-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const normalized = storeName.normalize('NFKC').trim();
+                  setStoreMessage(null);
+                  if (normalized) {
+                    createStore.mutate({
+                      marketplace_code: 'AMAZON_JP',
+                      store_name: normalized,
+                    });
+                  }
+                }}
+              >
+                <h3>{selectableStores.length === 0 ? '首次提交前先添加店铺' : '添加店铺'}</h3>
+                <p>店铺创建后会成为本组织的授权店铺，产品申请将归属到该店铺。</p>
+                <FormField label="店铺名称" htmlFor="new-seller-store" required>
+                  <TextInput
+                    id="new-seller-store"
+                    value={storeName}
+                    maxLength={200}
+                    onChange={(event) => setStoreName(event.target.value)}
+                    required
+                  />
+                </FormField>
+                <div className="entry-actions">
+                  <Button
+                    type="submit"
+                    loading={createStore.isPending}
+                    disabled={!storeName.trim()}
+                  >
+                    创建授权店铺
+                  </Button>
+                  {selectableStores.length > 0 ? (
+                    <Button
+                      type="button"
+                      className="secondary"
+                      onClick={() => setShowStoreCreator(false)}
+                    >
+                      取消
+                    </Button>
+                  ) : null}
+                </div>
+                <BuyerMutationRecovery
+                  mutation={createStore}
+                  onRefresh={() => stores.retryInitial()}
+                />
+              </form>
+            ) : (
+              <Button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setStoreMessage(null);
+                  setShowStoreCreator(true);
+                }}
+              >
+                添加店铺
+              </Button>
+            )}
+            {storeMessage ? (
+              <Alert tone={createStore.state === 'FAILED' ? 'danger' : 'success'}>
+                {storeMessage}
+              </Alert>
+            ) : null}
+            {selectableStores.length === 0 ? (
+              <Alert tone="info">创建首个店铺后，产品申请表会自动显示。</Alert>
+            ) : !me.data.access.can_submit_product_applications ? (
+              <Alert tone="warning">当前账号可以添加店铺，但没有提交产品申请的权限。</Alert>
+            ) : (
+              <form
+                className="seller-form"
+                onSubmit={(event) => {
+                  void submit(event);
+                }}
+              >
             <FormField label="店铺" htmlFor="application-store" required>
-              <Select name="store_id" defaultValue={storeId ?? ''} required>
+              <Select
+                id="application-store"
+                name="store_id"
+                value={selectedStoreId}
+                onChange={(event) => setSelectedStoreId(event.target.value)}
+                required
+              >
                 <option value="">请选择店铺</option>
                 {stores.items.map((store) => (
                   <option
@@ -166,20 +280,20 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
               description="请填写平台页面中的 10 位产品标识"
               required
             >
-              <TextInput name="asin" maxLength={10} required />
+              <TextInput id="application-asin" name="asin" maxLength={10} required />
             </FormField>
             <FormField label="中文名" htmlFor="application-name" required>
-              <TextInput name="product_name" maxLength={200} required />
+              <TextInput id="application-name" name="product_name" maxLength={200} required />
             </FormField>
             <FormField
               label="搜索词"
               htmlFor="application-keywords"
               description="多个搜索词用逗号分隔"
             >
-              <TextInput name="keywords" maxLength={1000} />
+              <TextInput id="application-keywords" name="keywords" maxLength={1000} />
             </FormField>
             <FormField label="产品链接" htmlFor="application-url">
-              <TextInput name="product_url" type="url" />
+              <TextInput id="application-url" name="product_url" type="url" />
             </FormField>
             <FormField
               label="申请图片"
@@ -188,6 +302,7 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
               required
             >
               <TextInput
+                id="application-images"
                 name="images"
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
@@ -201,10 +316,14 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
               />
             </FormField>
             <FormField label="买家说明" htmlFor="application-buyer-notes">
-              <TextInput name="buyer_visible_notes" maxLength={2000} />
+              <TextInput
+                id="application-buyer-notes"
+                name="buyer_visible_notes"
+                maxLength={2000}
+              />
             </FormField>
             <FormField label="备注" htmlFor="application-seller-notes">
-              <TextInput name="seller_notes" maxLength={2000} />
+              <TextInput id="application-seller-notes" name="seller_notes" maxLength={2000} />
             </FormField>
             {message ? <Alert tone="danger">{message}</Alert> : null}
             {upload.canRetry ? (
@@ -251,7 +370,9 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
             >
               提交申请
             </Button>
-          </form>
+              </form>
+            )}
+          </>
         )}
         {!stores.isInitialPending && !stores.initialError ? (
           <CursorPagination

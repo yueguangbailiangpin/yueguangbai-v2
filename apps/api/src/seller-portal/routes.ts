@@ -2,6 +2,7 @@ import {
   apiSuccess,
   DEMAND_BATCH_STATUSES,
   isDemandTaskType,
+  isMarketplaceCode,
   PRODUCT_APPLICATION_STATUSES,
   PRODUCT_STATUSES,
   type DemandBatchStatus,
@@ -12,6 +13,7 @@ import {
   type SubmitSellerPortalProductApplicationBody,
 } from '@ygb/contracts';
 import type { Context, Hono } from 'hono';
+import { createSellerStore } from '../catalog/create-store';
 import { submitDemandBatch } from '../demand-batches/submit-demand-batch';
 import { withdrawDemandBatch } from '../demand-batches/withdraw-demand-batch';
 import { requestIdFromContext } from '../http-auth/errors';
@@ -57,6 +59,12 @@ export function registerSellerPortalRoutes(app: Hono<any>): void {
     '/api/seller-portal/stores',
     session,
     withSellerPortalErrors(stores),
+  );
+  app.post(
+    '/api/seller-portal/stores',
+    origin,
+    session,
+    withSellerPortalErrors(createStore),
   );
   app.get(
     '/api/seller-portal/products',
@@ -134,6 +142,35 @@ async function stores(context: Context<any>): Promise<Response> {
     actor,
     pagination,
   ));
+}
+
+async function createStore(context: Context<any>): Promise<Response> {
+  const actor = await resolveSellerPortalActor(context);
+  const body = await readObject(context);
+  const marketplace = requiredString(body, 'marketplace_code');
+  if (!isMarketplaceCode(marketplace)) validation();
+  const result = await createSellerStore(
+    context.env.DB,
+    {
+      sellerOrganizationId: actor.sellerOrganizationId,
+      marketplaceCode: marketplace,
+      storeName: requiredString(body, 'store_name'),
+    },
+    {
+      actor: {
+        memberId: actor.memberId,
+        sellerOrganizationId: actor.sellerOrganizationId,
+        role: actor.role,
+      },
+      idempotencyKey: idempotencyKey(context),
+      requestId: requestIdFromContext(context),
+    },
+  );
+  return success(
+    context,
+    { store: result },
+    result.replayed ? 200 : 201,
+  );
 }
 
 async function products(context: Context<any>): Promise<Response> {

@@ -90,6 +90,25 @@ Saving a new Seller customer MUST create the Seller organization once and MUST e
 - **WHEN** Staff selects “生成卖家开通链接” for an unregistered Seller
 - **THEN** the system either returns a new one-time registration link or requires the existing unrecoverable active invitation to be revoked before a replacement link is generated.
 
+### Requirement: Seller stores can be authorized before the first product application
+
+Every active Seller member MUST be able to create an ACTIVE Store only inside their own Seller organization. Active Staff whose effective permissions contain `SELLER_MANAGE` MUST be able to create a Store for a Seller organization inside their current Marketplace and Seller scope. Store creation MUST retain idempotency, authoritative organization scope, audit and duplicate-name protection.
+
+#### Scenario: Seller creates the first Store
+
+- **WHEN** a Seller member has no authorized Store and creates one before the first product application
+- **THEN** the Store becomes selectable in that Seller organization and the product application form is shown with the only available Store selected automatically.
+
+#### Scenario: Staff creates a Store from the Seller directory
+
+- **WHEN** scoped Staff with effective `SELLER_MANAGE` creates a Store for a Seller directory record
+- **THEN** the Store belongs to that exact Seller organization and becomes visible to its Seller members after refresh.
+
+#### Scenario: Seller has no authorized Store
+
+- **WHEN** a Seller member opens the product application page with no selectable Store
+- **THEN** the page does not present an unusable product form and instead provides Store creation to that Seller member.
+
 ### Requirement: mounted Buyer primary navigation remains interactive
 
 The mounted Buyer portal MUST keep the bottom navigation interactive across repeated route changes and window focus changes. Every lazy route transition MUST receive a fresh route boundary so stale loading or error state cannot retain the previous page.

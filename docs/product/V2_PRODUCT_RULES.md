@@ -26,6 +26,7 @@
 - 一个卖家组织可以在多个 Marketplace 拥有店铺。
 - 平台稳定代码首批为 `AMAZON_JP`、`AMAZON_US`、`COUPANG_KR`；韩国站默认禁用且 Adapter 不可用。
 - 一个平台产品标识在同一 Marketplace 只能属于一个权威店铺；Amazon 使用 ASIN Adapter 校验。
+- 卖家组织内所有 ACTIVE 员工均可为本组织创建授权店铺；内部总管理员或卖家对接员工在 `SELLER_MANAGE`、Personal DENY、Marketplace 与卖家组织范围校验后也可创建。
 
 ### 客户会话与退出
 

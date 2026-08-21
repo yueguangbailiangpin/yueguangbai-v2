@@ -243,6 +243,86 @@ describe('seller stores and product catalog', () => {
       .toBe('seller-org-2');
   });
 
+  it('allows every Seller member role to create only inside their own organization', async () => {
+    database = createMigratedTestDatabase();
+    seedCatalogActorsAndOrganizations(database);
+    const sellerOwner = {
+      memberId: 'seller-member-owner-1',
+      sellerOrganizationId: 'seller-org-1',
+      role: 'OWNER' as const,
+    };
+
+    const created = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'AMAZON_JP',
+      storeName: '卖家自助店铺',
+    }, {
+      actor: sellerOwner,
+      idempotencyKey: 'seller-store:create:0001',
+      now: 2400,
+    });
+    expect(created).toMatchObject({
+      seller_organization_id: 'seller-org-1',
+      display_name: '卖家自助店铺',
+      replayed: false,
+    });
+
+    const replay = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'AMAZON_JP',
+      storeName: '卖家自助店铺',
+    }, {
+      actor: sellerOwner,
+      idempotencyKey: 'seller-store:create:0001',
+      now: 2500,
+    });
+    expect(replay).toEqual({ ...created, replayed: true });
+
+    await expect(createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-2',
+      marketplaceCode: 'AMAZON_JP',
+      storeName: '越权店铺',
+    }, {
+      actor: sellerOwner,
+      idempotencyKey: 'seller-store:create:cross-org',
+      now: 2600,
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+
+    for (const [index, role] of (
+      ['OPERATIONS', 'FINANCE', 'VIEWER'] as const
+    ).entries()) {
+      const memberCreated = await createSellerStore(database, {
+        sellerOrganizationId: 'seller-org-1',
+        marketplaceCode: 'AMAZON_JP',
+        storeName: `${role}员工店铺`,
+      }, {
+        actor: {
+          ...sellerOwner,
+          memberId: `seller-member-${role.toLowerCase()}-1`,
+          role,
+        },
+        idempotencyKey: `seller-store:create:${role.toLowerCase()}`,
+        now: 2700 + index,
+      });
+      expect(memberCreated.seller_organization_id).toBe('seller-org-1');
+    }
+
+    const audit = await database.prepare(`
+      SELECT actor_type,actor_id,actor_roles_json
+      FROM audit_events
+      WHERE aggregate_type='SELLER_STORE' AND aggregate_id=?
+    `).bind(created.store_id).first<{
+      actor_type: string;
+      actor_id: string;
+      actor_roles_json: string;
+    }>();
+    expect(audit).toEqual({
+      actor_type: 'SELLER_MEMBER',
+      actor_id: 'seller-member-owner-1',
+      actor_roles_json: '["OWNER"]',
+    });
+  });
+
   it('gives OWNER all active stores and limits OPERATIONS to assigned scopes', async () => {
     database = createMigratedTestDatabase();
     seedCatalogActorsAndOrganizations(database);

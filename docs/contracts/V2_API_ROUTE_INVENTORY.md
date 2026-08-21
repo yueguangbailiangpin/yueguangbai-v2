@@ -50,6 +50,7 @@ GET /api/seller-portal/settlement/payments
 GET /api/seller-portal/settlement/payments/:id
 GET /api/seller-portal/settlement/summary
 GET /api/seller-portal/stores
+POST /api/seller-portal/stores
 GET /api/staff-auth/session
 GET /api/staff/access-management
 GET /api/staff/acquisition/channel-assignments

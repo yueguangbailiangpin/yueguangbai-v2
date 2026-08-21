@@ -1,4 +1,5 @@
 import type {
+  SellerMemberRole,
   StaffDataScope,
   StaffPermissionCode,
   StaffRoleCode,
@@ -10,6 +11,12 @@ export interface CatalogStaffActor {
   roles: readonly StaffRoleCode[];
   permissions: ReadonlySet<StaffPermissionCode>;
   dataScope?: StaffDataScope;
+}
+
+export interface CatalogSellerStoreActor {
+  memberId: string;
+  sellerOrganizationId: string;
+  role: SellerMemberRole;
 }
 
 export class CatalogError extends Error {

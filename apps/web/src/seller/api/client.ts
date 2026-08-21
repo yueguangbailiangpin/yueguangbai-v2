@@ -12,6 +12,7 @@ import {
   sellerProductsSchema,
   sellerReviewsSchema,
   sellerSettlementSummarySchema,
+  sellerStoreMutationSchema,
   sellerStoresSchema,
 } from '../contracts/runtime';
 
@@ -58,6 +59,15 @@ export const sellerApi = Object.freeze({
     get(client, '/api/seller-portal/me', sellerMeSchema, signal),
   stores: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
     get(client, listPath('/api/seller-portal/stores', cursor), sellerStoresSchema, signal),
+  createStore: (client: QueryClient, body: unknown, key: string, signal?: AbortSignal) =>
+    post(
+      client,
+      '/api/seller-portal/stores',
+      sellerStoreMutationSchema,
+      body,
+      key,
+      signal,
+    ),
   products: (
     client: QueryClient,
     storeId: string | null,

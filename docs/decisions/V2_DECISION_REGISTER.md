@@ -397,6 +397,16 @@ D-031 的卖家本金公式继续有效：正式订单只使用平台下单日�
 
 状态：Accepted by business owner；Formalizes the T7 buyer-initiated refund reminder (archived OpenSpec `2026-08-15-buyer-refund-reminders`) as the Schema 70 decision, previously recorded only as a 2026-08-17 non-decision status note in this Register
 
+### D-047 卖家与员工创建授权店铺
+
+卖家组织内所有 ACTIVE 员工和内部员工都可以创建授权店铺。Seller Portal 允许当前 ACTIVE Seller Organization 的全部成员为本组织创建店铺，组织 ID 必须由可信 Session 推导，客户端不得指定或跨组织创建；Staff 入口只允许 ACTIVE `owner` 或 `seller_ops` 且有效权限仍包含 `SELLER_MANAGE`，并继续执行 Personal DENY、Marketplace Scope 和 Seller Organization Scope。
+
+店铺创建继续使用权威 Marketplace Registry、规范化名称、同组织同站点防重、幂等键、不可变 Audit、Outbox 和事务最终断言。当前业务写路径仍为 `AMAZON_JP`，其他站点继续由 `MARKETPLACE_NOT_SUPPORTED` 失败关闭。新卖家没有店铺时，产品申请页先提供建店入口；只有一个可用店铺时自动选中。内部员工可从卖家客户目录为具体卖家创建店铺。
+
+本 Decision 不增加 Migration，不修改 Seller 财务或 Buyer 数据权限，不授权 production、远程 Migration、远程 SQL、真实数据导入或 GitHub 写入。
+
+状态：Accepted by business owner；Closes the first-Seller-store onboarding gap without changing Schema 70
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

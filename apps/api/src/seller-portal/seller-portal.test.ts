@@ -235,6 +235,64 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     }
   });
 
+  it('lets every Seller employee create an authorized store with replay safety', async () => {
+    const app = testApp();
+    const headers = await stateHeaders('owner', 'seller-store-create-0001');
+    const payload = {
+      marketplace_code: 'AMAZON_JP',
+      store_name: '负责人新增店铺',
+    };
+    const created = await request(app, '/api/seller-portal/stores', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    expect(created.status).toBe(201);
+    const createdBody = await json<any>(created);
+    expect(createdBody.data.store).toMatchObject({
+      seller_organization_id: 'org-1',
+      marketplace_code: 'AMAZON_JP',
+      display_name: '负责人新增店铺',
+      status: 'ACTIVE',
+      replayed: false,
+    });
+
+    const replay = await request(app, '/api/seller-portal/stores', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    expect(replay.status).toBe(200);
+    await expect(json(replay)).resolves.toMatchObject({
+      data: {
+        store: {
+          store_id: createdBody.data.store.store_id,
+          replayed: true,
+        },
+      },
+    });
+
+    for (const role of ['ops', 'finance', 'viewer'] as const) {
+      const employeeCreated = await request(app, '/api/seller-portal/stores', {
+        method: 'POST',
+        headers: await stateHeaders(role, `seller-store-create-${role}`),
+        body: JSON.stringify({
+          marketplace_code: 'AMAZON_JP',
+          store_name: `${role} 员工新增店铺`,
+        }),
+      });
+      expect(employeeCreated.status).toBe(201);
+      await expect(json(employeeCreated)).resolves.toMatchObject({
+        data: {
+          store: {
+            seller_organization_id: 'org-1',
+            display_name: `${role} 员工新增店铺`,
+          },
+        },
+      });
+    }
+  });
+
   it('submits and withdraws product applications idempotently', async () => {
     const app = testApp();
     const headers = await stateHeaders('ops', 'application-submit-0001');

@@ -102,6 +102,21 @@ const sellerInvitationSchema = z
       .passthrough(),
   })
   .strict();
+const sellerStoreMutationSchema = z
+  .object({
+    store: z
+      .object({
+        store_id: z.string(),
+        seller_organization_id: z.string(),
+        marketplace_code: z.string(),
+        display_name: z.string(),
+        status: z.literal('ACTIVE'),
+        version: z.literal(1),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
 const currentSellerInvitationSchema = z
   .object({
     invitation: z
@@ -352,7 +367,12 @@ function CustomerIntakeWorkspace({
                       </td>
                       <td>{seller.has_portal_account ? '已开通' : '未开通'}</td>
                       <td>
-                        <SellerPortalAccessAction seller={seller} />
+                        <div className="customer-registration-success">
+                          {session.permissions.includes('SELLER_MANAGE') ? (
+                            <StaffSellerStoreAction seller={seller} />
+                          ) : null}
+                          <SellerPortalAccessAction seller={seller} />
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -828,7 +848,7 @@ function SellerPortalAccessAction({ seller }: { seller: SellerDirectoryItem }) {
         current ? { ...current, status: 'REVOKED', link: '', recoverable: false } : current,
       ),
   });
-  if (seller.has_portal_account) return <span>—</span>;
+  if (seller.has_portal_account) return null;
   return (
     <div className="customer-registration-success">
       <Button type="button" loading={invite.isPending} onClick={() => invite.mutate()}>
@@ -846,6 +866,87 @@ function SellerPortalAccessAction({ seller }: { seller: SellerDirectoryItem }) {
         <Alert tone="danger">开通链接操作未完成，请重试。</Alert>
       ) : null}
     </div>
+  );
+}
+
+function StaffSellerStoreAction({ seller }: { seller: SellerDirectoryItem }) {
+  const client = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [storeName, setStoreName] = useState('');
+  const create = useMutation({
+    mutationFn: async (name: string) => {
+      const body = {
+        seller_organization_id: seller.seller_organization_id,
+        marketplace_code: seller.marketplace_code,
+        store_name: name,
+      };
+      return identityApiRequest('staff', client, {
+        path: '/api/staff/catalog/stores',
+        method: 'POST',
+        schema: sellerStoreMutationSchema,
+        body,
+        headers: operationHeaders({ key: crypto.randomUUID(), body }),
+      });
+    },
+    onSuccess: () => {
+      setStoreName('');
+      setEditing(false);
+    },
+  });
+  if (create.isSuccess) {
+    return (
+      <div className="customer-registration-success">
+        <Alert tone="success">店铺已创建，卖家刷新后即可选择。</Alert>
+        <Button className="secondary" onClick={() => create.reset()}>
+          继续添加店铺
+        </Button>
+      </div>
+    );
+  }
+  if (!editing) {
+    return (
+      <Button type="button" className="secondary" onClick={() => setEditing(true)}>
+        添加店铺
+      </Button>
+    );
+  }
+  return (
+    <form
+      className="customer-registration-success"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const normalized = storeName.normalize('NFKC').trim();
+        if (normalized) create.mutate(normalized);
+      }}
+    >
+      <FormField
+        label={`${seller.display_name}的店铺名称`}
+        htmlFor={`store-name-${seller.seller_organization_id}`}
+      >
+        <TextInput
+          id={`store-name-${seller.seller_organization_id}`}
+          value={storeName}
+          maxLength={200}
+          onChange={(event) => setStoreName(event.target.value)}
+          required
+        />
+      </FormField>
+      <div className="entry-actions">
+        <Button type="submit" loading={create.isPending} disabled={!storeName.trim()}>
+          确认添加
+        </Button>
+        <Button type="button" className="secondary" onClick={() => setEditing(false)}>
+          取消
+        </Button>
+      </div>
+      {create.isError ? (
+        <Alert tone="danger">
+          {isFrontendApiError(create.error) && create.error.code === 'DUPLICATE_STORE'
+            ? '这个店铺已经存在，不需要重复添加。'
+            : '店铺添加未完成，请重试。'}
+        </Alert>
+      ) : null}
+    </form>
   );
 }
 

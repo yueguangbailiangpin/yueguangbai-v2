@@ -87,6 +87,28 @@ export const sellerStoresSchema = z
   })
   .strict();
 
+export const sellerStoreMutationSchema = z
+  .object({
+    store: z
+      .object({
+        store_id: z.string(),
+        seller_organization_id: z.string(),
+        marketplace_code: z.enum([
+          'AMAZON_JP',
+          'AMAZON_US',
+          'COUPANG_KR',
+          'RAKUTEN_JP',
+          'TIKTOK_JP',
+        ]),
+        display_name: z.string(),
+        status: z.literal('ACTIVE'),
+        version: z.literal(1),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+
 const canonicalMarketplace = z.enum([
   'AMAZON_JP',
   'AMAZON_US',
