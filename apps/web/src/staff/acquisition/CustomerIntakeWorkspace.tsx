@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { z } from 'zod';
 import { identityApiRequest } from '../../api/identity-request';
 import { operationHeaders } from '../../api/idempotency';
+import { isFrontendApiError } from '../../api/errors';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
 import {
   Alert,
@@ -581,6 +582,11 @@ function LeadCreateCard({
       setInvitation(null);
       void client.invalidateQueries({ queryKey: ['staff', 'customer-intake'] });
     },
+    onError: (error) => {
+      if (isFrontendApiError(error) && error.code === 'DUPLICATE_LEAD') {
+        void client.invalidateQueries({ queryKey: ['staff', 'customer-intake'] });
+      }
+    },
   });
   const invite = useMutation({
     mutationFn: async (value: SavedLead) => {
@@ -748,8 +754,10 @@ function LeadCreateCard({
           保存新{buyer ? '买家' : '卖家'}客户
         </Button>
         {create.isError ? (
-          <Alert tone="danger">
-            保存未完成。如果这个微信在当前站点属于历史客户，请使用上方历史客户查询。
+          <Alert tone={isDuplicateLeadError(create.error) ? 'warning' : 'danger'}>
+            {isDuplicateLeadError(create.error)
+              ? '这个微信在当前站点已经保存过，不需要重复新增。请查看右侧客户目录，或使用上方历史客户查询。'
+              : '保存未完成。如果这个微信在当前站点属于历史客户，请使用上方历史客户查询。'}
           </Alert>
         ) : null}
       </form>
@@ -780,6 +788,10 @@ function LeadCreateCard({
       ) : null}
     </Card>
   );
+}
+
+function isDuplicateLeadError(error: unknown): boolean {
+  return isFrontendApiError(error) && error.code === 'DUPLICATE_LEAD';
 }
 
 function InvitationResult({

@@ -2,10 +2,17 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
+import { createAcquisitionChannel } from '../acquisition/admin';
+import { createAcquisitionLead } from '../acquisition/leads';
 import { listHistoricalSellerDirectory } from './historical-seller-directory';
 
+const SECRET = 'historical-directory-test-secret-at-least-thirty-two-bytes';
+const NOW = Date.now() + 10_000;
 let database: SqliteDatabase | null = null;
-afterEach(() => { database?.close(); database = null; });
+afterEach(() => {
+  database?.close();
+  database = null;
+});
 
 describe('historical seller directory', () => {
   it('lists frozen historical organizations without creating acquisition leads', async () => {
@@ -44,27 +51,107 @@ describe('historical seller directory', () => {
       );
     `);
     const items = await listHistoricalSellerDirectory(database, owner());
-    expect(items).toContainEqual(expect.objectContaining({
-      seller_organization_id: 'historical-org-1',
-      display_name: 'Michael_er',
-      wechat_masked: 'Michael_er',
-      source_status: 'HISTORICAL_FROZEN_IMPORT',
-      source_file_count: 3,
-      product_names: ['紫光灯'],
-      has_portal_account: false,
-    }));
-    const leadCount = database.raw.prepare(`SELECT COUNT(*) AS count FROM acquisition_leads`).get() as { count: number };
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        seller_organization_id: 'historical-org-1',
+        display_name: 'Michael_er',
+        wechat_masked: 'Michael_er',
+        source_status: 'HISTORICAL_FROZEN_IMPORT',
+        source_file_count: 3,
+        product_names: ['紫光灯'],
+        has_portal_account: false,
+      }),
+    );
+    const leadCount = database.raw
+      .prepare(`SELECT COUNT(*) AS count FROM acquisition_leads`)
+      .get() as { count: number };
     expect(leadCount.count).toBe(0);
+  });
+
+  it('lists a newly formalized seller before the seller registers a portal member', async () => {
+    database = createMigratedTestDatabase();
+    const channel = await createAcquisitionChannel(
+      database,
+      {
+        code: 'NEW_SELLER_DIRECTORY',
+        platformName: '私人微信',
+        leadType: 'SELLER',
+        marketplaceCode: 'AMAZON_JP',
+        displayName: '新卖家目录测试',
+      },
+      command('new-seller-directory-channel'),
+    );
+    database.raw
+      .prepare(
+        `UPDATE acquisition_channel_privacy_profiles
+      SET intake_wechat_label=?,version=version+1,updated_at=? WHERE channel_id=?`,
+      )
+      .run('新卖家目录测试微信', NOW, channel.channel.channel_id);
+
+    const created = await createAcquisitionLead(
+      database,
+      {
+        leadType: 'SELLER',
+        marketplaceCode: 'AMAZON_JP',
+        channelId: channel.channel.channel_id,
+        prospectId: null,
+        wechatId: 'new_seller_wechat',
+        displayName: '新卖家公司',
+        note: null,
+      },
+      command('new-seller-directory-lead'),
+      SECRET,
+    );
+    const organization = database.raw
+      .prepare(
+        `SELECT link.target_id
+      FROM acquisition_lead_links link
+      WHERE link.lead_id=? AND link.link_type='SELLER_ORGANIZATION'`,
+      )
+      .get(created.lead.lead_id) as { target_id: string };
+    const memberCount = database.raw
+      .prepare(
+        `SELECT COUNT(*) AS count
+      FROM seller_organization_members WHERE organization_id=?`,
+      )
+      .get(organization.target_id) as { count: number };
+    expect(memberCount.count).toBe(0);
+
+    const items = await listHistoricalSellerDirectory(database, owner(), SECRET);
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        seller_organization_id: organization.target_id,
+        display_name: '新卖家公司',
+        wechat_masked: 'new_seller_wechat',
+        source_status: 'CURRENT_OR_NEW',
+        has_portal_account: false,
+      }),
+    );
   });
 });
 
+function command(idempotencyKey: string) {
+  return {
+    actor: owner(),
+    idempotencyKey,
+    requestId: `request-${idempotencyKey}`,
+    now: NOW,
+  };
+}
+
 function owner(): AssignmentStaffAuthorization {
   const effective = calculateEffectiveStaffAuthorization({
-    roles: new Set(['owner']), grants: new Set(), denies: new Set(),
-    memberTeamIds: [], leaderTeamIds: [],
+    roles: new Set(['owner']),
+    grants: new Set(),
+    denies: new Set(),
+    memberTeamIds: [],
+    leaderTeamIds: [],
   });
   return {
-    staffId: 'zz-phase3h-test-owner', displayName: 'Owner', staffStatus: 'ACTIVE',
-    authorizationVersion: 1, ...effective,
+    staffId: 'zz-phase3h-test-owner',
+    displayName: 'Owner',
+    staffStatus: 'ACTIVE',
+    authorizationVersion: 1,
+    ...effective,
   };
 }

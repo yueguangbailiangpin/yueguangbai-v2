@@ -75,3 +75,21 @@ The Staff session MUST still be verified on the first protected mount, and expli
 
 - **WHEN** an authenticated Staff tab loses focus and later regains focus without a session-invalidated event
 - **THEN** the mounted Staff page remains visible and no additional session request is issued.
+
+### Requirement: newly saved sellers remain visible before portal registration
+
+Saving a new Seller customer MUST create the Seller organization once and MUST expose that organization in the Seller customer directory even when no Seller portal member has registered yet. A repeated save for the same WeChat and marketplace MUST explain that the customer already exists instead of presenting a generic save failure.
+
+#### Scenario: Staff saves a new Seller and has not issued or completed registration
+
+- **WHEN** the Seller Lead and linked Seller organization are committed without an active Seller member
+- **THEN** the Seller directory shows that organization with website account status “未开通”.
+
+### Requirement: mounted Buyer primary navigation remains interactive
+
+The mounted Buyer portal MUST keep the bottom navigation interactive across repeated route changes and window focus changes. Every lazy route transition MUST receive a fresh route boundary so stale loading or error state cannot retain the previous page.
+
+#### Scenario: Buyer alternates between Tasks and Me
+
+- **WHEN** an authenticated Buyer selects Tasks, Me, Tasks, and Me without reloading the browser
+- **THEN** each selected page is rendered and returning window focus does not issue an additional session request.

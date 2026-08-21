@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { useState, type ReactNode } from 'react';
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { focusManager, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Route, Routes, useLocation } from 'react-router';
@@ -217,6 +217,29 @@ function installProtectedFailure(
 }
 
 describe('mounted protected API 401 Session transitions', () => {
+  it.each([
+    ['buyer', 'BUYER'],
+    ['seller', 'SELLER'],
+  ] as const)('%s keeps its mounted shell interactive when the window regains focus', async (
+    identity,
+    label,
+  ) => {
+    const requests = { current: 0 };
+    installSuccessfulSession(identity, requests);
+    renderWithMsw(<MountedRoutes identity={identity} label={label} loginSnapshots={[]} />, {
+      route: `/${identity}`,
+    });
+
+    expect(await screen.findByText(`${label} MOUNTED SHELL`)).toBeVisible();
+    expect(requests.current).toBe(1);
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(screen.getByText(`${label} MOUNTED SHELL`)).toBeVisible());
+    expect(requests.current).toBe(1);
+  });
+
   it.each(mountedCases)('%s mounted Shell fails closed and enters only its login after 401 cleanup', async (
     identity,
     path,
@@ -302,7 +325,6 @@ describe('mounted protected API 401 Session transitions', () => {
     expect(cancelQueries).toHaveBeenCalledTimes(expectedCancellations);
   });
 });
-
 describe('stale protected 401 cannot invalidate a newer fresh Session cycle', () => {
   it.each([
     ['buyer', '/api/buyer-portal/me', 'BUYER'],

@@ -1,4 +1,5 @@
 import type { SqlDatabase } from '@ygb/contracts';
+import { revealWechatIdentity } from '../acquisition/privacy';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 import { FROZEN_HISTORICAL_SELLER_PRODUCTS } from './frozen-historical-seller-products';
@@ -8,8 +9,11 @@ interface HistoricalSellerDirectoryRow {
   organization_name: string;
   marketplace_code: string;
   seller_code: string;
-  display_wechat: string;
-  normalized_wechat: string;
+  display_wechat: string | null;
+  normalized_wechat: string | null;
+  lead_identity_ciphertext: string | null;
+  lead_identity_iv: string | null;
+  lead_wechat_masked: string | null;
   account_id: string | null;
   historical_reason: string | null;
   active_offering_count: number;
@@ -18,6 +22,7 @@ interface HistoricalSellerDirectoryRow {
 export async function listHistoricalSellerDirectory(
   database: SqlDatabase,
   actor: AssignmentStaffAuthorization,
+  identitySecret?: string,
 ) {
   if (!actor.roles.has('owner') && !actor.roles.has('seller_ops')) {
     throw new Error('FORBIDDEN');
@@ -26,11 +31,14 @@ export async function listHistoricalSellerDirectory(
     ? null
     : await resolveStaffMarketplaceCodes(database, actor);
   if (markets !== null && markets.length === 0) return Object.freeze([]);
-  const marketplaceWhere = markets === null
-    ? ''
-    : `AND CASE organization.marketplace_code WHEN 'JP' THEN 'AMAZON_JP'
+  const marketplaceWhere =
+    markets === null
+      ? ''
+      : `AND CASE organization.marketplace_code WHEN 'JP' THEN 'AMAZON_JP'
          ELSE organization.marketplace_code END IN (${markets.map(() => '?').join(',')})`;
-  const rows = await database.prepare(`SELECT
+  const rows = await database
+    .prepare(
+      `SELECT
       organization.id AS organization_id,
       organization.organization_name,
       organization.marketplace_code,
@@ -49,6 +57,24 @@ export async function listHistoricalSellerDirectory(
         AND claim.status='ACTIVE'
        WHERE member.organization_id=organization.id AND member.status='ACTIVE'
        ORDER BY member.primary_owner DESC,member.member_number,member.id LIMIT 1) AS normalized_wechat,
+      (SELECT lead.identity_ciphertext
+       FROM acquisition_lead_links link
+       JOIN acquisition_leads lead ON lead.id=link.lead_id
+       WHERE link.link_type='SELLER_ORGANIZATION'
+         AND link.target_id=organization.id AND lead.status='ACTIVE'
+       ORDER BY lead.created_at,lead.id LIMIT 1) AS lead_identity_ciphertext,
+      (SELECT lead.identity_iv
+       FROM acquisition_lead_links link
+       JOIN acquisition_leads lead ON lead.id=link.lead_id
+       WHERE link.link_type='SELLER_ORGANIZATION'
+         AND link.target_id=organization.id AND lead.status='ACTIVE'
+       ORDER BY lead.created_at,lead.id LIMIT 1) AS lead_identity_iv,
+      (SELECT lead.wechat_masked
+       FROM acquisition_lead_links link
+       JOIN acquisition_leads lead ON lead.id=link.lead_id
+       WHERE link.link_type='SELLER_ORGANIZATION'
+         AND link.target_id=organization.id AND lead.status='ACTIVE'
+       ORDER BY lead.created_at,lead.id LIMIT 1) AS lead_wechat_masked,
       (SELECT account.id
        FROM seller_organization_members member
        JOIN customer_account_personas persona
@@ -73,32 +99,56 @@ export async function listHistoricalSellerDirectory(
           ON claim.identity_subject_id=member.identity_subject_id
          AND claim.status='ACTIVE'
         WHERE member.organization_id=organization.id AND member.status='ACTIVE'
+        UNION ALL
+        SELECT 1 FROM acquisition_lead_links link
+        JOIN acquisition_leads lead ON lead.id=link.lead_id
+        WHERE link.link_type='SELLER_ORGANIZATION'
+          AND link.target_id=organization.id AND lead.status='ACTIVE'
       )
       ${marketplaceWhere}
-    ORDER BY lower(normalized_wechat),organization.id`).bind(...(markets ?? []))
+    ORDER BY lower(COALESCE(normalized_wechat,lead_wechat_masked,organization.organization_name)),organization.id`,
+    )
+    .bind(...(markets ?? []))
     .all<HistoricalSellerDirectoryRow>();
-  return Object.freeze(rows.results.map((row) => {
-    const canonicalMarketplace = row.marketplace_code === 'JP'
-      ? 'AMAZON_JP'
-      : row.marketplace_code;
-    const historical = row.historical_reason !== null;
-    const sourceCount = historical
-      ? Number(/(?:^|;)SOURCE_FILES=(\d+)(?:;|$)/u.exec(row.historical_reason ?? '')?.[1] ?? 0)
-      : 0;
-    const productNames = FROZEN_HISTORICAL_SELLER_PRODUCTS[
-      row.normalized_wechat.toLocaleLowerCase('en-US') as keyof typeof FROZEN_HISTORICAL_SELLER_PRODUCTS
-    ] ?? Object.freeze([]);
-    return Object.freeze({
-      seller_organization_id: row.organization_id,
-      seller_code: row.seller_code,
-      display_name: row.organization_name,
-      wechat_masked: row.display_wechat,
-      marketplace_code: canonicalMarketplace,
-      source_status: historical ? 'HISTORICAL_FROZEN_IMPORT' as const : 'CURRENT_OR_NEW' as const,
-      source_file_count: sourceCount,
-      product_names: productNames,
-      active_offering_count: Number(row.active_offering_count),
-      has_portal_account: row.account_id !== null,
-    });
-  }));
+  return Object.freeze(
+    await Promise.all(
+      rows.results.map(async (row) => {
+        const canonicalMarketplace =
+          row.marketplace_code === 'JP' ? 'AMAZON_JP' : row.marketplace_code;
+        const historical = row.historical_reason !== null;
+        const sourceCount = historical
+          ? Number(/(?:^|;)SOURCE_FILES=(\d+)(?:;|$)/u.exec(row.historical_reason ?? '')?.[1] ?? 0)
+          : 0;
+        const displayWechat =
+          row.display_wechat ??
+          (identitySecret && row.lead_identity_ciphertext && row.lead_identity_iv
+            ? await revealWechatIdentity(
+                row.lead_identity_ciphertext,
+                row.lead_identity_iv,
+                identitySecret,
+              )
+            : (row.lead_wechat_masked ?? row.organization_name));
+        const productNames =
+          FROZEN_HISTORICAL_SELLER_PRODUCTS[
+            (row.normalized_wechat ?? '').toLocaleLowerCase(
+              'en-US',
+            ) as keyof typeof FROZEN_HISTORICAL_SELLER_PRODUCTS
+          ] ?? Object.freeze([]);
+        return Object.freeze({
+          seller_organization_id: row.organization_id,
+          seller_code: row.seller_code,
+          display_name: row.organization_name,
+          wechat_masked: displayWechat,
+          marketplace_code: canonicalMarketplace,
+          source_status: historical
+            ? ('HISTORICAL_FROZEN_IMPORT' as const)
+            : ('CURRENT_OR_NEW' as const),
+          source_file_count: sourceCount,
+          product_names: productNames,
+          active_offering_count: Number(row.active_offering_count),
+          has_portal_account: row.account_id !== null,
+        });
+      }),
+    ),
+  );
 }

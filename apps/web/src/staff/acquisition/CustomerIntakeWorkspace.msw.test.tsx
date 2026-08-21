@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import '../../test/msw/lifecycle';
 import { StaffSessionBoundary } from '../../auth/staff/StaffSessionBoundary';
 import { apiUrl } from '../../test/msw/handlers';
+import { failureEnvelopeFixture } from '../../test/msw/fixtures';
 import { renderWithMsw } from '../../test/msw/render';
 import { server } from '../../test/msw/server';
 import { staffTestAdapter, staffTestSession } from '../test-fixtures';
@@ -44,6 +45,40 @@ describe('seller customer intake channel selection', () => {
     expect(within(intakeChannel).getByRole('option', { name: '渠道2' })).toBeVisible();
     expect(within(intakeChannel).queryByRole('option', { name: '渠道1' })).toBeNull();
   });
+
+  it('explains that a duplicate seller was already saved instead of reporting a generic failure', async () => {
+    installHandlers([channel('seller-jp', 'AMAZON_JP', '渠道1')]);
+    server.use(
+      http.post(apiUrl('/api/staff/acquisition/leads'), () =>
+        HttpResponse.json(
+          failureEnvelopeFixture(
+            'DUPLICATE_LEAD',
+            'duplicate',
+            null,
+            'request-duplicate-seller-lead',
+          ),
+          { status: 409 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    const intakeChannel = await screen.findByRole('combobox', { name: '渠道' });
+    await waitFor(() =>
+      expect(within(intakeChannel).getByRole('option', { name: '渠道1' })).toBeVisible(),
+    );
+    const createCard = screen.getByRole('heading', { name: '新卖家客户' }).closest('section');
+    expect(createCard).not.toBeNull();
+    const createForm = within(createCard!);
+    await user.selectOptions(intakeChannel, 'seller-jp');
+    await user.type(createForm.getByRole('textbox', { name: '微信号' }), 'already_saved_wechat');
+    await user.type(createForm.getByRole('textbox', { name: '公司 / 客户名称' }), '已经保存的卖家');
+    await user.click(createForm.getByRole('button', { name: '保存新卖家客户' }));
+
+    expect(await screen.findByText(/已经保存过，不需要重复新增/u)).toBeVisible();
+    expect(screen.queryByText(/保存未完成/u)).not.toBeInTheDocument();
+  });
 });
 
 function renderWorkspace(): ReturnType<typeof renderWithMsw> {
@@ -57,17 +92,27 @@ function renderWorkspace(): ReturnType<typeof renderWithMsw> {
 
 function installHandlers(channels: readonly ReturnType<typeof channel>[]): void {
   server.use(
-    http.get(apiUrl('/api/staff/acquisition/channels'), () => HttpResponse.json({
-      data: { channels }, meta: { request_id: 'channels' },
-    })),
+    http.get(apiUrl('/api/staff/acquisition/channels'), () =>
+      HttpResponse.json({
+        data: { channels },
+        meta: { request_id: 'channels' },
+      }),
+    ),
     http.get(apiUrl('/api/staff/customer-onboarding/seller-directory'), () =>
-      HttpResponse.json({ data: { items: [] }, meta: { request_id: 'seller-directory' } })),
-    http.get(apiUrl('/api/staff/acquisition/leads'), () => HttpResponse.json({
-      data: { items: [], next_cursor: null }, meta: { request_id: 'leads' },
-    })),
-    http.get(apiUrl('/api/staff/acquisition/handoffs'), () => HttpResponse.json({
-      data: { items: [] }, meta: { request_id: 'handoffs' },
-    })),
+      HttpResponse.json({ data: { items: [] }, meta: { request_id: 'seller-directory' } }),
+    ),
+    http.get(apiUrl('/api/staff/acquisition/leads'), () =>
+      HttpResponse.json({
+        data: { items: [], next_cursor: null },
+        meta: { request_id: 'leads' },
+      }),
+    ),
+    http.get(apiUrl('/api/staff/acquisition/handoffs'), () =>
+      HttpResponse.json({
+        data: { items: [] },
+        meta: { request_id: 'handoffs' },
+      }),
+    ),
   );
 }
 

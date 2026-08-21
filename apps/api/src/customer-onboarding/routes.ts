@@ -38,7 +38,11 @@ export function registerCustomerOnboardingRoutes(app: Hono<any>): void {
       const actor = requireActor(context);
       const url = new URL(context.req.url);
       if ([...url.searchParams.keys()].length > 0) throw new Error('VALIDATION');
-      const items = await listHistoricalSellerDirectory(context.env.DB, actor);
+      const items = await listHistoricalSellerDirectory(
+        context.env.DB,
+        actor,
+        securitySecret(context),
+      );
       context.header('Cache-Control', 'no-store');
       return context.json(apiSuccess({ items }, requestId));
     } catch (error) {
