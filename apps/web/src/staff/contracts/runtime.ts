@@ -397,6 +397,7 @@ export const productVersionMutationSchema = z.object({ product_version: z.object
 export type StaffProduct = z.output<typeof staffProductListItemSchema>;
 export type StaffProductDetail = z.output<typeof staffProductDetailSchema>['product'];
 export type DemandReviewContext = z.output<typeof demandReviewContextSchema>['review_context'];
+export type DemandReviewMutation = z.output<typeof demandReviewMutationSchema>;
 export type StaffReservationSchedulePage = z.output<typeof staffReservationSchedulePageSchema>['page'];
 export type DemandSchedulePreview = z.output<typeof demandSchedulePreviewSchema>['preview'];
 

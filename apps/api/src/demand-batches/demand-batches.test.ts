@@ -763,6 +763,323 @@ describe('demand batch workflow', () => {
       WHERE source_entity_type='DEMAND_BATCH' AND source_entity_id=?`)
       .bind(submitted.demand_batch_id).first<{status:string}>())?.status).toBe('COMPLETED');
   });
+
+  it('replays an identical publish and rejects idempotency key reuse with a different body', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const submitted = await submitDemandBatch(database, demandInput('product-1'), {
+      actor: ownerActor(), idempotencyKey: 'demand:replay:submit', now: 2000,
+    });
+
+    const first = await reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 1,
+      decision: 'PUBLISH',
+      firstOrderDate: '1970-01-01',
+    }, {
+      actor: reviewerActor(),
+      idempotencyKey: 'demand:replay:publish',
+      now: 3000,
+    });
+    expect(first.replayed).toBe(false);
+    const afterFirst = await demandReviewBusinessCounts(
+      database, submitted.demand_batch_id,
+    );
+
+    const replayed = await reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 1,
+      decision: 'PUBLISH',
+      firstOrderDate: '1970-01-01',
+    }, {
+      actor: reviewerActor(),
+      idempotencyKey: 'demand:replay:publish',
+      now: 3400,
+    });
+    expect(replayed).toEqual({ ...first, replayed: true });
+    expect(await demandReviewBusinessCounts(
+      database, submitted.demand_batch_id,
+    )).toEqual(afterFirst);
+
+    await expect(reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 1,
+      decision: 'PUBLISH',
+      firstOrderDate: '1970-01-02',
+    }, {
+      actor: reviewerActor(),
+      idempotencyKey: 'demand:replay:publish',
+      now: 3500,
+    })).rejects.toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT',
+      status: 409,
+    });
+    expect(await demandReviewBusinessCounts(
+      database, submitted.demand_batch_id,
+    )).toEqual(afterFirst);
+  });
+
+  it('rejects invalid first order dates and schedule window conflicts without changing facts', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const submitted = await submitDemandBatch(database, demandInput('product-1'), {
+      actor: ownerActor(), idempotencyKey: 'demand:dates:submit', now: 2000,
+    });
+
+    for (const firstOrderDate of ['2026-02-30', '1970-1-1', 'not-a-date']) {
+      await expect(reviewDemandBatch(database, {
+        demandBatchId: submitted.demand_batch_id,
+        expectedVersion: 1,
+        decision: 'PUBLISH',
+        firstOrderDate,
+      }, {
+        actor: reviewerActor(),
+        idempotencyKey: `demand:dates:invalid:${firstOrderDate}`,
+        now: 3000,
+      })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+    }
+
+    await expect(reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 1,
+      decision: 'PUBLISH',
+      firstOrderDate: '2999-01-01',
+    }, {
+      actor: reviewerActor(),
+      idempotencyKey: 'demand:dates:window',
+      now: 3000,
+    })).rejects.toMatchObject({
+      code: 'SCHEDULE_WINDOW_CONFLICT',
+      status: 409,
+    });
+
+    expect((await database.prepare(`SELECT status, version FROM demand_batches
+      WHERE id=?`).bind(submitted.demand_batch_id)
+      .first<{ status: string; version: number }>()))
+      .toEqual({ status: 'SUBMITTED', version: 1 });
+    expect((await database.prepare(`SELECT status FROM staff_work_items
+      WHERE source_entity_type='DEMAND_BATCH' AND source_entity_id=?`)
+      .bind(submitted.demand_batch_id).first<{ status: string }>())?.status)
+      .toBe('OPEN');
+    expect((await database.prepare(`SELECT COUNT(*) AS total
+      FROM demand_order_schedule_versions WHERE demand_batch_id=?`)
+      .bind(submitted.demand_batch_id)
+      .first<{ total: number }>())?.total).toBe(0);
+  });
+
+  it('completes the review work item, projects the published batch to buyers, and conceals completed context', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const submitted = await submitDemandBatch(database, demandInput('product-1'), {
+      actor: ownerActor(), idempotencyKey: 'demand:closure:submit', now: 2000,
+    });
+
+    await expect(reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 1,
+      decision: 'PUBLISH',
+      firstOrderDate: '1970-01-01',
+    }, {
+      actor: reviewerActor(),
+      idempotencyKey: 'demand:closure:publish',
+      now: 3000,
+    })).resolves.toMatchObject({ status: 'PUBLISHED' });
+
+    expect(await demandReviewBusinessCounts(
+      database, submitted.demand_batch_id,
+    )).toMatchObject({
+      demand_status: 'PUBLISHED',
+      work_status: 'COMPLETED',
+      schedules: 1,
+    });
+    const projected = await listBuyerPublicDemandBatches(database, activeBuyer(), {
+      now: 5000,
+    });
+    expect(projected.map((row) => row.demand_batch_id))
+      .toEqual([submitted.demand_batch_id]);
+
+    // 已完成的审核事实不得再读：工作项关闭后 review-context 一律 404，
+    // 前端必须依赖命令响应，而不是重读上下文。
+    await expect(readDemandReviewContext(
+      database, submitted.demand_batch_id, reviewerActor(),
+    )).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+  });
+
+  it('wires the review route contract: publish, replay, conflicts, invalid date, permission, and concealment', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const now = Date.now();
+    const conflictSource = await submitDemandBatch(database, demandInput('product-1'), {
+      actor: ownerActor(), idempotencyKey: 'demand:route:submit-a', now: now - 2000,
+    });
+    const publishSource = await submitDemandBatch(database, {
+      ...demandInput('product-2'),
+      openAt: now - 1_000,
+      reservationDeadline: now + 60_000,
+      orderDeadline: now + 120_000,
+    }, {
+      actor: ownerActor(), idempotencyKey: 'demand:route:submit-b', now: now - 2000,
+    });
+
+    const authorization = await resolveAssignmentStaffAuthorization(
+      database, 'staff-demand-reviewer',
+    );
+    expect(authorization).not.toBeNull();
+    const app = createApp();
+    app.use('/api/staff/*', async (context, next) => {
+      (context as any).set('staffAuthorization', authorization);
+      await next();
+    });
+    registerStaffCatalogWorkflowRoutes(app);
+    const base = 'https://api.test';
+    const jsonHeaders = (key: string) => ({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': key,
+    });
+    const env = { DB: database } as any;
+
+    const versionConflict = await app.request(
+      `${base}/api/staff/demand-batches/${conflictSource.demand_batch_id}/review`,
+      {
+        method: 'POST',
+        headers: jsonHeaders('demand:route:version-conflict'),
+        body: JSON.stringify({
+          expected_version: 99,
+          decision: 'PUBLISH',
+          first_order_date: '2026-08-11',
+        }),
+      },
+      env,
+    );
+    expect(versionConflict.status).toBe(409);
+    const conflictPayload = await versionConflict.json() as any;
+    expect(conflictPayload.error.code).toBe('VERSION_CONFLICT');
+    expect(conflictPayload.error.message).toBe('数据已发生变化，请刷新后重试');
+    expect(conflictPayload.meta.request_id).toEqual(expect.any(String));
+
+    const invalidDate = await app.request(
+      `${base}/api/staff/demand-batches/${conflictSource.demand_batch_id}/review`,
+      {
+        method: 'POST',
+        headers: jsonHeaders('demand:route:invalid-date'),
+        body: JSON.stringify({
+          expected_version: 1,
+          decision: 'PUBLISH',
+          first_order_date: '2026-02-30',
+        }),
+      },
+      env,
+    );
+    expect(invalidDate.status).toBe(400);
+    expect((await invalidDate.json() as any).error.code).toBe('VALIDATION_ERROR');
+
+    const publishBody = JSON.stringify({
+      expected_version: 1,
+      decision: 'PUBLISH',
+      first_order_date: new Date(now + 8 * 3_600_000).toISOString().slice(0, 10),
+    });
+    const published = await app.request(
+      `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/review`,
+      {
+        method: 'POST',
+        headers: jsonHeaders('demand:route:publish'),
+        body: publishBody,
+      },
+      env,
+    );
+    expect(published.status).toBe(200);
+    const publishedPayload = await published.json() as any;
+    expect(publishedPayload.data.demand_review).toMatchObject({
+      demand_batch_id: publishSource.demand_batch_id,
+      status: 'PUBLISHED',
+      version: 2,
+      replayed: false,
+    });
+    expect(publishedPayload.data.demand_review.schedule).toMatchObject({
+      version_no: 1,
+      demand_version: 2,
+    });
+
+    const replay = await app.request(
+      `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/review`,
+      {
+        method: 'POST',
+        headers: jsonHeaders('demand:route:publish'),
+        body: publishBody,
+      },
+      env,
+    );
+    expect(replay.status).toBe(200);
+    expect((await replay.json() as any).data.demand_review.replayed).toBe(true);
+
+    const duplicateKey = await app.request(
+      `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/review`,
+      {
+        method: 'POST',
+        headers: jsonHeaders('demand:route:duplicate-submit'),
+        body: JSON.stringify({
+          expected_version: 2,
+          decision: 'PUBLISH',
+          first_order_date: '2999-01-01',
+        }),
+      },
+      env,
+    );
+    expect(duplicateKey.status).toBe(409);
+    expect((await duplicateKey.json() as any).error.code)
+      .toBe('DEMAND_BATCH_ALREADY_REVIEWED');
+
+    const concealedContext = await app.request(
+      `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/review-context`,
+      { method: 'GET' },
+      env,
+    );
+    expect(concealedContext.status).toBe(404);
+    expect((await concealedContext.json() as any).error.code).toBe('NOT_FOUND');
+
+    // 鉴权通过但角色没有 DEMAND_PUBLISH：403，而非 401 或 5xx。
+    database.exec(`
+      INSERT INTO staff_users (
+        id, display_name, status, authorization_version,
+        version, created_at, updated_at, disabled_at
+      ) VALUES ('staff-route-pre-sales', '售前路由', 'ACTIVE', 1,
+        1, 1000, 1000, NULL);
+      INSERT INTO staff_role_assignments (
+        staff_id, role_code, status, assigned_by_staff_id,
+        assigned_at, revoked_at, created_at, updated_at
+      ) VALUES ('staff-route-pre-sales', 'pre_sales', 'ACTIVE', NULL,
+        1000, NULL, 1000, 1000);
+      INSERT INTO staff_team_memberships (
+        staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
+      ) VALUES ('staff-route-pre-sales', 'team-demand-review', 'ACTIVE',
+        1000, NULL, 1000, 1000);
+    `);
+    const preSalesAuthorization = await resolveAssignmentStaffAuthorization(
+      database, 'staff-route-pre-sales',
+    );
+    expect(preSalesAuthorization).not.toBeNull();
+    const preSalesApp = createApp();
+    preSalesApp.use('/api/staff/*', async (context, next) => {
+      (context as any).set('staffAuthorization', preSalesAuthorization);
+      await next();
+    });
+    registerStaffCatalogWorkflowRoutes(preSalesApp);
+    const forbidden = await preSalesApp.request(
+      `${base}/api/staff/demand-batches/${conflictSource.demand_batch_id}/review`,
+      {
+        method: 'POST',
+        headers: jsonHeaders('demand:route:forbidden'),
+        body: JSON.stringify({
+          expected_version: 1,
+          decision: 'REJECT',
+          rejection_reason: '无发布权限角色',
+        }),
+      },
+      env,
+    );
+    expect(forbidden.status).toBe(403);
+    expect((await forbidden.json() as any).error.code).toBe('FORBIDDEN');
+  });
 });
 
 function seedDemandFixture(

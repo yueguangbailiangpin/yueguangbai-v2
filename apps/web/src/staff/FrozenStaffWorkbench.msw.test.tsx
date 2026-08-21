@@ -238,8 +238,9 @@ describe('canonical Frozen Staff workbench', () => {
     expect(key).toMatch(/\S/u);
   });
 
-  it('retains the selected demand context after its authoritative mutation removes it from the filtered queue', async () => {
+  it('closes the demand review panel after publishing and never re-reads the completed facts', async () => {
     let queueReads = 0;
+    let contextReads = 0;
     let published = false;
     server.use(
       http.get(apiUrl('/api/staff/me/work-items'), () => {
@@ -249,12 +250,13 @@ describe('canonical Frozen Staff workbench', () => {
           meta: { request_id: `queue-${queueReads}` },
         });
       }),
-      http.get(apiUrl('/api/staff/demand-batches/demand-1/review-context'), () =>
-        HttpResponse.json({
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/review-context'), () => {
+        contextReads += 1;
+        return HttpResponse.json({
           data: { review_context: demandReviewContext },
-          meta: { request_id: 'demand-context' },
-        }),
-      ),
+          meta: { request_id: `demand-context-${contextReads}` },
+        });
+      }),
       http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), () => {
         published = true;
         return HttpResponse.json({
@@ -278,17 +280,139 @@ describe('canonical Frozen Staff workbench', () => {
     await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
     await user.click(screen.getByRole('button', { name: '通过并发布' }));
     await waitFor(() => expect(queueReads).toBeGreaterThanOrEqual(2));
-    expect(await screen.findByText('需求审核结果')).toBeVisible();
-    expect(screen.getByText('PUBLISHED')).toBeVisible();
-    expect(screen.queryByRole('button', { name: '通过并发布' })).not.toBeInTheDocument();
-    expect(screen.queryByText('请选择工作项')).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText('状态'), 'COMPLETED');
     expect(await screen.findByText('请选择工作项')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '通过并发布' })).not.toBeInTheDocument();
+    expect(screen.queryByText('需求事实暂时无法加载')).not.toBeInTheDocument();
+    expect(contextReads).toBe(1);
+  });
+
+  it.each([
+    [
+      'a version conflict',
+      'VERSION_CONFLICT',
+      'demand-version-conflict',
+      () =>
+        HttpResponse.json(
+          {
+            error: { code: 'VERSION_CONFLICT', message: 'version conflict', details: null },
+            meta: { request_id: 'demand-version-conflict' },
+          },
+          { status: 409 },
+        ),
+    ],
+    [
+      'an invalid first order date',
+      'VALIDATION_ERROR',
+      'demand-invalid-date',
+      () =>
+        HttpResponse.json(
+          {
+            error: { code: 'VALIDATION_ERROR', message: 'invalid date', details: null },
+            meta: { request_id: 'demand-invalid-date' },
+          },
+          { status: 400 },
+        ),
+    ],
+    [
+      'a permission denial',
+      'FORBIDDEN',
+      'demand-forbidden',
+      () =>
+        HttpResponse.json(
+          {
+            error: { code: 'FORBIDDEN', message: 'forbidden', details: null },
+            meta: { request_id: 'demand-forbidden' },
+          },
+          { status: 403 },
+        ),
+    ],
+  ])('shows the error code and request id when the publish fails with %s', async (_case, code, requestId, failure) => {
+    installDemandHandlers(async () => failure());
+    const user = userEvent.setup();
+    renderWorkbench('/staff?work_item=work-demand');
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
+    await user.click(screen.getByRole('button', { name: '通过并发布' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(`错误码：${code}`);
+    expect(screen.getByText(new RegExp(requestId, 'u'))).toBeVisible();
+    expect(screen.queryByRole('button', { name: '重试原请求' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '通过并发布' })).toBeEnabled();
+  });
+
+  it('sends exactly one publish request while the button is pending', async () => {
+    let requestCount = 0;
+    let finish: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    installDemandHandlers(async () => {
+      requestCount += 1;
+      await gate;
+      return HttpResponse.json({
+        data: {
+          demand_review: {
+            demand_batch_id: 'demand-1',
+            status: 'PUBLISHED',
+            version: 4,
+            review_reason: null,
+            replayed: false,
+            schedule: null,
+          },
+        },
+        meta: { request_id: 'demand-published' },
+      });
+    });
+    const user = userEvent.setup();
+    renderWorkbench('/staff?work_item=work-demand');
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
+    await user.click(screen.getByRole('button', { name: '通过并发布' }));
+    const pending = await screen.findByRole('button', { name: '处理中…' });
+    expect(pending).toBeDisabled();
+    pending.click();
+    expect(requestCount).toBe(1);
+    finish();
+    await screen.findByText('请选择工作项');
+    expect(requestCount).toBe(1);
+  });
+
+  it('retries the identical publish with the same idempotency key after an ambiguous failure', async () => {
+    const keys: string[] = [];
+    let attempts = 0;
+    installDemandHandlers(async (request) => {
+      attempts += 1;
+      keys.push(request.headers.get('Idempotency-Key') ?? '');
+      if (attempts === 1) return HttpResponse.error();
+      return HttpResponse.json({
+        data: {
+          demand_review: {
+            demand_batch_id: 'demand-1',
+            status: 'PUBLISHED',
+            version: 4,
+            review_reason: null,
+            replayed: true,
+            schedule: null,
+          },
+        },
+        meta: { request_id: 'demand-published-replay' },
+      });
+    });
+    const user = userEvent.setup();
+    renderWorkbench('/staff?work_item=work-demand');
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
+    await user.click(screen.getByRole('button', { name: '通过并发布' }));
+    expect(await screen.findByRole('button', { name: '重试原请求' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '重试原请求' }));
+    await screen.findByText('请选择工作项');
+    expect(attempts).toBe(2);
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
   });
 
   it('clears retained selection and refetches the same queue when the trusted Staff authorization changes', async () => {
     let queueReads = 0;
-    let published = false;
     const initialSession = staffTestSession('owner', [
       'SELLER_SETTLEMENT_VIEW',
       'SELLER_SETTLEMENT_RECORD',
@@ -306,7 +430,10 @@ describe('canonical Frozen Staff workbench', () => {
       http.get(apiUrl('/api/staff/me/work-items'), () => {
         queueReads += 1;
         return HttpResponse.json({
-          data: { work_items: published ? [] : [demandWorkItem], next_cursor: null },
+          data: {
+            work_items: queueReads >= 2 ? [] : [demandWorkItem],
+            next_cursor: null,
+          },
           meta: { request_id: `queue-${queueReads}` },
         });
       }),
@@ -316,37 +443,16 @@ describe('canonical Frozen Staff workbench', () => {
           meta: { request_id: 'demand-context' },
         }),
       ),
-      http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), () => {
-        published = true;
-        return HttpResponse.json({
-          data: {
-            demand_review: {
-              demand_batch_id: 'demand-1',
-              status: 'PUBLISHED',
-              version: 4,
-              review_reason: null,
-              replayed: false,
-              schedule: null,
-            },
-          },
-          meta: { request_id: 'demand-published' },
-        });
-      }),
     );
-    const user = userEvent.setup();
     const { client } = renderWorkbench('/staff?work_item=work-demand', adapter);
     expect(await screen.findByText('需求发布事实')).toBeVisible();
-    await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
-    await user.click(screen.getByRole('button', { name: '通过并发布' }));
-    await waitFor(() => expect(queueReads).toBeGreaterThanOrEqual(2));
-    expect(await screen.findByText('需求审核结果')).toBeVisible();
 
     currentSession = { ...initialSession, authorization_version: 2 };
     await client.invalidateQueries({ queryKey: queryKeys.staff.session });
 
     expect(await screen.findByText('请选择工作项')).toBeVisible();
-    await waitFor(() => expect(queueReads).toBeGreaterThanOrEqual(3));
-    expect(screen.queryByText('需求审核结果')).not.toBeInTheDocument();
+    await waitFor(() => expect(queueReads).toBeGreaterThanOrEqual(2));
+    expect(screen.queryByText('需求发布事实')).not.toBeInTheDocument();
   });
 
   it('rejects a demand through the dedicated review action', async () => {

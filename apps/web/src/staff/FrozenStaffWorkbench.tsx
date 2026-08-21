@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { isFrontendApiError } from '../api/errors';
+import type { ApiResult } from '../api/transport';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { useFileUpload } from '../buyer/shared/useFileUpload';
 import { FileDropZone } from '../ui/FileDropZone';
@@ -18,7 +19,12 @@ import {
   TextInput,
 } from '../ui/primitives';
 import { staffApi } from './api/client';
-import type { StaffOrderEvidence, StaffReview, StaffWorkItem } from './contracts/runtime';
+import type {
+  DemandReviewMutation,
+  StaffOrderEvidence,
+  StaffReview,
+  StaffWorkItem,
+} from './contracts/runtime';
 import {
   isAmbiguousStaffMutationError,
   StaffMutationAuthority,
@@ -27,6 +33,7 @@ import {
 import { staffWorkbenchKeys } from './queries/keys';
 import { SellerSettlementPanel, sellerSettlementCapabilities } from './SellerSettlementPanel';
 import { formatCny, formatShanghai } from './shared/format';
+import { describeStaffMutationError } from './shared/staffMutationOutcome';
 import { StaffPanelError } from './shared/StaffPanelError';
 import { StaffProtectedFileButton } from './shared/StaffProtectedFileButton';
 
@@ -126,6 +133,38 @@ export function FrozenStaffWorkbench(): React.JSX.Element {
       sourceQueueUpdatedAt: query.dataUpdatedAt,
       retainedQueueUpdatedAt: null,
     };
+  }
+  function completeSelectedWorkItem(item: StaffWorkItem) {
+    if (item.work_item_id !== selectedId) return;
+    // 审核事实已经由命令响应确认；完成后不得再读取该审核上下文，
+    // 否则后端按已完工作项返回 404，会把成功显示成失败。
+    client.setQueryData<{ work_items: StaffWorkItem[]; next_cursor: string | null }>(
+      staffWorkbenchKeys.queue(
+        session.staff_id,
+        session.authorization_version,
+        session.session_version,
+        effectiveScopeFingerprint,
+        status,
+        workType,
+        cursor,
+      ),
+      (data) =>
+        data
+          ? {
+              work_items: data.work_items.map((entry) =>
+                entry.work_item_id === item.work_item_id
+                  ? { ...entry, status: 'COMPLETED' as const, completed_at: Date.now() }
+                  : entry,
+              ),
+              next_cursor: data.next_cursor,
+            }
+          : data,
+    );
+    retainedSelectedRef.current = null;
+    const next = new URLSearchParams(parameters);
+    next.delete('work_item');
+    void navigate(`/staff?${next}`);
+    void client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
   }
   function filter(name: 'status' | 'work_type', value: string) {
     const next = new URLSearchParams(parameters);
@@ -244,6 +283,7 @@ export function FrozenStaffWorkbench(): React.JSX.Element {
         <WorkItemColumns
           item={selected}
           onSuccessfulQueueMutation={retainAfterSuccessfulMutation}
+          onCompletedQueueMutation={completeSelectedWorkItem}
         />
       ) : (
         <>
@@ -262,13 +302,20 @@ export function FrozenStaffWorkbench(): React.JSX.Element {
 function WorkItemColumns({
   item,
   onSuccessfulQueueMutation,
+  onCompletedQueueMutation,
 }: {
   item: StaffWorkItem;
   onSuccessfulQueueMutation: (item: StaffWorkItem) => void;
+  onCompletedQueueMutation: (item: StaffWorkItem) => void;
 }) {
   const session = useCurrentStaffSession();
   if (item.work_type === 'DEMAND_REVIEW')
-    return <DemandColumns item={item} onSuccessfulQueueMutation={onSuccessfulQueueMutation} />;
+    return (
+      <DemandColumns
+        item={item}
+        onCompletedQueueMutation={onCompletedQueueMutation}
+      />
+    );
   if (item.work_type === 'ORDER_EVIDENCE_REVIEW')
     return <OrderColumns item={item} onSuccessfulQueueMutation={onSuccessfulQueueMutation} />;
   if (item.work_type === 'REVIEW_DECISION')
@@ -308,12 +355,16 @@ function GenericColumns({ item }: { item: StaffWorkItem }) {
 
 function DemandColumns({
   item,
-  onSuccessfulQueueMutation,
+  onCompletedQueueMutation,
 }: {
   item: StaffWorkItem;
-  onSuccessfulQueueMutation: (item: StaffWorkItem) => void;
+  onCompletedQueueMutation: (item: StaffWorkItem) => void;
 }) {
   const client = useQueryClient();
+  const authority = useMemo(
+    () => new StaffMutationAuthority<ApiResult<DemandReviewMutation>>(),
+    [],
+  );
   const query = useQuery({
     queryKey: staffWorkbenchKeys.demandReview(item.source_entity_id),
     queryFn: ({ signal }) =>
@@ -324,16 +375,22 @@ function DemandColumns({
     staleTime: 0,
   });
   const mutation = useMutation({
-    mutationFn: ({ body, key }: { body: unknown; key: string }) =>
-      staffApi.reviewDemand(client, item.source_entity_id, body, key),
+    mutationFn: (request: StaffMutationRequest | null) =>
+      request === null
+        ? authority.retry()
+        : authority.execute(request, ({ body }, key) =>
+            staffApi.reviewDemand(client, item.source_entity_id, body, key),
+          ),
     onSuccess: () => {
-      onSuccessfulQueueMutation(item);
-      void query.refetch();
-      void client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
+      // 发布或拒绝成功即结束该工作项：立即关闭审核面板并刷新队列。
+      // 不再重读 review-context；已完成的审核事实会被后端拒绝（404），
+      // 重读只会把成功显示成失败。
+      onCompletedQueueMutation(item);
     },
   });
   const value = query.data;
   const completed = mutation.data?.data.demand_review;
+  const failure = mutation.isError ? describeStaffMutationError(mutation.error) : null;
   return (
     <>
       <section className="staff-detail">
@@ -373,16 +430,23 @@ function DemandColumns({
             <h3>当前操作</h3>
             {value.can_publish ? (
               <form
+                onChange={() => {
+                  if (!mutation.isPending) {
+                    authority.release();
+                    mutation.reset();
+                  }
+                }}
                 onSubmit={(event) => {
                   event.preventDefault();
                   const date = String(new FormData(event.currentTarget).get('first_order_date'));
                   mutation.mutate({
+                    action: 'demand-publish',
+                    path: `/api/staff/demand-batches/${encodeURIComponent(item.source_entity_id)}/review`,
                     body: {
                       expected_version: value.demand_version,
                       decision: 'PUBLISH',
                       first_order_date: date,
                     },
-                    key: crypto.randomUUID(),
                   });
                 }}
               >
@@ -398,24 +462,49 @@ function DemandColumns({
               </form>
             ) : null}
             <form
+              onChange={() => {
+                if (!mutation.isPending) {
+                  authority.release();
+                  mutation.reset();
+                }
+              }}
               onSubmit={(event) => {
                 event.preventDefault();
                 const reason = String(new FormData(event.currentTarget).get('reason'));
                 mutation.mutate({
+                  action: 'demand-reject',
+                  path: `/api/staff/demand-batches/${encodeURIComponent(item.source_entity_id)}/review`,
                   body: {
                     expected_version: value.demand_version,
                     decision: 'REJECT',
                     rejection_reason: reason,
                   },
-                  key: crypto.randomUUID(),
                 });
               }}
             >
               <FormField label="拒绝原因" htmlFor={`demand-reject-${item.work_item_id}`}>
                 <TextInput id={`demand-reject-${item.work_item_id}`} name="reason" required />
               </FormField>
-              <Button className="secondary">拒绝</Button>
+              <Button className="secondary" disabled={mutation.isPending}>
+                拒绝
+              </Button>
             </form>
+            {failure ? (
+              <>
+                <Alert tone="danger">
+                  需求审核未完成。{failure.hint}
+                  {failure.code ? `（错误码：${failure.code}）` : ''}
+                </Alert>
+                <RequestIdDisplay
+                  requestId={isFrontendApiError(mutation.error) ? mutation.error.requestId : null}
+                />
+                {isAmbiguousStaffMutationError(mutation.error) ? (
+                  <Button className="secondary" onClick={() => mutation.mutate(null)}>
+                    重试原请求
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
           </Card>
         ) : null}
         <Audit />
