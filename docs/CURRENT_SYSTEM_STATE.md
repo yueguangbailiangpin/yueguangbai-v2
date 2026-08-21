@@ -30,20 +30,20 @@
   - 历史数据导入 PREVIEW 与人工批准、reconciliation（dry-run 工具已实测失败关闭/0 写入；
     真实 PREVIEW 待 Owner 提供源文件并批准范围）
   - 正式 production 上线前补齐 G1 五个责任角色的姓名/邮箱；Owner 已于 2026-08-20 直接批准 G1（签名豁免）
-  - 远程 CI 证据（当前 GitHub-hosted CI 不可用，见下）
+  - 远程 CI 证据（GitHub-hosted CI 已于 2026-08-21 恢复可用；此前 #103–#109 期间的合并依据为 owner 豁免 + 本地完整证据，见下）
   - Google Drive 冷归档 / Staff MCP 生产激活（M10 P0-02 / P0-03 未执行）
 - `app.yueguangbai.net`：未文档化部署已按 Owner 决定于 2026-08-20 清理完成。
   Worker `yueguangbai-v2-production`、生产 D1/R2 和自定义域名绑定均已删除；DNS 无解析，
   staging 资源未触碰。该域名不再是运行中的部署；本记录不代表正式 production 已上线。
 
-## 当前 CI 状态（2026-08-18）
+## 当前 CI 状态（2026-08-21）
 
-- GitHub-hosted CI：**BLOCKED_BY_BILLING_POLICY**（job annotation：The job was not started because recent account payments have failed or your spending limit needs to be increased；GitHub Actions budget 有意保持 $0）
-- 因此 Remote CI：**NOT VERIFIED**（job 未启动；不是代码失败，也不得写为 CI PASS）
-- 2026-08-18：6 个 closure PR 已按 owner 豁免合并进入 `main`（PR #103 TS 基线修复、#102 verifier archive 路径、#104 文档收口、#105/#106/#107 三个性能修复）；这 6 个 PR 的代码验证树为 `ace731918f2e29d7ff1f60e6095d549eba43c4c2`。随后 PR #109（owner gate 决策与清理计划）以 docs-only 形式合并，当前远端 `main` = `f61527e04533a9053e237be2bd6bbcce8b2219c8`
-- 合并依据：owner 豁免（本地完整证据）；上述代码验证树与 Phase 8A 本地验证过的集成树完全一致（git diff 为空）；PR #109 未改变代码。上述验证树上的本地证据为：0 TypeScript 错误、1746/1746 单元测试、187/187 browser e2e、check:ci:static PASS、build PASS、release:check PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE）
-- 本地 PASS ≠ Remote CI PASS；远程 CI 恢复前 Remote CI 保持 NOT VERIFIED
-- 最后一次远端全绿 CI：2026-08-16 09:51 UTC（run 31940127005，main `e02682f`）
+- GitHub-hosted CI：**AVAILABLE**（billing 阻断已解除；2026-08-21 起 job 正常启动）
+- 当前远端 `main` = `f7d321c`（Merge PR #112，2026-08-21）。近三日主线合并：PR #110（gate 收口 docs）、PR #111（feat: import current reservable seller mapping，squash `5a186d4`）、PR #112（staging 产品/卖家变更 + live manifest 归档 + tools/imports typecheck 修复）
+- PR #112 的远端 CI 三项全部 `success`（run 32466985887：browser-e2e 3m10s / static-governance 2m2s / tests-and-build 8m17s，2026-08-21）；这是 billing 恢复后 main 上的最新全绿证据
+- 历史备注（2026-08-18）：GitHub Actions billing 阻断期间的 6 个 closure PR（#103/#102/#104/#105/#106/#107）按 owner 豁免合并，代码验证树 `ace731918f2e29d7ff1f60e6095d549eba43c4c2` 上的本地证据为 0 TypeScript 错误、1746/1746 单元测试、187/187 browser e2e、check:ci:static / build / release:check 全 PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE）
+- 本地 PASS ≠ Remote CI PASS 的原则继续有效；billing 阻断期（2026-08-16 13:42 – 2026-08-21）合入的提交没有对应时点的远端 CI 证据，追溯依据是上述本地验证树
+- billing 恢复前最后一次远端全绿 CI：2026-08-16 09:51 UTC（run 31940127005，main `e02682f`）
 
 ## 当前 Marketplace / Amazon US 状态（2026-08-17）
 

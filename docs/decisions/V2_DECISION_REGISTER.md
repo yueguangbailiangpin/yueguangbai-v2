@@ -387,6 +387,16 @@ D-031 的卖家本金公式继续有效：正式订单只使用平台下单日�
 
 状态：Accepted by business owner；Supersedes only D-031's compatibility flag, legacy fallback and retained Seller Agreement Rate projection, and advances the local candidate to Schema 69
 
+### D-046 买家发起的返款催办（Migration 0070）
+
+买家在返款到期后拥有一个受控的催办入口，取代纯线下沟通。催办是受限、可审计的业务请求事实，不是付款、Staff 任务、队列排序信号或外部消息投递。仅可信 Buyer Session 可对本人名下仍为 `DUE` 或 `PARTIALLY_PAID` 的返款义务发起催办；同一义务在 24 小时窗口内最多记录一次有效催办，窗口内重复请求返回既有催办状态与下次可催时间，不产生新事实。催办命令必须走幂等键获取/重放/冲突语义并追加审计事件；无权访问他人义务时按 404 失败关闭。
+
+催办事实永久不可变：`buyer_refund_reminders` 以 STRICT 表存储，`(buyer_customer_id, idempotency_key)` 唯一，`created_at = reminded_at`，source guard 触发器校验 obligation 归属本人，最新催办索引按 `(obligation_id, reminded_at DESC, id DESC)` 支撑只读投影。买家返款详情展示催办入口与 24 小时已催状态；Staff 返款详情仅只读展示催办次数与最后催办时间，Staff 侧不获得任何催办写入口。催办不创建 Staff task、不改队列优先级、不触发 Outbox/外部通知、不影响 Seller Allocation、返款金额、财务事实或状态机。
+
+仅前向 Migration 0070 将本地候选从 Schema 69 推进到 Schema 70；Migration 0001–0069 与 D-001–D-045 永久保持原文。本 Decision 不授权 production/staging 部署、远程 D1/R2、Secrets、Access、DNS 或真实业务数据操作。
+
+状态：Accepted by business owner；Formalizes the T7 buyer-initiated refund reminder (archived OpenSpec `2026-08-15-buyer-refund-reminders`) as the Schema 70 decision, previously recorded only as a 2026-08-17 non-decision status note in this Register
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收
