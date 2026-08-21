@@ -341,6 +341,9 @@ GitHub-hosted Remote CI 本次没有形成新证据；不得将本地测试或 S
 5. 在“买家客户”确认授权员工能看到完整微信号。
 6. 在买家端确认只出现 31 个本次满足开放条件的预约需求。
 7. 对 Somiso、`B0GRMRV64K`、未标注产品和 29 个未解析历史文件单独做业务复核。
+   （2026-08-21 更新：Somiso / `B0GRMRV64K` / 未标注产品三项已获 Owner 会话确认，
+   记录见 `openspec/changes/current-reservable-product-seller-mapping/references/owner-confirmed-availability-corrections.md`；
+   29 个文件的认领仍待办。）
 8. 业务验收后，将剩余提交合入最新 `main`（首个提交已通过 PR #111 合入）。
 9. 合入 `main` 不等于生产上线；生产部署必须另行授权。
 
