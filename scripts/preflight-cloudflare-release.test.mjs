@@ -101,6 +101,27 @@ describe('Cloudflare release preflight', () => {
       .toContain('triggers:forbidden_when_scheduler_disabled');
   });
 
+  it('requires only the private keyword generator service in staging',()=>{
+    const staging=anonymousConfig('staging');
+    expect(staging.services).toEqual([{
+      binding:'KEYWORD_IMAGE_GENERATOR',
+      service:'yueguangbai-keyword-image-generator-staging',
+    }]);
+    expect(validateReleaseConfig(staging,'staging')).toEqual([]);
+    staging.services=[];
+    expect(validateReleaseConfig(staging,'staging'))
+      .toContain('services:keyword_image_generator_binding_required');
+    staging.services=[{
+      binding:'KEYWORD_IMAGE_GENERATOR',
+      service:'yueguangbai-keyword-image-generator-production',
+    }];
+    expect(validateReleaseConfig(staging,'staging'))
+      .toContain('services:keyword_image_generator_binding_required');
+    staging.services.push({binding:'UNEXPECTED',service:'unexpected-staging-service'});
+    expect(validateReleaseConfig(staging,'staging'))
+      .toContain('services:unexpected_binding');
+  });
+
   it('rejects a staging rendering that points every deployable resource at production',()=>{
     const staging=anonymousConfig('staging');
     staging.name='yueguangbai-v2-production';

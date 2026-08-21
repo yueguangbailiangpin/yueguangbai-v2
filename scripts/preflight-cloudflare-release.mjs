@@ -209,7 +209,7 @@ function validateFrozenDefaults(config, environment) {
     && !(typeof vars?.APP_RELEASE_SHA==='string'&&placeholderPattern.test(vars.APP_RELEASE_SHA))) {
     errors.push('vars.APP_RELEASE_SHA:must_be_exact_git_sha');
   }
-  validateAlertService(record.services, vars, environment, errors);
+  validateReleaseServices(record.services, vars, environment, errors);
   const alertModeExpected = environment === 'production' ? 'bound' : 'disabled';
   if (vars?.OPERATIONAL_ALERT_MODE !== alertModeExpected) {
     errors.push(`vars.OPERATIONAL_ALERT_MODE:must_be_${alertModeExpected}`);
@@ -330,9 +330,35 @@ function exactHttpsOrigin(value) {
   } catch { return null; }
 }
 
-function validateAlertService(value, vars, environment, errors) {
+function validateReleaseServices(value, vars, environment, errors) {
+  const services = value === undefined ? [] : value;
+  if (!Array.isArray(services)) {
+    errors.push('services:invalid');
+    return;
+  }
+  const keywordServices = services.filter((service) =>
+    asRecord(service)?.binding === 'KEYWORD_IMAGE_GENERATOR');
+  const expectedKeywordService = environment === 'staging'
+    ? 'yueguangbai-keyword-image-generator-staging'
+    : null;
+  if (environment === 'staging') {
+    const keyword = exactOne(keywordServices);
+    if (!keyword
+      || !allowedKeys(keyword, ['binding', 'service'])
+      || keyword.service !== expectedKeywordService) {
+      errors.push('services:keyword_image_generator_binding_required');
+    }
+  } else if (keywordServices.length > 1
+    || keywordServices.some((service) =>
+      !allowedKeys(service, ['binding', 'service']))) {
+    errors.push('services:keyword_image_generator_binding_invalid');
+  }
+  const alertServices = services.filter((service) =>
+    asRecord(service)?.binding === 'OPERATIONAL_ALERT_SINK');
+  const knownCount = keywordServices.length + alertServices.length;
+  if (knownCount !== services.length) errors.push('services:unexpected_binding');
   if (environment === 'production') {
-    const service = exactOne(value);
+    const service = exactOne(alertServices);
     const props=asRecord(service?.props);
     if (!service||!allowedKeys(service,['binding','service','props'],['entrypoint'])||!props
       ||!exactKeys(props,['service_target','entrypoint','sink_identity','sink_deployment_version'])
@@ -360,9 +386,7 @@ function validateAlertService(value, vars, environment, errors) {
     if(vars?.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT!==fingerprint)errors.push('vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:derived_mismatch');
     return;
   }
-  if (value !== undefined && (!Array.isArray(value) || value.length !== 0)) {
-    errors.push('services:forbidden_outside_production');
-  }
+  if (alertServices.length !== 0) errors.push('services:operational_alert_forbidden_outside_production');
 }
 
 export function operationalAlertFingerprint(descriptor){return createHash('sha256').update(canonicalJson(descriptor),'utf8').digest('hex');}
