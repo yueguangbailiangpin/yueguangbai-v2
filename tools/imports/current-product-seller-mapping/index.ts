@@ -39,6 +39,12 @@ export type ChannelCode = typeof CHANNEL_ALIASES[keyof typeof CHANNEL_ALIASES];
 export type MarketplaceCode = 'JP_AMAZON' | 'JP_RAKUTEN';
 export type RowStatus = 'VALID' | 'QUARANTINED' | 'EXCLUDED';
 
+/** Owner-confirmed availability correction. The historical source remains
+ * auditable, but this seller must not be offered for a new reservation. */
+export const EXCLUDED_SELLER_OFFERING_KEYS = new Set([
+  'JP_AMAZON:B0GRMRV64K:dDUYsBOrYoEk:shiguo0317',
+]);
+
 export interface CurrentWhitelistRecord {
   sourceSheet: '工作表1' | '飞利浦产品';
   sourceRow: number;
@@ -48,6 +54,8 @@ export interface CurrentWhitelistRecord {
   platformProductIdentifier?: string | null;
   asin: string | null;
   productName: string;
+  /** Optional source annotation from the live worksheet. */
+  reservationStatus?: 'ACTIVE' | 'PAUSED' | 'ABNORMAL' | null;
 }
 
 export interface HistoricalProductRecord {
@@ -120,6 +128,7 @@ export interface NormalizedCurrentRecord {
   productName: string | null;
   status: RowStatus;
   exceptionCode: string | null;
+  reservationStatus: 'ACTIVE' | 'PAUSED' | 'ABNORMAL' | null;
 }
 
 export interface NormalizedHistoricalRecord {
@@ -162,6 +171,14 @@ export interface SellerSupplyPreview {
   currentRows: readonly number[];
 }
 
+export interface ExcludedSellerOfferingPreview {
+  productKey: string;
+  organizationKey: string;
+  sellerWechat: string;
+  channelCode: ChannelCode;
+  sourceRefs: readonly string[];
+}
+
 export interface MappingAnomaly {
   code: string;
   productKey?: string;
@@ -175,6 +192,7 @@ export interface CurrentReservableProductSellerPreview {
   historicalRows: readonly NormalizedHistoricalRecord[];
   standardProducts: readonly StandardProductCandidate[];
   mappedSellerOfferings: readonly SellerSupplyPreview[];
+  excludedSellerOfferings: readonly ExcludedSellerOfferingPreview[];
   sameAsinMultiSeller: readonly string[];
   quarantinedHistorical: readonly NormalizedHistoricalRecord[];
   confirmedSellerWithoutHistory: readonly string[];
@@ -243,6 +261,7 @@ export async function previewCurrentReservableProductSellerMapping(
   const mappedSellerOfferings: SellerSupplyPreview[] = [];
   const confirmedSellerWithoutHistory: string[] = [];
   const unresolvedCurrentProducts: string[] = [];
+  const excludedSellerOfferings: ExcludedSellerOfferingPreview[] = [];
 
   for (const product of standardProducts) {
     const current = currentByProduct.get(product.productKey)!;
@@ -252,6 +271,27 @@ export async function previewCurrentReservableProductSellerMapping(
     for (const row of historical) {
       const organizationKey = row.organizationKey!;
       const key = `${product.productKey}:${organizationKey}`;
+      if (EXCLUDED_SELLER_OFFERING_KEYS.has(key)) {
+        const prior = excludedSellerOfferings.find((offer) =>
+          offer.productKey === product.productKey && offer.organizationKey === organizationKey);
+        const sourceRef = `${row.sourceFileId}:${row.sourceLocator}`;
+        if (prior) {
+          const index = excludedSellerOfferings.indexOf(prior);
+          excludedSellerOfferings[index] = {
+            ...prior,
+            sourceRefs: [...new Set([...prior.sourceRefs, sourceRef])].sort(),
+          };
+        } else {
+          excludedSellerOfferings.push({
+            productKey: product.productKey,
+            organizationKey,
+            sellerWechat: row.sellerWechatDisplay!,
+            channelCode: row.channelCode!,
+            sourceRefs: [sourceRef],
+          });
+        }
+        continue;
+      }
       const prior = candidates.get(key);
       const sourceRef = `${row.sourceFileId}:${row.sourceLocator}`;
       if (prior) {
@@ -334,6 +374,9 @@ export async function previewCurrentReservableProductSellerMapping(
     standardProducts,
     mappedSellerOfferings,
     sameAsinMultiSeller: multiSellerProducts,
+    excludedSellerOfferings: excludedSellerOfferings.sort((left, right) =>
+      `${left.productKey}:${left.organizationKey}`.localeCompare(
+        `${right.productKey}:${right.organizationKey}`, 'en')),
     confirmedSellerWithoutHistory: confirmedSellerWithoutHistory.sort(),
     unresolvedCurrentProducts: unresolvedCurrentProducts.sort(),
     fieldConflicts,
@@ -352,6 +395,9 @@ export async function previewCurrentReservableProductSellerMapping(
     historicalRows,
     standardProducts,
     mappedSellerOfferings: mappedSellerOfferings.sort(compareOfferings),
+    excludedSellerOfferings: excludedSellerOfferings.sort((left, right) =>
+      `${left.productKey}:${left.organizationKey}`.localeCompare(
+        `${right.productKey}:${right.organizationKey}`, 'en')),
     sameAsinMultiSeller: multiSellerProducts,
     quarantinedHistorical: historicalRows.filter((row) => row.status !== 'VALID'),
     confirmedSellerWithoutHistory: confirmedSellerWithoutHistory.sort(),
@@ -390,7 +436,7 @@ export async function previewCurrentReservableProductSellerMapping(
 }
 
 function normalizeCurrentRow(input: CurrentWhitelistRecord): NormalizedCurrentRecord {
-  const storeName = clean(input.storeName, 200);
+  const storeName = input.storeName?.trim() ? clean(input.storeName, 200) : '';
   const base = {
     sourceSheet: input.sourceSheet,
     sourceRow: input.sourceRow,
@@ -403,10 +449,21 @@ function normalizeCurrentRow(input: CurrentWhitelistRecord): NormalizedCurrentRe
     productName: null as string | null,
     status: 'QUARANTINED' as RowStatus,
     exceptionCode: null as string | null,
+    reservationStatus: input.reservationStatus ?? null,
   };
   if (!['工作表1', '飞利浦产品'].includes(input.sourceSheet)
     || !['JP_AMAZON', 'JP_RAKUTEN'].includes(input.marketplaceCode)) {
     return { ...base, exceptionCode: 'INVALID_CURRENT_SOURCE' };
+  }
+  if (input.reservationStatus === 'PAUSED') {
+    return { ...base, status: 'EXCLUDED', exceptionCode: 'EXCLUDED_PAUSED_PRODUCT' };
+  }
+  if (input.reservationStatus === 'ABNORMAL'
+    || (input.sourceSheet === '飞利浦产品'
+      && !String(input.platformProductIdentifier ?? input.asin ?? '').trim()
+      && !String(input.storeName ?? '').trim()
+      && !String(input.productName ?? '').trim())) {
+    return { ...base, status: 'EXCLUDED', exceptionCode: 'EXCLUDED_ABNORMAL_EMPTY_PHILIPS_ROW' };
   }
   const rawIdentifier = input.platformProductIdentifier ?? input.asin ?? '';
   try {
