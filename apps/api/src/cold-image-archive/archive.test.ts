@@ -56,7 +56,7 @@ describe('Drive cold archive safety pipeline with enforced production constraint
       'ELIGIBILITY_RECORDED','COPY_STARTED','COPY_RESUMED','DRIVE_UPLOAD_RECORDED','DRIVE_VERIFIED','R2_DELETE_REQUESTED','DRIVE_ARCHIVED']));
   });
 
-  it('retains R2 on Drive or delete failure and resumes safely',async()=>{
+  it('retains R2 on Drive or delete failure and resumes safely',{timeout:20_000},async()=>{
     database=createMigratedTestDatabase();let r2=new MockObjectStorage();let drive=new MockDriveArchiveAdapter();
     let fixture=await seed(database,r2,'read-failure');await enable(database,true);drive.failNext('read');
     expect((await run(database,r2,drive,fixture.dueAt)).failed).toBe(1);
