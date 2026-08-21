@@ -10,7 +10,7 @@
 - 腾讯文档全程只读，没有修改任何腾讯文档、文件夹或工作表。
 - 当前正式运行环境仍未上线；本次所有远程业务改动均限定在 Staging。
 - `STAGING PASS` 不等于 `PRODUCTION PASS`。系统继续保持 `PRODUCTION = NO-GO`。
-- 当前功能代码位于本地分支 `fix/product-catalog-detail-ordering`；6 个功能提交及本文档提交均尚未 push、未创建 PR、未合并进 GitHub `main`。
+- 2026-08-21 状态更新：仓库已转为 public；首个功能提交 `4cf2fff` 已通过 PR #111 合入 `main`（合并提交 `5a186d4`）。其余 5 个功能修复、本文档修订与 manifest 归档通过后续 PR 合入。
 
 ## 2. 环境与入口
 
@@ -51,7 +51,7 @@
 - Hash：`3a112efe533aea646fc319dc99aa956914467f33b2fb668c296126ce5f10eef0`
 - Staging import batch：`seller-import-batch-8ee3b8846cbf0a6a06339f3e439eb75de2ff0e5c34d0d191bc1e9bc0342379dc`
 
-注意：该 live manifest 当时保存在本机 `/tmp/current-reservable-live-manifest.json`，不是仓库内长期权威文件。仓库内较早的压缩只读快照仍可能输出 88 个唯一产品；Staging 实际导入应以本节 manifest hash 和 D1 batch 为准，不要混用两个快照的统计。
+注意：该 live manifest 原保存在本机 `/tmp/current-reservable-live-manifest.json`（易失目录），现已归档进仓库：`openspec/changes/current-reservable-product-seller-mapping/references/current-reservable-live-manifest-2026-08-21.json`。归档件 sha256 为 `d64ecf1ea204fd605d7c0f0c4bf455402a093637879871397154a7747b373652`，与上文导入时记录的 hash 不一致，且常见规范化序列化无法复现上文值；两处 `manifestVersion` 均为 `2026-08-21-live-readonly`，文件修改时间（14:03）早于导入开放时间（14:27）。归档件应视为仅存快照备查，导入事实仍以本节 D1 batch 为准。仓库内较早的压缩只读快照仍可能输出 88 个唯一产品；不要混用两个快照的统计。
 
 ### 3.2 历史卖家来源
 
@@ -292,7 +292,7 @@ GitHub-hosted Remote CI 本次没有形成新证据；不得将本地测试或 S
 
 当前分支：`fix/product-catalog-detail-ordering`
 
-相对当前 `origin/main@30ef53d6b8deb34b8c44688126200279d45e238b` 的 6 个功能提交：
+6 个功能提交（基于 `origin/main@30ef53d`；其中首个 `4cf2fff` 已通过 PR #111 合入 `origin/main@5a186d4`）：
 
 1. `4cf2fff` — `feat: seed current reservable seller mapping`
 2. `3d4d0a5` — `fix: restore staff product detail reads`
@@ -303,10 +303,9 @@ GitHub-hosted Remote CI 本次没有形成新证据；不得将本地测试或 S
 
 当前状态：
 
-- 上述 6 个功能提交及本文档提交均只在本地分支；本文档提交完成后分支相对 `origin/main` 共领先 7 个提交。
-- Staging Worker 已从这些本地提交部署。
-- GitHub `main` 尚不包含这些提交。
-- 未 push 当前修复分支，未创建 PR，未合并。
+- `origin/main@5a186d4` 已包含 `4cf2fff`；其余 5 个修复、manifest 归档与本文档修订通过后续 PR 合入 `main`。
+- Staging Worker 部署自 `17dca59`，包含本列表全部功能。
+- 仓库可见性自 2026-08-21 起为 public；GitHub Actions 已恢复可用。
 
 ## 8. 已知边界与待办
 
@@ -342,7 +341,7 @@ GitHub-hosted Remote CI 本次没有形成新证据；不得将本地测试或 S
 5. 在“买家客户”确认授权员工能看到完整微信号。
 6. 在买家端确认只出现 31 个本次满足开放条件的预约需求。
 7. 对 Somiso、`B0GRMRV64K`、未标注产品和 29 个未解析历史文件单独做业务复核。
-8. 业务验收后，再决定是否将 6 个提交 push、创建 PR 并合入最新 `main`。
+8. 业务验收后，将剩余提交合入最新 `main`（首个提交已通过 PR #111 合入）。
 9. 合入 `main` 不等于生产上线；生产部署必须另行授权。
 
 ## 10. 禁止误解的事项
