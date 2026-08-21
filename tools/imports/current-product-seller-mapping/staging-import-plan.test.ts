@@ -11,7 +11,8 @@ const manifest: LiveManifest = {
     {
       sourceSheet: '工作表1', sourceRow: 2, sourceLocator: 'fixture://a',
       marketplaceCode: 'JP_AMAZON', storeName: 'A', asin: 'B0ABC12345',
-      productName: 'A product', orderTotal: '3', reviewRequirements: '1单图评2单文评',
+      productName: 'A product', searchKeywords: '検索語A\n关键词2：検索語B',
+      orderTotal: '3', reviewRequirements: '1单图评2单文评',
     },
     {
       sourceSheet: '工作表1', sourceRow: 3, sourceLocator: 'fixture://b',
@@ -80,6 +81,16 @@ describe('staging current reservable import plan', () => {
       }),
     ]);
     expect(first.productVersions).toHaveLength(2);
+    expect(first.productVersions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        productName: 'A product',
+        searchKeywordsJson: JSON.stringify(['検索語A', '検索語B']),
+      }),
+      expect.objectContaining({
+        productName: 'B product',
+        searchKeywordsJson: JSON.stringify(['B product']),
+      }),
+    ]));
     expect(first.sellerProductOfferings.every((offering) => offering.marketplaceCode === 'AMAZON_JP'))
       .toBe(true);
     expect(first.runtimePlans.map((task) => [task.taskType, task.targetQuantity]))

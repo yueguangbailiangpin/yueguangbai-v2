@@ -65,7 +65,7 @@ describe('acquisition HTTP authority and privacy boundary', () => {
       .toEqual({ count: 0 });
   });
 
-  it('creates a lead with an explicit approved channel and never returns protected fields', async () => {
+  it('creates a lead with an explicit approved channel and returns the WeChat ID to authorized staff', async () => {
     database = db();
     const channel = await seedChannelAndAssignment(database);
     const response = await request(auth('pre_sales','staff-pre'),
@@ -79,9 +79,9 @@ describe('acquisition HTTP authority and privacy boundary', () => {
       data: { lead: { origin_channel_id: string; wechat_masked: string } };
     };
     expect(body.data.lead).toMatchObject({
-      origin_channel_id: channel, wechat_masked: 'ro***wx',
+      origin_channel_id: channel, wechat_masked: 'route_secret_wx',
     });
-    expect(JSON.stringify(body)).not.toContain('route_secret_wx');
+    expect(JSON.stringify(body)).toContain('route_secret_wx');
     expect(JSON.stringify(body)).not.toContain('identity_hash');
     expect(JSON.stringify(body)).not.toContain('identity_ciphertext');
   });

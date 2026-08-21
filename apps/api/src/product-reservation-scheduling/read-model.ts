@@ -259,7 +259,7 @@ export async function readStaffProduct(
         )
       WHERE demand.product_id=?
       GROUP BY demand.id
-      ORDER BY demand.created_at DESC, demand.id DESC
+      ORDER BY demand.submitted_at DESC, demand.id DESC
       LIMIT 100
     `).bind(productId).all<DemandRow>(),
   ]);

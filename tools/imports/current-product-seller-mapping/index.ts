@@ -54,6 +54,8 @@ export interface CurrentWhitelistRecord {
   platformProductIdentifier?: string | null;
   asin: string | null;
   productName: string;
+  /** Exact buyer-facing search terms from the current Tencent worksheet. */
+  searchKeywords?: string | null;
   /** Optional source annotation from the live worksheet. */
   reservationStatus?: 'ACTIVE' | 'PAUSED' | 'ABNORMAL' | null;
 }

@@ -18,13 +18,14 @@ import {
   type AcquisitionCommandContext,
 } from './command';
 import { AcquisitionError, validation } from './errors';
-import { protectWechatIdentity } from './privacy';
+import { protectWechatIdentity, revealWechatIdentity } from './privacy';
 import { addTwelveShanghaiMonths } from './time';
 
 const SYSTEM_SELLER_CHANNEL='seller-channel-portal-onboarding';
 
 interface LeadRow {
   id:string; lead_type:AcquisitionLeadType; marketplace_code:string;
+  identity_ciphertext:string|null; identity_iv:string|null;
   wechat_masked:string; display_name:string|null; note:string|null;
   origin_channel_id:string; channel_label:string;
   current_owner_staff_id:string; status:'ACTIVE'|'INVALIDATED'|'ANONYMIZED';
@@ -71,7 +72,7 @@ export async function createAcquisitionLead(
   const acquired=await acquireAcquisitionCommand<{lead_id:string}>(database,command,'CREATE_ACQUISITION_LEAD','ACQUISITION_LEAD',
     `${input.leadType}:${marketplaceCode}:${identity.hash}`,{lead_type:input.leadType,marketplace_code:marketplaceCode,channel_id:channelId,
       prospect_id:prospect?.id??null,identity_hash:identity.hash,display_name:displayName,note});
-  if(acquired.acquired.kind==='REPLAY')return{lead:await readAcquisitionLead(database,command.actor,acquired.acquired.response.lead_id),replayed:true};
+  if(acquired.acquired.kind==='REPLAY')return{lead:await readAcquisitionLead(database,command.actor,acquired.acquired.response.lead_id,identitySecret),replayed:true};
   // One person/company may have separate formal Lead relationships per Marketplace.
   const duplicate=await database.prepare(`SELECT id FROM acquisition_leads
     WHERE lead_type=? AND marketplace_code=? AND identity_hash=? AND status='ACTIVE'`)
@@ -109,24 +110,24 @@ export async function createAcquisitionLead(
   }
   statements.push(...finishAcquisitionCommand(database,acquired.acquired.claim,{lead_id:id},acquired.now,{lead_id:id}));
   try{await database.batch(statements);}catch(error){await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);if(String(error).includes('UNIQUE'))throw new AcquisitionError('DUPLICATE_LEAD',409);throw error;}
-  return{lead:await readAcquisitionLead(database,command.actor,id),replayed:false};
+  return{lead:await readAcquisitionLead(database,command.actor,id,identitySecret),replayed:false};
 }
 
-export async function followUpAcquisitionLead(database:SqlDatabase,input:{leadId:string;expectedVersion:number;note:string|null},command:AcquisitionCommandContext){
+export async function followUpAcquisitionLead(database:SqlDatabase,input:{leadId:string;expectedVersion:number;note:string|null},command:AcquisitionCommandContext,identitySecret?:string){
   const existing=await mutableLead(database,command.actor,input.leadId,input.expectedVersion);requireLeadDuty(command.actor,existing.lead_type);
   if(existing.status==='ANONYMIZED')throw new AcquisitionError('STATE_CONFLICT',409);const note=optionalText(input.note,1000),now=command.now??Date.now();
   return mutateLead(database,existing,command,{action:'FOLLOW_UP_ACQUISITION_LEAD',eventType:'FOLLOWED_UP',reason:note,
     update:`latest_followup_at=?,retention_due_at=?,note=?,version=version+1,updated_at=?`,bindings:[now,addTwelveShanghaiMonths(now),note,now],
-    nextState:{latest_followup_at:now,retention_due_at:addTwelveShanghaiMonths(now),note}});
+    nextState:{latest_followup_at:now,retention_due_at:addTwelveShanghaiMonths(now),note}},identitySecret);
 }
-export async function invalidateAcquisitionLead(database:SqlDatabase,input:{leadId:string;expectedVersion:number;reason:string},command:AcquisitionCommandContext){
+export async function invalidateAcquisitionLead(database:SqlDatabase,input:{leadId:string;expectedVersion:number;reason:string},command:AcquisitionCommandContext,identitySecret?:string){
   const existing=await mutableLead(database,command.actor,input.leadId,input.expectedVersion);requireLeadDuty(command.actor,existing.lead_type);
   if(existing.status!=='ACTIVE')throw new AcquisitionError('STATE_CONFLICT',409);const reason=requiredText(input.reason,1000),now=command.now??Date.now();
   return mutateLead(database,existing,command,{action:'INVALIDATE_ACQUISITION_LEAD',eventType:'INVALIDATED',reason,
     update:`status='INVALIDATED',invalidation_reason=?,invalidated_at=?,version=version+1,updated_at=?`,bindings:[reason,now,now],
-    nextState:{status:'INVALIDATED',invalidation_reason:reason,invalidated_at:now}});
+    nextState:{status:'INVALIDATED',invalidation_reason:reason,invalidated_at:now}},identitySecret);
 }
-export async function transferAcquisitionLead(database:SqlDatabase,input:{leadId:string;expectedVersion:number;newOwnerStaffId:string;reason:string},command:AcquisitionCommandContext){
+export async function transferAcquisitionLead(database:SqlDatabase,input:{leadId:string;expectedVersion:number;newOwnerStaffId:string;reason:string},command:AcquisitionCommandContext,identitySecret?:string){
   const existing=await mutableLead(database,command.actor,input.leadId,input.expectedVersion);requireLeadDuty(command.actor,existing.lead_type);
   const target=identifier(input.newOwnerStaffId),reason=requiredText(input.reason,1000);
   const targetValid=await database.prepare(`SELECT 1 AS present FROM staff_users staff JOIN staff_role_assignments role ON role.staff_id=staff.id
@@ -136,20 +137,20 @@ export async function transferAcquisitionLead(database:SqlDatabase,input:{leadId
     .bind(target,existing.marketplace_code,existing.lead_type,existing.lead_type).first();
   if(!targetValid)throw new AcquisitionError('VALIDATION_ERROR',400);
   return mutateLead(database,existing,command,{action:'TRANSFER_ACQUISITION_LEAD',eventType:'TRANSFERRED',reason,
-    update:`current_owner_staff_id=?,version=version+1,updated_at=?`,bindings:[target,command.now??Date.now()],nextState:{current_owner_staff_id:target}});
+    update:`current_owner_staff_id=?,version=version+1,updated_at=?`,bindings:[target,command.now??Date.now()],nextState:{current_owner_staff_id:target}},identitySecret);
 }
-export async function setAcquisitionRetentionHold(database:SqlDatabase,input:{leadId:string;expectedVersion:number;holdReason:'SECURITY'|'DISPUTE'|'LEGAL'|null;reason:string},command:AcquisitionCommandContext){
+export async function setAcquisitionRetentionHold(database:SqlDatabase,input:{leadId:string;expectedVersion:number;holdReason:'SECURITY'|'DISPUTE'|'LEGAL'|null;reason:string},command:AcquisitionCommandContext,identitySecret?:string){
   requireAcquisitionAdmin(command.actor);const existing=await mutableLead(database,command.actor,input.leadId,input.expectedVersion);
   if(existing.status==='ANONYMIZED')throw new AcquisitionError('STATE_CONFLICT',409);const reason=requiredText(input.reason,1000);
   return mutateLead(database,existing,command,{action:'SET_ACQUISITION_RETENTION_HOLD',eventType:input.holdReason===null?'RETENTION_HOLD_CLEARED':'RETENTION_HOLD_SET',reason,
-    update:`retention_hold_reason=?,version=version+1,updated_at=?`,bindings:[input.holdReason,command.now??Date.now()],nextState:{retention_hold_reason:input.holdReason}});
+    update:`retention_hold_reason=?,version=version+1,updated_at=?`,bindings:[input.holdReason,command.now??Date.now()],nextState:{retention_hold_reason:input.holdReason}},identitySecret);
 }
 
-export async function readAcquisitionLead(database:SqlDatabase,actor:AssignmentStaffAuthorization,leadId:string):Promise<AcquisitionLeadDto>{
+export async function readAcquisitionLead(database:SqlDatabase,actor:AssignmentStaffAuthorization,leadId:string,identitySecret?:string):Promise<AcquisitionLeadDto>{
   const row=await database.prepare(leadProjectionSql('lead.id=?')).bind(identifier(leadId)).first<LeadRow>();
-  if(!row)throw new AcquisitionError('NOT_FOUND',404);requireLeadDuty(actor,row.lead_type);if(!await canSeeLead(database,actor,row))throw new AcquisitionError('NOT_FOUND',404);return toLead(row);
+  if(!row)throw new AcquisitionError('NOT_FOUND',404);requireLeadDuty(actor,row.lead_type);if(!await canSeeLead(database,actor,row))throw new AcquisitionError('NOT_FOUND',404);return toLead(row,identitySecret);
 }
-export async function listAcquisitionLeads(database:SqlDatabase,actor:AssignmentStaffAuthorization,input:{leadType:AcquisitionLeadType|null;cursor:string|null;limit:number}):Promise<AcquisitionPage<AcquisitionLeadDto>>{
+export async function listAcquisitionLeads(database:SqlDatabase,actor:AssignmentStaffAuthorization,input:{leadType:AcquisitionLeadType|null;cursor:string|null;limit:number},identitySecret?:string):Promise<AcquisitionPage<AcquisitionLeadDto>>{
   const allowed=visibleLeadTypes(actor);if(input.leadType!==null&&!allowed.includes(input.leadType))throw new AcquisitionError('FORBIDDEN',403);
   if(!Number.isSafeInteger(input.limit)||input.limit<1||input.limit>100)validation();const cursor=decodeCursor(input.cursor);const types=input.leadType===null?allowed:[input.leadType];
   const markets=actor.roles.has('owner')?[]:await resolveStaffMarketplaceCodes(database,actor);if(!actor.roles.has('owner')&&markets.length===0)return{items:[],next_cursor:null};
@@ -157,13 +158,13 @@ export async function listAcquisitionLeads(database:SqlDatabase,actor:Assignment
   if(markets.length){conditions.push(`lead.marketplace_code IN (${markets.map(()=>'?').join(',')})`);bindings.push(...markets);}
   if(cursor){conditions.push(`(lead.created_at<? OR (lead.created_at=? AND lead.id<?))`);bindings.push(cursor.createdAt,cursor.createdAt,cursor.id);}
   const rows=await database.prepare(`${leadProjectionSql(conditions.join(' AND '))} ORDER BY lead.created_at DESC,lead.id DESC LIMIT ?`).bind(...bindings,input.limit+1).all<LeadRow>();
-  const all=rows.results.map(toLead),items=all.slice(0,input.limit),last=items.at(-1);
+  const all=await Promise.all(rows.results.map((row)=>toLead(row,identitySecret))),items=all.slice(0,input.limit),last=items.at(-1);
   return{items,next_cursor:all.length>input.limit&&last?encodeCursor({createdAt:last.created_at,id:last.lead_id}):null};
 }
 
-async function mutateLead(database:SqlDatabase,existing:BaseLeadRow,command:AcquisitionCommandContext,mutation:{action:string;eventType:string;reason:string|null;update:string;bindings:unknown[];nextState:Record<string,unknown>}){
+async function mutateLead(database:SqlDatabase,existing:BaseLeadRow,command:AcquisitionCommandContext,mutation:{action:string;eventType:string;reason:string|null;update:string;bindings:unknown[];nextState:Record<string,unknown>},identitySecret?:string){
   const acquired=await acquireAcquisitionCommand<{lead_id:string}>(database,command,mutation.action,'ACQUISITION_LEAD',existing.id,{expected_version:existing.version,...mutation.nextState,reason:mutation.reason});
-  if(acquired.acquired.kind==='REPLAY')return{lead:await readAcquisitionLead(database,command.actor,existing.id),replayed:true};const next=existing.version+1;
+  if(acquired.acquired.kind==='REPLAY')return{lead:await readAcquisitionLead(database,command.actor,existing.id,identitySecret),replayed:true};const next=existing.version+1;
   try{await database.batch([
     database.prepare(`UPDATE acquisition_leads SET ${mutation.update} WHERE id=? AND version=?`).bind(...mutation.bindings,existing.id,existing.version),
     database.prepare(`INSERT INTO acquisition_lead_events(id,lead_id,event_type,previous_version,next_version,actor_type,actor_id,idempotency_key,request_hash,reason,metadata_json,created_at)
@@ -171,7 +172,7 @@ async function mutateLead(database:SqlDatabase,existing:BaseLeadRow,command:Acqu
     createAuditEventStatement(database,{id:crypto.randomUUID(),aggregateType:'ACQUISITION_LEAD',aggregateId:existing.id,eventType:`ACQUISITION_LEAD_${mutation.eventType}`,actor:auditActor(command.actor),requestId:command.requestId,idempotencyKey:command.idempotencyKey,previousState:{status:existing.status,version:existing.version,current_owner_staff_id:existing.current_owner_staff_id},nextState:{...mutation.nextState,version:next},reason:mutation.reason,createdAt:acquired.now}),
     ...finishAcquisitionCommand(database,acquired.acquired.claim,{lead_id:existing.id},acquired.now,{lead_id:existing.id}),
   ]);}catch{await failAcquisitionCommand(database,acquired.acquired.claim,acquired.now);throw new AcquisitionError('VERSION_CONFLICT',409);}
-  return{lead:await readAcquisitionLead(database,command.actor,existing.id),replayed:false};
+  return{lead:await readAcquisitionLead(database,command.actor,existing.id,identitySecret),replayed:false};
 }
 async function mutableLead(database:SqlDatabase,actor:AssignmentStaffAuthorization,leadId:string,expectedVersion:number):Promise<BaseLeadRow>{
   if(!Number.isSafeInteger(expectedVersion)||expectedVersion<1)validation();const row=await database.prepare(`SELECT id,lead_type,marketplace_code,status,version,origin_staff_id,current_owner_staff_id FROM acquisition_leads WHERE id=?`).bind(identifier(leadId)).first<BaseLeadRow>();
@@ -218,7 +219,7 @@ function initialLinkStatements(database:SqlDatabase,leadId:string,leadType:Acqui
     ]),
   ];
 }
-function leadProjectionSql(where:string):string{return`SELECT lead.id,lead.lead_type,lead.marketplace_code,lead.wechat_masked,lead.display_name,lead.note,
+function leadProjectionSql(where:string):string{return`SELECT lead.id,lead.lead_type,lead.marketplace_code,lead.identity_ciphertext,lead.identity_iv,lead.wechat_masked,lead.display_name,lead.note,
   COALESCE((SELECT correction.new_channel_id FROM acquisition_lead_source_corrections correction
     WHERE correction.lead_id=lead.id ORDER BY correction.corrected_at DESC,correction.id DESC LIMIT 1),lead.origin_channel_id) AS origin_channel_id,
   COALESCE((SELECT profile.staff_label FROM acquisition_lead_source_corrections correction
@@ -233,9 +234,13 @@ function leadProjectionSql(where:string):string{return`SELECT lead.id,lead.lead_
   FROM acquisition_leads lead
   JOIN acquisition_channel_privacy_profiles original_profile ON original_profile.channel_id=lead.origin_channel_id
   WHERE ${where}`;}
-function toLead(row:LeadRow):AcquisitionLeadDto{const reservation=Number(row.reservation_submitted)===1;return{
+async function toLead(row:LeadRow,identitySecret?:string):Promise<AcquisitionLeadDto>{const reservation=Number(row.reservation_submitted)===1;
+  const wechat=identitySecret&&row.identity_ciphertext&&row.identity_iv
+    ?await revealWechatIdentity(row.identity_ciphertext,row.identity_iv,identitySecret)
+    :row.wechat_masked;
+  return{
   lead_id:row.id,lead_type:row.lead_type,marketplace_code:row.marketplace_code,
-  wechat_masked:row.wechat_masked,display_name:row.display_name,note:row.note,
+  wechat_masked:wechat,display_name:row.display_name,note:row.note,
   origin_channel_id:row.origin_channel_id,channel_label:row.channel_label,
   current_owner_staff_id:row.current_owner_staff_id,status:row.status,version:Number(row.version),
   created_business_date:row.created_business_date,latest_followup_at:Number(row.latest_followup_at),

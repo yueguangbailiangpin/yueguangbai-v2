@@ -5,12 +5,29 @@ import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
+import { listHistoricalSellerDirectory } from './historical-seller-directory';
 
 interface BuyerRow{subject_id:string;display_name:string;marketplace_code:string|null;account_id:string|null;formal_order_count:number}
 interface SellerRow{subject_id:string;display_name:string;marketplace_code:string;account_id:string|null;formal_order_count:number}
 type CustomerMatch={customer_type:'BUYER'|'SELLER';subject_id:string;display_name:string;marketplace_code:string;has_portal_account:boolean;historical_order_count:number;source_status:'HISTORICAL_UNKNOWN'};
 
 export function registerCustomerOnboardingRoutes(app:Hono<any>):void{
+  app.get('/api/staff/customer-onboarding/seller-directory',async(context)=>{
+    const requestId=requestIdFromContext(context);
+    try{
+      const actor=requireActor(context);
+      const url=new URL(context.req.url);
+      if([...url.searchParams.keys()].length>0)throw new Error('VALIDATION');
+      const items=await listHistoricalSellerDirectory(context.env.DB,actor);
+      context.header('Cache-Control','no-store');
+      return context.json(apiSuccess({items},requestId));
+    }catch(error){
+      const message=error instanceof Error?error.message:'';
+      if(message==='FORBIDDEN')return context.json(apiFailure('FORBIDDEN','当前岗位不能查看卖家客户',requestId),403);
+      if(message==='VALIDATION')return context.json(apiFailure('VALIDATION_ERROR','请求参数不正确',requestId),400);
+      return context.json(apiFailure('DEPENDENCY_UNAVAILABLE','卖家客户目录暂时不可用',requestId),503);
+    }
+  });
   app.get('/api/staff/customer-onboarding/lookup',async(context)=>{
     const requestId=requestIdFromContext(context);
     try{
