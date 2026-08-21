@@ -340,6 +340,35 @@ describe('canonical Frozen Staff workbench', () => {
     expect(screen.getByRole('button', { name: '通过并发布' })).toBeEnabled();
   });
 
+  it('names the missing product readiness field when publish fails the 409 validation gate', async () => {
+    installDemandHandlers(async () =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: '请求参数不正确',
+            details: {
+              field: 'main_image',
+              reason: '产品版本没有已验证的主图，需先上传并绑定主图再发布。',
+            },
+          },
+          meta: { request_id: 'demand-readiness' },
+        },
+        { status: 409 },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWorkbench('/staff?work_item=work-demand');
+    expect(await screen.findByText('需求发布事实')).toBeVisible();
+    await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
+    await user.click(screen.getByRole('button', { name: '通过并发布' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('需先上传并绑定主图再发布');
+    expect(alert).toHaveTextContent('错误码：VALIDATION_ERROR');
+    expect(alert).not.toHaveTextContent('请检查首个下单日期');
+    expect(screen.getByText(/demand-readiness/u)).toBeVisible();
+  });
+
   it('sends exactly one publish request while the button is pending', async () => {
     let requestCount = 0;
     let finish: () => void = () => {};

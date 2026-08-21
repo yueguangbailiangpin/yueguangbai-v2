@@ -251,13 +251,17 @@ export async function reviewDemandBatch(
       source.organization_id,
     );
     if (input.decision === 'PUBLISH') {
-      if (source.product_status !== 'ACTIVE'
-        || source.store_status !== 'ACTIVE'
-        || source.organization_status !== 'ACTIVE') {
-        throw new DemandBatchError(
-          'VALIDATION_ERROR',
-          409,
-        );
+      const inactive: string[] = [];
+      if (source.product_status !== 'ACTIVE') inactive.push('product_status');
+      if (source.store_status !== 'ACTIVE') inactive.push('store_status');
+      if (source.organization_status !== 'ACTIVE') {
+        inactive.push('organization_status');
+      }
+      if (inactive.length > 0) {
+        throw new DemandBatchError('VALIDATION_ERROR', 409, {
+          field: inactive.join(','),
+          reason: '产品、店铺或卖家组织未处于启用状态，需先恢复后再发布。',
+        });
       }
       if (source.reservation_deadline <= now
         || source.order_deadline <= now) {
@@ -563,14 +567,31 @@ async function requireReviewSource(
 
 function requireOrderInstructionReadiness(source: DemandSource): void {
   const expectedAmount = Number(source.ordering_guide_expected_amount_jpy);
-  if (source.ordering_guide_expected_amount_jpy === null
-    || !Number.isSafeInteger(expectedAmount)
-    || expectedAmount < 0
-    || !['MAIN_IMAGE_VARIANT', 'ANY_VARIANT'].includes(
-      source.color_spec_mode ?? '',
-    )
-    || source.main_image_file_object_id === null) {
-    throw new DemandBatchError('VALIDATION_ERROR', 409);
+  if (source.ordering_guide_expected_amount_jpy === null) {
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'ordering_guide_expected_amount_jpy',
+      reason: '产品版本缺少下单指引参考金额，需先补齐再发布。',
+    });
+  }
+  if (!Number.isSafeInteger(expectedAmount) || expectedAmount < 0) {
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'ordering_guide_expected_amount_jpy',
+      reason: '下单指引参考金额无效，需先修正再发布。',
+    });
+  }
+  if (!['MAIN_IMAGE_VARIANT', 'ANY_VARIANT'].includes(
+    source.color_spec_mode ?? '',
+  )) {
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'color_spec_mode',
+      reason: '产品版本缺少颜色规格模式，需先补齐再发布。',
+    });
+  }
+  if (source.main_image_file_object_id === null) {
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'main_image',
+      reason: '产品版本没有已验证的主图，需先上传并绑定主图再发布。',
+    });
   }
   try {
     validateOrderCadence({
@@ -578,7 +599,10 @@ function requireOrderInstructionReadiness(source: DemandSource): void {
       ordersPerRun: Number(source.orders_per_run),
     });
   } catch {
-    throw new DemandBatchError('VALIDATION_ERROR', 409);
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'order_cadence',
+      reason: '下单频率（间隔天数 / 每期单量）未配置或无效，需先补齐再发布。',
+    });
   }
   try {
     const keywords = JSON.parse(source.search_keywords_json) as unknown;
@@ -589,7 +613,10 @@ function requireOrderInstructionReadiness(source: DemandSource): void {
       throw new Error('invalid keywords');
     }
   } catch {
-    throw new DemandBatchError('VALIDATION_ERROR', 409);
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'search_keywords',
+      reason: '产品版本缺少有效的搜索关键词，需先补齐再发布。',
+    });
   }
 }
 

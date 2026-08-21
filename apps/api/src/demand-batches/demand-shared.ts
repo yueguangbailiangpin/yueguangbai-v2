@@ -34,6 +34,12 @@ export interface BuyerDemandContext {
   identityReviewStatus: 'CLEAR' | 'REVIEW_REQUIRED';
 }
 
+/** Safe, field-scoped failure detail exposed through the API error envelope. */
+export interface DemandBatchErrorDetail {
+  readonly field: string;
+  readonly reason?: string;
+}
+
 export class DemandBatchError extends Error {
   constructor(
     public readonly code:
@@ -53,6 +59,7 @@ export class DemandBatchError extends Error {
       | 'REQUEST_IN_PROGRESS'
       | 'DEPENDENCY_UNAVAILABLE',
     public readonly status: 400 | 403 | 404 | 409 | 503,
+    public readonly details: DemandBatchErrorDetail | null = null,
   ) {
     super(code);
     this.name = 'DemandBatchError';

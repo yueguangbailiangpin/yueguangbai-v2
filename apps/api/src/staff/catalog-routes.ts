@@ -610,7 +610,11 @@ function withStaffWorkflowErrors(
     try {
       return await handler(context);
     } catch (error) {
-      const candidate = error as { code?: unknown; status?: unknown };
+      const candidate = error as {
+        code?: unknown;
+        status?: unknown;
+        details?: unknown;
+      };
       const code = isApiErrorCode(candidate?.code)
         ? candidate.code
         : 'DEPENDENCY_UNAVAILABLE';
@@ -626,9 +630,28 @@ function withStaffWorkflowErrors(
         code,
         publicMessage(code),
         requestIdFromContext(context),
+        safeFailureDetails(candidate?.details),
       ), status);
     }
   };
+}
+
+/**
+ * Only short, field-scoped string details may leave the Worker. The frontend
+ * additionally filters by error code, so this is defense in depth rather than
+ * the only boundary.
+ */
+function safeFailureDetails(value: unknown): Record<string, string> | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const result: Record<string, string> = {};
+  for (const [key, item] of Object.entries(source)) {
+    if (!/^[a-z_]{1,40}$/u.test(key)) continue;
+    if (typeof item !== 'string' || item.length > 200) continue;
+    result[key] = item;
+  }
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 function publicMessage(code: ApiErrorCode): string {

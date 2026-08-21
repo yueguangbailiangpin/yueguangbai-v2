@@ -905,6 +905,99 @@ describe('demand batch workflow', () => {
     )).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
   });
 
+  it('names the missing publish readiness field through safe error details', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    // 产品三：满足金额 / 颜色规格 / 排期 / 关键词，但故意不绑定主图。
+    database.exec(`
+      INSERT INTO products (
+        id, organization_id, store_id, marketplace_code,
+        asin_display, asin_normalized, status,
+        current_version_no, version,
+        created_at, updated_at, disabled_at
+      ) VALUES (
+        'product-3', 'seller-org-1', 'store-1', 'JP',
+        'B0DEMAND03', 'B0DEMAND03', 'ACTIVE',
+        1, 1, 1000, 1000, NULL
+      );
+      INSERT INTO product_versions (
+        id, product_id, version_no, product_name,
+        search_keywords_json, product_url,
+        buyer_visible_notes, internal_notes,
+        created_by_staff_id, created_at
+      ,
+          ordering_guide_expected_amount_jpy,
+          color_spec_mode, order_interval_days, orders_per_run) VALUES (
+        'product-version-3-v1', 'product-3', 1,
+        '产品三无主图', '["产品三关键词"]',
+        'https://www.amazon.co.jp/product-three',
+        '产品三公开说明', '产品三内部说明',
+        'staff-demand-reviewer', 1000
+      ,
+          1980, 'MAIN_IMAGE_VARIANT', 1, 100);
+    `);
+    const now = Date.now();
+    const submitted = await submitDemandBatch(database, {
+      ...demandInput('product-3'),
+      openAt: now - 1_000,
+      reservationDeadline: now + 60_000,
+      orderDeadline: now + 120_000,
+    }, {
+      actor: ownerActor(), idempotencyKey: 'demand:readiness:submit', now: 2000,
+    });
+
+    await expect(reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 1,
+      decision: 'PUBLISH',
+      firstOrderDate: '1970-01-01',
+    }, {
+      actor: reviewerActor(),
+      idempotencyKey: 'demand:readiness:publish',
+      now: 3000,
+    })).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      status: 409,
+      details: { field: 'main_image' },
+    });
+
+    const authorization = await resolveAssignmentStaffAuthorization(
+      database, 'staff-demand-reviewer',
+    );
+    expect(authorization).not.toBeNull();
+    const app = createApp();
+    app.use('/api/staff/*', async (context, next) => {
+      (context as any).set('staffAuthorization', authorization);
+      await next();
+    });
+    registerStaffCatalogWorkflowRoutes(app);
+    const response = await app.request(
+      `https://api.test/api/staff/demand-batches/${submitted.demand_batch_id}/review`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'demand:readiness:route',
+        },
+        body: JSON.stringify({
+          expected_version: 1,
+          decision: 'PUBLISH',
+          first_order_date: '1970-01-01',
+        }),
+      },
+      { DB: database } as any,
+    );
+    expect(response.status).toBe(409);
+    const payload = await response.json() as any;
+    expect(payload.error.code).toBe('VALIDATION_ERROR');
+    expect(payload.error.details).toEqual({
+      field: 'main_image',
+      reason: expect.stringContaining('主图'),
+    });
+    expect(JSON.stringify(payload)).not.toContain('sellerNotes');
+    expect(JSON.stringify(payload)).not.toContain('internal_notes');
+  });
+
   it('wires the review route contract: publish, replay, conflicts, invalid date, permission, and concealment', async () => {
     database = createMigratedTestDatabase();
     seedDemandFixture(database);

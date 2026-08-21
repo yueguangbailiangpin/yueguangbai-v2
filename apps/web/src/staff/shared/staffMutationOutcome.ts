@@ -1,7 +1,6 @@
 import { isFrontendApiError } from '../../api/errors';
 
 const DEMAND_REVIEW_HINTS: Readonly<Record<string, string>> = Object.freeze({
-  VALIDATION_ERROR: '请求参数不正确，请检查首个下单日期后重新提交。',
   VERSION_CONFLICT: '需求数据已被其他人处理，请刷新事实后重试。',
   DEMAND_BATCH_ALREADY_REVIEWED: '该需求已审核完成，请刷新队列。',
   DEMAND_BATCH_EXPIRED: '预约或下单截止时间已过期，无法发布。',
@@ -23,6 +22,23 @@ export interface StaffMutationOutcome {
 export function describeStaffMutationError(error: unknown): StaffMutationOutcome {
   if (!isFrontendApiError(error)) {
     return { code: null, hint: '操作未完成，请刷新后重试。' };
+  }
+  // VALIDATION_ERROR 的含义取决于 HTTP 状态：400 是请求本身（通常是日期格式），
+  // 409 是发布就绪检查（产品资料缺失），后一种附带字段级安全原因。
+  if (error.code === 'VALIDATION_ERROR' && error.httpStatus === 409) {
+    const reason = error.safeDetails?.['reason'];
+    return {
+      code: error.code,
+      hint: typeof reason === 'string' && reason.length > 0
+        ? reason
+        : '产品资料未满足发布条件（金额、颜色规格、主图、排期或关键词），请先补齐。',
+    };
+  }
+  if (error.code === 'VALIDATION_ERROR') {
+    return {
+      code: error.code,
+      hint: '请求参数不正确，请检查首个下单日期后重新提交。',
+    };
   }
   return {
     code: error.code,
