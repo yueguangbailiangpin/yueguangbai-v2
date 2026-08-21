@@ -2,6 +2,7 @@ import { normalizeWechatId } from '@ygb/domain';
 import { AcquisitionError } from './errors';
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 export interface ProtectedWechatIdentity {
   normalized: string;
@@ -56,6 +57,27 @@ export async function hashNormalizedWechat(
   ));
 }
 
+export async function revealWechatIdentity(
+  ciphertext: string,
+  iv: string,
+  secret: string,
+): Promise<string> {
+  const encryptionKey = await crypto.subtle.importKey(
+    'raw', await crypto.subtle.digest('SHA-256', encoder.encode(`acquisition:${secret}`)),
+    { name: 'AES-GCM' }, false, ['decrypt'],
+  );
+  try {
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: fromBase64url(iv) }, encryptionKey, fromBase64url(ciphertext),
+    );
+    const parsed = JSON.parse(decoder.decode(plaintext)) as { display?: unknown };
+    if (typeof parsed.display !== 'string' || parsed.display.length === 0) throw new Error('invalid');
+    return parsed.display;
+  } catch {
+    throw new AcquisitionError('DEPENDENCY_UNAVAILABLE', 503);
+  }
+}
+
 export function requireAcquisitionSecret(value: unknown): string {
   if (typeof value !== 'string') {
     throw new AcquisitionError('DEPENDENCY_UNAVAILABLE', 503);
@@ -87,4 +109,11 @@ function base64url(value: Uint8Array): string {
   let binary = '';
   for (const byte of value) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
+}
+
+function fromBase64url(value: string): ArrayBuffer {
+  const normalized = value.replaceAll('-', '+').replaceAll('_', '/');
+  const binary = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }

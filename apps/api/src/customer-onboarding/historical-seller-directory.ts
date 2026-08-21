@@ -85,19 +85,14 @@ export async function listHistoricalSellerDirectory(
     const sourceCount = historical
       ? Number(/(?:^|;)SOURCE_FILES=(\d+)(?:;|$)/u.exec(row.historical_reason ?? '')?.[1] ?? 0)
       : 0;
-    const displayName = actor.roles.has('owner')
-      ? row.organization_name
-      : row.organization_name.toLocaleLowerCase('en-US') === row.normalized_wechat
-        ? maskWechat(row.display_wechat)
-        : row.organization_name;
     const productNames = FROZEN_HISTORICAL_SELLER_PRODUCTS[
       row.normalized_wechat.toLocaleLowerCase('en-US') as keyof typeof FROZEN_HISTORICAL_SELLER_PRODUCTS
     ] ?? Object.freeze([]);
     return Object.freeze({
       seller_organization_id: row.organization_id,
       seller_code: row.seller_code,
-      display_name: displayName,
-      wechat_masked: maskWechat(row.display_wechat),
+      display_name: row.organization_name,
+      wechat_masked: row.display_wechat,
       marketplace_code: canonicalMarketplace,
       source_status: historical ? 'HISTORICAL_FROZEN_IMPORT' as const : 'CURRENT_OR_NEW' as const,
       source_file_count: sourceCount,
@@ -106,10 +101,4 @@ export async function listHistoricalSellerDirectory(
       has_portal_account: row.account_id !== null,
     });
   }));
-}
-
-function maskWechat(value: string): string {
-  const characters = [...value];
-  if (characters.length <= 3) return `${characters[0] ?? '*'}*${characters.at(-1) ?? '*'}`;
-  return `${characters.slice(0, 2).join('')}***${characters.slice(-2).join('')}`;
 }

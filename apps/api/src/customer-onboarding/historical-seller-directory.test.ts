@@ -47,7 +47,7 @@ describe('historical seller directory', () => {
     expect(items).toContainEqual(expect.objectContaining({
       seller_organization_id: 'historical-org-1',
       display_name: 'Michael_er',
-      wechat_masked: 'Mi***er',
+      wechat_masked: 'Michael_er',
       source_status: 'HISTORICAL_FROZEN_IMPORT',
       source_file_count: 3,
       product_names: ['紫光灯'],

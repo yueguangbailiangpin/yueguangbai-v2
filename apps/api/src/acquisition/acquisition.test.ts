@@ -63,7 +63,7 @@ describe('staff acquisition funnel commands', () => {
     expect(buyer.lead).toMatchObject({
       lead_type: 'BUYER', origin_channel_id: channel.channel.channel_id,
       current_owner_staff_id: 'staff-pre',
-      wechat_masked: 'YG***01', no_participation: true,
+      wechat_masked: 'YGB_Test-01', no_participation: true,
     });
     expect(buyer.lead).not.toHaveProperty('origin_staff_id');
 
