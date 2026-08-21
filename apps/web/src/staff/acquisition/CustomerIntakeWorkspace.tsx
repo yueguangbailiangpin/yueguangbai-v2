@@ -64,6 +64,7 @@ const sellerDirectorySchema = z
     ),
   })
   .strict();
+type SellerDirectoryItem = z.output<typeof sellerDirectorySchema>['items'][number];
 const buyerInvitationSchema = z
   .object({
     invitation: z
@@ -324,6 +325,7 @@ function CustomerIntakeWorkspace({
                     <th>合作产品</th>
                     <th>来源</th>
                     <th>网站账号</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -349,6 +351,9 @@ function CustomerIntakeWorkspace({
                         )}
                       </td>
                       <td>{seller.has_portal_account ? '已开通' : '未开通'}</td>
+                      <td>
+                        <SellerPortalAccessAction seller={seller} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -794,6 +799,56 @@ function isDuplicateLeadError(error: unknown): boolean {
   return isFrontendApiError(error) && error.code === 'DUPLICATE_LEAD';
 }
 
+function SellerPortalAccessAction({ seller }: { seller: SellerDirectoryItem }) {
+  const client = useQueryClient();
+  const [invitation, setInvitation] = useState<InvitationState | null>(null);
+  const invite = useMutation({
+    mutationFn: async () => {
+      const current = await readCurrentSellerInvitation(client, {
+        sellerOrganizationId: seller.seller_organization_id,
+        leadId: null,
+      });
+      if (current.data.invitation?.status === 'ACTIVE') {
+        return toExistingSellerInvitation(current.data.invitation);
+      }
+      const response = await issueSellerInvite(client, {
+        leadId: null,
+        sellerOrganizationId: seller.seller_organization_id,
+        wechatId: seller.wechat_masked,
+        marketplaceCode: seller.marketplace_code,
+      });
+      return toInvitation('SELLER', response.data.invitation);
+    },
+    onSuccess: setInvitation,
+  });
+  const revoke = useMutation({
+    mutationFn: (state: InvitationState) => revokeInvitation(client, state),
+    onSuccess: () =>
+      setInvitation((current) =>
+        current ? { ...current, status: 'REVOKED', link: '', recoverable: false } : current,
+      ),
+  });
+  if (seller.has_portal_account) return <span>—</span>;
+  return (
+    <div className="customer-registration-success">
+      <Button type="button" loading={invite.isPending} onClick={() => invite.mutate()}>
+        生成卖家开通链接
+      </Button>
+      {invitation ? (
+        <InvitationResult
+          state={invitation}
+          revokeBusy={revoke.isPending}
+          onRevoke={() => revoke.mutate(invitation)}
+          onClear={() => setInvitation(null)}
+        />
+      ) : null}
+      {invite.isError || revoke.isError ? (
+        <Alert tone="danger">开通链接操作未完成，请重试。</Alert>
+      ) : null}
+    </div>
+  );
+}
+
 function InvitationResult({
   state,
   revokeBusy,
@@ -808,7 +863,7 @@ function InvitationResult({
   if (state.status === 'REVOKED')
     return (
       <Alert tone="info">
-        原注册链接已撤销。再次点击上方“检查 / 生成注册链接”即可生成一条全新的链接。
+        原注册链接已撤销。再次点击上方的生成按钮即可生成一条全新的链接。
       </Alert>
     );
   if (!state.recoverable)

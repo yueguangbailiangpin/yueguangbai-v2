@@ -79,6 +79,159 @@ describe('seller customer intake channel selection', () => {
     expect(await screen.findByText(/已经保存过，不需要重复新增/u)).toBeVisible();
     expect(screen.queryByText(/保存未完成/u)).not.toBeInTheDocument();
   });
+
+  it('generates a portal registration link for an unregistered seller from the directory', async () => {
+    installHandlers([channel('seller-jp', 'AMAZON_JP', '渠道1')], [
+      sellerDirectoryItem(),
+    ]);
+    let issuedBody: unknown;
+    server.use(
+      http.get(
+        apiUrl('/api/staff/customer-security/seller-invitations/current'),
+        ({ request }) => {
+          expect(new URL(request.url).searchParams.get('seller_organization_id')).toBe(
+            'seller-org-new',
+          );
+          return HttpResponse.json({
+            data: { invitation: null },
+            meta: { request_id: 'current-seller-invitation' },
+          });
+        },
+      ),
+      http.post(
+        apiUrl('/api/staff/customer-security/seller-invitations'),
+        async ({ request }) => {
+          issuedBody = await request.json();
+          return HttpResponse.json(
+            {
+              data: {
+                invitation: {
+                  invitation_id: 'invite-new',
+                  registration_token: 'seller-token-new',
+                  registration_path: '/seller/register?token=seller-token-new',
+                  wechat_id: 'Johnwen7',
+                  marketplace_code: 'AMAZON_JP',
+                  seller_organization_id: 'seller-org-new',
+                  seller_name: '咖啡秤',
+                  onboarding_kind: 'NEW_CUSTOMER',
+                  status: 'ACTIVE',
+                  version: 1,
+                  expires_at: 1_786_176_000_000,
+                  replayed: false,
+                },
+              },
+              meta: { request_id: 'issue-seller-invitation' },
+            },
+            { status: 201 },
+          );
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    await user.click(await screen.findByRole('button', { name: '生成卖家开通链接' }));
+
+    expect(await screen.findByRole('textbox', { name: '卖家注册链接' })).toHaveValue(
+      `${window.location.origin}/seller/register?token=seller-token-new`,
+    );
+    expect(issuedBody).toEqual({
+      lead_id: null,
+      seller_organization_id: 'seller-org-new',
+      wechat_id: 'Johnwen7',
+      marketplace_code: 'AMAZON_JP',
+    });
+  });
+
+  it('replaces an active seller invitation whose original link cannot be recovered', async () => {
+    installHandlers([channel('seller-jp', 'AMAZON_JP', '渠道1')], [
+      sellerDirectoryItem(),
+    ]);
+    let activeInvitation = true;
+    server.use(
+      http.get(apiUrl('/api/staff/customer-security/seller-invitations/current'), () =>
+        HttpResponse.json({
+          data: {
+            invitation: activeInvitation
+              ? {
+                  invitation_id: 'invite-old',
+                  wechat_id: 'Johnwen7',
+                  marketplace_code: 'AMAZON_JP',
+                  seller_organization_id: 'seller-org-new',
+                  seller_member_id: null,
+                  onboarding_kind: 'NEW_CUSTOMER',
+                  issued_by_staff_id: 'staff-owner',
+                  status: 'ACTIVE',
+                  version: 4,
+                  issued_at: 1_786_000_000_000,
+                  expires_at: 1_786_176_000_000,
+                  consumed_at: null,
+                  revoked_at: null,
+                  registration_link_recoverable: false,
+                }
+              : null,
+          },
+          meta: { request_id: 'current-seller-invitation' },
+        }),
+      ),
+      http.post(
+        apiUrl('/api/staff/customer-security/seller-invitations/invite-old/revoke'),
+        async ({ request }) => {
+          expect(await request.json()).toEqual({ expected_version: 4 });
+          activeInvitation = false;
+          return HttpResponse.json({
+            data: {
+              invitation: {
+                invitation_id: 'invite-old',
+                status: 'REVOKED',
+                version: 5,
+                revoked_at: 1_786_000_100_000,
+              },
+            },
+            meta: { request_id: 'revoke-seller-invitation' },
+          });
+        },
+      ),
+      http.post(apiUrl('/api/staff/customer-security/seller-invitations'), () =>
+        HttpResponse.json(
+          {
+            data: {
+              invitation: {
+                invitation_id: 'invite-replacement',
+                registration_token: 'replacement-token',
+                registration_path: '/seller/register?token=replacement-token',
+                wechat_id: 'Johnwen7',
+                marketplace_code: 'AMAZON_JP',
+                seller_organization_id: 'seller-org-new',
+                seller_name: '咖啡秤',
+                onboarding_kind: 'NEW_CUSTOMER',
+                status: 'ACTIVE',
+                version: 1,
+                expires_at: 1_786_176_000_000,
+                replayed: false,
+              },
+            },
+            meta: { request_id: 'replace-seller-invitation' },
+          },
+          { status: 201 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    const generate = await screen.findByRole('button', { name: '生成卖家开通链接' });
+    await user.click(generate);
+    expect(await screen.findByText(/原注册链接明文不会被保存/u)).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '撤销旧邀请' }));
+    expect(await screen.findByText(/原注册链接已撤销/u)).toBeVisible();
+
+    await user.click(generate);
+    expect(await screen.findByRole('textbox', { name: '卖家注册链接' })).toHaveValue(
+      `${window.location.origin}/seller/register?token=replacement-token`,
+    );
+  });
 });
 
 function renderWorkspace(): ReturnType<typeof renderWithMsw> {
@@ -90,7 +243,10 @@ function renderWorkspace(): ReturnType<typeof renderWithMsw> {
   );
 }
 
-function installHandlers(channels: readonly ReturnType<typeof channel>[]): void {
+function installHandlers(
+  channels: readonly ReturnType<typeof channel>[],
+  sellers: readonly ReturnType<typeof sellerDirectoryItem>[] = [],
+): void {
   server.use(
     http.get(apiUrl('/api/staff/acquisition/channels'), () =>
       HttpResponse.json({
@@ -99,7 +255,7 @@ function installHandlers(channels: readonly ReturnType<typeof channel>[]): void 
       }),
     ),
     http.get(apiUrl('/api/staff/customer-onboarding/seller-directory'), () =>
-      HttpResponse.json({ data: { items: [] }, meta: { request_id: 'seller-directory' } }),
+      HttpResponse.json({ data: { items: sellers }, meta: { request_id: 'seller-directory' } }),
     ),
     http.get(apiUrl('/api/staff/acquisition/leads'), () =>
       HttpResponse.json({
@@ -114,6 +270,21 @@ function installHandlers(channels: readonly ReturnType<typeof channel>[]): void 
       }),
     ),
   );
+}
+
+function sellerDirectoryItem() {
+  return {
+    seller_organization_id: 'seller-org-new',
+    seller_code: 'portal-000001',
+    display_name: '咖啡秤',
+    wechat_masked: 'Johnwen7',
+    marketplace_code: 'AMAZON_JP',
+    source_status: 'CURRENT_OR_NEW' as const,
+    source_file_count: 0,
+    product_names: [],
+    active_offering_count: 0,
+    has_portal_account: false,
+  };
 }
 
 function channel(id: string, marketplace: string, label: string) {

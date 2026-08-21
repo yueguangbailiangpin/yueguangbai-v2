@@ -85,6 +85,11 @@ Saving a new Seller customer MUST create the Seller organization once and MUST e
 - **WHEN** the Seller Lead and linked Seller organization are committed without an active Seller member
 - **THEN** the Seller directory shows that organization with website account status “未开通”.
 
+#### Scenario: Staff opens the website account from the Seller directory
+
+- **WHEN** Staff selects “生成卖家开通链接” for an unregistered Seller
+- **THEN** the system either returns a new one-time registration link or requires the existing unrecoverable active invitation to be revoked before a replacement link is generated.
+
 ### Requirement: mounted Buyer primary navigation remains interactive
 
 The mounted Buyer portal MUST keep the bottom navigation interactive across repeated route changes and window focus changes. Every lazy route transition MUST receive a fresh route boundary so stale loading or error state cannot retain the previous page.

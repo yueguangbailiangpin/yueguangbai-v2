@@ -14,6 +14,7 @@
 - [x] Seed audited staging-only manual Buyer and Seller intake channels for `AMAZON_JP`.
 - [x] Keep the mounted Staff shell visible when its browser tab regains focus.
 - [x] Show newly saved Seller organizations before portal registration and explain duplicate saves.
+- [x] Allow Staff to generate or safely replace a Seller registration link from the directory.
 - [x] Keep Buyer Tasks and Me navigation interactive across route and focus changes.
 
 ## Remote boundary
