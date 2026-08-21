@@ -52,3 +52,17 @@ The staging main Worker MUST call a private service-bound generator authenticate
 
 - **WHEN** any generator dependency is missing or invalid
 - **THEN** preparation fails closed without publishing the instruction or exposing keyword plaintext.
+
+### Requirement: customer intake explains and scopes site selection
+
+The customer-intake form MUST derive selectable sites from channels available to the current role. It MUST restrict the channel selector to the selected site. When no channel is available, it MUST show an explicit setup message and disable submission instead of rendering an unexplained blank selector.
+
+#### Scenario: rebuilt staging has no acquisition channel
+
+- **WHEN** an authorized Staff member opens customer intake before a matching acquisition channel is configured
+- **THEN** the site selector shows “暂无可用站点”, the page explains that a channel must be configured, and the save action is disabled.
+
+#### Scenario: multiple sites have intake channels
+
+- **WHEN** Staff changes the selected site
+- **THEN** the channel selector contains only channels bound to that site.

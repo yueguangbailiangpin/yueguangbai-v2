@@ -1,5 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { z } from 'zod';
 import { identityApiRequest } from '../../api/identity-request';
 import { operationHeaders } from '../../api/idempotency';
@@ -548,6 +548,7 @@ function LeadCreateCard({
   const session = useCurrentStaffSession();
   const buyer = leadType === 'BUYER';
   const [handoffId, setHandoffId] = useState('');
+  const [marketplaceCode, setMarketplaceCode] = useState('');
   const [saved, setSaved] = useState<SavedLead | null>(null);
   const [invitation, setInvitation] = useState<InvitationState | null>(null);
   const handoff = handoffs.find((item) => item.prospect_id === handoffId) ?? null;
@@ -562,6 +563,14 @@ function LeadCreateCard({
       return session.data_scope.marketplaceCodes;
     return [...new Set(eligibleChannels.map((channel) => channel.marketplace_code))];
   }, [eligibleChannels, session.data_scope.marketplaceCodes, session.data_scope.type]);
+  const marketplaceChannels = useMemo(
+    () => eligibleChannels.filter((channel) => channel.marketplace_code === marketplaceCode),
+    [eligibleChannels, marketplaceCode],
+  );
+  useEffect(() => {
+    if (handoff || markets.includes(marketplaceCode)) return;
+    setMarketplaceCode(markets[0] ?? '');
+  }, [handoff, marketplaceCode, markets]);
   const create = useMutation({
     mutationFn: (input: { body: unknown; draft: Omit<SavedLead, 'leadId'> }) =>
       acquisitionApi
@@ -675,7 +684,15 @@ function LeadCreateCard({
               />
             </>
           ) : (
-            <Select id={`${leadType}-market`} name="marketplace_code" required>
+            <Select
+              id={`${leadType}-market`}
+              name="marketplace_code"
+              value={marketplaceCode}
+              onChange={(event) => setMarketplaceCode(event.target.value)}
+              disabled={markets.length === 0}
+              required
+            >
+              {markets.length === 0 ? <option value="">暂无可用站点</option> : null}
               {markets.map((market) => (
                 <option key={market} value={market}>
                   {marketLabel(market)}
@@ -684,6 +701,11 @@ function LeadCreateCard({
             </Select>
           )}
         </FormField>
+        {!handoff && marketplaceChannels.length === 0 ? (
+          <Alert tone="warning">
+            当前没有可用的{buyer ? '买家' : '卖家'}接入渠道，请先在“客户开发”配置渠道。
+          </Alert>
+        ) : null}
         <FormField
           label="渠道"
           htmlFor={`${leadType}-channel`}
@@ -695,9 +717,14 @@ function LeadCreateCard({
               <TextInput id={`${leadType}-channel`} value={handoff.channel_label} readOnly />
             </>
           ) : (
-            <Select id={`${leadType}-channel`} name="channel_id" required>
+            <Select
+              id={`${leadType}-channel`}
+              name="channel_id"
+              disabled={marketplaceCode.length === 0}
+              required
+            >
               <option value="">请选择渠道</option>
-              {eligibleChannels.map((channel) => (
+              {marketplaceChannels.map((channel) => (
                 <option key={channel.channel_id} value={channel.channel_id}>
                   {channel.staff_label}
                 </option>
@@ -714,7 +741,12 @@ function LeadCreateCard({
         <FormField label="备注（可选）" htmlFor={`${leadType}-note`}>
           <TextInput id={`${leadType}-note`} name="note" />
         </FormField>
-        <Button loading={create.isPending}>保存新{buyer ? '买家' : '卖家'}客户</Button>
+        <Button
+          loading={create.isPending}
+          disabled={!handoff && (marketplaceCode.length === 0 || marketplaceChannels.length === 0)}
+        >
+          保存新{buyer ? '买家' : '卖家'}客户
+        </Button>
         {create.isError ? (
           <Alert tone="danger">
             保存未完成。如果这个微信在当前站点属于历史客户，请使用上方历史客户查询。

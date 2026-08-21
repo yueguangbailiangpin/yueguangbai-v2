@@ -10,6 +10,8 @@
 - [x] Run focused tests and type checks.
 - [x] Export and hash the old staging D1 before deletion.
 - [x] Recreate staging D1, apply migrations 0001-0070 and restore the test Owner.
+- [x] Explain an empty customer-intake site selector and scope channels to the selected site.
+- [x] Seed audited staging-only manual Buyer and Seller intake channels for `AMAZON_JP`.
 
 ## Remote boundary
 
