@@ -1,8 +1,6 @@
-import { useMemo } from 'react';
 import { ProtectedImagePreview } from '../../files/ProtectedImagePreview';
-import { GenericBuyerFileReadIntentAdapter } from '../../files/file-read-providers';
 
-export function ProtectedImage({
+export function StaffProtectedImage({
   reference,
   alt,
   className,
@@ -13,12 +11,9 @@ export function ProtectedImage({
   className?: string;
   fallback: React.ReactNode;
 }): React.JSX.Element {
-  const provider = useMemo(
-    () => new GenericBuyerFileReadIntentAdapter(reference),
-    [reference],
-  );
   return <ProtectedImagePreview
-    provider={provider}
+    identity="staff"
+    reference={reference}
     alt={alt}
     {...(className ? { className } : {})}
     fallback={fallback}

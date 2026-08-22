@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Routes } from 'react-router';
 import '../../test/msw/lifecycle';
 import { StaffSessionBoundary } from '../../auth/staff/StaffSessionBoundary';
@@ -14,6 +14,13 @@ import { server } from '../../test/msw/server';
 import { ProductSchedulingWorkspace } from './ProductSchedulingWorkspace';
 
 afterEach(cleanup);
+beforeEach(() => {
+  Object.defineProperty(URL, 'createObjectURL', {
+    configurable: true,
+    value: vi.fn(() => 'blob:staff-main-image'),
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+});
 
 describe('产品预约排期工作区', () => {
   it('labels the reset-cursor action as returning to the first page', async () => {
@@ -75,7 +82,7 @@ describe('产品预约排期工作区', () => {
   });
 
   it('shows product cadence controls only to owner or seller_ops with both permissions', async () => {
-    server.use(http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+    server.use(...mainImageReadHandlers(), http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
       HttpResponse.json({ data: { product: productDetail() }, meta: { request_id: 'product' } })));
     const cases = [
       { value: staffSession('buyer_refund', ['PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH']), visible: false },
@@ -182,18 +189,21 @@ describe('产品预约排期工作区', () => {
   });
 
   it('shows the bound main image with a protected view entry', async () => {
-    server.use(http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+    server.use(
+      ...mainImageReadHandlers(),
+      http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
       HttpResponse.json({
         data: { product: productDetail({
           file_object_id: 'product-image-1', file_version: 2,
           client_file_name: 'main.webp', bound_at: 1_786_161_600_000,
         }) },
         meta: { request_id: 'product' },
-      })));
+      })),
+    );
     renderWorkspace(owner(), '/staff/products/product-1');
     expect(await screen.findByRole('heading', { name: /当前版本主图/u })).toBeVisible();
     expect(screen.getByText('main.webp')).toBeVisible();
-    expect(screen.getByRole('button', { name: '查看主图' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: /查看大图：测试产品 主图/u })).toBeVisible();
     expect(screen.queryByRole('button', { name: '选择主图' })).not.toBeInTheDocument();
     expect(screen.getByText(/不可改写/u)).toBeVisible();
   });
@@ -202,6 +212,7 @@ describe('产品预约排期工作区', () => {
     const calls: Array<{ body: unknown; key: string | null }> = [];
     let bound = false;
     server.use(
+      ...mainImageReadHandlers(),
       http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
         HttpResponse.json({
           data: { product: productDetail(bound ? {
@@ -277,7 +288,7 @@ describe('产品预约排期工作区', () => {
       expected_file_version: 3,
     });
     expect(calls[0]!.key).toMatch(/\S/u);
-    expect(await screen.findByRole('button', { name: '查看主图' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: /查看大图：测试产品 主图/u })).toBeVisible();
     expect(screen.getByText(/已绑定主图/u)).toBeVisible();
   });
 
@@ -439,6 +450,31 @@ function preview() {
     before_theoretical_last_order_date: '2026-08-18',
     preview_hash: 'a'.repeat(64), timezone: 'Asia/Shanghai',
     data_as_of: 1_786_161_600_000 };
+}
+
+function mainImageReadHandlers() {
+  return [
+    http.post(apiUrl('/api/staff/files/product-image-1/read-intents'), () => HttpResponse.json({
+      data: {
+        read_intent_id: 'staff-main-image-intent',
+        file_object_id: 'product-image-1',
+        access_token: 'staff-image-token'.padEnd(40, 'x'),
+        access_token_available: true,
+        expires_at: 99,
+        replayed: false,
+      },
+      meta: { request_id: 'staff-main-image-read' },
+    })),
+    http.get(apiUrl('/api/staff/file-read-intents/staff-main-image-intent/content'), () => new Response(
+      Uint8Array.of(1, 2),
+      { headers: {
+        'Content-Type': 'image/png',
+        'Content-Length': '2',
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+      } },
+    )),
+  ];
 }
 
 function adapter(value: StaffSession): StaffAuthApiAdapter {

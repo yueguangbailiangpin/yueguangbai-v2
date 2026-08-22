@@ -20,7 +20,7 @@ import {
   StaffMutationAuthority,
   type StaffMutationRequest,
 } from '../mutations/StaffMutationAuthority';
-import { StaffProtectedFileButton } from '../shared/StaffProtectedFileButton';
+import { StaffProtectedImage } from '../shared/StaffProtectedImage';
 import { formatShanghai } from '../shared/format';
 
 export function ProductSchedulingWorkspace(): React.JSX.Element {
@@ -188,8 +188,10 @@ function MainImageCard({ product, canEdit }: {
     {bound ? <>
       <dl><dt>文件</dt><dd>{bound.client_file_name}</dd>
         <dt>绑定时间</dt><dd>{formatShanghai(bound.bound_at)}</dd></dl>
-      <StaffProtectedFileButton
-        label="查看主图"
+      <StaffProtectedImage
+        alt={`${current.product_name} 主图`}
+        className="protected-product-main-image"
+        fallback={<span className="protected-image-placeholder">主图加载中</span>}
         reference={{
           file_object_id: bound.file_object_id,
           file_version: bound.file_version,

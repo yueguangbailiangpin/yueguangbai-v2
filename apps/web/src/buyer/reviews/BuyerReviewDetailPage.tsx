@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 import { BuyerReviewFileReadIntentAdapter } from '../../files/file-read-providers';
+import { ProtectedImagePreview } from '../../files/ProtectedImagePreview';
 import {
   Alert,
   Button,
@@ -184,7 +185,12 @@ function ReviewFile({
           {file.mime} · {file.byte_size} 字节
         </p>
       </div>
-      <ProtectedFileButton provider={provider} />
+      {file.mime.startsWith('image/') ? <ProtectedImagePreview
+        provider={provider}
+        alt={file.client_file_name}
+        className="protected-evidence-thumbnail"
+        fallback={<span className="protected-image-placeholder">图片加载中</span>}
+      /> : <ProtectedFileButton provider={provider} />}
     </article>
   );
 }

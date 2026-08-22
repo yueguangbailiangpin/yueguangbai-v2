@@ -51,6 +51,7 @@ const labels: Record<StaffWorkItem['work_type'], string> = {
   REVIEW_DECISION: '评论审核',
   BUYER_REFUND_PROCESSING: '买家返款',
 };
+const STAFF_FACT_STALE_TIME_MS = 15_000;
 type RetainedSelection = Readonly<{
   queueIdentity: string;
   item: StaffWorkItem;
@@ -95,7 +96,7 @@ export function FrozenStaffWorkbench(): React.JSX.Element {
     queryFn: ({ signal }) =>
       staffApi.workItems(client, { status, workType, cursor }, signal).then((r) => r.data),
     retry: false,
-    staleTime: 0,
+    staleTime: STAFF_FACT_STALE_TIME_MS,
   });
   const hasCurrentQueue = query.isSuccess && !query.isFetching;
   const selectedFromQueue = hasCurrentQueue
@@ -383,7 +384,7 @@ function DemandColumns({
         .demandReviewContext(client, item.source_entity_id, signal)
         .then((r) => r.data.review_context),
     retry: false,
-    staleTime: 0,
+    staleTime: STAFF_FACT_STALE_TIME_MS,
   });
   const mutation = useMutation({
     mutationFn: (request: StaffMutationRequest | null) =>
@@ -540,7 +541,7 @@ function OrderColumns({
         .orderEvidence(client, item.source_entity_id, signal)
         .then((r) => r.data.order_evidence),
     retry: false,
-    staleTime: 0,
+    staleTime: STAFF_FACT_STALE_TIME_MS,
   });
   const mutation = useMutation({
     mutationFn: (request: StaffMutationRequest | null) =>
@@ -726,7 +727,7 @@ function ReviewColumns({
     queryFn: ({ signal }) =>
       staffApi.review(client, item.source_entity_id, signal).then((r) => r.data.review),
     retry: false,
-    staleTime: 0,
+    staleTime: STAFF_FACT_STALE_TIME_MS,
   });
   const mutation = useMutation({
     mutationFn: (request: StaffMutationRequest | null) =>
@@ -891,7 +892,7 @@ function RefundColumns({
     queryFn: ({ signal }) =>
       staffApi.buyerRefund(client, item.source_entity_id, signal).then((r) => r.data.buyer_refund),
     retry: false,
-    staleTime: 0,
+    staleTime: STAFF_FACT_STALE_TIME_MS,
   });
   const [confirm, setConfirm] = useState<{
     kind: 'payment' | 'reversal';

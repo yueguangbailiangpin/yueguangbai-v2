@@ -94,14 +94,14 @@ export function BuyerDemandsPage(): React.JSX.Element {
               key={item.demand_id}
               to={`/buyer/demands/${item.demand_id}`}
             >
-              <span className="buyer-product-icon" aria-hidden="true">
+              <div className="buyer-product-icon">
                 {item.main_image ? <ProtectedImage
                   reference={item.main_image}
                   alt=""
                   className="buyer-product-main-image"
                   fallback={<Tag />}
                 /> : <Tag />}
-              </span>
+              </div>
               <div className="buyer-product-row-main">
                 <div className="buyer-product-row-title">
                   <div>

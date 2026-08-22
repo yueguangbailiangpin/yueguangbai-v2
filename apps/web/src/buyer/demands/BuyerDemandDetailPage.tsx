@@ -42,14 +42,14 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
   if (query.isError) return <BuyerQueryError error={query.error} />;
   const demand = query.data;
   return <section className="buyer-page buyer-product-detail-page">
-    <header className="buyer-detail-header"><span className="buyer-product-icon">
+    <header className="buyer-detail-header"><div className="buyer-product-icon">
       {demand.main_image ? <ProtectedImage
         reference={demand.main_image}
         alt={`${demand.product_name} 主图`}
         className="buyer-product-main-image"
         fallback={<Tag aria-hidden="true" />}
       /> : <Tag aria-hidden="true" />}
-    </span>
+    </div>
       <div><p className="eyebrow">产品详情</p><h1>{demand.product_name}</h1><p>{demand.store_display_name}</p></div></header>
     <Card className="buyer-fact-card">
       <h2>预约信息</h2>

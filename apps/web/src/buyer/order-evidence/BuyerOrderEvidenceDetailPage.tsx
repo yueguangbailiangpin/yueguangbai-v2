@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { BuyerOrderEvidenceFileReadIntentAdapter } from '../../files/file-read-providers';
+import { ProtectedImagePreview } from '../../files/ProtectedImagePreview';
 import {
   Alert,
   Button,
@@ -213,7 +214,12 @@ function EvidenceFile({
         </p>
       </div>
       {provider ? (
-        <ProtectedFileButton provider={provider} />
+        file.mime.startsWith('image/') ? <ProtectedImagePreview
+          provider={provider}
+          alt={file.client_file_name}
+          className="protected-evidence-thumbnail"
+          fallback={<span className="protected-image-placeholder">图片加载中</span>}
+        /> : <ProtectedFileButton provider={provider} />
       ) : (
         <p className="metadata-only-note">历史文件仅保留元数据，当前没有读取授权。</p>
       )}
