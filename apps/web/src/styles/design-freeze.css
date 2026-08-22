@@ -390,6 +390,22 @@
 }
 .staff-pricing-breakdown-facts > li:last-child { border-bottom: 0; }
 .staff-pricing-checks ul { margin: 4px 0 0; padding-left: 18px; font-size: .74rem; }
+.staff-order-detail { min-width: 0; padding: 12px; display: grid; gap: 12px; }
+.staff-order-facts { margin: 0; padding: 0; list-style: none; font-size: .74rem; }
+.staff-order-facts > li {
+  display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline;
+  padding: 5px 2px; border-bottom: 1px solid #e9edf2;
+}
+.staff-order-facts > li:last-child { border-bottom: 0; }
+.staff-order-progress-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.staff-order-timeline { margin: 0; padding: 0; list-style: none; }
+.staff-order-timeline > li {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline;
+  padding: 7px 2px; border-bottom: 1px solid #e9edf2; font-size: .74rem;
+}
+.staff-order-timeline > li:last-child { border-bottom: 0; }
+.staff-order-timeline > li time { color: var(--mw-muted); }
+.staff-order-timeline-warning strong { color: #8a4b16; }
 .staff-queue-footnote {
   display: flex; align-items: center; gap: 8px;
   margin-top: 14px; color: var(--mw-muted); font-size: .68rem;

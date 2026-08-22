@@ -267,6 +267,43 @@ export const internalFinanceOrderDetailSchema = z
       .strict(),
   })
   .strict();
+export const staffOrderIntegritySchema = z
+  .object({
+    order_integrity: z
+      .object({
+        formal_order_id: z.string(),
+        canonical_marketplace_code: z.string(),
+        operational_state: z.string(),
+        events: z.array(
+          z
+            .object({
+              event_id: z.string(),
+              formal_order_id: z.string(),
+              event_type: z.string(),
+              reason: z.string().nullable(),
+              actor_staff_id: z.string(),
+              created_at: epoch,
+            })
+            .strict(),
+        ),
+        adjustments: z.array(
+          z
+            .object({
+              adjustment_id: z.string(),
+              formal_order_id: z.string(),
+              source_operational_event_id: z.string().nullable(),
+              adjustment_scope: z.string(),
+              amount_cny_fen: signedIntegerStringSchema,
+              reason: z.string().nullable(),
+              actor_staff_id: z.string(),
+              created_at: epoch,
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .strict();
 export const staffSellerServiceFeesSchema = z
   .object({
     seller_organization_id: z.string(),

@@ -11,6 +11,7 @@ import {
   SellerCustomersWorkspace,
 } from './acquisition/CustomerIntakeWorkspace';
 import { StaffFinanceWorkspace } from './finance/StaffFinanceWorkspace';
+import { StaffOrderDetailPage } from './orders/StaffOrderDetailPage';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 
 const loadStaffAdminRoutes = () => import('./StaffAdminRouteModule');
@@ -45,6 +46,7 @@ export function StaffRoutePage(): React.JSX.Element {
   )
     return <RouteChunkBoundary load={loadStaffSchedulingRoutes} />;
   if (pathname.startsWith('/staff/finance')) return <StaffFinanceWorkspace />;
+  if (/^\/staff\/orders\/[^/]+$/u.test(pathname)) return <StaffOrderDetailPage />;
   // The pre-batch rate center kept both legacy paths reachable without
   // redirects; the finance workspace now owns the page and the legacy paths
   // (including preflight deep links) forward with their query intact.

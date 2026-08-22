@@ -37,6 +37,7 @@ import {
   staffSellerPrincipalRatePoliciesResponseSchema,
   staffSellerPrincipalRatePolicyMutationSchema,
   internalFinanceOrderDetailSchema,
+  staffOrderIntegritySchema,
   staffRateCenterSchema,
   staffRateCenterBaseMutationSchema,
   staffSellerServiceFeesSchema,
@@ -378,6 +379,16 @@ export const staffApi = Object.freeze({
       signal,
     ).then((response) => ({
       data: response.data.order,
+      requestId: response.requestId,
+    })),
+  orderIntegrity: (client: QueryClient, formalOrderId: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/order-integrity/${encodeURIComponent(formalOrderId)}`,
+      staffOrderIntegritySchema,
+      signal,
+    ).then((response) => ({
+      data: response.data.order_integrity,
       requestId: response.requestId,
     })),
   submitOrderDayBaseRate: (client: QueryClient, body: unknown, key: string) =>

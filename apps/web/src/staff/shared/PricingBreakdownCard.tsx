@@ -118,7 +118,10 @@ export function PricingBreakdownCard({
           ))}
         </ul>
       </section>
-      <p className="hint">正式订单 ID：{orderId}；历史快照不回写。</p>
+      <p className="hint">
+        正式订单 ID：{orderId} · <a href={`/staff/orders/${encodeURIComponent(orderId)}`}>查看订单详情</a>
+        ；历史快照不回写。
+      </p>
     </Card>
   );
 }
