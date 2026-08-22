@@ -257,6 +257,29 @@ function installOrderHandlers(options: {
         meta: { request_id: 'order-detail' },
       }),
     ),
+    http.post(apiUrl('/api/staff/files/screenshot-1/read-intents'), () =>
+      HttpResponse.json({
+        data: {
+          read_intent_id: 'order-screenshot-intent',
+          file_object_id: 'screenshot-1',
+          access_token: 'order-screenshot-token'.padEnd(40, 'x'),
+          access_token_available: true,
+          expires_at: 99,
+          replayed: false,
+        },
+        meta: { request_id: 'order-screenshot-read' },
+      }),
+    ),
+    http.get(apiUrl('/api/staff/file-read-intents/order-screenshot-intent/content'), () =>
+      new Response(Uint8Array.of(1, 2), {
+        headers: {
+          'Content-Type': 'image/png',
+          'Content-Length': '2',
+          'Cache-Control': 'private, no-store',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }),
+    ),
     http.get(apiUrl('/api/staff/order-evidence/evidence-1/preflight'), () =>
       HttpResponse.json({
         data: {

@@ -42,6 +42,7 @@ import {
 } from './shared/staffMutationOutcome';
 import { StaffPanelError } from './shared/StaffPanelError';
 import { StaffProtectedFileButton } from './shared/StaffProtectedFileButton';
+import { StaffProtectedImage } from './shared/StaffProtectedImage';
 
 const labels: Record<StaffWorkItem['work_type'], string> = {
   PRODUCT_APPLICATION_REVIEW: '商品申请审核',
@@ -744,7 +745,12 @@ function OrderFacts({ value }: { value: StaffOrderEvidence }) {
         <Fact label="订单号" value={value.amazon_order_number_normalized} />
         <Fact label="订单日期" value={value.amazon_order_date ?? '未知'} />
         <Fact label="最终支付" value={`${value.final_paid_jpy} JPY`} />
-        <StaffProtectedFileButton reference={value.screenshot} label="查看订单截图" />
+        <StaffProtectedImage
+          reference={value.screenshot}
+          alt="订单截图"
+          className="protected-evidence-thumbnail"
+          fallback={<span className="protected-image-placeholder">订单截图加载中</span>}
+        />
       </Card>
       <Card className="internal-note">
         <h3>内部核对</h3>
@@ -898,7 +904,15 @@ function ReviewFacts({ value }: { value: StaffReview }) {
         <Fact label="评论类型" value={value.review_type} />
         <Fact label="评论链接" value={value.current_evidence.review_url ?? '无'} />
         <Fact label="买家备注" value={value.current_evidence.buyer_note ?? '无'} />
-        {value.current_evidence.files.map((file) => (
+        {value.current_evidence.files.map((file) => file.mime.startsWith('image/') ? (
+          <StaffProtectedImage
+            key={file.file_object_id}
+            reference={file}
+            alt={file.client_file_name}
+            className="protected-evidence-thumbnail"
+            fallback={<span className="protected-image-placeholder">图片加载中</span>}
+          />
+        ) : (
           <StaffProtectedFileButton
             key={file.file_object_id}
             reference={file}
