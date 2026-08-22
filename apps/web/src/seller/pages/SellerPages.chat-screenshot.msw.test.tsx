@@ -271,23 +271,19 @@ describe('Seller formal-order chat screenshot UI', () => {
       expect(screen.getAllByText('聊天截图')).toHaveLength(2);
       expect(screen.getByText('已上传')).toBeTruthy();
       expect(screen.getByText('暂无聊天截图')).toBeTruthy();
-      expect(screen.queryByText('查看聊天截图')).toBeNull();
+      expect(screen.queryByAltText('订单聊天截图')).toBeNull();
       expect(readIntentRequests).toBe(0);
       expect(contentRequests).toBe(0);
       expect(client.getQueryData(sellerQueryKeys.ordersPage(null, null))).toBeDefined();
       expect(client.getQueryData(['buyer', 'orders', 'all'])).toBeUndefined();
 
       await userEvent.click(screen.getByRole('button', { name: '展开聊天截图' }));
-      expect(await screen.findByText('查看聊天截图')).toBeTruthy();
-      expect(readIntentRequests).toBe(0);
-      expect(contentRequests).toBe(0);
-
-      await userEvent.click(screen.getByRole('button', { name: '查看聊天截图' }));
-      expect((await screen.findByRole('link', { name: '打开文件' })).getAttribute('href')).toBe(
-        'blob:seller-chat',
-      );
+      expect(await screen.findByAltText('订单聊天截图')).toBeTruthy();
       expect(readIntentRequests).toBe(1);
       expect(contentRequests).toBe(1);
+
+      await userEvent.click(screen.getByRole('button', { name: '查看大图：订单聊天截图' }));
+      expect(screen.getByRole('dialog')).toBeTruthy();
       expect(
         JSON.stringify(
           client

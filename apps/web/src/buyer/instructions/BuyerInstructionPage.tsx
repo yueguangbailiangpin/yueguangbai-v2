@@ -3,12 +3,12 @@ import { useMemo } from 'react';
 import { Link, useParams } from 'react-router';
 import { isFrontendApiError } from '../../api/errors';
 import { BuyerInstructionImageReadIntentAdapter } from '../../files/file-read-providers';
+import { ProtectedImagePreview } from '../../files/ProtectedImagePreview';
 import { Card, PageHeader, StatusBadge } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { statusLabel, statusTone } from '../shared/status';
 
@@ -176,7 +176,13 @@ function InstructionImages({
       <h2>商品图片</h2>
       <div className="instruction-image-item">
         <strong>主图</strong>
-        <ProtectedFileButton provider={main} label="查看主图" errorSubject="主图" />
+        <ProtectedImagePreview
+          provider={main}
+          alt={`${instruction.product_name} 主图`}
+          className="protected-product-main-image"
+          dialogTitle={`${instruction.product_name} 主图`}
+          fallback={<span className="protected-image-placeholder" aria-hidden="true">—</span>}
+        />
       </div>
     </Card>
   );

@@ -13,7 +13,7 @@ import {
 } from '../../ui/primitives';
 import { useBuyerMutation } from '../../buyer/mutations/useBuyerMutation';
 import { BuyerMutationRecovery } from '../../buyer/shared/BuyerMutationRecovery';
-import { ProtectedFileButton } from '../../buyer/shared/ProtectedFileButton';
+import { ProtectedImagePreview } from '../../files/ProtectedImagePreview';
 import { SellerOrderChatScreenshotReadIntentAdapter } from '../../files/file-read-providers';
 import { CursorPagination } from '../../ui/CursorPagination';
 import { sellerApi } from '../api/client';
@@ -889,7 +889,14 @@ function SellerChatScreenshotControl({
       >
         {expanded ? '收起聊天截图' : '展开聊天截图'}
       </Button>
-      {expanded ? <ProtectedFileButton provider={provider} label="查看聊天截图" /> : null}
+      {expanded ? (
+        <ProtectedImagePreview
+          provider={provider}
+          alt="订单聊天截图"
+          className="protected-evidence-thumbnail"
+          fallback={<span>聊天截图加载中</span>}
+        />
+      ) : null}
     </span>
   );
 }
