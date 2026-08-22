@@ -53,7 +53,7 @@ describe('application route registration', () => {
       ),
     );
 
-    renderWithMsw(<AppRoutes />, { route: '/staff/seller-principal-rate-policies' });
+    renderWithMsw(<AppRoutes />, { route: '/staff/rate-center' });
 
     expect(
       await screen.findByRole('heading', {
