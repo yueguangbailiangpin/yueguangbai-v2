@@ -615,7 +615,7 @@ function requireOrderInstructionReadiness(source: DemandSource): void {
   } catch {
     throw new DemandBatchError('VALIDATION_ERROR', 409, {
       field: 'search_keywords',
-      reason: '产品版本缺少有效的搜索关键词，需先补齐再发布。',
+      reason: `产品版本 v${source.product_version_no} 缺少有效的搜索关键词；若已在更新的版本补齐，请让卖家撤回本批次后重新提交，再发布。`,
     });
   }
 }

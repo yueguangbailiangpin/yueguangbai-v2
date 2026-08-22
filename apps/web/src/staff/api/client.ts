@@ -38,6 +38,8 @@ import {
   staffSellerPrincipalRatePolicyMutationSchema,
   staffRateCenterSchema,
   staffRateCenterBaseMutationSchema,
+  staffSellerServiceFeesSchema,
+  staffSellerServiceFeeMutationSchema,
 } from '../contracts/runtime';
 
 const acquisitionChannelResultSchema = z
@@ -305,6 +307,37 @@ export const staffApi = Object.freeze({
       `/api/staff/seller-principal-rate-policies/${encodeURIComponent(id)}/reject`,
       body,
       staffSellerPrincipalRatePolicyMutationSchema,
+      key,
+    ),
+  sellerServiceFees: (client: QueryClient, sellerOrganizationId: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/seller-service-fees?seller_organization_id=${encodeURIComponent(sellerOrganizationId)}`,
+      staffSellerServiceFeesSchema,
+      signal,
+    ),
+  submitSellerServiceFee: (client: QueryClient, body: unknown, key: string) =>
+    write(
+      client,
+      '/api/staff/seller-service-fees/submit',
+      body,
+      staffSellerServiceFeeMutationSchema,
+      key,
+    ),
+  confirmSellerServiceFee: (client: QueryClient, id: string, body: unknown, key: string) =>
+    write(
+      client,
+      `/api/staff/seller-service-fees/${encodeURIComponent(id)}/confirm`,
+      body,
+      staffSellerServiceFeeMutationSchema,
+      key,
+    ),
+  rejectSellerServiceFee: (client: QueryClient, id: string, body: unknown, key: string) =>
+    write(
+      client,
+      `/api/staff/seller-service-fees/${encodeURIComponent(id)}/reject`,
+      body,
+      staffSellerServiceFeeMutationSchema,
       key,
     ),
   rateCenter: (

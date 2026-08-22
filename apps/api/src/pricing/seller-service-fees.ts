@@ -3,7 +3,7 @@ import type {
   ResolvedSellerServiceFee,
   SqlDatabase,
 } from '@ygb/contracts';
-import { isPricingReviewType } from '@ygb/contracts';
+import { DEMAND_TASK_TYPES, isPricingReviewType } from '@ygb/contracts';
 import {
   decideSellerRuleVersion,
   resolveSellerRuleVersion,
@@ -157,4 +157,95 @@ function mapFee(result: Awaited<
     confirmed_at: result.confirmed_at,
     replayed: result.replayed,
   };
+}
+
+export interface SellerServiceFeeOverviewEntry {
+  review_type: PricingReviewType;
+  effective_fee: {
+    fee_version_id: string;
+    version_no: number;
+    fee_cny_fen: string;
+    effective_from: number;
+    confirmed_at: number;
+  } | null;
+  pending_fee: {
+    fee_version_id: string;
+    version_no: number;
+    decision_version: number;
+    fee_cny_fen: string;
+    effective_from: number;
+  } | null;
+  next_version: number;
+}
+
+/**
+ * Per-review-type service fee state for the staff rate center: the currently
+ * effective confirmed fee, any submitted-but-undecided fee, and the next
+ * submit version.  Missing types are returned with null facts so the UI can
+ * render the full four-type configuration matrix.
+ */
+export async function readSellerServiceFeeOverview(
+  database: SqlDatabase,
+  input: { sellerOrganizationId: string; at: number },
+): Promise<SellerServiceFeeOverviewEntry[]> {
+  const rows = await database
+    .prepare(
+      `
+      SELECT id, review_type, version_no, status, fee_cny_fen,
+             effective_from, decision_version, confirmed_at
+      FROM seller_service_fee_versions
+      WHERE organization_id=?
+      ORDER BY review_type, version_no
+    `,
+    )
+    .bind(input.sellerOrganizationId)
+    .all<{
+      id: string;
+      review_type: string;
+      version_no: number;
+      status: string;
+      fee_cny_fen: number;
+      effective_from: number;
+      decision_version: number;
+      confirmed_at: number | null;
+    }>();
+  const entries = new Map<PricingReviewType, SellerServiceFeeOverviewEntry>(
+    DEMAND_TASK_TYPES.map((reviewType) => [
+      reviewType,
+      {
+        review_type: reviewType,
+        effective_fee: null,
+        pending_fee: null,
+        next_version: 1,
+      },
+    ]),
+  );
+  for (const row of rows.results) {
+    if (!isPricingReviewType(row.review_type)) continue;
+    const entry = entries.get(row.review_type)!;
+    entry.next_version = Number(row.version_no) + 1;
+    if (row.status === 'SUBMITTED') {
+      entry.pending_fee = {
+        fee_version_id: row.id,
+        version_no: Number(row.version_no),
+        decision_version: Number(row.decision_version),
+        fee_cny_fen: String(row.fee_cny_fen),
+        effective_from: Number(row.effective_from),
+      };
+    } else if (
+      row.status === 'CONFIRMED'
+      && Number(row.effective_from) <= input.at
+      && (entry.effective_fee === null
+        || Number(row.effective_from) >= entry.effective_fee.effective_from)
+    ) {
+      entry.effective_fee = {
+        fee_version_id: row.id,
+        version_no: Number(row.version_no),
+        fee_cny_fen: String(row.fee_cny_fen),
+        effective_from: Number(row.effective_from),
+        confirmed_at: Number(row.confirmed_at ?? 0),
+      };
+    }
+  }
+  return DEMAND_TASK_TYPES.map((reviewType) => entries.get(reviewType)!);
 }

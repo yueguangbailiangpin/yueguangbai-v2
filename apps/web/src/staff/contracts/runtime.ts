@@ -108,6 +108,60 @@ export const staffRateCenterBaseMutationSchema = z
     base_rate: buyerDailyExchangeRateVersionSchema,
   })
   .strict();
+const serviceFeeReviewTypeSchema = z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']);
+const serviceFeeEffectiveSchema = z
+  .object({
+    fee_version_id: z.string(),
+    version_no: z.number().int().positive(),
+    fee_cny_fen: integerString,
+    effective_from: epoch,
+    confirmed_at: epoch,
+  })
+  .strict();
+const serviceFeePendingSchema = z
+  .object({
+    fee_version_id: z.string(),
+    version_no: z.number().int().positive(),
+    decision_version: z.number().int().positive(),
+    fee_cny_fen: integerString,
+    effective_from: epoch,
+  })
+  .strict();
+export const sellerServiceFeeVersionSchema = z
+  .object({
+    fee_version_id: z.string(),
+    seller_organization_id: z.string(),
+    review_type: serviceFeeReviewTypeSchema,
+    version_no: z.number().int().positive(),
+    decision_version: z.number().int().positive(),
+    status: z.enum(['SUBMITTED', 'CONFIRMED', 'REJECTED']),
+    fee_cny_fen: integerString,
+    effective_from: epoch,
+    rejection_reason: z.string().nullable(),
+    confirmed_at: epoch.nullable(),
+    replayed: z.boolean(),
+  })
+  .strict();
+export const staffSellerServiceFeesSchema = z
+  .object({
+    seller_organization_id: z.string(),
+    fees: z.array(
+      z
+        .object({
+          review_type: serviceFeeReviewTypeSchema,
+          effective_fee: serviceFeeEffectiveSchema.nullable(),
+          pending_fee: serviceFeePendingSchema.nullable(),
+          next_version: z.number().int().positive(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export const staffSellerServiceFeeMutationSchema = z
+  .object({
+    fee: sellerServiceFeeVersionSchema,
+  })
+  .strict();
 export const safeFileSchema = z
   .object({
     file_object_id: z.string(),

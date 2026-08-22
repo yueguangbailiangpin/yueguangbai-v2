@@ -87,6 +87,10 @@ export async function authorizeExplicitAudienceRead(
  * while the catalog itself is dynamically public only to an eligible Buyer.
  * Keep that dynamic catalog boundary here instead of issuing permanent grants
  * to every Buyer or exposing the storage object address.
+ *
+ * A Buyer who already holds an active reservation on the demand keeps read
+ * access to its main image for the whole order journey, even after the
+ * catalog window closes or the batch sells out.
  */
 async function activeBuyerCatalogImageAccessExists(
   database: SqlDatabase,
@@ -135,12 +139,6 @@ async function activeBuyerCatalogImageAccessExists(
       AND demand.organization_id=product.organization_id
       AND demand.store_id=product.store_id
       AND demand.marketplace_code=product.marketplace_code
-      AND demand.status='PUBLISHED'
-      AND demand.open_at<=?
-      AND demand.reservation_deadline>?
-      AND demand.order_deadline>?
-      AND (demand.held_reservation_count + demand.approved_reservation_count)
-        < demand.target_quantity
     WHERE account.id=?
       AND account.identity_subject_id=?
       AND account.status='ACTIVE'
@@ -151,29 +149,46 @@ async function activeBuyerCatalogImageAccessExists(
         WHEN 'AMAZON_JP' THEN 'JP'
         ELSE assignment.marketplace_code
       END=demand.marketplace_code
-      AND NOT EXISTS (
-        SELECT 1
-        FROM product_reservations existing
-        WHERE existing.demand_batch_id=demand.id
-          AND existing.buyer_customer_id=buyer.id
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM product_reservations active
-        WHERE active.buyer_customer_id=buyer.id
-          AND active.product_id=demand.product_id
-          AND active.status IN ('PENDING_REVIEW', 'APPROVED')
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM product_reservations owned
+          WHERE owned.demand_batch_id=demand.id
+            AND owned.buyer_customer_id=buyer.id
+            AND owned.status IN ('PENDING_REVIEW', 'APPROVED')
+        )
+        OR (
+          demand.status='PUBLISHED'
+          AND demand.open_at<=?
+          AND demand.reservation_deadline>?
+          AND demand.order_deadline>?
+          AND (demand.held_reservation_count + demand.approved_reservation_count)
+            < demand.target_quantity
+          AND NOT EXISTS (
+            SELECT 1
+            FROM product_reservations existing
+            WHERE existing.demand_batch_id=demand.id
+              AND existing.buyer_customer_id=buyer.id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM product_reservations active
+            WHERE active.buyer_customer_id=buyer.id
+              AND active.product_id=demand.product_id
+              AND active.status IN ('PENDING_REVIEW', 'APPROVED')
+          )
+        )
       )
     LIMIT 1
   `).bind(
     linkId,
     now,
-    now,
-    now,
-    now,
     principal.accountId,
     principal.identitySubjectId,
     buyerCustomerId,
+    now,
+    now,
+    now,
   ).first<{ allowed: number }>();
   return Number(row?.allowed) === 1;
 }

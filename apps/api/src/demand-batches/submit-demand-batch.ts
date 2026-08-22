@@ -47,6 +47,7 @@ interface ProductSource {
   marketplace_code: 'JP';
   product_status: string;
   product_version_no: number;
+  search_keywords_json: string;
   order_interval_days: number | null;
   orders_per_run: number | null;
   store_status: string;
@@ -382,6 +383,7 @@ async function requireProductSource(
       product.marketplace_code,
       product.status AS product_status,
       product.current_version_no AS product_version_no,
+      version.search_keywords_json,
       version.order_interval_days,
       version.orders_per_run,
       store.status AS store_status,
@@ -409,6 +411,23 @@ async function requireProductSource(
     || row.store_status !== 'ACTIVE'
     || row.organization_status !== 'ACTIVE') {
     throw new DemandBatchError('VALIDATION_ERROR', 409);
+  }
+  // Publish readiness is enforced at submission as well, so the seller learns
+  // about a missing search keyword now instead of at staff review time when
+  // the batch is already pinned to this product version.
+  try {
+    const keywords = JSON.parse(row.search_keywords_json) as unknown;
+    if (!Array.isArray(keywords)
+      || keywords.length < 1
+      || keywords.some((keyword) => typeof keyword !== 'string'
+        || keyword.normalize('NFKC').trim().length < 1)) {
+      throw new Error('invalid keywords');
+    }
+  } catch {
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'search_keywords',
+      reason: `产品版本 v${row.product_version_no} 缺少有效的搜索关键词，请先在产品资料中补齐后再提交投放。`,
+    });
   }
   return row;
 }

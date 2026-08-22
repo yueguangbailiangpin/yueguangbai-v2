@@ -4,6 +4,8 @@ export const staffWorkbenchKeys = Object.freeze({
     ['staff', 'seller-principal-rate-policies', authorizationVersion, organizationId] as const,
   rateCenter: (authorizationVersion: number, businessDate: string, organizationId: string | null) =>
     ['staff', 'rate-center', authorizationVersion, businessDate, organizationId] as const,
+  sellerServiceFees: (authorizationVersion: number, organizationId: string) =>
+    ['staff', 'seller-service-fees', authorizationVersion, organizationId] as const,
   root: ['staff', 'workbench'] as const,
   queueRoot: ['staff', 'workbench', 'queue'] as const,
   productsRoot: ['staff', 'products'] as const,

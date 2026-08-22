@@ -177,6 +177,57 @@ describe('explicit file audiences', () => {
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
+  it('keeps the catalog main image readable for a Buyer holding an active reservation', async () => {
+    const resource = seedPublishedCatalogMainImage(database);
+    database.exec(`
+      INSERT INTO product_reservations (
+        id, demand_batch_id, buyer_customer_id, organization_id, store_id,
+        product_id, product_version_no, marketplace_code, status,
+        precheck_snapshot_json, hold_expires_at, order_deadline_snapshot,
+        version, submitted_at, updated_at
+      ) VALUES (
+        'owned-reservation-1', 'catalog-demand-1', 'buyer-1', 'seller-org-1',
+        'catalog-store-1', 'catalog-product-1', 1, 'JP', 'PENDING_REVIEW',
+        '{}', 9000, 12000, 1, 6000, 6000
+      );
+    `);
+    await expect(authorize(
+      resource,
+      buyerActor('buyer-1'),
+      buyerPrincipal(1),
+      6000,
+    )).resolves.toBeUndefined();
+
+    // Past the reservation deadline and sold out, the owning Buyer still
+    // reads the main image for their order journey.
+    database.exec(`
+      UPDATE demand_batches
+      SET reservation_deadline=6000, order_deadline=6100,
+          target_quantity=2, held_reservation_count=1,
+          approved_reservation_count=1, updated_at=6500
+      WHERE id='catalog-demand-1';
+      UPDATE product_reservations
+      SET status='APPROVED', decided_by_staff_id='staff-file-owner',
+          decided_at=6500, updated_at=6500
+      WHERE id='owned-reservation-1';
+    `);
+    await expect(authorize(
+      resource,
+      buyerActor('buyer-1'),
+      buyerPrincipal(1),
+      6600,
+    )).resolves.toBeUndefined();
+
+    // A different Buyer without a reservation loses access once the window
+    // has closed.
+    await expect(authorize(
+      resource,
+      buyerActor('buyer-2'),
+      buyerPrincipal(2),
+      6600,
+    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
   it('rejects disabled accounts, members, organizations, and ungranted subjects', async () => {
     const fixture = await explicitFixture();
     database.exec(`

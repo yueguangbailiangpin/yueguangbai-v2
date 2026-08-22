@@ -24,6 +24,12 @@ describe('汇率中心 Staff 工作台', () => {
           meta: { request_id: 'rate-center-read' },
         }),
       ),
+      http.get(apiUrl('/api/staff/seller-service-fees'), () =>
+        HttpResponse.json({
+          data: serviceFeesPayload(),
+          meta: { request_id: 'fees-read' },
+        }),
+      ),
       http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () =>
         HttpResponse.json({
           data: { policies: readPayload() },
@@ -89,6 +95,12 @@ describe('汇率中心 Staff 工作台', () => {
           meta: { request_id: 'rate-center-read' },
         }),
       ),
+      http.get(apiUrl('/api/staff/seller-service-fees'), () =>
+        HttpResponse.json({
+          data: serviceFeesPayload(),
+          meta: { request_id: 'fees-read' },
+        }),
+      ),
       http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () =>
         HttpResponse.json({
           data: {
@@ -145,6 +157,12 @@ describe('汇率中心 Staff 工作台', () => {
         HttpResponse.json({
           data: rateCenterPayload(),
           meta: { request_id: 'rate-center-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/seller-service-fees'), () =>
+        HttpResponse.json({
+          data: serviceFeesPayload(),
+          meta: { request_id: 'fees-read' },
         }),
       ),
       http.get(apiUrl('/api/staff/seller-principal-rate-policies'), ({ request }) => {
@@ -291,6 +309,18 @@ function readPayload(overrides: Record<string, unknown> = {}) {
     seller_override_next_version: 2,
     selected_policy: policy('override-1', 'CONFIRMED', 2, '0', null),
     ...overrides,
+  };
+}
+
+function serviceFeesPayload() {
+  return {
+    seller_organization_id: 'seller-1',
+    fees: ['RATING', 'TEXT', 'IMAGE', 'VIDEO'].map((reviewType) => ({
+      review_type: reviewType,
+      effective_fee: null,
+      pending_fee: null,
+      next_version: 1,
+    })),
   };
 }
 

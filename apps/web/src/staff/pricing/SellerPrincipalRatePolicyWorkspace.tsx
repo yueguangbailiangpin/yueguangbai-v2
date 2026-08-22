@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { isFrontendApiError } from '../../api/errors';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
 import {
@@ -30,9 +30,11 @@ type RateCenter = Awaited<ReturnType<typeof staffApi.rateCenter>>['data'];
 export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
   const session = useCurrentStaffSession();
   const client = useQueryClient();
-  const [organizationId, setOrganizationId] = useState(
-    session.data_scope.sellerOrganizationIds[0] ?? '',
-  );
+  // Marketplace-wide organization ids are NOT preselected: the backend only
+  // treats organizations assigned to this staff member as readable, and a
+  // preselected unassigned organization made the whole page 404.  The first
+  // backend-visible organization is selected after the read succeeds.
+  const [organizationId, setOrganizationId] = useState('');
   const [businessDate, setBusinessDate] = useState(() => chinaDate());
   const canRead =
     (session.role.code === 'owner' || session.role.code === 'seller_ops') &&
@@ -84,6 +86,32 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
     enabled: canRead && (isGlobalOwner || selectedOrganizationId !== null),
     retry: false,
   });
+  const serviceFees = useQuery({
+    queryKey: staffWorkbenchKeys.sellerServiceFees(
+      session.authorization_version,
+      selectedOrganizationId ?? '',
+    ),
+    queryFn: ({ signal }) =>
+      staffApi
+        .sellerServiceFees(client, selectedOrganizationId!, signal)
+        .then((response) => response.data),
+    enabled: canRead && selectedOrganizationId !== null,
+    retry: false,
+  });
+  // The organization list survives rate-center refetches so the dropdown
+  // never flashes empty while an organization selection re-queries.
+  const lastOrganizations = useRef(rateCenter.data?.seller_organizations);
+  if (rateCenter.data?.seller_organizations) {
+    lastOrganizations.current = rateCenter.data.seller_organizations;
+  }
+  const visibleOrganizations = rateCenter.data?.seller_organizations
+    ?? lastOrganizations.current
+    ?? [];
+  useEffect(() => {
+    if (isGlobalOwner || organizationId.length > 0) return;
+    const first = visibleOrganizations[0];
+    if (first) setOrganizationId(first.seller_organization_id);
+  }, [isGlobalOwner, organizationId, visibleOrganizations]);
 
   async function execute(request: StaffMutationRequest | null): Promise<void> {
     setMessage(null);
@@ -194,7 +222,7 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
               required={!isGlobalOwner}
             >
               {isGlobalOwner ? <option value="">默认加点（所有卖家）</option> : null}
-              {(rateCenter.data?.seller_organizations ?? []).map((organization) => (
+              {visibleOrganizations.map((organization) => (
                 <option
                   key={organization.seller_organization_id}
                   value={organization.seller_organization_id}
@@ -295,6 +323,9 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
                     required
                   />
                 </FormField>
+                <p className="hint">
+                  生效时间必须晚于当前时间；提交后需在生效前完成 Owner 确认，确认后到点即生效。
+                </p>
                 <Button
                   className="danger"
                   disabled={
@@ -318,6 +349,36 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
         </>
       ) : (
         <Alert tone="info">选择负责的卖家组织后可读取默认加点与组织专属覆盖。</Alert>
+      )}
+      {selectedOrganizationId !== null ? (
+        serviceFees.isPending ? (
+          <p role="status">正在读取卖家服务费</p>
+        ) : serviceFees.isError ? (
+          <PolicyError
+            error={serviceFees.error}
+            retry={() => {
+              void serviceFees.refetch();
+            }}
+          />
+        ) : serviceFees.data ? (
+          <ServiceFeeCard
+            organizationId={selectedOrganizationId}
+            organizationName={
+              visibleOrganizations.find(
+                (organization) =>
+                  organization.seller_organization_id === selectedOrganizationId,
+              )?.seller_organization_name ?? selectedOrganizationId
+            }
+            value={serviceFees.data}
+            canSubmit={hasManage && (isGlobalOwner || session.role.code === 'seller_ops')}
+            canDecide={canDecide}
+            refresh={async () => {
+              await serviceFees.refetch();
+            }}
+          />
+        ) : null
+      ) : (
+        <Alert tone="info">选择卖家组织后可配置该组织的卖家服务费。</Alert>
       )}
       {message ? (
         <Alert tone={message.includes('未完成') ? 'danger' : 'success'}>{message}</Alert>
@@ -356,7 +417,7 @@ function OrderDayBaseRateCard({
       setMessage('订单日基础汇率已提交，等待 Owner 确认。');
       await refresh();
     },
-    onError: () => setMessage('基础汇率提交未完成，请刷新后重试。'),
+    onError: (error) => setMessage(baseRateErrorMessage('提交', error)),
   });
   const confirm = useMutation({
     mutationFn: () =>
@@ -370,7 +431,15 @@ function OrderDayBaseRateCard({
       setMessage('订单日基础汇率已确认。');
       await refresh();
     },
-    onError: () => setMessage('基础汇率确认未完成，请刷新后重试。'),
+    onError: (error) => {
+      setMessage(baseRateErrorMessage('确认', error));
+      if (
+        isFrontendApiError(error)
+        && (error.code === 'VERSION_CONFLICT' || error.code === 'NOT_FOUND')
+      ) {
+        void refresh();
+      }
+    },
   });
   const confirmed = value.base_rate.confirmed_rate;
   const pending = value.base_rate.pending_rate;
@@ -550,6 +619,221 @@ function DecisionCards({
   );
 }
 
+const SERVICE_FEE_REVIEW_TYPE_LABELS: Record<string, string> = {
+  RATING: '评分单',
+  TEXT: '文字评论',
+  IMAGE: '图片评论',
+  VIDEO: '视频评论',
+};
+
+function serviceFeeErrorMessage(action: string, error: unknown): string {
+  if (!isFrontendApiError(error)) return `服务费${action}未完成，请稍后重试。`;
+  if (error.code === 'FORBIDDEN') {
+    return `当前账号无权${action}卖家服务费（确认需要 Owner 且具备财务纠正权限）。`;
+  }
+  if (error.code === 'VERSION_CONFLICT' || error.code === 'NOT_FOUND') {
+    return `服务费${action}未完成：数据已变化，请刷新后重试。`;
+  }
+  return `服务费${action}未完成（${error.code}），请刷新后重试。`;
+}
+
+function yuanToFen(value: string): string | null {
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/u.exec(value.trim());
+  if (!match) return null;
+  const fraction = (match[2] ?? '').padEnd(2, '0');
+  return String(Number(match[1]) * 100 + Number(fraction));
+}
+
+function fenToYuan(value: string): string {
+  const fen = Number(value);
+  return `¥${(fen / 100).toFixed(2)}`;
+}
+
+function ServiceFeeCard({
+  organizationId,
+  organizationName,
+  value,
+  canSubmit,
+  canDecide,
+  refresh,
+}: {
+  organizationId: string;
+  organizationName: string;
+  value: Awaited<ReturnType<typeof staffApi.sellerServiceFees>>['data'];
+  canSubmit: boolean;
+  canDecide: boolean;
+  refresh: () => Promise<void>;
+}): React.JSX.Element {
+  const client = useQueryClient();
+  const [reviewType, setReviewType] = useState<'RATING' | 'TEXT' | 'IMAGE' | 'VIDEO'>('RATING');
+  const [feeYuan, setFeeYuan] = useState('');
+  const [effectiveAt, setEffectiveAt] = useState(() => futureDateTime());
+  const [message, setMessage] = useState<string | null>(null);
+  const entry = value.fees.find((candidate) => candidate.review_type === reviewType);
+
+  const submit = useMutation({
+    mutationFn: () => {
+      const fen = yuanToFen(feeYuan);
+      const effective = parseBeijingDateTime(effectiveAt);
+      if (fen === null || !Number.isSafeInteger(effective)) {
+        throw new Error('invalid fee input');
+      }
+      return staffApi.submitSellerServiceFee(
+        client,
+        {
+          seller_organization_id: organizationId,
+          review_type: reviewType,
+          fee_cny_fen: fen,
+          effective_from: effective,
+          expected_version: (entry?.next_version ?? 1) - 1,
+        },
+        crypto.randomUUID(),
+      );
+    },
+    onSuccess: async () => {
+      setMessage('卖家服务费已提交，等待 Owner 确认。');
+      await refresh();
+    },
+    onError: (error) => setMessage(serviceFeeErrorMessage('提交', error)),
+  });
+  const confirm = useMutation({
+    mutationFn: (input: { feeVersionId: string; expectedVersion: number }) =>
+      staffApi.confirmSellerServiceFee(
+        client,
+        input.feeVersionId,
+        { expected_version: input.expectedVersion },
+        crypto.randomUUID(),
+      ),
+    onSuccess: async () => {
+      setMessage('卖家服务费已确认。');
+      await refresh();
+    },
+    onError: (error) => setMessage(serviceFeeErrorMessage('确认', error)),
+  });
+  const reject = useMutation({
+    mutationFn: (input: { feeVersionId: string; expectedVersion: number }) =>
+      staffApi.rejectSellerServiceFee(
+        client,
+        input.feeVersionId,
+        {
+          expected_version: input.expectedVersion,
+          rejection_reason: 'Owner 在 Staff 工作台拒绝',
+        },
+        crypto.randomUUID(),
+      ),
+    onSuccess: async () => {
+      setMessage('卖家服务费已拒绝。');
+      await refresh();
+    },
+    onError: (error) => setMessage(serviceFeeErrorMessage('拒绝', error)),
+  });
+
+  return (
+    <Card className="sensitive-action">
+      <h3>卖家服务费（{organizationName}）</h3>
+      <p>按评价类型配置每单服务费（人民币）。正式订单冻结确认时生效中的版本，历史不回写。</p>
+      {value.fees.map((candidate) => (
+        <p key={candidate.review_type}>
+          <strong>{SERVICE_FEE_REVIEW_TYPE_LABELS[candidate.review_type]}</strong>
+          {' '}已生效：
+          {candidate.effective_fee
+            ? `${fenToYuan(candidate.effective_fee.fee_cny_fen)} · v${candidate.effective_fee.version_no}`
+            : '未配置'}
+          {candidate.pending_fee
+            ? `；待确认：${fenToYuan(candidate.pending_fee.fee_cny_fen)} · v${candidate.pending_fee.version_no} · 生效 ${formatShanghai(candidate.pending_fee.effective_from)}`
+            : ''}
+          {canDecide && candidate.pending_fee ? (
+            <>
+              {' '}
+              <Button
+                className="danger"
+                disabled={confirm.isPending || reject.isPending}
+                onClick={() =>
+                  confirm.mutate({
+                    feeVersionId: candidate.pending_fee!.fee_version_id,
+                    expectedVersion: candidate.pending_fee!.decision_version,
+                  })
+                }
+              >
+                确认
+              </Button>
+              {' '}
+              <Button
+                className="secondary"
+                disabled={confirm.isPending || reject.isPending}
+                onClick={() =>
+                  reject.mutate({
+                    feeVersionId: candidate.pending_fee!.fee_version_id,
+                    expectedVersion: candidate.pending_fee!.decision_version,
+                  })
+                }
+              >
+                拒绝
+              </Button>
+            </>
+          ) : null}
+        </p>
+      ))}
+      {canSubmit ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (entry?.pending_fee) return;
+            if (yuanToFen(feeYuan) === null) {
+              setMessage('服务费金额格式不正确（例如 12.50）。');
+              return;
+            }
+            submit.mutate();
+          }}
+        >
+          <FormField label="评价类型" htmlFor="service-fee-review-type">
+            <Select
+              id="service-fee-review-type"
+              value={reviewType}
+              onChange={(event) => setReviewType(event.target.value as typeof reviewType)}
+            >
+              {value.fees.map((candidate) => (
+                <option key={candidate.review_type} value={candidate.review_type}>
+                  {SERVICE_FEE_REVIEW_TYPE_LABELS[candidate.review_type]}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+          <FormField label="服务费（元，例如 12.50）" htmlFor="service-fee-value">
+            <TextInput
+              id="service-fee-value"
+              value={feeYuan}
+              onChange={(event) => setFeeYuan(event.target.value)}
+              inputMode="decimal"
+              required
+            />
+          </FormField>
+          <FormField label="生效时间（北京时间）" htmlFor="service-fee-effective">
+            <TextInput
+              id="service-fee-effective"
+              type="datetime-local"
+              value={effectiveAt}
+              onChange={(event) => setEffectiveAt(event.target.value)}
+              required
+            />
+          </FormField>
+          <p className="hint">
+            生效时间必须晚于当前时间；提交后需在生效前完成 Owner 确认，确认后到点即生效。
+          </p>
+          <Button className="danger" disabled={submit.isPending || Boolean(entry?.pending_fee)}>
+            提交待确认服务费
+          </Button>
+        </form>
+      ) : null}
+      {message ? (
+        <Alert tone={message.includes('未完成') || message.includes('不正确') ? 'danger' : 'success'}>
+          {message}
+        </Alert>
+      ) : null}
+    </Card>
+  );
+}
+
 function PolicyError({ error, retry }: { error: unknown; retry: () => void }): React.JSX.Element {
   const code = isFrontendApiError(error) ? error.code : 'NETWORK_FAILURE';
   return (
@@ -560,6 +844,17 @@ function PolicyError({ error, retry }: { error: unknown; retry: () => void }): R
       </Button>
     </Alert>
   );
+}
+
+function baseRateErrorMessage(action: string, error: unknown): string {
+  if (!isFrontendApiError(error)) return `基础汇率${action}未完成，请稍后重试。`;
+  if (error.code === 'FORBIDDEN') {
+    return `当前账号无权${action}订单日基础汇率（需要 Owner 且具备财务纠正权限）。`;
+  }
+  if (error.code === 'VERSION_CONFLICT' || error.code === 'NOT_FOUND') {
+    return `基础汇率${action}未完成：数据已变化，已自动刷新，请重试。`;
+  }
+  return `基础汇率${action}未完成（${error.code}），请刷新后重试。`;
 }
 
 function markupLabel(value: string): string {
@@ -590,6 +885,9 @@ function chinaDate(): string {
   return `${values['year']}-${values['month']}-${values['day']}`;
 }
 
+// The rule engine refuses to confirm a version whose effective time has
+// already passed, so the submit form defaults to a few minutes ahead: submit,
+// confirm, and the rule becomes effective almost immediately.
 function futureDateTime(): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
@@ -599,7 +897,7 @@ function futureDateTime(): string {
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
-  }).formatToParts(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  }).formatToParts(new Date(Date.now() + 5 * 60 * 1000));
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values['year']}-${values['month']}-${values['day']}T${values['hour']}:${values['minute']}`;
 }

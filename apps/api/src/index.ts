@@ -57,6 +57,7 @@ import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard
 import { registerAdminAcquisitionDailyRoutes } from './admin-business-dashboard/acquisition-daily-routes';
 import { registerStaffAccessManagementRoutes } from './staff/access-management';
 import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
+import { registerSellerServiceFeeRoutes } from './pricing/seller-service-fee-routes';
 import { registerStaffRateCenterRoutes } from './pricing/rate-center-routes';
 import { registerOperationalReadinessRoutes } from './operational-readiness/routes';
 import { registerOperationalAlertAttestationRoutes } from './operational-readiness/alert-attestation';
@@ -79,6 +80,7 @@ registerFormalOrderPolicyGuards(app);
 registerSellerRegistrationRoutes(app);
 registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
+registerSellerServiceFeeRoutes(app);
 registerStaffRateCenterRoutes(app);
 registerBuyerInvitationDutyGuard(app);
 registerLegacyPasswordResetOwnerGuard(app);
