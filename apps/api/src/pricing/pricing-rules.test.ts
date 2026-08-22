@@ -277,6 +277,26 @@ describe('Phase 3E pricing rules', () => {
     });
   });
 
+  it('blocks the submitter from deciding their own service fee version', async () => {
+    database = pricingDatabase();
+    const submitted = await submitSellerServiceFee(
+      database,
+      {
+        sellerOrganizationId: 'seller-org-1',
+        reviewType: 'TEXT',
+        feeCnyFen: '1500',
+        effectiveFrom: 10_000,
+        expectedVersion: 0,
+      },
+      command(owner, 'pricing:fee:self-decide:submit:0001', 1_000),
+    );
+    await expect(confirmSellerServiceFee(
+      database,
+      { feeVersionId: submitted.fee_version_id, expectedVersion: 1 },
+      command(owner, 'pricing:fee:self-decide:confirm:0001', 2_000),
+    )).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+  });
+
   it('enforces roles, expectedVersion, immutable facts, audit, and outbox', async () => {
     database = pricingDatabase();
     await expect(submitBuyerDailyExchangeRate(

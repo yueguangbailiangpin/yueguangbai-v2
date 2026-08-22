@@ -324,7 +324,9 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
                   />
                 </FormField>
                 <p className="hint">
-                  生效时间必须晚于当前时间；提交后需在生效前完成 Owner 确认，确认后到点即生效。
+                  {scopeType === 'CURRENCY_PAIR_DEFAULT'
+                    ? '生效时间必须晚于当前时间；默认加点提交即确认生效，无需 Owner 二次确认。'
+                    : '生效时间必须晚于当前时间；组织专属提交后需在生效前由另一名 Owner 确认（提交人不能自确）。'}
                 </p>
                 <Button
                   className="danger"
@@ -338,7 +340,7 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
                       : Boolean(query.data.seller_override_pending_policy))
                   }
                 >
-                  提交待确认策略
+                  {scopeType === 'CURRENCY_PAIR_DEFAULT' ? '提交并生效' : '提交待确认策略'}
                 </Button>
               </form>
             </Card>

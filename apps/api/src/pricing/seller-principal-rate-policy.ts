@@ -61,6 +61,7 @@ interface PolicyRow {
   markup_rate_value: number;
   rate_scale: number;
   effective_from: number;
+  submitted_by_staff_id: string;
   submitted_at: number;
   confirmed_at: number | null;
   rejection_reason: string | null;
@@ -132,37 +133,58 @@ export async function submitSellerPrincipalRatePolicy(
     if (latest.pendingCount > 0) {
       throw new PricingError('PRICING_RULE_PENDING_CONFLICT', 409);
     }
+    // P1-B tiered approval: the currency-pair default markup skips the
+    // second-person approval.  The row is still born SUBMITTED (the trigger
+    // state machine demands it) and is decided CONFIRMED within the same
+    // transaction by the submitter.  Organization overrides keep the
+    // submitter -> Owner confirmer dual control.
+    const autoConfirm = normalized.scopeType === 'CURRENCY_PAIR_DEFAULT';
+    if (autoConfirm && normalized.effectiveFrom <= now) {
+      throw new PricingError('PRICING_RULE_EFFECTIVE_TIME_CONFLICT', 409);
+    }
     const id = crypto.randomUUID();
-    const response = policyDto({
+    const baseRow = {
       id,
       scope_type: normalized.scopeType,
       seller_organization_id: normalized.sellerOrganizationId,
       source_currency_code: normalized.sourceCurrencyCode,
-      quote_currency_code: 'CNY',
+      quote_currency_code: 'CNY' as const,
       version_no: normalized.expectedVersion + 1,
-      decision_version: 1,
-      status: 'SUBMITTED',
       markup_rate_value: normalized.markupRateValue,
       rate_scale: RATE_SCALE,
       effective_from: normalized.effectiveFrom,
+      submitted_by_staff_id: command.actor.staffId,
       submitted_at: now,
-      confirmed_at: null,
       rejection_reason: null,
       replayed: false,
-    });
-    const outbox = await prepareOutboxEvent({
+    };
+    const submittedRow: PolicyRow = {
+      ...baseRow,
+      decision_version: 1,
+      status: 'SUBMITTED',
+      confirmed_at: null,
+    };
+    const response = autoConfirm
+      ? policyDto({
+          ...baseRow,
+          decision_version: 2,
+          status: 'CONFIRMED',
+          confirmed_at: now,
+        })
+      : policyDto(submittedRow);
+    const submittedOutbox = await prepareOutboxEvent({
       id: crypto.randomUUID(),
       dedupKey: `seller-principal-rate-policy-submitted:${targetId}:${response.version_no}`,
       eventType: 'SELLER_PRINCIPAL_RATE_POLICY_SUBMITTED',
       aggregateType: POLICY_KIND,
       aggregateId: id,
-      payload: response,
+      payload: policyDto(submittedRow),
       createdAt: now,
     });
-    await database.batch([
+    const statements: SqlStatement[] = [
       insertPolicy(database, response, command.actor.staffId, now),
-      insertPolicyEvent(database, response, command.actor.staffId, null,
-        'SUBMITTED', acquired.claim.idempotencyKey, now),
+      insertPolicyEvent(database, policyDto(submittedRow), command.actor.staffId,
+        null, 'SUBMITTED', acquired.claim.idempotencyKey, now),
       createAuditEventStatement(database, {
         id: crypto.randomUUID(), aggregateType: POLICY_KIND, aggregateId: id,
         eventType: 'SELLER_PRINCIPAL_RATE_POLICY_SUBMITTED',
@@ -170,15 +192,51 @@ export async function submitSellerPrincipalRatePolicy(
           roles: command.actor.roles },
         requestId: command.requestId ?? null,
         idempotencyKey: acquired.claim.idempotencyKey,
-        nextState: response, createdAt: now,
+        nextState: policyDto(submittedRow), createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
+      ...createOutboxStatements(database, submittedOutbox),
+    ];
+    if (autoConfirm) {
+      const confirmedOutbox = await prepareOutboxEvent({
+        id: crypto.randomUUID(),
+        dedupKey: `seller-principal-rate-policy-confirmed:${targetId}:${response.version_no}`,
+        eventType: 'SELLER_PRINCIPAL_RATE_POLICY_CONFIRMED',
+        aggregateType: POLICY_KIND,
+        aggregateId: id,
+        payload: response,
+        createdAt: now,
+      });
+      statements.push(
+        database.prepare(`
+          UPDATE seller_principal_rate_policy_versions
+          SET status='CONFIRMED', decision_version=2,
+            confirmed_by_staff_id=?, confirmed_at=?
+          WHERE id=? AND status='SUBMITTED' AND decision_version=1
+        `).bind(command.actor.staffId, now, id),
+        assertPreviousStatementChangedOnce(database),
+        insertPolicyEvent(database, response, command.actor.staffId,
+          'SUBMITTED', 'CONFIRMED', acquired.claim.idempotencyKey, now),
+        createAuditEventStatement(database, {
+          id: crypto.randomUUID(), aggregateType: POLICY_KIND, aggregateId: id,
+          eventType: 'SELLER_PRINCIPAL_RATE_POLICY_CONFIRMED',
+          actor: { type: 'STAFF', id: command.actor.staffId,
+            roles: command.actor.roles },
+          requestId: command.requestId ?? null,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          previousState: policyDto(submittedRow),
+          nextState: response, createdAt: now,
+        }),
+        ...createOutboxStatements(database, confirmedOutbox),
+      );
+    }
+    statements.push(
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { policy_version_id: id }, now,
       }),
       assertPolicyState(database, acquired.claim, response),
       assertIdempotencyCompletionStatement(database, acquired.claim),
-    ]);
+    );
+    await database.batch(statements);
     return response;
   } catch (error) {
     const normalizedError = normalizePricingError(error);
@@ -242,6 +300,13 @@ async function decideSellerPrincipalRatePolicy(
   }
   try {
     const source = await requirePolicy(database, id);
+    // P1-B dual control for organization overrides: the submitter may not
+    // also decide their own submission, even when the submitter is the
+    // Owner.  Currency-pair defaults no longer pass through decide().
+    if (source.scope_type === 'SELLER_ORGANIZATION'
+      && command.actor.staffId === source.submitted_by_staff_id) {
+      throw new PricingError('FORBIDDEN', 403);
+    }
     if (source.decision_version !== expectedVersion
       || source.status !== 'SUBMITTED') {
       throw new PricingError('VERSION_CONFLICT', 409);
@@ -559,7 +624,7 @@ async function resolvedPolicy(
   const row = await database.prepare(`
     SELECT id, scope_type, seller_organization_id, source_currency_code,
       quote_currency_code, version_no, decision_version, status,
-      markup_rate_value, rate_scale, effective_from, submitted_at,
+      markup_rate_value, rate_scale, effective_from, submitted_by_staff_id, submitted_at,
       confirmed_at, rejection_reason
     FROM seller_principal_rate_policy_versions
     WHERE scope_type=? AND seller_organization_id IS ?
@@ -583,7 +648,7 @@ async function pendingPolicy(
   const row = await database.prepare(`
     SELECT id, scope_type, seller_organization_id, source_currency_code,
       quote_currency_code, version_no, decision_version, status,
-      markup_rate_value, rate_scale, effective_from, submitted_at,
+      markup_rate_value, rate_scale, effective_from, submitted_by_staff_id, submitted_at,
       confirmed_at, rejection_reason
     FROM seller_principal_rate_policy_versions
     WHERE scope_type=? AND seller_organization_id IS ?
@@ -600,7 +665,7 @@ async function requirePolicy(database: SqlDatabase, id: string): Promise<PolicyR
   const row = await database.prepare(`
     SELECT id, scope_type, seller_organization_id, source_currency_code,
       quote_currency_code, version_no, decision_version, status,
-      markup_rate_value, rate_scale, effective_from, submitted_at,
+      markup_rate_value, rate_scale, effective_from, submitted_by_staff_id, submitted_at,
       confirmed_at, rejection_reason
     FROM seller_principal_rate_policy_versions WHERE id=?
   `).bind(id).first<PolicyRow>();

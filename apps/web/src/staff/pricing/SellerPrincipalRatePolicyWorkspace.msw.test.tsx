@@ -202,7 +202,7 @@ describe('汇率中心 Staff 工作台', () => {
     await screen.findByRole('heading', { name: '币种对默认加点' });
     expect(requestedOrganization).toBeNull();
     expect(screen.getByText('下一版本：选择组织后读取')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: '提交待确认策略' }));
+    await user.click(screen.getByRole('button', { name: '提交并生效' }));
     await waitFor(() =>
       expect(body).toMatchObject({
         scope_type: 'CURRENCY_PAIR_DEFAULT',

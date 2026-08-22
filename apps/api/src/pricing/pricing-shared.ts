@@ -249,6 +249,13 @@ export function normalizePricingError(error: unknown): PricingError {
     return new PricingError('PRICING_RULE_PENDING_CONFLICT', 409);
   }
   if (
+    message.includes('seller_principal_rate_policy_version')
+  ) {
+    // Two concurrent submissions for the same policy target raced past the
+    // version check and collided on the (scope, version_no) unique index.
+    return new PricingError('VERSION_CONFLICT', 409);
+  }
+  if (
     message.includes('pricing_confirmed_conflict') ||
     message.includes('pricing_effective_conflict') ||
     message.includes('seller_principal_rate_policy_confirmed_effective')

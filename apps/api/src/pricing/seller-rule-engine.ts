@@ -328,6 +328,12 @@ export async function decideSellerRuleVersion(
       config,
       versionId,
     );
+    // P1-B dual control: seller rules are organization-scoped, so the
+    // submitter may not also decide their own submission, even when the
+    // submitter is the Owner.
+    if (command.actor.staffId === source.submitted_by_staff_id) {
+      throw new PricingError('FORBIDDEN', 403);
+    }
     if (source.decision_version !== expectedVersion) {
       throw new PricingError('VERSION_CONFLICT', 409);
     }
