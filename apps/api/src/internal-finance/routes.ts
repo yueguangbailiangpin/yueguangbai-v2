@@ -79,13 +79,68 @@ async function order(context: Context<any>): Promise<Response> {
   requireActor(context);
   const url = new URL(context.req.url);
   assertExactQueryParameters(url, []);
-  const position = await readFinanceOrder(
-    context.env.DB,
-    financeIdentifier(context.req.param('formalOrderId')),
-  );
+  const formalOrderId = financeIdentifier(context.req.param('formalOrderId'));
+  const position = await readFinanceOrder(context.env.DB, formalOrderId);
   return success(context, {
-    order: buildFinanceOrderDetail(position),
+    order: buildFinanceOrderDetail(position, await readOrderRateDetail(
+      context.env.DB,
+      formalOrderId,
+    )),
   });
+}
+
+/**
+ * Frozen rate/markup facts live in the two approval-time snapshot tables,
+ * not in the positions view (whose shape is pinned by migration 0025).
+ * Reading them directly keeps this a pure read-model extension.
+ */
+async function readOrderRateDetail(
+  database: Parameters<typeof readFinanceOrder>[0],
+  formalOrderId: string,
+): Promise<import('@ygb/contracts').InternalFinanceRateDetailDto | null> {
+  const [financial, principal] = await Promise.all([
+    database.prepare(`
+      SELECT buyer_rate_business_date, CAST(buyer_cny_per_jpy_e8 AS TEXT) AS buyer_cny_per_jpy_e8
+      FROM formal_order_financial_snapshots
+      WHERE formal_order_id=?
+      ORDER BY id
+      LIMIT 1
+    `).bind(formalOrderId).first<
+      { buyer_rate_business_date: string; buyer_cny_per_jpy_e8: string } | null
+    >(),
+    database.prepare(`
+      SELECT CAST(base_rate_value AS TEXT) AS base_rate_value,
+        CAST(markup_rate_value AS TEXT) AS markup_rate_value,
+        CAST(final_rate_value AS TEXT) AS final_rate_value,
+        policy_scope_type, policy_version_no, policy_effective_from
+      FROM seller_principal_rate_snapshots
+      WHERE formal_order_id=?
+      LIMIT 1
+    `).bind(formalOrderId).first<
+      | {
+          base_rate_value: string;
+          markup_rate_value: string;
+          final_rate_value: string;
+          policy_scope_type: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION';
+          policy_version_no: number;
+          policy_effective_from: number;
+        }
+      | null
+    >(),
+  ]);
+  if (!financial && !principal) return null;
+  return {
+    buyer_rate_business_date: financial?.buyer_rate_business_date ?? null,
+    buyer_cny_per_jpy_e8: financial?.buyer_cny_per_jpy_e8
+      ?? principal?.base_rate_value ?? null,
+    markup_rate_value: principal?.markup_rate_value ?? null,
+    final_rate_value: principal?.final_rate_value ?? null,
+    policy_scope_type: principal?.policy_scope_type ?? null,
+    policy_version_no: principal ? Number(principal.policy_version_no) : null,
+    policy_effective_from: principal
+      ? Number(principal.policy_effective_from)
+      : null,
+  };
 }
 async function groups(context: Context<any>): Promise<Response> {
   requireActor(context);

@@ -11,6 +11,7 @@ import {
   type StaffMutationRequest,
 } from '../mutations/StaffMutationAuthority';
 import { EffectTimeline, type EffectTimelineEntry } from '../shared/EffectTimeline';
+import { PricingBreakdownCard } from '../shared/PricingBreakdownCard';
 import {
   DecisionCards,
   OrderDayBaseRateCard,
@@ -479,12 +480,66 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
         ) : (
           <Alert tone="info">选择卖家组织后可配置该组织的服务费。</Alert>
         )}
+        {isGlobalOwner && session.permissions.includes('FINANCIAL_VIEW') ? (
+          <OrderPricingLookup />
+        ) : null}
       </div>
       {message ? (
         <Alert tone={message.includes('未完成') ? 'danger' : 'success'}>{message}</Alert>
       ) : null}
       <RequestIdDisplay requestId={requestId} />
     </main>
+  );
+}
+
+/**
+ * P5 entry point on the finance page: paste a formal order id (or arrive
+ * from the order detail page) to see the frozen pricing configuration and
+ * arithmetic for that single order.  Owner + FINANCIAL_VIEW only — the
+ * backing API is the internal-finance read.
+ */
+function OrderPricingLookup(): React.JSX.Element {
+  const client = useQueryClient();
+  const [input, setInput] = useState('');
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const detail = useQuery({
+    queryKey: ['staff', 'finance-order-detail', orderId],
+    queryFn: ({ signal }) =>
+      staffApi
+        .financeOrderDetail(client, orderId!, signal)
+        .then((response) => response.data),
+    enabled: orderId !== null,
+    retry: false,
+  });
+  return (
+    <Card className="customer-visible" id="finance-section-order-lookup">
+      <h3>按订单查计价</h3>
+      <p>输入正式订单 ID，查看该单确认时冻结的汇率 / 加点 / 服务费与算式（仅 Owner）。</p>
+      <form
+        className="staff-filter-grid"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const trimmed = input.trim();
+          setOrderId(trimmed.length > 0 ? trimmed : null);
+        }}
+      >
+        <FormField label="正式订单 ID" htmlFor="finance-order-id">
+          <TextInput
+            id="finance-order-id"
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            required
+          />
+        </FormField>
+        <Button type="submit" className="secondary" disabled={detail.isFetching}>
+          查询计价
+        </Button>
+      </form>
+      {detail.isError ? (
+        <Alert tone="danger">读取失败：订单不存在或当前账号无权查看内部财务。</Alert>
+      ) : null}
+      {detail.data ? <PricingBreakdownCard detail={detail.data} orderId={orderId ?? ''} /> : null}
+    </Card>
   );
 }
 

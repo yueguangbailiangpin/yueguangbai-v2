@@ -144,6 +144,129 @@ export const sellerServiceFeeVersionSchema = z
     replayed: z.boolean(),
   })
   .strict();
+const signedIntegerStringSchema = z.string().regex(/^-?(0|[1-9][0-9]*)$/u);
+const financeRateDetailSchema = z
+  .object({
+    buyer_rate_business_date: z.string().nullable(),
+    buyer_cny_per_jpy_e8: z.string().nullable(),
+    markup_rate_value: z.string().nullable(),
+    final_rate_value: z.string().nullable(),
+    policy_scope_type: z
+      .enum(['CURRENCY_PAIR_DEFAULT', 'SELLER_ORGANIZATION'])
+      .nullable(),
+    policy_version_no: z.number().int().positive().nullable(),
+    policy_effective_from: epoch.nullable(),
+  })
+  .strict();
+const financePositionSchema = z
+  .object({
+    formal_order_id: z.string(),
+    amazon_order_number: z.string(),
+    seller_organization_id: z.string(),
+    store_id: z.string(),
+    product_id: z.string(),
+    asin: z.string(),
+    product_name: z.string(),
+    review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
+    confirmed_at: epoch,
+    confirmed_business_date: z.string(),
+    review_approved_at: epoch.nullable(),
+    review_approved_business_date: z.string().nullable(),
+    last_cash_business_date: z.string().nullable(),
+    final_paid_jpy: integerString,
+    financial_snapshot_id: z.string().nullable(),
+    buyer_self_pay_bps: z.number().int().nonnegative().nullable(),
+    buyer_self_pay_jpy: integerString.nullable(),
+    buyer_expected_principal_cny_fen: integerString.nullable(),
+    seller_expected_principal_cny_fen: integerString.nullable(),
+    service_fee_snapshot_cny_fen: integerString.nullable(),
+    projected_gross_profit_cny_fen: signedIntegerStringSchema.nullable(),
+    completed_gross_profit_cny_fen: signedIntegerStringSchema.nullable(),
+    seller_principal_due_cny_fen: integerString,
+    seller_principal_collected_cny_fen: integerString,
+    seller_principal_outstanding_cny_fen: integerString,
+    seller_service_fee_due_cny_fen: integerString,
+    seller_service_fee_collected_cny_fen: integerString,
+    seller_service_fee_outstanding_cny_fen: integerString,
+    buyer_refund_due_cny_fen: integerString,
+    buyer_refund_net_paid_cny_fen: integerString,
+    buyer_refund_outstanding_cny_fen: integerString,
+    buyer_refund_overpaid_cny_fen: integerString,
+    attributed_cash_net_cny_fen: signedIntegerStringSchema,
+    finance_status: z.string(),
+  })
+  .strict();
+export const internalFinanceOrderDetailSchema = z
+  .object({
+    order: z
+      .object({
+        position: financePositionSchema,
+        frozen_snapshot: z
+          .object({
+            financial_snapshot_id: z.string().nullable(),
+            buyer_self_pay_bps: z.number().int().nonnegative().nullable(),
+            buyer_self_pay_jpy: integerString.nullable(),
+            buyer_expected_principal_cny_fen: integerString.nullable(),
+            seller_expected_principal_cny_fen: integerString.nullable(),
+            service_fee_cny_fen: integerString.nullable(),
+            rate_detail: financeRateDetailSchema.nullable(),
+          })
+          .strict(),
+        seller_payables: z
+          .object({
+            principal_due_cny_fen: integerString,
+            principal_collected_cny_fen: integerString,
+            principal_outstanding_cny_fen: integerString,
+            service_fee_due_cny_fen: integerString,
+            service_fee_collected_cny_fen: integerString,
+            service_fee_outstanding_cny_fen: integerString,
+          })
+          .strict(),
+        buyer_refund: z
+          .object({
+            due_cny_fen: integerString,
+            net_paid_cny_fen: integerString,
+            outstanding_cny_fen: integerString,
+            overpaid_cny_fen: integerString,
+          })
+          .strict(),
+        attributed_cash: z
+          .object({
+            seller_allocated_net_cny_fen: integerString,
+            buyer_refund_net_paid_cny_fen: integerString,
+            net_cny_fen: signedIntegerStringSchema,
+          })
+          .strict(),
+        calculations: z.object({
+          projected_gross_profit: z.object({
+            formula: z.string(),
+            seller_expected_principal_cny_fen: integerString.nullable(),
+            service_fee_cny_fen: integerString.nullable(),
+            buyer_expected_principal_cny_fen: integerString.nullable(),
+            result_cny_fen: signedIntegerStringSchema.nullable(),
+          }).strict(),
+          completed_gross_profit: z.object({
+            formula: z.string(),
+            eligible: z.boolean(),
+            seller_principal_payable_cny_fen: integerString,
+            seller_service_fee_payable_cny_fen: integerString,
+            buyer_refund_due_cny_fen: integerString,
+            result_cny_fen: signedIntegerStringSchema.nullable(),
+          }).strict(),
+          current_attributed_cash: z.object({
+            formula: z.string(),
+            seller_current_net_allocation_cny_fen: integerString,
+            buyer_refund_net_paid_cny_fen: integerString,
+            result_cny_fen: signedIntegerStringSchema,
+          }).strict(),
+        }).strict(),
+        finance_status: z.string(),
+        exception_codes: z.array(z.string()),
+        suggested_actions: z.array(z.string()),
+      })
+      .strict(),
+  })
+  .strict();
 export const staffSellerServiceFeesSchema = z
   .object({
     seller_organization_id: z.string(),

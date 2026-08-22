@@ -12,6 +12,7 @@ describe('Wave 12 internal finance order detail isolation', () => {
       buyer_expected_principal_cny_fen: '45000',
       seller_expected_principal_cny_fen: '50000',
       service_fee_cny_fen: '3000',
+      rate_detail: null,
     });
     expect(detail.seller_payables).toMatchObject({
       principal_due_cny_fen: '50000',

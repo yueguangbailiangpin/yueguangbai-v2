@@ -381,6 +381,15 @@
   color: #2e5e2e; background: #e4f0e0; border-radius: 999px; padding: 2px 8px;
 }
 .staff-effect-timeline-empty { color: var(--mw-muted); font-size: .74rem; margin: 0; }
+.staff-pricing-breakdown h4 { margin: 12px 0 4px; font-size: .78rem; }
+.staff-pricing-breakdown-order { color: var(--mw-muted); font-size: .72rem; }
+.staff-pricing-breakdown-facts { margin: 0; padding: 0; list-style: none; font-size: .74rem; }
+.staff-pricing-breakdown-facts > li {
+  display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline;
+  padding: 5px 2px; border-bottom: 1px solid #e9edf2;
+}
+.staff-pricing-breakdown-facts > li:last-child { border-bottom: 0; }
+.staff-pricing-checks ul { margin: 4px 0 0; padding-left: 18px; font-size: .74rem; }
 .staff-queue-footnote {
   display: flex; align-items: center; gap: 8px;
   margin-top: 14px; color: var(--mw-muted); font-size: .68rem;

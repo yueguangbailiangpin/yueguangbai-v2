@@ -36,6 +36,7 @@ import {
   staffAccessMutationSchema,
   staffSellerPrincipalRatePoliciesResponseSchema,
   staffSellerPrincipalRatePolicyMutationSchema,
+  internalFinanceOrderDetailSchema,
   staffRateCenterSchema,
   staffRateCenterBaseMutationSchema,
   staffSellerServiceFeesSchema,
@@ -369,6 +370,16 @@ export const staffApi = Object.freeze({
     if (asOf !== undefined) parameters.set('as_of', String(asOf));
     return read(client, `/api/staff/rate-center?${parameters}`, staffRateCenterSchema, signal);
   },
+  financeOrderDetail: (client: QueryClient, formalOrderId: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/finance/orders/${encodeURIComponent(formalOrderId)}`,
+      internalFinanceOrderDetailSchema,
+      signal,
+    ).then((response) => ({
+      data: response.data.order,
+      requestId: response.requestId,
+    })),
   submitOrderDayBaseRate: (client: QueryClient, body: unknown, key: string) =>
     write(
       client,

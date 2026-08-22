@@ -158,20 +158,31 @@ export function OrderEvidenceReviewPanel({
                 <Alert tone="warning">
                   无法读取订单审批前检查；为避免生成不完整业务事实，暂不能通过。请刷新订单事实后重试。
                 </Alert>
-              ) : preflight.data && !preflight.data.ready ? (
-                <Alert tone="warning">
-                  <p>通过前请补齐以下财务配置：</p>
-                  <ul>
-                    {preflight.data.checks
-                      .filter((check) => check.status === 'MISSING')
-                      .map((check) => (
-                        <li key={check.code}>
-                          {check.message}（需要：{check.required_access}）{' '}
-                          <a href={check.action_path}>前往处理</a>
-                        </li>
+              ) : preflight.data ? (
+                preflight.data.ready ? (
+                  <div className="staff-pricing-checks">
+                    <p className="hint">计价要素（通过时将按以下配置冻结）：</p>
+                    <ul>
+                      {preflight.data.checks.map((check) => (
+                        <li key={check.code}>{check.message}</li>
                       ))}
-                  </ul>
-                </Alert>
+                    </ul>
+                  </div>
+                ) : (
+                  <Alert tone="warning">
+                    <p>通过前请补齐以下财务配置：</p>
+                    <ul>
+                      {preflight.data.checks
+                        .filter((check) => check.status === 'MISSING')
+                        .map((check) => (
+                          <li key={check.code}>
+                            {check.message}（需要：{check.required_access}）{' '}
+                            <a href={check.action_path}>前往处理</a>
+                          </li>
+                        ))}
+                    </ul>
+                  </Alert>
+                )
               ) : null}
               <div className="entry-actions">
                 <Button name="action" value="request-changes" disabled={mutation.isPending}>

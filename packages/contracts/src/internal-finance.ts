@@ -100,6 +100,20 @@ export interface InternalOrderFinancePositionDto {
   finance_status: FinanceStatus;
 }
 
+export interface InternalFinanceRateDetailDto {
+  /** Amazon order date the frozen base rate was resolved for. */
+  buyer_rate_business_date: string | null;
+  /** Frozen base rate (CNY per JPY, e8 scale) the buyer side was priced at. */
+  buyer_cny_per_jpy_e8: string | null;
+  /** Frozen absolute markup (e8 scale) from the selected seller policy. */
+  markup_rate_value: string | null;
+  /** base + markup, the final seller-side rate (e8 scale). */
+  final_rate_value: string | null;
+  policy_scope_type: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION' | null;
+  policy_version_no: number | null;
+  policy_effective_from: number | null;
+}
+
 export interface InternalFinanceOrderDetailDto {
   position: InternalOrderFinancePositionDto;
   frozen_snapshot: {
@@ -109,6 +123,8 @@ export interface InternalFinanceOrderDetailDto {
     buyer_expected_principal_cny_fen: FixedIntegerString | null;
     seller_expected_principal_cny_fen: FixedIntegerString | null;
     service_fee_cny_fen: FixedIntegerString | null;
+    /** Frozen rate/markup facts from the two approval-time snapshot tables. */
+    rate_detail: InternalFinanceRateDetailDto | null;
   };
   seller_payables: {
     principal_due_cny_fen: FixedIntegerString;
