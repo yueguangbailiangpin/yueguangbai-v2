@@ -5,9 +5,11 @@ import {
   PackageSearch,
   Settings,
   Sparkles,
+  Store,
   UserCog,
   UserRound,
   UsersRound,
+  Wrench,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useRef, useState, type ReactNode } from 'react';
@@ -111,6 +113,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const sellerCustomers = location.pathname.startsWith('/staff/seller-customers');
   const dashboard = location.pathname.startsWith('/staff/admin-business-dashboard');
   const access = location.pathname.startsWith('/staff/access-management');
+  const operations = location.pathname.startsWith('/staff/operations');
   const pricing =
     location.pathname.startsWith('/staff/rate-center') ||
     location.pathname.startsWith('/staff/seller-principal-rate-policies');
@@ -123,41 +126,47 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
     !sellerCustomers &&
     !dashboard &&
     !access &&
+    !operations &&
     !pricing &&
     !products;
   const owner = role === 'owner';
   const home = role === 'acquisition' ? '/staff/acquisition' : '/staff';
   const mayProducts = owner || role === 'pre_sales' || role === 'seller_ops';
+  const mayOperations = ['owner', 'seller_ops', 'pre_sales', 'buyer_refund'].includes(role);
   const title = access
-    ? '员工管理'
-    : pricing
-      ? '汇率中心'
-      : dashboard
-        ? '经营看板'
-        : products
-          ? '产品库'
-          : acquisition
-            ? '客户开发'
-            : buyerCustomers
-              ? '买家客户'
-              : sellerCustomers
-                ? '卖家客户'
-                : '员工工作台';
+    ? '员工与访问管理'
+    : operations
+      ? '运行完整性工具'
+      : pricing
+        ? '财务配置'
+        : dashboard
+          ? '经营看板'
+          : products
+            ? '产品与投放'
+            : acquisition
+              ? '获客'
+              : buyerCustomers
+                ? '买家与订单'
+                : sellerCustomers
+                  ? '卖家'
+                  : '工作台';
   const context = access
     ? '邮箱、岗位、负责站点与状态'
-    : pricing
-      ? '订单日基础汇率、默认加点与卖家覆盖'
-      : dashboard
-        ? '经营与利润数据'
-        : products
-          ? '产品库、版本与预约排期'
-          : acquisition
-            ? '渠道、潜在线索与自动开发入口'
-            : buyerCustomers
-              ? '售前：接入买家并确认渠道'
-              : sellerCustomers
-                ? '卖家对接：接入卖家并确认渠道'
-                : '队列、业务事实与受控操作';
+    : operations
+      ? '订单状态留痕与流程闭环核查'
+      : pricing
+        ? '订单日基础汇率、默认加点与卖家覆盖'
+        : dashboard
+          ? '经营与利润数据'
+          : products
+            ? '产品、版本与投放排期'
+            : acquisition
+              ? '渠道、潜在线索与自动开发入口'
+              : buyerCustomers
+                ? '售前：接入买家并确认渠道'
+                : sellerCustomers
+                  ? '卖家对接：接入卖家并确认渠道'
+                  : '任务队列与业务事实';
   const scope =
     session.data_scope.type === 'GLOBAL'
       ? '全部站点'
@@ -179,50 +188,61 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
               {...(workQueue ? { 'aria-current': 'page' as const } : {})}
             >
               <BriefcaseBusiness aria-hidden="true" />
-              <span>工作队列</span>
+              <span>工作台</span>
             </NavLink>
           ) : null}
           {owner || role === 'acquisition' ? (
             <NavLink to="/staff/acquisition">
               <Sparkles aria-hidden="true" />
-              <span>客户开发</span>
-            </NavLink>
-          ) : null}
-          {owner || role === 'pre_sales' ? (
-            <NavLink to="/staff/buyer-customers">
-              <UsersRound aria-hidden="true" />
-              <span>买家客户</span>
+              <span>获客</span>
             </NavLink>
           ) : null}
           {owner || role === 'seller_ops' ? (
             <NavLink to="/staff/seller-customers">
-              <UsersRound aria-hidden="true" />
-              <span>卖家客户</span>
+              <Store aria-hidden="true" />
+              <span>卖家</span>
             </NavLink>
           ) : null}
           {mayProducts ? (
             <NavLink to="/staff/products">
               <PackageSearch aria-hidden="true" />
-              <span>产品库</span>
+              <span>产品与投放</span>
             </NavLink>
           ) : null}
-          {owner ? (
-            <NavLink to="/staff/admin-business-dashboard">
-              <ChartNoAxesCombined aria-hidden="true" />
-              <span>经营看板</span>
+          {owner || role === 'pre_sales' ? (
+            <NavLink to="/staff/buyer-customers">
+              <UsersRound aria-hidden="true" />
+              <span>买家与订单</span>
             </NavLink>
           ) : null}
           {(owner || role === 'seller_ops') && session.permissions.includes('SELLER_MANAGE') ? (
             <NavLink to="/staff/rate-center">
               <Settings aria-hidden="true" />
-              <span>汇率中心</span>
+              <span>财务配置</span>
             </NavLink>
           ) : null}
-          {owner && session.permissions.includes('STAFF_MANAGE') ? (
-            <NavLink to="/staff/access-management">
-              <UserCog aria-hidden="true" />
-              <span>员工管理</span>
-            </NavLink>
+          {owner || mayOperations ? (
+            <div className="staff-nav-section">
+              <p className="staff-nav-section-label">系统</p>
+              {owner && session.permissions.includes('STAFF_MANAGE') ? (
+                <NavLink to="/staff/access-management">
+                  <UserCog aria-hidden="true" />
+                  <span>员工与访问管理</span>
+                </NavLink>
+              ) : null}
+              {owner ? (
+                <NavLink to="/staff/admin-business-dashboard">
+                  <ChartNoAxesCombined aria-hidden="true" />
+                  <span>经营看板</span>
+                </NavLink>
+              ) : null}
+              {mayOperations ? (
+                <NavLink to="/staff/operations">
+                  <Wrench aria-hidden="true" />
+                  <span>运行完整性工具</span>
+                </NavLink>
+              ) : null}
+            </div>
           ) : null}
         </nav>
         <div className="staff-sidebar-person">

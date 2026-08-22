@@ -309,11 +309,11 @@ test('Staff visual refresh captures the deterministic responsive matrix', async 
 
 test('Staff navigation follows all five role projections', async ({ browser }) => {
   const expected: Record<Role, string[]> = {
-    owner: ['工作队列', '客户开发', '买家客户', '卖家客户', '产品库', '经营看板'],
-    acquisition: ['客户开发'],
-    pre_sales: ['工作队列', '买家客户', '产品库'],
-    seller_ops: ['工作队列', '卖家客户', '产品库'],
-    buyer_refund: ['工作队列'],
+    owner: ['工作台', '获客', '卖家', '产品与投放', '买家与订单', '经营看板', '运行完整性工具'],
+    acquisition: ['获客'],
+    pre_sales: ['工作台', '买家与订单', '产品与投放', '运行完整性工具'],
+    seller_ops: ['工作台', '卖家', '产品与投放', '运行完整性工具'],
+    buyer_refund: ['工作台', '运行完整性工具'],
   };
   for (const role of Object.keys(expected) as Role[]) {
     const context = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' });
@@ -322,7 +322,7 @@ test('Staff navigation follows all five role projections', async ({ browser }) =
     await page.goto('/staff');
     await expect(page.getByText(roleNames[role], { exact: true }).first()).toBeVisible();
     const navigation = page.getByRole('navigation', { name: '员工工作台导航' });
-    for (const label of ['工作队列', '客户开发', '买家客户', '卖家客户', '产品库', '经营看板']) {
+    for (const label of ['工作台', '获客', '卖家', '产品与投放', '买家与订单', '财务配置', '员工与访问管理', '经营看板', '运行完整性工具']) {
       const link = navigation.getByRole('link', { name: label, exact: true });
       if (expected[role].includes(label)) await expect(link).toBeVisible();
       else await expect(link).toHaveCount(0);

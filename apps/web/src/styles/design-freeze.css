@@ -273,6 +273,15 @@
   color: var(--mw-staff-primary);
   background: var(--mw-staff-soft);
 }
+.staff-nav-section { display: grid; gap: 4px; margin-top: 8px; }
+.staff-nav-section-label {
+  padding: 0 10px 2px;
+  color: var(--mw-muted);
+  font-size: .66rem;
+  font-weight: 750;
+  letter-spacing: .12em;
+}
+.staff-nav-section a { padding-left: 16px; }
 .staff-sidebar-person {
   display: flex;
   gap: 8px;

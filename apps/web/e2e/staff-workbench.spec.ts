@@ -112,7 +112,7 @@ test('Staff explicit retry preserves ambiguous request authority and changed bod
 for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 720 }]) {
   test(`Staff workbench reflows at ${viewport.width}px with keyboard controls`, async ({ page }) => {
     await mockWorkbench(page); await page.setViewportSize(viewport); await page.goto('/staff');
-    await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
     await page.getByLabel('状态').focus(); await expect(page.getByLabel('状态')).toBeFocused();
     await page.keyboard.press('Tab'); await expect(page.getByLabel('类型')).toBeFocused();
     await noOverflow(page);
@@ -125,7 +125,7 @@ test('Staff workbench remains operable at 200% and with reduced motion', async (
   await page.setViewportSize({ width: 640, height: 720 });
   await page.goto('/staff');
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
-  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
   await page.getByRole('button', { name: /订单资料核对/u }).focus();
   await expect(page.getByRole('button', { name: /订单资料核对/u })).toBeFocused();
   await noOverflow(page);

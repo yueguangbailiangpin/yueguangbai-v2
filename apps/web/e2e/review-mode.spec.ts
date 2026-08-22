@@ -40,7 +40,7 @@ test('review entry and all three portals render without real API requests', asyn
 
   await page.goto('/review/staff');
   await expect(page.getByLabel('员工评审角色')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
   await expect(page.getByRole('button', { name: /商品申请审核/u })).toBeVisible();
 
   expect(apiRequests).toEqual([]);
@@ -61,11 +61,11 @@ test('review role selectors update visible seller and staff permissions', async 
   await page.goto('/review/staff');
   const navigation = page.getByRole('navigation', { name: '员工工作台导航' });
   const roles = [
-    ['owner', ['工作队列', '客户开发', '买家客户', '卖家客户', '产品库', '经营看板', '本金汇率策略', '员工管理']],
-    ['acquisition', ['客户开发']],
-    ['pre_sales', ['工作队列', '买家客户', '产品库']],
-    ['seller_ops', ['工作队列', '卖家客户', '产品库', '本金汇率策略']],
-    ['buyer_refund', ['工作队列']],
+    ['owner', ['工作台', '获客', '卖家', '产品与投放', '买家与订单', '财务配置', '员工与访问管理', '经营看板', '运行完整性工具']],
+    ['acquisition', ['获客']],
+    ['pre_sales', ['工作台', '买家与订单', '产品与投放', '运行完整性工具']],
+    ['seller_ops', ['工作台', '卖家', '产品与投放', '财务配置', '运行完整性工具']],
+    ['buyer_refund', ['工作台', '运行完整性工具']],
   ] as const;
   for (const [role, expected] of roles) {
     await page.getByLabel('员工评审角色').selectOption(role);

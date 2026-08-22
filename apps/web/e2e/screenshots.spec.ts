@@ -226,14 +226,14 @@ test('capture Seller orders desktop', async ({ page }) => {
 test('capture Staff shell desktop', async ({ page }) => {
   await mockSession(page, 'staff');
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
   await capture(page, 'staff-shell-desktop-1600x1000.png', { width: 1600, height: 1000 });
 });
 
 test('capture Staff shell narrow', async ({ page }) => {
   await mockSession(page, 'staff');
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
   await capture(page, 'staff-shell-narrow-768x1024.png', { width: 768, height: 1024 });
 });
 

@@ -49,11 +49,11 @@ export function StaffRoutePage(): React.JSX.Element {
     pathname.startsWith('/staff/seller-principal-rate-policies')
   )
     return <SellerPrincipalRatePolicyWorkspace />;
+  if (pathname.startsWith('/staff/operations')) return <StaffOperatingIntegrityTools />;
   return (
     <>
       <FrozenStaffWorkbench />
       <StaffWorkflowClosurePanel />
-      <StaffOperatingIntegrityTools />
     </>
   );
 }

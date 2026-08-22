@@ -875,7 +875,7 @@ test('Staff desktop shell preserves queue-detail-action DOM order and separation
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
   const headings = await page
     .locator('.staff-panes > section h2, .staff-panes > aside h2')
@@ -890,7 +890,7 @@ test('Staff narrow shell preserves queue-detail-tools order without overflow', a
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
   const headings = await page
     .locator('.staff-panes > section h2, .staff-panes > aside h2')
@@ -1002,7 +1002,7 @@ for (const [identity, path, heading, ownChunk, foreignChunks] of [
   [
     'staff',
     '/staff',
-    '员工工作台',
+    '工作台',
     'StaffRouteModule-',
     ['BuyerRouteModule-', 'SellerRouteModule-'],
   ],
@@ -1082,7 +1082,7 @@ test('staff workbench defers dashboard and scheduling chunks until their routes 
   });
   await mockApi(page, 'staff');
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '员工工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
   expect(assets.some((asset) => asset.includes('StaffAdminRouteModule-'))).toBe(false);
   expect(assets.some((asset) => asset.includes('StaffSchedulingRouteModule-'))).toBe(false);
 
