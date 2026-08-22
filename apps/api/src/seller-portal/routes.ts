@@ -9,7 +9,6 @@ import {
   type DemandTaskType,
   type ProductApplicationStatus,
   type ProductStatus,
-  type SubmitSellerPortalDemandBatchBody,
   type SubmitSellerPortalProductApplicationBody,
 } from '@ygb/contracts';
 import type { Context, Hono } from 'hono';
@@ -391,9 +390,6 @@ async function createDemandBatch(
       targetQuantity: body.target_quantity,
       buyerVisibleNotes: body.buyer_visible_notes,
       sellerNotes: body.seller_notes,
-      openAt: body.open_at,
-      reservationDeadline: body.reservation_deadline,
-      orderDeadline: body.order_deadline,
     },
     {
       actor,
@@ -491,20 +487,25 @@ function requiredFileReferences(
 
 async function readDemandBatchBody(
   context: Context<any>,
-): Promise<SubmitSellerPortalDemandBatchBody> {
+): Promise<{
+  product_id: string;
+  task_type: DemandTaskType;
+  target_quantity: number;
+  buyer_visible_notes: string | null;
+  seller_notes: string | null;
+}> {
   const body = await readObject(context);
   const taskType = body['task_type'];
   if (!isDemandTaskType(taskType)) validation();
+  if ('open_at' in body || 'reservation_deadline' in body || 'order_deadline' in body) {
+    throw new SellerPortalError('VALIDATION_ERROR', 400);
+  }
   return {
     product_id: requiredString(body, 'product_id'),
     task_type: taskType as DemandTaskType,
     target_quantity: requiredInteger(body, 'target_quantity'),
     buyer_visible_notes: nullableString(body, 'buyer_visible_notes'),
     seller_notes: nullableString(body, 'seller_notes'),
-    open_at: requiredInteger(body, 'open_at'),
-    reservation_deadline:
-      requiredInteger(body, 'reservation_deadline'),
-    order_deadline: requiredInteger(body, 'order_deadline'),
   };
 }
 

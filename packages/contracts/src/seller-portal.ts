@@ -192,7 +192,4 @@ export interface SubmitSellerPortalDemandBatchBody {
   target_quantity: number;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
-  open_at: number;
-  reservation_deadline: number;
-  order_deadline: number;
 }

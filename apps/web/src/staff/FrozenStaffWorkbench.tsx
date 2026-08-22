@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
+import { theoreticalLastOrderDate } from '@ygb/domain';
 import { isFrontendApiError } from '../api/errors';
 import type { ApiResult } from '../api/transport';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
@@ -377,6 +378,7 @@ function DemandColumns({
     () => new StaffMutationAuthority<ApiResult<DemandReviewMutation>>(),
     [],
   );
+  const [firstOrderDate, setFirstOrderDate] = useState('');
   const query = useQuery({
     queryKey: staffWorkbenchKeys.demandReview(item.source_entity_id),
     queryFn: ({ signal }) =>
@@ -468,8 +470,20 @@ function DemandColumns({
                     name="first_order_date"
                     type="date"
                     required
+                    value={firstOrderDate}
+                    onChange={(event) => setFirstOrderDate(event.target.value)}
                   />
                 </FormField>
+                {firstOrderDate && value.cadence ? (
+                  <Alert tone="info">
+                    排期预览：首单 {firstOrderDate}；理论最后下单日 {theoreticalLastOrderDate({
+                      firstOrderDate,
+                      targetQuantity: value.target_quantity,
+                      orderIntervalDays: value.cadence.order_interval_days,
+                      ordersPerRun: value.cadence.orders_per_run,
+                    })}；预约截止 {formatShanghai(value.reservation_deadline)}；下单截止 {formatShanghai(value.order_deadline)}。
+                  </Alert>
+                ) : null}
                 <Button loading={mutation.isPending}>通过并发布</Button>
               </form>
             ) : null}

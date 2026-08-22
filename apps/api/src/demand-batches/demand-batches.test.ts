@@ -37,6 +37,7 @@ import type {
   DemandStaffActor,
   SellerDemandActor,
 } from './demand-shared';
+import { deriveSellerDemandSchedule } from './demand-shared';
 
 let database: SqliteDatabase | null = null;
 
@@ -46,6 +47,26 @@ afterEach(() => {
 });
 
 describe('demand batch workflow', () => {
+  it('derives seller windows from the versioned policy and product cadence', () => {
+    const schedule = deriveSellerDemandSchedule({
+      now: Date.parse('2026-08-22T04:00:00Z'),
+      targetQuantity: 10,
+      orderIntervalDays: 2,
+      ordersPerRun: 2,
+    });
+    expect(schedule.policyVersion).toBe(1);
+    expect(schedule.openAt).toBe(Date.parse('2026-08-22T04:00:00Z'));
+    expect(schedule.openAt).toBeLessThan(schedule.reservationDeadline);
+    expect(schedule.reservationDeadline).toBeLessThan(schedule.orderDeadline);
+    const endOfBeijingDay = deriveSellerDemandSchedule({
+      now: Date.parse('2026-08-22T15:59:59Z'),
+      targetQuantity: 1,
+      orderIntervalDays: 1,
+      ordersPerRun: 1,
+    });
+    expect(endOfBeijingDay.openAt).toBeLessThan(endOfBeijingDay.reservationDeadline);
+  });
+
   it('runs the staff Demand API and persists a reasoned 10000 BPS override', async () => {
     database = createMigratedTestDatabase();
     seedDemandFixture(database);

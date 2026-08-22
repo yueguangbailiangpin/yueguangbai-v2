@@ -22,7 +22,7 @@ import { sellerQueryKeys } from '../queries/keys';
 import { useSellerCursorPages } from '../queries/useSellerCursorPages';
 import { useSellerStoreContext } from '../routes/SellerLayout';
 
-export function SellerProductApplicationFormPage(): React.JSX.Element {
+export function SellerProductApplicationFormPage({ embedded = false }: { embedded?: boolean } = {}): React.JSX.Element {
   const client = useQueryClient();
   const navigate = useNavigate();
   const { storeId } = useSellerStoreContext();
@@ -79,9 +79,9 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
   const mutation = useBuyerMutation({
     operation: (body: unknown, key, signal) =>
       sellerApi.submitApplication(client, body, key, signal),
-    onSuccess: async (result) => {
-      await client.invalidateQueries({ queryKey: sellerQueryKeys.applications(storeId) });
+    onSuccess: (result) => {
       navigate(`/seller/products/${result.data.application.id}`, { replace: true });
+      void client.invalidateQueries({ queryKey: sellerQueryKeys.applications(storeId) });
     },
     onError: (error) => setMessage(productApplicationErrorMessage(error)),
   });
@@ -154,11 +154,13 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
   ].includes(upload.state);
   return (
     <section className="seller-page seller-submission-page">
-      <PageHeader
-        title="提交产品申请"
-        eyebrow="商品资料"
-        description="提交后进入审核；图片仅用于本次申请。"
-      />
+      {!embedded ? (
+        <PageHeader
+          title="提交产品申请"
+          eyebrow="商品资料"
+          description="提交后进入审核；图片仅用于本次申请。"
+        />
+      ) : null}
       <Card className="seller-form-card">
         {me.isPending || stores.isInitialPending ? (
           <p role="status">核验可提交范围中…</p>
@@ -435,7 +437,7 @@ export function productApplicationErrorMessage(error: unknown): string {
   }
 }
 
-export function SellerDemandFormPage(): React.JSX.Element {
+export function SellerDemandFormPage({ embedded = false }: { embedded?: boolean } = {}): React.JSX.Element {
   const client = useQueryClient();
   const navigate = useNavigate();
   const [search] = useSearchParams();
@@ -453,9 +455,9 @@ export function SellerDemandFormPage(): React.JSX.Element {
   });
   const mutation = useBuyerMutation({
     operation: (body: unknown, key, signal) => sellerApi.submitDemand(client, body, key, signal),
-    onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: sellerQueryKeys.demands(storeId) });
+    onSuccess: () => {
       navigate('/seller/demands', { replace: true });
+      void client.invalidateQueries({ queryKey: sellerQueryKeys.demands(storeId) });
     },
     onError: () => setMessage('提交未完成，请刷新页面事实后重试。'),
   });
@@ -463,41 +465,33 @@ export function SellerDemandFormPage(): React.JSX.Element {
     event.preventDefault();
     setMessage(null);
     const data = new FormData(event.currentTarget);
-    const openAt = beijingEpoch(String(data.get('open_at') ?? ''));
-    const reservation = beijingEpoch(String(data.get('reservation_deadline') ?? ''));
-    const order = beijingEpoch(String(data.get('order_deadline') ?? ''));
     const quantity = Number(data.get('target_quantity'));
     if (
       !me.data?.access.can_submit_demand_batches ||
       !String(data.get('product_id') ?? '') ||
       !Number.isSafeInteger(quantity) ||
-      quantity < 1 ||
-      openAt === null ||
-      reservation === null ||
-      order === null ||
-      !(openAt < reservation && reservation < order)
+      quantity < 1
     ) {
-      setMessage('请填写通过的产品、正整数数量以及依次递增的北京时间。');
+      setMessage('请填写通过的产品和正整数数量。开放、预约和下单窗口由系统策略生成。');
       return;
     }
     mutation.mutate({
       product_id: String(data.get('product_id')),
       task_type: String(data.get('task_type')),
       target_quantity: quantity,
-      open_at: openAt,
-      reservation_deadline: reservation,
-      order_deadline: order,
       buyer_visible_notes: String(data.get('buyer_visible_notes') ?? '').trim() || null,
       seller_notes: String(data.get('seller_notes') ?? '').trim() || null,
     });
   }
   return (
     <section className="seller-page seller-submission-page">
-      <PageHeader
-        title="提交需求"
-        eyebrow="数量计划"
-        description="每次追加数量都会新建一个需求批次，不会改历史记录。"
-      />
+      {!embedded ? (
+        <PageHeader
+          title="提交需求"
+          eyebrow="数量计划"
+          description="每次追加数量都会新建一个需求批次，不会改历史记录。"
+        />
+      ) : null}
       <Card className="seller-form-card">
         {me.isPending || products.isInitialPending ? (
           <p role="status">核验可提交产品中…</p>
@@ -542,15 +536,7 @@ export function SellerDemandFormPage(): React.JSX.Element {
             <FormField label="目标数量" htmlFor="demand-quantity" required>
               <TextInput name="target_quantity" type="number" min="1" step="1" required />
             </FormField>
-            <FormField label="开放时间（北京时间）" htmlFor="demand-open" required>
-              <TextInput name="open_at" type="datetime-local" required />
-            </FormField>
-            <FormField label="预约截止（北京时间）" htmlFor="demand-reservation" required>
-              <TextInput name="reservation_deadline" type="datetime-local" required />
-            </FormField>
-            <FormField label="下单截止（北京时间）" htmlFor="demand-order" required>
-              <TextInput name="order_deadline" type="datetime-local" required />
-            </FormField>
+            <Alert tone="info">开放、预约和下单窗口由当前版本化排期策略自动生成，Staff 审核时只需确认首个下单日期。</Alert>
             <FormField label="买家说明" htmlFor="demand-buyer-notes">
               <TextInput name="buyer_visible_notes" maxLength={2000} />
             </FormField>
@@ -586,8 +572,26 @@ export function SellerDemandFormPage(): React.JSX.Element {
   );
 }
 
-function beijingEpoch(value: string): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/u.test(value)) return null;
-  const epoch = Date.parse(`${value}:00+08:00`);
-  return Number.isSafeInteger(epoch) && epoch >= 0 ? epoch : null;
+export function SellerProductCampaignFlowPage({
+  initialMode,
+}: { initialMode: 'product' | 'demand' }): React.JSX.Element {
+  const [mode, setMode] = useState(initialMode);
+  return (
+    <section className="seller-page seller-submission-page">
+      <PageHeader
+        title="商品与投放"
+        eyebrow="统一提交入口"
+        description="先申请商品；商品审核通过后，可继续创建投放需求。两类操作仍分别保留权限、审核、审计和幂等记录。"
+      />
+      <div className="seller-flow-tabs" role="tablist" aria-label="商品与投放">
+        <Button type="button" className={mode === 'product' ? undefined : 'secondary'} onClick={() => setMode('product')}>
+          商品申请
+        </Button>
+        <Button type="button" className={mode === 'demand' ? undefined : 'secondary'} onClick={() => setMode('demand')}>
+          创建投放
+        </Button>
+      </div>
+      {mode === 'product' ? <SellerProductApplicationFormPage embedded /> : <SellerDemandFormPage embedded />}
+    </section>
+  );
 }

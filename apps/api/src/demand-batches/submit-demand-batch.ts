@@ -27,6 +27,8 @@ import {
   cleanDemandIdentifier,
   cleanDemandOptionalNotes,
   demandAuditState,
+  deriveSellerDemandSchedule,
+  SELLER_DEMAND_SCHEDULE_POLICY,
   insertDemandBatchEventStatement,
   normalizeDemandBatchError,
   parseDemandTaskType,
@@ -45,6 +47,8 @@ interface ProductSource {
   marketplace_code: 'JP';
   product_status: string;
   product_version_no: number;
+  order_interval_days: number | null;
+  orders_per_run: number | null;
   store_status: string;
   organization_status: string;
 }
@@ -71,9 +75,9 @@ export async function submitDemandBatch(
     targetQuantity: number;
     buyerVisibleNotes: string | null;
     sellerNotes: string | null;
-    openAt: number;
-    reservationDeadline: number;
-    orderDeadline: number;
+    openAt?: number;
+    reservationDeadline?: number;
+    orderDeadline?: number;
   },
   command: {
     actor: SellerDemandActor;
@@ -97,14 +101,19 @@ export async function submitDemandBatch(
     input.sellerNotes,
     2000,
   );
-  validateDemandSchedule({
-    openAt: input.openAt,
-    reservationDeadline: input.reservationDeadline,
-    orderDeadline: input.orderDeadline,
-  });
-
   const now = command.now ?? Date.now();
   if (!Number.isSafeInteger(now) || now < 0) {
+    throw new DemandBatchError('VALIDATION_ERROR', 400);
+  }
+
+  const suppliedSchedule = input.openAt !== undefined
+    && input.reservationDeadline !== undefined
+    && input.orderDeadline !== undefined;
+  if (!suppliedSchedule && (
+    input.openAt !== undefined
+    || input.reservationDeadline !== undefined
+    || input.orderDeadline !== undefined
+  )) {
     throw new DemandBatchError('VALIDATION_ERROR', 400);
   }
 
@@ -117,9 +126,12 @@ export async function submitDemandBatch(
     target_quantity: targetQuantity,
     buyer_visible_notes: buyerVisibleNotes,
     seller_notes: sellerNotes,
-    open_at: input.openAt,
-    reservation_deadline: input.reservationDeadline,
-    order_deadline: input.orderDeadline,
+    schedule_policy_version: suppliedSchedule
+      ? null
+      : SELLER_DEMAND_SCHEDULE_POLICY.version,
+    open_at: suppliedSchedule ? input.openAt : null,
+    reservation_deadline: suppliedSchedule ? input.reservationDeadline : null,
+    order_deadline: suppliedSchedule ? input.orderDeadline : null,
   });
 
   const acquired =
@@ -157,6 +169,23 @@ export async function submitDemandBatch(
       throw new DemandBatchError('FORBIDDEN', 403);
     }
 
+    const schedule = suppliedSchedule
+      ? {
+          openAt: input.openAt!,
+          reservationDeadline: input.reservationDeadline!,
+          orderDeadline: input.orderDeadline!,
+        }
+      : deriveSellerDemandSchedule({
+          now,
+          targetQuantity,
+          orderIntervalDays: source.order_interval_days,
+          ordersPerRun: source.orders_per_run,
+        });
+    const schedulePolicyVersion = suppliedSchedule
+      ? null
+      : SELLER_DEMAND_SCHEDULE_POLICY.version;
+    validateDemandSchedule(schedule);
+
     const demandBatchId = crypto.randomUUID();
     const response: SubmitDemandBatchResult = {
       demand_batch_id: demandBatchId,
@@ -181,6 +210,7 @@ export async function submitDemandBatch(
       payload: {
         ...response,
         buyer_visible_notes: buyerVisibleNotes,
+        schedule_policy_version: schedulePolicyVersion,
       },
       createdAt: now,
     });
@@ -231,9 +261,9 @@ export async function submitDemandBatch(
         targetQuantity,
         buyerVisibleNotes,
         sellerNotes,
-        input.openAt,
-        input.reservationDeadline,
-        input.orderDeadline,
+        schedule.openAt,
+        schedule.reservationDeadline,
+        schedule.orderDeadline,
         now,
         now,
       ),
@@ -270,10 +300,10 @@ export async function submitDemandBatch(
             version: 1,
             taskType,
             targetQuantity,
-            openAt: input.openAt,
-            reservationDeadline:
-              input.reservationDeadline,
-            orderDeadline: input.orderDeadline,
+            openAt: schedule.openAt,
+            reservationDeadline: schedule.reservationDeadline,
+            orderDeadline: schedule.orderDeadline,
+            schedulePolicyVersion,
           }),
           demand_batch_id: demandBatchId,
           product_id: source.product_id,
@@ -352,12 +382,17 @@ async function requireProductSource(
       product.marketplace_code,
       product.status AS product_status,
       product.current_version_no AS product_version_no,
+      version.order_interval_days,
+      version.orders_per_run,
       store.status AS store_status,
       organization.status AS organization_status
     FROM products product
     JOIN seller_stores store
       ON store.id=product.store_id
       AND store.organization_id=product.organization_id
+    JOIN product_versions version
+      ON version.product_id=product.id
+      AND version.version_no=product.current_version_no
     JOIN seller_organizations organization
       ON organization.id=product.organization_id
     WHERE product.id=?

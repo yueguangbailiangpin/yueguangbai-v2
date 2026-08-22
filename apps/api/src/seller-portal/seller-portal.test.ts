@@ -395,11 +395,18 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       target_quantity: 8,
       buyer_visible_notes: '公开任务说明',
       seller_notes: '内部卖家备注',
-      open_at: 10000,
-      reservation_deadline: 20000,
-      order_deadline: 30000,
     };
     const headers = await stateHeaders('ops', 'demand-submit-0001');
+    const legacyTimeOverride = await request(
+      app,
+      '/api/seller-portal/demand-batches',
+      {
+        method: 'POST',
+        headers: await stateHeaders('ops', 'demand-submit-legacy-time-0001'),
+        body: JSON.stringify({ ...payload, open_at: 1 }),
+      },
+    );
+    expect(legacyTimeOverride.status).toBe(400);
     const first = await request(
       app,
       '/api/seller-portal/demand-batches',
@@ -419,6 +426,11 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       remaining_quantity: 8,
       status: 'SUBMITTED',
     });
+    expect(firstBody.data.demand_batch.open_at).toBeGreaterThan(0);
+    expect(firstBody.data.demand_batch.open_at)
+      .toBeLessThan(firstBody.data.demand_batch.reservation_deadline);
+    expect(firstBody.data.demand_batch.reservation_deadline)
+      .toBeLessThan(firstBody.data.demand_batch.order_deadline);
     const demandId = firstBody.data.demand_batch.id as string;
 
     const replay = await request(
@@ -1335,24 +1347,23 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       id, product_id, version_no, product_name,
       search_keywords_json, product_url,
       buyer_visible_notes, internal_notes,
-      created_by_staff_id, created_at
-    ,
-          ordering_guide_expected_amount_jpy,
-          color_spec_mode) VALUES
+      created_by_staff_id, created_at,
+      ordering_guide_expected_amount_jpy, color_spec_mode,
+      order_interval_days, orders_per_run) VALUES
       ('product-1-v1', 'product-1', 1, '产品一旧版',
        '["旧关键词"]', 'https://example.test/p1-v1',
        '旧公开说明', '内部秘密旧版', 'staff-portal', 1000,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 1, 1),
       ('product-1-v2', 'product-1', 2, '产品一新版',
        '["新关键词"]', 'https://example.test/p1-v2',
        '新公开说明', '内部秘密新版', 'staff-portal', 2000,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 1, 1),
       ('product-2-v1', 'product-2', 1, '产品二',
        '[]', NULL, NULL, '内部秘密二', 'staff-portal', 1000,
-          1980, 'MAIN_IMAGE_VARIANT'),
+          1980, 'MAIN_IMAGE_VARIANT', 1, 1),
       ('product-other-v1', 'product-other', 1, '其他产品',
        '[]', NULL, NULL, '其他内部秘密', 'staff-portal', 1000,
-          1980, 'MAIN_IMAGE_VARIANT');
+          1980, 'MAIN_IMAGE_VARIANT', 1, 1);
 
     INSERT INTO product_applications (
       id, organization_id, store_id, marketplace_code,
