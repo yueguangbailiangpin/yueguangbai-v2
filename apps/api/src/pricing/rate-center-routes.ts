@@ -14,7 +14,7 @@ import {
   readBuyerDailyExchangeRateVersions,
   submitBuyerDailyExchangeRate,
 } from './buyer-daily-exchange-rates';
-import { PricingError } from './pricing-shared';
+import { PricingError, parseAsOfParameter } from './pricing-shared';
 import { readSellerPrincipalRatePolicies } from './seller-principal-rate-policy';
 
 const BODY_LIMIT = 16 * 1024;
@@ -39,12 +39,14 @@ async function readRateCenter(context: Context<any>): Promise<Response> {
   const parameters = new URL(context.req.url).searchParams;
   if (
     parameters.getAll('business_date').length !== 1 ||
-    parameters.getAll('seller_organization_id').length > 1
+    parameters.getAll('seller_organization_id').length > 1 ||
+    parameters.getAll('as_of').length > 1
   ) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
   const businessDate = parameters.get('business_date');
   const requestedOrganization = parameters.get('seller_organization_id');
+  const asOf = parseAsOfParameter(parameters.get('as_of'));
   if (businessDate === null) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
@@ -74,7 +76,7 @@ async function readRateCenter(context: Context<any>): Promise<Response> {
     readSellerPrincipalRatePolicies(context.env.DB, {
       sourceCurrencyCode: 'JPY',
       sellerOrganizationId: selectedOrganization,
-      at: Date.now(),
+      at: asOf,
     }),
   ]);
   const response: StaffRateCenterReadDto = {

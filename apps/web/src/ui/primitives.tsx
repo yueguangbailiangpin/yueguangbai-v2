@@ -167,12 +167,18 @@ export function Card({
   children,
   className = '',
   as = 'section',
+  id,
 }: PropsWithChildren<{
   className?: string;
   as?: 'article' | 'section' | 'div';
+  id?: string;
 }>): React.JSX.Element {
   const Element = as;
-  return <Element className={classes('card', className)}>{children}</Element>;
+  return (
+    <Element id={id} className={classes('card', className)}>
+      {children}
+    </Element>
+  );
 }
 
 export function MetricCard({

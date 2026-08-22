@@ -36,6 +36,7 @@ describe('seller principal rate policy', () => {
       seller_organization_id: null,
       default_policy: null, seller_override_policy: null,
       default_pending_policy: null, seller_override_pending_policy: null,
+      default_upcoming_policy: null, seller_override_upcoming_policy: null,
       default_next_version: 1, seller_override_next_version: null,
       selected_policy: null,
     });
@@ -133,6 +134,27 @@ describe('seller principal rate policy', () => {
       markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 1_000,
     }, 'policy:default:past')).rejects.toMatchObject({
       code: 'PRICING_RULE_EFFECTIVE_TIME_CONFLICT', status: 409,
+    });
+  });
+
+  it('surfaces the next confirmed change separately from the effective one', async () => {
+    database = fixture();
+    await submitPolicy(database, {
+      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
+      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
+    }, 'policy:upcoming:first');
+    await submitPolicy(database, {
+      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
+      markupRateValue: '0.006', expectedVersion: 1, effectiveFrom: 8_000,
+    }, 'policy:upcoming:second');
+    const read = await readSellerPrincipalRatePolicies(database, {
+      sourceCurrencyCode: 'JPY', sellerOrganizationId: null, at: 5_000,
+    });
+    expect(read.default_policy).toMatchObject({
+      markup_rate_value: '400000', effective_from: 3_000,
+    });
+    expect(read.default_upcoming_policy).toMatchObject({
+      markup_rate_value: '600000', effective_from: 8_000,
     });
   });
 

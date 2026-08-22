@@ -365,6 +365,22 @@
   display: flex; justify-content: space-between; gap: 8px;
   padding: 8px 2px; border-bottom: 1px solid #e9edf2; font-size: .72rem;
 }
+.staff-finance-workspace { min-width: 0; padding: 12px; display: grid; gap: 12px; }
+.staff-finance-market-group { display: grid; gap: 12px; min-width: 0; }
+.staff-effect-timeline { margin: 0; padding: 0; list-style: none; }
+.staff-effect-timeline > li {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px;
+  padding: 7px 2px; border-bottom: 1px solid #e9edf2; font-size: .74rem;
+}
+.staff-effect-timeline > li:last-child { border-bottom: 0; }
+.staff-effect-timeline-kind { font-weight: 750; }
+.staff-effect-timeline-state { color: var(--mw-muted); }
+.staff-effect-timeline-next { background: #f4f8f1; border-radius: 6px; padding-inline: 6px; }
+.staff-effect-timeline-badge {
+  font-style: normal; font-weight: 750; font-size: .64rem;
+  color: #2e5e2e; background: #e4f0e0; border-radius: 999px; padding: 2px 8px;
+}
+.staff-effect-timeline-empty { color: var(--mw-muted); font-size: .74rem; margin: 0; }
 .staff-queue-footnote {
   display: flex; align-items: center; gap: 8px;
   margin-top: 14px; color: var(--mw-muted); font-size: .68rem;

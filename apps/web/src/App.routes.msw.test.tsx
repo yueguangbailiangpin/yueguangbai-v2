@@ -13,7 +13,7 @@ import { server } from './test/msw/server';
 afterEach(cleanup);
 
 describe('application route registration', () => {
-  it('mounts the approved Staff rate center workspace', async () => {
+  it('mounts the finance configuration workspace under /staff/finance', async () => {
     server.use(
       http.get(apiUrl('/api/staff-auth/session'), () =>
         HttpResponse.json(
@@ -22,14 +22,14 @@ describe('application route registration', () => {
               ...staffSessionFixture,
               permissions: ['SELLER_MANAGE', 'FINANCIAL_CORRECT'],
             },
-            'request-staff-rate-center-route',
+            'request-staff-finance-route',
           ),
         ),
       ),
       http.get(apiUrl('/api/staff/rate-center'), () =>
         HttpResponse.json({
           data: rateCenterFixture(),
-          meta: { request_id: 'request-staff-rate-center-read' },
+          meta: { request_id: 'request-staff-finance-read' },
         }),
       ),
       http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () =>
@@ -46,21 +46,79 @@ describe('application route registration', () => {
               default_next_version: 1,
               seller_override_next_version: null,
               selected_policy: null,
+              default_upcoming_policy: null,
+              seller_override_upcoming_policy: null,
             },
           },
-          meta: { request_id: 'request-staff-rate-center-policies' },
+          meta: { request_id: 'request-staff-finance-policies' },
         }),
       ),
     );
 
-    renderWithMsw(<AppRoutes />, { route: '/staff/rate-center' });
+    renderWithMsw(<AppRoutes />, { route: '/staff/finance' });
 
     expect(
       await screen.findByRole('heading', {
         level: 2,
-        name: '汇率中心',
+        name: '财务配置',
       }),
     ).toBeVisible();
+    expect(screen.getByRole('heading', { level: 3, name: '当前生效摘要' })).toBeVisible();
+  });
+
+  it('redirects the legacy rate center paths to /staff/finance with the query intact', async () => {
+    server.use(
+      http.get(apiUrl('/api/staff-auth/session'), () =>
+        HttpResponse.json(
+          staffSessionEnvelopeFixture(
+            {
+              ...staffSessionFixture,
+              permissions: ['SELLER_MANAGE', 'FINANCIAL_CORRECT'],
+            },
+            'request-staff-rate-center-redirect',
+          ),
+        ),
+      ),
+      http.get(apiUrl('/api/staff/rate-center'), () =>
+        HttpResponse.json({
+          data: rateCenterFixture({ business_date: '2026-08-01' }),
+          meta: { request_id: 'request-staff-rate-center-redirect-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () =>
+        HttpResponse.json({
+          data: {
+            policies: {
+              source_currency_code: 'JPY',
+              quote_currency_code: 'CNY',
+              seller_organization_id: null,
+              default_policy: null,
+              seller_override_policy: null,
+              default_pending_policy: null,
+              seller_override_pending_policy: null,
+              default_next_version: 1,
+              seller_override_next_version: null,
+              selected_policy: null,
+              default_upcoming_policy: null,
+              seller_override_upcoming_policy: null,
+            },
+          },
+          meta: { request_id: 'request-staff-rate-center-redirect-policies' },
+        }),
+      ),
+    );
+
+    renderWithMsw(<AppRoutes />, {
+      route: '/staff/rate-center?section=base-rate&business_date=2026-08-01',
+    });
+
+    expect(
+      await screen.findByRole('heading', {
+        level: 2,
+        name: '财务配置',
+      }),
+    ).toBeVisible();
+    expect(await screen.findByLabelText('订单日期（回查）')).toHaveValue('2026-08-01');
   });
 
   it('labels the Staff navigation with the seven approved sections and retired names', async () => {
@@ -127,7 +185,7 @@ describe('application route registration', () => {
   });
 });
 
-function rateCenterFixture() {
+function rateCenterFixture(overrides: Record<string, unknown> = {}) {
   return {
     business_date: '2026-08-22',
     source_currency_code: 'JPY',
@@ -150,6 +208,9 @@ function rateCenterFixture() {
       default_next_version: 1,
       seller_override_next_version: null,
       selected_policy: null,
+      default_upcoming_policy: null,
+      seller_override_upcoming_policy: null,
     },
+    ...overrides,
   };
 }

@@ -270,10 +270,14 @@ export const staffApi = Object.freeze({
     sourceCurrencyCode: string,
     sellerOrganizationId: string | null,
     signal?: AbortSignal,
+    asOf?: number,
   ) => {
     const parameters = new URLSearchParams({ source_currency_code: sourceCurrencyCode });
     if (sellerOrganizationId !== null) {
       parameters.set('seller_organization_id', sellerOrganizationId);
+    }
+    if (asOf !== undefined) {
+      parameters.set('as_of', String(asOf));
     }
     return read(
       client,
@@ -309,13 +313,25 @@ export const staffApi = Object.freeze({
       staffSellerPrincipalRatePolicyMutationSchema,
       key,
     ),
-  sellerServiceFees: (client: QueryClient, sellerOrganizationId: string, signal?: AbortSignal) =>
-    read(
+  sellerServiceFees: (
+    client: QueryClient,
+    sellerOrganizationId: string,
+    signal?: AbortSignal,
+    asOf?: number,
+  ) => {
+    const parameters = new URLSearchParams({
+      seller_organization_id: sellerOrganizationId,
+    });
+    if (asOf !== undefined) {
+      parameters.set('as_of', String(asOf));
+    }
+    return read(
       client,
-      `/api/staff/seller-service-fees?seller_organization_id=${encodeURIComponent(sellerOrganizationId)}`,
+      `/api/staff/seller-service-fees?${parameters}`,
       staffSellerServiceFeesSchema,
       signal,
-    ),
+    );
+  },
   submitSellerServiceFee: (client: QueryClient, body: unknown, key: string) =>
     write(
       client,
@@ -345,10 +361,12 @@ export const staffApi = Object.freeze({
     businessDate: string,
     sellerOrganizationId: string | null,
     signal?: AbortSignal,
+    asOf?: number,
   ) => {
     const parameters = new URLSearchParams({ business_date: businessDate });
     if (sellerOrganizationId !== null)
       parameters.set('seller_organization_id', sellerOrganizationId);
+    if (asOf !== undefined) parameters.set('as_of', String(asOf));
     return read(client, `/api/staff/rate-center?${parameters}`, staffRateCenterSchema, signal);
   },
   submitOrderDayBaseRate: (client: QueryClient, body: unknown, key: string) =>

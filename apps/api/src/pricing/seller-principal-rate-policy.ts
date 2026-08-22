@@ -392,7 +392,7 @@ export async function readSellerPrincipalRatePolicies(
     ? null
     : cleanPricingIdentifier(input.sellerOrganizationId);
   const [defaultRow, overrideRow, defaultPending, overridePending,
-    defaultLatest, overrideLatest] = await Promise.all([
+    defaultLatest, overrideLatest, defaultUpcoming, overrideUpcoming] = await Promise.all([
     resolvedPolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
       sourceCurrencyCode: input.sourceCurrencyCode, at,
@@ -419,6 +419,14 @@ export async function readSellerPrincipalRatePolicies(
           scopeType: 'SELLER_ORGANIZATION', sellerOrganizationId: organizationId,
           sourceCurrencyCode: input.sourceCurrencyCode,
         }),
+    upcomingPolicy(database, {
+      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
+      sourceCurrencyCode: input.sourceCurrencyCode, at,
+    }),
+    organizationId === null ? Promise.resolve(null) : upcomingPolicy(database, {
+      scopeType: 'SELLER_ORGANIZATION', sellerOrganizationId: organizationId,
+      sourceCurrencyCode: input.sourceCurrencyCode, at,
+    }),
   ]);
   return {
     source_currency_code: input.sourceCurrencyCode,
@@ -435,6 +443,8 @@ export async function readSellerPrincipalRatePolicies(
     selected_policy: overrideRow
       ? policyDto(overrideRow)
       : defaultRow ? policyDto(defaultRow) : null,
+    default_upcoming_policy: defaultUpcoming ? policyDto(defaultUpcoming) : null,
+    seller_override_upcoming_policy: overrideUpcoming ? policyDto(overrideUpcoming) : null,
   };
 }
 
@@ -658,6 +668,31 @@ async function pendingPolicy(
     LIMIT 1
   `).bind(input.scopeType, input.sellerOrganizationId,
     input.sourceCurrencyCode).first<PolicyRow>();
+  return row ? normalizePolicyRow(row) : null;
+}
+
+async function upcomingPolicy(
+  database: SqlDatabase,
+  input: {
+    scopeType: SellerPrincipalRatePolicyScope;
+    sellerOrganizationId: string | null;
+    sourceCurrencyCode: CurrencyCode;
+    at: number;
+  },
+): Promise<PolicyRow | null> {
+  const row = await database.prepare(`
+    SELECT id, scope_type, seller_organization_id, source_currency_code,
+      quote_currency_code, version_no, decision_version, status,
+      markup_rate_value, rate_scale, effective_from, submitted_by_staff_id, submitted_at,
+      confirmed_at, rejection_reason
+    FROM seller_principal_rate_policy_versions
+    WHERE scope_type=? AND seller_organization_id IS ?
+      AND source_currency_code=? AND quote_currency_code='CNY'
+      AND status='CONFIRMED' AND effective_from>?
+    ORDER BY effective_from ASC, version_no DESC
+    LIMIT 1
+  `).bind(input.scopeType, input.sellerOrganizationId,
+    input.sourceCurrencyCode, input.at).first<PolicyRow>();
   return row ? normalizePolicyRow(row) : null;
 }
 

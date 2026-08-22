@@ -220,6 +220,7 @@ export function AppRoutes(): React.JSX.Element {
         <Route path="admin-business-dashboard" element={<StaffRouteSlot />} />
         <Route path="access-management" element={<StaffRouteSlot />} />
         <Route path="operations" element={<StaffRouteSlot />} />
+        <Route path="finance" element={<StaffRouteSlot />} />
         <Route path="rate-center" element={<StaffRouteSlot />} />
         <Route path="seller-principal-rate-policies" element={<StaffRouteSlot />} />
         <Route path="products" element={<StaffRouteSlot />} />
@@ -318,6 +319,7 @@ export function ReviewRoutes(): React.JSX.Element {
         <Route path="admin-business-dashboard" element={<StaffRouteSlot />} />
         <Route path="access-management" element={<StaffRouteSlot />} />
         <Route path="operations" element={<StaffRouteSlot />} />
+        <Route path="finance" element={<StaffRouteSlot />} />
         <Route path="rate-center" element={<StaffRouteSlot />} />
         <Route path="seller-principal-rate-policies" element={<StaffRouteSlot />} />
         <Route path="products" element={<StaffRouteSlot />} />

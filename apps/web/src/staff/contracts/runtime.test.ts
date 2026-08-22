@@ -28,6 +28,7 @@ describe('Staff workbench runtime DTOs', () => {
       default_pending_policy: null, seller_override_pending_policy: null,
       default_next_version: 1, seller_override_next_version: null,
       selected_policy: null,
+      default_upcoming_policy: null, seller_override_upcoming_policy: null,
     });
     expect(policies).toMatchObject({
       seller_organization_id: null,

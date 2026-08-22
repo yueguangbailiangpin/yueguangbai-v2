@@ -10,7 +10,7 @@ import {
   rejectSellerPrincipalRatePolicy,
   submitSellerPrincipalRatePolicy,
 } from './seller-principal-rate-policy';
-import { PricingError } from './pricing-shared';
+import { PricingError, parseAsOfParameter } from './pricing-shared';
 
 const BODY_LIMIT = 16 * 1024;
 
@@ -28,12 +28,14 @@ async function read(context: Context<any>): Promise<Response> {
   const parameters = new URL(context.req.url).searchParams;
   if (
     parameters.getAll('source_currency_code').length !== 1 ||
-    parameters.getAll('seller_organization_id').length > 1
+    parameters.getAll('seller_organization_id').length > 1 ||
+    parameters.getAll('as_of').length > 1
   ) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
   const source = parameters.get('source_currency_code');
   const organizationId = parameters.get('seller_organization_id');
+  const asOf = parseAsOfParameter(parameters.get('as_of'));
   if (
     !isCurrencyCode(source) ||
     source === 'CNY' ||
@@ -64,7 +66,7 @@ async function read(context: Context<any>): Promise<Response> {
         policies: await readSellerPrincipalRatePolicies(context.env.DB, {
           sourceCurrencyCode: source,
           sellerOrganizationId: organizationId,
-          at: Date.now(),
+          at: asOf,
         }),
       },
       requestId(context),

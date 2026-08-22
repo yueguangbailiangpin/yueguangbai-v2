@@ -10,7 +10,7 @@ import {
   BuyerCustomersWorkspace,
   SellerCustomersWorkspace,
 } from './acquisition/CustomerIntakeWorkspace';
-import { SellerPrincipalRatePolicyWorkspace } from './pricing/SellerPrincipalRatePolicyWorkspace';
+import { StaffFinanceWorkspace } from './finance/StaffFinanceWorkspace';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 
 const loadStaffAdminRoutes = () => import('./StaffAdminRouteModule');
@@ -28,7 +28,7 @@ export default function StaffPortal(): React.JSX.Element {
 }
 
 export function StaffRoutePage(): React.JSX.Element {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const session = useCurrentStaffSession();
   if (pathname === '/staff' && session.role.code === 'acquisition')
     return <Navigate to="/staff/acquisition" replace />;
@@ -44,11 +44,15 @@ export function StaffRoutePage(): React.JSX.Element {
     /^\/staff\/demands\/[^/]+\/reservations$/u.test(pathname)
   )
     return <RouteChunkBoundary load={loadStaffSchedulingRoutes} />;
+  if (pathname.startsWith('/staff/finance')) return <StaffFinanceWorkspace />;
+  // The pre-batch rate center kept both legacy paths reachable without
+  // redirects; the finance workspace now owns the page and the legacy paths
+  // (including preflight deep links) forward with their query intact.
   if (
     pathname.startsWith('/staff/rate-center') ||
     pathname.startsWith('/staff/seller-principal-rate-policies')
   )
-    return <SellerPrincipalRatePolicyWorkspace />;
+    return <Navigate to={`/staff/finance${search}`} replace />;
   if (pathname.startsWith('/staff/operations')) return <StaffOperatingIntegrityTools />;
   if (pathname.startsWith('/staff/work/')) return <WorkItemPage />;
   return <StaffTaskQueuePage />;

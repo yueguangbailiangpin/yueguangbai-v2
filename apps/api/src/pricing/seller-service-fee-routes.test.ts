@@ -42,10 +42,10 @@ describe('staff seller service fee routes', () => {
       data: {
         seller_organization_id: 'seller-org-1',
         fees: [
-          { review_type: 'RATING', effective_fee: null, pending_fee: null, next_version: 1 },
-          { review_type: 'TEXT', effective_fee: null, pending_fee: null, next_version: 1 },
-          { review_type: 'IMAGE', effective_fee: null, pending_fee: null, next_version: 1 },
-          { review_type: 'VIDEO', effective_fee: null, pending_fee: null, next_version: 1 },
+          { review_type: 'RATING', effective_fee: null, pending_fee: null, upcoming_fee: null, next_version: 1 },
+          { review_type: 'TEXT', effective_fee: null, pending_fee: null, upcoming_fee: null, next_version: 1 },
+          { review_type: 'IMAGE', effective_fee: null, pending_fee: null, upcoming_fee: null, next_version: 1 },
+          { review_type: 'VIDEO', effective_fee: null, pending_fee: null, upcoming_fee: null, next_version: 1 },
         ],
       },
     });
@@ -128,6 +128,7 @@ describe('staff seller service fee routes', () => {
             review_type: 'RATING',
             effective_fee: null,
             pending_fee: null,
+            upcoming_fee: expect.anything(),
             next_version: 2,
           },
         ]),

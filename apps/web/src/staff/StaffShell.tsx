@@ -115,6 +115,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const access = location.pathname.startsWith('/staff/access-management');
   const operations = location.pathname.startsWith('/staff/operations');
   const pricing =
+    location.pathname.startsWith('/staff/finance') ||
     location.pathname.startsWith('/staff/rate-center') ||
     location.pathname.startsWith('/staff/seller-principal-rate-policies');
   const products =
@@ -155,7 +156,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
     : operations
       ? '订单状态留痕与流程闭环核查'
       : pricing
-        ? '订单日基础汇率、默认加点与卖家覆盖'
+        ? '基础汇率、加点与服务费的生效时间线'
         : dashboard
           ? '经营与利润数据'
           : products
@@ -216,7 +217,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
             </NavLink>
           ) : null}
           {(owner || role === 'seller_ops') && session.permissions.includes('SELLER_MANAGE') ? (
-            <NavLink to="/staff/rate-center">
+            <NavLink to="/staff/finance">
               <Settings aria-hidden="true" />
               <span>财务配置</span>
             </NavLink>

@@ -643,7 +643,7 @@ export async function readOrderEvidenceApprovalPreflight(
   const source = await requireAtomicApprovalSource(database, submissionId);
   const orderDate = source.amazon_order_date;
   const path = (section: string) =>
-    `/staff/rate-center?section=${section}` +
+    `/staff/finance?section=${section}` +
     (orderDate === null ? '' : `&business_date=${encodeURIComponent(orderDate)}`) +
     `&seller_organization_id=${encodeURIComponent(source.seller_organization_id)}`;
   if (orderDate === null) {

@@ -175,6 +175,14 @@ export interface SellerServiceFeeOverviewEntry {
     fee_cny_fen: string;
     effective_from: number;
   } | null;
+  /** Earliest confirmed fee that becomes effective strictly after `at`. */
+  upcoming_fee: {
+    fee_version_id: string;
+    version_no: number;
+    fee_cny_fen: string;
+    effective_from: number;
+    confirmed_at: number;
+  } | null;
   next_version: number;
 }
 
@@ -216,6 +224,7 @@ export async function readSellerServiceFeeOverview(
         review_type: reviewType,
         effective_fee: null,
         pending_fee: null,
+        upcoming_fee: null,
         next_version: 1,
       },
     ]),
@@ -232,19 +241,32 @@ export async function readSellerServiceFeeOverview(
         fee_cny_fen: String(row.fee_cny_fen),
         effective_from: Number(row.effective_from),
       };
-    } else if (
-      row.status === 'CONFIRMED'
-      && Number(row.effective_from) <= input.at
-      && (entry.effective_fee === null
-        || Number(row.effective_from) >= entry.effective_fee.effective_from)
-    ) {
-      entry.effective_fee = {
-        fee_version_id: row.id,
-        version_no: Number(row.version_no),
-        fee_cny_fen: String(row.fee_cny_fen),
-        effective_from: Number(row.effective_from),
-        confirmed_at: Number(row.confirmed_at ?? 0),
-      };
+    } else if (row.status === 'CONFIRMED') {
+      if (
+        Number(row.effective_from) <= input.at
+        && (entry.effective_fee === null
+          || Number(row.effective_from) >= entry.effective_fee.effective_from)
+      ) {
+        entry.effective_fee = {
+          fee_version_id: row.id,
+          version_no: Number(row.version_no),
+          fee_cny_fen: String(row.fee_cny_fen),
+          effective_from: Number(row.effective_from),
+          confirmed_at: Number(row.confirmed_at ?? 0),
+        };
+      } else if (
+        Number(row.effective_from) > input.at
+        && (entry.upcoming_fee === null
+          || Number(row.effective_from) < entry.upcoming_fee.effective_from)
+      ) {
+        entry.upcoming_fee = {
+          fee_version_id: row.id,
+          version_no: Number(row.version_no),
+          fee_cny_fen: String(row.fee_cny_fen),
+          effective_from: Number(row.effective_from),
+          confirmed_at: Number(row.confirmed_at ?? 0),
+        };
+      }
     }
   }
   return DEMAND_TASK_TYPES.map((reviewType) => entries.get(reviewType)!);

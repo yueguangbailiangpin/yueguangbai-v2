@@ -9,7 +9,7 @@ import type { Context, Hono } from 'hono';
 import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { scopeAllowsSellerOrganization } from '../staff-assignment/data-scope';
-import { PricingError } from './pricing-shared';
+import { PricingError, parseAsOfParameter } from './pricing-shared';
 import {
   confirmSellerServiceFee,
   readSellerServiceFeeOverview,
@@ -31,10 +31,14 @@ async function read(context: Context<any>): Promise<Response> {
   const scope = staffDataScope(context);
   requireManage(actor);
   const parameters = new URL(context.req.url).searchParams;
-  if (parameters.getAll('seller_organization_id').length !== 1) {
+  if (
+    parameters.getAll('seller_organization_id').length !== 1 ||
+    parameters.getAll('as_of').length > 1
+  ) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
   const organizationId = parameters.get('seller_organization_id')!;
+  const asOf = parseAsOfParameter(parameters.get('as_of'));
   if (organizationId.length < 1 || organizationId.length > 120) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
@@ -46,7 +50,7 @@ async function read(context: Context<any>): Promise<Response> {
         seller_organization_id: organizationId,
         fees: await readSellerServiceFeeOverview(context.env.DB, {
           sellerOrganizationId: organizationId,
-          at: Date.now(),
+          at: asOf,
         }),
       },
       requestId(context),

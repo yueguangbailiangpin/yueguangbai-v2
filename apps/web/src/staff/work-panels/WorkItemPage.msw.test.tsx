@@ -1170,14 +1170,14 @@ function installOrderHandlers(options: {
                 code: 'ORDER_DAY_BASE_RATE',
                 status: 'READY',
                 message: '订单日基础汇率已确认。',
-                action_path: '/staff/rate-center?section=base-rate&business_date=2026-08-22',
+                action_path: '/staff/finance?section=base-rate&business_date=2026-08-22',
                 required_access: '总管理员 + 财务更正权限',
               },
               {
                 code: 'SELLER_PRINCIPAL_MARKUP',
                 status: 'READY',
                 message: '卖家本金汇率加点已确认。',
-                action_path: '/staff/rate-center?section=seller-markup&business_date=2026-08-22',
+                action_path: '/staff/finance?section=seller-markup&business_date=2026-08-22',
                 required_access: '总管理员 + 财务更正权限',
               },
               {

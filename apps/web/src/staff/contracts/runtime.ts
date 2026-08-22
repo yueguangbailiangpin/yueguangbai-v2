@@ -66,6 +66,8 @@ export const staffSellerPrincipalRatePolicySchema = z
     default_next_version: z.number().int().positive(),
     seller_override_next_version: z.number().int().positive().nullable(),
     selected_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+    default_upcoming_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+    seller_override_upcoming_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
   })
   .strict();
 export const staffSellerPrincipalRatePoliciesResponseSchema = z
@@ -151,6 +153,7 @@ export const staffSellerServiceFeesSchema = z
           review_type: serviceFeeReviewTypeSchema,
           effective_fee: serviceFeeEffectiveSchema.nullable(),
           pending_fee: serviceFeePendingSchema.nullable(),
+          upcoming_fee: serviceFeeEffectiveSchema.nullable(),
           next_version: z.number().int().positive(),
         })
         .strict(),

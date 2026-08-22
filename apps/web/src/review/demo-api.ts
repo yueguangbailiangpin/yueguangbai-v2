@@ -1189,6 +1189,8 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         default_next_version: 4,
         seller_override_next_version: parsed.searchParams.has('seller_organization_id') ? 1 : null,
         selected_policy: policy,
+        default_upcoming_policy: null,
+        seller_override_upcoming_policy: null,
       },
     };
   }
@@ -1215,6 +1217,101 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         rejection_reason: path.endsWith('/reject') ? 'Demo Owner 拒绝' : null,
         replayed: false,
       },
+    };
+  if (path === '/api/staff/rate-center' && method === 'GET') {
+    const businessDate = parsed.searchParams.get('business_date') ?? '2026-08-11';
+    return {
+      business_date: businessDate,
+      source_currency_code: 'JPY',
+      quote_currency_code: 'CNY',
+      base_rate: {
+        business_date: businessDate,
+        confirmed_rate: {
+          rate_id: 'review-base-rate-1',
+          business_date: businessDate,
+          version_no: 1,
+          decision_version: 2,
+          status: 'CONFIRMED',
+          cny_per_jpy_e8: '4600000',
+          rejection_reason: null,
+          confirmed_at: NOW - DAY / 2,
+        },
+        pending_rate: null,
+        next_version: 2,
+      },
+      seller_organizations: [
+        {
+          seller_organization_id: 'review-seller-org-1',
+          seller_organization_name: 'Demo 卖家组织',
+          marketplace_code: 'AMAZON_JP',
+        },
+      ],
+      policies: {
+        source_currency_code: 'JPY',
+        quote_currency_code: 'CNY',
+        seller_organization_id: parsed.searchParams.get('seller_organization_id'),
+        default_policy: {
+          policy_version_id: 'review-policy-confirmed',
+          scope_type: 'CURRENCY_PAIR_DEFAULT',
+          seller_organization_id: null,
+          source_currency_code: 'JPY',
+          quote_currency_code: 'CNY',
+          version_no: 3,
+          decision_version: 2,
+          status: 'CONFIRMED',
+          markup_rate_value: '1500000',
+          markup_rate_scale: '100000000',
+          effective_from: NOW - 30 * DAY,
+          submitted_at: NOW - 35 * DAY,
+          confirmed_at: NOW - 34 * DAY,
+          rejection_reason: null,
+          replayed: false,
+        },
+        seller_override_policy: null,
+        default_pending_policy: null,
+        seller_override_pending_policy: null,
+        default_next_version: 4,
+        seller_override_next_version: parsed.searchParams.has('seller_organization_id') ? 1 : null,
+        selected_policy: {
+          policy_version_id: 'review-policy-confirmed',
+          scope_type: 'CURRENCY_PAIR_DEFAULT',
+          seller_organization_id: null,
+          source_currency_code: 'JPY',
+          quote_currency_code: 'CNY',
+          version_no: 3,
+          decision_version: 2,
+          status: 'CONFIRMED',
+          markup_rate_value: '1500000',
+          markup_rate_scale: '100000000',
+          effective_from: NOW - 30 * DAY,
+          submitted_at: NOW - 35 * DAY,
+          confirmed_at: NOW - 34 * DAY,
+          rejection_reason: null,
+          replayed: false,
+        },
+        default_upcoming_policy: null,
+        seller_override_upcoming_policy: null,
+      },
+    };
+  }
+  if (path === '/api/staff/seller-service-fees' && method === 'GET')
+    return {
+      seller_organization_id: parsed.searchParams.get('seller_organization_id') ?? '',
+      fees: (['RATING', 'TEXT', 'IMAGE', 'VIDEO'] as const).map((reviewType, index) => ({
+        review_type: reviewType,
+        effective_fee: index === 0
+          ? {
+              fee_version_id: 'review-fee-rating-1',
+              version_no: 1,
+              fee_cny_fen: '1250',
+              effective_from: NOW - 20 * DAY,
+              confirmed_at: NOW - 21 * DAY,
+            }
+          : null,
+        pending_fee: null,
+        upcoming_fee: null,
+        next_version: index === 0 ? 2 : 1,
+      })),
     };
   if (path === '/api/staff/admin-business-dashboard/summary' && method === 'GET')
     return dashboardSummary(parsed.searchParams.get('window') ?? 'TODAY');

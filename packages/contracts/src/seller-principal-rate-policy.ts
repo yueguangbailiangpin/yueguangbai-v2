@@ -41,6 +41,9 @@ export interface SellerPrincipalRatePolicyReadDto {
   default_next_version: number;
   seller_override_next_version: number | null;
   selected_policy: SellerPrincipalRatePolicyVersionDto | null;
+  /** Earliest confirmed version that becomes effective strictly after `at`. */
+  default_upcoming_policy: SellerPrincipalRatePolicyVersionDto | null;
+  seller_override_upcoming_policy: SellerPrincipalRatePolicyVersionDto | null;
 }
 
 export interface SellerPrincipalRateSnapshotDto {

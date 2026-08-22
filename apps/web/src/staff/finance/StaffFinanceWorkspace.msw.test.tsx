@@ -10,12 +10,12 @@ import type { StaffAuthApiAdapter, StaffSession } from '../../auth/staff/staff-a
 import { apiUrl } from '../../test/msw/handlers';
 import { renderWithMsw } from '../../test/msw/render';
 import { server } from '../../test/msw/server';
-import { SellerPrincipalRatePolicyWorkspace } from './SellerPrincipalRatePolicyWorkspace';
+import { StaffFinanceWorkspace } from './StaffFinanceWorkspace';
 
 afterEach(cleanup);
 
-describe('汇率中心 Staff 工作台', () => {
-  it('让 Owner 读取默认/覆盖并确认或拒绝待决策略', async () => {
+describe('财务配置 Staff 工作台', () => {
+  it('让 Owner 读取摘要、时间线并确认或拒绝待决策略', async () => {
     const requests: { path: string; body: unknown }[] = [];
     server.use(
       http.get(apiUrl('/api/staff/rate-center'), () =>
@@ -60,17 +60,21 @@ describe('汇率中心 Staff 工作台', () => {
     const user = userEvent.setup();
     renderWithMsw(
       <StaffSessionBoundary adapter={adapter(owner())}>
-        <SellerPrincipalRatePolicyWorkspace />
+        <StaffFinanceWorkspace />
       </StaffSessionBoundary>,
       {
-        route: '/staff/rate-center',
+        route: '/staff/finance',
       },
     );
-    expect(await screen.findByRole('heading', { name: '汇率中心' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
     await screen.findByRole('option', { name: '测试卖家 · AMAZON_JP' });
     await user.selectOptions(screen.getByLabelText('卖家组织'), 'seller-1');
     expect(screen.getAllByText('币种对默认加点')[0]).toBeVisible();
     expect(screen.getByText('卖家组织覆盖 · +0.0 · v1')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '当前生效摘要' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '生效时间线' })).toBeVisible();
+    // Two pending policies from the fixture render as timeline entries.
+    expect(screen.getAllByText('待确认').length).toBeGreaterThanOrEqual(2);
     await user.click(screen.getAllByRole('button', { name: '确认生效策略' })[0]!);
     await waitFor(() => expect(requests).toHaveLength(1));
     await user.click(screen.getAllByRole('button', { name: '拒绝' })[1]!);
@@ -124,13 +128,13 @@ describe('汇率中心 Staff 工作台', () => {
     const user = userEvent.setup();
     renderWithMsw(
       <StaffSessionBoundary adapter={adapter(sellerOps())}>
-        <SellerPrincipalRatePolicyWorkspace />
+        <StaffFinanceWorkspace />
       </StaffSessionBoundary>,
       {
-        route: '/staff/rate-center',
+        route: '/staff/finance',
       },
     );
-    await screen.findByRole('heading', { name: '汇率中心' });
+    expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
     await screen.findByRole('option', { name: '测试卖家 · AMAZON_JP' });
     await user.selectOptions(screen.getByLabelText('卖家组织'), 'seller-1');
     await screen.findByRole('heading', { name: '币种对默认加点' });
@@ -143,15 +147,14 @@ describe('汇率中心 Staff 工作台', () => {
         seller_organization_id: 'seller-1',
         source_currency_code: 'JPY',
         markup_rate_value: '0',
-        expected_version: 1,
       }),
     );
-    expect(key).toMatch(/\S/u);
+    expect(key).toMatch(/^[0-9a-f-]{36}$/u);
   });
 
-  it('让 Owner 通过工作台提交全局默认加点', async () => {
+  it('让 Owner 提交默认加点并立即生效（免二次确认文案）', async () => {
     let body: unknown;
-    let requestedOrganization: string | null = 'not-read';
+    let requestedOrganization: string | null = null;
     server.use(
       http.get(apiUrl('/api/staff/rate-center'), () =>
         HttpResponse.json({
@@ -184,7 +187,7 @@ describe('汇率中心 Staff 工作台', () => {
       http.post(apiUrl('/api/staff/seller-principal-rate-policies/submit'), async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({
-          data: { policy: policy('submitted-default', 'SUBMITTED', 1, '400000', null) },
+          data: { policy: policy('submitted-default', 'CONFIRMED', 2, '400000', null) },
           meta: { request_id: 'owner-submit' },
         });
       }),
@@ -192,16 +195,19 @@ describe('汇率中心 Staff 工作台', () => {
     const user = userEvent.setup();
     renderWithMsw(
       <StaffSessionBoundary adapter={adapter(owner())}>
-        <SellerPrincipalRatePolicyWorkspace />
+        <StaffFinanceWorkspace />
       </StaffSessionBoundary>,
       {
-        route: '/staff/rate-center',
+        route: '/staff/finance',
       },
     );
-    await screen.findByRole('heading', { name: '汇率中心' });
+    await screen.findByRole('heading', { name: '财务配置' });
     await screen.findByRole('heading', { name: '币种对默认加点' });
     expect(requestedOrganization).toBeNull();
     expect(screen.getByText('下一版本：选择组织后读取')).toBeVisible();
+    expect(
+      screen.getByText(/默认加点提交即确认生效，无需 Owner 二次确认/u),
+    ).toBeVisible();
     await user.click(screen.getByRole('button', { name: '提交并生效' }));
     await waitFor(() =>
       expect(body).toMatchObject({
@@ -211,6 +217,54 @@ describe('汇率中心 Staff 工作台', () => {
         markup_rate_value: '0.004',
       }),
     );
+  });
+
+  it('回查历史日期时按 as_of 请求并在页面上标注回查口径', async () => {
+    const policySearches: string[] = [];
+    const feeSearches: string[] = [];
+    server.use(
+      http.get(apiUrl('/api/staff/rate-center'), () =>
+        HttpResponse.json({
+          data: rateCenterPayload({ business_date: '2026-08-01' }),
+          meta: { request_id: 'rate-center-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/seller-service-fees'), ({ request }) => {
+        feeSearches.push(new URL(request.url).search);
+        return HttpResponse.json({
+          data: serviceFeesPayload(),
+          meta: { request_id: 'fees-read' },
+        });
+      }),
+      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), ({ request }) => {
+        policySearches.push(new URL(request.url).search);
+        return HttpResponse.json({
+          data: {
+            policies: readPayload({
+              default_pending_policy: null,
+              seller_override_pending_policy: null,
+            }),
+          },
+          meta: { request_id: 'policy-read' },
+        });
+      }),
+    );
+    renderWithMsw(
+      <StaffSessionBoundary adapter={adapter(owner())}>
+        <StaffFinanceWorkspace />
+      </StaffSessionBoundary>,
+      {
+        route: '/staff/finance?business_date=2026-08-01&seller_organization_id=seller-1&section=base-rate',
+      },
+    );
+    await screen.findByRole('heading', { name: '财务配置' });
+    await waitFor(() =>
+      expect(screen.getByText(/正在回查 2026-08-01/u)).toBeVisible(),
+    );
+    await waitFor(() => expect(policySearches.length).toBeGreaterThan(0));
+    expect(policySearches[0]).toContain('as_of=');
+    await waitFor(() => expect(feeSearches.length).toBeGreaterThan(0));
+    expect(feeSearches[0]).toContain('as_of=');
   });
 });
 
@@ -308,6 +362,8 @@ function readPayload(overrides: Record<string, unknown> = {}) {
     default_next_version: 2,
     seller_override_next_version: 2,
     selected_policy: policy('override-1', 'CONFIRMED', 2, '0', null),
+    default_upcoming_policy: null,
+    seller_override_upcoming_policy: null,
     ...overrides,
   };
 }
@@ -319,6 +375,7 @@ function serviceFeesPayload() {
       review_type: reviewType,
       effective_fee: null,
       pending_fee: null,
+      upcoming_fee: null,
       next_version: 1,
     })),
   };

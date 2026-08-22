@@ -88,6 +88,19 @@ export function cleanBusinessDate(raw: string): string {
   }
 }
 
+/**
+ * Optional `as_of` epoch-millisecond parameter for the pricing read routes.
+ * Omitting it means "now".  Historical lookups (finance page date rewind)
+ * pass an explicit timestamp; future timestamps simply resolve to nothing.
+ */
+export function parseAsOfParameter(raw: string | null): number {
+  if (raw === null) return Date.now();
+  if (!/^\d{1,15}$/u.test(raw)) {
+    throw new PricingError('VALIDATION_ERROR', 400);
+  }
+  return cleanEpochMilliseconds(Number(raw));
+}
+
 export function cleanRateE8(raw: string): {
   bigintValue: bigint;
   databaseValue: number;
