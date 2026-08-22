@@ -317,7 +317,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
   });
 
   for (const decision of ['PENDING_REVIEW', 'APPROVED'] as const) {
-    it(`does not list or disclose another demand for a product with a ${decision} reservation`, async () => {
+    it(`lists another same-store demand as ineligible with a ${decision} reservation`, async () => {
       database = createMigratedTestDatabase();
       fixtureNow = Date.now();
       seedPortalFixture(database, fixtureNow);
@@ -345,11 +345,23 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       const list = await request(app, '/api/buyer-portal/demands', {
         headers: { Cookie: cookie },
       });
-      expect((await json<any>(list)).data.items.map((item: { demand_id: string }) => item.demand_id))
-        .not.toContain('demand-final');
-      expect((await request(app, '/api/buyer-portal/demands/demand-final', {
+      expect((await json<any>(list)).data.items).toContainEqual(expect.objectContaining({
+        demand_id: 'demand-final',
+        reservation_eligibility: 'INELIGIBLE_ACTIVE_STORE_RESERVATION',
+        reservation_ineligibility_reason: 'ACTIVE_STORE_RESERVATION',
+      }));
+      const detail = await request(app, '/api/buyer-portal/demands/demand-final', {
         headers: { Cookie: cookie },
-      })).status).toBe(404);
+      });
+      expect(detail.status).toBe(200);
+      await expect(json(detail)).resolves.toMatchObject({
+        data: {
+          demand: {
+            reservation_eligibility: 'INELIGIBLE_ACTIVE_STORE_RESERVATION',
+            reservation_ineligibility_reason: 'ACTIVE_STORE_RESERVATION',
+          },
+        },
+      });
     });
   }
 
@@ -481,7 +493,10 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
           body: reservationAcceptanceBody(),
         },
       );
-      expect(duplicateSource.status).toBe(201);
+      expect(duplicateSource.status).toBe(409);
+      await expect(json(duplicateSource)).resolves.toMatchObject({
+        error: { code: 'BUYER_STORE_RESERVATION_CONFLICT' },
+      });
 
       const duplicate = await request(
         app,
@@ -498,7 +513,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       );
       expect(duplicate.status).toBe(409);
       await expect(json(duplicate)).resolves.toMatchObject({
-        error: { code: 'RESERVATION_ALREADY_EXISTS' },
+        error: { code: 'BUYER_STORE_RESERVATION_CONFLICT' },
       });
 
       const finalSlotLost = await request(

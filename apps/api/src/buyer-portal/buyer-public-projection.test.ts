@@ -37,8 +37,8 @@ describe('buyer public projection source guard', () => {
       'demand.reservation_deadline>?',
       'demand.held_reservation_count',
       'existing.buyer_customer_id=?',
-      'active.buyer_customer_id=?',
-      "active.status IN ('PENDING_REVIEW', 'APPROVED')",
+      'active_store_reservation.buyer_customer_id=?',
+      "active_store_reservation.status IN ('PENDING_REVIEW', 'APPROVED')",
     ]) expect(readModel).toContain(predicate);
   });
 
