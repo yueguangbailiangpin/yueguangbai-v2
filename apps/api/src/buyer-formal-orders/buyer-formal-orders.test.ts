@@ -189,11 +189,11 @@ describe('Phase 4B3 buyer formal order read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(72);
+    expect(migrations).toHaveLength(73);
     expect(migrations[0]).toMatch(/^0001_/u);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
     expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0072_unified_order_day_rate_center.sql');
+    expect(migrations.at(-1)).toBe('0073_base_rate_fallback_snapshots.sql');
   });
 });
 

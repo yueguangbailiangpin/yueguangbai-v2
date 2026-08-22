@@ -317,7 +317,7 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
         <p className="eyebrow">财务配置 · 仅 Staff</p>
         <h2 id="staff-finance-title">财务配置</h2>
         <Alert tone="warning">
-          订单日基础汇率是买家返款与卖家本金共同基础；卖家加点是绝对汇率增量，不是百分比；服务费按组织×评价类型配置。所有正式订单冻结确认时的版本和值，历史不回写。
+          订单日基础汇率是买家返款与卖家本金共同基础；卖家加点是绝对汇率增量，不是百分比；服务费按组织×评价类型配置。订单日无当日汇率时，确认将自动回退最近一个已生效汇率，计价明细标注实际采用日期。所有正式订单冻结确认时的版本和值，历史不回写。
         </Alert>
         <form
           className="staff-filter-grid"

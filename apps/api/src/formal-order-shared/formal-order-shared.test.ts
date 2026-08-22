@@ -368,6 +368,41 @@ describe('Phase 3F formal order confirmation', () => {
     });
   });
 
+  it('falls back to the latest earlier confirmed base rate when the order date has none (0073)', async () => {
+    database = createMigratedTestDatabase();
+    await seedFormalOrderFixture(database, {
+      leaveEvidencePending: true,
+      baseRateBusinessDate: '2026-07-31',
+    });
+    seedAtomicApprovalWorkItem(database);
+
+    const result = await approveOrderEvidenceAtomically(
+      database,
+      {
+        submissionId: 'evidence-submission-1',
+        expectedVersion: 1,
+        priceMismatchAcknowledged: true,
+        priceMismatchReason: 'fixture amount differs from reference',
+      },
+      {
+        actor: atomicApprovalOwnerActor(),
+        idempotencyKey: 'atomic-base-rate-fallback:on-existing',
+        requestId: 'request:atomic-base-rate-fallback:on-existing',
+        now: NOW,
+      },
+    );
+
+    expect(result.formalOrder.financial_snapshot).toMatchObject({
+      buyer_rate_business_date: '2026-07-31',
+    });
+    expect(database.raw.prepare(`
+      SELECT base_rate_business_date FROM seller_principal_rate_snapshots
+      WHERE formal_order_id=?
+    `).get(result.formalOrder.formal_order_id)).toEqual({
+      base_rate_business_date: '2026-07-31',
+    });
+  });
+
   it('keeps atomic approval principal amounts identical across both snapshots and the payable', async () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database, { leaveEvidencePending: true });
@@ -980,6 +1015,7 @@ async function seedFormalOrderFixture(
     duplicateAmazonOrder?: boolean;
     omitVideoServiceFee?: boolean;
     leaveEvidencePending?: boolean;
+    baseRateBusinessDate?: string;
   } = {},
 ): Promise<void> {
   const finalPaidJpy = options.finalPaidJpy ?? 8880;
@@ -1300,7 +1336,7 @@ async function seedFormalOrderFixture(
       confirmed_by_staff_id, confirmed_at,
       rejected_by_staff_id, rejected_at, rejection_reason
     ) VALUES (
-      'buyer-rate-v1', '${BUSINESS_DATE}', 1, 'SUBMITTED', ${buyerRateE8},
+      'buyer-rate-v1', '${options.baseRateBusinessDate ?? BUSINESS_DATE}', 1, 'SUBMITTED', ${buyerRateE8},
       'staff-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
     );
     UPDATE buyer_daily_exchange_rates

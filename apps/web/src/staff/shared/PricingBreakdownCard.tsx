@@ -57,7 +57,7 @@ export function PricingBreakdownCard({
           <li>
             基础汇率：
             {rate?.buyer_cny_per_jpy_e8
-              ? `${rateLabel(rate.buyer_cny_per_jpy_e8)}（${rate.buyer_rate_business_date ?? '订单日'} 生效）`
+              ? `${rateLabel(rate.buyer_cny_per_jpy_e8)}（采用 ${rate.buyer_rate_business_date ?? '订单日'} 汇率）`
               : '快照缺失'}
           </li>
           <li>

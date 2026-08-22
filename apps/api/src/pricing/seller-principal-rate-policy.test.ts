@@ -112,11 +112,16 @@ describe('seller principal rate policy', () => {
       policy_version_id: first.policy_version_id, replayed: true,
       status: 'CONFIRMED',
     });
-    await expect(resolveSellerPrincipalRateSnapshot(database, {
+    // Base-rate fallback (0073): 2026-08-02 has no own rate, so the snapshot
+    // resolves the 2026-08-01 confirmed rate and records that business date.
+    const fallback = await resolveSellerPrincipalRateSnapshot(database, {
       sellerOrganizationId: 'seller-org-1', platformOrderDate: '2026-08-02',
       paymentAmountMinor: 100, paymentCurrencyCode: 'JPY', at: 12_000,
-    })).rejects.toMatchObject({
-      code: 'SELLER_PRINCIPAL_RATE_NOT_FOUND', status: 404,
+    });
+    expect(fallback).toMatchObject({
+      base_rate_business_date: '2026-08-01',
+      base_rate_value: '5100000',
+      final_rate_value: '5500000',
     });
     await expect(submitSellerPrincipalRatePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,

@@ -270,9 +270,10 @@ export async function resolveBuyerDailyExchangeRate(
       cny_per_jpy_e8,
       confirmed_at
     FROM buyer_daily_exchange_rates
-    WHERE business_date=?
+    WHERE business_date<=?
       AND status='CONFIRMED'
       AND confirmed_at<=?
+    ORDER BY business_date DESC, version_no DESC
     LIMIT 1
   `,
     )

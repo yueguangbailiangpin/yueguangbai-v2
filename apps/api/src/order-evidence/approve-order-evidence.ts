@@ -665,7 +665,7 @@ export async function readOrderEvidenceApprovalPreflight(
   const checks: OrderEvidenceApprovalPreflight['checks'][number][] = [];
   let baseReady = false;
   try {
-    await resolveBuyerDailyExchangeRate(database, {
+    const resolvedRate = await resolveBuyerDailyExchangeRate(database, {
       businessDate: orderDate,
       asOf: now,
     });
@@ -673,7 +673,9 @@ export async function readOrderEvidenceApprovalPreflight(
     checks.push({
       code: 'ORDER_DAY_BASE_RATE',
       status: 'READY',
-      message: `已确认 ${orderDate} 的订单日基础汇率。`,
+      message: resolvedRate.business_date === orderDate
+        ? `已确认 ${orderDate} 的订单日基础汇率。`
+        : `订单日 ${orderDate} 无当日汇率，确认时将回退采用 ${resolvedRate.business_date} 的已确认汇率（快照记录实际采用日期）。`,
       action_path: path('base-rate'),
       required_access: 'Owner + SELLER_MANAGE + FINANCIAL_CORRECT',
     });
@@ -681,7 +683,7 @@ export async function readOrderEvidenceApprovalPreflight(
     checks.push({
       code: 'ORDER_DAY_BASE_RATE',
       status: 'MISSING',
-      message: `缺少 ${orderDate} 的 JPY → CNY 已确认订单日基础汇率。`,
+      message: `缺少 ${orderDate} 及此前任一日的 JPY → CNY 已确认订单日基础汇率。`,
       action_path: path('base-rate'),
       required_access: 'Owner + SELLER_MANAGE + FINANCIAL_CORRECT',
     });

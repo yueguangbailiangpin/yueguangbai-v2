@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 describe('Phase 3E pricing rules', () => {
-  it('confirms one exact buyer rate per China business date without fallback', async () => {
+  it('confirms one buyer rate per China business date and falls back to the latest confirmed rate', async () => {
     database = pricingDatabase();
 
     const submitted = await submitBuyerDailyExchangeRate(
@@ -97,12 +97,17 @@ describe('Phase 3E pricing rules', () => {
       rejection_reason: null,
     });
 
-    await expect(resolveBuyerDailyExchangeRate(database, {
+    // Base-rate fallback (0073): a missing order date resolves to the most
+    // recent already-effective confirmed rate instead of failing closed.
+    expect(await resolveBuyerDailyExchangeRate(database, {
       businessDate: '2026-08-02',
       asOf: 3_000,
-    })).rejects.toMatchObject({
-      code: 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND',
-      status: 404,
+    })).toEqual({
+      rate_id: submitted.rate_id,
+      business_date: '2026-08-01',
+      version_no: 1,
+      cny_per_jpy_e8: '5000000',
+      confirmed_at: 2_000,
     });
 
     expect(await resolveBuyerDailyExchangeRate(database, {
@@ -114,6 +119,15 @@ describe('Phase 3E pricing rules', () => {
       version_no: 1,
       cny_per_jpy_e8: '5000000',
       confirmed_at: 2_000,
+    });
+
+    // No confirmed rate on or before the date still fails closed.
+    await expect(resolveBuyerDailyExchangeRate(database, {
+      businessDate: '2026-07-31',
+      asOf: 3_000,
+    })).rejects.toMatchObject({
+      code: 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND',
+      status: 404,
     });
 
     await expect(submitBuyerDailyExchangeRate(

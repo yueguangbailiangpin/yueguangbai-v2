@@ -707,7 +707,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     },
   );
 
-  it('retains the schema 26 history beneath current schema 72', async () => {
+  it('retains the schema 26 history beneath current schema 73', async () => {
     database = createMigratedTestDatabase();
     const repositoryRoot = path.resolve(
       import.meta.dirname,
@@ -718,18 +718,18 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     )
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(72);
+    expect(migrations).toHaveLength(73);
     expect(migrations[0]).toMatch(/^0001_/u);
     expect(migrations[25]).toBe('0026_financial_export_audit.sql');
     expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0072_unified_order_day_rate_center.sql');
+    expect(migrations.at(-1)).toBe('0073_base_rate_fallback_snapshots.sql');
 
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(72);
+    expect(Number(state?.schema_version)).toBe(73);
   });
 });
 

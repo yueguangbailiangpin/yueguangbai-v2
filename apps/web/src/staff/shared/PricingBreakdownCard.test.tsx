@@ -15,7 +15,7 @@ describe('PricingBreakdownCard', () => {
       { route: '/staff/finance' },
     );
     expect(screen.getByRole('heading', { name: '计价明细' })).toBeVisible();
-    expect(screen.getByText(/0.046 CNY \/ JPY（2026-08-22 生效）/u)).toBeVisible();
+    expect(screen.getByText(/0.046 CNY \/ JPY（采用 2026-08-22 汇率）/u)).toBeVisible();
     expect(screen.getByText(/\+0\.004（币种对默认加点 v3）/u)).toBeVisible();
     expect(screen.getByText(/¥12\.50/u)).toBeVisible();
     expect(screen.getByText(/实付金额：¥3980 JPY/u)).toBeVisible();

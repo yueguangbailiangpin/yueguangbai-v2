@@ -469,10 +469,10 @@ export async function resolveSellerPrincipalRateSnapshot(
   const base = await database.prepare(`
     SELECT id, business_date, version_no, rate_value, rate_scale, confirmed_at
     FROM buyer_daily_currency_rate_versions
-    WHERE business_date=? AND source_currency_code=?
+    WHERE business_date<=? AND source_currency_code=?
       AND quote_currency_code='CNY' AND status='CONFIRMED'
       AND confirmed_at<=?
-    ORDER BY version_no DESC
+    ORDER BY business_date DESC, version_no DESC
     LIMIT 1
   `).bind(orderDate, input.paymentCurrencyCode, at).first<BaseRateRow>();
   if (!base) throw new PricingError('SELLER_PRINCIPAL_RATE_NOT_FOUND', 404);

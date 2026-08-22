@@ -6,7 +6,7 @@ import { createMigratedTestDatabase } from '@ygb/testkit';
 const root = resolve(import.meta.dirname, '../../../..');
 
 describe('Staff MCP production transport migration', () => {
-  it('preserves guarded schema 38 beneath the current schema 72 authority', async () => {
+  it('preserves guarded schema 38 beneath the current schema 73 authority', async () => {
     const migrations = readdirSync(resolve(root, 'migrations'))
       .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
       .sort();
@@ -16,8 +16,8 @@ describe('Staff MCP production transport migration', () => {
     expect(migrations[40]).toBe('0041_seller_principal_rate_policy.sql');
     expect(migrations[41]).toBe('0042_rakuten_tiktok_jp_marketplace_foundation.sql');
     expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations).toHaveLength(72);
-    expect(migrations.at(-1)).toBe('0072_unified_order_day_rate_center.sql');
+    expect(migrations).toHaveLength(73);
+    expect(migrations.at(-1)).toBe('0073_base_rate_fallback_snapshots.sql');
     const foundation = readFileSync(resolve(root, 'migrations/0001_foundation.sql'), 'utf8');
     const migration = readFileSync(
       resolve(root, 'migrations/0038_staff_mcp_production_transport_oauth.sql'),
@@ -35,7 +35,7 @@ describe('Staff MCP production transport migration', () => {
       const state = await database.prepare(`
         SELECT schema_version FROM app_schema_state WHERE singleton_id=1
       `).first<{ schema_version: number }>();
-      expect(state).toEqual({ schema_version: 72 });
+      expect(state).toEqual({ schema_version: 73 });
       const control = await database.prepare(`
         SELECT enabled, reason_code FROM staff_mcp_runtime_controls
         WHERE control_type='GLOBAL' AND control_name='staff-mcp'
