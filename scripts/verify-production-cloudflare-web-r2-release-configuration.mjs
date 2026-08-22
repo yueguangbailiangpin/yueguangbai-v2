@@ -17,7 +17,7 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 71, `expected 71 migrations, found ${migrations.length}`);
+assert(migrations.length === 72, `expected 72 migrations, found ${migrations.length}`);
 assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
   && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
   && migrations[40] === '0041_seller_principal_rate_policy.sql'
@@ -27,7 +27,8 @@ assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
   && migrations[65] === '0066_advance_cash_integrity.sql'
   && migrations[66] === '0067_advance_v1_full_payment.sql'
   && migrations[69] === '0070_buyer_refund_reminders.sql'
-  && migrations[70] === '0071_product_application_amount.sql',
+  && migrations[70] === '0071_product_application_amount.sql'
+  && migrations[71] === '0072_unified_order_day_rate_center.sql',
   'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {
@@ -176,8 +177,8 @@ assert(!existsSync(path.join(root, 'wrangler.production.jsonc')),
 console.log(JSON.stringify({
   status: 'PASS',
   change: 'production-cloudflare-web-r2-release-configuration',
-  schema_change: 'FORWARD_SCHEMA_71_LOCAL_ONLY',
-  migration: '0001-0071_CONTINUOUS',
+  schema_change: 'FORWARD_SCHEMA_72_LOCAL_ONLY',
+  migration: '0001-0072_CONTINUOUS',
   release_templates: 'BLOCKED_NEEDS_OPERATOR_INPUT',
   local_implementation: 'PRESENT',
   external_acceptance: 'UNVERIFIED',

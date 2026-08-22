@@ -225,7 +225,7 @@ describe('Phase 3F formal order confirmation', () => {
     });
   });
 
-  it('requires the exact China-business-date buyer rate and never falls back', async () => {
+  it('uses the exact Amazon order-day rate even when confirmation happens later', async () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database);
     const nextDay = Date.UTC(2026, 7, 2, 0, 0, 0);
@@ -234,12 +234,12 @@ describe('Phase 3F formal order confirmation', () => {
       database,
       confirmationInput('evidence-submission-1'),
       command(preSalesActor(), 'formal-order:rate:no-fallback', nextDay),
-    )).rejects.toMatchObject({
-      code: 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND',
-      status: 404,
+    )).resolves.toMatchObject({
+      amazon_order_date: BUSINESS_DATE,
+      financial_snapshot: {
+        buyer_rate_business_date: BUSINESS_DATE,
+      },
     });
-
-    await expectNoPartialFacts(database, 'evidence-submission-1');
   });
 
   it(

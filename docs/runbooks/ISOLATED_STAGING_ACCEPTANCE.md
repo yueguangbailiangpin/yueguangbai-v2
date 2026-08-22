@@ -138,7 +138,7 @@ release=ok
 
 - 固定 deployed SHA 与 GitHub reviewed SHA 一致；
 - staging D1/R2/Worker/Access/域名和 production 清单无 ID 重合；
-- migrations `0001`–`0071`、Schema 71、integrity/FK checks；
+- migrations `0001`–`0072`、Schema 72、integrity/FK checks；
 - `/health=200` 与上述 staging `/ready=200` envelope；
 - 五个 Staff 角色的允许/禁止路径，Personal DENY 和 Marketplace concealment；
 - Buyer 登录、产品、预约、任务，Seller 登录、组织、产品申请、需求批次；
@@ -152,7 +152,7 @@ release=ok
 
 远程证据必须按独立 Change/PR 分层，不能把基础部署、业务验收和恢复演练写成一份“全量通过”报告：
 
-- **T8 基础激活**只证明隔离 Worker/D1/R2/Access/DNS/Secrets、Schema 71、migrations `0001`–`0071`、first-owner、固定 SHA 部署、`/health`/`/ready` 基线和 disabled/not_required 能力。T8 不包含 A–H 当前枚举的 67 项业务验收，也不包含备份恢复。
+- **T8 基础激活**只证明隔离 Worker/D1/R2/Access/DNS/Secrets、Schema 72、migrations `0001`–`0072`、first-owner、固定 SHA 部署、`/health`/`/ready` 基线和 disabled/not_required 能力。T8 不包含 A–H 当前枚举的 67 项业务验收，也不包含备份恢复。
 - **T9 A–H 验收**单独记录当前枚举的 67 项真实 staging 操作结果，引用 T8 的部署基线；每项使用稳定 ID，不创建资源，不重复写 T8 基础部署，不混入 T10 恢复或 Production GO 结果。
 - **T10 隔离恢复**单独记录备份、恢复到新隔离目标、Schema/ledger、完整性/FK、Manifest/hash、行数、财务聚合和 smoke read；不混入 A–H 业务验收。
 - **T11 CI**是独立代码 PR，只纳入本地 Playwright 13-spec 测试，不访问 staging、production、Cloudflare 资源或真实数据。

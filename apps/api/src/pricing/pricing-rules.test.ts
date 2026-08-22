@@ -34,6 +34,11 @@ const owner: PricingStaffActor = {
   displayName: 'Owner',
   roles: ['owner'],
 };
+const preSales: PricingStaffActor = {
+  staffId: 'staff-pre-sales',
+  displayName: 'Pre Sales',
+  roles: ['pre_sales'],
+};
 
 afterEach(() => {
   database?.close();
@@ -281,7 +286,7 @@ describe('Phase 3E pricing rules', () => {
         cnyPerJpyE8: '5000000',
         expectedVersion: 0,
       },
-      command(owner, 'pricing:permissions:submit:0001', 1_000),
+      command(preSales, 'pricing:permissions:submit:0001', 1_000),
     )).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
 
     const rate = await submitBuyerDailyExchangeRate(
