@@ -144,48 +144,6 @@ describe('seller customer intake channel selection', () => {
     });
   });
 
-  it('lets Staff with seller management permission add a Store from the directory', async () => {
-    installHandlers([channel('seller-jp', 'AMAZON_JP', '渠道1')], [
-      sellerDirectoryItem(),
-    ]);
-    let createdBody: unknown;
-    server.use(
-      http.post(apiUrl('/api/staff/catalog/stores'), async ({ request }) => {
-        createdBody = await request.json();
-        return HttpResponse.json(
-          {
-            data: {
-              store: {
-                store_id: 'store-new',
-                seller_organization_id: 'seller-org-new',
-                marketplace_code: 'AMAZON_JP',
-                display_name: '咖啡秤日本店',
-                status: 'ACTIVE',
-                version: 1,
-                replayed: false,
-              },
-            },
-            meta: { request_id: 'staff-create-store' },
-          },
-          { status: 201 },
-        );
-      }),
-    );
-    const user = userEvent.setup();
-    renderWorkspace(['SELLER_MANAGE']);
-
-    await user.click(await screen.findByRole('button', { name: '添加店铺' }));
-    await user.type(screen.getByRole('textbox', { name: '咖啡秤的店铺名称' }), '咖啡秤日本店');
-    await user.click(screen.getByRole('button', { name: '确认添加' }));
-
-    expect(await screen.findByText('店铺已创建，卖家刷新后即可选择。')).toBeVisible();
-    expect(createdBody).toEqual({
-      seller_organization_id: 'seller-org-new',
-      marketplace_code: 'AMAZON_JP',
-      store_name: '咖啡秤日本店',
-    });
-  });
-
   it('replaces an active seller invitation whose original link cannot be recovered', async () => {
     installHandlers([channel('seller-jp', 'AMAZON_JP', '渠道1')], [
       sellerDirectoryItem(),

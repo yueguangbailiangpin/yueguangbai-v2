@@ -68,7 +68,7 @@ function ProductList(): React.JSX.Element {
           <th scope="col">产品</th><th scope="col">店铺 / ASIN</th>
           <th scope="col">下单节奏</th><th scope="col">状态</th><th scope="col">操作</th>
         </tr></thead><tbody>{query.data.items.map((product) => <tr key={product.product_id}>
-          <th scope="row">{product.product_name}<small>版本 {product.current_version_no}</small></th>
+          <th scope="row">{product.product_name}<small>当前 v{product.current_version_no}</small></th>
           <td>{product.store_name}<small>{product.asin}</small></td>
           <td>{cadenceLabel(product.cadence)}</td>
           <td><StatusBadge tone={product.status === 'ACTIVE' ? 'success' : 'neutral'}>
@@ -140,14 +140,17 @@ function ProductDetail({ productId }: { productId: string }): React.JSX.Element 
             </Link></td>
           </tr>)}</tbody></DataTable></Card>}
     </section>
-    <section aria-labelledby="product-versions-title"><h2 id="product-versions-title">版本历史</h2>
+    <details className="product-version-history">
+      <summary><h2 id="product-versions-title">版本历史（{product.versions.length}）</h2></summary>
+    <section aria-labelledby="product-versions-title">
       <ol className="version-history">{product.versions.map((version) => <li key={version.product_version_id}>
-        <strong>版本 {version.version_no} · {version.product_name}</strong>
+        <strong>版本 v{version.version_no} · {version.product_name}</strong>
         <span>{cadenceLabel(version.cadence)} · {formatShanghai(version.created_at)}</span>
         <span>{version.main_image
           ? `已绑定主图（${version.main_image.client_file_name}）`
           : '未绑定主图'}</span>
       </li>)}</ol></section>
+    </details>
   </main>;
 }
 
@@ -186,7 +189,7 @@ function MainImageCard({ product, canEdit }: {
     });
   }
   return <Card className="product-main-image">
-    <h2>当前版本主图（版本 {current.version_no}）</h2>
+    <h2>当前版本主图 · 当前 v{current.version_no}</h2>
     {bound ? <>
       <dl><dt>文件</dt><dd>{bound.client_file_name}</dd>
         <dt>绑定时间</dt><dd>{formatShanghai(bound.bound_at)}</dd></dl>

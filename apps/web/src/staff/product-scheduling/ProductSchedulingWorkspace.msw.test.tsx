@@ -289,6 +289,7 @@ describe('产品预约排期工作区', () => {
     });
     expect(calls[0]!.key).toMatch(/\S/u);
     expect(await screen.findByRole('button', { name: /查看大图：测试产品 主图/u })).toBeVisible();
+    await userEvent.setup().click(screen.getByRole('heading', { name: /版本历史（/u }));
     expect(screen.getByText(/已绑定主图/u)).toBeVisible();
   });
 

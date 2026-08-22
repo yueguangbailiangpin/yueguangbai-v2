@@ -150,6 +150,7 @@ test('review detail surfaces keep their real layouts and valid demo contracts', 
     '/review/staff/products/review-product-1',
     '/review/staff/admin-business-dashboard',
     '/review/staff/seller-principal-rate-policies',
+    '/review/staff/finance',
     '/review/staff/access-management',
   ];
   for (const path of surfaces) {

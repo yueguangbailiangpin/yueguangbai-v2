@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。共有 255 个唯一端点：253 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP 不属于核心 App route table。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
+这是默认 App 的可复现 route inventory。共有 254 个唯一端点：252 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP 不属于核心 App route table。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表核对；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都必须经过合同更新与复核。
 
@@ -207,7 +207,6 @@ POST /api/staff/buyers/:id/marketplace-correction
 POST /api/staff/catalog/product-versions/:versionId/main-image
 POST /api/staff/catalog/products
 POST /api/staff/catalog/products/:id/versions
-POST /api/staff/catalog/stores
 POST /api/staff/customer-identity-resolution/cases
 POST /api/staff/customer-identity-resolution/cases/:id/resolve
 POST /api/staff/customer-onboarding/:customerType/:subjectId/change-wechat
