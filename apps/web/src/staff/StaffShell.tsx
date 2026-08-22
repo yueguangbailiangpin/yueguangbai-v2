@@ -252,6 +252,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
             <small>{session.role.display_name}</small>
           </span>
         </div>
+        <StaffAccountActions />
       </aside>
       <div className="staff-work-area">
         <header className="staff-context-bar">
@@ -269,9 +270,6 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
           </div>
         </header>
         <div className="staff-main">{children ?? <Outlet />}</div>
-        <footer className="staff-account-footer">
-          <StaffAccountActions />
-        </footer>
       </div>
     </IdentityShell>
   );

@@ -240,7 +240,7 @@
   top: 0;
   height: 100vh;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
   gap: 18px;
   padding: 19px 12px 14px;
   border-right: 1px solid var(--mw-line);
@@ -293,6 +293,19 @@
 .staff-sidebar-person span { min-width: 0; display: grid; }
 .staff-sidebar-person strong { font-size: .78rem; }
 .staff-sidebar-person small { color: var(--mw-muted); font-size: .67rem; }
+.staff-sidebar .staff-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 0;
+  padding: 8px 8px 2px;
+  border-top: 0;
+}
+.staff-sidebar .staff-account-actions .button {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: .7rem;
+}
 .staff-work-area { min-width: 0; }
 .staff-context-bar {
   position: sticky;
@@ -317,7 +330,6 @@
 .staff-session-context strong { font-size: .75rem; }
 .staff-session-context small { color: var(--mw-staff-primary); font-size: .65rem; }
 .staff-main { padding: 14px; }
-.staff-account-footer { padding: 0 14px 16px; }
 .staff-mobile-brand { display: none; }
 
 /* True W1 three-pane structure. */
@@ -631,7 +643,7 @@
   .codex-acquisition-panel { grid-template-columns: 1fr; }
   .buyer-service-links { grid-template-columns: 1fr; }
   .staff-business-shell { display: block; }
-  .staff-sidebar { position: static; height: auto; grid-template-rows: auto auto auto; }
+  .staff-sidebar { position: static; height: auto; grid-template-rows: auto auto auto auto; }
   .staff-primary-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .staff-context-bar { position: static; }
   .frozen-w1 { display: block; min-height: 0; }
