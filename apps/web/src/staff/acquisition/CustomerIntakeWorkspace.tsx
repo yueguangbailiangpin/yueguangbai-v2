@@ -17,6 +17,7 @@ import {
   TextInput,
 } from '../../ui/primitives';
 import { acquisitionApi } from './api';
+import { RateSummaryCard } from '../shared/RateSummaryCard';
 import type { AcquisitionChannel, AcquisitionHandoff } from './runtime';
 
 const MARKET_LABELS: Record<string, string> = {
@@ -322,6 +323,9 @@ function CustomerIntakeWorkspace({
             <h3>
               全部卖家客户{sellerDirectory.data ? `（${sellerDirectory.data.length} 个）` : ''}
             </h3>
+            <RateSummaryCard
+              organizationId={sellerDirectory.data?.[0]?.seller_organization_id ?? null}
+            />
             {sellerDirectory.isPending ? (
               <p role="status">加载中…</p>
             ) : sellerDirectory.isError ? (

@@ -390,6 +390,7 @@
 }
 .staff-pricing-breakdown-facts > li:last-child { border-bottom: 0; }
 .staff-pricing-checks ul { margin: 4px 0 0; padding-left: 18px; font-size: .74rem; }
+.staff-rate-summary p { margin: 6px 0; font-size: .76rem; }
 .staff-order-detail { min-width: 0; padding: 12px; display: grid; gap: 12px; }
 .staff-order-facts { margin: 0; padding: 0; list-style: none; font-size: .74rem; }
 .staff-order-facts > li {

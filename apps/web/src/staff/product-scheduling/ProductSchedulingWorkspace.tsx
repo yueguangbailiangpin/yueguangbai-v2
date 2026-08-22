@@ -1,3 +1,4 @@
+import { RateSummaryCard } from '../shared/RateSummaryCard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
@@ -120,6 +121,7 @@ function ProductDetail({ productId }: { productId: string }): React.JSX.Element 
         <p>周六、周日及所有节假日连续计入，不接入工作日日历。</p>
         <CadenceExamples /></Card>
     </section>
+    <RateSummaryCard organizationId={null} />
     {canEdit ? <ProductVersionForm product={product} /> : null}
     {product.versions.length > 0 ? <MainImageCard product={product} canEdit={canEdit} /> : null}
     <section aria-labelledby="product-demands-title"><h2 id="product-demands-title">需求与预约</h2>
