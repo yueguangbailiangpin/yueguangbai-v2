@@ -16,6 +16,12 @@ export interface BuyerPortalDemandDto {
   demand_version: number;
   marketplace_code: MarketplaceCode;
   product_name: string;
+  main_image: {
+    file_object_id: string;
+    file_version: number;
+    purpose: 'PRODUCT_IMAGE';
+    visibility: 'SELLER_VISIBLE';
+  } | null;
   reference_order_amount_jpy: FixedIntegerString;
   buyer_self_pay_bps: number;
   estimated_buyer_self_pay_jpy: FixedIntegerString;

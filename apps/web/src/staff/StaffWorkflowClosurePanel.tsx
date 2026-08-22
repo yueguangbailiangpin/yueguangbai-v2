@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import type { FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
 import { isFrontendApiError } from '../api/errors';
@@ -134,21 +134,6 @@ const instructionSchema = z
         initial_deadline_at: z.number().int().nonnegative().nullable(),
       })
       .passthrough(),
-  })
-  .passthrough();
-
-const preparedSchema = z
-  .object({
-    asset_batch: z
-      .object({
-        asset_batch_id: z.string(),
-        instruction_id: z.string(),
-        status: z.literal('READY'),
-        keyword_image_count: z.number().int().nonnegative(),
-        generator_version: z.string(),
-        replayed: z.boolean(),
-      })
-      .strict(),
   })
   .passthrough();
 
@@ -439,7 +424,6 @@ function ReservationDecision({ item }: { item: WorkItem }): React.JSX.Element {
 
 function OrderInstructionPublish({ item }: { item: WorkItem }): React.JSX.Element {
   const client = useQueryClient();
-  const [assetBatchId, setAssetBatchId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ['staff-workflow-closure', 'instruction', item.source_entity_id],
     queryFn: () =>
@@ -451,17 +435,6 @@ function OrderInstructionPublish({ item }: { item: WorkItem }): React.JSX.Elemen
     retry: false,
     staleTime: 0,
   });
-  const prepare = useMutation({
-    mutationFn: ({ body, key }: { body: Record<string, unknown>; key: string }) =>
-      identityApiRequest('staff', client, {
-        path: `/api/staff/order-instructions/${encodeURIComponent(item.source_entity_id)}/assets/prepare`,
-        method: 'POST',
-        schema: preparedSchema,
-        body,
-        headers: operationHeaders({ body, key }),
-      }),
-    onSuccess: (response) => setAssetBatchId(response.data.asset_batch.asset_batch_id),
-  });
   const publish = useMutation({
     mutationFn: ({ body, key }: { body: Record<string, unknown>; key: string }) =>
       identityApiRequest('staff', client, {
@@ -470,13 +443,13 @@ function OrderInstructionPublish({ item }: { item: WorkItem }): React.JSX.Elemen
         schema: publicationSchema,
         body,
         headers: operationHeaders({ body, key }),
-      }),
+    }),
     onSuccess: async () => {
-      setAssetBatchId(null);
-      await Promise.all([
-        client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot }),
-        query.refetch(),
-      ]);
+      client.setQueryData<WorkItem>(
+        ['staff-workflow-closure', 'work-item', item.work_item_id],
+        (current) => current ? { ...current, status: 'COMPLETED' } : current,
+      );
+      await client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
     },
   });
   if (query.isPending)
@@ -497,42 +470,28 @@ function OrderInstructionPublish({ item }: { item: WorkItem }): React.JSX.Elemen
       <Fact label="指引状态" value={value.status} />
       <Fact label="版本" value={`v${value.version}`} />
       <Alert tone="info">
-        先准备关键词图片，再发布给买家。准备动作依赖已配置的图片生成服务与对象存储。
+        发布后，买家任务会显示店铺名称、搜索关键词和必要的下单信息。
       </Alert>
-      <Button
-        className="secondary"
-        loading={prepare.isPending}
-        disabled={publish.isPending}
-        onClick={() =>
-          prepare.mutate({ key: crypto.randomUUID(), body: { expected_version: value.version } })
-        }
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const note = String(new FormData(event.currentTarget).get('note') ?? '').trim();
+          publish.mutate({
+            key: crypto.randomUUID(),
+            body: {
+              expected_version: value.version,
+              staff_public_note: note || null,
+            },
+          });
+        }}
       >
-        {assetBatchId ? '重新准备关键词图片' : '准备关键词图片'}
-      </Button>
-      {assetBatchId ? (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const note = String(new FormData(event.currentTarget).get('note') ?? '').trim();
-            publish.mutate({
-              key: crypto.randomUUID(),
-              body: {
-                asset_batch_id: assetBatchId,
-                expected_version: value.version,
-                staff_public_note: note || null,
-              },
-            });
-          }}
-        >
-          <FormField label="买家可见备注（可选）" htmlFor="instruction-public-note">
-            <TextInput id="instruction-public-note" name="note" />
-          </FormField>
-          <Button className="danger" loading={publish.isPending}>
-            发布下单指引
-          </Button>
-        </form>
-      ) : null}
-      <MutationState mutation={prepare} />
+        <FormField label="买家可见备注（可选）" htmlFor="instruction-public-note">
+          <TextInput id="instruction-public-note" name="note" />
+        </FormField>
+        <Button className="danger" loading={publish.isPending}>
+          直接发布下单指引
+        </Button>
+      </form>
       <MutationState mutation={publish} />
     </ClosureCard>
   );

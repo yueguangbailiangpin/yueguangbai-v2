@@ -73,6 +73,14 @@ export function BuyerInstructionPage(): React.JSX.Element {
         <h2>下单信息</h2>
         <dl className="buyer-facts">
           <div>
+            <dt>店铺</dt>
+            <dd>{instruction.store_display_name}</dd>
+          </div>
+          <div>
+            <dt>搜索关键词</dt>
+            <dd>{instruction.search_keywords.join('、')}</dd>
+          </div>
+          <div>
             <dt>颜色规格</dt>
             <dd>{instruction.color_spec_mode === 'ANY_VARIANT' ? '任意规格' : '按主图规格'}</dd>
           </div>
@@ -144,36 +152,7 @@ function InstructionImages({
         <strong>主图</strong>
         <ProtectedFileButton provider={main} label="查看主图" />
       </div>
-      {instruction.keyword_images.map((item) => (
-        <KeywordImage key={item.image_id} reservationId={reservationId} image={item} />
-      ))}
     </Card>
-  );
-}
-
-function KeywordImage({
-  reservationId,
-  image,
-}: {
-  reservationId: string;
-  image: Awaited<
-    ReturnType<typeof buyerApi.instruction>
-  >['data']['order_instruction']['keyword_images'][number];
-}): React.JSX.Element {
-  const provider = useMemo(
-    () =>
-      new BuyerInstructionImageReadIntentAdapter(
-        reservationId,
-        image.position,
-        image.read_intent_path,
-      ),
-    [reservationId, image.position, image.read_intent_path],
-  );
-  return (
-    <div className="instruction-image-item">
-      <strong>关键词图片 {image.position}</strong>
-      <ProtectedFileButton provider={provider} />
-    </div>
   );
 }
 

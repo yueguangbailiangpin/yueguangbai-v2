@@ -298,6 +298,7 @@ async function installBuyerFixture(page: Page, refundStatus: 'PARTIALLY_PAID' | 
         status: 'ACTIVE',
         product_name: reservationDemand.product_name,
         store_display_name: reservationDemand.store_display_name,
+        search_keywords: ['月光白', '商品关键词'],
         color_spec_mode: 'MAIN_IMAGE_VARIANT',
         staff_public_note: '请核对主图与商品规格。',
         buyer_visible_notes: '下单后请按页面要求保存订单截图。',

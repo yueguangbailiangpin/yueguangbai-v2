@@ -34,6 +34,20 @@ After a product application decision succeeds, the frontend MUST close the curre
 - **WHEN** the product application approval succeeds and completes the review work item
 - **THEN** the current panel closes, the queue refreshes, and a follow-up forbidden or not-found response cannot replace the success with “申请事实读取失败”.
 
+### Requirement: successful Staff commands remain successful when follow-up reads fail
+
+For every Staff command whose response authoritatively confirms a committed write, a later detail or derived-capability refresh MUST NOT replace that success with a generic failure. Commands that complete their work item MUST close it locally. Commands whose resource remains actionable MAY refresh it, but refresh failure MUST be reported separately with the safe error code and request ID. Ambiguous command outcomes MUST retain the exact request body and idempotency key for safe retry.
+
+#### Scenario: a review decision completes its work item
+
+- **WHEN** a comment or order-evidence decision succeeds and completes the assigned work item
+- **THEN** the task closes locally and the frontend does not reread the completed review fact.
+
+#### Scenario: a committed financial or integrity command is followed by a failed refresh
+
+- **WHEN** a refund, order-status, advance-principal or compensation command succeeds but refreshing the remaining facts fails
+- **THEN** the committed success remains visible and the refresh failure is shown separately with its safe diagnostics.
+
 ### Requirement: Seller product applications carry a positive JPY amount
 
 Every new Seller product application MUST include a positive JavaScript-safe integer `ordering_guide_expected_amount_jpy`. The application, Seller projection and assigned Staff review context MUST preserve that value. The review UI MUST prefill it while allowing authorized Staff to verify or adjust the final product version amount. Historical applications without this field MUST remain readable and be labeled as historical missing data.
@@ -76,19 +90,28 @@ The buyer eligible-reservation read model MUST require an `ACTIVE` order instruc
 - **WHEN** an approved reservation has a matching `ACTIVE` instruction and no final evidence submission
 - **THEN** it is visible with the allowed submit or resubmit action.
 
-### Requirement: staging can generate validated keyword PNG assets
+### Requirement: Staff publishes text-based order instructions directly
 
-The staging main Worker MUST call a private service-bound generator authenticated by a separate shared secret. The generator MUST load its CJK font from staging R2, return PNG only, expose a bounded generator version, and send no keyword plaintext to a third-party service. Existing application-side PNG, hash, metadata and storage validation MUST remain authoritative.
+The publication command MUST use the immutable product version's ordered keyword text, Store display name, verified main image and existing order facts directly. It MUST NOT require or call keyword-image generation for a new instruction version. Permission, assignment, Buyer scope, state, optimistic version, idempotency request hash, Audit, Outbox and work-item completion checks MUST remain authoritative.
 
-#### Scenario: generator dependencies are present
+#### Scenario: Staff publishes an unpublished instruction
 
-- **WHEN** Staff prepares assets for an unpublished instruction with configured keywords
-- **THEN** the internal generator returns one validated PNG per ordered keyword and the asset batch becomes ready.
+- **WHEN** assigned authorized Staff publishes a complete `UNPUBLISHED` instruction with the current expected version
+- **THEN** one immutable instruction version is created without keyword-image rows, the instruction becomes `ACTIVE`, and the ordered keyword text participates in its content hash.
 
-#### Scenario: binding, secret or font is unavailable
+#### Scenario: required text or publication authority is unavailable
 
-- **WHEN** any generator dependency is missing or invalid
-- **THEN** preparation fails closed without publishing the instruction or exposing keyword plaintext.
+- **WHEN** the product version has no valid ordered keywords, the main image is unverified, or permission, scope, assignment, state or expected version fails
+- **THEN** publication fails closed without making the instruction or Buyer task visible.
+
+### Requirement: Buyer receives Store and text search instructions only after activation
+
+The Buyer task and full instruction content MUST remain unavailable before the matching instruction is `ACTIVE`. The active Buyer-safe DTO MUST expose the Store display name and ordered keyword strings, but MUST NOT expose `search_keywords_json`, file object keys or other storage/internal fields.
+
+#### Scenario: active instruction is opened from Buyer tasks
+
+- **WHEN** a matching instruction is `ACTIVE`
+- **THEN** the Buyer instruction page displays the Store name, ordered search keyword text and necessary order facts so the Buyer can search and order directly.
 
 ### Requirement: customer intake explains and scopes site selection
 

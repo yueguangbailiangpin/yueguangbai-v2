@@ -45,18 +45,6 @@ import {
   requireMainImage,
 } from './records';
 
-interface ReadyAssetItem {
-  item_id: string;
-  keyword_position: number;
-  keyword_hmac_digest: string;
-  file_object_id: string;
-  image_mime: 'image/png';
-  width: number;
-  height: number;
-  sha256: string;
-  generator_version: string;
-}
-
 export interface PublishOrderInstructionResult {
   instruction: StaffOrderInstructionSummaryDto;
   instruction_version_id: string;
@@ -69,7 +57,6 @@ export async function publishOrderInstruction(
   database: SqlDatabase,
   input: {
     instructionId: string;
-    assetBatchId: string;
     expectedVersion: number;
     staffPublicNote?: string | null;
   },
@@ -82,7 +69,6 @@ export async function publishOrderInstruction(
 ): Promise<PublishOrderInstructionResult> {
   requireInstructionPermission(command.actor, 'ORDER_INSTRUCTION_PUBLISH');
   const instructionId = cleanIdentifier(input.instructionId);
-  const assetBatchId = cleanIdentifier(input.assetBatchId);
   const expectedVersion = validateExpectedVersion(input.expectedVersion);
   const staffPublicNote = cleanOptionalPublicText(input.staffPublicNote, 2000);
   const now = validateTimestamp(command.now ?? Date.now());
@@ -90,7 +76,6 @@ export async function publishOrderInstruction(
   const requestHash = await sha256Hex(canonicalJson({
     action: 'PUBLISH_ORDER_INSTRUCTION',
     instruction_id: instructionId,
-    asset_batch_id: assetBatchId,
     expected_version: expectedVersion,
     staff_public_note: staffPublicNote,
   }));
@@ -149,20 +134,11 @@ export async function publishOrderInstruction(
     if (!Number.isSafeInteger(expectedAmount) || expectedAmount < 0) {
       throw new OrderInstructionError('ORDERING_PROFILE_REQUIRED', 409);
     }
-    parseOrderedKeywords(source.search_keywords_json);
+    const orderedKeywords = parseOrderedKeywords(source.search_keywords_json);
     const mainImage = await requireMainImage(
       database,
       source.product_version_id,
     );
-    const assets = await requireReadyAssets(
-      database,
-      assetBatchId,
-      source,
-    );
-    const generatorVersion = assets[0]!.generator_version;
-    if (assets.some((item) => item.generator_version !== generatorVersion)) {
-      throw new OrderInstructionError('KEYWORD_ASSETS_NOT_READY', 409);
-    }
 
     await requireAssignedWorkflowActor(database, {
       staffId: command.actor.staffId,
@@ -192,10 +168,7 @@ export async function publishOrderInstruction(
       referenceOrderAmountJpy: expectedAmount,
       buyerSelfPayBps: Number(source.buyer_self_pay_bps_snapshot),
       colorSpecMode: source.color_spec_mode,
-      orderedKeywordHmacDigests:
-        assets.map((asset) => asset.keyword_hmac_digest),
-      keywordImageSha256: assets.map((asset) => asset.sha256),
-      generatorVersion,
+      orderedKeywords,
     });
 
     const current = await database.prepare(`
@@ -233,14 +206,6 @@ export async function publishOrderInstruction(
     const mainImageLinkId = crypto.randomUUID();
     const mainBuyerGrantId = crypto.randomUUID();
     const mainStaffGrantId = crypto.randomUUID();
-    const keywordRows = assets.map((asset) => ({
-      ...asset,
-      keywordImageId: crypto.randomUUID(),
-      fileEntityLinkId: crypto.randomUUID(),
-      buyerGrantId: crypto.randomUUID(),
-      staffGrantId: crypto.randomUUID(),
-    }));
-
     const nextSummary: StaffOrderInstructionSummaryDto = {
       instruction_id: instructionId,
       reservation_id: source.reservation_id,
@@ -277,7 +242,8 @@ export async function publishOrderInstruction(
         buyer_customer_id: source.buyer_customer_id,
         version_no: nextVersionNo,
         deadline_at: initialDeadlineAt,
-        image_count: keywordRows.length + 1,
+        image_count: 1,
+        keyword_count: orderedKeywords.length,
         content_hash: contentHash,
       },
       createdAt: now,
@@ -332,51 +298,13 @@ export async function publishOrderInstruction(
         toD1SafeInteger(selfPayFacts.refundablePrincipalJpy),
         source.color_spec_mode,
         contentHash,
-        generatorVersion,
+        'PLAINTEXT_KEYWORDS_V1',
         command.actor.staffId,
         now,
         initialDeadlineAt,
         now,
       ),
     ];
-    for (const row of keywordRows) {
-      statements.push(
-        insertImageLink(database, {
-          linkId: row.fileEntityLinkId,
-          fileObjectId: row.file_object_id,
-          instructionVersionId,
-          purpose: 'ORDER_INSTRUCTION_KEYWORD_IMAGE',
-          visibility: 'BUYER_VISIBLE',
-          actorId: command.actor.staffId,
-          now,
-        }),
-        insertBuyerGrant(database, row.buyerGrantId, row.fileEntityLinkId,
-          source.buyer_customer_id, command.actor.staffId, now),
-        insertStaffGrant(database, row.staffGrantId, row.fileEntityLinkId,
-          command.actor.staffId, now),
-        database.prepare(`
-          INSERT INTO order_instruction_keyword_images (
-            id, order_instruction_version_id, keyword_position,
-            file_object_id, file_entity_link_id, keyword_hmac_digest,
-            content_hash, generator_version, image_mime, width, height,
-            generated_at, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'image/png', ?, ?, ?, ?)
-        `).bind(
-          row.keywordImageId,
-          instructionVersionId,
-          row.keyword_position,
-          row.file_object_id,
-          row.fileEntityLinkId,
-          row.keyword_hmac_digest,
-          row.sha256,
-          row.generator_version,
-          row.width,
-          row.height,
-          now,
-          now,
-        ),
-      );
-    }
     statements.push(
       database.prepare(`
         UPDATE order_instructions
@@ -394,12 +322,6 @@ export async function publishOrderInstruction(
         instructionId,
         expectedVersion,
       ),
-      database.prepare(`
-        UPDATE order_instruction_asset_batches
-        SET status='CONSUMED', version=version+1,
-            updated_at=MAX(?, updated_at+1), consumed_at=?
-        WHERE id=? AND status='READY'
-      `).bind(now, now, assetBatchId),
       insertInstructionEventStatement(database, {
         instructionId,
         reservationId: source.reservation_id,
@@ -415,7 +337,8 @@ export async function publishOrderInstruction(
         metadata: {
           version_no: nextVersionNo,
           content_hash: contentHash,
-          image_count: keywordRows.length + 1,
+          image_count: 1,
+          keyword_count: orderedKeywords.length,
           deadline_at: initialDeadlineAt,
         },
         idempotencyKey: acquired.claim.idempotencyKey,
@@ -448,7 +371,6 @@ export async function publishOrderInstruction(
         resultReferences: {
           instruction_id: instructionId,
           instruction_version_id: instructionVersionId,
-          asset_batch_id: assetBatchId,
         },
         now,
       }),
@@ -461,7 +383,7 @@ export async function publishOrderInstruction(
           AND EXISTS (SELECT 1 FROM order_instruction_versions
             WHERE id=? AND instruction_id=? AND content_hash=?)
           AND (SELECT COUNT(*) FROM order_instruction_keyword_images
-            WHERE order_instruction_version_id=?)=?
+            WHERE order_instruction_version_id=?)=0
         THEN 1 ELSE 0 END
       `).bind(
         instructionId,
@@ -472,7 +394,6 @@ export async function publishOrderInstruction(
         instructionId,
         contentHash,
         instructionVersionId,
-        keywordRows.length,
       ),
       assertIdempotencyCompletionStatement(database, acquired.claim),
       ...await prepareWorkItemCompletionStatements(database, {
@@ -500,46 +421,6 @@ export async function publishOrderInstruction(
     throw normalized;
   }
 }
-
-async function requireReadyAssets(
-  database: SqlDatabase,
-  assetBatchId: string,
-  source: {
-    instruction_id: string;
-    product_version_id: string;
-  },
-): Promise<readonly ReadyAssetItem[]> {
-  const batch = await database.prepare(`
-    SELECT item_count, ready_count, status
-    FROM order_instruction_asset_batches
-    WHERE id=? AND instruction_id=? AND product_version_id=?
-  `).bind(
-    assetBatchId,
-    source.instruction_id,
-    source.product_version_id,
-  ).first<{ item_count: number; ready_count: number; status: string }>();
-  if (!batch || batch.status !== 'READY'
-    || batch.item_count < 1
-    || batch.ready_count !== batch.item_count) {
-    throw new OrderInstructionError('KEYWORD_ASSETS_NOT_READY', 409);
-  }
-  const rows = await database.prepare(`
-    SELECT id AS item_id, keyword_position, keyword_hmac_digest,
-           file_object_id, image_mime, width, height, sha256,
-           generator_version
-    FROM order_instruction_asset_items
-    WHERE asset_batch_id=? AND status='READY'
-    ORDER BY keyword_position
-  `).bind(assetBatchId).all<ReadyAssetItem>();
-  if (rows.results.length !== batch.item_count
-    || rows.results.some((row, index) =>
-      Number(row.keyword_position) !== index + 1
-      || row.image_mime !== 'image/png')) {
-    throw new OrderInstructionError('KEYWORD_ASSETS_NOT_READY', 409);
-  }
-  return rows.results;
-}
-
 
 function revokeSupersededVersionFilesStatements(
   database: SqlDatabase,

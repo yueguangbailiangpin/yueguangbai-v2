@@ -776,6 +776,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         status: 'ACTIVE',
         product_name: '专业级家庭美容仪 Pro Max',
         store_display_name: 'TEST 日本店 A',
+        search_keywords: ['家庭美容仪', 'Pro Max'],
         color_spec_mode: 'MAIN_IMAGE_VARIANT',
         staff_public_note: '请严格按照截图搜索商品。',
         buyer_visible_notes: '颜色请选择白色。',

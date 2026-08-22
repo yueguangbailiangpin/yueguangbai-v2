@@ -36,6 +36,12 @@ export const demandSchema = z.object({
   demand_version: positiveIntegerSchema,
   marketplace_code: marketplace,
   product_name: z.string(),
+  main_image: z.object({
+    file_object_id: identifierSchema,
+    file_version: positiveIntegerSchema,
+    purpose: z.literal('PRODUCT_IMAGE'),
+    visibility: z.literal('SELLER_VISIBLE'),
+  }).strict().nullable(),
   reference_order_amount_jpy: integerAmountSchema,
   buyer_self_pay_bps: nonnegativeIntegerSchema.max(10_000),
   estimated_buyer_self_pay_jpy: integerAmountSchema,
@@ -56,6 +62,7 @@ const reservationDemandSchema = demandSchema.omit({
   target_quantity: true,
   remaining_quantity: true,
   open_at: true,
+  main_image: true,
 });
 export const reservationSchema = z.object({
   reservation_id: identifierSchema,
@@ -129,6 +136,7 @@ export const instructionSchema = z.object({
   status: z.literal('ACTIVE'),
   product_name: z.string(),
   store_display_name: z.string(),
+  search_keywords: z.array(z.string().trim().min(1).max(200)).min(1).max(20),
   color_spec_mode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']),
   staff_public_note: z.string().nullable(),
   buyer_visible_notes: z.string().nullable(),

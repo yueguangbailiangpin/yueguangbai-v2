@@ -118,6 +118,7 @@ const instruction = (invalid = false) => ({
   status: 'ACTIVE',
   product_name: demand.product_name,
   store_display_name: demand.store_display_name,
+  search_keywords: ['月光白', '商品关键词'],
   color_spec_mode: 'MAIN_IMAGE_VARIANT',
   staff_public_note: '请核对主图。',
   buyer_visible_notes: '公开下单说明',

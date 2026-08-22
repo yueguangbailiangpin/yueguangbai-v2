@@ -79,6 +79,7 @@ extends BuyerSelfPayEstimateDto {
   status: OrderInstructionStatus;
   product_name: string;
   store_display_name: string;
+  search_keywords: readonly string[];
   color_spec_mode: OrderInstructionColorSpecMode;
   staff_public_note: string | null;
   buyer_visible_notes: string | null;

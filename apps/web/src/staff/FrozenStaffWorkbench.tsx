@@ -33,7 +33,12 @@ import {
 import { staffWorkbenchKeys } from './queries/keys';
 import { SellerSettlementPanel, sellerSettlementCapabilities } from './SellerSettlementPanel';
 import { formatCny, formatShanghai } from './shared/format';
-import { describeStaffMutationError } from './shared/staffMutationOutcome';
+import {
+  describeBuyerRefundMutationError,
+  describeOrderEvidenceMutationError,
+  describeReviewMutationError,
+  describeStaffMutationError,
+} from './shared/staffMutationOutcome';
 import { StaffPanelError } from './shared/StaffPanelError';
 import { StaffProtectedFileButton } from './shared/StaffProtectedFileButton';
 
@@ -317,11 +322,17 @@ function WorkItemColumns({
       />
     );
   if (item.work_type === 'ORDER_EVIDENCE_REVIEW')
-    return <OrderColumns item={item} onSuccessfulQueueMutation={onSuccessfulQueueMutation} />;
+    return <OrderColumns item={item} onCompletedQueueMutation={onCompletedQueueMutation} />;
   if (item.work_type === 'REVIEW_DECISION')
-    return <ReviewColumns item={item} onSuccessfulQueueMutation={onSuccessfulQueueMutation} />;
+    return <ReviewColumns item={item} onCompletedQueueMutation={onCompletedQueueMutation} />;
   if (item.work_type === 'BUYER_REFUND_PROCESSING')
-    return <RefundColumns item={item} onSuccessfulQueueMutation={onSuccessfulQueueMutation} />;
+    return (
+      <RefundColumns
+        item={item}
+        onSuccessfulQueueMutation={onSuccessfulQueueMutation}
+        onCompletedQueueMutation={onCompletedQueueMutation}
+      />
+    );
   if (item.seller_organization_id && sellerSettlementCapabilities(session).canView)
     return <SellerSettlementPanel item={item} />;
   return <GenericColumns item={item} />;
@@ -515,10 +526,10 @@ function DemandColumns({
 
 function OrderColumns({
   item,
-  onSuccessfulQueueMutation,
+  onCompletedQueueMutation,
 }: {
   item: StaffWorkItem;
-  onSuccessfulQueueMutation: (item: StaffWorkItem) => void;
+  onCompletedQueueMutation: (item: StaffWorkItem) => void;
 }) {
   const client = useQueryClient();
   const authority = useMemo(() => new StaffMutationAuthority(), []);
@@ -545,12 +556,16 @@ function OrderColumns({
             ),
           ),
     onSuccess: () => {
-      onSuccessfulQueueMutation(item);
-      void query.refetch();
-      void client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
+      // “通过”和“要求修改”都会由后端完成当前工作项。命令响应已经确认成功，
+      // 此时直接关闭面板并刷新队列；不得再读取已完成任务的详情，避免 404
+      // 或状态变化把成功显示成失败。
+      onCompletedQueueMutation(item);
     },
   });
   const value = query.data;
+  const failure = mutation.isError
+    ? describeOrderEvidenceMutationError(mutation.error)
+    : null;
   return (
     <>
       <section className="staff-detail">
@@ -643,10 +658,11 @@ function OrderColumns({
                 </Button>
               </div>
             </form>
-            {mutation.isError ? (
+            {failure ? (
               <>
                 <Alert tone="danger">
-                  操作未完成。请按错误类型刷新事实，或重试完全相同的原请求。
+                  订单资料操作未完成。{failure.hint}
+                  {failure.code ? `（错误码：${failure.code}）` : ''}
                 </Alert>
                 <RequestIdDisplay
                   requestId={isFrontendApiError(mutation.error) ? mutation.error.requestId : null}
@@ -655,7 +671,18 @@ function OrderColumns({
                   <Button className="secondary" onClick={() => mutation.mutate(null)}>
                     重试原请求
                   </Button>
-                ) : null}
+                ) : (
+                  <Button
+                    className="secondary"
+                    onClick={() => {
+                      authority.release();
+                      mutation.reset();
+                      void query.refetch();
+                    }}
+                  >
+                    刷新订单事实
+                  </Button>
+                )}
               </>
             ) : null}
           </Card>
@@ -687,10 +714,10 @@ function OrderFacts({ value }: { value: StaffOrderEvidence }) {
 
 function ReviewColumns({
   item,
-  onSuccessfulQueueMutation,
+  onCompletedQueueMutation,
 }: {
   item: StaffWorkItem;
-  onSuccessfulQueueMutation: (item: StaffWorkItem) => void;
+  onCompletedQueueMutation: (item: StaffWorkItem) => void;
 }) {
   const client = useQueryClient();
   const authority = useMemo(() => new StaffMutationAuthority(), []);
@@ -715,12 +742,13 @@ function ReviewColumns({
             ),
           ),
     onSuccess: () => {
-      onSuccessfulQueueMutation(item);
-      void query.refetch();
-      void client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
+      // 三种评论决定都会结束 REVIEW_DECISION 工作项。命令响应已确认成功后，
+      // 不得重读旧详情或保留已完成队列项，否则权限/状态收紧时会把成功显示成失败。
+      onCompletedQueueMutation(item);
     },
   });
   const value = query.data;
+  const failure = mutation.isError ? describeReviewMutationError(mutation.error) : null;
   return (
     <>
       <section className="staff-detail">
@@ -784,7 +812,33 @@ function ReviewColumns({
                 </Button>
               </div>
             </form>
-            {mutation.isError ? <Alert tone="danger">操作未完成，请刷新后重试。</Alert> : null}
+            {failure ? (
+              <>
+                <Alert tone="danger">
+                  评论审核未完成。{failure.hint}
+                  {failure.code ? `（错误码：${failure.code}）` : ''}
+                </Alert>
+                <RequestIdDisplay
+                  requestId={isFrontendApiError(mutation.error) ? mutation.error.requestId : null}
+                />
+                {isAmbiguousStaffMutationError(mutation.error) ? (
+                  <Button className="secondary" onClick={() => mutation.mutate(null)}>
+                    重试原请求
+                  </Button>
+                ) : (
+                  <Button
+                    className="secondary"
+                    onClick={() => {
+                      authority.release();
+                      mutation.reset();
+                      void query.refetch();
+                    }}
+                  >
+                    刷新评论事实
+                  </Button>
+                )}
+              </>
+            ) : null}
           </Card>
         ) : null}
         <Audit />
@@ -820,12 +874,17 @@ function ReviewFacts({ value }: { value: StaffReview }) {
 function RefundColumns({
   item,
   onSuccessfulQueueMutation,
+  onCompletedQueueMutation,
 }: {
   item: StaffWorkItem;
   onSuccessfulQueueMutation: (item: StaffWorkItem) => void;
+  onCompletedQueueMutation: (item: StaffWorkItem) => void;
 }) {
   const client = useQueryClient();
-  const authority = useMemo(() => new StaffMutationAuthority(), []);
+  const authority = useMemo(
+    () => new StaffMutationAuthority<ApiResult<{ obligation: { status: string } }>>(),
+    [],
+  );
   const [uploader, upload] = useFileUpload();
   const query = useQuery({
     queryKey: staffWorkbenchKeys.refund(item.source_entity_id),
@@ -858,7 +917,12 @@ function RefundColumns({
             }
             throw new Error('INVALID_BUYER_REFUND_ACTION');
           }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      if (response.data.obligation.status === 'PAID') {
+        // 结清返款会完成工作项；不要再依赖旧详情读取确认成功。
+        onCompletedQueueMutation(item);
+        return;
+      }
       onSuccessfulQueueMutation(item);
       setConfirm(null);
       void query.refetch();
@@ -866,6 +930,7 @@ function RefundColumns({
     },
   });
   const value = query.data;
+  const failure = mutation.isError ? describeBuyerRefundMutationError(mutation.error) : null;
   return (
     <>
       <section className="staff-detail">
@@ -1063,10 +1128,11 @@ function RefundColumns({
               确认
             </Button>
           </div>
-          {mutation.isError ? (
+          {failure ? (
             <>
               <Alert tone="danger">
-                返款操作未完成。系统不会自动创建第二笔付款，请按错误类型重试原请求或刷新返款事实。
+                返款操作未完成。{failure.hint}
+                {failure.code ? `（错误码：${failure.code}）` : ''}
               </Alert>
               <RequestIdDisplay
                 requestId={isFrontendApiError(mutation.error) ? mutation.error.requestId : null}

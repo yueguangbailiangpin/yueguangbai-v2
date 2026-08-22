@@ -18,12 +18,16 @@ describe('buyer DTO isolation', () => {
     'asin_display',
     'asin_normalized',
     'product_url',
-    'search_keywords',
     'search_keywords_json',
     'keyword_text',
     'seller_organization_id',
     'object_key',
   ])('does not publish %s as a buyer DTO field', (field) => {
     expect(buyerContracts).not.toMatch(new RegExp(`\\b${field}\\s*:`,'u'));
+  });
+
+  it('publishes only the Buyer-safe ordered keyword list', () => {
+    expect(buyerContracts).toMatch(/search_keywords\s*:\s*readonly string\[\]/u);
+    expect(buyerContracts).not.toMatch(/search_keywords_json\s*:/u);
   });
 });

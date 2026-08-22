@@ -24,6 +24,8 @@
 - [x] Add a direct preselected “创建预约需求” path without bypassing demand quantity or schedule authority.
 - [x] Advance local migration guards and readiness targets to the continuous 0001-0071 chain.
 - [x] Close the demand review publish/reject action locally, show the safe error code and request id on failure, and gate duplicate submits with same-key retry for ambiguous outcomes.
+- [x] Replace keyword-image preparation with direct publication of immutable ordered keyword text and Store/order facts, visible to Buyer only after `ACTIVE`.
+- [x] Audit the remaining Buyer, Seller and Staff mutations; close terminal review tasks locally and separate committed Staff command success from any follow-up refresh failure.
 
 ## Remote boundary
 

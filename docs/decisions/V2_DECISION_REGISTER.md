@@ -437,6 +437,16 @@ D-041 的隔离、身份、无密码和生产禁止边界继续有效。全新 s
 
 状态：Accepted by business owner；Closes the product-amount and approved-product-to-demand handoff gaps
 
+### D-051 下单指引直接发布文字搜索信息
+
+下单指引不再要求 Staff 先生成关键词图片。预约批准后创建的指引仍为 `UNPUBLISHED`；有权 Staff 核对后直接发布已有产品版本的搜索关键词文字、店铺名称、商品主图、规格、金额和可见备注。只有指引进入 `ACTIVE` 后，买家任务和指引页才能读取这些信息；买家按文字关键词在指定店铺直接搜索下单。
+
+指引版本继续引用不可变的产品版本，并把有序关键词纳入内容哈希；发布仍必须保留 Staff 权限、负责人分配、买家范围、状态机、`expected_version`、幂等键、请求哈希、Audit、Outbox 和工作项完成断言。既有关键词图片表、生成服务和历史版本仅作兼容与审计保留，新发布流程不再调用它们，也不因此删除历史文件或绕过主图授权。
+
+本 Decision 不增加 Migration，不修改财务快照，不授权 production/staging 部署、远程 SQL、真实数据修改或 GitHub 写入。
+
+状态：Accepted by business owner；Supersedes the keyword-image publication requirement for new instruction versions
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

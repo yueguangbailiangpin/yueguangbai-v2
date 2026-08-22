@@ -188,6 +188,74 @@ describe('Staff product application workflow closure', () => {
   });
 });
 
+describe('Staff order instruction publication', () => {
+  it('publishes existing keyword text directly without preparing keyword images', async () => {
+    let publishedBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items/work-instruction'), () =>
+        HttpResponse.json({
+          data: {
+            work_item: {
+              work_item_id: 'work-instruction',
+              work_type: 'ORDER_INSTRUCTION_PUBLISH',
+              source_entity_id: 'instruction-1',
+              status: 'OPEN',
+            },
+          },
+          meta: { request_id: 'work-instruction-read' },
+        })),
+      http.get(apiUrl('/api/staff/order-instructions/instruction-1'), () =>
+        HttpResponse.json({
+          data: {
+            order_instruction: {
+              instruction_id: 'instruction-1',
+              reservation_id: 'reservation-1',
+              status: publishedBody ? 'ACTIVE' : 'UNPUBLISHED',
+              current_version_no: publishedBody ? 1 : 0,
+              version: publishedBody ? 2 : 1,
+              published_at: publishedBody ? 2_000 : null,
+              initial_deadline_at: publishedBody ? 3_000 : null,
+            },
+          },
+          meta: { request_id: 'instruction-read' },
+        })),
+      http.post(apiUrl('/api/staff/order-instructions/instruction-1/publish'), async ({ request }) => {
+        publishedBody = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({
+          data: {
+            publication: {
+              instruction: {
+                instruction_id: 'instruction-1', status: 'ACTIVE', version: 2,
+              },
+              instruction_version_id: 'instruction-version-1',
+              content_hash: 'a'.repeat(64),
+              replayed: false,
+              unchanged: false,
+            },
+          },
+          meta: { request_id: 'instruction-publish' },
+        }, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderPanel('/staff?work_item=work-instruction', [
+      'ORDER_INSTRUCTION_VIEW', 'ORDER_INSTRUCTION_PUBLISH',
+    ]);
+
+    expect(await screen.findByText(/店铺名称、搜索关键词/u)).toBeVisible();
+    expect(screen.queryByRole('button', { name: /准备关键词图片/u }))
+      .not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '直接发布下单指引' }));
+
+    await waitFor(() => expect(publishedBody).toEqual({
+      expected_version: 1,
+      staff_public_note: null,
+    }));
+    expect(screen.queryByRole('button', { name: '直接发布下单指引' }))
+      .not.toBeInTheDocument();
+  });
+});
+
 function renderPanel(
   route = '/staff?work_item=work-reservation',
   permissions = ['RESERVATION_VIEW', 'RESERVATION_DECIDE'],

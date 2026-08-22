@@ -8,6 +8,7 @@ import { buyerQueryKeys, cursorQuery } from '../queries/keys';
 import { useCursorPages } from '../queries/useCursorPages';
 import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerEmpty, BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { ProtectedImage } from '../shared/ProtectedImage';
 import { reviewTypeLabel } from '../shared/status';
 
 const PAGE_SIZE = 6;
@@ -94,7 +95,12 @@ export function BuyerDemandsPage(): React.JSX.Element {
               to={`/buyer/demands/${item.demand_id}`}
             >
               <span className="buyer-product-icon" aria-hidden="true">
-                <Tag />
+                {item.main_image ? <ProtectedImage
+                  reference={item.main_image}
+                  alt=""
+                  className="buyer-product-main-image"
+                  fallback={<Tag />}
+                /> : <Tag />}
               </span>
               <div className="buyer-product-row-main">
                 <div className="buyer-product-row-title">

@@ -43,6 +43,41 @@ const demandReviewContext = {
   data_as_of: 1_787_000_000_000,
 };
 
+const reviewWorkItem = {
+  ...staffTestWorkItem,
+  work_item_id: 'work-review',
+  work_type: 'REVIEW_DECISION' as const,
+  source_entity_type: 'REVIEW_CASE',
+  source_entity_id: 'review-1',
+  duty_code: 'BUYER_AFTER_SALES_OWNER' as const,
+};
+
+const staffReview = {
+  review_case_id: 'review-1',
+  formal_order_id: 'order-1',
+  buyer_customer_id: 'buyer-1',
+  seller_organization_id: 'seller-1',
+  review_type: 'TEXT' as const,
+  status: 'PENDING_REVIEW' as const,
+  version: 3,
+  current_evidence_version_no: 1,
+  public_change_reason: null,
+  internal_review_note: null,
+  submitted_at: 1_787_000_000_000,
+  updated_at: 1_787_000_000_000,
+  decided_at: null,
+  current_evidence: {
+    evidence_version_id: 'review-evidence-1',
+    version_no: 1,
+    review_type: 'TEXT' as const,
+    review_url: 'https://example.test/review',
+    buyer_note: null,
+    submitted_by_buyer_id: 'buyer-1',
+    submitted_at: 1_787_000_000_000,
+    files: [],
+  },
+};
+
 const refundWorkItem = {
   ...staffTestWorkItem,
   work_item_id: 'work-refund',
@@ -284,6 +319,73 @@ describe('canonical Frozen Staff workbench', () => {
     expect(screen.queryByRole('button', { name: '通过并发布' })).not.toBeInTheDocument();
     expect(screen.queryByText('需求事实暂时无法加载')).not.toBeInTheDocument();
     expect(contextReads).toBe(1);
+  });
+
+  it('closes a completed review decision without re-reading the completed review fact', async () => {
+    let queueReads = 0;
+    let reviewReads = 0;
+    let decided = false;
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items'), () => {
+        queueReads += 1;
+        return HttpResponse.json({
+          data: { work_items: decided ? [] : [reviewWorkItem], next_cursor: null },
+          meta: { request_id: `review-queue-${queueReads}` },
+        });
+      }),
+      http.get(apiUrl('/api/staff/reviews/review-1'), () => {
+        reviewReads += 1;
+        return HttpResponse.json({
+          data: { review: staffReview },
+          meta: { request_id: `review-detail-${reviewReads}` },
+        });
+      }),
+      http.post(apiUrl('/api/staff/reviews/review-1/approve'), () => {
+        decided = true;
+        return HttpResponse.json({
+          data: {
+            review: {
+              review_case_id: 'review-1',
+              formal_order_id: 'order-1',
+              status: 'APPROVED',
+              version: 4,
+              current_evidence_version_no: 1,
+              current_evidence_version_id: 'review-evidence-1',
+              approved_event_id: 'review-event-1',
+              financial_events: [],
+              replayed: false,
+            },
+          },
+          meta: { request_id: 'review-approved' },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWorkbench('/staff?work_item=work-review');
+    expect(await screen.findByText('评论资料')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '通过' }));
+    await waitFor(() => expect(queueReads).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByText('请选择工作项')).toBeVisible();
+    expect(screen.queryByText('评论资料暂时无法加载。')).not.toBeInTheDocument();
+    expect(reviewReads).toBe(1);
+  });
+
+  it('keeps the review mutation error code and offers a safe fact refresh', async () => {
+    installReviewHandlers(async () =>
+      HttpResponse.json(
+        {
+          error: { code: 'VERSION_CONFLICT', message: 'version conflict', details: null },
+          meta: { request_id: 'review-version-conflict' },
+        },
+        { status: 409 },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWorkbench('/staff?work_item=work-review');
+    await user.click(await screen.findByRole('button', { name: '通过' }));
+    expect(await screen.findByText(/错误码：VERSION_CONFLICT/u)).toBeVisible();
+    expect(screen.getByText(/review-version-conflict/u)).toBeVisible();
+    expect(screen.getByRole('button', { name: '刷新评论事实' })).toBeVisible();
   });
 
   it.each([
@@ -561,7 +663,7 @@ describe('canonical Frozen Staff workbench', () => {
     finish();
     expect(
       await screen.findByText(
-        '返款操作未完成。系统不会自动创建第二笔付款，请按错误类型重试原请求或刷新返款事实。',
+        '返款操作未完成。返款事实已被其他人更新，请刷新返款事实后再操作。（错误码：VERSION_CONFLICT）',
       ),
     ).toBeVisible();
   });
@@ -642,6 +744,24 @@ function installRefundHandlers(mutation: () => Promise<Response>): void {
     http.post(apiUrl('/api/staff/buyer-refunds/refund-1/payments/payment-1/reversals'), () =>
       mutation(),
     ),
+  );
+}
+
+function installReviewHandlers(mutation: () => Promise<Response>): void {
+  server.use(
+    http.get(apiUrl('/api/staff/me/work-items'), () =>
+      HttpResponse.json({
+        data: { work_items: [reviewWorkItem], next_cursor: null },
+        meta: { request_id: 'queue-review' },
+      }),
+    ),
+    http.get(apiUrl('/api/staff/reviews/review-1'), () =>
+      HttpResponse.json({
+        data: { review: staffReview },
+        meta: { request_id: 'review-detail' },
+      }),
+    ),
+    http.post(apiUrl('/api/staff/reviews/review-1/approve'), () => mutation()),
   );
 }
 

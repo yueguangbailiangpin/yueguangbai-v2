@@ -30,7 +30,7 @@ describe('order instruction strict write boundary', () => {
       },
       {
         path: '/api/staff/order-instructions/missing/publish',
-        body: { asset_batch_id: 'missing-batch', expected_version: 1 },
+        body: { expected_version: 1 },
         validStatus: 404,
       },
       {

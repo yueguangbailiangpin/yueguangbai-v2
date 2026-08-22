@@ -255,12 +255,11 @@ async function publishInstruction(context: Context<any>): Promise<Response> {
   const actor = requireStaffActor(context);
   const body = exactBody(
     await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
-    ['asset_batch_id', 'expected_version'],
+    ['expected_version'],
     ['staff_public_note'],
   );
   const result = await publishOrderInstruction(context.env.DB, {
     instructionId: requiredIdentifier(context.req.param('id')),
-    assetBatchId: requiredIdentifier(body['asset_batch_id']),
     expectedVersion: integer(body['expected_version']),
     staffPublicNote: optionalString(body['staff_public_note']),
   }, {

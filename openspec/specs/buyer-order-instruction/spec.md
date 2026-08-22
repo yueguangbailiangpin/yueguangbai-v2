@@ -15,11 +15,11 @@ Reservation detail SHALL read `GET /api/buyer-portal/reservations/:id/order-inst
 - **THEN** the exact unavailable/terminal presentation is shown without exposing a submit action or stale images.
 
 ### Requirement: Instruction content uses the Buyer-safe DTO
-The instruction page SHALL display product name, store display name, color specification mode, public notes, self-pay estimates, `content_updated`, initial and resubmission deadlines, main image handle, and keyword image handles ordered by `position`. It SHALL not display internal identifiers beyond safe handles or forbidden product/storage fields.
+The instruction page SHALL display product name, store display name, ordered Buyer-safe search keyword strings, color specification mode, public notes, self-pay estimates, `content_updated`, initial and resubmission deadlines, and the main image handle. It SHALL not display `search_keywords_json`, internal identifiers beyond safe handles, or forbidden product/storage fields. New instruction publication SHALL NOT require or create keyword images.
 
 #### Scenario: Current content loads
 - **WHEN** a valid active instruction DTO is returned
-- **THEN** its main image and ordered keyword placeholders, notes, amounts, and deadlines are rendered from that DTO.
+- **THEN** its Store, ordered keyword text, main image, notes, amounts, and deadlines are rendered from that DTO so the Buyer can search and order directly.
 
 #### Scenario: Content is malformed or updated
 - **WHEN** image order/shape violates the Contract or `content_updated=true`
@@ -36,8 +36,8 @@ The UI SHALL label `initial_deadline_at` as 初始提交期限 and `resubmission
 - **WHEN** the applicable deadline is null or current time reaches it
 - **THEN** the submit action is unavailable and a refetch is required before any later action.
 
-### Requirement: Instruction images use short read intents
-Each image SHALL use `BuyerInstructionImageReadIntentAdapter`, which validates Buyer domain, current reservation ID, and `main` or the selected current positive integer position against the exact formal route pattern before constructing the request. A DTO path that names another reservation, position, domain, or any other `/api` route SHALL fail closed; no business page or public FileReadController API may forward an arbitrary path. Only read-intent creation is adapted: bounded content download, header validation, token lifecycle, Customer 401 handling, and Object URL cleanup remain Wave14A behavior. Because the instruction response lacks `file_object_id` and `replayed`, the adapter SHALL record those assertions as unavailable rather than fabricate them; `access_token_available=false` or a null token SHALL require restart.
+### Requirement: Instruction main image uses a short read intent
+The main image SHALL use `BuyerInstructionImageReadIntentAdapter`, which validates Buyer domain, current reservation ID, and the exact `main` route pattern before constructing the request. A DTO path that names another reservation, position, domain, or any other `/api` route SHALL fail closed; no business page or public FileReadController API may forward an arbitrary path. Only read-intent creation is adapted: bounded content download, header validation, token lifecycle, Customer 401 handling, and Object URL cleanup remain Wave14A behavior. Because the instruction response lacks `file_object_id` and `replayed`, the adapter SHALL record those assertions as unavailable rather than fabricate them; `access_token_available=false` or a null token SHALL require restart.
 
 #### Scenario: Buyer views an authorized image
 - **WHEN** the exact current reservation/position route validates and a read intent returns a usable token and bounded bytes

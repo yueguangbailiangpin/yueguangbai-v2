@@ -48,10 +48,19 @@ describe('Phase 3G static source policy', () => {
     expect(text('packages/contracts/src/order-instruction.ts')).not.toContain('object_key');
   });
 
-  it('does not expose keyword text in instruction DTO contracts', () => {
-    expect(text('packages/contracts/src/order-instruction.ts')).not.toMatch(
-      /keyword_(?:text|raw)|search_keywords/u,
-    );
+  it('exposes only Buyer-safe keyword text without the storage JSON field', () => {
+    const contract = text('packages/contracts/src/order-instruction.ts');
+    expect(contract).toMatch(/search_keywords:\s*readonly string\[\]/u);
+    expect(contract).not.toMatch(/keyword_(?:text|raw)|search_keywords_json/u);
+  });
+
+  it('publishes new instructions without a keyword asset batch', () => {
+    const publish = text('apps/api/src/order-instructions/publish.ts');
+    const routes = text('apps/api/src/order-instructions/routes.ts');
+    expect(publish).toContain('orderedKeywords');
+    expect(publish).not.toContain('requireReadyAssets');
+    expect(publish).not.toContain('assetBatchId');
+    expect(routes).not.toMatch(/\['asset_batch_id',\s*'expected_version'\]/u);
   });
 
   it('allows only PNG output from the generator', () => {

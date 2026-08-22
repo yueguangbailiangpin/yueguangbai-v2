@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   dateOnlySchema,
+  demandSchema,
   evidenceFileSchema,
   identifierSchema,
   integerAmountSchema,
@@ -22,6 +23,20 @@ describe('Module 1 buyer strict runtime contracts', () => {
   it('keeps financial integer strings out of floating point', () => {
     expect(integerAmountSchema.parse('900719925474099312345')).toBe('900719925474099312345');
     expect(integerAmountSchema.safeParse('1.25').success).toBe(false);
+  });
+
+  it('accepts only a protected product-image reference without an object address', () => {
+    const demand = buyerDemand();
+    expect(demandSchema.parse(demand).main_image).toEqual({
+      file_object_id: 'product-main-image-1',
+      file_version: 3,
+      purpose: 'PRODUCT_IMAGE',
+      visibility: 'SELLER_VISIBLE',
+    });
+    expect(demandSchema.safeParse({
+      ...demand,
+      main_image: { ...demand.main_image, object_key: 'files/v1/private' },
+    }).success).toBe(false);
   });
 
   it('accepts exactly the readable evidence file authority tuple', () => {
@@ -64,6 +79,9 @@ describe('Module 1 buyer strict runtime contracts', () => {
       ...content, main_image: { ...content.main_image, position: 1 },
     } }).success).toBe(false);
     expect(instructionResponseSchema.safeParse({ order_instruction: {
+      ...content, search_keywords: [],
+    } }).success).toBe(false);
+    expect(instructionResponseSchema.safeParse({ order_instruction: {
       ...content, keyword_images: [
         { ...content.keyword_images[0]!, position: 2, read_intent_path: content.keyword_images[0]!.read_intent_path.replace('/1/', '/2/') },
         { ...content.keyword_images[0]!, image_id: 'keyword-2' },
@@ -82,7 +100,8 @@ describe('Module 1 buyer strict runtime contracts', () => {
 function instruction(status: string) {
   const prefix = '/api/buyer-portal/reservations/r1/order-instruction/images';
   return {
-    status, product_name: '月光白', store_display_name: '店铺', color_spec_mode: 'MAIN_IMAGE_VARIANT',
+    status, product_name: '月光白', store_display_name: '店铺',
+    search_keywords: ['月光白', '商品关键词'], color_spec_mode: 'MAIN_IMAGE_VARIANT',
     staff_public_note: null, buyer_visible_notes: null, initial_deadline_at: 1, resubmission_deadline_at: null,
     content_updated: false, reference_order_amount_jpy: '1200', buyer_self_pay_bps: 1000,
     estimated_buyer_self_pay_jpy: '120', estimated_refundable_principal_jpy: '1080',
@@ -90,6 +109,21 @@ function instruction(status: string) {
       read_intent_path: `${prefix}/main/read-intent` },
     keyword_images: [{ image_id: 'keyword-1', position: 1, mime: 'image/jpeg', width: null, height: null,
       read_intent_path: `${prefix}/1/read-intent` }],
+  };
+}
+
+function buyerDemand() {
+  return {
+    demand_id: 'd1', demand_version: 1, marketplace_code: 'JP',
+    product_name: '月光白', main_image: {
+      file_object_id: 'product-main-image-1', file_version: 3,
+      purpose: 'PRODUCT_IMAGE', visibility: 'SELLER_VISIBLE',
+    },
+    reference_order_amount_jpy: '1200', buyer_self_pay_bps: 0,
+    estimated_buyer_self_pay_jpy: '0', estimated_refundable_principal_jpy: '1200',
+    buyer_visible_notes: null, store_display_name: '店铺', task_type: 'TEXT',
+    target_quantity: 3, remaining_quantity: 2, open_at: 1,
+    reservation_deadline: 2, order_deadline: 3,
   };
 }
 

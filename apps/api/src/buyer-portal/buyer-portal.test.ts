@@ -190,6 +190,12 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       expect(firstBody.data.items[0]).toMatchObject({
         demand_id: 'demand-projection',
         product_name: '门户产品一',
+        main_image: {
+          file_object_id: 'portal-main-image-object',
+          file_version: 3,
+          purpose: 'PRODUCT_IMAGE',
+          visibility: 'SELLER_VISIBLE',
+        },
         task_type: 'IMAGE',
         target_quantity: 3,
         remaining_quantity: 1,
@@ -213,6 +219,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       );
       expect(detail.status).toBe(200);
       const detailText = JSON.stringify(await json(detail));
+      expect(detailText).toContain('portal-main-image-object');
       for (const forbidden of [
         'asin',
         'product_url',
@@ -226,6 +233,8 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
         'seller-org-1',
         'buyer_customer_id',
         'audit',
+        'object_key',
+        'files/v1/',
       ]) {
         expect(detailText).not.toContain(forbidden);
       }
@@ -969,6 +978,72 @@ function seedPortalFixture(
         2, 1300, 1300, 1300, 1300, NULL, NULL, 0, 0,
         0, 'PRODUCT_DEFAULT', NULL
       );
+  `);
+  seedPortalMainImage(target);
+}
+
+function seedPortalMainImage(target: SqliteDatabase): void {
+  target.exec(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility,
+      status, requested_file_count, manifest_hash, version, expires_at,
+      failure_code, created_at, updated_at, completed_at
+    ) VALUES (
+      'portal-main-image-intent', 'STAFF', 'staff-pre-sales',
+      'PRODUCT_IMAGE', 'SELLER_VISIBLE', 'ISSUED', 1,
+      '${'a'.repeat(64)}', 1, 30000, NULL, 1000, 1000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size,
+      status, upload_token_hash, upload_expires_at, uploaded_byte_size,
+      detected_mime, uploaded_sha256, failure_code, delete_attempt_count,
+      next_delete_at, version, created_at, updated_at, uploaded_at,
+      verified_at, deleted_at
+    ) VALUES (
+      'portal-main-image-object', 'portal-main-image-intent', 1,
+      'PRODUCT_IMAGE', 'SELLER_VISIBLE',
+      'files/v1/2026/08/portalmainimageobjectkeyxxxxxxxxxxxxxxxx',
+      'portal-main.png', 'png', 'image/png', 4, 'RESERVED',
+      '${'b'.repeat(64)}', 30000, NULL, NULL, NULL,
+      NULL, 0, NULL, 3, 1000, 1000, NULL, NULL, NULL
+    );
+    UPDATE file_upload_intents
+    SET status='VERIFIED', updated_at=1001, completed_at=1001
+    WHERE id='portal-main-image-intent';
+    UPDATE file_objects
+    SET status='VERIFIED', uploaded_byte_size=4, detected_mime='image/png',
+        uploaded_sha256='${'c'.repeat(64)}', updated_at=1001,
+        uploaded_at=1001, verified_at=1001
+    WHERE id='portal-main-image-object';
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      'portal-main-image-link', 'portal-main-image-object',
+      'PRODUCT_VERSION', 'product-1-v1', 'PRODUCT_IMAGE',
+      'SELLER_VISIBLE', 'STAFF', 'staff-pre-sales', 1002,
+      'EXPLICIT_AUDIENCES', NULL, NULL
+    );
+    INSERT INTO file_entity_audience_grants (
+      id, file_entity_link_id, subject_type, buyer_customer_id,
+      seller_organization_id, staff_permission_code, staff_scope_type,
+      staff_team_id, granted_by_actor_type, granted_by_actor_id,
+      created_at, expires_at, revoked_at
+    ) VALUES
+      ('portal-main-image-seller-grant', 'portal-main-image-link',
+       'SELLER_ORGANIZATION', NULL, 'seller-org-1', NULL, NULL, NULL,
+       'STAFF', 'staff-pre-sales', 1002, NULL, NULL),
+      ('portal-main-image-staff-grant', 'portal-main-image-link',
+       'STAFF_INTERNAL', NULL, NULL, 'PRODUCT_VIEW', 'GLOBAL', NULL,
+       'STAFF', 'staff-pre-sales', 1002, NULL, NULL);
+    INSERT INTO product_version_main_images (
+      product_version_id, file_entity_link_id,
+      created_by_staff_id, created_at
+    ) VALUES (
+      'product-1-v1', 'portal-main-image-link', 'staff-pre-sales', 1002
+    );
   `);
 }
 

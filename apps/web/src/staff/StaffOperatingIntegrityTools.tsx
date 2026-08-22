@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { z } from 'zod';
+import { isFrontendApiError } from '../api/errors';
 import { identityApiRequest } from '../api/identity-request';
 import { operationHeaders } from '../api/idempotency';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
@@ -12,11 +13,13 @@ import {
   Card,
   Dialog,
   FormField,
+  RequestIdDisplay,
   Select,
   StatusBadge,
   TextInput,
 } from '../ui/primitives';
 import { formatCny } from './shared/format';
+import { describeStaffMutationError } from './shared/staffMutationOutcome';
 
 const capability = z.object({ allowed: z.boolean(), reason: z.string().nullable() }).strict();
 const orderSchema = z
@@ -148,7 +151,8 @@ export function StaffOperatingIntegrityTools() {
     [uploader, upload] = useFileUpload(),
     [order, setOrder] = useState<Order | null>(null),
     [confirmAdvance, setConfirmAdvance] = useState<{ body: unknown; key: string } | null>(null),
-    [message, setMessage] = useState<string | null>(null);
+    [message, setMessage] = useState<string | null>(null),
+    [refreshWarning, setRefreshWarning] = useState<unknown>(null);
   const lookup = useMutation({
     mutationFn: (number: string) =>
       identityApiRequest('staff', client, {
@@ -170,11 +174,10 @@ export function StaffOperatingIntegrityTools() {
         eventSchema,
         request.key,
       ),
-    onSuccess: async (response) => {
-      const number = order!.amazon_order_number;
-      await lookup.mutateAsync(number);
-      setMessage(
-        `订单状态已记录为 ${stateLabel(response.data.event.event_type === 'RESOLVED' ? 'NORMAL' : response.data.event.event_type)}；后续按钮已按后端能力重新计算。`,
+    onSuccess: (response) => {
+      const eventType = response.data.event.event_type;
+      void refreshOrderFacts(
+        `订单状态已记录为 ${stateLabel(eventType === 'RESOLVED' ? 'NORMAL' : eventType)}。`,
       );
     },
   });
@@ -198,11 +201,9 @@ export function StaffOperatingIntegrityTools() {
         advanceSchema,
         request.key,
       ),
-    onSuccess: async () => {
+    onSuccess: () => {
       setConfirmAdvance(null);
-      const number = order!.amazon_order_number;
-      await lookup.mutateAsync(number);
-      setMessage('全额提前返本金和付款凭证已记录。正式返款义务形成后系统会自动抵扣。');
+      void refreshOrderFacts('全额提前返本金和付款凭证已记录。正式返款义务形成后系统会自动抵扣。');
     },
   });
   const reverseAdvance = useMutation({
@@ -214,10 +215,8 @@ export function StaffOperatingIntegrityTools() {
         advanceReversalSchema,
         request.key,
       ),
-    onSuccess: async () => {
-      const number = order!.amazon_order_number;
-      await lookup.mutateAsync(number);
-      setMessage('提前返本金已整笔冲正；需要时可重新录入一笔全额付款。');
+    onSuccess: () => {
+      void refreshOrderFacts('提前返本金已整笔冲正；需要时可重新录入一笔全额付款。');
     },
   });
   const adjustment = useMutation({
@@ -237,6 +236,23 @@ export function StaffOperatingIntegrityTools() {
       new FormData(eventForm.currentTarget).get('amazon_order_number') ?? '',
     ).trim();
     if (number) lookup.mutate(number);
+  }
+  function refreshOrderFacts(successMessage: string): void {
+    const number = order?.amazon_order_number;
+    if (!number) {
+      setMessage(successMessage);
+      return;
+    }
+    setRefreshWarning(null);
+    // The write response already confirms success. This read only refreshes the
+    // derived buttons and must never turn a completed write into a failure.
+    void lookup.mutateAsync(number).then(() => {
+      setMessage(`${successMessage} 后续按钮已按后端能力重新计算。`);
+    }).catch((error: unknown) => {
+      lookup.reset();
+      setRefreshWarning(error);
+      setMessage(`${successMessage} 服务器写入已成功，但刷新订单事实失败，请重新查询。`);
+    });
   }
   return (
     <section className="staff-integrity-tools">
@@ -260,7 +276,7 @@ export function StaffOperatingIntegrityTools() {
             查找正式订单
           </Button>
         </form>
-        {lookup.isError ? (
+        {lookup.isError && refreshWarning === null ? (
           <Alert tone="danger">没有找到当前岗位有权查看的唯一正式订单。</Alert>
         ) : null}
         {order ? (
@@ -280,6 +296,7 @@ export function StaffOperatingIntegrityTools() {
           </div>
         ) : null}
         {message ? <Alert tone="success">{message}</Alert> : null}
+        {refreshWarning ? <IntegrityMutationError label="刷新订单事实" error={refreshWarning} /> : null}
       </Card>
       {order && order.actions.record_order_event.allowed ? (
         <OrderEventCard
@@ -287,6 +304,7 @@ export function StaffOperatingIntegrityTools() {
           onSubmit={(body) => event.mutate({ body, key: crypto.randomUUID() })}
         />
       ) : null}
+      {event.isError ? <IntegrityMutationError label="记录订单状态" error={event.error} /> : null}
       {order && order.actions.record_review_visibility.allowed ? (
         <ReviewVisibilityCard
           reviewCaseId={order.review_case_id}
@@ -294,6 +312,7 @@ export function StaffOperatingIntegrityTools() {
           onSubmit={(body) => visibility.mutate({ body, key: crypto.randomUUID() })}
         />
       ) : null}
+      {visibility.isError ? <IntegrityMutationError label="记录评论展示状态" error={visibility.error} /> : null}
       {order && (role === 'owner' || role === 'buyer_refund') ? (
         <AdvancePrincipalCard
           authoritativeAmountCnyFen={order.advance_full_amount_cny_fen}
@@ -322,6 +341,7 @@ export function StaffOperatingIntegrityTools() {
           }}
         />
       ) : null}
+      {advance.isError ? <IntegrityMutationError label="记录提前返本金" error={advance.error} /> : null}
       {order &&
       (role === 'owner' || role === 'buyer_refund') &&
       order.has_refund_obligation === false &&
@@ -337,12 +357,14 @@ export function StaffOperatingIntegrityTools() {
           }
         />
       ) : null}
+      {reverseAdvance.isError ? <IntegrityMutationError label="冲正提前返本金" error={reverseAdvance.error} /> : null}
       {order && order.actions.record_profit_adjustment.allowed ? (
         <FinancialAdjustmentCard
           busy={adjustment.isPending}
           onSubmit={(body) => adjustment.mutate({ body, key: crypto.randomUUID() })}
         />
       ) : null}
+      {adjustment.isError ? <IntegrityMutationError label="追加利润补偿" error={adjustment.error} /> : null}
       <Dialog
         open={confirmAdvance !== null}
         title="确认提前返本金"
@@ -366,6 +388,17 @@ export function StaffOperatingIntegrityTools() {
     </section>
   );
 }
+
+function IntegrityMutationError({ label, error }: { label: string; error: unknown }): React.JSX.Element {
+  const outcome = describeStaffMutationError(error);
+  return (
+    <Alert tone="danger">
+      {label}未完成{outcome.code ? `（错误码：${outcome.code}）` : ''}：{outcome.hint}
+      <RequestIdDisplay requestId={isFrontendApiError(error) ? error.requestId : null} />
+    </Alert>
+  );
+}
+
 function OrderEventCard({ busy, onSubmit }: { busy: boolean; onSubmit: (body: unknown) => void }) {
   return (
     <Card>

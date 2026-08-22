@@ -138,6 +138,45 @@ describe('explicit file audiences', () => {
     )).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
+  it('allows only an eligible Buyer to read a published catalog main image', async () => {
+    const resource = seedPublishedCatalogMainImage(database);
+    await expect(authorize(
+      resource,
+      buyerActor('buyer-1'),
+      buyerPrincipal(1),
+      6000,
+    )).resolves.toBeUndefined();
+
+    database.exec(`
+      UPDATE buyer_customers
+      SET identity_review_status='REVIEW_REQUIRED', updated_at=7000
+      WHERE id='buyer-1';
+    `);
+    await expect(authorize(
+      resource,
+      buyerActor('buyer-1'),
+      buyerPrincipal(1),
+      7000,
+    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+    database.exec(`
+      UPDATE buyer_customers
+      SET identity_review_status='CLEAR', updated_at=8000
+      WHERE id='buyer-1';
+      UPDATE demand_batches
+      SET status='CLOSED', close_reason='test close',
+          closed_by_staff_id='staff-file-owner', closed_at=8000,
+          updated_at=8000
+      WHERE id='catalog-demand-1';
+    `);
+    await expect(authorize(
+      resource,
+      buyerActor('buyer-1'),
+      buyerPrincipal(1),
+      8001,
+    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
   it('rejects disabled accounts, members, organizations, and ungranted subjects', async () => {
     const fixture = await explicitFixture();
     database.exec(`
@@ -659,4 +698,128 @@ function seedAudienceIdentities(target: SqliteDatabase): void {
         'seller_file_2', 'seller_file_2',
         'ACTIVE', 1, 0, 1, 1000, 1000, 1000, NULL);
   `);
+}
+
+function seedPublishedCatalogMainImage(
+  target: SqliteDatabase,
+): FileAuthorizationResource {
+  target.exec(`
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code, display_name,
+      normalized_name, status, version, created_at, updated_at, disabled_at
+    ) VALUES (
+      'catalog-store-1', 'seller-org-1', 'JP', 'Catalog Store',
+      'catalog store', 'ACTIVE', 1, 1000, 1000, NULL
+    );
+    INSERT INTO products (
+      id, organization_id, store_id, marketplace_code,
+      asin_display, asin_normalized, status, current_version_no,
+      version, created_at, updated_at, disabled_at
+    ) VALUES (
+      'catalog-product-1', 'seller-org-1', 'catalog-store-1', 'JP',
+      'B0CATALOG1', 'B0CATALOG1', 'ACTIVE', 1, 1,
+      1000, 1000, NULL
+    );
+    INSERT INTO product_versions (
+      id, product_id, version_no, product_name, search_keywords_json,
+      product_url, buyer_visible_notes, internal_notes,
+      created_by_staff_id, created_at,
+      ordering_guide_expected_amount_jpy, color_spec_mode,
+      default_buyer_self_pay_bps
+    ) VALUES (
+      'catalog-product-version-1', 'catalog-product-1', 1,
+      'Catalog Product', '["catalog"]', NULL, NULL, NULL,
+      'staff-file-owner', 1000, 2999, 'MAIN_IMAGE_VARIANT', 0
+    );
+    INSERT INTO demand_batches (
+      id, organization_id, store_id, marketplace_code, product_id,
+      product_version_no, submitted_by_member_id, task_type,
+      target_quantity, buyer_visible_notes, seller_notes, open_at,
+      reservation_deadline, order_deadline, status, review_reason,
+      close_reason, reviewed_by_staff_id, closed_by_staff_id, version,
+      submitted_at, updated_at, reviewed_at, published_at,
+      withdrawn_at, closed_at, held_reservation_count,
+      approved_reservation_count, buyer_self_pay_bps_snapshot,
+      buyer_self_pay_source, buyer_self_pay_override_reason
+    ) VALUES (
+      'catalog-demand-1', 'seller-org-1', 'catalog-store-1', 'JP',
+      'catalog-product-1', 1, 'seller-member-1', 'TEXT', 2,
+      NULL, NULL, 5000, 10000, 12000, 'PUBLISHED', NULL, NULL,
+      'staff-file-owner', NULL, 2, 5000, 5000, 5000, 5000,
+      NULL, NULL, 0, 0, 0, 'PRODUCT_DEFAULT', NULL
+    );
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility,
+      status, requested_file_count, manifest_hash, version, expires_at,
+      failure_code, created_at, updated_at, completed_at
+    ) VALUES (
+      'catalog-main-intent', 'STAFF', 'staff-file-owner', 'PRODUCT_IMAGE',
+      'SELLER_VISIBLE', 'ISSUED', 1, '${'d'.repeat(64)}', 1,
+      10000, NULL, 1000, 1000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size,
+      status, upload_token_hash, upload_expires_at, uploaded_byte_size,
+      detected_mime, uploaded_sha256, failure_code, delete_attempt_count,
+      next_delete_at, version, created_at, updated_at, uploaded_at,
+      verified_at, deleted_at
+    ) VALUES (
+      'catalog-main-object', 'catalog-main-intent', 1, 'PRODUCT_IMAGE',
+      'SELLER_VISIBLE',
+      'files/v1/2026/08/catalogmainimageobjectkeyxxxxxxxxxxxxxxxx',
+      'catalog.png', 'png', 'image/png', 11, 'RESERVED',
+      '${'e'.repeat(64)}', 10000, NULL, NULL, NULL,
+      NULL, 0, NULL, 3, 1000, 1000, NULL, NULL, NULL
+    );
+    UPDATE file_upload_intents
+    SET status='VERIFIED', updated_at=1001, completed_at=1001
+    WHERE id='catalog-main-intent';
+    UPDATE file_objects
+    SET status='VERIFIED', uploaded_byte_size=11, detected_mime='image/png',
+        uploaded_sha256='${'f'.repeat(64)}', updated_at=1001,
+        uploaded_at=1001, verified_at=1001
+    WHERE id='catalog-main-object';
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      'catalog-main-link', 'catalog-main-object', 'PRODUCT_VERSION',
+      'catalog-product-version-1', 'PRODUCT_IMAGE', 'SELLER_VISIBLE',
+      'STAFF', 'staff-file-owner', 1002, 'EXPLICIT_AUDIENCES', NULL, NULL
+    );
+    INSERT INTO file_entity_audience_grants (
+      id, file_entity_link_id, subject_type, buyer_customer_id,
+      seller_organization_id, staff_permission_code, staff_scope_type,
+      staff_team_id, granted_by_actor_type, granted_by_actor_id,
+      created_at, expires_at, revoked_at
+    ) VALUES
+      ('catalog-main-seller-grant', 'catalog-main-link',
+       'SELLER_ORGANIZATION', NULL, 'seller-org-1', NULL, NULL, NULL,
+       'STAFF', 'staff-file-owner', 1002, NULL, NULL),
+      ('catalog-main-staff-grant', 'catalog-main-link',
+       'STAFF_INTERNAL', NULL, NULL, 'PRODUCT_VIEW', 'GLOBAL', NULL,
+       'STAFF', 'staff-file-owner', 1002, NULL, NULL);
+    INSERT INTO product_version_main_images (
+      product_version_id, file_entity_link_id, created_by_staff_id, created_at
+    ) VALUES (
+      'catalog-product-version-1', 'catalog-main-link',
+      'staff-file-owner', 1002
+    );
+  `);
+  return {
+    uploadIntentId: 'catalog-main-intent',
+    fileObjectId: 'catalog-main-object',
+    ownerActorType: 'STAFF',
+    ownerActorId: 'staff-file-owner',
+    purpose: 'PRODUCT_IMAGE',
+    visibility: 'SELLER_VISIBLE',
+    entityType: 'PRODUCT_VERSION',
+    entityId: 'catalog-product-version-1',
+    fileEntityLinkId: 'catalog-main-link',
+    linkAuthorizationMode: 'EXPLICIT_AUDIENCES',
+    linkExpiresAt: null,
+    linkRevokedAt: null,
+  };
 }

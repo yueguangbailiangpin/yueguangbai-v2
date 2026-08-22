@@ -17,6 +17,7 @@ import {
   requireInstructionPermission,
 } from './shared';
 import {
+  parseOrderedKeywords,
   requireInstructionContext,
   requireInstructionContextForReservation,
 } from './records';
@@ -26,6 +27,7 @@ interface CurrentVersionRow {
   instruction_version_id: string;
   version_no: number;
   product_name: string;
+  search_keywords_json: string;
   reference_order_amount_jpy: number;
   buyer_self_pay_bps: number;
   estimated_self_pay_jpy: number;
@@ -97,6 +99,7 @@ export async function getBuyerOrderInstruction(
   return Object.freeze({
     status: source.instruction_status,
     product_name: version.product_name,
+    search_keywords: parseOrderedKeywords(version.search_keywords_json),
     reference_order_amount_jpy:
       fixedIntegerString(parseJpyInteger(String(version.reference_order_amount_jpy))),
     buyer_self_pay_bps: Number(version.buyer_self_pay_bps),
@@ -298,6 +301,7 @@ async function requireCurrentVersion(
       version.id AS instruction_version_id,
       version.version_no,
       product_version.product_name,
+      product_version.search_keywords_json,
       version.reference_order_amount_jpy,
       version.buyer_self_pay_bps,
       version.estimated_self_pay_jpy,
