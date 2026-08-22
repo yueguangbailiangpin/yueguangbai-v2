@@ -54,7 +54,30 @@ const overviewSchema = z
   })
   .strict();
 const mutationSchema = z.object({ employee: employeeSchema, replayed: z.boolean() }).strict();
+const sellerOrganizationManagerSchema = z
+  .object({
+    seller_organization_id: z.string(),
+    seller_organization_name: z.string(),
+    marketplace_code: z.string(),
+    manager: z
+      .object({
+        assignment_id: z.string(),
+        staff_id: z.string(),
+        staff_display_name: z.string(),
+        version: z.number().int().positive(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+const sellerOrganizationManagersSchema = z
+  .object({ seller_organizations: z.array(sellerOrganizationManagerSchema) })
+  .strict();
+const sellerOrganizationManagerMutationSchema = z
+  .object({ seller_organization: sellerOrganizationManagerSchema, replayed: z.boolean() })
+  .strict();
 type Employee = z.output<typeof employeeSchema>;
+type SellerOrganizationManager = z.output<typeof sellerOrganizationManagerSchema>;
 type Role = Employee['role']['code'];
 const ROLES: readonly [Role, string][] = [
   ['owner', '总管理员'],
@@ -83,7 +106,23 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
     enabled: authorized,
     retry: false,
   });
-  const refresh = () => client.invalidateQueries({ queryKey: ['staff', 'staff-accounts'] });
+  const sellerOrganizationAssignmentsQuery = useQuery({
+    queryKey: ['staff', 'seller-organization-assignments', session.authorization_version],
+    queryFn: ({ signal }) =>
+      identityApiRequest('staff', client, {
+        path: '/api/staff/access-management/seller-organization-assignments',
+        method: 'GET',
+        schema: sellerOrganizationManagersSchema,
+        signal,
+      }).then((r) => r.data),
+    enabled: authorized,
+    retry: false,
+  });
+  const refresh = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: ['staff', 'staff-accounts'] }),
+      client.invalidateQueries({ queryKey: ['staff', 'seller-organization-assignments'] }),
+    ]);
   const createMutation = useMutation({
     mutationFn: (body: unknown) => write(client, '/api/staff/access-management/employees', body),
     onSuccess: async () => {
@@ -114,6 +153,17 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
       setDisabling(null);
       await refresh();
     },
+  });
+  const sellerOrganizationManagerMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: unknown }) =>
+      identityApiRequest('staff', client, {
+        path: `/api/staff/access-management/seller-organization-assignments/${encodeURIComponent(id)}/manager`,
+        method: 'POST',
+        schema: sellerOrganizationManagerMutationSchema,
+        body,
+        headers: operationHeaders({ key: crypto.randomUUID(), body }),
+      }),
+    onSuccess: refresh,
   });
   if (!authorized)
     return (
@@ -149,6 +199,59 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
         第一个进入某“岗位 ×
         站点”的员工自动成为主负责人；后续员工自动显示“协助”。主负责人停用时，系统会自动提升一名协助员工，不增加排班页面。
       </Alert>
+      <section
+        className="staff-seller-organization-assignments"
+        aria-labelledby="seller-organization-manager-heading"
+      >
+        <div>
+          <p className="eyebrow">卖家对接</p>
+          <h3 id="seller-organization-manager-heading">负责卖家组织</h3>
+          <p>
+            为每个卖家组织指定一名“卖家对接”负责人。更换后只影响后续业务，历史任务与财务快照不会改写。
+          </p>
+        </div>
+        {sellerOrganizationAssignmentsQuery.isPending ? (
+          <p role="status">正在读取卖家负责人</p>
+        ) : null}
+        {sellerOrganizationAssignmentsQuery.isError ? (
+          <Alert tone="danger">卖家负责人列表暂时加载不了。</Alert>
+        ) : null}
+        {sellerOrganizationAssignmentsQuery.data ? (
+          sellerOrganizationAssignmentsQuery.data.seller_organizations.length === 0 ? (
+            <EmptyState title="暂无卖家组织" description="卖家客户开通后会显示在这里。" />
+          ) : (
+            <DataTable caption="卖家组织与负责卖家对接员工">
+              <thead>
+                <tr>
+                  <th>卖家组织</th>
+                  <th>站点</th>
+                  <th>当前负责人</th>
+                  <th>更换负责人</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sellerOrganizationAssignmentsQuery.data.seller_organizations.map((assignment) => (
+                  <SellerOrganizationManagerRow
+                    key={`${assignment.seller_organization_id}:${assignment.manager?.assignment_id ?? 'none'}`}
+                    assignment={assignment}
+                    candidates={sellerOpsCandidates(
+                      query.data.employees,
+                      assignment.marketplace_code,
+                    )}
+                    busy={sellerOrganizationManagerMutation.isPending}
+                    onAssign={(body) =>
+                      sellerOrganizationManagerMutation.mutate({
+                        id: assignment.seller_organization_id,
+                        body,
+                      })
+                    }
+                  />
+                ))}
+              </tbody>
+            </DataTable>
+          )
+        ) : null}
+      </section>
       {query.data.employees.length === 0 ? (
         <EmptyState title="暂无员工" description="请先创建业务员工。" />
       ) : (
@@ -290,6 +393,67 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
   );
 }
 
+function SellerOrganizationManagerRow({
+  assignment,
+  candidates,
+  busy,
+  onAssign,
+}: {
+  assignment: SellerOrganizationManager;
+  candidates: readonly Employee[];
+  busy: boolean;
+  onAssign: (body: { assigned_staff_id: string; expected_assignment_version: number }) => void;
+}) {
+  const [staffId, setStaffId] = useState(
+    candidates.some((candidate) => candidate.staff_id === assignment.manager?.staff_id)
+      ? (assignment.manager?.staff_id ?? '')
+      : '',
+  );
+  const expectedVersion = assignment.manager?.version ?? 0;
+  return (
+    <tr>
+      <td>
+        <strong>{assignment.seller_organization_name}</strong>
+      </td>
+      <td>{assignment.marketplace_code}</td>
+      <td>{assignment.manager?.staff_display_name ?? '尚未分配'}</td>
+      <td>
+        {candidates.length === 0 ? (
+          <span>暂无符合该站点主负责人条件的卖家对接员工</span>
+        ) : (
+          <div className="entry-actions">
+            <Select
+              aria-label={`${assignment.seller_organization_name} 负责人`}
+              value={staffId}
+              onChange={(event) => setStaffId(event.target.value)}
+            >
+              <option value="">请选择卖家对接负责人</option>
+              {candidates.map((candidate) => (
+                <option key={candidate.staff_id} value={candidate.staff_id}>
+                  {candidate.display_name}
+                </option>
+              ))}
+            </Select>
+            <Button
+              className="secondary"
+              loading={busy}
+              disabled={!staffId || staffId === assignment.manager?.staff_id}
+              onClick={() =>
+                onAssign({
+                  assigned_staff_id: staffId,
+                  expected_assignment_version: expectedVersion,
+                })
+              }
+            >
+              {assignment.manager ? '更换负责人' : '指定负责人'}
+            </Button>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 function AccountDialog({
   title,
   open,
@@ -420,6 +584,19 @@ function scopeLabels(
           `${marketLabel(markets, scope.code)} · ${scope.scope_kind === 'PRIMARY' ? '主负责人' : '协助'}`,
       )
       .join(' / ') || '未配置'
+  );
+}
+function sellerOpsCandidates(
+  employees: readonly Employee[],
+  marketplaceCode: string,
+): readonly Employee[] {
+  return employees.filter(
+    (employee) =>
+      employee.status === 'ACTIVE' &&
+      employee.role.code === 'seller_ops' &&
+      (employee.marketplace_scopes ?? []).some(
+        (scope) => scope.code === marketplaceCode && scope.scope_kind === 'PRIMARY',
+      ),
   );
 }
 function marketLabel(markets: readonly { code: string; display_name: string }[], code: string) {

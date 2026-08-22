@@ -1,10 +1,19 @@
 import { apiFailure, apiSuccess, isStaffRoleCode, type ApiErrorCode } from '@ygb/contracts';
+import { parseIdempotencyKey } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import type { AssignmentStaffAuthorization } from '../../staff-assignment';
 import { requireStaffAccessManager } from './authorization';
-import { createStaffAccount, updateStaffAccount, changeStaffAccountStatus } from './accounts';
+import {
+  changeSellerOrganizationManager,
+  createStaffAccount,
+  updateStaffAccount,
+  changeStaffAccountStatus,
+} from './accounts';
 import { StaffAccessManagementError } from './errors';
-import { readStaffAccessManagementOverview } from './read-model';
+import {
+  readStaffAccessManagementOverview,
+  readStaffSellerOrganizationAssignments,
+} from './read-model';
 
 export function registerStaffAccessManagementRoutes(app: Hono<any>): void {
   app.get(
@@ -99,6 +108,45 @@ export function registerStaffAccessManagementRoutes(app: Hono<any>): void {
       return success(context, { employee, replayed: false });
     }),
   );
+  app.get(
+    '/api/staff/access-management/seller-organization-assignments',
+    withErrors(async (context) => {
+      requireActor(context);
+      assertNoQuery(context);
+      return success(context, {
+        seller_organizations: await readStaffSellerOrganizationAssignments(context.env.DB),
+      });
+    }),
+  );
+  app.post(
+    '/api/staff/access-management/seller-organization-assignments/:id/manager',
+    withErrors(async (context) => {
+      const actor = requireActor(context);
+      const body = await readExactBody(context, [
+        'assigned_staff_id',
+        'expected_assignment_version',
+      ]);
+      if (
+        typeof body['assigned_staff_id'] !== 'string' ||
+        !nonnegativeInteger(body['expected_assignment_version'])
+      )
+        validation();
+      const idempotencyKey = parseIdempotencyKey(context.req.header('Idempotency-Key'));
+      if (!idempotencyKey) validation();
+      const result = await changeSellerOrganizationManager(
+        context.env.DB,
+        {
+          sellerOrganizationId: requiredString(context.req.param('id')),
+          assignedStaffId: requiredString(body['assigned_staff_id']),
+          expectedAssignmentVersion: body['expected_assignment_version'],
+          idempotencyKey,
+          requestId: requestId(context),
+        },
+        actor,
+      );
+      return success(context, result);
+    }),
+  );
 }
 
 function requireActor(context: Context<any>): AssignmentStaffAuthorization {
@@ -178,6 +226,9 @@ function stringArray(value: unknown): value is string[] {
 }
 function positiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+}
+function nonnegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 function requiredString(value: unknown): string {
   if (typeof value !== 'string' || value.trim().length < 1 || value.length > 200) validation();

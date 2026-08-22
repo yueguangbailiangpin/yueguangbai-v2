@@ -14,6 +14,7 @@ import { requestOrderEvidenceChanges } from './review-order-evidence';
 import {
   approveOrderEvidenceAtomically,
   AtomicOrderEvidenceApprovalError,
+  readOrderEvidenceApprovalPreflight,
 } from './approve-order-evidence';
 
 const BODY_LIMIT_BYTES = 16 * 1024;
@@ -71,27 +72,30 @@ interface OrderEvidenceDetailRow {
 }
 
 export function registerStaffOrderEvidenceRoutes(app: Hono<AppEnv>): void {
+  app.get('/api/staff/order-evidence', withStaffOrderEvidenceErrors(listStaffOrderEvidence));
   app.get(
-    '/api/staff/order-evidence',
-    withStaffOrderEvidenceErrors(listStaffOrderEvidence),
+    '/api/staff/order-evidence/:id/preflight',
+    withStaffOrderEvidenceErrors(getApprovalPreflight),
   );
-  app.get(
-    '/api/staff/order-evidence/:id',
-    withStaffOrderEvidenceErrors(getStaffOrderEvidence),
-  );
+  app.get('/api/staff/order-evidence/:id', withStaffOrderEvidenceErrors(getStaffOrderEvidence));
   app.post(
     '/api/staff/order-evidence/:id/request-changes',
     withStaffOrderEvidenceErrors(requestChanges),
   );
-  app.post(
-    '/api/staff/order-evidence/:id/approve',
-    withStaffOrderEvidenceErrors(approve),
-  );
+  app.post('/api/staff/order-evidence/:id/approve', withStaffOrderEvidenceErrors(approve));
 }
 
-async function listStaffOrderEvidence(
-  context: Context<AppEnv>,
-): Promise<Response> {
+async function getApprovalPreflight(context: Context<AppEnv>): Promise<Response> {
+  const actor = requireStaffAuthorization(context);
+  requirePermission(actor, 'ORDER_CONFIRM');
+  const submissionId = requireRouteIdentifier(context);
+  await assertScopeVisibility(context, submissionId, requireStaffDataScope(context));
+  return success(context, {
+    preflight: await readOrderEvidenceApprovalPreflight(context.env.DB, { submissionId }),
+  });
+}
+
+async function listStaffOrderEvidence(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requirePermission(actor, 'ORDER_VIEW');
   const scope = requireStaffDataScope(context);
@@ -106,7 +110,8 @@ async function listStaffOrderEvidence(
     : `AND submission.status IN (
       'PENDING_VERIFICATION','CHANGES_REQUESTED','VERIFIED'
     )`;
-  const rows = await context.env.DB.prepare(`
+  const rows = await context.env.DB.prepare(
+    `
     SELECT submission.id AS submission_id,
       submission.reservation_id,
       submission.buyer_customer_id,
@@ -152,41 +157,44 @@ async function listStaffOrderEvidence(
       ${cursorFilter}
     ORDER BY submission.submitted_at, submission.id
     LIMIT ?
-  `).bind(
-    ...scopeFilter.args,
-    ...(query.status ? [query.status] : []),
-    ...(query.cursor
-      ? [query.cursor.submittedAt, query.cursor.submittedAt, query.cursor.id]
-      : []),
-    query.limit + 1,
-  ).all<{
-    submission_id: string;
-    reservation_id: string;
-    buyer_customer_id: string;
-    buyer_customer_no: string | null;
-    marketplace_code: 'JP';
-    status: StaffOrderEvidenceListItem['status'];
-    version: number;
-    current_version_no: number;
-    instruction_id: string;
-    instruction_version_id: string;
-    amazon_order_number_raw: string;
-    amazon_order_number_normalized: string;
-    reference_order_amount_jpy: number;
-    final_paid_jpy: number;
-    price_difference_jpy: number;
-    price_mismatch: number;
-    resubmission_deadline_at: number | null;
-    screenshot_file_object_id: string;
-    screenshot_file_version: number;
-    screenshot_purpose: 'ORDER_EVIDENCE';
-    screenshot_visibility: 'BUYER_VISIBLE';
-    work_item_id: string | null;
-    assigned_staff_id: string | null;
-    fixed_assignment_id: string | null;
-    submitted_at: number;
-    updated_at: number;
-  }>();
+  `,
+  )
+    .bind(
+      ...scopeFilter.args,
+      ...(query.status ? [query.status] : []),
+      ...(query.cursor
+        ? [query.cursor.submittedAt, query.cursor.submittedAt, query.cursor.id]
+        : []),
+      query.limit + 1,
+    )
+    .all<{
+      submission_id: string;
+      reservation_id: string;
+      buyer_customer_id: string;
+      buyer_customer_no: string | null;
+      marketplace_code: 'JP';
+      status: StaffOrderEvidenceListItem['status'];
+      version: number;
+      current_version_no: number;
+      instruction_id: string;
+      instruction_version_id: string;
+      amazon_order_number_raw: string;
+      amazon_order_number_normalized: string;
+      reference_order_amount_jpy: number;
+      final_paid_jpy: number;
+      price_difference_jpy: number;
+      price_mismatch: number;
+      resubmission_deadline_at: number | null;
+      screenshot_file_object_id: string;
+      screenshot_file_version: number;
+      screenshot_purpose: 'ORDER_EVIDENCE';
+      screenshot_visibility: 'BUYER_VISIBLE';
+      work_item_id: string | null;
+      assigned_staff_id: string | null;
+      fixed_assignment_id: string | null;
+      submitted_at: number;
+      updated_at: number;
+    }>();
   const hasMore = rows.results.length > query.limit;
   const visible = rows.results.slice(0, query.limit);
   const items: StaffOrderEvidenceListItem[] = visible.map((row) => ({
@@ -205,9 +213,8 @@ async function listStaffOrderEvidence(
     final_paid_jpy: String(row.final_paid_jpy),
     price_difference_jpy: String(row.price_difference_jpy),
     price_mismatch: Number(row.price_mismatch) === 1,
-    resubmission_deadline_at: row.resubmission_deadline_at === null
-      ? null
-      : Number(row.resubmission_deadline_at),
+    resubmission_deadline_at:
+      row.resubmission_deadline_at === null ? null : Number(row.resubmission_deadline_at),
     submitted_at: Number(row.submitted_at),
     updated_at: Number(row.updated_at),
     buyer: {
@@ -230,15 +237,12 @@ async function listStaffOrderEvidence(
   const last = visible.at(-1);
   return success(context, {
     items,
-    next_cursor: hasMore && last
-      ? encodeCursor(Number(last.submitted_at), last.submission_id)
-      : null,
+    next_cursor:
+      hasMore && last ? encodeCursor(Number(last.submitted_at), last.submission_id) : null,
   });
 }
 
-async function getStaffOrderEvidence(
-  context: Context<AppEnv>,
-): Promise<Response> {
+async function getStaffOrderEvidence(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requirePermission(actor, 'ORDER_VIEW');
   const detail = await readDetail(
@@ -253,16 +257,12 @@ async function requestChanges(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requirePermission(actor, 'ORDER_CONFIRM');
   const submissionId = requireRouteIdentifier(context);
-  await assertScopeVisibility(
+  await assertScopeVisibility(context, submissionId, requireStaffDataScope(context));
+  const body = await readExactJson(
     context,
-    submissionId,
-    requireStaffDataScope(context),
+    new Set(['expected_version', 'public_reason', 'internal_note']),
+    new Set(['expected_version', 'public_reason']),
   );
-  const body = await readExactJson(context, new Set([
-    'expected_version',
-    'public_reason',
-    'internal_note',
-  ]), new Set(['expected_version', 'public_reason']));
   const result = await requestOrderEvidenceChanges(
     context.env.DB,
     {
@@ -284,17 +284,17 @@ async function approve(context: Context<AppEnv>): Promise<Response> {
   const actor = requireStaffAuthorization(context);
   requirePermission(actor, 'ORDER_CONFIRM');
   const submissionId = requireRouteIdentifier(context);
-  await assertScopeVisibility(
+  await assertScopeVisibility(context, submissionId, requireStaffDataScope(context));
+  const body = await readExactJson(
     context,
-    submissionId,
-    requireStaffDataScope(context),
+    new Set([
+      'expected_version',
+      'internal_note',
+      'price_mismatch_acknowledged',
+      'price_mismatch_reason',
+    ]),
+    new Set(['expected_version']),
   );
-  const body = await readExactJson(context, new Set([
-    'expected_version',
-    'internal_note',
-    'price_mismatch_acknowledged',
-    'price_mismatch_reason',
-  ]), new Set(['expected_version']));
   const acknowledged = Object.hasOwn(body, 'price_mismatch_acknowledged')
     ? booleanValue(body['price_mismatch_acknowledged'])
     : undefined;
@@ -304,9 +304,7 @@ async function approve(context: Context<AppEnv>): Promise<Response> {
       submissionId,
       expectedVersion: positiveVersion(body['expected_version']),
       internalNote: optionalText(body['internal_note'], 4000),
-      ...(acknowledged === undefined
-        ? {}
-        : { priceMismatchAcknowledged: acknowledged }),
+      ...(acknowledged === undefined ? {} : { priceMismatchAcknowledged: acknowledged }),
       priceMismatchReason: optionalText(body['price_mismatch_reason'], 2000),
     },
     {
@@ -324,7 +322,8 @@ async function readDetail(
   scope: StaffDataScope,
 ): Promise<StaffOrderEvidenceDetailDto> {
   const filter = scopeSql(scope);
-  const row = await context.env.DB.prepare(`
+  const row = await context.env.DB.prepare(
+    `
     SELECT submission.id AS submission_id,
       submission.reservation_id,
       submission.buyer_customer_id,
@@ -435,38 +434,49 @@ async function readDetail(
     JOIN file_upload_intents intent ON intent.id=file.upload_intent_id
     WHERE submission.id=? AND ${filter.sql}
     LIMIT 1
-  `).bind(Date.now(), submissionId, ...filter.args).first<OrderEvidenceDetailRow>();
+  `,
+  )
+    .bind(Date.now(), submissionId, ...filter.args)
+    .first<OrderEvidenceDetailRow>();
   if (!row) throw new StaffOrderEvidenceHttpError('NOT_FOUND', 404);
-  if (Number(row.screenshot_association_count) !== 1
-    || Number(row.eligible_screenshot_association_count) !== 1
-    || row.associated_file_object_id !== row.screenshot_file_object_id
-    || row.screenshot_file_status !== 'VERIFIED'
-    || row.screenshot_intent_status !== 'VERIFIED'
-    || row.screenshot_owner_actor_type !== 'BUYER_CUSTOMER'
-    || row.screenshot_owner_actor_id !== row.buyer_customer_id) {
+  if (
+    Number(row.screenshot_association_count) !== 1 ||
+    Number(row.eligible_screenshot_association_count) !== 1 ||
+    row.associated_file_object_id !== row.screenshot_file_object_id ||
+    row.screenshot_file_status !== 'VERIFIED' ||
+    row.screenshot_intent_status !== 'VERIFIED' ||
+    row.screenshot_owner_actor_type !== 'BUYER_CUSTOMER' ||
+    row.screenshot_owner_actor_id !== row.buyer_customer_id
+  ) {
     throw new StaffOrderEvidenceHttpError('STATE_CONFLICT', 409);
   }
-  if (row.screenshot_purpose !== 'ORDER_EVIDENCE'
-    || row.screenshot_visibility !== 'BUYER_VISIBLE'
-    || Number(row.screenshot_file_version) < 1
-    || Number(row.reference_order_amount_jpy) < 0
-    || Number(row.final_paid_jpy) < 0
-    || Number(row.price_difference_jpy)
-      !== Number(row.final_paid_jpy) - Number(row.reference_order_amount_jpy)) {
+  if (
+    row.screenshot_purpose !== 'ORDER_EVIDENCE' ||
+    row.screenshot_visibility !== 'BUYER_VISIBLE' ||
+    Number(row.screenshot_file_version) < 1 ||
+    Number(row.reference_order_amount_jpy) < 0 ||
+    Number(row.final_paid_jpy) < 0 ||
+    Number(row.price_difference_jpy) !==
+      Number(row.final_paid_jpy) - Number(row.reference_order_amount_jpy)
+  ) {
     throw new StaffOrderEvidenceHttpError('DEPENDENCY_UNAVAILABLE', 503);
   }
-  const history = await context.env.DB.prepare(`
+  const history = await context.env.DB.prepare(
+    `
     SELECT id AS evidence_version_id, version_no, final_paid_jpy,
       created_at AS submitted_at
     FROM order_evidence_versions
     WHERE submission_id=?
     ORDER BY version_no, id
-  `).bind(submissionId).all<{
-    evidence_version_id: string;
-    version_no: number;
-    final_paid_jpy: number;
-    submitted_at: number;
-  }>();
+  `,
+  )
+    .bind(submissionId)
+    .all<{
+      evidence_version_id: string;
+      version_no: number;
+      final_paid_jpy: number;
+      submitted_at: number;
+    }>();
   return {
     submission_id: row.submission_id,
     reservation_id: row.reservation_id,
@@ -502,8 +512,7 @@ async function readDetail(
       instruction_version_id: row.instruction_version_id,
       buyer_self_pay_bps: Number(row.buyer_self_pay_bps),
       buyer_self_pay_jpy: String(row.buyer_self_pay_jpy),
-      buyer_refundable_principal_jpy:
-        String(row.buyer_refundable_principal_jpy),
+      buyer_refundable_principal_jpy: String(row.buyer_refundable_principal_jpy),
     },
     reservation: {
       reservation_id: row.reservation_id,
@@ -535,14 +544,18 @@ async function assertScopeVisibility(
   scope: StaffDataScope,
 ): Promise<void> {
   const filter = scopeSql(scope);
-  const row = await context.env.DB.prepare(`
+  const row = await context.env.DB.prepare(
+    `
     SELECT 1 AS visible
     FROM order_evidence_submissions submission
     JOIN product_reservations reservation
       ON reservation.id=submission.reservation_id
     WHERE submission.id=? AND ${filter.sql}
     LIMIT 1
-  `).bind(submissionId, ...filter.args).first<{ visible: number }>();
+  `,
+  )
+    .bind(submissionId, ...filter.args)
+    .first<{ visible: number }>();
   if (!row) throw new StaffOrderEvidenceHttpError('NOT_FOUND', 404);
 }
 
@@ -554,25 +567,19 @@ function scopeSql(scope: StaffDataScope): {
   const clauses: string[] = [];
   const args: string[] = [];
   if (scope.buyerCustomerIds.length > 0) {
-    clauses.push(
-      `submission.buyer_customer_id IN (${placeholders(scope.buyerCustomerIds)})`,
-    );
+    clauses.push(`submission.buyer_customer_id IN (${placeholders(scope.buyerCustomerIds)})`);
     args.push(...scope.buyerCustomerIds);
   }
   if (scope.sellerOrganizationIds.length > 0) {
-    clauses.push(
-      `reservation.organization_id IN (${placeholders(scope.sellerOrganizationIds)})`,
-    );
+    clauses.push(`reservation.organization_id IN (${placeholders(scope.sellerOrganizationIds)})`);
     args.push(...scope.sellerOrganizationIds);
   }
-  return clauses.length > 0
-    ? { sql: `(${clauses.join(' OR ')})`, args }
-    : { sql: '0=1', args: [] };
+  return clauses.length > 0 ? { sql: `(${clauses.join(' OR ')})`, args } : { sql: '0=1', args: [] };
 }
 
 function parseListQuery(context: Context<AppEnv>): {
   limit: number;
-  status?: typeof STAFF_ORDER_EVIDENCE_LIST_STATUSES[number];
+  status?: (typeof STAFF_ORDER_EVIDENCE_LIST_STATUSES)[number];
   cursor?: { submittedAt: number; id: string };
 } {
   const parameters = new URL(context.req.url).searchParams;
@@ -583,17 +590,16 @@ function parseListQuery(context: Context<AppEnv>): {
     }
   }
   const limitRaw = parameters.get('limit');
-  const limit = limitRaw === null
-    ? DEFAULT_LIMIT
-    : parseCanonicalLimit(limitRaw);
+  const limit = limitRaw === null ? DEFAULT_LIMIT : parseCanonicalLimit(limitRaw);
   const statusRaw = parameters.get('status');
-  const status = statusRaw === null
-    ? undefined
-    : STAFF_ORDER_EVIDENCE_LIST_STATUSES.includes(
-        statusRaw as typeof STAFF_ORDER_EVIDENCE_LIST_STATUSES[number],
-      )
-      ? statusRaw as typeof STAFF_ORDER_EVIDENCE_LIST_STATUSES[number]
-      : validationError();
+  const status =
+    statusRaw === null
+      ? undefined
+      : STAFF_ORDER_EVIDENCE_LIST_STATUSES.includes(
+            statusRaw as (typeof STAFF_ORDER_EVIDENCE_LIST_STATUSES)[number],
+          )
+        ? (statusRaw as (typeof STAFF_ORDER_EVIDENCE_LIST_STATUSES)[number])
+        : validationError();
   const cursorRaw = parameters.get('cursor');
   return {
     limit,
@@ -608,19 +614,23 @@ function encodeCursor(submittedAt: number, id: string): string {
 }
 
 function decodeCursor(raw: string): { submittedAt: number; id: string } {
-  if (raw.length < 1 || raw.length > CURSOR_MAX_LENGTH
-    || !/^[A-Za-z0-9_-]+$/u.test(raw)) {
+  if (raw.length < 1 || raw.length > CURSOR_MAX_LENGTH || !/^[A-Za-z0-9_-]+$/u.test(raw)) {
     return validationError();
   }
   try {
-    const value = JSON.parse(
-      new TextDecoder().decode(decodeBase64Url(raw)),
-    ) as Record<string, unknown>;
-    if (!value || typeof value !== 'object' || Array.isArray(value)
-      || Object.keys(value).sort().join(',') !== 'id,submitted_at,v'
-      || value['v'] !== 1
-      || !Number.isSafeInteger(value['submitted_at'])
-      || Number(value['submitted_at']) < 0) {
+    const value = JSON.parse(new TextDecoder().decode(decodeBase64Url(raw))) as Record<
+      string,
+      unknown
+    >;
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      Object.keys(value).sort().join(',') !== 'id,submitted_at,v' ||
+      value['v'] !== 1 ||
+      !Number.isSafeInteger(value['submitted_at']) ||
+      Number(value['submitted_at']) < 0
+    ) {
       return validationError();
     }
     return {
@@ -668,12 +678,8 @@ async function readExactJson(
   return record;
 }
 
-function requireStaffAuthorization(
-  context: Context<AppEnv>,
-): AssignmentStaffAuthorization {
-  const value = context.get('staffAuthorization') as
-    | AssignmentStaffAuthorization
-    | undefined;
+function requireStaffAuthorization(context: Context<AppEnv>): AssignmentStaffAuthorization {
+  const value = context.get('staffAuthorization') as AssignmentStaffAuthorization | undefined;
   if (!value) throw new StaffOrderEvidenceHttpError('UNAUTHENTICATED', 401);
   return value;
 }
@@ -706,9 +712,7 @@ function toFormalOrderActor(actor: AssignmentStaffAuthorization) {
   return toOrderEvidenceActor(actor);
 }
 
-function withStaffOrderEvidenceErrors(
-  handler: (context: Context<AppEnv>) => Promise<Response>,
-) {
+function withStaffOrderEvidenceErrors(handler: (context: Context<AppEnv>) => Promise<Response>) {
   return async (context: Context<AppEnv>): Promise<Response> => {
     try {
       return await handler(context);
@@ -716,11 +720,7 @@ function withStaffOrderEvidenceErrors(
       const normalized = normalizeHttpError(error);
       context.header('Cache-Control', 'no-store');
       return context.json(
-        apiFailure(
-          normalized.code,
-          normalized.code,
-          requestId(context),
-        ),
+        apiFailure(normalized.code, normalized.code, requestId(context)),
         normalized.status,
       );
     }
@@ -751,12 +751,14 @@ function normalizeHttpError(error: unknown): StaffOrderEvidenceHttpError {
   if (code === 'ORDER_EVIDENCE_NOT_FOUND') {
     return new StaffOrderEvidenceHttpError('NOT_FOUND', 404);
   }
-  if (code === 'ORDER_EVIDENCE_STATE_CONFLICT'
-    || code === 'ORDER_EVIDENCE_FILE_CONFLICT'
-    || code === 'ORDER_NUMBER_ALREADY_CLAIMED'
-    || code === 'ORDER_NUMBER_CONFLICT_REQUIRES_REVIEW'
-    || code === 'FORMAL_ORDER_ALREADY_EXISTS'
-    || code === 'FORMAL_ORDER_STATE_CONFLICT') {
+  if (
+    code === 'ORDER_EVIDENCE_STATE_CONFLICT' ||
+    code === 'ORDER_EVIDENCE_FILE_CONFLICT' ||
+    code === 'ORDER_NUMBER_ALREADY_CLAIMED' ||
+    code === 'ORDER_NUMBER_CONFLICT_REQUIRES_REVIEW' ||
+    code === 'FORMAL_ORDER_ALREADY_EXISTS' ||
+    code === 'FORMAL_ORDER_STATE_CONFLICT'
+  ) {
     return new StaffOrderEvidenceHttpError('STATE_CONFLICT', 409);
   }
   return new StaffOrderEvidenceHttpError('DEPENDENCY_UNAVAILABLE', 503);
@@ -772,9 +774,7 @@ function parseCanonicalLimit(raw: string): number {
 }
 
 function positiveVersion(value: unknown): number {
-  if (typeof value !== 'number'
-    || !Number.isSafeInteger(value)
-    || value < 1) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
     return validationError();
   }
   return value;
@@ -790,8 +790,7 @@ function optionalText(value: unknown, maximum: number): string | null {
   if (typeof value !== 'string') return validationError();
   const normalized = value.normalize('NFKC').trim();
   if (normalized.length === 0) return null;
-  if (normalized.length > maximum
-    || /[\u0000-\u001f\u007f]/u.test(normalized)) {
+  if (normalized.length > maximum || /[\u0000-\u001f\u007f]/u.test(normalized)) {
     return validationError();
   }
   return normalized;
@@ -809,9 +808,12 @@ function requireRouteIdentifier(context: Context<AppEnv>): string {
 
 function requireIdempotencyKey(context: Context<AppEnv>): string {
   const value = context.req.header('Idempotency-Key')?.trim() ?? '';
-  if (value.length < 8 || value.length > 128
-    || value.includes(',')
-    || /[\u0000-\u001f\u007f]/u.test(value)) {
+  if (
+    value.length < 8 ||
+    value.length > 128 ||
+    value.includes(',') ||
+    /[\u0000-\u001f\u007f]/u.test(value)
+  ) {
     return validationError();
   }
   return value;
@@ -824,13 +826,12 @@ function placeholders(values: readonly unknown[]): string {
 function encodeBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_')
-    .replace(/=+$/u, '');
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
 }
 
 function decodeBase64Url(value: string): Uint8Array {
-  const base64 = value.replaceAll('-', '+').replaceAll('_', '/')
-    + '='.repeat((4 - (value.length % 4)) % 4);
+  const base64 =
+    value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4);
   const binary = atob(base64);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }

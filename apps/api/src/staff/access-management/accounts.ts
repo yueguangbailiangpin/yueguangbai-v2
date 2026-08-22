@@ -3,14 +3,26 @@ import {
   type SqlDatabase,
   type SqlStatement,
   type StaffAccessEmployeeDto,
+  type StaffAccessSellerOrganizationAssignmentDto,
   type StaffRoleCode,
 } from '@ygb/contracts';
-import { canonicalJson } from '@ygb/domain';
+import { canonicalJson, hashCanonicalJson } from '@ygb/domain';
 import { createAuditEventStatement } from '../../foundation/audit';
+import {
+  acquireIdempotency,
+  assertIdempotencyCompletionStatement,
+  completeIdempotencyStatement,
+  IdempotencyError,
+  markIdempotencyFailed,
+} from '../../foundation/idempotency';
 import type { AssignmentStaffAuthorization } from '../../staff-assignment';
+import {
+  isStaffEligibleForFixedDuty,
+  prepareStaffAssignmentOutboxStatements,
+} from '../../staff-assignment';
 import { normalizeStaffEmail } from '../../staff-auth/cloudflare-access';
 import { StaffAccessManagementError } from './errors';
-import { readStaffAccessEmployee } from './read-model';
+import { readStaffAccessEmployee, readStaffSellerOrganizationAssignment } from './read-model';
 
 interface TargetRow {
   id: string;
@@ -27,6 +39,16 @@ interface ScopeRow {
   role_code: string;
   marketplace_code: string;
   scope_kind: 'PRIMARY' | 'SUPPORT';
+}
+interface ActiveSellerManagerRow {
+  id: string;
+  staff_id: string;
+  version: number;
+}
+interface SellerOrganizationRow {
+  id: string;
+  organization_name: string;
+  marketplace_code: string;
 }
 
 export async function createStaffAccount(
@@ -406,6 +428,240 @@ export async function changeStaffAccountStatus(
   return readStaffAccessEmployee(database, staffId);
 }
 
+/**
+ * Replaces the immutable fixed seller-account manager relationship.  The
+ * previous assignment is only revoked; a fresh active assignment, audit row
+ * and outbox event are appended in the same D1 batch.  That keeps historic
+ * work items and financial facts pointing to their original owner.
+ */
+export async function changeSellerOrganizationManager(
+  database: SqlDatabase,
+  input: {
+    sellerOrganizationId: string;
+    assignedStaffId: string;
+    expectedAssignmentVersion: number;
+    idempotencyKey: string;
+    requestId: string | null;
+  },
+  actor: AssignmentStaffAuthorization,
+): Promise<{
+  seller_organization: StaffAccessSellerOrganizationAssignmentDto;
+  replayed: boolean;
+}> {
+  requireOwner(actor);
+  if (!Number.isSafeInteger(input.expectedAssignmentVersion) || input.expectedAssignmentVersion < 0)
+    validation();
+  const organization = await database
+    .prepare(
+      `SELECT id,organization_name,marketplace_code FROM seller_organizations
+      WHERE id=? AND status='ACTIVE'`,
+    )
+    .bind(input.sellerOrganizationId)
+    .first<SellerOrganizationRow>();
+  if (!organization) notFound();
+
+  const candidate = await targetRow(database, input.assignedStaffId);
+  if (!candidate) notFound();
+  // This control is specifically for the seller-ops fixed owner.  Owner
+  // fallback remains a system safety path, not a manual directory choice.
+  if (
+    candidate.status !== 'ACTIVE' ||
+    candidate.active_role_count !== 1 ||
+    candidate.role_code !== 'seller_ops'
+  )
+    stateConflict();
+  if (
+    !(await isStaffEligibleForFixedDuty(database, {
+      staffId: input.assignedStaffId,
+      dutyCode: 'SELLER_ACCOUNT_MANAGER',
+      marketplaceCode: organization.marketplace_code,
+    }))
+  )
+    stateConflict();
+
+  const requestHash = await hashCanonicalJson({
+    action: 'CHANGE_SELLER_ORGANIZATION_MANAGER',
+    seller_organization_id: input.sellerOrganizationId,
+    assigned_staff_id: input.assignedStaffId,
+    expected_assignment_version: input.expectedAssignmentVersion,
+  });
+  let acquired;
+  try {
+    acquired = await acquireIdempotency<{
+      seller_organization: StaffAccessSellerOrganizationAssignmentDto;
+      replayed: boolean;
+    }>(database, {
+      actorType: 'STAFF',
+      actorId: actor.staffId,
+      action: 'CHANGE_SELLER_ORGANIZATION_MANAGER',
+      targetType: 'SELLER_ORGANIZATION',
+      targetId: organization.id,
+      idempotencyKey: input.idempotencyKey,
+      requestHash,
+    });
+  } catch (error) {
+    throw normalizeIdempotencyError(error);
+  }
+  if (acquired.kind === 'REPLAY') {
+    return { ...acquired.response, replayed: true };
+  }
+
+  const now = Date.now();
+  try {
+    const active = await database
+      .prepare(
+        `SELECT id,staff_id,version FROM seller_staff_assignments
+        WHERE seller_organization_id=? AND duty_code='SELLER_ACCOUNT_MANAGER'
+          AND status='ACTIVE'`,
+      )
+      .bind(organization.id)
+      .first<ActiveSellerManagerRow>();
+    const activeVersion = active?.version ?? 0;
+    if (activeVersion !== input.expectedAssignmentVersion) versionConflict();
+
+    // A command that was retried with a different idempotency key after its
+    // first commit remains safe: it observes this exact manager/version and
+    // returns a semantic replay rather than rotating ownership again.
+    if (active?.staff_id === input.assignedStaffId) {
+      const response = {
+        seller_organization: await readStaffSellerOrganizationAssignment(database, organization.id),
+        replayed: true,
+      } as const;
+      await database.batch([
+        completeIdempotencyStatement(database, acquired.claim, response, {
+          resultReferences: { assignment_id: active.id },
+          now,
+        }),
+        assertIdempotencyCompletionStatement(database, acquired.claim),
+      ]);
+      return response;
+    }
+
+    const assignmentId = crypto.randomUUID();
+    const response: {
+      seller_organization: StaffAccessSellerOrganizationAssignmentDto;
+      replayed: boolean;
+    } = {
+      seller_organization: {
+        seller_organization_id: organization.id,
+        seller_organization_name: organization.organization_name,
+        marketplace_code: organization.marketplace_code,
+        manager: {
+          assignment_id: assignmentId,
+          staff_id: input.assignedStaffId,
+          staff_display_name: candidate.display_name,
+          version: 1,
+        },
+      },
+      replayed: false,
+    };
+    const outbox = await prepareStaffAssignmentOutboxStatements(database, {
+      dedupKey: `staff-assignment:${assignmentId}:fixed-owner-changed`,
+      eventType: 'FIXED_OWNER_CHANGED',
+      aggregateType: 'STAFF_ASSIGNMENT',
+      aggregateId: assignmentId,
+      payload: {
+        assignment_id: assignmentId,
+        seller_organization_id: organization.id,
+        duty_code: 'SELLER_ACCOUNT_MANAGER',
+        previous_staff_id: active?.staff_id ?? null,
+        assigned_staff_id: input.assignedStaffId,
+        source: 'MANUAL_REASSIGN',
+      },
+      now,
+    });
+    const statements: SqlStatement[] = [];
+    if (active) {
+      statements.push(
+        database
+          .prepare(
+            `UPDATE seller_staff_assignments
+            SET status='REVOKED',revoked_at=?,version=version+1,updated_at=MAX(?,updated_at+1)
+            WHERE id=? AND status='ACTIVE' AND version=?`,
+          )
+          .bind(now, now, active.id, active.version),
+      );
+    }
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO seller_staff_assignments(
+            id,seller_organization_id,duty_code,staff_id,status,source,
+            assigned_by_actor_type,assigned_by_actor_id,reason,version,
+            created_at,updated_at,revoked_at
+          ) VALUES(?,?,'SELLER_ACCOUNT_MANAGER',?,'ACTIVE','MANUAL_REASSIGN',
+            'STAFF',?,'STAFF_ACCESS_MANAGEMENT',1,?,?,NULL)`,
+        )
+        .bind(assignmentId, organization.id, input.assignedStaffId, actor.staffId, now, now),
+      database
+        .prepare(
+          `INSERT INTO staff_assignment_events(
+            id,event_type,subject_type,subject_id,duty_code,assignment_id,
+            work_item_id,batch_id,old_staff_id,new_staff_id,actor_type,actor_id,
+            reason,request_id,idempotency_key,metadata_json,created_at
+          ) VALUES(?,'FIXED_OWNER_CHANGED','SELLER_ORGANIZATION',?,
+            'SELLER_ACCOUNT_MANAGER',?,NULL,NULL,?,?,'STAFF',?,
+            'STAFF_ACCESS_MANAGEMENT',?,?,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          organization.id,
+          assignmentId,
+          active?.staff_id ?? null,
+          input.assignedStaffId,
+          actor.staffId,
+          input.requestId,
+          acquired.claim.idempotencyKey,
+          canonicalJson({ expected_assignment_version: input.expectedAssignmentVersion }),
+          now,
+        ),
+      createAuditEventStatement(database, {
+        id: crypto.randomUUID(),
+        aggregateType: 'SELLER_ORGANIZATION',
+        aggregateId: organization.id,
+        eventType: 'SELLER_ACCOUNT_MANAGER_CHANGED',
+        actor: { type: 'STAFF', id: actor.staffId, roles: [...actor.roles] },
+        requestId: input.requestId,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        previousState: {
+          assignment_id: active?.id ?? null,
+          staff_id: active?.staff_id ?? null,
+          assignment_version: active?.version ?? 0,
+        },
+        nextState: {
+          assignment_id: assignmentId,
+          staff_id: input.assignedStaffId,
+          assignment_version: 1,
+        },
+        createdAt: now,
+      }),
+      ...outbox,
+      database
+        .prepare(
+          `INSERT INTO transaction_assertions(assertion_value)
+        SELECT CASE WHEN EXISTS(
+          SELECT 1 FROM seller_staff_assignments
+          WHERE id=? AND seller_organization_id=? AND staff_id=?
+            AND duty_code='SELLER_ACCOUNT_MANAGER' AND status='ACTIVE'
+        ) THEN 1 ELSE 0 END`,
+        )
+        .bind(assignmentId, organization.id, input.assignedStaffId),
+      completeIdempotencyStatement(database, acquired.claim, response, {
+        resultReferences: { assignment_id: assignmentId },
+        now,
+      }),
+      assertIdempotencyCompletionStatement(database, acquired.claim),
+    );
+    await database.batch(statements);
+    const projected = await readStaffSellerOrganizationAssignment(database, organization.id);
+    return { seller_organization: projected, replayed: false };
+  } catch (error) {
+    const normalized = normalizeIdempotencyError(error);
+    await markIdempotencyFailed(database, acquired.claim, normalized.code, now);
+    throw normalized;
+  }
+}
+
 async function normalizedMarkets(
   database: SqlDatabase,
   role: StaffRoleCode,
@@ -512,4 +768,11 @@ function notFound(): never {
 }
 function dependency(): never {
   throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
+}
+function normalizeIdempotencyError(error: unknown): StaffAccessManagementError {
+  if (error instanceof StaffAccessManagementError) return error;
+  if (error instanceof IdempotencyError) {
+    return new StaffAccessManagementError(error.code, error.status);
+  }
+  return new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
 }

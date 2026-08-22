@@ -457,6 +457,18 @@ D-041 的隔离、身份、无密码和生产禁止边界继续有效。全新 s
 
 状态：Accepted by business owner；Closes store-level reservation conflict and buyer instruction read-side-effect gaps
 
+### D-053 统一订单日基础汇率中心（Migration 0072）
+
+每笔 Amazon 正式订单只使用其 `amazon_order_date` 当天、交易币种 → CNY 的一条已确认基础汇率。该同一版本和值同时是买家返款和卖家本金的共同基础；不得使用审核/确认当天、前一天或最近可用日期替代。卖家本金最终汇率以整数 E8 表示：`final_rate_e8 = base_rate_e8 + seller_markup_e8`；JPY 本金 CNY 分以 `HALF_UP(final_paid_jpy × final_rate_e8 × 100 / 100000000)` 得出。金额、汇率和取整均不得使用浮点数。
+
+Staff 汇率中心是唯一维护入口：同时拥有 GLOBAL Scope、`SELLER_MANAGE` 和 `FINANCIAL_CORRECT` 的 Owner 可填写并确认订单日基础汇率及默认卖家加点；`seller_ops` 只有同时拥有 `SELLER_MANAGE`、且是该组织 ACTIVE canonical `SELLER_ACCOUNT_MANAGER` 时，才能提交该组织的专属加点草案；任何默认或组织专属加点都只由 Owner + `FINANCIAL_CORRECT` 确认/拒绝。组织专属覆盖优先于默认，显式 `0` 为有效覆盖，不能当作缺失。员工管理维护这条 canonical 卖家组织对接分配，页面必须按可见卖家名称选择，不能要求手填组织 UUID。
+
+订单资料确认先执行只读 preflight。基础订单日汇率、卖家加点或服务费缺项时，返回具体订单日期、币种对、可读权限说明和汇率中心深链；命令失败时不得产生部分正式订单、快照、财务、Audit、Outbox 或工作项完成事实。确认成功后冻结订单日、基础汇率版本和值、加点范围/版本/值、最终汇率、服务费规则和 `HALF_UP` 结果；之后任何新策略、汇率或分配均不回写历史。
+
+Migration 0072 仅前向替换 formal-order snapshot source guards，使买家与卖家快照共同证明同一 Amazon 订单日基础汇率；不修改 0001–0071、既有正式订单、快照或财务历史。本 Decision 不授权 production/staging 部署、远程 Migration、远程 SQL、真实数据修改或 GitHub 写入。
+
+状态：Accepted by business owner；Supersedes the remaining confirmation-day buyer-rate dependency and prior separate buyer/seller base-rate interpretation
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

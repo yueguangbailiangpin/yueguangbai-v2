@@ -57,12 +57,14 @@ const orderEvidence = {
     status: 'ORDER_EVIDENCE_SUBMITTED',
     version: 4,
   },
-  version_history: [{
-    evidence_version_id: 'evidence-version-1',
-    version_no: 1,
-    final_paid_jpy: '2999',
-    submitted_at: 1_787_000_000_000,
-  }],
+  version_history: [
+    {
+      evidence_version_id: 'evidence-version-1',
+      version_no: 1,
+      final_paid_jpy: '2999',
+      submitted_at: 1_787_000_000_000,
+    },
+  ],
   workflow: {
     work_item_id: 'work-1',
     assigned_staff_id: 'staff-1',
@@ -124,17 +126,18 @@ describe('Staff order evidence review closure', () => {
 
   it('shows the safe prerequisite code, actionable hint and request id', async () => {
     installOrderHandlers({
-      mutate: async () => HttpResponse.json(
-        {
-          error: {
-            code: 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND',
-            message: 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND',
-            details: null,
+      mutate: async () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND',
+              message: 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND',
+              details: null,
+            },
+            meta: { request_id: 'order-missing-rate' },
           },
-          meta: { request_id: 'order-missing-rate' },
-        },
-        { status: 404 },
-      ),
+          { status: 404 },
+        ),
     });
     const user = userEvent.setup();
     renderWorkbench();
@@ -155,7 +158,7 @@ describe('Staff order evidence review closure', () => {
     const keys: string[] = [];
     const bodies: unknown[] = [];
     installOrderHandlers({
-      queue: () => completed ? [] : [staffTestWorkItem],
+      queue: () => (completed ? [] : [staffTestWorkItem]),
       mutate: async (request) => {
         attempts += 1;
         keys.push(request.headers.get('Idempotency-Key') ?? '');
@@ -185,7 +188,7 @@ describe('Staff order evidence review closure', () => {
     let path = '';
     let requestBody: unknown;
     installOrderHandlers({
-      queue: () => completed ? [] : [staffTestWorkItem],
+      queue: () => (completed ? [] : [staffTestWorkItem]),
       mutate: async (request) => {
         path = new URL(request.url).pathname;
         requestBody = await request.json();
@@ -234,25 +237,66 @@ function renderWorkbench() {
 }
 
 function installOrderHandlers(options: {
-  queue?: () => typeof staffTestWorkItem[];
+  queue?: () => (typeof staffTestWorkItem)[];
   detail?: () => typeof orderEvidence;
   mutate: (request: Request) => Promise<Response>;
 }): void {
   server.use(
-    http.get(apiUrl('/api/staff/me/work-items'), () => HttpResponse.json({
-      data: {
-        work_items: options.queue?.() ?? [staffTestWorkItem],
-        next_cursor: null,
-      },
-      meta: { request_id: 'order-queue' },
-    })),
-    http.get(apiUrl('/api/staff/order-evidence/evidence-1'), () => HttpResponse.json({
-      data: { order_evidence: options.detail?.() ?? orderEvidence },
-      meta: { request_id: 'order-detail' },
-    })),
+    http.get(apiUrl('/api/staff/me/work-items'), () =>
+      HttpResponse.json({
+        data: {
+          work_items: options.queue?.() ?? [staffTestWorkItem],
+          next_cursor: null,
+        },
+        meta: { request_id: 'order-queue' },
+      }),
+    ),
+    http.get(apiUrl('/api/staff/order-evidence/evidence-1'), () =>
+      HttpResponse.json({
+        data: { order_evidence: options.detail?.() ?? orderEvidence },
+        meta: { request_id: 'order-detail' },
+      }),
+    ),
+    http.get(apiUrl('/api/staff/order-evidence/evidence-1/preflight'), () =>
+      HttpResponse.json({
+        data: {
+          preflight: {
+            submission_id: 'evidence-1',
+            amazon_order_date: '2026-08-22',
+            ready: true,
+            checks: [
+              {
+                code: 'ORDER_DAY_BASE_RATE',
+                status: 'READY',
+                message: '订单日基础汇率已确认。',
+                action_path: '/staff/rate-center?section=base-rate&business_date=2026-08-22',
+                required_access: '总管理员 + 财务更正权限',
+              },
+              {
+                code: 'SELLER_PRINCIPAL_MARKUP',
+                status: 'READY',
+                message: '卖家本金汇率加点已确认。',
+                action_path: '/staff/rate-center?section=seller-markup&business_date=2026-08-22',
+                required_access: '总管理员 + 财务更正权限',
+              },
+              {
+                code: 'SELLER_SERVICE_FEE',
+                status: 'READY',
+                message: '卖家服务费规则已确认。',
+                action_path: '/staff/seller-service-fees',
+                required_access: '总管理员 + 财务更正权限',
+              },
+            ],
+          },
+        },
+        meta: { request_id: 'order-preflight' },
+      }),
+    ),
     http.post(apiUrl('/api/staff/order-evidence/evidence-1/approve'), ({ request }) =>
-      options.mutate(request)),
+      options.mutate(request),
+    ),
     http.post(apiUrl('/api/staff/order-evidence/evidence-1/request-changes'), ({ request }) =>
-      options.mutate(request)),
+      options.mutate(request),
+    ),
   );
 }

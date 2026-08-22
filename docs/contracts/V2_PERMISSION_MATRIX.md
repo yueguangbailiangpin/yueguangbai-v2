@@ -66,7 +66,7 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 - 激活无冲突买家；
 - 审核预约；
 - 确认正式订单；
-- 维护买家日汇率；
+- 可读取订单确认前检出的汇率缺项，但不得填写、确认或回写订单日基础汇率；
 - 高风险身份纠正仍只允许 owner，售前不得因角色合并获得该权限；
 - 查看订单截图；
 - 不查看卖家内部利润；
@@ -78,7 +78,7 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 - 卖家组织、成员、店铺和产品；
 - 新品审核；
 - 需求批次审核和发布；
-- 卖家协议汇率变更申请；
+- 仅在拥有 `SELLER_MANAGE` 且被 canonical ACTIVE `SELLER_ACCOUNT_MANAGER` 分配到该卖家组织时，提交该组织卖家本金加点草案；不得填写基础订单日汇率、提交默认加点或确认任何汇率/加点；
 - 服务费规则变更申请；
 - 卖家侧订单与结算；
 - 不查看买家微信、买家返款和内部利润。
@@ -103,6 +103,12 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 - 只读取完成上述职责所必需的买家资料；
 - 不查看卖家内部协议、员工管理、高风险身份、系统管理或内部利润。
 - 不建立、查看或管理 Buyer/Seller 获客线索。
+
+### 汇率中心财务权限
+
+- 基础订单日汇率只能由同时拥有 `SELLER_MANAGE`、`FINANCIAL_CORRECT` 和 GLOBAL Scope 的 Owner 填写并确认；基础汇率按 Amazon `amazon_order_date` 与币种对维护。
+- 默认卖家本金加点仅由同一 Owner 提交；组织专属加点只能由被分配组织的 `seller_ops` 提交。无论范围，确认或拒绝基础汇率、默认加点或组织专属加点都只允许 Owner + `FINANCIAL_CORRECT`。
+- 组织专属覆盖优先于默认值；显式 `0` 是有效覆盖，不得按缺失值处理。正式订单冻结订单日基础汇率、加点版本和值，历史快照不可回写。
 
 ### 获客专项权限
 

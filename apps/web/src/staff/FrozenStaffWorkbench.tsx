@@ -317,12 +317,7 @@ function WorkItemColumns({
 }) {
   const session = useCurrentStaffSession();
   if (item.work_type === 'DEMAND_REVIEW')
-    return (
-      <DemandColumns
-        item={item}
-        onCompletedQueueMutation={onCompletedQueueMutation}
-      />
-    );
+    return <DemandColumns item={item} onCompletedQueueMutation={onCompletedQueueMutation} />;
   if (item.work_type === 'ORDER_EVIDENCE_REVIEW')
     return <OrderColumns item={item} onCompletedQueueMutation={onCompletedQueueMutation} />;
   if (item.work_type === 'REVIEW_DECISION')
@@ -557,6 +552,18 @@ function OrderColumns({
     retry: false,
     staleTime: STAFF_FACT_STALE_TIME_MS,
   });
+  // This read-only preflight mirrors the approval command's financial
+  // prerequisites.  It is intentionally scoped to the selected evidence
+  // item: queue changes must never leave a stale result enabling approval.
+  const preflight = useQuery({
+    queryKey: staffWorkbenchKeys.orderEvidencePreflight(item.source_entity_id),
+    queryFn: ({ signal }) =>
+      staffApi
+        .orderEvidencePreflight(client, item.source_entity_id, signal)
+        .then((result) => result.data.preflight),
+    retry: false,
+    staleTime: 0,
+  });
   const mutation = useMutation({
     mutationFn: (request: StaffMutationRequest | null) =>
       request === null
@@ -578,9 +585,7 @@ function OrderColumns({
     },
   });
   const value = query.data;
-  const failure = mutation.isError
-    ? describeOrderEvidenceMutationError(mutation.error)
-    : null;
+  const failure = mutation.isError ? describeOrderEvidenceMutationError(mutation.error) : null;
   return (
     <>
       <section className="staff-detail">
@@ -659,6 +664,25 @@ function OrderColumns({
                   </FormField>
                 </>
               ) : null}
+              {preflight.isError ? (
+                <Alert tone="warning">
+                  无法读取订单审批前检查；为避免生成不完整业务事实，暂不能通过。请刷新订单事实后重试。
+                </Alert>
+              ) : preflight.data && !preflight.data.ready ? (
+                <Alert tone="warning">
+                  <p>通过前请补齐以下财务配置：</p>
+                  <ul>
+                    {preflight.data.checks
+                      .filter((check) => check.status === 'MISSING')
+                      .map((check) => (
+                        <li key={check.code}>
+                          {check.message}（需要：{check.required_access}）{' '}
+                          <a href={check.action_path}>前往处理</a>
+                        </li>
+                      ))}
+                  </ul>
+                </Alert>
+              ) : null}
               <div className="entry-actions">
                 <Button name="action" value="request-changes" disabled={mutation.isPending}>
                   要求修改
@@ -667,7 +691,12 @@ function OrderColumns({
                   className="secondary"
                   name="action"
                   value="approve"
-                  disabled={mutation.isPending}
+                  disabled={
+                    mutation.isPending ||
+                    preflight.isPending ||
+                    preflight.isError ||
+                    !preflight.data?.ready
+                  }
                 >
                   通过
                 </Button>

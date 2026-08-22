@@ -9,7 +9,10 @@ import { registerBuyerSelfRegistrationRoutes } from './buyer-self-registration';
 import { registerStaffBuyerRefundRoutes } from './buyer-refunds/staff-routes';
 import { registerFileHttpRoutes } from './files';
 import { registerCustomerAuthRoutes } from './http-auth';
-import { registerPublicCustomerSecurityRoutes, registerStaffCustomerSecurityRoutes } from './customer-security';
+import {
+  registerPublicCustomerSecurityRoutes,
+  registerStaffCustomerSecurityRoutes,
+} from './customer-security';
 import { registerBuyerInvitationDutyGuard } from './customer-onboarding/buyer-invitation-guard';
 import { registerNewBuyerRegistrationInvitationRoute } from './customer-onboarding/buyer-registration-route';
 import { registerExistingCustomerLeadGuard } from './customer-onboarding/lead-guard';
@@ -20,7 +23,10 @@ import { registerIdentityResolutionRoutes } from './customer-onboarding/identity
 import { registerCustomerLoginIdentifierChangeRoutes } from './customer-onboarding/login-identifier-change-routes';
 import { registerStaffFinanceRoutes } from './internal-finance';
 import { staffSessionMiddleware } from './middleware/staff-auth';
-import { exactOneOrderEvidenceScreenshotGuard, registerStaffOrderEvidenceRoutes } from './order-evidence';
+import {
+  exactOneOrderEvidenceScreenshotGuard,
+  registerStaffOrderEvidenceRoutes,
+} from './order-evidence';
 import { registerStaffReviewRoutes } from './reviews';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
 import { registerSellerOrderChatScreenshotRoutes } from './seller-order-chat-screenshots';
@@ -28,7 +34,11 @@ import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
 import { registerSellerMemberRoutes } from './seller-portal/member-routes';
 import { registerSellerRegistrationRoutes } from './seller-registration/routes';
-import { registerSellerSettlementRoutes, registerStaffSellerSettlementProofRoutes, registerStaffSellerSettlementRoutes } from './seller-settlements';
+import {
+  registerSellerSettlementRoutes,
+  registerStaffSellerSettlementProofRoutes,
+  registerStaffSellerSettlementRoutes,
+} from './seller-settlements';
 import { registerStaffAssignmentRoutes } from './staff-assignment';
 import { registerCloudflareStaffAuthRoutes } from './staff-auth/access-routes';
 import { registerStaffCatalogWorkflowRoutes } from './staff/catalog-routes';
@@ -47,6 +57,7 @@ import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard
 import { registerAdminAcquisitionDailyRoutes } from './admin-business-dashboard/acquisition-daily-routes';
 import { registerStaffAccessManagementRoutes } from './staff/access-management';
 import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
+import { registerStaffRateCenterRoutes } from './pricing/rate-center-routes';
 import { registerOperationalReadinessRoutes } from './operational-readiness/routes';
 import { registerOperationalAlertAttestationRoutes } from './operational-readiness/alert-attestation';
 import { registerOperatingIntegrityRoutes } from './operating-integrity/routes';
@@ -68,6 +79,7 @@ registerFormalOrderPolicyGuards(app);
 registerSellerRegistrationRoutes(app);
 registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
+registerStaffRateCenterRoutes(app);
 registerBuyerInvitationDutyGuard(app);
 registerLegacyPasswordResetOwnerGuard(app);
 registerStaffCustomerSecurityRoutes(app);

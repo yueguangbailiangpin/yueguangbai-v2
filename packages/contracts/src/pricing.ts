@@ -1,16 +1,8 @@
-import {
-  DEMAND_TASK_TYPES,
-  type DemandTaskType,
-} from './demand';
+import { DEMAND_TASK_TYPES, type DemandTaskType } from './demand';
 
-export const PRICING_RULE_STATUSES = [
-  'SUBMITTED',
-  'CONFIRMED',
-  'REJECTED',
-] as const;
+export const PRICING_RULE_STATUSES = ['SUBMITTED', 'CONFIRMED', 'REJECTED'] as const;
 
-export type PricingRuleStatus =
-  typeof PRICING_RULE_STATUSES[number];
+export type PricingRuleStatus = (typeof PRICING_RULE_STATUSES)[number];
 
 export const PRICING_REVIEW_TYPES = DEMAND_TASK_TYPES;
 export type PricingReviewType = DemandTaskType;
@@ -30,6 +22,20 @@ export interface BuyerDailyExchangeRateVersion {
   cny_per_jpy_e8: FixedIntegerString;
   rejection_reason: string | null;
   confirmed_at: number | null;
+}
+
+/**
+ * The rate center exposes the authoritative order-date base rate through this
+ * compatibility projection.  `buyer_daily_exchange_rates` remains the
+ * physical source until historical financial-snapshot foreign keys can be
+ * retired; its confirmed record is mirrored 1:1 into the canonical currency
+ * rate foundation used by seller-principal snapshots.
+ */
+export interface BuyerDailyExchangeRateReadDto {
+  business_date: string;
+  confirmed_rate: BuyerDailyExchangeRateVersion | null;
+  pending_rate: BuyerDailyExchangeRateVersion | null;
+  next_version: number;
 }
 
 export interface SellerServiceFeeVersion {
@@ -63,9 +69,6 @@ export interface ResolvedSellerServiceFee {
   confirmed_at: number;
 }
 
-export function isPricingReviewType(
-  value: unknown,
-): value is PricingReviewType {
-  return typeof value === 'string'
-    && (PRICING_REVIEW_TYPES as readonly string[]).includes(value);
+export function isPricingReviewType(value: unknown): value is PricingReviewType {
+  return typeof value === 'string' && (PRICING_REVIEW_TYPES as readonly string[]).includes(value);
 }

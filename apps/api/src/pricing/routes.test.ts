@@ -2,10 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { StaffDataScope, StaffPermissionCode, StaffRoleCode } from '@ygb/contracts';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import { createApp } from '../app';
-import {
-  resolveStaffDataScope,
-  type AssignmentStaffAuthorization,
-} from '../staff-assignment';
+import { resolveStaffDataScope, type AssignmentStaffAuthorization } from '../staff-assignment';
 import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
 import { registerSellerPrincipalRatePolicyRoutes } from './routes';
 
@@ -13,7 +10,8 @@ const ORIGIN = 'https://api.local.test';
 let database: SqliteDatabase | null = null;
 
 afterEach(() => {
-  database?.close(); database = null;
+  database?.close();
+  database = null;
 });
 
 describe('seller principal rate policy HTTP boundary', () => {
@@ -25,17 +23,25 @@ describe('seller principal rate policy HTTP boundary', () => {
     );
     const read = await app.request(
       `${ORIGIN}/api/staff/seller-principal-rate-policies?source_currency_code=JPY&seller_organization_id=seller-org-1`,
-      {}, { DB: database },
+      {},
+      { DB: database },
     );
     expect(read.status).toBe(200);
     expect(read.headers.get('cache-control')).toBe('no-store');
     expect(await read.json()).toMatchObject({
-      data: { policies: { source_currency_code: 'JPY', default_policy: null, seller_override_policy: null } },
+      data: {
+        policies: {
+          source_currency_code: 'JPY',
+          default_policy: null,
+          seller_override_policy: null,
+        },
+      },
     });
 
     const invalid = await app.request(
       `${ORIGIN}/api/staff/seller-principal-rate-policies?source_currency_code=CNY&seller_organization_id=seller-org-1`,
-      {}, { DB: database },
+      {},
+      { DB: database },
     );
     expect(invalid.status).toBe(400);
     expect(invalid.headers.get('cache-control')).toBe('no-store');
@@ -43,7 +49,8 @@ describe('seller principal rate policy HTTP boundary', () => {
 
     const crossOrganization = await app.request(
       `${ORIGIN}/api/staff/seller-principal-rate-policies?source_currency_code=JPY&seller_organization_id=seller-org-2`,
-      {}, { DB: database },
+      {},
+      { DB: database },
     );
     expect(crossOrganization.status).toBe(404);
     expect(crossOrganization.headers.get('cache-control')).toBe('no-store');
@@ -57,7 +64,8 @@ describe('seller principal rate policy HTTP boundary', () => {
       assignedScope('seller-org-1'),
     ).request(
       `${ORIGIN}/api/staff/seller-principal-rate-policies?source_currency_code=JPY`,
-      {}, { DB: database },
+      {},
+      { DB: database },
     );
     expect(localDefaultRead.status).toBe(403);
     expect(localDefaultRead.headers.get('cache-control')).toBe('no-store');
@@ -91,19 +99,22 @@ describe('seller principal rate policy HTTP boundary', () => {
     const owner = appFor(ownerActor, await resolveStaffDataScope(database, ownerActor));
     const ownerDefaultRead = await owner.request(
       `${ORIGIN}/api/staff/seller-principal-rate-policies?source_currency_code=JPY`,
-      {}, { DB: database },
+      {},
+      { DB: database },
     );
     expect(ownerDefaultRead.status).toBe(200);
     expect(ownerDefaultRead.headers.get('cache-control')).toBe('no-store');
     expect(await ownerDefaultRead.json()).toMatchObject({
-      data: { policies: {
-        seller_organization_id: null,
-        default_policy: null,
-        seller_override_policy: null,
-        seller_override_pending_policy: null,
-        default_next_version: 1,
-        seller_override_next_version: null,
-      } },
+      data: {
+        policies: {
+          seller_organization_id: null,
+          default_policy: null,
+          seller_override_policy: null,
+          seller_override_pending_policy: null,
+          default_next_version: 1,
+          seller_override_next_version: null,
+        },
+      },
     });
     const ownerSubmit = await owner.request(
       `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
@@ -115,11 +126,51 @@ describe('seller principal rate policy HTTP boundary', () => {
 
     const unknown = await owner.request(
       `${ORIGIN}/api/staff/seller-principal-rate-policies?source_currency_code=JPY&seller_organization_id=does-not-exist`,
-      {}, { DB: database },
+      {},
+      { DB: database },
     );
     expect(unknown.status).toBe(404);
     expect(unknown.headers.get('cache-control')).toBe('no-store');
     expect(await unknown.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
+  });
+
+  it('allows an organization override only for the canonical assigned seller-ops manager', async () => {
+    database = fixture();
+    const unassigned = await appFor(
+      auth('seller_ops', 'staff-pricing-ops', ['SELLER_MANAGE']),
+      assignedScope('seller-org-1'),
+    ).request(
+      `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
+      submitRequest({ scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-1' }),
+      { DB: database },
+    );
+    expect(unassigned.status).toBe(403);
+    expect(await countPolicyFacts()).toEqual({ versions: 0, events: 0, idempotency: 0 });
+
+    database.exec(`
+      INSERT INTO seller_staff_assignments(
+        id,seller_organization_id,duty_code,staff_id,status,source,
+        assigned_by_actor_type,assigned_by_actor_id,reason,version,
+        created_at,updated_at,revoked_at
+      ) VALUES (
+        'assignment-pricing-ops','seller-org-1','SELLER_ACCOUNT_MANAGER',
+        'staff-pricing-ops','ACTIVE','MANUAL_REASSIGN','SYSTEM','fixture',NULL,1,1,1,NULL
+      )
+    `);
+    const assigned = await appFor(
+      auth('seller_ops', 'staff-pricing-ops', ['SELLER_MANAGE']),
+      assignedScope('seller-org-1'),
+    ).request(
+      `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
+      submitRequest({ scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-1' }),
+      { DB: database },
+    );
+    expect(assigned.status).toBe(200);
+    expect(await assigned.json()).toMatchObject({
+      data: {
+        policy: { scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-1' },
+      },
+    });
   });
 
   it('rejects Personal DENY before any policy write and keeps no-store', async () => {
@@ -157,16 +208,27 @@ function auth(
   denies: StaffPermissionCode[] = [],
 ): AssignmentStaffAuthorization {
   const effective = calculateEffectiveStaffAuthorization({
-    roles: new Set([role]), grants: new Set(grants), denies: new Set(denies),
-    memberTeamIds: [], leaderTeamIds: [],
+    roles: new Set([role]),
+    grants: new Set(grants),
+    denies: new Set(denies),
+    memberTeamIds: [],
+    leaderTeamIds: [],
   });
-  return { staffId, displayName: staffId, staffStatus: 'ACTIVE', authorizationVersion: 1, ...effective };
+  return {
+    staffId,
+    displayName: staffId,
+    staffStatus: 'ACTIVE',
+    authorizationVersion: 1,
+    ...effective,
+  };
 }
 
 function assignedScope(...sellerOrganizationIds: string[]): StaffDataScope {
   return {
     type: 'ASSIGNED_SELLER_ORGANIZATIONS',
-    buyerCustomerIds: [], sellerOrganizationIds, teamIds: [],
+    buyerCustomerIds: [],
+    sellerOrganizationIds,
+    teamIds: [],
     marketplaceCodes: ['AMAZON_JP'],
   };
 }
@@ -190,14 +252,22 @@ function submitRequest(overrides: Record<string, unknown>): RequestInit {
   };
 }
 
-async function countPolicyFacts(): Promise<{ versions: number; events: number; idempotency: number }> {
-  const row = await database!.prepare(`
+async function countPolicyFacts(): Promise<{
+  versions: number;
+  events: number;
+  idempotency: number;
+}> {
+  const row = await database!
+    .prepare(
+      `
     SELECT
       (SELECT COUNT(*) FROM seller_principal_rate_policy_versions) AS versions,
       (SELECT COUNT(*) FROM seller_principal_rate_policy_events) AS events,
       (SELECT COUNT(*) FROM command_idempotency_records
         WHERE action LIKE 'SUBMIT_SELLER_PRINCIPAL_RATE_POLICY%') AS idempotency
-  `).first<{ versions: number; events: number; idempotency: number }>();
+  `,
+    )
+    .first<{ versions: number; events: number; idempotency: number }>();
   return row!;
 }
 
@@ -214,6 +284,20 @@ function fixture(): SqliteDatabase {
       updated_at, activated_at, disabled_at, next_member_number)
     VALUES ('seller-org-1', 'JP', 'pricing-seller-000001', 'seller-channel-ido-mango', 'seller-channel-ido-mango',
       1, '测试卖家', 'ACTIVE', 1, 1, 1, 1, NULL, 2);
+    INSERT INTO staff_role_assignments(
+      id,staff_id,role_code,status,assigned_by_staff_id,assigned_at,
+      revoked_at,revoked_by_staff_id,revoked_reason,created_at,updated_at
+    ) VALUES (
+      'role-pricing-ops','staff-pricing-ops','seller_ops','ACTIVE',NULL,1,
+      NULL,NULL,NULL,1,1
+    );
+    INSERT INTO staff_marketplace_scopes(
+      id,staff_id,role_code,marketplace_code,status,scope_kind,assigned_by_staff_id,
+      assigned_at,revoked_at,reason,created_at,updated_at
+    ) VALUES (
+      'scope-pricing-ops','staff-pricing-ops','seller_ops','AMAZON_JP','ACTIVE','PRIMARY',NULL,
+      1,NULL,'fixture',1,1
+    );
   `);
   return db;
 }

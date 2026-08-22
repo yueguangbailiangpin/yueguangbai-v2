@@ -28,6 +28,7 @@ export * from './platform-identifiers';
 export * from './order-evidence';
 export * from './order-instruction';
 export * from './pricing';
+export * from './rate-center';
 export * from './production-readiness';
 export * from './product-application';
 export * from './product-reservation-scheduling';

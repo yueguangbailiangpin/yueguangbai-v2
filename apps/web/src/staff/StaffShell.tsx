@@ -111,7 +111,9 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const sellerCustomers = location.pathname.startsWith('/staff/seller-customers');
   const dashboard = location.pathname.startsWith('/staff/admin-business-dashboard');
   const access = location.pathname.startsWith('/staff/access-management');
-  const pricing = location.pathname.startsWith('/staff/seller-principal-rate-policies');
+  const pricing =
+    location.pathname.startsWith('/staff/rate-center') ||
+    location.pathname.startsWith('/staff/seller-principal-rate-policies');
   const products =
     location.pathname.startsWith('/staff/products') ||
     /^\/staff\/demands\/[^/]+\/reservations$/u.test(location.pathname);
@@ -129,7 +131,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const title = access
     ? '员工管理'
     : pricing
-      ? '卖家本金汇率策略'
+      ? '汇率中心'
       : dashboard
         ? '经营看板'
         : products
@@ -144,7 +146,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const context = access
     ? '邮箱、岗位、负责站点与状态'
     : pricing
-      ? '默认加点、卖家覆盖与总管理员决策'
+      ? '订单日基础汇率、默认加点与卖家覆盖'
       : dashboard
         ? '经营与利润数据'
         : products
@@ -211,9 +213,9 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
             </NavLink>
           ) : null}
           {(owner || role === 'seller_ops') && session.permissions.includes('SELLER_MANAGE') ? (
-            <NavLink to="/staff/seller-principal-rate-policies">
+            <NavLink to="/staff/rate-center">
               <Settings aria-hidden="true" />
-              <span>本金汇率策略</span>
+              <span>汇率中心</span>
             </NavLink>
           ) : null}
           {owner && session.permissions.includes('STAFF_MANAGE') ? (

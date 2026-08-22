@@ -12,6 +12,7 @@ import {
   settlementSummarySchema,
   staffBuyerRefundSchema,
   staffOrderEvidenceSchema,
+  staffOrderEvidencePreflightSchema,
   staffReviewSchema,
   staffReviewValueSchema,
   staffWorkItemsSchema,
@@ -35,6 +36,8 @@ import {
   staffAccessMutationSchema,
   staffSellerPrincipalRatePoliciesResponseSchema,
   staffSellerPrincipalRatePolicyMutationSchema,
+  staffRateCenterSchema,
+  staffRateCenterBaseMutationSchema,
 } from '../contracts/runtime';
 
 const acquisitionChannelResultSchema = z
@@ -196,12 +199,7 @@ export const staffApi = Object.freeze({
       productVersionMutationSchema,
       key,
     ),
-  linkMainImage: (
-    client: QueryClient,
-    versionId: string,
-    body: unknown,
-    key: string,
-  ) =>
+  linkMainImage: (client: QueryClient, versionId: string, body: unknown, key: string) =>
     write(
       client,
       `/api/staff/catalog/product-versions/${encodeURIComponent(versionId)}/main-image`,
@@ -309,11 +307,45 @@ export const staffApi = Object.freeze({
       staffSellerPrincipalRatePolicyMutationSchema,
       key,
     ),
+  rateCenter: (
+    client: QueryClient,
+    businessDate: string,
+    sellerOrganizationId: string | null,
+    signal?: AbortSignal,
+  ) => {
+    const parameters = new URLSearchParams({ business_date: businessDate });
+    if (sellerOrganizationId !== null)
+      parameters.set('seller_organization_id', sellerOrganizationId);
+    return read(client, `/api/staff/rate-center?${parameters}`, staffRateCenterSchema, signal);
+  },
+  submitOrderDayBaseRate: (client: QueryClient, body: unknown, key: string) =>
+    write(
+      client,
+      '/api/staff/rate-center/base-rates/submit',
+      body,
+      staffRateCenterBaseMutationSchema,
+      key,
+    ),
+  confirmOrderDayBaseRate: (client: QueryClient, id: string, body: unknown, key: string) =>
+    write(
+      client,
+      `/api/staff/rate-center/base-rates/${encodeURIComponent(id)}/confirm`,
+      body,
+      staffRateCenterBaseMutationSchema,
+      key,
+    ),
   orderEvidence: (client: QueryClient, id: string, signal?: AbortSignal) =>
     read(
       client,
       `/api/staff/order-evidence/${encodeURIComponent(id)}`,
       staffOrderEvidenceSchema,
+      signal,
+    ),
+  orderEvidencePreflight: (client: QueryClient, id: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/order-evidence/${encodeURIComponent(id)}/preflight`,
+      staffOrderEvidencePreflightSchema,
       signal,
     ),
   mutateOrderEvidence: (

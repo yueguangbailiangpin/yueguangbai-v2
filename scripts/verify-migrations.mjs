@@ -1,30 +1,22 @@
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
-import {
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-} from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { verifyHistoricalMigrationImmutability } from './historical-migration-immutability.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
-const workDirectory = mkdtempSync(
-  path.join(tmpdir(), 'ygb-v2-migrations-'),
-);
+const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 71;
-const expectedLastMigration =
-  '0071_product_application_amount.sql';
+const expectedLatestSchema = 72;
+const expectedLastMigration = '0072_unified_order_day_rate_center.sql';
 const expectedSchemaInventory = {
   table: 212,
   index: 604,
   trigger: 401,
   view: 12,
-  sha256: 'be907a5a4e6306d14a786aa712268c09e3e0e334ff727d9a1a36e60635f934d8',
+  sha256: '1088a453225ac1b8ff8941feb537b6df052930b27fbfd592f14e17cea0c01a65',
 };
 
 function sqlCodeOnly(source) {
@@ -42,8 +34,7 @@ function sqlCodeOnly(source) {
     }
     if (current === '/' && next === '*') {
       index += 2;
-      while (index < source.length
-        && !(source[index] === '*' && source[index + 1] === '/')) {
+      while (index < source.length && !(source[index] === '*' && source[index + 1] === '/')) {
         if (source[index] === '\n') result += '\n';
         index += 1;
       }
@@ -76,17 +67,18 @@ function sqlCodeOnly(source) {
 }
 
 function containsIncompatibleTriggerRaise(source) {
-  return /SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu
-    .test(sqlCodeOnly(source));
+  return /SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu.test(sqlCodeOnly(source));
 }
 
 const longTriggerProbe = `SELECT CASE WHEN ${'condition AND '.repeat(80)}true
 THEN RAISE(ABORT, 'blocked') END;`;
-if (!containsIncompatibleTriggerRaise(longTriggerProbe)
-  || containsIncompatibleTriggerRaise(`
+if (
+  !containsIncompatibleTriggerRaise(longTriggerProbe) ||
+  containsIncompatibleTriggerRaise(`
     -- SELECT CASE WHEN true THEN RAISE(ABORT, 'comment') END;
     SELECT 'SELECT CASE WHEN true THEN RAISE(ABORT, ''string'') END';
-  `)) {
+  `)
+) {
   throw new Error('D1 trigger compatibility detector self-check failed');
 }
 
@@ -574,17 +566,22 @@ const requiredTriggers = [
 ];
 
 function schemaInventory(database) {
-  return database.prepare(`
+  return database
+    .prepare(
+      `
     SELECT type, name, tbl_name, sql
     FROM sqlite_schema
     WHERE type IN ('table', 'index', 'trigger', 'view')
     ORDER BY type, name
-  `).all().map((row) => ({
-    type: String(row.type),
-    name: String(row.name),
-    table: String(row.tbl_name),
-    sql: row.sql === null ? null : String(row.sql),
-  }));
+  `,
+    )
+    .all()
+    .map((row) => ({
+      type: String(row.type),
+      name: String(row.name),
+      table: String(row.tbl_name),
+      sql: row.sql === null ? null : String(row.sql),
+    }));
 }
 
 function inventoryCounts(inventory) {
@@ -597,13 +594,13 @@ function inventoryCounts(inventory) {
 }
 
 function inventoryHash(inventory) {
-  return createHash('sha256')
-    .update(JSON.stringify(inventory))
-    .digest('hex');
+  return createHash('sha256').update(JSON.stringify(inventory)).digest('hex');
 }
 
 function assertIntegrity(database, label) {
-  const integrity = database.prepare('PRAGMA integrity_check').all()
+  const integrity = database
+    .prepare('PRAGMA integrity_check')
+    .all()
     .map((row) => String(row.integrity_check));
   if (integrity.length !== 1 || integrity[0] !== 'ok') {
     throw new Error(`${label} integrity_check 失败: ${integrity.join(',')}`);
@@ -622,9 +619,7 @@ function expectDmlFailure(database, sql, expectedMessage) {
     failure = String(error);
   }
   if (failure === null || !failure.includes(expectedMessage)) {
-    throw new Error(
-      `expected DML failure ${expectedMessage}, received ${String(failure)}`,
-    );
+    throw new Error(`expected DML failure ${expectedMessage}, received ${String(failure)}`);
   }
 }
 
@@ -651,12 +646,16 @@ function verifyCriticalNegativeDml(database) {
         'migration-verifier-owner', 3000, 1, NULL, NULL, NULL, NULL, NULL
       );
     `);
-    expectDmlFailure(database, `
+    expectDmlFailure(
+      database,
+      `
       UPDATE seller_principal_rate_policy_versions
       SET status='CONFIRMED', decision_version=2,
         confirmed_by_staff_id='migration-verifier-owner', confirmed_at=4000
       WHERE id='migration-verifier-past-policy';
-    `, 'seller_principal_rate_policy_effective_time_conflict');
+    `,
+      'seller_principal_rate_policy_effective_time_conflict',
+    );
 
     database.exec(`
       INSERT INTO seller_principal_rate_policy_versions (
@@ -671,7 +670,9 @@ function verifyCriticalNegativeDml(database) {
         'migration-verifier-owner', 3000, 1, NULL, NULL, NULL, NULL, NULL
       );
     `);
-    expectDmlFailure(database, `
+    expectDmlFailure(
+      database,
+      `
       INSERT INTO seller_principal_rate_policy_events (
         id, version_id, scope_type, seller_organization_id,
         source_currency_code, quote_currency_code, version_no, event_type,
@@ -683,7 +684,9 @@ function verifyCriticalNegativeDml(database) {
         'SELLER_PRINCIPAL_RATE_POLICY_SUBMITTED', 'migration-verifier-other',
         NULL, 'SUBMITTED', 400000, 5000, NULL, 'verifier-forged-event', 3000
       );
-    `, 'seller_principal_rate_policy_event_source_mismatch');
+    `,
+      'seller_principal_rate_policy_event_source_mismatch',
+    );
     database.exec(`
       INSERT INTO seller_principal_rate_policy_events (
         id, version_id, scope_type, seller_organization_id,
@@ -713,7 +716,9 @@ function verifyCriticalNegativeDml(database) {
         'verifier-confirm-event', 4000
       );
     `);
-    expectDmlFailure(database, `
+    expectDmlFailure(
+      database,
+      `
       INSERT INTO seller_principal_rate_policy_events (
         id, version_id, scope_type, seller_organization_id,
         source_currency_code, quote_currency_code, version_no, event_type,
@@ -726,10 +731,16 @@ function verifyCriticalNegativeDml(database) {
         'SUBMITTED', 'CONFIRMED', 400000, 5000, NULL,
         'verifier-duplicate-event', 4000
       );
-    `, 'UNIQUE constraint failed');
+    `,
+      'UNIQUE constraint failed',
+    );
     database.exec('ROLLBACK;');
   } catch (error) {
-    try { database.exec('ROLLBACK;'); } catch { /* no open tx */ }
+    try {
+      database.exec('ROLLBACK;');
+    } catch {
+      /* no open tx */
+    }
     throw error;
   }
 }
@@ -739,30 +750,33 @@ try {
   const migrationFiles = readdirSync(migrationsDirectory)
     .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
     .sort();
-  const migrationSources = new Map(migrationFiles.map((file) => [
-    file,
-    readFileSync(path.join(migrationsDirectory, file), 'utf8'),
-  ]));
+  const migrationSources = new Map(
+    migrationFiles.map((file) => [
+      file,
+      readFileSync(path.join(migrationsDirectory, file), 'utf8'),
+    ]),
+  );
 
   const migrationNumbers = migrationFiles.map((name) => Number(name.slice(0, 4)));
-  if (migrationFiles.length !== expectedLatestSchema
-    || migrationFiles.at(-1) !== expectedLastMigration
-    || migrationNumbers.some((number, index) => number !== index + 1)) {
-    throw new Error('Migration 必须是唯一连续的 0001-0071');
+  if (
+    migrationFiles.length !== expectedLatestSchema ||
+    migrationFiles.at(-1) !== expectedLastMigration ||
+    migrationNumbers.some((number, index) => number !== index + 1)
+  ) {
+    throw new Error('Migration 必须是唯一连续的 0001-0072');
   }
 
   for (const [file, source] of migrationSources) {
-    if (/pragma_(?:integrity|quick)_check|PRAGMA\s+(?:integrity|quick)_check/iu
-      .test(source)) {
+    if (/pragma_(?:integrity|quick)_check|PRAGMA\s+(?:integrity|quick)_check/iu.test(source)) {
       throw new Error(
-        `${file}: 禁止在 Cloudflare D1 migration 事务内执行整库检查；`
-        + '应导出后在原生 SQLite 中验证',
+        `${file}: 禁止在 Cloudflare D1 migration 事务内执行整库检查；` +
+          '应导出后在原生 SQLite 中验证',
       );
     }
     if (containsIncompatibleTriggerRaise(source)) {
       throw new Error(
-        `${file}: Cloudflare D1 不接受 trigger 中的 CASE...THEN RAISE；`
-        + '应使用 SELECT RAISE(...) WHERE ... 的等价形式',
+        `${file}: Cloudflare D1 不接受 trigger 中的 CASE...THEN RAISE；` +
+          '应使用 SELECT RAISE(...) WHERE ... 的等价形式',
       );
     }
   }
@@ -776,7 +790,11 @@ try {
         database.exec(migrationSources.get(file));
         database.exec('COMMIT;');
       } catch (error) {
-        try { database.exec('ROLLBACK;'); } catch { /* no open tx */ }
+        try {
+          database.exec('ROLLBACK;');
+        } catch {
+          /* no open tx */
+        }
         throw error;
       }
     }
@@ -789,15 +807,12 @@ try {
     for (const type of ['table', 'index', 'trigger', 'view']) {
       if (schemaCounts[type] !== expectedSchemaInventory[type]) {
         throw new Error(
-          `${type} inventory count ${schemaCounts[type]} != `
-          + `${expectedSchemaInventory[type]}`,
+          `${type} inventory count ${schemaCounts[type]} != ` + `${expectedSchemaInventory[type]}`,
         );
       }
     }
     if (schemaInventorySha256 !== expectedSchemaInventory.sha256) {
-      throw new Error(
-        `完整 Schema inventory SHA-256 不匹配: ${schemaInventorySha256}`,
-      );
+      throw new Error(`完整 Schema inventory SHA-256 不匹配: ${schemaInventorySha256}`);
     }
 
     const freshDatabase = new DatabaseSync(':memory:');
@@ -810,7 +825,11 @@ try {
         }
         freshDatabase.exec('COMMIT;');
       } catch (error) {
-        try { freshDatabase.exec('ROLLBACK;'); } catch { /* no open tx */ }
+        try {
+          freshDatabase.exec('ROLLBACK;');
+        } catch {
+          /* no open tx */
+        }
         throw error;
       }
       assertIntegrity(freshDatabase, 'fresh');
@@ -818,9 +837,13 @@ try {
       if (freshInventoryJson !== sequentialInventoryJson) {
         throw new Error('fresh 与 sequential 的完整 name+SQL inventory 不一致');
       }
-      const freshState = freshDatabase.prepare(`
+      const freshState = freshDatabase
+        .prepare(
+          `
         SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-      `).get();
+      `,
+        )
+        .get();
       if (Number(freshState?.schema_version) !== expectedLatestSchema) {
         throw new Error(`fresh schema 不是 ${expectedLatestSchema}`);
       }
@@ -831,17 +854,31 @@ try {
     verifyCriticalNegativeDml(database);
     assertIntegrity(database, 'post-negative-dml');
 
-    const tables = new Set(database.prepare(`
+    const tables = new Set(
+      database
+        .prepare(
+          `
       SELECT name
       FROM sqlite_schema
       WHERE type='table'
-    `).all().map((row) => String(row.name)));
+    `,
+        )
+        .all()
+        .map((row) => String(row.name)),
+    );
 
-    const triggers = new Set(database.prepare(`
+    const triggers = new Set(
+      database
+        .prepare(
+          `
       SELECT name
       FROM sqlite_schema
       WHERE type='trigger'
-    `).all().map((row) => String(row.name)));
+    `,
+        )
+        .all()
+        .map((row) => String(row.name)),
+    );
 
     for (const table of requiredTables) {
       if (!tables.has(table)) throw new Error(`缺少表: ${table}`);
@@ -857,153 +894,202 @@ try {
       if (tables.has(table)) throw new Error(`禁止遗留表: ${table}`);
     }
     for (const [table, forbiddenColumns] of [
-      ['formal_order_financial_snapshots', [
-        'seller_rate_version_id', 'seller_rate_version_no',
-        'seller_rate_effective_from', 'seller_rate_confirmed_at',
-        'seller_cny_per_jpy_e8',
-      ]],
-      ['formal_order_marketplace_money_snapshots', [
-        'seller_rate_version_id', 'seller_rate_version_no',
-        'seller_rate_effective_from', 'seller_rate_confirmed_at',
-        'seller_rate_value', 'seller_rate_scale',
-      ]],
+      [
+        'formal_order_financial_snapshots',
+        [
+          'seller_rate_version_id',
+          'seller_rate_version_no',
+          'seller_rate_effective_from',
+          'seller_rate_confirmed_at',
+          'seller_cny_per_jpy_e8',
+        ],
+      ],
+      [
+        'formal_order_marketplace_money_snapshots',
+        [
+          'seller_rate_version_id',
+          'seller_rate_version_no',
+          'seller_rate_effective_from',
+          'seller_rate_confirmed_at',
+          'seller_rate_value',
+          'seller_rate_scale',
+        ],
+      ],
     ]) {
-      const columns = new Set(database.prepare(
-        `PRAGMA table_info(${table})`,
-      ).all().map((column) => String(column.name)));
+      const columns = new Set(
+        database
+          .prepare(`PRAGMA table_info(${table})`)
+          .all()
+          .map((column) => String(column.name)),
+      );
       for (const column of forbiddenColumns) {
         if (columns.has(column)) throw new Error(`禁止遗留列: ${table}.${column}`);
       }
     }
-    if (!sequentialInventory.some((object) =>
-      object.type === 'index'
-      && object.name === 'uq_seller_principal_rate_policy_event_type')) {
+    if (
+      !sequentialInventory.some(
+        (object) =>
+          object.type === 'index' && object.name === 'uq_seller_principal_rate_policy_event_type',
+      )
+    ) {
       throw new Error('缺少索引: uq_seller_principal_rate_policy_event_type');
     }
 
-    const buyerRefundView = database.prepare(`
+    const buyerRefundView = database
+      .prepare(
+        `
       SELECT name
       FROM sqlite_schema
       WHERE type='view' AND name='buyer_refund_ledger_balances'
-    `).get();
+    `,
+      )
+      .get();
     if (!buyerRefundView) {
       throw new Error('缺少视图: buyer_refund_ledger_balances');
     }
 
-    const refundObligationColumns = new Set(database.prepare(`
+    const refundObligationColumns = new Set(
+      database
+        .prepare(
+          `
       PRAGMA table_info(buyer_refund_obligations)
-    `).all().map((column) => String(column.name)));
+    `,
+        )
+        .all()
+        .map((column) => String(column.name)),
+    );
     if (refundObligationColumns.has('status')) {
       throw new Error('买家返款状态必须由账本推导，禁止持久化 status');
     }
 
-    const sellerChannels = database.prepare(`
+    const sellerChannels = database
+      .prepare(
+        `
       SELECT code, prefix, next_sequence
       FROM seller_channels
       ORDER BY code
-    `).all();
+    `,
+      )
+      .all();
 
-    const demandColumns = database.prepare(`
+    const demandColumns = database
+      .prepare(
+        `
       PRAGMA table_info(demand_batches)
-    `).all();
-    for (const requiredColumn of [
-      'held_reservation_count',
-      'approved_reservation_count',
-    ]) {
-      if (!demandColumns.some(
-        (column) => column.name === requiredColumn,
-      )) {
+    `,
+      )
+      .all();
+    for (const requiredColumn of ['held_reservation_count', 'approved_reservation_count']) {
+      if (!demandColumns.some((column) => column.name === requiredColumn)) {
         throw new Error(`demand_batches 缺少 ${requiredColumn}`);
       }
     }
 
-    const sellerOrganizationColumns = database.prepare(`
+    const sellerOrganizationColumns = database
+      .prepare(
+        `
       PRAGMA table_info(seller_organizations)
-    `).all();
-    if (!sellerOrganizationColumns.some(
-      (column) => column.name === 'next_member_number',
-    )) {
+    `,
+      )
+      .all();
+    if (!sellerOrganizationColumns.some((column) => column.name === 'next_member_number')) {
       throw new Error('seller_organizations 缺少 next_member_number');
     }
-    if (sellerChannels.length !== 6
-      || sellerChannels.map((row) => row.code).join(',')
-        !== 'ido-mango,portal-onboarding,queshengai,ygbceping,'
-          + 'yinghua1942,yueguangbaiai') {
+    if (
+      sellerChannels.length !== 6 ||
+      sellerChannels.map((row) => row.code).join(',') !==
+        'ido-mango,portal-onboarding,queshengai,ygbceping,' + 'yinghua1942,yueguangbaiai'
+    ) {
       throw new Error('卖家渠道种子或编号顺序不正确');
     }
 
-    const fileObjectColumns = database.prepare(`
+    const fileObjectColumns = database
+      .prepare(
+        `
       PRAGMA table_info(file_objects)
-    `).all().map((column) => String(column.name));
-    for (const forbiddenColumn of [
-      'public_url',
-      'signed_url',
-      'secret',
-      'upload_token',
-    ]) {
+    `,
+      )
+      .all()
+      .map((column) => String(column.name));
+    for (const forbiddenColumn of ['public_url', 'signed_url', 'secret', 'upload_token']) {
       if (fileObjectColumns.includes(forbiddenColumn)) {
         throw new Error(`file_objects 禁止列: ${forbiddenColumn}`);
       }
     }
 
-    const fileEntityLinkColumns = new Set(database.prepare(`
+    const fileEntityLinkColumns = new Set(
+      database
+        .prepare(
+          `
       PRAGMA table_info(file_entity_links)
-    `).all().map((column) => String(column.name)));
-    for (const requiredColumn of [
-      'authorization_mode',
-      'expires_at',
-      'revoked_at',
-    ]) {
+    `,
+        )
+        .all()
+        .map((column) => String(column.name)),
+    );
+    for (const requiredColumn of ['authorization_mode', 'expires_at', 'revoked_at']) {
       if (!fileEntityLinkColumns.has(requiredColumn)) {
         throw new Error(`file_entity_links 缺少 ${requiredColumn}`);
       }
     }
-    const fileReadIntentColumns = new Set(database.prepare(`
+    const fileReadIntentColumns = new Set(
+      database
+        .prepare(
+          `
       PRAGMA table_info(file_read_intents)
-    `).all().map((column) => String(column.name)));
+    `,
+        )
+        .all()
+        .map((column) => String(column.name)),
+    );
     if (!fileReadIntentColumns.has('file_entity_link_id')) {
       throw new Error('file_read_intents 缺少 file_entity_link_id');
     }
 
     const integerFacts = new Map([
-      ['product_versions', [
-        'ordering_guide_expected_amount_jpy',
-        'default_buyer_self_pay_bps',
-      ]],
+      ['product_versions', ['ordering_guide_expected_amount_jpy', 'default_buyer_self_pay_bps']],
       ['buyer_daily_exchange_rates', ['cny_per_jpy_e8']],
       ['seller_service_fee_versions', ['fee_cny_fen']],
-      ['order_evidence_versions', [
-        'final_paid_jpy', 'reference_order_amount_jpy_snapshot',
-        'buyer_self_pay_bps_snapshot', 'buyer_self_pay_jpy',
-        'buyer_refundable_principal_jpy', 'price_mismatch',
-        'price_difference_jpy', 'submitted_before_deadline',
-      ]],
+      [
+        'order_evidence_versions',
+        [
+          'final_paid_jpy',
+          'reference_order_amount_jpy_snapshot',
+          'buyer_self_pay_bps_snapshot',
+          'buyer_self_pay_jpy',
+          'buyer_refundable_principal_jpy',
+          'price_mismatch',
+          'price_difference_jpy',
+          'submitted_before_deadline',
+        ],
+      ],
       ['formal_orders', ['final_paid_jpy']],
-      ['formal_order_financial_snapshots', [
-        'buyer_cny_per_jpy_e8',
-        'service_fee_cny_fen',
-        'buyer_self_pay_bps', 'buyer_self_pay_jpy',
-        'buyer_refundable_principal_jpy',
-        'buyer_gross_principal_cny_fen',
-        'buyer_self_pay_contribution_cny_fen',
-        'buyer_expected_principal_cny_fen',
-        'seller_expected_principal_cny_fen',
-      ]],
+      [
+        'formal_order_financial_snapshots',
+        [
+          'buyer_cny_per_jpy_e8',
+          'service_fee_cny_fen',
+          'buyer_self_pay_bps',
+          'buyer_self_pay_jpy',
+          'buyer_refundable_principal_jpy',
+          'buyer_gross_principal_cny_fen',
+          'buyer_self_pay_contribution_cny_fen',
+          'buyer_expected_principal_cny_fen',
+          'seller_expected_principal_cny_fen',
+        ],
+      ],
       ['review_events', ['amount_cny_fen']],
       ['buyer_refund_obligations', ['due_amount_cny_fen']],
       ['buyer_refund_payment_entries', ['amount_cny_fen']],
-      ['buyer_refund_events', [
-        'amount_cny_fen',
-        'net_paid_after_cny_fen',
-      ]],
+      ['buyer_refund_events', ['amount_cny_fen', 'net_paid_after_cny_fen']],
     ]);
     for (const [table, columns] of integerFacts) {
-      const definitions = new Map(database.prepare(
-        `PRAGMA table_info(${table})`,
-      ).all().map((column) => [
-        String(column.name),
-        String(column.type).toUpperCase(),
-      ]));
+      const definitions = new Map(
+        database
+          .prepare(`PRAGMA table_info(${table})`)
+          .all()
+          .map((column) => [String(column.name), String(column.type).toUpperCase()]),
+      );
       for (const column of columns) {
         if (definitions.get(column) !== 'INTEGER') {
           throw new Error(`${table}.${column} 必须为 INTEGER`);
@@ -1011,23 +1097,33 @@ try {
       }
     }
 
-    const productVersionColumns = new Map(database.prepare(`
+    const productVersionColumns = new Map(
+      database
+        .prepare(
+          `
       PRAGMA table_info(product_versions)
-    `).all().map((column) => [
-      String(column.name),
-      String(column.type).toUpperCase(),
-    ]));
-    if (productVersionColumns.get('ordering_guide_expected_amount_jpy')
-      !== 'INTEGER') {
+    `,
+        )
+        .all()
+        .map((column) => [String(column.name), String(column.type).toUpperCase()]),
+    );
+    if (productVersionColumns.get('ordering_guide_expected_amount_jpy') !== 'INTEGER') {
       throw new Error('product_versions expected JPY amount must be INTEGER');
     }
     if (!productVersionColumns.has('color_spec_mode')) {
       throw new Error('product_versions missing color_spec_mode');
     }
 
-    const mainImageColumns = new Set(database.prepare(`
+    const mainImageColumns = new Set(
+      database
+        .prepare(
+          `
       PRAGMA table_info(product_version_main_images)
-    `).all().map((column) => String(column.name)));
+    `,
+        )
+        .all()
+        .map((column) => String(column.name)),
+    );
     for (const requiredColumn of [
       'product_version_id',
       'file_entity_link_id',
@@ -1039,16 +1135,23 @@ try {
       }
     }
 
-    const fileSql = database.prepare(`
+    const fileSql = database
+      .prepare(
+        `
       SELECT sql FROM sqlite_schema
       WHERE type='table' AND name IN (
         'file_upload_intents', 'file_objects',
         'file_entity_links', 'file_audience_events'
       )
       ORDER BY name
-    `).all().map((row) => String(row.sql)).join('\n');
+    `,
+      )
+      .all()
+      .map((row) => String(row.sql))
+      .join('\n');
     for (const requiredValue of [
-      'PRODUCT_IMAGE', 'PRODUCT_VERSION',
+      'PRODUCT_IMAGE',
+      'PRODUCT_VERSION',
       'ORDER_INSTRUCTION_KEYWORD_IMAGE',
       'ORDER_INSTRUCTION_VERSION',
       'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
@@ -1059,9 +1162,16 @@ try {
       }
     }
 
-    const orderEvidenceColumns = new Set(database.prepare(`
+    const orderEvidenceColumns = new Set(
+      database
+        .prepare(
+          `
       PRAGMA table_info(order_evidence_versions)
-    `).all().map((column) => String(column.name)));
+    `,
+        )
+        .all()
+        .map((column) => String(column.name)),
+    );
     for (const forbiddenColumn of [
       'buyer_number',
       'business_order_number',
@@ -1077,13 +1187,26 @@ try {
       }
     }
 
-
-    const formalOrderColumns = new Set(database.prepare(`
+    const formalOrderColumns = new Set(
+      database
+        .prepare(
+          `
       PRAGMA table_info(formal_orders)
-    `).all().map((column) => String(column.name)));
-    const formalSnapshotColumns = new Set(database.prepare(`
+    `,
+        )
+        .all()
+        .map((column) => String(column.name)),
+    );
+    const formalSnapshotColumns = new Set(
+      database
+        .prepare(
+          `
       PRAGMA table_info(formal_order_financial_snapshots)
-    `).all().map((column) => String(column.name)));
+    `,
+        )
+        .all()
+        .map((column) => String(column.name)),
+    );
     for (const forbiddenColumn of [
       'review_status',
       'refund_status',
@@ -1091,13 +1214,14 @@ try {
       'profit_cny_fen',
       'realized_profit_cny_fen',
     ]) {
-      if (formalOrderColumns.has(forbiddenColumn)
-        || formalSnapshotColumns.has(forbiddenColumn)) {
+      if (formalOrderColumns.has(forbiddenColumn) || formalSnapshotColumns.has(forbiddenColumn)) {
         throw new Error(`Phase 3F 禁止字段: ${forbiddenColumn}`);
       }
     }
 
-    const forbiddenPhase5Tables = database.prepare(`
+    const forbiddenPhase5Tables = database
+      .prepare(
+        `
       SELECT name
       FROM sqlite_schema
       WHERE type='table'
@@ -1109,12 +1233,16 @@ try {
           'amazon_accounts',
           'amazon_review_automation'
         )
-    `).all();
+    `,
+      )
+      .all();
     if (forbiddenPhase5Tables.length > 0) {
       throw new Error('禁止旧式返款覆盖表、卖家结算、利润或 Amazon 自动化表');
     }
 
-    const uniqueAmazonOrderIndex = database.prepare(`
+    const uniqueAmazonOrderIndex = database
+      .prepare(
+        `
       SELECT name
       FROM sqlite_schema
       WHERE type='index'
@@ -1122,59 +1250,69 @@ try {
         AND sql IS NOT NULL
         AND upper(sql) LIKE '%UNIQUE%'
         AND sql LIKE '%amazon_order_number_normalized%'
-    `).all();
+    `,
+      )
+      .all();
     if (uniqueAmazonOrderIndex.length > 0) {
       throw new Error('Amazon订单号不得设置全局唯一');
     }
 
-    const rateLimitColumns = new Set(database.prepare(
-      'PRAGMA table_info(customer_login_rate_limits)',
-    ).all().map((column) => String(column.name)));
-    for (const requiredColumn of [
-      'scope_type',
-      'scope_hash',
-      'window_expires_at',
-    ]) {
+    const rateLimitColumns = new Set(
+      database
+        .prepare('PRAGMA table_info(customer_login_rate_limits)')
+        .all()
+        .map((column) => String(column.name)),
+    );
+    for (const requiredColumn of ['scope_type', 'scope_hash', 'window_expires_at']) {
       if (!rateLimitColumns.has(requiredColumn)) {
-        throw new Error(
-          `customer_login_rate_limits 缺少 ${requiredColumn}`,
-        );
+        throw new Error(`customer_login_rate_limits 缺少 ${requiredColumn}`);
       }
     }
 
-    const state = database.prepare(`
+    const state = database
+      .prepare(
+        `
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
-    `).get();
-    if (Number(state?.schema_version) !== expectedLatestSchema
-      || migrationFiles.length !== expectedLatestSchema) {
+    `,
+      )
+      .get();
+    if (
+      Number(state?.schema_version) !== expectedLatestSchema ||
+      migrationFiles.length !== expectedLatestSchema
+    ) {
       throw new Error(
-        `Schema 版本 ${String(state?.schema_version)} 与 Migration 数量 `
-        + `${migrationFiles.length} 不一致`,
+        `Schema 版本 ${String(state?.schema_version)} 与 Migration 数量 ` +
+          `${migrationFiles.length} 不一致`,
       );
     }
 
-    console.log(JSON.stringify({
-      status: 'PASS',
-      historical_baseline: historicalIntegrity.baseline,
-      immutable_historical_migrations: historicalIntegrity.count,
-      historical_migration_aggregate_sha256:
-        historicalIntegrity.aggregateSha256,
-      migrations: migrationFiles,
-      table_count: tables.size,
-      index_count: schemaCounts.index,
-      trigger_count: triggers.size,
-      view_count: schemaCounts.view,
-      schema_inventory_objects: sequentialInventory.length,
-      schema_inventory_sha256: schemaInventorySha256,
-      fresh_sequential_inventory_match: true,
-      critical_negative_dml: 3,
-      integrity_check: 'ok',
-      foreign_key_errors: 0,
-      schema_version: Number(state.schema_version),
-      seller_channels: sellerChannels,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          status: 'PASS',
+          historical_baseline: historicalIntegrity.baseline,
+          immutable_historical_migrations: historicalIntegrity.count,
+          historical_migration_aggregate_sha256: historicalIntegrity.aggregateSha256,
+          migrations: migrationFiles,
+          table_count: tables.size,
+          index_count: schemaCounts.index,
+          trigger_count: triggers.size,
+          view_count: schemaCounts.view,
+          schema_inventory_objects: sequentialInventory.length,
+          schema_inventory_sha256: schemaInventorySha256,
+          fresh_sequential_inventory_match: true,
+          critical_negative_dml: 3,
+          integrity_check: 'ok',
+          foreign_key_errors: 0,
+          schema_version: Number(state.schema_version),
+          seller_channels: sellerChannels,
+        },
+        null,
+        2,
+      ),
+    );
   } finally {
     database.close();
   }

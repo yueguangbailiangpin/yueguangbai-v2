@@ -3,6 +3,7 @@ import type { StaffRoleCode } from './staff';
 export const STAFF_ACCESS_MANAGEMENT_PATHS = Object.freeze({
   overview: '/api/staff/access-management',
   employees: '/api/staff/access-management/employees',
+  sellerOrganizationAssignments: '/api/staff/access-management/seller-organization-assignments',
 } as const);
 
 export type StaffAccessStatus = 'ACTIVE' | 'DISABLED';
@@ -36,9 +37,56 @@ export interface StaffAccessManagementOverviewDto {
   employees: readonly StaffAccessEmployeeDto[];
   available_marketplaces: readonly StaffAccessMarketplaceOptionDto[];
 }
-export interface CreateStaffAccountRequest {display_name:string;email:string;role_code:StaffRoleCode;marketplace_codes:readonly string[]}
-export interface CreateStaffAccountResponse {employee:StaffAccessEmployeeDto;replayed:boolean}
-export interface UpdateStaffAccountRequest {display_name:string;email:string;role_code:StaffRoleCode;marketplace_codes:readonly string[];expected_version:number}
-export interface ChangeStaffAccessStatusRequest {status:StaffAccessStatus;expected_version:number}
-export interface ChangeStaffRoleRequest {role_code:StaffRoleCode;expected_version:number}
-export interface StaffAccessMutationResponse {employee:StaffAccessEmployeeDto;replayed:boolean}
+/**
+ * The single fixed seller-side owner. IDs are deliberately kept in the
+ * transport contract for mutations, but the Staff UI must render the human
+ * names instead of asking an operator to type either ID.
+ */
+export interface StaffAccessSellerOrganizationAssignmentDto {
+  seller_organization_id: string;
+  seller_organization_name: string;
+  marketplace_code: string;
+  manager: {
+    assignment_id: string;
+    staff_id: string;
+    staff_display_name: string;
+    version: number;
+  } | null;
+}
+export interface ChangeStaffAccessSellerOrganizationAssignmentRequest {
+  assigned_staff_id: string;
+  expected_assignment_version: number;
+}
+export interface StaffAccessSellerOrganizationAssignmentMutationDto {
+  seller_organization: StaffAccessSellerOrganizationAssignmentDto;
+  replayed: boolean;
+}
+export interface CreateStaffAccountRequest {
+  display_name: string;
+  email: string;
+  role_code: StaffRoleCode;
+  marketplace_codes: readonly string[];
+}
+export interface CreateStaffAccountResponse {
+  employee: StaffAccessEmployeeDto;
+  replayed: boolean;
+}
+export interface UpdateStaffAccountRequest {
+  display_name: string;
+  email: string;
+  role_code: StaffRoleCode;
+  marketplace_codes: readonly string[];
+  expected_version: number;
+}
+export interface ChangeStaffAccessStatusRequest {
+  status: StaffAccessStatus;
+  expected_version: number;
+}
+export interface ChangeStaffRoleRequest {
+  role_code: StaffRoleCode;
+  expected_version: number;
+}
+export interface StaffAccessMutationResponse {
+  employee: StaffAccessEmployeeDto;
+  replayed: boolean;
+}

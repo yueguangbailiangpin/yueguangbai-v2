@@ -4,6 +4,7 @@ import {
   type SqlDatabase,
   type StaffAccessEmployeeDto,
   type StaffAccessManagementOverviewDto,
+  type StaffAccessSellerOrganizationAssignmentDto,
 } from '@ygb/contracts';
 import { StaffAccessManagementError } from './errors';
 
@@ -24,6 +25,15 @@ interface MarketplaceRow {
   code: string;
   display_name_zh: string;
   status: 'ACTIVE' | 'DISABLED';
+}
+interface SellerOrganizationAssignmentRow {
+  seller_organization_id: string;
+  seller_organization_name: string;
+  marketplace_code: string;
+  assignment_id: string | null;
+  staff_id: string | null;
+  staff_display_name: string | null;
+  assignment_version: number | null;
 }
 
 export async function readStaffAccessManagementOverview(
@@ -55,6 +65,60 @@ export async function readStaffAccessEmployee(
   const row = await employeeQuery(database, 'staff.id=?', [staffId]).first<EmployeeRow>();
   if (!row) throw new StaffAccessManagementError('NOT_FOUND', 404);
   return projectEmployee(row);
+}
+/**
+ * The seller fixed-owner relationship is canonical in seller_staff_assignments.
+ * Keep this read model separate from the staff list so a management screen can
+ * show organization and person names without exposing operators to raw IDs.
+ */
+export async function readStaffSellerOrganizationAssignments(
+  database: SqlDatabase,
+): Promise<readonly StaffAccessSellerOrganizationAssignmentDto[]> {
+  const result = await database
+    .prepare(
+      `SELECT organization.id AS seller_organization_id,
+        organization.organization_name AS seller_organization_name,
+        organization.marketplace_code,
+        assignment.id AS assignment_id, assignment.staff_id,
+        staff.display_name AS staff_display_name,
+        assignment.version AS assignment_version
+      FROM seller_organizations organization
+      LEFT JOIN seller_staff_assignments assignment
+        ON assignment.seller_organization_id=organization.id
+        AND assignment.duty_code='SELLER_ACCOUNT_MANAGER'
+        AND assignment.status='ACTIVE'
+      LEFT JOIN staff_users staff ON staff.id=assignment.staff_id
+      WHERE organization.status='ACTIVE'
+      ORDER BY organization.organization_name,organization.id`,
+    )
+    .all<SellerOrganizationAssignmentRow>();
+  return Object.freeze(result.results.map(projectSellerOrganizationAssignment));
+}
+
+export async function readStaffSellerOrganizationAssignment(
+  database: SqlDatabase,
+  sellerOrganizationId: string,
+): Promise<StaffAccessSellerOrganizationAssignmentDto> {
+  const row = await database
+    .prepare(
+      `SELECT organization.id AS seller_organization_id,
+        organization.organization_name AS seller_organization_name,
+        organization.marketplace_code,
+        assignment.id AS assignment_id, assignment.staff_id,
+        staff.display_name AS staff_display_name,
+        assignment.version AS assignment_version
+      FROM seller_organizations organization
+      LEFT JOIN seller_staff_assignments assignment
+        ON assignment.seller_organization_id=organization.id
+        AND assignment.duty_code='SELLER_ACCOUNT_MANAGER'
+        AND assignment.status='ACTIVE'
+      LEFT JOIN staff_users staff ON staff.id=assignment.staff_id
+      WHERE organization.id=? AND organization.status='ACTIVE'`,
+    )
+    .bind(sellerOrganizationId)
+    .first<SellerOrganizationAssignmentRow>();
+  if (!row) throw new StaffAccessManagementError('NOT_FOUND', 404);
+  return projectSellerOrganizationAssignment(row);
 }
 function employeeQuery(database: SqlDatabase, where: string, bindings: unknown[]) {
   return database
@@ -108,5 +172,37 @@ function projectEmployee(row: EmployeeRow): StaffAccessEmployeeDto {
     marketplace_scopes: Object.freeze(row.role_code === 'owner' ? [] : scopes),
     last_login_at: row.last_login_at === null ? null : Number(row.last_login_at),
     updated_at: Number(row.updated_at),
+  });
+}
+
+function projectSellerOrganizationAssignment(
+  row: SellerOrganizationAssignmentRow,
+): StaffAccessSellerOrganizationAssignmentDto {
+  const hasManager =
+    row.assignment_id !== null ||
+    row.staff_id !== null ||
+    row.staff_display_name !== null ||
+    row.assignment_version !== null;
+  if (
+    hasManager &&
+    (!row.assignment_id ||
+      !row.staff_id ||
+      !row.staff_display_name ||
+      row.assignment_version === null)
+  )
+    throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
+  return Object.freeze({
+    seller_organization_id: row.seller_organization_id,
+    seller_organization_name: row.seller_organization_name,
+    marketplace_code: row.marketplace_code,
+    manager:
+      row.assignment_id && row.staff_id && row.staff_display_name && row.assignment_version !== null
+        ? Object.freeze({
+            assignment_id: row.assignment_id,
+            staff_id: row.staff_id,
+            staff_display_name: row.staff_display_name,
+            version: Number(row.assignment_version),
+          })
+        : null,
   });
 }

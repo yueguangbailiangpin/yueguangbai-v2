@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type FormEvent } from 'react';
 import { isFrontendApiError } from '../../api/errors';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
@@ -25,6 +25,7 @@ type Policy = NonNullable<
 >;
 type PolicyRead = Awaited<ReturnType<typeof staffApi.sellerPrincipalRatePolicies>>['data'];
 type PolicyMutationResult = Awaited<ReturnType<typeof staffApi.submitSellerPrincipalRatePolicy>>;
+type RateCenter = Awaited<ReturnType<typeof staffApi.rateCenter>>['data'];
 
 export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
   const session = useCurrentStaffSession();
@@ -32,12 +33,14 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
   const [organizationId, setOrganizationId] = useState(
     session.data_scope.sellerOrganizationIds[0] ?? '',
   );
+  const [businessDate, setBusinessDate] = useState(() => chinaDate());
   const canRead =
     (session.role.code === 'owner' || session.role.code === 'seller_ops') &&
     session.permissions.includes('SELLER_MANAGE');
   const hasManage = session.permissions.includes('SELLER_MANAGE');
   const isGlobalOwner =
     session.role.code === 'owner' && hasManage && session.data_scope.type === 'GLOBAL';
+  const hasFinancialCorrection = session.permissions.includes('FINANCIAL_CORRECT');
   const canSubmitOverride =
     organizationId.length > 0 &&
     hasManage &&
@@ -45,8 +48,7 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
       (session.role.code === 'seller_ops' &&
         session.data_scope.sellerOrganizationIds.includes(organizationId)));
   const canSubmitDefault = isGlobalOwner;
-  const canDecide =
-    session.role.code === 'owner' && session.permissions.includes('FINANCIAL_CORRECT');
+  const canDecide = session.role.code === 'owner' && hasFinancialCorrection;
   const [sourceCurrencyCode, setSourceCurrencyCode] = useState('JPY');
   const [scopeType, setScopeType] = useState<'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION'>(
     isGlobalOwner ? 'CURRENCY_PAIR_DEFAULT' : 'SELLER_ORGANIZATION',
@@ -57,6 +59,19 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
   const [requestId, setRequestId] = useState<string | null>(null);
   const authority = useMemo(() => new StaffMutationAuthority<PolicyMutationResult>(), []);
   const selectedOrganizationId = organizationId.length > 0 ? organizationId : null;
+  const rateCenter = useQuery({
+    queryKey: staffWorkbenchKeys.rateCenter(
+      session.authorization_version,
+      businessDate,
+      selectedOrganizationId,
+    ),
+    queryFn: ({ signal }) =>
+      staffApi
+        .rateCenter(client, businessDate, selectedOrganizationId, signal)
+        .then((response) => response.data),
+    enabled: canRead,
+    retry: false,
+  });
   const query = useQuery({
     queryKey: staffWorkbenchKeys.sellerPrincipalRatePolicies(
       session.authorization_version,
@@ -154,9 +169,9 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
     <main className="staff-pricing-workspace">
       <section aria-labelledby="seller-principal-rate-title">
         <p className="eyebrow">财务配置 · 仅 Staff</p>
-        <h2 id="seller-principal-rate-title">卖家本金汇率策略</h2>
+        <h2 id="seller-principal-rate-title">汇率中心</h2>
         <Alert tone="warning">
-          “卖家本金汇率加点”是绝对汇率增量，不是百分比。确认后的策略按生效时间作用于新正式订单，历史快照不回写。
+          订单日基础汇率是买家返款与卖家本金共同基础；卖家加点是绝对汇率增量，不是百分比。所有正式订单冻结确认时的版本和值，历史不回写。
         </Alert>
         <form
           className="staff-filter-grid"
@@ -165,8 +180,8 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
             void query.refetch();
           }}
         >
-          <FormField label="卖家组织编号" htmlFor="principal-rate-organization">
-            <TextInput
+          <FormField label="卖家组织" htmlFor="principal-rate-organization">
+            <Select
               id="principal-rate-organization"
               value={organizationId}
               onChange={(event) => {
@@ -176,8 +191,26 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
                   setScopeType('CURRENCY_PAIR_DEFAULT');
                 }
               }}
-              placeholder={isGlobalOwner ? '配置默认加点时可留空' : '输入已授权的组织编号'}
               required={!isGlobalOwner}
+            >
+              {isGlobalOwner ? <option value="">默认加点（所有卖家）</option> : null}
+              {(rateCenter.data?.seller_organizations ?? []).map((organization) => (
+                <option
+                  key={organization.seller_organization_id}
+                  value={organization.seller_organization_id}
+                >
+                  {organization.seller_organization_name} · {organization.marketplace_code}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+          <FormField label="Amazon 订单日期" htmlFor="order-day-base-rate-date">
+            <TextInput
+              id="order-day-base-rate-date"
+              type="date"
+              value={businessDate}
+              onChange={(event) => setBusinessDate(event.target.value)}
+              required
             />
           </FormField>
           <FormField label="币种对" htmlFor="principal-rate-source">
@@ -198,6 +231,19 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
           </Button>
         </form>
       </section>
+      {rateCenter.data ? (
+        <OrderDayBaseRateCard
+          value={rateCenter.data}
+          canSubmit={isGlobalOwner && hasFinancialCorrection}
+          canConfirm={canDecide}
+          refresh={async () => {
+            await rateCenter.refetch();
+            await query.refetch();
+          }}
+        />
+      ) : rateCenter.isError ? (
+        <Alert tone="danger">订单日基础汇率读取失败，请重试。</Alert>
+      ) : null}
       {query.isPending ? (
         <p role="status">正在读取策略事实</p>
       ) : query.isError ? (
@@ -271,13 +317,103 @@ export function SellerPrincipalRatePolicyWorkspace(): React.JSX.Element {
           ) : null}
         </>
       ) : (
-        <Alert tone="info">请输入已授权的卖家组织编号读取默认与覆盖策略。</Alert>
+        <Alert tone="info">选择负责的卖家组织后可读取默认加点与组织专属覆盖。</Alert>
       )}
       {message ? (
         <Alert tone={message.includes('未完成') ? 'danger' : 'success'}>{message}</Alert>
       ) : null}
       <RequestIdDisplay requestId={requestId} />
     </main>
+  );
+}
+
+function OrderDayBaseRateCard({
+  value,
+  canSubmit,
+  canConfirm,
+  refresh,
+}: {
+  value: RateCenter;
+  canSubmit: boolean;
+  canConfirm: boolean;
+  refresh: () => Promise<void>;
+}): React.JSX.Element {
+  const client = useQueryClient();
+  const [rateValue, setRateValue] = useState('0.047');
+  const [message, setMessage] = useState<string | null>(null);
+  const submit = useMutation({
+    mutationFn: () =>
+      staffApi.submitOrderDayBaseRate(
+        client,
+        {
+          business_date: value.business_date,
+          rate_value: rateValue.trim(),
+          expected_version: value.base_rate.next_version - 1,
+        },
+        crypto.randomUUID(),
+      ),
+    onSuccess: async () => {
+      setMessage('订单日基础汇率已提交，等待 Owner 确认。');
+      await refresh();
+    },
+    onError: () => setMessage('基础汇率提交未完成，请刷新后重试。'),
+  });
+  const confirm = useMutation({
+    mutationFn: () =>
+      staffApi.confirmOrderDayBaseRate(
+        client,
+        value.base_rate.pending_rate!.rate_id,
+        { expected_version: value.base_rate.pending_rate!.decision_version },
+        crypto.randomUUID(),
+      ),
+    onSuccess: async () => {
+      setMessage('订单日基础汇率已确认。');
+      await refresh();
+    },
+    onError: () => setMessage('基础汇率确认未完成，请刷新后重试。'),
+  });
+  const confirmed = value.base_rate.confirmed_rate;
+  const pending = value.base_rate.pending_rate;
+  return (
+    <Card className="sensitive-action">
+      <h3>订单日基础汇率（JPY → CNY）</h3>
+      <p>订单日期：{value.business_date}。买家返款和卖家本金共同使用该基础汇率。</p>
+      <p>
+        已确认：
+        {confirmed ? `${rateLabel(confirmed.cny_per_jpy_e8)} · v${confirmed.version_no}` : '暂无'}
+        {pending ? `；待确认：${rateLabel(pending.cny_per_jpy_e8)} · v${pending.version_no}` : ''}
+      </p>
+      {canSubmit && !confirmed && !pending ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit.mutate();
+          }}
+        >
+          <FormField
+            label="基础汇率（1 JPY = ? CNY，最多 8 位小数）"
+            htmlFor="order-day-base-rate-value"
+          >
+            <TextInput
+              id="order-day-base-rate-value"
+              value={rateValue}
+              onChange={(event) => setRateValue(event.target.value)}
+              inputMode="decimal"
+              required
+            />
+          </FormField>
+          <Button disabled={submit.isPending}>提交待确认基础汇率</Button>
+        </form>
+      ) : null}
+      {canConfirm && pending ? (
+        <Button className="danger" disabled={confirm.isPending} onClick={() => confirm.mutate()}>
+          确认订单日基础汇率
+        </Button>
+      ) : null}
+      {message ? (
+        <Alert tone={message.includes('未完成') ? 'danger' : 'success'}>{message}</Alert>
+      ) : null}
+    </Card>
   );
 }
 
@@ -431,6 +567,27 @@ function markupLabel(value: string): string {
   const integer = raw / 100_000_000n;
   const fraction = (raw % 100_000_000n).toString().padStart(8, '0').replace(/0+$/u, '');
   return `+${integer}.${fraction || '0'}`;
+}
+
+function rateLabel(value: string): string {
+  const raw = BigInt(value);
+  const integer = raw / 100_000_000n;
+  const fraction = (raw % 100_000_000n).toString().padStart(8, '0').replace(/0+$/u, '');
+  return `${integer}.${fraction || '0'} CNY / JPY`;
+}
+
+function chinaDate(): string {
+  const values = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts()
+      .map((part) => [part.type, part.value]),
+  );
+  return `${values['year']}-${values['month']}-${values['day']}`;
 }
 
 function futureDateTime(): string {
