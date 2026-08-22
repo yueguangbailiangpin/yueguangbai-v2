@@ -9,7 +9,8 @@ import { StaffSessionBoundary } from '../auth/staff/StaffSessionBoundary';
 import { apiUrl } from '../test/msw/handlers';
 import { renderWithMsw } from '../test/msw/render';
 import { server } from '../test/msw/server';
-import { FrozenStaffWorkbench } from './FrozenStaffWorkbench';
+import { Route, Routes } from 'react-router';
+import { WorkItemPage } from './work-panels/WorkItemPage';
 import {
   sellerSettlementWorkItem,
   settlementPayables,
@@ -237,10 +238,12 @@ describe('canonical Seller Settlement panel', () => {
 function renderWorkbench(session: ReturnType<typeof staffTestSession>): void {
   renderWithMsw(
     <StaffSessionBoundary adapter={staffTestAdapter(session)}>
-      <FrozenStaffWorkbench />
+      <Routes>
+        <Route path="/staff/work/:workItemId" element={<WorkItemPage />} />
+      </Routes>
     </StaffSessionBoundary>,
     {
-      route: '/staff?work_item=work-seller',
+      route: '/staff/work/work-seller',
     },
   );
 }
@@ -266,6 +269,34 @@ function installSettlementReads(
       HttpResponse.json({
         data: { work_items: [sellerSettlementWorkItem], next_cursor: null },
         meta: { request_id: 'queue' },
+      }),
+    ),
+    http.get(apiUrl('/api/staff/me/work-items/work-seller'), () =>
+      HttpResponse.json({
+        data: { work_item: sellerSettlementWorkItem },
+        meta: { request_id: 'work-item' },
+      }),
+    ),
+    http.get(apiUrl('/api/staff/product-applications/product-1/review-context'), () =>
+      HttpResponse.json({
+        data: {
+          review_context: {
+            application_id: 'product-1',
+            store: { id: 'store-1', display_name: '测试店铺' },
+            marketplace_code: 'JP',
+            asin: 'B000000001',
+            product_name: '结算关联产品',
+            search_keywords: [],
+            product_url: null,
+            buyer_visible_notes: null,
+            seller_notes: null,
+            ordering_guide_expected_amount_jpy: '1000',
+            status: 'SUBMITTED',
+            version: 1,
+            submitted_at: 1_000,
+          },
+        },
+        meta: { request_id: 'product-context' },
       }),
     ),
     http.get(apiUrl('/api/staff/seller-settlements/seller-1/summary'), () => {

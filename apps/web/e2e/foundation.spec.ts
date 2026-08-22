@@ -869,35 +869,28 @@ test('Seller small screen uses the business dashboard without page overflow', as
   await expectNoCriticalHorizontalOverflow(page);
 });
 
-test('Staff desktop shell preserves queue-detail-action DOM order and separation', async ({
+test('Staff desktop shell preserves the two-section task queue DOM order', async ({
   page,
 }) => {
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
   await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
-  const headings = await page
-    .locator('.staff-panes > section h2, .staff-panes > aside h2')
-    .allTextContents();
-  expect(headings.slice(0, 4)).toEqual(['工作队列', '当前队列为空', '请选择工作项', '等待选择']);
-  await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '等待选择' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务队列' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /我的待办/u })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /可认领/u })).toBeVisible();
+  await expect(page.getByRole('button', { name: '刷新' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
-test('Staff narrow shell preserves queue-detail-tools order without overflow', async ({ page }) => {
+test('Staff narrow shell keeps the task queue operable without overflow', async ({ page }) => {
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/staff');
   await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
-  const headings = await page
-    .locator('.staff-panes > section h2, .staff-panes > aside h2')
-    .allTextContents();
-  expect(headings.slice(0, 4)).toEqual(['工作队列', '当前队列为空', '请选择工作项', '等待选择']);
-  await page.getByLabel('状态').focus();
-  await expect(page.getByLabel('状态')).toBeFocused();
+  await expect(page.getByRole('heading', { name: '任务队列' })).toBeVisible();
+  await page.getByRole('button', { name: '刷新' }).focus();
+  await expect(page.getByRole('button', { name: '刷新' })).toBeFocused();
   await expectNoCriticalHorizontalOverflow(page);
 });
 

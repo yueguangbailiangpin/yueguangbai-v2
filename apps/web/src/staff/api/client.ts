@@ -257,10 +257,10 @@ export const staffApi = Object.freeze({
     ),
   workItems: (
     client: QueryClient,
-    query: { status: string; workType: string | null; cursor: string | null },
+    query: { status: string; workType: string | null; cursor: string | null; limit?: number },
     signal?: AbortSignal,
   ) => {
-    const parameters = new URLSearchParams({ status: query.status, limit: '25' });
+    const parameters = new URLSearchParams({ status: query.status, limit: String(query.limit ?? 25) });
     if (query.workType) parameters.set('work_type', query.workType);
     if (query.cursor) parameters.set('cursor', query.cursor);
     return read(client, `/api/staff/me/work-items?${parameters}`, staffWorkItemsSchema, signal);

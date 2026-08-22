@@ -30,6 +30,8 @@ function version() {
     color_spec_mode: 'MAIN_IMAGE_VARIANT', default_buyer_self_pay_bps: 1000,
     product_url: 'https://example.test/product', buyer_visible_notes: '买家说明',
     internal_notes: '内部说明', cadence: { order_interval_days: 1, orders_per_run: 2 },
+    main_image: { file_object_id: 'file-main-1', file_version: 1,
+      client_file_name: 'main.png', bound_at: 1_786_161_600_000 },
     created_at: 1_786_161_600_000 };
 }
 
@@ -90,6 +92,17 @@ async function mock(page: Page, role: 'owner'|'buyer_refund', observed?: Observe
         created_at: 1_786_161_600_000, updated_at: 1_786_161_600_000,
         completed_at: null, cancelled_at: null,
       }], next_cursor: null }));
+    }
+    if (path === '/api/staff/me/work-items/work-demand') {
+      return json(route, success({ work_item: {
+        work_item_id: 'work-demand', work_type: 'DEMAND_REVIEW',
+        source_entity_type: 'DEMAND_BATCH', source_entity_id: 'demand-review-1',
+        buyer_customer_id: null, seller_organization_id: 'seller-1', store_id: 'store-1',
+        duty_code: 'SELLER_ACCOUNT_MANAGER', fixed_assignment_id: 'assignment-demand',
+        assigned_staff_id: 'browser-owner', status: 'OPEN', version: 1,
+        created_at: 1_786_161_600_000, updated_at: 1_786_161_600_000,
+        completed_at: null, cancelled_at: null,
+      } }));
     }
     if (path === '/api/staff/demand-batches/demand-review-1/review-context') {
       return json(route, success({ review_context: {
@@ -189,7 +202,7 @@ test('buyer_refund direct route exposes neither navigation nor schedule data', a
 test('demand review deep link publishes the authoritative version with a first order date', async ({ page }) => {
   const observed: ObservedRequests = { schedule: 0 };
   await mock(page, 'owner', observed);
-  await page.goto('/staff?work_item=work-demand');
+  await page.goto('/staff/work/work-demand');
   await expect(page.getByRole('heading', { name: '需求发布事实' })).toBeVisible();
   await expect(page.getByText('月光测试产品 · v2')).toBeVisible();
   await expect(page.getByText('每 2 天 / 5 单')).toBeVisible();

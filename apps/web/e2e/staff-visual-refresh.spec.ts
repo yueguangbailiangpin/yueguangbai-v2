@@ -97,6 +97,8 @@ const productVersion = {
   color_spec_mode: 'MAIN_IMAGE_VARIANT', default_buyer_self_pay_bps: 1000,
   product_url: 'https://example.invalid/product', buyer_visible_notes: '选择 10mm 规格',
   internal_notes: '视觉验收匿名数据', cadence: { order_interval_days: 1, orders_per_run: 2 },
+  main_image: { file_object_id: 'file-visual-main', file_version: 1,
+    client_file_name: 'main.png', bound_at: fixedNow - 86_400_000 },
   created_at: fixedNow - 86_400_000,
 };
 
@@ -173,6 +175,7 @@ async function installStaffFixture(page: Page, role: Role = 'owner'): Promise<vo
     const path = new URL(request.url()).pathname;
     if (path === '/api/staff-auth/session') return json(route, success({ session: staffSession(role) }));
     if (path === '/api/staff/me/work-items') return json(route, success({ work_items: [workItem], next_cursor: null }));
+    if (path === '/api/staff/me/work-items/work-visual') return json(route, success({ work_item: workItem }));
     if (path === '/api/staff/order-evidence/evidence-visual') return json(route, success({ order_evidence: orderEvidence }));
     if (path === '/api/staff/acquisition/leads') return json(route, success({ items: [lead], next_cursor: null }));
     if (path === '/api/staff/acquisition/prospects') return json(route, success({ items: [], next_cursor: null }));
@@ -271,7 +274,7 @@ const extendedViewports = [
   { width: 1600, height: 1000 },
 ] as const;
 const surfaces = [
-  ['workbench', '/staff?work_item=work-visual', '订单资料'],
+  ['workbench', '/staff/work/work-visual', '订单资料'],
   ['acquisition', '/staff/acquisition', '客户开发中心'],
   ['products', '/staff/products', '员工产品库'],
   ['product-detail', '/staff/products/product-visual', '月光白经典手链'],
@@ -336,7 +339,7 @@ test('Staff pages preserve keyboard, zoom, reduced motion, targets, and disclosu
   await installStaffFixture(page);
   for (const viewport of [...extendedViewports, ...primaryViewports]) {
     await page.setViewportSize(viewport);
-    await page.goto('/staff?work_item=work-visual');
+    await page.goto('/staff/work/work-visual');
     await noHorizontalOverflow(page);
     const targets = await page.locator('a, button, select, input, textarea').evaluateAll((elements) =>
       elements.filter((element) => { const style = getComputedStyle(element);
@@ -375,7 +378,7 @@ test('Staff lazy routes remain isolated on cold loads', async ({ page }) => {
     if (path.endsWith('.js')) scripts.add(path.split('/').at(-1) ?? path);
   });
   await installStaffFixture(page);
-  await page.goto('/staff?work_item=work-visual');
+  await page.goto('/staff/work/work-visual');
   await expect(page.getByRole('heading', { name: '订单资料', level: 3 })).toBeVisible();
   expect([...scripts].some((name) => /BuyerRouteModule|BuyerOrderRouteModule|BuyerAfterSalesRouteModule|SellerRouteModule|StaffAdminRouteModule|StaffSchedulingRouteModule/u.test(name))).toBe(false);
 });

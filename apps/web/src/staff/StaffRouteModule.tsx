@@ -2,9 +2,9 @@ import { Navigate, useLocation } from 'react-router';
 import { StaffShell } from './StaffShell';
 import { StaffRouteProvider } from '../routes/IdentityRouteSlots';
 import { RouteChunkBoundary } from '../routes/RouteChunkBoundary';
-import { FrozenStaffWorkbench } from './FrozenStaffWorkbench';
+import { StaffTaskQueuePage } from './StaffTaskQueuePage';
+import { WorkItemPage } from './work-panels/WorkItemPage';
 import { StaffOperatingIntegrityTools } from './StaffOperatingIntegrityTools';
-import { StaffWorkflowClosurePanel } from './StaffWorkflowClosurePanel';
 import { AcquisitionCoreWorkbench } from './acquisition/AcquisitionCoreWorkbench';
 import {
   BuyerCustomersWorkspace,
@@ -50,10 +50,6 @@ export function StaffRoutePage(): React.JSX.Element {
   )
     return <SellerPrincipalRatePolicyWorkspace />;
   if (pathname.startsWith('/staff/operations')) return <StaffOperatingIntegrityTools />;
-  return (
-    <>
-      <FrozenStaffWorkbench />
-      <StaffWorkflowClosurePanel />
-    </>
-  );
+  if (pathname.startsWith('/staff/work/')) return <WorkItemPage />;
+  return <StaffTaskQueuePage />;
 }

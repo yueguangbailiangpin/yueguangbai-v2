@@ -42,7 +42,10 @@ async function mockWorkbench(page: Page, observe?: { approveBody?: unknown; key?
     const url = new URL(route.request().url());
     if (url.pathname === '/api/staff-auth/session') return json(route, success({ session }));
     if (url.pathname === '/api/staff/me/work-items') return json(route, success({ work_items: [item], next_cursor: null }));
+    if (url.pathname === '/api/staff/me/work-items/work-m5') return json(route, success({ work_item: item }));
     if (url.pathname === '/api/staff/order-evidence/evidence-m5') return json(route, success({ order_evidence: evidence }));
+    if (url.pathname === '/api/staff/order-evidence/evidence-m5/preflight')
+      return json(route, success({ preflight: { submission_id: 'evidence-m5', amazon_order_date: '2026-08-06', ready: true, checks: [] } }));
     if (url.pathname === '/api/staff/order-evidence/evidence-m5/approve') {
       if (observe) { observe.approveBody = route.request().postDataJSON(); observe.key = route.request().headers()['idempotency-key'] ?? null; }
       return json(route, { error: { code: 'VERSION_CONFLICT', message: '已更新', details: null }, meta: { request_id: 'm5-version-conflict' } }, 409);
@@ -60,11 +63,10 @@ test('Staff completes queue to authoritative order detail and sees explicit conf
   const observed: { approveBody?: unknown; key?: string | null } = {};
   await mockWorkbench(page, observed);
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await page.goto('/staff');
+  await page.goto('/staff/work/work-m5');
   const staffContext = page.locator('.staff-context-bar');
   await expect(staffContext.getByText('售前员工', { exact: true })).toBeVisible();
   await expect(staffContext.getByText('售前', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /订单资料核对/u }).click();
   await expect(page.getByRole('heading', { name: '订单资料', exact: true, level: 3 })).toBeVisible();
   await expect(page.getByText('123-1234567-1234567')).toBeVisible();
   await expect(page.getByText('12880 JPY')).toBeVisible();
@@ -86,7 +88,10 @@ test('Staff explicit retry preserves ambiguous request authority and changed bod
     const url = new URL(route.request().url());
     if (url.pathname === '/api/staff-auth/session') return json(route, success({ session }));
     if (url.pathname === '/api/staff/me/work-items') return json(route, success({ work_items: [item], next_cursor: null }));
+    if (url.pathname === '/api/staff/me/work-items/work-m5') return json(route, success({ work_item: item }));
     if (url.pathname === '/api/staff/order-evidence/evidence-m5') return json(route, success({ order_evidence: evidence }));
+    if (url.pathname === '/api/staff/order-evidence/evidence-m5/preflight')
+      return json(route, success({ preflight: { submission_id: 'evidence-m5', amazon_order_date: '2026-08-06', ready: true, checks: [] } }));
     if (url.pathname === '/api/staff/order-evidence/evidence-m5/approve') {
       calls.push({ key: route.request().headers()['idempotency-key'] ?? null, body: route.request().postDataJSON() });
       if (calls.length === 1) return route.abort('failed');
@@ -94,8 +99,7 @@ test('Staff explicit retry preserves ambiguous request authority and changed bod
     }
     return json(route, { error: { code: 'NOT_FOUND', message: 'not found', details: null }, meta: { request_id: 'retry-unhandled' } }, 404);
   });
-  await page.goto('/staff');
-  await page.getByRole('button', { name: /订单资料核对/u }).click();
+  await page.goto('/staff/work/work-m5');
   await page.getByLabel('已核对价格差异').check();
   await page.getByLabel('价差确认原因').fill('第一次提交的稳定原因');
   await page.getByRole('button', { name: '通过', exact: true }).click();
@@ -113,8 +117,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 720 }
   test(`Staff workbench reflows at ${viewport.width}px with keyboard controls`, async ({ page }) => {
     await mockWorkbench(page); await page.setViewportSize(viewport); await page.goto('/staff');
     await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-    await page.getByLabel('状态').focus(); await expect(page.getByLabel('状态')).toBeFocused();
-    await page.keyboard.press('Tab'); await expect(page.getByLabel('类型')).toBeFocused();
+    await page.getByRole('button', { name: '去处理', exact: true }).focus();
+    await expect(page.getByRole('button', { name: '去处理', exact: true })).toBeFocused();
     await noOverflow(page);
   });
 }
@@ -126,14 +130,13 @@ test('Staff workbench remains operable at 200% and with reduced motion', async (
   await page.goto('/staff');
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
   await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-  await page.getByRole('button', { name: /订单资料核对/u }).focus();
-  await expect(page.getByRole('button', { name: /订单资料核对/u })).toBeFocused();
+  await page.getByRole('button', { name: '去处理', exact: true }).focus();
+  await expect(page.getByRole('button', { name: '去处理', exact: true })).toBeFocused();
   await noOverflow(page);
 });
 
 test('capture deterministic Staff workbench desktop and narrow views', async ({ page }) => {
-  await mockWorkbench(page); await page.setViewportSize({ width: 1600, height: 1000 }); await page.goto('/staff');
-  await page.getByRole('button', { name: /订单资料核对/u }).click();
+  await mockWorkbench(page); await page.setViewportSize({ width: 1600, height: 1000 }); await page.goto('/staff/work/work-m5');
   await expect(page.getByRole('heading', { name: '订单资料', exact: true, level: 3 })).toBeVisible();
   if (screenshotDirectory) {
     mkdirSync(screenshotDirectory, { recursive: true });

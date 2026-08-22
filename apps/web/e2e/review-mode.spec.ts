@@ -41,7 +41,7 @@ test('review entry and all three portals render without real API requests', asyn
   await page.goto('/review/staff');
   await expect(page.getByLabel('员工评审角色')).toBeVisible();
   await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /商品申请审核/u })).toBeVisible();
+  await expect(page.getByText('商品申请审核').first()).toBeVisible();
 
   expect(apiRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
@@ -72,7 +72,7 @@ test('review role selectors update visible seller and staff permissions', async 
     for (const name of expected) await expect(navigation.getByRole('link', { name, exact: true })).toBeVisible();
     await expect(navigation.getByRole('link')).toHaveCount(expected.length);
   }
-  await expect(page.getByRole('button', { name: /买家返款/u })).toBeVisible();
+  await expect(page.getByText(/买家返款/u).first()).toBeVisible();
 });
 
 test('review mutations stay inside browser demo state', async ({ page }) => {

@@ -37,6 +37,11 @@ export const staffWorkbenchKeys = Object.freeze({
       cursor,
     ] as const,
   demandReview: (id: string) => ['staff', 'workbench', 'demand-review', id] as const,
+  workItem: (id: string) => ['staff', 'workbench', 'work-item', id] as const,
+  productApplicationReview: (id: string) =>
+    ['staff', 'workbench', 'product-application-review', id] as const,
+  reservationReview: (id: string) => ['staff', 'workbench', 'reservation-review', id] as const,
+  orderInstruction: (id: string) => ['staff', 'workbench', 'order-instruction', id] as const,
   orderEvidence: (id: string) => ['staff', 'workbench', 'order-evidence', id] as const,
   orderEvidencePreflight: (id: string) =>
     ['staff', 'workbench', 'order-evidence', id, 'preflight'] as const,
