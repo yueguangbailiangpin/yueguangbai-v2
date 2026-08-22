@@ -128,7 +128,10 @@ function session(roleCode: 'owner' | 'pre_sales', permissions: string[]): StaffS
   return {
     staff_id: 'staff-1',
     display_name: '测试员工',
-    role: { code: roleCode, display_name: roleCode === 'owner' ? '总管理员' : '售前' },
+    role:
+      roleCode === 'owner'
+        ? { code: 'owner' as const, display_name: '总管理员' }
+        : { code: 'pre_sales' as const, display_name: '售前' },
     permissions,
     data_scope: {
       type: 'GLOBAL',
