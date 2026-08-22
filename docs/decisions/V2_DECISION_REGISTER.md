@@ -447,6 +447,16 @@ D-041 的隔离、身份、无密码和生产禁止边界继续有效。全新 s
 
 状态：Accepted by business owner；Supersedes the keyword-image publication requirement for new instruction versions
 
+### D-052 店铺级预约互斥与买家指引只读投影
+
+同一买家在同一店铺最多保有一条进行中的 `PENDING_REVIEW` 或 `APPROVED` 预约，不因产品、ASIN 或需求批次不同而例外。买家产品投影返回稳定的预约资格与原因，供界面禁用并说明；提交命令在预检和最终条件写入处都执行相同店铺级规则，以保证并发请求也不会留下两条有效预约。拒绝、取消和过期是终态，立即释放该店铺限制。
+
+买家下单指引的状态和内容由内容端点作为主要读取链路一次返回，状态端点只保留旧客户端兼容。买家 GET 绝不执行过期、状态迁移、工作项创建或重新打开；到期处理只经既有受控 expiry/reconciliation 作业。发布（包括内容未变化的幂等分支）在同一事务内确保 `ACTIVE` 指引、发布记录和对应 Staff 工作项完成。关键词面向买家以醒目文字卡片展示，不生成或复制关键词图片；主图读取失败仅返回安全、可重试的状态，不泄漏对象路径、存储键或内部诊断。
+
+本 Decision 不授权 staging/production 部署、远程 SQL、真实数据修改或 GitHub 写入。
+
+状态：Accepted by business owner；Closes store-level reservation conflict and buyer instruction read-side-effect gaps
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

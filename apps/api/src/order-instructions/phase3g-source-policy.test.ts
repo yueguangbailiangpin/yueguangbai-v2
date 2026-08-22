@@ -63,6 +63,17 @@ describe('Phase 3G static source policy', () => {
     expect(routes).not.toMatch(/\['asset_batch_id',\s*'expected_version'\]/u);
   });
 
+  it('completes the Staff work item in the unchanged-content publish transaction', () => {
+    const publish = text('apps/api/src/order-instructions/publish.ts');
+    const unchanged = publish.slice(
+      publish.indexOf('if (current?.content_hash === contentHash)'),
+      publish.indexOf('const nextVersionNo = source.current_version_no + 1'),
+    );
+    expect(unchanged).toContain('prepareWorkItemCompletionStatements');
+    expect(unchanged).toContain('completeIdempotencyStatement');
+    expect(unchanged).toContain('assertIdempotencyCompletionStatement');
+  });
+
   it('allows only PNG output from the generator', () => {
     const contract = text('packages/contracts/src/order-instruction.ts');
     expect(contract).toContain("mime: 'image/png'");

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router';
+import { isFrontendApiError } from '../../api/errors';
 import { BuyerInstructionImageReadIntentAdapter } from '../../files/file-read-providers';
 import { Card, PageHeader, StatusBadge } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
@@ -14,45 +15,59 @@ import { statusLabel, statusTone } from '../shared/status';
 export function BuyerInstructionPage(): React.JSX.Element {
   const { reservationId = '' } = useParams();
   const client = useQueryClient();
+  const content = useQuery({
+    queryKey: buyerQueryKeys.instruction(reservationId, 0),
+    queryFn: ({ signal }) =>
+      buyerApi.instruction(client, reservationId, signal).then((r) => r.data.order_instruction),
+    enabled: reservationId.length > 0,
+  });
   const state = useQuery({
     queryKey: buyerQueryKeys.instructionState(reservationId),
     queryFn: ({ signal }) =>
       buyerApi
         .instructionState(client, reservationId, signal)
         .then((r) => r.data.order_instruction),
-    enabled: reservationId.length > 0,
-  });
-  const shouldReadContent = state.data?.status === 'ACTIVE';
-  const content = useQuery({
-    queryKey: buyerQueryKeys.instruction(reservationId, state.data?.current_version_no ?? 0),
-    queryFn: ({ signal }) =>
-      buyerApi.instruction(client, reservationId, signal).then((r) => r.data.order_instruction),
-    enabled: shouldReadContent,
+    enabled: content.isError && isInstructionStateFallbackError(content.error),
   });
 
+  if (content.isPending) return <BuyerLoading label="读取下单指引中…" />;
+  if (content.data) {
+    const instruction = content.data;
+    return <ActiveInstruction
+      reservationId={reservationId}
+      instruction={instruction}
+    />;
+  }
   if (state.isPending) return <BuyerLoading label="读取指引状态中…" />;
   if (state.isError) return <BuyerQueryError error={state.error} />;
-  const fact = state.data;
-  if (!shouldReadContent)
+  if (state.data)
     return (
       <section className="buyer-page buyer-flow-page buyer-detail-page">
         <BuyerJourney current="products" />
-        <PageHeader eyebrow="下单指引" title={statusLabel(fact.status)}>
-          <StatusBadge tone={statusTone(fact.status)}>{statusLabel(fact.status)}</StatusBadge>
+        <PageHeader eyebrow="下单指引" title={statusLabel(state.data.status)}>
+          <StatusBadge tone={statusTone(state.data.status)}>{statusLabel(state.data.status)}</StatusBadge>
         </PageHeader>
         <Card className="buyer-summary-card">
           <h2>当前状态</h2>
-          <p>{instructionStateMessage(fact.status)}</p>
+          <p>{instructionStateMessage(state.data.status)}</p>
           <DeadlineFacts
-            initial={fact.initial_deadline_at}
-            resubmission={fact.resubmission_deadline_at}
+            initial={state.data.initial_deadline_at}
+            resubmission={state.data.resubmission_deadline_at}
           />
         </Card>
       </section>
     );
-  if (content.isPending) return <BuyerLoading label="读取指引内容中…" />;
   if (content.isError) return <BuyerQueryError error={content.error} />;
-  const instruction = content.data;
+  return <BuyerLoading label="读取下单指引中…" />;
+}
+
+function ActiveInstruction({
+  reservationId,
+  instruction,
+}: {
+  reservationId: string;
+  instruction: Awaited<ReturnType<typeof buyerApi.instruction>>['data']['order_instruction'];
+}): React.JSX.Element {
   return (
     <section className="buyer-page buyer-flow-page buyer-detail-page buyer-instruction-page">
       <BuyerJourney current="products" />
@@ -61,9 +76,9 @@ export function BuyerInstructionPage(): React.JSX.Element {
         title={instruction.product_name}
         description={instruction.store_display_name}
       >
-        <StatusBadge tone={statusTone(fact.status)}>{statusLabel(fact.status)}</StatusBadge>
+        <StatusBadge tone={statusTone(instruction.status)}>{statusLabel(instruction.status)}</StatusBadge>
       </PageHeader>
-      {fact.content_updated ? (
+      {instruction.content_updated ? (
         <Card className="buyer-notice" as="div">
           <strong>指引内容已更新</strong>
           <p>请按当前版本重新确认。</p>
@@ -78,7 +93,13 @@ export function BuyerInstructionPage(): React.JSX.Element {
           </div>
           <div>
             <dt>搜索关键词</dt>
-            <dd>{instruction.search_keywords.join('、')}</dd>
+            <dd>
+              <ul className="buyer-keyword-cards" aria-label="搜索关键词">
+                {instruction.search_keywords.map((keyword) => (
+                  <li key={keyword}>{keyword}</li>
+                ))}
+              </ul>
+            </dd>
           </div>
           <div>
             <dt>颜色规格</dt>
@@ -104,17 +125,17 @@ export function BuyerInstructionPage(): React.JSX.Element {
         {instruction.staff_public_note ? <p>{instruction.staff_public_note}</p> : null}
         {instruction.buyer_visible_notes ? <p>{instruction.buyer_visible_notes}</p> : null}
         <DeadlineFacts
-          initial={fact.initial_deadline_at}
-          resubmission={fact.resubmission_deadline_at}
+          initial={instruction.initial_deadline_at}
+          resubmission={instruction.resubmission_deadline_at}
         />
       </Card>
-      {fact.can_read_images ? (
+      {instruction.can_read_images ? (
         <InstructionImages reservationId={reservationId} instruction={instruction} />
       ) : null}
       <Card className="buyer-action-card">
         <h2>订单资料</h2>
-        <p>{statusLabel(fact.evidence_status)}</p>
-        {fact.can_submit_evidence ? (
+        <p>{statusLabel(instruction.evidence_status)}</p>
+        {instruction.can_submit_evidence ? (
           <Link
             className="button"
             to={`/buyer/order-materials/new?reservation_id=${encodeURIComponent(reservationId)}`}
@@ -127,6 +148,11 @@ export function BuyerInstructionPage(): React.JSX.Element {
       </Card>
     </section>
   );
+}
+
+function isInstructionStateFallbackError(error: unknown): boolean {
+  return isFrontendApiError(error)
+    && (error.httpStatus === 409 || error.httpStatus === 410);
 }
 
 function InstructionImages({
@@ -150,7 +176,7 @@ function InstructionImages({
       <h2>商品图片</h2>
       <div className="instruction-image-item">
         <strong>主图</strong>
-        <ProtectedFileButton provider={main} label="查看主图" />
+        <ProtectedFileButton provider={main} label="查看主图" errorSubject="主图" />
       </div>
     </Card>
   );

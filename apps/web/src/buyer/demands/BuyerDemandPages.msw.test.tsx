@@ -115,6 +115,25 @@ describe('Buyer catalog main image and zero self-pay confirmation', () => {
     })).not.toBeChecked();
     expect(screen.getByRole('button', { name: '确认并预约' })).toBeDisabled();
   });
+
+  it('explains and disables booking when this store already has an active reservation', async () => {
+    server.use(
+      http.get(apiUrl('/api/buyer-portal/demands/demand-1'), () => HttpResponse.json({
+        data: { demand: demand(0, 'INELIGIBLE_ACTIVE_STORE_RESERVATION') },
+        meta: { request_id: 'catalog-detail-store-conflict' },
+      })),
+    );
+    renderWithClient(
+      <MemoryRouter initialEntries={['/buyer/demands/demand-1']}>
+        <Routes>
+          <Route path="/buyer/demands/:demandId" element={<BuyerDemandDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('当前店铺已有进行中的预约，请先完成或取消后再预约其他商品。')).toBeVisible();
+    expect(screen.getByRole('button', { name: '确认并预约' })).toBeDisabled();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
 });
 
 function renderWithClient(element: React.ReactElement) {
@@ -122,7 +141,10 @@ function renderWithClient(element: React.ReactElement) {
   return render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
 }
 
-function demand(selfPayBps: number) {
+function demand(
+  selfPayBps: number,
+  reservationEligibility: 'ELIGIBLE' | 'INELIGIBLE_ACTIVE_STORE_RESERVATION' = 'ELIGIBLE',
+) {
   const selfPay = Math.floor(2999 * selfPayBps / 10_000);
   return {
     demand_id: 'demand-1', demand_version: 2, marketplace_code: 'JP',
@@ -137,5 +159,9 @@ function demand(selfPayBps: number) {
     target_quantity: 10, remaining_quantity: 10, open_at: 1,
     reservation_deadline: Date.now() + 60_000,
     order_deadline: Date.now() + 120_000,
+    reservation_eligibility: reservationEligibility,
+    reservation_ineligibility_reason: reservationEligibility === 'ELIGIBLE'
+      ? null
+      : 'ACTIVE_STORE_RESERVATION',
   };
 }

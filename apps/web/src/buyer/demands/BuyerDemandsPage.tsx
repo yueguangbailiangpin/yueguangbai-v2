@@ -108,7 +108,11 @@ export function BuyerDemandsPage(): React.JSX.Element {
                     <p>{item.store_display_name}</p>
                     <h2>{item.product_name}</h2>
                   </div>
-                  <StatusBadge tone="processing">{reviewTypeLabel(item.task_type)}</StatusBadge>
+                  <StatusBadge tone={item.reservation_eligibility === 'ELIGIBLE' ? 'processing' : 'warning'}>
+                    {item.reservation_eligibility === 'ELIGIBLE'
+                      ? reviewTypeLabel(item.task_type)
+                      : '该店铺已有预约'}
+                  </StatusBadge>
                 </div>
                 <div className="buyer-product-row-facts">
                   <span>{formatJpy(item.reference_order_amount_jpy)}</span>

@@ -38,6 +38,9 @@ interface DemandRow {
   reservation_deadline: number;
   order_deadline: number;
   submitted_at: number;
+  reservation_eligibility:
+    | 'ELIGIBLE'
+    | 'INELIGIBLE_ACTIVE_STORE_RESERVATION';
 }
 
 interface ReservationRow {
@@ -93,7 +96,16 @@ const PUBLIC_DEMAND_SELECT = `
     demand.open_at,
     demand.reservation_deadline,
     demand.order_deadline,
-    demand.submitted_at
+    demand.submitted_at,
+    CASE WHEN EXISTS (
+      SELECT 1
+      FROM product_reservations active_store_reservation
+      WHERE active_store_reservation.buyer_customer_id=?
+        AND active_store_reservation.store_id=demand.store_id
+        AND active_store_reservation.status IN ('PENDING_REVIEW', 'APPROVED')
+    ) THEN 'INELIGIBLE_ACTIVE_STORE_RESERVATION'
+      ELSE 'ELIGIBLE'
+    END AS reservation_eligibility
   FROM demand_batches demand
   JOIN products product
     ON product.id=demand.product_id
@@ -146,13 +158,6 @@ const PUBLIC_DEMAND_WHERE = `
     FROM product_reservations existing
     WHERE existing.demand_batch_id=demand.id
       AND existing.buyer_customer_id=?
-  )
-  AND NOT EXISTS (
-    SELECT 1
-    FROM product_reservations active
-    WHERE active.buyer_customer_id=?
-      AND active.product_id=demand.product_id
-      AND active.status IN ('PENDING_REVIEW', 'APPROVED')
   )
 `;
 
@@ -230,11 +235,11 @@ export async function listBuyerPortalDemands(
     `
     : '';
   const bindings: unknown[] = [
+    buyer.buyerCustomerId,
     buyer.marketplaceCode,
     options.now,
     options.now,
     options.now,
-    buyer.buyerCustomerId,
     buyer.buyerCustomerId,
   ];
   if (options.cursor) {
@@ -293,11 +298,11 @@ export async function getBuyerPortalDemand(
       AND demand.id=?
     LIMIT 1
   `).bind(
+    buyer.buyerCustomerId,
     buyer.marketplaceCode,
     now,
     now,
     now,
-    buyer.buyerCustomerId,
     buyer.buyerCustomerId,
     demandId,
   ).first<DemandRow>();
@@ -457,6 +462,11 @@ function toDemandDto(row: DemandRow): BuyerPortalDemandDto {
     open_at: Number(row.open_at),
     reservation_deadline: Number(row.reservation_deadline),
     order_deadline: Number(row.order_deadline),
+    reservation_eligibility: row.reservation_eligibility,
+    reservation_ineligibility_reason:
+      row.reservation_eligibility === 'ELIGIBLE'
+        ? null
+        : 'ACTIVE_STORE_RESERVATION',
   };
 }
 

@@ -34,6 +34,16 @@ export interface BuyerPortalDemandDto {
   open_at: number;
   reservation_deadline: number;
   order_deadline: number;
+  /**
+   * A buyer-safe reservation decision for this demand at read time.  It never
+   * exposes the reservation or any other buyer's information.
+   */
+  reservation_eligibility:
+    | 'ELIGIBLE'
+    | 'INELIGIBLE_ACTIVE_STORE_RESERVATION';
+  reservation_ineligibility_reason:
+    | 'ACTIVE_STORE_RESERVATION'
+    | null;
 }
 
 export interface BuyerPortalReservationDemandDto {

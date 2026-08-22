@@ -41,6 +41,8 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
   if (query.isPending) return <BuyerLoading />;
   if (query.isError) return <BuyerQueryError error={query.error} />;
   const demand = query.data;
+  const activeStoreReservation = demand.reservation_eligibility
+    === 'INELIGIBLE_ACTIVE_STORE_RESERVATION';
   return <section className="buyer-page buyer-product-detail-page">
     <header className="buyer-detail-header"><div className="buyer-product-icon">
       {demand.main_image ? <ProtectedImage
@@ -63,15 +65,17 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
       {demand.buyer_visible_notes ? <p className="buyer-public-note">{demand.buyer_visible_notes}</p> : null}
     </Card>
     <Card className="buyer-confirm-card">
-      <h2>确认预约</h2><p>{demand.buyer_self_pay_bps > 0
+      <h2>确认预约</h2>{activeStoreReservation ? <p>
+        当前店铺已有进行中的预约，请先完成或取消后再预约其他商品。
+      </p> : <p>{demand.buyer_self_pay_bps > 0
         ? '提交前确认一下当前自费比例哦，如果产品信息有变化需要重新确认。'
-        : '该产品无需自费，确认后即可预约。'}</p>
-      {demand.buyer_self_pay_bps > 0 ? <Checkbox checked={confirmed}
+        : '该产品无需自费，确认后即可预约。'}</p>}
+      {!activeStoreReservation && demand.buyer_self_pay_bps > 0 ? <Checkbox checked={confirmed}
         onChange={(event) => setConfirmed(event.currentTarget.checked)}
         label={`我确认接受 ${formatBps(demand.buyer_self_pay_bps)} 的自费比例`} /> : null}
       <BuyerMutationRecovery mutation={mutation} deterministicMessage="需求事实已变化，请刷新事实后重新确认。"
         onRefresh={() => { void query.refetch(); }} />
-      <Button disabled={demand.buyer_self_pay_bps > 0 && !confirmed}
+      <Button disabled={activeStoreReservation || (demand.buyer_self_pay_bps > 0 && !confirmed)}
         loading={mutation.isPending} loadingLabel="预约中…"
         onClick={() => mutation.mutate({ expected_demand_version: demand.demand_version,
           accepted_buyer_self_pay_bps: demand.buyer_self_pay_bps })}>确认并预约</Button>

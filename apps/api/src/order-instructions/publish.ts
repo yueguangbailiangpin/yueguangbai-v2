@@ -188,6 +188,17 @@ export async function publishOrderInstruction(
         unchanged: true,
       };
       await database.batch([
+        ...await prepareWorkItemCompletionStatements(database, {
+          workType: 'ORDER_INSTRUCTION_PUBLISH',
+          sourceEntityType: 'ORDER_INSTRUCTION',
+          sourceEntityId: instructionId,
+          outcome: 'COMPLETED',
+          actorType: 'STAFF',
+          actorId: command.actor.staffId,
+          requestId: command.requestId ?? null,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          now,
+        }),
         completeIdempotencyStatement(database, acquired.claim, response, {
           resultReferences: {
             instruction_id: instructionId,

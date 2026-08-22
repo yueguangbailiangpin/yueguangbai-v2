@@ -37,7 +37,7 @@ export class ReservationError extends Error {
       | 'RESERVATION_NOT_FOUND'
       | 'RESERVATION_ALREADY_EXISTS'
       | 'RESERVATION_ALREADY_DECIDED'
-      | 'BUYER_PRODUCT_RESERVATION_CONFLICT'
+      | 'BUYER_STORE_RESERVATION_CONFLICT'
       | 'CAPACITY_FULL'
       | 'CUSTOMER_NOT_ACTIVE'
       | 'IDENTITY_REVIEW_REQUIRED'
@@ -238,12 +238,12 @@ export function normalizeReservationError(
       409,
     );
   }
-  if (message.includes(
-    'product_reservations.buyer_customer_id, '
-      + 'product_reservations.product_id',
-  )) {
+  if (message.includes('product_reservations.buyer_customer_id, '
+    + 'product_reservations.store_id')
+    || message.includes('product_reservations.buyer_customer_id, '
+      + 'product_reservations.product_id')) {
     return new ReservationError(
-      'BUYER_PRODUCT_RESERVATION_CONFLICT',
+      'BUYER_STORE_RESERVATION_CONFLICT',
       409,
     );
   }

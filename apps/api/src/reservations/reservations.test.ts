@@ -387,7 +387,7 @@ describe('buyer reservations and atomic demand capacity', () => {
       .toEqual({ held: 1, approved: 0 });
   });
 
-  it('blocks an active reservation for the same product across batches', async () => {
+  it('blocks an active reservation for a different product in the same store', async () => {
     database = createMigratedTestDatabase();
     seedReservationFixture(database);
 
@@ -400,15 +400,70 @@ describe('buyer reservations and atomic demand capacity', () => {
     });
 
     await expect(submitReservation(database, {
-      demandBatchId: 'demand-2-same-product',
+      demandBatchId: 'demand-2',
     }, {
       actor: buyerActor('buyer-1'),
-      idempotencyKey: 'reservation:product-conflict:two',
+      idempotencyKey: 'reservation:store-conflict:two',
       now: 5100,
     })).rejects.toMatchObject({
-      code: 'BUYER_PRODUCT_RESERVATION_CONFLICT',
+      code: 'BUYER_STORE_RESERVATION_CONFLICT',
       status: 409,
     });
+  });
+
+  it('allows the same buyer to reserve products in different stores', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+
+    await submitReservation(database, { demandBatchId: 'demand-1' }, {
+      actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:cross-store:one', now: 5000,
+    });
+    await expect(submitReservation(database, { demandBatchId: 'demand-3-other-store' }, {
+      actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:cross-store:two', now: 5100,
+    })).resolves.toMatchObject({ status: 'PENDING_REVIEW' });
+  });
+
+  it('releases the store reservation guard after a terminal reservation', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    const reservation = await submitReservation(database, { demandBatchId: 'demand-1' }, {
+      actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:terminal-release:one', now: 5000,
+    });
+    await decideReservation(database, {
+      reservationId: reservation.reservation_id,
+      expectedVersion: 1,
+      decision: 'REJECT',
+      rejectionReason: '测试终态释放',
+    }, {
+      actor: preSalesActor(), idempotencyKey: 'reservation:terminal-release:reject', now: 5100,
+    });
+
+    await expect(submitReservation(database, { demandBatchId: 'demand-2' }, {
+      actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:terminal-release:two', now: 5200,
+    })).resolves.toMatchObject({ status: 'PENDING_REVIEW' });
+  });
+
+  it('keeps at most one active reservation when same-store requests race', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+
+    const results = await Promise.allSettled([
+      submitReservation(database, { demandBatchId: 'demand-1' }, {
+        actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:store-race:one', now: 5000,
+      }),
+      submitReservation(database, { demandBatchId: 'demand-2' }, {
+        actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:store-race:two', now: 5000,
+      }),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(await database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM product_reservations
+      WHERE buyer_customer_id='buyer-1'
+        AND store_id='store-1'
+        AND status IN ('PENDING_REVIEW','APPROVED')
+    `).first<{ count: number }>()).toEqual({ count: 1 });
   });
 
   it('approves or rejects and moves held capacity atomically', async () => {
@@ -867,6 +922,15 @@ function seedReservationFixture(
       '预约店铺', '预约店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code,
+      display_name, normalized_name, status,
+      version, created_at, updated_at, disabled_at
+    ) VALUES (
+      'store-2', 'seller-org-1', 'JP',
+      '预约店铺二', '预约店铺二', 'ACTIVE',
+      1, 1000, 1000, NULL
+    );
 
     INSERT INTO products (
       id, organization_id, store_id, marketplace_code,
@@ -882,6 +946,11 @@ function seedReservationFixture(
       (
         'product-2', 'seller-org-1', 'store-1', 'JP',
         'B0RESERVE2', 'B0RESERVE2', 'ACTIVE',
+        1, 1, 1000, 1000, NULL
+      ),
+      (
+        'product-3', 'seller-org-1', 'store-2', 'JP',
+        'B0RESERVE3', 'B0RESERVE3', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       );
 
@@ -910,6 +979,13 @@ function seedReservationFixture(
         '公开说明二', '内部说明二',
         'staff-pre-sales', 1000
       ,
+          1980, 'MAIN_IMAGE_VARIANT', 1000, 1, 3),
+      (
+        'product-3-v1', 'product-3', 1,
+        '预约产品三', '["关键词三"]',
+        'https://www.amazon.co.jp/reservation-three',
+        '公开说明三', '内部说明三',
+        'staff-pre-sales', 1000,
           1980, 'MAIN_IMAGE_VARIANT', 1000, 1, 3);
 
     INSERT INTO demand_batches (
@@ -966,6 +1042,16 @@ function seedReservationFixture(
         'product-2', 1, 'seller-owner', 'RATING',
         3, '公开说明', '内部说明',
         8000, 10000, 20000,
+        'PUBLISHED', NULL, NULL,
+        'staff-pre-sales', NULL,
+        2, 1000, 3000, 3000, 3000, NULL, NULL,
+        0, 0, 1000, 'PRODUCT_DEFAULT', NULL
+      ),
+      (
+        'demand-3-other-store', 'seller-org-1', 'store-2', 'JP',
+        'product-3', 1, 'seller-owner', 'TEXT',
+        3, '公开说明', '内部说明',
+        4000, 10000, 20000,
         'PUBLISHED', NULL, NULL,
         'staff-pre-sales', NULL,
         2, 1000, 3000, 3000, 3000, NULL, NULL,

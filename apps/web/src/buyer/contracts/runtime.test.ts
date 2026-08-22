@@ -100,7 +100,9 @@ describe('Module 1 buyer strict runtime contracts', () => {
 function instruction(status: string) {
   const prefix = '/api/buyer-portal/reservations/r1/order-instruction/images';
   return {
-    status, product_name: '月光白', store_display_name: '店铺',
+    status, instruction_version: 1, current_version_no: 1,
+    evidence_status: 'NOT_SUBMITTED', can_submit_evidence: status === 'ACTIVE', can_read_images: status === 'ACTIVE',
+    product_name: '月光白', store_display_name: '店铺',
     search_keywords: ['月光白', '商品关键词'], color_spec_mode: 'MAIN_IMAGE_VARIANT',
     staff_public_note: null, buyer_visible_notes: null, initial_deadline_at: 1, resubmission_deadline_at: null,
     content_updated: false, reference_order_amount_jpy: '1200', buyer_self_pay_bps: 1000,
@@ -124,6 +126,7 @@ function buyerDemand() {
     buyer_visible_notes: null, store_display_name: '店铺', task_type: 'TEXT',
     target_quantity: 3, remaining_quantity: 2, open_at: 1,
     reservation_deadline: 2, order_deadline: 3,
+    reservation_eligibility: 'ELIGIBLE', reservation_ineligibility_reason: null,
   };
 }
 

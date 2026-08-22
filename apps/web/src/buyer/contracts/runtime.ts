@@ -54,6 +54,11 @@ export const demandSchema = z.object({
   open_at: epoch,
   reservation_deadline: epoch,
   order_deadline: epoch,
+  reservation_eligibility: z.enum([
+    'ELIGIBLE',
+    'INELIGIBLE_ACTIVE_STORE_RESERVATION',
+  ]),
+  reservation_ineligibility_reason: z.literal('ACTIVE_STORE_RESERVATION').nullable(),
 }).strict();
 export const demandsPageSchema = page(demandSchema);
 export const demandDetailSchema = z.object({ demand: demandSchema }).strict();
@@ -63,6 +68,8 @@ const reservationDemandSchema = demandSchema.omit({
   remaining_quantity: true,
   open_at: true,
   main_image: true,
+  reservation_eligibility: true,
+  reservation_ineligibility_reason: true,
 });
 export const reservationSchema = z.object({
   reservation_id: identifierSchema,
@@ -100,7 +107,7 @@ export const instructionStateSchema = z.object({
   initial_deadline_at: nullableEpoch,
   resubmission_deadline_at: nullableEpoch,
   evidence_status: z.enum([
-    'NONE', 'PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED',
+    'NONE', 'NOT_SUBMITTED', 'PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED',
     'WITHDRAWN', 'CONSUMED',
   ]),
   can_submit_evidence: z.boolean(),
@@ -134,6 +141,14 @@ export const instructionKeywordImageSchema = z.object({
 });
 export const instructionSchema = z.object({
   status: z.literal('ACTIVE'),
+  instruction_version: positiveIntegerSchema,
+  current_version_no: positiveIntegerSchema,
+  evidence_status: z.enum([
+    'NONE', 'NOT_SUBMITTED', 'PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED',
+    'WITHDRAWN', 'CONSUMED',
+  ]),
+  can_submit_evidence: z.boolean(),
+  can_read_images: z.boolean(),
   product_name: z.string(),
   store_display_name: z.string(),
   search_keywords: z.array(z.string().trim().min(1).max(200)).min(1).max(20),

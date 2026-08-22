@@ -298,7 +298,7 @@ export async function submitReservation(
             SELECT 1
             FROM product_reservations active
             WHERE active.buyer_customer_id=buyer.id
-              AND active.product_id=demand.product_id
+              AND active.store_id=demand.store_id
               AND active.status IN (
                 'PENDING_REVIEW',
                 'APPROVED'
@@ -571,11 +571,11 @@ async function assertNoReservationConflict(
     );
   }
 
-  const activeProduct = await database.prepare(`
+  const activeStore = await database.prepare(`
     SELECT id
     FROM product_reservations
     WHERE buyer_customer_id=?
-      AND product_id=?
+      AND store_id=?
       AND status IN (
         'PENDING_REVIEW',
         'APPROVED'
@@ -583,11 +583,11 @@ async function assertNoReservationConflict(
     LIMIT 1
   `).bind(
     buyerCustomerId,
-    source.product_id,
+    source.store_id,
   ).first<{ id: string }>();
-  if (activeProduct) {
+  if (activeStore) {
     throw new ReservationError(
-      'BUYER_PRODUCT_RESERVATION_CONFLICT',
+      'BUYER_STORE_RESERVATION_CONFLICT',
       409,
     );
   }

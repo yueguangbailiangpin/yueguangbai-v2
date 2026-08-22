@@ -2429,6 +2429,25 @@ select:disabled {
   font-size: var(--font-size-lead);
 }
 
+.buyer-keyword-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.buyer-keyword-cards li {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-buyer);
+  border-radius: var(--radius-control);
+  background: var(--color-buyer-soft);
+  color: var(--color-buyer);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+}
+
 .buyer-stage-card {
   min-height: calc(var(--space-12) * 2);
   gap: var(--space-4);

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   instructionCanReadImages,
   SIX_HOURS_MS,
@@ -6,6 +8,19 @@ import {
 } from './shared';
 
 describe('order instruction deadline and file policy', () => {
+  it('keeps buyer instruction GET projections free of expiry writes', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'apps/api/src/order-instructions/read-model.ts'),
+      'utf8',
+    );
+    const buyerReadSource = source.slice(
+      source.indexOf('export async function getBuyerOrderInstruction('),
+      source.indexOf('export async function getStaffOrderInstruction('),
+    );
+    expect(buyerReadSource).not.toContain('expireInstructionIfDue');
+    expect(buyerReadSource).not.toMatch(/\.batch\(/u);
+  });
+
   it('publishes a full six hour window', () => {
     expect(SIX_HOURS_MS).toBe(21_600_000);
   });

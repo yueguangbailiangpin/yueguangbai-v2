@@ -77,6 +77,12 @@ export interface BuyerInstructionImageHandleDto {
 export interface BuyerOrderInstructionDto
 extends BuyerSelfPayEstimateDto {
   status: OrderInstructionStatus;
+  /** The active instruction facts are returned with content in one read. */
+  instruction_version: number;
+  current_version_no: number;
+  evidence_status: BuyerOrderInstructionStateDto['evidence_status'];
+  can_submit_evidence: boolean;
+  can_read_images: boolean;
   product_name: string;
   store_display_name: string;
   search_keywords: readonly string[];
