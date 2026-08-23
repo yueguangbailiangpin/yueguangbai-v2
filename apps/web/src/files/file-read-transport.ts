@@ -1,7 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { approvedApiPath } from '../config/runtime-config';
 import { FrontendApiError } from '../api/errors';
-import { demoFileBytes } from '../review/demo-api';
 import { isReviewRuntime } from '../review/runtime';
 import {
   withIdentity401Invalidation,
@@ -47,6 +46,7 @@ export function consumeIdentityFileReadIntent(input: {
       throw new FrontendApiError('INVALID_PATH', 0, null, 'CONTRACT');
     }
     if (isReviewRuntime()) {
+      const { demoFileBytes } = await import('../review/demo-api');
       const bytes = demoFileBytes();
       input.onProgress(Object.freeze({
         loadedBytes: bytes.byteLength,

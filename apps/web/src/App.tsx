@@ -1,5 +1,5 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { queryClient, reviewQueryClient } from './api/query-client';
 import { CustomerChangePasswordPage } from './auth/customer/CustomerChangePasswordPage';
@@ -17,7 +17,6 @@ import { SellerMemberRegistrationPage } from './seller/registration/SellerMember
 import { safeReturnPath } from './routes/return-path';
 import { RouteChunkBoundary } from './routes/RouteChunkBoundary';
 import { BuyerRouteSlot, SellerRouteSlot, StaffRouteSlot } from './routes/IdentityRouteSlots';
-import { ReviewHome } from './review/ReviewHome';
 import {
   isReviewRuntime,
   ReviewChrome,
@@ -250,10 +249,18 @@ export function AppRoutes(): React.JSX.Element {
   );
 }
 
+// 评审首页只存在于 /review 运行时，lazy 加载避免演示代码进入生产首屏。
+const ReviewHome = lazy(() =>
+  import('./review/ReviewHome').then((module) => ({ default: module.ReviewHome })));
+
 export function ReviewRoutes(): React.JSX.Element {
   return (
     <Routes>
-      <Route path="/" element={<ReviewHome />} />
+      <Route path="/" element={
+        <Suspense fallback={<main className="centered"><p>正在加载评审环境…</p></main>}>
+          <ReviewHome />
+        </Suspense>
+      } />
       <Route
         path="/buyer/*"
         element={
