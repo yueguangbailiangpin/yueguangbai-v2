@@ -170,7 +170,12 @@ function ReviewFacts({ value }: { value: StaffReview }): React.JSX.Element {
         {value.current_evidence.files.map((file) => file.mime.startsWith('image/') ? (
           <StaffProtectedImage
             key={file.file_object_id}
-            reference={file}
+            reference={{
+              file_object_id: file.file_object_id,
+              file_version: file.file_version,
+              purpose: file.purpose,
+              visibility: file.visibility,
+            }}
             alt={file.client_file_name}
             className="protected-evidence-thumbnail"
             fallback={<span className="protected-image-placeholder">图片加载中</span>}
@@ -178,7 +183,12 @@ function ReviewFacts({ value }: { value: StaffReview }): React.JSX.Element {
         ) : (
           <StaffProtectedFileButton
             key={file.file_object_id}
-            reference={file}
+            reference={{
+              file_object_id: file.file_object_id,
+              file_version: file.file_version,
+              purpose: file.purpose,
+              visibility: file.visibility,
+            }}
             label={`查看 ${file.client_file_name}`}
           />
         ))}
