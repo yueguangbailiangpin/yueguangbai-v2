@@ -10,6 +10,7 @@ import {
   futureDateTime,
   markupLabel,
   rateLabel,
+  shiftChinaDate,
   yuanToFen,
 } from './finance-format';
 
@@ -214,11 +215,17 @@ export function FinanceExampleCard({
 
 export function BaseRateBlock({
   value,
+  yesterdayRate,
+  tomorrow,
   canSubmit,
   canConfirm,
   refresh,
 }: {
   value: RateCenter;
+  /** Confirmed rate of the previous business day (e8 string), for context. */
+  yesterdayRate: string | null;
+  /** Rate-center read for the next business day; null when unavailable. */
+  tomorrow: RateCenter | null;
   canSubmit: boolean;
   canConfirm: boolean;
   refresh: () => Promise<void>;
@@ -227,6 +234,8 @@ export function BaseRateBlock({
   const [rateValue, setRateValue] = useState('0.047');
   const [message, setMessage] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [presetOpen, setPresetOpen] = useState(false);
+  const tomorrowDate = shiftChinaDate(value.business_date, 1);
   const submit = useMutation({
     mutationFn: () =>
       staffApi.submitOrderDayBaseRate(
@@ -245,12 +254,30 @@ export function BaseRateBlock({
     },
     onError: (error) => setMessage(baseRateErrorMessage('提交', error)),
   });
-  const confirm = useMutation({
+  const presetSubmit = useMutation({
     mutationFn: () =>
+      staffApi.submitOrderDayBaseRate(
+        client,
+        {
+          business_date: tomorrowDate,
+          rate_value: rateValue.trim(),
+          expected_version: (tomorrow?.base_rate.next_version ?? 1) - 1,
+        },
+        crypto.randomUUID(),
+      ),
+    onSuccess: async () => {
+      setMessage(`已提交 ${tomorrowDate} 的汇率，等待确认。`);
+      setPresetOpen(false);
+      await refresh();
+    },
+    onError: (error) => setMessage(baseRateErrorMessage('提交', error)),
+  });
+  const confirm = useMutation({
+    mutationFn: (input: { rateId: string; decisionVersion: number }) =>
       staffApi.confirmOrderDayBaseRate(
         client,
-        value.base_rate.pending_rate!.rate_id,
-        { expected_version: value.base_rate.pending_rate!.decision_version },
+        input.rateId,
+        { expected_version: input.decisionVersion },
         crypto.randomUUID(),
       ),
     onSuccess: async () => {
@@ -269,17 +296,31 @@ export function BaseRateBlock({
   });
   const confirmed = value.base_rate.confirmed_rate;
   const pending = value.base_rate.pending_rate;
+  const tomorrowConfirmed = tomorrow?.base_rate.confirmed_rate ?? null;
+  const tomorrowPending = tomorrow?.base_rate.pending_rate ?? null;
   return (
     <Card id="finance-section-base-rate" className="sensitive-action staff-finance-config-block">
       <h3>基础汇率（JPY → CNY）· {value.business_date}</h3>
       <div className="staff-finance-config-row">
         <span className="kind">当日汇率</span>
         <strong>{confirmed ? rateLabel(confirmed.cny_per_jpy_e8) : <span className="inline-warning">未确认</span>}</strong>
+        {confirmed && yesterdayRate !== null ? (
+          <span className="inline-info">昨天 {rateLabel(yesterdayRate)}</span>
+        ) : null}
         {pending ? (
           <span className="inline-info">待确认 {rateLabel(pending.cny_per_jpy_e8)}</span>
         ) : null}
         {canConfirm && pending ? (
-          <Button className="danger" disabled={confirm.isPending} onClick={() => confirm.mutate()}>
+          <Button
+            className="danger"
+            disabled={confirm.isPending}
+            onClick={() =>
+              confirm.mutate({
+                rateId: pending.rate_id,
+                decisionVersion: pending.decision_version,
+              })
+            }
+          >
             确认
           </Button>
         ) : null}
@@ -289,6 +330,11 @@ export function BaseRateBlock({
           </Button>
         ) : null}
       </div>
+      {confirmed && !pending ? (
+        <p className="hint">
+          今日汇率已确认，当天锁定不可改。买家返款按基础汇率，卖家收款按「基础汇率 + 加点」。
+        </p>
+      ) : null}
       {open && canSubmit && !confirmed ? (
         <form
           onSubmit={(event) => {
@@ -310,6 +356,70 @@ export function BaseRateBlock({
           </FormField>
           <p className="hint">提交后需管理员确认；每天只需确认一次，缺当日汇率时订单会自动回退最近一个已生效汇率。</p>
           <Button disabled={submit.isPending}>提交待确认</Button>
+        </form>
+      ) : null}
+      <div className="staff-finance-config-row">
+        <span className="kind">明天（{tomorrowDate}）</span>
+        {tomorrowConfirmed ? (
+          <>
+            <strong>{rateLabel(tomorrowConfirmed.cny_per_jpy_e8)}</strong>
+            <span className="inline-info">已提前确认，明天 0 点起生效</span>
+          </>
+        ) : tomorrowPending ? (
+          <>
+            <strong>{rateLabel(tomorrowPending.cny_per_jpy_e8)}</strong>
+            <span className="inline-info">待确认</span>
+            {canConfirm ? (
+              <Button
+                className="danger"
+                disabled={confirm.isPending}
+                onClick={() =>
+                  confirm.mutate({
+                    rateId: tomorrowPending.rate_id,
+                    decisionVersion: tomorrowPending.decision_version,
+                  })
+                }
+              >
+                确认
+              </Button>
+            ) : null}
+          </>
+        ) : (
+          <span className="inline-info">未设置（明天 0 点前设好即可，缺了会回退最近已确认汇率）</span>
+        )}
+        {canSubmit && !tomorrowConfirmed && !tomorrowPending ? (
+          <Button
+            className="secondary"
+            onClick={() => {
+              setRateValue((previous) => (previous.trim().length === 0 ? '0.047' : previous));
+              setPresetOpen((previous) => !previous);
+            }}
+          >
+            {presetOpen ? '收起' : '提前设明天'}
+          </Button>
+        ) : null}
+      </div>
+      {presetOpen && canSubmit && !tomorrowConfirmed && !tomorrowPending ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            presetSubmit.mutate();
+          }}
+        >
+          <FormField
+            label={`明天（${tomorrowDate}）基础汇率（1 日元 = ? 人民币）`}
+            htmlFor="order-day-base-rate-tomorrow-value"
+          >
+            <TextInput
+              id="order-day-base-rate-tomorrow-value"
+              value={rateValue}
+              onChange={(event) => setRateValue(event.target.value)}
+              inputMode="decimal"
+              required
+            />
+          </FormField>
+          <p className="hint">提前设定明天的汇率；提交后同样需要确认，确认后明天 0 点自动生效。</p>
+          <Button disabled={presetSubmit.isPending}>提交待确认</Button>
         </form>
       ) : null}
       {message ? (

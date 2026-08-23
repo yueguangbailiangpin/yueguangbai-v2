@@ -15,6 +15,15 @@ export function chinaDate(at: number = Date.now()): string {
 }
 
 /**
+ * Shift a yyyy-mm-dd Beijing business date by whole days (e.g. yesterday /
+ * tomorrow), staying on the Beijing calendar even across month boundaries.
+ */
+export function shiftChinaDate(businessDate: string, days: number): string {
+  const shifted = Date.parse(`${businessDate}T00:00:00+08:00`) + days * 86_400_000;
+  return new Date(shifted).toISOString().slice(0, 10);
+}
+
+/**
  * The as-of timestamp for a by-date lookup: the last Beijing-time instant of
  * the requested business date, capped at now so today resolves to the
  * present moment.

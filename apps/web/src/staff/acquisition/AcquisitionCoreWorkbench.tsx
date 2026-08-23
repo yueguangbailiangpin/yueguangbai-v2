@@ -157,7 +157,7 @@ export function AcquisitionCoreWorkbench(): React.JSX.Element {
         <div>
           <p className="eyebrow">月光白客户开发中心</p>
           <h2>客户开发中心</h2>
-          <p>真实平台和开发方法只对总管理员、获客岗位开放；业务员工始终只看到“渠道N”。</p>
+          <p>渠道的真实平台和开发方法只对总管理员、获客岗位可见；其他员工只看到渠道编号。</p>
         </div>
       </header>
       <nav className="acquisition-core-tabs" aria-label="客户开发中心导航">
@@ -219,10 +219,10 @@ function Overview({
         <MetricCard label="本月新增卖家" value={funnel?.seller?.wechat_added_count ?? '—'} />
       </section>
       <Card>
-        <h3>统一来源链</h3>
+        <h3>客户从哪来，到哪一步</h3>
         <p>
           渠道 → 潜在线索（可选）→ 正式客户登记 → 订单 →
-          利润。客户登记事实与来源历史都不可被后续状态改写。
+          利润。客户登记和来源记录保存后不会改动。
         </p>
       </Card>
     </>
@@ -526,7 +526,7 @@ function Channels({
       <div className="staff-section-toolbar">
         <div>
           <h3>渠道管理</h3>
-          <p>员工渠道编号创建后永久不改；Owner 只能更换对应接待微信或停用渠道。</p>
+          <p>渠道编号创建后不会更改；总管理员只能更换对应接待微信或停用渠道。</p>
         </div>
         {canAdmin ? (
           <Button onClick={() => setShow(!show)}>{show ? '取消' : '新增真实渠道'}</Button>
@@ -632,7 +632,7 @@ function Channels({
       {editing && canAdmin ? (
         <Card>
           <h3>配置 {editing.staff_label}</h3>
-          <Alert tone="info">“{editing.staff_label}”不能修改，避免历史沟通和归因编号漂移。</Alert>
+          <Alert tone="info">“{editing.staff_label}”不能修改，避免渠道编号和历史记录对不上。</Alert>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -721,7 +721,7 @@ function Stats({
                   ? money(item.buyer_projected_gross_profit_cny_fen)
                   : item.lead_type === 'SELLER'
                     ? money(item.seller_projected_gross_profit_cny_fen)
-                    : '历史 BOTH 不合并利润'}
+                    : '历史共用渠道（买家卖家）不合并利润'}
               </td>
             ) : null}
           </tr>
@@ -771,7 +771,7 @@ function Corrections({
       <div className="staff-section-toolbar">
         <div>
           <h3>来源纠错</h3>
-          <p>误选渠道时追加更正历史，原始来源不会被删除。</p>
+          <p>误选渠道时在这里更正；更正会留记录，原始来源不会被删除。</p>
         </div>
       </div>
       {items.length === 0 ? (

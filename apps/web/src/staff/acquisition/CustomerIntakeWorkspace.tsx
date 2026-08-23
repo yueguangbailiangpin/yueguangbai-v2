@@ -254,7 +254,7 @@ function CustomerIntakeWorkspace({
         </div>
       </header>
       <Alert tone="info">
-        普通员工只看到“渠道1、渠道2”等匿名编号。历史客户不补渠道、不重新计入新增；身份不明确时提交总管理员处理，不允许员工猜测绑定。
+        历史客户不补渠道、不计入新增；身份不明确时提交总管理员处理，不要自行猜测绑定。
       </Alert>
       <HistoricalCustomerOnboarding leadType={leadType} />
       {handoffs.data && handoffs.data.length > 0 ? (
@@ -664,7 +664,7 @@ function LeadCreateCard({
     <Card className="customer-intake-create">
       <h3>新{buyer ? '买家' : '卖家'}客户</h3>
       <p>
-        保存成功就是新增客户事实；{buyer ? '买家网站账号' : '卖家网站账号'}是否开通是后续独立状态。
+        保存成功就计入新增客户；{buyer ? '买家' : '卖家'}网站账号是否开通是后续独立步骤。
       </p>
       <form onSubmit={submit}>
         {handoffs.length > 0 ? (
@@ -723,11 +723,7 @@ function LeadCreateCard({
             当前没有可用的{buyer ? '买家' : '卖家'}接入渠道，请先在“客户开发”配置渠道。
           </Alert>
         ) : null}
-        <FormField
-          label="渠道"
-          htmlFor={`${leadType}-channel`}
-          description="员工只看到匿名渠道编号"
-        >
+        <FormField label="渠道" htmlFor={`${leadType}-channel`}>
           {handoff ? (
             <>
               <input type="hidden" name="channel_id" value={handoff.origin_channel_id} />
@@ -752,8 +748,12 @@ function LeadCreateCard({
         <FormField label="微信号" htmlFor={`${leadType}-wechat`}>
           <TextInput id={`${leadType}-wechat`} name="wechat_id" required autoComplete="off" />
         </FormField>
-        <FormField label={buyer ? '称呼（可选）' : '公司 / 客户名称'} htmlFor={`${leadType}-name`}>
-          <TextInput id={`${leadType}-name`} name="display_name" required={!buyer} />
+        <FormField
+          label="客户编号"
+          htmlFor={`${leadType}-name`}
+          description="线下台账里的客户编号"
+        >
+          <TextInput id={`${leadType}-name`} name="display_name" required />
         </FormField>
         <FormField label="备注（可选）" htmlFor={`${leadType}-note`}>
           <TextInput id={`${leadType}-note`} name="note" />
@@ -776,7 +776,7 @@ function LeadCreateCard({
         <div className="customer-registration-success">
           <Alert tone="success">
             <strong>{saved.displayName}</strong> 已成功登记。
-            {buyer ? '新增买家事实已固定。' : '正式卖家组织也已同步建立。'}{' '}
+            {buyer ? '买家客户已保存。' : '卖家客户已保存，卖家组织同步建立。'}{' '}
             网站账号可以现在开通，也可以以后再开。
           </Alert>
           <Button loading={invite.isPending} onClick={() => invite.mutate(saved)}>

@@ -30,7 +30,7 @@ import {
   ServiceFeeBlock,
   type PendingDecision,
 } from './FinanceBlocks';
-import { chinaDate, fenToYuan, lookupAsOf, markupLabel } from './finance-format';
+import { chinaDate, fenToYuan, lookupAsOf, markupLabel, shiftChinaDate } from './finance-format';
 
 type PolicyMutationResult = Awaited<ReturnType<typeof staffApi.submitSellerPrincipalRatePolicy>>;
 
@@ -92,6 +92,8 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
   const today = chinaDate();
   const isLookup = businessDate < today;
   const lookupAsOfValue = isLookup ? lookupAsOf(businessDate) : null;
+  const yesterdayDate = isLookup ? null : shiftChinaDate(businessDate, -1);
+  const tomorrowDate = isLookup ? null : shiftChinaDate(businessDate, 1);
   const rateCenter = useQuery({
     queryKey: staffWorkbenchKeys.rateCenter(
       session.authorization_version,
@@ -104,6 +106,34 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
         .rateCenter(client, businessDate, selectedOrganizationId, signal, lookupAsOfValue ?? undefined)
         .then((response) => response.data),
     enabled: canRead,
+    retry: false,
+  });
+  // Yesterday's confirmed rate is context only ("昨天 0.042"); tomorrow's read
+  // powers the 提前设明天 preset flow.  Both are org-independent base rates.
+  const yesterdayRate = useQuery({
+    queryKey: staffWorkbenchKeys.rateCenter(
+      session.authorization_version,
+      yesterdayDate ?? '',
+      null,
+    ),
+    queryFn: ({ signal }) =>
+      staffApi
+        .rateCenter(client, yesterdayDate!, null, signal)
+        .then((response) => response.data),
+    enabled: canRead && yesterdayDate !== null,
+    retry: false,
+  });
+  const tomorrowRate = useQuery({
+    queryKey: staffWorkbenchKeys.rateCenter(
+      session.authorization_version,
+      tomorrowDate ?? '',
+      null,
+    ),
+    queryFn: ({ signal }) =>
+      staffApi
+        .rateCenter(client, tomorrowDate!, null, signal)
+        .then((response) => response.data),
+    enabled: canRead && isGlobalOwner && tomorrowDate !== null,
     retry: false,
   });
   const query = useQuery({
@@ -494,11 +524,14 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
         {rateCenter.data ? (
           <BaseRateBlock
             value={rateCenter.data}
+            yesterdayRate={yesterdayRate.data?.base_rate.confirmed_rate?.cny_per_jpy_e8 ?? null}
+            tomorrow={tomorrowRate.data ?? null}
             canSubmit={isGlobalOwner && hasFinancialCorrection}
             canConfirm={canDecide}
             refresh={async () => {
               await rateCenter.refetch();
               await query.refetch();
+              if (tomorrowDate !== null) await tomorrowRate.refetch();
             }}
           />
         ) : rateCenter.isError ? (

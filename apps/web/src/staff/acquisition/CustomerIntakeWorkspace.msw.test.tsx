@@ -74,7 +74,7 @@ describe('seller customer intake channel selection', () => {
     const createForm = within(createCard!);
     await user.selectOptions(intakeChannel, 'seller-jp');
     await user.type(createForm.getByRole('textbox', { name: '微信号' }), 'already_saved_wechat');
-    await user.type(createForm.getByRole('textbox', { name: '公司 / 客户名称' }), '已经保存的卖家');
+    await user.type(createForm.getByRole('textbox', { name: '客户编号' }), '已经保存的卖家');
     await user.click(createForm.getByRole('button', { name: '保存新卖家客户' }));
 
     expect(await screen.findByText(/已经保存过，不需要重复新增/u)).toBeVisible();
