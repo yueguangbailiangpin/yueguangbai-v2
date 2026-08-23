@@ -63,7 +63,7 @@ describe('application route registration', () => {
         name: '财务配置',
       }),
     ).toBeVisible();
-    expect(screen.getByRole('heading', { level: 3, name: '当前生效摘要' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 3, name: '今天生效' })).toBeVisible();
   });
 
   it('redirects the legacy rate center paths to /staff/finance with the query intact', async () => {

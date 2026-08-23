@@ -15,7 +15,7 @@ import { StaffFinanceWorkspace } from './StaffFinanceWorkspace';
 afterEach(cleanup);
 
 describe('财务配置 Staff 工作台', () => {
-  it('让 Owner 读取摘要、时间线并确认或拒绝待决策略', async () => {
+  it('Owner 在顶部待办条里确认/拒绝待决策略，并看到一单示例', async () => {
     const requests: { path: string; body: unknown }[] = [];
     server.use(
       http.get(apiUrl('/api/staff/rate-center'), () =>
@@ -68,14 +68,18 @@ describe('财务配置 Staff 工作台', () => {
     );
     expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
     await screen.findByRole('option', { name: '测试卖家 · AMAZON_JP' });
-    await user.selectOptions(screen.getByLabelText('卖家组织'), 'seller-1');
-    expect(screen.getAllByText('币种对默认加点')[0]).toBeVisible();
-    expect(screen.getByText('卖家组织覆盖 · +0.0 · v1')).toBeVisible();
-    expect(screen.getByRole('heading', { name: '当前生效摘要' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '生效时间线' })).toBeVisible();
-    // Two pending policies from the fixture render as timeline entries.
-    expect(screen.getAllByText('待确认').length).toBeGreaterThanOrEqual(2);
-    await user.click(screen.getAllByRole('button', { name: '确认生效策略' })[0]!);
+    await user.selectOptions(screen.getByLabelText('针对卖家组织'), 'seller-1');
+    // 顶部待办条：缺口 + 待决
+    expect(
+      await screen.findByText(/服务费未配置：测试卖家 还有 4\/4 类评价类型未配/u),
+    ).toBeVisible();
+    expect(await screen.findByText(/全体卖家加点 · \+0\.004 待你确认/u)).toBeVisible();
+    expect(await screen.findByText(/测试卖家单独加点 · \+0\.0 待你确认/u)).toBeVisible();
+    // 一单示例
+    expect(await screen.findByRole('heading', { name: '今天生效' })).toBeVisible();
+    expect(await screen.findByText(/一单 ¥3,000 日元（评分单）为例/u)).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '接下来的变更' })).toBeVisible();
+    await user.click(screen.getAllByRole('button', { name: '确认生效' })[0]!);
     await waitFor(() => expect(requests).toHaveLength(1));
     await user.click(screen.getAllByRole('button', { name: '拒绝' })[1]!);
     await waitFor(() =>
@@ -89,7 +93,7 @@ describe('财务配置 Staff 工作台', () => {
     );
   });
 
-  it('让卖家对接为已分配组织提交明确为 0 的覆盖，并携带版本与幂等请求', async () => {
+  it('卖家对接为已分配组织提交明确为 0 的单独加点，携带幂等键', async () => {
     let body: unknown;
     let key: string | null = null;
     server.use(
@@ -136,11 +140,11 @@ describe('财务配置 Staff 工作台', () => {
     );
     expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
     await screen.findByRole('option', { name: '测试卖家 · AMAZON_JP' });
-    await user.selectOptions(screen.getByLabelText('卖家组织'), 'seller-1');
-    await screen.findByRole('heading', { name: '币种对默认加点' });
-    await user.clear(screen.getByLabelText('卖家本金汇率加点（例如 +0.004 或 0）'));
-    await user.type(screen.getByLabelText('卖家本金汇率加点（例如 +0.004 或 0）'), '0');
-    await user.click(screen.getByRole('button', { name: '提交待确认策略' }));
+    await user.click(await screen.findByRole('button', { name: '单独设置' }));
+    const markupInput = screen.getByLabelText('加点（例如 +0.005 或 0）');
+    await user.clear(markupInput);
+    await user.type(markupInput, '0');
+    await user.click(screen.getByRole('button', { name: '提交待确认' }));
     await waitFor(() =>
       expect(body).toMatchObject({
         scope_type: 'SELLER_ORGANIZATION',
@@ -152,9 +156,8 @@ describe('财务配置 Staff 工作台', () => {
     expect(key).toMatch(/^[0-9a-f-]{36}$/u);
   });
 
-  it('让 Owner 提交默认加点并立即生效（免二次确认文案）', async () => {
+  it('Owner 修改全体卖家加点：提交即生效，无需他人确认', async () => {
     let body: unknown;
-    let requestedOrganization: string | null = null;
     server.use(
       http.get(apiUrl('/api/staff/rate-center'), () =>
         HttpResponse.json({
@@ -168,9 +171,8 @@ describe('财务配置 Staff 工作台', () => {
           meta: { request_id: 'fees-read' },
         }),
       ),
-      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), ({ request }) => {
-        requestedOrganization = new URL(request.url).searchParams.get('seller_organization_id');
-        return HttpResponse.json({
+      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () =>
+        HttpResponse.json({
           data: {
             policies: readPayload({
               seller_organization_id: null,
@@ -181,9 +183,9 @@ describe('财务配置 Staff 工作台', () => {
               selected_policy: policy('default-1', 'CONFIRMED', 2, '400000', null),
             }),
           },
-          meta: { request_id: 'owner-read' },
-        });
-      }),
+          meta: { request_id: 'policy-read' },
+        }),
+      ),
       http.post(apiUrl('/api/staff/seller-principal-rate-policies/submit'), async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({
@@ -202,12 +204,12 @@ describe('财务配置 Staff 工作台', () => {
       },
     );
     await screen.findByRole('heading', { name: '财务配置' });
-    await screen.findByRole('heading', { name: '币种对默认加点' });
-    expect(requestedOrganization).toBeNull();
-    expect(screen.getByText('下一版本：选择组织后读取')).toBeVisible();
-    expect(
-      screen.getByText(/默认加点提交即确认生效，无需 Owner 二次确认/u),
-    ).toBeVisible();
+    await screen.findByText('全体卖家');
+    await user.click(screen.getByRole('button', { name: '修改' }));
+    expect(screen.getByText(/提交后立即确认，到生效时间自动生效/u)).toBeVisible();
+    const markupInput = screen.getByLabelText('加点（例如 +0.004 或 0）');
+    await user.clear(markupInput);
+    await user.type(markupInput, '0.004');
     await user.click(screen.getByRole('button', { name: '提交并生效' }));
     await waitFor(() =>
       expect(body).toMatchObject({
@@ -219,7 +221,7 @@ describe('财务配置 Staff 工作台', () => {
     );
   });
 
-  it('回查历史日期时按 as_of 请求并在页面上标注回查口径', async () => {
+  it('回查历史日期时按 as_of 请求并标注回查口径', async () => {
     const policySearches: string[] = [];
     const feeSearches: string[] = [];
     server.use(
@@ -258,9 +260,8 @@ describe('财务配置 Staff 工作台', () => {
       },
     );
     await screen.findByRole('heading', { name: '财务配置' });
-    await waitFor(() =>
-      expect(screen.getByText(/正在回查 2026-08-01/u)).toBeVisible(),
-    );
+    await waitFor(() => expect(screen.getByText(/正在回查 2026-08-01/u)).toBeTruthy());
+    expect(await screen.findByRole('heading', { name: /回查 2026-08-01 生效/u })).toBeVisible();
     await waitFor(() => expect(policySearches.length).toBeGreaterThan(0));
     expect(policySearches[0]).toContain('as_of=');
     await waitFor(() => expect(feeSearches.length).toBeGreaterThan(0));
