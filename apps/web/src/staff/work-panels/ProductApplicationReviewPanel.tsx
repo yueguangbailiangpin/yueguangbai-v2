@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { z } from 'zod';
 import { identityApiRequest } from '../../api/identity-request';
@@ -12,6 +13,7 @@ import {
   StatusBadge,
   TextInput,
 } from '../../ui/primitives';
+import { StaffProtectedImage } from '../shared/StaffProtectedImage';
 import type { StaffWorkItem } from '../contracts/runtime';
 import { staffWorkbenchKeys } from '../queries/keys';
 import { Fact, PanelMutationState } from './shared';
@@ -33,6 +35,11 @@ const productContextSchema = z
         status: z.string(),
         version: z.number().int().positive(),
         submitted_at: z.number().int().nonnegative(),
+        images: z.array(z.object({
+          file_object_id: z.string(),
+          file_version: z.number().int().positive(),
+          client_file_name: z.string(),
+        }).strict()).default([]),
       })
       .passthrough(),
   })
@@ -47,6 +54,7 @@ const productDecisionSchema = z
         application_version: z.number().int().positive(),
         product_id: z.string().nullable(),
         product_version_id: z.string().nullable(),
+        main_image_file_object_id: z.string().nullable(),
         review_reason: z.string().nullable(),
         replayed: z.boolean(),
       })
@@ -132,6 +140,9 @@ function ProductApplicationForm({
   onSubmit: (body: Record<string, unknown>) => void;
   onRetry: () => void;
 }): React.JSX.Element {
+  const [mainImageId, setMainImageId] = useState<string | null>(
+    value.images[0]?.file_object_id ?? null,
+  );
   function approve(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -143,6 +154,7 @@ function ProductApplicationForm({
       default_buyer_self_pay_bps: Number(data.get('self_pay_bps')),
       order_interval_days: Number(data.get('interval_days')),
       orders_per_run: Number(data.get('orders_per_run')),
+      main_image_file_object_id: mainImageId,
     });
   }
   function reject(event: FormEvent<HTMLFormElement>): void {
@@ -166,6 +178,56 @@ function ProductApplicationForm({
           : `${value.ordering_guide_expected_amount_jpy} JPY`}
       />
       <Fact label="卖家备注" value={value.seller_notes ?? '无'} />
+      {value.images.length > 0 ? (
+        <fieldset className="form-fieldset">
+          <legend>申请图（勾选一张作为正式产品主图）</legend>
+          <div className="application-image-picker">
+            {value.images.map((image, index) => (
+              <label
+                key={image.file_object_id}
+                className="application-image-option"
+              >
+                <input
+                  type="radio"
+                  name={`main-image-${item.work_item_id}`}
+                  value={image.file_object_id}
+                  checked={mainImageId === image.file_object_id}
+                  onChange={() => setMainImageId(image.file_object_id)}
+                />
+                <span className="application-image-caption">
+                  {index === 0 ? '第 1 张（默认）' : `第 ${index + 1} 张`}
+                  {' · '}
+                  {image.client_file_name}
+                </span>
+                <StaffProtectedImage
+                  reference={{
+                    file_object_id: image.file_object_id,
+                    file_version: image.file_version,
+                    purpose: 'PRODUCT_APPLICATION_IMAGE',
+                    visibility: 'SELLER_VISIBLE',
+                  }}
+                  alt={`申请图 ${index + 1}`}
+                  className="application-image-thumb"
+                  fallback={<span className="protected-image-fallback-text">图片不可用</span>}
+                />
+              </label>
+            ))}
+            <label className="application-image-option">
+              <input
+                type="radio"
+                name={`main-image-${item.work_item_id}`}
+                checked={mainImageId === null}
+                onChange={() => setMainImageId(null)}
+              />
+              <span className="application-image-caption">
+                暂不设置主图（稍后在产品详情手动上传绑定）
+              </span>
+            </label>
+          </div>
+        </fieldset>
+      ) : (
+        <p className="hint">本申请没有图片；通过后可在产品详情手动上传主图。</p>
+      )}
       <form onSubmit={approve}>
         <FormField label="下单参考金额（JPY）" htmlFor={`product-review-amount-${item.work_item_id}`}>
           <TextInput

@@ -1109,6 +1109,7 @@ export const productVersionMutationSchema = z
         product_version_id: z.string(),
         version_no: z.number().int().positive(),
         aggregate_version: z.number().int().positive(),
+        main_image_file_object_id: z.string().nullable(),
         product_version: z
           .object({
             productName: z.string(),

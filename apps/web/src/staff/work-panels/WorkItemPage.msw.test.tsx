@@ -965,6 +965,7 @@ describe('product application review panel', () => {
               status: 'SUBMITTED',
               version: 1,
               submitted_at: 1_000,
+              images: [],
             },
           },
           meta: { request_id: 'product-context-read' },
@@ -979,6 +980,7 @@ describe('product application review panel', () => {
               application_version: 2,
               product_id: 'product-1',
               product_version_id: 'product-version-1',
+              main_image_file_object_id: null,
               review_reason: null,
               replayed: false,
             },
@@ -995,6 +997,136 @@ describe('product application review panel', () => {
 
     expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
     expect(contextReads).toBe(1);
+  });
+
+  it('shows application images and submits the selected main image with approval', async () => {
+    const productWorkItem = {
+      ...staffTestWorkItem,
+      work_item_id: 'work-product-image',
+      work_type: 'PRODUCT_APPLICATION_REVIEW' as const,
+      source_entity_type: 'PRODUCT_APPLICATION',
+      source_entity_id: 'application-1',
+    };
+    const submittedBodies: Record<string, unknown>[] = [];
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items/work-product-image'), () =>
+        respondWorkItem(productWorkItem),
+      ),
+      http.get(apiUrl('/api/staff/product-applications/application-1/review-context'), () =>
+        HttpResponse.json({
+          data: {
+            review_context: {
+              application_id: 'application-1',
+              store: { id: 'store-1', display_name: '测试店铺' },
+              marketplace_code: 'JP',
+              asin: 'B000000001',
+              product_name: '咖啡秤',
+              search_keywords: ['咖啡秤'],
+              product_url: null,
+              buyer_visible_notes: null,
+              seller_notes: null,
+              ordering_guide_expected_amount_jpy: '2999',
+              status: 'SUBMITTED',
+              version: 1,
+              submitted_at: 1_000,
+              images: [
+                {
+                  file_object_id: 'application-image-1',
+                  file_version: 1,
+                  client_file_name: 'front.png',
+                },
+                {
+                  file_object_id: 'application-image-2',
+                  file_version: 1,
+                  client_file_name: 'side.png',
+                },
+              ],
+            },
+          },
+          meta: { request_id: 'product-context-read' },
+        }),
+      ),
+      http.post(apiUrl('/api/staff/product-applications/application-1/review'), async ({ request }) => {
+        submittedBodies.push(await request.json() as Record<string, unknown>);
+        return HttpResponse.json({
+          data: {
+            product_application_review: {
+              application_id: 'application-1',
+              status: 'APPROVED',
+              application_version: 2,
+              product_id: 'product-1',
+              product_version_id: 'product-version-1',
+              main_image_file_object_id: 'application-image-1',
+              review_reason: null,
+              replayed: false,
+            },
+          },
+          meta: { request_id: 'product-decision-image' },
+        });
+      }),
+      http.post(apiUrl('/api/staff/files/application-image-1/read-intents'), () =>
+        HttpResponse.json({
+          data: {
+            read_intent_id: 'application-image-1-intent',
+            file_object_id: 'application-image-1',
+            access_token: 'application-image-1-token'.padEnd(40, 'x'),
+            access_token_available: true,
+            expires_at: 99,
+            replayed: false,
+          },
+          meta: { request_id: 'application-image-1-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/file-read-intents/application-image-1-intent/content'), () =>
+        new Response(Uint8Array.of(1, 2), {
+          headers: {
+            'Content-Type': 'image/png',
+            'Content-Length': '2',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        }),
+      ),
+      http.post(apiUrl('/api/staff/files/application-image-2/read-intents'), () =>
+        HttpResponse.json({
+          data: {
+            read_intent_id: 'application-image-2-intent',
+            file_object_id: 'application-image-2',
+            access_token: 'application-image-2-token'.padEnd(40, 'x'),
+            access_token_available: true,
+            expires_at: 99,
+            replayed: false,
+          },
+          meta: { request_id: 'application-image-2-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/file-read-intents/application-image-2-intent/content'), () =>
+        new Response(Uint8Array.of(3, 4), {
+          headers: {
+            'Content-Type': 'image/png',
+            'Content-Length': '2',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWorkItemPage('work-product-image', ['PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH']);
+
+    expect(await screen.findByText('申请图（勾选一张作为正式产品主图）')).toBeVisible();
+    expect(screen.getByText(/第 1 张（默认）/u)).toBeVisible();
+    expect(screen.getByText(/第 2 张/u)).toBeVisible();
+
+    await user.click(screen.getByRole('radio', { name: /第 2 张/u }));
+    await user.click(screen.getByRole('button', { name: '批准并创建正式产品' }));
+
+    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(submittedBodies).toHaveLength(1);
+    expect(submittedBodies[0]).toMatchObject({
+      decision: 'APPROVE',
+      main_image_file_object_id: 'application-image-2',
+    });
   });
 });
 

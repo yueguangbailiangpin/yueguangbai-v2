@@ -5,7 +5,14 @@ import type {
   StaffPermissionCode,
   StaffRoleCode,
 } from '@ygb/contracts';
+import { sha256Hex } from '@ygb/domain';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
+import type {
+  FileAuthorizationResource,
+  FileAuthorizationService,
+} from '../files/authorization';
+import { MockObjectStorage } from '../files/mock-object-storage';
+import type { FileActor } from '@ygb/contracts';
 import { resolveAssignmentStaffAuthorization } from '../staff-assignment';
 import { reviewProductApplication } from './review-product-application';
 import { submitProductApplication as submitProductApplicationImpl } from './submit-product-application';
@@ -56,6 +63,28 @@ afterEach(() => {
   database?.close();
   database = null;
 });
+
+/**
+ * Mirrors the production MainImageLinkAuthorization used by the staff
+ * catalog routes: staff actors linking SELLER_VISIBLE PRODUCT_IMAGE files
+ * to a PRODUCT_VERSION entity.
+ */
+class MainImageCloneAuthorization implements FileAuthorizationService {
+  assertCanCreateUpload(): void {}
+  assertCanUpload(): void {}
+  assertCanCompleteUpload(): void {}
+  assertCanRead(): void {}
+  assertCanLink(_actor: FileActor, resource: FileAuthorizationResource): void {
+    if (resource.purpose !== 'PRODUCT_IMAGE'
+      || resource.visibility !== 'SELLER_VISIBLE'
+      || resource.entityType !== 'PRODUCT_VERSION') {
+      throw Object.assign(new Error('forbidden'), {
+        code: 'FORBIDDEN',
+        status: 403,
+      });
+    }
+  }
+}
 
 describe('seller product applications and staff review', () => {
   it('allows OWNER or scoped OPERATIONS to submit and blocks unscoped roles', async () => {
@@ -400,6 +429,222 @@ describe('seller product applications and staff review', () => {
     });
   });
 
+  it('approves with a selected application image cloned as the v1 main image', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+    const storage = new MockObjectStorage();
+    const mainImageAuthorization = new MainImageCloneAuthorization();
+    const imageBytes = new TextEncoder().encode('application-main-image');
+    const imageSha = await sha256Hex(imageBytes);
+    await database.prepare(
+      `UPDATE file_objects SET uploaded_sha256=? WHERE id='application-image-owner-1'`,
+    ).bind(imageSha).run();
+    await storage.putObject({
+      objectKey: 'files/v1/application/image-owner-1-000000000000',
+      bytes: imageBytes,
+      contentType: 'image/png',
+      metadata: {},
+    });
+
+    const submitted = await submitProductApplication(
+      database,
+      {
+        storeId: 'store-1',
+        asin: 'B0APPLY101',
+        product: productVersion('带主图产品'),
+        sellerNotes: null,
+        imageFiles: [
+          { fileObjectId: 'application-image-owner-1', expectedFileVersion: 1 },
+        ],
+      },
+      {
+        actor: ownerActor(),
+        idempotencyKey: 'product-application:main-image:submit',
+        now: 2000,
+      },
+    );
+
+    const approved = await reviewProductApplication(
+      database,
+      {
+        applicationId: submitted.application_id,
+        expectedVersion: 1,
+        decision: 'APPROVE',
+        orderingGuideExpectedAmountJpy: 1980,
+        colorSpecMode: 'MAIN_IMAGE_VARIANT',
+        orderIntervalDays: 1,
+        ordersPerRun: 1,
+        mainImageFileObjectId: 'application-image-owner-1',
+      },
+      {
+        actor: reviewerActor(),
+        idempotencyKey: 'product-application:main-image:review',
+        now: 3000,
+        deps: { storage, fileAuthorization: mainImageAuthorization },
+      },
+    );
+
+    expect(approved.status).toBe('APPROVED');
+    expect(approved.main_image_file_object_id).toMatch(
+      /^[0-9a-f-]{36}$/u,
+    );
+    expect(approved.main_image_file_object_id)
+      .not.toBe('application-image-owner-1');
+
+    const mainImage = await database.prepare(`
+      SELECT
+        object.id AS file_object_id,
+        object.purpose,
+        object.status AS object_status,
+        object.object_key,
+        object.uploaded_sha256,
+        intent.status AS intent_status,
+        intent.purpose AS intent_purpose,
+        link.entity_type,
+        link.entity_id,
+        link.authorization_mode,
+        image.created_by_staff_id,
+        (SELECT COUNT(*) FROM file_entity_audience_grants grant
+          WHERE grant.file_entity_link_id=link.id AND grant.revoked_at IS NULL)
+          AS grant_count
+      FROM product_version_main_images image
+      JOIN file_entity_links link ON link.id=image.file_entity_link_id
+      JOIN file_objects object ON object.id=link.file_object_id
+      JOIN file_upload_intents intent ON intent.id=object.upload_intent_id
+      WHERE image.product_version_id=?
+    `).bind(approved.product_version_id).first<{
+      file_object_id: string;
+      purpose: string;
+      object_status: string;
+      object_key: string;
+      uploaded_sha256: string;
+      intent_status: string;
+      intent_purpose: string;
+      entity_type: string;
+      entity_id: string;
+      authorization_mode: string;
+      created_by_staff_id: string;
+      grant_count: number;
+    }>();
+
+    expect(mainImage).toMatchObject({
+      file_object_id: approved.main_image_file_object_id,
+      purpose: 'PRODUCT_IMAGE',
+      object_status: 'VERIFIED',
+      uploaded_sha256: imageSha,
+      intent_status: 'VERIFIED',
+      intent_purpose: 'PRODUCT_IMAGE',
+      entity_type: 'PRODUCT_VERSION',
+      entity_id: approved.product_version_id,
+      authorization_mode: 'EXPLICIT_AUDIENCES',
+      grant_count: 2,
+    });
+    expect(mainImage?.object_key).toMatch(/^files\/v1\//u);
+    expect(mainImage?.object_key)
+      .not.toBe('files/v1/application/image-owner-1-000000000000');
+    const stored = storage.objects.get(mainImage!.object_key);
+    expect(stored).toBeDefined();
+    expect(Array.from(stored!.bytes)).toEqual(
+      Array.from(imageBytes),
+    );
+
+    const sourceLink = await database.prepare(`
+      SELECT link.purpose, link.entity_type, object.purpose AS object_purpose
+      FROM file_entity_links link
+      JOIN file_objects object ON object.id=link.file_object_id
+      WHERE link.file_object_id='application-image-owner-1'
+    `).first<{ purpose: string; entity_type: string; object_purpose: string }>();
+    expect(sourceLink).toEqual({
+      purpose: 'PRODUCT_APPLICATION_IMAGE',
+      entity_type: 'PRODUCT_APPLICATION',
+      object_purpose: 'PRODUCT_APPLICATION_IMAGE',
+    });
+
+    const replay = await reviewProductApplication(
+      database,
+      {
+        applicationId: submitted.application_id,
+        expectedVersion: 1,
+        decision: 'APPROVE',
+        orderingGuideExpectedAmountJpy: 1980,
+        colorSpecMode: 'MAIN_IMAGE_VARIANT',
+        orderIntervalDays: 1,
+        ordersPerRun: 1,
+        mainImageFileObjectId: 'application-image-owner-1',
+      },
+      {
+        actor: reviewerActor(),
+        idempotencyKey: 'product-application:main-image:review',
+        now: 3100,
+        deps: { storage, fileAuthorization: mainImageAuthorization },
+      },
+    );
+    expect(replay).toEqual({ ...approved, replayed: true });
+  });
+
+  it('rejects a main image that does not belong to the application', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+
+    const submitted = await submitProductApplication(
+      database,
+      {
+        storeId: 'store-1',
+        asin: 'B0APPLY102',
+        product: productVersion('主图校验产品'),
+        sellerNotes: null,
+      },
+      {
+        actor: ownerActor(),
+        idempotencyKey: 'product-application:main-image-bad:submit',
+        now: 2000,
+      },
+    );
+
+    await expect(
+      reviewProductApplication(
+        database,
+        {
+          applicationId: submitted.application_id,
+          expectedVersion: 1,
+          decision: 'APPROVE',
+          orderingGuideExpectedAmountJpy: 1980,
+          colorSpecMode: 'MAIN_IMAGE_VARIANT',
+          orderIntervalDays: 1,
+          ordersPerRun: 1,
+          mainImageFileObjectId: 'application-image-owner-2',
+        },
+        {
+          actor: reviewerActor(),
+          idempotencyKey: 'product-application:main-image-bad:review',
+          now: 3000,
+          deps: {
+            storage: new MockObjectStorage(),
+            fileAuthorization: new MainImageCloneAuthorization(),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+
+    await expect(
+      reviewProductApplication(
+        database,
+        {
+          applicationId: submitted.application_id,
+          expectedVersion: 1,
+          decision: 'REJECT',
+          rejectionReason: '资料不全',
+          mainImageFileObjectId: 'application-image-owner-1',
+        },
+        {
+          actor: reviewerActor(),
+          idempotencyKey: 'product-application:main-image-bad:reject',
+          now: 3000,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+  });
+
   it('rejects with a reason and prevents a second review', async () => {
     database = createMigratedTestDatabase();
     seedProductApplicationFixture(database);
@@ -440,6 +685,7 @@ describe('seller product applications and staff review', () => {
       application_version: 2,
       product_id: null,
       product_version_id: null,
+      main_image_file_object_id: null,
       review_reason: 'ASIN 与店铺资料不一致',
       replayed: false,
     });

@@ -130,6 +130,28 @@ async function readProductApplicationReviewContext(
     row.organization_id,
   );
 
+  const images = await context.env.DB.prepare(`
+    SELECT
+      link.file_object_id,
+      object.version AS file_version,
+      object.client_file_name
+    FROM file_entity_links link
+    JOIN file_objects object
+      ON object.id=link.file_object_id
+    WHERE link.entity_type='PRODUCT_APPLICATION'
+      AND link.entity_id=?
+      AND link.purpose='PRODUCT_APPLICATION_IMAGE'
+      AND link.revoked_at IS NULL
+      AND object.status='VERIFIED'
+    ORDER BY link.created_at, link.file_object_id
+  `).bind(applicationId).all() as unknown as {
+    results: Array<{
+      file_object_id: string;
+      file_version: number;
+      client_file_name: string;
+    }>;
+  };
+
   return success(context, {
     review_context: {
       application_id: row.application_id,
@@ -152,6 +174,11 @@ async function readProductApplicationReviewContext(
       status: row.status,
       version: Number(row.version),
       submitted_at: Number(row.submitted_at),
+      images: images.results.map((image) => ({
+        file_object_id: image.file_object_id,
+        file_version: Number(image.file_version),
+        client_file_name: image.client_file_name,
+      })),
     },
   });
 }

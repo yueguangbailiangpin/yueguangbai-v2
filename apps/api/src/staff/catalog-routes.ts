@@ -218,11 +218,13 @@ async function reviewApplication(context: Context<any>): Promise<Response> {
     'expected_version', 'decision', 'rejection_reason',
     'ordering_guide_expected_amount_jpy', 'color_spec_mode',
     'default_buyer_self_pay_bps', 'order_interval_days', 'orders_per_run',
+    'main_image_file_object_id',
   ]);
   const decision = body['decision'];
   if (!isProductApplicationReviewDecision(decision)) {
     throw validationError();
   }
+  const workflowActorForReview = workflowActor(authorization);
   const result = await reviewProductApplication(context.env.DB, {
     applicationId: requiredString(context.req.param('id')),
     expectedVersion: integer(body['expected_version']),
@@ -248,10 +250,24 @@ async function reviewApplication(context: Context<any>): Promise<Response> {
     ...(body['orders_per_run'] === undefined
       ? {}
       : { ordersPerRun: positiveInteger(body['orders_per_run']) }),
+    ...(body['main_image_file_object_id'] === undefined
+      ? {}
+      : {
+          mainImageFileObjectId:
+            nullableString(body['main_image_file_object_id']),
+        }),
   }, {
-    actor: workflowActor(authorization),
+    actor: workflowActorForReview,
     idempotencyKey: idempotencyKey(context),
     requestId: requestIdFromContext(context),
+    deps: {
+      storage: context.env.FILE_OBJECT_STORAGE,
+      fileAuthorization: new MainImageLinkAuthorization({
+        type: 'STAFF',
+        id: workflowActorForReview.staffId,
+        roles: workflowActorForReview.roles,
+      }),
+    },
   });
   return success(context, { product_application_review: result });
 }
@@ -277,17 +293,47 @@ async function createProductVersion(context: Context<any>): Promise<Response> {
   const authorization = requireAuthorization(context);
   const actor = await catalogActor(context, authorization);
   const body = await bodyRecord(context);
-  rejectUnknown(body, ['expected_version', 'version']);
+  rejectUnknown(body, ['expected_version', 'version', 'main_image']);
   const result = await addProductVersion(context.env.DB, {
     productId: requiredString(context.req.param('id')),
     expectedVersion: integer(body['expected_version']),
     version: productVersion(body['version']),
+    ...(body['main_image'] === undefined
+      ? {}
+      : { mainImage: mainImageInput(body['main_image']) }),
   }, {
     actor,
     idempotencyKey: idempotencyKey(context),
     requestId: requestIdFromContext(context),
+    deps: {
+      storage: context.env.FILE_OBJECT_STORAGE,
+      fileAuthorization: new MainImageLinkAuthorization({
+        type: 'STAFF',
+        id: actor.staffId,
+        roles: actor.roles,
+      }),
+    },
   });
   return success(context, { product_version: result }, 201);
+}
+
+function mainImageInput(
+  value: unknown,
+): 'INHERIT' | 'NONE' | {
+  file_object_id: string;
+  expected_file_version: number;
+} {
+  if (value === 'INHERIT' || value === 'NONE') return value;
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+    return {
+      file_object_id: requiredString(record['file_object_id'], 120),
+      expected_file_version: positiveInteger(
+        record['expected_file_version'],
+      ),
+    };
+  }
+  throw validationError();
 }
 
 /**

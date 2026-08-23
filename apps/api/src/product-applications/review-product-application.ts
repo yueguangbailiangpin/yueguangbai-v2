@@ -1,4 +1,5 @@
 import type {
+  ObjectStorageAdapter,
   ProductApplicationReviewDecision,
   ProductVersionFields,
   SqlDatabase,
@@ -12,6 +13,8 @@ import {
   canonicalJson,
   hashCanonicalJson,
 } from '@ygb/domain';
+import type { FileAuthorizationService } from '../files/authorization';
+import { prepareMainImageCloneStatements } from '../catalog/main-image-clone';
 import {
   createAuditEventStatement,
 } from '../foundation/audit';
@@ -70,6 +73,7 @@ export interface ReviewProductApplicationResult {
   application_version: number;
   product_id: string | null;
   product_version_id: string | null;
+  main_image_file_object_id: string | null;
   review_reason: string | null;
   replayed: boolean;
 }
@@ -86,12 +90,17 @@ export async function reviewProductApplication(
     defaultBuyerSelfPayBps?: number;
     orderIntervalDays?: number;
     ordersPerRun?: number;
+    mainImageFileObjectId?: string | null;
   },
   command: {
     actor: ProductApplicationStaffActor;
     idempotencyKey: string;
     requestId?: string | null;
     now?: number;
+    deps?: {
+      storage?: ObjectStorageAdapter;
+      fileAuthorization?: FileAuthorizationService;
+    };
   },
 ): Promise<ReviewProductApplicationResult> {
   requireProductReviewPermission(command.actor);
@@ -129,6 +138,17 @@ export async function reviewProductApplication(
     input.defaultBuyerSelfPayBps ?? 0;
   const orderIntervalDays = input.orderIntervalDays;
   const ordersPerRun = input.ordersPerRun;
+  const mainImageFileObjectId =
+    input.mainImageFileObjectId == null
+      || input.mainImageFileObjectId.trim() === ''
+      ? null
+      : input.mainImageFileObjectId.trim();
+  if (input.decision === 'REJECT' && mainImageFileObjectId !== null) {
+    throw new ProductApplicationError(
+      'VALIDATION_ERROR',
+      400,
+    );
+  }
   if (input.decision === 'APPROVE') {
     if (!Number.isSafeInteger(expectedAmount)
       || Number(expectedAmount) < 0
@@ -182,6 +202,7 @@ export async function reviewProductApplication(
       input.decision === 'APPROVE' ? orderIntervalDays : null,
     orders_per_run:
       input.decision === 'APPROVE' ? ordersPerRun : null,
+    main_image_file_object_id: mainImageFileObjectId,
   });
 
   const acquired =
@@ -205,6 +226,8 @@ export async function reviewProductApplication(
       replayed: true,
     };
   }
+
+  let cloneCompensationKey: string | null = null;
 
   try {
     const source = await requireReviewSource(
@@ -240,6 +263,14 @@ export async function reviewProductApplication(
       source.organization_id,
     );
 
+    const mainImage = mainImageFileObjectId === null
+      ? null
+      : await requireApplicationImage(
+          database,
+          applicationId,
+          mainImageFileObjectId,
+        );
+
     const result = input.decision === 'APPROVE'
       ? await buildApproval(
           database,
@@ -249,6 +280,7 @@ export async function reviewProductApplication(
           defaultBuyerSelfPayBps,
           Number(orderIntervalDays),
           Number(ordersPerRun),
+          mainImage,
           command,
           acquired.claim.idempotencyKey,
           now,
@@ -261,7 +293,7 @@ export async function reviewProductApplication(
           acquired.claim.idempotencyKey,
           now,
         );
-
+    cloneCompensationKey = result.cloneObjectKey;
     const outbox = await prepareOutboxEvent({
       id: crypto.randomUUID(),
       dedupKey:
@@ -370,6 +402,11 @@ export async function reviewProductApplication(
     ]);
     return result.response;
   } catch (error) {
+    if (cloneCompensationKey !== null
+      && command.deps?.storage !== undefined) {
+      await command.deps.storage.deleteObject(cloneCompensationKey)
+        .catch(() => undefined);
+    }
     const normalized =
       normalizeProductApplicationError(error);
     await markIdempotencyFailed(
@@ -412,6 +449,46 @@ function requireRejectionReason(
   return value;
 }
 
+interface ApplicationMainImage {
+  file_object_id: string;
+  file_version: number;
+}
+
+async function requireApplicationImage(
+  database: SqlDatabase,
+  applicationId: string,
+  fileObjectId: string,
+): Promise<ApplicationMainImage> {
+  const row = await database.prepare(`
+    SELECT
+      link.file_object_id,
+      object.version AS file_version
+    FROM file_entity_links link
+    JOIN file_objects object
+      ON object.id=link.file_object_id
+    WHERE link.file_object_id=?
+      AND link.entity_type='PRODUCT_APPLICATION'
+      AND link.entity_id=?
+      AND link.purpose='PRODUCT_APPLICATION_IMAGE'
+      AND link.revoked_at IS NULL
+    LIMIT 1
+  `).bind(
+    fileObjectId,
+    applicationId,
+  ).first<ApplicationMainImage>();
+
+  if (!row) {
+    throw new ProductApplicationError(
+      'VALIDATION_ERROR',
+      400,
+    );
+  }
+  return {
+    file_object_id: row.file_object_id,
+    file_version: Number(row.file_version),
+  };
+}
+
 async function buildApproval(
   database: SqlDatabase,
   source: ApplicationSource,
@@ -420,14 +497,20 @@ async function buildApproval(
   defaultBuyerSelfPayBps: number,
   orderIntervalDays: number,
   ordersPerRun: number,
+  mainImage: ApplicationMainImage | null,
   command: {
     actor: ProductApplicationStaffActor;
+    deps?: {
+      storage?: ObjectStorageAdapter;
+      fileAuthorization?: FileAuthorizationService;
+    };
   },
   idempotencyKey: string,
   now: number,
 ): Promise<{
   response: ReviewProductApplicationResult;
   statements: SqlStatement[];
+  cloneObjectKey: string | null;
 }> {
   await assertAsinAvailableForApproval(
     database,
@@ -436,6 +519,45 @@ async function buildApproval(
 
   const productId = crypto.randomUUID();
   const productVersionId = crypto.randomUUID();
+
+  let cloneObjectKey: string | null = null;
+  let mainImageStatements: readonly SqlStatement[] = [];
+  let mainImageCloneObjectId: string | null = null;
+  if (mainImage !== null) {
+    if (command.deps?.storage === undefined
+      || command.deps?.fileAuthorization === undefined) {
+      throw new ProductApplicationError(
+        'DEPENDENCY_UNAVAILABLE',
+        503,
+      );
+    }
+    const clone = await prepareMainImageCloneStatements(
+      database,
+      command.deps.storage,
+      command.deps.fileAuthorization,
+      {
+        sourceFileObjectId: mainImage.file_object_id,
+        expectedSourceFileVersion: mainImage.file_version,
+        productId,
+        productVersionId,
+        sellerOrganizationId: source.organization_id,
+        actor: {
+          type: 'STAFF',
+          id: command.actor.staffId,
+          roles: command.actor.roles,
+        },
+      },
+      {
+        idempotencyKey,
+        requestId: null,
+        now,
+      },
+    );
+    cloneObjectKey = clone.object_key;
+    mainImageCloneObjectId = clone.file_object_id;
+    mainImageStatements = clone.statements;
+  }
+
   const nextVersion = source.application_version + 1;
   const response: ReviewProductApplicationResult = {
     application_id: source.application_id,
@@ -443,6 +565,7 @@ async function buildApproval(
     application_version: nextVersion,
     product_id: productId,
     product_version_id: productVersionId,
+    main_image_file_object_id: mainImageCloneObjectId,
     review_reason: null,
     replayed: false,
   };
@@ -464,6 +587,7 @@ async function buildApproval(
 
   return {
     response,
+    cloneObjectKey,
     statements: [
       database.prepare(`
         INSERT INTO products (
@@ -597,6 +721,9 @@ async function buildApproval(
         idempotencyKey,
         createdAt: now,
       }),
+      // Main-image clone statements go last: their guard trigger needs the
+      // product version row inserted above to already exist in this batch.
+      ...mainImageStatements,
     ],
   };
 }
@@ -613,6 +740,7 @@ async function buildRejection(
 ): Promise<{
   response: ReviewProductApplicationResult;
   statements: SqlStatement[];
+  cloneObjectKey: string | null;
 }> {
   const nextVersion = source.application_version + 1;
   const response: ReviewProductApplicationResult = {
@@ -621,12 +749,14 @@ async function buildRejection(
     application_version: nextVersion,
     product_id: null,
     product_version_id: null,
+    main_image_file_object_id: null,
     review_reason: rejectionReason,
     replayed: false,
   };
 
   return {
     response,
+    cloneObjectKey: null,
     statements: [
       database.prepare(`
         UPDATE product_applications

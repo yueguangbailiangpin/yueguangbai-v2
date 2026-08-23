@@ -12,12 +12,22 @@ import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
+import { sha256Hex } from '@ygb/domain';
+import type { FileActor } from '@ygb/contracts';
+import type {
+  FileAuthorizationResource,
+  FileAuthorizationService,
+} from '../files/authorization';
+import { MockObjectStorage } from '../files/mock-object-storage';
 import { createApp } from '../app';
 import { resolveAssignmentStaffAuthorization } from '../staff-assignment';
 import { registerStaffCatalogWorkflowRoutes } from '../staff/catalog-routes';
 import {
   addProductVersion,
 } from './add-product-version';
+import {
+  linkProductVersionMainImage,
+} from './link-product-version-main-image';
 import {
   assignSellerMemberStore,
 } from './assign-member-store';
@@ -772,7 +782,178 @@ describe('seller stores and product catalog', () => {
     );
     expect(forbidden.status).toBe(403);
   });
+
+  it('inherits the previous main image on new versions and accepts a fresh upload', async () => {
+    database = createMigratedTestDatabase();
+    seedCatalogActorsAndOrganizations(database);
+    const storage = new MockObjectStorage();
+    const fileAuthorization = new StaffMainImageAuthorization();
+
+    const store = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'JP',
+      storeName: '继承主图店铺',
+    }, {
+      actor: sellerOpsActor(),
+      idempotencyKey: 'inherit-main-image:store',
+      now: 4000,
+    });
+    const product = await createApprovedProduct(database, {
+      storeId: store.store_id,
+      asin: 'B0INHERIT1',
+      version: productVersion('继承主图产品'),
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:product',
+      now: 4100,
+    });
+    seedStaffProductImage(database, 'file-main-image-1', 4200);
+    seedStaffProductImage(database, 'file-main-image-new', 4201);
+    const inheritBytes = new TextEncoder().encode('inherit-main-image');
+    const inheritSha = await sha256Hex(inheritBytes);
+    const freshBytes = new TextEncoder().encode('fresh-main-image');
+    const freshSha = await sha256Hex(freshBytes);
+    await database.prepare(`
+      UPDATE file_objects SET uploaded_sha256=?
+      WHERE id IN ('file-main-image-1','file-main-image-new')
+    `).bind(inheritSha).run();
+    await database.prepare(`
+      UPDATE file_objects SET uploaded_sha256=? WHERE id='file-main-image-new'
+    `).bind(freshSha).run();
+    await storage.putObject({
+      objectKey: 'files/v1/2026/08/' + 'file-main-image-1'.padEnd(40, 'x'),
+      bytes: inheritBytes,
+      contentType: 'image/webp',
+      metadata: {},
+    });
+    await storage.putObject({
+      objectKey: 'files/v1/2026/08/' + 'file-main-image-new'.padEnd(40, 'x'),
+      bytes: freshBytes,
+      contentType: 'image/webp',
+      metadata: {},
+    });
+
+    await linkProductVersionMainImage(database, fileAuthorization, {
+      productVersionId: product.product_version_id,
+      fileObjectId: 'file-main-image-1',
+      expectedFileVersion: 1,
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:link',
+      now: 4300,
+    });
+
+    const versionTwo = await addProductVersion(database, {
+      productId: product.product_id,
+      expectedVersion: 1,
+      version: productVersion('继承版本'),
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:version-2',
+      now: 4400,
+      deps: { storage, fileAuthorization },
+    });
+    expect(versionTwo.version_no).toBe(2);
+    expect(versionTwo.main_image_file_object_id).toMatch(
+      /^[0-9a-f-]{36}$/u,
+    );
+    expect(versionTwo.main_image_file_object_id)
+      .not.toBe('file-main-image-1');
+
+    const versionThree = await addProductVersion(database, {
+      productId: product.product_id,
+      expectedVersion: 2,
+      version: productVersion('换图版本'),
+      mainImage: {
+        file_object_id: 'file-main-image-new',
+        expected_file_version: 1,
+      },
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:version-3',
+      now: 4500,
+      deps: { storage, fileAuthorization },
+    });
+    expect(versionThree.version_no).toBe(3);
+    expect(versionThree.main_image_file_object_id).toMatch(
+      /^[0-9a-f-]{36}$/u,
+    );
+    expect(versionThree.main_image_file_object_id)
+      .not.toBe('file-main-image-new');
+
+    const versionFour = await addProductVersion(database, {
+      productId: product.product_id,
+      expectedVersion: 3,
+      version: productVersion('空主图版本'),
+      mainImage: 'NONE',
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:version-4',
+      now: 4600,
+      deps: { storage, fileAuthorization },
+    });
+    expect(versionFour.main_image_file_object_id).toBeNull();
+
+    const bindings = await database.prepare(`
+      SELECT
+        version.version_no,
+        object.id AS file_object_id,
+        object.object_key,
+        object.uploaded_sha256
+      FROM product_versions version
+      LEFT JOIN product_version_main_images image
+        ON image.product_version_id=version.id
+      LEFT JOIN file_entity_links link
+        ON link.id=image.file_entity_link_id
+      LEFT JOIN file_objects object
+        ON object.id=link.file_object_id
+      WHERE version.product_id=?
+      ORDER BY version.version_no
+    `).bind(product.product_id).all<{
+      version_no: number;
+      file_object_id: string | null;
+      object_key: string | null;
+      uploaded_sha256: string | null;
+    }>();
+    expect(bindings.results.map((row) => ({
+      version_no: Number(row.version_no),
+      file_object_id: row.file_object_id,
+    }))).toEqual([
+      { version_no: 1, file_object_id: 'file-main-image-1' },
+      { version_no: 2, file_object_id: versionTwo.main_image_file_object_id },
+      {
+        version_no: 3,
+        file_object_id: versionThree.main_image_file_object_id,
+      },
+      { version_no: 4, file_object_id: null },
+    ]);
+    expect(bindings.results[1]?.uploaded_sha256).toBe(inheritSha);
+    expect(bindings.results[2]?.uploaded_sha256).toBe(freshSha);
+    expect(Array.from(
+      storage.objects.get(bindings.results[1]!.object_key!)!.bytes,
+    )).toEqual(Array.from(inheritBytes));
+    expect(Array.from(
+      storage.objects.get(bindings.results[2]!.object_key!)!.bytes,
+    )).toEqual(Array.from(freshBytes));
+  });
 });
+
+class StaffMainImageAuthorization implements FileAuthorizationService {
+  assertCanCreateUpload(): void {}
+  assertCanUpload(): void {}
+  assertCanCompleteUpload(): void {}
+  assertCanRead(): void {}
+  assertCanLink(_actor: FileActor, resource: FileAuthorizationResource): void {
+    if (resource.purpose !== 'PRODUCT_IMAGE'
+      || resource.visibility !== 'SELLER_VISIBLE'
+      || resource.entityType !== 'PRODUCT_VERSION') {
+      throw Object.assign(new Error('forbidden'), {
+        code: 'FORBIDDEN',
+        status: 403,
+      });
+    }
+  }
+}
 
 function seedCatalogActorsAndOrganizations(
   database: SqliteDatabase,

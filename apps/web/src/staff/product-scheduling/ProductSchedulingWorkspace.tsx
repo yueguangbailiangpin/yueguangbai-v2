@@ -256,11 +256,16 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
   const authority = useMemo(() => new StaffMutationAuthority<
     Awaited<ReturnType<typeof staffApi.addProductVersion>>
   >(), []);
+  const [uploader, upload] = useFileUpload();
   const current = product.versions[0];
+  const [mainImageChoice, setMainImageChoice] = useState<'INHERIT' | 'NONE' | 'UPLOAD'>(
+    current?.main_image ? 'INHERIT' : 'NONE',
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string|null>(null);
   const [requestId, setRequestId] = useState<string|null>(null);
   if (!current) return <Alert tone="warning">当前产品没有可复制的版本。</Alert>;
+  const uploaded = upload.manifest?.files[0] ?? null;
   async function execute(request: StaffMutationRequest | null): Promise<void> {
     setBusy(true); setMessage(null); setRequestId(null);
     try {
@@ -281,6 +286,11 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
       void execute(null);
       return;
     }
+    if (mainImageChoice === 'UPLOAD'
+      && (upload.state !== 'VERIFIED' || !uploaded)) {
+      setMessage('请先完成新主图上传，或改选继承上一版主图。');
+      return;
+    }
     const data = new FormData(event.currentTarget);
     const body = {
       expected_version: product.aggregate_version,
@@ -297,6 +307,12 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
         order_interval_days: Number(data.get('interval')),
         orders_per_run: Number(data.get('per_run')),
       },
+      main_image: mainImageChoice === 'UPLOAD' && uploaded
+        ? {
+            file_object_id: uploaded.file_object_id,
+            expected_file_version: uploaded.file_version,
+          }
+        : mainImageChoice,
     };
     void execute({ action: 'add-product-version',
       path: `/api/staff/catalog/products/${encodeURIComponent(product.product_id)}/versions`, body });
@@ -335,6 +351,43 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
         name="buyer_notes" defaultValue={current.buyer_visible_notes ?? ''} /></FormField>
         <FormField label="内部说明" htmlFor="version-internal-notes"><textarea id="version-internal-notes"
         name="internal_notes" defaultValue={current.internal_notes ?? ''} /></FormField>
+        <fieldset className="form-fieldset version-main-image-choice">
+          <legend>新版本主图</legend>
+          {current.main_image ? <label className="version-main-image-option">
+            <input type="radio" name="version_main_image" value="INHERIT"
+              checked={mainImageChoice === 'INHERIT'}
+              onChange={() => setMainImageChoice('INHERIT')} />
+            继承上一版主图（推荐，保存后立即生效）
+          </label> : null}
+          <label className="version-main-image-option">
+            <input type="radio" name="version_main_image" value="UPLOAD"
+              checked={mainImageChoice === 'UPLOAD'}
+              onChange={() => setMainImageChoice('UPLOAD')} />
+            上传新主图，作为本版本主图
+          </label>
+          <label className="version-main-image-option">
+            <input type="radio" name="version_main_image" value="NONE"
+              checked={mainImageChoice === 'NONE'}
+              onChange={() => setMainImageChoice('NONE')} />
+            暂不设置（稍后在产品详情手动上传绑定）
+          </label>
+          {mainImageChoice === 'UPLOAD' ? <>
+            <FileDropZone
+              id="version-new-main-image"
+              aria-label="新版本主图"
+              accept="image/jpeg,image/png,image/webp"
+              maximumFiles={1}
+              maximumBytes={10 * 1024 * 1024}
+              buttonLabel="选择新主图"
+              emptyLabel="尚未选择主图"
+              onFilesChange={(files) => {
+                const file = files[0];
+                if (file) void uploader.start('staffProductImage', [file]);
+              }}
+            />
+            <p className="staff-upload-state">上传状态：{upload.state}</p>
+          </> : null}
+        </fieldset>
         <CadenceExamples />
       </fieldset>
       {message ? <Alert tone={message.startsWith('新产品') ? 'success' : 'danger'}>{message}</Alert> : null}

@@ -1,4 +1,5 @@
 import type {
+  ObjectStorageAdapter,
   ProductVersionFields,
   SqlDatabase,
   SqlStatement,
@@ -8,6 +9,7 @@ import {
   hashCanonicalJson,
   normalizeProductVersionFields,
 } from '@ygb/domain';
+import type { FileAuthorizationService } from '../files/authorization';
 import { createAuditEventStatement } from '../foundation/audit';
 import { requireCatalogOrganizationScope } from '../staff-assignment';
 import {
@@ -28,6 +30,22 @@ import {
   requireProductScheduleMaintenance,
   type CatalogStaffActor,
 } from './catalog-shared';
+import { prepareMainImageCloneStatements } from './main-image-clone';
+
+/**
+ * Main-image handling for a new product version. INHERIT (the default)
+ * clones the previous version's main image so the new version is born with
+ * one; NONE keeps the legacy bind-later flow; FILE clones a freshly
+ * uploaded staff product image so "replace the image with a new version"
+ * is one step instead of two.
+ */
+export type AddProductVersionMainImage =
+  | 'INHERIT'
+  | 'NONE'
+  | {
+      file_object_id: string;
+      expected_file_version: number;
+    };
 
 interface ProductSource {
   product_id: string;
@@ -37,6 +55,7 @@ interface ProductSource {
   asin_normalized: string;
   product_status: string;
   current_version_no: number;
+  current_product_version_id: string;
   product_version: number;
   store_status: string;
   organization_status: string;
@@ -49,6 +68,7 @@ export interface AddProductVersionResult {
   version_no: number;
   product_version: ProductVersionFields;
   aggregate_version: number;
+  main_image_file_object_id: string | null;
   replayed: boolean;
 }
 
@@ -58,12 +78,17 @@ export async function addProductVersion(
     productId: string;
     expectedVersion: number;
     version: ProductVersionFields;
+    mainImage?: AddProductVersionMainImage;
   },
   command: {
     actor: CatalogStaffActor;
     idempotencyKey: string;
     requestId?: string | null;
     now?: number;
+    deps?: {
+      storage?: ObjectStorageAdapter;
+      fileAuthorization?: FileAuthorizationService;
+    };
   },
 ): Promise<AddProductVersionResult> {
   requireProductScheduleMaintenance(command.actor);
@@ -86,6 +111,7 @@ export async function addProductVersion(
     product_id: productId,
     expected_version: input.expectedVersion,
     version,
+    main_image: input.mainImage ?? 'INHERIT',
   });
   const acquired =
     await acquireIdempotency<AddProductVersionResult>(
@@ -109,6 +135,8 @@ export async function addProductVersion(
     };
   }
 
+  let cloneCompensationKey: string | null = null;
+
   try {
     const source = await requireProductSource(
       database,
@@ -117,6 +145,60 @@ export async function addProductVersion(
     requireCatalogOrganizationScope(command.actor, source.organization_id);
     if (source.product_version !== input.expectedVersion) {
       throw new CatalogError('VERSION_CONFLICT', 409);
+    }
+
+    const mainImageMode = input.mainImage ?? 'INHERIT';
+    const productVersionId = crypto.randomUUID();
+    let mainImageStatements: readonly SqlStatement[] = [];
+    let mainImageCloneObjectId: string | null = null;
+    if (mainImageMode !== 'NONE') {
+      const storage = command.deps?.storage;
+      const fileAuthorization = command.deps?.fileAuthorization;
+      const inheritSource = mainImageMode === 'INHERIT'
+        ? await readCurrentVersionMainImage(
+            database,
+            source.current_product_version_id,
+          )
+        : null;
+      const fileSource = typeof mainImageMode === 'object'
+        ? await readUploadedProductImage(
+            database,
+            mainImageMode,
+          )
+        : null;
+      if ((inheritSource !== null || fileSource !== null)
+        && (storage === undefined || fileAuthorization === undefined)) {
+        throw new CatalogError('DEPENDENCY_UNAVAILABLE', 503);
+      }
+      const cloneSource = inheritSource ?? fileSource;
+      if (cloneSource !== null && storage !== undefined
+        && fileAuthorization !== undefined) {
+        const clone = await prepareMainImageCloneStatements(
+          database,
+          storage,
+          fileAuthorization,
+          {
+            sourceFileObjectId: cloneSource.file_object_id,
+            expectedSourceFileVersion: cloneSource.file_version,
+            productId,
+            productVersionId,
+            sellerOrganizationId: source.organization_id,
+            actor: {
+              type: 'STAFF',
+              id: command.actor.staffId,
+              roles: command.actor.roles,
+            },
+          },
+          {
+            idempotencyKey: acquired.claim.idempotencyKey,
+            requestId: command.requestId ?? null,
+            now,
+          },
+        );
+        cloneCompensationKey = clone.object_key;
+        mainImageCloneObjectId = clone.file_object_id;
+        mainImageStatements = clone.statements;
+      }
     }
 
     const defaultBuyerSelfPayBps =
@@ -136,13 +218,13 @@ export async function addProductVersion(
       Number(source.current_version_no) + 1;
     const nextAggregateVersion =
       Number(source.product_version) + 1;
-    const productVersionId = crypto.randomUUID();
     const response: AddProductVersionResult = {
       product_id: productId,
       product_version_id: productVersionId,
       version_no: nextVersionNo,
       product_version: normalizedVersion,
       aggregate_version: nextAggregateVersion,
+      main_image_file_object_id: mainImageCloneObjectId,
       replayed: false,
     };
     const outbox = await prepareOutboxEvent({
@@ -252,6 +334,9 @@ export async function addProductVersion(
         acquired.claim.idempotencyKey,
         now,
       ),
+      // Main-image clone statements go last: their guard trigger needs the
+      // product_versions row inserted above to already exist in this batch.
+      ...mainImageStatements,
       createAuditEventStatement(database, {
         id: crypto.randomUUID(),
         aggregateType: 'PRODUCT',
@@ -299,6 +384,11 @@ export async function addProductVersion(
     await database.batch(statements);
     return response;
   } catch (error) {
+    if (cloneCompensationKey !== null
+      && command.deps?.storage !== undefined) {
+      await command.deps.storage.deleteObject(cloneCompensationKey)
+        .catch(() => undefined);
+    }
     const normalized = normalizeCatalogError(error);
     await markIdempotencyFailed(
       database,
@@ -308,6 +398,79 @@ export async function addProductVersion(
     );
     throw normalized;
   }
+}
+
+interface MainImageFileRef {
+  file_object_id: string;
+  file_version: number;
+}
+
+async function readCurrentVersionMainImage(
+  database: SqlDatabase,
+  currentProductVersionId: string,
+): Promise<MainImageFileRef | null> {
+  const row = await database.prepare(`
+    SELECT
+      link.file_object_id,
+      object.version AS file_version
+    FROM product_version_main_images image
+    JOIN file_entity_links link
+      ON link.id=image.file_entity_link_id
+    JOIN file_objects object
+      ON object.id=link.file_object_id
+    WHERE image.product_version_id=?
+      AND link.purpose='PRODUCT_IMAGE'
+      AND link.revoked_at IS NULL
+      AND object.status='VERIFIED'
+    LIMIT 1
+  `).bind(currentProductVersionId).first<MainImageFileRef>();
+  if (!row) return null;
+  return {
+    file_object_id: row.file_object_id,
+    file_version: Number(row.file_version),
+  };
+}
+
+async function readUploadedProductImage(
+  database: SqlDatabase,
+  input: { file_object_id: string; expected_file_version: number },
+): Promise<MainImageFileRef> {
+  const row = await database.prepare(`
+    SELECT
+      object.id AS file_object_id,
+      object.version AS file_version,
+      object.purpose,
+      object.status,
+      intent.status AS intent_status
+    FROM file_objects object
+    JOIN file_upload_intents intent
+      ON intent.id=object.upload_intent_id
+    WHERE object.id=?
+    LIMIT 1
+  `).bind(
+    cleanCatalogIdentifier(input.file_object_id),
+  ).first<{
+    file_object_id: string;
+    file_version: number;
+    purpose: string;
+    status: string;
+    intent_status: string;
+  }>();
+  if (!row) {
+    throw new CatalogError('NOT_FOUND', 404);
+  }
+  if (row.purpose !== 'PRODUCT_IMAGE'
+    || row.status !== 'VERIFIED'
+    || row.intent_status !== 'VERIFIED') {
+    throw new CatalogError('VALIDATION_ERROR', 400);
+  }
+  if (Number(row.file_version) !== input.expected_file_version) {
+    throw new CatalogError('VERSION_CONFLICT', 409);
+  }
+  return {
+    file_object_id: row.file_object_id,
+    file_version: Number(row.file_version),
+  };
 }
 
 async function requireProductSource(
@@ -323,6 +486,7 @@ async function requireProductSource(
       product.asin_normalized,
       product.status AS product_status,
       product.current_version_no,
+      current_version.id AS current_product_version_id,
       product.version AS product_version,
       current_version.default_buyer_self_pay_bps
         AS current_default_buyer_self_pay_bps,

@@ -399,6 +399,7 @@ function productVersionResult(versionNo: number) {
   return {
     product_id: 'product-1', product_version_id: `version-${versionNo}`,
     version_no: versionNo, aggregate_version: versionNo,
+    main_image_file_object_id: null,
     product_version: {
       productName: '测试产品', searchKeywords: ['测试'],
       orderingGuideExpectedAmountJpy: 1980, colorSpecMode: 'MAIN_IMAGE_VARIANT',
