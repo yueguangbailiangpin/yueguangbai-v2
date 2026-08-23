@@ -370,7 +370,15 @@ export function MarkupBlock({
           </span>
         ) : null}
         {canSubmitDefault ? (
-          <Button className="secondary" onClick={() => setOpenDefault((previous) => !previous)}>
+          <Button
+            className="secondary"
+            onClick={() => {
+              setOpenDefault((previous) => {
+                if (!previous) setDefaultAt(futureDateTime());
+                return !previous;
+              });
+            }}
+          >
             {openDefault ? '收起' : '修改'}
           </Button>
         ) : null}
@@ -422,7 +430,15 @@ export function MarkupBlock({
               </span>
             ) : null}
             {canSubmitOverride && !value.seller_override_pending_policy ? (
-              <Button className="secondary" onClick={() => setOpenOverride((previous) => !previous)}>
+              <Button
+                className="secondary"
+                onClick={() => {
+                  setOpenOverride((previous) => {
+                    if (!previous) setOverrideAt(futureDateTime());
+                    return !previous;
+                  });
+                }}
+              >
                 {openOverride ? '收起' : '单独设置'}
               </Button>
             ) : null}
@@ -535,7 +551,10 @@ export function ServiceFeeBlock({
               className="secondary"
               onClick={() => {
                 setReviewType(candidate.review_type);
-                setOpen((previous) => !previous);
+                setOpen((previous) => {
+                  if (!previous) setEffectiveAt(futureDateTime());
+                  return !previous;
+                });
               }}
             >
               {open && reviewType === candidate.review_type ? '收起' : candidate.effective_fee ? '修改' : '设置'}
