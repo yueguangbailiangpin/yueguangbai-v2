@@ -24,10 +24,10 @@ export function BuyerReviewsPage(): React.JSX.Element {
   });
   return <section className="buyer-page buyer-flow-page buyer-list-page">
     <BuyerJourney current="reviews" />
-    <PageHeader eyebrow="评论阶段" title="评论资料" description="按正式订单要求提交 1–3 个已验证文件。" />
+    <PageHeader eyebrow="评论阶段" title="评论资料" description="按订单要求提交 1–3 个评论文件。" />
     <section className="buyer-work-section buyer-action-section"><h2>可提交评论</h2>
-      {eligible.isInitialPending ? <BuyerLoading label="读取资格中…" />
-        : eligible.initialError ? <BuyerQueryError error={eligible.initialError} title="评论资格暂时无法读取" />
+      {eligible.isInitialPending ? <BuyerLoading label="正在确认能否提交…" />
+        : eligible.initialError ? <BuyerQueryError error={eligible.initialError} title="暂时无法确认能否提交评论" />
           : <><div className="buyer-card-list">{eligible.items.filter((item) => item.allowed_actions.includes('SUBMIT')).map((item) => <Link className="buyer-record-card buyer-stage-card"
         key={item.order.formal_order_id} to={`/buyer/reviews/new?formal_order_id=${encodeURIComponent(item.order.formal_order_id)}`}>
         <strong>{item.order.product_name}</strong><p>{reviewTypeLabel(item.order.review_type)}</p>

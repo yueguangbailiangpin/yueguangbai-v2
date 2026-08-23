@@ -45,7 +45,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
       navigate(`/buyer/order-materials/${result.data.order_evidence.submission_id}`, { replace: true });
     },
     onError: () => {
-      setMessage('提交未完成，请检查页面事实后重试。');
+      setMessage('提交未完成，请检查页面信息后重试。');
     },
   });
 
@@ -53,7 +53,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
     event.preventDefault();
     setMessage(null);
     setRequestId(null);
-    if (!canSubmit) { setMessage('当前预约或指引状态不允许提交。'); return; }
+    if (!canSubmit) { setMessage('当前预约或步骤状态不允许提交。'); return; }
     const values = new FormData(event.currentTarget);
     const orderNumber = String(values.get('amazon_order_number') ?? '').trim();
     const date = dateOnlySchema.safeParse(values.get('amazon_order_date'));
@@ -83,7 +83,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
   }
 
   if (!reservationId) return <BuyerQueryError error={null} title="无法打开提交页面" />;
-  if (eligible.isPending || instruction.isPending) return <BuyerLoading label="正在确认提交资格" />;
+  if (eligible.isPending || instruction.isPending) return <BuyerLoading label="正在确认能否提交" />;
   if (eligible.isError) return <BuyerQueryError error={eligible.error} />;
   if (instruction.isError) return <BuyerQueryError error={instruction.error} />;
   if (!current || !canSubmit) return <BuyerQueryError error={null} title="无法打开提交页面" />;

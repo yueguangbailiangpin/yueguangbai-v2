@@ -51,7 +51,7 @@ describe('BuyerTasksPage cursor aggregation', () => {
     renderPage();
 
     expect(await screen.findByText('您有 1 件待办事项')).toBeVisible();
-    expect(screen.getByText('查看下单指引')).toBeVisible();
+    expect(screen.getByText('查看下单步骤')).toBeVisible();
   });
 
   it('keeps processing-only later pages out of the actionable count', async () => {
@@ -88,7 +88,7 @@ describe('BuyerTasksPage cursor aggregation', () => {
     await waitFor(() => {
       expect(successfulSourceCompleted).toBe(true);
       expect(vi.mocked(buyerApi.reservations)).toHaveBeenCalledTimes(1);
-      expect(screen.getByText('查看下单指引')).toBeVisible();
+      expect(screen.getByText('查看下单步骤')).toBeVisible();
     });
     expect(screen.getByText('产品 surviving-action · 图片评论')).toBeVisible();
     expect(screen.getByRole('heading', { name: '任务状态暂时无法完整读取' })).toBeVisible();

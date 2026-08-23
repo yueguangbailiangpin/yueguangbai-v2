@@ -28,7 +28,7 @@ describe('canonical Buyer task classification', () => {
     const tasks = classifyBuyerTasks(sources, label);
 
     expect(tasks.urgent.map((item) => item.title)).toEqual(['修改订单资料', '修改评论资料']);
-    expect(tasks.action.map((item) => item.title)).toEqual(['查看下单指引', '提交评论资料']);
+    expect(tasks.action.map((item) => item.title)).toEqual(['查看下单步骤', '提交评论资料']);
     expect(tasks.actionableCount).toBe(4);
     expect(tasks.system.map((item) => item.title)).toEqual(['预约审核中', '订单资料审核中', '评论审核中', '返款处理中']);
   });
@@ -54,7 +54,7 @@ describe('canonical Buyer task classification', () => {
     const tasks = classifyBuyerTasks(sources, label);
 
     expect(tasks.action).toEqual([expect.objectContaining({
-      title: '查看下单指引',
+      title: '查看下单步骤',
       href: '/buyer/reservations/r-1/instruction',
     })]);
   });

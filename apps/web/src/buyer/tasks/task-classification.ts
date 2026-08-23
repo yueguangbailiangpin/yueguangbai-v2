@@ -62,7 +62,7 @@ export function classifyBuyerTasks(sources: BuyerTaskSources, reviewTypeLabel: (
   const action: BuyerTask[] = [
     ...sources.eligibleEvidence.filter((item) => item.allowed_actions.includes('SUBMIT')).map((item) => ({
       id: `instruction-${item.reservation_id}`,
-      title: '查看下单指引',
+      title: '查看下单步骤',
       detail: `${item.product_name} · ${reviewTypeLabel(item.review_type)}`,
       href: `/buyer/reservations/${encodeURIComponent(item.reservation_id)}/instruction`,
       kind: 'action' as const,

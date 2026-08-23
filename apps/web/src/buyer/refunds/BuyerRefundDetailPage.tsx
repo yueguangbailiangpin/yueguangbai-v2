@@ -51,7 +51,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
             <dd>{formatCnyFen(item.due_amount_cny_fen)}</dd>
           </div>
           <div>
-            <dt>净已付</dt>
+            <dt>实际已付</dt>
             <dd>{formatCnyFen(item.net_paid_cny_fen)}</dd>
           </div>
           <div>
@@ -90,7 +90,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
         </Card>
       ) : null}
       <section aria-labelledby="refund-activity-title">
-        <h2 id="refund-activity-title">付款与冲正</h2>
+        <h2 id="refund-activity-title">付款记录</h2>
         {item.activities.length === 0 ? (
           <p>暂无支付活动。</p>
         ) : (
@@ -108,7 +108,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
                   </p>
                   <dl className="compact-facts">
                     <div>
-                      <dt>活动后净已付</dt>
+                      <dt>这笔之后实际已付</dt>
                       <dd>{formatCnyFen(activity.balance_after.net_paid_cny_fen)}</dd>
                     </div>
                     <div>

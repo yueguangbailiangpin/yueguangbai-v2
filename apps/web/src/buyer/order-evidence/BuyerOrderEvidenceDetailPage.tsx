@@ -115,9 +115,9 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
             <dd>{formatJpy(item.buyer_refundable_principal_jpy)}</dd>
           </div>
           <div>
-            <dt>资料版本</dt>
+            <dt>提交版本</dt>
             <dd>
-              {item.version}（证据版本 {item.evidence_version_no}）
+              {item.version}（第 {item.evidence_version_no} 次提交）
             </dd>
           </div>
           <div>
@@ -221,7 +221,7 @@ function EvidenceFile({
           fallback={<span className="protected-image-placeholder">图片加载中</span>}
         /> : <ProtectedFileButton provider={provider} />
       ) : (
-        <p className="metadata-only-note">历史文件仅保留元数据，当前没有读取授权。</p>
+        <p className="metadata-only-note">历史文件已不再提供下载，只能看到文件信息。</p>
       )}
     </article>
   );

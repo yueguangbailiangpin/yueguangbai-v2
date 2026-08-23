@@ -73,7 +73,7 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
       {!activeStoreReservation && demand.buyer_self_pay_bps > 0 ? <Checkbox checked={confirmed}
         onChange={(event) => setConfirmed(event.currentTarget.checked)}
         label={`我确认接受 ${formatBps(demand.buyer_self_pay_bps)} 的自费比例`} /> : null}
-      <BuyerMutationRecovery mutation={mutation} deterministicMessage="需求事实已变化，请刷新事实后重新确认。"
+      <BuyerMutationRecovery mutation={mutation} deterministicMessage="产品信息有更新，请刷新后重新确认。"
         onRefresh={() => { void query.refetch(); }} />
       <Button disabled={activeStoreReservation || (demand.buyer_self_pay_bps > 0 && !confirmed)}
         loading={mutation.isPending} loadingLabel="预约中…"

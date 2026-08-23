@@ -80,7 +80,7 @@ export function BuyerMePage(): React.JSX.Element {
       ) : null}
       <Card className="buyer-summary-card buyer-account-summary">
         <div>
-          <p className="eyebrow">业务身份</p>
+          <p className="eyebrow">身份</p>
           <h2>{me.buyer.display_name}</h2>
         </div>
         <dl className="buyer-facts">

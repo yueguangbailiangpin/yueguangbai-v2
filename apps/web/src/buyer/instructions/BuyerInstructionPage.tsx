@@ -30,7 +30,7 @@ export function BuyerInstructionPage(): React.JSX.Element {
     enabled: content.isError && isInstructionStateFallbackError(content.error),
   });
 
-  if (content.isPending) return <BuyerLoading label="读取下单指引中…" />;
+  if (content.isPending) return <BuyerLoading label="读取下单步骤中…" />;
   if (content.data) {
     const instruction = content.data;
     return <ActiveInstruction
@@ -38,13 +38,13 @@ export function BuyerInstructionPage(): React.JSX.Element {
       instruction={instruction}
     />;
   }
-  if (state.isPending) return <BuyerLoading label="读取指引状态中…" />;
+  if (state.isPending) return <BuyerLoading label="读取步骤状态中…" />;
   if (state.isError) return <BuyerQueryError error={state.error} />;
   if (state.data)
     return (
       <section className="buyer-page buyer-flow-page buyer-detail-page">
         <BuyerJourney current="products" />
-        <PageHeader eyebrow="下单指引" title={statusLabel(state.data.status)}>
+        <PageHeader eyebrow="下单步骤" title={statusLabel(state.data.status)}>
           <StatusBadge tone={statusTone(state.data.status)}>{statusLabel(state.data.status)}</StatusBadge>
         </PageHeader>
         <Card className="buyer-summary-card">
@@ -58,7 +58,7 @@ export function BuyerInstructionPage(): React.JSX.Element {
       </section>
     );
   if (content.isError) return <BuyerQueryError error={content.error} />;
-  return <BuyerLoading label="读取下单指引中…" />;
+  return <BuyerLoading label="读取下单步骤中…" />;
 }
 
 function ActiveInstruction({
@@ -72,7 +72,7 @@ function ActiveInstruction({
     <section className="buyer-page buyer-flow-page buyer-detail-page buyer-instruction-page">
       <BuyerJourney current="products" />
       <PageHeader
-        eyebrow="下单指引"
+        eyebrow="下单步骤"
         title={instruction.product_name}
         description={instruction.store_display_name}
       >
@@ -210,8 +210,8 @@ function DeadlineFacts({
 }
 
 function instructionStateMessage(status: string): string {
-  if (status === 'UNPUBLISHED') return '下单指引尚未发布，请稍后查看。';
-  if (status === 'EXPIRED') return '下单指引已到期，当前不能继续提交。';
-  if (status === 'CANCELLED') return '下单指引已取消。';
-  return '当前指引已完成。';
+  if (status === 'UNPUBLISHED') return '下单步骤尚未发布，请稍后查看。';
+  if (status === 'EXPIRED') return '下单步骤已到期，当前不能继续提交。';
+  if (status === 'CANCELLED') return '下单步骤已取消。';
+  return '当前步骤已完成。';
 }

@@ -26,8 +26,8 @@ export function BuyerOrderMaterialsPage(): React.JSX.Element {
     <BuyerJourney current="materials" />
     <PageHeader eyebrow="订单资料阶段" title="订单资料" description="可以查看、提交资料，或根据审核意见修改。" />
     <section className="buyer-work-section buyer-action-section" aria-labelledby="evidence-ready-title"><h2 id="evidence-ready-title">现在可提交</h2>
-      {eligible.isInitialPending ? <BuyerLoading label="正在读取可提交资料" />
-        : eligible.initialError ? <BuyerQueryError error={eligible.initialError} title="提交资格暂时无法读取" />
+      {eligible.isInitialPending ? <BuyerLoading label="正在读取可提交的资料" />
+        : eligible.initialError ? <BuyerQueryError error={eligible.initialError} title="暂时无法确认能否提交" />
           : <><div className="buyer-card-list">{eligible.items.filter((item) => item.allowed_actions.includes('SUBMIT')).map((item) => <Link
           className="buyer-record-card buyer-stage-card" key={item.reservation_id}
           to={`/buyer/order-materials/new?reservation_id=${encodeURIComponent(item.reservation_id)}`}>

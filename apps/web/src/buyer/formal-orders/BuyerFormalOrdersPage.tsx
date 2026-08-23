@@ -51,7 +51,7 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
       <PageHeader
         eyebrow="订单资料阶段"
         title="正式订单"
-        description="这里显示确认时保存的只读订单快照。"
+        description="这里显示确认订单时保存的信息，之后不会变。"
       />
       <form className="buyer-filter-form" role="search" onSubmit={submit} aria-label="正式订单筛选">
         <FormField label="市场" htmlFor="order-market">
@@ -73,7 +73,7 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
             ))}
           </Select>
         </FormField>
-        <FormField label="确认业务日期" htmlFor="order-confirmed-date">
+        <FormField label="确认日期" htmlFor="order-confirmed-date">
           <TextInput name="confirmed_business_date" type="date" />
         </FormField>
         <FormField label="正式订单号" htmlFor="order-id">
@@ -105,7 +105,7 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
                   <dd>{formatDateOnly(item.amazon_order_date)}</dd>
                 </div>
                 <div>
-                  <dt>确认业务日期</dt>
+                  <dt>确认日期</dt>
                   <dd>{item.confirmed_business_date}</dd>
                 </div>
                 <div>

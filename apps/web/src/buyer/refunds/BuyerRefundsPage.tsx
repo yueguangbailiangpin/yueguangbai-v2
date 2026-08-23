@@ -24,14 +24,14 @@ export function BuyerRefundsPage(): React.JSX.Element {
       <PageHeader
         eyebrow="返款阶段"
         title="返款记录"
-        description="查看返款金额、付款和冲正记录。"
+        description="查看返款金额和每笔付款记录。"
       />
       {pages.isInitialPending ? (
         <BuyerLoading />
       ) : pages.initialError ? (
         <BuyerQueryError error={pages.initialError} />
       ) : pages.items.length === 0 ? (
-        <BuyerEmpty title="暂无返款记录" description="评论审核通过并形成返款义务后会显示。" />
+        <BuyerEmpty title="暂无返款记录" description="评论审核通过后，返款记录会显示在这里。" />
       ) : (
         <div className="buyer-card-list">
           {pages.items.map((item) => (

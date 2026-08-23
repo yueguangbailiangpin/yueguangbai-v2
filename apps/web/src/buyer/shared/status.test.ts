@@ -4,8 +4,8 @@ import { marketplaceLabel, paymentChannelLabel, reviewTypeLabel } from './status
 describe('Buyer display labels', () => {
   it('translates returned marketplace, review, and payment-channel values', () => {
     expect(marketplaceLabel('JP')).toBe('日本站');
-    expect(marketplaceLabel('RAKUTEN_JP')).toBe('乐天日本站（未接入）');
-    expect(marketplaceLabel('TIKTOK_JP')).toBe('TikTok 日本站（未接入）');
+    expect(marketplaceLabel('RAKUTEN_JP')).toBe('乐天日本站（即将开放）');
+    expect(marketplaceLabel('TIKTOK_JP')).toBe('TikTok 日本站（即将开放）');
     expect(reviewTypeLabel('IMAGE')).toBe('图片评论');
     expect(paymentChannelLabel('WECHAT_PAY')).toBe('微信支付');
   });

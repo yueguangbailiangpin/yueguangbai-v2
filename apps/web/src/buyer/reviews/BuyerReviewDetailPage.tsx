@@ -80,7 +80,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
             <dd>{formatDateOnly(item.order.amazon_order_date)}</dd>
           </div>
           <div>
-            <dt>证据版本</dt>
+            <dt>提交次数</dt>
             <dd>{item.current_evidence_version_no}</dd>
           </div>
           <div>
@@ -110,7 +110,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
         </dl>
       </Card>
       <Card className="buyer-support-card">
-        <h2>证据文件</h2>
+        <h2>评论文件</h2>
         {item.files.map((file) => (
           <ReviewFile key={file.file_entity_link_id} reviewId={item.review_case_id} file={file} />
         ))}
@@ -214,7 +214,7 @@ function ReviewResubmitForm({
       await client.invalidateQueries({ queryKey: buyerQueryKeys.reviewsRoot });
     },
     onError: () => {
-      setMessage('重新提交未完成，页面事实可能已经变化。');
+      setMessage('重新提交未完成，页面信息可能有变化。');
     },
   });
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -256,7 +256,7 @@ function ReviewResubmitForm({
           <TextInput name="review_url" type="url" defaultValue={review.review_url ?? ''} />
         </FormField>
         <FormField
-          label="新的评论证据"
+          label="新的评论文件"
           htmlFor="review-resubmit-files"
           description="必须选择 1–3 个文件"
           required
@@ -268,7 +268,7 @@ function ReviewResubmitForm({
             accept="image/jpeg,image/png,image/webp,application/pdf"
             maximumFiles={3}
             maximumBytes={20 * 1024 * 1024}
-            buttonLabel="选择新的评论证据"
+            buttonLabel="选择新的评论文件"
             emptyLabel="尚未选择文件"
             onFilesChange={(selectedFiles) => {
               files.current = [...selectedFiles];

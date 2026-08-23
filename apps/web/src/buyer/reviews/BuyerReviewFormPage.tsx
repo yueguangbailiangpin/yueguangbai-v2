@@ -75,7 +75,7 @@ export function BuyerReviewFormPage(): React.JSX.Element {
     });
   }
   if (!formalOrderId) return <BuyerQueryError error={null} title="无法打开评论提交页面" />;
-  if (eligible.isPending) return <BuyerLoading label="正在确认评论资格" />;
+  if (eligible.isPending) return <BuyerLoading label="正在确认能否提交评论" />;
   if (eligible.isError) return <BuyerQueryError error={eligible.error} />;
   if (!current?.allowed_actions.includes('SUBMIT'))
     return <BuyerQueryError error={null} title="无法打开评论提交页面" />;
@@ -90,7 +90,7 @@ export function BuyerReviewFormPage(): React.JSX.Element {
       <Card className="buyer-action-panel">
         <div className="buyer-form-intro">
           <strong>准备评论资料</strong>
-          <p>请提交 1–3 个已验证文件；评论链接可稍后补充。</p>
+          <p>请提交 1–3 个评论文件；评论链接可稍后补充。</p>
         </div>
         <dl className="buyer-facts">
           <div>
@@ -112,7 +112,7 @@ export function BuyerReviewFormPage(): React.JSX.Element {
             <TextInput name="review_url" type="url" />
           </FormField>
           <FormField
-            label="评论证据"
+            label="评论文件"
             htmlFor="review-files"
             description="请选择 1–3 个图片或 PDF 文件"
             required
@@ -124,7 +124,7 @@ export function BuyerReviewFormPage(): React.JSX.Element {
               required
               maximumFiles={3}
               maximumBytes={20 * 1024 * 1024}
-              buttonLabel="选择评论证据"
+              buttonLabel="选择评论文件"
               emptyLabel="尚未选择文件"
               onFilesChange={(selectedFiles) => {
                 files.current = [...selectedFiles];

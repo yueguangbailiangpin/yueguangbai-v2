@@ -68,7 +68,7 @@ export function BuyerDemandsPage(): React.JSX.Element {
           label="搜产品或店铺"
         />
         <Select
-          aria-label="筛选任务类型"
+          aria-label="筛选评论类型"
           value={filter}
           onChange={(event) => changeFilter(event.target.value as Filter)}
         >
