@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router';
 import { z } from 'zod';
 import { identityApiRequest } from '../../api/identity-request';
 import { operationHeaders } from '../../api/idempotency';
@@ -13,6 +14,7 @@ import {
   StatusBadge,
   TextInput,
 } from '../../ui/primitives';
+import { staffApi } from '../api/client';
 import { StaffProtectedImage } from '../shared/StaffProtectedImage';
 import type { StaffWorkItem } from '../contracts/runtime';
 import { staffWorkbenchKeys } from '../queries/keys';
@@ -93,9 +95,20 @@ export function ProductApplicationReviewPanel({
     onSuccess: async () => {
       // 审批命令响应已确认成功；完成后不再读取已完工作项的审核上下文。
       await client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot });
-      onCompleted(item);
     },
   });
+  const review = mutation.data?.data.product_application_review;
+  const approvedProduct = review !== undefined
+    && review.status === 'APPROVED'
+    && review.product_id !== null
+    ? { productId: review.product_id, hasMainImage: review.main_image_file_object_id !== null }
+    : null;
+  // 拒绝没有连审下一步，直接回任务队列；批准留在本屏进入下一步。
+  useEffect(() => {
+    if (mutation.isSuccess && review !== undefined && review.status === 'REJECTED') {
+      onCompleted(item);
+    }
+  }, [mutation.isSuccess, review, onCompleted, item]);
   return (
     <section className="staff-workflow-closure staff-work-panel">
       <Card className="sensitive-action">
@@ -103,7 +116,13 @@ export function ProductApplicationReviewPanel({
           <h2>产品申请审核</h2>
           <StatusBadge tone="processing">待处理</StatusBadge>
         </div>
-        {query.isPending ? (
+        {mutation.isSuccess && approvedProduct ? (
+          <ApprovalNextStep
+            productId={approvedProduct.productId}
+            hasMainImage={approvedProduct.hasMainImage}
+            onBack={() => onCompleted(item)}
+          />
+        ) : query.isPending ? (
           <p role="status">正在加载申请事实</p>
         ) : query.isError ? (
           <Alert tone="danger">申请事实读取失败，请刷新后重试。</Alert>
@@ -122,6 +141,98 @@ export function ProductApplicationReviewPanel({
         )}
       </Card>
     </section>
+  );
+}
+
+const APPROVAL_NEXT_STEP_POLL_MS = 8_000;
+
+/**
+ * 连审下一步：产品通过后本屏直连需求发布。需求由卖家在卖家端提交
+ * （产品通过后才存在），所以这里自动轮询新产品的待发布需求，出现后
+ * 一键跳到对应工作项完成发布，替代“回队列 → 等待 → 再找”。
+ */
+function ApprovalNextStep({
+  productId,
+  hasMainImage,
+  onBack,
+}: {
+  productId: string;
+  hasMainImage: boolean;
+  onBack: () => void;
+}): React.JSX.Element {
+  const client = useQueryClient();
+  const navigate = useNavigate();
+  const productQuery = useQuery({
+    queryKey: ['staff', 'workbench', 'approval-next-step', productId],
+    queryFn: ({ signal }) =>
+      staffApi.product(client, productId, signal).then((result) => result.data.product),
+    refetchInterval: APPROVAL_NEXT_STEP_POLL_MS,
+    retry: false,
+  });
+  const pendingDemand = productQuery.data?.demands.find(
+    (demand) => demand.status === 'SUBMITTED',
+  ) ?? null;
+  const workItemsQuery = useQuery({
+    queryKey: [
+      'staff', 'workbench', 'approval-next-step', productId, 'demand-review-items',
+    ],
+    queryFn: ({ signal }) =>
+      staffApi
+        .workItems(
+          client,
+          { status: 'OPEN', workType: 'DEMAND_REVIEW', cursor: null, limit: 25 },
+          signal,
+        )
+        .then((result) => result.data.work_items),
+    enabled: pendingDemand !== null,
+    refetchInterval: APPROVAL_NEXT_STEP_POLL_MS,
+    retry: false,
+  });
+  const demandWorkItem = pendingDemand === null
+    ? undefined
+    : workItemsQuery.data?.find(
+        (workItem) => workItem.source_entity_id === pendingDemand.demand_batch_id,
+      );
+  return (
+    <div className="approval-next-step">
+      <Alert tone="success">已通过并创建正式产品。</Alert>
+      <Fact
+        label="v1 主图"
+        value={hasMainImage ? '已绑定（审批时勾选的申请图）' : '未绑定'}
+      />
+      {!hasMainImage ? (
+        <Alert tone="warning">
+          本版本没有绑定主图；卖家提交数量计划后，需求发布会被主图门槛拦截。
+          可现在去产品详情手动上传绑定。
+        </Alert>
+      ) : null}
+      <div className="approval-next-step-waiting">
+        <h3>连审第二步：发布数量计划</h3>
+        <p>
+          等待卖家在卖家端为这个产品提交数量计划；本页每 8 秒自动检查一次，
+          出现待发布需求后可直接在这里继续。
+        </p>
+        {pendingDemand && demandWorkItem ? (
+          <Button
+            onClick={() =>
+              navigate(`/staff/work/${encodeURIComponent(demandWorkItem.work_item_id)}`)
+            }
+          >
+            去发布数量计划（{pendingDemand.target_quantity} 单）
+          </Button>
+        ) : (
+          <p role="status">
+            {productQuery.isFetching ? '正在检查新需求…' : '暂无待发布的数量计划。'}
+          </p>
+        )}
+      </div>
+      <div className="approval-next-step-links">
+        <Link to={`/staff/products/${encodeURIComponent(productId)}`}>打开产品详情</Link>
+        <Button className="secondary" onClick={onBack}>
+          返回任务队列
+        </Button>
+      </div>
+    </div>
   );
 }
 

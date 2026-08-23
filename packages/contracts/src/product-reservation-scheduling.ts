@@ -73,6 +73,11 @@ export interface StaffProductDetailDto extends StaffProductListItemDto {
   timezone: ProductScheduleTimezone;
   data_as_of: number;
 }
+export interface DemandReviewMainImageDto {
+  file_object_id: string;
+  file_version: number;
+  client_file_name: string;
+}
 export interface DemandReviewContextDto {
   demand_batch_id: string;
   demand_version: number;
@@ -87,6 +92,10 @@ export interface DemandReviewContextDto {
   reservation_deadline: number;
   order_deadline: number;
   cadence: OrderCadenceDto | null;
+  main_image: DemandReviewMainImageDto | null;
+  ordering_guide_expected_amount_jpy: number | null;
+  color_spec_mode: 'MAIN_IMAGE_VARIANT' | 'ANY_VARIANT' | null;
+  buyer_self_pay_bps_snapshot: number | null;
   can_publish: boolean;
   timezone: ProductScheduleTimezone;
   data_as_of: number;

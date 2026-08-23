@@ -19,6 +19,7 @@ import {
   type StaffMutationRequest,
 } from '../mutations/StaffMutationAuthority';
 import { staffWorkbenchKeys } from '../queries/keys';
+import { StaffProtectedImage } from '../shared/StaffProtectedImage';
 import { formatShanghai } from '../shared/format';
 import { describeStaffMutationError } from '../shared/staffMutationOutcome';
 import { Audit, CustomerContext, Fact, PaneTitle } from './shared';
@@ -81,6 +82,26 @@ export function DemandReviewPanel({
             <h3>需求发布事实</h3>
             <Fact label="产品" value={`${value.product_name} · v${value.product_version_no}`} />
             <Fact label="目标数量" value={`${value.target_quantity} 单`} />
+            <Fact
+              label="下单参考金额"
+              value={value.ordering_guide_expected_amount_jpy === null
+                ? '未配置（发布前必须补齐）'
+                : `${value.ordering_guide_expected_amount_jpy} JPY`}
+            />
+            <Fact
+              label="颜色规格"
+              value={value.color_spec_mode === 'MAIN_IMAGE_VARIANT'
+                ? '按主图规格'
+                : value.color_spec_mode === 'ANY_VARIANT'
+                  ? '任意规格'
+                  : '未配置（发布前必须补齐）'}
+            />
+            <Fact
+              label="买家自费比例"
+              value={value.buyer_self_pay_bps_snapshot === null
+                ? '发布时按产品版本默认冻结'
+                : `${(value.buyer_self_pay_bps_snapshot / 100).toFixed(2)}%`}
+            />
             <Fact label="预约截止" value={formatShanghai(value.reservation_deadline)} />
             <Fact label="下单截止" value={formatShanghai(value.order_deadline)} />
             <Fact
@@ -91,6 +112,29 @@ export function DemandReviewPanel({
                   : '未配置'
               }
             />
+            {value.main_image ? (
+              <div className="demand-review-main-image">
+                <span className="fact-label">主图（v{value.product_version_no}）</span>
+                <StaffProtectedImage
+                  alt={`${value.product_name} 主图`}
+                  className="demand-review-main-image-thumb"
+                  fallback={<span className="protected-image-placeholder">主图加载中</span>}
+                  reference={{
+                    file_object_id: value.main_image.file_object_id,
+                    file_version: value.main_image.file_version,
+                    purpose: 'PRODUCT_IMAGE',
+                    visibility: 'SELLER_VISIBLE',
+                  }}
+                />
+                <span className="demand-review-main-image-name">
+                  {value.main_image.client_file_name}
+                </span>
+              </div>
+            ) : (
+              <Alert tone="warning">
+                该产品版本未绑定主图，发布会被拦截；请先在产品详情绑定主图。
+              </Alert>
+            )}
           </Card>
         ) : (
           <Alert tone="danger">需求事实暂时无法加载。</Alert>

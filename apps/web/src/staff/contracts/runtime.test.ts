@@ -67,6 +67,12 @@ describe('Staff workbench runtime DTOs', () => {
       product_id: 'product-1', product_version_no: 3, product_name: '产品',
       task_type: 'IMAGE', target_quantity: 10, reservation_deadline: 1,
       order_deadline: 2, cadence: { order_interval_days: 2, orders_per_run: 5 },
+      main_image: {
+        file_object_id: 'main-image-1', file_version: 1, client_file_name: 'main.webp',
+      },
+      ordering_guide_expected_amount_jpy: 1980,
+      color_spec_mode: 'MAIN_IMAGE_VARIANT',
+      buyer_self_pay_bps_snapshot: null,
       can_publish: true,
       timezone: 'Asia/Shanghai', data_as_of: 1,
     };
@@ -84,6 +90,10 @@ describe('Staff workbench runtime DTOs', () => {
       product_id: 'product-1', product_version_no: 3, product_name: '产品',
       task_type: 'IMAGE', target_quantity: 10, reservation_deadline: 1,
       order_deadline: 2, cadence: { order_interval_days: 2, orders_per_run: 5 },
+      main_image: null,
+      ordering_guide_expected_amount_jpy: null,
+      color_spec_mode: null,
+      buyer_self_pay_bps_snapshot: null,
       can_publish: true,
       // Backend returns PRODUCT_SCHEDULE_TIMEZONE (AMAZON_JP = Asia/Tokyo)
       timezone: 'Asia/Tokyo', data_as_of: 1,

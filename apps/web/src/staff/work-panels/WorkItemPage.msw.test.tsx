@@ -38,6 +38,14 @@ const demandReviewContext = {
   reservation_deadline: 1_787_000_000_000,
   order_deadline: 1_788_000_000_000,
   cadence: { order_interval_days: 2, orders_per_run: 5 },
+  main_image: {
+    file_object_id: 'main-image-1',
+    file_version: 1,
+    client_file_name: 'main.webp',
+  },
+  ordering_guide_expected_amount_jpy: 2999,
+  color_spec_mode: 'MAIN_IMAGE_VARIANT',
+  buyer_self_pay_bps_snapshot: null,
   can_publish: true,
   timezone: 'Asia/Shanghai',
   data_as_of: 1_787_000_000_000,
@@ -230,6 +238,41 @@ function respondWorkItem(item: typeof staffTestWorkItem): Response {
     data: { work_item: item },
     meta: { request_id: `work-item-${item.work_item_id}` },
   });
+}
+
+function approvalNextStepProduct(demands: unknown[] = []) {
+  return {
+    product_id: 'product-1',
+    seller_organization_id: 'seller-org-1',
+    store_id: 'store-1',
+    store_name: '测试店铺',
+    marketplace_code: 'JP',
+    asin: 'B000000001',
+    status: 'ACTIVE',
+    aggregate_version: 1,
+    current_version_no: 1,
+    product_name: '咖啡秤',
+    cadence: { order_interval_days: 1, orders_per_run: 1 },
+    updated_at: 1_000,
+    versions: [{
+      product_version_id: 'product-version-1',
+      version_no: 1,
+      product_name: '咖啡秤',
+      search_keywords: ['咖啡秤'],
+      ordering_guide_expected_amount_jpy: 2999,
+      color_spec_mode: 'MAIN_IMAGE_VARIANT',
+      default_buyer_self_pay_bps: 0,
+      product_url: null,
+      buyer_visible_notes: null,
+      internal_notes: null,
+      cadence: { order_interval_days: 1, orders_per_run: 1 },
+      main_image: null,
+      created_at: 1_000,
+    }],
+    demands,
+    timezone: 'Asia/Shanghai',
+    data_as_of: 1_000,
+  };
 }
 
 describe('work item page dispatch', () => {
@@ -544,6 +587,29 @@ describe('demand review panel', () => {
         HttpResponse.json({
           data: { review_context: { ...demandReviewContext, can_publish: false } },
           meta: { request_id: 'demand-context-base' },
+        }),
+      ),
+      http.post(apiUrl('/api/staff/files/main-image-1/read-intents'), () =>
+        HttpResponse.json({
+          data: {
+            read_intent_id: 'demand-main-image-intent',
+            file_object_id: 'main-image-1',
+            access_token: 'demand-main-image-token'.padEnd(40, 'x'),
+            access_token_available: true,
+            expires_at: 99,
+            replayed: false,
+          },
+          meta: { request_id: 'demand-main-image-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/file-read-intents/demand-main-image-intent/content'), () =>
+        new Response(Uint8Array.of(5, 6), {
+          headers: {
+            'Content-Type': 'image/webp',
+            'Content-Length': '2',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
         }),
       ),
     );
@@ -988,12 +1054,24 @@ describe('product application review panel', () => {
           meta: { request_id: 'product-decision-success' },
         })),
     );
+    server.use(
+      http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+        HttpResponse.json({
+          data: { product: approvalNextStepProduct() },
+          meta: { request_id: 'product-detail-next-step' },
+        }),
+      ),
+    );
     const user = userEvent.setup();
     renderWorkItemPage('work-product', ['PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH']);
 
     expect(await screen.findByDisplayValue('2999')).toBeVisible();
     expect(screen.getByText('2999 JPY')).toBeVisible();
     await user.click(screen.getByRole('button', { name: '批准并创建正式产品' }));
+
+    expect(await screen.findByText('已通过并创建正式产品。')).toBeVisible();
+    expect(screen.getByText('连审第二步：发布数量计划')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '返回任务队列' }));
 
     expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
     expect(contextReads).toBe(1);
@@ -1111,6 +1189,14 @@ describe('product application review panel', () => {
         }),
       ),
     );
+    server.use(
+      http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+        HttpResponse.json({
+          data: { product: approvalNextStepProduct() },
+          meta: { request_id: 'product-detail-next-step-image' },
+        }),
+      ),
+    );
     const user = userEvent.setup();
     renderWorkItemPage('work-product-image', ['PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH']);
 
@@ -1121,12 +1207,125 @@ describe('product application review panel', () => {
     await user.click(screen.getByRole('radio', { name: /第 2 张/u }));
     await user.click(screen.getByRole('button', { name: '批准并创建正式产品' }));
 
+    expect(await screen.findByText('已通过并创建正式产品。')).toBeVisible();
+    expect(screen.getByText('已绑定（审批时勾选的申请图）')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '返回任务队列' }));
+
     expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
     expect(submittedBodies).toHaveLength(1);
     expect(submittedBodies[0]).toMatchObject({
       decision: 'APPROVE',
       main_image_file_object_id: 'application-image-2',
     });
+  });
+
+  it('offers the connected demand publish step once the seller submits a quantity plan', async () => {
+    const productWorkItem = {
+      ...staffTestWorkItem,
+      work_item_id: 'work-product-connected',
+      work_type: 'PRODUCT_APPLICATION_REVIEW' as const,
+      source_entity_type: 'PRODUCT_APPLICATION',
+      source_entity_id: 'application-1',
+    };
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items/work-product-connected'), () =>
+        respondWorkItem(productWorkItem),
+      ),
+      http.get(apiUrl('/api/staff/product-applications/application-1/review-context'), () =>
+        HttpResponse.json({
+          data: {
+            review_context: {
+              application_id: 'application-1',
+              store: { id: 'store-1', display_name: '测试店铺' },
+              marketplace_code: 'JP',
+              asin: 'B000000001',
+              product_name: '咖啡秤',
+              search_keywords: ['咖啡秤'],
+              product_url: null,
+              buyer_visible_notes: null,
+              seller_notes: null,
+              ordering_guide_expected_amount_jpy: '2999',
+              status: 'SUBMITTED',
+              version: 1,
+              submitted_at: 1_000,
+              images: [],
+            },
+          },
+          meta: { request_id: 'product-context-connected' },
+        }),
+      ),
+      http.post(apiUrl('/api/staff/product-applications/application-1/review'), () =>
+        HttpResponse.json({
+          data: {
+            product_application_review: {
+              application_id: 'application-1',
+              status: 'APPROVED',
+              application_version: 2,
+              product_id: 'product-1',
+              product_version_id: 'product-version-1',
+              main_image_file_object_id: null,
+              review_reason: null,
+              replayed: false,
+            },
+          },
+          meta: { request_id: 'product-decision-connected' },
+        })),
+      http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+        HttpResponse.json({
+          data: {
+            product: approvalNextStepProduct([
+              {
+                demand_batch_id: 'demand-9',
+                status: 'SUBMITTED',
+                target_quantity: 8,
+                effective_reservation_count: 0,
+                order_deadline: 1_788_000_000_000,
+                demand_version: 1,
+                schedule_version: null,
+                first_order_date: null,
+              },
+            ]),
+          },
+          meta: { request_id: 'product-detail-demand-waiting' },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWorkItemPage('work-product-connected', ['PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH']);
+    // renderWorkItemPage 注册默认空队列 handler（server.use 后注册优先），
+    // 必须在其后再覆盖带 work_type 分支的队列响应。
+    server.use(
+      http.get(apiUrl('/api/staff/me/work-items'), ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get('work_type') === 'DEMAND_REVIEW') {
+          return HttpResponse.json({
+            data: {
+              work_items: [
+                {
+                  ...staffTestWorkItem,
+                  work_item_id: 'work-demand-connected',
+                  work_type: 'DEMAND_REVIEW',
+                  source_entity_type: 'DEMAND_BATCH',
+                  source_entity_id: 'demand-9',
+                },
+              ],
+              next_cursor: null,
+            },
+            meta: { request_id: 'queue-demand-review' },
+          });
+        }
+        return HttpResponse.json({
+          data: { work_items: [], next_cursor: null },
+          meta: { request_id: 'queue-empty' },
+        });
+      }),
+    );
+
+    expect(await screen.findByDisplayValue('2999')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '批准并创建正式产品' }));
+
+    expect(await screen.findByRole('button', { name: '去发布数量计划（8 单）' })).toBeVisible();
+    expect(screen.getByText('连审第二步：发布数量计划')).toBeVisible();
   });
 });
 
@@ -1218,6 +1417,29 @@ function installDemandHandlers(mutation: (request: Request) => Promise<Response>
     ),
     http.post(apiUrl('/api/staff/demand-batches/demand-1/review'), ({ request }) =>
       mutation(request),
+    ),
+    http.post(apiUrl('/api/staff/files/main-image-1/read-intents'), () =>
+      HttpResponse.json({
+        data: {
+          read_intent_id: 'demand-main-image-intent',
+          file_object_id: 'main-image-1',
+          access_token: 'demand-main-image-token'.padEnd(40, 'x'),
+          access_token_available: true,
+          expires_at: 99,
+          replayed: false,
+        },
+        meta: { request_id: 'demand-main-image-read' },
+      }),
+    ),
+    http.get(apiUrl('/api/staff/file-read-intents/demand-main-image-intent/content'), () =>
+      new Response(Uint8Array.of(5, 6), {
+        headers: {
+          'Content-Type': 'image/webp',
+          'Content-Length': '2',
+          'Cache-Control': 'private, no-store',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }),
     ),
   );
 }

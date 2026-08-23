@@ -63,6 +63,9 @@ interface DemandSource {
   order_interval_days: number | null;
   orders_per_run: number | null;
   main_image_file_object_id: string | null;
+  main_image_file_version: number | null;
+  main_image_client_file_name: string | null;
+  buyer_self_pay_bps_snapshot: number | null;
   task_type: DemandTaskType;
   target_quantity: number;
   open_at: number;
@@ -126,6 +129,29 @@ export async function readDemandReviewContext(
           order_interval_days: Number(source.order_interval_days),
           orders_per_run: Number(source.orders_per_run),
         },
+    main_image: source.main_image_file_object_id === null
+      || source.main_image_file_version === null
+      || source.main_image_client_file_name === null
+      ? null
+      : {
+          file_object_id: source.main_image_file_object_id,
+          file_version: Number(source.main_image_file_version),
+          client_file_name: source.main_image_client_file_name,
+        },
+    ordering_guide_expected_amount_jpy:
+      source.ordering_guide_expected_amount_jpy === null
+        ? null
+        : Number(source.ordering_guide_expected_amount_jpy),
+    color_spec_mode:
+      source.color_spec_mode === 'MAIN_IMAGE_VARIANT'
+        ? 'MAIN_IMAGE_VARIANT'
+        : source.color_spec_mode === 'ANY_VARIANT'
+          ? 'ANY_VARIANT'
+          : null,
+    buyer_self_pay_bps_snapshot:
+      source.buyer_self_pay_bps_snapshot === null
+        ? null
+        : Number(source.buyer_self_pay_bps_snapshot),
     can_publish: canPublishInitialDemandSchedule(authorization),
     timezone: PRODUCT_SCHEDULE_TIMEZONE,
     data_as_of: Date.now(),
@@ -511,6 +537,9 @@ async function requireReviewSource(
       version.order_interval_days,
       version.orders_per_run,
       image.file_object_id AS main_image_file_object_id,
+      image.file_version AS main_image_file_version,
+      image.client_file_name AS main_image_client_file_name,
+      demand.buyer_self_pay_bps_snapshot,
       demand.task_type,
       demand.target_quantity,
       demand.open_at,
@@ -529,7 +558,9 @@ async function requireReviewSource(
       ON version.product_id=demand.product_id
       AND version.version_no=demand.product_version_no
     LEFT JOIN (
-      SELECT main_image.product_version_id, link.file_object_id
+      SELECT main_image.product_version_id, link.file_object_id,
+        object.version AS file_version,
+        object.client_file_name
       FROM product_version_main_images main_image
       JOIN file_entity_links link
         ON link.id=main_image.file_entity_link_id
