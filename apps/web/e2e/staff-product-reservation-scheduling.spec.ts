@@ -49,10 +49,12 @@ function schedulePage() {
     order_deadline: 1_786_838_400_000, demand_version: 4, schedule: schedule() },
   items: [
     { reservation_id: 'reservation-1', status: 'APPROVED', submitted_at: 1000,
+      decision_source: 'STAFF', version: 2,
       rank: 1, planned_order_date: '2026-08-10', buyer_reference: 'B0001',
       buyer_customer_id: 'buyer-1', buyer_display_name: '范围内买家',
       actual_order_status: null, actual_order_date: null },
     { reservation_id: 'reservation-2', status: 'PENDING_REVIEW', submitted_at: 1001,
+      decision_source: null, version: 1,
       rank: 2, planned_order_date: '2026-08-10', buyer_reference: 'B0002',
       buyer_customer_id: null, buyer_display_name: null,
       actual_order_status: null, actual_order_date: null },
@@ -112,6 +114,10 @@ async function mock(page: Page, role: 'owner'|'buyer_refund', observed?: Observe
         target_quantity: 20, reservation_deadline: 1_786_161_600_000,
         order_deadline: 1_786_838_400_000,
         cadence: { order_interval_days: 2, orders_per_run: 5 },
+        main_image: null,
+        ordering_guide_expected_amount_jpy: 1980,
+        color_spec_mode: 'ANY_VARIANT',
+        buyer_self_pay_bps_snapshot: null,
         can_publish: true,
         timezone: 'Asia/Shanghai', data_as_of: 1_786_161_600_000,
       } }));

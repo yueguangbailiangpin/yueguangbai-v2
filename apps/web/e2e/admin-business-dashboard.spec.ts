@@ -166,14 +166,13 @@ test('owner dashboard is Chinese, responsive and uses canonical finance projecti
   await page.goto('/staff/admin-business-dashboard');
   await expect(page).toHaveURL(/\/staff\/admin-business-dashboard$/u);
   await expect(page.getByRole('heading', { name: '经营看板', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '资金与经营口径' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '客户与订单概览' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '本期赚了多少' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '客户与订单' })).toBeVisible();
   await expect(page.locator('.dashboard-toolbar').getByText(/北京时间/u)).toBeVisible();
   await expect(page.getByText('¥200.00')).toBeVisible();
-  await expect(page.getByText('今日渠道事实')).toBeVisible();
-  await expect(page.getByText('身份冲突', { exact: true })).toBeVisible();
-  await expect(page.getByText('新系统归因异常')).toBeVisible();
-  await expect(page.getByText('财务冲突')).toBeVisible();
+  await expect(page.getByText('客户身份对不上')).toBeVisible();
+  await expect(page.getByText('找不到来源的订单')).toBeVisible();
+  await expect(page.getByText('账目对不上')).toBeVisible();
   await expect.poll(() => observed.summaryQueries.includes('window=TODAY')).toBe(true);
   await expect.poll(() => observed.dailyRanges.includes('from_date=2026-08-08&to_date=2026-08-08')).toBe(true);
   await expect.poll(() => observed.financialRanges.includes('from_date=2026-08-08&to_date=2026-08-08')).toBe(true);
@@ -183,7 +182,6 @@ test('owner dashboard is Chinese, responsive and uses canonical finance projecti
   expect(await today.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
 
   await page.getByRole('button', { name: '本周' }).click();
-  await expect(page.getByText('本周渠道事实')).toBeVisible();
   await expect.poll(() => observed.summaryQueries.includes('window=WEEK')).toBe(true);
   await expect.poll(() => observed.dailyRanges.includes('from_date=2026-08-04&to_date=2026-08-10')).toBe(true);
   await expect.poll(() => observed.financialRanges.includes('from_date=2026-08-04&to_date=2026-08-10')).toBe(true);
