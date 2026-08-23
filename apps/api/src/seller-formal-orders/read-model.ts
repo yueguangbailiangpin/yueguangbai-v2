@@ -75,6 +75,8 @@ interface FormalOrderRow {
   main_image_file_object_id: string | null;
   main_image_file_version: number | null;
   main_image_client_file_name: string | null;
+  order_screenshot_file_object_id: string | null;
+  order_screenshot_file_version: number | null;
   confirmed_at: number;
   confirmed_business_date: string | null;
 }
@@ -359,6 +361,52 @@ function selectFormalOrderProjection(): string {
           AND image_object.status='VERIFIED'
         WHERE main_image.product_version_id=formal_order.product_version_id
         LIMIT 1) AS main_image_client_file_name,
+      (SELECT link.file_object_id
+        FROM file_entity_links link
+        JOIN file_objects shot
+          ON shot.id=link.file_object_id
+          AND shot.status='VERIFIED'
+          AND shot.purpose='ORDER_EVIDENCE'
+          AND shot.visibility='SELLER_VISIBLE'
+        WHERE link.entity_type='ORDER'
+          AND link.entity_id=formal_order.id
+          AND link.purpose='ORDER_EVIDENCE'
+          AND link.visibility='SELLER_VISIBLE'
+          AND link.authorization_mode='EXPLICIT_AUDIENCES'
+          AND link.revoked_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM file_entity_audience_grants seller_grant
+            WHERE seller_grant.file_entity_link_id=link.id
+              AND seller_grant.subject_type='SELLER_ORGANIZATION'
+              AND seller_grant.seller_organization_id=formal_order.seller_organization_id
+              AND seller_grant.revoked_at IS NULL
+              AND seller_grant.expires_at IS NULL
+          )
+        ORDER BY link.created_at, link.id
+        LIMIT 1) AS order_screenshot_file_object_id,
+      (SELECT shot.version
+        FROM file_entity_links link
+        JOIN file_objects shot
+          ON shot.id=link.file_object_id
+          AND shot.status='VERIFIED'
+          AND shot.purpose='ORDER_EVIDENCE'
+          AND shot.visibility='SELLER_VISIBLE'
+        WHERE link.entity_type='ORDER'
+          AND link.entity_id=formal_order.id
+          AND link.purpose='ORDER_EVIDENCE'
+          AND link.visibility='SELLER_VISIBLE'
+          AND link.authorization_mode='EXPLICIT_AUDIENCES'
+          AND link.revoked_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM file_entity_audience_grants seller_grant
+            WHERE seller_grant.file_entity_link_id=link.id
+              AND seller_grant.subject_type='SELLER_ORGANIZATION'
+              AND seller_grant.seller_organization_id=formal_order.seller_organization_id
+              AND seller_grant.revoked_at IS NULL
+              AND seller_grant.expires_at IS NULL
+          )
+        ORDER BY link.created_at, link.id
+        LIMIT 1) AS order_screenshot_file_version,
       CASE WHEN EXISTS (
         SELECT 1
         FROM order_evidence_internal_files attachment
@@ -585,6 +633,8 @@ function selectPlatformFormalOrderProjection(): string {
       NULL AS main_image_file_object_id,
       NULL AS main_image_file_version,
       NULL AS main_image_client_file_name,
+      NULL AS order_screenshot_file_object_id,
+      NULL AS order_screenshot_file_version,
       CASE WHEN EXISTS (
         SELECT 1
         FROM platform_order_evidence_internal_files attachment
@@ -652,7 +702,7 @@ function selectPlatformFormalOrderProjection(): string {
   `;
 }
 
-function storeScope(
+export function storeScope(
   actor: SellerPortalActor,
   column: string,
 ): { sql: string; values: readonly unknown[] } {
@@ -688,6 +738,13 @@ function mapFormalOrder(
           file_object_id: row.main_image_file_object_id,
           file_version: Number(row.main_image_file_version),
           client_file_name: row.main_image_client_file_name,
+        }),
+    order_screenshot: row.order_screenshot_file_object_id === null
+      || row.order_screenshot_file_version === null
+      ? null
+      : Object.freeze({
+          file_object_id: row.order_screenshot_file_object_id,
+          file_version: Number(row.order_screenshot_file_version),
         }),
     chat_screenshot: Object.freeze({
       status: row.chat_screenshot_status === 'AVAILABLE'

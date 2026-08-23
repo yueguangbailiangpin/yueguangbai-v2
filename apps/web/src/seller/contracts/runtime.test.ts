@@ -129,6 +129,7 @@ describe('Seller runtime DTO allowlists', () => {
       store: { id: 'store-1', display_name: 'Philips' }, asin: null,
       platform_product_identifier: 'tiktokDLP2555Q', product_name: 'DLP',
       main_image: null,
+      order_screenshot: null,
       product_version: null, review_type: null, final_paid_jpy: null,
       payment: null, seller_expected_principal_cny_fen: null,
       seller_principal_rate_snapshot: null,

@@ -23,6 +23,7 @@ import {
   bindPhase3GEvidenceFixture,
   seedPhase3GInstructionFixture,
 } from '../../test-support/phase3g-test-fixtures';
+import { registerFileHttpRoutes } from '../files/routes';
 import { registerSellerFormalOrderRoutes } from './routes';
 
 const ORIGIN = 'https://portal.local.test';
@@ -1474,4 +1475,114 @@ function seedServiceFee(
 
 async function json<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
+}
+
+describe('seller order screenshot', () => {
+  it('exposes the seller screenshot copy and authorizes the seller read intent', async () => {
+    const app = testApp();
+    registerFileHttpRoutes(app);
+    const orderId = orders!.storeOne;
+    // 模拟审批分发的卖家副本：SELLER_VISIBLE 克隆对象 + ORDER 链接 + 卖家授权
+    seedSellerScreenshotCopy(database!, orderId);
+
+    const detail = await request(
+      app,
+      `/api/seller-portal/formal-orders/${orderId}`,
+      { headers: { Cookie: await cookie('owner') } },
+    );
+    expect(detail.status).toBe(200);
+    const payload = await json<{
+      data: { formal_order: { order_screenshot: {
+        file_object_id: string;
+        file_version: number;
+      } | null } };
+    }>(detail);
+    const screenshot = payload.data.formal_order.order_screenshot;
+    expect(screenshot).not.toBeNull();
+    if (screenshot === null) throw new Error('order_screenshot missing');
+    expect(screenshot).toMatchObject({ file_object_id: expect.any(String) });
+
+    const issued = await request(
+      app,
+      `/api/seller-portal/files/${screenshot.file_object_id}/read-intents`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: await cookie('owner'),
+          'Idempotency-Key': 'seller-shot:issue',
+        },
+        body: JSON.stringify({ expected_file_version: screenshot.file_version }),
+      },
+    );
+    expect(issued.status).toBe(200);
+
+    const concealed = await request(
+      app,
+      `/api/seller-portal/files/${screenshot.file_object_id}/read-intents`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: await cookie('other-owner'),
+          'Idempotency-Key': 'seller-shot:cross-org',
+        },
+        body: JSON.stringify({ expected_file_version: screenshot.file_version }),
+      },
+    );
+    // 卖家域客户遮蔽：跨组织 FORBIDDEN 一律呈现 NOT_FOUND（不泄露存在性）
+    expect(concealed.status).toBe(404);
+  });
+});
+
+function seedSellerScreenshotCopy(db: SqliteDatabase, orderId: string): void {
+  db.exec(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility, status,
+      requested_file_count, manifest_hash, version, expires_at, failure_code,
+      created_at, updated_at, completed_at
+    ) VALUES (
+      'seller-shot-intent', 'STAFF', 'staff-confirm', 'ORDER_EVIDENCE',
+      'SELLER_VISIBLE', 'ISSUED', 1,
+      '${'c'.repeat(64)}', 1, 9000000, NULL, 1000, 1000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size, status,
+      upload_token_hash, upload_expires_at, uploaded_byte_size, detected_mime,
+      uploaded_sha256, failure_code, version, created_at, updated_at,
+      uploaded_at, verified_at, deleted_at
+    ) VALUES (
+      'seller-shot-object', 'seller-shot-intent', 1, 'ORDER_EVIDENCE',
+      'SELLER_VISIBLE', 'files/v1/2026/08/${'seller-shot'.padEnd(30, 'x')}',
+      'order.png', 'png', 'image/png', 100, 'RESERVED',
+      '${'d'.repeat(64)}', 9000000, NULL, NULL,
+      NULL, NULL, 1, 1000, 1000, NULL, NULL, NULL
+    );
+    UPDATE file_upload_intents
+      SET status='VERIFIED', completed_at=1001, updated_at=1001
+      WHERE id='seller-shot-intent';
+    UPDATE file_objects
+      SET status='VERIFIED', uploaded_byte_size=100, detected_mime='image/png',
+        uploaded_sha256='${'e'.repeat(64)}', uploaded_at=1001, verified_at=1001,
+        updated_at=1001
+      WHERE id='seller-shot-object';
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      'seller-shot-link', 'seller-shot-object', 'ORDER', '${orderId}',
+      'ORDER_EVIDENCE', 'SELLER_VISIBLE', 'STAFF', 'staff-confirm', 1000,
+      'EXPLICIT_AUDIENCES', NULL, NULL
+    );
+    INSERT INTO file_entity_audience_grants (
+      id, file_entity_link_id, subject_type, seller_organization_id,
+      granted_by_actor_type, granted_by_actor_id, created_at, expires_at,
+      revoked_at
+    ) VALUES (
+      'seller-shot-grant-seller', 'seller-shot-link', 'SELLER_ORGANIZATION',
+      'org-portal', 'STAFF', 'staff-confirm', 1000, NULL, NULL
+    );
+  `);
 }

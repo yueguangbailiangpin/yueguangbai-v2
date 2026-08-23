@@ -311,6 +311,9 @@ async function approve(context: Context<AppEnv>): Promise<Response> {
       actor: toFormalOrderActor(actor),
       idempotencyKey: requireIdempotencyKey(context),
       requestId: requestId(context),
+      ...(context.env.FILE_OBJECT_STORAGE === undefined
+        ? {}
+        : { deps: { storage: context.env.FILE_OBJECT_STORAGE } }),
     },
   );
   return success(context, result.approval);

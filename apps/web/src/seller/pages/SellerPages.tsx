@@ -14,7 +14,9 @@ import {
 import { useBuyerMutation } from '../../buyer/mutations/useBuyerMutation';
 import { BuyerMutationRecovery } from '../../buyer/shared/BuyerMutationRecovery';
 import { ProtectedImagePreview } from '../../files/ProtectedImagePreview';
-import { SellerOrderChatScreenshotReadIntentAdapter } from '../../files/file-read-providers';
+import {
+  SellerOrderChatScreenshotReadIntentAdapter,
+} from '../../files/file-read-providers';
 import { CursorPagination } from '../../ui/CursorPagination';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';
@@ -757,6 +759,23 @@ export function SellerOrdersPage(): React.JSX.Element {
               ) : null}
               <details className="seller-order-details">
                 <summary>订单明细（订单号、金额、汇率等，点开查看）</summary>
+              {item.order_screenshot ? (
+                <div className="seller-order-screenshot">
+                  <span className="fact-label">订单截图（买家提交的订单资料）</span>
+                  <ProtectedImagePreview
+                    identity="seller"
+                    reference={{
+                      file_object_id: item.order_screenshot.file_object_id,
+                      file_version: item.order_screenshot.file_version,
+                      purpose: 'ORDER_EVIDENCE',
+                      visibility: 'SELLER_VISIBLE',
+                    }}
+                    alt="订单截图"
+                    className="protected-evidence-thumbnail"
+                    fallback={<span className="protected-image-placeholder">订单截图加载中</span>}
+                  />
+                </div>
+              ) : null}
               <FactGrid>
                 <Fact label="站点" value={marketplaceLabel[item.canonical_marketplace_code]} />
                 <Fact label="亚马逊订单号" value={item.platform_order_identifier} />

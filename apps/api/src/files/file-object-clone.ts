@@ -112,14 +112,16 @@ export async function prepareFileObjectClone(
     ownerActorId: string;
     idempotencyKey: string | null;
     now: number;
+    purpose?: 'PRODUCT_IMAGE' | 'ORDER_EVIDENCE';
   },
 ): Promise<PreparedFileObjectClone> {
+  const clonePurpose = input.purpose ?? 'PRODUCT_IMAGE';
   if (!Number.isSafeInteger(input.now) || input.now < 0) {
     throw new FileStorageError('VALIDATION_ERROR', 400);
   }
   const bytes = await storage.readObject(source.object_key);
   const cloneObjectKey = generateFileObjectKey(
-    'PRODUCT_IMAGE',
+    clonePurpose,
     input.now,
   );
   const put = await storage.putObject({
@@ -159,13 +161,14 @@ export async function prepareFileObjectClone(
         requested_file_count, manifest_hash, version, expires_at, failure_code,
         created_at, updated_at, completed_at
       ) VALUES (
-        ?, ?, ?, 'PRODUCT_IMAGE', 'SELLER_VISIBLE', 'ISSUED',
+        ?, ?, ?, ?, 'SELLER_VISIBLE', 'ISSUED',
         1, ?, 1, ?, NULL, ?, ?, NULL
       )
     `).bind(
       cloneIntentId,
       input.ownerActorType,
       input.ownerActorId,
+      clonePurpose,
       manifestHash,
       intentExpiresAt,
       input.now,
@@ -179,7 +182,7 @@ export async function prepareFileObjectClone(
         uploaded_sha256, failure_code, version, created_at, updated_at,
         uploaded_at, verified_at, deleted_at
       ) VALUES (
-        ?, ?, 1, 'PRODUCT_IMAGE', 'SELLER_VISIBLE', ?,
+        ?, ?, 1, ?, 'SELLER_VISIBLE', ?,
         ?, ?, ?, ?, 'RESERVED',
         ?, ?, NULL, NULL,
         NULL, NULL, 1, ?, ?, NULL, NULL, NULL
@@ -187,6 +190,7 @@ export async function prepareFileObjectClone(
     `).bind(
       cloneFileObjectId,
       cloneIntentId,
+      clonePurpose,
       cloneObjectKey,
       source.client_file_name,
       source.extension,

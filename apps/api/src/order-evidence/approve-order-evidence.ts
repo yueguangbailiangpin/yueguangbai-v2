@@ -17,6 +17,14 @@ import {
   toD1SafeInteger,
 } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
+import type { ObjectStorageAdapter } from '@ygb/contracts';
+import {
+  buildExplicitAudienceFileLinkStatements,
+} from '../files/explicit-audience-links';
+import {
+  prepareFileObjectClone,
+  readVerifiedFileObject,
+} from '../files/file-object-clone';
 import {
   acquireIdempotency,
   assertIdempotencyCompletionStatement,
@@ -169,6 +177,7 @@ export async function approveOrderEvidenceAtomically(
     idempotencyKey: string;
     requestId?: string | null;
     now?: number;
+    deps?: { storage?: ObjectStorageAdapter };
   },
 ): Promise<AtomicOrderEvidenceApprovalResult> {
   requireFormalOrderConfirmationPermission(command.actor);
@@ -414,6 +423,28 @@ export async function approveOrderEvidenceAtomically(
       now,
     });
 
+    // 卖家订单截图分发（用户拍板：审核通过后卖家可见）。克隆买家截图为
+    // SELLER_VISIBLE 副本挂正式订单 + 卖家组织授权；原件与买家链路不动。
+    // 未提供 storage（历史测试夹具）时跳过。
+    let sellerCopyStatements: readonly SqlStatement[] = [];
+    if (command.deps?.storage !== undefined) {
+      sellerCopyStatements = await prepareSellerScreenshotCopy(
+        database,
+        command.deps.storage,
+        {
+          evidenceVersionId: source.evidence_version_id,
+          submissionId,
+          formalOrderId,
+          sellerOrganizationId: source.seller_organization_id,
+          staffId: command.actor.staffId,
+          staffRoles: command.actor.roles,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          requestId: command.requestId ?? null,
+          now,
+        },
+      );
+    }
+
     const statements: SqlStatement[] = [
       ...buyerNumber.statements,
       verifyEvidenceStatement(
@@ -619,7 +650,7 @@ export async function approveOrderEvidenceAtomically(
       ),
       assertIdempotencyCompletionStatement(database, acquired.claim),
     ];
-    await database.batch(statements);
+    await database.batch([...statements, ...sellerCopyStatements]);
     return response;
   } catch (error) {
     const normalized = normalizeAtomicApprovalError(error);
@@ -1340,4 +1371,90 @@ function normalizeAtomicApprovalError(error: unknown): AtomicOrderEvidenceApprov
     return new AtomicOrderEvidenceApprovalError('STATE_CONFLICT', 409);
   }
   return new AtomicOrderEvidenceApprovalError('DEPENDENCY_UNAVAILABLE', 503);
+}
+
+
+async function prepareSellerScreenshotCopy(
+  database: SqlDatabase,
+  storage: ObjectStorageAdapter,
+  input: {
+    evidenceVersionId: string;
+    submissionId: string;
+    formalOrderId: string;
+    sellerOrganizationId: string;
+    staffId: string;
+    staffRoles: readonly string[];
+    idempotencyKey: string;
+    requestId: string | null;
+    now: number;
+  },
+): Promise<readonly SqlStatement[]> {
+  const shot = await database.prepare(`
+    SELECT link.file_object_id
+    FROM order_evidence_version_files version_file
+    JOIN file_entity_links link
+      ON link.id=version_file.file_entity_link_id
+      AND link.purpose='ORDER_EVIDENCE'
+      AND link.revoked_at IS NULL
+    JOIN file_objects object
+      ON object.id=link.file_object_id
+      AND object.status='VERIFIED'
+      AND object.detected_mime IN ('image/jpeg', 'image/png', 'image/webp')
+    WHERE version_file.version_id=?
+      AND version_file.submission_id=?
+    ORDER BY version_file.created_at, version_file.id
+    LIMIT 1
+  `).bind(input.evidenceVersionId, input.submissionId)
+    .first<{ file_object_id: string }>();
+  if (!shot) return [];
+
+  const source = await readVerifiedFileObject(database, shot.file_object_id);
+  const clone = await prepareFileObjectClone(database, storage, source, {
+    ownerActorType: 'STAFF',
+    ownerActorId: input.staffId,
+    idempotencyKey: input.idempotencyKey,
+    now: input.now,
+    purpose: 'ORDER_EVIDENCE',
+  });
+  const preparedLink = await buildExplicitAudienceFileLinkStatements(
+    database,
+    { assertCanCreateUpload() {}, assertCanUpload() {}, assertCanCompleteUpload() {}, assertCanLink() {}, assertCanRead() {} },
+    {
+      upload_intent_id: clone.cloneIntentId,
+      purpose: 'ORDER_EVIDENCE',
+      visibility: 'SELLER_VISIBLE',
+      version: 1,
+      owner_actor_type: 'STAFF',
+      owner_actor_id: input.staffId,
+    },
+    {
+      fileObjectId: clone.cloneFileObjectId,
+      expectedFileVersion: 1,
+      entityType: 'ORDER',
+      entityId: input.formalOrderId,
+      expiresAt: null,
+      grants: [
+        {
+          subjectType: 'SELLER_ORGANIZATION',
+          sellerOrganizationId: input.sellerOrganizationId,
+        },
+        {
+          subjectType: 'STAFF_INTERNAL',
+          permissionCode: 'ORDER_VIEW',
+          scope: { type: 'GLOBAL' },
+        },
+      ],
+    },
+    {
+      actor: {
+        type: 'STAFF',
+        id: input.staffId,
+        roles: input.staffRoles,
+      },
+      idempotencyKey: input.idempotencyKey,
+      requestId: input.requestId,
+      now: input.now,
+    },
+  );
+  return [...clone.statements, ...preparedLink.statements];
 }

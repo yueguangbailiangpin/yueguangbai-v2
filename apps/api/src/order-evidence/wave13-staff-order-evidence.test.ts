@@ -209,7 +209,7 @@ describe('Wave 13 Staff Order Evidence API', () => {
     const approval = source(
       'apps/api/src/order-evidence/approve-order-evidence.ts',
     );
-    expect(approval).toContain('database.batch(statements)');
+    expect(approval).toContain('database.batch([...statements, ...sellerCopyStatements])');
     expect(approval).not.toContain('verifyOrderEvidence(');
     expect(approval).not.toContain('confirmFormalOrder(');
     expect(approval).toContain("action: 'APPROVE_ORDER_EVIDENCE'");

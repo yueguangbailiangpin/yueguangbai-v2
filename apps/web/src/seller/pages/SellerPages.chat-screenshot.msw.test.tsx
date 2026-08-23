@@ -224,6 +224,7 @@ describe('Seller formal-order chat screenshot UI', () => {
                   file_version: 1,
                   client_file_name: 'main.webp',
                 },
+                order_screenshot: null,
                 chat_screenshot: { status: 'NONE', file_version: null },
               },
             ],
@@ -255,6 +256,27 @@ describe('Seller formal-order chat screenshot UI', () => {
           });
         },
       ),
+      http.post(apiUrl('/api/seller-portal/files/seller-order-shot-1/read-intents'), () =>
+        HttpResponse.json({
+          data: {
+            read_intent_id: 'seller-order-shot-intent',
+            file_object_id: 'seller-order-shot-1',
+            access_token: 'seller-order-shot-token'.padEnd(40, 'x'),
+            access_token_available: true,
+            expires_at: 99,
+            replayed: false,
+          },
+          meta: { request_id: 'order-shot-read' },
+        })),
+      http.get(apiUrl('/api/seller-portal/file-read-intents/seller-order-shot-intent/content'), () =>
+        new Response(Uint8Array.of(3, 4), {
+          headers: {
+            'Content-Type': 'image/png',
+            'Content-Length': '2',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        })),
       http.post(apiUrl('/api/seller-portal/files/seller-main-image-1/read-intents'), () =>
         HttpResponse.json({
           data: {
@@ -299,6 +321,7 @@ describe('Seller formal-order chat screenshot UI', () => {
       }
       expect(await screen.findByText('展开聊天截图')).toBeTruthy();
       expect(await screen.findByRole('img', { name: '聊天截图商品 主图' })).toBeTruthy();
+      expect(await screen.findByRole('img', { name: '订单截图' })).toBeTruthy();
       expect(screen.getAllByText('聊天截图')).toHaveLength(2);
       expect(screen.getByText('已上传')).toBeTruthy();
       expect(screen.getByText('暂无聊天截图')).toBeTruthy();
@@ -341,7 +364,11 @@ describe('Seller formal-order chat screenshot UI', () => {
           data:
             cursor === null
               ? {
-                  items: [{ ...formalOrder(), product_name: '第一页订单' }],
+                  items: [{
+                    ...formalOrder(),
+                    product_name: '第一页订单',
+                    order_screenshot: null,
+                  }],
                   page: { limit: 100, next_cursor: 'opaque-seller-page-2' },
                 }
               : {
@@ -350,6 +377,7 @@ describe('Seller formal-order chat screenshot UI', () => {
                       ...formalOrder(),
                       formal_order_id: 'order-2',
                       product_name: '第二页订单',
+                      order_screenshot: null,
                     },
                   ],
                   page: { limit: 100, next_cursor: null },
@@ -486,6 +514,10 @@ function formalOrder() {
     asin: 'B012345678',
     platform_product_identifier: 'B012345678',
     main_image: null,
+    order_screenshot: {
+      file_object_id: 'seller-order-shot-1',
+      file_version: 3,
+    },
     product_name: '聊天截图商品',
     product_version: { id: 'product-version-1', version_no: 1 },
     review_type: 'IMAGE',

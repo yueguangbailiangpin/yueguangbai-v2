@@ -45,6 +45,7 @@ describe('non-Amazon Seller formal-order projection', () => {
       platform_product_identifier: 'rakuten-product-read',
       product_name: '乐天正式承载产品',
       main_image: null,
+      order_screenshot: null,
       product_version: null,
       review_type: null,
       final_paid_jpy: null,

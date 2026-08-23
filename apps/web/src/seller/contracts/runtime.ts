@@ -131,6 +131,13 @@ const sellerFormalOrderCommon = {
     })
     .strict()
     .nullable(),
+  order_screenshot: z
+    .object({
+      file_object_id: z.string(),
+      file_version: z.number().int().positive(),
+    })
+    .strict()
+    .nullable(),
   chat_screenshot: z
     .object({
       status: z.enum(['AVAILABLE', 'NONE']),

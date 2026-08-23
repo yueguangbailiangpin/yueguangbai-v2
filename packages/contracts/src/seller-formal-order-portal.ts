@@ -57,6 +57,11 @@ export interface SellerFormalOrderMainImageDto {
   client_file_name: string;
 }
 
+export interface SellerFormalOrderScreenshotDto {
+  file_object_id: string;
+  file_version: number;
+}
+
 interface SellerFormalOrderPortalBaseDto {
   formal_order_id: string;
   status: FormalOrderStatus;
@@ -65,6 +70,7 @@ interface SellerFormalOrderPortalBaseDto {
   platform_product_identifier: string;
   product_name: string;
   main_image: SellerFormalOrderMainImageDto | null;
+  order_screenshot: SellerFormalOrderScreenshotDto | null;
   chat_screenshot: SellerOrderChatScreenshotStatusDto;
   confirmed_at: number;
 }
