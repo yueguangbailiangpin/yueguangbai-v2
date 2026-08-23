@@ -37,6 +37,7 @@ export * from './review';
 export * from './scheduled-operations';
 export * from './cold-image-archive';
 export * from './seller-formal-order-portal';
+export * from './buyer-chat-screenshot';
 export * from './seller-order-chat-screenshot';
 export * from './seller-review-portal';
 export * from './seller-settlement';

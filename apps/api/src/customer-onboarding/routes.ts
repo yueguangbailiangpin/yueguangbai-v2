@@ -6,6 +6,7 @@ import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 import { listHistoricalSellerDirectory } from './historical-seller-directory';
+import { listBuyerChatScreenshots } from '../buyer-chat-screenshots';
 
 interface BuyerRow {
   subject_id: string;
@@ -33,6 +34,12 @@ type CustomerMatch = {
     product_name: string;
     platform_order_identifier: string | null;
     confirmed_at: number;
+    buyer_chat_screenshots: readonly {
+      file_object_id: string;
+      file_version: number;
+      purpose: 'ORDER_EVIDENCE';
+      visibility: 'INTERNAL_ONLY';
+    }[];
   }[];
   source_status: 'HISTORICAL_UNKNOWN';
 };
@@ -154,10 +161,15 @@ async function buyerMatches(
       platform_order_identifier: string | null;
       confirmed_at: number;
     }>()));
-  return rows.results
-    .filter((row) => markets === null || markets.includes(row.marketplace_code ?? 'AMAZON_JP'))
+  const visibleRows = rows.results
+    .filter((row) => markets === null || markets.includes(row.marketplace_code ?? 'AMAZON_JP'));
+  const orderIds = visibleRows.flatMap(
+    (_, index) => orderRows[index]?.results.map((order) => order.formal_order_id) ?? [],
+  );
+  const chatScreenshots = await listBuyerChatScreenshots(database, orderIds);
+  return visibleRows
     .map((row, index) => ({
-      customer_type: 'BUYER',
+      customer_type: 'BUYER' as const,
       subject_id: row.subject_id,
       display_name: row.display_name,
       marketplace_code: row.marketplace_code ?? 'AMAZON_JP',
@@ -168,8 +180,11 @@ async function buyerMatches(
         product_name: order.product_name,
         platform_order_identifier: order.platform_order_identifier,
         confirmed_at: Number(order.confirmed_at),
+        buyer_chat_screenshots: Object.freeze(
+          chatScreenshots.get(order.formal_order_id) ?? [],
+        ),
       })) ?? []),
-      source_status: 'HISTORICAL_UNKNOWN',
+      source_status: 'HISTORICAL_UNKNOWN' as const,
     }));
 }
 

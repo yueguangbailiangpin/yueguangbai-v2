@@ -307,6 +307,16 @@ export const staffOrderIntegritySchema = z
             })
             .strict(),
         ),
+        buyer_chat_screenshots: z.array(
+          z
+            .object({
+              file_object_id: z.string(),
+              file_version: z.number().int().positive(),
+              purpose: z.literal('ORDER_EVIDENCE'),
+              visibility: z.literal('INTERNAL_ONLY'),
+            })
+            .strict(),
+        ).default([]),
       })
       .strict(),
   })

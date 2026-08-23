@@ -30,6 +30,7 @@ import {
 import { registerStaffReviewRoutes } from './reviews';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
 import { registerSellerOrderChatScreenshotRoutes } from './seller-order-chat-screenshots';
+import { registerBuyerChatScreenshotRoutes } from './buyer-chat-screenshots';
 import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
 import { registerSellerMemberRoutes } from './seller-portal/member-routes';
@@ -129,6 +130,7 @@ registerBuyerReviewRoutes(app);
 registerSellerPortalRoutes(app);
 registerSellerFormalOrderRoutes(app);
 registerSellerOrderChatScreenshotRoutes(app);
+registerBuyerChatScreenshotRoutes(app);
 registerSellerReviewRoutes(app);
 registerSellerSettlementRoutes(app);
 

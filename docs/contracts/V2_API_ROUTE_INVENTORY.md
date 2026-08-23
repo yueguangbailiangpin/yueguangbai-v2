@@ -223,6 +223,7 @@ POST /api/staff/demand-batches/:id/review
 POST /api/staff/demand-batches/:id/schedule/confirm
 POST /api/staff/demand-batches/:id/schedule/preview
 POST /api/staff/file-upload-intents/:id/complete
+POST /api/staff/file-uploads/buyer-chat-screenshots/intents
 POST /api/staff/file-uploads/buyer-refund-proofs/intents
 POST /api/staff/file-uploads/seller-order-chat-screenshots/intents
 POST /api/staff/file-uploads/seller-settlement-proofs/intents
@@ -230,6 +231,7 @@ POST /api/staff/file-uploads/product-images/intents
 POST /api/staff/files/:fileObjectId/read-intents
 POST /api/staff/file-read-intents/batch
 POST /api/staff/finance/exports/csv
+POST /api/staff/formal-orders/:id/buyer-chat-screenshots
 POST /api/staff/formal-orders/:id/chat-screenshot
 POST /api/staff/operations/alerts/ack
 POST /api/staff/operations/archive/files/:id/rehydrate

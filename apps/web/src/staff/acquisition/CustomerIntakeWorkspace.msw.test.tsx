@@ -12,7 +12,7 @@ import { failureEnvelopeFixture } from '../../test/msw/fixtures';
 import { renderWithMsw } from '../../test/msw/render';
 import { server } from '../../test/msw/server';
 import { staffTestAdapter, staffTestSession } from '../test-fixtures';
-import { SellerCustomersWorkspace } from './CustomerIntakeWorkspace';
+import { BuyerCustomersWorkspace, SellerCustomersWorkspace } from './CustomerIntakeWorkspace';
 
 afterEach(cleanup);
 
@@ -288,6 +288,105 @@ function sellerDirectoryItem() {
     active_offering_count: 0,
     has_portal_account: false,
   };
+}
+
+describe('buyer historical order chat screenshots', () => {
+  it('offers per-order upload buttons and renders attached thumbnails for a matched buyer', async () => {
+    installBuyerHandlers([
+      {
+        customer_type: 'BUYER',
+        subject_id: 'buyer-customer-0001',
+        display_name: '买家一',
+        marketplace_code: 'AMAZON_JP',
+        has_portal_account: true,
+        historical_order_count: 1,
+        orders: [
+          {
+            formal_order_id: 'formal-order-chat-1',
+            product_name: '商品一',
+            platform_order_identifier: '111-1111111-1111111',
+            confirmed_at: 1,
+            buyer_chat_screenshots: [
+              {
+                file_object_id: 'chat-file-1',
+                file_version: 2,
+                purpose: 'ORDER_EVIDENCE',
+                visibility: 'INTERNAL_ONLY',
+              },
+            ],
+          },
+        ],
+        source_status: 'HISTORICAL_UNKNOWN',
+      },
+    ]);
+    server.use(
+      http.post(apiUrl('/api/staff/file-read-intents/batch'), () =>
+        HttpResponse.json(
+          failureEnvelopeFixture('DEPENDENCY_UNAVAILABLE', 'down', null, 'batch-down'),
+          { status: 503 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderBuyerWorkspace(['ORDER_CONFIRM']);
+
+    const wechat = await screen.findAllByRole('textbox', { name: '微信号' });
+    await user.type(wechat[0]!, 'buyer_wechat_1');
+    await user.click(screen.getByRole('button', { name: '查询已有客户' }));
+
+    await screen.findByText('买家一');
+    await user.click(screen.getByRole('button', { name: /查看历史订单（1 单）/u }));
+    expect(screen.getByRole('button', { name: '上传聊天截图' })).toBeVisible();
+  });
+
+  it('hides the upload control without ORDER_CONFIRM and explains missing orders', async () => {
+    installBuyerHandlers([
+      {
+        customer_type: 'BUYER',
+        subject_id: 'buyer-customer-0002',
+        display_name: '新买家',
+        marketplace_code: 'AMAZON_JP',
+        has_portal_account: false,
+        historical_order_count: 0,
+        orders: [],
+        source_status: 'HISTORICAL_UNKNOWN',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderBuyerWorkspace(['ORDER_VIEW']);
+
+    const wechat = await screen.findAllByRole('textbox', { name: '微信号' });
+    await user.type(wechat[0]!, 'buyer_wechat_2');
+    await user.click(screen.getByRole('button', { name: '查询已有客户' }));
+
+    await screen.findByText('新买家');
+    expect(screen.getByText(/该买家暂无订单，暂无法上传/u)).toBeVisible();
+    expect(screen.queryByRole('button', { name: '上传聊天截图' })).toBeNull();
+  });
+});
+
+function renderBuyerWorkspace(
+  permissions: readonly StaffPermissionCode[],
+): ReturnType<typeof renderWithMsw> {
+  return renderWithMsw(
+    <StaffSessionBoundary adapter={staffTestAdapter(staffTestSession('owner', [...permissions]))}>
+      <BuyerCustomersWorkspace />
+    </StaffSessionBoundary>,
+    { route: '/staff/buyer-customers' },
+  );
+}
+
+function installBuyerHandlers(matches: unknown[]): void {
+  installHandlers([channel('buyer-jp', 'AMAZON_JP', '渠道1')]);
+  server.use(
+    http.get(apiUrl('/api/staff/customer-onboarding/lookup'), ({ request }) => {
+      expect(new URL(request.url).searchParams.get('customer_type')).toBe('BUYER');
+      return HttpResponse.json({
+        data: { matches, resolution_required: false, manual_resolution_applied: false },
+        meta: { request_id: 'buyer-lookup' },
+      });
+    }),
+  );
 }
 
 function channel(id: string, marketplace: string, label: string) {

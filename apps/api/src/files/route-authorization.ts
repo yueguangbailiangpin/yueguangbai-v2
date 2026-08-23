@@ -123,6 +123,7 @@ function readPermissionForPurpose(purpose: FilePurpose): StaffPermissionCode {
 function writePermissionForPurpose(purpose: FilePurpose): StaffPermissionCode {
   switch (purpose) {
     case 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION':
+    case 'ORDER_EVIDENCE':
       return 'ORDER_CONFIRM';
     case 'BUYER_REFUND_PROOF':
       return 'BUYER_REFUND_RECORD';

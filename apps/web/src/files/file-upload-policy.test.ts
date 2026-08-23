@@ -36,6 +36,7 @@ describe('purpose-bound frontend file policies', () => {
       'buyerReviewEvidence',
       'sellerProductApplicationImage',
       'staffBuyerRefundProof',
+      'staffBuyerChatScreenshot',
       'staffSellerSettlementProof',
       'staffSellerOrderChatScreenshot',
       'staffProductImage',

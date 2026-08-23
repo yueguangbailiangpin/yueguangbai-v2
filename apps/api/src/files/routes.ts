@@ -88,6 +88,14 @@ export function registerFileHttpRoutes(app: Hono<AppEnv>): void {
   );
   registerIntentRoute(
     app,
+    FILE_HTTP_PURPOSE_ROUTES.staffBuyerChatScreenshot.path,
+    undefined,
+    'STAFF',
+    'ORDER_EVIDENCE',
+    'INTERNAL_ONLY',
+  );
+  registerIntentRoute(
+    app,
     FILE_HTTP_PURPOSE_ROUTES.staffSellerSettlementProof.path,
     undefined,
     'STAFF',

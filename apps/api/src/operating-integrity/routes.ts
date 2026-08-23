@@ -23,6 +23,7 @@ import {
 import { FormalOrderPolicyError, requireFormalOrderAction } from '../formal-order-policy';
 import type { FileAuthorizationResource, FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
+import { listBuyerChatScreenshots } from '../buyer-chat-screenshots';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -86,7 +87,7 @@ async function readOrderIntegrity(context: Context<AppEnv>) {
   const order = await orderRow(context.env.DB, id(context.req.param('id') ?? ''));
   await market(context.env.DB, actor, order.market);
   const canViewFinancialAdjustments = canViewOrderFinancialAdjustments(actor);
-  const [events, adjustments, state] = await Promise.all([
+  const [events, adjustments, state, chatScreenshots] = await Promise.all([
     context.env.DB.prepare(
       `SELECT id AS event_id,formal_order_id,event_type,reason,actor_staff_id,created_at FROM formal_order_operational_events WHERE formal_order_id=? ORDER BY created_at,id`,
     )
@@ -104,6 +105,7 @@ async function readOrderIntegrity(context: Context<AppEnv>) {
     )
       .bind(order.id)
       .first<{ operational_state: string }>(),
+    listBuyerChatScreenshots(context.env.DB, [order.id]),
   ]);
   return ok(context, {
     order_integrity: {
@@ -112,6 +114,7 @@ async function readOrderIntegrity(context: Context<AppEnv>) {
       operational_state: state?.operational_state ?? 'NORMAL',
       events: events.results,
       adjustments: adjustments.results,
+      buyer_chat_screenshots: chatScreenshots.get(order.id) ?? [],
     },
   });
 }

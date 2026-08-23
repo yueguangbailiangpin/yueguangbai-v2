@@ -222,6 +222,8 @@ class IntegrityStatement implements SqlStatement {
   all<T>(): Promise<SqlAllResult<T>> {
     if (this.sql.includes('formal_order_operational_events'))
       return Promise.resolve({ results: [] } as SqlAllResult<T>);
+    if (this.sql.includes('FROM file_entity_links'))
+      return Promise.resolve({ results: [] } as SqlAllResult<T>);
     if (this.sql.includes('formal_order_financial_adjustments'))
       return Promise.resolve({
         results: [

@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ACQUISITION_HTTP_PATHS,
   ADMIN_BUSINESS_DASHBOARD_PATHS,
-  BUYER_SELF_REGISTRATION_HTTP_PATHS,
+  BUYER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS,
+      BUYER_SELF_REGISTRATION_HTTP_PATHS,
   CUSTOMER_SECURITY_HTTP_PATHS,
   CUSTOMER_AUTH_HTTP_PATHS,
   FILE_HTTP_LIFECYCLE_PATHS,
@@ -68,7 +69,7 @@ describe('API contract baseline alignment', () => {
     const documented = documentedRoutes().sort();
     expect(new Set(actual).size, 'non-contiguous duplicate registration').toBe(actual.length);
     expect(documented, 'route inventory drift').toEqual(actual);
-    expect(actual).toHaveLength(258);
+    expect(actual).toHaveLength(260);
     expect(actual.filter((route) => route.startsWith('GET /api/'))).not.toHaveLength(0);
     expect(actual.some((route) => route.includes('/api/v2/'))).toBe(false);
   });
@@ -78,6 +79,7 @@ describe('API contract baseline alignment', () => {
       ACQUISITION_HTTP_PATHS,
       ADMIN_BUSINESS_DASHBOARD_PATHS,
       CUSTOMER_AUTH_HTTP_PATHS,
+      BUYER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS,
       BUYER_SELF_REGISTRATION_HTTP_PATHS,
       CUSTOMER_SECURITY_HTTP_PATHS,
       STAFF_AUTH_PATHS,

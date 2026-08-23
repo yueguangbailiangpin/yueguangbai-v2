@@ -21,7 +21,7 @@ const source = (relative: string) => readFileSync(path.join(root, relative), 'ut
 
 describe('Wave 13 File HTTP contract and architecture', () => {
   it('freezes active purpose-bound intent routes', () => {
-    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(7);
+    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(8);
     expect(FILE_HTTP_PURPOSE_ROUTES).toMatchObject({
       buyerOrderEvidence: {
         purpose: 'ORDER_EVIDENCE',
@@ -37,6 +37,10 @@ describe('Wave 13 File HTTP contract and architecture', () => {
       },
       staffBuyerRefundProof: {
         purpose: 'BUYER_REFUND_PROOF',
+        visibility: 'INTERNAL_ONLY',
+      },
+      staffBuyerChatScreenshot: {
+        purpose: 'ORDER_EVIDENCE',
         visibility: 'INTERNAL_ONLY',
       },
       staffSellerSettlementProof: {

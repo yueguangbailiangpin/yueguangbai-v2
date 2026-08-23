@@ -1,5 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { z } from 'zod';
 import { identityApiRequest } from '../../api/identity-request';
@@ -20,6 +20,8 @@ import {
 import { acquisitionApi } from './api';
 import { RateSummaryCard } from '../shared/RateSummaryCard';
 import { formatShanghai } from '../shared/format';
+import { StaffProtectedImage } from '../shared/StaffProtectedImage';
+import { useFileUpload } from '../../buyer/shared/useFileUpload';
 import type { AcquisitionChannel, AcquisitionHandoff } from './runtime';
 
 const MARKET_LABELS: Record<string, string> = {
@@ -42,6 +44,12 @@ const matchSchema = z
       product_name: z.string(),
       platform_order_identifier: z.string().nullable(),
       confirmed_at: z.number().int().nonnegative(),
+      buyer_chat_screenshots: z.array(z.object({
+        file_object_id: z.string(),
+        file_version: z.number().int().positive(),
+        purpose: z.literal('ORDER_EVIDENCE'),
+        visibility: z.literal('INTERNAL_ONLY'),
+      }).strict()).default([]),
     }).strict()).default([]),
     source_status: z.literal('HISTORICAL_UNKNOWN'),
   })
@@ -525,7 +533,7 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
                   </Button>
                 )}
               </div>
-              {match.customer_type === 'BUYER' && match.historical_order_count > 0 ? (
+              {match.customer_type === 'BUYER' ? (
                 <BuyerOrderHistory match={match} />
               ) : null}
             </div>
@@ -1142,16 +1150,100 @@ function marketLabel(code: string) {
 }
 
 
+type BuyerChatScreenshotReference = {
+  file_object_id: string;
+  file_version: number;
+  purpose: 'ORDER_EVIDENCE';
+  visibility: 'INTERNAL_ONLY';
+};
+
+const buyerChatAttachSchema = z
+  .object({
+    chat_screenshot: z.object({
+      formal_order_id: z.string(),
+      screenshot_id: z.string(),
+      file_object_id: z.string(),
+      file_version: z.number().int().positive(),
+      attached_at: z.number().int().nonnegative(),
+      replayed: z.boolean(),
+    }).strict(),
+  })
+  .strict();
+
+/**
+ * Staff-only WeChat conversation screenshots with the buyer, attached to the
+ * confirmed formal order they belong to (user decision 2026-08-24).  Buyers
+ * never see any of this: the upload route, the attach command and the list
+ * fields are staff-scoped with INTERNAL_ONLY visibility.
+ */
 function BuyerOrderHistory({ match }: {
   match: { display_name: string; historical_order_count: number; orders: unknown };
 }): React.JSX.Element {
+  const client = useQueryClient();
+  const session = useCurrentStaffSession();
   const [open, setOpen] = useState(false);
+  const [uploader, upload] = useFileUpload();
+  const [targetOrderId, setTargetOrderId] = useState<string | null>(null);
+  const [attached, setAttached] = useState<Record<string, BuyerChatScreenshotReference[]>>({});
+  const handledManifest = useRef<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const attach = useMutation({
+    mutationFn: async (input: {
+      orderId: string;
+      fileObjectId: string;
+      fileVersion: number;
+    }) => {
+      const body = {
+        file_object_id: input.fileObjectId,
+        expected_file_version: input.fileVersion,
+      };
+      return identityApiRequest('staff', client, {
+        path: `/api/staff/formal-orders/${encodeURIComponent(input.orderId)}/buyer-chat-screenshots`,
+        method: 'POST',
+        schema: buyerChatAttachSchema,
+        body,
+        headers: operationHeaders({ key: crypto.randomUUID(), body }),
+      });
+    },
+    onSuccess: (response, input) => {
+      setAttached((current) => ({
+        ...current,
+        [input.orderId]: [
+          ...(current[input.orderId] ?? []),
+          {
+            file_object_id: response.data.chat_screenshot.file_object_id,
+            file_version: response.data.chat_screenshot.file_version,
+            purpose: 'ORDER_EVIDENCE',
+            visibility: 'INTERNAL_ONLY',
+          },
+        ],
+      }));
+    },
+  });
   const orders = match.orders as {
     formal_order_id: string;
     product_name: string;
     platform_order_identifier: string | null;
     confirmed_at: number;
+    buyer_chat_screenshots: BuyerChatScreenshotReference[];
   }[];
+  const receipt = upload.manifest?.files[0];
+  useEffect(() => {
+    if (!receipt || !targetOrderId || upload.manifest === null) return;
+    if (handledManifest.current === upload.manifest.request_id) return;
+    handledManifest.current = upload.manifest.request_id;
+    attach.mutate({
+      orderId: targetOrderId,
+      fileObjectId: receipt.file_object_id,
+      fileVersion: receipt.file_version,
+    });
+  }, [receipt, targetOrderId, upload.manifest, attach]);
+  const canUpload = session.permissions.includes('ORDER_CONFIRM');
+  if (match.historical_order_count === 0 && orders.length === 0) {
+    return <p className="buyer-order-history-empty">
+      确认渠道的聊天截图需挂到正式订单，该买家暂无订单，暂无法上传。
+    </p>;
+  }
   if (!open) {
     return <div className="buyer-order-history-toggle">
       <Button className="secondary" onClick={() => setOpen(true)}>
@@ -1160,18 +1252,68 @@ function BuyerOrderHistory({ match }: {
     </div>;
   }
   return <details className="buyer-order-history" open>
+    <input
+      ref={fileInput}
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      hidden
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        void uploader.start('staffBuyerChatScreenshot', [file]);
+      }}
+    />
     <summary onClick={(event) => { event.preventDefault(); setOpen(false); }}>
       历史订单（最近 {orders.length} 单{match.historical_order_count > orders.length
         ? `，共 ${match.historical_order_count} 单` : ''}，点此收起）
     </summary>
-    {orders.length === 0 ? <p>暂无订单记录。</p> : <ul>
-      {orders.map((order) => <li key={order.formal_order_id}>
-        <Link to={`/staff/orders/${encodeURIComponent(order.formal_order_id)}`}>
-          {order.product_name}
-          {order.platform_order_identifier ? ` · ${order.platform_order_identifier}` : ''}
-        </Link>
-        <small>{formatShanghai(order.confirmed_at)} 确认</small>
-      </li>)}
+    {orders.length === 0
+      ? <p>确认渠道的聊天截图需挂到正式订单，该买家暂无订单，暂无法上传。</p>
+      : <ul>
+      {orders.map((order) => {
+        const screenshots = [
+          ...(order.buyer_chat_screenshots ?? []),
+          ...(attached[order.formal_order_id] ?? []),
+        ];
+        return <li key={order.formal_order_id}>
+          <Link to={`/staff/orders/${encodeURIComponent(order.formal_order_id)}`}>
+            {order.product_name}
+            {order.platform_order_identifier ? ` · ${order.platform_order_identifier}` : ''}
+          </Link>
+          <small>{formatShanghai(order.confirmed_at)} 确认</small>
+          {screenshots.length > 0 && <div className="buyer-chat-screenshots">
+            {screenshots.map((reference) => (
+              <StaffProtectedImage
+                key={reference.file_object_id}
+                reference={reference}
+                alt="买家聊天截图"
+                className="protected-evidence-thumbnail"
+                fallback={<span className="protected-image-placeholder">聊天截图加载中</span>}
+              />
+            ))}
+          </div>}
+          {canUpload && <div className="buyer-chat-upload">
+            <Button
+              className="secondary"
+              disabled={upload.state === 'UPLOADING' || attach.isPending}
+              onClick={() => {
+                attach.reset();
+                setTargetOrderId(order.formal_order_id);
+                fileInput.current?.click();
+              }}
+            >
+              上传聊天截图
+            </Button>
+          </div>}
+        </li>;
+      })}
     </ul>}
+    {targetOrderId && (upload.state === 'UPLOADING' || attach.isPending) && (
+      <p className="staff-upload-state">聊天截图上传中…</p>
+    )}
+    {upload.error && <Alert tone="danger">截图上传失败：{upload.error.code}</Alert>}
+    {attach.error && isFrontendApiError(attach.error)
+      && <Alert tone="danger">挂载失败：{attach.error.code}</Alert>}
   </details>;
 }

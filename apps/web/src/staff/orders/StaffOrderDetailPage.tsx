@@ -6,6 +6,7 @@ import { Alert, Card } from '../../ui/primitives';
 import { staffApi } from '../api/client';
 import { fenToYuan } from '../finance/finance-format';
 import { PricingBreakdownCard } from '../shared/PricingBreakdownCard';
+import { StaffProtectedImage } from '../shared/StaffProtectedImage';
 import { formatShanghai } from '../shared/format';
 
 type IntegrityData = Awaited<ReturnType<typeof staffApi.orderIntegrity>>['data'];
@@ -84,6 +85,22 @@ export function StaffOrderDetailPage(): React.JSX.Element {
           计价明细读取失败（{isFrontendApiError(finance.error) ? finance.error.code : 'NETWORK_FAILURE'}）。订单可能不存在。
         </Alert>
       ) : null}
+      {integrity.data && integrity.data.buyer_chat_screenshots.length > 0 && (
+        <Card className="internal-note">
+          <h3>买家聊天截图（仅员工）</h3>
+          <div className="buyer-chat-screenshots">
+            {integrity.data.buyer_chat_screenshots.map((reference) => (
+              <StaffProtectedImage
+                key={reference.file_object_id}
+                reference={reference}
+                alt="买家聊天截图"
+                className="protected-evidence-thumbnail"
+                fallback={<span className="protected-image-placeholder">聊天截图加载中</span>}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
       {position ? (
         <>
           <Card className="customer-visible">
