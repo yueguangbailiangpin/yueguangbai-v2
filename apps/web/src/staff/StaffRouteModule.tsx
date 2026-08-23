@@ -3,20 +3,17 @@ import { StaffShell } from './StaffShell';
 import { StaffRouteProvider } from '../routes/IdentityRouteSlots';
 import { RouteChunkBoundary } from '../routes/RouteChunkBoundary';
 import { StaffTaskQueuePage } from './StaffTaskQueuePage';
-import { WorkItemPage } from './work-panels/WorkItemPage';
-import { StaffOperatingIntegrityTools } from './StaffOperatingIntegrityTools';
-import { AcquisitionCoreWorkbench } from './acquisition/AcquisitionCoreWorkbench';
-import {
-  BuyerCustomersWorkspace,
-  SellerCustomersWorkspace,
-} from './acquisition/CustomerIntakeWorkspace';
-import { StaffFinanceWorkspace } from './finance/StaffFinanceWorkspace';
-import { StaffOrderDetailPage } from './orders/StaffOrderDetailPage';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 
 const loadStaffAdminRoutes = () => import('./StaffAdminRouteModule');
 const loadStaffSchedulingRoutes = () => import('./StaffSchedulingRouteModule');
 const loadStaffAccessManagementRoutes = () => import('./StaffAccessManagementRouteModule');
+const loadStaffAcquisitionRoutes = () => import('./StaffAcquisitionRouteModule');
+const loadStaffCustomerIntakeRoutes = () => import('./StaffCustomerIntakeRouteModule');
+const loadStaffFinanceRoutes = () => import('./StaffFinanceRouteModule');
+const loadStaffOrdersRoutes = () => import('./StaffOrdersRouteModule');
+const loadStaffWorkItemRoutes = () => import('./StaffWorkItemRouteModule');
+const loadStaffOperationsRoutes = () => import('./StaffOperationsRouteModule');
 
 export { StaffShell };
 
@@ -33,9 +30,13 @@ export function StaffRoutePage(): React.JSX.Element {
   const session = useCurrentStaffSession();
   if (pathname === '/staff' && session.role.code === 'acquisition')
     return <Navigate to="/staff/acquisition" replace />;
-  if (pathname.startsWith('/staff/acquisition')) return <AcquisitionCoreWorkbench />;
-  if (pathname.startsWith('/staff/buyer-customers')) return <BuyerCustomersWorkspace />;
-  if (pathname.startsWith('/staff/seller-customers')) return <SellerCustomersWorkspace />;
+  if (pathname.startsWith('/staff/acquisition'))
+    return <RouteChunkBoundary load={loadStaffAcquisitionRoutes} />;
+  if (
+    pathname.startsWith('/staff/buyer-customers') ||
+    pathname.startsWith('/staff/seller-customers')
+  )
+    return <RouteChunkBoundary load={loadStaffCustomerIntakeRoutes} />;
   if (pathname.startsWith('/staff/admin-business-dashboard'))
     return <RouteChunkBoundary load={loadStaffAdminRoutes} />;
   if (pathname.startsWith('/staff/access-management'))
@@ -45,8 +46,10 @@ export function StaffRoutePage(): React.JSX.Element {
     /^\/staff\/demands\/[^/]+\/reservations$/u.test(pathname)
   )
     return <RouteChunkBoundary load={loadStaffSchedulingRoutes} />;
-  if (pathname.startsWith('/staff/finance')) return <StaffFinanceWorkspace />;
-  if (/^\/staff\/orders\/[^/]+$/u.test(pathname)) return <StaffOrderDetailPage />;
+  if (pathname.startsWith('/staff/finance'))
+    return <RouteChunkBoundary load={loadStaffFinanceRoutes} />;
+  if (/^\/staff\/orders\/[^/]+$/u.test(pathname))
+    return <RouteChunkBoundary load={loadStaffOrdersRoutes} />;
   // The pre-batch rate center kept both legacy paths reachable without
   // redirects; the finance workspace now owns the page and the legacy paths
   // (including preflight deep links) forward with their query intact.
@@ -55,7 +58,9 @@ export function StaffRoutePage(): React.JSX.Element {
     pathname.startsWith('/staff/seller-principal-rate-policies')
   )
     return <Navigate to={`/staff/finance${search}`} replace />;
-  if (pathname.startsWith('/staff/operations')) return <StaffOperatingIntegrityTools />;
-  if (pathname.startsWith('/staff/work/')) return <WorkItemPage />;
+  if (pathname.startsWith('/staff/operations'))
+    return <RouteChunkBoundary load={loadStaffOperationsRoutes} />;
+  if (pathname.startsWith('/staff/work/'))
+    return <RouteChunkBoundary load={loadStaffWorkItemRoutes} />;
   return <StaffTaskQueuePage />;
 }
