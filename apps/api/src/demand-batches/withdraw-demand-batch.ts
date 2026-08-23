@@ -18,6 +18,7 @@ import {
   createOutboxStatements,
   prepareOutboxEvent,
 } from '../foundation/outbox';
+import { prepareWorkItemCompletionStatements } from '../staff-assignment';
 import {
   cleanDemandIdentifier,
   insertDemandBatchEventStatement,
@@ -229,7 +230,23 @@ export async function withdrawDemandBatch(
       ),
     ];
 
-    await database.batch(statements);
+    await database.batch([
+      ...statements,
+      // 撤回使 DEMAND_REVIEW 待办失去处理对象：同事务取消，避免队列残留
+      // 点开必报错的死项。
+      ...await prepareWorkItemCompletionStatements(database, {
+        workType: 'DEMAND_REVIEW',
+        sourceEntityType: 'DEMAND_BATCH',
+        sourceEntityId: demandBatchId,
+        outcome: 'CANCELLED',
+        actorType: 'SYSTEM',
+        actorId: `seller:${command.actor.memberId}`,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'demand batch withdrawn by seller',
+        now,
+      }),
+    ]);
     return response;
   } catch (error) {
     const normalized = normalizeDemandBatchError(error);

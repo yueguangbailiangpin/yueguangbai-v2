@@ -556,6 +556,11 @@ describe('buyer reservations and atomic demand capacity', () => {
     });
     expect(await demandCounts(database, 'demand-1'))
       .toEqual({ held: 0, approved: 0 });
+    const cancelledItem = await database.prepare(`
+      SELECT status FROM staff_work_items
+      WHERE work_type='RESERVATION_DECISION' AND source_entity_id=?
+    `).bind(pending.reservation_id).first<{ status: string }>();
+    expect(cancelledItem?.status).toBe('CANCELLED');
 
     const approved = await submitReservation(
       database,

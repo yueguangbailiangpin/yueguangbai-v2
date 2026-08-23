@@ -436,6 +436,12 @@ describe('demand batch workflow', () => {
       replayed: false,
     });
 
+    const withdrawnItem = await database.prepare(`
+      SELECT status FROM staff_work_items
+      WHERE work_type='DEMAND_REVIEW' AND source_entity_id=?
+    `).bind(withdrawnSource.demand_batch_id).first<{ status: string }>();
+    expect(withdrawnItem?.status).toBe('CANCELLED');
+
     await expect(listBuyerPublicDemandBatches(
       database,
       activeBuyer(),

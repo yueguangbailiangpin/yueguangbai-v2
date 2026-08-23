@@ -752,6 +752,12 @@ describe('seller product applications and staff review', () => {
       replayed: false,
     });
 
+    const withdrawnItem = await database.prepare(`
+      SELECT status FROM staff_work_items
+      WHERE work_type='PRODUCT_APPLICATION_REVIEW' AND source_entity_id=?
+    `).bind(submitted.application_id).first<{ status: string }>();
+    expect(withdrawnItem?.status).toBe('CANCELLED');
+
     await expect(
       database
         .prepare(
