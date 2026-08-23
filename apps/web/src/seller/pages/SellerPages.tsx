@@ -189,7 +189,7 @@ export function SellerDashboardPage(): React.JSX.Element {
         ) : null}
         {me.data?.access.can_submit_demand_batches ? (
           <Link className="button" to="/seller/demands/new">
-            提交需求
+            提交数量计划
           </Link>
         ) : null}
       </PageHeader>
@@ -332,7 +332,7 @@ export function SellerProductsPage(): React.JSX.Element {
               actions={
                 item.status === 'ACTIVE' && me.data?.access.can_submit_demand_batches ? (
                   <Link className="button" to={`/seller/demands/new?product_id=${encodeURIComponent(item.id)}`}>
-                    创建预约需求
+                    创建数量计划
                   </Link>
                 ) : null
               }
@@ -470,10 +470,10 @@ export function SellerDemandsPage(): React.JSX.Element {
   });
   return (
     <section className="seller-page">
-      <PageHeader title="需求批次" eyebrow="数量计划">
+      <PageHeader title="数量计划" eyebrow="按评论类型要数量">
         {me.data?.access.can_submit_demand_batches ? (
           <Link className="button" to="/seller/demands/new">
-            提交需求
+            提交数量计划
           </Link>
         ) : null}
       </PageHeader>
@@ -481,13 +481,13 @@ export function SellerDemandsPage(): React.JSX.Element {
         <p role="status">加载中…</p>
       ) : demands.initialError ? (
         <>
-          <Alert tone="danger">暂时加载不了需求批次。</Alert>
+          <Alert tone="danger">暂时加载不了数量计划。</Alert>
           <Button type="button" className="secondary" onClick={demands.retryInitial}>
             重新加载
           </Button>
         </>
       ) : demands.items.length === 0 ? (
-        <EmptyState title="暂无需求批次" description="选好已通过的产品就能提交新需求。" />
+        <EmptyState title="暂无数量计划" description="选好已通过的产品就能提交新的数量计划。" />
       ) : (
         <div className="seller-record-list">
           {demands.items.map((item) => (
@@ -503,7 +503,7 @@ export function SellerDemandsPage(): React.JSX.Element {
                     className="danger"
                     onClick={() => setPendingWithdraw({ id: item.id, version: item.version })}
                   >
-                    撤回需求
+                    撤回计划
                   </Button>
                 ) : null
               }
@@ -526,15 +526,15 @@ export function SellerDemandsPage(): React.JSX.Element {
         {...demands}
         onLoadMore={demands.loadMore}
         onRetry={demands.retryLater}
-        loadLabel="加载更多需求"
-        loadingLabel="正在加载更多需求"
-        retryLabel="重试需求列表"
-        errorMessage="后一页需求暂时无法读取，已加载需求仍会保留。"
+        loadLabel="加载更多计划"
+        loadingLabel="正在加载更多计划"
+        retryLabel="重试计划列表"
+        errorMessage="后一页计划暂时无法读取，已加载计划仍会保留。"
       />
       <Dialog
         open={pendingWithdraw !== null}
-        title="撤回需求"
-        description="撤回后当前需求将不再继续审核。"
+        title="撤回数量计划"
+        description="撤回后这份计划将不再继续审核。"
         busy={withdraw.isPending}
         onClose={() => setPendingWithdraw(null)}
       >
@@ -604,7 +604,7 @@ export function SellerProductApplicationDetailPage(): React.JSX.Element {
               className="button"
               to={`/seller/demands/new?product_id=${encodeURIComponent(item.product_id)}`}
             >
-              创建预约需求
+              创建数量计划
             </Link>
           ) : null
         }
@@ -735,7 +735,7 @@ export function SellerOrdersPage(): React.JSX.Element {
                   ? item.business_completion.status === 'COMPLETE'
                     ? '业务完成'
                     : '进行中'
-                  : '平台基础记录'
+                  : '订单已确认'
               }
               statusTone={
                 item.business_completion ? tone(item.business_completion.status) : 'neutral'
@@ -743,8 +743,8 @@ export function SellerOrdersPage(): React.JSX.Element {
             >
               <FactGrid>
                 <Fact label="站点" value={marketplaceLabel[item.canonical_marketplace_code]} />
-                <Fact label="平台订单号" value={item.platform_order_identifier} />
-                <Fact label="平台产品号" value={item.platform_product_identifier} />
+                <Fact label="亚马逊订单号" value={item.platform_order_identifier} />
+                <Fact label="亚马逊产品号" value={item.platform_product_identifier} />
                 {item.payment ? (
                   <Fact
                     label="买家支付"
@@ -773,11 +773,11 @@ export function SellerOrdersPage(): React.JSX.Element {
                 {item.seller_principal_rate_snapshot ? (
                   <>
                     <Fact
-                      label="平台下单日期"
+                      label="亚马逊下单日期"
                       value={item.seller_principal_rate_snapshot.platform_order_date}
                     />
                     <Fact
-                      label="基准汇率"
+                      label="基础汇率"
                       value={rate(
                         item.seller_principal_rate_snapshot.base_rate_value,
                         item.seller_principal_rate_snapshot.base_rate_scale,
@@ -801,7 +801,7 @@ export function SellerOrdersPage(): React.JSX.Element {
                       )}
                     />
                     <Fact
-                      label="策略版本"
+                      label="加点版本"
                       value={`v${item.seller_principal_rate_snapshot.policy_version_no}`}
                     />
                   </>
@@ -841,7 +841,7 @@ export function SellerOrdersPage(): React.JSX.Element {
                 </ul>
               ) : (
                 <Alert tone="warning">
-                  该平台目前仅承载正式订单身份；财务与业务流程数据待后续导入。
+                  订单已确认；付款、汇率等财务数据还在接入中，接入后会自动显示。
                 </Alert>
               )}
             </RecordCard>
@@ -915,27 +915,27 @@ export function SellerSettlementsPage(): React.JSX.Element {
   });
   const settlementScope =
     readScope === 'ORGANIZATION'
-      ? '结算为全组织财务历史范围，含已停用店铺的历史结算，不随当前店铺选择切换。'
+      ? '这里显示整个组织（含已停用店铺）的历史账目，不随上方店铺筛选变化。'
       : readScope === 'ASSIGNED_STORES'
-        ? '结算按已授权店铺范围汇总，不随当前店铺选择切换。'
-        : '结算按当前授权范围汇总。';
+        ? '这里按你有权限的店铺汇总，不随上方店铺筛选变化。'
+        : '这里按你当前可见的范围汇总。';
   return (
     <section className="seller-page">
-      <PageHeader title="本金与服务费" eyebrow="结算" description={settlementScope} />
+      <PageHeader title="收款与费用" eyebrow="本金与服务费账目" description={settlementScope} />
       {summary.isError || payables.initialError ? (
         <Alert tone="danger">结算信息暂时无法完整读取，请刷新后重试。</Alert>
       ) : null}
       <div className="seller-metrics">
         <MetricCard
-          label="待结卖家本金"
+          label="待结本金"
           value={summary.data ? cny(summary.data.outstanding_principal_cny_fen) : '—'}
         />
         <MetricCard
-          label="待结卖家服务费"
+          label="待结服务费"
           value={summary.data ? cny(summary.data.outstanding_service_fee_cny_fen) : '—'}
         />
         <MetricCard
-          label="未分配来款"
+          label="待认领转入款"
           value={summary.data ? cny(summary.data.unallocated_credit_cny_fen) : '—'}
         />
       </div>
@@ -944,7 +944,7 @@ export function SellerSettlementsPage(): React.JSX.Element {
       ) : payables.initialError ? (
         <Alert tone="warning">结算项目暂时用不了，刷新后重试。</Alert>
       ) : payables.items.length === 0 ? (
-        <EmptyState title="暂无结算项目" description="产生卖家本金或服务费后会显示在这里。" />
+        <EmptyState title="暂无账目" description="产生本金或服务费后会显示在这里。" />
       ) : (
         <div className="seller-record-list">
           {payables.items.map((item) => (

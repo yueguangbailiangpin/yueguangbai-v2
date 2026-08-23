@@ -152,7 +152,7 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
                 value={storeId ?? ''}
                 onChange={(event) => setStoreId(event.target.value || null)}
               >
-                <option value="">全部授权店铺</option>
+                <option value="">全部店铺</option>
                 {stores.items.map((store) => (
                   <option
                     key={store.id}

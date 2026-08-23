@@ -196,7 +196,7 @@ export function SellerProductApplicationFormPage({ embedded = false }: { embedde
                 }}
               >
                 <h3>{selectableStores.length === 0 ? '首次提交前先添加店铺' : '添加店铺'}</h3>
-                <p>店铺创建后会成为本组织的授权店铺，产品申请将归属到该店铺。</p>
+                <p>店铺创建后归本组织所有，产品申请会提交到这个店铺。</p>
                 <FormField label="店铺名称" htmlFor="new-seller-store" required>
                   <TextInput
                     id="new-seller-store"
@@ -212,7 +212,7 @@ export function SellerProductApplicationFormPage({ embedded = false }: { embedde
                     loading={createStore.isPending}
                     disabled={!storeName.trim()}
                   >
-                    创建授权店铺
+                    创建店铺
                   </Button>
                   {selectableStores.length > 0 ? (
                     <Button
@@ -472,7 +472,7 @@ export function SellerDemandFormPage({ embedded = false }: { embedded?: boolean 
       !Number.isSafeInteger(quantity) ||
       quantity < 1
     ) {
-      setMessage('请填写通过的产品和正整数数量。开放、预约和下单窗口由系统策略生成。');
+      setMessage('请填写通过的产品和正整数数量。开放、预约和下单时间由系统自动排期。');
       return;
     }
     mutation.mutate({
@@ -487,9 +487,9 @@ export function SellerDemandFormPage({ embedded = false }: { embedded?: boolean 
     <section className="seller-page seller-submission-page">
       {!embedded ? (
         <PageHeader
-          title="提交需求"
+          title="提交数量计划"
           eyebrow="数量计划"
-          description="每次追加数量都会新建一个需求批次，不会改历史记录。"
+          description="每次追加数量都是一份新的计划，之前的记录不会改动。"
         />
       ) : null}
       <Card className="seller-form-card">
@@ -510,7 +510,7 @@ export function SellerDemandFormPage({ embedded = false }: { embedded?: boolean 
             </Button>
           </>
         ) : !me.data?.access.can_submit_demand_batches ? (
-          <Alert tone="warning">当前账号没有提交需求的权限。</Alert>
+          <Alert tone="warning">当前账号没有提交数量计划的权限。</Alert>
         ) : (
           <form className="seller-form" onSubmit={submit}>
             <FormField label="已通过产品" htmlFor="demand-product" required>
@@ -525,7 +525,7 @@ export function SellerDemandFormPage({ embedded = false }: { embedded?: boolean 
                   ))}
               </Select>
             </FormField>
-            <FormField label="任务类型" htmlFor="demand-type" required>
+            <FormField label="评论类型" htmlFor="demand-type" required>
               <Select name="task_type" defaultValue="TEXT">
                 <option value="TEXT">文字评价</option>
                 <option value="RATING">评分评价</option>
@@ -536,7 +536,7 @@ export function SellerDemandFormPage({ embedded = false }: { embedded?: boolean 
             <FormField label="目标数量" htmlFor="demand-quantity" required>
               <TextInput name="target_quantity" type="number" min="1" step="1" required />
             </FormField>
-            <Alert tone="info">开放、预约和下单窗口由当前版本化排期策略自动生成，Staff 审核时只需确认首个下单日期。</Alert>
+            <Alert tone="info">开放、预约和下单的时间由系统自动排期；工作人员审核时确认首个下单日期。</Alert>
             <FormField label="买家说明" htmlFor="demand-buyer-notes">
               <TextInput name="buyer_visible_notes" maxLength={2000} />
             </FormField>
@@ -552,7 +552,7 @@ export function SellerDemandFormPage({ embedded = false }: { embedded?: boolean 
               }}
             />
             <Button className="seller-form-submit" type="submit" loading={mutation.isPending}>
-              提交需求
+              提交数量计划
             </Button>
           </form>
         )}
@@ -579,16 +579,16 @@ export function SellerProductCampaignFlowPage({
   return (
     <section className="seller-page seller-submission-page">
       <PageHeader
-        title="商品与投放"
+        title="商品与数量计划"
         eyebrow="统一提交入口"
-        description="先申请商品；商品审核通过后，可继续创建投放需求。两类操作仍分别保留权限、审核、审计和幂等记录。"
+        description="先申请商品；商品审核通过后，就可以为它提交数量计划。每一步都有独立的审核记录。"
       />
-      <div className="seller-flow-tabs" role="tablist" aria-label="商品与投放">
+      <div className="seller-flow-tabs" role="tablist" aria-label="商品与数量计划">
         <Button type="button" className={mode === 'product' ? undefined : 'secondary'} onClick={() => setMode('product')}>
           商品申请
         </Button>
         <Button type="button" className={mode === 'demand' ? undefined : 'secondary'} onClick={() => setMode('demand')}>
-          创建投放
+          创建数量计划
         </Button>
       </div>
       {mode === 'product' ? <SellerProductApplicationFormPage embedded /> : <SellerDemandFormPage embedded />}

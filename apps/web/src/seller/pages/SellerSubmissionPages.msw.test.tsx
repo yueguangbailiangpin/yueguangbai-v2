@@ -73,7 +73,7 @@ describe('Seller first product application store setup', () => {
     expect(await screen.findByRole('heading', { name: '首次提交前先添加店铺' })).toBeVisible();
     expect(screen.queryByRole('textbox', { name: '产品标识' })).not.toBeInTheDocument();
     await user.type(screen.getByRole('textbox', { name: '店铺名称' }), '咖啡秤日本店');
-    await user.click(screen.getByRole('button', { name: '创建授权店铺' }));
+    await user.click(screen.getByRole('button', { name: '创建店铺' }));
 
     expect(
       await screen.findByText('店铺已创建并自动选中，可以继续提交产品申请。'),
@@ -142,7 +142,7 @@ describe('Seller first product application store setup', () => {
 
     expect(await screen.findByRole('heading', { name: '首次提交前先添加店铺' })).toBeVisible();
     await user.type(screen.getByRole('textbox', { name: '店铺名称' }), '只读员工创建店铺');
-    await user.click(screen.getByRole('button', { name: '创建授权店铺' }));
+    await user.click(screen.getByRole('button', { name: '创建店铺' }));
 
     expect(
       await screen.findByText('当前账号可以添加店铺，但没有提交产品申请的权限。'),

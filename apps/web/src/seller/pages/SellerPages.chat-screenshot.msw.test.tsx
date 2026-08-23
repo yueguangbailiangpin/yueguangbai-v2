@@ -97,7 +97,7 @@ describe('Seller formal-order chat screenshot UI', () => {
       { route: '/seller/settlements' },
     );
     expect(
-      await screen.findByText('结算按已授权店铺范围汇总，不随当前店铺选择切换。'),
+      await screen.findByText('这里按你有权限的店铺汇总，不随上方店铺筛选变化。'),
     ).toBeVisible();
     expect(await screen.findAllByRole('link', { name: '结算' })).toHaveLength(2);
   });
@@ -190,7 +190,7 @@ describe('Seller formal-order chat screenshot UI', () => {
     );
     expect(
       await screen.findByText(
-        '结算为全组织财务历史范围，含已停用店铺的历史结算，不随当前店铺选择切换。',
+        '这里显示整个组织（含已停用店铺）的历史账目，不随上方店铺筛选变化。',
       ),
     ).toBeVisible();
     expect(settlementRequests).toHaveLength(2);
