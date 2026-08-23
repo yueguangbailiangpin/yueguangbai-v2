@@ -9,13 +9,14 @@ import '../test/msw/lifecycle';
 import { apiUrl } from '../test/msw/handlers';
 import { createMswQueryClient } from '../test/msw/render';
 import { server } from '../test/msw/server';
+import { ProtectedImage } from '../buyer/shared/ProtectedImage';
 import { GenericBuyerFileReadIntentAdapter } from './file-read-providers';
 import { ProtectedImagePreview } from './ProtectedImagePreview';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('ProtectedImagePreview', () => {
-  it('loads a protected thumbnail, opens a lightbox, and revokes temporary URLs', async () => {
+  it('loads a protected thumbnail, opens a lightbox, and keeps cached URLs alive across remounts', async () => {
     let sequence = 0;
     const revoke = vi.fn();
     Object.defineProperty(URL, 'createObjectURL', {
@@ -66,10 +67,11 @@ describe('ProtectedImagePreview', () => {
     rendered.rerender(<QueryClientProvider client={client}>
       <ProtectedImagePreview provider={make('file-2')} alt="商品主图" fallback={<span>暂无图片</span>} />
     </QueryClientProvider>);
-    expect(revoke).toHaveBeenCalledWith('blob:image-1');
     expect(await screen.findByRole('img', { name: '商品主图' })).toHaveAttribute('src', 'blob:image-2');
     rendered.unmount();
-    expect(revoke).toHaveBeenLastCalledWith('blob:image-2');
+    // 带版本引用的 provider 图片进入会话缓存：URL 归缓存所有，
+    // 组件卸载/切换不回收（重挂载零网络），仅在缓存淘汰/清空时回收。
+    expect(revoke).not.toHaveBeenCalled();
   });
 });
 
@@ -182,5 +184,65 @@ describe('ProtectedImagePreview image performance', () => {
     expect(singleIntentCalls).toEqual(['file-c']);
     expect(batchBodies).toEqual([]);
     expect(contentCalls).toHaveLength(1);
+  });
+});
+
+describe('ProtectedImagePreview provider session cache', () => {
+  it('serves a remounted provider-backed buyer image from the session cache without refetching', async () => {
+    const intentCalls: string[] = [];
+    const contentCalls: string[] = [];
+    const reference = {
+      file_object_id: 'file-provider-1',
+      file_version: 2,
+      purpose: 'PRODUCT_IMAGE' as const,
+      visibility: 'BUYER_VISIBLE' as const,
+    };
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/files/file-provider-1/read-intents'), () => {
+        intentCalls.push('create');
+        return HttpResponse.json({
+          data: {
+            read_intent_id: 'provider-intent-1',
+            file_object_id: 'file-provider-1',
+            access_token: 'provider-token'.padEnd(40, 'x'),
+            access_token_available: true,
+            expires_at: 99,
+            replayed: false,
+          },
+          meta: { request_id: 'provider-read' },
+        });
+      }),
+      http.get(apiUrl('/api/buyer-portal/file-read-intents/provider-intent-1/content'), () => {
+        contentCalls.push('content');
+        return new Response(Uint8Array.of(7, 8), {
+          headers: {
+            'Content-Type': 'image/png',
+            'Content-Length': '2',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        });
+      }),
+    );
+    const client = createMswQueryClient();
+    const first = render(<QueryClientProvider client={client}>
+      <ProtectedImage
+        reference={reference}
+        alt="产品主图"
+        fallback={<span>暂无图片</span>} />
+    </QueryClientProvider>);
+    expect(await screen.findByRole('img', { name: '产品主图' })).toBeVisible();
+    first.unmount();
+
+    render(<QueryClientProvider client={client}>
+      <ProtectedImage
+        reference={reference}
+        alt="产品主图"
+        fallback={<span>暂无图片</span>} />
+    </QueryClientProvider>);
+    expect(await screen.findByRole('img', { name: '产品主图' })).toBeVisible();
+
+    expect(intentCalls).toEqual(['create']);
+    expect(contentCalls).toEqual(['content']);
   });
 });

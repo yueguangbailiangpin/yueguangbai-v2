@@ -31,6 +31,12 @@ export type CreatedFileReadIntent = Readonly<{
 
 export interface FileReadIntentProvider {
   readonly identity: RequestIdentity;
+  /**
+   * Stable session-cache key for the underlying immutable bytes, or null
+   * when the provider cannot prove content identity (no version pin).
+   * Keys must scope by identity, entity and content version.
+   */
+  cacheKey?(): string | null;
   create(
     client: QueryClient,
     idempotencyKey: string,
@@ -57,6 +63,10 @@ export class GenericBuyerFileReadIntentAdapter implements FileReadIntentProvider
     trustProvider(this);
   }
 
+  cacheKey(): string {
+    return `provider:buyer:file:${this.reference.file_object_id}:${this.reference.file_version}`;
+  }
+
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
     const result = await createIdentityFileReadIntent({
       client,
@@ -80,6 +90,10 @@ implements FileReadIntentProvider {
       .replace(':id', encodeURIComponent(identifier(formalOrderId)));
     this.expectedVersion = positiveInteger(version);
     trustProvider(this);
+  }
+
+  cacheKey(): string {
+    return `provider:seller:chat:${this.path}:${this.expectedVersion}`;
   }
 
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
@@ -169,6 +183,10 @@ abstract class EntityFileReadIntentAdapter implements FileReadIntentProvider {
     private readonly expectedVersion: number,
   ) {
     trustProvider(this);
+  }
+
+  cacheKey(): string {
+    return `provider:buyer:entity:${this.path}:${this.expectedVersion}`;
   }
 
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {

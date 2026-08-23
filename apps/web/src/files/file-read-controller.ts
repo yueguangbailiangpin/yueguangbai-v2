@@ -76,6 +76,7 @@ export class FileReadController {
   private objectUrl: string | null = null;
   private ownsObjectUrl = true;
   private sessionCacheKey: string | null = null;
+  private providerCacheKey: string | null = null;
 
   // Tests inject deterministic object-URL adapters; the shared session cache
   // only participates for the default browser adapter to stay invisible.
@@ -111,6 +112,7 @@ export class FileReadController {
       return Promise.resolve();
     }
     this.identity = identity;
+    this.providerCacheKey = null;
     this.publish({
       ...initialFileReadSnapshot,
       identity,
@@ -145,6 +147,9 @@ export class FileReadController {
     }
     this.identity = provider.identity;
     this.provider = provider;
+    this.providerCacheKey = provider.cacheKey
+      ? provider.cacheKey()
+      : null;
     this.publish({
       ...initialFileReadSnapshot,
       identity: provider.identity,
@@ -243,6 +248,10 @@ export class FileReadController {
         identity: this.identity,
         reference: this.reference,
       });
+    } else if (this.sessionCacheEnabled() && this.providerCacheKey !== null) {
+      this.sessionCacheKey = this.providerCacheKey;
+    }
+    if (this.sessionCacheKey !== null) {
       const cached = peekSessionBlob(this.sessionCacheKey);
       if (cached) {
         this.ownsObjectUrl = false;
