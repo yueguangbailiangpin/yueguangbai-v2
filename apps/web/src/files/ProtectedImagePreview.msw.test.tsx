@@ -41,7 +41,7 @@ describe('ProtectedImagePreview', () => {
         { headers: {
           'Content-Type': 'image/png',
           'Content-Length': '2',
-          'Cache-Control': 'private, no-store',
+          'Cache-Control': 'private, max-age=300',
           'X-Content-Type-Options': 'nosniff',
         } },
       )),
@@ -126,7 +126,7 @@ describe('ProtectedImagePreview image performance', () => {
           headers: {
             'Content-Type': 'image/png',
             'Content-Length': '2',
-            'Cache-Control': 'private, no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         });
@@ -218,7 +218,7 @@ describe('ProtectedImagePreview provider session cache', () => {
           headers: {
             'Content-Type': 'image/png',
             'Content-Length': '2',
-            'Cache-Control': 'private, no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         });

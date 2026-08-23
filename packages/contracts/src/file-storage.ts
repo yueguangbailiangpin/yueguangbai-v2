@@ -327,6 +327,21 @@ export interface ObjectStorageAdapter {
   ): Promise<Uint8Array<ArrayBuffer>>;
   readObject(objectKey: string): Promise<Uint8Array<ArrayBuffer>>;
   deleteObject(objectKey: string): Promise<void>;
+  /**
+   * Streaming read variant: returns the stored object's metadata plus its
+   * body stream without buffering the payload in the Worker.  Optional so
+   * legacy adapters (and tests) keep the buffered readObject path; callers
+   * fall back to readObject when absent or when the binding exposes no
+   * body stream.
+   */
+  openObjectStream?(
+    objectKey: string,
+  ): Promise<ObjectStorageStream | null>;
+}
+
+export interface ObjectStorageStream {
+  head: ObjectStorageHead;
+  body: ReadableStream<Uint8Array>;
 }
 
 export function isFilePurpose(value: unknown): value is FilePurpose {

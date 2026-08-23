@@ -128,7 +128,20 @@ export function validateFileReadHeaders(response: Response): Readonly<{
   const cacheControl = response.headers.get('Cache-Control') ?? '';
   const cacheDirectives = cacheControl.toLocaleLowerCase('en-US')
     .split(',').map((part) => part.trim());
-  if (!cacheDirectives.includes('no-store')
+  // The server pins single-use-token reads to a short PRIVATE browser cache;
+  // anything that would allow a shared cache to retain the bytes is a
+  // contract violation.
+  const maxAgeDirective = cacheDirectives.find((part) => part.startsWith('max-age='));
+  const maxAge = maxAgeDirective === undefined
+    ? null
+    : Number(maxAgeDirective.slice('max-age='.length));
+  if (!cacheDirectives.includes('private')
+    || cacheDirectives.includes('public')
+    || cacheDirectives.includes('s-maxage')
+    || maxAge === null
+    || !Number.isSafeInteger(maxAge)
+    || maxAge < 0
+    || maxAge > 300
     || response.headers.get('X-Content-Type-Options')
       ?.trim().toLocaleLowerCase('en-US') !== 'nosniff') {
     throw new FrontendApiError(

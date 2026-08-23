@@ -474,7 +474,7 @@ function mainImageReadHandlers() {
       { headers: {
         'Content-Type': 'image/png',
         'Content-Length': '2',
-        'Cache-Control': 'private, no-store',
+        'Cache-Control': 'private, max-age=300',
         'X-Content-Type-Options': 'nosniff',
       } },
     )),

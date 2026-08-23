@@ -27,7 +27,7 @@ describe('ProtectedFileButton Controller ownership', () => {
           expires_at: 99, replayed: false }, meta: { request_id: 'provider-request' },
       })),
       http.get(apiUrl('/api/buyer-portal/file-read-intents/:id/content'), () => new Response(Uint8Array.of(1, 2), {
-        headers: { 'Content-Type': 'image/png', 'Content-Length': '2', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' },
+        headers: { 'Content-Type': 'image/png', 'Content-Length': '2', 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' },
       })),
     );
     const make = (id: string) => new GenericBuyerFileReadIntentAdapter({

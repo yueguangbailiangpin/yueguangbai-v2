@@ -77,9 +77,11 @@ export class AnonymousR2Bucket implements R2BucketBinding {
           options.range.offset + options.range.length,
         )
       : stored.bytes;
+    const body = new Response(copyBytes(bytes)).body;
     return {
       ...cloneObject(stored.object),
       async arrayBuffer() { return copyBytes(bytes).buffer; },
+      ...(body === null ? {} : { body }),
     };
   }
 

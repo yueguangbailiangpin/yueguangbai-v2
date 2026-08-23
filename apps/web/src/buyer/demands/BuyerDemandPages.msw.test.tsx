@@ -50,7 +50,7 @@ describe('Buyer catalog main image and zero self-pay confirmation', () => {
           headers: {
             'Content-Type': 'image/png',
             'Content-Length': '4',
-            'Cache-Control': 'no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         })),

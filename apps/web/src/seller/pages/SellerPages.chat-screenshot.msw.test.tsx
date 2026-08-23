@@ -285,7 +285,7 @@ describe('Seller formal-order chat screenshot UI', () => {
           headers: {
             'Content-Type': 'image/png',
             'Content-Length': '2',
-            'Cache-Control': 'private, no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         })),
@@ -294,7 +294,7 @@ describe('Seller formal-order chat screenshot UI', () => {
           headers: {
             'Content-Type': 'image/webp',
             'Content-Length': '2',
-            'Cache-Control': 'private, no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         })),
@@ -305,7 +305,7 @@ describe('Seller formal-order chat screenshot UI', () => {
           headers: {
             'Content-Type': 'image/png',
             'Content-Length': '2',
-            'Cache-Control': 'private, no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         });

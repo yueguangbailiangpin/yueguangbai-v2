@@ -69,7 +69,7 @@ function binaryResponse(
     headers: {
       'Content-Type': 'image/png',
       'Content-Length': String(bytes.byteLength),
-      'Cache-Control': 'private, no-store',
+      'Cache-Control': 'private, max-age=300',
       'X-Content-Type-Options': 'nosniff',
       ...headers,
     },
@@ -422,7 +422,10 @@ describe('binary header, byte, progress, cancellation, and retry boundaries', ()
     ['missing Content-Length', { 'Content-Length': '' }],
     ['zero Content-Length', { 'Content-Length': '0' }],
     ['over 25 MiB', { 'Content-Length': String(MAXIMUM_FILE_READ_BYTES + 1) }],
-    ['missing no-store', { 'Cache-Control': 'private' }],
+    ['missing private', { 'Cache-Control': 'max-age=300' }],
+    ['public cache', { 'Cache-Control': 'public, max-age=300' }],
+    ['missing max-age', { 'Cache-Control': 'private' }],
+    ['excessive max-age', { 'Cache-Control': 'private, max-age=301' }],
     ['missing nosniff', { 'X-Content-Type-Options': '' }],
   ])('rejects %s before object URL creation', async (_name, headers) => {
     const record = evidence();

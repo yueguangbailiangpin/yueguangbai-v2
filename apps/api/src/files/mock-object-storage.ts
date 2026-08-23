@@ -3,6 +3,7 @@ import type {
   ObjectStorageHead,
   ObjectStoragePutInput,
   ObjectStoragePutResult,
+  ObjectStorageStream,
 } from '@ygb/contracts';
 import { sha256Hex } from '@ygb/domain';
 
@@ -62,6 +63,17 @@ export class MockObjectStorage implements ObjectStorageAdapter {
   async readObject(objectKey: string): Promise<Uint8Array<ArrayBuffer>> {
     this.consumeFailure('read', objectKey);
     return copyBytes(this.requireObject(objectKey).bytes);
+  }
+
+  async openObjectStream(
+    objectKey: string,
+  ): Promise<ObjectStorageStream | null> {
+    this.consumeFailure('read', objectKey);
+    const stored = this.objects.get(objectKey);
+    if (!stored) return null;
+    const body = new Response(stored.bytes).body;
+    if (body === null) return null;
+    return { head: stored.head, body };
   }
 
   async deleteObject(objectKey: string): Promise<void> {

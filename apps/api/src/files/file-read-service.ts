@@ -533,7 +533,9 @@ export async function consumeFileReadIntent(
 ): Promise<{
   fileObjectId: string;
   contentType: SupportedFileMime;
-  bytes: Uint8Array<ArrayBuffer>;
+  byteSize: number;
+  bytes?: Uint8Array<ArrayBuffer>;
+  stream?: ReadableStream<Uint8Array>;
 }> {
   const readIntentId = cleanFileIdentifier(input.readIntentId, 120);
   const now = command.now ?? Date.now();
@@ -570,19 +572,16 @@ export async function consumeFileReadIntent(
   );
 
   const archived = source.archive_status === 'DRIVE_ARCHIVED';
-  const bytes = archived
-    ? await readArchivedBytes(source, coldArchive)
-    : await storage.readObject(source.object_key).catch(() => {
-        throw new FileStorageError('DEPENDENCY_UNAVAILABLE', 503);
-      });
-  if (source.uploaded_byte_size === null
-    || source.detected_mime === null
-    || source.uploaded_sha256 === null
-    || bytes.byteLength !== source.uploaded_byte_size
-    || detectSupportedMime(bytes) !== source.detected_mime
-    || await sha256Hex(bytes) !== source.uploaded_sha256) {
-    throw new FileStorageError('FILE_STORAGE_CONFLICT', 409);
-  }
+  const opened = !archived && typeof storage.openObjectStream === 'function'
+    ? await storage.openObjectStream(source.object_key).catch(() => null)
+    : null;
+  const payload: {
+    bytes?: Uint8Array<ArrayBuffer>;
+    stream?: ReadableStream<Uint8Array>;
+    byteSize: number;
+  } = opened === null
+    ? await bufferedReadPayload(source, storage, coldArchive)
+    : await streamedReadPayload(source, opened);
 
   await database.batch([
     database.prepare(`
@@ -639,11 +638,67 @@ export async function consumeFileReadIntent(
     throw normalizeFileStorageError(error);
   });
 
+  if (source.detected_mime === null) {
+    throw new FileStorageError('FILE_STORAGE_CONFLICT', 409);
+  }
   return {
     fileObjectId: source.id,
     contentType: source.detected_mime,
-    bytes,
+    byteSize: payload.byteSize,
+    ...(payload.bytes === undefined ? {} : { bytes: payload.bytes }),
+    ...(payload.stream === undefined ? {} : { stream: payload.stream }),
   };
+}
+
+/**
+ * Streaming hot read: one R2 GET yields both the metadata for the
+ * integrity check (checksum equality semantics unchanged — the stored
+ * checksum must equal the verified uploaded_sha256) and the body stream the
+ * HTTP response forwards without buffering.  The magic-byte sniff is
+ * replaced by comparing the stored content type against the verified
+ * detected_mime; R2 objects are immutable, so both checks guard the same
+ * stored-bytes identity the buffered path guards.
+ */
+async function streamedReadPayload(
+  source: ReadIntentRow,
+  opened: import('@ygb/contracts').ObjectStorageStream,
+): Promise<{
+  stream: ReadableStream<Uint8Array>;
+  byteSize: number;
+}> {
+  if (source.uploaded_byte_size === null
+    || source.detected_mime === null
+    || source.uploaded_sha256 === null
+    || opened.head.byteSize !== source.uploaded_byte_size
+    || opened.head.contentType !== source.detected_mime
+    || opened.head.checksumSha256 !== source.uploaded_sha256) {
+    throw new FileStorageError('FILE_STORAGE_CONFLICT', 409);
+  }
+  return { stream: opened.body, byteSize: opened.head.byteSize };
+}
+
+async function bufferedReadPayload(
+  source: ReadIntentRow,
+  storage: ObjectStorageAdapter,
+  coldArchive: {
+    adapter: DriveArchiveAdapter | null;
+    proxyReadEnabled: boolean;
+  } | undefined,
+): Promise<{ bytes: Uint8Array<ArrayBuffer>; byteSize: number }> {
+  const bytes = source.archive_status === 'DRIVE_ARCHIVED'
+    ? await readArchivedBytes(source, coldArchive)
+    : await storage.readObject(source.object_key).catch(() => {
+        throw new FileStorageError('DEPENDENCY_UNAVAILABLE', 503);
+      });
+  if (source.uploaded_byte_size === null
+    || source.detected_mime === null
+    || source.uploaded_sha256 === null
+    || bytes.byteLength !== source.uploaded_byte_size
+    || detectSupportedMime(bytes) !== source.detected_mime
+    || await sha256Hex(bytes) !== source.uploaded_sha256) {
+    throw new FileStorageError('FILE_STORAGE_CONFLICT', 409);
+  }
+  return { bytes, byteSize: bytes.byteLength };
 }
 
 async function requireReadableFile(

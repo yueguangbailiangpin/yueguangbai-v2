@@ -609,7 +609,7 @@ describe('demand review panel', () => {
           headers: {
             'Content-Type': 'image/webp',
             'Content-Length': '2',
-            'Cache-Control': 'private, no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         }),
@@ -1241,7 +1241,7 @@ describe('product application review panel', () => {
           headers: {
             'Content-Type': 'image/png',
             'Content-Length': '2',
-            'Cache-Control': 'private, no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         }),
@@ -1264,7 +1264,7 @@ describe('product application review panel', () => {
           headers: {
             'Content-Type': 'image/png',
             'Content-Length': '2',
-            'Cache-Control': 'private, no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         }),
@@ -1517,7 +1517,7 @@ function installDemandHandlers(mutation: (request: Request) => Promise<Response>
         headers: {
           'Content-Type': 'image/webp',
           'Content-Length': '2',
-          'Cache-Control': 'private, no-store',
+          'Cache-Control': 'private, max-age=300',
           'X-Content-Type-Options': 'nosniff',
         },
       }),
@@ -1588,7 +1588,7 @@ function installOrderHandlers(options: {
         headers: {
           'Content-Type': 'image/png',
           'Content-Length': '2',
-          'Cache-Control': 'private, no-store',
+          'Cache-Control': 'private, max-age=300',
           'X-Content-Type-Options': 'nosniff',
         },
       }),

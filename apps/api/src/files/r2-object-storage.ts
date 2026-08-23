@@ -4,6 +4,7 @@ import {
   type ObjectStorageHead,
   type ObjectStoragePutInput,
   type ObjectStoragePutResult,
+  type ObjectStorageStream,
   ObjectStoragePutFailure,
 } from '@ygb/contracts';
 import { sha256Hex } from '@ygb/domain';
@@ -20,6 +21,7 @@ export interface R2ObjectLike {
 
 export interface R2ObjectBodyLike extends R2ObjectLike {
   arrayBuffer(): Promise<ArrayBuffer>;
+  body?: ReadableStream<Uint8Array>;
 }
 
 export interface R2BucketBinding {
@@ -101,6 +103,16 @@ export class R2ObjectStorageAdapter implements ObjectStorageAdapter {
 
   async readObject(objectKey: string): Promise<Uint8Array<ArrayBuffer>> {
     return readBody(await this.bucket.get(objectKey), objectKey);
+  }
+
+  async openObjectStream(
+    objectKey: string,
+  ): Promise<ObjectStorageStream | null> {
+    const object = await this.bucket.get(objectKey);
+    if (!object || object.key !== objectKey) return null;
+    const body = (object as R2ObjectBodyLike).body;
+    if (body === undefined || typeof body.getReader !== 'function') return null;
+    return { head: objectHead(object, objectKey), body };
   }
 
   async deleteObject(objectKey: string): Promise<void> {

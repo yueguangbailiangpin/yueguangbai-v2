@@ -295,12 +295,19 @@ function registerLifecycleRoutes(
         proxyReadEnabled: driveRuntime.enabled && driveRuntime.proxyReadEnabled,
       },
     );
-    return new Response(result.bytes, {
+    // The URL carries a single-use token (use_count 0->1, replay 410), so a
+    // 300s private browser cache cannot weaken one-time semantics: a second
+    // GET is served from cache precisely because the token is already
+    // consumed and would be rejected at the edge anyway.  No shared cache is
+    // allowed ("private") and these responses never carry cookies.
+    const body: ReadableStream<Uint8Array> | Uint8Array<ArrayBuffer>
+      = result.stream ?? result.bytes!;
+    return new Response(body, {
       status: 200,
       headers: {
         'Content-Type': result.contentType,
-        'Content-Length': String(result.bytes.byteLength),
-        'Cache-Control': 'no-store',
+        'Content-Length': String(result.byteSize),
+        'Cache-Control': 'private, max-age=300',
         'Content-Disposition': 'inline',
         'X-Content-Type-Options': 'nosniff',
       },
