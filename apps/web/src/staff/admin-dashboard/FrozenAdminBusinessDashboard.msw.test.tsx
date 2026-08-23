@@ -34,19 +34,21 @@ describe('canonical Frozen Admin business dashboard', () => {
       { route: '/staff/admin-business-dashboard' },
     );
 
-    expect(await screen.findByRole('heading', { name: '资金与经营口径' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '客户与订单概览' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '买家漏斗' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '卖家漏斗' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '本期赚了多少' })).toBeVisible();
+    // 明细表默认折叠，先点开再断言
+    await userEvent.setup().click(screen.getByText('明细与统计设置（点开查看）'));
+    expect(screen.getByRole('heading', { name: '客户与订单' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '买家：从咨询到完成' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '卖家：从咨询到合作' })).toBeVisible();
     expect(screen.getByText('¥200.00 CNY')).toBeVisible();
-    expect(screen.getByText('每日不可变新增客户、网站开通与订单')).toBeVisible();
+    expect(screen.getByText('每日新增客户、网站开通与订单')).toBeVisible();
     expect(screen.getByText('今日渠道事实')).toBeVisible();
-    expect(screen.getByText('身份冲突')).toBeVisible();
-    expect(screen.getByText('新系统归因异常')).toBeVisible();
-    expect(screen.getByText('财务冲突')).toBeVisible();
+    expect(screen.getByText('客户身份对不上')).toBeVisible();
+    expect(screen.getByText('找不到来源的订单')).toBeVisible();
+    expect(screen.getByText('账目对不上')).toBeVisible();
     expect(
       screen.getByText(
-        '精确统计期内有 4 张正式订单存在来源归因异常；其中买家归因缺口 3 个、卖家归因缺口 2 个。同一订单两边都缺来源时，异常订单只算 1 张。',
+        '统计开始日之后有 4 张订单找不到来源；其中买家侧缺 3 个、卖家侧缺 2 个。同一张订单两边都缺时只算 1 张。',
       ),
     ).toBeVisible();
     expect(screen.queryByRole('button', { name: '查看明细' })).not.toBeInTheDocument();
@@ -58,7 +60,9 @@ describe('canonical Frozen Admin business dashboard', () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: '本周' }));
-    expect(await screen.findByText('本周渠道事实')).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '本期赚了多少' })).toBeVisible();
+    });
     await waitFor(() => {
       expect(observed.summaryQueries).toContain('window=WEEK');
       expect(observed.dailyRanges).toContain('from_date=2026-08-04&to_date=2026-08-10');
@@ -66,7 +70,9 @@ describe('canonical Frozen Admin business dashboard', () => {
     });
 
     await user.click(screen.getByRole('button', { name: '本月' }));
-    expect(await screen.findByText('本月渠道事实')).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '本期赚了多少' })).toBeVisible();
+    });
     await waitFor(() => {
       expect(observed.summaryQueries).toContain('window=MONTH');
       expect(observed.dailyRanges).toContain('from_date=2026-08-01&to_date=2026-08-31');

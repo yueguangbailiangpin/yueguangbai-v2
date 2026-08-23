@@ -238,78 +238,53 @@ export function FrozenAdminBusinessDashboard(): React.JSX.Element {
           {value.from_date} 至 {value.to_date} · 北京时间
         </p>
       </section>
-      {config.precision_started_business_date === null ? (
-        <PrecisionActivation
-          version={config.version}
-          busy={activate.isPending}
-          onActivate={(date) => activate.mutate({ date, version: config.version })}
-        />
-      ) : (
-        <Alert tone="success">
-          精确渠道统计起始日：{config.precision_started_business_date}
-          。起始日前已有客户统一视为“历史客户 / 来源未知”；起始日后的来源缺失会作为异常处理。
-        </Alert>
-      )}
-      <OperatingIntegrityCenter anomalies={value.anomalies} />
       <section>
         <div className="dashboard-section-heading">
           <div>
-            <h2>资金与经营口径</h2>
-            <p>
-              这是现有权威账本的只读汇总，不新增第二套财务账。实际现金流按真实付款/冲正时间统计。
-            </p>
+            <h2>本期赚了多少</h2>
+            <p>账本的只读汇总，按真实付款时间统计；撤回的付款不算。</p>
           </div>
         </div>
         <div className="dashboard-metric-grid">
           <Metric
-            label="卖家实际入账"
-            value={formatCny(money.seller_cash_in_cny_fen)}
-            detail="Seller Payment，已完全冲正付款不计入"
-          />
-          <Metric
-            label="买家实际支出"
-            value={formatCny(money.buyer_cash_out_cny_fen)}
-            detail="正常返款 + 提前本金，自动抵扣不重复算现金"
-          />
-          <Metric
-            label="实际净现金流"
-            value={formatCny(money.net_cash_flow_cny_fen)}
-            detail="卖家实际入账 − 买家实际支出"
-          />
-          <Metric
-            label="本期卖家应结"
-            value={formatCny(money.seller_payable_due_cny_fen)}
-            detail={`当前已匹配 ${formatCny(money.seller_payable_paid_cny_fen)} · 未结 ${formatCny(money.seller_payable_outstanding_cny_fen)}`}
-          />
-          <Metric
-            label="本期买家应返"
-            value={formatCny(money.buyer_refund_due_cny_fen)}
-            detail={`当前已返 ${formatCny(money.buyer_refund_paid_cny_fen)} · 未返 ${formatCny(money.buyer_refund_outstanding_cny_fen)}`}
-          />
-          <Metric
-            label="预计利润（投影）"
+            label="预计净赚"
             value={formatCny(money.projected_profit_cny_fen)}
-            detail={`含利润补偿 ${formatCny(money.projected_profit_adjustment_cny_fen)}`}
+            detail={`按已确认订单算，含人工调整 ${formatCny(money.projected_profit_adjustment_cny_fen)}`}
           />
           <Metric
-            label="已完成利润（投影）"
+            label="已落袋净赚"
             value={formatCny(money.completed_profit_cny_fen)}
-            detail={`含利润补偿 ${formatCny(money.completed_profit_adjustment_cny_fen)}`}
+            detail={`评论返款全部完成的订单利润，含人工调整 ${formatCny(money.completed_profit_adjustment_cny_fen)}`}
+          />
+          <Metric
+            label="现金净流入"
+            value={formatCny(money.net_cash_flow_cny_fen)}
+            detail={`卖家转入 ${formatCny(money.seller_cash_in_cny_fen)} − 已付买家 ${formatCny(money.buyer_cash_out_cny_fen)}`}
+          />
+          <Metric
+            label="待返买家"
+            value={formatCny(money.buyer_refund_due_cny_fen)}
+            detail={`已返 ${formatCny(money.buyer_refund_paid_cny_fen)} · 未返 ${formatCny(money.buyer_refund_outstanding_cny_fen)}`}
+          />
+          <Metric
+            label="待结卖家"
+            value={formatCny(money.seller_payable_due_cny_fen)}
+            detail={`已结 ${formatCny(money.seller_payable_paid_cny_fen)} · 未结 ${formatCny(money.seller_payable_outstanding_cny_fen)}`}
           />
         </div>
       </section>
       <section>
-        <h2>客户与订单概览</h2>
+        <h2>客户与订单</h2>
         <div className="dashboard-metric-grid">
           <Metric
             label="新增买家客户"
             value={value.totals.new_buyer_customers}
-            detail="保存成功后成为不可变经营事实"
+            detail="保存后立即计入，以后不会变"
           />
           <Metric
             label="新增卖家客户"
             value={value.totals.new_seller_customers}
-            detail="保存成功即建立正式卖家业务主体"
+            detail="保存后即建立卖家档案，服务费按默认配好"
           />
           <Metric
             label="买家网站注册"
@@ -322,101 +297,132 @@ export function FrozenAdminBusinessDashboard(): React.JSX.Element {
             detail="卖家主账号实际开通"
           />
           <Metric
-            label="新增正式订单"
+            label="新增订单"
             value={value.totals.formal_orders}
-            detail="按正式订单确认日期统计"
+            detail="按订单确认日期统计"
           />
           <Metric label="新增预约" value={business.cards.reservations} />
           <Metric label="业务完成" value={business.cards.business_completions} />
           <Metric
-            label="预计利润"
+            label="预计净赚"
             value={formatCny(business.projected_profit.amount_cny_fen)}
             detail={`${business.projected_profit.valid_order_count} 单有效`}
           />
           <Metric
-            label="已完成利润"
+            label="已落袋净赚"
             value={formatCny(business.completed_profit.amount_cny_fen)}
             detail={`${business.completed_profit.valid_order_count} 单有效`}
           />
         </div>
         {historicalUnknown > 0 ? (
           <Alert tone="info">
-            历史客户 / 来源未知：买家视角 {value.totals.buyer_historical_unknown_orders}{' '}
+            老客户（统计开始日之前、没有来源记录）：买家视角 {value.totals.buyer_historical_unknown_orders}{' '}
             单，卖家视角 {value.totals.seller_historical_unknown_orders}{' '}
-            单。这是历史资料没有来源的正常分类，不属于系统错误。
+            单。这是正常分类，不是系统错误。
           </Alert>
         ) : null}
         {value.anomalies.attribution_anomalies > 0 ? (
           <Alert tone="danger">
-            精确统计期内有 {value.anomalies.attribution_anomalies}{' '}
-            张正式订单存在来源归因异常；其中买家归因缺口 {value.anomalies.buyer_attribution_gaps}{' '}
-            个、卖家归因缺口 {value.anomalies.seller_attribution_gaps}{' '}
-            个。同一订单两边都缺来源时，异常订单只算 1 张。
+            统计开始日之后有 {value.anomalies.attribution_anomalies}{' '}
+            张订单找不到来源；其中买家侧缺 {value.anomalies.buyer_attribution_gaps}{' '}
+            个、卖家侧缺 {value.anomalies.seller_attribution_gaps}{' '}
+            个。同一张订单两边都缺时只算 1 张。
           </Alert>
         ) : null}
       </section>
-      <section>
-        <div className="dashboard-section-heading">
-          <div>
-            <h2>每日新增</h2>
-            <p>过去某天的新增客户不会因为客户后来无效、渠道后来停用而回写变化。</p>
-          </div>
-        </div>
-        {value.daily.length === 0 ? (
-          <EmptyState title="暂无每日数据" description="所选时间范围没有新增客户或订单。" />
-        ) : (
-          <DataTable caption="每日不可变新增客户、网站开通与订单">
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>新增买家</th>
-                <th>新增卖家</th>
-                <th>买家网站注册</th>
-                <th>卖家网站开通</th>
-                <th>正式订单</th>
-                <th>历史买家未知</th>
-                <th>历史卖家未知</th>
-                <th>买家归因异常</th>
-                <th>卖家归因异常</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...value.daily].reverse().map((row) => (
-                <tr key={row.business_date}>
-                  <td>{row.business_date}</td>
-                  <td>{row.new_buyer_customers}</td>
-                  <td>{row.new_seller_customers}</td>
-                  <td>{row.buyer_portal_registrations}</td>
-                  <td>{row.seller_portal_registrations}</td>
-                  <td>
-                    <strong>{row.formal_orders}</strong>
-                  </td>
-                  <td>{row.buyer_historical_unknown_orders}</td>
-                  <td>{row.seller_historical_unknown_orders}</td>
-                  <td>{row.buyer_attribution_anomaly_orders || '—'}</td>
-                  <td>{row.seller_attribution_anomaly_orders || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </DataTable>
-        )}
+      <section className="dashboard-two-column" aria-label="业务漏斗">
+        <Funnel title="买家：从咨询到完成" stages={business.buyer_funnel.stages} />
+        <Funnel title="卖家：从咨询到合作" stages={business.seller_funnel.stages} />
       </section>
+      <Alert tone="info">
+        漏斗只展示每一步的真实数量。咨询人数是否记录完整请到「客户开发 →
+        渠道统计」查看；数据不完整时这里不显示容易误导的转化率。
+      </Alert>
       <section>
         <div className="dashboard-section-heading">
           <div>
-            <h2>每天各渠道新增</h2>
-            <p>
-              来源纠错后按最后确认来源展示；原始来源仍永久保留在审计记录。已停用渠道的历史成绩不会消失。
-            </p>
+            <h2>需要你处理的</h2>
+            <p>需要人工确认的事项；全为 0 时下面只显示「正常」。</p>
           </div>
         </div>
-        {value.channel_daily.length === 0 ? (
-          <EmptyState
-            title="暂无渠道归因数据"
-            description="新系统客户形成订单后按确认来源自动汇总。"
+        <OperatingIntegrityCenter anomalies={value.anomalies} />
+      </section>
+      <details className="dashboard-drill-down">
+        <summary>明细与统计设置（点开查看）</summary>
+        {config.precision_started_business_date === null ? (
+          <PrecisionActivation
+            version={config.version}
+            busy={activate.isPending}
+            onActivate={(date) => activate.mutate({ date, version: config.version })}
           />
         ) : (
-          <DataTable caption="每日渠道新增客户与订单">
+          <Alert tone="success">
+            统计开始日：{config.precision_started_business_date}
+            。开始日之前的客户统一算作「老客户（来源未知）」；之后的来源缺失会作为异常提醒。
+          </Alert>
+        )}
+        <section>
+          <div className="dashboard-section-heading">
+            <div>
+              <h3>每日新增明细</h3>
+              <p>过去某天的新增客户，之后不会因为客户无效或渠道停用而变化。</p>
+            </div>
+          </div>
+          {value.daily.length === 0 ? (
+            <EmptyState title="暂无每日数据" description="所选时间范围没有新增客户或订单。" />
+          ) : (
+            <DataTable caption="每日新增客户、网站开通与订单">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>新增买家</th>
+                  <th>新增卖家</th>
+                  <th>买家注册</th>
+                  <th>卖家开通</th>
+                  <th>新增订单</th>
+                  <th>老客户·买家</th>
+                  <th>老客户·卖家</th>
+                  <th>来源不明·买家</th>
+                  <th>来源不明·卖家</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...value.daily].reverse().map((row) => (
+                  <tr key={row.business_date}>
+                    <td>{row.business_date}</td>
+                    <td>{row.new_buyer_customers}</td>
+                    <td>{row.new_seller_customers}</td>
+                    <td>{row.buyer_portal_registrations}</td>
+                    <td>{row.seller_portal_registrations}</td>
+                    <td>
+                      <strong>{row.formal_orders}</strong>
+                    </td>
+                    <td>{row.buyer_historical_unknown_orders}</td>
+                    <td>{row.seller_historical_unknown_orders}</td>
+                    <td>{row.buyer_attribution_anomaly_orders || '—'}</td>
+                    <td>{row.seller_attribution_anomaly_orders || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+          )}
+        </section>
+        <section>
+          <div className="dashboard-section-heading">
+            <div>
+              <h3>每天各渠道新增</h3>
+              <p>
+                选错渠道后按更正结果展示，原始记录永久保留在审计里。已停用渠道的历史成绩不会消失。
+              </p>
+            </div>
+          </div>
+          {value.channel_daily.length === 0 ? (
+            <EmptyState
+              title="暂无渠道数据"
+              description="新系统客户形成订单后按确认来源自动汇总。"
+            />
+          ) : (
+            <DataTable caption="每日渠道新增客户与订单">
             <thead>
               <tr>
                 <th>日期</th>
@@ -455,15 +461,8 @@ export function FrozenAdminBusinessDashboard(): React.JSX.Element {
             </tbody>
           </DataTable>
         )}
-      </section>
-      <section className="dashboard-two-column" aria-label="业务漏斗">
-        <Funnel title="买家漏斗" stages={business.buyer_funnel.stages} />
-        <Funnel title="卖家漏斗" stages={business.seller_funnel.stages} />
-      </section>
-      <Alert tone="info">
-        漏斗这里只展示事实数量。咨询人数是否完整请到“客户开发 →
-        渠道统计”查看；数据未完整时系统不会在这里展示容易误导的转化率。
-      </Alert>
+        </section>
+      </details>
     </main>
   );
 }
@@ -479,12 +478,11 @@ function PrecisionActivation({
   const [date, setDate] = useState('');
   return (
     <Card className="dashboard-drill-down">
-      <h2>启用精确渠道统计</h2>
+      <h2>设置统计开始日</h2>
       <Alert tone="warning">
-        这是一次性经营口径分界。启用时系统会把当前已有买家和卖家快照为“历史客户 /
-        来源未知”；此后新增客户必须有准确渠道，缺失会进入异常待处理。
+        这是一次性的统计分界，启用后不能改。启用时系统会把当前已有客户统一记为「老客户（来源未知）」；此后新增客户必须有准确渠道，来源缺失会进入上方「需要你处理的」。
       </Alert>
-      <FormField label="精确统计起始日" htmlFor="reporting-precision-date">
+      <FormField label="统计开始日" htmlFor="reporting-precision-date">
         <TextInput
           id="reporting-precision-date"
           type="date"
