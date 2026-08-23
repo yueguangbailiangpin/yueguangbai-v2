@@ -47,14 +47,25 @@ function waitedLabel(createdAt: number, now: number): string {
   return `${Math.floor(hours / 24)} 天`;
 }
 
+// Intl.DateTimeFormat 构造昂贵且队列页逐行调用：模块级缓存（同
+// staff/shared/format.ts 先例），避免每次渲染每行重建。
+const shanghaiDayFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 function shanghaiDate(epoch: number): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(epoch));
+  return shanghaiDayFormatter.format(new Date(epoch));
 }
+
+const shanghaiMinuteFormatter = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
 
 function itemSummary(item: StaffWorkItem): string {
   const parties = [
@@ -289,12 +300,7 @@ export function StaffTaskQueuePage(): React.JSX.Element {
                 <small>
                   {item.completed_at === null
                     ? ''
-                    : `${new Intl.DateTimeFormat('zh-CN', {
-                        timeZone: 'Asia/Shanghai',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: false,
-                      }).format(new Date(item.completed_at))} 完成`}
+                    : `${shanghaiMinuteFormatter.format(new Date(item.completed_at))} 完成`}
                 </small>
               </li>
             ))}

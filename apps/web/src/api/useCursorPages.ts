@@ -25,11 +25,18 @@ export function useCursorPages<T>(input: Readonly<{
     queries: cursors.map((cursor) => ({
       queryKey: input.queryKey(cursor),
       queryFn: ({ signal }: { signal: AbortSignal }) => input.queryFn(cursor, signal),
+      // 已翻页的旧页保持挂载只为渲染；窗口聚焦时整链重拉在深翻页后
+      // 是 N 个整页请求的放大器（新鲜度交给手动刷新与 mutation 失效）。
+      refetchOnWindowFocus: false,
     })),
   });
+  // 依赖各页数据的更新时间戳而非 useQueries 的外层数组（每次渲染都是
+  // 新数组），否则任何本页 state 变化都会让整列表行重渲染。
+  const stamps = queries.map((query) => query.dataUpdatedAt);
   const items = useMemo(
     () => queries.flatMap((query) => query.data?.items ?? []),
-    [queries],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cursors, ...stamps],
   );
   const last = queries.at(-1);
   const nextCursor = last?.data?.next_cursor ?? null;

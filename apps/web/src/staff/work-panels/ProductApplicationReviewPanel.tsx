@@ -145,11 +145,14 @@ export function ProductApplicationReviewPanel({
 }
 
 const APPROVAL_NEXT_STEP_POLL_MS = 8_000;
+const APPROVAL_NEXT_STEP_POLL_MAX_MS = 60_000;
 
 /**
  * 连审下一步：产品通过后本屏直连需求发布。需求由卖家在卖家端提交
  * （产品通过后才存在），所以这里自动轮询新产品的待发布需求，出现后
  * 一键跳到对应工作项完成发布，替代“回队列 → 等待 → 再找”。
+ * 卖家可能很久才提交：间隔从 8 秒指数退避到 60 秒封顶，避免整屏
+ * 无限 8 秒双查询轮询。
  */
 function ApprovalNextStep({
   productId,
@@ -162,11 +165,15 @@ function ApprovalNextStep({
 }): React.JSX.Element {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const pollInterval = (query: { state: { dataUpdateCount: number } }): number => Math.min(
+    APPROVAL_NEXT_STEP_POLL_MAX_MS,
+    APPROVAL_NEXT_STEP_POLL_MS * 2 ** query.state.dataUpdateCount,
+  );
   const productQuery = useQuery({
     queryKey: ['staff', 'workbench', 'approval-next-step', productId],
     queryFn: ({ signal }) =>
       staffApi.product(client, productId, signal).then((result) => result.data.product),
-    refetchInterval: APPROVAL_NEXT_STEP_POLL_MS,
+    refetchInterval: pollInterval,
     retry: false,
   });
   const pendingDemand = productQuery.data?.demands.find(
@@ -185,7 +192,7 @@ function ApprovalNextStep({
         )
         .then((result) => result.data.work_items),
     enabled: pendingDemand !== null,
-    refetchInterval: APPROVAL_NEXT_STEP_POLL_MS,
+    refetchInterval: pollInterval,
     retry: false,
   });
   const demandWorkItem = pendingDemand === null
