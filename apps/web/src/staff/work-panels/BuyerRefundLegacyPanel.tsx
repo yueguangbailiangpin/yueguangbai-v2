@@ -53,6 +53,7 @@ export function BuyerRefundLegacyPanel({
     staleTime: STAFF_FACT_STALE_TIME_MS,
   });
   const [confirm, setConfirm] = useState<{
+    amountYuan?: number;
     kind: 'payment' | 'reversal';
     body: unknown;
     paymentId?: string;
@@ -189,6 +190,10 @@ export function BuyerRefundLegacyPanel({
                 const file = upload.manifest?.files[0];
                 if (!file) return;
                 const data = new FormData(event.currentTarget);
+                // 金额以元输入（可带小数），换算为分提交；后端只接受整数分。
+                const yuan = Number(data.get('amount'));
+                if (!Number.isFinite(yuan) || yuan <= 0) return;
+                const amountCnyFen = Math.round(yuan * 100);
                 const paidAt = Date.now();
                 const date = new Intl.DateTimeFormat('en-CA', {
                   timeZone: 'Asia/Shanghai',
@@ -200,9 +205,10 @@ export function BuyerRefundLegacyPanel({
                 mutation.reset();
                 setConfirm({
                   kind: 'payment',
+                  amountYuan: yuan,
                   body: {
                     expected_version: value.version,
-                    amount_cny_fen: String(data.get('amount')),
+                    amount_cny_fen: String(amountCnyFen),
                     paid_at: paidAt,
                     china_business_date: date,
                     payment_channel: String(data.get('channel')),
@@ -219,13 +225,13 @@ export function BuyerRefundLegacyPanel({
               }}
             >
               <FormField
-                label="实际返款（人民币分）"
+                label="实际返款（元，可带小数）"
                 htmlFor={`refund-amount-${item.work_item_id}`}
               >
                 <TextInput
                   id={`refund-amount-${item.work_item_id}`}
                   name="amount"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   required
                 />
               </FormField>
@@ -260,6 +266,12 @@ export function BuyerRefundLegacyPanel({
             if (!mutation.isPending) setConfirm(null);
           }}
         >
+          {confirm?.kind === 'payment' && confirm.amountYuan !== undefined ? (
+            <p>
+              返款金额：<strong>{confirm.amountYuan.toFixed(2)} 元</strong>
+              （提交 {Math.round(confirm.amountYuan * 100)} 分）
+            </p>
+          ) : null}
           <div className="entry-actions">
             <Button
               className="secondary"
