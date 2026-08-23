@@ -43,6 +43,7 @@ import {
   staffSellerServiceFeesSchema,
   staffSellerServiceFeeMutationSchema,
   staffApplyDefaultSellerServiceFeesSchema,
+  reservationReopenSchema,
 } from '../contracts/runtime';
 
 const acquisitionChannelResultSchema = z
@@ -211,6 +212,18 @@ export const staffApi = Object.freeze({
       body,
       mainImageMutationSchema,
       key,
+    ),
+  reopenReservation: (
+    client: QueryClient,
+    reservationId: string,
+    body: { expected_version: number; reason: string },
+  ) =>
+    write(
+      client,
+      `/api/staff/reservations/${encodeURIComponent(reservationId)}/reopen`,
+      body,
+      reservationReopenSchema,
+      crypto.randomUUID(),
     ),
   reservationSchedule: (
     client: QueryClient,

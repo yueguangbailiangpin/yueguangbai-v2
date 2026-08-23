@@ -1043,6 +1043,8 @@ export const staffReservationSchedulePageSchema = z
             .object({
               reservation_id: z.string(),
               status: z.enum(['PENDING_REVIEW', 'APPROVED', 'REJECTED', 'CANCELLED', 'EXPIRED']),
+              decision_source: z.enum(['AUTO', 'STAFF']).nullable(),
+              version: z.number().int().positive(),
               submitted_at: epoch,
               rank: z.number().int().positive().nullable(),
               planned_order_date: z.string().nullable(),
@@ -1132,6 +1134,22 @@ export const productVersionMutationSchema = z
             ordersPerRun: z.number().int().positive(),
           })
           .strict(),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const reservationReopenSchema = z
+  .object({
+    reservation_reopen: z
+      .object({
+        reservation_id: z.string(),
+        demand_batch_id: z.string(),
+        status: z.literal('PENDING_REVIEW'),
+        version: z.number().int().positive(),
+        reopened_count: z.number().int().nonnegative(),
+        reason: z.string(),
         replayed: z.boolean(),
       })
       .strict(),

@@ -6,6 +6,7 @@ import {
   type StaffAccessManagementOverviewDto,
   type StaffAccessSellerOrganizationAssignmentDto,
 } from '@ygb/contracts';
+import { RESERVATION_AUTO_APPROVE_SYSTEM_STAFF_ID } from '../../reservations/auto-approve';
 import { StaffAccessManagementError } from './errors';
 
 interface EmployeeRow {
@@ -40,7 +41,13 @@ export async function readStaffAccessManagementOverview(
   database: SqlDatabase,
 ): Promise<StaffAccessManagementOverviewDto> {
   const [employees, markets] = await Promise.all([
-    employeeQuery(database, '1=1', []).all<EmployeeRow>(),
+    // The reservation auto-approve system staff row is a bookkeeping
+  // placeholder, not an employee — it has no identity and cannot log in.
+  employeeQuery(
+    database,
+    'staff.id<>?',
+    [RESERVATION_AUTO_APPROVE_SYSTEM_STAFF_ID],
+  ).all<EmployeeRow>(),
     database
       .prepare(
         `SELECT code,display_name_zh,status FROM marketplace_registry ORDER BY

@@ -31,6 +31,9 @@ import {
   submitReservation as submitReservationService,
 } from './submit-reservation';
 import {
+  readReservationAutoApproveConfig,
+} from './auto-approve';
+import {
   readStaffReservationSchedule,
 } from '../product-reservation-scheduling/read-model';
 import {
@@ -781,6 +784,210 @@ describe('buyer reservations and atomic demand capacity', () => {
   });
 });
 
+describe('reservation auto approve', () => {
+  const autoConfig = {
+    enabled: true,
+    maxPerWindow: 1,
+    windowMs: 24 * 3_600_000,
+  };
+
+  it('auto-approves a qualifying reservation, publishes the instruction and completes the work item', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:approve:first',
+      now: 5000,
+      autoApprove: autoConfig,
+    });
+    expect(submitted.status).toBe('PENDING_REVIEW');
+
+    const reservation = await database.prepare(`
+      SELECT status, decided_by_staff_id, decided_at, version
+      FROM product_reservations WHERE id=?
+    `).bind(submitted.reservation_id).first<{
+      status: string;
+      decided_by_staff_id: string;
+      decided_at: number;
+      version: number;
+    }>();
+    expect(reservation).toMatchObject({
+      status: 'APPROVED',
+      decided_by_staff_id: 'system-reservation-auto-approve',
+      decided_at: 5000,
+      version: 2,
+    });
+
+    const instruction = await database.prepare(`
+      SELECT instruction.status, instruction.current_version_no,
+        instruction.published_at, instruction.initial_deadline_at,
+        version.content_hash, version.published_by_staff_id
+      FROM order_instructions instruction
+      JOIN order_instruction_versions version
+        ON version.instruction_id=instruction.id
+        AND version.version_no=1
+      WHERE instruction.reservation_id=?
+    `).bind(submitted.reservation_id).first<{
+      status: string;
+      current_version_no: number;
+      published_at: number;
+      initial_deadline_at: number;
+      content_hash: string;
+      published_by_staff_id: string;
+    }>();
+    expect(instruction).toMatchObject({
+      status: 'ACTIVE',
+      current_version_no: 1,
+      published_at: 5000,
+      initial_deadline_at: 5000 + 6 * 3_600_000,
+      published_by_staff_id: 'system-reservation-auto-approve',
+    });
+
+    const demand = await database.prepare(`
+      SELECT held_reservation_count, approved_reservation_count
+      FROM demand_batches WHERE id='demand-auto'
+    `).first<{
+      held_reservation_count: number;
+      approved_reservation_count: number;
+    }>();
+    expect(demand).toEqual({
+      held_reservation_count: 0,
+      approved_reservation_count: 1,
+    });
+
+    const workItem = await database.prepare(`
+      SELECT status FROM staff_work_items
+      WHERE work_type='RESERVATION_DECISION'
+        AND source_entity_id=?
+    `).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(workItem?.status).toBe('COMPLETED');
+
+    const systemEvent = await database.prepare(`
+      SELECT actor_type, actor_id, next_status FROM reservation_events
+      WHERE reservation_id=? AND event_type='RESERVATION_APPROVED'
+    `).bind(submitted.reservation_id).first<{
+      actor_type: string;
+      actor_id: string;
+      next_status: string;
+    }>();
+    expect(systemEvent).toEqual({
+      actor_type: 'SYSTEM',
+      actor_id: 'reservation-auto-approve',
+      next_status: 'APPROVED',
+    });
+
+    const systemStaff = await database.prepare(`
+      SELECT status FROM staff_users WHERE id='system-reservation-auto-approve'
+    `).first<{ status: string }>();
+    expect(systemStaff?.status).toBe('DISABLED');
+  });
+
+  it('keeps the second reservation of the same buyer within the window manual', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedPublishedMainImage(database, 'product-3-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+
+    const first = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:window:first',
+      now: 5000,
+      autoApprove: autoConfig,
+    });
+    const firstRow = await database.prepare(`
+      SELECT status FROM product_reservations WHERE id=?
+    `).bind(first.reservation_id).first<{ status: string }>();
+    expect(firstRow?.status).toBe('APPROVED');
+
+    // 24 小时内第 2 笔（跨店，避免同店唯一进行中冲突）→ 转人工。
+    const second = await submitReservation(database, {
+      demandBatchId: 'demand-3-other-store',
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:window:second',
+      now: 5100,
+      autoApprove: autoConfig,
+    });
+    const secondRow = await database.prepare(`
+      SELECT status FROM product_reservations WHERE id=?
+    `).bind(second.reservation_id).first<{ status: string }>();
+    expect(secondRow?.status).toBe('PENDING_REVIEW');
+  });
+
+  it('falls back to manual review when the version has no main image', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:no-main-image',
+      now: 5000,
+      autoApprove: autoConfig,
+    });
+    const row = await database.prepare(`
+      SELECT status FROM product_reservations WHERE id=?
+    `).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(row?.status).toBe('PENDING_REVIEW');
+    const workItem = await database.prepare(`
+      SELECT status FROM staff_work_items
+      WHERE work_type='RESERVATION_DECISION' AND source_entity_id=?
+    `).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(workItem?.status).toBe('OPEN');
+  });
+
+  it('never auto-approves when the switch is off', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:disabled',
+      now: 5000,
+      autoApprove: { ...autoConfig, enabled: false },
+    });
+    const row = await database.prepare(`
+      SELECT status FROM product_reservations WHERE id=?
+    `).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(row?.status).toBe('PENDING_REVIEW');
+  });
+
+  it('config reader reflects the environment switches', () => {
+    expect(readReservationAutoApproveConfig({})).toEqual({
+      enabled: false,
+      maxPerWindow: 1,
+      windowMs: 24 * 3_600_000,
+    });
+    expect(readReservationAutoApproveConfig({
+      RESERVATION_AUTO_APPROVE_ENABLED: 'true',
+      RESERVATION_AUTO_APPROVE_MAX_PER_WINDOW: '2',
+      RESERVATION_AUTO_APPROVE_WINDOW_HOURS: '48',
+    })).toEqual({
+      enabled: true,
+      maxPerWindow: 2,
+      windowMs: 48 * 3_600_000,
+    });
+  });
+});
+
 function submitReservation(
   database: SqliteDatabase,
   input: { demandBatchId: string; expectedDemandVersion?: number },
@@ -1234,4 +1441,108 @@ async function demandCounts(
     held: Number(row.held),
     approved: Number(row.approved),
   };
+}
+
+function seedPublishedMainImage(
+  database: SqliteDatabase,
+  productVersionId: string,
+): void {
+  const intentId = `intent-${productVersionId}-main`;
+  const objectId = `object-${productVersionId}-main`;
+  const linkId = `link-${productVersionId}-main`;
+  database.exec(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility, status,
+      requested_file_count, manifest_hash, version, expires_at, failure_code,
+      created_at, updated_at, completed_at
+    ) VALUES (
+      '${intentId}', 'STAFF', 'staff-pre-sales', 'PRODUCT_IMAGE',
+      'SELLER_VISIBLE', 'ISSUED', 1,
+      '${'d'.repeat(64)}', 1, 9000000, NULL, 1000, 1000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size, status,
+      upload_token_hash, upload_expires_at, uploaded_byte_size, detected_mime,
+      uploaded_sha256, failure_code, version, created_at, updated_at,
+      uploaded_at, verified_at, deleted_at
+    ) VALUES (
+      '${objectId}', '${intentId}', 1, 'PRODUCT_IMAGE', 'SELLER_VISIBLE',
+      'files/v1/2026/08/${objectId.padEnd(30, 'x')}',
+      'main.webp', 'webp', 'image/webp', 100, 'RESERVED',
+      '${'e'.repeat(64)}', 9000000, NULL, NULL,
+      NULL, NULL, 1, 1000, 1000, NULL, NULL, NULL
+    );
+    UPDATE file_upload_intents
+      SET status='VERIFIED', completed_at=1001, updated_at=1001
+      WHERE id='${intentId}';
+    UPDATE file_objects
+      SET status='VERIFIED', uploaded_byte_size=100, detected_mime='image/webp',
+        uploaded_sha256='${'f'.repeat(64)}', uploaded_at=1001, verified_at=1001,
+        updated_at=1001
+      WHERE id='${objectId}';
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      '${linkId}', '${objectId}', 'PRODUCT_VERSION', '${productVersionId}',
+      'PRODUCT_IMAGE', 'SELLER_VISIBLE', 'STAFF', 'staff-pre-sales', 1000,
+      'EXPLICIT_AUDIENCES', NULL, NULL
+    );
+    INSERT INTO file_entity_audience_grants (
+      id, file_entity_link_id, subject_type, buyer_customer_id,
+      seller_organization_id, staff_permission_code, staff_scope_type,
+      staff_team_id, granted_by_actor_type, granted_by_actor_id,
+      created_at, expires_at, revoked_at
+    ) VALUES (
+      'grant-${productVersionId}-seller', '${linkId}', 'SELLER_ORGANIZATION',
+      NULL, 'seller-org-1', NULL, NULL, NULL, 'STAFF', 'staff-pre-sales',
+      1000, NULL, NULL
+    ), (
+      'grant-${productVersionId}-staff', '${linkId}', 'STAFF_INTERNAL',
+      NULL, NULL, 'PRODUCT_VIEW', 'GLOBAL', NULL, 'STAFF', 'staff-pre-sales',
+      1000, NULL, NULL
+    );
+    INSERT INTO product_version_main_images (
+      product_version_id, file_entity_link_id, created_by_staff_id, created_at
+    ) VALUES ('${productVersionId}', '${linkId}', 'staff-pre-sales', 1000);
+  `);
+}
+
+function seedAutoApproveDemand(
+  database: SqliteDatabase,
+  demandId: string,
+  storeId: string,
+  productId: string,
+): void {
+  database.exec(`
+    INSERT INTO demand_batches (
+      id, organization_id, store_id, marketplace_code,
+      product_id, product_version_no,
+      submitted_by_member_id, task_type,
+      target_quantity, buyer_visible_notes,
+      seller_notes, open_at,
+      reservation_deadline, order_deadline,
+      status, review_reason, close_reason,
+      reviewed_by_staff_id, closed_by_staff_id,
+      version, submitted_at, updated_at,
+      reviewed_at, published_at,
+      withdrawn_at, closed_at,
+      held_reservation_count,
+      approved_reservation_count,
+      buyer_self_pay_bps_snapshot,
+      buyer_self_pay_source,
+      buyer_self_pay_override_reason
+    ) VALUES (
+      '${demandId}', 'seller-org-1', '${storeId}', 'JP',
+      '${productId}', 1, 'seller-owner', 'IMAGE',
+      5, '公开说明', '内部说明',
+      4000, 10000000, 90000000,
+      'PUBLISHED', NULL, NULL,
+      'staff-pre-sales', NULL,
+      1, 1000, 3000, 3000, 3000, NULL, NULL,
+      0, 0, 1000, 'PRODUCT_DEFAULT', NULL
+    );
+  `);
 }

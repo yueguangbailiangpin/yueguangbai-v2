@@ -421,10 +421,12 @@ function schedulePage() {
       order_deadline: 1_786_838_400_000, demand_version: 4, schedule: schedule() },
     items: [
       { reservation_id: 'reservation-1', status: 'APPROVED', submitted_at: 1000,
+        decision_source: 'STAFF', version: 2,
         rank: 1, planned_order_date: '2026-08-10', buyer_reference: 'B0001',
         buyer_customer_id: 'buyer-1', buyer_display_name: '买家一',
         actual_order_status: null, actual_order_date: null },
       { reservation_id: 'reservation-2', status: 'PENDING_REVIEW', submitted_at: 1001,
+        decision_source: null, version: 1,
         rank: 2, planned_order_date: '2026-08-10', buyer_reference: 'B0002',
         buyer_customer_id: null, buyer_display_name: null,
         actual_order_status: null, actual_order_date: null },

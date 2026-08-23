@@ -106,6 +106,8 @@ interface ReservationRow {
   status: ReservationStatus;
   submitted_at: number;
   queue_rank: number | null;
+  decision_source: 'AUTO' | 'STAFF';
+  reservation_version: number;
   evidence_status: string | null;
   formal_order_status: string | null;
   evidence_order_date: string | null;
@@ -322,6 +324,7 @@ export async function readStaffReservationSchedule(
         customer.buyer_customer_no,
         customer.display_name AS buyer_display_name,
         reservation.status,
+        reservation.version AS reservation_version,
         reservation.submitted_at,
         CASE WHEN reservation.status IN ('PENDING_REVIEW','APPROVED')
           THEN SUM(CASE WHEN reservation.status IN ('PENDING_REVIEW','APPROVED')
@@ -333,6 +336,12 @@ export async function readStaffReservationSchedule(
         END AS queue_rank,
         evidence.status AS evidence_status,
         formal_order.status AS formal_order_status,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM reservation_events approve_event
+          WHERE approve_event.reservation_id=reservation.id
+            AND approve_event.event_type='RESERVATION_APPROVED'
+            AND approve_event.actor_type='SYSTEM'
+        ) THEN 'AUTO' ELSE 'STAFF' END AS decision_source,
         evidence_version.amazon_order_date AS evidence_order_date,
         formal_order.amazon_order_date AS formal_order_date
       FROM product_reservations reservation
@@ -538,6 +547,8 @@ function reservationDto(
   return {
     reservation_id: row.reservation_id,
     status: row.status,
+    decision_source: row.decision_source,
+    version: Number(row.reservation_version),
     submitted_at: Number(row.submitted_at),
     rank,
     planned_order_date: rank === null || schedule === null

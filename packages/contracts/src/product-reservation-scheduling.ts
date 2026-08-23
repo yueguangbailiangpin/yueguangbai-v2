@@ -115,6 +115,8 @@ export interface DemandOrderScheduleVersionDto extends OrderCadenceDto {
 export interface StaffReservationScheduleItemDto {
   reservation_id: string;
   status: ReservationStatus;
+  decision_source: 'AUTO' | 'STAFF' | null;
+  version: number;
   submitted_at: number;
   rank: number | null;
   planned_order_date: string | null;

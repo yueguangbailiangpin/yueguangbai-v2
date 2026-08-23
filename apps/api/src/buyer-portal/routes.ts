@@ -12,6 +12,7 @@ import { customerSessionMiddleware } from '../middleware/customer-auth';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import { cancelReservation } from '../reservations/cancel-reservation';
 import { submitReservation } from '../reservations/submit-reservation';
+import { readReservationAutoApproveConfig } from '../reservations/auto-approve';
 import {
   requireBuyerPortalContext,
   toBuyerPortalMeDto,
@@ -139,6 +140,9 @@ async function createReservation(
       actor: buyer,
       idempotencyKey,
       requestId: requestIdFromContext(context),
+      autoApprove: readReservationAutoApproveConfig(
+        context.env as Record<string, unknown>,
+      ),
     },
   );
   const reservation = await getBuyerPortalReservation(

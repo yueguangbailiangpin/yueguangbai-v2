@@ -441,12 +441,20 @@ function ReservationScheduleDetail({ demandId }: { demandId: string }): React.JS
     <Card><DataTable caption="预约排名与预计下单日期"><thead><tr>
       <th scope="col">排名</th><th scope="col">买家标识</th><th scope="col">预约时间</th>
       <th scope="col">状态</th><th scope="col">预计日期</th><th scope="col">实际订单</th>
+      <th scope="col">操作</th>
     </tr></thead><tbody>{page.items.map((item) => <tr key={item.reservation_id}>
       <td>{item.rank ?? '—'}</td><th scope="row">{item.buyer_reference}
         {item.buyer_display_name ? <small>{item.buyer_display_name}</small> : null}</th>
-      <td>{formatShanghai(item.submitted_at)}</td><td>{reservationStatus(item.status)}</td>
+      <td>{formatShanghai(item.submitted_at)}</td>
+      <td>{reservationStatus(item.status)}
+        {item.status === 'APPROVED' && item.decision_source === 'AUTO'
+          ? <span className="auto-approved-badge">自动通过</span>
+          : null}</td>
       <td>{item.planned_order_date ?? '—'}</td><td>{item.actual_order_status
         ? `${item.actual_order_status}${item.actual_order_date ? ` · ${item.actual_order_date}` : ''}` : '尚无'}</td>
+      <td>{item.status === 'APPROVED' && item.decision_source === 'AUTO'
+        ? <ReopenReservationForm item={item} />
+        : null}</td>
     </tr>)}</tbody></DataTable></Card>
     <nav className="pagination-actions" aria-label="预约分页"><Button className="secondary"
       disabled={cursorHistory.length === 0} onClick={() => {
@@ -455,6 +463,50 @@ function ReservationScheduleDetail({ demandId }: { demandId: string }): React.JS
         setCursorHistory((all) => [...all, cursor]); setCursor(page.next_cursor);
       }}>下一页</Button></nav>
   </main>;
+}
+
+function ReopenReservationForm({ item }: {
+  item: StaffReservationSchedulePage['items'][number];
+}): React.JSX.Element {
+  const client = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  async function reopen(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const reason = String(new FormData(event.currentTarget).get('reason') ?? '');
+    setBusy(true); setMessage(null);
+    try {
+      await staffApi.reopenReservation(client, item.reservation_id, {
+        expected_version: item.version,
+        reason,
+      });
+      setMessage('已重开为待人工审核，请到工作台任务队列处理。');
+      await client.invalidateQueries({ queryKey: staffWorkbenchKeys.productsRoot });
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally { setBusy(false); }
+  }
+  return <div className="reopen-reservation">
+    {open ? <form onSubmit={reopen}>
+      <TextInput
+        id={`reopen-reason-${item.reservation_id}`}
+        name="reason"
+        placeholder="重开原因（买家可见流程留痕）"
+        required
+        maxLength={500}
+      />
+      <Button type="submit" className="secondary" disabled={busy} loading={busy}>
+        确认重开
+      </Button>
+      <Button type="button" className="secondary" disabled={busy} onClick={() => setOpen(false)}>
+        取消
+      </Button>
+    </form> : <Button className="secondary" onClick={() => setOpen(true)}>
+      重开人工复核
+    </Button>}
+    {message ? <p className="hint">{message}</p> : null}
+  </div>;
 }
 
 function ScheduleChangeForm({ demandId, page }: {

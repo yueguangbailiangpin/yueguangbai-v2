@@ -34,6 +34,10 @@ import {
   ReservationError,
   type BuyerReservationActor,
 } from './reservation-shared';
+import {
+  autoApproveReservation,
+  type ReservationAutoApproveConfig,
+} from './auto-approve';
 
 interface DemandEligibilityRow {
   demand_batch_id: string;
@@ -91,6 +95,7 @@ export async function submitReservation(
     idempotencyKey: string;
     requestId?: string | null;
     now?: number;
+    autoApprove?: ReservationAutoApproveConfig;
   },
 ): Promise<SubmitReservationResult> {
   validateBuyerReservationActor(command.actor);
@@ -433,6 +438,31 @@ export async function submitReservation(
       }),
       statements,
     );
+    if (command.autoApprove?.enabled) {
+      try {
+        await autoApproveReservation(
+          database,
+          { reservationId },
+          {
+            config: command.autoApprove,
+            requestId: command.requestId ?? null,
+            idempotencyKey: `${acquired.claim.idempotencyKey}:auto-approve`,
+            now,
+          },
+        );
+      } catch (error) {
+        // 自动通过失败（含批次断言失败）时预约仍处于 PENDING_REVIEW、
+        // 待办仍在——人工兜底，不让买家看到错误。
+        console.warn(
+          '[reservation-auto-approve] fell back to manual review',
+          {
+            reservationId,
+            code: (error as { code?: unknown })?.code,
+            message: (error as { message?: unknown })?.message,
+          },
+        );
+      }
+    }
     return response;
   } catch (error) {
     const normalized = normalizeReservationError(error);
