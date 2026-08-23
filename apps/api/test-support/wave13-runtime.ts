@@ -244,9 +244,11 @@ function orderDetailRow() {
     associated_file_object_id: 'runtime-screenshot',
     eligible_screenshot_association_count: 1,
     duplicate_signal_count: 0,
-    work_item_id: 'runtime-work-item',
-    assigned_staff_id: 'zz-phase3h-test-owner',
-    fixed_assignment_id: 'runtime-assignment',
+    work_item_json: JSON.stringify({
+      work_item_id: 'runtime-work-item',
+      assigned_staff_id: 'zz-phase3h-test-owner',
+      fixed_assignment_id: 'runtime-assignment',
+    }),
   };
 }
 

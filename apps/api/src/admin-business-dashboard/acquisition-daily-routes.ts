@@ -288,19 +288,32 @@ function attributionGaps(
     .all<GapRow>();
 }
 function buyerPortalRegistrationQuery(database: SqlDatabase, from: string, to: string) {
+  const [fromMs, toMsExclusive] = beijingDayRangeToEpochMs(from, to);
+  // WHERE 用裸 epoch 范围（函数包列会让任何索引失效）；date() 只留在
+  // 分组投影里。
   return database
     .prepare(
-      `SELECT date(invitation.consumed_at/1000,'unixepoch','+8 hours') AS business_date,COUNT(DISTINCT invitation.id) AS count FROM customer_buyer_invitations invitation WHERE invitation.status='CONSUMED' AND invitation.consumed_at IS NOT NULL AND date(invitation.consumed_at/1000,'unixepoch','+8 hours') BETWEEN ? AND ? GROUP BY date(invitation.consumed_at/1000,'unixepoch','+8 hours')`,
+      `SELECT date(invitation.consumed_at/1000,'unixepoch','+8 hours') AS business_date,COUNT(DISTINCT invitation.id) AS count FROM customer_buyer_invitations invitation WHERE invitation.status='CONSUMED' AND invitation.consumed_at>=? AND invitation.consumed_at<? GROUP BY date(invitation.consumed_at/1000,'unixepoch','+8 hours')`,
     )
-    .bind(from, to)
+    .bind(fromMs, toMsExclusive)
     .all<DailyCountRow>();
 }
+
+function beijingDayRangeToEpochMs(from: string, to: string): [number, number] {
+  const fromMs = Date.parse(`${from}T00:00:00+08:00`);
+  const toMsExclusive = Date.parse(`${to}T00:00:00+08:00`) + 86_400_000;
+  if (!Number.isSafeInteger(fromMs) || !Number.isSafeInteger(toMsExclusive) || fromMs >= toMsExclusive) {
+    throw new Error('invalid_registration_date_range');
+  }
+  return [fromMs, toMsExclusive];
+}
 function sellerPortalRegistrationQuery(database: SqlDatabase, from: string, to: string) {
+  const [fromMs, toMsExclusive] = beijingDayRangeToEpochMs(from, to);
   return database
     .prepare(
-      `SELECT date(invitation.consumed_at/1000,'unixepoch','+8 hours') AS business_date,COUNT(DISTINCT invitation.seller_organization_id) AS count FROM customer_seller_invitations invitation WHERE invitation.status='CONSUMED' AND invitation.consumed_at IS NOT NULL AND date(invitation.consumed_at/1000,'unixepoch','+8 hours') BETWEEN ? AND ? GROUP BY date(invitation.consumed_at/1000,'unixepoch','+8 hours')`,
+      `SELECT date(invitation.consumed_at/1000,'unixepoch','+8 hours') AS business_date,COUNT(DISTINCT invitation.seller_organization_id) AS count FROM customer_seller_invitations invitation WHERE invitation.status='CONSUMED' AND invitation.consumed_at>=? AND invitation.consumed_at<? GROUP BY date(invitation.consumed_at/1000,'unixepoch','+8 hours')`,
     )
-    .bind(from, to)
+    .bind(fromMs, toMsExclusive)
     .all<DailyCountRow>();
 }
 function requireOwner(context: Context<any>): AssignmentStaffAuthorization {

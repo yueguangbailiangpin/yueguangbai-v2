@@ -66,9 +66,7 @@ interface OrderEvidenceDetailRow {
   associated_file_object_id: string | null;
   eligible_screenshot_association_count: number;
   duplicate_signal_count: number;
-  work_item_id: string | null;
-  assigned_staff_id: string | null;
-  fixed_assignment_id: string | null;
+  work_item_json: string | null;
 }
 
 export function registerStaffOrderEvidenceRoutes(app: Hono<AppEnv>): void {
@@ -409,23 +407,16 @@ async function readDetail(
           AND conflict.amazon_order_number_normalized=
             evidence.amazon_order_number_normalized
           AND conflict.status='OPEN') AS duplicate_signal_count,
-      (SELECT work.id FROM staff_work_items work
-        WHERE work.work_type='ORDER_EVIDENCE_REVIEW'
-          AND work.source_entity_type='ORDER_EVIDENCE'
-          AND work.source_entity_id=submission.id
-        ORDER BY work.created_at DESC, work.id DESC LIMIT 1) AS work_item_id,
-      (SELECT work.assigned_staff_id FROM staff_work_items work
-        WHERE work.work_type='ORDER_EVIDENCE_REVIEW'
-          AND work.source_entity_type='ORDER_EVIDENCE'
-          AND work.source_entity_id=submission.id
-        ORDER BY work.created_at DESC, work.id DESC LIMIT 1)
-        AS assigned_staff_id,
-      (SELECT work.fixed_assignment_id FROM staff_work_items work
+      (SELECT json_object(
+          'work_item_id', work.id,
+          'assigned_staff_id', work.assigned_staff_id,
+          'fixed_assignment_id', work.fixed_assignment_id)
+        FROM staff_work_items work
         WHERE work.work_type='ORDER_EVIDENCE_REVIEW'
           AND work.source_entity_type='ORDER_EVIDENCE'
           AND work.source_entity_id=submission.id
         ORDER BY work.created_at DESC, work.id DESC LIMIT 1)
-        AS fixed_assignment_id
+        AS work_item_json
     FROM order_evidence_submissions submission
     JOIN order_evidence_versions evidence
       ON evidence.submission_id=submission.id
@@ -528,12 +519,23 @@ async function readDetail(
       final_paid_jpy: String(version.final_paid_jpy),
       submitted_at: Number(version.submitted_at),
     })),
-    workflow: {
-      work_item_id: row.work_item_id,
-      assigned_staff_id: row.assigned_staff_id,
-      assigned_team_id: null,
-      fixed_assignment_id: row.fixed_assignment_id,
-    },
+    workflow: (() => {
+      // json_object 单次子查询取最新工作项三字段（替代此前三遍重复子查询，
+      // 数万 work items 下每次详情读取少 2/3 的全表探测）
+      const work = row.work_item_json == null
+        ? null
+        : JSON.parse(row.work_item_json) as {
+          work_item_id: string | null;
+          assigned_staff_id: string | null;
+          fixed_assignment_id: string | null;
+        };
+      return {
+        work_item_id: work?.work_item_id ?? null,
+        assigned_staff_id: work?.assigned_staff_id ?? null,
+        assigned_team_id: null,
+        fixed_assignment_id: work?.fixed_assignment_id ?? null,
+      };
+    })(),
     buyer: {
       buyer_customer_id: row.buyer_customer_id,
       buyer_customer_no: row.buyer_customer_no,
