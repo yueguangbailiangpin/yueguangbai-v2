@@ -256,17 +256,29 @@ describe('Seller formal-order chat screenshot UI', () => {
           });
         },
       ),
-      http.post(apiUrl('/api/seller-portal/files/seller-order-shot-1/read-intents'), () =>
+      http.post(apiUrl('/api/seller-portal/file-read-intents/batch'), async () =>
         HttpResponse.json({
           data: {
-            read_intent_id: 'seller-order-shot-intent',
-            file_object_id: 'seller-order-shot-1',
-            access_token: 'seller-order-shot-token'.padEnd(40, 'x'),
-            access_token_available: true,
-            expires_at: 99,
-            replayed: false,
+            intents: [
+              {
+                read_intent_id: 'seller-order-shot-intent',
+                file_object_id: 'seller-order-shot-1',
+                access_token: 'seller-order-shot-token'.padEnd(40, 'x'),
+                access_token_available: true,
+                expires_at: 99,
+                replayed: false,
+              },
+              {
+                read_intent_id: 'seller-main-image-intent',
+                file_object_id: 'seller-main-image-1',
+                access_token: 'seller-main-token'.padEnd(40, 'x'),
+                access_token_available: true,
+                expires_at: 99,
+                replayed: false,
+              },
+            ],
           },
-          meta: { request_id: 'order-shot-read' },
+          meta: { request_id: 'seller-batch-read' },
         })),
       http.get(apiUrl('/api/seller-portal/file-read-intents/seller-order-shot-intent/content'), () =>
         new Response(Uint8Array.of(3, 4), {
@@ -276,18 +288,6 @@ describe('Seller formal-order chat screenshot UI', () => {
             'Cache-Control': 'private, no-store',
             'X-Content-Type-Options': 'nosniff',
           },
-        })),
-      http.post(apiUrl('/api/seller-portal/files/seller-main-image-1/read-intents'), () =>
-        HttpResponse.json({
-          data: {
-            read_intent_id: 'seller-main-image-intent',
-            file_object_id: 'seller-main-image-1',
-            access_token: 'seller-main-token'.padEnd(40, 'x'),
-            access_token_available: true,
-            expires_at: 99,
-            replayed: false,
-          },
-          meta: { request_id: 'seller-main-image-read' },
         })),
       http.get(apiUrl('/api/seller-portal/file-read-intents/seller-main-image-intent/content'), () =>
         new Response(Uint8Array.of(9, 9), {

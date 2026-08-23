@@ -304,8 +304,8 @@ function registerLifecycleRoutes(
   addRoute(app, 'post', `${prefix}/files/:fileObjectId/read-intents`, middleware, readIntent);
   addRoute(app, 'get', `${prefix}/file-read-intents/:id/content`, middleware, readContent);
   // Batch read intents exist only where screens render many protected images
-  // at once (staff review panels, buyer demand lists).
-  if (domain === 'STAFF' || domain === 'BUYER') {
+  // at once (staff review panels, buyer demand lists, seller order lists).
+  if (domain === 'STAFF' || domain === 'BUYER' || domain === 'SELLER') {
     addRoute(
       app,
       'post',

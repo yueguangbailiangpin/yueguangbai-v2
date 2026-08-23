@@ -56,6 +56,9 @@ const batchFileReadIntentResponseSchema = z.object({
   intents: z.array(fileReadIntentResponseSchema),
 }).strict();
 
+// 与后端 createFileReadIntentsBatch 的硬顶保持一致（超出整批 400）。
+const BATCH_READ_INTENT_LIMIT = 25;
+
 interface BrokeredReadIntent {
   client: QueryClient;
   identity: RequestIdentity;
@@ -118,7 +121,7 @@ async function flushReadIntentQueue(): Promise<void> {
 }
 
 function batchSupported(identity: RequestIdentity): boolean {
-  return identity === 'staff' || identity === 'buyer';
+  return identity === 'staff' || identity === 'buyer' || identity === 'seller';
 }
 
 async function settleSingleReadIntent(
@@ -145,6 +148,18 @@ async function settleBatchReadIntents(
     await Promise.all(items.map((item) => settleSingleReadIntent(item)));
     return;
   }
+  // 服务端每批硬顶 25 条（file-read-service createFileReadIntentsBatch）；
+  // 同屏挂载更多图时切多发几批，而不是让整组请求一起失败。
+  for (let offset = 0; offset < items.length; offset += BATCH_READ_INTENT_LIMIT) {
+    const chunk = items.slice(offset, offset + BATCH_READ_INTENT_LIMIT);
+    await settleOneBatchReadIntentChunk(identity, chunk);
+  }
+}
+
+async function settleOneBatchReadIntentChunk(
+  identity: RequestIdentity,
+  items: readonly BrokeredReadIntent[],
+): Promise<void> {
   try {
     const body = {
       requests: items.map((item) => ({

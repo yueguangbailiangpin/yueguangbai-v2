@@ -20,27 +20,27 @@ function sellerReference(fileObjectId: string): SafeFileReference {
 }
 
 function intentResponse(fileObjectId: string) {
-  return HttpResponse.json({
-    data: {
-      read_intent_id: `intent-${fileObjectId}`,
-      file_object_id: fileObjectId,
-      access_token: `token-${fileObjectId}`.padEnd(40, 'x'),
-      access_token_available: true,
-      expires_at: 99,
-      replayed: false,
-    },
-    meta: { request_id: `request-${fileObjectId}` },
-  });
+  return {
+    read_intent_id: `intent-${fileObjectId}`,
+    file_object_id: fileObjectId,
+    access_token: `token-${fileObjectId}`.padEnd(40, 'x'),
+    access_token_available: true,
+    expires_at: 99,
+    replayed: false,
+  };
 }
 
 describe('identity read-intent coalescing', () => {
-  it('settles every queued request for non-batch identities, not only the first', async () => {
-    const requested: string[] = [];
+  it('settles every queued seller request through one batch call, not only the first', async () => {
+    const batchRequests: string[] = [];
     server.use(
-      http.post(apiUrl('/api/seller-portal/files/:fileObjectId/read-intents'), ({ params }) => {
-        const fileObjectId = String(params['fileObjectId']);
-        requested.push(fileObjectId);
-        return intentResponse(fileObjectId);
+      http.post(apiUrl('/api/seller-portal/file-read-intents/batch'), async ({ request }) => {
+        const body = await request.json() as { requests: { file_object_id: string }[] };
+        for (const item of body.requests) batchRequests.push(item.file_object_id);
+        return HttpResponse.json({
+          data: { intents: body.requests.map((item) => intentResponse(item.file_object_id)) },
+          meta: { request_id: 'seller-batch' },
+        });
       }),
     );
 
@@ -64,6 +64,36 @@ describe('identity read-intent coalescing', () => {
 
     expect(first.data.file_object_id).toBe('seller-file-1');
     expect(second.data.file_object_id).toBe('seller-file-2');
-    expect(requested.sort()).toEqual(['seller-file-1', 'seller-file-2']);
+    expect(batchRequests.sort()).toEqual(['seller-file-1', 'seller-file-2']);
+  });
+
+  it('splits batch identities into server-limit chunks instead of failing the whole group', async () => {
+    const batchSizes: number[] = [];
+    server.use(
+      http.post(apiUrl('/api/staff/file-read-intents/batch'), async ({ request }) => {
+        const body = await request.json() as { requests: { file_object_id: string }[] };
+        batchSizes.push(body.requests.length);
+        return HttpResponse.json({
+          data: { intents: body.requests.map((item) => intentResponse(item.file_object_id)) },
+          meta: { request_id: 'batch-chunk' },
+        });
+      }),
+    );
+
+    // 30 个 staff 读意图同窗口：服务端每批硬顶 25，前端必须切两批全部 settle
+    const results = await Promise.all(
+      Array.from({ length: 30 }, (_, index) =>
+        createIdentityFileReadIntentCoalesced({
+          client: client(),
+          identity: 'staff',
+          reference: { ...sellerReference(`staff-file-${index}`), purpose: 'PRODUCT_IMAGE' },
+          idempotencyKey: `batch-${index}`,
+          signal: new AbortController().signal,
+        })),
+    );
+
+    expect(results).toHaveLength(30);
+    expect(results.every((result) => result.data.access_token_available)).toBe(true);
+    expect(batchSizes.sort((a, b) => b - a)).toEqual([25, 5]);
   });
 });

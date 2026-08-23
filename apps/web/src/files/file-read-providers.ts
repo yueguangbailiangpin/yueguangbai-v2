@@ -8,7 +8,7 @@ import { FrontendApiError } from '../api/errors';
 import { operationHeaders } from '../api/idempotency';
 import { identityApiRequest } from '../api/identity-request';
 import type { RequestIdentity } from '../api/identity-request';
-import { createIdentityFileReadIntent } from './file-read-api';
+import { createIdentityFileReadIntentCoalesced } from './file-read-api';
 import {
   fileReadIntentResponseSchema,
   safeFileReferenceSchema,
@@ -68,7 +68,9 @@ export class GenericBuyerFileReadIntentAdapter implements FileReadIntentProvider
   }
 
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
-    const result = await createIdentityFileReadIntent({
+    // 走合并器入口：同 commit 挂载的 N 张买家图共享一次批量签发，
+    // 与 identity 直连路径（FileReadController.start）行为一致。
+    const result = await createIdentityFileReadIntentCoalesced({
       client,
       identity: 'buyer',
       reference: this.reference,
