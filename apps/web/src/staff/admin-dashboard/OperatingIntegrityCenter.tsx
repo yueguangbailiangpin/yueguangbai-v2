@@ -124,13 +124,7 @@ export function OperatingIntegrityCenter({
     },
   });
   return (
-    <section aria-labelledby="operating-integrity-title">
-      <div className="dashboard-section-heading">
-        <div>
-          <h2 id="operating-integrity-title">待处理</h2>
-          <p>这里只放需要人工确认的异常，不做任务派工。</p>
-        </div>
-      </div>
+    <section aria-label="运行完整性">
       <div className="dashboard-metric-grid">
         <IssueMetric
           label="客户身份对不上"
