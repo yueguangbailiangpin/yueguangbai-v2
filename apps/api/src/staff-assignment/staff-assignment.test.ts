@@ -78,7 +78,7 @@ describe('Phase 3H staff assignment foundation', () => {
   it('runs the assignment foundation on current schema 73', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 73 });
+      .toEqual({ schema_version: 74 });
     expect(d.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(d.raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
   });

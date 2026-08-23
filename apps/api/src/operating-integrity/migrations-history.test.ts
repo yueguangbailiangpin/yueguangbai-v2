@@ -14,7 +14,7 @@ describe('frozen operating integrity migrations 0051-0064', () => {
     const state = await database
       .prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`)
       .first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(73);
+    expect(Number(state?.schema_version)).toBe(74);
     const required = [
       'acquisition_customer_intake_facts',
       'acquisition_reporting_config',

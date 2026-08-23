@@ -5,8 +5,8 @@ import { verifyHistoricalMigrationImmutability } from './historical-migration-im
 
 const root = path.resolve(import.meta.dirname, '..'),
   directory = path.join(root, 'migrations');
-const expectedLatestSchema = 73,
-  expectedLastMigration = '0073_base_rate_fallback_snapshots.sql';
+const expectedLatestSchema = 74,
+  expectedLastMigration = '0074_scale_index_pack.sql';
 const migrationFiles = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
@@ -17,7 +17,7 @@ if (
   migrationFiles.at(-1) !== expectedLastMigration ||
   numbers.some((number, index) => number !== expected[index])
 )
-  throw new Error('expected one continuous migration for every version 0001-0073');
+  throw new Error('expected one continuous migration for every version 0001-0074');
 const historicalIntegrity = verifyHistoricalMigrationImmutability(root);
 const sql = migrationFiles.map((name) => readFileSync(path.join(directory, name), 'utf8'));
 function open() {
@@ -178,7 +178,7 @@ console.log(
       historical_migration_aggregate_sha256: historicalIntegrity.aggregateSha256,
       migration_count: migrationFiles.length,
       fresh_schema: expectedLatestSchema,
-      sequential_upgrade: '0001 -> 0073',
+      sequential_upgrade: '0001 -> 0074',
       sequential_steps: migrationFiles.length,
       wrong_order_cases: wrong.length,
       wrong_order_commits_rejected: wrong.length,

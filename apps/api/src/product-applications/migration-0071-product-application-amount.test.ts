@@ -9,7 +9,7 @@ describe('Migration 0071 product application amount', () => {
         SELECT schema_version
         FROM app_schema_state
         WHERE singleton_id=1
-      `).first()).resolves.toEqual({ schema_version: 73 });
+      `).first()).resolves.toEqual({ schema_version: 74 });
 
       const columns = await database.prepare(
         `PRAGMA table_info(product_applications)`,
