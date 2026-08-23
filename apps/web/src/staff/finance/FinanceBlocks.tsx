@@ -21,7 +21,7 @@ export type RateCenter = Awaited<ReturnType<typeof staffApi.rateCenter>>['data']
 export type ServiceFeeRead = Awaited<ReturnType<typeof staffApi.sellerServiceFees>>['data'];
 
 export const DUAL_CONTROL_HINT =
-  '自己提交的策略不能自己确认，请让提交人以外的管理员确认（全体卖家默认加点不受此限制）。';
+  '当前账号没有确认权限（需要 Owner 且具备财务纠正权限）；全体卖家默认加点无需确认。';
 
 const SERVICE_FEE_REVIEW_TYPE_LABELS: Record<string, string> = {
   RATING: '评分单',
@@ -447,7 +447,7 @@ export function MarkupBlock({
                   required
                 />
               </FormField>
-              <p className="hint">单独设置需另一名管理员确认后才会生效；提交人不能自己确认（含 Owner）。</p>
+              <p className="hint">单独设置需有确认权限的管理员（Owner）确认后才会生效。</p>
               <Button className="danger" disabled={busy}>
                 提交待确认
               </Button>
@@ -586,7 +586,7 @@ export function ServiceFeeBlock({
               required
             />
           </FormField>
-          <p className="hint">需另一名管理员确认后生效；提交人不能自己确认（含 Owner）。</p>
+          <p className="hint">需有确认权限的管理员（Owner）确认后生效。</p>
           <Button className="danger" disabled={submit.isPending || Boolean(entry?.pending_fee)}>
             提交待确认
           </Button>

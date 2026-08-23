@@ -291,7 +291,7 @@ describe('Phase 3E pricing rules', () => {
     });
   });
 
-  it('blocks the submitter from deciding their own service fee version', async () => {
+  it('lets a single-handed Owner confirm their own service fee version', async () => {
     database = pricingDatabase();
     const submitted = await submitSellerServiceFee(
       database,
@@ -304,11 +304,12 @@ describe('Phase 3E pricing rules', () => {
       },
       command(owner, 'pricing:fee:self-decide:submit:0001', 1_000),
     );
-    await expect(confirmSellerServiceFee(
+    const confirmed = await confirmSellerServiceFee(
       database,
       { feeVersionId: submitted.fee_version_id, expectedVersion: 1 },
       command(owner, 'pricing:fee:self-decide:confirm:0001', 2_000),
-    )).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    );
+    expect(confirmed).toMatchObject({ status: 'CONFIRMED' });
   });
 
   it('enforces roles, expectedVersion, immutable facts, audit, and outbox', async () => {

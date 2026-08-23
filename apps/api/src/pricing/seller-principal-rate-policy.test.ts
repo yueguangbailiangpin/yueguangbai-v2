@@ -163,17 +163,18 @@ describe('seller principal rate policy', () => {
     });
   });
 
-  it('blocks the submitter from deciding their own organization override', async () => {
+  it('lets a single-handed Owner confirm their own organization override', async () => {
     database = fixture();
     const override = await submitSellerPrincipalRatePolicy(database, {
       scopeType: 'SELLER_ORGANIZATION', sellerOrganizationId: 'seller-org-1',
       sourceCurrencyCode: 'JPY', markupRateValue: '0.002',
       expectedVersion: 0, effectiveFrom: 3_000,
     }, command(owner, 'policy:self-decide:submit', 1_000));
-    await expect(confirmSellerPrincipalRatePolicy(
+    const confirmed = await confirmSellerPrincipalRatePolicy(
       database, { policyVersionId: override.policy_version_id, expectedVersion: 1 },
       command(owner, 'policy:self-decide:confirm', 2_000),
-    )).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    );
+    expect(confirmed).toMatchObject({ status: 'CONFIRMED', confirmed_at: 2_000 });
   });
 
   it('does not allow seller portal actors to write policy', async () => {

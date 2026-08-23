@@ -300,13 +300,11 @@ async function decideSellerPrincipalRatePolicy(
   }
   try {
     const source = await requirePolicy(database, id);
-    // P1-B dual control for organization overrides: the submitter may not
-    // also decide their own submission, even when the submitter is the
-    // Owner.  Currency-pair defaults no longer pass through decide().
-    if (source.scope_type === 'SELLER_ORGANIZATION'
-      && command.actor.staffId === source.submitted_by_staff_id) {
-      throw new PricingError('FORBIDDEN', 403);
-    }
+    // Dual control is by role separation: seller_ops proposes, only the
+    // Owner plus FINANCIAL_CORRECT decides (requireOwnerConfirmer above).
+    // A single-handed Owner may confirm their own submission — the strict
+    // submitter≠confirmer guard was rolled back because one-owner teams
+    // had no way to decide org-scoped submissions at all.
     if (source.decision_version !== expectedVersion
       || source.status !== 'SUBMITTED') {
       throw new PricingError('VERSION_CONFLICT', 409);
