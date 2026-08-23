@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 import '../../test/msw/lifecycle';
 import { StaffSessionBoundary } from '../../auth/staff/StaffSessionBoundary';
+import { chinaDate, shiftChinaDate } from './finance-format';
 import type { StaffAuthApiAdapter, StaffSession } from '../../auth/staff/staff-auth-api';
 import { apiUrl } from '../../test/msw/handlers';
 import { renderWithMsw } from '../../test/msw/render';
@@ -221,6 +222,137 @@ describe('财务配置 Staff 工作台', () => {
         markup_rate_value: '0.004',
       }),
     );
+  });
+
+  it('Owner 提前设明天：提交明天汇率并自确（容忍无 confirmed_at 的响应）', async () => {
+    const bodies: { path: string; body: any }[] = [];
+    const tomorrow = shiftChinaDate(chinaDate(), 1);
+    let tomorrowSubmitted = false;
+    server.use(
+      http.get(apiUrl('/api/staff/rate-center'), ({ request }) => {
+        // 今天已确认；明天（提前设明天的目标日）为空
+        const requested = new URL(request.url).searchParams.get('business_date');
+        const confirmedToday = requested !== tomorrow;
+        return HttpResponse.json({
+          data: rateCenterPayload({
+            business_date: requested ?? '2026-08-22',
+            base_rate: confirmedToday
+              ? {
+                  business_date: requested ?? '2026-08-22',
+                  confirmed_rate: {
+                    rate_id: 'rate-today-1',
+                    business_date: requested ?? '2026-08-22',
+                    version_no: 1,
+                    decision_version: 2,
+                    status: 'CONFIRMED',
+                    cny_per_jpy_e8: '4600000',
+                    rejection_reason: null,
+                    confirmed_at: 1_787_424_000_000,
+                  },
+                  pending_rate: null,
+                  next_version: 2,
+                }
+              : {
+                  business_date: tomorrow,
+                  confirmed_rate: null,
+                  pending_rate: tomorrowSubmitted
+                    ? {
+                        rate_id: 'rate-tomorrow-1',
+                        business_date: tomorrow,
+                        version_no: 1,
+                        decision_version: 1,
+                        status: 'SUBMITTED',
+                        cny_per_jpy_e8: '4600000',
+                        rejection_reason: null,
+                        confirmed_at: null,
+                      }
+                    : null,
+                  next_version: tomorrowSubmitted ? 2 : 1,
+                },
+          }),
+          meta: { request_id: 'rate-center-read' },
+        });
+      }),
+      http.get(apiUrl('/api/staff/seller-service-fees'), () =>
+        HttpResponse.json({
+          data: serviceFeesPayload(),
+          meta: { request_id: 'fees-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () =>
+        HttpResponse.json({
+          data: { policies: readPayload() },
+          meta: { request_id: 'policy-read' },
+        }),
+      ),
+      http.post(apiUrl('/api/staff/rate-center/base-rates/submit'), async ({ request }) => {
+        bodies.push({ path: 'submit', body: await request.json() });
+        tomorrowSubmitted = true;
+        return HttpResponse.json({
+          // 与后端一致：无 confirmed_at / rejection_reason，带 replayed
+          data: {
+            base_rate: {
+              rate_id: 'rate-tomorrow-1',
+              business_date: tomorrow,
+              version_no: 1,
+              decision_version: 1,
+              status: 'SUBMITTED',
+              cny_per_jpy_e8: '4600000',
+              replayed: false,
+            },
+          },
+          meta: { request_id: 'base-submit' },
+        });
+      }),
+      http.post(
+        apiUrl('/api/staff/rate-center/base-rates/:id/confirm'),
+        async ({ request }) => {
+          bodies.push({ path: 'confirm', body: await request.json() });
+          return HttpResponse.json({
+            data: {
+              base_rate: {
+                rate_id: 'rate-tomorrow-1',
+                business_date: tomorrow,
+                version_no: 1,
+                decision_version: 2,
+                status: 'CONFIRMED',
+                cny_per_jpy_e8: '4600000',
+                rejection_reason: null,
+                replayed: false,
+              },
+            },
+            meta: { request_id: 'base-confirm' },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithMsw(
+      <StaffSessionBoundary adapter={adapter(owner())}>
+        <StaffFinanceWorkspace />
+      </StaffSessionBoundary>,
+      {
+        route: '/staff/finance',
+      },
+    );
+    expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
+    // 今日已确认 → 显示锁定说明与提前设明天入口
+    expect(await screen.findByText(/当天锁定不可改/u)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '提前设明天' }));
+    const input = screen.getByRole('textbox', {
+      name: /明天（\d{4}-\d{2}-\d{2}）基础汇率/u,
+    });
+    await user.clear(input);
+    await user.type(input, '0.046');
+    await user.click(screen.getByRole('button', { name: '提交待确认' }));
+    expect(await screen.findByText(/已提交.*的汇率，等待确认/u)).toBeVisible();
+    // 明天行出现待确认 + 确认按钮（owner 自确）
+    await user.click(screen.getByRole('button', { name: '确认' }));
+    expect(await screen.findByText('已确认。')).toBeVisible();
+    expect(bodies).toEqual([
+      { path: 'submit', body: { business_date: tomorrow, rate_value: '0.046', expected_version: 0 } },
+      { path: 'confirm', body: { expected_version: 1 } },
+    ]);
   });
 
   it('回查历史日期时按 as_of 请求并标注回查口径', async () => {

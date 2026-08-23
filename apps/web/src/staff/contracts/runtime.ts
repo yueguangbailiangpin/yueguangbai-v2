@@ -107,7 +107,14 @@ export const staffRateCenterSchema = z
   .strict();
 export const staffRateCenterBaseMutationSchema = z
   .object({
-    base_rate: buyerDailyExchangeRateVersionSchema,
+    // The mutation results carry `replayed` and omit `confirmed_at` /
+    // `rejection_reason` on some paths — tolerate both shapes instead of
+    // failing the parse after the server already committed the decision.
+    base_rate: buyerDailyExchangeRateVersionSchema.extend({
+      confirmed_at: z.number().int().nonnegative().nullable().optional(),
+      rejection_reason: z.string().nullable().optional(),
+      replayed: z.boolean().optional(),
+    }),
   })
   .strict();
 const serviceFeeReviewTypeSchema = z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']);
