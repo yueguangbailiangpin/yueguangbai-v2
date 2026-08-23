@@ -72,3 +72,115 @@ describe('ProtectedImagePreview', () => {
     expect(revoke).toHaveBeenLastCalledWith('blob:image-2');
   });
 });
+
+describe('ProtectedImagePreview image performance', () => {
+  const reference = (id: string) => ({
+    file_object_id: id,
+    file_version: 1,
+    purpose: 'ORDER_EVIDENCE' as const,
+    visibility: 'BUYER_VISIBLE' as const,
+  });
+
+  function installBatchHandlers(options: {
+    singleIntentCalls: string[];
+    batchBodies: { requests: { file_object_id: string }[] }[];
+    contentCalls: string[];
+  }) {
+    server.use(
+      http.post(apiUrl('/api/buyer-portal/files/:fileId/read-intents'), ({ params }) => {
+        options.singleIntentCalls.push(String(params['fileId']));
+        return HttpResponse.json({
+          data: {
+            read_intent_id: `single-intent-${params['fileId']}`,
+            file_object_id: String(params['fileId']),
+            access_token: 'image-token'.padEnd(40, 'x'),
+            access_token_available: true,
+            expires_at: 99,
+            replayed: false,
+          },
+          meta: { request_id: 'image-single' },
+        });
+      }),
+      http.post(apiUrl('/api/buyer-portal/file-read-intents/batch'), async ({ request }) => {
+        const body = await request.json() as { requests: { file_object_id: string }[] };
+        options.batchBodies.push(body);
+        return HttpResponse.json({
+          data: {
+            intents: body.requests.map((item) => ({
+              read_intent_id: `batch-intent-${item.file_object_id}`,
+              file_object_id: item.file_object_id,
+              access_token: `token-${item.file_object_id}`.padEnd(40, 'x'),
+              access_token_available: true,
+              expires_at: 99,
+              replayed: false,
+            })),
+          },
+          meta: { request_id: 'image-batch' },
+        });
+      }),
+      http.get(apiUrl('/api/buyer-portal/file-read-intents/:id/content'), ({ params }) => {
+        options.contentCalls.push(String(params['id']));
+        return new Response(Uint8Array.of(1, 2), {
+          headers: {
+            'Content-Type': 'image/png',
+            'Content-Length': '2',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        });
+      }),
+    );
+  }
+
+  it('batches read intents for images mounted in the same commit', async () => {
+    const singleIntentCalls: string[] = [];
+    const batchBodies: { requests: { file_object_id: string }[] }[] = [];
+    const contentCalls: string[] = [];
+    installBatchHandlers({ singleIntentCalls, batchBodies, contentCalls });
+    const client = createMswQueryClient();
+    render(<QueryClientProvider client={client}>
+      <ProtectedImagePreview
+        identity="buyer" reference={reference('file-a')}
+        alt="图一" fallback={<span>暂无图片</span>} />
+      <ProtectedImagePreview
+        identity="buyer" reference={reference('file-b')}
+        alt="图二" fallback={<span>暂无图片</span>} />
+    </QueryClientProvider>);
+
+    expect(await screen.findByRole('img', { name: '图一' })).toBeVisible();
+    expect(await screen.findByRole('img', { name: '图二' })).toBeVisible();
+
+    expect(batchBodies).toHaveLength(1);
+    expect(batchBodies[0]!.requests.map((item) => item.file_object_id))
+      .toEqual(['file-a', 'file-b']);
+    expect(singleIntentCalls).toEqual([]);
+    expect(contentCalls).toHaveLength(2);
+  });
+
+  it('serves a remounted image from the session cache without refetching', async () => {
+    const singleIntentCalls: string[] = [];
+    const batchBodies: { requests: { file_object_id: string }[] }[] = [];
+    const contentCalls: string[] = [];
+    installBatchHandlers({ singleIntentCalls, batchBodies, contentCalls });
+    const client = createMswQueryClient();
+    const first = render(<QueryClientProvider client={client}>
+      <ProtectedImagePreview
+        identity="buyer" reference={reference('file-c')}
+        alt="缓存图" fallback={<span>暂无图片</span>} />
+    </QueryClientProvider>);
+    expect(await screen.findByRole('img', { name: '缓存图' })).toBeVisible();
+    first.unmount();
+
+    render(<QueryClientProvider client={client}>
+      <ProtectedImagePreview
+        identity="buyer" reference={reference('file-c')}
+        alt="缓存图" fallback={<span>暂无图片</span>} />
+    </QueryClientProvider>);
+    expect(await screen.findByRole('img', { name: '缓存图' })).toBeVisible();
+
+    // 第一次挂载走单文件端点；重挂载命中会话缓存，零网络请求。
+    expect(singleIntentCalls).toEqual(['file-c']);
+    expect(batchBodies).toEqual([]);
+    expect(contentCalls).toHaveLength(1);
+  });
+});

@@ -108,7 +108,7 @@ describe('Wave 13 File HTTP contract and architecture', () => {
       expect(routes).not.toContain(forbidden);
     }
     const read = source('apps/api/src/files/file-read-service.ts');
-    expect(read.match(/\bauthorizeFileRead\(/gu)).toHaveLength(2);
+    expect(read.match(/\bauthorizeFileRead\(/gu)).toHaveLength(3);
     expect(read).toContain('export async function createFileReadIntent');
     expect(read).toContain('export async function consumeFileReadIntent');
     expect(read).toContain('requireDynamicInstructionReadAuthorization');

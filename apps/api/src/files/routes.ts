@@ -11,6 +11,7 @@ import {
   type ObjectStorageAdapter,
   type StaffDataScope,
 } from '@ygb/contracts';
+import { readBoundedJson } from '@ygb/domain';
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../app';
 import type { CustomerSessionContext } from '../customer-auth/authenticate-customer';
@@ -25,6 +26,7 @@ import {
   completeFileUploadIntent,
   consumeFileReadIntent,
   createFileReadIntent,
+  createFileReadIntentsBatch,
   createFileUploadIntent,
   FileStorageError,
   normalizeFileStorageError,
@@ -301,6 +303,78 @@ function registerLifecycleRoutes(
   addRoute(app, 'post', `${prefix}/file-upload-intents/:id/complete`, middleware, complete);
   addRoute(app, 'post', `${prefix}/files/:fileObjectId/read-intents`, middleware, readIntent);
   addRoute(app, 'get', `${prefix}/file-read-intents/:id/content`, middleware, readContent);
+  // Batch read intents exist only where screens render many protected images
+  // at once (staff review panels, buyer demand lists).
+  if (domain === 'STAFF' || domain === 'BUYER') {
+    addRoute(
+      app,
+      'post',
+      `${prefix}/file-read-intents/batch`,
+      middleware,
+      withFileErrors(async (context) => {
+        const authority = await resolveRouteAuthority(context, domain);
+        const body = await readBoundedJson(context.req.raw, 16 * 1024);
+        const requests = readBatchRequests(body);
+        const batchKey = requireIdempotencyKey(context);
+        const result = await createFileReadIntentsBatch(
+          context.env.DB,
+          authorization(context, authority),
+          {
+            requests,
+            idempotencyKeys: requests.map((_, index) =>
+              `${batchKey}#${index}`),
+          },
+          {
+            actor: authority.actor,
+            principal: authority.principal,
+            requestId: requestId(context),
+          },
+        );
+        return context.json(apiSuccess({
+          intents: result.intents.map((intent) => ({
+            read_intent_id: intent.readIntentId,
+            file_object_id: intent.fileObjectId,
+            access_token: intent.accessToken,
+            access_token_available: intent.accessTokenAvailable,
+            expires_at: intent.expiresAt,
+            replayed: intent.replayed,
+          })),
+        }, requestId(context)));
+      }, { concealCustomerRead: domain !== 'STAFF' }),
+    );
+  }
+}
+
+function readBatchRequests(body: unknown): {
+  fileObjectId: string;
+  expectedFileVersion: number;
+}[] {
+  if (typeof body !== 'object' || body === null) {
+    throw new FileStorageError('VALIDATION_ERROR', 400);
+  }
+  const requests = (body as Record<string, unknown>)['requests'];
+  if (!Array.isArray(requests) || requests.length < 1 || requests.length > 25) {
+    throw new FileStorageError('VALIDATION_ERROR', 400);
+  }
+  return requests.map((request) => {
+    if (typeof request !== 'object' || request === null) {
+      throw new FileStorageError('VALIDATION_ERROR', 400);
+    }
+    const record = request as Record<string, unknown>;
+    const fileObjectId = record['file_object_id'];
+    const expectedFileVersion = record['expected_file_version'];
+    if (typeof fileObjectId !== 'string' || fileObjectId.length < 1
+      || fileObjectId.length > 120
+      || typeof expectedFileVersion !== 'number'
+      || !Number.isSafeInteger(expectedFileVersion)
+      || expectedFileVersion < 1) {
+      throw new FileStorageError('VALIDATION_ERROR', 400);
+    }
+    return {
+      fileObjectId,
+      expectedFileVersion,
+    };
+  });
 }
 
 type ActorDomain = 'BUYER' | 'SELLER' | 'STAFF';

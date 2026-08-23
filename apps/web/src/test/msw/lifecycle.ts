@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll } from 'vitest';
+import { clearSessionBlobCache } from '../../files/blob-session-cache';
 import { server } from './server';
 
 beforeAll(() => {
@@ -7,6 +8,7 @@ beforeAll(() => {
 
 afterEach(() => {
   server.resetHandlers();
+  clearSessionBlobCache();
 });
 
 afterAll(() => {

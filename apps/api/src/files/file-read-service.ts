@@ -23,10 +23,12 @@ import {
   assertIdempotencyCompletionStatement,
   completeIdempotencyStatement,
   markIdempotencyFailed,
+  type IdempotencyClaim,
 } from '../foundation/idempotency';
 import {
   createOutboxStatements,
   prepareOutboxEvent,
+  type PreparedOutboxEvent,
 } from '../foundation/outbox';
 import type { FileAuthorizationService } from './authorization';
 import { authorizeFileRead } from './file-audience-authorization';
@@ -188,90 +190,19 @@ export async function createFileReadIntent(
       createdAt: now,
     });
 
-    await database.batch([
-      database.prepare(`
-        INSERT INTO file_read_intents (
-          id,
-          file_object_id,
-          actor_type,
-          actor_id,
-          token_hash,
-          status,
-          use_count,
-          expires_at,
-          created_at,
-          updated_at,
-          consumed_at,
-          revoked_at,
-          file_entity_link_id
-        ) VALUES (?, ?, ?, ?, ?, 'ISSUED', 0, ?, ?, ?, NULL, NULL, ?)
-      `).bind(
-        readIntentId,
+    await database.batch(
+      buildReadIntentStatements(database, {
+        claim: acquired.claim,
+        source,
         fileObjectId,
-        command.actor.type,
-        command.actor.id,
+        readIntentId,
         tokenHash,
         expiresAt,
-        now,
-        now,
-        source.file_entity_link_id,
-      ),
-      createFileEventStatement(database, {
-        uploadIntentId: source.upload_intent_id,
-        fileObjectId,
-        eventType: 'FILE_READ_INTENT_ISSUED',
-        actorType: command.actor.type,
-        actorId: command.actor.id,
-        previousStatus: 'VERIFIED',
-        nextStatus: 'VERIFIED',
-        metadata: {
-          read_intent_id: readIntentId,
-          expires_at: expiresAt,
-        },
-        idempotencyKey: acquired.claim.idempotencyKey,
-        createdAt: now,
-      }),
-      createAuditEventStatement(database, {
-        id: crypto.randomUUID(),
-        aggregateType: 'FILE_OBJECT',
-        aggregateId: fileObjectId,
-        eventType: 'FILE_READ_INTENT_ISSUED',
-        actor: {
-          type: command.actor.type,
-          id: command.actor.id,
-          roles: command.actor.roles,
-        },
-        requestId: command.requestId ?? null,
-        idempotencyKey: acquired.claim.idempotencyKey,
-        nextState: {
-          read_intent_id: readIntentId,
-          expires_at: expiresAt,
-          entity_type: source.entity_type,
-          entity_id: source.entity_id,
-        },
-        createdAt: now,
-      }),
-      ...createOutboxStatements(database, outbox),
-      completeIdempotencyStatement(
-        database,
-        acquired.claim,
+        firstResponse,
         storedResponse,
-        {
-          resultReferences: {
-            read_intent_id: readIntentId,
-            file_object_id: fileObjectId,
-          },
-          now,
-        },
-      ),
-      assertReadIntentCreatedStatement(
-        database,
-        acquired.claim,
-        readIntentId,
-        fileObjectId,
-      ),
-      assertIdempotencyCompletionStatement(database, acquired.claim),
-    ]);
+        outbox,
+      }, command, now),
+    );
     return firstResponse;
   } catch (error) {
     const normalized = normalizeFileStorageError(error);
@@ -281,6 +212,284 @@ export async function createFileReadIntent(
       normalized.code,
       now,
     ).catch(() => false);
+    throw normalized;
+  }
+}
+
+interface ReadIntentPreparation {
+  claim: IdempotencyClaim;
+  source: ReadableFileSource;
+  fileObjectId: string;
+  readIntentId: string;
+  tokenHash: string;
+  expiresAt: number;
+  firstResponse: FileReadIntentResult;
+  storedResponse: FileReadIntentResult;
+  outbox: PreparedOutboxEvent;
+}
+
+function buildReadIntentStatements(
+  database: SqlDatabase,
+  preparation: ReadIntentPreparation,
+  command: {
+    actor: FileActor;
+    requestId?: string | null;
+  },
+  now: number,
+): readonly SqlStatement[] {
+  const {
+    claim, source, fileObjectId, readIntentId, tokenHash, expiresAt,
+    firstResponse, storedResponse, outbox,
+  } = preparation;
+  void firstResponse;
+  return [
+    database.prepare(`
+      INSERT INTO file_read_intents (
+        id,
+        file_object_id,
+        actor_type,
+        actor_id,
+        token_hash,
+        status,
+        use_count,
+        expires_at,
+        created_at,
+        updated_at,
+        consumed_at,
+        revoked_at,
+        file_entity_link_id
+      ) VALUES (?, ?, ?, ?, ?, 'ISSUED', 0, ?, ?, ?, NULL, NULL, ?)
+    `).bind(
+      readIntentId,
+      fileObjectId,
+      command.actor.type,
+      command.actor.id,
+      tokenHash,
+      expiresAt,
+      now,
+      now,
+      source.file_entity_link_id,
+    ),
+    createFileEventStatement(database, {
+      uploadIntentId: source.upload_intent_id,
+      fileObjectId,
+      eventType: 'FILE_READ_INTENT_ISSUED',
+      actorType: command.actor.type,
+      actorId: command.actor.id,
+      previousStatus: 'VERIFIED',
+      nextStatus: 'VERIFIED',
+      metadata: {
+        read_intent_id: readIntentId,
+        expires_at: expiresAt,
+      },
+      idempotencyKey: claim.idempotencyKey,
+      createdAt: now,
+    }),
+    createAuditEventStatement(database, {
+      id: crypto.randomUUID(),
+      aggregateType: 'FILE_OBJECT',
+      aggregateId: fileObjectId,
+      eventType: 'FILE_READ_INTENT_ISSUED',
+      actor: {
+        type: command.actor.type,
+        id: command.actor.id,
+        roles: command.actor.roles,
+      },
+      requestId: command.requestId ?? null,
+      idempotencyKey: claim.idempotencyKey,
+      nextState: {
+        read_intent_id: readIntentId,
+        expires_at: expiresAt,
+        entity_type: source.entity_type,
+        entity_id: source.entity_id,
+      },
+      createdAt: now,
+    }),
+    ...createOutboxStatements(database, outbox),
+    completeIdempotencyStatement(
+      database,
+      claim,
+      storedResponse,
+      {
+        resultReferences: {
+          read_intent_id: readIntentId,
+          file_object_id: fileObjectId,
+        },
+        now,
+      },
+    ),
+    assertReadIntentCreatedStatement(
+      database,
+      claim,
+      readIntentId,
+      fileObjectId,
+    ),
+    assertIdempotencyCompletionStatement(database, claim),
+  ];
+}
+
+export interface BatchFileReadIntentResult {
+  intents: readonly FileReadIntentResult[];
+}
+
+/**
+ * Issues read intents for several files in ONE D1 batch — the list screens
+ * otherwise pay a multi-statement batch per image. Same per-file checks and
+ * the same idempotency semantics as createFileReadIntent; any failing item
+ * fails the whole request (all-or-nothing), and every acquired claim is
+ * marked failed on error.
+ */
+export async function createFileReadIntentsBatch(
+  database: SqlDatabase,
+  authorization: FileAuthorizationService,
+  input: {
+    requests: readonly {
+      fileObjectId: string;
+      expectedFileVersion: number;
+    }[];
+    idempotencyKeys: readonly string[];
+  },
+  command: {
+    actor: FileActor;
+    principal?: FileReadPrincipal;
+    requestId?: string | null;
+    now?: number;
+  },
+): Promise<BatchFileReadIntentResult> {
+  if (input.requests.length < 1 || input.requests.length > 25
+    || input.requests.length !== input.idempotencyKeys.length) {
+    throw new FileStorageError('VALIDATION_ERROR', 400);
+  }
+  const now = command.now ?? Date.now();
+  const ttlMs = DEFAULT_READ_TTL_MS;
+  validateReadTiming(now, ttlMs);
+  const seen = new Set<string>();
+  const preparations: ReadIntentPreparation[] = [];
+  const claims: IdempotencyClaim[] = [];
+  const results: FileReadIntentResult[] = [];
+
+  try {
+    for (const [index, request] of input.requests.entries()) {
+      const fileObjectId = cleanFileIdentifier(request.fileObjectId, 120);
+      if (seen.has(fileObjectId)) {
+        throw new FileStorageError('VALIDATION_ERROR', 400);
+      }
+      seen.add(fileObjectId);
+      if (!Number.isSafeInteger(request.expectedFileVersion)
+        || request.expectedFileVersion < 1) {
+        throw new FileStorageError('VALIDATION_ERROR', 400);
+      }
+      const source = await requireReadableFile(database, fileObjectId, null);
+      await authorizeFileRead(
+        database,
+        authorization,
+        command.actor,
+        command.principal,
+        resource(source),
+        now,
+      );
+      await requireDynamicInstructionReadAuthorization(
+        database,
+        source,
+        command.actor,
+        now,
+      );
+      if (source.version !== request.expectedFileVersion) {
+        throw new FileStorageError('VERSION_CONFLICT', 409);
+      }
+      const expiresAt = now + ttlMs;
+      const requestHash = await hashCanonicalJson({
+        action: 'CREATE_FILE_READ_INTENT',
+        file_object_id: fileObjectId,
+        file_entity_link_id: source.file_entity_link_id,
+        expected_file_version: request.expectedFileVersion,
+        ttl_ms: ttlMs,
+      });
+      const acquired = await acquireIdempotency<FileReadIntentResult>(
+        database,
+        {
+          actorType: command.actor.type,
+          actorId: command.actor.id,
+          action: 'CREATE_FILE_READ_INTENT',
+          targetType: 'FILE_OBJECT',
+          targetId: fileObjectId,
+          idempotencyKey: input.idempotencyKeys[index]!,
+          requestHash,
+        },
+        { now },
+      );
+      if (acquired.kind === 'REPLAY') {
+        results.push({
+          ...acquired.response,
+          accessToken: null,
+          accessTokenAvailable: false,
+          replayed: true,
+        });
+        continue;
+      }
+      claims.push(acquired.claim);
+      const readIntentId = crypto.randomUUID();
+      const token = generateOpaqueFileToken();
+      const tokenHash = await hashOpaqueFileToken(token);
+      const firstResponse: FileReadIntentResult = {
+        readIntentId,
+        fileObjectId,
+        accessToken: token,
+        accessTokenAvailable: true,
+        expiresAt,
+        replayed: false,
+      };
+      const storedResponse: FileReadIntentResult = {
+        ...firstResponse,
+        accessToken: null,
+        accessTokenAvailable: false,
+      };
+      const outbox = await prepareOutboxEvent({
+        id: crypto.randomUUID(),
+        dedupKey: `file-read-intent-issued:${readIntentId}`,
+        eventType: 'FILE_READ_INTENT_ISSUED',
+        aggregateType: 'FILE_OBJECT',
+        aggregateId: fileObjectId,
+        payload: {
+          read_intent_id: readIntentId,
+          file_object_id: fileObjectId,
+          entity_type: source.entity_type,
+          entity_id: source.entity_id,
+          expires_at: expiresAt,
+          batch: true,
+        },
+        createdAt: now,
+      });
+      preparations.push({
+        claim: acquired.claim,
+        source,
+        fileObjectId,
+        readIntentId,
+        tokenHash,
+        expiresAt,
+        firstResponse,
+        storedResponse,
+        outbox,
+      });
+      results.push(firstResponse);
+    }
+
+    const statements: SqlStatement[] = [];
+    for (const preparation of preparations) {
+      statements.push(
+        ...buildReadIntentStatements(database, preparation, command, now),
+      );
+    }
+    if (statements.length > 0) {
+      await database.batch(statements);
+    }
+    return { intents: results };
+  } catch (error) {
+    const normalized = normalizeFileStorageError(error);
+    for (const claim of claims) {
+      await markIdempotencyFailed(database, claim, normalized.code, now)
+        .catch(() => false);
+    }
     throw normalized;
   }
 }

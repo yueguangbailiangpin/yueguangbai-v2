@@ -133,6 +133,8 @@ export const FILE_HTTP_LIFECYCLE_PATHS = Object.freeze({
   buyerReadIntent: '/api/buyer-portal/files/:fileObjectId/read-intents',
   sellerReadIntent: '/api/seller-portal/files/:fileObjectId/read-intents',
   staffReadIntent: '/api/staff/files/:fileObjectId/read-intents',
+  buyerReadIntentBatch: '/api/buyer-portal/file-read-intents/batch',
+  staffReadIntentBatch: '/api/staff/file-read-intents/batch',
   buyerRead: '/api/buyer-portal/file-read-intents/:id/content',
   sellerRead: '/api/seller-portal/file-read-intents/:id/content',
   staffRead: '/api/staff/file-read-intents/:id/content',
