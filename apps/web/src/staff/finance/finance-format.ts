@@ -17,10 +17,22 @@ export function chinaDate(at: number = Date.now()): string {
 /**
  * Shift a yyyy-mm-dd Beijing business date by whole days (e.g. yesterday /
  * tomorrow), staying on the Beijing calendar even across month boundaries.
+ * The result is formatted in Asia/Shanghai — toISOString() would slice the
+ * UTC date, which is still the previous Beijing day before 08:00Z.
  */
 export function shiftChinaDate(businessDate: string, days: number): string {
   const shifted = Date.parse(`${businessDate}T00:00:00+08:00`) + days * 86_400_000;
-  return new Date(shifted).toISOString().slice(0, 10);
+  const values = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(shifted)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${values['year']}-${values['month']}-${values['day']}`;
 }
 
 /**
