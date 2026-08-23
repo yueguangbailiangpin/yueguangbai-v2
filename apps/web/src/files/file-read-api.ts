@@ -111,7 +111,7 @@ async function flushReadIntentQueue(): Promise<void> {
   await Promise.all(
     [...groups.entries()].map(([identity, items]) =>
       items.length === 1 || !batchSupported(identity)
-        ? settleSingleReadIntent(items[0]!)
+        ? Promise.all(items.map((item) => settleSingleReadIntent(item)))
         : settleBatchReadIntents(identity, items),
     ),
   );
