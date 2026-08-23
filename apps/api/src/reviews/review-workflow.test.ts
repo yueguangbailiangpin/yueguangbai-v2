@@ -29,6 +29,7 @@ import type {
   BuyerReviewActor,
   StaffReviewActor,
 } from './review-shared';
+import { getStaffReview, getStaffReviewHistory } from './staff-read-model';
 import { submitReviewEvidence } from './submit-review-evidence';
 import { withdrawReview } from './withdraw-review';
 
@@ -1036,3 +1037,54 @@ function seedReviewFile(
     WHERE id='${fileId}';
   `);
 }
+
+describe('staff review read model', () => {
+  it('reads a pending review with evidence files (regression: byte_size column)', async () => {
+    const fixture = await setupConfirmedOrder();
+    seedReviewFile(database!, {
+      suffix: 9,
+      ownerBuyerId: 'buyer-review-1',
+    });
+    const submitted = await submitReviewEvidence(
+      database!,
+      allowAllFiles,
+      {
+        formalOrderId: fixture.formalOrderId,
+        expectedVersion: 0,
+        reviewType: 'IMAGE',
+        reviewUrl: 'https://example.com/reviews/9',
+        evidenceFiles: [{
+          fileObjectId: 'review-file-9',
+          expectedFileVersion: 3,
+        }],
+        buyerNote: null,
+      },
+      buyerCommand('review:staff-read:submit'),
+    );
+
+    const ownerAuthorization = {
+      staffId: 'staff-review-owner',
+      displayName: '评论Owner',
+      staffStatus: 'ACTIVE',
+      authorizationVersion: 1,
+      roles: new Set(['owner']),
+      permissions: new Set(['REVIEW_VIEW', 'REVIEW_DECIDE']),
+    } as unknown as Parameters<typeof getStaffReview>[1];
+
+    const review = await getStaffReview(database!, ownerAuthorization, submitted.review_case_id);
+    expect(review.status).toBe('PENDING_REVIEW');
+    expect(review.current_evidence.files).toHaveLength(1);
+    expect(review.current_evidence.files[0]).toMatchObject({
+      file_object_id: 'review-file-9',
+      purpose: 'REVIEW_EVIDENCE',
+      byte_size: 8,
+    });
+
+    const history = await getStaffReviewHistory(
+      database!,
+      ownerAuthorization,
+      submitted.review_case_id,
+    );
+    expect(history.versions[0]?.files[0]?.byte_size).toBe(8);
+  });
+});

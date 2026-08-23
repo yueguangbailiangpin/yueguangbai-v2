@@ -219,6 +219,11 @@ describe('Seller formal-order chat screenshot UI', () => {
               {
                 ...formalOrder(),
                 formal_order_id: 'order-2',
+                main_image: {
+                  file_object_id: 'seller-main-image-1',
+                  file_version: 1,
+                  client_file_name: 'main.webp',
+                },
                 chat_screenshot: { status: 'NONE', file_version: null },
               },
             ],
@@ -250,6 +255,27 @@ describe('Seller formal-order chat screenshot UI', () => {
           });
         },
       ),
+      http.post(apiUrl('/api/seller-portal/files/seller-main-image-1/read-intents'), () =>
+        HttpResponse.json({
+          data: {
+            read_intent_id: 'seller-main-image-intent',
+            file_object_id: 'seller-main-image-1',
+            access_token: 'seller-main-token'.padEnd(40, 'x'),
+            access_token_available: true,
+            expires_at: 99,
+            replayed: false,
+          },
+          meta: { request_id: 'seller-main-image-read' },
+        })),
+      http.get(apiUrl('/api/seller-portal/file-read-intents/seller-main-image-intent/content'), () =>
+        new Response(Uint8Array.of(9, 9), {
+          headers: {
+            'Content-Type': 'image/webp',
+            'Content-Length': '2',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        })),
       http.get(apiUrl('/api/seller-portal/file-read-intents/:id/content'), ({ request }) => {
         contentRequests += 1;
         expect(request.headers.get('X-File-Read-Token')).toContain('seller-chat-token');
@@ -267,7 +293,12 @@ describe('Seller formal-order chat screenshot UI', () => {
     try {
       const { client } = renderWithMsw(<SellerOrdersPage />, { route: '/seller/orders' });
 
+      // 订单明细默认折叠：展开后再核对聊天截图控件
+      for (const summary of await screen.findAllByText('订单明细（订单号、金额、汇率等，点开查看）')) {
+        await userEvent.click(summary);
+      }
       expect(await screen.findByText('展开聊天截图')).toBeTruthy();
+      expect(await screen.findByRole('img', { name: '聊天截图商品 主图' })).toBeTruthy();
       expect(screen.getAllByText('聊天截图')).toHaveLength(2);
       expect(screen.getByText('已上传')).toBeTruthy();
       expect(screen.getByText('暂无聊天截图')).toBeTruthy();
@@ -454,6 +485,7 @@ function formalOrder() {
     store: { id: 'store-1', display_name: '店铺一' },
     asin: 'B012345678',
     platform_product_identifier: 'B012345678',
+    main_image: null,
     product_name: '聊天截图商品',
     product_version: { id: 'product-version-1', version_no: 1 },
     review_type: 'IMAGE',

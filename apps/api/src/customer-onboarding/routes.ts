@@ -28,6 +28,12 @@ type CustomerMatch = {
   marketplace_code: string;
   has_portal_account: boolean;
   historical_order_count: number;
+  orders: readonly {
+    formal_order_id: string;
+    product_name: string;
+    platform_order_identifier: string | null;
+    confirmed_at: number;
+  }[];
   source_status: 'HISTORICAL_UNKNOWN';
 };
 
@@ -132,15 +138,37 @@ async function buyerMatches(
     )
     .bind(wechat)
     .all<BuyerRow>();
+  const orderRows = await Promise.all(rows.results.map((row) => database
+    .prepare(`
+      SELECT id AS formal_order_id, product_name_snapshot AS product_name,
+        amazon_order_number_normalized AS platform_order_identifier,
+        confirmed_at
+      FROM formal_orders
+      WHERE buyer_customer_id=?
+      ORDER BY confirmed_at DESC, id
+      LIMIT 10
+    `).bind(row.subject_id)
+    .all<{
+      formal_order_id: string;
+      product_name: string;
+      platform_order_identifier: string | null;
+      confirmed_at: number;
+    }>()));
   return rows.results
     .filter((row) => markets === null || markets.includes(row.marketplace_code ?? 'AMAZON_JP'))
-    .map((row) => ({
+    .map((row, index) => ({
       customer_type: 'BUYER',
       subject_id: row.subject_id,
       display_name: row.display_name,
       marketplace_code: row.marketplace_code ?? 'AMAZON_JP',
       has_portal_account: row.account_id !== null,
       historical_order_count: Number(row.formal_order_count),
+      orders: Object.freeze(orderRows[index]?.results.map((order) => ({
+        formal_order_id: order.formal_order_id,
+        product_name: order.product_name,
+        platform_order_identifier: order.platform_order_identifier,
+        confirmed_at: Number(order.confirmed_at),
+      })) ?? []),
       source_status: 'HISTORICAL_UNKNOWN',
     }));
 }
@@ -196,6 +224,7 @@ async function sellerMatches(
       marketplace_code: row.marketplace_code === 'JP' ? 'AMAZON_JP' : row.marketplace_code,
       has_portal_account: row.account_id !== null,
       historical_order_count: Number(row.formal_order_count),
+      orders: [],
       source_status: 'HISTORICAL_UNKNOWN',
     }));
 }
@@ -252,6 +281,7 @@ async function buyerBySubject(
         marketplace_code: market,
         has_portal_account: row.account_id !== null,
         historical_order_count: Number(row.formal_order_count),
+        orders: [],
         source_status: 'HISTORICAL_UNKNOWN',
       }
     : null;
@@ -280,6 +310,7 @@ async function sellerBySubject(
         marketplace_code: market,
         has_portal_account: row.account_id !== null,
         historical_order_count: Number(row.formal_order_count),
+        orders: [],
         source_status: 'HISTORICAL_UNKNOWN',
       }
     : null;

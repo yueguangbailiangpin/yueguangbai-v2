@@ -1,5 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { z } from 'zod';
 import { identityApiRequest } from '../../api/identity-request';
 import { operationHeaders } from '../../api/idempotency';
@@ -18,6 +19,7 @@ import {
 } from '../../ui/primitives';
 import { acquisitionApi } from './api';
 import { RateSummaryCard } from '../shared/RateSummaryCard';
+import { formatShanghai } from '../shared/format';
 import type { AcquisitionChannel, AcquisitionHandoff } from './runtime';
 
 const MARKET_LABELS: Record<string, string> = {
@@ -35,6 +37,12 @@ const matchSchema = z
     marketplace_code: z.string(),
     has_portal_account: z.boolean(),
     historical_order_count: z.number().int().nonnegative(),
+    orders: z.array(z.object({
+      formal_order_id: z.string(),
+      product_name: z.string(),
+      platform_order_identifier: z.string().nullable(),
+      confirmed_at: z.number().int().nonnegative(),
+    }).strict()).default([]),
     source_status: z.literal('HISTORICAL_UNKNOWN'),
   })
   .strict();
@@ -517,6 +525,9 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
                   </Button>
                 )}
               </div>
+              {match.customer_type === 'BUYER' && match.historical_order_count > 0 ? (
+                <BuyerOrderHistory match={match} />
+              ) : null}
             </div>
           ))
         : null}
@@ -1128,4 +1139,39 @@ function nullable(value: FormDataEntryValue | null) {
 }
 function marketLabel(code: string) {
   return MARKET_LABELS[code] ?? '未命名站点';
+}
+
+
+function BuyerOrderHistory({ match }: {
+  match: { display_name: string; historical_order_count: number; orders: unknown };
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const orders = match.orders as {
+    formal_order_id: string;
+    product_name: string;
+    platform_order_identifier: string | null;
+    confirmed_at: number;
+  }[];
+  if (!open) {
+    return <div className="buyer-order-history-toggle">
+      <Button className="secondary" onClick={() => setOpen(true)}>
+        查看历史订单（{match.historical_order_count} 单）
+      </Button>
+    </div>;
+  }
+  return <details className="buyer-order-history" open>
+    <summary onClick={(event) => { event.preventDefault(); setOpen(false); }}>
+      历史订单（最近 {orders.length} 单{match.historical_order_count > orders.length
+        ? `，共 ${match.historical_order_count} 单` : ''}，点此收起）
+    </summary>
+    {orders.length === 0 ? <p>暂无订单记录。</p> : <ul>
+      {orders.map((order) => <li key={order.formal_order_id}>
+        <Link to={`/staff/orders/${encodeURIComponent(order.formal_order_id)}`}>
+          {order.product_name}
+          {order.platform_order_identifier ? ` · ${order.platform_order_identifier}` : ''}
+        </Link>
+        <small>{formatShanghai(order.confirmed_at)} 确认</small>
+      </li>)}
+    </ul>}
+  </details>;
 }

@@ -72,6 +72,9 @@ interface FormalOrderRow {
   service_fee_status: string | null;
   chat_screenshot_status: 'AVAILABLE' | 'NONE';
   chat_screenshot_file_version: number | null;
+  main_image_file_object_id: string | null;
+  main_image_file_version: number | null;
+  main_image_client_file_name: string | null;
   confirmed_at: number;
   confirmed_business_date: string | null;
 }
@@ -323,6 +326,39 @@ function selectFormalOrderProjection(): string {
           AND file_link.revoked_at IS NULL
           AND (file_link.expires_at IS NULL OR file_link.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
         LIMIT 1) AS chat_screenshot_file_version,
+      (SELECT image_link.file_object_id
+        FROM product_version_main_images main_image
+        JOIN file_entity_links image_link
+          ON image_link.id=main_image.file_entity_link_id
+          AND image_link.purpose='PRODUCT_IMAGE'
+          AND image_link.revoked_at IS NULL
+        JOIN file_objects image_object
+          ON image_object.id=image_link.file_object_id
+          AND image_object.status='VERIFIED'
+        WHERE main_image.product_version_id=formal_order.product_version_id
+        LIMIT 1) AS main_image_file_object_id,
+      (SELECT image_object.version
+        FROM product_version_main_images main_image
+        JOIN file_entity_links image_link
+          ON image_link.id=main_image.file_entity_link_id
+          AND image_link.purpose='PRODUCT_IMAGE'
+          AND image_link.revoked_at IS NULL
+        JOIN file_objects image_object
+          ON image_object.id=image_link.file_object_id
+          AND image_object.status='VERIFIED'
+        WHERE main_image.product_version_id=formal_order.product_version_id
+        LIMIT 1) AS main_image_file_version,
+      (SELECT image_object.client_file_name
+        FROM product_version_main_images main_image
+        JOIN file_entity_links image_link
+          ON image_link.id=main_image.file_entity_link_id
+          AND image_link.purpose='PRODUCT_IMAGE'
+          AND image_link.revoked_at IS NULL
+        JOIN file_objects image_object
+          ON image_object.id=image_link.file_object_id
+          AND image_object.status='VERIFIED'
+        WHERE main_image.product_version_id=formal_order.product_version_id
+        LIMIT 1) AS main_image_client_file_name,
       CASE WHEN EXISTS (
         SELECT 1
         FROM order_evidence_internal_files attachment
@@ -546,6 +582,9 @@ function selectPlatformFormalOrderProjection(): string {
         WHERE attachment.platform_formal_order_id=formal_order.id
           AND attachment.slot=1
         LIMIT 1) AS chat_screenshot_file_version,
+      NULL AS main_image_file_object_id,
+      NULL AS main_image_file_version,
+      NULL AS main_image_client_file_name,
       CASE WHEN EXISTS (
         SELECT 1
         FROM platform_order_evidence_internal_files attachment
@@ -641,6 +680,15 @@ function mapFormalOrder(
     }),
     platform_product_identifier: row.platform_product_identifier,
     product_name: row.product_name,
+    main_image: row.main_image_file_object_id === null
+      || row.main_image_file_version === null
+      || row.main_image_client_file_name === null
+      ? null
+      : Object.freeze({
+          file_object_id: row.main_image_file_object_id,
+          file_version: Number(row.main_image_file_version),
+          client_file_name: row.main_image_client_file_name,
+        }),
     chat_screenshot: Object.freeze({
       status: row.chat_screenshot_status === 'AVAILABLE'
         ? 'AVAILABLE' as const

@@ -123,6 +123,14 @@ const sellerFormalOrderCommon = {
   store: z.object({ id: z.string(), display_name: z.string() }).strict(),
   platform_product_identifier: z.string(),
   product_name: z.string(),
+  main_image: z
+    .object({
+      file_object_id: z.string(),
+      file_version: z.number().int().positive(),
+      client_file_name: z.string(),
+    })
+    .strict()
+    .nullable(),
   chat_screenshot: z
     .object({
       status: z.enum(['AVAILABLE', 'NONE']),

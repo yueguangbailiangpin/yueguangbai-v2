@@ -51,6 +51,12 @@ export interface SellerBusinessCompletionDto {
   seller_service_fee: SellerBusinessCompletionComponentStatus;
 }
 
+export interface SellerFormalOrderMainImageDto {
+  file_object_id: string;
+  file_version: number;
+  client_file_name: string;
+}
+
 interface SellerFormalOrderPortalBaseDto {
   formal_order_id: string;
   status: FormalOrderStatus;
@@ -58,6 +64,7 @@ interface SellerFormalOrderPortalBaseDto {
   store: SellerFormalOrderStoreSummaryDto;
   platform_product_identifier: string;
   product_name: string;
+  main_image: SellerFormalOrderMainImageDto | null;
   chat_screenshot: SellerOrderChatScreenshotStatusDto;
   confirmed_at: number;
 }

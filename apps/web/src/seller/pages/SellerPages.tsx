@@ -741,6 +741,22 @@ export function SellerOrdersPage(): React.JSX.Element {
                 item.business_completion ? tone(item.business_completion.status) : 'neutral'
               }
             >
+              {item.main_image ? (
+                <ProtectedImagePreview
+                  identity="seller"
+                  reference={{
+                    file_object_id: item.main_image.file_object_id,
+                    file_version: item.main_image.file_version,
+                    purpose: 'PRODUCT_IMAGE',
+                    visibility: 'SELLER_VISIBLE',
+                  }}
+                  alt={`${item.product_name} 主图`}
+                  className="protected-product-main-image"
+                  fallback={<span className="protected-image-placeholder">主图加载中</span>}
+                />
+              ) : null}
+              <details className="seller-order-details">
+                <summary>订单明细（订单号、金额、汇率等，点开查看）</summary>
               <FactGrid>
                 <Fact label="站点" value={marketplaceLabel[item.canonical_marketplace_code]} />
                 <Fact label="亚马逊订单号" value={item.platform_order_identifier} />
@@ -824,6 +840,7 @@ export function SellerOrdersPage(): React.JSX.Element {
                   }
                 />
               </FactGrid>
+              </details>
               {item.business_completion ? (
                 <ul className="completion-grid">
                   <li>

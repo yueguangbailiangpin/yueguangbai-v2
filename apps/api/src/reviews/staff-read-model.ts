@@ -164,13 +164,12 @@ async function readVersions(
           object.id AS file_object_id,
           link.id AS file_entity_link_id,
           object.version AS file_version,
-          intent.client_file_name,
+          object.client_file_name,
           COALESCE(object.detected_mime, object.declared_mime) AS mime,
-          object.byte_size,
+          object.uploaded_byte_size AS byte_size,
           object.verified_at
         FROM review_evidence_version_files version_file
         JOIN file_objects object ON object.id=version_file.file_object_id
-        JOIN file_upload_intents intent ON intent.id=object.upload_intent_id
         JOIN file_entity_links link ON link.id=version_file.file_entity_link_id
         WHERE version_file.evidence_version_id IN (${ids.map(() => '?').join(', ')})
           AND object.status='VERIFIED'
