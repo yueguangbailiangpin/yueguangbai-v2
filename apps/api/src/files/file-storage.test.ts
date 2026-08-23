@@ -596,7 +596,7 @@ describe('batch file read intents', () => {
         ],
         idempotencyKeys: ['file:batch:read:one', 'file:batch:read:two'],
       },
-      { actor, idempotencyKey: 'file:batch:read', now: 3000 },
+      { actor, now: 3000 },
     );
     expect(batch.intents).toHaveLength(2);
     expect(new Set(batch.intents.map((item) => item.fileObjectId)).size).toBe(2);
@@ -622,7 +622,7 @@ describe('batch file read intents', () => {
         ],
         idempotencyKeys: ['file:batch:read:one', 'file:batch:read:two'],
       },
-      { actor, idempotencyKey: 'file:batch:read-replay', now: 3100 },
+      { actor, now: 3100 },
     );
     expect(replay.intents).toHaveLength(2);
     for (const item of replay.intents) {
@@ -644,7 +644,7 @@ describe('batch file read intents', () => {
         ],
         idempotencyKeys: ['file:batch:read:stale'],
       },
-      { actor, idempotencyKey: 'file:batch:read-stale', now: 3200 },
+      { actor, now: 3200 },
     )).rejects.toMatchObject({ code: 'VERSION_CONFLICT', status: 409 });
 
     await expect(createFileReadIntentsBatch(
@@ -657,7 +657,7 @@ describe('batch file read intents', () => {
         ],
         idempotencyKeys: ['file:batch:read:dup:one', 'file:batch:read:dup:two'],
       },
-      { actor, idempotencyKey: 'file:batch:read-dup', now: 3300 },
+      { actor, now: 3300 },
     )).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
   });
 });
