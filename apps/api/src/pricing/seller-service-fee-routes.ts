@@ -10,6 +10,7 @@ import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { scopeAllowsSellerOrganization } from '../staff-assignment/data-scope';
 import { PricingError, parseAsOfParameter } from './pricing-shared';
+import { applyDefaultSellerServiceFees } from './default-seller-service-fees';
 import {
   confirmSellerServiceFee,
   readSellerServiceFeeOverview,
@@ -22,6 +23,7 @@ const BODY_LIMIT = 16 * 1024;
 export function registerSellerServiceFeeRoutes(app: Hono<any>): void {
   app.get('/api/staff/seller-service-fees', withErrors(read));
   app.post('/api/staff/seller-service-fees/submit', withErrors(submit));
+  app.post('/api/staff/seller-service-fees/apply-defaults', withErrors(applyDefaults));
   app.post('/api/staff/seller-service-fees/:id/confirm', withErrors(confirm));
   app.post('/api/staff/seller-service-fees/:id/reject', withErrors(reject));
 }
@@ -99,6 +101,45 @@ async function submit(context: Context<any>): Promise<Response> {
   );
   context.header('Cache-Control', 'no-store');
   return context.json(apiSuccess({ fee: result }, requestId(context)));
+}
+
+async function applyDefaults(context: Context<any>): Promise<Response> {
+  const actor = staffActor(context);
+  const dataScope = staffDataScope(context);
+  requireManage(actor);
+  const body = await bodyRecord(context);
+  exactKeys(body, ['seller_organization_id']);
+  if (
+    typeof body['seller_organization_id'] !== 'string' ||
+    body['seller_organization_id'].length < 1 ||
+    body['seller_organization_id'].length > 120
+  ) {
+    throw new PricingError('VALIDATION_ERROR', 400);
+  }
+  await requireWritableOrganization(
+    context.env.DB,
+    dataScope,
+    actor,
+    body['seller_organization_id'],
+  );
+  const result = await applyDefaultSellerServiceFees(
+    context.env.DB,
+    { sellerOrganizationId: body['seller_organization_id'] },
+    command(context, actor),
+  );
+  context.header('Cache-Control', 'no-store');
+  return context.json(
+    apiSuccess(
+      {
+        applied: result.applied,
+        fees: await readSellerServiceFeeOverview(context.env.DB, {
+          sellerOrganizationId: body['seller_organization_id'],
+          at: Date.now(),
+        }),
+      },
+      requestId(context),
+    ),
+  );
 }
 
 async function confirm(context: Context<any>): Promise<Response> {

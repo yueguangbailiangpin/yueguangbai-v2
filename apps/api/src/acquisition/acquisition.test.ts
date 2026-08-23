@@ -77,6 +77,24 @@ describe('staff acquisition funnel commands', () => {
     }), command(sellerOps(), 'lead-create-0003', JAN_1_2025 + 2), SECRET);
     expect(seller.lead.lead_type).toBe('SELLER');
 
+    // The new seller organization is born with the business-default service
+    // fees (评分35/文字60/图片70/视频85), already CONFIRMED in the same
+    // transaction, so order approval is never blocked by a fresh org.
+    const organizationId = (database.raw.prepare(
+      `SELECT target_id AS id FROM acquisition_lead_links
+       WHERE lead_id=? AND link_type='SELLER_ORGANIZATION'`,
+    ).get(seller.lead.lead_id) as { id: string })['id'];
+    const seededFees = database.raw.prepare(
+      `SELECT review_type, version_no, status, fee_cny_fen, effective_from
+       FROM seller_service_fee_versions WHERE organization_id=? ORDER BY review_type`,
+    ).all(organizationId) as unknown as Record<string, unknown>[];
+    expect(seededFees).toEqual([
+      { review_type: 'IMAGE', version_no: 1, status: 'CONFIRMED', fee_cny_fen: 7000, effective_from: JAN_1_2025 + 2 + 60_000 },
+      { review_type: 'RATING', version_no: 1, status: 'CONFIRMED', fee_cny_fen: 3500, effective_from: JAN_1_2025 + 2 + 60_000 },
+      { review_type: 'TEXT', version_no: 1, status: 'CONFIRMED', fee_cny_fen: 6000, effective_from: JAN_1_2025 + 2 + 60_000 },
+      { review_type: 'VIDEO', version_no: 1, status: 'CONFIRMED', fee_cny_fen: 8500, effective_from: JAN_1_2025 + 2 + 60_000 },
+    ]);
+
     const stored = database.raw.prepare(`SELECT identity_hash,identity_ciphertext,
       identity_iv,origin_staff_id,origin_channel_id FROM acquisition_leads
       WHERE id=?`).get(buyer.lead.lead_id)!;

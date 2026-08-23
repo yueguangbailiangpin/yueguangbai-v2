@@ -75,6 +75,8 @@ describe('财务配置 Staff 工作台', () => {
     ).toBeVisible();
     expect(await screen.findByText(/全体卖家加点 · \+0\.004 待你确认/u)).toBeVisible();
     expect(await screen.findByText(/测试卖家单独加点 · \+0\.0 待你确认/u)).toBeVisible();
+    // 一键补默认入口出现在未配齐的组织上
+    expect(await screen.findByRole('button', { name: /补默认（4 类）/u })).toBeVisible();
     // 一单示例
     expect(await screen.findByRole('heading', { name: '今天生效' })).toBeVisible();
     expect(await screen.findByText(/一单 ¥3,000 日元（评分单）为例/u)).toBeVisible();

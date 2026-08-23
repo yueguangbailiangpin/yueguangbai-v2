@@ -325,6 +325,12 @@ export const staffSellerServiceFeeMutationSchema = z
     fee: sellerServiceFeeVersionSchema,
   })
   .strict();
+export const staffApplyDefaultSellerServiceFeesSchema = z
+  .object({
+    applied: z.array(serviceFeeReviewTypeSchema),
+    fees: staffSellerServiceFeesSchema.shape.fees,
+  })
+  .strict();
 export const safeFileSchema = z
   .object({
     file_object_id: z.string(),

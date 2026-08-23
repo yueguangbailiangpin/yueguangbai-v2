@@ -8,6 +8,23 @@ export const PRICING_REVIEW_TYPES = DEMAND_TASK_TYPES;
 export type PricingReviewType = DemandTaskType;
 
 /**
+ * Business-approved default per-order service fees (CNY fen) applied when a
+ * seller organization is created, and offered as a one-click fill for
+ * existing organizations with unconfigured review types. Changing these
+ * values is a code change + deploy; per-seller deviations keep using the
+ * normal versioned submit/confirm flow.
+ */
+export const DEFAULT_SELLER_SERVICE_FEES: ReadonlyArray<{
+  review_type: PricingReviewType;
+  fee_cny_fen: string;
+}> = Object.freeze([
+  { review_type: 'RATING', fee_cny_fen: '3500' },
+  { review_type: 'TEXT', fee_cny_fen: '6000' },
+  { review_type: 'IMAGE', fee_cny_fen: '7000' },
+  { review_type: 'VIDEO', fee_cny_fen: '8500' },
+]);
+
+/**
  * Base-10 integer encoded as a JSON-safe string. Runtime code must parse this
  * into BigInt before doing arithmetic.
  */

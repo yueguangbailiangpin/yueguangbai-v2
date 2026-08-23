@@ -607,6 +607,29 @@ export function ServiceFeeBlock({
   const [effectiveAt, setEffectiveAt] = useState(() => futureDateTime());
   const [message, setMessage] = useState<string | null>(null);
   const entry = value.fees.find((candidate) => candidate.review_type === reviewType);
+  // Only types with neither an effective fee nor a pending submission can be
+  // filled by the one-click default backfill.
+  const defaultableTypes = value.fees.filter(
+    (candidate) => candidate.effective_fee === null && candidate.pending_fee === null,
+  );
+  const applyDefaults = useMutation({
+    mutationFn: () =>
+      staffApi.applyDefaultSellerServiceFees(client, organizationId, crypto.randomUUID()),
+    onSuccess: async (result) => {
+      setMessage(
+        result.data.applied.length > 0
+          ? `已按默认配好 ${result.data.applied.length} 类服务费。`
+          : '没有需要补默认的服务费。',
+      );
+      await refresh();
+    },
+    onError: (error) =>
+      setMessage(
+        isFrontendApiError(error) && error.code === 'FORBIDDEN'
+          ? '当前账号无权配置该组织的服务费。'
+          : serviceFeeErrorMessage('补默认', error),
+      ),
+  });
   const submit = useMutation({
     mutationFn: () => {
       const fen = yuanToFen(feeYuan);
@@ -672,6 +695,17 @@ export function ServiceFeeBlock({
           ) : null}
         </div>
       ))}
+      {canSubmit && defaultableTypes.length > 0 ? (
+        <div className="staff-finance-config-row">
+          <span className="kind">一键补默认</span>
+          <span className="inline-info">
+            未配置的类型按默认配好并立即生效：评分 ¥35 · 文字 ¥60 · 图片 ¥70 · 视频 ¥85
+          </span>
+          <Button disabled={applyDefaults.isPending} onClick={() => applyDefaults.mutate()}>
+            补默认（{defaultableTypes.length} 类）
+          </Button>
+        </div>
+      ) : null}
       {open && canSubmit ? (
         <form
           onSubmit={(event) => {

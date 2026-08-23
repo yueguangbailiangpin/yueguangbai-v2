@@ -263,6 +263,7 @@ POST /api/staff/seller-payments/:paymentId/reverse
 POST /api/staff/seller-principal-rate-policies/:id/confirm
 POST /api/staff/seller-principal-rate-policies/:id/reject
 POST /api/staff/seller-principal-rate-policies/submit
+POST /api/staff/seller-service-fees/apply-defaults
 POST /api/staff/seller-service-fees/:id/confirm
 POST /api/staff/seller-service-fees/:id/reject
 POST /api/staff/seller-service-fees/submit

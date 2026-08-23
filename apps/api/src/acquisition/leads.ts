@@ -20,6 +20,7 @@ import {
 import { AcquisitionError, validation } from './errors';
 import { protectWechatIdentity, revealWechatIdentity } from './privacy';
 import { addTwelveShanghaiMonths } from './time';
+import { defaultSellerServiceFeeStatements } from '../pricing/default-seller-service-fees';
 
 const SYSTEM_SELLER_CHANNEL = 'seller-channel-portal-onboarding';
 
@@ -178,6 +179,21 @@ export async function createAcquisitionLead(
     input.leadType === 'SELLER' && marketplaceCode === 'AMAZON_JP'
       ? await prepareSellerFormalization(database, id, displayName ?? identity.masked, acquired.now)
       : null;
+  // New seller organizations start with the business-default service fees
+  // (评分35/文字60/图片70/视频85), seeded CONFIRMED in the same transaction so
+  // order approval is never blocked by an unconfigured organization.
+  const defaultFeeStatements =
+    sellerFormalization !== null
+      ? await defaultSellerServiceFeeStatements(database, {
+          organizationId: sellerFormalization.organizationId,
+          actor: {
+            staffId: command.actor.staffId,
+            displayName: command.actor.displayName,
+            roles: [...command.actor.roles],
+          },
+          now: acquired.now,
+        })
+      : [];
   const statements: SqlStatement[] = [
     database
       .prepare(
@@ -232,6 +248,7 @@ export async function createAcquisitionLead(
       ),
     ...initialLinkStatements(database, id, input.leadType, identity.normalized, acquired.now),
     ...(sellerFormalization?.statements ?? []),
+    ...defaultFeeStatements,
     createAuditEventStatement(database, {
       id: crypto.randomUUID(),
       aggregateType: 'ACQUISITION_LEAD',

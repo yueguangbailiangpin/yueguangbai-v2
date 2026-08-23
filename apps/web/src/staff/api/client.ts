@@ -42,6 +42,7 @@ import {
   staffRateCenterBaseMutationSchema,
   staffSellerServiceFeesSchema,
   staffSellerServiceFeeMutationSchema,
+  staffApplyDefaultSellerServiceFeesSchema,
 } from '../contracts/runtime';
 
 const acquisitionChannelResultSchema = z
@@ -340,6 +341,14 @@ export const staffApi = Object.freeze({
       '/api/staff/seller-service-fees/submit',
       body,
       staffSellerServiceFeeMutationSchema,
+      key,
+    ),
+  applyDefaultSellerServiceFees: (client: QueryClient, sellerOrganizationId: string, key: string) =>
+    write(
+      client,
+      '/api/staff/seller-service-fees/apply-defaults',
+      { seller_organization_id: sellerOrganizationId },
+      staffApplyDefaultSellerServiceFeesSchema,
       key,
     ),
   confirmSellerServiceFee: (client: QueryClient, id: string, body: unknown, key: string) =>
