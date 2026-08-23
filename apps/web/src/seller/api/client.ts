@@ -47,8 +47,13 @@ function post<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
   });
 }
 
-function listPath(path: string, cursor: string | null, storeId?: string | null): string {
-  const query = new URLSearchParams({ limit: '100' });
+function listPath(
+  path: string,
+  cursor: string | null,
+  storeId?: string | null,
+  limit = 100,
+): string {
+  const query = new URLSearchParams({ limit: String(limit) });
   if (cursor !== null) query.set('cursor', cursor);
   if (storeId) query.set('store_id', storeId);
   return `${path}?${query.toString()}`;
@@ -167,7 +172,9 @@ export const sellerApi = Object.freeze({
   ) =>
     get(
       client,
-      listPath('/api/seller-portal/formal-orders', cursor, storeId),
+      // User decision 2026-08-24: the seller order list pages at 20 rows
+      // (buyer lists already did); every other seller list keeps 100.
+      listPath('/api/seller-portal/formal-orders', cursor, storeId, 20),
       sellerFormalOrdersSchema,
       signal,
     ),

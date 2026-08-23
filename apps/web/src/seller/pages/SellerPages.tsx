@@ -163,7 +163,7 @@ export function SellerDashboardPage(): React.JSX.Element {
     queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me),
   });
   const orders = useSellerCursorPages({
-    resetKey: `seller-orders:${storeId ?? 'all'}:100`,
+    resetKey: `seller-orders:${storeId ?? 'all'}:20`,
     queryKey: (cursor) => sellerQueryKeys.ordersPage(storeId, cursor),
     queryFn: (cursor, signal) => sellerApi.orders(client, storeId, cursor, signal),
   });
@@ -712,7 +712,7 @@ export function SellerOrdersPage(): React.JSX.Element {
   const client = useQueryClient();
   const { storeId } = useSellerStoreContext();
   const query = useSellerCursorPages({
-    resetKey: `seller-orders:${storeId ?? 'all'}:100`,
+    resetKey: `seller-orders:${storeId ?? 'all'}:20`,
     queryKey: (cursor) => sellerQueryKeys.ordersPage(storeId, cursor),
     queryFn: (cursor, signal) => sellerApi.orders(client, storeId, cursor, signal),
   });
