@@ -31,29 +31,42 @@ export function RateSummaryCard({
     (session.role.code === 'owner' || session.role.code === 'seller_ops') &&
     session.permissions.includes('SELLER_MANAGE');
   const today = chinaDate();
+  // The rate read always lets the backend resolve the scope-appropriate
+  // selection (GLOBAL -> market default; assigned -> first visible org): the
+  // caller-provided organization comes from directories that may list orgs
+  // outside this account's rate-center visibility, which 404s the whole read.
   const rateCenter = useQuery({
     queryKey: staffWorkbenchKeys.rateCenter(
       session.authorization_version,
       today,
-      organizationId,
+      null,
     ),
     queryFn: ({ signal }) =>
       staffApi
-        .rateCenter(client, today, organizationId, signal)
+        .rateCenter(client, today, null, signal)
         .then((response) => response.data),
     enabled: canRead,
     retry: false,
   });
+  // Service fees are organization-scoped: prefer the caller's organization
+  // when it is rate-center visible, else the first visible organization.
+  const visibleOrganizations = rateCenter.data?.seller_organizations ?? [];
+  const feeOrganizationId =
+    visibleOrganizations.find(
+      (organization) => organization.seller_organization_id === organizationId,
+    )?.seller_organization_id
+    ?? visibleOrganizations[0]?.seller_organization_id
+    ?? null;
   const serviceFees = useQuery({
     queryKey: staffWorkbenchKeys.sellerServiceFees(
       session.authorization_version,
-      organizationId ?? '',
+      feeOrganizationId ?? '',
     ),
     queryFn: ({ signal }) =>
       staffApi
-        .sellerServiceFees(client, organizationId!, signal)
+        .sellerServiceFees(client, feeOrganizationId!, signal)
         .then((response) => response.data),
-    enabled: canRead && organizationId !== null,
+    enabled: canRead && feeOrganizationId !== null,
     retry: false,
   });
   if (!canRead) return null;
@@ -74,9 +87,16 @@ export function RateSummaryCard({
           ? `${policy.scope_type === 'SELLER_ORGANIZATION' ? '组织专属' : '默认'} ${markupLabel(policy.markup_rate_value)} · v${policy.version_no}`
           : <span className="inline-warning">未配置</span>}
       </p>
-      {organizationId !== null ? (
+      {feeOrganizationId !== null ? (
         <p>
-          <strong>服务费：</strong>
+          <strong>
+            服务费（
+            {visibleOrganizations.find(
+              (organization) =>
+                organization.seller_organization_id === feeOrganizationId,
+            )?.seller_organization_name ?? feeOrganizationId}
+            ）：
+          </strong>
           {serviceFees.data
             ? serviceFees.data.fees.map((entry) => (
                 <span key={entry.review_type}>

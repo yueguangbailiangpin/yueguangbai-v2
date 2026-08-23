@@ -37,7 +37,13 @@ describe('RateSummaryCard', () => {
               pending_rate: null,
               next_version: 2,
             },
-            seller_organizations: [],
+            seller_organizations: [
+              {
+                seller_organization_id: 'seller-1',
+                seller_organization_name: '测试卖家',
+                marketplace_code: 'AMAZON_JP',
+              },
+            ],
             policies: {
               source_currency_code: 'JPY',
               quote_currency_code: 'CNY',
@@ -88,6 +94,9 @@ describe('RateSummaryCard', () => {
     );
     expect(await screen.findByRole('heading', { name: '当前生效费率' })).toBeVisible();
     expect(await screen.findByText(/0\.046 CNY \/ JPY/u)).toBeVisible();
+    // Fees render for the first rate-center-visible organization.
+    expect(await screen.findByText(/服务费（测试卖家）/u)).toBeVisible();
+    expect(await screen.findByText(/评分单 ¥12\.50；/u)).toBeVisible();
     expect(screen.getAllByText(/未配置/u).length).toBeGreaterThanOrEqual(4);
     expect(screen.getByRole('link', { name: '管理财务配置' })).toHaveAttribute(
       'href',
