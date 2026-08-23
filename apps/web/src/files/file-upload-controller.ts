@@ -7,6 +7,7 @@ import {
 import { completePurposeBoundUploadIntent, createPurposeBoundUploadIntent } from './file-upload-api';
 import type { UploadedFileReceipt } from './file-contracts';
 import { validateFileSelection, type ValidatedFileSelection } from './file-descriptor';
+import { downscaleImageForUpload } from './image-downscale';
 import {
   initialFileUploadSnapshot,
   type FileUploadSlotState,
@@ -67,7 +68,7 @@ export class FileUploadController {
 
   getSnapshot = (): FileUploadSnapshot => this.snapshot;
 
-  start(workflowKey: unknown, files: readonly File[]): Promise<void> {
+  async start(workflowKey: unknown, files: readonly File[]): Promise<void> {
     if (this.active) return this.active;
     if (!this.snapshot.canStartNewOperation) {
       return Promise.resolve();
@@ -98,7 +99,10 @@ export class FileUploadController {
       state: 'VALIDATING',
     });
     try {
-      this.selections = validateFileSelection(this.workflow, files);
+      const prepared = await Promise.all(
+        files.map((file) => downscaleImageForUpload(file)),
+      );
+      this.selections = validateFileSelection(this.workflow, prepared);
     } catch (error: unknown) {
       this.publishFailure(error, 'ERROR', false, false);
       return Promise.resolve();

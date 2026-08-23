@@ -73,7 +73,7 @@ test('staff review evidence image loads through the read-intent chain', async ({
         headers: {
           'Content-Type': 'image/png',
           'Content-Length': '2',
-          'Cache-Control': 'private, no-store',
+          'Cache-Control': 'private, max-age=300',
           'X-Content-Type-Options': 'nosniff',
         },
       });

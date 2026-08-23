@@ -49,13 +49,13 @@ describe('purpose-bound frontend file policies', () => {
   });
 
   it.each([
-    ['buyerOrderEvidence', 'buyer', '/api/buyer-portal/file-uploads/order-evidence/intents', 'ORDER_EVIDENCE', 'BUYER_VISIBLE', 1, 20],
+    ['buyerOrderEvidence', 'buyer', '/api/buyer-portal/file-uploads/order-evidence/intents', 'ORDER_EVIDENCE', 'BUYER_VISIBLE', 1, 5],
     ['buyerReviewEvidence', 'buyer', '/api/buyer-portal/file-uploads/review-evidence/intents', 'REVIEW_EVIDENCE', 'SELLER_VISIBLE', 10, 20],
-    ['sellerProductApplicationImage', 'seller', '/api/seller-portal/file-uploads/product-application-images/intents', 'PRODUCT_APPLICATION_IMAGE', 'SELLER_VISIBLE', 8, 10],
+    ['sellerProductApplicationImage', 'seller', '/api/seller-portal/file-uploads/product-application-images/intents', 'PRODUCT_APPLICATION_IMAGE', 'SELLER_VISIBLE', 8, 5],
     ['staffBuyerRefundProof', 'staff', '/api/staff/file-uploads/buyer-refund-proofs/intents', 'BUYER_REFUND_PROOF', 'INTERNAL_ONLY', 6, 20],
     ['staffSellerSettlementProof', 'staff', '/api/staff/file-uploads/seller-settlement-proofs/intents', 'SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY', 6, 20],
-    ['staffSellerOrderChatScreenshot', 'staff', '/api/staff/file-uploads/seller-order-chat-screenshots/intents', 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE', 1, 20],
-    ['staffProductImage', 'staff', '/api/staff/file-uploads/product-images/intents', 'PRODUCT_IMAGE', 'SELLER_VISIBLE', 1, 10],
+    ['staffSellerOrderChatScreenshot', 'staff', '/api/staff/file-uploads/seller-order-chat-screenshots/intents', 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE', 1, 5],
+    ['staffProductImage', 'staff', '/api/staff/file-uploads/product-images/intents', 'PRODUCT_IMAGE', 'SELLER_VISIBLE', 1, 5],
   ] as const)('%s matches the frozen route and policy', (
     key, identity, path, purpose, visibility, count, mib,
   ) => {

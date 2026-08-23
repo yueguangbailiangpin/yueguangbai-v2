@@ -50,7 +50,7 @@ export const fileUploadWorkflows = Object.freeze({
     purpose: 'ORDER_EVIDENCE',
     visibility: 'BUYER_VISIBLE',
     maximumFileCount: 1,
-    maximumByteSize: 20 * MEBIBYTE,
+    maximumByteSize: 5 * MEBIBYTE,
     allowedMimes: IMAGE_MIMES,
   }),
   buyerReviewEvidence: Object.freeze({
@@ -70,7 +70,7 @@ export const fileUploadWorkflows = Object.freeze({
     purpose: 'PRODUCT_APPLICATION_IMAGE',
     visibility: 'SELLER_VISIBLE',
     maximumFileCount: 8,
-    maximumByteSize: 10 * MEBIBYTE,
+    maximumByteSize: 5 * MEBIBYTE,
     allowedMimes: IMAGE_MIMES,
   }),
   staffBuyerRefundProof: Object.freeze({
@@ -90,7 +90,7 @@ export const fileUploadWorkflows = Object.freeze({
     purpose: 'ORDER_EVIDENCE',
     visibility: 'INTERNAL_ONLY',
     maximumFileCount: 1,
-    maximumByteSize: 20 * MEBIBYTE,
+    maximumByteSize: 5 * MEBIBYTE,
     allowedMimes: IMAGE_MIMES,
   }),
   staffSellerSettlementProof: Object.freeze({
@@ -110,7 +110,7 @@ export const fileUploadWorkflows = Object.freeze({
     purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
     visibility: 'SELLER_VISIBLE',
     maximumFileCount: 1,
-    maximumByteSize: 20 * MEBIBYTE,
+    maximumByteSize: 5 * MEBIBYTE,
     allowedMimes: IMAGE_MIMES,
   }),
   staffProductImage: Object.freeze({
@@ -120,7 +120,7 @@ export const fileUploadWorkflows = Object.freeze({
     purpose: 'PRODUCT_IMAGE',
     visibility: 'SELLER_VISIBLE',
     maximumFileCount: 1,
-    maximumByteSize: 10 * MEBIBYTE,
+    maximumByteSize: 5 * MEBIBYTE,
     allowedMimes: IMAGE_MIMES,
   }),
 } as const satisfies Record<FileUploadWorkflowKey, FileUploadWorkflow>);

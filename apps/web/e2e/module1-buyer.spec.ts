@@ -776,7 +776,7 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
         headers: {
           'Content-Type': 'image/png',
           'Content-Length': '3',
-          'Cache-Control': 'private, no-store',
+          'Cache-Control': 'private, max-age=300',
           'X-Content-Type-Options': 'nosniff',
         },
         body: 'png',
@@ -1055,6 +1055,58 @@ test('Evidence upload and submit completes the business command', async ({ page 
   await page.getByRole('button', { name: '提交资料' }).click();
   await expect(page).toHaveURL(/\/buyer\/order-materials\/evidence-1$/u);
 });
+test('Large screenshot uploads are downsampled to JPEG before leaving the browser', { timeout: 60_000 }, async ({ page }) => {
+  type IntentFiles = {
+    files: { client_file_name: string; declared_mime: string; byte_size: number }[];
+  };
+  let intentBody: IntentFiles | null = null;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/buyer-portal/file-uploads/order-evidence/intents') {
+      intentBody = request.postDataJSON() as IntentFiles;
+    }
+  });
+  await gotoBuyer(page, '/buyer/order-materials/new?reservation_id=reservation-1');
+  await page.getByLabel('Amazon 订单号').fill('123-1234567-1234567');
+  await page.getByLabel('Amazon 下单日期').fill('2026-08-06');
+  await page.getByLabel('最终支付金额（JPY）').fill('4100');
+  // A 3000x2000 random-noise PNG is huge losslessly; the client downscale
+  // (longest edge 1600, JPEG 0.85) must visibly shrink it before upload.
+  const dataUrl = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 3000;
+    canvas.height = 2000;
+    const context = canvas.getContext('2d')!;
+    const imageData = context.createImageData(3000, 2000);
+    let seed = 88172645463325252n;
+    const random = () => {
+      seed ^= seed << 13n; seed &= 0xffffffffffffffffn;
+      seed ^= seed >> 7n;
+      seed ^= seed << 17n; seed &= 0xffffffffffffffffn;
+      return Number(seed % 256n);
+    };
+    for (let index = 0; index < imageData.data.length; index += 4) {
+      imageData.data[index] = random();
+      imageData.data[index + 1] = random();
+      imageData.data[index + 2] = random();
+      imageData.data[index + 3] = 255;
+    }
+    context.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/png');
+  });
+  const originalBytes = Buffer.from(dataUrl.split(',')[1]!, 'base64');
+  expect(originalBytes.byteLength).toBeGreaterThan(1024 * 1024);
+  await page
+    .getByLabel('订单截图')
+    .setInputFiles({ name: 'big-screenshot.png', mimeType: 'image/png', buffer: originalBytes });
+  await page.getByRole('button', { name: '提交资料' }).click();
+  await expect.poll(() => intentBody, { timeout: 30_000 }).not.toBeNull();
+  const descriptor = intentBody!.files[0]!;
+  expect(descriptor.declared_mime).toBe('image/jpeg');
+  expect(descriptor.client_file_name).toMatch(/\.jpg$/u);
+  expect(descriptor.byte_size).toBeLessThanOrEqual(5 * 1024 * 1024);
+  expect(descriptor.byte_size).toBeLessThan(originalBytes.byteLength);
+});
+
 test('Evidence detail shows fixed PRICE_MISMATCH copy and signed direction', async ({ page }) => {
   await gotoBuyer(page, '/buyer/order-materials/evidence-1');
   await expect(page.getByText('实际支付金额与参考金额不一致')).toBeVisible();
