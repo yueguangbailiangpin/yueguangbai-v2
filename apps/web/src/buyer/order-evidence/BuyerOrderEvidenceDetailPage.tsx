@@ -31,7 +31,7 @@ import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { statusLabel, statusTone } from '../shared/status';
 import { useFileUpload } from '../shared/useFileUpload';
-import { BuyerJourney } from '../shared/BuyerJourney';
+import { BuyerJourney, evidenceJourneyStep } from '../shared/BuyerJourney';
 
 export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
   const { submissionId = '' } = useParams();
@@ -58,7 +58,7 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
   const item = query.data;
   return (
     <section className="buyer-page buyer-flow-page buyer-detail-page">
-      <BuyerJourney current="materials" />
+      <BuyerJourney current={evidenceJourneyStep(item.status)} />
       <PageHeader
         eyebrow="订单资料详情"
         title={item.reservation.product_name}

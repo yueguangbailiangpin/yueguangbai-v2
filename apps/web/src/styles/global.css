@@ -1691,7 +1691,7 @@ select:disabled {
 
 .buyer-journey ol {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1747,6 +1747,32 @@ select:disabled {
 
 .buyer-journey li[aria-current="step"] strong {
   font-weight: var(--font-weight-bold);
+}
+
+.buyer-journey li.is-done > span {
+  border-color: var(--color-buyer);
+  color: var(--color-buyer);
+}
+
+.buyer-journey li.is-done strong {
+  color: var(--color-text);
+}
+
+.buyer-journey-note,
+.buyer-journey-action {
+  margin: var(--space-4) 0 0;
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
+.buyer-journey-action a {
+  display: inline-block;
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--color-buyer);
+  border-radius: var(--radius-pill);
+  color: var(--color-buyer);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
 }
 
 .buyer-products-page > .page-header,

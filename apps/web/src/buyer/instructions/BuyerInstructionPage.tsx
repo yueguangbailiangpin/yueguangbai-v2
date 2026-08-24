@@ -43,7 +43,7 @@ export function BuyerInstructionPage(): React.JSX.Element {
   if (state.data)
     return (
       <section className="buyer-page buyer-flow-page buyer-detail-page">
-        <BuyerJourney current="products" />
+        <BuyerJourney current="ordering" />
         <PageHeader eyebrow="下单步骤" title={statusLabel(state.data.status)}>
           <StatusBadge tone={statusTone(state.data.status)}>{statusLabel(state.data.status)}</StatusBadge>
         </PageHeader>
@@ -70,7 +70,7 @@ function ActiveInstruction({
 }): React.JSX.Element {
   return (
     <section className="buyer-page buyer-flow-page buyer-detail-page buyer-instruction-page">
-      <BuyerJourney current="products" />
+      <BuyerJourney current="ordering" />
       <PageHeader
         eyebrow="下单步骤"
         title={instruction.product_name}

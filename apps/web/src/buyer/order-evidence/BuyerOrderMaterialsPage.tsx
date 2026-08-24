@@ -23,7 +23,7 @@ export function BuyerOrderMaterialsPage(): React.JSX.Element {
     queryFn: (cursor, signal) => buyerApi.evidenceEligible(client, cursorQuery({ limit: 20, cursor }), signal).then((r) => r.data),
   });
   return <section className="buyer-page buyer-flow-page buyer-list-page">
-    <BuyerJourney current="materials" />
+    <BuyerJourney current="evidence" />
     <PageHeader eyebrow="订单资料阶段" title="订单资料" description="可以查看、提交资料，或根据审核意见修改。" />
     <section className="buyer-work-section buyer-action-section" aria-labelledby="evidence-ready-title"><h2 id="evidence-ready-title">现在可提交</h2>
       {eligible.isInitialPending ? <BuyerLoading label="正在读取可提交的资料" />

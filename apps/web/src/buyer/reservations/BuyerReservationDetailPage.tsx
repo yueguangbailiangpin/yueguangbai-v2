@@ -8,7 +8,7 @@ import { buyerQueryKeys } from '../queries/keys';
 import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
-import { BuyerJourney } from '../shared/BuyerJourney';
+import { BuyerJourney, reservationJourneyStep } from '../shared/BuyerJourney';
 import { reviewTypeLabel, statusLabel, statusTone } from '../shared/status';
 
 export function BuyerReservationDetailPage(): React.JSX.Element {
@@ -33,7 +33,10 @@ export function BuyerReservationDetailPage(): React.JSX.Element {
   if (query.isError) return <BuyerQueryError error={query.error} />;
   const item = query.data;
   return <section className="buyer-page buyer-flow-page buyer-detail-page">
-    <BuyerJourney current="products" />
+    <BuyerJourney current={reservationJourneyStep(item.status)}
+      action={item.status === 'APPROVED'
+        ? { label: '下一步：去查看下单指引', to: `/buyer/reservations/${encodeURIComponent(item.reservation_id)}/instruction` }
+        : null} />
     <PageHeader eyebrow="预约详情" title={item.demand.product_name} description={item.demand.store_display_name}>
       <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></PageHeader>
     <Card className="buyer-summary-card"><h2>预约信息</h2><dl className="buyer-facts"><div><dt>店铺</dt><dd>{item.demand.store_display_name}</dd></div>

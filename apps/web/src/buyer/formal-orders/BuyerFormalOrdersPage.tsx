@@ -47,7 +47,7 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
   }
   return (
     <section className="buyer-page buyer-flow-page buyer-list-page">
-      <BuyerJourney current="materials" />
+      <BuyerJourney current="evidence" />
       <PageHeader
         eyebrow="订单资料阶段"
         title="正式订单"

@@ -16,7 +16,7 @@ export function BuyerReservationsPage(): React.JSX.Element {
     queryKey: (cursor) => buyerQueryKeys.reservationsPage({ limit: 20, cursor }),
     queryFn: (cursor, signal) => buyerApi.reservations(client, cursorQuery({ limit: 20, cursor }), signal).then((r) => r.data) });
   return <section className="buyer-page buyer-flow-page buyer-list-page">
-    <BuyerJourney current="products" />
+    <BuyerJourney current="reserved" />
     <PageHeader eyebrow="产品阶段" title="我的预约" description="查看预约状态和下一步。" />
     {pages.isInitialPending ? <BuyerLoading /> : pages.initialError ? <BuyerQueryError error={pages.initialError} />
       : pages.items.length === 0 ? <BuyerEmpty title="暂时还没有预约" description="去看看可预约的产品吧～" />

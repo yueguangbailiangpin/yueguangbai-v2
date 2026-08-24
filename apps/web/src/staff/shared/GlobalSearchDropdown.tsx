@@ -65,15 +65,10 @@ export function GlobalSearchDropdown(): React.JSX.Element {
             <p role="status">搜索中…</p>
           ) : query.isError ? (
             <p className="inline-error" role="alert">搜索失败，请重试。</p>
-          ) : total === 0 ? (
+          ) : !results || total === 0 ? (
             <p>没有匹配「{results?.query}」的结果。</p>
           ) : (
-            <>
-              <SearchGroup label="买家" kind="buyers" results={results} onNavigate={() => setOpen(false)} />
-              <SearchGroup label="产品" kind="products" results={results} onNavigate={() => setOpen(false)} />
-              <SearchGroup label="订单" kind="orders" results={results} onNavigate={() => setOpen(false)} />
-              <SearchGroup label="投放（需求）" kind="demands" results={results} onNavigate={() => setOpen(false)} />
-            </>
+            <SearchGroupList results={results!} onNavigate={() => setOpen(false)} />
           )}
         </div>
       ) : null}
@@ -81,62 +76,91 @@ export function GlobalSearchDropdown(): React.JSX.Element {
   );
 }
 
-function SearchGroup({
-  label,
-  kind,
+function SearchGroupList({
   results,
   onNavigate,
 }: {
-  label: string;
-  kind: 'buyers' | 'products' | 'orders' | 'demands';
   results: StaffSearchResults;
   onNavigate: () => void;
-}): React.JSX.Element | null {
-  const group = results[kind];
-  if (group.length === 0) return null;
+}): React.JSX.Element {
   return (
-    <div className="staff-search-group">
-      <p className="staff-search-group-label">{label}</p>
-      {group.map((item) => {
-        const target
-          = kind === 'buyers'
-            ? {
-              to: '/staff/buyer-customers',
-              primary: item.display_name,
-              secondary: item.buyer_customer_no ?? '未分配编码',
-            }
-            : kind === 'products'
-              ? {
-                to: `/staff/products/${encodeURIComponent(item.product_id)}`,
-                primary: item.product_name,
-                secondary: `ASIN ${item.asin_display}`,
-              }
-              : kind === 'orders'
-                ? {
-                  to: `/staff/orders/${encodeURIComponent(item.formal_order_id)}`,
-                  primary: item.amazon_order_number_normalized,
-                  secondary: `ASIN ${item.asin_display}`,
-                }
-                : {
-                  to: `/staff/demands/${encodeURIComponent(item.demand_batch_id)}/reservations`,
-                  primary: item.product_name,
-                  secondary: DEMAND_STATUS_LABELS[item.status] ?? item.status,
-                };
-        return (
-          <Link
-            key={`${kind}-${target.to}-${target.primary}`}
-            className="staff-search-item"
-            role="option"
-            aria-selected={false}
-            to={target.to}
-            onClick={onNavigate}
-          >
-            <strong>{target.primary}</strong>
-            <span>{target.secondary}</span>
-          </Link>
-        );
-      })}
-    </div>
+    <>
+      {results.buyers.length > 0 ? (
+        <div className="staff-search-group">
+          <p className="staff-search-group-label">买家</p>
+          {results.buyers.map((item) => (
+            <SearchItem
+              key={`buyers-${item.buyer_customer_id}`}
+              to="/staff/buyer-customers"
+              primary={item.display_name}
+              secondary={item.buyer_customer_no ?? '未分配编码'}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </div>
+      ) : null}
+      {results.products.length > 0 ? (
+        <div className="staff-search-group">
+          <p className="staff-search-group-label">产品</p>
+          {results.products.map((item) => (
+            <SearchItem
+              key={`products-${item.product_id}`}
+              to={`/staff/products/${encodeURIComponent(item.product_id)}`}
+              primary={item.product_name}
+              secondary={`ASIN ${item.asin_display}`}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </div>
+      ) : null}
+      {results.orders.length > 0 ? (
+        <div className="staff-search-group">
+          <p className="staff-search-group-label">订单</p>
+          {results.orders.map((item) => (
+            <SearchItem
+              key={`orders-${item.formal_order_id}`}
+              to={`/staff/orders/${encodeURIComponent(item.formal_order_id)}`}
+              primary={item.amazon_order_number_normalized}
+              secondary={`ASIN ${item.asin_display}`}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </div>
+      ) : null}
+      {results.demands.length > 0 ? (
+        <div className="staff-search-group">
+          <p className="staff-search-group-label">投放（需求）</p>
+          {results.demands.map((item) => (
+            <SearchItem
+              key={`demands-${item.demand_batch_id}`}
+              to={`/staff/demands/${encodeURIComponent(item.demand_batch_id)}/reservations`}
+              primary={item.product_name}
+              secondary={DEMAND_STATUS_LABELS[item.status] ?? item.status}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function SearchItem({
+  to,
+  primary,
+  secondary,
+  onNavigate,
+}: {
+  to: string;
+  primary: string;
+  secondary: string;
+  onNavigate: () => void;
+}): React.JSX.Element {
+  return (
+    <Link className="staff-search-item" role="option" aria-selected={false} to={to} onClick={onNavigate}>
+      <strong>{primary}</strong>
+      <span>{secondary}</span>
+    </Link>
   );
 }
 

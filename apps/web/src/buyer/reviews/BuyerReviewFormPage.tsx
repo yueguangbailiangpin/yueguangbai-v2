@@ -81,7 +81,7 @@ export function BuyerReviewFormPage(): React.JSX.Element {
     return <BuyerQueryError error={null} title="无法打开评论提交页面" />;
   return (
     <section className="buyer-page buyer-flow-page buyer-form-page">
-      <BuyerJourney current="reviews" />
+      <BuyerJourney current="review" />
       <PageHeader
         eyebrow="评论阶段"
         title="提交评论资料"

@@ -23,7 +23,7 @@ export function BuyerReviewsPage(): React.JSX.Element {
     queryFn: (cursor, signal) => buyerApi.reviewEligible(client, cursorQuery({ limit: 20, cursor }), signal).then((r) => r.data),
   });
   return <section className="buyer-page buyer-flow-page buyer-list-page">
-    <BuyerJourney current="reviews" />
+    <BuyerJourney current="review" />
     <PageHeader eyebrow="评论阶段" title="评论资料" description="按订单要求提交 1–3 个评论文件。" />
     <section className="buyer-work-section buyer-action-section"><h2>可提交评论</h2>
       {eligible.isInitialPending ? <BuyerLoading label="正在确认能否提交…" />

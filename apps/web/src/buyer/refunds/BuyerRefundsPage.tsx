@@ -20,7 +20,7 @@ export function BuyerRefundsPage(): React.JSX.Element {
   });
   return (
     <section className="buyer-page buyer-flow-page buyer-list-page">
-      <BuyerJourney current={null} />
+      <BuyerJourney current="refund" />
       <PageHeader
         eyebrow="返款阶段"
         title="返款记录"

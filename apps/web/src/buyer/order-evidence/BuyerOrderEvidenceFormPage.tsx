@@ -88,7 +88,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
   if (instruction.isError) return <BuyerQueryError error={instruction.error} />;
   if (!current || !canSubmit) return <BuyerQueryError error={null} title="无法打开提交页面" />;
   return <section className="buyer-page buyer-flow-page buyer-form-page">
-    <BuyerJourney current="materials" />
+    <BuyerJourney current="evidence" />
     <PageHeader eyebrow="订单资料阶段" title="提交订单资料" description={current.product_name} />
     <Card className="buyer-action-panel"><div className="buyer-form-intro"><strong>填订单信息</strong>
       <p>照着 Amazon 订单页面填，然后上传一张订单截图就好～</p></div>

@@ -23,7 +23,7 @@ import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { reviewTypeLabel, statusLabel, statusTone } from '../shared/status';
 import { useFileUpload } from '../shared/useFileUpload';
-import { BuyerJourney } from '../shared/BuyerJourney';
+import { BuyerJourney, reviewJourneyStep } from '../shared/BuyerJourney';
 
 export function BuyerReviewDetailPage(): React.JSX.Element {
   const { reviewCaseId = '' } = useParams();
@@ -50,7 +50,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
   const item = query.data;
   return (
     <section className="buyer-page buyer-flow-page buyer-detail-page">
-      <BuyerJourney current="reviews" />
+      <BuyerJourney current={reviewJourneyStep(item.status)} />
       <PageHeader
         eyebrow="评论详情"
         title={item.order.product_name}

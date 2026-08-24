@@ -20,7 +20,7 @@ export function BuyerFormalOrderDetailPage(): React.JSX.Element {
   if (query.isError) return <BuyerQueryError error={query.error} />;
   const item = query.data;
   return <section className="buyer-page buyer-flow-page buyer-detail-page">
-    <BuyerJourney current="materials" />
+    <BuyerJourney current="evidence" />
     <PageHeader eyebrow="正式订单详情" title={item.product_name} description="已确认的订单信息，保存后不再变化">
       <StatusBadge tone="success">已确认</StatusBadge></PageHeader>
     <Card className="buyer-summary-card"><h2>订单信息</h2><dl className="buyer-facts"><div><dt>正式订单号</dt><dd>{item.formal_order_id}</dd></div>

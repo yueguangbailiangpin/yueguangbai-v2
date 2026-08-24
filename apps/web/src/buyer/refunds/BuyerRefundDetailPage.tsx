@@ -27,7 +27,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
   const item = query.data;
   return (
     <section className="buyer-page buyer-flow-page buyer-detail-page buyer-refund-page">
-      <BuyerJourney current={item.status === 'PAID' ? 'complete' : null} />
+      <BuyerJourney current="refund" settled={item.status === 'PAID'} />
       <PageHeader
         eyebrow="返款详情"
         title={item.order.product_name}
