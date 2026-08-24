@@ -229,7 +229,7 @@ function validateFrozenDefaults(config, environment) {
     if (vars?.BUYER_SELF_REGISTRATION_ENABLED !== 'true') {
       errors.push('vars.BUYER_SELF_REGISTRATION_ENABLED:must_be_true');
     }
-    if (vars?.BUYER_SELF_REGISTRATION_CHANNEL_ID !== 'staging-buyer-channel') {
+    if (vars?.BUYER_SELF_REGISTRATION_CHANNEL_ID !== 'buyer-channel-b') {
       errors.push('vars.BUYER_SELF_REGISTRATION_CHANNEL_ID:invalid');
     }
     if (vars?.BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED !== 'false') {
