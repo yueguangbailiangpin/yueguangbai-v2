@@ -156,7 +156,7 @@ function overlayKind(sql: string): OverlayKind | null {
     return 'REFUND_DETAIL';
   if (
     sql.includes('FROM buyer_refund_ledger_balances ledger') &&
-    sql.includes('ORDER BY ledger.created_at')
+    sql.includes("ORDER BY (ledger.status='PAID')")
   )
     return 'REFUND_LIST';
   if (sql.includes("entry_type='PAYMENT'")) return 'REFUND_PAYMENTS';
@@ -298,6 +298,7 @@ function refundDetailRow() {
     version: 3,
     created_at: 10_000,
     updated_at: 12_000,
+    review_approved_at: 9_500,
     reminder_count: 2,
     last_reminded_at: 11_500,
     buyer_customer_no: 'P202608020001',
@@ -359,17 +360,36 @@ function filteredRefundListRows(sql: string, bindings: readonly unknown[]) {
     const to = Number(bindings[index++]);
     filtered = filtered.filter((row) => row.created_at < to);
   }
-  if (sql.includes('(ledger.created_at>? OR')) {
-    const createdAt = Number(bindings[index++]);
-    index += 1;
+  if (sql.includes('(ledger.status=\'PAID\')>?')) {
+    const settled = Number(bindings[index++]);
+    const settledAgain = Number(bindings[index++]);
+    const reviewApprovedAt = Number(bindings[index++]);
+    const reviewApprovedAgain = Number(bindings[index++]);
     const id = String(bindings[index++]);
-    filtered = filtered.filter(
-      (row) =>
-        row.created_at > createdAt || (row.created_at === createdAt && row.obligation_id > id),
-    );
+    void settledAgain;
+    void reviewApprovedAgain;
+    const unsorted = 9_007_199_254_740_991;
+    filtered = filtered.filter((row) => {
+      const rowSettled = row.status === 'PAID' ? 1 : 0;
+      const rowTs = row.review_approved_at ?? unsorted;
+      return rowSettled > settled
+        || (rowSettled === settled
+          && (rowTs > reviewApprovedAt
+            || (rowTs === reviewApprovedAt && row.obligation_id > id)));
+    });
   }
   const limit = Number(bindings.at(-1));
-  return filtered.slice(0, limit);
+  // 与真实 SQL 一致：未结清在前，组内按评论通过时间（承诺期限）升序。
+  const ordered = [...filtered].sort((left, right) => {
+    const settledDiff = Number(left.status === 'PAID') - Number(right.status === 'PAID');
+    if (settledDiff !== 0) return settledDiff;
+    const unsorted = 9_007_199_254_740_991;
+    const tsDiff = (left.review_approved_at ?? unsorted)
+      - (right.review_approved_at ?? unsorted);
+    if (tsDiff !== 0) return tsDiff;
+    return left.obligation_id < right.obligation_id ? -1 : 1;
+  });
+  return ordered.slice(0, limit);
 }
 
 function refundListRow(obligationId: string, createdAt: number, status: 'DUE' | 'PAID') {
@@ -386,6 +406,7 @@ function refundListRow(obligationId: string, createdAt: number, status: 'DUE' | 
     version: status === 'PAID' ? 2 : 1,
     created_at: createdAt,
     updated_at: createdAt + 100,
+    review_approved_at: createdAt - 5_000,
     reminder_count: status === 'PAID' ? 1 : 2,
     last_reminded_at: createdAt + 50,
     buyer_customer_no: 'P202608020001',

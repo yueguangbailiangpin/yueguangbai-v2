@@ -30,5 +30,6 @@ export * from './security/one-time-token';
 export * from './serialization/canonical-json';
 export * from './operational-alert-binding';
 export * from './time/business-clock';
+export * from './time/business-days';
 export * from './time/date-only';
 export * from './staff-assignment';

@@ -179,6 +179,8 @@ const buyerRefund = {
   version: 2,
   created_at: 1_787_000_000_000,
   updated_at: 1_787_000_000_000,
+  review_approved_at: 1_787_000_000_000,
+  promise_deadline_at: 1_787_606_400_000,
   reminder_count: 2,
   last_reminded_at: 1_787_000_100_000,
   buyer: { buyer_customer_id: 'buyer-1', buyer_customer_no: 'B-1' },

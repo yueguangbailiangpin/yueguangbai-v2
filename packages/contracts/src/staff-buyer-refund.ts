@@ -34,6 +34,10 @@ export interface StaffBuyerRefundListItemDto {
   version: number;
   created_at: number;
   updated_at: number;
+  /** 评论通过时间（承诺期限起点）；来源事件缺失时为 null。 */
+  review_approved_at: number | null;
+  /** 承诺期限 = 评论通过 + 7 个工作日（P13-A，仅排序提醒口径）；未起算为 null。 */
+  promise_deadline_at: number | null;
   reminder_count: number;
   last_reminded_at: number | null;
   buyer: StaffBuyerRefundBuyerSummaryDto;

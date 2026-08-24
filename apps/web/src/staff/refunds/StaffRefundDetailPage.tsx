@@ -109,6 +109,11 @@ function RefundFacts({ value }: { value: RefundDetail }): React.JSX.Element {
           {Number(value.overpaid_amount_cny_fen) > 0 ? (
             <li>多付：{formatCny(value.overpaid_amount_cny_fen)}（请人工核实）</li>
           ) : null}
+          <li>
+            {value.promise_deadline_at === null
+              ? '承诺期限未起算（缺评论通过事件）'
+              : `承诺期限：${formatShanghai(value.promise_deadline_at)}（评论通过 + 7 个工作日，仅提醒口径）`}
+          </li>
         </ul>
       </Card>
       <Card className="internal-note">

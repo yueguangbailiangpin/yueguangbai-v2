@@ -415,6 +415,8 @@ const staffRefund = {
   version: 2,
   created_at: NOW - 4 * DAY,
   updated_at: NOW,
+  review_approved_at: NOW - 4 * DAY - 3_600_000,
+  promise_deadline_at: NOW + 6 * DAY,
   buyer: { buyer_customer_id: 'review-buyer-customer-1', buyer_customer_no: 'B-DEMO-001' },
   order: {
     formal_order_id: 'review-buyer-order-001',

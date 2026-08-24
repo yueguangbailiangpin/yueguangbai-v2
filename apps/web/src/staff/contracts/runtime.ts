@@ -560,6 +560,8 @@ const refundBase = z
     version: z.number().int().positive(),
     created_at: epoch,
     updated_at: epoch,
+    review_approved_at: epoch.nullable(),
+    promise_deadline_at: epoch.nullable(),
     reminder_count: z.number().int().nonnegative(),
     last_reminded_at: epoch.nullable(),
     buyer: z

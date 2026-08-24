@@ -426,6 +426,7 @@
 }
 .staff-refund-row:last-child { border-bottom: 0; }
 .staff-refund-row.is-settled { opacity: .62; }
+.staff-refund-row.is-overdue .staff-refund-row-main > strong { color: #b3261e; }
 .staff-refund-row-main { display: grid; gap: 3px; min-width: 0; }
 .staff-refund-row-main > span { color: var(--mw-muted); font-size: .72rem; }
 .staff-refund-row-side { display: flex; align-items: center; gap: 10px; }

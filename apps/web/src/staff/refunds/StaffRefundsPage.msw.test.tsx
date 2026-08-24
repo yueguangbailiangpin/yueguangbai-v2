@@ -30,6 +30,9 @@ const buyerRefund = {
   version: 2,
   created_at: 1_787_000_000_000,
   updated_at: 1_787_000_000_000,
+  review_approved_at: 1_787_000_000_000,
+  // 相对当前时间构造，保证徽标恒为「已超期」形态
+  promise_deadline_at: Date.now() - 3 * 86_400_000,
   reminder_count: 2,
   last_reminded_at: 1_787_000_100_000,
   buyer: { buyer_customer_id: 'buyer-1', buyer_customer_no: 'B-1' },
@@ -107,7 +110,7 @@ function refundConflict(): Response {
 
 function renderRefundsPage(): ReturnType<typeof renderWithMsw> {
   return renderWithMsw(
-    <StaffSessionBoundary adapter={staffTestAdapter(staffTestSession('owner'))}>
+    <StaffSessionBoundary adapter={staffTestAdapter(staffTestSession('owner', []))}>
       <Routes>
         <Route path="/staff/refunds" element={<StaffRefundsPage />} />
         <Route path="/staff/refunds/:obligationId" element={<StaffRefundDetailPage />} />
@@ -119,7 +122,7 @@ function renderRefundsPage(): ReturnType<typeof renderWithMsw> {
 
 function renderRefundDetail(): ReturnType<typeof renderWithMsw> {
   return renderWithMsw(
-    <StaffSessionBoundary adapter={staffTestAdapter(staffTestSession('owner'))}>
+    <StaffSessionBoundary adapter={staffTestAdapter(staffTestSession('owner', []))}>
       <Routes>
         <Route path="/staff/refunds" element={<StaffRefundsPage />} />
         <Route path="/staff/refunds/:obligationId" element={<StaffRefundDetailPage />} />
@@ -139,6 +142,8 @@ describe('staff refunds workbench list', () => {
     expect(screen.getByText(/应返 ¥100\.00 CNY/u)).toBeVisible();
     expect(screen.getByText(/待返 ¥50\.00 CNY/u)).toBeVisible();
     expect(screen.getByText(/买家催办 2 次/u)).toBeVisible();
+    // fixture 的承诺期限早于当前时间 → 超期徽标（红）置顶展示
+    expect(screen.getByText(/已超期 \d+ 天/u)).toBeVisible();
     expect(screen.getByRole('link', { name: '去处理' })).toHaveAttribute(
       'href',
       '/staff/refunds/refund-1',

@@ -15,6 +15,26 @@ const REFUND_STATUS_LABELS: Record<StaffBuyerRefundListItem['status'], string> =
   OVERPAID: '多付待核',
 };
 
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * P7c 承诺期限徽标：已超期（红）> 临期 ≤2 天（黄）> 正常；仅提醒口径
+ * （P13-A：周一至周五计 7 个工作日，非合同承诺）。
+ */
+function describePromiseDeadline(
+  deadline: number | null,
+  now: number,
+): { label: string; tone: 'danger' | 'warning' | 'neutral' } | null {
+  if (deadline === null) return { label: '期限未起算', tone: 'neutral' };
+  const diff = deadline - now;
+  if (diff < 0)
+    return { label: `已超期 ${Math.floor(-diff / MS_PER_DAY) + 1} 天`, tone: 'danger' };
+  const daysLeft = Math.floor(diff / MS_PER_DAY) + 1;
+  return daysLeft <= 2
+    ? { label: `剩 ${daysLeft} 天`, tone: 'warning' }
+    : { label: `剩 ${daysLeft} 天`, tone: 'neutral' };
+}
+
 /**
  * 返款工作台列表（/staff/refunds，P7b）。数据来自既有
  * GET /api/staff/buyer-refunds（后端零改动）；每行直达 /staff/refunds/:id
@@ -36,7 +56,8 @@ export function StaffRefundsPage(): React.JSX.Element {
         <p className="eyebrow">买家与订单 · 返款</p>
         <h2 id="staff-refunds-title">返款工作台</h2>
         <p>
-          待结清 {outstanding} 笔；登记转账流水（可多笔），累计到账等于应返金额即自动结清，
+          待结清 {outstanding} 笔，超期和临期排最前（承诺期限 = 评论通过 + 7 个工作日，
+          仅提醒口径）；登记转账流水（可多笔），累计到账等于应返金额即自动结清，
           买家端即时可见。
         </p>
         <Button
@@ -87,8 +108,9 @@ export function StaffRefundsPage(): React.JSX.Element {
 
 function StaffRefundRow({ item }: { item: StaffBuyerRefundListItem }): React.JSX.Element {
   const settled = item.status === 'PAID';
+  const deadline = settled ? null : describePromiseDeadline(item.promise_deadline_at, Date.now());
   return (
-    <div className={`staff-refund-row${settled ? ' is-settled' : ''}`}>
+    <div className={`staff-refund-row${settled ? ' is-settled' : ''}${deadline?.tone === 'danger' ? ' is-overdue' : ''}`}>
       <div className="staff-refund-row-main">
         <strong>
           {item.buyer.buyer_customer_no ?? '未分配编码'} ·{' '}
@@ -99,6 +121,10 @@ function StaffRefundRow({ item }: { item: StaffBuyerRefundListItem }): React.JSX
           {formatCny(item.net_paid_cny_fen)} · 待返 {formatCny(item.outstanding_amount_cny_fen)}
         </span>
         <span>
+          {item.promise_deadline_at === null
+            ? '承诺期限未起算'
+            : `承诺期限 ${formatShanghai(item.promise_deadline_at)}`}
+          {' · '}
           义务生成 {formatShanghai(item.created_at)}
           {item.reminder_count > 0
             ? ` · 买家催办 ${item.reminder_count} 次${
@@ -110,6 +136,9 @@ function StaffRefundRow({ item }: { item: StaffBuyerRefundListItem }): React.JSX
         </span>
       </div>
       <div className="staff-refund-row-side">
+        {deadline ? (
+          <StatusBadge tone={deadline.tone}>{deadline.label}</StatusBadge>
+        ) : null}
         <StatusBadge tone={settled ? 'success' : item.status === 'DUE' ? 'warning' : 'processing'}>
           {REFUND_STATUS_LABELS[item.status]}
         </StatusBadge>
