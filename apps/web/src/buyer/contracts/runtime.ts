@@ -29,6 +29,8 @@ export const buyerMeSchema = z.object({
     marketplace_code: marketplace,
     identity_review_status: z.enum(['CLEAR', 'REVIEW_REQUIRED']),
     customer_number: z.string().nullable(),
+    refund_account_name: z.string().nullable(),
+    refund_account_identifier: z.string().nullable(),
   }).strict(),
 }).strict();
 

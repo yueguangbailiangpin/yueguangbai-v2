@@ -1,4 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { isFrontendApiError } from '../../api/errors';
 import { CUSTOMER_TRANSPORT_INVALIDATION_GROUP } from '../../auth/customer-transport-invalidation';
@@ -7,10 +8,12 @@ import {
   Alert,
   Button,
   Card,
+  FormField,
   MetricCard,
   PageHeader,
   RequestIdDisplay,
   StatusBadge,
+  TextInput,
 } from '../../ui/primitives';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys } from '../queries/keys';
@@ -96,6 +99,10 @@ export function BuyerMePage(): React.JSX.Element {
           </div>
         </dl>
       </Card>
+      <RefundAccountCard
+        initialName={me.buyer.refund_account_name}
+        initialIdentifier={me.buyer.refund_account_identifier}
+      />
       <section className="buyer-business-metrics" aria-label="业务摘要">
         <MetricCard label="预约" value={pageCount(summaries[0]?.data)} detail="预约记录" />
         <MetricCard label="正式订单" value={pageCount(summaries[1]?.data)} detail="已确认订单" />
@@ -134,4 +141,85 @@ function pageCount(
 ): string {
   if (!page) return '—';
   return `${page.items.length}${page.next_cursor ? '+' : ''}`;
+}
+
+/**
+ * 返款收款账户（P7a）：支付宝账号+收款人姓名，保存后可改；返款时员工
+ * 直接带出，不再每单微信里问。未填不拦截业务，返款工作台对缺失标红。
+ */
+function RefundAccountCard({
+  initialName,
+  initialIdentifier,
+}: {
+  initialName: string | null;
+  initialIdentifier: string | null;
+}): React.JSX.Element {
+  const client = useQueryClient();
+  const [name, setName] = useState(initialName ?? '');
+  const [identifier, setIdentifier] = useState(initialIdentifier ?? '');
+  const mutation = useMutation({
+    mutationFn: () => buyerApi.updateRefundAccount(client, name.trim(), identifier.trim()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: buyerQueryKeys.me() });
+    },
+  });
+  const filled = initialName !== null && initialIdentifier !== null;
+  const nameValid = name.trim().length >= 1 && name.trim().length <= 100;
+  const identifierValid = identifier.trim().length >= 3 && identifier.trim().length <= 128;
+  const submittable = nameValid && identifierValid && !mutation.isPending;
+  return (
+    <Card className="buyer-refund-account-card">
+      <h3>
+        返款收款账户{' '}
+        <StatusBadge tone={filled ? 'success' : 'warning'}>
+          {filled ? '已填写' : '未填写'}
+        </StatusBadge>
+      </h3>
+      {!filled ? (
+        <p>填写支付宝收款账户后，返款时工作人员可以直接带出，不用每次再确认。</p>
+      ) : null}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (submittable) mutation.mutate();
+        }}
+      >
+        <FormField label="收款人姓名" htmlFor="refund-account-name">
+          <TextInput
+            id="refund-account-name"
+            value={name}
+            maxLength={100}
+            required
+            onChange={(event) => setName(event.target.value)}
+          />
+        </FormField>
+        <FormField label="支付宝账号（手机号或邮箱）" htmlFor="refund-account-identifier">
+          <TextInput
+            id="refund-account-identifier"
+            value={identifier}
+            maxLength={128}
+            required
+            onChange={(event) => setIdentifier(event.target.value)}
+          />
+        </FormField>
+        <Button disabled={!submittable} loading={mutation.isPending}>
+          保存收款账户
+        </Button>
+      </form>
+      {mutation.isSuccess ? <Alert tone="success">收款账户已保存。</Alert> : null}
+      {mutation.isError ? (
+        <>
+          <Alert tone="danger">
+            保存未完成，请稍后重试。
+            {isFrontendApiError(mutation.error) && mutation.error.code === 'VALIDATION_ERROR'
+              ? '（姓名 1-100 字，支付宝账号 3-128 字符）'
+              : ''}
+          </Alert>
+          <RequestIdDisplay
+            requestId={isFrontendApiError(mutation.error) ? mutation.error.requestId : null}
+          />
+        </>
+      ) : null}
+    </Card>
+  );
 }

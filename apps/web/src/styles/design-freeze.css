@@ -416,6 +416,12 @@
   padding: 5px 2px; border-bottom: 1px solid #e9edf2;
 }
 .staff-order-facts > li:last-child { border-bottom: 0; }
+/* P7a：返款处理视图买家收款账户缺失标红（义务卡内醒目提示）。 */
+.staff-refund-account-missing {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+  padding: 6px 8px;
+}
 .staff-order-progress-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .staff-refunds { min-width: 0; padding: 12px; display: grid; gap: 12px; align-content: start; }
 .staff-refund-rows { display: grid; }

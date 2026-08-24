@@ -51,6 +51,8 @@ const buyerRefund = {
   },
   source_review_event_id: 'review-event-1',
   review_case_id: 'review-1',
+  refund_account_name: null,
+  refund_account_identifier: null,
   payments: [
     {
       payment_entry_id: 'payment-1',
@@ -71,6 +73,8 @@ function refundListItem() {
   const {
     source_review_event_id: _sourceReviewEventId,
     review_case_id: _reviewCaseId,
+    refund_account_name: _refundAccountName,
+    refund_account_identifier: _refundAccountIdentifier,
     payments: _payments,
     reversals: _reversals,
     ...listItem
@@ -225,6 +229,41 @@ describe('staff refund detail', () => {
     expect(screen.getByText(/催办次数：2/u)).toBeVisible();
     expect(screen.getByText(/最后催办：/u)).toBeVisible();
     expect(screen.queryByRole('button', { name: /催返款/u })).not.toBeInTheDocument();
+  });
+
+  it('flags a missing buyer refund account in red (P7a)', async () => {
+    // 默认 fixture 账户缺失 → 义务卡标红提示补录。
+    installRefundHandlers(async () => refundConflict());
+    renderRefundDetail();
+    expect(
+      await screen.findByText(/买家收款账户缺失/u),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/请让买家在"我的"页面补充收款账户/u),
+    ).toBeVisible();
+  });
+
+  it('surfaces the buyer refund account once the buyer filled it (P7a)', async () => {
+    installRefundHandlers(async () => refundConflict());
+    server.use(
+      http.get(apiUrl('/api/staff/buyer-refunds/refund-1'), () =>
+        HttpResponse.json({
+          data: {
+            buyer_refund: {
+              ...structuredClone(buyerRefund),
+              refund_account_name: '张三',
+              refund_account_identifier: 'zhangsan@example.test',
+            },
+          },
+          meta: { request_id: 'refund-detail-filled' },
+        }),
+      ),
+    );
+    renderRefundDetail();
+    expect(
+      await screen.findByText(/买家收款账户：张三（支付宝 zhangsan@example.test）/u),
+    ).toBeVisible();
+    expect(screen.queryByText(/买家收款账户缺失/u)).not.toBeInTheDocument();
   });
 
   it('records a payment converting yuan input into integer fen', async () => {

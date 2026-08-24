@@ -59,9 +59,32 @@ function post<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
   });
 }
 
+function patch<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
+  client: QueryClient,
+  path: string,
+  schema: T,
+  body: unknown,
+) {
+  return identityApiRequest('buyer', client, {
+    path,
+    method: 'PATCH',
+    schema,
+    body,
+  });
+}
+
 export const buyerApi = Object.freeze({
   me: (client: QueryClient, signal?: Signal) =>
     get(client, '/api/buyer-portal/me', buyerMeSchema, signal),
+  updateRefundAccount: (
+    client: QueryClient,
+    accountName: string,
+    accountIdentifier: string,
+  ) =>
+    patch(client, '/api/buyer-portal/me/refund-account', buyerMeSchema, {
+      account_name: accountName,
+      account_identifier: accountIdentifier,
+    }),
   demands: (client: QueryClient, query = 'limit=20', signal?: Signal) =>
     get(client, `/api/buyer-portal/demands?${query}`, demandsPageSchema, signal),
   demand: (client: QueryClient, id: string, signal?: Signal) =>

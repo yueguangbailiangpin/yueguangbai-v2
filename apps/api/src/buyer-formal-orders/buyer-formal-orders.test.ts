@@ -23,6 +23,8 @@ const BUYER: BuyerPortalContext = {
   identityReviewStatus: 'CLEAR',
   customerNumber: '20260801E1',
   displayName: '买家一',
+  refundAccountName: null,
+  refundAccountIdentifier: null,
   sessionExpiresAt: 99_999,
 };
 

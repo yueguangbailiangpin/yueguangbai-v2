@@ -65,6 +65,8 @@ interface RefundListRow {
 interface RefundDetailRow extends RefundListRow {
   source_review_event_id: string;
   review_case_id: string;
+  refund_account_name: string | null;
+  refund_account_identifier: string | null;
 }
 
 interface PaymentRow {
@@ -351,6 +353,7 @@ async function readRefundDetail(
       buyer.buyer_customer_no, formal_order.marketplace_code,
       formal_order.amazon_order_number_normalized,
       formal_order.product_id, formal_order.asin_normalized,
+      buyer.refund_account_name, buyer.refund_account_identifier,
       work.id AS work_item_id, work.assigned_staff_id,
       work.fixed_assignment_id
     FROM buyer_refund_ledger_balances ledger
@@ -415,6 +418,8 @@ async function readRefundDetail(
     ...listItem,
     source_review_event_id: ledger.source_review_event_id,
     review_case_id: ledger.review_case_id,
+    refund_account_name: ledger.refund_account_name,
+    refund_account_identifier: ledger.refund_account_identifier,
     gross_paid_cny_fen: String(ledger.gross_paid_cny_fen),
     reversed_cny_fen: String(ledger.reversed_cny_fen),
     payments: payments.results.map((payment) => ({

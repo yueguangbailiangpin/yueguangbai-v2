@@ -114,6 +114,15 @@ function RefundFacts({ value }: { value: RefundDetail }): React.JSX.Element {
               ? '承诺期限未起算（缺评论通过事件）'
               : `承诺期限：${formatShanghai(value.promise_deadline_at)}（评论通过 + 7 个工作日，仅提醒口径）`}
           </li>
+          {value.refund_account_name === null || value.refund_account_identifier === null ? (
+            <li className="staff-refund-account-missing">
+              <strong>买家收款账户缺失</strong>：请让买家在"我的"页面补充收款账户
+            </li>
+          ) : (
+            <li>
+              买家收款账户：{value.refund_account_name}（支付宝 {value.refund_account_identifier}）
+            </li>
+          )}
         </ul>
       </Card>
       <Card className="internal-note">

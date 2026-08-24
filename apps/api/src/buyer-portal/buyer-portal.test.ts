@@ -707,6 +707,110 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     },
   );
 
+  it('saves and re-reads the buyer refund account through the me projection', async () => {
+    database = createMigratedTestDatabase();
+    fixtureNow = Date.now();
+    seedPortalFixture(database, fixtureNow);
+    const app = testApp();
+    const cookie = await buyerCookie('1');
+
+    const before = await request(app, '/api/buyer-portal/me', {
+      headers: { Cookie: cookie },
+    });
+    expect(before.status).toBe(200);
+    await expect(json(before)).resolves.toMatchObject({
+      data: {
+        buyer: {
+          refund_account_name: null,
+          refund_account_identifier: null,
+        },
+      },
+    });
+
+    const missingOrigin = await request(
+      app,
+      '/api/buyer-portal/me/refund-account',
+      {
+        method: 'PATCH',
+        headers: {
+          ...stateHeaders(),
+          Cookie: cookie,
+          Origin: 'https://evil.example.test',
+        },
+        body: JSON.stringify({
+          account_name: '买家一',
+          account_identifier: 'buyer@example.test',
+        }),
+      },
+    );
+    expect(missingOrigin.status).toBe(403);
+
+    const invalid = await request(
+      app,
+      '/api/buyer-portal/me/refund-account',
+      {
+        method: 'PATCH',
+        headers: { ...stateHeaders(), Cookie: cookie },
+        body: JSON.stringify({ account_name: '买家一' }),
+      },
+    );
+    expect(invalid.status).toBe(400);
+    await expect(json(invalid)).resolves.toMatchObject({
+      error: { code: 'VALIDATION_ERROR' },
+    });
+
+    const saved = await request(
+      app,
+      '/api/buyer-portal/me/refund-account',
+      {
+        method: 'PATCH',
+        headers: { ...stateHeaders(), Cookie: cookie },
+        body: JSON.stringify({
+          account_name: ' 买家一 ',
+          account_identifier: 'buyer@example.test',
+        }),
+      },
+    );
+    expect(saved.status).toBe(200);
+    await expect(json(saved)).resolves.toMatchObject({
+      data: {
+        buyer: {
+          refund_account_name: '买家一',
+          refund_account_identifier: 'buyer@example.test',
+        },
+      },
+    });
+
+    // 幂等重放：同值重复提交结果一致；响应与库里一致。
+    const replay = await request(
+      app,
+      '/api/buyer-portal/me/refund-account',
+      {
+        method: 'PATCH',
+        headers: { ...stateHeaders(), Cookie: cookie },
+        body: JSON.stringify({
+          account_name: '买家一',
+          account_identifier: 'buyer@example.test',
+        }),
+      },
+    );
+    expect(replay.status).toBe(200);
+    await expect(json(replay)).resolves.toMatchObject({
+      data: {
+        buyer: { refund_account_name: '买家一' },
+      },
+    });
+
+    const stored = await database.prepare(`
+      SELECT refund_account_name, refund_account_identifier
+      FROM buyer_customers WHERE id='buyer-1'
+    `).first<{ refund_account_name: string; refund_account_identifier: string }>();
+    expect(stored).toEqual({
+      refund_account_name: '买家一',
+      refund_account_identifier: 'buyer@example.test',
+    });
+  });
+
   it('retains the schema 26 history beneath current schema 73', async () => {
     database = createMigratedTestDatabase();
     const repositoryRoot = path.resolve(

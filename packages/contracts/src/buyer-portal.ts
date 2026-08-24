@@ -10,6 +10,10 @@ export interface BuyerPortalMeDto {
     identity_review_status: 'CLEAR' | 'REVIEW_REQUIRED';
     /** 客户编码（D2 注册即分配；历史买家可能为 null，首单确认时转正）。 */
     customer_number: string | null;
+    /** 返款收款人姓名（P7a 收款账户；null = 未填写，资料页可后补）。 */
+    refund_account_name: string | null;
+    /** 返款收款支付宝账号（P7a 收款账户；null = 未填写）。 */
+    refund_account_identifier: string | null;
   };
 }
 

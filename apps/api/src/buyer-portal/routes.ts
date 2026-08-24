@@ -28,6 +28,10 @@ import {
   parsePageLimit,
 } from './pagination';
 import {
+  parseBuyerRefundAccountInput,
+  updateBuyerRefundAccount,
+} from './update-refund-account';
+import {
   getBuyerPortalDemand,
   getBuyerPortalReservation,
   listBuyerPortalDemands,
@@ -36,6 +40,7 @@ import {
 
 const CREATE_BODY_LIMIT_BYTES = 1024;
 const CANCEL_BODY_LIMIT_BYTES = 2048;
+const REFUND_ACCOUNT_BODY_LIMIT_BYTES = 1024;
 
 export function registerBuyerPortalRoutes(
   app: Hono<any>,
@@ -46,6 +51,12 @@ export function registerBuyerPortalRoutes(
     '/api/buyer-portal/me',
     session,
     withBuyerPortalErrors(me),
+  );
+  app.patch(
+    '/api/buyer-portal/me/refund-account',
+    customerAuthOriginGuard(),
+    session,
+    withBuyerPortalErrors(updateRefundAccount),
   );
   app.get(
     '/api/buyer-portal/demands',
@@ -84,6 +95,25 @@ export function registerBuyerPortalRoutes(
 async function me(context: Context<any>): Promise<Response> {
   const buyer = await requireBuyerPortalContext(context);
   return success(context, toBuyerPortalMeDto(buyer));
+}
+
+async function updateRefundAccount(
+  context: Context<any>,
+): Promise<Response> {
+  const body = await readBoundedJson(
+    context.req.raw,
+    REFUND_ACCOUNT_BODY_LIMIT_BYTES,
+  );
+  const input = parseBuyerRefundAccountInput(body);
+  const buyer = await requireBuyerPortalContext(context);
+  await updateBuyerRefundAccount(
+    context.env.DB,
+    buyer.buyerCustomerId,
+    input,
+    Date.now(),
+  );
+  const updated = await requireBuyerPortalContext(context);
+  return success(context, toBuyerPortalMeDto(updated));
 }
 
 async function listDemands(

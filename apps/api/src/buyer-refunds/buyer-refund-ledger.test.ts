@@ -857,6 +857,8 @@ function buyerRefundPortalContext(buyerCustomerId: string) {
     identityReviewStatus: 'CLEAR' as const,
     customerNumber: null,
     displayName: '返款买家',
+    refundAccountName: null,
+    refundAccountIdentifier: null,
     sessionExpiresAt: NOW + 86_400_000,
   };
 }

@@ -642,6 +642,8 @@ export const staffBuyerRefundSchema = z
       .extend({
         source_review_event_id: z.string(),
         review_case_id: z.string(),
+        refund_account_name: z.string().nullable(),
+        refund_account_identifier: z.string().nullable(),
         payments: z.array(
           z
             .object({

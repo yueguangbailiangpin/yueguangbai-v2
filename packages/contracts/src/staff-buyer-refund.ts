@@ -91,6 +91,10 @@ export interface StaffBuyerRefundDetailDto
   extends StaffBuyerRefundListItemDto {
   source_review_event_id: string;
   review_case_id: string;
+  /** 买家返款收款人姓名（P7a；null = 未填写，处理视图标红提示补录）。仅详情，列表不带。 */
+  refund_account_name: string | null;
+  /** 买家返款收款支付宝账号（P7a；null = 未填写）。仅详情，列表不带。 */
+  refund_account_identifier: string | null;
   payments: readonly StaffBuyerRefundPaymentDto[];
   reversals: readonly StaffBuyerRefundReversalDto[];
 }

@@ -16,6 +16,8 @@ interface BuyerContextRow {
   marketplace_code: MarketplaceCode;
   access_status: 'ACTIVE' | 'DISABLED';
   identity_review_status: 'CLEAR' | 'REVIEW_REQUIRED';
+  refund_account_name: string | null;
+  refund_account_identifier: string | null;
 }
 
 export interface BuyerPortalContext
@@ -23,6 +25,8 @@ export interface BuyerPortalContext
     BuyerReservationActor {
   customerNumber: string | null;
   displayName: string;
+  refundAccountName: string | null;
+  refundAccountIdentifier: string | null;
   sessionExpiresAt: number;
 }
 
@@ -49,6 +53,8 @@ export async function requireBuyerPortalContext(
     identityReviewStatus: buyer.identity_review_status,
     customerNumber: buyer.buyer_customer_no,
     displayName: buyer.display_name,
+    refundAccountName: buyer.refund_account_name,
+    refundAccountIdentifier: buyer.refund_account_identifier,
     sessionExpiresAt: session.expiresAt,
   };
 }
@@ -62,6 +68,8 @@ export function toBuyerPortalMeDto(
       marketplace_code: buyer.marketplaceCode,
       identity_review_status: buyer.identityReviewStatus,
       customer_number: buyer.customerNumber,
+      refund_account_name: buyer.refundAccountName,
+      refund_account_identifier: buyer.refundAccountIdentifier,
     },
   };
 }
@@ -80,7 +88,9 @@ async function loadBuyerContext(
         ELSE assignment.marketplace_code
       END AS marketplace_code,
       access_status,
-      identity_review_status
+      identity_review_status,
+      refund_account_name,
+      refund_account_identifier
     FROM buyer_customers buyer
     JOIN buyer_marketplace_assignments assignment
       ON assignment.buyer_customer_id=buyer.id
