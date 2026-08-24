@@ -11,6 +11,7 @@ import { listBuyerChatScreenshots } from '../buyer-chat-screenshots';
 interface BuyerRow {
   subject_id: string;
   display_name: string;
+  buyer_customer_no: string | null;
   marketplace_code: string | null;
   account_id: string | null;
   formal_order_count: number;
@@ -26,6 +27,7 @@ type CustomerMatch = {
   customer_type: 'BUYER' | 'SELLER';
   subject_id: string;
   display_name: string;
+  customer_number: string | null;
   marketplace_code: string;
   has_portal_account: boolean;
   historical_order_count: number;
@@ -133,7 +135,7 @@ async function buyerMatches(
 ): Promise<CustomerMatch[]> {
   const rows = await database
     .prepare(
-      `SELECT buyer.id AS subject_id,buyer.display_name,
+      `SELECT buyer.id AS subject_id,buyer.display_name,buyer.buyer_customer_no,
       assignment.marketplace_code,account.id AS account_id,
       (SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.buyer_customer_id=buyer.id) AS formal_order_count
     FROM wechat_identity_claims claim
@@ -172,6 +174,7 @@ async function buyerMatches(
       customer_type: 'BUYER' as const,
       subject_id: row.subject_id,
       display_name: row.display_name,
+      customer_number: row.buyer_customer_no ?? null,
       marketplace_code: row.marketplace_code ?? 'AMAZON_JP',
       has_portal_account: row.account_id !== null,
       historical_order_count: Number(row.formal_order_count),
@@ -236,6 +239,7 @@ async function sellerMatches(
       customer_type: 'SELLER',
       subject_id: row.subject_id,
       display_name: row.display_name,
+      customer_number: null,
       marketplace_code: row.marketplace_code === 'JP' ? 'AMAZON_JP' : row.marketplace_code,
       has_portal_account: row.account_id !== null,
       historical_order_count: Number(row.formal_order_count),
@@ -280,7 +284,7 @@ async function buyerBySubject(
 ): Promise<CustomerMatch | null> {
   const row = await database
     .prepare(
-      `SELECT buyer.id AS subject_id,buyer.display_name,
+      `SELECT buyer.id AS subject_id,buyer.display_name,buyer.buyer_customer_no,
       account.id AS account_id,(SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.buyer_customer_id=buyer.id) AS formal_order_count
     FROM buyer_customers buyer LEFT JOIN customer_account_personas persona ON persona.buyer_customer_id=buyer.id AND persona.persona_type='BUYER'
     LEFT JOIN customer_login_accounts account ON account.id=persona.account_id AND account.status='ACTIVE'
@@ -293,6 +297,7 @@ async function buyerBySubject(
         customer_type: 'BUYER',
         subject_id: String(row.subject_id),
         display_name: String(row.display_name),
+        customer_number: (row as { buyer_customer_no?: string | null }).buyer_customer_no ?? null,
         marketplace_code: market,
         has_portal_account: row.account_id !== null,
         historical_order_count: Number(row.formal_order_count),
@@ -322,6 +327,7 @@ async function sellerBySubject(
         customer_type: 'SELLER',
         subject_id: String(row.subject_id),
         display_name: String(row.display_name),
+        customer_number: null,
         marketplace_code: market,
         has_portal_account: row.account_id !== null,
         historical_order_count: Number(row.formal_order_count),

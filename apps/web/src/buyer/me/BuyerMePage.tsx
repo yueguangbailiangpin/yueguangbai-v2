@@ -87,6 +87,8 @@ export function BuyerMePage(): React.JSX.Element {
           <div>
             <dt>市场</dt>
             <dd>{marketplaceLabel(me.buyer.marketplace_code)}</dd>
+            <dt>客户编码</dt>
+            <dd>{me.buyer.customer_number ?? '首单确认后分配'}</dd>
           </div>
           <div>
             <dt>当前状态</dt>

@@ -113,6 +113,8 @@ interface AtomicApprovalSource {
   channel_status: string;
   channel_next_sequence: number;
   channel_version: number;
+  preorder_buyer_customer_no: string | null;
+  preorder_buyer_sequence: number | null;
   existing_formal_order_id: string | null;
 }
 
@@ -842,6 +844,8 @@ async function requireAtomicApprovalSource(
       channel.code AS channel_code, channel.status AS channel_status,
       channel.next_sequence AS channel_next_sequence,
       channel.version AS channel_version,
+      preorder.buyer_customer_no AS preorder_buyer_customer_no,
+      preorder.buyer_sequence AS preorder_buyer_sequence,
       existing.id AS existing_formal_order_id
     FROM order_evidence_submissions submission
     JOIN order_evidence_versions evidence
@@ -857,6 +861,8 @@ async function requireAtomicApprovalSource(
       AND product_version.version_no=reservation.product_version_no
     JOIN buyer_customers buyer ON buyer.id=submission.buyer_customer_id
     JOIN buyer_channels channel ON channel.id=buyer.buyer_channel_id
+    LEFT JOIN buyer_preorder_number_allocations preorder
+      ON preorder.buyer_customer_id=buyer.id
     LEFT JOIN formal_orders existing
       ON existing.order_evidence_submission_id=submission.id
       OR existing.reservation_id=reservation.id
@@ -1134,6 +1140,65 @@ function prepareBuyerNumberPlan(
       sequence: Number(source.buyer_sequence),
       firstValidOrderBusinessDate: source.first_valid_order_business_date as string,
       statements: [],
+    };
+  }
+  // D2：注册时预分配（preorder）的编号在首单确认时转正——沿用预分配的
+  // 编号与序号写入主表三字段，不推进渠道计数器（号已在注册时预占）。
+  if (
+    source.preorder_buyer_customer_no !== null &&
+    Number.isSafeInteger(source.preorder_buyer_sequence) &&
+    Number(source.preorder_buyer_sequence) >= 1
+  ) {
+    const preorderSequence = Number(source.preorder_buyer_sequence);
+    return {
+      buyerCustomerNo: source.preorder_buyer_customer_no,
+      allocated: false,
+      sequence: preorderSequence,
+      firstValidOrderBusinessDate: businessDate,
+      statements: [
+        database
+          .prepare(
+            `
+        UPDATE buyer_customers SET buyer_customer_no=?, buyer_sequence=?,
+          first_valid_order_business_date=?, version=version+1,
+          updated_at=MAX(?, updated_at+1)
+        WHERE id=? AND access_status='ACTIVE'
+          AND buyer_customer_no IS NULL AND buyer_sequence IS NULL
+          AND first_valid_order_business_date IS NULL AND version=?
+      `,
+          )
+          .bind(
+            source.preorder_buyer_customer_no,
+            preorderSequence,
+            businessDate,
+            now,
+            source.buyer_customer_id,
+            source.buyer_version,
+          ),
+        assertPreviousStatementChangedOnce(database),
+        database
+          .prepare(
+            `
+        INSERT INTO buyer_number_allocation_events (
+          id, buyer_customer_id, buyer_channel_id, buyer_customer_no,
+          buyer_sequence, first_valid_order_business_date,
+          actor_staff_id, idempotency_key, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+          )
+          .bind(
+            crypto.randomUUID(),
+            source.buyer_customer_id,
+            source.buyer_channel_id,
+            source.preorder_buyer_customer_no,
+            preorderSequence,
+            businessDate,
+            actorStaffId,
+            idempotencyKey,
+            now,
+          ),
+        assertPreviousStatementChangedOnce(database),
+      ],
     };
   }
   if (

@@ -565,6 +565,71 @@ describe('Phase 3F formal order confirmation', () => {
     });
   });
 
+  it('promotes the registration-time preorder number on first confirmation (D2)', async () => {
+    database = createMigratedTestDatabase();
+    await seedFormalOrderFixture(database);
+    // 模拟 D2：buyer-1 注册时预占了 20260822B03593（渠道 B、序号 3593）。
+    await database.exec(`
+      INSERT INTO buyer_channels (
+        id, code, name, status, next_sequence, version,
+        created_at, updated_at, disabled_at
+      ) VALUES ('buyer-channel-b', 'B', '线下渠道', 'ACTIVE', 3594, 1, 1000, 1000, NULL);
+
+      INSERT INTO buyer_preorder_number_allocations (
+        buyer_customer_id, buyer_channel_id, buyer_customer_no,
+        buyer_sequence, allocation_business_date, allocation_source,
+        request_id, idempotency_key, created_at
+      ) VALUES (
+        'buyer-1', 'buyer-channel-b', '20260822B03593',
+        3593, '2026-08-22', 'SELF_REGISTRATION',
+        'request-preorder-seed', 'preorder-seed-key', 1000
+      );
+    `);
+
+    const result = await confirmFormalOrder(
+      database,
+      confirmationInput('evidence-submission-1'),
+      command(preSalesActor(), 'formal-order:number:preorder'),
+    );
+    expect(result).toMatchObject({
+      buyer_customer_id: 'buyer-1',
+      buyer_customer_no: '20260822B03593',
+      buyer_number_allocated: false,
+    });
+
+    const state = await database.prepare(`
+      SELECT
+        buyer.buyer_customer_no,
+        buyer.buyer_sequence,
+        buyer.first_valid_order_business_date,
+        (SELECT COUNT(*) FROM buyer_number_allocation_events
+          WHERE buyer_customer_id='buyer-1') AS allocation_events,
+        (SELECT COUNT(*) FROM buyer_preorder_number_allocations
+          WHERE buyer_customer_id='buyer-1') AS preorder_rows,
+        (SELECT next_sequence FROM buyer_channels
+          WHERE id='buyer-channel-formal') AS channel_sequence
+      FROM buyer_customers buyer
+      WHERE buyer.id='buyer-1'
+    `).first<{
+      buyer_customer_no: string | null;
+      buyer_sequence: number | null;
+      first_valid_order_business_date: string | null;
+      allocation_events: number;
+      preorder_rows: number;
+      channel_sequence: number;
+    }>();
+    // 转正：主表写入预分配编号（first_valid_order_business_date 为订单业务日），
+    // 渠道计数器不推进（注册时已推进），preorder 行不可变保留。
+    expect(state).toEqual({
+      buyer_customer_no: '20260822B03593',
+      buyer_sequence: 3593,
+      first_valid_order_business_date: '2026-08-01',
+      allocation_events: 1,
+      preorder_rows: 1,
+      channel_sequence: 1,
+    });
+  });
+
   it('never allocates two buyer numbers during concurrent first orders', async () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database);

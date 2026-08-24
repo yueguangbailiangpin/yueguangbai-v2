@@ -38,6 +38,7 @@ export function BuyerRegistrationPage({
   const controller = useRef<BuyerRegistrationController | null>(null);
   const abort = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState<{ buyerNumber: string | null } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [invitation, setInvitation] = useState<BuyerInvitationContext | null>(null);
@@ -88,7 +89,7 @@ export function BuyerRegistrationPage({
         marketplace_code: invitation.marketplace_code,
       }, current.signal);
       if (result.kind === 'AUTHENTICATED') {
-        navigate('/buyer', { replace: true });
+        setSuccess({ buyerNumber: result.buyerNumber });
       } else if (result.kind === 'MISMATCH_CLEANED') {
         setMessage('注册后的会话身份不匹配，已安全退出。');
       } else {
@@ -103,6 +104,22 @@ export function BuyerRegistrationPage({
       setBusy(false);
       if (abort.current === current) abort.current = null;
     }
+  }
+
+  if (success) {
+    return <main className="login-page identity-buyer buyer-registration-page">
+      <Card className="login-card buyer-login-card buyer-registration-card">
+        <div className="login-brand"><strong>月光白</strong></div>
+        <div className="login-heading"><h1>注册成功</h1>
+          <p>你的买家账号已开通，可以立即预约测评。</p></div>
+        {success.buyerNumber !== null ? (
+          <Alert tone="success">
+            你的客户编码：<strong>{success.buyerNumber}</strong>（请记下，后续沟通与返款都会用到）
+          </Alert>
+        ) : null}
+        <Button onClick={() => navigate('/buyer', { replace: true })}>进入买家中心</Button>
+      </Card>
+    </main>;
   }
 
   return <main className="login-page identity-buyer buyer-registration-page">

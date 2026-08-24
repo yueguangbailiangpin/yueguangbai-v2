@@ -706,6 +706,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         display_name: 'Demo 多身份客户',
         marketplace_code: 'JP',
         identity_review_status: 'CLEAR',
+        customer_number: '20260822B03585',
       },
     };
   if (path === '/api/buyer-portal/demands' && method === 'GET')
@@ -1589,6 +1590,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
           customer_type: parsed.searchParams.get('customer_type') ?? 'BUYER',
           subject_id: 'review-existing-customer-1',
           display_name: 'Demo 历史多身份客户',
+          customer_number: '20260822B03585',
           marketplace_code: 'AMAZON_JP',
           has_portal_account: true,
           historical_order_count: 18,

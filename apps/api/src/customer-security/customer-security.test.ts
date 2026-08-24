@@ -53,8 +53,9 @@ describe('customer multi-persona invitation and recovery', () => {
     const issued = await invite('new_buyer_wx', 'AMAZON_US', 'invite-new-0001');
     const registered = await register(issued.registration_token,
       'new_buyer_wx', 'AMAZON_US', 'register-new-0001');
+    // D2：注册即分配——注册事务内预占客户编码（NOW=2026-08-07、渠道 INV 序号 1）。
     expect(registered).toMatchObject({
-      buyerNumber: null,
+      buyerNumber: '20260807INV1',
       authenticated: {
         accountType: 'BUYER', availablePersonas: ['BUYER'],
       },
@@ -62,10 +63,25 @@ describe('customer multi-persona invitation and recovery', () => {
     await expect(register(issued.registration_token,
       'new_buyer_wx', 'AMAZON_US', 'register-new-0001'))
       .resolves.toMatchObject({
-        buyerNumber: null,
+        buyerNumber: '20260807INV1',
         authenticated: { accountId: registered.authenticated.accountId },
         replayed: true,
       });
+    expect(await database.prepare(`
+      SELECT preorder.buyer_customer_no, preorder.buyer_sequence,
+        preorder.allocation_business_date, preorder.allocation_source,
+        channel.next_sequence
+      FROM buyer_preorder_number_allocations preorder
+      JOIN buyer_customers buyer ON buyer.id=preorder.buyer_customer_id
+      JOIN buyer_channels channel ON channel.id=preorder.buyer_channel_id
+      WHERE buyer.buyer_customer_no IS NULL
+    `).first()).toMatchObject({
+      buyer_customer_no: '20260807INV1',
+      buyer_sequence: 1,
+      allocation_business_date: '2026-08-07',
+      allocation_source: 'SELF_REGISTRATION',
+      next_sequence: 2,
+    });
     expect(await database.prepare(`
       SELECT invitation.status, invitation.consumed_by_account_id,
         assignment.marketplace_code,

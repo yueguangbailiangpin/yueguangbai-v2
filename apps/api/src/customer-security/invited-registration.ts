@@ -4,6 +4,8 @@ import type {
   SqlStatement,
 } from '@ygb/contracts';
 import {
+  chinaBusinessDate,
+  formatBuyerCustomerNumber,
   hashCanonicalJson,
   hashCustomerPassword,
   hashOneTimeToken,
@@ -223,6 +225,17 @@ export async function registerInvitedBuyer(
   const identitySubjectId = identity?.identity_subject_id ?? crypto.randomUUID();
   const buyerCustomerId = identity?.buyer_customer_id ?? crypto.randomUUID();
   const accountId = identity?.account_id ?? crypto.randomUUID();
+  // D2 注册即分配：尚无正式编号且未预分配过的买家，在注册事务里预占一个
+  // 编号（buyer_preorder_number_allocations，注册业务日 + 渠道序号），
+  // 首单确认时在订单审批事务内转正写入主表。已预分配/已有编号的跳过。
+  const preorder = await planPreorderNumber(
+    database,
+    buyerCustomerId,
+    input.buyerChannelId,
+    identity?.buyer_customer_no ?? null,
+    now,
+  );
+  const needsPreorder = preorder !== null;
   const credential = needsAccount
     ? await hashCustomerPassword(input.password)
     : null;
@@ -246,7 +259,7 @@ export async function registerInvitedBuyer(
   const sessionVersion = Number(identity?.account_session_version ?? 1)
     + (addsSecondPersona ? 1 : 0);
   const safeResult = {
-    buyerNumber: identity?.buyer_customer_no ?? null,
+    buyerNumber: identity?.buyer_customer_no ?? preorder?.buyerNumber ?? null,
     wechatDisplay: wechat.display,
     authenticated: {
       accountId,
@@ -300,6 +313,34 @@ export async function registerInvitedBuyer(
         SET marketplace_code=?, version=version+1, updated_at=?
         WHERE buyer_customer_id=? AND marketplace_code='AMAZON_JP'
       `).bind(invitation.marketplace_code, now, buyerCustomerId),
+    );
+  }
+  if (needsPreorder && preorder) {
+    // 与 buyer-self-registration 的预分配同构：渠道乐观锁推进 + 不可变
+    // preorder 行；batch 失败（并发推进渠道）整体回滚，重试安全。
+    statements.push(
+      database.prepare(`
+        UPDATE buyer_channels
+        SET next_sequence=next_sequence+1, version=version+1,
+          updated_at=MAX(?, updated_at+1)
+        WHERE id=? AND status='ACTIVE' AND next_sequence=? AND version=?
+      `).bind(now, preorder.channelId, preorder.sequence, preorder.channelVersion),
+      database.prepare(`
+        INSERT INTO buyer_preorder_number_allocations (
+          buyer_customer_id, buyer_channel_id, buyer_customer_no,
+          buyer_sequence, allocation_business_date, allocation_source,
+          request_id, idempotency_key, created_at
+        ) VALUES (?, ?, ?, ?, ?, 'SELF_REGISTRATION', ?, ?, ?)
+      `).bind(
+        buyerCustomerId,
+        preorder.channelId,
+        preorder.buyerNumber,
+        preorder.sequence,
+        preorder.businessDate,
+        command.requestId,
+        command.idempotencyKey,
+        now,
+      ),
     );
   }
   if (needsAccount && credential) {
@@ -465,4 +506,65 @@ function maskWechat(value: string): string {
 
 function validation() {
   return new CustomerSecurityError('VALIDATION_ERROR', 400);
+}
+
+interface PreorderPlan {
+  channelId: string;
+  channelVersion: number;
+  sequence: number;
+  buyerNumber: string;
+  businessDate: string;
+}
+
+/**
+ * D2 注册即分配的预占计划：正式编号与 preorder 均不存在时，按买家自身
+ * 渠道（新买家用邀请配置渠道）取下一序号，生成注册业务日的客户编码。
+ * 返回 null 表示无需预占（已有编号或已预分配过）。
+ */
+async function planPreorderNumber(
+  database: SqlDatabase,
+  buyerCustomerId: string,
+  defaultChannelId: string,
+  existingBuyerNo: string | null,
+  now: number,
+): Promise<PreorderPlan | null> {
+  if (existingBuyerNo !== null) return null;
+  const existingPreorder = await database.prepare(`
+    SELECT 1 AS present FROM buyer_preorder_number_allocations
+    WHERE buyer_customer_id=? LIMIT 1
+  `).bind(buyerCustomerId).first<{ present: number }>();
+  if (existingPreorder) return null;
+  const channel = await database.prepare(`
+    SELECT channel.id, channel.code, channel.status,
+      channel.next_sequence, channel.version
+    FROM buyer_channels channel
+    WHERE channel.id=COALESCE((
+      SELECT buyer.buyer_channel_id FROM buyer_customers buyer
+      WHERE buyer.id=?
+    ), ?)
+  `).bind(buyerCustomerId, defaultChannelId).first<{
+    id: string;
+    code: string;
+    status: string;
+    next_sequence: number;
+    version: number;
+  }>();
+  if (!channel || channel.status !== 'ACTIVE'
+    || !Number.isSafeInteger(Number(channel.next_sequence))
+    || Number(channel.next_sequence) < 1) {
+    throw new CustomerSecurityError('DEPENDENCY_UNAVAILABLE', 503);
+  }
+  const sequence = Number(channel.next_sequence);
+  const businessDate = chinaBusinessDate(now);
+  return {
+    channelId: channel.id,
+    channelVersion: Number(channel.version),
+    sequence,
+    buyerNumber: formatBuyerCustomerNumber({
+      businessDate,
+      channelCode: channel.code,
+      sequence,
+    }),
+    businessDate,
+  };
 }

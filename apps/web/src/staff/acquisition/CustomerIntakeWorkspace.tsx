@@ -36,6 +36,7 @@ const matchSchema = z
     customer_type: z.enum(['BUYER', 'SELLER']),
     subject_id: z.string(),
     display_name: z.string(),
+    customer_number: z.string().nullable(),
     marketplace_code: z.string(),
     has_portal_account: z.boolean(),
     historical_order_count: z.number().int().nonnegative(),
@@ -509,6 +510,7 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
               <div>
                 <strong>{match.display_name}</strong>
                 <p>
+                  {match.customer_number !== null ? `客户编码 ${match.customer_number} · ` : ''}
                   {marketLabel(match.marketplace_code)} · 历史订单 {match.historical_order_count} 单
                   · 历史客户 / 来源未知
                 </p>

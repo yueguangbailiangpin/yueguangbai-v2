@@ -8,6 +8,8 @@ export interface BuyerPortalMeDto {
     display_name: string;
     marketplace_code: MarketplaceCode;
     identity_review_status: 'CLEAR' | 'REVIEW_REQUIRED';
+    /** 客户编码（D2 注册即分配；历史买家可能为 null，首单确认时转正）。 */
+    customer_number: string | null;
   };
 }
 

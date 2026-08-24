@@ -52,13 +52,20 @@ describe('buyer public projection source guard', () => {
       'apps/web/src/buyer/contracts/runtime.ts',
     ]) {
       const source = readFileSync(path.join(root, file), 'utf8');
+      // customer_number 例外（D2 2026-08-22 拍板）：注册即分配后买家端
+      // 个人区与注册成功页展示客户编码（me DTO 契约与其前端镜像）；
+      // 其余文件与内部列名（buyer_customer_no）仍禁止暴露。
+      const customerNumberAllowed = file === 'packages/contracts/src/buyer-portal.ts'
+        || file === 'apps/web/src/buyer/contracts/runtime.ts';
       for (const forbidden of [
-        'customer_number',
         'buyer_customer_no',
         'became_due_at',
         'first_paid_at',
         'last_paid_at',
-      ]) expect(source).not.toContain(forbidden);
+        ...(customerNumberAllowed ? [] : ['customer_number']),
+      ]) {
+        expect(source).not.toContain(forbidden);
+      }
     }
   });
 });

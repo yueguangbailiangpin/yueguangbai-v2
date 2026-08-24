@@ -61,6 +61,7 @@ export function toBuyerPortalMeDto(
       display_name: buyer.displayName,
       marketplace_code: buyer.marketplaceCode,
       identity_review_status: buyer.identityReviewStatus,
+      customer_number: buyer.customerNumber,
     },
   };
 }
