@@ -60,6 +60,8 @@ export const staffWorkbenchKeys = Object.freeze({
     ['staff', 'workbench', 'order-evidence', id, 'preflight'] as const,
   review: (id: string) => ['staff', 'workbench', 'review', id] as const,
   refund: (id: string) => ['staff', 'workbench', 'refund', id] as const,
+  refundsRoot: ['staff', 'refunds'] as const,
+  refundsPage: (cursor: string | null) => ['staff', 'refunds', 'list', cursor] as const,
   settlement: (id: string) => ['staff', 'workbench', 'settlement', id] as const,
   payables: (id: string) => ['staff', 'workbench', 'settlement', id, 'payables'] as const,
   payments: (id: string) => ['staff', 'workbench', 'settlement', id, 'payments'] as const,

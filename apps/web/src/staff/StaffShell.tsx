@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   BriefcaseBusiness,
   ChartNoAxesCombined,
+  CircleDollarSign,
   PackageSearch,
   Settings,
   Sparkles,
@@ -111,6 +112,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const acquisition = location.pathname.startsWith('/staff/acquisition');
   const buyerCustomers = location.pathname.startsWith('/staff/buyer-customers');
   const sellerCustomers = location.pathname.startsWith('/staff/seller-customers');
+  const refunds = location.pathname.startsWith('/staff/refunds');
   const dashboard = location.pathname.startsWith('/staff/admin-business-dashboard');
   const access = location.pathname.startsWith('/staff/access-management');
   const operations = location.pathname.startsWith('/staff/operations');
@@ -125,6 +127,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
     !acquisition &&
     !buyerCustomers &&
     !sellerCustomers &&
+    !refunds &&
     !dashboard &&
     !access &&
     !operations &&
@@ -134,6 +137,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const home = role === 'acquisition' ? '/staff/acquisition' : '/staff';
   const mayProducts = owner || role === 'pre_sales' || role === 'seller_ops';
   const mayOperations = ['owner', 'seller_ops', 'pre_sales', 'buyer_refund'].includes(role);
+  const mayRefunds = owner || role === 'buyer_refund';
   const title = access
     ? '员工与访问管理'
     : operations
@@ -148,9 +152,11 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
               ? '获客'
               : buyerCustomers
                 ? '买家与订单'
-                : sellerCustomers
-                  ? '卖家'
-                  : '工作台';
+                : refunds
+                  ? '返款工作台'
+                  : sellerCustomers
+                    ? '卖家'
+                    : '工作台';
   const context = access
     ? '邮箱、岗位、负责站点与状态'
     : operations
@@ -165,9 +171,11 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
               ? '渠道、潜在线索与自动开发入口'
               : buyerCustomers
                 ? '售前：接入买家并确认渠道'
-                : sellerCustomers
-                  ? '卖家对接：接入卖家并确认渠道'
-                  : '任务队列与业务事实';
+                : refunds
+                  ? '买家返款：登记转账流水与凭证'
+                  : sellerCustomers
+                    ? '卖家对接：接入卖家并确认渠道'
+                    : '任务队列与业务事实';
   const scope =
     session.data_scope.type === 'GLOBAL'
       ? '全部站点'
@@ -214,6 +222,12 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
             <NavLink to="/staff/buyer-customers">
               <UsersRound aria-hidden="true" />
               <span>买家与订单</span>
+            </NavLink>
+          ) : null}
+          {mayRefunds ? (
+            <NavLink to="/staff/refunds">
+              <CircleDollarSign aria-hidden="true" />
+              <span>返款工作台</span>
             </NavLink>
           ) : null}
           {(owner || role === 'seller_ops') && session.permissions.includes('SELLER_MANAGE') ? (

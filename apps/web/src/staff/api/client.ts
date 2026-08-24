@@ -11,6 +11,7 @@ import {
   settlementPaymentsSchema,
   settlementSummarySchema,
   staffBuyerRefundSchema,
+  staffBuyerRefundListSchema,
   staffOrderEvidenceSchema,
   staffOrderEvidencePreflightSchema,
   staffReviewSchema,
@@ -472,6 +473,13 @@ export const staffApi = Object.freeze({
       body,
       reviewMutationSchema,
       key,
+    ),
+  buyerRefunds: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/buyer-refunds${cursor === null ? '' : `?cursor=${encodeURIComponent(cursor)}`}`,
+      staffBuyerRefundListSchema,
+      signal,
     ),
   buyerRefund: (client: QueryClient, id: string, signal?: AbortSignal) =>
     read(

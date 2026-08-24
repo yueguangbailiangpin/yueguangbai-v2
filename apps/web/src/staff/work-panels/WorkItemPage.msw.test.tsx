@@ -13,6 +13,7 @@ import { apiUrl } from '../../test/msw/handlers';
 import { renderWithMsw } from '../../test/msw/render';
 import { server } from '../../test/msw/server';
 import { StaffTaskQueuePage } from '../StaffTaskQueuePage';
+import { StaffRefundDetailPage } from '../refunds/StaffRefundDetailPage';
 import { staffTestAdapter, staffTestSession, staffTestWorkItem } from '../test-fixtures';
 import { WorkItemPage } from './WorkItemPage';
 
@@ -228,6 +229,7 @@ function renderWorkItemPage(
     <StaffSessionBoundary adapter={staffTestAdapter(staffTestSession('owner', permissions))}>
       <Routes>
         <Route path="/staff/work/:workItemId" element={<WorkItemPage />} />
+        <Route path="/staff/refunds/:obligationId" element={<StaffRefundDetailPage />} />
         <Route path="/staff" element={<StaffTaskQueuePage />} />
       </Routes>
     </StaffSessionBoundary>,
@@ -844,130 +846,14 @@ describe('order evidence review panel', () => {
   });
 });
 
-describe('buyer refund legacy panel', () => {
-  it('keeps refund confirmation disabled while a financial request is pending', async () => {
-    let requestCount = 0;
-    let finish: () => void = () => {};
-    const gate = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
-    installRefundHandlers(async () => {
-      requestCount += 1;
-      await gate;
-      return refundConflict();
-    });
-    const user = userEvent.setup();
+describe('buyer refund work item routing', () => {
+  it('forwards BUYER_REFUND_PROCESSING work items to the refunds workbench', async () => {
+    installRefundHandlers(async () => refundConflict());
     renderWorkItemPage('work-refund');
-    await user.click(await screen.findByRole('button', { name: '冲正' }));
-    await user.click(screen.getByRole('button', { name: '确认' }));
-    expect(await screen.findByRole('button', { name: '处理中…' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '取消' })).toBeDisabled();
-    screen.getByRole('button', { name: '处理中…' }).click();
-    expect(requestCount).toBe(1);
-    finish();
     expect(
-      await screen.findByText(
-        '返款操作未完成。返款事实已被其他人更新，请刷新返款事实后再操作。（错误码：VERSION_CONFLICT）',
-      ),
+      await screen.findByText('返款处理'),
     ).toBeVisible();
-  });
-
-  it('shows the request id and a server-fact refresh after a rejected refund mutation', async () => {
-    installRefundHandlers(async () => refundConflict());
-    const user = userEvent.setup();
-    renderWorkItemPage('work-refund');
-    await user.click(await screen.findByRole('button', { name: '冲正' }));
-    await user.click(screen.getByRole('button', { name: '确认' }));
-    expect(await screen.findByText(/refund-version-conflict/u)).toBeVisible();
-    expect(screen.getByRole('button', { name: '刷新返款事实' })).toBeVisible();
-  });
-
-  it('records a payment converting yuan input into integer fen', async () => {
-    const paymentBodies: Record<string, unknown>[] = [];
-    installRefundHandlers(async () => refundConflict());
-    server.use(
-      http.post(apiUrl('/api/staff/file-uploads/buyer-refund-proofs/intents'), () =>
-        HttpResponse.json({
-          data: {
-            upload_intent_id: 'proof-intent', purpose: 'BUYER_REFUND_PROOF',
-            visibility: 'INTERNAL_ONLY', status: 'ISSUED', version: 1,
-            expires_at: 1_900_000_000_000,
-            uploads: [{
-              file_object_id: 'proof-file-1', slot_no: 1,
-              upload_token: 'proof-token'.padEnd(40, 'x'),
-              upload_token_available: true, expires_at: 1_900_000_000_000,
-            }],
-            replayed: false,
-          },
-          meta: { request_id: 'proof-intent' },
-        })),
-      http.put(apiUrl('/api/staff/file-uploads/proof-file-1/content'), () =>
-        HttpResponse.json({
-          data: {
-            file_object_id: 'proof-file-1', upload_intent_id: 'proof-intent',
-            status: 'UPLOADED', detected_mime: 'image/png', byte_size: 4,
-            sha256: 'a'.repeat(64), version: 2, replayed: false,
-          },
-          meta: { request_id: 'proof-upload' },
-        })),
-      http.post(apiUrl('/api/staff/file-upload-intents/proof-intent/complete'), () =>
-        HttpResponse.json({
-          data: {
-            upload_intent_id: 'proof-intent', status: 'VERIFIED', version: 2,
-            files: [{
-              file_object_id: 'proof-file-1', purpose: 'BUYER_REFUND_PROOF',
-              visibility: 'INTERNAL_ONLY', detected_mime: 'image/png',
-              byte_size: 4, sha256: 'a'.repeat(64), version: 3,
-            }],
-            replayed: false,
-          },
-          meta: { request_id: 'proof-complete' },
-        })),
-      http.post(apiUrl('/api/staff/buyer-refunds/refund-1/payments'), async ({ request }) => {
-        paymentBodies.push(await request.json() as Record<string, unknown>);
-        return HttpResponse.json({
-          data: {
-            obligation: buyerRefund,
-            payment: {
-              payment_entry_id: 'payment-2', amount_cny_fen: '14995',
-              paid_at: 1_787_100_000_000, china_business_date: '2026-08-23',
-              payment_channel: 'WECHAT', public_note: null, internal_note: null,
-              proofs: [],
-            },
-            replayed: false,
-          },
-          meta: { request_id: 'refund-payment' },
-        });
-      }),
-    );
-    const user = userEvent.setup();
-
-    renderWorkItemPage('work-refund');
-    await user.upload(
-      await screen.findByLabelText('买家返款凭证'),
-      new File([new Uint8Array([1, 2, 3, 4])], 'proof.png', { type: 'image/png' }),
-    );
-    expect(await screen.findByText('凭证：VERIFIED')).toBeVisible();
-    await user.type(screen.getByLabelText(/实际返款（元/), '149.95');
-    await user.click(screen.getByRole('button', { name: '记录' }));
-    expect(await screen.findByText('149.95 元')).toBeVisible();
-    expect(screen.getByText(/提交 14995 分/u)).toBeVisible();
-    await user.click(screen.getByRole('button', { name: '确认' }));
-    await screen.findByText('催办次数');
-    expect(paymentBodies).toHaveLength(1);
-    expect(paymentBodies[0]).toMatchObject({
-      amount_cny_fen: '14995',
-      proof_files: [{ file_object_id: 'proof-file-1', expected_file_version: 3 }],
-    });
-  });
-
-  it('shows buyer reminder facts without adding a task action', async () => {
-    installRefundHandlers(async () => refundConflict());
-    renderWorkItemPage('work-refund');
-    expect(await screen.findByText('催办次数')).toBeVisible();
-    expect(screen.getByText('2')).toBeVisible();
-    expect(screen.getByText('最后催办时间')).toBeVisible();
-    expect(screen.queryByRole('button', { name: /催返款/u })).not.toBeInTheDocument();
+    expect(screen.getByText(/返回返款工作台/u)).toBeVisible();
   });
 });
 

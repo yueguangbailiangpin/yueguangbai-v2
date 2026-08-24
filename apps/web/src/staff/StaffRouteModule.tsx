@@ -12,6 +12,7 @@ const loadStaffAcquisitionRoutes = () => import('./StaffAcquisitionRouteModule')
 const loadStaffCustomerIntakeRoutes = () => import('./StaffCustomerIntakeRouteModule');
 const loadStaffFinanceRoutes = () => import('./StaffFinanceRouteModule');
 const loadStaffOrdersRoutes = () => import('./StaffOrdersRouteModule');
+const loadStaffRefundsRoutes = () => import('./StaffRefundsRouteModule');
 const loadStaffWorkItemRoutes = () => import('./StaffWorkItemRouteModule');
 const loadStaffOperationsRoutes = () => import('./StaffOperationsRouteModule');
 
@@ -50,6 +51,8 @@ export function StaffRoutePage(): React.JSX.Element {
     return <RouteChunkBoundary load={loadStaffFinanceRoutes} />;
   if (/^\/staff\/orders\/[^/]+$/u.test(pathname))
     return <RouteChunkBoundary load={loadStaffOrdersRoutes} />;
+  if (pathname.startsWith('/staff/refunds'))
+    return <RouteChunkBoundary load={loadStaffRefundsRoutes} />;
   // The pre-batch rate center kept both legacy paths reachable without
   // redirects; the finance workspace now owns the page and the legacy paths
   // (including preflight deep links) forward with their query intact.

@@ -221,6 +221,8 @@ export function AppRoutes(): React.JSX.Element {
         <Route path="operations" element={<StaffRouteSlot />} />
         <Route path="finance" element={<StaffRouteSlot />} />
         <Route path="orders/:orderId" element={<StaffRouteSlot />} />
+        <Route path="refunds" element={<StaffRouteSlot />} />
+        <Route path="refunds/:obligationId" element={<StaffRouteSlot />} />
         <Route path="rate-center" element={<StaffRouteSlot />} />
         <Route path="seller-principal-rate-policies" element={<StaffRouteSlot />} />
         <Route path="products" element={<StaffRouteSlot />} />
@@ -329,6 +331,8 @@ export function ReviewRoutes(): React.JSX.Element {
         <Route path="operations" element={<StaffRouteSlot />} />
         <Route path="finance" element={<StaffRouteSlot />} />
         <Route path="orders/:orderId" element={<StaffRouteSlot />} />
+        <Route path="refunds" element={<StaffRouteSlot />} />
+        <Route path="refunds/:obligationId" element={<StaffRouteSlot />} />
         <Route path="rate-center" element={<StaffRouteSlot />} />
         <Route path="seller-principal-rate-policies" element={<StaffRouteSlot />} />
         <Route path="products" element={<StaffRouteSlot />} />

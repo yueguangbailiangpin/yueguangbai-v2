@@ -1074,6 +1074,17 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     return { order_evidence: clone(staffEvidence) };
   if (path.startsWith('/api/staff/reviews/') && method === 'GET' && !path.endsWith('/visibility'))
     return { review: clone(staffReview) };
+  if (path === '/api/staff/buyer-refunds' && method === 'GET') {
+    // 列表项是 detail 的严格子集（refundBase）；剥掉 payments 等扩展字段。
+    const {
+      source_review_event_id: _sourceReviewEventId,
+      review_case_id: _reviewCaseId,
+      payments: _payments,
+      reversals: _reversals,
+      ...listItem
+    } = clone(staffRefund);
+    return { items: [listItem], next_cursor: null };
+  }
   if (path.startsWith('/api/staff/buyer-refunds/') && method === 'GET')
     return { buyer_refund: clone(staffRefund) };
   if (/^\/api\/staff\/demand-batches\/[^/]+\/review-context$/u.test(path) && method === 'GET')

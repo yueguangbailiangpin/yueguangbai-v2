@@ -165,7 +165,12 @@ export function StaffTaskQueuePage(): React.JSX.Element {
     setClaimedVersion((version) => version + 1);
   }
   function open(item: StaffWorkItem): void {
-    void navigate(`/staff/work/${encodeURIComponent(item.work_item_id)}`);
+    // 返款待办直达返款工作台（P7b），其余走工作项分发面板。
+    void navigate(
+      item.work_type === 'BUYER_REFUND_PROCESSING'
+        ? `/staff/refunds/${encodeURIComponent(item.source_entity_id)}`
+        : `/staff/work/${encodeURIComponent(item.work_item_id)}`,
+    );
   }
   function refresh(): void {
     void openQuery.refetch();

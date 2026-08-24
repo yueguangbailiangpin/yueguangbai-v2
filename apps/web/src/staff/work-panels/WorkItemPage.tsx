@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Navigate, useNavigate, useParams } from 'react-router';
 import { z } from 'zod';
 import { identityApiRequest } from '../../api/identity-request';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
@@ -9,7 +9,6 @@ import type { StaffWorkItem } from '../contracts/runtime';
 import { SellerSettlementPanel, sellerSettlementCapabilities } from '../SellerSettlementPanel';
 import { staffWorkbenchKeys } from '../queries/keys';
 import { StaffPanelError } from '../shared/StaffPanelError';
-import { BuyerRefundLegacyPanel } from './BuyerRefundLegacyPanel';
 import { DemandReviewPanel } from './DemandReviewPanel';
 import { OrderEvidenceReviewPanel } from './OrderEvidenceReviewPanel';
 import { OrderInstructionPublishPanel } from './OrderInstructionPublishPanel';
@@ -155,9 +154,13 @@ export function WorkItemPage(): React.JSX.Element {
         <OrderEvidenceReviewPanel item={item} onCompleted={onCompleted} />
       ) : item.work_type === 'REVIEW_DECISION' ? (
         <ReviewDecisionPanel item={item} onCompleted={onCompleted} />
-      ) : (
-        <BuyerRefundLegacyPanel item={item} onCompleted={onCompleted} />
-      )}
+      ) : item.work_type === 'BUYER_REFUND_PROCESSING' ? (
+        // P7b：返款待办不再有独立面板，直达返款工作台对应记录。
+        <Navigate
+          to={`/staff/refunds/${encodeURIComponent(item.source_entity_id)}`}
+          replace
+        />
+      ) : null}
       {settlementVisible ? <SellerSettlementPanel item={item} /> : null}
     </main>
   );

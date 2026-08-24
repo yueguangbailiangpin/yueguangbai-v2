@@ -417,6 +417,27 @@
 }
 .staff-order-facts > li:last-child { border-bottom: 0; }
 .staff-order-progress-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.staff-refunds { min-width: 0; padding: 12px; display: grid; gap: 12px; align-content: start; }
+.staff-refund-rows { display: grid; }
+.staff-refund-row {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+  justify-content: space-between;
+  padding: 10px 2px; border-bottom: 1px solid #e9edf2; font-size: .78rem;
+}
+.staff-refund-row:last-child { border-bottom: 0; }
+.staff-refund-row.is-settled { opacity: .62; }
+.staff-refund-row-main { display: grid; gap: 3px; min-width: 0; }
+.staff-refund-row-main > span { color: var(--mw-muted); font-size: .72rem; }
+.staff-refund-row-side { display: flex; align-items: center; gap: 10px; }
+.staff-refund-open { font-size: .78rem; white-space: nowrap; }
+.staff-refund-detail-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-content: start; }
+.staff-payment-rows { display: grid; }
+.staff-payment-row {
+  display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+  justify-content: space-between;
+  padding: 7px 2px; border-bottom: 1px solid #e9edf2; font-size: .74rem;
+}
+.staff-payment-row:last-child { border-bottom: 0; }
 .staff-order-timeline { margin: 0; padding: 0; list-style: none; }
 .staff-order-timeline > li {
   display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline;

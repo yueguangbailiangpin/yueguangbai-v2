@@ -66,6 +66,67 @@ describe('application route registration', () => {
     expect(screen.getByRole('heading', { level: 3, name: '今天生效' })).toBeVisible();
   });
 
+  it('mounts the buyer refund workbench under /staff/refunds', async () => {
+    server.use(
+      http.get(apiUrl('/api/staff-auth/session'), () =>
+        HttpResponse.json(
+          staffSessionEnvelopeFixture(staffSessionFixture, 'request-staff-refunds-route'),
+        ),
+      ),
+      http.get(apiUrl('/api/staff/buyer-refunds'), () =>
+        HttpResponse.json({
+          data: {
+            items: [
+              {
+                obligation_id: 'route-refund-1',
+                buyer_customer_id: 'buyer-1',
+                formal_order_id: 'order-1',
+                due_amount_cny_fen: '10000',
+                gross_paid_cny_fen: '5000',
+                reversed_cny_fen: '0',
+                net_paid_cny_fen: '5000',
+                outstanding_amount_cny_fen: '5000',
+                overpaid_amount_cny_fen: '0',
+                status: 'PARTIALLY_PAID',
+                version: 2,
+                created_at: 1_787_000_000_000,
+                updated_at: 1_787_000_000_000,
+                reminder_count: 0,
+                last_reminded_at: null,
+                buyer: { buyer_customer_id: 'buyer-1', buyer_customer_no: 'B-1' },
+                order: {
+                  formal_order_id: 'order-1',
+                  marketplace: 'JP',
+                  amazon_order_number_normalized: '503-5555555-6666666',
+                  product_id: 'product-1',
+                  asin: 'B000000001',
+                },
+                workflow: {
+                  work_item_id: null,
+                  assigned_staff_id: null,
+                  assigned_team_id: null,
+                  fixed_assignment_id: null,
+                },
+              },
+            ],
+            next_cursor: null,
+          },
+          meta: { request_id: 'request-staff-refunds-list' },
+        }),
+      ),
+    );
+
+    renderWithMsw(<AppRoutes />, { route: '/staff/refunds' });
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: '返款工作台' }),
+    ).toBeVisible();
+    expect(await screen.findByRole('link', { name: '去处理' })).toHaveAttribute(
+      'href',
+      '/staff/refunds/route-refund-1',
+    );
+  });
+
   it('redirects the legacy rate center paths to /staff/finance with the query intact', async () => {
     server.use(
       http.get(apiUrl('/api/staff-auth/session'), () =>

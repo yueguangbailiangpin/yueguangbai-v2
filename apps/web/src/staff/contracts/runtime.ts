@@ -577,6 +577,15 @@ const refundBase = z
     workflow,
   })
   .strict();
+export const staffBuyerRefundListSchema = z
+  .object({
+    items: z.array(refundBase),
+    next_cursor: z.string().nullable(),
+  })
+  .strict();
+export type StaffBuyerRefundListItem = z.output<
+  typeof staffBuyerRefundListSchema
+>['items'][number];
 export const staffBuyerRefundSchema = z
   .object({
     buyer_refund: refundBase
