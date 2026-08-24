@@ -82,6 +82,10 @@ export interface SellerSettlementSummaryDto {
   outstanding_service_fee_cny_fen: FixedIntegerString;
   total_outstanding_cny_fen: FixedIntegerString;
   unallocated_credit_cny_fen: FixedIntegerString;
+  /** 卖家结算收款人姓名（P16；null = 未填写，员工结算面板提示后补）。 */
+  settlement_account_name: string | null;
+  /** 卖家结算收款支付宝账号（P16；null = 未填写）。 */
+  settlement_account_identifier: string | null;
 }
 
 export type SellerPayablePageDto = SellerPortalPage<SellerPayableDto>;

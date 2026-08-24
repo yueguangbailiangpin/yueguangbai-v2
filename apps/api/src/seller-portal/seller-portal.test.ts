@@ -113,6 +113,98 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(serialized).not.toContain('member-owner-2');
   });
 
+  it('saves the settlement account for settlement roles and re-reads it in me', async () => {
+    const app = testApp();
+
+    const before = await request(app, '/api/seller-portal/me', {
+      headers: { Cookie: await cookie('owner') },
+    });
+    expect((await json<any>(before)).data.me.organization)
+      .toMatchObject({
+        settlement_account_name: null,
+        settlement_account_identifier: null,
+      });
+
+    const viewerAttempt = await request(
+      app,
+      '/api/seller-portal/me/settlement-account',
+      {
+        method: 'PATCH',
+        headers: await stateHeaders('viewer', 'settlement-account-viewer'),
+        body: JSON.stringify({
+          account_name: '卖家一',
+          account_identifier: 'seller@example.test',
+        }),
+      },
+    );
+    expect(viewerAttempt.status).toBe(403);
+
+    const invalid = await request(
+      app,
+      '/api/seller-portal/me/settlement-account',
+      {
+        method: 'PATCH',
+        headers: await stateHeaders('owner', 'settlement-account-invalid'),
+        body: JSON.stringify({
+          account_name: '卖家一',
+          account_identifier: 'x',
+        }),
+      },
+    );
+    expect(invalid.status).toBe(400);
+    await expect(json(invalid)).resolves.toMatchObject({
+      error: { code: 'VALIDATION_ERROR' },
+    });
+
+    const saved = await request(
+      app,
+      '/api/seller-portal/me/settlement-account',
+      {
+        method: 'PATCH',
+        headers: await stateHeaders('owner', 'settlement-account-save'),
+        body: JSON.stringify({
+          account_name: ' 卖家一 ',
+          account_identifier: 'seller@example.test',
+        }),
+      },
+    );
+    expect(saved.status).toBe(200);
+    await expect(json(saved)).resolves.toMatchObject({
+      data: {
+        me: {
+          organization: {
+            settlement_account_name: '卖家一',
+            settlement_account_identifier: 'seller@example.test',
+          },
+        },
+      },
+    });
+
+    // 幂等重放：同值重复提交结果一致。
+    const replay = await request(
+      app,
+      '/api/seller-portal/me/settlement-account',
+      {
+        method: 'PATCH',
+        headers: await stateHeaders('finance', 'settlement-account-replay'),
+        body: JSON.stringify({
+          account_name: '卖家一',
+          account_identifier: 'seller@example.test',
+        }),
+      },
+    );
+    expect(replay.status).toBe(200);
+
+    const stored = await database!.prepare(`
+      SELECT settlement_account_name, settlement_account_identifier
+      FROM seller_organizations WHERE id='org-1'
+    `).first<{ settlement_account_name: string; settlement_account_identifier: string }>();
+    expect(stored).toEqual({
+      settlement_account_name: '卖家一',
+      settlement_account_identifier: 'seller@example.test',
+    });
+  });
+
   it('enforces organization and store scope with 404-style resource handling', async () => {
     const app = testApp();
     const ownerProduct = await request(

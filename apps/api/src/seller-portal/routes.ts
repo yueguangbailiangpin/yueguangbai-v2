@@ -44,6 +44,10 @@ import {
   requireScopedProductApplication,
   requireScopedStore,
 } from './queries';
+import {
+  parseSellerSettlementAccountInput,
+  updateSellerSettlementAccount,
+} from './update-settlement-account';
 
 export function registerSellerPortalRoutes(app: Hono<any>): void {
   const session = customerSessionMiddleware();
@@ -53,6 +57,12 @@ export function registerSellerPortalRoutes(app: Hono<any>): void {
     '/api/seller-portal/me',
     session,
     withSellerPortalErrors(me),
+  );
+  app.patch(
+    '/api/seller-portal/me/settlement-account',
+    origin,
+    session,
+    withSellerPortalErrors(updateSettlementAccount),
   );
   app.get(
     '/api/seller-portal/stores',
@@ -129,6 +139,28 @@ export function registerSellerPortalRoutes(app: Hono<any>): void {
 async function me(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
   return success(context, { me: actor.me });
+}
+
+async function updateSettlementAccount(
+  context: Context<any>,
+): Promise<Response> {
+  const body = await readObject(context);
+  const input = parseSellerSettlementAccountInput(body);
+  const actor = await resolveSellerPortalActor(context);
+  // P16：结算账户写入限 OWNER / OPERATIONS / FINANCE；VIEWER 只读。
+  if (actor.role !== 'OWNER'
+    && actor.role !== 'OPERATIONS'
+    && actor.role !== 'FINANCE') {
+    throw new SellerPortalError('FORBIDDEN', 403);
+  }
+  await updateSellerSettlementAccount(
+    context.env.DB,
+    actor.sellerOrganizationId,
+    input,
+    Date.now(),
+  );
+  const refreshed = await resolveSellerPortalActor(context);
+  return success(context, { me: refreshed.me });
 }
 
 async function stores(context: Context<any>): Promise<Response> {

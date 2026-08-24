@@ -38,6 +38,8 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '200',
               total_outstanding_cny_fen: '300',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'unexpected-settlement' },
@@ -78,6 +80,8 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '0',
               total_outstanding_cny_fen: '0',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'seller-settlement-finance' },
@@ -87,6 +91,12 @@ describe('Seller formal-order chat screenshot UI', () => {
         HttpResponse.json({
           data: { items: [], page: { limit: 100, next_cursor: null } },
           meta: { request_id: 'seller-payables-finance' },
+        }),
+      ),
+      http.get(apiUrl('/api/seller-portal/settlement/payments'), () =>
+        HttpResponse.json({
+          data: { items: [], page: { limit: 100, next_cursor: null } },
+          meta: { request_id: 'seller-payments-finance' },
         }),
       ),
     );
@@ -168,6 +178,8 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '200',
               total_outstanding_cny_fen: '300',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'seller-settlement-owner' },
@@ -178,6 +190,13 @@ describe('Seller formal-order chat screenshot UI', () => {
         return HttpResponse.json({
           data: { items: [], page: { limit: 100, next_cursor: null } },
           meta: { request_id: 'seller-payables-owner' },
+        });
+      }),
+      http.get(apiUrl('/api/seller-portal/settlement/payments'), ({ request }) => {
+        settlementRequests.push(request.url);
+        return HttpResponse.json({
+          data: { items: [], page: { limit: 100, next_cursor: null } },
+          meta: { request_id: 'seller-payments-owner' },
         });
       }),
     );
@@ -193,13 +212,13 @@ describe('Seller formal-order chat screenshot UI', () => {
         '这里显示整个组织（含已停用店铺）的历史账目，不随上方店铺筛选变化。',
       ),
     ).toBeVisible();
-    expect(settlementRequests).toHaveLength(2);
+    expect(settlementRequests).toHaveLength(3);
     expect(settlementRequests.every((url) => !new URL(url).searchParams.has('store_id'))).toBe(
       true,
     );
     await userEvent.selectOptions(screen.getByRole('combobox', { name: '店铺' }), 'store-1');
     expect(screen.getByRole('combobox', { name: '店铺' })).toHaveValue('store-1');
-    expect(settlementRequests).toHaveLength(2);
+    expect(settlementRequests).toHaveLength(3);
   });
 
   it('renders list status without issuing a screenshot read until the user asks', async () => {
@@ -421,6 +440,8 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '0',
               total_outstanding_cny_fen: '0',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'seller-settlement' },
@@ -444,6 +465,8 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '200',
               total_outstanding_cny_fen: '300',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'seller-settlement' },
@@ -491,6 +514,8 @@ function sellerMe() {
       name: '卖家组织',
       marketplace_code: 'JP',
       status: 'ACTIVE',
+      settlement_account_name: null,
+      settlement_account_identifier: null,
     },
     access: {
       read_scope: 'ASSIGNED_STORES',

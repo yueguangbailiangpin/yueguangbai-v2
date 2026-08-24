@@ -15,6 +15,8 @@ interface SellerMemberRow {
   organization_name: string;
   marketplace_code: 'JP';
   organization_status: string;
+  settlement_account_name: string | null;
+  settlement_account_identifier: string | null;
 }
 export interface SellerPortalActor {
   accountId: string;
@@ -51,6 +53,8 @@ export async function resolveSellerPortalActor(context: Context<any>): Promise<S
       name: row.organization_name,
       marketplace_code: row.marketplace_code,
       status: 'ACTIVE' as const,
+      settlement_account_name: row.settlement_account_name,
+      settlement_account_identifier: row.settlement_account_identifier,
     }),
     access: Object.freeze({
       read_scope: access.allActiveStores ? ('ORGANIZATION' as const) : ('ASSIGNED_STORES' as const),
@@ -84,7 +88,8 @@ async function requireSellerMemberByIdentity(
   const rows = await database
     .prepare(
       `SELECT member.id AS member_id,member.organization_id,member.display_name,member.role,member.primary_owner,
-      member.status AS member_status,organization.seller_code,organization.organization_name,organization.marketplace_code,organization.status AS organization_status
+      member.status AS member_status,organization.seller_code,organization.organization_name,organization.marketplace_code,organization.status AS organization_status,
+      organization.settlement_account_name,organization.settlement_account_identifier
     FROM seller_organization_members member JOIN seller_organizations organization ON organization.id=member.organization_id
     WHERE member.identity_subject_id=? AND member.status='ACTIVE' AND organization.status='ACTIVE'
     ORDER BY member.organization_id,member.id LIMIT 2`,

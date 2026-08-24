@@ -42,6 +42,8 @@ export const sellerMeSchema = z
             name: z.string(),
             marketplace_code: z.literal('JP'),
             status: z.literal('ACTIVE'),
+            settlement_account_name: z.string().nullable(),
+            settlement_account_identifier: z.string().nullable(),
           })
           .strict(),
         access: z
@@ -252,6 +254,8 @@ export const sellerSettlementSummarySchema = z
         outstanding_service_fee_cny_fen: integerString,
         total_outstanding_cny_fen: integerString,
         unallocated_credit_cny_fen: integerString,
+        settlement_account_name: z.string().nullable(),
+        settlement_account_identifier: z.string().nullable(),
       })
       .strict(),
   })
@@ -436,6 +440,38 @@ export const sellerReviewsSchema = z
   })
   .strict();
 export type SellerReviewStatus = z.infer<typeof sellerReviewsSchema>['items'][number]['status'];
+export const sellerPaymentsSchema = z
+  .object({
+    items: z.array(
+      z
+        .object({
+          payment_id: z.string(),
+          amount_cny_fen: integerString,
+          paid_at: epoch,
+          recorded_at: epoch,
+          allocated_amount_cny_fen: integerString,
+          unallocated_amount_cny_fen: integerString,
+          status: z.enum(['REVERSED', 'UNALLOCATED', 'PARTIALLY_ALLOCATED', 'FULLY_ALLOCATED']),
+          version: z.number().int().positive(),
+          allocations: z.array(
+            z
+              .object({
+                allocation_id: z.string(),
+                payable_id: z.string(),
+                payable_type: z.enum(['SELLER_PRINCIPAL', 'SELLER_SERVICE_FEE']),
+                allocated_amount_cny_fen: integerString,
+                reversed_amount_cny_fen: integerString,
+                net_amount_cny_fen: integerString,
+                allocated_at: epoch,
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
+    ),
+    page,
+  })
+  .strict();
 export const sellerPayablesSchema = z
   .object({
     items: z.array(

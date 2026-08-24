@@ -83,6 +83,12 @@ const payableStatusLabel = {
   PARTIALLY_PAID: '部分结算',
   PAID: '已完成',
 } as const;
+const paymentStatusLabel = {
+  REVERSED: '已冲正',
+  UNALLOCATED: '待分配',
+  PARTIALLY_ALLOCATED: '部分分配',
+  FULLY_ALLOCATED: '已分配',
+} as const;
 const taskTypeLabel = {
   RATING: '评分评价',
   TEXT: '文字评价',
@@ -949,6 +955,11 @@ export function SellerSettlementsPage(): React.JSX.Element {
     queryKey: sellerQueryKeys.payablesPage,
     queryFn: (cursor, signal) => sellerApi.payables(client, cursor, signal),
   });
+  const payments = useSellerCursorPages({
+    resetKey: 'seller-payments:100',
+    queryKey: sellerQueryKeys.paymentsPage,
+    queryFn: (cursor, signal) => sellerApi.settlementPayments(client, cursor, signal),
+  });
   const settlementScope =
     readScope === 'ORGANIZATION'
       ? '这里显示整个组织（含已停用店铺）的历史账目，不随上方店铺筛选变化。'
@@ -1015,6 +1026,57 @@ export function SellerSettlementsPage(): React.JSX.Element {
         retryLabel="重试结算项目"
         errorMessage="后一页结算项目暂时无法读取，已加载项目仍会保留。"
       />
+      <Card className="seller-payment-history">
+        <h3>打款记录</h3>
+        <p>工作人员登记的每一笔结算打款；金额、时间与当期分配去向。</p>
+        {payments.isInitialPending ? (
+          <p role="status">打款记录加载中…</p>
+        ) : payments.initialError ? (
+          <Alert tone="warning">打款记录暂时用不了，刷新重试；不影响上方账目。</Alert>
+        ) : payments.items.length === 0 ? (
+          <p>暂无打款记录。</p>
+        ) : (
+          <div className="seller-record-list">
+            {payments.items.map((payment) => (
+              <RecordCard
+                key={payment.payment_id}
+                title={`${cny(payment.amount_cny_fen)} 打款`}
+                meta={formatShanghai(payment.paid_at)}
+                status={paymentStatusLabel[payment.status]}
+                statusTone={payment.status === 'REVERSED' ? 'warning' : 'success'}
+              >
+                <FactGrid>
+                  <Fact label="打款金额" value={cny(payment.amount_cny_fen)} />
+                  <Fact label="打款时间" value={formatShanghai(payment.paid_at)} />
+                  <Fact label="登记时间" value={formatShanghai(payment.recorded_at)} />
+                  <Fact label="已分配" value={cny(payment.allocated_amount_cny_fen)} />
+                  <Fact label="待分配" value={cny(payment.unallocated_amount_cny_fen)} />
+                  {payment.allocations.map((allocation) => (
+                    <Fact
+                      key={allocation.allocation_id}
+                      label={
+                        allocation.payable_type === 'SELLER_PRINCIPAL'
+                          ? '分配至本金'
+                          : '分配至服务费'
+                      }
+                      value={`${cny(allocation.net_amount_cny_fen)} · ${formatShanghai(allocation.allocated_at)}`}
+                    />
+                  ))}
+                </FactGrid>
+              </RecordCard>
+            ))}
+          </div>
+        )}
+        <CursorPagination
+          {...payments}
+          onLoadMore={payments.loadMore}
+          onRetry={payments.retryLater}
+          loadLabel="加载更多打款记录"
+          loadingLabel="正在加载更多打款记录"
+          retryLabel="重试打款记录"
+          errorMessage="后一页打款记录暂时无法读取，已加载记录仍会保留。"
+        />
+      </Card>
     </section>
   );
 }

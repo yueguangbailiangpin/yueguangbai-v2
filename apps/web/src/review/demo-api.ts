@@ -58,6 +58,8 @@ function sellerMe() {
         name: '月光白 Demo 卖家组织',
         marketplace_code: 'JP',
         status: 'ACTIVE',
+        settlement_account_name: null,
+        settlement_account_identifier: null,
       },
       access: {
         read_scope: role === 'OWNER' || role === 'FINANCE' ? 'ORGANIZATION' : 'ASSIGNED_STORES',
@@ -993,6 +995,8 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         outstanding_service_fee_cny_fen: '128450',
         total_outstanding_cny_fen: '715250',
         unallocated_credit_cny_fen: '37600',
+        settlement_account_name: null,
+        settlement_account_identifier: null,
       },
     };
   if (path === '/api/seller-portal/settlement/payables' && method === 'GET')

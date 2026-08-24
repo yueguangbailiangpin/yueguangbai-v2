@@ -17,4 +17,5 @@ export const sellerQueryKeys = Object.freeze({
   settlement: ['seller', 'settlement'] as const,
   payables: ['seller', 'settlement', 'payables'] as const,
   payablesPage: (cursor: string | null) => ['seller', 'settlement', 'payables', cursor] as const,
+  paymentsPage: (cursor: string | null) => ['seller', 'settlement', 'payments', cursor] as const,
 });

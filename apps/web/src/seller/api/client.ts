@@ -8,6 +8,7 @@ import {
   sellerFormalOrdersSchema,
   sellerMeSchema,
   sellerPayablesSchema,
+  sellerPaymentsSchema,
   sellerDemandMutationSchema,
   sellerProductsSchema,
   sellerReviewsSchema,
@@ -27,6 +28,19 @@ function get<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
     method: 'GET',
     schema,
     ...(signal ? { signal } : {}),
+  });
+}
+function patch<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
+  client: QueryClient,
+  path: string,
+  schema: T,
+  body: unknown,
+) {
+  return identityApiRequest('seller', client, {
+    path,
+    method: 'PATCH',
+    schema,
+    body,
   });
 }
 function post<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
@@ -62,6 +76,15 @@ function listPath(
 export const sellerApi = Object.freeze({
   me: (client: QueryClient, signal?: AbortSignal) =>
     get(client, '/api/seller-portal/me', sellerMeSchema, signal),
+  updateSettlementAccount: (
+    client: QueryClient,
+    accountName: string,
+    accountIdentifier: string,
+  ) =>
+    patch(client, '/api/seller-portal/me/settlement-account', sellerMeSchema, {
+      account_name: accountName,
+      account_identifier: accountIdentifier,
+    }),
   stores: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
     get(client, listPath('/api/seller-portal/stores', cursor), sellerStoresSchema, signal),
   createStore: (client: QueryClient, body: unknown, key: string, signal?: AbortSignal) =>
@@ -192,6 +215,13 @@ export const sellerApi = Object.freeze({
     ),
   settlement: (client: QueryClient, signal?: AbortSignal) =>
     get(client, '/api/seller-portal/settlement/summary', sellerSettlementSummarySchema, signal),
+  settlementPayments: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
+    get(
+      client,
+      listPath('/api/seller-portal/settlement/payments', cursor),
+      sellerPaymentsSchema,
+      signal,
+    ),
   payables: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
     get(
       client,

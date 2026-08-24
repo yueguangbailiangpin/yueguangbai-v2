@@ -222,6 +222,8 @@ function actor(
       organization: {
         id: sellerOrganizationId, seller_code: 'fixture',
         name: 'fixture', marketplace_code: 'JP', status: 'ACTIVE',
+        settlement_account_name: null,
+        settlement_account_identifier: null,
       },
       access: {
         read_scope: 'ASSIGNED_STORES', store_ids: storeIds,

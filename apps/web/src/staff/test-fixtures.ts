@@ -99,6 +99,8 @@ export const settlementSummary = {
   outstanding_service_fee_cny_fen: '12000',
   total_outstanding_cny_fen: '92000',
   unallocated_credit_cny_fen: '3000',
+  settlement_account_name: null,
+  settlement_account_identifier: null,
 } satisfies SettlementSummary;
 
 export const settlementPayables = [

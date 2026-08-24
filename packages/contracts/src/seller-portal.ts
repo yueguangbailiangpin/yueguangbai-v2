@@ -52,6 +52,10 @@ export interface SellerPortalMeDto {
     name: string;
     marketplace_code: 'JP';
     status: 'ACTIVE';
+    /** 结算收款人姓名（P16；null = 未填写，设置页可后补）。 */
+    settlement_account_name: string | null;
+    /** 结算收款支付宝账号（P16；null = 未填写）。 */
+    settlement_account_identifier: string | null;
   };
   access: {
     read_scope: 'ORGANIZATION' | 'ASSIGNED_STORES';

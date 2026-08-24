@@ -736,6 +736,8 @@ export const settlementSummarySchema = z
         outstanding_service_fee_cny_fen: integerString,
         total_outstanding_cny_fen: integerString,
         unallocated_credit_cny_fen: integerString,
+        settlement_account_name: z.string().nullable(),
+        settlement_account_identifier: z.string().nullable(),
       })
       .strict(),
   })

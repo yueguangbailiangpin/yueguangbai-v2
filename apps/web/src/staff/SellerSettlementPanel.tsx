@@ -103,6 +103,19 @@ export function SellerSettlementPanel({ item }: { item: StaffWorkItem }): React.
           <Fact label="组织" value={organizationId} />
           <Fact label="店铺" value={item.store_id ?? '当前工作项未绑定店铺'} />
           <Fact label="Marketplace" value="以业务详情返回数据为准；韩国站不可用" />
+          {summary.data === undefined ? null
+            : summary.data.settlement_account_name === null
+              || summary.data.settlement_account_identifier === null ? (
+              <Fact
+                label="卖家收款账户"
+                value="未填写——可请卖家在设置页补充后带出（卖家结算无承诺期限）"
+              />
+            ) : (
+              <Fact
+                label="卖家收款账户"
+                value={`${summary.data.settlement_account_name}（支付宝 ${summary.data.settlement_account_identifier}）`}
+              />
+            )}
         </Card>
         {summary.isError ? (
           <StaffPanelError

@@ -196,6 +196,8 @@ function sellerMember(
       name: '咖啡秤',
       marketplace_code: 'JP' as const,
       status: 'ACTIVE' as const,
+      settlement_account_name: null,
+      settlement_account_identifier: null,
     },
     access: {
       read_scope: 'ORGANIZATION' as const,

@@ -22,6 +22,8 @@ describe('Seller runtime DTO allowlists', () => {
           organization: {
             id: 'organization-1', seller_code: 'seller-1',
             name: '卖家组织', marketplace_code: 'JP', status: 'ACTIVE',
+            settlement_account_name: null,
+            settlement_account_identifier: null,
           },
           access: {
             read_scope: role === 'OWNER'

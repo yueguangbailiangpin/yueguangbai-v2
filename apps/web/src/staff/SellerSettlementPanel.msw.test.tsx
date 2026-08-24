@@ -35,6 +35,10 @@ describe('canonical Seller Settlement panel', () => {
     expect(screen.getAllByText('本金').length).toBeGreaterThan(0);
     expect(screen.getAllByText('服务费').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '查看凭证' })).toBeVisible();
+    // P16：卖家收款账户缺失=温和提示（卖家结算无承诺期限，不标红）。
+    expect(
+      screen.getByText(/未填写——可请卖家在设置页补充后带出/u),
+    ).toBeVisible();
     expect(screen.getByLabelText('卖家结算付款凭证')).toHaveAttribute(
       'accept',
       'image/jpeg,image/png,image/webp',
