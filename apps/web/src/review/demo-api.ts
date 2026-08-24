@@ -1076,6 +1076,38 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     return { order_evidence: clone(staffEvidence) };
   if (path.startsWith('/api/staff/reviews/') && method === 'GET' && !path.endsWith('/visibility'))
     return { review: clone(staffReview) };
+  if (path === '/api/staff/search' && method === 'GET') {
+    const query = parsed.searchParams.get('q') ?? '';
+    return {
+      query,
+      buyers: query.includes('张') || query.toLowerCase().includes('zhang')
+        ? [{
+          buyer_customer_id: 'review-buyer-customer-1',
+          buyer_customer_no: 'B-DEMO-001',
+          display_name: '张三丰（演示）',
+          marketplace_code: 'JP',
+        }]
+        : [],
+      products: query.toLowerCase().startsWith('b0') || query.includes('杯')
+        ? [{
+          product_id: 'review-product-1',
+          product_name: '轻量保温随行杯',
+          asin_display: 'B0DEMO001X',
+          marketplace_code: 'JP',
+          status: 'ACTIVE',
+        }]
+        : [],
+      orders: [],
+      demands: query.includes('杯')
+        ? [{
+          demand_batch_id: 'review-seller-demand-1',
+          product_name: '轻量保温随行杯',
+          status: 'PUBLISHED',
+          marketplace_code: 'JP',
+        }]
+        : [],
+    };
+  }
   if (path === '/api/staff/buyer-refunds' && method === 'GET') {
     // 列表项是 detail 的严格子集（refundBase）；剥掉 payments 等扩展字段。
     const {

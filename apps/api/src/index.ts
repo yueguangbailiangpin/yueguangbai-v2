@@ -64,6 +64,7 @@ import { registerOperationalReadinessRoutes } from './operational-readiness/rout
 import { registerOperationalAlertAttestationRoutes } from './operational-readiness/alert-attestation';
 import { registerOperatingIntegrityRoutes } from './operating-integrity/routes';
 import { registerAdvancePrincipalLookupRoute } from './operating-integrity/advance-principal-lookup-route';
+import { registerStaffSearchRoutes } from './staff-search/routes';
 import { registerProductionRecoveryAttestationRoutes } from './production-readiness/recovery-attestation-routes';
 import { registerFormalOrderPolicyGuards } from './formal-order-policy-routes';
 
@@ -94,6 +95,7 @@ registerCustomerLoginIdentifierChangeRoutes(app);
 registerExistingCustomerLeadGuard(app);
 registerOperatingIntegrityRoutes(app);
 registerAdvancePrincipalLookupRoute(app);
+registerStaffSearchRoutes(app);
 registerProductionRecoveryAttestationRoutes(app);
 registerOperationalAlertAttestationRoutes(app);
 registerAcquisitionPrivacyRoutes(app);

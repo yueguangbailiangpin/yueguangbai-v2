@@ -12,6 +12,7 @@ import {
   settlementSummarySchema,
   staffBuyerRefundSchema,
   staffBuyerRefundListSchema,
+  staffSearchSchema,
   staffOrderEvidenceSchema,
   staffOrderEvidencePreflightSchema,
   staffReviewSchema,
@@ -473,6 +474,13 @@ export const staffApi = Object.freeze({
       body,
       reviewMutationSchema,
       key,
+    ),
+  search: (client: QueryClient, query: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/search?q=${encodeURIComponent(query)}`,
+      staffSearchSchema,
+      signal,
     ),
   buyerRefunds: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
     read(

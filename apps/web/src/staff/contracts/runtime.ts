@@ -579,6 +579,54 @@ const refundBase = z
     workflow,
   })
   .strict();
+export const staffSearchSchema = z
+  .object({
+    query: z.string(),
+    buyers: z.array(
+      z
+        .object({
+          buyer_customer_id: z.string(),
+          buyer_customer_no: z.string().nullable(),
+          display_name: z.string(),
+          marketplace_code: z.string(),
+        })
+        .strict(),
+    ),
+    products: z.array(
+      z
+        .object({
+          product_id: z.string(),
+          product_name: z.string(),
+          asin_display: z.string(),
+          marketplace_code: z.string(),
+          status: z.string(),
+        })
+        .strict(),
+    ),
+    orders: z.array(
+      z
+        .object({
+          formal_order_id: z.string(),
+          amazon_order_number_normalized: z.string(),
+          asin_display: z.string(),
+          marketplace_code: z.string(),
+        })
+        .strict(),
+    ),
+    demands: z.array(
+      z
+        .object({
+          demand_batch_id: z.string(),
+          product_name: z.string(),
+          status: z.string(),
+          marketplace_code: z.string(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type StaffSearchResults = z.output<typeof staffSearchSchema>;
+
 export const staffBuyerRefundListSchema = z
   .object({
     items: z.array(refundBase),

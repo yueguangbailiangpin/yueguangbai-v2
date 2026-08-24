@@ -17,6 +17,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from '../auth/staff/staff-auth-controller';
 import { Button, Dialog, IdentityShell, RequestIdDisplay } from '../ui/primitives';
+import { GlobalSearchDropdown } from './shared/GlobalSearchDropdown';
 
 const MARKET_LABELS: Record<string, string> = {
   AMAZON_JP: '亚马逊日本站',
@@ -278,6 +279,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
             <p>{context}</p>
             <h1>{title}</h1>
           </div>
+          {role !== 'acquisition' ? <GlobalSearchDropdown /> : null}
           <div className="staff-session-context">
             <span>{session.display_name}</span>
             <strong>{session.role.display_name}</strong>
