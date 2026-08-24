@@ -922,8 +922,20 @@ function InvitationResult({
         <Button className="danger" loading={revokeBusy} onClick={onRevoke}>
           撤销此链接
         </Button>
+        <Button
+          className="secondary"
+          onClick={() => {
+            // 一键复制（D1）：优先剪贴板 API，失败时回退选中只读输入框。
+            void navigator.clipboard?.writeText(state.link).catch(() => {
+              const input = document.getElementById(`invite-${state.id}`);
+              if (input instanceof HTMLInputElement) input.select();
+            });
+          }}
+        >
+          一键复制链接
+        </Button>
         <Button className="secondary" onClick={onClear}>
-          我已复制
+          我已发送
         </Button>
       </div>
     </div>

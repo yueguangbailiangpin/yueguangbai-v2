@@ -7,8 +7,9 @@ import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 export function registerBuyerInvitationDutyGuard(app:Hono<any>):void{
   const guard=async(context:any,next:any)=>{
     const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
-    if(!actor||actor.staffStatus!=='ACTIVE'||(!actor.roles.has('owner')&&!actor.roles.has('pre_sales'))){
-      return context.json(apiFailure('FORBIDDEN','只有售前或总管理员可以处理买家注册链接',requestIdFromContext(context)),403);
+    // D1：签发权限开放 pre_sales 与 acquisition（获客岗位在其数据范围内签发）。
+    if(!actor||actor.staffStatus!=='ACTIVE'||(!actor.roles.has('owner')&&!actor.roles.has('pre_sales')&&!actor.roles.has('acquisition'))){
+      return context.json(apiFailure('FORBIDDEN','只有售前、获客或总管理员可以处理买家注册链接',requestIdFromContext(context)),403);
     }
     if(context.req.method==='POST'&&context.req.path==='/api/staff/customer-security/buyer-invitations'&&!actor.roles.has('owner')){
       try{
