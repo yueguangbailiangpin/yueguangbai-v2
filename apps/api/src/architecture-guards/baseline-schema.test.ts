@@ -3,11 +3,12 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 
-// Stage 3 clean baseline schema suite (D-054). This file carries the
-// still-valid schema assertions previously anchored on the legacy per-number
-// migration tests (0021/0023/0027/0028/0030/0036/0037/0043/0062-0071), which
-// retired with the old 0001-0075 chain. Mid-chain upgrade-path semantics are
-// gone by design; everything below asserts the applied final baseline state.
+// Clean baseline schema suite (D-054). This file carries the still-valid
+// schema assertions previously anchored on the legacy per-number migration
+// tests (0021/0023/0027/0028/0030/0036/0037/0043/0062-0071), which retired
+// with the old 0001-0075 chain. Mid-chain upgrade-path semantics are gone by
+// design; everything below asserts the applied final baseline state
+// (0001-0019 stage 3 + 0020 marketplace canonical unification stage 4).
 
 let database: SqliteDatabase | null = null;
 afterEach(() => {
@@ -18,14 +19,14 @@ afterEach(() => {
 const root = path.resolve(import.meta.dirname, '../../../..');
 
 describe('stage 3 clean baseline schema', () => {
-  it('is one continuous 0001-0019 chain ending at schema version 19', () => {
+  it('is one continuous 0001-0023 chain ending at schema version 21', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(23);
     expect(migrations.map((name) => Number(name.slice(0, 4))))
-      .toEqual(Array.from({ length: 19 }, (_, index) => index + 1));
-    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
+      .toEqual(Array.from({ length: 23 }, (_, index) => index + 1));
+    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
     for (const file of migrations) {
       const source = readFileSync(path.join(root, 'migrations', file), 'utf8');
       expect(source).not.toMatch(/SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu);
@@ -33,12 +34,12 @@ describe('stage 3 clean baseline schema', () => {
     }
   });
 
-  it('applies to an empty database in one pass at version 19', () => {
+  it('applies to an empty database in one pass at version 23', () => {
     database = createMigratedTestDatabase();
     const state = database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
     ).get();
-    expect(state).toEqual({ schema_version: 19 });
+    expect(state).toEqual({ schema_version: 23 });
     expect(database.raw.prepare('PRAGMA integrity_check').get())
       .toEqual({ integrity_check: 'ok' });
     expect(database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -290,9 +291,28 @@ describe('stage 3 clean baseline schema', () => {
       { code: 'AMAZON_US', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
       { code: 'COUPANG_KR', status: 'DISABLED', adapter_status: 'UNAVAILABLE' },
     ]);
-    const legacyAlias = database.raw.prepare(
-      'SELECT legacy_code, marketplace_code FROM marketplace_legacy_aliases',
-    ).all();
-    expect(legacyAlias).toEqual([{ legacy_code: 'JP', marketplace_code: 'AMAZON_JP' }]);
+    // Stage 4 removed the legacy JP alias layer atomically: the retired
+    // marketplaces/alias tables must be gone and every rebuilt marketplace FK
+    // must target marketplace_registry with canonical-only storage.
+    for (const retired of ['marketplaces', 'marketplace_legacy_aliases']) {
+      expect(database.raw.prepare(
+        `SELECT COUNT(*) AS count FROM sqlite_schema WHERE name='${retired}'`,
+      ).get()).toEqual({ count: 0 });
+    }
+    const formalOrderColumns = database.raw.prepare(
+      'PRAGMA table_info(formal_orders)',
+    ).all() as { name: string }[];
+    expect(formalOrderColumns.map((column) => column.name))
+      .not.toContain('canonical_marketplace_code');
+    const runtimeConfigColumns = database.raw.prepare(
+      'PRAGMA table_info(marketplace_runtime_config)',
+    ).all() as { name: string }[];
+    expect(runtimeConfigColumns.map((column) => column.name))
+      .not.toContain('legacy_order_code');
+    const formalOrderSql = database.raw.prepare(`
+      SELECT sql FROM sqlite_schema WHERE type='table' AND name='formal_orders'
+    `).get() as { sql: string };
+    expect(formalOrderSql.sql).toContain('REFERENCES marketplace_registry(code)');
+    expect(formalOrderSql.sql).not.toContain('RAKUTEN_JP');
   });
 });

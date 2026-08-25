@@ -1,6 +1,5 @@
 import type {
   AcquisitionLeadType,
-  AcquisitionOriginMode,
   AcquisitionPage,
   AcquisitionProspectDto,
   AcquisitionProspectStatus,
@@ -29,9 +28,7 @@ interface ProspectRow {
   display_name: string;
   contact_value: string | null;
   source_url: string | null;
-  origin_mode: AcquisitionOriginMode;
   status: AcquisitionProspectStatus;
-  ai_score: number | null;
   note: string | null;
   discovered_at: number;
   converted_lead_id: string | null;
@@ -55,9 +52,7 @@ export async function createAcquisitionProspect(
     displayName: string;
     contactValue: string | null;
     sourceUrl: string | null;
-    originMode: AcquisitionOriginMode;
     note: string | null;
-    aiScore: number | null;
   },
   command: AcquisitionCommandContext,
 ): Promise<{ prospect: AcquisitionProspectDto; replayed: boolean }> {
@@ -88,9 +83,9 @@ export async function createAcquisitionProspect(
       database
         .prepare(
           `INSERT INTO acquisition_prospects(
-        id,lead_type,marketplace_code,origin_channel_id,display_name,contact_value,source_url,origin_mode,status,
-        ai_score,note,created_by_actor_type,created_by_actor_id,discovered_at,converted_lead_id,version,created_at,updated_at
-      ) VALUES(?,?,?,?,?,?,?,?, 'NEW',?,?, 'STAFF', ?, ?, NULL,1,?,?)`,
+        id,lead_type,marketplace_code,origin_channel_id,display_name,contact_value,source_url,status,
+        note,created_by_actor_type,created_by_actor_id,discovered_at,converted_lead_id,version,created_at,updated_at
+      ) VALUES(?,?,?,?,?,?,?, 'NEW',?, 'STAFF', ?, ?, NULL,1,?,?)`,
         )
         .bind(
           id,
@@ -100,8 +95,6 @@ export async function createAcquisitionProspect(
           normalized.displayName,
           normalized.contactValue,
           normalized.sourceUrl,
-          normalized.originMode,
-          normalized.aiScore,
           normalized.note,
           command.actor.staffId,
           acquired.now,
@@ -207,7 +200,6 @@ export async function updateAcquisitionProspect(
   input: {
     expectedVersion: number;
     status: AcquisitionProspectStatus;
-    aiScore: number | null;
     note: string | null;
   },
   command: AcquisitionCommandContext,
@@ -217,7 +209,6 @@ export async function updateAcquisitionProspect(
   const current = await readAcquisitionProspect(database, command.actor, id);
   const expected = input.expectedVersion;
   if (!Number.isSafeInteger(expected) || expected < 1) validation();
-  const aiScore = score(input.aiScore);
   const note = optionalText(input.note, 4000);
   const acquired = await acquireAcquisitionCommand<{ prospect: AcquisitionProspectDto }>(
     database,
@@ -225,7 +216,7 @@ export async function updateAcquisitionProspect(
     'UPDATE_ACQUISITION_PROSPECT',
     'ACQUISITION_PROSPECT',
     id,
-    { expected_version: expected, status: input.status, ai_score: aiScore, note },
+    { expected_version: expected, status: input.status, note },
   );
   if (acquired.acquired.kind === 'REPLAY') return { ...acquired.acquired.response, replayed: true };
   try {
@@ -235,7 +226,6 @@ export async function updateAcquisitionProspect(
     const prospect: AcquisitionProspectDto = {
       ...current,
       status: input.status,
-      ai_score: aiScore,
       note,
       version: expected + 1,
       updated_at: acquired.now,
@@ -249,7 +239,6 @@ export async function updateAcquisitionProspect(
       payload: {
         prospect_id: id,
         status: input.status,
-        ai_score: aiScore,
         note,
         version: expected + 1,
       },
@@ -258,9 +247,9 @@ export async function updateAcquisitionProspect(
     await database.batch([
       database
         .prepare(
-          `UPDATE acquisition_prospects SET status=?,ai_score=?,note=?,version=version+1,updated_at=? WHERE id=? AND version=? AND status<>'CONVERTED'`,
+          `UPDATE acquisition_prospects SET status=?,note=?,version=version+1,updated_at=? WHERE id=? AND version=? AND status<>'CONVERTED'`,
         )
-        .bind(input.status, aiScore, note, acquired.now, id, expected),
+        .bind(input.status, note, acquired.now, id, expected),
       changedOnce(database),
       createAuditEventStatement(database, {
         id: crypto.randomUUID(),
@@ -272,11 +261,10 @@ export async function updateAcquisitionProspect(
         idempotencyKey: command.idempotencyKey,
         previousState: {
           status: current.status,
-          ai_score: current.ai_score,
           note: current.note,
           version: expected,
         },
-        nextState: { status: input.status, ai_score: aiScore, note, version: expected + 1 },
+        nextState: { status: input.status, note, version: expected + 1 },
         createdAt: acquired.now,
       }),
       ...createOutboxStatements(database, outbox),
@@ -285,9 +273,9 @@ export async function updateAcquisitionProspect(
       }),
       database
         .prepare(
-          `INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN (SELECT COUNT(*) FROM acquisition_prospects WHERE id=? AND version=? AND status=? AND ai_score IS ? AND note IS ?)=1 THEN 1 ELSE 0 END`,
+          `INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN (SELECT COUNT(*) FROM acquisition_prospects WHERE id=? AND version=? AND status=? AND note IS ?)=1 THEN 1 ELSE 0 END`,
         )
-        .bind(id, expected + 1, input.status, aiScore, note),
+        .bind(id, expected + 1, input.status, note),
     ]);
     return { prospect, replayed: false };
   } catch (error) {
@@ -315,20 +303,16 @@ async function validateProspectInput(
     displayName: string;
     contactValue: string | null;
     sourceUrl: string | null;
-    originMode: AcquisitionOriginMode;
     note: string | null;
-    aiScore: number | null;
   },
 ) {
   if (input.leadType !== 'BUYER' && input.leadType !== 'SELLER') validation();
-  if (input.originMode !== 'HUMAN' && input.originMode !== 'CODEX') validation();
   const marketplaceCode = identifier(input.marketplaceCode),
     channelId = identifier(input.channelId),
     displayName = text(input.displayName, 200),
     contactValue = optionalText(input.contactValue, 320),
     sourceUrl = optionalUrl(input.sourceUrl),
-    note = optionalText(input.note, 4000),
-    aiScore = score(input.aiScore);
+    note = optionalText(input.note, 4000);
   const channel = await database
     .prepare(`SELECT id,lead_type,marketplace_code,status FROM acquisition_channels WHERE id=?`)
     .bind(channelId)
@@ -347,9 +331,7 @@ async function validateProspectInput(
     displayName,
     contactValue,
     sourceUrl,
-    originMode: input.originMode,
     note,
-    aiScore,
   };
 }
 async function assertStaffMarketplace(
@@ -373,7 +355,7 @@ async function readProspectById(
   return toProspect(row);
 }
 function prospectSql(where: string) {
-  return `SELECT prospect.id,prospect.lead_type,prospect.marketplace_code,prospect.origin_channel_id,channel.display_name AS origin_channel_name,prospect.display_name,prospect.contact_value,prospect.source_url,prospect.origin_mode,prospect.status,prospect.ai_score,prospect.note,prospect.discovered_at,prospect.converted_lead_id,prospect.version,prospect.created_at,prospect.updated_at FROM acquisition_prospects prospect JOIN acquisition_channels channel ON channel.id=prospect.origin_channel_id WHERE ${where}`;
+  return `SELECT prospect.id,prospect.lead_type,prospect.marketplace_code,prospect.origin_channel_id,channel.display_name AS origin_channel_name,prospect.display_name,prospect.contact_value,prospect.source_url,prospect.status,prospect.note,prospect.discovered_at,prospect.converted_lead_id,prospect.version,prospect.created_at,prospect.updated_at FROM acquisition_prospects prospect JOIN acquisition_channels channel ON channel.id=prospect.origin_channel_id WHERE ${where}`;
 }
 function toProspect(row: ProspectRow): AcquisitionProspectDto {
   return {
@@ -385,9 +367,7 @@ function toProspect(row: ProspectRow): AcquisitionProspectDto {
     display_name: row.display_name,
     contact_value: row.contact_value,
     source_url: row.source_url,
-    origin_mode: row.origin_mode,
     status: row.status,
-    ai_score: row.ai_score === null ? null : Number(row.ai_score),
     note: row.note,
     discovered_at: Number(row.discovered_at),
     converted_lead_id: row.converted_lead_id,
@@ -403,11 +383,6 @@ function changedOnce(database: SqlDatabase): SqlStatement {
 }
 function auditActor(actor: AssignmentStaffAuthorization) {
   return { type: 'STAFF', id: actor.staffId, roles: [...actor.roles] };
-}
-function score(value: number | null): number | null {
-  if (value === null) return null;
-  if (!Number.isSafeInteger(value) || value < 0 || value > 100) validation();
-  return value;
 }
 function optionalUrl(value: string | null): string | null {
   const textValue = optionalText(value, 2000);

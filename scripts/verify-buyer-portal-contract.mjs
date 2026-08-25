@@ -1,3 +1,5 @@
+// Stage 4 canonical verifier (D-054 §7 equivalence migration).
+// Successor of verify:module1:buyer (verify-module1-buyer-security.mjs). Renamed; the 39-route Buyer loop inventory is unchanged by stage 4.
 import { resolveChangeRoot } from './verifier-utils.mjs';
 import { assert, assertContains, assertNotContains, read, relative, report, root } from './wave13-verifier-lib.mjs';
 import { applyBaseline, baselineSchemaText } from './baseline-schema-helper.mjs';

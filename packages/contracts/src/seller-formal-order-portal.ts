@@ -75,14 +75,8 @@ interface SellerFormalOrderPortalBaseDto {
   confirmed_at: number;
 }
 
-export type SellerFormalOrderPortalDto = SellerFormalOrderPortalBaseDto & (
-  | {
-  legacy_projection: 'AMAZON';
-  canonical_marketplace_code: Extract<
-    CanonicalMarketplaceCode,
-    'AMAZON_JP' | 'AMAZON_US'
-  >;
-  marketplace_code: 'JP';
+export interface SellerFormalOrderPortalDto extends SellerFormalOrderPortalBaseDto {
+  marketplace_code: 'AMAZON_JP';
   amazon_order_number: string;
   asin: string;
   product_version: SellerFormalOrderProductVersionSummaryDto;
@@ -98,27 +92,7 @@ export type SellerFormalOrderPortalDto = SellerFormalOrderPortalBaseDto & (
   locked_service_fee_snapshot: LockedSellerServiceFeeSnapshotDto;
   business_completion: SellerBusinessCompletionDto;
   confirmed_business_date: string;
-  }
-  | {
-  legacy_projection: 'NONE';
-  canonical_marketplace_code: Extract<
-    CanonicalMarketplaceCode,
-    'RAKUTEN_JP' | 'TIKTOK_JP'
-  >;
-  marketplace_code: null;
-  amazon_order_number: null;
-  asin: null;
-  product_version: null;
-  review_type: PricingReviewType | null;
-  final_paid_jpy: null;
-  payment: null;
-  seller_expected_principal_cny_fen: null;
-  seller_principal_rate_snapshot: null;
-  locked_service_fee_snapshot: null;
-  business_completion: null;
-  confirmed_business_date: string | null;
-  }
-);
+}
 
 export type SellerFormalOrderPortalPage =
   SellerPortalPage<SellerFormalOrderPortalDto>;

@@ -60,13 +60,13 @@ database.exec(`
     marketplace_code, staff_id, version, configured_by_staff_id,
     created_at, updated_at
   ) VALUES (
-    'JP','zz-phase3h-test-owner',1,'zz-phase3h-test-owner',
+    'AMAZON_JP','zz-phase3h-test-owner',1,'zz-phase3h-test-owner',
     ${now},${now}
   );
 `);
 
 const buyer = await createBuyerCustomer(database, {
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
   buyerChannelId: 'local-preview-buyer-channel',
   displayName: '演示买家',
   wechatId: 'buyer_demo',
@@ -83,7 +83,7 @@ await changeCustomerPassword(database, {
 }, { idempotencyKey: 'local-preview-buyer-password', now: now + 2 });
 
 const seller = await createSellerOrganization(database, {
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
   sellerChannelId: 'seller-channel-ido-mango',
   organizationName: '月光白演示店铺',
   ownerDisplayName: '演示卖家',

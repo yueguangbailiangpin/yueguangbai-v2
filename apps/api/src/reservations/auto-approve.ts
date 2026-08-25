@@ -87,7 +87,7 @@ interface AutoApproveSource {
   buyer_customer_id: string;
   organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: string;
   reservation_version: number;
   demand_status: string;

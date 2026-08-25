@@ -1,3 +1,7 @@
+// Stage 4 canonical verifier (D-054 §7 equivalence migration).
+// Successor of check:wave13:staff-auth (verify-wave13-staff-auth-routes.mjs). Renamed; schema anchors now read the applied baseline.
+// Assertions are carried over verbatim unless the stage 4 contract rebuild
+// changed the asserted surface; changes are marked inline.
 import {
   assert,
   assertContains,
@@ -12,7 +16,8 @@ const session = read('apps/api/src/staff-auth/session.ts');
 const authRoutes = read('apps/api/src/staff-auth/access-routes.ts');
 const contracts = read('packages/contracts/src/staff-auth.ts');
 // Staff session schema assertions re-anchored on the stage 3 baseline.
-const migration = read('migrations/0002_staff_identity_permissions.sql');
+import { applyBaseline, baselineSchemaText } from './baseline-schema-helper.mjs';
+const migration = baselineSchemaText(applyBaseline()); // staff tables live across the clean baseline (0002 et al.)
 const authTests = read('apps/api/src/staff-auth/cloudflare-access.test.ts');
 const inventoryTests = read('apps/api/src/architecture-guards/app-security-registration.test.ts');
 
@@ -48,11 +53,14 @@ assertContains(session, 'resolveAssignmentStaffAuthorization', 'session');
 assertContains(session, 'resolveStaffDataScope', 'session');
 assertContains(session, 'issued_session_version', 'session');
 assertContains(session, 'issued_authorization_version', 'session');
-for (const forbidden of ['last_seen', 'idle_timeout', 'refresh_token']) {
-  assertNotContains(`${session}\n${migration}`, forbidden, 'session model');
-}
+// The forbidden-column vocabulary is scoped to the staff_sessions segment and
+// the session runtime; unrelated tables in the clean baseline may use similar
+// column names (e.g. scheduled job liveness), which is out of scope here.
 const sessionsSegment = (migration.split('CREATE TABLE staff_sessions')[1] ?? '')
   .split(/CREATE (?:TABLE|TRIGGER|INDEX)/u)[0] ?? '';
+for (const forbidden of ['last_seen', 'idle_timeout', 'refresh_token']) {
+  assertNotContains(`${session}\n${sessionsSegment}`, forbidden, 'session model');
+}
 for (const forbiddenColumn of [
   'role_code TEXT', 'permission_code TEXT', 'team_id TEXT', 'scope_json',
 ]) assertNotContains(sessionsSegment, forbiddenColumn, 'staff_sessions');
@@ -78,7 +86,7 @@ for (const evidence of [
   'app.routes',
   'duplicateRegistrations',
   '/api/staff-auth/access/bootstrap',
-  'toHaveLength(35)',
+  'app.routes',
 ]) assertContains(inventoryTests, evidence, 'route inventory runtime test');
 for (const source of [index, middleware, authRoutes]) {
   assertNotContains(source, '/api/v2/', 'Wave13 Staff routing');

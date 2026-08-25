@@ -30,7 +30,6 @@ import {
   type CustomerMasterActor,
 } from './master-data-shared';
 import {
-  legacyMarketplaceProjection,
   resolveMarketplace,
 } from '../marketplaces/registry';
 
@@ -174,7 +173,7 @@ export async function createBuyerCustomer(
       `).bind(
         buyerId,
         subjectId,
-        legacyMarketplaceProjection(),
+        'AMAZON_JP',
         buyerChannelId,
         displayName,
         now,

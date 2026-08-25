@@ -35,7 +35,7 @@ describe('customer multi-persona invitation and recovery', () => {
     database = createDb();
     expect(await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).first()).toEqual({ schema_version: 19 });
+    `).first()).toEqual({ schema_version: 23 });
     const triggerNames = (await database.prepare(`
       SELECT name FROM sqlite_schema WHERE type='trigger'
         AND name LIKE 'trg_customer_account_persona%'
@@ -405,7 +405,7 @@ function seedSellerOrganization(db: SqliteDatabase, id: string): void {
       id, marketplace_code, seller_code, origin_channel_id,
       current_channel_id, seller_sequence, organization_name,
       status, version, created_at, updated_at, activated_at, disabled_at
-    ) VALUES (?, 'JP', ?, 'seller-channel-ido-mango',
+    ) VALUES (?, 'AMAZON_JP', ?, 'seller-channel-ido-mango',
       'seller-channel-ido-mango', ?, ?, 'ACTIVE', 1,
       1000, 1000, 1000, NULL)
   `).run(id, `code-${id}`, sequence, id);

@@ -17,7 +17,6 @@ export interface AcquisitionChannelStatsDto {
   consultation_days_recorded: number;
   consultation_days_expected: number;
   prospect_count: number;
-  codex_prospect_count: number;
   lead_count: number;
   registered_count: number;
   reservation_submitted_count: number;
@@ -78,12 +77,10 @@ export async function readAcquisitionChannelStats(
     const consultationComplete = channel.lead_type !== 'BOTH' && recorded === expected;
     const prospect = await database
       .prepare(
-        `SELECT COUNT(*) AS total,
-      COALESCE(SUM(CASE WHEN origin_mode='CODEX' THEN 1 ELSE 0 END),0) AS codex
-      FROM acquisition_prospects WHERE origin_channel_id=? AND discovered_at>=? AND discovered_at<?`,
+        `SELECT COUNT(*) AS total FROM acquisition_prospects WHERE origin_channel_id=? AND discovered_at>=? AND discovered_at<?`,
       )
       .bind(channel.channel_id, fromEpoch, toExclusive)
-      .first<{ total: number; codex: number }>();
+      .first<{ total: number }>();
     const lead = await database
       .prepare(
         `SELECT COUNT(*) AS total,
@@ -124,7 +121,6 @@ export async function readAcquisitionChannelStats(
       consultation_days_recorded: recorded,
       consultation_days_expected: expected,
       prospect_count: Number(prospect?.total ?? 0),
-      codex_prospect_count: Number(prospect?.codex ?? 0),
       lead_count: Number(lead?.total ?? 0),
       registered_count: Number(lead?.registered ?? 0),
       reservation_submitted_count: Number(lead?.reserved ?? 0),

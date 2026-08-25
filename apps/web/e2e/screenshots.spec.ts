@@ -66,7 +66,7 @@ async function mockSession(page: Page, identity: 'buyer' | 'seller' | 'staff'): 
                 id: 'org-shot',
                 seller_code: 'seller-shot',
                 name: '演示卖家组织',
-                marketplace_code: 'JP',
+                marketplace_code: 'AMAZON_JP',
                 status: 'ACTIVE',
               },
               access: {
@@ -90,7 +90,7 @@ async function mockSession(page: Page, identity: 'buyer' | 'seller' | 'staff'): 
             items: [
               {
                 id: 'store-shot',
-                marketplace_code: 'JP',
+                marketplace_code: 'AMAZON_JP',
                 canonical_marketplace_code: 'AMAZON_JP',
                 transaction_currency_code: 'JPY',
                 transaction_currency_exponent: 0,

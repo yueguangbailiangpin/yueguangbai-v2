@@ -77,7 +77,7 @@ describe('customer activation, authentication, and session lifecycle', () => {
     seedStaffAndBuyerChannel(database);
 
     const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: '测试买家',
       wechatId: 'buyer_login_01',
@@ -144,7 +144,7 @@ describe('customer activation, authentication, and session lifecycle', () => {
     seedStaffAndBuyerChannel(database);
 
     const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: '改密买家',
       wechatId: 'buyer_password_01',
@@ -235,7 +235,7 @@ describe('customer activation, authentication, and session lifecycle', () => {
     seedStaffAndBuyerChannel(database);
 
     const seller = await createSellerOrganization(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       sellerChannelId: 'seller-channel-ido-mango',
       organizationName: '登录测试卖家',
       ownerDisplayName: '卖家负责人',
@@ -311,7 +311,7 @@ describe('customer activation, authentication, and session lifecycle', () => {
     seedStaffAndBuyerChannel(database);
 
     const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: '待核验买家',
       wechatId: 'buyer_review_01',

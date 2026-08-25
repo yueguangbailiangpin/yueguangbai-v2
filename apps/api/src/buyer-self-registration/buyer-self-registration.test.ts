@@ -554,7 +554,7 @@ function seedBuyer(
       buyer_customer_no, buyer_sequence, first_valid_order_business_date,
       display_name, access_status, identity_review_status,
       version, created_at, updated_at, activated_at, disabled_at
-    ) VALUES (?, ?, 'JP', 'buyer-channel-self', NULL, NULL, NULL,
+    ) VALUES (?, ?, 'AMAZON_JP', 'buyer-channel-self', NULL, NULL, NULL,
       ?, 'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL)
   `).run(buyerId, subjectId, wechat);
   db.raw.prepare(`

@@ -19,7 +19,7 @@ function staff(role: 'owner'|'buyer_refund') {
 
 function productItem() {
   return { product_id: 'product-1', seller_organization_id: 'seller-1', store_id: 'store-1',
-    store_name: '东京店铺', marketplace_code: 'JP', asin: 'B0SCHEDULE', status: 'ACTIVE',
+    store_name: '东京店铺', marketplace_code: 'AMAZON_JP', asin: 'B0SCHEDULE', status: 'ACTIVE',
     aggregate_version: 2, current_version_no: 2, product_name: '月光测试产品',
     cadence: { order_interval_days: 1, orders_per_run: 2 }, updated_at: 1_786_161_600_000 };
 }

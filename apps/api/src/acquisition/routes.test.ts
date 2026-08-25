@@ -409,9 +409,7 @@ describe('acquisition HTTP authority and privacy boundary', () => {
         display_name: '并发潜客',
         contact_value: null,
         source_url: null,
-        origin_mode: 'HUMAN',
         note: null,
-        ai_score: null,
       }),
     });
     expect(created.status).toBe(201);
@@ -430,7 +428,6 @@ describe('acquisition HTTP authority and privacy boundary', () => {
         body: JSON.stringify({
           expected_version: 1,
           status,
-          ai_score: 60,
           note: status,
         }),
       });
@@ -467,7 +464,6 @@ describe('acquisition HTTP authority and privacy boundary', () => {
         body: JSON.stringify({
           expected_version: 2,
           status: 'CONTACTED',
-          ai_score: 70,
           note: '依赖故障不得伪装冲突',
         }),
       },

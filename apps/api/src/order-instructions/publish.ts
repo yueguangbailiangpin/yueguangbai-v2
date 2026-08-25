@@ -553,7 +553,7 @@ function summary(source: {
   instruction_id: string;
   reservation_id: string;
   buyer_customer_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   instruction_status: 'UNPUBLISHED' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'COMPLETED';
   current_version_no: number;
   instruction_version: number;

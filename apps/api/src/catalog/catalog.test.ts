@@ -57,7 +57,7 @@ describe('seller stores and product catalog', () => {
     seedCatalogActorsAndOrganizations(database);
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '员工 API 店铺',
     }, {
       actor: sellerOpsActor(),
@@ -147,9 +147,9 @@ describe('seller stores and product catalog', () => {
 
     // AMAZON_US is ACTIVE/AVAILABLE in the registry, but the business tables
     // (seller_stores/products/demand_batches reference marketplaces(code)
-    // which admits a single 'JP' row) are JP-only. The old code hardcoded the
+    // which admits a single 'AMAZON_JP' row) are JP-only. The old code hardcoded the
     // JP legacy projection for every store, so a US store was silently stored
-    // as 'JP' and its product applications entered the JP conflict check.
+    // as 'AMAZON_JP' and its product applications entered the JP conflict check.
     // Creation must fail loudly instead.
     await expect(createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
@@ -179,7 +179,7 @@ describe('seller stores and product catalog', () => {
     // JP store creation remains unaffected.
     const jp = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '日本店铺',
     }, {
       actor: sellerOpsActor(),
@@ -187,7 +187,7 @@ describe('seller stores and product catalog', () => {
       now: 2100,
     });
     expect(jp).toMatchObject({
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       status: 'ACTIVE',
     });
   });
@@ -198,7 +198,7 @@ describe('seller stores and product catalog', () => {
 
     const first = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '  Ｍｏｏｎ   Store ',
     }, {
       actor: sellerOpsActor(),
@@ -215,7 +215,7 @@ describe('seller stores and product catalog', () => {
 
     const replay = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: 'Moon Store',
     }, {
       actor: sellerOpsActor(),
@@ -229,7 +229,7 @@ describe('seller stores and product catalog', () => {
 
     await expect(createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: 'moon   store',
     }, {
       actor: sellerOpsActor(),
@@ -242,7 +242,7 @@ describe('seller stores and product catalog', () => {
 
     const otherOrgStore = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-2',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: 'Moon Store',
     }, {
       actor: sellerOpsActor(),
@@ -339,7 +339,7 @@ describe('seller stores and product catalog', () => {
 
     const storeOne = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '店铺一',
     }, {
       actor: sellerOpsActor(),
@@ -348,7 +348,7 @@ describe('seller stores and product catalog', () => {
     });
     const storeTwo = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '店铺二',
     }, {
       actor: sellerOpsActor(),
@@ -411,7 +411,7 @@ describe('seller stores and product catalog', () => {
 
     const storeOne = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '产品店铺一',
     }, {
       actor: sellerOpsActor(),
@@ -420,7 +420,7 @@ describe('seller stores and product catalog', () => {
     });
     const storeTwo = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-2',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '产品店铺二',
     }, {
       actor: sellerOpsActor(),
@@ -438,7 +438,7 @@ describe('seller stores and product catalog', () => {
       now: 2200,
     });
     expect(created).toMatchObject({
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       asin: 'B0TEST0001',
       current_version_no: 1,
       status: 'ACTIVE',
@@ -477,7 +477,7 @@ describe('seller stores and product catalog', () => {
 
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '版本店铺',
     }, {
       actor: sellerOpsActor(),
@@ -575,7 +575,7 @@ describe('seller stores and product catalog', () => {
 
     await expect(createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '非法\n店铺',
     }, {
       actor: sellerOpsActor(),
@@ -593,7 +593,7 @@ describe('seller stores and product catalog', () => {
 
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '权限测试店铺',
     }, {
       actor: sellerOpsActor(),
@@ -676,7 +676,7 @@ describe('seller stores and product catalog', () => {
     // verified PRODUCT_IMAGE file upload intent owned by staff.
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '主图测试店铺',
     }, {
       actor: sellerOpsActor(),
@@ -791,7 +791,7 @@ describe('seller stores and product catalog', () => {
 
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '继承主图店铺',
     }, {
       actor: sellerOpsActor(),
@@ -1009,14 +1009,14 @@ function seedCatalogActorsAndOrganizations(
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'seller-org-1', 'JP', 'ido-mango-1001',
+        'seller-org-1', 'AMAZON_JP', 'ido-mango-1001',
         'seller-channel-ido-mango',
         'seller-channel-ido-mango',
         1001, '测试卖家一', 'ACTIVE', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'seller-org-2', 'JP', 'ygbceping-1001',
+        'seller-org-2', 'AMAZON_JP', 'ygbceping-1001',
         'seller-channel-ygbceping',
         'seller-channel-ygbceping',
         1001, '测试卖家二', 'ACTIVE', 1,

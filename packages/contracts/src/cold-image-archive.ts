@@ -28,6 +28,36 @@ export const ARCHIVE_COMPONENTS = [
 ] as const;
 export type ArchiveComponent = typeof ARCHIVE_COMPONENTS[number];
 
+/**
+ * Stage 4 contract-only archive lifecycle (D-055, stage 5 implements the
+ * runtime). A bundle starts ONLINE; after the six-Shanghai-month hot window it
+ * becomes ARCHIVED. Only Staff may request a restore, which moves it through
+ * RESTORE_REQUESTED and RESTORING into RESTORED_TEMPORILY's seven-day
+ * temporary R2 copy (or RESTORE_FAILED, which stays retryable). The enum and
+ * transitions below are the authoritative vocabulary for stage 5 — no public
+ * restore endpoint exists yet, so no route serves these states today.
+ */
+export const ARCHIVE_BUNDLE_STATES = [
+  'ONLINE',
+  'ARCHIVED',
+  'RESTORE_REQUESTED',
+  'RESTORING',
+  'RESTORED_TEMPORARILY',
+  'RESTORE_FAILED',
+] as const;
+export type ArchiveBundleState = typeof ARCHIVE_BUNDLE_STATES[number];
+
+export const ARCHIVE_BUNDLE_TRANSITIONS: Readonly<
+  Record<ArchiveBundleState, readonly ArchiveBundleState[]>
+> = Object.freeze({
+  ONLINE: ['ARCHIVED'],
+  ARCHIVED: ['RESTORE_REQUESTED'],
+  RESTORE_REQUESTED: ['RESTORING', 'ARCHIVED'],
+  RESTORING: ['RESTORED_TEMPORARILY', 'RESTORE_FAILED'],
+  RESTORED_TEMPORARILY: ['ARCHIVED'],
+  RESTORE_FAILED: ['RESTORE_REQUESTED'],
+});
+
 export interface OrderArchiveClosureResultDto {
   formal_order_id: string;
   status: 'CLOSED' | 'REOPENED';

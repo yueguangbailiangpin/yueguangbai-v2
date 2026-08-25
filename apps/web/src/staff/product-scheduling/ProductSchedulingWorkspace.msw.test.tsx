@@ -379,7 +379,7 @@ function productDetail(mainImage: {
 } | null = null) {
   return {
     product_id: 'product-1', seller_organization_id: 'seller-1', store_id: 'store-1',
-    store_name: '测试店铺', marketplace_code: 'JP', asin: 'B0TEST0001',
+    store_name: '测试店铺', marketplace_code: 'AMAZON_JP', asin: 'B0TEST0001',
     status: 'ACTIVE', aggregate_version: 2, current_version_no: 2,
     product_name: '测试产品', cadence: { order_interval_days: 2, orders_per_run: 5 },
     updated_at: 1_786_161_600_000,

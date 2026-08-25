@@ -76,7 +76,7 @@ describe('Wave 13 Staff Order Evidence API', () => {
         reservation_id: 'runtime-reservation',
         instruction_id: 'runtime-instruction',
         instruction_version_id: 'runtime-instruction-version',
-        marketplace: 'JP',
+        marketplace: 'AMAZON_JP',
         amazon_order_number_raw: '123-1234567-1234567',
         amazon_order_number_normalized: '123-1234567-1234567',
         status: 'PENDING_VERIFICATION',
@@ -285,7 +285,7 @@ function seedDetailInvariantFixture(database: SqliteDatabase): void {
       display_name, access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
-      'tampered-buyer','tampered-subject','JP','tampered-channel',
+      'tampered-buyer','tampered-subject','AMAZON_JP','tampered-channel',
       'P202608030001',1,'2026-08-03','Tampered Buyer','ACTIVE','CLEAR',1,
       1000,1000,1000,NULL
     );
@@ -301,7 +301,7 @@ function seedDetailInvariantFixture(database: SqliteDatabase): void {
       buyer_self_pay_accepted_at, buyer_self_pay_accepted_demand_version
     ) VALUES (
       'tampered-reservation','tampered-demand','tampered-buyer','runtime-org',
-      'runtime-store','tampered-product',1,'JP','APPROVED','{}',2000,20000,
+      'runtime-store','tampered-product',1,'AMAZON_JP','APPROVED','{}',2000,20000,
       2,1000,1500,'zz-phase3h-test-owner',NULL,1500,NULL,NULL,0,
       0,1980,0,1980,1500,1
     );
@@ -311,7 +311,7 @@ function seedDetailInvariantFixture(database: SqliteDatabase): void {
       resubmission_deadline_at, expired_at, cancelled_at, completed_at,
       created_at, updated_at
     ) VALUES (
-      'tampered-instruction','tampered-reservation','tampered-buyer','JP',
+      'tampered-instruction','tampered-reservation','tampered-buyer','AMAZON_JP',
       'ACTIVE',1,2,2000,20000,18000,NULL,NULL,NULL,2000,2000
     );
     DROP TRIGGER trg_file_objects_intent_guard;
@@ -344,7 +344,7 @@ function seedDetailInvariantFixture(database: SqliteDatabase): void {
       verified_by_staff_id, verified_at, withdrawn_at, consumed_at,
       created_at, resubmission_deadline_at
     ) VALUES (
-      'tampered-evidence','tampered-reservation','tampered-buyer','JP',
+      'tampered-evidence','tampered-reservation','tampered-buyer','AMAZON_JP',
       'PENDING_VERIFICATION',1,1,NULL,NULL,5000,5000,
       NULL,NULL,NULL,NULL,5000,NULL
     );
@@ -362,7 +362,7 @@ function seedDetailInvariantFixture(database: SqliteDatabase): void {
       evidence_file_object_id
     ) VALUES (
       'tampered-version','tampered-evidence','tampered-reservation',
-      'tampered-buyer','JP',1,'123-1234567-1234567',
+      'tampered-buyer','AMAZON_JP',1,'123-1234567-1234567',
       '123-1234567-1234567','2026-08-01',2080,'tampered-buyer',NULL,5000,
       'tampered-instruction','tampered-instruction-version',20000,1980,
       0,0,2080,1,100,1,'tampered-file'

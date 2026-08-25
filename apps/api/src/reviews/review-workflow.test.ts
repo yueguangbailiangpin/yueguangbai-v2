@@ -523,7 +523,7 @@ describe('Phase 5A review evidence workflow', () => {
     const state = await database!.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(state?.schema_version).toBe(19);
+    expect(state?.schema_version).toBe(23);
   });
 });
 
@@ -684,7 +684,7 @@ async function seedFormalOrderPrerequisites(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-review', 'JP', 'ido-mango-9301',
+      'seller-org-review', 'AMAZON_JP', 'ido-mango-9301',
       'seller-channel-ido-mango', 'seller-channel-ido-mango',
       9301, '评论流程测试卖家', 'ACTIVE',
       1, 1000, 1000, 1000, NULL, 2
@@ -726,13 +726,13 @@ async function seedFormalOrderPrerequisites(
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-review-1', 'buyer-review-subject-1', 'JP',
+        'buyer-review-1', 'buyer-review-subject-1', 'AMAZON_JP',
         'buyer-channel-review', NULL, NULL, NULL,
         '评论买家', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-review-other', 'buyer-review-subject-other', 'JP',
+        'buyer-review-other', 'buyer-review-subject-other', 'AMAZON_JP',
         'buyer-channel-review', '20260731R99', 99, '2026-07-31',
         '其他买家', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
@@ -743,7 +743,7 @@ async function seedFormalOrderPrerequisites(
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-review', 'seller-org-review', 'JP',
+      'store-review', 'seller-org-review', 'AMAZON_JP',
       '评论流程测试店铺', '评论流程测试店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -754,7 +754,7 @@ async function seedFormalOrderPrerequisites(
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES (
-      'product-review', 'seller-org-review', 'store-review', 'JP',
+      'product-review', 'seller-org-review', 'store-review', 'AMAZON_JP',
       'B0REVIEW01', 'B0REVIEW01', 'ACTIVE',
       1, 1, 1000, 1000, NULL
     );
@@ -785,7 +785,7 @@ async function seedFormalOrderPrerequisites(
       reviewed_at, published_at, withdrawn_at, closed_at,
       held_reservation_count, approved_reservation_count
     ) VALUES (
-      'demand-review', 'seller-org-review', 'store-review', 'JP',
+      'demand-review', 'seller-org-review', 'store-review', 'AMAZON_JP',
       'product-review', 1, 'seller-review-owner', 'IMAGE',
       10, NULL, NULL, 2000, 5000, 20000,
       'PUBLISHED', NULL, NULL, 'staff-review-pre-sales', NULL,
@@ -809,7 +809,7 @@ async function seedFormalOrderPrerequisites(
       buyer_self_pay_accepted_demand_version
     ) VALUES (
       'reservation-review', 'demand-review', 'buyer-review-1',
-      'seller-org-review', 'store-review', 'product-review', 1, 'JP',
+      'seller-org-review', 'store-review', 'product-review', 1, 'AMAZON_JP',
       'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
       'staff-review-pre-sales', NULL, 6000, NULL, NULL, 0,
       0, 1980, 0, 1980, 4000, 2
@@ -836,7 +836,7 @@ async function seedFormalOrderPrerequisites(
       withdrawn_at, consumed_at, created_at
     ) VALUES (
       'evidence-review-submission', 'reservation-review',
-      'buyer-review-1', 'JP',
+      'buyer-review-1', 'AMAZON_JP',
       'PENDING_VERIFICATION', 1, 1, NULL, NULL,
       7000, 7000, NULL, NULL, NULL, NULL, 7000
     );
@@ -856,7 +856,7 @@ async function seedFormalOrderPrerequisites(
       evidence_file_object_id, created_at
     ) VALUES (
       'evidence-review-version-1', 'evidence-review-submission',
-      'reservation-review', 'buyer-review-1', 'JP', 1,
+      'reservation-review', 'buyer-review-1', 'AMAZON_JP', 1,
       '123-1234567-1234567', '123-1234567-1234567',
       '2026-08-01',
       8880, 'buyer-review-1', NULL,

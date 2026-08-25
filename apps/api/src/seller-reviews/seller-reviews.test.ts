@@ -148,7 +148,7 @@ describe('Phase 4C3 seller review read model', () => {
         id: 'store-1',
         display_name: 'Alpha 店铺',
       },
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       asin: 'B0REVIEW01',
       product_name: '评论产品一',
       review_type: 'IMAGE',
@@ -331,9 +331,9 @@ describe('Phase 4C3 route and schema guardrails', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(23);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
+    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
 
     const source = [
       'read-model.ts',
@@ -380,7 +380,7 @@ interface SellerReviewFixtureRow {
   amazon_order_number: string;
   store_id: string;
   store_display_name: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   product_name: string;
   review_type: PricingReviewType;
@@ -409,7 +409,7 @@ function baseCaseRow(): SellerReviewFixtureRow {
     amazon_order_number: '111-1234567-1234567',
     store_id: 'store-1',
     store_display_name: 'Alpha 店铺',
-    marketplace_code: 'JP' as const,
+    marketplace_code: 'AMAZON_JP' as const,
     asin: 'B0REVIEW01',
     product_name: '评论产品一',
     review_type: 'IMAGE',

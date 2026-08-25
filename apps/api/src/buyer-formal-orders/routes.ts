@@ -98,9 +98,9 @@ function parseFilters(url: URL): BuyerFormalOrderFilters {
   };
 }
 
-function optionalMarketplace(value: string | null): 'JP' | null {
+function optionalMarketplace(value: string | null): 'AMAZON_JP' | null {
   if (value === null) return null;
-  if (value !== 'JP') return validationError();
+  if (value !== 'AMAZON_JP') return validationError();
   return value;
 }
 

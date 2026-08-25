@@ -35,7 +35,7 @@ async function lookup(context: Context<AppEnv>) {
   try {
     const rows = await context.env.DB.prepare(
       `SELECT formal_order.id AS formal_order_id,formal_order.amazon_order_number_normalized,
-        formal_order.buyer_customer_id,formal_order.seller_organization_id,formal_order.canonical_marketplace_code,
+        formal_order.buyer_customer_id,formal_order.seller_organization_id,formal_order.marketplace_code,
         formal_order.product_name_snapshot,formal_order.confirmed_at,formal_order.marketplace_business_date,
         (SELECT review_case.id FROM review_cases review_case WHERE review_case.formal_order_id=formal_order.id ORDER BY review_case.created_at DESC,review_case.id DESC LIMIT 1) AS review_case_id,
         (SELECT review_case.status FROM review_cases review_case WHERE review_case.formal_order_id=formal_order.id ORDER BY review_case.created_at DESC,review_case.id DESC LIMIT 1) AS review_status,
@@ -54,7 +54,7 @@ async function lookup(context: Context<AppEnv>) {
     const value = rows.results[0];
     if (!actor.roles.has('owner')) {
       const markets = await resolveStaffMarketplaceCodes(context.env.DB, actor);
-      if (!markets.includes(String(value.canonical_marketplace_code)))
+      if (!markets.includes(String(value.marketplace_code)))
         return context.json(apiFailure('NOT_FOUND', '没有找到唯一的正式订单', requestId), 404);
     }
     const policy = await readFormalOrderBusinessCapabilities(
@@ -124,7 +124,7 @@ async function lookup(context: Context<AppEnv>) {
             amazon_order_number: String(value.amazon_order_number_normalized),
             buyer_customer_id: String(value.buyer_customer_id),
             seller_organization_id: String(value.seller_organization_id),
-            marketplace_code: String(value.canonical_marketplace_code),
+            marketplace_code: String(value.marketplace_code),
             product_name: String(value.product_name_snapshot),
             confirmed_at: Number(value.confirmed_at),
             marketplace_business_date:

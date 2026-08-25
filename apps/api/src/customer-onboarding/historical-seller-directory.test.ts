@@ -32,7 +32,7 @@ describe('historical seller directory', () => {
         seller_sequence,organization_name,status,version,created_at,updated_at,
         activated_at,disabled_at,next_member_number
       ) VALUES(
-        'historical-org-1','JP','historical-michael','seller-channel-ido-mango',
+        'historical-org-1','AMAZON_JP','historical-michael','seller-channel-ido-mango',
         'seller-channel-ido-mango',2000001,'Michael_er','ACTIVE',1,1000,1000,1000,NULL,2
       );
       INSERT INTO seller_organization_members(

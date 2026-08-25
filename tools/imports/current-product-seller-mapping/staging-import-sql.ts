@@ -70,7 +70,7 @@ export async function emitStagingD1Sql(
   (id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
    seller_sequence, organization_name, status, version, created_at, updated_at,
    activated_at, disabled_at)
-  VALUES (${sql(organization.sellerOrganizationId)}, 'JP', ${sql(sellerCode)}, ${sql(channelId)}, ${sql(channelId)},
+  VALUES (${sql(organization.sellerOrganizationId)}, 'AMAZON_JP', ${sql(sellerCode)}, ${sql(channelId)}, ${sql(channelId)},
    ${1_000_000 + index}, ${sql(organization.sellerWechat)}, 'ACTIVE', 1, ${options.now},
    ${options.now}, ${options.now}, NULL);`));
     lines.push(q(`INSERT OR IGNORE INTO seller_organization_members
@@ -83,7 +83,7 @@ export async function emitStagingD1Sql(
     lines.push(q(`INSERT OR IGNORE INTO seller_stores
   (id, organization_id, marketplace_code, display_name, normalized_name, status,
    version, created_at, updated_at, disabled_at)
-  VALUES (${sql(store.sellerStoreId)}, ${sql(organization.sellerOrganizationId)}, 'JP',
+  VALUES (${sql(store.sellerStoreId)}, ${sql(organization.sellerOrganizationId)}, 'AMAZON_JP',
    ${sql(store.displayName)}, ${sql(store.normalizedName)}, 'ACTIVE', 1, ${options.now},
    ${options.now}, NULL);`));
   }
@@ -117,7 +117,7 @@ export async function emitStagingD1Sql(
   (id, organization_id, store_id, marketplace_code, asin_display, asin_normalized,
    status, current_version_no, version, created_at, updated_at, disabled_at)
   SELECT ${sql(product.productId)}, offering.seller_organization_id, offering.seller_store_id,
-   'JP', ${sql(product.platformProductIdentifier)}, ${sql(product.platformProductIdentifier)},
+   'AMAZON_JP', ${sql(product.platformProductIdentifier)}, ${sql(product.platformProductIdentifier)},
    'ACTIVE', 1, 1, ${options.now}, ${options.now}, NULL
   FROM seller_product_offerings offering
   WHERE offering.standard_product_id=${sql(product.standardProductId)}
@@ -162,7 +162,7 @@ export async function emitStagingD1Sql(
    reviewed_by_staff_id, closed_by_staff_id, version, submitted_at, updated_at,
    reviewed_at, published_at, withdrawn_at, closed_at, buyer_self_pay_bps_snapshot,
    buyer_self_pay_source, buyer_self_pay_override_reason)
-  VALUES (${sql(task.demandBatchId)}, ${sql(offering.sellerOrganizationId)}, ${sql(offering.sellerStoreId)}, 'JP',
+  VALUES (${sql(task.demandBatchId)}, ${sql(offering.sellerOrganizationId)}, ${sql(offering.sellerStoreId)}, 'AMAZON_JP',
    ${sql(task.productId)}, 1, ${sql(memberId)}, ${sql(task.taskType)}, ${task.targetQuantity},
    ${sql(task.buyerVisibleNotes)}, ${sql(task.sellerNotes)}, ${task.openAt},
    ${task.reservationDeadline}, ${task.orderDeadline}, 'PUBLISHED', NULL, NULL,

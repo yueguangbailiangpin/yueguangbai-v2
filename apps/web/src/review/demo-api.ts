@@ -56,7 +56,7 @@ function sellerMe() {
         id: 'review-seller-org',
         seller_code: 'TEST-S001',
         name: '月光白 Demo 卖家组织',
-        marketplace_code: 'JP',
+        marketplace_code: 'AMAZON_JP',
         status: 'ACTIVE',
         settlement_account_name: null,
         settlement_account_identifier: null,
@@ -77,7 +77,7 @@ function sellerMe() {
 const stores = [
   {
     id: 'review-store-a',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     display_name: 'TEST 日本店 A',
     canonical_marketplace_code: 'AMAZON_JP',
     transaction_currency_code: 'JPY',
@@ -91,7 +91,7 @@ const stores = [
   },
   {
     id: 'review-store-b',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     display_name: 'TEST 日本店 B',
     canonical_marketplace_code: 'AMAZON_US',
     transaction_currency_code: 'USD',
@@ -110,7 +110,7 @@ const sellerProducts = Array.from({ length: 5 }, (_, index) => ({
     id: index % 2 ? 'review-store-b' : 'review-store-a',
     display_name: index % 2 ? 'TEST 日本店 B' : 'TEST 日本店 A',
   },
-  marketplace_code: 'JP',
+  marketplace_code: 'AMAZON_JP',
   seller_code: 'TEST-S001',
   asin: `B0DEMO00${index + 1}X`,
   status: index === 4 ? 'DISABLED' : 'ACTIVE',
@@ -149,7 +149,7 @@ function sellerReviews() {
       id: index % 2 ? 'review-store-b' : 'review-store-a',
       display_name: index % 2 ? 'TEST 日本店 B' : 'TEST 日本店 A',
     },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: `B0DEMO00${index + 1}X`,
     product_name: sellerProducts[index]!.current_version.product_name,
     review_type: reviewType,
@@ -315,7 +315,7 @@ function workItems(status: string) {
 const staffEvidence = {
   submission_id: 'review-staff-evidence-1',
   reservation_id: 'review-buyer-reservation-003',
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   status: 'PENDING_VERIFICATION',
   version: 1,
   evidence_version_no: 1,
@@ -422,7 +422,7 @@ const staffRefund = {
   buyer: { buyer_customer_id: 'review-buyer-customer-1', buyer_customer_no: 'B-DEMO-001' },
   order: {
     formal_order_id: 'review-buyer-order-001',
-    marketplace: 'JP',
+    marketplace: 'AMAZON_JP',
     amazon_order_number_normalized: '503-1000001-9000001',
     product_id: 'review-product-1',
     asin: 'B0DEMO001X',
@@ -706,7 +706,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     return {
       buyer: {
         display_name: 'Demo 多身份客户',
-        marketplace_code: 'JP',
+        marketplace_code: 'AMAZON_JP',
         identity_review_status: 'CLEAR',
         customer_number: '20260822B03585',
       },
@@ -811,7 +811,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
           .map((item) => ({
             reservation_id: item.reservation_id,
             demand_id: item.demand.demand_id,
-            marketplace_code: 'JP',
+            marketplace_code: 'AMAZON_JP',
             product_name: item.demand.product_name,
             store_display_name: item.demand.store_display_name,
             review_type: item.demand.task_type,
@@ -1080,7 +1080,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
           buyer_customer_id: 'review-buyer-customer-1',
           buyer_customer_no: 'B-DEMO-001',
           display_name: '张三丰（演示）',
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
         }]
         : [],
       products: query.toLowerCase().startsWith('b0') || query.includes('杯')
@@ -1088,7 +1088,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
           product_id: 'review-product-1',
           product_name: '轻量保温随行杯',
           asin_display: 'B0DEMO001X',
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
           status: 'ACTIVE',
         }]
         : [],
@@ -1098,7 +1098,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
           demand_batch_id: 'review-seller-demand-1',
           product_name: '轻量保温随行杯',
           status: 'PUBLISHED',
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
         }]
         : [],
     };
@@ -1468,25 +1468,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         },
       ],
     };
-  if (path === '/api/staff/acquisition/funnel' && method === 'GET')
-    return {
-      funnel: {
-        from_date: '2026-08-01',
-        to_date: '2026-08-11',
-        data_as_of: NOW,
-        buyer: {
-          consultation_count: 86,
-          wechat_added_count: 27,
-          registered_count: 21,
-          reservation_submitted_count: 19,
-          no_participation_count: 4,
-          formal_order_count: 13,
-          projected_gross_profit_cny_fen: '896520',
-          completed_gross_profit_cny_fen: '568230',
-        },
-        seller: { consultation_count: 31, wechat_added_count: 9, cooperation_count: 5 },
-      },
-    };
+;
   if (path === '/api/staff/acquisition/channel-stats' && method === 'GET')
     return {
       channels: acquisitionChannels.map((channel, index) => ({
@@ -1540,28 +1522,6 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
       ),
       next_cursor: null,
     };
-  if (path === '/api/staff/acquisition/handoffs' && method === 'GET') {
-    const type = (parsed.searchParams.get('lead_type') ?? 'BUYER') as 'BUYER' | 'SELLER';
-    return {
-      items: clone(
-        acquisitionProspects
-          .filter((item) => item.lead_type === type && item.status === 'HUMAN_HANDOFF')
-          .map((item) => ({
-            prospect_id: item.prospect_id,
-            lead_type: item.lead_type,
-            marketplace_code: item.marketplace_code,
-            origin_channel_id: item.origin_channel_id,
-            channel_label: item.origin_channel_id === 'review-channel-1' ? '渠道1' : '渠道2',
-            display_name: item.display_name,
-            contact_value: item.contact_value,
-            status: 'HUMAN_HANDOFF',
-            version: item.version,
-            created_at: item.created_at,
-            updated_at: item.updated_at,
-          })),
-      ),
-    };
-  }
   if (path === '/api/staff/customer-onboarding/lookup' && method === 'GET')
     return {
       matches: [

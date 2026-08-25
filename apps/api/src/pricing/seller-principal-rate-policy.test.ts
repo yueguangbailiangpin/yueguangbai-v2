@@ -348,7 +348,7 @@ function fixture(): SqliteDatabase {
       seller_sequence, organization_name, status, version, created_at,
       updated_at, activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-000001', 'seller-channel-ido-mango',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-000001', 'seller-channel-ido-mango',
       'seller-channel-ido-mango', 1, '测试卖家', 'ACTIVE', 1, 1, 1, 1, NULL, 2
     );
   `);

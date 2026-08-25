@@ -4,8 +4,8 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..'),
   directory = path.join(root, 'migrations');
-const expectedLatestSchema = 19,
-  expectedLastMigration = '0019_read_model_views.sql';
+const expectedLatestSchema = 23,
+  expectedLastMigration = '0023_retire_acquisition_machine_fields.sql';
 const migrationFiles = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
@@ -16,7 +16,7 @@ if (
   migrationFiles.at(-1) !== expectedLastMigration ||
   numbers.some((number, index) => number !== expected[index])
 )
-  throw new Error('expected one continuous migration for every version 0001-0019');
+  throw new Error('expected one continuous migration for every version 0001-0023');
 const sql = migrationFiles.map((name) => readFileSync(path.join(directory, name), 'utf8'));
 function open() {
   const db = new DatabaseSync(':memory:');
@@ -171,10 +171,10 @@ console.log(
   JSON.stringify(
     {
       status: 'PASS',
-      baseline: 'stage3-clean-baseline-0001-0019',
+      baseline: 'clean-baseline-0001-0021',
       migration_count: migrationFiles.length,
       fresh_schema: expectedLatestSchema,
-      sequential_upgrade: '0001 -> 0019',
+      sequential_upgrade: '0001 -> 0023',
       sequential_steps: migrationFiles.length,
       wrong_order_cases: wrong.length,
       wrong_order_commits_rejected: wrong.length,

@@ -53,7 +53,7 @@ interface RefundListRow {
   reminder_count: number;
   last_reminded_at: number | null;
   buyer_customer_no: string | null;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   amazon_order_number_normalized: string;
   product_id: string;
   asin_normalized: string;

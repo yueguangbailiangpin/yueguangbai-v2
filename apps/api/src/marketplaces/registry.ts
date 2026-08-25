@@ -1,5 +1,4 @@
 import type {
-  CanonicalMarketplaceCode,
   MarketplaceCode,
   MarketplaceRecord,
   SqlDatabase,
@@ -23,7 +22,6 @@ export async function resolveMarketplace(
   code: MarketplaceCode,
   options: { requireActive?: boolean; requireAdapter?: boolean } = {},
 ): Promise<MarketplaceRecord> {
-  const canonicalCode = await canonicalMarketplaceCode(database, code);
   const row = await database.prepare(`
     SELECT
       marketplace.code, marketplace.platform_code, marketplace.region_code,
@@ -34,7 +32,7 @@ export async function resolveMarketplace(
     JOIN currencies currency
       ON currency.code=marketplace.transaction_currency_code
     WHERE marketplace.code=?
-  `).bind(canonicalCode).first<MarketplaceRecord>();
+  `).bind(code).first<MarketplaceRecord>();
   if (!row) throw new MarketplaceRegistryError('MARKETPLACE_NOT_FOUND', 400);
   if (options.requireActive && row.status !== 'ACTIVE') {
     throw new MarketplaceRegistryError('MARKETPLACE_DISABLED', 409);
@@ -46,23 +44,4 @@ export async function resolveMarketplace(
     );
   }
   return row;
-}
-
-export async function canonicalMarketplaceCode(
-  database: SqlDatabase,
-  code: MarketplaceCode,
-): Promise<CanonicalMarketplaceCode> {
-  if (code !== 'JP') return code;
-  const row = await database.prepare(`
-    SELECT marketplace_code
-    FROM marketplace_legacy_aliases
-    WHERE legacy_code='JP'
-  `).first<{ marketplace_code: CanonicalMarketplaceCode }>();
-  if (!row) throw new MarketplaceRegistryError('MARKETPLACE_NOT_FOUND', 400);
-  return row.marketplace_code;
-}
-
-/** Legacy JP is a storage-only compatibility value, never a new authority. */
-export function legacyMarketplaceProjection(): 'JP' {
-  return 'JP';
 }

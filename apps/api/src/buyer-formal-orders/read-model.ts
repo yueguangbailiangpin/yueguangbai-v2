@@ -12,7 +12,7 @@ import {
 } from './pagination';
 
 export interface BuyerFormalOrderFilters {
-  marketplace: 'JP' | null;
+  marketplace: 'AMAZON_JP' | null;
   productName: string | null;
   reviewType: PricingReviewType | null;
   confirmedBusinessDate: string | null;
@@ -22,7 +22,7 @@ export interface BuyerFormalOrderFilters {
 
 interface BuyerFormalOrderRow {
   formal_order_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   amazon_order_number_normalized: string;
   amazon_order_date: string | null;
   product_name_snapshot: string;

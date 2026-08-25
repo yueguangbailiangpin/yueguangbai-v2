@@ -49,7 +49,7 @@ interface ApplicationSource {
   application_id: string;
   organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin_normalized: string;
   product_name: string;
   search_keywords_json: string;

@@ -335,7 +335,7 @@ async function execute(
         processed: 0,
         succeeded: 0,
         failed: 0,
-        backlog: await countOrderInstructionExpiryCandidates(database, 'JP', input.now),
+        backlog: await countOrderInstructionExpiryCandidates(database, 'AMAZON_JP', input.now),
       };
     const state = await database
       .prepare('SELECT version FROM scheduled_job_states WHERE job_name=?')
@@ -344,7 +344,7 @@ async function execute(
     const r = await runOrderInstructionExpiryScan(
       database,
       {
-        marketplaceCode: 'JP',
+        marketplaceCode: 'AMAZON_JP',
         limit: batchSize,
         ...(input.deadlineReached ? { deadlineReached: input.deadlineReached } : {}),
       },
@@ -357,11 +357,11 @@ async function execute(
     if (r.completed)
       await database
         .prepare(
-          "UPDATE order_instruction_expiry_scan_cursors SET deadline_at=NULL,instruction_id=NULL,scanned_at=?,version=version+1,updated_at=? WHERE marketplace_code='JP'",
+          "UPDATE order_instruction_expiry_scan_cursors SET deadline_at=NULL,instruction_id=NULL,scanned_at=?,version=version+1,updated_at=? WHERE marketplace_code='AMAZON_JP'",
         )
         .bind(input.now, input.now)
         .run();
-    const backlog = await countOrderInstructionExpiryCandidates(database, 'JP', input.now);
+    const backlog = await countOrderInstructionExpiryCandidates(database, 'AMAZON_JP', input.now);
     return {
       processed: r.attempted,
       succeeded: r.expired + r.unchanged,
@@ -370,7 +370,7 @@ async function execute(
       cursorJson: r.completed
         ? undefined
         : JSON.stringify({
-            marketplace_code: 'JP',
+            marketplace_code: 'AMAZON_JP',
             next_deadline_at: r.next_deadline_at,
             next_instruction_id: r.next_instruction_id,
           }),

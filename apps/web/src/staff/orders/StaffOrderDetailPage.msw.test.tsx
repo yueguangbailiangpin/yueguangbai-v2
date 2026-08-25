@@ -28,7 +28,7 @@ describe('员工订单详情页', () => {
           data: {
             order_integrity: {
               formal_order_id: 'order-1',
-              canonical_marketplace_code: 'JP',
+              canonical_marketplace_code: 'AMAZON_JP',
               operational_state: 'NORMAL',
               events: [
                 {
@@ -77,7 +77,7 @@ describe('员工订单详情页', () => {
           data: {
             order_integrity: {
               formal_order_id: 'order-1',
-              canonical_marketplace_code: 'JP',
+              canonical_marketplace_code: 'AMAZON_JP',
               operational_state: 'NORMAL',
               events: [],
               adjustments: [],

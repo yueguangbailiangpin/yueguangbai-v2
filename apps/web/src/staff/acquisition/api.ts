@@ -6,8 +6,6 @@ import {
   acquisitionChannelSchema,
   acquisitionChannelsResponseSchema,
   acquisitionConsultationsResponseSchema,
-  acquisitionFunnelResponseSchema,
-  acquisitionHandoffSchema,
   acquisitionInternalChannelViewSchema,
   acquisitionLeadSchema,
   acquisitionLeadsPageSchema,
@@ -55,7 +53,6 @@ const prospectMutation = z
   .object({ prospect: acquisitionProspectSchema, replayed: z.boolean() })
   .strict();
 const leadMutation = z.object({ lead: acquisitionLeadSchema, replayed: z.boolean() }).strict();
-const handoffSchema = z.object({ items: z.array(acquisitionHandoffSchema) }).strict();
 const channelStat = z
   .object({
     channel_id: z.string(),
@@ -101,16 +98,6 @@ const consultationMutation = z
     replayed: z.boolean(),
   })
   .strict();
-const reportingConfig = z
-  .object({
-    precision_started_business_date: z.string().nullable(),
-    activated_at: z.number().int().nonnegative().nullable(),
-    activated_by_staff_id: z.string().nullable(),
-    version: z.number().int().positive(),
-    updated_at: z.number().int().nonnegative(),
-  })
-  .strict();
-const reportingConfigEnvelope = z.object({ config: reportingConfig }).strict();
 const sourceCorrectionCandidate = z
   .object({
     lead_id: z.string(),
@@ -194,8 +181,6 @@ export const acquisitionApi = Object.freeze({
       signal,
     );
   },
-  handoffs: (client: QueryClient, leadType: 'BUYER' | 'SELLER', signal?: AbortSignal) =>
-    read(client, `/api/staff/acquisition/handoffs?lead_type=${leadType}`, handoffSchema, signal),
   prospect: (client: QueryClient, id: string, signal?: AbortSignal) =>
     read(
       client,
@@ -231,23 +216,6 @@ export const acquisitionApi = Object.freeze({
     ),
   recordConsultation: (client: QueryClient, body: unknown, key: string) =>
     write(client, '/api/staff/acquisition/consultations', body, consultationMutation, key),
-  funnel: (client: QueryClient, from: string, to: string, signal?: AbortSignal) =>
-    read(
-      client,
-      `/api/staff/acquisition/funnel?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,
-      acquisitionFunnelResponseSchema,
-      signal,
-    ),
-  reportingConfig: (client: QueryClient, signal?: AbortSignal) =>
-    read(client, '/api/staff/acquisition/reporting-config', reportingConfigEnvelope, signal),
-  activateReportingConfig: (client: QueryClient, body: unknown, key: string) =>
-    write(
-      client,
-      '/api/staff/acquisition/reporting-config/activate',
-      body,
-      reportingConfigEnvelope,
-      key,
-    ),
   sourceCorrectionCandidates: (client: QueryClient, signal?: AbortSignal) =>
     read(
       client,

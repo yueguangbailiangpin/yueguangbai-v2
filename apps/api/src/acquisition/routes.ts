@@ -26,7 +26,6 @@ import {
 } from './admin';
 import { type AcquisitionCommandContext } from './command';
 import { AcquisitionError, validation } from './errors';
-import { readAcquisitionFunnel } from './funnel';
 import {
   createAcquisitionLead,
   followUpAcquisitionLead,
@@ -273,9 +272,7 @@ export function registerAcquisitionRoutes(app: Hono<AppEnv>): void {
         'display_name',
         'contact_value',
         'source_url',
-        'origin_mode',
         'note',
-        'ai_score',
       ]);
       if (
         !isAcquisitionLeadType(body['lead_type']) ||
@@ -284,9 +281,7 @@ export function registerAcquisitionRoutes(app: Hono<AppEnv>): void {
         typeof body['display_name'] !== 'string' ||
         !(body['contact_value'] === null || typeof body['contact_value'] === 'string') ||
         !(body['source_url'] === null || typeof body['source_url'] === 'string') ||
-        (body['origin_mode'] !== 'HUMAN' && body['origin_mode'] !== 'CODEX') ||
-        !(body['note'] === null || typeof body['note'] === 'string') ||
-        !(body['ai_score'] === null || Number.isSafeInteger(body['ai_score']))
+        !(body['note'] === null || typeof body['note'] === 'string')
       )
         validation();
       return context.json(
@@ -300,9 +295,7 @@ export function registerAcquisitionRoutes(app: Hono<AppEnv>): void {
               displayName: body['display_name'],
               contactValue: body['contact_value'],
               sourceUrl: body['source_url'],
-              originMode: body['origin_mode'],
               note: body['note'],
-              aiScore: body['ai_score'] === null ? null : Number(body['ai_score']),
             },
             command(context),
           ),
@@ -316,11 +309,10 @@ export function registerAcquisitionRoutes(app: Hono<AppEnv>): void {
     '/api/staff/acquisition/prospects/:id/update',
     customerAuthOriginGuard(),
     withErrors(async (context) => {
-      const body = await exactBody(context, ['expected_version', 'status', 'ai_score', 'note']);
+      const body = await exactBody(context, ['expected_version', 'status', 'note']);
       if (
         !Number.isSafeInteger(body['expected_version']) ||
         !isAcquisitionProspectStatus(body['status']) ||
-        !(body['ai_score'] === null || Number.isSafeInteger(body['ai_score'])) ||
         !(body['note'] === null || typeof body['note'] === 'string')
       )
         validation();
@@ -332,7 +324,6 @@ export function registerAcquisitionRoutes(app: Hono<AppEnv>): void {
           {
             expectedVersion: Number(body['expected_version']),
             status: body['status'],
-            aiScore: body['ai_score'] === null ? null : Number(body['ai_score']),
             note: body['note'],
           },
           command(context),
@@ -517,22 +508,6 @@ export function registerAcquisitionRoutes(app: Hono<AppEnv>): void {
           requireAcquisitionSecret(context.env.CUSTOMER_SECURITY_TOKEN_SECRET),
         ),
       );
-    }),
-  );
-
-  app.get(
-    '/api/staff/acquisition/funnel',
-    withErrors(async (context) => {
-      exactQuery(context, ['from_date', 'to_date']);
-      const from = context.req.query('from_date'),
-        to = context.req.query('to_date');
-      if (!from || !to) validation();
-      return success(context, {
-        funnel: await readAcquisitionFunnel(context.env.DB, actor(context), {
-          fromDate: from,
-          toDate: to,
-        }),
-      });
     }),
   );
 }

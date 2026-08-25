@@ -24,7 +24,7 @@ interface SellerReviewRow {
   amazon_order_number: string;
   store_id: string;
   store_display_name: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   product_name: string;
   review_type: PricingReviewType;

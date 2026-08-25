@@ -1063,7 +1063,7 @@ function seedReservationFixture(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-9001',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-9001',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       9001, '预约卖家', 'ACTIVE',
@@ -1107,19 +1107,19 @@ function seedReservationFixture(
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-1', 'buyer-subject-1', 'JP',
+        'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
         'buyer-channel-b', NULL, NULL, NULL,
         '买家一', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-2', 'buyer-subject-2', 'JP',
+        'buyer-2', 'buyer-subject-2', 'AMAZON_JP',
         'buyer-channel-b', NULL, NULL, NULL,
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-3', 'buyer-subject-3', 'JP',
+        'buyer-3', 'buyer-subject-3', 'AMAZON_JP',
         'buyer-channel-b', NULL, NULL, NULL,
         '买家三', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
@@ -1130,7 +1130,7 @@ function seedReservationFixture(
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-1', 'seller-org-1', 'JP',
+      'store-1', 'seller-org-1', 'AMAZON_JP',
       '预约店铺', '预约店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -1139,7 +1139,7 @@ function seedReservationFixture(
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-2', 'seller-org-1', 'JP',
+      'store-2', 'seller-org-1', 'AMAZON_JP',
       '预约店铺二', '预约店铺二', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -1151,17 +1151,17 @@ function seedReservationFixture(
       created_at, updated_at, disabled_at
     ) VALUES
       (
-        'product-1', 'seller-org-1', 'store-1', 'JP',
+        'product-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'B0RESERVE1', 'B0RESERVE1', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       ),
       (
-        'product-2', 'seller-org-1', 'store-1', 'JP',
+        'product-2', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'B0RESERVE2', 'B0RESERVE2', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       ),
       (
-        'product-3', 'seller-org-1', 'store-2', 'JP',
+        'product-3', 'seller-org-1', 'store-2', 'AMAZON_JP',
         'B0RESERVE3', 'B0RESERVE3', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       );
@@ -1219,7 +1219,7 @@ function seedReservationFixture(
       buyer_self_pay_override_reason
     ) VALUES
       (
-        'demand-1', 'seller-org-1', 'store-1', 'JP',
+        'demand-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-1', 1, 'seller-owner', 'IMAGE',
         ${targetQuantity}, '公开说明', '内部说明',
         4000, 10000, 20000,
@@ -1230,7 +1230,7 @@ function seedReservationFixture(
       ),
       (
         'demand-2-same-product',
-        'seller-org-1', 'store-1', 'JP',
+        'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-1', 1, 'seller-owner', 'TEXT',
         3, '公开说明', '内部说明',
         4000, 10000, 20000,
@@ -1240,7 +1240,7 @@ function seedReservationFixture(
         0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-2', 'seller-org-1', 'store-1', 'JP',
+        'demand-2', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-2', 1, 'seller-owner', 'VIDEO',
         3, '公开说明', '内部说明',
         4000, 10000, 20000,
@@ -1250,7 +1250,7 @@ function seedReservationFixture(
         0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-future', 'seller-org-1', 'store-1', 'JP',
+        'demand-future', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-2', 1, 'seller-owner', 'RATING',
         3, '公开说明', '内部说明',
         8000, 10000, 20000,
@@ -1260,7 +1260,7 @@ function seedReservationFixture(
         0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-3-other-store', 'seller-org-1', 'store-2', 'JP',
+        'demand-3-other-store', 'seller-org-1', 'store-2', 'AMAZON_JP',
         'product-3', 1, 'seller-owner', 'TEXT',
         3, '公开说明', '内部说明',
         4000, 10000, 20000,
@@ -1304,7 +1304,7 @@ function buyerActor(
 ): BuyerReservationActor {
   return {
     buyerCustomerId,
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     accessStatus: 'ACTIVE',
     identityReviewStatus: 'CLEAR',
   };
@@ -1540,7 +1540,7 @@ function seedAutoApproveDemand(
       buyer_self_pay_source,
       buyer_self_pay_override_reason
     ) VALUES (
-      '${demandId}', 'seller-org-1', '${storeId}', 'JP',
+      '${demandId}', 'seller-org-1', '${storeId}', 'AMAZON_JP',
       '${productId}', 1, 'seller-owner', 'IMAGE',
       5, '公开说明', '内部说明',
       4000, 10000000, 90000000,

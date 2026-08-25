@@ -232,7 +232,7 @@ async function sellerMatches(
     dedup.set(row.subject_id, row);
   return [...dedup.values()]
     .filter((row) => {
-      const canonical = row.marketplace_code === 'JP' ? 'AMAZON_JP' : row.marketplace_code;
+      const canonical = row.marketplace_code === 'AMAZON_JP' ? 'AMAZON_JP' : row.marketplace_code;
       return markets === null || markets.includes(canonical);
     })
     .map((row) => ({
@@ -240,7 +240,7 @@ async function sellerMatches(
       subject_id: row.subject_id,
       display_name: row.display_name,
       customer_number: null,
-      marketplace_code: row.marketplace_code === 'JP' ? 'AMAZON_JP' : row.marketplace_code,
+      marketplace_code: row.marketplace_code === 'AMAZON_JP' ? 'AMAZON_JP' : row.marketplace_code,
       has_portal_account: row.account_id !== null,
       historical_order_count: Number(row.formal_order_count),
       orders: [],

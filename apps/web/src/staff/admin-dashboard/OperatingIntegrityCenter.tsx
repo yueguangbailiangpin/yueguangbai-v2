@@ -67,13 +67,11 @@ const MARKET: Record<string, string> = {
 };
 
 export function OperatingIntegrityCenter({
-  anomalies,
+  openWorkItems,
+  financeExceptions,
 }: {
-  anomalies: {
-    identity_conflicts: number;
-    attribution_anomalies: number;
-    finance_conflicts: number;
-  };
+  openWorkItems: number;
+  financeExceptions: number;
 }) {
   const client = useQueryClient();
   const [selected, setSelected] = useState<CaseItem | null>(null);
@@ -127,19 +125,19 @@ export function OperatingIntegrityCenter({
     <section aria-label="运行完整性">
       <div className="dashboard-metric-grid">
         <IssueMetric
-          label="客户身份对不上"
-          value={anomalies.identity_conflicts}
-          tone={anomalies.identity_conflicts > 0 ? 'danger' : 'success'}
-        />
-        <IssueMetric
-          label="找不到来源的订单"
-          value={anomalies.attribution_anomalies}
-          tone={anomalies.attribution_anomalies > 0 ? 'danger' : 'success'}
+          label="待处理工作项"
+          value={openWorkItems}
+          tone={openWorkItems > 0 ? 'danger' : 'success'}
         />
         <IssueMetric
           label="账目对不上"
-          value={anomalies.finance_conflicts}
-          tone={anomalies.finance_conflicts > 0 ? 'danger' : 'success'}
+          value={financeExceptions}
+          tone={financeExceptions > 0 ? 'danger' : 'success'}
+        />
+        <IssueMetric
+          label="客户身份对不上"
+          value={cases.data?.length ?? 0}
+          tone={(cases.data?.length ?? 0) > 0 ? 'danger' : 'success'}
         />
       </div>
       {cases.isError ? (

@@ -64,7 +64,7 @@ export async function submitOrderEvidence(
   input: {
     reservationId: string;
     expectedVersion: number;
-    marketplace: 'JP';
+    marketplace: 'AMAZON_JP';
     amazonOrderNumber: string;
     amazonOrderDate: string;
     finalPaidJpy: number;
@@ -87,7 +87,7 @@ export async function submitOrderEvidence(
     input.expectedVersion,
     { allowZero: true },
   );
-  if (input.marketplace !== 'JP'
+  if (input.marketplace !== 'AMAZON_JP'
     || input.marketplace !== command.actor.marketplaceCode) {
     throw new OrderEvidenceError('VALIDATION_ERROR', 400);
   }
@@ -499,7 +499,7 @@ function insertSubmissionStatement(
     submissionId: string;
     reservationId: string;
     buyerCustomerId: string;
-    marketplace: 'JP';
+    marketplace: 'AMAZON_JP';
     now: number;
   },
 ): SqlStatement {
@@ -543,7 +543,7 @@ function insertEvidenceVersionStatement(
     submissionId: string;
     reservationId: string;
     buyerCustomerId: string;
-    marketplace: 'JP';
+    marketplace: 'AMAZON_JP';
     evidenceVersionNo: number;
     orderNumberRaw: string;
     orderNumberNormalized: string;

@@ -219,7 +219,7 @@ describe('seller member lifecycle', () => {
     seedSellerMemberFixture(database);
 
     await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: '冲突买家',
       wechatId: 'shared_member_wechat_01',
@@ -399,14 +399,14 @@ function seedSellerMemberFixture(
       activated_at, disabled_at, next_member_number
     ) VALUES
       (
-        'seller-org-1', 'JP', 'ido-mango-5001',
+        'seller-org-1', 'AMAZON_JP', 'ido-mango-5001',
         'seller-channel-ido-mango',
         'seller-channel-ido-mango',
         5001, '卖家组织一', 'ACTIVE',
         1, 1000, 1000, 1000, NULL, 2
       ),
       (
-        'seller-org-2', 'JP', 'ygbceping-5001',
+        'seller-org-2', 'AMAZON_JP', 'ygbceping-5001',
         'seller-channel-ygbceping',
         'seller-channel-ygbceping',
         5001, '卖家组织二', 'ACTIVE',
@@ -449,17 +449,17 @@ function seedSellerMemberFixture(
       version, created_at, updated_at, disabled_at
     ) VALUES
       (
-        'store-1', 'seller-org-1', 'JP',
+        'store-1', 'seller-org-1', 'AMAZON_JP',
         '店铺一', '店铺一', 'ACTIVE',
         1, 1000, 1000, NULL
       ),
       (
-        'store-2', 'seller-org-1', 'JP',
+        'store-2', 'seller-org-1', 'AMAZON_JP',
         '店铺二', '店铺二', 'ACTIVE',
         1, 1000, 1000, NULL
       ),
       (
-        'store-other-org', 'seller-org-2', 'JP',
+        'store-other-org', 'seller-org-2', 'AMAZON_JP',
         '其他组织店铺', '其他组织店铺', 'ACTIVE',
         1, 1000, 1000, NULL
       );

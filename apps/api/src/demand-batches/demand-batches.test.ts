@@ -171,7 +171,7 @@ describe('demand batch workflow', () => {
       store_id: 'store-1',
       product_id: 'product-1',
       product_version_no: 1,
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       task_type: 'IMAGE',
       target_quantity: 8,
       status: 'SUBMITTED',
@@ -343,7 +343,7 @@ describe('demand batch workflow', () => {
     expect(publicRows[0]).toEqual({
       demand_batch_id: submitted.demand_batch_id,
       demand_version: 2,
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       product_name: '产品一旧版',
       reference_order_amount_jpy: '1980',
       buyer_self_pay_bps: 0,
@@ -943,7 +943,7 @@ describe('demand batch workflow', () => {
         current_version_no, version,
         created_at, updated_at, disabled_at
       ) VALUES (
-        'product-3', 'seller-org-1', 'store-1', 'JP',
+        'product-3', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'B0DEMAND03', 'B0DEMAND03', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       );
@@ -1283,7 +1283,7 @@ function seedDemandFixture(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-8001',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-8001',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       8001, '需求卖家', 'ACTIVE',
@@ -1328,12 +1328,12 @@ function seedDemandFixture(
       version, created_at, updated_at, disabled_at
     ) VALUES
       (
-        'store-1', 'seller-org-1', 'JP',
+        'store-1', 'seller-org-1', 'AMAZON_JP',
         '需求店铺一', '需求店铺一', 'ACTIVE',
         1, 1000, 1000, NULL
       ),
       (
-        'store-2', 'seller-org-1', 'JP',
+        'store-2', 'seller-org-1', 'AMAZON_JP',
         '需求店铺二', '需求店铺二', 'ACTIVE',
         1, 1000, 1000, NULL
       );
@@ -1361,12 +1361,12 @@ function seedDemandFixture(
       created_at, updated_at, disabled_at
     ) VALUES
       (
-        'product-1', 'seller-org-1', 'store-1', 'JP',
+        'product-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'B0DEMAND01', 'B0DEMAND01', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       ),
       (
-        'product-2', 'seller-org-1', 'store-2', 'JP',
+        'product-2', 'seller-org-1', 'store-2', 'AMAZON_JP',
         'B0DEMAND02', 'B0DEMAND02', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       );
@@ -1580,7 +1580,7 @@ function insertDemandScopeMismatchOrganization(database: SqliteDatabase): void {
     id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
     seller_sequence, organization_name, status, version, created_at, updated_at,
     activated_at, disabled_at, next_member_number
-  ) VALUES ('seller-org-2','JP','ygbceping-8001','seller-channel-ygbceping',
+  ) VALUES ('seller-org-2','AMAZON_JP','ygbceping-8001','seller-channel-ygbceping',
     'seller-channel-ygbceping',8001,'错误工作项组织','ACTIVE',1,1000,1000,1000,NULL,2)`);
 }
 
@@ -1605,7 +1605,7 @@ async function demandReviewBusinessCounts(
 function activeBuyer(): BuyerDemandContext {
   return {
     buyerCustomerId: 'buyer-public-1',
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     accessStatus: 'ACTIVE',
     identityReviewStatus: 'CLEAR',
   };

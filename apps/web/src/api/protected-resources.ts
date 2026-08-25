@@ -5,7 +5,7 @@ import { identityApiRequest } from './identity-request';
 const buyerPortalMeSchema = z.object({
   buyer: z.object({
     display_name: z.string(),
-    marketplace_code: z.literal('JP'),
+    marketplace_code: z.literal('AMAZON_JP'),
     identity_review_status: z.enum(['CLEAR', 'REVIEW_REQUIRED']),
     customer_number: z.string().nullable(),
   }).strict(),
@@ -24,7 +24,7 @@ const sellerPortalMeSchema = z.object({
       id: z.string(),
       seller_code: z.string(),
       name: z.string(),
-      marketplace_code: z.literal('JP'),
+      marketplace_code: z.literal('AMAZON_JP'),
       status: z.literal('ACTIVE'),
     }).strict(),
     access: z.object({

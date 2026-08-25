@@ -1137,7 +1137,7 @@ async function seedFormalOrderFixture(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-formal', 'JP', 'ido-mango-9201',
+      'seller-org-formal', 'AMAZON_JP', 'ido-mango-9201',
       'seller-channel-ido-mango', 'seller-channel-ido-mango',
       9201, '正式订单测试卖家', 'ACTIVE',
       1, 1000, 1000, 1000, NULL, 2
@@ -1179,13 +1179,13 @@ async function seedFormalOrderFixture(
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-1', 'buyer-formal-subject-1', 'JP',
+        'buyer-1', 'buyer-formal-subject-1', 'AMAZON_JP',
         'buyer-channel-formal', NULL, NULL, NULL,
         '首次下单买家', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-existing', 'buyer-formal-subject-existing', 'JP',
+        'buyer-existing', 'buyer-formal-subject-existing', 'AMAZON_JP',
         'buyer-channel-formal', '20260731E99', 99, '2026-07-31',
         '历史编号买家', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
@@ -1196,7 +1196,7 @@ async function seedFormalOrderFixture(
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-formal', 'seller-org-formal', 'JP',
+      'store-formal', 'seller-org-formal', 'AMAZON_JP',
       '正式订单测试店铺', '正式订单测试店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -1207,11 +1207,11 @@ async function seedFormalOrderFixture(
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('product-formal-1', 'seller-org-formal', 'store-formal', 'JP',
+      ('product-formal-1', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'B0FORM0001', 'B0FORM0001', 'ACTIVE', 1, 1, 1000, 1000, NULL),
-      ('product-formal-2', 'seller-org-formal', 'store-formal', 'JP',
+      ('product-formal-2', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'B0FORM0002', 'B0FORM0002', 'ACTIVE', 1, 1, 1000, 1000, NULL),
-      ('product-formal-3', 'seller-org-formal', 'store-formal', 'JP',
+      ('product-formal-3', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'B0FORM0003', 'B0FORM0003', 'ACTIVE', 1, 1, 1000, 1000, NULL);
 
     INSERT INTO product_versions (
@@ -1244,17 +1244,17 @@ async function seedFormalOrderFixture(
       reviewed_at, published_at, withdrawn_at, closed_at,
       held_reservation_count, approved_reservation_count
     ) VALUES
-      ('demand-formal-1', 'seller-org-formal', 'store-formal', 'JP',
+      ('demand-formal-1', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'product-formal-1', 1, 'seller-formal-owner', 'IMAGE',
        10, NULL, NULL, 2000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1000, 3000, 3000, 3000, NULL, NULL, 0, 1),
-      ('demand-formal-2', 'seller-org-formal', 'store-formal', 'JP',
+      ('demand-formal-2', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'product-formal-2', 1, 'seller-formal-owner', 'TEXT',
        10, NULL, NULL, 2000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1000, 3000, 3000, 3000, NULL, NULL, 0, 1),
-      ('demand-formal-3', 'seller-org-formal', 'store-formal', 'JP',
+      ('demand-formal-3', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'product-formal-3', 1, 'seller-formal-owner', 'VIDEO',
        10, NULL, NULL, 2000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
@@ -1277,17 +1277,17 @@ async function seedFormalOrderFixture(
       buyer_self_pay_accepted_demand_version
     ) VALUES
       ('reservation-formal-1', 'demand-formal-1', 'buyer-1',
-       'seller-org-formal', 'store-formal', 'product-formal-1', 1, 'JP',
+       'seller-org-formal', 'store-formal', 'product-formal-1', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
        'staff-pre-sales', NULL, 6000, NULL, NULL, 0,
        0, 1980, 0, 1980, 4000, 2),
       ('reservation-formal-2', 'demand-formal-2', 'buyer-1',
-       'seller-org-formal', 'store-formal', 'product-formal-2', 1, 'JP',
+       'seller-org-formal', 'store-formal', 'product-formal-2', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
        'staff-pre-sales', NULL, 6000, NULL, NULL, 0,
        0, 1980, 0, 1980, 4000, 2),
       ('reservation-formal-3', 'demand-formal-3', 'buyer-existing',
-       'seller-org-formal', 'store-formal', 'product-formal-3', 1, 'JP',
+       'seller-org-formal', 'store-formal', 'product-formal-3', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
        'staff-pre-sales', NULL, 6000, NULL, NULL, 0,
        0, 1980, 0, 1980, 4000, 2);
@@ -1328,13 +1328,13 @@ async function seedFormalOrderFixture(
       verified_by_staff_id, verified_at,
       withdrawn_at, consumed_at, created_at
     ) VALUES
-      ('evidence-submission-1', 'reservation-formal-1', 'buyer-1', 'JP',
+      ('evidence-submission-1', 'reservation-formal-1', 'buyer-1', 'AMAZON_JP',
        'PENDING_VERIFICATION', 1, 1, NULL, NULL,
        7000, 7000, NULL, NULL, NULL, NULL, 7000),
-      ('evidence-submission-2', 'reservation-formal-2', 'buyer-1', 'JP',
+      ('evidence-submission-2', 'reservation-formal-2', 'buyer-1', 'AMAZON_JP',
        'PENDING_VERIFICATION', 1, 1, NULL, NULL,
        7000, 7000, NULL, NULL, NULL, NULL, 7000),
-      ('evidence-submission-3', 'reservation-formal-3', 'buyer-existing', 'JP',
+      ('evidence-submission-3', 'reservation-formal-3', 'buyer-existing', 'AMAZON_JP',
        'PENDING_VERIFICATION', 1, 1, NULL, NULL,
        7000, 7000, NULL, NULL, NULL, NULL, 7000);
 
@@ -1353,7 +1353,7 @@ async function seedFormalOrderFixture(
       evidence_file_object_id, created_at
     ) VALUES
       ('evidence-version-1', 'evidence-submission-1',
-       'reservation-formal-1', 'buyer-1', 'JP', 1,
+       'reservation-formal-1', 'buyer-1', 'AMAZON_JP', 1,
        '123-1234567-1234567', '123-1234567-1234567',
        '2026-08-01',
        ${finalPaidJpy}, 'buyer-1', NULL,
@@ -1363,7 +1363,7 @@ async function seedFormalOrderFixture(
        ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
        '${instructionOne.evidenceFileObjectId}', 7000),
       ('evidence-version-2', 'evidence-submission-2',
-       'reservation-formal-2', 'buyer-1', 'JP', 1,
+       'reservation-formal-2', 'buyer-1', 'AMAZON_JP', 1,
        '${secondOrder}', '${secondOrder}',
        '2026-08-01',
        ${finalPaidJpy}, 'buyer-1', NULL,
@@ -1373,7 +1373,7 @@ async function seedFormalOrderFixture(
        ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
        '${instructionTwo.evidenceFileObjectId}', 7000),
       ('evidence-version-3', 'evidence-submission-3',
-       'reservation-formal-3', 'buyer-existing', 'JP', 1,
+       'reservation-formal-3', 'buyer-existing', 'AMAZON_JP', 1,
        '789-1234567-1234567', '789-1234567-1234567',
        '2026-08-01',
        ${finalPaidJpy}, 'buyer-existing', NULL,

@@ -8,45 +8,13 @@ import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { AcquisitionError } from './errors';
 import type { AcquisitionCommandContext } from './command';
 import {
-  activateReportingPrecisionBoundary,
   correctLeadSource,
   listSourceCorrectionCandidates,
-  readReportingPrecisionConfig,
 } from './reporting-operations';
 
 const BODY_LIMIT = 16 * 1024;
 
 export function registerAcquisitionReportingOperationRoutes(app: Hono<any>): void {
-  app.get(
-    '/api/staff/acquisition/reporting-config',
-    withErrors(async (context) =>
-      context.json(
-        apiSuccess(
-          { config: await readReportingPrecisionConfig(context.env.DB, actor(context)) },
-          requestIdFromContext(context),
-        ),
-      ),
-    ),
-  );
-
-  app.post(
-    '/api/staff/acquisition/reporting-config/activate',
-    customerAuthOriginGuard(),
-    withErrors(async (context) => {
-      const body = await exactBody(context, ['business_date', 'expected_version']);
-      if (
-        typeof body['business_date'] !== 'string' ||
-        !Number.isSafeInteger(body['expected_version'])
-      )
-        throw validation();
-      const config = await activateReportingPrecisionBoundary(context.env.DB, actor(context), {
-        businessDate: body['business_date'],
-        expectedVersion: Number(body['expected_version']),
-      });
-      return context.json(apiSuccess({ config }, requestIdFromContext(context)));
-    }),
-  );
-
   app.get(
     '/api/staff/acquisition/source-corrections/candidates',
     withErrors(async (context) => {

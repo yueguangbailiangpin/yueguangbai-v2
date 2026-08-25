@@ -30,7 +30,7 @@ const me = {
     id: 'org-visual',
     seller_code: 'YG-26001',
     name: '月白生活株式会社',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     status: 'ACTIVE',
   },
   access: {
@@ -44,7 +44,7 @@ const me = {
 const stores = [
   {
     id: 'store-jp',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     canonical_marketplace_code: 'AMAZON_JP',
     transaction_currency_code: 'JPY',
     transaction_currency_exponent: 0,
@@ -58,7 +58,7 @@ const stores = [
   },
   {
     id: 'store-us',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     canonical_marketplace_code: 'AMAZON_US',
     transaction_currency_code: 'USD',
     transaction_currency_exponent: 2,
@@ -76,7 +76,7 @@ const products = [
   {
     id: 'product-rice',
     store: { id: 'store-jp', display_name: '东京一号店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     seller_code: 'YG-26001',
     asin: 'B07W5DMQ3R',
     status: 'ACTIVE',
@@ -100,7 +100,7 @@ const products = [
   {
     id: 'product-kettle',
     store: { id: 'store-us', display_name: '北美精品店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     seller_code: 'YG-26001',
     asin: 'B08J7H2K5L',
     status: 'ACTIVE',
@@ -127,7 +127,7 @@ const applications = [
   {
     id: 'application-serum',
     store: { id: 'store-jp', display_name: '东京一号店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B00XQJG2Z4',
     product_name: '资生堂 HAKU 美白精华 45g',
     search_keywords: ['美白精华'],
@@ -146,7 +146,7 @@ const applications = [
   {
     id: 'application-mask',
     store: { id: 'store-us', display_name: '北美精品店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B00E3N4H7C',
     product_name: '肌美精 3D 面膜 4 枚入',
     search_keywords: ['面膜'],
@@ -176,7 +176,7 @@ const demands = [
       search_keywords: ['电饭煲'],
       product_url: null,
     },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     task_type: 'IMAGE',
     target_quantity: 20,
     held_quantity: 6,
@@ -209,7 +209,7 @@ const demands = [
       search_keywords: ['电热水壶'],
       product_url: null,
     },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     task_type: 'TEXT',
     target_quantity: 12,
     held_quantity: 0,
@@ -237,7 +237,7 @@ const orders = [
   {
     formal_order_id: 'order-rice',
     status: 'CONFIRMED',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     canonical_marketplace_code: 'AMAZON_JP',
     amazon_order_number: '503-1234567-1234567',
     platform_order_identifier: '503-1234567-1234567',
@@ -295,7 +295,7 @@ const orders = [
   {
     formal_order_id: 'order-kettle',
     status: 'CONFIRMED',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     canonical_marketplace_code: 'AMAZON_US',
     amazon_order_number: '113-7654321-7654321',
     platform_order_identifier: '113-7654321-7654321',
@@ -357,7 +357,7 @@ const reviews = [
     review_case_id: 'review-rice',
     formal_order: { id: 'order-rice', amazon_order_number: '503-1234567-1234567' },
     store: { id: 'store-jp', display_name: '东京一号店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B07W5DMQ3R',
     product_name: '象印 IH 电饭煲 5.5 合',
     review_type: 'IMAGE',
@@ -387,7 +387,7 @@ const reviews = [
     review_case_id: 'review-kettle',
     formal_order: { id: 'order-kettle', amazon_order_number: '113-7654321-7654321' },
     store: { id: 'store-us', display_name: '北美精品店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B08J7H2K5L',
     product_name: '山善电热水壶 0.8L',
     review_type: 'TEXT',

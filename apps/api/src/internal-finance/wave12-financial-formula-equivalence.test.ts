@@ -44,7 +44,7 @@ describe('Wave 12 financial formulas execute against the production SQL view', (
     database = createFormulaFixtureDatabase();
     expect(database.raw.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).get()).toMatchObject({ schema_version: 19 });
+    `).get()).toMatchObject({ schema_version: 23 });
     expect(database.raw.prepare('PRAGMA foreign_keys').get())
       .toMatchObject({ foreign_keys: 1 });
     for (const trigger of [
@@ -248,7 +248,7 @@ function seedFinanceFacts(database: SqliteDatabase, facts: FinanceFacts): void {
       amazon_order_number_normalized, final_paid_jpy, status, version,
       confirmed_by_staff_id, confirmed_at, confirmed_business_date, created_at,
       amazon_order_date
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'JP', ?, ?, 1, ?, ?, 'Formula fixture',
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'AMAZON_JP', ?, ?, 1, ?, ?, 'Formula fixture',
       'TEXT', ?, ?, ?, 'CONFIRMED', 1, ?,
       ?, '2023-11-14', ?, '2023-11-14')
   `).run(
@@ -375,7 +375,7 @@ function seedLegalFormalOrderSources(
       id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
       seller_sequence, organization_name, status, version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
-    ) VALUES (?, 'JP', ?, 'seller-channel-ido-mango', 'seller-channel-ido-mango', ?,
+    ) VALUES (?, 'AMAZON_JP', ?, 'seller-channel-ido-mango', 'seller-channel-ido-mango', ?,
       'Formula seller', 'ACTIVE', 1, ?, ?, ?, NULL, 2);
     INSERT INTO customer_identity_subjects (id, subject_type, created_at)
     VALUES (?, 'SELLER_ORG_MEMBER', ?), (?, 'BUYER_CUSTOMER', ?);
@@ -391,16 +391,16 @@ function seedLegalFormalOrderSources(
       id, identity_subject_id, marketplace_code, buyer_channel_id, buyer_customer_no,
       buyer_sequence, first_valid_order_business_date, display_name, access_status,
       identity_review_status, version, created_at, updated_at, activated_at, disabled_at
-    ) VALUES (?, ?, 'JP', ?, ?, 1, '2023-11-14', 'Formula buyer', 'ACTIVE', 'CLEAR',
+    ) VALUES (?, ?, 'AMAZON_JP', ?, ?, 1, '2023-11-14', 'Formula buyer', 'ACTIVE', 'CLEAR',
       1, ?, ?, ?, NULL);
     INSERT INTO seller_stores (
       id, organization_id, marketplace_code, display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
-    ) VALUES (?, ?, 'JP', 'Formula store', 'Formula store', 'ACTIVE', 1, ?, ?, NULL);
+    ) VALUES (?, ?, 'AMAZON_JP', 'Formula store', 'Formula store', 'ACTIVE', 1, ?, ?, NULL);
     INSERT INTO products (
       id, organization_id, store_id, marketplace_code, asin_display, asin_normalized,
       status, current_version_no, version, created_at, updated_at, disabled_at
-    ) VALUES (?, ?, ?, 'JP', ?, ?, 'ACTIVE', 1, 1, ?, ?, NULL);
+    ) VALUES (?, ?, ?, 'AMAZON_JP', ?, ?, 'ACTIVE', 1, 1, ?, ?, NULL);
     INSERT INTO product_versions (
       id, product_id, version_no, product_name, search_keywords_json, product_url,
       buyer_visible_notes, internal_notes, created_by_staff_id, created_at,
@@ -414,7 +414,7 @@ function seedLegalFormalOrderSources(
       reviewed_by_staff_id, closed_by_staff_id, version, submitted_at, updated_at,
       reviewed_at, published_at, withdrawn_at, closed_at, held_reservation_count,
       approved_reservation_count
-    ) VALUES (?, ?, ?, 'JP', ?, 1, ?, 'TEXT', 1, NULL, NULL, ?, ?, ?, 'PUBLISHED',
+    ) VALUES (?, ?, ?, 'AMAZON_JP', ?, 1, ?, 'TEXT', 1, NULL, NULL, ?, ?, ?, 'PUBLISHED',
       NULL, NULL, ?, NULL, 2, ?, ?, ?, ?, NULL, NULL, 0, 1);
     INSERT INTO product_reservations (
       id, demand_batch_id, buyer_customer_id, organization_id, store_id, product_id,
@@ -424,7 +424,7 @@ function seedLegalFormalOrderSources(
       buyer_self_pay_bps_snapshot, reference_order_amount_jpy_snapshot,
       estimated_self_pay_jpy_snapshot, estimated_refundable_principal_jpy_snapshot,
       buyer_self_pay_accepted_at, buyer_self_pay_accepted_demand_version
-    ) VALUES (?, ?, ?, ?, ?, ?, 1, 'JP', 'APPROVED', '{}', ?, ?, 2, ?, ?, ?, NULL,
+    ) VALUES (?, ?, ?, ?, ?, ?, 1, 'AMAZON_JP', 'APPROVED', '{}', ?, ?, 2, ?, ?, ?, NULL,
       ?, NULL, NULL, 0, 0, 1980, 0, 1980, ?, 2);
     INSERT INTO order_instruction_reconciliation_markers (
       id, reservation_id, instruction_id, disposition, metadata_json, created_at
@@ -451,7 +451,7 @@ function seedLegalFormalOrderSources(
       id, reservation_id, buyer_customer_id, marketplace_code, status, current_version_no,
       version, public_change_reason, internal_review_note, submitted_at, updated_at,
       verified_by_staff_id, verified_at, withdrawn_at, consumed_at, created_at
-    ) VALUES (?, ?, ?, 'JP', 'PENDING_VERIFICATION', 1, 1, NULL, NULL, ?, ?, NULL,
+    ) VALUES (?, ?, ?, 'AMAZON_JP', 'PENDING_VERIFICATION', 1, 1, NULL, NULL, ?, ?, NULL,
       NULL, NULL, NULL, ?)
   `).run(submissionId, reservationId, buyerId, AT, AT, AT);
   raw.prepare(`
@@ -463,7 +463,7 @@ function seedLegalFormalOrderSources(
       reference_order_amount_jpy_snapshot, buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch, price_difference_jpy,
       submitted_before_deadline, evidence_file_object_id, created_at
-    ) VALUES (?, ?, ?, ?, 'JP', 1, ?, ?, '2023-11-14', ?, ?, NULL, NULL, NULL, NULL,
+    ) VALUES (?, ?, ?, ?, 'AMAZON_JP', 1, ?, ?, '2023-11-14', ?, ?, NULL, NULL, NULL, NULL,
       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)
   `).run(evidenceId, submissionId, reservationId, buyerId, orderNumber, orderNumber,
     facts.sellerExpectedPrincipalCnyFen, buyerId, AT);

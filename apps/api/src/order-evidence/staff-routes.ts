@@ -27,7 +27,7 @@ interface OrderEvidenceDetailRow {
   reservation_id: string;
   buyer_customer_id: string;
   buyer_customer_no: string | null;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: StaffOrderEvidenceDetailDto['status'];
   aggregate_version: number;
   current_version_no: number;
@@ -170,7 +170,7 @@ async function listStaffOrderEvidence(context: Context<AppEnv>): Promise<Respons
       reservation_id: string;
       buyer_customer_id: string;
       buyer_customer_no: string | null;
-      marketplace_code: 'JP';
+      marketplace_code: 'AMAZON_JP';
       status: StaffOrderEvidenceListItem['status'];
       version: number;
       current_version_no: number;

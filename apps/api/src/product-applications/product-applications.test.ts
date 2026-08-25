@@ -1235,14 +1235,14 @@ function seedProductApplicationFixture(database: SqliteDatabase): void {
       activated_at, disabled_at, next_member_number
     ) VALUES
       (
-        'seller-org-1', 'JP', 'ido-mango-7001',
+        'seller-org-1', 'AMAZON_JP', 'ido-mango-7001',
         'seller-channel-ido-mango',
         'seller-channel-ido-mango',
         7001, '申请卖家一', 'ACTIVE',
         1, 1000, 1000, 1000, NULL, 4
       ),
       (
-        'seller-org-2', 'JP', 'ygbceping-7001',
+        'seller-org-2', 'AMAZON_JP', 'ygbceping-7001',
         'seller-channel-ygbceping',
         'seller-channel-ygbceping',
         7001, '申请卖家二', 'ACTIVE',
@@ -1294,17 +1294,17 @@ function seedProductApplicationFixture(database: SqliteDatabase): void {
       version, created_at, updated_at, disabled_at
     ) VALUES
       (
-        'store-1', 'seller-org-1', 'JP',
+        'store-1', 'seller-org-1', 'AMAZON_JP',
         '申请店铺一', '申请店铺一', 'ACTIVE',
         1, 1000, 1000, NULL
       ),
       (
-        'store-2', 'seller-org-1', 'JP',
+        'store-2', 'seller-org-1', 'AMAZON_JP',
         '申请店铺二', '申请店铺二', 'ACTIVE',
         1, 1000, 1000, NULL
       ),
       (
-        'store-other-org', 'seller-org-2', 'JP',
+        'store-other-org', 'seller-org-2', 'AMAZON_JP',
         '申请店铺三', '申请店铺三', 'ACTIVE',
         1, 1000, 1000, NULL
       );

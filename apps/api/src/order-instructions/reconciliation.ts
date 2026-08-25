@@ -41,7 +41,7 @@ export interface OrderInstructionReconciliationResult {
 export async function reconcileApprovedReservations(
   database: SqlDatabase,
   input: {
-    marketplaceCode: 'JP';
+    marketplaceCode: 'AMAZON_JP';
     afterReservationId?: string | null;
     limit?: number;
   },
@@ -121,7 +121,7 @@ export async function reconcileApprovedReservations(
     ).all<{
       reservation_id: string;
       buyer_customer_id: string;
-      marketplace_code: 'JP';
+      marketplace_code: 'AMAZON_JP';
       demand_batch_id: string;
       reservation_version: number;
       organization_id: string;

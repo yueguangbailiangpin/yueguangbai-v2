@@ -13,7 +13,7 @@ interface SellerMemberRow {
   member_status: string;
   seller_code: string;
   organization_name: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   organization_status: string;
   settlement_account_name: string | null;
   settlement_account_identifier: string | null;

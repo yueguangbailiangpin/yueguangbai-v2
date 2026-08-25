@@ -1,8 +1,59 @@
-import { readFileSync, readdirSync } from 'node:fs';
+// Stage 4 canonical verifier (D-054 §7 equivalence migration).
+// Successor of verify:wave12:security + verify:seller-finance-security. Merged finance authority verifier.
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { applyBaseline, baselineSchemaText } from './baseline-schema-helper.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
+const read = (file) => readFileSync(path.join(root, file), 'utf8');
+function assert(value, message) { if (!value) throw new Error(message); }
+
+// --- internal finance authority (from verify-wave12-financial-security) ---
+const routes = readFileSync(
+  path.join(root, 'apps/api/src/internal-finance/routes.ts'),
+  'utf8',
+);
+const shared = readFileSync(
+  path.join(root, 'apps/api/src/internal-finance/shared.ts'),
+  'utf8',
+);
+const policy = readFileSync(
+  path.join(root, 'apps/api/src/staff/authorization-policy.ts'),
+  'utf8',
+);
+const csv = readFileSync(
+  path.join(root, 'packages/domain/src/finance/csv.ts'),
+  'utf8',
+);
+for (const token of [
+  "actor.roles.has('owner')",
+  "'FINANCIAL_VIEW'",
+  "'FINANCIAL_EXPORT'",
+  'assertExactQueryParameters',
+  'readBoundedJson',
+  'Cache-Control',
+  '/^[=+\\-@\\t\\r]/u',
+  'protectSpreadsheetText',
+]) {
+  if (!(routes + shared + policy + csv).includes(token)) {
+    throw new Error(`missing security token ${token}`);
+  }
+}
+if (!policy.includes("'FINANCIAL_VIEW',\n  'FINANCIAL_CORRECT'")) {
+  throw new Error('FINANCIAL_VIEW not in owner-only permission set');
+}
+for (const forbidden of ['staff_id', 'role', 'scope', 'global', 'team']) {
+  if (new RegExp(`body\\[['\"]${forbidden}`, 'u').test(routes)) {
+    throw new Error(`client authority field accepted: ${forbidden}`);
+  }
+}
+if (/apps\/web|deploy|wrangler\s+deploy|feishu/iu.test(
+  routes + shared + csv,
+)) {
+  throw new Error('Wave 12 finance module must not add frontend or deployment');
+}
+
+// --- seller settlement + proof file authorization (from verify-seller-finance-security) ---
 const sourceFiles = [
   'apps/api/src/seller-settlements/shared.ts',
   'apps/api/src/seller-settlements/record-payment.ts',
@@ -88,7 +139,5 @@ assert(settlementFilePolicy.includes('assertCanCreateUpload'));
 assert(migration.includes("intent.owner_actor_type='SYSTEM'"));
 
 console.log('seller finance security scan passed');
-function read(file) { return readFileSync(path.join(root, file), 'utf8'); }
-function assert(value) {
-  if (!value) throw new Error('seller_finance_security_scan_failed');
-}
+
+console.log(JSON.stringify({ status: 'PASS', verifier: 'finance-security', internal_finance: 'owner+FINANCIAL_VIEW/EXPORT', seller_settlement: 'scope+audience' }, null, 2));

@@ -138,7 +138,7 @@ function installWorkItemReads(): void {
           review_context: {
             application_id: 'product-1',
             store: { id: 'store-1', display_name: '测试店铺' },
-            marketplace_code: 'JP',
+            marketplace_code: 'AMAZON_JP',
             asin: 'B000000001',
             product_name: '结算关联产品',
             search_keywords: [],

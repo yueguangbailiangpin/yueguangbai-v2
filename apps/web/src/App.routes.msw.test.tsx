@@ -98,7 +98,7 @@ describe('application route registration', () => {
                 buyer: { buyer_customer_id: 'buyer-1', buyer_customer_no: 'B-1' },
                 order: {
                   formal_order_id: 'order-1',
-                  marketplace: 'JP',
+                  marketplace: 'AMAZON_JP',
                   amazon_order_number_normalized: '503-5555555-6666666',
                   product_id: 'product-1',
                   asin: 'B000000001',

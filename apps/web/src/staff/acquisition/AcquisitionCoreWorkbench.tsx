@@ -69,7 +69,7 @@ export function AcquisitionCoreWorkbench(): React.JSX.Element {
     enabled: operator,
     retry: false,
   });
-  const [prospects, consultations, funnel, stats, corrections] = useQueries({
+  const [prospects, consultations, stats, corrections] = useQueries({
     queries: [
       {
         queryKey: ['staff', 'acquisition-v4', 'prospects', session.authorization_version],
@@ -94,20 +94,6 @@ export function AcquisitionCoreWorkbench(): React.JSX.Element {
             .consultations(client, range.from, range.to, signal)
             .then((r) => r.data.consultations),
         enabled: operator && tab === 'daily',
-        retry: false,
-      },
-      {
-        queryKey: [
-          'staff',
-          'acquisition-v4',
-          'funnel',
-          range.from,
-          range.to,
-          session.authorization_version,
-        ],
-        queryFn: ({ signal }) =>
-          acquisitionApi.funnel(client, range.from, range.to, signal).then((r) => r.data.funnel),
-        enabled: operator,
         retry: false,
       },
       {
@@ -168,12 +154,11 @@ export function AcquisitionCoreWorkbench(): React.JSX.Element {
       {channels.isError ||
       prospects.isError ||
       consultations.isError ||
-      funnel.isError ||
       stats.isError ? (
         <Alert tone="warning">部分客户开发数据暂时无法加载。</Alert>
       ) : null}
       {tab === 'overview' ? (
-        <Overview funnel={funnel.data} prospects={prospects.data?.items ?? []} />
+        <Overview prospects={prospects.data?.items ?? []} />
       ) : null}
       {tab === 'prospects' ? (
         <Prospects channels={channels.data ?? []} items={prospects.data?.items ?? []} />
@@ -195,10 +180,8 @@ export function AcquisitionCoreWorkbench(): React.JSX.Element {
 }
 
 function Overview({
-  funnel,
   prospects,
 }: {
-  funnel: Awaited<ReturnType<typeof acquisitionApi.funnel>>['data']['funnel'] | undefined;
   prospects: readonly AcquisitionProspect[];
 }) {
   const buyer = prospects.filter(
@@ -212,8 +195,6 @@ function Overview({
       <section className="acquisition-summary">
         <MetricCard label="买家潜在线索" value={buyer} />
         <MetricCard label="卖家潜在线索" value={seller} />
-        <MetricCard label="本月新增买家" value={funnel?.buyer?.wechat_added_count ?? '—'} />
-        <MetricCard label="本月新增卖家" value={funnel?.seller?.wechat_added_count ?? '—'} />
       </section>
       <Card>
         <h3>客户从哪来，到哪一步</h3>
@@ -350,8 +331,6 @@ function Prospects({
                 <td>{p.lead_type === 'BUYER' ? '买家' : '卖家'}</td>
                 <td>{marketLabel(p.marketplace_code)}</td>
                 <td>{p.origin_channel_name}</td>
-                <td>{p.origin_mode === 'CODEX' ? 'Codex' : '人工'}</td>
-                <td>{p.ai_score ?? '—'}</td>
                 <td>
                   {!['HUMAN_HANDOFF', 'CONVERTED', 'LOST'].includes(p.status) ? (
                     <Button
@@ -363,7 +342,6 @@ function Prospects({
                           body: {
                             expected_version: p.version,
                             status: 'HUMAN_HANDOFF',
-                            ai_score: p.ai_score,
                             note: p.note,
                           },
                         })

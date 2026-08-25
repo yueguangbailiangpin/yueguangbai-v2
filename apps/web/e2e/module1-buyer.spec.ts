@@ -62,7 +62,7 @@ function session(type: 'BUYER' | 'SELLER_MEMBER' = 'BUYER') {
 const demand = {
   demand_id: 'demand-1',
   demand_version: 2,
-  marketplace_code: 'JP',
+  marketplace_code: 'AMAZON_JP',
   product_name: '月白护肤套装',
   reference_order_amount_jpy: '3980',
   buyer_self_pay_bps: 1250,
@@ -169,13 +169,13 @@ const evidence = {
   reservation: {
     reservation_id: 'reservation-1',
     demand_id: 'demand-1',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     product_name: demand.product_name,
     store_display_name: demand.store_display_name,
     review_type: 'IMAGE',
     order_deadline: now + 100_000,
   },
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   amazon_order_number_display: '123-1234567-1234567',
   amazon_order_date: '2026-08-06',
   final_paid_jpy: 4100,
@@ -197,7 +197,7 @@ const evidence = {
 
 const formalOrder = {
   formal_order_id: 'formal-1',
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   amazon_order_number: evidence.amazon_order_number_display,
   amazon_order_date: null,
   product_name: demand.product_name,
@@ -226,7 +226,7 @@ const formalOrder = {
 
 const reviewOrder = {
   formal_order_id: 'formal-1',
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   amazon_order_number: evidence.amazon_order_number_display,
   amazon_order_date: '2026-08-06',
   product_name: demand.product_name,
@@ -277,7 +277,7 @@ const refund = (status: MockOptions['refundStatus'] = 'PARTIALLY_PAID') => ({
   status,
   order: {
     formal_order_id: 'formal-1',
-    marketplace: 'JP',
+    marketplace: 'AMAZON_JP',
     amazon_order_number: evidence.amazon_order_number_display,
     product_name: demand.product_name,
     review_type: 'IMAGE',
@@ -415,7 +415,7 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
         success({
           buyer: {
             display_name: '月白买家',
-            marketplace_code: 'JP',
+            marketplace_code: 'AMAZON_JP',
             identity_review_status: options.reviewRequired ? 'REVIEW_REQUIRED' : 'CLEAR',
           },
         }),

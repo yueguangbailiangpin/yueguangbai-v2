@@ -1130,16 +1130,16 @@ async function seedChatFixture(
       ('subject-operator', 'SELLER_ORG_MEMBER', 1),
       ('subject-other', 'SELLER_ORG_MEMBER', 1);
     INSERT INTO seller_organizations (id, marketplace_code, seller_code, origin_channel_id, current_channel_id, seller_sequence, organization_name, status, version, created_at, updated_at, activated_at, disabled_at, next_member_number) VALUES
-      ('org-1', 'JP', 'seller-one', 'channel-one', 'channel-one', 1, '组织一', 'ACTIVE', 1, 1, 1, 1, NULL, 3),
-      ('org-2', 'JP', 'seller-two', 'channel-two', 'channel-two', 2, '组织二', 'ACTIVE', 1, 1, 1, 1, NULL, 2);
+      ('org-1', 'AMAZON_JP', 'seller-one', 'channel-one', 'channel-one', 1, '组织一', 'ACTIVE', 1, 1, 1, 1, NULL, 3),
+      ('org-2', 'AMAZON_JP', 'seller-two', 'channel-two', 'channel-two', 2, '组织二', 'ACTIVE', 1, 1, 1, 1, NULL, 2);
     INSERT INTO seller_organization_members (id, identity_subject_id, organization_id, member_number, username_fallback, display_name, role, primary_owner, status, version, created_at, updated_at, activated_at, disabled_at) VALUES
       ('member-owner', 'subject-owner', 'org-1', 1, 'owner-one', '负责人', 'OWNER', 1, 'ACTIVE', 1, 1, 1, 1, NULL),
       ('member-operator', 'subject-operator', 'org-1', 2, 'operator-one', '运营', 'OPERATIONS', 0, 'ACTIVE', 1, 1, 1, 1, NULL),
       ('member-other', 'subject-other', 'org-2', 1, 'owner-two', '其他负责人', 'OWNER', 1, 'ACTIVE', 1, 1, 1, 1, NULL);
     INSERT INTO seller_stores (id, organization_id, marketplace_code, display_name, normalized_name, status, version, created_at, updated_at, disabled_at) VALUES
-      ('store-1', 'org-1', 'JP', '店铺一', '店铺一', 'ACTIVE', 1, 1, 1, NULL),
-      ('store-2', 'org-1', 'JP', '店铺二', '店铺二', 'ACTIVE', 1, 1, 1, NULL),
-      ('store-other', 'org-2', 'JP', '其他店铺', '其他店铺', 'ACTIVE', 1, 1, 1, NULL);
+      ('store-1', 'org-1', 'AMAZON_JP', '店铺一', '店铺一', 'ACTIVE', 1, 1, 1, NULL),
+      ('store-2', 'org-1', 'AMAZON_JP', '店铺二', '店铺二', 'ACTIVE', 1, 1, 1, NULL),
+      ('store-other', 'org-2', 'AMAZON_JP', '其他店铺', '其他店铺', 'ACTIVE', 1, 1, 1, NULL);
     INSERT INTO seller_member_store_scopes (member_id, store_id, organization_id, status, assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at) VALUES
       ('member-operator', 'store-1', 'org-1', 'ACTIVE', 'staff-chat-owner', 1, NULL, 1, 1);
     INSERT INTO customer_login_accounts (id, identity_subject_id, account_type, login_identifier_display, login_identifier_normalized, status, session_version, password_change_required, version, created_at, updated_at, activated_at, disabled_at) VALUES
@@ -1151,13 +1151,13 @@ async function seedChatFixture(
       ('account-operator', 'subject-operator', 'SELLER_MEMBER', NULL, 'member-operator', 1),
       ('account-other', 'subject-other', 'SELLER_MEMBER', NULL, 'member-other', 1);
     INSERT INTO order_evidence_submissions (id, reservation_id, buyer_customer_id, marketplace_code, status, current_version_no, version, public_change_reason, internal_review_note, submitted_at, updated_at, verified_by_staff_id, verified_at, withdrawn_at, consumed_at, created_at) VALUES
-      ('submission-1', 'reservation-1', 'buyer-1', 'JP', 'VERIFIED', 1, 1, NULL, NULL, 1, 1, 'staff-chat-owner', 1, NULL, NULL, 1),
-      ('submission-2', 'reservation-2', 'buyer-2', 'JP', 'VERIFIED', 1, 1, NULL, NULL, 1, 1, 'staff-chat-owner', 1, NULL, NULL, 1),
-      ('submission-other', 'reservation-other', 'buyer-other', 'JP', 'VERIFIED', 1, 1, NULL, NULL, 1, 1, 'staff-chat-owner', 1, NULL, NULL, 1);
+      ('submission-1', 'reservation-1', 'buyer-1', 'AMAZON_JP', 'VERIFIED', 1, 1, NULL, NULL, 1, 1, 'staff-chat-owner', 1, NULL, NULL, 1),
+      ('submission-2', 'reservation-2', 'buyer-2', 'AMAZON_JP', 'VERIFIED', 1, 1, NULL, NULL, 1, 1, 'staff-chat-owner', 1, NULL, NULL, 1),
+      ('submission-other', 'reservation-other', 'buyer-other', 'AMAZON_JP', 'VERIFIED', 1, 1, NULL, NULL, 1, 1, 'staff-chat-owner', 1, NULL, NULL, 1);
     INSERT INTO formal_orders (id, order_evidence_submission_id, order_evidence_version_id, reservation_id, demand_batch_id, buyer_customer_id, buyer_customer_no, seller_organization_id, store_id, marketplace_code, product_id, product_version_id, product_version_no, asin_display, asin_normalized, product_name_snapshot, review_type, amazon_order_number_raw, amazon_order_number_normalized, final_paid_jpy, status, version, confirmed_by_staff_id, confirmed_at, confirmed_business_date, created_at) VALUES
-      ('formal-order-1', 'submission-1', 'evidence-version-1', 'reservation-1', 'demand-1', 'buyer-1', 'buyer-001', 'org-1', 'store-1', 'JP', 'product-1', 'product-version-1', 1, 'B012345678', 'B012345678', '商品一', 'IMAGE', '111-1111111-1111111', '111-1111111-1111111', 1980, 'CONFIRMED', 1, 'staff-chat-owner', 1, '2026-08-01', 1),
-      ('formal-order-2', 'submission-2', 'evidence-version-2', 'reservation-2', 'demand-2', 'buyer-2', 'buyer-002', 'org-1', 'store-2', 'JP', 'product-2', 'product-version-2', 1, 'B012345679', 'B012345679', '商品二', 'TEXT', '222-2222222-2222222', '222-2222222-2222222', 1980, 'CONFIRMED', 1, 'staff-chat-owner', 1, '2026-08-01', 1),
-      ('formal-other', 'submission-other', 'evidence-version-other', 'reservation-other', 'demand-other', 'buyer-other', 'buyer-003', 'org-2', 'store-other', 'JP', 'product-other', 'product-version-other', 1, 'B012345680', 'B012345680', '其他商品', 'VIDEO', '333-3333333-3333333', '333-3333333-3333333', 1980, 'CONFIRMED', 1, 'staff-chat-owner', 1, '2026-08-01', 1);
+      ('formal-order-1', 'submission-1', 'evidence-version-1', 'reservation-1', 'demand-1', 'buyer-1', 'buyer-001', 'org-1', 'store-1', 'AMAZON_JP', 'product-1', 'product-version-1', 1, 'B012345678', 'B012345678', '商品一', 'IMAGE', '111-1111111-1111111', '111-1111111-1111111', 1980, 'CONFIRMED', 1, 'staff-chat-owner', 1, '2026-08-01', 1),
+      ('formal-order-2', 'submission-2', 'evidence-version-2', 'reservation-2', 'demand-2', 'buyer-2', 'buyer-002', 'org-1', 'store-2', 'AMAZON_JP', 'product-2', 'product-version-2', 1, 'B012345679', 'B012345679', '商品二', 'TEXT', '222-2222222-2222222', '222-2222222-2222222', 1980, 'CONFIRMED', 1, 'staff-chat-owner', 1, '2026-08-01', 1),
+      ('formal-other', 'submission-other', 'evidence-version-other', 'reservation-other', 'demand-other', 'buyer-other', 'buyer-003', 'org-2', 'store-other', 'AMAZON_JP', 'product-other', 'product-version-other', 1, 'B012345680', 'B012345680', '其他商品', 'VIDEO', '333-3333333-3333333', '333-3333333-3333333', 1980, 'CONFIRMED', 1, 'staff-chat-owner', 1, '2026-08-01', 1);
     PRAGMA foreign_keys=ON;
   `);
 

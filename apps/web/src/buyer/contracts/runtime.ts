@@ -14,7 +14,7 @@ export const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u)
       && date.toISOString().slice(0, 10) === value;
   });
 
-const marketplace = z.literal('JP');
+const marketplace = z.literal('AMAZON_JP');
 const reviewType = z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']);
 const epoch = nonnegativeIntegerSchema;
 const nullableEpoch = epoch.nullable();

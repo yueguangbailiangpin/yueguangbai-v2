@@ -42,7 +42,7 @@ describe('historical staff work-item reconciliation', () => {
         organization_name, status, version, created_at, updated_at,
         activated_at, disabled_at, next_member_number
       ) VALUES (
-        'reconcile-seller', 'JP', 'reconcile-seller-1',
+        'reconcile-seller', 'AMAZON_JP', 'reconcile-seller-1',
         'seller-channel-ido-mango', 'seller-channel-ido-mango', 9001,
         'Reconciliation Seller', 'ACTIVE', 1, 1000, 1000,
         1000, NULL, 2
@@ -62,7 +62,7 @@ describe('historical staff work-item reconciliation', () => {
         id, organization_id, marketplace_code, display_name, normalized_name,
         status, version, created_at, updated_at, disabled_at
       ) VALUES (
-        'reconcile-store', 'reconcile-seller', 'JP', 'Reconciliation Store',
+        'reconcile-store', 'reconcile-seller', 'AMAZON_JP', 'Reconciliation Store',
         'reconciliation-store', 'ACTIVE', 1, 1000, 1000, NULL
       );
       INSERT INTO product_applications (
@@ -72,7 +72,7 @@ describe('historical staff work-item reconciliation', () => {
         reviewed_by_staff_id, product_id, version, submitted_at, updated_at,
         reviewed_at, withdrawn_at
       ) VALUES (
-        'reconcile-application', 'reconcile-seller', 'reconcile-store', 'JP',
+        'reconcile-application', 'reconcile-seller', 'reconcile-store', 'AMAZON_JP',
         'reconcile-member', 'B0RECON001', 'B0RECON001', 'Reconciliation Product',
         '[]', NULL, NULL, NULL, 'SUBMITTED', NULL, NULL, NULL, 1, 1100, 1100,
         NULL, NULL
@@ -80,7 +80,7 @@ describe('historical staff work-item reconciliation', () => {
     `);
 
     const first = await reconcilePendingStaffWorkItems(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       limit: 1,
       now: 2000,
     });
@@ -97,7 +97,7 @@ describe('historical staff work-item reconciliation', () => {
     });
 
     const second = await reconcilePendingStaffWorkItems(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       now: 2100,
     });
     expect(second).toMatchObject({ scanned: 0, prepared: 0, replayed: 0, skipped: 0 });

@@ -27,7 +27,7 @@ interface EligibleReservationRow {
   reservation_submitted_at: number;
   order_deadline_snapshot: number;
   demand_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_name: string;
   store_display_name: string;
   review_type: DemandTaskType;
@@ -39,7 +39,7 @@ interface OrderEvidenceRow {
   submission_id: string;
   reservation_id: string;
   demand_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_name: string;
   store_display_name: string;
   review_type: DemandTaskType;

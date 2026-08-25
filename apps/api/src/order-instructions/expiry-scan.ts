@@ -23,7 +23,7 @@ import {
 import { expireOrderInstruction } from './expiry';
 
 export interface OrderInstructionExpiryScanResult {
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   attempted: number;
   expired: number;
   unchanged: number;
@@ -36,7 +36,7 @@ export interface OrderInstructionExpiryScanResult {
 
 export async function countOrderInstructionExpiryCandidates(
   database: SqlDatabase,
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
   now: number,
 ): Promise<number> {
   const row = await database.prepare(`
@@ -72,7 +72,7 @@ export async function countOrderInstructionExpiryCandidates(
 export async function runOrderInstructionExpiryScan(
   database: SqlDatabase,
   input: {
-    marketplaceCode: 'JP';
+    marketplaceCode: 'AMAZON_JP';
     limit?: number;
     deadlineReached?: () => boolean;
   },
@@ -300,7 +300,7 @@ export async function runOrderInstructionExpiryScan(
 export async function getOrderInstructionExpiryScanCursor(
   database: SqlDatabase,
   actor: OrderInstructionStaffActor,
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
 ): Promise<Record<string, unknown> | null> {
   requireInstructionPermission(actor, 'ORDER_INSTRUCTION_EXPIRY_RUN');
   return database.prepare(`

@@ -48,7 +48,7 @@ interface DemandEligibilityRow {
   demand_version: number;
   buyer_self_pay_bps_snapshot: number;
   ordering_guide_expected_amount_jpy: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   demand_status: string;
   target_quantity: number;
   held_reservation_count: number;
@@ -69,7 +69,7 @@ export interface SubmitReservationResult {
   buyer_customer_id: string;
   product_id: string;
   product_version_no: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: 'PENDING_REVIEW';
   hold_expires_at: number;
   order_deadline_snapshot: number;
@@ -183,7 +183,7 @@ export async function submitReservation(
       replayed: false,
     };
 
-    if (command.actor.marketplaceCode !== 'JP') {
+    if (command.actor.marketplaceCode !== 'AMAZON_JP') {
       throw new ReservationError('NOT_FOUND', 404);
     }
     const precheck = reservationPrecheckSnapshot({

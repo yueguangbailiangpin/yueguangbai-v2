@@ -64,9 +64,9 @@ function seedFoundation(d: SqliteDatabase): void {
       display_name, access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
-      ('buyer-1','buyer-subject-1','JP','buyer-channel-test',NULL,NULL,NULL,
+      ('buyer-1','buyer-subject-1','AMAZON_JP','buyer-channel-test',NULL,NULL,NULL,
         'Buyer 1','DISABLED','CLEAR',1,1,1,NULL,1),
-      ('buyer-2','buyer-subject-2','JP','buyer-channel-test',NULL,NULL,NULL,
+      ('buyer-2','buyer-subject-2','AMAZON_JP','buyer-channel-test',NULL,NULL,NULL,
         'Buyer 2','DISABLED','CLEAR',1,1,1,NULL,1);
     UPDATE staff_users
     SET status='DISABLED', disabled_at=2, version=version+1, updated_at=2
@@ -78,7 +78,7 @@ describe('Phase 3H staff assignment foundation', () => {
   it('runs the assignment foundation on the stage 3 clean baseline', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 19 });
+      .toEqual({ schema_version: 23 });
     expect(d.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(d.raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
   });
@@ -88,14 +88,14 @@ describe('Phase 3H staff assignment foundation', () => {
     const first = await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
     });
     expect(first?.staff.staffId).toBe('pre-1');
     await d.batch(createCursorAdvanceStatements(d, first!, first!.staff.staffId, 10));
     const second = await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
     });
     expect(second?.staff.staffId).toBe('pre-1');
 
@@ -107,7 +107,7 @@ describe('Phase 3H staff assignment foundation', () => {
     const afterDeny = await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
     });
     expect(afterDeny).toBeNull();
   });
@@ -118,7 +118,7 @@ describe('Phase 3H staff assignment foundation', () => {
       workType: 'RESERVATION_DECISION' as const,
       sourceEntityType: 'RESERVATION' as const,
       sourceEntityId: 'reservation-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerCustomerId: 'buyer-1',
       actorType: 'SYSTEM' as const,
       actorId: 'system:test',
@@ -144,7 +144,7 @@ describe('Phase 3H staff assignment foundation', () => {
     const d = db();
     const first = await prepareDirectWorkItem(d, {
       workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
-      sourceEntityId: 'reservation-1', marketplaceCode: 'JP',
+      sourceEntityId: 'reservation-1', marketplaceCode: 'AMAZON_JP',
       buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
     });
     await d.batch(first.statements);
@@ -154,7 +154,7 @@ describe('Phase 3H staff assignment foundation', () => {
     ) VALUES ('pre-1','UNAVAILABLE','leave','pre-1',1,110,110)`);
     const second = await prepareDirectWorkItem(d, {
       workType: 'ORDER_EVIDENCE_REVIEW', sourceEntityType: 'ORDER_EVIDENCE',
-      sourceEntityId: 'evidence-1', marketplaceCode: 'JP',
+      sourceEntityId: 'evidence-1', marketplaceCode: 'AMAZON_JP',
       buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 120,
     });
     await d.batch(second.statements);
@@ -170,15 +170,15 @@ describe('Phase 3H staff assignment foundation', () => {
   it('does not select an arbitrary owner when fallback is absent or invalid', async () => {
     const d = db();
     await expect(resolveOwnerFallback(d, {
-      marketplaceCode: 'JP', dutyCode: 'BUYER_PRE_SALES_OWNER',
+      marketplaceCode: 'AMAZON_JP', dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
     })).rejects.toMatchObject({ code: 'OWNER_FALLBACK_NOT_CONFIGURED' });
     d.exec(`INSERT INTO staff_assignment_fallbacks (
       marketplace_code, staff_id, version, configured_by_staff_id,
       created_at, updated_at
-    ) VALUES ('JP','owner-1',1,'owner-1',1,1)`);
+    ) VALUES ('AMAZON_JP','owner-1',1,'owner-1',1,1)`);
     expect((await resolveOwnerFallback(d, {
-      marketplaceCode: 'JP', dutyCode: 'BUYER_PRE_SALES_OWNER',
+      marketplaceCode: 'AMAZON_JP', dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
     })).staffId).toBe('owner-1');
   });
@@ -187,7 +187,7 @@ describe('Phase 3H staff assignment foundation', () => {
     const d = db();
     const prepared = await prepareDirectWorkItem(d, {
       workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
-      sourceEntityId: 'reservation-1', marketplaceCode: 'JP',
+      sourceEntityId: 'reservation-1', marketplaceCode: 'AMAZON_JP',
       buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
     });
     await d.batch(prepared.statements);
@@ -202,7 +202,7 @@ describe('Phase 3H staff assignment foundation', () => {
     const d = db();
     const prepared = await prepareDirectWorkItem(d, {
       workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
-      sourceEntityId: 'reservation-primary-queue', marketplaceCode: 'JP',
+      sourceEntityId: 'reservation-primary-queue', marketplaceCode: 'AMAZON_JP',
       buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
     });
     await d.batch(prepared.statements);
@@ -225,7 +225,7 @@ describe('Phase 3H staff assignment foundation', () => {
     const candidate = await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
     });
     expect(candidate).toBeNull();
   });
@@ -247,7 +247,7 @@ describe('Phase 3H staff assignment foundation', () => {
     const supportAuthorization = await resolveAssignmentStaffAuthorization(d, 'support-1');
     expect(supportAuthorization?.permissions.has('ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT')).toBe(false);
     expect(await resolveRoundRobinFixedDutyCandidate(d, {
-      dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'JP',
+      dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'AMAZON_JP',
     })).toBeNull();
 
     expect(() => d.exec(`
@@ -259,7 +259,7 @@ describe('Phase 3H staff assignment foundation', () => {
           'owner-1',3,NULL,3,3);
     `)).toThrow('staff_permission_active_grant_forbidden');
     const candidate = await resolveRoundRobinFixedDutyCandidate(d, {
-      dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'JP',
+      dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'AMAZON_JP',
     });
     expect(candidate).toBeNull();
   });
@@ -272,7 +272,7 @@ describe('Phase 3H staff assignment foundation', () => {
     ) VALUES ('pre-1','BUYER_VIEW','DENY','ACTIVE',
       'required permission deny','owner-1',20,NULL,20,20)`);
     const candidate = await resolveRoundRobinFixedDutyCandidate(d, {
-      dutyCode: 'BUYER_PRE_SALES_OWNER', marketplaceCode: 'JP',
+      dutyCode: 'BUYER_PRE_SALES_OWNER', marketplaceCode: 'AMAZON_JP',
     });
     expect(candidate).toBeNull();
   });
@@ -288,7 +288,7 @@ describe('Phase 3H staff assignment foundation', () => {
     expect((await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
     }))?.staff.staffId).toBe('pre-1');
     d.exec(`UPDATE staff_users
       SET status='DISABLED', disabled_at=20, version=version+1, updated_at=20
@@ -296,7 +296,7 @@ describe('Phase 3H staff assignment foundation', () => {
     expect(await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
     })).toBeNull();
   });
 
@@ -309,16 +309,16 @@ describe('Phase 3H staff assignment foundation', () => {
       INSERT INTO staff_assignment_fallbacks (
         marketplace_code, staff_id, version, configured_by_staff_id,
         created_at, updated_at
-      ) VALUES ('JP','owner-1',1,'owner-1',20,20);
+      ) VALUES ('AMAZON_JP','owner-1',1,'owner-1',20,20);
     `);
     const candidate = await resolveRoundRobinCandidate(d, {
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
     });
     expect(candidate).toBeNull();
     expect((await resolveOwnerFallback(d, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       dutyCode: 'BUYER_PRE_SALES_OWNER',
       workType: 'RESERVATION_DECISION',
     })).staffId).toBe('owner-1');
@@ -345,7 +345,7 @@ describe('Phase 3H staff assignment foundation', () => {
     const d = db();
     const prepared = await prepareDirectWorkItem(d, {
       workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
-      sourceEntityId: 'reservation-outbox', marketplaceCode: 'JP',
+      sourceEntityId: 'reservation-outbox', marketplaceCode: 'AMAZON_JP',
       buyerCustomerId: 'buyer-1', actorType: 'SYSTEM',
       idempotencyKey: 'reservation-outbox', now: 100,
     });

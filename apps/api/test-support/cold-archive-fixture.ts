@@ -35,7 +35,7 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
     VALUES('cold-archive-owner','owner','ACTIVE',NULL,1000,NULL,1000,1000);
     INSERT INTO seller_organizations(id,marketplace_code,seller_code,origin_channel_id,current_channel_id,seller_sequence,
       organization_name,status,version,created_at,updated_at,activated_at,disabled_at,next_member_number)
-    VALUES('${sellerOrganizationId}','JP','ido-mango-${sellerSequence}','seller-channel-ido-mango','seller-channel-ido-mango',${sellerSequence},
+    VALUES('${sellerOrganizationId}','AMAZON_JP','ido-mango-${sellerSequence}','seller-channel-ido-mango','seller-channel-ido-mango',${sellerSequence},
       '归档测试卖家','ACTIVE',1,1000,1000,1000,NULL,2);
     INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES
       ('cold-seller-subject-${suffix}','SELLER_ORG_MEMBER',1000),('cold-buyer-subject-${suffix}','BUYER_CUSTOMER',1000);
@@ -47,13 +47,13 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
     VALUES('cold-archive-channel','Z','归档测试渠道','ACTIVE',1,1,1000,1000,NULL);
     INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,buyer_sequence,
       first_valid_order_business_date,display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
-    VALUES('${buyerId}','cold-buyer-subject-${suffix}','JP','cold-archive-channel',NULL,NULL,NULL,'归档测试买家',
+    VALUES('${buyerId}','cold-buyer-subject-${suffix}','AMAZON_JP','cold-archive-channel',NULL,NULL,NULL,'归档测试买家',
       'ACTIVE','CLEAR',1,1000,1000,1000,NULL);
     INSERT INTO seller_stores(id,organization_id,marketplace_code,display_name,normalized_name,status,version,created_at,updated_at,disabled_at)
-    VALUES('cold-store-${suffix}','${sellerOrganizationId}','JP','归档测试店铺','归档测试店铺','ACTIVE',1,1000,1000,NULL);
+    VALUES('cold-store-${suffix}','${sellerOrganizationId}','AMAZON_JP','归档测试店铺','归档测试店铺','ACTIVE',1,1000,1000,NULL);
     INSERT INTO products(id,organization_id,store_id,marketplace_code,asin_display,asin_normalized,status,current_version_no,
       version,created_at,updated_at,disabled_at)
-    VALUES('${productId}','${sellerOrganizationId}','cold-store-${suffix}','JP','B0COLD${orderTail.slice(-4)}',
+    VALUES('${productId}','${sellerOrganizationId}','cold-store-${suffix}','AMAZON_JP','B0COLD${orderTail.slice(-4)}',
       'B0COLD${orderTail.slice(-4)}','ACTIVE',1,1,1000,1000,NULL);
     INSERT INTO product_versions(id,product_id,version_no,product_name,search_keywords_json,product_url,buyer_visible_notes,
       internal_notes,created_by_staff_id,created_at,ordering_guide_expected_amount_jpy,color_spec_mode)
@@ -62,7 +62,7 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
       task_type,target_quantity,buyer_visible_notes,seller_notes,open_at,reservation_deadline,order_deadline,status,review_reason,
       close_reason,reviewed_by_staff_id,closed_by_staff_id,version,submitted_at,updated_at,reviewed_at,published_at,withdrawn_at,
       closed_at,held_reservation_count,approved_reservation_count)
-    VALUES('cold-demand-${suffix}','${sellerOrganizationId}','cold-store-${suffix}','JP','${productId}',1,'${sellerMemberId}',
+    VALUES('cold-demand-${suffix}','${sellerOrganizationId}','cold-store-${suffix}','AMAZON_JP','${productId}',1,'${sellerMemberId}',
       'IMAGE',1,NULL,NULL,2000,5000,20000,'PUBLISHED',NULL,NULL,'cold-archive-owner',NULL,2,1000,3000,3000,3000,NULL,NULL,0,1);
     INSERT INTO product_reservations(id,demand_batch_id,buyer_customer_id,organization_id,store_id,product_id,product_version_no,
       marketplace_code,status,precheck_snapshot_json,hold_expires_at,order_deadline_snapshot,version,submitted_at,updated_at,
@@ -70,7 +70,7 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
       reference_order_amount_jpy_snapshot,estimated_self_pay_jpy_snapshot,estimated_refundable_principal_jpy_snapshot,
       buyer_self_pay_accepted_at,buyer_self_pay_accepted_demand_version)
     VALUES('${reservationId}','cold-demand-${suffix}','${buyerId}','${sellerOrganizationId}','cold-store-${suffix}','${productId}',1,
-      'JP','APPROVED','{}',5000,20000,2,4000,6000,'cold-archive-owner',NULL,6000,NULL,NULL,0,0,1980,0,1980,4000,2);
+      'AMAZON_JP','APPROVED','{}',5000,20000,2,4000,6000,'cold-archive-owner',NULL,6000,NULL,NULL,0,0,1980,0,1980,4000,2);
   `);
   const instruction=await seedPhase3GInstructionFixture(db,{suffix:`cold-${suffix}`,reservationId,buyerCustomerId:buyerId,
     productId,productVersionId,staffId:'cold-archive-owner'});
@@ -78,13 +78,13 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
     INSERT INTO order_evidence_submissions(id,reservation_id,buyer_customer_id,marketplace_code,status,current_version_no,
       version,public_change_reason,internal_review_note,submitted_at,updated_at,verified_by_staff_id,verified_at,withdrawn_at,
       consumed_at,created_at)
-    VALUES('${submissionId}','${reservationId}','${buyerId}','JP','PENDING_VERIFICATION',1,1,NULL,NULL,7000,7000,NULL,NULL,NULL,NULL,7000);
+    VALUES('${submissionId}','${reservationId}','${buyerId}','AMAZON_JP','PENDING_VERIFICATION',1,1,NULL,NULL,7000,7000,NULL,NULL,NULL,NULL,7000);
     INSERT INTO order_evidence_versions(id,submission_id,reservation_id,buyer_customer_id,marketplace_code,version_no,
       amazon_order_number_raw,amazon_order_number_normalized,amazon_order_date,final_paid_jpy,submitted_by_buyer_id,buyer_note,
       order_instruction_id,order_instruction_version_id,instruction_deadline_snapshot,reference_order_amount_jpy_snapshot,
       buyer_self_pay_bps_snapshot,buyer_self_pay_jpy,buyer_refundable_principal_jpy,price_mismatch,price_difference_jpy,
       submitted_before_deadline,evidence_file_object_id,created_at)
-    VALUES('${evidenceVersionId}','${submissionId}','${reservationId}','${buyerId}','JP',1,
+    VALUES('${evidenceVersionId}','${submissionId}','${reservationId}','${buyerId}','AMAZON_JP',1,
       '123-1234567-${orderTail}','123-1234567-${orderTail}','2026-08-01',
       1980,'${buyerId}',NULL,'${instruction.instructionId}','${instruction.instructionVersionId}',${instruction.deadlineAt},
       1980,0,0,1980,0,0,1,'${instruction.evidenceFileObjectId}',7000);

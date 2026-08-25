@@ -101,7 +101,7 @@ export interface StaffOrderInstructionSummaryDto {
   instruction_id: string;
   reservation_id: string;
   buyer_customer_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: OrderInstructionStatus;
   current_version_no: number;
   version: number;

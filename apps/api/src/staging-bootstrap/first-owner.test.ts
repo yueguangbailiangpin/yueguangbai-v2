@@ -35,7 +35,7 @@ describe('staging first owner bootstrap', () => {
       (SELECT COUNT(*) FROM staff_email_identities WHERE status='ACTIVE') AS emails,
       (SELECT COUNT(*) FROM staff_marketplace_scopes) AS scopes,
       (SELECT COUNT(*) FROM staff_assignment_fallbacks
-        WHERE marketplace_code='JP') AS assignment_fallbacks,
+        WHERE marketplace_code='AMAZON_JP') AS assignment_fallbacks,
       (SELECT COUNT(*) FROM staff_sessions) AS sessions,
       (SELECT COUNT(*) FROM buyer_channels
         WHERE id='staging-buyer-channel' AND code='STG' AND status='ACTIVE') AS buyer_channels,
@@ -60,12 +60,12 @@ describe('staging first owner bootstrap', () => {
     expect(database.raw.prepare(`SELECT fallback.staff_id
       FROM staff_assignment_fallbacks fallback
       JOIN staff_role_assignments role ON role.staff_id=fallback.staff_id
-      WHERE fallback.marketplace_code='JP'
+      WHERE fallback.marketplace_code='AMAZON_JP'
         AND role.role_code='owner' AND role.status='ACTIVE'`).get()).toEqual({
       staff_id: first.staff_id,
     });
     expect((await resolveOwnerFallback(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       dutyCode: 'SELLER_ACCOUNT_MANAGER',
       workType: 'PRODUCT_APPLICATION_REVIEW',
     })).staffId).toBe(first.staff_id);
@@ -142,12 +142,12 @@ describe('staging first owner bootstrap', () => {
     ['Seller',`INSERT INTO seller_organizations(
       id,marketplace_code,seller_code,origin_channel_id,current_channel_id,
       seller_sequence,organization_name,status,version,created_at,updated_at
-    ) VALUES('dirty-seller','JP','S01','dirty-origin','dirty-current',1,
+    ) VALUES('dirty-seller','AMAZON_JP','S01','dirty-origin','dirty-current',1,
       'Dirty seller','DISABLED',1,1,1)`],
     ['Product',`INSERT INTO products(
       id,organization_id,store_id,marketplace_code,asin_display,
       asin_normalized,status,current_version_no,version,created_at,updated_at
-    ) VALUES('dirty-product','missing-seller','missing-store','JP','B000000001',
+    ) VALUES('dirty-product','missing-seller','missing-store','AMAZON_JP','B000000001',
       'B000000001','ACTIVE',1,1,1,1)`],
     ['Order',`INSERT INTO integration_outbox(
       id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,

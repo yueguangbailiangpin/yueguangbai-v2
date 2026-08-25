@@ -386,7 +386,7 @@ async function transitionReview(
           workType: 'BUYER_REFUND_PROCESSING',
           sourceEntityType: 'BUYER_REFUND_OBLIGATION',
           sourceEntityId: preparedRefund.obligationId,
-          marketplaceCode: 'JP',
+          marketplaceCode: 'AMAZON_JP',
           buyerCustomerId: source.buyer_customer_id,
           sellerOrganizationId: source.seller_organization_id,
           actorType: 'STAFF',

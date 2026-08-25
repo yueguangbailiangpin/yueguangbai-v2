@@ -37,13 +37,13 @@ export function registerExistingCustomerLeadGuard(app: Hono<any>): void {
           JOIN seller_organization_members member ON member.identity_subject_id=claim.identity_subject_id
           JOIN seller_organizations organization ON organization.id=member.organization_id
           WHERE claim.normalized_wechat=? AND claim.status='ACTIVE' AND member.status='ACTIVE' AND organization.status='ACTIVE'
-            AND (CASE organization.marketplace_code WHEN 'JP' THEN 'AMAZON_JP' ELSE organization.marketplace_code END)=?
+            AND (CASE organization.marketplace_code WHEN 'AMAZON_JP' THEN 'AMAZON_JP' ELSE organization.marketplace_code END)=?
           UNION
           SELECT organization.id AS subject_id
           FROM seller_partner_import_source_records source
           JOIN seller_organizations organization ON organization.seller_code=source.source_seller_code
           WHERE source.seller_wechat_normalized=? AND source.status IN ('VALID','IMPORTED') AND organization.status='ACTIVE'
-            AND (CASE organization.marketplace_code WHEN 'JP' THEN 'AMAZON_JP' ELSE organization.marketplace_code END)=?
+            AND (CASE organization.marketplace_code WHEN 'AMAZON_JP' THEN 'AMAZON_JP' ELSE organization.marketplace_code END)=?
         ) LIMIT 1`,
             )
               .bind(wechat.normalized, market, wechat.normalized, market)

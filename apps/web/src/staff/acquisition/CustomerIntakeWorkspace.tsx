@@ -22,7 +22,7 @@ import { RateSummaryCard } from '../shared/RateSummaryCard';
 import { formatShanghai } from '../shared/format';
 import { StaffProtectedImage } from '../shared/StaffProtectedImage';
 import { useFileUpload } from '../../buyer/shared/useFileUpload';
-import type { AcquisitionChannel, AcquisitionHandoff } from './runtime';
+import type { AcquisitionChannel } from './runtime';
 
 const MARKET_LABELS: Record<string, string> = {
   AMAZON_JP: '亚马逊日本站',
@@ -238,18 +238,11 @@ function CustomerIntakeWorkspace({
     enabled: allowed && !buyer,
     retry: false,
   });
-  const [leads, handoffs] = useQueries({
+  const [leads] = useQueries({
     queries: [
       {
         queryKey: ['staff', 'customer-intake', 'leads', leadType, session.authorization_version],
         queryFn: ({ signal }) => acquisitionApi.leads(client, leadType, signal).then((r) => r.data),
-        enabled: allowed,
-        retry: false,
-      },
-      {
-        queryKey: ['staff', 'customer-intake', 'handoffs', leadType, session.authorization_version],
-        queryFn: ({ signal }) =>
-          acquisitionApi.handoffs(client, leadType, signal).then((r) => r.data.items),
         enabled: allowed,
         retry: false,
       },
@@ -274,14 +267,10 @@ function CustomerIntakeWorkspace({
         历史客户不补渠道、不计入新增；身份不明确时提交总管理员处理，不要自行猜测绑定。
       </Alert>
       <HistoricalCustomerOnboarding leadType={leadType} />
-      {handoffs.data && handoffs.data.length > 0 ? (
-        <HandoffStrip leadType={leadType} items={handoffs.data} />
-      ) : null}
       <div className="customer-intake-grid">
         <LeadCreateCard
           leadType={leadType}
           channels={channels.data ?? []}
-          handoffs={handoffs.data ?? []}
         />
         {buyer ? (
           <Card className="customer-intake-list">
@@ -571,20 +560,16 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
 function LeadCreateCard({
   leadType,
   channels,
-  handoffs,
 }: {
   leadType: 'BUYER' | 'SELLER';
   channels: readonly AcquisitionChannel[];
-  handoffs: readonly AcquisitionHandoff[];
 }) {
   const client = useQueryClient();
   const session = useCurrentStaffSession();
   const buyer = leadType === 'BUYER';
-  const [handoffId, setHandoffId] = useState('');
   const [marketplaceCode, setMarketplaceCode] = useState('');
   const [saved, setSaved] = useState<SavedLead | null>(null);
   const [invitation, setInvitation] = useState<InvitationState | null>(null);
-  const handoff = handoffs.find((item) => item.prospect_id === handoffId) ?? null;
   const eligibleChannels = channels.filter(
     (channel) =>
       channel.status === 'ACTIVE' &&
@@ -601,9 +586,9 @@ function LeadCreateCard({
     [eligibleChannels, marketplaceCode],
   );
   useEffect(() => {
-    if (handoff || markets.includes(marketplaceCode)) return;
+    if (markets.includes(marketplaceCode)) return;
     setMarketplaceCode(markets[0] ?? '');
-  }, [handoff, marketplaceCode, markets]);
+  }, [marketplaceCode, markets]);
   const create = useMutation({
     mutationFn: (input: { body: unknown; draft: Omit<SavedLead, 'leadId'> }) =>
       acquisitionApi
@@ -655,9 +640,7 @@ function LeadCreateCard({
     setInvitation(null);
     const form = event.currentTarget,
       data = new FormData(form);
-    const selected =
-      handoffs.find((item) => item.prospect_id === String(data.get('handoff_id'))) ?? null;
-    const marketplaceCode = selected?.marketplace_code ?? String(data.get('marketplace_code'));
+    const marketplaceCode = String(data.get('marketplace_code'));
     const wechatId = String(data.get('wechat_id'));
     const displayName = String(data.get('display_name') ?? '').trim() || wechatId;
     create.mutate(
@@ -665,8 +648,8 @@ function LeadCreateCard({
         body: {
           lead_type: leadType,
           marketplace_code: marketplaceCode,
-          channel_id: selected?.origin_channel_id ?? String(data.get('channel_id')),
-          prospect_id: selected?.prospect_id ?? null,
+          channel_id: String(data.get('channel_id')),
+          prospect_id: null,
           wechat_id: wechatId,
           display_name: nullable(data.get('display_name')),
           note: nullable(data.get('note')),
@@ -676,7 +659,6 @@ function LeadCreateCard({
       {
         onSuccess: () => {
           form.reset();
-          setHandoffId('');
         },
       },
     );
@@ -688,83 +670,42 @@ function LeadCreateCard({
         保存成功就计入新增客户；{buyer ? '买家' : '卖家'}网站账号是否开通是后续独立步骤。
       </p>
       <form onSubmit={submit}>
-        {handoffs.length > 0 ? (
-          <FormField
-            label="待接入客户（可选）"
-            htmlFor={`${leadType}-handoff`}
-            description="获客岗位交接的客户会自动继承渠道编号"
-          >
-            <Select
-              id={`${leadType}-handoff`}
-              name="handoff_id"
-              value={handoffId}
-              onChange={(event) => setHandoffId(event.target.value)}
-            >
-              <option value="">不是交接客户</option>
-              {handoffs.map((item) => (
-                <option key={item.prospect_id} value={item.prospect_id}>
-                  {item.display_name} · {item.channel_label}
-                </option>
-              ))}
-            </Select>
-          </FormField>
-        ) : (
-          <input type="hidden" name="handoff_id" value="" />
-        )}
         <FormField label="站点" htmlFor={`${leadType}-market`}>
-          {handoff ? (
-            <>
-              <input type="hidden" name="marketplace_code" value={handoff.marketplace_code} />
-              <TextInput
-                id={`${leadType}-market`}
-                value={marketLabel(handoff.marketplace_code)}
-                readOnly
-              />
-            </>
-          ) : (
-            <Select
-              id={`${leadType}-market`}
-              name="marketplace_code"
-              value={marketplaceCode}
-              onChange={(event) => setMarketplaceCode(event.target.value)}
-              disabled={markets.length === 0}
-              required
-            >
-              {markets.length === 0 ? <option value="">暂无可用站点</option> : null}
-              {markets.map((market) => (
-                <option key={market} value={market}>
-                  {marketLabel(market)}
-                </option>
-              ))}
-            </Select>
-          )}
+          <Select
+            id={`${leadType}-market`}
+            name="marketplace_code"
+            value={marketplaceCode}
+            onChange={(event) => setMarketplaceCode(event.target.value)}
+            disabled={markets.length === 0}
+            required
+          >
+            {markets.length === 0 ? <option value="">暂无可用站点</option> : null}
+            {markets.map((market) => (
+              <option key={market} value={market}>
+                {marketLabel(market)}
+              </option>
+            ))}
+          </Select>
         </FormField>
-        {!handoff && marketplaceChannels.length === 0 ? (
+        {marketplaceChannels.length === 0 ? (
           <Alert tone="warning">
             当前没有可用的{buyer ? '买家' : '卖家'}接入渠道，请先在“客户开发”配置渠道。
           </Alert>
         ) : null}
         <FormField label="渠道" htmlFor={`${leadType}-channel`}>
-          {handoff ? (
-            <>
-              <input type="hidden" name="channel_id" value={handoff.origin_channel_id} />
-              <TextInput id={`${leadType}-channel`} value={handoff.channel_label} readOnly />
-            </>
-          ) : (
-            <Select
-              id={`${leadType}-channel`}
-              name="channel_id"
-              disabled={marketplaceCode.length === 0}
-              required
-            >
-              <option value="">请选择渠道</option>
-              {marketplaceChannels.map((channel) => (
-                <option key={channel.channel_id} value={channel.channel_id}>
-                  {channel.staff_label}
-                </option>
-              ))}
-            </Select>
-          )}
+          <Select
+            id={`${leadType}-channel`}
+            name="channel_id"
+            disabled={marketplaceCode.length === 0}
+            required
+          >
+            <option value="">请选择渠道</option>
+            {marketplaceChannels.map((channel) => (
+              <option key={channel.channel_id} value={channel.channel_id}>
+                {channel.staff_label}
+              </option>
+            ))}
+          </Select>
         </FormField>
         <FormField label="微信号" htmlFor={`${leadType}-wechat`}>
           <TextInput id={`${leadType}-wechat`} name="wechat_id" required autoComplete="off" />
@@ -781,7 +722,7 @@ function LeadCreateCard({
         </FormField>
         <Button
           loading={create.isPending}
-          disabled={!handoff && (marketplaceCode.length === 0 || marketplaceChannels.length === 0)}
+          disabled={marketplaceCode.length === 0 || marketplaceChannels.length === 0}
         >
           保存新{buyer ? '买家' : '卖家'}客户
         </Button>
@@ -1129,31 +1070,6 @@ function ambiguousMarketplaceCodes(matches: readonly HistoricalMatch[]) {
     map.set(match.marketplace_code, set);
   }
   return [...map.entries()].filter(([, set]) => set.size > 1).map(([market]) => market);
-}
-function HandoffStrip({
-  leadType,
-  items,
-}: {
-  leadType: 'BUYER' | 'SELLER';
-  items: readonly AcquisitionHandoff[];
-}) {
-  return (
-    <section className="customer-handoff-strip">
-      <div>
-        <strong>待人工接入 {items.length}</strong>
-        <span>
-          获客岗位已筛选并交给{leadType === 'BUYER' ? '售前' : '卖家对接'}；这里只显示渠道编号。
-        </span>
-      </div>
-      <div>
-        {items.slice(0, 4).map((item) => (
-          <span className="handoff-chip" key={item.prospect_id}>
-            {item.display_name} · {item.channel_label}
-          </span>
-        ))}
-      </div>
-    </section>
-  );
 }
 function nullable(value: FormDataEntryValue | null) {
   const text = String(value ?? '').trim();

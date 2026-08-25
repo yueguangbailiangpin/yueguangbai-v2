@@ -146,7 +146,7 @@ async function activeBuyerCatalogImageAccessExists(
       AND buyer.access_status='ACTIVE'
       AND buyer.identity_review_status='CLEAR'
       AND CASE assignment.marketplace_code
-        WHEN 'AMAZON_JP' THEN 'JP'
+        WHEN 'AMAZON_JP' THEN 'AMAZON_JP'
         ELSE assignment.marketplace_code
       END=demand.marketplace_code
       AND (
@@ -297,7 +297,7 @@ async function resolveResourceMarketplace(
       (
         await database
           .prepare(
-            `SELECT COALESCE(canonical_marketplace_code,marketplace_code) AS market FROM formal_orders WHERE id=?`,
+            `SELECT marketplace_code AS market FROM formal_orders WHERE id=?`,
           )
           .bind(id)
           .first<{ market: string }>()
@@ -308,7 +308,7 @@ async function resolveResourceMarketplace(
         await database
           .prepare(
             `
-    SELECT COALESCE(formal_order.canonical_marketplace_code,submission.marketplace_code) AS market
+    SELECT formal_order.marketplace_code AS market
     FROM order_evidence_submissions submission
     LEFT JOIN formal_orders formal_order ON formal_order.order_evidence_submission_id=submission.id
     WHERE submission.id=?
@@ -322,7 +322,7 @@ async function resolveResourceMarketplace(
       (
         await database
           .prepare(
-            `SELECT formal_order.canonical_marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`,
+            `SELECT formal_order.marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`,
           )
           .bind(id)
           .first<{ market: string }>()
@@ -333,9 +333,9 @@ async function resolveResourceMarketplace(
         await database
           .prepare(
             `
-    SELECT formal_order.canonical_marketplace_code AS market FROM buyer_refund_obligations obligation JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE obligation.id=?
-    UNION ALL SELECT formal_order.canonical_marketplace_code AS market FROM buyer_refund_payment_entries payment JOIN buyer_refund_obligations obligation ON obligation.id=payment.obligation_id JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE payment.id=?
-    UNION ALL SELECT formal_order.canonical_marketplace_code AS market FROM buyer_advance_principal_entries advance JOIN formal_orders formal_order ON formal_order.id=advance.formal_order_id WHERE advance.id=? LIMIT 1`,
+    SELECT formal_order.marketplace_code AS market FROM buyer_refund_obligations obligation JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE obligation.id=?
+    UNION ALL SELECT formal_order.marketplace_code AS market FROM buyer_refund_payment_entries payment JOIN buyer_refund_obligations obligation ON obligation.id=payment.obligation_id JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE payment.id=?
+    UNION ALL SELECT formal_order.marketplace_code AS market FROM buyer_advance_principal_entries advance JOIN formal_orders formal_order ON formal_order.id=advance.formal_order_id WHERE advance.id=? LIMIT 1`,
           )
           .bind(id, id, id)
           .first<{ market: string }>()
@@ -375,7 +375,7 @@ async function resolveResourceMarketplace(
       (
         await database
           .prepare(
-            `SELECT formal_order.canonical_marketplace_code AS market FROM formal_orders formal_order WHERE formal_order.order_instruction_version_id=? LIMIT 1`,
+            `SELECT formal_order.marketplace_code AS market FROM formal_orders formal_order WHERE formal_order.order_instruction_version_id=? LIMIT 1`,
           )
           .bind(id)
           .first<{ market: string }>()

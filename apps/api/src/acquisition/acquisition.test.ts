@@ -26,7 +26,6 @@ import {
   transferAcquisitionLead,
 } from './leads';
 import { runAcquisitionMaintenance } from './maintenance';
-import { readAcquisitionFunnel } from './funnel';
 import { channelProfitForActor } from './channel-stats';
 import { createAcquisitionProspect } from './prospects';
 import { addTwelveShanghaiMonths } from './time';
@@ -143,7 +142,7 @@ describe('staff acquisition funnel commands', () => {
     const prospect = await createAcquisitionProspect(database, {
       leadType: 'BUYER', marketplaceCode: 'AMAZON_JP', channelId: prospectChannel.channel.channel_id,
       displayName: '待转买家', contactValue: null, sourceUrl: 'https://example.test/prospect',
-      originMode: 'HUMAN', note: null, aiScore: null,
+      note: null,
     }, command(owner(), 'prospect-source-0001', JAN_1_2025));
 
     await expect(createAcquisitionLead(database, {
@@ -406,7 +405,7 @@ describe('staff acquisition funnel commands', () => {
     const prospect = await createAcquisitionProspect(database, {
       leadType: 'BUYER', marketplaceCode: 'AMAZON_JP', channelId: jp.channel.channel_id,
       displayName: '获客角色潜在线索', contactValue: null, sourceUrl: null,
-      originMode: 'HUMAN', note: null, aiScore: null,
+      note: null,
     }, command(acquisition(), 'acquisition-prospect-0001', JAN_1_2025 + 2));
     expect(prospect.prospect.marketplace_code).toBe('AMAZON_JP');
     await expect(listAcquisitionLeads(database, acquisition(), {
@@ -501,47 +500,6 @@ describe('acquisition automatic linking and retention', () => {
       database!, sellerOps(), result.lead.lead_id,
     ));
     expect(historical.seller_cooperation).toBe(true);
-  });
-
-  it('attributes a shared order profit once to Buyer origin and never to Seller funnel', async () => {
-    database = db();
-    const channel = await seedChannel(database, 'XHS_BUYER');
-    const sellerChannel = await seedChannel(database, 'XHS_SELLER');
-    await seedAssignment(database, 'staff-owner-acq', 'BUYER', channel.channel.channel_id);
-    await seedAssignment(database, 'staff-owner-acq', 'SELLER', sellerChannel.channel.channel_id);
-    const buyer = await createAcquisitionLead(database, leadInput(channel.channel.channel_id, {
-      leadType: 'BUYER', wechatId: 'profit_buyer_wx', displayName: null, note: null,
-    }), command(owner(), 'profit-buyer-0001', JAN_1_2025), SECRET);
-    const seller = await createAcquisitionLead(database, leadInput(sellerChannel.channel.channel_id, {
-      leadType: 'SELLER', wechatId: 'profit_seller_wx', displayName: null, note: null,
-    }), command(owner(), 'profit-seller-0001', JAN_1_2025 + 1), SECRET);
-    database.raw.prepare(`INSERT INTO acquisition_lead_links
-      (id,lead_id,link_type,target_id,linked_at) VALUES
-      ('profit-link-buyer',?,'FORMAL_ORDER','shared-order',?),
-      ('profit-link-seller',?,'FORMAL_ORDER','shared-order',?)`)
-      .run(buyer.lead.lead_id, JAN_1_2025 + 2,
-        seller.lead.lead_id, JAN_1_2025 + 2);
-    database.exec(`DROP VIEW internal_order_finance_positions;
-      CREATE TABLE internal_order_finance_positions (
-        formal_order_id TEXT PRIMARY KEY,
-        projected_gross_profit_cny_fen TEXT,
-        completed_gross_profit_cny_fen TEXT
-      ) STRICT;
-      INSERT INTO internal_order_finance_positions VALUES ('shared-order','2500','2100');`);
-
-    const funnel = await readAcquisitionFunnel(database, owner(), {
-      fromDate: '2025-01-01', toDate: '2025-01-01',
-    });
-    expect(funnel.buyer).toMatchObject({
-      formal_order_count: 1,
-      projected_gross_profit_cny_fen: '2500',
-      completed_gross_profit_cny_fen: '2100',
-    });
-    expect(funnel.seller).toEqual({
-      consultation_count: 0, wechat_added_count: 1, cooperation_count: 0,
-    });
-    expect(funnel.seller).not.toHaveProperty('projected_gross_profit_cny_fen');
-    expect(funnel.seller).not.toHaveProperty('completed_gross_profit_cny_fen');
   });
 
   it('anonymizes only expired unconverted leads and is retry-safe', async () => {
@@ -739,7 +697,7 @@ function seedBuyerIdentity(db: SqliteDatabase, wechat: string): void {
       buyer_channel_id,buyer_customer_no,buyer_sequence,
       first_valid_order_business_date,display_name,access_status,
       identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
-      VALUES ('buyer-linked','subject-linked','JP','buyer-channel-linked',
+      VALUES ('buyer-linked','subject-linked','AMAZON_JP','buyer-channel-linked',
         NULL,NULL,NULL,'关联买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
     INSERT INTO wechat_identity_claims (id,identity_subject_id,display_wechat,
       normalized_wechat,status,version,acquired_at,reserved_at,released_at,
@@ -756,7 +714,7 @@ function seedSellerIdentity(db: SqliteDatabase, wechat: string): void {
     INSERT INTO seller_organizations (id,marketplace_code,seller_code,
       origin_channel_id,current_channel_id,seller_sequence,organization_name,status,
       version,created_at,updated_at,activated_at,disabled_at)
-      VALUES ('seller-org-linked','JP','SELLER-LINKED','seller-channel-ido-mango',
+      VALUES ('seller-org-linked','AMAZON_JP','SELLER-LINKED','seller-channel-ido-mango',
         'seller-channel-ido-mango',999,'关联卖家','ACTIVE',1,1000,1000,1000,NULL);
     INSERT INTO seller_organization_members (id,identity_subject_id,organization_id,
       member_number,username_fallback,display_name,role,primary_owner,status,version,

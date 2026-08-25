@@ -436,7 +436,7 @@ function newBuyerStatements(
         display_name, access_status, identity_review_status,
         version, created_at, updated_at, activated_at, disabled_at
       ) VALUES (
-        ?, ?, 'JP', ?, NULL, NULL, NULL,
+        ?, ?, 'AMAZON_JP', ?, NULL, NULL, NULL,
         ?, 'ACTIVE', 'CLEAR', 1, ?, ?, ?, NULL
       )
     `).bind(

@@ -4,27 +4,31 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-// Stage 3 clean baseline verifier (D-054): the 0001-0019 domain-split chain
-// replaces the legacy 0001-0075 chain. Provenance and curation decisions are
-// recorded in docs/migration/V2_BACKEND_REBUILD_INVENTORY.md §7.2.
+// Clean baseline verifier (D-054): the 0001-0019 domain-split chain replaced
+// the legacy 0001-0075 chain (stage 3); 0020 unified marketplace storage on
+// the canonical codes and removed the legacy JP alias layer (stage 4).
+// Provenance: docs/migration/V2_BACKEND_REBUILD_INVENTORY.md §7.2/§7.3.
 
 const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 19;
-const expectedLastMigration = '0019_read_model_views.sql';
+const expectedLatestSchema = 23;
+const expectedLastMigration = '0023_retire_acquisition_machine_fields.sql';
 const expectedSchemaInventory = {
-  table: 192,
-  index: 555,
-  trigger: 367,
+  table: 189,
+  index: 552,
+  trigger: 366,
   view: 12,
-  sha256: '7210a39e1acaa271e5df6a1799a480fec65f0b2c05aa7fbf84dd5d16772eeb51',
+  sha256: 'd29187fcced35629d91240ee2831360f93c82398885fafbe39bc2b4ea7893fdf',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2
 // deletions + owner-confirmed platform identity/parallel-order retirement).
 const forbiddenTables = [
+  'acquisition_reporting_config',
+  'marketplaces',
+  'marketplace_legacy_aliases',
   'acquisition_machine_credentials',
   'acquisition_machine_marketplaces',
   'acquisition_machine_channels',
@@ -136,7 +140,6 @@ const requiredTables = [
   'acquisition_maintenance_runs',
   'acquisition_maintenance_state',
   'acquisition_prospects',
-  'acquisition_reporting_config',
   'acquisition_role_permission_defaults',
   'acquisition_staff_channel_assignments',
   'app_schema_state',
@@ -214,10 +217,8 @@ const requiredTables = [
   'formal_order_operational_events',
   'formal_orders',
   'integration_outbox',
-  'marketplace_legacy_aliases',
   'marketplace_registry',
   'marketplace_runtime_config',
-  'marketplaces',
   'order_archive_closures',
   'order_evidence_duplicate_signals',
   'order_evidence_events',
@@ -345,7 +346,6 @@ const requiredTriggers = [
   'trg_acquisition_lead_prospect_insert_guard',
   'trg_acquisition_lead_prospect_source_update_guard',
   'trg_acquisition_leads_no_delete',
-  'trg_acquisition_reporting_precision_immutable',
   'trg_acquisition_role_permission_defaults_no_delete',
   'trg_acquisition_role_permission_defaults_no_update',
   'trg_acquisition_source_correction_guard',
@@ -881,7 +881,7 @@ try {
     migrationFiles.at(-1) !== expectedLastMigration ||
     migrationNumbers.some((number, index) => number !== index + 1)
   ) {
-    throw new Error('Migration 必须是唯一连续的 0001-0019');
+    throw new Error('Migration 必须是唯一连续的 0001-0023');
   }
 
   for (const [file, source] of migrationSources) {
@@ -1008,6 +1008,8 @@ try {
       if (tables.has(table)) throw new Error(`禁止遗留表: ${table}`);
     }
     for (const [table, forbiddenColumns] of [
+      ['formal_orders', ['canonical_marketplace_code']],
+      ['marketplace_runtime_config', ['legacy_order_code']],
       [
         'formal_order_financial_snapshots',
         [
@@ -1414,7 +1416,7 @@ try {
       JSON.stringify(
         {
           status: 'PASS',
-          baseline: 'stage3-clean-baseline-0001-0019',
+          baseline: 'clean-baseline-0001-0023',
           migrations: migrationFiles,
           table_count: tables.size,
           index_count: schemaCounts.index,

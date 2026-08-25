@@ -266,12 +266,6 @@ function installHandlers(
         meta: { request_id: 'leads' },
       }),
     ),
-    http.get(apiUrl('/api/staff/acquisition/handoffs'), () =>
-      HttpResponse.json({
-        data: { items: [] },
-        meta: { request_id: 'handoffs' },
-      }),
-    ),
   );
 }
 

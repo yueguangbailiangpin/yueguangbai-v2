@@ -43,7 +43,7 @@ describe('Phase 3E2 product ordering profiles', () => {
     seed(database);
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-profile',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '资料店铺',
     }, {
       actor: productActor(),
@@ -139,7 +139,7 @@ describe('Phase 3E2 product ordering profiles', () => {
     seed(database);
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-profile',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: `非法金额店铺-${String(amount)}`,
     }, {
       actor: productActor(),
@@ -168,7 +168,7 @@ describe('Phase 3E2 product ordering profiles', () => {
     seed(database);
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-profile',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '主图店铺',
     }, {
       actor: productActor(),
@@ -384,7 +384,7 @@ describe('Phase 3E2 product ordering profiles', () => {
     seed(database);
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-profile',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '主图拒绝店铺',
     }, {
       actor: productActor(),
@@ -530,7 +530,7 @@ function seed(database: SqliteDatabase): void {
       organization_name, status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
-      'seller-org-profile', 'JP', 'ido-profile-1001',
+      'seller-org-profile', 'AMAZON_JP', 'ido-profile-1001',
       'seller-channel-ido-mango', 'seller-channel-ido-mango', 1001,
       '资料测试卖家', 'ACTIVE', 1,
       1000, 1000, 1000, NULL

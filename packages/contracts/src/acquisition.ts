@@ -10,7 +10,6 @@ export const ACQUISITION_PROSPECT_STATUSES = [
   'NEW','RESEARCHING','QUALIFIED','READY_CONTACT','CONTACTED','HUMAN_HANDOFF','CONVERTED','LOST',
 ] as const;
 export type AcquisitionProspectStatus = typeof ACQUISITION_PROSPECT_STATUSES[number];
-export type AcquisitionOriginMode = 'HUMAN'|'CODEX';
 
 export const ACQUISITION_HTTP_PATHS = Object.freeze({
   channels:'/api/staff/acquisition/channels',
@@ -18,7 +17,6 @@ export const ACQUISITION_HTTP_PATHS = Object.freeze({
   consultations:'/api/staff/acquisition/consultations',
   prospects:'/api/staff/acquisition/prospects',
   leads:'/api/staff/acquisition/leads',
-  funnel:'/api/staff/acquisition/funnel',
 } as const);
 
 export interface CreateAcquisitionChannelCommand {
@@ -113,9 +111,7 @@ export interface AcquisitionProspectDto {
   display_name:string;
   contact_value:string|null;
   source_url:string|null;
-  origin_mode:AcquisitionOriginMode;
   status:AcquisitionProspectStatus;
-  ai_score:number|null;
   note:string|null;
   discovered_at:number;
   converted_lead_id:string|null;
@@ -124,28 +120,13 @@ export interface AcquisitionProspectDto {
   updated_at:number;
 }
 
-/** Safe handoff projection sent to pre_sales/seller_ops. */
-export interface AcquisitionHandoffDto {
-  prospect_id:string;
-  lead_type:AcquisitionLeadType;
-  marketplace_code:string;
-  origin_channel_id:string;
-  channel_label:string;
-  display_name:string;
-  contact_value:string|null;
-  status:'HUMAN_HANDOFF';
-  version:number;
-  created_at:number;
-  updated_at:number;
-}
-
 export interface CreateAcquisitionProspectCommand {
   lead_type:AcquisitionLeadType; marketplace_code:string; channel_id:string;
   display_name:string; contact_value:string|null; source_url:string|null;
-  origin_mode:AcquisitionOriginMode; note:string|null; ai_score:number|null;
+  note:string|null;
 }
 export interface UpdateAcquisitionProspectCommand {
-  expected_version:number; status:AcquisitionProspectStatus; ai_score:number|null; note:string|null;
+  expected_version:number; status:AcquisitionProspectStatus; note:string|null;
 }
 
 /**

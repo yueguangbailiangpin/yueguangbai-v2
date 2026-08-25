@@ -22,7 +22,6 @@ import {
   acquisitionChannelSchema,
   acquisitionConsultationEventSchema,
   acquisitionConsultationSchema,
-  acquisitionFunnelSchema,
   acquisitionLeadSchema,
   adminDashboardSummarySchema,
   demandReviewContextSchema,
@@ -67,7 +66,7 @@ const orderMutationSchema = z.union([
       submission_id: z.string(),
       reservation_id: z.string(),
       buyer_customer_id: z.string(),
-      marketplace: z.literal('JP'),
+      marketplace: z.literal('AMAZON_JP'),
       status: z.literal('CHANGES_REQUESTED'),
       version: z.number().int(),
       current_evidence_version_no: z.number().int(),
@@ -665,13 +664,6 @@ export const staffApi = Object.freeze({
       body,
       acquisitionLeadResultSchema,
       key,
-    ),
-  acquisitionFunnel: (client: QueryClient, from: string, to: string, signal?: AbortSignal) =>
-    read(
-      client,
-      `/api/staff/acquisition/funnel?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,
-      z.object({ funnel: acquisitionFunnelSchema }).strict(),
-      signal,
     ),
   adminDashboardSummary: (
     client: QueryClient,

@@ -192,7 +192,7 @@ describe('Wave 13 Staff Buyer Refund API', () => {
         },
         order: {
           formal_order_id: 'runtime-formal-order',
-          marketplace: 'JP',
+          marketplace: 'AMAZON_JP',
           amazon_order_number_normalized: '123-1234567-1234567',
           product_id: 'runtime-product',
           asin: 'B0RT000001',

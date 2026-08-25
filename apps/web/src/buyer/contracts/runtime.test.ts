@@ -111,7 +111,7 @@ function instruction(status: string) {
 
 function buyerDemand() {
   return {
-    demand_id: 'd1', demand_version: 1, marketplace_code: 'JP',
+    demand_id: 'd1', demand_version: 1, marketplace_code: 'AMAZON_JP',
     product_name: '月光白', main_image: {
       file_object_id: 'product-main-image-1', file_version: 3,
       purpose: 'PRODUCT_IMAGE', visibility: 'SELLER_VISIBLE',
@@ -127,9 +127,9 @@ function buyerDemand() {
 
 function evidence() {
   return {
-    submission_id: 'e1', reservation: { reservation_id: 'r1', demand_id: 'd1', marketplace_code: 'JP',
+    submission_id: 'e1', reservation: { reservation_id: 'r1', demand_id: 'd1', marketplace_code: 'AMAZON_JP',
       product_name: '月光白', store_display_name: '店铺', review_type: 'IMAGE', order_deadline: 1 },
-    marketplace: 'JP', amazon_order_number_display: '123-1234567-1234567', amazon_order_date: '2026-08-06',
+    marketplace: 'AMAZON_JP', amazon_order_number_display: '123-1234567-1234567', amazon_order_date: '2026-08-06',
     final_paid_jpy: 1200, buyer_self_pay_bps: 1000, buyer_self_pay_jpy: 120,
     buyer_refundable_principal_jpy: 1080, price_mismatch: false, price_difference_jpy: 0,
     status: 'PENDING_VERIFICATION', version: 1, evidence_version_no: 1, submitted_at: 1, updated_at: 1,

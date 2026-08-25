@@ -20,10 +20,9 @@ import { FrozenAdminBusinessDashboard } from './FrozenAdminBusinessDashboard';
 afterEach(cleanup);
 
 describe('canonical Frozen Admin business dashboard', () => {
-  it('renders contract-valid daily, channel, and integrity facts for every reporting window', async () => {
+  it('renders the stage 4 simplified owner summary for every reporting window', async () => {
     const observed = {
       summaryQueries: [] as string[],
-      dailyRanges: [] as string[],
       financialRanges: [] as string[],
     };
     installOwnerHandlers(observed);
@@ -35,26 +34,19 @@ describe('canonical Frozen Admin business dashboard', () => {
     );
 
     expect(await screen.findByRole('heading', { name: '本期赚了多少' })).toBeVisible();
-    // 明细表默认折叠，先点开再断言
-    await userEvent.setup().click(screen.getByText('明细与统计设置（点开查看）'));
     expect(screen.getByRole('heading', { name: '客户与订单' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '买家：从咨询到完成' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '卖家：从咨询到合作' })).toBeVisible();
-    expect(screen.getByText('¥200.00 CNY')).toBeVisible();
-    expect(screen.getByText('每日新增客户、网站开通与订单')).toBeVisible();
-    expect(screen.getByText('今日渠道事实')).toBeVisible();
-    expect(screen.getByText('客户身份对不上')).toBeVisible();
-    expect(screen.getByText('找不到来源的订单')).toBeVisible();
+    expect(await screen.findByText('¥200.00 CNY')).toBeVisible();
+    expect(screen.getByText('待处理买家返款')).toBeVisible();
+    expect(screen.getByText('待处理卖家结算')).toBeVisible();
+    expect(screen.getByText('待处理工作项')).toBeVisible();
     expect(screen.getByText('账目对不上')).toBeVisible();
-    expect(
-      screen.getByText(
-        '统计开始日之后有 4 张订单找不到来源；其中买家侧缺 3 个、卖家侧缺 2 个。同一张订单两边都缺时只算 1 张。',
-      ),
-    ).toBeVisible();
-    expect(screen.queryByRole('button', { name: '查看明细' })).not.toBeInTheDocument();
+    expect(screen.getByText('客户身份对不上')).toBeVisible();
+    // Machine-era surfaces are gone from the simplified dashboard.
+    expect(screen.queryByText('买家：从咨询到完成')).not.toBeInTheDocument();
+    expect(screen.queryByText('每日新增客户、网站开通与订单')).not.toBeInTheDocument();
+    expect(screen.queryByText('明细与统计设置（点开查看）')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(observed.summaryQueries).toContain('window=TODAY');
-      expect(observed.dailyRanges).toContain('from_date=2026-08-08&to_date=2026-08-08');
       expect(observed.financialRanges).toContain('from_date=2026-08-08&to_date=2026-08-08');
     });
 
@@ -65,7 +57,6 @@ describe('canonical Frozen Admin business dashboard', () => {
     });
     await waitFor(() => {
       expect(observed.summaryQueries).toContain('window=WEEK');
-      expect(observed.dailyRanges).toContain('from_date=2026-08-04&to_date=2026-08-10');
       expect(observed.financialRanges).toContain('from_date=2026-08-04&to_date=2026-08-10');
     });
 
@@ -75,7 +66,6 @@ describe('canonical Frozen Admin business dashboard', () => {
     });
     await waitFor(() => {
       expect(observed.summaryQueries).toContain('window=MONTH');
-      expect(observed.dailyRanges).toContain('from_date=2026-08-01&to_date=2026-08-31');
       expect(observed.financialRanges).toContain('from_date=2026-08-01&to_date=2026-08-31');
     });
   });
@@ -127,7 +117,6 @@ describe('canonical Frozen Admin business dashboard', () => {
 
 function installOwnerHandlers(observed?: {
   summaryQueries: string[];
-  dailyRanges: string[];
   financialRanges: string[];
 }): void {
   server.use(
@@ -138,18 +127,6 @@ function installOwnerHandlers(observed?: {
       return HttpResponse.json({
         data: { summary: summary(key) },
         meta: { request_id: 'summary' },
-      });
-    }),
-    http.get(apiUrl('/api/staff/admin-business-dashboard/acquisition-daily'), ({ request }) => {
-      const url = new URL(request.url);
-      const key = windowForRange(
-        url.searchParams.get('from_date'),
-        url.searchParams.get('to_date'),
-      );
-      observed?.dailyRanges.push(url.searchParams.toString());
-      return HttpResponse.json({
-        data: acquisitionDaily(key),
-        meta: { request_id: 'daily' },
       });
     }),
     http.get(apiUrl('/api/staff/admin-business-dashboard/financial-projection'), ({ request }) => {
@@ -164,20 +141,6 @@ function installOwnerHandlers(observed?: {
         meta: { request_id: 'financial' },
       });
     }),
-    http.get(apiUrl('/api/staff/acquisition/reporting-config'), () =>
-      HttpResponse.json({
-        data: {
-          config: {
-            precision_started_business_date: '2026-08-08',
-            activated_at: 1,
-            activated_by_staff_id: 'staff-1',
-            version: 1,
-            updated_at: 1,
-          },
-        },
-        meta: { request_id: 'config' },
-      }),
-    ),
     http.get(apiUrl('/api/staff/customer-identity-resolution/cases'), () =>
       HttpResponse.json({
         data: { cases: [] },
@@ -216,87 +179,11 @@ function summary(key: DashboardWindow): AdminBusinessDashboardSummaryDto {
       timezone: 'Asia/Shanghai',
       data_as_of: 1_786_161_600_000,
     },
-    cards: { new_buyers: 2, reservations: 1, formal_orders: 1, business_completions: 0 },
-    buyer_funnel: {
-      stages: [
-        stage('CONSULTATION', '咨询', 3),
-        stage('WECHAT_ADDED', '加微信', 2),
-        stage('REGISTERED', '注册', 1),
-        stage('RESERVATION_SUBMITTED', '预约', 1),
-        stage('FORMAL_ORDER', '正式订单', 1),
-        stage('BUSINESS_COMPLETED', '业务完成', 0),
-      ],
-      no_participation_count: 1,
-    },
-    seller_funnel: {
-      stages: [
-        stage('CONSULTATION', '咨询', 2),
-        stage('WECHAT_ADDED', '加微信', 1),
-        stage('COOPERATION', '确认合作', 1),
-      ],
-    },
-    projected_profit: profit('12345'),
-    completed_profit: profit('2345'),
-    staff_performance: [],
-    channel_performance: [],
+    cards: { new_customers_buyer: 2, new_customers_seller: 1, reservations: 1, formal_orders: 1 },
+    pending: { buyer_refunds: 1, seller_settlements: 1 },
+    overdue: { open_work_items: 0, finance_exceptions: 0 },
+    owner_summary: { projected_profit: profit('12345'), completed_profit: profit('2345') },
   } satisfies AdminBusinessDashboardSummaryDto;
-}
-
-function acquisitionDaily(key: DashboardWindow) {
-  const fact = WINDOW_FACTS[key];
-  return {
-    from_date: fact.from,
-    to_date: fact.to,
-    timezone: 'Asia/Shanghai',
-    data_as_of: 1_786_161_600_000,
-    reporting_precision: { configured: true, business_date: '2026-08-08' },
-    anomalies: {
-      identity_conflicts: 2,
-      attribution_anomalies: 4,
-      buyer_attribution_gaps: 3,
-      seller_attribution_gaps: 2,
-      finance_conflicts: 1,
-    },
-    totals: {
-      new_buyer_customers: 2,
-      new_seller_customers: 1,
-      buyer_portal_registrations: 1,
-      seller_portal_registrations: 1,
-      formal_orders: 1,
-      buyer_historical_unknown_orders: 0,
-      seller_historical_unknown_orders: 0,
-      buyer_attribution_anomaly_orders: 0,
-      seller_attribution_anomaly_orders: 0,
-    },
-    daily: [
-      {
-        business_date: fact.to,
-        new_buyer_customers: 2,
-        new_seller_customers: 1,
-        buyer_portal_registrations: 1,
-        seller_portal_registrations: 1,
-        formal_orders: 1,
-        buyer_historical_unknown_orders: 1,
-        seller_historical_unknown_orders: 1,
-        buyer_attribution_anomaly_orders: 3,
-        seller_attribution_anomaly_orders: 2,
-      },
-    ],
-    channel_daily: [
-      {
-        business_date: fact.to,
-        channel_id: `channel-${key.toLowerCase()}`,
-        channel_name: fact.channel,
-        channel_label: '员工渠道一号',
-        platform_name: '小红书',
-        channel_status: 'ACTIVE' as const,
-        lead_type: 'BUYER' as const,
-        marketplace_code: 'AMAZON_JP',
-        new_customer_count: 2,
-        formal_order_count: 1,
-      },
-    ],
-  };
 }
 
 function financialProjection(key: DashboardWindow): FinancialReportingProjectionDto {
@@ -320,10 +207,6 @@ function financialProjection(key: DashboardWindow): FinancialReportingProjection
     projected_profit_adjustment_cny_fen: '0',
     completed_profit_adjustment_cny_fen: '0',
   } satisfies FinancialReportingProjectionDto;
-}
-
-function stage(code: string, label: string, count: number) {
-  return { code, label, count, conversion_rate_bps: null };
 }
 
 function profit(amount: string) {

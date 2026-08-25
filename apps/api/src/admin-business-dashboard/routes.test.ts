@@ -40,19 +40,30 @@ describe('admin business dashboard HTTP authority', () => {
     }
   });
 
-  it('rejects duplicate, unknown and excessive bounded queries', async () => {
+  it('rejects duplicate and unknown bounded queries on live endpoints', async () => {
     database = createMigratedTestDatabase();
     for (const path of [
       '/api/staff/admin-business-dashboard/summary?window=TODAY&window=WEEK',
       '/api/staff/admin-business-dashboard/summary?window=TODAY&owner=true',
-      '/api/staff/admin-business-dashboard/trends?from_date=2025-01-01&to_date=2026-08-01&granularity=DAY',
-      '/api/staff/admin-business-dashboard/drill-down?metric=NEW_BUYERS&from_date=2026-08-01&to_date=2026-08-08&limit=101',
+      '/api/staff/admin-business-dashboard/financial-projection?from_date=2026-08-01&to_date=2026-08-08&extra=1',
     ]) {
       const response = await request(owner(), path);
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({
         error: { code: 'VALIDATION_ERROR' },
       });
+    }
+  });
+
+  it('returns 404 for retired dashboard endpoints instead of compatibility behavior', async () => {
+    database = createMigratedTestDatabase();
+    for (const path of [
+      '/api/staff/admin-business-dashboard/trends?from_date=2025-01-01&to_date=2026-08-01&granularity=DAY',
+      '/api/staff/admin-business-dashboard/drill-down?metric=NEW_BUYERS&from_date=2026-08-01&to_date=2026-08-08&limit=101',
+      '/api/staff/admin-business-dashboard/acquisition-daily?from_date=2026-08-01&to_date=2026-08-08',
+    ]) {
+      const response = await request(owner(), path);
+      expect(response.status).toBe(404);
     }
   });
 });

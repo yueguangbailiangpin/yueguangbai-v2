@@ -304,7 +304,7 @@ export async function registerInvitedBuyer(
           buyer_customer_no, buyer_sequence, first_valid_order_business_date,
           display_name, access_status, identity_review_status,
           version, created_at, updated_at, activated_at, disabled_at
-        ) VALUES (?, ?, 'JP', ?, NULL, NULL, NULL, ?, 'ACTIVE', 'CLEAR',
+        ) VALUES (?, ?, 'AMAZON_JP', ?, NULL, NULL, NULL, ?, 'ACTIVE', 'CLEAR',
           1, ?, ?, ?, NULL)
       `).bind(buyerCustomerId, identitySubjectId, input.buyerChannelId,
         wechat.display.slice(0, 100), now, now, now),

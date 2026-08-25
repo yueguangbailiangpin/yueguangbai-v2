@@ -24,7 +24,7 @@ const buyerNavigationLabels = ['产品', '任务', '我的'] as const;
 const product = {
   demand_id: 'demand-visual-1',
   demand_version: 4,
-  marketplace_code: 'JP',
+  marketplace_code: 'AMAZON_JP',
   product_name: '月白保湿护理套装',
   reference_order_amount_jpy: '3980',
   buyer_self_pay_bps: 1250,

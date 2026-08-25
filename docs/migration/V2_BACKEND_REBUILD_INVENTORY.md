@@ -232,3 +232,30 @@
 6. **门禁实测**（阶段 3 出口）：`npm run typecheck` 0 错、`npm test` 251 文件 / 1661 用例全过、`npm run build` 通过、`npm run check` exit 0、`openspec validate --all --strict` 63/63。
 7. **已知窗口项**：`verify:api-contract`（不在 check 门禁内）的 origin/main 差异范围模型与重建窗口冲突，按 §6.4/阶段 4 在路由清单重生成时核销；`release:check` 要求干净工作树（提交后自然满足）。本地 wrangler D1 已删除旧状态并重放新链（`db:migrate:local` 实测 19/19 ✅）。
 8. **platform 统一改造波及面**：`seller-formal-orders/read-model.ts`、`seller-order-chat-screenshots/command.ts` + `read-model.ts`、`files/file-audience-authorization.ts`、`staging-bootstrap/first-owner.ts`（含 staff_mcp 计数清理）、`tools/imports/current-product-seller-mapping/staging-import-sql.ts`（Rakuten 身份 INSERT 移除）；对应测试删除 platform 用例（seller-formal-orders/platform-formal-orders.test.ts 整删，语义等价覆盖保留于 LEGACY 路径用例）。`SellerFormalOrderPortalDto` 的 `legacy_projection: 'NONE'` 变体不再由运行时产生，判别字段本身留待阶段 4 contracts 原子清理（与 'JP' 短码同批）。
+
+### 7.3 阶段 4 verifier 等价迁移核销记录（D-054 门槛 1）
+
+2026-08-26 阶段 4 完成 §7 映射的逐行核销。等价证据：7 个新命名 verifier 真实执行全部 PASS、全量 `npm test` 252 文件 / 1664 用例通过、`npm run typecheck` 0 错、`db:verify` / `verify:migration-guards` 对 21 链通过、`npm run check` exit 0、`openspec validate --all --strict` 通过。旧脚本删除发生在其映射断言由新 verifier 或 vitest 套件真实执行通过之后。
+
+| 旧脚本（npm 名） | 核销方式 | 新归属 | 状态 |
+|---|---|---|---|
+| `verify:module1:buyer`（buyer-security 段） | 改名迁移 | `verify:buyer-portal-contract` | 已删，新 verifier PASS |
+| `verify:module1:buyer`（migration-0028 段） | 断言已由 baseline-schema.test 承载（订单号认领唯一、amazon_order_date 权威） | `architecture-guards/baseline-schema.test.ts` | 已删，套件 PASS |
+| `verify:phase3i` | 断言由 reviews 模块测试 + baseline-schema 承载（review_url guard、dedup key） | reviews / buyer-reviews / seller-reviews vitest + baseline-schema | 已删，套件 PASS |
+| `verify:phase3j` / `verify:phase3k` | 财务 append-only 触发器与余额视图断言由 baseline-schema 财务不可变套件 + seller-settlements D1 测试承载 | baseline-schema + seller-settlements vitest | 已删，套件 PASS |
+| `verify:seller-finance-security` | 合并入新命名 verifier | `verify:finance-security`（合并段） | 已删，新 verifier PASS |
+| `verify:wave11-dto-isolation` / `verify:wave12:dto` | 合并入新命名 verifier（禁字段清单迁入） | `verify:dto-isolation` | 已删，新 verifier PASS |
+| `verify:phase3l` / `verify:phase3m` | 内部财务读模型与导出安全断言由 internal-finance vitest 承载（公式等价测试在 `wave12-financial-formula-equivalence.test.ts`） | internal-finance vitest | 已删，套件 PASS |
+| `verify:wave12:formulas` | 纯 vitest 编排脚本，公式断言直接由 vitest 文件承载 | internal-finance / pricing vitest | 已删，套件 PASS |
+| `verify:wave12:security` | 合并入新命名 verifier | `verify:finance-security`（合并段） | 已删，新 verifier PASS |
+| `verify:wave12:migrations` / `check:wave13:migration` | schema 状态断言由 `db:verify` + `verify:migration-guards` + baseline-schema.test 对 21 链承载 | 重建的迁移 verifier 套件 | 已删，套件 PASS |
+| `check:wave13:staff-auth` | 改名迁移（schema 锚点改读应用后 baseline） | `verify:staff-auth-composition` | 已删，新 verifier PASS |
+| `check:wave13:dto`（secret-dto） | 改名迁移（禁密清单不变） | `verify:secret-dto-hygiene` | 已删，新 verifier PASS |
+| `verify:customer-security` | 多身份安全断言由 customer-security D1 测试（7 用例）+ baseline-schema multipersona 段承载 | customer-security vitest + baseline-schema | 已删，套件 PASS |
+| `verify:marketplace-money` | 断言按 0020/0021 后状态重写（无别名表、三码、无 legacy_order_code、无浮点） | `verify:marketplace-registry` | 已删，新 verifier PASS |
+| `verify:admin-dashboard` | 旧链断言废弃；按 §3.2 简化范围重建 | `verify:admin-dashboard-simplified` | 已删，新 verifier PASS |
+| `verify:product-reservation-scheduling` | 排期约束断言由 baseline-schema 排期段承载 | baseline-schema.test.ts | 已删，套件 PASS |
+| `verify:seller-agreement-rate-retirement` | 2026-08-26 最后一次执行 0 残留核验（581 文件扫描 0 命中，canonical authority = approve-order-evidence.ts）后按映射废弃 | 一次性核验记录（本行） | 已删 |
+| `verify:api-contract` | 机制保留：脚本重写为提交产物自校验（清单一致性、退役族缺席、计数核对），运行时↔清单双向相等由 `api-contract-baseline-alignment.test.ts` 以真实 `app.routes` 执行；不再依赖 origin/main diff 或 push | `verify:api-contract`（重写） | 保留，PASS |
+
+`check:wave13:file` / `check:wave13:price-mismatch` / `check:wave13:buyer-refund` 按映射继续由原脚本承载（对应断言对象未随阶段 4 变化）。

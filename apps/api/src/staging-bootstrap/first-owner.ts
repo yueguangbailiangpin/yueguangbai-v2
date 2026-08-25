@@ -9,7 +9,7 @@ import {
 } from '../foundation/idempotency';
 import { normalizeStaffEmail } from '../staff-auth/cloudflare-access';
 
-const TARGET_SCHEMA = 19;
+const TARGET_SCHEMA = 23;
 const STAGING_BUYER_CHANNEL_ID = 'staging-buyer-channel';
 const STAGING_DATABASE_NAME = /^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -144,7 +144,7 @@ export async function bootstrapStagingFirstOwner(
     database.prepare(`INSERT INTO staff_assignment_fallbacks(
       marketplace_code,staff_id,version,configured_by_staff_id,
       created_at,updated_at
-    ) VALUES('JP',?,1,?,?,?)`).bind(
+    ) VALUES('AMAZON_JP',?,1,?,?,?)`).bind(
       staffId, staffId, now, now,
     ),
     database.prepare(`INSERT INTO staff_authorization_events(
@@ -233,7 +233,7 @@ function normalizeInput(input: StagingFirstOwnerInput): StagingFirstOwnerInput {
 function emptyStagingAssertion(database: SqlDatabase): SqlStatement {
   return database.prepare(`INSERT INTO transaction_assertions(assertion_value)
     SELECT CASE WHEN
-      EXISTS(SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=19)
+      EXISTS(SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=23)
       AND NOT EXISTS(SELECT 1 FROM staff_users)
       AND NOT EXISTS(SELECT 1 FROM staff_role_assignments)
       AND NOT EXISTS(SELECT 1 FROM staff_email_identities)
@@ -271,7 +271,7 @@ function finalAuthorityAssertion(
         WHERE id=? AND staff_id=? AND status='ACTIVE')=1
       AND (SELECT COUNT(*) FROM staff_marketplace_scopes)=0
       AND (SELECT COUNT(*) FROM staff_assignment_fallbacks
-        WHERE marketplace_code='JP' AND staff_id=? AND version=1)=1
+        WHERE marketplace_code='AMAZON_JP' AND staff_id=? AND version=1)=1
       AND (SELECT COUNT(*) FROM staff_sessions)=0
       AND (SELECT COUNT(*) FROM buyer_channels)=1
       AND (SELECT COUNT(*) FROM buyer_channels

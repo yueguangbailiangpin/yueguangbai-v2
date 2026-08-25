@@ -24,7 +24,7 @@ const viewports = [
 const reservationDemand = {
   demand_id: 'demand-visual',
   demand_version: 4,
-  marketplace_code: 'JP',
+  marketplace_code: 'AMAZON_JP',
   product_name: '月白保湿护理套装',
   reference_order_amount_jpy: '3980',
   buyer_self_pay_bps: 1250,
@@ -76,13 +76,13 @@ const evidence = {
   reservation: {
     reservation_id: reservation.reservation_id,
     demand_id: reservationDemand.demand_id,
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     product_name: reservationDemand.product_name,
     store_display_name: reservationDemand.store_display_name,
     review_type: 'IMAGE',
     order_deadline: reservationDemand.order_deadline,
   },
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   amazon_order_number_display: '123-1234567-1234567',
   amazon_order_date: '2026-08-06',
   final_paid_jpy: 4100,
@@ -104,7 +104,7 @@ const evidence = {
 
 const formalOrder = {
   formal_order_id: 'formal-visual',
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   amazon_order_number: evidence.amazon_order_number_display,
   amazon_order_date: '2026-08-06',
   product_name: reservationDemand.product_name,
@@ -133,7 +133,7 @@ const formalOrder = {
 
 const reviewOrder = {
   formal_order_id: formalOrder.formal_order_id,
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   amazon_order_number: evidence.amazon_order_number_display,
   amazon_order_date: '2026-08-06',
   product_name: reservationDemand.product_name,
@@ -181,7 +181,7 @@ const refund = {
   status: 'PARTIALLY_PAID',
   order: {
     formal_order_id: formalOrder.formal_order_id,
-    marketplace: 'JP',
+    marketplace: 'AMAZON_JP',
     amazon_order_number: evidence.amazon_order_number_display,
     product_name: reservationDemand.product_name,
     review_type: 'IMAGE',
@@ -266,7 +266,7 @@ async function installBuyerFixture(page: Page, refundStatus: 'PARTIALLY_PAID' | 
     if (path === '/api/buyer-portal/me') {
       await json(route, success({ buyer: {
         display_name: '月白买家',
-        marketplace_code: 'JP',
+        marketplace_code: 'AMAZON_JP',
         identity_review_status: 'CLEAR',
       } }));
       return;

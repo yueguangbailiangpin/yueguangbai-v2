@@ -126,9 +126,6 @@ function installOwnerHandlers(stats:readonly ReturnType<typeof channelStat>[]=[]
     http.get(apiUrl('/api/staff/acquisition/consultations'), () => HttpResponse.json({
       data: { consultations: [] }, meta: { request_id: 'consultations' },
     })),
-    http.get(apiUrl('/api/staff/acquisition/funnel'), () => HttpResponse.json({
-      data: { funnel: funnel() }, meta: { request_id: 'funnel' },
-    })),
     http.get(apiUrl('/api/staff/acquisition/channel-stats'), () => HttpResponse.json({
       data: { channels: stats }, meta: { request_id: 'stats' },
     })),
@@ -192,18 +189,9 @@ function channel() {
   };
 }
 
-function funnel() {
-  return {
-    from_date: '2026-08-01', to_date: '2026-08-11', data_as_of: 1_780_000_000_000,
-    buyer: { consultation_count: 10, wechat_added_count: 1, registered_count: 0,
-      reservation_submitted_count: 0, no_participation_count: 1, formal_order_count: 0,
-      projected_gross_profit_cny_fen: null, completed_gross_profit_cny_fen: null },
-    seller: null,
-  };
-}
 
 describe('precise acquisition invalidation after mutations', () => {
-  it('handoff (updateProspect) refetches only prospects', async () => {
+  it('updateProspect refetches only prospects', async () => {
     const counters = installCountingHandlers({
       prospects: [prospect()],
       channels: [channel(), channelTwo()],
@@ -218,7 +206,6 @@ describe('precise acquisition invalidation after mutations', () => {
     await user.click(await screen.findByRole('button', { name: '交给业务员工' }));
 
     await waitFor(() => expect(counters.get('prospects')).toBe(2));
-    expect(counters.get('funnel')).toBe(1);
     expect(counters.get('channels')).toBe(1);
     expect(counters.get('stats')).toBe(0);
     expect(counters.get('consultations')).toBe(0);
@@ -245,13 +232,12 @@ describe('precise acquisition invalidation after mutations', () => {
     await waitFor(() => expect(counters.get('prospects')).toBe(2));
     await user.click(screen.getByRole('button', { name: '渠道统计' }));
     await waitFor(() => expect(counters.get('stats')).toBe(1));
-    expect(counters.get('funnel')).toBe(1);
     expect(counters.get('channels')).toBe(1);
     expect(counters.get('consultations')).toBe(0);
     expect(counters.get('corrections')).toBe(0);
   });
 
-  it('recordConsultation refetches consultations, funnel and stats only', async () => {
+  it('recordConsultation refetches consultations and stats only', async () => {
     const counters = installCountingHandlers({
       channels: [channel(), channelTwo()],
     });
@@ -268,7 +254,6 @@ describe('precise acquisition invalidation after mutations', () => {
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => expect(counters.get('consultations')).toBe(2));
-    await waitFor(() => expect(counters.get('funnel')).toBe(2));
     await user.click(screen.getByRole('button', { name: '渠道统计' }));
     await waitFor(() => expect(counters.get('stats')).toBe(1));
     expect(counters.get('channels')).toBe(1);
@@ -295,7 +280,6 @@ describe('precise acquisition invalidation after mutations', () => {
 
     await waitFor(() => expect(counters.get('channels')).toBe(2));
     expect(counters.get('stats')).toBe(0);
-    expect(counters.get('funnel')).toBe(1);
     expect(counters.get('prospects')).toBe(1);
     expect(counters.get('consultations')).toBe(0);
     expect(counters.get('corrections')).toBe(0);
@@ -317,7 +301,6 @@ describe('precise acquisition invalidation after mutations', () => {
     await waitFor(() => expect(counters.get('channels')).toBe(2));
     await user.click(screen.getByRole('button', { name: '渠道统计' }));
     await waitFor(() => expect(counters.get('stats')).toBe(1));
-    expect(counters.get('funnel')).toBe(1);
     expect(counters.get('prospects')).toBe(1);
     expect(counters.get('consultations')).toBe(0);
     expect(counters.get('corrections')).toBe(0);
@@ -342,7 +325,6 @@ describe('precise acquisition invalidation after mutations', () => {
     await waitFor(() => expect(counters.get('channels')).toBe(2));
     await user.click(screen.getByRole('button', { name: '渠道统计' }));
     await waitFor(() => expect(counters.get('stats')).toBe(1));
-    expect(counters.get('funnel')).toBe(1);
     expect(counters.get('prospects')).toBe(1);
     expect(counters.get('consultations')).toBe(0);
     expect(counters.get('corrections')).toBe(0);
@@ -371,7 +353,6 @@ describe('precise acquisition invalidation after mutations', () => {
     await waitFor(() => expect(counters.get('stats')).toBe(1));
     expect(counters.get('channels')).toBe(1);
     expect(counters.get('prospects')).toBe(1);
-    expect(counters.get('funnel')).toBe(1);
     expect(counters.get('consultations')).toBe(0);
   });
 });
@@ -380,8 +361,8 @@ function installCountingHandlers(fixtures: {
   prospects?: readonly unknown[];
   channels?: readonly unknown[];
   candidates?: readonly unknown[];
-} = {}): { get: (key: 'channels' | 'prospects' | 'consultations' | 'funnel' | 'stats' | 'corrections') => number } {
-  const counts = { channels: 0, prospects: 0, consultations: 0, funnel: 0, stats: 0, corrections: 0 };
+} = {}): { get: (key: 'channels' | 'prospects' | 'consultations' | 'stats' | 'corrections') => number } {
+  const counts = { channels: 0, prospects: 0, consultations: 0, stats: 0, corrections: 0 };
   server.use(
     http.get(apiUrl('/api/staff/acquisition/channels'), () => {
       counts.channels += 1;
@@ -394,10 +375,6 @@ function installCountingHandlers(fixtures: {
     http.get(apiUrl('/api/staff/acquisition/consultations'), () => {
       counts.consultations += 1;
       return HttpResponse.json({ data: { consultations: [] }, meta: { request_id: 'consultations' } });
-    }),
-    http.get(apiUrl('/api/staff/acquisition/funnel'), () => {
-      counts.funnel += 1;
-      return HttpResponse.json({ data: { funnel: funnel() }, meta: { request_id: 'funnel' } });
     }),
     http.get(apiUrl('/api/staff/acquisition/channel-stats'), () => {
       counts.stats += 1;
@@ -455,8 +432,8 @@ function prospect() {
   return {
     prospect_id: 'prospect-1', lead_type: 'BUYER' as const, marketplace_code: 'AMAZON_JP',
     origin_channel_id: 'channel-1', origin_channel_name: '小红书买家推广一组',
-    display_name: '测试线索', contact_value: null, source_url: null, origin_mode: 'HUMAN' as const,
-    status: 'NEW' as const, ai_score: null, note: null, discovered_at: 1,
+    display_name: '测试线索', contact_value: null, source_url: null,
+    status: 'NEW' as const, note: null, discovered_at: 1,
     converted_lead_id: null, version: 1, created_at: 1, updated_at: 1,
   };
 }

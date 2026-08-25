@@ -16,7 +16,7 @@ import {
 interface PublicDemandRow {
   demand_batch_id: string;
   demand_version: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_name: string;
   reference_order_amount_jpy: number;
   buyer_self_pay_bps: number;
@@ -32,7 +32,7 @@ interface PublicDemandRow {
 export interface BuyerPublicDemandBatch {
   demand_batch_id: string;
   demand_version: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_name: string;
   reference_order_amount_jpy: FixedIntegerString;
   buyer_self_pay_bps: number;

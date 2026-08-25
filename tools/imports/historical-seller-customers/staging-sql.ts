@@ -50,7 +50,7 @@ export function emitHistoricalSellerStagingSql(
       id,marketplace_code,seller_code,origin_channel_id,current_channel_id,
       seller_sequence,organization_name,status,version,created_at,updated_at,
       activated_at,disabled_at,next_member_number
-    ) SELECT ${sql(customer.organizationId)},'JP',${sql(customer.sellerCode)},
+    ) SELECT ${sql(customer.organizationId)},'AMAZON_JP',${sql(customer.sellerCode)},
       ${sql(channelId)},${sql(channelId)},${sequence},${sql(customer.displayWechat)},
       'ACTIVE',1,${options.now},${options.now},${options.now},NULL,2
       WHERE NOT ${existing};`);

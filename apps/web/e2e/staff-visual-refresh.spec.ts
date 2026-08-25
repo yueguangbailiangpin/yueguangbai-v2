@@ -53,7 +53,7 @@ const workItem = {
 };
 
 const orderEvidence = {
-  submission_id: 'evidence-visual', reservation_id: 'reservation-visual', marketplace: 'JP',
+  submission_id: 'evidence-visual', reservation_id: 'reservation-visual', marketplace: 'AMAZON_JP',
   status: 'PENDING_VERIFICATION', version: 2, evidence_version_no: 1,
   amazon_order_number_raw: '503-1234567-1234567',
   amazon_order_number_normalized: '503-1234567-1234567', amazon_order_date: '2026-08-09',
@@ -86,7 +86,7 @@ const lead = {
 
 const product = {
   product_id: 'product-visual', seller_organization_id: 'seller-visual', store_id: 'store-visual',
-  store_name: '东京精选店', marketplace_code: 'JP', asin: 'B0VISUAL01', status: 'ACTIVE',
+  store_name: '东京精选店', marketplace_code: 'AMAZON_JP', asin: 'B0VISUAL01', status: 'ACTIVE',
   aggregate_version: 2, current_version_no: 2, product_name: '月光白经典手链',
   cadence: { order_interval_days: 1, orders_per_run: 2 }, updated_at: fixedNow,
 };

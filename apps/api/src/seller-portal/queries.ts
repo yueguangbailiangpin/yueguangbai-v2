@@ -21,7 +21,7 @@ import {
 
 interface StoreRow {
   id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   canonical_marketplace_code: 'AMAZON_JP' | 'AMAZON_US' | 'COUPANG_KR';
   transaction_currency_code: 'JPY' | 'USD' | 'KRW' | 'CNY';
   transaction_currency_exponent: 0 | 2;
@@ -38,7 +38,7 @@ interface ProductRow {
   id: string;
   store_id: string;
   store_display_name: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   seller_code: string;
   asin: string;
   status: 'ACTIVE' | 'DISABLED';
@@ -74,7 +74,7 @@ interface ProductApplicationRow {
   id: string;
   store_id: string;
   store_display_name: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   product_name: string;
   search_keywords_json: string;
@@ -102,7 +102,7 @@ interface DemandBatchRow {
   product_name: string;
   search_keywords_json: string;
   product_url: string | null;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   task_type: 'RATING' | 'TEXT' | 'IMAGE' | 'VIDEO';
   target_quantity: number;
   held_quantity: number;

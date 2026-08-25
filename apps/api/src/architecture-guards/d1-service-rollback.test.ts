@@ -329,7 +329,7 @@ function approvalSource(): Record<string, unknown> {
     submission_id: 'fault-evidence',
     reservation_id: 'fault-reservation',
     buyer_customer_id: 'fault-buyer',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     evidence_status: 'PENDING_VERIFICATION',
     evidence_current_version_no: 1,
     evidence_aggregate_version: 1,

@@ -172,7 +172,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
         data: {
           buyer: {
             display_name: '买家一',
-            marketplace_code: 'JP',
+            marketplace_code: 'AMAZON_JP',
             identity_review_status: 'CLEAR',
           },
         },
@@ -822,16 +822,16 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     )
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(23);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
+    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
 
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(19);
+    expect(Number(state?.schema_version)).toBe(23);
   });
 });
 
@@ -894,7 +894,7 @@ function seedPortalFixture(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-9901',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-9901',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       9901, '门户卖家', 'ACTIVE',
@@ -938,19 +938,19 @@ function seedPortalFixture(
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-1', 'buyer-subject-1', 'JP',
+        'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
         'buyer-channel-p', NULL, NULL, NULL,
         '买家一', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-2', 'buyer-subject-2', 'JP',
+        'buyer-2', 'buyer-subject-2', 'AMAZON_JP',
         'buyer-channel-p', NULL, NULL, NULL,
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-3', 'buyer-subject-3', 'JP',
+        'buyer-3', 'buyer-subject-3', 'AMAZON_JP',
         'buyer-channel-p', NULL, NULL, NULL,
         '买家三', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
@@ -988,7 +988,7 @@ function seedPortalFixture(
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-1', 'seller-org-1', 'JP',
+      'store-1', 'seller-org-1', 'AMAZON_JP',
       '门户店铺', '门户店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -999,16 +999,16 @@ function seedPortalFixture(
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('product-1', 'seller-org-1', 'store-1', 'JP',
+      ('product-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0PORTAL01', 'B0PORTAL01', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-2', 'seller-org-1', 'store-1', 'JP',
+      ('product-2', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0PORTAL02', 'B0PORTAL02', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-3', 'seller-org-1', 'store-1', 'JP',
+      ('product-3', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0PORTAL03', 'B0PORTAL03', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-4', 'seller-org-1', 'store-1', 'JP',
+      ('product-4', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0PORTAL04', 'B0PORTAL04', 'ACTIVE', 1, 1,
        1000, 1000, NULL);
 
@@ -1057,7 +1057,7 @@ function seedPortalFixture(
       buyer_self_pay_override_reason
     ) VALUES
       (
-        'demand-projection', 'seller-org-1', 'store-1', 'JP',
+        'demand-projection', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-1', 1, 'seller-member-1', 'IMAGE',
         3, '需求公开说明一', '需求内部说明一',
         ${openAt}, ${reservationDeadlineBase}, ${orderDeadlineBase},
@@ -1066,7 +1066,7 @@ function seedPortalFixture(
         0, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-final', 'seller-org-1', 'store-1', 'JP',
+        'demand-final', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-2', 1, 'seller-member-1', 'TEXT',
         1, '需求公开说明二', '需求内部说明二',
         ${openAt}, ${reservationDeadlineBase + 1000},
@@ -1076,7 +1076,7 @@ function seedPortalFixture(
         0, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-pending', 'seller-org-1', 'store-1', 'JP',
+        'demand-pending', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-3', 1, 'seller-member-1', 'RATING',
         2, '需求公开说明三', '需求内部说明三',
         ${openAt}, ${reservationDeadlineBase + 2000},
@@ -1086,7 +1086,7 @@ function seedPortalFixture(
         0, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-approved', 'seller-org-1', 'store-1', 'JP',
+        'demand-approved', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-4', 1, 'seller-member-1', 'VIDEO',
         2, '需求公开说明四', '需求内部说明四',
         ${openAt}, ${reservationDeadlineBase + 3000},

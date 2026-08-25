@@ -194,7 +194,7 @@ function sellerMember(
       id: 'seller-org-new',
       seller_code: 'portal-000001',
       name: '咖啡秤',
-      marketplace_code: 'JP' as const,
+      marketplace_code: 'AMAZON_JP' as const,
       status: 'ACTIVE' as const,
       settlement_account_name: null,
       settlement_account_identifier: null,
@@ -211,7 +211,7 @@ function sellerMember(
 function store() {
   return {
     id: 'store-new',
-    marketplace_code: 'JP' as const,
+    marketplace_code: 'AMAZON_JP' as const,
     display_name: '咖啡秤日本店',
     canonical_marketplace_code: 'AMAZON_JP' as const,
     transaction_currency_code: 'JPY' as const,

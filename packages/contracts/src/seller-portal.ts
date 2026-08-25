@@ -50,7 +50,7 @@ export interface SellerPortalMeDto {
     id: string;
     seller_code: string;
     name: string;
-    marketplace_code: 'JP';
+    marketplace_code: 'AMAZON_JP';
     status: 'ACTIVE';
     /** 结算收款人姓名（P16；null = 未填写，设置页可后补）。 */
     settlement_account_name: string | null;
@@ -67,7 +67,7 @@ export interface SellerPortalMeDto {
 
 export interface SellerPortalStoreDto {
   id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   canonical_marketplace_code: CanonicalMarketplaceCode;
   transaction_currency_code: CurrencyCode;
   transaction_currency_exponent: CurrencyExponent;
@@ -99,7 +99,7 @@ export interface SellerPortalProductDto {
     id: string;
     display_name: string;
   };
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   seller_code: string;
   asin: string;
   status: ProductStatus;
@@ -116,7 +116,7 @@ export interface SellerPortalProductApplicationDto {
     id: string;
     display_name: string;
   };
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   product_name: string;
   search_keywords: readonly string[];
@@ -148,7 +148,7 @@ export interface SellerPortalDemandBatchDto {
     search_keywords: readonly string[];
     product_url: string | null;
   };
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   task_type: DemandTaskType;
   target_quantity: number;
   held_quantity: number;

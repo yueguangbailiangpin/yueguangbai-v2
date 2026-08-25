@@ -40,7 +40,7 @@ export const sellerMeSchema = z
             id: z.string(),
             seller_code: z.string(),
             name: z.string(),
-            marketplace_code: z.literal('JP'),
+            marketplace_code: z.literal('AMAZON_JP'),
             status: z.literal('ACTIVE'),
             settlement_account_name: z.string().nullable(),
             settlement_account_identifier: z.string().nullable(),
@@ -65,7 +65,7 @@ export const sellerStoresSchema = z
       z
         .object({
           id: z.string(),
-          marketplace_code: z.literal('JP'),
+          marketplace_code: z.literal('AMAZON_JP'),
           display_name: z.string(),
           canonical_marketplace_code: z.enum([
             'AMAZON_JP',
@@ -152,7 +152,7 @@ const sellerAmazonFormalOrderSchema = z
   .object({
     ...sellerFormalOrderCommon,
     legacy_projection: z.literal('AMAZON'),
-    marketplace_code: z.literal('JP'),
+    marketplace_code: z.literal('AMAZON_JP'),
     canonical_marketplace_code: z.enum(['AMAZON_JP', 'AMAZON_US']),
     amazon_order_number: z.string(),
     asin: z.string(),
@@ -283,7 +283,7 @@ export const sellerProductsSchema = z
         .object({
           id: z.string(),
           store: z.object({ id: z.string(), display_name: z.string() }).strict(),
-          marketplace_code: z.literal('JP'),
+          marketplace_code: z.literal('AMAZON_JP'),
           seller_code: z.string(),
           asin: z.string(),
           status: z.enum(['ACTIVE', 'DISABLED']),
@@ -304,7 +304,7 @@ const sellerApplication = z
   .object({
     id: z.string(),
     store: z.object({ id: z.string(), display_name: z.string() }).strict(),
-    marketplace_code: z.literal('JP'),
+    marketplace_code: z.literal('AMAZON_JP'),
     asin: z.string(),
     product_name: z.string(),
     search_keywords: z.array(z.string()),
@@ -350,7 +350,7 @@ export const sellerDemandsSchema = z
               product_url: z.string().nullable(),
             })
             .strict(),
-          marketplace_code: z.literal('JP'),
+          marketplace_code: z.literal('AMAZON_JP'),
           task_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
           target_quantity: z.number().int(),
           held_quantity: z.number().int(),
@@ -390,7 +390,7 @@ export const sellerReviewsSchema = z
           review_case_id: z.string(),
           formal_order: z.object({ id: z.string(), amazon_order_number: z.string() }).strict(),
           store: z.object({ id: z.string(), display_name: z.string() }).strict(),
-          marketplace_code: z.literal('JP'),
+          marketplace_code: z.literal('AMAZON_JP'),
           asin: z.string(),
           product_name: z.string(),
           review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),

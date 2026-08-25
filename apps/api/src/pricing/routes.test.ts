@@ -282,7 +282,7 @@ function fixture(): SqliteDatabase {
     INSERT INTO seller_organizations (id, marketplace_code, seller_code, origin_channel_id,
       current_channel_id, seller_sequence, organization_name, status, version, created_at,
       updated_at, activated_at, disabled_at, next_member_number)
-    VALUES ('seller-org-1', 'JP', 'pricing-seller-000001', 'seller-channel-ido-mango', 'seller-channel-ido-mango',
+    VALUES ('seller-org-1', 'AMAZON_JP', 'pricing-seller-000001', 'seller-channel-ido-mango', 'seller-channel-ido-mango',
       1, '测试卖家', 'ACTIVE', 1, 1, 1, 1, NULL, 2);
     INSERT INTO staff_role_assignments(
       id,staff_id,role_code,status,assigned_by_staff_id,assigned_at,

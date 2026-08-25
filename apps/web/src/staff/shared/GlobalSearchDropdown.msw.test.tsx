@@ -42,7 +42,7 @@ function searchResult(query: string) {
           buyer_customer_id: 'buyer-1',
           buyer_customer_no: '20260824B03590',
           display_name: '张三丰',
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
         }]
         : [],
       products: [],
@@ -51,7 +51,7 @@ function searchResult(query: string) {
           formal_order_id: 'order-1',
           amazon_order_number_normalized: '250-9999999-9999999',
           asin_display: 'B0SRCHAA01',
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
         }]
         : [],
       demands: [],

@@ -1,3 +1,7 @@
+// Stage 4 canonical verifier (D-054 §7 equivalence migration).
+// Successor of check:wave13:dto (verify-wave13-secret-dto.mjs). Renamed; secret DTO hygiene list unchanged.
+// Assertions are carried over verbatim unless the stage 4 contract rebuild
+// changed the asserted surface; changes are marked inline.
 import {
   assertContains,
   assertNotContains,

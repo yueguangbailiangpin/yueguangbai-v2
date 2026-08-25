@@ -19,7 +19,7 @@ const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 
 const buyer: BuyerPortalContext = {
   buyerCustomerId: 'buyer-1',
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
   accessStatus: 'ACTIVE',
   identityReviewStatus: 'CLEAR',
   customerNumber: 'B000001',
@@ -32,7 +32,7 @@ const buyer: BuyerPortalContext = {
 const approvedReviewRow = {
   review_case_id: 'review-1',
   formal_order_id: 'formal-1',
-  marketplace_code: 'JP',
+  marketplace_code: 'AMAZON_JP',
   amazon_order_number_normalized: '123-1234567-1234567',
   asin_normalized: 'B0REVIEW01',
   product_name_snapshot: '评论测试产品',
@@ -71,7 +71,7 @@ describe('Phase 4B4 buyer review API read projection', () => {
       all: [[
         {
           formal_order_id: 'formal-2',
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
           amazon_order_number_normalized: '222-1234567-1234567',
           asin_normalized: 'B0REVIEW02',
           product_name_snapshot: '待提交产品',
@@ -85,7 +85,7 @@ describe('Phase 4B4 buyer review API read projection', () => {
         },
         {
           formal_order_id: 'formal-1',
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
           amazon_order_number_normalized: '123-1234567-1234567',
           asin_normalized: 'B0REVIEW01',
           product_name_snapshot: '待修改产品',
@@ -311,8 +311,8 @@ describe('Phase 4B4 buyer review API security boundaries', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
-    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
+    expect(migrations).toHaveLength(23);
+    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
 
     const source = readFileSync(
       path.join(root, 'apps/api/src/buyer-reviews/read-model.ts'),

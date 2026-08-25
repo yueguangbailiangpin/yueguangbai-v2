@@ -84,7 +84,7 @@ async function loadBuyerContext(
       buyer_customer_no,
       display_name,
       CASE assignment.marketplace_code
-        WHEN 'AMAZON_JP' THEN 'JP'
+        WHEN 'AMAZON_JP' THEN 'AMAZON_JP'
         ELSE assignment.marketplace_code
       END AS marketplace_code,
       access_status,

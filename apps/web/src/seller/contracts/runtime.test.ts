@@ -21,7 +21,7 @@ describe('Seller runtime DTO allowlists', () => {
           },
           organization: {
             id: 'organization-1', seller_code: 'seller-1',
-            name: '卖家组织', marketplace_code: 'JP', status: 'ACTIVE',
+            name: '卖家组织', marketplace_code: 'AMAZON_JP', status: 'ACTIVE',
             settlement_account_name: null,
             settlement_account_identifier: null,
           },
@@ -47,7 +47,7 @@ describe('Seller runtime DTO allowlists', () => {
         },
         organization: {
           id: 'organization-1', seller_code: 'seller-1',
-          name: '卖家组织', marketplace_code: 'JP', status: 'ACTIVE',
+          name: '卖家组织', marketplace_code: 'AMAZON_JP', status: 'ACTIVE',
         },
         access: {
           read_scope: 'ASSIGNED_STORES', store_ids: ['store-1'],
@@ -62,7 +62,7 @@ describe('Seller runtime DTO allowlists', () => {
     const product = {
       id: 'product-1',
       store: { id: 'store-1', display_name: '日本店' },
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       seller_code: 'seller-1',
       asin: 'B000000001',
       status: 'ACTIVE',

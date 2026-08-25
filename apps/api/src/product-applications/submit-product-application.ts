@@ -44,7 +44,7 @@ import {
 interface StoreSource {
   store_id: string;
   organization_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   store_status: string;
   organization_status: string;
 }
@@ -63,7 +63,7 @@ export interface SubmitProductApplicationResult {
   application_id: string;
   seller_organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   status: 'SUBMITTED';
   version: 1;
@@ -148,7 +148,7 @@ export async function submitProductApplication(
     image_files: imageFiles,
   });
   const targetHash = await hashCanonicalJson({
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin,
   });
 
@@ -181,11 +181,11 @@ export async function submitProductApplication(
       command.actor.sellerOrganizationId,
     );
     // The application/product business tables are JP-only today
-    // (marketplaces(code) has a single 'JP' row; product commands type
-    // marketplace_code as 'JP'). A store on any other marketplace exists at
+    // (marketplaces(code) has a single 'AMAZON_JP' row; product commands type
+    // marketplace_code as 'AMAZON_JP'). A store on any other marketplace exists at
     // the catalog level, but its product application cannot be persisted -
     // reject it explicitly instead of failing the FK inside the batch.
-    if (store.marketplace_code !== 'JP') {
+    if (store.marketplace_code !== 'AMAZON_JP') {
       throw new ProductApplicationError(
         'MARKETPLACE_NOT_SUPPORTED',
         409,

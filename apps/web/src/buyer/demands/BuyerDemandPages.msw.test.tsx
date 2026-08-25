@@ -147,7 +147,7 @@ function demand(
 ) {
   const selfPay = Math.floor(2999 * selfPayBps / 10_000);
   return {
-    demand_id: 'demand-1', demand_version: 2, marketplace_code: 'JP',
+    demand_id: 'demand-1', demand_version: 2, marketplace_code: 'AMAZON_JP',
     product_name: '咖啡秤', main_image: {
       file_object_id: 'product-main-image', file_version: 3,
       purpose: 'PRODUCT_IMAGE', visibility: 'SELLER_VISIBLE',

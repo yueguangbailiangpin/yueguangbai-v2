@@ -33,7 +33,7 @@ import {
 interface ProductStoreSource {
   store_id: string;
   organization_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   store_status: string;
   organization_status: string;
 }
@@ -48,7 +48,7 @@ export interface CreateApprovedProductResult {
   product_version_id: string;
   seller_organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   current_version_no: 1;
   product_version: ProductVersionFields;

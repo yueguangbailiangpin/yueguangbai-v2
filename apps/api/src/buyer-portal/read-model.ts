@@ -23,7 +23,7 @@ import {
 interface DemandRow {
   demand_batch_id: string;
   demand_version: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_name: string;
   main_image_file_object_id: string | null;
   main_image_file_version: number | null;
@@ -62,7 +62,7 @@ interface ReservationRow {
   expired_at: number | null;
   demand_batch_id: string;
   demand_version: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_name: string;
   reference_order_amount_jpy: number;
   buyer_self_pay_bps: number;

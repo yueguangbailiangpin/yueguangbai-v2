@@ -65,9 +65,7 @@ export const acquisitionProspectSchema = z
     display_name: z.string(),
     contact_value: z.string().nullable(),
     source_url: z.string().nullable(),
-    origin_mode: z.enum(['HUMAN', 'CODEX']),
     status: acquisitionProspectStatusSchema,
-    ai_score: z.number().int().min(0).max(100).nullable(),
     note: z.string().nullable(),
     discovered_at: epoch,
     converted_lead_id: z.string().nullable(),
@@ -144,38 +142,6 @@ export const acquisitionDailyConsultationSchema = z
 export const acquisitionConsultationsResponseSchema = z
   .object({ consultations: z.array(acquisitionDailyConsultationSchema) })
   .strict();
-export const acquisitionFunnelSchema = z
-  .object({
-    from_date: z.string(),
-    to_date: z.string(),
-    data_as_of: epoch,
-    buyer: z
-      .object({
-        consultation_count: z.number().int().nonnegative(),
-        wechat_added_count: z.number().int().nonnegative(),
-        registered_count: z.number().int().nonnegative(),
-        reservation_submitted_count: z.number().int().nonnegative(),
-        no_participation_count: z.number().int().nonnegative(),
-        formal_order_count: z.number().int().nonnegative(),
-        projected_gross_profit_cny_fen: z.string().nullable(),
-        completed_gross_profit_cny_fen: z.string().nullable(),
-      })
-      .strict()
-      .nullable(),
-    seller: z
-      .object({
-        consultation_count: z.number().int().nonnegative(),
-        wechat_added_count: z.number().int().nonnegative(),
-        cooperation_count: z.number().int().nonnegative(),
-      })
-      .strict()
-      .nullable(),
-  })
-  .strict();
-export const acquisitionFunnelResponseSchema = z
-  .object({ funnel: acquisitionFunnelSchema })
-  .strict();
-
 export type AcquisitionChannel = z.output<typeof acquisitionVisibleChannelSchema>;
 export type AcquisitionInternalChannel = z.output<typeof acquisitionInternalChannelViewSchema>;
 export type AcquisitionStaffChannel = z.output<typeof acquisitionStaffChannelViewSchema>;

@@ -48,7 +48,7 @@ interface ReservationSource {
   buyer_customer_id: string;
   organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: ReservationStatus;
   reservation_version: number;
   hold_expires_at: number;

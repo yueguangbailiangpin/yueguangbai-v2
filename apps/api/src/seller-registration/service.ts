@@ -419,7 +419,7 @@ export async function completeSellerRegistration(
     )
     .bind(invitation.seller_organization_id)
     .first<OrgRow>();
-  if (!organization || organization.status !== 'ACTIVE' || organization.marketplace_code !== 'JP')
+  if (!organization || organization.status !== 'ACTIVE' || organization.marketplace_code !== 'AMAZON_JP')
     throw new SellerRegistrationError('CONFLICT', 409);
   const identity = await loadWechatIdentity(database, wechat.normalized);
   if (identity?.claim_status === 'RESERVED') throw new SellerRegistrationError('CONFLICT', 409);
@@ -646,7 +646,7 @@ async function ensureHistoricalSellerOrganization(
     )
     .bind(organizationId)
     .first<OrgRow>();
-  if (!org || org.status !== 'ACTIVE' || org.marketplace_code !== 'JP')
+  if (!org || org.status !== 'ACTIVE' || org.marketplace_code !== 'AMAZON_JP')
     throw new SellerRegistrationError('NOT_FOUND', 404);
   const matching = await matchingSellerMember(database, organizationId, normalizedWechat);
   if (matching.length > 1) throw new SellerRegistrationError('CONFLICT', 409);

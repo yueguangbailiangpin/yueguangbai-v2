@@ -55,7 +55,7 @@ export async function requireFormalInstructionSource(
 
 export async function assertOrderNumberAvailable(
   database: SqlDatabase,
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
   amazonOrderNumberNormalized: string,
   evidenceSubmissionId?: string,
 ): Promise<void> {
@@ -85,7 +85,7 @@ export async function assertOrderNumberAvailable(
 export function provisionalOrderNumberClaimStatements(
   database: SqlDatabase,
   input: {
-    marketplaceCode: 'JP';
+    marketplaceCode: 'AMAZON_JP';
     amazonOrderNumberNormalized: string;
     evidenceSubmissionId: string;
     evidenceVersionId: string;
@@ -156,7 +156,7 @@ export function provisionalOrderNumberClaimStatements(
 export async function requireProvisionalOrderNumberClaim(
   database: SqlDatabase,
   input: {
-    marketplaceCode: 'JP';
+    marketplaceCode: 'AMAZON_JP';
     amazonOrderNumberNormalized: string;
     evidenceSubmissionId: string;
     evidenceVersionId: string;
@@ -181,7 +181,7 @@ export async function requireProvisionalOrderNumberClaim(
 export function finalizeOrderNumberClaimStatement(
   database: SqlDatabase,
   input: {
-    marketplaceCode: 'JP';
+    marketplaceCode: 'AMAZON_JP';
     amazonOrderNumberNormalized: string;
     evidenceSubmissionId: string;
     evidenceVersionId: string;
@@ -210,7 +210,7 @@ export function finalizeOrderNumberClaimStatement(
 function assertActiveOrderNumberClaimStatement(
   database: SqlDatabase,
   input: {
-    marketplaceCode: 'JP';
+    marketplaceCode: 'AMAZON_JP';
     amazonOrderNumberNormalized: string;
     evidenceSubmissionId: string;
     evidenceVersionId: string;

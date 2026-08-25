@@ -245,7 +245,7 @@ export async function approveOrderEvidenceAtomically(
       evidenceVersionId: source.evidence_version_id,
     });
     await requireProvisionalOrderNumberClaim(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       amazonOrderNumberNormalized: source.amazon_order_number_normalized,
       evidenceSubmissionId: source.submission_id,
       evidenceVersionId: source.evidence_version_id,
@@ -333,7 +333,7 @@ export async function approveOrderEvidenceAtomically(
       buyer_number_allocated: buyerNumber.allocated,
       seller_organization_id: source.seller_organization_id,
       store_id: source.store_id,
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       product_id: source.product_id,
       product_version_id: source.product_version_id,
       product_version_no: source.product_version_no,
@@ -512,7 +512,7 @@ export async function approveOrderEvidenceAtomically(
           final_paid_jpy, status, version,
           confirmed_by_staff_id, confirmed_at, confirmed_business_date, created_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'JP',
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AMAZON_JP',
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', 1, ?, ?, ?, ?
         )
       `,
@@ -547,7 +547,7 @@ export async function approveOrderEvidenceAtomically(
         ),
       assertPreviousStatementChangedOnce(database),
       finalizeOrderNumberClaimStatement(database, {
-        marketplaceCode: 'JP',
+        marketplaceCode: 'AMAZON_JP',
         amazonOrderNumberNormalized: source.amazon_order_number_normalized,
         evidenceSubmissionId: source.submission_id,
         evidenceVersionId: source.evidence_version_id,
@@ -887,7 +887,7 @@ function validateSource(source: AtomicApprovalSource, expectedVersion: number): 
     source.evidence_status !== 'PENDING_VERIFICATION' ||
     source.reservation_status !== 'APPROVED' ||
     source.buyer_access_status !== 'ACTIVE' ||
-    source.marketplace_code !== 'JP'
+    source.marketplace_code !== 'AMAZON_JP'
   ) {
     throw new AtomicOrderEvidenceApprovalError('STATE_CONFLICT', 409);
   }

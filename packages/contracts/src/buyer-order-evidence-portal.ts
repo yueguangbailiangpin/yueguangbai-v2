@@ -24,7 +24,7 @@ export type BuyerOrderEvidenceFileAction =
 export interface BuyerOrderEvidenceReservationDto {
   reservation_id: string;
   demand_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_name: string;
   store_display_name: string;
   review_type: DemandTaskType;
@@ -69,7 +69,7 @@ export type BuyerOrderEvidenceFileDto =
 export interface BuyerOrderEvidenceDto {
   submission_id: string;
   reservation: BuyerOrderEvidenceReservationDto;
-  marketplace: 'JP';
+  marketplace: 'AMAZON_JP';
   amazon_order_number_display: string;
   amazon_order_date: string | null;
   final_paid_jpy: number;

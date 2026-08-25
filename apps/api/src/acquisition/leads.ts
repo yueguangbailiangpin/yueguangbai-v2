@@ -1,7 +1,6 @@
 import type {
   AcquisitionLeadDto,
   AcquisitionLeadType,
-  AcquisitionOriginMode,
   AcquisitionPage,
   SqlDatabase,
   SqlStatement,
@@ -70,7 +69,6 @@ interface ProspectSourceRow {
   marketplace_code: string;
   origin_channel_id: string;
   source_url: string | null;
-  origin_mode: AcquisitionOriginMode;
   status: string;
   version: number;
 }
@@ -133,7 +131,6 @@ export async function createAcquisitionLead(
     )
       throw new AcquisitionError('STATE_CONFLICT', 409);
   }
-  const originMode = prospect?.origin_mode ?? 'HUMAN';
   const originSourceUrl = prospect?.source_url ?? null;
   const acquired = await acquireAcquisitionCommand<{ lead_id: string }>(
     database,
@@ -201,8 +198,8 @@ export async function createAcquisitionLead(
       id,lead_type,identity_hash,identity_ciphertext,identity_iv,wechat_masked,display_name,note,
       origin_channel_id,origin_staff_id,current_owner_staff_id,status,invalidation_reason,retention_hold_reason,
       version,created_business_date,latest_followup_at,retention_due_at,created_at,updated_at,invalidated_at,anonymized_at,
-      marketplace_code,prospect_id,origin_mode,origin_source_url
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,'ACTIVE',NULL,NULL,1,?,?,?,?,?,NULL,NULL,?,?,?,?)`,
+      marketplace_code,prospect_id,origin_source_url
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,'ACTIVE',NULL,NULL,1,?,?,?,?,?,NULL,NULL,?,?,?)`,
       )
       .bind(
         id,
@@ -223,7 +220,6 @@ export async function createAcquisitionLead(
         acquired.now,
         marketplaceCode,
         prospect?.id ?? null,
-        originMode,
         originSourceUrl,
       ),
     database
@@ -242,7 +238,6 @@ export async function createAcquisitionLead(
           origin_channel_id: channelId,
           marketplace_code: marketplaceCode,
           prospect_id: prospect?.id ?? null,
-          origin_mode: originMode,
         }),
         acquired.now,
       ),
@@ -264,7 +259,6 @@ export async function createAcquisitionLead(
         wechat_masked: identity.masked,
         origin_channel_id: channelId,
         prospect_id: prospect?.id ?? null,
-        origin_mode: originMode,
         origin_staff_id: command.actor.staffId,
         seller_organization_id: sellerFormalization?.organizationId ?? null,
         version: 1,
@@ -601,7 +595,7 @@ async function requireStaffMarket(
 async function prospectSource(database: SqlDatabase, id: string): Promise<ProspectSourceRow> {
   const row = await database
     .prepare(
-      `SELECT id,lead_type,marketplace_code,origin_channel_id,source_url,origin_mode,status,version FROM acquisition_prospects WHERE id=?`,
+      `SELECT id,lead_type,marketplace_code,origin_channel_id,source_url,status,version FROM acquisition_prospects WHERE id=?`,
     )
     .bind(id)
     .first<ProspectSourceRow>();
@@ -643,7 +637,7 @@ async function prepareSellerFormalization(
           `INSERT INTO seller_organizations(
       id,marketplace_code,seller_code,origin_channel_id,current_channel_id,seller_sequence,
       organization_name,status,version,created_at,updated_at,activated_at,disabled_at,next_member_number
-    ) VALUES(?,'JP',?,?,?,?,?,'ACTIVE',1,?,?,?,NULL,2)`,
+    ) VALUES(?,'AMAZON_JP',?,?,?,?,?,'ACTIVE',1,?,?,?,NULL,2)`,
         )
         .bind(
           organizationId,

@@ -29,7 +29,6 @@ import {
   type CatalogStaffActor,
 } from './catalog-shared';
 import {
-  legacyMarketplaceProjection,
   resolveMarketplace,
 } from '../marketplaces/registry';
 
@@ -81,10 +80,10 @@ export async function createSellerStore(
     { requireActive: true, requireAdapter: true },
   );
   // The business layer is JP-only today: seller_stores/products/
-  // demand_batches reference marketplaces(code), which admits a single 'JP'
-  // row, and product commands type marketplace_code as 'JP'. The old code
+  // demand_batches reference marketplaces(code), which admits a single 'AMAZON_JP'
+  // row, and product commands type marketplace_code as 'AMAZON_JP'. The old code
   // hardcoded the JP legacy projection for every store, so an AMAZON_US
-  // store was silently stored as 'JP' and its product applications entered
+  // store was silently stored as 'AMAZON_JP' and its product applications entered
   // the JP conflict check. Reject non-JP store creation loudly until the
   // business tables are migrated to canonical marketplace codes.
   if (marketplace.code !== 'AMAZON_JP') {
@@ -207,7 +206,7 @@ export async function createSellerStore(
       `).bind(
         storeId,
         organizationId,
-        legacyMarketplaceProjection(),
+        'AMAZON_JP',
         storeName.display,
         storeName.normalized,
         now,
@@ -345,7 +344,7 @@ function assertStoreCreatedStatement(
         WHERE seller_stores.id=?
           AND seller_stores.organization_id=?
           AND scope.marketplace_code=CASE
-            WHEN ?='JP' THEN 'AMAZON_JP' ELSE ? END
+            WHEN ?='AMAZON_JP' THEN 'AMAZON_JP' ELSE ? END
           AND seller_stores.status='ACTIVE'
           AND seller_stores.version=1
       )

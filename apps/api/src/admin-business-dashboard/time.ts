@@ -1,5 +1,4 @@
 import type {
-  DashboardGranularity,
   DashboardWindow,
   DashboardWindowDto,
 } from '@ygb/contracts';
@@ -48,37 +47,6 @@ export function dashboardDateRange(
   return { fromDate: from, toDate: to, fromEpoch, toExclusiveEpoch: toEpoch + DAY_MS };
 }
 
-export function dashboardBuckets(
-  fromDate: string,
-  toDate: string,
-  granularity: DashboardGranularity,
-): readonly { from_date: string; to_date: string }[] {
-  const range = dashboardDateRange(fromDate, toDate);
-  const buckets: { from_date: string; to_date: string }[] = [];
-  let cursor = range.fromDate;
-  while (cursor <= range.toDate) {
-    const end = minimum(bucketEnd(cursor, granularity), range.toDate);
-    buckets.push({ from_date: cursor, to_date: end });
-    cursor = addDays(end, 1);
-  }
-  return Object.freeze(buckets);
-}
-
-function bucketEnd(date: string, granularity: DashboardGranularity): string {
-  if (granularity === 'DAY') return date;
-  if (granularity === 'WEEK') {
-    const localMidnight = chinaBusinessDateStartEpoch(date) + 8 * 60 * 60 * 1000;
-    const weekday = new Date(localMidnight).getUTCDay();
-    return addDays(date, (7 - weekday) % 7);
-  }
-  const [year, month] = date.split('-').map(Number) as [number, number, number];
-  return chinaBusinessDate(Date.UTC(year, month, 1) - 8 * 60 * 60 * 1000 - 1);
-}
-
 function addDays(date: string, days: number): string {
   return chinaBusinessDate(chinaBusinessDateStartEpoch(date) + days * DAY_MS);
-}
-
-function minimum(left: string, right: string): string {
-  return left < right ? left : right;
 }

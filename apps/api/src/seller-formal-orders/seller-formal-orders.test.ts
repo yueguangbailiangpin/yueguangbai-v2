@@ -238,7 +238,7 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
 
     const cases: readonly [string, string][] = [
       ['store_id=store-portal-1', requiredOrders().storeOne],
-      ['marketplace_code=JP', requiredOrders().storeTwo],
+      ['marketplace_code=AMAZON_JP', requiredOrders().storeTwo],
       ['asin=B0PORT0001', requiredOrders().storeOne],
       ['product_name=' + encodeURIComponent('Portal 产品二'),
         requiredOrders().storeTwo],
@@ -300,9 +300,7 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
         formal_order: {
           formal_order_id: requiredOrders().storeOne,
           status: 'CONFIRMED',
-          legacy_projection: 'AMAZON',
-          marketplace_code: 'JP',
-          canonical_marketplace_code: 'AMAZON_JP',
+          marketplace_code: 'AMAZON_JP',
           amazon_order_number: '111-1234567-1234567',
           platform_order_identifier: '111-1234567-1234567',
           store: {
@@ -522,21 +520,21 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(await formalOrderCounts()).toEqual(before);
   });
 
-  it('applies the stage 3 clean baseline 0001-0019', async () => {
+  it('applies the clean baseline 0001-0020', async () => {
     const state = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(19);
+    expect(Number(state?.schema_version)).toBe(23);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(23);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
+    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
   });
 });
 
@@ -831,13 +829,13 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       next_member_number
     ) VALUES
       (
-        'org-portal', 'JP', 'ido-mango-portal-c2',
+        'org-portal', 'AMAZON_JP', 'ido-mango-portal-c2',
         'seller-channel-ido-mango', 'seller-channel-ido-mango', 9301,
         'Portal 卖家组织', 'ACTIVE', 1,
         1000, 1000, 1000, NULL, 6
       ),
       (
-        'org-other', 'JP', 'ido-mango-portal-other',
+        'org-other', 'AMAZON_JP', 'ido-mango-portal-other',
         'seller-channel-ido-mango', 'seller-channel-ido-mango', 9302,
         '其他卖家组织', 'ACTIVE', 1,
         1000, 1000, 1000, NULL, 2
@@ -873,13 +871,13 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       display_name, normalized_name, status, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('store-portal-1', 'org-portal', 'JP',
+      ('store-portal-1', 'org-portal', 'AMAZON_JP',
        'Portal Alpha 店铺', 'portal alpha 店铺',
        'ACTIVE', 1, 1000, 1000, NULL),
-      ('store-portal-2', 'org-portal', 'JP',
+      ('store-portal-2', 'org-portal', 'AMAZON_JP',
        'Portal Beta 店铺', 'portal beta 店铺',
        'ACTIVE', 1, 1000, 1000, NULL),
-      ('store-other', 'org-other', 'JP',
+      ('store-other', 'org-other', 'AMAZON_JP',
        'Other 店铺', 'other 店铺',
        'ACTIVE', 1, 1000, 1000, NULL);
 
@@ -940,13 +938,13 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
-      ('buyer-portal-1', 'subject-buyer-1', 'JP',
+      ('buyer-portal-1', 'subject-buyer-1', 'AMAZON_JP',
        'buyer-channel-portal-c2', NULL, NULL, NULL, 'Portal buyer 1',
        'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
-      ('buyer-portal-2', 'subject-buyer-2', 'JP',
+      ('buyer-portal-2', 'subject-buyer-2', 'AMAZON_JP',
        'buyer-channel-portal-c2', NULL, NULL, NULL, 'Portal buyer 2',
        'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
-      ('buyer-other', 'subject-buyer-other', 'JP',
+      ('buyer-other', 'subject-buyer-other', 'AMAZON_JP',
        'buyer-channel-portal-c2', NULL, NULL, NULL, 'Other buyer',
        'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL);
 
@@ -956,13 +954,13 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('product-portal-1', 'org-portal', 'store-portal-1', 'JP',
+      ('product-portal-1', 'org-portal', 'store-portal-1', 'AMAZON_JP',
        'B0PORT0001', 'B0PORT0001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-portal-2', 'org-portal', 'store-portal-2', 'JP',
+      ('product-portal-2', 'org-portal', 'store-portal-2', 'AMAZON_JP',
        'B0PORT0002', 'B0PORT0002', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-other', 'org-other', 'store-other', 'JP',
+      ('product-other', 'org-other', 'store-other', 'AMAZON_JP',
        'B0PORT0003', 'B0PORT0003', 'ACTIVE', 1, 1,
        1000, 1000, NULL);
 
@@ -998,17 +996,17 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       reviewed_at, published_at, withdrawn_at, closed_at,
       held_reservation_count, approved_reservation_count
     ) VALUES
-      ('demand-portal-1', 'org-portal', 'store-portal-1', 'JP',
+      ('demand-portal-1', 'org-portal', 'store-portal-1', 'AMAZON_JP',
        'product-portal-1', 1, 'member-owner', 'IMAGE',
        10, NULL, 'seller note secret', 1000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-confirm', NULL,
        2, 1000, 2000, 2000, 2000, NULL, NULL, 0, 1),
-      ('demand-portal-2', 'org-portal', 'store-portal-2', 'JP',
+      ('demand-portal-2', 'org-portal', 'store-portal-2', 'AMAZON_JP',
        'product-portal-2', 1, 'member-owner', 'TEXT',
        10, NULL, 'seller note secret two', 1000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-confirm', NULL,
        2, 1000, 2000, 2000, 2000, NULL, NULL, 0, 1),
-      ('demand-other', 'org-other', 'store-other', 'JP',
+      ('demand-other', 'org-other', 'store-other', 'AMAZON_JP',
        'product-other', 1, 'member-other-owner', 'VIDEO',
        10, NULL, 'other seller secret', 1000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-confirm', NULL,
@@ -1031,17 +1029,17 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       buyer_self_pay_accepted_demand_version
     ) VALUES
       ('reservation-portal-1', 'demand-portal-1', 'buyer-portal-1',
-       'org-portal', 'store-portal-1', 'product-portal-1', 1, 'JP',
+       'org-portal', 'store-portal-1', 'product-portal-1', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 3000, 4000,
        'staff-confirm', NULL, 4000, NULL, NULL, 0,
        0, 1980, 0, 1980, 3000, 2),
       ('reservation-portal-2', 'demand-portal-2', 'buyer-portal-2',
-       'org-portal', 'store-portal-2', 'product-portal-2', 1, 'JP',
+       'org-portal', 'store-portal-2', 'product-portal-2', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 3000, 4000,
        'staff-confirm', NULL, 4000, NULL, NULL, 0,
        0, 1980, 0, 1980, 3000, 2),
       ('reservation-other', 'demand-other', 'buyer-other',
-       'org-other', 'store-other', 'product-other', 1, 'JP',
+       'org-other', 'store-other', 'product-other', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 3000, 4000,
        'staff-confirm', NULL, 4000, NULL, NULL, 0,
        0, 1980, 0, 1980, 3000, 2);
@@ -1086,15 +1084,15 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       withdrawn_at, consumed_at, created_at
     ) VALUES
       ('evidence-portal-1', 'reservation-portal-1',
-       'buyer-portal-1', 'JP', 'PENDING_VERIFICATION', 1, 1,
+       'buyer-portal-1', 'AMAZON_JP', 'PENDING_VERIFICATION', 1, 1,
        NULL, 'internal review secret one', 5000, 5000,
        NULL, NULL, NULL, NULL, 5000),
       ('evidence-portal-2', 'reservation-portal-2',
-       'buyer-portal-2', 'JP', 'PENDING_VERIFICATION', 1, 1,
+       'buyer-portal-2', 'AMAZON_JP', 'PENDING_VERIFICATION', 1, 1,
        NULL, 'internal review secret two', 5000, 5000,
        NULL, NULL, NULL, NULL, 5000),
       ('evidence-portal-other', 'reservation-other',
-       'buyer-other', 'JP', 'PENDING_VERIFICATION', 1, 1,
+       'buyer-other', 'AMAZON_JP', 'PENDING_VERIFICATION', 1, 1,
        NULL, 'other internal review secret', 5000, 5000,
        NULL, NULL, NULL, NULL, 5000);
 
@@ -1113,7 +1111,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       evidence_file_object_id, created_at
     ) VALUES
       ('evidence-portal-1-v1', 'evidence-portal-1',
-       'reservation-portal-1', 'buyer-portal-1', 'JP', 1,
+       'reservation-portal-1', 'buyer-portal-1', 'AMAZON_JP', 1,
        '111-1234567-1234567', '111-1234567-1234567',
        '2026-08-01',
        8880, 'buyer-portal-1', 'buyer note secret one',
@@ -1122,7 +1120,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
        ${instructionOne.deadlineAt}, 1980, 0, 0, 8880, 1, 6900, 1,
        '${instructionOne.evidenceFileObjectId}', 5000),
       ('evidence-portal-2-v1', 'evidence-portal-2',
-       'reservation-portal-2', 'buyer-portal-2', 'JP', 1,
+       'reservation-portal-2', 'buyer-portal-2', 'AMAZON_JP', 1,
        '222-1234567-1234567', '222-1234567-1234567',
        '2026-08-02',
        5000, 'buyer-portal-2', 'buyer note secret two',
@@ -1131,7 +1129,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
        ${instructionTwo.deadlineAt}, 1980, 0, 0, 5000, 1, 3020, 1,
        '${instructionTwo.evidenceFileObjectId}', 5000),
       ('evidence-portal-other-v1', 'evidence-portal-other',
-       'reservation-other', 'buyer-other', 'JP', 1,
+       'reservation-other', 'buyer-other', 'AMAZON_JP', 1,
        '333-1234567-1234567', '333-1234567-1234567',
        '2026-08-03',
        7000, 'buyer-other', 'other buyer note secret',

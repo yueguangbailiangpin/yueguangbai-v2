@@ -35,7 +35,6 @@ import {
   type CustomerMasterActor,
 } from './master-data-shared';
 import {
-  legacyMarketplaceProjection,
   resolveMarketplace,
 } from '../marketplaces/registry';
 
@@ -222,7 +221,7 @@ export async function createSellerOrganization(
         )
       `).bind(
         organizationId,
-        legacyMarketplaceProjection(),
+        'AMAZON_JP',
         sellerCode,
         channel.id,
         channel.id,
@@ -345,7 +344,7 @@ export async function createSellerOrganization(
       database,
       () => prepareInitialSellerAssignment(database, {
         sellerOrganizationId: organizationId,
-        marketplaceCode: 'JP',
+        marketplaceCode: 'AMAZON_JP',
         actorType: 'STAFF',
         actorId: command.actor.staffId,
         requestId: command.requestId ?? null,

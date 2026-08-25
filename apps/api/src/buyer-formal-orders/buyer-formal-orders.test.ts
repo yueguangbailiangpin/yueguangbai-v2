@@ -18,7 +18,7 @@ import {
 
 const BUYER: BuyerPortalContext = {
   buyerCustomerId: 'buyer-1',
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
   accessStatus: 'ACTIVE',
   identityReviewStatus: 'CLEAR',
   customerNumber: '20260801E1',
@@ -89,7 +89,7 @@ describe('Phase 4B3 buyer formal order read model', () => {
   it('applies all supported filters and reads buyer money only from snapshots', async () => {
     const database = fakeDatabase({ all: [row('formal-1', 1000)] });
     const filters: BuyerFormalOrderFilters = {
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       productName: '产品一',
       reviewType: 'IMAGE',
       confirmedBusinessDate: '2026-08-01',
@@ -127,7 +127,7 @@ describe('Phase 4B3 buyer formal order read model', () => {
     expect(call.sql).not.toContain('buyer_daily_exchange_rates');
     expect(call.bindings).toEqual([
       'buyer-1',
-      'JP',
+      'AMAZON_JP',
       '%产品一%',
       'IMAGE',
       '2026-08-01',
@@ -191,9 +191,9 @@ describe('Phase 4B3 buyer formal order read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(23);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
+    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
   });
 });
 
@@ -205,7 +205,7 @@ function row(
   return {
     formal_order_id: id,
     buyer_customer_no: '20260801E1',
-    marketplace_code: 'JP' as const,
+    marketplace_code: 'AMAZON_JP' as const,
     amazon_order_number_normalized: '123-1234567-1234567',
     asin_normalized: asin,
     product_name_snapshot: '正式订单产品一',

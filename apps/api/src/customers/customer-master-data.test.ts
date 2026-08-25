@@ -38,7 +38,7 @@ describe('customer master data', () => {
     seedStaffAndBuyerChannel(database);
 
     const first = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: ' 测试买家 ',
       wechatId: ' Buyer_Test_01 ',
@@ -56,7 +56,7 @@ describe('customer master data', () => {
     });
 
     const replay = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: '测试买家',
       wechatId: 'buyer_test_01',
@@ -106,7 +106,7 @@ describe('customer master data', () => {
     seedStaffAndBuyerChannel(database);
 
     await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: '买家',
       wechatId: 'Shared_Wechat_01',
@@ -117,7 +117,7 @@ describe('customer master data', () => {
     });
 
     await expect(createSellerOrganization(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       sellerChannelId: 'seller-channel-ido-mango',
       organizationName: '测试卖家',
       ownerDisplayName: '卖家负责人',
@@ -137,7 +137,7 @@ describe('customer master data', () => {
     seedStaffAndBuyerChannel(database);
 
     const firstMango = await createSellerOrganization(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       sellerChannelId: 'seller-channel-ido-mango',
       organizationName: '卖家一',
       ownerDisplayName: '负责人一',
@@ -148,7 +148,7 @@ describe('customer master data', () => {
       now: 2000,
     });
     const secondMango = await createSellerOrganization(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       sellerChannelId: 'seller-channel-ido-mango',
       organizationName: '卖家二',
       ownerDisplayName: '负责人二',
@@ -159,7 +159,7 @@ describe('customer master data', () => {
       now: 2100,
     });
     const firstYgb = await createSellerOrganization(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       sellerChannelId: 'seller-channel-ygbceping',
       organizationName: '卖家三',
       ownerDisplayName: '负责人三',
@@ -220,7 +220,7 @@ describe('customer master data', () => {
     seedStaffAndBuyerChannel(database);
 
     const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: '待激活买家',
       wechatId: 'buyer_number_01',
@@ -317,7 +317,7 @@ describe('customer master data', () => {
     seedStaffAndBuyerChannel(database);
 
     await expect(createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: '无效微信买家',
       wechatId: 'bad wechat',
@@ -331,7 +331,7 @@ describe('customer master data', () => {
     });
 
     const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerChannelId: 'buyer-channel-b',
       displayName: '日期测试买家',
       wechatId: 'buyer_date_01',
@@ -370,7 +370,7 @@ describe('customer master data', () => {
     seedStaffAndBuyerChannel(database);
 
     await expect(createSellerOrganization(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       sellerChannelId: 'seller-channel-ido-mango',
       organizationName: '无权限卖家',
       ownerDisplayName: '负责人',

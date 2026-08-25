@@ -151,7 +151,7 @@ export async function requireInstructionBuyerScope(
 }
 
 export function validateBuyerActor(actor: BuyerInstructionActor): void {
-  if (actor.marketplaceCode !== 'JP') {
+  if (actor.marketplaceCode !== 'AMAZON_JP') {
     throw new OrderInstructionError('VALIDATION_ERROR', 400);
   }
   if (actor.accessStatus !== 'ACTIVE'

@@ -18,7 +18,7 @@ const item = {
   created_at: 1_786_000_000_000, updated_at: 1_786_000_000_000, completed_at: null, cancelled_at: null,
 };
 const evidence = {
-  submission_id: 'evidence-m5', reservation_id: 'reservation-m5', marketplace: 'JP', status: 'PENDING_VERIFICATION',
+  submission_id: 'evidence-m5', reservation_id: 'reservation-m5', marketplace: 'AMAZON_JP', status: 'PENDING_VERIFICATION',
   version: 2, evidence_version_no: 1, amazon_order_number_raw: '123-1234567-1234567',
   amazon_order_number_normalized: '123-1234567-1234567', amazon_order_date: '2026-08-06', final_paid_jpy: '12880',
   buyer_note: '订单页面已包含折扣后的实付金额', public_change_reason: null,

@@ -1149,16 +1149,16 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(23);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
+    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(19);
+    expect(Number(schema?.schema_version)).toBe(23);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name
@@ -1412,7 +1412,7 @@ async function seedFixture(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-9901',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-9901',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       9901, '订单资料卖家', 'ACTIVE',
@@ -1455,13 +1455,13 @@ async function seedFixture(
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-1', 'buyer-subject-1', 'JP',
+        'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
         'buyer-channel-evidence', NULL, NULL, NULL,
         '买家一', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-2', 'buyer-subject-2', 'JP',
+        'buyer-2', 'buyer-subject-2', 'AMAZON_JP',
         'buyer-channel-evidence', NULL, NULL, NULL,
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
@@ -1494,7 +1494,7 @@ async function seedFixture(
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-1', 'seller-org-1', 'JP',
+      'store-1', 'seller-org-1', 'AMAZON_JP',
       '订单资料店铺', '订单资料店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -1505,19 +1505,19 @@ async function seedFixture(
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('product-a', 'seller-org-1', 'store-1', 'JP',
+      ('product-a', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDA001', 'B0EVIDA001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-b', 'seller-org-1', 'store-1', 'JP',
+      ('product-b', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDB001', 'B0EVIDB001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-c', 'seller-org-1', 'store-1', 'JP',
+      ('product-c', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDC001', 'B0EVIDC001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-other', 'seller-org-1', 'store-1', 'JP',
+      ('product-other', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDO001', 'B0EVIDO001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-pending', 'seller-org-1', 'store-1', 'JP',
+      ('product-pending', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDP001', 'B0EVIDP001', 'ACTIVE', 1, 1,
        1000, 1000, NULL);
 
@@ -1565,31 +1565,31 @@ async function seedFixture(
       held_reservation_count,
       approved_reservation_count
     ) VALUES
-      ('demand-a', 'seller-org-1', 'store-1', 'JP',
+      ('demand-a', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-a', 1, 'seller-member-1', 'IMAGE',
        3, '公开需求A', '内部需求A',
        1000, ${orderDeadline - 10000}, ${orderDeadline + 100},
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1000, 1000, 1000, 1000, NULL, NULL, 0, 1),
-      ('demand-b', 'seller-org-1', 'store-1', 'JP',
+      ('demand-b', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-b', 1, 'seller-member-1', 'TEXT',
        3, '公开需求B', '内部需求B',
        1000, ${orderDeadline - 9000}, ${orderDeadline + 200},
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1100, 1100, 1100, 1100, NULL, NULL, 0, 1),
-      ('demand-c', 'seller-org-1', 'store-1', 'JP',
+      ('demand-c', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-c', 1, 'seller-member-1', 'VIDEO',
        3, '公开需求C', '内部需求C',
        1000, ${orderDeadline - 8000}, ${orderDeadline + 300},
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1200, 1200, 1200, 1200, NULL, NULL, 0, 1),
-      ('demand-other', 'seller-org-1', 'store-1', 'JP',
+      ('demand-other', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-other', 1, 'seller-member-1', 'RATING',
        3, '公开需求O', '内部需求O',
        1000, ${orderDeadline - 7000}, ${orderDeadline + 400},
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1300, 1300, 1300, 1300, NULL, NULL, 0, 1),
-      ('demand-pending', 'seller-org-1', 'store-1', 'JP',
+      ('demand-pending', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-pending', 1, 'seller-member-1', 'IMAGE',
        3, '公开需求P', '内部需求P',
        1000, ${orderDeadline - 6000}, ${orderDeadline + 500},
@@ -1613,31 +1613,31 @@ async function seedFixture(
       buyer_self_pay_accepted_demand_version
     ) VALUES
       ('reservation-a', 'demand-a', 'buyer-1',
-       'seller-org-1', 'store-1', 'product-a', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-a', 1, 'AMAZON_JP',
        'APPROVED', '{}', ${orderDeadline - 1000},
        ${orderDeadline + 100}, 2, 2000, 3000,
        'staff-pre-sales', NULL, 3000, NULL, NULL, 0,
        0, 1980, 0, 1980, 2000, 2),
       ('reservation-b', 'demand-b', 'buyer-1',
-       'seller-org-1', 'store-1', 'product-b', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-b', 1, 'AMAZON_JP',
        'APPROVED', '{}', ${orderDeadline - 900},
        ${orderDeadline + 200}, 2, 2100, 3100,
        'staff-pre-sales', NULL, 3100, NULL, NULL, 0,
        0, 1980, 0, 1980, 2100, 2),
       ('reservation-c', 'demand-c', 'buyer-1',
-       'seller-org-1', 'store-1', 'product-c', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-c', 1, 'AMAZON_JP',
        'APPROVED', '{}', ${orderDeadline - 800},
        ${orderDeadline + 300}, 2, 2200, 3200,
        'staff-pre-sales', NULL, 3200, NULL, NULL, 0,
        0, 1980, 0, 1980, 2200, 2),
       ('reservation-other', 'demand-other', 'buyer-2',
-       'seller-org-1', 'store-1', 'product-other', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-other', 1, 'AMAZON_JP',
        'APPROVED', '{}', ${orderDeadline - 700},
        ${orderDeadline + 400}, 2, 2300, 3300,
        'staff-pre-sales', NULL, 3300, NULL, NULL, 0,
        0, 1980, 0, 1980, 2300, 2),
       ('reservation-pending', 'demand-pending', 'buyer-1',
-       'seller-org-1', 'store-1', 'product-pending', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-pending', 1, 'AMAZON_JP',
        'PENDING_REVIEW', '{}', ${orderDeadline - 600},
        ${orderDeadline + 500}, 1, 2400, 2400,
        NULL, NULL, NULL, NULL, NULL, 0,

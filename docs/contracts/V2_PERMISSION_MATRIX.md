@@ -49,15 +49,17 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 
 ### acquisition
 
-- 在本人 Marketplace Scope 内操作客户开发中心：查看内部渠道和来源、买卖双方漏斗、
-  渠道统计、日咨询记录及其历史；无 Scope 时不返回业务记录，越 Scope 的单条历史返回 404。
-- 在本人 Marketplace Scope 内创建、查看和更新 Prospect，记录信号和人工交接；可对
-  现有 Lead 作带原因、可审计的来源更正。来源更正新增更正记录，不改写原始来源。
+- 在本人 Marketplace Scope 内操作客户开发中心（阶段 4 人工模型）：查看内部渠道和
+  来源、渠道统计、日咨询记录及其历史；无 Scope 时不返回业务记录，越 Scope 的单条
+  历史返回 404。机器信号、自动漏斗、交接队列与归因统计开关已随干净基线退役。
+- 在本人 Marketplace Scope 内创建、查看和更新 Prospect（人工录入，不再携带机器
+  评分或发现方式字段）；可对现有 Lead 作带原因、可审计的来源更正。来源更正新增
+  更正记录，不改写原始来源。
 - 该操作员门禁只允许 `owner` 或 `acquisition`，不能由个人额外授权替代；每次请求仍由
   后端重算 ACTIVE 角色和 Marketplace Scope。
 - 不具有 `ACQUISITION_ADMIN`、`ACQUISITION_BUYER_LEAD` 或
-  `ACQUISITION_SELLER_LEAD` 默认权限：不得管理渠道、渠道分配/生效期、接待微信、
-  留存豁免或机器凭证；也不得创建、查看或管理正式 Buyer/Seller Lead。
+  `ACQUISITION_SELLER_LEAD` 默认权限：不得管理渠道、渠道分配/生效期或接待微信；
+  也不得创建、查看或管理正式 Buyer/Seller Lead。
 
 ### pre_sales
 
@@ -103,6 +105,21 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 - 只读取完成上述职责所必需的买家资料；
 - 不查看卖家内部协议、员工管理、高风险身份、系统管理或内部利润。
 - 不建立、查看或管理 Buyer/Seller 获客线索。
+
+### 经营看板权限（阶段 4 简化后）
+
+- 经营看板两个只读端点（`summary`、`financial-projection`）仅允许 Active owner 且
+  持有 `FINANCIAL_VIEW`，Personal DENY 最终优先；无该权限或被个人禁用时失败关闭。
+- 看板只读后端业务事实与人工获客事实，不允许手工填写任何业务数字；Owner 财务
+  摘要复用正式内部财务公式（含审计过的人工利润调整）。复杂漏斗、趋势分析和
+  drill-down 已退役，非 owner 岗位不获得看板任何数据。
+
+### Marketplace 运行边界（阶段 4 统一后）
+
+- 运行时 marketplace 合同只接受 `AMAZON_JP`、`AMAZON_US`、`COUPANG_KR` 三个注册
+  码；历史 `JP` 短码只存在于阶段 6 历史导入映射层，任何新 API 合同不接受。
+- `AMAZON_JP` 是当前唯一允许真实业务写入的 marketplace；`AMAZON_US`、`COUPANG_KR`
+  保持 fail-closed（注册表禁用/适配器不可用），在显式开通前任何写入路径失败关闭。
 
 ### 汇率中心财务权限
 

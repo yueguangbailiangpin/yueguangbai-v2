@@ -410,7 +410,7 @@ export const staffOrderEvidenceSchema = z
       .object({
         submission_id: z.string(),
         reservation_id: z.string(),
-        marketplace: z.literal('JP'),
+        marketplace: z.literal('AMAZON_JP'),
         status: z.enum([
           'PENDING_VERIFICATION',
           'CHANGES_REQUESTED',
@@ -570,7 +570,7 @@ const refundBase = z
     order: z
       .object({
         formal_order_id: z.string(),
-        marketplace: z.literal('JP'),
+        marketplace: z.literal('AMAZON_JP'),
         amazon_order_number_normalized: z.string(),
         product_id: z.string(),
         asin: z.string(),
@@ -917,34 +917,6 @@ export const acquisitionLeadSchema = z
     updated_at: epoch,
   })
   .strict();
-const acquisitionFunnelBuyerSchema = z
-  .object({
-    consultation_count: z.number().int().nonnegative(),
-    wechat_added_count: z.number().int().nonnegative(),
-    registered_count: z.number().int().nonnegative(),
-    reservation_submitted_count: z.number().int().nonnegative(),
-    no_participation_count: z.number().int().nonnegative(),
-    formal_order_count: z.number().int().nonnegative(),
-    projected_gross_profit_cny_fen: signedIntegerString.nullable(),
-    completed_gross_profit_cny_fen: signedIntegerString.nullable(),
-  })
-  .strict();
-export const acquisitionFunnelSchema = z
-  .object({
-    from_date: z.string(),
-    to_date: z.string(),
-    data_as_of: epoch,
-    buyer: acquisitionFunnelBuyerSchema.nullable(),
-    seller: z
-      .object({
-        consultation_count: z.number().int().nonnegative(),
-        wechat_added_count: z.number().int().nonnegative(),
-        cooperation_count: z.number().int().nonnegative(),
-      })
-      .strict()
-      .nullable(),
-  })
-  .strict();
 
 export type AcquisitionChannel = z.output<typeof acquisitionChannelSchema>;
 export type AcquisitionAssignment = z.output<typeof acquisitionAssignmentSchema>;
@@ -1245,32 +1217,6 @@ export const dashboardProfitSchema = z
     conflict_order_count: z.number().int().nonnegative(),
   })
   .strict();
-const dashboardStageSchema = z
-  .object({
-    code: z.string(),
-    label: z.string(),
-    count: z.number().int().nonnegative(),
-    conversion_rate_bps: z.number().int().min(0).max(10_000).nullable(),
-  })
-  .strict();
-const dashboardPerformanceSchema = z
-  .object({
-    dimension_id: z.string(),
-    dimension_name: z.string(),
-    buyer_lead_count: z.number().int().nonnegative(),
-    buyer_registered_count: z.number().int().nonnegative(),
-    buyer_reservation_count: z.number().int().nonnegative(),
-    buyer_formal_order_count: z.number().int().nonnegative(),
-    buyer_business_completed_count: z.number().int().nonnegative(),
-    buyer_no_participation_count: z.number().int().nonnegative(),
-    seller_lead_count: z.number().int().nonnegative(),
-    seller_cooperation_count: z.number().int().nonnegative(),
-    current_owner_active_lead_count: z.number().int().nonnegative().nullable(),
-    consultation_count: z.number().int().nonnegative().nullable(),
-    projected_profit: dashboardProfitSchema,
-    completed_profit: dashboardProfitSchema,
-  })
-  .strict();
 export const adminDashboardSummarySchema = z
   .object({
     summary: z
@@ -1286,23 +1232,30 @@ export const adminDashboardSummarySchema = z
           .strict(),
         cards: z
           .object({
-            new_buyers: z.number().int().nonnegative(),
+            new_customers_buyer: z.number().int().nonnegative(),
+            new_customers_seller: z.number().int().nonnegative(),
             reservations: z.number().int().nonnegative(),
             formal_orders: z.number().int().nonnegative(),
-            business_completions: z.number().int().nonnegative(),
           })
           .strict(),
-        buyer_funnel: z
+        pending: z
           .object({
-            stages: z.array(dashboardStageSchema),
-            no_participation_count: z.number().int().nonnegative(),
+            buyer_refunds: z.number().int().nonnegative(),
+            seller_settlements: z.number().int().nonnegative(),
           })
           .strict(),
-        seller_funnel: z.object({ stages: z.array(dashboardStageSchema) }).strict(),
-        projected_profit: dashboardProfitSchema,
-        completed_profit: dashboardProfitSchema,
-        staff_performance: z.array(dashboardPerformanceSchema),
-        channel_performance: z.array(dashboardPerformanceSchema),
+        overdue: z
+          .object({
+            open_work_items: z.number().int().nonnegative(),
+            finance_exceptions: z.number().int().nonnegative(),
+          })
+          .strict(),
+        owner_summary: z
+          .object({
+            projected_profit: dashboardProfitSchema,
+            completed_profit: dashboardProfitSchema,
+          })
+          .strict(),
       })
       .strict(),
   })

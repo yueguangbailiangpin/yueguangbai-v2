@@ -2,8 +2,6 @@ export const MARKETPLACE_CODES = [
   'AMAZON_JP',
   'AMAZON_US',
   'COUPANG_KR',
-  'RAKUTEN_JP',
-  'TIKTOK_JP',
 ] as const;
 export type CanonicalMarketplaceCode = typeof MARKETPLACE_CODES[number];
 
@@ -19,16 +17,14 @@ export const MARKETPLACE_DISPLAY_NAMES_ZH = {
   AMAZON_JP: '亚马逊日本站',
   AMAZON_US: '亚马逊美国站',
   COUPANG_KR: 'Coupang 韩国站（未开通）',
-  RAKUTEN_JP: '乐天日本站',
-  TIKTOK_JP: 'TikTok 日本站',
 } as const satisfies Record<CanonicalMarketplaceCode, string>;
 
-/** Existing JP HTTP payloads remain accepted during the compatibility window. */
-export const LEGACY_MARKETPLACE_CODES = ['JP'] as const;
-export type LegacyMarketplaceCode = typeof LEGACY_MARKETPLACE_CODES[number];
-export type MarketplaceCode =
-  | CanonicalMarketplaceCode
-  | LegacyMarketplaceCode;
+/**
+ * Stage 4 canonical contract: runtime API payloads accept exactly the three
+ * registry codes. Historical 'AMAZON_JP' short codes exist only in the stage-6
+ * historical import mapping layer.
+ */
+export type MarketplaceCode = CanonicalMarketplaceCode;
 
 export const CUSTOMER_IDENTITY_SUBJECT_TYPES = [
   'BUYER_CUSTOMER',
@@ -70,10 +66,7 @@ export function isMarketplaceCode(
   value: unknown,
 ): value is MarketplaceCode {
   return typeof value === 'string'
-    && [
-      ...MARKETPLACE_CODES,
-      ...LEGACY_MARKETPLACE_CODES,
-    ].includes(value as CanonicalMarketplaceCode);
+    && (MARKETPLACE_CODES as readonly string[]).includes(value);
 }
 
 export function isCanonicalMarketplaceCode(

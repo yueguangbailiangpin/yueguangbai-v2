@@ -23,10 +23,10 @@
 
 ## Stage 4 — Contracts 与 API
 
-- [ ] 4.1 按 §1/§3 重建 contracts（删除兼容 DTO）
-- [ ] 4.2 重建路由并以真实 `app.routes` 重生成 `V2_API_ROUTE_INVENTORY.md`
-- [ ] 4.3 看板简化为清单 §3.2 范围；删除 funnel/drill-down/trends 机器维度
-- [ ] 4.4 幂等/expected_version/请求哈希/状态机/审计/Outbox 全路径回归
+- [x] 4.1 按 §1/§3 重建 contracts（删除兼容 DTO）——migration 0020–0023 原子移除 legacy JP 别名层与获客机器字段；MARKETPLACE_CODES 收敛三码；legacy_projection/AcquisitionOriginMode/ai_score/Handoff DTO 删除
+- [x] 4.2 重建路由并以真实 `app.routes` 重生成 `V2_API_ROUTE_INVENTORY.md`——246 端点（244 /api/* + /health + /ready）；verify:api-contract 去 origin/main 依赖
+- [x] 4.3 看板简化为清单 §3.2 范围；删除 funnel/drill-down/trends 机器维度——summary + financial-projection 双端点，纯 D1 聚合
+- [x] 4.4 幂等/expected_version/请求哈希/状态机/审计/Outbox 全路径回归——1664 用例全过；新增 stage4-contract-regression（三码/fail-closed/退役路由 404/归档状态合同）
 
 ## Stage 5 — 冷归档、Queue 与恢复
 

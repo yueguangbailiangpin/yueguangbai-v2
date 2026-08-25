@@ -19,9 +19,7 @@ import { SellerFormalOrderPortalError } from './errors';
 interface FormalOrderRow {
   formal_order_id: string;
   status: 'CONFIRMED';
-  legacy_projection: 'AMAZON' | 'NONE';
-  marketplace_code: 'JP' | null;
-  canonical_marketplace_code: CanonicalMarketplaceCode;
+  marketplace_code: CanonicalMarketplaceCode;
   amazon_order_number: string | null;
   platform_order_identifier: string;
   store_id: string;
@@ -105,12 +103,8 @@ export async function listSellerFormalOrders(
     values.push(filters.store_id);
   }
   if (filters.marketplace_code !== null) {
-    if (filters.marketplace_code === 'JP') {
-      conditions.push("formal_order.marketplace_code='JP'");
-    } else {
-      conditions.push('generic.marketplace_code=?');
-      values.push(filters.marketplace_code);
-    }
+    conditions.push('formal_order.marketplace_code=?');
+    values.push(filters.marketplace_code);
   }
   if (filters.asin !== null) {
     conditions.push('formal_order.asin_normalized=?');
@@ -218,9 +212,7 @@ function selectFormalOrderProjection(): string {
     SELECT
       formal_order.id AS formal_order_id,
       formal_order.status,
-      'AMAZON' AS legacy_projection,
       formal_order.marketplace_code,
-      generic.marketplace_code AS canonical_marketplace_code,
       formal_order.amazon_order_number_normalized AS amazon_order_number,
       generic.platform_order_identifier,
       formal_order.store_id,
@@ -450,7 +442,6 @@ function mapFormalOrder(
   const common = {
     formal_order_id: row.formal_order_id,
     status: row.status,
-    canonical_marketplace_code: row.canonical_marketplace_code,
     platform_order_identifier: row.platform_order_identifier,
     store: Object.freeze({
       id: row.store_id,
@@ -484,15 +475,15 @@ function mapFormalOrder(
     }),
     confirmed_at: Number(row.confirmed_at),
   };
-  if (row.canonical_marketplace_code !== 'AMAZON_JP'
-    && row.canonical_marketplace_code !== 'AMAZON_US') {
+  // AMAZON_JP is the only marketplace with a live write path; any other
+  // stored code means the seller projection contract has not been opened for
+  // that marketplace yet, so fail closed instead of projecting partial data.
+  if (row.marketplace_code !== 'AMAZON_JP') {
     throw new SellerFormalOrderPortalError('DEPENDENCY_UNAVAILABLE', 503);
   }
   return Object.freeze({
     ...common,
-    canonical_marketplace_code: row.canonical_marketplace_code,
-    legacy_projection: 'AMAZON',
-    marketplace_code: row.marketplace_code!,
+    marketplace_code: row.marketplace_code,
     amazon_order_number: row.amazon_order_number!,
     asin: row.asin!,
     product_version: Object.freeze({
@@ -538,7 +529,7 @@ function mapFormalOrder(
       service_fee_cny_fen: integerString(row.service_fee_cny_fen!),
       effective_from: Number(row.service_fee_effective_from),
       confirmed_at: Number(row.service_fee_confirmed_at),
-      marketplace_code: row.canonical_marketplace_code,
+      marketplace_code: row.marketplace_code,
       currency_code: 'CNY',
       currency_exponent: 2,
     }),

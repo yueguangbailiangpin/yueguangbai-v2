@@ -34,7 +34,7 @@ export async function listHistoricalSellerDirectory(
   const marketplaceWhere =
     markets === null
       ? ''
-      : `AND CASE organization.marketplace_code WHEN 'JP' THEN 'AMAZON_JP'
+      : `AND CASE organization.marketplace_code WHEN 'AMAZON_JP' THEN 'AMAZON_JP'
          ELSE organization.marketplace_code END IN (${markets.map(() => '?').join(',')})`;
   const rows = await database
     .prepare(
@@ -114,7 +114,7 @@ export async function listHistoricalSellerDirectory(
     await Promise.all(
       rows.results.map(async (row) => {
         const canonicalMarketplace =
-          row.marketplace_code === 'JP' ? 'AMAZON_JP' : row.marketplace_code;
+          row.marketplace_code === 'AMAZON_JP' ? 'AMAZON_JP' : row.marketplace_code;
         const historical = row.historical_reason !== null;
         const sourceCount = historical
           ? Number(/(?:^|;)SOURCE_FILES=(\d+)(?:;|$)/u.exec(row.historical_reason ?? '')?.[1] ?? 0)

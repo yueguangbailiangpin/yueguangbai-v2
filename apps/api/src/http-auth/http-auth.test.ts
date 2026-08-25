@@ -664,7 +664,7 @@ async function seedBuyerAccount(
       access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
-      'buyer-http-1', 'buyer-http-subject-1', 'JP',
+      'buyer-http-1', 'buyer-http-subject-1', 'AMAZON_JP',
       'buyer-http-channel', NULL, NULL, NULL, 'HTTP buyer',
       'ACTIVE', 'CLEAR', 1,
       1000, 1000, 1000, NULL
@@ -716,7 +716,7 @@ async function seedSellerAccount(
       created_at, updated_at, activated_at, disabled_at,
       next_member_number
     ) VALUES (
-      'seller-http-org-1', 'JP', 'ido-mango-http-1',
+      'seller-http-org-1', 'AMAZON_JP', 'ido-mango-http-1',
       'seller-channel-ido-mango', 'seller-channel-ido-mango', 9001,
       'HTTP seller', 'ACTIVE', 1,
       1000, 1000, 1000, NULL, 2

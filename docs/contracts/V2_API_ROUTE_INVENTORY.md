@@ -1,6 +1,8 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。现有 253 个唯一端点：251 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP 不属于核心 App route table。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
+这是默认 App 的可复现 route inventory。现有 246 个唯一端点：244 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP、机器获客、关键词图片、飞书与 Rakuten/TikTok 预备层已随干净基线重建退役；经营看板收敛为 summary 与 financial-projection 两个只读端点（清单 §3.2）。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
+
+阶段 4（D-054）收敛说明：marketplace 运行时合同只接受 AMAZON_JP / AMAZON_US / COUPANG_KR（历史 'JP' 短码只存在于阶段 6 历史导入映射层）；获客只保留人工面（渠道、咨询、Prospect、Lead、负责员工、有审计的人工纠正），funnel / handoffs / reporting-config / acquisition-daily 机器维度已删除；被删除路由一律返回 404，不保留兼容别名。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表核对；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都必须经过合同更新与复核。
 
@@ -50,7 +52,6 @@ GET /api/seller-portal/settlement/payments
 GET /api/seller-portal/settlement/payments/:id
 GET /api/seller-portal/settlement/summary
 GET /api/seller-portal/stores
-POST /api/seller-portal/stores
 GET /api/staff-auth/session
 GET /api/staff/access-management
 GET /api/staff/access-management/seller-organization-assignments
@@ -59,19 +60,13 @@ GET /api/staff/acquisition/channel-stats
 GET /api/staff/acquisition/channels
 GET /api/staff/acquisition/consultations
 GET /api/staff/acquisition/consultations/:id/history
-GET /api/staff/acquisition/funnel
-GET /api/staff/acquisition/handoffs
 GET /api/staff/acquisition/leads
 GET /api/staff/acquisition/leads/:id
 GET /api/staff/acquisition/prospects
 GET /api/staff/acquisition/prospects/:id
-GET /api/staff/acquisition/reporting-config
 GET /api/staff/acquisition/source-corrections/candidates
-GET /api/staff/admin-business-dashboard/acquisition-daily
-GET /api/staff/admin-business-dashboard/drill-down
 GET /api/staff/admin-business-dashboard/financial-projection
 GET /api/staff/admin-business-dashboard/summary
-GET /api/staff/admin-business-dashboard/trends
 GET /api/staff/buyer-advance-principal-lookup
 GET /api/staff/buyer-advance-principal/:formalOrderId
 GET /api/staff/buyer-refunds
@@ -139,11 +134,11 @@ PATCH /api/staff/seller-payments/:paymentId/paid-at
 ```text
 POST /api/buyer-auth/register
 POST /api/buyer-portal/demands/:id/reservations
+POST /api/buyer-portal/file-read-intents/batch
 POST /api/buyer-portal/file-upload-intents/:id/complete
 POST /api/buyer-portal/file-uploads/order-evidence/intents
 POST /api/buyer-portal/file-uploads/review-evidence/intents
 POST /api/buyer-portal/files/:fileObjectId/read-intents
-POST /api/buyer-portal/file-read-intents/batch
 POST /api/buyer-portal/order-evidence
 POST /api/buyer-portal/order-evidence/:id/files/:fileLinkId/read-intent
 POST /api/buyer-portal/order-evidence/:id/resubmit
@@ -164,16 +159,17 @@ POST /api/seller-auth/member-register
 POST /api/seller-auth/register
 POST /api/seller-portal/demand-batches
 POST /api/seller-portal/demand-batches/:id/withdraw
+POST /api/seller-portal/file-read-intents/batch
 POST /api/seller-portal/file-upload-intents/:id/complete
 POST /api/seller-portal/file-uploads/product-application-images/intents
 POST /api/seller-portal/files/:fileObjectId/read-intents
-POST /api/seller-portal/file-read-intents/batch
 POST /api/seller-portal/formal-orders/:id/chat-screenshot/read-intent
 POST /api/seller-portal/member-invitations
 POST /api/seller-portal/member-invitations/:id/revoke
 POST /api/seller-portal/product-applications
 POST /api/seller-portal/product-applications/:id/withdraw
 POST /api/seller-portal/reviews/:id/files/:fileLinkId/read-intent
+POST /api/seller-portal/stores
 POST /api/staff-auth/access/bootstrap
 POST /api/staff-auth/logout
 POST /api/staff-auth/logout-all
@@ -194,7 +190,6 @@ POST /api/staff/acquisition/leads/:id/retention-hold
 POST /api/staff/acquisition/leads/:id/transfer
 POST /api/staff/acquisition/prospects
 POST /api/staff/acquisition/prospects/:id/update
-POST /api/staff/acquisition/reporting-config/activate
 POST /api/staff/acquisition/source-corrections
 POST /api/staff/buyer-advance-principal/:formalOrderId/payments
 POST /api/staff/buyer-advance-principal/:formalOrderId/payments/:paymentId/reversals
@@ -217,14 +212,14 @@ POST /api/staff/customer-security/seller-invitations/:id/revoke
 POST /api/staff/demand-batches/:id/review
 POST /api/staff/demand-batches/:id/schedule/confirm
 POST /api/staff/demand-batches/:id/schedule/preview
+POST /api/staff/file-read-intents/batch
 POST /api/staff/file-upload-intents/:id/complete
 POST /api/staff/file-uploads/buyer-chat-screenshots/intents
 POST /api/staff/file-uploads/buyer-refund-proofs/intents
+POST /api/staff/file-uploads/product-images/intents
 POST /api/staff/file-uploads/seller-order-chat-screenshots/intents
 POST /api/staff/file-uploads/seller-settlement-proofs/intents
-POST /api/staff/file-uploads/product-images/intents
 POST /api/staff/files/:fileObjectId/read-intents
-POST /api/staff/file-read-intents/batch
 POST /api/staff/finance/exports/csv
 POST /api/staff/formal-orders/:id/buyer-chat-screenshots
 POST /api/staff/formal-orders/:id/chat-screenshot
@@ -261,9 +256,9 @@ POST /api/staff/seller-payments/:paymentId/reverse
 POST /api/staff/seller-principal-rate-policies/:id/confirm
 POST /api/staff/seller-principal-rate-policies/:id/reject
 POST /api/staff/seller-principal-rate-policies/submit
-POST /api/staff/seller-service-fees/apply-defaults
 POST /api/staff/seller-service-fees/:id/confirm
 POST /api/staff/seller-service-fees/:id/reject
+POST /api/staff/seller-service-fees/apply-defaults
 POST /api/staff/seller-service-fees/submit
 POST /api/staff/seller-settlements/:organizationId/payments
 POST /api/staff/seller-settlements/:organizationId/reconciliation

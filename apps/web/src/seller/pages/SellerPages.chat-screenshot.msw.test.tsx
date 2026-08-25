@@ -137,7 +137,7 @@ describe('Seller formal-order chat screenshot UI', () => {
             items: [
               {
                 id: 'store-1',
-                marketplace_code: 'JP',
+                marketplace_code: 'AMAZON_JP',
                 display_name: '店铺一',
                 canonical_marketplace_code: 'AMAZON_JP',
                 transaction_currency_code: 'JPY',
@@ -151,7 +151,7 @@ describe('Seller formal-order chat screenshot UI', () => {
               },
               {
                 id: 'store-2',
-                marketplace_code: 'JP',
+                marketplace_code: 'AMAZON_JP',
                 display_name: '店铺二',
                 canonical_marketplace_code: 'AMAZON_JP',
                 transaction_currency_code: 'JPY',
@@ -512,7 +512,7 @@ function sellerMe() {
       id: 'seller-organization',
       seller_code: 'seller-1',
       name: '卖家组织',
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       status: 'ACTIVE',
       settlement_account_name: null,
       settlement_account_identifier: null,
@@ -531,7 +531,7 @@ function formalOrder() {
     formal_order_id: 'order-1',
     status: 'CONFIRMED',
     legacy_projection: 'AMAZON',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     canonical_marketplace_code: 'AMAZON_JP',
     amazon_order_number: '111-1111111-1111111',
     platform_order_identifier: '111-1111111-1111111',

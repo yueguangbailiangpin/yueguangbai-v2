@@ -165,7 +165,7 @@ export function insertReservationEventStatement(
 
 export function reservationPrecheckSnapshot(input: {
   buyerCustomerId: string;
-  marketplaceCode: 'JP';
+  marketplaceCode: 'AMAZON_JP';
   demandBatchId: string;
   productId: string;
   demandStatus: string;

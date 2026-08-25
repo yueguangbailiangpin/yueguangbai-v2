@@ -44,7 +44,7 @@ interface ProductSource {
   product_id: string;
   organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_status: string;
   product_version_no: number;
   search_keywords_json: string;
@@ -60,7 +60,7 @@ export interface SubmitDemandBatchResult {
   store_id: string;
   product_id: string;
   product_version_no: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   task_type: DemandTaskType;
   target_quantity: number;
   status: 'SUBMITTED';

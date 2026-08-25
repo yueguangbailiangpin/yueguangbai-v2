@@ -4,24 +4,23 @@ import {
   isBuyerSupportedMarketplaceCode,
   isMarketplaceCode,
   isCanonicalMarketplaceCode,
-  LEGACY_MARKETPLACE_CODES,
   isSellerMemberRole,
   MARKETPLACE_CODES,
   SELLER_MEMBER_ROLES,
 } from './customer';
 
 describe('customer master-data contracts', () => {
-  it('publishes stable marketplace codes while accepting the JP alias', () => {
+  it('publishes exactly the three canonical marketplace codes and rejects the retired JP alias', () => {
     expect(MARKETPLACE_CODES).toEqual([
-      'AMAZON_JP', 'AMAZON_US', 'COUPANG_KR', 'RAKUTEN_JP', 'TIKTOK_JP',
+      'AMAZON_JP', 'AMAZON_US', 'COUPANG_KR',
     ]);
-    expect(LEGACY_MARKETPLACE_CODES).toEqual(['JP']);
-    expect(isMarketplaceCode('JP')).toBe(true);
+    expect(isMarketplaceCode('AMAZON_JP')).toBe(true);
     expect(isMarketplaceCode('AMAZON_US')).toBe(true);
     expect(isCanonicalMarketplaceCode('AMAZON_US')).toBe(true);
     expect(isCanonicalMarketplaceCode('JP')).toBe(false);
-    expect(isCanonicalMarketplaceCode('RAKUTEN_JP')).toBe(true);
-    expect(isCanonicalMarketplaceCode('TIKTOK_JP')).toBe(true);
+    expect(isCanonicalMarketplaceCode('RAKUTEN_JP')).toBe(false);
+    expect(isCanonicalMarketplaceCode('TIKTOK_JP')).toBe(false);
+    expect(isMarketplaceCode('JP')).toBe(false);
     expect(isMarketplaceCode('US')).toBe(false);
     expect(BUYER_SUPPORTED_MARKETPLACE_CODES).toEqual([
       'AMAZON_JP', 'AMAZON_US', 'COUPANG_KR',

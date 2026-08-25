@@ -484,7 +484,7 @@ describe('scheduled operations', () => {
       .prepare("SELECT cursor_json FROM scheduled_job_states WHERE job_name='instruction_expiry'")
       .first<{ cursor_json: string | null }>();
     expect(JSON.parse(partialState?.cursor_json ?? 'null')).toMatchObject({
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       next_instruction_id: firstInstruction.instructionId,
     });
 
@@ -569,7 +569,7 @@ function seedScheduledReservationFixture(
   const approved = input.statuses.filter((status) => status === 'APPROVED').length;
   database.exec(`
     INSERT INTO seller_organizations (id,marketplace_code,seller_code,origin_channel_id,current_channel_id,seller_sequence,organization_name,status,version,created_at,updated_at,activated_at,disabled_at,next_member_number)
-    VALUES ('seller-org-scheduled','JP','ido-mango-910001','seller-channel-ido-mango','seller-channel-ido-mango',910001,'定时任务测试卖家','ACTIVE',1,1,1,1,NULL,2);
+    VALUES ('seller-org-scheduled','AMAZON_JP','ido-mango-910001','seller-channel-ido-mango','seller-channel-ido-mango',910001,'定时任务测试卖家','ACTIVE',1,1,1,1,NULL,2);
     INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES ('seller-scheduled-subject','SELLER_ORG_MEMBER',1);
     INSERT INTO seller_organization_members(id,identity_subject_id,organization_id,member_number,username_fallback,display_name,role,primary_owner,status,version,created_at,updated_at,activated_at,disabled_at)
     VALUES ('seller-scheduled-owner','seller-scheduled-subject','seller-org-scheduled',1,'ido-mango-910001-1','负责人','OWNER',1,'ACTIVE',1,1,1,1,NULL);
@@ -581,17 +581,17 @@ function seedScheduledReservationFixture(
           index,
         ) => `INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES ('buyer-scheduled-subject-${index}','BUYER_CUSTOMER',1);
     INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,buyer_sequence,first_valid_order_business_date,display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
-    VALUES ('buyer-scheduled-${index}','buyer-scheduled-subject-${index}','JP','buyer-channel-scheduled',NULL,NULL,NULL,'测试买家${index}','ACTIVE','CLEAR',1,1,1,1,NULL);`,
+    VALUES ('buyer-scheduled-${index}','buyer-scheduled-subject-${index}','AMAZON_JP','buyer-channel-scheduled',NULL,NULL,NULL,'测试买家${index}','ACTIVE','CLEAR',1,1,1,1,NULL);`,
       )
       .join('\n')}
     INSERT INTO seller_stores(id,organization_id,marketplace_code,display_name,normalized_name,status,version,created_at,updated_at,disabled_at)
-    VALUES ('store-scheduled','seller-org-scheduled','JP','定时任务店铺','定时任务店铺','ACTIVE',1,1,1,NULL);
+    VALUES ('store-scheduled','seller-org-scheduled','AMAZON_JP','定时任务店铺','定时任务店铺','ACTIVE',1,1,1,NULL);
     INSERT INTO products(id,organization_id,store_id,marketplace_code,asin_display,asin_normalized,status,current_version_no,version,created_at,updated_at,disabled_at)
-    VALUES ('product-scheduled','seller-org-scheduled','store-scheduled','JP','B0SCHED001','B0SCHED001','ACTIVE',1,1,1,1,NULL);
+    VALUES ('product-scheduled','seller-org-scheduled','store-scheduled','AMAZON_JP','B0SCHED001','B0SCHED001','ACTIVE',1,1,1,1,NULL);
     INSERT INTO product_versions(id,product_id,version_no,product_name,search_keywords_json,product_url,buyer_visible_notes,internal_notes,created_by_staff_id,created_at,ordering_guide_expected_amount_jpy,color_spec_mode,default_buyer_self_pay_bps)
     VALUES ('product-scheduled-v1','product-scheduled',1,'定时任务产品','["关键词"]',NULL,NULL,NULL,'zz-phase3h-test-owner',1,1000,'MAIN_IMAGE_VARIANT',1000);
     INSERT INTO demand_batches(id,organization_id,store_id,marketplace_code,product_id,product_version_no,submitted_by_member_id,task_type,target_quantity,buyer_visible_notes,seller_notes,open_at,reservation_deadline,order_deadline,status,review_reason,close_reason,reviewed_by_staff_id,closed_by_staff_id,version,submitted_at,updated_at,reviewed_at,published_at,withdrawn_at,closed_at,held_reservation_count,approved_reservation_count,buyer_self_pay_bps_snapshot,buyer_self_pay_source,buyer_self_pay_override_reason)
-    VALUES ('demand-scheduled','seller-org-scheduled','store-scheduled','JP','product-scheduled',1,'seller-scheduled-owner','TEXT',100,NULL,NULL,1,10000,100000000,'PUBLISHED',NULL,NULL,'zz-phase3h-test-owner',NULL,2,1,1,1,1,NULL,NULL,${held},${approved},1000,'PRODUCT_DEFAULT',NULL);
+    VALUES ('demand-scheduled','seller-org-scheduled','store-scheduled','AMAZON_JP','product-scheduled',1,'seller-scheduled-owner','TEXT',100,NULL,NULL,1,10000,100000000,'PUBLISHED',NULL,NULL,'zz-phase3h-test-owner',NULL,2,1,1,1,1,NULL,NULL,${held},${approved},1000,'PRODUCT_DEFAULT',NULL);
   `);
   for (const index of input.canonicalUsIndexes ?? [])
     database.exec(
@@ -604,7 +604,7 @@ function seedScheduledReservationFixture(
         const approvedStatus = status === 'APPROVED';
         const hold = input.holdExpiresAt?.[offset] ?? 1000;
         return `INSERT INTO product_reservations(id,demand_batch_id,buyer_customer_id,organization_id,store_id,product_id,product_version_no,marketplace_code,status,precheck_snapshot_json,hold_expires_at,order_deadline_snapshot,version,submitted_at,updated_at,decided_by_staff_id,decision_reason,decided_at,cancelled_at,expired_at,reopened_count,buyer_self_pay_bps_snapshot,reference_order_amount_jpy_snapshot,estimated_self_pay_jpy_snapshot,estimated_refundable_principal_jpy_snapshot,buyer_self_pay_accepted_at,buyer_self_pay_accepted_demand_version)
-      VALUES ('reservation-scheduled-${index}','demand-scheduled','buyer-scheduled-${index}','seller-org-scheduled','store-scheduled','product-scheduled',1,'JP','${status}','{}',${hold},100000000,${approvedStatus ? 2 : 1},1,2,${approvedStatus ? "'zz-phase3h-test-owner'" : 'NULL'},NULL,${approvedStatus ? 2 : 'NULL'},NULL,NULL,0,1000,1000,0,1000,1,2);`;
+      VALUES ('reservation-scheduled-${index}','demand-scheduled','buyer-scheduled-${index}','seller-org-scheduled','store-scheduled','product-scheduled',1,'AMAZON_JP','${status}','{}',${hold},100000000,${approvedStatus ? 2 : 1},1,2,${approvedStatus ? "'zz-phase3h-test-owner'" : 'NULL'},NULL,${approvedStatus ? 2 : 'NULL'},NULL,NULL,0,1000,1000,0,1000,1,2);`;
       })
       .join('\n'),
   );

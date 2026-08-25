@@ -315,7 +315,7 @@ export async function submitReviewEvidence(
       workType: 'REVIEW_DECISION',
       sourceEntityType: 'REVIEW_CASE',
       sourceEntityId: reviewCaseId,
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       buyerCustomerId: source.buyer_customer_id,
       sellerOrganizationId: source.seller_organization_id,
       actorType: 'SYSTEM',

@@ -30,7 +30,7 @@ describe('staff global search', () => {
           display_name, access_status, identity_review_status,
           version, created_at, updated_at, activated_at
         ) VALUES (
-          'search-buyer-1', 'search-subject-1', 'JP', 'search-channel',
+          'search-buyer-1', 'search-subject-1', 'AMAZON_JP', 'search-channel',
           '20260824B03590', 3590, '2026-08-24',
           '张三丰', 'ACTIVE', 'CLEAR', 1, 100, 100, 100
         );
@@ -46,7 +46,7 @@ describe('staff global search', () => {
           asin_display, asin_normalized, status, current_version_no,
           version, created_at, updated_at
         ) VALUES (
-          'search-product-1', 'runtime-org', 'runtime-store', 'JP',
+          'search-product-1', 'runtime-org', 'runtime-store', 'AMAZON_JP',
           'B0SRCHAA01', 'B0SRCHAA01', 'ACTIVE', 1, 1, 100, 100
         );
         INSERT INTO product_versions (
@@ -75,7 +75,7 @@ describe('staff global search', () => {
           target_quantity, open_at, reservation_deadline, order_deadline,
           status, version, submitted_at, updated_at
         ) VALUES (
-          'search-demand-1', 'runtime-org', 'runtime-store', 'JP',
+          'search-demand-1', 'runtime-org', 'runtime-store', 'AMAZON_JP',
           'search-product-1', 1, 'search-member', 'TEXT',
           5, 100, 200, 300, 'SUBMITTED', 1, 100, 100
         );

@@ -10,7 +10,7 @@ describe('Module 1 buyer query authority', () => {
   });
 
   it('produces a stable key for identical complete parameters', () => {
-    const parameters = { limit: 20, cursor: 'c1', marketplace: 'JP', productName: '月白', reviewType: 'IMAGE',
+    const parameters = { limit: 20, cursor: 'c1', marketplace: 'AMAZON_JP', productName: '月白', reviewType: 'IMAGE',
       confirmedBusinessDate: '2026-08-06', formalOrderId: 'o1', amazonOrderNumber: 'a1' };
     expect(buyerQueryKeys.formalOrdersPage(parameters)).toEqual(buyerQueryKeys.formalOrdersPage({ ...parameters }));
   });
@@ -28,11 +28,11 @@ describe('Module 1 buyer query authority', () => {
 
   it('builds one cursor parameter and replaces it for formal order paging', () => {
     expect(cursorQuery({ limit: 20, cursor: 'next' })).toBe('limit=20&cursor=next');
-    const query = formalOrderQuery({ limit: 20, cursor: 'next-2', marketplace: 'JP', productName: null,
+    const query = formalOrderQuery({ limit: 20, cursor: 'next-2', marketplace: 'AMAZON_JP', productName: null,
       reviewType: null, confirmedBusinessDate: null, formalOrderId: null, amazonOrderNumber: null });
     const params = new URLSearchParams(query);
     expect(params.getAll('cursor')).toEqual(['next-2']);
-    expect(params.get('marketplace')).toBe('JP');
+    expect(params.get('marketplace')).toBe('AMAZON_JP');
   });
 
   it('separates state, content version, list page, and detail facts', () => {

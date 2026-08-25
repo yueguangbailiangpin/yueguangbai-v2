@@ -15,7 +15,7 @@ import {
 
 const BUYER: BuyerPortalContext = {
   buyerCustomerId: 'buyer-1',
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
   accessStatus: 'ACTIVE',
   identityReviewStatus: 'CLEAR',
   customerNumber: 'B000001',
@@ -272,8 +272,8 @@ describe('Phase 4B5 buyer refund status read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
-    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
+    expect(migrations).toHaveLength(23);
+    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
   });
 });
 
@@ -288,7 +288,7 @@ function refundRow(
     refund_obligation_id: id,
     buyer_customer_id: 'buyer-1',
     formal_order_id: `formal-${id}`,
-    marketplace_code: 'JP' as const,
+    marketplace_code: 'AMAZON_JP' as const,
     amazon_order_number_normalized: '123-1234567-1234567',
     asin_normalized: 'B0REFUND01',
     product_name_snapshot: '返款测试产品',

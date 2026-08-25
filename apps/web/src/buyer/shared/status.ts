@@ -38,14 +38,9 @@ export function reviewTypeLabel(value: string): string {
 }
 
 export const marketplaceLabels: Readonly<Record<string, string>> = Object.freeze({
-  JP: '日本站',
-  AMAZON_JP: '日本亚马逊',
-  US: '美国站',
-  AMAZON_US: '美国亚马逊',
-  KR: '韩国站',
+  AMAZON_JP: '日本站',
+  AMAZON_US: '美国站',
   COUPANG_KR: '韩国 Coupang',
-  RAKUTEN_JP: '乐天日本站（即将开放）',
-  TIKTOK_JP: 'TikTok 日本站（即将开放）',
 });
 
 export function marketplaceLabel(value: string): string {

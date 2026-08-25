@@ -206,7 +206,7 @@ function orderDetailRow() {
     reservation_id: 'runtime-reservation',
     buyer_customer_id: 'runtime-buyer',
     buyer_customer_no: 'P202608020001',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     status: 'PENDING_VERIFICATION',
     aggregate_version: 1,
     current_version_no: 1,
@@ -258,7 +258,7 @@ function orderListRow() {
     reservation_id: 'runtime-reservation',
     buyer_customer_id: 'runtime-buyer',
     buyer_customer_no: 'P202608020001',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     status: 'PENDING_VERIFICATION',
     version: 1,
     current_version_no: 1,
@@ -302,7 +302,7 @@ function refundDetailRow() {
     reminder_count: 2,
     last_reminded_at: 11_500,
     buyer_customer_no: 'P202608020001',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     amazon_order_number_normalized: '123-1234567-1234567',
     product_id: 'runtime-product',
     asin_normalized: 'B0RT000001',
@@ -410,7 +410,7 @@ function refundListRow(obligationId: string, createdAt: number, status: 'DUE' | 
     reminder_count: status === 'PAID' ? 1 : 2,
     last_reminded_at: createdAt + 50,
     buyer_customer_no: 'P202608020001',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     amazon_order_number_normalized: '123-1234567-1234567',
     product_id: 'runtime-product',
     asin_normalized: 'B0RT000001',
@@ -485,7 +485,7 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
       created_at, updated_at, activated_at, disabled_at,
       next_member_number
     ) VALUES (
-      'runtime-org','JP','ido-mango-runtime-1',
+      'runtime-org','AMAZON_JP','ido-mango-runtime-1',
       'seller-channel-ido-mango','seller-channel-ido-mango',9101,
       'Runtime Organization','ACTIVE',1,2,2,2,NULL,2
     );
@@ -494,7 +494,7 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
       display_name, normalized_name, status, version,
       created_at, updated_at, disabled_at
     ) VALUES (
-      'runtime-store','runtime-org','JP','Runtime Store','runtime store',
+      'runtime-store','runtime-org','AMAZON_JP','Runtime Store','runtime store',
       'ACTIVE',1,2,2,NULL
     );
   `);

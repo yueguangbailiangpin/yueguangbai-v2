@@ -52,7 +52,7 @@ export interface StaffBuyerRefundBuyerSummaryDto {
 
 export interface StaffBuyerRefundOrderSummaryDto {
   formal_order_id: string;
-  marketplace: 'JP';
+  marketplace: 'AMAZON_JP';
   amazon_order_number_normalized: string;
   product_id: string;
   asin: string;

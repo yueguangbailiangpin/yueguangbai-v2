@@ -25,7 +25,7 @@ import {
 
 interface EligibleOrderRow {
   formal_order_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   amazon_order_number_normalized: string;
   amazon_order_date: string | null;
   product_name_snapshot: string;
@@ -41,7 +41,7 @@ interface EligibleOrderRow {
 interface ReviewRow {
   review_case_id: string;
   formal_order_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   amazon_order_number_normalized: string;
   amazon_order_date: string | null;
   product_name_snapshot: string;
@@ -649,7 +649,7 @@ function validateOrderRow(
     'marketplace_code' | 'order_status'
   >,
 ): void {
-  if (row.marketplace_code !== 'JP' || row.order_status !== 'CONFIRMED') {
+  if (row.marketplace_code !== 'AMAZON_JP' || row.order_status !== 'CONFIRMED') {
     dependencyError();
   }
 }

@@ -187,7 +187,7 @@ describe('explicit file audiences', () => {
         version, submitted_at, updated_at
       ) VALUES (
         'owned-reservation-1', 'catalog-demand-1', 'buyer-1', 'seller-org-1',
-        'catalog-store-1', 'catalog-product-1', 1, 'JP', 'PENDING_REVIEW',
+        'catalog-store-1', 'catalog-product-1', 1, 'AMAZON_JP', 'PENDING_REVIEW',
         '{}', 9000, 12000, 1, 6000, 6000
       );
     `);
@@ -675,11 +675,11 @@ function seedAudienceIdentities(target: SqliteDatabase): void {
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES
-      ('seller-org-1', 'JP', 'ido-mango-9701',
+      ('seller-org-1', 'AMAZON_JP', 'ido-mango-9701',
         'seller-channel-ido-mango', 'seller-channel-ido-mango',
         9701, 'Seller One', 'ACTIVE', 1,
         1000, 1000, 1000, NULL, 2),
-      ('seller-org-2', 'JP', 'ido-mango-9702',
+      ('seller-org-2', 'AMAZON_JP', 'ido-mango-9702',
         'seller-channel-ido-mango', 'seller-channel-ido-mango',
         9702, 'Seller Two', 'ACTIVE', 1,
         1000, 1000, 1000, NULL, 2);
@@ -708,11 +708,11 @@ function seedAudienceIdentities(target: SqliteDatabase): void {
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
-      ('buyer-1', 'buyer-subject-1', 'JP',
+      ('buyer-1', 'buyer-subject-1', 'AMAZON_JP',
         'buyer-channel-files', NULL, NULL, NULL,
         'Buyer One', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL),
-      ('buyer-2', 'buyer-subject-2', 'JP',
+      ('buyer-2', 'buyer-subject-2', 'AMAZON_JP',
         'buyer-channel-files', NULL, NULL, NULL,
         'Buyer Two', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL);
@@ -759,7 +759,7 @@ function seedPublishedCatalogMainImage(
       id, organization_id, marketplace_code, display_name,
       normalized_name, status, version, created_at, updated_at, disabled_at
     ) VALUES (
-      'catalog-store-1', 'seller-org-1', 'JP', 'Catalog Store',
+      'catalog-store-1', 'seller-org-1', 'AMAZON_JP', 'Catalog Store',
       'catalog store', 'ACTIVE', 1, 1000, 1000, NULL
     );
     INSERT INTO products (
@@ -767,7 +767,7 @@ function seedPublishedCatalogMainImage(
       asin_display, asin_normalized, status, current_version_no,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'catalog-product-1', 'seller-org-1', 'catalog-store-1', 'JP',
+      'catalog-product-1', 'seller-org-1', 'catalog-store-1', 'AMAZON_JP',
       'B0CATALOG1', 'B0CATALOG1', 'ACTIVE', 1, 1,
       1000, 1000, NULL
     );
@@ -793,7 +793,7 @@ function seedPublishedCatalogMainImage(
       approved_reservation_count, buyer_self_pay_bps_snapshot,
       buyer_self_pay_source, buyer_self_pay_override_reason
     ) VALUES (
-      'catalog-demand-1', 'seller-org-1', 'catalog-store-1', 'JP',
+      'catalog-demand-1', 'seller-org-1', 'catalog-store-1', 'AMAZON_JP',
       'catalog-product-1', 1, 'seller-member-1', 'TEXT', 2,
       NULL, NULL, 5000, 10000, 12000, 'PUBLISHED', NULL, NULL,
       'staff-file-owner', NULL, 2, 5000, 5000, 5000, 5000,

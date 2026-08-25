@@ -57,7 +57,7 @@ function createTestApp() {
 function buyerActor(buyerCustomerId: string): BuyerReservationActor {
   return {
     buyerCustomerId,
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     accessStatus: 'ACTIVE',
     identityReviewStatus: 'CLEAR',
   };
@@ -99,7 +99,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       marketplace_code, staff_id, version, configured_by_staff_id,
       created_at, updated_at
     ) VALUES (
-      'JP', 'zz-phase3h-test-owner', 1, 'zz-phase3h-test-owner',
+      'AMAZON_JP', 'zz-phase3h-test-owner', 1, 'zz-phase3h-test-owner',
       1000, 1000
     );
 
@@ -110,7 +110,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-9001',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-9001',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       9001, '预约卖家', 'ACTIVE',
@@ -151,7 +151,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
-      'buyer-1', 'buyer-subject-1', 'JP',
+      'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
       'buyer-channel-b', NULL, NULL, NULL,
       '买家一', 'ACTIVE', 'CLEAR', 1,
       1000, 1000, 1000, NULL
@@ -172,7 +172,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-1', 'seller-org-1', 'JP',
+      'store-1', 'seller-org-1', 'AMAZON_JP',
       '预约店铺', '预约店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -183,7 +183,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES (
-      'product-1', 'seller-org-1', 'store-1', 'JP',
+      'product-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
       'B0RESERVE1', 'B0RESERVE1', 'ACTIVE',
       1, 1, 1000, 1000, NULL
     );
@@ -224,7 +224,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       buyer_self_pay_source,
       buyer_self_pay_override_reason
     ) VALUES (
-      'demand-1', 'seller-org-1', 'store-1', 'JP',
+      'demand-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
       'product-1', 1, 'seller-owner', 'IMAGE',
       3, '公开说明', '内部说明',
       ${openAt}, ${reservationDeadline}, ${orderDeadline},

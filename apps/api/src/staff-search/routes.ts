@@ -171,11 +171,11 @@ async function searchOrders(
   query: string,
   scope: StaffDataScope,
 ): Promise<StaffSearchResultsDto['orders']> {
-  const market = marketFilter(scope, 'formal_order.canonical_marketplace_code');
+  const market = marketFilter(scope, 'formal_order.marketplace_code');
   const rows = await context.env.DB.prepare(`
     SELECT formal_order.id AS formal_order_id,
       formal_order.amazon_order_number_normalized,
-      formal_order.asin_display, formal_order.canonical_marketplace_code AS marketplace_code
+      formal_order.asin_display, formal_order.marketplace_code AS marketplace_code
     FROM formal_orders formal_order
     WHERE ${likeSql(['formal_order.amazon_order_number_normalized'])}${market.sql}
     ORDER BY formal_order.created_at DESC, formal_order.id

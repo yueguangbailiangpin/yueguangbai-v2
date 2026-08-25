@@ -196,7 +196,7 @@ async function runExpiryScan(context: Context<any>): Promise<Response> {
     ['limit'],
   );
   const result = await runOrderInstructionExpiryScan(context.env.DB, {
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     ...(body['limit'] == null ? {} : { limit: integer(body['limit']) }),
   }, {
     actor,
@@ -211,7 +211,7 @@ async function getExpiryScanState(context: Context<any>): Promise<Response> {
   const cursor = await getOrderInstructionExpiryScanCursor(
     context.env.DB,
     actor,
-    'JP',
+    'AMAZON_JP',
   );
   return success(context, { cursor });
 }
@@ -228,7 +228,7 @@ async function runReconciliation(context: Context<any>): Promise<Response> {
     ['after_reservation_id', 'limit'],
   );
   const result = await reconcileApprovedReservations(context.env.DB, {
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     ...(optionalString(body['after_reservation_id']) === null
       ? {}
       : { afterReservationId: optionalString(body['after_reservation_id'])! }),

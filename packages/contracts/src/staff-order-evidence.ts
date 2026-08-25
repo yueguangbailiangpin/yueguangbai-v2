@@ -47,7 +47,7 @@ export interface StaffOrderEvidenceListItem {
   reservation_id: string;
   instruction_id: string;
   instruction_version_id: string;
-  marketplace: 'JP';
+  marketplace: 'AMAZON_JP';
   amazon_order_number_raw: string;
   amazon_order_number_normalized: string;
   status: OrderEvidenceStatus;

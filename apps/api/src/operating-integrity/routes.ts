@@ -110,7 +110,7 @@ async function readOrderIntegrity(context: Context<AppEnv>) {
   return ok(context, {
     order_integrity: {
       formal_order_id: order.id,
-      canonical_marketplace_code: order.market,
+      marketplace_code: order.market,
       operational_state: state?.operational_state ?? 'NORMAL',
       events: events.results,
       adjustments: adjustments.results,
@@ -784,7 +784,7 @@ function parseProofFiles(value: unknown): ProofInput[] {
 async function orderRow(database: SqlDatabase, orderId: string) {
   const row = await database
     .prepare(
-      `SELECT id,buyer_customer_id,canonical_marketplace_code AS market FROM formal_orders WHERE id=?`,
+      `SELECT id,buyer_customer_id,marketplace_code AS market FROM formal_orders WHERE id=?`,
     )
     .bind(orderId)
     .first<{ id: string; buyer_customer_id: string; market: string }>();
@@ -808,7 +808,7 @@ export async function authoritativeAdvanceAmount(
 async function reviewRow(database: SqlDatabase, reviewId: string) {
   const row = await database
     .prepare(
-      `SELECT review_case.id,review_case.formal_order_id,formal_order.canonical_marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`,
+      `SELECT review_case.id,review_case.formal_order_id,formal_order.marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`,
     )
     .bind(reviewId)
     .first<{ id: string; formal_order_id: string; market: string }>();

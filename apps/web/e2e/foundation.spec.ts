@@ -104,7 +104,7 @@ async function mockApi(
               id: 'org-local',
               seller_code: 'seller-local',
               name: '本地卖家组织',
-              marketplace_code: 'JP',
+              marketplace_code: 'AMAZON_JP',
               status: 'ACTIVE',
             },
             access: {
@@ -125,7 +125,7 @@ async function mockApi(
           items: [
             {
               id: 'store-local',
-              marketplace_code: 'JP',
+              marketplace_code: 'AMAZON_JP',
               canonical_marketplace_code: 'AMAZON_JP',
               transaction_currency_code: 'JPY',
               transaction_currency_exponent: 0,
@@ -218,7 +218,7 @@ async function mockSellerStatusRecords(page: Page): Promise<void> {
         items: (['ACTIVE', 'DISABLED'] as const).map((status, index) => ({
           id: `product-status-${status}`,
           store: { id: 'store-local', display_name: '日本一号店' },
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
           seller_code: 'seller-local',
           asin: `B0000000${index}`,
           status,
@@ -259,7 +259,7 @@ async function mockSellerStatusRecords(page: Page): Promise<void> {
               search_keywords: [],
               product_url: null,
             },
-            marketplace_code: 'JP',
+            marketplace_code: 'AMAZON_JP',
             task_type: 'TEXT',
             target_quantity: 1,
             held_quantity: 0,
@@ -296,7 +296,7 @@ async function mockSellerStatusRecords(page: Page): Promise<void> {
           review_case_id: `review-status-${status}`,
           formal_order: { id: 'order-status', amazon_order_number: '111-1111111-1111111' },
           store: { id: 'store-local', display_name: '日本一号店' },
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
           asin: 'B00000001',
           product_name: `评论商品${index + 1}`,
           review_type: 'TEXT',
@@ -334,7 +334,7 @@ async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
   const product = {
     id: 'product-new',
     store: { id: 'store-local', display_name: '日本一号店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     seller_code: 'seller-local',
     asin: 'B000000001',
     status: 'ACTIVE',
@@ -358,7 +358,7 @@ async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
   const application = {
     id: 'application-new',
     store: product.store,
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B000000002',
     product_name: '新品申请',
     search_keywords: ['关键词一', '关键词二'],
@@ -385,7 +385,7 @@ async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
       search_keywords: [],
       product_url: null,
     },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     task_type: 'IMAGE',
     target_quantity: 8,
     held_quantity: 0,

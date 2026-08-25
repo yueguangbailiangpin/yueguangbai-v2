@@ -1178,16 +1178,16 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(19);
+    expect(Number(state?.schema_version)).toBe(23);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(23);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
+    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
   });
 });
 
@@ -1352,13 +1352,13 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       next_member_number
     ) VALUES
       (
-        'org-1', 'JP', 'ido-mango-portal-1',
+        'org-1', 'AMAZON_JP', 'ido-mango-portal-1',
         'seller-channel-ido-mango', 'seller-channel-ido-mango', 8101,
         '卖家组织一', 'ACTIVE', 1,
         1000, 1000, 1000, NULL, 6
       ),
       (
-        'org-2', 'JP', 'ido-mango-portal-2',
+        'org-2', 'AMAZON_JP', 'ido-mango-portal-2',
         'seller-channel-ido-mango', 'seller-channel-ido-mango', 8102,
         '卖家组织二', 'ACTIVE', 1,
         1000, 1000, 1000, NULL, 2
@@ -1394,13 +1394,13 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       display_name, normalized_name, status, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('store-1', 'org-1', 'JP', 'Alpha 店铺', 'alpha 店铺',
+      ('store-1', 'org-1', 'AMAZON_JP', 'Alpha 店铺', 'alpha 店铺',
        'ACTIVE', 1, 1000, 3000, NULL),
-      ('store-2', 'org-1', 'JP', 'Beta 店铺', 'beta 店铺',
+      ('store-2', 'org-1', 'AMAZON_JP', 'Beta 店铺', 'beta 店铺',
        'ACTIVE', 1, 1000, 2000, NULL),
-      ('store-3', 'org-1', 'JP', 'Gamma 店铺', 'gamma 店铺',
+      ('store-3', 'org-1', 'AMAZON_JP', 'Gamma 店铺', 'gamma 店铺',
        'DISABLED', 2, 1000, 4000, 4000),
-      ('store-other', 'org-2', 'JP', 'Other 店铺', 'other 店铺',
+      ('store-other', 'org-2', 'AMAZON_JP', 'Other 店铺', 'other 店铺',
        'ACTIVE', 1, 1000, 1000, NULL);
 
     INSERT INTO seller_member_store_scopes (
@@ -1423,13 +1423,13 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('product-1', 'org-1', 'store-1', 'JP',
+      ('product-1', 'org-1', 'store-1', 'AMAZON_JP',
        'B000000001', 'B000000001', 'ACTIVE', 2, 2,
        1000, 5000, NULL),
-      ('product-2', 'org-1', 'store-2', 'JP',
+      ('product-2', 'org-1', 'store-2', 'AMAZON_JP',
        'B000000002', 'B000000002', 'ACTIVE', 1, 1,
        1000, 4000, NULL),
-      ('product-other', 'org-2', 'store-other', 'JP',
+      ('product-other', 'org-2', 'store-other', 'AMAZON_JP',
        'B000000003', 'B000000003', 'ACTIVE', 1, 1,
        1000, 3000, NULL);
 
@@ -1464,7 +1464,7 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       version, submitted_at, updated_at,
       reviewed_at, withdrawn_at
     ) VALUES (
-      'application-store-2', 'org-1', 'store-2', 'JP',
+      'application-store-2', 'org-1', 'store-2', 'AMAZON_JP',
       'member-owner', 'B000000004', 'B000000004',
       '范围外申请', '[]', NULL, NULL, NULL, 'SUBMITTED',
       NULL, NULL, NULL, 1, 2000, 2000, NULL, NULL
@@ -1481,7 +1481,7 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       reviewed_at, published_at, withdrawn_at, closed_at,
       held_reservation_count, approved_reservation_count
     ) VALUES (
-      'demand-existing', 'org-1', 'store-1', 'JP',
+      'demand-existing', 'org-1', 'store-1', 'AMAZON_JP',
       'product-1', 1, 'member-owner',
       'TEXT', 10, '公开说明', '卖家说明',
       1000, 400000, 500000,
@@ -1499,10 +1499,10 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
-      ('buyer-session', 'subject-buyer', 'JP',
+      ('buyer-session', 'subject-buyer', 'AMAZON_JP',
        'buyer-channel-portal', NULL, NULL, NULL, 'Buyer session',
        'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
-      ('buyer-secret-1', 'subject-buyer-secret', 'JP',
+      ('buyer-secret-1', 'subject-buyer-secret', 'AMAZON_JP',
        'buyer-channel-portal', NULL, NULL, NULL, 'Secret buyer',
        'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL);
 
@@ -1517,7 +1517,7 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       cancelled_at, expired_at, reopened_count
     ) VALUES (
       'reservation-secret', 'demand-existing', 'buyer-secret-1',
-      'org-1', 'store-1', 'product-1', 1, 'JP',
+      'org-1', 'store-1', 'product-1', 1, 'AMAZON_JP',
       'PENDING_REVIEW', '{}', 300000, 500000,
       1, 2000, 2000,
       NULL, NULL, NULL, NULL, NULL, 0
@@ -1589,7 +1589,7 @@ function seedSellerSettlementHistoryScope(target: SqliteDatabase): void {
         'formal-active-history', 'submission-active-history',
         'evidence-active-history', 'reservation-active-history',
         'demand-active-history', 'buyer-active-history', 'buyer-active-history',
-        'org-1', 'store-1', 'JP', 'product-active-history',
+        'org-1', 'store-1', 'AMAZON_JP', 'product-active-history',
         'product-version-active-history', 1,
         'B000000011', 'B000000011', '启用店铺历史结算', 'TEXT',
         '111-1111111-1111111', '111-1111111-1111111',
@@ -1600,7 +1600,7 @@ function seedSellerSettlementHistoryScope(target: SqliteDatabase): void {
         'formal-disabled-history', 'submission-disabled-history',
         'evidence-disabled-history', 'reservation-disabled-history',
         'demand-disabled-history', 'buyer-disabled-history', 'buyer-disabled-history',
-        'org-1', 'store-3', 'JP', 'product-disabled-history',
+        'org-1', 'store-3', 'AMAZON_JP', 'product-disabled-history',
         'product-version-disabled-history', 1,
         'B000000012', 'B000000012', '停用店铺历史结算', 'TEXT',
         '222-2222222-2222222', '222-2222222-2222222',

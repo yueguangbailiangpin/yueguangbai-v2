@@ -1,5 +1,4 @@
 import type { SqlDatabase } from '@ygb/contracts';
-import { parseChinaBusinessDate } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
 import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -12,110 +11,6 @@ import {
 } from './command';
 import { AcquisitionError } from './errors';
 import { requireAcquisitionOperator } from './authorization';
-
-export async function readReportingPrecisionConfig(
-  database: SqlDatabase,
-  actor: AssignmentStaffAuthorization,
-) {
-  requireOwner(actor);
-  const row = await database
-    .prepare(
-      `SELECT precision_started_business_date,activated_at,activated_by_staff_id,version,updated_at
-    FROM acquisition_reporting_config WHERE singleton_id=1`,
-    )
-    .first<any>();
-  if (!row) throw new AcquisitionError('DEPENDENCY_UNAVAILABLE', 503);
-  return Object.freeze({
-    precision_started_business_date: row.precision_started_business_date as string | null,
-    activated_at: row.activated_at === null ? null : Number(row.activated_at),
-    activated_by_staff_id: row.activated_by_staff_id as string | null,
-    version: Number(row.version),
-    updated_at: Number(row.updated_at),
-  });
-}
-
-export async function activateReportingPrecisionBoundary(
-  database: SqlDatabase,
-  actor: AssignmentStaffAuthorization,
-  input: { businessDate: string; expectedVersion: number },
-) {
-  requireOwner(actor);
-  let businessDate: string;
-  try {
-    businessDate = parseChinaBusinessDate(input.businessDate);
-  } catch {
-    throw new AcquisitionError('VALIDATION_ERROR', 400);
-  }
-  if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1)
-    throw new AcquisitionError('VALIDATION_ERROR', 400);
-  const current = await readReportingPrecisionConfig(database, actor);
-  if (current.precision_started_business_date !== null) {
-    if (current.precision_started_business_date === businessDate) return current;
-    throw new AcquisitionError('STATE_CONFLICT', 409);
-  }
-  if (current.version !== input.expectedVersion)
-    throw new AcquisitionError('VERSION_CONFLICT', 409);
-  const now = Date.now();
-  await database.batch([
-    database
-      .prepare(
-        `UPDATE acquisition_reporting_config SET precision_started_business_date=?,activated_at=?,activated_by_staff_id=?,version=version+1,updated_at=?
-      WHERE singleton_id=1 AND version=? AND precision_started_business_date IS NULL`,
-      )
-      .bind(businessDate, now, actor.staffId, now, input.expectedVersion),
-    // Only genuinely unattributed existing subjects become historical unknown.
-    // A customer already carrying verified acquisition attribution keeps it even
-    // if the Owner activates the boundary after that customer was entered.
-    database
-      .prepare(
-        `INSERT OR IGNORE INTO acquisition_historical_source_exemptions(
-      id,subject_type,subject_id,marketplace_code,reason,declared_at,declared_by_staff_id
-    ) SELECT 'hist-buyer-'||lower(hex(randomblob(16))),'BUYER_CUSTOMER',buyer.id,
-      COALESCE(assignment.marketplace_code,'AMAZON_JP'),'PRE_PRECISION_UNATTRIBUTED_CUSTOMER',?,?
-      FROM buyer_customers buyer
-      LEFT JOIN buyer_marketplace_assignments assignment ON assignment.buyer_customer_id=buyer.id
-      WHERE NOT EXISTS(
-        SELECT 1 FROM acquisition_customer_attributions attribution
-        WHERE attribution.subject_type='BUYER_CUSTOMER' AND attribution.subject_id=buyer.id
-      )`,
-      )
-      .bind(now, actor.staffId),
-    database
-      .prepare(
-        `INSERT OR IGNORE INTO acquisition_historical_source_exemptions(
-      id,subject_type,subject_id,marketplace_code,reason,declared_at,declared_by_staff_id
-    ) SELECT 'hist-seller-'||lower(hex(randomblob(16))),'SELLER_ORGANIZATION',organization.id,
-      CASE organization.marketplace_code WHEN 'JP' THEN 'AMAZON_JP' ELSE organization.marketplace_code END,
-      'PRE_PRECISION_UNATTRIBUTED_CUSTOMER',?,?
-      FROM seller_organizations organization
-      WHERE NOT EXISTS(
-        SELECT 1 FROM acquisition_customer_attributions attribution
-        WHERE attribution.subject_type='SELLER_ORGANIZATION' AND attribution.subject_id=organization.id
-      )`,
-      )
-      .bind(now, actor.staffId),
-    createAuditEventStatement(database, {
-      id: crypto.randomUUID(),
-      aggregateType: 'ACQUISITION_REPORTING',
-      aggregateId: 'precision-boundary',
-      eventType: 'ACQUISITION_REPORTING_PRECISION_ACTIVATED',
-      actor: { type: 'STAFF', id: actor.staffId, roles: [...actor.roles] },
-      requestId: null,
-      idempotencyKey: null,
-      previousState: { precision_started_business_date: null, version: current.version },
-      nextState: { precision_started_business_date: businessDate, version: current.version + 1 },
-      createdAt: now,
-    }),
-    database
-      .prepare(
-        `INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN EXISTS(
-      SELECT 1 FROM acquisition_reporting_config WHERE singleton_id=1 AND precision_started_business_date=? AND version=?
-    ) THEN 1 ELSE 0 END`,
-      )
-      .bind(businessDate, current.version + 1),
-  ]);
-  return readReportingPrecisionConfig(database, actor);
-}
 
 export async function listSourceCorrectionCandidates(
   database: SqlDatabase,
@@ -352,10 +247,6 @@ async function requireMarket(
   if (actor.roles.has('owner')) return;
   const markets = await resolveStaffMarketplaceCodes(database, actor);
   if (!markets.includes(market)) throw new AcquisitionError('NOT_FOUND', 404);
-}
-function requireOwner(actor: AssignmentStaffAuthorization) {
-  if (!actor.roles.has('owner') || !actor.permissions.has('ACQUISITION_ADMIN'))
-    throw new AcquisitionError('FORBIDDEN', 403);
 }
 function clean(value: string) {
   const v = value.normalize('NFKC').trim();
