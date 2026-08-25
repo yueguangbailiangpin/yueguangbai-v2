@@ -211,3 +211,11 @@
 | `dry-run:staff-acquisition` | acquisition 维护任务 dry-run | 随机器维护删除废弃 | 同上 |
 | `preflight:drive-archive` | 单文件 Drive 归档生产预检 | 按 D-055 Bundle 模型重建（阶段 5） | 新预检通过 |
 | `preflight:cloudflare-release` / `verify:cloudflare-release` / `release:check` / `verify:final-production-go:local` / `verify-production-readiness-formal` / `probe-production-readiness` / `verify:web-static-build` / `verify:dependency-lifecycle` | 发布配置、生产就绪、静态构建、依赖生命周期（部署配置域，非业务断言） | 保留；在新 release 模板与 `/ready` 合同上适配（阶段 8） | 适配后通过 |
+
+### 7.1 阶段 2"随能力废弃"一次性核验记录（D-054 门槛 1）
+
+以下脚本随其保护的运行时能力在阶段 2 删除，删除前后的等价证据为：全仓 `typecheck` 0 错误、全量 `npm test` 270 文件 / 1772 用例通过（2026-08-25，`d5bac3df` 工作树）、全仓 grep 无被删能力残留引用、`openspec validate --all --strict` 63/63：
+
+- `verify:staff-mcp`（verify-staff-mcp-security.mjs）、`dry-run:staff-mcp`、`preflight:staff-mcp-production`——Staff MCP 模块整体删除（2b）；发布侧防复活墓碑（禁 `STAFF_MCP_*` 绑定/变量）保留并仍在 preflight 测试覆盖。
+- `verify:marketplace-adapters`、`preflight:marketplace-adapters`——Rakuten/TikTok adapter 预备层整体删除（2e）；Registry 的 AMAZON_US/COUPANG_KR 禁用 fail-closed 断言由 `verify:marketplace-money` 继续承载（该 verifier 保留）。
+- `verify-seller-agreement-rate-retirement`——保留在树中；2026-08-25 实测 0 残留（581 文件），按映射在 baseline 建成后废弃。

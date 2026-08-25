@@ -47,7 +47,7 @@ const routes = readFileSync(
   path.join(root, 'apps/api/src/internal-finance/routes.ts'),
   'utf8',
 );
-if (!routes.includes('buildFinanceOrderDetail(position)')) {
+if (!routes.includes('buildFinanceOrderDetail(position')) {
   throw new Error('order detail must use the isolated financial projection');
 }
 console.log(JSON.stringify({

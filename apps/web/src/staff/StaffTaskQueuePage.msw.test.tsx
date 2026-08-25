@@ -4,16 +4,17 @@ import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '../test/msw/lifecycle';
 import { StaffSessionBoundary } from '../auth/staff/StaffSessionBoundary';
 import { apiUrl } from '../test/msw/handlers';
 import { renderWithMsw } from '../test/msw/render';
 import { server } from '../test/msw/server';
-import { StaffTaskQueuePage } from './StaffTaskQueuePage';
+import { resetClaimedIdsForTests, StaffTaskQueuePage } from './StaffTaskQueuePage';
 import { staffTestAdapter, staffTestSession, staffTestWorkItem } from './test-fixtures';
 
 afterEach(cleanup);
+beforeEach(resetClaimedIdsForTests);
 
 const mineItem = staffTestWorkItem;
 const otherItem = {
@@ -47,7 +48,6 @@ describe('staff task queue home', () => {
   });
 
   it('moves a claimed item from the pool into my todo', async () => {
-    window.localStorage.clear();
     installQueue({ open: [mineItem, otherItem] });
     const user = userEvent.setup();
     renderQueue();
@@ -56,11 +56,9 @@ describe('staff task queue home', () => {
     expect(await screen.findByText('我的待办（2）')).toBeVisible();
     expect(screen.getByText('可认领（0）')).toBeVisible();
     expect(screen.queryByRole('button', { name: '认领' })).not.toBeInTheDocument();
-    window.localStorage.clear();
   });
 
   it('navigates 去处理 to the work item page', async () => {
-    window.localStorage.clear();
     installQueue({ open: [mineItem] });
     const user = userEvent.setup();
     renderQueue();
@@ -70,7 +68,6 @@ describe('staff task queue home', () => {
   });
 
   it('offers the owner an all view without splitting', async () => {
-    window.localStorage.clear();
     installQueue({ open: [mineItem, otherItem] });
     const user = userEvent.setup();
     renderQueue();
@@ -82,7 +79,6 @@ describe('staff task queue home', () => {
   });
 
   it('hides the all view from non-owner roles', async () => {
-    window.localStorage.clear();
     installQueue({ open: [otherItem] });
     renderQueue(staffTestAdapter(staffTestSession('seller_ops', [])));
     await screen.findByText('可认领（1）');
@@ -90,7 +86,6 @@ describe('staff task queue home', () => {
   });
 
   it('lists today completed items in the collapsed section', async () => {
-    window.localStorage.clear();
     const now = Date.now();
     installQueue({
       open: [],
@@ -113,7 +108,6 @@ describe('staff task queue home', () => {
   });
 
   it('keeps yesterday completed items out of the today section', async () => {
-    window.localStorage.clear();
     installQueue({
       open: [],
       completed: [

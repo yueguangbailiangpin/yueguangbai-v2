@@ -11,32 +11,26 @@ import { workTypeLabels } from './work-panels/shared';
 
 const STAFF_FACT_STALE_TIME_MS = 15_000;
 const QUEUE_PAGE_LIMIT = 100;
-const CLAIM_STORAGE_KEY = 'ygb-staff-claimed-work-items';
 
 /**
  * 第一批过渡：后端尚未提供工作项“认领”写接口（V1 队列只读，
- * assigned_staff_id 由 assignment-service 维护），认领先落在本浏览器，
- * 用于验证两段式任务流的方向。第二批上线返款工作台时一并决策
- * 服务端认领（新增 API 需 255→N 路由守卫双写）或维持本地标记。
+ * assigned_staff_id 由 assignment-service 维护），认领先落在本页会话内存
+ * （浏览器存储被 verify-web-source-boundaries 禁止），用于验证两段式任务流
+ * 的方向。第二批上线返款工作台时一并决策服务端认领或维持本地标记。
  */
+const sessionClaimedIds = new Map<string, Set<string>>();
+
 function readClaimedIds(staffId: string): Set<string> {
-  try {
-    const raw = window.localStorage.getItem(CLAIM_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const list = Array.isArray(parsed[staffId]) ? (parsed[staffId] as unknown[]) : [];
-    return new Set(list.filter((id): id is string => typeof id === 'string'));
-  } catch {
-    return new Set();
-  }
+  return sessionClaimedIds.get(staffId) ?? new Set();
 }
 
 function writeClaimedIds(staffId: string, ids: Set<string>): void {
-  try {
-    window.localStorage.setItem(CLAIM_STORAGE_KEY, JSON.stringify({ [staffId]: [...ids] }));
-  } catch {
-    // 本地认领是尽力而为的过渡状态；存储不可用时功能降级为仅本次会话。
-  }
+  sessionClaimedIds.set(staffId, ids);
+}
+
+/** 仅供测试：会话级认领状态不落浏览器存储，用例间需显式清空。 */
+export function resetClaimedIdsForTests(): void {
+  sessionClaimedIds.clear();
 }
 
 function waitedLabel(createdAt: number, now: number): string {

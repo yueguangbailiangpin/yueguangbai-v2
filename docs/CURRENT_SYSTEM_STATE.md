@@ -8,7 +8,8 @@
 - 历史产品冻结点：`feature/frozen-portals-staff-acquisition-core@8cb39ed870df1fc5c6874dd4e5b86e12e22c39d2`
 - 历史最终稳定化点：`chore/final-stabilization-cleanup@4106bc0668eaacf5bff34cb8e5ad174dcc356d77`
 - 2026-08-12：上述稳定化历史通过 PR #46 正常合入 `main`，未改写 388 个提交的历史
-- 当前目标 Schema：72；迁移链 0001–0072 全部应用（db:verify 实测：72 migrations / 212 tables / 604 indexes / 401 triggers / 12 views / FK 0）；0001–0064 保持既有历史，0065 前向删除未使用的飞书 Schema / 旧清理任务，0066 advance-cash 完整性、0067 advance V1 全款、0068 客户安全 DENY + 密码限流、0069 卖家协议费率运行时退役、0070 买家发起的返款提醒（T7）、0071 产品申请参考金额、0072 统一订单日基础汇率中心
+- 当前目标 Schema：75（2026-08-25 修订：0073 基础汇率回退快照、0074 规模索引包、0075 返款/结算账户字段已入链，此前本行停留在 72 属文档漂移，final-go verifier 与四份生产文档同日对齐）；0001–0072 保持既有历史（0065 前向删除未使用的飞书 Schema / 旧清理任务，0066 advance-cash 完整性、0067 advance V1 全款、0068 客户安全 DENY + 密码限流、0069 卖家协议费率运行时退役、0070 买家发起的返款提醒（T7）、0071 产品申请参考金额、0072 统一订单日基础汇率中心），0073–0075 由 P7a/P16 收尾引入
+- 后端干净基线重建进行中（D-054/D-055，2026-08-25）：阶段 2 已删除自动获客机器、Staff MCP、关键词图片生成与 Rakuten/TikTok adapter 预备层；旧迁移链将在阶段 3 被单一干净 baseline 取代，本行 schema 叙述届时重写
 - 发布状态：`LOCAL_RELEASE_CANDIDATE / PRODUCTION_REQUIRES_SEPARATE_APPROVAL`
 - 本地证明不能替代真实 Cloudflare Access、生产 D1/R2、恢复演练或员工试用结果
 
