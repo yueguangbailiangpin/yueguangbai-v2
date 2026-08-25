@@ -23,9 +23,6 @@ export type AppBindings = StaffAuthProviderBindings & {
     DB: SqlDatabase;
     APP_ENVIRONMENT?: string;
     APP_RELEASE_SHA?: string;
-    KEYWORD_IMAGE_GENERATOR?: unknown;
-    KEYWORD_GENERATOR_SHARED_SECRET?: string;
-    KEYWORD_HMAC_SECRET?: string;
     FILE_OBJECT_STORAGE?: ObjectStorageAdapter;
     DRIVE_ARCHIVE_ADAPTER?: DriveArchiveAdapter;
     DRIVE_ARCHIVE_ENABLED?: string;

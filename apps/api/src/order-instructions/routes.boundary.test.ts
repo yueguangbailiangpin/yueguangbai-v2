@@ -24,11 +24,6 @@ describe('order instruction strict write boundary', () => {
     const app = testApp();
     const cases = [
       {
-        path: '/api/staff/order-instructions/missing/assets/prepare',
-        body: { expected_version: 1 },
-        validStatus: 503,
-      },
-      {
         path: '/api/staff/order-instructions/missing/publish',
         body: { expected_version: 1 },
         validStatus: 404,
@@ -42,11 +37,6 @@ describe('order instruction strict write boundary', () => {
         path: '/api/staff/order-instructions/expiry-scan/run',
         body: {},
         validStatus: 200,
-      },
-      {
-        path: '/api/staff/order-instructions/assets/reconciliation/run',
-        body: {},
-        validStatus: 503,
       },
       {
         path: '/api/staff/order-instructions/reconciliation/run',

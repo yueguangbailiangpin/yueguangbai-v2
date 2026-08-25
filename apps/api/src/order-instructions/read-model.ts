@@ -45,15 +45,6 @@ interface CurrentVersionRow {
   published_at: number;
 }
 
-interface KeywordImageRow {
-  image_id: string;
-  keyword_position: number;
-  file_entity_link_id: string;
-  file_object_id: string;
-  image_mime: 'image/png';
-  width: number;
-  height: number;
-}
 
 export async function getBuyerOrderInstruction(
   database: SqlDatabase,
@@ -79,10 +70,6 @@ export async function getBuyerOrderInstruction(
   const state = buyerInstructionState(source, now);
   const version = await requireCurrentVersion(database, source.instruction_id,
     source.current_version_no);
-  const keywordImages = await listKeywordImages(
-    database,
-    version.instruction_version_id,
-  );
   return Object.freeze({
     status: source.instruction_status,
     instruction_version: state.instruction_version,
@@ -118,16 +105,6 @@ export async function getBuyerOrderInstruction(
         `/api/buyer-portal/reservations/${encodeURIComponent(reservationId)}`
         + '/order-instruction/images/main/read-intent',
     }),
-    keyword_images: Object.freeze(keywordImages.map((image) => Object.freeze({
-      image_id: image.image_id,
-      position: Number(image.keyword_position),
-      mime: image.image_mime,
-      width: Number(image.width),
-      height: Number(image.height),
-      read_intent_path:
-        `/api/buyer-portal/reservations/${encodeURIComponent(reservationId)}`
-        + `/order-instruction/images/${Number(image.keyword_position)}/read-intent`,
-    }))),
   });
 }
 
@@ -327,16 +304,3 @@ async function requireCurrentVersion(
   return row;
 }
 
-async function listKeywordImages(
-  database: SqlDatabase,
-  instructionVersionId: string,
-): Promise<readonly KeywordImageRow[]> {
-  const rows = await database.prepare(`
-    SELECT id AS image_id, keyword_position, file_entity_link_id,
-           file_object_id, image_mime, width, height
-    FROM order_instruction_keyword_images
-    WHERE order_instruction_version_id=?
-    ORDER BY keyword_position
-  `).bind(instructionVersionId).all<KeywordImageRow>();
-  return rows.results;
-}

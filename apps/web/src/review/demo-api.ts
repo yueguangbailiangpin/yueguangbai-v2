@@ -800,16 +800,6 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
           height: 800,
           read_intent_path: `/api/buyer-portal/reservations/${id}/order-instruction/images/main/read-intent`,
         },
-        keyword_images: [
-          {
-            image_id: 'review-keyword-image-1',
-            position: 1,
-            mime: 'image/png',
-            width: 1200,
-            height: 700,
-            read_intent_path: `/api/buyer-portal/reservations/${id}/order-instruction/images/1/read-intent`,
-          },
-        ],
       },
     };
   }

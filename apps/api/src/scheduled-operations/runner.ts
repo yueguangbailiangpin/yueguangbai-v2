@@ -8,7 +8,7 @@ import {
 } from '@ygb/contracts';
 import { reconcileDriveArchiveBatch, runDriveArchiveBatch } from '../cold-image-archive/job';
 import { claimNextOutboxEvent, markOutboxFailed, markOutboxSent } from '../foundation/outbox';
-import { reconcileInstructionAssetOrphans } from '../order-instructions/asset-reconciliation';
+import { reconcileUnlinkedFileRetention } from '../files/retention';
 import {
   countOrderInstructionExpiryCandidates,
   runOrderInstructionExpiryScan,
@@ -386,33 +386,21 @@ async function execute(
         backlog: await countFileOrphanCleanupCandidates(database, input.now),
         failureCategory: 'adapter_unavailable',
       };
-    const state = await database
-      .prepare('SELECT cursor_json FROM scheduled_job_states WHERE job_name=?')
-      .bind(job)
-      .first<{ cursor_json: string | null }>();
-    const cursor = parseFileCursor(state?.cursor_json);
-    const r = await reconcileInstructionAssetOrphans(
+    const r = await reconcileUnlinkedFileRetention(
       database,
       input.storage,
       {
-        limit: batchSize,
-        cursor,
-        dryRun: input.dryRun === true,
-        ...(input.deadlineReached ? { deadlineReached: input.deadlineReached } : {}),
-      },
-      {
-        actor,
-        idempotencyKey: `scheduled:file-orphan:${Math.floor(input.now / 60_000)}`,
         now: input.now,
+        ...(input.deadlineReached ? { deadlineReached: input.deadlineReached } : {}),
+        ...(input.dryRun === true ? { dryRun: true } : {}),
       },
     );
     return {
-      processed: r.scanned,
+      processed: r.planned,
       succeeded: r.deleted,
       failed: r.deferred,
-      backlog: r.backlog_count,
+      backlog: r.backlog,
       failureCategory: r.deferred ? 'file_cleanup_deferred' : undefined,
-      cursorJson: r.next_cursor ? JSON.stringify(r.next_cursor) : undefined,
     };
   }
   if (job === 'drive_archive') {
@@ -547,7 +535,7 @@ async function countFileOrphanCleanupCandidates(
 ): Promise<number> {
   const row = await database
     .prepare(
-      "SELECT COUNT(*) AS count FROM order_instruction_asset_items item JOIN order_instruction_asset_batches batch ON batch.id=item.asset_batch_id JOIN file_objects object ON object.id=item.file_object_id WHERE item.status='ORPHANED' AND batch.status IN ('FAILED','CANCELLED') AND object.status='DELETION_PENDING' AND object.next_delete_at<=? AND NOT EXISTS (SELECT 1 FROM file_entity_links link WHERE link.file_object_id=object.id AND link.revoked_at IS NULL)",
+      "SELECT COUNT(*) AS count FROM file_objects WHERE status='DELETION_PENDING' AND next_delete_at<=?",
     )
     .bind(now)
     .first<{ count: number }>();
@@ -563,25 +551,6 @@ function parseCursor(value: string | null | undefined): { due: number; id: strin
     const parsed = JSON.parse(value ?? 'null') as { due?: unknown; id?: unknown } | null;
     return parsed && Number.isSafeInteger(parsed.due) && typeof parsed.id === 'string'
       ? { due: Number(parsed.due), id: parsed.id }
-      : null;
-  } catch {
-    return null;
-  }
-}
-function parseFileCursor(
-  value: string | null | undefined,
-): { next_delete_at: number; updated_at: number; item_id: string } | null {
-  try {
-    const p = JSON.parse(value ?? 'null') as Record<string, unknown> | null;
-    return p &&
-      Number.isSafeInteger(p['next_delete_at']) &&
-      Number.isSafeInteger(p['updated_at']) &&
-      typeof p['item_id'] === 'string'
-      ? {
-          next_delete_at: Number(p['next_delete_at']),
-          updated_at: Number(p['updated_at']),
-          item_id: p['item_id'],
-        }
       : null;
   } catch {
     return null;

@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。现有 256 个唯一端点：254 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP 不属于核心 App route table。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
+这是默认 App 的可复现 route inventory。现有 253 个唯一端点：251 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP 不属于核心 App route table。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
 
 验证器以运行时 `app.routes` 的连续 METHOD/PATH 注册块去重后与本表核对；同一路由的 middleware 不增加端点数，重复的非连续注册会失败。任何 `/api/v2/*` 别名、未注册路径或 route count 变化都必须经过合同更新与复核。
 
@@ -103,7 +103,6 @@ GET /api/staff/order-evidence
 GET /api/staff/order-evidence/:id
 GET /api/staff/order-evidence/:id/preflight
 GET /api/staff/order-instructions/:id
-GET /api/staff/order-instructions/:id/assets/:batchId
 GET /api/staff/order-instructions/:id/versions
 GET /api/staff/order-instructions/expiry-scan/state
 GET /api/staff/order-integrity/:id
@@ -237,10 +236,8 @@ POST /api/staff/operations/dead-letters/:id/replay
 POST /api/staff/operations/jobs/:job/retry
 POST /api/staff/order-evidence/:id/approve
 POST /api/staff/order-evidence/:id/request-changes
-POST /api/staff/order-instructions/:id/assets/prepare
 POST /api/staff/order-instructions/:id/cancel
 POST /api/staff/order-instructions/:id/publish
-POST /api/staff/order-instructions/assets/reconciliation/run
 POST /api/staff/order-instructions/expiry-scan/run
 POST /api/staff/order-instructions/reconciliation/run
 POST /api/staff/order-integrity/:id/events

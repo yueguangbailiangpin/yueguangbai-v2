@@ -130,18 +130,6 @@ export const instructionMainImageSchema = z.object({
   height: positiveIntegerSchema.nullable(),
   read_intent_path: z.string().regex(new RegExp(`^${instructionReadPathPrefix}main\\/read-intent$`, 'u')),
 }).strict();
-export const instructionKeywordImageSchema = z.object({
-  image_id: identifierSchema,
-  position: positiveIntegerSchema,
-  mime: z.enum(['image/png', 'image/jpeg', 'image/webp']),
-  width: positiveIntegerSchema.nullable(),
-  height: positiveIntegerSchema.nullable(),
-  read_intent_path: z.string().regex(new RegExp(`^${instructionReadPathPrefix}[1-9][0-9]*\\/read-intent$`, 'u')),
-}).strict().superRefine((image, context) => {
-  if (!image.read_intent_path.endsWith(`/images/${image.position}/read-intent`)) {
-    context.addIssue({ code: 'custom', path: ['read_intent_path'], message: 'instruction_image_position_path_mismatch' });
-  }
-});
 export const instructionSchema = z.object({
   status: z.literal('ACTIVE'),
   instruction_version: positiveIntegerSchema,
@@ -166,17 +154,7 @@ export const instructionSchema = z.object({
   estimated_buyer_self_pay_jpy: integerAmountSchema,
   estimated_refundable_principal_jpy: integerAmountSchema,
   main_image: instructionMainImageSchema,
-  keyword_images: z.array(instructionKeywordImageSchema),
-}).strict().superRefine((instruction, context) => {
-  let previous = 0;
-  const ids = new Set<string>();
-  instruction.keyword_images.forEach((image, index) => {
-    if (image.position <= previous) context.addIssue({ code: 'custom', path: ['keyword_images', index, 'position'], message: 'instruction_positions_must_strictly_increase' });
-    if (ids.has(image.image_id)) context.addIssue({ code: 'custom', path: ['keyword_images', index, 'image_id'], message: 'duplicate_instruction_image' });
-    previous = image.position;
-    ids.add(image.image_id);
-  });
-});
+}).strict();
 export const instructionResponseSchema = z.object({
   order_instruction: instructionSchema,
 }).strict();

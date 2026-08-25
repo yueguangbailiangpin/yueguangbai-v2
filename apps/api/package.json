@@ -9,7 +9,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "@resvg/resvg-wasm": "2.6.2",
     "@ygb/contracts": "0.1.0",
     "@ygb/domain": "0.1.0",
     "hono": "4.12.34"

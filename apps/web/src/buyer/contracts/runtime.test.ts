@@ -71,7 +71,7 @@ describe('Module 1 buyer strict runtime contracts', () => {
     expect(reviewDetailValueSchema.safeParse({ surprise: true }).success).toBe(false);
   });
 
-  it('accepts content only for ACTIVE instructions with strict main and increasing keyword image paths', () => {
+  it('accepts content only for ACTIVE instructions with strict main image path', () => {
     const content = instruction('ACTIVE');
     expect(instructionResponseSchema.safeParse({ order_instruction: content }).success).toBe(true);
     expect(instructionResponseSchema.safeParse({ order_instruction: instruction('COMPLETED') }).success).toBe(false);
@@ -82,10 +82,7 @@ describe('Module 1 buyer strict runtime contracts', () => {
       ...content, search_keywords: [],
     } }).success).toBe(false);
     expect(instructionResponseSchema.safeParse({ order_instruction: {
-      ...content, keyword_images: [
-        { ...content.keyword_images[0]!, position: 2, read_intent_path: content.keyword_images[0]!.read_intent_path.replace('/1/', '/2/') },
-        { ...content.keyword_images[0]!, image_id: 'keyword-2' },
-      ],
+      ...content, keyword_images: [],
     } }).success).toBe(false);
   });
 
@@ -109,8 +106,6 @@ function instruction(status: string) {
     estimated_buyer_self_pay_jpy: '120', estimated_refundable_principal_jpy: '1080',
     main_image: { image_id: 'main', position: null, mime: 'image/png', width: 100, height: 100,
       read_intent_path: `${prefix}/main/read-intent` },
-    keyword_images: [{ image_id: 'keyword-1', position: 1, mime: 'image/jpeg', width: null, height: null,
-      read_intent_path: `${prefix}/1/read-intent` }],
   };
 }
 

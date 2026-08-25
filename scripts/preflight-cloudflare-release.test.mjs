@@ -101,23 +101,14 @@ describe('Cloudflare release preflight', () => {
       .toContain('triggers:forbidden_when_scheduler_disabled');
   });
 
-  it('requires only the private keyword generator service in staging',()=>{
+  it('rejects any unexpected service binding now that keyword generation is retired',()=>{
     const staging=anonymousConfig('staging');
-    expect(staging.services).toEqual([{
-      binding:'KEYWORD_IMAGE_GENERATOR',
-      service:'yueguangbai-keyword-image-generator-staging',
-    }]);
+    expect(staging.services ?? []).toEqual([]);
     expect(validateReleaseConfig(staging,'staging')).toEqual([]);
-    staging.services=[];
-    expect(validateReleaseConfig(staging,'staging'))
-      .toContain('services:keyword_image_generator_binding_required');
     staging.services=[{
       binding:'KEYWORD_IMAGE_GENERATOR',
-      service:'yueguangbai-keyword-image-generator-production',
+      service:'yueguangbai-keyword-image-generator-staging',
     }];
-    expect(validateReleaseConfig(staging,'staging'))
-      .toContain('services:keyword_image_generator_binding_required');
-    staging.services.push({binding:'UNEXPECTED',service:'unexpected-staging-service'});
     expect(validateReleaseConfig(staging,'staging'))
       .toContain('services:unexpected_binding');
   });

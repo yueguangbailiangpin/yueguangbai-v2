@@ -28,8 +28,6 @@ export const requiredManagedSecrets = Object.freeze({
     'CUSTOMER_SECURITY_TOKEN_SECRET',
   ]),
   capability_specific_before_separate_approval: Object.freeze([
-    'KEYWORD_GENERATOR_SHARED_SECRET',
-    'KEYWORD_HMAC_SECRET',
     'GOOGLE_DRIVE_CLIENT_SECRET',
     'GOOGLE_DRIVE_REFRESH_TOKEN',
   ]),
@@ -336,26 +334,9 @@ function validateReleaseServices(value, vars, environment, errors) {
     errors.push('services:invalid');
     return;
   }
-  const keywordServices = services.filter((service) =>
-    asRecord(service)?.binding === 'KEYWORD_IMAGE_GENERATOR');
-  const expectedKeywordService = environment === 'staging'
-    ? 'yueguangbai-keyword-image-generator-staging'
-    : null;
-  if (environment === 'staging') {
-    const keyword = exactOne(keywordServices);
-    if (!keyword
-      || !allowedKeys(keyword, ['binding', 'service'])
-      || keyword.service !== expectedKeywordService) {
-      errors.push('services:keyword_image_generator_binding_required');
-    }
-  } else if (keywordServices.length > 1
-    || keywordServices.some((service) =>
-      !allowedKeys(service, ['binding', 'service']))) {
-    errors.push('services:keyword_image_generator_binding_invalid');
-  }
   const alertServices = services.filter((service) =>
     asRecord(service)?.binding === 'OPERATIONAL_ALERT_SINK');
-  const knownCount = keywordServices.length + alertServices.length;
+  const knownCount = alertServices.length;
   if (knownCount !== services.length) errors.push('services:unexpected_binding');
   if (environment === 'production') {
     const service = exactOne(alertServices);

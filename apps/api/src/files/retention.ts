@@ -49,7 +49,6 @@ export async function reconcileUnlinkedFileRetention(
       AND object.uploaded_at IS NOT NULL
       AND NOT EXISTS(SELECT 1 FROM file_entity_links link WHERE link.file_object_id=object.id AND link.revoked_at IS NULL)
       AND NOT EXISTS(SELECT 1 FROM file_read_intents read_intent WHERE read_intent.file_object_id=object.id AND read_intent.status='ISSUED' AND read_intent.expires_at>?)
-      AND NOT EXISTS(SELECT 1 FROM order_instruction_asset_items item WHERE item.file_object_id=object.id AND item.status='ORPHANED')
       AND (
         (object.status='VERIFIED' AND object.verified_at<=?)
         OR (object.status IN('UPLOADED','REJECTED') AND object.updated_at<=?)
@@ -77,8 +76,7 @@ export async function reconcileUnlinkedFileRetention(
         AND uploaded_byte_size IS NOT NULL AND detected_mime IS NOT NULL
         AND uploaded_sha256 IS NOT NULL AND uploaded_at IS NOT NULL
         AND NOT EXISTS(SELECT 1 FROM file_entity_links link WHERE link.file_object_id=file_objects.id AND link.revoked_at IS NULL)
-        AND NOT EXISTS(SELECT 1 FROM file_read_intents read_intent WHERE read_intent.file_object_id=file_objects.id AND read_intent.status='ISSUED' AND read_intent.expires_at>?)
-        AND NOT EXISTS(SELECT 1 FROM order_instruction_asset_items item WHERE item.file_object_id=file_objects.id AND item.status='ORPHANED')`,
+        AND NOT EXISTS(SELECT 1 FROM file_read_intents read_intent WHERE read_intent.file_object_id=file_objects.id AND read_intent.status='ISSUED' AND read_intent.expires_at>?)`,
       )
       .bind(now, now, row.id, row.status, now)
       .run();
@@ -92,7 +90,6 @@ export async function reconcileUnlinkedFileRetention(
       AND object.failure_code IN('RETENTION_UNLINKED','RETENTION_DELETE_RETRY')
       AND NOT EXISTS(SELECT 1 FROM file_entity_links link WHERE link.file_object_id=object.id AND link.revoked_at IS NULL)
       AND NOT EXISTS(SELECT 1 FROM file_read_intents read_intent WHERE read_intent.file_object_id=object.id AND read_intent.status='ISSUED' AND read_intent.expires_at>?)
-      AND NOT EXISTS(SELECT 1 FROM order_instruction_asset_items item WHERE item.file_object_id=object.id AND item.status='ORPHANED')
     ORDER BY object.next_delete_at,object.updated_at,object.id LIMIT ?`,
     )
     .bind(now, now, limit)
@@ -149,8 +146,7 @@ async function countBacklog(database: SqlDatabase, now: number): Promise<number>
     AND object.uploaded_sha256 IS NOT NULL
     AND object.uploaded_at IS NOT NULL
     AND NOT EXISTS(SELECT 1 FROM file_entity_links link WHERE link.file_object_id=object.id AND link.revoked_at IS NULL)
-    AND NOT EXISTS(SELECT 1 FROM file_read_intents read_intent WHERE read_intent.file_object_id=object.id AND read_intent.status='ISSUED' AND read_intent.expires_at>?)
-    AND NOT EXISTS(SELECT 1 FROM order_instruction_asset_items item WHERE item.file_object_id=object.id AND item.status='ORPHANED')`,
+    AND NOT EXISTS(SELECT 1 FROM file_read_intents read_intent WHERE read_intent.file_object_id=object.id AND read_intent.status='ISSUED' AND read_intent.expires_at>?)`,
     )
     .bind(now, now - VERIFIED_UNLINKED_TTL_MS, now - UPLOADED_OR_REJECTED_TTL_MS, now)
     .first<{ count: number }>();

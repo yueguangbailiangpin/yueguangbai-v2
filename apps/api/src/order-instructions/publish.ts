@@ -393,8 +393,6 @@ export async function publishOrderInstruction(
               AND current_version_no=? AND initial_deadline_at=?)
           AND EXISTS (SELECT 1 FROM order_instruction_versions
             WHERE id=? AND instruction_id=? AND content_hash=?)
-          AND (SELECT COUNT(*) FROM order_instruction_keyword_images
-            WHERE order_instruction_version_id=?)=0
         THEN 1 ELSE 0 END
       `).bind(
         instructionId,
@@ -404,7 +402,6 @@ export async function publishOrderInstruction(
         instructionVersionId,
         instructionId,
         contentHash,
-        instructionVersionId,
       ),
       assertIdempotencyCompletionStatement(database, acquired.claim),
       ...await prepareWorkItemCompletionStatements(database, {
