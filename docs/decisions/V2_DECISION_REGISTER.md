@@ -469,6 +469,31 @@ Migration 0072 仅前向替换 formal-order snapshot source guards，使买家�
 
 状态：Accepted by business owner；Supersedes the remaining confirmation-day buyer-rate dependency and prior separate buyer/seller base-rate interpretation
 
+### D-054 无生产数据阶段的干净基线重建
+
+业务所有者 2026-08-25 确认：当前系统没有生产数据库、生产订单、生产图片或线上用户；约 20,000 单是真实历史业务数据，但当前未进入本项目生产数据库。所有外部订单源、图片源和导入源必须保留；新 baseline 必须证明可无损导入这些历史业务数据。据此授权本次后端重构可以：删除旧 Migration 链并建立单一干净 baseline schema，后续变更从新 baseline 前向追加；删除并重建代码、API、数据库表、测试、配置与无用文档；不为兼容旧前端保留旧 API 或旧 DTO；清理历史兼容层、冻结实现、demo、旧路由与废弃 Migration。
+
+Git 历史、旧仓库固定 Commit、外部历史订单源文件、远程 Cloudflare/GitHub/Google Drive 资源与真实数据继续禁止触碰；远程写入、部署、Queue 创建、D1/R2 远程操作继续禁止。新 baseline 必须保留 D-011/D-016 财务不可变与整数金额、D-017 身份隔离、D-032/D-034 员工权限模型、审计、幂等、版本冲突、冲正与 Personal DENY 边界；必须以可复核证据证明可无损导入约 20,000 真实历史订单，本地空数据库一次初始化成功，且 Migration verifier 与测试同步重建。服务费配置继续按 `seller_organization + marketplace + review_type + effective_version` 版本化，显式 0 不等于缺失。
+
+执行门槛（2026-08-25 业务所有者补充，属于本 Decision 的硬性前置条件）：
+
+1. `verify-phase3*`、`verify-wave11/12/13*`、`verify-module1*` 等旧验证脚本不得直接删除。必须先逐个列出它们保护的业务断言，把仍然有效的断言迁移到新 baseline 测试和新命名 verifier；只有等价测试真实执行通过后，才允许删除对应旧脚本。
+2. 建立 `backend-clean-baseline-rebuild` Change 之前，必须先完成 `openspec/changes/` 下全部非归档变更的 completed / superseded / merge-into-rebuild / unrelated-keep 分类，每项写明理由、涉及源码和处置方式；未完成分类前不得开始新的源码写入阶段。
+
+本 Decision 取代 AGENTS.md 第 2 节及既有 Decision 中“不得重写迁移历史、Migration 链永久保持原文”对当前无生产数据阶段本地工作树的约束；被取代条款的历史正文与 Git 历史不改写。
+
+状态：Accepted by business owner；Supersedes the migration-chain immutability clauses only for the pre-production rebuild window, without rewriting their historical text
+
+### D-055 冷归档与后台执行重建（Queues + ZIP Bundle）
+
+D-019 的滚动冷归档业务语义保留，归档实现按 2026-08-25 授权重建：R2 保留前 6 个上海自然月热副本，业务全部关闭满 6 个上海自然月后归档。归档单元为 ORDER（订单、评论、买家聊天、卖家聊天四类证据，必须包含 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION`）、BUYER_REFUND_PAYMENT、SELLER_SETTLEMENT_PAYMENT。为控制 Google Drive 文件数量，每单元生成一个 ZIP Bundle 与 manifest.json，不采用每张图一个 Drive 文件；ZIP 不重新压缩 JPEG，Worker 内不得一次性缓冲整个包，先流式生成临时 R2 bundle，再 resumable upload 到 Drive；上传后必须回读并校验 size、MIME、SHA-256，成功后才允许删除 R2 热副本。
+
+后台执行改用 Cloudflare Queues 或等效可重试异步消费者：Scheduled 扫描器只发现到期任务；Queue 消息仅含 opaque `bundle_id`、`version`、`trace_id`，不含图片、微信号、姓名或财务内容；初始批次 1–5，Drive 并发初始限制 3 且可配置，每条消息独立确认与重试，配置 DLQ，403/429 使用延迟和指数退避；D1 保存归档状态、失败事实与可重试记录；重复投递不得产生重复文件或重复删除。首次历史归档只 shadow-copy，不删除 R2。
+
+归档访问规则：只有 Staff 可以触发 Drive 归档图片恢复。Buyer/Seller 对已归档文件只看到已归档占位状态与”联系工作人员”提示，不获得任何 Drive 读取路径。恢复成功后仍按照原 file audience 与资源归属授权访问临时 R2 副本；恢复不得扩大可见范围，也不得绕过既有 Buyer/Seller/Staff DTO 隔离。临时 R2 副本保留 7 天后自动清理；Drive 原归档包永久保留。员工不直接读取 Google Drive；归档态不再实时代理 Drive 读取。返款和结算凭证不设置自动永久删除。本阶段只写代码、本地模板与测试，不创建真实 Queue、不执行远程操作。
+
+状态：Accepted by business owner；Supersedes D-019/D-023's per-file Drive archive model and scheduled-runner-only execution for the rebuilt baseline, without rewriting their historical text
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收
