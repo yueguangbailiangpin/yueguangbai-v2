@@ -87,9 +87,11 @@
 - `SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED` 等已无现行业务用途的 Feature Flag：实测已全部消失；现存 flag（Drive 归档四开关、OUTBOX/SCHEDULER/ACQUISITION_MAINTENANCE、BUYER_SELF_REGISTRATION、RESERVATION_AUTO_APPROVE）均有现行业务用途，保留。
 - 仅为旧前端兼容存在的 DTO 别名与 re-export（D-036/D-038/D-039 已退役大部分，重建时扫尾）。
 
-### 2.5 Rakuten/TikTok JP 平台预备层（业务所有者 2026-08-25 已确认删除）
+### 2.5 Rakuten/TikTok JP 平台预备层（业务所有者 2026-08-25 已确认删除；执行更正）
 
-0042 引入的 `platform_product_identities`、`platform_order_identities`、`platform_identity_events`、`platform_order_evidence_records`、`platform_formal_orders`、`platform_order_evidence_internal_files` 及对应运行实现（`apps/api/src/marketplace-adapters` 的 Rakuten/TikTok 预备、`verify:marketplace-adapters` / `preflight:marketplace-adapters`）：确认删除。保留 Marketplace Registry、`AMAZON_JP`（唯一写路径）以及禁用状态的 `AMAZON_US` / `COUPANG_KR` 扩展边界（fail-closed 种子与 Adapter 接口边界进入新 baseline）；未来需要 Rakuten/TikTok 时按新的 OpenSpec Change 重新引入。
+已删除（阶段 2e，2026-08-25）：`apps/api/src/marketplace-adapters` 全模块（TikTok webhook/签名/read adapter、fake adapter）、`verify/preflight:marketplace-adapters` 脚本与 npm 条目、domain `marketplace/adapter.ts`、contracts `platform-identifiers.ts`（RAKUTEN/TIKTOK 标识规则）。保留 Marketplace Registry、`AMAZON_JP`（唯一写路径）、禁用状态的 `AMAZON_US`/`COUPANG_KR` 扩展边界（fail-closed 种子进入新 baseline）。
+
+执行更正（阶段 2e 发现）：`platform_formal_orders`、`platform_order_evidence_records`、`platform_order_evidence_internal_files` 等 `platform_*` 表**不是**无现行业务的预备表——它们是卖家订单聊天截图（`ORDER_EVIDENCE_INTERNAL_COMMUNICATION`，保留能力，D-055 归档单元的组成部分）的现行读写存储层。这些表的删除与卖家聊天证据并入统一 `formal_orders` 模型必须发生在阶段 3（schema 重建）与阶段 5（归档单元重建含卖家聊天）中原子完成；`platform_product_identities`、`platform_order_identities`、`platform_identity_events`（纯 Rakuten/TikTok 标识注册）随新 baseline 直接消失。未来需要 Rakuten/TikTok 时按新的 OpenSpec Change 重新引入。
 
 ### 2.6 被删除功能对应的测试、脚本与文档（受 D-054 执行门槛 1 约束）
 

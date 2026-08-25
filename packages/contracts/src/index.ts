@@ -24,7 +24,6 @@ export * from './marketplace-money';
 export * from './marketplace-provider';
 export * from './marketplace-runtime';
 export * from './operating-integrity';
-export * from './platform-identifiers';
 export * from './order-evidence';
 export * from './order-instruction';
 export * from './pricing';
