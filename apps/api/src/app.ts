@@ -10,7 +10,6 @@ import {
 import { Hono } from 'hono';
 import type { AssignmentStaffAuthorization } from './staff-assignment';
 import type { StaffSessionRow } from './staff-auth';
-import type { StaffMcpProductionRuntimeBindings } from './staff-mcp/runtime';
 import { errorLogEvent, routeGroup, writeErrorLog } from './observability';
 import {
   recordWorker5xxSignal,
@@ -20,8 +19,7 @@ import {
 import { installSellerMemberPrivilegeSessionRotation } from './seller-portal/member-privilege-session-rotation';
 import type { OperationalAlertServiceBinding } from './operational-readiness/alert-sink-contract';
 
-export type AppBindings = StaffAuthProviderBindings &
-  StaffMcpProductionRuntimeBindings & {
+export type AppBindings = StaffAuthProviderBindings & {
     DB: SqlDatabase;
     APP_ENVIRONMENT?: string;
     APP_RELEASE_SHA?: string;

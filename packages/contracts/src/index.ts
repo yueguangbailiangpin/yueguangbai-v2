@@ -51,4 +51,3 @@ export * from './staff-auth';
 export * from './staff-buyer-refund';
 export * from './staff-order-evidence';
 export * from './staff-review';
-export * from './staff-mcp';
