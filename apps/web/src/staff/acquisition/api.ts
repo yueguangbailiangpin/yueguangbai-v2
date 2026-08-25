@@ -14,7 +14,6 @@ import {
   acquisitionProspectDetailSchema,
   acquisitionProspectSchema,
   acquisitionProspectsPageSchema,
-  acquisitionProspectSignalSchema,
 } from './runtime';
 
 function read<T extends z.ZodType>(
@@ -54,9 +53,6 @@ const channelPrivacyMutation = z
   .strict();
 const prospectMutation = z
   .object({ prospect: acquisitionProspectSchema, replayed: z.boolean() })
-  .strict();
-const signalMutation = z
-  .object({ signal: acquisitionProspectSignalSchema, replayed: z.boolean() })
   .strict();
 const leadMutation = z.object({ lead: acquisitionLeadSchema, replayed: z.boolean() }).strict();
 const handoffSchema = z.object({ items: z.array(acquisitionHandoffSchema) }).strict();
@@ -150,53 +146,9 @@ const sourceCorrectionEnvelope = z
     replayed: z.boolean(),
   })
   .strict();
-const machine = z
-  .object({
-    machine_id: z.string(),
-    machine_name: z.string(),
-    status: z.enum(['ACTIVE', 'REVOKED']),
-    hourly_request_limit: z.number().int().positive(),
-    marketplace_codes: z.array(z.string()),
-    channel_ids: z.array(z.string()),
-    created_at: z.number().int().nonnegative(),
-    revoked_at: z.number().int().nonnegative().nullable(),
-  })
-  .strict();
-const machinesEnvelope = z.object({ machines: z.array(machine) }).strict();
-const machineCreatedEnvelope = z
-  .object({
-    machine: z
-      .object({
-        machine_id: z.string(),
-        machine_name: z.string(),
-        machine_secret: z.string().nullable(),
-        secret_available: z.boolean(),
-        status: z.literal('ACTIVE'),
-        hourly_request_limit: z.number().int().positive(),
-        marketplace_codes: z.array(z.string()),
-        channel_ids: z.array(z.string()),
-        created_at: z.number().int().nonnegative(),
-      })
-      .strict(),
-    replayed: z.boolean(),
-  })
-  .strict();
-const machineRevokedEnvelope = z
-  .object({
-    machine: z
-      .object({
-        machine_id: z.string(),
-        status: z.literal('REVOKED'),
-        revoked_at: z.number().int().nonnegative(),
-      })
-      .strict(),
-    replayed: z.boolean(),
-  })
-  .strict();
 
 export type AcquisitionChannelStat = z.output<typeof channelStat>;
 export type SourceCorrectionCandidate = z.output<typeof sourceCorrectionCandidate>;
-export type AcquisitionMachine = z.output<typeof machine>;
 
 export const acquisitionApi = Object.freeze({
   channels: (client: QueryClient, signal?: AbortSignal) =>
@@ -261,14 +213,6 @@ export const acquisitionApi = Object.freeze({
       prospectMutation,
       key,
     ),
-  addProspectSignal: (client: QueryClient, id: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/acquisition/prospects/${encodeURIComponent(id)}/signals`,
-      body,
-      signalMutation,
-      key,
-    ),
   leads: (client: QueryClient, leadType: 'BUYER' | 'SELLER', signal?: AbortSignal) =>
     read(
       client,
@@ -313,16 +257,4 @@ export const acquisitionApi = Object.freeze({
     ),
   correctSource: (client: QueryClient, body: unknown, key: string) =>
     write(client, '/api/staff/acquisition/source-corrections', body, sourceCorrectionEnvelope, key),
-  machines: (client: QueryClient, signal?: AbortSignal) =>
-    read(client, '/api/staff/acquisition/machines', machinesEnvelope, signal),
-  createMachine: (client: QueryClient, body: unknown, key: string) =>
-    write(client, '/api/staff/acquisition/machines', body, machineCreatedEnvelope, key),
-  revokeMachine: (client: QueryClient, id: string, key: string) =>
-    write(
-      client,
-      `/api/staff/acquisition/machines/${encodeURIComponent(id)}/revoke`,
-      {},
-      machineRevokedEnvelope,
-      key,
-    ),
 });

@@ -91,26 +91,12 @@ export const acquisitionHandoffSchema = z
     updated_at: epoch,
   })
   .strict();
-export const acquisitionProspectSignalSchema = z
-  .object({
-    signal_id: z.string(),
-    prospect_id: z.string(),
-    signal_type: z.string(),
-    signal_content: z.string(),
-    source_url: z.string().nullable(),
-    confidence: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CONFIRMED']),
-    created_by_actor_type: z.enum(['STAFF', 'CODEX']),
-    created_by_actor_id: z.string(),
-    created_at: epoch,
-  })
-  .strict();
 export const acquisitionProspectsPageSchema = z
   .object({ items: z.array(acquisitionProspectSchema), next_cursor: z.string().nullable() })
   .strict();
 export const acquisitionProspectDetailSchema = z
   .object({
     prospect: acquisitionProspectSchema,
-    signals: z.array(acquisitionProspectSignalSchema),
   })
   .strict();
 
@@ -195,5 +181,4 @@ export type AcquisitionInternalChannel = z.output<typeof acquisitionInternalChan
 export type AcquisitionStaffChannel = z.output<typeof acquisitionStaffChannelViewSchema>;
 export type AcquisitionProspect = z.output<typeof acquisitionProspectSchema>;
 export type AcquisitionHandoff = z.output<typeof acquisitionHandoffSchema>;
-export type AcquisitionProspectSignal = z.output<typeof acquisitionProspectSignalSchema>;
 export type AcquisitionLead = z.output<typeof acquisitionLeadSchema>;

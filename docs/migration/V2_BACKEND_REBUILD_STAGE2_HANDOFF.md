@@ -35,7 +35,7 @@ $security-best-practices
 1. 建立 openspec Change backend-clean-baseline-rebuild：proposal/design/tasks 按 openspec/config.yaml 规则编写，明确引用 D-054/D-055 与清单文件。
 2. 按 §5 处置旧变更：归档 4 个 completed 与 2 个 superseded；merge-into-rebuild（current-reservable-product-seller-mapping、security-command-integrity-readiness）的开放任务并入新 Change；unrelated/keep 三个不动。
 3. 删除顺序（每类删除前确认引用关系）：
-   a. 自动获客 Agent 与 machine（6 条路由、0057 四张表、0044 维护表、机器运行时与 dry-run）；
+   a. 自动获客 Agent 与 machine（6 条路由、0057 四张表、机器运行时；注意 maintenance.ts 与其表是 D-026 保留能力不删）；
    b. Staff MCP（apps/api/src/staff-mcp、0038 五张表、两份合同文档、相关 npm 脚本）；
    c. 飞书残留对象与关键词图片（resvg-wasm、三张 order_instruction 资产表、资产路由）；
    d. 旧别名与兼容层（marketplace_legacy_aliases、phase3*_backup_*、*_next、旧 Seller Agreement 投影、无用途 Feature Flag）；

@@ -40,7 +40,7 @@ describe('canonical Staff acquisition workbench', () => {
     </StaffSessionBoundary>, { route: '/staff/acquisition' });
 
     expect(await screen.findByRole('heading', { name: '客户开发中心' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Codex 接入' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Codex 接入' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '每日渠道数据' }));
     expect(await screen.findByRole('heading', { name: '今天的渠道数据' })).toBeVisible();
     expect(screen.getByText('小红书买家推广一组')).toBeVisible();

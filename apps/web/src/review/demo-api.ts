@@ -1543,21 +1543,6 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         },
       ],
     };
-  if (path === '/api/staff/acquisition/machines' && method === 'GET')
-    return {
-      machines: [
-        {
-          machine_id: 'review-machine-1',
-          machine_name: 'Demo 日本买家获客 Codex',
-          status: 'ACTIVE',
-          hourly_request_limit: 120,
-          marketplace_codes: ['AMAZON_JP'],
-          channel_ids: ['review-channel-1'],
-          created_at: NOW - 5 * DAY,
-          revoked_at: null,
-        },
-      ],
-    };
   if (path === '/api/staff/acquisition/leads' && method === 'GET')
     return {
       items: clone(

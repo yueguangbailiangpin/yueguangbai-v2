@@ -62,8 +62,9 @@
 ### 2.1 自动获客 Agent 与机器凭证
 
 - 路由：`POST /api/acquisition-machine/prospects`、`POST /api/acquisition-machine/prospects/:id/analysis`、`POST /api/acquisition-machine/prospects/:id/signals`、`POST /api/staff/acquisition/machines`、`POST /api/staff/acquisition/machines/:id/revoke`、`GET /api/staff/acquisition/machines`。
-- 表：`acquisition_machine_credentials`、`acquisition_machine_channels`、`acquisition_machine_marketplaces`、`acquisition_machine_rate_buckets`（0057）；`acquisition_maintenance_runs`、`acquisition_maintenance_state`（0044 维护任务）。
-- 代码：machine 运行时、`maintenance-dry-run`、机器信号写入路径。
+- 表：`acquisition_machine_credentials`、`acquisition_machine_channels`、`acquisition_machine_marketplaces`、`acquisition_machine_rate_buckets`（0057）。
+- 更正（2026-08-25 阶段 2 执行时发现）：`acquisition_maintenance_runs`、`acquisition_maintenance_state` 与 `maintenance.ts` **不是**机器时代产物——它们承载 D-026 保留业务（线索↔注册身份自动关联、卖家确认合作检测、12 个月未转化线索匿名化、游标推进），连同 `ACQUISITION_MAINTENANCE_ENABLED` 就绪门与 dry-run 测试一并保留，归入新 baseline。
+- 代码：machine 运行时、机器信号写入路径。
 - 业务所有者 2026-08-25 确认删除：`acquisition_prospect_signals`（机器自动信号无现行业务）及机器时代指标（见 3.1）。
 
 ### 2.2 Staff MCP / Agent runtime

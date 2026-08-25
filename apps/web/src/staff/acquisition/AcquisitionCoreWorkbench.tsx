@@ -16,7 +16,6 @@ import {
 import {
   acquisitionApi,
   type AcquisitionChannelStat,
-  type AcquisitionMachine,
   type SourceCorrectionCandidate,
 } from './api';
 import type { AcquisitionInternalChannel, AcquisitionProspect } from './runtime';
@@ -28,7 +27,7 @@ const MARKETPLACES = [
   ['RAKUTEN_JP', '乐天日本站'],
   ['TIKTOK_JP', 'TikTok 日本站'],
 ] as const;
-type Tab = 'overview' | 'prospects' | 'daily' | 'channels' | 'stats' | 'corrections' | 'codex';
+type Tab = 'overview' | 'prospects' | 'daily' | 'channels' | 'stats' | 'corrections';
 
 const ACQUISITION_ROOT = ['staff', 'acquisition-v4'] as const;
 const acquisitionKeys = Object.freeze({
@@ -149,7 +148,6 @@ export function AcquisitionCoreWorkbench(): React.JSX.Element {
     ['channels', '渠道管理'],
     ['stats', '渠道统计'],
     ['corrections', '来源纠错'],
-    ...(canAdmin ? [['codex', 'Codex 接入'] as const] : []),
   ];
   return (
     <main className="acquisition-workbench acquisition-core">
@@ -192,7 +190,6 @@ export function AcquisitionCoreWorkbench(): React.JSX.Element {
       {tab === 'corrections' ? (
         <Corrections items={corrections.data ?? []} channels={channels.data ?? []} />
       ) : null}
-      {tab === 'codex' && canAdmin ? <CodexMachines channels={channels.data ?? []} /> : null}
     </main>
   );
 }
@@ -330,7 +327,7 @@ function Prospects({
         </Card>
       ) : null}
       {items.length === 0 ? (
-        <EmptyState title="暂无潜在线索" description="人工或 Codex 找到的潜在客户会出现在这里。" />
+        <EmptyState title="暂无潜在线索" description="人工建立的潜在客户会出现在这里。" />
       ) : (
         <DataTable caption="潜在线索">
           <thead>
@@ -876,157 +873,6 @@ function CorrectionForm({
         </Button>
       </form>
     </Card>
-  );
-}
-function CodexMachines({ channels }: { channels: readonly AcquisitionInternalChannel[] }) {
-  const client = useQueryClient(),
-    [secret, setSecret] = useState<string | null>(null),
-    [secretUnavailable, setSecretUnavailable] = useState(false);
-  const machines = useQuery({
-    queryKey: ['staff', 'acquisition-v4', 'machines'],
-    queryFn: ({ signal }) => acquisitionApi.machines(client, signal).then((r) => r.data.machines),
-    retry: false,
-  });
-  const create = useMutation({
-      mutationFn: (body: unknown) =>
-        acquisitionApi.createMachine(client, body, crypto.randomUUID()),
-      onSuccess: async (response) => {
-        setSecret(response.data.machine.machine_secret);
-        setSecretUnavailable(!response.data.machine.secret_available);
-        await client.invalidateQueries({ queryKey: ['staff', 'acquisition-v4', 'machines'] });
-      },
-    }),
-    revoke = useMutation({
-      mutationFn: (machine: AcquisitionMachine) =>
-        acquisitionApi.revokeMachine(client, machine.machine_id, crypto.randomUUID()),
-      onSuccess: () =>
-        client.invalidateQueries({ queryKey: ['staff', 'acquisition-v4', 'machines'] }),
-    });
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSecret(null);
-    setSecretUnavailable(false);
-    const data = new FormData(event.currentTarget),
-      marketplaceCodes = data.getAll('marketplace_codes').map(String),
-      channelIds = data.getAll('channel_ids').map(String);
-    create.mutate({
-      machine_name: String(data.get('machine_name')),
-      marketplace_codes: marketplaceCodes,
-      channel_ids: channelIds,
-      hourly_request_limit: Number(data.get('hourly_request_limit')),
-    });
-  }
-  return (
-    <section>
-      <Alert tone="info">
-        每个 Codex / Agent
-        使用独立密钥、站点和渠道权限。密钥明文只在创建成功这一次显示；以后只能撤销并重新创建。
-      </Alert>
-      <Card>
-        <h3>创建 Codex Agent</h3>
-        <form onSubmit={submit}>
-          <FormField label="Agent 名称" htmlFor="machine-name">
-            <TextInput
-              id="machine-name"
-              name="machine_name"
-              placeholder="例如：日本买家获客 Codex"
-              required
-            />
-          </FormField>
-          <fieldset className="staff-marketplace-options">
-            <legend>允许站点</legend>
-            {MARKETPLACES.map(([code, label]) => (
-              <label key={code}>
-                <input type="checkbox" name="marketplace_codes" value={code} />
-                <span>{label}</span>
-              </label>
-            ))}
-          </fieldset>
-          <fieldset className="staff-marketplace-options">
-            <legend>允许真实渠道</legend>
-            {channels
-              .filter((c) => c.status === 'ACTIVE' && c.lead_type !== 'BOTH')
-              .map((c) => (
-                <label key={c.channel_id}>
-                  <input type="checkbox" name="channel_ids" value={c.channel_id} />
-                  <span>
-                    {c.display_name} · {c.staff_label} · {marketLabel(c.marketplace_code)}
-                  </span>
-                </label>
-              ))}
-          </fieldset>
-          <FormField label="每小时最大请求" htmlFor="machine-limit">
-            <TextInput
-              id="machine-limit"
-              name="hourly_request_limit"
-              type="number"
-              min="1"
-              max="10000"
-              defaultValue="120"
-              required
-            />
-          </FormField>
-          <Button loading={create.isPending}>创建独立机器密钥</Button>
-        </form>
-        {create.isError ? (
-          <Alert tone="danger">创建失败。站点与渠道范围必须一致，且至少选择一个站点和渠道。</Alert>
-        ) : null}
-        {secretUnavailable ? (
-          <Alert tone="danger">
-            该创建请求已成功提交过，但一次性密钥响应已丢失。系统没有创建第二个密钥；请先停用这条记录，再用新的请求重新创建。
-          </Alert>
-        ) : null}
-        {secret ? (
-          <FormField
-            label="机器密钥（只显示这一次）"
-            htmlFor="machine-secret"
-            description="立即复制到 Codex 的私有 Secret 配置，不要发到聊天、Git 或文档"
-          >
-            <TextInput id="machine-secret" value={secret} readOnly />
-          </FormField>
-        ) : null}
-      </Card>
-      {machines.data && machines.data.length > 0 ? (
-        <DataTable caption="Codex Agent 密钥">
-          <thead>
-            <tr>
-              <th>Agent</th>
-              <th>站点</th>
-              <th>渠道数</th>
-              <th>限流</th>
-              <th>状态</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {machines.data.map((m) => (
-              <tr key={m.machine_id}>
-                <td>
-                  <strong>{m.machine_name}</strong>
-                </td>
-                <td>{m.marketplace_codes.map(marketLabel).join(' · ')}</td>
-                <td>{m.channel_ids.length}</td>
-                <td>{m.hourly_request_limit}/小时</td>
-                <td>{m.status === 'ACTIVE' ? '正常' : '已停用'}</td>
-                <td>
-                  {m.status === 'ACTIVE' ? (
-                    <Button
-                      className="danger"
-                      loading={revoke.isPending}
-                      onClick={() => revoke.mutate(m)}
-                    >
-                      停用密钥
-                    </Button>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
-      ) : null}
-    </section>
   );
 }
 function nullable(value: FormDataEntryValue | null) {

@@ -4,7 +4,7 @@
 
 - [ ] 2.1 归档 4 个 completed 变更（reservation-review-order-evidence-readiness、schema64-integration-stabilization、seller-principal-rate-policy、staging-isolated-readiness-bootstrap）
 - [ ] 2.2 归档 2 个 superseded 变更（google-drive-cold-archive-production-preflight、staging-access-jwks-worker-runtime）
-- [ ] 2.3 删除自动获客 Agent/machine：3 条 acquisition-machine 路由、3 条 staff machines 路由、machine 运行时、0044 维护 dry-run、相关测试/脚本/seed 引用
+- [ ] 2.3 删除自动获客 Agent/machine：3 条 acquisition-machine 路由、3 条 staff machines 路由、machine 运行时、相关测试/脚本/seed 引用（`maintenance.ts` 与其表是 D-026 保留能力，不删）
 - [ ] 2.4 删除 `acquisition_prospect_signals` 与机器时代指标运行实现（保留人工来源/首触归因事实）
 - [ ] 2.5 删除 Staff MCP：`apps/api/src/staff-mcp`、`packages/contracts/src/staff-mcp.ts`、0038 表的运行引用、npm 脚本与文档
 - [ ] 2.6 删除关键词图片：generator service/worker、resvg-wasm、资产路由与 reconciliation 引用

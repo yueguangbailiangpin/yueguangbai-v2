@@ -71,7 +71,7 @@ describe('second layer hardening freeze', () => {
     expect(contract).not.toContain("'BUYER_REFUND_DUE'");
   });
 
-  it('keeps channel labels immutable and v4 acquisition machine scope active', () => {
+  it('keeps channel labels immutable and the acquisition workbench source authoritative', () => {
     const admin = read('apps/api/src/acquisition/admin.ts');
     expect(admin).toContain("input.leadType !== 'BUYER' && input.leadType !== 'SELLER'");
     const privacy = read('apps/api/src/acquisition/channel-privacy.ts');
@@ -80,12 +80,6 @@ describe('second layer hardening freeze', () => {
     expect(read('apps/web/src/staff/acquisition/AcquisitionCoreWorkbench.tsx')).toContain(
       'function AcquisitionCoreWorkbench',
     );
-    const machine = read('apps/api/src/acquisition/machine-routes.ts');
-    expect(machine).toContain('authenticateAcquisitionMachine');
-    expect(machine).not.toContain('ACQUISITION_MACHINE_SHARED_SECRET');
-    const credential = read('apps/api/src/acquisition/machine-credentials.ts');
-    expect(credential).toContain('acquisition_machine_rate_buckets');
-    expect(credential).toContain('requireMachineScope');
   });
 
   it('keeps real Seller UI, multi-persona session safety and truthful Marketplace-local dates', () => {

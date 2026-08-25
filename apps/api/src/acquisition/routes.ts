@@ -37,10 +37,8 @@ import {
   transferAcquisitionLead,
 } from './leads';
 import {
-  addAcquisitionProspectSignal,
   createAcquisitionProspect,
   listAcquisitionProspects,
-  listProspectSignals,
   readAcquisitionProspect,
   updateAcquisitionProspect,
 } from './prospects';
@@ -261,7 +259,6 @@ export function registerAcquisitionRoutes(app: Hono<AppEnv>): void {
     withErrors(async (context) =>
       success(context, {
         prospect: await readAcquisitionProspect(context.env.DB, actor(context), paramId(context)),
-        signals: await listProspectSignals(context.env.DB, actor(context), paramId(context)),
       }),
     ),
   );
@@ -340,42 +337,6 @@ export function registerAcquisitionRoutes(app: Hono<AppEnv>): void {
           },
           command(context),
         ),
-      );
-    }),
-  );
-  app.post(
-    '/api/staff/acquisition/prospects/:id/signals',
-    customerAuthOriginGuard(),
-    withErrors(async (context) => {
-      const body = await exactBody(context, [
-        'signal_type',
-        'signal_content',
-        'source_url',
-        'confidence',
-      ]);
-      if (
-        typeof body['signal_type'] !== 'string' ||
-        typeof body['signal_content'] !== 'string' ||
-        !(body['source_url'] === null || typeof body['source_url'] === 'string') ||
-        !['LOW', 'MEDIUM', 'HIGH', 'CONFIRMED'].includes(String(body['confidence']))
-      )
-        validation();
-      return context.json(
-        apiSuccess(
-          await addAcquisitionProspectSignal(
-            context.env.DB,
-            paramId(context),
-            {
-              signalType: body['signal_type'],
-              signalContent: body['signal_content'],
-              sourceUrl: body['source_url'],
-              confidence: body['confidence'] as 'LOW' | 'MEDIUM' | 'HIGH' | 'CONFIRMED',
-            },
-            command(context),
-          ),
-          requestIdFromContext(context),
-        ),
-        201,
       );
     }),
   );

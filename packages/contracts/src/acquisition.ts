@@ -19,7 +19,6 @@ export const ACQUISITION_HTTP_PATHS = Object.freeze({
   prospects:'/api/staff/acquisition/prospects',
   leads:'/api/staff/acquisition/leads',
   funnel:'/api/staff/acquisition/funnel',
-  machineProspects:'/api/acquisition-machine/prospects',
 } as const);
 
 export interface CreateAcquisitionChannelCommand {
@@ -104,7 +103,7 @@ export interface AcquisitionConsultationEventDto {
   previous_version:number|null; next_version:number; actor_staff_id:string; reason:string; created_at:number;
 }
 
-/** Full Prospect is restricted to Owner/acquisition Staff and machine acquisition APIs. */
+/** Full Prospect is restricted to Owner/acquisition Staff. */
 export interface AcquisitionProspectDto {
   prospect_id:string;
   lead_type:AcquisitionLeadType;
@@ -140,11 +139,6 @@ export interface AcquisitionHandoffDto {
   updated_at:number;
 }
 
-export interface AcquisitionProspectSignalDto {
-  signal_id:string; prospect_id:string; signal_type:string; signal_content:string;
-  source_url:string|null; confidence:'LOW'|'MEDIUM'|'HIGH'|'CONFIRMED';
-  created_by_actor_type:'STAFF'|'CODEX'; created_by_actor_id:string; created_at:number;
-}
 export interface CreateAcquisitionProspectCommand {
   lead_type:AcquisitionLeadType; marketplace_code:string; channel_id:string;
   display_name:string; contact_value:string|null; source_url:string|null;
@@ -152,10 +146,6 @@ export interface CreateAcquisitionProspectCommand {
 }
 export interface UpdateAcquisitionProspectCommand {
   expected_version:number; status:AcquisitionProspectStatus; ai_score:number|null; note:string|null;
-}
-export interface CreateAcquisitionProspectSignalCommand {
-  signal_type:string; signal_content:string; source_url:string|null;
-  confidence:'LOW'|'MEDIUM'|'HIGH'|'CONFIRMED';
 }
 
 /**
