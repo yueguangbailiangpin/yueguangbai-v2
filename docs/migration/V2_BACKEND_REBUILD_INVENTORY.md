@@ -91,7 +91,7 @@
 
 已删除（阶段 2e，2026-08-25）：`apps/api/src/marketplace-adapters` 全模块（TikTok webhook/签名/read adapter、fake adapter）、`verify/preflight:marketplace-adapters` 脚本与 npm 条目、domain `marketplace/adapter.ts`、contracts `platform-identifiers.ts`（RAKUTEN/TIKTOK 标识规则）。保留 Marketplace Registry、`AMAZON_JP`（唯一写路径）、禁用状态的 `AMAZON_US`/`COUPANG_KR` 扩展边界（fail-closed 种子进入新 baseline）。
 
-执行更正（阶段 2e 发现）：`platform_formal_orders`、`platform_order_evidence_records`、`platform_order_evidence_internal_files` 等 `platform_*` 表**不是**无现行业务的预备表——它们是卖家订单聊天截图（`ORDER_EVIDENCE_INTERNAL_COMMUNICATION`，保留能力，D-055 归档单元的组成部分）的现行读写存储层。这些表的删除与卖家聊天证据并入统一 `formal_orders` 模型必须发生在阶段 3（schema 重建）与阶段 5（归档单元重建含卖家聊天）中原子完成；`platform_product_identities`、`platform_order_identities`、`platform_identity_events`（纯 Rakuten/TikTok 标识注册）随新 baseline 直接消失。未来需要 Rakuten/TikTok 时按新的 OpenSpec Change 重新引入。
+执行更正（阶段 2e 发现）：`platform_formal_orders`、`platform_order_evidence_records`、`platform_order_evidence_internal_files` 等 `platform_*` 表**不是**无现行业务的预备表——它们是卖家订单聊天截图（`ORDER_EVIDENCE_INTERNAL_COMMUNICATION`，保留能力，D-055 归档单元的组成部分）的现行读写存储层。**业务所有者 2026-08-25 已确认修正方案：`platform_product_identities`、`platform_order_identities`、`platform_identity_events` 三张死表随新 baseline 直接删除；三张活表在阶段 3（schema 重建）与阶段 5（归档单元重建含卖家聊天）中并入统一 `formal_orders` 模型后消失。**未来需要 Rakuten/TikTok 时按新的 OpenSpec Change 重新引入。
 
 ### 2.6 被删除功能对应的测试、脚本与文档（受 D-054 执行门槛 1 约束）
 
