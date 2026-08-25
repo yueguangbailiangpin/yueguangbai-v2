@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { applyBaseline, baselineSchemaText } from './baseline-schema-helper.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const sourceFiles = [
@@ -17,7 +18,8 @@ const sourceFiles = [
 const sources = sourceFiles.map(read).join('\n');
 const sellerPublicRead = read('apps/api/src/seller-settlements/read-model.ts')
   + read('apps/api/src/seller-settlements/seller-routes.ts');
-const migration = read('migrations/0024_seller_payments_allocations.sql');
+// Settlement schema assertions re-anchored on the applied stage 3 baseline.
+const migration = baselineSchemaText(applyBaseline());
 const fileAuthorization = read(
   'apps/api/src/files/file-audience-authorization.ts',
 );
@@ -84,10 +86,6 @@ assert(settlementFilePolicy.includes("actor.type !== 'STAFF'"));
 assert(settlementFilePolicy.includes('assertStaffOwner'));
 assert(settlementFilePolicy.includes('assertCanCreateUpload'));
 assert(migration.includes("intent.owner_actor_type='SYSTEM'"));
-
-const migrations = readdirSync(path.join(root, 'migrations'))
-  .filter((name) => /^\d{4}_.+\.sql$/u.test(name));
-assert(migrations.filter((name) => /^002[234]_/u.test(name)).length === 3);
 
 console.log('seller finance security scan passed');
 function read(file) { return readFileSync(path.join(root, file), 'utf8'); }

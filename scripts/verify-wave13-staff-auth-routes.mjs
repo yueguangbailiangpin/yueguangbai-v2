@@ -11,7 +11,8 @@ const middleware = read('apps/api/src/middleware/staff-auth.ts');
 const session = read('apps/api/src/staff-auth/session.ts');
 const authRoutes = read('apps/api/src/staff-auth/access-routes.ts');
 const contracts = read('packages/contracts/src/staff-auth.ts');
-const migration = read('migrations/0027_staff_auth_sessions.sql');
+// Staff session schema assertions re-anchored on the stage 3 baseline.
+const migration = read('migrations/0002_staff_identity_permissions.sql');
 const authTests = read('apps/api/src/staff-auth/cloudflare-access.test.ts');
 const inventoryTests = read('apps/api/src/architecture-guards/app-security-registration.test.ts');
 
@@ -50,10 +51,11 @@ assertContains(session, 'issued_authorization_version', 'session');
 for (const forbidden of ['last_seen', 'idle_timeout', 'refresh_token']) {
   assertNotContains(`${session}\n${migration}`, forbidden, 'session model');
 }
+const sessionsSegment = (migration.split('CREATE TABLE staff_sessions')[1] ?? '')
+  .split(/CREATE (?:TABLE|TRIGGER|INDEX)/u)[0] ?? '';
 for (const forbiddenColumn of [
   'role_code TEXT', 'permission_code TEXT', 'team_id TEXT', 'scope_json',
-]) assertNotContains(migration.split('CREATE TABLE staff_sessions')[1] ?? '',
-  forbiddenColumn, 'staff_sessions');
+]) assertNotContains(sessionsSegment, forbiddenColumn, 'staff_sessions');
 assertNotContains(contracts, 'staff_id?:', 'Access bootstrap request');
 assertContains(authRoutes, 'verifyCloudflareAccessIdentity', 'auth routes');
 assertContains(authRoutes, 'staff_email_identities', 'auth routes');

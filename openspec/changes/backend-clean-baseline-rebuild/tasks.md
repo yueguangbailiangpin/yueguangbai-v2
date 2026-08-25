@@ -11,15 +11,15 @@
 - [x] 2.7 删除旧别名与兼容层：`marketplace_legacy_aliases` 运行引用、旧 Seller Agreement 投影残留、无用途 Feature Flag
 - [x] 2.8 删除 Rakuten/TikTok `platform_*` 运行实现与 `marketplace-adapters` 预备（保留 Registry/AMAZON_JP/禁用边界）
 - [x] 2.9 每删除类别后 typecheck + 受影响测试通过；被删能力 verifier 按 §7 留核验记录
-- [ ] 2.10 阶段出口：typecheck/test/build/check + openspec strict 全绿
+- [x] 2.10 阶段出口：typecheck/test/build/check + openspec strict 全绿（2026-08-25 复测：npm run check exit 0，270 文件/1772 用例）
 
 ## Stage 3 — 数据库 baseline
 
-- [ ] 3.1 新建 `0001` baseline（按域拆顺序文件），包含全部保留能力表、整数金额/汇率、source guard、审计/幂等/版本约束
-- [ ] 3.2 删除旧迁移链 0001–0075 与 `phase3*_backup_*`/`*_next` 脚手架
-- [ ] 3.3 重写本地 seed 与匿名测试数据；空库一次初始化成功测试
-- [ ] 3.4 重建 verify-migrations / verify-migration-version-guards（fresh/sequential/wrong-order/repeat/dirty-stock 回滚 + FK/integrity）
-- [ ] 3.5 schema 形状承载 20,000 历史订单导入的字段覆盖清单
+- [x] 3.1 新建 `0001`–`0019` baseline（19 个按域顺序文件），包含全部保留能力表、整数金额/汇率、source guard、审计/幂等/版本约束（对象级零差异验证：824 保留对象与旧链最终态一致；platform_* 六表按统一模型改造移除）
+- [x] 3.2 删除旧迁移链 0001–0075 与历史不可变哈希（`phase3*_backup_*`/`*_next` 脚手架在旧链后续迁移中本已清理，最终态无残留）
+- [x] 3.3 重写本地 seed 与匿名测试数据；空库一次初始化成功测试（迁移内种子随 baseline 重建并剪枝 RAKUTEN/TIKTOK 行；testkit 匿名夹具兼容；本地 wrangler D1 重放 19/19）
+- [x] 3.4 重建 verify-migrations / verify-migration-version-guards（fresh/sequential/wrong-order 18 拒绝/repeat 19 拒绝/失败快照不变 + FK/integrity；TARGET_SCHEMA 三常量对齐 19）
+- [x] 3.5 schema 形状承载 20,000 历史订单导入的字段覆盖清单（docs/migration/V2_BASELINE_HISTORICAL_ORDER_FIELD_MAPPING.md，30/30 列有归宿）
 
 ## Stage 4 — Contracts 与 API
 

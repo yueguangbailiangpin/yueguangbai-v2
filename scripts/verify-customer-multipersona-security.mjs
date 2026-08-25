@@ -4,13 +4,18 @@ import { resolveChangeRoot } from './verifier-utils.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const changeName = 'customer-multipersona-invitation-recovery';
+// Schema assertions originally anchored on 0030 are re-anchored on the stage 3
+// clean baseline's applied schema; the per-number migration test retired with
+// the legacy chain and its assertions live in
+// apps/api/src/architecture-guards/baseline-schema.test.ts.
+import { applyBaseline, baselineSchemaText } from './baseline-schema-helper.mjs';
+const baselineSchema = baselineSchemaText(applyBaseline());
 const required = [
-  'migrations/0030_customer_multipersona_invitation_recovery.sql',
   'apps/api/src/customer-security/service.ts',
   'apps/api/src/customer-security/invited-registration.ts',
   'apps/api/src/customer-security/rate-limit.ts',
   'apps/api/src/customer-security/customer-security.test.ts',
-  'apps/api/src/customer-security/migration-0030.test.ts',
+  'apps/api/src/architecture-guards/baseline-schema.test.ts',
   'apps/web/src/auth/customer/CustomerPasswordResetPage.tsx',
   'apps/web/src/auth/staff/StaffCustomerSecurityPanel.tsx',
   'apps/web/e2e/customer-security.spec.ts',
@@ -30,22 +35,24 @@ const requireTokens = (file, tokens) => {
   return source;
 };
 
-const migration = requireTokens(required[0], [
-  'WHERE singleton_id=1 AND schema_version=29',
-  'SET schema_version=30',
-  'customer_account_personas',
-  'customer_buyer_invitations',
-  'customer_password_reset_tokens',
-  'customer_security_rate_limits',
+for (const token of [
+  'CREATE TABLE customer_account_personas',
+  'CREATE TABLE customer_buyer_invitations',
+  'CREATE TABLE customer_password_reset_tokens',
+  'CREATE TABLE "customer_security_rate_limits"',
   'customer_buyer_invitation_events_are_immutable',
   'customer_password_reset_events_are_immutable',
-]);
-for (const forbidden of [
-  /customer_buyer_invitations[\s\S]{0,1200}\btoken\s+TEXT/iu,
-  /customer_password_reset_tokens[\s\S]{0,1200}\btoken\s+TEXT/iu,
-  /customer_password_credentials[\s\S]{0,500}\bpassword\s+TEXT/iu,
 ]) {
-  if (forbidden.test(migration)) throw new Error('plaintext security material column found');
+  if (!baselineSchema.includes(token)) {
+    throw new Error(`baseline schema missing ${token}`);
+  }
+}
+for (const forbidden of [
+  /CREATE TABLE "?customer_buyer_invitations"?[\s\S]{0,1200}\btoken\s+TEXT/iu,
+  /CREATE TABLE "?customer_password_reset_tokens"?[\s\S]{0,1200}\btoken\s+TEXT/iu,
+  /CREATE TABLE "?customer_password_credentials"?[\s\S]{0,500}\bpassword\s+TEXT/iu,
+]) {
+  if (forbidden.test(baselineSchema)) throw new Error('plaintext security material column found');
 }
 
 requireTokens('apps/api/src/customer-security/invited-registration.ts', [
@@ -105,7 +112,7 @@ console.log(JSON.stringify({
   PARTIAL: 0,
   NOT_VERIFIED: 0,
   Scenarios: `${scenarios}/${scenarios}`,
-  schema_version: 30,
+  schema_version: 19,
   token_storage: 'HASH_ONLY',
   persona_authority: 'RELATION',
   session_revocation: 'VERSIONED',

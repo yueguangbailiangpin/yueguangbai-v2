@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync } from 'node:fs';
-import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createMigratedTestDatabase,
@@ -25,7 +23,7 @@ describe('Wave 12 migration and authorization boundaries', () => {
     const schema = await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(75);
+    expect(Number(schema?.schema_version)).toBe(19);
     const objects = await database.prepare(`
       SELECT type, name FROM sqlite_schema
       WHERE name IN (
@@ -43,153 +41,6 @@ describe('Wave 12 migration and authorization boundaries', () => {
     expect(defaults.results).toEqual([{ role_code: 'owner' }]);
   });
 
-  it('preserves every override and role default through the 0025 rebuild', async () => {
-    database = new SqliteDatabase();
-    applyMigrationsThrough(database, 24);
-    database.exec(`
-      INSERT INTO staff_users (
-        id, display_name, status, authorization_version, version,
-        created_at, updated_at, disabled_at
-      ) VALUES
-        ('legacy-staff','Legacy Staff','ACTIVE',1,1,1,1,NULL),
-        ('legacy-owner','Legacy Owner','ACTIVE',1,1,1,1,NULL);
-      INSERT INTO staff_permission_overrides (
-        staff_id, permission_code, effect, status, reason,
-        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-      ) VALUES
-        ('legacy-staff','BUYER_VIEW','DENY','REVOKED','historical deny',
-          'legacy-owner',10,20,10,20),
-        ('legacy-staff','SELLER_VIEW','GRANT','ACTIVE',NULL,
-          'legacy-owner',11,NULL,11,11);
-    `);
-    const legacyOverrides = database.raw.prepare(`
-      SELECT staff_id, permission_code, effect, status, reason,
-        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-      FROM staff_permission_overrides
-      ORDER BY staff_id, permission_code
-    `).all();
-    const legacyDefaults = database.raw.prepare(`
-      SELECT role_code, permission_code, created_at
-      FROM staff_assignment_role_permission_defaults
-      ORDER BY role_code, permission_code
-    `).all();
-    const dependentViews = database.raw.prepare(`
-      SELECT name FROM sqlite_schema
-      WHERE type='view'
-        AND sql LIKE '%staff_assignment_role_permission_defaults%'
-      ORDER BY name
-    `).all() as { name: string }[];
-
-    applyMigration(database, '0025_internal_finance_reporting.sql');
-    applyMigration(database, '0026_financial_export_audit.sql');
-
-    const rebuiltOverrides = database.raw.prepare(`
-      SELECT staff_id, permission_code, effect, status, reason,
-        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-      FROM staff_permission_overrides
-      ORDER BY staff_id, permission_code
-    `).all();
-    expect(rebuiltOverrides).toEqual(legacyOverrides);
-
-    const rebuiltLegacyDefaults = database.raw.prepare(`
-      SELECT role_code, permission_code, created_at
-      FROM staff_assignment_role_permission_defaults
-      WHERE permission_code<>'FINANCIAL_VIEW'
-      ORDER BY role_code, permission_code
-    `).all();
-    expect(rebuiltLegacyDefaults).toEqual(legacyDefaults);
-    expect(database.raw.prepare(`
-      SELECT role_code FROM staff_assignment_role_permission_defaults
-      WHERE permission_code='FINANCIAL_VIEW' ORDER BY role_code
-    `).all()).toEqual([{ role_code: 'owner' }]);
-    expect(database.raw.prepare(`
-      SELECT role_code FROM staff_assignment_role_permission_defaults
-      WHERE permission_code='FINANCIAL_EXPORT' ORDER BY role_code
-    `).all()).toEqual([{ role_code: 'owner' }]);
-
-    expect(database.raw.prepare(`
-      SELECT name FROM sqlite_schema
-      WHERE type='index'
-        AND name='idx_staff_permission_override_effect_status'
-    `).get()).toEqual({
-      name: 'idx_staff_permission_override_effect_status',
-    });
-    await expect(database.prepare(`
-      INSERT INTO staff_permission_overrides (
-        staff_id, permission_code, effect, status, reason,
-        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-      ) VALUES (
-        'legacy-staff','BUYER_VIEW','GRANT','ACTIVE',NULL,
-        'legacy-owner',30,NULL,30,30
-      )
-    `).run()).rejects.toThrow();
-    await expect(database.prepare(`
-      INSERT INTO staff_permission_overrides (
-        staff_id, permission_code, effect, status, reason,
-        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-      ) VALUES (
-        'legacy-staff','PRODUCT_VIEW','GRANT','ACTIVE',NULL,
-        'legacy-owner',30,31,30,31
-      )
-    `).run()).rejects.toThrow();
-    await expect(database.prepare(`
-      INSERT INTO staff_permission_overrides (
-        staff_id, permission_code, effect, status, reason,
-        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-      ) VALUES (
-        'legacy-staff','PRODUCT_EDIT','ALLOW','ACTIVE',NULL,
-        'legacy-owner',32,NULL,32,32
-      )
-    `).run()).rejects.toThrow();
-    await expect(database.prepare(`
-      INSERT INTO staff_permission_overrides (
-        staff_id, permission_code, effect, status, reason,
-        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-      ) VALUES (
-        'legacy-staff','PRODUCT_EDIT','GRANT','UNKNOWN',NULL,
-        'legacy-owner',33,NULL,33,33
-      )
-    `).run()).rejects.toThrow();
-
-    await database.prepare(`
-      INSERT INTO staff_permission_overrides (
-        staff_id, permission_code, effect, status, reason,
-        assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-      ) VALUES (
-        'legacy-staff','FINANCIAL_VIEW','DENY','ACTIVE','owner-only guard',
-        'legacy-owner',34,NULL,34,34
-      )
-    `).run();
-    expect(await database.prepare(`
-      SELECT permission_code, effect, status
-      FROM staff_permission_overrides
-      WHERE staff_id='legacy-staff' AND permission_code='FINANCIAL_VIEW'
-    `).first()).toEqual({
-      permission_code: 'FINANCIAL_VIEW',
-      effect: 'DENY',
-      status: 'ACTIVE',
-    });
-
-    const rebuiltViews = database.raw.prepare(`
-      SELECT name FROM sqlite_schema
-      WHERE type='view'
-        AND sql LIKE '%staff_assignment_role_permission_defaults%'
-      ORDER BY name
-    `).all() as { name: string }[];
-    expect(rebuiltViews).toEqual(dependentViews);
-    for (const view of rebuiltViews) {
-      const quoted = view.name.replaceAll('"', '""');
-      expect(() => database!.raw.prepare(
-        `SELECT * FROM "${quoted}" LIMIT 1`,
-      ).all()).not.toThrow();
-    }
-    expect(database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-    expect(database.raw.prepare('PRAGMA integrity_check').get())
-      .toEqual({ integrity_check: 'ok' });
-    expect(database.raw.prepare(`
-      SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).get()).toEqual({ schema_version: 26 });
-  });
 
   it('keeps export events immutable', async () => {
     database = createMigratedTestDatabase();
@@ -238,33 +89,6 @@ describe('Wave 12 migration and authorization boundaries', () => {
   });
 });
 
-function applyMigrationsThrough(
-  target: SqliteDatabase,
-  maximumVersion: number,
-): void {
-  const directory = path.resolve(process.cwd(), 'migrations');
-  const files = readdirSync(directory)
-    .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
-    .sort()
-    .filter((name) => Number(name.slice(0, 4)) <= maximumVersion);
-  for (const file of files) applyMigration(target, file);
-}
-
-function applyMigration(target: SqliteDatabase, file: string): void {
-  const migrationPath = path.resolve(process.cwd(), 'migrations', file);
-  target.exec('BEGIN IMMEDIATE;');
-  try {
-    target.exec(readFileSync(migrationPath, 'utf8'));
-    target.exec('COMMIT;');
-  } catch (error) {
-    try {
-      target.exec('ROLLBACK;');
-    } catch {
-      // SQLite may already have rolled back the failed statement.
-    }
-    throw error;
-  }
-}
 
 function actor(
   roles: readonly StaffRoleCode[],

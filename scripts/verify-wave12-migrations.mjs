@@ -1,3 +1,9 @@
+// Original verify-wave12-migrations asserted the mid-chain Wave 12 schema state
+// at migration 0026. The chain-position assertions retired with the legacy
+// chain (D-054); the protected Wave 12 business assertions — internal finance
+// read model objects, export event immutability, and the owner-only
+// FINANCIAL_VIEW persisted catalog — are re-anchored on the stage 3 clean
+// baseline's applied final schema.
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -7,19 +13,14 @@ const directory = path.join(root, 'migrations');
 const files = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (files.length < 28
-  || files[24] !== '0025_internal_finance_reporting.sql'
-  || files[25] !== '0026_financial_export_audit.sql'
-  || files[26] !== '0027_staff_auth_sessions.sql'
-  || files[27] !== '0028_buyer_amazon_order_date.sql') {
-  throw new Error('Expected preserved Wave 12 history through migration 0028');
+if (files.length !== 19) {
+  throw new Error('Expected the stage 3 clean baseline 0001-0019');
 }
-const wave12Files = files.slice(0, 26);
 
 const database = new DatabaseSync(':memory:');
 try {
   database.exec('PRAGMA foreign_keys=ON;');
-  for (const file of wave12Files) {
+  for (const file of files) {
     database.exec('BEGIN IMMEDIATE;');
     try {
       database.exec(readFileSync(path.join(directory, file), 'utf8'));
@@ -32,7 +33,7 @@ try {
   const version = Number(database.prepare(`
     SELECT schema_version FROM app_schema_state WHERE singleton_id=1
   `).get()?.schema_version);
-  if (version !== 26) throw new Error(`expected schema 26, got ${version}`);
+  if (version !== 19) throw new Error(`expected schema 19, got ${version}`);
 
   const required = new Map([
     ['internal_order_finance_positions', 'view'],
@@ -65,8 +66,8 @@ try {
   }
   console.log(JSON.stringify({
     status: 'PASS',
-    schema_version: 26,
-    migrations: wave12Files.length,
+    baseline: 'stage3-clean-baseline-0001-0019',
+    schema_version: 19,
   }, null, 2));
 } finally {
   database.close();

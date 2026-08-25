@@ -8,8 +8,9 @@
 - 历史产品冻结点：`feature/frozen-portals-staff-acquisition-core@8cb39ed870df1fc5c6874dd4e5b86e12e22c39d2`
 - 历史最终稳定化点：`chore/final-stabilization-cleanup@4106bc0668eaacf5bff34cb8e5ad174dcc356d77`
 - 2026-08-12：上述稳定化历史通过 PR #46 正常合入 `main`，未改写 388 个提交的历史
-- 当前目标 Schema：75（2026-08-25 修订：0073 基础汇率回退快照、0074 规模索引包、0075 返款/结算账户字段已入链，此前本行停留在 72 属文档漂移，final-go verifier 与四份生产文档同日对齐）；0001–0072 保持既有历史（0065 前向删除未使用的飞书 Schema / 旧清理任务，0066 advance-cash 完整性、0067 advance V1 全款、0068 客户安全 DENY + 密码限流、0069 卖家协议费率运行时退役、0070 买家发起的返款提醒（T7）、0071 产品申请参考金额、0072 统一订单日基础汇率中心），0073–0075 由 P7a/P16 收尾引入
-- 后端干净基线重建进行中（D-054/D-055，2026-08-25）：阶段 2 已删除自动获客机器、Staff MCP、关键词图片生成与 Rakuten/TikTok adapter 预备层；旧迁移链将在阶段 3 被单一干净 baseline 取代，本行 schema 叙述届时重写
+- 当前目标 Schema：19（2026-08-25 阶段 3 起：旧 0001–0075 迁移链已按 D-054 删除，Git 历史可追溯；新 baseline 为按域拆分的 19 个顺序文件 `0001_foundation` → `0019_read_model_views`，`app_schema_state.schema_version=19`。链内容 = 旧链最终态减去已删能力对象：20 张表不进入 baseline——自动获客机器四表、prospect_signals、Staff MCP 五表、关键词图片三表、platform_* 六表（三张死身份表按业务所有者决定删除，三张活表随阶段 3 统一 formal_orders 模型改造并入）、0029 墓碑表；RAKUTEN_JP/TIKTOK_JP 种子行随 registry 收敛为 AMAZON_JP/AMAZON_US/COUPANG_KR 三行。保留约束零削弱：整数金额/汇率、source guard、财务 append-only、幂等、审计、Outbox、版本列、文件授权、催办（0070 语义）、Advance V1 全额（0066/0067 语义）、汇率中心（0072 语义）、排期版本（0037 语义）、客户安全限流（0068 语义）、maintenance 表全部在链。新旧等价以对象级零差异验证：824 个保留 schema 对象（192 表/555 索引/367 触发器/12 视图）与旧链最终态逐一相同，种子行除有意剪枝外零差异）
+- 验证边界：`db:verify`（fresh/sequential/两库 inventory SHA-256 一致 + 负向 DML）与 `verify:migration-guards`（fresh/sequential/wrong-order 18 拒绝/repeat 19 拒绝/失败快照不变）对新链重建并通过；旧 verifier 已按 §7 映射原位改写锚定新 baseline（序号断言随旧链废弃）。`marketplace_legacy_aliases` 与 legacy 'JP' 存储列按业务所有者决定以最小形态保留在 baseline 中，阶段 4 与买家 DTO 变更原子移除
+- 后端干净基线重建进行中（D-054/D-055，2026-08-25）：阶段 2 删除自动获客机器、Staff MCP、关键词图片生成与 Rakuten/TikTok adapter 预备层；阶段 3 完成数据库 baseline 重建与 platform_* 统一模型改造（卖家聊天截图现行路径为 formal_orders + order_evidence_internal_files 单路径）；后续阶段 4 contracts/API → 5 归档/Queue → 6 历史导入 → 7 安全测试 → 8 全量验证。历史订单字段级映射覆盖清单见 `docs/migration/V2_BASELINE_HISTORICAL_ORDER_FIELD_MAPPING.md`
 - 发布状态：`LOCAL_RELEASE_CANDIDATE / PRODUCTION_REQUIRES_SEPARATE_APPROVAL`
 - 本地证明不能替代真实 Cloudflare Access、生产 D1/R2、恢复演练或员工试用结果
 
@@ -46,12 +47,12 @@
 - 本地 PASS ≠ Remote CI PASS 的原则继续有效；billing 阻断期（2026-08-16 13:42 – 2026-08-21）合入的提交没有对应时点的远端 CI 证据，追溯依据是上述本地验证树
 - billing 恢复前最后一次远端全绿 CI：2026-08-16 09:51 UTC（run 31940127005，main `e02682f`）
 
-## 当前 Marketplace / Amazon US 状态（2026-08-17）
+## 当前 Marketplace / Amazon US 状态（2026-08-25 阶段 3 修订）
 
-- canonical marketplace code（foundation / 注册表层）包含 `AMAZON_JP`、`AMAZON_US`、`COUPANG_KR`、`RAKUTEN_JP`、`TIKTOK_JP`；foundation / canonical code preparation 可以存在
+- canonical marketplace registry（baseline 种子）收敛为三行：`AMAZON_JP`（ACTIVE/AVAILABLE，唯一写路径）、`AMAZON_US`（ACTIVE/AVAILABLE）、`COUPANG_KR`（DISABLED/UNAVAILABLE，fail-closed 预留）；`RAKUTEN_JP`/`TIKTOK_JP` 种子行随阶段 2e/3 平台模型退役一并移出 baseline，未来需要时按新 OpenSpec Change 重新引入
 - 业务写路径当前 **JP-only**；`AMAZON_US` 当前 **NOT ENABLED**（未开店、未发布产品）
-- 非 JP 的 store / product 写请求失败关闭（409 `MARKETPLACE_NOT_SUPPORTED`，PR #99 修复后在 staging 验证，2026-08-17）；`MARKETPLACE_NOT_SUPPORTED` 守卫必须保留
-- Provider Adapter（Rakuten/TikTok 等）的本地准备与 preflight 不代表 Provider 已可用
+- 非 JP 的 store / product 写请求失败关闭（409 `MARKETPLACE_NOT_SUPPORTED`）；`MARKETPLACE_NOT_SUPPORTED` 守卫必须保留
+- Rakuten/TikTok platform_* 平行订单模型（六张表与运行时分支）已按业务所有者确认删除；卖家聊天截图现行唯一路径为 formal_orders + order_evidence_internal_files（LEGACY 承载），历史 PLATFORM 承载不再存在
 
 ## 当前身份与权限
 
@@ -64,9 +65,9 @@
 以下描述的是仓库内 release template，不是已核验的生产事实：
 
 - 核心 Worker：Hono API、D1、R2 文件链、Staff / Buyer / Seller 门户 API、内部 Scheduler / Acquisition Maintenance
-- Staff MCP：不属于核心发布模板或 Worker bundle；源码与独立测试保留，重新启用必须走新的代码和配置评审
-- Google Drive 冷归档：模板写侧关闭，但文件读取、恢复和调度共享核心路径，因此保留在核心 bundle；不改变已冻结的归档产品规则
-- Rakuten / TikTok Provider Adapter：未接入核心 Worker 运行入口；不得把本地 Adapter / preflight 当成 Provider 已可用
+- Staff MCP：源码、传输与五张表已随阶段 2 删除；发布侧防复活墓碑（禁 `STAFF_MCP_*` 绑定/变量）保留并仍在 preflight 覆盖
+- Google Drive 冷归档：模板写侧关闭，但文件读取、恢复和调度共享核心路径，因此保留在核心 bundle；不改变已冻结的归档产品规则（D-055 ZIP Bundle + Queues 模型在阶段 5 重建）
+- Rakuten / TikTok Provider Adapter 与平台平行订单模型：已删除（阶段 2e/3）；不得把历史 Adapter / preflight 记录当成 Provider 已可用
 - `/review`：仅 Demo 数据，真实 API 必须由 `REVIEW_MODE_REAL_API_BLOCKED` 失败关闭
 
 ## 当前开发流程

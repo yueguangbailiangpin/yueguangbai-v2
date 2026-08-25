@@ -7,10 +7,12 @@ import { resolveChangeFile } from './verifier-utils.mjs';
 const root = process.cwd();
 const migrations = readdirSync('migrations').filter((name) => /^\d{4}_.+\.sql$/u.test(name)).sort();
 assertContiguousMigrations(migrations);
-if (migrations.length < 37
-  || migrations[35] !== '0036_staff_acquisition_funnel_workbench.sql'
-  || migrations[36] !== '0037_product_reservation_order_scheduling.sql') {
-  throw new Error('current governed migration chain is missing M14 acquisition or M16 scheduling ownership');
+// M14/M16 chain-ownership positions retired with the legacy chain (D-054);
+// their domains live in the stage 3 baseline acquisition/scheduling files.
+if (migrations.length !== 19
+  || !migrations.includes('0017_acquisition_manual_funnel.sql')
+  || !migrations.includes('0006_demand_reservations_scheduling.sql')) {
+  throw new Error('stage 3 baseline is missing the acquisition or scheduling domain');
 }
 const dashboardProposal = readFileSync(
   resolveChangeFile('admin-business-dashboard', 'proposal.md', root), 'utf8',
@@ -18,7 +20,7 @@ const dashboardProposal = readFileSync(
 const schedulingProposal = readFileSync(
   resolveChangeFile('staff-product-reservation-order-scheduling', 'proposal.md', root), 'utf8',
 );
-const schedulingMigration = readFileSync('migrations/0037_product_reservation_order_scheduling.sql', 'utf8');
+const schedulingMigration = readFileSync('migrations/0006_demand_reservations_scheduling.sql', 'utf8');
 if (!dashboardProposal.includes('预计不需要 Migration')
   || !schedulingProposal.includes('需要 Migration')
   || !schedulingMigration.includes('demand_order_schedule_versions')) {

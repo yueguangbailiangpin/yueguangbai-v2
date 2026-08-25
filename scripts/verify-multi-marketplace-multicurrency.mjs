@@ -1,58 +1,129 @@
-import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+// Original verify-multi-marketplace-multicurrency asserted the legacy 0028→0029
+// upgrade path. That mid-chain semantics retired with the old chain (D-054);
+// this verifier now anchors the same protected business assertions on the
+// stage 3 clean baseline: the merged three-marketplace registry (§3.3), the
+// integer rate/fee models, the legacy 'JP' alias minimal form (removed
+// atomically in stage 4), and the no-floating-point rule across schema and
+// runtime.
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { backup, DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from 'node:sqlite';
 
 const root = path.resolve(import.meta.dirname, '..');
 const migrationDirectory = path.join(root, 'migrations');
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-const marketplaceMigration = '0029_multi_marketplace_multicurrency_foundation.sql';
-const marketplaceMigrationIndex = migrations.indexOf(marketplaceMigration);
-if (marketplaceMigrationIndex !== 28) {
-  throw new Error('0029 must remain the 29th consecutive migration');
+if (migrations.length !== 19 || migrations.at(-1) !== '0019_read_model_views.sql') {
+  throw new Error('expected the stage 3 clean baseline 0001-0019');
+}
+for (const file of migrations) {
+  const source = readFileSync(path.join(migrationDirectory, file), 'utf8');
+  if (/\b(?:REAL|FLOAT)\b/iu.test(source)) {
+    throw new Error(`${file}: floating SQL type`);
+  }
 }
 
-const work = mkdtempSync(path.join(tmpdir(), 'ygb-v2-marketplace-money-'));
+const database = new DatabaseSync(':memory:');
 try {
-  const database = open();
-  apply(database, migrations.slice(0, marketplaceMigrationIndex));
-  seedJpUpgradeFixture(database);
-  const before = manifest(database);
-  const beforeHash = hash(before);
-  const preWriteBackup = path.join(work, 'pre-write.sqlite');
-  await backup(database, preWriteBackup);
+  database.exec('PRAGMA foreign_keys=ON;');
+  for (const file of migrations) {
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      database.exec(readFileSync(path.join(migrationDirectory, file), 'utf8'));
+      database.exec('COMMIT;');
+    } catch (error) {
+      try { database.exec('ROLLBACK;'); } catch { /* no open transaction */ }
+      throw error;
+    }
+  }
 
-  runMigration(database, marketplaceMigration);
   assert(database.prepare(`
     SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-  `).get().schema_version === 29, 'schema version');
+  `).get().schema_version === 19, 'schema version');
+
+  const registry = database.prepare(`
+    SELECT code, status || ':' || adapter_status AS state
+    FROM marketplace_registry ORDER BY code
+  `).all();
+  assert(JSON.stringify(registry) === JSON.stringify([
+    { code: 'AMAZON_JP', state: 'ACTIVE:AVAILABLE' },
+    { code: 'AMAZON_US', state: 'ACTIVE:AVAILABLE' },
+    { code: 'COUPANG_KR', state: 'DISABLED:UNAVAILABLE' },
+  ]), 'clean three-marketplace registry with COUPANG_KR fail-closed');
   assert(database.prepare('SELECT COUNT(*) AS count FROM marketplace_registry')
     .get().count === 3, 'marketplace seed count');
   assert(database.prepare('SELECT COUNT(*) AS count FROM currencies')
     .get().count === 4, 'currency seed count');
-  assert(database.prepare(`
-    SELECT status || ':' || adapter_status AS state
-    FROM marketplace_registry WHERE code='COUPANG_KR'
-  `).get().state === 'DISABLED:UNAVAILABLE', 'Korea fail-closed state');
-  assert(database.prepare(`
-    SELECT rate_value || ':' || rate_scale AS value
-    FROM buyer_daily_currency_rate_versions WHERE legacy_rate_id='buyer-rate-jp'
-  `).get().value === '4800000:100000000', 'buyer rate exact backfill');
-  assert(database.prepare(`
-    SELECT rate_value || ':' || rate_scale AS value
-    FROM seller_agreement_currency_rate_versions
-    WHERE legacy_rate_id='seller-rate-jp'
-  `).get().value === '4700000:100000000', 'seller rate exact backfill');
-  assert(database.prepare(`
-    SELECT fee_amount_minor || ':' || fee_currency_code AS value
-    FROM seller_service_fee_rule_versions WHERE legacy_fee_id='fee-jp'
-  `).get().value === '1234:CNY', 'fee exact backfill');
-  integrity(database, 'upgraded');
+
+  const alias = database.prepare(`
+    SELECT legacy_code, marketplace_code FROM marketplace_legacy_aliases
+  `).all();
+  assert(JSON.stringify(alias) === JSON.stringify(
+    [{ legacy_code: 'JP', marketplace_code: 'AMAZON_JP' }],
+  ), 'legacy JP alias minimal form');
+
+  const runtimeConfig = database.prepare(`
+    SELECT marketplace_code, legacy_order_code, business_timezone,
+      reporting_timezone, currency_code, currency_exponent,
+      seller_portal_status, buyer_portal_status
+    FROM marketplace_runtime_config ORDER BY marketplace_code
+  `).all();
+  assert(JSON.stringify(runtimeConfig) === JSON.stringify([
+    { marketplace_code: 'AMAZON_JP', legacy_order_code: 'JP',
+      business_timezone: 'Asia/Tokyo', reporting_timezone: 'Asia/Shanghai',
+      currency_code: 'JPY', currency_exponent: 0,
+      seller_portal_status: 'ACTIVE', buyer_portal_status: 'ACTIVE' },
+    { marketplace_code: 'AMAZON_US', legacy_order_code: 'US',
+      business_timezone: 'America/Los_Angeles', reporting_timezone: 'Asia/Shanghai',
+      currency_code: 'USD', currency_exponent: 2,
+      seller_portal_status: 'PREPARED', buyer_portal_status: 'ACTIVE' },
+    { marketplace_code: 'COUPANG_KR', legacy_order_code: 'KR',
+      business_timezone: 'Asia/Seoul', reporting_timezone: 'Asia/Shanghai',
+      currency_code: 'KRW', currency_exponent: 0,
+      seller_portal_status: 'PREPARED', buyer_portal_status: 'PREPARED' },
+  ]), 'runtime config minimal set');
+
+  for (const table of [
+    'buyer_daily_currency_rate_versions',
+    'seller_service_fee_rule_versions',
+    'order_evidence_marketplace_money',
+    'formal_order_marketplace_money_snapshots',
+    'buyer_marketplace_assignments',
+    'seller_store_marketplaces',
+  ]) {
+    assert(database.prepare(
+      `SELECT COUNT(*) AS count FROM sqlite_schema WHERE name='${table}'`,
+    ).get().count === 1, `table ${table}`);
+  }
+  for (const trigger of [
+    'trg_buyer_daily_currency_rate_legacy_insert',
+    'trg_buyer_daily_currency_rate_legacy_update',
+    'trg_seller_service_fee_rule_legacy_insert',
+    'trg_seller_service_fee_rule_legacy_update',
+    'trg_buyer_customer_marketplace_default',
+    'trg_seller_store_marketplace_default',
+  ]) {
+    assert(database.prepare(
+      `SELECT COUNT(*) AS count FROM sqlite_schema WHERE name='${trigger}'`,
+    ).get().count === 1, `trigger ${trigger}`);
+  }
+  for (const [table, column] of [
+    ['buyer_daily_currency_rate_versions', 'rate_value'],
+    ['buyer_daily_currency_rate_versions', 'rate_scale'],
+    ['formal_order_marketplace_money_snapshots', 'payment_amount_minor'],
+  ]) {
+    const definition = database.prepare(`PRAGMA table_info(${table})`)
+      .all().find((value) => value.name === column);
+    assert(definition && String(definition.type).toUpperCase() === 'INTEGER',
+      `${table}.${column} must be INTEGER`);
+  }
 
   database.exec(`
+    INSERT INTO staff_users (
+      id, display_name, status, authorization_version,
+      version, created_at, updated_at, disabled_at
+    ) VALUES ('staff-owner','管理员','ACTIVE',1,1,1,1,NULL);
     INSERT INTO buyer_daily_currency_rate_versions (
       id, legacy_rate_id, business_date, source_currency_code,
       quote_currency_code, version_no, status, rate_value, rate_scale,
@@ -65,32 +136,12 @@ try {
       NULL,NULL,NULL,NULL,NULL
     );
   `);
-  const forwardBackup = path.join(work, 'forward-recovery.sqlite');
-  await backup(database, forwardBackup);
-  integrity(database, 'post-new-currency');
-  database.close();
-
-  const restoredPreWrite = new DatabaseSync(preWriteBackup, { readOnly: true });
-  assert(hash(manifest(restoredPreWrite)) === beforeHash,
-    'pre-write restore manifest mismatch');
-  assert(restoredPreWrite.prepare(`
-    SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-  `).get().schema_version === 28, 'pre-write restore schema');
-  integrity(restoredPreWrite, 'pre-write-restore');
-  restoredPreWrite.close();
-
-  const restoredForward = new DatabaseSync(forwardBackup, { readOnly: true });
-  assert(restoredForward.prepare(`
+  assert(database.prepare(`
     SELECT COUNT(*) AS count FROM buyer_daily_currency_rate_versions
     WHERE source_currency_code='USD'
-  `).get().count === 1, 'forward recovery lost USD fact');
-  integrity(restoredForward, 'forward-restore');
-  restoredForward.close();
+  `).get().count === 1, 'forward USD rate fact');
+  integrity(database, 'baseline');
 
-  const source = readFileSync(
-    path.join(migrationDirectory, marketplaceMigration), 'utf8',
-  );
-  assert(!/\b(?:REAL|FLOAT)\b/iu.test(source), 'floating SQL type');
   for (const file of [
     'packages/domain/src/money/currency.ts',
     'packages/contracts/src/marketplace-money.ts',
@@ -104,134 +155,27 @@ try {
 
   console.log(JSON.stringify({
     status: 'PASS',
-    migration: marketplaceMigration,
-    jp_manifest_sha256: beforeHash,
-    fresh_and_upgrade_integrity: 'ok',
-    pre_write_restore: 'verified',
-    post_new_currency_recovery: 'forward-only backup verified',
+    baseline: 'stage3-clean-baseline-0001-0019',
+    registry: ['AMAZON_JP', 'AMAZON_US', 'COUPANG_KR'],
     korea: 'DISABLED/UNAVAILABLE',
+    legacy_jp_alias: 'MINIMAL_FORM_UNTIL_STAGE_4',
+    forward_usd_rate: 'verified',
     floating_finance: false,
   }, null, 2));
 } finally {
-  rmSync(work, { recursive: true, force: true });
-}
-
-function open() {
-  const database = new DatabaseSync(':memory:');
-  database.exec('PRAGMA foreign_keys=ON;');
-  return database;
-}
-
-function apply(database, files) {
-  for (const file of files) runMigration(database, file);
-}
-
-function runMigration(database, file) {
-  database.exec('BEGIN IMMEDIATE;');
-  try {
-    database.exec(readFileSync(path.join(migrationDirectory, file), 'utf8'));
-    database.exec('COMMIT;');
-  } catch (error) {
-    try { database.exec('ROLLBACK;'); } catch { /* no open transaction */ }
-    throw error;
-  }
-}
-
-function seedJpUpgradeFixture(database) {
-  database.exec(`
-    INSERT INTO staff_users (
-      id, display_name, status, authorization_version,
-      version, created_at, updated_at, disabled_at
-    ) VALUES ('staff-owner','管理员','ACTIVE',1,1,1,1,NULL);
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('buyer-channel','B','买家渠道','ACTIVE',1,1,1,1,NULL);
-    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
-    VALUES ('buyer-subject','BUYER_CUSTOMER',1);
-    INSERT INTO buyer_customers (
-      id, identity_subject_id, marketplace_code, buyer_channel_id,
-      buyer_customer_no, buyer_sequence, first_valid_order_business_date,
-      display_name, access_status, identity_review_status, version,
-      created_at, updated_at, activated_at, disabled_at
-    ) VALUES (
-      'buyer-jp','buyer-subject','JP','buyer-channel',NULL,NULL,NULL,
-      '日本站买家','ACTIVE','CLEAR',1,1,1,1,NULL
-    );
-    INSERT INTO seller_organizations (
-      id, marketplace_code, seller_code, origin_channel_id,
-      current_channel_id, seller_sequence, organization_name, status,
-      version, created_at, updated_at, activated_at, disabled_at,
-      next_member_number
-    ) VALUES (
-      'seller-org','JP','ido-mango-990001','seller-channel-ido-mango',
-      'seller-channel-ido-mango',990001,'日本站卖家','ACTIVE',1,1,1,1,NULL,2
-    );
-    INSERT INTO seller_stores (
-      id, organization_id, marketplace_code, display_name,
-      normalized_name, status, version, created_at, updated_at, disabled_at
-    ) VALUES (
-      'store-jp','seller-org','JP','日本店','日本店','ACTIVE',1,1,1,NULL
-    );
-    INSERT INTO buyer_daily_exchange_rates (
-      id, business_date, version_no, status, cny_per_jpy_e8,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id,
-      rejected_at, rejection_reason
-    ) VALUES (
-      'buyer-rate-jp','2026-08-06',1,'SUBMITTED',4800000,
-      'staff-owner',1000,1,NULL,NULL,NULL,NULL,NULL
-    );
-    INSERT INTO seller_agreement_rate_versions (
-      id, organization_id, review_type, version_no, status, cny_per_jpy_e8,
-      effective_from, submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id,
-      rejected_at, rejection_reason
-    ) VALUES (
-      'seller-rate-jp','seller-org',NULL,1,'SUBMITTED',4700000,10000,
-      'staff-owner',1000,1,NULL,NULL,NULL,NULL,NULL
-    );
-    INSERT INTO seller_service_fee_versions (
-      id, organization_id, review_type, version_no, status, fee_cny_fen,
-      effective_from, submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id,
-      rejected_at, rejection_reason
-    ) VALUES (
-      'fee-jp','seller-org','TEXT',1,'SUBMITTED',1234,10000,
-      'staff-owner',1000,1,NULL,NULL,NULL,NULL,NULL
-    );
-  `);
-}
-
-function manifest(database) {
-  const tables = [
-    'buyer_customers', 'seller_stores', 'buyer_daily_exchange_rates',
-    'seller_agreement_rate_versions', 'seller_service_fee_versions',
-    'formal_orders', 'formal_order_financial_snapshots',
-  ];
-  return {
-    schema_version: database.prepare(`
-      SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).get().schema_version,
-    tables: Object.fromEntries(tables.map((table) => {
-      const rows = database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
-      return [table, { row_count: rows.length, sha256: hash(rows) }];
-    })),
-  };
-}
-
-function hash(value) {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  database.close();
 }
 
 function integrity(database, label) {
   const result = database.prepare('PRAGMA integrity_check').all();
-  assert(result.length === 1 && result[0].integrity_check === 'ok',
-    `${label}: integrity`);
-  assert(database.prepare('PRAGMA foreign_key_check').all().length === 0,
-    `${label}: foreign keys`);
+  if (result.length !== 1 || String(result[0].integrity_check) !== 'ok') {
+    throw new Error(`${label}: integrity failed`);
+  }
+  if (database.prepare('PRAGMA foreign_key_check').all().length > 0) {
+    throw new Error(`${label}: foreign key errors`);
+  }
 }
 
-function assert(condition, message) {
-  if (!condition) throw new Error(message);
+function assert(value, label) {
+  if (!value) throw new Error(`marketplace registry verification failed: ${label}`);
 }

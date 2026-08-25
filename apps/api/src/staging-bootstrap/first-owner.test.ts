@@ -149,9 +149,11 @@ describe('staging first owner bootstrap', () => {
       asin_normalized,status,current_version_no,version,created_at,updated_at
     ) VALUES('dirty-product','missing-seller','missing-store','JP','B000000001',
       'B000000001','ACTIVE',1,1,1,1)`],
-    ['Order',`INSERT INTO platform_order_identities(
-      id,marketplace_code,platform_order_identifier,status,created_at,updated_at
-    ) VALUES('dirty-order-identity','AMAZON_JP','dirty-order','ACTIVE',1,1)`],
+    ['Order',`INSERT INTO integration_outbox(
+      id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,
+      payload_hash,status,available_at,attempt_count,created_at,updated_at
+    ) VALUES('dirty-outbox','dirty-dedup-key-123456','ORDER_EVENT','ORDER','o','{}',
+      '${'a'.repeat(64)}','PENDING',1,0,1,1)`],
   ])('fails closed for pre-existing %s business stock',async(_label,insertSql)=>{
     database=migratedEmptyDatabase();database.raw.exec('PRAGMA foreign_keys=OFF');
     database.raw.exec(insertSql);database.raw.exec('PRAGMA foreign_keys=ON');

@@ -170,21 +170,7 @@ export async function listSellerFormalOrders(
     pagination.limit + 1,
   ).all<FormalOrderRow>();
 
-  const platform = await listPlatformFormalOrderRows(
-    database,
-    actor,
-    pagination.limit,
-    filters,
-    cursor,
-  );
-  const rows = [...legacyResult.results, ...platform].sort((left, right) => {
-    const byTime = Number(right.confirmed_at) - Number(left.confirmed_at);
-    return byTime !== 0
-      ? byTime
-      : left.formal_order_id === right.formal_order_id
-        ? 0
-        : left.formal_order_id < right.formal_order_id ? 1 : -1;
-  });
+  const rows = legacyResult.results;
   const visible = rows.slice(0, pagination.limit);
   const last = visible.at(-1);
   return Object.freeze({
@@ -218,24 +204,13 @@ export async function getSellerFormalOrder(
     ...scope.values,
   ).first<FormalOrderRow>();
 
-  const resolved = row ?? await database.prepare(`
-    ${selectPlatformFormalOrderProjection()}
-    WHERE formal_order.id=?
-      AND formal_order.seller_organization_id=?
-      ${storeScope(actor, 'formal_order.seller_store_id').sql}
-  `).bind(
-    formalOrderId,
-    actor.sellerOrganizationId,
-    ...storeScope(actor, 'formal_order.seller_store_id').values,
-  ).first<FormalOrderRow>();
-
-  if (!resolved) {
+  if (!row) {
     throw new SellerFormalOrderPortalError(
       'FORMAL_ORDER_NOT_FOUND',
       404,
     );
   }
-  return mapFormalOrder(resolved);
+  return mapFormalOrder(row);
 }
 
 function selectFormalOrderProjection(): string {
@@ -455,253 +430,6 @@ function selectFormalOrderProjection(): string {
   `;
 }
 
-async function listPlatformFormalOrderRows(
-  database: SqlDatabase,
-  actor: SellerPortalActor,
-  limit: number,
-  filters: SellerFormalOrderPortalFilters,
-  cursor: FormalOrderCursor | null,
-): Promise<FormalOrderRow[]> {
-  if (filters.marketplace_code === 'JP'
-    || filters.asin !== null
-    || filters.amazon_order_number !== null) {
-    return [];
-  }
-  const scope = storeScope(actor, 'formal_order.seller_store_id');
-  const conditions: string[] = [];
-  const values: unknown[] = [];
-  if (filters.store_id !== null) {
-    conditions.push('formal_order.seller_store_id=?');
-    values.push(filters.store_id);
-  }
-  if (filters.marketplace_code !== null) {
-    conditions.push('formal_order.marketplace_code=?');
-    values.push(filters.marketplace_code);
-  }
-  if (filters.product_name !== null) {
-    conditions.push(
-      `formal_order.product_name_snapshot LIKE ? ESCAPE '\\' COLLATE NOCASE`,
-    );
-    values.push(`%${escapeLike(filters.product_name)}%`);
-  }
-  if (filters.review_type !== null) {
-    conditions.push('formal_order.review_type=?');
-    values.push(filters.review_type);
-  }
-  if (filters.confirmed_business_date !== null) {
-    conditions.push('formal_order.confirmed_business_date=?');
-    values.push(filters.confirmed_business_date);
-  }
-  if (filters.formal_order_id !== null) {
-    conditions.push('formal_order.id=?');
-    values.push(filters.formal_order_id);
-  }
-  if (cursor !== null) {
-    conditions.push(`(
-      formal_order.confirmed_at < ?
-      OR (formal_order.confirmed_at=? AND formal_order.id < ?)
-    )`);
-    values.push(cursor.confirmed_at, cursor.confirmed_at, cursor.formal_order_id);
-  }
-  const extra = conditions.length > 0
-    ? `AND ${conditions.join(' AND ')}`
-    : '';
-  const result = await database.prepare(`
-    ${selectPlatformFormalOrderProjection()}
-    WHERE formal_order.seller_organization_id=?
-      ${scope.sql}
-      ${extra}
-    ORDER BY formal_order.confirmed_at DESC, formal_order.id DESC
-    LIMIT ?
-  `).bind(
-    actor.sellerOrganizationId,
-    ...scope.values,
-    ...values,
-    limit + 1,
-  ).all<FormalOrderRow>();
-  return result.results;
-}
-
-function selectPlatformFormalOrderProjection(): string {
-  return `
-    SELECT
-      formal_order.id AS formal_order_id,
-      formal_order.status,
-      'NONE' AS legacy_projection,
-      NULL AS marketplace_code,
-      formal_order.marketplace_code AS canonical_marketplace_code,
-      NULL AS amazon_order_number,
-      order_identity.platform_order_identifier,
-      formal_order.seller_store_id AS store_id,
-      store.display_name AS store_display_name,
-      NULL AS asin,
-      product_identity.platform_product_identifier,
-      formal_order.product_name_snapshot AS product_name,
-      NULL AS product_version_id,
-      NULL AS product_version_no,
-      formal_order.review_type,
-      NULL AS final_paid_jpy,
-      NULL AS payment_amount_minor,
-      NULL AS payment_currency_code,
-      NULL AS payment_currency_exponent,
-      NULL AS seller_expected_principal_cny_fen,
-      NULL AS source_currency_code,
-      NULL AS quote_currency_code,
-      NULL AS source_currency_exponent,
-      NULL AS quote_currency_exponent,
-      NULL AS rounding_rule,
-      NULL AS principal_platform_order_date,
-      NULL AS principal_payment_amount_minor,
-      NULL AS principal_payment_currency_code,
-      NULL AS principal_base_rate_version_id,
-      NULL AS principal_base_rate_business_date,
-      NULL AS principal_base_rate_confirmed_at,
-      NULL AS principal_base_rate_value,
-      NULL AS principal_base_rate_scale,
-      NULL AS principal_policy_version_id,
-      NULL AS principal_policy_scope_type,
-      NULL AS principal_policy_seller_organization_id,
-      NULL AS principal_policy_version_no,
-      NULL AS principal_policy_effective_from,
-      NULL AS principal_policy_confirmed_at,
-      NULL AS principal_markup_rate_value,
-      NULL AS principal_markup_rate_scale,
-      NULL AS principal_final_rate_value,
-      NULL AS principal_final_rate_scale,
-      NULL AS principal_rounding_rule,
-      NULL AS principal_amount_minor,
-      NULL AS service_fee_version_id,
-      NULL AS service_fee_version_no,
-      NULL AS service_fee_effective_from,
-      NULL AS service_fee_confirmed_at,
-      NULL AS service_fee_cny_fen,
-      NULL AS review_status,
-      NULL AS principal_status,
-      NULL AS service_fee_status,
-      (SELECT file_object.version
-        FROM platform_order_evidence_internal_files attachment
-        JOIN platform_order_evidence_records evidence
-          ON evidence.id=attachment.platform_order_evidence_record_id
-          AND evidence.platform_order_identity_id=
-            formal_order.platform_order_identity_id
-          AND evidence.platform_product_identity_id=
-            formal_order.platform_product_identity_id
-          AND evidence.marketplace_code=formal_order.marketplace_code
-          AND evidence.seller_organization_id=
-            formal_order.seller_organization_id
-          AND evidence.seller_store_id=formal_order.seller_store_id
-          AND evidence.evidence_type=
-            'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND evidence.status='VERIFIED'
-        JOIN file_entity_links file_link
-          ON file_link.id=attachment.file_entity_link_id
-          AND file_link.file_object_id=attachment.file_object_id
-          AND file_link.entity_type='ORDER_EVIDENCE_SUBMISSION'
-          AND file_link.entity_id=evidence.id
-          AND file_link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND file_link.visibility='SELLER_VISIBLE'
-          AND file_link.authorization_mode='EXPLICIT_AUDIENCES'
-          AND file_link.revoked_at IS NULL
-          AND (file_link.expires_at IS NULL
-            OR file_link.expires_at>
-              CAST(unixepoch('now') AS INTEGER)*1000)
-        JOIN file_objects file_object
-          ON file_object.id=attachment.file_object_id
-          AND file_object.status='VERIFIED'
-          AND file_object.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND file_object.visibility='SELLER_VISIBLE'
-          AND file_object.detected_mime IN
-            ('image/jpeg','image/png','image/webp')
-        JOIN file_upload_intents upload_intent
-          ON upload_intent.id=file_object.upload_intent_id
-          AND upload_intent.status='VERIFIED'
-          AND upload_intent.purpose=
-            'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND upload_intent.visibility='SELLER_VISIBLE'
-        JOIN file_entity_audience_grants audience_grant
-          ON audience_grant.file_entity_link_id=file_link.id
-          AND audience_grant.subject_type='SELLER_ORGANIZATION'
-          AND audience_grant.seller_organization_id=
-            formal_order.seller_organization_id
-          AND audience_grant.revoked_at IS NULL
-          AND (audience_grant.expires_at IS NULL
-            OR audience_grant.expires_at>
-              CAST(unixepoch('now') AS INTEGER)*1000)
-        WHERE attachment.platform_formal_order_id=formal_order.id
-          AND attachment.slot=1
-        LIMIT 1) AS chat_screenshot_file_version,
-      NULL AS main_image_file_object_id,
-      NULL AS main_image_file_version,
-      NULL AS main_image_client_file_name,
-      NULL AS order_screenshot_file_object_id,
-      NULL AS order_screenshot_file_version,
-      CASE WHEN EXISTS (
-        SELECT 1
-        FROM platform_order_evidence_internal_files attachment
-        JOIN platform_order_evidence_records evidence
-          ON evidence.id=attachment.platform_order_evidence_record_id
-          AND evidence.platform_order_identity_id=
-            formal_order.platform_order_identity_id
-          AND evidence.platform_product_identity_id=
-            formal_order.platform_product_identity_id
-          AND evidence.marketplace_code=formal_order.marketplace_code
-          AND evidence.seller_organization_id=
-            formal_order.seller_organization_id
-          AND evidence.seller_store_id=formal_order.seller_store_id
-          AND evidence.evidence_type=
-            'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND evidence.status='VERIFIED'
-        JOIN file_entity_links file_link
-          ON file_link.id=attachment.file_entity_link_id
-          AND file_link.file_object_id=attachment.file_object_id
-          AND file_link.entity_type='ORDER_EVIDENCE_SUBMISSION'
-          AND file_link.entity_id=evidence.id
-          AND file_link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND file_link.visibility='SELLER_VISIBLE'
-          AND file_link.authorization_mode='EXPLICIT_AUDIENCES'
-          AND file_link.revoked_at IS NULL
-          AND (file_link.expires_at IS NULL
-            OR file_link.expires_at>
-              CAST(unixepoch('now') AS INTEGER)*1000)
-        JOIN file_objects file_object
-          ON file_object.id=attachment.file_object_id
-          AND file_object.status='VERIFIED'
-          AND file_object.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND file_object.visibility='SELLER_VISIBLE'
-          AND file_object.detected_mime IN
-            ('image/jpeg','image/png','image/webp')
-        JOIN file_upload_intents upload_intent
-          ON upload_intent.id=file_object.upload_intent_id
-          AND upload_intent.status='VERIFIED'
-          AND upload_intent.purpose=
-            'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND upload_intent.visibility='SELLER_VISIBLE'
-        JOIN file_entity_audience_grants audience_grant
-          ON audience_grant.file_entity_link_id=file_link.id
-          AND audience_grant.subject_type='SELLER_ORGANIZATION'
-          AND audience_grant.seller_organization_id=
-            formal_order.seller_organization_id
-          AND audience_grant.revoked_at IS NULL
-          AND (audience_grant.expires_at IS NULL
-            OR audience_grant.expires_at>
-              CAST(unixepoch('now') AS INTEGER)*1000)
-        WHERE attachment.platform_formal_order_id=formal_order.id
-          AND attachment.slot=1
-      ) THEN 'AVAILABLE' ELSE 'NONE' END AS chat_screenshot_status,
-      formal_order.confirmed_at,
-      formal_order.confirmed_business_date
-    FROM platform_formal_orders formal_order
-    JOIN platform_order_identities order_identity
-      ON order_identity.id=formal_order.platform_order_identity_id
-    JOIN platform_product_identities product_identity
-      ON product_identity.id=formal_order.platform_product_identity_id
-    JOIN seller_stores store
-      ON store.id=formal_order.seller_store_id
-      AND store.organization_id=formal_order.seller_organization_id
-      AND store.status='ACTIVE'
-  `;
-}
-
 export function storeScope(
   actor: SellerPortalActor,
   column: string,
@@ -756,29 +484,6 @@ function mapFormalOrder(
     }),
     confirmed_at: Number(row.confirmed_at),
   };
-  if (row.legacy_projection === 'NONE') {
-    if (row.canonical_marketplace_code !== 'RAKUTEN_JP'
-      && row.canonical_marketplace_code !== 'TIKTOK_JP') {
-      throw new SellerFormalOrderPortalError('DEPENDENCY_UNAVAILABLE', 503);
-    }
-    return Object.freeze({
-      ...common,
-      canonical_marketplace_code: row.canonical_marketplace_code,
-      legacy_projection: 'NONE',
-      marketplace_code: null,
-      amazon_order_number: null,
-      asin: null,
-      product_version: null,
-      review_type: row.review_type,
-      final_paid_jpy: null,
-      payment: null,
-      seller_expected_principal_cny_fen: null,
-      seller_principal_rate_snapshot: null,
-      locked_service_fee_snapshot: null,
-      business_completion: null,
-      confirmed_business_date: row.confirmed_business_date,
-    });
-  }
   if (row.canonical_marketplace_code !== 'AMAZON_JP'
     && row.canonical_marketplace_code !== 'AMAZON_US') {
     throw new SellerFormalOrderPortalError('DEPENDENCY_UNAVAILABLE', 503);

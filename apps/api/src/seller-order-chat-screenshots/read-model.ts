@@ -48,32 +48,6 @@ export async function requireSellerOrderChatScreenshot(
           formal_order.order_evidence_submission_id
         AND attachment.slot=1
       WHERE formal_order.status='CONFIRMED'
-      UNION ALL
-      SELECT
-        formal_order.id AS formal_order_id,
-        formal_order.seller_organization_id,
-        formal_order.seller_store_id,
-        evidence.id AS evidence_entity_id,
-        attachment.file_object_id,
-        attachment.file_entity_link_id
-      FROM platform_formal_orders formal_order
-      JOIN platform_order_evidence_internal_files attachment
-        ON attachment.platform_formal_order_id=formal_order.id
-        AND attachment.slot=1
-      JOIN platform_order_evidence_records evidence
-        ON evidence.id=attachment.platform_order_evidence_record_id
-        AND evidence.platform_order_identity_id=
-          formal_order.platform_order_identity_id
-        AND evidence.platform_product_identity_id=
-          formal_order.platform_product_identity_id
-        AND evidence.marketplace_code=formal_order.marketplace_code
-        AND evidence.seller_organization_id=
-          formal_order.seller_organization_id
-        AND evidence.seller_store_id=formal_order.seller_store_id
-        AND evidence.evidence_type=
-          'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-        AND evidence.status='VERIFIED'
-      WHERE formal_order.status='CONFIRMED'
     )
     SELECT
       formal_order.formal_order_id,

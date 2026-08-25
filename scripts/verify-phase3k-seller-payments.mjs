@@ -1,15 +1,17 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { applyBaseline, baselineSchemaText } from './baseline-schema-helper.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const migration = read('migrations/0024_seller_payments_allocations.sql');
+// Payment/allocation schema assertions re-anchored on the applied stage 3
+// baseline (tables in 0013_seller_settlements, views in 0019_read_model_views).
+const applyBaselineDatabase = applyBaseline();
+const migration = baselineSchemaText(applyBaselineDatabase);
 const record = read('apps/api/src/seller-settlements/record-payment.ts');
 const allocation = read('apps/api/src/seller-settlements/allocation-commands.ts');
 const payment = read('apps/api/src/seller-settlements/payment-commands.ts');
 
 for (const token of [
-  'schema_version=23',
-  'schema_version=24',
   'CREATE TABLE seller_payments',
   'CREATE TABLE seller_payment_proofs',
   'CREATE TABLE seller_payment_allocations',
@@ -39,16 +41,20 @@ assert(!payment.includes(
   '`payment-reversal:${paymentId}:${allocation.allocation_id}`',
 ));
 assert(!migration.match(/\b(?:REAL|FLOAT)\b/u));
-assert(![migration, record, allocation, payment].join('\n').includes('payment_channel'));
-
-const migrations = readdirSync(path.join(root, 'migrations'))
-  .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
-  .sort();
-const wave11Migrations = migrations.filter(
-  (name) => Number(name.slice(0, 4)) <= 24,
-);
-assert(wave11Migrations.length === 24);
-assert(wave11Migrations.at(-1) === '0024_seller_payments_allocations.sql');
+// payment_channel is a legitimate buyer-side account field (advance/refund
+// payment entries); the seller settlement tables and runtime must not track it.
+const sellerSettlementDdl = [
+  'seller_payments',
+  'seller_payment_proofs',
+  'seller_payment_allocations',
+  'seller_payment_allocation_reversals',
+  'seller_payment_reversals',
+].map((table) =>
+  String(applyBaselineDatabase.prepare(
+    `SELECT sql FROM sqlite_schema WHERE type='table' AND name=?`,
+  ).get(table)?.sql ?? ''),
+).join('\n');
+assert(![sellerSettlementDdl, record, allocation, payment].join('\n').includes('payment_channel'));
 
 console.log('phase3k seller payment verifier passed');
 function read(file) { return readFileSync(path.join(root, file), 'utf8'); }

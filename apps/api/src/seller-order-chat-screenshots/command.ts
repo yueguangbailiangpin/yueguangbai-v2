@@ -34,32 +34,13 @@ interface LegacyFormalOrderTargetRow {
   seller_store_id: string;
 }
 
-interface PlatformFormalOrderTargetRow {
-  formal_order_id: string;
-  platform_order_identity_id: string;
-  platform_product_identity_id: string;
-  marketplace_code: 'RAKUTEN_JP' | 'TIKTOK_JP';
-  seller_organization_id: string;
-  seller_store_id: string;
-}
-
-type FormalOrderTarget =
-  | {
-      kind: 'LEGACY';
-      formalOrderId: string;
-      evidenceEntityId: string;
-      sellerOrganizationId: string;
-      sellerStoreId: string;
-    }
-  | {
-      kind: 'PLATFORM';
-      formalOrderId: string;
-      platformOrderIdentityId: string;
-      platformProductIdentityId: string;
-      marketplaceCode: 'RAKUTEN_JP' | 'TIKTOK_JP';
-      sellerOrganizationId: string;
-      sellerStoreId: string;
-    };
+type FormalOrderTarget = {
+  kind: 'LEGACY';
+  formalOrderId: string;
+  evidenceEntityId: string;
+  sellerOrganizationId: string;
+  sellerStoreId: string;
+};
 
 interface FileSourceRow {
   file_object_id: string;
@@ -117,35 +98,6 @@ export async function attachSellerOrderChatScreenshot(
       AND store.status='ACTIVE'
     WHERE formal_order.id=? AND formal_order.status='CONFIRMED'
   `).bind(formalOrderId).first<LegacyFormalOrderTargetRow>();
-  const platformTarget = legacyTarget ? null : await database.prepare(`
-    SELECT
-      formal_order.id AS formal_order_id,
-      formal_order.platform_order_identity_id,
-      formal_order.platform_product_identity_id,
-      formal_order.marketplace_code,
-      formal_order.seller_organization_id,
-      formal_order.seller_store_id
-    FROM platform_formal_orders formal_order
-    JOIN seller_organizations organization
-      ON organization.id=formal_order.seller_organization_id
-      AND organization.status='ACTIVE'
-    JOIN seller_stores store
-      ON store.id=formal_order.seller_store_id
-      AND store.organization_id=formal_order.seller_organization_id
-      AND store.status='ACTIVE'
-    JOIN seller_store_marketplaces marketplace_scope
-      ON marketplace_scope.store_id=formal_order.seller_store_id
-      AND marketplace_scope.seller_organization_id=
-        formal_order.seller_organization_id
-      AND marketplace_scope.marketplace_code=formal_order.marketplace_code
-    JOIN platform_order_identities order_identity
-      ON order_identity.id=formal_order.platform_order_identity_id
-      AND order_identity.status='ACTIVE'
-    JOIN platform_product_identities product_identity
-      ON product_identity.id=formal_order.platform_product_identity_id
-      AND product_identity.status='ACTIVE'
-    WHERE formal_order.id=? AND formal_order.status='CONFIRMED'
-  `).bind(formalOrderId).first<PlatformFormalOrderTargetRow>();
   const target: FormalOrderTarget | null = legacyTarget
     ? {
         kind: 'LEGACY',
@@ -154,18 +106,7 @@ export async function attachSellerOrderChatScreenshot(
         sellerOrganizationId: legacyTarget.seller_organization_id,
         sellerStoreId: legacyTarget.seller_store_id,
       }
-    : platformTarget
-      ? {
-          kind: 'PLATFORM',
-          formalOrderId: platformTarget.formal_order_id,
-          platformOrderIdentityId: platformTarget.platform_order_identity_id,
-          platformProductIdentityId:
-            platformTarget.platform_product_identity_id,
-          marketplaceCode: platformTarget.marketplace_code,
-          sellerOrganizationId: platformTarget.seller_organization_id,
-          sellerStoreId: platformTarget.seller_store_id,
-        }
-      : null;
+    : null;
   if (!target) throw new FileStorageError('NOT_FOUND', 404);
 
   const scope = await resolveStaffDataScope(database, command.actor, {
@@ -234,26 +175,16 @@ export async function attachSellerOrderChatScreenshot(
   }
 
   try {
-    const existing = target.kind === 'LEGACY'
-      ? await database.prepare(`
+    const existing = await database.prepare(`
           SELECT id FROM order_evidence_internal_files
           WHERE order_evidence_submission_id=? AND slot=1
-        `).bind(target.evidenceEntityId).first<{ id: string }>()
-      : await database.prepare(`
-          SELECT id FROM platform_order_evidence_internal_files
-          WHERE platform_formal_order_id=? AND slot=1
-        `).bind(target.formalOrderId).first<{ id: string }>();
+        `).bind(target.evidenceEntityId).first<{ id: string }>();
     if (existing) throw new FileStorageError('FILE_STORAGE_CONFLICT', 409);
 
     const linkId = crypto.randomUUID();
     const screenshotId = crypto.randomUUID();
     const grantId = crypto.randomUUID();
-    const platformEvidenceRecordId = target.kind === 'PLATFORM'
-      ? crypto.randomUUID()
-      : null;
-    const evidenceEntityId = target.kind === 'LEGACY'
-      ? target.evidenceEntityId
-      : platformEvidenceRecordId!;
+    const evidenceEntityId = target.evidenceEntityId;
     const response: AttachSellerOrderChatScreenshotResult = Object.freeze({
       formal_order_id: formalOrderId,
       screenshot_id: screenshotId,
@@ -272,7 +203,7 @@ export async function attachSellerOrderChatScreenshot(
         file_object_id: fileObjectId,
         seller_organization_id: target.sellerOrganizationId,
         seller_store_id: target.sellerStoreId,
-        formal_order_carrier: target.kind,
+        formal_order_carrier: 'LEGACY',
       },
       createdAt: now,
     });
@@ -282,91 +213,36 @@ export async function attachSellerOrderChatScreenshot(
       roles: [...command.actor.roles],
     };
 
-    const platformEvidenceStatements = target.kind === 'PLATFORM'
-      ? [database.prepare(`
-          INSERT INTO platform_order_evidence_records (
-            id, platform_order_identity_id, platform_product_identity_id,
-            marketplace_code, seller_organization_id, seller_store_id,
-            evidence_type, status, source_locator, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?,
-            'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'VERIFIED', NULL, ?, ?)
-        `).bind(
-          platformEvidenceRecordId,
-          target.platformOrderIdentityId,
-          target.platformProductIdentityId,
-          target.marketplaceCode,
-          target.sellerOrganizationId,
-          target.sellerStoreId,
-          now,
-          now,
-        )]
-      : [];
-    const attachmentStatement = target.kind === 'LEGACY'
-      ? database.prepare(`
-          INSERT INTO order_evidence_internal_files (
-            id, order_evidence_submission_id, slot, file_object_id,
-            file_entity_link_id, created_by_staff_id, created_at
-          ) VALUES (?, ?, 1, ?, ?, ?, ?)
-        `).bind(
-          screenshotId,
-          target.evidenceEntityId,
-          fileObjectId,
-          linkId,
-          command.actor.staffId,
-          now,
-        )
-      : database.prepare(`
-          INSERT INTO platform_order_evidence_internal_files (
-            id, platform_formal_order_id, platform_order_evidence_record_id,
-            slot, file_object_id, file_entity_link_id,
-            created_by_staff_id, created_at
-          ) VALUES (?, ?, ?, 1, ?, ?, ?, ?)
-        `).bind(
-          screenshotId,
-          target.formalOrderId,
-          platformEvidenceRecordId,
-          fileObjectId,
-          linkId,
-          command.actor.staffId,
-          now,
-        );
-    const attachmentAssertion = target.kind === 'LEGACY'
-      ? database.prepare(`
-          INSERT INTO transaction_assertions (assertion_value)
-          SELECT CASE WHEN EXISTS (
-            SELECT 1
-            FROM order_evidence_internal_files attachment
-            JOIN formal_orders formal_order
-              ON formal_order.order_evidence_submission_id=
-                attachment.order_evidence_submission_id
-            JOIN file_entity_audience_grants grant
-              ON grant.file_entity_link_id=attachment.file_entity_link_id
-              AND grant.subject_type='SELLER_ORGANIZATION'
-              AND grant.seller_organization_id=?
-            WHERE attachment.id=? AND formal_order.id=?
-          ) THEN 1 ELSE 0 END
-        `).bind(target.sellerOrganizationId, screenshotId, formalOrderId)
-      : database.prepare(`
-          INSERT INTO transaction_assertions (assertion_value)
-          SELECT CASE WHEN EXISTS (
-            SELECT 1
-            FROM platform_order_evidence_internal_files attachment
-            JOIN platform_formal_orders formal_order
-              ON formal_order.id=attachment.platform_formal_order_id
-            JOIN platform_order_evidence_records evidence
-              ON evidence.id=attachment.platform_order_evidence_record_id
-              AND evidence.evidence_type=
-                'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-            JOIN file_entity_audience_grants grant
-              ON grant.file_entity_link_id=attachment.file_entity_link_id
-              AND grant.subject_type='SELLER_ORGANIZATION'
-              AND grant.seller_organization_id=?
-            WHERE attachment.id=? AND formal_order.id=?
-          ) THEN 1 ELSE 0 END
-        `).bind(target.sellerOrganizationId, screenshotId, formalOrderId);
+    const attachmentStatement = database.prepare(`
+      INSERT INTO order_evidence_internal_files (
+        id, order_evidence_submission_id, slot, file_object_id,
+        file_entity_link_id, created_by_staff_id, created_at
+      ) VALUES (?, ?, 1, ?, ?, ?, ?)
+    `).bind(
+      screenshotId,
+      target.evidenceEntityId,
+      fileObjectId,
+      linkId,
+      command.actor.staffId,
+      now,
+    );
+    const attachmentAssertion = database.prepare(`
+      INSERT INTO transaction_assertions (assertion_value)
+      SELECT CASE WHEN EXISTS (
+        SELECT 1
+        FROM order_evidence_internal_files attachment
+        JOIN formal_orders formal_order
+          ON formal_order.order_evidence_submission_id=
+            attachment.order_evidence_submission_id
+        JOIN file_entity_audience_grants grant
+          ON grant.file_entity_link_id=attachment.file_entity_link_id
+          AND grant.subject_type='SELLER_ORGANIZATION'
+          AND grant.seller_organization_id=?
+        WHERE attachment.id=? AND formal_order.id=?
+      ) THEN 1 ELSE 0 END
+    `).bind(target.sellerOrganizationId, screenshotId, formalOrderId);
 
     await database.batch([
-      ...platformEvidenceStatements,
       database.prepare(`
         INSERT INTO file_entity_links (
           id, file_object_id, entity_type, entity_id, purpose, visibility,

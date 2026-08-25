@@ -1,5 +1,4 @@
 import type {
-  PlatformProductIdentityPlan,
   StagingImportPlan,
 } from './staging-import-plan';
 
@@ -49,9 +48,6 @@ export async function emitStagingD1Sql(
   ${plan.sellerProductOfferings.length}, ${options.now}, ${options.now}, NULL);`),
   ];
 
-  for (const identity of plan.platformProductIdentities) {
-    lines.push(platformIdentitySql(identity, options.now));
-  }
   const organizations = [...plan.sellerOrganizations].sort((a, b) =>
     a.organizationKey.localeCompare(b.organizationKey));
   for (const [index, organization] of organizations.entries()) {
@@ -193,7 +189,7 @@ export async function emitStagingD1Sql(
     sql: lines.join('\n'),
     statementCount: lines.filter((line) => /^INSERT OR IGNORE/u.test(line.trim())).length,
     amazonStandardProductCount: plan.counts.legacyRuntimeProducts,
-    rakutenIdentityCount: plan.platformProductIdentities.length,
+    rakutenIdentityCount: 0,
     sellerOrganizationCount: organizations.length,
     sellerStoreCount: plan.sellerStores.length,
     offeringCount: plan.sellerProductOfferings.filter((item) => item.marketplaceCode === 'AMAZON_JP').length,
@@ -216,12 +212,4 @@ function hashFragment(value: string): string {
   let hash = 2166136261;
   for (const character of value) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
   return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
-function platformIdentitySql(identity: PlatformProductIdentityPlan, now: number): string {
-  return statement(`INSERT OR IGNORE INTO platform_product_identities
-  (id, marketplace_code, platform_product_identifier, seller_organization_id,
-   seller_store_id, display_name, source_locator, status, created_at, updated_at)
-  VALUES (${sql(`staging-platform-${hashFragment(identity.productKey)}`)}, 'RAKUTEN_JP',
-   ${sql(identity.platformProductIdentifier)}, NULL, NULL, NULL, NULL, 'ACTIVE', ${now}, ${now});`);
 }

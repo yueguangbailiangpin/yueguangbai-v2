@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { applyBaseline, baselineSchemaText } from './baseline-schema-helper.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const migration = readFileSync(
-  path.join(root, 'migrations/0026_financial_export_audit.sql'),
-  'utf8',
-);
+// Export audit schema assertions re-anchored on the applied stage 3 baseline.
+const baselineDatabase = applyBaseline();
+const migration = baselineSchemaText(baselineDatabase);
 const source = readFileSync(
   path.join(root, 'apps/api/src/internal-finance/exports.ts'),
   'utf8',
@@ -43,8 +43,11 @@ for (const token of [
     throw new Error(`missing ${token}`);
   }
 }
-if (/\b(?:R2|object_key|permanent_url|download_url)\b/iu.test(
-  source + migration,
+const exportEventDdl = String(baselineDatabase.prepare(
+  `SELECT sql FROM sqlite_schema WHERE type='table' AND name='financial_export_events'`,
+).get()?.sql ?? '');
+if (/\b(?:R2|object_key|permanent_url|download_url|bucket)\b/iu.test(
+  source + exportEventDdl,
 )) {
   throw new Error('financial export must not persist to object storage');
 }

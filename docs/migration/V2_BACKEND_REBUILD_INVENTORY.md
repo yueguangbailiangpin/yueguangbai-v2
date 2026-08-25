@@ -219,3 +219,16 @@
 - `verify:staff-mcp`（verify-staff-mcp-security.mjs）、`dry-run:staff-mcp`、`preflight:staff-mcp-production`——Staff MCP 模块整体删除（2b）；发布侧防复活墓碑（禁 `STAFF_MCP_*` 绑定/变量）保留并仍在 preflight 测试覆盖。
 - `verify:marketplace-adapters`、`preflight:marketplace-adapters`——Rakuten/TikTok adapter 预备层整体删除（2e）；Registry 的 AMAZON_US/COUPANG_KR 禁用 fail-closed 断言由 `verify:marketplace-money` 继续承载（该 verifier 保留）。
 - `verify-seller-agreement-rate-retirement`——保留在树中；2026-08-25 实测 0 残留（581 文件），按映射在 baseline 建成后废弃。
+
+### 7.2 阶段 3 baseline 重建核验记录（D-054 门槛 1）
+
+2026-08-25 阶段 3 完成数据库干净 baseline 重建。等价证据：
+
+1. **对象级零差异**：新链 `0001`–`0019`（按域拆分，`0019_read_model_views.sql` 收尾）应用后与旧 0001–0075 链最终态做逐对象比对——保留集合 824 个对象（192 表 / 555 索引 / 367 触发器 / 12 视图）零缺失、零多余、零 SQL 变化；种子行除有意剪枝（RAKUTEN_JP/TIKTOK_JP registry 行 ×2 表、墓碑表、MCP 运行时控制行）外零差异。
+2. **有意移除集合**（20 表 + 其上 32 触发器 + 53 索引 + 2 个活表上的 platform 碰撞守卫 + 指向 0029 墓碑的 FK 子句）：自动获客机器四表、prospect_signals、Staff MCP 五表、关键词图片三表、platform_* 六表（死表三张按业务所有者决定；活表三张随阶段 3 统一 formal_orders 模型运行时改造一并消失——卖家聊天截图唯一承载为 formal_orders + order_evidence_internal_files）、marketplace_registry_legacy_0029。
+3. **验证器**：`verify-migrations.mjs` / `verify-migration-version-guards.mjs` 按新链重建（inventory SHA-256 `7210a39e…`、fresh/sequential 一致、负向 DML×3、wrong-order 18 拒绝、repeat 19 拒绝、失败快照不变、FK/integrity 绿）；`historical-migration-immutability.mjs` 与 `HISTORICAL_MIGRATIONS_0001_0042.sha256` 随旧链删除（其保护对象在 D-054 授权下不再存在）；TARGET_SCHEMA 常量三处（operational-readiness / recovery-attestation / staging-bootstrap）与 final-go / production-formal verifier 同步为 19。
+4. **旧 verifier 原位改写锚定新 baseline**（断言保留、序号断言废弃，符合 §2.6"断言所描述的约束进入新 baseline schema 测试"认定）：`verify:module1:buyer`（0028 段）、`verify-module1-migration-0028`、`verify:phase3i/j/k/l/m`、`verify:seller-finance-security`、`verify:customer-security`（0030 段）、`verify:marketplace-money`（整体改写为干净三市场 registry 断言）、`verify:wave12:migrations`、`check:wave13:migration`、`check:wave13:staff-auth`（0027 段）、`verify:admin-dashboard`（0036/0037 段）、`verify:product-reservation-scheduling`（0037 段）。新增共享引导 `scripts/baseline-schema-helper.mjs`。
+5. **迁移号绑定测试清退**：19 个绑定旧链文件/中链升级语义的测试文件删除（migration-0021/0027-rollback/0028-buyer-module/0030/0036/0037/0043/0065-feishu/0066/0067/0068/0069/0070/0071、wave11-migrations、seller-payable-identifiers、formal-order-claim、migrations-history、migration-decision）；仍有效 schema 断言集中迁入 `apps/api/src/architecture-guards/baseline-schema.test.ts`（13 用例：链连续性、空库一次初始化、wave11 财务不可变、订单号认领唯一、amazon_order_date 权威、多身份安全无明文列、Advance V1 守卫、催办不可变、排期版本 +8h、申请金额整数、费率政策事件保真、死表缺席、三市场种子）。
+6. **门禁实测**（阶段 3 出口）：`npm run typecheck` 0 错、`npm test` 251 文件 / 1661 用例全过、`npm run build` 通过、`npm run check` exit 0、`openspec validate --all --strict` 63/63。
+7. **已知窗口项**：`verify:api-contract`（不在 check 门禁内）的 origin/main 差异范围模型与重建窗口冲突，按 §6.4/阶段 4 在路由清单重生成时核销；`release:check` 要求干净工作树（提交后自然满足）。本地 wrangler D1 已删除旧状态并重放新链（`db:migrate:local` 实测 19/19 ✅）。
+8. **platform 统一改造波及面**：`seller-formal-orders/read-model.ts`、`seller-order-chat-screenshots/command.ts` + `read-model.ts`、`files/file-audience-authorization.ts`、`staging-bootstrap/first-owner.ts`（含 staff_mcp 计数清理）、`tools/imports/current-product-seller-mapping/staging-import-sql.ts`（Rakuten 身份 INSERT 移除）；对应测试删除 platform 用例（seller-formal-orders/platform-formal-orders.test.ts 整删，语义等价覆盖保留于 LEGACY 路径用例）。`SellerFormalOrderPortalDto` 的 `legacy_projection: 'NONE'` 变体不再由运行时产生，判别字段本身留待阶段 4 contracts 原子清理（与 'JP' 短码同批）。

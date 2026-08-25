@@ -9,8 +9,11 @@ const {schema,latestMigration}=resolveProductionSchemaBaseline();
 const migrations=readdirSync(path.join(root,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
 assert(migrations.length===schema,`expected ${schema} migrations, found ${migrations.length}`);
 assert(migrations.every((file,index)=>Number(file.slice(0,4))===index+1),'migration chain is not continuous');
-assert(migrations.includes('0072_unified_order_day_rate_center.sql'),'current production schema baseline must include the unified order-day rate center in 0072');
-assert(migrations.includes('0068_customer_security_deny_password_rate_limit.sql'),'immutable Customer security DENY and password-change rate-limit migration 0068 is missing');
+// Order-day rate center and customer security semantics are carried by the
+// stage 3 clean baseline domain files (former 0072/0068 chain positions
+// retired with the legacy chain under D-054).
+assert(migrations.includes('0008_pricing_rate_center.sql'),'baseline must include the pricing rate center domain');
+assert(migrations.includes('0005_customer_access_security.sql'),'baseline must include the customer access security domain');
 verifyProductionSchemaDocuments();
 
 const production=read('apps/api/wrangler.production.template.jsonc');

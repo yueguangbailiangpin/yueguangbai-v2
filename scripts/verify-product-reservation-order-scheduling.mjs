@@ -6,21 +6,21 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name)).sort();
 
-assert(migrations.length >= 37, 'expected Migration 0037 and later continuous migrations');
-assert(migrations[36] === '0037_product_reservation_order_scheduling.sql',
-  'Migration 0037 ownership drift');
+// 0037 chain-position assertions retired with the legacy chain (D-054); the
+// scheduling domain lives in 0006_demand_reservations_scheduling.
+assert(migrations.length === 19, 'expected the stage 3 clean baseline 0001-0019');
+assert(migrations.includes('0006_demand_reservations_scheduling.sql'),
+  'scheduling domain ownership drift');
 
-const migration = source('migrations/0037_product_reservation_order_scheduling.sql');
+const migration = source('migrations/0006_demand_reservations_scheduling.sql');
 for (const required of [
-  'schema_version=36',
-  'ADD COLUMN order_interval_days',
-  'ADD COLUMN orders_per_run',
+  'order_interval_days',
+  'orders_per_run',
   'CREATE TABLE demand_order_schedule_versions',
   'trg_demand_order_schedule_versions_no_update',
   'trg_demand_order_schedule_versions_no_delete',
-  "'unixepoch',\n      '+8 hours'",
-  'SET schema_version=37',
-]) assert(migration.includes(required), `migration boundary missing: ${required}`);
+  '+8 hours',
+]) assert(migration.includes(required), `scheduling boundary missing: ${required}`);
 
 const routes = source('apps/api/src/staff/catalog-routes.ts');
 for (const route of [
@@ -97,12 +97,12 @@ assert(staffRoutes.includes("import('./StaffSchedulingRouteModule')"),
   'scheduling route module is not lazy-loaded from the Staff route module');
 assert(schedulingRoutes.includes("ProductSchedulingWorkspace as default"),
   'scheduling route module no longer owns the scheduling workspace');
-const workbench = source('apps/web/src/staff/FrozenStaffWorkbench.tsx');
-const workbenchBehavior = source('apps/web/src/staff/FrozenStaffWorkbench.msw.test.tsx');
-assert(workbench.includes('function DemandColumns'),
-  'canonical Frozen workbench no longer owns demand review rendering');
+// The frozen workbench was split into panels (b9457f68); demand review
+// rendering and its behavior evidence now live in the work-panel module.
+const workbench = source('apps/web/src/staff/work-panels/DemandReviewPanel.tsx');
+const workbenchBehavior = source('apps/web/src/staff/work-panels/WorkItemPage.msw.test.tsx');
 assert(workbench.includes('demandReviewContext'),
-  'canonical Frozen workbench no longer reads the demand review contract');
+  'canonical demand review panel no longer reads the demand review contract');
 assert(workbenchBehavior.includes('publishes a demand with its authoritative version'),
   'canonical demand publish behavior evidence is missing');
 assert(workbenchBehavior.includes('lets a base demand reviewer reject while hiding publication'),

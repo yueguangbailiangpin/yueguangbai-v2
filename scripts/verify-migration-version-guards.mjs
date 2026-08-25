@@ -1,12 +1,11 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { verifyHistoricalMigrationImmutability } from './historical-migration-immutability.mjs';
 
 const root = path.resolve(import.meta.dirname, '..'),
   directory = path.join(root, 'migrations');
-const expectedLatestSchema = 75,
-  expectedLastMigration = '0075_refund_settlement_account_fields.sql';
+const expectedLatestSchema = 19,
+  expectedLastMigration = '0019_read_model_views.sql';
 const migrationFiles = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
@@ -17,8 +16,7 @@ if (
   migrationFiles.at(-1) !== expectedLastMigration ||
   numbers.some((number, index) => number !== expected[index])
 )
-  throw new Error('expected one continuous migration for every version 0001-0075');
-const historicalIntegrity = verifyHistoricalMigrationImmutability(root);
+  throw new Error('expected one continuous migration for every version 0001-0019');
 const sql = migrationFiles.map((name) => readFileSync(path.join(directory, name), 'utf8'));
 function open() {
   const db = new DatabaseSync(':memory:');
@@ -173,12 +171,10 @@ console.log(
   JSON.stringify(
     {
       status: 'PASS',
-      historical_baseline: historicalIntegrity.baseline,
-      immutable_historical_migrations: historicalIntegrity.count,
-      historical_migration_aggregate_sha256: historicalIntegrity.aggregateSha256,
+      baseline: 'stage3-clean-baseline-0001-0019',
       migration_count: migrationFiles.length,
       fresh_schema: expectedLatestSchema,
-      sequential_upgrade: '0001 -> 0075',
+      sequential_upgrade: '0001 -> 0019',
       sequential_steps: migrationFiles.length,
       wrong_order_cases: wrong.length,
       wrong_order_commits_rejected: wrong.length,

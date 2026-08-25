@@ -10,8 +10,8 @@ describe('second layer hardening freeze', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(75);
-    expect(migrations.at(-1)).toBe('0075_refund_settlement_account_fields.sql');
+    expect(migrations).toHaveLength(19);
+    expect(migrations.at(-1)).toBe('0019_read_model_views.sql');
     const template = read('apps/api/wrangler.production.template.jsonc');
     expect(template).toContain('"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"');
     expect(template).toContain('"SCHEDULED_OPERATIONS_ENABLED": "true"');
@@ -20,7 +20,7 @@ describe('second layer hardening freeze', () => {
     expect(template).toContain('STAFF_ACCESS_AUD');
     expect(template).not.toContain('FEISHU_WORKBENCH_APP_ID');
     const readiness = read('apps/api/src/operational-readiness/routes.ts');
-    expect(readiness).toContain('const TARGET_SCHEMA = 75');
+    expect(readiness).toContain('const TARGET_SCHEMA = 19');
     expect(readiness).toContain('APP_RELEASE_SHA');
     expect(readiness).toContain('last_backlog_count');
     expect(readiness).toContain('staff_access');
@@ -57,10 +57,11 @@ describe('second layer hardening freeze', () => {
     expect(route).toContain('acquireIdempotency');
     expect(route).toContain('proof_files');
     expect(route).toContain('buyer_advance_principal_entry_files');
-    const guard = read('migrations/0062_runtime_authority_and_privilege_guards.sql');
+    // Guard triggers re-anchored on the stage 3 baseline domain files.
+    const guard = read('migrations/0011_review_workflow.sql') + read('migrations/0010_formal_orders.sql');
     expect(guard).toContain('trg_review_approval_requires_normal_order');
     expect(guard).toContain('trg_formal_order_financial_adjustment_profit_only');
-    const proof = read('migrations/0063_advance_principal_proof_and_overpayment.sql');
+    const proof = read('migrations/0012_buyer_refunds_advance.sql');
     expect(proof).toContain('buyer_advance_principal_overpayments');
     expect(proof).toContain('BUYER_REFUND_PROOF');
     const settlement = read('apps/api/src/buyer-refunds/advance-principal-settlement.ts');
@@ -88,14 +89,14 @@ describe('second layer hardening freeze', () => {
     expect(seller).toContain("timeZone: 'Asia/Tokyo'");
     expect(seller).toContain('withdrawApplication');
     expect(seller).toContain('SellerOrderChatScreenshotReadIntentAdapter');
-    const sessionGuard = read('migrations/0062_runtime_authority_and_privilege_guards.sql');
+    const sessionGuard = read('migrations/0003_customer_master_data.sql');
     expect(sessionGuard).toContain('trg_customer_persona_privilege_session_bump');
     const market = read('packages/contracts/src/marketplace-runtime.ts');
     expect(market).toContain("business_timezone:'Asia/Tokyo'");
     expect(market).toContain("business_timezone:'America/Los_Angeles'");
     expect(market).toContain("reporting_timezone:'Asia/Shanghai'");
-    const dateTruth = read('migrations/0064_marketplace_local_date_truth.sql');
-    expect(dateTruth).toContain("canonical_marketplace_code='AMAZON_US'");
-    expect(dateTruth).toContain('ELSE NULL');
+    const dateTruth = read('migrations/0010_formal_orders.sql');
+    expect(dateTruth).toContain('trg_formal_order_non_jp_local_date_required');
+    expect(dateTruth).toContain('formal_order_marketplace_business_date_required');
   });
 });

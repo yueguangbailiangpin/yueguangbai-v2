@@ -1,5 +1,6 @@
 import { resolveChangeRoot } from './verifier-utils.mjs';
 import { assert, assertContains, assertNotContains, read, relative, report, root } from './wave13-verifier-lib.mjs';
+import { applyBaseline, baselineSchemaText } from './baseline-schema-helper.mjs';
 
 const changeName = 'module1-buyer-complete-business-loop';
 
@@ -89,12 +90,15 @@ assert(!/(?:localStorage|sessionStorage)\.(?:setItem|getItem)\([^\n]*(?:token|ac
 assertNotContains(read('apps/web/src/files/file-read-providers.ts'), 'read_intent_path', 'fixed file read providers');
 assertContains(read('apps/web/src/api/query-client.ts'), 'mutations: { retry: false }', 'mutation retry policy');
 
-const migration = read('migrations/0028_buyer_amazon_order_date.sql');
+// Migration-file assertions originally anchored on 0028 are re-anchored on the
+// stage 3 clean baseline's applied schema (D-054): the amazon_order_date
+// authority columns, their submission guards and the immutability error text
+// must exist in the final baseline state. Chain-number and file-shape
+// assertions retired with the legacy chain.
+const baselineSchema = baselineSchemaText(applyBaseline());
 for (const text of ['amazon_order_date', 'trg_order_evidence_version_submission_guard', 'trg_formal_order_source_guard', "RAISE(ABORT, 'order_evidence_version_submission_mismatch')"]) {
-  assertContains(migration, text, 'Migration 0028');
+  assertContains(baselineSchema, text, 'baseline schema amazon order date authority');
 }
-assert(!/UPDATE\s+(?:order_evidence_versions|formal_orders)\s+SET\s+amazon_order_date/iu.test(migration), 'historical dates must not be backfilled');
-assertNotContains(migration, 'CREATE INDEX', 'Migration 0028');
 for (const path of [
   'packages/contracts/src/order-evidence.ts',
   'packages/contracts/src/buyer-formal-order-portal.ts',

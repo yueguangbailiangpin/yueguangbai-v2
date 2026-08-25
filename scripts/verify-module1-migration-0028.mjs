@@ -1,37 +1,14 @@
-import { DatabaseSync } from 'node:sqlite';
-import { readFileSync, readdirSync } from 'node:fs';
-import path from 'node:path';
+// Original verify-module1-migration-0028 asserted the legacy chain's mid-state
+// at 0028 (117 tables / 221 triggers / 10 views). Those chain-position counts
+// retired with the legacy chain (D-054). The protected assertions — the
+// amazon_order_date authority columns with their date-validity CHECK, and the
+// evidence/formal-order guard triggers binding the formal order date to the
+// evidence submission date — are re-anchored on the stage 3 clean baseline's
+// applied final schema.
+import { applyBaseline } from './baseline-schema-helper.mjs';
 
-const root = path.resolve(import.meta.dirname, '..');
-const directory = path.join(root, 'migrations');
-const files = readdirSync(directory)
-  .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
-  .sort();
-if (files.length < 28
-  || files[27] !== '0028_buyer_amazon_order_date.sql') {
-  throw new Error('expected preserved migrations 0001-0028');
-}
-const module1Files = files.slice(0, 28);
-
-const database = new DatabaseSync(':memory:');
+const database = applyBaseline();
 try {
-  database.exec('PRAGMA foreign_keys=ON;');
-  for (const file of module1Files) {
-    database.exec(readFileSync(path.join(directory, file), 'utf8'));
-  }
-  const schemaVersion = Number(database.prepare(`
-    SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-  `).get()?.schema_version);
-  const count = (type) => Number(database.prepare(`
-    SELECT COUNT(*) AS count FROM sqlite_schema
-    WHERE type=? AND name NOT LIKE 'sqlite_%'
-  `).get(type)?.count);
-  if (schemaVersion !== 28
-    || count('table') !== 117
-    || count('trigger') !== 221
-    || count('view') !== 10) {
-    throw new Error('migration 0028 object counts changed unexpectedly');
-  }
   for (const table of ['order_evidence_versions', 'formal_orders']) {
     const column = database.prepare(`PRAGMA table_info(${table})`).all()
       .find((value) => value.name === 'amazon_order_date');
@@ -53,15 +30,14 @@ try {
   `).get()?.sql ?? '');
   if (!evidenceGuard.includes('NEW.amazon_order_date IS NULL')
     || !formalGuard.includes('evidence.amazon_order_date=NEW.amazon_order_date')) {
-    throw new Error('migration 0028 guards are incomplete');
+    throw new Error('baseline amazon_order_date guards are incomplete');
   }
   console.log(JSON.stringify({
     status: 'PASS',
-    migrations: module1Files.length,
-    schema_version: schemaVersion,
-    tables: count('table'),
-    triggers: count('trigger'),
-    views: count('view'),
+    baseline: 'stage3-clean-baseline-0001-0019',
+    schema_version: Number(database.prepare(`
+      SELECT schema_version FROM app_schema_state WHERE singleton_id=1
+    `).get()?.schema_version),
     historical_null: 'PRESERVED',
   }, null, 2));
 } finally {

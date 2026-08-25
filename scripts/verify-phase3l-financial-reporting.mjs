@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { applyBaseline, baselineSchemaText } from './baseline-schema-helper.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const migration = readFileSync(
-  path.join(root, 'migrations/0025_internal_finance_reporting.sql'),
-  'utf8',
-);
+// Internal finance read-model assertions re-anchored on the applied stage 3
+// baseline (views live in 0019_read_model_views).
+const migration = baselineSchemaText(applyBaseline());
 const contracts = readFileSync(
   path.join(root, 'packages/contracts/src/internal-finance.ts'),
   'utf8',
@@ -34,7 +34,6 @@ const required = [
   "service_fee_source_type<>'REVIEW_APPROVAL'",
   'seller_payment_reversals',
   'FINANCIAL_VIEW',
-  'schema_version=25',
   'buildFinanceOrderDetail',
   'frozen_snapshot',
   'calculations',

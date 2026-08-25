@@ -312,13 +312,9 @@ async function resolveResourceMarketplace(
     FROM order_evidence_submissions submission
     LEFT JOIN formal_orders formal_order ON formal_order.order_evidence_submission_id=submission.id
     WHERE submission.id=?
-    UNION ALL
-    SELECT evidence.marketplace_code AS market
-    FROM platform_order_evidence_records evidence
-    WHERE evidence.id=? AND evidence.status='VERIFIED'
     LIMIT 1`,
           )
-          .bind(id, id)
+          .bind(id)
           .first<{ market: string }>()
       )?.market ?? null;
   else if (resource.entityType === 'REVIEW')
@@ -435,16 +431,9 @@ async function resolveSellerEntityScope(
     JOIN seller_organizations organization ON organization.id=formal_order.seller_organization_id AND organization.status='ACTIVE'
     JOIN seller_stores store ON store.id=formal_order.store_id AND store.organization_id=formal_order.seller_organization_id AND store.status='ACTIVE'
     WHERE formal_order.order_evidence_submission_id=?
-    UNION ALL
-    SELECT evidence.seller_organization_id AS organizationId,evidence.seller_store_id AS storeId
-    FROM platform_order_evidence_records evidence
-    JOIN seller_organizations organization ON organization.id=evidence.seller_organization_id AND organization.status='ACTIVE'
-    JOIN seller_stores store ON store.id=evidence.seller_store_id AND store.organization_id=evidence.seller_organization_id AND store.status='ACTIVE'
-    JOIN seller_store_marketplaces market ON market.store_id=evidence.seller_store_id AND market.seller_organization_id=evidence.seller_organization_id AND market.marketplace_code=evidence.marketplace_code
-    WHERE evidence.id=? AND evidence.status='VERIFIED'
     LIMIT 1`,
       )
-      .bind(id, id)
+      .bind(id)
       .first<SellerScope>();
   return null;
 }

@@ -9,7 +9,7 @@ import {
 } from '../foundation/idempotency';
 import { normalizeStaffEmail } from '../staff-auth/cloudflare-access';
 
-const TARGET_SCHEMA = 75;
+const TARGET_SCHEMA = 19;
 const STAGING_BUYER_CHANNEL_ID = 'staging-buyer-channel';
 const STAGING_DATABASE_NAME = /^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -30,7 +30,6 @@ const STAGING_ZERO_STOCK_TABLES = [
   'integration_outbox',
   'order_evidence_submissions',
   'order_instructions',
-  'platform_order_identities',
   'product_applications',
   'product_reservations',
   'products',
@@ -234,7 +233,7 @@ function normalizeInput(input: StagingFirstOwnerInput): StagingFirstOwnerInput {
 function emptyStagingAssertion(database: SqlDatabase): SqlStatement {
   return database.prepare(`INSERT INTO transaction_assertions(assertion_value)
     SELECT CASE WHEN
-      EXISTS(SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=75)
+      EXISTS(SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=19)
       AND NOT EXISTS(SELECT 1 FROM staff_users)
       AND NOT EXISTS(SELECT 1 FROM staff_role_assignments)
       AND NOT EXISTS(SELECT 1 FROM staff_email_identities)
@@ -245,10 +244,6 @@ function emptyStagingAssertion(database: SqlDatabase): SqlStatement {
       AND NOT EXISTS(SELECT 1 FROM staff_availability)
       AND NOT EXISTS(SELECT 1 FROM staff_assignment_fallbacks)
       AND NOT EXISTS(SELECT 1 FROM staff_sessions)
-      AND NOT EXISTS(SELECT 1 FROM staff_mcp_subject_bindings)
-      AND NOT EXISTS(SELECT 1 FROM staff_mcp_token_revocations)
-      AND NOT EXISTS(SELECT 1 FROM staff_mcp_replay_records)
-      AND NOT EXISTS(SELECT 1 FROM staff_mcp_rate_limits)
       AND NOT EXISTS(SELECT 1 FROM staff_assignment_events)
       AND NOT EXISTS(SELECT 1 FROM staff_assignment_cursors)
       AND NOT EXISTS(SELECT 1 FROM staff_reassignment_batches)
@@ -308,10 +303,6 @@ async function bootstrapState(database: SqlDatabase): Promise<{
     +(SELECT COUNT(*) FROM staff_availability)
     +(SELECT COUNT(*) FROM staff_assignment_fallbacks)
     +(SELECT COUNT(*) FROM staff_sessions)
-    +(SELECT COUNT(*) FROM staff_mcp_subject_bindings)
-    +(SELECT COUNT(*) FROM staff_mcp_token_revocations)
-    +(SELECT COUNT(*) FROM staff_mcp_replay_records)
-    +(SELECT COUNT(*) FROM staff_mcp_rate_limits)
     +(SELECT COUNT(*) FROM staff_assignment_events)
     +(SELECT COUNT(*) FROM staff_assignment_cursors)
     +(SELECT COUNT(*) FROM staff_reassignment_batches)
