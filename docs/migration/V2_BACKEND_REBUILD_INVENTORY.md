@@ -81,10 +81,10 @@
 
 ### 2.4 旧别名、兼容层与迁移脚手架
 
-- `marketplace_legacy_aliases`（0029）：canonical registry 已替代。
-- 全部 `phase3*_backup_*` 表、`*_next` 换代表：迁移脚手架，不进入新 baseline。
-- 旧 Seller Agreement Rate 兼容投影：D-045 已退役，残留引用一并清除。
-- `SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED` 等已无现行业务用途的 Feature Flag。
+- `marketplace_legacy_aliases`（0029）：canonical registry 已替代。执行更正（2026-08-25 阶段 2）：买家侧 DTO 仍以 `JP` 短码为现行 API 合同投影，DB 行亦存 `JP`；别名表、`LegacyMarketplaceCode` 类型、registry 短码查找与 `legacyMarketplaceProjection` 存储投影必须在阶段 3（schema 重建）与阶段 4（DTO 合同重建）中原子移除，不得提前单独删除。
+- 全部 `phase3*_backup_*` 表、`*_next` 换代表：迁移脚手架，不进入新 baseline（随阶段 3 旧链整体消失）。
+- 旧 Seller Agreement Rate 兼容投影：D-045 已退役；`verify-seller-agreement-rate-retirement` 2026-08-25 实测 0 残留（581 文件扫描），该 verifier 按 §7 在 baseline 建成后废弃。
+- `SELLER_PRINCIPAL_RATE_ENFORCEMENT_ENABLED` 等已无现行业务用途的 Feature Flag：实测已全部消失；现存 flag（Drive 归档四开关、OUTBOX/SCHEDULER/ACQUISITION_MAINTENANCE、BUYER_SELF_REGISTRATION、RESERVATION_AUTO_APPROVE）均有现行业务用途，保留。
 - 仅为旧前端兼容存在的 DTO 别名与 re-export（D-036/D-038/D-039 已退役大部分，重建时扫尾）。
 
 ### 2.5 Rakuten/TikTok JP 平台预备层（业务所有者 2026-08-25 已确认删除）
