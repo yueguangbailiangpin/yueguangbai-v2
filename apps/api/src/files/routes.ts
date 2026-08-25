@@ -21,7 +21,6 @@ import {
 } from '../middleware/customer-auth';
 import { resolveSellerPortalActor } from '../seller-portal/actor';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { driveArchiveRuntime } from '../cold-image-archive/runtime';
 import {
   completeFileUploadIntent,
   consumeFileReadIntent,
@@ -275,7 +274,6 @@ function registerLifecycleRoutes(
 
   const readContent = withFileErrors(async (context) => {
     const authority = await resolveRouteAuthority(context, domain);
-    const driveRuntime=driveArchiveRuntime(context.env);
     const result = await consumeFileReadIntent(
       context.env.DB,
       requireObjectStorage(context),
@@ -290,10 +288,6 @@ function registerLifecycleRoutes(
         ),
       },
       { actor: authority.actor, principal: authority.principal },
-      {
-        adapter: driveRuntime.adapter,
-        proxyReadEnabled: driveRuntime.enabled && driveRuntime.proxyReadEnabled,
-      },
     );
     // The URL carries a single-use token (use_count 0->1, replay 410), so a
     // 300s private browser cache cannot weaken one-time semantics: a second
@@ -626,8 +620,11 @@ function withFileErrors(
         ? new FileStorageError('NOT_FOUND', 404)
         : source;
       const code = toApiCode(normalized.code);
+      const message = code === 'FILE_ARCHIVED'
+        ? '文件已归档，请联系工作人员恢复'
+        : code;
       return context.json(
-        apiFailure(code, code, requestId(context)),
+        apiFailure(code, message, requestId(context)),
         normalized.status,
       );
     }

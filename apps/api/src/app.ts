@@ -4,12 +4,12 @@ import {
   type StaffAuthProviderBindings,
   type StaffDataScope,
   type ObjectStorageAdapter,
-  type DriveArchiveAdapter,
   type SqlDatabase,
 } from '@ygb/contracts';
 import { Hono } from 'hono';
 import type { AssignmentStaffAuthorization } from './staff-assignment';
 import type { StaffSessionRow } from './staff-auth';
+import type { ArchiveQueueProducer } from './cold-image-archive/runtime';
 import { errorLogEvent, routeGroup, writeErrorLog } from './observability';
 import {
   recordWorker5xxSignal,
@@ -24,16 +24,12 @@ export type AppBindings = StaffAuthProviderBindings & {
     APP_ENVIRONMENT?: string;
     APP_RELEASE_SHA?: string;
     FILE_OBJECT_STORAGE?: ObjectStorageAdapter;
-    DRIVE_ARCHIVE_ADAPTER?: DriveArchiveAdapter;
-    DRIVE_ARCHIVE_ENABLED?: string;
-    DRIVE_ARCHIVE_COPY_ENABLED?: string;
-    DRIVE_ARCHIVE_PROXY_READ_ENABLED?: string;
-    DRIVE_ARCHIVE_R2_DELETE_ENABLED?: string;
-    GOOGLE_DRIVE_CLIENT_ID?: string;
-    GOOGLE_DRIVE_CLIENT_SECRET?: string;
-    GOOGLE_DRIVE_REFRESH_TOKEN?: string;
-    GOOGLE_DRIVE_FOLDER_ID?: string;
-    GOOGLE_DRIVE_OWNER_ACCOUNT_KEY?: string;
+    ARCHIVE_DRIVE_CLIENT?: import('@ygb/contracts').DriveArchiveClient;
+    ARCHIVE_QUEUE?: ArchiveQueueProducer;
+    ARCHIVE_SELECTOR_ENABLED?: string;
+    ARCHIVE_DRIVE_UPLOAD_ENABLED?: string;
+    ARCHIVE_HOT_DELETE_ENABLED?: string;
+    ARCHIVE_RESTORE_WORKER_ENABLED?: string;
     CUSTOMER_SESSION_SECRET?: string;
     CUSTOMER_SECURITY_TOKEN_SECRET?: string;
     OUTBOX_DELIVERY_ADAPTER?: {

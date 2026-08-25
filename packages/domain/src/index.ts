@@ -2,6 +2,8 @@ export * from './catalog/product-version';
 export * from './catalog/store-name';
 export * from './crypto/request-hash';
 export * from './crypto/sha256';
+export * from './crypto/sha256-stream';
+export * from './crypto/crc32';
 export * from './files';
 export * from './finance/calculations';
 export * from './finance/csv';

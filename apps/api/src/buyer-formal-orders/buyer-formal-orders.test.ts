@@ -191,9 +191,9 @@ describe('Phase 4B3 buyer formal order read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(23);
+    expect(migrations).toHaveLength(24);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0023_retire_acquisition_machine_fields.sql');
+    expect(migrations.at(-1)).toBe('0024_cold_archive_bundle_model.sql');
   });
 });
 

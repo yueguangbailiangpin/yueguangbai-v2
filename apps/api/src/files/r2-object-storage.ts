@@ -27,11 +27,11 @@ export interface R2ObjectBodyLike extends R2ObjectLike {
 export interface R2BucketBinding {
   put(
     key: string,
-    value: ArrayBuffer | ArrayBufferView,
+    value: ArrayBuffer | ArrayBufferView | ReadableStream<Uint8Array>,
     options: {
       httpMetadata: { contentType: string };
       customMetadata: Record<string, string>;
-      sha256: string;
+      sha256?: string;
     },
   ): Promise<R2ObjectLike | null>;
   head(key: string): Promise<R2ObjectLike | null>;
@@ -113,6 +113,37 @@ export class R2ObjectStorageAdapter implements ObjectStorageAdapter {
     const body = (object as R2ObjectBodyLike).body;
     if (body === undefined || typeof body.getReader !== 'function') return null;
     return { head: objectHead(object, objectKey), body };
+  }
+
+  /**
+   * Streaming put for generated archive objects: R2 accepts a ReadableStream
+   * body, so the cold-archive temp ZIPs never buffer in Worker memory. The
+   * returned checksum is empty (the hash is only known after the stream
+   * completes); callers verify by re-reading via openObjectStream.
+   */
+  async putObjectStream(input: {
+    objectKey: string;
+    contentType: ObjectStoragePutInput['contentType'] | 'application/zip';
+    metadata: Readonly<Record<string, string>>;
+    body: ReadableStream<Uint8Array>;
+  }): Promise<Omit<ObjectStoragePutResult, 'checksumSha256'> & { checksumSha256: string }> {
+    let stored: R2ObjectLike | null;
+    try {
+      stored = await this.bucket.put(input.objectKey, input.body, {
+        httpMetadata: { contentType: input.contentType },
+        customMetadata: { ...input.metadata },
+      });
+    } catch (cause) {
+      throw new ObjectStoragePutFailure('r2_put_ambiguous', true, { cause });
+    }
+    if (!stored) throw new ObjectStoragePutFailure('r2_put_rejected', true);
+    const head = objectHead(stored, input.objectKey);
+    return {
+      etag: head.etag,
+      byteSize: head.byteSize,
+      contentType: head.contentType,
+      checksumSha256: '',
+    };
   }
 
   async deleteObject(objectKey: string): Promise<void> {

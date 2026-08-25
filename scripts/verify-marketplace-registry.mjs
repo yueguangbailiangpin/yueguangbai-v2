@@ -12,7 +12,7 @@ const migrationDirectory = path.join(root, 'migrations');
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (migrations.length !== 23 || migrations.at(-1) !== '0023_retire_acquisition_machine_fields.sql') {
+if (migrations.length !== 23 || migrations.at(-1) !== '0024_cold_archive_bundle_model.sql') {
   throw new Error('expected the clean baseline 0001-0023');
 }
 for (const file of migrations) {

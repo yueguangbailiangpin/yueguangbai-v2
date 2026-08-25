@@ -109,8 +109,11 @@ describe('stage 5 archive lifecycle vocabulary (contract-only)', () => {
     for (const targets of Object.values(ARCHIVE_BUNDLE_TRANSITIONS)) {
       expect(targets).not.toContain('ONLINE');
     }
-    // No public restore endpoint exists in stage 4.
+    // Stage 5 wires exactly one staff-only restore endpoint under the
+    // operations archive prefix; buyer and seller domains expose none.
     const restoreRoutes = app.routes.filter((route) => /restore/u.test(route.path));
-    expect(restoreRoutes).toEqual([]);
+    expect(restoreRoutes.map((route) => `${route.method} ${route.path}`)).toEqual([
+      'POST /api/staff/operations/archive/bundles/:id/restore',
+    ]);
   });
 });

@@ -267,20 +267,20 @@ export async function reopenOrderBusinessClosure(
     const permanentlyArchived = await database
       .prepare(
         `SELECT 1 AS found
-      FROM file_drive_archives archive JOIN file_entity_links link ON link.file_object_id=archive.file_object_id
-      WHERE archive.status='DRIVE_ARCHIVED' AND (
-        (link.entity_type='ORDER' AND (link.entity_id=? OR EXISTS(SELECT 1 FROM formal_orders formal_order
-          WHERE formal_order.id=? AND formal_order.order_evidence_version_id=link.entity_id)))
-        OR (link.entity_type='REVIEW' AND EXISTS (SELECT 1 FROM review_cases review
-          WHERE review.id=link.entity_id AND review.formal_order_id=?))
-        OR (link.entity_type='BUYER_REFUND' AND EXISTS (SELECT 1 FROM buyer_refund_obligations refund
-          WHERE refund.id=link.entity_id AND refund.formal_order_id=?))
-        OR (link.entity_type='SELLER_SETTLEMENT' AND EXISTS (
-          SELECT 1 FROM seller_payment_allocations allocation JOIN seller_payables payable ON payable.id=allocation.payable_id
-          WHERE allocation.payment_id=link.entity_id AND payable.formal_order_id=?))
+      FROM archive_bundle_files entry
+      JOIN archive_bundles bundle ON bundle.id=entry.bundle_id
+      WHERE entry.delete_state='DELETED' AND (
+        (bundle.bundle_type='ORDER' AND bundle.ref_id=?)
+        OR (bundle.bundle_type='BUYER_REFUND_PAYMENT' AND bundle.ref_id IN (
+          SELECT refund.id FROM buyer_refund_obligations refund WHERE refund.formal_order_id=?))
+        OR (bundle.bundle_type='SELLER_SETTLEMENT_PAYMENT' AND bundle.ref_id IN (
+          SELECT payment.id FROM seller_payments payment
+          JOIN seller_payment_allocations allocation ON allocation.payment_id=payment.id
+          JOIN seller_payables payable ON payable.id=allocation.payable_id
+          WHERE payable.formal_order_id=?))
       ) LIMIT 1`,
       )
-      .bind(formalOrderId, formalOrderId, formalOrderId, formalOrderId, formalOrderId)
+      .bind(formalOrderId, formalOrderId, formalOrderId)
       .first<{ found: number }>();
     if (permanentlyArchived) throw new ColdArchiveCommandError('STATE_CONFLICT', 409);
     const response: OrderArchiveClosureResultDto = {
@@ -300,17 +300,17 @@ export async function reopenOrderBusinessClosure(
         `UPDATE order_archive_closures SET status='REOPENED',reopened_at=?,
       reopened_by_staff_id=?,reopen_reason=?,reopen_idempotency_key=?,version=version+1,updated_at=MAX(?,updated_at+1)
       WHERE formal_order_id=? AND status='CLOSED' AND version=? AND NOT EXISTS (
-        SELECT 1 FROM file_drive_archives archive JOIN file_entity_links link ON link.file_object_id=archive.file_object_id
-        WHERE archive.status='DRIVE_ARCHIVED' AND (
-          (link.entity_type='ORDER' AND (link.entity_id=? OR EXISTS(SELECT 1 FROM formal_orders formal_order
-            WHERE formal_order.id=? AND formal_order.order_evidence_version_id=link.entity_id)))
-          OR (link.entity_type='REVIEW' AND EXISTS (SELECT 1 FROM review_cases review
-            WHERE review.id=link.entity_id AND review.formal_order_id=?))
-          OR (link.entity_type='BUYER_REFUND' AND EXISTS (SELECT 1 FROM buyer_refund_obligations refund
-            WHERE refund.id=link.entity_id AND refund.formal_order_id=?))
-          OR (link.entity_type='SELLER_SETTLEMENT' AND EXISTS (
-            SELECT 1 FROM seller_payment_allocations allocation JOIN seller_payables payable ON payable.id=allocation.payable_id
-            WHERE allocation.payment_id=link.entity_id AND payable.formal_order_id=?))
+        SELECT 1 FROM archive_bundle_files entry
+        JOIN archive_bundles bundle ON bundle.id=entry.bundle_id
+        WHERE entry.delete_state='DELETED' AND (
+          (bundle.bundle_type='ORDER' AND bundle.ref_id=?)
+          OR (bundle.bundle_type='BUYER_REFUND_PAYMENT' AND bundle.ref_id IN (
+            SELECT refund.id FROM buyer_refund_obligations refund WHERE refund.formal_order_id=?))
+          OR (bundle.bundle_type='SELLER_SETTLEMENT_PAYMENT' AND bundle.ref_id IN (
+            SELECT payment.id FROM seller_payments payment
+            JOIN seller_payment_allocations allocation ON allocation.payment_id=payment.id
+            JOIN seller_payables payable ON payable.id=allocation.payable_id
+            WHERE payable.formal_order_id=?))
         ))`,
       )
       .bind(
@@ -321,8 +321,6 @@ export async function reopenOrderBusinessClosure(
         now,
         formalOrderId,
         expectedVersion,
-        formalOrderId,
-        formalOrderId,
         formalOrderId,
         formalOrderId,
         formalOrderId,

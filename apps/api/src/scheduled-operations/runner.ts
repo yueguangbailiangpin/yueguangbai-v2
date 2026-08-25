@@ -1,12 +1,25 @@
 import {
   statementChangedOnce,
-  type DriveArchiveAdapter,
+  type DriveArchiveClient,
   type ObjectStorageAdapter,
   type SqlDatabase,
   type StaffPermissionCode,
   type StaffRoleCode,
 } from '@ygb/contracts';
-import { reconcileDriveArchiveBatch, runDriveArchiveBatch } from '../cold-image-archive/job';
+import type { ArchiveQueueProducer } from '../cold-image-archive/runtime';
+import {
+  dispatchPendingArchiveJobs,
+  drainArchiveJobs,
+} from '../cold-image-archive/queue-consumer';
+import { runRestoreCleanupScan } from '../cold-image-archive/restore';
+import {
+  computeArchiveMetrics,
+} from '../cold-image-archive/metrics';
+import {
+  parseSelectorScanState,
+  runArchiveSelectorScan,
+  serializeSelectorScanState,
+} from '../cold-image-archive/selector';
 import { claimNextOutboxEvent, markOutboxFailed, markOutboxSent } from '../foundation/outbox';
 import { reconcileUnlinkedFileRetention } from '../files/retention';
 import {
@@ -36,6 +49,14 @@ export interface SafeJobRun {
 export interface OutboxDeliveryAdapter {
   deliver(event: { id: string; eventType: string; payloadJson: string }): Promise<void>;
 }
+export interface ArchiveScheduledRuntime {
+  client: DriveArchiveClient | null;
+  queue: ArchiveQueueProducer | null;
+  selectorEnabled: boolean;
+  driveUploadEnabled: boolean;
+  hotDeleteEnabled: boolean;
+  restoreWorkerEnabled: boolean;
+}
 const LEASE_MS = 90_000;
 const BATCH = 50;
 const MAX_OUTBOX_ATTEMPTS = 5;
@@ -60,11 +81,7 @@ export async function runScheduledOperations(
     enabled?: boolean;
     disabledJobs?: readonly string[];
     storage?: ObjectStorageAdapter | null;
-    driveAdapter?: DriveArchiveAdapter | null;
-    driveArchiveEnabled?: boolean;
-    driveArchiveCopyEnabled?: boolean;
-    driveArchiveProxyReadEnabled?: boolean;
-    driveArchiveR2DeleteEnabled?: boolean;
+    archive?: ArchiveScheduledRuntime | null;
     outboxDeliveryEnabled?: boolean;
     outboxAdapter?: OutboxDeliveryAdapter | null;
     trigger?: ScheduledTrigger;
@@ -109,10 +126,7 @@ async function runOne(
 ): Promise<SafeJobRun> {
   const driveHardDisabled =
     job === 'drive_archive' &&
-    (input.driveArchiveEnabled !== true ||
-      input.driveArchiveCopyEnabled !== true ||
-      !input.storage ||
-      !input.driveAdapter);
+    (input.archive?.selectorEnabled !== true || !input.storage || !input.archive.client);
   const outboxHardDisabled = job === 'outbox_delivery' && input.outboxDeliveryEnabled === false;
   if (
     input.enabled === false ||
@@ -404,7 +418,8 @@ async function execute(
     };
   }
   if (job === 'drive_archive') {
-    if (!input.storage || !input.driveAdapter)
+    const archive = input.archive;
+    if (!archive || !input.storage)
       return {
         processed: 0,
         succeeded: 0,
@@ -412,29 +427,84 @@ async function execute(
         backlog: 0,
         failureCategory: 'adapter_unavailable',
       };
-    const result = await runDriveArchiveBatch(database, input.storage, input.driveAdapter, {
-      now: input.now,
-      limit: batchSize,
-      copyEnabled: input.driveArchiveCopyEnabled === true,
-      proxyReadEnabled: input.driveArchiveProxyReadEnabled === true,
-      r2DeleteEnabled: input.driveArchiveR2DeleteEnabled === true,
-      dryRun: input.dryRun === true,
-      ...(input.deadlineReached ? { deadlineReached: input.deadlineReached } : {}),
+    // D1 controls are the second, independent gate next to the env switches.
+    const controls = await database
+      .prepare(
+        `SELECT selector_enabled,drive_upload_enabled,hot_delete_enabled,restore_worker_enabled,
+       shadow_copy_only FROM archive_runtime_controls WHERE singleton_id=1`,
+      )
+      .first<{
+        selector_enabled: number; drive_upload_enabled: number;
+        hot_delete_enabled: number; restore_worker_enabled: number; shadow_copy_only: number;
+      }>();
+    const selectorOn = archive.selectorEnabled && controls?.selector_enabled === 1;
+    const driveUploadOn = archive.driveUploadEnabled && controls?.drive_upload_enabled === 1;
+    const hotDeleteOn = archive.hotDeleteEnabled && controls?.hot_delete_enabled === 1;
+    const restoreWorkerOn = archive.restoreWorkerEnabled && controls?.restore_worker_enabled === 1;
+    let processed = 0;
+    let succeeded = 0;
+    let failed = 0;
+    let cursorJson: string | undefined;
+    if (selectorOn) {
+      const cursorRow = await database
+        .prepare('SELECT cursor_json FROM scheduled_job_states WHERE job_name=?')
+        .bind(job)
+        .first<{ cursor_json: string | null }>();
+      const state = parseSelectorScanState(cursorRow?.cursor_json ?? null)
+        ?? { orderCursor: null, refundCursor: null, settlementCursor: null };
+      const scan = await runArchiveSelectorScan(database, { now: input.now, limit: 100, state });
+      processed += scan.unitsExamined;
+      succeeded += scan.bundlesCreated + scan.jobsCreated;
+      cursorJson = serializeSelectorScanState(scan.state);
+      if (archive.queue && driveUploadOn) {
+        const dispatched = await dispatchPendingArchiveJobs(database, archive.queue, {
+          now: input.now,
+          limit: 25,
+        });
+        processed += dispatched;
+      }
+    }
+    const metrics = await computeArchiveMetrics(database, { now: input.now });
+    if (input.dryRun) {
+      return {
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        backlog: metrics.eligible_backlog_bundles + metrics.cleanup_backlog,
+      };
+    }
+    // Expiry cleanup for temporary restores always runs when the archive
+    // runtime is on: it only removes objects we created and returns bundles
+    // to ARCHIVED.
+    const cleanup = await runRestoreCleanupScan(database, { now: input.now, limit: 25 }, {
+      storage: input.storage,
     });
-    const reconciliation =
-      input.dryRun === true || input.deadlineReached?.()
-        ? { processed: 0, succeeded: 0, failed: 0 }
-        : await reconcileDriveArchiveBatch(database, input.driveAdapter, {
-            now: input.now,
-            limit: 5,
-            ...(input.deadlineReached ? { deadlineReached: input.deadlineReached } : {}),
-          });
+    processed += cleanup.processed;
+    succeeded += cleanup.cleaned;
+    failed += cleanup.failed;
+    // Local drain is the fallback consumer when no Queue binding exists (or
+    // alongside it): bounded by the configured batch size, honors switches.
+    if ((!archive.queue || restoreWorkerOn || driveUploadOn) && archive.client) {
+      const drain = await drainArchiveJobs(database, { now: input.now }, {
+        storage: input.storage,
+        drive: archive.client,
+      }, {
+        driveUploadEnabled: driveUploadOn,
+        hotDeleteEnabled: hotDeleteOn,
+        shadowCopyOnly: controls?.shadow_copy_only === 1 || !hotDeleteOn,
+        restoreWorkerEnabled: restoreWorkerOn,
+      });
+      processed += drain.processed;
+      succeeded += drain.succeeded;
+      failed += drain.retried + drain.deadLettered;
+    }
     return {
-      processed: result.processed + reconciliation.processed,
-      succeeded: result.succeeded + reconciliation.succeeded,
-      failed: result.failed + reconciliation.failed,
-      backlog: result.backlog,
-      failureCategory: result.failed + reconciliation.failed > 0 ? 'job_item_failed' : undefined,
+      processed,
+      succeeded,
+      failed,
+      backlog: metrics.eligible_backlog_bundles + metrics.cleanup_backlog,
+      ...(cursorJson === undefined ? {} : { cursorJson }),
+      failureCategory: failed > 0 ? 'job_item_failed' : undefined,
     };
   }
   if (input.dryRun) {

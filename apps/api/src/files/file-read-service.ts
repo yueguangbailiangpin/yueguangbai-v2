@@ -1,6 +1,5 @@
 import type {
   FileActor,
-  DriveArchiveAdapter,
   FileLinkAuthorizationMode,
   FileReadIntentResult,
   FileReadPrincipal,
@@ -60,11 +59,11 @@ interface ReadableFileSource extends FileObjectRow {
   authorization_mode: FileLinkAuthorizationMode;
   link_expires_at: number | null;
   link_revoked_at: number | null;
-  archive_status: string | null;
-  drive_file_id: string | null;
-  archive_byte_size: number | null;
-  archive_mime_type: SupportedFileMime | null;
-  archive_sha256: string | null;
+  /** >0 once an archive bundle deleted this file's R2 hot copy. */
+  hot_deleted: number;
+  /** Temp restore object key while an unexpired staff restore covers the file. */
+  temp_restore_key: string | null;
+  temp_restore_size: number | null;
 }
 
 interface ReadIntentRow extends ReadableFileSource {
@@ -109,6 +108,7 @@ export async function createFileReadIntent(
     database,
     fileObjectId,
     fileEntityLinkId,
+    now,
   );
   await authorizeFileRead(
     database,
@@ -118,6 +118,12 @@ export async function createFileReadIntent(
     resource(source),
     now,
   );
+  if (source.hot_deleted > 0 && !source.temp_restore_key) {
+    // Archived placeholder (D-055): the hot copy is gone and no staff restore
+    // is active. Every audience — including Staff — sees the same 410 with a
+    // contact hint; no Drive identifiers ever leave the server.
+    throw new FileStorageError('FILE_ARCHIVED', 410);
+  }
   await requireDynamicInstructionReadAuthorization(
     database,
     source,
@@ -386,7 +392,7 @@ export async function createFileReadIntentsBatch(
     // claim），与原串行语义一致。results 顺序与请求顺序对齐（map 保序）。
     const settled = await Promise.all(input.requests.map(async (request, index) => {
       const fileObjectId = cleanFileIdentifier(request.fileObjectId, 120);
-      const source = await requireReadableFile(database, fileObjectId, null);
+      const source = await requireReadableFile(database, fileObjectId, null, now);
       await authorizeFileRead(
         database,
         authorization,
@@ -395,6 +401,9 @@ export async function createFileReadIntentsBatch(
         resource(source),
         now,
       );
+      if (source.hot_deleted > 0 && !source.temp_restore_key) {
+        throw new FileStorageError('FILE_ARCHIVED', 410);
+      }
       await requireDynamicInstructionReadAuthorization(
         database,
         source,
@@ -526,10 +535,6 @@ export async function consumeFileReadIntent(
     principal?: FileReadPrincipal;
     now?: number;
   },
-  coldArchive?: {
-    adapter: DriveArchiveAdapter | null;
-    proxyReadEnabled: boolean;
-  },
 ): Promise<{
   fileObjectId: string;
   contentType: SupportedFileMime;
@@ -542,7 +547,7 @@ export async function consumeFileReadIntent(
   if (!Number.isSafeInteger(now) || now < 0) {
     throw new FileStorageError('VALIDATION_ERROR', 400);
   }
-  const source = await requireReadIntent(database, readIntentId);
+  const source = await requireReadIntent(database, readIntentId, now);
   if (source.read_actor_type !== command.actor.type
     || source.read_actor_id !== command.actor.id) {
     throw new FileStorageError('FORBIDDEN', 403);
@@ -571,8 +576,27 @@ export async function consumeFileReadIntent(
     now,
   );
 
-  const archived = source.archive_status === 'DRIVE_ARCHIVED';
-  const opened = !archived && typeof storage.openObjectStream === 'function'
+  if (source.hot_deleted > 0) {
+    // The bundle deleted the hot copy. Reads only work through an active
+    // temporary restore (freshly re-checked above); there is never a live
+    // Drive proxy path.
+    if (!source.temp_restore_key) {
+      throw new FileStorageError('FILE_ARCHIVED', 410);
+    }
+    const payload = await restoredReadPayload(source, storage);
+    await consumeIntent(database, source, readIntentId, command.actor.type, command.actor.id, now);
+    if (source.detected_mime === null) {
+      throw new FileStorageError('FILE_STORAGE_CONFLICT', 409);
+    }
+    return {
+      fileObjectId: source.id,
+      contentType: source.detected_mime,
+      byteSize: payload.byteSize,
+      ...(payload.bytes === undefined ? {} : { bytes: payload.bytes }),
+      ...(payload.stream === undefined ? {} : { stream: payload.stream }),
+    };
+  }
+  const opened = typeof storage.openObjectStream === 'function'
     ? await storage.openObjectStream(source.object_key).catch(() => null)
     : null;
   const payload: {
@@ -580,9 +604,31 @@ export async function consumeFileReadIntent(
     stream?: ReadableStream<Uint8Array>;
     byteSize: number;
   } = opened === null
-    ? await bufferedReadPayload(source, storage, coldArchive)
+    ? await bufferedReadPayload(source, storage)
     : await streamedReadPayload(source, opened);
 
+  await consumeIntent(database, source, readIntentId, command.actor.type, command.actor.id, now);
+
+  if (source.detected_mime === null) {
+    throw new FileStorageError('FILE_STORAGE_CONFLICT', 409);
+  }
+  return {
+    fileObjectId: source.id,
+    contentType: source.detected_mime,
+    byteSize: payload.byteSize,
+    ...(payload.bytes === undefined ? {} : { bytes: payload.bytes }),
+    ...(payload.stream === undefined ? {} : { stream: payload.stream }),
+  };
+}
+
+async function consumeIntent(
+  database: SqlDatabase,
+  source: ReadIntentRow,
+  readIntentId: string,
+  actorType: string,
+  actorId: string,
+  now: number,
+): Promise<void> {
   await database.batch([
     database.prepare(`
       UPDATE file_read_intents
@@ -603,8 +649,8 @@ export async function consumeFileReadIntent(
       now,
       readIntentId,
       source.id,
-      command.actor.type,
-      command.actor.id,
+      actorType,
+      actorId,
       now,
     ),
     database.prepare(`
@@ -615,8 +661,8 @@ export async function consumeFileReadIntent(
       uploadIntentId: source.upload_intent_id,
       fileObjectId: source.id,
       eventType: 'FILE_READ_INTENT_CONSUMED',
-      actorType: command.actor.type,
-      actorId: command.actor.id,
+      actorType,
+      actorId,
       previousStatus: 'ISSUED',
       nextStatus: 'CONSUMED',
       metadata: { read_intent_id: readIntentId },
@@ -637,17 +683,35 @@ export async function consumeFileReadIntent(
   ]).catch((error: unknown) => {
     throw normalizeFileStorageError(error);
   });
+}
 
-  if (source.detected_mime === null) {
+/**
+ * Temporary-restore read: serves the member object restored by a Staff
+ * request, verifying its stored size against the sealed manifest fact. The
+ * original audience authorization already ran; the restore never widens it.
+ */
+async function restoredReadPayload(
+  source: ReadIntentRow,
+  storage: ObjectStorageAdapter,
+): Promise<{ stream?: ReadableStream<Uint8Array>; bytes?: Uint8Array<ArrayBuffer>; byteSize: number }> {
+  if (!source.temp_restore_key || source.temp_restore_size === null
+    || source.uploaded_byte_size === null
+    || source.temp_restore_size !== source.uploaded_byte_size) {
     throw new FileStorageError('FILE_STORAGE_CONFLICT', 409);
   }
-  return {
-    fileObjectId: source.id,
-    contentType: source.detected_mime,
-    byteSize: payload.byteSize,
-    ...(payload.bytes === undefined ? {} : { bytes: payload.bytes }),
-    ...(payload.stream === undefined ? {} : { stream: payload.stream }),
-  };
+  if (typeof storage.openObjectStream === 'function') {
+    const opened = await storage.openObjectStream(source.temp_restore_key).catch(() => null);
+    if (opened && opened.head.byteSize === source.temp_restore_size) {
+      return { stream: opened.body, byteSize: opened.head.byteSize };
+    }
+  }
+  const bytes = await storage.readObject(source.temp_restore_key).catch(() => {
+    throw new FileStorageError('DEPENDENCY_UNAVAILABLE', 503);
+  });
+  if (bytes.byteLength !== source.temp_restore_size) {
+    throw new FileStorageError('FILE_STORAGE_CONFLICT', 409);
+  }
+  return { bytes, byteSize: bytes.byteLength };
 }
 
 /**
@@ -680,16 +744,10 @@ async function streamedReadPayload(
 async function bufferedReadPayload(
   source: ReadIntentRow,
   storage: ObjectStorageAdapter,
-  coldArchive: {
-    adapter: DriveArchiveAdapter | null;
-    proxyReadEnabled: boolean;
-  } | undefined,
 ): Promise<{ bytes: Uint8Array<ArrayBuffer>; byteSize: number }> {
-  const bytes = source.archive_status === 'DRIVE_ARCHIVED'
-    ? await readArchivedBytes(source, coldArchive)
-    : await storage.readObject(source.object_key).catch(() => {
-        throw new FileStorageError('DEPENDENCY_UNAVAILABLE', 503);
-      });
+  const bytes = await storage.readObject(source.object_key).catch(() => {
+    throw new FileStorageError('DEPENDENCY_UNAVAILABLE', 503);
+  });
   if (source.uploaded_byte_size === null
     || source.detected_mime === null
     || source.uploaded_sha256 === null
@@ -705,6 +763,7 @@ async function requireReadableFile(
   database: SqlDatabase,
   fileObjectId: string,
   fileEntityLinkId: string | null,
+  now: number,
 ): Promise<ReadableFileSource> {
   const row = await database.prepare(`
     SELECT
@@ -719,19 +778,24 @@ async function requireReadableFile(
       link.entity_id,
       link.authorization_mode,
       link.expires_at AS link_expires_at,
-      link.revoked_at AS link_revoked_at
-      ,archive.status AS archive_status
-      ,archive.drive_file_id
-      ,manifest.byte_size AS archive_byte_size
-      ,manifest.mime_type AS archive_mime_type
-      ,manifest.sha256 AS archive_sha256
+      link.revoked_at AS link_revoked_at,
+      (SELECT COUNT(*) FROM archive_bundle_files bundle_file
+        WHERE bundle_file.file_object_id=object.id AND bundle_file.delete_state='DELETED') AS hot_deleted,
+      (SELECT member.temp_object_key FROM archive_restore_members member
+        JOIN archive_restores restore ON restore.id=member.restore_id
+        WHERE member.file_object_id=object.id AND restore.state='COMPLETED'
+          AND restore.restore_expires_at>?
+        ORDER BY restore.restore_expires_at DESC LIMIT 1) AS temp_restore_key,
+      (SELECT member.byte_size FROM archive_restore_members member
+        JOIN archive_restores restore ON restore.id=member.restore_id
+        WHERE member.file_object_id=object.id AND restore.state='COMPLETED'
+          AND restore.restore_expires_at>?
+        ORDER BY restore.restore_expires_at DESC LIMIT 1) AS temp_restore_size
     FROM file_objects object
     JOIN file_upload_intents intent
       ON intent.id=object.upload_intent_id
     JOIN file_entity_links link
       ON link.file_object_id=object.id
-    LEFT JOIN file_drive_archives archive ON archive.file_object_id=object.id
-    LEFT JOIN file_drive_archive_manifests manifest ON manifest.file_object_id=object.id
     WHERE object.id=?
       AND object.status='VERIFIED'
       AND intent.status='VERIFIED'
@@ -743,6 +807,8 @@ async function requireReadableFile(
     ORDER BY link.created_at, link.id
     LIMIT 1
   `).bind(
+    now,
+    now,
     fileObjectId,
     fileEntityLinkId,
     fileEntityLinkId,
@@ -755,6 +821,7 @@ async function requireReadableFile(
 async function requireReadIntent(
   database: SqlDatabase,
   readIntentId: string,
+  now: number,
 ): Promise<ReadIntentRow> {
   const row = await database.prepare(`
     SELECT
@@ -775,12 +842,19 @@ async function requireReadIntent(
       read.actor_id AS read_actor_id,
       read.token_hash,
       read.status AS read_status,
-      read.expires_at AS read_expires_at
-      ,archive.status AS archive_status
-      ,archive.drive_file_id
-      ,manifest.byte_size AS archive_byte_size
-      ,manifest.mime_type AS archive_mime_type
-      ,manifest.sha256 AS archive_sha256
+      read.expires_at AS read_expires_at,
+      (SELECT COUNT(*) FROM archive_bundle_files bundle_file
+        WHERE bundle_file.file_object_id=object.id AND bundle_file.delete_state='DELETED') AS hot_deleted,
+      (SELECT member.temp_object_key FROM archive_restore_members member
+        JOIN archive_restores restore ON restore.id=member.restore_id
+        WHERE member.file_object_id=object.id AND restore.state='COMPLETED'
+          AND restore.restore_expires_at>?
+        ORDER BY restore.restore_expires_at DESC LIMIT 1) AS temp_restore_key,
+      (SELECT member.byte_size FROM archive_restore_members member
+        JOIN archive_restores restore ON restore.id=member.restore_id
+        WHERE member.file_object_id=object.id AND restore.state='COMPLETED'
+          AND restore.restore_expires_at>?
+        ORDER BY restore.restore_expires_at DESC LIMIT 1) AS temp_restore_size
     FROM file_read_intents read
     JOIN file_objects object
       ON object.id=read.file_object_id
@@ -795,48 +869,16 @@ async function requireReadIntent(
         (read.file_entity_link_id IS NULL
           AND link.authorization_mode='LEGACY_VISIBILITY')
       )
-    LEFT JOIN file_drive_archives archive ON archive.file_object_id=object.id
-    LEFT JOIN file_drive_archive_manifests manifest ON manifest.file_object_id=object.id
     WHERE read.id=?
       AND object.status='VERIFIED'
       AND intent.status='VERIFIED'
     ORDER BY link.created_at, link.id
     LIMIT 1
-  `).bind(readIntentId).first<ReadIntentRow>();
+  `).bind(now, now, readIntentId).first<ReadIntentRow>();
   if (!row) {
     throw new FileStorageError('FILE_READ_INTENT_NOT_FOUND', 404);
   }
   return row;
-}
-
-async function readArchivedBytes(
-  source: ReadIntentRow,
-  coldArchive: {adapter:DriveArchiveAdapter|null;proxyReadEnabled:boolean}|undefined,
-): Promise<Uint8Array<ArrayBuffer>> {
-  if (!coldArchive?.proxyReadEnabled || !coldArchive.adapter
-    || !source.drive_file_id || source.archive_byte_size === null
-    || source.archive_mime_type === null || source.archive_sha256 === null) {
-    throw new FileStorageError('DEPENDENCY_UNAVAILABLE',503);
-  }
-  if (source.uploaded_byte_size === null
-    || source.detected_mime === null
-    || source.uploaded_sha256 === null
-    || source.uploaded_byte_size !== source.archive_byte_size
-    || source.detected_mime !== source.archive_mime_type
-    || source.uploaded_sha256 !== source.archive_sha256) {
-    throw new FileStorageError('FILE_STORAGE_CONFLICT',409);
-  }
-  const result=await coldArchive.adapter.readFile(source.drive_file_id).catch(()=>{
-    throw new FileStorageError('DEPENDENCY_UNAVAILABLE',503);
-  });
-  if (result.byteSize!==source.archive_byte_size
-    || result.mimeType!==source.archive_mime_type
-    || result.bytes.byteLength!==source.uploaded_byte_size
-    || detectSupportedMime(result.bytes)!==source.detected_mime
-    || await sha256Hex(result.bytes)!==source.archive_sha256) {
-    throw new FileStorageError('FILE_STORAGE_CONFLICT',409);
-  }
-  return result.bytes;
 }
 
 function resource(source: ReadableFileSource) {

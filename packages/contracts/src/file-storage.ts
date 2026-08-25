@@ -337,6 +337,19 @@ export interface ObjectStorageAdapter {
   openObjectStream?(
     objectKey: string,
   ): Promise<ObjectStorageStream | null>;
+  /**
+   * Streaming write variant for large generated objects (cold-archive temp
+   * ZIPs): the body is stored without buffering it in Worker memory. The
+   * returned receipt's checksum is computed by storage where supported, or by
+   * re-reading the object; callers that need a verified hash must re-read via
+   * openObjectStream when checksumSha256 is empty.
+   */
+  putObjectStream?(input: {
+    objectKey: string;
+    contentType: SupportedFileMime | 'application/zip';
+    metadata: Readonly<Record<string, string>>;
+    body: ReadableStream<Uint8Array>;
+  }): Promise<Omit<ObjectStoragePutResult, 'checksumSha256'> & { checksumSha256: string }>;
 }
 
 export interface ObjectStorageStream {

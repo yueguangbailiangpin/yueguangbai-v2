@@ -30,11 +30,11 @@
 
 ## Stage 5 — 冷归档、Queue 与恢复
 
-- [ ] 5.1 归档单元与状态机（ORDER 含卖家聊天、BUYER_REFUND_PAYMENT、SELLER_SETTLEMENT_PAYMENT；6 上海自然月）
-- [ ] 5.2 ZIP + manifest 流式 bundle → 临时 R2 → resumable upload → 回读校验 → 条件删除
-- [ ] 5.3 Queues 本地模板（batch 1–5、DLQ、逐消息 ack/retry、指数退避、Drive 并发 3 可配置）
-- [ ] 5.4 Staff-only 恢复 + 占位提示 + 原 audience 授权 + 7 天清理；首次 shadow-copy
-- [ ] 5.5 容量指标与 100k Manifest 容量测试
+- [x] 5.1 归档单元与状态机（ORDER 含卖家聊天、BUYER_REFUND_PAYMENT、SELLER_SETTLEMENT_PAYMENT；资格为关闭最晚事实 + 6 个 UTC 日历月——本轮所有者指令措辞，见 STAGE5 交接 §0）
+- [x] 5.2 ZIP + manifest 流式 bundle → 临时 R2 → resumable upload（fake Drive）→ 回读校验 → 条件删除（migration 0024 + 流式 writer/增量哈希 + DriveArchiveClient 端口）
+- [x] 5.3 Queues 本地模板（batch 1–5、DLQ 模板、逐消息 ack/retry、指数退避、Drive 并发 3 可配置；D1 租约幂等）
+- [x] 5.4 Staff-only 恢复 + 占位提示（FILE_ARCHIVED 410 全受众）+ 原 audience 授权 + 7 天清理；首次 shadow-copy 默认
+- [x] 5.5 容量指标与 100k Manifest 容量测试（verify:archive-capacity：20k 单/100k 文件，13.8s，无重复、无 O(N²)）
 
 ## Stage 6 — 历史导入与容量
 

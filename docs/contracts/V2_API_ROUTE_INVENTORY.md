@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。现有 246 个唯一端点：244 个 `/api/*`，以及 `/health`、`/ready`。Staff MCP、机器获客、关键词图片、飞书与 Rakuten/TikTok 预备层已随干净基线重建退役；经营看板收敛为 summary 与 financial-projection 两个只读端点（清单 §3.2）。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
+这是默认 App 的可复现 route inventory。现有 248 个唯一端点：246 个 `/api/*`，以及 `/health`、`/ready`。阶段 5（D-055）以 ZIP Bundle 冷归档替换单文件 Drive 归档：per-file rehydrate 路由退役，新增 staff-only 的 bundle restore、bundle 列表与归档指标端点。Staff MCP、机器获客、关键词图片、飞书与 Rakuten/TikTok 预备层已随干净基线重建退役；经营看板收敛为 summary 与 financial-projection 两个只读端点（清单 §3.2）。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
 
 阶段 4（D-054）收敛说明：marketplace 运行时合同只接受 AMAZON_JP / AMAZON_US / COUPANG_KR（历史 'JP' 短码只存在于阶段 6 历史导入映射层）；获客只保留人工面（渠道、咨询、Prospect、Lead、负责员工、有审计的人工纠正），funnel / handoffs / reporting-config / acquisition-daily 机器维度已删除；被删除路由一律返回 404，不保留兼容别名。
 
@@ -93,6 +93,8 @@ GET /api/staff/me/assignments
 GET /api/staff/me/work-items
 GET /api/staff/me/work-items/:id
 GET /api/staff/operating-integrity/order-lookup
+GET /api/staff/operations/archive/bundles
+GET /api/staff/operations/archive/metrics
 GET /api/staff/operations/health
 GET /api/staff/order-evidence
 GET /api/staff/order-evidence/:id
@@ -224,7 +226,7 @@ POST /api/staff/finance/exports/csv
 POST /api/staff/formal-orders/:id/buyer-chat-screenshots
 POST /api/staff/formal-orders/:id/chat-screenshot
 POST /api/staff/operations/alerts/ack
-POST /api/staff/operations/archive/files/:id/rehydrate
+POST /api/staff/operations/archive/bundles/:id/restore
 POST /api/staff/operations/archive/orders/:id/close
 POST /api/staff/operations/archive/orders/:id/reopen
 POST /api/staff/operations/dead-letters/:id/replay

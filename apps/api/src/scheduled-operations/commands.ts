@@ -1,6 +1,5 @@
 import type {
   ObjectStorageAdapter,
-  DriveArchiveAdapter,
   ScheduledOperationCommandResultDto,
   ScheduledOperationDeadLetterReplayCommandDto,
   ScheduledOperationJobName,
@@ -25,7 +24,7 @@ import {
   type IdempotencyError,
 } from '../foundation/idempotency';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { runScheduledOperations, type OutboxDeliveryAdapter } from './runner';
+import { runScheduledOperations, type ArchiveScheduledRuntime, type OutboxDeliveryAdapter } from './runner';
 
 const REPLAY_LEASE_MS = 5 * 60 * 1000;
 
@@ -52,11 +51,7 @@ export interface ScheduledOperationCommandDependencies {
   storage?: ObjectStorageAdapter | null;
   outboxDeliveryEnabled?: boolean;
   outboxAdapter?: OutboxDeliveryAdapter | null;
-  driveAdapter?: DriveArchiveAdapter | null;
-  driveArchiveEnabled?: boolean;
-  driveArchiveCopyEnabled?: boolean;
-  driveArchiveProxyReadEnabled?: boolean;
-  driveArchiveR2DeleteEnabled?: boolean;
+  archive?: ArchiveScheduledRuntime | null;
   afterReplayClaimed?: (() => Promise<void>) | undefined;
 }
 
@@ -115,11 +110,7 @@ export async function runScheduledOperationManually(
       storage: dependencies.storage ?? null,
       outboxDeliveryEnabled: dependencies.outboxDeliveryEnabled !== false,
       outboxAdapter: dependencies.outboxAdapter ?? null,
-      driveAdapter: dependencies.driveAdapter ?? null,
-      driveArchiveEnabled: dependencies.driveArchiveEnabled === true,
-      driveArchiveCopyEnabled: dependencies.driveArchiveCopyEnabled === true,
-      driveArchiveProxyReadEnabled: dependencies.driveArchiveProxyReadEnabled === true,
-      driveArchiveR2DeleteEnabled: dependencies.driveArchiveR2DeleteEnabled === true,
+      archive: dependencies.archive ?? null,
       now,
     });
     const run = runs[0];

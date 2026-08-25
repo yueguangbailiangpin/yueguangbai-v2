@@ -13,10 +13,13 @@
     "OUTBOX_DELIVERY_ENABLED": "false",
     "ACQUISITION_MAINTENANCE_ENABLED": "false",
     "OPERATIONAL_ALERT_MODE": "disabled",
-    "DRIVE_ARCHIVE_ENABLED": "false",
-    "DRIVE_ARCHIVE_COPY_ENABLED": "false",
-    "DRIVE_ARCHIVE_PROXY_READ_ENABLED": "false",
-    "DRIVE_ARCHIVE_R2_DELETE_ENABLED": "false"
+    // Stage 5 (D-055) cold-archive switches — every one defaults OFF. The D1
+    // archive_runtime_controls table is the independent second gate; the
+    // release preflight additionally requires all four to stay "false".
+    "ARCHIVE_SELECTOR_ENABLED": "false",
+    "ARCHIVE_DRIVE_UPLOAD_ENABLED": "false",
+    "ARCHIVE_HOT_DELETE_ENABLED": "false",
+    "ARCHIVE_RESTORE_WORKER_ENABLED": "false"
   },
   "compatibility_date": "REPLACE_BEFORE_USE",
   "workers_dev": false,
@@ -41,4 +44,25 @@
       "bucket_name": "REPLACE_BEFORE_USE"
     }
   ]
+  // Stage 5 Queues TEMPLATE (D-055). No real queue exists in this stage and
+  // nothing below is active: when a future change creates the queue it must
+  // be created explicitly (`wrangler queues create`) with owner approval.
+  // Message bodies carry only bundle_id/bundle_version/job_type/trace_id.
+  //
+  // "queues": {
+  //   "producers": [
+  //     { "binding": "ARCHIVE_QUEUE", "queue": "REPLACE_BEFORE_USE" }
+  //   ],
+  //   "consumers": [
+  //     {
+  //       "queue": "REPLACE_BEFORE_USE",
+  //       "max_batch_size": 5,
+  //       "max_batch_timeout": 10,
+  //       "max_retries": 8,
+  //       "max_concurrency": 3,
+  //       "retry_delay": 60,
+  //       "dead_letter_queue": "REPLACE_BEFORE_USE-dlq"
+  //     }
+  //   ]
+  // }
 }
