@@ -143,12 +143,12 @@ node scripts/historical-import.mjs reconcile --batch-id <id> --database <d1-sqli
 - **幂等/审计**：导入 run 以 (source_system, files_sha, parser, mapping, mode) 唯一；重复源重放 0 新行；源内容变化 = 新 run；快照表 append-only（触发器级）。
 - **命令面**：`scripts/historical-import.mjs` 五命令（本地 only、apply 双门禁）。
 - **check 链**：`verify:historical-import-capacity` 与 `verify:archive-capacity` 并列在 `check:ci:test-build`。
-- 阶段 7（前端三端界面与交互重构）可直接以 248 端点 + 本合同为 API 基线开工；阶段 8（部署准备）前仍需真实 Drive 客户端（阶段 5 风险 1）与本 §10 的真实导入材料清单。
+- 阶段 7（前端三端界面与交互重构）可直接以 248 端点 + 本合同为 API 基线开工；阶段 6.5 已补齐真实 Drive HTTP 客户端代码（未执行真实 Drive 操作）、图片盘点 CLI、未匹配身份显式隔离、UTC 六个月统一与多行订单合同（见 `V2_BACKEND_REBUILD_STAGE6_5_HANDOFF.md`）；阶段 8（部署准备）前仍需本 §10 的真实导入材料清单与 Drive 激活清单。
 
-## 15. 未解决风险
+## 15. 未解决风险（阶段 6.5 更新）
 
-1. 真实历史导入未执行（§10 材料清单）；CLI 已就绪但从未接触真实源。
-2. conflicting 重复组（多商品多行）一律 quarantine——真实母表若含合法多商品行，将全部进 HOLD 待业务决策承载方式。
-3. 身份未匹配行在 apply 时照常写快照（非阻断）——真实导入后需人工批量裁定 override（表已就绪）。
-4. 图片字节盘点工具（inventory 生成器）尚未建设（本轮接受任意 Map 输入；真实盘点脚本属真实导入准备项）。
-5. UTC/上海月语义并存（阶段 5 §0）与导入 6 个 UTC 日历月 cold 门槛的统一仍待业务所有者一句话。
+1. 真实历史导入未执行（§10 材料清单）；CLI 已就绪但从未接触真实源。**仍开放。**
+2. ~~conflicting 重复组（多商品多行）一律 quarantine~~ **阶段 6.5 已细化为稳定合同**：行定义列（ASIN/金额/费用/汇率）不同的组 → `MULTI_LINE_ORDER_REQUIRES_MAPPING`（critical，保留全部原始行，`can_apply=false`，绝不取首行/末行/自动求和）；仅非行定义列不同 → 仍 `CONFLICTING_DUPLICATE_GROUP`。真实源到位后由业务方以显式 mapping 裁定承载方式。
+3. ~~身份未匹配行在 apply 时照常写快照（非阻断）~~ **阶段 6.5 已加显式 unresolved 边界**：每条未匹配行现在落 DURABLE `IDENTITY_UNMATCHED` quarantine 行（kinds=BUYER_CUSTOMER/SELLER_ORGANIZATION；非 critical，快照照常无损写入），override 表增 `import_batch_id` 审计列；门户可见性为零（api-contract 248 端点不变 + 无视图/无 FK 链接 formal_orders，测试实证）。真实导入后人工批量裁定 override 的流程不变。
+4. ~~图片字节盘点工具尚未建设~~ **阶段 6.5 已建成**：`scripts/historical-import.mjs` 新增 inspect-images / inventory-images / resume-image-inventory / reconcile-images（源目录只读、流式 SHA-256、MIME 嗅探、checkpoint/resume、重复/缺失/orphan/无法识别检测、LINKED/ORPHAN/QUARANTINE 业务关系、输出仅进显式输出目录）；100,000 文件容量验证通过。REAL_IMAGE_INVENTORY=NOT_RUN。
+5. ~~UTC/上海月语义并存~~ **阶段 6.5 已统一**：一律 6 个 UTC 日历月 + 月底截断（1/31、2/29、8/31、UTC 跨日边界测试齐备）。

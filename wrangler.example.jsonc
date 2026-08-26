@@ -20,6 +20,21 @@
     "ARCHIVE_DRIVE_UPLOAD_ENABLED": "false",
     "ARCHIVE_HOT_DELETE_ENABLED": "false",
     "ARCHIVE_RESTORE_WORKER_ENABLED": "false"
+    // Stage 6.5 Google Drive HTTP adapter (drive-http-client.ts). The
+    // adapter is built from these vars by archiveRuntime(); with
+    // ARCHIVE_DRIVE_UPLOAD_ENABLED=false it makes ZERO HTTP requests.
+    // Variable names only — the secret values are wrangler-managed secrets:
+    //   wrangler secret put GOOGLE_DRIVE_CLIENT_SECRET
+    //   wrangler secret put GOOGLE_DRIVE_REFRESH_TOKEN
+    // and never plaintext vars. GOOGLE_DRIVE_FOLDER_ID may be a regular
+    // folder or a Shared Drive folder id; GOOGLE_DRIVE_SHARED_DRIVE_ID is
+    // optional and adds the driveId parameter. The refresh-token triple
+    // (client id + secret + refresh token) is the production path;
+    // GOOGLE_DRIVE_ACCESS_TOKEN (static token) exists for controlled manual
+    // operation only and must NOT be set as a plaintext var.
+    // "GOOGLE_DRIVE_FOLDER_ID": "REPLACE_BEFORE_USE",
+    // "GOOGLE_DRIVE_SHARED_DRIVE_ID": "REPLACE_BEFORE_USE",
+    // "GOOGLE_DRIVE_CLIENT_ID": "REPLACE_BEFORE_USE"
   },
   "compatibility_date": "REPLACE_BEFORE_USE",
   "workers_dev": false,

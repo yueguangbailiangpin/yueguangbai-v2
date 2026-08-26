@@ -9,7 +9,7 @@ describe('customer portal onboarding migrations 0049-0050',()=>{
     database=createMigratedTestDatabase();
     const state=await database.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`)
       .first<{schema_version:number}>();
-    expect(Number(state?.schema_version)).toBe(25);
+    expect(Number(state?.schema_version)).toBe(26);
   });
 
   it('creates seller invitation persistence and buyer lead attribution mapping',async()=>{

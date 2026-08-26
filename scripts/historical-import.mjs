@@ -20,6 +20,34 @@ const APPLY_ENV_KEY = 'HISTORICAL_IMPORT_APPLY_LOCAL';
 const APPLY_ENV_VALUE = 'I_UNDERSTAND_THIS_WRITES_LOCAL_D1';
 const LOCAL_D1_DIRECTORY = path.resolve('apps/api/.wrangler/state/v3/d1/miniflare-D1DatabaseObject');
 
+const USAGE = `historical-import — stage 6 historical order importer CLI (local only)
+
+Usage:
+  node scripts/historical-import.mjs inspect --source <file.csv|file.jsonl> [--source <more>...]
+  node scripts/historical-import.mjs dry-run --source <file> [--database <d1-sqlite>]
+  HISTORICAL_IMPORT_APPLY_LOCAL=I_UNDERSTAND_THIS_WRITES_LOCAL_D1 \\
+  node scripts/historical-import.mjs apply-local --source <file> --database <d1-sqlite>
+  node scripts/historical-import.mjs resume --source <file> --batch-id <id> --database <d1-sqlite>
+  node scripts/historical-import.mjs reconcile --batch-id <id> --database <d1-sqlite>
+
+Commands:
+  inspect      Header check, row count and source SHA-256. No run is created, nothing is written.
+  dry-run      Default mode: full parse/validate/identity/classification report, can_apply gate.
+               Records only batch provenance rows in the local database.
+  apply-local  Writes historical_* snapshot tables in the LOCAL test D1 only (env gate required).
+               Live formal_orders is never written by the importer.
+  resume       Continues a RUNNING APPLY_LOCAL batch; the source file SHA-256 must match the batch.
+  reconcile    Prints the reconciliation summary for a finished batch.
+  inspect-images       Read-only source directory preview (counts by extension). No database involved.
+  inventory-images     Read-only byte scan (streaming SHA-256 + MIME sniffing) into the LOCAL D1
+                       inventory tables with checkpoints (env gate required). Never writes the source dir.
+  resume-image-inventory  Continues a RUNNING inventory batch; the directory listing digest must match.
+  reconcile-images     Classifies LINKED/ORPHAN/QUARANTINE relations against an import batch,
+                       detects duplicate content, and writes JSONL/CSV artifacts + summary to an
+                       EXPLICIT output directory outside the source. Plan only — no R2/Drive upload.
+
+Sources are CSV (frozen 30-column header) or JSONL (raw_fields manifest form).`;
+
 const args = parseArgs(process.argv.slice(2));
 const command = args.get('command');
 if (!command || command === 'help') {
@@ -40,9 +68,15 @@ const bundle = await build({
       import { reconcileHistoricalImport, runHistoricalImport } from ${JSON.stringify(
         path.resolve('tools/imports/historical-order-importer/pipeline.ts'),
       )};
+      import {
+        listImageDirectory,
+        reconcileImageInventory,
+        runImageInventory,
+      } from ${JSON.stringify(path.resolve('tools/imports/historical-order-importer/image-inventory.ts'))};
       export {
         SqliteDatabase, discoverHistoricalSources, HISTORICAL_CSV_HEADERS,
         parseHistoricalCsv, parseHistoricalJsonl, reconcileHistoricalImport, runHistoricalImport,
+        listImageDirectory, reconcileImageInventory, runImageInventory,
       };
     `,
     resolveDir: process.cwd(),
@@ -65,6 +99,9 @@ const {
   parseHistoricalJsonl,
   reconcileHistoricalImport,
   runHistoricalImport,
+  listImageDirectory,
+  reconcileImageInventory,
+  runImageInventory,
 } = await import(pathToFileURL(temporaryModule).href);
 
 try {
@@ -222,6 +259,103 @@ async function runCommand() {
       database.close();
       break;
     }
+    case 'inspect-images': {
+      const sourceDir = path.resolve(required(args, 'source-dir'));
+      const { paths, unsafeEntries } = await listImageDirectory(sourceDir);
+      const byExtension = {};
+      for (const entry of paths) {
+        const name = path.basename(entry);
+        const dot = name.lastIndexOf('.');
+        const extension = dot > 0 ? name.slice(dot).toLowerCase() : '(none)';
+        byExtension[extension] = (byExtension[extension] ?? 0) + 1;
+      }
+      console.log(JSON.stringify({
+        status: 'INSPECT_ONLY',
+        source_dir: sourceDir,
+        files: paths.length,
+        unsafe_entries: unsafeEntries.length,
+        by_extension: byExtension,
+        database_writes: 0,
+        bytes_read: 'headers_and_stats_only_no_file_contents_hashed',
+        remote_writes: 'none',
+      }, null, 2));
+      break;
+    }
+    case 'inventory-images': {
+      if (process.env[APPLY_ENV_KEY] !== APPLY_ENV_VALUE) {
+        throw new Error(
+          `inventory_env_gate_missing: set ${APPLY_ENV_KEY}=${APPLY_ENV_VALUE} to confirm this writes the LOCAL test D1 only`,
+        );
+      }
+      const sourceDir = path.resolve(required(args, 'source-dir'));
+      const databasePath = path.resolve(required(args, 'database'));
+      assertInsideRepository(databasePath);
+      const { database, label } = openDatabase(databasePath, { explicit: true });
+      const summary = await runImageInventory(database, {
+        sourceRoot: sourceDir,
+        actorStaffId: args.get('actor-staff-id'),
+      });
+      console.log(JSON.stringify({
+        status: summary.status === 'COMPLETED' ? 'INVENTORY_COMPLETED' : 'INVENTORY_INTERRUPTED',
+        database: label,
+        source_dir: sourceDir,
+        summary,
+        tables_written: ['historical_image_inventory_batches',
+          'historical_image_inventory_files', 'historical_image_inventory_findings'],
+        source_directory_written: 'never_read_only',
+        remote_writes: 'none',
+      }, null, 2));
+      database.close();
+      if (summary.status !== 'COMPLETED') process.exitCode = 1;
+      break;
+    }
+    case 'resume-image-inventory': {
+      if (process.env[APPLY_ENV_KEY] !== APPLY_ENV_VALUE) {
+        throw new Error(
+          `inventory_env_gate_missing: set ${APPLY_ENV_KEY}=${APPLY_ENV_VALUE} to confirm this writes the LOCAL test D1 only`,
+        );
+      }
+      const sourceDir = path.resolve(required(args, 'source-dir'));
+      const batchId = required(args, 'batch-id');
+      const databasePath = path.resolve(required(args, 'database'));
+      assertInsideRepository(databasePath);
+      const { database, label } = openDatabase(databasePath, { explicit: true });
+      const summary = await runImageInventory(database, {
+        sourceRoot: sourceDir,
+        resumeBatchId: batchId,
+      });
+      console.log(JSON.stringify({
+        status: summary.status === 'COMPLETED' ? 'INVENTORY_COMPLETED' : 'INVENTORY_INTERRUPTED',
+        database: label,
+        summary,
+        remote_writes: 'none',
+      }, null, 2));
+      database.close();
+      break;
+    }
+    case 'reconcile-images': {
+      const batchId = required(args, 'batch-id');
+      const outputDir = path.resolve(required(args, 'output-dir'));
+      const databasePath = path.resolve(required(args, 'database'));
+      assertInsideRepository(databasePath);
+      const importBatchId = args.get('import-batch-id');
+      const { database, label } = openDatabase(databasePath, { explicit: true });
+      const reconciliation = await reconcileImageInventory(database, {
+        inventoryBatchId: batchId,
+        importBatchId: importBatchId || undefined,
+        outputDir,
+      });
+      console.log(JSON.stringify({
+        status: 'RECONCILIATION_PLAN_ONLY',
+        database: label,
+        reconciliation,
+        source_directory_written: 'never_read_only',
+        r2_or_drive_uploads: 'none',
+        remote_writes: 'none',
+      }, null, 2));
+      database.close();
+      break;
+    }
     default:
       console.error(USAGE);
       process.exit(2);
@@ -302,24 +436,3 @@ function required(values, key) {
   if (!value || value.length === 0) throw new Error(`missing_argument:--${key}`);
   return value;
 }
-
-const USAGE = `historical-import — stage 6 historical order importer CLI (local only)
-
-Usage:
-  node scripts/historical-import.mjs inspect --source <file.csv|file.jsonl> [--source <more>...]
-  node scripts/historical-import.mjs dry-run --source <file> [--database <d1-sqlite>]
-  HISTORICAL_IMPORT_APPLY_LOCAL=I_UNDERSTAND_THIS_WRITES_LOCAL_D1 \\
-  node scripts/historical-import.mjs apply-local --source <file> --database <d1-sqlite>
-  node scripts/historical-import.mjs resume --source <file> --batch-id <id> --database <d1-sqlite>
-  node scripts/historical-import.mjs reconcile --batch-id <id> --database <d1-sqlite>
-
-Commands:
-  inspect      Header check, row count and source SHA-256. No run is created, nothing is written.
-  dry-run      Default mode: full parse/validate/identity/classification report, can_apply gate.
-               Records only batch provenance rows in the local database.
-  apply-local  Writes historical_* snapshot tables in the LOCAL test D1 only (env gate required).
-               Live formal_orders is never written by the importer.
-  resume       Continues a RUNNING APPLY_LOCAL batch; the source file SHA-256 must match the batch.
-  reconcile    Prints the reconciliation summary for a finished batch.
-
-Sources are CSV (frozen 30-column header) or JSONL (raw_fields manifest form).`;

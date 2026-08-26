@@ -36,6 +36,10 @@ interface ExpectedTotals {
   files: { cold: number; hot: number; quarantineClosure: number; planned: number };
   buyerMatchedRows: number;
   sellerMatchedRows: number;
+  buyerConflictRows: number;
+  sellerConflictRows: number;
+  /** Durable IDENTITY_UNMATCHED rows (explicit unresolved identity facts). */
+  identityUnmatchedRows: number;
 }
 
 const REFUND_BY_RATE = [
@@ -75,6 +79,9 @@ export function generateCapacitySource(fixed: boolean): { csv: string; expected:
     files: { cold: 0, hot: 0, quarantineClosure: 0, planned: 0 },
     buyerMatchedRows: 0,
     sellerMatchedRows: 0,
+    buyerConflictRows: 0,
+    sellerConflictRows: 0,
+    identityUnmatchedRows: 0,
   };
   const bump = (code: string) => { expected.quarantineByCode[code] = (expected.quarantineByCode[code] ?? 0) + 1; };
   for (let index = 0; index < ORDER_COUNT; index += 1) {
@@ -96,7 +103,12 @@ export function generateCapacitySource(fixed: boolean): { csv: string; expected:
 
     // Exact-duplicate group members derive EVERY column from the group head
     // so their source rows are byte-identical facts (one logical order).
-    const derive = kind === 'EXACT_DUP' ? (index <= 1601 ? 1600 : 2400) : index;
+    // Conflicting-group members likewise derive from their head so the ONLY
+    // difference is the explicit one applied below (amount for the multi-line
+    // group, wechat for the plain-conflict group).
+    const derive = kind === 'EXACT_DUP' ? (index <= 1601 ? 1600 : 2400)
+      : kind === 'CONFLICT_DUP' ? (index <= 3601 ? 3600 : 4400)
+        : index;
     const closure = derive % 10 < 7 ? 'OLD' : derive % 10 < 9 ? 'RECENT' : 'INCOMPLETE';
     const hasFinance = derive % 3 < 2;
     const rateIndex = derive % 4;
@@ -146,55 +158,84 @@ export function generateCapacitySource(fixed: boolean): { csv: string; expected:
       cells['买家返金金额'] = '';
       cells['卖家返金金额'] = '';
     }
-    // Conflicting duplicate groups differ on amount (C: 3600/3601) and buyer
-    // wechat (D: 4400/4401) so the group signature is never identical.
+    // Conflicting duplicate groups split by contract: group C (3600/3601)
+    // differs ONLY on the line-defining amount (multi-line contract), group D
+    // (4400/4401) differs ONLY on buyer wechat (plain conflicting duplicate).
     if (!fixed && kind === 'CONFLICT_DUP' && index % 2 === 1) {
-      cells['订单价格'] = String(orderAmount + 100);
-      cells['买家微信'] = 'wx-cap-conflict-a';
+      if (index <= 3601) cells['订单价格'] = String(orderAmount + 100);
+      else cells['买家微信'] = 'wx-cap-conflict-a';
     }
     lines.push(HISTORICAL_CSV_HEADERS.map((header) => cells[header] ?? '').join(','));
 
     // ---- expectation aggregation (independent of pipeline internals) ----
-    const quarantined = kind !== 'NORMAL' && kind !== 'EXACT_DUP';
-    if (quarantined) {
-      expected.quarantinedRows += 1;
+    // Collapsed exact-duplicate members are represented by their group head:
+    // they are never written, so they contribute no order row and no
+    // durable quarantine row.
+    const groupHead = kind === 'EXACT_DUP' ? (index <= 1601 ? 1600 : 2400) : null;
+    const collapsedMember = groupHead !== null && index !== groupHead;
+    // Quarantines discovered BEFORE identity resolution (they skip the loop).
+    const preQuarantined = kind === 'BAD_UNKNOWN_MARKETPLACE' || kind === 'BAD_MISSING_COLUMN'
+      || kind === 'BAD_NON_INTEGER' || kind === 'BAD_SPREAD' || kind === 'BAD_DATE'
+      || kind === 'BAD_PARTIAL_FINANCE' || kind === 'CONFLICT_DUP';
+    const rowQuarantineCodes: string[] = [];
+    if (preQuarantined) {
       switch (kind) {
-        case 'BAD_UNKNOWN_MARKETPLACE': bump('UNKNOWN_MARKETPLACE'); expected.criticalRows += 1; break;
-        case 'BAD_MISSING_COLUMN': bump('MISSING_REQUIRED_COLUMN'); expected.criticalRows += 1; break;
-        case 'BAD_NON_INTEGER': bump('NON_INTEGER_AMOUNT'); expected.criticalRows += 1; break;
-        case 'BAD_SPREAD': bump('RATE_SPREAD_MISMATCH'); expected.criticalRows += 1; break;
-        case 'BAD_DATE': bump('INVALID_DATE'); break;
-        case 'BAD_PARTIAL_FINANCE': bump('MISSING_FINANCIAL_FIELDS'); break;
-        case 'BAD_IDENTITY_BUYER':
-        case 'BAD_IDENTITY_SELLER': bump('IDENTITY_CONFLICT'); break;
+        case 'BAD_UNKNOWN_MARKETPLACE': rowQuarantineCodes.push('UNKNOWN_MARKETPLACE'); expected.criticalRows += 1; break;
+        case 'BAD_MISSING_COLUMN': rowQuarantineCodes.push('MISSING_REQUIRED_COLUMN'); expected.criticalRows += 1; break;
+        case 'BAD_NON_INTEGER': rowQuarantineCodes.push('NON_INTEGER_AMOUNT'); expected.criticalRows += 1; break;
+        case 'BAD_SPREAD': rowQuarantineCodes.push('RATE_SPREAD_MISMATCH'); expected.criticalRows += 1; break;
+        case 'BAD_DATE': rowQuarantineCodes.push('INVALID_DATE'); break;
+        case 'BAD_PARTIAL_FINANCE': rowQuarantineCodes.push('MISSING_FINANCIAL_FIELDS'); break;
         case 'CONFLICT_DUP':
-          bump('CONFLICTING_DUPLICATE_GROUP');
+          // Group C (3600/3601) differs on 订单价格 — a line-defining fact —
+          // so the multi-line contract holds it as
+          // MULTI_LINE_ORDER_REQUIRES_MAPPING; group D (4400/4401) differs
+          // only on 买家微信, a plain conflicting duplicate.
+          rowQuarantineCodes.push(index <= 3601
+            ? 'MULTI_LINE_ORDER_REQUIRES_MAPPING'
+            : 'CONFLICTING_DUPLICATE_GROUP');
           expected.criticalRows += 1;
           expected.duplicateRows += 1;
           break;
         default: break;
       }
     } else {
-      expected.validRows += 1;
-      let groupHead: number | null = null;
-      if (kind === 'EXACT_DUP') {
-        expected.duplicateRows += 1;
-        groupHead = index <= 1601 ? 1600 : 2400;
-        if (groupHead !== null && index === groupHead) expected.logicalOrders += 1;
-      } else {
-        expected.logicalOrders += 1;
+      // Identity stage (rows that reach resolution): conflicts and unmatched
+      // outcomes are discovered here, exactly like the pipeline does.
+      const buyerWechat = cells['买家微信'] ?? '';
+      const store = cells['店铺名字'];
+      const buyerOutcome = buyerWechat.startsWith('wx-cap-m') ? 'MATCHED'
+        : buyerWechat === 'wx-cap-conflict-a' ? 'CONFLICT' : 'UNMATCHED';
+      const sellerOutcome = store === '容量匹配店铺' ? 'MATCHED'
+        : store === '容量冲突店铺' ? 'CONFLICT' : 'UNMATCHED';
+      if (buyerOutcome === 'CONFLICT') {
+        rowQuarantineCodes.push('IDENTITY_CONFLICT');
+        expected.buyerConflictRows += 1;
       }
-      // Currency follows collapsed logical orders: a repeated exact row is
-      // the same order, not additional money.
-      if (groupHead === null || index === groupHead) {
-        expected.currency.jpy += orderAmount;
-        if (hasFinance) {
-          expected.currency.refundFen += REFUND_BY_RATE[rateIndex]!.fen;
-          expected.currency.principalFen += PRINCIPAL_BY_RATE[rateIndex]!.fen;
-          expected.currency.feeFen += FEE_BY_FIVE[derive % 5]!.fen;
-        }
+      if (sellerOutcome === 'CONFLICT') {
+        rowQuarantineCodes.push('IDENTITY_CONFLICT');
+        expected.sellerConflictRows += 1;
+      }
+      if ((buyerOutcome === 'UNMATCHED' || sellerOutcome === 'UNMATCHED') && !collapsedMember) {
+        rowQuarantineCodes.push('IDENTITY_UNMATCHED');
+        expected.identityUnmatchedRows += 1;
       }
     }
+    if (rowQuarantineCodes.length > 0) expected.quarantinedRows += 1;
+    else expected.validRows += 1;
+    for (const code of rowQuarantineCodes) bump(code);
+    // Written logical orders and their currency: APPLY_LOCAL snapshots every
+    // non-collapsed row (quarantined rows included — lossless import).
+    if (!collapsedMember) {
+      expected.logicalOrders += 1;
+      expected.currency.jpy += orderAmount;
+      if (hasFinance) {
+        expected.currency.refundFen += REFUND_BY_RATE[rateIndex]!.fen;
+        expected.currency.principalFen += PRINCIPAL_BY_RATE[rateIndex]!.fen;
+        expected.currency.feeFen += FEE_BY_FIVE[derive % 5]!.fen;
+      }
+    }
+    if (kind === 'EXACT_DUP') expected.duplicateRows += 1;
     if (fixed && (cells['买家微信'] ?? '').startsWith('wx-cap-m')) expected.buyerMatchedRows += 1;
     if (fixed && cells['店铺名字'] === '容量匹配店铺') expected.sellerMatchedRows += 1;
     // Dry-run file plans cover EVERY row (quarantined rows still classify).
@@ -276,9 +317,15 @@ describe('historical import capacity (stage 6.7)', () => {
 
       // Sanity on the generator itself before any pipeline involvement.
       expect(dirtySource.expected.sourceRows).toBe(ORDER_COUNT);
-      expect(dirtySource.expected.quarantinedRows).toBeGreaterThan(ORDER_COUNT * 0.015);
-      expect(dirtySource.expected.quarantinedRows).toBeLessThan(ORDER_COUNT * 0.025);
-      expect(fixedSource.expected.quarantinedRows).toBe(0);
+      // The injected bad-row mix drives the critical rate; unmatched identity
+      // rows now add a large NON-critical quarantine population (realistic:
+      // the real import will hold most identities unresolved on first run).
+      expect(dirtySource.expected.criticalRows).toBeGreaterThan(ORDER_COUNT * 0.005);
+      expect(dirtySource.expected.criticalRows).toBeLessThan(ORDER_COUNT * 0.025);
+      expect(dirtySource.expected.quarantinedRows)
+        .toBeGreaterThanOrEqual(dirtySource.expected.criticalRows);
+      expect(fixedSource.expected.quarantinedRows).toBe(fixedSource.expected.identityUnmatchedRows);
+      expect(fixedSource.expected.identityUnmatchedRows).toBeGreaterThan(ORDER_COUNT / 2);
       expect(fixedSource.expected.logicalOrders).toBe(ORDER_COUNT - 3);
       expect(fixedSource.expected.files.planned).toBe(ORDER_COUNT * IMAGE_COLUMNS.length);
 
@@ -299,8 +346,8 @@ describe('historical import capacity (stage 6.7)', () => {
       expect(dryDirty.report.quarantined_rows).toBe(dirtySource.expected.quarantinedRows);
       expect(dryDirty.report.quarantine_by_code).toEqual(dirtySource.expected.quarantineByCode);
       expect(dryDirty.report.duplicate_rows).toBe(dirtySource.expected.duplicateRows);
-      expect(dryDirty.report.buyer_matches.conflicts).toBe(25);
-      expect(dryDirty.report.seller_matches.conflicts).toBe(25);
+      expect(dryDirty.report.buyer_matches.conflicts).toBe(dirtySource.expected.buyerConflictRows);
+      expect(dryDirty.report.seller_matches.conflicts).toBe(dirtySource.expected.sellerConflictRows);
       expect(dryDirty.report.file_plan.planned).toBe(dirtySource.expected.files.planned);
       expect(dryDirty.report.file_plan.cold_archive_eligible).toBe(dirtySource.expected.files.cold);
       expect(dryDirty.report.file_plan.hot_r2).toBe(dirtySource.expected.files.hot);
@@ -347,7 +394,7 @@ describe('historical import capacity (stage 6.7)', () => {
       ).first<{ orders: number; files: number; quarantine: number }>();
       expect(durable!.orders).toBe(fixedSource.expected.logicalOrders);
       expect(durable!.files).toBe(fixedSource.expected.logicalOrders * IMAGE_COLUMNS.length);
-      expect(durable!.quarantine).toBe(0);
+      expect(durable!.quarantine).toBe(fixedSource.expected.identityUnmatchedRows);
 
       // --- 4. Replaying the same source is fully idempotent ---
       const replayed = await runHistoricalImport(db1, {
@@ -430,7 +477,7 @@ describe('historical import capacity (stage 6.7)', () => {
       ).first<{ orders: number; files: number; quarantine: number; jpy: number; refund: number; principal: number; fee: number }>();
       expect(resumedState!.orders).toBe(fixedSource.expected.logicalOrders);
       expect(resumedState!.files).toBe(fixedSource.expected.logicalOrders * IMAGE_COLUMNS.length);
-      expect(resumedState!.quarantine).toBe(0);
+      expect(resumedState!.quarantine).toBe(fixedSource.expected.identityUnmatchedRows);
       expect(resumedState!.jpy).toBe(fixedSource.expected.currency.jpy);
       expect(resumedState!.refund).toBe(fixedSource.expected.currency.refundFen);
       expect(resumedState!.principal).toBe(fixedSource.expected.currency.principalFen);
@@ -458,6 +505,7 @@ describe('historical import capacity (stage 6.7)', () => {
         logical_orders_imported: fixedSource.expected.logicalOrders,
         dirty_quarantined_rows: dirtySource.expected.quarantinedRows,
         critical_rows: dirtySource.expected.criticalRows,
+        identity_unmatched_rows: fixedSource.expected.identityUnmatchedRows,
         apply_ms: applyMs,
         interrupt_ms: interruptMs,
         resume_ms: resumeMs,

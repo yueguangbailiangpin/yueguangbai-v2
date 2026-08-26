@@ -12,6 +12,7 @@
 - 重建保留能力的 contracts 与 API（清单 §1/§3）：经营看板简化为今日/本周/本月客户、预约、正式订单、待返款、待结算、异常逾期、Owner 财务摘要；保留人工来源与首触归因。
 - 按 D-055 重建冷归档：ORDER（含卖家聊天）、BUYER_REFUND_PAYMENT、SELLER_SETTLEMENT_PAYMENT 三个归档单元的 ZIP + manifest 流式 Bundle、Drive 回读校验、Cloudflare Queues 本地模板、Staff-only 恢复状态机与 7 天临时副本清理。
 - 重建历史订单导入（20,000 真实历史单无损 dry-run）与容量验证（≥100,000 Manifest、cursor 分页、吞吐 ≥ 日增到期量 1.5 倍）。
+- 阶段 6.5 收口：生产 Google Drive HTTP 适配器代码（默认关闭、零真实请求）、只读历史图片盘点 CLI 与 100k 容量验证、未匹配身份显式 unresolved 隔离、归档时间统一为 6 个 UTC 日历月、多商品多行订单 MULTI_LINE_ORDER_REQUIRES_MAPPING 合同（migration 0026）。
 
 ## Non-Goals
 

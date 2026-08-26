@@ -6,6 +6,7 @@ import { runArchiveBundleJob } from './archive-pipeline';
 import { computeArchiveMetrics } from './metrics';
 import { processArchiveQueueMessage, retryDelaySeconds } from './queue-consumer';
 import { runArchiveSelectorScan, type SelectorScanState } from './selector';
+import { bundleEligibilityAt } from './time';
 import { sha256Hex } from '@ygb/domain';
 import { recordOrderBusinessClosure } from './business-closure';
 import {
@@ -223,12 +224,16 @@ async function seedCapacityDataset(db: SqliteDatabase, r2: MockObjectStorage): P
     }
   }
   await db.exec('COMMIT');
-  const eligible = await db.raw.prepare(
-    `SELECT COUNT(*) AS count FROM order_archive_closures
-     WHERE status='CLOSED' AND business_closed_at<=?`,
-  ).get(virtualNow - 183 * 86_400_000);
+  // Exact eligibility count under the unified stage 6.5 rule: six UTC
+  // calendar months per closure, computed per row (never a flat day offset).
+  const closedRows = db.raw
+    .prepare(`SELECT business_closed_at FROM order_archive_closures WHERE status='CLOSED'`)
+    .all() as { business_closed_at: number }[];
+  const eligibleOrders = closedRows.filter(
+    (row) => bundleEligibilityAt(Number(row.business_closed_at)) <= virtualNow,
+  ).length;
   return {
-    eligibleOrders: Number((eligible as { count: number }).count),
+    eligibleOrders,
     virtualNow,
   };
 }

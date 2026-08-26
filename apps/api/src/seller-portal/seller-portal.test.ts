@@ -1171,23 +1171,23 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     });
   });
 
-  it('retains the schema 26 history beneath current schema 27', async () => {
+  it('retains the complete schema 26 history', async () => {
     if (!database) throw new Error('test_database_missing');
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(25);
+    expect(Number(state?.schema_version)).toBe(26);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(25);
+    expect(migrations).toHaveLength(26);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0025_historical_order_import.sql');
+    expect(migrations.at(-1)).toBe('0026_stage65_archive_import_closeout.sql');
   });
 });
 

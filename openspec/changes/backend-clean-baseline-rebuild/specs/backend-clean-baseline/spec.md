@@ -66,3 +66,68 @@ The admin dashboard SHALL expose only today/this-week/this-month (`Asia/Shanghai
 
 - **WHEN** an Active Staff member without the system owner role or `FINANCIAL_VIEW`, or an owner with a Personal DENY on financial view, requests the summary
 - **THEN** the request fails closed and no internal profit is exposed.
+
+### Requirement: The production Drive adapter is real code that stays disabled until activation
+
+The repository SHALL contain a production Google Drive HTTP client implementing the DriveArchiveClient port: resumable session creation with metadata and `X-Upload-Content-Type/-Length` headers, 256 KiB-aligned chunk PUTs with `Content-Range`, 308 `Range` parsing for partial acceptance and resume, star-range status queries, OAuth refresh-token provider abstraction with cache invalidation, metadata reads with `supportsAllDrives`, and `alt=media` streaming read-back. Retry handling SHALL cover 429/5xx/network with bounded exponential backoff honoring `Retry-After`; 401 SHALL refresh the token once then fail closed; 403, malformed responses and read-back mismatches SHALL fail closed without retry. Session URIs and tokens SHALL never be persisted to D1, logs, audit payloads or client responses. The adapter SHALL expose no permission-creation and no delete calls. While `ARCHIVE_DRIVE_UPLOAD_ENABLED` is false the pipeline SHALL make zero HTTP requests.
+
+#### Scenario: Read-back hash mismatch forbids hot deletion
+
+- **WHEN** the Drive read-back bytes hash to anything other than the recorded zip SHA-256
+- **THEN** the job fails as drive verification failure, no R2 hot copy is deleted, and the bundle remains unverified.
+
+#### Scenario: Upload switch off means zero requests
+
+- **WHEN** a bundle job runs with the Drive upload switch disabled
+- **THEN** the manifest and temp-ZIP phases may run but zero Drive HTTP requests are made and the job retries as a dependency gap.
+
+### Requirement: Historical image inventory is read-only and capacity-verified
+
+The image inventory tooling SHALL scan a source directory without ever writing it, hash bytes in streaming fashion, sniff MIME types from magic bytes rather than extensions, record facts in checkpointed inventory tables with immutable byte-level columns, and classify business relations only by deterministic matching against an import batch's file plans: unmatched relations SHALL quarantine. Reconciliation SHALL detect duplicate content, referenced-but-missing, orphan and unreadable files via SQL-side pagination and SHALL write artifacts only to an explicitly provided output directory that does not overlap the source. The tooling SHALL be verified with at least 100,000 synthetic image entries proving checkpoint resume equivalence and bounded memory, and SHALL NOT execute R2 or Drive uploads.
+
+#### Scenario: Source directory integrity
+
+- **WHEN** an inventory run completes over a source directory
+- **THEN** every source file's bytes and timestamps are unchanged and no new files exist in the source directory.
+
+#### Scenario: Unresolvable business relation
+
+- **WHEN** an image file cannot be deterministically matched to exactly one import file plan (no match, ambiguous match, or no import batch provided)
+- **THEN** the file is quarantined with a finding and never classified LINKED.
+
+### Requirement: Unmatched historical identities stay explicitly unresolved
+
+Historical import rows whose buyer or seller identity cannot be matched SHALL still be snapshotted losslessly but SHALL carry a durable IDENTITY_UNMATCHED quarantine row, and SHALL NOT be visible in Buyer or Seller portals by construction. Identity overrides SHALL record the original source value, resolved value, operator, reason, timestamp and import run id. Promotion of unresolved rows SHALL require deterministic mapping or an audited manual override.
+
+#### Scenario: Unmatched row applies without portal exposure
+
+- **WHEN** an apply writes a row whose identities are unmatched
+- **THEN** the snapshot row and its IDENTITY_UNMATCHED quarantine row are written, no buyer/seller/formal-order row is created, and portal-visible table counts are unchanged.
+
+#### Scenario: Audited override resolves an identity
+
+- **WHEN** staff inserts an identity override referencing the import run
+- **THEN** subsequent resolution uses the override and the override row carries original value, resolved value, operator, reason, time and import batch id.
+
+### Requirement: Archive retention is six UTC calendar months
+
+Hot retention and archive eligibility SHALL be computed as the full business closure timestamp plus six UTC calendar months with month-end clamped to the target month's last day, stored as UTC milliseconds, and never as a flat day offset or local-calendar-month computation. Display formatting MAY use Asia/Shanghai without altering the stored eligibility value. The closure DTO's archive_due_at and the bundle selector's eligibility gate SHALL use the same computation.
+
+#### Scenario: Month-end clamping
+
+- **WHEN** a business closes on January 31 or August 31
+- **THEN** eligibility lands on July 31 or the following February 28/29 respectively, at the same UTC time of day.
+
+### Requirement: Multi-line duplicate orders require explicit mapping
+
+Source rows sharing one order id with identical facts SHALL collapse deterministically to their group head. Groups whose product, amount, fee or rate (line-defining) columns differ SHALL be held with MULTI_LINE_ORDER_REQUIRES_MAPPING as a critical quarantine that blocks apply, preserving every original row; the importer SHALL NEVER resolve such groups by taking the first row, the last row or an automatic sum. Groups differing only in non-line-defining columns remain CONFLICTING_DUPLICATE_GROUP.
+
+#### Scenario: Multi-product order is held
+
+- **WHEN** two rows share an order id but differ on ASIN and order amount
+- **THEN** both rows quarantine with MULTI_LINE_ORDER_REQUIRES_MAPPING, can_apply is false, and no snapshot row is written.
+
+#### Scenario: Identical duplicate rows collapse
+
+- **WHEN** two rows share an order id and all thirty columns are identical
+- **THEN** exactly one logical order row is applied and currency totals count it once.

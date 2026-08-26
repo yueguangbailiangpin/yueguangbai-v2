@@ -39,7 +39,20 @@ export type HistoricalQuarantineCode =
   | 'UNKNOWN_MARKETPLACE' | 'INVALID_ORDER_NUMBER' | 'MISSING_REQUIRED_COLUMN' | 'NON_INTEGER_AMOUNT'
   | 'INVALID_DATE' | 'IDENTITY_CONFLICT' | 'IDENTITY_UNMATCHED' | 'DUPLICATE_SOURCE_ORDER'
   | 'MISSING_FINANCIAL_FIELDS' | 'RATE_SPREAD_MISMATCH' | 'CONFLICTING_DUPLICATE_GROUP'
+  | 'MULTI_LINE_ORDER_REQUIRES_MAPPING'
   | 'FILE_MISSING' | 'FILE_CORRUPT' | 'FILE_ORPHAN' | 'MULTI_SELLER_AMBIGUOUS';
+
+/**
+ * Columns that define ONE line of an order in the frozen 30-column source.
+ * When the same source_order_id repeats with ANY of these differing, the
+ * group is a multi-line (typically multi-product) order that only an explicit
+ * business mapping may fold — the importer never picks first/last/sum. The
+ * contract has no quantity column; if one is ever added it joins this set.
+ */
+export const HISTORICAL_LINE_DEFINING_COLUMNS = [
+  'ASIN', '订单价格', '服务费金额', '买家返金金额', '卖家返金金额', '利润',
+  '返款汇率', '卖家返金汇率', '汇率差',
+] as const;
 
 export type HistoricalFileClassification =
   | 'HOT_R2' | 'COLD_ARCHIVE_ELIGIBLE' | 'QUARANTINE' | 'MISSING' | 'CORRUPT' | 'ORPHAN';
@@ -98,7 +111,11 @@ export interface HistoricalRowOutcome {
   order: HistoricalNormalizedOrder | null;
   files: HistoricalFilePlan[];
   quarantines: { code: HistoricalQuarantineCode; detail: Record<string, unknown> }[];
-  duplicateGroup: { key: string; size: number; kind: 'EXACT_SOURCE_FACTS' | 'CONFLICTING' | 'UNIQUE' } | null;
+  duplicateGroup: {
+    key: string;
+    size: number;
+    kind: 'EXACT_SOURCE_FACTS' | 'MULTI_LINE_ORDER' | 'CONFLICTING' | 'UNIQUE';
+  } | null;
 }
 
 export interface HistoricalDryRunReport {

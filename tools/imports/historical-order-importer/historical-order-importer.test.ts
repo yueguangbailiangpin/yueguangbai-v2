@@ -339,6 +339,101 @@ describe('stage 6 historical import framework', () => {
     expect(result.applied_orders).toBe(1);
   });
 
+  it('marks unmatched identities as durable unresolved quarantine facts resolved only by audited override', async () => {
+    database = createMigratedTestDatabase();
+    const csv = buildCsv([csvRow(VALID_ROW)]);
+    const applied = await runHistoricalImport(database, {
+      sourceSystem: 'HISTORICAL_ORDER_CSV', files: [{ name: 'master.csv', text: csv }],
+    }, { mode: 'APPLY_LOCAL', now: Date.UTC(2026, 7, 26) });
+    expect(applied.report.can_apply).toBe(true);
+    expect(applied.report.quarantine_by_code['IDENTITY_UNMATCHED']).toBe(1);
+    const unresolved = await database.prepare(
+      `SELECT detail_json FROM historical_import_quarantine
+       WHERE import_batch_id=? AND exception_code='IDENTITY_UNMATCHED'`,
+    ).bind(applied.batch_id).first<{ detail_json: string }>();
+    expect(JSON.parse(unresolved!.detail_json)).toEqual({
+      kinds: ['BUYER_CUSTOMER', 'SELLER_ORGANIZATION'],
+    });
+    // A manual override must record original value, resolved value, operator,
+    // reason, time AND the import run it adjudicates (0026 audit contract).
+    database.exec(`
+      INSERT INTO staff_users(id,display_name,status,authorization_version,version,created_at,updated_at,disabled_at)
+      VALUES('hist-import-owner','历史导入','ACTIVE',1,1,1000,1000,NULL);
+      INSERT INTO historical_import_identity_overrides(id,source_system,source_key,resolved_kind,resolved_id,
+        override_reason,overridden_by_staff_id,created_at,import_batch_id)
+      VALUES('hist-identity-override-2','HISTORICAL_ORDER_CSV','${VALID_ROW['买家微信']}','BUYER_CUSTOMER',
+        'hist-buyer-a','业务确认该微信对应买家 A','hist-import-owner',2000,'${applied.batch_id}');
+    `);
+    const override = await database.prepare(
+      `SELECT source_key,resolved_id,overridden_by_staff_id,override_reason,created_at,import_batch_id
+       FROM historical_import_identity_overrides WHERE id='hist-identity-override-2'`,
+    ).first();
+    expect(override).toMatchObject({
+      source_key: 'wx-buyer-a',
+      resolved_id: 'hist-buyer-a',
+      overridden_by_staff_id: 'hist-import-owner',
+      override_reason: '业务确认该微信对应买家 A',
+      created_at: 2000,
+      import_batch_id: applied.batch_id,
+    });
+    // A second override resolves the seller side the same way (override wins
+    // over the deterministic store lookup).
+    await seedStore(database, '历史测试店铺', 'hist-seller-1');
+    database.exec(`
+      INSERT INTO historical_import_identity_overrides(id,source_system,source_key,resolved_kind,resolved_id,
+        override_reason,overridden_by_staff_id,created_at,import_batch_id)
+      VALUES('hist-identity-override-3','HISTORICAL_ORDER_CSV','${VALID_ROW['店铺名字']}','SELLER_ORGANIZATION',
+        'hist-seller-1','业务确认店铺归属卖家一','hist-import-owner',2001,'${applied.batch_id}');
+    `);
+    // With both overrides in place, a dry-run of the same source fully
+    // resolves: no IDENTITY_UNMATCHED remains (DRY_RUN is a distinct batch key).
+    const resolved = await runHistoricalImport(database, {
+      sourceSystem: 'HISTORICAL_ORDER_CSV', files: [{ name: 'master.csv', text: csv }],
+    }, { mode: 'DRY_RUN', now: Date.UTC(2026, 7, 26) + 1 });
+    expect(resolved.report.buyer_matches.matched).toBe(1);
+    expect(resolved.report.seller_matches.matched).toBe(1);
+    expect(resolved.report.quarantine_by_code['IDENTITY_UNMATCHED']).toBeUndefined();
+  });
+
+  it('holds multi-line duplicate groups for an explicit mapping and never folds or sums them', async () => {
+    database = createMigratedTestDatabase();
+    await seedBuyer(database, 'wx-buyer-a', 'hist-buyer-a');
+    await seedStore(database, '历史测试店铺', 'hist-seller-1');
+    // Same order id, DIFFERENT product and amount: a multi-product order the
+    // importer must never fold, first/last, or auto-sum.
+    const line1 = csvRow({ ...VALID_ROW, 'ASIN': 'B0TEST0001', '订单价格': '1980' });
+    const line2 = csvRow({ ...VALID_ROW, 'ASIN': 'B0TEST0002', '订单价格': '2480' });
+    const multi = await runHistoricalImport(database, {
+      sourceSystem: 'HISTORICAL_ORDER_CSV',
+      files: [{ name: 'multi.csv', text: buildCsv([line1, line2]) }],
+    }, { mode: 'DRY_RUN', now: Date.UTC(2026, 7, 26) });
+    expect(multi.report.quarantine_by_code['MULTI_LINE_ORDER_REQUIRES_MAPPING']).toBe(2);
+    expect(multi.report.quarantine_by_code['CONFLICTING_DUPLICATE_GROUP']).toBeUndefined();
+    expect(multi.report.can_apply).toBe(false);
+    expect(multi.report.cannot_apply_reasons[0]).toBe('critical_quarantine_rows:2');
+    // Blocked apply writes NOTHING — every original row stays in the source,
+    // waiting for a future explicit mapping contract.
+    const blocked = await runHistoricalImport(database, {
+      sourceSystem: 'HISTORICAL_ORDER_CSV',
+      files: [{ name: 'multi.csv', text: buildCsv([line1, line2]) }],
+    }, { mode: 'APPLY_LOCAL', now: Date.UTC(2026, 7, 26) });
+    expect(blocked.applied_orders).toBe(0);
+    const written = await database.prepare('SELECT COUNT(*) AS count FROM historical_orders')
+      .first<{ count: number }>();
+    expect(written!.count).toBe(0);
+    // A group that differs ONLY in a non-line column (e.g. buyer wechat) is a
+    // plain conflicting duplicate, not a multi-line order.
+    const dupA = csvRow({ ...VALID_ROW, '买家微信': 'wx-buyer-a' });
+    const dupB = csvRow({ ...VALID_ROW, '买家微信': 'wx-buyer-b' });
+    const conflicting = await runHistoricalImport(database, {
+      sourceSystem: 'HISTORICAL_ORDER_CSV',
+      files: [{ name: 'conflict.csv', text: buildCsv([dupA, dupB]) }],
+    }, { mode: 'DRY_RUN', now: Date.UTC(2026, 7, 26) });
+    expect(conflicting.report.quarantine_by_code['CONFLICTING_DUPLICATE_GROUP']).toBe(2);
+    expect(conflicting.report.quarantine_by_code['MULTI_LINE_ORDER_REQUIRES_MAPPING']).toBeUndefined();
+    expect(conflicting.report.can_apply).toBe(false);
+  });
+
   it('accepts the JSONL adapter produced by the frozen Python manifest tool', async () => {
     database = createMigratedTestDatabase();
     const record = {
@@ -349,7 +444,11 @@ describe('stage 6 historical import framework', () => {
       sourceSystem: 'HISTORICAL_ORDER_JSONL',
       files: [{ name: 'manifest.jsonl', text: `${JSON.stringify(record)}\n` }],
     }, { mode: 'DRY_RUN', now: Date.UTC(2026, 7, 26) });
-    expect(result.report.valid_rows).toBe(1);
+    // No seeded identities → the row imports losslessly but is explicitly
+    // unresolved: IDENTITY_UNMATCHED is a durable quarantine fact.
+    expect(result.report.valid_rows).toBe(0);
+    expect(result.report.quarantined_rows).toBe(1);
+    expect(result.report.quarantine_by_code['IDENTITY_UNMATCHED']).toBe(1);
     expect(result.report.can_apply).toBe(true);
   });
 

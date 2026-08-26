@@ -822,16 +822,16 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     )
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(25);
+    expect(migrations).toHaveLength(26);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0025_historical_order_import.sql');
+    expect(migrations.at(-1)).toBe('0026_stage65_archive_import_closeout.sql');
 
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(25);
+    expect(Number(state?.schema_version)).toBe(26);
   });
 });
 

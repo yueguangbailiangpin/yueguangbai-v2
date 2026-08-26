@@ -1,5 +1,6 @@
 export * from './archive-pipeline';
 export * from './business-closure';
+export * from './drive-http-client';
 export * from './fake-drive-client';
 export * from './manifest';
 export * from './metrics';

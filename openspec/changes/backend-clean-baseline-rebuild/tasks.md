@@ -42,6 +42,14 @@
 - [x] 6.2 20,000 单 dry-run 无损证据
 - [x] 6.3 每日 200 单/1,000 图合成负载与吞吐 ≥1.5 倍验证（verify:historical-import-capacity：20,000 单/100,000 文件计划全链 15.8s，单日 200 单增量仅为该吞吐的 ~0.06%，远超 1.5 倍要求；synthetic，REAL_HISTORICAL_IMPORT=NOT_RUN）
 
+## Stage 6.5 — 收口（Drive 适配器、图片盘点、身份边界、时间统一、多行订单）
+
+- [x] 6.5.1 真实 Google Drive HTTP 适配器代码（resumable 协议、OAuth refresh provider、429/5xx 退避、401/403 fail-closed、错误脱敏、无分享/删除调用；runtime 从 GOOGLE_DRIVE_* 构造接入，默认关闭零 HTTP——单测 12 + 集成 3 全走本地假 server；REAL_DRIVE_REQUESTS=0）
+- [x] 6.5.2 历史图片盘点 CLI（inspect-images/inventory-images/resume-image-inventory/reconcile-images；源目录只读、流式 SHA-256、MIME 嗅探、checkpoint/resume、重复/缺失/orphan/未识别/findings、LINKED/ORPHAN/QUARANTINE 映射、输出仅入显式输出目录；migration 0026 三表；100,000 文件容量验证；REAL_IMAGE_INVENTORY=NOT_RUN）
+- [x] 6.5.3 未匹配身份显式 unresolved 边界（IDENTITY_UNMATCHED durable quarantine、override 表补 import_batch_id 审计列、门户零可见测试：无路由/无视图/无 FK 链接 formal_orders）
+- [x] 6.5.4 归档时间统一为 6 个 UTC 日历月 + 月底截断（archiveDueAt==bundleEligibilityAt；1/31、2/29、8/31、UTC 跨日测试；容量验证 183 天近似移除）
+- [x] 6.5.5 多商品多行订单合同（HISTORICAL_LINE_DEFINING_COLUMNS；MULTI_LINE_ORDER_REQUIRES_MAPPING critical——保留全部原始行、can_apply=false、绝不取首行/求和；非行定义差异仍 CONFLICTING_DUPLICATE_GROUP；0026 CHECK 扩展）
+
 ## Stage 7 — 安全与隐私测试
 
 - [ ] 7.1 权限/Personal DENY/scope/concealed 404 全套

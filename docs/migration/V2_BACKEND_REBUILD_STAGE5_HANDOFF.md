@@ -2,9 +2,9 @@
 
 日期：2026-08-26。分支 `feature/staging-workflow-rate-ux`，基线 = 阶段 4 的 `5bbb3bfe` + 阶段 5 本地提交（未 push）。依据：D-054/D-055、`V2_BACKEND_REBUILD_INVENTORY.md` §4.3、OpenSpec `backend-clean-baseline-rebuild`。
 
-## 0. 与 D-055 措辞的一处有意差异
+## 0. 与 D-055 措辞的一处有意差异（已于阶段 6.5 统一，本节保留为历史记录）
 
-本轮业务所有者指令明确"业务完全关闭满 **6 个 UTC 日历月**"（且"不要简单使用 180 天"）。本阶段实现按最新指令以 UTC 日历月计算 bundle 资格（`bundleEligibilityAt`，`apps/api/src/cold-image-archive/time.ts`）；既有 `order_archive_closures.archive_due_at` 仍按上海自然月（`archiveDueAt`）记录关闭事实。两者都是日历月而非 180 天，差异最多 8 小时量级；测试同时断言两种语义（`time.test.ts`）。后续如需统一，一条决策即可。
+阶段 5 实现时，bundle 资格按 UTC 日历月计算（`bundleEligibilityAt`），而 `order_archive_closures.archive_due_at` 按上海自然月（`archiveDueAt`）记录关闭事实，两者并存。**2026-08-26 阶段 6.5 按业务所有者决策统一为单一规则**：存储 UTC 毫秒；热保留资格 = 完整业务关闭时间 + 6 个 UTC 日历月（月底截断到目标月最后一天，如 8 月 31 日 + 6 月 = 次年 2 月 28/29 日）；不使用固定 180 天；不使用上海本地月计算资格；员工端展示可用上海时区但不改变 `eligibility_at`。`archiveDueAt` 与 `bundleEligibilityAt` 现为同一实现（`apps/api/src/cold-image-archive/time.ts`）。
 
 ## 1. 数据模型（migration 0024，schema 23 → 24）
 
@@ -37,7 +37,8 @@
 ## 4. DriveArchiveClient 端口与 fake（5.4）
 
 - `packages/contracts/src/cold-image-archive.ts` 定义可替换端口：`createUploadSession`（resumable）、`uploadChunk`（offset 分块，中断返回部分接受字节）、`queryUploadSession`（断点续传查询）、`readFileMetadata`、`openFileStream`（流式回读）。`DriveArchiveClientError` 仅携带类别（token/secret 绝不进 message；retryable 分类由类别驱动）。
-- `FakeDriveArchiveClient`（`fake-drive-client.ts`）：会话/分块/中断（interruptNextUpload 模拟 308 半块接受）/限流/不可用/篡改注入；上传完成存内存文件并支持流式回读。**本轮未实现真实 Google Drive HTTP 客户端**（凭据与远程操作均被禁止）；生产适配器留待后续独立变更（见风险）。
+- `FakeDriveArchiveClient`（`fake-drive-client.ts`）：会话/分块/中断（interruptNextUpload 模拟 308 半块接受）/限流/不可用/篡改注入；上传完成存内存文件并支持流式回读。
+- **真实 Google Drive HTTP 客户端已于阶段 6.5 实现**（`drive-http-client.ts`：resumable session 创建、256KiB 倍数分块 PUT、308+Range 断点续传、空 PUT 状态查询、OAuth refresh token provider、`supportsAllDrives`/Shared Drive、metadata/`alt=media` 回读、429/5xx 退避、401/403 fail-closed、错误全脱敏），并由 `archiveRuntime` 从 `GOOGLE_DRIVE_*` env/secret 构造接入——但从未对真实 Google Drive 执行任何请求（REAL_DRIVE_REQUESTS=0），`ARCHIVE_DRIVE_UPLOAD_ENABLED` 保持 false（见阶段 6.5 交接 §1）。
 - 上传循环：临时 ZIP 为不可变 R2 对象，中断后按已接受字节重开流续传，单 pass 无进展则 retryable 失败；256KiB 固定窗口。
 
 ## 5. Queue 与安全开关（5.5）
@@ -78,11 +79,11 @@
 
 ## 9. 未解决风险
 
-1. **真实 Google Drive HTTP 客户端未实现**（本轮禁止凭据/远程操作）：端口与 fake 已就绪并被全链测试驱动；生产适配器（OAuth refresh、resumable session URL、分块 PUT、元数据/流读）需独立变更 + R-006 外部激活清单，完成前 `ARCHIVE_DRIVE_UPLOAD_ENABLED` 保持 false。
+1. ~~真实 Google Drive HTTP 客户端未实现~~ **已于阶段 6.5 解决**：生产适配器代码就绪并接入 runtime（单测 + 全链集成测试驱动），但从未执行真实 Drive 请求；激活仍需 R-006 外部清单 + `ARCHIVE_DRIVE_UPLOAD_ENABLED`（保持 false）+ D1 `archive_runtime_controls` 双门，属阶段 8 部署准备事项。
 2. **指标语义**：`eligible_backlog_files/bytes` 只统计已封存 manifest（未封存 bundle 不计）——20k 容量运行显示 0 属预期；如需"潜在文件积压"需加 facts 计数视图（阶段 6 顺手可做）。
 3. **容量验证为本地 node:sqlite**：不冒充远程 Workers 压测；生产容量（D1/R2/Queue 真实吞吐 ≥ 日增到期量 1.5 倍）在阶段 8 预检完成。
 4. **Shadow-copy 后的重复全流程**：切换真实删除前建议至少一轮完整 shadow + 人工抽检（metrics 投影 vs 实际）。
-5. UTC/上海双月语义并存（§0），待业务所有者一句话统一。
+5. ~~UTC/上海双月语义并存（§0）~~ **已于阶段 6.5 统一为 6 个 UTC 日历月**（见 §0 更新说明与阶段 6.5 交接 §4）。
 
 ## 10. 远程操作声明
 

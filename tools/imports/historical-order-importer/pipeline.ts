@@ -3,6 +3,7 @@ import { canonicalJson, sha256Hex } from '@ygb/domain';
 import {
   classifyHistoricalFiles,
   discoverHistoricalSources,
+  HISTORICAL_LINE_DEFINING_COLUMNS,
   HISTORICAL_MAPPING_VERSION,
   HISTORICAL_PARSER_VERSION,
   normalizeHistoricalRow,
@@ -26,7 +27,8 @@ import {
 
 const CRITICAL_QUARANTINE_CODES = new Set([
   'UNKNOWN_MARKETPLACE', 'INVALID_ORDER_NUMBER', 'MISSING_REQUIRED_COLUMN',
-  'NON_INTEGER_AMOUNT', 'CONFLICTING_DUPLICATE_GROUP', 'RATE_SPREAD_MISMATCH',
+  'NON_INTEGER_AMOUNT', 'CONFLICTING_DUPLICATE_GROUP', 'MULTI_LINE_ORDER_REQUIRES_MAPPING',
+  'RATE_SPREAD_MISMATCH',
 ]);
 
 export interface HistoricalRunResult {
@@ -137,16 +139,40 @@ export async function runHistoricalImport(
     const group = byOrderId.get(row.cells['订单号'] ?? '') ?? [];
     if (group.length > 1) {
       const signatures = new Set(group.map((member) => canonicalJson(member.cells)));
-      outcome.duplicateGroup = {
-        key: row.cells['订单号'] ?? '',
-        size: group.length,
-        kind: signatures.size === 1 ? 'EXACT_SOURCE_FACTS' : 'CONFLICTING',
-      };
-      if (signatures.size > 1) {
-        outcome.quarantines.push({
-          code: 'CONFLICTING_DUPLICATE_GROUP',
-          detail: { order_number: row.cells['订单号'], group_size: group.length },
-        });
+      if (signatures.size === 1) {
+        outcome.duplicateGroup = {
+          key: row.cells['订单号'] ?? '',
+          size: group.length,
+          kind: 'EXACT_SOURCE_FACTS',
+        };
+      } else {
+        // Non-identical rows under one order id split into two contracts:
+        // differing line-defining facts (product/amount/fee/rate) make it a
+        // MULTI-LINE order that only an explicit mapping may fold; any other
+        // difference is a plain conflicting duplicate. Both HOLD the group
+        // (critical) — first/last/sum are never guessed.
+        const differingLineColumns = HISTORICAL_LINE_DEFINING_COLUMNS.filter(
+          (column) => new Set(group.map((member) => member.cells[column] ?? '')).size > 1,
+        );
+        const multiLine = differingLineColumns.length > 0;
+        outcome.duplicateGroup = {
+          key: row.cells['订单号'] ?? '',
+          size: group.length,
+          kind: multiLine ? 'MULTI_LINE_ORDER' : 'CONFLICTING',
+        };
+        outcome.quarantines.push(multiLine
+          ? {
+            code: 'MULTI_LINE_ORDER_REQUIRES_MAPPING',
+            detail: {
+              order_number: row.cells['订单号'],
+              group_size: group.length,
+              differing_line_columns: differingLineColumns,
+            },
+          }
+          : {
+            code: 'CONFLICTING_DUPLICATE_GROUP',
+            detail: { order_number: row.cells['订单号'], group_size: group.length },
+          });
       }
     }
     outcome.files = outcome.order
@@ -157,31 +183,48 @@ export async function runHistoricalImport(
 
   // Identity resolution with overrides (dry-run reports; apply records rows
   // regardless of match state — unmatched identity is a quarantine fact, not
-  // a silent merge).
+  // a silent merge). Every unmatched row now carries a DURABLE
+  // IDENTITY_UNMATCHED quarantine row: the snapshot still imports losslessly,
+  // but the record stays explicitly unresolved until a deterministic mapping
+  // or an audited manual override promotes it. Collapsed exact-duplicate
+  // members are represented by their group head and are never written, so
+  // they must not emit quarantine rows.
   const identityStats = { matched: 0, unmatched: 0, conflicts: 0 };
   const sellerStats = { matched: 0, unmatched: 0, conflicts: 0 };
   for (const outcome of outcomes) {
     if (!outcome.order || outcome.quarantines.length > 0) continue;
     const identity = await resolveHistoricalIdentity(database, outcome.order);
+    const unmatchedKinds: ('BUYER_CUSTOMER' | 'SELLER_ORGANIZATION')[] = [];
     if (identity.buyerOutcome === 'MATCHED') identityStats.matched += 1;
     else if (identity.buyerOutcome === 'CONFLICT') {
       identityStats.conflicts += 1;
       outcome.quarantines.push({ code: 'IDENTITY_CONFLICT', detail: { kind: 'BUYER_CUSTOMER', key: outcome.order.buyer_wechat_ref } });
-    } else identityStats.unmatched += 1;
+    } else {
+      identityStats.unmatched += 1;
+      unmatchedKinds.push('BUYER_CUSTOMER');
+    }
     if (identity.sellerOutcome === 'MATCHED') sellerStats.matched += 1;
     else if (identity.sellerOutcome === 'CONFLICT') {
       sellerStats.conflicts += 1;
       outcome.quarantines.push({ code: 'IDENTITY_CONFLICT', detail: { kind: 'SELLER_ORGANIZATION', key: outcome.order.store_name_ref } });
-    } else sellerStats.unmatched += 1;
+    } else {
+      sellerStats.unmatched += 1;
+      unmatchedKinds.push('SELLER_ORGANIZATION');
+    }
+    if (unmatchedKinds.length > 0 && !collapsedExactRowKeys.has(outcome.rowKey)) {
+      outcome.quarantines.push({ code: 'IDENTITY_UNMATCHED', detail: { kinds: unmatchedKinds } });
+    }
   }
 
   const valid = outcomes.filter((outcome) => outcome.quarantines.length === 0);
   const quarantined = outcomes.filter((outcome) => outcome.quarantines.length > 0);
   const filePlan = summarizeFiles(outcomes);
-  // Currency totals follow the collapsed logical-order set so the dry-run
-  // report reconciles exactly with what APPLY_LOCAL will write.
-  const currencyTotals = sumCurrencies(valid
-    .filter((outcome) => !collapsedExactRowKeys.has(outcome.rowKey))
+  // Currency totals follow the collapsed set of logical orders that
+  // APPLY_LOCAL actually writes — quarantined-but-written snapshot rows
+  // (e.g. IDENTITY_UNMATCHED) still contribute their source amounts, so the
+  // dry-run report reconciles exactly with the durable rows.
+  const currencyTotals = sumCurrencies(outcomes
+    .filter((outcome) => outcome.order && !collapsedExactRowKeys.has(outcome.rowKey))
     .map((outcome) => outcome.order!));
 
   const cannotApplyReasons: string[] = [];
