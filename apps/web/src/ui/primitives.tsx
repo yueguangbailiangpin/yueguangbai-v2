@@ -12,11 +12,13 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type PropsWithChildren,
   type ReactNode,
   type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from 'react';
 import { NavLink } from 'react-router';
 
@@ -711,3 +713,151 @@ export function Skeleton({
     />)}
   </div>;
 }
+
+/* ============================================================
+   阶段 7A-1 新增基础组件
+   ============================================================ */
+
+export function Textarea({
+  className,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement>): React.JSX.Element {
+  return <textarea {...props} className={classes('text-input textarea', className)} />;
+}
+
+export function Radio({
+  label,
+  stateLabel,
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+  label: string;
+  stateLabel?: string;
+}): React.JSX.Element {
+  return <label className={classes('radio', className)}>
+    <input {...props} type="radio" />
+    <span>{label}</span>
+    {stateLabel ? <small>{stateLabel}</small> : null}
+  </label>;
+}
+
+export function SectionHeader({
+  title,
+  description,
+  children,
+}: PropsWithChildren<{
+  title: string;
+  description?: string;
+}>): React.JSX.Element {
+  return <header className="section-header">
+    <div>
+      <h2>{title}</h2>
+      {description ? <p>{description}</p> : null}
+    </div>
+    {children ? <div className="section-header-actions">{children}</div> : null}
+  </header>;
+}
+
+/* ---- DropdownMenu ---- */
+
+export type DropdownMenuItem = Readonly<{
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+}>;
+
+export function DropdownMenu({
+  label,
+  items,
+  children,
+  align = 'end',
+}: {
+  label: string;
+  items: readonly DropdownMenuItem[];
+  children?: ReactNode;
+  align?: 'start' | 'end';
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (event: MouseEvent): void => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  return <div className="dropdown-menu" ref={containerRef}>
+    <Button
+      type="button"
+      className="secondary dropdown-trigger"
+      aria-haspopup="menu"
+      aria-expanded={open}
+      aria-controls={menuId}
+      onClick={() => setOpen((v) => !v)}
+    >
+      {children ?? label}
+    </Button>
+    {open ? <div
+      id={menuId}
+      className={classes('dropdown-panel', align === 'end' && 'dropdown-align-end')}
+      role="menu"
+      aria-label={label}
+    >
+      {items.map((item) => <button
+        key={item.id}
+        type="button"
+        role="menuitem"
+        className={classes('dropdown-item', item.danger && 'dropdown-item-danger')}
+        disabled={item.disabled}
+        onClick={() => { item.onSelect(); setOpen(false); }}
+      >
+        {item.icon ? <span aria-hidden="true">{item.icon}</span> : null}
+        <span>{item.label}</span>
+      </button>)}
+    </div> : null}
+  </div>;
+}
+
+/* ---- Tooltip ---- */
+
+export function Tooltip({
+  label,
+  children,
+  side = 'top',
+}: PropsWithChildren<{
+  label: string;
+  side?: 'top' | 'bottom' | 'left' | 'right';
+}>): React.JSX.Element {
+  const [visible, setVisible] = useState(false);
+  const id = useId();
+  return <span
+    className="tooltip-wrapper"
+    onMouseEnter={() => setVisible(true)}
+    onMouseLeave={() => setVisible(false)}
+    onFocus={() => setVisible(true)}
+    onBlur={() => setVisible(false)}
+  >
+    <span aria-describedby={visible ? id : undefined}>{children}</span>
+    {visible ? <span
+      id={id}
+      className={classes('tooltip', `tooltip-${side}`)}
+      role="tooltip"
+    >{label}</span> : null}
+  </span>;
+}
+
+/* ---- CursorControls：独立模块 `./CursorPagination`，避免循环依赖 ---- */

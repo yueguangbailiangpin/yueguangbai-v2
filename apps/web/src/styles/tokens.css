@@ -1,89 +1,206 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand: var(--color-brand);
+  --color-brand: var(--color-primary);
   --color-surface: var(--color-surface);
   --color-text: var(--color-text);
 }
 
+/* ============================================================
+   月光白 V2 设计 Tokens（阶段 7A-1 统一）
+   目标：清晰、克制、专业，适合三名员工每天处理约 200 单的中文运营后台。
+   原则：语义化命名，一种稳定主色，固定语义色，8px 间距体系。
+   ============================================================ */
+
 :root {
   color-scheme: light;
 
-  --color-canvas: #f6f7f9;
-  --color-surface: #ffffff;
-  --color-surface-subtle: #f0f3f7;
-  --color-surface-raised: #fbfcfe;
-  --color-border: #dce2ea;
-  --color-border-strong: #aeb9c8;
-  --color-text: #172033;
-  --color-text-muted: #526176;
-  --color-text-disabled: #687588;
-  --color-text-inverse: #ffffff;
+  /* ---- 背景与表面 ---- */
+  --color-canvas: #f5f6f8;          /* 页面底色（月光白/暖白） */
+  --color-surface: #ffffff;         /* 卡片/面板表面 */
+  --color-surface-subtle: #f0f2f5;  /* 次级表面（悬停、斑马纹） */
+  --color-surface-raised: #fbfcfd;  /* 浮起表面 */
+  --color-surface-inset: #e9ecf0;   /* 内嵌表面（输入框背景） */
 
-  --color-brand: #2457d6;
-  --color-brand-hover: #1d49b7;
-  --color-brand-active: #173b96;
-  --color-brand-soft: #eaf0ff;
-  --color-focus: #1745b5;
+  /* ---- 文字 ---- */
+  --color-text: #1a2332;            /* 正文（深灰） */
+  --color-text-secondary: #4a5568;  /* 次级文字 */
+  --color-text-muted: #6b7280;      /* 辅助/占位文字 */
+  --color-text-disabled: #9ca3af;   /* 禁用文字 */
+  --color-text-inverse: #ffffff;    /* 反色文字 */
+  --color-text-link: var(--color-primary);
 
-  --color-buyer: #2b63d9;
-  --color-buyer-soft: #eaf1ff;
-  --color-seller: #237a57;
-  --color-seller-soft: #e8f5ef;
-  --color-staff: #7150b7;
-  --color-staff-soft: #f0ebfa;
+  /* ---- 边框 ---- */
+  --color-border: #d8dde4;          /* 常规边框 */
+  --color-border-strong: #b0b8c4;   /* 强调边框 */
+  --color-border-subtle: #e8ebef;   /* 细边框（分隔线） */
+  --color-border-focus: var(--color-primary);
 
-  --color-neutral: #526176;
-  --color-neutral-soft: #f0f3f7;
-  --color-processing: #245aab;
-  --color-processing-soft: #eaf2ff;
-  --color-success: #217a4a;
-  --color-success-soft: #e7f5ed;
-  --color-warning: #8a5200;
-  --color-warning-soft: #fff3d6;
-  --color-danger: #ad202b;
-  --color-danger-soft: #fff0f1;
-  --color-expired: #6b566d;
-  --color-expired-soft: #f4eff5;
+  /* ---- 主色（稳定深蓝，全员工端唯一主色） ---- */
+  --color-primary: #2c5aa0;
+  --color-primary-hover: #234a85;
+  --color-primary-active: #1b3a6b;
+  --color-primary-soft: #e8f0fa;
+  --color-primary-soft-hover: #d8e6f7;
+
+  /* ---- 语义色（固定，不随主题变化） ---- */
+  --color-success: #1f7a44;
+  --color-success-hover: #186036;
+  --color-success-soft: #e6f4ec;
+
+  --color-warning: #8a5a00;
+  --color-warning-hover: #6e4700;
+  --color-warning-soft: #fff4de;
+
+  --color-danger: #b3261e;
+  --color-danger-hover: #8e1d17;
+  --color-danger-soft: #fdecea;
+
+  --color-info: #1a5fb4;
+  --color-info-hover: #144a8e;
+  --color-info-soft: #e6f0fa;
+
+  /* ---- 状态色（StatusBadge 用） ---- */
+  --color-neutral: var(--color-text-muted);
+  --color-neutral-soft: var(--color-surface-subtle);
+  --color-processing: var(--color-primary);
+  --color-processing-soft: var(--color-primary-soft);
+  --color-expired: #6b5b73;
+  --color-expired-soft: #f1edf4;
   --color-conflict: #9a3e13;
   --color-conflict-soft: #fff0e8;
 
-  --shadow-card: 0 1px 2px rgb(23 32 51 / 5%);
-  --shadow-drawer: -8px 0 28px rgb(23 32 51 / 12%);
-  --shadow-dialog: 0 14px 42px rgb(23 32 51 / 16%);
-  --color-overlay: rgb(23 32 51 / 28%);
+  /* ---- 三端身份色（仅用于门户标识，不混入员工端主色） ---- */
+  --color-buyer: #2563c4;
+  --color-buyer-soft: #e8f0fc;
+  --color-seller: #1e7a52;
+  --color-seller-soft: #e6f4ed;
+  --color-staff: var(--color-primary);  /* 员工端与主色统一 */
+  --color-staff-soft: var(--color-primary-soft);
 
-  --radius-control: 0.5rem;
-  --radius-card: 0.75rem;
-  --radius-panel: 0.875rem;
+  /* ---- 覆盖层 ---- */
+  --color-overlay: rgba(26, 35, 50, 0.45);
+  --color-overlay-subtle: rgba(26, 35, 50, 0.25);
+
+  /* ---- 阴影（克制，仅三层） ---- */
+  --shadow-xs: 0 1px 2px rgba(26, 35, 50, 0.06);
+  --shadow-sm: 0 1px 3px rgba(26, 35, 50, 0.08), 0 1px 2px rgba(26, 35, 50, 0.04);
+  --shadow-md: 0 4px 12px rgba(26, 35, 50, 0.10), 0 2px 4px rgba(26, 35, 50, 0.06);
+  --shadow-lg: 0 12px 32px rgba(26, 35, 50, 0.14), 0 4px 8px rgba(26, 35, 50, 0.08);
+  --shadow-focus: 0 0 0 3px rgba(44, 90, 160, 0.35);
+
+  /* ---- 圆角 ---- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-control: 8px;     /* 表单控件 */
+  --radius-card: 10px;       /* 卡片 */
+  --radius-panel: 12px;      /* 大面板 */
   --radius-pill: 999px;
 
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
+  /* ---- 间距（8px 体系） ---- */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
 
-  --font-family-sans: -apple-system, blinkmacsystemfont, "PingFang SC",
+  /* ---- 排版 ---- */
+  --font-family-sans: -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.8125rem;
-  --font-size-body: 0.875rem;
-  --font-size-lead: 1rem;
-  --font-size-section: 1.25rem;
-  --font-size-title: 1.75rem;
-  --line-height-tight: 1.3;
-  --line-height-body: 1.6;
-  --font-weight-medium: 550;
-  --font-weight-semibold: 650;
-  --font-weight-bold: 750;
+  --font-family-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
 
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-body: 13px;      /* 正文（紧凑可读） */
+  --font-size-lead: 14px;      /* 引导/标签 */
+  --font-size-base: 15px;
+  --font-size-section: 17px;   /* 区块标题 */
+  --font-size-title: 20px;     /* 页面标题 */
+  --font-size-display: 24px;
+
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.4;
+  --line-height-body: 1.55;
+  --line-height-relaxed: 1.7;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ---- 焦点环 ---- */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-color: var(--color-primary);
+  --focus-ring: var(--focus-ring-width) solid var(--focus-ring-color);
+
+  /* ---- z-index 层级 ---- */
+  --z-base: 0;
   --z-sticky: 10;
   --z-navigation: 20;
+  --z-dropdown: 30;
   --z-overlay: 40;
-  --z-toast: 60;
+  --z-drawer: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+  --z-tooltip: 80;
+
+  /* ---- 过渡动画 ---- */
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
+  --transition-slow: 280ms ease;
+  --transition-reduced: 0ms;
+
+  /* ---- 表格密度 ---- */
+  --table-row-height: 40px;       /* 紧凑行高 */
+  --table-row-height-dense: 34px; /* 密集行高 */
+  --table-cell-padding-x: 12px;
+  --table-cell-padding-y: 8px;
+  --table-header-height: 36px;
+
+  /* ---- 表单控件尺寸 ---- */
+  --control-height-sm: 30px;
+  --control-height: 36px;         /* 默认控件高度 */
+  --control-height-lg: 42px;
+  --control-padding-x: 12px;
+  --control-padding-y: 6px;
+  --control-font-size: var(--font-size-body);
+  --control-border-radius: var(--radius-control);
+
+  /* ---- 布局尺寸 ---- */
+  --sidebar-width: 232px;
+  --sidebar-width-collapsed: 56px;
+  --topbar-height: 56px;
+  --content-max-width: 1440px;
+  --content-padding: 20px;
+
+  /* ---- 断点 ---- */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
+/* ---- 减少动画偏好 ---- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: var(--transition-reduced);
+    --transition-base: var(--transition-reduced);
+    --transition-slow: var(--transition-reduced);
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

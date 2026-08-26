@@ -191,7 +191,7 @@ describe('application route registration', () => {
           staffSessionEnvelopeFixture(
             {
               ...staffSessionFixture,
-              permissions: ['SELLER_MANAGE', 'FINANCIAL_CORRECT', 'STAFF_MANAGE'],
+              permissions: ['SELLER_MANAGE', 'FINANCIAL_CORRECT', 'STAFF_MANAGE', 'FINANCIAL_VIEW'],
             },
             'request-staff-nav-route',
           ),
@@ -207,23 +207,25 @@ describe('application route registration', () => {
 
     renderWithMsw(<AppRoutes />, { route: '/staff' });
 
-    const nav = await screen.findByRole('navigation', { name: '员工工作台导航' });
+    const nav = await screen.findByRole('navigation', { name: '员工工作台主导航' });
     for (const label of [
       '工作台',
-      '获客',
+      '客户',
+      '获客中心',
+      '买家',
       '卖家',
-      '产品与投放',
-      '买家与订单',
-      '财务配置',
-      '系统',
-      '员工与访问管理',
+      '产品与预约',
+      '买家返款',
+      '财务',
+      '员工与权限',
+      '系统设置',
       '经营看板',
       '运行完整性工具',
     ]) {
       expect(screen.getAllByText(label).some((node) => nav.contains(node))).toBe(true);
     }
-    // 旧叫法只允许出现在过渡期页面内容里（如汇率中心页内 h2），不允许再出现在导航。
-    for (const retired of ['产品库', '汇率中心', '客户开发', '工作队列', '买家客户', '卖家客户', '员工管理']) {
+    // 旧叫法只允许出现在过渡期页面内容里，不允许再出现在导航。
+    for (const retired of ['产品库', '汇率中心', '客户开发', '工作队列', '买家客户', '卖家客户', '员工管理', '产品与投放', '买家与订单', '财务配置', '员工与访问管理']) {
       expect(nav.textContent).not.toContain(retired);
     }
   });
