@@ -122,9 +122,10 @@ assert((fileReadService.match(/await authorizeFileRead\(/gu) ?? []).length >= 2)
 assert(fileReadService.indexOf('await authorizeFileRead(')
   < fileReadService.indexOf('const expiresAt = now + ttlMs'));
 const finalReadAuthorization = fileReadService.lastIndexOf('await authorizeFileRead(');
-assert(finalReadAuthorization < fileReadService.indexOf('const archived ='));
-assert(finalReadAuthorization < fileReadService.indexOf('await readArchivedBytes(source'));
-assert(finalReadAuthorization < fileReadService.indexOf('await storage.readObject(source.object_key'));
+// Stage 5 renamed the archived-copy read path; the equivalent anchors are the
+// hot-deleted branch's temporary-restore payload and any object storage read.
+assert(finalReadAuthorization < fileReadService.indexOf('restoredReadPayload(source'));
+assert(finalReadAuthorization < fileReadService.indexOf('storage.readObject(source.object_key'));
 
 // Staff-owned and trusted SYSTEM-owned proofs are accepted only from persisted
 // file facts; customer actors and client-declared SYSTEM uploads remain closed.

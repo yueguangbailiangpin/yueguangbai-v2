@@ -272,8 +272,8 @@ describe('Phase 4B5 buyer refund status read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(24);
-    expect(migrations.at(-1)).toBe('0024_cold_archive_bundle_model.sql');
+    expect(migrations).toHaveLength(25);
+    expect(migrations.at(-1)).toBe('0025_historical_order_import.sql');
   });
 });
 

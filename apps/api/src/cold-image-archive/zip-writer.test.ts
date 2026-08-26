@@ -156,6 +156,7 @@ describe('streaming ZIP writer', () => {
     await expect(collect(duplicate.stream)).rejects.toMatchObject({
       message: 'zip_duplicate_member_name',
     });
+    await expect(duplicate.result).rejects.toBeTruthy();
     validateMemberName('0001-abcdef0123456789.jpg');
     expect(() => validateMemberName('../evil.jpg')).toThrow('zip_invalid_member_name');
     expect(() => validateMemberName('a/b.jpg')).toThrow('zip_invalid_member_name');
@@ -170,6 +171,7 @@ describe('streaming ZIP writer', () => {
       members: [{ safeName: '0001-abcdef0123456789.jpg', byteSize: 4, open: async () => null }],
     }));
     await expect(collect(unavailable.stream)).rejects.toMatchObject({ message: 'zip_member_open_failed' });
+    await expect(unavailable.result).rejects.toBeTruthy();
     const truncated = createStreamingZip(async () => ({
       manifestJsonBytes: manifest,
       members: [{
@@ -179,6 +181,7 @@ describe('streaming ZIP writer', () => {
       }],
     }));
     await expect(collect(truncated.stream)).rejects.toBeTruthy();
+    await expect(truncated.result).rejects.toBeTruthy();
   });
 
   it('enforces the bundle entry cap', () => {

@@ -19,14 +19,14 @@ afterEach(() => {
 const root = path.resolve(import.meta.dirname, '../../../..');
 
 describe('stage 3 clean baseline schema', () => {
-  it('is one continuous 0001-0024 chain ending at schema version 24', () => {
+  it('is one continuous 0001-0025 chain ending at schema version 25', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(24);
+    expect(migrations).toHaveLength(25);
     expect(migrations.map((name) => Number(name.slice(0, 4))))
-      .toEqual(Array.from({ length: 24 }, (_, index) => index + 1));
-    expect(migrations.at(-1)).toBe('0024_cold_archive_bundle_model.sql');
+      .toEqual(Array.from({ length: 25 }, (_, index) => index + 1));
+    expect(migrations.at(-1)).toBe('0025_historical_order_import.sql');
     for (const file of migrations) {
       const source = readFileSync(path.join(root, 'migrations', file), 'utf8');
       expect(source).not.toMatch(/SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu);
@@ -34,12 +34,12 @@ describe('stage 3 clean baseline schema', () => {
     }
   });
 
-  it('applies to an empty database in one pass at version 24', () => {
+  it('applies to an empty database in one pass at version 25', () => {
     database = createMigratedTestDatabase();
     const state = database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
     ).get();
-    expect(state).toEqual({ schema_version: 24 });
+    expect(state).toEqual({ schema_version: 25 });
     expect(database.raw.prepare('PRAGMA integrity_check').get())
       .toEqual({ integrity_check: 'ok' });
     expect(database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);

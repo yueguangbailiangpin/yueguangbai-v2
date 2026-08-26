@@ -13,14 +13,14 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 24;
-const expectedLastMigration = '0024_cold_archive_bundle_model.sql';
+const expectedLatestSchema = 25;
+const expectedLastMigration = '0025_historical_order_import.sql';
 const expectedSchemaInventory = {
-  table: 190,
-  index: 565,
-  trigger: 368,
+  table: 195,
+  index: 581,
+  trigger: 374,
   view: 12,
-  sha256: '8b5b36f67d4571560b7e1bbb698b946455d771f4c13fcb1149aab3e1d134a3e2',
+  sha256: 'b13ebbb36f181534445d14d6f2090e188eb74b9d5bf44d2a3c30bcd0207787e6',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2
@@ -201,6 +201,11 @@ const requiredTables = [
   'demand_batches',
   'demand_order_schedule_versions',
   'archive_runtime_controls',
+  'historical_import_batches',
+  'historical_orders',
+  'historical_order_files',
+  'historical_import_quarantine',
+  'historical_import_identity_overrides',
   'archive_bundles',
   'archive_bundle_files',
   'archive_bundle_events',

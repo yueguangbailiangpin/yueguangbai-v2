@@ -78,7 +78,7 @@ describe('Phase 3H staff assignment foundation', () => {
   it('runs the assignment foundation on the stage 3 clean baseline', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 24 });
+      .toEqual({ schema_version: 25 });
     expect(d.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(d.raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
   });

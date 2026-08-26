@@ -363,8 +363,11 @@ function analyzeTsc(words,label){
   assert(words.length===4&&words[1]==='-p'&&['tsconfig.json','tsconfig.test.json'].includes(words[2])&&words[3]==='--noEmit',`${label} tsc command is not canonical`);
 }
 
+const APPROVED_VITEST_CONFIGS=new Set(['vitest.capacity.config.ts','vitest.import-capacity.config.ts']);
 function analyzeVitest(words,label){
-  assert(words.length>=2&&words[1]==='run'&&words.slice(2).every((value)=>typeof value==='string'&&!value.startsWith('-')&&!value.includes('$')),`${label} vitest command is not canonical`);
+  const positionalRun=words.length>=2&&words[1]==='run'&&words.slice(2).every((value)=>typeof value==='string'&&!value.startsWith('-')&&!value.includes('$'));
+  const configRun=words.length===4&&words[1]==='run'&&words[2]==='--config'&&APPROVED_VITEST_CONFIGS.has(words[3]);
+  assert(positionalRun||configRun,`${label} vitest command is not canonical`);
 }
 
 function analyzeNpm(words,analysis,label,mode){
