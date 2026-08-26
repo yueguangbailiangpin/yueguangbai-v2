@@ -21,7 +21,9 @@ const source = (relative: string) => readFileSync(path.join(root, relative), 'ut
 
 describe('Wave 13 File HTTP contract and architecture', () => {
   it('freezes active purpose-bound intent routes', () => {
-    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(8);
+    // D-056 §4.1: the two chat-screenshot entries are unified into the
+    // order-detail ORDER_COMMUNICATION_SCREENSHOT flow.
+    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(6);
     expect(FILE_HTTP_PURPOSE_ROUTES).toMatchObject({
       buyerOrderEvidence: {
         purpose: 'ORDER_EVIDENCE',
@@ -39,17 +41,9 @@ describe('Wave 13 File HTTP contract and architecture', () => {
         purpose: 'BUYER_REFUND_PROOF',
         visibility: 'INTERNAL_ONLY',
       },
-      staffBuyerChatScreenshot: {
-        purpose: 'ORDER_EVIDENCE',
-        visibility: 'INTERNAL_ONLY',
-      },
       staffSellerSettlementProof: {
         purpose: 'SELLER_SETTLEMENT_PROOF',
         visibility: 'INTERNAL_ONLY',
-      },
-      staffSellerOrderChatScreenshot: {
-        purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
-        visibility: 'SELLER_VISIBLE',
       },
       staffProductImage: {
         purpose: 'PRODUCT_IMAGE',
@@ -57,7 +51,7 @@ describe('Wave 13 File HTTP contract and architecture', () => {
       },
     });
     expect(WAVE13_DEFERRED_FILE_PURPOSES).toEqual([]);
-    expect(JSON.stringify(FILE_HTTP_PURPOSE_ROUTES)).toContain(
+    expect(JSON.stringify(FILE_HTTP_PURPOSE_ROUTES)).not.toContain(
       'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
     );
     for (const route of Object.values(FILE_HTTP_LIFECYCLE_PATHS)) {
@@ -66,12 +60,11 @@ describe('Wave 13 File HTTP contract and architecture', () => {
     }
   });
 
-  it('keeps the historical purpose and registers only the fixed Staff route', () => {
+  it('registers the unified communication purpose on the Staff upload matrix', () => {
     const storage = source('packages/contracts/src/file-storage.ts');
     const routes = source('apps/api/src/files/routes.ts');
-    expect(storage).toContain("'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'");
-    expect(routes).toContain('staffSellerOrderChatScreenshot');
-    expect(routes).toContain('ORDER_EVIDENCE_INTERNAL_COMMUNICATION');
+    expect(storage).toContain("'ORDER_COMMUNICATION_SCREENSHOT'");
+    expect(routes).toContain("'ORDER_COMMUNICATION_SCREENSHOT'");
     expect(routes).toContain('SELLER_VISIBLE');
   });
 

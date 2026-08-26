@@ -38,6 +38,9 @@ import {
   autoApproveReservation,
   type ReservationAutoApproveConfig,
 } from './auto-approve';
+import {
+  assertNoHistoricalParticipation,
+} from './participation-history';
 
 interface DemandEligibilityRow {
   demand_batch_id: string;
@@ -146,6 +149,15 @@ export async function submitReservation(
       command.actor,
       now,
     );
+    const participationException = await assertNoHistoricalParticipation(
+      database,
+      {
+        buyerCustomerId: command.actor.buyerCustomerId,
+        sellerOrganizationId: source.organization_id,
+        demandBatchId: source.demand_batch_id,
+        now,
+      },
+    );
     await assertNoReservationConflict(
       database,
       source,
@@ -222,7 +234,8 @@ export async function submitReservation(
       createdAt: now,
     });
 
-    const statements: SqlStatement[] = [
+    const statements: SqlStatement[] = [];
+    statements.push(
       database.prepare(`
         INSERT INTO product_reservations (
           id,
@@ -309,6 +322,36 @@ export async function submitReservation(
                 'APPROVED'
               )
           )
+          AND (
+            (
+              NOT EXISTS (
+                SELECT 1
+                FROM product_reservations prior
+                JOIN demand_batches prior_demand
+                  ON prior_demand.id=prior.demand_batch_id
+                WHERE prior.buyer_customer_id=buyer.id
+                  AND prior_demand.organization_id=demand.organization_id
+                  AND prior.status='APPROVED'
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM formal_orders formal_order
+                JOIN seller_stores prior_store
+                  ON prior_store.id=formal_order.store_id
+                WHERE formal_order.buyer_customer_id=buyer.id
+                  AND prior_store.organization_id=demand.organization_id
+              )
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM reservation_participation_exceptions exemption
+              WHERE exemption.buyer_customer_id=buyer.id
+                AND exemption.seller_organization_id=demand.organization_id
+                AND exemption.demand_batch_id=demand.id
+                AND exemption.used_at IS NULL
+                AND exemption.valid_until>?
+            )
+          )
       `).bind(
         reservationId,
         precheck,
@@ -323,6 +366,7 @@ export async function submitReservation(
         command.actor.buyerCustomerId,
         demandBatchId,
         command.actor.marketplaceCode,
+        now,
         now,
         now,
         now,
@@ -417,7 +461,36 @@ export async function submitReservation(
         database,
         acquired.claim,
       ),
-    ];
+    );
+    if (participationException) {
+      // Consume the one-time exception inside the same D1 transaction and
+      // prove the consumption in the batch; an already-used or raced
+      // exception makes the UPDATE touch zero rows and the assertion fail.
+      // It must run after the reservation INSERT: the INSERT's eligibility
+      // branch still observes the exception as unused.
+      statements.push(
+        database.prepare(`
+          UPDATE reservation_participation_exceptions
+          SET used_at=?, used_by_reservation_id=?
+          WHERE id=? AND used_at IS NULL
+        `).bind(
+          now,
+          reservationId,
+          participationException.id,
+        ),
+        database.prepare(`
+          INSERT INTO transaction_assertions (assertion_value)
+          SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM reservation_participation_exceptions
+            WHERE id=? AND used_at IS NOT NULL
+              AND used_by_reservation_id=?
+          ) THEN 1 ELSE 0 END
+        `).bind(
+          participationException.id,
+          reservationId,
+        ),
+      );
+    }
 
     await batchWithAssignmentRetry(
       database,

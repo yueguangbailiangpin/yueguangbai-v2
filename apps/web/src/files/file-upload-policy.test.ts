@@ -36,16 +36,15 @@ describe('purpose-bound frontend file policies', () => {
       'buyerReviewEvidence',
       'sellerProductApplicationImage',
       'staffBuyerRefundProof',
-      'staffBuyerChatScreenshot',
       'staffSellerSettlementProof',
-      'staffSellerOrderChatScreenshot',
+      'staffOrderCommunicationScreenshot',
       'staffProductImage',
     ]);
     expect(Object.keys(fileUploadWorkflows)).toEqual(FILE_UPLOAD_WORKFLOW_KEYS);
     expect(() => requireFileUploadWorkflow('ORDER_EVIDENCE')).toThrow();
     expect(() => requireFileUploadWorkflow('buyerOrderEvidence')).not.toThrow();
-    expect(fileUploadWorkflows.staffSellerOrderChatScreenshot.purpose)
-      .toBe('ORDER_EVIDENCE_INTERNAL_COMMUNICATION');
+    expect(fileUploadWorkflows.staffOrderCommunicationScreenshot.purpose)
+      .toBe('ORDER_COMMUNICATION_SCREENSHOT');
   });
 
   it.each([
@@ -54,7 +53,7 @@ describe('purpose-bound frontend file policies', () => {
     ['sellerProductApplicationImage', 'seller', '/api/seller-portal/file-uploads/product-application-images/intents', 'PRODUCT_APPLICATION_IMAGE', 'SELLER_VISIBLE', 8, 5],
     ['staffBuyerRefundProof', 'staff', '/api/staff/file-uploads/buyer-refund-proofs/intents', 'BUYER_REFUND_PROOF', 'INTERNAL_ONLY', 6, 20],
     ['staffSellerSettlementProof', 'staff', '/api/staff/file-uploads/seller-settlement-proofs/intents', 'SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY', 6, 20],
-    ['staffSellerOrderChatScreenshot', 'staff', '/api/staff/file-uploads/seller-order-chat-screenshots/intents', 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE', 1, 5],
+    ['staffOrderCommunicationScreenshot', 'staff', '/api/staff/formal-orders/:id/communication-screenshots/intents', 'ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE', 8, 5],
     ['staffProductImage', 'staff', '/api/staff/file-uploads/product-images/intents', 'PRODUCT_IMAGE', 'SELLER_VISIBLE', 1, 5],
   ] as const)('%s matches the frozen route and policy', (
     key, identity, path, purpose, visibility, count, mib,
@@ -88,7 +87,7 @@ describe('local file selection and descriptor validation', () => {
     ['staffSellerSettlementProof', true],
     ['buyerOrderEvidence', false],
     ['sellerProductApplicationImage', false],
-    ['staffSellerOrderChatScreenshot', false],
+    ['staffOrderCommunicationScreenshot', false],
   ] as const)('%s PDF allowance is %s', (key, allowed) => {
     const action = () => descriptorForFile(
       fileUploadWorkflows[key],

@@ -44,7 +44,7 @@ describe('Wave 12 financial formulas execute against the production SQL view', (
     database = createFormulaFixtureDatabase();
     expect(database.raw.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).get()).toMatchObject({ schema_version: 27 });
+    `).get()).toMatchObject({ schema_version: 28 });
     expect(database.raw.prepare('PRAGMA foreign_keys').get())
       .toMatchObject({ foreign_keys: 1 });
     for (const trigger of [
@@ -461,9 +461,9 @@ function seedLegalFormalOrderSources(
       order_instruction_version_id, instruction_deadline_snapshot,
       reference_order_amount_jpy_snapshot, buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch, price_difference_jpy,
-      submitted_before_deadline, evidence_file_object_id, created_at
+      submitted_before_deadline, created_at
     ) VALUES (?, ?, ?, ?, 'AMAZON_JP', 1, ?, ?, '2023-11-14', ?, ?, NULL, NULL, NULL, NULL,
-      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)
+      NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)
   `).run(evidenceId, submissionId, reservationId, buyerId, orderNumber, orderNumber,
     facts.sellerExpectedPrincipalCnyFen, buyerId, AT);
   raw.prepare(`

@@ -50,11 +50,11 @@ const PURPOSE_POLICIES: Readonly<Record<FilePurpose, FilePurposePolicy>> =
       allowedMimes: IMAGE_MIMES,
       entityType: 'ORDER',
     }),
-    ORDER_EVIDENCE_INTERNAL_COMMUNICATION: Object.freeze({
-      maximumFileCount: 1,
+    ORDER_COMMUNICATION_SCREENSHOT: Object.freeze({
+      maximumFileCount: 8,
       maximumByteSize: 5 * MEBIBYTE,
       allowedMimes: IMAGE_MIMES,
-      entityType: 'ORDER_EVIDENCE_SUBMISSION',
+      entityType: 'ORDER',
     }),
     REVIEW_EVIDENCE: Object.freeze({
       maximumFileCount: 10,

@@ -25,20 +25,10 @@ export const FILE_HTTP_PURPOSE_ROUTES = Object.freeze({
     purpose: 'BUYER_REFUND_PROOF',
     visibility: 'INTERNAL_ONLY',
   },
-  staffBuyerChatScreenshot: {
-    path: '/api/staff/file-uploads/buyer-chat-screenshots/intents',
-    purpose: 'ORDER_EVIDENCE',
-    visibility: 'INTERNAL_ONLY',
-  },
   staffSellerSettlementProof: {
     path: '/api/staff/file-uploads/seller-settlement-proofs/intents',
     purpose: 'SELLER_SETTLEMENT_PROOF',
     visibility: 'INTERNAL_ONLY',
-  },
-  staffSellerOrderChatScreenshot: {
-    path: '/api/staff/file-uploads/seller-order-chat-screenshots/intents',
-    purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
-    visibility: 'SELLER_VISIBLE',
   },
   staffProductImage: {
     path: '/api/staff/file-uploads/product-images/intents',

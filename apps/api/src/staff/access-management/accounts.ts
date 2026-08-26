@@ -2,6 +2,7 @@ import {
   isStaffRoleCode,
   type SqlDatabase,
   type SqlStatement,
+  type StaffAccessBuyerRefundOwnerAssignmentDto,
   type StaffAccessEmployeeDto,
   type StaffAccessSellerOrganizationAssignmentDto,
   type StaffRoleCode,
@@ -22,7 +23,11 @@ import {
 } from '../../staff-assignment';
 import { normalizeStaffEmail } from '../../staff-auth/cloudflare-access';
 import { StaffAccessManagementError } from './errors';
-import { readStaffAccessEmployee, readStaffSellerOrganizationAssignment } from './read-model';
+import {
+  readStaffAccessEmployee,
+  readStaffBuyerRefundOwnerAssignment,
+  readStaffSellerOrganizationAssignment,
+} from './read-model';
 
 interface TargetRow {
   id: string;
@@ -44,6 +49,16 @@ interface ActiveSellerManagerRow {
   id: string;
   staff_id: string;
   version: number;
+}
+interface ActiveBuyerOwnerRow {
+  id: string;
+  staff_id: string;
+  version: number;
+}
+interface BuyerCustomerRow {
+  id: string;
+  display_name: string;
+  marketplace_code: string;
 }
 interface SellerOrganizationRow {
   id: string;
@@ -655,6 +670,243 @@ export async function changeSellerOrganizationManager(
     await database.batch(statements);
     const projected = await readStaffSellerOrganizationAssignment(database, organization.id);
     return { seller_organization: projected, replayed: false };
+  } catch (error) {
+    const normalized = normalizeIdempotencyError(error);
+    await markIdempotencyFailed(database, acquired.claim, normalized.code, now);
+    throw normalized;
+  }
+}
+
+/**
+ * Sets or transfers the buyer's fixed BUYER_REFUND_OWNER binding.  The
+ * previous assignment is only revoked; a fresh active assignment, audited
+ * event row (with the mandatory operator reason) and outbox event are
+ * appended in the same D1 batch.  Buyers without an owner fail closed on
+ * review/refund work, so this is the only manual remediation path.
+ */
+export async function changeBuyerRefundOwner(
+  database: SqlDatabase,
+  input: {
+    buyerCustomerId: string;
+    assignedStaffId: string;
+    expectedAssignmentVersion: number;
+    reason: string;
+    idempotencyKey: string;
+    requestId: string | null;
+  },
+  actor: AssignmentStaffAuthorization,
+): Promise<{
+  buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+  replayed: boolean;
+}> {
+  requireOwner(actor);
+  if (!Number.isSafeInteger(input.expectedAssignmentVersion) || input.expectedAssignmentVersion < 0)
+    validation();
+  const reason = text(input.reason, 1000);
+  const buyer = await database
+    .prepare(
+      `SELECT id,display_name,marketplace_code FROM buyer_customers WHERE id=?`,
+    )
+    .bind(input.buyerCustomerId)
+    .first<BuyerCustomerRow>();
+  if (!buyer) notFound();
+
+  const candidate = await targetRow(database, input.assignedStaffId);
+  if (!candidate) notFound();
+  if (
+    candidate.status !== 'ACTIVE' ||
+    candidate.active_role_count !== 1 ||
+    candidate.role_code !== 'buyer_refund'
+  )
+    stateConflict();
+  if (
+    !(await isStaffEligibleForFixedDuty(database, {
+      staffId: input.assignedStaffId,
+      dutyCode: 'BUYER_REFUND_OWNER',
+      marketplaceCode: buyer.marketplace_code,
+    }))
+  )
+    stateConflict();
+
+  const requestHash = await hashCanonicalJson({
+    action: 'CHANGE_BUYER_REFUND_OWNER',
+    buyer_customer_id: input.buyerCustomerId,
+    assigned_staff_id: input.assignedStaffId,
+    expected_assignment_version: input.expectedAssignmentVersion,
+    reason,
+  });
+  let acquired;
+  try {
+    acquired = await acquireIdempotency<{
+      buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+      replayed: boolean;
+    }>(database, {
+      actorType: 'STAFF',
+      actorId: actor.staffId,
+      action: 'CHANGE_BUYER_REFUND_OWNER',
+      targetType: 'BUYER_CUSTOMER',
+      targetId: buyer.id,
+      idempotencyKey: input.idempotencyKey,
+      requestHash,
+    });
+  } catch (error) {
+    throw normalizeIdempotencyError(error);
+  }
+  if (acquired.kind === 'REPLAY') {
+    return { ...acquired.response, replayed: true };
+  }
+
+  const now = Date.now();
+  try {
+    const active = await database
+      .prepare(
+        `SELECT id,staff_id,version FROM buyer_staff_assignments
+        WHERE buyer_customer_id=? AND duty_code='BUYER_REFUND_OWNER'
+          AND status='ACTIVE'`,
+      )
+      .bind(buyer.id)
+      .first<ActiveBuyerOwnerRow>();
+    const activeVersion = active?.version ?? 0;
+    if (activeVersion !== input.expectedAssignmentVersion) versionConflict();
+
+    // A retried command with a different idempotency key stays safe: when the
+    // observed owner/version already matches, answer with a semantic replay
+    // instead of rotating the binding again.
+    if (active?.staff_id === input.assignedStaffId) {
+      const response = {
+        buyer: await readStaffBuyerRefundOwnerAssignment(database, buyer.id),
+        replayed: true,
+      } as const;
+      await database.batch([
+        completeIdempotencyStatement(database, acquired.claim, response, {
+          resultReferences: { assignment_id: active.id },
+          now,
+        }),
+        assertIdempotencyCompletionStatement(database, acquired.claim),
+      ]);
+      return response;
+    }
+
+    const assignmentId = crypto.randomUUID();
+    const response: {
+      buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+      replayed: boolean;
+    } = {
+      buyer: {
+        buyer_customer_id: buyer.id,
+        buyer_display_name: buyer.display_name,
+        marketplace_code: buyer.marketplace_code,
+        refund_owner: {
+          assignment_id: assignmentId,
+          staff_id: input.assignedStaffId,
+          staff_display_name: candidate.display_name,
+          version: 1,
+        },
+      },
+      replayed: false,
+    };
+    const outbox = await prepareStaffAssignmentOutboxStatements(database, {
+      dedupKey: `staff-assignment:${assignmentId}:fixed-owner-changed`,
+      eventType: 'FIXED_OWNER_CHANGED',
+      aggregateType: 'STAFF_ASSIGNMENT',
+      aggregateId: assignmentId,
+      payload: {
+        assignment_id: assignmentId,
+        buyer_customer_id: buyer.id,
+        duty_code: 'BUYER_REFUND_OWNER',
+        previous_staff_id: active?.staff_id ?? null,
+        assigned_staff_id: input.assignedStaffId,
+        source: 'MANUAL_REASSIGN',
+      },
+      now,
+    });
+    const statements: SqlStatement[] = [];
+    if (active) {
+      statements.push(
+        database
+          .prepare(
+            `UPDATE buyer_staff_assignments
+            SET status='REVOKED',revoked_at=?,version=version+1,updated_at=MAX(?,updated_at+1)
+            WHERE id=? AND status='ACTIVE' AND version=?`,
+          )
+          .bind(now, now, active.id, active.version),
+      );
+    }
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO buyer_staff_assignments(
+            id,buyer_customer_id,duty_code,staff_id,status,source,
+            assigned_by_actor_type,assigned_by_actor_id,reason,version,
+            created_at,updated_at,revoked_at
+          ) VALUES(?,?,'BUYER_REFUND_OWNER',?,'ACTIVE','MANUAL_REASSIGN',
+            'STAFF',?,?,1,?,?,NULL)`,
+        )
+        .bind(assignmentId, buyer.id, input.assignedStaffId, actor.staffId, reason, now, now),
+      database
+        .prepare(
+          `INSERT INTO staff_assignment_events(
+            id,event_type,subject_type,subject_id,duty_code,assignment_id,
+            work_item_id,batch_id,old_staff_id,new_staff_id,actor_type,actor_id,
+            reason,request_id,idempotency_key,metadata_json,created_at
+          ) VALUES(?,'FIXED_OWNER_CHANGED','BUYER_CUSTOMER',?,
+            'BUYER_REFUND_OWNER',?,NULL,NULL,?,?,'STAFF',?,
+            ?,?,?,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          buyer.id,
+          assignmentId,
+          active?.staff_id ?? null,
+          input.assignedStaffId,
+          actor.staffId,
+          reason,
+          input.requestId,
+          acquired.claim.idempotencyKey,
+          canonicalJson({ expected_assignment_version: input.expectedAssignmentVersion }),
+          now,
+        ),
+      createAuditEventStatement(database, {
+        id: crypto.randomUUID(),
+        aggregateType: 'BUYER_CUSTOMER',
+        aggregateId: buyer.id,
+        eventType: 'BUYER_REFUND_OWNER_CHANGED',
+        actor: { type: 'STAFF', id: actor.staffId, roles: [...actor.roles] },
+        requestId: input.requestId,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        previousState: {
+          assignment_id: active?.id ?? null,
+          staff_id: active?.staff_id ?? null,
+          assignment_version: active?.version ?? 0,
+        },
+        nextState: {
+          assignment_id: assignmentId,
+          staff_id: input.assignedStaffId,
+          assignment_version: 1,
+          reason,
+        },
+        createdAt: now,
+      }),
+      ...outbox,
+      database
+        .prepare(
+          `INSERT INTO transaction_assertions(assertion_value)
+        SELECT CASE WHEN EXISTS(
+          SELECT 1 FROM buyer_staff_assignments
+          WHERE id=? AND buyer_customer_id=? AND staff_id=?
+            AND duty_code='BUYER_REFUND_OWNER' AND status='ACTIVE'
+        ) THEN 1 ELSE 0 END`,
+        )
+        .bind(assignmentId, buyer.id, input.assignedStaffId),
+      completeIdempotencyStatement(database, acquired.claim, response, {
+        resultReferences: { assignment_id: assignmentId },
+        now,
+      }),
+      assertIdempotencyCompletionStatement(database, acquired.claim),
+    );
+    await database.batch(statements);
+    const projected = await readStaffBuyerRefundOwnerAssignment(database, buyer.id);
+    return { buyer: projected, replayed: false };
   } catch (error) {
     const normalized = normalizeIdempotencyError(error);
     await markIdempotencyFailed(database, acquired.claim, normalized.code, now);

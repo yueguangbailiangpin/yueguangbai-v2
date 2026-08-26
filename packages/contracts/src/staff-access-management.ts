@@ -4,10 +4,11 @@ export const STAFF_ACCESS_MANAGEMENT_PATHS = Object.freeze({
   overview: '/api/staff/access-management',
   employees: '/api/staff/access-management/employees',
   sellerOrganizationAssignments: '/api/staff/access-management/seller-organization-assignments',
+  buyerAssignments: '/api/staff/access-management/buyer-assignments',
 } as const);
 
 export type StaffAccessStatus = 'ACTIVE' | 'DISABLED';
-export type StaffRoleDisplayName = '总管理员' | '获客' | '售前' | '卖家对接' | '买家返款';
+export type StaffRoleDisplayName = '总管理员' | '售前' | '卖家对接' | '买家返款';
 export type StaffMarketplaceScopeKind = 'PRIMARY' | 'SUPPORT';
 
 export interface StaffAccessMarketplaceOptionDto {
@@ -59,6 +60,32 @@ export interface ChangeStaffAccessSellerOrganizationAssignmentRequest {
 }
 export interface StaffAccessSellerOrganizationAssignmentMutationDto {
   seller_organization: StaffAccessSellerOrganizationAssignmentDto;
+  replayed: boolean;
+}
+/**
+ * The single fixed Buyer refund owner (BUYER_REFUND_OWNER duty). A buyer
+ * without a refund owner fails closed on review/refund work until an owner
+ * sets one through this route.
+ */
+export interface StaffAccessBuyerRefundOwnerAssignmentDto {
+  buyer_customer_id: string;
+  buyer_display_name: string;
+  marketplace_code: string;
+  refund_owner: {
+    assignment_id: string;
+    staff_id: string;
+    staff_display_name: string;
+    version: number;
+  } | null;
+}
+export interface ChangeStaffAccessBuyerRefundOwnerRequest {
+  buyer_customer_id: string;
+  assigned_staff_id: string;
+  expected_assignment_version: number;
+  reason: string;
+}
+export interface StaffAccessBuyerRefundOwnerMutationDto {
+  buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
   replayed: boolean;
 }
 export interface CreateStaffAccountRequest {

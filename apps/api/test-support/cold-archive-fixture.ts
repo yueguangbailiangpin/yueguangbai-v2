@@ -87,11 +87,11 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
       amazon_order_number_raw,amazon_order_number_normalized,amazon_order_date,final_paid_jpy,submitted_by_buyer_id,buyer_note,
       order_instruction_id,order_instruction_version_id,instruction_deadline_snapshot,reference_order_amount_jpy_snapshot,
       buyer_self_pay_bps_snapshot,buyer_self_pay_jpy,buyer_refundable_principal_jpy,price_mismatch,price_difference_jpy,
-      submitted_before_deadline,evidence_file_object_id,created_at)
+      submitted_before_deadline,created_at)
     VALUES('${evidenceVersionId}','${submissionId}','${reservationId}','${buyerId}','AMAZON_JP',1,
       '123-1234567-${orderTail}','123-1234567-${orderTail}','2026-08-01',
       1980,'${buyerId}',NULL,'${instruction.instructionId}','${instruction.instructionVersionId}',${instruction.deadlineAt},
-      1980,0,0,1980,0,0,1,'${instruction.evidenceFileObjectId}',7000);
+      1980,0,0,1980,0,0,1,7000);
     UPDATE order_evidence_submissions SET status='VERIFIED',version=2,verified_by_staff_id='cold-archive-owner',
       verified_at=8000,updated_at=8000 WHERE id='${submissionId}';
     INSERT INTO buyer_daily_currency_rate_versions(id,business_date,source_currency_code,quote_currency_code,version_no,

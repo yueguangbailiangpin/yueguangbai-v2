@@ -4,6 +4,7 @@ import type { Context, Hono } from 'hono';
 import type { AssignmentStaffAuthorization } from '../../staff-assignment';
 import { requireStaffAccessManager } from './authorization';
 import {
+  changeBuyerRefundOwner,
   changeSellerOrganizationManager,
   createStaffAccount,
   updateStaffAccount,
@@ -12,6 +13,7 @@ import {
 import { StaffAccessManagementError } from './errors';
 import {
   readStaffAccessManagementOverview,
+  readStaffBuyerRefundOwnerAssignments,
   readStaffSellerOrganizationAssignments,
 } from './read-model';
 
@@ -139,6 +141,52 @@ export function registerStaffAccessManagementRoutes(app: Hono<any>): void {
           sellerOrganizationId: requiredString(context.req.param('id')),
           assignedStaffId: requiredString(body['assigned_staff_id']),
           expectedAssignmentVersion: body['expected_assignment_version'],
+          idempotencyKey,
+          requestId: requestId(context),
+        },
+        actor,
+      );
+      return success(context, result);
+    }),
+  );
+  app.get(
+    '/api/staff/access-management/buyer-assignments',
+    withErrors(async (context) => {
+      requireActor(context);
+      assertNoQuery(context);
+      return success(context, {
+        buyers: await readStaffBuyerRefundOwnerAssignments(context.env.DB),
+      });
+    }),
+  );
+  app.post(
+    '/api/staff/access-management/buyer-assignments',
+    withErrors(async (context) => {
+      const actor = requireActor(context);
+      const body = await readExactBody(context, [
+        'buyer_customer_id',
+        'assigned_staff_id',
+        'expected_assignment_version',
+        'reason',
+      ]);
+      if (
+        typeof body['buyer_customer_id'] !== 'string' ||
+        typeof body['assigned_staff_id'] !== 'string' ||
+        typeof body['reason'] !== 'string' ||
+        body['reason'].trim().length < 1 ||
+        body['reason'].length > 1000 ||
+        !nonnegativeInteger(body['expected_assignment_version'])
+      )
+        validation();
+      const idempotencyKey = parseIdempotencyKey(context.req.header('Idempotency-Key'));
+      if (!idempotencyKey) validation();
+      const result = await changeBuyerRefundOwner(
+        context.env.DB,
+        {
+          buyerCustomerId: requiredString(body['buyer_customer_id']),
+          assignedStaffId: requiredString(body['assigned_staff_id']),
+          expectedAssignmentVersion: body['expected_assignment_version'],
+          reason: body['reason'],
           idempotencyKey,
           requestId: requestId(context),
         },

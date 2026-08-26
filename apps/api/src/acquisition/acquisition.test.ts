@@ -40,7 +40,8 @@ describe('staff acquisition funnel commands', () => {
   it('exposes channel profit only to an owner with FINANCIAL_VIEW', () => {
     const rows = [{ formal_order_id: 'order-1', projected: '2500', completed: '2100' }];
     expect(channelProfitForActor(owner(), rows)).toEqual({ projected: '2500', completed: '2100' });
-    expect(channelProfitForActor(acquisition(), rows)).toEqual({ projected: null, completed: null });
+    // D-056: the operator gate is owner-only; a non-owner never sees profit.
+    expect(channelProfitForActor(preSales(), rows)).toEqual({ projected: null, completed: null });
     const deniedOwner = calculateEffectiveStaffAuthorization({
       roles: new Set<StaffRoleCode>(['owner']), grants: new Set<StaffPermissionCode>(),
       denies: new Set<StaffPermissionCode>(['FINANCIAL_VIEW']), memberTeamIds: [], leaderTeamIds: [],
@@ -255,9 +256,11 @@ describe('staff acquisition funnel commands', () => {
     }, command(owner(), 'consultation-0003', JAN_1_2025 + 2000)))
       .rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
 
-    const forgedAcquisitionAdmin = { ...acquisition(),
+    // D-056: the acquisition role is retired — the gate is owner-only, and a
+    // forged ACQUISITION_ADMIN permission cannot lift a non-owner.
+    const forgedAcquisitionAdmin = { ...sellerOps(),
       permissions: new Set<StaffPermissionCode>(['ACQUISITION_ADMIN']) };
-    for (const [index, actor] of [acquisition(), forgedAcquisitionAdmin,
+    for (const [index, actor] of [forgedAcquisitionAdmin,
       preSales(), sellerOps(), buyerRefund()].entries()) {
       await expect(recordAcquisitionConsultation(database, {
         ...recordInput, businessDate: `2025-01-${String(index + 2).padStart(2, '0')}`,
@@ -392,16 +395,22 @@ describe('staff acquisition funnel commands', () => {
       personCount: 7, expectedVersion: 0, reason: '美国站汇总',
     }, command(owner(), 'consultation-history-us', JAN_1_2025 + 1));
 
-    await expect(listAcquisitionConsultations(database, acquisition(),
-      '2025-01-01', '2025-01-01')).resolves.toMatchObject([
-      { consultation_id: jpConsultation.consultation.consultation_id, person_count: 12 },
-    ]);
+    // D-056: the operator is owner-only (global scope), so both markets are
+    // listed; single-record reads stay conceal-404 for missing rows.
+    const operatorList = await listAcquisitionConsultations(database, acquisition(),
+      '2025-01-01', '2025-01-01');
+    expect(operatorList.map((row) => row.consultation_id).sort()).toEqual([
+      jpConsultation.consultation.consultation_id,
+      usConsultation.consultation.consultation_id,
+    ].sort());
     await expect(listAcquisitionConsultationHistory(database, acquisition(),
       jpConsultation.consultation.consultation_id)).resolves.toMatchObject([
       { event_type: 'RECORDED', next_count: 12 },
     ]);
     await expect(listAcquisitionConsultationHistory(database, acquisition(),
-      usConsultation.consultation.consultation_id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      usConsultation.consultation.consultation_id)).resolves.toMatchObject([
+      { event_type: 'RECORDED', next_count: 7 },
+    ]);
     await expect(listAcquisitionConsultationHistory(database, acquisition(),
       'missing-consultation')).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
@@ -411,7 +420,9 @@ describe('staff acquisition funnel commands', () => {
       note: null,
     }, command(acquisition(), 'acquisition-prospect-0001', JAN_1_2025 + 2));
     expect(prospect.prospect.marketplace_code).toBe('AMAZON_JP');
-    await expect(listAcquisitionLeads(database, acquisition(), {
+    // D-056: the operator gate is owner-only, so the owner can list leads;
+    // buyer_refund has no acquisition duty at all and stays forbidden.
+    await expect(listAcquisitionLeads(database, buyerRefund(), {
       leadType: null, cursor: null, limit: 25,
     })).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
@@ -592,15 +603,9 @@ function db(): SqliteDatabase {
       ('staff-owner-acq','owner','ACTIVE',NULL,1000,NULL,1000,1000),
       ('staff-pre','pre_sales','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
       ('staff-pre-other','pre_sales','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
-      ('staff-acquisition','acquisition','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
+      ('staff-acquisition','owner','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
       ('staff-seller','seller_ops','ACTIVE','staff-owner-acq',1000,NULL,1000,1000),
       ('staff-refund','buyer_refund','ACTIVE','staff-owner-acq',1000,NULL,1000,1000);
-    INSERT INTO staff_team_memberships (staff_id,team_id,status,joined_at,ended_at,
-      created_at,updated_at) VALUES
-      ('staff-pre','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
-      ('staff-acquisition','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
-      ('staff-seller','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
-      ('staff-refund','phase3h-test-team','ACTIVE',1000,NULL,1000,1000);
     INSERT INTO staff_marketplace_scopes (
       id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
       assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
@@ -608,7 +613,6 @@ function db(): SqliteDatabase {
       ('scope-test-pre-primary','staff-pre','pre_sales','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
       ('scope-test-pre-support','staff-pre-other','pre_sales','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'SUPPORT'),
       ('scope-test-pre-us-primary','staff-pre-other','pre_sales','AMAZON_US','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
-      ('scope-test-acquisition-primary','staff-acquisition','acquisition','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
       ('scope-test-seller-primary','staff-seller','seller_ops','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY'),
       ('scope-test-refund-primary','staff-refund','buyer_refund','AMAZON_JP','ACTIVE','staff-owner-acq',1000,NULL,'TEST',1000,1000,'PRIMARY');
     UPDATE seller_channels SET created_at=1000,updated_at=1000
@@ -663,7 +667,9 @@ function auth(role: StaffRoleCode, staffId: string): AssignmentStaffAuthorizatio
     authorizationVersion: 1, ...effective };
 }
 function owner() { return auth('owner','staff-owner-acq'); }
-function acquisition() { return auth('acquisition','staff-acquisition'); }
+// D-056: the acquisition role is retired; the operator gate is owner-only now,
+// so former acquisition-operator cases exercise the owner path.
+function acquisition() { return auth('owner','staff-owner-acq'); }
 function preSales() { return auth('pre_sales','staff-pre'); }
 function sellerOps() { return auth('seller_ops','staff-seller'); }
 function buyerRefund() { return auth('buyer_refund','staff-refund'); }

@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import {
-  SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS,
-  type SellerOrderChatScreenshotReadIntentRequest,
+  ORDER_COMMUNICATION_SCREENSHOT_HTTP_PATHS,
+  type SellerOrderCommunicationScreenshotReadIntentRequest,
 } from '@ygb/contracts';
 import { z } from 'zod';
 import { FrontendApiError } from '../api/errors';
@@ -87,9 +87,10 @@ implements FileReadIntentProvider {
   private readonly path: string;
   private readonly expectedVersion: number;
 
-  constructor(formalOrderId: string, version: number) {
-    this.path = SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.sellerReadIntent
-      .replace(':id', encodeURIComponent(identifier(formalOrderId)));
+  constructor(formalOrderId: string, fileObjectId: string, version: number) {
+    this.path = ORDER_COMMUNICATION_SCREENSHOT_HTTP_PATHS.sellerReadIntent
+      .replace(':id', encodeURIComponent(identifier(formalOrderId)))
+      .replace(':fileObjectId', encodeURIComponent(identifier(fileObjectId)));
     this.expectedVersion = positiveInteger(version);
     trustProvider(this);
   }
@@ -99,7 +100,7 @@ implements FileReadIntentProvider {
   }
 
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
-    const body: SellerOrderChatScreenshotReadIntentRequest = {
+    const body: SellerOrderCommunicationScreenshotReadIntentRequest = {
       expected_file_version: this.expectedVersion,
     };
     const result = await identityApiRequest('seller', client, {
@@ -110,7 +111,7 @@ implements FileReadIntentProvider {
       headers: operationHeaders({ key: idempotencyKey, body }),
       signal,
     });
-    const intent = result.data.read_intent;
+    const intent = result.data;
     assertTokenAvailability(intent, result.requestId);
     if (intent.replayed) malformed(result.requestId);
     return Object.freeze({

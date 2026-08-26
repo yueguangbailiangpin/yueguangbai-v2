@@ -95,13 +95,11 @@ describe('Seller runtime DTO allowlists', () => {
 
   it('accepts only the public snake_case Seller chat read-intent DTO', () => {
     const response = {
-      read_intent: {
-        read_intent_id: 'intent-1',
-        access_token: 'x'.repeat(40),
-        access_token_available: true,
-        expires_at: 1000,
-        replayed: false,
-      },
+      read_intent_id: 'intent-1',
+      access_token: 'x'.repeat(40),
+      access_token_available: true,
+      expires_at: 1000,
+      replayed: false,
     };
     expect(
       sellerOrderChatScreenshotReadIntentResponseSchema.safeParse(response)
@@ -109,15 +107,13 @@ describe('Seller runtime DTO allowlists', () => {
     ).toBe(true);
     expect(
       sellerOrderChatScreenshotReadIntentResponseSchema.safeParse({
-        readIntent: response.read_intent,
+        readIntent: response,
       }).success,
     ).toBe(false);
     expect(
       sellerOrderChatScreenshotReadIntentResponseSchema.safeParse({
-        read_intent: {
-          ...response.read_intent,
-          object_key: 'files/v1/private',
-        },
+        ...response,
+        object_key: 'files/v1/private',
       }).success,
     ).toBe(false);
   });
@@ -136,7 +132,7 @@ describe('Seller runtime DTO allowlists', () => {
       payment: null, seller_expected_principal_cny_fen: null,
       seller_principal_rate_snapshot: null,
       locked_service_fee_snapshot: null, business_completion: null,
-      chat_screenshot: { status: 'NONE', file_version: null },
+      communication_screenshots: [],
       confirmed_at: 1, confirmed_business_date: null,
     };
     expect(sellerFormalOrdersSchema.safeParse({

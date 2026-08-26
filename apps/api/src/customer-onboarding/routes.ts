@@ -6,7 +6,7 @@ import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 import { listHistoricalSellerDirectory } from './historical-seller-directory';
-import { listBuyerChatScreenshots } from '../buyer-chat-screenshots';
+import { listOrderCommunicationScreenshots } from '../order-communication-screenshots';
 
 interface BuyerRow {
   subject_id: string;
@@ -36,11 +36,11 @@ type CustomerMatch = {
     product_name: string;
     platform_order_identifier: string | null;
     confirmed_at: number;
-    buyer_chat_screenshots: readonly {
+    communication_screenshots: readonly {
       file_object_id: string;
       file_version: number;
-      purpose: 'ORDER_EVIDENCE';
-      visibility: 'INTERNAL_ONLY';
+      purpose: 'ORDER_COMMUNICATION_SCREENSHOT';
+      visibility: 'SELLER_VISIBLE';
     }[];
   }[];
   source_status: 'HISTORICAL_UNKNOWN';
@@ -168,7 +168,7 @@ async function buyerMatches(
   const orderIds = visibleRows.flatMap(
     (_, index) => orderRows[index]?.results.map((order) => order.formal_order_id) ?? [],
   );
-  const chatScreenshots = await listBuyerChatScreenshots(database, orderIds);
+  const chatScreenshots = await listOrderCommunicationScreenshots(database, orderIds);
   return visibleRows
     .map((row, index) => ({
       customer_type: 'BUYER' as const,
@@ -183,7 +183,7 @@ async function buyerMatches(
         product_name: order.product_name,
         platform_order_identifier: order.platform_order_identifier,
         confirmed_at: Number(order.confirmed_at),
-        buyer_chat_screenshots: Object.freeze(
+        communication_screenshots: Object.freeze(
           chatScreenshots.get(order.formal_order_id) ?? [],
         ),
       })) ?? []),

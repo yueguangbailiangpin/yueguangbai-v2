@@ -76,7 +76,7 @@ export function registerNewBuyerRegistrationInvitationRoute(app:Hono<AppEnv>):vo
 
 function requireActor(context:Context<AppEnv>):AssignmentStaffAuthorization{
   const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
-  if(!actor||actor.staffStatus!=='ACTIVE'||(!actor.roles.has('owner')&&!actor.roles.has('pre_sales')&&!actor.roles.has('acquisition')))throw new Error('FORBIDDEN');
+  if(!actor||actor.staffStatus!=='ACTIVE'||(!actor.roles.has('owner')&&!actor.roles.has('pre_sales')))throw new Error('FORBIDDEN');
   return actor;
 }
 async function requireMarket(context:Context<AppEnv>,actor:AssignmentStaffAuthorization,market:string){

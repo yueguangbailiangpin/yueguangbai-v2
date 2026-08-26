@@ -13,7 +13,6 @@ import { StaffAssignmentError } from './errors';
 const DUTIES: readonly StaffAssignmentDutyCode[] = [
   'SELLER_ACCOUNT_MANAGER',
   'BUYER_PRE_SALES_OWNER',
-  'BUYER_AFTER_SALES_OWNER',
   'BUYER_REFUND_OWNER',
 ];
 const WORK_TYPES: readonly StaffWorkItemType[] = [
@@ -32,10 +31,8 @@ function representativeWorkType(dutyCode: StaffAssignmentDutyCode): StaffWorkIte
       return 'PRODUCT_APPLICATION_REVIEW';
     case 'BUYER_PRE_SALES_OWNER':
       return 'RESERVATION_DECISION';
-    case 'BUYER_AFTER_SALES_OWNER':
-      return 'REVIEW_DECISION';
     case 'BUYER_REFUND_OWNER':
-      return 'BUYER_REFUND_PROCESSING';
+      return 'REVIEW_DECISION';
   }
 }
 

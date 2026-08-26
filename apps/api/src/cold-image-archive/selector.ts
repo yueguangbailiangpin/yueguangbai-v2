@@ -211,28 +211,26 @@ export async function fetchUnitFileFacts(
   let sql = '';
   const binds: unknown[] = [];
   if (unit.bundle_type === 'ORDER') {
+    // D-056 §4.1: ORDER entity links carry the payment screenshot
+    // (ORDER_EVIDENCE, linked at the evidence version) and the unified
+    // communication screenshots (ORDER_COMMUNICATION_SCREENSHOT, linked at
+    // the formal order — replacing the retired internal-files slot=1 and
+    // buyer-chat paths).
+    const evidenceVersionId = await database
+      .prepare('SELECT order_evidence_version_id FROM formal_orders WHERE id=?')
+      .bind(unit.formal_order_id)
+      .first<{ order_evidence_version_id: string | null }>();
     sql = `SELECT ${projection} ${baseJoin}
        AND link.entity_type='ORDER' AND link.entity_id IN (?,?)
-      UNION ALL
-      SELECT ${projection} ${baseJoin}
-       AND link.entity_type='ORDER_EVIDENCE_SUBMISSION' AND link.entity_id=(
-         SELECT version.submission_id FROM order_evidence_versions version
-         WHERE version.id=(SELECT formal_order.order_evidence_version_id FROM formal_orders formal_order
-           WHERE formal_order.id=?))
       UNION ALL
       SELECT ${projection} ${baseJoin}
        AND link.entity_type='REVIEW' AND link.entity_id IN (
          SELECT review.id FROM review_cases review WHERE review.formal_order_id=?)
       GROUP BY object.id
       ORDER BY object.created_at,object.id`;
-    const evidenceVersionId = await database
-      .prepare('SELECT order_evidence_version_id FROM formal_orders WHERE id=?')
-      .bind(unit.formal_order_id)
-      .first<{ order_evidence_version_id: string | null }>();
     binds.push(
       unit.formal_order_id,
       evidenceVersionId?.order_evidence_version_id ?? unit.formal_order_id,
-      unit.formal_order_id,
       unit.formal_order_id,
     );
   } else if (unit.bundle_type === 'BUYER_REFUND_PAYMENT') {

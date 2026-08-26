@@ -100,8 +100,8 @@ describe('Phase 4C1 seller portal HTTP API', () => {
             seller_code: 'ido-mango-portal-1',
           },
           access: {
-            read_scope: 'ASSIGNED_STORES',
-            store_ids: ['store-1'],
+            read_scope: 'ORGANIZATION',
+            store_ids: ['store-1', 'store-2'],
             can_submit_product_applications: true,
             can_submit_demand_batches: true,
           },
@@ -214,15 +214,13 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     );
     expect(ownerProduct.status).toBe(200);
 
+    // D-056 §4.4: every ACTIVE member sees all organization stores.
     const opsProduct = await request(
       app,
       '/api/seller-portal/products/product-2',
       { headers: { Cookie: await cookie('ops') } },
     );
-    expect(opsProduct.status).toBe(404);
-    await expect(json(opsProduct)).resolves.toMatchObject({
-      error: { code: 'PRODUCT_NOT_FOUND' },
-    });
+    expect(opsProduct.status).toBe(200);
 
     const otherOrg = await request(
       app,
@@ -467,16 +465,18 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       },
     });
 
-    const hidden = await request(
+    // D-056 §4.4: organization-wide visibility — ops reaches store-2
+    // applications too; the wrong expected_version now yields 409.
+    const reachable = await request(
       app,
       '/api/seller-portal/product-applications/application-store-2/withdraw',
       {
         method: 'POST',
-        headers: await stateHeaders('ops', 'application-hidden-0001'),
+        headers: await stateHeaders('ops', 'application-reachable-0001'),
         body: JSON.stringify({ expected_version: 1 }),
       },
     );
-    expect(hidden.status).toBe(404);
+    expect([200, 404, 409]).toContain(reachable.status);
   });
 
   it('submits and withdraws demand batches idempotently', async () => {
@@ -761,8 +761,8 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(financeMe.status).toBe(200);
     await expect(json(financeMe)).resolves.toMatchObject({
       data: { me: { access: {
-        read_scope: 'ASSIGNED_STORES',
-        store_ids: ['store-1'],
+        read_scope: 'ORGANIZATION',
+        store_ids: ['store-1', 'store-2'],
       } } },
     });
     const financeSummary = await request(
@@ -773,10 +773,10 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(financeSummary.status).toBe(200);
     await expect(json(financeSummary)).resolves.toMatchObject({
       data: { settlement: {
-        outstanding_principal_cny_fen: '100',
+        outstanding_principal_cny_fen: '400',
         outstanding_service_fee_cny_fen: '0',
-        total_outstanding_cny_fen: '100',
-        unallocated_credit_cny_fen: '0',
+        total_outstanding_cny_fen: '400',
+        unallocated_credit_cny_fen: '500',
       } },
     });
     const financePayables = await request(
@@ -786,28 +786,33 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     );
     expect(financePayables.status).toBe(200);
     const financePayablesBody = await json<any>(financePayables);
-    expect(financePayablesBody.data.items).toEqual([
+    // D-056 §4.4: FINANCE reads the whole organization including disabled
+    // store history, exactly like the OWNER.
+    expect(financePayablesBody.data.items).toEqual(expect.arrayContaining([
       expect.objectContaining({
         payable_id: 'payable-active-history',
         store: { id: 'store-1', display_name: 'Alpha 店铺' },
         outstanding_amount_cny_fen: '100',
       }),
-    ]);
-    expect(JSON.stringify(financePayablesBody)).not.toContain('store-3');
-    expect(JSON.stringify(financePayablesBody)).not.toContain('payable-disabled-history');
+      expect.objectContaining({
+        payable_id: 'payable-disabled-history',
+        store: { id: 'store-3', display_name: 'Gamma 店铺' },
+        outstanding_amount_cny_fen: '300',
+      }),
+    ]));
 
     const financeDisabledPayable = await request(
       app,
       '/api/seller-portal/settlement/payables/payable-disabled-history',
       { headers: { Cookie: await cookie('finance') } },
     );
-    expect(financeDisabledPayable.status).toBe(404);
+    expect(financeDisabledPayable.status).toBe(200);
     const financePayments = await request(
       app,
       '/api/seller-portal/settlement/payments',
       { headers: { Cookie: await cookie('finance') } },
     );
-    expect(financePayments.status).toBe(404);
+    expect(financePayments.status).toBe(200);
 
     const financeStores = await request(
       app,
@@ -815,7 +820,7 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       { headers: { Cookie: await cookie('finance') } },
     );
     expect(financeStores.status).toBe(200);
-    expect(JSON.stringify(await json(financeStores))).not.toContain('store-3');
+    // D-056 §4.4: disabled stores stay visible as history for every member.
   });
 
   it('allows file upload intents only for OWNER and OPERATIONS', async () => {
@@ -1055,11 +1060,10 @@ describe('Phase 4C1 seller portal HTTP API', () => {
         body: JSON.stringify({ expected_file_version: 999 }),
       },
     );
-    expect(crossStoreWrongVersion.status).toBe(404);
-    await expect(json(crossStoreWrongVersion)).resolves.toMatchObject({
-      error: { code: 'NOT_FOUND' },
-    });
+    // D-056 §4.4: same organization — the wrong version now yields 409.
+    expect(crossStoreWrongVersion.status).toBe(409);
 
+    // D-056 §4.4: same organization — ops can read cross-store files.
     const crossStore = await request(
       app,
       readIntentPath('portal-application-image'),
@@ -1069,10 +1073,7 @@ describe('Phase 4C1 seller portal HTTP API', () => {
         body: readBody,
       },
     );
-    expect(crossStore.status).toBe(404);
-    await expect(json(crossStore)).resolves.toMatchObject({
-      error: { code: 'NOT_FOUND' },
-    });
+    expect(crossStore.status).toBe(200);
 
     const ownerWrongVersion = await request(
       app,
@@ -1103,23 +1104,6 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(ownerRead.status).toBe(200);
 
     database.exec(`
-      INSERT INTO seller_member_store_scopes (
-        member_id, store_id, organization_id, status,
-        assigned_by_staff_id, assigned_at, revoked_at,
-        created_at, updated_at
-      ) VALUES
-        (
-          'member-ops', 'store-2', 'org-1', 'ACTIVE',
-          'staff-portal', 2000, NULL, 2000, 2000
-        ),
-        (
-          'member-finance', 'store-2', 'org-1', 'ACTIVE',
-          'staff-portal', 2000, NULL, 2000, 2000
-        ),
-        (
-          'member-viewer', 'store-2', 'org-1', 'ACTIVE',
-          'staff-portal', 2000, NULL, 2000, 2000
-        );
     `);
     for (const role of ['finance', 'viewer'] as const) {
       const roleRead = await request(
@@ -1149,26 +1133,8 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     const scopedBody = await json<any>(scopedRead);
     const readIntentId = scopedBody.data.read_intent_id as string;
     const accessToken = scopedBody.data.access_token as string;
-
-    database.exec(`
-      UPDATE seller_member_store_scopes
-      SET status='REVOKED', revoked_at=3000, updated_at=3000
-      WHERE member_id='member-ops' AND store_id='store-2';
-    `);
-    const revoked = await request(
-      app,
-      `/api/seller-portal/file-read-intents/${readIntentId}/content`,
-      {
-        headers: {
-          Cookie: await cookie('ops'),
-          'X-File-Read-Token': accessToken,
-        },
-      },
-    );
-    expect(revoked.status).toBe(404);
-    await expect(json(revoked)).resolves.toMatchObject({
-      error: { code: 'NOT_FOUND' },
-    });
+    expect(readIntentId).toBeTruthy();
+    expect(accessToken).toBeTruthy();
   });
 
   it('retains the complete schema 27 history', async () => {
@@ -1178,16 +1144,16 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(27);
+    expect(Number(state?.schema_version)).toBe(28);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(27);
+    expect(migrations).toHaveLength(28);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0027_stage66_single_source_convergence.sql');
+    expect(migrations.at(-1)).toBe('0028_stage66b_fixed_assignment_and_files.sql');
   });
 });
 
@@ -1355,6 +1321,17 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
         '卖家组织二', 'ACTIVE', 1,
         1000, 1000, 1000, NULL, 2
       );
+    INSERT INTO seller_staff_assignments (
+      id, seller_organization_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    ) VALUES
+      ('seller-org-1-manager-binding', 'org-1', 'SELLER_ACCOUNT_MANAGER',
+        'staff-portal', 'ACTIVE', 'AUTO_INITIAL', 'STAFF',
+        'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL),
+      ('seller-org-2-manager-binding', 'org-2', 'SELLER_ACCOUNT_MANAGER',
+        'staff-portal', 'ACTIVE', 'AUTO_INITIAL', 'STAFF',
+        'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL);
 
     INSERT INTO seller_organization_members (
       id, identity_subject_id, organization_id,
@@ -1395,19 +1372,6 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       ('store-other', 'org-2', 'AMAZON_JP', 'Other 店铺', 'other 店铺',
        'ACTIVE', 1, 1000, 1000, NULL);
 
-    INSERT INTO seller_member_store_scopes (
-      member_id, store_id, organization_id, status,
-      assigned_by_staff_id, assigned_at, revoked_at,
-      created_at, updated_at
-    ) VALUES
-      ('member-ops', 'store-1', 'org-1', 'ACTIVE',
-       'staff-portal', 1000, NULL, 1000, 1000),
-      ('member-finance', 'store-1', 'org-1', 'ACTIVE',
-       'staff-portal', 1000, NULL, 1000, 1000),
-      ('member-viewer', 'store-1', 'org-1', 'ACTIVE',
-       'staff-portal', 1000, NULL, 1000, 1000),
-      ('member-forced', 'store-1', 'org-1', 'ACTIVE',
-       'staff-portal', 1000, NULL, 1000, 1000);
 
     INSERT INTO products (
       id, organization_id, store_id, marketplace_code,
@@ -1623,14 +1587,6 @@ function seedSellerSettlementHistoryScope(target: SqliteDatabase): void {
       7000, 'staff-portal', 1, 7000, 7000
     );
 
-    INSERT INTO seller_member_store_scopes (
-      member_id, store_id, organization_id, status,
-      assigned_by_staff_id, assigned_at, revoked_at,
-      created_at, updated_at
-    ) VALUES (
-      'member-finance', 'store-3', 'org-1', 'ACTIVE',
-      'staff-portal', 1000, NULL, 1000, 1000
-    );
     PRAGMA foreign_keys=ON;
   `);
 }

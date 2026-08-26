@@ -29,11 +29,10 @@ import {
 } from './order-evidence';
 import { registerStaffReviewRoutes } from './reviews';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
-import { registerSellerOrderChatScreenshotRoutes } from './seller-order-chat-screenshots';
-import { registerBuyerChatScreenshotRoutes } from './buyer-chat-screenshots';
 import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
 import { registerSellerMemberRoutes } from './seller-portal/member-routes';
+import { registerOrderCommunicationScreenshotRoutes } from './order-communication-screenshots';
 import { registerSellerRegistrationRoutes } from './seller-registration/routes';
 import {
   registerSellerSettlementRoutes,
@@ -73,6 +72,7 @@ registerCloudflareStaffAuthRoutes(app);
 registerSellerMemberRoutes(app);
 
 app.use('/api/staff/*', staffSessionMiddleware());
+registerOrderCommunicationScreenshotRoutes(app);
 registerFormalOrderPolicyGuards(app);
 registerSellerRegistrationRoutes(app);
 registerStaffAssignmentRoutes(app);
@@ -123,8 +123,6 @@ registerBuyerRefundStatusRoutes(app);
 registerBuyerReviewRoutes(app);
 registerSellerPortalRoutes(app);
 registerSellerFormalOrderRoutes(app);
-registerSellerOrderChatScreenshotRoutes(app);
-registerBuyerChatScreenshotRoutes(app);
 registerSellerReviewRoutes(app);
 registerSellerSettlementRoutes(app);
 

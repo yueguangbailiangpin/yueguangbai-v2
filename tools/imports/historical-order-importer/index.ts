@@ -28,7 +28,7 @@ export const HISTORICAL_CSV_HEADERS = [
 
 /** Image columns that become file plans; 到货图 (arrival) stays ignored. */
 export const HISTORICAL_IMAGE_COLUMNS = {
-  '聊天截图': { purpose: 'ORDER_EVIDENCE', audience: 'INTERNAL_ONLY' },
+  '聊天截图': { purpose: 'ORDER_COMMUNICATION_SCREENSHOT', audience: 'INTERNAL_ONLY' },
   '订单截图': { purpose: 'ORDER_EVIDENCE', audience: 'INTERNAL_ONLY' },
   '评论通过截图': { purpose: 'REVIEW_EVIDENCE', audience: 'INTERNAL_ONLY' },
   '补fb截图': { purpose: 'REVIEW_EVIDENCE', audience: 'INTERNAL_ONLY' },

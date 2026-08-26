@@ -612,15 +612,6 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       'staff-pre-sales', '售前', 'ACTIVE', 1,
       1, 1000, 1000, NULL
     );
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-order-evidence','order-evidence','Order Evidence',
-      'ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-order-evidence','department-order-evidence','order-evidence',
-      'Order Evidence','ACTIVE',1,1000,1000,NULL);
     INSERT INTO staff_role_assignments (
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
@@ -631,17 +622,6 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
     ) VALUES ('scope-order-evidence-pre-jp','staff-pre-sales','pre_sales',
       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
       'TEST_PRIMARY',1000,1000,'PRIMARY');
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-order-evidence','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('zz-phase3h-test-owner','team-order-evidence','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_leaders (
-      staff_id, team_id, status, assigned_by_staff_id,
-      assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-order-evidence','ACTIVE',
-      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -882,6 +862,18 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
     productId: 'product-evidence-2',
     productVersionId: 'product-evidence-2-v1',
   });
+  database.exec(`
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
+`);
+
 }
 
 function seedActiveInstruction(

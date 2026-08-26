@@ -76,7 +76,7 @@ export async function buildBundleManifest(input: {
 export function manifestPurposeList(): readonly ColdArchivePurpose[] {
   return [
     'ORDER_EVIDENCE',
-    'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+    'ORDER_COMMUNICATION_SCREENSHOT',
     'REVIEW_EVIDENCE',
     'BUYER_REFUND_PROOF',
     'SELLER_SETTLEMENT_PROOF',

@@ -1,5 +1,5 @@
 import type { BuyerRefundPaymentChannel } from './buyer-refund';
-import type { BuyerChatScreenshotReferenceDto } from './buyer-chat-screenshot';
+import type { OrderCommunicationScreenshotReferenceDto } from './order-communication-screenshot';
 
 export const FORMAL_ORDER_OPERATIONAL_STATES=[
   'NORMAL','PLATFORM_CANCELLED','RETURN_REFUND','BUSINESS_VOID','MANUAL_INVESTIGATION',
@@ -28,7 +28,7 @@ export interface FormalOrderFinancialAdjustmentDto{
 export interface FormalOrderIntegrityDto{
   formal_order_id:string;canonical_marketplace_code:string;operational_state:FormalOrderOperationalState;
   events:readonly FormalOrderOperationalEventDto[];adjustments:readonly FormalOrderFinancialAdjustmentDto[];
-  buyer_chat_screenshots:readonly BuyerChatScreenshotReferenceDto[];
+  communication_screenshots:readonly OrderCommunicationScreenshotReferenceDto[];
 }
 
 export const REVIEW_VISIBILITY_STATUSES=['VISIBLE','NOT_VISIBLE','DROPPED','RECHECK_REQUIRED'] as const;

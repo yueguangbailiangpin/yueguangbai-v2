@@ -267,7 +267,6 @@ export async function submitOrderEvidence(
       amazonOrderDate,
       finalPaidJpy,
       buyerNote,
-      evidenceFileObjectId: preparedFiles[0]!.object.id,
       instruction,
       now,
     }));
@@ -550,7 +549,6 @@ function insertEvidenceVersionStatement(
     amazonOrderDate: string;
     finalPaidJpy: number;
     buyerNote: string | null;
-    evidenceFileObjectId: string;
     instruction: {
         instructionId: string;
         instructionVersionId: string;
@@ -586,10 +584,9 @@ function insertEvidenceVersionStatement(
       buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch,
       price_difference_jpy, submitted_before_deadline,
-      evidence_file_object_id,
       created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     input.evidenceVersionId,
     input.submissionId,
@@ -613,7 +610,6 @@ function insertEvidenceVersionStatement(
     input.instruction.priceMismatch ? 1 : 0,
     input.instruction.priceDifferenceJpy,
     input.instruction.submittedBeforeDeadline,
-    input.evidenceFileObjectId,
     input.now,
   );
 }

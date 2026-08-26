@@ -1143,22 +1143,22 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     },
   );
 
-  it('keeps migration through 0027 and creates no actual refund, settlement, or profit', async () => {
+  it('keeps migration through 0028 and creates no actual refund, settlement, or profit', async () => {
     await setup();
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(27);
+    expect(migrations).toHaveLength(28);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0027_stage66_single_source_convergence.sql');
+    expect(migrations.at(-1)).toBe('0028_stage66b_fixed_assignment_and_files.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(27);
+    expect(Number(schema?.schema_version)).toBe(28);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name
@@ -1375,15 +1375,6 @@ async function seedFixture(
       'staff-pre-sales', '售前', 'ACTIVE', 1,
       1, 1000, 1000, NULL
     );
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-portal-order','portal-order','Portal Order',
-      'ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-portal-order','department-portal-order','portal-order',
-      'Portal Order','ACTIVE',1,1000,1000,NULL);
     INSERT INTO staff_role_assignments (
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
@@ -1394,16 +1385,6 @@ async function seedFixture(
     ) VALUES ('scope-order-portal-pre-jp','staff-pre-sales','pre_sales',
       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
       'TEST_PRIMARY',1000,1000,'PRIMARY');
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES
-      ('staff-pre-sales','team-portal-order','ACTIVE',1000,NULL,1000,1000),
-      ('zz-phase3h-test-owner','team-portal-order','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_leaders (
-      staff_id, team_id, status, assigned_by_staff_id,
-      assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-portal-order','ACTIVE',
-      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -1458,6 +1439,16 @@ async function seedFixture(
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       );
+
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
 
     INSERT INTO customer_login_accounts (
       id, identity_subject_id, account_type,

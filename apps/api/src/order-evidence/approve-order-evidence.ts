@@ -82,7 +82,6 @@ interface AtomicApprovalSource {
   reference_order_amount_jpy: number;
   price_difference_jpy: number;
   price_mismatch: number;
-  evidence_file_object_id: string | null;
   evidence_file_count: number;
   file_status: string | null;
   file_purpose: string | null;
@@ -797,7 +796,6 @@ async function requireAtomicApprovalSource(
       evidence.final_paid_jpy,
       evidence.reference_order_amount_jpy_snapshot AS reference_order_amount_jpy,
       evidence.price_difference_jpy, evidence.price_mismatch,
-      evidence.evidence_file_object_id,
       (SELECT COUNT(*) FROM order_evidence_version_files version_file
         WHERE version_file.version_id=evidence.id) AS evidence_file_count,
       file.status AS file_status, file.purpose AS file_purpose,
@@ -821,7 +819,9 @@ async function requireAtomicApprovalSource(
     JOIN order_evidence_versions evidence
       ON evidence.submission_id=submission.id
       AND evidence.version_no=submission.current_version_no
-    LEFT JOIN file_objects file ON file.id=evidence.evidence_file_object_id
+    LEFT JOIN order_evidence_version_files version_file
+      ON version_file.version_id=evidence.id
+    LEFT JOIN file_objects file ON file.id=version_file.file_object_id
     LEFT JOIN file_upload_intents intent ON intent.id=file.upload_intent_id
     JOIN product_reservations reservation ON reservation.id=submission.reservation_id
     JOIN demand_batches demand ON demand.id=reservation.demand_batch_id
@@ -870,7 +870,6 @@ function validateSource(source: AtomicApprovalSource, expectedVersion: number): 
   }
   if (
     source.evidence_file_count !== 1 ||
-    !source.evidence_file_object_id ||
     source.file_status !== 'VERIFIED' ||
     source.file_purpose !== 'ORDER_EVIDENCE' ||
     source.file_visibility !== 'BUYER_VISIBLE' ||
@@ -924,7 +923,9 @@ function verifyEvidenceStatement(
       AND version=? AND current_version_no=?
       AND EXISTS (
         SELECT 1 FROM order_evidence_versions evidence
-        JOIN file_objects file ON file.id=evidence.evidence_file_object_id
+        JOIN order_evidence_version_files version_file
+          ON version_file.version_id=evidence.id
+        JOIN file_objects file ON file.id=version_file.file_object_id
         JOIN file_upload_intents intent ON intent.id=file.upload_intent_id
         WHERE evidence.id=? AND evidence.submission_id=?
           AND evidence.version_no=?

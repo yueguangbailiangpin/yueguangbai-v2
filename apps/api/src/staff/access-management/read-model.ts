@@ -2,6 +2,7 @@ import {
   STAFF_ROLE_DISPLAY_NAMES,
   isStaffRoleCode,
   type SqlDatabase,
+  type StaffAccessBuyerRefundOwnerAssignmentDto,
   type StaffAccessEmployeeDto,
   type StaffAccessManagementOverviewDto,
   type StaffAccessSellerOrganizationAssignmentDto,
@@ -30,6 +31,15 @@ interface MarketplaceRow {
 interface SellerOrganizationAssignmentRow {
   seller_organization_id: string;
   seller_organization_name: string;
+  marketplace_code: string;
+  assignment_id: string | null;
+  staff_id: string | null;
+  staff_display_name: string | null;
+  assignment_version: number | null;
+}
+interface BuyerRefundOwnerAssignmentRow {
+  buyer_customer_id: string;
+  buyer_display_name: string;
   marketplace_code: string;
   assignment_id: string | null;
   staff_id: string | null;
@@ -127,6 +137,50 @@ export async function readStaffSellerOrganizationAssignment(
   if (!row) throw new StaffAccessManagementError('NOT_FOUND', 404);
   return projectSellerOrganizationAssignment(row);
 }
+
+const BUYER_REFUND_OWNER_ASSIGNMENT_QUERY = `SELECT buyer.id AS buyer_customer_id,
+  buyer.display_name AS buyer_display_name,
+  buyer.marketplace_code,
+  assignment.id AS assignment_id, assignment.staff_id,
+  staff.display_name AS staff_display_name,
+  assignment.version AS assignment_version
+FROM buyer_customers buyer
+LEFT JOIN buyer_staff_assignments assignment
+  ON assignment.buyer_customer_id=buyer.id
+  AND assignment.duty_code='BUYER_REFUND_OWNER'
+  AND assignment.status='ACTIVE'
+LEFT JOIN staff_users staff ON staff.id=assignment.staff_id`;
+
+/**
+ * The buyer fixed refund-owner relationship is canonical in
+ * buyer_staff_assignments (BUYER_REFUND_OWNER duty). Buyers without an owner
+ * are surfaced with refund_owner=null so an operator can see exactly which
+ * fail-closed subjects still need a binding.
+ */
+export async function readStaffBuyerRefundOwnerAssignments(
+  database: SqlDatabase,
+): Promise<readonly StaffAccessBuyerRefundOwnerAssignmentDto[]> {
+  const result = await database
+    .prepare(
+      `${BUYER_REFUND_OWNER_ASSIGNMENT_QUERY}
+      ORDER BY buyer.display_name,buyer.id LIMIT 500`,
+    )
+    .all<BuyerRefundOwnerAssignmentRow>();
+  return Object.freeze(result.results.map(projectBuyerRefundOwnerAssignment));
+}
+
+export async function readStaffBuyerRefundOwnerAssignment(
+  database: SqlDatabase,
+  buyerCustomerId: string,
+): Promise<StaffAccessBuyerRefundOwnerAssignmentDto> {
+  const row = await database
+    .prepare(`${BUYER_REFUND_OWNER_ASSIGNMENT_QUERY} WHERE buyer.id=?`)
+    .bind(buyerCustomerId)
+    .first<BuyerRefundOwnerAssignmentRow>();
+  if (!row) throw new StaffAccessManagementError('NOT_FOUND', 404);
+  return projectBuyerRefundOwnerAssignment(row);
+}
+
 function employeeQuery(database: SqlDatabase, where: string, bindings: unknown[]) {
   return database
     .prepare(
@@ -203,6 +257,38 @@ function projectSellerOrganizationAssignment(
     seller_organization_name: row.seller_organization_name,
     marketplace_code: row.marketplace_code,
     manager:
+      row.assignment_id && row.staff_id && row.staff_display_name && row.assignment_version !== null
+        ? Object.freeze({
+            assignment_id: row.assignment_id,
+            staff_id: row.staff_id,
+            staff_display_name: row.staff_display_name,
+            version: Number(row.assignment_version),
+          })
+        : null,
+  });
+}
+
+function projectBuyerRefundOwnerAssignment(
+  row: BuyerRefundOwnerAssignmentRow,
+): StaffAccessBuyerRefundOwnerAssignmentDto {
+  const hasOwner =
+    row.assignment_id !== null ||
+    row.staff_id !== null ||
+    row.staff_display_name !== null ||
+    row.assignment_version !== null;
+  if (
+    hasOwner &&
+    (!row.assignment_id ||
+      !row.staff_id ||
+      !row.staff_display_name ||
+      row.assignment_version === null)
+  )
+    throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
+  return Object.freeze({
+    buyer_customer_id: row.buyer_customer_id,
+    buyer_display_name: row.buyer_display_name,
+    marketplace_code: row.marketplace_code,
+    refund_owner:
       row.assignment_id && row.staff_id && row.staff_display_name && row.assignment_version !== null
         ? Object.freeze({
             assignment_id: row.assignment_id,

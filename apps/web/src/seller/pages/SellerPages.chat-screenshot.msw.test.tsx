@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS } from '@ygb/contracts';
+import { ORDER_COMMUNICATION_SCREENSHOT_HTTP_PATHS } from '@ygb/contracts';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 import '../../test/msw/lifecycle';
@@ -244,7 +244,7 @@ describe('Seller formal-order chat screenshot UI', () => {
                   client_file_name: 'main.webp',
                 },
                 order_screenshot: null,
-                chat_screenshot: { status: 'NONE', file_version: null },
+                communication_screenshots: [],
               },
             ],
             page: { limit: 100, next_cursor: null },
@@ -254,22 +254,20 @@ describe('Seller formal-order chat screenshot UI', () => {
       ),
       http.post(
         apiUrl(
-          SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.sellerReadIntent.replace(
+          ORDER_COMMUNICATION_SCREENSHOT_HTTP_PATHS.sellerReadIntent.replace(
             ':id',
             'order-1',
-          ) as `/api/${string}`,
+          ).replace(':fileObjectId', 'chat-file-1') as `/api/${string}`,
         ),
         () => {
           readIntentRequests += 1;
           return HttpResponse.json({
             data: {
-              read_intent: {
-                read_intent_id: 'seller-chat-intent',
-                access_token: 'seller-chat-token'.padEnd(40, 'x'),
-                access_token_available: true,
-                expires_at: 99,
-                replayed: false,
-              },
+              read_intent_id: 'seller-chat-intent',
+              access_token: 'seller-chat-token'.padEnd(40, 'x'),
+              access_token_available: true,
+              expires_at: 99,
+              replayed: false,
             },
             meta: { request_id: 'unexpected-read' },
           });
@@ -588,7 +586,7 @@ function formalOrder() {
       seller_principal: 'PENDING',
       seller_service_fee: 'PENDING',
     },
-    chat_screenshot: { status: 'AVAILABLE', file_version: 2 },
+    communication_screenshots: [{ file_object_id: 'chat-file-1', file_version: 2, purpose: 'ORDER_COMMUNICATION_SCREENSHOT', visibility: 'SELLER_VISIBLE' }],
     confirmed_at: 1,
     confirmed_business_date: '2026-08-01',
   };

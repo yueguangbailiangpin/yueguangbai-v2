@@ -335,7 +335,6 @@ function approvalSource(): Record<string, unknown> {
     reference_order_amount_jpy: 1980,
     price_difference_jpy: 0,
     price_mismatch: 0,
-    evidence_file_object_id: 'fault-evidence-file',
     evidence_file_count: 1,
     file_status: 'VERIFIED',
     file_purpose: 'ORDER_EVIDENCE',

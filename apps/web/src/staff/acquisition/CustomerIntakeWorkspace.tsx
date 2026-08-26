@@ -1083,18 +1083,15 @@ function marketLabel(code: string) {
 type BuyerChatScreenshotReference = {
   file_object_id: string;
   file_version: number;
-  purpose: 'ORDER_EVIDENCE';
-  visibility: 'INTERNAL_ONLY';
+  purpose: 'ORDER_COMMUNICATION_SCREENSHOT';
+  visibility: 'SELLER_VISIBLE';
 };
 
 const buyerChatAttachSchema = z
   .object({
-    chat_screenshot: z.object({
+    screenshot: z.object({
       formal_order_id: z.string(),
-      screenshot_id: z.string(),
       file_object_id: z.string(),
-      file_version: z.number().int().positive(),
-      attached_at: z.number().int().nonnegative(),
       replayed: z.boolean(),
     }).strict(),
   })
@@ -1112,7 +1109,7 @@ function BuyerOrderHistory({ match }: {
   const client = useQueryClient();
   const session = useCurrentStaffSession();
   const [open, setOpen] = useState(false);
-  const [uploader, upload] = useFileUpload();
+  const [, upload] = useFileUpload();
   const [targetOrderId, setTargetOrderId] = useState<string | null>(null);
   const [attached, setAttached] = useState<Record<string, BuyerChatScreenshotReference[]>>({});
   const handledManifest = useRef<string | null>(null);
@@ -1128,7 +1125,7 @@ function BuyerOrderHistory({ match }: {
         expected_file_version: input.fileVersion,
       };
       return identityApiRequest('staff', client, {
-        path: `/api/staff/formal-orders/${encodeURIComponent(input.orderId)}/buyer-chat-screenshots`,
+        path: `/api/staff/formal-orders/${encodeURIComponent(input.orderId)}/communication-screenshots`,
         method: 'POST',
         schema: buyerChatAttachSchema,
         body,
@@ -1141,10 +1138,10 @@ function BuyerOrderHistory({ match }: {
         [input.orderId]: [
           ...(current[input.orderId] ?? []),
           {
-            file_object_id: response.data.chat_screenshot.file_object_id,
-            file_version: response.data.chat_screenshot.file_version,
-            purpose: 'ORDER_EVIDENCE',
-            visibility: 'INTERNAL_ONLY',
+            file_object_id: response.data.screenshot.file_object_id,
+            file_version: input.fileVersion,
+            purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+            visibility: 'SELLER_VISIBLE',
           },
         ],
       }));
@@ -1191,7 +1188,10 @@ function BuyerOrderHistory({ match }: {
         const file = event.target.files?.[0];
         event.target.value = '';
         if (!file) return;
-        void uploader.start('staffBuyerChatScreenshot', [file]);
+        // D-056 §4.1: chat screenshots now live on the formal-order detail
+        // (communication-screenshots); this legacy buyer-match entry is
+        // retired until the 7A-2 workspace rebuild.
+        void file;
       }}
     />
     <summary onClick={(event) => { event.preventDefault(); setOpen(false); }}>

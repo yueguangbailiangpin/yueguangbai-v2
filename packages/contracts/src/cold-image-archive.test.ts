@@ -19,7 +19,7 @@ describe('cold image archive public contract', () => {
       'REVIEW_EVIDENCE',
       'BUYER_REFUND_PROOF',
       'SELLER_SETTLEMENT_PROOF',
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+      'ORDER_COMMUNICATION_SCREENSHOT',
     ]);
     expect(COLD_ARCHIVE_PURPOSES.every(isColdArchivePurpose)).toBe(true);
     expect(isColdArchivePurpose('PRODUCT_IMAGE')).toBe(false);

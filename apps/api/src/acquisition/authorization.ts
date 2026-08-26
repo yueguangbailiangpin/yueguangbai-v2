@@ -9,7 +9,7 @@ export function requireAcquisitionAdmin(actor: AssignmentStaffAuthorization): vo
 }
 
 export function requireAcquisitionOperator(actor: AssignmentStaffAuthorization): void {
-  if (!actor.roles.has('owner') && !actor.roles.has('acquisition')) {
+  if (!actor.roles.has('owner')) {
     throw new AcquisitionError('FORBIDDEN', 403);
   }
 }

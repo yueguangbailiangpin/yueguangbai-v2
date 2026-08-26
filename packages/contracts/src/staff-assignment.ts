@@ -1,24 +1,18 @@
 export const STAFF_ASSIGNMENT_DUTY_CODES = [
   'SELLER_ACCOUNT_MANAGER',
   'BUYER_PRE_SALES_OWNER',
-  'BUYER_AFTER_SALES_OWNER',
   'BUYER_REFUND_OWNER',
 ] as const;
 export type StaffAssignmentDutyCode = typeof STAFF_ASSIGNMENT_DUTY_CODES[number];
 
 export const BUYER_ASSIGNMENT_DUTY_CODES = [
   'BUYER_PRE_SALES_OWNER',
-  'BUYER_AFTER_SALES_OWNER',
   'BUYER_REFUND_OWNER',
 ] as const;
 export type BuyerAssignmentDutyCode = typeof BUYER_ASSIGNMENT_DUTY_CODES[number];
 
-export const STAFF_AVAILABILITY_STATUSES = ['AVAILABLE', 'UNAVAILABLE'] as const;
-export type StaffAvailabilityStatus = typeof STAFF_AVAILABILITY_STATUSES[number];
-
 export const STAFF_ASSIGNMENT_SOURCES = [
-  'AUTO_INITIAL', 'AUTO_REPLACEMENT', 'OWNER_FALLBACK',
-  'MANUAL_REASSIGN', 'BATCH_TRANSFER',
+  'AUTO_INITIAL', 'MANUAL_REASSIGN',
 ] as const;
 export type StaffAssignmentSource = typeof STAFF_ASSIGNMENT_SOURCES[number];
 
@@ -44,10 +38,6 @@ export interface StaffDataScope {
   teamIds: readonly string[];
 }
 
-export interface StaffAvailabilityDto {
-  staff_id:string; availability_status:StaffAvailabilityStatus; reason:string|null;
-  version:number; effective_default:boolean; updated_at:number|null;
-}
 export interface StaffAssignmentDto {
   assignment_id:string; subject_type:StaffAssignmentSubjectType; subject_id:string;
   duty_code:StaffAssignmentDutyCode; staff_id:string; status:'ACTIVE'|'REVOKED';
@@ -62,15 +52,5 @@ export interface StaffWorkItemDto {
 }
 export interface StaffWorkItemListQuery { status?:StaffWorkItemStatus; work_type?:StaffWorkItemType; limit?:number; cursor?:string }
 export interface StaffWorkItemPageDto { work_items:readonly StaffWorkItemDto[]; next_cursor:string|null }
-
-export const STAFF_REASSIGNMENT_BATCH_STATUSES = ['PENDING','RUNNING','COMPLETED','PARTIALLY_FAILED','FAILED','CANCELLED'] as const;
-export type StaffReassignmentBatchStatus = typeof STAFF_REASSIGNMENT_BATCH_STATUSES[number];
-export interface StaffReassignmentBatchDto {
-  batch_id:string; source_staff_id:string; target_mode:'STAFF'|'AUTO_SELECT'; target_staff_id:string|null;
-  duty_code:StaffAssignmentDutyCode; subject_type:StaffAssignmentSubjectType; status:StaffReassignmentBatchStatus;
-  reason:string; version:number; total_items:number; completed_items:number; failed_items:number;
-  created_at:number; started_at:number|null; completed_at:number|null;
-}
 export function isStaffAssignmentDutyCode(value:unknown):value is StaffAssignmentDutyCode{return typeof value==='string'&&(STAFF_ASSIGNMENT_DUTY_CODES as readonly string[]).includes(value);}
 export function isStaffWorkItemType(value:unknown):value is StaffWorkItemType{return typeof value==='string'&&(STAFF_WORK_ITEM_TYPES as readonly string[]).includes(value);}
-export function isStaffAvailabilityStatus(value:unknown):value is StaffAvailabilityStatus{return typeof value==='string'&&(STAFF_AVAILABILITY_STATUSES as readonly string[]).includes(value);}

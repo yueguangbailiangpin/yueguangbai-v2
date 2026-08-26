@@ -19,6 +19,9 @@ import type { Context, Hono } from 'hono';
 import { addProductVersion } from '../catalog/add-product-version';
 import { createApprovedProduct } from '../catalog/create-product';
 import { linkProductVersionMainImage } from '../catalog/link-product-version-main-image';
+import {
+  setProductPrimaryContact,
+} from '../catalog/set-product-primary-contact';
 import type { CatalogStaffActor } from '../catalog/catalog-shared';
 import type { FileActor } from '@ygb/contracts';
 import type {
@@ -85,6 +88,10 @@ export function registerStaffCatalogWorkflowRoutes(app: Hono<any>): void {
   app.post(
     '/api/staff/catalog/product-versions/:versionId/main-image',
     withStaffWorkflowErrors(linkMainImage),
+  );
+  app.post(
+    '/api/staff/products/:id/primary-contact',
+    withStaffWorkflowErrors(setPrimaryContact),
   );
   app.post(
     '/api/staff/demand-batches/:id/review',
@@ -287,6 +294,33 @@ async function createProduct(context: Context<any>): Promise<Response> {
     requestId: requestIdFromContext(context),
   });
   return success(context, { product: result }, 201);
+}
+
+async function setPrimaryContact(context: Context<any>): Promise<Response> {
+  const authorization = requireAuthorization(context);
+  const actor = await catalogActor(context, authorization);
+  const body = await bodyRecord(context);
+  rejectUnknown(body, [
+    'primary_contact_member_id', 'expected_version', 'reason',
+  ]);
+  const result = await setProductPrimaryContact(
+    context.env.DB,
+    {
+      productId: requiredString(context.req.param('id')),
+      primaryContactMemberId:
+        body['primary_contact_member_id'] === null
+          ? null
+          : requiredString(body['primary_contact_member_id'], 120),
+      expectedVersion: integer(body['expected_version']),
+      reason: requiredString(body['reason'], 1000),
+    },
+    {
+      actor,
+      idempotencyKey: idempotencyKey(context),
+      requestId: requestIdFromContext(context),
+    },
+  );
+  return success(context, result);
 }
 
 async function createProductVersion(context: Context<any>): Promise<Response> {

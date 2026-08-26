@@ -4,7 +4,7 @@ import {
   bootstrapStagingFirstOwner,
   type StagingFirstOwnerInput,
 } from './first-owner';
-import { resolveOwnerFallback } from '../staff-assignment/candidate-resolver';
+import { resolveAssignmentStaffAuthorization } from '../staff-assignment/effective-authorization';
 
 const DATABASE_ID = '11111111-1111-4111-8111-111111111111';
 const LONG_RUNNING_TEST_TIMEOUT_MS = 30_000;
@@ -34,8 +34,6 @@ describe('staging first owner bootstrap', () => {
       (SELECT COUNT(*) FROM staff_role_assignments WHERE status='ACTIVE') AS roles,
       (SELECT COUNT(*) FROM staff_email_identities WHERE status='ACTIVE') AS emails,
       (SELECT COUNT(*) FROM staff_marketplace_scopes) AS scopes,
-      (SELECT COUNT(*) FROM staff_assignment_fallbacks
-        WHERE marketplace_code='AMAZON_JP') AS assignment_fallbacks,
       (SELECT COUNT(*) FROM staff_sessions) AS sessions,
       (SELECT COUNT(*) FROM buyer_channels
         WHERE id='buyer-channel-wechat-b' AND code='B' AND status='ACTIVE') AS buyer_channels,
@@ -47,7 +45,6 @@ describe('staging first owner bootstrap', () => {
       roles: 1,
       emails: 1,
       scopes: 0,
-      assignment_fallbacks: 1,
       sessions: 0,
       buyer_channels: 1,
       authorization_events: 1,
@@ -57,18 +54,10 @@ describe('staging first owner bootstrap', () => {
       FROM staff_email_identities`).get()).toEqual({
       normalized_email: 'owner@example.test',
     });
-    expect(database.raw.prepare(`SELECT fallback.staff_id
-      FROM staff_assignment_fallbacks fallback
-      JOIN staff_role_assignments role ON role.staff_id=fallback.staff_id
-      WHERE fallback.marketplace_code='AMAZON_JP'
-        AND role.role_code='owner' AND role.status='ACTIVE'`).get()).toEqual({
-      staff_id: first.staff_id,
-    });
-    expect((await resolveOwnerFallback(database, {
-      marketplaceCode: 'AMAZON_JP',
-      dutyCode: 'SELLER_ACCOUNT_MANAGER',
-      workType: 'PRODUCT_APPLICATION_REVIEW',
-    })).staffId).toBe(first.staff_id);
+    expect((await resolveAssignmentStaffAuthorization(database, first.staff_id))
+      ?.roles.has('owner')).toBe(true);
+    expect((await resolveAssignmentStaffAuthorization(database, first.staff_id))
+      ?.permissions.has('STAFF_MANAGE')).toBe(true);
     const command = database.raw.prepare(`SELECT response_json
       FROM command_idempotency_records
       WHERE action='BOOTSTRAP_STAGING_FIRST_OWNER'`).get() as {response_json:string};
@@ -184,7 +173,6 @@ describe('staging first owner bootstrap', () => {
       (SELECT COUNT(*) FROM staff_users) AS staff,
       (SELECT COUNT(*) FROM staff_role_assignments) AS roles,
       (SELECT COUNT(*) FROM staff_email_identities) AS emails,
-      (SELECT COUNT(*) FROM staff_assignment_fallbacks) AS assignment_fallbacks,
       (SELECT COUNT(*) FROM buyer_channels
         WHERE next_sequence<>1) AS buyer_channels_used,
       (SELECT COUNT(*) FROM staff_authorization_events) AS authorization_events,
@@ -193,7 +181,6 @@ describe('staging first owner bootstrap', () => {
       staff: 0,
       roles: 0,
       emails: 0,
-      assignment_fallbacks: 0,
       buyer_channels_used: 0,
       authorization_events: 0,
       audits: 0,

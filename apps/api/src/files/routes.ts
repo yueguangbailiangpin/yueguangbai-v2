@@ -44,7 +44,7 @@ const NO_UPLOADS = new Map<FilePurpose, FileVisibility>();
 const STAFF_UPLOADS = new Map<FilePurpose, FileVisibility>([
   ['BUYER_REFUND_PROOF', 'INTERNAL_ONLY'],
   ['SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY'],
-  ['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE'],
+  ['ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE'],
   ['PRODUCT_IMAGE', 'SELLER_VISIBLE'],
 ]);
 const JSON_BODY_MAX_BYTES = 16 * 1024;
@@ -87,27 +87,11 @@ export function registerFileHttpRoutes(app: Hono<AppEnv>): void {
   );
   registerIntentRoute(
     app,
-    FILE_HTTP_PURPOSE_ROUTES.staffBuyerChatScreenshot.path,
-    undefined,
-    'STAFF',
-    'ORDER_EVIDENCE',
-    'INTERNAL_ONLY',
-  );
-  registerIntentRoute(
-    app,
     FILE_HTTP_PURPOSE_ROUTES.staffSellerSettlementProof.path,
     undefined,
     'STAFF',
     'SELLER_SETTLEMENT_PROOF',
     'INTERNAL_ONLY',
-  );
-  registerIntentRoute(
-    app,
-    FILE_HTTP_PURPOSE_ROUTES.staffSellerOrderChatScreenshot.path,
-    undefined,
-    'STAFF',
-    'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
-    'SELLER_VISIBLE',
   );
   registerIntentRoute(
     app,

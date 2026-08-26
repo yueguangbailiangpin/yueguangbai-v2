@@ -11,6 +11,7 @@ import type { AppEnv } from '../app';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 import { decideReservation } from '../reservations/decide-reservation';
+import { createReservationParticipationException } from '../reservations/create-participation-exception';
 import { reopenReservation } from '../reservations/reopen-reservation';
 import type { ReservationStaffActor } from '../reservations/reservation-shared';
 import {
@@ -85,6 +86,35 @@ export function registerStaffWorkflowClosureRoutes(app: Hono<any>): void {
     '/api/staff/reservations/:id/reopen',
     withErrors(reopenReservationHttp),
   );
+  app.post(
+    '/api/staff/reservations/participation-exceptions',
+    withErrors(createParticipationExceptionHttp),
+  );
+}
+
+async function createParticipationExceptionHttp(
+  context: Context<any>,
+): Promise<Response> {
+  const session = requireAuthorization(context);
+  const body = record(await readBoundedJson(context.req.raw, BODY_LIMIT));
+  rejectUnknown(body, [
+    'buyer_customer_id', 'demand_batch_id', 'reason', 'valid_until',
+  ]);
+  const result = await createReservationParticipationException(
+    context.env.DB,
+    {
+      buyerCustomerId: requiredString(body['buyer_customer_id']),
+      demandBatchId: requiredString(body['demand_batch_id']),
+      reason: requiredString(body['reason'], 1000),
+      validUntil: positiveInteger(body['valid_until']),
+    },
+    {
+      actor: reservationActor(session),
+      idempotencyKey: idempotencyKey(context),
+      requestId: requestIdFromContext(context),
+    },
+  );
+  return success(context, { participation_exception: result });
 }
 
 async function readProductApplicationReviewContext(

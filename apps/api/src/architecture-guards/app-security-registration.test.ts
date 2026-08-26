@@ -102,8 +102,13 @@ describe('Wave 13 default app and route security boundaries', () => {
     expect(inventory.some((route) => route.includes('/api/v2'))).toBe(false);
     expect(inventory.some((route) => /\/(?:links?|grants?)(?:\/|$)/u
       .test(route))).toBe(false);
+    // D-056 §4.1: the legacy chat-screenshot upload entries are gone; the
+    // unified route lives under the formal-order detail path.
     expect(inventory.some((route) => route.includes(
       '/file-uploads/seller-order-chat-screenshots/',
+    ))).toBe(false);
+    expect(inventory.some((route) => route.includes(
+      '/formal-orders/:id/communication-screenshots',
     ))).toBe(true);
 
     const wave13 = new Set<string>();
@@ -133,7 +138,7 @@ describe('Wave 13 default app and route security boundaries', () => {
     expect([...wave13].filter((route) => route.includes('/staff-auth/')))
       .toHaveLength(4);
     expect([...wave13].filter((route) => route.includes('/file-uploads/')
-      && route.endsWith('/intents'))).toHaveLength(8);
+      && route.endsWith('/intents'))).toHaveLength(6);
     expect([...wave13].filter((route) =>
       Object.values(FILE_HTTP_LIFECYCLE_PATHS).some((path) =>
         route.endsWith(path),
@@ -146,7 +151,7 @@ describe('Wave 13 default app and route security boundaries', () => {
       Object.values(STAFF_BUYER_REFUND_PATHS).some((path) =>
         route.endsWith(path),
       ))).toHaveLength(4);
-    expect(wave13).toHaveLength(35);
+    expect(wave13).toHaveLength(33);
     const inventorySet = new Set(inventory);
     expect([...wave13].every((route) => inventorySet.has(route))).toBe(true);
 

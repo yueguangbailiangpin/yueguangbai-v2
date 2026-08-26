@@ -29,9 +29,6 @@ import {
   linkProductVersionMainImage,
 } from './link-product-version-main-image';
 import {
-  assignSellerMemberStore,
-} from './assign-member-store';
-import {
   createApprovedProduct,
 } from './create-product';
 import {
@@ -333,7 +330,7 @@ describe('seller stores and product catalog', () => {
     });
   });
 
-  it('gives OWNER all active stores and limits OPERATIONS to assigned scopes', async () => {
+  it('gives every ACTIVE member all stores of the organization (D-056 §4.4)', async () => {
     database = createMigratedTestDatabase();
     seedCatalogActorsAndOrganizations(database);
 
@@ -354,15 +351,6 @@ describe('seller stores and product catalog', () => {
       actor: sellerOpsActor(),
       idempotencyKey: 'store:create:scope:0002',
       now: 2100,
-    });
-
-    await assignSellerMemberStore(database, {
-      memberId: 'seller-member-ops-1',
-      storeId: storeTwo.store_id,
-    }, {
-      actor: sellerOpsActor(),
-      idempotencyKey: 'scope:assign:0001',
-      now: 2200,
     });
 
     const ownerAccess = await resolveSellerMemberStoreAccess(
@@ -387,8 +375,8 @@ describe('seller stores and product catalog', () => {
       memberId: 'seller-member-ops-1',
       sellerOrganizationId: 'seller-org-1',
       role: 'OPERATIONS',
-      allActiveStores: false,
-      storeIds: [storeTwo.store_id],
+      allActiveStores: true,
+      storeIds: [storeOne.store_id, storeTwo.store_id].sort(),
       canManageProducts: true,
     });
 
@@ -399,8 +387,8 @@ describe('seller stores and product catalog', () => {
       );
     expect(financeAccess).toMatchObject({
       role: 'FINANCE',
-      allActiveStores: false,
-      storeIds: [],
+      allActiveStores: true,
+      storeIds: [storeOne.store_id, storeTwo.store_id].sort(),
       canManageProducts: false,
     });
   });

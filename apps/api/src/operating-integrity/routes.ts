@@ -23,7 +23,7 @@ import {
 import { FormalOrderPolicyError, requireFormalOrderAction } from '../formal-order-policy';
 import type { FileAuthorizationResource, FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
-import { listBuyerChatScreenshots } from '../buyer-chat-screenshots';
+import { listOrderCommunicationScreenshots } from '../order-communication-screenshots';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -105,7 +105,7 @@ async function readOrderIntegrity(context: Context<AppEnv>) {
     )
       .bind(order.id)
       .first<{ operational_state: string }>(),
-    listBuyerChatScreenshots(context.env.DB, [order.id]),
+    listOrderCommunicationScreenshots(context.env.DB, [order.id]),
   ]);
   return ok(context, {
     order_integrity: {
@@ -114,7 +114,7 @@ async function readOrderIntegrity(context: Context<AppEnv>) {
       operational_state: state?.operational_state ?? 'NORMAL',
       events: events.results,
       adjustments: adjustments.results,
-      buyer_chat_screenshots: chatScreenshots.get(order.id) ?? [],
+      communication_screenshots: chatScreenshots.get(order.id) ?? [],
     },
   });
 }

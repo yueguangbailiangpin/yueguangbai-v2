@@ -140,9 +140,9 @@ function toApiErrorCode(code: StaffAssignmentError['code']): ApiErrorCode {
     case 'IDEMPOTENCY_CONFLICT':
       return 'IDEMPOTENCY_CONFLICT';
     case 'DEPENDENCY_UNAVAILABLE':
-    case 'NO_ELIGIBLE_ASSIGNEE':
-    case 'OWNER_FALLBACK_NOT_CONFIGURED':
-    case 'OWNER_FALLBACK_INVALID':
+    case 'BUYER_PRE_SALES_OWNER_NOT_ASSIGNED':
+    case 'BUYER_REFUND_OWNER_NOT_ASSIGNED':
+    case 'SELLER_ACCOUNT_MANAGER_NOT_ASSIGNED':
       return 'DEPENDENCY_UNAVAILABLE';
     default:
       return 'STATE_CONFLICT';

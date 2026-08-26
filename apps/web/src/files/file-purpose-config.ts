@@ -13,9 +13,8 @@ export const FILE_UPLOAD_WORKFLOW_KEYS = [
   'buyerReviewEvidence',
   'sellerProductApplicationImage',
   'staffBuyerRefundProof',
-  'staffBuyerChatScreenshot',
   'staffSellerSettlementProof',
-  'staffSellerOrderChatScreenshot',
+  'staffOrderCommunicationScreenshot',
   'staffProductImage',
 ] as const;
 
@@ -83,16 +82,6 @@ export const fileUploadWorkflows = Object.freeze({
     maximumByteSize: 20 * MEBIBYTE,
     allowedMimes: EVIDENCE_MIMES,
   }),
-  staffBuyerChatScreenshot: Object.freeze({
-    identity: 'staff',
-    intentPath: FILE_HTTP_PURPOSE_ROUTES.staffBuyerChatScreenshot.path,
-    lifecyclePrefix: '/api/staff',
-    purpose: 'ORDER_EVIDENCE',
-    visibility: 'INTERNAL_ONLY',
-    maximumFileCount: 1,
-    maximumByteSize: 5 * MEBIBYTE,
-    allowedMimes: IMAGE_MIMES,
-  }),
   staffSellerSettlementProof: Object.freeze({
     identity: 'staff',
     intentPath: FILE_HTTP_PURPOSE_ROUTES.staffSellerSettlementProof.path,
@@ -103,13 +92,13 @@ export const fileUploadWorkflows = Object.freeze({
     maximumByteSize: 20 * MEBIBYTE,
     allowedMimes: EVIDENCE_MIMES,
   }),
-  staffSellerOrderChatScreenshot: Object.freeze({
+  staffOrderCommunicationScreenshot: Object.freeze({
     identity: 'staff',
-    intentPath: FILE_HTTP_PURPOSE_ROUTES.staffSellerOrderChatScreenshot.path,
+    intentPath: '/api/staff/formal-orders/:id/communication-screenshots/intents',
     lifecyclePrefix: '/api/staff',
-    purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+    purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
     visibility: 'SELLER_VISIBLE',
-    maximumFileCount: 1,
+    maximumFileCount: 8,
     maximumByteSize: 5 * MEBIBYTE,
     allowedMimes: IMAGE_MIMES,
   }),

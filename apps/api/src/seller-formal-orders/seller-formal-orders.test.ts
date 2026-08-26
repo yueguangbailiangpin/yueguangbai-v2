@@ -162,18 +162,19 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       requiredOrders().otherOrganization,
     );
 
+    // D-056 §4.4: every member sees the whole organization — both stores.
     for (const actor of ['ops', 'finance', 'viewer'] as const) {
       const body = await list(app, actor);
-      expect(ids(body)).toEqual([requiredOrders().storeOne]);
-      const outside = await request(
+      expect(ids(body).sort()).toEqual([
+        requiredOrders().storeTwo,
+        requiredOrders().storeOne,
+      ].sort());
+      const reachable = await request(
         app,
         `/api/seller-portal/formal-orders/${requiredOrders().storeTwo}`,
         { headers: { Cookie: await cookie(actor) } },
       );
-      expect(outside.status).toBe(404);
-      await expect(json(outside)).resolves.toMatchObject({
-        error: { code: 'FORMAL_ORDER_NOT_FOUND' },
-      });
+      expect(reachable.status).toBe(200);
     }
 
     const otherOwner = await list(app, 'other-owner');
@@ -391,10 +392,15 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
         (item: { formal_order_id: string }) =>
           item.formal_order_id === requiredOrders().storeOne,
       );
-      expect(listOrder?.chat_screenshot).toEqual({
-        status: expectedStatus,
-        file_version: expectedVersion,
-      });
+      // D-056 §4.1: the single chat-screenshot projection is now a
+      // communication_screenshots list gated by the audience grant.
+      const screenshots = listOrder?.communication_screenshots ?? [];
+      if (expectedStatus === 'AVAILABLE') {
+        expect(screenshots).toHaveLength(1);
+        expect(screenshots[0]).toMatchObject({ file_version: expectedVersion });
+      } else {
+        expect(screenshots).toHaveLength(0);
+      }
 
       const detailResponse = await request(
         app,
@@ -403,10 +409,16 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       );
       expect(detailResponse.status).toBe(200);
       const detailBody = await json<any>(detailResponse);
-      expect(detailBody.data.formal_order.chat_screenshot).toEqual({
-        status: expectedStatus,
-        file_version: expectedVersion,
-      });
+      const detailScreenshots =
+        detailBody.data.formal_order.communication_screenshots ?? [];
+      if (expectedStatus === 'AVAILABLE') {
+        expect(detailScreenshots).toHaveLength(1);
+        expect(detailScreenshots[0]).toMatchObject({
+          file_version: expectedVersion,
+        });
+      } else {
+        expect(detailScreenshots).toHaveLength(0);
+      }
     },
   );
 
@@ -512,15 +524,15 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(27);
+    expect(Number(state?.schema_version)).toBe(28);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(27);
+    expect(migrations).toHaveLength(28);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0027_stage66_single_source_convergence.sql');
+    expect(migrations.at(-1)).toBe('0028_stage66b_fixed_assignment_and_files.sql');
   });
 });
 
@@ -684,7 +696,7 @@ async function seedChatScreenshotProjection(
       failure_code, created_at, updated_at, completed_at
     ) VALUES (
       '${uploadIntentId}', 'STAFF', 'staff-confirm',
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE',
       'ISSUED', 1, '${'a'.repeat(64)}', 1, 9999999999999,
       NULL, 7000, 7000, NULL
     );
@@ -697,7 +709,7 @@ async function seedChatScreenshotProjection(
       verified_at, deleted_at
     ) VALUES (
       '${fileObjectId}', '${uploadIntentId}', 1,
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE',
       'files/v1/chat/projection-screenshot-000000000000000000000000000000',
       'chat.png', 'png', 'image/png', 11, 'RESERVED',
       '${'b'.repeat(64)}', 9999999999999, NULL, NULL, NULL,
@@ -722,11 +734,11 @@ async function seedChatScreenshotProjection(
       linked_by_actor_type, linked_by_actor_id, created_at,
       authorization_mode, expires_at, revoked_at
     ) VALUES (
-      ?, ?, 'ORDER_EVIDENCE_SUBMISSION', 'evidence-portal-1',
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      ?, ?, 'ORDER', ?,
+      'ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE',
       'STAFF', 'staff-confirm', 7002, 'EXPLICIT_AUDIENCES', NULL, NULL
     )
-  `).bind(fileEntityLinkId, fileObjectId).run();
+  `).bind(fileEntityLinkId, fileObjectId, requiredOrders().storeOne).run();
 
   if (grantState !== 'missing') {
     await db.prepare(`
@@ -752,17 +764,6 @@ async function seedChatScreenshotProjection(
       `).bind(grantId).run();
     }
   }
-
-  await db.prepare(`
-    INSERT INTO order_evidence_internal_files (
-      id, order_evidence_submission_id, slot,
-      file_object_id, file_entity_link_id,
-      created_by_staff_id, created_at
-    ) VALUES (
-      'projection-chat-attachment', 'evidence-portal-1', 1,
-      ?, ?, 'staff-confirm', 7004
-    )
-  `).bind(fileObjectId, fileEntityLinkId).run();
 }
 
 function command(idempotencyKey: string, now: number) {
@@ -867,19 +868,6 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
        'Other 店铺', 'other 店铺',
        'ACTIVE', 1, 1000, 1000, NULL);
 
-    INSERT INTO seller_member_store_scopes (
-      member_id, store_id, organization_id, status,
-      assigned_by_staff_id, assigned_at, revoked_at,
-      created_at, updated_at
-    ) VALUES
-      ('member-ops', 'store-portal-1', 'org-portal', 'ACTIVE',
-       'staff-confirm', 1000, NULL, 1000, 1000),
-      ('member-finance', 'store-portal-1', 'org-portal', 'ACTIVE',
-       'staff-confirm', 1000, NULL, 1000, 1000),
-      ('member-viewer', 'store-portal-1', 'org-portal', 'ACTIVE',
-       'staff-confirm', 1000, NULL, 1000, 1000),
-      ('member-forced', 'store-portal-1', 'org-portal', 'ACTIVE',
-       'staff-confirm', 1000, NULL, 1000, 1000);
 
     INSERT INTO customer_login_accounts (
       id, identity_subject_id, account_type,
@@ -1085,7 +1073,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch,
       price_difference_jpy, submitted_before_deadline,
-      evidence_file_object_id, created_at
+      created_at
     ) VALUES
       ('evidence-portal-1-v1', 'evidence-portal-1',
        'reservation-portal-1', 'buyer-portal-1', 'AMAZON_JP', 1,
@@ -1095,7 +1083,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
        '${instructionOne.instructionId}',
        '${instructionOne.instructionVersionId}',
        ${instructionOne.deadlineAt}, 1980, 0, 0, 8880, 1, 6900, 1,
-       '${instructionOne.evidenceFileObjectId}', 5000),
+       5000),
       ('evidence-portal-2-v1', 'evidence-portal-2',
        'reservation-portal-2', 'buyer-portal-2', 'AMAZON_JP', 1,
        '222-1234567-1234567', '222-1234567-1234567',
@@ -1104,7 +1092,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
        '${instructionTwo.instructionId}',
        '${instructionTwo.instructionVersionId}',
        ${instructionTwo.deadlineAt}, 1980, 0, 0, 5000, 1, 3020, 1,
-       '${instructionTwo.evidenceFileObjectId}', 5000),
+       5000),
       ('evidence-portal-other-v1', 'evidence-portal-other',
        'reservation-other', 'buyer-other', 'AMAZON_JP', 1,
        '333-1234567-1234567', '333-1234567-1234567',
@@ -1113,7 +1101,7 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
        '${instructionOther.instructionId}',
        '${instructionOther.instructionVersionId}',
        ${instructionOther.deadlineAt}, 1980, 0, 0, 7000, 1, 5020, 1,
-       '${instructionOther.evidenceFileObjectId}', 5000);
+       5000);
 
     UPDATE order_evidence_submissions
     SET status='VERIFIED', version=2,

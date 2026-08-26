@@ -272,11 +272,6 @@ describe('explicit file audiences', () => {
       { type: 'STAFF_SESSION', staffId: staffActor.id },
     )).resolves.toBeUndefined();
 
-    database.exec(`
-      UPDATE staff_team_memberships
-      SET status='ENDED', ended_at=6000, updated_at=6000
-      WHERE staff_id='staff-file-owner' AND team_id='team-files';
-    `);
     await expect(authorize(
       fixture.resource,
       staffActor,
@@ -617,21 +612,7 @@ function legacyVisibilityAuthorization(): FileAuthorizationService {
 
 function seedAudienceIdentities(target: SqliteDatabase): void {
   target.exec(`
-    INSERT INTO staff_departments (
-      id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'department-files', 'files', 'Files', 'ACTIVE', 1,
-      1000, 1000, NULL
-    );
 
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'team-files', 'department-files', 'files-team',
-      'Files Team', 'ACTIVE', 1, 1000, 1000, NULL
-    );
 
     INSERT INTO staff_users (
       id, display_name, status, authorization_version,
@@ -660,13 +641,6 @@ function seedAudienceIdentities(target: SqliteDatabase): void {
       'ACTIVE', NULL, 1000, NULL, 1000, 1000
     );
 
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at,
-      created_at, updated_at
-    ) VALUES (
-      'staff-file-owner', 'team-files', 'ACTIVE', 1000, NULL,
-      1000, 1000
-    );
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,

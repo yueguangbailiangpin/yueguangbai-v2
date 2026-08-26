@@ -9,7 +9,7 @@ import {
 } from '../foundation/idempotency';
 import { normalizeStaffEmail } from '../staff-auth/cloudflare-access';
 
-const TARGET_SCHEMA = 27;
+const TARGET_SCHEMA = 28;
 const STAGING_BUYER_CHANNEL_ID = 'buyer-channel-wechat-b';
 const STAGING_DATABASE_NAME = /^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -140,12 +140,6 @@ export async function bootstrapStagingFirstOwner(
     ) VALUES(?,?,?,'ACTIVE',NULL,NULL,?,?,NULL)`).bind(
       identityId, staffId, input.email, now, now,
     ),
-    database.prepare(`INSERT INTO staff_assignment_fallbacks(
-      marketplace_code,staff_id,version,configured_by_staff_id,
-      created_at,updated_at
-    ) VALUES('AMAZON_JP',?,1,?,?,?)`).bind(
-      staffId, staffId, now, now,
-    ),
     database.prepare(`INSERT INTO staff_authorization_events(
       id,staff_id,authorization_version,event_type,actor_staff_id,
       request_id,idempotency_key,change_summary_json,created_at
@@ -154,7 +148,6 @@ export async function bootstrapStagingFirstOwner(
       staffId,
       input.idempotencyKey,
       JSON.stringify({
-        assignment_fallback_configured: true,
         email_identity_created: true,
         role_code: 'owner',
         source: 'STAGING_FIRST_OWNER_BOOTSTRAP',
@@ -232,18 +225,10 @@ function emptyStagingAssertion(database: SqlDatabase): SqlStatement {
       AND NOT EXISTS(SELECT 1 FROM staff_role_assignments)
       AND NOT EXISTS(SELECT 1 FROM staff_email_identities)
       AND NOT EXISTS(SELECT 1 FROM staff_marketplace_scopes)
-      AND NOT EXISTS(SELECT 1 FROM staff_team_memberships)
-      AND NOT EXISTS(SELECT 1 FROM staff_team_leaders)
       AND NOT EXISTS(SELECT 1 FROM staff_permission_overrides)
-      AND NOT EXISTS(SELECT 1 FROM staff_availability)
-      AND NOT EXISTS(SELECT 1 FROM staff_assignment_fallbacks)
       AND NOT EXISTS(SELECT 1 FROM staff_sessions)
       AND NOT EXISTS(SELECT 1 FROM staff_assignment_events)
-      AND NOT EXISTS(SELECT 1 FROM staff_assignment_cursors)
-      AND NOT EXISTS(SELECT 1 FROM staff_reassignment_batches)
-      AND NOT EXISTS(SELECT 1 FROM staff_reassignment_batch_items)
       AND NOT EXISTS(SELECT 1 FROM staff_work_items)
-      AND NOT EXISTS(SELECT 1 FROM staff_role_consolidation_mappings)
       AND NOT EXISTS(SELECT 1 FROM staff_authorization_events)
       ${STAGING_ZERO_STOCK_TABLES.map((table) =>
         `AND NOT EXISTS(SELECT 1 FROM ${table})`).join('\n      ')}
@@ -266,8 +251,6 @@ function finalAuthorityAssertion(
       AND (SELECT COUNT(*) FROM staff_email_identities
         WHERE id=? AND staff_id=? AND status='ACTIVE')=1
       AND (SELECT COUNT(*) FROM staff_marketplace_scopes)=0
-      AND (SELECT COUNT(*) FROM staff_assignment_fallbacks
-        WHERE marketplace_code='AMAZON_JP' AND staff_id=? AND version=1)=1
       AND (SELECT COUNT(*) FROM staff_sessions)=0
       AND (SELECT COUNT(*) FROM buyer_channels WHERE code IN ('B','C'))=2
       AND (SELECT COUNT(*) FROM buyer_channels
@@ -280,8 +263,8 @@ function finalAuthorityAssertion(
         WHERE aggregate_type='STAFF' AND aggregate_id=?
           AND event_type='STAGING_FIRST_OWNER_BOOTSTRAPPED')=1
     THEN 1 ELSE 0 END`).bind(
-      staffId, staffId, identityId, staffId, staffId, staffId, staffId,
-    );
+    staffId, staffId, identityId, staffId, staffId, staffId,
+  );
 }
 
 async function bootstrapState(database: SqlDatabase): Promise<{
@@ -293,18 +276,10 @@ async function bootstrapState(database: SqlDatabase): Promise<{
     +(SELECT COUNT(*) FROM staff_role_assignments)
     +(SELECT COUNT(*) FROM staff_email_identities)
     +(SELECT COUNT(*) FROM staff_marketplace_scopes)
-    +(SELECT COUNT(*) FROM staff_team_memberships)
-    +(SELECT COUNT(*) FROM staff_team_leaders)
     +(SELECT COUNT(*) FROM staff_permission_overrides)
-    +(SELECT COUNT(*) FROM staff_availability)
-    +(SELECT COUNT(*) FROM staff_assignment_fallbacks)
     +(SELECT COUNT(*) FROM staff_sessions)
     +(SELECT COUNT(*) FROM staff_assignment_events)
-    +(SELECT COUNT(*) FROM staff_assignment_cursors)
-    +(SELECT COUNT(*) FROM staff_reassignment_batches)
-    +(SELECT COUNT(*) FROM staff_reassignment_batch_items)
     +(SELECT COUNT(*) FROM staff_work_items)
-    +(SELECT COUNT(*) FROM staff_role_consolidation_mappings)
     +(SELECT COUNT(*) FROM staff_authorization_events) AS staff_total,
     ${STAGING_ZERO_STOCK_TABLES.map((table) =>
       `(SELECT COUNT(*) FROM ${table})`).join('\n    +')}
@@ -334,7 +309,6 @@ function stagingBootstrapAuditStatement(
       staffId,
       idempotencyKey,
       canonicalJson({
-        assignment_fallback_configured: true,
         buyer_registration_channel_id: STAGING_BUYER_CHANNEL_ID,
         email_identity_created: true,
         role_code: 'owner',

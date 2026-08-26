@@ -60,7 +60,7 @@ describe('staff authorization formula', () => {
       memberTeamIds: ['team-a'],
       leaderTeamIds: [],
     });
-    expect(ordinary.permissions.has('TASK_ASSIGN_TEAM')).toBe(false);
+    expect(ordinary.permissions.has('STAFF_MANAGE')).toBe(false);
 
     const leader = calculateEffectiveStaffAuthorization({
       roles: set<StaffRoleCode>('seller_ops'),
@@ -71,7 +71,7 @@ describe('staff authorization formula', () => {
     });
     expect(leaderPermissionPack()).toEqual(new Set());
     expect(leader.leaderTeamIds).toEqual(['team-a']);
-    expect(leader.permissions.has('TASK_ASSIGN_TEAM')).toBe(false);
+    expect(leader.permissions.has('STAFF_MANAGE')).toBe(false);
   });
 
   it('keeps owner-only prohibitions even when legacy grants exist', () => {
@@ -99,29 +99,26 @@ describe('staff authorization formula', () => {
     const result = calculateEffectiveStaffAuthorization({
       roles: set<StaffRoleCode>('owner'),
       grants: set<StaffPermissionCode>(),
-      denies: set<StaffPermissionCode>('FINANCIAL_EXPORT', 'TASK_ASSIGN_TEAM'),
+      denies: set<StaffPermissionCode>('FINANCIAL_EXPORT', 'SELLER_MANAGE'),
       memberTeamIds: ['team-a'],
       leaderTeamIds: ['team-a'],
     });
 
     expect(result.permissions.has('FINANCIAL_CORRECT')).toBe(true);
     expect(result.permissions.has('FINANCIAL_EXPORT')).toBe(false);
-    expect(result.permissions.has('TASK_ASSIGN_TEAM')).toBe(false);
+    expect(result.permissions.has('SELLER_MANAGE')).toBe(false);
   });
 
   it('bounds buyer_refund to review, refund and necessary Buyer duties', () => {
     const defaults = roleDefaultPermissions('buyer_refund');
     expect(defaults).toEqual(
       new Set([
-        'TASK_VIEW_OPEN',
-        'TASK_CLAIM',
         'BUYER_VIEW',
         'ORDER_VIEW',
         'REVIEW_VIEW',
         'REVIEW_DECIDE',
         'BUYER_REFUND_VIEW',
         'BUYER_REFUND_RECORD',
-        'ASSIGNMENT_ELIGIBLE_BUYER_AFTER_SALES',
         'ASSIGNMENT_ELIGIBLE_BUYER_REFUND',
       ]),
     );

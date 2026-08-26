@@ -39,7 +39,7 @@ export async function listAcquisitionVisibleChannels(
   actor:AssignmentStaffAuthorization,
 ):Promise<readonly AcquisitionVisibleChannelDto[]>{
   if(actor.roles.has('buyer_refund'))throw new AcquisitionError('FORBIDDEN',403);
-  const internal=actor.roles.has('owner')||actor.roles.has('acquisition');
+  const internal=actor.roles.has('owner');
   const markets=actor.roles.has('owner')?[]:await resolveStaffMarketplaceCodes(database,actor);
   if(!actor.roles.has('owner')&&markets.length===0)return[];
   const audience=actor.roles.has('pre_sales')?'BUYER':actor.roles.has('seller_ops')?'SELLER':null;

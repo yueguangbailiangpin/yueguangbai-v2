@@ -220,7 +220,7 @@ describe('stage 6.5 read-only image inventory', () => {
       'SELECT relative_path,business_relation,business_order_id,business_purpose FROM historical_image_inventory_files ORDER BY relative_path',
     ).all<{ relative_path: string; business_relation: string; business_order_id: string | null; business_purpose: string | null }>();
     expect(relations.results.find((row) => row.relative_path === 'img/chat.png'))
-      .toMatchObject({ business_relation: 'LINKED', business_order_id: '123-1234567-7000001', business_purpose: 'ORDER_EVIDENCE' });
+      .toMatchObject({ business_relation: 'LINKED', business_order_id: '123-1234567-7000001', business_purpose: 'ORDER_COMMUNICATION_SCREENSHOT' });
     expect(relations.results.find((row) => row.relative_path === 'img/stray.png'))
       .toMatchObject({ business_relation: 'ORPHAN' });
     // Artifacts exist OUTSIDE the source directory; the source stays clean.

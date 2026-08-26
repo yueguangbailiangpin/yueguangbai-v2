@@ -6,6 +6,7 @@ import type {
   SellerFormalOrderPortalPage,
   SqlDatabase,
 } from '@ygb/contracts';
+import { listOrderCommunicationScreenshots } from '../order-communication-screenshots/read-model';
 import { sellerBusinessCompletion } from '@ygb/domain';
 import type { SellerPortalActor } from '../seller-portal/actor';
 import {
@@ -68,8 +69,6 @@ interface FormalOrderRow {
   review_status: string | null;
   principal_status: string | null;
   service_fee_status: string | null;
-  chat_screenshot_status: 'AVAILABLE' | 'NONE';
-  chat_screenshot_file_version: number | null;
   main_image_file_object_id: string | null;
   main_image_file_version: number | null;
   main_image_client_file_name: string | null;
@@ -168,7 +167,13 @@ export async function listSellerFormalOrders(
   const visible = rows.slice(0, pagination.limit);
   const last = visible.at(-1);
   return Object.freeze({
-    items: Object.freeze(visible.map(mapFormalOrder)),
+    items: Object.freeze(
+      await Promise.all(visible.map(async (row) => mapFormalOrder(
+        row,
+        (await listOrderCommunicationScreenshots(database, [row.formal_order_id]))
+          .get(row.formal_order_id) ?? [],
+      ))),
+    ),
     page: Object.freeze({
       limit: pagination.limit,
       next_cursor: rows.length > pagination.limit && last
@@ -204,7 +209,11 @@ export async function getSellerFormalOrder(
       404,
     );
   }
-  return mapFormalOrder(row);
+  return mapFormalOrder(
+    row,
+    (await listOrderCommunicationScreenshots(database, [row.formal_order_id]))
+      .get(row.formal_order_id) ?? [],
+  );
 }
 
 function selectFormalOrderProjection(): string {
@@ -266,35 +275,6 @@ function selectFormalOrderProjection(): string {
       (SELECT payable.derived_status FROM seller_payable_balances payable
         WHERE payable.formal_order_id=formal_order.id
           AND payable.payable_type='SELLER_SERVICE_FEE') AS service_fee_status,
-      (SELECT file_object.version
-        FROM order_evidence_internal_files attachment
-        JOIN file_objects file_object ON file_object.id=attachment.file_object_id
-        JOIN file_upload_intents upload_intent
-          ON upload_intent.id=file_object.upload_intent_id
-          AND upload_intent.status='VERIFIED'
-        JOIN file_entity_links file_link ON file_link.id=attachment.file_entity_link_id
-        JOIN file_entity_audience_grants audience_grant
-          ON audience_grant.file_entity_link_id=file_link.id
-          AND audience_grant.subject_type='SELLER_ORGANIZATION'
-          AND audience_grant.seller_organization_id=
-            formal_order.seller_organization_id
-          AND audience_grant.revoked_at IS NULL
-          AND (audience_grant.expires_at IS NULL
-            OR audience_grant.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
-        WHERE attachment.order_evidence_submission_id=
-          formal_order.order_evidence_submission_id
-          AND attachment.slot=1
-          AND store.status='ACTIVE'
-          AND file_object.status='VERIFIED'
-          AND file_link.file_object_id=attachment.file_object_id
-          AND file_link.entity_type='ORDER_EVIDENCE_SUBMISSION'
-          AND file_link.entity_id=formal_order.order_evidence_submission_id
-          AND file_link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND file_link.visibility='SELLER_VISIBLE'
-          AND file_link.authorization_mode='EXPLICIT_AUDIENCES'
-          AND file_link.revoked_at IS NULL
-          AND (file_link.expires_at IS NULL OR file_link.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
-        LIMIT 1) AS chat_screenshot_file_version,
       (SELECT image_link.file_object_id
         FROM product_version_main_images main_image
         JOIN file_entity_links image_link
@@ -374,38 +354,6 @@ function selectFormalOrderProjection(): string {
           )
         ORDER BY link.created_at, link.id
         LIMIT 1) AS order_screenshot_file_version,
-      CASE WHEN EXISTS (
-        SELECT 1
-        FROM order_evidence_internal_files attachment
-        JOIN file_entity_links file_link
-          ON file_link.id=attachment.file_entity_link_id
-          AND file_link.file_object_id=attachment.file_object_id
-          AND file_link.entity_type='ORDER_EVIDENCE_SUBMISSION'
-          AND file_link.entity_id=formal_order.order_evidence_submission_id
-          AND file_link.purpose='ORDER_EVIDENCE_INTERNAL_COMMUNICATION'
-          AND file_link.visibility='SELLER_VISIBLE'
-          AND file_link.authorization_mode='EXPLICIT_AUDIENCES'
-          AND file_link.revoked_at IS NULL
-          AND (file_link.expires_at IS NULL OR file_link.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
-        JOIN file_objects file_object
-          ON file_object.id=attachment.file_object_id
-          AND file_object.status='VERIFIED'
-        JOIN file_upload_intents upload_intent
-          ON upload_intent.id=file_object.upload_intent_id
-          AND upload_intent.status='VERIFIED'
-        JOIN file_entity_audience_grants audience_grant
-          ON audience_grant.file_entity_link_id=file_link.id
-          AND audience_grant.subject_type='SELLER_ORGANIZATION'
-          AND audience_grant.seller_organization_id=
-            formal_order.seller_organization_id
-          AND audience_grant.revoked_at IS NULL
-          AND (audience_grant.expires_at IS NULL
-            OR audience_grant.expires_at>CAST(unixepoch('now') AS INTEGER)*1000)
-        WHERE attachment.order_evidence_submission_id=
-          formal_order.order_evidence_submission_id
-          AND attachment.slot=1
-          AND store.status='ACTIVE'
-      ) THEN 'AVAILABLE' ELSE 'NONE' END AS chat_screenshot_status,
       formal_order.confirmed_at,
       formal_order.confirmed_business_date
     FROM formal_orders formal_order
@@ -436,6 +384,12 @@ export function storeScope(
 
 function mapFormalOrder(
   row: FormalOrderRow,
+  communicationScreenshots: readonly {
+    file_object_id: string;
+    file_version: number;
+    purpose: 'ORDER_COMMUNICATION_SCREENSHOT';
+    visibility: 'SELLER_VISIBLE';
+  }[] = [],
 ): SellerFormalOrderPortalDto {
   const common = {
     formal_order_id: row.formal_order_id,
@@ -463,14 +417,7 @@ function mapFormalOrder(
           file_object_id: row.order_screenshot_file_object_id,
           file_version: Number(row.order_screenshot_file_version),
         }),
-    chat_screenshot: Object.freeze({
-      status: row.chat_screenshot_status === 'AVAILABLE'
-        ? 'AVAILABLE' as const
-        : 'NONE' as const,
-      file_version: row.chat_screenshot_file_version === null
-        ? null
-        : Number(row.chat_screenshot_file_version),
-    }),
+    communication_screenshots: Object.freeze(communicationScreenshots),
     confirmed_at: Number(row.confirmed_at),
   };
   // AMAZON_JP is the only marketplace with a live write path; any other

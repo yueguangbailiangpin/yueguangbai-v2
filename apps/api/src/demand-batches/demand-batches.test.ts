@@ -650,10 +650,6 @@ describe('demand batch workflow', () => {
         assigned_at, revoked_at, created_at, updated_at
       ) VALUES ('staff-demand-unassigned', 'seller_ops', 'ACTIVE', NULL,
         1000, NULL, 1000, 1000);
-      INSERT INTO staff_team_memberships (
-        staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-      ) VALUES ('staff-demand-unassigned', 'team-demand-review', 'ACTIVE',
-        1000, NULL, 1000, 1000);
     `);
     await expect(readDemandReviewContext(database, submitted.demand_batch_id, {
       ...reviewerActor(), staffId: 'staff-demand-unassigned',
@@ -1179,10 +1175,6 @@ describe('demand batch workflow', () => {
         assigned_at, revoked_at, created_at, updated_at
       ) VALUES ('staff-route-pre-sales', 'pre_sales', 'ACTIVE', NULL,
         1000, NULL, 1000, 1000);
-      INSERT INTO staff_team_memberships (
-        staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-      ) VALUES ('staff-route-pre-sales', 'team-demand-review', 'ACTIVE',
-        1000, NULL, 1000, 1000);
     `);
     const preSalesAuthorization = await resolveAssignmentStaffAuthorization(
       database, 'staff-route-pre-sales',
@@ -1255,26 +1247,6 @@ function seedDemandFixture(
     ) VALUES ('scope-demand-reviewer-jp','staff-demand-reviewer','seller_ops',
       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
       'TEST_PRIMARY',1000,1000,'PRIMARY');
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-demand-review','demand-review','Demand Review',
-      'ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-demand-review','department-demand-review','demand-review',
-      'Demand Review','ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('staff-demand-reviewer','team-demand-review','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('zz-phase3h-test-owner','team-demand-review','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_leaders (
-      staff_id, team_id, status, assigned_by_staff_id,
-      assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('staff-demand-reviewer','team-demand-review','ACTIVE',
-      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -1288,6 +1260,16 @@ function seedDemandFixture(
       'seller-channel-ido-mango',
       8001, '需求卖家', 'ACTIVE',
       1, 1000, 1000, 1000, NULL, 4
+    );
+
+    INSERT INTO seller_staff_assignments (
+      id, seller_organization_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    ) VALUES (
+      'seller-org-1-manager-binding', 'seller-org-1', 'SELLER_ACCOUNT_MANAGER',
+      'staff-demand-reviewer', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
     );
 
     INSERT INTO customer_identity_subjects (
@@ -1338,21 +1320,6 @@ function seedDemandFixture(
         1, 1000, 1000, NULL
       );
 
-    INSERT INTO seller_member_store_scopes (
-      member_id, store_id, organization_id, status,
-      assigned_by_staff_id, assigned_at, revoked_at,
-      created_at, updated_at
-    ) VALUES
-      (
-        'member-ops', 'store-1', 'seller-org-1',
-        'ACTIVE', 'staff-demand-reviewer', 1000, NULL,
-        1000, 1000
-      ),
-      (
-        'member-finance', 'store-1', 'seller-org-1',
-        'ACTIVE', 'staff-demand-reviewer', 1000, NULL,
-        1000, 1000
-      );
 
     INSERT INTO products (
       id, organization_id, store_id, marketplace_code,

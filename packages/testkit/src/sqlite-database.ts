@@ -138,17 +138,10 @@ export function createMigratedTestDatabase(): SqliteDatabase {
   applyMigrations(database);
   // Phase 3H workflows require an explicit, fully eligible assignee. Keep a
   // deterministic owner fixture available to tests that focus on another
-  // bounded context and do not define their own staff topology.
+  // bounded context and do not define their own staff topology. The D-056
+  // fixed-assignment model has no departments/teams any more — a plain
+  // owner account is enough.
   database.exec(`
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('phase3h-test-department','phase3h-test','Phase 3H Test',
-      'ACTIVE',1,1,1,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('phase3h-test-team','phase3h-test-department','phase3h-test',
-      'Phase 3H Test','ACTIVE',1,1,1,NULL);
     INSERT INTO staff_users (
       id, display_name, status, authorization_version, version,
       created_at, updated_at, disabled_at
@@ -157,9 +150,6 @@ export function createMigratedTestDatabase(): SqliteDatabase {
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
     ) VALUES ('zz-phase3h-test-owner','owner','ACTIVE',NULL,1,NULL,1,1);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('zz-phase3h-test-owner','phase3h-test-team','ACTIVE',1,NULL,1,1);
   `);
   return database;
 }

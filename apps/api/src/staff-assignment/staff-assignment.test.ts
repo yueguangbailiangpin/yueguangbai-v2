@@ -2,13 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import {
   prepareDirectWorkItem,
-  createCursorAdvanceStatements,
+  prepareInitialBuyerAssignment,
+  prepareInitialSellerAssignment,
+  prepareWorkItemCompletionStatements,
 } from './assignment-service';
-import {
-  resolveRoundRobinCandidate,
-  resolveRoundRobinFixedDutyCandidate,
-  resolveOwnerFallback,
-} from './candidate-resolver';
+import { isStaffEligibleForFixedDuty } from './candidate-resolver';
 import { resolveAssignmentStaffAuthorization } from './effective-authorization';
 import { resolveStaffDataScope } from './data-scope';
 import { listVisibleWorkItems } from './read-model';
@@ -72,46 +70,69 @@ function seedFoundation(d: SqliteDatabase): void {
   `);
 }
 
-describe('Phase 3H staff assignment foundation', () => {
-  it('runs the assignment foundation on the stage 3 clean baseline', async () => {
+async function bindBuyerPreSalesOwner(
+  d: SqliteDatabase,
+  buyerCustomerId: string,
+  staffId: string,
+): Promise<string> {
+  const prepared = await prepareInitialBuyerAssignment(d, {
+    buyerCustomerId,
+    marketplaceCode: 'AMAZON_JP',
+    actorType: 'STAFF',
+    actorId: staffId,
+    now: 10,
+  });
+  await d.batch(prepared.statements);
+  return prepared.assignmentId;
+}
+
+describe('D-056 fixed-duty staff assignment foundation', () => {
+  it('runs the assignment foundation on the stage 6.6B baseline', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 27 });
+      .toEqual({ schema_version: 28 });
     expect(d.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(d.raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
   });
 
-  it('assigns only the Marketplace PRIMARY and personal DENY removes it', async () => {
+  it('binds the creating staff member as the initial buyer pre-sales owner', async () => {
     const d = db();
-    const first = await resolveRoundRobinCandidate(d, {
-      dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
+    const assignmentId = await bindBuyerPreSalesOwner(d, 'buyer-1', 'pre-1');
+    expect(d.raw.prepare(`SELECT staff_id, duty_code, status FROM buyer_staff_assignments
+      WHERE id=?`).get(assignmentId))
+      .toEqual({ staff_id: 'pre-1', duty_code: 'BUYER_PRE_SALES_OWNER', status: 'ACTIVE' });
+    const replay = await prepareInitialBuyerAssignment(d, {
+      buyerCustomerId: 'buyer-1',
       marketplaceCode: 'AMAZON_JP',
+      actorType: 'STAFF',
+      actorId: 'pre-2',
+      now: 20,
     });
-    expect(first?.staff.staffId).toBe('pre-1');
-    await d.batch(createCursorAdvanceStatements(d, first!, first!.staff.staffId, 10));
-    const second = await resolveRoundRobinCandidate(d, {
-      dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'AMAZON_JP',
-    });
-    expect(second?.staff.staffId).toBe('pre-1');
-
-    d.exec(`INSERT INTO staff_permission_overrides (
-      staff_id, permission_code, effect, status, reason,
-      assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('pre-1','ASSIGNMENT_ELIGIBLE_BUYER_PRE_SALES','DENY','ACTIVE',
-      'test deny','owner-1',20,NULL,20,20)`);
-    const afterDeny = await resolveRoundRobinCandidate(d, {
-      dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'AMAZON_JP',
-    });
-    expect(afterDeny).toBeNull();
+    expect(replay.replayedExisting).toBe(true);
+    expect(replay.assignedStaffId).toBe('pre-1');
+    expect(replay.statements).toHaveLength(0);
   });
 
-  it('creates a directly assigned work item and preserves fixed owner on replay', async () => {
+  it('fails closed when the creator cannot hold the buyer duty', async () => {
     const d = db();
+    await expect(prepareInitialBuyerAssignment(d, {
+      buyerCustomerId: 'buyer-1',
+      marketplaceCode: 'AMAZON_JP',
+      actorType: 'STAFF',
+      actorId: 'after-1',
+      now: 10,
+    })).rejects.toMatchObject({ code: 'BUYER_PRE_SALES_OWNER_NOT_ASSIGNED' });
+    await expect(prepareInitialBuyerAssignment(d, {
+      buyerCustomerId: 'buyer-2',
+      marketplaceCode: 'AMAZON_JP',
+      actorType: 'SYSTEM',
+      now: 10,
+    })).rejects.toMatchObject({ code: 'BUYER_PRE_SALES_OWNER_NOT_ASSIGNED' });
+  });
+
+  it('assigns work items to the fixed owner and preserves it on replay', async () => {
+    const d = db();
+    await bindBuyerPreSalesOwner(d, 'buyer-1', 'pre-1');
     const input = {
       workType: 'RESERVATION_DECISION' as const,
       sourceEntityType: 'RESERVATION' as const,
@@ -125,107 +146,92 @@ describe('Phase 3H staff assignment foundation', () => {
     };
     const prepared = await prepareDirectWorkItem(d, input);
     await d.batch(prepared.statements);
-    const row = d.raw.prepare(`SELECT assigned_staff_id, fixed_assignment_id, status
-      FROM staff_work_items WHERE id=?`).get(prepared.workItemId);
-    expect(row).toEqual({
-      assigned_staff_id: 'pre-1',
-      fixed_assignment_id: prepared.assignmentId,
-      status: 'OPEN',
-    });
+    expect(d.raw.prepare(`SELECT assigned_staff_id, fixed_assignment_id, status
+      FROM staff_work_items WHERE id=?`).get(prepared.workItemId))
+      .toMatchObject({ assigned_staff_id: 'pre-1', status: 'OPEN' });
     const replay = await prepareDirectWorkItem(d, input);
     expect(replay.replayedExisting).toBe(true);
     expect(replay.workItemId).toBe(prepared.workItemId);
     expect(replay.statements).toHaveLength(0);
-  });
-
-  it('ignores retired Availability state and keeps the PRIMARY owner', async () => {
-    const d = db();
-    const first = await prepareDirectWorkItem(d, {
-      workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
-      sourceEntityId: 'reservation-1', marketplaceCode: 'AMAZON_JP',
-      buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
-    });
-    await d.batch(first.statements);
-    d.exec(`INSERT INTO staff_availability (
-      staff_id, availability_status, reason, changed_by_staff_id,
-      version, created_at, updated_at
-    ) VALUES ('pre-1','UNAVAILABLE','leave','pre-1',1,110,110)`);
-    const second = await prepareDirectWorkItem(d, {
-      workType: 'ORDER_EVIDENCE_REVIEW', sourceEntityType: 'ORDER_EVIDENCE',
-      sourceEntityId: 'evidence-1', marketplaceCode: 'AMAZON_JP',
-      buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 120,
-    });
-    await d.batch(second.statements);
-    expect(second.assignedStaffId).toBe('pre-1');
     expect(d.raw.prepare(`SELECT COUNT(*) AS count FROM buyer_staff_assignments
       WHERE buyer_customer_id='buyer-1' AND duty_code='BUYER_PRE_SALES_OWNER'`).get())
       .toEqual({ count: 1 });
-    expect(d.raw.prepare(`SELECT staff_id FROM buyer_staff_assignments
-      WHERE buyer_customer_id='buyer-1' AND duty_code='BUYER_PRE_SALES_OWNER'
-        AND status='ACTIVE'`).get()).toEqual({ staff_id: 'pre-1' });
   });
 
-  it('does not select an arbitrary owner when fallback is absent or invalid', async () => {
+  it('fails closed with a stable code when the buyer duty owner is missing or ineligible', async () => {
     const d = db();
-    await expect(resolveOwnerFallback(d, {
-      marketplaceCode: 'AMAZON_JP', dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
-    })).rejects.toMatchObject({ code: 'OWNER_FALLBACK_NOT_CONFIGURED' });
-    d.exec(`INSERT INTO staff_assignment_fallbacks (
-      marketplace_code, staff_id, version, configured_by_staff_id,
-      created_at, updated_at
-    ) VALUES ('AMAZON_JP','owner-1',1,'owner-1',1,1)`);
-    expect((await resolveOwnerFallback(d, {
-      marketplaceCode: 'AMAZON_JP', dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
-    })).staffId).toBe('owner-1');
-  });
-
-  it('resolves business visibility from Role × Marketplace instead of assignment ownership', async () => {
-    const d = db();
-    const prepared = await prepareDirectWorkItem(d, {
+    await expect(prepareDirectWorkItem(d, {
       workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
-      sourceEntityId: 'reservation-1', marketplaceCode: 'AMAZON_JP',
+      sourceEntityId: 'reservation-unbound', marketplaceCode: 'AMAZON_JP',
+      buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
+    })).rejects.toMatchObject({ code: 'BUYER_PRE_SALES_OWNER_NOT_ASSIGNED' });
+
+    await bindBuyerPreSalesOwner(d, 'buyer-2', 'pre-1');
+    d.exec(`UPDATE staff_users
+      SET status='DISABLED', disabled_at=20, version=version+1, updated_at=20
+      WHERE id='pre-1'`);
+    await expect(prepareDirectWorkItem(d, {
+      workType: 'ORDER_EVIDENCE_REVIEW', sourceEntityType: 'ORDER_EVIDENCE',
+      sourceEntityId: 'evidence-disabled-owner', marketplaceCode: 'AMAZON_JP',
+      buyerCustomerId: 'buyer-2', actorType: 'SYSTEM', now: 120,
+    })).rejects.toMatchObject({ code: 'BUYER_PRE_SALES_OWNER_NOT_ASSIGNED' });
+  });
+
+  it('routes review and refund duties to the buyer refund owner', async () => {
+    const d = db();
+    await bindBuyerPreSalesOwner(d, 'buyer-1', 'pre-1');
+    d.exec(`INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    ) VALUES ('refund-binding-1','buyer-1','BUYER_REFUND_OWNER','after-1','ACTIVE',
+      'AUTO_INITIAL','STAFF','owner-1',NULL,1,10,10,NULL)`);
+    const review = await prepareDirectWorkItem(d, {
+      workType: 'REVIEW_DECISION', sourceEntityType: 'REVIEW_CASE',
+      sourceEntityId: 'review-1', marketplaceCode: 'AMAZON_JP',
       buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
     });
-    await d.batch(prepared.statements);
-    const actor = await resolveAssignmentStaffAuthorization(d, prepared.assignedStaffId);
-    expect(actor).not.toBeNull();
-    const scope = await resolveStaffDataScope(d, actor!, { requiredPermission: 'BUYER_VIEW' });
-    expect(scope.buyerCustomerIds).toContain('buyer-1');
-    expect(scope.buyerCustomerIds).toContain('buyer-2');
+    expect(review.assignedStaffId).toBe('after-1');
+    await d.batch(review.statements);
+    expect(d.raw.prepare(`SELECT duty_code FROM staff_work_items
+      WHERE id=?`).get(review.workItemId)).toEqual({ duty_code: 'BUYER_REFUND_OWNER' });
   });
 
-  it('shows the OPEN queue to PRIMARY while SUPPORT remains business-visible only', async () => {
+  it('requires the seller duty to be an eligible seller_ops staff member', async () => {
     const d = db();
-    const prepared = await prepareDirectWorkItem(d, {
-      workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
-      sourceEntityId: 'reservation-primary-queue', marketplaceCode: 'AMAZON_JP',
-      buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
-    });
-    await d.batch(prepared.statements);
-    const primary = await resolveAssignmentStaffAuthorization(d, 'pre-1');
-    const support = await resolveAssignmentStaffAuthorization(d, 'pre-2');
-    expect((await listVisibleWorkItems(d, primary!)).work_items).toHaveLength(1);
-    expect((await listVisibleWorkItems(d, support!)).work_items).toEqual([]);
-    expect((await resolveStaffDataScope(d, support!, {
-      requiredPermission: 'BUYER_VIEW',
-    })).buyerCustomerIds).toContain('buyer-1');
+    d.exec(`
+      INSERT INTO seller_channels (
+        id, code, prefix, name, status, version, created_at, updated_at, disabled_at
+      ) VALUES ('seller-channel-test-1','testch1','testch1-','Test Channel','ACTIVE',1,1,1,NULL);
+      INSERT INTO seller_organizations (
+        id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
+        seller_sequence, organization_name, status, version,
+        created_at, updated_at, activated_at
+      ) VALUES ('seller-org-1','AMAZON_JP','test-seller-1','seller-channel-test-1',
+        'seller-channel-test-1',1,'Seller Org 1','ACTIVE',1,1,1,1);
+    `);
+    await expect(prepareInitialSellerAssignment(d, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'AMAZON_JP',
+      actorType: 'STAFF',
+      actorId: 'pre-1',
+      now: 10,
+    })).rejects.toMatchObject({ code: 'SELLER_ACCOUNT_MANAGER_NOT_ASSIGNED' });
   });
 
-  it('applies business-permission DENY inside SQL candidate selection', async () => {
+  it('removes fixed-duty eligibility through a personal DENY', async () => {
     const d = db();
+    expect(await isStaffEligibleForFixedDuty(d, {
+      staffId: 'pre-1', dutyCode: 'BUYER_PRE_SALES_OWNER', marketplaceCode: 'AMAZON_JP',
+    })).toBe(true);
     d.exec(`INSERT INTO staff_permission_overrides (
       staff_id, permission_code, effect, status, reason,
       assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('pre-1','RESERVATION_DECIDE','DENY','ACTIVE',
-      'business deny','owner-1',20,NULL,20,20)`);
-    const candidate = await resolveRoundRobinCandidate(d, {
-      dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'AMAZON_JP',
-    });
-    expect(candidate).toBeNull();
+    ) VALUES ('pre-1','ASSIGNMENT_ELIGIBLE_BUYER_PRE_SALES','DENY','ACTIVE',
+      'test deny','owner-1',20,NULL,20,20)`);
+    expect(await isStaffEligibleForFixedDuty(d, {
+      staffId: 'pre-1', dutyCode: 'BUYER_PRE_SALES_OWNER', marketplaceCode: 'AMAZON_JP',
+    })).toBe(false);
   });
 
   it('never expands fixed-duty eligibility through legacy personal grants', async () => {
@@ -244,10 +250,9 @@ describe('Phase 3H staff assignment foundation', () => {
     `);
     const supportAuthorization = await resolveAssignmentStaffAuthorization(d, 'support-1');
     expect(supportAuthorization?.permissions.has('ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT')).toBe(false);
-    expect(await resolveRoundRobinFixedDutyCandidate(d, {
-      dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'AMAZON_JP',
-    })).toBeNull();
-
+    expect(await isStaffEligibleForFixedDuty(d, {
+      staffId: 'support-1', dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'AMAZON_JP',
+    })).toBe(false);
     expect(() => d.exec(`
       INSERT INTO staff_permission_overrides (
         staff_id, permission_code, effect, status, reason,
@@ -256,72 +261,62 @@ describe('Phase 3H staff assignment foundation', () => {
         ('support-1','DEMAND_PUBLISH','GRANT','ACTIVE','test',
           'owner-1',3,NULL,3,3);
     `)).toThrow('staff_permission_active_grant_forbidden');
-    const candidate = await resolveRoundRobinFixedDutyCandidate(d, {
-      dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'AMAZON_JP',
-    });
-    expect(candidate).toBeNull();
+    expect(await isStaffEligibleForFixedDuty(d, {
+      staffId: 'support-1', dutyCode: 'SELLER_ACCOUNT_MANAGER', marketplaceCode: 'AMAZON_JP',
+    })).toBe(false);
   });
 
-  it('rejects a fixed-duty candidate when any required permission is personally denied', async () => {
+  it('requires a business permission personally denied to break fixed duty eligibility', async () => {
     const d = db();
     d.exec(`INSERT INTO staff_permission_overrides (
       staff_id, permission_code, effect, status, reason,
       assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
     ) VALUES ('pre-1','BUYER_VIEW','DENY','ACTIVE',
       'required permission deny','owner-1',20,NULL,20,20)`);
-    const candidate = await resolveRoundRobinFixedDutyCandidate(d, {
-      dutyCode: 'BUYER_PRE_SALES_OWNER', marketplaceCode: 'AMAZON_JP',
-    });
-    expect(candidate).toBeNull();
+    expect(await isStaffEligibleForFixedDuty(d, {
+      staffId: 'pre-1', dutyCode: 'BUYER_PRE_SALES_OWNER', marketplaceCode: 'AMAZON_JP',
+    })).toBe(false);
   });
 
-  it('ignores retired Availability but excludes disabled PRIMARY staff', async () => {
+  it('excludes disabled PRIMARY staff from fixed-duty eligibility', async () => {
     const d = db();
-    d.exec(`
-      INSERT INTO staff_availability (
-        staff_id, availability_status, reason, changed_by_staff_id,
-        version, created_at, updated_at
-      ) VALUES ('pre-1','UNAVAILABLE','leave','pre-1',1,20,20);
-    `);
-    expect((await resolveRoundRobinCandidate(d, {
-      dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'AMAZON_JP',
-    }))?.staff.staffId).toBe('pre-1');
+    expect(await isStaffEligibleForFixedDuty(d, {
+      staffId: 'pre-1', dutyCode: 'BUYER_PRE_SALES_OWNER', marketplaceCode: 'AMAZON_JP',
+    })).toBe(true);
     d.exec(`UPDATE staff_users
       SET status='DISABLED', disabled_at=20, version=version+1, updated_at=20
       WHERE id='pre-1'`);
-    expect(await resolveRoundRobinCandidate(d, {
-      dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'AMAZON_JP',
-    })).toBeNull();
+    expect(await isStaffEligibleForFixedDuty(d, {
+      staffId: 'pre-1', dutyCode: 'BUYER_PRE_SALES_OWNER', marketplaceCode: 'AMAZON_JP',
+    })).toBe(false);
   });
 
-  it('uses explicit fallback without advancing the round-robin cursor', async () => {
+  it('resolves business visibility from Role × Marketplace instead of assignment ownership', async () => {
     const d = db();
-    d.exec(`
-      UPDATE staff_users
-      SET status='DISABLED', disabled_at=20, version=version+1, updated_at=20
-      WHERE id='pre-1';
-      INSERT INTO staff_assignment_fallbacks (
-        marketplace_code, staff_id, version, configured_by_staff_id,
-        created_at, updated_at
-      ) VALUES ('AMAZON_JP','owner-1',1,'owner-1',20,20);
-    `);
-    const candidate = await resolveRoundRobinCandidate(d, {
-      dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
-      marketplaceCode: 'AMAZON_JP',
+    await bindBuyerPreSalesOwner(d, 'buyer-1', 'pre-1');
+    const actor = await resolveAssignmentStaffAuthorization(d, 'pre-1');
+    expect(actor).not.toBeNull();
+    const scope = await resolveStaffDataScope(d, actor!, { requiredPermission: 'BUYER_VIEW' });
+    expect(scope.buyerCustomerIds).toContain('buyer-1');
+    expect(scope.buyerCustomerIds).toContain('buyer-2');
+  });
+
+  it('shows the OPEN queue to the fixed owner while SUPPORT stays business-visible only', async () => {
+    const d = db();
+    await bindBuyerPreSalesOwner(d, 'buyer-1', 'pre-1');
+    const prepared = await prepareDirectWorkItem(d, {
+      workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
+      sourceEntityId: 'reservation-primary-queue', marketplaceCode: 'AMAZON_JP',
+      buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
     });
-    expect(candidate).toBeNull();
-    expect((await resolveOwnerFallback(d, {
-      marketplaceCode: 'AMAZON_JP',
-      dutyCode: 'BUYER_PRE_SALES_OWNER',
-      workType: 'RESERVATION_DECISION',
-    })).staffId).toBe('owner-1');
-    expect(d.raw.prepare(`SELECT COUNT(*) AS count
-      FROM staff_assignment_cursors`).get()).toEqual({ count: 0 });
+    await d.batch(prepared.statements);
+    const primary = await resolveAssignmentStaffAuthorization(d, 'pre-1');
+    const support = await resolveAssignmentStaffAuthorization(d, 'pre-2');
+    expect((await listVisibleWorkItems(d, primary!)).work_items).toHaveLength(1);
+    expect((await listVisibleWorkItems(d, support!)).work_items).toEqual([]);
+    expect((await resolveStaffDataScope(d, support!, {
+      requiredPermission: 'BUYER_VIEW',
+    })).buyerCustomerIds).toContain('buyer-1');
   });
 
   it('gives the explicit Owner global scope without team membership', async () => {
@@ -341,6 +336,7 @@ describe('Phase 3H staff assignment foundation', () => {
 
   it('writes only the assignment Outbox event and rejects destructive history edits', async () => {
     const d = db();
+    await bindBuyerPreSalesOwner(d, 'buyer-1', 'pre-1');
     const prepared = await prepareDirectWorkItem(d, {
       workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
       sourceEntityId: 'reservation-outbox', marketplaceCode: 'AMAZON_JP',
@@ -360,4 +356,31 @@ describe('Phase 3H staff assignment foundation', () => {
       WHERE id='${prepared.assignmentId}'`)).toThrow('buyer_staff_assignments_are_immutable');
   });
 
+  it('completes open work items idempotently and keeps the completion event', async () => {
+    const d = db();
+    await bindBuyerPreSalesOwner(d, 'buyer-1', 'pre-1');
+    const prepared = await prepareDirectWorkItem(d, {
+      workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
+      sourceEntityId: 'reservation-complete', marketplaceCode: 'AMAZON_JP',
+      buyerCustomerId: 'buyer-1', actorType: 'SYSTEM', now: 100,
+    });
+    await d.batch(prepared.statements);
+    const completion = await prepareWorkItemCompletionStatements(d, {
+      workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
+      sourceEntityId: 'reservation-complete', outcome: 'COMPLETED',
+      actorType: 'SYSTEM', now: 200,
+    });
+    await d.batch(completion);
+    expect(d.raw.prepare(`SELECT status FROM staff_work_items
+      WHERE id=?`).get(prepared.workItemId)).toEqual({ status: 'COMPLETED' });
+    expect(d.raw.prepare(`SELECT COUNT(*) AS count FROM staff_assignment_events
+      WHERE work_item_id=? AND event_type='WORK_ITEM_COMPLETED'`).get(prepared.workItemId))
+      .toEqual({ count: 1 });
+    const again = await prepareWorkItemCompletionStatements(d, {
+      workType: 'RESERVATION_DECISION', sourceEntityType: 'RESERVATION',
+      sourceEntityId: 'reservation-complete', outcome: 'COMPLETED',
+      actorType: 'SYSTEM', now: 300,
+    });
+    expect(again).toHaveLength(0);
+  });
 });

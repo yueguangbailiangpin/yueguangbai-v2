@@ -1291,8 +1291,7 @@ async function seedFormalOrderFixture(
       reference_order_amount_jpy_snapshot,
       buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch,
-      price_difference_jpy, submitted_before_deadline,
-      evidence_file_object_id, created_at
+      price_difference_jpy, submitted_before_deadline, created_at
     ) VALUES
       ('evidence-version-1', 'evidence-submission-1',
        'reservation-formal-1', 'buyer-1', 'AMAZON_JP', 1,
@@ -1303,7 +1302,7 @@ async function seedFormalOrderFixture(
        '${instructionOne.instructionVersionId}',
        ${instructionOne.deadlineAt}, 1980, 0, 0, ${finalPaidJpy},
        ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
-       '${instructionOne.evidenceFileObjectId}', 7000),
+       7000),
       ('evidence-version-2', 'evidence-submission-2',
        'reservation-formal-2', 'buyer-1', 'AMAZON_JP', 1,
        '${secondOrder}', '${secondOrder}',
@@ -1313,7 +1312,7 @@ async function seedFormalOrderFixture(
        '${instructionTwo.instructionVersionId}',
        ${instructionTwo.deadlineAt}, 1980, 0, 0, ${finalPaidJpy},
        ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
-       '${instructionTwo.evidenceFileObjectId}', 7000),
+       7000),
       ('evidence-version-3', 'evidence-submission-3',
        'reservation-formal-3', 'buyer-existing', 'AMAZON_JP', 1,
        '789-1234567-1234567', '789-1234567-1234567',
@@ -1323,7 +1322,7 @@ async function seedFormalOrderFixture(
        '${instructionThree.instructionVersionId}',
        ${instructionThree.deadlineAt}, 1980, 0, 0, ${finalPaidJpy},
        ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
-       '${instructionThree.evidenceFileObjectId}', 7000);
+       7000);
 
     ${options.leaveEvidencePending ? '' : `
       UPDATE order_evidence_submissions
@@ -1395,7 +1394,7 @@ function seedAtomicApprovalWorkItem(db: SqliteDatabase): void {
       created_at, updated_at, revoked_at
     ) VALUES (
       'atomic-buyer-assignment', 'buyer-1', 'BUYER_PRE_SALES_OWNER',
-      'zz-phase3h-test-owner', 'ACTIVE', 'OWNER_FALLBACK',
+      'zz-phase3h-test-owner', 'ACTIVE', 'AUTO_INITIAL',
       'SYSTEM', NULL, NULL, 1, 7000, 7000, NULL
     );
     INSERT INTO staff_work_items (

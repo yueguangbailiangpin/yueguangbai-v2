@@ -37,6 +37,10 @@ import {
 import {
   resolveMarketplace,
 } from '../marketplaces/registry';
+import {
+  batchWithFixedAssignmentRetry,
+  prepareInitialBuyerAssignment,
+} from '../staff-assignment';
 
 export interface CreateBuyerInput {
   marketplaceCode: MarketplaceCode;
@@ -256,7 +260,20 @@ export async function createBuyerCustomer(
       ),
     ];
 
-    await database.batch(statements);
+    await batchWithFixedAssignmentRetry(
+      database,
+      () => prepareInitialBuyerAssignment(database, {
+        buyerCustomerId: buyerId,
+        marketplaceCode: marketplace.code,
+        actorType: 'STAFF',
+        actorId: command.actor.staffId,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'buyer customer created',
+        now,
+      }),
+      statements,
+    );
     return response;
   } catch (error) {
     const normalized = normalizeFoundationError(error);

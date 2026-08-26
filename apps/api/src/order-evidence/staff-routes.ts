@@ -144,7 +144,9 @@ async function listStaffOrderEvidence(context: Context<AppEnv>): Promise<Respons
     JOIN product_reservations reservation
       ON reservation.id=submission.reservation_id
     JOIN buyer_customers buyer ON buyer.id=submission.buyer_customer_id
-    JOIN file_objects file ON file.id=evidence.evidence_file_object_id
+    LEFT JOIN order_evidence_version_files version_file
+      ON version_file.version_id=evidence.id
+    LEFT JOIN file_objects file ON file.id=version_file.file_object_id
     LEFT JOIN staff_work_items work
       ON work.work_type='ORDER_EVIDENCE_REVIEW'
       AND work.source_entity_type='ORDER_EVIDENCE'
@@ -385,7 +387,7 @@ async function readDetail(
           AND version_file.reservation_id=submission.reservation_id
           AND version_file.buyer_customer_id=submission.buyer_customer_id
           AND version_file.visibility='BUYER_VISIBLE'
-          AND associated_file.id=evidence.evidence_file_object_id
+          AND associated_file.id=version_file.file_object_id
           AND associated_file.status='VERIFIED'
           AND associated_file.purpose='ORDER_EVIDENCE'
           AND associated_file.visibility='BUYER_VISIBLE'
@@ -424,8 +426,10 @@ async function readDetail(
     JOIN product_reservations reservation
       ON reservation.id=submission.reservation_id
     JOIN buyer_customers buyer ON buyer.id=submission.buyer_customer_id
-    JOIN file_objects file ON file.id=evidence.evidence_file_object_id
-    JOIN file_upload_intents intent ON intent.id=file.upload_intent_id
+    LEFT JOIN order_evidence_version_files version_file
+      ON version_file.version_id=evidence.id
+    LEFT JOIN file_objects file ON file.id=version_file.file_object_id
+    LEFT JOIN file_upload_intents intent ON intent.id=file.upload_intent_id
     WHERE submission.id=? AND ${filter.sql}
     LIMIT 1
   `,

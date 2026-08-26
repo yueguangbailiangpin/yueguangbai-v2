@@ -31,6 +31,9 @@ import {
   submitReservation as submitReservationService,
 } from './submit-reservation';
 import {
+  createReservationParticipationException,
+} from './create-participation-exception';
+import {
   readReservationAutoApproveConfig,
 } from './auto-approve';
 import {
@@ -893,7 +896,7 @@ describe('reservation auto approve', () => {
     expect(systemStaff?.status).toBe('DISABLED');
   });
 
-  it('keeps the second reservation of the same buyer within the window manual', async () => {
+  it('permanently blocks the second reservation after approval (D-056 §5)', async () => {
     database = createMigratedTestDatabase();
     seedReservationFixture(database);
     seedPublishedMainImage(database, 'product-1-v1');
@@ -914,19 +917,62 @@ describe('reservation auto approve', () => {
     `).bind(first.reservation_id).first<{ status: string }>();
     expect(firstRow?.status).toBe('APPROVED');
 
-    // 24 小时内第 2 笔（跨店，避免同店唯一进行中冲突）→ 转人工。
-    const second = await submitReservation(database, {
+    // D-056：APPROVED 即算参加过，同卖家组织跨店铺禁止再次预约（稳定错误码）。
+    await expect(submitReservation(database, {
       demandBatchId: 'demand-3-other-store',
     }, {
       actor: buyerActor('buyer-1'),
       idempotencyKey: 'auto:window:second',
       now: 5100,
       autoApprove: autoConfig,
+    })).rejects.toMatchObject({
+      code: 'RESERVATION_HISTORY_PARTICIPATION',
+      status: 409,
     });
-    const secondRow = await database.prepare(`
-      SELECT status FROM product_reservations WHERE id=?
-    `).bind(second.reservation_id).first<{ status: string }>();
-    expect(secondRow?.status).toBe('PENDING_REVIEW');
+
+    // 一次性人工例外按批次放行，并在提交同一事务内消费。
+    const exception = await createReservationParticipationException(database, {
+      buyerCustomerId: 'buyer-1',
+      demandBatchId: 'demand-3-other-store',
+      reason: '售前人工批准再次参与',
+      validUntil: 9_999,
+    }, {
+      actor: preSalesActor(),
+      idempotencyKey: 'exception:buyer-1:once',
+      now: 5_200,
+    });
+    expect(exception.used).toBe(false);
+    const second = await submitReservation(database, {
+      demandBatchId: 'demand-3-other-store',
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:window:second-retry',
+      now: 5_300,
+      autoApprove: autoConfig,
+    });
+    const consumed = await database.prepare(`
+      SELECT used_at, used_by_reservation_id
+      FROM reservation_participation_exceptions WHERE id=?
+    `).bind(exception.exception_id).first<{
+      used_at: number; used_by_reservation_id: string;
+    }>();
+    expect(consumed?.used_at).not.toBeNull();
+    expect(consumed?.used_by_reservation_id).toBe(second.reservation_id);
+
+    // 已用例外不可复用：再次预约回到稳定拒绝。
+    await expect(submitReservation(database, {
+      demandBatchId: 'demand-1',
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:window:third',
+      now: 5_400,
+    })).rejects.toMatchObject({
+      code: 'RESERVATION_HISTORY_PARTICIPATION',
+    });
+    // 已消费的例外行不可删除（触发器级 append-only）。
+    expect(() => database!.exec(`
+      DELETE FROM reservation_participation_exceptions WHERE id='${exception.exception_id}'
+    `)).toThrow();
   });
 
   it('falls back to manual review when the version has no main image', async () => {
@@ -1005,7 +1051,7 @@ function submitReservation(
   }, command);
 }
 
-function seedReservationFixture(
+export function seedReservationFixture(
   database: SqliteDatabase,
   options: {
     targetQuantity?: number;
@@ -1035,26 +1081,6 @@ function seedReservationFixture(
     ) VALUES ('scope-reservation-pre-jp','staff-pre-sales','pre_sales',
       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
       'TEST_PRIMARY',1000,1000,'PRIMARY');
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-pre-sales','pre-sales','Pre Sales',
-      'ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-pre-sales','department-pre-sales','pre-sales',
-      'Pre Sales','ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-pre-sales','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('zz-phase3h-test-owner','team-pre-sales','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_leaders (
-      staff_id, team_id, status, assigned_by_staff_id,
-      assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-pre-sales','ACTIVE',
-      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -1262,6 +1288,18 @@ function seedReservationFixture(
         0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       );
   `);
+  database.exec(`
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
+`);
+
 }
 
 class CommitWindowRaceDatabase implements SqlDatabase {
@@ -1291,7 +1329,7 @@ class CommitWindowRaceDatabase implements SqlDatabase {
   }
 }
 
-function buyerActor(
+export function buyerActor(
   buyerCustomerId: string,
 ): BuyerReservationActor {
   return {

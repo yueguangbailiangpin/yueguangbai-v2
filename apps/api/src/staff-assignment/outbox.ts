@@ -9,11 +9,7 @@ export async function prepareStaffAssignmentOutboxStatements(
   input: {
     dedupKey: string;
     eventType: string;
-    aggregateType:
-      | 'STAFF_AVAILABILITY'
-      | 'STAFF_ASSIGNMENT'
-      | 'STAFF_ASSIGNMENT_FALLBACK'
-      | 'STAFF_REASSIGNMENT_BATCH';
+    aggregateType: 'STAFF_ASSIGNMENT';
     aggregateId: string;
     payload: unknown;
     now: number;

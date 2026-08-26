@@ -143,7 +143,24 @@ describe('Wave 13 Staff Order Evidence API', () => {
     }
   });
 
-  it.each(['zero', 'multiple', 'mismatch'] as const)(
+  it('rejects a second payment screenshot at the database layer (D-056 §4.2)', async () => {
+    const database = createMigratedTestDatabase();
+    try {
+      seedWave13RuntimeAuthority(database);
+      seedDetailInvariantFixture(database);
+      expect(() => tamperDetailAssociation(database, 'multiple')).toThrow(
+        /UNIQUE constraint failed: order_evidence_version_files/u,
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  // 'mismatch' retired with the D-056 §4.2 single-pointer model: with
+  // order_evidence_version_files as the only source and UNIQUE(version_id),
+  // a divergent current association cannot be constructed any more — the
+  // second-insert negative case is covered by the database-layer test above.
+  it.each(['zero'] as const)(
     'rejects a tampered local D1 %s current screenshot association',
     async (tamper) => {
       const database = createMigratedTestDatabase();
@@ -358,14 +375,13 @@ function seedDetailInvariantFixture(database: SqliteDatabase): void {
       instruction_deadline_snapshot, reference_order_amount_jpy_snapshot,
       buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch,
-      price_difference_jpy, submitted_before_deadline,
-      evidence_file_object_id
+      price_difference_jpy, submitted_before_deadline
     ) VALUES (
       'tampered-version','tampered-evidence','tampered-reservation',
       'tampered-buyer','AMAZON_JP',1,'123-1234567-1234567',
       '123-1234567-1234567','2026-08-01',2080,'tampered-buyer',NULL,5000,
       'tampered-instruction','tampered-instruction-version',20000,1980,
-      0,0,2080,1,100,1,'tampered-file'
+      0,0,2080,1,100,1
     );
     INSERT INTO file_entity_links (
       id, file_object_id, entity_type, entity_id, purpose, visibility,
@@ -434,7 +450,6 @@ function tamperDetailAssociation(
       'ORDER_EVIDENCE','BUYER_VISIBLE','BUYER_CUSTOMER','tampered-buyer',
       5000,'EXPLICIT_AUDIENCES',NULL,NULL
     );
-    DROP TRIGGER trg_order_evidence_single_image_guard;
   `);
   if (tamper === 'mismatch') {
     database.exec(`

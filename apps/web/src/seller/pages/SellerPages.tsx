@@ -859,8 +859,15 @@ export function SellerOrdersPage(): React.JSX.Element {
                   value={
                     <SellerChatScreenshotControl
                       formalOrderId={item.formal_order_id}
-                      status={item.chat_screenshot.status}
-                      version={item.chat_screenshot.file_version}
+                      fileObjectId={
+                        item.communication_screenshots?.[0]?.file_object_id ?? null
+                      }
+                      status={
+                        (item.communication_screenshots?.length ?? 0) > 0
+                          ? 'AVAILABLE'
+                          : 'NONE'
+                      }
+                      version={item.communication_screenshots?.[0]?.file_version ?? null}
                     />
                   }
                 />
@@ -905,20 +912,22 @@ export function SellerOrdersPage(): React.JSX.Element {
 
 function SellerChatScreenshotControl({
   formalOrderId,
+  fileObjectId,
   status,
   version,
 }: {
   formalOrderId: string;
+  fileObjectId: string | null;
   status: 'AVAILABLE' | 'NONE';
   version: number | null;
 }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const provider = useMemo(
     () =>
-      status === 'AVAILABLE' && version !== null
-        ? new SellerOrderChatScreenshotReadIntentAdapter(formalOrderId, version)
+      status === 'AVAILABLE' && version !== null && fileObjectId !== null
+        ? new SellerOrderChatScreenshotReadIntentAdapter(formalOrderId, fileObjectId, version)
         : null,
-    [formalOrderId, status, version],
+    [formalOrderId, fileObjectId, status, version],
   );
   if (!provider) return <span>暂无聊天截图</span>;
   return (

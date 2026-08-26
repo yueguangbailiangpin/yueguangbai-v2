@@ -13,14 +13,14 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 27;
-const expectedLastMigration = '0027_stage66_single_source_convergence.sql';
+const expectedLatestSchema = 28;
+const expectedLastMigration = '0028_stage66b_fixed_assignment_and_files.sql';
 const expectedSchemaInventory = {
-  table: 190,
-  index: 566,
-  trigger: 345,
+  table: 177,
+  index: 536,
+  trigger: 341,
   view: 12,
-  sha256: 'a8a595616b795ab718d2ebf701d4f75d75b4586fa037eff9adb43c0618a90b62',
+  sha256: '0897d961ec6bbd60793fab504b33a8ff2c453736844267c5bcf0056d7db77946',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2
@@ -72,6 +72,24 @@ const forbiddenTables = [
   'review_profits',
   'amazon_accounts',
   'amazon_review_automation',
+  // Stage 6.6B (D-056) retirements: the pool/round-robin/fallback/
+  // availability/reassignment/org-chart assignment machinery, seller member
+  // store scoping, and the order_evidence_internal_files slot table.
+  'staff_departments',
+  'staff_teams',
+  'staff_team_memberships',
+  'staff_team_leaders',
+  'staff_role_consolidation_cutovers',
+  'staff_role_consolidation_mappings',
+  'staff_assignment_cursors',
+  'staff_assignment_fallbacks',
+  'staff_availability',
+  'staff_reassignment_batches',
+  'staff_reassignment_batch_items',
+  'seller_member_portal_store_grants',
+  'seller_member_store_scopes',
+  'seller_member_store_scope_events',
+  'order_evidence_internal_files',
 ];
 
 function sqlCodeOnly(source) {
@@ -240,7 +258,6 @@ const requiredTables = [
   'order_archive_closures',
   'order_evidence_duplicate_signals',
   'order_evidence_events',
-  'order_evidence_internal_files',
   'order_evidence_submissions',
   'order_evidence_version_files',
   'order_evidence_versions',
@@ -259,6 +276,7 @@ const requiredTables = [
   'production_recovery_attestations',
   'products',
   'reservation_events',
+  'reservation_participation_exceptions',
   'review_cases',
   'review_events',
   'review_evidence_version_files',
@@ -277,9 +295,6 @@ const requiredTables = [
   'seller_member_events',
   'seller_member_invitation_events',
   'seller_member_invitations',
-  'seller_member_portal_store_grants',
-  'seller_member_store_scope_events',
-  'seller_member_store_scopes',
   'seller_organization_channel_events',
   'seller_organization_members',
   'seller_organizations',
@@ -298,31 +313,21 @@ const requiredTables = [
   'seller_principal_rate_policy_versions',
   'seller_principal_rate_snapshots',
   'seller_product_offerings',
+  'seller_product_primary_contact_events',
   'seller_service_fee_rule_versions',
   'seller_staff_assignments',
   'seller_store_events',
   'seller_store_marketplaces',
   'seller_stores',
   'staff_assignment_cursor_assertions',
-  'staff_assignment_cursors',
   'staff_assignment_events',
-  'staff_assignment_fallbacks',
   'staff_assignment_role_permission_defaults',
   'staff_authorization_events',
-  'staff_availability',
-  'staff_departments',
   'staff_email_identities',
   'staff_marketplace_scopes',
   'staff_permission_overrides',
-  'staff_reassignment_batch_items',
-  'staff_reassignment_batches',
   'staff_role_assignments',
-  'staff_role_consolidation_cutovers',
-  'staff_role_consolidation_mappings',
   'staff_sessions',
-  'staff_team_leaders',
-  'staff_team_memberships',
-  'staff_teams',
   'staff_users',
   'staff_work_items',
   'standard_products',
@@ -533,9 +538,6 @@ const requiredTriggers = [
   'trg_order_evidence_events_no_delete',
   'trg_order_evidence_events_no_update',
   'trg_order_evidence_instruction_snapshot_guard',
-  'trg_order_evidence_internal_files_no_delete',
-  'trg_order_evidence_internal_files_no_update',
-  'trg_order_evidence_single_image_guard',
   'trg_order_evidence_submission_identity_immutable',
   'trg_order_evidence_submission_reservation_guard',
   'trg_order_evidence_version_file_guard',
@@ -574,6 +576,8 @@ const requiredTriggers = [
   'trg_production_recovery_attestations_no_update',
   'trg_reservation_events_no_delete',
   'trg_reservation_events_no_update',
+  'trg_reservation_participation_exceptions_no_delete',
+  'trg_reservation_participation_exceptions_no_update',
   'trg_reservation_self_pay_snapshot_immutable',
   'trg_reservation_self_pay_snapshot_insert_guard',
   'trg_review_approval_requires_normal_order',
@@ -605,9 +609,6 @@ const requiredTriggers = [
   'trg_seller_member_events_no_update',
   'trg_seller_member_invitation_events_no_delete',
   'trg_seller_member_invitation_events_no_update',
-  'trg_seller_member_portal_grant_no_delete',
-  'trg_seller_member_portal_grant_no_update',
-  'trg_seller_member_portal_grant_scope_guard',
   'trg_seller_partner_import_source_no_delete',
   'trg_seller_partner_import_source_no_update',
   'trg_seller_payable_conflicts_no_delete',
@@ -632,8 +633,10 @@ const requiredTriggers = [
   'trg_seller_payment_reversals_no_update',
   'trg_seller_payment_update_guard',
   'trg_seller_payments_no_delete',
-  'trg_seller_scope_events_no_delete',
-  'trg_seller_scope_events_no_update',
+  'trg_seller_product_primary_contact_events_no_delete',
+  'trg_seller_product_primary_contact_events_no_update',
+  'trg_seller_product_primary_contact_insert_guard',
+  'trg_seller_product_primary_contact_member_guard',
   'trg_seller_staff_assignments_no_delete',
   'trg_seller_staff_assignments_revoke_only',
   'trg_seller_staff_assignments_staff_guard',
@@ -644,8 +647,6 @@ const requiredTriggers = [
   'trg_staff_assignment_cursor_assertion_guard',
   'trg_staff_assignment_events_no_delete',
   'trg_staff_assignment_events_no_update',
-  'trg_staff_assignment_fallbacks_insert_guard',
-  'trg_staff_assignment_fallbacks_update_guard',
   'trg_staff_assignment_role_permission_defaults_no_delete',
   'trg_staff_assignment_role_permission_defaults_no_update',
   'trg_staff_authorization_events_no_delete',
@@ -981,6 +982,10 @@ try {
         'buyer_customers',
         ['first_valid_order_business_date'],
       ],
+      [
+        'order_evidence_versions',
+        ['evidence_file_object_id'],
+      ],
     ]) {
       const columns = new Set(
         database
@@ -1251,7 +1256,7 @@ try {
       'PRODUCT_VERSION',
       'ORDER_INSTRUCTION_KEYWORD_IMAGE',
       'ORDER_INSTRUCTION_VERSION',
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+      'ORDER_COMMUNICATION_SCREENSHOT',
       'ORDER_EVIDENCE_SUBMISSION',
     ]) {
       if (!fileSql.includes(requiredValue)) {

@@ -919,14 +919,6 @@ async function seedFormalOrderPrerequisites(
       ('staff-review-after-sales', '售后', 'ACTIVE', 1, 1, 1000, 1000, NULL),
       ('staff-review-buyer-support', '买家客服', 'ACTIVE', 1, 1, 1000, 1000, NULL);
 
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-refund','refund','Refund','ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-refund','department-refund','refund','Refund','ACTIVE',1,
-      1000,1000,NULL);
     INSERT INTO staff_role_assignments (
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
@@ -945,13 +937,6 @@ async function seedFormalOrderPrerequisites(
        'ACTIVE','staff-review-owner',1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY'),
       ('scope-refund-support-jp','staff-review-buyer-support','buyer_refund','AMAZON_JP',
        'ACTIVE','staff-review-owner',1000,NULL,'TEST_SUPPORT',1000,1000,'SUPPORT');
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES
-      ('staff-review-pre-sales','team-refund','ACTIVE',1000,NULL,1000,1000),
-      ('staff-review-owner','team-refund','ACTIVE',1000,NULL,1000,1000),
-      ('staff-review-after-sales','team-refund','ACTIVE',1000,NULL,1000,1000),
-      ('staff-review-buyer-support','team-refund','ACTIVE',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -997,6 +982,24 @@ async function seedFormalOrderPrerequisites(
       '返款买家', 'ACTIVE', 'CLEAR', 1,
       1000, 1000, 1000, NULL
     );
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-review-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'staff-review-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-refund-binding-'||id, id, 'BUYER_REFUND_OWNER',
+      'staff-review-after-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'staff-review-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
 
     INSERT INTO seller_stores (
       id, organization_id, marketplace_code,
@@ -1112,8 +1115,7 @@ async function seedFormalOrderPrerequisites(
       reference_order_amount_jpy_snapshot,
       buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch,
-      price_difference_jpy, submitted_before_deadline,
-      evidence_file_object_id, created_at
+      price_difference_jpy, submitted_before_deadline, created_at
     ) VALUES (
       'evidence-review-version-1', 'evidence-review-submission',
       'reservation-review', 'buyer-review-1', 'AMAZON_JP', 1,
@@ -1122,7 +1124,7 @@ async function seedFormalOrderPrerequisites(
       8880, 'buyer-review-1', NULL,
       '${instruction.instructionId}', '${instruction.instructionVersionId}',
       ${instruction.deadlineAt}, 1980, 0, 0, 8880, 1, 6900, 1,
-      '${instruction.evidenceFileObjectId}', 7000
+      7000
     );
 
     UPDATE order_evidence_submissions

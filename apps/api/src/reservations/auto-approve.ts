@@ -1,4 +1,5 @@
 import type { SqlDatabase, SqlStatement } from '@ygb/contracts';
+import { findHistoricalParticipation } from './participation-history';
 import {
   calculateBuyerSelfPayFacts,
   canonicalJson,
@@ -128,6 +129,30 @@ export async function autoApproveReservation(
   const now = command.now;
   const source = await readAutoApproveSource(database, input.reservationId);
   if (source === null) return null;
+  // D-056 §5: a buyer who has already participated in this seller
+  // organization can only proceed through this reservation when its
+  // one-time exception was consumed by exactly this reservation at submit
+  // time; anything else stays with manual review.
+  const participation = await findHistoricalParticipation(database, {
+    buyerCustomerId: source.buyer_customer_id,
+    sellerOrganizationId: source.organization_id,
+    excludeReservationId: input.reservationId,
+  });
+  if (participation !== null) {
+    const boundException = await database
+      .prepare(
+        `SELECT 1 AS present FROM reservation_participation_exceptions
+        WHERE buyer_customer_id=? AND seller_organization_id=?
+          AND used_by_reservation_id=? AND used_at IS NOT NULL LIMIT 1`,
+      )
+      .bind(
+        source.buyer_customer_id,
+        source.organization_id,
+        input.reservationId,
+      )
+      .first<{ present: number }>();
+    if (!boundException) return null;
+  }
   if (source.status !== 'PENDING_REVIEW'
     || source.demand_status !== 'PUBLISHED'
     || Number(source.reservation_deadline) <= now

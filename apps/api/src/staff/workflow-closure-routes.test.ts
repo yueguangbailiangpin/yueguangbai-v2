@@ -95,13 +95,6 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       1000, NULL, 'TEST_PRIMARY', 1000, 1000, 'PRIMARY'
     );
 
-    INSERT INTO staff_assignment_fallbacks (
-      marketplace_code, staff_id, version, configured_by_staff_id,
-      created_at, updated_at
-    ) VALUES (
-      'AMAZON_JP', 'zz-phase3h-test-owner', 1, 'zz-phase3h-test-owner',
-      1000, 1000
-    );
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -148,6 +141,15 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       '买家一', 'ACTIVE', 'CLEAR', 1,
       1000, 1000, 1000, NULL
     );
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
 
     INSERT INTO wechat_identity_claims (
       id, identity_subject_id, display_wechat, normalized_wechat,

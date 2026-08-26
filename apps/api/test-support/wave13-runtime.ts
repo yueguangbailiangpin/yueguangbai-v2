@@ -461,13 +461,6 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
        'zz-phase3h-test-owner',2,NULL,2,2),
       ('wave13-runtime-seller-scoped','seller_ops','ACTIVE',
        'zz-phase3h-test-owner',2,NULL,2,2);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES
-      ('wave13-runtime-limited','phase3h-test-team','ACTIVE',2,NULL,2,2),
-      ('wave13-runtime-scoped','phase3h-test-team','ACTIVE',2,NULL,2,2),
-      ('wave13-runtime-seller-scoped','phase3h-test-team',
-       'ACTIVE',2,NULL,2,2);
     INSERT INTO staff_permission_overrides (
       staff_id, permission_code, effect, status, reason,
       assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at

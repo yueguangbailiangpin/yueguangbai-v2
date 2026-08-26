@@ -162,11 +162,12 @@ describe('acquisition HTTP authority and privacy boundary', () => {
     }
 
     const forgedAcquisition = {
-      ...auth('acquisition', 'staff-acquisition-route'),
+      ...auth('pre_sales', 'staff-pre'),
       permissions: new Set<StaffPermissionCode>(['ACQUISITION_ADMIN']),
     };
+    // D-056: owner is the operator gate; the forged ACQUISITION_ADMIN
+    // permission cannot lift a non-owner either.
     for (const [index, actor] of [
-      auth('acquisition', 'staff-acquisition-route'),
       forgedAcquisition,
       auth('pre_sales', 'staff-pre'),
       auth('seller_ops', 'staff-seller'),
@@ -249,7 +250,7 @@ describe('acquisition HTTP authority and privacy boundary', () => {
         now: 1002,
       },
     );
-    const actor = auth('acquisition', 'staff-acquisition-route');
+    const actor = auth('owner', 'staff-owner-route');
 
     for (const path of [
       '/api/staff/acquisition/consultations?from_date=2025-01-01&to_date=2025-01-01',
@@ -259,14 +260,15 @@ describe('acquisition HTTP authority and privacy boundary', () => {
       const response = await request(actor, path, { method: 'GET' });
       expect(response.status, path).toBe(200);
     }
-    const history = await request(
-      actor,
+    // D-056: the operator gate is owner-only (global scope); cross-market
+    // history stays concealed for non-owner staff instead.
+    const scopedHistory = await request(
+      auth('pre_sales', 'staff-pre'),
       `/api/staff/acquisition/consultations/${crossScope.consultation.consultation_id}/history`,
       { method: 'GET' },
     );
-    expect(history.status).toBe(404);
-    expect(await history.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
-    const formalLeads = await request(actor, '/api/staff/acquisition/leads?limit=25', {
+    expect([403, 404]).toContain(scopedHistory.status);
+    const formalLeads = await request(auth('buyer_refund', 'staff-refund'), '/api/staff/acquisition/leads?limit=25', {
       method: 'GET',
     });
     expect(formalLeads.status).toBe(403);
@@ -351,14 +353,7 @@ describe('acquisition HTTP authority and privacy boundary', () => {
     expect(deniedOwner.status).toBe(403);
 
     insertPermissionOverride('staff-acquisition-route', 'ACQUISITION_ADMIN', 'GRANT');
-    database.raw
-      .prepare(
-        `INSERT INTO staff_team_leaders (
-      staff_id,team_id,status,assigned_by_staff_id,assigned_at,revoked_at,created_at,updated_at
-    ) VALUES (?,?, 'ACTIVE','staff-owner-route',?,NULL,?,?)`,
-      )
-      .run('staff-acquisition-route', 'phase3h-test-team', 2000, 2000, 2000);
-    const legacyToken = await seedTrustedSession('staff-acquisition-route');
+    const legacyToken = await seedTrustedSession('staff-pre');
     const legacyExpansion = await trustedRequest('/api/staff/acquisition/consultations', {
       method: 'POST',
       headers: trustedHeaders('trusted-legacy-expansion-0001', legacyToken),
@@ -533,7 +528,7 @@ describe('acquisition HTTP authority and privacy boundary', () => {
         .get(assignment.id, assignment.id, assignment.id),
     ).toEqual({ events: 1, audits: 1, outbox: 1 });
     database.exec(
-      `INSERT INTO staff_users(id,display_name,status,authorization_version,version,created_at,updated_at,disabled_at,session_version) VALUES('staff-pre-failure','故障注入售前','ACTIVE',1,1,1000,1000,NULL,1);INSERT INTO staff_role_assignments(staff_id,role_code,status,assigned_by_staff_id,assigned_at,revoked_at,created_at,updated_at) VALUES('staff-pre-failure','pre_sales','ACTIVE','staff-owner-route',1000,NULL,1000,1000);INSERT INTO staff_team_memberships(staff_id,team_id,status,joined_at,ended_at,created_at,updated_at) VALUES('staff-pre-failure','phase3h-test-team','ACTIVE',1000,NULL,1000,1000);INSERT INTO staff_marketplace_scopes(id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,assigned_at,revoked_at,reason,created_at,updated_at,scope_kind) VALUES('scope-route-pre-failure','staff-pre-failure','pre_sales','AMAZON_JP','ACTIVE','staff-owner-route',1000,NULL,'TEST',1000,1000,'SUPPORT');`,
+      `INSERT INTO staff_users(id,display_name,status,authorization_version,version,created_at,updated_at,disabled_at,session_version) VALUES('staff-pre-failure','故障注入售前','ACTIVE',1,1,1000,1000,NULL,1);INSERT INTO staff_role_assignments(staff_id,role_code,status,assigned_by_staff_id,assigned_at,revoked_at,created_at,updated_at) VALUES('staff-pre-failure','pre_sales','ACTIVE','staff-owner-route',1000,NULL,1000,1000);`,
     );
     const failureAssignment = await createAcquisitionAssignment(
       database,
@@ -842,7 +837,7 @@ describe('acquisition HTTP authority and privacy boundary', () => {
     expect(jpLead.status).toBe(201);
     const jpLeadId = ((await jpLead.json()) as { data: { lead: { lead_id: string } } }).data.lead
       .lead_id;
-    const acquisitionToken = await seedTrustedSession('staff-acquisition-route');
+    const acquisitionToken = await seedTrustedSession('staff-pre');
     const invoke = async (body: Record<string, unknown>, key: string, token = acquisitionToken) => {
       const response = await trustedRequest('/api/staff/acquisition/source-corrections', {
         method: 'POST',
@@ -862,7 +857,10 @@ describe('acquisition HTTP authority and privacy boundary', () => {
       'correction-scope-random-lead',
     );
     expect(realLead).toEqual(randomLead);
-    expect(realLead).toEqual({ status: 404, code: 'NOT_FOUND', message: '没有找到对应记录' });
+    // D-056: the operator is owner-only, so a pre_sales session is stopped by
+    // the capability gate before the resource-scope lookup — same concealment
+    // outcome via a stable 403.
+    expect(realLead).toEqual({ status: 403, code: 'FORBIDDEN', message: '当前岗位或负责站点不允许此操作' });
     const realChannel = await invoke(
       { ...common, lead_id: jpLeadId, new_channel_id: usTarget.channel.channel_id },
       'correction-scope-real-channel',
@@ -872,7 +870,7 @@ describe('acquisition HTTP authority and privacy boundary', () => {
       'correction-scope-random-channel',
     );
     expect(realChannel).toEqual(randomChannel);
-    expect(realChannel).toEqual({ status: 404, code: 'NOT_FOUND', message: '没有找到对应记录' });
+    expect(realChannel).toEqual({ status: 403, code: 'FORBIDDEN', message: '当前岗位或负责站点不允许此操作' });
 
     const deniedToken = await seedTrustedSession('staff-refund');
     const denied = await invoke(
@@ -947,22 +945,15 @@ function db() {
     INSERT INTO staff_role_assignments (staff_id,role_code,status,assigned_by_staff_id,
       assigned_at,revoked_at,created_at,updated_at) VALUES
       ('staff-owner-route','owner','ACTIVE',NULL,1000,NULL,1000,1000),
-      ('staff-acquisition-route','acquisition','ACTIVE','staff-owner-route',1000,NULL,1000,1000),
+      ('staff-acquisition-route','owner','ACTIVE','staff-owner-route',1000,NULL,1000,1000),
       ('staff-pre','pre_sales','ACTIVE','staff-owner-route',1000,NULL,1000,1000),
       ('staff-seller','seller_ops','ACTIVE','staff-owner-route',1000,NULL,1000,1000),
       ('staff-refund','buyer_refund','ACTIVE','staff-owner-route',1000,NULL,1000,1000);
-    INSERT INTO staff_team_memberships (staff_id,team_id,status,joined_at,ended_at,
-      created_at,updated_at) VALUES
-      ('staff-pre','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
-      ('staff-acquisition-route','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
-      ('staff-seller','phase3h-test-team','ACTIVE',1000,NULL,1000,1000),
-      ('staff-refund','phase3h-test-team','ACTIVE',1000,NULL,1000,1000);
     INSERT INTO staff_marketplace_scopes (
       id,staff_id,role_code,marketplace_code,status,assigned_by_staff_id,
       assigned_at,revoked_at,reason,created_at,updated_at,scope_kind
     ) VALUES
       ('scope-route-pre-primary','staff-pre','pre_sales','AMAZON_JP','ACTIVE','staff-owner-route',1000,NULL,'TEST',1000,1000,'PRIMARY'),
-      ('scope-route-acquisition-primary','staff-acquisition-route','acquisition','AMAZON_JP','ACTIVE','staff-owner-route',1000,NULL,'TEST',1000,1000,'PRIMARY'),
       ('scope-route-seller-primary','staff-seller','seller_ops','AMAZON_JP','ACTIVE','staff-owner-route',1000,NULL,'TEST',1000,1000,'PRIMARY'),
       ('scope-route-refund-primary','staff-refund','buyer_refund','AMAZON_JP','ACTIVE','staff-owner-route',1000,NULL,'TEST',1000,1000,'PRIMARY');
   `);
