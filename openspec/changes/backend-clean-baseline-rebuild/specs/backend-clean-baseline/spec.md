@@ -131,3 +131,27 @@ Source rows sharing one order id with identical facts SHALL collapse determinist
 
 - **WHEN** two rows share an order id and all thirty columns are identical
 - **THEN** exactly one logical order row is applied and currency totals count it once.
+
+### Requirement: Stage 6.6 converges duplicate business models
+
+Staff roles SHALL be exactly `owner`, `pre_sales`, `buyer_refund` and `seller_ops`; the `acquisition` role, public-pool tasking, task claiming, round-robin rotation, automatic owner fallback takeover, availability rosters, automatic reassignment and the department/team/leader/role-consolidation organization tables SHALL be removed. Assignment SHALL resolve to the fixed responsible staff: the buyer's pre-sales owner for buyer pipeline duties, the buyer's refund owner for review and refund duties, and the seller organization's account manager for seller duties; owner retains global view and processing. Buyer chat and seller order-communication screenshots SHALL be one business kind, `ORDER_COMMUNICATION_SCREENSHOT`, attached to the formal order, staff-uploaded, multiple per order, visible to all active members of the seller organization, never to buyers, concealed-404 for other sellers, with uploader, time, hash, audit and original audience preserved, cold-archived six months after full order closure without widening visibility on restore. Order payment screenshots SHALL be exactly one per order evidence version, enforced in the database through the single generic file association. Seller organization members SHALL see all stores, products, orders, communication screenshots, service fees, rates and settlement amounts/vouchers of their organization, with organization-setting and member management restricted to the organization OWNER; store grant/scope tables SHALL be removed and each product SHALL have at most one current primary contact member recorded with audited history events. Marketplace, daily exchange rates, seller markup policies and service fees SHALL each have exactly one authoritative source with immediate-effect versioning (no SUBMITTED/CONFIRMED/REJECTED dual approval), equal maintenance rights for owner and seller_ops, order-date resolution and immutable order snapshots. Exactly one immutable formal-order financial snapshot SHALL exist per order and all financial, refund, settlement, portal and reporting reads SHALL use it. `internal-finance` SHALL be the only financial calculation source; the dashboard's separate financial projection read model SHALL be removed. One aggregate staff formal-order detail endpoint SHALL replace the separate order-integrity detail, operating-integrity order lookup, buyer-advance-principal lookup alias and the finance order detail's duplicated base fields. The acquisition CRM runtime and the integration outbox (including dead letters) SHALL be removed while `buyer_channels`, audit events, domain events, idempotency, transaction assertions and the cold-archive queue jobs are retained; runtime portal and business routes SHALL NOT read historical import intermediate tables, enforced by a source-boundary guard.
+
+#### Scenario: Buyer number is allocated at profile creation
+
+- **WHEN** staff first records a buyer profile (or an invited registration completes)
+- **THEN** the buyer number `YYYYMMDD + B/C + channel sequence` is generated immediately using the China business date of first entry, the channel counter advances atomically with optimistic locking, and the number can never be modified or reallocated afterwards.
+
+#### Scenario: Duplicate approval endpoints are gone
+
+- **WHEN** a client calls a removed submit/confirm/reject rate or service-fee approval endpoint, a removed acquisition/outbox route, or a removed duplicate order detail route
+- **THEN** the route does not exist and a real 404 is returned.
+
+#### Scenario: Reservation history blocks repeat participation
+
+- **WHEN** a buyer who already has an APPROVED reservation or a formal order under a seller organization submits a new reservation for any store of that organization
+- **THEN** the request is rejected with a contact-pre-sales reason unless a valid one-time manual exception exists, and the exception is consumed with audit when used.
+
+#### Scenario: Seller sees organization-wide communication screenshots
+
+- **WHEN** any active member of the seller organization requests an order communication screenshot of its own organization's order
+- **THEN** access is granted regardless of store grant history, while another organization's member receives a concealed 404.

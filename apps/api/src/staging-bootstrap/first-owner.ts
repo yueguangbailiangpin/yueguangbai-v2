@@ -9,8 +9,8 @@ import {
 } from '../foundation/idempotency';
 import { normalizeStaffEmail } from '../staff-auth/cloudflare-access';
 
-const TARGET_SCHEMA = 26;
-const STAGING_BUYER_CHANNEL_ID = 'staging-buyer-channel';
+const TARGET_SCHEMA = 27;
+const STAGING_BUYER_CHANNEL_ID = 'buyer-channel-wechat-b';
 const STAGING_DATABASE_NAME = /^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const STAGING_ZERO_STOCK_TABLES = [
@@ -18,7 +18,6 @@ const STAGING_ZERO_STOCK_TABLES = [
   'acquisition_leads',
   'acquisition_prospects',
   'audit_events',
-  'buyer_channels',
   'buyer_customers',
   'buyer_refund_obligations',
   'customer_account_personas',
@@ -162,11 +161,6 @@ export async function bootstrapStagingFirstOwner(
       }),
       now,
     ),
-    database.prepare(`INSERT INTO buyer_channels(
-      id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at
-    ) VALUES(?,'STG','Staging synthetic buyer','ACTIVE',1,1,?,?,NULL)`).bind(
-      STAGING_BUYER_CHANNEL_ID, now, now,
-    ),
     stagingBootstrapAuditStatement(
       database,
       `staging-audit-${crypto.randomUUID()}`,
@@ -253,6 +247,8 @@ function emptyStagingAssertion(database: SqlDatabase): SqlStatement {
       AND NOT EXISTS(SELECT 1 FROM staff_authorization_events)
       ${STAGING_ZERO_STOCK_TABLES.map((table) =>
         `AND NOT EXISTS(SELECT 1 FROM ${table})`).join('\n      ')}
+      AND (SELECT COUNT(*) FROM buyer_channels
+        WHERE next_sequence<>1 OR status<>'ACTIVE')=0
     THEN 1 ELSE 0 END`);
 }
 
@@ -273,10 +269,10 @@ function finalAuthorityAssertion(
       AND (SELECT COUNT(*) FROM staff_assignment_fallbacks
         WHERE marketplace_code='AMAZON_JP' AND staff_id=? AND version=1)=1
       AND (SELECT COUNT(*) FROM staff_sessions)=0
-      AND (SELECT COUNT(*) FROM buyer_channels)=1
+      AND (SELECT COUNT(*) FROM buyer_channels WHERE code IN ('B','C'))=2
       AND (SELECT COUNT(*) FROM buyer_channels
-        WHERE id='staging-buyer-channel' AND code='STG'
-          AND status='ACTIVE' AND version=1)=1
+        WHERE id='buyer-channel-wechat-b' AND code='B'
+          AND status='ACTIVE')=1
       AND (SELECT COUNT(*) FROM staff_authorization_events
         WHERE staff_id=? AND authorization_version=1
           AND event_type='STAGING_FIRST_OWNER_BOOTSTRAPPED')=1
@@ -311,7 +307,9 @@ async function bootstrapState(database: SqlDatabase): Promise<{
     +(SELECT COUNT(*) FROM staff_role_consolidation_mappings)
     +(SELECT COUNT(*) FROM staff_authorization_events) AS staff_total,
     ${STAGING_ZERO_STOCK_TABLES.map((table) =>
-      `(SELECT COUNT(*) FROM ${table})`).join('\n    +')} AS business_total`
+      `(SELECT COUNT(*) FROM ${table})`).join('\n    +')}
+    +(SELECT COUNT(*) FROM buyer_channels
+      WHERE next_sequence<>1 OR status<>'ACTIVE') AS business_total`
   ).first<{staff_total:number;business_total:number}>();
   return {
     staffEmpty: Number(row?.staff_total ?? -1) === 0,

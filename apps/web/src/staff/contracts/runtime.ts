@@ -31,27 +31,26 @@ const sellerPrincipalRatePolicyVersionSchema = z
     source_currency_code: z.string(),
     quote_currency_code: z.literal('CNY'),
     version_no: z.number().int().positive(),
-    decision_version: z.number().int().positive(),
-    status: z.enum(['SUBMITTED', 'CONFIRMED', 'REJECTED']),
     markup_rate_value: z.string().regex(/^(0|[1-9][0-9]*)$/u),
     markup_rate_scale: z.string().regex(/^100000000$/u),
     effective_from: z.number().int().nonnegative(),
-    submitted_at: z.number().int().nonnegative(),
-    confirmed_at: z.number().int().nonnegative().nullable(),
-    rejection_reason: z.string().nullable(),
+    created_by_staff_id: z.string(),
+    created_at: z.number().int().nonnegative(),
     replayed: z.boolean(),
   })
   .strict();
+// Stage 6.6A (D-056): one save immediately forms the new effective base-rate
+// version (no submit/confirm dual approval). `effective_from` is the version's
+// creation time.
 const buyerDailyExchangeRateVersionSchema = z
   .object({
-    rate_id: z.string(),
+    rate_version_id: z.string(),
     business_date: z.string(),
     version_no: z.number().int().positive(),
-    decision_version: z.number().int().positive(),
-    status: z.enum(['SUBMITTED', 'CONFIRMED', 'REJECTED']),
-    cny_per_jpy_e8: integerString,
-    rejection_reason: z.string().nullable(),
-    confirmed_at: epoch.nullable(),
+    rate_value: integerString,
+    rate_scale: z.string().regex(/^100000000$/u),
+    created_by_staff_id: z.string(),
+    created_at: epoch,
   })
   .strict();
 export const staffSellerPrincipalRatePolicySchema = z
@@ -61,13 +60,9 @@ export const staffSellerPrincipalRatePolicySchema = z
     seller_organization_id: z.string().nullable(),
     default_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
     seller_override_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
-    default_pending_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
-    seller_override_pending_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
     default_next_version: z.number().int().positive(),
     seller_override_next_version: z.number().int().positive().nullable(),
     selected_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
-    default_upcoming_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
-    seller_override_upcoming_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
   })
   .strict();
 export const staffSellerPrincipalRatePoliciesResponseSchema = z
@@ -88,8 +83,8 @@ export const staffRateCenterSchema = z
     base_rate: z
       .object({
         business_date: z.string(),
-        confirmed_rate: buyerDailyExchangeRateVersionSchema.nullable(),
-        pending_rate: buyerDailyExchangeRateVersionSchema.nullable(),
+        versions: z.array(buyerDailyExchangeRateVersionSchema),
+        active_version: buyerDailyExchangeRateVersionSchema.nullable(),
         next_version: z.number().int().positive(),
       })
       .strict(),
@@ -107,47 +102,38 @@ export const staffRateCenterSchema = z
   .strict();
 export const staffRateCenterBaseMutationSchema = z
   .object({
-    // The mutation results carry `replayed` and omit `confirmed_at` /
-    // `rejection_reason` on some paths — tolerate both shapes instead of
-    // failing the parse after the server already committed the decision.
-    base_rate: buyerDailyExchangeRateVersionSchema.extend({
-      confirmed_at: z.number().int().nonnegative().nullable().optional(),
-      rejection_reason: z.string().nullable().optional(),
-      replayed: z.boolean().optional(),
-    }),
+    base_rate: z
+      .object({
+        rate_version_id: z.string(),
+        business_date: z.string(),
+        version_no: z.number().int().positive(),
+        rate_value: integerString,
+        rate_scale: z.string().regex(/^100000000$/u),
+        effective_from: epoch,
+        replayed: z.boolean().optional(),
+      })
+      .strict(),
   })
   .strict();
 const serviceFeeReviewTypeSchema = z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']);
 const serviceFeeEffectiveSchema = z
   .object({
-    fee_version_id: z.string(),
+    rule_version_id: z.string(),
     version_no: z.number().int().positive(),
     fee_cny_fen: integerString,
     effective_from: epoch,
-    confirmed_at: epoch,
-  })
-  .strict();
-const serviceFeePendingSchema = z
-  .object({
-    fee_version_id: z.string(),
-    version_no: z.number().int().positive(),
-    decision_version: z.number().int().positive(),
-    fee_cny_fen: integerString,
-    effective_from: epoch,
+    created_at: epoch,
   })
   .strict();
 export const sellerServiceFeeVersionSchema = z
   .object({
-    fee_version_id: z.string(),
+    rule_version_id: z.string(),
     seller_organization_id: z.string(),
+    marketplace_code: z.string(),
     review_type: serviceFeeReviewTypeSchema,
     version_no: z.number().int().positive(),
-    decision_version: z.number().int().positive(),
-    status: z.enum(['SUBMITTED', 'CONFIRMED', 'REJECTED']),
     fee_cny_fen: integerString,
     effective_from: epoch,
-    rejection_reason: z.string().nullable(),
-    confirmed_at: epoch.nullable(),
     replayed: z.boolean(),
   })
   .strict();
@@ -329,8 +315,6 @@ export const staffSellerServiceFeesSchema = z
         .object({
           review_type: serviceFeeReviewTypeSchema,
           effective_fee: serviceFeeEffectiveSchema.nullable(),
-          pending_fee: serviceFeePendingSchema.nullable(),
-          upcoming_fee: serviceFeeEffectiveSchema.nullable(),
           next_version: z.number().int().positive(),
         })
         .strict(),
@@ -340,12 +324,6 @@ export const staffSellerServiceFeesSchema = z
 export const staffSellerServiceFeeMutationSchema = z
   .object({
     fee: sellerServiceFeeVersionSchema,
-  })
-  .strict();
-export const staffApplyDefaultSellerServiceFeesSchema = z
-  .object({
-    applied: z.array(serviceFeeReviewTypeSchema),
-    fees: staffSellerServiceFeesSchema.shape.fees,
   })
   .strict();
 export const safeFileSchema = z

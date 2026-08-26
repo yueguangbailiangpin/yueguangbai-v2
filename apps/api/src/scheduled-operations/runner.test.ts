@@ -573,15 +573,11 @@ function seedScheduledReservationFixture(
     INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES ('seller-scheduled-subject','SELLER_ORG_MEMBER',1);
     INSERT INTO seller_organization_members(id,identity_subject_id,organization_id,member_number,username_fallback,display_name,role,primary_owner,status,version,created_at,updated_at,activated_at,disabled_at)
     VALUES ('seller-scheduled-owner','seller-scheduled-subject','seller-org-scheduled',1,'ido-mango-910001-1','负责人','OWNER',1,'ACTIVE',1,1,1,1,NULL);
-    INSERT INTO buyer_channels(id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at)
-    VALUES ('buyer-channel-scheduled','SC','定时任务测试渠道','ACTIVE',1,1,1,1,NULL);
     ${buyers
       .map(
-        (
-          index,
-        ) => `INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES ('buyer-scheduled-subject-${index}','BUYER_CUSTOMER',1);
-    INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,buyer_sequence,first_valid_order_business_date,display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
-    VALUES ('buyer-scheduled-${index}','buyer-scheduled-subject-${index}','AMAZON_JP','buyer-channel-scheduled',NULL,NULL,NULL,'测试买家${index}','ACTIVE','CLEAR',1,1,1,1,NULL);`,
+        (index) => `INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES ('buyer-scheduled-subject-${index}','BUYER_CUSTOMER',1);
+    INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,buyer_sequence,display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
+    VALUES ('buyer-scheduled-${index}','buyer-scheduled-subject-${index}','AMAZON_JP','buyer-channel-wechat-b','20260101B${String(index).padStart(4, '0')}',${index},'测试买家${index}','ACTIVE','CLEAR',1,1,1,1,NULL);`,
       )
       .join('\n')}
     INSERT INTO seller_stores(id,organization_id,marketplace_code,display_name,normalized_name,status,version,created_at,updated_at,disabled_at)

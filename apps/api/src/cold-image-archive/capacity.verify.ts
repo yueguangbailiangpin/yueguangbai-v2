@@ -82,7 +82,6 @@ async function seedCapacityDataset(db: SqliteDatabase, r2: MockObjectStorage): P
     DROP TRIGGER trg_order_evidence_version_submission_guard;
     DROP TRIGGER trg_order_evidence_instruction_snapshot_guard;
     DROP TRIGGER trg_order_evidence_duplicate_signal_after_version;
-    DROP TRIGGER trg_order_evidence_marketplace_money_legacy_insert;
     DROP TRIGGER trg_file_objects_intent_guard;
     DROP TRIGGER trg_file_objects_verified_guard;
     DROP TRIGGER trg_file_entity_links_verified_guard;
@@ -126,7 +125,7 @@ async function seedCapacityDataset(db: SqliteDatabase, r2: MockObjectStorage): P
     id: '?',
     identity_subject_id: '?',
     buyer_sequence: '1000000+?',
-    buyer_customer_no: "'CAP-'||?",
+    buyer_customer_no: "''||?",
   }, 'id=?');
   const reservationInsert = cloneStatement('product_reservations', {
     id: '?',
@@ -187,7 +186,13 @@ async function seedCapacityDataset(db: SqliteDatabase, r2: MockObjectStorage): P
     const closed = index % 40 === 0 ? recentClose : closedAt;
     const steps: [string, () => unknown][] = [
       ['subject', () => subjectInsert.run(`cap-subject-${index}`, baseSubject!.identity_subject_id)],
-      ['buyer', () => buyerInsert.run(buyerId, `cap-subject-${index}`, index, String(index), baseBuyer!.buyer_customer_id)],
+      ['buyer', () => buyerInsert.run(
+        buyerId,
+        `cap-subject-${index}`,
+        `20260801B${String(1_000_000 + index)}`,
+        index,
+        baseBuyer!.buyer_customer_id,
+      )],
       ['reservation', () => reservationInsert.run(reservationId, buyerId, baseReservation!.reservation_id)],
       ['submission', () => submissionInsert.run(submissionId, reservationId, buyerId, baseSubmission!.order_evidence_submission_id)],
       ['version', () => versionInsert.run(versionId, submissionId, reservationId, buyerId, baseVersion!.order_evidence_version_id)],

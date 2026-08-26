@@ -13,9 +13,6 @@ import {
   type SqliteDatabase,
 } from '@ygb/testkit';
 import {
-  allocateBuyerCustomerNumber,
-} from './allocate-buyer-number';
-import {
   createBuyerCustomer,
 } from './create-buyer';
 import {
@@ -33,13 +30,13 @@ afterEach(() => {
 });
 
 describe('customer master data', () => {
-  it('creates a disabled buyer without allocating a buyer number and replays', async () => {
+  it('creates a disabled buyer with an immediately allocated number and replays', async () => {
     database = createMigratedTestDatabase();
     seedStaffAndBuyerChannel(database);
 
     const first = await createBuyerCustomer(database, {
       marketplaceCode: 'AMAZON_JP',
-      buyerChannelId: 'buyer-channel-b',
+      buyerChannelId: 'buyer-channel-wechat-b',
       displayName: ' 测试买家 ',
       wechatId: ' Buyer_Test_01 ',
     }, {
@@ -49,15 +46,17 @@ describe('customer master data', () => {
       now: 2000,
     });
 
+    // Stage 6.6 (D-056): the final buyer number is allocated the moment the
+    // profile is created, even while the buyer is still DISABLED.
     expect(first).toMatchObject({
       access_status: 'DISABLED',
-      buyer_customer_no: null,
+      buyer_customer_no: '19700101B1001',
       replayed: false,
     });
 
     const replay = await createBuyerCustomer(database, {
       marketplaceCode: 'AMAZON_JP',
-      buyerChannelId: 'buyer-channel-b',
+      buyerChannelId: 'buyer-channel-wechat-b',
       displayName: '测试买家',
       wechatId: 'buyer_test_01',
     }, {
@@ -95,10 +94,22 @@ describe('customer master data', () => {
     expect(row).toEqual({
       display_name: '测试买家',
       access_status: 'DISABLED',
-      buyer_customer_no: null,
+      buyer_customer_no: '19700101B1001',
       normalized_wechat: 'buyer_test_01',
       claim_status: 'ACTIVE',
     });
+
+    // Allocating on channel B never consumes another channel's sequence.
+    const channels = await database.prepare(`
+      SELECT id, next_sequence
+      FROM buyer_channels
+      WHERE id IN ('buyer-channel-wechat-b', 'buyer-channel-wechat-c')
+      ORDER BY id
+    `).all<{ id: string; next_sequence: number }>();
+    expect(channels.results).toEqual([
+      { id: 'buyer-channel-wechat-b', next_sequence: 1002 },
+      { id: 'buyer-channel-wechat-c', next_sequence: 1 },
+    ]);
   });
 
   it('enforces global WeChat uniqueness across buyer and seller member identities', async () => {
@@ -107,7 +118,7 @@ describe('customer master data', () => {
 
     await createBuyerCustomer(database, {
       marketplaceCode: 'AMAZON_JP',
-      buyerChannelId: 'buyer-channel-b',
+      buyerChannelId: 'buyer-channel-wechat-b',
       displayName: '买家',
       wechatId: 'Shared_Wechat_01',
     }, {
@@ -215,110 +226,19 @@ describe('customer master data', () => {
     });
   });
 
-  it('allocates a buyer number only after activation and never consumes another channel sequence', async () => {
-    database = createMigratedTestDatabase();
-    seedStaffAndBuyerChannel(database);
+  // DELETED (subject removed by D-056): "allocates a buyer number only after
+  // activation and never consumes another channel sequence" — buyer numbers
+  // are now allocated at profile creation and the separate
+  // allocateBuyerCustomerNumber command no longer exists. The
+  // channel-isolation intent survives in the first test's channel C assertion.
 
-    const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'AMAZON_JP',
-      buyerChannelId: 'buyer-channel-b',
-      displayName: '待激活买家',
-      wechatId: 'buyer_number_01',
-    }, {
-      actor: preSalesActor(),
-      idempotencyKey: 'buyer:create:0003',
-      now: 2000,
-    });
-
-    await expect(allocateBuyerCustomerNumber(database, {
-      buyerCustomerId: buyer.buyer_customer_id,
-      firstValidOrderBusinessDate: '2026-08-01',
-    }, {
-      actor: preSalesActor(),
-      idempotencyKey: 'buyer:number:0001',
-      now: 2100,
-    })).rejects.toMatchObject({
-      code: 'CUSTOMER_NOT_ACTIVE',
-      status: 409,
-    });
-
-    database.exec(`
-      UPDATE buyer_customers
-      SET
-        access_status='ACTIVE',
-        activated_at=2200,
-        disabled_at=NULL,
-        version=version+1,
-        updated_at=2200
-      WHERE id='${buyer.buyer_customer_id}';
-
-      UPDATE buyer_channels
-      SET updated_at=5000
-      WHERE id='buyer-channel-b';
-    `);
-
-    const allocated = await allocateBuyerCustomerNumber(database, {
-      buyerCustomerId: buyer.buyer_customer_id,
-      firstValidOrderBusinessDate: '2026-08-01',
-    }, {
-      actor: preSalesActor(),
-      idempotencyKey: 'buyer:number:0002',
-      now: 2300,
-    });
-
-    expect(allocated).toMatchObject({
-      buyer_customer_no: '20260801B1',
-      buyer_sequence: 1,
-      already_allocated: false,
-      replayed: false,
-    });
-
-    const repeatDifferentKey = await allocateBuyerCustomerNumber(database, {
-      buyerCustomerId: buyer.buyer_customer_id,
-      firstValidOrderBusinessDate: '2026-08-01',
-    }, {
-      actor: preSalesActor(),
-      idempotencyKey: 'buyer:number:0003',
-      now: 2400,
-    });
-    expect(repeatDifferentKey).toMatchObject({
-      buyer_customer_no: '20260801B1',
-      buyer_sequence: 1,
-      already_allocated: true,
-    });
-
-    const channels = await database.prepare(`
-      SELECT id, next_sequence, updated_at
-      FROM buyer_channels
-      ORDER BY id
-    `).all<{
-      id: string;
-      next_sequence: number;
-      updated_at: number;
-    }>();
-
-    expect(channels.results).toEqual([
-      {
-        id: 'buyer-channel-b',
-        next_sequence: 2,
-        updated_at: 5001,
-      },
-      {
-        id: 'buyer-channel-c',
-        next_sequence: 1,
-        updated_at: 1000,
-      },
-    ]);
-  });
-
-
-  it('maps invalid WeChat and business-date inputs to validation errors', async () => {
+  it('maps invalid WeChat input to a validation error', async () => {
     database = createMigratedTestDatabase();
     seedStaffAndBuyerChannel(database);
 
     await expect(createBuyerCustomer(database, {
       marketplaceCode: 'AMAZON_JP',
-      buyerChannelId: 'buyer-channel-b',
+      buyerChannelId: 'buyer-channel-wechat-b',
       displayName: '无效微信买家',
       wechatId: 'bad wechat',
     }, {
@@ -329,40 +249,10 @@ describe('customer master data', () => {
       code: 'VALIDATION_ERROR',
       status: 400,
     });
-
-    const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'AMAZON_JP',
-      buyerChannelId: 'buyer-channel-b',
-      displayName: '日期测试买家',
-      wechatId: 'buyer_date_01',
-    }, {
-      actor: preSalesActor(),
-      idempotencyKey: 'buyer:create:date-test',
-      now: 2100,
-    });
-
-    database.exec(`
-      UPDATE buyer_customers
-      SET
-        access_status='ACTIVE',
-        activated_at=2200,
-        disabled_at=NULL,
-        version=version+1,
-        updated_at=2200
-      WHERE id='${buyer.buyer_customer_id}';
-    `);
-
-    await expect(allocateBuyerCustomerNumber(database, {
-      buyerCustomerId: buyer.buyer_customer_id,
-      firstValidOrderBusinessDate: '2026-02-30',
-    }, {
-      actor: preSalesActor(),
-      idempotencyKey: 'buyer:number:invalid-date',
-      now: 2300,
-    })).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      status: 400,
-    });
+    // DELETED (subject removed by D-056): the invalid
+    // first-valid-order-business-date allocation half of this case — the
+    // separate buyer-number allocation command no longer exists and numbers
+    // are allocated at creation.
   });
 
   it('does not expose seller management to an actor without permission', async () => {
@@ -424,18 +314,12 @@ function seedStaffAndBuyerChannel(
       ('scope-customer-seller-jp','staff-seller-ops','seller_ops','AMAZON_JP',
        'ACTIVE','zz-phase3h-test-owner',1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY');
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES
-      (
-        'buyer-channel-b', 'B', '买家渠道B',
-        'ACTIVE', 1, 1, 1000, 1000, NULL
-      ),
-      (
-        'buyer-channel-c', 'C', '买家渠道C',
-        'ACTIVE', 1, 1, 1000, 1000, NULL
-      );
+    -- The operational B/C channels are pre-seeded by migration 0027 (their
+    -- codes are UNIQUE). Buyer numbers must be 13+ characters, so start the
+    -- channel B counter at a four-digit sequence.
+    UPDATE buyer_channels
+    SET next_sequence=1001
+    WHERE id='buyer-channel-wechat-b';
   `);
 }
 

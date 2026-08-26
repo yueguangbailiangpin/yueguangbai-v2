@@ -87,7 +87,7 @@ describe('staging first owner operator entrypoint', () => {
         const result=queries.map((query)=>({
           success:true,
           results:String(query.sql).includes('SELECT schema_version FROM app_schema_state')
-            ?[{schema_version: 26}]
+            ?[{schema_version: 27}]
             :[],
           meta:{changes:String(query.sql).includes('INSERT OR IGNORE INTO command_idempotency_records')?1:0},
         }));
@@ -100,7 +100,7 @@ describe('staging first owner operator entrypoint', () => {
         status:'STAGING_FIRST_OWNER_BOOTSTRAPPED',role_code:'owner',remote_writes:1,
       });
       expect(batches).toHaveLength(1);
-      expect(batches[0]).toHaveLength(11);
+      expect(batches[0]).toHaveLength(10);
     }finally{rmSync(directory,{recursive:true,force:true});}
   });
 });

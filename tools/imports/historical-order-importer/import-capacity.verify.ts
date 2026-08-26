@@ -275,8 +275,6 @@ export function seedCapacityIdentities(db: SqliteDatabase): void {
     ['wx-cap-conflict-a', 'cap-buyer-x1'], ['wx-cap-conflict-a', 'cap-buyer-x2'],
   ];
   db.exec(`
-    INSERT OR IGNORE INTO buyer_channels(id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at)
-    VALUES('cap-channel','Z','容量验证渠道','ACTIVE',1,1,1000,1000,NULL);
     INSERT INTO seller_organizations(id,marketplace_code,seller_code,origin_channel_id,current_channel_id,
       seller_sequence,organization_name,status,version,created_at,updated_at,activated_at,disabled_at,next_member_number)
     VALUES('cap-seller-match','AMAZON_JP','cap-match-1','seller-channel-ido-mango','seller-channel-ido-mango',9800,
@@ -291,20 +289,22 @@ export function seedCapacityIdentities(db: SqliteDatabase): void {
       ('cap-store-conflict-1','cap-seller-conflict-1','AMAZON_JP','容量冲突店铺','容量冲突店铺','ACTIVE',1,1000,1000,NULL),
       ('cap-store-conflict-2','cap-seller-conflict-2','AMAZON_JP','容量冲突店铺','容量冲突店铺','ACTIVE',1,1000,1000,NULL);
   `);
-  for (const [wechat, buyerId] of buyers) {
+  buyers.forEach(([wechat, buyerId], index) => {
+    const sequence = 900_000 + index;
     db.exec(`
       INSERT INTO customer_identity_subjects(id,subject_type,created_at)
       VALUES('${buyerId}-subject','BUYER_CUSTOMER',1000);
       INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,
-        buyer_sequence,first_valid_order_business_date,display_name,access_status,identity_review_status,
+        buyer_sequence,display_name,access_status,identity_review_status,
         version,created_at,updated_at,activated_at,disabled_at)
-      VALUES('${buyerId}','${buyerId}-subject','AMAZON_JP','cap-channel',NULL,NULL,NULL,
+      VALUES('${buyerId}','${buyerId}-subject','AMAZON_JP','buyer-channel-wechat-b',
+        '20260801B${String(sequence).padStart(7, '0')}',${sequence},
         '容量验证买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
       INSERT INTO wechat_identity_claims(id,identity_subject_id,display_wechat,normalized_wechat,
         status,version,acquired_at,created_at,updated_at)
       VALUES('${buyerId}-claim','${buyerId}-subject','${wechat}','${wechat}','ACTIVE',1,1000,1000,1000);
     `);
-  }
+  });
 }
 
 describe('historical import capacity (stage 6.7)', () => {

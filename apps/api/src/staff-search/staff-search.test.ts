@@ -21,17 +21,15 @@ describe('staff global search', () => {
       base.exec(`
         INSERT INTO customer_identity_subjects (id, subject_type, created_at)
           VALUES ('search-subject-1', 'BUYER_CUSTOMER', 100);
-        INSERT INTO buyer_channels (
-          id, code, name, status, next_sequence, version, created_at, updated_at
-        ) VALUES ('search-channel', 'B', '线下渠道', 'ACTIVE', 3593, 1, 100, 100);
         INSERT INTO buyer_customers (
           id, identity_subject_id, marketplace_code, buyer_channel_id,
-          buyer_customer_no, buyer_sequence, first_valid_order_business_date,
+          buyer_customer_no, buyer_sequence,
           display_name, access_status, identity_review_status,
           version, created_at, updated_at, activated_at
         ) VALUES (
-          'search-buyer-1', 'search-subject-1', 'AMAZON_JP', 'search-channel',
-          '20260824B03590', 3590, '2026-08-24',
+          'search-buyer-1', 'search-subject-1', 'AMAZON_JP',
+          'buyer-channel-wechat-b',
+          '20260824B03590', 3590,
           '张三丰', 'ACTIVE', 'CLEAR', 1, 100, 100, 100
         );
         INSERT INTO wechat_identity_claims (

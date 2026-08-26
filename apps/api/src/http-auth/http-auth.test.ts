@@ -643,14 +643,6 @@ async function seedBuyerAccount(
     },
   );
   target.exec(`
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-http-channel', 'H', 'HTTP test', 'ACTIVE',
-      1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO customer_identity_subjects (
       id, subject_type, created_at
     ) VALUES (
@@ -660,12 +652,12 @@ async function seedBuyerAccount(
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no, buyer_sequence,
-      first_valid_order_business_date, display_name,
+      display_name,
       access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
       'buyer-http-1', 'buyer-http-subject-1', 'AMAZON_JP',
-      'buyer-http-channel', NULL, NULL, NULL, 'HTTP buyer',
+      'buyer-channel-wechat-b', '19700101B0001', 1, 'HTTP buyer',
       'ACTIVE', 'CLEAR', 1,
       1000, 1000, 1000, NULL
     );

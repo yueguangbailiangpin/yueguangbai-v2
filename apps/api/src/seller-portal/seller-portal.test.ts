@@ -1171,23 +1171,23 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     });
   });
 
-  it('retains the complete schema 26 history', async () => {
+  it('retains the complete schema 27 history', async () => {
     if (!database) throw new Error('test_database_missing');
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(26);
+    expect(Number(state?.schema_version)).toBe(27);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(26);
+    expect(migrations).toHaveLength(27);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0026_stage65_archive_import_closeout.sql');
+    expect(migrations.at(-1)).toBe('0027_stage66_single_source_convergence.sql');
   });
 });
 
@@ -1323,14 +1323,6 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
       'scope-staff-portal-jp', 'staff-portal', 'seller_ops',
       'AMAZON_JP', 'ACTIVE', 'zz-phase3h-test-owner',
       1000, NULL, 'TEST_PRIMARY', 1000, 1000, 'PRIMARY'
-    );
-
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-portal', 'P', 'Portal buyers', 'ACTIVE',
-      1, 1, 1000, 1000, NULL
     );
 
     INSERT INTO customer_identity_subjects (id, subject_type, created_at)
@@ -1495,15 +1487,14 @@ function seedSellerPortalFixture(target: SqliteDatabase): void {
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no, buyer_sequence,
-      first_valid_order_business_date, display_name,
-      access_status, identity_review_status, version,
+      display_name, access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       ('buyer-session', 'subject-buyer', 'AMAZON_JP',
-       'buyer-channel-portal', NULL, NULL, NULL, 'Buyer session',
+       'buyer-channel-wechat-b', '19700101B0001', 1, 'Buyer session',
        'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
       ('buyer-secret-1', 'subject-buyer-secret', 'AMAZON_JP',
-       'buyer-channel-portal', NULL, NULL, NULL, 'Secret buyer',
+       'buyer-channel-wechat-b', '19700101B0002', 2, 'Secret buyer',
        'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL);
 
     INSERT INTO product_reservations (

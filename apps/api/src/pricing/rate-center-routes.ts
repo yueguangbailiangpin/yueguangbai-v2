@@ -10,9 +10,8 @@ import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { scopeAllowsSellerOrganization } from '../staff-assignment/data-scope';
 import {
-  confirmBuyerDailyExchangeRate,
   readBuyerDailyExchangeRateVersions,
-  submitBuyerDailyExchangeRate,
+  saveBuyerDailyExchangeRate,
 } from './buyer-daily-exchange-rates';
 import { PricingError, parseAsOfParameter } from './pricing-shared';
 import { readSellerPrincipalRatePolicies } from './seller-principal-rate-policy';
@@ -20,16 +19,14 @@ import { readSellerPrincipalRatePolicies } from './seller-principal-rate-policy'
 const BODY_LIMIT = 16 * 1024;
 
 /**
- * The rate center is deliberately a thin Staff surface over the established
- * immutable pricing streams.  A confirmed base-rate row is the shared source
- * of truth for buyer refund and seller-principal calculations on an Amazon
- * order date; seller markups retain their own approval and effective-time
- * lifecycle.
+ * Stage 6.6 (D-056): the rate center is a thin Staff surface over the single
+ * immutable pricing streams.  One save immediately forms the new effective
+ * order-date base rate shared by buyer refunds and seller principal; owner
+ * and seller_ops have identical maintenance rights (no dual approval).
  */
 export function registerStaffRateCenterRoutes(app: Hono<any>): void {
   app.get('/api/staff/rate-center', withErrors(readRateCenter));
-  app.post('/api/staff/rate-center/base-rates/submit', withErrors(submitBaseRate));
-  app.post('/api/staff/rate-center/base-rates/:id/confirm', withErrors(confirmBaseRate));
+  app.post('/api/staff/rate-center/base-rates', withErrors(saveBaseRate));
 }
 
 async function readRateCenter(context: Context<any>): Promise<Response> {
@@ -91,9 +88,9 @@ async function readRateCenter(context: Context<any>): Promise<Response> {
   return context.json(apiSuccess(response, requestId(context)));
 }
 
-async function submitBaseRate(context: Context<any>): Promise<Response> {
+async function saveBaseRate(context: Context<any>): Promise<Response> {
   const actor = staffActor(context);
-  requireBaseRateSubmit(actor, staffDataScope(context));
+  requireBaseRateMaintain(actor);
   const body = await bodyRecord(context);
   exactKeys(body, ['business_date', 'rate_value', 'expected_version']);
   if (
@@ -103,31 +100,11 @@ async function submitBaseRate(context: Context<any>): Promise<Response> {
   ) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
-  const result = await submitBuyerDailyExchangeRate(
+  const result = await saveBuyerDailyExchangeRate(
     context.env.DB,
     {
       businessDate: body['business_date'],
       cnyPerJpyE8: decimalRateToE8(body['rate_value']),
-      expectedVersion: body['expected_version'],
-    },
-    command(context, actor),
-  );
-  context.header('Cache-Control', 'no-store');
-  return context.json(apiSuccess({ base_rate: result }, requestId(context)));
-}
-
-async function confirmBaseRate(context: Context<any>): Promise<Response> {
-  const actor = staffActor(context);
-  requireBaseRateConfirm(actor);
-  const body = await bodyRecord(context);
-  exactKeys(body, ['expected_version']);
-  if (typeof body['expected_version'] !== 'number') {
-    throw new PricingError('VALIDATION_ERROR', 400);
-  }
-  const result = await confirmBuyerDailyExchangeRate(
-    context.env.DB,
-    {
-      rateId: requiredId(context.req.param('id')),
       expectedVersion: body['expected_version'],
     },
     command(context, actor),
@@ -188,19 +165,11 @@ function requireRateCenterRead(actor: AssignmentStaffAuthorization): void {
   }
 }
 
-function requireBaseRateSubmit(actor: AssignmentStaffAuthorization, scope: StaffDataScope): void {
+function requireBaseRateMaintain(actor: AssignmentStaffAuthorization): void {
   if (
-    !actor.roles.has('owner') ||
-    !actor.permissions.has('SELLER_MANAGE') ||
-    !actor.permissions.has('FINANCIAL_CORRECT') ||
-    scope.type !== 'GLOBAL'
+    (!actor.roles.has('owner') && !actor.roles.has('seller_ops')) ||
+    !actor.permissions.has('SELLER_MANAGE')
   ) {
-    throw new PricingError('FORBIDDEN', 403);
-  }
-}
-
-function requireBaseRateConfirm(actor: AssignmentStaffAuthorization): void {
-  if (!actor.roles.has('owner') || !actor.permissions.has('FINANCIAL_CORRECT')) {
     throw new PricingError('FORBIDDEN', 403);
   }
 }
@@ -257,13 +226,6 @@ function exactKeys(body: Record<string, unknown>, keys: readonly string[]): void
   }
 }
 
-function requiredId(value: string | undefined): string {
-  if (!value || value.length < 1 || value.length > 120) {
-    throw new PricingError('VALIDATION_ERROR', 400);
-  }
-  return value;
-}
-
 function requestId(context: Context<any>): string {
   return String(context.get('requestId') ?? crypto.randomUUID());
 }
@@ -293,10 +255,6 @@ function message(code: string): string {
       return '资源不存在或不在当前授权范围内';
     case 'VERSION_CONFLICT':
       return '配置已发生变化，请刷新后重试';
-    case 'PRICING_RULE_PENDING_CONFLICT':
-      return '该订单日已有待确认基础汇率';
-    case 'PRICING_RULE_ALREADY_DECIDED':
-      return '该订单日基础汇率已经确认，历史不回写';
     case 'PRICING_RULE_NOT_FOUND':
       return '基础汇率版本不存在';
     case 'VALIDATION_ERROR':

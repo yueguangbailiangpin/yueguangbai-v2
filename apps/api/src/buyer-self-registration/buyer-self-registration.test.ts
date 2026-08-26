@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import { createApp } from '../app';
-import { allocateBuyerCustomerNumber } from '../customers/allocate-buyer-number';
+import { registerInvitedBuyer } from '../customer-security/invited-registration';
 import { registerBuyerSelfRegistrationRoutes } from './routes';
 import { consumeBuyerRegistrationRateLimit } from './rate-limit';
-import { registerBuyerSelf } from './register-buyer';
 import { hashOneTimeToken } from '@ygb/domain';
 import { rebindBuyerAuthAccount, revokeAllBuyerSessions } from './recovery';
 
@@ -18,7 +17,7 @@ afterEach(() => {
   database = null;
 });
 
-describe('Phase 4A2 buyer self registration', () => {
+describe('Phase 4A2 buyer invited registration', () => {
   it('closes direct registration when no Staff invitation is supplied', async () => {
     database = createDb();
     const app = createApp();
@@ -45,139 +44,28 @@ describe('Phase 4A2 buyer self registration', () => {
         (SELECT COUNT(*) FROM formal_orders) AS orders,
         (SELECT COUNT(*) FROM customer_login_accounts
           WHERE password_change_required=0
-            AND registration_source='SELF_REGISTRATION_NEW') AS accounts,
-        (SELECT COUNT(*) FROM buyer_preorder_number_allocations) AS numbers,
+            AND registration_source='INVITED_REGISTRATION') AS accounts,
+        (SELECT COUNT(*) FROM buyer_number_allocation_events) AS numbers,
         (SELECT COUNT(*) FROM buyer_registration_session_issuances) AS sessions
     `).first();
     expect(facts).toEqual({ buyers: 0, orders: 0, accounts: 0, numbers: 0, sessions: 0 });
     expect(JSON.stringify(facts)).not.toContain('Strong-Password-2026!');
   });
 
-  it('claims one eligible historical buyer without copying its relationships', async () => {
-    database = createDb();
-    seedBuyer(database, 'buyer-existing', 'subject-existing', 'claim-existing',
-      'existing_wx', 'ACTIVE');
-    const before = await database.prepare(`
-      SELECT COUNT(*) AS count FROM buyer_customers
-    `).first<{ count: number }>();
-    await registerCore('existing_wx', 'claim-existing-key');
-    const after = await database.prepare(`
-      SELECT COUNT(*) AS count FROM buyer_customers
-    `).first<{ count: number }>();
-    expect(after?.count).toBe(before?.count);
-    const account = await database.prepare(`
-      SELECT identity_subject_id, registration_source
-      FROM customer_login_accounts
-    `).first();
-    expect(account).toEqual({
-      identity_subject_id: 'subject-existing',
-      registration_source: 'SELF_REGISTRATION_CLAIM',
-    });
-  });
+  // DELETED (subject removed by D-056: no uninvited self-registration):
+  // "claims one eligible historical buyer without copying its relationships",
+  // "rejects duplicate account generically and does not replace password",
+  // "records ambiguous historical identity conflict and creates no account",
+  // "allows only one winner for the same normalized WeChat",
+  // "rejects disabled historical buyers without creating account or session",
+  // and "allows only one concurrent claim of the same historical buyer" —
+  // they exercised the deleted registerBuyerSelf uninvited claim flows.
+  // Route-level duplicate/conflict handling is still asserted below.
 
-  it('rejects duplicate account generically and does not replace password', async () => {
-    database = createDb();
-    const first = await registerCore('duplicate_wx', 'duplicate-first');
-    const credential = await database.prepare(`
-      SELECT hash_base64url FROM customer_password_credentials
-      WHERE account_id=?
-    `).bind(first.authenticated.accountId).first<{ hash_base64url: string }>();
-    await expect(registerCore('duplicate_wx', 'duplicate-second'))
-      .rejects.toMatchObject({ reason: 'ACCOUNT_ALREADY_EXISTS' });
-    const after = await database.prepare(`
-      SELECT hash_base64url FROM customer_password_credentials
-      WHERE account_id=?
-    `).bind(first.authenticated.accountId).first<{ hash_base64url: string }>();
-    expect(after).toEqual(credential);
-  });
-
-  it('records ambiguous historical identity conflict and creates no account', async () => {
-    database = createDb();
-    seedBuyer(database, 'buyer-a', 'subject-a', 'claim-a', 'same_wx', 'RELEASED');
-    seedBuyer(database, 'buyer-b', 'subject-b', 'claim-b', 'same_wx', 'RELEASED');
-    await expect(registerCore('same_wx', 'conflict-key'))
-      .rejects.toMatchObject({ reason: 'REGISTRATION_CONFLICT' });
-    const facts = await database.prepare(`
-      SELECT
-        (SELECT COUNT(*) FROM buyer_registration_conflicts) AS conflicts,
-        (SELECT COUNT(*) FROM customer_login_accounts) AS accounts,
-        (SELECT COUNT(*) FROM buyer_registration_session_issuances) AS sessions
-    `).first();
-    expect(facts).toEqual({ conflicts: 1, accounts: 0, sessions: 0 });
-  });
-
-  it('allows only one winner for the same normalized WeChat', async () => {
-    database = createDb();
-    const results = await Promise.allSettled([
-      registerCore('Concurrent_WX', 'concurrent-key-a'),
-      registerCore(' concurrent_wx ', 'concurrent-key-b'),
-    ]);
-    expect(results.filter((item) => item.status === 'fulfilled')).toHaveLength(1);
-    const counts = await database.prepare(`
-      SELECT
-        (SELECT COUNT(*) FROM buyer_customers) AS buyers,
-        (SELECT COUNT(*) FROM customer_login_accounts) AS accounts
-    `).first();
-    expect(counts).toEqual({ buyers: 1, accounts: 1 });
-  });
-
-  it('promotes the preorder number on first formal-order number allocation', async () => {
-    database = createDb();
-    const registered = await registerCore('preorder_wx', 'preorder-register');
-    const buyer = await database.prepare(`
-      SELECT buyer_customer_id, buyer_customer_no, buyer_sequence
-      FROM buyer_preorder_number_allocations
-      WHERE buyer_customer_no=?
-    `).bind(registered.buyerNumber).first<any>();
-    const allocated = await allocateBuyerCustomerNumber(database, {
-      buyerCustomerId: buyer.buyer_customer_id,
-      firstValidOrderBusinessDate: '2026-08-02',
-    }, {
-      actor: staffActor(),
-      idempotencyKey: 'preorder-promote-0001',
-      now: NOW + 1000,
-    });
-    expect(allocated.buyer_customer_no).toBe(registered.buyerNumber);
-    expect(allocated.buyer_sequence).toBe(buyer.buyer_sequence);
-    expect(allocated.first_valid_order_business_date).toBe('2026-08-02');
-  });
-
-  it('revokes sessions and rebinds atomically with owner-only permission', async () => {
-    database = createDb();
-    const registered = await registerCore('source_wx', 'source-register');
-    seedBuyer(database, 'buyer-target', 'subject-target', 'claim-target',
-      'target_wx', 'ACTIVE');
-    const revoked = await revokeAllBuyerSessions(database, {
-      accountId: registered.authenticated.accountId,
-      expectedVersion: 1,
-      reason: 'suspected claim problem',
-    }, {
-      actor: ownerActor(),
-      idempotencyKey: 'revoke-sessions-0001',
-      now: NOW + 2000,
-    });
-    expect(revoked.session_version).toBe(2);
-    const rebound = await rebindBuyerAuthAccount(database, {
-      accountId: registered.authenticated.accountId,
-      targetBuyerCustomerId: 'buyer-target',
-      expectedVersion: 2,
-      reason: 'verified historical owner',
-    }, {
-      actor: ownerActor(),
-      idempotencyKey: 'rebind-account-0001',
-      now: NOW + 3000,
-    });
-    expect(rebound.new_buyer_customer_id).toBe('buyer-target');
-    const row = await database.prepare(`
-      SELECT identity_subject_id, session_version, registration_source
-      FROM customer_login_accounts WHERE id=?
-    `).bind(registered.authenticated.accountId).first();
-    expect(row).toEqual({
-      identity_subject_id: 'subject-target',
-      session_version: 3,
-      registration_source: 'RECOVERY_REBIND',
-    });
-  });
+  // DELETED (subject removed by D-056 / migration 0027): "promotes the
+  // preorder number on first formal-order number allocation" —
+  // buyer_preorder_number_allocations is dropped and the final buyer number
+  // is allocated at profile creation; there is nothing to promote.
 
   it('fails closed when feature flag is disabled', async () => {
     database = createDb();
@@ -200,53 +88,36 @@ describe('Phase 4A2 buyer self registration', () => {
     expect(JSON.stringify(await response.json())).not.toContain('disabled_wx');
   });
 
-  it('rejects disabled historical buyers without creating account or session', async () => {
-    database = createDb();
-    seedBuyer(database, 'buyer-disabled', 'subject-disabled', 'claim-disabled',
-      'disabled_history_wx', 'ACTIVE');
-    database.exec(`
-      UPDATE buyer_customers
-      SET access_status='DISABLED', disabled_at=1100
-      WHERE id='buyer-disabled'
-    `);
-    await expect(registerCore('disabled_history_wx', 'disabled-history'))
-      .rejects.toMatchObject({ reason: 'BUYER_NOT_ELIGIBLE' });
-    const counts = await database.prepare(`
-      SELECT
-        (SELECT COUNT(*) FROM customer_login_accounts) AS accounts,
-        (SELECT COUNT(*) FROM buyer_registration_session_issuances) AS sessions
-    `).first();
-    expect(counts).toEqual({ accounts: 0, sessions: 0 });
-  });
-
   it('reuses password confirmation and strength rules', async () => {
     database = createDb();
-    await expect(registerBuyerSelf(database, {
-      wechatId: 'password_mismatch_wx',
+    await expect(registerCore('password_mismatch_wx', 'password-mismatch', {
       password: 'Strong-Password-2026!',
       passwordConfirmation: 'different-password',
-      defaultBuyerChannelId: 'buyer-channel-self',
-    }, coreCommand('password-mismatch')))
-      .rejects.toMatchObject({ reason: 'INVALID_REQUEST' });
-    await expect(registerBuyerSelf(database, {
-      wechatId: 'weak_password_wx',
+    })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(registerCore('weak_password_wx', 'weak-password', {
       password: 'short',
       passwordConfirmation: 'short',
-      defaultBuyerChannelId: 'buyer-channel-self',
-    }, coreCommand('weak-password'))).rejects.toThrow();
+    })).rejects.toThrow();
     expect((await database.prepare(`
       SELECT COUNT(*) AS count FROM customer_login_accounts
     `).first<{ count: number }>())?.count).toBe(0);
   });
 
-  it('stores no plaintext password in credentials, audit, attempts or outbox', async () => {
+  it('stores no plaintext password in credentials, audit or outbox', async () => {
     database = createDb();
     const plaintext = 'Never-Store-This-2026!';
-    await registerBuyerSelf(database, {
+    await registerInvitedBuyer(database!, {
+      invitationToken: await seedInvitation(
+        database!,
+        'secret_storage_wx',
+        'secret',
+        NOW - 60_000,
+      ),
       wechatId: 'secret_storage_wx',
+      marketplaceCode: 'AMAZON_JP',
       password: plaintext,
       passwordConfirmation: plaintext,
-      defaultBuyerChannelId: 'buyer-channel-self',
+      buyerChannelId: 'buyer-channel-wechat-b',
     }, coreCommand('secret-storage'));
     const credential = await database.prepare(`
       SELECT salt_base64url, hash_base64url
@@ -257,8 +128,6 @@ describe('Phase 4A2 buyer self registration', () => {
     for (const query of [
       `SELECT previous_state_json || next_state_json || metadata_json AS text
        FROM audit_events ORDER BY created_at DESC LIMIT 1`,
-      `SELECT reason_code || metadata_json AS text
-       FROM buyer_registration_attempts ORDER BY created_at DESC LIMIT 1`,
       `SELECT payload_json AS text
        FROM integration_outbox ORDER BY created_at DESC LIMIT 1`,
     ]) {
@@ -403,19 +272,41 @@ describe('Phase 4A2 buyer self registration', () => {
     expect(oversized.status).toBe(400);
   });
 
-  it('allows only one concurrent claim of the same historical buyer', async () => {
+  it('revokes sessions and rebinds atomically with owner-only permission', async () => {
     database = createDb();
-    seedBuyer(database, 'buyer-claim-race', 'subject-claim-race',
-      'claim-claim-race', 'claim_race_wx', 'ACTIVE');
-    const results = await Promise.allSettled([
-      registerCore('claim_race_wx', 'claim-race-a'),
-      registerCore('claim_race_wx', 'claim-race-b'),
-    ]);
-    expect(results.filter((item) => item.status === 'fulfilled')).toHaveLength(1);
-    expect((await database.prepare(`
-      SELECT COUNT(*) AS count FROM customer_login_accounts
-      WHERE identity_subject_id='subject-claim-race'
-    `).first<{ count: number }>())?.count).toBe(1);
+    const registered = await registerCore('source_wx', 'source-register');
+    seedBuyer(database, 'buyer-target', 'subject-target', 'claim-target',
+      'target_wx', 'ACTIVE');
+    const revoked = await revokeAllBuyerSessions(database, {
+      accountId: registered.authenticated.accountId,
+      expectedVersion: 1,
+      reason: 'suspected claim problem',
+    }, {
+      actor: ownerActor(),
+      idempotencyKey: 'revoke-sessions-0001',
+      now: NOW + 2000,
+    });
+    expect(revoked.session_version).toBe(2);
+    const rebound = await rebindBuyerAuthAccount(database, {
+      accountId: registered.authenticated.accountId,
+      targetBuyerCustomerId: 'buyer-target',
+      expectedVersion: 2,
+      reason: 'verified historical owner',
+    }, {
+      actor: ownerActor(),
+      idempotencyKey: 'rebind-account-0001',
+      now: NOW + 3000,
+    });
+    expect(rebound.new_buyer_customer_id).toBe('buyer-target');
+    const row = await database.prepare(`
+      SELECT identity_subject_id, session_version, registration_source
+      FROM customer_login_accounts WHERE id=?
+    `).bind(registered.authenticated.accountId).first();
+    expect(row).toEqual({
+      identity_subject_id: 'subject-target',
+      session_version: 3,
+      registration_source: 'RECOVERY_REBIND',
+    });
   });
 
   it('rejects rebind target-account and version conflicts without partial binding', async () => {
@@ -480,13 +371,12 @@ describe('Phase 4A2 buyer self registration', () => {
 function createDb(): SqliteDatabase {
   const db = createMigratedTestDatabase();
   db.exec(`
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-self', 'SELF', 'Self registration',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
+    -- The operational B/C channels are pre-seeded by migration 0027 (their
+    -- codes are UNIQUE). Buyer numbers must be 13+ characters, so start the
+    -- channel B counter at a four-digit sequence.
+    UPDATE buyer_channels
+    SET next_sequence=1001
+    WHERE id='buyer-channel-wechat-b';
   `);
   db.exec(`
     INSERT INTO staff_users (
@@ -500,23 +390,32 @@ function createDb(): SqliteDatabase {
   return db;
 }
 
-async function registerCore(wechatId: string, key: string) {
-  return registerBuyerSelf(database!, {
+async function registerCore(
+  wechatId: string,
+  key: string,
+  passwords: {
+    password?: string;
+    passwordConfirmation?: string;
+  } = {},
+) {
+  // The invitation must be issued before the synthetic command time so the
+  // registration transaction's updated_at never precedes created_at.
+  const token = await seedInvitation(
+    database!,
     wechatId,
-    password: 'Strong-Password-2026!',
-    passwordConfirmation: 'Strong-Password-2026!',
-    defaultBuyerChannelId: 'buyer-channel-self',
-  }, {
-    requestId: `request-${key}`,
-    idempotencyKey: key.padEnd(8, '0'),
-    wechatIdHash: 'a'.repeat(64),
-    networkSourceHash: 'b'.repeat(64),
-    deviceHash: 'c'.repeat(64),
-    sessionId: crypto.randomUUID(),
-    sessionExpiresAt: NOW + 604_800_000,
-    now: NOW,
-    passwordIterations: 10_000,
-  });
+    `core-${key}`,
+    NOW - 60_000,
+  );
+  return registerInvitedBuyer(database!, {
+    invitationToken: token,
+    wechatId,
+    marketplaceCode: 'AMAZON_JP',
+    password: passwords.password ?? 'Strong-Password-2026!',
+    passwordConfirmation: passwords.passwordConfirmation
+      ?? passwords.password
+      ?? 'Strong-Password-2026!',
+    buyerChannelId: 'buyer-channel-wechat-b',
+  }, coreCommand(key));
 }
 
 
@@ -551,10 +450,11 @@ function seedBuyer(
   db.raw.prepare(`
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code, buyer_channel_id,
-      buyer_customer_no, buyer_sequence, first_valid_order_business_date,
+      buyer_customer_no, buyer_sequence,
       display_name, access_status, identity_review_status,
       version, created_at, updated_at, activated_at, disabled_at
-    ) VALUES (?, ?, 'AMAZON_JP', 'buyer-channel-self', NULL, NULL, NULL,
+    ) VALUES (?, ?, 'AMAZON_JP', 'buyer-channel-wechat-b',
+      '19700101B2001', 2001,
       ?, 'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL)
   `).run(buyerId, subjectId, wechat);
   db.raw.prepare(`
@@ -583,7 +483,7 @@ function env() {
     CUSTOMER_SESSION_SECRET: SECRET,
     CUSTOMER_SECURITY_TOKEN_SECRET: SECRET,
     BUYER_SELF_REGISTRATION_ENABLED: 'true',
-    BUYER_SELF_REGISTRATION_CHANNEL_ID: 'buyer-channel-self',
+    BUYER_SELF_REGISTRATION_CHANNEL_ID: 'buyer-channel-wechat-b',
     BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED: 'false',
   };
 }
@@ -592,9 +492,15 @@ async function seedInvitation(
   db: SqliteDatabase,
   wechat: string,
   suffix: string,
+  issuedAt = Date.now(),
 ): Promise<string> {
-  const token = suffix.slice(0, 1).padEnd(43, 'a');
-  const now = Date.now();
+  // Deterministic, unique-per-suffix 43-character token (cycled from the
+  // suffix so concurrent fixtures never collide on token_hash).
+  const token = suffix.length
+    ? Array.from({ length: 43 }, (_, index) => suffix[index % suffix.length]!)
+      .join('')
+    : 'a'.repeat(43);
+  const now = issuedAt;
   db.raw.prepare(`
     INSERT INTO customer_buyer_invitations (
       id, token_hash, wechat_display, normalized_wechat, wechat_hash,
@@ -614,13 +520,5 @@ function ownerActor() {
     displayName: 'Owner',
     roles: ['owner'] as const,
     permissions: new Set(['BUYER_IDENTITY_HIGH_RISK_MANAGE'] as const),
-  };
-}
-function staffActor() {
-  return {
-    staffId: 'staff-owner',
-    displayName: 'Owner',
-    roles: ['owner'] as const,
-    permissions: new Set(['ORDER_CONFIRM'] as const),
   };
 }

@@ -220,7 +220,7 @@ describe('seller member lifecycle', () => {
 
     await createBuyerCustomer(database, {
       marketplaceCode: 'AMAZON_JP',
-      buyerChannelId: 'buyer-channel-b',
+      buyerChannelId: 'buyer-channel-wechat-b',
       displayName: '冲突买家',
       wechatId: 'shared_member_wechat_01',
     }, {
@@ -383,13 +383,12 @@ function seedSellerMemberFixture(
         1000, NULL, 1000, 1000
       );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-b', 'B', '买家渠道B',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
+    -- Buyer numbers must be at least 13 characters (YYYYMMDD + B/C + 4+
+    -- digits), so seed the operational channel counter high enough for the
+    -- locally allocated numbers to satisfy the format.
+    UPDATE buyer_channels
+    SET next_sequence=1001
+    WHERE id='buyer-channel-wechat-b';
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,

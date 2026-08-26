@@ -6,12 +6,12 @@ const root = path.resolve(import.meta.dirname, '../../../..');
 const read = (file: string) => readFileSync(path.join(root, file), 'utf8');
 
 describe('second layer hardening freeze', () => {
-  it('keeps production release authority on schema 26, Access and release-bound readiness', () => {
+  it('keeps production release authority on schema 27, Access and release-bound readiness', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(26);
-    expect(migrations.at(-1)).toBe('0026_stage65_archive_import_closeout.sql');
+    expect(migrations).toHaveLength(27);
+    expect(migrations.at(-1)).toBe('0027_stage66_single_source_convergence.sql');
     const template = read('apps/api/wrangler.production.template.jsonc');
     expect(template).toContain('"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"');
     expect(template).toContain('"SCHEDULED_OPERATIONS_ENABLED": "true"');
@@ -20,7 +20,7 @@ describe('second layer hardening freeze', () => {
     expect(template).toContain('STAFF_ACCESS_AUD');
     expect(template).not.toContain('FEISHU_WORKBENCH_APP_ID');
     const readiness = read('apps/api/src/operational-readiness/routes.ts');
-    expect(readiness).toContain('const TARGET_SCHEMA = 26');
+    expect(readiness).toContain('const TARGET_SCHEMA = 27');
     expect(readiness).toContain('APP_RELEASE_SHA');
     expect(readiness).toContain('last_backlog_count');
     expect(readiness).toContain('staff_access');
@@ -28,6 +28,36 @@ describe('second layer hardening freeze', () => {
     expect(verifier).toContain('external_calls:0');
     expect(verifier).not.toContain('fetchImpl');
     expect(read('scripts/probe-production-readiness.mjs')).toContain('fetchImpl=fetch');
+  });
+
+  it('keeps pricing maintenance single-save with the rate-maintainer actor gate', () => {
+    // Stage 6.6 (D-056): every rate/fee/policy write is one immediate-effect
+    // save behind requireRateMaintainer; the submit/confirm/reject dual
+    // approval routes must stay deleted.
+    for (const moduleFile of [
+      'apps/api/src/pricing/buyer-daily-exchange-rates.ts',
+      'apps/api/src/pricing/seller-service-fees.ts',
+      'apps/api/src/pricing/seller-principal-rate-policy.ts',
+    ]) {
+      const source = read(moduleFile);
+      expect(source).toContain('requireRateMaintainer(command.actor)');
+      expect(source).not.toContain('/submit');
+      expect(source).not.toContain('/confirm');
+      expect(source).not.toContain('/reject');
+    }
+    const guard = read('apps/api/src/pricing/pricing-shared.ts');
+    expect(guard).toContain('export function requireRateMaintainer');
+    for (const routesFile of [
+      'apps/api/src/pricing/rate-center-routes.ts',
+      'apps/api/src/pricing/seller-service-fee-routes.ts',
+      'apps/api/src/pricing/routes.ts',
+    ]) {
+      const routes = read(routesFile);
+      expect(routes).not.toContain('/submit');
+      expect(routes).not.toContain('/confirm');
+      expect(routes).not.toContain('/reject');
+      expect(routes).not.toContain('/apply-defaults');
+    }
   });
 
   it('keeps Staff authority role-market based without Team, GRANT or legacy mutation expansion', () => {

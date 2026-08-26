@@ -3,7 +3,6 @@ import type { StaffDataScope, StaffPermissionCode, StaffRoleCode } from '@ygb/co
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import { createApp } from '../app';
 import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
-import { resolveStaffDataScope } from '../staff-assignment/data-scope';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { registerSellerServiceFeeRoutes } from './seller-service-fee-routes';
 
@@ -15,24 +14,19 @@ afterEach(() => {
   database = null;
 });
 
-describe('staff seller service fee routes', () => {
-  it('keeps read and submit owner/assignment gated and supports submit then owner confirm', async () => {
+describe('staff seller service fee routes (stage 6.6 single-save model)', () => {
+  it('reads and saves with owner/seller_ops equal rights and fails others closed', async () => {
     database = fixture();
-    const ownerActor = auth('owner', 'fee-owner', ['SELLER_MANAGE', 'FINANCIAL_CORRECT']);
-    const owner = appFor(ownerActor, await resolveStaffDataScope(database, ownerActor));
 
-    // A staff member without SELLER_MANAGE cannot even read the fee matrix.
-    const refundActor = auth('buyer_refund', 'fee-refund', []);
-    const refund = appFor(refundActor, await resolveStaffDataScope(database, refundActor));
-    const refundRead = await refund.request(
-      `${ORIGIN}/api/staff/seller-service-fees?seller_organization_id=seller-org-1`,
-      {},
+    const preSales = appFor(actor('pre_sales', 'pre-sales', ['SELLER_MANAGE']));
+    const deniedRole = await preSales.request(
+      `${ORIGIN}/api/staff/seller-service-fees`,
+      saveBody({ review_type: 'TEXT', fee_cny_fen: '6000', expected_version: 0 }),
       { DB: database },
     );
-    expect(refundRead.status).toBe(403);
+    expect(deniedRole.status).toBe(403);
 
-    // Owner reads the empty matrix first: four review types, nothing set.
-    const initialRead = await owner.request(
+    const initialRead = await appFor(owner([])).request(
       `${ORIGIN}/api/staff/seller-service-fees?seller_organization_id=seller-org-1`,
       {},
       { DB: database },
@@ -42,102 +36,92 @@ describe('staff seller service fee routes', () => {
       data: {
         seller_organization_id: 'seller-org-1',
         fees: [
-          { review_type: 'RATING', effective_fee: null, pending_fee: null, upcoming_fee: null, next_version: 1 },
-          { review_type: 'TEXT', effective_fee: null, pending_fee: null, upcoming_fee: null, next_version: 1 },
-          { review_type: 'IMAGE', effective_fee: null, pending_fee: null, upcoming_fee: null, next_version: 1 },
-          { review_type: 'VIDEO', effective_fee: null, pending_fee: null, upcoming_fee: null, next_version: 1 },
+          { review_type: 'RATING', effective_fee: null, next_version: 1 },
+          { review_type: 'TEXT', effective_fee: null, next_version: 1 },
+          { review_type: 'IMAGE', effective_fee: null, next_version: 1 },
+          { review_type: 'VIDEO', effective_fee: null, next_version: 1 },
         ],
       },
     });
 
-    // Unassigned seller_ops cannot submit for the organization.
-    const opsActor = auth('seller_ops', 'fee-ops', ['SELLER_MANAGE']);
-    const unassigned = appFor(opsActor, assignedScope('seller-org-1'));
-    const deniedSubmit = await unassigned.request(
-      `${ORIGIN}/api/staff/seller-service-fees/submit`,
-      submitRequest({ seller_organization_id: 'seller-org-1' }),
+    const sellerOps = appFor(actor('seller_ops', 'seller-ops', ['SELLER_MANAGE']));
+    const saved = await sellerOps.request(
+      `${ORIGIN}/api/staff/seller-service-fees`,
+      saveBody({ review_type: 'TEXT', fee_cny_fen: '6000', expected_version: 0 }),
       { DB: database },
     );
-    expect(deniedSubmit.status).toBe(403);
+    expect(saved.status).toBe(200);
 
-    // Once assigned as the canonical account manager, submit succeeds.
-    database.exec(`
-      INSERT INTO seller_staff_assignments(
-        id,seller_organization_id,duty_code,staff_id,status,source,
-        assigned_by_actor_type,assigned_by_actor_id,reason,version,
-        created_at,updated_at,revoked_at
-      ) VALUES (
-        'assignment-fee-ops','seller-org-1','SELLER_ACCOUNT_MANAGER','fee-ops',
-        'ACTIVE','MANUAL_REASSIGN','SYSTEM','fixture',NULL,1,1,1,NULL
-      );
-    `);
-    const opsAssigned = appFor(opsActor, assignedScope('seller-org-1'));
-    const submitted = await opsAssigned.request(
-      `${ORIGIN}/api/staff/seller-service-fees/submit`,
-      submitRequest({ seller_organization_id: 'seller-org-1' }),
-      { DB: database },
-    );
-    expect(submitted.status).toBe(200);
-    const submittedJson = (await submitted.json()) as {
-      data: { fee: { fee_version_id: string; status: string } };
-    };
-    expect(submittedJson.data.fee.status).toBe('SUBMITTED');
-
-    // seller_ops cannot confirm; only Owner plus financial correction can.
-    const opsConfirm = await opsAssigned.request(
-      `${ORIGIN}/api/staff/seller-service-fees/${submittedJson.data.fee.fee_version_id}/confirm`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': `fee-confirm-${crypto.randomUUID()}`,
-        },
-        body: JSON.stringify({ expected_version: 1 }),
-      },
-      { DB: database },
-    );
-    expect(opsConfirm.status).toBe(403);
-
-    const confirmed = await owner.request(
-      `${ORIGIN}/api/staff/seller-service-fees/${submittedJson.data.fee.fee_version_id}/confirm`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': `fee-confirm-${crypto.randomUUID()}`,
-        },
-        body: JSON.stringify({ expected_version: 1 }),
-      },
-      { DB: database },
-    );
-    expect(confirmed.status).toBe(200);
-
-    // The confirmed fee is effective (effective_from in the past relative to
-    // read time is not required here: it was submitted as now+60s, so the
-    // read still shows no effective fee but no pending fee either).
-    const finalRead = await owner.request(
+    const read = await sellerOps.request(
       `${ORIGIN}/api/staff/seller-service-fees?seller_organization_id=seller-org-1`,
       {},
       { DB: database },
     );
-    expect(finalRead.status).toBe(200);
-    expect(await finalRead.json()).toMatchObject({
-      data: {
-        fees: expect.arrayContaining([
-          {
-            review_type: 'RATING',
-            effective_fee: null,
-            pending_fee: null,
-            upcoming_fee: expect.anything(),
-            next_version: 2,
-          },
-        ]),
-      },
-    });
+    const readJson = (await read.json()) as {
+      data: { fees: Array<{ review_type: string; effective_fee: { fee_cny_fen: string } | null }> };
+    };
+    const textFee = readJson.data.fees.find((fee) => fee.review_type === 'TEXT');
+    expect(textFee?.effective_fee).toMatchObject({ fee_cny_fen: '6000' });
+
+    const stale = await sellerOps.request(
+      `${ORIGIN}/api/staff/seller-service-fees`,
+      saveBody({ review_type: 'TEXT', fee_cny_fen: '6500', expected_version: 0 }),
+      { DB: database },
+    );
+    expect(stale.status).toBe(409);
+
+    // Explicit zero fen is a valid rule value, never treated as missing.
+    const zero = await appFor(owner([])).request(
+      `${ORIGIN}/api/staff/seller-service-fees`,
+      saveBody({ review_type: 'RATING', fee_cny_fen: '0', expected_version: 0 }),
+      { DB: database },
+    );
+    expect(zero.status).toBe(200);
+
+    // Removed approval endpoints really 404.
+    const confirmGone = await appFor(owner([])).request(
+      `${ORIGIN}/api/staff/seller-service-fees/some-id/confirm`,
+      { method: 'POST', headers: jsonHeaders(), body: '{"expected_version":1}' },
+      { DB: database },
+    );
+    expect(confirmGone.status).toBe(404);
+  });
+
+  it('keeps saved rules immutable and organization-scoped reads concealed', async () => {
+    database = fixture();
+    const db = database;
+    const scoped = appFor(
+      actor('seller_ops', 'seller-ops', ['SELLER_MANAGE']),
+      marketplaceScopeWith(['seller-org-1']),
+    );
+    const foreign = await scoped.request(
+      `${ORIGIN}/api/staff/seller-service-fees?seller_organization_id=seller-org-2`,
+      {},
+      { DB: database },
+    );
+    expect(foreign.status).toBe(404);
+
+    database.exec(`
+      INSERT INTO seller_service_fee_rule_versions (
+        id, seller_organization_id, marketplace_code, review_type, version_no,
+        fee_amount_minor, fee_currency_code, fee_currency_exponent,
+        effective_from, created_by_staff_id, created_at
+      ) VALUES (
+        'fee-rule-seed', 'seller-org-1', 'AMAZON_JP', 'TEXT', 1,
+        6000, 'CNY', 2, 1, 'staff-owner', 1
+      )
+    `);
+    expect(() => db.exec(`
+      UPDATE seller_service_fee_rule_versions SET fee_amount_minor=1
+      WHERE id='fee-rule-seed'
+    `)).toThrow(/immutable/u);
+    expect(() => db.exec(`
+      DELETE FROM seller_service_fee_rule_versions WHERE id='fee-rule-seed'
+    `)).toThrow(/immutable/u);
   });
 });
 
-function appFor(actorValue: AssignmentStaffAuthorization, scope: StaffDataScope) {
+function appFor(actorValue: AssignmentStaffAuthorization, scope: StaffDataScope = globalScope()) {
   const app = createApp();
   app.use('/api/staff/*', async (context, next) => {
     context.set('staffAuthorization', actorValue);
@@ -148,15 +132,16 @@ function appFor(actorValue: AssignmentStaffAuthorization, scope: StaffDataScope)
   return app;
 }
 
-function auth(
+function actor(
   role: StaffRoleCode,
   staffId: string,
   grants: StaffPermissionCode[],
+  denies: StaffPermissionCode[] = [],
 ): AssignmentStaffAuthorization {
   const effective = calculateEffectiveStaffAuthorization({
     roles: new Set([role]),
     grants: new Set(grants),
-    denies: new Set(),
+    denies: new Set(denies),
     memberTeamIds: [],
     leaderTeamIds: [],
   });
@@ -169,29 +154,47 @@ function auth(
   };
 }
 
-function assignedScope(...sellerOrganizationIds: string[]): StaffDataScope {
+function owner(
+  grants: StaffPermissionCode[],
+  denies: StaffPermissionCode[] = [],
+): AssignmentStaffAuthorization {
+  return actor('owner', 'staff-owner', grants, denies);
+}
+
+function globalScope(): StaffDataScope {
   return {
-    type: 'MARKETPLACE',
-    marketplaceCodes: ['AMAZON_JP'],
+    type: 'GLOBAL',
+    marketplaceCodes: [],
     buyerCustomerIds: [],
-    sellerOrganizationIds,
+    sellerOrganizationIds: [],
     teamIds: [],
   };
 }
 
-function submitRequest(overrides: Record<string, unknown>): RequestInit {
+function marketplaceScopeWith(organizationIds: string[]): StaffDataScope {
+  return {
+    type: 'MARKETPLACE',
+    marketplaceCodes: ['AMAZON_JP'],
+    buyerCustomerIds: [],
+    sellerOrganizationIds: organizationIds,
+    teamIds: [],
+  };
+}
+
+function jsonHeaders(): Record<string, string> {
+  return { 'Content-Type': 'application/json' };
+}
+
+function saveBody(body: Record<string, unknown>): RequestInit {
   return {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Idempotency-Key': `fee-submit-${crypto.randomUUID()}`,
+      'Idempotency-Key': `service-fee-${crypto.randomUUID()}`,
     },
     body: JSON.stringify({
-      review_type: 'RATING',
-      fee_cny_fen: '1250',
-      effective_from: Date.now() + 60_000,
-      expected_version: 0,
-      ...overrides,
+      seller_organization_id: 'seller-org-1',
+      ...body,
     }),
   };
 }
@@ -199,30 +202,19 @@ function submitRequest(overrides: Record<string, unknown>): RequestInit {
 function fixture(): SqliteDatabase {
   const db = createMigratedTestDatabase();
   db.exec(`
-    INSERT INTO staff_users (id, display_name, status, authorization_version, version,
-      created_at, updated_at, disabled_at)
-    VALUES ('fee-owner', 'Owner', 'ACTIVE', 1, 1, 1, 1, NULL),
-      ('fee-ops', '卖家对接', 'ACTIVE', 1, 1, 1, 1, NULL),
-      ('fee-refund', '买家返款', 'ACTIVE', 1, 1, 1, 1, NULL);
-    INSERT INTO seller_organizations (id, marketplace_code, seller_code, origin_channel_id,
-      current_channel_id, seller_sequence, organization_name, status, version, created_at,
-      updated_at, activated_at, disabled_at, next_member_number)
-    VALUES ('seller-org-1', 'AMAZON_JP', 'fee-seller-000001', 'seller-channel-ido-mango', 'seller-channel-ido-mango',
-      1, '测试卖家', 'ACTIVE', 1, 1, 1, 1, NULL, 2);
-    INSERT INTO staff_role_assignments(
-      id,staff_id,role_code,status,assigned_by_staff_id,assigned_at,
-      revoked_at,revoked_by_staff_id,revoked_reason,created_at,updated_at
-    ) VALUES (
-      'role-fee-ops-default-01','fee-ops','seller_ops','ACTIVE',NULL,1,
-      NULL,NULL,NULL,1,1
-    );
-    INSERT INTO staff_marketplace_scopes(
-      id,staff_id,role_code,marketplace_code,status,scope_kind,assigned_by_staff_id,
-      assigned_at,revoked_at,reason,created_at,updated_at
-    ) VALUES (
-      'scope-fee-ops-primary-01','fee-ops','seller_ops','AMAZON_JP','ACTIVE','PRIMARY',NULL,
-      1,NULL,'fixture',1,1
-    );
+    INSERT INTO staff_users(id,display_name,status,authorization_version,version,created_at,updated_at,disabled_at)
+    VALUES ('staff-owner','Owner','ACTIVE',1,1,1,1,NULL),
+      ('seller-ops','卖家对接','ACTIVE',1,1,1,1,NULL),
+      ('pre-sales','售前','ACTIVE',1,1,1,1,NULL);
+    INSERT INTO seller_organizations (
+      id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
+      seller_sequence, organization_name, status, version, created_at,
+      updated_at, activated_at, disabled_at, next_member_number
+    ) VALUES
+      ('seller-org-1','AMAZON_JP','ido-mango-000001','seller-channel-ido-mango',
+        'seller-channel-ido-mango',1,'测试卖家一','ACTIVE',1,1,1,1,NULL,2),
+      ('seller-org-2','AMAZON_JP','ido-mango-000002','seller-channel-ido-mango',
+        'seller-channel-ido-mango',2,'测试卖家二','ACTIVE',1,1,1,1,NULL,2);
   `);
   return db;
 }

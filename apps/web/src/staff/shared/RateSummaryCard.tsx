@@ -77,9 +77,9 @@ export function RateSummaryCard({
       <h3>当前生效费率</h3>
       <p>
         <strong>今日基础汇率：</strong>
-        {baseRate?.confirmed_rate
-          ? rateLabel(baseRate.confirmed_rate.cny_per_jpy_e8)
-          : <span className="inline-warning">今日未确认</span>}
+        {baseRate?.active_version
+          ? rateLabel(baseRate.active_version.rate_value)
+          : <span className="inline-warning">今日未设置</span>}
       </p>
       <p>
         <strong>加点：</strong>

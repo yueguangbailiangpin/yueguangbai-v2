@@ -75,8 +75,8 @@ describe('seller principal rate policy HTTP boundary', () => {
       auth('seller_ops', 'staff-pricing-ops', ['SELLER_MANAGE']),
       assignedScope('seller-org-1'),
     ).request(
-      `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
-      submitRequest({ scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-2' }),
+      `${ORIGIN}/api/staff/seller-principal-rate-policies/save`,
+      saveRequest({ scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-2' }),
       { DB: database },
     );
     expect(crossWrite.status).toBe(403);
@@ -87,8 +87,8 @@ describe('seller principal rate policy HTTP boundary', () => {
       auth('seller_ops', 'staff-pricing-ops', ['SELLER_MANAGE']),
       assignedScope('seller-org-1'),
     ).request(
-      `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
-      submitRequest({ scope_type: 'CURRENCY_PAIR_DEFAULT', seller_organization_id: null }),
+      `${ORIGIN}/api/staff/seller-principal-rate-policies/save`,
+      saveRequest({ scope_type: 'CURRENCY_PAIR_DEFAULT', seller_organization_id: null }),
       { DB: database },
     );
     expect(localDefault.status).toBe(403);
@@ -110,15 +110,14 @@ describe('seller principal rate policy HTTP boundary', () => {
           seller_organization_id: null,
           default_policy: null,
           seller_override_policy: null,
-          seller_override_pending_policy: null,
           default_next_version: 1,
           seller_override_next_version: null,
         },
       },
     });
     const ownerSubmit = await owner.request(
-      `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
-      submitRequest({ scope_type: 'CURRENCY_PAIR_DEFAULT', seller_organization_id: null }),
+      `${ORIGIN}/api/staff/seller-principal-rate-policies/save`,
+      saveRequest({ scope_type: 'CURRENCY_PAIR_DEFAULT', seller_organization_id: null }),
       { DB: database },
     );
     expect(ownerSubmit.status).toBe(200);
@@ -134,43 +133,33 @@ describe('seller principal rate policy HTTP boundary', () => {
     expect(await unknown.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
   });
 
-  it('allows an organization override only for the canonical assigned seller-ops manager', async () => {
+  it('lets a scoped seller_ops save an organization override without an account-manager assignment (equal rights)', async () => {
     database = fixture();
-    const unassigned = await appFor(
+    const saved = await appFor(
       auth('seller_ops', 'staff-pricing-ops', ['SELLER_MANAGE']),
       assignedScope('seller-org-1'),
     ).request(
-      `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
-      submitRequest({ scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-1' }),
+      `${ORIGIN}/api/staff/seller-principal-rate-policies/save`,
+      saveRequest({ scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-1' }),
       { DB: database },
     );
-    expect(unassigned.status).toBe(403);
-    expect(await countPolicyFacts()).toEqual({ versions: 0, events: 0, idempotency: 0 });
-
-    database.exec(`
-      INSERT INTO seller_staff_assignments(
-        id,seller_organization_id,duty_code,staff_id,status,source,
-        assigned_by_actor_type,assigned_by_actor_id,reason,version,
-        created_at,updated_at,revoked_at
-      ) VALUES (
-        'assignment-pricing-ops','seller-org-1','SELLER_ACCOUNT_MANAGER',
-        'staff-pricing-ops','ACTIVE','MANUAL_REASSIGN','SYSTEM','fixture',NULL,1,1,1,NULL
-      )
-    `);
-    const assigned = await appFor(
-      auth('seller_ops', 'staff-pricing-ops', ['SELLER_MANAGE']),
-      assignedScope('seller-org-1'),
-    ).request(
-      `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
-      submitRequest({ scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-1' }),
-      { DB: database },
-    );
-    expect(assigned.status).toBe(200);
-    expect(await assigned.json()).toMatchObject({
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({
       data: {
         policy: { scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-1' },
       },
     });
+
+    // Removed approval endpoints really 404.
+    const confirmGone = await appFor(
+      auth('owner', 'staff-pricing-owner', []),
+      globalScope(),
+    ).request(
+      `${ORIGIN}/api/staff/seller-principal-rate-policies/some-id/confirm`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"expected_version":1}' },
+      { DB: database },
+    );
+    expect(confirmGone.status).toBe(404);
   });
 
   it('rejects Personal DENY before any policy write and keeps no-store', async () => {
@@ -179,8 +168,8 @@ describe('seller principal rate policy HTTP boundary', () => {
       auth('seller_ops', 'staff-refund', ['SELLER_MANAGE'], ['SELLER_MANAGE']),
       assignedScope('seller-org-1'),
     ).request(
-      `${ORIGIN}/api/staff/seller-principal-rate-policies/submit`,
-      submitRequest({ scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-1' }),
+      `${ORIGIN}/api/staff/seller-principal-rate-policies/save`,
+      saveRequest({ scope_type: 'SELLER_ORGANIZATION', seller_organization_id: 'seller-org-1' }),
       { DB: database },
     );
     expect(denied.status).toBe(403);
@@ -189,6 +178,16 @@ describe('seller principal rate policy HTTP boundary', () => {
     expect(await countPolicyFacts()).toEqual({ versions: 0, events: 0, idempotency: 0 });
   });
 });
+
+function globalScope(): StaffDataScope {
+  return {
+    type: 'GLOBAL',
+    marketplaceCodes: [],
+    buyerCustomerIds: [],
+    sellerOrganizationIds: [],
+    teamIds: [],
+  };
+}
 
 function appFor(actor: AssignmentStaffAuthorization, scope: StaffDataScope) {
   const app = createApp();
@@ -233,7 +232,7 @@ function assignedScope(...sellerOrganizationIds: string[]): StaffDataScope {
   };
 }
 
-function submitRequest(overrides: Record<string, unknown>): RequestInit {
+function saveRequest(overrides: Record<string, unknown>): RequestInit {
   return {
     method: 'POST',
     headers: {
@@ -245,7 +244,6 @@ function submitRequest(overrides: Record<string, unknown>): RequestInit {
       seller_organization_id: 'seller-org-1',
       source_currency_code: 'JPY',
       markup_rate_value: '0.004',
-      effective_from: Date.now() + 86_400_000,
       expected_version: 0,
       ...overrides,
     }),

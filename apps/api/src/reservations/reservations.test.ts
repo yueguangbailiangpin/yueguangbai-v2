@@ -1090,37 +1090,29 @@ function seedReservationFixture(
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-b', 'B', '预约买家渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
         'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
-        'buyer-channel-b', NULL, NULL, NULL,
+        'buyer-channel-wechat-b', '19700101B0001', 1,
         '买家一', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
         'buyer-2', 'buyer-subject-2', 'AMAZON_JP',
-        'buyer-channel-b', NULL, NULL, NULL,
+        'buyer-channel-wechat-b', '19700101B0002', 2,
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
         'buyer-3', 'buyer-subject-3', 'AMAZON_JP',
-        'buyer-channel-b', NULL, NULL, NULL,
+        'buyer-channel-wechat-b', '19700101B0003', 3,
         '买家三', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       );
@@ -1398,26 +1390,21 @@ async function orderFinanceCounts(database: SqliteDatabase): Promise<{
   evidence: number;
   formalOrders: number;
   snapshots: number;
-  moneySnapshots: number;
 }> {
   const row = await database.prepare(`
     SELECT
       (SELECT COUNT(*) FROM order_evidence_submissions) AS evidence,
       (SELECT COUNT(*) FROM formal_orders) AS formalOrders,
-      (SELECT COUNT(*) FROM formal_order_financial_snapshots) AS snapshots,
-      (SELECT COUNT(*) FROM formal_order_marketplace_money_snapshots)
-        AS moneySnapshots
+      (SELECT COUNT(*) FROM formal_order_financial_snapshots) AS snapshots
   `).first<{
     evidence: number;
     formalOrders: number;
     snapshots: number;
-    moneySnapshots: number;
   }>();
   return {
     evidence: Number(row?.evidence ?? 0),
     formalOrders: Number(row?.formalOrders ?? 0),
     snapshots: Number(row?.snapshots ?? 0),
-    moneySnapshots: Number(row?.moneySnapshots ?? 0),
   };
 }
 

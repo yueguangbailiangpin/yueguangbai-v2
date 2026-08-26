@@ -1,12 +1,9 @@
 import type {
-  PricingReviewType,
-  PricingRuleStatus,
   SqlDatabase,
   SqlStatement,
   StaffRoleCode,
 } from '@ygb/contracts';
 import {
-  canonicalJson,
   parseChinaBusinessDate,
   parseCnyFen,
   parseCnyPerJpyE8,
@@ -27,8 +24,6 @@ export type PricingErrorCode =
   | 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND'
   | 'SELLER_PRINCIPAL_RATE_NOT_FOUND'
   | 'PRICING_RULE_NOT_FOUND'
-  | 'PRICING_RULE_ALREADY_DECIDED'
-  | 'PRICING_RULE_PENDING_CONFLICT'
   | 'PRICING_RULE_EFFECTIVE_TIME_CONFLICT'
   | 'IDEMPOTENCY_CONFLICT'
   | 'REQUEST_IN_PROGRESS'
@@ -44,19 +39,13 @@ export class PricingError extends Error {
   }
 }
 
-export function requireSellerOpsSubmitter(actor: PricingStaffActor): void {
+/**
+ * D-056: owner and seller_ops have identical rate / markup / service-fee
+ * maintenance rights. One save directly forms the new effective version.
+ */
+export function requireRateMaintainer(actor: PricingStaffActor): void {
   validateActor(actor);
-  // The common order-date base rate is submitted by an Owner in the normal
-  // rate-center flow.  Keep seller_ops support for the legacy daily-rate
-  // operational workflow, but never use a non-Staff role here.
   if (!actor.roles.includes('seller_ops') && !actor.roles.includes('owner')) {
-    throw new PricingError('FORBIDDEN', 403);
-  }
-}
-
-export function requireOwnerConfirmer(actor: PricingStaffActor): void {
-  validateActor(actor);
-  if (!actor.roles.includes('owner')) {
     throw new PricingError('FORBIDDEN', 403);
   }
 }
@@ -157,92 +146,6 @@ export function assertPreviousStatementChangedOnce(database: SqlDatabase): SqlSt
   `);
 }
 
-export function insertPricingEventStatement(
-  database: SqlDatabase,
-  input: {
-    table: 'buyer_daily_exchange_rate_events' | 'seller_service_fee_events';
-    versionId: string;
-    organizationId?: string | null;
-    businessDate?: string | null;
-    reviewType?: PricingReviewType | null;
-    versionNo: number;
-    eventType: string;
-    actorId: string;
-    previousStatus: PricingRuleStatus | null;
-    nextStatus: PricingRuleStatus;
-    valueColumn: 'cny_per_jpy_e8' | 'fee_cny_fen';
-    value: number;
-    effectiveFrom?: number | null;
-    reason?: string | null;
-    idempotencyKey: string;
-    createdAt: number;
-  },
-): SqlStatement {
-  const valueColumn = input.valueColumn;
-  const sql = `
-    INSERT INTO ${input.table} (
-      id,
-      version_id,
-      organization_id,
-      business_date,
-      review_type,
-      version_no,
-      event_type,
-      actor_staff_id,
-      previous_status,
-      next_status,
-      ${valueColumn},
-      effective_from,
-      reason,
-      idempotency_key,
-      created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-
-  return database
-    .prepare(sql)
-    .bind(
-      crypto.randomUUID(),
-      input.versionId,
-      input.organizationId ?? null,
-      input.businessDate ?? null,
-      input.reviewType ?? null,
-      input.versionNo,
-      input.eventType,
-      input.actorId,
-      input.previousStatus,
-      input.nextStatus,
-      input.value,
-      input.effectiveFrom ?? null,
-      input.reason ?? null,
-      input.idempotencyKey,
-      input.createdAt,
-    );
-}
-
-export function pricingAuditState(input: {
-  status: PricingRuleStatus;
-  versionNo: number;
-  decisionVersion: number;
-  valueName: 'cny_per_jpy_e8' | 'fee_cny_fen';
-  value: string;
-  effectiveFrom?: number | null;
-  businessDate?: string | null;
-  reviewType?: PricingReviewType | null;
-}): Record<string, unknown> {
-  return JSON.parse(
-    canonicalJson({
-      status: input.status,
-      version_no: input.versionNo,
-      decision_version: input.decisionVersion,
-      [input.valueName]: input.value,
-      effective_from: input.effectiveFrom ?? null,
-      business_date: input.businessDate ?? null,
-      review_type: input.reviewType ?? null,
-    }),
-  ) as Record<string, unknown>;
-}
-
 export function normalizePricingError(error: unknown): PricingError {
   if (error instanceof PricingError) return error;
 
@@ -256,22 +159,14 @@ export function normalizePricingError(error: unknown): PricingError {
 
   const message = String(error);
   if (
-    message.includes('pricing_pending_conflict') ||
-    message.includes('seller_principal_rate_policy_pending')
-  ) {
-    return new PricingError('PRICING_RULE_PENDING_CONFLICT', 409);
-  }
-  if (
     message.includes('seller_principal_rate_policy_version')
   ) {
-    // Two concurrent submissions for the same policy target raced past the
-    // version check and collided on the (scope, version_no) unique index.
+    // Two concurrent saves for the same policy target raced past the version
+    // check and collided on the (scope, version_no) unique index.
     return new PricingError('VERSION_CONFLICT', 409);
   }
   if (
-    message.includes('pricing_confirmed_conflict') ||
-    message.includes('pricing_effective_conflict') ||
-    message.includes('seller_principal_rate_policy_confirmed_effective')
+    message.includes('uq_seller_principal_rate_policy_effective')
   ) {
     return new PricingError('PRICING_RULE_EFFECTIVE_TIME_CONFLICT', 409);
   }

@@ -33,7 +33,7 @@ export interface LockedSellerServiceFeeSnapshotDto {
   review_type: PricingReviewType;
   service_fee_cny_fen: FixedIntegerString;
   effective_from: number;
-  confirmed_at: number;
+  created_at: number;
   marketplace_code: CanonicalMarketplaceCode;
   currency_code: 'CNY';
   currency_exponent: 2;

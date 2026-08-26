@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -15,9 +15,11 @@ import { StaffFinanceWorkspace } from './StaffFinanceWorkspace';
 
 afterEach(cleanup);
 
-describe('财务配置 Staff 工作台', () => {
-  it('Owner 在顶部待办条里确认/拒绝待决策略，并看到一单示例', async () => {
-    const requests: { path: string; body: unknown }[] = [];
+describe('财务配置 Staff 工作台（D-056 单次保存模型）', () => {
+  it('卖家对接保存明确为 0 的单独加点：单次保存立即生效并携带幂等键（无确认步骤）', async () => {
+    const posts: string[] = [];
+    let body: unknown;
+    let key: string | null = null;
     server.use(
       http.get(apiUrl('/api/staff/rate-center'), () =>
         HttpResponse.json({
@@ -37,98 +39,13 @@ describe('财务配置 Staff 工作台', () => {
           meta: { request_id: 'policy-read' },
         }),
       ),
-      http.post(
-        apiUrl('/api/staff/seller-principal-rate-policies/:id/confirm'),
-        async ({ request, params }) => {
-          requests.push({ path: `confirm:${params['id']}`, body: await request.json() });
-          return HttpResponse.json({
-            data: { policy: policy('confirm-1', 'CONFIRMED', 2, '400000', null) },
-            meta: { request_id: 'policy-confirm' },
-          });
-        },
-      ),
-      http.post(
-        apiUrl('/api/staff/seller-principal-rate-policies/:id/reject'),
-        async ({ request, params }) => {
-          requests.push({ path: `reject:${params['id']}`, body: await request.json() });
-          return HttpResponse.json({
-            data: { policy: policy('reject-1', 'REJECTED', 2, '0', '不采用') },
-            meta: { request_id: 'policy-reject' },
-          });
-        },
-      ),
-    );
-    const user = userEvent.setup();
-    renderWithMsw(
-      <StaffSessionBoundary adapter={adapter(owner())}>
-        <StaffFinanceWorkspace />
-      </StaffSessionBoundary>,
-      {
-        route: '/staff/finance',
-      },
-    );
-    expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
-    await screen.findByRole('option', { name: '测试卖家 · AMAZON_JP' });
-    await user.selectOptions(screen.getByLabelText('针对卖家组织'), 'seller-1');
-    // 顶部待办条：缺口 + 待决
-    expect(
-      await screen.findByText(/服务费未配置：测试卖家 还有 4\/4 类评价类型未配/u),
-    ).toBeVisible();
-    expect(await screen.findByText(/全体卖家加点 · \+0\.004 待你确认/u)).toBeVisible();
-    expect(await screen.findByText(/测试卖家单独加点 · \+0\.0 待你确认/u)).toBeVisible();
-    // 一键补默认入口出现在未配齐的组织上
-    expect(await screen.findByRole('button', { name: /补默认（4 类）/u })).toBeVisible();
-    // 一单示例
-    expect(await screen.findByRole('heading', { name: '今天生效' })).toBeVisible();
-    expect(await screen.findByText(/一单 ¥3,000 日元（评分单）为例/u)).toBeVisible();
-    expect(await screen.findByRole('heading', { name: '接下来的变更' })).toBeVisible();
-    await user.click(screen.getAllByRole('button', { name: '确认生效' })[0]!);
-    await waitFor(() => expect(requests).toHaveLength(1));
-    await user.click(screen.getAllByRole('button', { name: '拒绝' })[1]!);
-    await waitFor(() =>
-      expect(requests).toEqual([
-        { path: 'confirm:pending-default', body: { expected_version: 1 } },
-        {
-          path: 'reject:pending-override',
-          body: { expected_version: 1, rejection_reason: 'Owner 在 Staff 工作台拒绝' },
-        },
-      ]),
-    );
-  });
-
-  it('卖家对接为已分配组织提交明确为 0 的单独加点，携带幂等键', async () => {
-    let body: unknown;
-    let key: string | null = null;
-    server.use(
-      http.get(apiUrl('/api/staff/rate-center'), () =>
-        HttpResponse.json({
-          data: rateCenterPayload(),
-          meta: { request_id: 'rate-center-read' },
-        }),
-      ),
-      http.get(apiUrl('/api/staff/seller-service-fees'), () =>
-        HttpResponse.json({
-          data: serviceFeesPayload(),
-          meta: { request_id: 'fees-read' },
-        }),
-      ),
-      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () =>
-        HttpResponse.json({
-          data: {
-            policies: readPayload({
-              default_pending_policy: null,
-              seller_override_pending_policy: null,
-            }),
-          },
-          meta: { request_id: 'policy-read' },
-        }),
-      ),
-      http.post(apiUrl('/api/staff/seller-principal-rate-policies/submit'), async ({ request }) => {
+      http.post(apiUrl('/api/staff/seller-principal-rate-policies/save'), async ({ request }) => {
+        posts.push('policy-save');
         body = await request.json();
         key = request.headers.get('Idempotency-Key');
         return HttpResponse.json({
-          data: { policy: policy('submitted-1', 'SUBMITTED', 1, '0', null) },
-          meta: { request_id: 'policy-submit' },
+          data: { policy: policy('saved-override', 'SELLER_ORGANIZATION', 2, '0') },
+          meta: { request_id: 'policy-save' },
         });
       }),
     );
@@ -147,19 +64,27 @@ describe('财务配置 Staff 工作台', () => {
     const markupInput = screen.getByLabelText('加点（例如 +0.005 或 0）');
     await user.clear(markupInput);
     await user.type(markupInput, '0');
-    await user.click(screen.getByRole('button', { name: '提交待确认' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() =>
       expect(body).toMatchObject({
         scope_type: 'SELLER_ORGANIZATION',
         seller_organization_id: 'seller-1',
         source_currency_code: 'JPY',
         markup_rate_value: '0',
+        expected_version: 1,
       }),
     );
+    // 单次保存模型：请求体不再携带 effective_from。
+    expect(body).not.toHaveProperty('effective_from');
     expect(key).toMatch(/^[0-9a-f-]{36}$/u);
+    // 保存即生效的提示，且没有确认按钮。
+    expect(await screen.findByText('已保存，立即生效。')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '确认生效' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '拒绝' })).not.toBeInTheDocument();
+    await waitFor(() => expect(posts).toEqual(['policy-save']));
   });
 
-  it('Owner 修改全体卖家加点：提交即生效，无需他人确认', async () => {
+  it('Owner 保存全体默认加点：不再发送生效时间，保存后立即生效', async () => {
     let body: unknown;
     server.use(
       http.get(apiUrl('/api/staff/rate-center'), () =>
@@ -180,20 +105,20 @@ describe('财务配置 Staff 工作台', () => {
             policies: readPayload({
               seller_organization_id: null,
               seller_override_policy: null,
-              default_pending_policy: null,
-              seller_override_pending_policy: null,
               seller_override_next_version: null,
-              selected_policy: policy('default-1', 'CONFIRMED', 2, '400000', null),
+              selected_policy: policy('default-1', 'CURRENCY_PAIR_DEFAULT', 2, '400000'),
             }),
           },
           meta: { request_id: 'policy-read' },
         }),
       ),
-      http.post(apiUrl('/api/staff/seller-principal-rate-policies/submit'), async ({ request }) => {
+      http.post(apiUrl('/api/staff/seller-principal-rate-policies/save'), async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({
-          data: { policy: policy('submitted-default', 'CONFIRMED', 2, '400000', null) },
-          meta: { request_id: 'owner-submit' },
+          data: {
+            policy: policy('saved-default', 'CURRENCY_PAIR_DEFAULT', 3, '400000'),
+          },
+          meta: { request_id: 'owner-save' },
         });
       }),
     );
@@ -209,65 +134,195 @@ describe('财务配置 Staff 工作台', () => {
     await screen.findByRole('heading', { name: '财务配置' });
     await screen.findByText('全体卖家');
     await user.click(screen.getByRole('button', { name: '修改' }));
-    expect(screen.getByText(/提交后立即确认，到生效时间自动生效/u)).toBeVisible();
     const markupInput = screen.getByLabelText('加点（例如 +0.004 或 0）');
     await user.clear(markupInput);
     await user.type(markupInput, '0.004');
-    await user.click(screen.getByRole('button', { name: '提交并生效' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() =>
       expect(body).toMatchObject({
         scope_type: 'CURRENCY_PAIR_DEFAULT',
         seller_organization_id: null,
         source_currency_code: 'JPY',
         markup_rate_value: '0.004',
+        expected_version: 1,
       }),
     );
+    expect(body).not.toHaveProperty('effective_from');
+    expect(await screen.findByText('已保存，立即生效。')).toBeVisible();
   });
 
-  it('Owner 提前设明天：提交明天汇率并自确（容忍无 confirmed_at 的响应）', async () => {
-    const bodies: { path: string; body: any }[] = [];
+  it('版本冲突会浮现错误信息而不是静默失败', async () => {
+    server.use(
+      http.get(apiUrl('/api/staff/rate-center'), () =>
+        HttpResponse.json({
+          data: rateCenterPayload(),
+          meta: { request_id: 'rate-center-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/seller-service-fees'), () =>
+        HttpResponse.json({
+          data: serviceFeesPayload(),
+          meta: { request_id: 'fees-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () =>
+        HttpResponse.json({
+          data: {
+            policies: readPayload({
+              seller_organization_id: null,
+              seller_override_policy: null,
+              seller_override_next_version: null,
+              selected_policy: policy('default-1', 'CURRENCY_PAIR_DEFAULT', 2, '400000'),
+            }),
+          },
+          meta: { request_id: 'policy-read' },
+        }),
+      ),
+      http.post(apiUrl('/api/staff/seller-principal-rate-policies/save'), () =>
+        HttpResponse.json(
+          {
+            error: { code: 'VERSION_CONFLICT', message: '配置已发生变化，请刷新后重试', details: null },
+            meta: { request_id: 'policy-save-conflict' },
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithMsw(
+      <StaffSessionBoundary adapter={adapter(owner())}>
+        <StaffFinanceWorkspace />
+      </StaffSessionBoundary>,
+      {
+        route: '/staff/finance',
+      },
+    );
+    await screen.findByRole('heading', { name: '财务配置' });
+    await screen.findByText('全体卖家');
+    await user.click(screen.getByRole('button', { name: '修改' }));
+    const markupInput = screen.getByLabelText('加点（例如 +0.004 或 0）');
+    await user.clear(markupInput);
+    await user.type(markupInput, '0.004');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText(/操作未完成（VERSION_CONFLICT）/u)).toBeVisible();
+  });
+
+  it('Owner 保存服务费：不再发送生效时间，也没有一键补默认入口', async () => {
+    const posts: string[] = [];
+    let body: unknown;
+    server.use(
+      http.get(apiUrl('/api/staff/rate-center'), () =>
+        HttpResponse.json({
+          data: rateCenterPayload(),
+          meta: { request_id: 'rate-center-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/seller-service-fees'), () =>
+        HttpResponse.json({
+          data: serviceFeesPayload(),
+          meta: { request_id: 'fees-read' },
+        }),
+      ),
+      http.get(apiUrl('/api/staff/seller-principal-rate-policies'), () =>
+        HttpResponse.json({
+          data: { policies: readPayload() },
+          meta: { request_id: 'policy-read' },
+        }),
+      ),
+      http.post(apiUrl('/api/staff/seller-service-fees'), async ({ request }) => {
+        posts.push('fee-save');
+        body = await request.json();
+        return HttpResponse.json({
+          data: {
+            fee: {
+              rule_version_id: 'fee-rule-1',
+              seller_organization_id: 'seller-1',
+              marketplace_code: 'AMAZON_JP',
+              review_type: 'RATING',
+              version_no: 1,
+              fee_cny_fen: '1250',
+              effective_from: 1_900_000_000_000,
+              replayed: false,
+            },
+          },
+          meta: { request_id: 'fee-save' },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithMsw(
+      <StaffSessionBoundary adapter={adapter(owner())}>
+        <StaffFinanceWorkspace />
+      </StaffSessionBoundary>,
+      {
+        route: '/staff/finance',
+      },
+    );
+    expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
+    await screen.findByRole('option', { name: '测试卖家 · AMAZON_JP' });
+    await user.selectOptions(screen.getByLabelText('针对卖家组织'), 'seller-1');
+    expect(await screen.findByText(/服务费未配置：测试卖家 还有 4\/4 类评价类型未配/u)).toBeVisible();
+    // 补默认批量接口已随 D-056 移除。
+    expect(screen.queryByRole('button', { name: /补默认/u })).not.toBeInTheDocument();
+    // 服务费区块（评分单行）的「设置」按钮。
+    const feeSetButton = await waitFor(() => {
+      const button = within(document.getElementById('finance-section-service-fee')!)
+        .getAllByRole('button', { name: '设置' })
+        .at(0)!;
+      expect(button).toBeTruthy();
+      return button;
+    });
+    await user.click(feeSetButton);
+    const feeInput = screen.getByLabelText('服务费（元，例如 12.50）');
+    await user.clear(feeInput);
+    await user.type(feeInput, '12.50');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(body).toMatchObject({
+        seller_organization_id: 'seller-1',
+        review_type: 'RATING',
+        fee_cny_fen: '1250',
+        expected_version: 0,
+      }),
+    );
+    expect(body).not.toHaveProperty('effective_from');
+    expect(await screen.findByText('已保存，立即生效。')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '确认' })).not.toBeInTheDocument();
+    await waitFor(() => expect(posts).toEqual(['fee-save']));
+  });
+
+  it('Owner 提前设明天：单次保存明天汇率（不再有确认步骤）', async () => {
+    const posts: { path: string; body: any }[] = [];
     const tomorrow = shiftChinaDate(chinaDate(), 1);
-    let tomorrowSubmitted = false;
     server.use(
       http.get(apiUrl('/api/staff/rate-center'), ({ request }) => {
-        // 今天已确认；明天（提前设明天的目标日）为空
+        // 今天已有生效版本；明天（提前设明天的目标日）为空
         const requested = new URL(request.url).searchParams.get('business_date');
-        const confirmedToday = requested !== tomorrow;
+        const activeToday = requested !== tomorrow;
+        const version = (date: string, value: string) => ({
+          rate_version_id: `rate-${date}`,
+          business_date: date,
+          version_no: 1,
+          rate_value: value,
+          rate_scale: '100000000',
+          created_by_staff_id: 'staff-1',
+          created_at: 1_787_424_000_000,
+        });
         return HttpResponse.json({
           data: rateCenterPayload({
             business_date: requested ?? '2026-08-22',
-            base_rate: confirmedToday
+            base_rate: activeToday
               ? {
                   business_date: requested ?? '2026-08-22',
-                  confirmed_rate: {
-                    rate_id: 'rate-today-1',
-                    business_date: requested ?? '2026-08-22',
-                    version_no: 1,
-                    decision_version: 2,
-                    status: 'CONFIRMED',
-                    cny_per_jpy_e8: '4600000',
-                    rejection_reason: null,
-                    confirmed_at: 1_787_424_000_000,
-                  },
-                  pending_rate: null,
+                  versions: [version(requested ?? '2026-08-22', '4600000')],
+                  active_version: version(requested ?? '2026-08-22', '4600000'),
                   next_version: 2,
                 }
               : {
                   business_date: tomorrow,
-                  confirmed_rate: null,
-                  pending_rate: tomorrowSubmitted
-                    ? {
-                        rate_id: 'rate-tomorrow-1',
-                        business_date: tomorrow,
-                        version_no: 1,
-                        decision_version: 1,
-                        status: 'SUBMITTED',
-                        cny_per_jpy_e8: '4600000',
-                        rejection_reason: null,
-                        confirmed_at: null,
-                      }
-                    : null,
-                  next_version: tomorrowSubmitted ? 2 : 1,
+                  versions: [],
+                  active_version: null,
+                  next_version: 1,
                 },
           }),
           meta: { request_id: 'rate-center-read' },
@@ -285,46 +340,23 @@ describe('财务配置 Staff 工作台', () => {
           meta: { request_id: 'policy-read' },
         }),
       ),
-      http.post(apiUrl('/api/staff/rate-center/base-rates/submit'), async ({ request }) => {
-        bodies.push({ path: 'submit', body: await request.json() });
-        tomorrowSubmitted = true;
+      http.post(apiUrl('/api/staff/rate-center/base-rates'), async ({ request }) => {
+        posts.push({ path: 'save', body: await request.json() });
         return HttpResponse.json({
-          // 与后端一致：无 confirmed_at / rejection_reason，带 replayed
           data: {
             base_rate: {
-              rate_id: 'rate-tomorrow-1',
+              rate_version_id: 'rate-tomorrow-1',
               business_date: tomorrow,
               version_no: 1,
-              decision_version: 1,
-              status: 'SUBMITTED',
-              cny_per_jpy_e8: '4600000',
+              rate_value: '4600000',
+              rate_scale: '100000000',
+              effective_from: 1_787_424_000_000,
               replayed: false,
             },
           },
-          meta: { request_id: 'base-submit' },
+          meta: { request_id: 'base-save' },
         });
       }),
-      http.post(
-        apiUrl('/api/staff/rate-center/base-rates/:id/confirm'),
-        async ({ request }) => {
-          bodies.push({ path: 'confirm', body: await request.json() });
-          return HttpResponse.json({
-            data: {
-              base_rate: {
-                rate_id: 'rate-tomorrow-1',
-                business_date: tomorrow,
-                version_no: 1,
-                decision_version: 2,
-                status: 'CONFIRMED',
-                cny_per_jpy_e8: '4600000',
-                rejection_reason: null,
-                replayed: false,
-              },
-            },
-            meta: { request_id: 'base-confirm' },
-          });
-        },
-      ),
     );
     const user = userEvent.setup();
     renderWithMsw(
@@ -336,23 +368,46 @@ describe('财务配置 Staff 工作台', () => {
       },
     );
     expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
-    // 今日已确认 → 显示锁定说明与提前设明天入口
-    expect(await screen.findByText(/当天锁定不可改/u)).toBeVisible();
+    // 今日已有生效版本 → 显示说明与提前设明天入口
+    expect(await screen.findByText(/当日汇率已保存并立即生效/u)).toBeVisible();
     await user.click(screen.getByRole('button', { name: '提前设明天' }));
     const input = screen.getByRole('textbox', {
       name: /明天（\d{4}-\d{2}-\d{2}）基础汇率/u,
     });
     await user.clear(input);
     await user.type(input, '0.046');
-    await user.click(screen.getByRole('button', { name: '提交待确认' }));
-    expect(await screen.findByText(/已提交.*的汇率，等待确认/u)).toBeVisible();
-    // 明天行出现待确认 + 确认按钮（owner 自确）
-    await user.click(screen.getByRole('button', { name: '确认' }));
-    expect(await screen.findByText('已确认。')).toBeVisible();
-    expect(bodies).toEqual([
-      { path: 'submit', body: { business_date: tomorrow, rate_value: '0.046', expected_version: 0 } },
-      { path: 'confirm', body: { expected_version: 1 } },
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText(/已保存.*的汇率，立即生效/u)).toBeVisible();
+    // 单次保存模型：只有一次保存请求，没有确认请求。
+    expect(posts).toEqual([
+      { path: 'save', body: { business_date: tomorrow, rate_value: '0.046', expected_version: 0 } },
     ]);
+  });
+
+  it('无 SELLER_MANAGE 的角色只看到拒绝提示，看不到任何配置动作', async () => {
+    server.use(
+      http.get(apiUrl('/api/staff/rate-center'), () =>
+        HttpResponse.json({
+          data: rateCenterPayload(),
+          meta: { request_id: 'rate-center-read' },
+        }),
+      ),
+    );
+    renderWithMsw(
+      <StaffSessionBoundary adapter={adapter(preSales())}>
+        <StaffFinanceWorkspace />
+      </StaffSessionBoundary>,
+      {
+        route: '/staff/finance',
+      },
+    );
+    expect(
+      await screen.findByText('当前员工没有此权限，后端会拒绝访问。'),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '设置' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '单独设置' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '提前设明天' })).not.toBeInTheDocument();
   });
 
   it('回查历史日期时按 as_of 请求并标注回查口径', async () => {
@@ -375,12 +430,7 @@ describe('财务配置 Staff 工作台', () => {
       http.get(apiUrl('/api/staff/seller-principal-rate-policies'), ({ request }) => {
         policySearches.push(new URL(request.url).search);
         return HttpResponse.json({
-          data: {
-            policies: readPayload({
-              default_pending_policy: null,
-              seller_override_pending_policy: null,
-            }),
-          },
+          data: { policies: readPayload() },
           meta: { request_id: 'policy-read' },
         });
       }),
@@ -421,14 +471,19 @@ function adapter(value: StaffSession): StaffAuthApiAdapter {
   };
 }
 
-function session(role: 'owner' | 'seller_ops', permissions: string[]): StaffSession {
+function session(
+  role: 'owner' | 'seller_ops' | 'pre_sales',
+  permissions: string[],
+): StaffSession {
   return {
     staff_id: 'staff-1',
     display_name: '测试员工',
     role:
       role === 'owner'
-        ? { code: 'owner', display_name: '总管理员' }
-        : { code: 'seller_ops', display_name: '卖家对接' },
+        ? { code: 'owner' as const, display_name: '总管理员' }
+        : role === 'seller_ops'
+          ? { code: 'seller_ops' as const, display_name: '卖家对接' }
+          : { code: 'pre_sales' as const, display_name: '售前' },
     permissions,
     data_scope:
       role === 'owner'
@@ -453,34 +508,33 @@ function session(role: 'owner' | 'seller_ops', permissions: string[]): StaffSess
 }
 
 function owner(): StaffSession {
-  return session('owner', ['SELLER_MANAGE', 'FINANCIAL_CORRECT']);
+  return session('owner', ['SELLER_MANAGE']);
 }
 function sellerOps(): StaffSession {
   return session('seller_ops', ['SELLER_MANAGE']);
 }
+function preSales(): StaffSession {
+  return session('pre_sales', ['ORDER_VIEW']);
+}
 
 function policy(
   id: string,
-  status: 'SUBMITTED' | 'CONFIRMED' | 'REJECTED',
+  scopeType: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION',
   version: number,
   markup: string,
-  rejection: string | null,
 ) {
   return {
     policy_version_id: id,
-    scope_type: id.includes('override') ? 'SELLER_ORGANIZATION' : 'CURRENCY_PAIR_DEFAULT',
-    seller_organization_id: id.includes('override') ? 'seller-1' : null,
+    scope_type: scopeType,
+    seller_organization_id: scopeType === 'SELLER_ORGANIZATION' ? 'seller-1' : null,
     source_currency_code: 'JPY',
     quote_currency_code: 'CNY',
-    version_no: 1,
-    decision_version: version,
-    status,
+    version_no: version,
     markup_rate_value: markup,
     markup_rate_scale: '100000000',
     effective_from: 1_900_000_000_000,
-    submitted_at: 1_800_000_000_000,
-    confirmed_at: status === 'CONFIRMED' ? 1_800_000_000_001 : null,
-    rejection_reason: rejection,
+    created_by_staff_id: 'staff-1',
+    created_at: 1_900_000_000_000,
     replayed: false,
   };
 }
@@ -490,15 +544,11 @@ function readPayload(overrides: Record<string, unknown> = {}) {
     source_currency_code: 'JPY',
     quote_currency_code: 'CNY',
     seller_organization_id: 'seller-1',
-    default_policy: policy('default-1', 'CONFIRMED', 2, '400000', null),
-    seller_override_policy: policy('override-1', 'CONFIRMED', 2, '0', null),
-    default_pending_policy: policy('pending-default', 'SUBMITTED', 1, '400000', null),
-    seller_override_pending_policy: policy('pending-override', 'SUBMITTED', 1, '0', null),
+    default_policy: policy('default-1', 'CURRENCY_PAIR_DEFAULT', 1, '400000'),
+    seller_override_policy: policy('override-1', 'SELLER_ORGANIZATION', 1, '0'),
     default_next_version: 2,
     seller_override_next_version: 2,
-    selected_policy: policy('override-1', 'CONFIRMED', 2, '0', null),
-    default_upcoming_policy: null,
-    seller_override_upcoming_policy: null,
+    selected_policy: policy('override-1', 'SELLER_ORGANIZATION', 1, '0'),
     ...overrides,
   };
 }
@@ -509,8 +559,6 @@ function serviceFeesPayload() {
     fees: ['RATING', 'TEXT', 'IMAGE', 'VIDEO'].map((reviewType) => ({
       review_type: reviewType,
       effective_fee: null,
-      pending_fee: null,
-      upcoming_fee: null,
       next_version: 1,
     })),
   };
@@ -523,8 +571,8 @@ function rateCenterPayload(overrides: Record<string, unknown> = {}) {
     quote_currency_code: 'CNY',
     base_rate: {
       business_date: '2026-08-22',
-      confirmed_rate: null,
-      pending_rate: null,
+      versions: [],
+      active_version: null,
       next_version: 1,
     },
     seller_organizations: [

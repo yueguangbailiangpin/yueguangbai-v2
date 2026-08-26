@@ -30,6 +30,11 @@ import {
   type CustomerMasterActor,
 } from './master-data-shared';
 import {
+  advanceBuyerChannelSequenceStatement,
+  insertBuyerNumberAllocationEventStatement,
+  planBuyerNumberAllocation,
+} from './buyer-number-allocation';
+import {
   resolveMarketplace,
 } from '../marketplaces/registry';
 
@@ -45,7 +50,7 @@ export interface CreateBuyerResult {
   identity_subject_id: string;
   wechat_claim_id: string;
   access_status: 'DISABLED';
-  buyer_customer_no: null;
+  buyer_customer_no: string;
   replayed: boolean;
 }
 
@@ -110,6 +115,10 @@ export async function createBuyerCustomer(
   try {
     await assertActiveBuyerChannel(database, buyerChannelId);
     await assertWechatAvailable(database, wechat.normalized);
+    const numberPlan = await planBuyerNumberAllocation(database, {
+      channelId: buyerChannelId,
+      now,
+    });
 
     const buyerId = crypto.randomUUID();
     const subjectId = crypto.randomUUID();
@@ -119,7 +128,7 @@ export async function createBuyerCustomer(
       identity_subject_id: subjectId,
       wechat_claim_id: claimId,
       access_status: 'DISABLED',
-      buyer_customer_no: null,
+      buyer_customer_no: numberPlan.buyerNumber,
       replayed: false,
     };
 
@@ -157,7 +166,6 @@ export async function createBuyerCustomer(
           buyer_channel_id,
           buyer_customer_no,
           buyer_sequence,
-          first_valid_order_business_date,
           display_name,
           access_status,
           identity_review_status,
@@ -167,7 +175,7 @@ export async function createBuyerCustomer(
           activated_at,
           disabled_at
         ) VALUES (
-          ?, ?, ?, ?, NULL, NULL, NULL, ?,
+          ?, ?, ?, ?, ?, ?, ?,
           'DISABLED', 'CLEAR', 1, ?, ?, NULL, ?
         )
       `).bind(
@@ -175,11 +183,22 @@ export async function createBuyerCustomer(
         subjectId,
         'AMAZON_JP',
         buyerChannelId,
+        numberPlan.buyerNumber,
+        numberPlan.sequence,
         displayName,
         now,
         now,
         now,
       ),
+      advanceBuyerChannelSequenceStatement(database, numberPlan, now),
+      insertBuyerNumberAllocationEventStatement(database, {
+        buyerCustomerId: buyerId,
+        plan: numberPlan,
+        allocationSource: 'STAFF_CREATION',
+        actorStaffId: command.actor.staffId,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        now,
+      }),
       database.prepare(`
         UPDATE buyer_marketplace_assignments
         SET marketplace_code=?
@@ -202,6 +221,7 @@ export async function createBuyerCustomer(
           buyer_customer_id: buyerId,
           marketplace_code: input.marketplaceCode,
           buyer_channel_id: buyerChannelId,
+          buyer_customer_no: numberPlan.buyerNumber,
           access_status: 'DISABLED',
           identity_review_status: 'CLEAR',
         },
@@ -228,6 +248,7 @@ export async function createBuyerCustomer(
         subjectId,
         claimId,
         marketplace.code,
+        numberPlan.buyerNumber,
       ),
       assertIdempotencyCompletionStatement(
         database,
@@ -277,6 +298,7 @@ function assertBuyerCreatedStatement(
   subjectId: string,
   claimId: string,
   marketplaceCode: string,
+  buyerCustomerNo: string,
 ): SqlStatement {
   return database.prepare(`
     INSERT INTO transaction_assertions (assertion_value)
@@ -287,7 +309,7 @@ function assertBuyerCreatedStatement(
         WHERE id=?
           AND identity_subject_id=?
           AND access_status='DISABLED'
-          AND buyer_customer_no IS NULL
+          AND buyer_customer_no=?
       )
       AND EXISTS (
         SELECT 1
@@ -316,6 +338,7 @@ function assertBuyerCreatedStatement(
   `).bind(
     buyerId,
     subjectId,
+    buyerCustomerNo,
     buyerId,
     marketplaceCode,
     claimId,

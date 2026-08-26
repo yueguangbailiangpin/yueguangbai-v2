@@ -19,14 +19,14 @@ afterEach(() => {
 const root = path.resolve(import.meta.dirname, '../../../..');
 
 describe('stage 3 clean baseline schema', () => {
-  it('is one continuous 0001-0026 chain ending at schema version 26', () => {
+  it('is one continuous 0001-0027 chain ending at schema version 27', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(26);
+    expect(migrations).toHaveLength(27);
     expect(migrations.map((name) => Number(name.slice(0, 4))))
-      .toEqual(Array.from({ length: 26 }, (_, index) => index + 1));
-    expect(migrations.at(-1)).toBe('0026_stage65_archive_import_closeout.sql');
+      .toEqual(Array.from({ length: 27 }, (_, index) => index + 1));
+    expect(migrations.at(-1)).toBe('0027_stage66_single_source_convergence.sql');
     for (const file of migrations) {
       const source = readFileSync(path.join(root, 'migrations', file), 'utf8');
       expect(source).not.toMatch(/SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu);
@@ -34,12 +34,12 @@ describe('stage 3 clean baseline schema', () => {
     }
   });
 
-  it('applies to an empty database in one pass at version 26', () => {
+  it('applies to an empty database in one pass at version 27', () => {
     database = createMigratedTestDatabase();
     const state = database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
     ).get();
-    expect(state).toEqual({ schema_version: 26 });
+    expect(state).toEqual({ schema_version: 27 });
     expect(database.raw.prepare('PRAGMA integrity_check').get())
       .toEqual({ integrity_check: 'ok' });
     expect(database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -224,20 +224,16 @@ describe('stage 3 clean baseline schema', () => {
     expect(column?.notnull).toBe(0);
   });
 
-  it('keeps the principal rate policy event fidelity and confirmation guards', () => {
+  it('keeps the principal rate policy and snapshot immutability with source guards', () => {
     database = createMigratedTestDatabase();
+    // Stage 6.6 removed the submit/confirm decision model; the protection now
+    // rests on version immutability plus insert-time source verification.
     for (const trigger of [
-      'trg_seller_principal_rate_policy_initial_state_guard',
-      'trg_seller_principal_rate_policy_decision_guard',
       'trg_seller_principal_rate_policy_no_delete',
-      'trg_seller_principal_rate_policy_event_source_guard',
-      'trg_seller_principal_rate_policy_event_no_update',
-      'trg_seller_principal_rate_policy_event_no_delete',
-      'trg_seller_principal_rate_snapshot_guard',
+      'trg_seller_principal_rate_policy_no_update',
       'trg_seller_principal_rate_snapshots_no_update',
       'trg_seller_principal_rate_snapshots_no_delete',
-      'trg_seller_principal_rate_policy_future_effective_guard',
-      'trg_seller_principal_rate_policy_event_fidelity_guard',
+      'trg_seller_principal_rate_snapshot_guard',
       'trg_seller_principal_rate_snapshot_confirmation_guard',
     ]) {
       expect(database.raw.prepare(`
@@ -304,11 +300,24 @@ describe('stage 3 clean baseline schema', () => {
     ).all() as { name: string }[];
     expect(formalOrderColumns.map((column) => column.name))
       .not.toContain('canonical_marketplace_code');
-    const runtimeConfigColumns = database.raw.prepare(
-      'PRAGMA table_info(marketplace_runtime_config)',
+    // Stage 6.6 made marketplace_registry the single marketplace config source:
+    // the runtime-config side table is gone and the registry itself carries the
+    // timezone and portal-status columns.
+    expect(database.raw.prepare(
+      `SELECT COUNT(*) AS count FROM sqlite_schema WHERE name='marketplace_runtime_config'`,
+    ).get()).toEqual({ count: 0 });
+    const registryColumns = database.raw.prepare(
+      'PRAGMA table_info(marketplace_registry)',
     ).all() as { name: string }[];
-    expect(runtimeConfigColumns.map((column) => column.name))
-      .not.toContain('legacy_order_code');
+    const registryColumnNames = registryColumns.map((column) => column.name);
+    for (const column of [
+      'business_timezone',
+      'reporting_timezone',
+      'seller_portal_status',
+      'buyer_portal_status',
+    ]) {
+      expect(registryColumnNames).toContain(column);
+    }
     const formalOrderSql = database.raw.prepare(`
       SELECT sql FROM sqlite_schema WHERE type='table' AND name='formal_orders'
     `).get() as { sql: string };

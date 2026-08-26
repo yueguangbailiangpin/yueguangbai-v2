@@ -3,16 +3,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { isFrontendApiError } from '../../api/errors';
 import { Alert, Button, Card, FormField, Select, TextInput } from '../../ui/primitives';
 import { staffApi } from '../api/client';
-import { type StaffMutationRequest } from '../mutations/StaffMutationAuthority';
-import { formatShanghai } from '../shared/format';
-import {
-  fenToYuan,
-  futureDateTime,
-  markupLabel,
-  rateLabel,
-  shiftChinaDate,
-  yuanToFen,
-} from './finance-format';
+import { fenToYuan, markupLabel, rateLabel, shiftChinaDate, yuanToFen } from './finance-format';
 
 export type Policy = NonNullable<
   Awaited<ReturnType<typeof staffApi.sellerPrincipalRatePolicies>>['data']['default_policy']
@@ -21,9 +12,6 @@ export type PolicyRead = Awaited<ReturnType<typeof staffApi.sellerPrincipalRateP
 export type RateCenter = Awaited<ReturnType<typeof staffApi.rateCenter>>['data'];
 export type ServiceFeeRead = Awaited<ReturnType<typeof staffApi.sellerServiceFees>>['data'];
 
-export const DUAL_CONTROL_HINT =
-  '当前账号没有确认权限（需要 Owner 且具备财务纠正权限）；全体卖家默认加点无需确认。';
-
 const SERVICE_FEE_REVIEW_TYPE_LABELS: Record<string, string> = {
   RATING: '评分单',
   TEXT: '文字评论',
@@ -31,48 +19,28 @@ const SERVICE_FEE_REVIEW_TYPE_LABELS: Record<string, string> = {
   VIDEO: '视频评论',
 };
 
-export interface PendingDecision {
-  id: string;
-  label: string;
-  value: string;
-  kind: 'markup' | 'fee';
-  // Markup decisions reuse the StaffMutationAuthority flow.
-  markupRequest?: StaffMutationRequest;
-  feeVersionId?: string;
-  feeExpectedVersion?: number;
-}
-
 /**
  * Top strip: only actionable problems — missing configuration that blocks
- * order approval, plus pending decisions waiting for this Owner.  Renders
- * nothing when everything is calm.
+ * order approval.  Renders nothing when everything is calm.  (Stage 6.6A
+ * D-056: saves are immediately effective, so there are no pending decisions
+ * to surface any more.)
  */
 export function FinanceAlertStrip({
   baseRateDate,
   baseRateMissing,
   feeOrgName,
   missingFeeTypes,
-  pending,
-  busy,
-  onMarkupDecision,
-  onFeeDecision,
-  canDecide,
 }: {
   baseRateDate: string;
   baseRateMissing: boolean;
   feeOrgName: string | null;
   missingFeeTypes: readonly string[];
-  pending: readonly PendingDecision[];
-  busy: boolean;
-  onMarkupDecision: (request: StaffMutationRequest) => void;
-  onFeeDecision: (decision: 'confirm' | 'reject', item: PendingDecision) => void;
-  canDecide: boolean;
 }): React.JSX.Element | null {
   const alerts: ReactNode[] = [];
   if (baseRateMissing) {
     alerts.push(
       <Alert tone="danger" key="base-rate-gap">
-        订单日 {baseRateDate} 的基础汇率未确认（若更早日期已有已确认汇率，订单确认会自动回退采用）。{' '}
+        订单日 {baseRateDate} 的基础汇率未设置（若更早日期已有汇率，订单确认会自动回退采用）。{' '}
         <a href="#finance-section-base-rate">去设置</a>
       </Alert>,
     );
@@ -82,56 +50,6 @@ export function FinanceAlertStrip({
       <Alert tone="danger" key="fee-gap">
         服务费未配置：{feeOrgName} 还有 {missingFeeTypes.length}/4 类评价类型未配——
         未配齐前该组织的订单审核无法通过。 <a href="#finance-section-service-fee">去配置</a>
-      </Alert>,
-    );
-  }
-  if (canDecide) {
-    for (const item of pending) {
-      alerts.push(
-        <Alert tone="warning" key={item.id}>
-          <p>
-            {item.label} · {item.value} 待你确认
-          </p>
-          <div className="entry-actions">
-            <Button
-              className="danger"
-              disabled={busy}
-              onClick={() =>
-                item.kind === 'markup' && item.markupRequest
-                  ? onMarkupDecision(item.markupRequest)
-                  : onFeeDecision('confirm', item)
-              }
-            >
-              确认生效
-            </Button>
-            <Button
-              className="secondary"
-              disabled={busy}
-              onClick={() =>
-                item.kind === 'markup' && item.markupRequest
-                  ? onMarkupDecision({
-                      ...item.markupRequest,
-                      action: 'reject',
-                      path: item.markupRequest.path.replace('/confirm', '/reject'),
-                      body: {
-                        expected_version: (item.markupRequest.body as { expected_version: number })
-                          .expected_version,
-                        rejection_reason: 'Owner 在 Staff 工作台拒绝',
-                      },
-                    })
-                  : onFeeDecision('reject', item)
-              }
-            >
-              拒绝
-            </Button>
-          </div>
-        </Alert>,
-      );
-    }
-  } else if (pending.length > 0) {
-    alerts.push(
-      <Alert tone="info" key="pending-readonly">
-        {pending.length} 条变更待管理员确认后生效。
       </Alert>,
     );
   }
@@ -218,16 +136,14 @@ export function BaseRateBlock({
   yesterdayRate,
   tomorrow,
   canSubmit,
-  canConfirm,
   refresh,
 }: {
   value: RateCenter;
-  /** Confirmed rate of the previous business day (e8 string), for context. */
+  /** Active rate of the previous business day (e8 string), for context. */
   yesterdayRate: string | null;
   /** Rate-center read for the next business day; null when unavailable. */
   tomorrow: RateCenter | null;
   canSubmit: boolean;
-  canConfirm: boolean;
   refresh: () => Promise<void>;
 }): React.JSX.Element {
   const client = useQueryClient();
@@ -236,9 +152,11 @@ export function BaseRateBlock({
   const [open, setOpen] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
   const tomorrowDate = shiftChinaDate(value.business_date, 1);
+  // Stage 6.6A (D-056): one save immediately forms the new effective version —
+  // there is no submit/confirm dual approval any more.
   const submit = useMutation({
     mutationFn: () =>
-      staffApi.submitOrderDayBaseRate(
+      staffApi.saveOrderDayBaseRate(
         client,
         {
           business_date: value.business_date,
@@ -248,15 +166,15 @@ export function BaseRateBlock({
         crypto.randomUUID(),
       ),
     onSuccess: async () => {
-      setMessage('已提交，等待确认。');
+      setMessage('已保存，立即生效。');
       setOpen(false);
       await refresh();
     },
-    onError: (error) => setMessage(baseRateErrorMessage('提交', error)),
+    onError: (error) => setMessage(baseRateErrorMessage('保存', error)),
   });
   const presetSubmit = useMutation({
     mutationFn: () =>
-      staffApi.submitOrderDayBaseRate(
+      staffApi.saveOrderDayBaseRate(
         client,
         {
           business_date: tomorrowDate,
@@ -266,76 +184,35 @@ export function BaseRateBlock({
         crypto.randomUUID(),
       ),
     onSuccess: async () => {
-      setMessage(`已提交 ${tomorrowDate} 的汇率，等待确认。`);
+      setMessage(`已保存 ${tomorrowDate} 的汇率，立即生效。`);
       setPresetOpen(false);
       await refresh();
     },
-    onError: (error) => setMessage(baseRateErrorMessage('提交', error)),
+    onError: (error) => setMessage(baseRateErrorMessage('保存', error)),
   });
-  const confirm = useMutation({
-    mutationFn: (input: { rateId: string; decisionVersion: number }) =>
-      staffApi.confirmOrderDayBaseRate(
-        client,
-        input.rateId,
-        { expected_version: input.decisionVersion },
-        crypto.randomUUID(),
-      ),
-    onSuccess: async () => {
-      setMessage('已确认。');
-      await refresh();
-    },
-    onError: (error) => {
-      setMessage(baseRateErrorMessage('确认', error));
-      if (
-        isFrontendApiError(error)
-        && (error.code === 'VERSION_CONFLICT' || error.code === 'NOT_FOUND')
-      ) {
-        void refresh();
-      }
-    },
-  });
-  const confirmed = value.base_rate.confirmed_rate;
-  const pending = value.base_rate.pending_rate;
-  const tomorrowConfirmed = tomorrow?.base_rate.confirmed_rate ?? null;
-  const tomorrowPending = tomorrow?.base_rate.pending_rate ?? null;
+  const active = value.base_rate.active_version;
+  const tomorrowActive = tomorrow?.base_rate.active_version ?? null;
   return (
     <Card id="finance-section-base-rate" className="sensitive-action staff-finance-config-block">
       <h3>基础汇率（JPY → CNY）· {value.business_date}</h3>
       <div className="staff-finance-config-row">
         <span className="kind">当日汇率</span>
-        <strong>{confirmed ? rateLabel(confirmed.cny_per_jpy_e8) : <span className="inline-warning">未确认</span>}</strong>
-        {confirmed && yesterdayRate !== null ? (
+        <strong>{active ? rateLabel(active.rate_value) : <span className="inline-warning">未设置</span>}</strong>
+        {active && yesterdayRate !== null ? (
           <span className="inline-info">昨天 {rateLabel(yesterdayRate)}</span>
         ) : null}
-        {pending ? (
-          <span className="inline-info">待确认 {rateLabel(pending.cny_per_jpy_e8)}</span>
-        ) : null}
-        {canConfirm && pending ? (
-          <Button
-            className="danger"
-            disabled={confirm.isPending}
-            onClick={() =>
-              confirm.mutate({
-                rateId: pending.rate_id,
-                decisionVersion: pending.decision_version,
-              })
-            }
-          >
-            确认
-          </Button>
-        ) : null}
-        {canSubmit && !confirmed ? (
+        {canSubmit && !active ? (
           <Button className="secondary" onClick={() => setOpen((previous) => !previous)}>
-            {open ? '收起' : pending ? '重新填写' : '设置'}
+            {open ? '收起' : '设置'}
           </Button>
         ) : null}
       </div>
-      {confirmed && !pending ? (
+      {active ? (
         <p className="hint">
-          今日汇率已确认，当天锁定不可改。买家返款按基础汇率，卖家收款按「基础汇率 + 加点」。
+          当日汇率已保存并立即生效（再次保存会形成新版本）。买家返款按基础汇率，卖家收款按「基础汇率 + 加点」。
         </p>
       ) : null}
-      {open && canSubmit && !confirmed ? (
+      {open && canSubmit && !active ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -354,40 +231,21 @@ export function BaseRateBlock({
               required
             />
           </FormField>
-          <p className="hint">提交后需管理员确认；每天只需确认一次，缺当日汇率时订单会自动回退最近一个已生效汇率。</p>
-          <Button disabled={submit.isPending}>提交待确认</Button>
+          <p className="hint">保存后立即生效；每天只需设置一次，缺当日汇率时订单会自动回退最近一个已生效汇率。</p>
+          <Button disabled={submit.isPending}>保存</Button>
         </form>
       ) : null}
       <div className="staff-finance-config-row">
         <span className="kind">明天（{tomorrowDate}）</span>
-        {tomorrowConfirmed ? (
+        {tomorrowActive ? (
           <>
-            <strong>{rateLabel(tomorrowConfirmed.cny_per_jpy_e8)}</strong>
-            <span className="inline-info">已提前确认，明天 0 点起生效</span>
-          </>
-        ) : tomorrowPending ? (
-          <>
-            <strong>{rateLabel(tomorrowPending.cny_per_jpy_e8)}</strong>
-            <span className="inline-info">待确认</span>
-            {canConfirm ? (
-              <Button
-                className="danger"
-                disabled={confirm.isPending}
-                onClick={() =>
-                  confirm.mutate({
-                    rateId: tomorrowPending.rate_id,
-                    decisionVersion: tomorrowPending.decision_version,
-                  })
-                }
-              >
-                确认
-              </Button>
-            ) : null}
+            <strong>{rateLabel(tomorrowActive.rate_value)}</strong>
+            <span className="inline-info">已提前设置，明天 0 点起生效</span>
           </>
         ) : (
-          <span className="inline-info">未设置（明天 0 点前设好即可，缺了会回退最近已确认汇率）</span>
+          <span className="inline-info">未设置（明天 0 点前设好即可，缺了会回退最近已生效汇率）</span>
         )}
-        {canSubmit && !tomorrowConfirmed && !tomorrowPending ? (
+        {canSubmit && !tomorrowActive ? (
           <Button
             className="secondary"
             onClick={() => {
@@ -399,7 +257,7 @@ export function BaseRateBlock({
           </Button>
         ) : null}
       </div>
-      {presetOpen && canSubmit && !tomorrowConfirmed && !tomorrowPending ? (
+      {presetOpen && canSubmit && !tomorrowActive ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -418,8 +276,8 @@ export function BaseRateBlock({
               required
             />
           </FormField>
-          <p className="hint">提前设定明天的汇率；提交后同样需要确认，确认后明天 0 点自动生效。</p>
-          <Button disabled={presetSubmit.isPending}>提交待确认</Button>
+          <p className="hint">提前设定明天的汇率；保存后立即记录，明天 0 点自动生效。</p>
+          <Button disabled={presetSubmit.isPending}>保存</Button>
         </form>
       ) : null}
       {message ? (
@@ -446,24 +304,19 @@ export function MarkupBlock({
   canSubmitDefault: boolean;
   canSubmitOverride: boolean;
   busy: boolean;
-  onSubmit: (
-    scope: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION',
-    input: { markup: string; effectiveAt: string },
-  ) => void;
+  onSubmit: (scope: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION', input: { markup: string }) => void;
 }): React.JSX.Element {
   const [openDefault, setOpenDefault] = useState(false);
   const [openOverride, setOpenOverride] = useState(false);
   const [defaultMarkup, setDefaultMarkup] = useState('0.004');
   const [overrideMarkup, setOverrideMarkup] = useState('0.004');
-  const [defaultAt, setDefaultAt] = useState(() => futureDateTime());
-  const [overrideAt, setOverrideAt] = useState(() => futureDateTime());
   const submitDefault = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    onSubmit('CURRENCY_PAIR_DEFAULT', { markup: defaultMarkup, effectiveAt: defaultAt });
+    onSubmit('CURRENCY_PAIR_DEFAULT', { markup: defaultMarkup });
   };
   const submitOverride = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    onSubmit('SELLER_ORGANIZATION', { markup: overrideMarkup, effectiveAt: overrideAt });
+    onSubmit('SELLER_ORGANIZATION', { markup: overrideMarkup });
   };
   return (
     <Card id="finance-section-seller-markup" className="staff-finance-config-block">
@@ -473,27 +326,13 @@ export function MarkupBlock({
         <strong>
           {value.default_policy ? markupLabel(value.default_policy.markup_rate_value) : <span className="inline-warning">未设置</span>}
         </strong>
-        {value.default_upcoming_policy ? (
-          <span className="inline-info">
-            待生效 {markupLabel(value.default_upcoming_policy.markup_rate_value)} ·{' '}
-            {formatShanghai(value.default_upcoming_policy.effective_from)} 起
-          </span>
-        ) : null}
         {canSubmitDefault ? (
-          <Button
-            className="secondary"
-            onClick={() => {
-              setOpenDefault((previous) => {
-                if (!previous) setDefaultAt(futureDateTime());
-                return !previous;
-              });
-            }}
-          >
+          <Button className="secondary" onClick={() => setOpenDefault((previous) => !previous)}>
             {openDefault ? '收起' : '修改'}
           </Button>
         ) : null}
       </div>
-      {openDefault && canSubmitDefault && !value.default_pending_policy ? (
+      {openDefault && canSubmitDefault ? (
         <form onSubmit={submitDefault}>
           <FormField label="加点（例如 +0.004 或 0）" htmlFor="finance-default-markup">
             <TextInput
@@ -504,18 +343,9 @@ export function MarkupBlock({
               required
             />
           </FormField>
-          <FormField label="生效时间（默认 5 分钟后）" htmlFor="finance-default-markup-at">
-            <TextInput
-              id="finance-default-markup-at"
-              type="datetime-local"
-              value={defaultAt}
-              onChange={(event) => setDefaultAt(event.target.value)}
-              required
-            />
-          </FormField>
-          <p className="hint">全体卖家的加点提交后立即确认，到生效时间自动生效，无需他人确认。</p>
+          <p className="hint">保存后立即生效，无需他人确认。</p>
           <Button className="danger" disabled={busy}>
-            提交并生效
+            保存
           </Button>
         </form>
       ) : null}
@@ -530,30 +360,16 @@ export function MarkupBlock({
                 <span className="inline-info">未单独设置（用全体值）</span>
               )}
             </strong>
-            {value.seller_override_pending_policy ? (
-              <span className="inline-warning">待确认（页面顶部处理）</span>
-            ) : null}
-            {value.seller_override_upcoming_policy ? (
-              <span className="inline-info">
-                待生效 {markupLabel(value.seller_override_upcoming_policy.markup_rate_value)} ·{' '}
-                {formatShanghai(value.seller_override_upcoming_policy.effective_from)} 起
-              </span>
-            ) : null}
-            {canSubmitOverride && !value.seller_override_pending_policy ? (
+            {canSubmitOverride ? (
               <Button
                 className="secondary"
-                onClick={() => {
-                  setOpenOverride((previous) => {
-                    if (!previous) setOverrideAt(futureDateTime());
-                    return !previous;
-                  });
-                }}
+                onClick={() => setOpenOverride((previous) => !previous)}
               >
                 {openOverride ? '收起' : '单独设置'}
               </Button>
             ) : null}
           </div>
-          {openOverride && canSubmitOverride && !value.seller_override_pending_policy ? (
+          {openOverride && canSubmitOverride ? (
             <form onSubmit={submitOverride}>
               <FormField label="加点（例如 +0.005 或 0）" htmlFor="finance-override-markup">
                 <TextInput
@@ -564,18 +380,9 @@ export function MarkupBlock({
                   required
                 />
               </FormField>
-              <FormField label="生效时间（默认 5 分钟后）" htmlFor="finance-override-markup-at">
-                <TextInput
-                  id="finance-override-markup-at"
-                  type="datetime-local"
-                  value={overrideAt}
-                  onChange={(event) => setOverrideAt(event.target.value)}
-                  required
-                />
-              </FormField>
-              <p className="hint">单独设置需有确认权限的管理员（Owner）确认后才会生效。</p>
+              <p className="hint">保存后立即生效，无需他人确认。</p>
               <Button className="danger" disabled={busy}>
-                提交待确认
+                保存
               </Button>
             </form>
           ) : null}
@@ -604,61 +411,37 @@ export function ServiceFeeBlock({
   const [open, setOpen] = useState(false);
   const [reviewType, setReviewType] = useState<'RATING' | 'TEXT' | 'IMAGE' | 'VIDEO'>('RATING');
   const [feeYuan, setFeeYuan] = useState('');
-  const [effectiveAt, setEffectiveAt] = useState(() => futureDateTime());
   const [message, setMessage] = useState<string | null>(null);
   const entry = value.fees.find((candidate) => candidate.review_type === reviewType);
-  // Only types with neither an effective fee nor a pending submission can be
-  // filled by the one-click default backfill.
-  const defaultableTypes = value.fees.filter(
-    (candidate) => candidate.effective_fee === null && candidate.pending_fee === null,
-  );
-  const applyDefaults = useMutation({
-    mutationFn: () =>
-      staffApi.applyDefaultSellerServiceFees(client, organizationId, crypto.randomUUID()),
-    onSuccess: async (result) => {
-      setMessage(
-        result.data.applied.length > 0
-          ? `已按默认配好 ${result.data.applied.length} 类服务费。`
-          : '没有需要补默认的服务费。',
-      );
-      await refresh();
-    },
-    onError: (error) =>
-      setMessage(
-        isFrontendApiError(error) && error.code === 'FORBIDDEN'
-          ? '当前账号无权配置该组织的服务费。'
-          : serviceFeeErrorMessage('补默认', error),
-      ),
-  });
+  // Stage 6.6A (D-056): one save immediately forms the new effective fee rule
+  // version (no dual approval, no apply-defaults batch endpoint).
   const submit = useMutation({
     mutationFn: () => {
       const fen = yuanToFen(feeYuan);
-      const effective = Date.parse(`${effectiveAt}:00+08:00`);
-      if (fen === null || !Number.isSafeInteger(effective)) {
+      if (fen === null) {
         throw new Error('invalid fee input');
       }
-      return staffApi.submitSellerServiceFee(
+      return staffApi.saveSellerServiceFee(
         client,
         {
           seller_organization_id: organizationId,
           review_type: reviewType,
           fee_cny_fen: fen,
-          effective_from: effective,
           expected_version: (entry?.next_version ?? 1) - 1,
         },
         crypto.randomUUID(),
       );
     },
     onSuccess: async () => {
-      setMessage('已提交，等待确认。');
+      setMessage('已保存，立即生效。');
       setOpen(false);
       await refresh();
     },
     onError: (error) =>
       setMessage(
         isFrontendApiError(error) && error.code === 'FORBIDDEN'
-          ? DUAL_CONTROL_HINT
-          : serviceFeeErrorMessage('提交', error),
+          ? '当前账号无权配置该组织的服务费。'
+          : serviceFeeErrorMessage('保存', error),
       ),
   });
   return (
@@ -670,24 +453,12 @@ export function ServiceFeeBlock({
           <strong>
             {candidate.effective_fee ? fenToYuan(candidate.effective_fee.fee_cny_fen) : <span className="inline-warning">未配置</span>}
           </strong>
-          {candidate.pending_fee ? (
-            <span className="inline-warning">待确认 {fenToYuan(candidate.pending_fee.fee_cny_fen)}</span>
-          ) : null}
-          {candidate.upcoming_fee ? (
-            <span className="inline-info">
-              待生效 {fenToYuan(candidate.upcoming_fee.fee_cny_fen)} ·{' '}
-              {formatShanghai(candidate.upcoming_fee.effective_from)} 起
-            </span>
-          ) : null}
-          {canSubmit && !candidate.pending_fee ? (
+          {canSubmit ? (
             <Button
               className="secondary"
               onClick={() => {
                 setReviewType(candidate.review_type);
-                setOpen((previous) => {
-                  if (!previous) setEffectiveAt(futureDateTime());
-                  return !previous;
-                });
+                setOpen((previous) => !previous);
               }}
             >
               {open && reviewType === candidate.review_type ? '收起' : candidate.effective_fee ? '修改' : '设置'}
@@ -695,22 +466,10 @@ export function ServiceFeeBlock({
           ) : null}
         </div>
       ))}
-      {canSubmit && defaultableTypes.length > 0 ? (
-        <div className="staff-finance-config-row">
-          <span className="kind">一键补默认</span>
-          <span className="inline-info">
-            未配置的类型按默认配好并立即生效：评分 ¥35 · 文字 ¥60 · 图片 ¥70 · 视频 ¥85
-          </span>
-          <Button disabled={applyDefaults.isPending} onClick={() => applyDefaults.mutate()}>
-            补默认（{defaultableTypes.length} 类）
-          </Button>
-        </div>
-      ) : null}
       {open && canSubmit ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (entry?.pending_fee) return;
             if (yuanToFen(feeYuan) === null) {
               setMessage('服务费金额格式不正确（例如 12.50）。');
               return;
@@ -740,18 +499,9 @@ export function ServiceFeeBlock({
               required
             />
           </FormField>
-          <FormField label="生效时间（默认 5 分钟后）" htmlFor="service-fee-effective">
-            <TextInput
-              id="service-fee-effective"
-              type="datetime-local"
-              value={effectiveAt}
-              onChange={(event) => setEffectiveAt(event.target.value)}
-              required
-            />
-          </FormField>
-          <p className="hint">需有确认权限的管理员（Owner）确认后生效。</p>
-          <Button className="danger" disabled={submit.isPending || Boolean(entry?.pending_fee)}>
-            提交待确认
+          <p className="hint">保存后立即生效，无需他人确认。</p>
+          <Button className="danger" disabled={submit.isPending}>
+            保存
           </Button>
         </form>
       ) : null}
@@ -779,7 +529,7 @@ export function PolicyError({ error, retry }: { error: unknown; retry: () => voi
 function baseRateErrorMessage(action: string, error: unknown): string {
   if (!isFrontendApiError(error)) return `基础汇率${action}未完成，请稍后重试。`;
   if (error.code === 'FORBIDDEN') {
-    return `当前账号无权${action}基础汇率（需要 Owner 且具备财务纠正权限）。`;
+    return `当前账号无权${action}基础汇率（需要 Owner 或卖家对接）。`;
   }
   if (error.code === 'VERSION_CONFLICT' || error.code === 'NOT_FOUND') {
     return `基础汇率${action}未完成：数据已变化，已自动刷新，请重试。`;

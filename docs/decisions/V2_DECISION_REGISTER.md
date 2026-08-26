@@ -494,6 +494,36 @@ D-019 的滚动冷归档业务语义保留，归档实现按 2026-08-25 授权�
 
 状态：Accepted by business owner；Supersedes D-019/D-023's per-file Drive archive model and scheduled-runner-only execution for the rebuilt baseline, without rewriting their historical text
 
+### D-056 业务模型去重、权限收敛与后端最终验收（阶段 6.6）
+
+业务所有者 2026-08-26 授权在无生产数据阶段执行阶段 6.6 收敛。本 Decision 记录以下已确认裁决；D-054 的远程边界、财务不可变、身份隔离与 fail-closed 约束继续有效。
+
+**岗位与分配**：员工端角色收敛为四个 canonical 角色 `owner`、`pre_sales`（买家运营）、`buyer_refund`（评论与买家返款）、`seller_ops`（卖家运营）；`acquisition` 角色随获客 CRM 退役。公共池、抢任务、round-robin 轮转、fallback 自动接管、availability 排班、自动重新分配与部门/团队/组长/角色合并映射组织架构全部退役。保留最小固定分配事实：买家分别绑定售前负责人与返款负责人，卖家组织绑定卖家运营负责人，owner 拥有全局查看与处理能力；不再产生公共池任务。Personal DENY、Marketplace scope、concealed 404、审计、幂等与 expected version 边界不变。
+
+**订单沟通截图统一**：买家聊天截图与卖家订单沟通截图是同一种业务图片，统一为 `ORDER_COMMUNICATION_SCREENSHOT`——挂在正式订单上、员工上传、一单多张、对应卖家组织全部有效成员可见、买家不可见、其他卖家 concealed 404；保留上传人、时间、哈希、审计与原始 audience；订单完整关闭满六个月冷归档，恢复不扩大权限；上传入口属于员工订单详情。`buyer-chat-screenshots`、`seller-order-chat-screenshots` 两套模块与 `order_evidence_internal_files.slot=1` 一单一张限制退役。
+
+**订单付款截图单一化**：付款截图由买家提交订单资料时上传，必须可见订单号与金额，每个订单资料版本严格一张；`order_evidence_versions.evidence_file_object_id` 双指针退役，通用文件关联（`order_evidence_version_files`）是唯一来源，数据库层保证每版本恰好一张。
+
+**买家编号重建**：编号在第一次录入系统建立买家档案时立即生成，格式保持 `YYYYMMDD + 渠道码 B/C + 渠道独立流水号`；日期为录入时的中国业务日期；B/C 各自独立递增并从全部历史号码的最大序号继续；已有编号永久保留、一经生成不可修改；B/C 渠道使用 `buyer_channels` 配置表；邀请注册只认领已有买家身份。`buyer_preorder_number_allocations`、注册预分配、首单转正、审核补分配与休眠的 allocate 命令退役；`first_valid_order_business_date` 无独立报表依赖，随之退役。无邀请自助注册死实现一并退役，买家不能绕过员工建档和邀请创建未知客户。
+
+**卖家成员可见范围**：同一卖家组织全部有效成员可见全部店铺、产品、订单、订单沟通截图、服务费、汇率、结算金额与凭证；仅组织 OWNER 可管理成员、邀请、停用成员和修改组织设置。`seller_member_portal_store_grants`、`seller_member_store_scopes`、店铺授权事件与 `assign-member-store` 退役。新增"产品主要对接人"：每产品唯一当前主要对接人（须为该组织有效成员），只是责任标记不限制查看，变更有历史事件和审计。
+
+**Marketplace 单一来源**：统一 `AMAZON_JP`、`AMAZON_US`、`COUPANG_KR`；`marketplace_registry` 是唯一权威；无运行消费者的 `marketplace_runtime_config` 退役，仍需的时区/币种精度/门户状态收敛进 Registry；残余 JP 短码投影别名退役。首批业务仍为 AMAZON_JP，未开通市场 fail-closed，不恢复 Rakuten/TikTok。
+
+**汇率与服务费单一来源**：旧 `buyer_daily_exchange_rates`、`seller_service_fee_versions` 及镜像触发器退役；只保留通用可版本化模型（`buyer_daily_currency_rate_versions`、`seller_service_fee_rule_versions` 与卖家本金加点策略），以订单业务日期解析唯一有效版本；owner 与 seller_ops 拥有相同维护权限；一次保存直接形成新的有效版本，历史版本不可修改；正式订单保留不可变汇率/加点/服务费快照，旧订单快照禁止更新；`SUBMITTED → CONFIRMED/REJECTED` 双人审批状态与对应接口退役；审计、幂等与版本冲突检查保留。本条取代 D-053 中"基础汇率与加点仅 Owner 填写确认、seller_ops 仅提交草案"的权限分工；D-053 的订单日基准、整数刻度、快照不可变与 preflight fail-closed 语义不变。
+
+**正式订单财务快照单一化**：日本站专用 `formal_order_financial_snapshots` 与通用 `formal_order_marketplace_money_snapshots` 合并为一份不可变快照（含 Marketplace、平台订单号、产品标识、订单日期、支付金额与币种、买家基础汇率版本和值、服务费规则版本和值、买家应返本金、卖家应收本金、买家自付比例与金额、预计利润所需事实、舍入规则、创建时间）；财务、返款、卖家结算、门户与报表统一读取这一份；旧快照禁止更新或重算；订单资料与正式订单仍是两个业务阶段。本条在无生产数据阶段以干净重建方式落地，取代 D-053/D-016 中两表并存的过渡形态。
+
+**经营看板与订单详情收敛**：`internal-finance` 是财务计算唯一来源；经营看板的 `financial-projection` 重复读模型与独立利润/现金流聚合退役，工作台只读精简摘要（待办、异常、最近订单、owner 少量财务摘要），完整财务进入财务中心。建立唯一的员工正式订单详情聚合入口（基础信息、买家卖家、产品预约、两类截图、评论、返款、结算、财务快照、运营事件、人工财务调整、当前允许操作）；order-integrity 详情、operating-integrity order lookup、buyer-advance-principal lookup 别名与财务订单详情的重复基础字段退役并入该入口；运营事件、评论可见性观察、Advance 与人工财务调整作为不同业务事实保留。
+
+**获客 CRM 与 Integration Outbox 退役**：获客 CRM 运行能力（routes、prospect、lead、渠道分配、首触归因、日咨询、maintenance、reporting、UI 合同、表、脚本、定时任务与测试）整体退役；B/C 买家渠道保留为独立 `buyer_channels` 业务配置。历史卖家目录改读正式表（seller_organizations、seller_organization_members、wechat_identity_claims、seller_stores、products）。`integration_outbox`、foundation outbox、业务命令 outbox 双写、drain、dead-letter/replay 与关联指标退役；`audit_events`、领域事件、幂等、事务断言与冷归档 `archive_jobs`（含 Queue/DLQ）保留；业务命令的数据库状态变化仍必须在同一 D1 transaction 完成。
+
+**历史导入中间模型隔离**：`seller_partner_import_*`、`standard_products`、`seller_product_offerings`、`product_reservation_openings` 与 historical importer 在真实历史导入完成前保留，但运行时门户与正式业务路由不得读取这些表；只能由导入 CLI、对账与隔离报告使用，并有源码边界验证。真实历史来源文件、图片来源与导入能力保留不动。
+
+**预约永久限制与一次性例外**：自动通过只在买家 ACTIVE、身份无冲突待处理、从未在该卖家组织获得 APPROVED 预约或形成正式订单（或存在有效一次性人工例外）、店铺无其他进行中预约、批次有名额、无逾期未完成订单、无异常或人工风险标记、下单排期和指引完整有效时成立。APPROVED 预约即算参加过；形成正式订单永久算参加过；同卖家组织跨店铺跨产品禁止再次预约；批准前 REJECTED/CANCELLED/EXPIRED 不算；检测到历史参加提示联系售前；售前或 owner 可创建绑定买家、卖家组织、具体需求批次、原因、操作者与有效期的一次性例外，例外使用后失效并留审计；不得通过删除旧预约绕过。预约阶段不要求订单日汇率存在，汇率在正式订单确认时按实际订单日期解析并快照。
+
+状态：Accepted by business owner 2026-08-26；Supersedes D-034's five-role set（acquisition 退役）、D-026/D-035/D-038/D-040 的获客运行裁决、D-053 的汇率维护权限分工与两表财务快照过渡形态（历史正文不改写）；仅授权本地代码/数据库/合同/测试/文档修改，不授权任何远程操作、真实数据导入或部署
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

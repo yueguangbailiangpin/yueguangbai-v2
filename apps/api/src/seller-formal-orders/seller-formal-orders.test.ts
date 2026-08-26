@@ -431,36 +431,22 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
 
       INSERT INTO seller_principal_rate_policy_versions (
         id, scope_type, seller_organization_id, source_currency_code,
-        quote_currency_code, version_no, status, markup_rate_value,
-        rate_scale, effective_from, submitted_by_staff_id, submitted_at,
-        decision_version, confirmed_by_staff_id, confirmed_at,
-        rejected_by_staff_id, rejected_at, rejection_reason
+        quote_currency_code, version_no, markup_rate_value,
+        rate_scale, effective_from, created_by_staff_id, created_at
       ) VALUES (
         'principal-rate-portal-v2', 'SELLER_ORGANIZATION', 'org-portal',
-        'JPY', 'CNY', 2, 'SUBMITTED', 3500000, 100000000, 9800,
-        'staff-confirm', 9700, 1, NULL, NULL, NULL, NULL, NULL
+        'JPY', 'CNY', 2, 3500000, 100000000, 9800,
+        'staff-confirm', 9750
       );
-      UPDATE seller_principal_rate_policy_versions
-      SET status='CONFIRMED', decision_version=2,
-          confirmed_by_staff_id='staff-confirm', confirmed_at=9750
-      WHERE id='principal-rate-portal-v2';
 
-      INSERT INTO seller_service_fee_versions (
-        id, organization_id, review_type, version_no,
-        status, fee_cny_fen, effective_from,
-        submitted_by_staff_id, submitted_at, decision_version,
-        confirmed_by_staff_id, confirmed_at,
-        rejected_by_staff_id, rejected_at, rejection_reason
+      INSERT INTO seller_service_fee_rule_versions (
+        id, seller_organization_id, marketplace_code, review_type, version_no,
+        fee_amount_minor, fee_currency_code, fee_currency_exponent,
+        effective_from, created_by_staff_id, created_at
       ) VALUES (
-        'service-fee-portal-image-v2', 'org-portal', 'IMAGE', 2,
-        'SUBMITTED', 9999, 9800,
-        'staff-confirm', 9700, 1,
-        NULL, NULL, NULL, NULL, NULL
+        'service-fee-portal-image-v2', 'org-portal', 'AMAZON_JP', 'IMAGE', 2,
+        9999, 'CNY', 2, 9800, 'staff-confirm', 9750
       );
-      UPDATE seller_service_fee_versions
-      SET status='CONFIRMED', decision_version=2,
-          confirmed_by_staff_id='staff-confirm', confirmed_at=9750
-      WHERE id='service-fee-portal-image-v2';
     `);
 
     const app = testApp();
@@ -520,21 +506,21 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(await formalOrderCounts()).toEqual(before);
   });
 
-  it('applies the clean baseline 0001-0020', async () => {
+  it('applies the clean baseline 0001-0027', async () => {
     const state = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(26);
+    expect(Number(state?.schema_version)).toBe(27);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(26);
+    expect(migrations).toHaveLength(27);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0026_stage65_archive_import_closeout.sql');
+    expect(migrations.at(-1)).toBe('0027_stage66_single_source_convergence.sql');
   });
 });
 
@@ -923,30 +909,21 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
        'buyer-c2', 'buyer-c2', 'ACTIVE', 1, 0,
        1, 1000, 1000, 1000, NULL);
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-portal-c2', 'K', 'Portal C2 buyers',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no, buyer_sequence,
-      first_valid_order_business_date, display_name,
-      access_status, identity_review_status, version,
+      display_name, access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       ('buyer-portal-1', 'subject-buyer-1', 'AMAZON_JP',
-       'buyer-channel-portal-c2', NULL, NULL, NULL, 'Portal buyer 1',
-       'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
+       'buyer-channel-wechat-b', '20260801B0001', 1,
+       'Portal buyer 1', 'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
       ('buyer-portal-2', 'subject-buyer-2', 'AMAZON_JP',
-       'buyer-channel-portal-c2', NULL, NULL, NULL, 'Portal buyer 2',
-       'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
+       'buyer-channel-wechat-b', '20260801B0002', 2,
+       'Portal buyer 2', 'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
       ('buyer-other', 'subject-buyer-other', 'AMAZON_JP',
-       'buyer-channel-portal-c2', NULL, NULL, NULL, 'Other buyer',
-       'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL);
+       'buyer-channel-wechat-c', '20260801C0001', 1,
+       'Other buyer', 'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL);
 
     INSERT INTO products (
       id, organization_id, store_id, marketplace_code,
@@ -1148,36 +1125,17 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       'evidence-portal-other'
     );
 
-    INSERT INTO buyer_daily_exchange_rates (
-      id, business_date, version_no, status, cny_per_jpy_e8,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
-    ) VALUES (
-      'buyer-rate-portal-v1', '${BUSINESS_DATE}', 1,
-      'SUBMITTED', 5500000,
-      'staff-confirm', 1000, 1,
-      NULL, NULL, NULL, NULL, NULL
-    );
-    UPDATE buyer_daily_exchange_rates
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
-    WHERE id='buyer-rate-portal-v1';
-
-    INSERT INTO buyer_daily_exchange_rates (
-      id, business_date, version_no, status, cny_per_jpy_e8,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO buyer_daily_currency_rate_versions (
+      id, business_date, source_currency_code, quote_currency_code,
+      version_no, rate_value, rate_scale, rounding_rule,
+      effective_from, created_by_staff_id, created_at
     ) VALUES
-      ('buyer-rate-portal-v2', '2026-08-02', 1, 'SUBMITTED', 5500000,
-       'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL),
-      ('buyer-rate-portal-v3', '2026-08-03', 1, 'SUBMITTED', 5500000,
-       'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL);
-    UPDATE buyer_daily_exchange_rates
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
-    WHERE id IN ('buyer-rate-portal-v2', 'buyer-rate-portal-v3');
+      ('buyer-rate-portal-v1', '${BUSINESS_DATE}', 'JPY', 'CNY',
+       1, 5500000, 100000000, 'HALF_UP', 2000, 'staff-confirm', 2000),
+      ('buyer-rate-portal-v2', '2026-08-02', 'JPY', 'CNY',
+       1, 5500000, 100000000, 'HALF_UP', 2000, 'staff-confirm', 2000),
+      ('buyer-rate-portal-v3', '2026-08-03', 'JPY', 'CNY',
+       1, 5500000, 100000000, 'HALF_UP', 2000, 'staff-confirm', 2000);
   `);
 
   await bindPhase3GEvidenceFixture(db, {
@@ -1245,19 +1203,12 @@ function seedPrincipalRate(
   db.exec(`
     INSERT INTO seller_principal_rate_policy_versions (
       id, scope_type, seller_organization_id, source_currency_code,
-      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-      effective_from, submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-      rejection_reason
+      quote_currency_code, version_no, markup_rate_value, rate_scale,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
       '${id}', 'SELLER_ORGANIZATION', '${organizationId}', 'JPY', 'CNY', 1,
-      'SUBMITTED', ${markupRateE8}, 100000000, 3000,
-      'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL
+      ${markupRateE8}, 100000000, 2000, 'staff-confirm', 2000
     );
-    UPDATE seller_principal_rate_policy_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
-    WHERE id='${id}';
   `);
 }
 
@@ -1269,22 +1220,14 @@ function seedServiceFee(
   feeCnyFen: number,
 ): void {
   db.exec(`
-    INSERT INTO seller_service_fee_versions (
-      id, organization_id, review_type, version_no,
-      status, fee_cny_fen, effective_from,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO seller_service_fee_rule_versions (
+      id, seller_organization_id, marketplace_code, review_type, version_no,
+      fee_amount_minor, fee_currency_code, fee_currency_exponent,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
-      '${id}', '${organizationId}', '${reviewType}', 1,
-      'SUBMITTED', ${feeCnyFen}, 3000,
-      'staff-confirm', 1000, 1,
-      NULL, NULL, NULL, NULL, NULL
+      '${id}', '${organizationId}', 'AMAZON_JP', '${reviewType}', 1,
+      ${feeCnyFen}, 'CNY', 2, 2000, 'staff-confirm', 2000
     );
-    UPDATE seller_service_fee_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
-    WHERE id='${id}';
   `);
 }
 

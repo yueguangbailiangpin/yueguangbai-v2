@@ -12,8 +12,8 @@ const migrationDirectory = path.join(root, 'migrations');
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (migrations.length !== 26 || migrations.at(-1) !== '0026_stage65_archive_import_closeout.sql') {
-  throw new Error('expected the clean baseline 0001-0026');
+if (migrations.length !== 27 || migrations.at(-1) !== '0027_stage66_single_source_convergence.sql') {
+  throw new Error('expected the clean baseline 0001-0027');
 }
 for (const file of migrations) {
   const source = readFileSync(path.join(migrationDirectory, file), 'utf8');
@@ -37,7 +37,7 @@ try {
   }
 
   if (database.prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1')
-    .get().schema_version !== 26) throw new Error('schema version');
+    .get().schema_version !== 27) throw new Error('schema version');
 
   const registry = database.prepare(`
     SELECT code, status || ':' || adapter_status AS state
@@ -49,15 +49,29 @@ try {
     { code: 'COUPANG_KR', state: 'DISABLED:UNAVAILABLE' },
   ])) throw new Error('three-marketplace registry with COUPANG_KR fail-closed');
 
-  // The legacy alias layer is atomically gone.
-  for (const retired of ['marketplaces', 'marketplace_legacy_aliases', 'acquisition_reporting_config']) {
+  // The legacy alias layer and the stage-6.6-retired runtime-config table are
+  // atomically gone; the registry itself is the single marketplace config source.
+  for (const retired of ['marketplaces', 'marketplace_legacy_aliases', 'acquisition_reporting_config', 'marketplace_runtime_config']) {
     if (database.prepare(`SELECT COUNT(*) AS count FROM sqlite_schema WHERE name='${retired}'`).get().count !== 0) {
       throw new Error(`retired table still present: ${retired}`);
     }
   }
-  const runtimeColumns = database.prepare('PRAGMA table_info(marketplace_runtime_config)')
+  const registryColumns = database.prepare('PRAGMA table_info(marketplace_registry)')
     .all().map((column) => column.name);
-  if (runtimeColumns.includes('legacy_order_code')) throw new Error('legacy_order_code survived');
+  for (const configColumn of ['business_timezone', 'reporting_timezone', 'seller_portal_status', 'buyer_portal_status']) {
+    if (!registryColumns.includes(configColumn)) {
+      throw new Error(`marketplace_registry missing converged config column ${configColumn}`);
+    }
+  }
+  const registryConfig = database.prepare(`
+    SELECT code, business_timezone, reporting_timezone, seller_portal_status, buyer_portal_status
+    FROM marketplace_registry ORDER BY code
+  `).all();
+  if (JSON.stringify(registryConfig) !== JSON.stringify([
+    { code: 'AMAZON_JP', business_timezone: 'Asia/Tokyo', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'ACTIVE', buyer_portal_status: 'ACTIVE' },
+    { code: 'AMAZON_US', business_timezone: 'America/Los_Angeles', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'PREPARED', buyer_portal_status: 'ACTIVE' },
+    { code: 'COUPANG_KR', business_timezone: 'Asia/Seoul', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'PREPARED', buyer_portal_status: 'PREPARED' },
+  ])) throw new Error('registry config convergence');
   const formalColumns = database.prepare('PRAGMA table_info(formal_orders)')
     .all().map((column) => column.name);
   if (formalColumns.includes('canonical_marketplace_code')) throw new Error('dual marketplace column survived');
@@ -82,8 +96,9 @@ if (contracts.includes('LEGACY_MARKETPLACE_CODES')) throw new Error('legacy alia
 for (const file of [
   'packages/domain/src/money/currency.ts',
   'packages/contracts/src/marketplace-money.ts',
-  'apps/api/src/pricing/currency-rate-foundation.ts',
-  'apps/api/src/pricing/marketplace-service-fee.ts',
+  'apps/api/src/pricing/buyer-daily-exchange-rates.ts',
+  'apps/api/src/pricing/seller-service-fees.ts',
+  'apps/api/src/pricing/seller-principal-rate-policy.ts',
   'apps/api/src/order-evidence/approve-order-evidence.ts',
 ]) {
   const code = readFileSync(path.join(root, file), 'utf8');
@@ -92,7 +107,7 @@ for (const file of [
 
 console.log(JSON.stringify({
   status: 'PASS',
-  baseline: 'clean-baseline-0001-0026',
+  baseline: 'clean-baseline-0001-0027',
   registry: ['AMAZON_JP', 'AMAZON_US', 'COUPANG_KR'],
   korea: 'DISABLED/UNAVAILABLE',
   legacy_jp_alias: 'REMOVED_STAGE_4',

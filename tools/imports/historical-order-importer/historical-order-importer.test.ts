@@ -53,17 +53,21 @@ const VALID_ROW: Record<string, string> = {
   '利润': '5.5',
 };
 
+let buyerNumberSequence = 0;
+
 async function seedBuyer(db: SqliteDatabase, wechat: string, buyerId: string): Promise<void> {
+  // Stage 6.6: buyers carry their final YYYYMMDD+B+digits number from
+  // creation (channel code 'B' is the migration-seeded numbering channel).
+  buyerNumberSequence += 1;
+  const buyerNo = `20260101B${String(buyerNumberSequence).padStart(4, '0')}`;
   db.exec(`
-    INSERT OR IGNORE INTO buyer_channels(id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at)
-    VALUES('cold-archive-channel','Z','历史导入测试渠道','ACTIVE',1,1,1000,1000,NULL);
     INSERT INTO customer_identity_subjects(id,subject_type,created_at)
     VALUES('${buyerId}-subject','BUYER_CUSTOMER',1000);
     INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,
-      buyer_sequence,first_valid_order_business_date,display_name,access_status,identity_review_status,
+      buyer_sequence,display_name,access_status,identity_review_status,
       version,created_at,updated_at,activated_at,disabled_at)
-    VALUES('${buyerId}','${buyerId}-subject','AMAZON_JP','cold-archive-channel',NULL,NULL,NULL,
-      '历史导入测试买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
+    VALUES('${buyerId}','${buyerId}-subject','AMAZON_JP','buyer-channel-wechat-b','${buyerNo}',
+      ${buyerNumberSequence},'历史导入测试买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
     INSERT INTO wechat_identity_claims(id,identity_subject_id,display_wechat,normalized_wechat,
       status,version,acquired_at,created_at,updated_at)
     VALUES('${buyerId}-claim','${buyerId}-subject','${wechat}','${wechat}','ACTIVE',1,1000,1000,1000);

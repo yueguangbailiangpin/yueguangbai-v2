@@ -135,24 +135,16 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-b', 'B', '预约买家渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
       'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
-      'buyer-channel-b', NULL, NULL, NULL,
+      'buyer-channel-wechat-b', '19700101B0001', 1,
       '买家一', 'ACTIVE', 'CLEAR', 1,
       1000, 1000, 1000, NULL
     );
@@ -237,7 +229,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
 }
 
 describe('staff workflow closure HTTP contract', () => {
-  it('returns assigned buyer identity facts without inventing a customer number', async () => {
+  it('returns assigned buyer identity facts with the creation-allocated customer number', async () => {
     database = createMigratedTestDatabase();
     seedWorkflowFixture(database);
     const submitted = await submitReservation(database, {
@@ -261,7 +253,7 @@ describe('staff workflow closure HTTP contract', () => {
           reservation_id: submitted.reservation_id,
           buyer: {
             id: 'buyer-1',
-            customer_no: null,
+            customer_no: '19700101B0001',
             name: '买家一',
             wechat: 'buyer_wechat_001',
           },

@@ -35,7 +35,7 @@ describe('customer multi-persona invitation and recovery', () => {
     database = createDb();
     expect(await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).first()).toEqual({ schema_version: 26 });
+    `).first()).toEqual({ schema_version: 27 });
     const triggerNames = (await database.prepare(`
       SELECT name FROM sqlite_schema WHERE type='trigger'
         AND name LIKE 'trg_customer_account_persona%'
@@ -53,9 +53,10 @@ describe('customer multi-persona invitation and recovery', () => {
     const issued = await invite('new_buyer_wx', 'AMAZON_US', 'invite-new-0001');
     const registered = await register(issued.registration_token,
       'new_buyer_wx', 'AMAZON_US', 'register-new-0001');
-    // D2：注册即分配——注册事务内预占客户编码（NOW=2026-08-07、渠道 INV 序号 1）。
+    // D-056：注册即分配——注册事务内直接落最终客户编码
+    // （NOW=2026-08-07、渠道 B 序号 1001）。
     expect(registered).toMatchObject({
-      buyerNumber: '20260807INV1',
+      buyerNumber: '20260807B1001',
       authenticated: {
         accountType: 'BUYER', availablePersonas: ['BUYER'],
       },
@@ -63,24 +64,24 @@ describe('customer multi-persona invitation and recovery', () => {
     await expect(register(issued.registration_token,
       'new_buyer_wx', 'AMAZON_US', 'register-new-0001'))
       .resolves.toMatchObject({
-        buyerNumber: '20260807INV1',
+        buyerNumber: '20260807B1001',
         authenticated: { accountId: registered.authenticated.accountId },
         replayed: true,
       });
     expect(await database.prepare(`
-      SELECT preorder.buyer_customer_no, preorder.buyer_sequence,
-        preorder.allocation_business_date, preorder.allocation_source,
+      SELECT allocation.buyer_customer_no, allocation.buyer_sequence,
+        allocation.allocation_business_date, allocation.allocation_source,
         channel.next_sequence
-      FROM buyer_preorder_number_allocations preorder
-      JOIN buyer_customers buyer ON buyer.id=preorder.buyer_customer_id
-      JOIN buyer_channels channel ON channel.id=preorder.buyer_channel_id
-      WHERE buyer.buyer_customer_no IS NULL
+      FROM buyer_number_allocation_events allocation
+      JOIN buyer_customers buyer ON buyer.id=allocation.buyer_customer_id
+      JOIN buyer_channels channel ON channel.id=allocation.buyer_channel_id
+      WHERE buyer.display_name='new_buyer_wx'
     `).first()).toMatchObject({
-      buyer_customer_no: '20260807INV1',
-      buyer_sequence: 1,
+      buyer_customer_no: '20260807B1001',
+      buyer_sequence: 1001,
       allocation_business_date: '2026-08-07',
-      allocation_source: 'SELF_REGISTRATION',
-      next_sequence: 2,
+      allocation_source: 'INVITED_REGISTRATION',
+      next_sequence: 1002,
     });
     expect(await database.prepare(`
       SELECT invitation.status, invitation.consumed_by_account_id,
@@ -297,11 +298,11 @@ describe('customer multi-persona invitation and recovery', () => {
 function createDb(): SqliteDatabase {
   const db = createMigratedTestDatabase();
   db.exec(`
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('buyer-channel-invite', 'INV', '邀请买家', 'ACTIVE',
-      1, 1, 1000, 1000, NULL);
+    -- Buyer numbers must be 13+ characters, so start the seeded operational
+    -- channel B counter at a four-digit sequence for registration tests.
+    UPDATE buyer_channels
+    SET next_sequence=1001
+    WHERE id='buyer-channel-wechat-b';
     INSERT INTO staff_users (
       id, display_name, status, authorization_version, version,
       created_at, updated_at, disabled_at, session_version
@@ -332,7 +333,7 @@ async function register(
   return registerInvitedBuyer(database!, {
     invitationToken: token, wechatId, marketplaceCode,
     password: PASSWORD, passwordConfirmation: PASSWORD,
-    buyerChannelId: 'buyer-channel-invite',
+    buyerChannelId: 'buyer-channel-wechat-b',
   }, {
     idempotencyKey: idempotencyKey.padEnd(8, '0'),
     requestId: `request-${idempotencyKey}`, sessionId: crypto.randomUUID(),

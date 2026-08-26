@@ -692,28 +692,20 @@ function seedAudienceIdentities(target: SqliteDatabase): void {
       ('seller-subject-1', 'SELLER_ORG_MEMBER', 1000),
       ('seller-subject-2', 'SELLER_ORG_MEMBER', 1000);
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-files', 'F', 'File Buyers',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       ('buyer-1', 'buyer-subject-1', 'AMAZON_JP',
-        'buyer-channel-files', NULL, NULL, NULL,
+        'buyer-channel-wechat-b', '19700101B0001', 1,
         'Buyer One', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL),
       ('buyer-2', 'buyer-subject-2', 'AMAZON_JP',
-        'buyer-channel-files', NULL, NULL, NULL,
+        'buyer-channel-wechat-b', '19700101B0002', 2,
         'Buyer Two', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL);
 

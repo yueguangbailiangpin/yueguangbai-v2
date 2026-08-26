@@ -984,24 +984,16 @@ async function seedFormalOrderPrerequisites(
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-review', 'R', '返款流程测试渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
       'buyer-review-1', 'buyer-review-subject-1', 'AMAZON_JP',
-      'buyer-channel-review', NULL, NULL, NULL,
+      'buyer-channel-wechat-b', '20260801B0001', 1,
       '返款买家', 'ACTIVE', 'CLEAR', 1,
       1000, 1000, 1000, NULL
     );
@@ -1139,54 +1131,34 @@ async function seedFormalOrderPrerequisites(
         verified_at=8000, updated_at=8000
     WHERE id='evidence-review-submission';
 
-    INSERT INTO buyer_daily_exchange_rates (
-      id, business_date, version_no, status, cny_per_jpy_e8,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO buyer_daily_currency_rate_versions (
+      id, business_date, source_currency_code, quote_currency_code,
+      version_no, rate_value, rate_scale, rounding_rule,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
-      'buyer-review-rate-v1', '${BUSINESS_DATE}', 1,
-      'SUBMITTED', 5500000,
-      'staff-review-owner', 1000, 1,
-      NULL, NULL, NULL, NULL, NULL
+      'buyer-review-rate-v1', '${BUSINESS_DATE}', 'JPY', 'CNY',
+      1, 5500000, 100000000, 'HALF_UP',
+      2000, 'staff-review-owner', 2000
     );
-    UPDATE buyer_daily_exchange_rates
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-review-owner', confirmed_at=2000
-    WHERE id='buyer-review-rate-v1';
 
     INSERT INTO seller_principal_rate_policy_versions (
       id, scope_type, seller_organization_id, source_currency_code,
-      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-      effective_from, submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-      rejection_reason
+      quote_currency_code, version_no, markup_rate_value, rate_scale,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
       'principal-refund-policy-v1', 'SELLER_ORGANIZATION', 'seller-org-review',
-      'JPY', 'CNY', 1, 'SUBMITTED', 500000, 100000000, 3000,
-      'staff-review-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
+      'JPY', 'CNY', 1, 500000, 100000000,
+      2000, 'staff-review-owner', 2000
     );
-    UPDATE seller_principal_rate_policy_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-review-owner', confirmed_at=2000
-    WHERE id='principal-refund-policy-v1';
 
-    INSERT INTO seller_service_fee_versions (
-      id, organization_id, review_type, version_no,
-      status, fee_cny_fen, effective_from,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO seller_service_fee_rule_versions (
+      id, seller_organization_id, marketplace_code, review_type, version_no,
+      fee_amount_minor, fee_currency_code, fee_currency_exponent,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
-      'service-review-fee-v1', 'seller-org-review', 'IMAGE', 1,
-      'SUBMITTED', 2500, 3000,
-      'staff-review-owner', 1000, 1,
-      NULL, NULL, NULL, NULL, NULL
+      'service-review-fee-v1', 'seller-org-review', 'AMAZON_JP', 'IMAGE', 1,
+      2500, 'CNY', 2, 2000, 'staff-review-owner', 2000
     );
-    UPDATE seller_service_fee_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-review-owner', confirmed_at=2000
-    WHERE id='service-review-fee-v1';
   `);
 
   await bindPhase3GEvidenceFixture(db, {

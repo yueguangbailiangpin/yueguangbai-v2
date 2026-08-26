@@ -38,7 +38,7 @@ describe('staging first owner bootstrap', () => {
         WHERE marketplace_code='AMAZON_JP') AS assignment_fallbacks,
       (SELECT COUNT(*) FROM staff_sessions) AS sessions,
       (SELECT COUNT(*) FROM buyer_channels
-        WHERE id='staging-buyer-channel' AND code='STG' AND status='ACTIVE') AS buyer_channels,
+        WHERE id='buyer-channel-wechat-b' AND code='B' AND status='ACTIVE') AS buyer_channels,
       (SELECT COUNT(*) FROM staff_authorization_events) AS authorization_events,
       (SELECT COUNT(*) FROM audit_events
         WHERE event_type='STAGING_FIRST_OWNER_BOOTSTRAPPED') AS audits
@@ -123,17 +123,15 @@ describe('staging first owner bootstrap', () => {
       .toEqual({total:0});
   });
 
-  it('fails closed when the staging synthetic Buyer foundation already exists',async()=>{
+  it('fails closed when the seeded Buyer foundation has already been used',async()=>{
     database=migratedEmptyDatabase();
-    database.raw.prepare(`INSERT INTO buyer_channels(
-      id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at
-    ) VALUES('unexpected-channel','OLD','Unexpected','ACTIVE',1,1,1,1,NULL)`).run();
+    database.raw.prepare(`UPDATE buyer_channels
+      SET next_sequence=2, version=2, updated_at=created_at+1
+      WHERE id='buyer-channel-wechat-b'`).run();
     await expect(bootstrapStagingFirstOwner(database,INPUT,1000))
       .rejects.toMatchObject({code:'STAGING_FOUNDATION_NOT_EMPTY'});
     expect(database.raw.prepare('SELECT COUNT(*) AS total FROM staff_users').get())
       .toEqual({total:0});
-    expect(database.raw.prepare('SELECT COUNT(*) AS total FROM buyer_channels').get())
-      .toEqual({total:1});
   });
 
   it.each([
@@ -187,7 +185,8 @@ describe('staging first owner bootstrap', () => {
       (SELECT COUNT(*) FROM staff_role_assignments) AS roles,
       (SELECT COUNT(*) FROM staff_email_identities) AS emails,
       (SELECT COUNT(*) FROM staff_assignment_fallbacks) AS assignment_fallbacks,
-      (SELECT COUNT(*) FROM buyer_channels) AS buyer_channels,
+      (SELECT COUNT(*) FROM buyer_channels
+        WHERE next_sequence<>1) AS buyer_channels_used,
       (SELECT COUNT(*) FROM staff_authorization_events) AS authorization_events,
       (SELECT COUNT(*) FROM audit_events) AS audits
     `).get()).toEqual({
@@ -195,7 +194,7 @@ describe('staging first owner bootstrap', () => {
       roles: 0,
       emails: 0,
       assignment_fallbacks: 0,
-      buyer_channels: 0,
+      buyer_channels_used: 0,
       authorization_events: 0,
       audits: 0,
     });

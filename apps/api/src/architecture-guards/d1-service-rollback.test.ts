@@ -214,29 +214,21 @@ function readOverlay(sql: string, mode: Mode): OverlayResult | null {
       && sql.includes("status='PROVISIONAL'")) {
       return first({ found: 1 });
     }
-    if (sql.includes('FROM buyer_daily_exchange_rates')
-      && sql.includes("status='CONFIRMED'")) {
-      return first({
-        id: 'fault-buyer-rate',
-        business_date: '2024-08-02',
-        version_no: 1,
-        cny_per_jpy_e8: 5_000_000,
-        confirmed_at: 1_722_528_000_000,
-      });
-    }
     if (sql.includes('FROM buyer_daily_currency_rate_versions')
       && sql.includes("quote_currency_code='CNY'")) {
+      // Stage 6.6: one immutable version row per business date; the recorded
+      // timestamp is the version's created_at (no confirmation state).
       return first({
         id: 'currency-fault-buyer-rate',
         business_date: '2024-08-02',
         version_no: 1,
         rate_value: 5_000_000,
         rate_scale: 100_000_000,
-        confirmed_at: 1_722_528_000_000,
+        created_at: 1_722_528_000_000,
       });
     }
     if (sql.includes('FROM seller_principal_rate_policy_versions')
-      && sql.includes("status='CONFIRMED'")) {
+      && sql.includes('scope_type=?')) {
       return first({
         id: 'fault-principal-policy',
         scope_type: 'SELLER_ORGANIZATION',
@@ -244,19 +236,21 @@ function readOverlay(sql: string, mode: Mode): OverlayResult | null {
         source_currency_code: 'JPY',
         quote_currency_code: 'CNY',
         version_no: 1,
-        decision_version: 2,
-        status: 'CONFIRMED',
         markup_rate_value: 0,
         rate_scale: 100_000_000,
         effective_from: 1_700_000_000_000,
-        submitted_at: 1_700_000_000_000,
-        confirmed_at: 1_700_000_000_001,
-        rejection_reason: null,
+        created_by_staff_id: 'zz-phase3h-test-owner',
+        created_at: 1_700_000_000_001,
       });
     }
-    if (sql.includes('FROM seller_service_fee_versions')
-      && sql.includes("status='CONFIRMED'")) {
-      return first(sellerRule('fault-service-fee', 'TEXT', 1_000));
+    if (sql.includes('FROM seller_service_fee_rule_versions')) {
+      return first({
+        id: 'fault-service-fee',
+        version_no: 1,
+        fee_amount_minor: 1_000,
+        effective_from: 1_700_000_000_000,
+        created_at: 1_700_000_000_001,
+      });
     }
   }
 
@@ -362,36 +356,10 @@ function approvalSource(): Record<string, unknown> {
     product_version_id: 'fault-product-version',
     product_name: 'Fault Product',
     buyer_access_status: 'ACTIVE',
-    buyer_customer_no: 'P202408020001',
+    buyer_customer_no: '20240802B0001',
     buyer_sequence: 1,
-    first_valid_order_business_date: '2024-08-02',
-    buyer_channel_id: 'buyer-channel-preorder',
     buyer_version: 1,
-    channel_code: 'P',
-    channel_status: 'ACTIVE',
-    channel_next_sequence: 2,
-    channel_version: 1,
     existing_formal_order_id: null,
-  };
-}
-
-function sellerRule(
-  id: string,
-  reviewType: string | null,
-  value: number,
-): Record<string, unknown> {
-  return {
-    id,
-    organization_id: 'fault-org',
-    review_type: reviewType,
-    version_no: 1,
-    status: 'CONFIRMED',
-    value,
-    effective_from: 1_700_000_000_000,
-    submitted_by_staff_id: 'zz-phase3h-test-owner',
-    submitted_at: 1_700_000_000_000,
-    decision_version: 2,
-    confirmed_at: 1_700_000_000_001,
   };
 }
 

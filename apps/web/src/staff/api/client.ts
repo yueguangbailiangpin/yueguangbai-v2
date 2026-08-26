@@ -43,7 +43,6 @@ import {
   staffRateCenterBaseMutationSchema,
   staffSellerServiceFeesSchema,
   staffSellerServiceFeeMutationSchema,
-  staffApplyDefaultSellerServiceFeesSchema,
   reservationReopenSchema,
 } from '../contracts/runtime';
 
@@ -306,26 +305,10 @@ export const staffApi = Object.freeze({
       requestId: response.requestId,
     }));
   },
-  submitSellerPrincipalRatePolicy: (client: QueryClient, body: unknown, key: string) =>
+  saveSellerPrincipalRatePolicy: (client: QueryClient, body: unknown, key: string) =>
     write(
       client,
-      '/api/staff/seller-principal-rate-policies/submit',
-      body,
-      staffSellerPrincipalRatePolicyMutationSchema,
-      key,
-    ),
-  confirmSellerPrincipalRatePolicy: (client: QueryClient, id: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/seller-principal-rate-policies/${encodeURIComponent(id)}/confirm`,
-      body,
-      staffSellerPrincipalRatePolicyMutationSchema,
-      key,
-    ),
-  rejectSellerPrincipalRatePolicy: (client: QueryClient, id: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/seller-principal-rate-policies/${encodeURIComponent(id)}/reject`,
+      '/api/staff/seller-principal-rate-policies/save',
       body,
       staffSellerPrincipalRatePolicyMutationSchema,
       key,
@@ -349,34 +332,10 @@ export const staffApi = Object.freeze({
       signal,
     );
   },
-  submitSellerServiceFee: (client: QueryClient, body: unknown, key: string) =>
+  saveSellerServiceFee: (client: QueryClient, body: unknown, key: string) =>
     write(
       client,
-      '/api/staff/seller-service-fees/submit',
-      body,
-      staffSellerServiceFeeMutationSchema,
-      key,
-    ),
-  applyDefaultSellerServiceFees: (client: QueryClient, sellerOrganizationId: string, key: string) =>
-    write(
-      client,
-      '/api/staff/seller-service-fees/apply-defaults',
-      { seller_organization_id: sellerOrganizationId },
-      staffApplyDefaultSellerServiceFeesSchema,
-      key,
-    ),
-  confirmSellerServiceFee: (client: QueryClient, id: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/seller-service-fees/${encodeURIComponent(id)}/confirm`,
-      body,
-      staffSellerServiceFeeMutationSchema,
-      key,
-    ),
-  rejectSellerServiceFee: (client: QueryClient, id: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/seller-service-fees/${encodeURIComponent(id)}/reject`,
+      '/api/staff/seller-service-fees',
       body,
       staffSellerServiceFeeMutationSchema,
       key,
@@ -414,18 +373,10 @@ export const staffApi = Object.freeze({
       data: response.data.order_integrity,
       requestId: response.requestId,
     })),
-  submitOrderDayBaseRate: (client: QueryClient, body: unknown, key: string) =>
+  saveOrderDayBaseRate: (client: QueryClient, body: unknown, key: string) =>
     write(
       client,
-      '/api/staff/rate-center/base-rates/submit',
-      body,
-      staffRateCenterBaseMutationSchema,
-      key,
-    ),
-  confirmOrderDayBaseRate: (client: QueryClient, id: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/rate-center/base-rates/${encodeURIComponent(id)}/confirm`,
+      '/api/staff/rate-center/base-rates',
       body,
       staffRateCenterBaseMutationSchema,
       key,

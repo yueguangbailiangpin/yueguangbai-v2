@@ -72,7 +72,7 @@ describe('stage 4 simplified admin business dashboard read model', () => {
     });
     expect(database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
-    ).get()).toEqual({ schema_version: 26 });
+    ).get()).toEqual({ schema_version: 27 });
   });
 });
 
@@ -150,9 +150,6 @@ function seedWindowFacts(db: SqliteDatabase): void {
     INSERT INTO staff_users (id,display_name,status,authorization_version,version,
       created_at,updated_at,disabled_at,session_version) VALUES
       ('staff-dashboard','看板员工','ACTIVE',1,1,1,1,NULL,1);
-    INSERT INTO buyer_channels (id,code,name,status,next_sequence,version,
-      created_at,updated_at,disabled_at) VALUES
-      ('dashboard-buyers','DASH','看板买家','ACTIVE',1,1,1,1,NULL);
     INSERT INTO seller_channels (id,code,prefix,name,next_sequence,status,version,
       created_at,updated_at,disabled_at) VALUES
       ('dashboard-sellers','dash-sellers','dashsell','看板卖家渠道',1,'ACTIVE',1,1,1,NULL);
@@ -160,11 +157,14 @@ function seedWindowFacts(db: SqliteDatabase): void {
       ('dashboard-subject-1','BUYER_CUSTOMER',1),
       ('dashboard-subject-2','BUYER_CUSTOMER',1);
     INSERT INTO buyer_customers (id,identity_subject_id,marketplace_code,buyer_channel_id,
+      buyer_customer_no,buyer_sequence,
       display_name,access_status,identity_review_status,version,created_at,updated_at,
       activated_at,disabled_at) VALUES
-      ('buyer-1','dashboard-subject-1','AMAZON_JP','dashboard-buyers','买家一',
+      ('buyer-1','dashboard-subject-1','AMAZON_JP','buyer-channel-wechat-b',
+        '20260804B0001',1,'买家一',
         'ACTIVE','CLEAR',1,${inside},${inside},${inside},NULL),
-      ('buyer-2','dashboard-subject-2','AMAZON_JP','dashboard-buyers','买家二',
+      ('buyer-2','dashboard-subject-2','AMAZON_JP','buyer-channel-wechat-b',
+        '20260804B0002',2,'买家二',
         'ACTIVE','CLEAR',1,${inside},${inside},${inside},NULL);
     INSERT INTO seller_organizations (id,marketplace_code,seller_code,origin_channel_id,
       current_channel_id,seller_sequence,organization_name,status,version,created_at,

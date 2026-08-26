@@ -19,7 +19,7 @@ import {
 import { AcquisitionError, validation } from './errors';
 import { protectWechatIdentity, revealWechatIdentity } from './privacy';
 import { addTwelveShanghaiMonths } from './time';
-import { defaultSellerServiceFeeStatements } from '../pricing/default-seller-service-fees';
+
 
 const SYSTEM_SELLER_CHANNEL = 'seller-channel-portal-onboarding';
 
@@ -181,15 +181,12 @@ export async function createAcquisitionLead(
   // order approval is never blocked by an unconfigured organization.
   const defaultFeeStatements =
     sellerFormalization !== null
-      ? await defaultSellerServiceFeeStatements(database, {
-          organizationId: sellerFormalization.organizationId,
-          actor: {
-            staffId: command.actor.staffId,
-            displayName: command.actor.displayName,
-            roles: [...command.actor.roles],
-          },
-          now: acquired.now,
-        })
+      ? defaultSellerServiceFeeRuleStatements(
+          database,
+          sellerFormalization.organizationId,
+          command.actor.staffId,
+          acquired.now,
+        )
       : [];
   const statements: SqlStatement[] = [
     database
@@ -809,4 +806,42 @@ function decodeCursor(value: string | null): { createdAt: number; id: string } |
   } catch {
     validation();
   }
+}
+
+
+function defaultSellerServiceFeeRuleStatements(
+  database: import('@ygb/contracts').SqlDatabase,
+  organizationId: string,
+  staffId: string,
+  now: number,
+): import('@ygb/contracts').SqlStatement[] {
+  // Stage 6.6: seed the four default service-fee rules as immediately
+  // effective versions of the single rule table.
+  const defaults: Array<['RATING' | 'TEXT' | 'IMAGE' | 'VIDEO', number]> = [
+    ['RATING', 3500],
+    ['TEXT', 6000],
+    ['IMAGE', 7000],
+    ['VIDEO', 8500],
+  ];
+  return defaults.map(([reviewType, feeFen]) =>
+    database
+      .prepare(
+        `
+        INSERT INTO seller_service_fee_rule_versions (
+          id, seller_organization_id, marketplace_code, review_type,
+          version_no, fee_amount_minor, fee_currency_code,
+          fee_currency_exponent, effective_from, created_by_staff_id, created_at
+        ) VALUES (?, ?, 'AMAZON_JP', ?, 1, ?, 'CNY', 2, ?, ?, ?)
+      `,
+      )
+      .bind(
+        crypto.randomUUID(),
+        organizationId,
+        reviewType,
+        feeFen,
+        now,
+        staffId,
+        now,
+      ),
+  );
 }

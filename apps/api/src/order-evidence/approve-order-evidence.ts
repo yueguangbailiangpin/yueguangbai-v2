@@ -9,7 +9,6 @@ import {
   canonicalJson,
   chinaBusinessDate,
   fixedIntegerString,
-  formatBuyerCustomerNumber,
   hashCanonicalJson,
   parseCnyFen,
   parseCnyPerJpyE8,
@@ -104,26 +103,9 @@ interface AtomicApprovalSource {
   product_version_id: string;
   product_name: string;
   buyer_access_status: string;
-  buyer_customer_no: string | null;
-  buyer_sequence: number | null;
-  first_valid_order_business_date: string | null;
-  buyer_channel_id: string;
-  buyer_version: number;
-  channel_code: string;
-  channel_status: string;
-  channel_next_sequence: number;
-  channel_version: number;
-  preorder_buyer_customer_no: string | null;
-  preorder_buyer_sequence: number | null;
+  buyer_customer_no: string;
+  buyer_sequence: number;
   existing_formal_order_id: string | null;
-}
-
-interface BuyerNumberPlan {
-  buyerCustomerNo: string;
-  allocated: boolean;
-  sequence: number;
-  firstValidOrderBusinessDate: string;
-  statements: readonly SqlStatement[];
 }
 
 export interface AtomicOrderEvidenceApprovalResult {
@@ -257,6 +239,12 @@ export async function approveOrderEvidenceAtomically(
       businessDate: source.amazon_order_date,
       asOf: now,
     });
+    if (buyerRate.business_date !== source.amazon_order_date) {
+      // D-056: the single base-rate stream resolves the Amazon order date; a
+      // missing order-date rate must fail closed instead of silently adopting
+      // an older date.
+      throw new AtomicOrderEvidenceApprovalError('SELLER_PRINCIPAL_RATE_NOT_FOUND', 404);
+    }
     const sellerPrincipalRateSnapshot = await resolveSellerPrincipalRateSnapshot(database, {
       sellerOrganizationId: source.seller_organization_id,
       platformOrderDate: source.amazon_order_date,
@@ -270,31 +258,28 @@ export async function approveOrderEvidenceAtomically(
       at: now,
     });
     if (
-      sellerPrincipalRateSnapshot.base_rate_version_id !== `currency-${buyerRate.rate_id}` ||
+      sellerPrincipalRateSnapshot.base_rate_version_id !== buyerRate.rate_id ||
       sellerPrincipalRateSnapshot.base_rate_business_date !== buyerRate.business_date
     ) {
       throw new AtomicOrderEvidenceApprovalError('SELLER_PRINCIPAL_RATE_NOT_FOUND', 404);
     }
     const finalPaidJpy = parseJpyInteger(String(source.final_paid_jpy));
-    const buyerRateValue = parseCnyPerJpyE8(buyerRate.cny_per_jpy_e8);
+    const buyerRateValue = parseCnyPerJpyE8(buyerRate.rate_value);
     const serviceFeeValue = parseCnyFen(serviceFee.fee_cny_fen);
     const buyerFinancial = calculateBuyerFormalFinancials({
       finalPaidJpy: source.final_paid_jpy,
       buyerRefundablePrincipalJpy: Number(instruction.buyer_refundable_principal_jpy),
-      buyerCnyPerJpyE8: buyerRate.cny_per_jpy_e8,
+      buyerCnyPerJpyE8: buyerRate.rate_value,
     });
     const buyerExpectedPrincipal = BigInt(buyerFinancial.buyerExpectedPrincipalCnyFen);
     const sellerExpectedPrincipal = parseCnyFen(
       sellerPrincipalRateSnapshot.seller_expected_principal_amount_minor,
     );
-    const buyerNumber = prepareBuyerNumberPlan(
-      database,
-      source,
-      businessDate,
-      command.actor.staffId,
-      acquired.claim.idempotencyKey,
-      now,
-    );
+    // D-056: buyer numbers are allocated when the profile is first recorded.
+    // Approval only carries the immutable existing number forward.
+    const buyerNumber = {
+      buyerCustomerNo: source.buyer_customer_no,
+    };
     const formalOrderId = crypto.randomUUID();
     const snapshotId = crypto.randomUUID();
     const financialSnapshot: FormalOrderFinancialSnapshotProjection = {
@@ -303,12 +288,13 @@ export async function approveOrderEvidenceAtomically(
       buyer_rate_version_id: buyerRate.rate_id,
       buyer_rate_version_no: buyerRate.version_no,
       buyer_rate_business_date: buyerRate.business_date,
-      buyer_rate_confirmed_at: buyerRate.confirmed_at,
-      buyer_cny_per_jpy_e8: fixedIntegerString(buyerRateValue),
-      service_fee_version_id: serviceFee.fee_version_id,
+      buyer_rate_created_at: buyerRate.created_at,
+      buyer_rate_value: fixedIntegerString(buyerRateValue),
+      buyer_rate_scale: buyerRate.rate_scale,
+      service_fee_rule_version_id: serviceFee.fee_version_id,
       service_fee_version_no: serviceFee.version_no,
       service_fee_effective_from: serviceFee.effective_from,
-      service_fee_confirmed_at: serviceFee.confirmed_at,
+      service_fee_created_at: serviceFee.created_at,
       service_fee_cny_fen: fixedIntegerString(serviceFeeValue),
       buyer_self_pay_bps: instruction.buyer_self_pay_bps,
       buyer_self_pay_jpy: String(instruction.buyer_self_pay_jpy),
@@ -330,7 +316,6 @@ export async function approveOrderEvidenceAtomically(
       demand_batch_id: source.demand_batch_id,
       buyer_customer_id: source.buyer_customer_id,
       buyer_customer_no: buyerNumber.buyerCustomerNo,
-      buyer_number_allocated: buyerNumber.allocated,
       seller_organization_id: source.seller_organization_id,
       store_id: source.store_id,
       marketplace_code: 'AMAZON_JP',
@@ -448,7 +433,6 @@ export async function approveOrderEvidenceAtomically(
     }
 
     const statements: SqlStatement[] = [
-      ...buyerNumber.statements,
       verifyEvidenceStatement(
         database,
         source,
@@ -555,7 +539,7 @@ export async function approveOrderEvidenceAtomically(
         now,
       }),
       assertPreviousStatementChangedOnce(database),
-      financialSnapshotStatement(database, formalOrderId, financialSnapshot, instruction, now),
+      financialSnapshotStatement(database, formalOrderId, source, financialSnapshot, instruction, now),
       assertPreviousStatementChangedOnce(database),
       insertSellerPrincipalRateSnapshotStatement(
         database,
@@ -563,8 +547,6 @@ export async function approveOrderEvidenceAtomically(
         sellerPrincipalRateSnapshot,
         now,
       ),
-      assertPreviousStatementChangedOnce(database),
-      marketplaceMoneySnapshotStatement(database, formalOrderId, source, financialSnapshot, now),
       assertPreviousStatementChangedOnce(database),
       ...principalPayable.statements,
       database
@@ -588,7 +570,6 @@ export async function approveOrderEvidenceAtomically(
           canonicalJson({
             financial_snapshot_id: snapshotId,
             seller_principal_payable_id: principalPayable.payableId,
-            buyer_number_allocated: buyerNumber.allocated,
             order_evidence_version_id: source.evidence_version_id,
             ...mismatchFacts,
           }),
@@ -616,7 +597,6 @@ export async function approveOrderEvidenceAtomically(
         metadata: {
           financial_snapshot_id: snapshotId,
           seller_principal_payable_id: principalPayable.payableId,
-          buyer_number_allocated: buyerNumber.allocated,
           ...mismatchFacts,
         },
         createdAt: now,
@@ -647,7 +627,6 @@ export async function approveOrderEvidenceAtomically(
         acquired.claim,
         source,
         formalOrder,
-        buyerNumber,
         principalPayable.payableId,
       ),
       assertIdempotencyCompletionStatement(database, acquired.claim),
@@ -698,7 +677,7 @@ export async function readOrderEvidenceApprovalPreflight(
   const checks: OrderEvidenceApprovalPreflight['checks'][number][] = [];
   let baseReady = false;
   try {
-    const resolvedRate = await resolveBuyerDailyExchangeRate(database, {
+    await resolveBuyerDailyExchangeRate(database, {
       businessDate: orderDate,
       asOf: now,
     });
@@ -706,19 +685,17 @@ export async function readOrderEvidenceApprovalPreflight(
     checks.push({
       code: 'ORDER_DAY_BASE_RATE',
       status: 'READY',
-      message: resolvedRate.business_date === orderDate
-        ? `已确认 ${orderDate} 的订单日基础汇率。`
-        : `订单日 ${orderDate} 无当日汇率，确认时将回退采用 ${resolvedRate.business_date} 的已确认汇率（快照记录实际采用日期）。`,
+      message: `已保存 ${orderDate} 的订单日基础汇率。`,
       action_path: path('base-rate'),
-      required_access: 'Owner + SELLER_MANAGE + FINANCIAL_CORRECT',
+      required_access: 'Owner / seller_ops + SELLER_MANAGE',
     });
   } catch {
     checks.push({
       code: 'ORDER_DAY_BASE_RATE',
       status: 'MISSING',
-      message: `缺少 ${orderDate} 及此前任一日的 JPY → CNY 已确认订单日基础汇率。`,
+      message: `缺少 ${orderDate} 当日的 JPY → CNY 订单日基础汇率。`,
       action_path: path('base-rate'),
-      required_access: 'Owner + SELLER_MANAGE + FINANCIAL_CORRECT',
+      required_access: 'Owner / seller_ops + SELLER_MANAGE',
     });
   }
   const policy = await readSellerPrincipalRatePolicies(database, {
@@ -839,13 +816,6 @@ async function requireAtomicApprovalSource(
       product_version.product_name,
       buyer.access_status AS buyer_access_status,
       buyer.buyer_customer_no, buyer.buyer_sequence,
-      buyer.first_valid_order_business_date,
-      buyer.buyer_channel_id, buyer.version AS buyer_version,
-      channel.code AS channel_code, channel.status AS channel_status,
-      channel.next_sequence AS channel_next_sequence,
-      channel.version AS channel_version,
-      preorder.buyer_customer_no AS preorder_buyer_customer_no,
-      preorder.buyer_sequence AS preorder_buyer_sequence,
       existing.id AS existing_formal_order_id
     FROM order_evidence_submissions submission
     JOIN order_evidence_versions evidence
@@ -860,9 +830,6 @@ async function requireAtomicApprovalSource(
       ON product_version.product_id=reservation.product_id
       AND product_version.version_no=reservation.product_version_no
     JOIN buyer_customers buyer ON buyer.id=submission.buyer_customer_id
-    JOIN buyer_channels channel ON channel.id=buyer.buyer_channel_id
-    LEFT JOIN buyer_preorder_number_allocations preorder
-      ON preorder.buyer_customer_id=buyer.id
     LEFT JOIN formal_orders existing
       ON existing.order_evidence_submission_id=submission.id
       OR existing.reservation_id=reservation.id
@@ -1008,6 +975,7 @@ function consumeVerifiedEvidenceStatement(
 function financialSnapshotStatement(
   database: SqlDatabase,
   formalOrderId: string,
+  source: AtomicApprovalSource,
   snapshot: FormalOrderFinancialSnapshotProjection,
   instruction: {
     buyer_self_pay_bps: number;
@@ -1021,74 +989,37 @@ function financialSnapshotStatement(
       `
     INSERT INTO formal_order_financial_snapshots (
       id, formal_order_id, snapshot_version,
+      buyer_customer_id, seller_organization_id, store_id,
+      marketplace_code, review_type,
+      platform_order_identifier, platform_product_identifier,
+      platform_order_date, payment_amount_minor,
+      payment_currency_code, payment_currency_exponent,
       buyer_rate_version_id, buyer_rate_version_no,
       buyer_rate_business_date, buyer_rate_confirmed_at,
-      buyer_cny_per_jpy_e8,
-      service_fee_version_id, service_fee_version_no,
+      buyer_rate_value, buyer_rate_scale,
+      source_currency_code, quote_currency_code,
+      source_currency_exponent, quote_currency_exponent,
+      service_fee_rule_version_id, service_fee_version_no,
       service_fee_effective_from, service_fee_confirmed_at,
-      service_fee_cny_fen, buyer_self_pay_bps, buyer_self_pay_jpy,
+      service_fee_cny_fen, service_fee_currency_code,
+      buyer_expected_principal_cny_fen, seller_expected_principal_cny_fen,
+      buyer_self_pay_bps, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, buyer_gross_principal_cny_fen,
-      buyer_self_pay_contribution_cny_fen,
-      buyer_expected_principal_cny_fen,
-      seller_expected_principal_cny_fen, rounding_rule, created_at
-    ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?, 'HALF_UP', ?)
+      buyer_self_pay_contribution_cny_fen, rounding_rule, created_at
+    ) VALUES (
+      ?, ?, 1, ?, ?, ?,
+      'AMAZON_JP', ?, ?, ?, ?, ?,
+      'JPY', 0,
+      ?, ?, ?, ?, ?, ?,
+      'JPY', 'CNY', 0, 2,
+      ?, ?, ?, ?, ?, 'CNY',
+      ?, ?, ?, ?, ?,
+      ?, ?, 'HALF_UP', ?
+    )
   `,
     )
     .bind(
       snapshot.snapshot_id,
-      formalOrderId,
-      snapshot.buyer_rate_version_id,
-      snapshot.buyer_rate_version_no,
-      snapshot.buyer_rate_business_date,
-      snapshot.buyer_rate_confirmed_at,
-      Number(snapshot.buyer_cny_per_jpy_e8),
-      snapshot.service_fee_version_id,
-      snapshot.service_fee_version_no,
-      snapshot.service_fee_effective_from,
-      snapshot.service_fee_confirmed_at,
-      Number(snapshot.service_fee_cny_fen),
-      instruction.buyer_self_pay_bps,
-      instruction.buyer_self_pay_jpy,
-      instruction.buyer_refundable_principal_jpy,
-      Number(snapshot.buyer_gross_principal_cny_fen),
-      Number(snapshot.buyer_self_pay_contribution_cny_fen),
-      Number(snapshot.buyer_expected_principal_cny_fen),
-      Number(snapshot.seller_expected_principal_cny_fen),
-      now,
-    );
-}
-
-function marketplaceMoneySnapshotStatement(
-  database: SqlDatabase,
-  formalOrderId: string,
-  source: AtomicApprovalSource,
-  snapshot: FormalOrderFinancialSnapshotProjection,
-  now: number,
-): SqlStatement {
-  return database
-    .prepare(
-      `
-    INSERT INTO formal_order_marketplace_money_snapshots (
-      formal_order_id,buyer_customer_id,seller_organization_id,store_id,
-      marketplace_code,review_type,platform_order_identifier,
-      platform_product_identifier,platform_order_date,payment_amount_minor,
-      payment_currency_code,payment_currency_exponent,buyer_rate_version_id,
-      buyer_rate_version_no,buyer_rate_confirmed_at,buyer_rate_value,
-      buyer_rate_scale,source_currency_code,quote_currency_code,
-      source_currency_exponent,quote_currency_exponent,rounding_rule,
-      service_fee_rule_version_id,service_fee_rule_version_no,
-      service_fee_effective_from,service_fee_confirmed_at,
-      service_fee_amount_minor,service_fee_currency_code,
-      buyer_expected_principal_amount_minor,
-      seller_expected_principal_amount_minor,created_at
-    ) VALUES (
-      ?,?,?,?,'AMAZON_JP',?,?,?,?,?,'JPY',0,?,?,?, ?,100000000,
-      'JPY','CNY',0,2,'HALF_UP',?,?,?,?,?,'CNY',?,?,?
-    )
-  `,
-    )
-    .bind(
       formalOrderId,
       source.buyer_customer_id,
       source.seller_organization_id,
@@ -1098,182 +1029,26 @@ function marketplaceMoneySnapshotStatement(
       source.asin_normalized,
       source.amazon_order_date,
       source.final_paid_jpy,
-      `currency-${snapshot.buyer_rate_version_id}`,
+      snapshot.buyer_rate_version_id,
       snapshot.buyer_rate_version_no,
-      snapshot.buyer_rate_confirmed_at,
-      Number(snapshot.buyer_cny_per_jpy_e8),
-      `marketplace-${snapshot.service_fee_version_id}`,
+      snapshot.buyer_rate_business_date,
+      snapshot.buyer_rate_created_at,
+      Number(snapshot.buyer_rate_value),
+      Number(snapshot.buyer_rate_scale),
+      snapshot.service_fee_rule_version_id,
       snapshot.service_fee_version_no,
       snapshot.service_fee_effective_from,
-      snapshot.service_fee_confirmed_at,
+      snapshot.service_fee_created_at,
       Number(snapshot.service_fee_cny_fen),
       Number(snapshot.buyer_expected_principal_cny_fen),
       Number(snapshot.seller_expected_principal_cny_fen),
+      instruction.buyer_self_pay_bps,
+      instruction.buyer_self_pay_jpy,
+      instruction.buyer_refundable_principal_jpy,
+      Number(snapshot.buyer_gross_principal_cny_fen),
+      Number(snapshot.buyer_self_pay_contribution_cny_fen),
       now,
     );
-}
-
-function prepareBuyerNumberPlan(
-  database: SqlDatabase,
-  source: AtomicApprovalSource,
-  businessDate: string,
-  actorStaffId: string,
-  idempotencyKey: string,
-  now: number,
-): BuyerNumberPlan {
-  const hasNumber = source.buyer_customer_no !== null;
-  const hasSequence = source.buyer_sequence !== null;
-  const hasDate = source.first_valid_order_business_date !== null;
-  if (hasNumber || hasSequence || hasDate) {
-    if (
-      !hasNumber ||
-      !hasSequence ||
-      !hasDate ||
-      !Number.isSafeInteger(source.buyer_sequence) ||
-      Number(source.buyer_sequence) < 1
-    ) {
-      throw new AtomicOrderEvidenceApprovalError('DEPENDENCY_UNAVAILABLE', 503);
-    }
-    return {
-      buyerCustomerNo: source.buyer_customer_no as string,
-      allocated: false,
-      sequence: Number(source.buyer_sequence),
-      firstValidOrderBusinessDate: source.first_valid_order_business_date as string,
-      statements: [],
-    };
-  }
-  // D2：注册时预分配（preorder）的编号在首单确认时转正——沿用预分配的
-  // 编号与序号写入主表三字段，不推进渠道计数器（号已在注册时预占）。
-  if (
-    source.preorder_buyer_customer_no !== null &&
-    Number.isSafeInteger(source.preorder_buyer_sequence) &&
-    Number(source.preorder_buyer_sequence) >= 1
-  ) {
-    const preorderSequence = Number(source.preorder_buyer_sequence);
-    return {
-      buyerCustomerNo: source.preorder_buyer_customer_no,
-      allocated: false,
-      sequence: preorderSequence,
-      firstValidOrderBusinessDate: businessDate,
-      statements: [
-        database
-          .prepare(
-            `
-        UPDATE buyer_customers SET buyer_customer_no=?, buyer_sequence=?,
-          first_valid_order_business_date=?, version=version+1,
-          updated_at=MAX(?, updated_at+1)
-        WHERE id=? AND access_status='ACTIVE'
-          AND buyer_customer_no IS NULL AND buyer_sequence IS NULL
-          AND first_valid_order_business_date IS NULL AND version=?
-      `,
-          )
-          .bind(
-            source.preorder_buyer_customer_no,
-            preorderSequence,
-            businessDate,
-            now,
-            source.buyer_customer_id,
-            source.buyer_version,
-          ),
-        assertPreviousStatementChangedOnce(database),
-        database
-          .prepare(
-            `
-        INSERT INTO buyer_number_allocation_events (
-          id, buyer_customer_id, buyer_channel_id, buyer_customer_no,
-          buyer_sequence, first_valid_order_business_date,
-          actor_staff_id, idempotency_key, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-          )
-          .bind(
-            crypto.randomUUID(),
-            source.buyer_customer_id,
-            source.buyer_channel_id,
-            source.preorder_buyer_customer_no,
-            preorderSequence,
-            businessDate,
-            actorStaffId,
-            idempotencyKey,
-            now,
-          ),
-        assertPreviousStatementChangedOnce(database),
-      ],
-    };
-  }
-  if (
-    source.channel_status !== 'ACTIVE' ||
-    !Number.isSafeInteger(source.channel_next_sequence) ||
-    source.channel_next_sequence < 1
-  ) {
-    throw new AtomicOrderEvidenceApprovalError('STATE_CONFLICT', 409);
-  }
-  const sequence = source.channel_next_sequence;
-  const buyerCustomerNo = formatBuyerCustomerNumber({
-    businessDate,
-    channelCode: source.channel_code,
-    sequence,
-  });
-  return {
-    buyerCustomerNo,
-    allocated: true,
-    sequence,
-    firstValidOrderBusinessDate: businessDate,
-    statements: [
-      database
-        .prepare(
-          `
-        UPDATE buyer_channels SET next_sequence=next_sequence+1,
-          version=version+1, updated_at=MAX(?, updated_at+1)
-        WHERE id=? AND status='ACTIVE' AND next_sequence=? AND version=?
-      `,
-        )
-        .bind(now, source.buyer_channel_id, sequence, source.channel_version),
-      assertPreviousStatementChangedOnce(database),
-      database
-        .prepare(
-          `
-        UPDATE buyer_customers SET buyer_customer_no=?, buyer_sequence=?,
-          first_valid_order_business_date=?, version=version+1,
-          updated_at=MAX(?, updated_at+1)
-        WHERE id=? AND access_status='ACTIVE'
-          AND buyer_customer_no IS NULL AND buyer_sequence IS NULL
-          AND first_valid_order_business_date IS NULL AND version=?
-      `,
-        )
-        .bind(
-          buyerCustomerNo,
-          sequence,
-          businessDate,
-          now,
-          source.buyer_customer_id,
-          source.buyer_version,
-        ),
-      assertPreviousStatementChangedOnce(database),
-      database
-        .prepare(
-          `
-        INSERT INTO buyer_number_allocation_events (
-          id, buyer_customer_id, buyer_channel_id, buyer_customer_no,
-          buyer_sequence, first_valid_order_business_date,
-          actor_staff_id, idempotency_key, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-        )
-        .bind(
-          crypto.randomUUID(),
-          source.buyer_customer_id,
-          source.buyer_channel_id,
-          buyerCustomerNo,
-          sequence,
-          businessDate,
-          actorStaffId,
-          idempotencyKey,
-          now,
-        ),
-      assertPreviousStatementChangedOnce(database),
-    ],
-  };
 }
 
 function assertAtomicApprovalStatement(
@@ -1286,7 +1061,6 @@ function assertAtomicApprovalStatement(
   },
   source: AtomicApprovalSource,
   formalOrder: ConfirmFormalOrderResult,
-  buyerNumber: BuyerNumberPlan,
   payableId: string,
 ): SqlStatement {
   return database
@@ -1305,10 +1079,10 @@ function assertAtomicApprovalStatement(
       AND EXISTS (SELECT 1 FROM seller_principal_rate_snapshots
         WHERE formal_order_id=? AND policy_version_id=?
           AND seller_expected_principal_amount_minor=?)
-      AND EXISTS (SELECT 1 FROM formal_order_marketplace_money_snapshots
+      AND EXISTS (SELECT 1 FROM formal_order_financial_snapshots
         WHERE formal_order_id=?
-          AND buyer_expected_principal_amount_minor=?
-          AND seller_expected_principal_amount_minor=?)
+          AND payment_amount_minor=?
+          AND platform_order_date=?)
       AND EXISTS (SELECT 1 FROM seller_payables
         WHERE id=? AND formal_order_id=? AND payable_type='SELLER_PRINCIPAL')
       AND EXISTS (SELECT 1 FROM order_evidence_submissions
@@ -1320,10 +1094,7 @@ function assertAtomicApprovalStatement(
         WHERE actor_type=? AND actor_id=? AND idempotency_key=?
           AND status='COMMITTED' AND lease_token=?)
       AND EXISTS (SELECT 1 FROM buyer_customers
-        WHERE id=? AND buyer_customer_no=? AND buyer_sequence=?)
-      AND (?=0 OR EXISTS (SELECT 1 FROM buyer_number_allocation_events
-        WHERE buyer_customer_id=? AND buyer_customer_no=?
-          AND buyer_sequence=?))
+        WHERE id=? AND buyer_customer_no=?)
     THEN 1 ELSE 0 END
   `,
     )
@@ -1341,8 +1112,8 @@ function assertAtomicApprovalStatement(
       formalOrder.financial_snapshot.seller_principal_rate_snapshot.policy_version_id,
       Number(formalOrder.financial_snapshot.seller_expected_principal_cny_fen),
       formalOrder.formal_order_id,
-      Number(formalOrder.financial_snapshot.buyer_expected_principal_cny_fen),
-      Number(formalOrder.financial_snapshot.seller_expected_principal_cny_fen),
+      Number(formalOrder.final_paid_jpy),
+      formalOrder.amazon_order_date,
       payableId,
       formalOrder.formal_order_id,
       source.submission_id,
@@ -1356,12 +1127,7 @@ function assertAtomicApprovalStatement(
       claim.idempotencyKey,
       claim.leaseToken,
       source.buyer_customer_id,
-      buyerNumber.buyerCustomerNo,
-      buyerNumber.sequence,
-      buyerNumber.allocated ? 1 : 0,
-      source.buyer_customer_id,
-      buyerNumber.buyerCustomerNo,
-      buyerNumber.sequence,
+      formalOrder.buyer_customer_no,
     );
 }
 
@@ -1378,10 +1144,7 @@ function normalizeSource(row: AtomicApprovalSource): AtomicApprovalSource {
     file_version: row.file_version === null ? null : Number(row.file_version),
     reservation_version: Number(row.reservation_version),
     product_version_no: Number(row.product_version_no),
-    buyer_sequence: row.buyer_sequence === null ? null : Number(row.buyer_sequence),
-    buyer_version: Number(row.buyer_version),
-    channel_next_sequence: Number(row.channel_next_sequence),
-    channel_version: Number(row.channel_version),
+    buyer_sequence: Number(row.buyer_sequence),
   };
 }
 

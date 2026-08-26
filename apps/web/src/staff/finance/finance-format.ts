@@ -46,28 +46,6 @@ export function lookupAsOf(businessDate: string, now: number = Date.now()): numb
   return Math.min(endOfDay, now);
 }
 
-// The rule engine refuses to confirm a version whose effective time has
-// already passed, so the submit form defaults to a few minutes ahead: submit,
-// (confirm,) and the rule becomes effective almost immediately.
-export function futureDateTime(): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(Date.now() + 5 * 60 * 1000));
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values['year']}-${values['month']}-${values['day']}T${values['hour']}:${values['minute']}`;
-}
-
-export function parseBeijingDateTime(value: string): number {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/u.test(value)) return Number.NaN;
-  return Date.parse(`${value}:00+08:00`);
-}
-
 export function markupLabel(value: string): string {
   const raw = BigInt(value);
   const integer = raw / 100_000_000n;

@@ -11,7 +11,7 @@ import { runHistoricalImport } from './pipeline';
  * facts with zero portal surface. No Buyer/Seller/Staff route may expose
  * them, unmatched or quarantined rows never promote into portal-visible
  * business tables, and the API contract inventory stays at its stage 5
- * baseline of 248 endpoints.
+ * baseline of 242 endpoints.
  */
 
 // vitest runs from the repository root (root vitest.config.ts), so resolve
@@ -19,7 +19,7 @@ import { runHistoricalImport } from './pipeline';
 const REPOSITORY_ROOT = process.cwd();
 const ROUTE_INVENTORY = path.join(REPOSITORY_ROOT, 'docs/contracts/V2_API_ROUTE_INVENTORY.md');
 const API_SOURCE_ROOT = path.join(REPOSITORY_ROOT, 'apps/api/src');
-const EXPECTED_ENDPOINT_COUNT = 248;
+const EXPECTED_ENDPOINT_COUNT = 242;
 
 function collectSourceFiles(directory: string): string[] {
   const files: string[] = [];
@@ -32,7 +32,7 @@ function collectSourceFiles(directory: string): string[] {
 }
 
 describe('historical import portal isolation (task 6.8)', () => {
-  it('keeps the API contract inventory at the stage 5 baseline of 248 endpoints', () => {
+  it('keeps the API contract inventory at the stage 5 baseline of 242 endpoints', () => {
     const inventory = readFileSync(ROUTE_INVENTORY, 'utf8');
     const endpointLines = inventory
       .split(/\r?\n/u)

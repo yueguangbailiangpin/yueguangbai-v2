@@ -25,10 +25,8 @@ describe('Staff workbench runtime DTOs', () => {
       source_currency_code: 'JPY', quote_currency_code: 'CNY',
       seller_organization_id: null,
       default_policy: null, seller_override_policy: null,
-      default_pending_policy: null, seller_override_pending_policy: null,
       default_next_version: 1, seller_override_next_version: null,
       selected_policy: null,
-      default_upcoming_policy: null, seller_override_upcoming_policy: null,
     });
     expect(policies).toMatchObject({
       seller_organization_id: null,
@@ -36,6 +34,20 @@ describe('Staff workbench runtime DTOs', () => {
     });
     expect(staffSellerPrincipalRatePoliciesResponseSchema.parse({ policies }))
       .toEqual({ policies });
+  });
+
+  it('rejects retired dual-approval policy fields (D-056 single-save model)', () => {
+    const base = {
+      source_currency_code: 'JPY', quote_currency_code: 'CNY',
+      seller_organization_id: null,
+      default_policy: null, seller_override_policy: null,
+      default_next_version: 1, seller_override_next_version: null,
+      selected_policy: null,
+    };
+    expect(staffSellerPrincipalRatePolicySchema.safeParse({
+      ...base,
+      default_pending_policy: null,
+    }).success).toBe(false);
   });
 
   it.each(['object_key', 'session_token', 'password_hash', 'drive_file_id'])('rejects sensitive/unknown field %s', (field) => {

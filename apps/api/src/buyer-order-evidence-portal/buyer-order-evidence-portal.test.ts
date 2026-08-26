@@ -1143,22 +1143,22 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     },
   );
 
-  it('keeps migration through 0026 and creates no actual refund, settlement, or profit', async () => {
+  it('keeps migration through 0027 and creates no actual refund, settlement, or profit', async () => {
     await setup();
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(26);
+    expect(migrations).toHaveLength(27);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0026_stage65_archive_import_closeout.sql');
+    expect(migrations.at(-1)).toBe('0027_stage66_single_source_convergence.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(26);
+    expect(Number(schema?.schema_version)).toBe(27);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name
@@ -1438,31 +1438,23 @@ async function seedFixture(
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-evidence', 'E', '订单资料测试渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
         'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
-        'buyer-channel-evidence', NULL, NULL, NULL,
+        'buyer-channel-wechat-b', '19700101B0001', 1,
         '买家一', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
         'buyer-2', 'buyer-subject-2', 'AMAZON_JP',
-        'buyer-channel-evidence', NULL, NULL, NULL,
+        'buyer-channel-wechat-b', '19700101B0002', 2,
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       );

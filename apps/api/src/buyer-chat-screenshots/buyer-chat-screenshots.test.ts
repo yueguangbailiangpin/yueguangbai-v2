@@ -204,11 +204,12 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       ('buyer-subject-0001', 'BUYER_CUSTOMER', 1);
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code, buyer_channel_id,
-      buyer_customer_no, display_name, access_status, identity_review_status,
-      version, created_at, updated_at, activated_at
+      buyer_customer_no, buyer_sequence, display_name, access_status,
+      identity_review_status, version, created_at, updated_at, activated_at
     ) VALUES
-      ('buyer-customer-0001', 'buyer-subject-0001', 'AMAZON_JP', 'channel-wechat-0001',
-       NULL, '买家一', 'ACTIVE', 'CLEAR', 1, 1, 1, 1);
+      ('buyer-customer-0001', 'buyer-subject-0001', 'AMAZON_JP',
+       'buyer-channel-wechat-b', '19700101B0001', 1,
+       '买家一', 'ACTIVE', 'CLEAR', 1, 1, 1, 1);
     INSERT INTO order_evidence_submissions (id, reservation_id, buyer_customer_id, marketplace_code, status, current_version_no, version, public_change_reason, internal_review_note, submitted_at, updated_at, verified_by_staff_id, verified_at, withdrawn_at, consumed_at, created_at) VALUES
       ('chat-submission-1', 'chat-reservation-1', 'buyer-customer-0001', 'AMAZON_JP', 'VERIFIED', 1, 1, NULL, NULL, 1, 1, 'staff-chat-uploader', 1, NULL, NULL, 1),
       ('chat-submission-2', 'chat-reservation-2', 'buyer-customer-0001', 'AMAZON_JP', 'VERIFIED', 1, 1, NULL, NULL, 1, 1, 'staff-chat-uploader', 1, NULL, NULL, 1);

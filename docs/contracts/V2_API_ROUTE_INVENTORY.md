@@ -1,6 +1,8 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。现有 248 个唯一端点：246 个 `/api/*`，以及 `/health`、`/ready`。阶段 5（D-055）以 ZIP Bundle 冷归档替换单文件 Drive 归档：per-file rehydrate 路由退役，新增 staff-only 的 bundle restore、bundle 列表与归档指标端点。Staff MCP、机器获客、关键词图片、飞书与 Rakuten/TikTok 预备层已随干净基线重建退役；经营看板收敛为 summary 与 financial-projection 两个只读端点（清单 §3.2）。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
+这是默认 App 的可复现 route inventory。现有 242 个唯一端点：240 个 `/api/*`，以及 `/health`、`/ready`。阶段 5（D-055）以 ZIP Bundle 冷归档替换单文件 Drive 归档：per-file rehydrate 路由退役，新增 staff-only 的 bundle restore、bundle 列表与归档指标端点。Staff MCP、机器获客、关键词图片、飞书与 Rakuten/TikTok 预备层已随干净基线重建退役；经营看板收敛为 summary 与 financial-projection 两个只读端点（清单 §3.2）。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
+
+阶段 6.6（D-056）收敛说明：汇率/卖家服务费/本金汇率策略改为单次保存、即时生效；`rate-center/base-rates`、`seller-service-fees`、`seller-principal-rate-policies/save` 三个保存端点取代原有的 submit/confirm/reject/apply-defaults 双审批路由（被删除路由一律返回 404）。
 
 阶段 4（D-054）收敛说明：marketplace 运行时合同只接受 AMAZON_JP / AMAZON_US / COUPANG_KR（历史 'JP' 短码只存在于阶段 6 历史导入映射层）；获客只保留人工面（渠道、咨询、Prospect、Lead、负责员工、有审计的人工纠正），funnel / handoffs / reporting-config / acquisition-daily 机器维度已删除；被删除路由一律返回 404，不保留兼容别名。
 
@@ -242,8 +244,7 @@ POST /api/staff/order-integrity/:id/financial-adjustments
 POST /api/staff/product-applications/:id/review
 POST /api/staff/production-readiness/operational-alert-attestations
 POST /api/staff/production-readiness/recovery-attestations
-POST /api/staff/rate-center/base-rates/:id/confirm
-POST /api/staff/rate-center/base-rates/submit
+POST /api/staff/rate-center/base-rates
 POST /api/staff/reservations/:id/decision
 POST /api/staff/reservations/:id/reopen
 POST /api/staff/reviews/:id/approve
@@ -255,13 +256,8 @@ POST /api/staff/seller-allocations/:allocationId/reverse
 POST /api/staff/seller-payments/:paymentId/allocations
 POST /api/staff/seller-payments/:paymentId/proof/read-intent
 POST /api/staff/seller-payments/:paymentId/reverse
-POST /api/staff/seller-principal-rate-policies/:id/confirm
-POST /api/staff/seller-principal-rate-policies/:id/reject
-POST /api/staff/seller-principal-rate-policies/submit
-POST /api/staff/seller-service-fees/:id/confirm
-POST /api/staff/seller-service-fees/:id/reject
-POST /api/staff/seller-service-fees/apply-defaults
-POST /api/staff/seller-service-fees/submit
+POST /api/staff/seller-principal-rate-policies/save
+POST /api/staff/seller-service-fees
 POST /api/staff/seller-settlements/:organizationId/payments
 POST /api/staff/seller-settlements/:organizationId/reconciliation
 ```

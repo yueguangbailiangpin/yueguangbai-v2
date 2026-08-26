@@ -77,21 +77,24 @@ describe('staff acquisition funnel commands', () => {
     expect(seller.lead.lead_type).toBe('SELLER');
 
     // The new seller organization is born with the business-default service
-    // fees (评分35/文字60/图片70/视频85), already CONFIRMED in the same
-    // transaction, so order approval is never blocked by a fresh org.
+    // fees (评分35/文字60/图片70/视频85) as immediately effective rule
+    // versions of the single rule table, so order approval is never blocked
+    // by a fresh org.
     const organizationId = (database.raw.prepare(
       `SELECT target_id AS id FROM acquisition_lead_links
        WHERE lead_id=? AND link_type='SELLER_ORGANIZATION'`,
     ).get(seller.lead.lead_id) as { id: string })['id'];
     const seededFees = database.raw.prepare(
-      `SELECT review_type, version_no, status, fee_cny_fen, effective_from
-       FROM seller_service_fee_versions WHERE organization_id=? ORDER BY review_type`,
+      `SELECT review_type, version_no, fee_amount_minor, fee_currency_code,
+       effective_from, created_at
+       FROM seller_service_fee_rule_versions WHERE seller_organization_id=?
+       ORDER BY review_type`,
     ).all(organizationId) as unknown as Record<string, unknown>[];
     expect(seededFees).toEqual([
-      { review_type: 'IMAGE', version_no: 1, status: 'CONFIRMED', fee_cny_fen: 7000, effective_from: JAN_1_2025 + 2 + 60_000 },
-      { review_type: 'RATING', version_no: 1, status: 'CONFIRMED', fee_cny_fen: 3500, effective_from: JAN_1_2025 + 2 + 60_000 },
-      { review_type: 'TEXT', version_no: 1, status: 'CONFIRMED', fee_cny_fen: 6000, effective_from: JAN_1_2025 + 2 + 60_000 },
-      { review_type: 'VIDEO', version_no: 1, status: 'CONFIRMED', fee_cny_fen: 8500, effective_from: JAN_1_2025 + 2 + 60_000 },
+      { review_type: 'IMAGE', version_no: 1, fee_amount_minor: 7000, fee_currency_code: 'CNY', effective_from: JAN_1_2025 + 2, created_at: JAN_1_2025 + 2 },
+      { review_type: 'RATING', version_no: 1, fee_amount_minor: 3500, fee_currency_code: 'CNY', effective_from: JAN_1_2025 + 2, created_at: JAN_1_2025 + 2 },
+      { review_type: 'TEXT', version_no: 1, fee_amount_minor: 6000, fee_currency_code: 'CNY', effective_from: JAN_1_2025 + 2, created_at: JAN_1_2025 + 2 },
+      { review_type: 'VIDEO', version_no: 1, fee_amount_minor: 8500, fee_currency_code: 'CNY', effective_from: JAN_1_2025 + 2, created_at: JAN_1_2025 + 2 },
     ]);
 
     const stored = database.raw.prepare(`SELECT identity_hash,identity_ciphertext,
@@ -688,17 +691,14 @@ class ConsultationCommitWindowRaceDatabase implements SqlDatabase {
 
 function seedBuyerIdentity(db: SqliteDatabase, wechat: string): void {
   db.exec(`
-    INSERT INTO buyer_channels (id,code,name,status,next_sequence,version,
-      created_at,updated_at,disabled_at) VALUES
-      ('buyer-channel-linked','LNK','关联买家','ACTIVE',1,1,1000,1000,NULL);
     INSERT INTO customer_identity_subjects (id,subject_type,created_at)
       VALUES ('subject-linked','BUYER_CUSTOMER',1000);
     INSERT INTO buyer_customers (id,identity_subject_id,marketplace_code,
       buyer_channel_id,buyer_customer_no,buyer_sequence,
-      first_valid_order_business_date,display_name,access_status,
+      display_name,access_status,
       identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
-      VALUES ('buyer-linked','subject-linked','AMAZON_JP','buyer-channel-linked',
-        NULL,NULL,NULL,'关联买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
+      VALUES ('buyer-linked','subject-linked','AMAZON_JP','buyer-channel-wechat-b',
+        '20240101B0001',1,'关联买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
     INSERT INTO wechat_identity_claims (id,identity_subject_id,display_wechat,
       normalized_wechat,status,version,acquired_at,reserved_at,released_at,
       created_at,updated_at) VALUES

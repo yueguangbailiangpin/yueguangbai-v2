@@ -67,15 +67,13 @@ const FULLY_CLOSED_OLD_ROW: Record<string, string> = {
 
 function seedHistIdentity(db: SqliteDatabase): void {
   db.exec(`
-    INSERT OR IGNORE INTO buyer_channels(id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at)
-    VALUES('cold-archive-channel','Z','归档集成渠道','ACTIVE',1,1,1000,1000,NULL);
     INSERT INTO customer_identity_subjects(id,subject_type,created_at)
     VALUES('hist-arc-subject','BUYER_CUSTOMER',1000);
     INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,
-      buyer_sequence,first_valid_order_business_date,display_name,access_status,identity_review_status,
+      buyer_sequence,display_name,access_status,identity_review_status,
       version,created_at,updated_at,activated_at,disabled_at)
-    VALUES('hist-arc-buyer','hist-arc-subject','AMAZON_JP','cold-archive-channel',NULL,NULL,NULL,
-      '归档集成买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
+    VALUES('hist-arc-buyer','hist-arc-subject','AMAZON_JP','buyer-channel-wechat-b','20240610B0001',
+      1,'归档集成买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
     INSERT INTO wechat_identity_claims(id,identity_subject_id,display_wechat,normalized_wechat,
       status,version,acquired_at,created_at,updated_at)
     VALUES('hist-arc-claim','hist-arc-subject','wx-hist-a','wx-hist-a','ACTIVE',1,1000,1000,1000);

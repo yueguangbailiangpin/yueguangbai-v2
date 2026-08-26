@@ -148,7 +148,6 @@ for (const routeModule of [
   'apps/web/src/buyer/routes/BuyerInstructionRouteModule.tsx',
   'apps/web/src/buyer/routes/BuyerOrderRouteModule.tsx',
   'apps/web/src/buyer/routes/BuyerAfterSalesRouteModule.tsx',
-  'apps/web/src/staff/StaffCallbackModule.tsx',
   'apps/web/src/staff/StaffAdminRouteModule.tsx',
   'apps/web/src/staff/StaffAccessManagementRouteModule.tsx',
   'apps/web/src/staff/StaffRouteModule.tsx',

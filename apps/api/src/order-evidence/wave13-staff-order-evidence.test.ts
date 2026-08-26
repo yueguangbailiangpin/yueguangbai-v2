@@ -281,12 +281,12 @@ function seedDetailInvariantFixture(database: SqliteDatabase): void {
     );
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code, buyer_channel_id,
-      buyer_customer_no, buyer_sequence, first_valid_order_business_date,
+      buyer_customer_no, buyer_sequence,
       display_name, access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
       'tampered-buyer','tampered-subject','AMAZON_JP','tampered-channel',
-      'P202608030001',1,'2026-08-03','Tampered Buyer','ACTIVE','CLEAR',1,
+      '20260803B0001',1,'Tampered Buyer','ACTIVE','CLEAR',1,
       1000,1000,1000,NULL
     );
     INSERT INTO product_reservations (

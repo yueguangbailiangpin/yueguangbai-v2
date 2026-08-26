@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { isFrontendApiError } from '../../api/errors';
@@ -18,21 +18,18 @@ import {
   StaffMutationAuthority,
   type StaffMutationRequest,
 } from '../mutations/StaffMutationAuthority';
-import { EffectTimeline, type EffectTimelineEntry } from '../shared/EffectTimeline';
 import { PricingBreakdownCard } from '../shared/PricingBreakdownCard';
 import {
   BaseRateBlock,
-  DUAL_CONTROL_HINT,
   FinanceAlertStrip,
   FinanceExampleCard,
   MarkupBlock,
   PolicyError,
   ServiceFeeBlock,
-  type PendingDecision,
 } from './FinanceBlocks';
-import { chinaDate, fenToYuan, lookupAsOf, markupLabel, shiftChinaDate } from './finance-format';
+import { chinaDate, lookupAsOf, shiftChinaDate } from './finance-format';
 
-type PolicyMutationResult = Awaited<ReturnType<typeof staffApi.submitSellerPrincipalRatePolicy>>;
+type PolicyMutationResult = Awaited<ReturnType<typeof staffApi.saveSellerPrincipalRatePolicy>>;
 
 const SERVICE_FEE_REVIEW_TYPE_LABELS: Record<string, string> = {
   RATING: '评分单',
@@ -49,9 +46,10 @@ const SECTION_ANCHORS: Record<string, string> = {
 
 /**
  * /staff/finance — what a single order costs and earns, in plain terms:
- * the three pricing rules (base rate / markup / service fee), the upcoming
- * changes to them, and where to fix gaps.  Editing lives inside each block;
- * reconciliation tools are folded away at the bottom.
+ * the three pricing rules (base rate / markup / service fee) and where to
+ * fix gaps.  Every save is immediately effective (D-056 single-save model).
+ * Editing lives inside each block; reconciliation tools are folded away at
+ * the bottom.
  */
 export function StaffFinanceWorkspace(): React.JSX.Element {
   const session = useCurrentStaffSession();
@@ -75,9 +73,10 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
   const hasManage = session.permissions.includes('SELLER_MANAGE');
   const isGlobalOwner =
     session.role.code === 'owner' && hasManage && session.data_scope.type === 'GLOBAL';
-  const hasFinancialCorrection = session.permissions.includes('FINANCIAL_CORRECT');
+  // Stage 6.6A (D-056): owner and seller_ops share identical maintenance
+  // rights (SELLER_MANAGE) — there is no dual approval and no FINANCIAL_CORRECT
+  // requirement any more.
   const canSubmitDefault = isGlobalOwner;
-  const canDecide = session.role.code === 'owner' && hasFinancialCorrection;
   const canSubmitOverride =
     organizationId.length > 0 &&
     hasManage &&
@@ -199,34 +198,18 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
       const response =
         request === null
           ? await authority.retry()
-          : await authority.execute(request, ({ action, path, body }, key) =>
-              action === 'submit'
-                ? staffApi.submitSellerPrincipalRatePolicy(client, body, key)
-                : action === 'confirm'
-                  ? staffApi.confirmSellerPrincipalRatePolicy(
-                      client,
-                      path.split('/').at(-2)!,
-                      body,
-                      key,
-                    )
-                  : staffApi.rejectSellerPrincipalRatePolicy(
-                      client,
-                      path.split('/').at(-2)!,
-                      body,
-                      key,
-                    ),
+          : await authority.execute(request, (_request, key) =>
+              staffApi.saveSellerPrincipalRatePolicy(client, _request.body, key),
             );
       setRequestId(response.requestId);
-      setMessage('策略操作已记录。');
+      setMessage('已保存，立即生效。');
       await query.refetch();
       await rateCenter.refetch();
     } catch (error) {
       setRequestId(isFrontendApiError(error) ? error.requestId : null);
       setMessage(
         isFrontendApiError(error)
-          ? error.code === 'FORBIDDEN'
-            ? DUAL_CONTROL_HINT
-            : `操作未完成（${error.code}），请刷新后重试。`
+          ? `操作未完成（${error.code}），请刷新后重试。`
           : '操作未完成，请稍后重试。',
       );
     }
@@ -234,7 +217,7 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
 
   function submitMarkup(
     scope: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION',
-    input: { markup: string; effectiveAt: string },
+    input: { markup: string },
   ): void {
     const canSubmit = scope === 'CURRENCY_PAIR_DEFAULT' ? canSubmitDefault : canSubmitOverride;
     if (!query.data || !canSubmit) return;
@@ -246,125 +229,23 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
           ? null
           : query.data.seller_override_next_version - 1;
     if (currentVersion === null) return;
-    const pending =
-      scope === 'CURRENCY_PAIR_DEFAULT'
-        ? query.data.default_pending_policy
-        : query.data.seller_override_pending_policy;
-    if (pending) return;
-    const effective = Date.parse(`${input.effectiveAt}:00+08:00`);
-    if (!Number.isSafeInteger(effective)) {
-      setMessage('生效时间格式不正确。');
-      return;
-    }
     void execute({
-      action: 'submit',
-      path: '/api/staff/seller-principal-rate-policies/submit',
+      action: 'save',
+      path: '/api/staff/seller-principal-rate-policies/save',
       body: {
         scope_type: scope,
         seller_organization_id:
           scope === 'CURRENCY_PAIR_DEFAULT' ? null : selectedOrganizationId,
         source_currency_code: 'JPY',
         markup_rate_value: input.markup.trim(),
-        effective_from: effective,
         expected_version: currentVersion,
       },
     });
   }
 
-  const feeConfirm = useMutation({
-    mutationFn: (input: { feeVersionId: string; expectedVersion: number }) =>
-      staffApi.confirmSellerServiceFee(
-        client,
-        input.feeVersionId,
-        { expected_version: input.expectedVersion },
-        crypto.randomUUID(),
-      ),
-    onSuccess: async () => {
-      setMessage('服务费已确认。');
-      await serviceFees.refetch();
-    },
-    onError: (error) =>
-      setMessage(
-        isFrontendApiError(error) && error.code === 'FORBIDDEN'
-          ? DUAL_CONTROL_HINT
-          : `服务费确认未完成（${isFrontendApiError(error) ? error.code : 'NETWORK_FAILURE'}）。`,
-      ),
-  });
-  const feeReject = useMutation({
-    mutationFn: (input: { feeVersionId: string; expectedVersion: number }) =>
-      staffApi.rejectSellerServiceFee(
-        client,
-        input.feeVersionId,
-        {
-          expected_version: input.expectedVersion,
-          rejection_reason: 'Owner 在 Staff 工作台拒绝',
-        },
-        crypto.randomUUID(),
-      ),
-    onSuccess: async () => {
-      setMessage('服务费已拒绝。');
-      await serviceFees.refetch();
-    },
-    onError: (error) =>
-      setMessage(
-        isFrontendApiError(error) && error.code === 'FORBIDDEN'
-          ? DUAL_CONTROL_HINT
-          : `服务费拒绝未完成（${isFrontendApiError(error) ? error.code : 'NETWORK_FAILURE'}）。`,
-      ),
-  });
-
   const selectedOrg = visibleOrganizations.find(
     (organization) => organization.seller_organization_id === selectedOrganizationId,
   );
-  const pendingDecisions = useMemo<PendingDecision[]>(() => {
-    const items: PendingDecision[] = [];
-    const data = query.data;
-    if (data?.default_pending_policy) {
-      items.push({
-        id: data.default_pending_policy.policy_version_id,
-        label: '全体卖家加点',
-        value: markupLabel(data.default_pending_policy.markup_rate_value),
-        kind: 'markup',
-        markupRequest: {
-          action: 'confirm',
-          path: `/api/staff/seller-principal-rate-policies/${encodeURIComponent(
-            data.default_pending_policy.policy_version_id,
-          )}/confirm`,
-          body: { expected_version: data.default_pending_policy.decision_version },
-        },
-      });
-    }
-    if (data?.seller_override_pending_policy) {
-      items.push({
-        id: data.seller_override_pending_policy.policy_version_id,
-        label: `${selectedOrg?.seller_organization_name ?? '卖家组织'}单独加点`,
-        value: markupLabel(data.seller_override_pending_policy.markup_rate_value),
-        kind: 'markup',
-        markupRequest: {
-          action: 'confirm',
-          path: `/api/staff/seller-principal-rate-policies/${encodeURIComponent(
-            data.seller_override_pending_policy.policy_version_id,
-          )}/confirm`,
-          body: { expected_version: data.seller_override_pending_policy.decision_version },
-        },
-      });
-    }
-    for (const entry of serviceFees.data?.fees ?? []) {
-      if (entry.pending_fee) {
-        items.push({
-          id: entry.pending_fee.fee_version_id,
-          label: `${selectedOrg?.seller_organization_name ?? '卖家组织'}服务费 · ${
-            SERVICE_FEE_REVIEW_TYPE_LABELS[entry.review_type]
-          }`,
-          value: fenToYuan(entry.pending_fee.fee_cny_fen),
-          kind: 'fee',
-          feeVersionId: entry.pending_fee.fee_version_id,
-          feeExpectedVersion: entry.pending_fee.decision_version,
-        });
-      }
-    }
-    return items;
-  }, [query.data, serviceFees.data, selectedOrg]);
 
   const missingFeeTypes = useMemo(
     () =>
@@ -373,74 +254,6 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
         .map((entry) => SERVICE_FEE_REVIEW_TYPE_LABELS[entry.review_type] ?? entry.review_type),
     [serviceFees.data],
   );
-
-  const timelineEntries = useMemo<EffectTimelineEntry[]>(() => {
-    const entries: EffectTimelineEntry[] = [];
-    const rateData = rateCenter.data;
-    if (rateData?.base_rate.pending_rate) {
-      entries.push({
-        id: `base-rate:${rateData.base_rate.pending_rate.rate_id}`,
-        kind: '基础汇率',
-        value: rateLabelText(rateData.base_rate.pending_rate.cny_per_jpy_e8),
-        effectiveAt: rateData.base_rate.pending_rate.confirmed_at ?? Date.now(),
-        state: 'PENDING_CONFIRM',
-      });
-    }
-    const policyData = query.data;
-    if (policyData) {
-      for (const [kind, pending, upcoming] of [
-        ['全体卖家加点', policyData.default_pending_policy, policyData.default_upcoming_policy],
-        [
-          `${selectedOrg?.seller_organization_name ?? '卖家组织'}加点`,
-          policyData.seller_override_pending_policy,
-          policyData.seller_override_upcoming_policy,
-        ],
-      ] as const) {
-        if (pending) {
-          entries.push({
-            id: `markup-pending:${pending.policy_version_id}`,
-            kind,
-            value: markupLabel(pending.markup_rate_value),
-            effectiveAt: pending.effective_from,
-            state: 'PENDING_CONFIRM',
-          });
-        }
-        if (upcoming) {
-          entries.push({
-            id: `markup-upcoming:${upcoming.policy_version_id}`,
-            kind,
-            value: markupLabel(upcoming.markup_rate_value),
-            effectiveAt: upcoming.effective_from,
-            state: 'CONFIRMED_WAITING',
-          });
-        }
-      }
-    }
-    for (const entry of serviceFees.data?.fees ?? []) {
-      const label = `服务费 · ${
-        selectedOrg?.seller_organization_name ?? ''
-      }${SERVICE_FEE_REVIEW_TYPE_LABELS[entry.review_type]}`;
-      if (entry.pending_fee) {
-        entries.push({
-          id: `fee-pending:${entry.pending_fee.fee_version_id}`,
-          kind: label,
-          value: fenToYuan(entry.pending_fee.fee_cny_fen),
-          effectiveAt: entry.pending_fee.effective_from,
-          state: 'PENDING_CONFIRM',
-        });
-      }
-      if (entry.upcoming_fee) {
-        entries.push({
-          id: `fee-upcoming:${entry.upcoming_fee.fee_version_id}`,
-          kind: label,
-          value: fenToYuan(entry.upcoming_fee.fee_cny_fen),
-          effectiveAt: entry.upcoming_fee.effective_from,
-          state: 'CONFIRMED_WAITING',
-        });
-      }
-    }
-    return entries;
-  }, [rateCenter.data, query.data, serviceFees.data, selectedOrg]);
 
   if (!canRead)
     return (
@@ -464,28 +277,13 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
       <FinanceAlertStrip
         baseRateDate={businessDate}
         baseRateMissing={
-          rateCenter.data !== undefined
-          && rateCenter.data.base_rate.confirmed_rate === null
-          && rateCenter.data.base_rate.pending_rate === null
+          rateCenter.data !== undefined && rateCenter.data.base_rate.active_version === null
         }
         feeOrgName={selectedOrg?.seller_organization_name ?? null}
         missingFeeTypes={missingFeeTypes}
-        pending={pendingDecisions}
-        busy={authority.canRetry()}
-        onMarkupDecision={(request) => void execute(request)}
-        onFeeDecision={(decision, item) => {
-          if (item.feeVersionId === undefined || item.feeExpectedVersion === undefined) return;
-          const input = {
-            feeVersionId: item.feeVersionId,
-            expectedVersion: item.feeExpectedVersion,
-          };
-          if (decision === 'confirm') feeConfirm.mutate(input);
-          else feeReject.mutate(input);
-        }}
-        canDecide={canDecide}
       />
       <FinanceExampleCard
-        baseRate={rateCenter.data?.base_rate.confirmed_rate?.cny_per_jpy_e8 ?? null}
+        baseRate={rateCenter.data?.base_rate.active_version?.rate_value ?? null}
         markup={exampleMarkup?.markup_rate_value ?? null}
         markupScopeLabel={
           exampleMarkup?.scope_type === 'SELLER_ORGANIZATION'
@@ -496,10 +294,6 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
         feeNote={selectedOrganizationId === null ? '按各卖家组织配置' : null}
         dateLabel={isLookup ? `回查 ${businessDate} ` : '今天'}
       />
-      <Card className="customer-visible">
-        <h3>接下来的变更</h3>
-        <EffectTimeline entries={timelineEntries} />
-      </Card>
       <section className="staff-finance-config" aria-label="配置区">
         <FormField label="针对卖家组织" htmlFor="finance-org">
           <Select
@@ -524,10 +318,9 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
         {rateCenter.data ? (
           <BaseRateBlock
             value={rateCenter.data}
-            yesterdayRate={yesterdayRate.data?.base_rate.confirmed_rate?.cny_per_jpy_e8 ?? null}
+            yesterdayRate={yesterdayRate.data?.base_rate.active_version?.rate_value ?? null}
             tomorrow={tomorrowRate.data ?? null}
-            canSubmit={isGlobalOwner && hasFinancialCorrection}
-            canConfirm={canDecide}
+            canSubmit={isGlobalOwner}
             refresh={async () => {
               await rateCenter.refetch();
               await query.refetch();
@@ -619,13 +412,6 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
       <RequestIdDisplay requestId={requestId} />
     </main>
   );
-}
-
-function rateLabelText(value: string): string {
-  const raw = BigInt(value);
-  const integer = raw / 100_000_000n;
-  const fraction = (raw % 100_000_000n).toString().padStart(8, '0').replace(/0+$/u, '');
-  return `${integer}.${fraction || '0'} CNY / JPY`;
 }
 
 /**

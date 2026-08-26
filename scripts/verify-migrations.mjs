@@ -13,19 +13,27 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 26;
-const expectedLastMigration = '0026_stage65_archive_import_closeout.sql';
+const expectedLatestSchema = 27;
+const expectedLastMigration = '0027_stage66_single_source_convergence.sql';
 const expectedSchemaInventory = {
-  table: 198,
-  index: 591,
-  trigger: 378,
+  table: 190,
+  index: 566,
+  trigger: 345,
   view: 12,
-  sha256: 'd9ccc9218d28bb92df9cdb5adf21d6408ad352be806085ae20dd8337eb6306e6',
+  sha256: 'a8a595616b795ab718d2ebf701d4f75d75b4586fa037eff9adb43c0618a90b62',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2
 // deletions + owner-confirmed platform identity/parallel-order retirement).
 const forbiddenTables = [
+  'buyer_daily_exchange_rate_events',
+  'buyer_daily_exchange_rates',
+  'seller_service_fee_events',
+  'seller_service_fee_versions',
+  'buyer_preorder_number_allocations',
+  'marketplace_runtime_config',
+  'formal_order_marketplace_money_snapshots',
+  'order_evidence_marketplace_money',
   'acquisition_reporting_config',
   'drive_archive_controls',
   'file_drive_archives',
@@ -158,12 +166,9 @@ const requiredTables = [
   'buyer_channels',
   'buyer_customers',
   'buyer_daily_currency_rate_versions',
-  'buyer_daily_exchange_rate_events',
-  'buyer_daily_exchange_rates',
   'buyer_marketplace_assignments',
   'buyer_marketplace_correction_events',
   'buyer_number_allocation_events',
-  'buyer_preorder_number_allocations',
   'buyer_refund_events',
   'buyer_refund_obligations',
   'buyer_refund_payment_entries',
@@ -226,19 +231,16 @@ const requiredTables = [
   'formal_order_events',
   'formal_order_financial_adjustments',
   'formal_order_financial_snapshots',
-  'formal_order_marketplace_money_snapshots',
   'formal_order_number_claims',
   'formal_order_number_conflicts',
   'formal_order_operational_events',
   'formal_orders',
   'integration_outbox',
   'marketplace_registry',
-  'marketplace_runtime_config',
   'order_archive_closures',
   'order_evidence_duplicate_signals',
   'order_evidence_events',
   'order_evidence_internal_files',
-  'order_evidence_marketplace_money',
   'order_evidence_submissions',
   'order_evidence_version_files',
   'order_evidence_versions',
@@ -296,9 +298,7 @@ const requiredTables = [
   'seller_principal_rate_policy_versions',
   'seller_principal_rate_snapshots',
   'seller_product_offerings',
-  'seller_service_fee_events',
   'seller_service_fee_rule_versions',
-  'seller_service_fee_versions',
   'seller_staff_assignments',
   'seller_store_events',
   'seller_store_marketplaces',
@@ -331,6 +331,23 @@ const requiredTables = [
 ];
 
 const requiredTriggers = [
+  'trg_buyer_daily_currency_rate_no_delete',
+  'trg_buyer_daily_currency_rate_no_update',
+  'trg_seller_service_fee_rule_no_delete',
+  'trg_seller_service_fee_rule_no_update',
+  'trg_seller_principal_rate_policy_no_delete',
+  'trg_seller_principal_rate_policy_no_update',
+  'trg_seller_principal_rate_policy_events_no_delete',
+  'trg_seller_principal_rate_policy_events_no_update',
+  'trg_seller_principal_rate_snapshots_no_delete',
+  'trg_seller_principal_rate_snapshots_no_update',
+  'trg_seller_principal_rate_snapshot_confirmation_guard',
+  'trg_seller_principal_rate_snapshot_guard',
+  'trg_formal_order_financial_snapshot_guard',
+  'trg_formal_order_financial_snapshots_no_delete',
+  'trg_formal_order_financial_snapshots_no_update',
+  'trg_formal_order_financial_self_pay_guard',
+  'trg_buyer_marketplace_assignment_fact_guard',
   'trg_acquisition_assignment_events_no_delete',
   'trg_acquisition_assignment_events_no_update',
   'trg_acquisition_assignment_insert_guard',
@@ -386,26 +403,9 @@ const requiredTriggers = [
   'trg_buyer_auth_recovery_events_no_delete',
   'trg_buyer_auth_recovery_events_no_update',
   'trg_buyer_customer_marketplace_default',
-  'trg_buyer_daily_currency_rate_legacy_insert',
-  'trg_buyer_daily_currency_rate_legacy_update',
-  'trg_buyer_daily_currency_rate_no_delete',
-  'trg_buyer_daily_currency_rate_update_guard',
-  'trg_buyer_daily_rate_after_confirmed_guard',
-  'trg_buyer_daily_rate_confirmed_conflict',
-  'trg_buyer_daily_rate_decision_only',
-  'trg_buyer_daily_rate_events_no_delete',
-  'trg_buyer_daily_rate_events_no_update',
-  'trg_buyer_daily_rate_initial_state_guard',
-  'trg_buyer_daily_rate_no_delete',
-  'trg_buyer_daily_rate_pending_conflict',
   'trg_buyer_invitation_consumed_link_acquisition_lead',
-  'trg_buyer_marketplace_assignment_fact_guard',
   'trg_buyer_marketplace_correction_events_no_delete',
   'trg_buyer_marketplace_correction_events_no_update',
-  'trg_buyer_number_events_no_delete',
-  'trg_buyer_number_events_no_update',
-  'trg_buyer_preorder_numbers_no_delete',
-  'trg_buyer_preorder_numbers_no_update',
   'trg_buyer_refund_event_identity_guard',
   'trg_buyer_refund_events_no_delete',
   'trg_buyer_refund_events_no_update',
@@ -511,14 +511,7 @@ const requiredTriggers = [
   'trg_formal_order_financial_adjustment_profit_only',
   'trg_formal_order_financial_adjustments_no_delete',
   'trg_formal_order_financial_adjustments_no_update',
-  'trg_formal_order_financial_self_pay_guard',
-  'trg_formal_order_financial_snapshot_guard',
-  'trg_formal_order_financial_snapshots_no_delete',
-  'trg_formal_order_financial_snapshots_no_update',
   'trg_formal_order_instruction_guard',
-  'trg_formal_order_marketplace_money_no_delete',
-  'trg_formal_order_marketplace_money_no_update',
-  'trg_formal_order_marketplace_money_source_guard',
   'trg_formal_order_non_jp_local_date_required',
   'trg_formal_order_number_claim_source_guard',
   'trg_formal_order_number_claim_transition_guard',
@@ -529,8 +522,6 @@ const requiredTriggers = [
   'trg_formal_order_source_guard',
   'trg_formal_orders_no_delete',
   'trg_formal_orders_no_update',
-  'trg_marketplace_runtime_config_no_delete',
-  'trg_marketplace_runtime_config_no_update',
   'trg_order_archive_closure_insert_guard',
   'trg_order_archive_closure_reclose_source_guard',
   'trg_order_archive_closure_update_guard',
@@ -544,9 +535,6 @@ const requiredTriggers = [
   'trg_order_evidence_instruction_snapshot_guard',
   'trg_order_evidence_internal_files_no_delete',
   'trg_order_evidence_internal_files_no_update',
-  'trg_order_evidence_marketplace_money_legacy_insert',
-  'trg_order_evidence_marketplace_money_no_delete',
-  'trg_order_evidence_marketplace_money_no_update',
   'trg_order_evidence_single_image_guard',
   'trg_order_evidence_submission_identity_immutable',
   'trg_order_evidence_submission_reservation_guard',
@@ -644,31 +632,8 @@ const requiredTriggers = [
   'trg_seller_payment_reversals_no_update',
   'trg_seller_payment_update_guard',
   'trg_seller_payments_no_delete',
-  'trg_seller_principal_rate_policy_decision_guard',
-  'trg_seller_principal_rate_policy_event_fidelity_guard',
-  'trg_seller_principal_rate_policy_event_no_delete',
-  'trg_seller_principal_rate_policy_event_no_update',
-  'trg_seller_principal_rate_policy_event_source_guard',
-  'trg_seller_principal_rate_policy_future_effective_guard',
-  'trg_seller_principal_rate_policy_initial_state_guard',
-  'trg_seller_principal_rate_policy_no_delete',
-  'trg_seller_principal_rate_snapshot_confirmation_guard',
-  'trg_seller_principal_rate_snapshot_guard',
-  'trg_seller_principal_rate_snapshots_no_delete',
-  'trg_seller_principal_rate_snapshots_no_update',
   'trg_seller_scope_events_no_delete',
   'trg_seller_scope_events_no_update',
-  'trg_seller_service_fee_decision_only',
-  'trg_seller_service_fee_effective_conflict',
-  'trg_seller_service_fee_events_no_delete',
-  'trg_seller_service_fee_events_no_update',
-  'trg_seller_service_fee_initial_state_guard',
-  'trg_seller_service_fee_no_delete',
-  'trg_seller_service_fee_pending_conflict',
-  'trg_seller_service_fee_rule_legacy_insert',
-  'trg_seller_service_fee_rule_legacy_update',
-  'trg_seller_service_fee_rule_no_delete',
-  'trg_seller_service_fee_rule_update_guard',
   'trg_seller_staff_assignments_no_delete',
   'trg_seller_staff_assignments_revoke_only',
   'trg_seller_staff_assignments_staff_guard',
@@ -772,84 +737,42 @@ function verifyCriticalNegativeDml(database) {
 
       INSERT INTO seller_principal_rate_policy_versions (
         id, scope_type, seller_organization_id, source_currency_code,
-        quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-        effective_from, submitted_by_staff_id, submitted_at, decision_version,
-        confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-        rejection_reason
+        quote_currency_code, version_no, markup_rate_value, rate_scale,
+        effective_from, created_by_staff_id, created_at
       ) VALUES (
         'migration-verifier-past-policy', 'CURRENCY_PAIR_DEFAULT', NULL,
-        'JPY', 'CNY', 1, 'SUBMITTED', 400000, 100000000, 500,
-        'migration-verifier-owner', 3000, 1, NULL, NULL, NULL, NULL, NULL
+        'JPY', 'CNY', 1, 400000, 100000000, 500,
+        'migration-verifier-owner', 500
       );
     `);
     expectDmlFailure(
       database,
       `
       UPDATE seller_principal_rate_policy_versions
-      SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='migration-verifier-owner', confirmed_at=4000
+      SET markup_rate_value=1
       WHERE id='migration-verifier-past-policy';
     `,
-      'seller_principal_rate_policy_effective_time_conflict',
+      'seller_principal_rate_policy_is_immutable',
     );
-
-    database.exec(`
-      INSERT INTO seller_principal_rate_policy_versions (
-        id, scope_type, seller_organization_id, source_currency_code,
-        quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-        effective_from, submitted_by_staff_id, submitted_at, decision_version,
-        confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-        rejection_reason
-      ) VALUES (
-        'migration-verifier-event-policy', 'CURRENCY_PAIR_DEFAULT', NULL,
-        'USD', 'CNY', 1, 'SUBMITTED', 400000, 100000000, 5000,
-        'migration-verifier-owner', 3000, 1, NULL, NULL, NULL, NULL, NULL
-      );
-    `);
     expectDmlFailure(
       database,
       `
-      INSERT INTO seller_principal_rate_policy_events (
-        id, version_id, scope_type, seller_organization_id,
-        source_currency_code, quote_currency_code, version_no, event_type,
-        actor_staff_id, previous_status, next_status, markup_rate_value,
-        effective_from, reason, idempotency_key, created_at
-      ) VALUES (
-        'migration-verifier-forged-event', 'migration-verifier-event-policy',
-        'CURRENCY_PAIR_DEFAULT', NULL, 'USD', 'CNY', 1,
-        'SELLER_PRINCIPAL_RATE_POLICY_SUBMITTED', 'migration-verifier-other',
-        NULL, 'SUBMITTED', 400000, 5000, NULL, 'verifier-forged-event', 3000
-      );
+      DELETE FROM seller_principal_rate_policy_versions
+      WHERE id='migration-verifier-past-policy';
     `,
-      'seller_principal_rate_policy_event_source_mismatch',
+      'seller_principal_rate_policy_is_immutable',
     );
     database.exec(`
       INSERT INTO seller_principal_rate_policy_events (
         id, version_id, scope_type, seller_organization_id,
         source_currency_code, quote_currency_code, version_no, event_type,
-        actor_staff_id, previous_status, next_status, markup_rate_value,
-        effective_from, reason, idempotency_key, created_at
+        actor_staff_id, markup_rate_value, effective_from,
+        idempotency_key, created_at
       ) VALUES (
-        'migration-verifier-submitted-event', 'migration-verifier-event-policy',
-        'CURRENCY_PAIR_DEFAULT', NULL, 'USD', 'CNY', 1,
-        'SELLER_PRINCIPAL_RATE_POLICY_SUBMITTED', 'migration-verifier-owner',
-        NULL, 'SUBMITTED', 400000, 5000, NULL, 'verifier-submit-event', 3000
-      );
-      UPDATE seller_principal_rate_policy_versions
-      SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='migration-verifier-owner', confirmed_at=4000
-      WHERE id='migration-verifier-event-policy';
-      INSERT INTO seller_principal_rate_policy_events (
-        id, version_id, scope_type, seller_organization_id,
-        source_currency_code, quote_currency_code, version_no, event_type,
-        actor_staff_id, previous_status, next_status, markup_rate_value,
-        effective_from, reason, idempotency_key, created_at
-      ) VALUES (
-        'migration-verifier-confirmed-event', 'migration-verifier-event-policy',
-        'CURRENCY_PAIR_DEFAULT', NULL, 'USD', 'CNY', 1,
-        'SELLER_PRINCIPAL_RATE_POLICY_CONFIRMED', 'migration-verifier-owner',
-        'SUBMITTED', 'CONFIRMED', 400000, 5000, NULL,
-        'verifier-confirm-event', 4000
+        'migration-verifier-saved-event', 'migration-verifier-past-policy',
+        'CURRENCY_PAIR_DEFAULT', NULL, 'JPY', 'CNY', 1,
+        'SELLER_PRINCIPAL_RATE_POLICY_SAVED', 'migration-verifier-owner',
+        400000, 500, 'verifier-saved-event', 500
       );
     `);
     expectDmlFailure(
@@ -858,17 +781,33 @@ function verifyCriticalNegativeDml(database) {
       INSERT INTO seller_principal_rate_policy_events (
         id, version_id, scope_type, seller_organization_id,
         source_currency_code, quote_currency_code, version_no, event_type,
-        actor_staff_id, previous_status, next_status, markup_rate_value,
-        effective_from, reason, idempotency_key, created_at
+        actor_staff_id, markup_rate_value, effective_from,
+        idempotency_key, created_at
       ) VALUES (
-        'migration-verifier-duplicate-event', 'migration-verifier-event-policy',
-        'CURRENCY_PAIR_DEFAULT', NULL, 'USD', 'CNY', 1,
-        'SELLER_PRINCIPAL_RATE_POLICY_CONFIRMED', 'migration-verifier-owner',
-        'SUBMITTED', 'CONFIRMED', 400000, 5000, NULL,
-        'verifier-duplicate-event', 4000
+        'migration-verifier-duplicate-event', 'migration-verifier-past-policy',
+        'CURRENCY_PAIR_DEFAULT', NULL, 'JPY', 'CNY', 1,
+        'SELLER_PRINCIPAL_RATE_POLICY_SAVED', 'migration-verifier-owner',
+        400000, 500, 'verifier-duplicate-event', 600
       );
     `,
       'UNIQUE constraint failed',
+    );
+    expectDmlFailure(
+      database,
+      `
+      UPDATE seller_principal_rate_policy_events
+      SET markup_rate_value=1
+      WHERE id='migration-verifier-saved-event';
+    `,
+      'seller_principal_rate_policy_event_is_immutable',
+    );
+    expectDmlFailure(
+      database,
+      `
+      DELETE FROM seller_principal_rate_policy_events
+      WHERE id='migration-verifier-saved-event';
+    `,
+      'seller_principal_rate_policy_event_is_immutable',
     );
     database.exec('ROLLBACK;');
   } catch (error) {
@@ -1026,7 +965,6 @@ try {
     }
     for (const [table, forbiddenColumns] of [
       ['formal_orders', ['canonical_marketplace_code']],
-      ['marketplace_runtime_config', ['legacy_order_code']],
       [
         'formal_order_financial_snapshots',
         [
@@ -1035,18 +973,13 @@ try {
           'seller_rate_effective_from',
           'seller_rate_confirmed_at',
           'seller_cny_per_jpy_e8',
+          'service_fee_version_id',
+          'buyer_cny_per_jpy_e8',
         ],
       ],
       [
-        'formal_order_marketplace_money_snapshots',
-        [
-          'seller_rate_version_id',
-          'seller_rate_version_no',
-          'seller_rate_effective_from',
-          'seller_rate_confirmed_at',
-          'seller_rate_value',
-          'seller_rate_scale',
-        ],
+        'buyer_customers',
+        ['first_valid_order_business_date'],
       ],
     ]) {
       const columns = new Set(
@@ -1210,8 +1143,8 @@ try {
 
     const integerFacts = new Map([
       ['product_versions', ['ordering_guide_expected_amount_jpy', 'default_buyer_self_pay_bps']],
-      ['buyer_daily_exchange_rates', ['cny_per_jpy_e8']],
-      ['seller_service_fee_versions', ['fee_cny_fen']],
+      ['buyer_daily_currency_rate_versions', ['rate_value', 'rate_scale']],
+      ['seller_service_fee_rule_versions', ['fee_amount_minor']],
       [
         'order_evidence_versions',
         [
@@ -1229,7 +1162,9 @@ try {
       [
         'formal_order_financial_snapshots',
         [
-          'buyer_cny_per_jpy_e8',
+          'buyer_rate_value',
+          'buyer_rate_scale',
+          'payment_amount_minor',
           'service_fee_cny_fen',
           'buyer_self_pay_bps',
           'buyer_self_pay_jpy',

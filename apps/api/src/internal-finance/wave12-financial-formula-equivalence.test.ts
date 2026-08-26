@@ -44,7 +44,7 @@ describe('Wave 12 financial formulas execute against the production SQL view', (
     database = createFormulaFixtureDatabase();
     expect(database.raw.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).get()).toMatchObject({ schema_version: 26 });
+    `).get()).toMatchObject({ schema_version: 27 });
     expect(database.raw.prepare('PRAGMA foreign_keys').get())
       .toMatchObject({ foreign_keys: 1 });
     for (const trigger of [
@@ -203,19 +203,16 @@ describe('Wave 12 financial formulas execute against the production SQL view', (
 
 function createFormulaFixtureDatabase(): SqliteDatabase {
   const fixture = createMigratedTestDatabase();
+  // Stage 6.6: one immutable JPY/CNY rate version per business date; the
+  // recorded timestamp is the version's created_at (single immediate save).
   fixture.raw.prepare(`
-    INSERT INTO buyer_daily_exchange_rates (
-      id, business_date, version_no, status, cny_per_jpy_e8, submitted_by_staff_id,
-      submitted_at, decision_version, confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
-    ) VALUES ('formula-buyer-rate', '2023-11-14', 1, 'SUBMITTED', 1, ?, ?, 1,
-      NULL, NULL, NULL, NULL, NULL)
-  `).run(STAFF_ID, AT - 1);
-  fixture.raw.prepare(`
-    UPDATE buyer_daily_exchange_rates
-    SET status='CONFIRMED', decision_version=2, confirmed_by_staff_id=?, confirmed_at=?
-    WHERE id='formula-buyer-rate'
-  `).run(STAFF_ID, AT);
+    INSERT INTO buyer_daily_currency_rate_versions (
+      id, business_date, source_currency_code, quote_currency_code, version_no,
+      rate_value, rate_scale, rounding_rule, effective_from, created_by_staff_id,
+      created_at
+    ) VALUES ('formula-buyer-rate', '2023-11-14', 'JPY', 'CNY', 1, 1, 100000000,
+      'HALF_UP', ?, ?, ?)
+  `).run(AT, STAFF_ID, AT);
   return fixture;
 }
 
@@ -254,26 +251,33 @@ function seedFinanceFacts(database: SqliteDatabase, facts: FinanceFacts): void {
   `).run(
     prefix, `${prefix}-submission`, `${prefix}-order-evidence`,
     `${prefix}-reservation`, `${prefix}-demand`, `${prefix}-buyer`,
-    `P20231114F${['zero', 'partial', 'reversal', 'overpayment', 'integer-boundary']
-      .indexOf(facts.id) + 1}`, `${prefix}-seller`, `${prefix}-store`,
+    `20231114B${String(['zero', 'partial', 'reversal', 'overpayment', 'integer-boundary']
+      .indexOf(facts.id) + 1).padStart(4, '0')}`, `${prefix}-seller`, `${prefix}-store`,
     `${prefix}-product`, `${prefix}-product-version`, formulaAsin(facts.id),
     formulaAsin(facts.id), orderNumber, orderNumber,
     facts.sellerExpectedPrincipalCnyFen, STAFF_ID, AT, AT,
   );
   raw.prepare(`
     INSERT INTO formal_order_financial_snapshots (
-      id, formal_order_id, snapshot_version, buyer_rate_version_id,
-      buyer_rate_version_no, buyer_rate_business_date, buyer_rate_confirmed_at,
-      buyer_cny_per_jpy_e8, service_fee_version_id, service_fee_version_no,
+      id, formal_order_id, snapshot_version, buyer_customer_id,
+      seller_organization_id, store_id, marketplace_code, review_type,
+      platform_order_identifier, platform_product_identifier, platform_order_date,
+      payment_amount_minor, payment_currency_code, payment_currency_exponent,
+      buyer_rate_version_id, buyer_rate_version_no, buyer_rate_business_date,
+      buyer_rate_confirmed_at, buyer_rate_value, buyer_rate_scale,
+      source_currency_code, quote_currency_code, source_currency_exponent,
+      quote_currency_exponent, service_fee_rule_version_id, service_fee_version_no,
       service_fee_effective_from, service_fee_confirmed_at, service_fee_cny_fen,
-      buyer_expected_principal_cny_fen, seller_expected_principal_cny_fen,
-      rounding_rule, created_at
-    ) VALUES (?, ?, 1, ?, 1, '2023-11-14', ?, 1, ?, 1, ?, ?, ?, ?, ?,
-      'HALF_UP', ?)
+      service_fee_currency_code, buyer_expected_principal_cny_fen,
+      seller_expected_principal_cny_fen, rounding_rule, created_at
+    ) VALUES (?, ?, 1, ?, ?, ?, 'AMAZON_JP', 'TEXT', ?, ?, '2023-11-14', ?, 'JPY', 0,
+      'formula-buyer-rate', 1, '2023-11-14', ?, 1, 100000000, 'JPY', 'CNY', 0, 2,
+      ?, 1, ?, ?, ?, 'CNY', ?, ?, 'HALF_UP', ?)
   `).run(
-    snapshotId, prefix, 'formula-buyer-rate', AT, `${prefix}-fee-version`,
-    AT - 1, AT - 2, facts.serviceFeeCnyFen, facts.buyerExpectedPrincipalCnyFen,
-    facts.sellerExpectedPrincipalCnyFen, AT,
+    snapshotId, prefix, `${prefix}-buyer`, `${prefix}-seller`, `${prefix}-store`,
+    orderNumber, formulaAsin(facts.id), facts.sellerExpectedPrincipalCnyFen,
+    AT, `${prefix}-fee-version`, AT - 2, AT - 2, facts.serviceFeeCnyFen,
+    facts.buyerExpectedPrincipalCnyFen, facts.sellerExpectedPrincipalCnyFen, AT,
   );
   raw.prepare(`
     INSERT INTO review_cases (
@@ -354,9 +358,8 @@ function seedLegalFormalOrderSources(
   const raw = database.raw;
   const sequence = ['zero', 'partial', 'reversal', 'overpayment', 'integer-boundary']
     .indexOf(facts.id) + 1;
-  const buyerNo = `P20231114F${sequence}`;
+  const buyerNo = `20231114B${String(sequence).padStart(4, '0')}`;
   const subjectId = `${prefix}-buyer-subject`;
-  const channelId = `${prefix}-buyer-channel`;
   const buyerId = `${prefix}-buyer`;
   const sellerId = `${prefix}-seller`;
   const storeId = `${prefix}-store`;
@@ -384,15 +387,12 @@ function seedLegalFormalOrderSources(
       display_name, role, primary_owner, status, version, created_at, updated_at,
       activated_at, disabled_at
     ) VALUES (?, ?, ?, 1, ?, 'Formula owner', 'OWNER', 1, 'ACTIVE', 1, ?, ?, ?, NULL);
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version, created_at, updated_at, disabled_at
-    ) VALUES (?, ?, 'Formula channel', 'ACTIVE', 2, 1, ?, ?, NULL);
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code, buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date, display_name, access_status,
+      buyer_sequence, display_name, access_status,
       identity_review_status, version, created_at, updated_at, activated_at, disabled_at
-    ) VALUES (?, ?, 'AMAZON_JP', ?, ?, 1, '2023-11-14', 'Formula buyer', 'ACTIVE', 'CLEAR',
-      1, ?, ?, ?, NULL);
+    ) VALUES (?, ?, 'AMAZON_JP', 'buyer-channel-wechat-b', ?, ?, 'Formula buyer',
+      'ACTIVE', 'CLEAR', 1, ?, ?, ?, NULL);
     INSERT INTO seller_stores (
       id, organization_id, marketplace_code, display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
@@ -434,8 +434,7 @@ function seedLegalFormalOrderSources(
     sellerId, `${prefix}-seller-code`, sequence, AT, AT, AT,
     `${prefix}-seller-subject`, AT, subjectId, AT,
     memberId, `${prefix}-seller-subject`, sellerId, `${prefix}-member`, AT, AT, AT,
-    channelId, `F${sequence}`, AT, AT,
-    buyerId, subjectId, channelId, buyerNo, AT, AT, AT,
+    buyerId, subjectId, buyerNo, sequence, AT, AT, AT,
     storeId, sellerId, AT, AT,
     productId, sellerId, storeId, asin, asin, AT, AT,
     productVersionId, productId, STAFF_ID, AT,
@@ -473,17 +472,12 @@ function seedLegalFormalOrderSources(
     WHERE id=?
   `).run(STAFF_ID, AT, AT, submissionId);
   raw.prepare(`
-    INSERT INTO seller_service_fee_versions (
-      id, organization_id, review_type, version_no, status, fee_cny_fen, effective_from,
-      submitted_by_staff_id, submitted_at, decision_version, confirmed_by_staff_id,
-      confirmed_at, rejected_by_staff_id, rejected_at, rejection_reason
-    ) VALUES (?, ?, 'TEXT', 1, 'SUBMITTED', ?, ?, ?, ?, 1, NULL, NULL, NULL, NULL, NULL)
-  `).run(feeId, sellerId, facts.serviceFeeCnyFen, AT - 1, STAFF_ID, AT - 3);
-  raw.prepare(`
-    UPDATE seller_service_fee_versions
-    SET status='CONFIRMED', decision_version=2, confirmed_by_staff_id=?, confirmed_at=?
-    WHERE id=?
-  `).run(STAFF_ID, AT - 2, feeId);
+    INSERT INTO seller_service_fee_rule_versions (
+      id, seller_organization_id, marketplace_code, review_type, version_no,
+      fee_amount_minor, fee_currency_code, fee_currency_exponent, effective_from,
+      created_by_staff_id, created_at
+    ) VALUES (?, ?, 'AMAZON_JP', 'TEXT', 1, ?, 'CNY', 2, ?, ?, ?)
+  `).run(feeId, sellerId, facts.serviceFeeCnyFen, AT - 2, STAFF_ID, AT - 2);
 }
 
 function formulaAsin(caseId: string): string {

@@ -22,9 +22,9 @@ describe('Phase 3G static source policy', () => {
     const migrations = readdirSync(join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(26);
+    expect(migrations).toHaveLength(27);
     expect(migrations).toContain('0016_order_instructions.sql');
-    expect(migrations.at(-1)).toBe('0026_stage65_archive_import_closeout.sql');
+    expect(migrations.at(-1)).toBe('0027_stage66_single_source_convergence.sql');
   });
 
   it('does not use public/claimable/unassigned work items', () => {

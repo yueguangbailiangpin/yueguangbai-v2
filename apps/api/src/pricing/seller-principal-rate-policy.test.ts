@@ -1,14 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
+import { saveBuyerDailyExchangeRate } from './buyer-daily-exchange-rates';
 import {
-  confirmBuyerDailyExchangeRate,
-  submitBuyerDailyExchangeRate,
-} from './buyer-daily-exchange-rates';
-import {
-  confirmSellerPrincipalRatePolicy,
   readSellerPrincipalRatePolicies,
   resolveSellerPrincipalRateSnapshot,
-  submitSellerPrincipalRatePolicy,
+  saveSellerPrincipalRatePolicy,
 } from './seller-principal-rate-policy';
 import type { PricingStaffActor } from './pricing-shared';
 
@@ -26,7 +22,7 @@ afterEach(() => {
   database = null;
 });
 
-describe('seller principal rate policy', () => {
+describe('seller principal rate policy (stage 6.6 single-save model)', () => {
   it('reads the GLOBAL default target without Seller Organization master data', async () => {
     database = createMigratedTestDatabase();
     expect(await readSellerPrincipalRatePolicies(database, {
@@ -35,8 +31,6 @@ describe('seller principal rate policy', () => {
       source_currency_code: 'JPY', quote_currency_code: 'CNY',
       seller_organization_id: null,
       default_policy: null, seller_override_policy: null,
-      default_pending_policy: null, seller_override_pending_policy: null,
-      default_upcoming_policy: null, seller_override_upcoming_policy: null,
       default_next_version: 1, seller_override_next_version: null,
       selected_policy: null,
     });
@@ -45,19 +39,20 @@ describe('seller principal rate policy', () => {
   it('uses the order-date base rate plus the absolute default markup', async () => {
     database = fixture();
     await seedBaseRate(database, '2026-08-01', '5100000');
-    // P1-B: the currency-pair default is confirmed inside the submission
-    // transaction, so no second Owner decision step exists.
-    const submitted = await submitPolicy(database, {
+    const saved = await savePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
-    }, 'policy:default:submit');
-    expect(submitted).toMatchObject({
-      status: 'CONFIRMED', decision_version: 2, confirmed_at: 1_000,
+      markupRateValue: '0.004', expectedVersion: 0,
+    }, 'policy:default:save');
+    expect(saved).toMatchObject({
+      markup_rate_value: '400000',
+      markup_rate_scale: '100000000',
+      effective_from: saved.created_at,
+      replayed: false,
     });
 
     const resolved = await resolveSellerPrincipalRateSnapshot(database, {
       sellerOrganizationId: 'seller-org-1', platformOrderDate: '2026-08-01',
-      paymentAmountMinor: 100, paymentCurrencyCode: 'JPY', at: 5_000,
+      paymentAmountMinor: 100, paymentCurrencyCode: 'JPY', at: 9_000,
     });
     expect(resolved).toMatchObject({
       base_rate_value: '5100000',
@@ -71,268 +66,147 @@ describe('seller principal rate policy', () => {
   it('distinguishes an explicit zero seller override from an unset override', async () => {
     database = fixture();
     await seedBaseRate(database, '2026-08-01', '5100000');
-    await submitPolicy(database, {
+    await savePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
-    }, 'policy:zero:default:submit');
-    const override = await submitPolicy(database, {
+      markupRateValue: '0.004', expectedVersion: 0,
+    }, 'policy:default:save');
+    await savePolicy(database, {
       scopeType: 'SELLER_ORGANIZATION', sellerOrganizationId: 'seller-org-1',
-      markupRateValue: '0', expectedVersion: 0, effectiveFrom: 3_000,
-    }, 'policy:zero:override:submit');
-    await confirmSellerPrincipalRatePolicy(
-      database, { policyVersionId: override.policy_version_id, expectedVersion: 1 },
-      command(owner, 'policy:zero:override:confirm', 2_000),
-    );
-
+      markupRateValue: '0', expectedVersion: 0,
+    }, 'policy:override-zero:save');
+    const policies = await readSellerPrincipalRatePolicies(database, {
+      sourceCurrencyCode: 'JPY', sellerOrganizationId: 'seller-org-1', at: 9_000,
+    });
+    expect(policies.selected_policy).toMatchObject({
+      scope_type: 'SELLER_ORGANIZATION',
+      markup_rate_value: '0',
+    });
     const resolved = await resolveSellerPrincipalRateSnapshot(database, {
       sellerOrganizationId: 'seller-org-1', platformOrderDate: '2026-08-01',
-      paymentAmountMinor: 100, paymentCurrencyCode: 'JPY', at: 5_000,
+      paymentAmountMinor: 100, paymentCurrencyCode: 'JPY', at: 9_000,
     });
     expect(resolved).toMatchObject({
-      markup_rate_value: '0', final_rate_value: '5100000',
+      final_rate_value: '5100000',
       seller_expected_principal_amount_minor: '510',
-      policy_scope_type: 'SELLER_ORGANIZATION',
     });
   });
 
-  it('honors future effective boundaries, exact date lookup, idempotency, and fail-closed missing rates', async () => {
+  it('honors exact-date lookup, idempotent replay, and fail-closed missing rates', async () => {
     database = fixture();
+    await expect(resolveSellerPrincipalRateSnapshot(database, {
+      sellerOrganizationId: 'seller-org-1', platformOrderDate: '2026-08-01',
+      paymentAmountMinor: 100, paymentCurrencyCode: 'JPY', at: 5_000,
+    })).rejects.toMatchObject({ code: 'SELLER_PRINCIPAL_RATE_NOT_FOUND' });
+
     await seedBaseRate(database, '2026-08-01', '5100000');
-    const first = await submitPolicy(database, {
+    const key = 'policy:idempotent:save';
+    const once = await savePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 10_000,
-    }, 'policy:future:submit');
-    expect(first.status).toBe('CONFIRMED');
-    const replay = await submitSellerPrincipalRatePolicy(database, {
+      markupRateValue: '0.004', expectedVersion: 0,
+    }, key);
+    const replay = await savePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      sourceCurrencyCode: 'JPY', markupRateValue: '0.004',
-      expectedVersion: 0, effectiveFrom: 10_000,
-    }, command(sellerOps, 'policy:future:submit', 1_100));
+      markupRateValue: '0.004', expectedVersion: 0,
+    }, key);
     expect(replay).toMatchObject({
-      policy_version_id: first.policy_version_id, replayed: true,
-      status: 'CONFIRMED',
+      policy_version_id: once.policy_version_id,
+      replayed: true,
     });
-    // Base-rate fallback (0073): 2026-08-02 has no own rate, so the snapshot
-    // resolves the 2026-08-01 confirmed rate and records that business date.
-    const fallback = await resolveSellerPrincipalRateSnapshot(database, {
+
+    // Exact Amazon-order-date resolution: no rate seeded for 2026-08-02 fails.
+    await seedBaseRate(database, '2026-08-03', '5200000');
+    await expect(resolveSellerPrincipalRateSnapshot(database, {
       sellerOrganizationId: 'seller-org-1', platformOrderDate: '2026-08-02',
-      paymentAmountMinor: 100, paymentCurrencyCode: 'JPY', at: 12_000,
-    });
-    expect(fallback).toMatchObject({
-      base_rate_business_date: '2026-08-01',
-      base_rate_value: '5100000',
-      final_rate_value: '5500000',
-    });
-    await expect(submitSellerPrincipalRatePolicy(database, {
-      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      sourceCurrencyCode: 'JPY', markupRateValue: '0',
-      expectedVersion: 0, effectiveFrom: 20_000,
-    }, command(sellerOps, 'policy:race', 12_000))).rejects.toMatchObject({
-      code: 'VERSION_CONFLICT', status: 409,
-    });
+      paymentAmountMinor: 100, paymentCurrencyCode: 'JPY', at: 9_000,
+    })).rejects.toMatchObject({ code: 'SELLER_PRINCIPAL_RATE_NOT_FOUND' });
   });
 
-  it('rejects a default submission whose effective time already passed', async () => {
+  it('rejects version conflicts and payload mismatches under the same key', async () => {
     database = fixture();
-    await expect(submitPolicy(database, {
+    await savePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 1_000,
-    }, 'policy:default:past')).rejects.toMatchObject({
-      code: 'PRICING_RULE_EFFECTIVE_TIME_CONFLICT', status: 409,
-    });
+      markupRateValue: '0.004', expectedVersion: 0,
+    }, 'policy:first:save');
+    await expect(savePolicy(database, {
+      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
+      markupRateValue: '0.005', expectedVersion: 0,
+    }, 'policy:stale:save')).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
   });
 
-  it('surfaces the next confirmed change separately from the effective one', async () => {
+  it('allows both owner and seller_ops to save; rejects non-maintainer roles', async () => {
     database = fixture();
-    await submitPolicy(database, {
+    const preSales: PricingStaffActor = {
+      staffId: 'staff-pre-sales', displayName: 'Pre Sales', roles: ['pre_sales'],
+    };
+    database.exec(`
+      INSERT INTO staff_users (
+        id, display_name, status, authorization_version, version,
+        created_at, updated_at, disabled_at
+      ) VALUES ('staff-pre-sales', 'Pre Sales', 'ACTIVE', 1, 1, 1, 1, NULL)
+    `);
+    await expect(saveSellerPrincipalRatePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
-    }, 'policy:upcoming:first');
-    await submitPolicy(database, {
+      sourceCurrencyCode: 'JPY', markupRateValue: '0.004', expectedVersion: 0,
+    }, command(preSales, 'policy:role:pre-sales', 1_000))).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    await expect(saveSellerPrincipalRatePolicy(database, {
       scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '0.006', expectedVersion: 1, effectiveFrom: 8_000,
-    }, 'policy:upcoming:second');
-    const read = await readSellerPrincipalRatePolicies(database, {
-      sourceCurrencyCode: 'JPY', sellerOrganizationId: null, at: 5_000,
+      sourceCurrencyCode: 'JPY', markupRateValue: '0.004', expectedVersion: 0,
+    }, command(owner, 'policy:role:owner', 1_000))).resolves.toMatchObject({
+      version_no: 1,
     });
-    expect(read.default_policy).toMatchObject({
-      markup_rate_value: '400000', effective_from: 3_000,
-    });
-    expect(read.default_upcoming_policy).toMatchObject({
-      markup_rate_value: '600000', effective_from: 8_000,
-    });
-  });
-
-  it('lets a single-handed Owner confirm their own organization override', async () => {
-    database = fixture();
-    const override = await submitSellerPrincipalRatePolicy(database, {
+    await expect(saveSellerPrincipalRatePolicy(database, {
       scopeType: 'SELLER_ORGANIZATION', sellerOrganizationId: 'seller-org-1',
-      sourceCurrencyCode: 'JPY', markupRateValue: '0.002',
-      expectedVersion: 0, effectiveFrom: 3_000,
-    }, command(owner, 'policy:self-decide:submit', 1_000));
-    const confirmed = await confirmSellerPrincipalRatePolicy(
-      database, { policyVersionId: override.policy_version_id, expectedVersion: 1 },
-      command(owner, 'policy:self-decide:confirm', 2_000),
-    );
-    expect(confirmed).toMatchObject({ status: 'CONFIRMED', confirmed_at: 2_000 });
-  });
-
-  it('does not allow seller portal actors to write policy', async () => {
-    database = fixture();
-    await expect(submitSellerPrincipalRatePolicy(database, {
-      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      sourceCurrencyCode: 'JPY', markupRateValue: '0.004',
-      expectedVersion: 0, effectiveFrom: 3_000,
-    }, { ...command({ ...sellerOps, roles: ['buyer_refund'] }, 'policy:denied', 1_000) }))
-      .rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
-  });
-
-  it('rejects direct SQL policy/event tampering and duplicate pending rows', async () => {
-    database = fixture();
-    const pending = await submitPolicy(database, {
-      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
-    }, 'policy:db-guard:submit');
-    const event = await database.prepare(
-      `SELECT id FROM seller_principal_rate_policy_events WHERE version_id=?`,
-    ).bind(pending.policy_version_id).first<{ id: string }>();
-
-    await expect(database.prepare(`
-      UPDATE seller_principal_rate_policy_versions SET markup_rate_value=1 WHERE id=?
-    `).bind(pending.policy_version_id).run()).rejects.toThrow(
-      'seller_principal_rate_policy_decision_transition_denied',
-    );
-    await expect(database.prepare(
-      `DELETE FROM seller_principal_rate_policy_versions WHERE id=?`,
-    ).bind(pending.policy_version_id).run()).rejects.toThrow(
-      'seller_principal_rate_policy_versions_are_immutable',
-    );
-    await expect(database.prepare(`
-      INSERT INTO seller_principal_rate_policy_versions (
-        id, scope_type, seller_organization_id, source_currency_code,
-        quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-        effective_from, submitted_by_staff_id, submitted_at, decision_version,
-        confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-        rejection_reason
-      ) VALUES ('direct-initial-confirmed', 'CURRENCY_PAIR_DEFAULT', NULL, 'JPY',
-        'CNY', 2, 'CONFIRMED', 400000, 100000000, 4000,
-        'staff-seller-ops', 1000, 2, 'staff-owner', 2000, NULL, NULL, NULL)
-    `).run()).rejects.toThrow(
-      'seller_principal_rate_policy_initial_state_must_be_submitted',
-    );
-    await expect(database.prepare(
-      `UPDATE seller_principal_rate_policy_events SET reason='tampered' WHERE id=?`,
-    ).bind(event?.id).run()).rejects.toThrow(
-      'seller_principal_rate_policy_events_are_immutable',
-    );
-    await expect(database.prepare(
-      `DELETE FROM seller_principal_rate_policy_events WHERE id=?`,
-    ).bind(event?.id).run()).rejects.toThrow(
-      'seller_principal_rate_policy_events_are_immutable',
-    );
-    await expect(database.prepare(`
-      INSERT INTO seller_principal_rate_policy_events (
-        id, version_id, scope_type, seller_organization_id, source_currency_code,
-        quote_currency_code, version_no, event_type, actor_staff_id,
-        previous_status, next_status, markup_rate_value, effective_from,
-        reason, idempotency_key, created_at
-      ) VALUES ('direct-bad-event', ?, 'CURRENCY_PAIR_DEFAULT', NULL, 'JPY', 'CNY',
-        1, 'SELLER_PRINCIPAL_RATE_POLICY_SUBMITTED', 'staff-seller-ops',
-        'SUBMITTED', 'SUBMITTED', 400000, 3000, NULL, 'direct-bad-event-key', 1000)
-    `).bind(pending.policy_version_id).run()).rejects.toThrow(
-      /CHECK|constraint|source_mismatch/iu,
-    );
-    await expect(database.prepare(`
-      INSERT INTO seller_principal_rate_policy_versions (
-        id, scope_type, seller_organization_id, source_currency_code,
-        quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-        effective_from, submitted_by_staff_id, submitted_at, decision_version,
-        confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-        rejection_reason
-      ) VALUES ('direct-pending-duplicate', 'CURRENCY_PAIR_DEFAULT', NULL, 'JPY',
-        'CNY', 2, 'SUBMITTED', 0, 100000000, 5000,
-        'staff-seller-ops', 1000, 1, NULL, NULL, NULL, NULL, NULL)
-    `).run()).resolves.toBeTruthy();
-    await expect(database.prepare(`
-      INSERT INTO seller_principal_rate_policy_versions (
-        id, scope_type, seller_organization_id, source_currency_code,
-        quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-        effective_from, submitted_by_staff_id, submitted_at, decision_version,
-        confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-        rejection_reason
-      ) VALUES ('direct-pending-duplicate-2', 'CURRENCY_PAIR_DEFAULT', NULL, 'JPY',
-        'CNY', 3, 'SUBMITTED', 0, 100000000, 6000,
-        'staff-seller-ops', 1000, 1, NULL, NULL, NULL, NULL, NULL)
-    `).run()).rejects.toThrow(/seller_principal_rate_policy_pending|UNIQUE/iu);
-  });
-
-  it('rejects a duplicate confirmed effective boundary at the database boundary', async () => {
-    database = fixture();
-    await submitPolicy(database, {
-      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
-    }, 'policy:db-effective:first');
-    await expect(submitPolicy(database, {
-      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-      markupRateValue: '0.005', expectedVersion: 1, effectiveFrom: 3_000,
-    }, 'policy:db-effective:second')).rejects.toMatchObject({
-      code: 'PRICING_RULE_EFFECTIVE_TIME_CONFLICT', status: 409,
+      sourceCurrencyCode: 'JPY', markupRateValue: '0.003', expectedVersion: 0,
+    }, command(sellerOps, 'policy:role:seller-ops', 2_000))).resolves.toMatchObject({
+      version_no: 1,
     });
   });
 
-  it('serializes concurrent submissions so only one pending version is created', async () => {
+  it('rejects direct SQL tampering: saved versions are immutable', async () => {
     database = fixture();
-    const results = await Promise.allSettled([
-      submitPolicy(database, {
-        scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-        markupRateValue: '0.004', expectedVersion: 0, effectiveFrom: 3_000,
-      }, 'policy:concurrent:a'),
-      submitPolicy(database, {
-        scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
-        markupRateValue: '0.005', expectedVersion: 0, effectiveFrom: 4_000,
-      }, 'policy:concurrent:b'),
-    ]);
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
-    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
-    const rejected = results.find((result) => result.status === 'rejected');
-    expect(rejected).toMatchObject({
-      status: 'rejected', reason: expect.objectContaining({ status: 409 }),
-    });
-    expect(await database.prepare(`
-      SELECT COUNT(*) AS count FROM seller_principal_rate_policy_versions
-      WHERE scope_type='CURRENCY_PAIR_DEFAULT' AND status='CONFIRMED'
-    `).first()).toEqual({ count: 1 });
+    await savePolicy(database, {
+      scopeType: 'CURRENCY_PAIR_DEFAULT', sellerOrganizationId: null,
+      markupRateValue: '0.004', expectedVersion: 0,
+    }, 'policy:immutable:save');
+    const db = database;
+    expect(() => db.exec(`
+      UPDATE seller_principal_rate_policy_versions
+      SET markup_rate_value=1
+      WHERE version_no=1 AND scope_type='CURRENCY_PAIR_DEFAULT'
+    `)).toThrow(/immutable/u);
+    expect(() => db.exec(`
+      DELETE FROM seller_principal_rate_policy_versions
+      WHERE scope_type='CURRENCY_PAIR_DEFAULT'
+    `)).toThrow(/immutable/u);
+  });
+
+  it('rejects a duplicate effective boundary at the database boundary', async () => {
+    database = fixture();
+    const db = database;
+    database.exec(`
+      INSERT INTO seller_principal_rate_policy_versions (
+        id, scope_type, seller_organization_id, source_currency_code,
+        quote_currency_code, version_no, markup_rate_value, rate_scale,
+        effective_from, created_by_staff_id, created_at
+      ) VALUES (
+        'policy-existing', 'CURRENCY_PAIR_DEFAULT', NULL, 'JPY', 'CNY',
+        1, 400000, 100000000, 1000, 'staff-owner', 1000
+      )
+    `);
+    expect(() => db.exec(`
+      INSERT INTO seller_principal_rate_policy_versions (
+        id, scope_type, seller_organization_id, source_currency_code,
+        quote_currency_code, version_no, markup_rate_value, rate_scale,
+        effective_from, created_by_staff_id, created_at
+      ) VALUES (
+        'policy-conflict', 'CURRENCY_PAIR_DEFAULT', NULL, 'JPY', 'CNY',
+        2, 500000, 100000000, 1000, 'staff-owner', 1000
+      )
+    `)).toThrow();
   });
 });
-
-async function submitPolicy(
-  db: SqliteDatabase,
-  input: {
-    scopeType: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION';
-    sellerOrganizationId: string | null;
-    markupRateValue: string;
-    expectedVersion: number;
-    effectiveFrom: number;
-  },
-  key: string,
-) {
-  return submitSellerPrincipalRatePolicy(db, {
-    ...input, sourceCurrencyCode: 'JPY',
-  }, command(sellerOps, key, 1_000));
-}
-
-async function seedBaseRate(
-  db: SqliteDatabase,
-  businessDate: string,
-  value: string,
-): Promise<void> {
-  const submitted = await submitBuyerDailyExchangeRate(db, {
-    businessDate, cnyPerJpyE8: value, expectedVersion: 0,
-  }, command(sellerOps, `base:${businessDate}:submit`, 1_000));
-  await confirmBuyerDailyExchangeRate(db, {
-    rateId: submitted.rate_id, expectedVersion: 1,
-  }, command(owner, `base:${businessDate}:confirm`, 2_000));
-}
 
 function fixture(): SqliteDatabase {
   const db = createMigratedTestDatabase();
@@ -355,10 +229,36 @@ function fixture(): SqliteDatabase {
   return db;
 }
 
-function command(
-  actor: PricingStaffActor,
-  idempotencyKey: string,
-  now: number,
+async function seedBaseRate(
+  db: SqliteDatabase,
+  businessDate: string,
+  value: string,
+): Promise<void> {
+  await saveBuyerDailyExchangeRate(db, {
+    businessDate, cnyPerJpyE8: value, expectedVersion: 0,
+  }, command(sellerOps, `base:${businessDate}:save`, 1_000));
+}
+
+async function savePolicy(
+  db: SqliteDatabase,
+  input: {
+    scopeType: 'CURRENCY_PAIR_DEFAULT' | 'SELLER_ORGANIZATION';
+    sellerOrganizationId: string | null;
+    markupRateValue: string;
+    expectedVersion: number;
+  },
+  key: string,
 ) {
-  return { actor, idempotencyKey, requestId: `${idempotencyKey}:request`, now };
+  return saveSellerPrincipalRatePolicy(db, {
+    ...input, sourceCurrencyCode: 'JPY',
+  }, command(sellerOps, key, 1_000));
+}
+
+function command(actor: PricingStaffActor, idempotencyKey: string, now: number) {
+  return {
+    actor,
+    idempotencyKey: `key-${idempotencyKey}-${'0'.repeat(8)}`,
+    requestId: null,
+    now,
+  };
 }

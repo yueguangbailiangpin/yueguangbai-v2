@@ -228,20 +228,16 @@ function seedOrganization(result: SqliteDatabase): void {
 
 function seedBuyer(result: SqliteDatabase): void {
   result.exec(`
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('buyer-channel-test','B','测试渠道','ACTIVE',1,1,1,1,NULL);
     INSERT INTO customer_identity_subjects (id, subject_type, created_at)
     VALUES ('buyer-subject-fact-free','BUYER_CUSTOMER',1);
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code, buyer_channel_id,
-      buyer_customer_no, buyer_sequence, first_valid_order_business_date,
+      buyer_customer_no, buyer_sequence,
       display_name, access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
-      'buyer-fact-free','buyer-subject-fact-free','AMAZON_JP','buyer-channel-test',
-      NULL,NULL,NULL,'测试买家','ACTIVE','CLEAR',1,1,1,1,NULL
+      'buyer-fact-free','buyer-subject-fact-free','AMAZON_JP','buyer-channel-wechat-b',
+      '20260101B0001',1,'测试买家','ACTIVE','CLEAR',1,1,1,1,NULL
     );
   `);
 }

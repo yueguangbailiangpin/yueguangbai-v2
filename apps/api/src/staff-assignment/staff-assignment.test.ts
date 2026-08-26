@@ -51,22 +51,20 @@ function seedFoundation(d: SqliteDatabase): void {
         'owner-1',1,NULL,'TEST_SUPPORT',1,1,'SUPPORT'),
       ('scope-after-1-amazon-jp','after-1','buyer_refund','AMAZON_JP','ACTIVE',
         'owner-1',1,NULL,'TEST_PRIMARY',1,1,'PRIMARY');
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('buyer-channel-test','T','Test','ACTIVE',1,1,1,1,NULL);
     INSERT INTO customer_identity_subjects (id, subject_type, created_at)
     VALUES ('buyer-subject-1','BUYER_CUSTOMER',1),
            ('buyer-subject-2','BUYER_CUSTOMER',1);
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code, buyer_channel_id,
-      buyer_customer_no, buyer_sequence, first_valid_order_business_date,
+      buyer_customer_no, buyer_sequence,
       display_name, access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
-      ('buyer-1','buyer-subject-1','AMAZON_JP','buyer-channel-test',NULL,NULL,NULL,
+      ('buyer-1','buyer-subject-1','AMAZON_JP','buyer-channel-wechat-b',
+        '19700101B0001', 1,
         'Buyer 1','DISABLED','CLEAR',1,1,1,NULL,1),
-      ('buyer-2','buyer-subject-2','AMAZON_JP','buyer-channel-test',NULL,NULL,NULL,
+      ('buyer-2','buyer-subject-2','AMAZON_JP','buyer-channel-wechat-b',
+        '19700101B0002', 2,
         'Buyer 2','DISABLED','CLEAR',1,1,1,NULL,1);
     UPDATE staff_users
     SET status='DISABLED', disabled_at=2, version=version+1, updated_at=2
@@ -78,7 +76,7 @@ describe('Phase 3H staff assignment foundation', () => {
   it('runs the assignment foundation on the stage 3 clean baseline', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 26 });
+      .toEqual({ schema_version: 27 });
     expect(d.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(d.raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
   });

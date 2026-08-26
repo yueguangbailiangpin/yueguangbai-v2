@@ -45,7 +45,7 @@ interface FormalOrderRow {
   principal_payment_currency_code: 'JPY' | 'USD' | 'KRW' | 'CNY' | null;
   principal_base_rate_version_id: string | null;
   principal_base_rate_business_date: string | null;
-  principal_base_rate_confirmed_at: number | null;
+  principal_base_rate_created_at: number | null;
   principal_base_rate_value: number | string | null;
   principal_base_rate_scale: number | string | null;
   principal_policy_version_id: string | null;
@@ -53,17 +53,17 @@ interface FormalOrderRow {
   principal_policy_seller_organization_id: string | null;
   principal_policy_version_no: number | null;
   principal_policy_effective_from: number | null;
-  principal_policy_confirmed_at: number | null;
+  principal_policy_created_at: number | null;
   principal_markup_rate_value: number | string | null;
   principal_markup_rate_scale: number | string | null;
   principal_final_rate_value: number | string | null;
   principal_final_rate_scale: number | string | null;
   principal_rounding_rule: 'HALF_UP' | null;
   principal_amount_minor: number | string | null;
-  service_fee_version_id: string | null;
+  service_fee_rule_version_id: string | null;
   service_fee_version_no: number | null;
   service_fee_effective_from: number | null;
-  service_fee_confirmed_at: number | null;
+  service_fee_created_at: number | null;
   service_fee_cny_fen: number | string | null;
   review_status: string | null;
   principal_status: string | null;
@@ -214,31 +214,31 @@ function selectFormalOrderProjection(): string {
       formal_order.status,
       formal_order.marketplace_code,
       formal_order.amazon_order_number_normalized AS amazon_order_number,
-      generic.platform_order_identifier,
+      snapshot.platform_order_identifier,
       formal_order.store_id,
       store.display_name AS store_display_name,
       formal_order.asin_normalized AS asin,
-      generic.platform_product_identifier,
+      snapshot.platform_product_identifier,
       formal_order.product_name_snapshot AS product_name,
       formal_order.product_version_id,
       formal_order.product_version_no,
       formal_order.review_type,
       formal_order.final_paid_jpy,
-      generic.payment_amount_minor,
-      generic.payment_currency_code,
-      generic.payment_currency_exponent,
+      snapshot.payment_amount_minor,
+      snapshot.payment_currency_code,
+      snapshot.payment_currency_exponent,
       snapshot.seller_expected_principal_cny_fen,
-      generic.source_currency_code,
-      generic.quote_currency_code,
-      generic.source_currency_exponent,
-      generic.quote_currency_exponent,
-      generic.rounding_rule,
+      snapshot.source_currency_code,
+      snapshot.quote_currency_code,
+      snapshot.source_currency_exponent,
+      snapshot.quote_currency_exponent,
+      snapshot.rounding_rule,
       principal.platform_order_date AS principal_platform_order_date,
       principal.payment_amount_minor AS principal_payment_amount_minor,
       principal.payment_currency_code AS principal_payment_currency_code,
       principal.base_rate_version_id AS principal_base_rate_version_id,
       principal.base_rate_business_date AS principal_base_rate_business_date,
-      principal.base_rate_confirmed_at AS principal_base_rate_confirmed_at,
+      principal.base_rate_created_at AS principal_base_rate_created_at,
       principal.base_rate_value AS principal_base_rate_value,
       principal.base_rate_scale AS principal_base_rate_scale,
       principal.policy_version_id AS principal_policy_version_id,
@@ -246,17 +246,17 @@ function selectFormalOrderProjection(): string {
       principal.policy_seller_organization_id AS principal_policy_seller_organization_id,
       principal.policy_version_no AS principal_policy_version_no,
       principal.policy_effective_from AS principal_policy_effective_from,
-      principal.policy_confirmed_at AS principal_policy_confirmed_at,
+      principal.policy_created_at AS principal_policy_created_at,
       principal.markup_rate_value AS principal_markup_rate_value,
       principal.markup_rate_scale AS principal_markup_rate_scale,
       principal.final_rate_value AS principal_final_rate_value,
       principal.final_rate_scale AS principal_final_rate_scale,
       principal.rounding_rule AS principal_rounding_rule,
       principal.seller_expected_principal_amount_minor AS principal_amount_minor,
-      snapshot.service_fee_version_id,
+      snapshot.service_fee_rule_version_id,
       snapshot.service_fee_version_no,
       snapshot.service_fee_effective_from,
-      snapshot.service_fee_confirmed_at,
+      snapshot.service_fee_confirmed_at AS service_fee_created_at,
       snapshot.service_fee_cny_fen,
       (SELECT review.status FROM review_cases review
         WHERE review.formal_order_id=formal_order.id) AS review_status,
@@ -415,8 +415,6 @@ function selectFormalOrderProjection(): string {
       AND store.status='ACTIVE'
     JOIN formal_order_financial_snapshots snapshot
       ON snapshot.formal_order_id=formal_order.id
-    JOIN formal_order_marketplace_money_snapshots generic
-      ON generic.formal_order_id=formal_order.id
     JOIN seller_principal_rate_snapshots principal
       ON principal.formal_order_id=formal_order.id
   `;
@@ -505,7 +503,7 @@ function mapFormalOrder(
           payment_currency_code: row.principal_payment_currency_code!,
           base_rate_version_id: row.principal_base_rate_version_id!,
           base_rate_business_date: row.principal_base_rate_business_date!,
-          base_rate_confirmed_at: Number(row.principal_base_rate_confirmed_at),
+          base_rate_created_at: Number(row.principal_base_rate_created_at),
           base_rate_value: integerString(row.principal_base_rate_value!),
           base_rate_scale: integerString(row.principal_base_rate_scale!),
           policy_version_id: row.principal_policy_version_id!,
@@ -513,7 +511,7 @@ function mapFormalOrder(
           policy_seller_organization_id: row.principal_policy_seller_organization_id,
           policy_version_no: Number(row.principal_policy_version_no),
           policy_effective_from: Number(row.principal_policy_effective_from),
-          policy_confirmed_at: Number(row.principal_policy_confirmed_at),
+          policy_created_at: Number(row.principal_policy_created_at),
           markup_rate_value: integerString(row.principal_markup_rate_value!),
           markup_rate_scale: integerString(row.principal_markup_rate_scale!),
           final_rate_value: integerString(row.principal_final_rate_value!),
@@ -523,12 +521,12 @@ function mapFormalOrder(
             integerString(row.principal_amount_minor!),
         }),
     locked_service_fee_snapshot: Object.freeze({
-      fee_version_id: row.service_fee_version_id!,
+      fee_version_id: row.service_fee_rule_version_id!,
       version_no: Number(row.service_fee_version_no),
       review_type: row.review_type!,
       service_fee_cny_fen: integerString(row.service_fee_cny_fen!),
       effective_from: Number(row.service_fee_effective_from),
-      confirmed_at: Number(row.service_fee_confirmed_at),
+      created_at: Number(row.service_fee_created_at),
       marketplace_code: row.marketplace_code,
       currency_code: 'CNY',
       currency_exponent: 2,

@@ -5,10 +5,8 @@ import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import type { StaffDataScope } from '@ygb/contracts';
 import { scopeAllowsSellerOrganization } from '../staff-assignment/data-scope';
 import {
-  confirmSellerPrincipalRatePolicy,
   readSellerPrincipalRatePolicies,
-  rejectSellerPrincipalRatePolicy,
-  submitSellerPrincipalRatePolicy,
+  saveSellerPrincipalRatePolicy,
 } from './seller-principal-rate-policy';
 import { PricingError, parseAsOfParameter } from './pricing-shared';
 
@@ -16,9 +14,7 @@ const BODY_LIMIT = 16 * 1024;
 
 export function registerSellerPrincipalRatePolicyRoutes(app: Hono<any>): void {
   app.get('/api/staff/seller-principal-rate-policies', withErrors(read));
-  app.post('/api/staff/seller-principal-rate-policies/submit', withErrors(submit));
-  app.post('/api/staff/seller-principal-rate-policies/:id/confirm', withErrors(confirm));
-  app.post('/api/staff/seller-principal-rate-policies/:id/reject', withErrors(reject));
+  app.post('/api/staff/seller-principal-rate-policies/save', withErrors(save));
 }
 
 async function read(context: Context<any>): Promise<Response> {
@@ -74,7 +70,7 @@ async function read(context: Context<any>): Promise<Response> {
   );
 }
 
-async function submit(context: Context<any>): Promise<Response> {
+async function save(context: Context<any>): Promise<Response> {
   const actor = staffActor(context);
   const dataScope = staffDataScope(context);
   requireManage(actor);
@@ -84,7 +80,6 @@ async function submit(context: Context<any>): Promise<Response> {
     'seller_organization_id',
     'source_currency_code',
     'markup_rate_value',
-    'effective_from',
     'expected_version',
   ]);
   const source = body['source_currency_code'];
@@ -96,7 +91,6 @@ async function submit(context: Context<any>): Promise<Response> {
     (body['seller_organization_id'] !== null &&
       typeof body['seller_organization_id'] !== 'string') ||
     typeof body['markup_rate_value'] !== 'string' ||
-    typeof body['effective_from'] !== 'number' ||
     typeof body['expected_version'] !== 'number'
   ) {
     throw new PricingError('VALIDATION_ERROR', 400);
@@ -117,59 +111,14 @@ async function submit(context: Context<any>): Promise<Response> {
       body['seller_organization_id'],
     );
   }
-  const result = await submitSellerPrincipalRatePolicy(
+  const result = await saveSellerPrincipalRatePolicy(
     context.env.DB,
     {
       scopeType: policyScope,
       sellerOrganizationId: body['seller_organization_id'],
       sourceCurrencyCode: source,
       markupRateValue: body['markup_rate_value'],
-      effectiveFrom: body['effective_from'],
       expectedVersion: body['expected_version'],
-    },
-    command(context, actor),
-  );
-  context.header('Cache-Control', 'no-store');
-  return context.json(apiSuccess({ policy: result }, requestId(context)));
-}
-
-async function confirm(context: Context<any>): Promise<Response> {
-  const actor = staffActor(context);
-  requireConfirm(actor);
-  const body = await bodyRecord(context);
-  exactKeys(body, ['expected_version']);
-  if (typeof body['expected_version'] !== 'number') {
-    throw new PricingError('VALIDATION_ERROR', 400);
-  }
-  const result = await confirmSellerPrincipalRatePolicy(
-    context.env.DB,
-    {
-      policyVersionId: requiredId(context.req.param('id')),
-      expectedVersion: body['expected_version'],
-    },
-    command(context, actor),
-  );
-  context.header('Cache-Control', 'no-store');
-  return context.json(apiSuccess({ policy: result }, requestId(context)));
-}
-
-async function reject(context: Context<any>): Promise<Response> {
-  const actor = staffActor(context);
-  requireConfirm(actor);
-  const body = await bodyRecord(context);
-  exactKeys(body, ['expected_version', 'rejection_reason']);
-  if (
-    typeof body['expected_version'] !== 'number' ||
-    typeof body['rejection_reason'] !== 'string'
-  ) {
-    throw new PricingError('VALIDATION_ERROR', 400);
-  }
-  const result = await rejectSellerPrincipalRatePolicy(
-    context.env.DB,
-    {
-      policyVersionId: requiredId(context.req.param('id')),
-      expectedVersion: body['expected_version'],
-      rejectionReason: body['rejection_reason'],
     },
     command(context, actor),
   );
@@ -215,25 +164,21 @@ async function requireSellerOrganizationWriteScope(
   if (!scopeAllowsSellerOrganization(scope, organizationId)) {
     throw new PricingError('FORBIDDEN', 403);
   }
-  // Default policy changes remain an Owner-only global action.  A seller-ops
-  // employee may propose an organization override only when this canonical
-  // fixed-owner relationship assigns that organization to them.  Marketplace
-  // scope alone is deliberately not enough.
-  if (actor.roles.has('owner')) return;
-  if (!actor.roles.has('seller_ops') || !actor.permissions.has('SELLER_MANAGE')) {
+  // D-056: owner and seller_ops have identical rate maintenance rights.  The
+  // organization must still be ACTIVE and inside the caller's data scope.
+  if (
+    (!actor.roles.has('seller_ops') && !actor.roles.has('owner')) ||
+    !actor.permissions.has('SELLER_MANAGE')
+  ) {
     throw new PricingError('FORBIDDEN', 403);
   }
-  const assignment = await database
+  const activeOrganization = await database
     .prepare(
-      `
-    SELECT 1 AS present FROM seller_staff_assignments
-    WHERE seller_organization_id=? AND staff_id=?
-      AND duty_code='SELLER_ACCOUNT_MANAGER' AND status='ACTIVE'
-  `,
+      `SELECT 1 AS present FROM seller_organizations WHERE id=? AND status='ACTIVE'`,
     )
-    .bind(organizationId, actor.staffId)
+    .bind(organizationId)
     .first<{ present: number }>();
-  if (!assignment) throw new PricingError('FORBIDDEN', 403);
+  if (!activeOrganization) throw new PricingError('NOT_FOUND', 404);
 }
 
 function requireGlobalPolicyScope(scope: StaffDataScope): void {
@@ -245,12 +190,6 @@ function requireManage(actor: AssignmentStaffAuthorization): void {
     (!actor.roles.has('seller_ops') && !actor.roles.has('owner')) ||
     !actor.permissions.has('SELLER_MANAGE')
   ) {
-    throw new PricingError('FORBIDDEN', 403);
-  }
-}
-
-function requireConfirm(actor: AssignmentStaffAuthorization): void {
-  if (!actor.roles.has('owner') || !actor.permissions.has('FINANCIAL_CORRECT')) {
     throw new PricingError('FORBIDDEN', 403);
   }
 }
@@ -270,13 +209,6 @@ function exactKeys(body: Record<string, unknown>, keys: readonly string[]): void
   ) {
     throw new PricingError('VALIDATION_ERROR', 400);
   }
-}
-
-function requiredId(value: string | undefined): string {
-  if (!value || value.length < 1 || value.length > 120) {
-    throw new PricingError('VALIDATION_ERROR', 400);
-  }
-  return value;
 }
 
 function requestId(context: Context<any>): string {

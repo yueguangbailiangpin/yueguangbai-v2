@@ -21,6 +21,10 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
   const sellerOrganizationId=`cold-seller-${suffix}`;
   const orderTail=String([...suffix].reduce((sum,value)=>sum+value.charCodeAt(0),0)).padStart(7,'0').slice(-7);
   const sellerSequence=9400+(Number(orderTail)%500);
+  // Stage 6.6: buyers carry their final YYYYMMDD+B/C+digits number from
+  // creation; the migration-seeded 'B' channel provides the numbering code.
+  const buyerSequence=10000+(Number(orderTail)%90000);
+  const buyerCustomerNo=`20260801B${buyerSequence}`;
   const sellerMemberId=`cold-seller-member-${suffix}`;
   const buyerId=`cold-buyer-${suffix}`;
   const reservationId=`cold-reservation-${suffix}`;
@@ -44,11 +48,11 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
     VALUES('${sellerMemberId}','cold-seller-subject-${suffix}','${sellerOrganizationId}',1,'cold-seller-${suffix}-1',
       '负责人','OWNER',1,'ACTIVE',1,1000,1000,1000,NULL);
     INSERT OR IGNORE INTO buyer_channels(id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at)
-    VALUES('cold-archive-channel','Z','归档测试渠道','ACTIVE',1,1,1000,1000,NULL);
+    VALUES('buyer-channel-wechat-b','B','买家微信对接渠道 B','ACTIVE',1,1,1000,1000,NULL);
     INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,buyer_sequence,
-      first_valid_order_business_date,display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
-    VALUES('${buyerId}','cold-buyer-subject-${suffix}','AMAZON_JP','cold-archive-channel',NULL,NULL,NULL,'归档测试买家',
-      'ACTIVE','CLEAR',1,1000,1000,1000,NULL);
+      display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
+    VALUES('${buyerId}','cold-buyer-subject-${suffix}','AMAZON_JP','buyer-channel-wechat-b','${buyerCustomerNo}',${buyerSequence},
+      '归档测试买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
     INSERT INTO seller_stores(id,organization_id,marketplace_code,display_name,normalized_name,status,version,created_at,updated_at,disabled_at)
     VALUES('cold-store-${suffix}','${sellerOrganizationId}','AMAZON_JP','归档测试店铺','归档测试店铺','ACTIVE',1,1000,1000,NULL);
     INSERT INTO products(id,organization_id,store_id,marketplace_code,asin_display,asin_normalized,status,current_version_no,
@@ -90,28 +94,18 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
       1980,0,0,1980,0,0,1,'${instruction.evidenceFileObjectId}',7000);
     UPDATE order_evidence_submissions SET status='VERIFIED',version=2,verified_by_staff_id='cold-archive-owner',
       verified_at=8000,updated_at=8000 WHERE id='${submissionId}';
-    INSERT INTO buyer_daily_exchange_rates(id,business_date,version_no,status,cny_per_jpy_e8,submitted_by_staff_id,
-      submitted_at,decision_version,confirmed_by_staff_id,confirmed_at,rejected_by_staff_id,rejected_at,rejection_reason)
-    SELECT 'cold-buyer-rate','2026-08-01',1,'SUBMITTED',5500000,'cold-archive-owner',1000,1,NULL,NULL,NULL,NULL,NULL
-    WHERE NOT EXISTS(SELECT 1 FROM buyer_daily_exchange_rates WHERE business_date='2026-08-01' AND version_no=1);
-    UPDATE buyer_daily_exchange_rates SET status='CONFIRMED',decision_version=2,confirmed_by_staff_id='cold-archive-owner',
-      confirmed_at=2000 WHERE id='cold-buyer-rate' AND status='SUBMITTED';
+    INSERT INTO buyer_daily_currency_rate_versions(id,business_date,source_currency_code,quote_currency_code,version_no,
+      rate_value,rate_scale,rounding_rule,effective_from,created_by_staff_id,created_at)
+    SELECT 'cold-buyer-rate','2026-08-01','JPY','CNY',1,5500000,100000000,'HALF_UP',2000,'cold-archive-owner',2000
+    WHERE NOT EXISTS(SELECT 1 FROM buyer_daily_currency_rate_versions WHERE business_date='2026-08-01' AND version_no=1);
     INSERT INTO seller_principal_rate_policy_versions(
       id,scope_type,seller_organization_id,source_currency_code,quote_currency_code,
-      version_no,status,markup_rate_value,rate_scale,effective_from,
-      submitted_by_staff_id,submitted_at,decision_version,confirmed_by_staff_id,
-      confirmed_at,rejected_by_staff_id,rejected_at,rejection_reason)
+      version_no,markup_rate_value,rate_scale,effective_from,created_by_staff_id,created_at)
     VALUES('cold-principal-policy-${suffix}','SELLER_ORGANIZATION','${sellerOrganizationId}',
-      'JPY','CNY',1,'SUBMITTED',500000,100000000,3000,
-      'cold-archive-owner',1000,1,NULL,NULL,NULL,NULL,NULL);
-    UPDATE seller_principal_rate_policy_versions SET status='CONFIRMED',decision_version=2,
-      confirmed_by_staff_id='cold-archive-owner',confirmed_at=2000
-      WHERE id='cold-principal-policy-${suffix}';
-    INSERT INTO seller_service_fee_versions(id,organization_id,review_type,version_no,status,fee_cny_fen,effective_from,
-      submitted_by_staff_id,submitted_at,decision_version,confirmed_by_staff_id,confirmed_at,rejected_by_staff_id,rejected_at,rejection_reason)
-    VALUES('cold-service-fee-${suffix}','${sellerOrganizationId}','IMAGE',1,'SUBMITTED',2500,3000,'cold-archive-owner',1000,1,NULL,NULL,NULL,NULL,NULL);
-    UPDATE seller_service_fee_versions SET status='CONFIRMED',decision_version=2,confirmed_by_staff_id='cold-archive-owner',
-      confirmed_at=2000 WHERE id='cold-service-fee-${suffix}';
+      'JPY','CNY',1,500000,100000000,3000,'cold-archive-owner',2000);
+    INSERT INTO seller_service_fee_rule_versions(id,seller_organization_id,marketplace_code,review_type,version_no,
+      fee_amount_minor,fee_currency_code,fee_currency_exponent,effective_from,created_by_staff_id,created_at)
+    VALUES('cold-service-fee-${suffix}','${sellerOrganizationId}','AMAZON_JP','IMAGE',1,2500,'CNY',2,3000,'cold-archive-owner',2000);
   `);
   await bindPhase3GEvidenceFixture(db,{suffix:`cold-${suffix}`,submissionId,evidenceVersionId,reservationId,
     buyerCustomerId:buyerId,evidenceFileObjectId:instruction.evidenceFileObjectId,
