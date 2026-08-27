@@ -15,11 +15,12 @@ import {
   cleanOperatingPaymentTimestamp,
   registerOperatingIntegrityRoutes,
 } from './routes';
+import { registerStaffOrderDetailRoutes } from '../staff-order-detail/routes';
 
 describe('order integrity financial projection', () => {
   it('recognizes only owner plus FINANCIAL_VIEW as financial authority', () => {
-    expect(canViewOrderFinancialAdjustments(actor('owner', ['FINANCIAL_VIEW']))).toBe(true);
-    expect(canViewOrderFinancialAdjustments(actor('owner', []))).toBe(false);
+    expect(canViewOrderFinancialAdjustments(actor('owner', ['ORDER_VIEW', 'FINANCIAL_VIEW']))).toBe(true);
+    expect(canViewOrderFinancialAdjustments(actor('owner', ['ORDER_VIEW']))).toBe(false);
     expect(canViewOrderFinancialAdjustments(actor('pre_sales', []))).toBe(false);
     expect(canViewOrderFinancialAdjustments(actor('seller_ops', []))).toBe(false);
   });
@@ -43,6 +44,7 @@ describe('order integrity financial projection', () => {
       await next();
     });
     registerOperatingIntegrityRoutes(app);
+  registerStaffOrderDetailRoutes(app);
     const response = await app.request(
       'https://api.example.test/api/staff/buyer-advance-principal/order-1/payments',
       {
@@ -116,27 +118,25 @@ describe('order integrity financial projection', () => {
   });
 
   it('returns financial adjustments only to an owner with FINANCIAL_VIEW', async () => {
-    const visible = await request(actor('owner', ['FINANCIAL_VIEW']));
+    const visible = await request(actor('owner', ['ORDER_VIEW', 'FINANCIAL_VIEW']));
     expect(visible.status).toBe(200);
     expect(await visible.json()).toMatchObject({
       data: {
-        order_integrity: {
-          adjustments: [
-            {
-              adjustment_id: 'adjustment-1',
-              amount_cny_fen: '5000',
-            },
-          ],
-        },
+        financial_adjustments: [
+          {
+            adjustment_id: 'adjustment-1',
+            amount_cny_fen: '5000',
+          },
+        ],
       },
     });
 
-    const denied = await request(actor('owner', []));
+    const denied = await request(actor('owner', ['ORDER_VIEW']));
     expect(denied.status).toBe(200);
     const deniedBody = (await denied.json()) as {
-      data: { order_integrity: { adjustments: unknown[] } };
+      data: { financial_adjustments?: unknown[] };
     };
-    expect(deniedBody.data.order_integrity.adjustments).toEqual([]);
+    expect(deniedBody.data.financial_adjustments).toBeUndefined();
     expect(JSON.stringify(deniedBody)).not.toContain('5000');
   });
 });
@@ -148,14 +148,15 @@ async function request(actorValue: AssignmentStaffAuthorization): Promise<Respon
     await next();
   });
   registerOperatingIntegrityRoutes(app);
+  registerStaffOrderDetailRoutes(app);
   return app.request(
-    'https://api.example.test/api/staff/order-integrity/order-1',
+    'https://api.example.test/api/staff/formal-orders/order-1',
     {},
     { DB: new IntegrityDatabase() },
   );
 }
 
-function actor(
+export function actor(
   role: StaffRoleCode,
   permissions: readonly StaffPermissionCode[],
 ): AssignmentStaffAuthorization {
@@ -171,7 +172,7 @@ function actor(
   };
 }
 
-class IntegrityDatabase implements SqlDatabase {
+export class IntegrityDatabase implements SqlDatabase {
   readonly sql: string[] = [];
   batchCalls = 0;
   prepare(sql: string): SqlStatement {
@@ -193,6 +194,22 @@ class IntegrityStatement implements SqlStatement {
     return this;
   }
   first<T>(): Promise<T | null> {
+    if (this.sql.includes('JOIN seller_stores store ON store.id=formal_order.store_id'))
+      return Promise.resolve({
+        id: 'order-1',
+        marketplace_code: 'AMAZON_JP',
+        seller_organization_id: 'org-1',
+        store_display_name: 'store-1',
+        buyer_customer_id: 'buyer-1',
+        buyer_display_name: 'Buyer 1',
+        buyer_customer_no: '20260801B0001',
+        amazon_order_number: '123-1234567-1234567',
+        amazon_order_date: '2026-08-01',
+        confirmed_at: 1000,
+        status: 'CONFIRMED',
+      } as T);
+    if (this.sql.includes("purpose='ORDER_EVIDENCE'"))
+      return Promise.resolve({ file_object_id: 'pay-1', file_version: 2 } as T);
     if (this.sql.includes('LEFT JOIN formal_order_effective_operational_state'))
       return Promise.resolve({ id: 'order-1', operational_state: 'NORMAL' } as T);
     if (this.sql.includes('FROM formal_orders'))
@@ -213,8 +230,18 @@ class IntegrityStatement implements SqlStatement {
       } as T);
     if (this.sql.includes('FROM buyer_advance_principal_settlements')) return Promise.resolve(null);
     if (this.sql.includes('FROM buyer_refund_obligations')) return Promise.resolve(null);
-    if (this.sql.includes('FROM formal_order_financial_snapshots'))
+    if (this.sql.includes('SELECT buyer_expected_principal_cny_fen AS amount FROM formal_order_financial_snapshots'))
       return Promise.resolve({ amount: 48840 } as T);
+    if (this.sql.includes('FROM formal_order_financial_snapshots'))
+      return Promise.resolve({
+        financial_snapshot_id: 'snap-1',
+        buyer_self_pay_bps: 1000, buyer_self_pay_jpy: 900,
+        buyer_expected_principal_cny_fen: '9500',
+        seller_expected_principal_cny_fen: '9000',
+        service_fee_cny_fen: '2500',
+      } as T);
+    if (this.sql.includes('seller_organizations organization'))
+      return Promise.resolve({ id: 'order-1' } as T);
     if (this.sql.includes('formal_order_effective_operational_state'))
       return Promise.resolve({ operational_state: 'NORMAL' } as T);
     throw new Error(`unexpected_first:${this.sql}`);

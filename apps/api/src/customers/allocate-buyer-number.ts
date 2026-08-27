@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   CustomerMasterDataError,
   normalizeFoundationError,
   requirePermission,
@@ -142,18 +138,6 @@ export async function allocateBuyerCustomerNumber(
       already_allocated: false,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `buyer-number-allocated:${buyerCustomerId}`,
-      eventType: 'BUYER_NUMBER_ALLOCATED',
-      aggregateType: 'BUYER_CUSTOMER',
-      aggregateId: buyerCustomerId,
-      payload: {
-        buyer_customer_id: buyerCustomerId,
-        buyer_customer_no: buyerNumber,
-      },
-      createdAt: now,
-    });
     const statements: SqlStatement[] = [
       database.prepare(`
         UPDATE buyer_channels
@@ -169,7 +153,6 @@ export async function allocateBuyerCustomerNumber(
       numberAuditStatement(database, source, buyerNumber, sequence,
         input.firstValidOrderBusinessDate, command, acquired.claim.idempotencyKey,
         now, false),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           buyer_customer_id: buyerCustomerId,
@@ -221,26 +204,12 @@ async function promotePreorderNumber(
     already_allocated: false,
     replayed: false,
   };
-  const outbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `buyer-number-allocated:${source.buyer_id}`,
-    eventType: 'BUYER_NUMBER_ALLOCATED',
-    aggregateType: 'BUYER_CUSTOMER',
-    aggregateId: source.buyer_id,
-    payload: {
-      buyer_customer_id: source.buyer_id,
-      buyer_customer_no: buyerNumber,
-      allocation_origin: 'SELF_REGISTRATION_PREORDER',
-    },
-    createdAt: now,
-  });
   await database.batch([
     buyerUpdateStatement(database, source, buyerNumber, sequence, businessDate, now),
     buyerNumberEventStatement(database, source, buyerNumber, sequence,
       businessDate, command.actor.staffId, claim.idempotencyKey, now),
     numberAuditStatement(database, source, buyerNumber, sequence, businessDate,
       command, claim.idempotencyKey, now, true),
-    ...createOutboxStatements(database, outbox),
     completeIdempotencyStatement(database, claim, response, {
       resultReferences: {
         buyer_customer_id: source.buyer_id,

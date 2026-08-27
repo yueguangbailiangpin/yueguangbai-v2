@@ -3,12 +3,10 @@ import { StaffShell } from './StaffShell';
 import { StaffRouteProvider } from '../routes/IdentityRouteSlots';
 import { RouteChunkBoundary } from '../routes/RouteChunkBoundary';
 import { StaffTaskQueuePage } from './StaffTaskQueuePage';
-import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 
 const loadStaffAdminRoutes = () => import('./StaffAdminRouteModule');
 const loadStaffSchedulingRoutes = () => import('./StaffSchedulingRouteModule');
 const loadStaffAccessManagementRoutes = () => import('./StaffAccessManagementRouteModule');
-const loadStaffAcquisitionRoutes = () => import('./StaffAcquisitionRouteModule');
 const loadStaffCustomerIntakeRoutes = () => import('./StaffCustomerIntakeRouteModule');
 const loadStaffFinanceRoutes = () => import('./StaffFinanceRouteModule');
 const loadStaffOrdersRoutes = () => import('./StaffOrdersRouteModule');
@@ -28,11 +26,6 @@ export default function StaffPortal(): React.JSX.Element {
 
 export function StaffRoutePage(): React.JSX.Element {
   const { pathname, search } = useLocation();
-  const session = useCurrentStaffSession();
-  if (pathname === '/staff' && session.role.code === 'acquisition')
-    return <Navigate to="/staff/acquisition" replace />;
-  if (pathname.startsWith('/staff/acquisition'))
-    return <RouteChunkBoundary load={loadStaffAcquisitionRoutes} />;
   if (
     pathname.startsWith('/staff/buyer-customers') ||
     pathname.startsWith('/staff/seller-customers')

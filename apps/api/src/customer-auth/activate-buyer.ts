@@ -14,10 +14,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   CustomerAuthError,
   insertAccessEventStatement,
   insertCredentialStatement,
@@ -154,20 +150,6 @@ export async function activateBuyerCustomer(
       temporary_password_available: true,
     };
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `buyer-activated:${buyerCustomerId}`,
-      eventType: 'BUYER_CUSTOMER_ACTIVATED',
-      aggregateType: 'BUYER_CUSTOMER',
-      aggregateId: buyerCustomerId,
-      payload: {
-        buyer_customer_id: buyerCustomerId,
-        account_id: accountId,
-        access_status: 'ACTIVE',
-        password_change_required: true,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -261,7 +243,6 @@ export async function activateBuyerCustomer(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

@@ -14,7 +14,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import {
   cleanEpochMilliseconds,
   cleanExpectedVersion,
@@ -117,15 +116,6 @@ export async function saveSellerServiceFeeRule(
       effective_from: now,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-service-fee-saved:${sellerOrganizationId}:${input.reviewType}:${versionNo}`,
-      eventType: 'SELLER_SERVICE_FEE_RULE_SAVED',
-      aggregateType: 'SELLER_SERVICE_FEE_RULE',
-      aggregateId: ruleVersionId,
-      payload: response,
-      createdAt: now,
-    });
 
     await database.batch([
       database
@@ -164,7 +154,6 @@ export async function saveSellerServiceFeeRule(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { rule_version_id: ruleVersionId },
         now,

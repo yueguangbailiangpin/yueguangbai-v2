@@ -136,11 +136,14 @@ describe('staging first owner bootstrap', () => {
       asin_normalized,status,current_version_no,version,created_at,updated_at
     ) VALUES('dirty-product','missing-seller','missing-store','AMAZON_JP','B000000001',
       'B000000001','ACTIVE',1,1,1,1)`],
-    ['Order',`INSERT INTO integration_outbox(
-      id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,
-      payload_hash,status,available_at,attempt_count,created_at,updated_at
-    ) VALUES('dirty-outbox','dirty-dedup-key-123456','ORDER_EVENT','ORDER','o','{}',
-      '${'a'.repeat(64)}','PENDING',1,0,1,1)`],
+    ['Buyer',`INSERT INTO customer_identity_subjects(id,subject_type,created_at)
+      VALUES('dirty-subject','BUYER_CUSTOMER',1);
+    INSERT INTO buyer_customers(
+      id,identity_subject_id,marketplace_code,buyer_channel_id,
+      buyer_customer_no,buyer_sequence,display_name,access_status,
+      identity_review_status,version,created_at,updated_at,activated_at,disabled_at
+    ) VALUES('dirty-buyer','dirty-subject','AMAZON_JP','buyer-channel-wechat-b',
+      '20260801B0001',1,'Dirty buyer','ACTIVE','CLEAR',1,1,1,1,NULL)`],
   ])('fails closed for pre-existing %s business stock',async(_label,insertSql)=>{
     database=migratedEmptyDatabase();database.raw.exec('PRAGMA foreign_keys=OFF');
     database.raw.exec(insertSql);database.raw.exec('PRAGMA foreign_keys=ON');

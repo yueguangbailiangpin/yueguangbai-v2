@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type {
   AdminBusinessDashboardSummaryDto,
   DashboardWindow,
-  FinancialReportingProjectionDto,
 } from '@ygb/contracts';
 import '../../test/msw/lifecycle';
 import { StaffSessionBoundary } from '../../auth/staff/StaffSessionBoundary';
@@ -33,9 +32,8 @@ describe('canonical Frozen Admin business dashboard', () => {
       { route: '/staff/admin-business-dashboard' },
     );
 
-    expect(await screen.findByRole('heading', { name: '本期赚了多少' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '客户与订单' })).toBeVisible();
-    expect(await screen.findByText('¥200.00 CNY')).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '客户与订单' })).toBeVisible();
+    expect(await screen.findByText('¥123.45 CNY')).toBeVisible();
     expect(screen.getByText('待处理买家返款')).toBeVisible();
     expect(screen.getByText('待处理卖家结算')).toBeVisible();
     expect(screen.getByText('待处理工作项')).toBeVisible();
@@ -47,26 +45,17 @@ describe('canonical Frozen Admin business dashboard', () => {
     expect(screen.queryByText('明细与统计设置（点开查看）')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(observed.summaryQueries).toContain('window=TODAY');
-      expect(observed.financialRanges).toContain('from_date=2026-08-08&to_date=2026-08-08');
     });
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: '本周' }));
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '本期赚了多少' })).toBeVisible();
-    });
-    await waitFor(() => {
       expect(observed.summaryQueries).toContain('window=WEEK');
-      expect(observed.financialRanges).toContain('from_date=2026-08-04&to_date=2026-08-10');
     });
 
     await user.click(screen.getByRole('button', { name: '本月' }));
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '本期赚了多少' })).toBeVisible();
-    });
-    await waitFor(() => {
       expect(observed.summaryQueries).toContain('window=MONTH');
-      expect(observed.financialRanges).toContain('from_date=2026-08-01&to_date=2026-08-31');
     });
   });
 
@@ -129,18 +118,6 @@ function installOwnerHandlers(observed?: {
         meta: { request_id: 'summary' },
       });
     }),
-    http.get(apiUrl('/api/staff/admin-business-dashboard/financial-projection'), ({ request }) => {
-      const url = new URL(request.url);
-      const key = windowForRange(
-        url.searchParams.get('from_date'),
-        url.searchParams.get('to_date'),
-      );
-      observed?.financialRanges.push(url.searchParams.toString());
-      return HttpResponse.json({
-        data: { financial_projection: financialProjection(key) },
-        meta: { request_id: 'financial' },
-      });
-    }),
     http.get(apiUrl('/api/staff/customer-identity-resolution/cases'), () =>
       HttpResponse.json({
         data: { cases: [] },
@@ -161,13 +138,6 @@ function dashboardWindow(value: string | null): DashboardWindow {
   throw new Error(`Admin dashboard mock rejected window query: ${String(value)}`);
 }
 
-function windowForRange(from: string | null, to: string | null): DashboardWindow {
-  const key = Object.entries(WINDOW_FACTS).find(
-    ([, fact]) => fact.from === from && fact.to === to,
-  )?.[0];
-  if (key === 'TODAY' || key === 'WEEK' || key === 'MONTH') return key;
-  throw new Error(`Admin dashboard mock rejected date query: ${String(from)}:${String(to)}`);
-}
 
 function summary(key: DashboardWindow): AdminBusinessDashboardSummaryDto {
   const fact = WINDOW_FACTS[key];
@@ -186,28 +156,6 @@ function summary(key: DashboardWindow): AdminBusinessDashboardSummaryDto {
   } satisfies AdminBusinessDashboardSummaryDto;
 }
 
-function financialProjection(key: DashboardWindow): FinancialReportingProjectionDto {
-  const fact = WINDOW_FACTS[key];
-  return {
-    from_date: fact.from,
-    to_date: fact.to,
-    timezone: 'Asia/Shanghai',
-    data_as_of: 1_786_161_600_000,
-    seller_cash_in_cny_fen: '30000',
-    buyer_cash_out_cny_fen: '10000',
-    net_cash_flow_cny_fen: '20000',
-    seller_payable_due_cny_fen: '25000',
-    seller_payable_paid_cny_fen: '15000',
-    seller_payable_outstanding_cny_fen: '10000',
-    buyer_refund_due_cny_fen: '12000',
-    buyer_refund_paid_cny_fen: '10000',
-    buyer_refund_outstanding_cny_fen: '2000',
-    projected_profit_cny_fen: '12345',
-    completed_profit_cny_fen: '2345',
-    projected_profit_adjustment_cny_fen: '0',
-    completed_profit_adjustment_cny_fen: '0',
-  } satisfies FinancialReportingProjectionDto;
-}
 
 function profit(amount: string) {
   return { amount_cny_fen: amount, valid_order_count: 1, conflict_order_count: 0 };

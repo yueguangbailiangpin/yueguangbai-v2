@@ -38,13 +38,8 @@ export type AppBindings = StaffAuthProviderBindings & {
     GOOGLE_DRIVE_ACCESS_TOKEN?: string;
     CUSTOMER_SESSION_SECRET?: string;
     CUSTOMER_SECURITY_TOKEN_SECRET?: string;
-    OUTBOX_DELIVERY_ADAPTER?: {
-      deliver(event: { id: string; eventType: string; payloadJson: string }): Promise<void>;
-    };
-    OUTBOX_DELIVERY_ENABLED?: string;
     SCHEDULED_OPERATIONS_ENABLED?: string;
     SCHEDULED_OPERATIONS_DISABLED_JOBS?: string;
-    ACQUISITION_MAINTENANCE_ENABLED?: string;
     OPERATIONAL_ALERT_SINK?: OperationalAlertSink | OperationalAlertServiceBinding;
     OPERATIONAL_ALERT_MODE?: string;
     OPERATIONAL_ALERT_SINK_SERVICE?: string;

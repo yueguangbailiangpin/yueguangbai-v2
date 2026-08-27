@@ -8,10 +8,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   cleanRequiredReason,
   assertPreviousStatementChangedOnce,
   insertInstructionEventStatement,
@@ -95,15 +91,6 @@ export async function cancelOrderInstruction(
       replayed: false,
     };
     const nextVersion = source.instruction_version + 1;
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `order-instruction-cancelled:${source.instruction_id}`,
-      eventType: 'ORDER_INSTRUCTION_CANCELLED',
-      aggregateType: 'ORDER_INSTRUCTION',
-      aggregateId: source.instruction_id,
-      payload: { ...response, reason },
-      createdAt: now,
-    });
     const statements: SqlStatement[] = [
       database.prepare(`
         UPDATE order_instructions
@@ -171,7 +158,6 @@ export async function cancelOrderInstruction(
         nextState: { ...response, reason },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           instruction_id: source.instruction_id,

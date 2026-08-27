@@ -25,10 +25,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   cleanEpochMilliseconds,
   cleanExpectedVersion,
   cleanPricingIdentifier,
@@ -142,15 +138,6 @@ export async function saveSellerPrincipalRatePolicy(
       created_at: now,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-principal-rate-policy-saved:${targetId}:${response.version_no}`,
-      eventType: 'SELLER_PRINCIPAL_RATE_POLICY_SAVED',
-      aggregateType: POLICY_KIND,
-      aggregateId: id,
-      payload: response,
-      createdAt: now,
-    });
     await database.batch([
       insertPolicy(database, response, now),
       insertPolicyEvent(database, response, command.actor.staffId,
@@ -164,7 +151,6 @@ export async function saveSellerPrincipalRatePolicy(
         idempotencyKey: acquired.claim.idempotencyKey,
         nextState: response, createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { policy_version_id: id }, now,
       }),

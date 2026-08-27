@@ -213,7 +213,6 @@ export function AppRoutes(): React.JSX.Element {
         <Route index element={<StaffRouteSlot />} />
         <Route path="queue" element={<StaffRouteSlot />} />
         <Route path="work/:workItemId" element={<StaffRouteSlot />} />
-        <Route path="acquisition" element={<StaffRouteSlot />} />
         <Route path="buyer-customers" element={<StaffRouteSlot />} />
         <Route path="seller-customers" element={<StaffRouteSlot />} />
         <Route path="admin-business-dashboard" element={<StaffRouteSlot />} />
@@ -323,7 +322,6 @@ export function ReviewRoutes(): React.JSX.Element {
         <Route index element={<StaffRouteSlot />} />
         <Route path="queue" element={<StaffRouteSlot />} />
         <Route path="work/:workItemId" element={<StaffRouteSlot />} />
-        <Route path="acquisition" element={<StaffRouteSlot />} />
         <Route path="buyer-customers" element={<StaffRouteSlot />} />
         <Route path="seller-customers" element={<StaffRouteSlot />} />
         <Route path="admin-business-dashboard" element={<StaffRouteSlot />} />

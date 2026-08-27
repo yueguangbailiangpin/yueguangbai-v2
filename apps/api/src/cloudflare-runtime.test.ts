@@ -79,8 +79,6 @@ describe('production Cloudflare Worker runtime', () => {
       { ...bindings(), STAFF_ACCESS_AUD: 'short' },
       { ...bindings(), STAFF_AUTH_ALLOWED_ORIGINS: 'https://other.invalid' },
       { ...bindings(), SCHEDULED_OPERATIONS_ENABLED: 'invalid' },
-      { ...bindings(), OUTBOX_DELIVERY_ENABLED: undefined },
-      { ...bindings(), ACQUISITION_MAINTENANCE_ENABLED: undefined },
       { ...bindings(), OPERATIONAL_ALERT_MODE: 'disabled' },
       { ...bindings(), OPERATIONAL_ALERT_SINK: undefined },
       { ...bindings(), APP_RELEASE_SHA: undefined },
@@ -137,14 +135,12 @@ describe('production Cloudflare Worker runtime', () => {
       await resolveCloudflareRuntime({
         ...bindings(),
         SCHEDULED_OPERATIONS_ENABLED: 'true',
-        ACQUISITION_MAINTENANCE_ENABLED: 'true',
       }),
     ).not.toBeNull();
     expect(
       await resolveCloudflareRuntime({
         ...bindings(),
         SCHEDULED_OPERATIONS_ENABLED: 'false',
-        ACQUISITION_MAINTENANCE_ENABLED: 'true',
       }),
     ).not.toBeNull();
   });
@@ -210,8 +206,6 @@ function bindings(): CloudflareWorkerBindings {
     STAFF_ACCESS_AUD: 'staff-access-audience-001',
     STAFF_AUTH_ALLOWED_ORIGINS: origin,
     SCHEDULED_OPERATIONS_ENABLED: 'false',
-    OUTBOX_DELIVERY_ENABLED: 'false',
-    ACQUISITION_MAINTENANCE_ENABLED: 'false',
     ARCHIVE_SELECTOR_ENABLED: 'false',
     ARCHIVE_DRIVE_UPLOAD_ENABLED: 'false',
     ARCHIVE_HOT_DELETE_ENABLED: 'false',

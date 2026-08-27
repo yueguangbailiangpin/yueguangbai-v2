@@ -6,21 +6,20 @@ const root = path.resolve(import.meta.dirname, '../../../..');
 const read = (file: string) => readFileSync(path.join(root, file), 'utf8');
 
 describe('second layer hardening freeze', () => {
-  it('keeps production release authority on schema 27, Access and release-bound readiness', () => {
+  it('keeps production release authority on schema 29, Access and release-bound readiness', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(28);
-    expect(migrations.at(-1)).toBe('0028_stage66b_fixed_assignment_and_files.sql');
+    expect(migrations).toHaveLength(29);
+    expect(migrations.at(-1)).toBe('0029_stage66c_retire_acquisition_outbox.sql');
     const template = read('apps/api/wrangler.production.template.jsonc');
     expect(template).toContain('"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"');
     expect(template).toContain('"SCHEDULED_OPERATIONS_ENABLED": "true"');
-    expect(template).toContain('"ACQUISITION_MAINTENANCE_ENABLED": "true"');
     expect(template).toContain('STAFF_ACCESS_TEAM_DOMAIN');
     expect(template).toContain('STAFF_ACCESS_AUD');
     expect(template).not.toContain('FEISHU_WORKBENCH_APP_ID');
     const readiness = read('apps/api/src/operational-readiness/routes.ts');
-    expect(readiness).toContain('const TARGET_SCHEMA = 28');
+    expect(readiness).toContain('const TARGET_SCHEMA = 29');
     expect(readiness).toContain('APP_RELEASE_SHA');
     expect(readiness).toContain('last_backlog_count');
     expect(readiness).toContain('staff_access');
@@ -102,15 +101,10 @@ describe('second layer hardening freeze', () => {
     expect(contract).not.toContain("'BUYER_REFUND_DUE'");
   });
 
-  it('keeps channel labels immutable and the acquisition workbench source authoritative', () => {
-    const admin = read('apps/api/src/acquisition/admin.ts');
-    expect(admin).toContain("input.leadType !== 'BUYER' && input.leadType !== 'SELLER'");
-    const privacy = read('apps/api/src/acquisition/channel-privacy.ts');
-    expect(privacy).not.toContain('staffLabel:');
-    expect(privacy).toContain('intakeWechatLabel');
-    expect(read('apps/web/src/staff/acquisition/AcquisitionCoreWorkbench.tsx')).toContain(
-      'function AcquisitionCoreWorkbench',
-    );
+  it('retires the acquisition CRM sources entirely (D-056)', () => {
+    expect(existsSync(path.join(root, 'apps/api/src/acquisition'))).toBe(false);
+    expect(existsSync(path.join(root, 'apps/web/src/staff/acquisition'))).toBe(false);
+    expect(existsSync(path.join(root, 'packages/contracts/src/acquisition.ts'))).toBe(false);
   });
 
   it('keeps real Seller UI, multi-persona session safety and truthful Marketplace-local dates', () => {

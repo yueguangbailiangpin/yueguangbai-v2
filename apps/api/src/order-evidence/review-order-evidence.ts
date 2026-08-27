@@ -13,10 +13,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   setChangesRequestedDeadlineStatements,
 } from '../order-instructions/evidence-integration';
 import {
@@ -249,23 +245,6 @@ async function transitionOrderEvidence(
           verified_by_staff_id: command.actor.staffId,
           replayed: false,
         };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `order-evidence-review:${submissionId}:${nextVersion}`,
-      eventType,
-      aggregateType: 'ORDER_EVIDENCE',
-      aggregateId: submissionId,
-      payload: {
-        submission_id: submissionId,
-        reservation_id: source.reservation_id,
-        buyer_customer_id: source.buyer_customer_id,
-        evidence_version_id: source.evidence_version_id,
-        status: nextStatus,
-        aggregate_version: nextVersion,
-      },
-      createdAt: now,
-    });
 
     await requireAssignedWorkflowActor(database, {
       staffId: command.actor.staffId,
@@ -350,7 +329,6 @@ async function transitionOrderEvidence(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

@@ -20,10 +20,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
   prepareWorkItemCompletionStatements,
@@ -201,15 +197,6 @@ export async function decideReservation(
     const eventType = input.decision === 'APPROVE'
       ? 'RESERVATION_APPROVED'
       : 'RESERVATION_REJECTED';
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `reservation-decided:${reservationId}`,
-      eventType,
-      aggregateType: 'RESERVATION',
-      aggregateId: reservationId,
-      payload: response,
-      createdAt: now,
-    });
 
     await requireAssignedWorkflowActor(database, {
       staffId: command.actor.staffId,
@@ -325,7 +312,6 @@ export async function decideReservation(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

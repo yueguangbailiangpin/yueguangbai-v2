@@ -12,7 +12,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import {
   cleanBusinessDate,
   cleanEpochMilliseconds,
@@ -112,15 +111,6 @@ export async function saveBuyerDailyExchangeRate(
       effective_from: now,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `buyer-daily-rate-saved:${businessDate}:${versionNo}`,
-      eventType: 'BUYER_DAILY_EXCHANGE_RATE_SAVED',
-      aggregateType: 'BUYER_DAILY_CURRENCY_RATE',
-      aggregateId: rateVersionId,
-      payload: response,
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database
@@ -164,7 +154,6 @@ export async function saveBuyerDailyExchangeRate(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { rate_version_id: rateVersionId },
         now,

@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   cleanReservationIdentifier,
   cleanReservationReason,
   insertReservationEventStatement,
@@ -188,16 +184,6 @@ export async function reopenReservation(
       reason,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `reservation-reopened:${reservationId}:${nextReopenedCount}`,
-      eventType: 'RESERVATION_REOPENED',
-      aggregateType: 'RESERVATION',
-      aggregateId: reservationId,
-      payload: response,
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -289,7 +275,6 @@ export async function reopenReservation(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

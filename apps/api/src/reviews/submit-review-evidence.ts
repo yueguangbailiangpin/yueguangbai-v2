@@ -15,7 +15,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import { batchWithAssignmentRetry, prepareDirectWorkItem } from '../staff-assignment';
 import type { FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
@@ -183,24 +182,6 @@ export async function submitReviewEvidence(
       })),
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `review-evidence:${evidenceVersionId}`,
-      eventType,
-      aggregateType: 'REVIEW_CASE',
-      aggregateId: reviewCaseId,
-      payload: {
-        review_case_id: reviewCaseId,
-        formal_order_id: source.formal_order_id,
-        buyer_customer_id: source.buyer_customer_id,
-        seller_organization_id: source.seller_organization_id,
-        review_type: input.reviewType,
-        evidence_version_id: evidenceVersionId,
-        evidence_version_no: evidenceVersionNo,
-        file_count: preparedFiles.length,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [];
     if (source.review_case_id === null) {
@@ -286,7 +267,6 @@ export async function submitReviewEvidence(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           review_case_id: reviewCaseId,

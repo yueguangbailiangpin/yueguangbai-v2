@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
 } from '../staff-assignment';
@@ -202,19 +198,6 @@ export async function submitDemandBatch(
       replayed: false,
     };
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `demand-batch-submitted:${demandBatchId}`,
-      eventType: 'DEMAND_BATCH_SUBMITTED',
-      aggregateType: 'DEMAND_BATCH',
-      aggregateId: demandBatchId,
-      payload: {
-        ...response,
-        buyer_visible_notes: buyerVisibleNotes,
-        schedule_policy_version: schedulePolicyVersion,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -315,7 +298,6 @@ export async function submitDemandBatch(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

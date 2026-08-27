@@ -11,10 +11,6 @@ import type {
 } from '@ygb/contracts';
 import { filePurposeEntityType } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from './authorization';
 import { createFileEventStatement } from './file-events';
 import { FileStorageError } from './file-error';
@@ -180,27 +176,6 @@ export async function buildExplicitAudienceFileLinkStatements(
     expiresAt: linkExpiresAt,
     grants: Object.freeze(grants.map((grant) => grant.result)),
   });
-  const outbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `explicit-file-link-created:${linkId}`,
-    eventType: 'EXPLICIT_FILE_AUDIENCES_CREATED',
-    aggregateType: 'FILE_ENTITY_LINK',
-    aggregateId: linkId,
-    payload: {
-      file_entity_link_id: linkId,
-      file_object_id: fileObjectId,
-      entity_type: input.entityType,
-      entity_id: entityId,
-      authorization_mode: 'EXPLICIT_AUDIENCES',
-      grant_subjects: grants.map((grant) => ({
-        subject_type: grant.result.subjectType,
-        subject_authority_id: grant.result.subjectAuthorityId,
-        expires_at: grant.result.expiresAt,
-      })),
-      expires_at: linkExpiresAt,
-    },
-    createdAt: now,
-  });
 
   const statements: SqlStatement[] = [
     database.prepare(`
@@ -345,7 +320,6 @@ export async function buildExplicitAudienceFileLinkStatements(
       },
       createdAt: now,
     }),
-    ...createOutboxStatements(database, outbox),
     assertExplicitLinkCreatedStatement(
       database,
       result,

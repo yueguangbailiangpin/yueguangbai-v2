@@ -148,16 +148,10 @@ describe('seller product applications and staff review', () => {
         (SELECT COUNT(*) FROM audit_events audit
           WHERE audit.aggregate_id=? OR audit.aggregate_id IN (
             SELECT id FROM file_entity_links WHERE entity_type='PRODUCT_APPLICATION' AND entity_id=?
-          )) AS audits,
-        (SELECT COUNT(*) FROM integration_outbox outbox
-          WHERE outbox.aggregate_id=? OR outbox.aggregate_id IN (
-            SELECT id FROM file_entity_links WHERE entity_type='PRODUCT_APPLICATION' AND entity_id=?
-          )) AS outbox_events
+          )) AS audits
     `,
       )
       .bind(
-        submitted.application_id,
-        submitted.application_id,
         submitted.application_id,
         submitted.application_id,
         submitted.application_id,
@@ -169,14 +163,12 @@ describe('seller product applications and staff review', () => {
         grants: number;
         audience_events: number;
         audits: number;
-        outbox_events: number;
       }>();
     expect(committed).toEqual({
       links: 1,
       grants: 2,
       audience_events: 3,
       audits: 2,
-      outbox_events: 2,
     });
     await expect(database.prepare(`
       SELECT ordering_guide_expected_amount_jpy AS amount
@@ -1143,7 +1135,7 @@ describe('seller product applications and staff review', () => {
     seedProductApplicationFixture(database);
     database.exec(`
       CREATE TRIGGER test_reject_product_application_outbox
-      BEFORE INSERT ON integration_outbox
+      BEFORE INSERT ON audit_events
       WHEN NEW.event_type='PRODUCT_APPLICATION_SUBMITTED'
       BEGIN
         SELECT RAISE(ABORT, 'forced_product_application_outbox_failure');
@@ -1168,8 +1160,7 @@ describe('seller product applications and staff review', () => {
         (SELECT COUNT(*) FROM product_applications) AS applications,
         (SELECT COUNT(*) FROM file_entity_links) AS links,
         (SELECT COUNT(*) FROM file_entity_audience_grants) AS grants,
-        (SELECT COUNT(*) FROM audit_events) AS audits,
-        (SELECT COUNT(*) FROM integration_outbox) AS outbox_events
+        (SELECT COUNT(*) FROM audit_events) AS audits
     `,
       )
       .first<{
@@ -1177,9 +1168,8 @@ describe('seller product applications and staff review', () => {
         links: number;
         grants: number;
         audits: number;
-        outbox_events: number;
       }>();
-    expect(counts).toEqual({ applications: 0, links: 0, grants: 0, audits: 0, outbox_events: 0 });
+    expect(counts).toEqual({ applications: 0, links: 0, grants: 0, audits: 0 });
   });
 });
 
@@ -1437,12 +1427,10 @@ async function productReviewBusinessCounts(database: SqliteDatabase, application
     (SELECT COUNT(*) FROM products) AS products,
     (SELECT COUNT(*) FROM product_application_events WHERE application_id=?) AS events,
     (SELECT COUNT(*) FROM audit_events
-      WHERE aggregate_type='PRODUCT_APPLICATION' AND aggregate_id=?) AS audits,
-    (SELECT COUNT(*) FROM integration_outbox
-      WHERE aggregate_type='PRODUCT_APPLICATION' AND aggregate_id=?) AS outbox_events
+      WHERE aggregate_type='PRODUCT_APPLICATION' AND aggregate_id=?) AS audits
   `,
     )
-    .bind(applicationId, applicationId, applicationId, applicationId, applicationId)
+    .bind(applicationId, applicationId, applicationId, applicationId)
     .first();
 }
 

@@ -19,7 +19,7 @@ describe('Staff operating integrity mutation closure', () => {
     let lookupCount = 0;
     let eventBody: unknown;
     server.use(
-      http.get(/\/api\/staff\/operating-integrity\/order-lookup/u, () => {
+      http.get(apiUrl('/api/staff/formal-orders'), () => {
         lookupCount += 1;
         if (lookupCount > 1) {
           return HttpResponse.json(
@@ -30,7 +30,7 @@ describe('Staff operating integrity mutation closure', () => {
             { status: 503 },
           );
         }
-        return HttpResponse.json({ data: { order: orderFixture() }, meta: { request_id: 'order-read' } });
+        return HttpResponse.json({ data: aggregateFixture(), meta: { request_id: 'order-read' } });
       }),
       http.post(apiUrl('/api/staff/order-integrity/order-1/events'), async ({ request }) => {
         eventBody = await request.json();
@@ -74,29 +74,18 @@ describe('Staff operating integrity mutation closure', () => {
   });
 });
 
-function orderFixture() {
+
+function aggregateFixture() {
   return {
-    formal_order_id: 'order-1',
-    amazon_order_number: 'ORDER-1',
-    buyer_customer_id: 'buyer-1',
-    seller_organization_id: 'seller-1',
-    marketplace_code: 'AMAZON_JP',
-    product_name: '测试产品',
-    confirmed_at: 1_787_000_000_000,
-    marketplace_business_date: null,
-    review_case_id: null,
-    review_status: null,
-    has_refund_obligation: null,
-    advance_full_amount_cny_fen: null,
-    advance_net_cny_fen: null,
-    active_advance_payment_id: null,
-    operational_state: 'NORMAL',
-    actions: {
-      record_order_event: { allowed: true, reason: null },
-      record_review_visibility: { allowed: false, reason: 'NO_REVIEW' },
-      approve_review: { allowed: false, reason: 'NO_REVIEW' },
-      record_advance_principal: { allowed: false, reason: 'ROLE_NOT_ALLOWED' },
-      record_profit_adjustment: { allowed: false, reason: 'ROLE_NOT_ALLOWED' },
+    order: {
+      formal_order_id: 'order-1',
+      amazon_order_number: 'ORDER-1',
+      marketplace_code: 'AMAZON_JP',
+      amazon_order_date: '2026-08-01',
+      confirmed_at: 1_787_000_000_000,
+      status: 'CONFIRMED',
     },
+    buyer: { buyer_customer_id: 'buyer-1', display_name: 'Buyer 1', customer_no: '20260801B0001' },
+    seller: { seller_organization_id: 'seller-1', store_display_name: 'Store 1' },
   };
 }

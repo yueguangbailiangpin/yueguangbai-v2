@@ -15,10 +15,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   cleanApplicationIdentifier,
   insertProductApplicationEventStatement,
   normalizeProductApplicationError,
@@ -141,22 +137,6 @@ export async function withdrawProductApplication(
       application_version: nextVersion,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `product-application-withdrawn:${applicationId}`,
-      eventType: 'PRODUCT_APPLICATION_WITHDRAWN',
-      aggregateType: 'PRODUCT_APPLICATION',
-      aggregateId: applicationId,
-      payload: {
-        application_id: applicationId,
-        seller_organization_id: source.organization_id,
-        store_id: source.store_id,
-        status: 'WITHDRAWN',
-        application_version: nextVersion,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -213,7 +193,6 @@ export async function withdrawProductApplication(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

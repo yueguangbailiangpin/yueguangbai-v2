@@ -1,6 +1,6 @@
 import type { SqlDatabase } from '@ygb/contracts';
 import { normalizeWechatId } from '@ygb/domain';
-import { hashNormalizedWechat } from '../acquisition/privacy';
+import { hashNormalizedWechat } from './wechat-identity-crypto';
 import { createAuditEventStatement } from '../foundation/audit';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';

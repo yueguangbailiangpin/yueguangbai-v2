@@ -20,7 +20,6 @@ import {
   runArchiveSelectorScan,
   serializeSelectorScanState,
 } from '../cold-image-archive/selector';
-import { claimNextOutboxEvent, markOutboxFailed, markOutboxSent } from '../foundation/outbox';
 import { reconcileUnlinkedFileRetention } from '../files/retention';
 import {
   countOrderInstructionExpiryCandidates,
@@ -31,7 +30,6 @@ import { expireReservation } from '../reservations/expire-reservation';
 export const SCHEDULED_JOB_NAMES = [
   'reservation_expiry',
   'instruction_expiry',
-  'outbox_delivery',
   'file_orphan_cleanup',
   'drive_archive',
 ] as const;
@@ -46,9 +44,6 @@ export interface SafeJobRun {
   backlog_count: number;
   failure_category: string | null;
 }
-export interface OutboxDeliveryAdapter {
-  deliver(event: { id: string; eventType: string; payloadJson: string }): Promise<void>;
-}
 export interface ArchiveScheduledRuntime {
   client: DriveArchiveClient | null;
   queue: ArchiveQueueProducer | null;
@@ -59,7 +54,6 @@ export interface ArchiveScheduledRuntime {
 }
 const LEASE_MS = 90_000;
 const BATCH = 50;
-const MAX_OUTBOX_ATTEMPTS = 5;
 const SYSTEM_SCHEDULER_ACTOR = Object.freeze({
   staffId: 'system-scheduler',
   displayName: 'System Scheduler',
@@ -82,8 +76,6 @@ export async function runScheduledOperations(
     disabledJobs?: readonly string[];
     storage?: ObjectStorageAdapter | null;
     archive?: ArchiveScheduledRuntime | null;
-    outboxDeliveryEnabled?: boolean;
-    outboxAdapter?: OutboxDeliveryAdapter | null;
     trigger?: ScheduledTrigger;
     only?: ScheduledJobName;
     dryRun?: boolean;
@@ -127,12 +119,10 @@ async function runOne(
   const driveHardDisabled =
     job === 'drive_archive' &&
     (input.archive?.selectorEnabled !== true || !input.storage || !input.archive.client);
-  const outboxHardDisabled = job === 'outbox_delivery' && input.outboxDeliveryEnabled === false;
   if (
     input.enabled === false ||
     input.disabledJobs?.includes(job) ||
-    driveHardDisabled ||
-    outboxHardDisabled
+    driveHardDisabled
   )
     return {
       job_name: job,
@@ -322,7 +312,7 @@ async function execute(
         );
         succeeded += 1;
         last = row;
-      } catch {
+      } catch (error) {
         failed += 1;
         last = row;
       }
@@ -507,86 +497,10 @@ async function execute(
       failureCategory: failed > 0 ? 'job_item_failed' : undefined,
     };
   }
-  if (input.dryRun) {
-    const c = await database
-      .prepare(
-        "SELECT COUNT(*) AS count FROM integration_outbox o WHERE status IN ('PENDING','FAILED') AND available_at<=? AND o.aggregate_type<>'STAFF_WORK_ITEM' AND NOT EXISTS(SELECT 1 FROM scheduled_dead_letters d WHERE d.source_kind='OUTBOX' AND d.source_id=o.id AND d.replay_status IN ('QUARANTINED','PROCESSING'))",
-      )
-      .bind(input.now)
-      .first<{ count: number }>();
-    return { processed: 0, succeeded: 0, failed: 0, backlog: Number(c?.count ?? 0) };
-  }
-  let processed = 0;
-  let succeeded = 0;
-  let failed = 0;
-  let category: 'adapter_unavailable' | 'delivery_failed' | undefined;
-  for (; processed < batchSize && !input.deadlineReached?.(); processed += 1) {
-    const event = await claimNextOutboxEvent(database, {
-      now: input.now,
-      leaseMs: LEASE_MS,
-      excludeAggregateType: 'STAFF_WORK_ITEM',
-    });
-    if (!event) break;
-    const fail = async (kind: 'adapter_unavailable' | 'delivery_failed') => {
-      category = kind;
-      failed += 1;
-      if (event.attempt_count >= MAX_OUTBOX_ATTEMPTS) {
-        await database
-          .prepare(
-            "INSERT INTO scheduled_dead_letters(id,job_name,source_kind,source_id,failure_category,attempt_count,quarantined_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_name,source_kind,source_id) DO UPDATE SET failure_category=excluded.failure_category,attempt_count=excluded.attempt_count,quarantined_at=excluded.quarantined_at,replay_status='QUARANTINED',replay_lease_token=NULL,replay_lease_expires_at=NULL,replayed_at=NULL,replayed_by_staff_id=NULL,replay_request_id=NULL,replay_idempotency_key=NULL,replay_version=scheduled_dead_letters.replay_version+1 WHERE scheduled_dead_letters.replay_status='REPLAYED'",
-          )
-          .bind(
-            crypto.randomUUID(),
-            'outbox_delivery',
-            'OUTBOX',
-            event.id,
-            kind,
-            event.attempt_count,
-            input.now,
-          )
-          .run();
-        await markOutboxFailed(database, event, {
-          error: 'quarantined',
-          nextAttemptAt: input.now + 365 * 86400000,
-          now: input.now,
-        });
-      } else
-        await markOutboxFailed(database, event, {
-          error: kind,
-          nextAttemptAt: input.now + backoff(event.attempt_count),
-          now: input.now,
-        });
-    };
-    if (!input.outboxAdapter) await fail('adapter_unavailable');
-    else
-      try {
-        await input.outboxAdapter.deliver({
-          id: event.id,
-          eventType: event.event_type,
-          payloadJson: event.payload_json,
-        });
-        await markOutboxSent(database, event, input.now);
-        succeeded += 1;
-      } catch {
-        await fail('delivery_failed');
-      }
-  }
-  const pending = await database
-    .prepare(
-      "SELECT COUNT(*) AS count FROM integration_outbox o WHERE o.status IN ('PENDING','FAILED') AND o.aggregate_type<>'STAFF_WORK_ITEM' AND NOT EXISTS(SELECT 1 FROM scheduled_dead_letters d WHERE d.source_kind='OUTBOX' AND d.source_id=o.id AND d.replay_status IN ('QUARANTINED','PROCESSING'))",
-    )
-    .first<{ count: number }>();
-  return {
-    processed,
-    succeeded,
-    failed,
-    backlog: Number(pending?.count ?? 0),
-    failureCategory: category,
-  };
+  // D-056: the outbox_delivery job is retired with the integration outbox.
+  return { processed: 0, succeeded: 0, failed: 0, backlog: 0 };
 }
-function backoff(attempt: number): number {
-  return Math.min(3_600_000, 30_000 * 2 ** Math.min(attempt, 7));
-}
+
 async function countReservationExpiryCandidates(
   database: SqlDatabase,
   now: number,

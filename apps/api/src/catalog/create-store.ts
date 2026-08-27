@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   CatalogError,
   cleanCatalogIdentifier,
   normalizeCatalogError,
@@ -172,20 +168,6 @@ export async function createSellerStore(
       version: 1,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-store-created:${storeId}`,
-      eventType: 'SELLER_STORE_CREATED',
-      aggregateType: 'SELLER_STORE',
-      aggregateId: storeId,
-      payload: {
-        store_id: storeId,
-        seller_organization_id: organizationId,
-        marketplace_code: input.marketplaceCode,
-        display_name: storeName.display,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -263,7 +245,6 @@ export async function createSellerStore(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

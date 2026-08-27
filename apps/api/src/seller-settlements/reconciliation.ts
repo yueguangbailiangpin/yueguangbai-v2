@@ -11,7 +11,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
   authorizeSellerSettlement,
@@ -182,21 +181,6 @@ export async function reconcileSellerPayables(
       next_cursor: hasMore ? page.at(-1)?.entity_key ?? null : null,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-payable-reconciliation:${acquired.claim.idempotencyKey}`,
-      eventType: 'SELLER_PAYABLE_RECONCILIATION_RAN',
-      aggregateType: 'SELLER_ORGANIZATION',
-      aggregateId: sellerOrganizationId,
-      payload: {
-        seller_organization_id: sellerOrganizationId,
-        scanned_count: response.scanned_count,
-        created_count: response.created_count,
-        conflict_count: response.conflict_count,
-        next_cursor: response.next_cursor,
-      },
-      createdAt: now,
-    });
     statements.push(
       createAuditEventStatement(database, {
         id: crypto.randomUUID(),
@@ -214,7 +198,6 @@ export async function reconcileSellerPayables(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           seller_organization_id: sellerOrganizationId,

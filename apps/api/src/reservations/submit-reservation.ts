@@ -15,10 +15,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
 } from '../staff-assignment';
@@ -219,20 +215,6 @@ export async function submitReservation(
       checkedAt: now,
     });
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `reservation-submitted:${reservationId}`,
-      eventType: 'RESERVATION_SUBMITTED',
-      aggregateType: 'RESERVATION',
-      aggregateId: reservationId,
-      payload: {
-        ...response,
-        seller_organization_id:
-          source.organization_id,
-        store_id: source.store_id,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [];
     statements.push(
@@ -439,7 +421,6 @@ export async function submitReservation(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

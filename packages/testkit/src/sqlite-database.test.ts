@@ -35,24 +35,20 @@ describe('SQLite D1-compatible test adapter', () => {
     database = createMigratedTestDatabase();
 
     await expect(database.batch([
-      database.prepare(`INSERT INTO integration_outbox (
-        id, dedup_key, event_type, aggregate_type, aggregate_id,
-        payload_json, payload_hash, status, available_at,
-        lease_token, lease_expires_at, attempt_count, last_error,
-        created_at, updated_at, sent_at
+      database.prepare(`INSERT INTO audit_events (
+        id, aggregate_type, aggregate_id, event_type, actor_json,
+        request_id, idempotency_key, previous_state_json, next_state_json, created_at
       ) VALUES (
-        'outbox-before-failure', 'dedup-before-failure', 'TEST',
-        'TEST', 'aggregate-1', '{}',
-        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        'PENDING', 1, NULL, NULL, 0, NULL, 1, 1, NULL
+        'rollback-before-failure', 'TEST', 'aggregate-1', 'TEST_EVENT',
+        '{}', NULL, NULL, NULL, '{}', 1
       )`),
       database.prepare(`INSERT INTO transaction_assertions
         (assertion_value) VALUES (0)`),
     ])).rejects.toThrow();
 
     const row = await database.prepare(
-      `SELECT id FROM integration_outbox
-       WHERE id='outbox-before-failure'`,
+      `SELECT id FROM audit_events
+       WHERE id='rollback-before-failure'`,
     ).first();
     expect(row).toBeNull();
   });

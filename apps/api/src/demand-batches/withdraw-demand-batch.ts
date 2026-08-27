@@ -14,10 +14,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import { prepareWorkItemCompletionStatements } from '../staff-assignment';
 import {
   cleanDemandIdentifier,
@@ -133,20 +129,6 @@ export async function withdrawDemandBatch(
       version: nextVersion,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `demand-batch-withdrawn:${demandBatchId}`,
-      eventType: 'DEMAND_BATCH_WITHDRAWN',
-      aggregateType: 'DEMAND_BATCH',
-      aggregateId: demandBatchId,
-      payload: {
-        demand_batch_id: demandBatchId,
-        seller_organization_id: source.organization_id,
-        status: 'WITHDRAWN',
-        version: nextVersion,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -207,7 +189,6 @@ export async function withdrawDemandBatch(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

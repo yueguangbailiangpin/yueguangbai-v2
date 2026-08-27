@@ -5,10 +5,6 @@ import type {
   SqlStatement,
 } from '@ygb/contracts';
 import { createAuditEventStatement } from '../foundation/audit';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from '../files/authorization';
 import {
   prepareFileObjectClone,
@@ -105,20 +101,6 @@ export async function prepareMainImageCloneStatements(
     },
   );
 
-  const outbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `product-version-main-image:${input.productVersionId}`,
-    eventType: 'PRODUCT_VERSION_MAIN_IMAGE_LINKED',
-    aggregateType: 'PRODUCT',
-    aggregateId: input.productId,
-    payload: {
-      product_id: input.productId,
-      product_version_id: input.productVersionId,
-      file_entity_link_id: preparedLink.result.linkId,
-      cloned_from_file_object_id: input.sourceFileObjectId,
-    },
-    createdAt: command.now,
-  });
 
   const statements: SqlStatement[] = [
     ...clone.statements,
@@ -157,7 +139,6 @@ export async function prepareMainImageCloneStatements(
       },
       createdAt: command.now,
     }),
-    ...createOutboxStatements(database, outbox),
     database.prepare(`
       INSERT INTO transaction_assertions (assertion_value)
       SELECT CASE WHEN EXISTS (

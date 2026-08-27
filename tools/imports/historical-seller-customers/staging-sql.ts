@@ -21,7 +21,6 @@ export function emitHistoricalSellerStagingSql(
     const subjectId = `historical-seller-subject-${fragment(customer.normalizedWechat)}`;
     const claimId = `historical-seller-claim-${fragment(customer.normalizedWechat)}`;
     const memberId = `historical-seller-member-${fragment(customer.normalizedWechat)}`;
-    const exemptionId = `historical-seller-exempt-${fragment(customer.normalizedWechat)}`;
     const channelId = `seller-channel-${customer.channelCode}`;
     const sequence = 2_000_000 + index;
     const existing = `EXISTS(
@@ -62,20 +61,6 @@ export function emitHistoricalSellerStagingSql(
       ${sql(`${customer.sellerCode}:owner`)},${sql(customer.displayWechat)},
       'OWNER',1,'ACTIVE',1,${options.now},${options.now},${options.now},NULL
       WHERE NOT ${existing};`);
-    statements.push(`INSERT OR IGNORE INTO acquisition_historical_source_exemptions(
-      id,subject_type,subject_id,marketplace_code,reason,declared_at,declared_by_staff_id
-    ) SELECT ${sql(exemptionId)},'SELLER_ORGANIZATION',organization.id,'AMAZON_JP',
-      ${sql(`TENCENT_FROZEN_DIRECTORY_2026_08_17;SOURCE_FILES=${customer.sources.length}`)},
-      ${options.now},${sql(options.actorStaffId)}
-      FROM seller_organizations organization
-      JOIN seller_organization_members member
-        ON member.organization_id=organization.id AND member.status='ACTIVE'
-      JOIN wechat_identity_claims claim
-        ON claim.identity_subject_id=member.identity_subject_id AND claim.status='ACTIVE'
-      WHERE organization.status='ACTIVE'
-        AND lower(claim.normalized_wechat)=${sql(customer.normalizedWechat)}
-      ORDER BY CASE WHEN organization.id=${sql(customer.organizationId)} THEN 0 ELSE 1 END,
-        organization.id LIMIT 1;`);
   }
   return statements.join('\n');
 }

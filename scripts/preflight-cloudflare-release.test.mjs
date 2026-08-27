@@ -24,15 +24,6 @@ const root = path.resolve(import.meta.dirname, '..');
 const script = path.join(root, 'scripts/preflight-cloudflare-release.mjs');
 
 describe('Cloudflare release preflight', () => {
-  it('keeps Outbox delivery disabled in every checked-in environment template',()=>{
-    for(const file of [
-      'wrangler.example.jsonc',
-      'apps/api/wrangler.local.jsonc',
-      'apps/api/wrangler.staging.template.jsonc',
-      'apps/api/wrangler.production.template.jsonc',
-    ]) expect(readLocalReleaseConfig(path.join(root,file)).vars.OUTBOX_DELIVERY_ENABLED).toBe('false');
-  });
-
   for (const environment of ['staging', 'production']) {
     it(`reports ${environment} operator fields without treating the template as deployable`, () => {
       const report = inspectReleaseTemplate(environment);
@@ -48,10 +39,6 @@ describe('Cloudflare release preflight', () => {
     it(`accepts only a complete anonymous ${environment} rendering`, () => {
       const config = anonymousConfig(environment);
       expect(validateReleaseConfig(config, environment)).toEqual([]);
-      config.vars.OUTBOX_DELIVERY_ENABLED = 'true';
-      expect(validateReleaseConfig(config, environment))
-        .toContain('vars.OUTBOX_DELIVERY_ENABLED:must_be_false');
-      config.vars.OUTBOX_DELIVERY_ENABLED = 'false';
       config.vars.DRIVE_ARCHIVE_R2_DELETE_ENABLED = 'true';
       expect(validateReleaseConfig(config, environment))
         .toContain('vars.DRIVE_ARCHIVE_R2_DELETE_ENABLED:must_be_false');

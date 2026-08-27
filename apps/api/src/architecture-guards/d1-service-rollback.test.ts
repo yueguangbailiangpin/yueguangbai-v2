@@ -61,7 +61,6 @@ describe('Wave 13 service-level D1 rollback boundaries', () => {
     expect(count(base, 'formal_order_financial_snapshots')).toBe(0);
     expect(count(base, 'seller_payables')).toBe(0);
     expect(count(base, 'audit_events')).toBe(0);
-    expect(count(base, 'integration_outbox')).toBe(0);
     expect(commandState(base, 'fault-atomic-approval')).toEqual({
       status: 'FAILED',
       error_code: 'DEPENDENCY_UNAVAILABLE',
@@ -101,7 +100,6 @@ describe('Wave 13 service-level D1 rollback boundaries', () => {
     expect(count(base, 'file_entity_links')).toBe(0);
     expect(count(base, 'file_entity_audience_grants')).toBe(0);
     expect(count(base, 'audit_events')).toBe(0);
-    expect(count(base, 'integration_outbox')).toBe(0);
     expect(commandState(base, 'fault-refund-payment')).toEqual({
       status: 'FAILED',
       error_code: 'DEPENDENCY_UNAVAILABLE',
@@ -133,7 +131,6 @@ describe('Wave 13 service-level D1 rollback boundaries', () => {
     expect(count(base, 'buyer_refund_payment_entries')).toBe(0);
     expect(count(base, 'buyer_refund_events')).toBe(0);
     expect(count(base, 'audit_events')).toBe(0);
-    expect(count(base, 'integration_outbox')).toBe(0);
     expect(commandState(base, 'fault-refund-reversal')).toEqual({
       status: 'FAILED',
       error_code: 'DEPENDENCY_UNAVAILABLE',

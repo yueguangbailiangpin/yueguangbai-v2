@@ -11,10 +11,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import { requireCurrentReviewCaseForBuyer } from './review-records';
 import { insertReviewEventStatement } from './review-events';
 import {
@@ -90,15 +86,6 @@ export async function withdrawReview(
       current_evidence_version_id: source.current_evidence_version_id,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `review-withdrawn:${source.review_case_id}`,
-      eventType: 'REVIEW_WITHDRAWN',
-      aggregateType: 'REVIEW_CASE',
-      aggregateId: source.review_case_id,
-      payload: response,
-      createdAt: now,
-    });
     const statements: SqlStatement[] = [
       database.prepare(`
         UPDATE review_cases
@@ -156,7 +143,6 @@ export async function withdrawReview(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

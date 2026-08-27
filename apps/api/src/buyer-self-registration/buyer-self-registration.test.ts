@@ -128,8 +128,6 @@ describe('Phase 4A2 buyer invited registration', () => {
     for (const query of [
       `SELECT previous_state_json || next_state_json || metadata_json AS text
        FROM audit_events ORDER BY created_at DESC LIMIT 1`,
-      `SELECT payload_json AS text
-       FROM integration_outbox ORDER BY created_at DESC LIMIT 1`,
     ]) {
       const row = await database.prepare(query).first<{ text: string | null }>();
       expect(row?.text ?? '').not.toContain(plaintext);

@@ -24,11 +24,6 @@ import {
   markIdempotencyFailed,
   type IdempotencyClaim,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-  type PreparedOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from './authorization';
 import { authorizeFileRead } from './file-audience-authorization';
 import { createFileEventStatement } from './file-events';
@@ -180,21 +175,6 @@ export async function createFileReadIntent(
       accessToken: null,
       accessTokenAvailable: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `file-read-intent-issued:${readIntentId}`,
-      eventType: 'FILE_READ_INTENT_ISSUED',
-      aggregateType: 'FILE_OBJECT',
-      aggregateId: fileObjectId,
-      payload: {
-        read_intent_id: readIntentId,
-        file_object_id: fileObjectId,
-        entity_type: source.entity_type,
-        entity_id: source.entity_id,
-        expires_at: expiresAt,
-      },
-      createdAt: now,
-    });
 
     await database.batch(
       buildReadIntentStatements(database, {
@@ -206,7 +186,6 @@ export async function createFileReadIntent(
         expiresAt,
         firstResponse,
         storedResponse,
-        outbox,
       }, command, now),
     );
     return firstResponse;
@@ -231,7 +210,6 @@ interface ReadIntentPreparation {
   expiresAt: number;
   firstResponse: FileReadIntentResult;
   storedResponse: FileReadIntentResult;
-  outbox: PreparedOutboxEvent;
 }
 
 function buildReadIntentStatements(
@@ -245,7 +223,7 @@ function buildReadIntentStatements(
 ): readonly SqlStatement[] {
   const {
     claim, source, fileObjectId, readIntentId, tokenHash, expiresAt,
-    firstResponse, storedResponse, outbox,
+    firstResponse, storedResponse,
   } = preparation;
   void firstResponse;
   return [
@@ -311,7 +289,6 @@ function buildReadIntentStatements(
       },
       createdAt: now,
     }),
-    ...createOutboxStatements(database, outbox),
     completeIdempotencyStatement(
       database,
       claim,
@@ -460,22 +437,6 @@ export async function createFileReadIntentsBatch(
         accessToken: null,
         accessTokenAvailable: false,
       };
-      const outbox = await prepareOutboxEvent({
-        id: crypto.randomUUID(),
-        dedupKey: `file-read-intent-issued:${readIntentId}`,
-        eventType: 'FILE_READ_INTENT_ISSUED',
-        aggregateType: 'FILE_OBJECT',
-        aggregateId: fileObjectId,
-        payload: {
-          read_intent_id: readIntentId,
-          file_object_id: fileObjectId,
-          entity_type: source.entity_type,
-          entity_id: source.entity_id,
-          expires_at: expiresAt,
-          batch: true,
-        },
-        createdAt: now,
-      });
       return {
         replay: null,
         claim: acquired.claim,
@@ -488,7 +449,6 @@ export async function createFileReadIntentsBatch(
           expiresAt,
           firstResponse,
           storedResponse,
-          outbox,
         } satisfies ReadIntentPreparation,
       };
     }));

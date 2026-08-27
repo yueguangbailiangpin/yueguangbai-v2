@@ -364,7 +364,6 @@ describe('Phase 3F formal order confirmation', () => {
       principal_payables: 0,
       order_events: 0,
       audit_events: 0,
-      outbox_events: 0,
     });
   });
 
@@ -402,7 +401,6 @@ describe('Phase 3F formal order confirmation', () => {
       principal_payables: 0,
       order_events: 0,
       audit_events: 0,
-      outbox_events: 0,
     });
     expect(database.raw.prepare(`
       SELECT COUNT(*) AS value FROM seller_principal_rate_snapshots
@@ -1424,8 +1422,7 @@ function atomicApprovalFactCounts(db: SqliteDatabase) {
       (SELECT COUNT(*) FROM seller_payables
         WHERE payable_type='SELLER_PRINCIPAL') AS principal_payables,
       (SELECT COUNT(*) FROM formal_order_events) AS order_events,
-      (SELECT COUNT(*) FROM audit_events) AS audit_events,
-      (SELECT COUNT(*) FROM integration_outbox) AS outbox_events
+      (SELECT COUNT(*) FROM audit_events) AS audit_events
   `).get();
 }
 

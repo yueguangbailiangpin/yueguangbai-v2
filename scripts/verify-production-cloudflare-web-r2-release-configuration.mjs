@@ -17,18 +17,15 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 72, `expected 72 migrations, found ${migrations.length}`);
-assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
-  && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
-  && migrations[40] === '0041_seller_principal_rate_policy.sql'
-  && migrations[41] === '0042_rakuten_tiktok_jp_marketplace_foundation.sql'
-  && migrations[42] === '0043_seller_principal_rate_integrity_hardening.sql'
-  && migrations[63] === '0064_marketplace_local_date_truth.sql'
-  && migrations[65] === '0066_advance_cash_integrity.sql'
-  && migrations[66] === '0067_advance_v1_full_payment.sql'
-  && migrations[69] === '0070_buyer_refund_reminders.sql'
-  && migrations[70] === '0071_product_application_amount.sql'
-  && migrations[71] === '0072_unified_order_day_rate_center.sql',
+assert(migrations.length === 29, `expected 29 migrations, found ${migrations.length}`);
+assert(migrations[0] === '0001_foundation.sql'
+  && migrations[18] === '0019_read_model_views.sql'
+  && migrations[23] === '0024_cold_archive_bundle_model.sql'
+  && migrations[24] === '0025_historical_order_import.sql'
+  && migrations[25] === '0026_stage65_archive_import_closeout.sql'
+  && migrations[26] === '0027_stage66_single_source_convergence.sql'
+  && migrations[27] === '0028_stage66b_fixed_assignment_and_files.sql'
+  && migrations[28] === '0029_stage66c_retire_acquisition_outbox.sql',
   'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {
@@ -72,7 +69,7 @@ for (const environment of ['staging', 'production']) {
     && config.assets?.run_worker_first === true,
   `${environment} template SPA asset contract mismatch`);
   const expectedScheduled = environment === 'production' ? 'true' : 'false';
-  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {
+  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED']) {
     assert(config.vars?.[flag] === expectedScheduled,
       `${environment} template scheduled default drift: ${flag}`);
   }

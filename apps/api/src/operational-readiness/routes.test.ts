@@ -114,8 +114,6 @@ describe('operational alert production readiness', () => {
         APP_ENVIRONMENT: 'staging',
         APP_RELEASE_SHA: RELEASE,
         SCHEDULED_OPERATIONS_ENABLED: 'false',
-        OUTBOX_DELIVERY_ENABLED: 'false',
-        ACQUISITION_MAINTENANCE_ENABLED: 'false',
         OPERATIONAL_ALERT_MODE: 'disabled',
         STAFF_ACCESS_TEAM_DOMAIN: 'https://staging-team.cloudflareaccess.com',
         STAFF_ACCESS_AUD: 'staging-access-audience',
@@ -135,8 +133,6 @@ describe('operational alert production readiness', () => {
         checks: {
           schema: 'ok',
           scheduler: 'not_required',
-          outbox_delivery: 'not_required',
-          acquisition_maintenance: 'not_required',
           operational_alerts: 'not_required',
           object_storage: 'ok',
           recovery: 'not_required',
@@ -151,8 +147,6 @@ describe('operational alert production readiness', () => {
         APP_ENVIRONMENT: 'staging',
         APP_RELEASE_SHA: RELEASE,
         SCHEDULED_OPERATIONS_ENABLED: 'false',
-        OUTBOX_DELIVERY_ENABLED: 'false',
-        ACQUISITION_MAINTENANCE_ENABLED: 'false',
         OPERATIONAL_ALERT_MODE: 'disabled',
         STAFF_ACCESS_TEAM_DOMAIN: 'https://staging.yueguangbai.net',
         STAFF_ACCESS_AUD: 'staging-access-audience',
@@ -166,8 +160,6 @@ describe('operational alert production readiness', () => {
     });
     for (const enabled of [
       { SCHEDULED_OPERATIONS_ENABLED: 'true' },
-      { OUTBOX_DELIVERY_ENABLED: 'true' },
-      { ACQUISITION_MAINTENANCE_ENABLED: 'true' },
       { OPERATIONAL_ALERT_MODE: 'local' },
     ]) {
       const blocked = await ready(
@@ -175,7 +167,6 @@ describe('operational alert production readiness', () => {
           APP_ENVIRONMENT: 'staging',
           APP_RELEASE_SHA: RELEASE,
           SCHEDULED_OPERATIONS_ENABLED: 'false',
-          ACQUISITION_MAINTENANCE_ENABLED: 'false',
           OPERATIONAL_ALERT_MODE: 'disabled',
           STAFF_ACCESS_TEAM_DOMAIN: 'https://staging-team.cloudflareaccess.com',
           STAFF_ACCESS_AUD: 'staging-access-audience',
@@ -196,8 +187,6 @@ describe('operational alert production readiness', () => {
         APP_ENVIRONMENT: 'staging',
         APP_RELEASE_SHA: RELEASE,
         SCHEDULED_OPERATIONS_ENABLED: 'false',
-        OUTBOX_DELIVERY_ENABLED: 'false',
-        ACQUISITION_MAINTENANCE_ENABLED: 'false',
         OPERATIONAL_ALERT_MODE: 'disabled',
         STAFF_ACCESS_TEAM_DOMAIN: 'https://staging-team.cloudflareaccess.com',
         STAFF_ACCESS_AUD: 'staging-access-audience',
@@ -283,10 +272,10 @@ describe('operational alert production readiness', () => {
     });
     const state = database!.raw
       .prepare(
-        `SELECT (SELECT COUNT(*) FROM audit_events WHERE event_type='OPERATIONAL_ALERT_SINK_ATTESTED') AS audits,(SELECT COUNT(*) FROM integration_outbox WHERE event_type='OPERATIONAL_ALERT_SINK_ATTESTED') AS outbox,(SELECT COUNT(*) FROM command_idempotency_records WHERE idempotency_key='alert-attestation-command-001' AND status='COMMITTED') AS committed,(SELECT next_state_json FROM audit_events WHERE event_type='OPERATIONAL_ALERT_SINK_ATTESTED') AS json`,
+        `SELECT (SELECT COUNT(*) FROM audit_events WHERE event_type='OPERATIONAL_ALERT_SINK_ATTESTED') AS audits,(SELECT COUNT(*) FROM command_idempotency_records WHERE idempotency_key='alert-attestation-command-001' AND status='COMMITTED') AS committed,(SELECT next_state_json FROM audit_events WHERE event_type='OPERATIONAL_ALERT_SINK_ATTESTED') AS json`,
       )
-      .get() as { audits: number; outbox: number; committed: number; json: string };
-    expect(state).toMatchObject({ audits: 1, outbox: 1, committed: 1 });
+      .get() as { audits: number; committed: number; json: string };
+    expect(state).toMatchObject({ audits: 1, committed: 1 });
     expect(state.json).not.toContain('nonce');
     expect(() =>
       database!.raw
@@ -347,10 +336,10 @@ describe('operational alert production readiness', () => {
     expect(
       database!.raw
         .prepare(
-          `SELECT (SELECT COUNT(*) FROM audit_events WHERE event_type='OPERATIONAL_ALERT_SINK_ATTESTED') AS audits,(SELECT COUNT(*) FROM integration_outbox WHERE event_type='OPERATIONAL_ALERT_SINK_ATTESTED') AS outbox,(SELECT COUNT(*) FROM command_idempotency_records WHERE action='ATTEST_OPERATIONAL_ALERT_SINK' AND status='COMMITTED') AS committed`,
+          `SELECT (SELECT COUNT(*) FROM audit_events WHERE event_type='OPERATIONAL_ALERT_SINK_ATTESTED') AS audits,(SELECT COUNT(*) FROM command_idempotency_records WHERE action='ATTEST_OPERATIONAL_ALERT_SINK' AND status='COMMITTED') AS committed`,
         )
         .get(),
-    ).toEqual({ audits: 0, outbox: 0, committed: 0 });
+    ).toEqual({ audits: 0, committed: 0 });
   });
 });
 

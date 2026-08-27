@@ -1562,11 +1562,9 @@ async function demandReviewBusinessCounts(
     (SELECT COUNT(*) FROM demand_batch_events WHERE demand_batch_id=?) AS events,
     (SELECT COUNT(*) FROM demand_order_schedule_versions WHERE demand_batch_id=?) AS schedules,
     (SELECT COUNT(*) FROM audit_events
-      WHERE aggregate_type='DEMAND_BATCH' AND aggregate_id=?) AS audits,
-    (SELECT COUNT(*) FROM integration_outbox
-      WHERE aggregate_type='DEMAND_BATCH' AND aggregate_id=?) AS outbox_events
+      WHERE aggregate_type='DEMAND_BATCH' AND aggregate_id=?) AS audits
   `).bind(demandBatchId, demandBatchId, demandBatchId, demandBatchId,
-    demandBatchId, demandBatchId).first();
+    demandBatchId).first();
 }
 
 function activeBuyer(): BuyerDemandContext {

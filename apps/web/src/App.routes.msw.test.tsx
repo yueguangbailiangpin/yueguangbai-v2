@@ -203,7 +203,6 @@ describe('application route registration', () => {
     for (const label of [
       '工作台',
       '客户',
-      '获客中心',
       '买家',
       '卖家',
       '产品与预约',

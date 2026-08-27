@@ -8,7 +8,6 @@ import { hashCanonicalJson } from '@ygb/domain';
 import { evaluatePersistedScheduledJobSignals } from './scheduled-operations/signals';
 import { archiveRuntime } from './cold-image-archive/runtime';
 import { processArchiveQueueMessage } from './cold-image-archive/queue-consumer';
-import { runAcquisitionMaintenance } from './acquisition/maintenance';
 import {
   isAllowedSameOriginApiRequest,
   isApiRequestPath,
@@ -72,8 +71,6 @@ export default {
           enabled: true,
           disabledJobs,
           storage: bindings.FILE_OBJECT_STORAGE ?? null,
-          outboxDeliveryEnabled: bindings.OUTBOX_DELIVERY_ENABLED === 'true',
-          outboxAdapter: bindings.OUTBOX_DELIVERY_ADAPTER ?? null,
           archive: {
             client: archive.client,
             queue: archive.queue,
@@ -119,12 +116,6 @@ export default {
               .catch(() => undefined);
             throw error;
           }
-        }
-        if (bindings.ACQUISITION_MAINTENANCE_ENABLED === 'true') {
-          await runAcquisitionMaintenance(bindings.DB, {
-            identitySecret: String(bindings.CUSTOMER_SECURITY_TOKEN_SECRET ?? ''),
-            now,
-          });
         }
         const evaluationId = await hashCanonicalJson({
           kind: 'SCHEDULED_OPERATIONS_EVALUATION',

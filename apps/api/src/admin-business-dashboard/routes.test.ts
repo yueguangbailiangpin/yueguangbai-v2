@@ -45,7 +45,6 @@ describe('admin business dashboard HTTP authority', () => {
     for (const path of [
       '/api/staff/admin-business-dashboard/summary?window=TODAY&window=WEEK',
       '/api/staff/admin-business-dashboard/summary?window=TODAY&owner=true',
-      '/api/staff/admin-business-dashboard/financial-projection?from_date=2026-08-01&to_date=2026-08-08&extra=1',
     ]) {
       const response = await request(owner(), path);
       expect(response.status).toBe(400);

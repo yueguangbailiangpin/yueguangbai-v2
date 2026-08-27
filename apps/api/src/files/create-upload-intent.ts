@@ -21,10 +21,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from './authorization';
 import { createFileEventStatement } from './file-events';
 import {
@@ -146,21 +142,6 @@ export async function createFileUploadIntent(
         uploadTokenAvailable: false,
       })),
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `file-upload-intent-issued:${uploadIntentId}`,
-      eventType: 'FILE_UPLOAD_INTENT_ISSUED',
-      aggregateType: 'FILE_UPLOAD_INTENT',
-      aggregateId: uploadIntentId,
-      payload: {
-        upload_intent_id: uploadIntentId,
-        purpose: input.purpose,
-        visibility: input.visibility,
-        file_count: slots.length,
-        expires_at: expiresAt,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -279,7 +260,6 @@ export async function createFileUploadIntent(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

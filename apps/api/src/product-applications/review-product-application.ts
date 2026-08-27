@@ -25,10 +25,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   prepareWorkItemCompletionStatements,
   requireSellerOrganizationScope,
   requireAssignedWorkflowActor,
@@ -294,29 +290,6 @@ export async function reviewProductApplication(
           now,
         );
     cloneCompensationKey = result.cloneObjectKey;
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `product-application-reviewed:${applicationId}`,
-      eventType:
-        input.decision === 'APPROVE'
-          ? 'PRODUCT_APPLICATION_APPROVED'
-          : 'PRODUCT_APPLICATION_REJECTED',
-      aggregateType: 'PRODUCT_APPLICATION',
-      aggregateId: applicationId,
-      payload: {
-        application_id: applicationId,
-        seller_organization_id: source.organization_id,
-        store_id: source.store_id,
-        asin: source.asin_normalized,
-        status: result.response.status,
-        application_version:
-          result.response.application_version,
-        product_id: result.response.product_id,
-        review_reason: result.response.review_reason,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       // Phase 3H access was resolved from persisted Staff facts above.
@@ -360,7 +333,6 @@ export async function reviewProductApplication(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

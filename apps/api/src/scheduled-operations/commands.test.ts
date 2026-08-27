@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { replayScheduledDeadLetter, runScheduledOperationManually } from './commands';
-import { runScheduledOperations } from './runner';
+import { runScheduledOperationManually } from './commands';
 
 let database: SqliteDatabase | null = null;
 afterEach(() => {
@@ -13,26 +12,18 @@ afterEach(() => {
 describe('scheduled operation manual commands', () => {
   it('runs once, replays the same result, and conflicts on a changed request', async () => {
     database = createMigratedTestDatabase();
-    seedOutbox(database, 'manual-event');
-    let sends = 0;
-    const dependencies = {
-      enabled: true,
-      outboxAdapter: {
-        deliver: async () => {
-          sends += 1;
-        },
-      },
-    };
+    seedExpirableReservation(database, 'manual');
+    const dependencies = { enabled: true };
     const first = await runScheduledOperationManually(
       database,
       dependencies,
-      { jobName: 'outbox_delivery', command: { reason_code: 'OPERATOR_RETRY' } },
+      { jobName: 'reservation_expiry', command: { reason_code: 'OPERATOR_RETRY' } },
       commandContext('manual-command-key'),
     );
     const replay = await runScheduledOperationManually(
       database,
       dependencies,
-      { jobName: 'outbox_delivery', command: { reason_code: 'OPERATOR_RETRY' } },
+      { jobName: 'reservation_expiry', command: { reason_code: 'OPERATOR_RETRY' } },
       commandContext('manual-command-key'),
     );
     expect(first).toEqual(replay);
@@ -41,12 +32,11 @@ describe('scheduled operation manual commands', () => {
       outcome: 'SUCCEEDED',
       run: { processed_count: 1, succeeded_count: 1 },
     });
-    expect(sends).toBe(1);
     await expect(
       runScheduledOperationManually(
         database,
         dependencies,
-        { jobName: 'outbox_delivery', command: { reason_code: 'BACKLOG_RECOVERY' } },
+        { jobName: 'reservation_expiry', command: { reason_code: 'BACKLOG_RECOVERY' } },
         commandContext('manual-command-key'),
       ),
     ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT', status: 409 });
@@ -59,8 +49,8 @@ describe('scheduled operation manual commands', () => {
         .first(),
     ).toEqual({
       command_type: 'RUN_JOB',
-      job_name: 'outbox_delivery',
-      target_id: 'outbox_delivery',
+      job_name: 'reservation_expiry',
+      target_id: 'reservation_expiry',
       reason_code: 'OPERATOR_RETRY',
       staff_id: 'zz-phase3h-test-owner',
       request_id: 'request-manual-command-key',
@@ -70,249 +60,44 @@ describe('scheduled operation manual commands', () => {
     expect(await auditFacts(database, 'SCHEDULED_OPERATION_MANUAL_RUN')).toHaveLength(1);
   });
 
-  it('allows only one effective side effect for a concurrent double click', async () => {
+  it('holds the idempotency lease against a concurrent double click', async () => {
     database = createMigratedTestDatabase();
-    seedOutbox(database, 'manual-race-event');
-    let enteredResolve!: () => void;
-    const entered = new Promise<void>((resolve) => {
-      enteredResolve = resolve;
-    });
-    let releaseResolve!: () => void;
-    const release = new Promise<void>((resolve) => {
-      releaseResolve = resolve;
-    });
-    let sends = 0;
-    const dependencies = {
-      enabled: true,
-      outboxAdapter: {
-        deliver: async () => {
-          sends += 1;
-          enteredResolve();
-          await release;
-        },
-      },
-    };
+    seedExpirableReservation(database, 'race');
+    const dependencies = { enabled: true };
     const first = runScheduledOperationManually(
       database,
       dependencies,
-      { jobName: 'outbox_delivery', command: { reason_code: 'OPERATOR_RETRY' } },
+      { jobName: 'reservation_expiry', command: { reason_code: 'OPERATOR_RETRY' } },
       commandContext('manual-race-key'),
     );
-    await entered;
     await expect(
       runScheduledOperationManually(
         database,
         dependencies,
-        { jobName: 'outbox_delivery', command: { reason_code: 'OPERATOR_RETRY' } },
+        { jobName: 'reservation_expiry', command: { reason_code: 'OPERATOR_RETRY' } },
         commandContext('manual-race-key'),
       ),
     ).rejects.toMatchObject({ code: 'REQUEST_IN_PROGRESS', status: 409 });
-    releaseResolve();
     await expect(first).resolves.toMatchObject({ outcome: 'SUCCEEDED' });
-    expect(sends).toBe(1);
   });
 
-  it('requeues an exact quarantined event once without copying its payload', async () => {
-    database = createMigratedTestDatabase();
-    seedDeadLetter(database, 'dead-1', 'poison-event');
-    let quarantinedSends = 0;
-    expect(
-      (
-        await runScheduledOperations(database, {
-          now: 1500,
-          only: 'outbox_delivery',
-          outboxAdapter: {
-            deliver: async () => {
-              quarantinedSends += 1;
-            },
-          },
-        })
-      )[0]?.processed_count,
-    ).toBe(0);
-    expect(quarantinedSends).toBe(0);
-    await expect(
-      replayScheduledDeadLetter(
-        database,
-        { enabled: true },
-        {
-          deadLetterId: 'dead-1',
-          command: { event_id: 'mismatched-event', reason_code: 'POISON_RECOVERY' },
-        },
-        commandContext('replay-mismatch-key'),
-      ),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
-    const first = await replayScheduledDeadLetter(
-      database,
-      { enabled: true },
-      {
-        deadLetterId: 'dead-1',
-        command: { event_id: 'poison-event', reason_code: 'POISON_RECOVERY' },
-      },
-      commandContext('replay-command-key'),
-    );
-    const replay = await replayScheduledDeadLetter(
-      database,
-      { enabled: true },
-      {
-        deadLetterId: 'dead-1',
-        command: { event_id: 'poison-event', reason_code: 'POISON_RECOVERY' },
-      },
-      commandContext('replay-command-key'),
-    );
-    expect(first).toEqual(replay);
-    expect(first).toMatchObject({ command_type: 'REPLAY_DEAD_LETTER', outcome: 'SUCCEEDED' });
-    expect(
-      await database
-        .prepare(
-          "SELECT replay_status,replayed_by_staff_id FROM scheduled_dead_letters WHERE id='dead-1'",
-        )
-        .first(),
-    ).toEqual({ replay_status: 'REPLAYED', replayed_by_staff_id: 'zz-phase3h-test-owner' });
-    expect(
-      await database
-        .prepare(
-          "SELECT status,attempt_count,last_error FROM integration_outbox WHERE id='poison-event'",
-        )
-        .first(),
-    ).toEqual({ status: 'PENDING', attempt_count: 0, last_error: null });
-    await expect(
-      replayScheduledDeadLetter(
-        database,
-        { enabled: true },
-        {
-          deadLetterId: 'dead-1',
-          command: { event_id: 'another-event', reason_code: 'POISON_RECOVERY' },
-        },
-        commandContext('replay-command-key'),
-      ),
-    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
-    await expect(
-      replayScheduledDeadLetter(
-        database,
-        { enabled: true },
-        {
-          deadLetterId: 'dead-1',
-          command: { event_id: 'poison-event', reason_code: 'POISON_RECOVERY' },
-        },
-        commandContext('replay-already-key'),
-      ),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
-    await expect(
-      replayScheduledDeadLetter(
-        database,
-        { enabled: true },
-        {
-          deadLetterId: 'missing-dead',
-          command: { event_id: 'poison-event', reason_code: 'POISON_RECOVERY' },
-        },
-        commandContext('replay-missing-key'),
-      ),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
-    seedDeadLetter(database, 'dead-sent', 'sent-event');
-    database.exec(
-      "UPDATE integration_outbox SET status='SENT',sent_at=2,last_error=NULL WHERE id='sent-event'",
-    );
-    await expect(
-      replayScheduledDeadLetter(
-        database,
-        { enabled: true },
-        {
-          deadLetterId: 'dead-sent',
-          command: { event_id: 'sent-event', reason_code: 'POISON_RECOVERY' },
-        },
-        commandContext('replay-sent-key'),
-      ),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
-    const audit = await auditFacts(database, 'SCHEDULED_OPERATION_DEAD_LETTER_REPLAY');
-    expect(audit).toHaveLength(3);
-    expect(
-      audit.map((row) => JSON.parse(String(row['next_state_json']))['outcome']).sort(),
-    ).toEqual(['FAILED', 'FAILED', 'SUCCEEDED']);
-    expect(JSON.stringify(audit)).not.toMatch(
-      /payload|secret-value|object_key|token|wechat|amount|last_error/u,
-    );
-    let sends = 0;
-    const delivered = await runScheduledOperations(database, {
-      now: 3000,
-      only: 'outbox_delivery',
-      outboxAdapter: {
-        deliver: async () => {
-          sends += 1;
-        },
-      },
-    });
-    expect(delivered[0]).toMatchObject({ outcome: 'SUCCEEDED', processed_count: 1 });
-    expect(sends).toBe(1);
-  });
 
-  it('prevents two different commands from concurrently replaying one dead letter', async () => {
-    database = createMigratedTestDatabase();
-    seedDeadLetter(database, 'dead-race', 'race-event');
-    let enteredResolve!: () => void;
-    const entered = new Promise<void>((resolve) => {
-      enteredResolve = resolve;
-    });
-    let releaseResolve!: () => void;
-    const release = new Promise<void>((resolve) => {
-      releaseResolve = resolve;
-    });
-    const first = replayScheduledDeadLetter(
-      database,
-      {
-        enabled: true,
-        afterReplayClaimed: async () => {
-          enteredResolve();
-          await release;
-        },
-      },
-      {
-        deadLetterId: 'dead-race',
-        command: { event_id: 'race-event', reason_code: 'POISON_RECOVERY' },
-      },
-      commandContext('replay-race-one'),
-    );
-    await entered;
-    await expect(
-      replayScheduledDeadLetter(
-        database,
-        { enabled: true },
-        {
-          deadLetterId: 'dead-race',
-          command: { event_id: 'race-event', reason_code: 'POISON_RECOVERY' },
-        },
-        commandContext('replay-race-two'),
-      ),
-    ).rejects.toMatchObject({ code: 'REQUEST_IN_PROGRESS', status: 409 });
-    releaseResolve();
-    await expect(first).resolves.toMatchObject({ outcome: 'SUCCEEDED' });
-    expect(
-      await database
-        .prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='dead-race'")
-        .first(),
-    ).toEqual({ replay_status: 'REPLAYED' });
-  });
 
-  it('applies global, per-job, and hard kill switches to manual commands and replay', async () => {
+  it('applies global, per-job, and hard kill switches to manual commands', async () => {
     database = createMigratedTestDatabase();
-    seedOutbox(database, 'disabled-event');
-    let sends = 0;
-    const adapter = {
-      deliver: async () => {
-        sends += 1;
-      },
-    };
+    seedExpirableReservation(database, 'disabled');
     const global = await runScheduledOperationManually(
       database,
-      { enabled: false, outboxAdapter: adapter },
-      { jobName: 'outbox_delivery', command: { reason_code: 'OPERATOR_RETRY' } },
+      { enabled: false },
+      { jobName: 'reservation_expiry', command: { reason_code: 'OPERATOR_RETRY' } },
       commandContext('global-disabled-key'),
     );
     expect(global.outcome).toBe('DISABLED');
-    database.exec("UPDATE scheduled_job_states SET enabled=0 WHERE job_name='outbox_delivery'");
+    database.exec("UPDATE scheduled_job_states SET enabled=0 WHERE job_name='reservation_expiry'");
     const perJob = await runScheduledOperationManually(
       database,
-      { enabled: true, outboxAdapter: adapter },
-      { jobName: 'outbox_delivery', command: { reason_code: 'OPERATOR_RETRY' } },
+      { enabled: true },
+      { jobName: 'reservation_expiry', command: { reason_code: 'OPERATOR_RETRY' } },
       commandContext('job-disabled-key'),
     );
     const hard = await runScheduledOperationManually(
@@ -322,24 +107,7 @@ describe('scheduled operation manual commands', () => {
       commandContext('hard-disabled-key'),
     );
     expect([perJob.outcome, hard.outcome]).toEqual(['DISABLED', 'DISABLED']);
-    expect(sends).toBe(0);
     expect(await count(database, 'scheduled_job_runs')).toBe(0);
-    seedDeadLetter(database, 'dead-disabled', 'disabled-replay-event');
-    const replay = await replayScheduledDeadLetter(
-      database,
-      { enabled: false },
-      {
-        deadLetterId: 'dead-disabled',
-        command: { event_id: 'disabled-replay-event', reason_code: 'POISON_RECOVERY' },
-      },
-      commandContext('replay-disabled-key'),
-    );
-    expect(replay.outcome).toBe('DISABLED');
-    expect(
-      await database
-        .prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='dead-disabled'")
-        .first(),
-    ).toEqual({ replay_status: 'QUARANTINED' });
   });
 
   it('requires an ACTIVE effective actor with the dedicated permission', async () => {
@@ -388,19 +156,6 @@ function commandContext(idempotencyKey: string): {
 } {
   return { actor: actor(), idempotencyKey, requestId: `request-${idempotencyKey}`, now: 2000 };
 }
-function seedOutbox(db: SqliteDatabase, id: string) {
-  db.exec(
-    `INSERT INTO integration_outbox(id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES('${id}','dedup-${id}','TEST','TEST','aggregate','{"secret":"secret-value"}','${'a'.repeat(64)}','PENDING',1,NULL,NULL,0,NULL,1,1,NULL)`,
-  );
-}
-function seedDeadLetter(db: SqliteDatabase, deadLetterId: string, eventId: string) {
-  db.exec(
-    "INSERT OR IGNORE INTO scheduled_job_states(job_name,updated_at) VALUES('outbox_delivery',1)",
-  );
-  db.exec(
-    `INSERT INTO integration_outbox(id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES('${eventId}','dedup-${eventId}','TEST','TEST','aggregate','{"secret":"secret-value"}','${'b'.repeat(64)}','FAILED',1,NULL,NULL,5,'quarantined',1,1,NULL); INSERT INTO scheduled_dead_letters(id,job_name,source_kind,source_id,failure_category,attempt_count,quarantined_at) VALUES('${deadLetterId}','outbox_delivery','OUTBOX','${eventId}','delivery_failed',5,1)`,
-  );
-}
 async function count(db: SqliteDatabase, table: string) {
   return Number(
     (await db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).first<{ count: number }>())
@@ -416,4 +171,73 @@ async function auditFacts(db: SqliteDatabase, eventType: string) {
       .bind(eventType)
       .all()
   ).results;
+}
+
+export function seedExpirableReservation(db: SqliteDatabase, suffix = 'so'): void {
+  db.exec(`
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+      VALUES ('${suffix}-subject','BUYER_CUSTOMER',1000);
+    INSERT INTO buyer_customers (
+      id, identity_subject_id, marketplace_code, buyer_channel_id,
+      buyer_customer_no, buyer_sequence, display_name, access_status,
+      identity_review_status, version, created_at, updated_at, activated_at, disabled_at
+    ) VALUES ('${suffix}-buyer','${suffix}-subject','AMAZON_JP','buyer-channel-wechat-b',
+      '20260801B9901',9901,'命令测试买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
+    INSERT INTO seller_channels (
+      id, code, prefix, name, status, version, created_at, updated_at, disabled_at
+    ) VALUES ('${suffix}-channel','socmd','socmd-','命令渠道','ACTIVE',1,1000,1000,NULL);
+    INSERT INTO seller_organizations (
+      id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
+      seller_sequence, organization_name, status, version,
+      created_at, updated_at, activated_at, next_member_number
+    ) VALUES ('${suffix}-org','AMAZON_JP','${suffix}-org-1','${suffix}-channel','${suffix}-channel',
+      9801,'命令测试组织','ACTIVE',1,1000,1000,1000,2);
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+      VALUES ('${suffix}-member-subject','SELLER_ORG_MEMBER',1000);
+    INSERT INTO seller_organization_members (
+      id, identity_subject_id, organization_id, member_number, username_fallback,
+      display_name, role, primary_owner, status, version,
+      created_at, updated_at, activated_at, disabled_at
+    ) VALUES ('${suffix}-member','${suffix}-member-subject','${suffix}-org',1,
+      '${suffix}-member-1','命令成员','OWNER',1,'ACTIVE',1,1000,1000,1000,NULL);
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code, display_name, normalized_name,
+      status, version, created_at, updated_at, disabled_at
+    ) VALUES ('${suffix}-store','${suffix}-org','AMAZON_JP','命令店铺','命令店铺',
+      'ACTIVE',1,1000,1000,NULL);
+    INSERT INTO products (
+      id, organization_id, store_id, marketplace_code, asin_display, asin_normalized,
+      status, current_version_no, version, created_at, updated_at, disabled_at
+    ) VALUES ('${suffix}-product','${suffix}-org','${suffix}-store','AMAZON_JP',
+      'B0SOCMD001','B0SOCMD001','ACTIVE',1,1,1000,1000,NULL);
+    INSERT INTO product_versions (
+      id, product_id, version_no, product_name, search_keywords_json, product_url,
+      buyer_visible_notes, internal_notes, created_by_staff_id, created_at,
+      ordering_guide_expected_amount_jpy, color_spec_mode
+    ) VALUES ('${suffix}-product-v1','${suffix}-product',1,'命令产品','[]',NULL,
+      NULL,NULL,'zz-phase3h-test-owner',1000,1980,'MAIN_IMAGE_VARIANT');
+    INSERT INTO demand_batches (
+      id, organization_id, store_id, marketplace_code, product_id, product_version_no,
+      submitted_by_member_id, task_type, target_quantity, buyer_visible_notes,
+      seller_notes, open_at, reservation_deadline, order_deadline, status,
+      reviewed_by_staff_id, version,
+      submitted_at, updated_at, reviewed_at, published_at, withdrawn_at, closed_at,
+      held_reservation_count, approved_reservation_count
+    ) VALUES ('${suffix}-demand','${suffix}-org','${suffix}-store','AMAZON_JP',
+      '${suffix}-product',1,'${suffix}-member','TEXT',1,NULL,NULL,500,900,2000,'PUBLISHED',
+      'zz-phase3h-test-owner',2,
+      1000,3000,3000,3000,NULL,NULL,1,0);
+    INSERT INTO product_reservations (
+      id, demand_batch_id, buyer_customer_id, organization_id, store_id, product_id,
+      product_version_no, marketplace_code, status, precheck_snapshot_json,
+      hold_expires_at, order_deadline_snapshot, version, submitted_at, updated_at,
+      decided_by_staff_id, decision_reason, decided_at, cancelled_at, expired_at,
+      reopened_count, buyer_self_pay_bps_snapshot, reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot, estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at, buyer_self_pay_accepted_demand_version
+    ) VALUES ('${suffix}-reservation','${suffix}-demand','${suffix}-buyer',
+      '${suffix}-org','${suffix}-store','${suffix}-product',1,'AMAZON_JP',
+      'PENDING_REVIEW','{}',1000,2000,1,1000,1000,NULL,NULL,NULL,NULL,NULL,0,
+      0,1980,0,1980,1000,2);
+  `);
 }

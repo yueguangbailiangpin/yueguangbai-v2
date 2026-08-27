@@ -1,6 +1,6 @@
 import { apiFailure, apiSuccess, type SqlDatabase } from '@ygb/contracts';
 import { normalizeWechatId } from '@ygb/domain';
-import { hashNormalizedWechat } from '../acquisition/privacy';
+import { hashNormalizedWechat } from './wechat-identity-crypto';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -56,7 +56,6 @@ export function registerCustomerOnboardingRoutes(app: Hono<any>): void {
       const items = await listHistoricalSellerDirectory(
         context.env.DB,
         actor,
-        securitySecret(context),
       );
       context.header('Cache-Control', 'no-store');
       return context.json(apiSuccess({ items }, requestId));
@@ -214,22 +213,8 @@ async function sellerMatches(
     )
     .bind(wechat)
     .all<SellerRow>();
-  const importedRows = await database
-    .prepare(
-      `SELECT organization.id AS subject_id,organization.organization_name AS display_name,
-      organization.marketplace_code,${accountSql} AS account_id,
-      (SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.seller_organization_id=organization.id) AS formal_order_count
-    FROM seller_partner_import_source_records source
-    JOIN seller_organizations organization ON organization.seller_code=source.source_seller_code
-    WHERE source.seller_wechat_normalized=? AND source.status IN ('VALID','IMPORTED') AND organization.status='ACTIVE'
-    GROUP BY organization.id,organization.organization_name,organization.marketplace_code
-    ORDER BY organization.activated_at,organization.id`,
-    )
-    .bind(wechat)
-    .all<SellerRow>();
   const dedup = new Map<string, SellerRow>();
-  for (const row of [...importedRows.results, ...identityRows.results])
-    dedup.set(row.subject_id, row);
+  for (const row of identityRows.results) dedup.set(row.subject_id, row);
   return [...dedup.values()]
     .filter((row) => {
       const canonical = row.marketplace_code === 'AMAZON_JP' ? 'AMAZON_JP' : row.marketplace_code;

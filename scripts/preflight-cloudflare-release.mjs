@@ -11,7 +11,6 @@ const rootReal = realpathSync.native(root);
 const environments = new Set(['staging', 'production']);
 const placeholderPattern = /REQUIRED|REPLACE|PLACEHOLDER|CHANGEME|TODO/iu;
 const disabledFlags = [
-  'OUTBOX_DELIVERY_ENABLED',
   'DRIVE_ARCHIVE_ENABLED',
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
@@ -218,7 +217,7 @@ function validateFrozenDefaults(config, environment) {
     errors.push('vars.OPERATIONAL_ALERT_ATTESTATION:forbidden_outside_production');
   }
   const scheduledExpected = environment === 'production' ? 'true' : 'false';
-  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {
+  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED']) {
     if (vars?.[flag] !== scheduledExpected) {
       errors.push(`vars.${flag}:must_be_${scheduledExpected}`);
     }

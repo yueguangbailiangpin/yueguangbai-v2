@@ -15,10 +15,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   cleanDemandIdentifier,
   cleanDemandReason,
   insertDemandBatchEventStatement,
@@ -129,21 +125,6 @@ export async function closeDemandBatch(
       close_reason: closeReason,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `demand-batch-closed:${demandBatchId}`,
-      eventType: 'DEMAND_BATCH_CLOSED',
-      aggregateType: 'DEMAND_BATCH',
-      aggregateId: demandBatchId,
-      payload: {
-        demand_batch_id: demandBatchId,
-        seller_organization_id: source.organization_id,
-        status: 'CLOSED',
-        version: nextVersion,
-        close_reason: closeReason,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -200,7 +181,6 @@ export async function closeDemandBatch(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

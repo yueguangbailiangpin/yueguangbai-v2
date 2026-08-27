@@ -27,10 +27,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   prepareWorkItemCompletionStatements,
   requireSellerOrganizationScope,
   requireAssignedWorkflowActor,
@@ -337,25 +333,6 @@ export async function reviewDemandBatch(
     const eventType = input.decision === 'PUBLISH'
       ? 'DEMAND_BATCH_PUBLISHED'
       : 'DEMAND_BATCH_REJECTED';
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `demand-batch-reviewed:${demandBatchId}`,
-      eventType,
-      aggregateType: 'DEMAND_BATCH',
-      aggregateId: demandBatchId,
-      payload: {
-        demand_batch_id: demandBatchId,
-        seller_organization_id: source.organization_id,
-        product_id: source.product_id,
-        status: nextStatus,
-        version: nextVersion,
-        review_reason: rejectionReason,
-        first_order_date: schedule?.first_order_date ?? null,
-        order_interval_days: schedule?.order_interval_days ?? null,
-        orders_per_run: schedule?.orders_per_run ?? null,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       // Phase 3H access was resolved from persisted Staff facts above.
@@ -468,7 +445,6 @@ export async function reviewDemandBatch(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

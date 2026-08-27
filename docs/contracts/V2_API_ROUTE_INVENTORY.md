@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。现有 246 个唯一端点：244 个 `/api/*`，以及 `/health`、`/ready`。阶段 6.6B（D-056）：员工固定分配新增买家返款负责人管理端点（`/api/staff/access-management/buyer-assignments`）；订单沟通截图统一为 `ORDER_COMMUNICATION_SCREENSHOT`（员工订单详情上传/挂载/列表 + 卖家组织读取 intent，替代退役的 buyer-chat / seller-order-chat 两套路由）；新增产品主要对接人（`/api/staff/products/:id/primary-contact`）与预约一次性人工例外（`/api/staff/reservations/participation-exceptions`）端点。阶段 5（D-055）以 ZIP Bundle 冷归档替换单文件 Drive 归档：per-file rehydrate 路由退役，新增 staff-only 的 bundle restore、bundle 列表与归档指标端点。Staff MCP、机器获客、关键词图片、飞书与 Rakuten/TikTok 预备层已随干净基线重建退役；经营看板收敛为 summary 与 financial-projection 两个只读端点（清单 §3.2）。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
+这是默认 App 的可复现 route inventory。现有 219 个唯一端点：217 个 `/api/*`，以及 `/health`、`/ready`。阶段 6.6C（D-056）：获客 CRM 全部路由、Integration Outbox 与 dead-letter replay 路由、经营看板 financial-projection、order-integrity 详情、operating-integrity order-lookup 与 buyer-advance-principal-lookup 别名全部退役（一律真实 404）；新增唯一员工正式订单详情聚合端点 `GET /api/staff/formal-orders/:id`。阶段 6.6B（D-056）：员工固定分配新增买家返款负责人管理端点（`/api/staff/access-management/buyer-assignments`）；订单沟通截图统一为 `ORDER_COMMUNICATION_SCREENSHOT`（员工订单详情上传/挂载/列表 + 卖家组织读取 intent，替代退役的 buyer-chat / seller-order-chat 两套路由）；新增产品主要对接人（`/api/staff/products/:id/primary-contact`）与预约一次性人工例外（`/api/staff/reservations/participation-exceptions`）端点。阶段 5（D-055）以 ZIP Bundle 冷归档替换单文件 Drive 归档：per-file rehydrate 路由退役，新增 staff-only 的 bundle restore、bundle 列表与归档指标端点。Staff MCP、机器获客、关键词图片、飞书与 Rakuten/TikTok 预备层已随干净基线重建退役；经营看板收敛为 summary 与 financial-projection 两个只读端点（清单 §3.2）。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
 
 阶段 6.6（D-056）收敛说明：汇率/卖家服务费/本金汇率策略改为单次保存、即时生效；`rate-center/base-rates`、`seller-service-fees`、`seller-principal-rate-policies/save` 三个保存端点取代原有的 submit/confirm/reject/apply-defaults 双审批路由（被删除路由一律返回 404）。
 
@@ -59,19 +59,7 @@ GET /api/staff-auth/session
 GET /api/staff/access-management
 GET /api/staff/access-management/buyer-assignments
 GET /api/staff/access-management/seller-organization-assignments
-GET /api/staff/acquisition/channel-assignments
-GET /api/staff/acquisition/channel-stats
-GET /api/staff/acquisition/channels
-GET /api/staff/acquisition/consultations
-GET /api/staff/acquisition/consultations/:id/history
-GET /api/staff/acquisition/leads
-GET /api/staff/acquisition/leads/:id
-GET /api/staff/acquisition/prospects
-GET /api/staff/acquisition/prospects/:id
-GET /api/staff/acquisition/source-corrections/candidates
-GET /api/staff/admin-business-dashboard/financial-projection
 GET /api/staff/admin-business-dashboard/summary
-GET /api/staff/buyer-advance-principal-lookup
 GET /api/staff/buyer-advance-principal/:formalOrderId
 GET /api/staff/buyer-refunds
 GET /api/staff/buyer-refunds/:id
@@ -93,11 +81,12 @@ GET /api/staff/finance/groups
 GET /api/staff/finance/orders
 GET /api/staff/finance/orders/:formalOrderId
 GET /api/staff/finance/summary
+GET /api/staff/formal-orders/:id
+GET /api/staff/formal-orders
 GET /api/staff/formal-orders/:id/communication-screenshots
 GET /api/staff/me/assignments
 GET /api/staff/me/work-items
 GET /api/staff/me/work-items/:id
-GET /api/staff/operating-integrity/order-lookup
 GET /api/staff/operations/archive/bundles
 GET /api/staff/operations/archive/metrics
 GET /api/staff/operations/health
@@ -107,7 +96,6 @@ GET /api/staff/order-evidence/:id/preflight
 GET /api/staff/order-instructions/:id
 GET /api/staff/order-instructions/:id/versions
 GET /api/staff/order-instructions/expiry-scan/state
-GET /api/staff/order-integrity/:id
 GET /api/staff/product-applications/:id/review-context
 GET /api/staff/production-readiness/recovery-attestations/latest
 GET /api/staff/rate-center
@@ -185,20 +173,6 @@ POST /api/staff/access-management/employees
 POST /api/staff/access-management/employees/:id/status
 POST /api/staff/access-management/employees/:id/update
 POST /api/staff/access-management/seller-organization-assignments/:id/manager
-POST /api/staff/acquisition/channel-assignments
-POST /api/staff/acquisition/channel-assignments/:id/revoke
-POST /api/staff/acquisition/channels
-POST /api/staff/acquisition/channels/:id/disable
-POST /api/staff/acquisition/channels/:id/privacy-profile
-POST /api/staff/acquisition/consultations
-POST /api/staff/acquisition/leads
-POST /api/staff/acquisition/leads/:id/follow-ups
-POST /api/staff/acquisition/leads/:id/invalidate
-POST /api/staff/acquisition/leads/:id/retention-hold
-POST /api/staff/acquisition/leads/:id/transfer
-POST /api/staff/acquisition/prospects
-POST /api/staff/acquisition/prospects/:id/update
-POST /api/staff/acquisition/source-corrections
 POST /api/staff/buyer-advance-principal/:formalOrderId/payments
 POST /api/staff/buyer-advance-principal/:formalOrderId/payments/:paymentId/reversals
 POST /api/staff/buyer-refunds/:id/payments
@@ -233,7 +207,6 @@ POST /api/staff/operations/alerts/ack
 POST /api/staff/operations/archive/bundles/:id/restore
 POST /api/staff/operations/archive/orders/:id/close
 POST /api/staff/operations/archive/orders/:id/reopen
-POST /api/staff/operations/dead-letters/:id/replay
 POST /api/staff/operations/jobs/:job/retry
 POST /api/staff/order-evidence/:id/approve
 POST /api/staff/order-evidence/:id/request-changes

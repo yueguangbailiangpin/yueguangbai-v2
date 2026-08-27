@@ -19,10 +19,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   prepareWorkItemCompletionStatements,
   requireAssignedWorkflowActor,
 } from '../staff-assignment';
@@ -239,26 +235,6 @@ export async function publishOrderInstruction(
       replayed: false,
       unchanged: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `order-instruction-published:${instructionVersionId}`,
-      eventType: source.current_version_no === 0
-        ? 'ORDER_INSTRUCTION_PUBLISHED'
-        : 'ORDER_INSTRUCTION_REPUBLISHED',
-      aggregateType: 'ORDER_INSTRUCTION',
-      aggregateId: instructionId,
-      payload: {
-        instruction_id: instructionId,
-        reservation_id: source.reservation_id,
-        buyer_customer_id: source.buyer_customer_id,
-        version_no: nextVersionNo,
-        deadline_at: initialDeadlineAt,
-        image_count: 1,
-        keyword_count: orderedKeywords.length,
-        content_hash: contentHash,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       ...revokeSupersededVersionFilesStatements(
@@ -377,7 +353,6 @@ export async function publishOrderInstruction(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           instruction_id: instructionId,

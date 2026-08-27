@@ -9,4 +9,3 @@ export * from './read-model';
 export * from './routes';
 export * from './work-item-authorization';
 export * from './workflow-integration';
-export * from './outbox';

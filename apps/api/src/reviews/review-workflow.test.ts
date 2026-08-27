@@ -468,9 +468,7 @@ describe('Phase 5A review evidence workflow', () => {
           WHERE link.entity_type='REVIEW') AS grants,
         (SELECT COUNT(*) FROM file_audience_events) AS audience_events,
         (SELECT COUNT(*) FROM audit_events
-          WHERE aggregate_type='REVIEW_CASE') AS review_audit,
-        (SELECT COUNT(*) FROM integration_outbox
-          WHERE aggregate_type='REVIEW_CASE') AS review_outbox
+          WHERE aggregate_type='REVIEW_CASE') AS review_audit
     `).first();
     expect(facts).toEqual({
       review_cases: 0,
@@ -481,7 +479,6 @@ describe('Phase 5A review evidence workflow', () => {
       grants: 0,
       audience_events: 0,
       review_audit: 0,
-      review_outbox: 0,
     });
   });
 
@@ -523,7 +520,7 @@ describe('Phase 5A review evidence workflow', () => {
     const state = await database!.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(state?.schema_version).toBe(28);
+    expect(state?.schema_version).toBe(29);
   });
 });
 

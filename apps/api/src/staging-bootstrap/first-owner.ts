@@ -9,14 +9,11 @@ import {
 } from '../foundation/idempotency';
 import { normalizeStaffEmail } from '../staff-auth/cloudflare-access';
 
-const TARGET_SCHEMA = 28;
+const TARGET_SCHEMA = 29;
 const STAGING_BUYER_CHANNEL_ID = 'buyer-channel-wechat-b';
 const STAGING_DATABASE_NAME = /^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const STAGING_ZERO_STOCK_TABLES = [
-  'acquisition_channels',
-  'acquisition_leads',
-  'acquisition_prospects',
   'audit_events',
   'buyer_customers',
   'buyer_refund_obligations',
@@ -26,7 +23,6 @@ const STAGING_ZERO_STOCK_TABLES = [
   'demand_batches',
   'file_objects',
   'formal_orders',
-  'integration_outbox',
   'order_evidence_submissions',
   'order_instructions',
   'product_applications',
@@ -36,11 +32,9 @@ const STAGING_ZERO_STOCK_TABLES = [
   'seller_member_invitations',
   'seller_organization_members',
   'seller_organizations',
-  'seller_partner_import_batches',
   'seller_payables',
   'seller_payments',
   'seller_stores',
-  'standard_products',
 ] as const;
 
 export interface StagingFirstOwnerInput {

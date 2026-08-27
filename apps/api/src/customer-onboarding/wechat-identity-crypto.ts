@@ -1,5 +1,10 @@
 import { normalizeWechatId } from '@ygb/domain';
-import { AcquisitionError } from './errors';
+import { CustomerSecurityError } from '../customer-security/errors';
+
+// Extracted from the retired acquisition CRM (D-056): WeChat identity
+// protection predates the CRM and stays a customer-onboarding capability.
+// The HMAC/AES key derivations are unchanged so existing ciphertexts remain
+// readable.
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -74,13 +79,13 @@ export async function revealWechatIdentity(
     if (typeof parsed.display !== 'string' || parsed.display.length === 0) throw new Error('invalid');
     return parsed.display;
   } catch {
-    throw new AcquisitionError('DEPENDENCY_UNAVAILABLE', 503);
+    throw new CustomerSecurityError('DEPENDENCY_UNAVAILABLE', 503);
   }
 }
 
-export function requireAcquisitionSecret(value: unknown): string {
+export function requireWechatIdentitySecret(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new AcquisitionError('DEPENDENCY_UNAVAILABLE', 503);
+    throw new CustomerSecurityError('DEPENDENCY_UNAVAILABLE', 503);
   }
   requireSecret(value);
   return value;
@@ -89,7 +94,7 @@ export function requireAcquisitionSecret(value: unknown): string {
 function requireSecret(value: string): ArrayBuffer {
   const bytes = encoder.encode(value);
   if (bytes.byteLength < 32) {
-    throw new AcquisitionError('DEPENDENCY_UNAVAILABLE', 503);
+    throw new CustomerSecurityError('DEPENDENCY_UNAVAILABLE', 503);
   }
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }

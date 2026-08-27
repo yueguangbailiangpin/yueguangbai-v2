@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   assertWechatAvailable,
   cleanRequiredText,
   createIdentityClaimStatements,
@@ -136,20 +132,6 @@ export async function createBuyerCustomer(
       replayed: false,
     };
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `buyer-created:${buyerId}`,
-      eventType: 'BUYER_CUSTOMER_CREATED',
-      aggregateType: 'BUYER_CUSTOMER',
-      aggregateId: buyerId,
-      payload: {
-        buyer_customer_id: buyerId,
-        marketplace_code: input.marketplaceCode,
-        buyer_channel_id: buyerChannelId,
-        access_status: 'DISABLED',
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       ...createIdentityClaimStatements(database, {
@@ -231,7 +213,6 @@ export async function createBuyerCustomer(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

@@ -1,11 +1,11 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { z } from 'zod';
-import { identityApiRequest } from '../../api/identity-request';
-import { operationHeaders } from '../../api/idempotency';
-import { isFrontendApiError } from '../../api/errors';
-import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
+import { identityApiRequest } from '../api/identity-request';
+import { operationHeaders } from '../api/idempotency';
+import { isFrontendApiError } from '../api/errors';
+import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import {
   Alert,
   Button,
@@ -16,13 +16,12 @@ import {
   Select,
   StatusBadge,
   TextInput,
-} from '../../ui/primitives';
-import { acquisitionApi } from './api';
-import { RateSummaryCard } from '../shared/RateSummaryCard';
-import { formatShanghai } from '../shared/format';
-import { StaffProtectedImage } from '../shared/StaffProtectedImage';
-import { useFileUpload } from '../../buyer/shared/useFileUpload';
-import type { AcquisitionChannel } from './runtime';
+} from '../ui/primitives';
+import { RateSummaryCard } from './shared/RateSummaryCard';
+import { formatShanghai } from './shared/format';
+import { StaffProtectedImage } from './shared/StaffProtectedImage';
+import { useFileUpload } from '../buyer/shared/useFileUpload';
+import { customerIntakeApi, STATIC_AMAZON_JP_CHANNEL, type CustomerChannel } from './customer-intake-api';
 
 const MARKET_LABELS: Record<string, string> = {
   AMAZON_JP: '亚马逊日本站',
@@ -220,9 +219,11 @@ function CustomerIntakeWorkspace({
   const allowed =
     session.role.code === 'owner' ||
     (buyer ? session.role.code === 'pre_sales' : session.role.code === 'seller_ops');
+  // D-056: the acquisition channel registry is retired; intake keeps a
+  // static AMAZON_JP entry until the 7A-2 rebuild.
   const channels = useQuery({
     queryKey: ['staff', 'customer-intake', 'channels', leadType, session.authorization_version],
-    queryFn: ({ signal }) => acquisitionApi.channels(client, signal).then((r) => r.data.channels),
+    queryFn: async () => [STATIC_AMAZON_JP_CHANNEL] as readonly CustomerChannel[],
     enabled: allowed,
     retry: false,
   });
@@ -237,16 +238,6 @@ function CustomerIntakeWorkspace({
       }).then((r) => r.data.items),
     enabled: allowed && !buyer,
     retry: false,
-  });
-  const [leads] = useQueries({
-    queries: [
-      {
-        queryKey: ['staff', 'customer-intake', 'leads', leadType, session.authorization_version],
-        queryFn: ({ signal }) => acquisitionApi.leads(client, leadType, signal).then((r) => r.data),
-        enabled: allowed,
-        retry: false,
-      },
-    ],
   });
   if (!allowed)
     return (
@@ -275,39 +266,10 @@ function CustomerIntakeWorkspace({
         {buyer ? (
           <Card className="customer-intake-list">
             <h3>正式买家客户登记</h3>
-            {leads.isPending ? (
-              <p role="status">加载中…</p>
-            ) : leads.isError ? (
-              <Alert tone="danger">客户记录暂时加载不了。</Alert>
-            ) : leads.data.items.length === 0 ? (
-              <EmptyState title="暂无买家客户" description="加微信后在左侧保存新客户。" />
-            ) : (
-              <DataTable caption="买家客户与业务进度">
-                <thead>
-                  <tr>
-                    <th>客户</th>
-                    <th>站点</th>
-                    <th>渠道</th>
-                    <th>业务进度</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leads.data.items.map((lead) => (
-                    <tr key={lead.lead_id}>
-                      <td>
-                        <strong>{lead.display_name ?? lead.wechat_masked}</strong>
-                        <small>{lead.wechat_masked}</small>
-                      </td>
-                      <td>{marketLabel(lead.marketplace_code)}</td>
-                      <td>
-                        <StatusBadge tone="neutral">{lead.channel_label}</StatusBadge>
-                      </td>
-                      <td>{`${lead.registered ? '网站已开通' : '网站未开通'} · ${lead.formal_order_count} 单`}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </DataTable>
-            )}
+            <EmptyState
+              title="客户列表随阶段 7A-2 工作台上线"
+              description="先在左侧保存新客户；完整客户列表与业务进度视图在工作台重构后提供。"
+            />
           </Card>
         ) : (
           <Card className="customer-intake-list">
@@ -562,7 +524,7 @@ function LeadCreateCard({
   channels,
 }: {
   leadType: 'BUYER' | 'SELLER';
-  channels: readonly AcquisitionChannel[];
+  channels: readonly CustomerChannel[];
 }) {
   const client = useQueryClient();
   const session = useCurrentStaffSession();
@@ -571,10 +533,7 @@ function LeadCreateCard({
   const [saved, setSaved] = useState<SavedLead | null>(null);
   const [invitation, setInvitation] = useState<InvitationState | null>(null);
   const eligibleChannels = channels.filter(
-    (channel) =>
-      channel.status === 'ACTIVE' &&
-      (channel.lead_type === leadType || channel.lead_type === 'BOTH') &&
-      (channel.visibility === 'STAFF' || channel.intake_wechat_label !== null),
+    (channel) => channel.status === 'ACTIVE' && channel.lead_type === leadType,
   );
   const markets = useMemo(() => {
     if (session.data_scope.type !== 'GLOBAL' && session.data_scope.marketplaceCodes.length > 0)
@@ -590,12 +549,20 @@ function LeadCreateCard({
     setMarketplaceCode(markets[0] ?? '');
   }, [marketplaceCode, markets]);
   const create = useMutation({
-    mutationFn: (input: { body: unknown; draft: Omit<SavedLead, 'leadId'> }) =>
-      acquisitionApi
-        .createLead(client, input.body, crypto.randomUUID())
-        .then((response) => ({ response, draft: input.draft })),
+    mutationFn: async (input: {
+      body: { wechat_id: string; display_name?: string; marketplace_code: string };
+      draft: Omit<SavedLead, 'leadId'>;
+    }): Promise<{
+      response: { data: { buyer: { buyer_customer_id: string } } };
+      draft: Omit<SavedLead, 'leadId'>;
+    }> => ({
+      response: await customerIntakeApi.createBuyer(client, input.body, crypto.randomUUID()) as {
+        data: { buyer: { buyer_customer_id: string } };
+      },
+      draft: input.draft,
+    }),
     onSuccess: ({ response, draft }) => {
-      setSaved({ leadId: response.data.lead.lead_id, ...draft });
+      setSaved({ leadId: response.data.buyer.buyer_customer_id, ...draft });
       setInvitation(null);
       void client.invalidateQueries({ queryKey: ['staff', 'customer-intake'] });
     },
@@ -646,13 +613,9 @@ function LeadCreateCard({
     create.mutate(
       {
         body: {
-          lead_type: leadType,
           marketplace_code: marketplaceCode,
-          channel_id: String(data.get('channel_id')),
-          prospect_id: null,
           wechat_id: wechatId,
-          display_name: nullable(data.get('display_name')),
-          note: nullable(data.get('note')),
+          display_name: displayName,
         },
         draft: { wechatId, marketplaceCode, displayName },
       },
@@ -702,7 +665,7 @@ function LeadCreateCard({
             <option value="">请选择渠道</option>
             {marketplaceChannels.map((channel) => (
               <option key={channel.channel_id} value={channel.channel_id}>
-                {channel.staff_label}
+                {channel.label}
               </option>
             ))}
           </Select>
@@ -1070,10 +1033,6 @@ function ambiguousMarketplaceCodes(matches: readonly HistoricalMatch[]) {
     map.set(match.marketplace_code, set);
   }
   return [...map.entries()].filter(([, set]) => set.size > 1).map(([market]) => market);
-}
-function nullable(value: FormDataEntryValue | null) {
-  const text = String(value ?? '').trim();
-  return text ? text : null;
 }
 function marketLabel(code: string) {
   return MARKET_LABELS[code] ?? '未命名站点';

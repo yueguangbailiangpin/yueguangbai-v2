@@ -135,6 +135,40 @@ const adjustmentSchema = z
   })
   .strict();
 type Order = z.output<typeof orderSchema>['order'];
+
+const aggregateSchema = z.object({}).passthrough();
+type AggregateSections = Record<string, unknown>;
+function projectAggregateOrder(aggregate: AggregateSections): Order {
+  const order = (aggregate['order'] ?? {}) as Record<string, unknown>;
+  const buyer = (aggregate['buyer'] ?? {}) as Record<string, unknown>;
+  const seller = (aggregate['seller'] ?? {}) as Record<string, unknown>;
+  return {
+    formal_order_id: String(order['formal_order_id'] ?? ''),
+    amazon_order_number: String(order['amazon_order_number'] ?? ''),
+    buyer_customer_id: String(buyer['buyer_customer_id'] ?? ''),
+    seller_organization_id: String(seller['seller_organization_id'] ?? ''),
+    marketplace_code: String(order['marketplace_code'] ?? 'AMAZON_JP'),
+    product_name: '订单产品',
+    confirmed_at: Number(order['confirmed_at'] ?? 0),
+    marketplace_business_date: String(order['amazon_order_date'] ?? ''),
+    review_case_id: null,
+    review_status: null,
+    has_refund_obligation: null,
+    advance_full_amount_cny_fen: null,
+    advance_net_cny_fen: null,
+    active_advance_payment_id: null,
+    operational_state: 'NORMAL',
+    actions: {
+      record_order_event: { allowed: true, reason: null },
+      record_review_visibility: { allowed: false, reason: 'NO_REVIEW' },
+      approve_review: { allowed: false, reason: 'NO_REVIEW' },
+      record_advance_principal: { allowed: false, reason: 'ROLE_NOT_ALLOWED' },
+      record_profit_adjustment: { allowed: false, reason: 'ROLE_NOT_ALLOWED' },
+    },
+  };
+}
+
+
 const MARKET: Record<string, string> = {
   AMAZON_JP: '亚马逊日本站',
   AMAZON_US: '亚马逊美国站',
@@ -156,10 +190,15 @@ export function StaffOperatingIntegrityTools() {
   const lookup = useMutation({
     mutationFn: (number: string) =>
       identityApiRequest('staff', client, {
-        path: `/api/staff/operating-integrity/order-lookup?amazon_order_number=${encodeURIComponent(number)}`,
+        path: `/api/staff/formal-orders?amazon_order_number=${encodeURIComponent(number)}`,
         method: 'GET',
-        schema: orderSchema,
-      }),
+        // D-056: the aggregate endpoint returns sections; project into the
+        // legacy order view model the tool renders.
+        schema: aggregateSchema,
+      }).then((response) => ({
+        requestId: response.requestId,
+        data: { order: projectAggregateOrder(response.data) },
+      })),
     onSuccess: (response) => {
       setOrder(response.data.order);
       setMessage(null);

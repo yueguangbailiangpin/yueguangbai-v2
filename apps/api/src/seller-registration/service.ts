@@ -8,7 +8,6 @@ import {
   validateCustomerPassword,
   verifyCustomerPassword,
 } from '@ygb/domain';
-import { hashNormalizedWechat } from '../acquisition/privacy';
 import { createAuditEventStatement } from '../foundation/audit';
 import {
   acquireIdempotency,
@@ -42,7 +41,6 @@ interface InvitationRow {
   normalized_wechat: string;
   wechat_display: string;
   marketplace_code: string;
-  acquisition_lead_id: string | null;
   seller_organization_id: string;
   seller_member_id: string | null;
   onboarding_kind: Kind;
@@ -109,23 +107,17 @@ export async function issueSellerRegistrationInvitation(
   if (input.marketplaceCode !== 'AMAZON_JP')
     throw new SellerRegistrationError('VALIDATION_ERROR', 400);
   await requireStaffMarket(database, command.actor, input.marketplaceCode);
-  const hasLead = input.leadId !== null && input.leadId.trim() !== '';
-  const hasOrg = input.sellerOrganizationId !== null && input.sellerOrganizationId.trim() !== '';
-  if (hasLead === hasOrg) throw new SellerRegistrationError('VALIDATION_ERROR', 400);
+  // D-056: the SELLER lead path is retired; invitations always target an
+  // existing formal seller organization.
+  if (input.sellerOrganizationId === null || input.sellerOrganizationId.trim() === '')
+    throw new SellerRegistrationError('VALIDATION_ERROR', 400);
   const now = command.now ?? Date.now();
   const wechat = normalizeWechatId(input.wechatId);
-  const target = hasLead
-    ? await requireFormalizedNewSeller(
-        database,
-        input.leadId!,
-        wechat.normalized,
-        command.tokenSecret,
-      )
-    : await ensureHistoricalSellerOrganization(
-        database,
-        input.sellerOrganizationId!,
-        wechat.normalized,
-      );
+  const target = await ensureHistoricalSellerOrganization(
+    database,
+    input.sellerOrganizationId!,
+    wechat.normalized,
+  );
   if (await hasSellerPortalAccount(database, target.organizationId))
     throw new SellerRegistrationError('CONFLICT', 409);
   await expireOldInvitation(database, target.organizationId, now);
@@ -176,10 +168,10 @@ export async function issueSellerRegistrationInvitation(
       database
         .prepare(
           `INSERT INTO customer_seller_invitations(
-        id,token_hash,normalized_wechat,wechat_display,marketplace_code,acquisition_lead_id,
+        id,token_hash,normalized_wechat,wechat_display,marketplace_code,
         seller_organization_id,seller_member_id,onboarding_kind,issued_by_staff_id,status,version,
         issued_at,expires_at,consumed_at,consumed_by_account_id,revoked_at,revoked_by_staff_id,created_at,updated_at
-      ) VALUES(?,?,?,?,?,?,?,?,?,?,'ACTIVE',1,?,?,NULL,NULL,NULL,NULL,?,?)`,
+      ) VALUES(?,?,?,?,?,?,?,?,?,'ACTIVE',1,?,?,NULL,NULL,NULL,NULL,?,?)`,
         )
         .bind(
           invitationId,
@@ -243,7 +235,7 @@ export async function readSellerInvitationForStaff(
   requireSellerDuty(actor);
   const row = await database
     .prepare(
-      `SELECT id,normalized_wechat,wechat_display,marketplace_code,acquisition_lead_id,
+      `SELECT id,normalized_wechat,wechat_display,marketplace_code,
       seller_organization_id,seller_member_id,onboarding_kind,issued_by_staff_id,status,version,issued_at,expires_at,
       consumed_at,revoked_at FROM customer_seller_invitations WHERE id=?`,
     )
@@ -398,7 +390,7 @@ export async function completeSellerRegistration(
   const invitation = await database
     .prepare(
       `SELECT id,token_hash,normalized_wechat,wechat_display,marketplace_code,
-      acquisition_lead_id,seller_organization_id,seller_member_id,onboarding_kind,status,version,issued_at,expires_at,
+      seller_organization_id,seller_member_id,onboarding_kind,status,version,issued_at,expires_at,
       consumed_at,revoked_at,issued_by_staff_id FROM customer_seller_invitations WHERE token_hash=?`,
     )
     .bind(tokenHash)
@@ -592,45 +584,6 @@ export async function completeSellerRegistration(
   return { ...safe, replayed: false };
 }
 
-async function requireFormalizedNewSeller(
-  database: SqlDatabase,
-  leadId: string,
-  normalizedWechat: string,
-  identitySecret: string,
-): Promise<InvitationTarget> {
-  const lead = await database
-    .prepare(
-      `SELECT id,marketplace_code,status,identity_hash FROM acquisition_leads
-    WHERE id=? AND lead_type='SELLER'`,
-    )
-    .bind(cleanId(leadId))
-    .first<{
-      id: string;
-      marketplace_code: string;
-      status: string;
-      identity_hash: string | null;
-    }>();
-  if (!lead || lead.status !== 'ACTIVE' || lead.marketplace_code !== 'AMAZON_JP')
-    throw new SellerRegistrationError('NOT_FOUND', 404);
-  const expectedHash = await hashNormalizedWechat(normalizedWechat, identitySecret);
-  if (lead.identity_hash === null || lead.identity_hash !== expectedHash)
-    throw new SellerRegistrationError('CONFLICT', 409);
-  const link = await database
-    .prepare(
-      `SELECT link.target_id,organization.organization_name
-    FROM acquisition_lead_links link JOIN seller_organizations organization ON organization.id=link.target_id
-    WHERE link.lead_id=? AND link.link_type='SELLER_ORGANIZATION' AND organization.status='ACTIVE' LIMIT 2`,
-    )
-    .bind(lead.id)
-    .all<{ target_id: string; organization_name: string }>();
-  if (link.results.length !== 1) throw new SellerRegistrationError('DEPENDENCY_UNAVAILABLE', 503);
-  return ensureHistoricalSellerOrganization(
-    database,
-    link.results[0]!.target_id,
-    normalizedWechat,
-    { leadId: lead.id, kind: 'NEW_CUSTOMER' },
-  );
-}
 
 async function ensureHistoricalSellerOrganization(
   database: SqlDatabase,

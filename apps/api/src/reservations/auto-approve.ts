@@ -8,10 +8,6 @@ import {
   toD1SafeInteger,
 } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import { prepareWorkItemCompletionStatements } from '../staff-assignment';
 import {
   SIX_HOURS_MS,
@@ -217,42 +213,6 @@ export async function autoApproveReservation(
     orderedKeywords,
   });
 
-  const approveOutbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `reservation-decided:${source.reservation_id}`,
-    eventType: 'RESERVATION_APPROVED',
-    aggregateType: 'RESERVATION',
-    aggregateId: source.reservation_id,
-    payload: {
-      reservation_id: source.reservation_id,
-      demand_batch_id: source.demand_batch_id,
-      buyer_customer_id: source.buyer_customer_id,
-      status: 'APPROVED',
-      version: nextVersion,
-      decision_reason: null,
-      decision_source: 'AUTO',
-    },
-    createdAt: now,
-  });
-  const publishOutbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `order-instruction-published:${instructionVersionId}`,
-    eventType: 'ORDER_INSTRUCTION_PUBLISHED',
-    aggregateType: 'ORDER_INSTRUCTION',
-    aggregateId: instructionId,
-    payload: {
-      instruction_id: instructionId,
-      reservation_id: source.reservation_id,
-      buyer_customer_id: source.buyer_customer_id,
-      version_no: 1,
-      deadline_at: initialDeadlineAt,
-      image_count: 1,
-      keyword_count: orderedKeywords.length,
-      content_hash: contentHash,
-      published_by: 'AUTO_APPROVE',
-    },
-    createdAt: now,
-  });
 
   const response: AutoApproveReservationResult = {
     reservation_id: source.reservation_id,
@@ -515,8 +475,6 @@ export async function autoApproveReservation(
       },
       createdAt: now,
     }),
-    ...createOutboxStatements(database, approveOutbox),
-    ...createOutboxStatements(database, publishOutbox),
     ...await prepareWorkItemCompletionStatements(database, {
       workType: 'RESERVATION_DECISION',
       sourceEntityType: 'RESERVATION',

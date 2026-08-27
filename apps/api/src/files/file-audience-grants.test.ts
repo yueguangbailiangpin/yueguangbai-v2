@@ -409,15 +409,9 @@ describe('explicit file audiences', () => {
           SELECT group_concat(next_state_json, '')
           FROM audit_events
           WHERE aggregate_id=?
-        ) AS audit_json,
-        (
-          SELECT group_concat(payload_json, '')
-          FROM integration_outbox
-          WHERE aggregate_id=?
-        ) AS outbox_json
-    `).bind(fixture.linkId, fixture.linkId).first<{
+        ) AS audit_json
+    `).bind(fixture.linkId).first<{
       audit_json: string;
-      outbox_json: string;
     }>();
     expect(JSON.stringify(sensitive)).not.toMatch(
       /object_key|signed_url|session_token|secret|wechat|login_identifier/iu,

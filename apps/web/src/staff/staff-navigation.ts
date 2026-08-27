@@ -11,7 +11,6 @@ import {
   Archive,
   UserCog,
   Settings,
-  Sparkles,
   Store,
   UserRound,
   Wrench,
@@ -25,7 +24,6 @@ export type StaffRoleCode = StaffSession['role']['code'];
 export type StaffNavVisibility = (session: StaffSession) => boolean;
 
 const isOwner: StaffNavVisibility = (s) => s.role.code === 'owner';
-const isAcquisition: StaffNavVisibility = (s) => s.role.code === 'acquisition';
 const isPreSales: StaffNavVisibility = (s) => s.role.code === 'pre_sales';
 const isSellerOps: StaffNavVisibility = (s) => s.role.code === 'seller_ops';
 const isBuyerRefund: StaffNavVisibility = (s) => s.role.code === 'buyer_refund';
@@ -50,7 +48,6 @@ const mayAccessManagement: StaffNavVisibility = (s) =>
 const mayDashboard: StaffNavVisibility = (s) =>
   isOwner(s) && s.permissions.includes('FINANCIAL_VIEW');
 
-const mayAcquisition: StaffNavVisibility = (s) => isOwner(s) || isAcquisition(s);
 
 /** 二级导航项 */
 export interface StaffNavChild {
@@ -88,20 +85,13 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
     label: '工作台',
     icon: BriefcaseBusiness,
     path: '/staff',
-    // acquisition 角色的工作台即获客中心，由 StaffRouteModule 重定向
+    // D-056: the acquisition workspace is retired.
   },
   {
     id: 'customers',
     label: '客户',
     icon: UsersRound,
     children: [
-      {
-        id: 'acquisition',
-        label: '获客中心',
-        icon: Sparkles,
-        path: '/staff/acquisition',
-        visible: mayAcquisition,
-      },
       {
         id: 'buyer-customers',
         label: '买家',

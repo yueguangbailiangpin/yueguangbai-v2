@@ -19,7 +19,6 @@ import {
 import type { AssignmentStaffAuthorization } from '../../staff-assignment';
 import {
   isStaffEligibleForFixedDuty,
-  prepareStaffAssignmentOutboxStatements,
 } from '../../staff-assignment';
 import { normalizeStaffEmail } from '../../staff-auth/cloudflare-access';
 import { StaffAccessManagementError } from './errors';
@@ -570,21 +569,6 @@ export async function changeSellerOrganizationManager(
       },
       replayed: false,
     };
-    const outbox = await prepareStaffAssignmentOutboxStatements(database, {
-      dedupKey: `staff-assignment:${assignmentId}:fixed-owner-changed`,
-      eventType: 'FIXED_OWNER_CHANGED',
-      aggregateType: 'STAFF_ASSIGNMENT',
-      aggregateId: assignmentId,
-      payload: {
-        assignment_id: assignmentId,
-        seller_organization_id: organization.id,
-        duty_code: 'SELLER_ACCOUNT_MANAGER',
-        previous_staff_id: active?.staff_id ?? null,
-        assigned_staff_id: input.assignedStaffId,
-        source: 'MANUAL_REASSIGN',
-      },
-      now,
-    });
     const statements: SqlStatement[] = [];
     if (active) {
       statements.push(
@@ -650,7 +634,6 @@ export async function changeSellerOrganizationManager(
         },
         createdAt: now,
       }),
-      ...outbox,
       database
         .prepare(
           `INSERT INTO transaction_assertions(assertion_value)
@@ -805,21 +788,6 @@ export async function changeBuyerRefundOwner(
       },
       replayed: false,
     };
-    const outbox = await prepareStaffAssignmentOutboxStatements(database, {
-      dedupKey: `staff-assignment:${assignmentId}:fixed-owner-changed`,
-      eventType: 'FIXED_OWNER_CHANGED',
-      aggregateType: 'STAFF_ASSIGNMENT',
-      aggregateId: assignmentId,
-      payload: {
-        assignment_id: assignmentId,
-        buyer_customer_id: buyer.id,
-        duty_code: 'BUYER_REFUND_OWNER',
-        previous_staff_id: active?.staff_id ?? null,
-        assigned_staff_id: input.assignedStaffId,
-        source: 'MANUAL_REASSIGN',
-      },
-      now,
-    });
     const statements: SqlStatement[] = [];
     if (active) {
       statements.push(
@@ -887,7 +855,6 @@ export async function changeBuyerRefundOwner(
         },
         createdAt: now,
       }),
-      ...outbox,
       database
         .prepare(
           `INSERT INTO transaction_assertions(assertion_value)

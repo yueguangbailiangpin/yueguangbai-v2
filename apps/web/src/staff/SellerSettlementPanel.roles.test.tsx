@@ -43,7 +43,7 @@ describe('Seller Settlement role and permission visibility', () => {
     ).toEqual({ canView: true, canRecord: false, canReverse: false });
     expect(
       sellerSettlementCapabilities(
-        staffTestSession('acquisition', [
+        staffTestSession('buyer_refund', [
           'SELLER_SETTLEMENT_VIEW',
           'SELLER_SETTLEMENT_RECORD',
           'FINANCIAL_CORRECT',
@@ -59,7 +59,7 @@ describe('Seller Settlement role and permission visibility', () => {
   });
 
   it.each([
-    ['acquisition', ['SELLER_SETTLEMENT_VIEW', 'SELLER_SETTLEMENT_RECORD']],
+    ['buyer_refund', ['SELLER_SETTLEMENT_VIEW', 'SELLER_SETTLEMENT_RECORD']],
     ['pre_sales', ['SELLER_SETTLEMENT_VIEW']],
     ['buyer_refund', ['SELLER_SETTLEMENT_VIEW']],
     ['seller_ops', []],

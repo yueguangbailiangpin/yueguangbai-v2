@@ -18,10 +18,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
 import {
@@ -241,26 +237,6 @@ export async function submitProductApplication(
       return prepared;
     }));
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `product-application-submitted:${applicationId}`,
-      eventType: 'PRODUCT_APPLICATION_SUBMITTED',
-      aggregateType: 'PRODUCT_APPLICATION',
-      aggregateId: applicationId,
-      payload: {
-        application_id: applicationId,
-        seller_organization_id: store.organization_id,
-        store_id: store.store_id,
-        marketplace_code: store.marketplace_code,
-        asin,
-        product_name: snapshot.product_name,
-        status: 'SUBMITTED',
-        version: 1,
-        ordering_guide_expected_amount_jpy:
-          orderingGuideExpectedAmountJpy,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -343,7 +319,6 @@ export async function submitProductApplication(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

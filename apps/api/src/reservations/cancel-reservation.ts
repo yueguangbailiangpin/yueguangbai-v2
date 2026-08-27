@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   cleanReservationIdentifier,
   insertReservationEventStatement,
   normalizeReservationError,
@@ -131,16 +127,6 @@ export async function cancelReservation(
       version: nextVersion,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `reservation-cancelled:${reservationId}:${nextVersion}`,
-      eventType: 'RESERVATION_CANCELLED',
-      aggregateType: 'RESERVATION',
-      aggregateId: reservationId,
-      payload: response,
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -200,7 +186,6 @@ export async function cancelReservation(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

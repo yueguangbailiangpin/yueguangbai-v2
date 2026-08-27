@@ -5,6 +5,6 @@ export * from './rate-limit';
 export * from './recovery';
 export * from './routes';
 
-// `register-buyer.ts` is retained only as historical implementation/test source.
-// It is intentionally not exported from this runtime barrel. Current Buyer
-// account creation is invitation-bound through `routes.ts` -> registerInvitedBuyer.
+// D-056: `register-buyer.ts` (self-registration without an invitation) is
+// retired. Buyer accounts are created by staff or via invitation-bound
+// registration in `routes.ts` -> registerInvitedBuyer only.

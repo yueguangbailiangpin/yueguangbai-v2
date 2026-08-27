@@ -19,10 +19,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   CatalogError,
   cleanCatalogIdentifier,
   normalizeCatalogError,
@@ -227,21 +223,6 @@ export async function addProductVersion(
       main_image_file_object_id: mainImageCloneObjectId,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `product-version-added:${productId}:${nextVersionNo}`,
-      eventType: 'PRODUCT_VERSION_ADDED',
-      aggregateType: 'PRODUCT',
-      aggregateId: productId,
-      payload: {
-        product_id: productId,
-        product_version_id: productVersionId,
-        version_no: nextVersionNo,
-        aggregate_version: nextAggregateVersion,
-        product_name: version.productName,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -356,7 +337,6 @@ export async function addProductVersion(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

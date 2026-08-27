@@ -19,10 +19,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from './authorization';
 import { compensateStoredObjects } from './compensation';
 import { createFileEventStatement } from './file-events';
@@ -166,22 +162,6 @@ export async function uploadFileObject(
       version: source.version + 1,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `file-object-uploaded:${fileObjectId}`,
-      eventType: 'FILE_OBJECT_UPLOADED',
-      aggregateType: 'FILE_OBJECT',
-      aggregateId: fileObjectId,
-      payload: {
-        file_object_id: fileObjectId,
-        upload_intent_id: source.upload_intent_id,
-        purpose: source.purpose,
-        visibility: source.visibility,
-        byte_size: inspection.byteSize,
-        detected_mime: inspection.detectedMime,
-      },
-      createdAt: now,
-    });
 
     await database.batch([
       database.prepare(`
@@ -247,7 +227,6 @@ export async function uploadFileObject(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

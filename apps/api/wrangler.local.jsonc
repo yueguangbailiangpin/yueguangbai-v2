@@ -10,10 +10,8 @@
   },
   "vars": {
     "APP_ENVIRONMENT": "local",
-    "OUTBOX_DELIVERY_ENABLED": "false",
     "SCHEDULED_OPERATIONS_ENABLED": "false",
     "SCHEDULED_OPERATIONS_DISABLED_JOBS": "",
-    "ACQUISITION_MAINTENANCE_ENABLED": "false",
     "OPERATIONAL_ALERT_MODE": "disabled",
     "DRIVE_ARCHIVE_ENABLED": "false",
     "DRIVE_ARCHIVE_COPY_ENABLED": "false",

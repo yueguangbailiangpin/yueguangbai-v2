@@ -23,7 +23,6 @@ import {
 import { FormalOrderPolicyError, requireFormalOrderAction } from '../formal-order-policy';
 import type { FileAuthorizationResource, FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
-import { listOrderCommunicationScreenshots } from '../order-communication-screenshots';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -52,7 +51,6 @@ class IntegrityError extends Error {
 type ProofInput = { fileObjectId: string; expectedFileVersion: number };
 
 export function registerOperatingIntegrityRoutes(app: Hono<AppEnv>): void {
-  app.get('/api/staff/order-integrity/:id', wrap(readOrderIntegrity));
   app.post(
     '/api/staff/order-integrity/:id/events',
     customerAuthOriginGuard(),
@@ -82,42 +80,6 @@ export function registerOperatingIntegrityRoutes(app: Hono<AppEnv>): void {
   );
 }
 
-async function readOrderIntegrity(context: Context<AppEnv>) {
-  const actor = staff(context);
-  const order = await orderRow(context.env.DB, id(context.req.param('id') ?? ''));
-  await market(context.env.DB, actor, order.market);
-  const canViewFinancialAdjustments = canViewOrderFinancialAdjustments(actor);
-  const [events, adjustments, state, chatScreenshots] = await Promise.all([
-    context.env.DB.prepare(
-      `SELECT id AS event_id,formal_order_id,event_type,reason,actor_staff_id,created_at FROM formal_order_operational_events WHERE formal_order_id=? ORDER BY created_at,id`,
-    )
-      .bind(order.id)
-      .all<any>(),
-    canViewFinancialAdjustments
-      ? context.env.DB.prepare(
-          `SELECT id AS adjustment_id,formal_order_id,source_operational_event_id,adjustment_scope,CAST(amount_cny_fen AS TEXT) AS amount_cny_fen,reason,actor_staff_id,created_at FROM formal_order_financial_adjustments WHERE formal_order_id=? ORDER BY created_at,id`,
-        )
-          .bind(order.id)
-          .all<any>()
-      : Promise.resolve({ results: [] }),
-    context.env.DB.prepare(
-      `SELECT operational_state FROM formal_order_effective_operational_state WHERE formal_order_id=?`,
-    )
-      .bind(order.id)
-      .first<{ operational_state: string }>(),
-    listOrderCommunicationScreenshots(context.env.DB, [order.id]),
-  ]);
-  return ok(context, {
-    order_integrity: {
-      formal_order_id: order.id,
-      marketplace_code: order.market,
-      operational_state: state?.operational_state ?? 'NORMAL',
-      events: events.results,
-      adjustments: adjustments.results,
-      communication_screenshots: chatScreenshots.get(order.id) ?? [],
-    },
-  });
-}
 
 export function canViewOrderFinancialAdjustments(
   actor: Pick<AssignmentStaffAuthorization, 'roles' | 'permissions'>,

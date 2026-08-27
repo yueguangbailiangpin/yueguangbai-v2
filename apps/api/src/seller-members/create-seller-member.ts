@@ -15,10 +15,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   assertWechatAvailable,
   createIdentityClaimStatements,
 } from '../customers/master-data-shared';
@@ -157,21 +153,6 @@ export async function createSellerOrganizationMember(
       replayed: false,
     };
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-member-created:${memberId}`,
-      eventType: 'SELLER_MEMBER_CREATED',
-      aggregateType: 'SELLER_MEMBER',
-      aggregateId: memberId,
-      payload: {
-        seller_member_id: memberId,
-        seller_organization_id: organizationId,
-        member_number: memberNumber,
-        role,
-        status: 'DISABLED',
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -265,7 +246,6 @@ export async function createSellerOrganizationMember(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

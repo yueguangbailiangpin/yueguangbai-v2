@@ -1,6 +1,5 @@
 export const ADMIN_BUSINESS_DASHBOARD_PATHS = Object.freeze({
   summary: '/api/staff/admin-business-dashboard/summary',
-  financialProjection: '/api/staff/admin-business-dashboard/financial-projection',
 } as const);
 
 export const DASHBOARD_WINDOWS = ['TODAY', 'WEEK', 'MONTH'] as const;

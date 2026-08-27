@@ -2,7 +2,7 @@
 // Successor of verify:admin-dashboard (verify-admin-business-dashboard.mjs),
 // re-scoped to the stage 4 simplified dashboard (inventory §3.2): counting
 // cards, pending workload, abnormal signals, owner financial summary, and the
-// financial-projection range endpoint. Funnel/trend/drill-down/acquisition-daily
+// Funnel/trend/drill-down/acquisition-daily
 // and the attribution precision switch are retired.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -18,7 +18,6 @@ const inventory = read('docs/contracts/V2_API_ROUTE_INVENTORY.md');
 
 for (const endpoint of [
   '/api/staff/admin-business-dashboard/summary',
-  '/api/staff/admin-business-dashboard/financial-projection',
 ]) assert(routes.includes(endpoint), `missing ${endpoint}`);
 for (const retired of ['trends', 'drill-down', 'acquisition-daily']) {
   assert(!routes.includes(retired), `retired endpoint still routed: ${retired}`);
@@ -46,6 +45,6 @@ assert(read('apps/api/src/internal-finance/shared.ts').includes("'FINANCIAL_VIEW
 console.log(JSON.stringify({
   status: 'PASS',
   verifier: 'admin-dashboard-simplified',
-  endpoints: ['summary', 'financial-projection'],
+  endpoints: ['summary'],
   retired: ['trends', 'drill-down', 'acquisition-daily'],
 }, null, 2));

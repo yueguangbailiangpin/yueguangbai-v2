@@ -272,8 +272,8 @@ describe('Phase 4B5 buyer refund status read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(28);
-    expect(migrations.at(-1)).toBe('0028_stage66b_fixed_assignment_and_files.sql');
+    expect(migrations).toHaveLength(29);
+    expect(migrations.at(-1)).toBe('0029_stage66c_retire_acquisition_outbox.sql');
   });
 });
 

@@ -13,15 +13,10 @@ import {
   validation,
 } from '../internal-finance/shared';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { readFinancialReportingProjection } from './financial-projection';
 import { readAdminBusinessDashboardSummary } from './read-model';
 
 export function registerAdminBusinessDashboardRoutes(app: Hono<any>): void {
   app.get('/api/staff/admin-business-dashboard/summary', withErrors(summary));
-  app.get(
-    '/api/staff/admin-business-dashboard/financial-projection',
-    withErrors(financialProjection),
-  );
 }
 async function summary(context: Context<any>): Promise<Response> {
   requireActor(context);
@@ -31,20 +26,6 @@ async function summary(context: Context<any>): Promise<Response> {
   if (!isDashboardWindow(window)) validation();
   return success(context, {
     summary: await readAdminBusinessDashboardSummary(context.env.DB, window),
-  });
-}
-async function financialProjection(context: Context<any>): Promise<Response> {
-  requireActor(context);
-  const url = new URL(context.req.url);
-  assertExactQueryParameters(url, ['from_date', 'to_date']);
-  const fromDate = url.searchParams.get('from_date'),
-    toDate = url.searchParams.get('to_date');
-  if (fromDate === null || toDate === null) validation();
-  return success(context, {
-    financial_projection: await readFinancialReportingProjection(context.env.DB, {
-      fromDate,
-      toDate,
-    }),
   });
 }
 function requireActor(context: Context<any>): AssignmentStaffAuthorization {

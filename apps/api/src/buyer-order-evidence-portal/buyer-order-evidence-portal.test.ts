@@ -1143,22 +1143,22 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     },
   );
 
-  it('keeps migration through 0028 and creates no actual refund, settlement, or profit', async () => {
+  it('keeps migration through 0029 and creates no actual refund, settlement, or profit', async () => {
     await setup();
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(28);
+    expect(migrations).toHaveLength(29);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0028_stage66b_fixed_assignment_and_files.sql');
+    expect(migrations.at(-1)).toBe('0029_stage66c_retire_acquisition_outbox.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(28);
+    expect(Number(schema?.schema_version)).toBe(29);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name

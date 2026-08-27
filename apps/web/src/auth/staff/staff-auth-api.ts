@@ -7,7 +7,6 @@ export const staffSessionSchema = z.object({
   staff_id: z.string(), display_name: z.string(),
   role: z.discriminatedUnion('code', [
     z.object({ code: z.literal('owner'), display_name: z.literal('总管理员') }).strict(),
-    z.object({ code: z.literal('acquisition'), display_name: z.literal('获客') }).strict(),
     z.object({ code: z.literal('pre_sales'), display_name: z.literal('售前') }).strict(),
     z.object({ code: z.literal('seller_ops'), display_name: z.literal('卖家对接') }).strict(),
     z.object({ code: z.literal('buyer_refund'), display_name: z.literal('买家返款') }).strict(),

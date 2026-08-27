@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   requireCurrentInstructionForEvidence,
   clearResubmissionDeadlineStatements,
 } from '../order-instructions/evidence-integration';
@@ -227,23 +223,6 @@ export async function submitOrderEvidence(
     const eventType = source === null
       ? 'ORDER_EVIDENCE_SUBMITTED'
       : 'ORDER_EVIDENCE_RESUBMITTED';
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `order-evidence-submitted:${submissionId}:${evidenceVersionNo}`,
-      eventType,
-      aggregateType: 'ORDER_EVIDENCE',
-      aggregateId: submissionId,
-      payload: {
-        submission_id: submissionId,
-        reservation_id: reservationId,
-        buyer_customer_id: command.actor.buyerCustomerId,
-        evidence_version_id: evidenceVersionId,
-        evidence_version_no: evidenceVersionNo,
-        file_count: preparedFiles.length,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [];
     if (source === null) {
@@ -359,7 +338,6 @@ export async function submitOrderEvidence(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

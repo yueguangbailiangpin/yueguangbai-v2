@@ -90,7 +90,7 @@ describe('D-056 fixed-duty staff assignment foundation', () => {
   it('runs the assignment foundation on the stage 6.6B baseline', async () => {
     const d = db();
     expect(d.raw.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`).get())
-      .toEqual({ schema_version: 28 });
+      .toEqual({ schema_version: 29 });
     expect(d.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(d.raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
   });
@@ -334,7 +334,7 @@ describe('D-056 fixed-duty staff assignment foundation', () => {
     });
   });
 
-  it('writes only the assignment Outbox event and rejects destructive history edits', async () => {
+  it('rejects destructive history edits', async () => {
     const d = db();
     await bindBuyerPreSalesOwner(d, 'buyer-1', 'pre-1');
     const prepared = await prepareDirectWorkItem(d, {
@@ -344,12 +344,6 @@ describe('D-056 fixed-duty staff assignment foundation', () => {
       idempotencyKey: 'reservation-outbox', now: 100,
     });
     await d.batch(prepared.statements);
-    expect(d.raw.prepare(`SELECT COUNT(*) AS count FROM integration_outbox
-      WHERE aggregate_type='STAFF_ASSIGNMENT'`).get())
-      .toEqual({ count: 1 });
-    expect(d.raw.prepare(`SELECT COUNT(*) AS count FROM integration_outbox
-      WHERE aggregate_type='STAFF_WORK_ITEM'`).get())
-      .toEqual({ count: 0 });
     expect(() => d.exec(`DELETE FROM staff_work_items
       WHERE id='${prepared.workItemId}'`)).toThrow('staff_work_items_are_immutable');
     expect(() => d.exec(`DELETE FROM buyer_staff_assignments

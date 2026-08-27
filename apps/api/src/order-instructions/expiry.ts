@@ -8,10 +8,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   assertPreviousStatementChangedOnce,
   insertInstructionEventStatement,
   normalizeOrderInstructionError,
@@ -144,20 +140,6 @@ export async function expireOrderInstruction(
       reason,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `order-instruction-expired:${source.instruction_id}`,
-      eventType: 'ORDER_INSTRUCTION_EXPIRED',
-      aggregateType: 'ORDER_INSTRUCTION',
-      aggregateId: source.instruction_id,
-      payload: {
-        instruction_id: source.instruction_id,
-        reservation_id: source.reservation_id,
-        reason,
-        released_capacity: true,
-      },
-      createdAt: now,
-    });
     const nextVersion = source.instruction_version + 1;
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -241,7 +223,6 @@ export async function expireOrderInstruction(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           instruction_id: source.instruction_id,

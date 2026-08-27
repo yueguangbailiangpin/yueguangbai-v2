@@ -7,7 +7,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
   listActiveAllocationsForPayment,
@@ -79,21 +78,6 @@ export async function correctSellerPaymentPaidAt(
     const nextVersion = expectedVersion + 1;
     const response = { paymentId, replayed: false } as const;
     const eventId = crypto.randomUUID();
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-payment-paid-at:${eventId}`,
-      eventType: 'SELLER_PAYMENT_PAID_AT_CORRECTED',
-      aggregateType: 'SELLER_PAYMENT',
-      aggregateId: paymentId,
-      payload: {
-        seller_organization_id: payment.seller_organization_id,
-        payment_id: paymentId,
-        previous_paid_at: payment.paid_at,
-        next_paid_at: paidAt,
-        payment_version: nextVersion,
-      },
-      createdAt: now,
-    });
     await database.batch([
       database.prepare(`
         UPDATE seller_payments
@@ -142,7 +126,6 @@ export async function correctSellerPaymentPaidAt(
         reason,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { payment_id: paymentId, payment_event_id: eventId },
         now,
@@ -237,20 +220,6 @@ export async function reverseSellerPayment(
     const eventId = crypto.randomUUID();
     const nextVersion = expectedVersion + 1;
     const response = { paymentId, replayed: false } as const;
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-payment-reversed:${reversalId}`,
-      eventType: 'SELLER_PAYMENT_REVERSED',
-      aggregateType: 'SELLER_PAYMENT',
-      aggregateId: paymentId,
-      payload: {
-        seller_organization_id: payment.seller_organization_id,
-        payment_id: paymentId,
-        amount_cny_fen: String(payment.amount_cny_fen),
-        reversed_allocation_count: allocations.length,
-      },
-      createdAt: now,
-    });
     const allocationReversals: SqlStatement[] = allocations.map(
       (allocation) => {
         const allocationReversalId = crypto.randomUUID();
@@ -342,7 +311,6 @@ export async function reverseSellerPayment(
         reason,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           payment_id: paymentId,

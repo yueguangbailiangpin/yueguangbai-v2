@@ -12,7 +12,6 @@ import {
   normalizeStaffAssignmentError,
   StaffAssignmentError,
 } from './errors';
-import { prepareStaffAssignmentOutboxStatements } from './outbox';
 
 interface ActiveAssignmentRow {
   id: string;
@@ -211,22 +210,6 @@ export async function prepareInitialSellerAssignment(
       oldStaffId: null,
       newStaffId: creatorStaffId,
     }),
-    ...await prepareStaffAssignmentOutboxStatements(database, {
-      dedupKey: `staff-assignment:${assignmentId}:created`,
-      eventType: 'AUTO_INITIAL_ASSIGNMENT',
-      aggregateType: 'STAFF_ASSIGNMENT',
-      aggregateId: assignmentId,
-      payload: {
-        assignment_id: assignmentId,
-        subject_type: 'SELLER',
-        seller_organization_id: input.sellerOrganizationId,
-        duty_code: dutyCode,
-        previous_staff_id: null,
-        assigned_staff_id: creatorStaffId,
-        source: 'AUTO_INITIAL',
-      },
-      now: input.now,
-    }),
     database.prepare(`
       INSERT INTO transaction_assertions (assertion_value)
       SELECT CASE WHEN EXISTS (
@@ -325,22 +308,6 @@ export async function prepareInitialBuyerAssignment(
       assignmentId,
       oldStaffId: null,
       newStaffId: creatorStaffId,
-    }),
-    ...await prepareStaffAssignmentOutboxStatements(database, {
-      dedupKey: `staff-assignment:${assignmentId}:created`,
-      eventType: 'AUTO_INITIAL_ASSIGNMENT',
-      aggregateType: 'STAFF_ASSIGNMENT',
-      aggregateId: assignmentId,
-      payload: {
-        assignment_id: assignmentId,
-        subject_type: 'BUYER',
-        buyer_customer_id: input.buyerCustomerId,
-        duty_code: dutyCode,
-        previous_staff_id: null,
-        assigned_staff_id: creatorStaffId,
-        source: 'AUTO_INITIAL',
-      },
-      now: input.now,
     }),
     database.prepare(`
       INSERT INTO transaction_assertions (assertion_value)

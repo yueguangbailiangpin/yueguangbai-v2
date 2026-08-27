@@ -12,7 +12,7 @@ const migrationDirectory = path.join(root, 'migrations');
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (migrations.length !== 28 || migrations.at(-1) !== '0028_stage66b_fixed_assignment_and_files.sql') {
+if (migrations.length !== 29 || migrations.at(-1) !== '0029_stage66c_retire_acquisition_outbox.sql') {
   throw new Error('expected the clean baseline 0001-0028');
 }
 for (const file of migrations) {
@@ -37,7 +37,7 @@ try {
   }
 
   if (database.prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1')
-    .get().schema_version !== 28) throw new Error('schema version');
+    .get().schema_version !== 29) throw new Error('schema version');
 
   const registry = database.prepare(`
     SELECT code, status || ':' || adapter_status AS state

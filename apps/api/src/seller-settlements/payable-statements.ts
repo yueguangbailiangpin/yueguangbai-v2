@@ -6,7 +6,6 @@ import type {
 import { canonicalJson } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
 import { requireFormalOrderAction,FormalOrderPolicyError } from '../formal-order-policy';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import { SellerSettlementError } from './shared';
 
 export interface PreparedSellerPayable {
@@ -69,15 +68,6 @@ export async function prepareSellerPayableCreation(
     due_at: input.dueAt,
     created_at: input.createdAt,
   };
-  const outbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `seller-payable-created:${payableId}`,
-    eventType: 'SELLER_PAYABLE_CREATED',
-    aggregateType: 'SELLER_PAYABLE',
-    aggregateId: payableId,
-    payload,
-    createdAt: input.createdAt,
-  });
   const statements: SqlStatement[] = [
     database.prepare(`
       INSERT INTO seller_payables (
@@ -128,7 +118,6 @@ export async function prepareSellerPayableCreation(
       nextState: payload,
       createdAt: input.createdAt,
     }),
-    ...createOutboxStatements(database, outbox),
     database.prepare(`
       INSERT INTO transaction_assertions (assertion_value)
       SELECT CASE WHEN

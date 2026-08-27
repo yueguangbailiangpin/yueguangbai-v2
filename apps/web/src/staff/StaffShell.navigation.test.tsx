@@ -73,18 +73,6 @@ describe('staff-navigation config', () => {
     expect(ids).toContain('archive');
   });
 
-  it('acquisition role only sees workbench and customers (with acquisition child)', () => {
-    const session = staffTestSession('acquisition', []);
-    const items = getVisibleNavItems(session);
-    const ids = items.map((i) => i.id);
-    expect(ids).toContain('workbench');
-    expect(ids).toContain('customers');
-    // acquisition does not have products, refunds, finance, etc.
-    expect(ids).not.toContain('products');
-    expect(ids).not.toContain('buyer-refunds');
-    expect(ids).not.toContain('finance');
-    expect(ids).not.toContain('access-management');
-  });
 
   it('pre_sales sees workbench, customers (buyer), products, but not refunds/finance/access', () => {
     const session = staffTestSession('pre_sales', []);

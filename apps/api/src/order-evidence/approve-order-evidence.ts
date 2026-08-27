@@ -30,7 +30,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import {
   assertPreviousStatementChangedOnce,
   cleanFormalOrderExpectedVersion,
@@ -356,29 +355,6 @@ export async function approveOrderEvidenceAtomically(
       price_mismatch_reason: mismatch ? normalizedReason : null,
       confirmed_by_staff_id: command.actor.staffId,
     };
-    const formalOutbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `formal-order-confirmed:${formalOrderId}`,
-      eventType: 'FORMAL_ORDER_CONFIRMED',
-      aggregateType: 'FORMAL_ORDER',
-      aggregateId: formalOrderId,
-      payload: formalOrder,
-      createdAt: now,
-    });
-    const evidenceOutbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `order-evidence-approved:${submissionId}:${expectedVersion}`,
-      eventType: 'ORDER_EVIDENCE_VERIFIED',
-      aggregateType: 'ORDER_EVIDENCE',
-      aggregateId: submissionId,
-      payload: {
-        submission_id: submissionId,
-        evidence_version_id: source.evidence_version_id,
-        formal_order_id: formalOrderId,
-        ...mismatchFacts,
-      },
-      createdAt: now,
-    });
     const principalPayable = await prepareSellerPayableCreation(database, {
       sellerOrganizationId: source.seller_organization_id,
       formalOrderId,
@@ -600,8 +576,6 @@ export async function approveOrderEvidenceAtomically(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, evidenceOutbox),
-      ...createOutboxStatements(database, formalOutbox),
       ...completeFormalInstructionStatements(database, {
         source: instruction,
         reservationId: source.reservation_id,

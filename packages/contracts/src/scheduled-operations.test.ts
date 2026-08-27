@@ -7,8 +7,6 @@ import {
   SCHEDULED_OPERATIONAL_SIGNAL_SUMMARY_CODES,
   SCHEDULED_OPERATIONAL_SIGNAL_TYPES,
   parseScheduledOperationCommandResultDto,
-  parseScheduledOperationDeadLetterReplayCommand,
-  parseScheduledOperationManualRunCommand,
   parseScheduledOperationalAlertNotificationDto,
   parseScheduledOperationalAlertDto,
   parseScheduledOperationalAlertAckCommandDto,
@@ -18,46 +16,15 @@ import {
 
 describe('scheduled operations public contract', () => {
   it('uses finite low-cardinality enums and no payload-shaped DTO fields', () => {
-    expect(SCHEDULED_OPERATION_JOB_NAMES).toHaveLength(5);
+    expect(SCHEDULED_OPERATION_JOB_NAMES).toHaveLength(4);
     expect(SCHEDULED_OPERATION_OUTCOMES).toContain('PARTIAL');
     expect(SCHEDULED_OPERATION_FAILURE_CATEGORIES).not.toContain('payload');
   });
 
-  it('strictly parses the two fixed manual command shapes', () => {
-    expect(parseScheduledOperationManualRunCommand({ reason_code: 'OPERATOR_RETRY' })).toEqual({
-      reason_code: 'OPERATOR_RETRY',
-    });
-    expect(
-      parseScheduledOperationDeadLetterReplayCommand({
-        event_id: 'event-1',
-        reason_code: 'POISON_RECOVERY',
-      }),
-    ).toEqual({ event_id: 'event-1', reason_code: 'POISON_RECOVERY' });
-    expect(() =>
-      parseScheduledOperationManualRunCommand({
-        reason_code: 'OPERATOR_RETRY',
-        payload: { secret: 'x' },
-      }),
-    ).toThrow();
-    expect(() =>
-      parseScheduledOperationDeadLetterReplayCommand({
-        event_id: 'event-1',
-        reason_code: 'arbitrary',
-      }),
-    ).toThrow();
-  });
 
   it('rejects payload-shaped or unknown command results at runtime', () => {
-    expect(
-      parseScheduledOperationCommandResultDto({
-        command_type: 'REPLAY_DEAD_LETTER',
-        job_name: 'outbox_delivery',
-        reason_code: 'POISON_RECOVERY',
-        outcome: 'SUCCEEDED',
-        dead_letter_id: 'dead-1',
-        event_id: 'event-1',
-      }),
-    ).toMatchObject({ outcome: 'SUCCEEDED' });
+    // D-056: REPLAY_DEAD_LETTER is retired with the dead-letter queue —
+    // replay-shaped payloads must fail closed.
     expect(() =>
       parseScheduledOperationCommandResultDto({
         command_type: 'REPLAY_DEAD_LETTER',
@@ -66,9 +33,28 @@ describe('scheduled operations public contract', () => {
         outcome: 'SUCCEEDED',
         dead_letter_id: 'dead-1',
         event_id: 'event-1',
-        payload_json: 'secret',
       }),
-    ).toThrow();
+    ).toThrow('invalid_scheduled_operation_result');
+    expect(() =>
+      parseScheduledOperationCommandResultDto({ command_type: 'UNKNOWN' }),
+    ).toThrow('invalid_scheduled_operation_result');
+    expect(
+      parseScheduledOperationCommandResultDto({
+        command_type: 'RUN_JOB',
+        job_name: 'reservation_expiry',
+        reason_code: 'OPERATOR_RETRY',
+        outcome: 'SUCCEEDED',
+        run: {
+          job_name: 'reservation_expiry',
+          outcome: 'SUCCEEDED',
+          processed_count: 1,
+          succeeded_count: 1,
+          failed_count: 0,
+          backlog_count: 0,
+          failure_category: null,
+        },
+      }),
+    ).toMatchObject({ outcome: 'SUCCEEDED' });
   });
 
   it('publishes only the fixed low-cardinality operational signal vocabulary', () => {

@@ -7,7 +7,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
   requireAllocationBalance,
@@ -86,21 +85,6 @@ export async function allocateSellerPayment(
     const allocationId = crypto.randomUUID();
     const nextVersion = expectedVersion + 1;
     const response = { paymentId, replayed: false } as const;
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-allocation:${allocationId}`,
-      eventType: 'SELLER_PAYMENT_ALLOCATED',
-      aggregateType: 'SELLER_PAYMENT',
-      aggregateId: paymentId,
-      payload: {
-        seller_organization_id: payment.seller_organization_id,
-        payment_id: paymentId,
-        allocation_id: allocationId,
-        payable_id: payableId,
-        amount_cny_fen: String(amount),
-      },
-      createdAt: now,
-    });
     await database.batch([
       bumpPayment(database, paymentId, expectedVersion, now),
       changedOnce(database),
@@ -139,7 +123,6 @@ export async function allocateSellerPayment(
         },
         now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           payment_id: paymentId,
@@ -242,21 +225,6 @@ export async function reverseSellerAllocation(
     const reversalId = crypto.randomUUID();
     const nextVersion = expectedVersion + 1;
     const response = { paymentId: payment.payment_id, replayed: false } as const;
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-allocation-reversal:${reversalId}`,
-      eventType: 'SELLER_ALLOCATION_REVERSED',
-      aggregateType: 'SELLER_PAYMENT',
-      aggregateId: payment.payment_id,
-      payload: {
-        seller_organization_id: payment.seller_organization_id,
-        payment_id: payment.payment_id,
-        allocation_id: allocationId,
-        reversal_id: reversalId,
-        amount_cny_fen: String(amount),
-      },
-      createdAt: now,
-    });
     await database.batch([
       bumpPayment(database, payment.payment_id, expectedVersion, now),
       changedOnce(database),
@@ -289,7 +257,6 @@ export async function reverseSellerAllocation(
         reason,
         now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           payment_id: payment.payment_id,
@@ -398,23 +365,6 @@ export async function reallocateSellerAllocation(
     const newAllocationId = crypto.randomUUID();
     const nextVersion = expectedVersion + 1;
     const response = { paymentId: payment.payment_id, replayed: false } as const;
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-reallocation:${reversalId}`,
-      eventType: 'SELLER_ALLOCATION_REALLOCATED',
-      aggregateType: 'SELLER_PAYMENT',
-      aggregateId: payment.payment_id,
-      payload: {
-        seller_organization_id: payment.seller_organization_id,
-        payment_id: payment.payment_id,
-        source_allocation_id: allocationId,
-        source_payable_id: allocation.payable_id,
-        target_allocation_id: newAllocationId,
-        target_payable_id: targetPayableId,
-        amount_cny_fen: String(amount),
-      },
-      createdAt: now,
-    });
     await database.batch([
       bumpPayment(database, payment.payment_id, expectedVersion, now),
       changedOnce(database),
@@ -465,7 +415,6 @@ export async function reallocateSellerAllocation(
         reason,
         now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           payment_id: payment.payment_id,

@@ -17,10 +17,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from './authorization';
 import {
   compensateStoredObjects,
@@ -174,21 +170,6 @@ export async function completeFileUploadIntent(
     files: objects.map((object) => toVerifiedManifest(object)),
     replayed: false,
   };
-  const outbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `file-upload-verified:${uploadIntentId}`,
-    eventType: 'FILE_UPLOAD_VERIFIED',
-    aggregateType: 'FILE_UPLOAD_INTENT',
-    aggregateId: uploadIntentId,
-    payload: {
-      upload_intent_id: uploadIntentId,
-      purpose: intent.purpose,
-      visibility: intent.visibility,
-      file_object_ids: objects.map((object) => object.id),
-      file_count: objects.length,
-    },
-    createdAt: now,
-  });
 
   try {
     const statements: SqlStatement[] = [
@@ -275,7 +256,6 @@ export async function completeFileUploadIntent(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
