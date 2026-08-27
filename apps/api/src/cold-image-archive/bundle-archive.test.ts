@@ -59,6 +59,20 @@ async function seedClosedOrder(
     formalOrderId: order.formalOrderId,
     bytes: png,
   });
+  // D-056 §4.1: the unified communication screenshot rides in the same ORDER
+  // bundle; assert it is collected and archived with the order files.
+  const communicationFile = await seedColdArchiveFile(db, {
+    suffix: `comm-${suffix}`,
+    formalOrderId: order.formalOrderId,
+    bytes: png,
+    purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+  });
+  await r2.putObject({
+    objectKey: communicationFile.objectKey,
+    bytes: png,
+    contentType: 'image/png',
+    metadata: {},
+  });
   await r2.putObject({
     objectKey: orderFile.objectKey,
     bytes: png,
@@ -209,7 +223,7 @@ describe('stage 5 cold archive bundle pipeline', () => {
     expect(row).toMatchObject({
       state: 'ONLINE',
       sealed_at: expect.any(Number),
-      manifest_file_count: 2,
+      manifest_file_count: 3,
       drive_file_id: expect.stringMatching(/^fake-drive-file:/),
       drive_verified_at: expect.any(Number),
       shadow_completed_at: expect.any(Number),
@@ -218,13 +232,13 @@ describe('stage 5 cold archive bundle pipeline', () => {
     // Projected release is recorded but nothing was actually released.
     expect(await r2.headObject(seeded.orderFileKey)).not.toBeNull();
     const metrics = await computeArchiveMetrics(database, { now: seeded.eligibilityAt + 6 });
-    expect(metrics.shadow_copy_projected_files).toBe(2);
+    expect(metrics.shadow_copy_projected_files).toBe(3);
     expect(metrics.shadow_copy_projected_bytes).toBeGreaterThan(png.byteLength);
     // Manifest entries carry the sealed facts and unguessable names.
     const entries = await database.prepare(
       'SELECT safe_name,sha256,byte_size,source_etag FROM archive_bundle_files WHERE bundle_id=? ORDER BY entry_index',
     ).bind(bundle!['id']).all();
-    expect(entries.results).toHaveLength(2);
+    expect(entries.results).toHaveLength(3);
     expect(entries.results[0]).toMatchObject({ sha256: await import('@ygb/domain').then((m) => m.sha256Hex(png)), byte_size: png.byteLength });
     expect(entries.results[0]!['safe_name']).toMatch(/^0000-[0-9a-f]{16}\.png$/);
     expect(entries.results[1]!['source_etag']).toMatch(/^mock-/);
@@ -254,8 +268,8 @@ describe('stage 5 cold archive bundle pipeline', () => {
     expect(row).toMatchObject({
       state: 'ARCHIVED',
       archived_at: expect.any(Number),
-      hot_files_total: 2,
-      hot_files_deleted: 2,
+      hot_files_total: 3,
+      hot_files_deleted: 3,
       hot_delete_completed_at: expect.any(Number),
     });
     expect(await r2.headObject(seeded.orderFileKey)).toBeNull();
@@ -475,7 +489,7 @@ describe('stage 5 cold archive bundle pipeline', () => {
       restore_expires_at: seeded.eligibilityAt + 8 + RESTORE_TEMPORARY_RETENTION_MS,
     });
     const members = await database.prepare('SELECT temp_object_key,byte_size FROM archive_restore_members').all();
-    expect(members.results).toHaveLength(2);
+    expect(members.results).toHaveLength(3);
     expect(members.results.map((member) => member['byte_size'])).toEqual(expect.arrayContaining([png.byteLength]));
     expect(await r2.headObject(String(members.results[0]!['temp_object_key']))).not.toBeNull();
 

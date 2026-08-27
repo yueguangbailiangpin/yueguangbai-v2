@@ -2,7 +2,7 @@
 
 ## 范围
 
-仅 `ORDER_EVIDENCE`、`REVIEW_EVIDENCE`、`BUYER_REFUND_PROOF`、`SELLER_SETTLEMENT_PROOF` 可进入归档。订单必须有显式 `order_archive_closures` 事实；评论、买家返款、卖家本金、卖家服务费每项只能是已完成或由关闭命令明确记录为不适用。文件关联多个订单时采用全部关联订单中最晚的 `archive_due_at`。
+仅 `ORDER_EVIDENCE`、`ORDER_COMMUNICATION_SCREENSHOT`（订单沟通截图，随 ORDER bundle）、`REVIEW_EVIDENCE`、`BUYER_REFUND_PROOF`、`SELLER_SETTLEMENT_PROOF` 可进入归档。订单必须有显式 `order_archive_closures` 事实；评论、买家返款、卖家本金、卖家服务费每项只能是已完成或由关闭命令明确记录为不适用。文件关联多个订单时采用全部关联订单中最晚的 `archive_due_at`。
 
 关闭/重开由 ACTIVE owner 且有效拥有 `SCHEDULED_OPERATIONS_RUN` 的 Staff 命令完成；Personal DENY 优先。命令使用 expected version、request hash、幂等键和 Audit。真实完成项只读取现有业务事实；不存在的组件只有在命令明确提交 `NOT_APPLICABLE` 和原因后才成立，禁止从缺行推断。N/A 的完成基准为 `formal_orders.confirmed_at`，整单 `business_closed_at` 为订单确认与所有真实完成时间的最大值，不使用晚执行命令的点击时间。
 

@@ -23,7 +23,7 @@
 | 5 | 店铺名字 | `historical_orders.store_name_ref` | `seller_stores.normalized_name` / `display_name` | 覆盖；唯一归属当前 Seller Organization，多/零匹配 → HOLD |
 | 6 | ASIN | `historical_orders.platform_product_identifier` | `standard_products.asin_normalized` / `products.asin_normalized`（10 位 CHECK） | 覆盖；非 10 位标识（Rakuten/TikTok 商品号）随行 blocker |
 | 7 | 订单价格 | `historical_orders.order_amount_source_minor`（INTEGER） | `formal_orders.final_paid_jpy`（INTEGER，0..2^53-1） | 覆盖；JPY 整数日元快照，禁推算 |
-| 8 | 聊天截图 | `historical_order_media_plans`（purpose=ORDER_EVIDENCE_INTERNAL_COMMUNICATION 计划行） | `file_objects.purpose` 枚举已含该值；媒体字节导入属独立 Change | 登记覆盖；不读内容 |
+| 8 | 聊天截图 | `historical_order_media_plans`（purpose=ORDER_COMMUNICATION_SCREENSHOT 计划行（0028 已同步改名历史行值）） | `file_objects.purpose` 枚举已含该值；媒体字节导入属独立 Change | 登记覆盖；不读内容 |
 | 9 | 订单截图 | 同上（purpose=ORDER_EVIDENCE） | `file_entity_links.purpose` 枚举已含 | 登记覆盖 |
 | 10 | 订单号 | `historical_orders.platform_order_number_raw` + `_normalized` | `formal_orders.amazon_order_number_normalized`（19 位形状 CHECK；`formal_order_number_claims` 活跃唯一索引，`formal_order_number_conflicts` 历史冲突表） | 覆盖；形状路由 Amazon/其余 → quarantine；跨卖家冲突拒绝 |
 | 11 | 到货图 | 忽略列（契约声明永久忽略） | — | 明确忽略，计入预览报告 |

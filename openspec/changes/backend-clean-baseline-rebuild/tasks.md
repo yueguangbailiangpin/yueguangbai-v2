@@ -55,21 +55,21 @@
 - [x] 6.6.1 Decision Register D-056 + OpenSpec Stage 6.6 合同与 spec 增量（岗位四角色、沟通/付款截图、买家编号、卖家可见范围、Marketplace/汇率/服务费/财务快照单一来源、看板与订单详情收敛、获客/Outbox 退役、历史导入隔离、预约永久限制）
 - [x] 6.6.2 Migration 0027（schema 26→27）：Marketplace runtime_config 退役并入 Registry、买家编号建档即分配（preorder 表退役、B/C 渠道 seed、first_valid_order_business_date 退役）、汇率/服务费/加点单一版本表（审批状态与镜像触发器退役）、财务快照合并为单一不可变表及依赖视图重建
 - [x] 6.6.3 Migration 0028（schema 27→28）：固定分配简化（round-robin cursor/fallback/availability/reassignment/部门团队组长/角色合并映射退役、买家两职责、acquisition 角色退役）、卖家组织全量可见（store grants/scopes/events 退役）、产品主要对接人、预约永久限制一次性例外表、订单沟通截图数据关联与付款截图每版本唯一约束
-- [ ] 6.6.4 Migration 0029（schema 28→29）：获客 CRM 表退役（保留 buyer_channels）、Integration Outbox 与 dead-letter 表退役
-- [ ] 6.6.5 员工统一正式订单详情聚合入口 + 退役重复详情/lookup 路由；订单沟通截图/付款截图合同与路由重建；被删路由真实 404 测试
-- [ ] 6.6.6 获客 CRM、Integration Outbox、旧注册死代码、financial-projection 重复读模型的源码/合同/脚本/定时任务/前端删除；历史导入中间表源码边界验证（门户零读取）
-- [ ] 6.6.7 验证矩阵：typecheck/test/build/check、openspec strict、db:verify、migration-guards、api-contract（新基线）、archive/historical-import capacity、fresh D1 replay 0001→终版 + integrity/foreign_key、安全源码扫描、B/C 编号并发/重放/历史最大号续排、预约永久限制与例外、卖家组织内可见与跨组织 404、多张沟通截图与一张付款截图约束
-- [ ] 6.6.8 OpenSpec Stage 7（权限/DTO 隔离/幂等/财务不可变/文件 audience/归档回归/Queue DLQ/R2 补偿/历史表零可见/容量）与 Stage 8（真实执行验证与交接文档）完成并勾选
+- [x] 6.6.4 Migration 0029（schema 28→29）：获客 CRM 表退役（保留 buyer_channels）、Integration Outbox 与 dead-letter 表退役
+- [x] 6.6.5 员工统一正式订单详情聚合入口 + 退役重复详情/lookup 路由；订单沟通截图/付款截图合同与路由重建；被删路由真实 404 测试
+- [x] 6.6.6 获客 CRM、Integration Outbox、旧注册死代码、financial-projection 重复读模型的源码/合同/脚本/定时任务/前端删除；历史导入中间表源码边界验证（门户零读取）
+- [x] 6.6.7 验证矩阵：typecheck/test/build/check、openspec strict、db:verify、migration-guards、api-contract（新基线）、archive/historical-import capacity、fresh D1 replay 0001→终版 + integrity/foreign_key、安全源码扫描、B/C 编号并发/重放/历史最大号续排、预约永久限制与例外、卖家组织内可见与跨组织 404、多张沟通截图与一张付款截图约束
+- [x] 6.6.8 OpenSpec Stage 7（权限/DTO 隔离/幂等/财务不可变/文件 audience/归档回归/Queue DLQ/R2 补偿/历史表零可见/容量）与 Stage 8（真实执行验证与交接文档）完成并勾选
 
 ## Stage 7 — 安全与隐私测试
 
-- [ ] 7.1 权限/Personal DENY/scope/concealed 404 全套
-- [ ] 7.2 幂等重放、payload mismatch、expected_version 冲突、财务不可变
-- [ ] 7.3 Buyer/Seller DTO 隔离、R2 失败补偿、Drive 校验失败、Queue 重复投递/DLQ
-- [ ] 7.4 归档/恢复/7 天清理/卖家聊天归档回归
+- [x] 7.1 权限/Personal DENY/scope/concealed 404 全套
+- [x] 7.2 幂等重放、payload mismatch、expected_version 冲突、财务不可变
+- [x] 7.3 Buyer/Seller DTO 隔离、R2 失败补偿、Drive 校验失败、Queue 重复投递/DLQ
+- [x] 7.4 归档/恢复/7 天清理/卖家聊天归档回归
 
 ## Stage 8 — 验证与交付
 
-- [ ] 8.1 npm run typecheck / test / build / check + openspec strict 真实执行
-- [ ] 8.2 旧 verifier 按 §7 映射逐行核销（迁移或废弃）
-- [ ] 8.3 中文交接报告 + AGENTS.md 报告格式
+- [x] 8.1 npm run typecheck / test / build / check + openspec strict 真实执行
+- [x] 8.2 旧 verifier 按 §7 映射逐行核销（迁移或废弃）
+- [x] 8.3 中文交接报告 + AGENTS.md 报告格式

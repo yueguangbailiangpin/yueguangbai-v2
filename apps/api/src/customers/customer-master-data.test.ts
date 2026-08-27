@@ -112,6 +112,31 @@ describe('customer master data', () => {
     ]);
   });
 
+  it('continues B/C numbering from the historical maximum sequence (D-056)', async () => {
+    database = createMigratedTestDatabase();
+    seedStaffAndBuyerChannel(database);
+    // Simulate the pre-launch raise of the channel counters to the historical
+    // maximum sequence (buyer number 19700101B4321 => sequence 4321).
+    database.raw.exec(
+      `UPDATE buyer_channels SET next_sequence=4321 WHERE id='buyer-channel-wechat-b'`,
+    );
+    const created = await createBuyerCustomer(database, {
+      marketplaceCode: 'AMAZON_JP',
+      buyerChannelId: 'buyer-channel-wechat-b',
+      displayName: '历史最大号后续买家',
+      wechatId: 'historic_max_buyer_01',
+    }, {
+      actor: preSalesActor(),
+      idempotencyKey: 'buyer:create:historic-max:0001',
+      now: 2500,
+    });
+    expect(created.buyer_customer_no).toBe('19700101B4321');
+    const row = database.raw
+      .prepare(`SELECT next_sequence FROM buyer_channels WHERE id='buyer-channel-wechat-b'`)
+      .get() as { next_sequence: number };
+    expect(row.next_sequence).toBe(4322);
+  });
+
   it('enforces global WeChat uniqueness across buyer and seller member identities', async () => {
     database = createMigratedTestDatabase();
     seedStaffAndBuyerChannel(database);

@@ -3,15 +3,19 @@
 ## 1. 内部角色
 
 - `owner`：总管理员
-- `acquisition`：获客
-- `pre_sales`：售前
-- `seller_ops`：卖家对接
-- `buyer_refund`：买家返款
+- `pre_sales`：售前（买家运营）
+- `seller_ops`：卖家对接（卖家运营）
+- `buyer_refund`：买家返款（评论与返款）
 
-当前 canonical Staff 角色严格为上述五个；`acquisition` 由 Migration 0044
-引入。每名 ACTIVE Staff 恰有一个 ACTIVE 角色。后端遇到零角色、多角色、旧角色或
-未知角色时失败关闭，不签发 Staff Session。历史 `seller_support`、
-`buyer_support`、`after_sales` 分配只允许作为已撤销审计事实保留。
+当前 canonical Staff 角色严格为上述四个（D-056；`acquisition` 随获客 CRM
+退役，只允许作为已撤销审计事实保留）。每名 ACTIVE Staff 恰有一个 ACTIVE
+角色。后端遇到零角色、多角色、旧角色或未知角色时失败关闭，不签发 Staff
+Session。历史 `seller_support`、`buyer_support`、`after_sales` 同样只作为
+已撤销审计事实保留。
+
+分配是固定绑定（无公共池/轮转/兜底/排班/重分配）：买家分别绑定售前负责人
+与返款负责人，卖家组织绑定卖家运营负责人，owner 全局查看处理；缺绑定失败
+关闭。
 
 所有 ACTIVE Staff 均可在可信 Staff Session 下签发、查看和在使用前撤销普通
 Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发一次性 Customer 密码
