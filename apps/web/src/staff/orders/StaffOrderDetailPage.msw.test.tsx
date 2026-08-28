@@ -136,12 +136,18 @@ function aggregateFixture(withFinance: boolean) {
         file_version: 1,
         purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
         visibility: 'SELLER_VISIBLE',
+        uploaded_at: 1754240000000,
+        uploaded_by_staff_id: 'staff-1',
+        uploaded_by_staff_name: '员工一',
       },
       {
         file_object_id: 'comm-file-2',
         file_version: 1,
         purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
         visibility: 'SELLER_VISIBLE',
+        uploaded_at: 1754240000000,
+        uploaded_by_staff_id: 'staff-1',
+        uploaded_by_staff_name: '员工一',
       },
     ],
     operational_events: [
@@ -158,6 +164,12 @@ function aggregateFixture(withFinance: boolean) {
   return {
     ...base,
     financial_adjustments: [],
+    buyer_advance: {
+      authoritative_advance_amount_cny_fen: '165000',
+      recorded_advance_amount_cny_fen: '0',
+      remaining_advance_amount_cny_fen: '165000',
+      can_record_advance_payment: true,
+    },
     financial_snapshot: {
       financial_snapshot_id: 'snapshot-1',
       buyer_self_pay_bps: 1000,

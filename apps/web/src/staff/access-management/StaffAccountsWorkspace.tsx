@@ -75,20 +75,22 @@ const sellerOrganizationManagersSchema = z
 const sellerOrganizationManagerMutationSchema = z
   .object({ seller_organization: sellerOrganizationManagerSchema, replayed: z.boolean() })
   .strict();
+const fixedOwnerSchema = z
+  .object({
+    assignment_id: z.string(),
+    staff_id: z.string(),
+    staff_display_name: z.string(),
+    version: z.number().int().positive(),
+  })
+  .strict()
+  .nullable();
 const buyerRefundOwnerAssignmentSchema = z
   .object({
     buyer_customer_id: z.string(),
     buyer_display_name: z.string(),
     marketplace_code: z.string(),
-    refund_owner: z
-      .object({
-        assignment_id: z.string(),
-        staff_id: z.string(),
-        staff_display_name: z.string(),
-        version: z.number().int().positive(),
-      })
-      .strict()
-      .nullable(),
+    pre_sales_owner: fixedOwnerSchema,
+    refund_owner: fixedOwnerSchema,
   })
   .strict();
 const buyerRefundOwnerAssignmentsSchema = z
@@ -97,6 +99,35 @@ const buyerRefundOwnerAssignmentsSchema = z
 const buyerRefundOwnerMutationSchema = z
   .object({ buyer: buyerRefundOwnerAssignmentSchema, replayed: z.boolean() })
   .strict();
+const personalDenySchema = z
+  .object({
+    staff_id: z.string(),
+    staff_display_name: z.string(),
+    permission_code: z.string(),
+    status: z.enum(['ACTIVE', 'REVOKED']),
+    reason: z.string().nullable(),
+    assigned_by_staff_id: z.string(),
+    assigned_at: z.number().int().nonnegative(),
+    revoked_at: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+const personalDeniesSchema = z.object({ denies: z.array(personalDenySchema) }).strict();
+const personalDenyMutationSchema = z
+  .object({ deny: personalDenySchema, replayed: z.boolean() })
+  .strict();
+const DENYABLE_PERMISSION_CODES: readonly [string, string][] = [
+  ['ORDER_VIEW', '查看订单'],
+  ['ORDER_CONFIRM', '确认正式订单'],
+  ['RESERVATION_DECIDE', '审核预约'],
+  ['REVIEW_DECIDE', '评论审核'],
+  ['BUYER_REFUND_RECORD', '记录买家返款/垫付'],
+  ['PRODUCT_REVIEW', '新品审核'],
+  ['DEMAND_PUBLISH', '需求发布'],
+  ['SELLER_MANAGE', '卖家管理'],
+  ['FINANCIAL_VIEW', '内部财务查看'],
+  ['FINANCIAL_CORRECT', '财务冲正'],
+  ['FINANCIAL_EXPORT', '内部财务导出'],
+];
 type Employee = z.output<typeof employeeSchema>;
 type SellerOrganizationManager = z.output<typeof sellerOrganizationManagerSchema>;
 type Role = Employee['role']['code'];
@@ -150,11 +181,24 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
     enabled: authorized,
     retry: false,
   });
+  const personalDeniesQuery = useQuery({
+    queryKey: ['staff', 'personal-denies', session.authorization_version],
+    queryFn: ({ signal }) =>
+      identityApiRequest('staff', client, {
+        path: '/api/staff/access-management/personal-denies',
+        method: 'GET',
+        schema: personalDeniesSchema,
+        signal,
+      }).then((r) => r.data),
+    enabled: authorized,
+    retry: false,
+  });
   const refresh = () =>
     Promise.all([
       client.invalidateQueries({ queryKey: ['staff', 'staff-accounts'] }),
       client.invalidateQueries({ queryKey: ['staff', 'seller-organization-assignments'] }),
       client.invalidateQueries({ queryKey: ['staff', 'buyer-refund-owner-assignments'] }),
+      client.invalidateQueries({ queryKey: ['staff', 'personal-denies'] }),
     ]);
   const createMutation = useMutation({
     mutationFn: (body: unknown) => write(client, '/api/staff/access-management/employees', body),
@@ -204,6 +248,28 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
         path: '/api/staff/access-management/buyer-assignments',
         method: 'POST',
         schema: buyerRefundOwnerMutationSchema,
+        body,
+        headers: operationHeaders({ key: crypto.randomUUID(), body }),
+      }),
+    onSuccess: refresh,
+  });
+  const buyerPreSalesOwnerMutation = useMutation({
+    mutationFn: (body: unknown) =>
+      identityApiRequest('staff', client, {
+        path: '/api/staff/access-management/buyer-pre-sales-assignments',
+        method: 'POST',
+        schema: buyerRefundOwnerMutationSchema,
+        body,
+        headers: operationHeaders({ key: crypto.randomUUID(), body }),
+      }),
+    onSuccess: refresh,
+  });
+  const personalDenyMutation = useMutation({
+    mutationFn: ({ path, body }: { path: string; body: unknown }) =>
+      identityApiRequest('staff', client, {
+        path,
+        method: 'POST',
+        schema: personalDenyMutationSchema,
         body,
         headers: operationHeaders({ key: crypto.randomUUID(), body }),
       }),
@@ -294,6 +360,46 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
         ) : null}
       </section>
       <section
+        className="staff-buyer-pre-sales-owner-assignments"
+        aria-labelledby="buyer-pre-sales-owner-heading"
+      >
+        <div>
+          <p className="eyebrow">买家售前</p>
+          <h3 id="buyer-pre-sales-owner-heading">负责买家售前</h3>
+          <p>
+            为每个买家指定一名“售前”负责人（建档时默认绑定创建人，可在此更换）；更换需填写原因并留下审计记录。
+          </p>
+        </div>
+        {buyerRefundOwnerAssignmentsQuery.data ? (
+          buyerRefundOwnerAssignmentsQuery.data.buyers.length === 0 ? (
+            <EmptyState title="暂无买家客户" description="买家建档后会显示在这里。" />
+          ) : (
+            <DataTable caption="买家与负责售前员工">
+              <thead>
+                <tr>
+                  <th>买家</th>
+                  <th>站点</th>
+                  <th>当前售前负责人</th>
+                  <th>更换负责人</th>
+                </tr>
+              </thead>
+              <tbody>
+                {buyerRefundOwnerAssignmentsQuery.data.buyers.map((assignment) => (
+                  <BuyerRefundOwnerRow
+                    key={`pre-sales:${assignment.buyer_customer_id}:${assignment.pre_sales_owner?.assignment_id ?? 'none'}`}
+                    assignment={assignment}
+                    duty="pre_sales"
+                    candidates={preSalesCandidates(query.data.employees)}
+                    busy={buyerPreSalesOwnerMutation.isPending}
+                    onAssign={(body) => buyerPreSalesOwnerMutation.mutate(body)}
+                  />
+                ))}
+              </tbody>
+            </DataTable>
+          )
+        ) : null}
+      </section>
+      <section
         className="staff-buyer-refund-owner-assignments"
         aria-labelledby="buyer-refund-owner-heading"
       >
@@ -326,8 +432,9 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
               <tbody>
                 {buyerRefundOwnerAssignmentsQuery.data.buyers.map((assignment) => (
                   <BuyerRefundOwnerRow
-                    key={`${assignment.buyer_customer_id}:${assignment.refund_owner?.assignment_id ?? 'none'}`}
+                    key={`refund:${assignment.buyer_customer_id}:${assignment.refund_owner?.assignment_id ?? 'none'}`}
                     assignment={assignment}
+                    duty="refund"
                     candidates={buyerRefundCandidates(query.data.employees)}
                     busy={buyerRefundOwnerMutation.isPending}
                     onAssign={(body) => buyerRefundOwnerMutation.mutate(body)}
@@ -338,6 +445,22 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
           )
         ) : null}
       </section>
+      <PersonalDenySection
+        employees={query.data.employees}
+        denies={personalDeniesQuery.data?.denies ?? []}
+        pending={personalDeniesQuery.isPending}
+        busy={personalDenyMutation.isPending}
+        error={personalDenyMutation.isError}
+        onSet={(body) =>
+          personalDenyMutation.mutate({ path: '/api/staff/access-management/personal-denies', body })
+        }
+        onRevoke={(body) =>
+          personalDenyMutation.mutate({
+            path: '/api/staff/access-management/personal-denies/revoke',
+            body,
+          })
+        }
+      />
       {query.data.employees.length === 0 ? (
         <EmptyState title="暂无员工" description="请先创建业务员工。" />
       ) : (
@@ -545,10 +668,12 @@ function BuyerRefundOwnerRow({
   candidates,
   busy,
   onAssign,
+  duty,
 }: {
   assignment: z.output<typeof buyerRefundOwnerAssignmentSchema>;
   candidates: readonly Employee[];
   busy: boolean;
+  duty: 'pre_sales' | 'refund';
   onAssign: (body: {
     buyer_customer_id: string;
     assigned_staff_id: string;
@@ -556,13 +681,14 @@ function BuyerRefundOwnerRow({
     reason: string;
   }) => void;
 }) {
+  const owner = duty === 'pre_sales' ? assignment.pre_sales_owner : assignment.refund_owner;
   const [staffId, setStaffId] = useState(
-    candidates.some((candidate) => candidate.staff_id === assignment.refund_owner?.staff_id)
-      ? (assignment.refund_owner?.staff_id ?? '')
+    candidates.some((candidate) => candidate.staff_id === owner?.staff_id)
+      ? (owner?.staff_id ?? '')
       : '',
   );
   const [reason, setReason] = useState('');
-  const expectedVersion = assignment.refund_owner?.version ?? 0;
+  const expectedVersion = owner?.version ?? 0;
   return (
     <tr>
       <td>
@@ -570,18 +696,18 @@ function BuyerRefundOwnerRow({
         <small>{assignment.buyer_customer_id}</small>
       </td>
       <td>{assignment.marketplace_code}</td>
-      <td>{assignment.refund_owner?.staff_display_name ?? '尚未分配（相关操作失败关闭）'}</td>
+      <td>{owner?.staff_display_name ?? '尚未分配（相关操作失败关闭）'}</td>
       <td>
         {candidates.length === 0 ? (
           <span>暂无买家返款岗位的在职员工</span>
         ) : (
           <div className="entry-actions">
             <Select
-              aria-label={`${assignment.buyer_display_name} 返款负责人`}
+              aria-label={`${assignment.buyer_display_name} ${duty === 'pre_sales' ? '售前' : '返款'}负责人`}
               value={staffId}
               onChange={(event) => setStaffId(event.target.value)}
             >
-              <option value="">请选择买家返款负责人</option>
+              <option value="">请选择{duty === 'pre_sales' ? '售前' : '买家返款'}负责人</option>
               {candidates.map((candidate) => (
                 <option key={candidate.staff_id} value={candidate.staff_id}>
                   {candidate.display_name}
@@ -599,7 +725,7 @@ function BuyerRefundOwnerRow({
               loading={busy}
               disabled={
                 !staffId ||
-                staffId === assignment.refund_owner?.staff_id ||
+                staffId === owner?.staff_id ||
                 reason.trim().length < 1
               }
               onClick={() =>
@@ -611,7 +737,7 @@ function BuyerRefundOwnerRow({
                 })
               }
             >
-              {assignment.refund_owner ? '更换负责人' : '指定负责人'}
+              {owner ? '更换负责人' : '指定负责人'}
             </Button>
           </div>
         )}
@@ -727,6 +853,184 @@ function AccountDialog({
     </Dialog>
   );
 }
+function PersonalDenySection({
+  employees,
+  denies,
+  pending,
+  busy,
+  error,
+  onSet,
+  onRevoke,
+}: {
+  employees: readonly Employee[];
+  denies: readonly z.output<typeof personalDenySchema>[];
+  pending: boolean;
+  busy: boolean;
+  error: boolean;
+  onSet: (body: { staff_id: string; permission_code: string; reason: string }) => void;
+  onRevoke: (body: { staff_id: string; permission_code: string; reason: string }) => void;
+}): React.JSX.Element {
+  const [staffId, setStaffId] = useState('');
+  const [permissionCode, setPermissionCode] = useState('');
+  const [reason, setReason] = useState('');
+  const [revokeTarget, setRevokeTarget] = useState<
+    z.output<typeof personalDenySchema> | null
+  >(null);
+  const [revokeReason, setRevokeReason] = useState('');
+  const staff = employees.find((employee) => employee.staff_id === staffId);
+  return (
+    <section className="staff-personal-denies" aria-labelledby="personal-deny-heading">
+      <div>
+        <p className="eyebrow">个人权限</p>
+        <h3 id="personal-deny-heading">Personal DENY 管理</h3>
+        <p>
+          个人禁用只能缩小岗位默认权限、不能扩大；每次变更立即生效并写入审计记录。
+        </p>
+      </div>
+      {pending ? <p role="status">正在读取个人禁用</p> : null}
+      {error ? <Alert tone="danger">个人禁用操作未完成，请重试。</Alert> : null}
+      <form
+        onSubmit={(event: FormEvent<HTMLFormElement>) => {
+          event.preventDefault();
+          if (staffId && permissionCode && reason.trim())
+            onSet({ staff_id: staffId, permission_code: permissionCode, reason });
+        }}
+        className="staff-personal-deny-form"
+      >
+        <FormField label="员工" htmlFor="personal-deny-staff">
+          <Select
+            id="personal-deny-staff"
+            value={staffId}
+            onChange={(event) => setStaffId(event.target.value)}
+            required
+          >
+            <option value="">请选择员工</option>
+            {employees.map((employee) => (
+              <option key={employee.staff_id} value={employee.staff_id}>
+                {employee.display_name}（{employee.role.display_name}）
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField label="权限" htmlFor="personal-deny-permission">
+          <Select
+            id="personal-deny-permission"
+            value={permissionCode}
+            onChange={(event) => setPermissionCode(event.target.value)}
+            required
+          >
+            <option value="">请选择要禁用的权限</option>
+            {DENYABLE_PERMISSION_CODES.map(([code, label]) => (
+              <option key={code} value={code}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField label="原因" htmlFor="personal-deny-reason">
+          <TextInput
+            id="personal-deny-reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            required
+          />
+        </FormField>
+        <Button
+          className="secondary"
+          loading={busy}
+          disabled={!staffId || !permissionCode || reason.trim().length < 1}
+        >
+          设置个人禁用
+        </Button>
+      </form>
+      {staff && permissionCode
+        && denies.some(
+          (deny) =>
+            deny.staff_id === staffId
+            && deny.permission_code === permissionCode
+            && deny.status === 'ACTIVE',
+        ) ? (
+          <Alert tone="warning">该员工当前已被个人禁用此权限。</Alert>
+        ) : null}
+      {denies.length > 0 ? (
+        <DataTable caption="生效中的个人禁用">
+          <thead>
+            <tr>
+              <th>员工</th>
+              <th>权限</th>
+              <th>原因</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {denies
+              .filter((deny) => deny.status === 'ACTIVE')
+              .map((deny) => (
+                <tr key={`${deny.staff_id}:${deny.permission_code}`}>
+                  <td>
+                    <strong>{deny.staff_display_name}</strong>
+                    <small>{deny.staff_id}</small>
+                  </td>
+                  <td>{deny.permission_code}</td>
+                  <td>{deny.reason ?? '—'}</td>
+                  <td>
+                    <Button
+                      className="secondary"
+                      disabled={revokeTarget !== null}
+                      onClick={() => {
+                        setRevokeTarget(deny);
+                        setRevokeReason('');
+                      }}
+                    >
+                      撤销禁用
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </DataTable>
+      ) : (
+        <EmptyState title="暂无生效的个人禁用" description="需要临时收窄某位员工权限时在这里设置。" />
+      )}
+      {revokeTarget ? (
+        <Dialog
+          open
+          title="撤销个人禁用"
+          description={`恢复 ${revokeTarget.staff_display_name} 的 ${revokeTarget.permission_code} 权限；需填写原因。`}
+          busy={busy}
+          onClose={() => setRevokeTarget(null)}
+        >
+          <TextInput
+            aria-label="撤销原因"
+            placeholder="撤销原因（必填）"
+            value={revokeReason}
+            onChange={(event) => setRevokeReason(event.target.value)}
+          />
+          <div className="entry-actions">
+            <Button className="secondary" onClick={() => setRevokeTarget(null)}>
+              取消
+            </Button>
+            <Button
+              loading={busy}
+              disabled={revokeReason.trim().length < 1}
+              onClick={() => {
+                onRevoke({
+                  staff_id: revokeTarget.staff_id,
+                  permission_code: revokeTarget.permission_code,
+                  reason: revokeReason,
+                });
+                setRevokeTarget(null);
+              }}
+            >
+              确认撤销
+            </Button>
+          </div>
+        </Dialog>
+      ) : null}
+    </section>
+  );
+}
+
 function write(client: ReturnType<typeof useQueryClient>, path: string, body: unknown) {
   return identityApiRequest('staff', client, {
     path,
@@ -763,6 +1067,11 @@ function sellerOpsCandidates(
       (employee.marketplace_scopes ?? []).some(
         (scope) => scope.code === marketplaceCode && scope.scope_kind === 'PRIMARY',
       ),
+  );
+}
+function preSalesCandidates(employees: readonly Employee[]): readonly Employee[] {
+  return employees.filter(
+    (employee) => employee.status === 'ACTIVE' && employee.role.code === 'pre_sales',
   );
 }
 function buyerRefundCandidates(employees: readonly Employee[]): readonly Employee[] {

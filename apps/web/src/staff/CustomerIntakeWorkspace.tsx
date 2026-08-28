@@ -88,6 +88,27 @@ const buyerInvitationSchema = z
       .passthrough(),
   })
   .strict();
+const createBuyerResultSchema = z
+  .object({
+    buyer_customer: z
+      .object({
+        buyer_customer_id: z.string(),
+        buyer_number: z.string(),
+        access_status: z.string(),
+        activated: z.boolean(),
+        initial_pre_sales_owner: z
+          .object({
+            assignment_id: z.string(),
+            staff_id: z.string(),
+            staff_display_name: z.string(),
+            version: z.number().int().positive(),
+          })
+          .nullable(),
+      })
+      .strict(),
+    replayed: z.boolean(),
+  })
+  .strict();
 const sellerInvitationSchema = z
   .object({
     invitation: z
@@ -340,7 +361,11 @@ function HistoricalCustomerLookup({ customerKind }: { customerKind: 'BUYER' | 'S
   const invite = useMutation({
     mutationFn: async (match: HistoricalMatch) => {
       if (buyer) {
-        const response = await issueBuyerInvitation(client, wechat, match.marketplace_code);
+        const response = await issueBuyerInvitation(client, {
+          buyerCustomerId: match.subject_id,
+          wechatId: wechat,
+          marketplaceCode: match.marketplace_code,
+        });
         return toInvitation('BUYER', response.data.invitation);
       }
       const current = await readCurrentSellerInvitation(client, match.subject_id);
@@ -511,10 +536,27 @@ function NewCustomerCard({ customerKind }: { customerKind: 'BUYER' | 'SELLER' })
       return session.data_scope.marketplaceCodes;
     return ['AMAZON_JP'];
   }, [session.data_scope.marketplaceCodes, session.data_scope.type]);
+  const [buyerChannelId, setBuyerChannelId] = useState('buyer-channel-wechat-b');
+  const [createdBuyer, setCreatedBuyer] = useState<z.output<typeof createBuyerResultSchema>['buyer_customer'] | null>(null);
+  const createBuyer = useMutation({
+    mutationFn: () =>
+      createBuyerCustomerProfile(client, {
+        displayName: displayName.trim(),
+        wechatId: wechatId.trim(),
+        buyerChannelId,
+        marketplaceCode,
+      }),
+    onSuccess: (response) => setCreatedBuyer(response.data.buyer_customer),
+  });
   const invite = useMutation({
     mutationFn: async () => {
       if (buyer) {
-        const response = await issueBuyerInvitation(client, wechatId, marketplaceCode);
+        if (!createdBuyer) throw new Error('buyer_profile_required');
+        const response = await issueBuyerInvitation(client, {
+          buyerCustomerId: createdBuyer.buyer_customer_id,
+          wechatId: wechatId.trim(),
+          marketplaceCode,
+        });
         return toInvitation('BUYER', response.data.invitation);
       }
       const response = await issueSellerInvite(client, {
@@ -537,22 +579,30 @@ function NewCustomerCard({ customerKind }: { customerKind: 'BUYER' | 'SELLER' })
     event.preventDefault();
     setInvitation(null);
     setRegisteredNote(null);
+    if (buyer) {
+      setCreatedBuyer(null);
+      createBuyer.mutate(undefined, {
+        onSuccess: () => {
+          setRegisteredNote(
+            '买家档案已建立，永久买家编号已分配。下方“签发注册邀请”把链接发给买家本人完成激活。',
+          );
+        },
+      });
+      return;
+    }
     invite.mutate(undefined, {
       onSuccess: () => {
-        setRegisteredNote(
-          buyer
-            ? '买家通过链接完成注册后即建立正式买家档案并分配永久买家编号。'
-            : '卖家通过链接完成注册后即建立卖家组织与成员账号。',
-        );
+        setRegisteredNote('卖家通过链接完成注册后即建立卖家组织与成员账号。');
       },
     });
   }
   return (
     <Card className="customer-intake-create">
-      <h3>邀请新{buyer ? '买家' : '卖家'}客户</h3>
+      <h3>录入新{buyer ? '买家' : '卖家'}客户</h3>
       <p>
-        生成一次性注册链接并通过私人微信发送。
-        {buyer ? '买家编号在受邀注册建档时自动生成，格式为录入日期 + 渠道码 + 流水号。' : ''}
+        {buyer
+          ? '先建立买家档案：编号（录入日期 + 渠道码 + 流水号）建档即分配，之后可为该买家签发注册邀请。'
+          : '生成一次性注册链接并通过私人微信发送。'}
       </p>
       <form onSubmit={submit}>
         <FormField label="站点" htmlFor={`${customerKind}-market`}>
@@ -579,27 +629,86 @@ function NewCustomerCard({ customerKind }: { customerKind: 'BUYER' | 'SELLER' })
           />
         </FormField>
         <FormField
-          label="线下备注名（可选）"
+          label={buyer ? '买家名称' : '线下备注名（可选）'}
           htmlFor={`${customerKind}-name`}
-          description="仅帮助员工识别，客户编号以系统生成结果为准"
+          description={buyer
+            ? '用于识别买家；系统会立即分配永久买家编号'
+            : '仅帮助员工识别，客户编号以系统生成结果为准'}
         >
           <TextInput
             id={`${customerKind}-name`}
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
+            required={buyer}
           />
         </FormField>
-        <Button loading={invite.isPending} disabled={marketplaceCode.length === 0 || wechatId.trim().length === 0}>
-          生成{buyer ? '买家' : '卖家'}注册链接
-        </Button>
-        {invite.isError ? (
-          <Alert tone={isDuplicateCustomerError(invite.error) ? 'warning' : 'danger'}>
-            {isDuplicateCustomerError(invite.error)
-              ? '这个微信在当前站点可能已经保存过。请先使用上方历史客户查询确认。'
-              : '注册链接生成未完成。如果这个微信在当前站点属于历史客户，请使用上方历史客户查询。'}
-          </Alert>
+        {buyer ? (
+          <FormField label="来源渠道" htmlFor="buyer-channel">
+            <Select
+              id="buyer-channel"
+              value={buyerChannelId}
+              onChange={(event) => setBuyerChannelId(event.target.value)}
+            >
+              <option value="buyer-channel-wechat-b">微信对接渠道 B</option>
+              <option value="buyer-channel-wechat-c">微信对接渠道 C</option>
+            </Select>
+          </FormField>
         ) : null}
+        {buyer ? (
+          <>
+            <Button
+              loading={createBuyer.isPending}
+              disabled={
+                marketplaceCode.length === 0
+                || wechatId.trim().length === 0
+                || displayName.trim().length === 0
+              }
+            >
+              建立买家档案
+            </Button>
+            {createBuyer.isError ? (
+              <Alert tone={isDuplicateCustomerError(createBuyer.error) ? 'warning' : 'danger'}>
+                {isDuplicateCustomerError(createBuyer.error)
+                  ? '这个微信在当前站点可能已经保存过。请先使用上方历史客户查询确认。'
+                  : '买家建档未完成。请核对微信号、渠道与站点后重试。'}
+              </Alert>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Button
+              loading={invite.isPending}
+              disabled={marketplaceCode.length === 0 || wechatId.trim().length === 0}
+            >
+              生成卖家注册链接
+            </Button>
+            {invite.isError ? (
+              <Alert tone="danger">注册链接生成未完成。如果这个微信在当前站点属于历史客户，请使用上方历史客户查询。</Alert>
+            ) : null}
+          </>
+        )}
       </form>
+      {createdBuyer ? (
+        <Alert tone="success">
+          <p>
+            买家编号 <strong>{createdBuyer.buyer_number}</strong>
+            （未激活，暂不能登录）
+            {createdBuyer.initial_pre_sales_owner
+              ? ` · 售前负责人 ${createdBuyer.initial_pre_sales_owner.staff_display_name}`
+              : ''}
+          </p>
+          <Button
+            className="secondary"
+            loading={invite.isPending}
+            onClick={() => invite.mutate(undefined)}
+          >
+            签发注册邀请
+          </Button>
+          {invite.isError ? (
+            <p>邀请签发未完成，可稍后从该买家记录重试；买家编号保持不变。</p>
+          ) : null}
+        </Alert>
+      ) : null}
       {registeredNote ? <Alert tone="info">{registeredNote}</Alert> : null}
       {invitation ? (
         <InvitationResult
@@ -815,14 +924,45 @@ function BuyerOrderHistory({ match }: {
 
 async function issueBuyerInvitation(
   client: ReturnType<typeof useQueryClient>,
-  wechatId: string,
-  marketplaceCode: string,
+  input: { buyerCustomerId: string; wechatId: string; marketplaceCode: string },
 ) {
-  const body = { wechat_id: wechatId, marketplace_code: marketplaceCode };
+  const body = {
+    buyer_customer_id: input.buyerCustomerId,
+    wechat_id: input.wechatId,
+    marketplace_code: input.marketplaceCode,
+  };
   return identityApiRequest('staff', client, {
     path: '/api/staff/customer-onboarding/buyer-registration-invitations',
     method: 'POST',
     schema: buyerInvitationSchema,
+    body,
+    headers: operationHeaders({ key: crypto.randomUUID(), body }),
+  });
+}
+
+/**
+ * 阶段 6.6E：员工买家建档。编号（录入日期 + B/C 渠道码 + 流水）在建档
+ * 事务内立即分配；新档案默认未激活，注册邀请只负责认领激活。
+ */
+async function createBuyerCustomerProfile(
+  client: ReturnType<typeof useQueryClient>,
+  input: {
+    displayName: string;
+    wechatId: string;
+    buyerChannelId: string;
+    marketplaceCode: string;
+  },
+) {
+  const body = {
+    display_name: input.displayName,
+    wechat_id: input.wechatId,
+    buyer_channel_id: input.buyerChannelId,
+    marketplace_code: input.marketplaceCode,
+  };
+  return identityApiRequest('staff', client, {
+    path: '/api/staff/buyer-customers',
+    method: 'POST',
+    schema: createBuyerResultSchema,
     body,
     headers: operationHeaders({ key: crypto.randomUUID(), body }),
   });

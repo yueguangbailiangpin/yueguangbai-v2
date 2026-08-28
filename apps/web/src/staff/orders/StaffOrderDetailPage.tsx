@@ -430,13 +430,19 @@ function CommunicationScreenshotsCard({
       ) : (
         <div className="buyer-chat-screenshots order-communication-screenshots">
           {value.communication_screenshots.map((reference) => (
-            <StaffProtectedImage
-              key={reference.file_object_id}
-              reference={reference}
-              alt="订单沟通截图"
-              className="protected-evidence-thumbnail"
-              fallback={<span className="protected-image-placeholder">截图加载中</span>}
-            />
+            <figure key={reference.file_object_id} className="order-communication-shot">
+              <StaffProtectedImage
+                reference={reference}
+                alt="订单沟通截图"
+                className="protected-evidence-thumbnail"
+                fallback={<span className="protected-image-placeholder">截图加载中</span>}
+              />
+              <figcaption>
+                上传员工：{reference.uploaded_by_staff_name ?? reference.uploaded_by_staff_id ?? '—'}
+                {' · '}
+                上传时间：{formatShanghai(reference.uploaded_at)}
+              </figcaption>
+            </figure>
           ))}
         </div>
       )}
@@ -555,8 +561,14 @@ function OrderOperationBlocks({
         <AdvanceBlock
           orderId={orderId}
           // 权威全额来自不可变财务快照；无快照投影时保持失败关闭，不接受客户端金额。
+          // 阶段 6.6E：权威垫付金额来自统一订单详情的 buyer_advance 分区
+          //（Owner 或 Buyer Refund 可见），不再回退旧快照字段。
           authoritativeAmountCnyFen={
-            value.financial_snapshot?.buyer_expected_principal_cny_fen ?? null
+            value.buyer_advance?.authoritative_advance_amount_cny_fen ?? null
+          }
+          canRecordAdvancePayment={value.buyer_advance?.can_record_advance_payment ?? false}
+          recordedAdvanceAmountCnyFen={
+            value.buyer_advance?.recorded_advance_amount_cny_fen ?? null
           }
         />
       ) : null}
@@ -621,9 +633,13 @@ function OrderEventBlock({ orderId }: { orderId: string }): React.JSX.Element {
 function AdvanceBlock({
   orderId,
   authoritativeAmountCnyFen,
+  canRecordAdvancePayment,
+  recordedAdvanceAmountCnyFen,
 }: {
   orderId: string;
   authoritativeAmountCnyFen: string | null;
+  canRecordAdvancePayment: boolean;
+  recordedAdvanceAmountCnyFen: string | null;
 }): React.JSX.Element {
   const client = useQueryClient();
   const [uploader, upload] = useFileUpload();
@@ -680,9 +696,27 @@ function AdvanceBlock({
           {formatShanghai(activeAdvance.paid_at)} · {activeAdvance.payment_channel}）
         </p>
       ) : null}
+      {recordedAdvanceAmountCnyFen !== null ? (
+        <p>
+          已记录垫付 {formatCny(recordedAdvanceAmountCnyFen)}；剩余待垫付{' '}
+          {formatCny(
+            String(
+              Math.max(
+                Number(authoritativeAmountCnyFen ?? '0') - Number(recordedAdvanceAmountCnyFen),
+                0,
+              ),
+            ),
+          )}
+          。
+        </p>
+      ) : null}
       {authoritativeAmountCnyFen === null ? (
         <Alert tone="info">
-          当前岗位读取不到本订单的权威返款全额（财务快照仅 Owner 可见），不能记录付款。
+          当前岗位读取不到本订单的权威垫付金额（仅 Owner 与买家返款岗位可见），不能记录付款。
+        </Alert>
+      ) : !canRecordAdvancePayment ? (
+        <Alert tone="info">
+          本订单当前不满足记录垫付的条件（已有未冲正垫付或返款义务已形成）。
         </Alert>
       ) : (
         <>

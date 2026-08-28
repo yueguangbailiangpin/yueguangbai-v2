@@ -305,9 +305,21 @@ export const staffFormalOrderDetailSchema = z
           file_version: z.number().int().positive(),
           purpose: z.literal('ORDER_COMMUNICATION_SCREENSHOT'),
           visibility: z.literal('SELLER_VISIBLE'),
+          uploaded_at: epoch,
+          uploaded_by_staff_id: z.string().nullable(),
+          uploaded_by_staff_name: z.string().nullable().optional(),
         })
         .strict(),
     ),
+    buyer_advance: z
+      .object({
+        authoritative_advance_amount_cny_fen: z.string(),
+        recorded_advance_amount_cny_fen: z.string(),
+        remaining_advance_amount_cny_fen: z.string(),
+        can_record_advance_payment: z.boolean(),
+      })
+      .strict()
+      .optional(),
     operational_events: z.array(
       z
         .object({
