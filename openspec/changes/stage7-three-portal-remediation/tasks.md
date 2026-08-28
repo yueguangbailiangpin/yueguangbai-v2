@@ -7,7 +7,7 @@
 - [x] 1.3 合同级测试：真实后端响应形状（含三新字段）解析成功；内部敏感字段（如 `object_key`、`uploaded_by_staff_name` 之外的内部字段）仍被 strict 拒绝；`uploaded_by_staff_name` 缺省可解析
 - [x] 1.4 列表接口与订单详情使用同一截图合同（read-intent schema 已对齐复核）
 - [x] 1.5 既有 fixture（runtime.test、SellerPages.chat-screenshot.msw.test、demo-data.ts、stage7/seller-visual e2e）修为真实合同形状
-- [ ] 1.6（7R-1）`locked_service_fee_snapshot.marketplace_code` 三码枚举负向测试（RAKUTEN_JP/TIKTOK_JP 必须拒绝；三合法码必须通过；真实响应仍可解析）
+- [x] 1.6（7R-1）`locked_service_fee_snapshot.marketplace_code` 三码枚举负向测试（RAKUTEN_JP/TIKTOK_JP 必须拒绝；三合法码必须通过；真实响应仍可解析）
 
 ## 2. 多截图渲染
 
@@ -36,8 +36,8 @@
 - [x] 5.1 三端正常状态截图（员工/买家/卖家桌面+移动+Drawer；卖家订单页含 ≥2 张真实形状截图及上传人/时间）（**7R-1 重开**：员工订单详情图、卖家沟通截图须真实渲染图片；卖家首页成员正常态；统一 assertNoUnexpectedErrorState；禁固定 waitForTimeout 充当等待）
 - [x] 5.2 修正 Stage7 交接文档失实条目（**7R-1 重开**：删除"无成员列表错误态/图片失败态"失实表述；spec 数量修正为 10 文件/160 用例）
 - [x] 5.3 新增 V2_FRONTEND_REBUILD_STAGE7R_HANDOFF.md（后端缺口 vs 已修复前端缺口分开；明确非 GO）
-- [ ] 5.4（7R-1）员工端重复文字清理：姓名=角色时顶栏/Drawer 只显示一次（aria 保留角色语义）；`/staff` 只出现一个"工作台"上下文标题；`/staff/orders/:id` Shell 标题为"订单详情"不回退"工作台"；jsdom 测试覆盖
-- [ ] 5.5（7R-1）截图 spec：员工订单详情三图（付款+两沟通）正常 read-intent/content mock 且断言图片可见与文件身份正确；卖家首页成员正常 mock；卖家沟通截图两张真实展开显示图片
+- [x] 5.4（7R-1）员工端重复文字清理：姓名=角色时顶栏/Drawer 只显示一次（aria 保留角色语义）；`/staff` 只出现一个"工作台"上下文标题；`/staff/orders/:id` Shell 标题为"订单详情"不回退"工作台"；jsdom 测试覆盖
+- [x] 5.5（7R-1）截图 spec：员工订单详情三图（付款+两沟通）正常 read-intent/content mock 且断言图片可见与文件身份正确；卖家首页成员正常 mock；卖家沟通截图两张真实展开显示图片
 
 ## 6. 验证门
 
@@ -45,4 +45,4 @@
 - [x] 6.2 10 个 Playwright spec 文件（160 用例）一次连续执行全部 exit 0（**7R-1 更正计数**：159 passed / 1 个预存在环境门控 skipped / 0 failed）
 - [x] 6.3 负向验证：真实卖家 DTO 可解析、敏感字段拒绝、两截图两入口、买家端无沟通截图入口、跨卖家组织 concealed 404、非 Owner 无成员管理、CSS 无重复区块（**7R-1 复验**：含 13 张正常状态截图内错误文本为零）
 - [x] 6.4 单一本地提交 `fix(web): close stage 7 portal contract and regression gaps`；确认五提交保留、工作树干净、未 push
-- [ ] 6.5（7R-1）独立提交 `fix(web): complete stage 7R visual evidence`（不 amend 71fc9487；不归档本 Change）
+- [x] 6.5（7R-1）独立提交 `fix(web): complete stage 7R visual evidence`（不 amend 71fc9487；不归档本 Change）

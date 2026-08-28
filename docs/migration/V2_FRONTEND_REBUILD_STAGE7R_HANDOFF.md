@@ -193,7 +193,7 @@ fix(web): close stage 7 portal contract and regression gaps
 | 截图 | 正常数据 | 错误态 | 加载态 | 溢出 | Drawer | 重复身份/标题 |
 |---|---|---|---|---|---|---|
 | staff-workbench-1440x900 | ✓（问候+空队列+今日概览） | 无 | 无 | 无 | — | 无（顶栏身份一次；单一"工作台"标题） |
-| staff-order-detail-1440x900 | ✓（三图+图注+关键事实） | 无 | 无 | 无 | — | 无（面包屑 工作台/订单 + 标题 订单详情） |
+| staff-order-detail-1440x900 | ✓（三图+图注+关键事实） | ~~无~~ **（7R-2 判定失实：当时仍有橙色"计价明细读取失败"Alert；7R-2 补财务 mock 后已无，见 §11）** | 无 | 无 | — | 无（面包屑 工作台/订单 + 标题 订单详情） |
 | staff-mobile-390x844 | ✓ | 无 | 无 | 无 | — | 无 |
 | staff-mobile-drawer-390x844 | ✓ | 无 | 无 | — | 正常覆盖 | 无（身份单行"总管理员/全部站点"） |
 | buyer-home-1440x900 | ✓（下一步/进行中/可预约） | 无 | 无 | 无 | — | 无 |
@@ -220,3 +220,37 @@ fix(web): close stage 7 portal contract and regression gaps
 | `npm run verify:web-static-build` | 0 |
 | `npm run verify:css-duplicates` | 0 |
 | Playwright 终门（10 spec 文件 / 160 用例） | exit 0：159 passed / 1 skipped（预存在环境门控）/ 0 failed |
+
+## 11. 7R-2 增补（2026-08-29，最终收尾）
+
+依据 ChatGPT 对 7R-1 的复核意见，单独提交 `fix(web): finalize stage 7R normal-state evidence`（不 amend 9dce2be1，不归档本 Change）。
+
+### 11.1 员工订单详情"计价明细读取失败"修复
+
+7R-1 版该截图右下仍显示橙色 `计价明细读取失败；以下为订单流程事实。`——根因是截图 spec 未 mock Owner 正常态内部财务聚合 `GET /api/staff/finance/orders/order-7`。7R-2 按权威形状（`StaffOrderDetailPage.msw.test.tsx` 的 `financeOrderFixture`：position/frozen_snapshot/seller_payables/buyer_refund/attributed_cash/calculations[含 current_attributed_cash]/finance_status/exception_codes/suggested_actions）补充正常响应，未修改任何产品代码。断言：计价明细/返款摘要（买家）/结算摘要（卖家）标题可见、无"计价明细读取失败"。
+
+### 11.2 正常状态错误检测加强
+
+`assertNoUnexpectedErrorState` 从 8 条固定文字扩充为：正文不含 `读取失败/加载失败/暂时不可用/暂时无法读取/图片读取凭证已失效/not found/读取中…/加载中…`，并遍历全部可见 `role=alert` 元素，其文本命中错误语义即失败（正常业务提示、风险说明与确认警告不命中这些语义，不受影响）。
+
+### 11.3 图片视觉证据升级
+
+弃用 1×1 黑色 PNG，改为 spec 内置 `makePng(width, height, rgb)`（node:zlib 生成确定性纯色真彩 PNG，无网络、无外部依赖）：付款截图 320×240 蓝（#2457D0）、沟通截图一 320×240 绿（#137333）、沟通截图二 240×320 橙（#8A4F00，竖版）、卖家沟通两图 320×240 绿 / 240×320 蓝。测试断言全部图片 `complete=true` 且 `naturalWidth>0`，并收集自然尺寸：员工页恰为 `['240x320','320x240','320x240']`、卖家页恰为 `['240x320','320x240']`（不同宽高比按原始尺寸解码，无变形/裁切/溢出，已逐张目检确认）。
+
+### 11.4 13 张截图重新生成与逐张复核（2026-08-29 02:57）
+
+复核结论（每张均已实际目检）：员工订单详情无任何错误 Alert、三图完整；卖家订单两图展开且上传人/上传时间可见；卖家首页成员正常态（2 名成员）；三端无加载态/系统错误态/水平溢出；两个移动 Drawer 均不重复显示姓名与角色。逐张明细同 §10.5 表（员工订单详情行按本节修正后成立）。
+
+### 11.5 7R-2 验证结果（真实退出码）
+
+| 命令 | 退出码 |
+|---|---|
+| `npm run check` | 0 |
+| `openspec validate stage7-three-portal-remediation --strict` | 0 |
+| `openspec validate --all --strict` | 0（63/63） |
+| 10 个既定 Playwright spec（`-c apps/web/playwright.config.ts`，160 用例） | 0（159 passed / 1 预存在环境门控 skipped / 0 failed） |
+| 13 张截图测试（stage7-three-portals-screenshots.spec.ts） | 13/13 passed |
+| `git diff --check` | 0 |
+| Change 任务进度 | **29/29**（3.5/5.1/6.3 因正常态截图仍存错误曾重开，本轮修复后与 1.6/5.4/5.5/6.5 一并真实完成） |
+
+OpenSpec Change `stage7-three-portal-remediation` 保持未归档。**本轮及此前各轮均不是 Staging GO 或 Production GO**；未 push、未部署、未触碰 Cloudflare/Google Drive/真实数据。

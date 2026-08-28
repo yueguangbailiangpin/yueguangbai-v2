@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { deflateSync } from 'node:zlib';
+import { expect, test, type Page, type Route } from '@playwright/test';
 
 /**
  * Stage 7 three-portal deterministic screenshot capture.
@@ -96,6 +97,111 @@ const ORDER_DETAIL = {
   },
 };
 
+/**
+ * Owner 正常态内部财务聚合（形状权威来源：StaffOrderDetailPage.msw.test.tsx
+ * financeOrderFixture；数值沿用该夹具，身份对齐 order-7）。
+ */
+const financeOrderFixture = {
+  position: {
+    formal_order_id: 'order-7',
+    amazon_order_number: '123-1234567-1234567',
+    seller_organization_id: 'org-7',
+    store_id: 'store-jp',
+    product_id: 'product-7',
+    asin: 'B07W5DMQ3R',
+    product_name: '象印 IH 电饭煲 5.5 合',
+    review_type: 'IMAGE',
+    confirmed_at: 1_754_240_000_000,
+    confirmed_business_date: '2026-08-01',
+    review_approved_at: null,
+    review_approved_business_date: null,
+    last_cash_business_date: null,
+    final_paid_jpy: '4100',
+    financial_snapshot_id: 'snapshot-7',
+    buyer_self_pay_bps: 1000,
+    buyer_self_pay_jpy: '410',
+    buyer_expected_principal_cny_fen: '165000',
+    seller_expected_principal_cny_fen: '182500',
+    service_fee_snapshot_cny_fen: '1250',
+    projected_gross_profit_cny_fen: '18750',
+    completed_gross_profit_cny_fen: null,
+    seller_principal_due_cny_fen: '182500',
+    seller_principal_collected_cny_fen: '0',
+    seller_principal_outstanding_cny_fen: '182500',
+    seller_service_fee_due_cny_fen: '1250',
+    seller_service_fee_collected_cny_fen: '0',
+    seller_service_fee_outstanding_cny_fen: '1250',
+    buyer_refund_due_cny_fen: '165000',
+    buyer_refund_net_paid_cny_fen: '0',
+    buyer_refund_outstanding_cny_fen: '165000',
+    buyer_refund_overpaid_cny_fen: '0',
+    attributed_cash_net_cny_fen: '0',
+    finance_status: 'PROJECTED_ONLY',
+  },
+  frozen_snapshot: {
+    financial_snapshot_id: 'snapshot-7',
+    buyer_self_pay_bps: 1000,
+    buyer_self_pay_jpy: '410',
+    buyer_expected_principal_cny_fen: '165000',
+    seller_expected_principal_cny_fen: '182500',
+    service_fee_cny_fen: '1250',
+    rate_detail: {
+      buyer_rate_business_date: '2026-08-01',
+      buyer_cny_per_jpy_e8: '4600000',
+      markup_rate_value: '400000',
+      final_rate_value: '5000000',
+      policy_scope_type: 'CURRENCY_PAIR_DEFAULT',
+      policy_version_no: 3,
+      policy_effective_from: 1_753_800_000_000,
+    },
+  },
+  seller_payables: {
+    principal_due_cny_fen: '182500',
+    principal_collected_cny_fen: '0',
+    principal_outstanding_cny_fen: '182500',
+    service_fee_due_cny_fen: '1250',
+    service_fee_collected_cny_fen: '0',
+    service_fee_outstanding_cny_fen: '1250',
+  },
+  buyer_refund: {
+    due_cny_fen: '165000',
+    net_paid_cny_fen: '0',
+    outstanding_cny_fen: '165000',
+    overpaid_cny_fen: '0',
+  },
+  attributed_cash: {
+    seller_allocated_net_cny_fen: '0',
+    buyer_refund_net_paid_cny_fen: '0',
+    net_cny_fen: '0',
+  },
+  calculations: {
+    projected_gross_profit: {
+      formula: 'SELLER_EXPECTED_PRINCIPAL_PLUS_SERVICE_FEE_MINUS_BUYER_EXPECTED_PRINCIPAL',
+      seller_expected_principal_cny_fen: '182500',
+      service_fee_cny_fen: '1250',
+      buyer_expected_principal_cny_fen: '165000',
+      result_cny_fen: '18750',
+    },
+    completed_gross_profit: {
+      formula: 'SELLER_PRINCIPAL_PAYABLE_PLUS_SERVICE_FEE_PAYABLE_MINUS_BUYER_REFUND_DUE',
+      eligible: false,
+      seller_principal_payable_cny_fen: '182500',
+      seller_service_fee_payable_cny_fen: '1250',
+      buyer_refund_due_cny_fen: '165000',
+      result_cny_fen: null,
+    },
+    current_attributed_cash: {
+      formula: 'SELLER_CURRENT_NET_ALLOCATION_MINUS_BUYER_REFUND_NET_PAID',
+      seller_current_net_allocation_cny_fen: '0',
+      buyer_refund_net_paid_cny_fen: '0',
+      result_cny_fen: '0',
+    },
+    },
+    finance_status: 'PROJECTED_ONLY',
+    exception_codes: [],
+    suggested_actions: [],
+};
+
 async function mockStaffApis(page: Page, staffImageIntentFiles: string[] = []): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -123,6 +229,11 @@ async function mockStaffApis(page: Page, staffImageIntentFiles: string[] = []): 
       await route.fulfill(ok({ entries: [] }));
       return;
     }
+    // Owner 正常态内部财务聚合：计价明细/结算摘要/返款摘要正常渲染。
+    if (path === '/api/staff/finance/orders/order-7') {
+      await route.fulfill(ok({ order: financeOrderFixture }));
+      return;
+    }
     // 受保护图片正常读取链路：单图 read-intent（记录文件身份供断言）。
     const intentMatch = /\/api\/staff\/files\/([^/]+)\/read-intents$/u.exec(path);
     if (intentMatch && route.request().method() === 'POST') {
@@ -138,8 +249,9 @@ async function mockStaffApis(page: Page, staffImageIntentFiles: string[] = []): 
       }));
       return;
     }
-    if (/^\/api\/staff\/file-read-intents\/[^/]+\/content$/u.test(path)) {
-      await pngContentResponse(route);
+    if (/^\/api\/staff\/file-read-intents\/([^/]+)\/content$/u.test(path)) {
+      const fileId = decodeURIComponent(path.split('/')[4]!).replace(/^staff-intent-/u, '');
+      await pngResponse(route, staffImageBytes[fileId] ?? makePng(320, 240, [36, 87, 208]));
       return;
     }
     await notFoundJson(route);
@@ -530,8 +642,9 @@ async function mockSellerApis(page: Page, sellerCommIntentFiles: string[] = []):
       }));
       return;
     }
-    if (/^\/api\/seller-portal\/file-read-intents\/[^/]+\/content$/u.test(path)) {
-      await pngContentResponse(route);
+    if (/^\/api\/seller-portal\/file-read-intents\/([^/]+)\/content$/u.test(path)) {
+      const fileId = decodeURIComponent(path.split('/')[4]!).replace(/^seller-comm-intent-/u, '');
+      await pngResponse(route, sellerCommBytes[fileId] ?? makePng(320, 240, [19, 115, 51]));
       return;
     }
     await notFoundJson(route);
@@ -540,42 +653,98 @@ async function mockSellerApis(page: Page, sellerCommIntentFiles: string[] = []):
 
 // ------------------------------ capture ----------------------------------
 
-// 1×1 真实 PNG（可被浏览器解码），用于受保护图片的正常读取链路 mock。
-const pngBytes = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  'base64',
-);
+// ---- 确定性测试图片：真实尺寸、可解码、颜色可区分；无网络、无外部依赖 ----
 
-function pngContentResponse(route: Route): Promise<void> {
+function crc32(buffer: Buffer): number {
+  let c = ~0;
+  for (const byte of buffer) {
+    c ^= byte;
+    for (let k = 0; k < 8; k += 1) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+  }
+  return ~c >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body), 0);
+  return Buffer.concat([length, body, crc]);
+}
+
+function makePng(width: number, height: number, rgb: readonly [number, number, number]): Buffer {
+  const row = Buffer.alloc(1 + width * 3);
+  for (let x = 0; x < width; x += 1) {
+    row[1 + x * 3] = rgb[0]!;
+    row[2 + x * 3] = rgb[1]!;
+    row[3 + x * 3] = rgb[2]!;
+  }
+  const raw = Buffer.concat(Array.from({ length: height }, () => row));
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // truecolor
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', deflateSync(raw, { level: 9 })),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+// 员工订单三张图：付款 320×240 蓝、沟通一 320×240 绿、沟通二 240×320 橙（不同宽高比验证布局不变形）。
+const staffImageBytes: Record<string, Buffer> = {
+  'pay-7': makePng(320, 240, [36, 87, 208]),
+  'comm-7-1': makePng(320, 240, [19, 115, 51]),
+  'comm-7-2': makePng(240, 320, [138, 79, 0]),
+};
+// 卖家两张沟通图：320×240 绿、240×320 蓝。
+const sellerCommBytes: Record<string, Buffer> = {
+  'comm-seller-1': makePng(320, 240, [19, 115, 51]),
+  'comm-seller-2': makePng(240, 320, [36, 87, 208]),
+};
+
+function pngResponse(route: Route, bytes: Buffer): Promise<void> {
   return route.fulfill({
     status: 200,
     headers: {
       'Content-Type': 'image/png',
-      'Content-Length': String(pngBytes.length),
+      'Content-Length': String(bytes.length),
       'Cache-Control': 'private, max-age=300',
       'X-Content-Type-Options': 'nosniff',
     },
-    body: pngBytes,
+    body: bytes,
   });
 }
 
 /**
- * 正常状态截图统一断言（7R-1）：截图前页面不允许残留任何错误态或加载态。
- * 只在应属于正常状态的截图测试中使用；不触碰专测错误恢复的 spec。
+ * 正常状态截图统一断言（7R-2 加强）：截图前页面不允许残留任何错误/加载语义，
+ * 含可见错误 Alert（role=alert）文本；正常业务提示、风险说明与确认警告不受影响。
  */
 async function assertNoUnexpectedErrorState(page: Page): Promise<void> {
   const body = page.locator('body');
   for (const text of [
+    '读取失败',
+    '加载失败',
+    '暂时不可用',
+    '暂时无法读取',
     '图片读取凭证已失效',
-    '图片暂时无法读取',
-    '成员列表暂时不可用',
-    '服务暂时不可用',
-    '暂时加载不了',
     'not found',
     '读取中…',
     '加载中…',
   ]) {
     await expect(body).not.toContainText(text);
+  }
+  const errorPattern = /读取失败|加载失败|暂时不可用|暂时无法读取|图片读取凭证已失效|not found/u;
+  const alerts = page.getByRole('alert');
+  const total = await alerts.count();
+  for (let index = 0; index < total; index += 1) {
+    const alert = alerts.nth(index);
+    if (!(await alert.isVisible().catch(() => false))) continue;
+    const text = ((await alert.textContent()) ?? '').trim();
+    expect(text, `非预期错误 Alert：${text}`).not.toMatch(errorPattern);
   }
 }
 
@@ -588,6 +757,15 @@ async function awaitAllImagesDecoded(page: Page): Promise<void> {
         .every((img) => img.complete && img.naturalWidth > 0),
     undefined,
     { timeout: 10_000 },
+  );
+}
+
+/** 收集页面全部已解码图片的自然尺寸（宽x高），用于验证不同宽高比下无变形。 */
+async function collectImageDimensions(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('img'))
+      .filter((img) => img.getAttribute('src') !== null)
+      .map((img) => `${img.naturalWidth}x${img.naturalHeight}`),
   );
 }
 
@@ -630,9 +808,16 @@ test.describe('stage 7 three-portal screenshots', () => {
     }
     await expect(page.getByText(/上传员工：总管理员/)).toHaveCount(2);
     await awaitAllImagesDecoded(page);
+    // 财务聚合正常读取：计价明细/结算摘要/返款摘要真实渲染，无"计价明细读取失败"。
+    await expect(page.getByRole('heading', { name: '计价明细' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '返款摘要（买家）' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '结算摘要（卖家）' })).toBeVisible();
     // 三张图片使用各自正确的文件身份，且三次读取全部真实发生。
     expect([...intentFiles].sort()).toEqual(['comm-7-1', 'comm-7-2', 'pay-7']);
     expect(new Set(intentFiles).size).toBe(3);
+    // 不同宽高比（320×240 ×2 与 240×320 ×1）全部按原始尺寸解码，无变形。
+    const dims = await collectImageDimensions(page);
+    expect(dims.sort()).toEqual(['240x320', '320x240', '320x240']);
     await assertNoUnexpectedErrorState(page);
     // 整页截图：保证付款截图与两张沟通截图完整入镜（视口截图会裁掉第二张）。
     mkdirSync(directory, { recursive: true });
@@ -740,6 +925,9 @@ test.describe('stage 7 three-portal screenshots', () => {
     await awaitAllImagesDecoded(page);
     // 两个 read-intent 均真实发生，且对应两个不同 file_object_id。
     expect(commIntents).toEqual(['comm-seller-1', 'comm-seller-2']);
+    // 两张图片按原始尺寸解码（320×240 与 240×320），无变形。
+    const dims = await collectImageDimensions(page);
+    expect(dims.sort()).toEqual(['240x320', '320x240']);
     await assertNoUnexpectedErrorState(page);
     await capture(page, 'seller-orders-communication-screenshots-1440x900.png');
   });
