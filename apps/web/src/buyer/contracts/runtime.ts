@@ -24,6 +24,11 @@ const page = <T extends z.ZodType>(item: T) => z.object({
 }).strict();
 
 export const buyerMeSchema = z.object({
+  // Stage 7.5 batch 2: stage contact projection (public names only).
+  assigned_contacts: z.object({
+    pre_sales_owner_display_name: z.string().nullable().optional(),
+    refund_owner_display_name: z.string().nullable().optional(),
+  }).strict().optional(),
   buyer: z.object({
     display_name: z.string(),
     marketplace_code: marketplace,
@@ -32,6 +37,17 @@ export const buyerMeSchema = z.object({
     refund_account_name: z.string().nullable(),
     refund_account_identifier: z.string().nullable(),
   }).strict(),
+}).strict();
+
+export const buyerServiceChannelsSchema = z.object({
+  channels: z.array(
+    z.object({
+      code: z.enum(['BUYER_PRE_SALES', 'BUYER_AFTER_SALES']),
+      display_name: z.string(),
+      wechat_id: z.string().nullable(),
+      qr_file_object_id: z.string().nullable(),
+    }).strict(),
+  ),
 }).strict();
 
 export const demandSchema = z.object({

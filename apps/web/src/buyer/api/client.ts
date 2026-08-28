@@ -3,6 +3,7 @@ import { operationHeaders } from '../../api/idempotency';
 import { identityApiRequest } from '../../api/identity-request';
 import {
   buyerMeSchema,
+  buyerServiceChannelsSchema,
   demandDetailSchema,
   demandsPageSchema,
   eligibleEvidencePageSchema,
@@ -76,6 +77,9 @@ function patch<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
 export const buyerApi = Object.freeze({
   me: (client: QueryClient, signal?: Signal) =>
     get(client, '/api/buyer-portal/me', buyerMeSchema, signal),
+    // Stage 7.5 batch 2: company public service channels (public fields only).
+    serviceChannels: (client: QueryClient, signal?: AbortSignal) =>
+      get(client, '/api/buyer-portal/service-channels', buyerServiceChannelsSchema, signal),
   updateRefundAccount: (
     client: QueryClient,
     accountName: string,

@@ -10,6 +10,7 @@ import { BuyerPagination } from '../shared/BuyerPagination';
 import { BuyerEmpty, BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { reviewTypeLabel } from '../shared/status';
+import { StageContactCard } from '../shared/StageContactCard';
 
 export function BuyerFormalOrdersPage(): React.JSX.Element {
   const client = useQueryClient();
@@ -53,6 +54,7 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
         title="正式订单"
         description="这里显示确认订单时保存的信息，之后不会变。"
       />
+    <StageContactCard stage="AFTER_SALES" />
       <form className="buyer-filter-form" role="search" onSubmit={submit} aria-label="正式订单筛选">
         <FormField label="市场" htmlFor="order-market">
           <Select name="marketplace" defaultValue="">

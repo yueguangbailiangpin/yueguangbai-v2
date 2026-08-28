@@ -27,6 +27,8 @@ export interface BuyerPortalContext
   displayName: string;
   refundAccountName: string | null;
   refundAccountIdentifier: string | null;
+  preSalesOwnerDisplayName?: string | null;
+  refundOwnerDisplayName?: string | null;
   sessionExpiresAt: number;
 }
 
@@ -46,6 +48,10 @@ export async function requireBuyerPortalContext(
     throw new BuyerPortalError('SESSION_INVALID', 401);
   }
 
+  const owners = await loadOwnerDisplayNames(
+    context.env.DB,
+    buyer.buyer_customer_id,
+  );
   return {
     buyerCustomerId: buyer.buyer_customer_id,
     marketplaceCode: buyer.marketplace_code,
@@ -55,6 +61,8 @@ export async function requireBuyerPortalContext(
     displayName: buyer.display_name,
     refundAccountName: buyer.refund_account_name,
     refundAccountIdentifier: buyer.refund_account_identifier,
+    preSalesOwnerDisplayName: owners.preSalesOwnerDisplayName,
+    refundOwnerDisplayName: owners.refundOwnerDisplayName,
     sessionExpiresAt: session.expiresAt,
   };
 }
@@ -63,6 +71,10 @@ export function toBuyerPortalMeDto(
   buyer: BuyerPortalContext,
 ): BuyerPortalMeDto {
   return {
+    assigned_contacts: {
+      pre_sales_owner_display_name: buyer.preSalesOwnerDisplayName ?? null,
+      refund_owner_display_name: buyer.refundOwnerDisplayName ?? null,
+    },
     buyer: {
       display_name: buyer.displayName,
       marketplace_code: buyer.marketplaceCode,
@@ -72,6 +84,30 @@ export function toBuyerPortalMeDto(
       refund_account_identifier: buyer.refundAccountIdentifier,
     },
   };
+}
+
+async function loadOwnerDisplayNames(
+  database: SqlDatabase,
+  buyerCustomerId: string,
+): Promise<{ preSalesOwnerDisplayName: string | null; refundOwnerDisplayName: string | null }> {
+  const rows = await database.prepare(`
+    SELECT assignment.duty_code, staff.display_name
+    FROM buyer_staff_assignments assignment
+    JOIN staff_users staff ON staff.id=assignment.staff_id AND staff.status='ACTIVE'
+    WHERE assignment.buyer_customer_id=? AND assignment.status='ACTIVE'
+      AND assignment.duty_code IN ('BUYER_PRE_SALES_OWNER','BUYER_REFUND_OWNER')
+  `).bind(buyerCustomerId)
+    .all<{ duty_code: string; display_name: string }>();
+  let preSalesOwnerDisplayName: string | null = null;
+  let refundOwnerDisplayName: string | null = null;
+  for (const row of rows.results) {
+    if (row.duty_code === 'BUYER_PRE_SALES_OWNER') {
+      preSalesOwnerDisplayName ??= row.display_name;
+    } else if (row.duty_code === 'BUYER_REFUND_OWNER') {
+      refundOwnerDisplayName ??= row.display_name;
+    }
+  }
+  return { preSalesOwnerDisplayName, refundOwnerDisplayName };
 }
 
 async function loadBuyerContext(

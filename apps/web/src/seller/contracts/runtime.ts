@@ -270,6 +270,9 @@ export const sellerProductsSchema = z
           created_at: epoch,
           updated_at: epoch,
           current_version: productVersion,
+          // Stage 7.5 batch 2: responsibility marker (optional for old fixtures).
+          primary_contact_member_id: z.string().nullable().optional(),
+          primary_contact_member_name: z.string().nullable().optional(),
         })
         .strict(),
     ),

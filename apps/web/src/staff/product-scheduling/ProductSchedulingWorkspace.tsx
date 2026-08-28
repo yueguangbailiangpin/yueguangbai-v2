@@ -2,7 +2,10 @@ import { RateSummaryCard } from '../shared/RateSummaryCard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
+import { z } from 'zod';
 import { isFrontendApiError } from '../../api/errors';
+import { identityApiRequest } from '../../api/identity-request';
+import { operationHeaders } from '../../api/idempotency';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
 import { useFileUpload } from '../../buyer/shared/useFileUpload';
 import { FileDropZone } from '../../ui/FileDropZone';
@@ -66,10 +69,12 @@ function ProductList(): React.JSX.Element {
         description="请检查搜索条件，或确认产品所在卖家/买家在您的有效数据范围内。" />
       : <Card><DataTable caption="员工产品库"><thead><tr>
           <th scope="col">产品</th><th scope="col">店铺 / ASIN</th>
+          <th scope="col">主要对接人</th>
           <th scope="col">下单节奏</th><th scope="col">状态</th><th scope="col">操作</th>
         </tr></thead><tbody>{query.data.items.map((product) => <tr key={product.product_id}>
           <th scope="row">{product.product_name}<small>当前 v{product.current_version_no}</small></th>
           <td>{product.store_name}<small>{product.asin}</small></td>
+          <td>{product.primary_contact_member_name ?? '未设置'}</td>
           <td>{cadenceLabel(product.cadence)}</td>
           <td><StatusBadge tone={product.status === 'ACTIVE' ? 'success' : 'neutral'}>
             {product.status === 'ACTIVE' ? '有效' : '已停用'}
@@ -121,6 +126,7 @@ function ProductDetail({ productId }: { productId: string }): React.JSX.Element 
         <p>周六、周日及所有节假日连续计入，不接入工作日日历。</p>
         <CadenceExamples /></Card>
     </section>
+    <PrimaryContactCard product={product} />
     <RateSummaryCard organizationId={null} />
     {canEdit ? <ProductVersionForm product={product} /> : null}
     {product.versions.length > 0 ? <MainImageCard product={product} canEdit={canEdit} /> : null}
@@ -654,4 +660,98 @@ function beijingToday(): string {
   }).formatToParts(new Date());
   const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${value['year']}-${value['month']}-${value['day']}`;
+}
+
+/**
+ * Stage 7.5 batch 2: product primary contact. One responsible member per
+ * product; setting/clearing goes through the existing
+ * POST /api/staff/products/:id/primary-contact (idempotency key, expected
+ * version, reason; the server enforces same-organization ACTIVE members).
+ */
+function PrimaryContactCard({
+  product,
+}: {
+  product: {
+    product_id: string;
+    aggregate_version: number;
+    primary_contact_member_id?: string | null | undefined;
+    primary_contact_member_name?: string | null | undefined;
+  };
+}): React.JSX.Element {
+  const session = useCurrentStaffSession();
+  const client = useQueryClient();
+  const [message, setMessage] = useState<string | null>(null);
+  const canManage = (session.role.code === 'owner' || session.role.code === 'seller_ops')
+    && session.permissions.includes('SELLER_MANAGE');
+  const mutationSchema = z.object({
+    product: z.object({
+      product_id: z.string(),
+      primary_contact_member_id: z.string().nullable(),
+      primary_contact_member_name: z.string().nullable(),
+      version: z.number().int().positive(),
+    }).strict(),
+    replayed: z.boolean(),
+  }).strict();
+  const setContact = useMutation({
+    mutationFn: (request: { body: unknown; key: string }) =>
+      identityApiRequest('staff', client, {
+        path: `/api/staff/products/${encodeURIComponent(product.product_id)}/primary-contact`,
+        method: 'POST',
+        schema: mutationSchema,
+        body: request.body,
+        headers: operationHeaders({ key: request.key, body: request.body }),
+      }),
+    onSuccess: (response) => {
+      setMessage(response.data.replayed ? '重复请求：联系人保持不变。' : '产品主要对接人已更新。');
+      void client.invalidateQueries({
+        queryKey: staffWorkbenchKeys.product(session.authorization_version, product.product_id),
+      });
+    },
+    onError: (error) => {
+      setMessage(
+        `更新未完成${isFrontendApiError(error) ? `（${error.code}）` : ''}：请确认成员属于本卖家组织且为有效成员。`,
+      );
+    },
+  });
+  return (
+    <Card>
+      <p className="eyebrow">业务对接人</p>
+      <h2>产品主要对接人</h2>
+      <p>
+        {product.primary_contact_member_name
+          ? `${product.primary_contact_member_name}（成员 ID ${product.primary_contact_member_id}）`
+          : '未设置；本组织全部有效成员仍可查看本产品。'}
+      </p>
+      {canManage ? (
+        <form
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            const data = new FormData(event.currentTarget);
+            const raw = String(data.get('member_id') ?? '').trim();
+            setContact.mutate({
+              body: {
+                primary_contact_member_id: raw === '' ? null : raw,
+                expected_version: product.aggregate_version,
+                reason: String(data.get('reason') ?? ''),
+              },
+              key: crypto.randomUUID(),
+            });
+          }}
+        >
+          <FormField label="成员 ID（留空即清除）" htmlFor="primary-contact-member">
+            <input id="primary-contact-member" name="member_id" defaultValue={product.primary_contact_member_id ?? ''} />
+          </FormField>
+          <FormField label="变更原因" htmlFor="primary-contact-reason">
+            <input id="primary-contact-reason" name="reason" minLength={3} required />
+          </FormField>
+          <Button type="submit" loading={setContact.isPending}>
+            {product.primary_contact_member_id ? '转移 / 清除主要对接人' : '设置主要对接人'}
+          </Button>
+        </form>
+      ) : null}
+      {message ? (
+        <Alert tone={setContact.isSuccess ? 'success' : 'info'}>{message}</Alert>
+      ) : null}
+    </Card>
+  );
 }

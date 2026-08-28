@@ -54,6 +54,10 @@ import { registerOperationalReadinessRoutes } from './operational-readiness/rout
 import { registerOperationalAlertAttestationRoutes } from './operational-readiness/alert-attestation';
 import { registerOperatingIntegrityRoutes } from './operating-integrity/routes';
 import { registerStaffOrderDetailRoutes } from './staff-order-detail/routes';
+import {
+  registerBuyerServiceChannelRoutes,
+  registerStaffServiceChannelRoutes,
+} from './company-service-channels/routes';
 import { registerCreateBuyerCustomerRoutes } from './customers/create-buyer-route';
 import { registerStaffSearchRoutes } from './staff-search/routes';
 import { registerProductionRecoveryAttestationRoutes } from './production-readiness/recovery-attestation-routes';
@@ -85,6 +89,7 @@ registerIdentityResolutionRoutes(app);
 registerCustomerLoginIdentifierChangeRoutes(app);
 registerOperatingIntegrityRoutes(app);
 registerStaffOrderDetailRoutes(app);
+registerStaffServiceChannelRoutes(app);
 registerCreateBuyerCustomerRoutes(app);
 registerStaffSearchRoutes(app);
 registerProductionRecoveryAttestationRoutes(app);
@@ -106,6 +111,7 @@ registerFileHttpRoutes(app);
 
 registerBuyerSelfRegistrationRoutes(app);
 registerBuyerPortalRoutes(app);
+registerBuyerServiceChannelRoutes(app);
 app.use('/api/buyer-portal/order-evidence', exactOneOrderEvidenceScreenshotGuard());
 app.use('/api/buyer-portal/order-evidence/:id/resubmit', exactOneOrderEvidenceScreenshotGuard());
 registerBuyerOrderEvidencePortalRoutes(app);

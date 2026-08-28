@@ -40,6 +40,8 @@ interface ProductRow {
   order_interval_days: number | null;
   orders_per_run: number | null;
   updated_at: number;
+  primary_contact_member_id: string | null;
+  primary_contact_member_name: string | null;
 }
 
 interface ProductVersionRow {
@@ -163,12 +165,16 @@ export async function listStaffProducts(
       version.product_name,
       version.order_interval_days,
       version.orders_per_run,
-      product.updated_at
+      product.updated_at,
+      product.primary_contact_member_id,
+      primary_contact.display_name AS primary_contact_member_name
     FROM products product
     JOIN seller_stores store ON store.id=product.store_id
     JOIN product_versions version
       ON version.product_id=product.id
       AND version.version_no=product.current_version_no
+    LEFT JOIN seller_organization_members primary_contact
+      ON primary_contact.id=product.primary_contact_member_id
     WHERE ${visibility}
       ${searchSql}
       ${cursorSql}
@@ -217,12 +223,16 @@ export async function readStaffProduct(
       version.product_name,
       version.order_interval_days,
       version.orders_per_run,
-      product.updated_at
+      product.updated_at,
+      product.primary_contact_member_id,
+      primary_contact.display_name AS primary_contact_member_name
     FROM products product
     JOIN seller_stores store ON store.id=product.store_id
     JOIN product_versions version
       ON version.product_id=product.id
       AND version.version_no=product.current_version_no
+    LEFT JOIN seller_organization_members primary_contact
+      ON primary_contact.id=product.primary_contact_member_id
     WHERE product.id=?
   `).bind(productId).first<ProductRow>();
   if (!product || !await canViewProduct(
@@ -461,6 +471,8 @@ function productDto(row: ProductRow): StaffProductListItemDto {
           orders_per_run: Number(row.orders_per_run),
         },
     updated_at: Number(row.updated_at),
+    primary_contact_member_id: row.primary_contact_member_id,
+    primary_contact_member_name: row.primary_contact_member_name,
   };
 }
 

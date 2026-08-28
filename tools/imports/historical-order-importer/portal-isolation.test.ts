@@ -19,7 +19,7 @@ import { runHistoricalImport } from './pipeline';
 const REPOSITORY_ROOT = process.cwd();
 const ROUTE_INVENTORY = path.join(REPOSITORY_ROOT, 'docs/contracts/V2_API_ROUTE_INVENTORY.md');
 const API_SOURCE_ROOT = path.join(REPOSITORY_ROOT, 'apps/api/src');
-const EXPECTED_ENDPOINT_COUNT = 225;
+const EXPECTED_ENDPOINT_COUNT = 228;
 
 function collectSourceFiles(directory: string): string[] {
   const files: string[] = [];

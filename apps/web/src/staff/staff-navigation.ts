@@ -170,6 +170,12 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
         path: '/staff/admin-business-dashboard',
         visible: mayDashboard,
       },
+      {
+        id: 'service-channels',
+        label: '客服渠道',
+        path: '/staff/service-channels',
+        visible: mayAccessManagement,
+      },
     ],
   },
 ];

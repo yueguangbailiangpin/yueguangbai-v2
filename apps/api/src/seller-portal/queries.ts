@@ -55,6 +55,8 @@ interface ProductRow {
   product_url: string | null;
   buyer_visible_notes: string | null;
   product_version_created_at: number;
+  primary_contact_member_id: string | null;
+  primary_contact_member_name: string | null;
 }
 
 interface ProductVersionRow {
@@ -270,7 +272,9 @@ export async function listSellerPortalProducts(
       image.file_entity_link_id AS main_image_file_entity_link_id,
       current.product_url,
       current.buyer_visible_notes,
-      current.created_at AS product_version_created_at
+      current.created_at AS product_version_created_at,
+      product.primary_contact_member_id,
+      primary_contact.display_name AS primary_contact_member_name
     FROM products product
     JOIN seller_stores store
       ON store.id=product.store_id
@@ -282,6 +286,8 @@ export async function listSellerPortalProducts(
       AND current.version_no=product.current_version_no
     LEFT JOIN product_version_main_images image
       ON image.product_version_id=current.id
+    LEFT JOIN seller_organization_members primary_contact
+      ON primary_contact.id=product.primary_contact_member_id
     WHERE product.organization_id=?
       ${scope.sql}
       ${extra}
@@ -336,7 +342,9 @@ export async function getSellerPortalProduct(
       image.file_entity_link_id AS main_image_file_entity_link_id,
       current.product_url,
       current.buyer_visible_notes,
-      current.created_at AS product_version_created_at
+      current.created_at AS product_version_created_at,
+      product.primary_contact_member_id,
+      primary_contact.display_name AS primary_contact_member_name
     FROM products product
     JOIN seller_stores store
       ON store.id=product.store_id
@@ -348,6 +356,8 @@ export async function getSellerPortalProduct(
       AND current.version_no=product.current_version_no
     LEFT JOIN product_version_main_images image
       ON image.product_version_id=current.id
+    LEFT JOIN seller_organization_members primary_contact
+      ON primary_contact.id=product.primary_contact_member_id
     WHERE product.id=?
       AND product.organization_id=?
       ${scope.sql}
@@ -796,6 +806,8 @@ function mapProduct(row: ProductRow): SellerPortalProductDto {
     version: Number(row.version),
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
+    primary_contact_member_id: row.primary_contact_member_id,
+    primary_contact_member_name: row.primary_contact_member_name,
     current_version: mapProductVersion({
       id: row.product_version_id,
       version_no: row.current_version_no,

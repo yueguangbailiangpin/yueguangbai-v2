@@ -4,6 +4,15 @@ import type { FixedIntegerString } from './pricing';
 import type { MarketplaceCode } from './customer';
 
 export interface BuyerPortalMeDto {
+  /**
+   * Stage 7.5 batch 2: public display names of the buyer's fixed
+   * pre-sales / refund owners (null when unassigned). Never includes staff
+   * ids, emails, permissions, or any other internal field.
+   */
+  assigned_contacts: {
+    pre_sales_owner_display_name: string | null;
+    refund_owner_display_name: string | null;
+  };
   buyer: {
     display_name: string;
     marketplace_code: MarketplaceCode;

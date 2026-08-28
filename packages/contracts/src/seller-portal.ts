@@ -108,6 +108,9 @@ export interface SellerPortalProductDto {
   created_at: number;
   updated_at: number;
   current_version: SellerPortalProductVersionDto;
+  /** Stage 7.5 batch 2: responsibility marker only (never narrows visibility). */
+  primary_contact_member_id: string | null;
+  primary_contact_member_name: string | null;
 }
 
 export interface SellerPortalProductApplicationDto {

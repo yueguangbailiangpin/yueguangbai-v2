@@ -34,6 +34,8 @@ export function StaffRoutePage(): React.JSX.Element {
     return <RouteChunkBoundary load={loadStaffAdminRoutes} />;
   if (pathname.startsWith('/staff/access-management'))
     return <RouteChunkBoundary load={loadStaffAccessManagementRoutes} />;
+  if (pathname.startsWith('/staff/service-channels'))
+    return <RouteChunkBoundary load={loadStaffAccessManagementRoutes} />;
   if (
     pathname.startsWith('/staff/products') ||
     /^\/staff\/demands\/[^/]+\/reservations$/u.test(pathname)

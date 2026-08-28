@@ -10,6 +10,7 @@ export * from './buyer-review-portal';
 export * from './buyer-self-registration';
 export * from './catalog';
 export * from './customer';
+export * from './company-service-channel';
 export * from './customer-security';
 export * from './demand';
 export * from './errors';

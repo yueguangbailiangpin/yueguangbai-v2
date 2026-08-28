@@ -977,6 +977,9 @@ export const staffProductListItemSchema = z
     product_name: z.string(),
     cadence: orderCadenceSchema.nullable(),
     updated_at: epoch,
+    // Stage 7.5 batch 2: responsibility marker (optional for old fixtures).
+    primary_contact_member_id: z.string().nullable().optional(),
+    primary_contact_member_name: z.string().nullable().optional(),
   })
   .strict();
 export const staffProductPageSchema = z

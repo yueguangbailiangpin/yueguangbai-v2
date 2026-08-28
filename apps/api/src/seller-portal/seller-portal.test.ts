@@ -1144,16 +1144,16 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(31);
+    expect(Number(state?.schema_version)).toBe(32);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(31);
+    expect(migrations).toHaveLength(32);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0031_stage75_staff_order_list_indexes.sql');
+    expect(migrations.at(-1)).toBe('0032_stage75_public_service_channels.sql');
   });
 });
 

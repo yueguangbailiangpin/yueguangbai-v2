@@ -118,15 +118,20 @@ describe('staff-navigation config', () => {
 
   it('owner without FINANCIAL_VIEW does not see admin-dashboard in system', () => {
     const session = staffTestSession('owner', ['STAFF_MANAGE']);
-    // 系统设置组只剩经营看板一个子项；无 FINANCIAL_VIEW 时整组随之隐藏。
+    // Stage 7.5 batch 2 起系统设置组含经营看板 + 客服渠道两个子项；
+    // 无 FINANCIAL_VIEW 时经营看板隐藏，但客服渠道（STAFF_MANAGE）仍可见，
+    // 因此整组对持有 STAFF_MANAGE 的 owner 保持可见。
     const system = STAFF_NAV_ITEMS.find((i) => i.id === 'system');
     expect(system).toBeDefined();
     const dashboardChild = system!.children!.find((c) => c.id === 'admin-dashboard');
     expect(dashboardChild).toBeDefined();
     expect(dashboardChild!.visible(session)).toBe(false);
-    expect(getVisibleNavItems(session).map((i) => i.id)).not.toContain('system');
+    const channelsChild = system!.children!.find((c) => c.id === 'service-channels');
+    expect(channelsChild).toBeDefined();
+    expect(channelsChild!.visible(session)).toBe(true);
+    expect(getVisibleNavItems(session).map((i) => i.id)).toContain('system');
     // 旧“运行完整性工具”子项已随独立订单工具页退役。
-    expect(system!.children).toHaveLength(1);
+    expect(system!.children).toHaveLength(2);
   });
 
   it('Personal DENY simulation: permissions array controls visibility', () => {

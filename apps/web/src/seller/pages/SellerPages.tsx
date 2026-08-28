@@ -557,6 +557,10 @@ export function SellerProductsPage(): React.JSX.Element {
                 <Fact label="类型" value="已通过商品" />
                 <Fact label="版本" value={`v${item.current_version_no}`} />
                 <Fact
+                  label="主要对接人"
+                  value={item.primary_contact_member_name ?? '未设置'}
+                />
+                <Fact
                   label="搜索词"
                   value={item.current_version.search_keywords.join('、') || '未填'}
                 />

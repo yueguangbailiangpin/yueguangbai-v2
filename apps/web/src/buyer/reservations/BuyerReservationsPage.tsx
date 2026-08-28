@@ -9,6 +9,7 @@ import { formatShanghai } from '../shared/format';
 import { BuyerEmpty, BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { statusLabel, statusTone } from '../shared/status';
+import { StageContactCard } from '../shared/StageContactCard';
 
 export function BuyerReservationsPage(): React.JSX.Element {
   const client = useQueryClient();
@@ -18,6 +19,7 @@ export function BuyerReservationsPage(): React.JSX.Element {
   return <section className="buyer-page buyer-flow-page buyer-list-page">
     <BuyerJourney current="reserved" />
     <PageHeader eyebrow="产品阶段" title="我的预约" description="查看预约状态和下一步。" />
+    <StageContactCard stage="PRE_SALES" />
     {pages.isInitialPending ? <BuyerLoading /> : pages.initialError ? <BuyerQueryError error={pages.initialError} />
       : pages.items.length === 0 ? <BuyerEmpty title="暂时还没有预约" description="去看看可预约的产品吧～" />
         : <div className="buyer-card-list">{pages.items.map((item) => <Link className="buyer-record-card buyer-stage-card"

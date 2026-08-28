@@ -30,6 +30,9 @@ export interface StaffProductListItemDto {
   product_name: string;
   cadence: OrderCadenceDto | null;
   updated_at: number;
+  /** Stage 7.5 batch 2: responsibility marker only (never narrows visibility). */
+  primary_contact_member_id: string | null;
+  primary_contact_member_name: string | null;
 }
 export interface StaffProductPageDto {
   items: readonly StaffProductListItemDto[];

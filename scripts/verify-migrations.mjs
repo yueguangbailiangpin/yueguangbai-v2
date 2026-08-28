@@ -13,14 +13,14 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 31;
-const expectedLastMigration = '0031_stage75_staff_order_list_indexes.sql';
+const expectedLatestSchema = 32;
+const expectedLastMigration = '0032_stage75_public_service_channels.sql';
 const expectedSchemaInventory = {
-  table: 157,
-  index: 484,
+  table: 158,
+  index: 485,
   trigger: 305,
   view: 12,
-  sha256: '84d261ed86b736948baa212b8a97a5eaa42fc19e9c1d92887737984036e94019',
+  sha256: '4f67527c54ba40a50a0a78d405550a47a9c7f26cf8eb3a88b07edfb85901aee6',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2

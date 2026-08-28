@@ -6,12 +6,12 @@ const root = path.resolve(import.meta.dirname, '../../../..');
 const read = (file: string) => readFileSync(path.join(root, file), 'utf8');
 
 describe('second layer hardening freeze', () => {
-  it('keeps production release authority on schema 31, Access and release-bound readiness', () => {
+  it('keeps production release authority on schema 32, Access and release-bound readiness', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(31);
-    expect(migrations.at(-1)).toBe('0031_stage75_staff_order_list_indexes.sql');
+    expect(migrations).toHaveLength(32);
+    expect(migrations.at(-1)).toBe('0032_stage75_public_service_channels.sql');
     const template = read('apps/api/wrangler.production.template.jsonc');
     expect(template).toContain('"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"');
     expect(template).toContain('"SCHEDULED_OPERATIONS_ENABLED": "true"');
@@ -19,7 +19,7 @@ describe('second layer hardening freeze', () => {
     expect(template).toContain('STAFF_ACCESS_AUD');
     expect(template).not.toContain('FEISHU_WORKBENCH_APP_ID');
     const readiness = read('apps/api/src/operational-readiness/routes.ts');
-    expect(readiness).toContain('const TARGET_SCHEMA = 31');
+    expect(readiness).toContain('const TARGET_SCHEMA = 32');
     expect(readiness).toContain('APP_RELEASE_SHA');
     expect(readiness).toContain('last_backlog_count');
     expect(readiness).toContain('staff_access');

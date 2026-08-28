@@ -43,35 +43,35 @@
 
 ### Migration
 
-- [ ] 2.1 `0032_stage75_public_service_channels.sql`：`company_public_service_channels` 表 + 两行空种子；schema_version→32；锚点与守卫更新
+- [x] 2.1 `0032_stage75_public_service_channels.sql`：`company_public_service_channels` 表 + 两行空种子；schema_version→32；锚点与守卫更新
 
 ### Contracts
 
-- [ ] 2.2 `CompanyServiceChannelDto`（公开字段）、`SetCompanyServiceChannelRequest`；产品 DTO（员工 catalog + seller-portal）增加主要对接人字段；buyer-portal/me 扩展两个公开负责人名；qr 文件 purpose 枚举扩展
+- [x] 2.2 `CompanyServiceChannelDto`（公开字段）、`SetCompanyServiceChannelRequest`；产品 DTO（员工 catalog + seller-portal）增加主要对接人字段；buyer-portal/me 扩展两个公开负责人名；qr 文件 purpose 枚举扩展
 
 ### API
 
-- [ ] 2.3 核对既有 primary-contact 端点权限/幂等/审计（补缺测试，不改稳定合同）
-- [ ] 2.4 员工产品列表/详情、卖家产品列表/详情 read model 联查主要对接人
-- [ ] 2.5 `GET /api/staff/service-channels`、`PUT /api/staff/service-channels/:code`（Owner-only，幂等+expected_version+审计）
-- [ ] 2.6 `GET /api/buyer-portal/service-channels`（公开字段）；`GET /api/buyer-portal/me` 负责人公开名扩展
+- [x] 2.3 核对既有 primary-contact 端点权限/幂等/审计（补缺测试，不改稳定合同）
+- [x] 2.4 员工产品列表/详情、卖家产品列表/详情 read model 联查主要对接人
+- [x] 2.5 `GET /api/staff/service-channels`、`PUT /api/staff/service-channels/:code`（Owner-only，幂等+expected_version+审计）
+- [x] 2.6 `GET /api/buyer-portal/service-channels`（公开字段）；`GET /api/buyer-portal/me` 负责人公开名扩展
 
 ### Tests（第二批专项）
 
-- [ ] 2.7 合同正负向（Buyer DTO 拒绝 staff_id/email/权限等内部字段）
-- [ ] 2.8 HTTP：渠道读写权限矩阵（非 owner 403、owner 更新/version 冲突 409/幂等重放/payload mismatch）
-- [ ] 2.9 对接人只能选本组织 ACTIVE 成员（跨组织/非 ACTIVE 409）；跨组织 concealed 404；组织可见性不缩小
-- [ ] 2.10 未配置渠道时买家端兜底文案且无任何员工内部信息泄露（负向断言）
-- [ ] 2.11 Migration 31→32 replay + 锚点
+- [x] 2.7 合同正负向（Buyer DTO 拒绝 staff_id/email/权限等内部字段）
+- [x] 2.8 HTTP：渠道读写权限矩阵（非 owner 403、owner 更新/version 冲突 409/幂等重放/payload mismatch）
+- [x] 2.9 对接人只能选本组织 ACTIVE 成员（跨组织/非 ACTIVE 409）；跨组织 concealed 404；组织可见性不缩小
+- [x] 2.10 未配置渠道时买家端兜底文案且无任何员工内部信息泄露（负向断言）
+- [x] 2.11 Migration 31→32 replay + 锚点
 
 ### Web（第二批）
 
-- [ ] 2.12 员工产品列表/详情显示+管理主要对接人（设置/转移/清除，expected version + reason + 幂等）
-- [ ] 2.13 卖家端产品页只读对接人
-- [ ] 2.14 买家预约/订单资料/订单/评论/返款页阶段化联系卡片（负责人公开名+渠道；未配置兜底）
-- [ ] 2.15 员工 `/staff/service-channels` Owner-only 设置页（导航"系统设置"组）
-- [ ] 2.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图
-- [ ] 2.17 全量门禁 + 独立提交
+- [x] 2.12 员工产品列表/详情显示+管理主要对接人（设置/转移/清除，expected version + reason + 幂等）
+- [x] 2.13 卖家端产品页只读对接人
+- [x] 2.14 买家预约/订单资料/订单/评论/返款页阶段化联系卡片（负责人公开名+渠道；未配置兜底）
+- [x] 2.15 员工 `/staff/service-channels` Owner-only 设置页（导航"系统设置"组）
+- [x] 2.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图
+- [x] 2.17 全量门禁 + 独立提交
 
 ## 3. 第三批：卖家结算批次（提交 `feat(settlements): add immutable seller settlement batches`）
 
