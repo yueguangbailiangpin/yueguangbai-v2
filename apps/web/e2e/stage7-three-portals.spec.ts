@@ -142,6 +142,14 @@ async function mockStaffApis(page: Page, role: StaffRole): Promise<void> {
       await route.fulfill(ok({ session: staffSession(role) }));
       return;
     }
+    if (path === '/api/staff/me/work-items/summary') {
+      await route.fulfill(ok({ summary: {
+        open_count: 0, due_today_count: 0, overdue_count: 0,
+        exception_order_count: 0, refund_due_today_cny_fen: null,
+        recent: [],
+      } }));
+      return;
+    }
     if (path.endsWith('/api/staff/me/work-items')) {
       await route.fulfill(ok({ work_items: [], next_cursor: null }));
       return;

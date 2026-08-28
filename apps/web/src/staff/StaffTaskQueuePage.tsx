@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { Button, EmptyState, StatusBadge } from '../ui/primitives';
 import { staffApi } from './api/client';
+import { fenToYuan } from './finance/finance-format';
 import type { StaffWorkItem } from './contracts/runtime';
 import { staffWorkbenchKeys } from './queries/keys';
 import { StaffPanelError } from './shared/StaffPanelError';
@@ -11,6 +12,23 @@ import { workTypeLabels } from './work-panels/shared';
 
 const STAFF_FACT_STALE_TIME_MS = 15_000;
 const QUEUE_PAGE_LIMIT = 100;
+
+function MetricCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'processing' | 'amber' | 'danger' | 'neutral' | 'red';
+}): React.JSX.Element {
+  return (
+    <div className={`staff-metric-card staff-metric-${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
 
 function waitedLabel(createdAt: number, now: number): string {
   const minutes = Math.max(0, Math.floor((now - createdAt) / 60_000));
@@ -138,6 +156,17 @@ export function StaffTaskQueuePage(): React.JSX.Element {
     retry: false,
     staleTime: STAFF_FACT_STALE_TIME_MS,
   });
+  const summaryQuery = useQuery({
+    queryKey: staffWorkbenchKeys.metrics(
+      session.staff_id,
+      session.authorization_version,
+      session.session_version,
+    ),
+    queryFn: ({ signal }) =>
+      staffApi.workbenchSummary(client, signal).then((r) => r.data),
+    retry: false,
+    staleTime: STAFF_FACT_STALE_TIME_MS,
+  });
   const openItems = openQuery.data?.work_items ?? [];
   // D-056：任务由固定分配产生，后端只返回当前岗位/站点相关的待办；
   // “我的待办”即其中固定分配给本人的工作项。
@@ -201,6 +230,22 @@ export function StaffTaskQueuePage(): React.JSX.Element {
         </div>
       </div>
 
+      {summaryQuery.data ? (
+        <section className="staff-workbench-metrics" aria-label="工作台指标" data-testid="staff-workbench-metrics">
+          <MetricCard label="我的待处理" value={String(summaryQuery.data.summary.open_count)} tone="processing" />
+          <MetricCard label="今日到期" value={String(summaryQuery.data.summary.due_today_count)} tone="amber" />
+          <MetricCard label="已逾期" value={String(summaryQuery.data.summary.overdue_count)} tone={summaryQuery.data.summary.overdue_count > 0 ? 'danger' : 'neutral'} />
+          <MetricCard label="异常订单" value={String(summaryQuery.data.summary.exception_order_count)} tone={summaryQuery.data.summary.exception_order_count > 0 ? 'danger' : 'neutral'} />
+          {summaryQuery.data.summary.refund_due_today_cny_fen !== null ? (
+            <MetricCard
+              label="今日应处理返款"
+              value={fenToYuan(summaryQuery.data.summary.refund_due_today_cny_fen)}
+              tone="red"
+            />
+          ) : null}
+        </section>
+      ) : null}
+
       <div className="staff-workbench-layout">
         <div className="staff-workbench-main">
           {/* 建议先处理：固定分配中最久的三件 */}
@@ -222,6 +267,11 @@ export function StaffTaskQueuePage(): React.JSX.Element {
                     <div className="staff-recommended-title">
                       <strong>{workTypeLabels[item.work_type]}</strong>
                       <em className="staff-tone-warn">已等待 {waitedLabel(item.created_at, now)}</em>
+                      {item.is_overdue ? (
+                        <span className="staff-sla-badge staff-sla-overdue">SLA 已逾期</span>
+                      ) : item.priority === 'DUE_TODAY' ? (
+                        <span className="staff-sla-badge staff-sla-today">今日到期</span>
+                      ) : null}
                     </div>
                     <p>{itemSummary(item)}</p>
                   </div>

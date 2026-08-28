@@ -266,6 +266,34 @@ export const internalFinanceOrderDetailSchema = z
  * authority (financial_adjustments / financial_snapshot / finance_source)
  * are omitted by the backend rather than concealed behind another route.
  */
+/** Stage 7.5 batch 1: authoritative order responsibility projection. */
+export const orderResponsibilitySchema = z
+  .object({
+    stage: z.enum(['BUYER_REFUND', 'SELLER_SETTLEMENT', 'COMPLETED']),
+    responsible_role: z.enum(['owner', 'pre_sales', 'seller_ops', 'buyer_refund']),
+    responsible_staff: z
+      .object({
+        staff_id: z.string(),
+        display_name: z.string(),
+      })
+      .strict()
+      .nullable(),
+    next_action: z.enum([
+      'PROCESS_BUYER_REFUND',
+      'FOLLOW_SELLER_SETTLEMENT',
+      'REVIEW_COMPLETED_ORDER',
+      'RESOLVE_EXCEPTION',
+      'ASSIGN_RESPONSIBLE_STAFF',
+    ]),
+    next_action_due_at: epoch.nullable(),
+    is_overdue: z.boolean(),
+    overdue_since: epoch.nullable(),
+    exception_state: z.enum(['NONE', 'OPEN']),
+    exception_reason: z.string().nullable(),
+    available_actions: z.array(z.string()),
+  })
+  .strict();
+
 export const staffFormalOrderDetailSchema = z
   .object({
     order: z
@@ -273,7 +301,7 @@ export const staffFormalOrderDetailSchema = z
         formal_order_id: z.string(),
         marketplace_code: z.string(),
         amazon_order_number: z.string(),
-        amazon_order_date: z.string(),
+        amazon_order_date: z.string().nullable(),
         status: z.string(),
         confirmed_at: epoch,
       })
@@ -358,6 +386,8 @@ export const staffFormalOrderDetailSchema = z
       .nullable()
       .optional(),
     finance_source: z.literal('internal-finance').optional(),
+    // Stage 7.5 batch 1: authoritative responsibility projection.
+    responsibility: orderResponsibilitySchema.optional(),
   })
   .strict();
 export type StaffFormalOrderDetail = z.output<typeof staffFormalOrderDetailSchema>;
@@ -421,6 +451,59 @@ export const staffWorkItemsSchema = z
           updated_at: epoch,
           completed_at: epoch.nullable(),
           cancelled_at: epoch.nullable(),
+          // Stage 7.5 batch 1: backend-authoritative SLA metadata.
+          sla_due_at: epoch.nullable(),
+          is_overdue: z.boolean(),
+          overdue_since: epoch.nullable(),
+          next_action: z.string(),
+          responsible_role: z.enum(['owner', 'pre_sales', 'seller_ops', 'buyer_refund']),
+          responsible_staff_name: z.string().nullable(),
+          priority: z.enum(['OVERDUE', 'DUE_TODAY', 'NORMAL']),
+        })
+        .strict(),
+    ),
+    next_cursor: z.string().nullable(),
+  })
+  .strict();
+
+export const staffWorkbenchSummaryEnvelopeSchema = z
+  .object({ summary: z.lazy(() => staffWorkbenchSummarySchema) })
+  .strict();
+
+export const staffWorkbenchSummarySchema = z
+  .object({
+    open_count: z.number().int().nonnegative(),
+    due_today_count: z.number().int().nonnegative(),
+    overdue_count: z.number().int().nonnegative(),
+    exception_order_count: z.number().int().nonnegative(),
+    refund_due_today_cny_fen: z.string().nullable(),
+    recent: z.array(
+      z.lazy(() => staffWorkItemsSchema.shape.work_items.element),
+    ),
+  })
+  .strict();
+
+/** Stage 7.5 batch 1: staff formal-order cursor list. */
+export const staffOrderListPageSchema = z
+  .object({
+    items: z.array(
+      z
+        .object({
+          formal_order_id: z.string(),
+          marketplace_code: z.string(),
+          amazon_order_number: z.string(),
+          amazon_order_date: z.string().nullable(),
+          confirmed_at: epoch,
+          buyer_customer_id: z.string(),
+          buyer_customer_no: z.string(),
+          buyer_display_name: z.string(),
+          seller_organization_id: z.string(),
+          store_display_name: z.string(),
+          product_name_snapshot: z.string(),
+          review_type: z.string(),
+          buyer_expected_principal_cny_fen: z.string().nullable(),
+          seller_expected_principal_cny_fen: z.string().nullable(),
+          responsibility: orderResponsibilitySchema,
         })
         .strict(),
     ),

@@ -48,6 +48,13 @@ const workItem = {
   fixed_assignment_id: 'assignment-visual', assigned_staff_id: 'visual-owner',
   status: 'OPEN', version: 2, created_at: fixedNow - 7_200_000,
   updated_at: fixedNow - 3_600_000, completed_at: null, cancelled_at: null,
+  sla_due_at: 1786161600000 + 172800000,
+  is_overdue: false,
+  overdue_since: null,
+  next_action: 'REVIEW_ORDER_EVIDENCE',
+  responsible_role: 'pre_sales',
+  responsible_staff_name: '总管理员',
+  priority: 'NORMAL',
 };
 
 const orderEvidence = {
@@ -143,6 +150,13 @@ async function installStaffFixture(page: Page, role: Role = 'owner'): Promise<vo
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === '/api/staff-auth/session') return json(route, success({ session: staffSession(role) }));
+    if (path === '/api/staff/me/work-items/summary') {
+      return json(route, success({ summary: {
+        open_count: 0, due_today_count: 0, overdue_count: 0,
+        exception_order_count: 0, refund_due_today_cny_fen: null,
+        recent: [],
+      } }));
+    }
     if (path === '/api/staff/me/work-items') return json(route, success({ work_items: [workItem], next_cursor: null }));
     if (path === '/api/staff/me/work-items/work-visual') return json(route, success({ work_item: workItem }));
     if (path === '/api/staff/order-evidence/evidence-visual') return json(route, success({ order_evidence: orderEvidence }));

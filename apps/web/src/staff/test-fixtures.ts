@@ -83,6 +83,13 @@ export const staffTestWorkItem: StaffWorkItem = {
   updated_at: 1_787_000_000_000,
   completed_at: null,
   cancelled_at: null,
+  sla_due_at: 1_787_000_000_000 + 48 * 60 * 60 * 1000,
+  is_overdue: false,
+  overdue_since: null,
+  next_action: 'REVIEW_ORDER_EVIDENCE',
+  responsible_role: 'pre_sales',
+  responsible_staff_name: '售前员工',
+  priority: 'NORMAL',
 };
 
 export const sellerSettlementWorkItem: StaffWorkItem = {

@@ -1,5 +1,11 @@
 export const staffWorkbenchKeys = Object.freeze({
   accessManagement: ['staff', 'access-management'] as const,
+  metrics: (
+    staffId: string,
+    authorizationVersion: number,
+    sessionVersion: number,
+  ) =>
+    ['staff', 'workbench-summary', staffId, authorizationVersion, sessionVersion] as const,
   sellerPrincipalRatePolicies: (
     authorizationVersion: number,
     organizationId: string | null,

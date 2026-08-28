@@ -42,6 +42,7 @@ export * from './seller-principal-rate-policy';
 export * from './seller-portal';
 export * from './sql';
 export * from './staff';
+export * from './staff-order-list';
 export * from './staff-access-management';
 export * from './staff-assignment';
 export * from './staff-auth';

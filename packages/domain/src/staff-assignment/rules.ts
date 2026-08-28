@@ -131,3 +131,57 @@ export function cleanAssignmentIdentifier(
   }
   return normalized;
 }
+
+/**
+ * Stage 7.5 batch 1 SLA policy: backend-authoritative hours per work type.
+ * `BUYER_REFUND_PROCESSING` anchors on the obligation's created_at (the
+ * obligations table carries no due date); every other type anchors on the
+ * work item's created_at.
+ */
+export const WORK_ITEM_SLA_HOURS: Readonly<Record<StaffWorkItemType, number>> =
+  Object.freeze({
+    PRODUCT_APPLICATION_REVIEW: 48,
+    DEMAND_REVIEW: 48,
+    RESERVATION_DECISION: 24,
+    ORDER_INSTRUCTION_PUBLISH: 24,
+    ORDER_EVIDENCE_REVIEW: 48,
+    REVIEW_DECISION: 48,
+    BUYER_REFUND_PROCESSING: 72,
+  });
+
+export function workItemSlaDueAt(
+  workType: StaffWorkItemType,
+  createdAt: number,
+  sourceCreatedAt: number | null,
+): number {
+  const anchor = workType === 'BUYER_REFUND_PROCESSING'
+    ? sourceCreatedAt ?? createdAt
+    : createdAt;
+  return anchor + WORK_ITEM_SLA_HOURS[workType] * 60 * 60 * 1000;
+}
+
+const WORK_ITEM_NEXT_ACTION: Readonly<Record<StaffWorkItemType, string>> =
+  Object.freeze({
+    PRODUCT_APPLICATION_REVIEW: 'REVIEW_PRODUCT_APPLICATION',
+    DEMAND_REVIEW: 'REVIEW_DEMAND',
+    RESERVATION_DECISION: 'DECIDE_RESERVATION',
+    ORDER_INSTRUCTION_PUBLISH: 'PUBLISH_ORDER_INSTRUCTION',
+    ORDER_EVIDENCE_REVIEW: 'REVIEW_ORDER_EVIDENCE',
+    REVIEW_DECISION: 'DECIDE_REVIEW',
+    BUYER_REFUND_PROCESSING: 'PROCESS_BUYER_REFUND',
+  });
+
+export function workItemNextAction(workType: StaffWorkItemType): string {
+  return WORK_ITEM_NEXT_ACTION[workType];
+}
+
+export type StaffWorkItemPriority = 'OVERDUE' | 'DUE_TODAY' | 'NORMAL';
+
+export function workItemPriority(
+  slaDueAt: number,
+  chinaTodayOf: (epoch: number) => string,
+  now: number,
+): StaffWorkItemPriority {
+  if (slaDueAt < now) return 'OVERDUE';
+  return chinaTodayOf(slaDueAt) === chinaTodayOf(now) ? 'DUE_TODAY' : 'NORMAL';
+}

@@ -191,9 +191,9 @@ describe('Phase 4B3 buyer formal order read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(30);
+    expect(migrations).toHaveLength(31);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0030_stage66e_invitation_binding_and_permission_cleanup.sql');
+    expect(migrations.at(-1)).toBe('0031_stage75_staff_order_list_indexes.sql');
   });
 });
 

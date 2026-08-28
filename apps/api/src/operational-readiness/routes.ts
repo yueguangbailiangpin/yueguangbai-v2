@@ -8,7 +8,7 @@ import { operationalAlertAttestationReady } from './alert-attestation';
 import type { AppBindings } from '../app';
 import { exactCloudflareAccessTeamOrigin, parseExactGitCommitSha } from '@ygb/domain';
 
-const TARGET_SCHEMA = 30;
+const TARGET_SCHEMA = 31;
 const MAX_JOB_STALENESS_MS = 6 * 60 * 60 * 1000;
 const MAX_JOB_BACKLOG = 1000;
 const REQUIRED_JOBS = [

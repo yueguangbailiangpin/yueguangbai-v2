@@ -13,6 +13,9 @@ const item = {
   buyer_customer_id: 'buyer-1', seller_organization_id: 'seller-1', store_id: 'store-1',
   duty_code: 'BUYER_AFTER_SALES_OWNER', fixed_assignment_id: 'assignment-1', assigned_staff_id: 'staff-1',
   status: 'OPEN', version: 1, created_at: 1, updated_at: 1, completed_at: null, cancelled_at: null,
+  sla_due_at: 1 + 48 * 3600 * 1000, is_overdue: false, overdue_since: null,
+  next_action: 'DECIDE_REVIEW', responsible_role: 'buyer_refund',
+  responsible_staff_name: '返款员工', priority: 'NORMAL',
 };
 
 describe('Staff workbench runtime DTOs', () => {

@@ -114,9 +114,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
     id: 'orders',
     label: '订单',
     icon: ClipboardList,
-    upcoming: true,
-    // 订单详情 /staff/orders/:orderId 存在，但无列表页；
-    // 通过全局搜索和工作台进入，本阶段不创建假列表。
+    path: '/staff/orders',
   },
   {
     id: 'reviews-evidence',

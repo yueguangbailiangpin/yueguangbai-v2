@@ -46,6 +46,14 @@ async function mockStaffSession(page: Page): Promise<void> {
       });
       return;
     }
+    if (path === '/api/staff/me/work-items/summary') {
+      await route.fulfill(ok({ summary: {
+        open_count: 0, due_today_count: 0, overdue_count: 0,
+        exception_order_count: 0, refund_due_today_cny_fen: null,
+        recent: [],
+      } }));
+      return;
+    }
     if (path.endsWith('/api/staff/me/work-items')) {
       await route.fulfill({
         contentType: 'application/json',

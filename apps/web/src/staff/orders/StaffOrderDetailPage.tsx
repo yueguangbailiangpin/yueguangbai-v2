@@ -245,6 +245,10 @@ export function StaffOrderDetailPage(): React.JSX.Element {
             </div>
           </section>
 
+          {value.responsibility ? (
+            <ResponsibilityBlock responsibility={value.responsibility} />
+          ) : null}
+
           <div className="staff-detail-layout">
             <div className="staff-detail-main">
               <section aria-labelledby="staff-order-evidence-title">
@@ -325,6 +329,89 @@ export function StaffOrderDetailPage(): React.JSX.Element {
     </main>
   );
 }
+
+const RESPONSIBILITY_STAGE_LABELS: Record<string, string> = {
+  BUYER_REFUND: '买家返款阶段',
+  SELLER_SETTLEMENT: '卖家结算阶段',
+  COMPLETED: '订单已完成',
+};
+
+const RESPONSIBILITY_ACTION_LABELS: Record<string, string> = {
+  PROCESS_BUYER_REFUND: '处理买家返款',
+  FOLLOW_SELLER_SETTLEMENT: '跟进卖家结算',
+  REVIEW_COMPLETED_ORDER: '复核已完成订单',
+  RESOLVE_EXCEPTION: '处理订单异常',
+  ASSIGN_RESPONSIBLE_STAFF: '联系管理员分配负责人',
+};
+
+/**
+ * Stage 7.5 batch 1: the authoritative "当前负责人 / 下一步" area. Every
+ * value (stage, owner, deadline, overdue, exception) comes from the backend
+ * responsibility projection; the frontend only renders labels.
+ */
+function ResponsibilityBlock({
+  responsibility,
+}: {
+  responsibility: NonNullable<StaffFormalOrderDetail['responsibility']>;
+}): React.JSX.Element {
+  return (
+    <section
+      className="staff-surface staff-responsibility"
+      aria-labelledby="staff-responsibility-title"
+    >
+      <div className="staff-responsibility-head">
+        <strong id="staff-responsibility-title">当前负责人 / 下一步</strong>
+        <StatusBadge
+          tone={responsibility.is_overdue ? 'danger' : 'processing'}
+        >
+          {RESPONSIBILITY_STAGE_LABELS[responsibility.stage] ?? responsibility.stage}
+          {responsibility.is_overdue ? ' · 已逾期' : ''}
+        </StatusBadge>
+      </div>
+      <dl className="staff-responsibility-grid">
+        <div>
+          <dt>负责员工</dt>
+          <dd>
+            {responsibility.responsible_staff?.display_name ?? '未分配'}
+            {responsibility.responsible_staff ? (
+              <small>{RESPONSIBILITY_ROLE_LABELS[responsibility.responsible_role]
+                ?? responsibility.responsible_role}</small>
+            ) : null}
+          </dd>
+        </div>
+        <div>
+          <dt>下一步动作</dt>
+          <dd>
+            {RESPONSIBILITY_ACTION_LABELS[responsibility.next_action]
+              ?? responsibility.next_action}
+            {responsibility.exception_state === 'OPEN'
+              && responsibility.exception_reason ? (
+              <small className="staff-ref-danger">
+                异常：{responsibility.exception_reason}
+              </small>
+            ) : null}
+          </dd>
+        </div>
+        <div>
+          <dt>截止时间</dt>
+          <dd>
+            {responsibility.next_action_due_at === null
+              ? '—'
+              : formatShanghai(responsibility.next_action_due_at)}
+            {responsibility.is_overdue ? '（已逾期）' : ''}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+const RESPONSIBILITY_ROLE_LABELS: Record<string, string> = {
+  owner: '总管理员',
+  pre_sales: '售前',
+  seller_ops: '卖家对接',
+  buyer_refund: '买家返款',
+};
 
 function PaymentScreenshotCard({ value }: { value: StaffFormalOrderDetail }): React.JSX.Element {
   return (

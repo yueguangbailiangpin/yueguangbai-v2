@@ -16,6 +16,13 @@ const item = {
   store_id: 'store-m5', duty_code: 'BUYER_PRE_SALES_OWNER', fixed_assignment_id: 'assignment-m5',
   assigned_staff_id: 'staff-m5', status: 'OPEN', version: 2,
   created_at: 1_786_000_000_000, updated_at: 1_786_000_000_000, completed_at: null, cancelled_at: null,
+  sla_due_at: 1786161600000 + 172800000,
+  is_overdue: false,
+  overdue_since: null,
+  next_action: 'REVIEW_ORDER_EVIDENCE',
+  responsible_role: 'pre_sales',
+  responsible_staff_name: '总管理员',
+  priority: 'NORMAL',
 };
 const evidence = {
   submission_id: 'evidence-m5', reservation_id: 'reservation-m5', marketplace: 'AMAZON_JP', status: 'PENDING_VERIFICATION',
@@ -41,6 +48,12 @@ async function mockWorkbench(page: Page, observe?: { approveBody?: unknown; key?
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/api/staff-auth/session') return json(route, success({ session }));
+    if (url.pathname === '/api/staff/me/work-items/summary')
+      return json(route, success({ summary: {
+        open_count: 1, due_today_count: 0, overdue_count: 0,
+        exception_order_count: 0, refund_due_today_cny_fen: null,
+        recent: [],
+      } }));
     if (url.pathname === '/api/staff/me/work-items') return json(route, success({ work_items: [item], next_cursor: null }));
     if (url.pathname === '/api/staff/me/work-items/work-m5') return json(route, success({ work_item: item }));
     if (url.pathname === '/api/staff/order-evidence/evidence-m5') return json(route, success({ order_evidence: evidence }));
@@ -89,6 +102,12 @@ test('Staff explicit retry preserves ambiguous request authority and changed bod
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/api/staff-auth/session') return json(route, success({ session }));
+    if (url.pathname === '/api/staff/me/work-items/summary')
+      return json(route, success({ summary: {
+        open_count: 1, due_today_count: 0, overdue_count: 0,
+        exception_order_count: 0, refund_due_today_cny_fen: null,
+        recent: [],
+      } }));
     if (url.pathname === '/api/staff/me/work-items') return json(route, success({ work_items: [item], next_cursor: null }));
     if (url.pathname === '/api/staff/me/work-items/work-m5') return json(route, success({ work_item: item }));
     if (url.pathname === '/api/staff/order-evidence/evidence-m5') return json(route, success({ order_evidence: evidence }));

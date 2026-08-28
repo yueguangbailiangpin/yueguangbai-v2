@@ -84,6 +84,13 @@ async function mock(page: Page, role: 'owner'|'buyer_refund', observed?: Observe
           demand_version: 4, schedule_version: 1, first_order_date: '2026-08-10' }],
         timezone: 'Asia/Shanghai', data_as_of: 1_786_161_600_000 } }));
     }
+    if (path === '/api/staff/me/work-items/summary') {
+      return json(route, success({ summary: {
+        open_count: 0, due_today_count: 0, overdue_count: 0,
+        exception_order_count: 0, refund_due_today_cny_fen: null,
+        recent: [],
+      } }));
+    }
     if (path === '/api/staff/me/work-items') {
       return json(route, success({ work_items: [{
         work_item_id: 'work-demand', work_type: 'DEMAND_REVIEW',
@@ -93,6 +100,10 @@ async function mock(page: Page, role: 'owner'|'buyer_refund', observed?: Observe
         assigned_staff_id: 'browser-owner', status: 'OPEN', version: 1,
         created_at: 1_786_161_600_000, updated_at: 1_786_161_600_000,
         completed_at: null, cancelled_at: null,
+        sla_due_at: 1_786_161_600_000 + 172_800_000, is_overdue: false,
+        overdue_since: null, next_action: 'REVIEW_DEMAND',
+        responsible_role: 'seller_ops', responsible_staff_name: '总管理员',
+        priority: 'NORMAL',
       }], next_cursor: null }));
     }
     if (path === '/api/staff/me/work-items/work-demand') {

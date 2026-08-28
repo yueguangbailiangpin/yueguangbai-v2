@@ -1,31 +1,96 @@
-import type { SqlDatabase } from '@ygb/contracts';
-import { apiFailure, apiSuccess } from '@ygb/contracts';
+import type {
+  FormalOrderBusinessStage,
+  FormalOrderExceptionState,
+  SqlDatabase,
+  StaffFormalOrderListItemDto,
+  StaffFormalOrderListPageDto,
+} from '@ygb/contracts';
+import {
+  apiFailure,
+  apiSuccess,
+  isFormalOrderBusinessStage,
+  isFormalOrderExceptionState,
+  STAFF_ORDER_LIST_DEFAULT_LIMIT,
+  STAFF_ORDER_LIST_MAX_LIMIT,
+} from '@ygb/contracts';
 import type { Context, Hono } from 'hono';
 import { listOrderCommunicationScreenshots } from '../order-communication-screenshots/read-model';
 import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { resolveStaffDataScope, scopeAllowsSellerOrganization } from '../staff-assignment';
+import { orderVisibilityForActor } from '../staff-assignment';
+import {
+  buildResponsibility,
+  fixedAmountOrNull,
+  readResponsibilityRow,
+  responsibilitySelects,
+  stageOf,
+  exceptionStateOf,
+} from './responsibility';
 
 /**
  * D-056 §4.5: the single aggregate staff formal-order detail endpoint. It
  * replaces the separate order-integrity detail, the operating-integrity order
  * lookup and the buyer-advance-principal lookup alias; sections outside the
  * caller's authority are omitted rather than concealed behind another route.
+ *
+ * Stage 7.5 batch 1: the same route now also serves the authoritative formal
+ * order cursor list. When the query string carries exactly the single
+ * parameter `amazon_order_number` the legacy exact-lookup semantics (resolve
+ * then replay the detail aggregate) are preserved verbatim; every other
+ * request shape enters list mode with keyset pagination and fixed-assignment
+ * visibility (owner global, buyer duties by assigned buyers, seller_ops by
+ * assigned seller organizations).
  */
 export function registerStaffOrderDetailRoutes(app: Hono<any>): void {
   app.get('/api/staff/formal-orders/:id', withErrors(readOrderDetail));
-  app.get('/api/staff/formal-orders', withErrors(lookupByOrderNumber));
+  app.get('/api/staff/formal-orders', withErrors(listOrLookup));
 }
 
-async function lookupByOrderNumber(context: Context<any>): Promise<Response> {
+const LIST_PARAM_KEYS = [
+  'amazon_order_number_prefix',
+  'buyer_customer_no',
+  'seller_organization_id',
+  'store_id',
+  'stage',
+  'exception_state',
+  'responsible_staff_id',
+  'confirmed_from',
+  'confirmed_to',
+  'limit',
+  'cursor',
+] as const;
+
+interface OrderListFilters {
+  amazonOrderNumberPrefix: string | null;
+  buyerCustomerNo: string | null;
+  sellerOrganizationId: string | null;
+  storeId: string | null;
+  stage: FormalOrderBusinessStage | null;
+  exceptionState: FormalOrderExceptionState | null;
+  responsibleStaffId: string | null;
+  confirmedFrom: number | null;
+  confirmedTo: number | null;
+}
+
+async function listOrLookup(context: Context<any>): Promise<Response> {
   const actor = requireStaff(context);
   const url = new URL(context.req.url);
+  const keys = [...url.searchParams.keys()];
   if (
-    [...url.searchParams.keys()].some((key) => key !== 'amazon_order_number') ||
-    url.searchParams.get('amazon_order_number') === null
-  )
-    throw validationError();
-  const number = url.searchParams.get('amazon_order_number')!;
+    keys.length === 1
+    && keys[0] === 'amazon_order_number'
+    && url.searchParams.getAll('amazon_order_number').length === 1
+  ) {
+    return lookupByOrderNumber(context, actor, url.searchParams.get('amazon_order_number')!);
+  }
+  return listOrders(context, actor);
+}
+
+async function lookupByOrderNumber(
+  context: Context<any>,
+  actor: AssignmentStaffAuthorization,
+  number: string,
+): Promise<Response> {
   const row = await context.env.DB
     .prepare(
       `SELECT id FROM formal_orders WHERE amazon_order_number_normalized=? LIMIT 1`,
@@ -37,6 +102,10 @@ async function lookupByOrderNumber(context: Context<any>): Promise<Response> {
   return readOrderDetailForId(context, actor, row.id);
 }
 
+// ---------------------------------------------------------------------------
+// List mode
+// ---------------------------------------------------------------------------
+
 interface OrderRow {
   id: string;
   marketplace_code: string;
@@ -46,10 +115,323 @@ interface OrderRow {
   buyer_display_name: string;
   buyer_customer_no: string;
   amazon_order_number: string;
-  amazon_order_date: string;
+  amazon_order_date: string | null;
   confirmed_at: number;
   status: string;
+  product_name_snapshot: string;
+  review_type: string;
+  buyer_expected_principal_cny_fen: number | string | null;
+  seller_expected_principal_cny_fen: number | string | null;
+  refund_open: 0 | 1;
+  settlement_open: 0 | 1;
+  latest_event_type: string | null;
+  latest_event_reason: string | null;
+  refund_sla_anchor: number | null;
+  settlement_due_at: number | null;
+  refund_owner_staff_id: string | null;
+  refund_owner_staff_name: string | null;
+  seller_manager_staff_id: string | null;
+  seller_manager_staff_name: string | null;
+  owner_staff_id: string | null;
+  owner_staff_name: string | null;
 }
+
+function parseListFilters(
+  url: URL,
+): { filters: OrderListFilters; limit: number; cursor: { confirmedAt: number; id: string } | null } {
+  for (const key of url.searchParams.keys()) {
+    if (
+      !(LIST_PARAM_KEYS as readonly string[]).includes(key)
+      || url.searchParams.getAll(key).length !== 1
+    ) {
+      throw validationError();
+    }
+  }
+  const text = (key: string, min: number, max: number): string | null => {
+    const raw = url.searchParams.get(key);
+    if (raw === null) return null;
+    const normalized = raw.normalize('NFKC').trim();
+    if (normalized.length < min || normalized.length > max) throw validationError();
+    return normalized;
+  };
+  const stageParam = url.searchParams.get('stage');
+  if (stageParam !== null && !isFormalOrderBusinessStage(stageParam)) {
+    throw validationError();
+  }
+  const exceptionParam = url.searchParams.get('exception_state');
+  if (exceptionParam !== null && !isFormalOrderExceptionState(exceptionParam)) {
+    throw validationError();
+  }
+  const epoch = (key: string): number | null => {
+    const raw = url.searchParams.get(key);
+    if (raw === null) return null;
+    if (!/^[0-9]{1,15}$/u.test(raw)) throw validationError();
+    return Number(raw);
+  };
+  const limitRaw = url.searchParams.get('limit');
+  let limit: number = STAFF_ORDER_LIST_DEFAULT_LIMIT;
+  if (limitRaw !== null) {
+    if (!/^[1-9][0-9]{0,2}$/u.test(limitRaw)) throw validationError();
+    limit = Number(limitRaw);
+    if (limit < 1 || limit > STAFF_ORDER_LIST_MAX_LIMIT) throw validationError();
+  }
+  const filters: OrderListFilters = {
+    amazonOrderNumberPrefix: text('amazon_order_number_prefix', 3, 100),
+    buyerCustomerNo: text('buyer_customer_no', 3, 120),
+    sellerOrganizationId: text('seller_organization_id', 1, 200),
+    storeId: text('store_id', 1, 200),
+    stage: stageParam,
+    exceptionState: exceptionParam,
+    responsibleStaffId: text('responsible_staff_id', 1, 200),
+    confirmedFrom: epoch('confirmed_from'),
+    confirmedTo: epoch('confirmed_to'),
+  };
+  const cursorRaw = url.searchParams.get('cursor');
+  let cursor: { confirmedAt: number; id: string } | null = null;
+  if (cursorRaw !== null) {
+    const decoded = decodeCursor(cursorRaw);
+    if (decoded.echo !== cursorFilterEcho(filters)) {
+      throw validationError();
+    }
+    cursor = { confirmedAt: decoded.confirmedAt, id: decoded.id };
+  }
+  return { filters, limit, cursor };
+}
+
+function cursorFilterEcho(filters: OrderListFilters): string {
+  return JSON.stringify([
+    filters.amazonOrderNumberPrefix,
+    filters.buyerCustomerNo,
+    filters.sellerOrganizationId,
+    filters.storeId,
+    filters.stage,
+    filters.exceptionState,
+    filters.responsibleStaffId,
+    filters.confirmedFrom,
+    filters.confirmedTo,
+  ]);
+}
+
+function encodeCursor(
+  filters: OrderListFilters,
+  confirmedAt: number,
+  id: string,
+): string {
+  const bytes = new TextEncoder().encode(JSON.stringify({
+    v: 1,
+    kind: 'staff-order-list',
+    at: confirmedAt,
+    id,
+    echo: cursorFilterEcho(filters),
+  }));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
+}
+
+function decodeCursor(
+  raw: string,
+): { confirmedAt: number; id: string; echo: string } {
+  if (raw.length < 1 || raw.length > 2000) throw validationError();
+  let parsed: unknown;
+  try {
+    const base64 = raw.replaceAll('-', '+').replaceAll('_', '/')
+      .padEnd(Math.ceil(raw.length / 4) * 4, '=');
+    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw validationError();
+  }
+  const row = parsed as Record<string, unknown>;
+  if (
+    row['v'] !== 1
+    || row['kind'] !== 'staff-order-list'
+    || !Number.isSafeInteger(row['at'])
+    || Number(row['at']) < 0
+    || typeof row['id'] !== 'string'
+    || row['id'].length < 1
+    || row['id'].length > 120
+    || typeof row['echo'] !== 'string'
+  ) {
+    throw validationError();
+  }
+  return { confirmedAt: Number(row['at']), id: row['id'], echo: row['echo'] };
+}
+
+/** Fixed-assignment visibility fragment; returns SQL + bind params. */
+async function orderVisibility(
+  database: SqlDatabase,
+  actor: AssignmentStaffAuthorization,
+  alias: string,
+): Promise<{ sql: string; params: unknown[] }> {
+  return orderVisibilityForActor(database, actor, alias);
+}
+
+async function listOrders(
+  context: Context<any>,
+  actor: AssignmentStaffAuthorization,
+): Promise<Response> {
+  const url = new URL(context.req.url);
+  const { filters, limit, cursor } = parseListFilters(url);
+  const visibility = await orderVisibility(context.env.DB, actor, 'o');
+
+  const where: string[] = [visibility.sql];
+  const params: unknown[] = [...visibility.params];
+  if (filters.amazonOrderNumberPrefix !== null) {
+    where.push('o.amazon_order_number_normalized LIKE ? ESCAPE \'\\\'');
+    params.push(likePrefix(filters.amazonOrderNumberPrefix));
+  }
+  if (filters.buyerCustomerNo !== null) {
+    where.push('o.buyer_customer_no=?');
+    params.push(filters.buyerCustomerNo);
+  }
+  if (filters.sellerOrganizationId !== null) {
+    where.push('o.seller_organization_id=?');
+    params.push(filters.sellerOrganizationId);
+  }
+  if (filters.storeId !== null) {
+    where.push('o.store_id=?');
+    params.push(filters.storeId);
+  }
+  if (filters.confirmedFrom !== null) {
+    where.push('o.confirmed_at>=?');
+    params.push(filters.confirmedFrom);
+  }
+  if (filters.confirmedTo !== null) {
+    where.push('o.confirmed_at<=?');
+    params.push(filters.confirmedTo);
+  }
+  const stageExpr = `(CASE WHEN EXISTS (
+      SELECT 1 FROM buyer_refund_ledger_balances obligation
+      WHERE obligation.formal_order_id=o.id
+        AND obligation.status IN ('DUE','PARTIALLY_PAID')
+    ) THEN 'BUYER_REFUND' WHEN EXISTS (
+      SELECT 1 FROM seller_payable_balances payable
+      WHERE payable.formal_order_id=o.id
+        AND payable.outstanding_amount_cny_fen>0
+    ) THEN 'SELLER_SETTLEMENT' ELSE 'COMPLETED' END)`;
+  if (filters.stage !== null) {
+    where.push(`${stageExpr}=?`);
+    params.push(filters.stage);
+  }
+  const exceptionExpr = `COALESCE((
+    SELECT CASE event.event_type WHEN 'RESOLVED' THEN 'NONE' ELSE 'OPEN' END
+    FROM formal_order_operational_events event
+    WHERE event.formal_order_id=o.id
+    ORDER BY event.created_at DESC,event.id DESC LIMIT 1
+  ),'NONE')`;
+  if (filters.exceptionState !== null) {
+    where.push(`${exceptionExpr}=?`);
+    params.push(filters.exceptionState);
+  }
+  if (filters.responsibleStaffId !== null) {
+    where.push(`(
+      (${stageExpr}='BUYER_REFUND' AND (
+        SELECT staff.id FROM buyer_staff_assignments assignment
+        JOIN staff_users staff ON staff.id=assignment.staff_id AND staff.status='ACTIVE'
+        WHERE assignment.buyer_customer_id=o.buyer_customer_id
+          AND assignment.duty_code='BUYER_REFUND_OWNER' AND assignment.status='ACTIVE'
+        ORDER BY assignment.created_at,assignment.id LIMIT 1
+      )=?)
+      OR (${stageExpr}='SELLER_SETTLEMENT' AND (
+        SELECT staff.id FROM seller_staff_assignments assignment
+        JOIN staff_users staff ON staff.id=assignment.staff_id AND staff.status='ACTIVE'
+        WHERE assignment.seller_organization_id=o.seller_organization_id
+          AND assignment.duty_code='SELLER_ACCOUNT_MANAGER' AND assignment.status='ACTIVE'
+        ORDER BY assignment.created_at,assignment.id LIMIT 1
+      )=?)
+      OR (${stageExpr}='COMPLETED' AND (
+        SELECT staff.id FROM staff_users staff
+        JOIN staff_role_assignments role ON role.staff_id=staff.id
+          AND role.status='ACTIVE' AND role.role_code='owner'
+        WHERE staff.status='ACTIVE'
+        ORDER BY staff.created_at,staff.id LIMIT 1
+      )=?)
+    )`);
+    params.push(
+      filters.responsibleStaffId,
+      filters.responsibleStaffId,
+      filters.responsibleStaffId,
+    );
+  }
+  if (cursor !== null) {
+    where.push('(o.confirmed_at<? OR (o.confirmed_at=? AND o.id<?))');
+    params.push(cursor.confirmedAt, cursor.confirmedAt, cursor.id);
+  }
+
+  const rows = await (context.env.DB as SqlDatabase)
+    .prepare(
+      `SELECT o.id, o.marketplace_code,
+        o.seller_organization_id,
+        store.display_name AS store_display_name,
+        o.buyer_customer_id,
+        buyer.display_name AS buyer_display_name,
+        o.buyer_customer_no,
+        o.amazon_order_number_normalized AS amazon_order_number,
+        o.amazon_order_date,
+        o.confirmed_at,
+        o.status,
+        o.product_name_snapshot,
+        o.review_type,
+        CAST(snapshot.buyer_expected_principal_cny_fen AS TEXT)
+          AS buyer_expected_principal_cny_fen,
+        CAST(snapshot.seller_expected_principal_cny_fen AS TEXT)
+          AS seller_expected_principal_cny_fen,
+        ${responsibilitySelects('o')}
+      FROM formal_orders o
+      JOIN seller_stores store ON store.id=o.store_id
+      JOIN buyer_customers buyer ON buyer.id=o.buyer_customer_id
+      LEFT JOIN formal_order_financial_snapshots snapshot
+        ON snapshot.formal_order_id=o.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY o.confirmed_at DESC, o.id DESC
+      LIMIT ?`,
+    )
+    .bind(...params, limit + 1)
+    .all<OrderRow>();
+
+  const hasMore = rows.results.length > limit;
+  const page = rows.results.slice(0, limit);
+  const now = Date.now();
+  const items: StaffFormalOrderListItemDto[] = page.map((row) => ({
+    formal_order_id: row.id,
+    marketplace_code: row.marketplace_code,
+    amazon_order_number: row.amazon_order_number,
+    amazon_order_date: row.amazon_order_date,
+    confirmed_at: Number(row.confirmed_at),
+    buyer_customer_id: row.buyer_customer_id,
+    buyer_customer_no: row.buyer_customer_no,
+    buyer_display_name: row.buyer_display_name,
+    seller_organization_id: row.seller_organization_id,
+    store_display_name: row.store_display_name,
+    product_name_snapshot: row.product_name_snapshot,
+    review_type: row.review_type as StaffFormalOrderListItemDto['review_type'],
+    buyer_expected_principal_cny_fen: fixedAmountOrNull(
+      row.buyer_expected_principal_cny_fen,
+    ),
+    seller_expected_principal_cny_fen: fixedAmountOrNull(
+      row.seller_expected_principal_cny_fen,
+    ),
+    responsibility: buildResponsibility(row, actor, now),
+  }));
+  const last = page.at(-1);
+  const response: StaffFormalOrderListPageDto = {
+    items,
+    next_cursor: hasMore && last
+      ? encodeCursor(filters, Number(last.confirmed_at), last.id)
+      : null,
+  };
+  context.header('Cache-Control', 'no-store');
+  return context.json(apiSuccess(response, requestIdFromContext(context)));
+}
+
+function likePrefix(value: string): string {
+  return `${value.replace(/[\\%_]/gu, (char) => `\\${char}`)}%`;
+}
+
+// ---------------------------------------------------------------------------
+// Detail (single aggregate)
+// ---------------------------------------------------------------------------
 
 async function readOrderDetail(context: Context<any>): Promise<Response> {
   const actor = requireStaff(context);
@@ -83,12 +465,18 @@ async function readOrderDetailForId(
     .first() as OrderRow | null;
   if (!order) return notFound(context, '订单不存在');
 
-  const scope = await resolveStaffDataScope(context.env.DB, actor, {
-    requiredPermission: 'ORDER_VIEW',
-  });
-  if (!scopeAllowsSellerOrganization(scope, order.seller_organization_id)) {
-    return notFound(context, '订单不存在');
-  }
+  // Stage 7.5 batch 1: fixed-assignment visibility (owner global; buyer
+  // duties by assigned buyers; seller_ops by assigned seller organizations),
+  // intersected with marketplace scope. Out-of-scope orders conceal as 404.
+  const visibility = await orderVisibility(context.env.DB, actor, 'formal_order');
+  const visible = await context.env.DB
+    .prepare(
+      `SELECT 1 AS visible FROM formal_orders formal_order
+      WHERE formal_order.id=? AND ${visibility.sql}`,
+    )
+    .bind(orderId, ...visibility.params)
+    .first();
+  if (!visible) return notFound(context, '订单不存在');
 
   const canViewFinance =
     actor.roles.has('owner') && actor.permissions.has('FINANCIAL_VIEW');
@@ -99,7 +487,7 @@ async function readOrderDetailForId(
   const canViewAdvance =
     actor.roles.has('owner') || actor.roles.has('buyer_refund');
 
-  const [paymentScreenshot, communicationScreenshots, operationalEvents] =
+  const [paymentScreenshot, communicationScreenshots, operationalEvents, responsibilityRow] =
     await Promise.all([
       readPaymentScreenshot(context.env.DB, orderId),
       listOrderCommunicationScreenshots(context.env.DB, [orderId]),
@@ -111,6 +499,7 @@ async function readOrderDetailForId(
         )
         .bind(orderId)
         .all(),
+      readResponsibilityRow(context.env.DB, orderId),
     ]);
 
   const sections: Record<string, unknown> = {
@@ -135,6 +524,15 @@ async function readOrderDetailForId(
     communication_screenshots: communicationScreenshots.get(orderId) ?? [],
     operational_events: operationalEvents.results,
   };
+
+  // Stage 7.5 batch 1: authoritative responsibility projection.
+  if (responsibilityRow) {
+    sections['responsibility'] = buildResponsibility(
+      responsibilityRow,
+      actor,
+      Date.now(),
+    );
+  }
 
   if (canViewFinance) {
     const [adjustments, snapshot] = await Promise.all([
@@ -218,8 +616,7 @@ async function readOrderDetailForId(
       sections['buyer_advance'] = Object.freeze({
         authoritative_advance_amount_cny_fen:
           advanceRow.authoritative_advance_amount_cny_fen,
-        recorded_advance_amount_cny_fen:
-          advanceRow.recorded_advance_amount_cny_fen,
+        recorded_advance_amount_cny_fen: advanceRow.recorded_advance_amount_cny_fen,
         remaining_advance_amount_cny_fen: String(
           Math.max(authoritative - recorded, 0),
         ),
@@ -311,3 +708,6 @@ function withErrors(handler: (context: Context<any>) => Promise<Response>) {
     }
   };
 }
+
+// Re-exported for tests: stage/exception helpers stay reachable.
+export { stageOf, exceptionStateOf };

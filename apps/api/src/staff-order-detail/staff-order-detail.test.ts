@@ -150,6 +150,24 @@ async function seedCommunicationScreenshot(): Promise<void> {
       created_at, updated_at, scope_kind
     ) VALUES ('scope-66e-pre-jp','staff-66e-pre','pre_sales','AMAZON_JP',
       'ACTIVE',NULL,1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY');
+    -- Stage 7.5 batch 1: fixed-assignment order visibility. The confirmation
+    -- fixture auto-binds the pre-sales duty to the confirming owner; revoke
+    -- that row and rebind both duties to the dedicated actors so they keep
+    -- seeing the order under the tightened visibility.
+    UPDATE buyer_staff_assignments
+    SET status='REVOKED', revoked_at=1785542400001, updated_at=1785542400001, version=2
+    WHERE buyer_customer_id='cold-buyer-detail66e'
+      AND duty_code='BUYER_PRE_SALES_OWNER' AND status='ACTIVE';
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason,
+      version, created_at, updated_at, revoked_at
+    ) VALUES
+      ('assign-66e-refund-buyer','cold-buyer-detail66e','BUYER_REFUND_OWNER',
+        'staff-66e-refund','ACTIVE','AUTO_INITIAL','SYSTEM',NULL,NULL,1,1000,1000,NULL),
+      ('assign-66e-pre-buyer','cold-buyer-detail66e','BUYER_PRE_SALES_OWNER',
+        'staff-66e-pre','ACTIVE','MANUAL_REASSIGN','STAFF','cold-archive-owner',
+        'stage75 test rebind',1,1000,1000,NULL);
     INSERT INTO file_upload_intents (
       id, owner_actor_type, owner_actor_id, purpose, visibility, status,
       requested_file_count, manifest_hash, version, expires_at,

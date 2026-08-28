@@ -35,6 +35,8 @@ import {
   staffAccessOverviewSchema,
   staffAccessMutationSchema,
   staffFormalOrderDetailSchema,
+  staffOrderListPageSchema,
+  staffWorkbenchSummaryEnvelopeSchema,
   staffSellerPrincipalRatePoliciesResponseSchema,
   staffSellerPrincipalRatePolicyMutationSchema,
   internalFinanceOrderDetailSchema,
@@ -346,6 +348,21 @@ export const staffApi = Object.freeze({
       client,
       `/api/staff/formal-orders/${encodeURIComponent(formalOrderId)}`,
       staffFormalOrderDetailSchema,
+      signal,
+    ),
+  // Stage 7.5 batch 1: keyset cursor list (filters travel in the query string).
+  formalOrderList: (client: QueryClient, query: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/formal-orders${query}`,
+      staffOrderListPageSchema,
+      signal,
+    ),
+  workbenchSummary: (client: QueryClient, signal?: AbortSignal) =>
+    read(
+      client,
+      '/api/staff/me/work-items/summary',
+      staffWorkbenchSummaryEnvelopeSchema,
       signal,
     ),
   saveOrderDayBaseRate: (client: QueryClient, body: unknown, key: string) =>

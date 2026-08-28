@@ -201,7 +201,14 @@ async function mockApi(
       );
       return;
     }
-    if (identity === 'staff' && path === '/api/staff/me/work-items') {
+          if (identity === 'staff' && path === '/api/staff/me/work-items/summary') {
+        return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { summary: {
+          open_count: 0, due_today_count: 0, overdue_count: 0,
+          exception_order_count: 0, refund_due_today_cny_fen: null,
+          recent: [],
+        } }, meta: { request_id: 'summary' } }) });
+      }
+if (identity === 'staff' && path === '/api/staff/me/work-items') {
       await fulfillJson(route, success({ work_items: [], next_cursor: null }));
       return;
     }

@@ -49,6 +49,22 @@ export interface StaffWorkItemDto {
   duty_code:StaffAssignmentDutyCode; fixed_assignment_id:string; assigned_staff_id:string;
   status:StaffWorkItemStatus; version:number; created_at:number; updated_at:number;
   completed_at:number|null; cancelled_at:number|null;
+  /** Stage 7.5 batch 1: backend-authoritative SLA metadata (never client-derived). */
+  sla_due_at:number|null; is_overdue:boolean; overdue_since:number|null;
+  next_action:string; responsible_role:import('./staff').StaffRoleCode;
+  responsible_staff_name:string|null;
+  priority:'OVERDUE'|'DUE_TODAY'|'NORMAL';
+}
+
+/**
+ * Stage 7.5 batch 1: authoritative workbench metrics. `refund_due_today_cny_fen`
+ * is non-null only for the owner and buyer_refund roles (backend integer sum).
+ */
+export interface StaffWorkbenchSummaryDto {
+  open_count:number; due_today_count:number; overdue_count:number;
+  exception_order_count:number;
+  refund_due_today_cny_fen:string|null;
+  recent:readonly StaffWorkItemDto[];
 }
 export interface StaffWorkItemListQuery { status?:StaffWorkItemStatus; work_type?:StaffWorkItemType; limit?:number; cursor?:string }
 export interface StaffWorkItemPageDto { work_items:readonly StaffWorkItemDto[]; next_cursor:string|null }

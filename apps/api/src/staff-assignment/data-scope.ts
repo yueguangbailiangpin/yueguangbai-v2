@@ -93,6 +93,48 @@ export function requireSellerOrganizationScope(scope: StaffDataScope, sellerOrga
   if (!scopeAllowsSellerOrganization(scope, sellerOrganizationId)) throw new StaffAssignmentError('NOT_FOUND', 404);
 }
 
+/**
+ * Stage 7.5 batch 1: fixed-assignment order visibility fragment for a
+ * formal_orders alias. Owner sees everything; pre_sales/buyer_refund see
+ * orders of buyers with the matching ACTIVE fixed assignment; seller_ops
+ * sees orders of seller organizations with an ACTIVE account-manager
+ * assignment. Marketplace scope applies in addition for non-owner roles.
+ */
+export async function orderVisibilityForActor(
+  database: SqlDatabase,
+  actor: AssignmentStaffAuthorization,
+  alias: string,
+): Promise<{ sql: string; params: unknown[] }> {
+  if (actor.roles.has('owner')) return { sql: '1=1', params: [] };
+  const role = [...actor.roles][0];
+  const markets = await resolveStaffMarketplaceCodes(database, actor);
+  const marketSql = markets.length > 0
+    ? `${alias}.marketplace_code IN (${markets.map(() => '?').join(',')})`
+    : '1=0';
+  const marketParams = markets.length > 0 ? [...markets] : [];
+  if (role === 'pre_sales' || role === 'buyer_refund') {
+    const duty = role === 'pre_sales'
+      ? 'BUYER_PRE_SALES_OWNER'
+      : 'BUYER_REFUND_OWNER';
+    return {
+      sql: `${marketSql} AND ${alias}.buyer_customer_id IN (
+        SELECT assignment.buyer_customer_id FROM buyer_staff_assignments assignment
+        WHERE assignment.staff_id=? AND assignment.duty_code='${duty}'
+          AND assignment.status='ACTIVE'
+      )`,
+      params: [...marketParams, actor.staffId],
+    };
+  }
+  return {
+    sql: `${marketSql} AND ${alias}.seller_organization_id IN (
+      SELECT assignment.seller_organization_id FROM seller_staff_assignments assignment
+      WHERE assignment.staff_id=? AND assignment.duty_code='SELLER_ACCOUNT_MANAGER'
+        AND assignment.status='ACTIVE'
+    )`,
+    params: [...marketParams, actor.staffId],
+  };
+}
+
 function uniqueSorted(values: readonly string[]): string[] {
   return [...new Set(values)].sort();
 }
