@@ -391,8 +391,8 @@ async function mockSellerApis(page: Page): Promise<void> {
     if (path === '/api/seller-portal/formal-orders') {
       await route.fulfill(ok({
         items: [{
-          formal_order_id: 'order-rice', legacy_projection: 'AMAZON', status: 'CONFIRMED', marketplace_code: 'AMAZON_JP',
-          canonical_marketplace_code: 'AMAZON_JP', amazon_order_number: '503-1234567-1234567',
+          formal_order_id: 'order-rice', status: 'CONFIRMED', marketplace_code: 'AMAZON_JP',
+          amazon_order_number: '503-1234567-1234567',
           platform_order_identifier: '503-1234567-1234567',
           store: { id: 'store-jp', display_name: '东京一号店' },
           asin: 'B07W5DMQ3R', platform_product_identifier: 'B07W5DMQ3R',
@@ -404,11 +404,11 @@ async function mockSellerApis(page: Page): Promise<void> {
           seller_principal_rate_snapshot: {
             platform_order_date: '2026-08-09', payment_amount_minor: '22800',
             payment_currency_code: 'JPY', base_rate_version_id: 'base-rate-jp',
-            base_rate_business_date: '2026-08-09', base_rate_confirmed_at: fixedNow - 8_000_000,
+            base_rate_business_date: '2026-08-09', base_rate_created_at: fixedNow - 8_000_000,
             base_rate_value: '3800000', base_rate_scale: '100000000',
             policy_version_id: 'policy-jp', policy_scope_type: 'SELLER_ORGANIZATION',
             policy_seller_organization_id: 'org-stage7', policy_version_no: 8,
-            policy_effective_from: fixedNow - 10_000_000, policy_confirmed_at: fixedNow - 8_000_000,
+            policy_effective_from: fixedNow - 10_000_000, policy_created_at: fixedNow - 8_000_000,
             markup_rate_value: '200000', markup_rate_scale: '100000000',
             final_rate_value: '4000000', final_rate_scale: '100000000',
             rounding_rule: 'HALF_UP', seller_expected_principal_amount_minor: '91200',
@@ -416,7 +416,7 @@ async function mockSellerApis(page: Page): Promise<void> {
           locked_service_fee_snapshot: {
             fee_version_id: 'fee-image', version_no: 4, review_type: 'IMAGE',
             service_fee_cny_fen: '3200', effective_from: fixedNow - 10_000_000,
-            confirmed_at: fixedNow - 8_000_000, marketplace_code: 'AMAZON_JP',
+            created_at: fixedNow - 8_000_000, marketplace_code: 'AMAZON_JP',
             currency_code: 'CNY', currency_exponent: 2,
           },
           business_completion: {
@@ -428,6 +428,14 @@ async function mockSellerApis(page: Page): Promise<void> {
             {
               file_object_id: 'comm-seller-1', file_version: 2,
               purpose: 'ORDER_COMMUNICATION_SCREENSHOT', visibility: 'SELLER_VISIBLE',
+              uploaded_at: fixedNow - 6_000_000, uploaded_by_staff_id: 'stage7-shot-owner',
+              uploaded_by_staff_name: '总管理员',
+            },
+            {
+              file_object_id: 'comm-seller-2', file_version: 1,
+              purpose: 'ORDER_COMMUNICATION_SCREENSHOT', visibility: 'SELLER_VISIBLE',
+              uploaded_at: fixedNow - 5_000_000, uploaded_by_staff_id: 'stage7-shot-ops',
+              uploaded_by_staff_name: '卖家对接',
             },
           ],
         }],
@@ -567,6 +575,20 @@ test.describe('stage 7 three-portal screenshots', () => {
     await expect(page.getByRole('heading', { name: '月白生活株式会社', exact: true })).toBeVisible();
     await page.waitForTimeout(400);
     await capture(page, 'seller-home-1440x900.png');
+  });
+
+  test('seller orders with communication screenshots desktop 1440x900', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await mockSellerApis(page);
+    await page.goto('/seller/orders');
+    await expect(page.getByRole('heading', { name: '订单与业务完成' })).toBeVisible();
+    // 展开订单明细并滚到沟通截图分区：两份真实形状 DTO 截图（含上传人/时间）。
+    await page.locator('details').first().locator('summary').click();
+    await expect(page.getByRole('button', { name: '展开沟通截图 1' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '展开沟通截图 2' })).toBeVisible();
+    await page.getByText('沟通截图（员工上传，一单可多张）').first().scrollIntoViewIfNeeded();
+    await page.waitForTimeout(400);
+    await capture(page, 'seller-orders-communication-screenshots-1440x900.png');
   });
 
   test('seller settlement desktop 1440x900', async ({ page }) => {

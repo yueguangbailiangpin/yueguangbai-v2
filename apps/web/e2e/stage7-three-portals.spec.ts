@@ -569,10 +569,8 @@ const sellerStores = [
 const sellerOrders = [
   {
     formal_order_id: 'order-rice',
-    legacy_projection: 'AMAZON',
     status: 'CONFIRMED',
     marketplace_code: 'AMAZON_JP',
-    canonical_marketplace_code: 'AMAZON_JP',
     amazon_order_number: '503-1234567-1234567',
     platform_order_identifier: '503-1234567-1234567',
     store: { id: 'store-jp', display_name: '东京一号店' },
@@ -592,7 +590,7 @@ const sellerOrders = [
       payment_currency_code: 'JPY',
       base_rate_version_id: 'base-rate-jp',
       base_rate_business_date: '2026-08-09',
-      base_rate_confirmed_at: fixedNow - 8_000_000,
+      base_rate_created_at: fixedNow - 8_000_000,
       base_rate_value: '3800000',
       base_rate_scale: '100000000',
       policy_version_id: 'policy-jp',
@@ -600,7 +598,7 @@ const sellerOrders = [
       policy_seller_organization_id: 'org-stage7',
       policy_version_no: 8,
       policy_effective_from: fixedNow - 10_000_000,
-      policy_confirmed_at: fixedNow - 8_000_000,
+      policy_created_at: fixedNow - 8_000_000,
       markup_rate_value: '200000',
       markup_rate_scale: '100000000',
       final_rate_value: '4000000',
@@ -614,7 +612,7 @@ const sellerOrders = [
       review_type: 'IMAGE',
       service_fee_cny_fen: '3200',
       effective_from: fixedNow - 10_000_000,
-      confirmed_at: fixedNow - 8_000_000,
+      created_at: fixedNow - 8_000_000,
       marketplace_code: 'AMAZON_JP',
       currency_code: 'CNY',
       currency_exponent: 2,
@@ -633,12 +631,18 @@ const sellerOrders = [
         file_version: 2,
         purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
         visibility: 'SELLER_VISIBLE',
+        uploaded_at: fixedNow - 6_000_000,
+        uploaded_by_staff_id: 'stage7-staff-1',
+        uploaded_by_staff_name: '陈 staff',
       },
       {
         file_object_id: 'comm-seller-2',
         file_version: 1,
         purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
         visibility: 'SELLER_VISIBLE',
+        uploaded_at: fixedNow - 5_000_000,
+        uploaded_by_staff_id: null,
+        uploaded_by_staff_name: null,
       },
     ],
   },
@@ -890,18 +894,22 @@ test.describe('stage 7 seller portal', () => {
     await expect(page.getByText(/DISABLED ·/u).first()).toBeVisible();
   });
 
-  test('org orders list shows communication screenshots as available', async ({ page }) => {
+  test('org orders list renders every communication screenshot with uploader and time', async ({ page }) => {
     await mockSellerApis(page);
     await page.goto('/seller/orders');
     await expect(page.getByRole('heading', { name: '订单与业务完成' })).toBeVisible();
     await expect(page.getByText('象印 IH 电饭煲 5.5 合').first()).toBeVisible();
-    // Expand the collapsed order details block to reveal the fact grid.
+    // Expand the collapsed order details block to reveal the screenshot list.
     await page.locator('details').first().locator('summary').click();
-    await expect(page.getByText('聊天截图').first()).toBeVisible();
-    await expect(page.getByText('已上传').first()).toBeVisible();
-    // The seller DTO (communication_screenshots: file_object_id/file_version/
-    // purpose/visibility) carries no uploader/time — those are staff-only
-    // fields on the staff order detail page, so we assert availability only.
+    await expect(page.getByText('沟通截图（员工上传，一单可多张）').first()).toBeVisible();
+    // Two real-shape DTO screenshots must produce two independent entries —
+    // not a single aggregated "uploaded" label.
+    await expect(page.getByRole('button', { name: '展开沟通截图 1' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '展开沟通截图 2' })).toBeVisible();
+    // Uploader name resolves for the first, neutral placeholder for the second.
+    await expect(page.getByText(/上传人：陈 staff/)).toBeVisible();
+    await expect(page.getByText(/上传人：未知员工/)).toBeVisible();
+    await expect(page.getByText(/上传时间：/).first()).toBeVisible();
   });
 
   test('settlement shows frozen principal/service fee and never 买家返款/利润', async ({ page }) => {

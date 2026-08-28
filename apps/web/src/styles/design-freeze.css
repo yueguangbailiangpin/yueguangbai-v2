@@ -562,7 +562,7 @@
   .buyer-business-metrics,
   .seller-business-completion,
   .business-completion-grid,
-  
+
   .customer-intake-grid,
   .buyer-service-links { grid-template-columns: 1fr; }
   .staff-business-shell { display: block; }
@@ -1264,7 +1264,7 @@
   .buyer-business-metrics,
   .seller-business-completion,
   .business-completion-grid,
-  
+
   .customer-intake-grid,
   .buyer-service-links { grid-template-columns: 1fr; }
   .staff-business-shell { display: block; }

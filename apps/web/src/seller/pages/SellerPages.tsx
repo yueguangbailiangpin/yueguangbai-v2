@@ -21,6 +21,7 @@ import {
 import { CursorPagination } from '../../ui/CursorPagination';
 import { identityApiRequest } from '../../api/identity-request';
 import { sellerApi } from '../api/client';
+import { sellerFormalOrdersSchema } from '../contracts/runtime';
 import { sellerQueryKeys } from '../queries/keys';
 import { canViewSellerFinancials } from '../authorization';
 import { useSellerCursorPages } from '../queries/useSellerCursorPages';
@@ -989,8 +990,26 @@ export function SellerOrdersPage(): React.JSX.Element {
                   />
                 </div>
               ) : null}
+              <div className="seller-order-communication-screenshots">
+                <span className="fact-label">沟通截图（员工上传，一单可多张）</span>
+                {item.communication_screenshots.length === 0 ? (
+                  <p className="seller-communication-empty">暂无沟通截图</p>
+                ) : (
+                  <ul className="seller-communication-list">
+                    {item.communication_screenshots.map((screenshot, index) => (
+                      <li key={screenshot.file_object_id}>
+                        <SellerCommunicationScreenshotControl
+                          formalOrderId={item.formal_order_id}
+                          index={index}
+                          screenshot={screenshot}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <FactGrid>
-                <Fact label="站点" value={marketplaceLabel[item.canonical_marketplace_code]} />
+                <Fact label="站点" value={marketplaceLabel[item.marketplace_code]} />
                 <Fact label="亚马逊订单号" value={item.platform_order_identifier} />
                 <Fact label="亚马逊产品号" value={item.platform_product_identifier} />
                 {item.payment ? (
@@ -1061,23 +1080,6 @@ export function SellerOrdersPage(): React.JSX.Element {
                   value={item.review_type ? taskTypeLabel[item.review_type] : '待后续导入'}
                 />
                 <Fact label="确认时间" value={formatShanghai(item.confirmed_at)} />
-                <Fact
-                  label="聊天截图"
-                  value={
-                    <SellerChatScreenshotControl
-                      formalOrderId={item.formal_order_id}
-                      fileObjectId={
-                        item.communication_screenshots?.[0]?.file_object_id ?? null
-                      }
-                      status={
-                        (item.communication_screenshots?.length ?? 0) > 0
-                          ? 'AVAILABLE'
-                          : 'NONE'
-                      }
-                      version={item.communication_screenshots?.[0]?.file_version ?? null}
-                    />
-                  }
-                />
               </FactGrid>
               </details>
               {item.business_completion ? (
@@ -1117,45 +1119,51 @@ export function SellerOrdersPage(): React.JSX.Element {
   );
 }
 
-function SellerChatScreenshotControl({
+type SellerCommunicationScreenshot = z.infer<
+  typeof sellerFormalOrdersSchema
+>['items'][number]['communication_screenshots'][number];
+
+function SellerCommunicationScreenshotControl({
   formalOrderId,
-  fileObjectId,
-  status,
-  version,
+  index,
+  screenshot,
 }: {
   formalOrderId: string;
-  fileObjectId: string | null;
-  status: 'AVAILABLE' | 'NONE';
-  version: number | null;
+  index: number;
+  screenshot: SellerCommunicationScreenshot;
 }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const provider = useMemo(
     () =>
-      status === 'AVAILABLE' && version !== null && fileObjectId !== null
-        ? new SellerOrderChatScreenshotReadIntentAdapter(formalOrderId, fileObjectId, version)
-        : null,
-    [formalOrderId, fileObjectId, status, version],
+      new SellerOrderChatScreenshotReadIntentAdapter(
+        formalOrderId,
+        screenshot.file_object_id,
+        screenshot.file_version,
+      ),
+    [formalOrderId, screenshot.file_object_id, screenshot.file_version],
   );
-  if (!provider) return <span>暂无聊天截图</span>;
   return (
-    <span className="seller-chat-screenshot-control">
-      <span>已上传</span>
+    <div className="seller-chat-screenshot-control">
+      <span className="seller-chat-screenshot-meta">
+        沟通截图 {index + 1} · 上传人：{screenshot.uploaded_by_staff_name ?? '未知员工'} ·
+        上传时间：{formatShanghai(screenshot.uploaded_at)}
+      </span>
       <Button
         className="secondary"
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
-        {expanded ? '收起聊天截图' : '展开聊天截图'}
+        {expanded ? `收起沟通截图 ${index + 1}` : `展开沟通截图 ${index + 1}`}
       </Button>
       {expanded ? (
         <ProtectedImagePreview
           provider={provider}
-          alt="订单聊天截图"
+          alt={`订单沟通截图 ${index + 1}`}
           className="protected-evidence-thumbnail"
-          fallback={<span>聊天截图加载中</span>}
+          fallback={<span>沟通截图加载中</span>}
         />
       ) : null}
-    </span>
+    </div>
   );
 }
 

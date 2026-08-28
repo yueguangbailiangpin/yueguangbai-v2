@@ -369,15 +369,8 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
           <StaffNavigationContent />
           <div className="staff-sidebar-footer">
             <div className="staff-sidebar-scope">{scope}</div>
-            <div className="staff-sidebar-person">
-              <span className="staff-person-avatar" aria-hidden="true">
-                {session.display_name.slice(0, 1)}
-              </span>
-              <div className="staff-person-info">
-                <strong>{session.display_name}</strong>
-                <small>{session.role.display_name}</small>
-              </div>
-            </div>
+            {/* 身份（头像+姓名+角色）由顶栏会话区唯一呈现，桌面侧栏不再重复整块；
+                移动端由 Drawer 底部的 staff-sidebar-person 覆盖。 */}
             <StaffAccountActions />
           </div>
         </aside>

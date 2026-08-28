@@ -38,6 +38,11 @@ export function BuyerInstructionPage(): React.JSX.Element {
       instruction={instruction}
     />;
   }
+  // 只有 409/410（未发布/终态）才回退到 state 端点；其他错误必须立即展示，
+  // 否则 disabled 的 state 查询会永远停留在 pending，页面无法恢复。
+  if (content.isError && !isInstructionStateFallbackError(content.error)) {
+    return <BuyerQueryError error={content.error} />;
+  }
   if (state.isPending) return <BuyerLoading label="读取步骤状态中…" />;
   if (state.isError) return <BuyerQueryError error={state.error} />;
   if (state.data)

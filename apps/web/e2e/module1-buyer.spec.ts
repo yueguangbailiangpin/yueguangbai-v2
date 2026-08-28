@@ -127,6 +127,11 @@ const instructionState = (status: MockOptions['instructionStatus'] = 'ACTIVE') =
 
 const instruction = (invalid = false) => ({
   status: 'ACTIVE',
+  instruction_version: 3,
+  current_version_no: 2,
+  evidence_status: 'CHANGES_REQUESTED',
+  can_submit_evidence: true,
+  can_read_images: true,
   product_name: demand.product_name,
   store_display_name: demand.store_display_name,
   search_keywords: ['月光白', '商品关键词'],
@@ -150,17 +155,6 @@ const instruction = (invalid = false) => ({
       ? '/api/staff/files/private/read-intent'
       : '/api/buyer-portal/reservations/reservation-1/order-instruction/images/main/read-intent',
   },
-  keyword_images: [
-    {
-      image_id: 'image-keyword',
-      position: 1,
-      mime: 'image/png',
-      width: 800,
-      height: 800,
-      read_intent_path:
-        '/api/buyer-portal/reservations/reservation-1/order-instruction/images/1/read-intent',
-    },
-  ],
 });
 
 const evidenceFile = {
@@ -511,6 +505,16 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
       return;
     }
     if (path.endsWith('/order-instruction')) {
+      // 真实后端合同：非 ACTIVE 内容读取失败（EXPIRED→410，其余→409），
+      // 页面按 409/410 回退到 state 端点。
+      if (options.instructionStatus && options.instructionStatus !== 'ACTIVE') {
+        await json(
+          route,
+          failure(options.instructionStatus === 'EXPIRED' ? 'INSTRUCTION_EXPIRED' : 'INSTRUCTION_NOT_PUBLISHED'),
+          options.instructionStatus === 'EXPIRED' ? 410 : 409,
+        );
+        return;
+      }
       await json(
         route,
         success({ order_instruction: instruction(options.invalidInstructionPath) }),
@@ -837,6 +841,9 @@ test('Buyer registration succeeds only after the verified session read', async (
   await page.getByLabel('密码', { exact: true }).fill('safe-password-123');
   await page.getByLabel('确认密码').fill('safe-password-123');
   await page.getByRole('button', { name: '完成注册' }).click();
+  // 当前批准交互：注册成功后停在成功页，由用户人工点击进入买家中心（不自动跳转）。
+  await expect(page.getByRole('heading', { name: '注册成功' })).toBeVisible();
+  await page.getByRole('button', { name: '进入买家中心' }).click();
   await expect(page).toHaveURL(/\/buyer$/u);
   await expect(page.getByRole('navigation', { name: '买家主导航' })).toBeVisible();
 });
@@ -907,7 +914,7 @@ test('Dashboard reload restores the product list', async ({ page }) => {
 
 test('Task center follows an empty cursor page to actionable Buyer work', async ({ page }) => {
   await gotoBuyer(page, '/buyer/tasks', { taskCursorPages: true });
-  await expect(page.getByRole('heading', { name: '您有 5 件待办事项' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '您有 4 件待办事项' })).toBeVisible();
   await expect(page.getByText('后续任务产品')).toBeVisible();
 });
 
@@ -1011,19 +1018,22 @@ for (const status of ['UNPUBLISHED', 'EXPIRED', 'CANCELLED'] as const) {
 test('Instruction ACTIVE reads content after state and shows image controls', async ({ page }) => {
   await gotoBuyer(page, '/buyer/reservations/reservation-1/instruction');
   await expect(page.getByText('商品图片')).toBeVisible();
-  await expect(page.getByRole('button', { name: '查看主图' })).toBeVisible();
+  // 主图按批准交互内联加载（懒加载需滚入视口），成功后可打开大图。
+  await page.locator('.instruction-image-item').scrollIntoViewIfNeeded();
+  await expect(page.getByRole('img', { name: `${demand.product_name} 主图` })).toBeVisible();
 });
-test('Instruction COMPLETED is terminal and makes zero Content requests', async ({ page }) => {
-  let contentRequests = 0;
+test('Instruction COMPLETED is terminal and makes zero image read requests', async ({ page }) => {
+  let imageReadRequests = 0;
   page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/order-instruction')) contentRequests += 1;
+    if (new URL(request.url()).pathname.includes('/order-instruction/images/')) imageReadRequests += 1;
   });
   await gotoBuyer(page, '/buyer/reservations/reservation-1/instruction', {
     instructionStatus: 'COMPLETED',
   });
+  // 真实合同：内容端点对非 ACTIVE 返回 409，页面回退到 state 视图（已完成终态）。
   await expect(page.getByRole('heading', { name: '已完成' })).toBeVisible();
   await expect(page.getByText('商品图片')).toHaveCount(0);
-  expect(contentRequests).toBe(0);
+  expect(imageReadRequests).toBe(0);
 });
 test('Instruction arbitrary image path fails closed without pageerror', async ({ page }) => {
   const errors: string[] = [];
@@ -1139,7 +1149,7 @@ test('Evidence historical metadata falls back without a read action', async ({ p
     json(route, success({ order_evidence: { ...evidence, files: [metadata] } })),
   );
   await page.goto('/buyer/order-materials/evidence-1');
-  await expect(page.getByText('历史文件仅保留元数据')).toBeVisible();
+  await expect(page.getByText('历史文件已不再提供下载，只能看到文件信息。')).toBeVisible();
 });
 test('Evidence withdrawal requires confirmation', async ({ page }) => {
   await gotoBuyer(page, '/buyer/order-materials/evidence-1');
@@ -1154,9 +1164,17 @@ test('Evidence changes-requested resubmit requires date and one new screenshot',
   await expect(page.getByLabel('新的订单截图')).not.toHaveAttribute('multiple');
 });
 test('Evidence protected file read consumes the shared content endpoint', async ({ page }) => {
+  const contentTokens: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.includes('/file-read-intents/'))
+      contentTokens.push(request.headers()['x-file-read-token'] ?? '');
+  });
   await gotoBuyer(page, '/buyer/order-materials/evidence-1');
-  await page.getByRole('button', { name: '查看文件' }).click();
-  await expect(page.getByRole('link', { name: '打开文件' })).toBeVisible();
+  // 图片类受保护文件按批准交互内联加载（read-intent → 共享 content 端点）；
+  // 缩略图按懒加载设计，需要滚动进入视口后才发起读取。
+  await page.getByText('订单截图.png', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('img', { name: '订单截图.png' })).toBeVisible();
+  expect(contentTokens.length).toBeGreaterThanOrEqual(1);
 });
 
 for (const status of [429, 503] as const) {
@@ -1167,12 +1185,13 @@ for (const status of [429, 503] as const) {
         tokens.push(request.headers()['x-file-read-token'] ?? '');
     });
     await gotoBuyer(page, '/buyer/order-materials/evidence-1', { fileContentFailureOnce: status });
-    await page.getByRole('button', { name: '查看文件' }).click();
+    // 懒加载：滚入视口后自动读取，失败一次必须出现重试入口；重试复用同一 token。
+    await page.getByText('订单截图.png', { exact: true }).scrollIntoViewIfNeeded();
     await expect(page.getByRole('button', { name: '重试' })).toBeVisible({
       timeout: status === 429 ? 2_500 : 1_000,
     });
     await page.getByRole('button', { name: '重试' }).click();
-    await expect(page.getByRole('link', { name: '打开文件' })).toBeVisible();
+    await expect(page.getByRole('img', { name: '订单截图.png' })).toBeVisible();
     expect(tokens).toHaveLength(2);
     expect(tokens[0]).toBe(tokens[1]);
   });
@@ -1205,7 +1224,7 @@ test('Review stale deep link remains concealed', async ({ page }) => {
 test('Review form enforces business 1–3 evidence guidance', async ({ page }) => {
   await gotoBuyer(page, '/buyer/reviews/new?formal_order_id=formal-1');
   await expect(page.getByText('请选择 1–3 个图片或 PDF 文件')).toBeVisible();
-  await expect(page.getByLabel('评论证据')).toHaveAttribute('multiple', '');
+  await expect(page.getByLabel('评论文件')).toHaveAttribute('multiple', '');
 });
 test('Review upload and submit sends 1–3 verified file versions', async ({ page }) => {
   const requests: string[] = [];
@@ -1219,7 +1238,7 @@ test('Review upload and submit sends 1–3 verified file versions', async ({ pag
   });
   await gotoBuyer(page, '/buyer/reviews/new?formal_order_id=formal-1');
   await page
-    .getByLabel('评论证据')
+    .getByLabel('评论文件')
     .setInputFiles({ name: 'review-a.png', mimeType: 'image/png', buffer: Buffer.from('png') });
   await page.getByRole('button', { name: '提交评论资料' }).click();
   await expect
@@ -1244,14 +1263,15 @@ test('Approved review shows refund amount without inventing payment', async ({ p
 });
 test('Review protected file read uses entity-bound provider', async ({ page }) => {
   await gotoBuyer(page, '/buyer/reviews/review-1');
-  await page.getByRole('button', { name: '查看文件' }).click();
-  await expect(page.getByRole('link', { name: '打开文件' })).toBeVisible();
+  // 图片类证据按批准交互内联加载（懒加载需滚入视口）；read-intent 走 review 实体绑定 provider。
+  await page.getByText('评论截图.png', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('img', { name: '评论截图.png' })).toBeVisible();
 });
 
 test('Refund detail keeps payment and reversal activities visible', async ({ page }) => {
   await gotoBuyer(page, '/buyer/refunds/refund-1');
   await expect(page.getByText('记录付款')).toBeVisible();
-  await expect(page.getByText('付款冲正')).toBeVisible();
+  await expect(page.getByText('付款撤回')).toBeVisible();
 });
 test('Refund OVERPAID displays overpaid amount', async ({ page }) => {
   await gotoBuyer(page, '/buyer/refunds/refund-1', { refundStatus: 'OVERPAID' });

@@ -299,6 +299,11 @@ async function installBuyerFixture(page: Page, refundStatus: 'PARTIALLY_PAID' | 
     if (path.endsWith('/order-instruction')) {
       await json(route, success({ order_instruction: {
         status: 'ACTIVE',
+        instruction_version: 3,
+        current_version_no: 2,
+        evidence_status: 'CHANGES_REQUESTED',
+        can_submit_evidence: true,
+        can_read_images: true,
         product_name: reservationDemand.product_name,
         store_display_name: reservationDemand.store_display_name,
         search_keywords: ['月光白', '商品关键词'],
@@ -320,7 +325,6 @@ async function installBuyerFixture(page: Page, refundStatus: 'PARTIALLY_PAID' | 
           height: 800,
           read_intent_path: `/api/buyer-portal/reservations/${reservation.reservation_id}/order-instruction/images/main/read-intent`,
         },
-        keyword_images: [],
       } }));
       return;
     }
@@ -461,21 +465,25 @@ test('Buyer remaining pages keep Chinese facts and truthful refund wording', asy
   await expect(page.locator('main')).not.toContainText(/客户编号|会话到期|内部说明|预约排名|预计下单日期/u);
 });
 
-test('Buyer refund journey marks complete only for PAID detail', async ({ page }) => {
+test('Buyer refund journey highlights 返款中 until PAID settles every step', async ({ page }) => {
   await installBuyerFixture(page);
   await page.goto('/buyer/refunds');
   await expect(page.getByRole('region', { name: '业务流程' }).locator('[aria-current="step"]')).toHaveCount(0);
 
+  // 未结清（部分返款）：P6 六步旅程把当前步高亮在“返款中”。
   await page.goto(`/buyer/refunds/${refund.refund_obligation_id}`);
   await expect(page.getByText('部分返款', { exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: '业务流程' }).locator('[aria-current="step"]')).toHaveCount(0);
+  await expect(
+    page.getByRole('region', { name: '业务流程' }).getByRole('listitem').filter({ hasText: '返款中' }),
+  ).toHaveAttribute('aria-current', 'step');
 
+  // 已结清（PAID）：全部点亮、无当前步，并提示流程结束。
   await page.unrouteAll();
   await installBuyerFixture(page, 'PAID');
   await page.goto(`/buyer/refunds/${refund.refund_obligation_id}`);
   await expect(page.getByText('已返款', { exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: '业务流程' }).getByRole('listitem').filter({ hasText: '完成' }))
-    .toHaveAttribute('aria-current', 'step');
+  await expect(page.getByRole('region', { name: '业务流程' }).locator('[aria-current="step"]')).toHaveCount(0);
+  await expect(page.getByText('返款已完成，本次测评流程结束。')).toBeVisible();
 });
 
 test('Buyer remaining representatives reflow, focus, and reduce motion', async ({ page }) => {

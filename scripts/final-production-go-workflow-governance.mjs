@@ -39,6 +39,7 @@ const CI_NODE_COMMANDS=new Set([
   'scripts/verify-wave13-buyer-refund-isolation.mjs',
   'scripts/verify-web-source-boundaries.mjs',
   'scripts/verify-web-static-build.mjs',
+  'scripts/verify-css-duplicates.mjs',
 ]);
 const CI_NODE_TEST_COMMANDS=new Set([
   'scripts/verify-dependency-lifecycle.node-test.mjs',

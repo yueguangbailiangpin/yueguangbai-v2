@@ -221,8 +221,9 @@ describe('Seller formal-order chat screenshot UI', () => {
     expect(settlementRequests).toHaveLength(3);
   });
 
-  it('renders list status without issuing a screenshot read until the user asks', async () => {
+  it('renders every communication screenshot with an independent entry until the user asks', async () => {
     let readIntentRequests = 0;
+    const readIntentFiles: string[] = [];
     let contentRequests = 0;
     const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
     Object.defineProperty(URL, 'createObjectURL', {
@@ -257,14 +258,15 @@ describe('Seller formal-order chat screenshot UI', () => {
           ORDER_COMMUNICATION_SCREENSHOT_HTTP_PATHS.sellerReadIntent.replace(
             ':id',
             'order-1',
-          ).replace(':fileObjectId', 'chat-file-1') as `/api/${string}`,
+          ).replace(':fileObjectId', ':fileObjectId') as `/api/${string}`,
         ),
-        () => {
+        ({ params }) => {
           readIntentRequests += 1;
+          readIntentFiles.push(String(params['fileObjectId']));
           return HttpResponse.json({
             data: {
-              read_intent_id: 'seller-chat-intent',
-              access_token: 'seller-chat-token'.padEnd(40, 'x'),
+              read_intent_id: `seller-chat-intent-${String(params['fileObjectId'])}`,
+              access_token: `seller-chat-token-${String(params['fileObjectId'])}`.padEnd(40, 'x'),
               access_token_available: true,
               expires_at: 99,
               replayed: false,
@@ -332,28 +334,39 @@ describe('Seller formal-order chat screenshot UI', () => {
     try {
       const { client } = renderWithMsw(<SellerOrdersPage />, { route: '/seller/orders' });
 
-      // 订单明细默认折叠：展开后再核对聊天截图控件
+      // 订单明细默认折叠：展开后再核对沟通截图控件
       for (const summary of await screen.findAllByText('订单明细（订单号、金额、汇率等，点开查看）')) {
         await userEvent.click(summary);
       }
-      expect(await screen.findByText('展开聊天截图')).toBeTruthy();
+      expect(await screen.findByText('展开沟通截图 1')).toBeTruthy();
+      expect(await screen.findByText('展开沟通截图 2')).toBeTruthy();
       expect(await screen.findByRole('img', { name: '聊天截图商品 主图' })).toBeTruthy();
       expect(await screen.findByRole('img', { name: '订单截图' })).toBeTruthy();
-      expect(screen.getAllByText('聊天截图')).toHaveLength(2);
-      expect(screen.getByText('已上传')).toBeTruthy();
-      expect(screen.getByText('暂无聊天截图')).toBeTruthy();
-      expect(screen.queryByAltText('订单聊天截图')).toBeNull();
+      expect(screen.getAllByText('沟通截图（员工上传，一单可多张）')).toHaveLength(2);
+      // 两张截图两个独立入口：各自上传人（可解析/不可解析中性占位）与上传时间。
+      expect(screen.getByText(/上传人：李明/)).toBeTruthy();
+      expect(screen.getByText(/上传人：未知员工/)).toBeTruthy();
+      expect(screen.getAllByText(/上传时间：/)).toHaveLength(2);
+      expect(screen.getByText('暂无沟通截图')).toBeTruthy();
+      expect(screen.queryByAltText('订单沟通截图 1')).toBeNull();
       expect(readIntentRequests).toBe(0);
       expect(contentRequests).toBe(0);
       expect(client.getQueryData(sellerQueryKeys.ordersPage(null, null))).toBeDefined();
       expect(client.getQueryData(['buyer', 'orders', 'all'])).toBeUndefined();
 
-      await userEvent.click(screen.getByRole('button', { name: '展开聊天截图' }));
-      expect(await screen.findByAltText('订单聊天截图')).toBeTruthy();
+      await userEvent.click(screen.getByRole('button', { name: '展开沟通截图 1' }));
+      expect(await screen.findByAltText('订单沟通截图 1')).toBeTruthy();
       expect(readIntentRequests).toBe(1);
+      expect(readIntentFiles).toEqual(['chat-file-1']);
       expect(contentRequests).toBe(1);
 
-      await userEvent.click(screen.getByRole('button', { name: '查看大图：订单聊天截图' }));
+      await userEvent.click(screen.getByRole('button', { name: '展开沟通截图 2' }));
+      expect(await screen.findByAltText('订单沟通截图 2')).toBeTruthy();
+      expect(readIntentRequests).toBe(2);
+      expect(readIntentFiles).toEqual(['chat-file-1', 'chat-file-2']);
+      expect(contentRequests).toBe(2);
+
+      await userEvent.click(screen.getByRole('button', { name: '查看大图：订单沟通截图 1' }));
       expect(screen.getByRole('dialog')).toBeTruthy();
       expect(
         JSON.stringify(
@@ -528,9 +541,7 @@ function formalOrder() {
   return {
     formal_order_id: 'order-1',
     status: 'CONFIRMED',
-    legacy_projection: 'AMAZON',
     marketplace_code: 'AMAZON_JP',
-    canonical_marketplace_code: 'AMAZON_JP',
     amazon_order_number: '111-1111111-1111111',
     platform_order_identifier: '111-1111111-1111111',
     store: { id: 'store-1', display_name: '店铺一' },
@@ -553,7 +564,7 @@ function formalOrder() {
       payment_currency_code: 'JPY',
       base_rate_version_id: 'base-rate-1',
       base_rate_business_date: '2026-08-01',
-      base_rate_confirmed_at: 1,
+      base_rate_created_at: 1,
       base_rate_value: '5000000',
       base_rate_scale: '100000000',
       policy_version_id: 'policy-1',
@@ -561,7 +572,7 @@ function formalOrder() {
       policy_seller_organization_id: 'seller-organization',
       policy_version_no: 1,
       policy_effective_from: 1,
-      policy_confirmed_at: 1,
+      policy_created_at: 1,
       markup_rate_value: '0',
       markup_rate_scale: '100000000',
       final_rate_value: '5000000',
@@ -575,7 +586,7 @@ function formalOrder() {
       review_type: 'IMAGE',
       service_fee_cny_fen: '1',
       effective_from: 1,
-      confirmed_at: 1,
+      created_at: 1,
       marketplace_code: 'AMAZON_JP',
       currency_code: 'CNY',
       currency_exponent: 2,
@@ -586,7 +597,26 @@ function formalOrder() {
       seller_principal: 'PENDING',
       seller_service_fee: 'PENDING',
     },
-    communication_screenshots: [{ file_object_id: 'chat-file-1', file_version: 2, purpose: 'ORDER_COMMUNICATION_SCREENSHOT', visibility: 'SELLER_VISIBLE' }],
+    communication_screenshots: [
+      {
+        file_object_id: 'chat-file-1',
+        file_version: 2,
+        purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+        visibility: 'SELLER_VISIBLE',
+        uploaded_at: 1_746_800_000_000,
+        uploaded_by_staff_id: 'staff-1',
+        uploaded_by_staff_name: '李明',
+      },
+      {
+        file_object_id: 'chat-file-2',
+        file_version: 1,
+        purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+        visibility: 'SELLER_VISIBLE',
+        uploaded_at: 1_746_810_000_000,
+        uploaded_by_staff_id: null,
+        uploaded_by_staff_name: null,
+      },
+    ],
     confirmed_at: 1,
     confirmed_business_date: '2026-08-01',
   };

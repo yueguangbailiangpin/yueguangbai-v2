@@ -313,7 +313,37 @@ function refund(index: number, status: 'DUE' | 'PARTIALLY_PAID' | 'PAID' | 'OVER
 }
 const refunds = [refund(1, 'DUE'), refund(2, 'PARTIALLY_PAID'), refund(3, 'PAID')];
 
-function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paymentAmount: string) {
+interface DemoCommunicationScreenshot {
+  file_object_id: string;
+  file_version: number;
+  purpose: 'ORDER_COMMUNICATION_SCREENSHOT';
+  visibility: 'SELLER_VISIBLE';
+  uploaded_at: number;
+  uploaded_by_staff_id: string | null;
+  uploaded_by_staff_name?: string | null;
+}
+
+function demoCommunicationScreenshot(
+  index: number,
+  shot: number,
+): DemoCommunicationScreenshot {
+  return {
+    file_object_id: `review-comm-shot-${index}-${shot}`,
+    file_version: 1,
+    purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+    visibility: 'SELLER_VISIBLE',
+    uploaded_at: NOW - index * DAY - shot * 3_600_000,
+    uploaded_by_staff_id: `review-staff-${shot}`,
+    uploaded_by_staff_name: shot === 1 ? 'Demo 员工' : null,
+  };
+}
+
+function sellerOrder(
+  index: number,
+  completion: 'IN_PROGRESS' | 'COMPLETE',
+  paymentAmount: string,
+  communicationScreenshots: readonly DemoCommunicationScreenshot[],
+) {
   const parts =
     completion === 'COMPLETE'
       ? {
@@ -345,14 +375,11 @@ function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paym
     },
     platform_product_identifier: `B0DEMO00${index}X`,
     product_name: demands[index % demands.length]!.product_name,
-    chat_screenshot: {
-      status: index % 2 ? ('AVAILABLE' as const) : ('NONE' as const),
-      file_version: index % 2 ? 1 : null,
-    },
+    main_image: null,
+    order_screenshot: null,
+    communication_screenshots: communicationScreenshots,
     confirmed_at: NOW - index * DAY,
-    legacy_projection: 'AMAZON' as const,
     marketplace_code: 'AMAZON_JP' as const,
-    canonical_marketplace_code: 'AMAZON_JP' as const,
     amazon_order_number: `503-777000${index}-000300${index}`,
     asin: `B0DEMO00${index}X`,
     product_version: { id: `review-product-version-${index}`, version_no: 1 },
@@ -370,7 +397,7 @@ function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paym
       payment_currency_code: 'JPY' as const,
       base_rate_version_id: 'review-base-rate',
       base_rate_business_date: '2026-08-01',
-      base_rate_confirmed_at: NOW - 10 * DAY,
+      base_rate_created_at: NOW - 10 * DAY,
       base_rate_value: '485000',
       base_rate_scale: '100000000',
       policy_version_id: 'review-policy',
@@ -378,7 +405,7 @@ function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paym
       policy_seller_organization_id: null,
       policy_version_no: 2,
       policy_effective_from: NOW - 30 * DAY,
-      policy_confirmed_at: NOW - 20 * DAY,
+      policy_created_at: NOW - 20 * DAY,
       markup_rate_value: '1500000',
       markup_rate_scale: '100000000',
       final_rate_value: '500000',
@@ -392,7 +419,7 @@ function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paym
       review_type: 'IMAGE',
       service_fee_cny_fen: String(2_000 + index * 275),
       effective_from: NOW - 30 * DAY,
-      confirmed_at: NOW - 20 * DAY,
+      created_at: NOW - 20 * DAY,
       marketplace_code: 'AMAZON_JP' as const,
       currency_code: 'CNY' as const,
       currency_exponent: 2 as const,
@@ -478,12 +505,15 @@ function createDemoData() {
     sellerApplications,
     sellerDemands,
     sellerOrders: [
-      sellerOrder(1, 'IN_PROGRESS', '3480'),
-      sellerOrder(2, 'IN_PROGRESS', '21800'),
-      sellerOrder(3, 'IN_PROGRESS', '123456'),
-      sellerOrder(4, 'IN_PROGRESS', '9850'),
-      sellerOrder(5, 'COMPLETE', '64999'),
-      sellerOrder(6, 'COMPLETE', '198000'),
+      sellerOrder(1, 'IN_PROGRESS', '3480', [
+        demoCommunicationScreenshot(1, 1),
+        demoCommunicationScreenshot(1, 2),
+      ]),
+      sellerOrder(2, 'IN_PROGRESS', '21800', [demoCommunicationScreenshot(2, 1)]),
+      sellerOrder(3, 'IN_PROGRESS', '123456', []),
+      sellerOrder(4, 'IN_PROGRESS', '9850', []),
+      sellerOrder(5, 'COMPLETE', '64999', []),
+      sellerOrder(6, 'COMPLETE', '198000', []),
     ],
   };
 }

@@ -105,6 +105,9 @@ test('有效邀请只展示脱敏微信和绑定站点，成功消费后进入 B
   await page.getByLabel('密码', { exact: true }).fill('Strong-Password-2026!');
   await page.getByLabel('确认密码').fill('Strong-Password-2026!');
   await page.getByRole('button', { name: '完成注册' }).click();
+  // 当前批准交互：注册成功页人工点击进入，不自动跳转。
+  await expect(page.getByRole('heading', { name: '注册成功' })).toBeVisible();
+  await page.getByRole('button', { name: '进入买家中心' }).click();
   await expect(page).toHaveURL(/\/buyer$/u);
   expect(registrationBody).toEqual({
     invitation_token: invitationToken, marketplace_code: 'AMAZON_US',

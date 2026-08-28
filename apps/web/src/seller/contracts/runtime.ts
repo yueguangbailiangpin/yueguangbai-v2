@@ -114,6 +114,19 @@ const canonicalMarketplace = z.enum([
   'RAKUTEN_JP',
   'TIKTOK_JP',
 ]);
+// 与共享合同 OrderCommunicationScreenshotReferenceDto 完全一致：上传人与上传
+// 时间由后端 read-model 返回（uploaded_by_staff_name 在上传账号不可解析时缺省）。
+const orderCommunicationScreenshot = z
+  .object({
+    file_object_id: z.string().min(1).max(120),
+    file_version: z.number().int().positive(),
+    purpose: z.literal('ORDER_COMMUNICATION_SCREENSHOT'),
+    visibility: z.literal('SELLER_VISIBLE'),
+    uploaded_at: epoch,
+    uploaded_by_staff_id: z.string().nullable(),
+    uploaded_by_staff_name: z.string().nullable().optional(),
+  })
+  .strict();
 const sellerFormalOrderCommon = {
   formal_order_id: z.string(),
   status: z.literal('CONFIRMED'),
@@ -136,26 +149,13 @@ const sellerFormalOrderCommon = {
     })
     .strict()
     .nullable(),
-  communication_screenshots: z
-    .array(
-      z
-        .object({
-          file_object_id: z.string().min(1).max(120),
-          file_version: z.number().int().positive(),
-          purpose: z.literal('ORDER_COMMUNICATION_SCREENSHOT'),
-          visibility: z.literal('SELLER_VISIBLE'),
-        })
-        .strict(),
-    )
-    .readonly(),
+  communication_screenshots: z.array(orderCommunicationScreenshot).readonly(),
   confirmed_at: epoch,
 } as const;
-const sellerAmazonFormalOrderSchema = z
+const sellerFormalOrderSchema = z
   .object({
     ...sellerFormalOrderCommon,
-    legacy_projection: z.literal('AMAZON'),
     marketplace_code: z.literal('AMAZON_JP'),
-    canonical_marketplace_code: z.enum(['AMAZON_JP', 'AMAZON_US']),
     amazon_order_number: z.string(),
     asin: z.string(),
     product_version: z.object({ id: z.string(), version_no: z.number().int().positive() }).strict(),
@@ -176,7 +176,7 @@ const sellerAmazonFormalOrderSchema = z
         payment_currency_code: z.enum(['JPY', 'USD', 'KRW', 'CNY']),
         base_rate_version_id: z.string(),
         base_rate_business_date: z.string(),
-        base_rate_confirmed_at: epoch,
+        base_rate_created_at: epoch,
         base_rate_value: integerString,
         base_rate_scale: integerString,
         policy_version_id: z.string(),
@@ -184,7 +184,7 @@ const sellerAmazonFormalOrderSchema = z
         policy_seller_organization_id: z.string().nullable(),
         policy_version_no: z.number().int().positive(),
         policy_effective_from: epoch,
-        policy_confirmed_at: epoch,
+        policy_created_at: epoch,
         markup_rate_value: integerString,
         markup_rate_scale: integerString,
         final_rate_value: integerString,
@@ -197,10 +197,10 @@ const sellerAmazonFormalOrderSchema = z
       .object({
         fee_version_id: z.string(),
         version_no: z.number().int().positive(),
-        review_type: z.string(),
+        review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
         service_fee_cny_fen: integerString,
         effective_from: epoch,
-        confirmed_at: epoch,
+        created_at: epoch,
         marketplace_code: canonicalMarketplace,
         currency_code: z.literal('CNY'),
         currency_exponent: z.literal(2),
@@ -217,33 +217,9 @@ const sellerAmazonFormalOrderSchema = z
     confirmed_business_date: z.string(),
   })
   .strict();
-const sellerPlatformFormalOrderSchema = z
-  .object({
-    ...sellerFormalOrderCommon,
-    legacy_projection: z.literal('NONE'),
-    marketplace_code: z.null(),
-    canonical_marketplace_code: z.enum(['RAKUTEN_JP', 'TIKTOK_JP']),
-    amazon_order_number: z.null(),
-    asin: z.null(),
-    product_version: z.null(),
-    review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']).nullable(),
-    final_paid_jpy: z.null(),
-    payment: z.null(),
-    seller_expected_principal_cny_fen: z.null(),
-    seller_principal_rate_snapshot: z.null(),
-    locked_service_fee_snapshot: z.null(),
-    business_completion: z.null(),
-    confirmed_business_date: z.string().nullable(),
-  })
-  .strict();
 export const sellerFormalOrdersSchema = z
   .object({
-    items: z.array(
-      z.discriminatedUnion('legacy_projection', [
-        sellerAmazonFormalOrderSchema,
-        sellerPlatformFormalOrderSchema,
-      ]),
-    ),
+    items: z.array(sellerFormalOrderSchema),
     page,
   })
   .strict();

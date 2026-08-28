@@ -1,13 +1,16 @@
 # 前端重建阶段 7 交接：三端统一 Material 3 视觉重构（员工/买家/卖家）
 
-日期：2026-08-28。分支 `feature/staging-workflow-rate-ux`，起点 `d244c788`（阶段 6.6E 完成点，schema 30 / 224 端点）。本阶段四个本地提交（未 push）：
+日期：2026-08-28。分支 `feature/staging-workflow-rate-ux`，起点 `d244c788`（阶段 6.6E 完成点，schema 30 / 224 端点）。本阶段**五个**本地提交（未 push；2026-08-29 修正：原文本表只列了四个，遗漏第 5 个文档提交）：
 
 | # | SHA | 提交 |
 |---|---|---|
 | 1 | `f538f890` | `feat(web): rebuild staff portal with moonwhite material design`（含 tokens.css Material 3 重写） |
 | 2 | `09d1b4ae` | `feat(web): rebuild buyer portal with moonwhite material design` |
 | 3 | `25033eb4` | `feat(web): rebuild seller portal with moonwhite material design` |
-| 4 | `4859d150` | `refactor(web): remove superseded portal UI and legacy styles`（清理 + 两个新 e2e spec + 本文档随后提交） |
+| 4 | `4859d150` | `refactor(web): remove superseded portal UI and legacy styles` |
+| 5 | `fb1f2e54` | `docs(web): stage 7 three-portal rebuild handoff + three-portal e2e specs`（本文档与两个三端 e2e spec） |
+
+> **2026-08-29 修正（阶段 7R 总审后）**：① §7 所称的"CSS 清理"与 Git 事实不符——`4859d150` 对 `global.css` 实际为 **+9,841/−1 行**（追加了两份完整的重复样式表副本，共三份相同副本）而非清理；重复已在阶段 7R 删除，数量以 `git show 4859d150 --stat` 与实际文件统计为准。② §11.5"卖家端沟通截图上传人/时间"为**错误结论**：共享合同 `OrderCommunicationScreenshotReferenceDto` 与后端 read-model 均已返回 `uploaded_at`/`uploaded_by_staff_id`/`uploaded_by_staff_name`（阶段 6.6E 落地），缺口只在卖家端运行时 schema 未接线，已于阶段 7R 修复。③ §9 验证表中 stage7/stage66e/staff-workbench/stage7a1/seller-visual-refresh 的 Playwright 结果为当时真实通过记录；但 `module1-buyer`/`buyer-visual-pilot`/`buyer-remaining-visual`/`customer-security` 四个买家 spec 存在 **23 个基线即失败用例**（§12 仅记 25 个且未逐一处理），本轮已全部修复（见 Stage7R 交接）。
 
 视觉权威：用户提供的两个设计模板（已读取并在浏览器渲染确认）：
 `~/.codex/visualizations/2026/08/24/01a03432-.../moonwhite-google-console.html`（员工端）与 `moonwhite-buyer-seller-portals.html`（买家/卖家端）。
@@ -92,7 +95,7 @@ staff-workbench / staff-order-detail / staff-mobile / staff-mobile-drawer、buye
 2. **订单详情固定负责人/下一步**：`GET /api/staff/formal-orders/:id` 无负责人字段 → 参考面板省略该分区。
 3. **工作台 SLA/逾期/今日返款金额**：work-items API 不暴露 → 今日概览仅展示可推导计数。
 4. **卖家端产品主要对接人**：seller-portal products DTO 无对接人字段、无设置端点 → 首页该分区省略（查看/设置为模板要求，待后端）。
-5. **卖家端沟通截图上传人/时间**：seller DTO 的 communication_screenshots 无 uploaded_by/uploaded_at（仅员工端 DTO 有）→ 卖家端暂只展示截图本身。
+5. **卖家端沟通截图上传人/时间**：~~seller DTO 的 communication_screenshots 无 uploaded_by/uploaded_at（仅员工端 DTO 有）~~ **（2026-08-29 撤销该结论：后端与共享合同均已返回，属卖家端前端接线缺口，阶段 7R 已修复，不再是后端缺口。）**
 6. **卖家结算批次化**（周批次/批次确认/导出）：后端仅 summary/payables/payments → 以"结算项目"行呈现。
 7. **买家端固定联系人**：buyer-portal 无 assigned-staff DTO → 首页"需要帮助"分区省略。
 
