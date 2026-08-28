@@ -15,7 +15,7 @@ import {
 import { validateFileSelection } from '../../files/file-descriptor';
 import type { FileUploadWorkflow } from '../../files/file-purpose-config';
 import { z } from 'zod';
-import { Alert, Button, Card, Dialog, FormField, RequestIdDisplay, Select, TextInput } from '../../ui/primitives';
+import { Alert, Button, Card, Dialog, FormField, RequestIdDisplay, Select, StatusBadge, TextInput } from '../../ui/primitives';
 import { staffApi } from '../api/client';
 import { fenToYuan } from '../finance/finance-format';
 import type { StaffFormalOrderDetail } from '../contracts/runtime';
@@ -203,78 +203,126 @@ export function StaffOrderDetailPage(): React.JSX.Element {
         </Alert>
       ) : value ? (
         <>
-          <OrderIdentityCard value={value} />
-          <PaymentScreenshotCard value={value} />
-          <CommunicationScreenshotsCard orderId={orderId} value={value} />
-          {canViewFinance && finance.data ? (
-            <>
-              <PricingBreakdownCard detail={finance.data} orderId={orderId} />
-              <div className="staff-order-progress-grid">
-                <Card className="customer-visible">
-                  <h3>返款进度（买家）</h3>
-                  <ul className="staff-order-facts">
-                    <li>应返：{fenToYuan(finance.data.buyer_refund.due_cny_fen)}</li>
-                    <li>已返：{fenToYuan(finance.data.buyer_refund.net_paid_cny_fen)}</li>
-                    <li>
-                      未返：
-                      {fenToYuan(finance.data.buyer_refund.outstanding_cny_fen)}
-                      {Number(finance.data.buyer_refund.overpaid_cny_fen) > 0
-                        ? `（多付 ${fenToYuan(finance.data.buyer_refund.overpaid_cny_fen)}）`
-                        : ''}
-                    </li>
-                  </ul>
-                </Card>
-                <Card className="customer-visible">
-                  <h3>结算进度（卖家）</h3>
-                  <ul className="staff-order-facts">
-                    <li>
-                      本金应收：
-                      {fenToYuan(finance.data.seller_payables.principal_due_cny_fen)}
-                      （已收 {fenToYuan(finance.data.seller_payables.principal_collected_cny_fen)}）
-                    </li>
-                    <li>
-                      服务费应收：
-                      {fenToYuan(finance.data.seller_payables.service_fee_due_cny_fen)}
-                      （已收 {fenToYuan(finance.data.seller_payables.service_fee_collected_cny_fen)}）
-                    </li>
-                  </ul>
-                </Card>
+          {/* 标题区：chip + 订单号 + 概要 */}
+          <div className="staff-detail-heading">
+            <div>
+              <div className="staff-detail-meta">
+                <StatusBadge tone="processing">{value.order.status}</StatusBadge>
+                <small>
+                  {`确认时间 ${formatShanghai(value.order.confirmed_at)}`}
+                </small>
               </div>
-            </>
-          ) : null}
-          {canViewFinance && finance.isError ? (
-            <Alert tone="warning">计价明细读取失败；以下为订单流程事实。</Alert>
-          ) : null}
-          <TimelineCard value={value} />
-          <OrderOperationBlocks orderId={orderId} value={value} />
+              <h1>{value.order.amazon_order_number}</h1>
+              <p>
+                {`${value.buyer.display_name}${value.buyer.customer_no ? `（${value.buyer.customer_no}）` : ''} · ${
+                  MARKET_LABELS[value.order.marketplace_code] ?? value.order.marketplace_code
+                } · 订单日期 ${value.order.amazon_order_date}`}
+              </p>
+            </div>
+          </div>
+
+          {/* 关键事实条 */}
+          <section className="staff-surface staff-key-facts" aria-label="订单关键事实">
+            <div>
+              <span>平台订单号</span>
+              <strong>{value.order.amazon_order_number}</strong>
+            </div>
+            <div>
+              <span>站点</span>
+              <strong>{MARKET_LABELS[value.order.marketplace_code] ?? value.order.marketplace_code}</strong>
+            </div>
+            <div>
+              <span>买家</span>
+              <strong>{value.buyer.display_name}</strong>
+            </div>
+            <div>
+              <span>卖家组织</span>
+              <strong>{value.seller.seller_organization_id}</strong>
+            </div>
+            <div>
+              <span>店铺</span>
+              <strong>{value.seller.store_display_name}</strong>
+            </div>
+          </section>
+
+          <div className="staff-detail-layout">
+            <div className="staff-detail-main">
+              <section aria-labelledby="staff-order-evidence-title">
+                <h2 id="staff-order-evidence-title" className="staff-group-heading">凭证与沟通截图</h2>
+                <div className="staff-order-evidence-grid">
+                  <PaymentScreenshotCard value={value} />
+                  <CommunicationScreenshotsCard orderId={orderId} value={value} />
+                </div>
+              </section>
+              {canViewFinance && finance.data ? (
+                <PricingBreakdownCard detail={finance.data} orderId={orderId} />
+              ) : null}
+              {canViewFinance && finance.isError ? (
+                <Alert tone="warning">计价明细读取失败；以下为订单流程事实。</Alert>
+              ) : null}
+              <TimelineCard value={value} />
+              <OrderOperationBlocks orderId={orderId} value={value} />
+            </div>
+            <aside className="staff-reference-panel" aria-label="订单参考">
+              <div className="staff-reference-head">
+                <strong>订单参考</strong>
+              </div>
+              {value.buyer_advance ? (
+                <section className="staff-ref-section">
+                  <h3>垫付（提前返本金）</h3>
+                  <dl>
+                    <dt>权威垫付金额</dt>
+                    <dd>
+                      {value.buyer_advance.authoritative_advance_amount_cny_fen === null
+                        ? '—'
+                        : fenToYuan(value.buyer_advance.authoritative_advance_amount_cny_fen)}
+                    </dd>
+                    <dt>已记录</dt>
+                    <dd>
+                      {value.buyer_advance.recorded_advance_amount_cny_fen === null
+                        ? '¥0.00'
+                        : fenToYuan(value.buyer_advance.recorded_advance_amount_cny_fen)}
+                    </dd>
+                  </dl>
+                </section>
+              ) : null}
+              {canViewFinance && finance.data ? (
+                <>
+                  <section className="staff-ref-section">
+                    <h3>返款摘要（买家）</h3>
+                    <dl>
+                      <dt>应返</dt>
+                      <dd>{fenToYuan(finance.data.buyer_refund.due_cny_fen)}</dd>
+                      <dt>已返</dt>
+                      <dd>{fenToYuan(finance.data.buyer_refund.net_paid_cny_fen)}</dd>
+                      <dt>未返</dt>
+                      <dd className="staff-ref-danger">
+                        {fenToYuan(finance.data.buyer_refund.outstanding_cny_fen)}
+                      </dd>
+                    </dl>
+                  </section>
+                  <section className="staff-ref-section">
+                    <h3>结算摘要（卖家）</h3>
+                    <dl>
+                      <dt>本金（应收 / 已收）</dt>
+                      <dd>
+                        {fenToYuan(finance.data.seller_payables.principal_due_cny_fen)} /{' '}
+                        {fenToYuan(finance.data.seller_payables.principal_collected_cny_fen)}
+                      </dd>
+                      <dt>服务费（应收 / 已收）</dt>
+                      <dd>
+                        {fenToYuan(finance.data.seller_payables.service_fee_due_cny_fen)} /{' '}
+                        {fenToYuan(finance.data.seller_payables.service_fee_collected_cny_fen)}
+                      </dd>
+                    </dl>
+                  </section>
+                </>
+              ) : null}
+            </aside>
+          </div>
         </>
       ) : null}
     </main>
-  );
-}
-
-function OrderIdentityCard({ value }: { value: StaffFormalOrderDetail }): React.JSX.Element {
-  return (
-    <Card className="customer-visible">
-      <h3>订单信息</h3>
-      <ul className="staff-order-facts">
-        <li>平台订单号：{value.order.amazon_order_number}</li>
-        <li>
-          站点：{MARKET_LABELS[value.order.marketplace_code] ?? value.order.marketplace_code}
-          {' · '}订单日期：{value.order.amazon_order_date}
-        </li>
-        <li>
-          确认时间：{formatShanghai(value.order.confirmed_at)} · 状态：{value.order.status}
-        </li>
-        <li>
-          买家：{value.buyer.display_name}
-          {value.buyer.customer_no ? `（编号 ${value.buyer.customer_no}）` : ''}
-        </li>
-        <li>
-          卖家组织：{value.seller.seller_organization_id} · 店铺：{value.seller.store_display_name}
-        </li>
-      </ul>
-    </Card>
   );
 }
 

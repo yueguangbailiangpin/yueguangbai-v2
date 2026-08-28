@@ -218,8 +218,8 @@ describe('StaffShell rendering', () => {
   it('renders sidebar with brand and navigation for owner', () => {
     const session = staffTestSession('owner', ['STAFF_MANAGE', 'FINANCIAL_VIEW', 'SELLER_MANAGE']);
     renderShell(session, '/staff');
-    // brand appears in sidebar
-    expect(screen.getByText('月光白', { selector: '.staff-sidebar-brand' })).toBeInTheDocument();
+    // brand appears in topbar
+    expect(screen.getByText('月光白', { selector: '.staff-brand strong' })).toBeInTheDocument();
     // nav links by role
     expect(screen.getByRole('link', { name: '工作台' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '财务' })).toBeInTheDocument();
@@ -262,11 +262,10 @@ describe('StaffShell rendering', () => {
     expect(screen.getAllByText('规划中').length).toBeGreaterThanOrEqual(3);
   });
 
-  it('renders page title in topbar', () => {
+  it('renders page title in content heading', () => {
     const session = staffTestSession('owner', ['SELLER_MANAGE']);
     renderShell(session, '/staff/finance');
-    const topbar = screen.getByRole('banner');
-    expect(within(topbar).getByRole('heading', { name: '财务' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '财务' })).toBeInTheDocument();
   });
 });
 
@@ -328,14 +327,12 @@ describe('StaffShell old business routes still accessible', () => {
   it('renders shell at /staff/products', () => {
     const session = staffTestSession('owner', []);
     renderShell(session, '/staff/products');
-    const topbar = screen.getByRole('banner');
-    expect(within(topbar).getByRole('heading', { name: '产品与预约' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '产品与预约' })).toBeInTheDocument();
   });
 
   it('renders shell at /staff/refunds', () => {
     const session = staffTestSession('owner', []);
     renderShell(session, '/staff/refunds');
-    const topbar = screen.getByRole('banner');
-    expect(within(topbar).getByRole('heading', { name: '买家返款' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '买家返款' })).toBeInTheDocument();
   });
 });

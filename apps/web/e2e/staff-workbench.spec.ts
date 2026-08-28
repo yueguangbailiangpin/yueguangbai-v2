@@ -67,7 +67,7 @@ test('Staff completes queue to authoritative order detail and sees explicit conf
   const staffContext = page.locator('.staff-context-bar');
   await expect(staffContext.getByText('售前员工', { exact: true })).toBeVisible();
   await expect(staffContext.getByText('售前', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '订单资料', exact: true, level: 3 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '订单关键事实', exact: true })).toBeVisible();
   await expect(page.getByText('123-1234567-1234567')).toBeVisible();
   await expect(page.getByText('12880 JPY')).toBeVisible();
   await expect(page.getByRole('heading', { name: '内部核对' })).toBeVisible();
@@ -137,7 +137,7 @@ test('Staff workbench remains operable at 200% and with reduced motion', async (
 
 test('capture deterministic Staff workbench desktop and narrow views', async ({ page }) => {
   await mockWorkbench(page); await page.setViewportSize({ width: 1600, height: 1000 }); await page.goto('/staff/work/work-m5');
-  await expect(page.getByRole('heading', { name: '订单资料', exact: true, level: 3 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '订单关键事实', exact: true })).toBeVisible();
   if (screenshotDirectory) {
     mkdirSync(screenshotDirectory, { recursive: true });
     await page.screenshot({ path: join(screenshotDirectory, 'staff-workbench-desktop-1600x1000.png'), fullPage: true });

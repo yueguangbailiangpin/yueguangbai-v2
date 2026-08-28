@@ -45,14 +45,14 @@ describe('员工统一订单详情页', () => {
       { route: '/staff/orders/order-1' },
     );
     expect(await screen.findByRole('heading', { name: '订单详情' })).toBeVisible();
-    expect(await screen.findByRole('heading', { name: '订单信息' })).toBeVisible();
-    expect(screen.getByText('平台订单号：123-4567890-1234567')).toBeVisible();
+    expect(await screen.findByRole('region', { name: '订单关键事实' })).toBeVisible();
+    expect(screen.getAllByText('123-4567890-1234567').length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { name: '订单付款截图' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '订单沟通截图（2）' })).toBeVisible();
     expect(screen.getByRole('button', { name: '上传沟通截图' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '计价明细' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '返款进度（买家）' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '结算进度（卖家）' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '返款摘要（买家）' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '结算摘要（卖家）' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '全链路时间线' })).toBeVisible();
     expect(screen.getByText('订单确认')).toBeVisible();
     expect(screen.getByText('退货退款')).toBeVisible();
@@ -94,7 +94,7 @@ describe('员工统一订单详情页', () => {
     );
     expect(await screen.findByRole('heading', { name: '订单详情' })).toBeVisible();
     expect(screen.getByText(/计价与财务金额仅 Owner 可见/u)).toBeVisible();
-    expect(await screen.findByRole('heading', { name: '订单信息' })).toBeVisible();
+    expect(await screen.findByRole('region', { name: '订单关键事实' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '全链路时间线' })).toBeVisible();
     expect(financeRequested).toBe(false);
     // seller_ops 可以记录运营事件，但没有人工财务调整区块

@@ -348,7 +348,7 @@ describe('demand review panel', () => {
     );
     expect(key).toMatch(/\S/u);
     // 完成后返回任务队列首页。
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
     expect(screen.queryByRole('button', { name: '通过并发布' })).not.toBeInTheDocument();
   });
 
@@ -394,7 +394,7 @@ describe('demand review panel', () => {
     expect(await screen.findByText('需求发布事实')).toBeVisible();
     await user.type(screen.getByLabelText('首个下单日期'), '2026-08-11');
     await user.click(screen.getByRole('button', { name: '通过并发布' }));
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
     expect(contextReads).toBe(1);
   });
 
@@ -514,7 +514,7 @@ describe('demand review panel', () => {
     pending.click();
     expect(requestCount).toBe(1);
     finish();
-    await screen.findByRole('heading', { name: '任务队列' });
+    await screen.findByRole('heading', { name: /^我的待办/u });
     expect(requestCount).toBe(1);
   });
 
@@ -546,7 +546,7 @@ describe('demand review panel', () => {
     await user.click(screen.getByRole('button', { name: '通过并发布' }));
     expect(await screen.findByRole('button', { name: '重试原请求' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: '重试原请求' }));
-    await screen.findByRole('heading', { name: '任务队列' });
+    await screen.findByRole('heading', { name: /^我的待办/u });
     expect(attempts).toBe(2);
     expect(keys).toHaveLength(2);
     expect(keys[1]).toBe(keys[0]);
@@ -672,7 +672,7 @@ describe('review decision panel', () => {
     renderWorkItemPage('work-review');
     expect(await screen.findByText('评论资料')).toBeVisible();
     await user.click(screen.getByRole('button', { name: '通过' }));
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
     expect(screen.queryByText('评论资料暂时无法加载。')).not.toBeInTheDocument();
     expect(reviewReads).toBe(1);
   });
@@ -733,7 +733,7 @@ describe('order evidence review panel', () => {
     renderWorkItemPage('work-order', ['ORDER_VIEW', 'ORDER_CONFIRM']);
     expect(await screen.findByText('订单资料')).toBeVisible();
     await user.click(screen.getByRole('button', { name: '通过' }));
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
     expect(detailReads).toBe(1);
     expect(requestBody).toEqual({ expected_version: 1 });
     expect(idempotencyKey).toMatch(/\S/u);
@@ -801,7 +801,7 @@ describe('order evidence review panel', () => {
     expect(await screen.findByText('订单资料')).toBeVisible();
     await user.click(screen.getByRole('button', { name: '通过' }));
     await user.click(await screen.findByRole('button', { name: '重试原请求' }));
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
     expect(keys).toHaveLength(2);
     expect(keys[1]).toBe(keys[0]);
     expect(bodies).toEqual([{ expected_version: 1 }, { expected_version: 1 }]);
@@ -839,7 +839,7 @@ describe('order evidence review panel', () => {
     expect(await screen.findByText('订单资料')).toBeVisible();
     await user.type(screen.getByLabelText('要求修改原因'), '订单截图不完整');
     await user.click(screen.getByRole('button', { name: '要求修改' }));
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
     expect(path).toBe('/api/staff/order-evidence/evidence-1/request-changes');
     expect(requestBody).toEqual({
       expected_version: 1,
@@ -934,7 +934,7 @@ describe('reservation decision panel', () => {
     expect(screen.getByText('buyer-1')).toBeVisible();
     await user.click(screen.getByRole('button', { name: '批准预约并创建下单指引' }));
 
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
     expect(contextReads).toBe(1);
   });
 
@@ -1042,7 +1042,7 @@ describe('product application review panel', () => {
     expect(screen.getByText('连审第二步：发布数量计划')).toBeVisible();
     await user.click(screen.getByRole('button', { name: '返回任务队列' }));
 
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
     expect(contextReads).toBe(1);
   });
 
@@ -1180,7 +1180,7 @@ describe('product application review panel', () => {
     expect(screen.getByText('已绑定（审批时勾选的申请图）')).toBeVisible();
     await user.click(screen.getByRole('button', { name: '返回任务队列' }));
 
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
     expect(submittedBodies).toHaveLength(1);
     expect(submittedBodies[0]).toMatchObject({
       decision: 'APPROVE',
@@ -1363,7 +1363,7 @@ describe('order instruction publish panel', () => {
         staff_public_note: null,
       }),
     );
-    expect(await screen.findByRole('heading', { name: '任务队列' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: /^我的待办/u })).toBeVisible();
   });
 });
 

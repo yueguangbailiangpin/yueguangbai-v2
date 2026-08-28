@@ -217,6 +217,7 @@ function StaffMobileDrawer({
   open: boolean;
   onClose: () => void;
 }): React.JSX.Element | null {
+  const session = useCurrentStaffSession();
   const panelRef = useRef<HTMLElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
 
@@ -276,7 +277,12 @@ function StaffMobileDrawer({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="staff-drawer-header">
-          <span className="staff-drawer-brand">月光白</span>
+          <span className="staff-drawer-brand">
+            <span className="staff-brand-mark small" aria-hidden="true">
+              <span />
+            </span>
+            <strong>月光白</strong>
+          </span>
           <Button
             className="secondary icon-only"
             aria-label="关闭导航菜单"
@@ -289,6 +295,15 @@ function StaffMobileDrawer({
           <StaffNavigationContent onNavigate={onClose} />
         </div>
         <div className="staff-drawer-footer">
+          <div className="staff-sidebar-person">
+            <span className="staff-person-avatar" aria-hidden="true">
+              {session.display_name.slice(0, 1)}
+            </span>
+            <div className="staff-person-info">
+              <strong>{session.display_name}</strong>
+              <small>{`${session.role.display_name} · ${formatMarketplaceScope(session)}`}</small>
+            </div>
+          </div>
           <StaffAccountActions compact />
         </div>
       </aside>
@@ -314,61 +329,72 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
 
   return (
     <IdentityShell identity="staff" className="staff-business-shell">
-      {/* 桌面端侧边栏 */}
-      <aside className="staff-sidebar" aria-label="员工端侧边栏">
-        <NavLink className="staff-sidebar-brand" to="/staff" aria-label="月光白员工首页">
-          月光白
-        </NavLink>
-        <StaffNavigationContent />
-        <div className="staff-sidebar-footer">
-          <div className="staff-sidebar-person">
-            <span className="staff-person-avatar" aria-hidden="true">
-              {session.display_name.slice(0, 1)}
+      {/* 64px 顶栏：品牌区 + 全局搜索胶囊 + 会话区（Material 3 控制台） */}
+      <header className="staff-topbar">
+        <div className="staff-topbar-brand">
+          <Button
+            className="secondary icon-only staff-mobile-menu-btn"
+            aria-label="打开导航菜单"
+            aria-expanded={drawerOpen}
+            aria-controls="staff-mobile-drawer"
+            onClick={() => setDrawerOpen(true)}
+          >
+            <Menu aria-hidden="true" />
+          </Button>
+          <NavLink className="staff-brand" to="/staff" aria-label="月光白员工首页">
+            <span className="staff-brand-mark" aria-hidden="true">
+              <span />
             </span>
-            <div className="staff-person-info">
-              <strong>{session.display_name}</strong>
-              <small>{session.role.display_name}</small>
-            </div>
-          </div>
-          <StaffAccountActions />
+            <strong>月光白</strong>
+          </NavLink>
         </div>
-      </aside>
-
-      {/* 工作区 */}
-      <div className="staff-work-area">
-        {/* 顶栏 */}
-        <header className="staff-topbar">
-          <div className="staff-topbar-left">
-            <Button
-              className="secondary icon-only staff-mobile-menu-btn"
-              aria-label="打开导航菜单"
-              aria-expanded={drawerOpen}
-              aria-controls="staff-mobile-drawer"
-              onClick={() => setDrawerOpen(true)}
-            >
-              <Menu aria-hidden="true" />
-            </Button>
-            <div className="staff-topbar-title">
-              <Breadcrumb items={breadcrumb} />
-              <h1>{pageTitle}</h1>
-            </div>
+        <div className="staff-topbar-search">
+          <GlobalSearchDropdown />
+        </div>
+        <div className="staff-topbar-actions">
+          <div className="staff-session-context" aria-label="当前会话信息">
+            <span className="staff-session-name">{session.display_name}</span>
+            <span className="staff-session-role">{session.role.display_name}</span>
+            <span className="staff-session-scope">{scope}</span>
           </div>
-          <div className="staff-topbar-right">
-            <div className="staff-topbar-search">
-              <GlobalSearchDropdown />
-            </div>
-            <div className="staff-session-context" aria-label="当前会话信息">
-              <span className="staff-session-name">{session.display_name}</span>
-              <span className="staff-session-role">{session.role.display_name}</span>
-              <span className="staff-session-scope">{scope}</span>
-            </div>
-          </div>
-        </header>
+          <span className="staff-session-avatar" aria-hidden="true">
+            {session.display_name.slice(0, 1)}
+          </span>
+        </div>
+      </header>
 
-        {/* 内容区 */}
-        <main className="staff-main-content" id="staff-main-content">
-          {children ?? <Outlet />}
-        </main>
+      <div className="staff-shell-body">
+        {/* 桌面端侧边栏（240px 胶囊导航） */}
+        <aside className="staff-sidebar" aria-label="员工端侧边栏">
+          <StaffNavigationContent />
+          <div className="staff-sidebar-footer">
+            <div className="staff-sidebar-scope">{scope}</div>
+            <div className="staff-sidebar-person">
+              <span className="staff-person-avatar" aria-hidden="true">
+                {session.display_name.slice(0, 1)}
+              </span>
+              <div className="staff-person-info">
+                <strong>{session.display_name}</strong>
+                <small>{session.role.display_name}</small>
+              </div>
+            </div>
+            <StaffAccountActions />
+          </div>
+        </aside>
+
+        {/* 工作区 */}
+        <div className="staff-work-area">
+          {/* 面包屑 + 页面标题（内容区顶部） */}
+          <div className="staff-content-heading">
+            <Breadcrumb items={breadcrumb} />
+            <h1>{pageTitle}</h1>
+          </div>
+
+          {/* 内容区 */}
+          <main className="staff-main-content" id="staff-main-content">
+            {children ?? <Outlet />}
+          </main>
+        </div>
       </div>
 
       {/* 移动端 Drawer */}

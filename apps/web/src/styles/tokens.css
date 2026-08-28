@@ -7,94 +7,110 @@
 }
 
 /* ============================================================
-   月光白 V2 设计 Tokens（阶段 7A-1 统一）
-   目标：清晰、克制、专业，适合三名员工每天处理约 200 单的中文运营后台。
-   原则：语义化命名，一种稳定主色，固定语义色，8px 间距体系。
+   月光白 V2 设计 Tokens（阶段 7 三端统一 / Material 3）
+   视觉权威：moonwhite-google-console.html（员工端）
+            moonwhite-buyer-seller-portals.html（买家/卖家端）
+   员工端与买家端主色为月光白蓝 #0b57d0；卖家端为克制绿 #137333。
+   原则：语义化命名，固定语义色，8px 间距体系，克制阴影。
    ============================================================ */
 
 :root {
   color-scheme: light;
 
   /* ---- 背景与表面 ---- */
-  --color-canvas: #f5f6f8;          /* 页面底色（月光白/暖白） */
+  --color-canvas: #f8fafd;          /* 页面底色（Google 灰蓝画布） */
   --color-surface: #ffffff;         /* 卡片/面板表面 */
-  --color-surface-subtle: #f0f2f5;  /* 次级表面（悬停、斑马纹） */
+  --color-surface-subtle: #edf3fc;  /* 次级表面（软蓝） */
   --color-surface-raised: #fbfcfd;  /* 浮起表面 */
-  --color-surface-inset: #e9ecf0;   /* 内嵌表面（输入框背景） */
+  --color-surface-inset: #e9eef6;   /* 内嵌表面（搜索框背景） */
+  --color-surface-strong: #d3e3fd;  /* 强调表面（选中态/M3 secondary container） */
+  --color-on-surface-strong: #041e49; /* 强调表面上的文字 */
 
   /* ---- 文字 ---- */
-  --color-text: #1a2332;            /* 正文（深灰） */
-  --color-text-secondary: #4a5568;  /* 次级文字 */
-  --color-text-muted: #6b7280;      /* 辅助/占位文字 */
-  --color-text-disabled: #9ca3af;   /* 禁用文字 */
+  --color-text: #1f1f1f;            /* 正文 */
+  --color-text-secondary: #444746;  /* 次级文字 */
+  --color-text-muted: #5f6368;      /* 辅助/占位文字 */
+  --color-text-disabled: #9aa0a6;   /* 禁用文字 */
   --color-text-inverse: #ffffff;    /* 反色文字 */
   --color-text-link: var(--color-primary);
 
   /* ---- 边框 ---- */
-  --color-border: #d8dde4;          /* 常规边框 */
-  --color-border-strong: #b0b8c4;   /* 强调边框 */
+  --color-border: #dde3ea;          /* 常规边框 */
+  --color-border-strong: #b8c1cc;   /* 强调边框 */
   --color-border-subtle: #e8ebef;   /* 细边框（分隔线） */
   --color-border-focus: var(--color-primary);
 
-  /* ---- 主色（稳定深蓝，全员工端唯一主色） ---- */
-  --color-primary: #2c5aa0;
-  --color-primary-hover: #234a85;
-  --color-primary-active: #1b3a6b;
-  --color-primary-soft: #e8f0fa;
-  --color-primary-soft-hover: #d8e6f7;
+  /* ---- 主色（月光白蓝，员工端与买家端唯一主色） ---- */
+  --color-primary: #0b57d0;
+  --color-primary-hover: #0a4abb;
+  --color-primary-active: #0842a3;
+  --color-primary-soft: #e8f0fe;
+  --color-primary-soft-hover: #d9e5fd;
+  --color-primary-container: #d3e3fd;
+  --color-on-primary-container: #041e49;
 
   /* ---- 语义色（固定，不随主题变化） ---- */
-  --color-success: #1f7a44;
-  --color-success-hover: #186036;
-  --color-success-soft: #e6f4ec;
+  --color-success: #137333;
+  --color-success-hover: #0f5c2b;
+  --color-success-soft: #e6f4ea;
+  --color-success-container: #c4eed0;
+  --color-on-success-container: #06351c;
 
-  --color-warning: #8a5a00;
-  --color-warning-hover: #6e4700;
-  --color-warning-soft: #fff4de;
+  --color-warning: #8a4f00;
+  --color-warning-hover: #6f4000;
+  --color-warning-soft: #fef3df;
 
   --color-danger: #b3261e;
-  --color-danger-hover: #8e1d17;
-  --color-danger-soft: #fdecea;
+  --color-danger-hover: #99201a;
+  --color-danger-soft: #fce8e6;
 
-  --color-info: #1a5fb4;
-  --color-info-hover: #144a8e;
-  --color-info-soft: #e6f0fa;
+  --color-info: #0b57d0;
+  --color-info-hover: #0a4abb;
+  --color-info-soft: #e8f0fe;
+
+  --color-purple: #7c4d9e;
+  --color-purple-soft: #f1e8f7;
 
   /* ---- 状态色（StatusBadge 用） ---- */
   --color-neutral: var(--color-text-muted);
-  --color-neutral-soft: var(--color-surface-subtle);
+  --color-neutral-soft: #eef0f3;
   --color-processing: var(--color-primary);
   --color-processing-soft: var(--color-primary-soft);
   --color-expired: #6b5b73;
   --color-expired-soft: #f1edf4;
-  --color-conflict: #9a3e13;
-  --color-conflict-soft: #fff0e8;
+  --color-conflict: #8d3a69;
+  --color-conflict-soft: #f7e8f2;
 
-  /* ---- 三端身份色（仅用于门户标识，不混入员工端主色） ---- */
-  --color-buyer: #2563c4;
-  --color-buyer-soft: #e8f0fc;
-  --color-seller: #1e7a52;
-  --color-seller-soft: #e6f4ed;
+  /* ---- 三端身份色（员工=蓝 买家=蓝 卖家=绿） ---- */
+  --color-buyer: #0b57d0;
+  --color-buyer-soft: #e8f0fe;
+  --color-buyer-container: #d3e3fd;
+  --color-on-buyer-container: #041e49;
+  --color-seller: #137333;
+  --color-seller-soft: #e6f4ea;
+  --color-seller-container: #c4eed0;
+  --color-on-seller-container: #06351c;
   --color-staff: var(--color-primary);  /* 员工端与主色统一 */
   --color-staff-soft: var(--color-primary-soft);
 
   /* ---- 覆盖层 ---- */
-  --color-overlay: rgba(26, 35, 50, 0.45);
-  --color-overlay-subtle: rgba(26, 35, 50, 0.25);
+  --color-overlay: rgba(32, 33, 36, 0.32);
+  --color-overlay-subtle: rgba(32, 33, 36, 0.18);
 
-  /* ---- 阴影（克制，仅三层） ---- */
-  --shadow-xs: 0 1px 2px rgba(26, 35, 50, 0.06);
-  --shadow-sm: 0 1px 3px rgba(26, 35, 50, 0.08), 0 1px 2px rgba(26, 35, 50, 0.04);
-  --shadow-md: 0 4px 12px rgba(26, 35, 50, 0.10), 0 2px 4px rgba(26, 35, 50, 0.06);
-  --shadow-lg: 0 12px 32px rgba(26, 35, 50, 0.14), 0 4px 8px rgba(26, 35, 50, 0.08);
-  --shadow-focus: 0 0 0 3px rgba(44, 90, 160, 0.35);
+  /* ---- 阴影（克制） ---- */
+  --shadow-xs: 0 1px 2px rgba(60, 64, 67, 0.16);
+  --shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.18);
+  --shadow-md: 0 1px 3px rgba(60, 64, 67, 0.20);
+  --shadow-lg: 0 8px 30px rgba(32, 33, 36, 0.22);
+  --shadow-focus: 0 0 0 3px rgba(11, 87, 208, 0.35);
 
-  /* ---- 圆角 ---- */
+  /* ---- 圆角（Material 3） ---- */
   --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-control: 8px;     /* 表单控件 */
-  --radius-card: 10px;       /* 卡片 */
-  --radius-panel: 12px;      /* 大面板 */
+  --radius-sm: 8px;
+  --radius-control: 12px;      /* 表单控件/chip */
+  --radius-card: 16px;         /* 卡片 */
+  --radius-panel: 24px;        /* 大面板/surface */
+  --radius-nav: 20px;          /* 胶囊导航项 */
   --radius-pill: 999px;
 
   /* ---- 间距（8px 体系） ---- */
@@ -111,20 +127,22 @@
   --space-16: 64px;
 
   /* ---- 排版 ---- */
-  --font-family-sans: -apple-system, BlinkMacSystemFont, "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-family-sans: "Google Sans Text", "Roboto", "Noto Sans SC",
+    "PingFang SC", -apple-system, BlinkMacSystemFont, "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
   --font-family-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
 
   --font-size-xs: 11px;
   --font-size-sm: 12px;
-  --font-size-body: 13px;      /* 正文（紧凑可读） */
+  --font-size-body: 13px;      /* 正文 */
   --font-size-lead: 14px;      /* 引导/标签 */
   --font-size-base: 15px;
-  --font-size-section: 17px;   /* 区块标题 */
-  --font-size-title: 20px;     /* 页面标题 */
-  --font-size-display: 24px;
+  --font-size-section: 16px;   /* 区块标题 */
+  --font-size-title: 20px;
+  --font-size-page: 28px;      /* 页面 H1（M3 display-small 密度） */
+  --font-size-display: 28px;
 
-  --line-height-tight: 1.25;
+  --line-height-tight: 1.15;
   --line-height-snug: 1.4;
   --line-height-body: 1.55;
   --line-height-relaxed: 1.7;
@@ -158,27 +176,28 @@
   --transition-reduced: 0ms;
 
   /* ---- 表格密度 ---- */
-  --table-row-height: 40px;       /* 紧凑行高 */
-  --table-row-height-dense: 34px; /* 密集行高 */
+  --table-row-height: 48px;
+  --table-row-height-dense: 42px;
   --table-cell-padding-x: 12px;
   --table-cell-padding-y: 8px;
-  --table-header-height: 36px;
+  --table-header-height: 42px;
 
   /* ---- 表单控件尺寸 ---- */
-  --control-height-sm: 30px;
-  --control-height: 36px;         /* 默认控件高度 */
-  --control-height-lg: 42px;
-  --control-padding-x: 12px;
+  --control-height-sm: 32px;
+  --control-height: 36px;
+  --control-height-lg: 40px;
+  --control-height-xl: 48px;     /* 全局搜索框 */
+  --control-padding-x: 14px;
   --control-padding-y: 6px;
   --control-font-size: var(--font-size-body);
-  --control-border-radius: var(--radius-control);
+  --control-border-radius: var(--radius-pill);
 
-  /* ---- 布局尺寸 ---- */
-  --sidebar-width: 232px;
-  --sidebar-width-collapsed: 56px;
-  --topbar-height: 56px;
-  --content-max-width: 1440px;
-  --content-padding: 20px;
+  /* ---- 布局尺寸（模板：64px appbar / 240px 侧栏） ---- */
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 78px;
+  --topbar-height: 64px;
+  --content-max-width: 1600px;
+  --content-padding: 24px;
 
   /* ---- 断点 ---- */
   --breakpoint-sm: 640px;
