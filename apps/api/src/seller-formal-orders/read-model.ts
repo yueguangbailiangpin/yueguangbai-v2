@@ -6,6 +6,7 @@ import type {
   SellerFormalOrderPortalPage,
   SqlDatabase,
 } from '@ygb/contracts';
+import type { OrderCommunicationScreenshotReferenceDto } from '@ygb/contracts';
 import { listOrderCommunicationScreenshots } from '../order-communication-screenshots/read-model';
 import { sellerBusinessCompletion } from '@ygb/domain';
 import type { SellerPortalActor } from '../seller-portal/actor';
@@ -384,12 +385,7 @@ export function storeScope(
 
 function mapFormalOrder(
   row: FormalOrderRow,
-  communicationScreenshots: readonly {
-    file_object_id: string;
-    file_version: number;
-    purpose: 'ORDER_COMMUNICATION_SCREENSHOT';
-    visibility: 'SELLER_VISIBLE';
-  }[] = [],
+  communicationScreenshots: readonly OrderCommunicationScreenshotReferenceDto[] = [],
 ): SellerFormalOrderPortalDto {
   const common = {
     formal_order_id: row.formal_order_id,

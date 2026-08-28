@@ -27,13 +27,15 @@ export function registerStaffCustomerSecurityRoutes(app: Hono<any>): void {
   app.post('/api/staff/customer-security/buyer-invitations',
     customerAuthOriginGuard(), withErrors(async (context) => {
     const actor = requireStaff(context);
-    const body = await exactBody(context, ['wechat_id', 'marketplace_code']);
+    const body = await exactBody(context, ['buyer_customer_id', 'wechat_id', 'marketplace_code']);
     if (typeof body['wechat_id'] !== 'string'
+      || typeof body['buyer_customer_id'] !== 'string'
       || !isBuyerSupportedMarketplaceCode(body['marketplace_code'])) {
       throw validation();
     }
     await enforceStaffRateLimit(context, 'INVITATION', body['wechat_id']);
     const result = await issueBuyerInvitation(context.env.DB, {
+      buyerCustomerId: body['buyer_customer_id'],
       wechatId: body['wechat_id'],
       marketplaceCode: body['marketplace_code'],
     }, staffCommand(context, actor));

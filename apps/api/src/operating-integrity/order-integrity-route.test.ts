@@ -230,6 +230,13 @@ class IntegrityStatement implements SqlStatement {
       } as T);
     if (this.sql.includes('FROM buyer_advance_principal_settlements')) return Promise.resolve(null);
     if (this.sql.includes('FROM buyer_refund_obligations')) return Promise.resolve(null);
+    if (this.sql.includes('authoritative_advance_amount_cny_fen'))
+      return Promise.resolve({
+        authoritative_advance_amount_cny_fen: '9500',
+        recorded_advance_amount_cny_fen: '0',
+      } as T);
+    if (this.sql.includes("entry_type='REVERSAL'"))
+      return Promise.resolve(null);
     if (this.sql.includes('SELECT buyer_expected_principal_cny_fen AS amount FROM formal_order_financial_snapshots'))
       return Promise.resolve({ amount: 48840 } as T);
     if (this.sql.includes('FROM formal_order_financial_snapshots'))

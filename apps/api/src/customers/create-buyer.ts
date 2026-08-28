@@ -16,7 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  assertWechatAvailable,
   cleanRequiredText,
   createIdentityClaimStatements,
   CustomerMasterDataError,
@@ -114,15 +113,36 @@ export async function createBuyerCustomer(
 
   try {
     await assertActiveBuyerChannel(database, buyerChannelId);
-    await assertWechatAvailable(database, wechat.normalized);
+    // One WeChat identity can only ever own one buyer profile. When the
+    // identity subject already exists (e.g. a Seller member), reuse it instead
+    // of creating a second subject — the staff creation only adds the buyer
+    // profile, never a duplicate identity.
+    const existingClaim = await database.prepare(`
+      SELECT claim.id AS claim_id, claim.identity_subject_id AS subject_id,
+        EXISTS (
+          SELECT 1 FROM buyer_customers buyer
+          WHERE buyer.identity_subject_id=claim.identity_subject_id
+        ) AS has_buyer
+      FROM wechat_identity_claims claim
+      WHERE claim.normalized_wechat=? AND claim.status='ACTIVE'
+      LIMIT 1
+    `).bind(wechat.normalized).first<{
+      claim_id: string;
+      subject_id: string;
+      has_buyer: number;
+    }>();
+    if (existingClaim && Number(existingClaim.has_buyer) === 1) {
+      throw new CustomerMasterDataError('WECHAT_ID_CONFLICT', 409);
+    }
+    await assertNoReservedWechat(database, wechat.normalized);
     const numberPlan = await planBuyerNumberAllocation(database, {
       channelId: buyerChannelId,
       now,
     });
 
     const buyerId = crypto.randomUUID();
-    const subjectId = crypto.randomUUID();
-    const claimId = crypto.randomUUID();
+    const subjectId = existingClaim?.subject_id ?? crypto.randomUUID();
+    const claimId = existingClaim?.claim_id ?? crypto.randomUUID();
     const response: CreateBuyerResult = {
       buyer_customer_id: buyerId,
       identity_subject_id: subjectId,
@@ -134,16 +154,18 @@ export async function createBuyerCustomer(
 
 
     const statements: SqlStatement[] = [
-      ...createIdentityClaimStatements(database, {
-        subjectId,
-        subjectType: 'BUYER_CUSTOMER',
-        claimId,
-        displayWechat: wechat.display,
-        normalizedWechat: wechat.normalized,
-        actor: command.actor,
-        idempotencyKey: acquired.claim.idempotencyKey,
-        now,
-      }),
+      ...(existingClaim
+        ? []
+        : createIdentityClaimStatements(database, {
+          subjectId,
+          subjectType: 'BUYER_CUSTOMER',
+          claimId,
+          displayWechat: wechat.display,
+          normalizedWechat: wechat.normalized,
+          actor: command.actor,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          now,
+        })),
       database.prepare(`
         INSERT INTO buyer_customers (
           id,
@@ -265,6 +287,19 @@ export async function createBuyerCustomer(
       now,
     );
     throw normalized;
+  }
+}
+
+async function assertNoReservedWechat(
+  database: SqlDatabase,
+  normalizedWechat: string,
+): Promise<void> {
+  const reserved = await database.prepare(`
+    SELECT 1 AS present FROM wechat_identity_claims
+    WHERE normalized_wechat=? AND status='RESERVED' LIMIT 1
+  `).bind(normalizedWechat).first<{ present: number }>();
+  if (reserved) {
+    throw new CustomerMasterDataError('WECHAT_ID_CONFLICT', 409);
   }
 }
 

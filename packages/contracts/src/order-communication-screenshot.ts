@@ -19,6 +19,10 @@ export interface OrderCommunicationScreenshotReferenceDto {
   file_version: number;
   purpose: 'ORDER_COMMUNICATION_SCREENSHOT';
   visibility: 'SELLER_VISIBLE';
+  uploaded_at: number;
+  uploaded_by_staff_id: string | null;
+  /** Present when the uploading staff account is still resolvable. */
+  uploaded_by_staff_name?: string | null;
 }
 
 export interface AttachOrderCommunicationScreenshotRequest {

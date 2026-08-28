@@ -15,7 +15,20 @@ Session。历史 `seller_support`、`buyer_support`、`after_sales` 同样只作
 
 分配是固定绑定（无公共池/轮转/兜底/排班/重分配）：买家分别绑定售前负责人
 与返款负责人，卖家组织绑定卖家运营负责人，owner 全局查看处理；缺绑定失败
-关闭。
+关闭。阶段 6.6E 起 owner 通过 access-management 管理两类买家负责人
+（`GET /api/staff/access-management/buyer-assignments` 同时返回
+`pre_sales_owner` 与 `refund_owner`；设置/更换分别走
+`POST .../buyer-pre-sales-assignments` 与 `POST .../buyer-assignments`，
+均需 reason、幂等与 expected_assignment_version），并可设置/撤销指定员工的
+Personal DENY（`GET/POST /api/staff/access-management/personal-denies`、
+`POST .../personal-denies/revoke`；DENY 只能缩小权限，全部变更写审计并
+提升 authorization_version 立即生效）。
+
+阶段 6.6E 买家建档与邀请：员工建档（`POST /api/staff/buyer-customers`，
+需 `BUYER_CREATE`）事务内立即分配 B/C 编号并自动绑定初始售前负责人，新档案
+未激活不能登录；邀请签发必须绑定既有未激活买家（微信身份与 Marketplace 一致
+校验，不一致 409）；邀请注册只认领并激活被绑定的既有档案，绝不创建第二个
+买家或新编号，无法安全映射的旧邀请 fail closed。
 
 所有 ACTIVE Staff 均可在可信 Staff Session 下签发、查看和在使用前撤销普通
 Buyer 邀请，也可在完成人工微信核验并记录核验说明后签发一次性 Customer 密码
@@ -51,20 +64,6 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 
 全系统管理、身份冲突、合并、权限、财务冲正、导出和审计。
 
-### acquisition
-
-- 在本人 Marketplace Scope 内操作客户开发中心（阶段 4 人工模型）：查看内部渠道和
-  来源、渠道统计、日咨询记录及其历史；无 Scope 时不返回业务记录，越 Scope 的单条
-  历史返回 404。机器信号、自动漏斗、交接队列与归因统计开关已随干净基线退役。
-- 在本人 Marketplace Scope 内创建、查看和更新 Prospect（人工录入，不再携带机器
-  评分或发现方式字段）；可对现有 Lead 作带原因、可审计的来源更正。来源更正新增
-  更正记录，不改写原始来源。
-- 该操作员门禁只允许 `owner` 或 `acquisition`，不能由个人额外授权替代；每次请求仍由
-  后端重算 ACTIVE 角色和 Marketplace Scope。
-- 不具有 `ACQUISITION_ADMIN`、`ACQUISITION_BUYER_LEAD` 或
-  `ACQUISITION_SELLER_LEAD` 默认权限：不得管理渠道、渠道分配/生效期或接待微信；
-  也不得创建、查看或管理正式 Buyer/Seller Lead。
-
 ### pre_sales
 
 - 查看公开需求、预约和待核对订单；
@@ -77,7 +76,6 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 - 查看订单截图；
 - 不查看卖家内部利润；
 - 不执行已完成财务更正。
-- 只能建立和管理本人或授权团队范围的 Buyer 获客线索；渠道由后端按有效期解析。
 
 ### seller_ops
 
@@ -88,7 +86,6 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 - 服务费规则变更申请；
 - 卖家侧订单与结算；
 - 不查看买家微信、买家返款和内部利润。
-- 只能建立和管理本人或授权团队范围的 Seller 获客线索；不获得 Buyer 漏斗或利润投影。
 
 ### 产品预约排期专项边界
 
@@ -108,7 +105,6 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 - 已完成财务不可改；
 - 只读取完成上述职责所必需的买家资料；
 - 不查看卖家内部协议、员工管理、高风险身份、系统管理或内部利润。
-- 不建立、查看或管理 Buyer/Seller 获客线索。
 
 ### 经营看板权限（阶段 4 简化后）
 
@@ -130,15 +126,6 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 - 基础订单日汇率只能由同时拥有 `SELLER_MANAGE`、`FINANCIAL_CORRECT` 和 GLOBAL Scope 的 Owner 填写并确认；基础汇率按 Amazon `amazon_order_date` 与币种对维护。
 - 默认卖家本金加点仅由同一 Owner 提交；组织专属加点只能由被分配组织的 `seller_ops` 提交。无论范围，确认或拒绝基础汇率、默认加点或组织专属加点都只允许 Owner + `FINANCIAL_CORRECT`。
 - 组织专属覆盖优先于默认值；显式 `0` 是有效覆盖，不得按缺失值处理。正式订单冻结订单日基础汇率、加点版本和值，历史快照不可回写。
-
-### 获客专项权限
-
-- `ACQUISITION_ADMIN`：仅 owner，用于渠道、Staff 渠道生效期、北京日咨询人数登记/更正和留存豁免。
-- `ACQUISITION_BUYER_LEAD`：owner 和 pre_sales 默认权限，仍受个人 DENY 与数据范围限制。
-- `ACQUISITION_SELLER_LEAD`：owner 和 seller_ops 默认权限，仍受个人 DENY 与数据范围限制。
-- `acquisition` 没有上述三项默认权限。其客户开发中心访问是独立的
-  `owner`/`acquisition` 角色门禁，不授予 owner 管理权或正式 Buyer/Seller Lead 职责。
-- `buyer_refund` 没有任何获客默认权限；Personal DENY 始终在角色默认权限之后扣除。
 
 历史映射为 `owner→owner`、`pre_sales→pre_sales`、
 `seller_ops→seller_ops`、`after_sales→buyer_refund`。

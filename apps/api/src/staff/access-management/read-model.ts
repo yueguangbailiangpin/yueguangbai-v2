@@ -41,10 +41,14 @@ interface BuyerRefundOwnerAssignmentRow {
   buyer_customer_id: string;
   buyer_display_name: string;
   marketplace_code: string;
-  assignment_id: string | null;
-  staff_id: string | null;
-  staff_display_name: string | null;
-  assignment_version: number | null;
+  pre_sales_assignment_id: string | null;
+  pre_sales_staff_id: string | null;
+  pre_sales_staff_display_name: string | null;
+  pre_sales_assignment_version: number | null;
+  refund_assignment_id: string | null;
+  refund_staff_id: string | null;
+  refund_staff_display_name: string | null;
+  refund_assignment_version: number | null;
 }
 
 export async function readStaffAccessManagementOverview(
@@ -141,15 +145,23 @@ export async function readStaffSellerOrganizationAssignment(
 const BUYER_REFUND_OWNER_ASSIGNMENT_QUERY = `SELECT buyer.id AS buyer_customer_id,
   buyer.display_name AS buyer_display_name,
   buyer.marketplace_code,
-  assignment.id AS assignment_id, assignment.staff_id,
-  staff.display_name AS staff_display_name,
-  assignment.version AS assignment_version
+  pre_sales.id AS pre_sales_assignment_id, pre_sales.staff_id AS pre_sales_staff_id,
+  pre_sales_staff.display_name AS pre_sales_staff_display_name,
+  pre_sales.version AS pre_sales_assignment_version,
+  refund.id AS refund_assignment_id, refund.staff_id AS refund_staff_id,
+  refund_staff.display_name AS refund_staff_display_name,
+  refund.version AS refund_assignment_version
 FROM buyer_customers buyer
-LEFT JOIN buyer_staff_assignments assignment
-  ON assignment.buyer_customer_id=buyer.id
-  AND assignment.duty_code='BUYER_REFUND_OWNER'
-  AND assignment.status='ACTIVE'
-LEFT JOIN staff_users staff ON staff.id=assignment.staff_id`;
+LEFT JOIN buyer_staff_assignments pre_sales
+  ON pre_sales.buyer_customer_id=buyer.id
+  AND pre_sales.duty_code='BUYER_PRE_SALES_OWNER'
+  AND pre_sales.status='ACTIVE'
+LEFT JOIN staff_users pre_sales_staff ON pre_sales_staff.id=pre_sales.staff_id
+LEFT JOIN buyer_staff_assignments refund
+  ON refund.buyer_customer_id=buyer.id
+  AND refund.duty_code='BUYER_REFUND_OWNER'
+  AND refund.status='ACTIVE'
+LEFT JOIN staff_users refund_staff ON refund_staff.id=refund.staff_id`;
 
 /**
  * The buyer fixed refund-owner relationship is canonical in
@@ -271,31 +283,43 @@ function projectSellerOrganizationAssignment(
 function projectBuyerRefundOwnerAssignment(
   row: BuyerRefundOwnerAssignmentRow,
 ): StaffAccessBuyerRefundOwnerAssignmentDto {
-  const hasOwner =
-    row.assignment_id !== null ||
-    row.staff_id !== null ||
-    row.staff_display_name !== null ||
-    row.assignment_version !== null;
-  if (
-    hasOwner &&
-    (!row.assignment_id ||
-      !row.staff_id ||
-      !row.staff_display_name ||
-      row.assignment_version === null)
-  )
-    throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
   return Object.freeze({
     buyer_customer_id: row.buyer_customer_id,
     buyer_display_name: row.buyer_display_name,
     marketplace_code: row.marketplace_code,
-    refund_owner:
-      row.assignment_id && row.staff_id && row.staff_display_name && row.assignment_version !== null
-        ? Object.freeze({
-            assignment_id: row.assignment_id,
-            staff_id: row.staff_id,
-            staff_display_name: row.staff_display_name,
-            version: Number(row.assignment_version),
-          })
-        : null,
+    pre_sales_owner: projectFixedOwner(
+      row.pre_sales_assignment_id,
+      row.pre_sales_staff_id,
+      row.pre_sales_staff_display_name,
+      row.pre_sales_assignment_version,
+    ),
+    refund_owner: projectFixedOwner(
+      row.refund_assignment_id,
+      row.refund_staff_id,
+      row.refund_staff_display_name,
+      row.refund_assignment_version,
+    ),
   });
+}
+
+function projectFixedOwner(
+  assignmentId: string | null,
+  staffId: string | null,
+  staffDisplayName: string | null,
+  version: number | null,
+) {
+  const present =
+    assignmentId !== null || staffId !== null
+    || staffDisplayName !== null || version !== null;
+  if (present && (!assignmentId || !staffId || !staffDisplayName || version === null)) {
+    throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
+  }
+  return assignmentId && staffId && staffDisplayName && version !== null
+    ? Object.freeze({
+        assignment_id: assignmentId,
+        staff_id: staffId,
+        staff_display_name: staffDisplayName,
+        version: Number(version),
+      })
+    : null;
 }

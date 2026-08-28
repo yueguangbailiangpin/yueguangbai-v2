@@ -117,7 +117,6 @@ describe('Phase 4A2 buyer invited registration', () => {
       marketplaceCode: 'AMAZON_JP',
       password: plaintext,
       passwordConfirmation: plaintext,
-      buyerChannelId: 'buyer-channel-wechat-b',
     }, coreCommand('secret-storage'));
     const credential = await database.prepare(`
       SELECT salt_base64url, hash_base64url
@@ -412,7 +411,6 @@ async function registerCore(
     passwordConfirmation: passwords.passwordConfirmation
       ?? passwords.password
       ?? 'Strong-Password-2026!',
-    buyerChannelId: 'buyer-channel-wechat-b',
   }, coreCommand(key));
 }
 
@@ -499,17 +497,46 @@ async function seedInvitation(
       .join('')
     : 'a'.repeat(43);
   const now = issuedAt;
+  // Stage 6.6E: every invitation is bound to a pre-created DISABLED buyer
+  // profile; registration only claims and activates it.
+  const subjectId = `subject-inv-${suffix}`;
+  const claimId = `claim-inv-${suffix}`;
+  const buyerId = `buyer-inv-${suffix}`;
+  const sequence = Number(db.raw.prepare(
+    `SELECT COUNT(*) AS count FROM buyer_customers`,
+  ).get()?.['count'] ?? 0) + 3001;
+  db.raw.prepare(`
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+    VALUES (?, 'BUYER_CUSTOMER', 1000)
+  `).run(subjectId);
+  db.raw.prepare(`
+    INSERT INTO wechat_identity_claims (
+      id, identity_subject_id, display_wechat, normalized_wechat,
+      status, version, acquired_at, reserved_at, released_at,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 'ACTIVE', 1, 1000, NULL, NULL, 1000, 1000)
+  `).run(claimId, subjectId, wechat, wechat.toLowerCase());
+  db.raw.prepare(`
+    INSERT INTO buyer_customers (
+      id, identity_subject_id, marketplace_code, buyer_channel_id,
+      buyer_customer_no, buyer_sequence,
+      display_name, access_status, identity_review_status,
+      version, created_at, updated_at, activated_at, disabled_at
+    ) VALUES (?, ?, 'AMAZON_JP', 'buyer-channel-wechat-b',
+      ?, ?, ?, 'DISABLED', 'CLEAR', 1, 1000, 1000, NULL, 1000)
+  `).run(buyerId, subjectId, `19700101B${sequence}`, sequence, wechat);
   db.raw.prepare(`
     INSERT INTO customer_buyer_invitations (
       id, token_hash, wechat_display, normalized_wechat, wechat_hash,
       marketplace_code, issued_by_staff_id, status, version,
       issued_at, expires_at, consumed_at, consumed_by_account_id,
-      revoked_at, revoked_by_staff_id, created_at, updated_at
+      revoked_at, revoked_by_staff_id, created_at, updated_at,
+      buyer_customer_id
     ) VALUES (?, ?, ?, ?, ?, 'AMAZON_JP', 'staff-owner', 'ACTIVE', 1,
-      ?, ?, NULL, NULL, NULL, NULL, ?, ?)
+      ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?)
   `).run(`invitation-${suffix}`, await hashOneTimeToken(token), wechat,
     wechat.toLowerCase(), 'd'.repeat(64), now,
-    now + 7 * 24 * 60 * 60 * 1000, now, now);
+    now + 7 * 24 * 60 * 60 * 1000, now, now, buyerId);
   return token;
 }
 function ownerActor() {

@@ -11,6 +11,7 @@ import {
   selectCustomerPersona,
 } from '../customer-auth/authenticate-customer';
 import { registerInvitedBuyer } from './invited-registration';
+import { createBuyerCustomer } from '../customers/create-buyer';
 import {
   completePasswordReset,
   issueBuyerInvitation,
@@ -35,7 +36,7 @@ describe('customer multi-persona invitation and recovery', () => {
     database = createDb();
     expect(await database.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).first()).toEqual({ schema_version: 29 });
+    `).first()).toEqual({ schema_version: 30 });
     const triggerNames = (await database.prepare(`
       SELECT name FROM sqlite_schema WHERE type='trigger'
         AND name LIKE 'trg_customer_account_persona%'
@@ -80,7 +81,7 @@ describe('customer multi-persona invitation and recovery', () => {
       buyer_customer_no: '20260807B1001',
       buyer_sequence: 1001,
       allocation_business_date: '2026-08-07',
-      allocation_source: 'INVITED_REGISTRATION',
+      allocation_source: 'STAFF_CREATION',
       next_sequence: 1002,
     });
     expect(await database.prepare(`
@@ -308,6 +309,20 @@ function createDb(): SqliteDatabase {
       created_at, updated_at, disabled_at, session_version
     ) VALUES ('staff-security', '安全员工', 'ACTIVE', 1, 1,
       1000, 1000, NULL, 1);
+    INSERT INTO staff_role_assignments (
+      id, staff_id, role_code, status, assigned_by_staff_id,
+      assigned_at, revoked_at, created_at, updated_at
+    ) VALUES ('role-seed-security-001', 'staff-security', 'pre_sales', 'ACTIVE', NULL,
+      1000, NULL, 1000, 1000);
+    INSERT INTO staff_marketplace_scopes (
+      id, staff_id, role_code, marketplace_code, status,
+      assigned_by_staff_id, assigned_at, revoked_at, reason,
+      created_at, updated_at, scope_kind
+    ) VALUES
+      ('scope-security-jp', 'staff-security', 'pre_sales', 'AMAZON_JP',
+        'ACTIVE', NULL, 1000, NULL, 'TEST_PRIMARY', 1000, 1000, 'PRIMARY'),
+      ('scope-security-us', 'staff-security', 'pre_sales', 'AMAZON_US',
+        'ACTIVE', NULL, 1000, NULL, 'TEST_PRIMARY', 1000, 1000, 'PRIMARY');
   `);
   return db;
 }
@@ -318,7 +333,28 @@ async function invite(
   idempotencyKey: string,
   now = NOW,
 ) {
-  return issueBuyerInvitation(database!, { wechatId, marketplaceCode }, {
+  // Stage 6.6E: the buyer profile is created by staff first; the invitation
+  // binds that existing profile and registration only claims/activates it.
+  const buyer = await createBuyerCustomer(database!, {
+    marketplaceCode,
+    buyerChannelId: 'buyer-channel-wechat-b',
+    displayName: wechatId,
+    wechatId,
+  }, {
+    actor: {
+      staffId: staffActor().staffId,
+      displayName: staffActor().displayName,
+      roles: ['pre_sales'],
+      permissions: new Set(['BUYER_CREATE']),
+    },
+    idempotencyKey: `buyer:${idempotencyKey}`,
+    requestId: `request-buyer-${idempotencyKey}`,
+    now,
+  });
+  return issueBuyerInvitation(database!, {
+    buyerCustomerId: buyer.buyer_customer_id,
+    wechatId, marketplaceCode,
+  }, {
     actor: staffActor(), idempotencyKey, requestId: `request-${idempotencyKey}`,
     tokenSecret: TOKEN_SECRET, now,
   });
@@ -333,7 +369,6 @@ async function register(
   return registerInvitedBuyer(database!, {
     invitationToken: token, wechatId, marketplaceCode,
     password: PASSWORD, passwordConfirmation: PASSWORD,
-    buyerChannelId: 'buyer-channel-wechat-b',
   }, {
     idempotencyKey: idempotencyKey.padEnd(8, '0'),
     requestId: `request-${idempotencyKey}`, sessionId: crypto.randomUUID(),

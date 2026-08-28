@@ -4,11 +4,14 @@ import type { Context, Hono } from 'hono';
 import type { AssignmentStaffAuthorization } from '../../staff-assignment';
 import { requireStaffAccessManager } from './authorization';
 import {
+  changeBuyerPreSalesOwner,
   changeBuyerRefundOwner,
   changeSellerOrganizationManager,
   createStaffAccount,
   updateStaffAccount,
   changeStaffAccountStatus,
+  revokePersonalDeny,
+  setPersonalDeny,
 } from './accounts';
 import { StaffAccessManagementError } from './errors';
 import {
@@ -186,6 +189,127 @@ export function registerStaffAccessManagementRoutes(app: Hono<any>): void {
           buyerCustomerId: requiredString(body['buyer_customer_id']),
           assignedStaffId: requiredString(body['assigned_staff_id']),
           expectedAssignmentVersion: body['expected_assignment_version'],
+          reason: body['reason'],
+          idempotencyKey,
+          requestId: requestId(context),
+        },
+        actor,
+      );
+      return success(context, result);
+    }),
+  );
+  app.post(
+    '/api/staff/access-management/buyer-pre-sales-assignments',
+    withErrors(async (context) => {
+      const actor = requireActor(context);
+      const body = await readExactBody(context, [
+        'buyer_customer_id',
+        'assigned_staff_id',
+        'expected_assignment_version',
+        'reason',
+      ]);
+      if (
+        typeof body['buyer_customer_id'] !== 'string' ||
+        typeof body['assigned_staff_id'] !== 'string' ||
+        typeof body['reason'] !== 'string' ||
+        body['reason'].trim().length < 1 ||
+        body['reason'].length > 1000 ||
+        !nonnegativeInteger(body['expected_assignment_version'])
+      )
+        validation();
+      const idempotencyKey = parseIdempotencyKey(context.req.header('Idempotency-Key'));
+      if (!idempotencyKey) validation();
+      const result = await changeBuyerPreSalesOwner(
+        context.env.DB,
+        {
+          buyerCustomerId: requiredString(body['buyer_customer_id']),
+          assignedStaffId: requiredString(body['assigned_staff_id']),
+          expectedAssignmentVersion: body['expected_assignment_version'],
+          reason: body['reason'],
+          idempotencyKey,
+          requestId: requestId(context),
+        },
+        actor,
+      );
+      return success(context, result);
+    }),
+  );
+  app.get(
+    '/api/staff/access-management/personal-denies',
+    withErrors(async (context) => {
+      requireActor(context);
+      assertNoQuery(context);
+      const rows = await context.env.DB
+        .prepare(
+          `SELECT override.staff_id,staff.display_name AS staff_display_name,
+            override.permission_code,override.status,override.reason,
+            override.assigned_by_staff_id,override.assigned_at,override.revoked_at
+          FROM staff_permission_overrides override
+          JOIN staff_users staff ON staff.id=override.staff_id
+          WHERE override.effect='DENY' AND override.status='ACTIVE'
+          ORDER BY staff.display_name,override.staff_id,override.permission_code`,
+        )
+        .all();
+      return success(context, { denies: rows.results });
+    }),
+  );
+  app.post(
+    '/api/staff/access-management/personal-denies',
+    withErrors(async (context) => {
+      const actor = requireActor(context);
+      const body = await readExactBody(context, [
+        'staff_id',
+        'permission_code',
+        'reason',
+      ]);
+      if (
+        typeof body['staff_id'] !== 'string' ||
+        typeof body['permission_code'] !== 'string' ||
+        typeof body['reason'] !== 'string' ||
+        body['reason'].trim().length < 1 ||
+        body['reason'].length > 1000
+      )
+        validation();
+      const idempotencyKey = parseIdempotencyKey(context.req.header('Idempotency-Key'));
+      if (!idempotencyKey) validation();
+      const result = await setPersonalDeny(
+        context.env.DB,
+        {
+          staffId: requiredString(body['staff_id']),
+          permissionCode: requiredString(body['permission_code']),
+          reason: body['reason'],
+          idempotencyKey,
+          requestId: requestId(context),
+        },
+        actor,
+      );
+      return success(context, result);
+    }),
+  );
+  app.post(
+    '/api/staff/access-management/personal-denies/revoke',
+    withErrors(async (context) => {
+      const actor = requireActor(context);
+      const body = await readExactBody(context, [
+        'staff_id',
+        'permission_code',
+        'reason',
+      ]);
+      if (
+        typeof body['staff_id'] !== 'string' ||
+        typeof body['permission_code'] !== 'string' ||
+        typeof body['reason'] !== 'string' ||
+        body['reason'].trim().length < 1 ||
+        body['reason'].length > 1000
+      )
+        validation();
+      const idempotencyKey = parseIdempotencyKey(context.req.header('Idempotency-Key'));
+      if (!idempotencyKey) validation();
+      const result = await revokePersonalDeny(
+        context.env.DB,
+        {
+          staffId: requiredString(body['staff_id']),
+          permissionCode: requiredString(body['permission_code']),
           reason: body['reason'],
           idempotencyKey,
           requestId: requestId(context),

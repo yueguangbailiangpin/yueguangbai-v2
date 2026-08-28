@@ -311,8 +311,8 @@ describe('Phase 4B4 buyer review API security boundaries', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(29);
-    expect(migrations.at(-1)).toBe('0029_stage66c_retire_acquisition_outbox.sql');
+    expect(migrations).toHaveLength(30);
+    expect(migrations.at(-1)).toBe('0030_stage66e_invitation_binding_and_permission_cleanup.sql');
 
     const source = readFileSync(
       path.join(root, 'apps/api/src/buyer-reviews/read-model.ts'),

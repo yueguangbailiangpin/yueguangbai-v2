@@ -25,7 +25,7 @@ assert(migrations[0] === '0001_foundation.sql'
   && migrations[25] === '0026_stage65_archive_import_closeout.sql'
   && migrations[26] === '0027_stage66_single_source_convergence.sql'
   && migrations[27] === '0028_stage66b_fixed_assignment_and_files.sql'
-  && migrations[28] === '0029_stage66c_retire_acquisition_outbox.sql',
+  && migrations[28] === '0030_stage66e_invitation_binding_and_permission_cleanup.sql',
   'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {

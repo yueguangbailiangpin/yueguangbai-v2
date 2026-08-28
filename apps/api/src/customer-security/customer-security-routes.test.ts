@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import { createApp } from '../app';
+import { createBuyerCustomer } from '../customers/create-buyer';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
   registerPublicCustomerSecurityRoutes,
@@ -41,9 +42,24 @@ describe('customer security HTTP authorization and concealment', () => {
   it('allows an ordinary ACTIVE Staff to issue, read and revoke an invitation', async () => {
     database = createDb();
     const app = staffApp();
+    const buyer = await createBuyerCustomer(database, {
+      marketplaceCode: 'AMAZON_JP',
+      buyerChannelId: 'buyer-channel-wechat-b',
+      displayName: 'route_wx',
+      wechatId: 'route_wx',
+    }, {
+      actor: {
+        staffId: 'staff-route', displayName: '普通客服', roles: ['pre_sales'],
+        permissions: new Set(['BUYER_CREATE']),
+      },
+      idempotencyKey: 'route-buyer-0001', requestId: 'route-buyer', now: 1000,
+    });
     const issuedResponse = await app.request(`${ORIGIN}/api/staff/customer-security/buyer-invitations`, {
       method: 'POST', headers: headers('staff-invite-route-0001'),
-      body: JSON.stringify({ wechat_id: 'route_wx', marketplace_code: 'AMAZON_JP' }),
+      body: JSON.stringify({
+        buyer_customer_id: buyer.buyer_customer_id,
+        wechat_id: 'route_wx', marketplace_code: 'AMAZON_JP',
+      }),
     }, env());
     expect(issuedResponse.status).toBe(201);
     const issued = await issuedResponse.json() as any;
@@ -178,11 +194,24 @@ function staffApp() {
 function createDb() {
   const db = createMigratedTestDatabase();
   db.exec(`
+    UPDATE buyer_channels SET next_sequence=1001
+    WHERE id='buyer-channel-wechat-b';
     INSERT INTO staff_users (
       id, display_name, status, authorization_version, version,
       created_at, updated_at, disabled_at, session_version
     ) VALUES ('staff-route', '普通客服', 'ACTIVE', 1, 1,
       1000, 1000, NULL, 1);
+    INSERT INTO staff_role_assignments (
+      id, staff_id, role_code, status, assigned_by_staff_id,
+      assigned_at, revoked_at, created_at, updated_at
+    ) VALUES ('role-seed-route-0001', 'staff-route', 'pre_sales', 'ACTIVE', NULL,
+      1000, NULL, 1000, 1000);
+    INSERT INTO staff_marketplace_scopes (
+      id, staff_id, role_code, marketplace_code, status,
+      assigned_by_staff_id, assigned_at, revoked_at, reason,
+      created_at, updated_at, scope_kind
+    ) VALUES ('scope-route-jp-0001', 'staff-route', 'pre_sales', 'AMAZON_JP',
+      'ACTIVE', NULL, 1000, NULL, 'TEST_PRIMARY', 1000, 1000, 'PRIMARY');
   `);
   return db;
 }

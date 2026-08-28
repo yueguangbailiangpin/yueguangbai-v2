@@ -81,7 +81,6 @@ describe('staff authorization formula', () => {
         'FINANCIAL_CORRECT',
         'FINANCIAL_EXPORT',
         'STAFF_MANAGE',
-        'ACQUISITION_ADMIN',
       ),
       denies: set<StaffPermissionCode>(),
       memberTeamIds: [],
@@ -91,7 +90,6 @@ describe('staff authorization formula', () => {
     expect(result.permissions.has('FINANCIAL_CORRECT')).toBe(false);
     expect(result.permissions.has('FINANCIAL_EXPORT')).toBe(false);
     expect(result.permissions.has('STAFF_MANAGE')).toBe(false);
-    expect(result.permissions.has('ACQUISITION_ADMIN')).toBe(false);
     expect(isOwnerOnlyPermission('FINANCIAL_CORRECT')).toBe(true);
   });
 

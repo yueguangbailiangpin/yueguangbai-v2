@@ -10,6 +10,9 @@ interface ScreenshotRow {
   entity_id: string;
   file_object_id: string;
   file_version: number;
+  uploaded_at: number;
+  uploaded_by_staff_id: string | null;
+  uploaded_by_staff_name: string | null;
 }
 
 /**
@@ -26,9 +29,25 @@ export async function listOrderCommunicationScreenshots(
   if (formalOrderIds.length === 0) return result;
   const placeholders = formalOrderIds.map(() => '?').join(',');
   const rows = await database.prepare(`
-    SELECT link.entity_id, link.file_object_id, object.version AS file_version
+    SELECT link.entity_id, link.file_object_id, object.version AS file_version,
+      object.uploaded_at AS uploaded_at,
+      CASE
+        WHEN upload_intent.owner_actor_type='STAFF'
+          THEN upload_intent.owner_actor_id
+        ELSE NULL
+      END AS uploaded_by_staff_id,
+      CASE
+        WHEN upload_intent.owner_actor_type='STAFF'
+          THEN staff.display_name
+        ELSE NULL
+      END AS uploaded_by_staff_name
     FROM file_entity_links link
     JOIN file_objects object ON object.id=link.file_object_id
+    LEFT JOIN file_upload_intents upload_intent
+      ON upload_intent.id=object.upload_intent_id
+    LEFT JOIN staff_users staff
+      ON staff.id=upload_intent.owner_actor_id
+      AND upload_intent.owner_actor_type='STAFF'
     JOIN file_entity_audience_grants grant
       ON grant.file_entity_link_id=link.id
       AND grant.subject_type='SELLER_ORGANIZATION'
@@ -53,6 +72,9 @@ export async function listOrderCommunicationScreenshots(
       file_version: Number(row.file_version),
       purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
       visibility: 'SELLER_VISIBLE',
+      uploaded_at: Number(row.uploaded_at),
+      uploaded_by_staff_id: row.uploaded_by_staff_id,
+      uploaded_by_staff_name: row.uploaded_by_staff_name,
     });
     result.set(row.entity_id, current);
   }

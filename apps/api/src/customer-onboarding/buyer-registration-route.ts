@@ -24,14 +24,16 @@ export function registerNewBuyerRegistrationInvitationRoute(app:Hono<AppEnv>):vo
       const requestId=requestIdFromContext(context);
       try{
         const actor=requireActor(context);
-        const body=await exactBody(context,['wechat_id','marketplace_code']);
+        const body=await exactBody(context,['buyer_customer_id','wechat_id','marketplace_code']);
         if(typeof body['wechat_id']!=='string'
+          ||typeof body['buyer_customer_id']!=='string'
           ||!isBuyerSupportedMarketplaceCode(body['marketplace_code']))throw new Error('VALIDATION');
         const marketplaceCode=body['marketplace_code'];
         await requireMarket(context,actor,marketplaceCode);
         const secret=requireWechatIdentitySecret(context.env.CUSTOMER_SECURITY_TOKEN_SECRET);
         const key=idempotencyKey(context);
         const invitation=await issueBuyerInvitation(context.env.DB,{
+          buyerCustomerId:body['buyer_customer_id'],
           wechatId:body['wechat_id'],marketplaceCode,
         },{
           actor,idempotencyKey:key,requestId,tokenSecret:secret,

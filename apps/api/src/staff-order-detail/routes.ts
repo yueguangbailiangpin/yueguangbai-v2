@@ -93,6 +93,12 @@ async function readOrderDetailForId(
   const canViewFinance =
     actor.roles.has('owner') && actor.permissions.has('FINANCIAL_VIEW');
 
+  // Stage 6.6E: the minimal authoritative advance partition. Visible to the
+  // owner and the buyer-refund role only; amounts come from the frozen
+  // financial snapshot and the ledger, never computed client-side.
+  const canViewAdvance =
+    actor.roles.has('owner') || actor.roles.has('buyer_refund');
+
   const [paymentScreenshot, communicationScreenshots, operationalEvents] =
     await Promise.all([
       readPaymentScreenshot(context.env.DB, orderId),
@@ -160,6 +166,69 @@ async function readOrderDetailForId(
     // The authoritative money numbers stay in internal-finance; this endpoint
     // only repeats the frozen snapshot facts for one-page context.
     sections['finance_source'] = 'internal-finance';
+  }
+
+  if (canViewAdvance) {
+    const advanceRow = await context.env.DB
+      .prepare(
+        `SELECT CAST(snapshot.buyer_expected_principal_cny_fen AS TEXT)
+            AS authoritative_advance_amount_cny_fen,
+          CAST(COALESCE((
+            SELECT SUM(payment.amount_cny_fen)
+            FROM buyer_advance_principal_entries payment
+            WHERE payment.formal_order_id=snapshot.formal_order_id
+              AND payment.entry_type='PAYMENT'
+          ),0) - COALESCE((
+            SELECT SUM(reversal.amount_cny_fen)
+            FROM buyer_advance_principal_entries reversal
+            WHERE reversal.formal_order_id=snapshot.formal_order_id
+              AND reversal.entry_type='REVERSAL'
+          ),0) AS TEXT) AS recorded_advance_amount_cny_fen
+        FROM formal_order_financial_snapshots snapshot
+        WHERE snapshot.formal_order_id=?`,
+      )
+      .bind(orderId)
+      .first() as {
+        authoritative_advance_amount_cny_fen: string;
+        recorded_advance_amount_cny_fen: string;
+      } | null;
+    if (advanceRow) {
+      const authoritative = Number(advanceRow.authoritative_advance_amount_cny_fen);
+      const recorded = Number(advanceRow.recorded_advance_amount_cny_fen);
+      const outstanding = await context.env.DB
+        .prepare(
+          `SELECT 1 AS present FROM buyer_advance_principal_entries payment
+          WHERE payment.formal_order_id=? AND payment.entry_type='PAYMENT'
+            AND payment.amount_cny_fen>COALESCE((
+              SELECT SUM(reversal.amount_cny_fen)
+              FROM buyer_advance_principal_entries reversal
+              WHERE reversal.entry_type='REVERSAL'
+                AND reversal.original_payment_entry_id=payment.id
+            ),0) LIMIT 1`,
+        )
+        .bind(orderId)
+        .first();
+      const refundLocked = await context.env.DB
+        .prepare(
+          `SELECT 1 AS present FROM buyer_refund_obligations
+          WHERE formal_order_id=? LIMIT 1`,
+        )
+        .bind(orderId)
+        .first();
+      sections['buyer_advance'] = Object.freeze({
+        authoritative_advance_amount_cny_fen:
+          advanceRow.authoritative_advance_amount_cny_fen,
+        recorded_advance_amount_cny_fen:
+          advanceRow.recorded_advance_amount_cny_fen,
+        remaining_advance_amount_cny_fen: String(
+          Math.max(authoritative - recorded, 0),
+        ),
+        can_record_advance_payment:
+          actor.permissions.has('BUYER_REFUND_RECORD')
+          && outstanding === null
+          && refundLocked === null,
+      });
+    }
   }
 
   context.header('Cache-Control', 'no-store');

@@ -24,7 +24,7 @@ export interface DashboardProfitDto {
  * the current window, pending financial workload counts, abnormal/overdue
  * signals, and the owner-only profit summary that reuses the formal internal
  * finance formulas. Machine-era funnels, trend analysis and drill-downs are
- * retired; manual acquisition facts stay in the acquisition module.
+ * retired (stage 6.6C).
  */
 export interface AdminBusinessDashboardSummaryDto {
   window: DashboardWindowDto;

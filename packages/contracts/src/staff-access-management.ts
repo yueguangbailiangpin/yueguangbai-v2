@@ -62,21 +62,24 @@ export interface StaffAccessSellerOrganizationAssignmentMutationDto {
   seller_organization: StaffAccessSellerOrganizationAssignmentDto;
   replayed: boolean;
 }
+export interface StaffAccessBuyerFixedOwnerDto {
+  assignment_id: string;
+  staff_id: string;
+  staff_display_name: string;
+  version: number;
+}
 /**
- * The single fixed Buyer refund owner (BUYER_REFUND_OWNER duty). A buyer
- * without a refund owner fails closed on review/refund work until an owner
- * sets one through this route.
+ * The single fixed Buyer refund owner (BUYER_REFUND_OWNER duty) and the
+ * single fixed Buyer pre-sales owner (BUYER_PRE_SALES_OWNER duty). A buyer
+ * without either owner fails closed on the matching work until an owner sets
+ * one through these routes.
  */
 export interface StaffAccessBuyerRefundOwnerAssignmentDto {
   buyer_customer_id: string;
   buyer_display_name: string;
   marketplace_code: string;
-  refund_owner: {
-    assignment_id: string;
-    staff_id: string;
-    staff_display_name: string;
-    version: number;
-  } | null;
+  pre_sales_owner: StaffAccessBuyerFixedOwnerDto | null;
+  refund_owner: StaffAccessBuyerFixedOwnerDto | null;
 }
 export interface ChangeStaffAccessBuyerRefundOwnerRequest {
   buyer_customer_id: string;
@@ -86,6 +89,48 @@ export interface ChangeStaffAccessBuyerRefundOwnerRequest {
 }
 export interface StaffAccessBuyerRefundOwnerMutationDto {
   buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+  replayed: boolean;
+}
+/**
+ * Stage 6.6E: the pre-sales fixed-owner variant of the buyer assignment
+ * mutation (BUYER_PRE_SALES_OWNER duty, pre_sales-eligible staff only).
+ */
+export interface ChangeStaffAccessBuyerPreSalesOwnerRequest {
+  buyer_customer_id: string;
+  assigned_staff_id: string;
+  expected_assignment_version: number;
+  reason: string;
+}
+export interface StaffAccessBuyerPreSalesOwnerMutationDto {
+  buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+  replayed: boolean;
+}
+/**
+ * Stage 6.6E: Personal DENY management. A DENY can only shrink a role's
+ * default permissions; GRANT rows are forbidden at the database level.
+ */
+export interface StaffAccessPersonalDenyDto {
+  staff_id: string;
+  staff_display_name: string;
+  permission_code: string;
+  status: 'ACTIVE' | 'REVOKED';
+  reason: string | null;
+  assigned_by_staff_id: string;
+  assigned_at: number;
+  revoked_at: number | null;
+}
+export interface SetStaffAccessPersonalDenyRequest {
+  staff_id: string;
+  permission_code: string;
+  reason: string;
+}
+export interface RevokeStaffAccessPersonalDenyRequest {
+  staff_id: string;
+  permission_code: string;
+  reason: string;
+}
+export interface StaffAccessPersonalDenyMutationDto {
+  deny: StaffAccessPersonalDenyDto;
   replayed: boolean;
 }
 export interface CreateStaffAccountRequest {

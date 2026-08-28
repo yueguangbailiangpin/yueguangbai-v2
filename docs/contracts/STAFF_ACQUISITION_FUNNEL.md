@@ -1,3 +1,5 @@
+# 已退役（阶段 6.6C，D-056）：获客 CRM 随干净基线全部删除。本文档仅保留为历史合同档案；`ACQUISITION_ADMIN` / `ACQUISITION_BUYER_LEAD` / `ACQUISITION_SELLER_LEAD` 权限码与获客路由已从运行时合同移除（migration 0030 同步收紧数据库白名单）。`buyer_channels`（买家来源渠道）是业务配置，仍在人工买家建档时使用，与获客 CRM 无关。
+
 # 员工获客漏斗合同
 
 ## 边界与权威

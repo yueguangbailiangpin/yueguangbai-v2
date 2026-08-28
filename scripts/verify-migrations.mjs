@@ -13,14 +13,14 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 29;
-const expectedLastMigration = '0029_stage66c_retire_acquisition_outbox.sql';
+const expectedLatestSchema = 30;
+const expectedLastMigration = '0030_stage66e_invitation_binding_and_permission_cleanup.sql';
 const expectedSchemaInventory = {
   table: 157,
-  index: 480,
+  index: 481,
   trigger: 305,
   view: 12,
-  sha256: '9bd3220ef68a71b2bb31d0a67ca169ae772f3bfc43ce92c65008f9aa1c7372d9',
+  sha256: 'ef457643adf644f5026f5907e82e3dae410f5ef0db61adc65d202ecfbeb06ffe',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2
