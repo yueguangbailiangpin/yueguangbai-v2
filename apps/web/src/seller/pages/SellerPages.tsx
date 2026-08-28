@@ -1,4 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Info, MessageSquareText, Store, UserCheck, WalletCards } from 'lucide-react';
+import { z } from 'zod';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import {
@@ -7,7 +9,6 @@ import {
   Card,
   Dialog,
   EmptyState,
-  MetricCard,
   PageHeader,
   StatusBadge,
 } from '../../ui/primitives';
@@ -18,6 +19,7 @@ import {
   SellerOrderChatScreenshotReadIntentAdapter,
 } from '../../files/file-read-providers';
 import { CursorPagination } from '../../ui/CursorPagination';
+import { identityApiRequest } from '../../api/identity-request';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';
 import { canViewSellerFinancials } from '../authorization';
@@ -161,6 +163,31 @@ function Fact({ label, value }: { label: string; value: ReactNode }): React.JSX.
   );
 }
 
+const homeDate = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  weekday: 'long',
+});
+
+const homeMembersSchema = z
+  .object({
+    members: z.array(
+      z
+        .object({
+          member_id: z.string(),
+          display_name: z.string(),
+          role: z.enum(['OWNER', 'OPERATIONS', 'FINANCE', 'VIEWER']),
+          primary_owner: z.boolean(),
+          status: z.string(),
+          member_number: z.number().int(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
 export function SellerDashboardPage(): React.JSX.Element {
   const client = useQueryClient();
   const { storeId } = useSellerStoreContext();
@@ -173,100 +200,280 @@ export function SellerDashboardPage(): React.JSX.Element {
     queryKey: (cursor) => sellerQueryKeys.ordersPage(storeId, cursor),
     queryFn: (cursor, signal) => sellerApi.orders(client, storeId, cursor, signal),
   });
-  const canViewSettlement = canViewSellerFinancials(me.data?.member.role);
+  // 首页的店铺与产品统计固定按组织口径读取，不受侧栏店铺筛选影响。
+  const stores = useSellerCursorPages({
+    resetKey: 'seller-stores:100',
+    queryKey: sellerQueryKeys.storesPage,
+    queryFn: (cursor, signal) => sellerApi.stores(client, cursor, signal),
+  });
+  const products = useSellerCursorPages({
+    resetKey: 'seller-products:all:100',
+    queryKey: (cursor) => sellerQueryKeys.productsPage(null, cursor),
+    queryFn: (cursor, signal) => sellerApi.products(client, null, cursor, signal),
+  });
+  const memberRole = me.data?.member.role;
+  const isOwner = memberRole === 'OWNER';
+  const members = useQuery({
+    queryKey: ['seller', 'members'],
+    queryFn: ({ signal }) =>
+      identityApiRequest('seller', client, {
+        path: '/api/seller-portal/members',
+        method: 'GET',
+        schema: homeMembersSchema,
+        signal,
+      }).then((response) => response.data.members),
+    enabled: isOwner,
+    retry: false,
+  });
+  const canViewSettlement = canViewSellerFinancials(memberRole);
   const settlement = useQuery({
     queryKey: sellerQueryKeys.settlement,
     queryFn: ({ signal }) => sellerApi.settlement(client, signal).then((r) => r.data.settlement),
     enabled: canViewSettlement,
   });
-  const complete = orders.items.filter(
-    (item) => item.business_completion?.status === 'COMPLETE',
-  ).length;
+  const organization = me.data?.organization;
+  const ordersUnavailable = orders.initialError !== null;
+  const chatScreenshotOrders = orders.items.filter(
+    (item) => item.communication_screenshots.length > 0,
+  );
   const inProgress = orders.items.filter(
     (item) => item.business_completion?.status === 'IN_PROGRESS',
   );
-  const ordersUnavailable = orders.initialError !== null;
+  const activeStores = stores.items.filter((store) => store.status === 'ACTIVE');
+  const activeProducts = products.items.filter((item) => item.status === 'ACTIVE');
+  const storeProductCount = (storeIdToCount: string): number =>
+    activeProducts.filter((item) => item.store.id === storeIdToCount).length;
   const count = (value: number): string => `${value}${orders.hasMore ? '+' : ''}`;
+  const hasSuggestions =
+    (canViewSettlement &&
+      settlement.data !== undefined &&
+      settlement.data.total_outstanding_cny_fen !== '0') ||
+    chatScreenshotOrders.length > 0 ||
+    inProgress.length > 0;
   return (
-    <section className="seller-page seller-dashboard-page">
-      <PageHeader title="业务进度" eyebrow="当前授权范围">
-        {me.data?.access.can_submit_product_applications ? (
-          <Link className="button secondary" to="/seller/products/new">
-            提交产品申请
-          </Link>
-        ) : null}
-        {me.data?.access.can_submit_demand_batches ? (
-          <Link className="button" to="/seller/demands/new">
-            提交数量计划
-          </Link>
-        ) : null}
-      </PageHeader>
+    <section className="mws-page seller-page seller-dashboard-page">
+      <div className="mws-heading">
+        <div>
+          <p>{homeDate.format(new Date())}</p>
+          <h1>{organization?.name ?? '卖家中心'}</h1>
+          <span>查看产品、店铺、订单沟通和结算进度。</span>
+        </div>
+        <div>
+          {me.data?.access.can_submit_product_applications ? (
+            <Link className="mws-primary" to="/seller/products/new">
+              提交产品申请
+            </Link>
+          ) : null}
+          {me.data?.access.can_submit_demand_batches ? (
+            <Link className="mws-tonal" to="/seller/demands/new">
+              提交数量计划
+            </Link>
+          ) : null}
+        </div>
+      </div>
       {orders.initialError || (canViewSettlement && settlement.isError) ? (
         <Alert tone="danger">业务摘要暂时无法完整读取，请刷新后重试。</Alert>
       ) : null}
-      <div className="seller-metrics">
-        <MetricCard
-          label="正式订单"
-          value={orders.isInitialPending || ordersUnavailable ? '—' : count(orders.items.length)}
-          detail={
-            ordersUnavailable
-              ? '订单数据暂时不可用'
-              : orders.hasMore
-                ? '当前已加载，仍有后一页'
-                : '当前授权范围'
-          }
-        />
-        <MetricCard
-          label="业务完成"
-          value={orders.isInitialPending || ordersUnavailable ? '—' : count(complete)}
-          detail={
-            ordersUnavailable
-              ? '订单数据暂时不可用'
-              : orders.hasMore
-                ? '当前已加载订单，非最终总数'
-                : '四项均完成或不适用'
-          }
-        />
-        {canViewSettlement ? (
-          <MetricCard
-            label="待结算"
-            value={settlement.data ? cny(settlement.data.total_outstanding_cny_fen) : '—'}
-            detail="卖家本金与卖家服务费"
-          />
-        ) : null}
-      </div>
-      <Card className="seller-attention-card">
-        <div className="seller-section-heading">
-          <div>
-            <p className="eyebrow">待关注</p>
-            <h2>订单进度</h2>
-          </div>
-          <Link to="/seller/orders">查看全部订单</Link>
+      <div className="mws-home-grid">
+        <div className="mws-main-column">
+          <section className="mws-surface" aria-label="建议处理">
+            <div className="mws-section-heading">
+              <div>
+                <h2>建议处理</h2>
+                <p>与你的组织相关</p>
+              </div>
+              <Link className="mws-text" to="/seller/orders">
+                查看全部
+              </Link>
+            </div>
+            {orders.isInitialPending ? (
+              <p role="status">正在读取建议处理事项…</p>
+            ) : ordersUnavailable ? (
+              <Alert tone="warning">订单进度暂时不可用，刷新后重试。</Alert>
+            ) : !hasSuggestions ? (
+              <p className="mws-action-empty">当前没有需要立即处理的事项。</p>
+            ) : (
+              <>
+                {canViewSettlement &&
+                settlement.data &&
+                settlement.data.total_outstanding_cny_fen !== '0' ? (
+                  <article className="mws-action-row">
+                    <span className="mws-circle green">
+                      <WalletCards aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>查看待结算款项</strong>
+                      <small>
+                        待结本金 {cny(settlement.data.outstanding_principal_cny_fen)} · 服务费{' '}
+                        {cny(settlement.data.outstanding_service_fee_cny_fen)}
+                      </small>
+                    </div>
+                    <span className="mws-chip amber">待处理</span>
+                    <Link className="mws-tonal" to="/seller/settlements">
+                      查看结算
+                    </Link>
+                  </article>
+                ) : null}
+                {chatScreenshotOrders.length > 0 ? (
+                  <article className="mws-action-row">
+                    <span className="mws-circle blue">
+                      <MessageSquareText aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>查看 {chatScreenshotOrders.length} 笔订单沟通截图</strong>
+                      <small>买家售后已上传订单沟通记录</small>
+                    </div>
+                    <span className="mws-chip blue">{chatScreenshotOrders.length} 条更新</span>
+                    <Link className="mws-tonal" to="/seller/orders">
+                      查看订单
+                    </Link>
+                  </article>
+                ) : null}
+                {inProgress.length > 0 ? (
+                  <article className="mws-action-row">
+                    <span className="mws-circle purple">
+                      <UserCheck aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>跟进进行中的订单</strong>
+                      <small>{inProgress.length} 笔订单业务尚未完成</small>
+                    </div>
+                    <span className="mws-chip neutral">进行中</span>
+                    <Link className="mws-tonal" to="/seller/orders">
+                      查看订单
+                    </Link>
+                  </article>
+                ) : null}
+              </>
+            )}
+          </section>
+          <section className="mws-surface" aria-label="店铺与产品">
+            <div className="mws-section-heading">
+              <div>
+                <h2>店铺与产品</h2>
+                <p>
+                  {stores.isInitialPending || products.isInitialPending
+                    ? '正在统计店铺与产品…'
+                    : `${activeStores.length} 个有效店铺 · ${activeProducts.length} 个在售产品`}
+                </p>
+              </div>
+              <Link className="mws-text" to="/seller/products">
+                管理全部
+              </Link>
+            </div>
+            {stores.isInitialPending ? (
+              <p role="status">店铺读取中…</p>
+            ) : stores.initialError ? (
+              <Alert tone="warning">店铺信息暂时不可用，刷新后重试。</Alert>
+            ) : stores.items.length === 0 ? (
+              <p className="mws-action-empty">组织还没有店铺。</p>
+            ) : (
+              stores.items.map((store) => {
+                const active = store.status === 'ACTIVE';
+                return (
+                  <div className="mws-store-row" key={store.id}>
+                    <span
+                      className={active ? 'mws-store-icon' : 'mws-store-icon inactive'}
+                      aria-hidden="true"
+                    >
+                      <Store />
+                    </span>
+                    <div>
+                      <strong>{store.display_name}</strong>
+                      <small>
+                        {active
+                          ? `ACTIVE · ${storeProductCount(store.id)} 个在售产品`
+                          : 'DISABLED · 保留历史记录'}
+                      </small>
+                    </div>
+                    <span className="mws-store-figure">
+                      {active ? (
+                        <>
+                          <b>在售产品</b>
+                          <strong>{storeProductCount(store.id)}</strong>
+                        </>
+                      ) : (
+                        <>
+                          <b>状态</b>
+                          <strong>已停用</strong>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </section>
         </div>
-        {orders.isInitialPending ? (
-          <p role="status">读取订单进度中…</p>
-        ) : ordersUnavailable ? (
-          <Alert tone="warning">订单进度暂时不可用，刷新后重试。</Alert>
-        ) : inProgress.length === 0 && !orders.hasMore ? (
-          <EmptyState title="暂无待完成订单" description="当前授权范围内没有待办事项。" />
-        ) : inProgress.length === 0 ? (
-          <Alert tone="info">当前已加载的订单没有待办项，后面还有，去订单页继续看。</Alert>
-        ) : (
-          <ul className="seller-attention-list">
-            {inProgress.slice(0, 4).map((item) => (
-              <li key={item.formal_order_id}>
-                <span>
-                  <strong>{item.product_name}</strong>
-                  <small>
-                    {item.store.display_name} · {item.platform_order_identifier}
-                  </small>
-                </span>
-                <StatusBadge tone="processing">进行中</StatusBadge>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+        <aside className="mws-side-column">
+          <section className="mws-surface" aria-label="本月概览">
+            <div className="mws-section-heading">
+              <div>
+                <h2>本月概览</h2>
+                <p>按当前授权范围汇总</p>
+              </div>
+            </div>
+            <dl className="mws-summary-dl">
+              <div>
+                <dt>已确认订单</dt>
+                <dd>
+                  {orders.isInitialPending || ordersUnavailable ? '—' : count(orders.items.length)}
+                </dd>
+              </div>
+              {canViewSettlement ? (
+                <>
+                  <div>
+                    <dt>待结本金</dt>
+                    <dd>
+                      {settlement.data ? cny(settlement.data.outstanding_principal_cny_fen) : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>待结服务费</dt>
+                    <dd>
+                      {settlement.data ? cny(settlement.data.outstanding_service_fee_cny_fen) : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>待认领转入款</dt>
+                    <dd>
+                      {settlement.data ? cny(settlement.data.unallocated_credit_cny_fen) : '—'}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
+            </dl>
+          </section>
+          {isOwner ? (
+            <section className="mws-surface" aria-label="组织成员">
+              <div className="mws-section-heading">
+                <div>
+                  <h2>组织成员</h2>
+                  <p>{members.data ? `${members.data.length} 名成员` : '读取中…'}</p>
+                </div>
+                <Link className="mws-text" to="/seller/settings">
+                  管理
+                </Link>
+              </div>
+              {members.isError ? (
+                <p className="mws-action-empty">成员列表暂时不可用。</p>
+              ) : (
+                (members.data ?? []).map((member) => (
+                  <div className="mws-member-row" key={member.member_id}>
+                    <span className="mws-member-avatar" aria-hidden="true">
+                      {member.display_name.slice(0, 1)}
+                    </span>
+                    <p>
+                      <strong>{member.display_name}</strong>
+                      <small>{roleLabel[member.role]}</small>
+                    </p>
+                  </div>
+                ))
+              )}
+            </section>
+          ) : null}
+        </aside>
+      </div>
     </section>
   );
 }
@@ -969,123 +1176,339 @@ export function SellerSettlementsPage(): React.JSX.Element {
     queryKey: sellerQueryKeys.paymentsPage,
     queryFn: (cursor, signal) => sellerApi.settlementPayments(client, cursor, signal),
   });
+  // 订单明细与计价规则展示固定按组织口径读取，不随店铺筛选变化。
+  const orders = useSellerCursorPages({
+    resetKey: 'seller-orders:all:20',
+    queryKey: (cursor) => sellerQueryKeys.ordersPage(null, cursor),
+    queryFn: (cursor, signal) => sellerApi.orders(client, null, cursor, signal),
+  });
   const settlementScope =
     readScope === 'ORGANIZATION'
       ? '这里显示整个组织（含已停用店铺）的历史账目，不随上方店铺筛选变化。'
       : readScope === 'ASSIGNED_STORES'
         ? '这里按你有权限的店铺汇总，不随上方店铺筛选变化。'
         : '这里按你当前可见的范围汇总。';
+  // 计价规则只展示后端按订单日冻结的快照值，绝不重新计算。
+  const latestRateSnapshot = useMemo(() => {
+    const withSnapshot = orders.items.filter(
+      (item) => item.seller_principal_rate_snapshot !== null,
+    );
+    if (withSnapshot.length === 0) return null;
+    return withSnapshot.reduce((latest, item) =>
+      item.confirmed_at > latest.confirmed_at ? item : latest,
+    ).seller_principal_rate_snapshot;
+  }, [orders.items]);
+  const summaryPending = summary.isPending;
   return (
-    <section className="seller-page">
-      <PageHeader title="收款与费用" eyebrow="本金与服务费账目" description={settlementScope} />
+    <section className="mws-page seller-page seller-settlement-page">
+      <div className="mws-heading">
+        <div>
+          <p>财务与结算</p>
+          <h1>卖家结算</h1>
+          <span>{settlementScope}</span>
+        </div>
+      </div>
       {summary.isError || payables.initialError ? (
         <Alert tone="danger">结算信息暂时无法完整读取，请刷新后重试。</Alert>
       ) : null}
-      <div className="seller-metrics">
-        <MetricCard
-          label="待结本金"
-          value={summary.data ? cny(summary.data.outstanding_principal_cny_fen) : '—'}
-        />
-        <MetricCard
-          label="待结服务费"
-          value={summary.data ? cny(summary.data.outstanding_service_fee_cny_fen) : '—'}
-        />
-        <MetricCard
-          label="待认领转入款"
-          value={summary.data ? cny(summary.data.unallocated_credit_cny_fen) : '—'}
-        />
-      </div>
-      {payables.isInitialPending ? (
-        <p role="status">加载中…</p>
-      ) : payables.initialError ? (
-        <Alert tone="warning">结算项目暂时用不了，刷新后重试。</Alert>
-      ) : payables.items.length === 0 ? (
-        <EmptyState title="暂无账目" description="产生本金或服务费后会显示在这里。" />
-      ) : (
-        <div className="seller-record-list">
-          {payables.items.map((item) => (
-            <RecordCard
-              key={item.payable_id}
-              title={item.product.name}
-              meta={`${item.store.display_name} · ${item.amazon_order_number}`}
-              status={payableStatusLabel[item.status]}
-              statusTone={tone(item.status)}
-            >
-              <FactGrid>
-                <Fact
-                  label="结算项目"
-                  value={item.payable_type === 'SELLER_PRINCIPAL' ? '卖家本金' : '卖家服务费'}
-                />
-                <Fact label="应结" value={cny(item.due_amount_cny_fen)} />
-                <Fact label="已结" value={cny(item.paid_amount_cny_fen)} />
-                <Fact label="未结" value={cny(item.outstanding_amount_cny_fen)} />
-                <Fact label="应结时间" value={formatShanghai(item.due_at)} />
-                <Fact label="产品标识" value={item.product.asin} />
-              </FactGrid>
-            </RecordCard>
-          ))}
-        </div>
-      )}
-      <CursorPagination
-        {...payables}
-        onLoadMore={payables.loadMore}
-        onRetry={payables.retryLater}
-        loadLabel="加载更多结算项目"
-        loadingLabel="正在加载更多结算项目"
-        retryLabel="重试结算项目"
-        errorMessage="后一页结算项目暂时无法读取，已加载项目仍会保留。"
-      />
-      <Card className="seller-payment-history">
-        <h3>打款记录</h3>
-        <p>工作人员登记的每一笔结算打款；金额、时间与当期分配去向。</p>
-        {payments.isInitialPending ? (
-          <p role="status">打款记录加载中…</p>
-        ) : payments.initialError ? (
-          <Alert tone="warning">打款记录暂时用不了，刷新重试；不影响上方账目。</Alert>
-        ) : payments.items.length === 0 ? (
-          <p>暂无打款记录。</p>
-        ) : (
-          <div className="seller-record-list">
-            {payments.items.map((payment) => (
-              <RecordCard
-                key={payment.payment_id}
-                title={`${cny(payment.amount_cny_fen)} 打款`}
-                meta={formatShanghai(payment.paid_at)}
-                status={paymentStatusLabel[payment.status]}
-                statusTone={payment.status === 'REVERSED' ? 'warning' : 'success'}
-              >
-                <FactGrid>
-                  <Fact label="打款金额" value={cny(payment.amount_cny_fen)} />
-                  <Fact label="打款时间" value={formatShanghai(payment.paid_at)} />
-                  <Fact label="登记时间" value={formatShanghai(payment.recorded_at)} />
-                  <Fact label="已分配" value={cny(payment.allocated_amount_cny_fen)} />
-                  <Fact label="待分配" value={cny(payment.unallocated_amount_cny_fen)} />
-                  {payment.allocations.map((allocation) => (
-                    <Fact
-                      key={allocation.allocation_id}
-                      label={
-                        allocation.payable_type === 'SELLER_PRINCIPAL'
-                          ? '分配至本金'
-                          : '分配至服务费'
-                      }
-                      value={`${cny(allocation.net_amount_cny_fen)} · ${formatShanghai(allocation.allocated_at)}`}
-                    />
-                  ))}
-                </FactGrid>
-              </RecordCard>
-            ))}
+      <div className="mws-settlement-grid">
+        <section className="mws-surface mws-span-all" aria-label="结算摘要">
+          <div className="mws-section-heading">
+            <div>
+              <h2>结算摘要</h2>
+              <p>仅展示本组织本金与服务费，不含平台内部数据</p>
+            </div>
+            {summary.data?.settlement_account_name ? (
+              <span className="mws-chip green">收款账户已登记</span>
+            ) : null}
           </div>
-        )}
-        <CursorPagination
-          {...payments}
-          onLoadMore={payments.loadMore}
-          onRetry={payments.retryLater}
-          loadLabel="加载更多打款记录"
-          loadingLabel="正在加载更多打款记录"
-          retryLabel="重试打款记录"
-          errorMessage="后一页打款记录暂时无法读取，已加载记录仍会保留。"
-        />
-      </Card>
+          <div className="mws-settlement-numbers">
+            <div>
+              <span>待结本金</span>
+              <strong>{summary.data ? cny(summary.data.outstanding_principal_cny_fen) : '—'}</strong>
+              <small>{summaryPending ? '读取中' : '基于订单快照'}</small>
+            </div>
+            <div>
+              <span>待结服务费</span>
+              <strong>
+                {summary.data ? cny(summary.data.outstanding_service_fee_cny_fen) : '—'}
+              </strong>
+              <small>{summaryPending ? '读取中' : '按冻结快照展示'}</small>
+            </div>
+            <div>
+              <span>待认领转入款</span>
+              <strong>{summary.data ? cny(summary.data.unallocated_credit_cny_fen) : '—'}</strong>
+              <small>{summaryPending ? '读取中' : '等待工作人员分配'}</small>
+            </div>
+            <div>
+              <span>待结合计</span>
+              <strong>{summary.data ? cny(summary.data.total_outstanding_cny_fen) : '—'}</strong>
+              <small>{summaryPending ? '读取中' : '本金与服务费之和'}</small>
+            </div>
+          </div>
+        </section>
+        <section className="mws-surface" aria-label="结算项目">
+          <div className="mws-section-heading">
+            <div>
+              <h2>结算项目</h2>
+              <p>已完成金额不会被直接覆盖</p>
+            </div>
+            <Link className="mws-text" to="/seller/settings">
+              收款账户设置
+            </Link>
+          </div>
+          {payables.isInitialPending ? (
+            <p role="status">加载中…</p>
+          ) : payables.initialError ? (
+            <Alert tone="warning">结算项目暂时用不了，刷新后重试。</Alert>
+          ) : payables.items.length === 0 ? (
+            <EmptyState title="暂无账目" description="产生本金或服务费后会显示在这里。" />
+          ) : (
+            payables.items.map((item) => (
+              <div className="mws-settlement-row" key={item.payable_id}>
+                <div>
+                  <span
+                    className={
+                      item.status === 'PAID'
+                        ? 'mws-chip green'
+                        : item.status === 'PARTIALLY_PAID'
+                          ? 'mws-chip amber'
+                          : 'mws-chip neutral'
+                    }
+                  >
+                    {payableStatusLabel[item.status]}
+                  </span>
+                  <strong>
+                    {item.payable_type === 'SELLER_PRINCIPAL' ? '卖家本金' : '卖家服务费'} ·{' '}
+                    {item.product.name}
+                  </strong>
+                  <small>
+                    {item.store.display_name} · {item.amazon_order_number} · 应结时间{' '}
+                    {formatShanghai(item.due_at)}
+                  </small>
+                </div>
+                <dl>
+                  <dt>应结</dt>
+                  <dd>{cny(item.due_amount_cny_fen)}</dd>
+                  <dt>已结</dt>
+                  <dd>{cny(item.paid_amount_cny_fen)}</dd>
+                  <dt>未结</dt>
+                  <dd>{cny(item.outstanding_amount_cny_fen)}</dd>
+                </dl>
+              </div>
+            ))
+          )}
+          <CursorPagination
+            {...payables}
+            onLoadMore={payables.loadMore}
+            onRetry={payables.retryLater}
+            loadLabel="加载更多结算项目"
+            loadingLabel="正在加载更多结算项目"
+            retryLabel="重试结算项目"
+            errorMessage="后一页结算项目暂时无法读取，已加载项目仍会保留。"
+          />
+        </section>
+        <aside className="mws-surface mws-rate-panel" aria-label="当前计价规则">
+          <div className="mws-section-heading">
+            <div>
+              <h2>当前计价规则</h2>
+              <p>按组织和订单日冻结</p>
+            </div>
+          </div>
+          {latestRateSnapshot ? (
+            <dl>
+              <div>
+                <dt>基础汇率</dt>
+                <dd>
+                  {rate(
+                    latestRateSnapshot.base_rate_value,
+                    latestRateSnapshot.base_rate_scale,
+                    latestRateSnapshot.payment_currency_code,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>汇率加点</dt>
+                <dd>
+                  {rate(
+                    latestRateSnapshot.markup_rate_value,
+                    latestRateSnapshot.markup_rate_scale,
+                    latestRateSnapshot.payment_currency_code,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>最终汇率</dt>
+                <dd>
+                  {rate(
+                    latestRateSnapshot.final_rate_value,
+                    latestRateSnapshot.final_rate_scale,
+                    latestRateSnapshot.payment_currency_code,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>加点版本</dt>
+                <dd>v{latestRateSnapshot.policy_version_no}</dd>
+              </div>
+              <div>
+                <dt>订单日</dt>
+                <dd>{latestRateSnapshot.platform_order_date}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="mws-action-empty">
+              {orders.isInitialPending ? '读取订单快照中…' : '暂无已冻结的汇率快照。'}
+            </p>
+          )}
+          <div className="mws-info-note">
+            <Info aria-hidden="true" />
+            <p>已形成正式订单的汇率和服务费快照不会因规则调整而改变；此处只展示冻结值。</p>
+          </div>
+        </aside>
+        <section className="mws-surface mws-span-all" aria-label="订单明细">
+          <div className="mws-section-heading">
+            <div>
+              <h2>订单明细</h2>
+              <p>{orders.items.length > 0 ? `最近 ${orders.items.length} 笔` : '最近订单'}</p>
+            </div>
+            <Link className="mws-text" to="/seller/orders">
+              打开完整明细
+            </Link>
+          </div>
+          {orders.isInitialPending ? (
+            <p role="status">订单明细加载中…</p>
+          ) : orders.initialError ? (
+            <Alert tone="warning">订单明细暂时不可用，刷新后重试。</Alert>
+          ) : orders.items.length === 0 ? (
+            <p className="mws-action-empty">暂无正式订单。</p>
+          ) : (
+            <div className="mws-table-scroll">
+              <table className="mws-order-table">
+                <thead>
+                  <tr>
+                    <th>订单</th>
+                    <th>店铺</th>
+                    <th>产品</th>
+                    <th className="number">订单金额</th>
+                    <th className="number">应结本金</th>
+                    <th className="number">服务费</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.items.map((item) => (
+                    <tr key={item.formal_order_id}>
+                      <td>
+                        <strong>{item.platform_order_identifier}</strong>
+                        <small>{formatShanghai(item.confirmed_at)}</small>
+                      </td>
+                      <td>{item.store.display_name}</td>
+                      <td>{item.product_name}</td>
+                      <td className="number">
+                        {item.payment
+                          ? money(
+                              item.payment.amount_minor,
+                              item.payment.currency_code,
+                              item.payment.currency_exponent,
+                            )
+                          : '—'}
+                      </td>
+                      <td className="number">
+                        {item.seller_expected_principal_cny_fen !== null
+                          ? cny(item.seller_expected_principal_cny_fen)
+                          : '—'}
+                      </td>
+                      <td className="number">
+                        {item.locked_service_fee_snapshot
+                          ? cny(item.locked_service_fee_snapshot.service_fee_cny_fen)
+                          : '—'}
+                      </td>
+                      <td>
+                        <span
+                          className={
+                            item.business_completion?.status === 'COMPLETE'
+                              ? 'mws-chip green'
+                              : item.business_completion
+                                ? 'mws-chip amber'
+                                : 'mws-chip neutral'
+                          }
+                        >
+                          {item.business_completion
+                            ? item.business_completion.status === 'COMPLETE'
+                              ? '业务完成'
+                              : '进行中'
+                            : '订单已确认'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <CursorPagination
+            {...orders}
+            onLoadMore={orders.loadMore}
+            onRetry={orders.retryLater}
+            loadLabel="加载更多订单"
+            loadingLabel="正在加载更多订单"
+            retryLabel="重试订单明细"
+            errorMessage="后一页订单暂时无法读取，已加载明细仍会保留。"
+          />
+        </section>
+        <Card className="seller-payment-history mws-span-all">
+          <h3>打款记录</h3>
+          <p>工作人员登记的每一笔结算打款；金额、时间与当期分配去向。</p>
+          {payments.isInitialPending ? (
+            <p role="status">打款记录加载中…</p>
+          ) : payments.initialError ? (
+            <Alert tone="warning">打款记录暂时用不了，刷新重试；不影响上方账目。</Alert>
+          ) : payments.items.length === 0 ? (
+            <p>暂无打款记录。</p>
+          ) : (
+            <div className="seller-record-list">
+              {payments.items.map((payment) => (
+                <RecordCard
+                  key={payment.payment_id}
+                  title={`${cny(payment.amount_cny_fen)} 打款`}
+                  meta={formatShanghai(payment.paid_at)}
+                  status={paymentStatusLabel[payment.status]}
+                  statusTone={payment.status === 'REVERSED' ? 'warning' : 'success'}
+                >
+                  <FactGrid>
+                    <Fact label="打款金额" value={cny(payment.amount_cny_fen)} />
+                    <Fact label="打款时间" value={formatShanghai(payment.paid_at)} />
+                    <Fact label="登记时间" value={formatShanghai(payment.recorded_at)} />
+                    <Fact label="已分配" value={cny(payment.allocated_amount_cny_fen)} />
+                    <Fact label="待分配" value={cny(payment.unallocated_amount_cny_fen)} />
+                    {payment.allocations.map((allocation) => (
+                      <Fact
+                        key={allocation.allocation_id}
+                        label={
+                          allocation.payable_type === 'SELLER_PRINCIPAL'
+                            ? '分配至本金'
+                            : '分配至服务费'
+                        }
+                        value={`${cny(allocation.net_amount_cny_fen)} · ${formatShanghai(allocation.allocated_at)}`}
+                      />
+                    ))}
+                  </FactGrid>
+                </RecordCard>
+              ))}
+            </div>
+          )}
+          <CursorPagination
+            {...payments}
+            onLoadMore={payments.loadMore}
+            onRetry={payments.retryLater}
+            loadLabel="加载更多打款记录"
+            loadingLabel="正在加载更多打款记录"
+            retryLabel="重试打款记录"
+            errorMessage="后一页打款记录暂时无法读取，已加载记录仍会保留。"
+          />
+        </Card>
+      </div>
     </section>
   );
 }

@@ -12,7 +12,7 @@ test.use({
 const screenshotDirectory = process.env['SELLER_VISUAL_SCREENSHOT_DIR'];
 const fixedNow = Date.parse('2026-08-09T04:00:00.000Z');
 const pageInfo = { limit: 100, next_cursor: null };
-const navigationLabels = ['首页', '商品', '需求', '订单', '评论', '结算', '我的'] as const;
+const navigationLabels = ['首页', '产品', '需求', '订单与沟通', '评论', '结算', '成员与组织设置'] as const;
 const primaryViewports = [
   { width: 390, height: 844 },
   { width: 1440, height: 900 },
@@ -32,6 +32,8 @@ const me = {
     name: '月白生活株式会社',
     marketplace_code: 'AMAZON_JP',
     status: 'ACTIVE',
+    settlement_account_name: null,
+    settlement_account_identifier: null,
   },
   access: {
     read_scope: 'ORGANIZATION',
@@ -131,6 +133,7 @@ const applications = [
     asin: 'B00XQJG2Z4',
     product_name: '资生堂 HAKU 美白精华 45g',
     search_keywords: ['美白精华'],
+    ordering_guide_expected_amount_jpy: 4580,
     product_url: null,
     buyer_visible_notes: '请核对规格',
     seller_notes: null,
@@ -150,6 +153,7 @@ const applications = [
     asin: 'B00E3N4H7C',
     product_name: '肌美精 3D 面膜 4 枚入',
     search_keywords: ['面膜'],
+    ordering_guide_expected_amount_jpy: 680,
     product_url: null,
     buyer_visible_notes: null,
     seller_notes: null,
@@ -547,15 +551,15 @@ async function capture(page: Page, name: string): Promise<void> {
 }
 
 const surfaces = [
-  ['dashboard', '/seller', '业务进度'],
+  ['dashboard', '/seller', '月白生活株式会社'],
   ['products', '/seller/products', '商品与申请'],
-  ['application-form', '/seller/products/new', '提交产品申请'],
+  ['application-form', '/seller/products/new', '商品与数量计划'],
   ['application-detail', '/seller/products/application-serum', '产品申请'],
-  ['demands', '/seller/demands', '需求批次'],
-  ['demand-form', '/seller/demands/new', '提交需求'],
+  ['demands', '/seller/demands', '数量计划'],
+  ['demand-form', '/seller/demands/new', '商品与数量计划'],
   ['orders', '/seller/orders', '订单与业务完成'],
   ['reviews', '/seller/reviews', '评论'],
-  ['settlements', '/seller/settlements', '本金与服务费'],
+  ['settlements', '/seller/settlements', '卖家结算'],
   ['account', '/seller/settings', '账户与团队'],
 ] as const;
 
@@ -598,16 +602,13 @@ test('Seller shell keeps context, navigation, entries, and disclosure boundaries
   await installSellerFixture(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/seller');
-  await expect(page.getByText(me.organization.name, { exact: true })).toBeVisible();
-  await expect(page.getByText(me.organization.seller_code, { exact: true })).toBeVisible();
-  await expect(
-    page.getByLabel('组织和店铺').getByText(me.member.display_name, { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: me.organization.name, exact: true })).toBeVisible();
+  await expect(page.locator('.mws-appbar').getByText(me.member.display_name, { exact: true })).toBeVisible();
   await expect(page.getByLabel('店铺', { exact: true })).toBeVisible();
   const navigation = page.getByRole('navigation', { name: '卖家导航' });
   for (const label of navigationLabels)
     await expect(navigation.getByRole('link', { name: label, exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: '提交需求', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '提交数量计划', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: '提交产品申请', exact: true })).toBeVisible();
   await expect(page.locator('body')).not.toContainText(
     /卖家工作台|卖家首页|韩国站能力|状态来自服务器业务事实|结算确认由员工控制|Buyer Refund|内部利润|object_key|drive_file_id/u,
@@ -627,12 +628,12 @@ test('Seller permission-projected entries disappear without access', async ({ pa
     can_submit_demand_batches: false,
   });
   await page.goto('/seller');
-  await expect(page.getByRole('link', { name: '提交需求' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '提交数量计划' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: '提交产品申请' })).toHaveCount(0);
   await page.goto('/seller/products/new');
-  await expect(page.getByText('当前账号没有提交产品申请的权限。')).toBeVisible();
+  await expect(page.getByText('当前账号可以添加店铺，但没有提交产品申请的权限。')).toBeVisible();
   await page.goto('/seller/demands/new');
-  await expect(page.getByText('当前账号没有提交需求的权限。')).toBeVisible();
+  await expect(page.getByText('当前账号没有提交数量计划的权限。')).toBeVisible();
 });
 
 test('Seller pages preserve keyboard, zoom, reduced motion, targets, and overflow', async ({

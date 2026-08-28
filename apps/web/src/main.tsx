@@ -6,6 +6,7 @@ import './styles/global.css';
 import './styles/design-freeze.css';
 import './styles/staff-shell-v2.css';
 import './styles/buyer-portal.css';
+import './styles/seller-portal.css';
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };

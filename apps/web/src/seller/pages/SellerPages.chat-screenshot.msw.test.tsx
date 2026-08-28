@@ -449,8 +449,8 @@ describe('Seller formal-order chat screenshot UI', () => {
 
     renderWithMsw(<SellerDashboardPage />, { route: '/seller' });
     expect(await screen.findByText('订单进度暂时不可用，刷新后重试。')).toBeVisible();
-    expect(screen.getAllByText('—')).toHaveLength(2);
-    expect(screen.queryByText('暂无待完成订单')).not.toBeInTheDocument();
+    expect(screen.getAllByText('—')).toHaveLength(1);
+    expect(screen.queryByText('当前没有需要立即处理的事项。')).not.toBeInTheDocument();
   });
 
   it('does not render a failed payable read as an empty financial ledger', async () => {
