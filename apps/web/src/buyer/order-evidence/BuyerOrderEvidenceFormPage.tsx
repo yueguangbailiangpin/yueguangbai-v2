@@ -102,9 +102,9 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
       <FormField label="最终支付金额（JPY）" htmlFor="evidence-paid" required>
         <TextInput name="final_paid_jpy" type="number" inputMode="numeric" min="0" step="1" required />
       </FormField>
-      <FormField label="订单截图" htmlFor="evidence-file" description="必须且只能选择一张 JPG、PNG 或 WebP 图片" required>
+      <FormField label="订单截图" htmlFor="evidence-file" description="必须且只能选择一张 JPG、PNG 或 WebP 图片；换图时需确认替换" required>
         <FileDropZone id="evidence-file" accept="image/jpeg,image/png,image/webp" required
-          maximumFiles={1} maximumBytes={20 * 1024 * 1024}
+          maximumFiles={1} maximumBytes={20 * 1024 * 1024} confirmReplace
           buttonLabel="选择订单截图" emptyLabel="尚未选择截图"
           onFilesChange={(files) => { selected.current = files[0] ?? null; }} />
       </FormField>

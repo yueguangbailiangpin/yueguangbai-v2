@@ -19,6 +19,8 @@ type FileDropZoneProps = Omit<
   maximumFiles: number;
   maximumBytes: number;
   onFilesChange: (files: readonly File[]) => void;
+  /** 单文件模式下已有文件时，选择新文件须显式确认替换而非静默覆盖。 */
+  confirmReplace?: boolean;
 };
 
 export function FileDropZone({
@@ -32,6 +34,7 @@ export function FileDropZone({
   maximumBytes,
   onFilesChange,
   required,
+  confirmReplace = false,
   ...inputProps
 }: FileDropZoneProps): React.JSX.Element {
   const generatedId = useId();
@@ -40,6 +43,9 @@ export function FileDropZone({
   const [files, setFiles] = useState<readonly File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 单文件模式下再选新文件必须先明确替换（例如付款截图每版本严格一张），
+  // 不允许静默覆盖已选择的未提交文件。
+  const [pendingReplacement, setPendingReplacement] = useState<File | null>(null);
 
   function replaceFiles(next: readonly File[]): void {
     const accepted = validateFiles(next, {
@@ -53,8 +59,23 @@ export function FileDropZone({
   }
 
   function addFiles(incoming: readonly File[]): void {
+    if (incoming.length === 0) return;
+    if (!multiple && confirmReplace && files.length === 1) {
+      const candidate = incoming[0]!;
+      if (fileKey(candidate) !== fileKey(files[0]!)) {
+        setPendingReplacement(candidate);
+        return;
+      }
+    }
     const next = multiple ? deduplicateFiles([...files, ...incoming]) : incoming.slice(0, 1);
     replaceFiles(next);
+  }
+
+  function confirmReplacement(): void {
+    if (!pendingReplacement) return;
+    const file = pendingReplacement;
+    setPendingReplacement(null);
+    replaceFiles([file]);
   }
 
   function openPicker(): void {
@@ -142,6 +163,22 @@ export function FileDropZone({
         </div>
       ) : null}
       {error ? <p className="file-drop-zone-error" role="alert">{error}</p> : null}
+      {pendingReplacement ? (
+        <div className="file-drop-zone-replace-confirm" role="alertdialog" aria-live="polite">
+          <p>
+            已选择 <strong>{files[0]?.name}</strong>。是否用{' '}
+            <strong>{pendingReplacement.name}</strong> 替换？每个版本只能提交一张，不会同时上传两张。
+          </p>
+          <div className="entry-actions">
+            <button type="button" onClick={() => setPendingReplacement(null)}>
+              保留原文件
+            </button>
+            <button type="button" className="danger" onClick={confirmReplacement}>
+              替换为新文件
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

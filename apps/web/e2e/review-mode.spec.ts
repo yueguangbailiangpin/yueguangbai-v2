@@ -61,11 +61,11 @@ test('review role selectors update visible seller and staff permissions', async 
   await page.goto('/review/staff');
   const navigation = page.getByRole('navigation', { name: '员工工作台导航' });
   const roles = [
-    ['owner', ['工作台', '获客', '卖家', '产品与投放', '买家与订单', '财务配置', '员工与访问管理', '经营看板', '运行完整性工具']],
-    ['acquisition', ['获客']],
-    ['pre_sales', ['工作台', '买家与订单', '产品与投放', '运行完整性工具']],
-    ['seller_ops', ['工作台', '卖家', '产品与投放', '财务配置', '运行完整性工具']],
-    ['buyer_refund', ['工作台', '运行完整性工具']],
+    // D-056 四角色（acquisition 退役）；upcoming 项渲染为 span 非 link，不计数。
+    ['owner', ['工作台', '买家', '卖家', '产品与预约', '买家返款', '财务', '员工与权限', '经营看板']],
+    ['pre_sales', ['工作台', '买家', '产品与预约']],
+    ['seller_ops', ['工作台', '卖家', '产品与预约', '财务']],
+    ['buyer_refund', ['工作台', '买家返款']],
   ] as const;
   for (const [role, expected] of roles) {
     await page.getByLabel('员工评审角色').selectOption(role);
@@ -143,7 +143,6 @@ test('review detail surfaces keep their real layouts and valid demo contracts', 
     '/review/seller/reviews',
     '/review/seller/settlements',
     '/review/seller/settings',
-    '/review/staff/acquisition',
     '/review/staff/buyer-customers',
     '/review/staff/seller-customers',
     '/review/staff/products',

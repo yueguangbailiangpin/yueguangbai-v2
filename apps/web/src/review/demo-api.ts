@@ -206,7 +206,6 @@ const sellerPayables = [
 
 const roleDisplay = {
   owner: '总管理员',
-  acquisition: '获客',
   pre_sales: '售前',
   seller_ops: '卖家对接',
   buyer_refund: '买家返款',
@@ -457,109 +456,6 @@ const staffRefund = {
   reversals: [],
 };
 
-const acquisitionChannels = [
-  {
-    visibility: 'INTERNAL',
-    channel_id: 'review-channel-1',
-    code: 'CHANNEL_1',
-    channel_type: 'XIAOHONGSHU',
-    platform_name: '小红书',
-    lead_type: 'BUYER',
-    marketplace_code: 'AMAZON_JP',
-    display_name: '日本好物体验官',
-    status: 'ACTIVE',
-    version: 1,
-    created_at: NOW - 90 * DAY,
-    updated_at: NOW,
-    staff_label: '渠道1',
-    intake_wechat_label: 'Demo 接待号 A',
-    profile_version: 1,
-  },
-  {
-    visibility: 'INTERNAL',
-    channel_id: 'review-channel-2',
-    code: 'CHANNEL_2',
-    channel_type: 'REFERRAL',
-    platform_name: '客户转介绍',
-    lead_type: 'SELLER',
-    marketplace_code: 'AMAZON_JP',
-    display_name: '日本卖家合作渠道',
-    status: 'ACTIVE',
-    version: 1,
-    created_at: NOW - 60 * DAY,
-    updated_at: NOW,
-    staff_label: '渠道2',
-    intake_wechat_label: 'Demo 接待号 B',
-    profile_version: 1,
-  },
-];
-const acquisitionProspects = [
-  {
-    prospect_id: 'review-prospect-1',
-    lead_type: 'BUYER',
-    marketplace_code: 'AMAZON_JP',
-    origin_channel_id: 'review-channel-1',
-    origin_channel_name: '日本好物体验官',
-    display_name: 'Demo 买家潜在线索',
-    contact_value: 'demo***',
-    source_url: 'https://example.invalid/prospect',
-    origin_mode: 'HUMAN',
-    status: 'RESEARCHING',
-    ai_score: 76,
-    note: '偏好家居类产品',
-    discovered_at: NOW - DAY,
-    converted_lead_id: null,
-    version: 1,
-    created_at: NOW - DAY,
-    updated_at: NOW,
-  },
-  {
-    prospect_id: 'review-prospect-2',
-    lead_type: 'SELLER',
-    marketplace_code: 'AMAZON_JP',
-    origin_channel_id: 'review-channel-2',
-    origin_channel_name: '日本卖家合作渠道',
-    display_name: 'Demo Seller Studio',
-    contact_value: null,
-    source_url: null,
-    origin_mode: 'CODEX',
-    status: 'HUMAN_HANDOFF',
-    ai_score: 92,
-    note: '等待人工接入',
-    discovered_at: NOW - 2 * DAY,
-    converted_lead_id: null,
-    version: 2,
-    created_at: NOW - 2 * DAY,
-    updated_at: NOW,
-  },
-];
-const acquisitionLeads = (type: 'BUYER' | 'SELLER') => [
-  {
-    lead_id: `review-lead-${type.toLowerCase()}-1`,
-    lead_type: type,
-    marketplace_code: 'AMAZON_JP',
-    wechat_masked: 'demo****88',
-    display_name: type === 'BUYER' ? 'Demo 新买家' : 'Demo 新卖家',
-    note: 'Demo 客户',
-    origin_channel_id: type === 'BUYER' ? 'review-channel-1' : 'review-channel-2',
-    channel_label: type === 'BUYER' ? '渠道1' : '渠道2',
-    current_owner_staff_id: `review-staff-${currentStaffReviewRole()}`,
-    status: 'ACTIVE',
-    version: 1,
-    created_business_date: '2026-08-10',
-    latest_followup_at: NOW,
-    retention_due_at: NOW + 365 * DAY,
-    retention_hold_reason: null,
-    registered: type === 'BUYER',
-    reservation_submitted: type === 'BUYER',
-    no_participation: false,
-    formal_order_count: type === 'BUYER' ? 3 : 8,
-    seller_cooperation: type === 'SELLER',
-    created_at: NOW - DAY,
-    updated_at: NOW,
-  },
-];
-
 const staffProducts = sellerProducts.map((product) => ({
   product_id: product.id,
   seller_organization_id: 'review-seller-org',
@@ -576,30 +472,8 @@ const staffProducts = sellerProducts.map((product) => ({
 }));
 
 function dashboardSummary(windowKey: string) {
-  const performance = (id: string, name: string, multiplier: number) => ({
-    dimension_id: id,
-    dimension_name: name,
-    buyer_lead_count: 24 * multiplier,
-    buyer_registered_count: 17 * multiplier,
-    buyer_reservation_count: 11 * multiplier,
-    buyer_formal_order_count: 8 * multiplier,
-    buyer_business_completed_count: 5 * multiplier,
-    buyer_no_participation_count: 3 * multiplier,
-    seller_lead_count: 9 * multiplier,
-    seller_cooperation_count: 4 * multiplier,
-    current_owner_active_lead_count: 6 * multiplier,
-    consultation_count: 38 * multiplier,
-    projected_profit: {
-      amount_cny_fen: String(286_500 * multiplier),
-      valid_order_count: 8 * multiplier,
-      conflict_order_count: 1,
-    },
-    completed_profit: {
-      amount_cny_fen: String(168_800 * multiplier),
-      valid_order_count: 5 * multiplier,
-      conflict_order_count: 0,
-    },
-  });
+  // D-056：经营看板只读精简摘要（待办、异常、最近订单事实、owner 少量财务摘要）；
+  // 旧漏斗/渠道归因/financial-projection 读模型已退役。
   return {
     summary: {
       window: {
@@ -609,35 +483,21 @@ function dashboardSummary(windowKey: string) {
         timezone: 'Asia/Shanghai',
         data_as_of: NOW,
       },
-      cards: { new_buyers: 27, reservations: 19, formal_orders: 13, business_completions: 8 },
-      buyer_funnel: {
-        stages: [
-          { code: 'LEAD', label: '新增买家', count: 27, conversion_rate_bps: null },
-          { code: 'RESERVATION', label: '提交预约', count: 19, conversion_rate_bps: 7037 },
-          { code: 'ORDER', label: '正式订单', count: 13, conversion_rate_bps: 6842 },
-        ],
-        no_participation_count: 4,
+      cards: { new_customers_buyer: 27, new_customers_seller: 9, reservations: 19, formal_orders: 13 },
+      pending: { buyer_refunds: 6, seller_settlements: 4 },
+      overdue: { open_work_items: 3, finance_exceptions: 1 },
+      owner_summary: {
+        projected_profit: {
+          amount_cny_fen: '896520',
+          valid_order_count: 13,
+          conflict_order_count: 1,
+        },
+        completed_profit: {
+          amount_cny_fen: '568230',
+          valid_order_count: 8,
+          conflict_order_count: 0,
+        },
       },
-      seller_funnel: {
-        stages: [
-          { code: 'LEAD', label: '新增卖家', count: 9, conversion_rate_bps: null },
-          { code: 'COOPERATION', label: '建立合作', count: 5, conversion_rate_bps: 5556 },
-        ],
-      },
-      projected_profit: {
-        amount_cny_fen: '896520',
-        valid_order_count: 13,
-        conflict_order_count: 1,
-      },
-      completed_profit: { amount_cny_fen: '568230', valid_order_count: 8, conflict_order_count: 0 },
-      staff_performance: [
-        performance('review-staff-1', 'Demo 售前', 1),
-        performance('review-staff-2', 'Demo 卖家对接', 2),
-      ],
-      channel_performance: [
-        performance('review-channel-1', '渠道1', 1),
-        performance('review-channel-2', '渠道2', 1),
-      ],
     },
   };
 }
@@ -690,18 +550,6 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
       replayed: false,
     };
   }
-  if (method === 'POST' && /\/formal-orders\/[^/]+\/chat-screenshot\/read-intent$/u.test(path)) {
-    return {
-      read_intent: {
-        read_intent_id: `review-read-${sequence}`,
-        access_token: demoReadCredential(),
-        access_token_available: true,
-        expires_at: NOW + 10 * 60_000,
-        replayed: false,
-      },
-    };
-  }
-
   if (path === '/api/buyer-portal/me' && method === 'GET')
     return {
       buyer: {
@@ -1059,6 +907,70 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
   if (/^\/api\/seller-portal\/member-invitations\/[^/]+\/revoke$/u.test(path) && method === 'POST')
     return { revoked: true, revoked_at: NOW };
 
+  if (path === '/api/staff/formal-orders' && method === 'GET') {
+    // 按平台订单号查单后重放完整聚合。
+    return formalOrderAggregate();
+  }
+  if (/^\/api\/staff\/formal-orders\/[^/]+$/u.test(path) && method === 'GET') {
+    return formalOrderAggregate();
+  }
+  if (
+    /^\/api\/staff\/formal-orders\/[^/]+\/communication-screenshots\/intents$/u.test(path) &&
+    method === 'POST'
+  ) {
+    return {
+      upload_intent_id: `review-upload-intent-${sequence}`,
+      purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+      visibility: 'SELLER_VISIBLE',
+      status: 'ISSUED',
+      version: 1,
+      expires_at: NOW + 10 * 60_000,
+      uploads: [
+        {
+          file_object_id: `review-comm-file-${sequence}`,
+          slot_no: 1,
+          upload_token: 'review-demo-upload-token-0123456789abcdef',
+          upload_token_available: true,
+          expires_at: NOW + 10 * 60_000,
+        },
+      ],
+      replayed: false,
+    };
+  }
+  if (
+    /^\/api\/staff\/formal-orders\/[^/]+\/communication-screenshots$/u.test(path) &&
+    method === 'POST'
+  ) {
+    return {
+      screenshot: {
+        formal_order_id: 'review-seller-order-1',
+        file_object_id: `review-comm-file-${sequence}`,
+        replayed: false,
+      },
+    };
+  }
+  if (/\/file-upload-intents\/[^/]+\/complete$/u.test(path) && method === 'POST') {
+    return {
+      upload_intent_id: `review-upload-intent-${sequence}`,
+      status: 'VERIFIED',
+      version: 2,
+      files: [
+        {
+          file_object_id: `review-comm-file-${sequence}`,
+          purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+          visibility: 'SELLER_VISIBLE',
+          detected_mime: 'image/png',
+          byte_size: 2048,
+          sha256: '0'.repeat(64),
+          version: 2,
+        },
+      ],
+      replayed: false,
+    };
+  }
+  if (/^\/api\/staff\/buyer-advance-principal\/[^/]+$/u.test(path) && method === 'GET') {
+    return { entries: [] };
+  }
   if (path === '/api/staff/me/work-items' && method === 'GET') {
     const status = parsed.searchParams.get('status') ?? 'OPEN';
     const type = parsed.searchParams.get('work_type');
@@ -1350,165 +1262,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     };
   if (path === '/api/staff/admin-business-dashboard/summary' && method === 'GET')
     return dashboardSummary(parsed.searchParams.get('window') ?? 'TODAY');
-  if (path === '/api/staff/admin-business-dashboard/acquisition-daily' && method === 'GET')
-    return {
-      from_date: '2026-08-01',
-      to_date: '2026-08-11',
-      timezone: 'Asia/Shanghai',
-      data_as_of: NOW,
-      reporting_precision: { configured: true, business_date: '2026-08-01' },
-      anomalies: {
-        identity_conflicts: 1,
-        attribution_anomalies: 2,
-        buyer_attribution_gaps: 1,
-        seller_attribution_gaps: 1,
-        finance_conflicts: 1,
-      },
-      totals: {
-        new_buyer_customers: 27,
-        new_seller_customers: 9,
-        buyer_portal_registrations: 21,
-        seller_portal_registrations: 5,
-        formal_orders: 13,
-        buyer_historical_unknown_orders: 2,
-        seller_historical_unknown_orders: 1,
-        buyer_attribution_anomaly_orders: 1,
-        seller_attribution_anomaly_orders: 1,
-      },
-      daily: [
-        {
-          business_date: '2026-08-11',
-          new_buyer_customers: 7,
-          new_seller_customers: 2,
-          buyer_portal_registrations: 5,
-          seller_portal_registrations: 1,
-          formal_orders: 4,
-          buyer_historical_unknown_orders: 0,
-          seller_historical_unknown_orders: 0,
-          buyer_attribution_anomaly_orders: 1,
-          seller_attribution_anomaly_orders: 0,
-        },
-      ],
-      channel_daily: [
-        {
-          business_date: '2026-08-11',
-          channel_id: 'review-channel-1',
-          channel_name: '日本好物体验官',
-          channel_label: '渠道1',
-          platform_name: '小红书',
-          channel_status: 'ACTIVE',
-          lead_type: 'BUYER',
-          marketplace_code: 'AMAZON_JP',
-          new_customer_count: 7,
-          formal_order_count: 4,
-        },
-      ],
-    };
-  if (path === '/api/staff/admin-business-dashboard/financial-projection' && method === 'GET')
-    return {
-      financial_projection: {
-        from_date: '2026-08-01',
-        to_date: '2026-08-11',
-        timezone: 'Asia/Shanghai',
-        data_as_of: NOW,
-        seller_cash_in_cny_fen: '2865800',
-        buyer_cash_out_cny_fen: '1688230',
-        net_cash_flow_cny_fen: '1177570',
-        seller_payable_due_cny_fen: '3486500',
-        seller_payable_paid_cny_fen: '2185400',
-        seller_payable_outstanding_cny_fen: '1301100',
-        buyer_refund_due_cny_fen: '2268900',
-        buyer_refund_paid_cny_fen: '1688230',
-        buyer_refund_outstanding_cny_fen: '580670',
-        projected_profit_cny_fen: '896520',
-        completed_profit_cny_fen: '568230',
-        projected_profit_adjustment_cny_fen: '-12800',
-        completed_profit_adjustment_cny_fen: '6500',
-      },
-    };
-  if (path === '/api/staff/acquisition/reporting-config' && method === 'GET')
-    return {
-      config: {
-        precision_started_business_date: '2026-08-01',
-        activated_at: NOW - 10 * DAY,
-        activated_by_staff_id: 'review-staff-owner',
-        version: 1,
-        updated_at: NOW - 10 * DAY,
-      },
-    };
-  if (path === '/api/staff/acquisition/channels' && method === 'GET')
-    return { channels: clone(acquisitionChannels) };
-  if (path === '/api/staff/acquisition/prospects' && method === 'GET')
-    return { items: clone(acquisitionProspects), next_cursor: null };
-  if (path === '/api/staff/acquisition/consultations' && method === 'GET')
-    return {
-      consultations: [
-        {
-          consultation_id: 'review-consultation-1',
-          channel_id: 'review-channel-1',
-          lead_type: 'BUYER',
-          business_date: '2026-08-11',
-          person_count: 18,
-          version: 1,
-          updated_by_staff_id: 'review-staff-acquisition',
-          updated_at: NOW,
-        },
-      ],
-    };
 ;
-  if (path === '/api/staff/acquisition/channel-stats' && method === 'GET')
-    return {
-      channels: acquisitionChannels.map((channel, index) => ({
-        channel_id: channel.channel_id,
-        channel_name: channel.display_name,
-        platform_name: channel.platform_name,
-        channel_status: channel.status,
-        lead_type: channel.lead_type,
-        marketplace_code: channel.marketplace_code,
-        consultation_count: 30 + index * 18,
-        consultation_data_complete: true,
-        consultation_days_recorded: 11,
-        consultation_days_expected: 11,
-        prospect_count: 4 + index,
-        codex_prospect_count: index,
-        lead_count: 9 + index,
-        registered_count: 7 + index,
-        reservation_submitted_count: 5 + index,
-        cooperation_count: 3 + index,
-        formal_order_count: 4 + index,
-        buyer_formal_order_count: channel.lead_type === 'BUYER' ? 4 : 0,
-        seller_formal_order_count: channel.lead_type === 'SELLER' ? 5 : 0,
-        buyer_projected_gross_profit_cny_fen: channel.lead_type === 'BUYER' ? '286500' : null,
-        buyer_completed_gross_profit_cny_fen: channel.lead_type === 'BUYER' ? '168800' : null,
-        seller_projected_gross_profit_cny_fen: channel.lead_type === 'SELLER' ? '448600' : null,
-        seller_completed_gross_profit_cny_fen: channel.lead_type === 'SELLER' ? '318200' : null,
-      })),
-    };
-  if (path === '/api/staff/acquisition/source-corrections/candidates' && method === 'GET')
-    return {
-      items: [
-        {
-          lead_id: 'review-lead-buyer-1',
-          lead_type: 'BUYER',
-          marketplace_code: 'AMAZON_JP',
-          business_date: '2026-08-10',
-          display_name: 'Demo 新买家',
-          wechat_masked: 'demo****88',
-          original_channel_id: 'review-channel-1',
-          original_channel_name: '日本好物体验官',
-          effective_channel_id: 'review-channel-1',
-          effective_channel_name: '日本好物体验官',
-          correction_count: 0,
-        },
-      ],
-    };
-  if (path === '/api/staff/acquisition/leads' && method === 'GET')
-    return {
-      items: clone(
-        acquisitionLeads((parsed.searchParams.get('lead_type') ?? 'BUYER') as 'BUYER' | 'SELLER'),
-      ),
-      next_cursor: null,
-    };
   if (path === '/api/staff/customer-onboarding/lookup' && method === 'GET')
     return {
       matches: [
@@ -1546,41 +1300,65 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         },
       ],
     };
-  if (path === '/api/staff/operating-integrity/order-lookup' && method === 'GET') {
-    const refundFinancials = ['owner', 'buyer_refund'].includes(currentStaffReviewRole());
-    return {
-      order: {
-        formal_order_id: 'review-integrity-order-1',
-        amazon_order_number:
-          parsed.searchParams.get('amazon_order_number') ?? '503-5555555-6666666',
-        buyer_customer_id: 'review-buyer-customer-1',
-        seller_organization_id: 'review-seller-org',
-        marketplace_code: 'AMAZON_JP',
-        product_name: 'Demo Operating Integrity 产品',
-        confirmed_at: NOW - 3 * DAY,
-        marketplace_business_date: '2026-08-08',
-        review_case_id: 'review-staff-review-1',
-        review_status: 'APPROVED',
-        has_refund_obligation: refundFinancials ? false : null,
-        advance_full_amount_cny_fen: refundFinancials ? '48840' : null,
-        advance_net_cny_fen: refundFinancials ? '0' : null,
-        active_advance_payment_id: null,
-        operational_state: 'MANUAL_INVESTIGATION',
-        actions: {
-          record_order_event: { allowed: true, reason: null },
-          record_review_visibility: { allowed: true, reason: null },
-          approve_review: { allowed: false, reason: 'ORDER_UNDER_INVESTIGATION' },
-          record_advance_principal: { allowed: false, reason: 'ORDER_UNDER_INVESTIGATION' },
-          record_profit_adjustment: {
-            allowed: currentStaffReviewRole() === 'owner',
-            reason: currentStaffReviewRole() === 'owner' ? null : 'ROLE_NOT_ALLOWED',
-          },
-        },
-      },
-    };
-  }
-
   return blocked(`${method} ${request.path}`);
+}
+
+function formalOrderAggregate() {
+  const owner = currentStaffReviewRole() === 'owner';
+  const base = {
+    order: {
+      formal_order_id: 'review-seller-order-1',
+      marketplace_code: 'AMAZON_JP',
+      amazon_order_number: '503-7770001-0003001',
+      amazon_order_date: '2026-08-08',
+      status: 'CONFIRMED',
+      confirmed_at: NOW - 3 * DAY,
+    },
+    buyer: {
+      buyer_customer_id: 'review-buyer-customer-1',
+      display_name: 'Demo 买家',
+      customer_no: '20260808B00042',
+    },
+    seller: {
+      seller_organization_id: 'review-seller-org',
+      store_display_name: 'TEST 日本店 A',
+    },
+    payment_screenshot: {
+      file_object_id: 'review-payment-file-1',
+      file_version: 2,
+    },
+    communication_screenshots: [
+      {
+        file_object_id: 'review-comm-file-1',
+        file_version: 1,
+        purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+        visibility: 'SELLER_VISIBLE',
+      },
+    ],
+    operational_events: [
+      {
+        event_id: 'review-op-event-1',
+        event_type: 'MANUAL_INVESTIGATION',
+        reason: 'Demo 人工核查',
+        actor_staff_id: 'review-staff-owner',
+        created_at: NOW - DAY,
+      },
+    ],
+  };
+  if (!owner) return base;
+  return {
+    ...base,
+    financial_adjustments: [],
+    financial_snapshot: {
+      financial_snapshot_id: 'review-snapshot-1',
+      buyer_self_pay_bps: 1000,
+      buyer_self_pay_jpy: '398',
+      buyer_expected_principal_cny_fen: '165000',
+      seller_expected_principal_cny_fen: '182500',
+      service_fee_cny_fen: '1250',
+    },
+    finance_source: 'internal-finance',
+  };
 }
 
 function filterStore<T extends { store: { id: string } }>(

@@ -35,7 +35,6 @@ export function staffTestSession(
 ): StaffSession {
   const roles = {
     owner: { code: 'owner', display_name: '总管理员' },
-    acquisition: { code: 'acquisition', display_name: '获客' },
     pre_sales: { code: 'pre_sales', display_name: '售前' },
     seller_ops: { code: 'seller_ops', display_name: '卖家对接' },
     buyer_refund: { code: 'buyer_refund', display_name: '买家返款' },

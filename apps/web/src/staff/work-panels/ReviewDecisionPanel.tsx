@@ -1,12 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { z } from 'zod';
+import { identityApiRequest } from '../../api/identity-request';
+import { operationHeaders } from '../../api/idempotency';
 import { isFrontendApiError } from '../../api/errors';
+import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
 import {
   Alert,
   Button,
   Card,
   FormField,
   RequestIdDisplay,
+  Select,
   TextInput,
 } from '../../ui/primitives';
 import { staffApi } from '../api/client';
@@ -153,9 +158,97 @@ export function ReviewDecisionPanel({
             ) : null}
           </Card>
         ) : null}
+        <ReviewVisibilityObservation item={item} />
         <Audit />
       </aside>
     </>
+  );
+}
+
+const visibilityObservationSchema = z
+  .object({
+    observation: z
+      .object({
+        observation_id: z.string(),
+        review_case_id: z.string(),
+        formal_order_id: z.string(),
+        visibility_status: z.string(),
+        note: z.string().nullable(),
+        observed_at: z.number().int(),
+        actor_staff_id: z.string(),
+        created_at: z.number().int(),
+      })
+      .strict(),
+  })
+  .strict();
+
+/**
+ * 评论可见性观察（D-056 §4.5 保留的业务操作）：只记录 Amazon 当前展示
+ * 情况，不修改“当时审核通过”的历史事实；owner / pre_sales 可记录。
+ */
+function ReviewVisibilityObservation({ item }: { item: StaffWorkItem }): React.JSX.Element | null {
+  const session = useCurrentStaffSession();
+  const client = useQueryClient();
+  const [message, setMessage] = useState<string | null>(null);
+  const role = session.role.code;
+  const visibility = useMutation({
+    mutationFn: (request: { body: unknown; key: string }) =>
+      identityApiRequest('staff', client, {
+        path: `/api/staff/reviews/${encodeURIComponent(item.source_entity_id)}/visibility`,
+        method: 'POST',
+        schema: visibilityObservationSchema,
+        body: request.body,
+        headers: operationHeaders({ key: request.key, body: request.body }),
+      }),
+    onSuccess: () => setMessage('评论当前展示状态已记录；原审核通过结果保持不变。'),
+  });
+  if (role !== 'owner' && role !== 'pre_sales') return null;
+  return (
+    <Card>
+      <h3>评论展示状态</h3>
+      <p>这里只记录 Amazon 当前展示情况，不修改“当时审核通过”的历史事实。</p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          visibility.mutate({
+            body: {
+              visibility_status: String(data.get('visibility_status')),
+              note: String(data.get('note') ?? '').trim() || null,
+              observed_at: Date.now(),
+            },
+            key: crypto.randomUUID(),
+          });
+        }}
+      >
+        <FormField label="当前展示情况" htmlFor={`review-visibility-${item.work_item_id}`}>
+          <Select id={`review-visibility-${item.work_item_id}`} name="visibility_status">
+            <option value="VISIBLE">正常显示</option>
+            <option value="NOT_VISIBLE">一直未显示</option>
+            <option value="DROPPED">掉评</option>
+            <option value="RECHECK_REQUIRED">待复查</option>
+          </Select>
+        </FormField>
+        <FormField label="备注（可选）" htmlFor={`review-visibility-note-${item.work_item_id}`}>
+          <TextInput id={`review-visibility-note-${item.work_item_id}`} name="note" />
+        </FormField>
+        <Button className="secondary" loading={visibility.isPending}>
+          记录展示状态
+        </Button>
+      </form>
+      {message ? <Alert tone="success">{message}</Alert> : null}
+      {visibility.isError ? (
+        <>
+          <Alert tone="danger">
+            展示状态记录未完成
+            {isFrontendApiError(visibility.error) ? `（错误码：${visibility.error.code}）` : ''}。
+          </Alert>
+          <RequestIdDisplay
+            requestId={isFrontendApiError(visibility.error) ? visibility.error.requestId : null}
+          />
+        </>
+      ) : null}
+    </Card>
   );
 }
 

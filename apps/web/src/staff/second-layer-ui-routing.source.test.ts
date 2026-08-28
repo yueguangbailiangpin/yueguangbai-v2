@@ -19,8 +19,8 @@ describe('second layer active UI routing',()=>{
     expect(existsSync(path.join(root,'apps/apps'))).toBe(false);
   });
 
-  it('uses the direct ledger-safe Staff integrity tool with advance payment proof',()=>{
-    const implementation=read('apps/web/src/staff/StaffOperatingIntegrityTools.tsx');
+  it('uses the direct ledger-safe unified order detail with advance payment proof',()=>{
+    const implementation=read('apps/web/src/staff/orders/StaffOrderDetailPage.tsx');
     expect(implementation).toContain('PROJECTED_GROSS_PROFIT');
     expect(implementation).toContain('COMPLETED_GROSS_PROFIT');
     expect(implementation).toContain("uploader.start('staffBuyerRefundProof'");
@@ -31,6 +31,8 @@ describe('second layer active UI routing',()=>{
     expect(implementation).not.toContain('<option value="SELLER_PRINCIPAL_DUE">');
     expect(implementation).not.toContain('<option value="SELLER_SERVICE_FEE_DUE">');
     expect(implementation).not.toContain('<option value="BUYER_REFUND_DUE">');
+    // 旧 order-integrity 独立工具页已整体退役（D-056 §4.5：操作并入统一订单详情）。
+    expect(existsSync(path.join(root,'apps/web/src/staff/StaffOperatingIntegrityTools.tsx'))).toBe(false);
     expect(existsSync(path.join(root,'apps/web/src/staff/StaffOperatingIntegrityTools.ts'))).toBe(false);
   });
 });

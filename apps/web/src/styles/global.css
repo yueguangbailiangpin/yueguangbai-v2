@@ -2596,6 +2596,22 @@ select:disabled {
   color: var(--color-danger);
 }
 
+.file-drop-zone-replace-confirm {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.file-drop-zone-replace-confirm .entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .file-drop-zone-previews {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -2881,91 +2897,7 @@ select:disabled {
   font-weight: var(--font-weight-semibold);
 }
 
-.acquisition-workbench {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-5) var(--space-8);
-}
-
-.acquisition-workbench > *,
-.acquisition-workbench .data-table {
-  min-width: 0;
-}
-
-.acquisition-workbench .data-table {
-  width: 100%;
-}
-
-.acquisition-summary,
-.acquisition-columns,
-.acquisition-admin-grid {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.acquisition-summary {
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-}
-
-.acquisition-columns {
-  grid-template-columns: minmax(16rem, .8fr) minmax(22rem, 1.7fr);
-}
-
-.acquisition-admin-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.acquisition-register,
-.acquisition-leads,
-.acquisition-admin-grid > .card {
-  padding: var(--space-5);
-}
-
-.acquisition-form,
-.acquisition-lead-card form {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.acquisition-lead-list,
-.compact-list {
-  display: grid;
-  gap: var(--space-3);
-  margin: var(--space-4) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.acquisition-lead-card {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-}
-
-.acquisition-lead-card header {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.acquisition-lead-card dl {
-  display: grid;
-  grid-template-columns: 5rem minmax(0, 1fr);
-  gap: var(--space-2);
-  margin: 0;
-}
-
-.acquisition-lead-card dd { margin: 0; overflow-wrap: anywhere; }
-.acquisition-lead-card dt { color: var(--color-text-muted); }
-
 @media (max-width: 900px) {
-  .acquisition-columns,
-  .acquisition-admin-grid { grid-template-columns: 1fr; }
-  .acquisition-workbench { padding-inline: var(--space-4); }
   .product-scheduling-workspace { padding-inline: var(--space-4); }
   .product-search,
   .product-detail-summary,
@@ -3410,9 +3342,6 @@ select:disabled {
 
 .staff-main .dashboard-metric,
 .staff-main .metric-card,
-.staff-main .acquisition-register,
-.staff-main .acquisition-leads,
-.staff-main .acquisition-admin-grid > .card,
 .staff-main .product-detail-summary > .card,
 .staff-main .reservation-summary > .card {
   padding: var(--space-4);
@@ -3935,10 +3864,6 @@ select:disabled {
   }
 
   .staff-main .admin-dashboard,
-  .acquisition-workbench,
-  .product-scheduling-workspace {
-    padding-inline: var(--space-3);
-  }
 
   .staff-fact,
   .finance-separation {

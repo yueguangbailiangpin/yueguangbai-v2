@@ -81,7 +81,6 @@ describe('staff-navigation config', () => {
     expect(ids).toContain('workbench');
     expect(ids).toContain('customers');
     expect(ids).toContain('products');
-    expect(ids).toContain('system'); // operations
     expect(ids).not.toContain('buyer-refunds');
     expect(ids).not.toContain('finance');
     expect(ids).not.toContain('access-management');
@@ -101,12 +100,11 @@ describe('staff-navigation config', () => {
     expect(items.map((i) => i.id)).toContain('finance');
   });
 
-  it('buyer_refund sees refunds and operations but not products/finance/access', () => {
+  it('buyer_refund sees refunds but not products/finance/access', () => {
     const session = staffTestSession('buyer_refund', []);
     const items = getVisibleNavItems(session);
     const ids = items.map((i) => i.id);
     expect(ids).toContain('buyer-refunds');
-    expect(ids).toContain('system');
     expect(ids).not.toContain('products');
     expect(ids).not.toContain('finance');
     expect(ids).not.toContain('access-management');
@@ -120,16 +118,15 @@ describe('staff-navigation config', () => {
 
   it('owner without FINANCIAL_VIEW does not see admin-dashboard in system', () => {
     const session = staffTestSession('owner', ['STAFF_MANAGE']);
-    const items = getVisibleNavItems(session);
-    const system = items.find((i) => i.id === 'system');
+    // 系统设置组只剩经营看板一个子项；无 FINANCIAL_VIEW 时整组随之隐藏。
+    const system = STAFF_NAV_ITEMS.find((i) => i.id === 'system');
     expect(system).toBeDefined();
-    // admin-dashboard child exists in config but its visible() returns false
     const dashboardChild = system!.children!.find((c) => c.id === 'admin-dashboard');
     expect(dashboardChild).toBeDefined();
     expect(dashboardChild!.visible(session)).toBe(false);
-    // operations child is still visible
-    const opsChild = system!.children!.find((c) => c.id === 'operations');
-    expect(opsChild!.visible(session)).toBe(true);
+    expect(getVisibleNavItems(session).map((i) => i.id)).not.toContain('system');
+    // 旧“运行完整性工具”子项已随独立订单工具页退役。
+    expect(system!.children).toHaveLength(1);
   });
 
   it('Personal DENY simulation: permissions array controls visibility', () => {
@@ -340,12 +337,5 @@ describe('StaffShell old business routes still accessible', () => {
     renderShell(session, '/staff/refunds');
     const topbar = screen.getByRole('banner');
     expect(within(topbar).getByRole('heading', { name: '买家返款' })).toBeInTheDocument();
-  });
-
-  it('renders shell at /staff/operations', () => {
-    const session = staffTestSession('owner', []);
-    renderShell(session, '/staff/operations');
-    const topbar = screen.getByRole('banner');
-    expect(within(topbar).getByRole('heading', { name: '运行完整性工具' })).toBeInTheDocument();
   });
 });

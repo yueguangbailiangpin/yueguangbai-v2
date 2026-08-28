@@ -211,33 +211,35 @@ describe('application route registration', () => {
       '员工与权限',
       '系统设置',
       '经营看板',
-      '运行完整性工具',
     ]) {
       expect(screen.getAllByText(label).some((node) => nav.contains(node))).toBe(true);
     }
     // 旧叫法只允许出现在过渡期页面内容里，不允许再出现在导航。
-    for (const retired of ['产品库', '汇率中心', '客户开发', '工作队列', '买家客户', '卖家客户', '员工管理', '产品与投放', '买家与订单', '财务配置', '员工与访问管理']) {
+    for (const retired of ['产品库', '汇率中心', '客户开发', '工作队列', '买家客户', '卖家客户', '员工管理', '产品与投放', '买家与订单', '财务配置', '员工与访问管理', '运行完整性工具', '获客', '认领', '可认领']) {
       expect(nav.textContent).not.toContain(retired);
     }
   });
 
-  it('mounts the operating integrity tools under /staff/operations', async () => {
+  it('retired /staff/operations falls through to the workbench, not a standalone tool page', async () => {
     server.use(
       http.get(apiUrl('/api/staff-auth/session'), () =>
         HttpResponse.json(
           staffSessionEnvelopeFixture(staffSessionFixture, 'request-staff-operations-route'),
         ),
       ),
+      http.get(apiUrl('/api/staff/me/work-items'), () =>
+        HttpResponse.json({
+          data: { work_items: [], next_cursor: null },
+          meta: { request_id: 'request-staff-operations-fallback' },
+        }),
+      ),
     );
 
     renderWithMsw(<AppRoutes />, { route: '/staff/operations' });
 
-    expect(
-      await screen.findByRole('heading', { level: 2, name: '业务完整性工具' }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('heading', { level: 1, name: '运行完整性工具' }),
-    ).toBeVisible();
+    // 旧路径已从路由表移除：StaffRouteModule 兜底渲染工作台。
+    expect(await screen.findByText('任务队列')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: '业务完整性工具' })).not.toBeInTheDocument();
   });
 });
 

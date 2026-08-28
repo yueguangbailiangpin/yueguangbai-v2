@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { z } from 'zod';
 import { identityApiRequest } from '../api/identity-request';
@@ -19,16 +19,11 @@ import {
 } from '../ui/primitives';
 import { RateSummaryCard } from './shared/RateSummaryCard';
 import { formatShanghai } from './shared/format';
-import { StaffProtectedImage } from './shared/StaffProtectedImage';
-import { useFileUpload } from '../buyer/shared/useFileUpload';
-import { customerIntakeApi, STATIC_AMAZON_JP_CHANNEL, type CustomerChannel } from './customer-intake-api';
 
 const MARKET_LABELS: Record<string, string> = {
   AMAZON_JP: '亚马逊日本站',
   AMAZON_US: '亚马逊美国站',
   COUPANG_KR: 'Coupang 韩国站',
-  RAKUTEN_JP: '乐天日本站',
-  TIKTOK_JP: 'TikTok 日本站',
 };
 const matchSchema = z
   .object({
@@ -44,12 +39,6 @@ const matchSchema = z
       product_name: z.string(),
       platform_order_identifier: z.string().nullable(),
       confirmed_at: z.number().int().nonnegative(),
-      buyer_chat_screenshots: z.array(z.object({
-        file_object_id: z.string(),
-        file_version: z.number().int().positive(),
-        purpose: z.literal('ORDER_EVIDENCE'),
-        visibility: z.literal('INTERNAL_ONLY'),
-      }).strict()).default([]),
     }).strict()).default([]),
     source_status: z.literal('HISTORICAL_UNKNOWN'),
   })
@@ -191,7 +180,6 @@ const resolutionCaseSchema = z
   .strict();
 
 type HistoricalMatch = z.output<typeof matchSchema>;
-type SavedLead = { leadId: string; wechatId: string; marketplaceCode: string; displayName: string };
 type InvitationState = {
   kind: 'BUYER' | 'SELLER';
   id: string;
@@ -202,33 +190,30 @@ type InvitationState = {
 };
 
 export function BuyerCustomersWorkspace(): React.JSX.Element {
-  return <CustomerIntakeWorkspace leadType="BUYER" />;
+  return <CustomerManagementWorkspace customerKind="BUYER" />;
 }
 export function SellerCustomersWorkspace(): React.JSX.Element {
-  return <CustomerIntakeWorkspace leadType="SELLER" />;
+  return <CustomerManagementWorkspace customerKind="SELLER" />;
 }
 
-function CustomerIntakeWorkspace({
-  leadType,
+/**
+ * 买家管理 / 卖家管理（D-056：获客中心与线索体系退役后的客户接入）：
+ * 先查历史客户避免重复，再为新客户生成注册链接；买家编号在受邀注册
+ * 建档时立即生成并永久保留。
+ */
+function CustomerManagementWorkspace({
+  customerKind,
 }: {
-  leadType: 'BUYER' | 'SELLER';
+  customerKind: 'BUYER' | 'SELLER';
 }): React.JSX.Element {
   const session = useCurrentStaffSession();
-  const client = useQueryClient();
-  const buyer = leadType === 'BUYER';
+  const buyer = customerKind === 'BUYER';
   const allowed =
     session.role.code === 'owner' ||
     (buyer ? session.role.code === 'pre_sales' : session.role.code === 'seller_ops');
-  // D-056: the acquisition channel registry is retired; intake keeps a
-  // static AMAZON_JP entry until the 7A-2 rebuild.
-  const channels = useQuery({
-    queryKey: ['staff', 'customer-intake', 'channels', leadType, session.authorization_version],
-    queryFn: async () => [STATIC_AMAZON_JP_CHANNEL] as readonly CustomerChannel[],
-    enabled: allowed,
-    retry: false,
-  });
+  const client = useQueryClient();
   const sellerDirectory = useQuery({
-    queryKey: ['staff', 'customer-intake', 'seller-directory', session.authorization_version],
+    queryKey: ['staff', 'customer-management', 'seller-directory', session.authorization_version],
     queryFn: ({ signal }) =>
       identityApiRequest('staff', client, {
         path: '/api/staff/customer-onboarding/seller-directory',
@@ -249,26 +234,23 @@ function CustomerIntakeWorkspace({
     <main className="customer-intake-workspace">
       <header className="staff-customer-heading">
         <div>
-          <p className="eyebrow">{buyer ? '买家客户接入' : '卖家客户接入'}</p>
+          <p className="eyebrow">{buyer ? '买家管理' : '卖家管理'}</p>
           <h2>{buyer ? '买家客户' : '卖家客户'}</h2>
-          <p>先查历史客户，再新增。账号开通、密码恢复都从具体客户记录发起。</p>
+          <p>先查历史客户，再邀请新客户。账号开通、密码恢复都从具体客户记录发起。</p>
         </div>
       </header>
       <Alert tone="info">
-        历史客户不补渠道、不计入新增；身份不明确时提交总管理员处理，不要自行猜测绑定。
+        历史客户不重复建档；身份不明确时提交总管理员处理，不要自行猜测绑定。
       </Alert>
-      <HistoricalCustomerOnboarding leadType={leadType} />
+      <HistoricalCustomerLookup customerKind={customerKind} />
       <div className="customer-intake-grid">
-        <LeadCreateCard
-          leadType={leadType}
-          channels={channels.data ?? []}
-        />
+        <NewCustomerCard customerKind={customerKind} />
         {buyer ? (
           <Card className="customer-intake-list">
-            <h3>正式买家客户登记</h3>
+            <h3>买家客户列表</h3>
             <EmptyState
               title="客户列表随阶段 7A-2 工作台上线"
-              description="先在左侧保存新客户；完整客户列表与业务进度视图在工作台重构后提供。"
+              description="先为左侧新客户生成注册链接；完整客户列表与业务进度视图在工作台重构后提供。"
             />
           </Card>
         ) : (
@@ -340,9 +322,9 @@ function CustomerIntakeWorkspace({
   );
 }
 
-function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLER' }) {
+function HistoricalCustomerLookup({ customerKind }: { customerKind: 'BUYER' | 'SELLER' }) {
   const client = useQueryClient();
-  const buyer = leadType === 'BUYER';
+  const buyer = customerKind === 'BUYER';
   const [wechat, setWechat] = useState('');
   const [invitation, setInvitation] = useState<InvitationState | null>(null);
   const [resetTarget, setResetTarget] = useState<HistoricalMatch | null>(null);
@@ -350,7 +332,7 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
   const lookup = useMutation({
     mutationFn: (value: string) =>
       identityApiRequest('staff', client, {
-        path: `/api/staff/customer-onboarding/lookup?customer_type=${leadType}&wechat_id=${encodeURIComponent(value)}`,
+        path: `/api/staff/customer-onboarding/lookup?customer_type=${customerKind}&wechat_id=${encodeURIComponent(value)}`,
         method: 'GET',
         schema: lookupSchema,
       }),
@@ -358,17 +340,13 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
   const invite = useMutation({
     mutationFn: async (match: HistoricalMatch) => {
       if (buyer) {
-        const response = await issueHistoricalBuyerInvite(client, wechat, match.marketplace_code);
+        const response = await issueBuyerInvitation(client, wechat, match.marketplace_code);
         return toInvitation('BUYER', response.data.invitation);
       }
-      const current = await readCurrentSellerInvitation(client, {
-        sellerOrganizationId: match.subject_id,
-        leadId: null,
-      });
+      const current = await readCurrentSellerInvitation(client, match.subject_id);
       if (current.data.invitation?.status === 'ACTIVE')
         return toExistingSellerInvitation(current.data.invitation);
       const response = await issueSellerInvite(client, {
-        leadId: null,
         sellerOrganizationId: match.subject_id,
         wechatId: wechat,
         marketplaceCode: match.marketplace_code,
@@ -392,7 +370,7 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
   });
   const report = useMutation({
     mutationFn: (marketplaceCode: string) =>
-      reportIdentityConflict(client, { customerType: leadType, marketplaceCode, wechatId: wechat }),
+      reportIdentityConflict(client, { customerType: customerKind, marketplaceCode, wechatId: wechat }),
     onSuccess: () => void lookup.mutate(wechat),
   });
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -412,14 +390,14 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
       <div className="staff-section-toolbar">
         <div>
           <h3>历史客户 / 已有客户查询</h3>
-          <p>先查微信，避免重复新增；已开通账号也从这里做密码恢复。</p>
+          <p>先查微信，避免重复建档；已开通账号也从这里做密码恢复。</p>
         </div>
         <StatusBadge tone="neutral">不计新增客户</StatusBadge>
       </div>
       <form onSubmit={submit} className="historical-customer-search">
-        <FormField label="微信号" htmlFor={`${leadType}-historical-wechat`}>
+        <FormField label="微信号" htmlFor={`${customerKind}-historical-wechat`}>
           <TextInput
-            id={`${leadType}-historical-wechat`}
+            id={`${customerKind}-historical-wechat`}
             name="wechat_id"
             autoComplete="off"
             required
@@ -449,7 +427,7 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
       ))}
       {lookup.isSuccess && !data?.resolution_required && matches.length === 0 ? (
         <Alert tone="info">
-          没有找到已有{buyer ? '买家' : '卖家'}客户，可以按下方“新客户”流程保存。
+          没有找到已有{buyer ? '买家' : '卖家'}客户，可以按下方“邀请新客户”流程生成注册链接。
         </Alert>
       ) : null}
       {!data?.resolution_required
@@ -519,76 +497,30 @@ function HistoricalCustomerOnboarding({ leadType }: { leadType: 'BUYER' | 'SELLE
   );
 }
 
-function LeadCreateCard({
-  leadType,
-  channels,
-}: {
-  leadType: 'BUYER' | 'SELLER';
-  channels: readonly CustomerChannel[];
-}) {
+function NewCustomerCard({ customerKind }: { customerKind: 'BUYER' | 'SELLER' }) {
   const client = useQueryClient();
   const session = useCurrentStaffSession();
-  const buyer = leadType === 'BUYER';
+  const buyer = customerKind === 'BUYER';
   const [marketplaceCode, setMarketplaceCode] = useState('');
-  const [saved, setSaved] = useState<SavedLead | null>(null);
+  const [wechatId, setWechatId] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [invitation, setInvitation] = useState<InvitationState | null>(null);
-  const eligibleChannels = channels.filter(
-    (channel) => channel.status === 'ACTIVE' && channel.lead_type === leadType,
-  );
+  const [registeredNote, setRegisteredNote] = useState<string | null>(null);
   const markets = useMemo(() => {
     if (session.data_scope.type !== 'GLOBAL' && session.data_scope.marketplaceCodes.length > 0)
       return session.data_scope.marketplaceCodes;
-    return [...new Set(eligibleChannels.map((channel) => channel.marketplace_code))];
-  }, [eligibleChannels, session.data_scope.marketplaceCodes, session.data_scope.type]);
-  const marketplaceChannels = useMemo(
-    () => eligibleChannels.filter((channel) => channel.marketplace_code === marketplaceCode),
-    [eligibleChannels, marketplaceCode],
-  );
-  useEffect(() => {
-    if (markets.includes(marketplaceCode)) return;
-    setMarketplaceCode(markets[0] ?? '');
-  }, [marketplaceCode, markets]);
-  const create = useMutation({
-    mutationFn: async (input: {
-      body: { wechat_id: string; display_name?: string; marketplace_code: string };
-      draft: Omit<SavedLead, 'leadId'>;
-    }): Promise<{
-      response: { data: { buyer: { buyer_customer_id: string } } };
-      draft: Omit<SavedLead, 'leadId'>;
-    }> => ({
-      response: await customerIntakeApi.createBuyer(client, input.body, crypto.randomUUID()) as {
-        data: { buyer: { buyer_customer_id: string } };
-      },
-      draft: input.draft,
-    }),
-    onSuccess: ({ response, draft }) => {
-      setSaved({ leadId: response.data.buyer.buyer_customer_id, ...draft });
-      setInvitation(null);
-      void client.invalidateQueries({ queryKey: ['staff', 'customer-intake'] });
-    },
-    onError: (error) => {
-      if (isFrontendApiError(error) && error.code === 'DUPLICATE_LEAD') {
-        void client.invalidateQueries({ queryKey: ['staff', 'customer-intake'] });
-      }
-    },
-  });
+    return ['AMAZON_JP'];
+  }, [session.data_scope.marketplaceCodes, session.data_scope.type]);
   const invite = useMutation({
-    mutationFn: async (value: SavedLead) => {
+    mutationFn: async () => {
       if (buyer) {
-        const response = await issueNewBuyerInvite(client, value);
+        const response = await issueBuyerInvitation(client, wechatId, marketplaceCode);
         return toInvitation('BUYER', response.data.invitation);
       }
-      const current = await readCurrentSellerInvitation(client, {
-        sellerOrganizationId: null,
-        leadId: value.leadId,
-      });
-      if (current.data.invitation?.status === 'ACTIVE')
-        return toExistingSellerInvitation(current.data.invitation);
       const response = await issueSellerInvite(client, {
-        leadId: value.leadId,
         sellerOrganizationId: null,
-        wechatId: value.wechatId,
-        marketplaceCode: value.marketplaceCode,
+        wechatId,
+        marketplaceCode,
       });
       return toInvitation('SELLER', response.data.invitation);
     },
@@ -603,46 +535,33 @@ function LeadCreateCard({
   });
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSaved(null);
     setInvitation(null);
-    const form = event.currentTarget,
-      data = new FormData(form);
-    const marketplaceCode = String(data.get('marketplace_code'));
-    const wechatId = String(data.get('wechat_id'));
-    const displayName = String(data.get('display_name') ?? '').trim() || wechatId;
-    create.mutate(
-      {
-        body: {
-          marketplace_code: marketplaceCode,
-          wechat_id: wechatId,
-          display_name: displayName,
-        },
-        draft: { wechatId, marketplaceCode, displayName },
+    setRegisteredNote(null);
+    invite.mutate(undefined, {
+      onSuccess: () => {
+        setRegisteredNote(
+          buyer
+            ? '买家通过链接完成注册后即建立正式买家档案并分配永久买家编号。'
+            : '卖家通过链接完成注册后即建立卖家组织与成员账号。',
+        );
       },
-      {
-        onSuccess: () => {
-          form.reset();
-        },
-      },
-    );
+    });
   }
   return (
     <Card className="customer-intake-create">
-      <h3>新{buyer ? '买家' : '卖家'}客户</h3>
+      <h3>邀请新{buyer ? '买家' : '卖家'}客户</h3>
       <p>
-        保存成功就计入新增客户；{buyer ? '买家' : '卖家'}网站账号是否开通是后续独立步骤。
+        生成一次性注册链接并通过私人微信发送。
+        {buyer ? '买家编号在受邀注册建档时自动生成，格式为录入日期 + 渠道码 + 流水号。' : ''}
       </p>
       <form onSubmit={submit}>
-        <FormField label="站点" htmlFor={`${leadType}-market`}>
+        <FormField label="站点" htmlFor={`${customerKind}-market`}>
           <Select
-            id={`${leadType}-market`}
-            name="marketplace_code"
+            id={`${customerKind}-market`}
             value={marketplaceCode}
             onChange={(event) => setMarketplaceCode(event.target.value)}
-            disabled={markets.length === 0}
             required
           >
-            {markets.length === 0 ? <option value="">暂无可用站点</option> : null}
             {markets.map((market) => (
               <option key={market} value={market}>
                 {marketLabel(market)}
@@ -650,65 +569,38 @@ function LeadCreateCard({
             ))}
           </Select>
         </FormField>
-        {marketplaceChannels.length === 0 ? (
-          <Alert tone="warning">
-            当前没有可用的{buyer ? '买家' : '卖家'}接入渠道，请先在“客户开发”配置渠道。
-          </Alert>
-        ) : null}
-        <FormField label="渠道" htmlFor={`${leadType}-channel`}>
-          <Select
-            id={`${leadType}-channel`}
-            name="channel_id"
-            disabled={marketplaceCode.length === 0}
+        <FormField label="微信号" htmlFor={`${customerKind}-wechat`}>
+          <TextInput
+            id={`${customerKind}-wechat`}
+            value={wechatId}
+            onChange={(event) => setWechatId(event.target.value)}
             required
-          >
-            <option value="">请选择渠道</option>
-            {marketplaceChannels.map((channel) => (
-              <option key={channel.channel_id} value={channel.channel_id}>
-                {channel.label}
-              </option>
-            ))}
-          </Select>
-        </FormField>
-        <FormField label="微信号" htmlFor={`${leadType}-wechat`}>
-          <TextInput id={`${leadType}-wechat`} name="wechat_id" required autoComplete="off" />
+            autoComplete="off"
+          />
         </FormField>
         <FormField
-          label="客户编号"
-          htmlFor={`${leadType}-name`}
-          description="线下台账里的客户编号"
+          label="线下备注名（可选）"
+          htmlFor={`${customerKind}-name`}
+          description="仅帮助员工识别，客户编号以系统生成结果为准"
         >
-          <TextInput id={`${leadType}-name`} name="display_name" required />
+          <TextInput
+            id={`${customerKind}-name`}
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
         </FormField>
-        <FormField label="备注（可选）" htmlFor={`${leadType}-note`}>
-          <TextInput id={`${leadType}-note`} name="note" />
-        </FormField>
-        <Button
-          loading={create.isPending}
-          disabled={marketplaceCode.length === 0 || marketplaceChannels.length === 0}
-        >
-          保存新{buyer ? '买家' : '卖家'}客户
+        <Button loading={invite.isPending} disabled={marketplaceCode.length === 0 || wechatId.trim().length === 0}>
+          生成{buyer ? '买家' : '卖家'}注册链接
         </Button>
-        {create.isError ? (
-          <Alert tone={isDuplicateLeadError(create.error) ? 'warning' : 'danger'}>
-            {isDuplicateLeadError(create.error)
-              ? '这个微信在当前站点已经保存过，不需要重复新增。请查看右侧客户目录，或使用上方历史客户查询。'
-              : '保存未完成。如果这个微信在当前站点属于历史客户，请使用上方历史客户查询。'}
+        {invite.isError ? (
+          <Alert tone={isDuplicateCustomerError(invite.error) ? 'warning' : 'danger'}>
+            {isDuplicateCustomerError(invite.error)
+              ? '这个微信在当前站点可能已经保存过。请先使用上方历史客户查询确认。'
+              : '注册链接生成未完成。如果这个微信在当前站点属于历史客户，请使用上方历史客户查询。'}
           </Alert>
         ) : null}
       </form>
-      {saved ? (
-        <div className="customer-registration-success">
-          <Alert tone="success">
-            <strong>{saved.displayName}</strong> 已成功登记。
-            {buyer ? '买家客户已保存。' : '卖家客户已保存，卖家组织同步建立。'}{' '}
-            网站账号可以现在开通，也可以以后再开。
-          </Alert>
-          <Button loading={invite.isPending} onClick={() => invite.mutate(saved)}>
-            检查 / 生成{buyer ? '买家' : '卖家'}注册链接
-          </Button>
-        </div>
-      ) : null}
+      {registeredNote ? <Alert tone="info">{registeredNote}</Alert> : null}
       {invitation ? (
         <InvitationResult
           state={invitation}
@@ -717,17 +609,15 @@ function LeadCreateCard({
           onClear={() => setInvitation(null)}
         />
       ) : null}
-      {invite.isError ? (
-        <Alert tone="danger">
-          注册链接操作失败；如果客户已经有网站账号或身份存在冲突，请先查询历史客户。
-        </Alert>
-      ) : null}
     </Card>
   );
 }
 
-function isDuplicateLeadError(error: unknown): boolean {
-  return isFrontendApiError(error) && error.code === 'DUPLICATE_LEAD';
+function isDuplicateCustomerError(error: unknown): boolean {
+  return (
+    isFrontendApiError(error) &&
+    (error.code === 'DUPLICATE_LEAD' || error.code === 'CONFLICT')
+  );
 }
 
 function SellerPortalAccessAction({ seller }: { seller: SellerDirectoryItem }) {
@@ -735,15 +625,11 @@ function SellerPortalAccessAction({ seller }: { seller: SellerDirectoryItem }) {
   const [invitation, setInvitation] = useState<InvitationState | null>(null);
   const invite = useMutation({
     mutationFn: async () => {
-      const current = await readCurrentSellerInvitation(client, {
-        sellerOrganizationId: seller.seller_organization_id,
-        leadId: null,
-      });
+      const current = await readCurrentSellerInvitation(client, seller.seller_organization_id);
       if (current.data.invitation?.status === 'ACTIVE') {
         return toExistingSellerInvitation(current.data.invitation);
       }
       const response = await issueSellerInvite(client, {
-        leadId: null,
         sellerOrganizationId: seller.seller_organization_id,
         wechatId: seller.wechat_masked,
         marketplaceCode: seller.marketplace_code,
@@ -790,7 +676,7 @@ function InvitationResult({
   revokeBusy: boolean;
   onRevoke: () => void;
   onClear: () => void;
-}) {
+}): React.JSX.Element {
   if (state.status === 'REVOKED')
     return (
       <Alert tone="info">
@@ -892,26 +778,47 @@ function PasswordResetForm({
   );
 }
 
-async function issueHistoricalBuyerInvite(
+/** 买家历史订单只读列表；订单沟通截图在统一订单详情上传（D-056 §4.1）。 */
+function BuyerOrderHistory({ match }: {
+  match: HistoricalMatch;
+}): React.JSX.Element | null {
+  const [open, setOpen] = useState(false);
+  if (match.historical_order_count === 0 && match.orders.length === 0) return null;
+  if (!open) {
+    return <div className="buyer-order-history-toggle">
+      <Button className="secondary" onClick={() => setOpen(true)}>
+        查看历史订单（{match.historical_order_count} 单）
+      </Button>
+    </div>;
+  }
+  return <details className="buyer-order-history" open>
+    <summary onClick={(event) => { event.preventDefault(); setOpen(false); }}>
+      历史订单（最近 {match.orders.length} 单{match.historical_order_count > match.orders.length
+        ? `，共 ${match.historical_order_count} 单` : ''}，点此收起）
+    </summary>
+    {match.orders.length === 0
+      ? <p>暂无订单记录。</p>
+      : <ul>
+      {match.orders.map((order) => (
+        <li key={order.formal_order_id}>
+          <Link to={`/staff/orders/${encodeURIComponent(order.formal_order_id)}`}>
+            {order.product_name}
+            {order.platform_order_identifier ? ` · ${order.platform_order_identifier}` : ''}
+          </Link>
+          <small>{formatShanghai(order.confirmed_at)} 确认</small>
+        </li>
+      ))}
+    </ul>}
+    <p>沟通截图请在订单详情页上传与查看。</p>
+  </details>;
+}
+
+async function issueBuyerInvitation(
   client: ReturnType<typeof useQueryClient>,
   wechatId: string,
   marketplaceCode: string,
 ) {
   const body = { wechat_id: wechatId, marketplace_code: marketplaceCode };
-  return identityApiRequest('staff', client, {
-    path: '/api/staff/customer-security/buyer-invitations',
-    method: 'POST',
-    schema: buyerInvitationSchema,
-    body,
-    headers: operationHeaders({ key: crypto.randomUUID(), body }),
-  });
-}
-async function issueNewBuyerInvite(client: ReturnType<typeof useQueryClient>, value: SavedLead) {
-  const body = {
-    lead_id: value.leadId,
-    wechat_id: value.wechatId,
-    marketplace_code: value.marketplaceCode,
-  };
   return identityApiRequest('staff', client, {
     path: '/api/staff/customer-onboarding/buyer-registration-invitations',
     method: 'POST',
@@ -923,14 +830,14 @@ async function issueNewBuyerInvite(client: ReturnType<typeof useQueryClient>, va
 async function issueSellerInvite(
   client: ReturnType<typeof useQueryClient>,
   input: {
-    leadId: string | null;
     sellerOrganizationId: string | null;
     wechatId: string;
     marketplaceCode: string;
   },
 ) {
   const body = {
-    lead_id: input.leadId,
+    // D-056：获客线索退役，lead_id 恒为 null。
+    lead_id: null,
     seller_organization_id: input.sellerOrganizationId,
     wechat_id: input.wechatId,
     marketplace_code: input.marketplaceCode,
@@ -945,13 +852,10 @@ async function issueSellerInvite(
 }
 async function readCurrentSellerInvitation(
   client: ReturnType<typeof useQueryClient>,
-  input: { leadId: string | null; sellerOrganizationId: string | null },
+  sellerOrganizationId: string,
 ) {
-  const query = new URLSearchParams();
-  if (input.leadId) query.set('lead_id', input.leadId);
-  if (input.sellerOrganizationId) query.set('seller_organization_id', input.sellerOrganizationId);
   return identityApiRequest('staff', client, {
-    path: `/api/staff/customer-security/seller-invitations/current?${query}`,
+    path: `/api/staff/customer-security/seller-invitations/current?seller_organization_id=${encodeURIComponent(sellerOrganizationId)}`,
     method: 'GET',
     schema: currentSellerInvitationSchema,
   });
@@ -1036,173 +940,4 @@ function ambiguousMarketplaceCodes(matches: readonly HistoricalMatch[]) {
 }
 function marketLabel(code: string) {
   return MARKET_LABELS[code] ?? '未命名站点';
-}
-
-
-type BuyerChatScreenshotReference = {
-  file_object_id: string;
-  file_version: number;
-  purpose: 'ORDER_COMMUNICATION_SCREENSHOT';
-  visibility: 'SELLER_VISIBLE';
-};
-
-const buyerChatAttachSchema = z
-  .object({
-    screenshot: z.object({
-      formal_order_id: z.string(),
-      file_object_id: z.string(),
-      replayed: z.boolean(),
-    }).strict(),
-  })
-  .strict();
-
-/**
- * Staff-only WeChat conversation screenshots with the buyer, attached to the
- * confirmed formal order they belong to (user decision 2026-08-24).  Buyers
- * never see any of this: the upload route, the attach command and the list
- * fields are staff-scoped with INTERNAL_ONLY visibility.
- */
-function BuyerOrderHistory({ match }: {
-  match: { display_name: string; historical_order_count: number; orders: unknown };
-}): React.JSX.Element {
-  const client = useQueryClient();
-  const session = useCurrentStaffSession();
-  const [open, setOpen] = useState(false);
-  const [, upload] = useFileUpload();
-  const [targetOrderId, setTargetOrderId] = useState<string | null>(null);
-  const [attached, setAttached] = useState<Record<string, BuyerChatScreenshotReference[]>>({});
-  const handledManifest = useRef<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const attach = useMutation({
-    mutationFn: async (input: {
-      orderId: string;
-      fileObjectId: string;
-      fileVersion: number;
-    }) => {
-      const body = {
-        file_object_id: input.fileObjectId,
-        expected_file_version: input.fileVersion,
-      };
-      return identityApiRequest('staff', client, {
-        path: `/api/staff/formal-orders/${encodeURIComponent(input.orderId)}/communication-screenshots`,
-        method: 'POST',
-        schema: buyerChatAttachSchema,
-        body,
-        headers: operationHeaders({ key: crypto.randomUUID(), body }),
-      });
-    },
-    onSuccess: (response, input) => {
-      setAttached((current) => ({
-        ...current,
-        [input.orderId]: [
-          ...(current[input.orderId] ?? []),
-          {
-            file_object_id: response.data.screenshot.file_object_id,
-            file_version: input.fileVersion,
-            purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
-            visibility: 'SELLER_VISIBLE',
-          },
-        ],
-      }));
-    },
-  });
-  const orders = match.orders as {
-    formal_order_id: string;
-    product_name: string;
-    platform_order_identifier: string | null;
-    confirmed_at: number;
-    buyer_chat_screenshots: BuyerChatScreenshotReference[];
-  }[];
-  const receipt = upload.manifest?.files[0];
-  useEffect(() => {
-    if (!receipt || !targetOrderId || upload.manifest === null) return;
-    if (handledManifest.current === upload.manifest.request_id) return;
-    handledManifest.current = upload.manifest.request_id;
-    attach.mutate({
-      orderId: targetOrderId,
-      fileObjectId: receipt.file_object_id,
-      fileVersion: receipt.file_version,
-    });
-  }, [receipt, targetOrderId, upload.manifest, attach]);
-  const canUpload = session.permissions.includes('ORDER_CONFIRM');
-  if (match.historical_order_count === 0 && orders.length === 0) {
-    return <p className="buyer-order-history-empty">
-      确认渠道的聊天截图需挂到正式订单，该买家暂无订单，暂无法上传。
-    </p>;
-  }
-  if (!open) {
-    return <div className="buyer-order-history-toggle">
-      <Button className="secondary" onClick={() => setOpen(true)}>
-        查看历史订单（{match.historical_order_count} 单）
-      </Button>
-    </div>;
-  }
-  return <details className="buyer-order-history" open>
-    <input
-      ref={fileInput}
-      type="file"
-      accept="image/jpeg,image/png,image/webp"
-      hidden
-      onChange={(event) => {
-        const file = event.target.files?.[0];
-        event.target.value = '';
-        if (!file) return;
-        // D-056 §4.1: chat screenshots now live on the formal-order detail
-        // (communication-screenshots); this legacy buyer-match entry is
-        // retired until the 7A-2 workspace rebuild.
-        void file;
-      }}
-    />
-    <summary onClick={(event) => { event.preventDefault(); setOpen(false); }}>
-      历史订单（最近 {orders.length} 单{match.historical_order_count > orders.length
-        ? `，共 ${match.historical_order_count} 单` : ''}，点此收起）
-    </summary>
-    {orders.length === 0
-      ? <p>确认渠道的聊天截图需挂到正式订单，该买家暂无订单，暂无法上传。</p>
-      : <ul>
-      {orders.map((order) => {
-        const screenshots = [
-          ...(order.buyer_chat_screenshots ?? []),
-          ...(attached[order.formal_order_id] ?? []),
-        ];
-        return <li key={order.formal_order_id}>
-          <Link to={`/staff/orders/${encodeURIComponent(order.formal_order_id)}`}>
-            {order.product_name}
-            {order.platform_order_identifier ? ` · ${order.platform_order_identifier}` : ''}
-          </Link>
-          <small>{formatShanghai(order.confirmed_at)} 确认</small>
-          {screenshots.length > 0 && <div className="buyer-chat-screenshots">
-            {screenshots.map((reference) => (
-              <StaffProtectedImage
-                key={reference.file_object_id}
-                reference={reference}
-                alt="买家聊天截图"
-                className="protected-evidence-thumbnail"
-                fallback={<span className="protected-image-placeholder">聊天截图加载中</span>}
-              />
-            ))}
-          </div>}
-          {canUpload && <div className="buyer-chat-upload">
-            <Button
-              className="secondary"
-              disabled={upload.state === 'UPLOADING' || attach.isPending}
-              onClick={() => {
-                attach.reset();
-                setTargetOrderId(order.formal_order_id);
-                fileInput.current?.click();
-              }}
-            >
-              上传聊天截图
-            </Button>
-          </div>}
-        </li>;
-      })}
-    </ul>}
-    {targetOrderId && (upload.state === 'UPLOADING' || attach.isPending) && (
-      <p className="staff-upload-state">聊天截图上传中…</p>
-    )}
-    {upload.error && <Alert tone="danger">截图上传失败：{upload.error.code}</Alert>}
-    {attach.error && isFrontendApiError(attach.error)
-      && <Alert tone="danger">挂载失败：{attach.error.code}</Alert>}
-  </details>;
 }

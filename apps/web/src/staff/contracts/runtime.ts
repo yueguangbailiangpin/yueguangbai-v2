@@ -260,53 +260,95 @@ export const internalFinanceOrderDetailSchema = z
       .strict(),
   })
   .strict();
-export const staffOrderIntegritySchema = z
+/**
+ * D-056 §4.5: the single aggregate staff formal-order detail
+ * (`GET /api/staff/formal-orders/:id`). Sections outside the caller's
+ * authority (financial_adjustments / financial_snapshot / finance_source)
+ * are omitted by the backend rather than concealed behind another route.
+ */
+export const staffFormalOrderDetailSchema = z
   .object({
-    order_integrity: z
+    order: z
       .object({
         formal_order_id: z.string(),
-        canonical_marketplace_code: z.string(),
-        operational_state: z.string(),
-        events: z.array(
-          z
-            .object({
-              event_id: z.string(),
-              formal_order_id: z.string(),
-              event_type: z.string(),
-              reason: z.string().nullable(),
-              actor_staff_id: z.string(),
-              created_at: epoch,
-            })
-            .strict(),
-        ),
-        adjustments: z.array(
-          z
-            .object({
-              adjustment_id: z.string(),
-              formal_order_id: z.string(),
-              source_operational_event_id: z.string().nullable(),
-              adjustment_scope: z.string(),
-              amount_cny_fen: signedIntegerStringSchema,
-              reason: z.string().nullable(),
-              actor_staff_id: z.string(),
-              created_at: epoch,
-            })
-            .strict(),
-        ),
-        buyer_chat_screenshots: z.array(
-          z
-            .object({
-              file_object_id: z.string(),
-              file_version: z.number().int().positive(),
-              purpose: z.literal('ORDER_EVIDENCE'),
-              visibility: z.literal('INTERNAL_ONLY'),
-            })
-            .strict(),
-        ).default([]),
+        marketplace_code: z.string(),
+        amazon_order_number: z.string(),
+        amazon_order_date: z.string(),
+        status: z.string(),
+        confirmed_at: epoch,
       })
       .strict(),
+    buyer: z
+      .object({
+        buyer_customer_id: z.string(),
+        display_name: z.string(),
+        customer_no: z.string().nullable(),
+      })
+      .strict(),
+    seller: z
+      .object({
+        seller_organization_id: z.string(),
+        store_display_name: z.string(),
+      })
+      .strict(),
+    payment_screenshot: z
+      .object({
+        file_object_id: z.string(),
+        file_version: z.number().int().positive(),
+      })
+      .strict()
+      .nullable(),
+    communication_screenshots: z.array(
+      z
+        .object({
+          file_object_id: z.string(),
+          file_version: z.number().int().positive(),
+          purpose: z.literal('ORDER_COMMUNICATION_SCREENSHOT'),
+          visibility: z.literal('SELLER_VISIBLE'),
+        })
+        .strict(),
+    ),
+    operational_events: z.array(
+      z
+        .object({
+          event_id: z.string(),
+          event_type: z.string(),
+          reason: z.string().nullable(),
+          actor_staff_id: z.string(),
+          created_at: epoch,
+        })
+        .strict(),
+    ),
+    financial_adjustments: z
+      .array(
+        z
+          .object({
+            adjustment_id: z.string(),
+            adjustment_scope: z.string(),
+            amount_cny_fen: signedIntegerStringSchema,
+            reason: z.string().nullable(),
+            actor_staff_id: z.string(),
+            created_at: epoch,
+          })
+          .strict(),
+      )
+      .optional(),
+    financial_snapshot: z
+      .object({
+        financial_snapshot_id: z.string(),
+        buyer_self_pay_bps: z.number().int().nonnegative(),
+        buyer_self_pay_jpy: signedIntegerStringSchema,
+        buyer_expected_principal_cny_fen: signedIntegerStringSchema,
+        seller_expected_principal_cny_fen: signedIntegerStringSchema,
+        service_fee_cny_fen: signedIntegerStringSchema,
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    finance_source: z.literal('internal-finance').optional(),
   })
   .strict();
+export type StaffFormalOrderDetail = z.output<typeof staffFormalOrderDetailSchema>;
 export const staffSellerServiceFeesSchema = z
   .object({
     seller_organization_id: z.string(),
@@ -335,6 +377,7 @@ export const safeFileSchema = z
       'REVIEW_EVIDENCE',
       'BUYER_REFUND_PROOF',
       'SELLER_SETTLEMENT_PROOF',
+      'ORDER_COMMUNICATION_SCREENSHOT',
     ]),
     visibility: z.enum(['BUYER_VISIBLE', 'SELLER_VISIBLE', 'INTERNAL_ONLY']),
   })
@@ -819,88 +862,6 @@ export type StaffOrderEvidencePreflight = z.output<
 export type StaffReview = z.output<typeof staffReviewSchema>['review'];
 export type StaffBuyerRefund = z.output<typeof staffBuyerRefundSchema>['buyer_refund'];
 
-export const acquisitionChannelSchema = z
-  .object({
-    channel_id: z.string(),
-    code: z.string(),
-    channel_type: z.enum(['XIAOHONGSHU', 'PRIVATE_WECHAT', 'REFERRAL', 'OTHER']),
-    display_name: z.string(),
-    status: z.enum(['ACTIVE', 'DISABLED']),
-    version: z.number().int().positive(),
-    created_at: epoch,
-    updated_at: epoch,
-  })
-  .strict();
-export const acquisitionAssignmentSchema = z
-  .object({
-    assignment_id: z.string(),
-    staff_id: z.string(),
-    lead_type: z.enum(['BUYER', 'SELLER']),
-    channel_id: z.string(),
-    channel_name: z.string(),
-    effective_from: epoch,
-    effective_until: epoch.nullable(),
-    status: z.enum(['ACTIVE', 'REVOKED']),
-    version: z.number().int().positive(),
-  })
-  .strict();
-export const acquisitionConsultationSchema = z
-  .object({
-    consultation_id: z.string(),
-    channel_id: z.string(),
-    lead_type: z.enum(['BUYER', 'SELLER']),
-    business_date: z.string(),
-    person_count: z.number().int().nonnegative(),
-    version: z.number().int().positive(),
-    updated_by_staff_id: z.string(),
-    updated_at: epoch,
-  })
-  .strict();
-export const acquisitionConsultationEventSchema = z
-  .object({
-    event_id: z.string(),
-    event_type: z.enum(['RECORDED', 'CORRECTED']),
-    previous_count: z.number().int().nonnegative().nullable(),
-    next_count: z.number().int().nonnegative(),
-    previous_version: z.number().int().positive().nullable(),
-    next_version: z.number().int().positive(),
-    actor_staff_id: z.string(),
-    reason: z.string(),
-    created_at: epoch,
-  })
-  .strict();
-export const acquisitionLeadSchema = z
-  .object({
-    lead_id: z.string(),
-    lead_type: z.enum(['BUYER', 'SELLER']),
-    wechat_masked: z.string(),
-    display_name: z.string().nullable(),
-    note: z.string().nullable(),
-    origin_channel_id: z.string(),
-    origin_channel_name: z.string(),
-    origin_staff_id: z.string(),
-    current_owner_staff_id: z.string(),
-    status: z.enum(['ACTIVE', 'INVALIDATED', 'ANONYMIZED']),
-    version: z.number().int().positive(),
-    created_business_date: z.string(),
-    latest_followup_at: epoch,
-    retention_due_at: epoch,
-    retention_hold_reason: z.enum(['SECURITY', 'DISPUTE', 'LEGAL']).nullable(),
-    registered: z.boolean(),
-    reservation_submitted: z.boolean(),
-    no_participation: z.boolean(),
-    formal_order_count: z.number().int().nonnegative(),
-    seller_cooperation: z.boolean(),
-    created_at: epoch,
-    updated_at: epoch,
-  })
-  .strict();
-
-export type AcquisitionChannel = z.output<typeof acquisitionChannelSchema>;
-export type AcquisitionAssignment = z.output<typeof acquisitionAssignmentSchema>;
-export type AcquisitionConsultation = z.output<typeof acquisitionConsultationSchema>;
-export type AcquisitionLead = z.output<typeof acquisitionLeadSchema>;
-
 export const orderCadenceSchema = z
   .object({
     order_interval_days: z.number().int().positive(),
@@ -1240,7 +1201,6 @@ export const adminDashboardSummarySchema = z
   .strict();
 const staffAccessRoleSchema = z.discriminatedUnion('code', [
   z.object({ code: z.literal('owner'), display_name: z.literal('总管理员') }).strict(),
-  z.object({ code: z.literal('acquisition'), display_name: z.literal('获客') }).strict(),
   z.object({ code: z.literal('pre_sales'), display_name: z.literal('售前') }).strict(),
   z.object({ code: z.literal('seller_ops'), display_name: z.literal('卖家对接') }).strict(),
   z.object({ code: z.literal('buyer_refund'), display_name: z.literal('买家返款') }).strict(),

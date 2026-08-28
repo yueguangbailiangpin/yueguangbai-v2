@@ -34,10 +34,10 @@ import {
   staffReservationSchedulePageSchema,
   staffAccessOverviewSchema,
   staffAccessMutationSchema,
+  staffFormalOrderDetailSchema,
   staffSellerPrincipalRatePoliciesResponseSchema,
   staffSellerPrincipalRatePolicyMutationSchema,
   internalFinanceOrderDetailSchema,
-  staffOrderIntegritySchema,
   staffRateCenterSchema,
   staffRateCenterBaseMutationSchema,
   staffSellerServiceFeesSchema,
@@ -154,14 +154,6 @@ export const staffApi = Object.freeze({
     write(
       client,
       `/api/staff/access-management/employees/${encodeURIComponent(staffId)}/status`,
-      body,
-      staffAccessMutationSchema,
-      key,
-    ),
-  changeStaffRole: (client: QueryClient, staffId: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/access-management/employees/${encodeURIComponent(staffId)}/role`,
       body,
       staffAccessMutationSchema,
       key,
@@ -349,16 +341,13 @@ export const staffApi = Object.freeze({
       data: response.data.order,
       requestId: response.requestId,
     })),
-  orderIntegrity: (client: QueryClient, formalOrderId: string, signal?: AbortSignal) =>
+  formalOrderDetail: (client: QueryClient, formalOrderId: string, signal?: AbortSignal) =>
     read(
       client,
-      `/api/staff/order-integrity/${encodeURIComponent(formalOrderId)}`,
-      staffOrderIntegritySchema,
+      `/api/staff/formal-orders/${encodeURIComponent(formalOrderId)}`,
+      staffFormalOrderDetailSchema,
       signal,
-    ).then((response) => ({
-      data: response.data.order_integrity,
-      requestId: response.requestId,
-    })),
+    ),
   saveOrderDayBaseRate: (client: QueryClient, body: unknown, key: string) =>
     write(
       client,

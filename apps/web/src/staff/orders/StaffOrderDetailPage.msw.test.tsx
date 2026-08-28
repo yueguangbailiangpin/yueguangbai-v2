@@ -14,36 +14,25 @@ import { StaffOrderDetailPage } from './StaffOrderDetailPage';
 
 afterEach(cleanup);
 
-describe('员工订单详情页', () => {
-  it('Owner 看到订单信息、计价明细、进度与全链路时间线', async () => {
+describe('员工统一订单详情页', () => {
+  it('Owner 看到订单身份、付款截图、沟通截图、计价明细与全链路时间线', async () => {
     server.use(
+      http.get(apiUrl('/api/staff/formal-orders/:id'), () =>
+        HttpResponse.json({
+          data: aggregateFixture(true),
+          meta: { request_id: 'formal-order-read' },
+        }),
+      ),
       http.get(apiUrl('/api/staff/finance/orders/:id'), () =>
         HttpResponse.json({
           data: { order: financeOrderFixture() },
           meta: { request_id: 'finance-order-read' },
         }),
       ),
-      http.get(apiUrl('/api/staff/order-integrity/:id'), () =>
+      http.get(apiUrl('/api/staff/buyer-advance-principal/:id'), () =>
         HttpResponse.json({
-          data: {
-            order_integrity: {
-              formal_order_id: 'order-1',
-              canonical_marketplace_code: 'AMAZON_JP',
-              operational_state: 'NORMAL',
-              events: [
-                {
-                  event_id: 'event-1',
-                  formal_order_id: 'order-1',
-                  event_type: 'RETURN_REFUND',
-                  reason: '买家退货',
-                  actor_staff_id: 'staff-1',
-                  created_at: 1_787_430_000_000,
-                },
-              ],
-              adjustments: [],
-            },
-          },
-          meta: { request_id: 'order-integrity-read' },
+          data: { entries: [] },
+          meta: { request_id: 'advance-entries' },
         }),
       ),
     );
@@ -57,33 +46,41 @@ describe('员工订单详情页', () => {
     );
     expect(await screen.findByRole('heading', { name: '订单详情' })).toBeVisible();
     expect(await screen.findByRole('heading', { name: '订单信息' })).toBeVisible();
+    expect(screen.getByText('平台订单号：123-4567890-1234567')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '订单付款截图' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '订单沟通截图（2）' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '上传沟通截图' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '计价明细' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '返款进度（买家）' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '结算进度（卖家）' })).toBeVisible();
-    expect(await screen.findByRole('heading', { name: '全链路时间线' })).toBeVisible();
-    expect(await screen.findByText('订单确认')).toBeVisible();
-    expect(await screen.findByText('退货退款')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '全链路时间线' })).toBeVisible();
+    expect(screen.getByText('订单确认')).toBeVisible();
+    expect(screen.getByText('退货退款')).toBeVisible();
+    // Owner + FINANCIAL_CORRECT 看到权限化操作区
+    expect(screen.getByRole('heading', { name: '订单操作' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '记录订单后续异常' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '公司利润补偿（仅总管理员）' })).toBeVisible();
+    // 提前返本金金额来自不可变快照，只读展示，无客户端金额输入
+    expect(screen.getByText(/本次全额付款/u)).toBeVisible();
+    expect(screen.queryByRole('textbox', { name: '金额' })).not.toBeInTheDocument();
   });
 
-  it('非 Owner 只看到时间线骨架，不请求内部财务接口', async () => {
+  it('非 Owner 只读聚合事实，不请求内部财务接口，也无操作区', async () => {
     let financeRequested = false;
+    let orderIntegrityDetailRequested = false;
     server.use(
       http.get(apiUrl('/api/staff/finance/orders/:id'), () => {
         financeRequested = true;
         return HttpResponse.json({}, { status: 403 });
       }),
-      http.get(apiUrl('/api/staff/order-integrity/:id'), () =>
+      http.get(apiUrl('/api/staff/order-integrity/:id'), () => {
+        orderIntegrityDetailRequested = true;
+        return HttpResponse.json({}, { status: 404 });
+      }),
+      http.get(apiUrl('/api/staff/formal-orders/:id'), () =>
         HttpResponse.json({
-          data: {
-            order_integrity: {
-              formal_order_id: 'order-1',
-              canonical_marketplace_code: 'AMAZON_JP',
-              operational_state: 'NORMAL',
-              events: [],
-              adjustments: [],
-            },
-          },
-          meta: { request_id: 'order-integrity-read' },
+          data: aggregateFixture(false),
+          meta: { request_id: 'formal-order-read' },
         }),
       ),
     );
@@ -97,11 +94,81 @@ describe('员工订单详情页', () => {
     );
     expect(await screen.findByRole('heading', { name: '订单详情' })).toBeVisible();
     expect(screen.getByText(/计价与财务金额仅 Owner 可见/u)).toBeVisible();
-    expect(await screen.findByRole('heading', { name: '全链路时间线' })).toBeVisible();
-    expect(screen.getByText('暂无事件记录。')).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '订单信息' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '全链路时间线' })).toBeVisible();
     expect(financeRequested).toBe(false);
+    // seller_ops 可以记录运营事件，但没有人工财务调整区块
+    expect(screen.getByRole('heading', { name: '记录订单后续异常' })).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: '公司利润补偿（仅总管理员）' }),
+    ).not.toBeInTheDocument();
+    // 旧 order-integrity 详情 GET 已退役，页面不得再请求
+    expect(orderIntegrityDetailRequested).toBe(false);
   });
 });
+
+function aggregateFixture(withFinance: boolean) {
+  const base = {
+    order: {
+      formal_order_id: 'order-1',
+      marketplace_code: 'AMAZON_JP',
+      amazon_order_number: '123-4567890-1234567',
+      amazon_order_date: '2026-08-22',
+      status: 'CONFIRMED',
+      confirmed_at: 1_787_424_000_000,
+    },
+    buyer: {
+      buyer_customer_id: 'buyer-1',
+      display_name: '测试买家',
+      customer_no: '20260822B03585',
+    },
+    seller: {
+      seller_organization_id: 'seller-1',
+      store_display_name: '测试店铺',
+    },
+    payment_screenshot: {
+      file_object_id: 'payment-file-1',
+      file_version: 2,
+    },
+    communication_screenshots: [
+      {
+        file_object_id: 'comm-file-1',
+        file_version: 1,
+        purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+        visibility: 'SELLER_VISIBLE',
+      },
+      {
+        file_object_id: 'comm-file-2',
+        file_version: 1,
+        purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+        visibility: 'SELLER_VISIBLE',
+      },
+    ],
+    operational_events: [
+      {
+        event_id: 'event-1',
+        event_type: 'RETURN_REFUND',
+        reason: '买家退货',
+        actor_staff_id: 'staff-1',
+        created_at: 1_787_430_000_000,
+      },
+    ],
+  };
+  if (!withFinance) return base;
+  return {
+    ...base,
+    financial_adjustments: [],
+    financial_snapshot: {
+      financial_snapshot_id: 'snapshot-1',
+      buyer_self_pay_bps: 1000,
+      buyer_self_pay_jpy: '398',
+      buyer_expected_principal_cny_fen: '165000',
+      seller_expected_principal_cny_fen: '182500',
+      service_fee_cny_fen: '1250',
+    },
+    finance_source: 'internal-finance',
+  };
+}
 
 function adapter(value: StaffSession): StaffAuthApiAdapter {
   return {
@@ -153,7 +220,7 @@ function session(role: 'owner' | 'seller_ops', permissions: string[]): StaffSess
 }
 
 function owner(): StaffSession {
-  return session('owner', ['SELLER_MANAGE', 'FINANCIAL_CORRECT', 'FINANCIAL_VIEW']);
+  return session('owner', ['SELLER_MANAGE', 'FINANCIAL_CORRECT', 'FINANCIAL_VIEW', 'ORDER_CONFIRM']);
 }
 function sellerOps(): StaffSession {
   return session('seller_ops', ['SELLER_MANAGE']);

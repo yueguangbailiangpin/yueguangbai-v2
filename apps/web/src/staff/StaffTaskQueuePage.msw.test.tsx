@@ -4,17 +4,16 @@ import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import '../test/msw/lifecycle';
 import { StaffSessionBoundary } from '../auth/staff/StaffSessionBoundary';
 import { apiUrl } from '../test/msw/handlers';
 import { renderWithMsw } from '../test/msw/render';
 import { server } from '../test/msw/server';
-import { resetClaimedIdsForTests, StaffTaskQueuePage } from './StaffTaskQueuePage';
+import { StaffTaskQueuePage } from './StaffTaskQueuePage';
 import { staffTestAdapter, staffTestSession, staffTestWorkItem } from './test-fixtures';
 
 afterEach(cleanup);
-beforeEach(resetClaimedIdsForTests);
 
 const mineItem = staffTestWorkItem;
 const otherItem = {
@@ -28,34 +27,20 @@ const otherItem = {
 };
 
 describe('staff task queue home', () => {
-  it('splits open work into my todo and claimable pool grouped by type', async () => {
+  it('shows only work items fixed to me; no claimable pool exists', async () => {
     installQueue({ open: [mineItem, otherItem] });
     renderQueue();
     expect(await screen.findByText('我的待办（1）')).toBeVisible();
-    expect(screen.getByText('可认领（1）')).toBeVisible();
-    expect(screen.getByText('订单资料核对')).toBeVisible();
-    const claimable = screen.getByRole('region', { name: '可认领（1）' });
-    expect(claimable.textContent).toContain('预约处理');
-    expect(screen.getByRole('button', { name: '认领' })).toBeVisible();
-    expect(screen.getAllByRole('button', { name: '去处理' })).toHaveLength(2);
+    expect(screen.queryByText('预约处理')).not.toBeInTheDocument();
+    expect(screen.queryByText('可认领')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '认领' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '去处理' })).toHaveLength(1);
   });
 
-  it('shows friendly empty states when both sections have no items', async () => {
+  it('shows a friendly empty state when nothing is assigned to me', async () => {
     installQueue({ open: [] });
     renderQueue();
     expect(await screen.findByText('暂无我的待办')).toBeVisible();
-    expect(screen.getByText('暂无可认领的待办')).toBeVisible();
-  });
-
-  it('moves a claimed item from the pool into my todo', async () => {
-    installQueue({ open: [mineItem, otherItem] });
-    const user = userEvent.setup();
-    renderQueue();
-    await screen.findByText('可认领（1）');
-    await user.click(screen.getByRole('button', { name: '认领' }));
-    expect(await screen.findByText('我的待办（2）')).toBeVisible();
-    expect(screen.getByText('可认领（0）')).toBeVisible();
-    expect(screen.queryByRole('button', { name: '认领' })).not.toBeInTheDocument();
   });
 
   it('navigates 去处理 to the work item page', async () => {
@@ -67,7 +52,7 @@ describe('staff task queue home', () => {
     expect(await screen.findByText('工作项面板占位')).toBeVisible();
   });
 
-  it('offers the owner an all view without splitting', async () => {
+  it('offers the owner an all view of every open work item', async () => {
     installQueue({ open: [mineItem, otherItem] });
     const user = userEvent.setup();
     renderQueue();
@@ -75,13 +60,13 @@ describe('staff task queue home', () => {
     await user.click(screen.getByRole('button', { name: '全部' }));
     expect(await screen.findByText('全部待办（2）')).toBeVisible();
     expect(screen.queryByText('我的待办（1）')).not.toBeInTheDocument();
-    expect(screen.queryByText('可认领（1）')).not.toBeInTheDocument();
+    expect(screen.queryByText('可认领')).not.toBeInTheDocument();
   });
 
   it('hides the all view from non-owner roles', async () => {
-    installQueue({ open: [otherItem] });
+    installQueue({ open: [mineItem] });
     renderQueue(staffTestAdapter(staffTestSession('seller_ops', [])));
-    await screen.findByText('可认领（1）');
+    await screen.findByText('我的待办（1）');
     expect(screen.queryByRole('button', { name: '全部' })).not.toBeInTheDocument();
   });
 

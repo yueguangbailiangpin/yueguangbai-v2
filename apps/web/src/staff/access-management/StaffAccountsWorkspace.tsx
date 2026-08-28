@@ -18,7 +18,6 @@ import {
 
 const roleSchema = z.discriminatedUnion('code', [
   z.object({ code: z.literal('owner'), display_name: z.literal('总管理员') }).strict(),
-  z.object({ code: z.literal('acquisition'), display_name: z.literal('获客') }).strict(),
   z.object({ code: z.literal('pre_sales'), display_name: z.literal('售前') }).strict(),
   z.object({ code: z.literal('seller_ops'), display_name: z.literal('卖家对接') }).strict(),
   z.object({ code: z.literal('buyer_refund'), display_name: z.literal('买家返款') }).strict(),
@@ -76,12 +75,33 @@ const sellerOrganizationManagersSchema = z
 const sellerOrganizationManagerMutationSchema = z
   .object({ seller_organization: sellerOrganizationManagerSchema, replayed: z.boolean() })
   .strict();
+const buyerRefundOwnerAssignmentSchema = z
+  .object({
+    buyer_customer_id: z.string(),
+    buyer_display_name: z.string(),
+    marketplace_code: z.string(),
+    refund_owner: z
+      .object({
+        assignment_id: z.string(),
+        staff_id: z.string(),
+        staff_display_name: z.string(),
+        version: z.number().int().positive(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+const buyerRefundOwnerAssignmentsSchema = z
+  .object({ buyers: z.array(buyerRefundOwnerAssignmentSchema) })
+  .strict();
+const buyerRefundOwnerMutationSchema = z
+  .object({ buyer: buyerRefundOwnerAssignmentSchema, replayed: z.boolean() })
+  .strict();
 type Employee = z.output<typeof employeeSchema>;
 type SellerOrganizationManager = z.output<typeof sellerOrganizationManagerSchema>;
 type Role = Employee['role']['code'];
 const ROLES: readonly [Role, string][] = [
   ['owner', '总管理员'],
-  ['acquisition', '获客'],
   ['pre_sales', '售前'],
   ['seller_ops', '卖家对接'],
   ['buyer_refund', '买家返款'],
@@ -118,10 +138,23 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
     enabled: authorized,
     retry: false,
   });
+  const buyerRefundOwnerAssignmentsQuery = useQuery({
+    queryKey: ['staff', 'buyer-refund-owner-assignments', session.authorization_version],
+    queryFn: ({ signal }) =>
+      identityApiRequest('staff', client, {
+        path: '/api/staff/access-management/buyer-assignments',
+        method: 'GET',
+        schema: buyerRefundOwnerAssignmentsSchema,
+        signal,
+      }).then((r) => r.data),
+    enabled: authorized,
+    retry: false,
+  });
   const refresh = () =>
     Promise.all([
       client.invalidateQueries({ queryKey: ['staff', 'staff-accounts'] }),
       client.invalidateQueries({ queryKey: ['staff', 'seller-organization-assignments'] }),
+      client.invalidateQueries({ queryKey: ['staff', 'buyer-refund-owner-assignments'] }),
     ]);
   const createMutation = useMutation({
     mutationFn: (body: unknown) => write(client, '/api/staff/access-management/employees', body),
@@ -165,6 +198,17 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
       }),
     onSuccess: refresh,
   });
+  const buyerRefundOwnerMutation = useMutation({
+    mutationFn: (body: unknown) =>
+      identityApiRequest('staff', client, {
+        path: '/api/staff/access-management/buyer-assignments',
+        method: 'POST',
+        schema: buyerRefundOwnerMutationSchema,
+        body,
+        headers: operationHeaders({ key: crypto.randomUUID(), body }),
+      }),
+    onSuccess: refresh,
+  });
   if (!authorized)
     return (
       <main className="staff-access-management">
@@ -189,15 +233,12 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
         <div>
           <p className="eyebrow">仅总管理员</p>
           <h2>员工管理</h2>
-          <p>
-            岗位决定能做什么，站点决定能看什么。同岗位同站点可以多人覆盖，但系统只保留一个主负责人。
-          </p>
+          <p>岗位决定能做什么，站点决定能看什么；客户由固定负责人跟进（D-056：无轮转、无兜底、无自动重新分配）。</p>
         </div>
         <Button onClick={() => setCreating(true)}>新增员工</Button>
       </section>
       <Alert tone="info">
-        第一个进入某“岗位 ×
-        站点”的员工自动成为主负责人；后续员工自动显示“协助”。主负责人停用时，系统会自动提升一名协助员工，不增加排班页面。
+        买家缺返款负责人或卖家组织缺对接负责人时，相关操作会失败关闭；请在下方为每个客户指定固定负责人。
       </Alert>
       <section
         className="staff-seller-organization-assignments"
@@ -245,6 +286,51 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
                         body,
                       })
                     }
+                  />
+                ))}
+              </tbody>
+            </DataTable>
+          )
+        ) : null}
+      </section>
+      <section
+        className="staff-buyer-refund-owner-assignments"
+        aria-labelledby="buyer-refund-owner-heading"
+      >
+        <div>
+          <p className="eyebrow">买家返款</p>
+          <h3 id="buyer-refund-owner-heading">负责买家返款</h3>
+          <p>
+            为每个买家指定一名“买家返款”负责人；更换需填写原因并留下审计记录，历史任务与财务快照不会改写。
+          </p>
+        </div>
+        {buyerRefundOwnerAssignmentsQuery.isPending ? (
+          <p role="status">正在读取买家负责人</p>
+        ) : null}
+        {buyerRefundOwnerAssignmentsQuery.isError ? (
+          <Alert tone="danger">买家负责人列表暂时加载不了。</Alert>
+        ) : null}
+        {buyerRefundOwnerAssignmentsQuery.data ? (
+          buyerRefundOwnerAssignmentsQuery.data.buyers.length === 0 ? (
+            <EmptyState title="暂无买家客户" description="买家建档后会显示在这里。" />
+          ) : (
+            <DataTable caption="买家与负责买家返款员工">
+              <thead>
+                <tr>
+                  <th>买家</th>
+                  <th>站点</th>
+                  <th>当前负责人</th>
+                  <th>更换负责人</th>
+                </tr>
+              </thead>
+              <tbody>
+                {buyerRefundOwnerAssignmentsQuery.data.buyers.map((assignment) => (
+                  <BuyerRefundOwnerRow
+                    key={`${assignment.buyer_customer_id}:${assignment.refund_owner?.assignment_id ?? 'none'}`}
+                    assignment={assignment}
+                    candidates={buyerRefundCandidates(query.data.employees)}
+                    busy={buyerRefundOwnerMutation.isPending}
+                    onAssign={(body) => buyerRefundOwnerMutation.mutate(body)}
                   />
                 ))}
               </tbody>
@@ -353,7 +439,7 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
         title="确认停用员工"
         description={
           disabling
-            ? `停用后，${disabling.display_name} 的现有会话会立即失效；如果TA是某站点主负责人，系统会自动从协助人员中提升一人。`
+            ? `停用后，${disabling.display_name} 的现有会话会立即失效；其负责的买家/卖家如未另行指定负责人，相关操作会失败关闭。`
             : ''
         }
         busy={statusMutation.isPending}
@@ -454,6 +540,86 @@ function SellerOrganizationManagerRow({
   );
 }
 
+function BuyerRefundOwnerRow({
+  assignment,
+  candidates,
+  busy,
+  onAssign,
+}: {
+  assignment: z.output<typeof buyerRefundOwnerAssignmentSchema>;
+  candidates: readonly Employee[];
+  busy: boolean;
+  onAssign: (body: {
+    buyer_customer_id: string;
+    assigned_staff_id: string;
+    expected_assignment_version: number;
+    reason: string;
+  }) => void;
+}) {
+  const [staffId, setStaffId] = useState(
+    candidates.some((candidate) => candidate.staff_id === assignment.refund_owner?.staff_id)
+      ? (assignment.refund_owner?.staff_id ?? '')
+      : '',
+  );
+  const [reason, setReason] = useState('');
+  const expectedVersion = assignment.refund_owner?.version ?? 0;
+  return (
+    <tr>
+      <td>
+        <strong>{assignment.buyer_display_name}</strong>
+        <small>{assignment.buyer_customer_id}</small>
+      </td>
+      <td>{assignment.marketplace_code}</td>
+      <td>{assignment.refund_owner?.staff_display_name ?? '尚未分配（相关操作失败关闭）'}</td>
+      <td>
+        {candidates.length === 0 ? (
+          <span>暂无买家返款岗位的在职员工</span>
+        ) : (
+          <div className="entry-actions">
+            <Select
+              aria-label={`${assignment.buyer_display_name} 返款负责人`}
+              value={staffId}
+              onChange={(event) => setStaffId(event.target.value)}
+            >
+              <option value="">请选择买家返款负责人</option>
+              {candidates.map((candidate) => (
+                <option key={candidate.staff_id} value={candidate.staff_id}>
+                  {candidate.display_name}
+                </option>
+              ))}
+            </Select>
+            <TextInput
+              aria-label={`${assignment.buyer_display_name} 更换原因`}
+              placeholder="更换原因（必填）"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+            <Button
+              className="secondary"
+              loading={busy}
+              disabled={
+                !staffId ||
+                staffId === assignment.refund_owner?.staff_id ||
+                reason.trim().length < 1
+              }
+              onClick={() =>
+                onAssign({
+                  buyer_customer_id: assignment.buyer_customer_id,
+                  assigned_staff_id: staffId,
+                  expected_assignment_version: expectedVersion,
+                  reason,
+                })
+              }
+            >
+              {assignment.refund_owner ? '更换负责人' : '指定负责人'}
+            </Button>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 function AccountDialog({
   title,
   open,
@@ -491,7 +657,7 @@ function AccountDialog({
     <Dialog
       open={open}
       title={title}
-      description="一个员工只选一个岗位；站点可与同岗位其他员工重复，系统自动决定主负责人/协助。"
+      description="一个员工只选一个岗位；站点范围决定该员工能看到的业务数据。"
       busy={busy}
       onClose={onClose}
     >
@@ -581,7 +747,7 @@ function scopeLabels(
     scopes
       .map(
         (scope) =>
-          `${marketLabel(markets, scope.code)} · ${scope.scope_kind === 'PRIMARY' ? '主负责人' : '协助'}`,
+          `${marketLabel(markets, scope.code)} · ${scope.scope_kind === 'PRIMARY' ? '主负责' : '协同'}`,
       )
       .join(' / ') || '未配置'
   );
@@ -597,6 +763,11 @@ function sellerOpsCandidates(
       (employee.marketplace_scopes ?? []).some(
         (scope) => scope.code === marketplaceCode && scope.scope_kind === 'PRIMARY',
       ),
+  );
+}
+function buyerRefundCandidates(employees: readonly Employee[]): readonly Employee[] {
+  return employees.filter(
+    (employee) => employee.status === 'ACTIVE' && employee.role.code === 'buyer_refund',
   );
 }
 function marketLabel(markets: readonly { code: string; display_name: string }[], code: string) {

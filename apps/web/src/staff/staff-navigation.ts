@@ -13,7 +13,6 @@ import {
   Settings,
   Store,
   UserRound,
-  Wrench,
   ChartNoAxesCombined,
 } from 'lucide-react';
 import type { StaffSession } from '../auth/staff/staff-auth-api';
@@ -30,9 +29,6 @@ const isBuyerRefund: StaffNavVisibility = (s) => s.role.code === 'buyer_refund';
 
 const mayProducts: StaffNavVisibility = (s) =>
   isOwner(s) || isPreSales(s) || isSellerOps(s);
-
-const mayOperations: StaffNavVisibility = (s) =>
-  isOwner(s) || isSellerOps(s) || isPreSales(s) || isBuyerRefund(s);
 
 const mayFinance: StaffNavVisibility = (s) =>
   isOwner(s) || (isSellerOps(s) && s.permissions.includes('SELLER_MANAGE'));
@@ -85,7 +81,6 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
     label: '工作台',
     icon: BriefcaseBusiness,
     path: '/staff',
-    // D-056: the acquisition workspace is retired.
   },
   {
     id: 'customers',
@@ -176,13 +171,6 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
         icon: ChartNoAxesCombined,
         path: '/staff/admin-business-dashboard',
         visible: mayDashboard,
-      },
-      {
-        id: 'operations',
-        label: '运行完整性工具',
-        icon: Wrench,
-        path: '/staff/operations',
-        visible: mayOperations,
       },
     ],
   },

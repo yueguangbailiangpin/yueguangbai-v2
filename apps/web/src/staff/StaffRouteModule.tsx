@@ -12,7 +12,6 @@ const loadStaffFinanceRoutes = () => import('./StaffFinanceRouteModule');
 const loadStaffOrdersRoutes = () => import('./StaffOrdersRouteModule');
 const loadStaffRefundsRoutes = () => import('./StaffRefundsRouteModule');
 const loadStaffWorkItemRoutes = () => import('./StaffWorkItemRouteModule');
-const loadStaffOperationsRoutes = () => import('./StaffOperationsRouteModule');
 
 export { StaffShell };
 
@@ -54,8 +53,10 @@ export function StaffRoutePage(): React.JSX.Element {
     pathname.startsWith('/staff/seller-principal-rate-policies')
   )
     return <Navigate to={`/staff/finance${search}`} replace />;
+  // D-056 §4.5：独立订单完整性工具页退役，订单操作并入统一订单详情；
+  // 旧书签重定向到工作台。
   if (pathname.startsWith('/staff/operations'))
-    return <RouteChunkBoundary load={loadStaffOperationsRoutes} />;
+    return <Navigate to="/staff" replace />;
   if (pathname.startsWith('/staff/work/'))
     return <RouteChunkBoundary load={loadStaffWorkItemRoutes} />;
   return <StaffTaskQueuePage />;
