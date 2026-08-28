@@ -19,7 +19,8 @@ const viewports = [
   { width: 1440, height: 900 },
   { width: 1600, height: 1000 },
 ] as const;
-const buyerNavigationLabels = ['产品', '任务', '我的'] as const;
+const buyerNavigationLabels = ['首页', '产品', '订单', '我的'] as const;
+const sidebarNavigationLabels = ['首页', '产品与预约', '我的订单', '评论任务', '返款记录', '账户资料'] as const;
 
 const product = {
   demand_id: 'demand-visual-1',
@@ -38,6 +39,9 @@ const product = {
   open_at: fixedNow - 86_400_000,
   reservation_deadline: fixedNow + 3 * 86_400_000,
   order_deadline: fixedNow + 8 * 86_400_000,
+  main_image: null,
+  reservation_eligibility: 'ELIGIBLE',
+  reservation_ineligibility_reason: null,
 };
 
 const secondProduct = {
@@ -126,8 +130,9 @@ async function assertMinimumTarget(page: Page, selector: string): Promise<void> 
 }
 
 async function assertBuyerNavigationInsideViewport(page: Page): Promise<void> {
-  const navigation = page.getByRole('navigation', { name: '买家导航' });
-  for (const label of buyerNavigationLabels) {
+  const mobile = (page.viewportSize()?.width ?? 1280) < 1024;
+  const navigation = page.getByRole('navigation', { name: mobile ? '买家导航' : '买家主导航' });
+  for (const label of mobile ? buyerNavigationLabels : sidebarNavigationLabels) {
     const link = navigation.getByRole('link', { name: label, exact: true });
     await expect(link).toBeVisible();
     const box = await link.evaluate((element) => {
@@ -174,7 +179,7 @@ test('Buyer home captures the 390 visual review checkpoint', async ({ page }) =>
   if (!visualReviewScreenshotPath) return;
   await installBuyerFixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/buyer');
+  await page.goto('/buyer/products');
   await expect(page.getByRole('heading', { name: '当前开放产品' })).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
   mkdirSync(dirname(visualReviewScreenshotPath), { recursive: true });
@@ -212,8 +217,8 @@ test('Buyer product pilot excludes adjacent and internal content', async ({ page
   await expect(page.getByRole('heading', { name: secondProduct.product_name, exact: true })).toBeVisible();
   await expect(page.locator('main').getByText(/客户编号|会话到期|内部说明|内部业务时间|预约排名|预计下单日期|返款金额/u)).toHaveCount(0);
   await expect(page.locator('main').getByText(/进行中的产品|已预约|已下单|等待下单/u)).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: '买家导航' }).getByRole('link')).toHaveCount(3);
-  await assertMinimumTarget(page, '.bottom-nav a');
+  await expect(page.getByRole('navigation', { name: '买家主导航' }).getByRole('link')).toHaveCount(6);
+  await assertMinimumTarget(page, '.mwb-nav a');
 });
 
 test('Buyer pilot keeps keyboard focus, zoom reflow, and reduced motion', async ({ page }) => {

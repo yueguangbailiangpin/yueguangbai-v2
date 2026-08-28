@@ -268,6 +268,9 @@ async function installBuyerFixture(page: Page, refundStatus: 'PARTIALLY_PAID' | 
         display_name: '月白买家',
         marketplace_code: 'AMAZON_JP',
         identity_review_status: 'CLEAR',
+        customer_number: '20260824B3612',
+        refund_account_name: null,
+        refund_account_identifier: null,
       } }));
       return;
     }

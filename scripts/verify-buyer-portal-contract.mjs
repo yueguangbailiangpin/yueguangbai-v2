@@ -120,8 +120,8 @@ assert(!/name="evidence_file"[^>]*\bmultiple\b/u.test(evidenceForm), 'order evid
 const reviewForm = read('apps/web/src/buyer/reviews/BuyerReviewFormPage.tsx');
 assertContains(reviewForm, 'files.current.length > 3', 'review three-file command limit');
 const buyerFrame = read('apps/web/src/buyer/routes/BuyerFrame.tsx');
-for (const label of ['产品', '任务', '我的']) assertContains(buyerFrame, label, 'Buyer three-item navigation');
-assert((buyerFrame.match(/label:/gu) ?? []).length === 3, 'Buyer navigation must contain exactly three items');
+for (const label of ['首页', '产品', '订单', '我的', '产品与预约', '我的订单', '评论任务', '返款记录', '账户资料']) assertContains(buyerFrame, label, 'Buyer canonical navigation');
+assert((buyerFrame.match(/label:/gu) ?? []).length === 10, 'Buyer navigation must contain exactly ten items (4 mobile + 6 sidebar)');
 assertNotContains(read('apps/web/src/App.tsx').split('<Route path="/buyer/login"')[0], '/buyer/register', 'root page registration entry');
 
 const sellerCursorAdapter = read(

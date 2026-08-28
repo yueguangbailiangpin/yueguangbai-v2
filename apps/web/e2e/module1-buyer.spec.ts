@@ -76,11 +76,22 @@ const demand = {
   open_at: now - 10_000,
   reservation_deadline: now + 50_000,
   order_deadline: now + 100_000,
+  main_image: null,
+  reservation_eligibility: 'ELIGIBLE',
+  reservation_ineligibility_reason: null,
 };
 
-const reservationDemand = (({ target_quantity, remaining_quantity, open_at, ...value }) => value)(
-  demand,
-);
+const reservationDemand = ((
+  {
+    target_quantity,
+    remaining_quantity,
+    open_at,
+    main_image,
+    reservation_eligibility,
+    reservation_ineligibility_reason,
+    ...value
+  },
+) => value)(demand);
 const reservation = {
   reservation_id: 'reservation-1',
   status: 'APPROVED',
@@ -417,6 +428,9 @@ async function installBuyerApi(page: Page, options: MockOptions = {}): Promise<v
             display_name: '月白买家',
             marketplace_code: 'AMAZON_JP',
             identity_review_status: options.reviewRequired ? 'REVIEW_REQUIRED' : 'CLEAR',
+            customer_number: '20260824B3612',
+            refund_account_name: null,
+            refund_account_identifier: null,
           },
         }),
       );
@@ -824,7 +838,7 @@ test('Buyer registration succeeds only after the verified session read', async (
   await page.getByLabel('确认密码').fill('safe-password-123');
   await page.getByRole('button', { name: '完成注册' }).click();
   await expect(page).toHaveURL(/\/buyer$/u);
-  await expect(page.getByRole('navigation', { name: '买家导航' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '买家主导航' })).toBeVisible();
 });
 
 for (const [name, status, message] of [
@@ -863,10 +877,11 @@ test('Buyer login has no registration link', async ({ page }) => {
 
 test('Dashboard lists only server-authoritative reservable products', async ({ page }) => {
   await gotoBuyer(page, '/buyer');
-  const cards = page.locator('main a[href^="/buyer/demands/"]:has(h2)');
+  await expect(page.getByRole('heading', { name: '你好，月白买家' })).toBeVisible();
+  const cards = page.locator('main a[href^="/buyer/demands/"]');
   await expect(cards).toHaveCount(1);
-  await expect(cards.first()).toContainText('月白护肤套装');
-  await expect(cards).not.toContainText('修改订单资料');
+  await expect(page.locator('.mwb-product-grid article').first()).toContainText('月白护肤套装');
+  await expect(page.locator('main')).not.toContainText('修改订单资料');
 });
 
 test('Dashboard shows a product-only failure safely', async ({ page }) => {
@@ -886,7 +901,7 @@ test('Dashboard reload restores the product list', async ({ page }) => {
   await gotoBuyer(page, '/buyer', { failureOnce: '/api/buyer-portal/demands' });
   await expect(page.getByRole('heading', { name: '暂时无法读取内容' })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading', { name: '月白护肤套装', exact: true })).toBeVisible();
+  await expect(page.locator('.mwb-product-grid h3').first()).toHaveText('月白护肤套装');
   expect(demandReads).toBe(2);
 });
 
@@ -897,18 +912,18 @@ test('Task center follows an empty cursor page to actionable Buyer work', async 
 });
 
 for (const [path, owner] of [
-  ['/buyer/demands/demand-1', '产品'],
-  ['/buyer/reservations/reservation-1/instruction', '任务'],
-  ['/buyer/order-materials/evidence-1', '任务'],
-  ['/buyer/orders/formal-1', '任务'],
-  ['/buyer/reviews/review-1', '任务'],
-  ['/buyer/refunds/refund-1', '任务'],
-  ['/buyer/change-password', '我的'],
+  ['/buyer/demands/demand-1', '产品与预约'],
+  ['/buyer/reservations/reservation-1/instruction', '我的订单'],
+  ['/buyer/order-materials/evidence-1', '我的订单'],
+  ['/buyer/orders/formal-1', '我的订单'],
+  ['/buyer/reviews/review-1', '评论任务'],
+  ['/buyer/refunds/refund-1', '返款记录'],
+  ['/buyer/change-password', '账户资料'],
 ] as const) {
   test(`Nested Buyer route ${path} has one ${owner} navigation owner`, async ({ page }) => {
     await gotoBuyer(page, path);
-    const nav = page.getByRole('navigation', { name: '买家导航' });
-    await expect(nav.getByRole('link')).toHaveCount(3);
+    const nav = page.getByRole('navigation', { name: '买家主导航' });
+    await expect(nav.getByRole('link')).toHaveCount(6);
     await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     await expect(nav.getByRole('link', { name: owner })).toHaveAttribute('aria-current', 'page');
   });
@@ -1040,9 +1055,9 @@ test('Evidence form rejects non-Gregorian browser text input', async ({ page }) 
 });
 test('Evidence form input is exact-one screenshot', async ({ page }) => {
   await gotoBuyer(page, '/buyer/order-materials/new?reservation_id=reservation-1');
-  const input = page.getByLabel('订单截图');
+  const input = page.getByLabel('订单付款截图');
   await expect(input).not.toHaveAttribute('multiple');
-  await expect(input).toHaveAttribute('required', '');
+  await expect(input).toHaveAttribute('aria-required', 'true');
 });
 test('Evidence upload and submit completes the business command', async ({ page }) => {
   await gotoBuyer(page, '/buyer/order-materials/new?reservation_id=reservation-1');
@@ -1050,7 +1065,7 @@ test('Evidence upload and submit completes the business command', async ({ page 
   await page.getByLabel('Amazon 下单日期').fill('2026-08-06');
   await page.getByLabel('最终支付金额（JPY）').fill('4100');
   await page
-    .getByLabel('订单截图')
+    .getByLabel('订单付款截图')
     .setInputFiles({ name: 'evidence.png', mimeType: 'image/png', buffer: Buffer.from('png') });
   await page.getByRole('button', { name: '提交资料' }).click();
   await expect(page).toHaveURL(/\/buyer\/order-materials\/evidence-1$/u);
@@ -1096,7 +1111,7 @@ test('Large screenshot uploads are downsampled to JPEG before leaving the browse
   const originalBytes = Buffer.from(dataUrl.split(',')[1]!, 'base64');
   expect(originalBytes.byteLength).toBeGreaterThan(1024 * 1024);
   await page
-    .getByLabel('订单截图')
+    .getByLabel('订单付款截图')
     .setInputFiles({ name: 'big-screenshot.png', mimeType: 'image/png', buffer: originalBytes });
   await page.getByRole('button', { name: '提交资料' }).click();
   await expect.poll(() => intentBody, { timeout: 30_000 }).not.toBeNull();
@@ -1246,8 +1261,8 @@ test('Refund OVERPAID displays overpaid amount', async ({ page }) => {
 test('Me displays service links without internal account fields', async ({ page }) => {
   await gotoBuyer(page, '/buyer/me');
   await expect(page.getByText('B-1001')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: '正式订单' })).toBeVisible();
-  await expect(page.getByRole('link', { name: '返款记录' })).toBeVisible();
+  await expect(page.locator('main').getByRole('link', { name: '正式订单' })).toBeVisible();
+  await expect(page.locator('main').getByRole('link', { name: '返款记录' })).toBeVisible();
 });
 test('Me REVIEW_REQUIRED shows only safe limitation guidance', async ({ page }) => {
   await gotoBuyer(page, '/buyer/me', { reviewRequired: true });

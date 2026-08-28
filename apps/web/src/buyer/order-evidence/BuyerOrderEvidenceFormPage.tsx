@@ -91,7 +91,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
     <BuyerJourney current="evidence" />
     <PageHeader eyebrow="订单资料阶段" title="提交订单资料" description={current.product_name} />
     <Card className="buyer-action-panel"><div className="buyer-form-intro"><strong>填订单信息</strong>
-      <p>照着 Amazon 订单页面填，然后上传一张订单截图就好～</p></div>
+      <p>照着 Amazon 订单页面填写；一笔订单只需上传一张完整付款截图，请确保订单号和金额清晰可见。</p></div>
       <form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
       <FormField label="Amazon 订单号" htmlFor="evidence-order-number" description="格式：123-1234567-1234567" required>
         <TextInput name="amazon_order_number" inputMode="numeric" placeholder="123-1234567-1234567" required />
@@ -102,7 +102,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
       <FormField label="最终支付金额（JPY）" htmlFor="evidence-paid" required>
         <TextInput name="final_paid_jpy" type="number" inputMode="numeric" min="0" step="1" required />
       </FormField>
-      <FormField label="订单截图" htmlFor="evidence-file" description="必须且只能选择一张 JPG、PNG 或 WebP 图片；换图时需确认替换" required>
+      <FormField label="订单付款截图" htmlFor="evidence-file" description="一笔订单一张完整截图：必须且只能选择一张 JPG、PNG 或 WebP 图片，需包含订单号和金额；换图时需确认替换" required>
         <FileDropZone id="evidence-file" accept="image/jpeg,image/png,image/webp" required
           maximumFiles={1} maximumBytes={20 * 1024 * 1024} confirmReplace
           buttonLabel="选择订单截图" emptyLabel="尚未选择截图"

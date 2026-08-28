@@ -2,6 +2,7 @@ import { Navigate, useLocation } from 'react-router';
 import { BuyerLayout } from './BuyerLayout';
 import { BuyerRouteProvider } from '../../routes/IdentityRouteSlots';
 import { RouteChunkBoundary } from '../../routes/RouteChunkBoundary';
+import { BuyerHomePage } from '../home/BuyerHomePage';
 import { BuyerDemandDetailPage } from '../demands/BuyerDemandDetailPage';
 import { BuyerDemandsPage } from '../demands/BuyerDemandsPage';
 import { BuyerReservationDetailPage } from '../reservations/BuyerReservationDetailPage';
@@ -24,7 +25,7 @@ export default function BuyerPortal(): React.JSX.Element {
 
 export function BuyerRoutePage(): React.JSX.Element {
   const { pathname } = useLocation();
-  if (pathname === '/buyer') return <Navigate to="/buyer/products" replace />;
+  if (pathname === '/buyer') return <BuyerHomePage />;
   if (pathname === '/buyer/products' || pathname === '/buyer/demands') return <BuyerDemandsPage />;
   if (pathname === '/buyer/tasks')
     return <RouteChunkBoundary key={pathname} load={loadBuyerTasksRoute} />;
