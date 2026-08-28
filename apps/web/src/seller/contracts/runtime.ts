@@ -107,12 +107,12 @@ export const sellerStoreMutationSchema = z
   })
   .strict();
 
+// 与共享合同 CanonicalMarketplaceCode（MARKETPLACE_CODES）完全一致的三码枚举；
+// RAKUTEN_JP/TIKTOK_JP 未在现行注册表发布，不得出现在 Canonical 字段。
 const canonicalMarketplace = z.enum([
   'AMAZON_JP',
   'AMAZON_US',
   'COUPANG_KR',
-  'RAKUTEN_JP',
-  'TIKTOK_JP',
 ]);
 // 与共享合同 OrderCommunicationScreenshotReferenceDto 完全一致：上传人与上传
 // 时间由后端 read-model 返回（uploaded_by_staff_name 在上传账号不可解析时缺省）。

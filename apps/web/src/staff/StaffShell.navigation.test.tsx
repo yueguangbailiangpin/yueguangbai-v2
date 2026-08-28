@@ -269,6 +269,61 @@ describe('StaffShell rendering', () => {
   });
 });
 
+describe('StaffShell duplicate text guards (7R-1)', () => {
+  const richPermissions = [
+    'STAFF_MANAGE', 'PERMISSION_MANAGE', 'FINANCIAL_VIEW', 'ORDER_VIEW',
+    'BUYER_VIEW', 'SELLER_MANAGE',
+  ];
+
+  it('shows exactly one visible 工作台 context title on the staff home', () => {
+    const session = staffTestSession('owner', richPermissions);
+    renderShell(session, '/staff');
+    // 内容区上下文标题只有一个"工作台"（单一面包屑不再与标题逐字重复）。
+    const contentHeading = document.querySelector<HTMLElement>('.staff-content-heading')!;
+    expect(within(contentHeading).getAllByText('工作台')).toHaveLength(1);
+    expect(screen.getAllByRole('heading', { name: '工作台' })).toHaveLength(1);
+  });
+
+  it('does not repeat identical display name and role text in the session context', () => {
+    const session = { ...staffTestSession('owner', richPermissions), display_name: '总管理员' };
+    renderShell(session, '/staff');
+    const context = screen.getByLabelText('当前会话信息：总管理员（总管理员）');
+    // 视觉只显示一次姓名；角色语义保留在 aria-label 中。
+    expect(within(context).getAllByText('总管理员')).toHaveLength(1);
+    expect(context).toHaveAttribute('aria-label', '当前会话信息：总管理员（总管理员）');
+  });
+
+  it('titles the unified order detail shell 订单详情 instead of falling back to 工作台', () => {
+    const session = staffTestSession('owner', richPermissions);
+    renderShell(session, '/staff/orders/order-77');
+    expect(screen.getByRole('heading', { name: '订单详情' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '工作台' })).not.toBeInTheDocument();
+    // 面包屑提供订单分区上下文：工作台 / 订单。
+    const contentHeading = document.querySelector<HTMLElement>('.staff-content-heading')!;
+    expect(within(contentHeading).getByRole('link', { name: '工作台' })).toBeInTheDocument();
+    expect(within(contentHeading).getByText('订单', { exact: true })).toBeInTheDocument();
+    expect(getPageTitleForPath('/staff/orders/order-77', session)).toBe('订单详情');
+    expect(getBreadcrumbForPath('/staff/orders/order-77', session)).toEqual([
+      { label: '工作台', href: '/staff' },
+      { label: '订单', href: '/staff/orders' },
+    ]);
+  });
+
+  it('never falls other staff routes back to the generic 工作台 title', () => {
+    const session = staffTestSession('owner', richPermissions);
+    renderShell(session, '/staff/buyer-customers');
+    expect(screen.getByRole('heading', { name: '买家' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '工作台' })).not.toBeInTheDocument();
+    cleanup();
+    renderShell(session, '/staff/finance');
+    expect(screen.getByRole('heading', { name: '财务' })).toBeInTheDocument();
+    cleanup();
+    renderShell(session, '/staff/work/work-9');
+    expect(screen.getByRole('heading', { name: '工作项' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '工作台' })).not.toBeInTheDocument();
+  });
+});
+
 describe('StaffShell mobile drawer', () => {
   it('has mobile menu button', () => {
     const session = staffTestSession('owner', []);

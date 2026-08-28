@@ -480,7 +480,14 @@ function CommunicationScreenshotsCard({
           {value.communication_screenshots.map((reference) => (
             <figure key={reference.file_object_id} className="order-communication-shot">
               <StaffProtectedImage
-                reference={reference}
+                // SafeFileReference 是 strict schema：只传四个引用字段；
+                // 7R 起截图 DTO 还携带上传人/时间等展示字段，整体透传会被拒绝。
+                reference={{
+                  file_object_id: reference.file_object_id,
+                  file_version: reference.file_version,
+                  purpose: reference.purpose,
+                  visibility: reference.visibility,
+                }}
                 alt="订单沟通截图"
                 className="protected-evidence-thumbnail"
                 fallback={<span className="protected-image-placeholder">截图加载中</span>}

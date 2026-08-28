@@ -295,13 +295,21 @@ function StaffMobileDrawer({
           <StaffNavigationContent onNavigate={onClose} />
         </div>
         <div className="staff-drawer-footer">
-          <div className="staff-sidebar-person">
+          <div
+            className="staff-sidebar-person"
+            aria-label={`${session.display_name}（${session.role.display_name}）`}
+          >
             <span className="staff-person-avatar" aria-hidden="true">
               {session.display_name.slice(0, 1)}
             </span>
             <div className="staff-person-info">
               <strong>{session.display_name}</strong>
-              <small>{`${session.role.display_name} · ${formatMarketplaceScope(session)}`}</small>
+              {/* 姓名与角色文案相同时省略重复的角色文字，角色语义由容器 aria-label 保留。 */}
+              <small>
+                {session.display_name === session.role.display_name
+                  ? formatMarketplaceScope(session)
+                  : `${session.role.display_name} · ${formatMarketplaceScope(session)}`}
+              </small>
             </div>
           </div>
           <StaffAccountActions compact />
@@ -352,9 +360,16 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
           <GlobalSearchDropdown />
         </div>
         <div className="staff-topbar-actions">
-          <div className="staff-session-context" aria-label="当前会话信息">
+          {/* 姓名与角色文案相同时（如"总管理员"）视觉只显示一次，
+              角色语义经容器 aria-label 保留。 */}
+          <div
+            className="staff-session-context"
+            aria-label={`当前会话信息：${session.display_name}（${session.role.display_name}）`}
+          >
             <span className="staff-session-name">{session.display_name}</span>
-            <span className="staff-session-role">{session.role.display_name}</span>
+            {session.display_name === session.role.display_name ? null : (
+              <span className="staff-session-role">{session.role.display_name}</span>
+            )}
             <span className="staff-session-scope">{scope}</span>
           </div>
           <span className="staff-session-avatar" aria-hidden="true">
@@ -377,9 +392,10 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
 
         {/* 工作区 */}
         <div className="staff-work-area">
-          {/* 面包屑 + 页面标题（内容区顶部） */}
+          {/* 面包屑 + 页面标题（内容区顶部）。单一面包屑（首页只有"工作台"）
+              会与页面标题逐字重复，此时只保留标题一个可见上下文。 */}
           <div className="staff-content-heading">
-            <Breadcrumb items={breadcrumb} />
+            {breadcrumb.length > 1 ? <Breadcrumb items={breadcrumb} /> : null}
             <h1>{pageTitle}</h1>
           </div>
 

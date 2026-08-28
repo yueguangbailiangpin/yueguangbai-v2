@@ -118,6 +118,38 @@ describe('Seller runtime DTO allowlists', () => {
     ).toBe(false);
   });
 
+  it('accepts only the three shared CanonicalMarketplaceCode values in the fee snapshot', () => {
+    const order = realBackendFormalOrder();
+    // 与共享合同 MARKETPLACE_CODES 语义一致的三个合法 Canonical 代码。
+    for (const code of ['AMAZON_JP', 'AMAZON_US', 'COUPANG_KR']) {
+      expect(sellerFormalOrdersSchema.safeParse({
+        items: [{
+          ...order,
+          locked_service_fee_snapshot: {
+            ...order.locked_service_fee_snapshot,
+            marketplace_code: code,
+          },
+        }],
+        page,
+      }).success).toBe(true);
+    }
+    // 未在现行注册表发布的代码必须被 strict schema 拒绝。
+    for (const code of ['RAKUTEN_JP', 'TIKTOK_JP']) {
+      expect(sellerFormalOrdersSchema.safeParse({
+        items: [{
+          ...order,
+          locked_service_fee_snapshot: {
+            ...order.locked_service_fee_snapshot,
+            marketplace_code: code,
+          },
+        }],
+        page,
+      }).success).toBe(false);
+    }
+    // 真实卖家订单响应（AMAZON_JP 快照）仍可解析。
+    expect(sellerFormalOrdersSchema.safeParse({ items: [order], page }).success).toBe(true);
+  });
+
   it('parses the real backend formal-order shape with screenshot uploader fields', () => {
     const order = realBackendFormalOrder();
     expect(sellerFormalOrdersSchema.safeParse({

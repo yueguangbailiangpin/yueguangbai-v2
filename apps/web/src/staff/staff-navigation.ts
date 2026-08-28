@@ -194,6 +194,13 @@ export function getBreadcrumbForPath(
 ): Array<{ label: string; href?: string }> {
   const crumbs: Array<{ label: string; href?: string }> = [{ label: '工作台', href: '/staff' }];
 
+  // 统一订单详情（/staff/orders/:id）：订单导航项仍为"规划中"（不可见），
+  // 必须显式匹配动态路径，否则标题与面包屑会回退成重复的"工作台"。
+  if (/^\/staff\/orders(\/|$)/u.test(pathname)) {
+    crumbs.push({ label: '订单', href: '/staff/orders' });
+    return crumbs;
+  }
+
   for (const item of getVisibleNavItems(session)) {
     if (item.path && pathname.startsWith(item.path) && item.path !== '/staff') {
       crumbs.push({ label: item.label });
@@ -220,6 +227,9 @@ export function getBreadcrumbForPath(
 
 /** 获取当前路径对应的页面标题 */
 export function getPageTitleForPath(pathname: string, session: StaffSession): string {
+  // 统一订单详情与订单上下文（订单导航项不可见，需显式匹配动态路径）。
+  if (/^\/staff\/orders\/[^/]+$/u.test(pathname)) return '订单详情';
+  if (/^\/staff\/orders/u.test(pathname)) return '订单';
   for (const item of getVisibleNavItems(session)) {
     if (item.path && pathname.startsWith(item.path) && item.path !== '/staff') {
       return item.label;

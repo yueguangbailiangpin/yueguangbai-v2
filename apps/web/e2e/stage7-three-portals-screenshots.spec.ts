@@ -96,7 +96,7 @@ const ORDER_DETAIL = {
   },
 };
 
-async function mockStaffApis(page: Page): Promise<void> {
+async function mockStaffApis(page: Page, staffImageIntentFiles: string[] = []): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/access/bootstrap')) {
@@ -121,6 +121,25 @@ async function mockStaffApis(page: Page): Promise<void> {
     }
     if (path.includes('/api/staff/buyer-advance-principal/order-7')) {
       await route.fulfill(ok({ entries: [] }));
+      return;
+    }
+    // 受保护图片正常读取链路：单图 read-intent（记录文件身份供断言）。
+    const intentMatch = /\/api\/staff\/files\/([^/]+)\/read-intents$/u.exec(path);
+    if (intentMatch && route.request().method() === 'POST') {
+      const fileId = decodeURIComponent(intentMatch[1]!);
+      staffImageIntentFiles.push(fileId);
+      await route.fulfill(ok({
+        read_intent_id: `staff-intent-${fileId}`,
+        file_object_id: fileId,
+        access_token: `staff-token-${fileId}-`.padEnd(40, 'x'),
+        access_token_available: true,
+        expires_at: 9_999_999_999_999,
+        replayed: false,
+      }));
+      return;
+    }
+    if (/^\/api\/staff\/file-read-intents\/[^/]+\/content$/u.test(path)) {
+      await pngContentResponse(route);
       return;
     }
     await notFoundJson(route);
@@ -327,7 +346,7 @@ async function mockBuyerApis(page: Page): Promise<void> {
 const fixedNow = Date.parse('2026-08-28T04:00:00.000Z');
 const pageInfo = { limit: 100, next_cursor: null };
 
-async function mockSellerApis(page: Page): Promise<void> {
+async function mockSellerApis(page: Page, sellerCommIntentFiles: string[] = []): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/customer-auth/session') {
@@ -479,11 +498,98 @@ async function mockSellerApis(page: Page): Promise<void> {
       }));
       return;
     }
+    // 卖家首页组织成员：正常 DTO 形状（Owner + 普通成员，真实角色文案）。
+    if (path === '/api/seller-portal/members') {
+      await route.fulfill(ok({
+        members: [
+          {
+            member_id: 'stage7-member-owner', display_name: '田中 太郎',
+            role: 'OWNER', primary_owner: true, status: 'ACTIVE', member_number: 1,
+          },
+          {
+            member_id: 'stage7-member-ops', display_name: '佐藤 花子',
+            role: 'OPERATIONS', primary_owner: false, status: 'ACTIVE', member_number: 2,
+          },
+        ],
+      }));
+      return;
+    }
+    // 卖家沟通截图 read-intent：每张截图各自独立发起（记录文件身份）。
+    const commIntentMatch = /\/api\/seller-portal\/formal-orders\/[^/]+\/communication-screenshots\/([^/]+)\/read-intent$/u.exec(path);
+    if (commIntentMatch && route.request().method() === 'POST') {
+      const fileId = decodeURIComponent(commIntentMatch[1]!);
+      sellerCommIntentFiles.push(fileId);
+      // 共享 OrderCommunicationScreenshotReadIntentDto 是 strict 五字段，
+      // 与员工通用 read-intent 不同，不携带 file_object_id。
+      await route.fulfill(ok({
+        read_intent_id: `seller-comm-intent-${fileId}`,
+        access_token: `seller-comm-token-${fileId}-`.padEnd(40, 'x'),
+        access_token_available: true,
+        expires_at: 9_999_999_999_999,
+        replayed: false,
+      }));
+      return;
+    }
+    if (/^\/api\/seller-portal\/file-read-intents\/[^/]+\/content$/u.test(path)) {
+      await pngContentResponse(route);
+      return;
+    }
     await notFoundJson(route);
   });
 }
 
 // ------------------------------ capture ----------------------------------
+
+// 1×1 真实 PNG（可被浏览器解码），用于受保护图片的正常读取链路 mock。
+const pngBytes = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
+
+function pngContentResponse(route: Route): Promise<void> {
+  return route.fulfill({
+    status: 200,
+    headers: {
+      'Content-Type': 'image/png',
+      'Content-Length': String(pngBytes.length),
+      'Cache-Control': 'private, max-age=300',
+      'X-Content-Type-Options': 'nosniff',
+    },
+    body: pngBytes,
+  });
+}
+
+/**
+ * 正常状态截图统一断言（7R-1）：截图前页面不允许残留任何错误态或加载态。
+ * 只在应属于正常状态的截图测试中使用；不触碰专测错误恢复的 spec。
+ */
+async function assertNoUnexpectedErrorState(page: Page): Promise<void> {
+  const body = page.locator('body');
+  for (const text of [
+    '图片读取凭证已失效',
+    '图片暂时无法读取',
+    '成员列表暂时不可用',
+    '服务暂时不可用',
+    '暂时加载不了',
+    'not found',
+    '读取中…',
+    '加载中…',
+  ]) {
+    await expect(body).not.toContainText(text);
+  }
+}
+
+/** 等待页面全部已挂 src 的图片完成解码（complete 且 naturalWidth > 0）。 */
+async function awaitAllImagesDecoded(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      Array.from(document.querySelectorAll('img'))
+        .filter((img) => img.getAttribute('src') !== null)
+        .every((img) => img.complete && img.naturalWidth > 0),
+    undefined,
+    { timeout: 10_000 },
+  );
+}
 
 async function capture(page: Page, name: string): Promise<void> {
   mkdirSync(directory, { recursive: true });
@@ -496,17 +602,41 @@ test.describe('stage 7 three-portal screenshots', () => {
     await mockStaffApis(page);
     await page.goto('/staff');
     await expect(page.getByRole('navigation', { name: '员工工作台主导航' })).toBeVisible();
-    await page.waitForTimeout(400);
+    // 等待工作项查询真实完成（空队列空状态）后再截图。
+    await expect(page.getByText('暂无我的待办')).toBeVisible();
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'staff-workbench-1440x900.png');
   });
 
   test('staff order detail desktop 1440x900', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await mockStaffApis(page);
+    const intentFiles: string[] = [];
+    await mockStaffApis(page, intentFiles);
     await page.goto('/staff/orders/order-7');
     await expect(page.getByRole('heading', { name: /订单沟通截图（2）/u })).toBeVisible();
-    await page.waitForTimeout(400);
-    await capture(page, 'staff-order-detail-1440x900.png');
+    // 三张受保护图片（付款 + 两张沟通）必须真实走 read-intent → content 并解码成功。
+    const payment = page.getByRole('img', { name: '订单付款截图' });
+    await payment.scrollIntoViewIfNeeded();
+    await expect(payment).toBeVisible();
+    // 沟通缩略图懒加载：先滚到图注触发挂载，再等待 img 渲染。
+    const captions = page.getByText(/上传员工：/);
+    await expect(captions).toHaveCount(2);
+    await captions.first().scrollIntoViewIfNeeded();
+    const commShots = page.getByRole('img', { name: '订单沟通截图' });
+    await expect(commShots).toHaveCount(2);
+    for (let index = 0; index < 2; index += 1) {
+      await commShots.nth(index).scrollIntoViewIfNeeded();
+      await expect(commShots.nth(index)).toBeVisible();
+    }
+    await expect(page.getByText(/上传员工：总管理员/)).toHaveCount(2);
+    await awaitAllImagesDecoded(page);
+    // 三张图片使用各自正确的文件身份，且三次读取全部真实发生。
+    expect([...intentFiles].sort()).toEqual(['comm-7-1', 'comm-7-2', 'pay-7']);
+    expect(new Set(intentFiles).size).toBe(3);
+    await assertNoUnexpectedErrorState(page);
+    // 整页截图：保证付款截图与两张沟通截图完整入镜（视口截图会裁掉第二张）。
+    mkdirSync(directory, { recursive: true });
+    await page.screenshot({ path: join(directory, 'staff-order-detail-1440x900.png'), fullPage: true, animations: 'disabled', caret: 'hide' });
   });
 
   test('staff mobile 390x844', async ({ page }) => {
@@ -514,7 +644,8 @@ test.describe('stage 7 three-portal screenshots', () => {
     await mockStaffApis(page);
     await page.goto('/staff');
     await expect(page.getByLabel('打开导航菜单')).toBeVisible();
-    await page.waitForTimeout(400);
+    await expect(page.getByText('暂无我的待办')).toBeVisible();
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'staff-mobile-390x844.png');
   });
 
@@ -525,7 +656,10 @@ test.describe('stage 7 three-portal screenshots', () => {
     await expect(page.getByLabel('打开导航菜单')).toBeVisible();
     await page.getByLabel('打开导航菜单').click();
     await expect(page.getByRole('dialog', { name: '员工导航菜单' })).toBeVisible();
-    await page.waitForTimeout(400);
+    // Drawer 底部身份块：姓名=角色时只显示一次（角色语义在 aria-label）。
+    const drawer = page.getByRole('dialog', { name: '员工导航菜单' });
+    await expect(drawer.getByText('总管理员', { exact: true })).toHaveCount(1);
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'staff-mobile-drawer-390x844.png');
   });
 
@@ -535,7 +669,7 @@ test.describe('stage 7 three-portal screenshots', () => {
     await page.goto('/buyer');
     await expect(page.getByRole('heading', { name: '你好，月白买家' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '下一步', exact: true })).toBeVisible();
-    await page.waitForTimeout(400);
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'buyer-home-1440x900.png');
   });
 
@@ -544,7 +678,7 @@ test.describe('stage 7 three-portal screenshots', () => {
     await mockBuyerApis(page);
     await page.goto('/buyer/orders/formal-1');
     await expect(page.getByText('订单汇率')).toBeVisible();
-    await page.waitForTimeout(400);
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'buyer-order-detail-1440x900.png');
   });
 
@@ -553,7 +687,8 @@ test.describe('stage 7 three-portal screenshots', () => {
     await mockBuyerApis(page);
     await page.goto('/buyer');
     await expect(page.getByLabel('打开导航菜单')).toBeVisible();
-    await page.waitForTimeout(400);
+    await expect(page.getByRole('heading', { name: '你好，月白买家' })).toBeVisible();
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'buyer-mobile-390x844.png');
   });
 
@@ -564,7 +699,7 @@ test.describe('stage 7 three-portal screenshots', () => {
     await expect(page.getByLabel('打开导航菜单')).toBeVisible();
     await page.getByLabel('打开导航菜单').click();
     await expect(page.getByRole('dialog', { name: '买家导航菜单' })).toBeVisible();
-    await page.waitForTimeout(400);
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'buyer-mobile-drawer-390x844.png');
   });
 
@@ -573,21 +708,39 @@ test.describe('stage 7 three-portal screenshots', () => {
     await mockSellerApis(page);
     await page.goto('/seller');
     await expect(page.getByRole('heading', { name: '月白生活株式会社', exact: true })).toBeVisible();
-    await page.waitForTimeout(400);
+    // 组织成员查询真实完成后显示正常成员状态（Owner + 普通成员 + 真实角色文案）。
+    const membersPanel = page.getByRole('region', { name: '组织成员' });
+    await expect(membersPanel.getByText('2 名成员')).toBeVisible();
+    await expect(membersPanel.getByText('田中 太郎')).toBeVisible();
+    await expect(membersPanel.getByText('负责人', { exact: true })).toBeVisible();
+    await expect(membersPanel.getByText('佐藤 花子')).toBeVisible();
+    await expect(membersPanel.getByText('运营成员', { exact: true })).toBeVisible();
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'seller-home-1440x900.png');
   });
 
   test('seller orders with communication screenshots desktop 1440x900', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await mockSellerApis(page);
+    const commIntents: string[] = [];
+    await mockSellerApis(page, commIntents);
     await page.goto('/seller/orders');
     await expect(page.getByRole('heading', { name: '订单与业务完成' })).toBeVisible();
-    // 展开订单明细并滚到沟通截图分区：两份真实形状 DTO 截图（含上传人/时间）。
     await page.locator('details').first().locator('summary').click();
-    await expect(page.getByRole('button', { name: '展开沟通截图 1' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '展开沟通截图 2' })).toBeVisible();
-    await page.getByText('沟通截图（员工上传，一单可多张）').first().scrollIntoViewIfNeeded();
-    await page.waitForTimeout(400);
+    // 两张沟通截图各自真实发起 read-intent 并显示图片。
+    // 缩略图懒加载：先滚动让预览进入视口触发读取，img 才会挂载。
+    await page.getByRole('button', { name: '展开沟通截图 1' }).click();
+    await page.getByText(/^沟通截图 1 · 上传人：/).scrollIntoViewIfNeeded();
+    await expect(page.getByRole('img', { name: '订单沟通截图 1' })).toBeVisible();
+    await page.getByRole('button', { name: '展开沟通截图 2' }).click();
+    await page.getByText(/^沟通截图 2 · 上传人：/).scrollIntoViewIfNeeded();
+    await expect(page.getByRole('img', { name: '订单沟通截图 2' })).toBeVisible();
+    await expect(page.getByText(/上传人：总管理员/)).toBeVisible();
+    await expect(page.getByText(/上传人：卖家对接/)).toBeVisible();
+    await expect(page.getByText(/上传时间：/).first()).toBeVisible();
+    await awaitAllImagesDecoded(page);
+    // 两个 read-intent 均真实发生，且对应两个不同 file_object_id。
+    expect(commIntents).toEqual(['comm-seller-1', 'comm-seller-2']);
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'seller-orders-communication-screenshots-1440x900.png');
   });
 
@@ -597,7 +750,7 @@ test.describe('stage 7 three-portal screenshots', () => {
     await page.goto('/seller/settlements');
     await expect(page.getByRole('heading', { name: '卖家结算' })).toBeVisible();
     await expect(page.getByText('待结本金', { exact: true }).first()).toBeVisible();
-    await page.waitForTimeout(400);
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'seller-settlement-1440x900.png');
   });
 
@@ -606,7 +759,8 @@ test.describe('stage 7 three-portal screenshots', () => {
     await mockSellerApis(page);
     await page.goto('/seller');
     await expect(page.getByLabel('打开导航菜单')).toBeVisible();
-    await page.waitForTimeout(400);
+    await expect(page.getByText('田中 太郎')).toBeVisible();
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'seller-mobile-390x844.png');
   });
 
@@ -617,7 +771,8 @@ test.describe('stage 7 three-portal screenshots', () => {
     await expect(page.getByLabel('打开导航菜单')).toBeVisible();
     await page.getByLabel('打开导航菜单').click();
     await expect(page.getByRole('dialog', { name: '卖家导航菜单' })).toBeVisible();
-    await page.waitForTimeout(400);
+    await expect(page.getByText('田中 太郎')).toBeVisible();
+    await assertNoUnexpectedErrorState(page);
     await capture(page, 'seller-mobile-drawer-390x844.png');
   });
 });

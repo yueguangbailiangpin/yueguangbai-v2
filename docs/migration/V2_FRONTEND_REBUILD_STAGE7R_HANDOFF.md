@@ -65,7 +65,7 @@ fix(web): close stage 7 portal contract and regression gaps
 
 **防回归**：新增 `scripts/verify-css-duplicates.mjs`（`npm run verify:css-duplicates`，已并入 `check:ci:static` 链）——对全部 6 个样式表检测任意 ≥256 行字节级完全重复区块，发现即 exit 1；负向自测（构造重复文件）确认会失败。当前 6 文件全部通过。
 
-**视觉回归确认**：三端 13 张截图重新生成（vite preview + 确定性 mock），关键两张经视觉模型逐项确认（卖家订单页：两入口+上传人+时间、无错误状态；员工工作台：无错误状态、身份块去重）；其余截图在生成前均由 spec 断言核心内容可见 + `noHorizontalOverflow`（1440/1600/390/320、200% 缩放、reduced-motion 由 buyer-remaining-visual / seller-visual-refresh / module1 程序化覆盖）。
+**视觉回归确认**：三端 13 张截图重新生成（vite preview + 确定性 mock），关键两张经视觉模型逐项确认（卖家订单页：两入口+上传人+时间、无错误状态；员工工作台：无错误状态、身份块去重）；其余截图在生成前均由 spec 断言核心内容可见 + `noHorizontalOverflow`（1440/1600/390/320、200% 缩放、reduced-motion 由 buyer-remaining-visual / seller-visual-refresh / module1 程序化覆盖）。（7R 总审指出该确认不充分——卖家首页成员错误态与员工订单图片失败态未被发现；7R-1 已补齐，见下节。）
 
 ## 4. 买家 Playwright 基线失败收口（总审缺陷四）
 
@@ -120,7 +120,8 @@ fix(web): close stage 7 portal contract and regression gaps
 买家端：buyer-home / buyer-order-detail（1440×900）、buyer-mobile、buyer-mobile-drawer（390×844）。
 卖家端：seller-home、**seller-orders-communication-screenshots（两份真实形状 DTO 截图：上传人"总管理员/卖家对接"+上传时间）**、seller-settlement（1440×900）、seller-mobile、seller-mobile-drawer（390×844）。
 
-- 无"成员列表暂时不可用/读取中"并存错误态；无图片读取失败态充当正常态（证据：视觉模型逐项确认 + 各 spec 断言）。
+- ~~无"成员列表暂时不可用/读取中"并存错误态；无图片读取失败态充当正常态~~
+  **（7R 总审判定为失实：7R 版截图中卖家首页并存"读取中…"与"成员列表暂时不可用"、员工订单详情三张图片全部处于读取失败态、卖家沟通截图未实际展开。已由 7R-1 修复并重新生成，13 张逐张复核后本句才重新成立，见 §5.1。）**
 - 员工工作台重复身份文字修复：删除桌面侧栏底部整块重复身份（头像+姓名+角色；顶栏会话区唯一呈现，移动 Drawer 保留）。问候语含姓名与顶栏小号内容区标题属模板设计模式（小号上下文标签 + 大号页面标题），未改；e2e 对 `heading '工作台'` 的既有断言全部保持通过。
 - 1440/1280(1600)/768(390)/320 四档、水平溢出、Drawer、键盘焦点、200% 缩放回流、reduced-motion 由 buyer-remaining-visual / seller-visual-refresh / module1 / pilot / stage7 spec 程序化断言覆盖（全绿）。
 
@@ -149,7 +150,7 @@ fix(web): close stage 7 portal contract and regression gaps
 | `npm run verify:api-contract` | 0（224 documented endpoints 双向一致） |
 | `npm run verify:web-source-boundaries` | 0 |
 | `npm run verify:web-static-build` | 0 |
-| Playwright 11 spec 终门（一次连续执行） | exit 0：**159 passed / 1 skipped / 0 failed**（stage7 三端 16、三端截图 13、module1 90、pilot+remaining+security 16 过 + 1 skip[环境变量门控的视觉检查点]、stage66e 7、staff-workbench 6、stage7a1 5、seller-visual-refresh 6） |
+| Playwright 终门（10 个 spec 文件、160 用例，一次连续执行） | exit 0：**159 passed / 1 skipped / 0 failed**（stage7 三端 16、三端截图 13、module1 90、pilot+remaining+security 16 过 + 1 skip[环境变量门控的视觉检查点]、stage66e 7、staff-workbench 6、stage7a1 5、seller-visual-refresh 6） |
 
 负向验证：真实卖家截图 DTO 可解析（合同测试）、敏感字段拒绝（object_key/drive_file_id/legacy_projection）、两截图两入口（MSW+Playwright+截图视觉确认）、买家端无沟通截图入口（stage7 spec 既有断言）、跨卖家组织 concealed 404（stage7/seller spec 既有断言）、非 Owner 无成员管理（stage7 spec 断言）、CSS 无 ≥256 行重复（verifier exit 0）。
 
@@ -160,3 +161,62 @@ fix(web): close stage 7 portal contract and regression gaps
 ## 9. 下一步
 
 停止并等待 ChatGPT 再次总审。审后可选：§6 真缺口逐个开 OpenSpec Change 补后端合同再补前端；仍未进入阶段 8 / 营销官网 / 部署。
+
+## 10. 7R-1 增补（2026-08-29，正常状态视觉证据与合同准确性收口）
+
+依据 ChatGPT 对 7R 的复核意见，单独提交 `fix(web): complete stage 7R visual evidence`（不 amend 71fc9487，不归档本 Change）。
+
+### 10.1 卖家 Canonical Marketplace schema 收紧
+
+`runtime.ts` 的 `canonicalMarketplace`（用于 `locked_service_fee_snapshot.marketplace_code`）从五码收紧为与共享 `MARKETPLACE_CODES` 完全一致的三码（AMAZON_JP/AMAZON_US/COUPANG_KR）；合同测试补齐：RAKUTEN_JP/TIKTOK_JP 解析失败、三合法码解析成功、真实响应仍可解析（runtime.test 7/7）。卖家店铺 DTO 的历史字段按总审意见不属本轮范围，未动。
+
+### 10.2 员工订单图片读取失败的真实前端根因（7R 遗留缺陷）
+
+7R 版员工订单详情截图三张图片全部"图片暂时无法读取"——根因**不是 mock 缺失**：7R 给截图 DTO 增加上传人/时间字段后，`StaffOrderDetailPage` 把整个 DTO 透传给 strict 的 `SafeFileReference`（多余键 → 校验失败 → 未发请求即 ERROR）。修复：页面只传 `file_object_id/file_version/purpose/visibility` 四个引用字段。此为 7R 自身引入的真实功能回归，7R-1 修复。
+
+### 10.3 截图 spec 正常状态链路
+
+- 员工订单详情：补齐三张图片各自的 read-intent/content mock（真实可解码 1×1 PNG），断言付款图 + 两张沟通图全部渲染、三个 read-intent 文件身份恰为 pay-7/comm-7-1/comm-7-2 且互不相同、页面无读取错误文本；整页截图保证三图完整入镜。
+- 卖家首页：补 `GET /api/seller-portal/members` 正常 mock（Owner 田中 太郎[负责人] + 普通成员 佐藤 花子[运营成员]），断言成员姓名与角色可见、无"读取中…/成员列表暂时不可用"。
+- 卖家订单页：点击"展开沟通截图 1/2"，两张图片真实渲染，两个 read-intent 真实发生且对应两个不同 file_object_id（comm-seller-1/comm-seller-2），两个上传人与上传时间可见。
+- 卖家沟通截图 read-intent 响应按共享 `OrderCommunicationScreenshotReadIntentDto` 的 strict 五字段返回（与员工通用 DTO 不同，不带 file_object_id）。
+- 新增 `assertNoUnexpectedErrorState(page)`（拒绝图片读取凭证已失效/图片暂时无法读取/成员列表暂时不可用/服务暂时不可用/暂时加载不了/not found/读取中…/加载中…）与 `awaitAllImagesDecoded(page)`（所有带 src 的 img complete 且 naturalWidth>0），13 个截图测试全部改用明确内容/图片等待，`waitForTimeout(400)` 全部移除。
+
+### 10.4 员工端重复文字清理
+
+- 顶栏会话区与移动 Drawer 身份块：`display_name === role.display_name` 时（如"总管理员"）视觉只显示一次，角色语义经容器 `aria-label` 保留。
+- `/staff` 首页：单一面包屑不再渲染（原先面包屑"工作台"+标题"工作台"重复），可见"工作台"上下文标题只剩一个。
+- `getPageTitleForPath`/`getBreadcrumbForPath` 显式匹配 `/staff/orders/:id`（订单导航项仍为"规划中"不可见）：Shell 标题为"订单详情"、面包屑"工作台/订单"，不再回退成重复"工作台"；其他员工路由不回退（jsdom 测试覆盖：37/37）。
+
+### 10.5 13 张截图逐张复核（2026-08-29，7R-1 重新生成）
+
+| 截图 | 正常数据 | 错误态 | 加载态 | 溢出 | Drawer | 重复身份/标题 |
+|---|---|---|---|---|---|---|
+| staff-workbench-1440x900 | ✓（问候+空队列+今日概览） | 无 | 无 | 无 | — | 无（顶栏身份一次；单一"工作台"标题） |
+| staff-order-detail-1440x900 | ✓（三图+图注+关键事实） | 无 | 无 | 无 | — | 无（面包屑 工作台/订单 + 标题 订单详情） |
+| staff-mobile-390x844 | ✓ | 无 | 无 | 无 | — | 无 |
+| staff-mobile-drawer-390x844 | ✓ | 无 | 无 | — | 正常覆盖 | 无（身份单行"总管理员/全部站点"） |
+| buyer-home-1440x900 | ✓（下一步/进行中/可预约） | 无 | 无 | 无 | — | 无 |
+| buyer-order-detail-1440x900 | ✓（进度+指引+摘要） | 无 | 无 | 无 | — | 无 |
+| buyer-mobile-390x844 | ✓ | 无 | 无 | 无 | — | 无 |
+| buyer-mobile-drawer-390x844 | ✓ | 无 | 无 | — | 正常覆盖 | 无 |
+| seller-home-1440x900 | ✓（含 2 名成员正常态） | 无 | 无 | 无 | — | 无 |
+| seller-orders-communication-screenshots-1440x900 | ✓（两图展开+上传人+时间） | 无 | 无 | 无 | — | 无 |
+| seller-settlement-1440x900 | ✓（摘要+项目+计价规则） | 无 | 无 | 无 | — | 无 |
+| seller-mobile-390x844 | ✓ | 无 | 无 | 无 | — | 无 |
+| seller-mobile-drawer-390x844 | ✓ | 无 | 无 | — | 正常覆盖 | 无 |
+
+### 10.6 7R-1 验证结果
+
+| 命令 | 退出码 |
+|---|---|
+| `npm run typecheck` | 0 |
+| `npm test` | 0（250 文件 / 1,700 用例；较 7R 基线 +5：Canonical 合同测试 ×1、员工壳层防重复测试 ×4） |
+| `npm run build` | 0 |
+| `npm run check` | 0 |
+| `openspec validate --all --strict` | 0（63/63） |
+| `npm run verify:api-contract` | 0 |
+| `npm run verify:web-source-boundaries` | 0 |
+| `npm run verify:web-static-build` | 0 |
+| `npm run verify:css-duplicates` | 0 |
+| Playwright 终门（10 spec 文件 / 160 用例） | exit 0：159 passed / 1 skipped（预存在环境门控）/ 0 failed |
