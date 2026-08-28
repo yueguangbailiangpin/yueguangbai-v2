@@ -1,5 +1,5 @@
 import { Navigate, useLocation } from 'react-router';
-import { BuyerLayout } from './BuyerLayout';
+import { BuyerFrame as BuyerLayout } from './BuyerFrame';
 import { BuyerRouteProvider } from '../../routes/IdentityRouteSlots';
 import { RouteChunkBoundary } from '../../routes/RouteChunkBoundary';
 import { BuyerHomePage } from '../home/BuyerHomePage';
@@ -13,7 +13,6 @@ const loadBuyerOrderRoutes = () => import('./BuyerOrderRouteModule');
 const loadBuyerAfterSalesRoutes = () => import('./BuyerAfterSalesRouteModule');
 const loadBuyerTasksRoute = () => import('./BuyerTasksRouteModule');
 
-export { BuyerLayout };
 
 export default function BuyerPortal(): React.JSX.Element {
   return (

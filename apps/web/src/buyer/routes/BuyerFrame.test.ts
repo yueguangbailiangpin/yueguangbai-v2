@@ -4,7 +4,7 @@ import {
   BUYER_SIDEBAR_NAVIGATION,
   buyerNavigationOwner,
   buyerSidebarOwner,
-} from './BuyerLayout';
+} from './BuyerFrame';
 
 describe('buyer semantic navigation ownership', () => {
   it('keeps the exact four-item mobile primary navigation', () => {

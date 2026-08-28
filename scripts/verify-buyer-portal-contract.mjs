@@ -80,7 +80,7 @@ for (const [, path] of expected) {
 const buyerWeb = [
   read('apps/web/src/App.tsx'), read('apps/web/src/config/runtime-config.ts'),
   read('apps/web/src/files/file-read-providers.ts'),
-  ...['api/client.ts', 'contracts/runtime.ts', 'routes/BuyerFrame.tsx', 'routes/BuyerLayout.tsx',
+  ...['api/client.ts', 'contracts/runtime.ts', 'routes/BuyerFrame.tsx',
     'routes/BuyerRouteModule.tsx', 'routes/BuyerOrderRouteModule.tsx', 'routes/BuyerAfterSalesRouteModule.tsx',
     'order-evidence/BuyerOrderEvidenceFormPage.tsx', 'reviews/BuyerReviewFormPage.tsx']
     .map((path) => read(`apps/web/src/buyer/${path}`)),
