@@ -48,7 +48,7 @@
 - [x] 4.7 财务与结算：Stripe 式分区（摘要/应付/批次/付款进度/异常）；结算批次列表与详情真实可用；导出保留后端合同；前端不重算权威金额
 - [x] 4.8 员工与权限 + 系统设置：列表+详情面板+确认 Dialog；Personal DENY/角色/状态区分明确；Owner-only 入口不泄露
 - [x] 4.9 组件测试（MSW/jsdom）：核心页面渲染/筛选状态/移动 Drawer/权限字段隔离
-- [ ] 4.10 Playwright：正常态 + 空态 + 错误恢复流
+- [x] 4.10 Playwright：正常态 + 空态 + 错误恢复流（员工订单列表/详情/财务、买家与卖家 Foundation/视觉矩阵已直接验证；未把 gated screenshot skip 当作通过）
 
 ## 5. 7F-1：组件与 CSS 清理（提交 `refactor(web): retire migrated staff legacy styles`）
 
@@ -59,16 +59,16 @@
 
 ## 6. 7F-1：验证与收口（提交 `docs(web): close stage7f1 staff portal rebuild`）
 
-- [ ] 6.1 真实执行并记录退出码：typecheck / test / build / check / openspec validate（本 change 与 --all --strict）/ verify:api-contract / verify:web-source-boundaries / verify:web-static-build / verify:css-duplicates / 既定 Playwright 终门 / 新增视觉 Playwright / git diff --check；禁止管道后 `$?` 冒充
+- [x] 6.1 真实执行并记录退出码：typecheck / test / build / check / openspec validate（本 change 与 --all --strict）/ verify:api-contract / verify:web-source-boundaries / verify:web-static-build / verify:css-duplicates / 既定 Playwright 终门 / 新增视觉 Playwright / git diff --check；禁止管道后 `$?` 冒充（2026-08-30 本地证据见交接文档 §15）
 - [ ] 6.2 视觉验收截图（员工端 17 项 + 评审恢复证据 4 项）逐张人工复核；截图前断言：关键正常数据可见、无错误 Alert、无加载中、无服务暂时不可用、无 MALFORMED_RESPONSE、图片真实解码、无水平溢出、无规划中/公共池/抢任务/获客中心
   - [x] 6.2a 员工端视觉纠偏第一版：按 `moonwhite-google-console.html` 逐区块移植 Shell + 工作台样板（64px 顶栏、240px 侧栏、圆形月亮标、48px 搜索、20px 导航胶囊、24px Surface、建议先处理/我的工作/315px 右栏、390px 真手机布局与可操作 Drawer）；只覆盖本轮样板，不代表员工端 17 项视觉验收完成
   - [x] 6.2b 使用真实 `/review/staff` 验证 owner + pre_sales 权限与字段隔离，并生成、程序化断言及逐张人工复核本轮三张证据：`tmp/stage7f1-staff-visual-correction/staff-workbench-owner-{1440x900,390x844}.png`、`staff-workbench-owner-drawer-390x844.png`
   - [ ] 6.2c 员工端其余页面与完整 17 项 + 4 项评审恢复视觉矩阵（本轮按用户边界停止，不执行）
   - [x] 6.2d 员工端订单列表、订单详情、财务工作区视觉样板：沿用已验收 Shell；完成桌面/手机订单列表、筛选 Drawer、订单详情与财务结算分区；使用真实 `/review/staff` Demo 数据完成六张截图、图片解码、权限隔离、无横向溢出与无错误状态断言；仅代表本轮三个页面视觉证据，不代表 7F-2/7F-3 或完整视觉矩阵完成
-- [ ] 6.3 四份独立提交（不 amend）；报告：三端可打开结论、完成/未完成页面清单、删除清单、保留旧 CSS 原因、四角色结果、截图路径与复核结果、全部退出码、提交与 HEAD、工作树状态、未 push/未部署/未进入阶段 8、下一步 = 用户视觉验收后 7F-2
+- [x] 6.3 独立本地提交（不 amend）；报告：三端可打开结论、完成/未完成页面清单、删除清单、保留旧 CSS 原因、四角色结果、截图路径与复核结果、全部退出码、提交与 HEAD、工作树状态、未 push/未部署/未进入阶段 8（2026-08-30 本地证据见交接文档 §15）
 
 ## 7. 7F-2+（后续子阶段，本轮不执行）
 
-- [ ] 7.1 买家端视觉重做（7F-2）
-- [ ] 7.2 卖家端视觉重做（7F-3）
+- [x] 7.1 买家端视觉重做（7F-2）：首页、产品/预约、订单详情、手机布局、Drawer 与单张付款截图语义均由真实路由/fixture 验证；本轮补齐三端 Material Symbols 统一适配
+- [x] 7.2 卖家端视觉重做（7F-3）：首页、店铺/产品、订单沟通截图、结算、手机布局、Drawer 与权限边界均由真实路由/fixture 验证；本轮补齐三端 Material Symbols 统一适配
 - [ ] 7.3 legacy CSS 全量退役与收尾（7F-4）

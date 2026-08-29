@@ -110,3 +110,45 @@ staff-workbench / staff-order-detail / staff-mobile / staff-mobile-drawer、buye
 ## 14. 下一步
 
 等待 ChatGPT 统一总审（代码 + 截图 + 权限 + 业务流程）。审后可选项：§11 阻塞项逐个开 OpenSpec Change 补后端合同，再补对应前端页面。
+
+## 15. 2026-08-30 7F 前端完整收口补充（本地）
+
+本次执行实际起点为 `1ac4322fed009df70c2596afc78f38ab7472dbdc`（分支
+`feature/staging-workflow-rate-ux`，工作树干净）；未使用 reset、rebase、squash、amend，未 push、未部署。
+
+### 本地提交
+
+| SHA | 内容 |
+|---|---|
+| `01c0f42b` | Foundation 买家/卖家 fixture、严格 DTO 与稳定可见语义修复 |
+| `4cccb759` | 员工端 typography token 与工作台层级校准 |
+| `1aec2244` | 三端共享 Material Symbols Rounded 语义适配层、迁移 Lucide、移除 lucide-react 依赖 |
+| `dbe5bc29` | 稳定员工工作台旧文案 matcher |
+| `3e4b5495` | 移除无样式引用的旧 `buyer-chat-screenshots` 类名并修正断言 |
+| `5dfbe799` | 以 `data-size` + CSS 统一图标尺寸，消除 JSX inline style |
+| `bf023b7b` | 图标源码守卫改为断言稳定 `data-size` 属性 |
+
+### 真实验证与截图
+
+- Foundation 首轮基线为 42 用例 30 通过/12 失败；修复后 `42/42` 通过。失败来自买家缺失 demo fixture、卖家严格 DTO 缺少两个 nullable settlement 字段，以及旧导航/文案/表单断言漂移；没有修改后端。
+- `npm test` 最终 `260` 个测试文件、`1806` 个用例全部通过；此前综合 check 曾因旧 inline-style 图标断言失败，已修复后重跑。
+- `npm run check` 最终退出码 `0`；其中 OpenSpec strict `65/65`、静态边界/依赖/迁移门禁、全量 Vitest、构建与静态构建检查均直接通过。Cloudflare staging/production dry-run 均为 `BLOCKED_NEEDS_OPERATOR_INPUT`，external_calls/deployments/resource_mutations 全部为 `0`。
+- 视觉 Playwright 真实通过：员工工作台 `1/1`、员工核心页 `1/1`、三端截图 `13/13`、Foundation `42/42`、买家/卖家/Review 组合 `38 passed + 1 gated 用例在设置截图路径后通过`、员工订单列表 `7/7`。
+- 最终截图目录（均为本地真实渲染并逐张查看）：
+  - 员工工作台：`tmp/stage7f1-staff-visual-correction/staff-workbench-owner-1440x900.png`、`staff-workbench-owner-390x844.png`、`staff-workbench-owner-drawer-390x844.png`
+  - 员工核心页：`tmp/stage7f2-staff-core-pages-visual/staff-orders-owner-1440x900.png`、`staff-orders-owner-390x844.png`、`staff-orders-owner-filter-drawer-390x844.png`、`staff-order-detail-owner-1440x900.png`、`staff-finance-owner-1440x900.png`、`staff-finance-owner-390x844.png`
+  - 三端矩阵：`/tmp/moonwhite-7f-final-20260830/{buyer-home-1440x900,buyer-order-detail-1440x900,buyer-mobile-390x844,buyer-mobile-drawer-390x844,seller-home-1440x900,seller-orders-communication-screenshots-1440x900,seller-settlement-1440x900,seller-mobile-390x844,seller-mobile-drawer-390x844,staff-workbench-1440x900,staff-order-detail-1440x900,staff-mobile-390x844,staff-mobile-drawer-390x844}.png`
+  - 1280 核心页：`/tmp/moonwhite-7f-final-20260830/stage75-order-list/staff-order-list-1280x900.png`
+
+### 字体、图标与清理边界
+
+- 员工 typography：正文 15/400；侧栏导航 15/500，选中 15/600；分组 12/600；标题桌面 32/600、手机 26/600；区块 18/600；任务 15/500；辅助 13/400；按钮 15/500。字体回退顺序为 `Google Sans Text` → `Roboto` → `Noto Sans SC` → `PingFang SC` → `Hiragino Sans GB` → `Microsoft YaHei` → `system-ui` → `-apple-system` → `BlinkMacSystemFont` → `Segoe UI`；没有引入运行时字体 CDN。
+- `apps/web/src/ui/MoonwhiteIcon.tsx` 是三端唯一 `MoonwhiteIcon` 适配层，读取本地官方 Material Symbols Rounded outline/filled SVG；固定 24×24 viewBox、`currentColor`、`aria-hidden`，导航 24px，移动 Drawer/页面小操作 20px，选中态使用 filled 资产。资源目录的 `NOTICE.txt` 记录 Google Material Design Icons 官方来源与 Apache 2.0 许可；静态 `material-symbols-rounded-staff.ttf` 已在前一提交移除。
+- 全仓 `apps/web/src` 已无 `lucide-react` 引用，确认无安全运行时引用后从 `apps/web/package.json` 与 lockfile 移除；归档 OpenSpec 说明仍保留为历史文字，不是运行时代码。
+- 本轮仅移除一个无样式引用的 `buyer-chat-screenshots` 类名；`global.css`、`design-freeze.css` 与旧布局仍保留，因为未迁移历史页面和公共 primitives 仍使用，`verify:css-duplicates` 通过。运行时未恢复公共池、抢任务、获客中心、双聊天入口、旧订单完整性入口或规划中导航。
+
+### 仍未完成与环境边界
+
+- 7F-4 legacy CSS 全量退役、员工端完整 17 项视觉矩阵以及营销官网/阶段 8 未执行；买家/卖家后端能力缺口仍按 §11 记录。
+- `npm run check` 的 Cloudflare dry-run 只报告 `BLOCKED_NEEDS_OPERATOR_INPUT`，外部调用、部署和资源变更均为 0；这不是部署证据。
+- 本次没有修改 `apps/api`、`packages/contracts`、`migrations` 或任何后端业务规则；`REMOTE_WRITES=no`、`GITHUB_REMOTE_TOUCHED=no`、`DEPLOY=no`。
