@@ -235,9 +235,9 @@ test('员工订单列表渲染后端行、翻页并进入统一详情', async ({
   await expect(page.getByText('123-7654321-0000003').first()).toBeVisible();
   // Pages accumulate under 加载更多: page-one rows remain rendered.
   await expect(page.getByText('123-7654321-0000001').first()).toBeVisible();
-  await expect(page.getByText('已显示全部匹配订单。')).toBeVisible();
+  await expect(page.getByText(/已全部加载/u)).toBeVisible();
 
-  await page.locator('button.link-button', { hasText: '123-7654321-0000001' }).first().click();
+  await page.locator('tr.sa-table__row', { hasText: '123-7654321-0000001' }).first().click();
   await expect(page.getByRole('heading', { name: '订单详情' }).first()).toBeVisible();
   await expect(page.getByText('当前负责人 / 下一步')).toBeVisible();
   await expect(page.getByText('返款甲')).toBeVisible();
@@ -310,7 +310,7 @@ test.describe('阶段 7.5 第一批截图（1440 / 1280 / 390）', () => {
     ] as const) {
       await page.setViewportSize({ width, height });
       await page.goto('/staff/orders');
-      await expect(page.getByText('123-7654321-0000001').first()).toBeVisible();
+      await expect(page.getByText('123-7654321-0000001').filter({ visible: true }).first()).toBeVisible();
       await assertNoUnexpectedErrorState(page);
       await noHorizontalOverflow(page);
       await page.screenshot({ path: join(directory, `${name}.png`), fullPage: true });

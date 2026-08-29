@@ -883,9 +883,9 @@ test('Staff desktop shell preserves the two-section task queue DOM order', async
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
   await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '任务队列' })).toBeVisible();
-  await expect(page.locator('#staff-queue-mine')).toBeVisible();
-  await expect(page.locator('#staff-queue-claimable')).toBeVisible();
+  // 7F-1：工作台为“我的待办 + 即将超时/异常/最近处理”，无公共池（claimable 已随 D-056 退役）。
+  await expect(page.getByText(/我的待办（\d+）/u).first()).toBeVisible();
+  await expect(page.getByRole('region', { name: '即将超时' })).toBeVisible();
   await expect(page.getByRole('button', { name: '刷新' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
@@ -895,7 +895,7 @@ test('Staff narrow shell keeps the task queue operable without overflow', async 
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/staff');
   await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '任务队列' })).toBeVisible();
+  await expect(page.getByText(/我的待办（\d+）/u).first()).toBeVisible();
   await page.getByRole('button', { name: '刷新' }).focus();
   await expect(page.getByRole('button', { name: '刷新' })).toBeFocused();
   await expect(page.locator('.staff-sidebar .staff-account-actions')).toBeVisible();

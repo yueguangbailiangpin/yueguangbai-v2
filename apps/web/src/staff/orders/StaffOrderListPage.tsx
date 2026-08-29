@@ -129,7 +129,7 @@ export function StaffOrderListPage(): React.JSX.Element {
   void session;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="sp-stack-sm">
       <div className="sp-page-head">
         <div>
           <p className="sp-page-head__meta">
@@ -238,12 +238,11 @@ export function StaffOrderListPage(): React.JSX.Element {
       {drawerOpen ? (
         <div className="sa-drawer-overlay" role="presentation" onClick={() => setDrawerOpen(false)}>
           <aside
-            className="sa-drawer"
+            className="sa-drawer sa-drawer--right"
             role="dialog"
             aria-modal="true"
             aria-label="订单筛选"
             onClick={(event) => event.stopPropagation()}
-            style={{ top: 0, right: 0, left: 'auto' }}
           >
             <div className="sa-drawer__header">
               <strong>订单筛选</strong>
@@ -257,7 +256,7 @@ export function StaffOrderListPage(): React.JSX.Element {
               </button>
             </div>
             <form
-              style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '0 4px' }}
+              className="sp-drawer-form"
               onSubmit={(event) => {
                 event.preventDefault();
                 applyFilters(draft);
@@ -373,7 +372,7 @@ export function StaffOrderListPage(): React.JSX.Element {
         <>
           {/* 桌面紧凑表格 */}
           <div className="sa-card sa-card--flush sp-table-only">
-            <div style={{ overflowX: 'auto' }}>
+            <div className="sp-table-scroll">
               <table className="sa-table">
                 <thead>
                   <tr>
@@ -403,8 +402,7 @@ export function StaffOrderListPage(): React.JSX.Element {
               <button
                 key={item.formal_order_id}
                 type="button"
-                className="sp-card-item"
-                style={{ textAlign: 'left', cursor: 'pointer' }}
+                className="sp-card-item sp-card-item--button"
                 onClick={() => navigate(`/staff/orders/${encodeURIComponent(item.formal_order_id)}`)}
               >
                 <span className="sp-card-item__head">

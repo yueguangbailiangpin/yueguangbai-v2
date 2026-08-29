@@ -150,7 +150,7 @@ test('普通 ACTIVE Staff 从买家客户页处理邀请与恢复，且不提供
     json(route, success({ session: staffSession() })));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/staff/buyer-customers');
-  await expect(page.getByRole('heading', { name: '买家客户', exact: true, level: 2 }))
+  await expect(page.getByRole('heading', { name: '买家客户', exact: true }).first())
     .toBeVisible();
   await expect(page.getByRole('heading', { name: '历史客户 / 已有客户查询' })).toBeVisible();
   await expect(page.getByText(/账号开通、密码恢复都从具体客户记录发起/u)).toBeVisible();

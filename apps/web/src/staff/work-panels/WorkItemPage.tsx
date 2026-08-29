@@ -99,7 +99,7 @@ export function WorkItemPage(): React.JSX.Element {
   if (!workItemId)
     return (
       <main className="sp-detail-sections">
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <section className="sp-stack-sm">
           <EmptyState title="缺少待办编号" description="请从任务队列重新进入。" />
         </section>
       </main>
@@ -107,7 +107,7 @@ export function WorkItemPage(): React.JSX.Element {
   if (query.isPending)
     return (
       <main className="sp-detail-sections">
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <section className="sp-stack-sm">
           <p role="status">正在加载待办</p>
         </section>
       </main>
@@ -115,7 +115,7 @@ export function WorkItemPage(): React.JSX.Element {
   if (query.isError)
     return (
       <main className="sp-detail-sections">
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <section className="sp-stack-sm">
           <StaffPanelError
             error={query.error}
             retry={() => {
@@ -129,7 +129,7 @@ export function WorkItemPage(): React.JSX.Element {
   if (item.status !== 'OPEN')
     return (
       <main className="sp-detail-sections">
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <section className="sp-stack-sm">
           <EmptyState
             title={item.status === 'COMPLETED' ? '该待办已处理完成' : '该待办已取消'}
             description="已完成或已取消的工作项不再展示处理面板。"

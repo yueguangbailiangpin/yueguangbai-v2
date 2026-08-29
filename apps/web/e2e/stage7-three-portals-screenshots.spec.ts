@@ -789,7 +789,7 @@ test.describe('stage 7 three-portal screenshots', () => {
     await page.goto('/staff');
     await expect(page.getByRole('navigation', { name: '员工工作台主导航' })).toBeVisible();
     // 等待工作项查询真实完成（空队列空状态）后再截图。
-    await expect(page.getByText('暂无我的待办')).toBeVisible();
+    await expect(page.getByText('暂无待办')).toBeVisible();
     await assertNoUnexpectedErrorState(page);
     await capture(page, 'staff-workbench-1440x900.png');
   });
@@ -837,7 +837,7 @@ test.describe('stage 7 three-portal screenshots', () => {
     await mockStaffApis(page);
     await page.goto('/staff');
     await expect(page.getByLabel('打开导航菜单')).toBeVisible();
-    await expect(page.getByText('暂无我的待办')).toBeVisible();
+    await expect(page.getByText('暂无待办')).toBeVisible();
     await assertNoUnexpectedErrorState(page);
     await capture(page, 'staff-mobile-390x844.png');
   });
@@ -851,7 +851,7 @@ test.describe('stage 7 three-portal screenshots', () => {
     await expect(page.getByRole('dialog', { name: '员工导航菜单' })).toBeVisible();
     // Drawer 底部身份块：姓名=角色时只显示一次（角色语义在 aria-label）。
     const drawer = page.getByRole('dialog', { name: '员工导航菜单' });
-    await expect(drawer.getByText('总管理员', { exact: true })).toHaveCount(1);
+    await expect(drawer.getByText(/总管理员/u)).toHaveCount(1);
     await assertNoUnexpectedErrorState(page);
     await capture(page, 'staff-mobile-drawer-390x844.png');
   });

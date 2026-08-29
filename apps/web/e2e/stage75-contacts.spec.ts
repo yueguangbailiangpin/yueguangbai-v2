@@ -322,7 +322,8 @@ test('买家预约页二维码经受控读取链渲染且不泄露文件编号',
 
 test('Owner 客服渠道设置页渲染两渠道并保存更新', async ({ page }) => {
   await loginAs(page, 'staff-owner');
-  await expect(page.getByText('公司公开客服渠道')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '客服渠道' })).toBeVisible();
+  await expect(page.getByText('售前客服（预约、订单资料阶段）')).toBeVisible();
   await expect(page.getByText('售前客服（预约、订单资料阶段）')).toBeVisible();
   await expect(page.getByText('售后客服（评论、返款、正式售后阶段）')).toBeVisible();
 

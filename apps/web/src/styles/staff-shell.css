@@ -239,3 +239,25 @@
   justify-content: space-between;
   padding: 0 8px 12px;
 }
+
+/* 移动端顶栏：隐藏会话文本只留头像，搜索可收缩，避免 390px 横向溢出 */
+@media (max-width: 900px) {
+  .sa-topbar {
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .sa-topbar__session > .sa-topbar__session-context > .sa-topbar__session-name,
+  .sa-topbar__session > .sa-topbar__session-context > .sa-topbar__session-role {
+    display: none;
+  }
+
+  .sa-topbar__brand > strong {
+    display: none;
+  }
+
+  .sa-topbar__search {
+    min-width: 0;
+    flex: 1 1 96px;
+  }
+}

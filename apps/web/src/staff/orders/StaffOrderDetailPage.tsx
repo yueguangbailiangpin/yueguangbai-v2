@@ -222,7 +222,7 @@ export function StaffOrderDetailPage(): React.JSX.Element {
           ) : null}
 
           <div className="sp-detail-grid">
-            <div className="sp-detail-grid__main" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div className="sp-detail-grid__main sp-stack">
               <section aria-labelledby="staff-order-evidence-title">
                 <h2 id="staff-order-evidence-title" className="staff-group-heading">凭证与沟通截图</h2>
                 <div className="staff-order-evidence-grid">
@@ -239,7 +239,7 @@ export function StaffOrderDetailPage(): React.JSX.Element {
               <TimelineCard value={value} />
               <OrderOperationBlocks orderId={orderId} value={value} />
             </div>
-            <aside aria-label="订单参考" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <aside aria-label="订单参考" className="sp-stack">
               
               {value.buyer_advance ? (
                 <section className="staff-ref-section">
@@ -338,7 +338,7 @@ function ResponsibilityBlock({
           {responsibility.is_overdue ? ' · 已逾期' : ''}
         </StatusBadge>
       </div>
-      <div className="sp-responsibility-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+      <div className="sp-responsibility-grid">
         <div>
           <dt>负责员工</dt>
           <dd>

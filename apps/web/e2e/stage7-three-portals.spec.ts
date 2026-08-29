@@ -756,15 +756,14 @@ test.describe('stage 7 staff portal', () => {
     const nav = page.getByRole('navigation', { name: '员工工作台主导航' });
     await expect(nav.getByRole('link', { name: '员工与权限', exact: true })).toBeVisible();
     await expect(nav.getByRole('link', { name: '财务', exact: true })).toBeVisible();
-    await expect(nav.getByRole('link', { name: '买家', exact: true })).toBeVisible();
+    await expect(nav.getByRole('link', { name: '买家客户', exact: true })).toBeVisible();
   });
 
-  test('pre_sales sees 客户/买家 but no 买家返款', async ({ page }) => {
+  test('pre_sales sees 买家客户 but no 买家返款', async ({ page }) => {
     await mockStaffApis(page, 'pre_sales');
     await page.goto('/staff');
     const nav = page.getByRole('navigation', { name: '员工工作台主导航' });
-    await expect(nav.getByText('客户', { exact: true })).toBeVisible();
-    await expect(nav.getByRole('link', { name: '买家', exact: true })).toBeVisible();
+    await expect(nav.getByRole('link', { name: '买家客户', exact: true })).toBeVisible();
     await expect(nav.getByRole('link', { name: '买家返款', exact: true })).toHaveCount(0);
     await expect(nav.getByRole('link', { name: '员工与权限', exact: true })).toHaveCount(0);
   });
@@ -774,14 +773,14 @@ test.describe('stage 7 staff portal', () => {
     await page.goto('/staff');
     const nav = page.getByRole('navigation', { name: '员工工作台主导航' });
     await expect(nav.getByRole('link', { name: '买家返款', exact: true })).toBeVisible();
-    await expect(nav.getByText('客户', { exact: true })).toHaveCount(0);
+    await expect(nav.getByRole('link', { name: '买家客户', exact: true })).toHaveCount(0);
   });
 
   test('seller_ops sees 卖家 and 财务 but no 员工与权限', async ({ page }) => {
     await mockStaffApis(page, 'seller_ops');
     await page.goto('/staff');
     const nav = page.getByRole('navigation', { name: '员工工作台主导航' });
-    await expect(nav.getByRole('link', { name: '卖家', exact: true })).toBeVisible();
+    await expect(nav.getByRole('link', { name: '卖家客户', exact: true })).toBeVisible();
     await expect(nav.getByRole('link', { name: '财务', exact: true })).toBeVisible();
     await expect(nav.getByRole('link', { name: '员工与权限', exact: true })).toHaveCount(0);
   });
@@ -789,7 +788,7 @@ test.describe('stage 7 staff portal', () => {
   test('buyer registration/建档 shows the allocated B number', async ({ page }) => {
     await mockStaffApis(page, 'pre_sales');
     await page.goto('/staff/buyer-customers');
-    await expect(page.getByRole('heading', { name: '买家客户', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '买家客户', exact: true }).first()).toBeVisible();
     await page.locator('#BUYER-market').selectOption('AMAZON_JP');
     await page.locator('#BUYER-wechat').fill('wx_stage7');
     await page.locator('#BUYER-name').fill('阶段七买家');

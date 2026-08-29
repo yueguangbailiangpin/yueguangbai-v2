@@ -221,8 +221,8 @@ test.beforeAll(() => {
 test('员工结算批次：新建、加入应付、确认、导出', async ({ page }) => {
   await mockStaffApis(page);
   await page.goto('/staff');
-  await expect(page.getByText('开始处理').first()).toBeVisible();
-  await page.getByRole('button', { name: '开始处理' }).first().click();
+  await expect(page.getByText('去处理').first()).toBeVisible();
+  await page.getByRole('button', { name: '去处理' }).first().click();
   await expect(page.getByRole('heading', { name: '结算批次' })).toBeVisible();
   await expect(page.getByText('已确认').first()).toBeVisible();
   await expect(page.getByText('¥118.80').first()).toBeVisible();
@@ -327,7 +327,7 @@ test('卖家端结算批次只读列表', async ({ page }) => {
 test('阶段 7.5 第三批截图（1440 / 390）', async ({ page }) => {
   await mockStaffApis(page);
   await page.goto('/staff');
-  await page.getByRole('button', { name: '开始处理' }).first().click();
+  await page.getByRole('button', { name: '去处理' }).first().click();
   await expect(page.getByRole('heading', { name: '结算批次' })).toBeVisible();
   for (const [width, height, name] of [
     [1440, 900, 'staff-settlement-batches-1440x900'],

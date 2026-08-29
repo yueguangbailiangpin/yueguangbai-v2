@@ -262,7 +262,7 @@ export function StaffTaskQueuePage(): React.JSX.Element {
       ) : null}
 
       <div className="sp-workbench">
-        <div className="sp-workbench__main" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className="sp-workbench__main sp-stack">
           {openQuery.isPending ? (
             <p role="status" className="sp-hello__date">
               正在加载任务队列
@@ -315,11 +315,11 @@ export function StaffTaskQueuePage(): React.JSX.Element {
           )}
           {owner ? (
             <details className="sa-card">
-              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+              <summary className="sp-summary-trigger">
                 全部待办（{openItems.length}）
               </summary>
               {openItems.length === 0 ? (
-                <p className="sa-card__desc" style={{ marginTop: 8 }}>
+                <p className="sa-card__desc sp-desc-mt">
                   当前岗位与负责站点范围内暂无工作项。
                 </p>
               ) : (
@@ -352,7 +352,7 @@ export function StaffTaskQueuePage(): React.JSX.Element {
           </p>
         </div>
 
-        <aside style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <aside className="sp-stack">
           <section className="sa-card sa-card--flush" aria-labelledby="sp-due-soon">
             <div className="sa-card__header">
               <h3 className="sa-card__title" id="sp-due-soon">
@@ -361,7 +361,7 @@ export function StaffTaskQueuePage(): React.JSX.Element {
             </div>
             <div>
               {dueSoon.length === 0 ? (
-                <p className="sa-card__desc" style={{ padding: '12px 20px' }}>
+                <p className="sa-card__desc sp-inset">
                   48 小时内没有到期的工作项。
                 </p>
               ) : (
@@ -386,7 +386,7 @@ export function StaffTaskQueuePage(): React.JSX.Element {
             </div>
             <div>
               {exceptions.length === 0 ? (
-                <p className="sa-card__desc" style={{ padding: '12px 20px' }}>
+                <p className="sa-card__desc sp-inset">
                   当前没有逾期的工作项。
                 </p>
               ) : (
@@ -413,7 +413,7 @@ export function StaffTaskQueuePage(): React.JSX.Element {
             </div>
             <div>
               {recent.length === 0 ? (
-                <p className="sa-card__desc" style={{ padding: '12px 20px' }}>
+                <p className="sa-card__desc sp-inset">
                   今天还没有已完成的工作项。
                 </p>
               ) : (
@@ -447,7 +447,7 @@ export function StaffTaskQueuePage(): React.JSX.Element {
                   经营看板
                 </Link>
               </div>
-              <div style={{ padding: '12px 20px', display: 'grid', gap: 8 }}>
+              <div className="sp-inset--grid">
                 <dl className="sa-defs">
                   <dt>新买家</dt>
                   <dd>{ownerSummaryQuery.data.summary.cards.new_customers_buyer}</dd>

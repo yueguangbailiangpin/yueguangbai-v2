@@ -416,3 +416,65 @@
   border-radius: 12px;
   padding: 16px 20px;
 }
+
+/* ---- 布局工具类（替代 JSX 内联样式，static-build 守卫禁止 style 属性） ---- */
+.sp-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.sp-stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sp-inset {
+  padding: 12px 20px;
+}
+
+.sp-inset--grid {
+  padding: 12px 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.sp-card-item--button {
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.sa-drawer--right {
+  left: auto;
+  right: 0;
+}
+
+.sp-drawer-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 4px;
+}
+
+.sp-summary-trigger {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.sp-desc-mt {
+  margin-top: 8px;
+}
+
+.sp-table-scroll {
+  overflow-x: auto;
+}
+
+.sp-responsibility-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
