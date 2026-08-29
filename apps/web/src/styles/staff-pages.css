@@ -504,7 +504,7 @@
 
   .staff-app .sp-hello__title {
     margin: 6px 0 4px;
-    font-size: 24px;
+    font-size: var(--staff-font-size-title-mobile);
     font-weight: var(--staff-font-weight-semibold);
   }
 

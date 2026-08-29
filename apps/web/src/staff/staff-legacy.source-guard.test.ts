@@ -124,14 +124,16 @@ describe('staff legacy source guard (7F-1)', () => {
   });
 
   it('staff icons use local Material Symbols Rounded SVG twins without font ligatures', () => {
-    const adapter = readFileSync(join(STAFF_DIR, 'shared/MoonwhiteIcon.tsx'), 'utf8');
+    const adapter = readFileSync(join(STAFF_DIR, '../ui/MoonwhiteIcon.tsx'), 'utf8');
+    const staffReExport = readFileSync(join(STAFF_DIR, 'shared/MoonwhiteIcon.tsx'), 'utf8');
     const styles = readFileSync(join(STAFF_DIR, '../styles/staff-icons.css'), 'utf8');
     const assetsDir = join(STAFF_DIR, '../assets/material-symbols-rounded');
     const webAssetsDir = join(STAFF_DIR, '../assets');
-    expect(adapter).toContain("import.meta.glob('../../assets/material-symbols-rounded/*.svg'");
+    expect(adapter).toContain("import.meta.glob('../assets/material-symbols-rounded/*.svg'");
     expect(adapter).toContain("filled ? 'filled' : 'outline'");
     expect(adapter).toContain('viewBox="0 0 24 24"');
     expect(adapter).toContain('fill="currentColor"');
+    expect(staffReExport).toContain("from '../../ui/MoonwhiteIcon'");
     expect(styles).not.toMatch(/@font-face|font-feature-settings|font-variation-settings|liga|material-symbols-rounded-staff\.ttf/u);
     expect(readdirSync(webAssetsDir)).not.toContain('material-symbols-rounded-staff.ttf');
 
@@ -153,6 +155,28 @@ describe('staff legacy source guard (7F-1)', () => {
     expect(dashboardOutline).not.toBe(dashboardFilled);
   });
 
+  it('buyer, seller, and shared UI sources use the same semantic adapter without Lucide', () => {
+    const portalRoots = [
+      join(STAFF_DIR, '../buyer'),
+      join(STAFF_DIR, '../seller'),
+      join(STAFF_DIR, '../ui'),
+    ];
+    const files: string[] = [];
+    const visit = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) visit(full);
+        else if (/\.tsx?$/u.test(entry) && !/\.test\./u.test(entry)) files.push(full);
+      }
+    };
+    portalRoots.forEach(visit);
+    const lucideFiles = files.filter((file) => readFileSync(file, 'utf8').includes('lucide-react'));
+    expect(lucideFiles).toEqual([]);
+    expect(readFileSync(join(STAFF_DIR, '../buyer/routes/BuyerFrame.tsx'), 'utf8')).toContain('MoonwhiteIcon');
+    expect(readFileSync(join(STAFF_DIR, '../seller/routes/SellerLayout.tsx'), 'utf8')).toContain('MoonwhiteIcon');
+    expect(readFileSync(join(STAFF_DIR, '../ui/primitives.tsx'), 'utf8')).toContain('MoonwhiteIcon');
+  });
+
   it('staff typography exposes scoped hierarchy tokens and selectors', () => {
     const tokens = readFileSync(join(STAFF_DIR, '../styles/tokens.css'), 'utf8');
     const base = readFileSync(join(STAFF_DIR, '../styles/base.css'), 'utf8');
@@ -161,14 +185,15 @@ describe('staff legacy source guard (7F-1)', () => {
 
     for (const declaration of [
       '--staff-font-family:',
-      '--staff-font-size-body: 14px',
-      '--staff-font-size-nav: 14px',
-      '--staff-font-size-group: 11px',
-      '--staff-font-size-title: 30px',
-      '--staff-font-size-section: 16px',
-      '--staff-font-size-task: 14px',
-      '--staff-font-size-meta: 12px',
-      '--staff-font-size-button: 14px',
+      '--staff-font-size-body: 15px',
+      '--staff-font-size-nav: 15px',
+      '--staff-font-size-group: 12px',
+      '--staff-font-size-title: 32px',
+      '--staff-font-size-title-mobile: 26px',
+      '--staff-font-size-section: 18px',
+      '--staff-font-size-task: 15px',
+      '--staff-font-size-meta: 13px',
+      '--staff-font-size-button: 15px',
       '--staff-font-weight-regular: 400',
       '--staff-font-weight-medium: 500',
       '--staff-font-weight-semibold: 600',
@@ -180,6 +205,7 @@ describe('staff legacy source guard (7F-1)', () => {
     expect(base).toContain('font-family: var(--staff-font-family);');
     expect(base).toContain('font-size: var(--staff-font-size-body);');
     expect(base).toContain('font-weight: var(--staff-font-weight-regular);');
+    expect(base).toContain('-webkit-font-smoothing: subpixel-antialiased;');
     expect(shell).toContain('.staff-app .sa-nav__link');
     expect(shell).toContain('font-size: var(--staff-font-size-nav);');
     expect(shell).toContain('font-weight: var(--staff-font-weight-medium);');

@@ -133,19 +133,20 @@
   --font-family-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
 
   /* ---- 员工端排版层级（只由 .staff-app 消费） ----
-     使用同一套无网络字体栈覆盖中英文；优先采用本机已有的 Google Sans
-     Text/Roboto，中文缺字时再由系统 CJK 字体补齐，避免下载大体积中文字体。 */
+     使用同一套本地优先字体栈覆盖中英文；Google Sans Text/Roboto 若已安装
+     则保持 Workspace 字形，否则回退到系统 CJK/西文字体，避免运行时下载大体积字体。 */
   --staff-font-family: "Google Sans Text", "Roboto", "Noto Sans SC",
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui,
     -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --staff-font-size-body: 14px;
-  --staff-font-size-nav: 14px;
-  --staff-font-size-group: 11px;
-  --staff-font-size-title: 30px;
-  --staff-font-size-section: 16px;
-  --staff-font-size-task: 14px;
-  --staff-font-size-meta: 12px;
-  --staff-font-size-button: 14px;
+  --staff-font-size-body: 15px;
+  --staff-font-size-nav: 15px;
+  --staff-font-size-group: 12px;
+  --staff-font-size-title: 32px;
+  --staff-font-size-title-mobile: 26px;
+  --staff-font-size-section: 18px;
+  --staff-font-size-task: 15px;
+  --staff-font-size-meta: 13px;
+  --staff-font-size-button: 15px;
   --staff-font-weight-regular: 400;
   --staff-font-weight-medium: 500;
   --staff-font-weight-semibold: 600;

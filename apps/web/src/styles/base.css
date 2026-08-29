@@ -7,14 +7,16 @@
    ============================================================ */
 
 .staff-app {
-  /* 元素默认：正文 14px；员工端使用独立 token，避免 legacy 覆盖。 */
+  /* 元素默认：正文 15px；员工端使用独立 token，避免 legacy 覆盖。 */
   font-family: var(--staff-font-family);
   font-size: var(--staff-font-size-body);
   font-weight: var(--staff-font-weight-regular);
   line-height: var(--staff-line-height-body);
   color: var(--color-text);
   background: var(--color-canvas);
-  -webkit-font-smoothing: antialiased;
+  /* 保留系统字形笔画，避免 antialiased 在浅色画布上把中文和英文压得过细。 */
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
 }
 
 .staff-app *,

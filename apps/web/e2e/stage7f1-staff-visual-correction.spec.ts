@@ -59,17 +59,17 @@ async function assertWorkbenchTypography(page: Page): Promise<void> {
     };
   });
 
-  expect(typography.root?.fontSize).toBe('14px');
+  expect(typography.root?.fontSize).toBe('15px');
   expect(typography.root?.fontWeight).toBe('400');
   expect(typography.root?.fontFamily).toContain('Google Sans Text');
-  expect(typography.activeNav).toMatchObject({ fontSize: '14px', fontWeight: '600' });
-  expect(typography.inactiveNav).toMatchObject({ fontSize: '14px', fontWeight: '500' });
-  expect(typography.groupLabel).toMatchObject({ fontSize: '11px', fontWeight: '600' });
-  expect(typography.title).toMatchObject({ fontSize: '30px', fontWeight: '600' });
-  expect(typography.section).toMatchObject({ fontSize: '16px', fontWeight: '600' });
-  expect(typography.task).toMatchObject({ fontSize: '14px', fontWeight: '500' });
-  expect(typography.meta).toMatchObject({ fontSize: '12px', fontWeight: '400' });
-  expect(typography.button).toMatchObject({ fontSize: '14px', fontWeight: '500' });
+  expect(typography.activeNav).toMatchObject({ fontSize: '15px', fontWeight: '600' });
+  expect(typography.inactiveNav).toMatchObject({ fontSize: '15px', fontWeight: '500' });
+  expect(typography.groupLabel).toMatchObject({ fontSize: '12px', fontWeight: '600' });
+  expect(typography.title).toMatchObject({ fontSize: '32px', fontWeight: '600' });
+  expect(typography.section).toMatchObject({ fontSize: '18px', fontWeight: '600' });
+  expect(typography.task).toMatchObject({ fontSize: '15px', fontWeight: '500' });
+  expect(typography.meta).toMatchObject({ fontSize: '13px', fontWeight: '400' });
+  expect(typography.button).toMatchObject({ fontSize: '15px', fontWeight: '500' });
 }
 
 test('员工端 Shell + 工作台第一版：owner、非 Owner、手机 Drawer 与三张视觉证据', async ({
