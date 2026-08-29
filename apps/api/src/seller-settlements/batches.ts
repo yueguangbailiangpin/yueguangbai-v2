@@ -39,11 +39,18 @@ import { fixedInteger, SellerSettlementError } from './shared';
  * an incremental SHA-256 — nothing but the current page is ever held in
  * memory, and no full-buffer merge exists. Pass 2 lazily re-walks the same
  * pages inside a pull()-backpressured ReadableStream, one page per pull.
- * Both passes read payment facts (allocations/reversals) and due dates with
- * `created_at <= export_as_of`, where export_as_of is frozen when the export
- * command starts and recorded in the receipt — a payment recorded after the
- * preflight cannot change the streamed bytes, so the client-received SHA
- * always equals the receipt SHA.
+ *
+ * 7.5R-3 truthfulness (concurrent consistency of the two passes): both
+ * passes run the identical member condition, order and cursor against the
+ * CONFIRMATION-TIME frozen member snapshot (`added_at <= batch.frozen_at`
+ * and not already removed at or before it) — a cancellation that releases
+ * members between the passes cannot change the streamed bytes. Payment
+ * facts (allocations/reversals) are read with the EXCLUSIVE watermark
+ * `created_at < export_as_of`, where export_as_of = max(created_at) over
+ * the batch's frozen members at export start, plus one — a payment or
+ * reversal committed after the preflight with created_at == export_as_of
+ * (or later) cannot enter the second pass. export_as_of is recorded in the
+ * receipt, so the client-received SHA always equals the receipt SHA.
  */
 
 const BATCH_PAGE_LIMIT_MAX = 100;
@@ -980,7 +987,14 @@ export interface SellerSettlementBatchExportReceipt {
   row_count: number;
   sha256: string;
   exported_at: number;
-  /** Both export passes read payment facts with created_at <= export_as_of. */
+  /**
+   * 7.5R-3: EXCLUSIVE upper bound on payment-fact timestamps — both export
+   * passes read allocations/reversals with created_at < export_as_of, and
+   * the value is max(created_at) over the batch's confirmed member set at
+   * export start, plus one. A payment or reversal committed after the
+   * preflight with created_at == export_as_of (or later) cannot enter the
+   * second pass, so the streamed bytes always hash to this receipt's SHA.
+   */
   export_as_of: number;
   replayed: boolean;
 }
@@ -995,27 +1009,37 @@ export type ExportOutcome =
   | { kind: 'REPLAY'; receipt: SellerSettlementBatchExportReceipt };
 
 // ---------------------------------------------------------------------------
-// Export pass machinery (7.5R-2)
+// Export pass machinery (7.5R-2 + 7.5R-3)
 // ---------------------------------------------------------------------------
 
 /**
- * Payment facts as of the frozen instant: paid = allocations − reversals
- * with created_at <= export_as_of, outstanding = payable amount − paid.
- * The due date is JOINed into the page query itself — no batch-wide
- * due-date map is ever built. Two placeholders per expression, and the expression
- * appears twice (paid + outstanding), so every page binds export_as_of
- * four times before the batch id.
+ * Payment facts bounded by the EXCLUSIVE export_as_of watermark: paid =
+ * allocations − reversals with created_at < export_as_of, outstanding =
+ * payable amount − paid. The due date is JOINed into the page query itself
+ * — no batch-wide due-date map is ever built. Two placeholders per
+ * expression, and the expression appears twice (paid + outstanding), so
+ * every page binds export_as_of four times before the batch id.
  */
 const PAID_AS_OF_EXPR = `
   COALESCE((
     SELECT SUM(alloc.amount_cny_fen) FROM seller_payment_allocations alloc
-    WHERE alloc.payable_id=member.payable_id AND alloc.created_at<=?
+    WHERE alloc.payable_id=member.payable_id AND alloc.created_at<?
   ),0)
   -COALESCE((
     SELECT SUM(reversal.amount_cny_fen) FROM seller_payment_allocation_reversals reversal
-    WHERE reversal.payable_id=member.payable_id AND reversal.created_at<=?
+    WHERE reversal.payable_id=member.payable_id AND reversal.created_at<?
   ),0)`;
 
+/**
+ * The CONFIRMATION-TIME frozen member snapshot (7.5R-3): every member added
+ * no later than batch.frozen_at that was not already removed at or before
+ * it. Members released by a later cancellation (removed_at > frozen_at,
+ * active flipped to 0) stay in the export; draft members removed before
+ * confirmation (removed_at <= frozen_at) stay out. The live `active` flag
+ * is deliberately NOT consulted — cancellation between the two passes must
+ * not change the streamed bytes. The same condition, order and cursor drive
+ * both passes.
+ */
 const EXPORT_MEMBER_SELECT = `
   SELECT member.id, member.payable_id, member.formal_order_id,
     member.amazon_order_number_normalized, member.payable_type,
@@ -1024,7 +1048,8 @@ const EXPORT_MEMBER_SELECT = `
     payable.amount_cny_fen-(${PAID_AS_OF_EXPR}) AS outstanding_amount_cny_fen
   FROM seller_settlement_batch_members member
   JOIN seller_payables payable ON payable.id=member.payable_id
-  WHERE member.batch_id=? AND member.active=1`;
+  WHERE member.batch_id=? AND member.added_at<=?
+    AND (member.removed_at IS NULL OR member.removed_at>?)`;
 
 interface ExportMemberRow {
   id: string;
@@ -1042,11 +1067,15 @@ async function readExportMemberPage(
   database: SqlDatabase,
   batchId: string,
   exportAsOf: number,
+  frozenAt: number,
   limit: number,
   cursor: { type: string; number: string; id: string } | null,
 ): Promise<ExportMemberRow[]> {
   const clauses = [EXPORT_MEMBER_SELECT];
-  const params: unknown[] = [exportAsOf, exportAsOf, exportAsOf, exportAsOf, batchId];
+  const params: unknown[] = [
+    exportAsOf, exportAsOf, exportAsOf, exportAsOf,
+    batchId, frozenAt, frozenAt,
+  ];
   if (cursor !== null) {
     clauses.push(
       'AND (member.payable_type>? OR (member.payable_type=? AND (member.amazon_order_number_normalized>? '
@@ -1062,6 +1091,43 @@ async function readExportMemberPage(
     .bind(...params, limit)
     .all<ExportMemberRow>();
   return rows.results;
+}
+
+/**
+ * 7.5R-3 stable payment-fact watermark: max created_at over the
+ * allocation/reversal facts of the batch's frozen member set at export
+ * start. export_as_of = watermark + 1 is an EXCLUSIVE bound, so a
+ * same-millisecond (created_at == export_as_of) or later write committed
+ * after the preflight can never enter the second pass. With no facts at
+ * all the watermark is −1, giving export_as_of = 0 and an empty fact set
+ * that stays empty in both passes.
+ */
+async function readPaymentFactWatermark(
+  database: SqlDatabase,
+  batchId: string,
+  frozenAt: number,
+): Promise<number> {
+  const row = await database
+    .prepare(
+      `SELECT COALESCE(MAX(fact.created_at),-1) AS watermark FROM (
+      SELECT alloc.created_at
+      FROM seller_payment_allocations alloc
+      JOIN seller_settlement_batch_members member
+        ON member.payable_id=alloc.payable_id
+      WHERE member.batch_id=? AND member.added_at<=?
+        AND (member.removed_at IS NULL OR member.removed_at>?)
+      UNION ALL
+      SELECT reversal.created_at
+      FROM seller_payment_allocation_reversals reversal
+      JOIN seller_settlement_batch_members member
+        ON member.payable_id=reversal.payable_id
+      WHERE member.batch_id=? AND member.added_at<=?
+        AND (member.removed_at IS NULL OR member.removed_at>?)
+    ) fact`,
+    )
+    .bind(batchId, frozenAt, frozenAt, batchId, frozenAt, frozenAt)
+    .first<{ watermark: number }>();
+  return Number(row?.watermark ?? -1);
 }
 
 function exportMemberCursor(
@@ -1108,6 +1174,7 @@ async function preflightExport(
   database: SqlDatabase,
   batch: BatchRow,
   exportAsOf: number,
+  frozenAt: number,
   onLimit: (code: 'EXPORT_TOO_LARGE') => never,
   limits: { rows: number; bytes: number },
 ): Promise<{ rowCount: number; byteLength: number; sha256: string }> {
@@ -1123,7 +1190,7 @@ async function preflightExport(
   let cursor: { type: string; number: string; id: string } | null = null;
   for (;;) {
     const rows = await readExportMemberPage(
-      database, batch.id, exportAsOf, EXPORT_PAGE, cursor,
+      database, batch.id, exportAsOf, frozenAt, EXPORT_PAGE, cursor,
     );
     if (rows.length === 0) break;
     for (let index = 0; index < rows.length; index += 1) {
@@ -1149,6 +1216,7 @@ function exportCsvStream(
   database: SqlDatabase,
   batch: BatchRow,
   exportAsOf: number,
+  frozenAt: number,
 ): ReadableStream<Uint8Array> {
   const confirmedAtIso = batch.frozen_at === null
     ? ''
@@ -1169,7 +1237,7 @@ function exportCsvStream(
         return;
       }
       const rows = await readExportMemberPage(
-        database, batch.id, exportAsOf, EXPORT_PAGE, cursor,
+        database, batch.id, exportAsOf, frozenAt, EXPORT_PAGE, cursor,
       );
       if (rows.length === 0) {
         exhausted = true;
@@ -1271,14 +1339,23 @@ export async function exportBatchCsv(
     const refuse = (code: 'EXPORT_TOO_LARGE'): never => {
       throw new SellerSettlementError(code, 409);
     };
-    // Freeze the as-of instant: both passes read payment facts and due
-    // dates with created_at <= export_as_of, so a payment recorded after
-    // the preflight cannot alter the streamed bytes.
-    const exportAsOf = now;
+    // 7.5R-3 frozen export facts:
+    // - member set = the confirmation-time snapshot (added_at / removed_at
+    //   against batch.frozen_at), immune to a cancellation between passes;
+    // - payment facts = exclusive watermark max(created_at)+1 taken at
+    //   export start, so a same-millisecond write committed after the
+    //   preflight can never enter the second pass.
+    if (batch.frozen_at === null) {
+      throw new SellerSettlementError('SELLER_SETTLEMENT_CONFLICT', 409);
+    }
+    const frozenAt = Number(batch.frozen_at);
+    const watermark = await readPaymentFactWatermark(database, input.batchId, frozenAt);
+    const exportAsOf = watermark + 1;
     const { rowCount, sha256: sha } = await preflightExport(
       database,
       batch,
       exportAsOf,
+      frozenAt,
       refuse,
       input.limits ?? { rows: EXPORT_ROW_LIMIT, bytes: EXPORT_BYTE_LIMIT },
     );
@@ -1324,7 +1401,7 @@ export async function exportBatchCsv(
     return {
       kind: 'FILE',
       receipt,
-      createStream: () => exportCsvStream(database, batch, exportAsOf),
+      createStream: () => exportCsvStream(database, batch, exportAsOf, frozenAt),
     };
   } catch (error) {
     const message = String((error as Error)?.message ?? error);

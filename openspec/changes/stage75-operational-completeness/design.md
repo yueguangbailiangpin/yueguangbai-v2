@@ -204,7 +204,9 @@ seller_settlement_batch_events (
 
 ### 6.4 CSV 导出安全
 
-7.5R-2 追记（真流式与两遍一致性）：导出为两阶段实现。第一阶段预检按 keyset 500 行/页枚举（due date 直接 JOIN 当前页查询），逐页编码并折叠进增量 SHA-256（`IncrementalSha256`），行/字节超限在发出任何字节前 409 `EXPORT_TOO_LARGE`，内存仅持当前页；第二阶段以 `ReadableStream` 的 `pull()` 背压按相同顺序逐页读取、逐页编码 enqueue（每次 pull 至多一页），全程不持有 chunk 数组、完整 merged buffer 或全批次成员数组。两遍读取一致性采用"导出事实冻结"方案：命令开始时冻结 `export_as_of`，两遍的付款/冲销事实均读 `created_at <= export_as_of`（付款 = allocations−reversals，未付 = 应付额−已付），`export_as_of` 写入收据、BATCH_EXPORTED 事件与审计 nextState；同键重放返回原始收据，客户端实收字节的 SHA-256 与 header/receipt 一致。不新增快照表（无需 Migration 0036）。
+7.5R-3 追记（两遍并发一致性最终方案，取代 7.5R-2 的 `created_at <= export_as_of` 表述——该边界可被同毫秒付款突破，且成员集合按 active 过滤会在两遍之间被取消批次改变）：两遍读取的一致性由两个不可变边界共同保证。**成员集合**：两遍使用完全相同的成员条件、排序与游标，按批次确认时的冻结快照读取——`member.added_at <= batch.frozen_at` 且（`member.removed_at IS NULL OR member.removed_at > batch.frozen_at`）；确认前移除的草稿成员被排除，确认后因取消被释放的成员（removed_at = 取消时刻 > frozen_at，active 已置 0）仍包含在内，导出路径不读取 live `active` 标志；取消释放业务行为本身不变。**付款事实**：`export_as_of` 语义为排他上界——两遍均读 `alloc.created_at < export_as_of`、`reversal.created_at < export_as_of`，取值为导出开始时该批次冻结成员集合上付款事实的最大 `created_at` 加一（无事实时为 0，即恒空集）；预检后提交的 `created_at == export_as_of` 或更晚的付款/冲销无法进入第二遍。`export_as_of` 写入收据、BATCH_EXPORTED 事件与审计 nextState；同键重放返回原始收据；客户端实收字节 SHA-256 与 header/receipt 一致。真实回归覆盖：Response 未读取时取消批次后正文仍完整（行数/无重漏/SHA）、1000 行读取第一页后取消剩余页完整、同毫秒付款+冲销不变、已取消批次新导出与重放均 409。不新增快照表（无需 Migration 0036）。
+
+7.5R-2 追记（真流式架构，边界表述由 7.5R-3 修正）：导出为两阶段实现。第一阶段预检按 keyset 500 行/页枚举（due date 直接 JOIN 当前页查询），逐页编码并折叠进增量 SHA-256（`IncrementalSha256`），行/字节超限在发出任何字节前 409 `EXPORT_TOO_LARGE`，内存仅持当前页；第二阶段以 `ReadableStream` 的 `pull()` 背压按相同顺序逐页读取、逐页编码 enqueue（每次 pull 至多一页），全程不持有 chunk 数组、完整 merged buffer 或全批次成员数组。
 
 原设计要点：
 

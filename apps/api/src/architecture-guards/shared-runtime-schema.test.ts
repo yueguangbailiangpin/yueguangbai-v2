@@ -345,8 +345,21 @@ describe('streaming export source guard (7.5R-2)', () => {
     // The incremental hasher and the lazy stream exist.
     expect(batches).toContain('IncrementalSha256');
     expect(batches).toContain('createStream: () => exportCsvStream');
-    expect(batches).toContain('created_at<=?');
+    // 7.5R-3: exclusive payment-fact watermark and the confirmation-time
+    // frozen member snapshot (no live `active` filter on the export path).
+    expect(batches).toContain('alloc.created_at<?');
+    expect(batches).toContain('reversal.created_at<?');
+    expect(batches).toContain('member.added_at<=?');
+    expect(batches).toContain('(member.removed_at IS NULL OR member.removed_at>?)');
+    expect(batches).toContain('readPaymentFactWatermark');
     expect(batches).toContain('export_as_of');
+    // The export SELECT itself must not consult the live `active` flag
+    // (batch totals and the live detail reads legitimately still do).
+    const exportSelect = batches.slice(
+      batches.indexOf('const EXPORT_MEMBER_SELECT'),
+      batches.indexOf('interface ExportMemberRow'),
+    );
+    expect(exportSelect).not.toContain('active=1');
     const routes = read('apps/api/src/seller-settlements/batch-routes.ts');
     // The route hands out the lazy stream; it never enqueues a chunk array.
     expect(routes).toContain('outcome.createStream()');

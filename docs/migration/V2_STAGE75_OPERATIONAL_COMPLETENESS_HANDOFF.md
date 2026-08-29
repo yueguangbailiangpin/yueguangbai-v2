@@ -175,3 +175,42 @@ ChatGPT 总审确认五项剩余缺陷（伪流式导出、卖家角色错误、
 ### 边界声明
 
 本轮是本地真实性修复，**不是 Staging GO 也不是 Production GO**。Migration 保持 0001~0035 未动（无 0036，一致性采用方案 A）；不归档 Change、不进入阶段 8。REAL_HISTORICAL_IMPORT / REAL_IMAGE_INVENTORY 维持 NOT_RUN。
+
+---
+
+## 11. 阶段 7.5R-3 追记：结算导出并发快照一致性最终修复（2026-08-29）
+
+ChatGPT 总审确认 7.5R-2 的两遍一致性存在并发缺口后重开 OpenSpec 任务 3.7/5.4/5.5/4.5（起点 `3b0c943c`，工作树干净）。**§10 中"方案 A 已完全保证两遍一致"的表述据此修正**：单纯的 `export_as_of` 时间冻结不充分，最终方案如下。
+
+### 两处缺口与修复
+
+1. **成员集合可变**：7.5R-2 的导出 SQL 按 `member.active=1` 过滤；取消批次会在预检与发送之间把成员置 active=0，第二遍将读到更少（乃至零）行，实收字节偏离预检 SHA/receipt。**修复**：导出路径改按确认时冻结成员快照读取——`member.added_at <= batch.frozen_at AND (member.removed_at IS NULL OR member.removed_at > batch.frozen_at)`，不读取 live `active`；确认前移除的草稿成员排除、确认后取消释放的成员包含；预检与发送使用完全相同的条件、排序（payable_type, amazon_order_number_normalized, id）与游标推进；取消释放的业务行为与触发器不变。
+2. **同毫秒付款竞争**：7.5R-2 的 `created_at <= export_as_of`（= 命令时刻）允许预检后提交的 `created_at == export_as_of` 付款进入第二遍。**修复**：`export_as_of` 语义改为**排他上界**——两遍均读 `created_at < export_as_of`，取值为导出开始时该批次冻结成员集合上 allocation/reversal 事实的最大 `created_at` 加一（无事实时水位 −1、`export_as_of = 0`，恒空集）。预检后提交的同毫秒（== export_as_of）或更晚事实无法进入任一遍；水位对 allocation 与 reversal 同时生效，并写入收据（`SellerSettlementBatchExportReceipt.export_as_of`）、BATCH_EXPORTED 事件与审计 nextState。残留边界（已写入交接记录）：若并发写入方使用早于水位的时钟时间戳提交（时钟回拨场景），时间边界无法隔离；当前付款事实由服务端时钟单调产生，且 D1 单写者模型下该前提成立。
+
+### 真实回归测试（settlement-batches-75r.test.ts，18 用例）
+
+- 创建导出 Response 后不读取正文 → 取消批次 → 再完整读取：行数 == X-Export-Row-Count、201 成员无重复无遗漏、实收 SHA == header；同键重放 409；已取消批次新导出 409。
+- 1000 行导出读取 header+第一页（500 行）后再取消：剩余页面仍完整送达，1000 行无重漏，实收 SHA == header。
+- 预检前真实付款（created_at=AT−1000）→ 导出 → `receipt.export_as_of == AT−999` → 预检后插入 `created_at == export_as_of` 的**付款**与对原付款的**冲销** → 实收字节与 SHA 不变（付款行保持预检值）；更晚的付款同样被排除；同键重放返回原收据。
+- "导出后取消 fail-closed"测试改造：第一次导出正文被真实消费并验证（2 行成员 + SHA==header），再取消、再重放 409。
+- 空水位用例：无付款事实批次 `export_as_of == 0`，付款列恒 0。
+- Worker 内存不变：源码守卫断言导出 SELECT 无 live `active`、无 dueMap/chunks/merged，惰性逐页拉取计数断言保留。
+
+### 验证真实退出码（2026-08-29）
+
+| 命令 | 退出码 |
+|---|---|
+| `npm run typecheck` | 0 |
+| `npm test` | 0（258 文件 / **1,782 用例**全过；7.5R-2 基线 1,779 + 本轮新增 3：空水位、Response 后取消仍完整读取、1000 行第一页后取消） |
+| `npm run build` | 0 |
+| `npm run check` | 0 |
+| `openspec validate stage75-operational-completeness --strict` | 0 |
+| `openspec validate --all --strict` | 0 |
+| `npm run db:verify` | 0 |
+| `npm run verify:migration-guards` | 0 |
+| `npm run verify:api-contract` | 0 |
+| `npm run verify:settlement-export-capacity` | 0（5000 满配额 + 客户端 SHA 断言，新水位实现下通过） |
+| 既定 Playwright 终门（14 spec 文件：7R 既定 10 + 7.5 三个 + 7.5R-2 一个） | 0：**175 passed / 1 skipped（预存在环境变量门控）/ 0 failed** |
+| `git diff --check` | 0 |
+
+边界声明：仍是本地修复，非 Staging/Production GO；未 push、未部署、未归档 Change、未进入阶段 8。

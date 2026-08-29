@@ -782,7 +782,7 @@ describe('settlement batch CSV export (7.5R)', () => {
   });
 
   it('fails closed when the batch is cancelled after the first export', async () => {
-    const payableIds = bulkSeedPayables(1, 'p75r-cancel');
+    const payableIds = bulkSeedPayables(2, 'p75r-cancel');
     const { batchId, version } = await createConfirmedBatch(payableIds, 'cancel-key');
     const first = await staffRequest(base(`/batches/${batchId}/export`), {
       method: 'POST',
@@ -790,6 +790,14 @@ describe('settlement batch CSV export (7.5R)', () => {
       key: 'cancel-75r-key-001',
     });
     expect(first.status).toBe(200);
+    // The first export body is genuinely consumed and verified: the client
+    // receives the full membership and the bytes hash to the header SHA.
+    const firstText = await first.text();
+    const firstLines = firstText.trimEnd().split('\n');
+    expect(firstLines).toHaveLength(3);
+    expect(new Set(firstLines.slice(1).map((line) => line.split(',')[0])).size).toBe(2);
+    expect(await sha256Hex(new TextEncoder().encode(firstText)))
+      .toBe(first.headers.get('x-export-sha256'));
     const cancelled = await staffRequest(base(`/batches/${batchId}/cancel`), {
       method: 'POST',
       body: { reason: '导出后作废', expected_version: version },
@@ -876,6 +884,17 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     let text = '';
     for (const chunk of chunks) text += new TextDecoder().decode(chunk);
     return text;
+  }
+
+  async function drainStream(stream: ReadableStream<Uint8Array>): Promise<Uint8Array[]> {
+    const chunks: Uint8Array[] = [];
+    const reader = stream.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    return chunks;
   }
 
   it('streams 201 rows lazily (header first, one page per pull) and the client bytes hash to the header SHA', async () => {
@@ -975,7 +994,7 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
       .toBeLessThanOrEqual(replayBody.data.receipt.exported_at);
   }, 240_000);
 
-  it('freezes export_as_of: a payment recorded between the passes changes neither bytes nor SHA', async () => {
+  it('freezes the payment-fact watermark: allocations and reversals with created_at == export_as_of change neither bytes nor SHA', async () => {
     const payableIds = bulkSeedPayables(3, 'p75r-asof');
     const { batchId } = await createConfirmedBatch(payableIds, 'asof-key');
     const targetPayable = payableIds[0]!;
@@ -987,8 +1006,22 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
       .bind(batchId, targetPayable)
       .first<{ frozen_amount_cny_fen: number }>();
 
-    // Pass 1 + side effects run at the frozen instant AT; the stream is not
-    // consumed yet.
+    // A REAL payment exists before the export: allocated at AT-1000.
+    const preExisting = AT - 1000;
+    database!.exec(`
+      INSERT INTO seller_payments(id,seller_organization_id,amount_cny_fen,paid_at,recorded_at,
+        recorded_by_staff_id,version,created_at,updated_at)
+      VALUES('p75r-pre-payment','${sellerOrganizationId}',${balance!.frozen_amount_cny_fen},${preExisting},${preExisting},
+        'r75-owner',1,${preExisting},${preExisting});
+      INSERT INTO seller_payment_allocations(id,payment_id,payable_id,seller_organization_id,
+        amount_cny_fen,allocated_by_staff_id,allocated_at,created_at)
+      VALUES('p75r-pre-alloc','p75r-pre-payment','${targetPayable}','${sellerOrganizationId}',
+        ${balance!.frozen_amount_cny_fen},'r75-owner',${preExisting},${preExisting});
+    `);
+
+    // Pass 1 + side effects: export_as_of is the exclusive watermark
+    // max(created_at)+1 over the batch's frozen members (here AT-999), NOT
+    // the command instant. The stream is not consumed yet.
     const outcome = await exportBatchCsv(
       database!,
       { batchId, expectedVersion: null },
@@ -996,22 +1029,29 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     );
     expect(outcome.kind).toBe('FILE');
     if (outcome.kind !== 'FILE') return;
-    expect(outcome.receipt.export_as_of).toBe(AT);
+    expect(outcome.receipt.export_as_of).toBe(preExisting + 1);
 
-    // A payment + allocation recorded strictly after export_as_of.
-    const late = AT + 60_000;
+    // Same-millisecond facts committed after the preflight: one new
+    // allocation and one reversal, both with created_at == export_as_of.
+    const sameMilli = preExisting + 1;
     database!.exec(`
       INSERT INTO seller_payments(id,seller_organization_id,amount_cny_fen,paid_at,recorded_at,
         recorded_by_staff_id,version,created_at,updated_at)
-      VALUES('p75r-late-payment','${sellerOrganizationId}',${balance!.frozen_amount_cny_fen},${late},${late},
-        'r75-owner',1,${late},${late});
+      VALUES('p75r-samemilli-payment','${sellerOrganizationId}',${balance!.frozen_amount_cny_fen},${sameMilli},${sameMilli},
+        'r75-owner',1,${sameMilli},${sameMilli});
       INSERT INTO seller_payment_allocations(id,payment_id,payable_id,seller_organization_id,
         amount_cny_fen,allocated_by_staff_id,allocated_at,created_at)
-      VALUES('p75r-late-alloc','p75r-late-payment','${targetPayable}','${sellerOrganizationId}',
-        ${balance!.frozen_amount_cny_fen},'r75-owner',${late},${late});
+      VALUES('p75r-samemilli-alloc','p75r-samemilli-payment','${payableIds[1]!}','${sellerOrganizationId}',
+        ${balance!.frozen_amount_cny_fen},'r75-owner',${sameMilli},${sameMilli});
+      INSERT INTO seller_payment_allocation_reversals(id,allocation_id,payment_id,payable_id,
+        seller_organization_id,amount_cny_fen,reason,reversed_by_staff_id,reversed_at,idempotency_key,created_at)
+      VALUES('p75r-samemilli-rev','p75r-pre-alloc','p75r-pre-payment','${targetPayable}',
+        '${sellerOrganizationId}',${balance!.frozen_amount_cny_fen},'同毫秒冲销','r75-owner',${sameMilli},'asof-rev-0001',${sameMilli});
     `);
 
-    // Pass 2 consumes the stream: the late payment must be invisible.
+    // Pass 2 consumes the stream: the same-millisecond allocation must not
+    // raise member 2's paid amount and the same-millisecond reversal must
+    // not zero member 1 — both stay at the preflight values.
     const chunks: Uint8Array[] = [];
     const reader = outcome.createStream().getReader();
     for (;;) {
@@ -1024,10 +1064,24 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     expect(digest).toBe(outcome.receipt.sha256);
     const lines = text.trimEnd().split('\n');
     expect(lines).toHaveLength(4);
-    // Every row still reports the as-of payment progress: nothing paid.
-    for (const line of lines.slice(1)) {
-      expect(line.split(',')[3]).toBe('0');
-    }
+    const rows = new Map(lines.slice(1).map((line) => [line.split(',')[0]!, line.split(',')]));
+    expect(rows.get('900-0000001-0000001')?.[3]).toBe(String(balance!.frozen_amount_cny_fen));
+    expect(rows.get('900-0000001-0000001')?.[4]).toBe('0');
+    expect(rows.get('900-0000002-0000002')?.[3]).toBe('0');
+    // A strictly later payment is excluded as well.
+    const late = AT + 60_000;
+    database!.exec(`
+      INSERT INTO seller_payments(id,seller_organization_id,amount_cny_fen,paid_at,recorded_at,
+        recorded_by_staff_id,version,created_at,updated_at)
+      VALUES('p75r-late-payment','${sellerOrganizationId}',${balance!.frozen_amount_cny_fen},${late},${late},
+        'r75-owner',1,${late},${late});
+      INSERT INTO seller_payment_allocations(id,payment_id,payable_id,seller_organization_id,
+        amount_cny_fen,allocated_by_staff_id,allocated_at,created_at)
+      VALUES('p75r-late-alloc','p75r-late-payment','${payableIds[2]!}','${sellerOrganizationId}',
+        ${balance!.frozen_amount_cny_fen},'r75-owner',${late},${late});
+    `);
+    const lateText = csvText(await drainStream(outcome.createStream()));
+    expect(await sha256Hex(new TextEncoder().encode(lateText))).toBe(digest);
 
     // A same-key replay keeps returning the ORIGINAL frozen receipt.
     const replay = await exportBatchCsv(
@@ -1038,9 +1092,28 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     expect(replay.kind).toBe('REPLAY');
     if (replay.kind === 'REPLAY') {
       expect(replay.receipt.sha256).toBe(digest);
-      expect(replay.receipt.export_as_of).toBe(AT);
+      expect(replay.receipt.export_as_of).toBe(preExisting + 1);
     }
   }, 120_000);
+
+  it('keeps export_as_of at the empty watermark when the batch has no payment facts', async () => {
+    const payableIds = bulkSeedPayables(1, 'p75r-asof-empty');
+    const { batchId } = await createConfirmedBatch(payableIds, 'asof-empty-key');
+    const outcome = await exportBatchCsv(
+      database!,
+      { batchId, expectedVersion: null },
+      { actor: actor(), idempotencyKey: 'asof-empty-key-001', now: AT },
+    );
+    expect(outcome.kind).toBe('FILE');
+    if (outcome.kind !== 'FILE') return;
+    // No facts at all: watermark −1, exclusive bound 0 — an empty fact set
+    // that cannot grow inside either pass (created_at CHECK >= 0).
+    expect(outcome.receipt.export_as_of).toBe(0);
+    const text = csvText(await drainStream(outcome.createStream()));
+    for (const line of text.trimEnd().split('\n').slice(1)) {
+      expect(line.split(',')[3]).toBe('0');
+    }
+  }, 60_000);
 
   it('keeps the late-payment invariance at the route level (stream consumed after a later insert)', async () => {
     const payableIds = bulkSeedPayables(2, 'p75r-asof-route');
@@ -1079,4 +1152,87 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
       expect(line.split(',')[3]).toBe('0');
     }
   }, 120_000);
+
+  it('completes the untouched export body after the batch is cancelled between the passes', async () => {
+    const payableIds = bulkSeedPayables(201, 'p75r-cancel-mid');
+    const { batchId, version } = await createConfirmedBatch(payableIds, 'cancel-mid-key');
+    const response = await staffExportRequest(
+      batchId, 'cancel-mid-key-001', database!,
+    );
+    expect(response.status).toBe(200);
+    const headerSha = response.headers.get('x-export-sha256');
+    const headerRows = response.headers.get('x-export-row-count');
+    expect(headerRows).toBe('201');
+    // The body is deliberately NOT read yet. Cancel the batch now: the
+    // cancellation releases every member (active=0) between the passes.
+    const cancelled = await staffRequest(base(`/batches/${batchId}/cancel`), {
+      method: 'POST',
+      body: { reason: '发送前作废', expected_version: version },
+      key: 'cancel-mid-key-002',
+    });
+    expect(cancelled.status).toBe(201);
+    // Only now consume the original export body: the confirmation-time
+    // frozen member snapshot keeps every row, byte-identical to the
+    // preflight.
+    const chunks = await drainStream(response.body!);
+    const text = csvText(chunks);
+    const lines = text.trimEnd().split('\n');
+    expect(lines).toHaveLength(202);
+    const numbers = lines.slice(1).map((line) => line.split(',')[0]);
+    expect(new Set(numbers).size).toBe(201);
+    expect(await sha256Hex(new TextEncoder().encode(text))).toBe(headerSha);
+    // Replay of the same key still fails closed on the cancelled batch.
+    const replay = await staffRequest(base(`/batches/${batchId}/export`), {
+      method: 'POST',
+      body: {},
+      key: 'cancel-mid-key-001',
+    });
+    expect(replay.status).toBe(409);
+    // A fresh export on the cancelled batch is also refused.
+    const fresh = await staffRequest(base(`/batches/${batchId}/export`), {
+      method: 'POST',
+      body: {},
+      key: 'cancel-mid-key-003',
+    });
+    expect(fresh.status).toBe(409);
+  }, 120_000);
+
+  it('keeps the remaining pages complete when a 1000-row export is cancelled after the first page', async () => {
+    const payableIds = bulkSeedPayables(1_000, 'p75r-cancel-1000');
+    const { batchId } = await createConfirmedBatch(payableIds, 'cancel-1000-key');
+    const response = await staffExportRequest(
+      batchId, 'cancel-1000-key-001', database!,
+    );
+    expect(response.status).toBe(200);
+    const headerSha = response.headers.get('x-export-sha256');
+    const reader = response.body!.getReader();
+    // Read the header chunk and the first full page (500 rows).
+    const header = await reader.read();
+    expect(header.done).toBe(false);
+    const page1 = await reader.read();
+    expect(page1.done).toBe(false);
+    expect(new TextDecoder().decode(page1.value).trimEnd().split('\n')).toHaveLength(500);
+    // Cancel while the consumer is mid-stream.
+    const detail = await staffRequest(base(`/batches/${batchId}`));
+    const detailBody = await detail.json() as { data: { batch: { version: number } } };
+    const cancelled = await staffRequest(base(`/batches/${batchId}/cancel`), {
+      method: 'POST',
+      body: { reason: '发送中作废', expected_version: detailBody.data.batch.version },
+      key: 'cancel-1000-key-002',
+    });
+    expect(cancelled.status).toBe(201);
+    // Drain the rest: the second page still arrives complete.
+    const rest: Uint8Array[] = [header.value!, page1.value!];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      rest.push(value);
+    }
+    const text = csvText(rest);
+    const lines = text.trimEnd().split('\n');
+    expect(lines).toHaveLength(1_001);
+    const numbers = lines.slice(1).map((line) => line.split(',')[0]);
+    expect(new Set(numbers).size).toBe(1_000);
+    expect(await sha256Hex(new TextEncoder().encode(text))).toBe(headerSha);
+  }, 240_000);
 });
