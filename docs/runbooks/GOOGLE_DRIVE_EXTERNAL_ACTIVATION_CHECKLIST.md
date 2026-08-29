@@ -17,7 +17,11 @@
 - [ ] 由所有者分别批准 proxy-read 和首次 R2 delete；不得用一次批准替代两个阶段。
 - [ ] 上线前完成隐私告知、跨境保存、永久归档与账号注销/删除流程的适用合规审查。
 
-在全部项目完成并留存批准证据前，`DRIVE_ARCHIVE_ENABLED`、copy、proxy-read、R2-delete 与 D1 阶段开关必须保持 hard-disabled。任何缺项均按发布阻断风险处理，不得以 M7 本地测试替代。
+在全部项目完成并留存批准证据前，`ARCHIVE_SELECTOR_ENABLED`、
+`ARCHIVE_DRIVE_UPLOAD_ENABLED`、`ARCHIVE_HOT_DELETE_ENABLED` 和
+`ARCHIVE_RESTORE_WORKER_ENABLED` 以及 D1 阶段开关必须保持 hard-disabled。
+历史 `DRIVE_ARCHIVE_*` 变量已废弃，不能作为兼容别名或满足预检。任何缺项
+均按发布阻断风险处理，不得以 M7 本地测试替代。
 
 ## 可执行的首阶段预检
 

@@ -10,6 +10,13 @@
 
 ## 状态和删除门禁
 
+环境层仅有四个活动开关：`ARCHIVE_SELECTOR_ENABLED`、
+`ARCHIVE_DRIVE_UPLOAD_ENABLED`、`ARCHIVE_HOT_DELETE_ENABLED` 和
+`ARCHIVE_RESTORE_WORKER_ENABLED`。它们分别控制 selector、Drive 上传、热
+副本删除和恢复 worker；默认值均为字符串 `"false"`，并与 D1
+`archive_runtime_controls` 的第二道门独立求交。历史 `DRIVE_ARCHIVE_*`
+命名已废弃，不是兼容别名。
+
 状态顺序为 `R2_HOT → DRIVE_COPYING → DRIVE_VERIFIED → R2_DELETE_PENDING → DRIVE_ARCHIVED`。上传成功不是验证成功。系统必须从 Drive 读回并同时核对字节数、MIME 与 SHA-256，再以条件更新写入不可变 Manifest。只有 Manifest 一致、代理读取已启用、环境删除开关已启用、D1 删除开关已启用时才可删除 R2。
 
 上传、回读、D1 条件更新或 R2 删除失败均保留可恢复状态。R2 删除失败停留在 `R2_DELETE_PENDING`；租约到期后可幂等重试。Drive 已验证对象没有自动删除接口。

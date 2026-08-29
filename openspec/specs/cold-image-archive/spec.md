@@ -136,11 +136,16 @@ The repository SHALL provide a machine-executable Google Drive cold-archive pref
 
 ### Requirement: Initial Drive activation is shadow-copy only
 
-The preflight SHALL accept a rendered configuration only when the archive scheduler, archive capability and copy flags are enabled while proxy read and R2 deletion are disabled; it SHALL require the D1 controls to be `copy_enabled=1`, `proxy_read_enabled=0`, `r2_delete_enabled=0`. Proxy read and R2 delete SHALL remain independent later approvals.
+The preflight SHALL accept a rendered configuration only when the archive scheduler,
+`ARCHIVE_SELECTOR_ENABLED` and `ARCHIVE_DRIVE_UPLOAD_ENABLED` are enabled while
+`ARCHIVE_HOT_DELETE_ENABLED` and `ARCHIVE_RESTORE_WORKER_ENABLED` remain disabled;
+it SHALL require the D1 controls to be `copy_enabled=1`, `proxy_read_enabled=0`,
+`r2_delete_enabled=0`. Proxy read and R2 delete SHALL remain independent later
+approvals.
 
 #### Scenario: R2 delete is requested during initial activation
 
-- **WHEN** either the rendered `DRIVE_ARCHIVE_R2_DELETE_ENABLED` flag or the D1 `r2_delete_enabled` control is enabled
+- **WHEN** either the rendered `ARCHIVE_HOT_DELETE_ENABLED` flag or the D1 `r2_delete_enabled` control is enabled
 - **THEN** the preflight returns `BLOCKED` and does not treat hash verification as deletion authorization.
 
 ### Requirement: Drive and recovery evidence is independently attestable
@@ -156,4 +161,3 @@ The preflight SHALL require a redacted receipt proving the exact `https://www.go
 
 - **WHEN** the backup attestation is missing either SHA-256 value or declares plaintext content
 - **THEN** the preflight returns `BLOCKED` and reports the recovery evidence as invalid.
-

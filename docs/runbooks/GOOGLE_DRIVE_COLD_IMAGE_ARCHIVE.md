@@ -14,9 +14,16 @@
 ## 分阶段启用
 
 1. **到期事实**：保持全部环境开关关闭，只产生经业务流程确认的订单关闭事实。
-2. **影子复制**：开启全局归档与 copy；D1 `copy_enabled=1`，保持 proxy/read 与 delete 关闭。R2 仍是读取源。
-3. **代理读取**：M10/最终老板外部接入清单完成后开启环境和 D1 proxy read；用匿名文件逐个验证 Buyer、Seller、Staff Audience 与 404 隐藏边界。
-4. **删除 R2**：只有影子复制和代理读取验收通过后，才同时批准环境与 D1 delete。数据库约束要求 copy 和 proxy 已启用。
+2. **影子复制**：开启 `ARCHIVE_SELECTOR_ENABLED` 与
+   `ARCHIVE_DRIVE_UPLOAD_ENABLED`；保持 `ARCHIVE_HOT_DELETE_ENABLED` 与
+   `ARCHIVE_RESTORE_WORKER_ENABLED` 关闭，D1 `copy_enabled=1`，proxy/read
+   与 delete 关闭。R2 仍是读取源。
+3. **代理读取**：M10/最终老板外部接入清单完成后，再按独立批准启用受控
+   读取路径；不得把已废弃的 `DRIVE_ARCHIVE_*` 变量当作别名。用匿名文件
+   逐个验证 Buyer、Seller、Staff Audience 与 404 隐藏边界。
+4. **删除 R2**：只有影子复制和代理读取验收通过后，才同时批准
+   `ARCHIVE_HOT_DELETE_ENABLED` 与 D1 delete。数据库约束要求 copy 和 proxy
+   已启用；`ARCHIVE_RESTORE_WORKER_ENABLED` 仍需单独的恢复批准。
 
 任何阶段失败先关闭后续阶段开关。不要删除 Drive 中已验证对象。
 
