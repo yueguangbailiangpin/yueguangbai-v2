@@ -1,4 +1,6 @@
-.staff-app .moonwhite-icon {
+/* Shared Material Symbols Rounded geometry. The SVG assets are local and
+   inherit currentColor; this base intentionally applies to all portals. */
+.moonwhite-icon {
   --moonwhite-icon-size: 24px;
   display: inline-flex;
   align-items: center;
@@ -12,12 +14,16 @@
   user-select: none;
 }
 
-.staff-app .moonwhite-icon > svg {
+.moonwhite-icon > svg {
   display: block;
   width: 100%;
   height: 100%;
   flex: 0 0 100%;
   color: currentColor;
+  fill: currentColor;
+}
+
+.moonwhite-icon > svg path {
   fill: currentColor;
 }
 

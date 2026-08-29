@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Info, Package } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { Breadcrumb } from '../../ui/primitives';
+import { MoonwhiteIcon } from '../../ui/MoonwhiteIcon';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys } from '../queries/keys';
 import {
@@ -69,17 +69,17 @@ export function BuyerFormalOrderDetailPage(): React.JSX.Element {
             </div>
             <div className="mwb-steps">
               <div className="done">
-                <span><Check aria-hidden="true" /></span>
+                <span><MoonwhiteIcon name="task_alt" size={20} filled /></span>
                 <strong>资料确认</strong>
                 <small>{formatShanghai(evidence.verified_at)}</small>
               </div>
               <div className="done">
-                <span><Check aria-hidden="true" /></span>
+                <span><MoonwhiteIcon name="task_alt" size={20} filled /></span>
                 <strong>付款截图</strong>
                 <small>{formatShanghai(evidence.submitted_at)}</small>
               </div>
               <div className="done">
-                <span><Check aria-hidden="true" /></span>
+                <span><MoonwhiteIcon name="task_alt" size={20} filled /></span>
                 <strong>订单审核</strong>
                 <small>{formatShanghai(item.confirmed_at)}</small>
               </div>
@@ -119,7 +119,7 @@ export function BuyerFormalOrderDetailPage(): React.JSX.Element {
               <div><dt>汇率日期</dt><dd>{item.buyer_exchange_rate_snapshot.business_date}</dd></div>
             </dl>
             <div className="mwb-info-note">
-              <Info aria-hidden="true" />
+              <MoonwhiteIcon name="support_agent" size={20} />
               <p>订单资料确认后会被冻结，不会因产品或汇率调整而变化；如发现与实际不一致，请联系工作人员核实。</p>
             </div>
           </section>
@@ -129,7 +129,7 @@ export function BuyerFormalOrderDetailPage(): React.JSX.Element {
           <section className="mwb-surface mwb-order-summary" aria-label="订单摘要">
             <h2>订单摘要</h2>
             <div className="mwb-summary-product">
-              <span className="mwb-product-thumb warm" aria-hidden="true"><Package /></span>
+              <span className="mwb-product-thumb warm" aria-hidden="true"><MoonwhiteIcon name="inventory_2" size={20} /></span>
               <p>
                 <strong>{item.product_name}</strong>
                 <small>{marketplaceLabel(item.marketplace)}</small>

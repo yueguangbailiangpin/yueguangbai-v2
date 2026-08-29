@@ -1,11 +1,4 @@
 import {
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Search,
-  X,
-} from 'lucide-react';
-import {
   Children,
   cloneElement,
   isValidElement,
@@ -21,6 +14,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { NavLink } from 'react-router';
+import { MoonwhiteIcon } from './MoonwhiteIcon';
 
 function classes(...values: (string | false | null | undefined)[]): string {
   return values.filter(Boolean).join(' ');
@@ -107,7 +101,7 @@ export function SearchInput({
   label?: string;
 }): React.JSX.Element {
   return <span className={classes('search-input', className)}>
-    <Search aria-hidden="true" size={18} />
+    <MoonwhiteIcon name="search" size={20} />
     <input {...props} type="search" aria-label={props['aria-label'] ?? label} />
   </span>;
 }
@@ -245,7 +239,7 @@ export function Sidebar({
         label={collapsed ? '展开侧边栏' : '收起侧边栏'}
         aria-expanded={!collapsed}
         onClick={() => onCollapsedChange(!collapsed)}
-      >{collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronLeft aria-hidden="true" />}</IconButton> : null}
+      >{collapsed ? <MoonwhiteIcon name="chevron_right" size={20} /> : <MoonwhiteIcon name="chevron_left" size={20} />}</IconButton> : null}
     </div>
     <nav aria-label={label}>{items.map((item) => <NavLink
       key={item.id}
@@ -378,7 +372,7 @@ export function Drawer({
       <header><div><h2 id={titleId}>{title}</h2>
         {description ? <p id={descriptionId}>{description}</p> : null}</div>
         <IconButton label="关闭详情" onClick={onClose}>
-          <X aria-hidden="true" />
+          <MoonwhiteIcon name="close" size={20} />
         </IconButton>
       </header>
       <div className="overlay-content">{children}</div>
@@ -492,7 +486,7 @@ export function Pagination({
   const pages = Array.from({ length: Math.max(0, totalPages) }, (_, index) => index + 1);
   return <nav className="pagination" aria-label="分页">
     <IconButton label="上一页" disabled={currentPage <= 1} onClick={() => onChange(currentPage - 1)}>
-      <ChevronLeft aria-hidden="true" />
+      <MoonwhiteIcon name="chevron_left" size={20} />
     </IconButton>
     {pages.map((page) => <button
       type="button"
@@ -502,7 +496,7 @@ export function Pagination({
       onClick={() => onChange(page)}
     >{page}</button>)}
     <IconButton label="下一页" disabled={currentPage >= totalPages} onClick={() => onChange(currentPage + 1)}>
-      <ChevronRight aria-hidden="true" />
+      <MoonwhiteIcon name="chevron_right" size={20} />
     </IconButton>
   </nav>;
 }
@@ -592,7 +586,7 @@ export function Toast({
     role={tone === 'danger' ? 'alert' : 'status'}
     aria-live={tone === 'danger' ? 'assertive' : 'polite'}
   ><span>{message}</span>{onClose ? <IconButton label="关闭通知" onClick={onClose}>
-    <X aria-hidden="true" />
+    <MoonwhiteIcon name="close" size={20} />
   </IconButton> : null}</div>;
 }
 
@@ -645,7 +639,7 @@ export function RequestIdDisplay({
     {copyable && typeof navigator.clipboard?.writeText === 'function'
       ? <IconButton label="复制请求编号" onClick={() => {
         void navigator.clipboard.writeText(requestId);
-      }}><Copy aria-hidden="true" /></IconButton>
+      }}><MoonwhiteIcon name="more_horiz" size={20} /></IconButton>
       : null}</p>;
 }
 

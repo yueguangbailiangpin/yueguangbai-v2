@@ -165,7 +165,7 @@
 
 .mws-nav-link {
   display: grid;
-  grid-template-columns: 22px 1fr auto;
+  grid-template-columns: 24px 1fr auto;
   align-items: center;
   gap: var(--space-3);
   min-height: 44px;
@@ -180,8 +180,8 @@
 }
 
 .mws-nav-link svg {
-  width: 18px;
-  height: 18px;
+  width: var(--moonwhite-icon-size, 24px);
+  height: var(--moonwhite-icon-size, 24px);
   flex-shrink: 0;
   color: var(--color-text-muted);
 }
@@ -366,8 +366,8 @@
 }
 
 .mws-portal .bottom-nav a svg {
-  width: 20px;
-  height: 20px;
+  width: var(--moonwhite-icon-size, 20px);
+  height: var(--moonwhite-icon-size, 20px);
 }
 
 .mws-portal .bottom-nav a[aria-current="page"] {
@@ -452,8 +452,8 @@
 }
 
 .mws-primary svg {
-  width: 17px;
-  height: 17px;
+  width: var(--moonwhite-icon-size, 20px);
+  height: var(--moonwhite-icon-size, 20px);
 }
 
 /* 绿色浅底按钮（模板 mwp-tonal seller） */
@@ -583,8 +583,8 @@
 }
 
 .mws-circle svg {
-  width: 18px;
-  height: 18px;
+  width: var(--moonwhite-icon-size, 20px);
+  height: var(--moonwhite-icon-size, 20px);
 }
 
 .mws-circle.green {
@@ -672,8 +672,8 @@
 }
 
 .mws-store-icon svg {
-  width: 18px;
-  height: 18px;
+  width: var(--moonwhite-icon-size, 20px);
+  height: var(--moonwhite-icon-size, 20px);
 }
 
 .mws-store-row > div {
@@ -922,8 +922,8 @@
 }
 
 .mws-info-note svg {
-  width: 16px;
-  height: 16px;
+  width: var(--moonwhite-icon-size, 20px);
+  height: var(--moonwhite-icon-size, 20px);
   flex: none;
   margin-top: 1px;
 }

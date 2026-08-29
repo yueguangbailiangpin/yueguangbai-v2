@@ -1,15 +1,4 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ClipboardList,
-  Home,
-  Menu,
-  MessageSquareText,
-  PackageSearch,
-  ReceiptText,
-  Users,
-  WalletCards,
-  X,
-} from 'lucide-react';
 import type { SellerMemberRole } from '@ygb/contracts';
 import type { z } from 'zod';
 import { sellerStoresSchema } from '../contracts/runtime';
@@ -19,6 +8,7 @@ type SellerStoresPageState = ReturnType<typeof useSellerCursorPages<SellerStoreS
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { BottomNavigation, Button, IdentityShell, Select } from '../../ui/primitives';
+import { MoonwhiteIcon, type MoonwhiteIconName } from '../../ui/MoonwhiteIcon';
 import { CursorPagination } from '../../ui/CursorPagination';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';
@@ -29,27 +19,27 @@ import { useSellerCursorPages } from '../queries/useSellerCursorPages';
 interface SellerNavItem {
   path: string;
   label: string;
-  icon: typeof Home;
+  icon: MoonwhiteIconName;
   end: boolean;
 }
 
 const SELLER_SIDEBAR_NAVIGATION: readonly SellerNavItem[] = [
-  { path: '/seller', label: '首页', icon: Home, end: true },
-  { path: '/seller/products', label: '产品', icon: PackageSearch, end: false },
-  { path: '/seller/demands', label: '需求', icon: ClipboardList, end: false },
-  { path: '/seller/orders', label: '订单与沟通', icon: ReceiptText, end: false },
-  { path: '/seller/reviews', label: '评论', icon: MessageSquareText, end: false },
-  { path: '/seller/settlements', label: '结算', icon: WalletCards, end: false },
-  { path: '/seller/settings', label: '成员与组织设置', icon: Users, end: false },
+  { path: '/seller', label: '首页', icon: 'dashboard', end: true },
+  { path: '/seller/products', label: '产品', icon: 'storefront', end: false },
+  { path: '/seller/demands', label: '需求', icon: 'event_available', end: false },
+  { path: '/seller/orders', label: '订单与沟通', icon: 'receipt_long', end: false },
+  { path: '/seller/reviews', label: '评论', icon: 'task_alt', end: false },
+  { path: '/seller/settlements', label: '结算', icon: 'account_balance', end: false },
+  { path: '/seller/settings', label: '成员与组织设置', icon: 'manage_accounts', end: false },
 ] as const;
 
 /** 移动端底部导航（模板 4 项；7.5R-2 起全部角色可读结算批次，固定含“结算”）。 */
 function sellerMobileNavigation(): readonly SellerNavItem[] {
   return [
-    { path: '/seller', label: '首页', icon: Home, end: true },
-    { path: '/seller/products', label: '产品', icon: PackageSearch, end: false },
-    { path: '/seller/orders', label: '订单', icon: ReceiptText, end: false },
-    { path: '/seller/settlements', label: '结算', icon: WalletCards, end: false },
+    { path: '/seller', label: '首页', icon: 'dashboard', end: true },
+    { path: '/seller/products', label: '产品', icon: 'storefront', end: false },
+    { path: '/seller/orders', label: '订单', icon: 'receipt_long', end: false },
+    { path: '/seller/settlements', label: '结算', icon: 'account_balance', end: false },
   ];
 }
 
@@ -102,7 +92,6 @@ function SellerNavigationContent({ onNavigate }: {
   return (
     <nav className="mws-nav-list" aria-label="卖家导航">
       {SELLER_SIDEBAR_NAVIGATION.map((item) => {
-        const Icon = item.icon;
         return (
           <Fragment key={item.path}>
             {item.path === '/seller/settings' ? <hr className="mws-nav-divider" /> : null}
@@ -112,8 +101,10 @@ function SellerNavigationContent({ onNavigate }: {
               onClick={onNavigate}
               className={({ isActive }) => (isActive ? 'mws-nav-link active' : 'mws-nav-link')}
             >
-              <Icon aria-hidden="true" />
-              <span>{item.label}</span>
+              {({ isActive }) => <>
+                <MoonwhiteIcon name={item.icon} size={24} filled={isActive} />
+                <span>{item.label}</span>
+              </>}
             </NavLink>
           </Fragment>
         );
@@ -251,7 +242,7 @@ function SellerMobileDrawer({
             aria-label="关闭导航菜单"
             onClick={onClose}
           >
-            <X aria-hidden="true" />
+            <MoonwhiteIcon name="close" size={20} />
           </Button>
         </div>
         <div className="mws-drawer-body">
@@ -330,7 +321,7 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
               aria-controls="seller-mobile-drawer"
               onClick={() => setDrawerOpen(true)}
             >
-              <Menu aria-hidden="true" />
+              <MoonwhiteIcon name="menu" size={20} />
             </Button>
             <NavLink className="mws-brand-link" to="/seller" aria-label="月光白卖家首页">
               <span className="mws-moon" aria-hidden="true">
@@ -395,14 +386,13 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
         {/* 移动端底部导航（<1024px） */}
         <BottomNavigation label="卖家导航">
           {mobileNavigation.map((item) => {
-            const Icon = item.icon;
             return (
               <Link
                 key={item.path}
                 to={item.path}
                 aria-current={mobileOwner === item.path ? 'page' : undefined}
               >
-                <Icon aria-hidden="true" />
+                <MoonwhiteIcon name={item.icon} size={20} filled={mobileOwner === item.path} />
                 <span>{item.label}</span>
               </Link>
             );

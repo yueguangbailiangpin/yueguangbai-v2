@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Tag } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import { Button, Card, Checkbox } from '../../ui/primitives';
+import { MoonwhiteIcon } from '../../ui/MoonwhiteIcon';
 import { buyerApi } from '../api/client';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
@@ -49,8 +49,8 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
         reference={demand.main_image}
         alt={`${demand.product_name} 主图`}
         className="buyer-product-main-image"
-        fallback={<Tag aria-hidden="true" />}
-      /> : <Tag aria-hidden="true" />}
+        fallback={<MoonwhiteIcon name="inventory_2" size={20} />}
+      /> : <MoonwhiteIcon name="inventory_2" size={20} />}
     </div>
       <div><p className="eyebrow">产品详情</p><h1>{demand.product_name}</h1><p>{demand.store_display_name}</p></div></header>
     <Card className="buyer-fact-card">

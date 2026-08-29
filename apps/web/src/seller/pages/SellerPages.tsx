@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Info, MessageSquareText, Store, UserCheck, WalletCards } from 'lucide-react';
 import { z } from 'zod';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
@@ -19,6 +18,7 @@ import {
   SellerOrderChatScreenshotReadIntentAdapter,
 } from '../../files/file-read-providers';
 import { CursorPagination } from '../../ui/CursorPagination';
+import { MoonwhiteIcon } from '../../ui/MoonwhiteIcon';
 import { identityApiRequest } from '../../api/identity-request';
 import { sellerApi } from '../api/client';
 import { sellerFormalOrdersSchema } from '../contracts/runtime';
@@ -301,7 +301,7 @@ export function SellerDashboardPage(): React.JSX.Element {
                 settlement.data.total_outstanding_cny_fen !== '0' ? (
                   <article className="mws-action-row">
                     <span className="mws-circle green">
-                      <WalletCards aria-hidden="true" />
+                      <MoonwhiteIcon name="account_balance" size={20} />
                     </span>
                     <div>
                       <strong>查看待结算款项</strong>
@@ -319,7 +319,7 @@ export function SellerDashboardPage(): React.JSX.Element {
                 {chatScreenshotOrders.length > 0 ? (
                   <article className="mws-action-row">
                     <span className="mws-circle blue">
-                      <MessageSquareText aria-hidden="true" />
+                      <MoonwhiteIcon name="support_agent" size={20} />
                     </span>
                     <div>
                       <strong>查看 {chatScreenshotOrders.length} 笔订单沟通截图</strong>
@@ -334,7 +334,7 @@ export function SellerDashboardPage(): React.JSX.Element {
                 {inProgress.length > 0 ? (
                   <article className="mws-action-row">
                     <span className="mws-circle purple">
-                      <UserCheck aria-hidden="true" />
+                      <MoonwhiteIcon name="monitoring" size={20} />
                     </span>
                     <div>
                       <strong>跟进进行中的订单</strong>
@@ -378,7 +378,7 @@ export function SellerDashboardPage(): React.JSX.Element {
                       className={active ? 'mws-store-icon' : 'mws-store-icon inactive'}
                       aria-hidden="true"
                     >
-                      <Store />
+                      <MoonwhiteIcon name="storefront" size={20} />
                     </span>
                     <div>
                       <strong>{store.display_name}</strong>
@@ -1376,7 +1376,7 @@ export function SellerSettlementsPage(): React.JSX.Element {
             </p>
           )}
           <div className="mws-info-note">
-            <Info aria-hidden="true" />
+            <MoonwhiteIcon name="support_agent" size={20} />
             <p>已形成正式订单的汇率和服务费快照不会因规则调整而改变；此处只展示冻结值。</p>
           </div>
         </aside>

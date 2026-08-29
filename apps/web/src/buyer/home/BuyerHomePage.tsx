@@ -1,14 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Camera,
-  ChevronRight,
-  MessageSquareCheck,
-  Package,
-  RefreshCw,
-  ShoppingBag,
-  Sparkles,
-} from 'lucide-react';
 import { Link } from 'react-router';
+import { MoonwhiteIcon } from '../../ui/MoonwhiteIcon';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys, cursorQuery } from '../queries/keys';
 import { formatJpy } from '../shared/format';
@@ -129,7 +121,7 @@ export function BuyerHomePage(): React.JSX.Element {
           small: `订单 ${evidenceChanges[0].amazon_order_number_display}`,
           href: `/buyer/order-materials/${encodeURIComponent(evidenceChanges[0].submission_id)}`,
           action: '修改截图',
-          icon: <Camera aria-hidden="true" />,
+          icon: <MoonwhiteIcon name="inventory_2" size={20} />,
           chipLabel: '等待你修改',
         }
       : uploadable[0]
@@ -139,7 +131,7 @@ export function BuyerHomePage(): React.JSX.Element {
             small: `预约 ${uploadable[0].reservation_id}`,
             href: `/buyer/reservations/${encodeURIComponent(uploadable[0].reservation_id)}/instruction`,
             action: '查看下单步骤',
-            icon: <Camera aria-hidden="true" />,
+            icon: <MoonwhiteIcon name="inventory_2" size={20} />,
             chipLabel: '等待你操作',
           }
         : reviewable[0]
@@ -151,7 +143,7 @@ export function BuyerHomePage(): React.JSX.Element {
                 reviewable[0].order.formal_order_id,
               )}`,
               action: '提交评论',
-              icon: <MessageSquareCheck aria-hidden="true" />,
+              icon: <MoonwhiteIcon name="task_alt" size={20} />,
               chipLabel: '等待你操作',
             }
           : null;
@@ -232,7 +224,7 @@ export function BuyerHomePage(): React.JSX.Element {
           <span>你的预约、订单和返款进度都在这里。</span>
         </div>
         <Link className="mwb-primary" to="/buyer/products">
-          <ShoppingBag aria-hidden="true" />
+          <MoonwhiteIcon name="storefront" size={20} />
           查看可预约产品
         </Link>
       </div>
@@ -249,7 +241,7 @@ export function BuyerHomePage(): React.JSX.Element {
             </div>
             {tasksPending ? (
               <div className="mwb-next-row">
-                <span className="mwb-circle blue"><RefreshCw aria-hidden="true" /></span>
+                <span className="mwb-circle blue"><MoonwhiteIcon name="event_available" size={20} /></span>
                 <div><h3>正在整理你的待办…</h3></div>
               </div>
             ) : nextStep ? (
@@ -264,7 +256,7 @@ export function BuyerHomePage(): React.JSX.Element {
               </article>
             ) : (
               <article className="mwb-next-row">
-                <span className="mwb-circle blue"><Sparkles aria-hidden="true" /></span>
+                <span className="mwb-circle blue"><MoonwhiteIcon name="task_alt" size={20} /></span>
                 <div>
                   <h3>暂时没有需要你操作的事情</h3>
                   <p>新的预约、付款截图或评论任务会出现在这里。</p>
@@ -292,7 +284,7 @@ export function BuyerHomePage(): React.JSX.Element {
                     className={`mwb-product-thumb ${index % 2 === 0 ? 'warm' : 'cool'}`}
                     aria-hidden="true"
                   >
-                    <Package />
+                    <MoonwhiteIcon name="inventory_2" size={20} />
                   </span>
                   <div>
                     <span className={`mwb-chip ${card.chipTone}`}>{card.chipLabel}</span>
@@ -310,7 +302,7 @@ export function BuyerHomePage(): React.JSX.Element {
                     </div>
                     <small>{card.note}</small>
                   </div>
-                  <ChevronRight aria-hidden="true" />
+                  <MoonwhiteIcon name="chevron_right" size={20} />
                 </Link>
               ))
             )}
@@ -338,7 +330,7 @@ export function BuyerHomePage(): React.JSX.Element {
                       }`}
                       aria-hidden="true"
                     >
-                      <Sparkles />
+                      <MoonwhiteIcon name="event_available" size={20} />
                     </div>
                     <span className={`mwb-chip ${item.remaining_quantity > 0 ? 'green' : 'neutral'}`}>
                       {item.remaining_quantity > 0 ? `剩余 ${item.remaining_quantity} 个名额` : '名额已满'}

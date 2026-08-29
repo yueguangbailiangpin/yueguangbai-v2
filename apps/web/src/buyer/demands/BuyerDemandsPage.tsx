@@ -1,8 +1,8 @@
-import { ArrowRight, Clock3, Tag, UsersRound } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, PageHeader, SearchInput, Select, StatusBadge } from '../../ui/primitives';
+import { MoonwhiteIcon } from '../../ui/MoonwhiteIcon';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys, cursorQuery } from '../queries/keys';
 import { useCursorPages } from '../queries/useCursorPages';
@@ -99,8 +99,8 @@ export function BuyerDemandsPage(): React.JSX.Element {
                   reference={item.main_image}
                   alt=""
                   className="buyer-product-main-image"
-                  fallback={<Tag />}
-                /> : <Tag />}
+                  fallback={<MoonwhiteIcon name="inventory_2" size={20} />}
+                /> : <MoonwhiteIcon name="inventory_2" size={20} />}
               </div>
               <div className="buyer-product-row-main">
                 <div className="buyer-product-row-title">
@@ -118,15 +118,15 @@ export function BuyerDemandsPage(): React.JSX.Element {
                   <span>{formatJpy(item.reference_order_amount_jpy)}</span>
                   <span>自费 {formatBps(item.buyer_self_pay_bps)}</span>
                   <span>
-                    <UsersRound aria-hidden="true" />剩 {item.remaining_quantity}
+                    <MoonwhiteIcon name="groups" size={20} />剩 {item.remaining_quantity}
                   </span>
                   <span>
-                    <Clock3 aria-hidden="true" />
+                    <MoonwhiteIcon name="event_available" size={20} />
                     {formatShanghai(item.reservation_deadline)}
                   </span>
                 </div>
               </div>
-              <ArrowRight className="buyer-product-row-arrow" aria-hidden="true" />
+              <MoonwhiteIcon name="chevron_right" size={20} className="buyer-product-row-arrow" />
             </Link>
           ))}
         </div>

@@ -1,17 +1,8 @@
-import {
-  HandCoins,
-  Home,
-  Menu,
-  MessageSquareCheck,
-  ReceiptText,
-  ShoppingBag,
-  UserRound,
-  X,
-} from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { BottomNavigation, Button, IdentityShell } from '../../ui/primitives';
+import { MoonwhiteIcon, type MoonwhiteIconName } from '../../ui/MoonwhiteIcon';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys } from '../queries/keys';
 import { marketplaceLabel } from '../shared/status';
@@ -20,22 +11,22 @@ import { marketplaceLabel } from '../shared/status';
 
 /** 移动端底部导航（模板 4 项）。 */
 export const BUYER_NAVIGATION = Object.freeze([
-  { path: '/buyer', label: '首页', icon: Home },
-  { path: '/buyer/products', label: '产品', icon: ShoppingBag },
-  { path: '/buyer/orders', label: '订单', icon: ReceiptText },
-  { path: '/buyer/me', label: '我的', icon: UserRound },
+  { path: '/buyer', label: '首页', icon: 'dashboard' as MoonwhiteIconName },
+  { path: '/buyer/products', label: '产品', icon: 'storefront' as MoonwhiteIconName },
+  { path: '/buyer/orders', label: '订单', icon: 'receipt_long' as MoonwhiteIconName },
+  { path: '/buyer/me', label: '我的', icon: 'person' as MoonwhiteIconName },
 ] as const);
 
 export type BuyerNavigationPath = typeof BUYER_NAVIGATION[number]['path'];
 
 /** 桌面侧边栏 / 抽屉完整导航（模板买家侧栏）。 */
 export const BUYER_SIDEBAR_NAVIGATION = Object.freeze([
-  { path: '/buyer', label: '首页', icon: Home, end: true },
-  { path: '/buyer/products', label: '产品与预约', icon: ShoppingBag, end: false },
-  { path: '/buyer/orders', label: '我的订单', icon: ReceiptText, end: false },
-  { path: '/buyer/reviews', label: '评论任务', icon: MessageSquareCheck, end: false },
-  { path: '/buyer/refunds', label: '返款记录', icon: HandCoins, end: false },
-  { path: '/buyer/me', label: '账户资料', icon: UserRound, end: false },
+  { path: '/buyer', label: '首页', icon: 'dashboard' as MoonwhiteIconName, end: true },
+  { path: '/buyer/products', label: '产品与预约', icon: 'storefront' as MoonwhiteIconName, end: false },
+  { path: '/buyer/orders', label: '我的订单', icon: 'receipt_long' as MoonwhiteIconName, end: false },
+  { path: '/buyer/reviews', label: '评论任务', icon: 'task_alt' as MoonwhiteIconName, end: false },
+  { path: '/buyer/refunds', label: '返款记录', icon: 'currency_exchange' as MoonwhiteIconName, end: false },
+  { path: '/buyer/me', label: '账户资料', icon: 'person' as MoonwhiteIconName, end: false },
 ] as const);
 
 export function buyerNavigationOwner(pathname: string): BuyerNavigationPath {
@@ -90,7 +81,6 @@ function BuyerNavigationContent({ onNavigate }: { onNavigate?: () => void }): Re
   return (
     <nav className="mwb-nav-list" aria-label="买家主导航">
       {BUYER_SIDEBAR_NAVIGATION.map((item) => {
-        const Icon = item.icon;
         return (
           <Fragment key={item.path}>
             {item.path === '/buyer/me' ? (
@@ -102,7 +92,7 @@ function BuyerNavigationContent({ onNavigate }: { onNavigate?: () => void }): Re
               className={owner === item.path ? 'mwb-nav-link active' : 'mwb-nav-link'}
               onClick={onNavigate}
             >
-              <Icon aria-hidden="true" />
+              <MoonwhiteIcon name={item.icon} size={24} filled={owner === item.path} />
               <span>{item.label}</span>
             </Link>
           </Fragment>
@@ -193,7 +183,7 @@ function BuyerMobileDrawer({
             aria-label="关闭导航菜单"
             onClick={onClose}
           >
-            <X aria-hidden="true" />
+            <MoonwhiteIcon name="close" size={20} />
           </Button>
         </div>
         <div className="mwb-drawer-body">
@@ -231,7 +221,7 @@ export function BuyerFrame({ children }: { children?: ReactNode } = {}): React.J
             aria-controls="buyer-mobile-drawer"
             onClick={() => setDrawerOpen(true)}
           >
-            <Menu aria-hidden="true" />
+            <MoonwhiteIcon name="menu" size={20} />
           </Button>
           <Link className="mwb-brand-link" to="/buyer" aria-label="月光白买家首页">
             <span className="mwb-moon" aria-hidden="true">
@@ -266,9 +256,8 @@ export function BuyerFrame({ children }: { children?: ReactNode } = {}): React.J
 
       {/* 移动端底部导航（<1024px） */}
       <BottomNavigation label="买家导航">{BUYER_NAVIGATION.map((item) => {
-        const Icon = item.icon;
         return <Link key={item.path} to={item.path} aria-current={owner === item.path ? 'page' : undefined}>
-          <Icon aria-hidden="true" /><span>{item.label}</span>
+          <MoonwhiteIcon name={item.icon} size={20} filled={owner === item.path} /><span>{item.label}</span>
         </Link>;
       })}</BottomNavigation>
     </IdentityShell>
