@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import type { StaffPermissionCode } from '@ygb/contracts';
+import { sha256Hex } from '@ygb/domain';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -11,7 +12,7 @@ import {
   registerSellerBatchRoutes,
   registerStaffBatchRoutes,
 } from './batch-routes';
-import { exportBatchCsv } from './batches';
+import { exportBatchCsv, exportHeader } from './batches';
 
 /**
  * Stage 7.5R request-level truthfulness coverage for settlement batches:
@@ -108,10 +109,16 @@ async function staffRequest(
   }, { DB: database! });
 }
 
-async function sellerRequest(path: string): Promise<Response> {
-  const token = await issueCustomerSession({
+async function sellerRequest(
+  path: string,
+  identity: { accountId: string; subjectId: string } = {
     accountId: 'r75-seller-account',
-    identitySubjectId: 'cold-seller-subject-stage75r-settlements',
+    subjectId: 'cold-seller-subject-stage75r-settlements',
+  },
+): Promise<Response> {
+  const token = await issueCustomerSession({
+    accountId: identity.accountId,
+    identitySubjectId: identity.subjectId,
     accountType: 'SELLER_MEMBER',
     sessionVersion: 1,
     passwordChangeRequired: false,
@@ -126,6 +133,50 @@ async function sellerRequest(path: string): Promise<Response> {
       'Sec-Fetch-Site': 'same-origin',
     },
   }, { DB: database!, CUSTOMER_SESSION_SECRET: SESSION_SECRET } as never);
+}
+
+/**
+ * Seed an additional seller organization member with an explicit role and
+ * status (7.5R-2 role matrix). Returns the identity used to open sessions.
+ */
+function seedSellerMember(
+  role: 'OWNER' | 'OPERATIONS' | 'FINANCE' | 'VIEWER',
+  suffix: string,
+  overrides: {
+    status?: 'ACTIVE' | 'DISABLED';
+    organizationId?: string;
+    memberNumber?: number;
+  } = {},
+): { accountId: string; subjectId: string } {
+  const subjectId = `r75-subject-${suffix}`;
+  const accountId = `r75-account-${suffix}`;
+  const organizationId = overrides.organizationId ?? sellerOrganizationId;
+  const status = overrides.status ?? 'ACTIVE';
+  const memberNumber = overrides.memberNumber ?? 9;
+  database!.exec(`
+    INSERT INTO customer_identity_subjects(id,subject_type,created_at)
+    VALUES('${subjectId}','SELLER_ORG_MEMBER',1000);
+    INSERT INTO customer_login_accounts(id,identity_subject_id,account_type,login_identifier_display,login_identifier_normalized,status,session_version,password_change_required,version,created_at,updated_at,activated_at,disabled_at,registration_source)
+    VALUES('${accountId}','${subjectId}','SELLER_MEMBER','${accountId}','${accountId}','ACTIVE',1,0,1,1000,1000,1000,NULL,NULL);
+    INSERT INTO seller_organization_members(id,identity_subject_id,organization_id,member_number,username_fallback,
+      display_name,role,primary_owner,status,version,created_at,updated_at,activated_at,disabled_at)
+    VALUES('r75-member-${suffix}','${subjectId}','${organizationId}',${memberNumber},'r75-member-${suffix}',
+      '${role} 成员','${role}',0,'${status}',1,1000,1000,1000,NULL);
+  `);
+  return { accountId, subjectId };
+}
+
+/** A second ACTIVE seller organization for cross-organization concealment. */
+function seedSecondSellerOrganization(): string {
+  const organizationId = 'r75-second-org';
+  database!.exec(`
+    INSERT INTO seller_organizations(id,marketplace_code,seller_code,origin_channel_id,current_channel_id,seller_sequence,
+      organization_name,status,version,created_at,updated_at,activated_at,disabled_at,next_member_number)
+    VALUES('${organizationId}','AMAZON_JP','r75-org-0002','seller-channel-ido-mango','seller-channel-ido-mango',99002,
+      '第二卖家组织','ACTIVE',1,1000,1000,1000,NULL,2)
+    ON CONFLICT(id) DO NOTHING;
+  `);
+  return organizationId;
 }
 
 const base = (extra = '') =>
@@ -524,6 +575,80 @@ describe('seller portal settlement batches (7.5R)', () => {
   });
 });
 
+describe('seller portal batch role matrix (7.5R-2)', () => {
+  it('lets all four ACTIVE member roles read list and detail (200), with no write endpoints', async () => {
+    const payableIds = bulkSeedPayables(2, 'p75r-roles');
+    const { batchId } = await createConfirmedBatch(payableIds, 'roles-key');
+    for (const role of ['OWNER', 'OPERATIONS', 'FINANCE', 'VIEWER'] as const) {
+      const identity = seedSellerMember(role, `role-${role.toLowerCase()}`, {
+        memberNumber: 11 + ['OWNER', 'OPERATIONS', 'FINANCE', 'VIEWER'].indexOf(role),
+      });
+      const list = await sellerRequest(
+        '/api/seller-portal/settlement/batches',
+        identity,
+      );
+      expect(list.status, `list ${role}`).toBe(200);
+      const listBody = await list.json() as {
+        data: { batches: Array<{ batch_id: string }>; next_cursor: string | null };
+      };
+      expect(listBody.data.batches.map((batch) => batch.batch_id))
+        .toEqual([batchId]);
+
+      const detail = await sellerRequest(
+        `/api/seller-portal/settlement/batches/${encodeURIComponent(batchId)}`,
+        identity,
+      );
+      expect(detail.status, `detail ${role}`).toBe(200);
+      const detailBody = await detail.json() as {
+        data: { batch: { batch_id: string; members: unknown[] } };
+      };
+      expect(detailBody.data.batch.batch_id).toBe(batchId);
+      expect(detailBody.data.batch.members).toHaveLength(2);
+    }
+  }, 60_000);
+
+  it('keeps non-members and DISABLED members out and conceals cross-organization batches', async () => {
+    const payableIds = bulkSeedPayables(1, 'p75r-roles-x');
+    const { batchId } = await createConfirmedBatch(payableIds, 'roles-x-key');
+    const secondOrganizationId = seedSecondSellerOrganization();
+    const foreign = seedSellerMember('OPERATIONS', 'role-foreign', {
+      organizationId: secondOrganizationId,
+      memberNumber: 1,
+    });
+    // A foreign member's own list is scoped to (the empty) second org…
+    const foreignList = await sellerRequest(
+      '/api/seller-portal/settlement/batches',
+      foreign,
+    );
+    expect(foreignList.status).toBe(200);
+    const foreignListBody = await foreignList.json() as {
+      data: { batches: unknown[] };
+    };
+    expect(foreignListBody.data.batches).toEqual([]);
+    // …and the first organization's batch detail stays concealed 404.
+    const foreignDetail = await sellerRequest(
+      `/api/seller-portal/settlement/batches/${encodeURIComponent(batchId)}`,
+      foreign,
+    );
+    expect(foreignDetail.status).toBe(404);
+
+    // A DISABLED membership fails closed on both routes.
+    const disabled = seedSellerMember('VIEWER', 'role-disabled', {
+      status: 'DISABLED',
+    });
+    const disabledList = await sellerRequest(
+      '/api/seller-portal/settlement/batches',
+      disabled,
+    );
+    expect(disabledList.status).toBe(401);
+    const disabledDetail = await sellerRequest(
+      `/api/seller-portal/settlement/batches/${encodeURIComponent(batchId)}`,
+      disabled,
+    );
+    expect(disabledDetail.status).toBe(401);
+  }, 60_000);
+});
+
 describe('settlement batch CSV export (7.5R)', () => {
   it('exports the complete membership (201 rows) with receipt headers and a single audit side effect', async () => {
     const payableIds = bulkSeedPayables(201, 'p75r-exp');
@@ -678,4 +803,280 @@ describe('settlement batch CSV export (7.5R)', () => {
     });
     expect(replay.status).toBe(409);
   });
+});
+
+describe('settlement batch CSV true streaming (7.5R-2)', () => {
+  /**
+   * Count export member-page queries (the as-of SELECT is the only SQL
+   * touching `payable.due_at`) so the tests can prove WHEN pages are read:
+   * once per page in the preflight, then again lazily per pull.
+   */
+  function countingDb(
+    db: SqliteDatabase,
+    counter: { pageQueries: number },
+  ): SqliteDatabase {
+    return new Proxy(db, {
+      get(target, property) {
+        if (property === 'prepare') {
+          return (sql: string) => {
+            if (sql.includes('payable.due_at')) counter.pageQueries += 1;
+            return target.prepare(sql);
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        // Bind to the real instance: batch() rejects statements whose
+        // database identity differs from the instance it runs on.
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+  }
+
+  async function staffExportRequest(
+    batchId: string,
+    key: string,
+    db: SqliteDatabase,
+  ): Promise<Response> {
+    const app = new Hono<any>();
+    app.use('*', async (context, next) => {
+      context.set('requestId', `r75-${crypto.randomUUID()}`);
+      context.set('staffAuthorization', actor('owner'));
+      await next();
+    });
+    registerStaffBatchRoutes(app);
+    return app.request(`${ORIGIN}${base(`/batches/${batchId}/export`)}`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: {
+        'content-type': 'application/json',
+        'Idempotency-Key': key,
+      },
+    }, { DB: db });
+  }
+
+  /** Consume the body chunk by chunk; return chunks + the query counter. */
+  async function readChunkByChunk(
+    response: Response,
+    counter: { pageQueries: number },
+    expectedReads: number,
+  ): Promise<Uint8Array[]> {
+    const chunks: Uint8Array[] = [];
+    const reader = response.body!.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      // Assert the laziness invariant after every read: pages are fetched
+      // during consumption, never buffered ahead of the consumer.
+      expect(counter.pageQueries).toBeLessThanOrEqual(expectedReads);
+    }
+    return chunks;
+  }
+
+  function csvText(chunks: Uint8Array[]): string {
+    let text = '';
+    for (const chunk of chunks) text += new TextDecoder().decode(chunk);
+    return text;
+  }
+
+  it('streams 201 rows lazily (header first, one page per pull) and the client bytes hash to the header SHA', async () => {
+    const payableIds = bulkSeedPayables(201, 'p75r-true-stream');
+    const { batchId } = await createConfirmedBatch(payableIds, 'true-stream-key');
+    const counter = { pageQueries: 0 };
+    const response = await staffExportRequest(
+      batchId, 'true-stream-key-001', countingDb(database!, counter),
+    );
+    expect(response.status).toBe(200);
+    // Preflight walked the single page; pass 2 has not queried anything yet —
+    // proving the CSV is not generated before the Response is handed out.
+    expect(counter.pageQueries).toBe(1);
+
+    const reader = response.body!.getReader();
+    const header = await reader.read();
+    expect(header.done).toBe(false);
+    expect(new TextDecoder().decode(header.value)).toBe(exportHeader());
+
+    const page = await reader.read();
+    expect(page.done).toBe(false);
+    // The stream pass needed exactly one page query for the 201 rows.
+    expect(counter.pageQueries).toBe(2);
+
+    const end = await reader.read();
+    expect(end.done).toBe(true);
+    // No speculative reads beyond the boundary page check happened.
+    expect(counter.pageQueries).toBe(2);
+
+    const text = new TextDecoder().decode(header.value)
+      + new TextDecoder().decode(page.value);
+    const lines = text.trimEnd().split('\n');
+    expect(lines).toHaveLength(202);
+    const numbers = lines.slice(1).map((line) => line.split(',')[0]);
+    expect(new Set(numbers).size).toBe(201);
+    const digest = await sha256Hex(new TextEncoder().encode(text));
+    expect(digest).toBe(response.headers.get('x-export-sha256'));
+  }, 120_000);
+
+  it('walks the exact 500-row full page boundary in both passes without duplicates', async () => {
+    const payableIds = bulkSeedPayables(500, 'p75r-stream-500');
+    const { batchId } = await createConfirmedBatch(payableIds, 'stream-500-key');
+    const counter = { pageQueries: 0 };
+    const response = await staffExportRequest(
+      batchId, 'stream-500-key-001', countingDb(database!, counter),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-export-row-count')).toBe('500');
+    // Preflight: one full page + one empty boundary page.
+    expect(counter.pageQueries).toBe(2);
+
+    const chunks = await readChunkByChunk(response, counter, 4);
+    // Stream pass: full page + boundary check page.
+    expect(counter.pageQueries).toBe(4);
+
+    const text = csvText(chunks);
+    const lines = text.trimEnd().split('\n');
+    expect(lines).toHaveLength(501);
+    const numbers = lines.slice(1).map((line) => line.split(',')[0]);
+    expect(new Set(numbers).size).toBe(500);
+    expect([...numbers].sort()).toEqual(numbers);
+    const digest = await sha256Hex(new TextEncoder().encode(text));
+    expect(digest).toBe(response.headers.get('x-export-sha256'));
+  }, 180_000);
+
+  it('streams 1000 rows completely with a client-verified SHA and a stable replay receipt', async () => {
+    const payableIds = bulkSeedPayables(1_000, 'p75r-stream-1000');
+    const { batchId } = await createConfirmedBatch(payableIds, 'stream-1000-key');
+    const response = await staffExportRequest(
+      batchId, 'stream-1000-key-001', database!,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-export-row-count')).toBe('1000');
+    const text = await response.text();
+    const lines = text.trimEnd().split('\n');
+    expect(lines).toHaveLength(1_001);
+    const numbers = lines.slice(1).map((line) => line.split(',')[0]);
+    expect(new Set(numbers).size).toBe(1_000);
+    const digest = await sha256Hex(new TextEncoder().encode(text));
+    expect(digest).toBe(response.headers.get('x-export-sha256'));
+
+    const replay = await staffRequest(base(`/batches/${batchId}/export`), {
+      method: 'POST',
+      body: {},
+      key: 'stream-1000-key-001',
+    });
+    expect(replay.status).toBe(200);
+    const replayBody = await replay.json() as {
+      data: { receipt: { row_count: number; sha256: string; exported_at: number; export_as_of: number; replayed: boolean } };
+    };
+    expect(replayBody.data.receipt).toMatchObject({
+      row_count: 1_000,
+      sha256: digest,
+      replayed: true,
+    });
+    expect(replayBody.data.receipt.export_as_of)
+      .toBeLessThanOrEqual(replayBody.data.receipt.exported_at);
+  }, 240_000);
+
+  it('freezes export_as_of: a payment recorded between the passes changes neither bytes nor SHA', async () => {
+    const payableIds = bulkSeedPayables(3, 'p75r-asof');
+    const { batchId } = await createConfirmedBatch(payableIds, 'asof-key');
+    const targetPayable = payableIds[0]!;
+    const balance = await database!
+      .prepare(
+        `SELECT frozen_amount_cny_fen FROM seller_settlement_batch_members
+        WHERE batch_id=? AND payable_id=? AND active=1`,
+      )
+      .bind(batchId, targetPayable)
+      .first<{ frozen_amount_cny_fen: number }>();
+
+    // Pass 1 + side effects run at the frozen instant AT; the stream is not
+    // consumed yet.
+    const outcome = await exportBatchCsv(
+      database!,
+      { batchId, expectedVersion: null },
+      { actor: actor(), idempotencyKey: 'asof-key-001', now: AT },
+    );
+    expect(outcome.kind).toBe('FILE');
+    if (outcome.kind !== 'FILE') return;
+    expect(outcome.receipt.export_as_of).toBe(AT);
+
+    // A payment + allocation recorded strictly after export_as_of.
+    const late = AT + 60_000;
+    database!.exec(`
+      INSERT INTO seller_payments(id,seller_organization_id,amount_cny_fen,paid_at,recorded_at,
+        recorded_by_staff_id,version,created_at,updated_at)
+      VALUES('p75r-late-payment','${sellerOrganizationId}',${balance!.frozen_amount_cny_fen},${late},${late},
+        'r75-owner',1,${late},${late});
+      INSERT INTO seller_payment_allocations(id,payment_id,payable_id,seller_organization_id,
+        amount_cny_fen,allocated_by_staff_id,allocated_at,created_at)
+      VALUES('p75r-late-alloc','p75r-late-payment','${targetPayable}','${sellerOrganizationId}',
+        ${balance!.frozen_amount_cny_fen},'r75-owner',${late},${late});
+    `);
+
+    // Pass 2 consumes the stream: the late payment must be invisible.
+    const chunks: Uint8Array[] = [];
+    const reader = outcome.createStream().getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const text = csvText(chunks);
+    const digest = await sha256Hex(new TextEncoder().encode(text));
+    expect(digest).toBe(outcome.receipt.sha256);
+    const lines = text.trimEnd().split('\n');
+    expect(lines).toHaveLength(4);
+    // Every row still reports the as-of payment progress: nothing paid.
+    for (const line of lines.slice(1)) {
+      expect(line.split(',')[3]).toBe('0');
+    }
+
+    // A same-key replay keeps returning the ORIGINAL frozen receipt.
+    const replay = await exportBatchCsv(
+      database!,
+      { batchId, expectedVersion: null },
+      { actor: actor(), idempotencyKey: 'asof-key-001', now: AT + 120_000 },
+    );
+    expect(replay.kind).toBe('REPLAY');
+    if (replay.kind === 'REPLAY') {
+      expect(replay.receipt.sha256).toBe(digest);
+      expect(replay.receipt.export_as_of).toBe(AT);
+    }
+  }, 120_000);
+
+  it('keeps the late-payment invariance at the route level (stream consumed after a later insert)', async () => {
+    const payableIds = bulkSeedPayables(2, 'p75r-asof-route');
+    const { batchId } = await createConfirmedBatch(payableIds, 'asof-route-key');
+    const response = await staffExportRequest(
+      batchId, 'asof-route-key-001', database!,
+    );
+    expect(response.status).toBe(200);
+    const headerSha = response.headers.get('x-export-sha256');
+
+    // A payment recorded after the route's export_as_of, before consumption.
+    const late = Date.now() + 60_000;
+    const payableId = payableIds[0]!;
+    const frozen = await database!
+      .prepare(
+        `SELECT frozen_amount_cny_fen FROM seller_settlement_batch_members
+        WHERE batch_id=? AND payable_id=? AND active=1`,
+      )
+      .bind(batchId, payableId)
+      .first<{ frozen_amount_cny_fen: number }>();
+    database!.exec(`
+      INSERT INTO seller_payments(id,seller_organization_id,amount_cny_fen,paid_at,recorded_at,
+        recorded_by_staff_id,version,created_at,updated_at)
+      VALUES('p75r-route-late-payment','${sellerOrganizationId}',${frozen!.frozen_amount_cny_fen},${late},${late},
+        'r75-owner',1,${late},${late});
+      INSERT INTO seller_payment_allocations(id,payment_id,payable_id,seller_organization_id,
+        amount_cny_fen,allocated_by_staff_id,allocated_at,created_at)
+      VALUES('p75r-route-late-alloc','p75r-route-late-payment','${payableId}','${sellerOrganizationId}',
+        ${frozen!.frozen_amount_cny_fen},'r75-owner',${late},${late});
+    `);
+
+    const text = await response.text();
+    const digest = await sha256Hex(new TextEncoder().encode(text));
+    expect(digest).toBe(headerSha);
+    for (const line of text.trimEnd().split('\n').slice(1)) {
+      expect(line.split(',')[3]).toBe('0');
+    }
+  }, 120_000);
 });

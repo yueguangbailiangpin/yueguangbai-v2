@@ -324,6 +324,11 @@ describe('settlement export capacity (stage 7.5R)', () => {
     expect(response.headers.get('x-export-row-count')).toBe(String(TOTAL_MEMBERS));
 
     const csv = await response.text();
+    // 7.5R-2: the bytes the client actually received must hash to the
+    // receipt SHA (the stream was consumed chunk by chunk above).
+    const { sha256Hex } = await import('@ygb/domain');
+    expect(await sha256Hex(new TextEncoder().encode(csv)))
+      .toBe(response.headers.get('x-export-sha256'));
     const lines = csv.trimEnd().split('\n');
     expect(lines).toHaveLength(TOTAL_MEMBERS + 1);
     const numbers = lines.slice(1).map((line) => line.split(',')[0]);

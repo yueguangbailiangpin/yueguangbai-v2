@@ -240,13 +240,9 @@ async function exportHandler(context: Context<any>): Promise<Response> {
   );
   context.header('X-Export-Row-Count', String(outcome.receipt.row_count));
   context.header('X-Export-Sha256', outcome.receipt.sha256);
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const chunk of outcome.chunks) controller.enqueue(chunk);
-      controller.close();
-    },
-  });
-  return context.body(stream);
+  // 7.5R-2: the body is a lazy pull()-backpressured stream — pages are read,
+  // encoded and enqueued only as the client consumes them.
+  return context.body(outcome.createStream());
 }
 
 async function sellerListHandler(context: Context<any>): Promise<Response> {
@@ -317,13 +313,20 @@ interface SellerPortalActorContext {
   sellerOrganizationId: string;
 }
 
+/**
+ * Stage 7.5R-2 role matrix: every ACTIVE seller organization member
+ * (OWNER/OPERATIONS/FINANCE/VIEWER) may read their own organization's
+ * non-draft, non-cancelled batches — the frozen OpenSpec rule reads
+ * "Seller portal members read-only". The actor resolution already fails
+ * closed for non-ACTIVE memberships and non-members (401), and every query
+ * below is organization-scoped, so cross-organization stays concealed 404.
+ * The seller portal exposes no batch write endpoints at all; staff-side
+ * authorization is untouched.
+ */
 async function requireSellerActor(
   context: Context<any>,
 ): Promise<SellerPortalActorContext> {
   const actor = await resolveSellerPortalActor(context);
-  if (actor.role !== 'OWNER' && actor.role !== 'FINANCE') {
-    throw new SellerSettlementError('NOT_FOUND', 404);
-  }
   return { sellerOrganizationId: actor.sellerOrganizationId };
 }
 

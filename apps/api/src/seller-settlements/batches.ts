@@ -8,7 +8,7 @@ import type {
   SqlDatabase,
   SqlStatement,
 } from '@ygb/contracts';
-import { hashCanonicalJson, sha256Hex } from '@ygb/domain';
+import { hashCanonicalJson, IncrementalSha256 } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
 import {
   acquireIdempotency,
@@ -20,19 +20,30 @@ import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { fixedInteger, SellerSettlementError } from './shared';
 
 /**
- * Stage 7.5 batch 3 + 7.5R: immutable seller settlement batches. Commands are
- * idempotent (key + request hash), version-guarded (expected_version),
- * state-machine-checked (database triggers), audited twice (audit_events +
- * seller_settlement_batch_events) and finish with transaction assertions.
- * Payment progress is always derived from the live payable balances.
+ * Stage 7.5 batch 3 + 7.5R/7.5R-2: immutable seller settlement batches.
+ * Commands are idempotent (key + request hash), version-guarded
+ * (expected_version), state-machine-checked (database triggers), audited
+ * twice (audit_events + seller_settlement_batch_events) and finish with
+ * transaction assertions.
  *
  * 7.5R truthfulness: member reads are keyset-paginated end to end (no silent
- * MEMBER_PAGE truncation, no OFFSET), seller-portal routes project a dedicated
- * seller-safe DTO, and CSV export enumerates pages while checking row/byte
- * limits BEFORE the first byte is sent — an oversized batch answers
- * 409 EXPORT_TOO_LARGE instead of a truncated file. Export is idempotent:
- * the first request streams the file and records a receipt; replays with the
+ * MEMBER_PAGE truncation, no OFFSET), seller-portal routes project a
+ * dedicated seller-safe DTO, and an oversized batch answers 409
+ * EXPORT_TOO_LARGE instead of a truncated file. Export is idempotent: the
+ * first request streams the file and records a receipt; replays with the
  * same key return that receipt JSON, never a second side effect.
+ *
+ * 7.5R-2 truthfulness: the export is a true two-pass stream. Pass 1
+ * (preflight) walks the same keyset pages the response will send, encodes
+ * each page, enforces the row/byte ceilings and folds the exact bytes into
+ * an incremental SHA-256 — nothing but the current page is ever held in
+ * memory, and no full-buffer merge exists. Pass 2 lazily re-walks the same
+ * pages inside a pull()-backpressured ReadableStream, one page per pull.
+ * Both passes read payment facts (allocations/reversals) and due dates with
+ * `created_at <= export_as_of`, where export_as_of is frozen when the export
+ * command starts and recorded in the receipt — a payment recorded after the
+ * preflight cannot change the streamed bytes, so the client-received SHA
+ * always equals the receipt SHA.
  */
 
 const BATCH_PAGE_LIMIT_MAX = 100;
@@ -939,8 +950,17 @@ export function exportHeader(): string {
     + 'paid_amount_cny_fen,outstanding_amount_cny_fen,confirmed_at,due_at\n';
 }
 
+/** The whitelisted CSV fields — never the internal member/payable/order ids. */
+export interface ExportCsvRow {
+  amazon_order_number: string;
+  payable_type: 'SELLER_PRINCIPAL' | 'SELLER_SERVICE_FEE';
+  frozen_amount_cny_fen: string;
+  paid_amount_cny_fen: string;
+  outstanding_amount_cny_fen: string;
+}
+
 export function exportRow(
-  member: SellerSettlementBatchMemberDto,
+  member: ExportCsvRow,
   confirmedAtIso: string,
   dueAtIso: string,
 ): string {
@@ -960,83 +980,218 @@ export interface SellerSettlementBatchExportReceipt {
   row_count: number;
   sha256: string;
   exported_at: number;
+  /** Both export passes read payment facts with created_at <= export_as_of. */
+  export_as_of: number;
   replayed: boolean;
 }
 
 export type ExportOutcome =
-  | { kind: 'FILE'; receipt: SellerSettlementBatchExportReceipt; chunks: Uint8Array[] }
+  | {
+    kind: 'FILE';
+    receipt: SellerSettlementBatchExportReceipt;
+    /** Lazy pass-2 stream: nothing is read or encoded until pulled. */
+    createStream: () => ReadableStream<Uint8Array>;
+  }
   | { kind: 'REPLAY'; receipt: SellerSettlementBatchExportReceipt };
 
+// ---------------------------------------------------------------------------
+// Export pass machinery (7.5R-2)
+// ---------------------------------------------------------------------------
+
 /**
- * Enumerate members keyset-page by keyset-page, encode each page, and enforce
- * the row/byte ceilings during enumeration — an oversized batch fails BEFORE
- * any byte reaches the response. Member DTOs are never accumulated: each page
- * is encoded and dropped; only bounded CSV chunks (≤2 MiB total) remain.
+ * Payment facts as of the frozen instant: paid = allocations − reversals
+ * with created_at <= export_as_of, outstanding = payable amount − paid.
+ * The due date is JOINed into the page query itself — no batch-wide
+ * due-date map is ever built. Two placeholders per expression, and the expression
+ * appears twice (paid + outstanding), so every page binds export_as_of
+ * four times before the batch id.
  */
-async function enumerateCsvChunks(
+const PAID_AS_OF_EXPR = `
+  COALESCE((
+    SELECT SUM(alloc.amount_cny_fen) FROM seller_payment_allocations alloc
+    WHERE alloc.payable_id=member.payable_id AND alloc.created_at<=?
+  ),0)
+  -COALESCE((
+    SELECT SUM(reversal.amount_cny_fen) FROM seller_payment_allocation_reversals reversal
+    WHERE reversal.payable_id=member.payable_id AND reversal.created_at<=?
+  ),0)`;
+
+const EXPORT_MEMBER_SELECT = `
+  SELECT member.id, member.payable_id, member.formal_order_id,
+    member.amazon_order_number_normalized, member.payable_type,
+    member.frozen_amount_cny_fen, payable.due_at,
+    ${PAID_AS_OF_EXPR} AS paid_amount_cny_fen,
+    payable.amount_cny_fen-(${PAID_AS_OF_EXPR}) AS outstanding_amount_cny_fen
+  FROM seller_settlement_batch_members member
+  JOIN seller_payables payable ON payable.id=member.payable_id
+  WHERE member.batch_id=? AND member.active=1`;
+
+interface ExportMemberRow {
+  id: string;
+  payable_id: string;
+  formal_order_id: string;
+  amazon_order_number_normalized: string;
+  payable_type: 'SELLER_PRINCIPAL' | 'SELLER_SERVICE_FEE';
+  frozen_amount_cny_fen: number;
+  due_at: number;
+  paid_amount_cny_fen: number;
+  outstanding_amount_cny_fen: number;
+}
+
+async function readExportMemberPage(
+  database: SqlDatabase,
+  batchId: string,
+  exportAsOf: number,
+  limit: number,
+  cursor: { type: string; number: string; id: string } | null,
+): Promise<ExportMemberRow[]> {
+  const clauses = [EXPORT_MEMBER_SELECT];
+  const params: unknown[] = [exportAsOf, exportAsOf, exportAsOf, exportAsOf, batchId];
+  if (cursor !== null) {
+    clauses.push(
+      'AND (member.payable_type>? OR (member.payable_type=? AND (member.amazon_order_number_normalized>? '
+        + 'OR (member.amazon_order_number_normalized=? AND member.id>?))))',
+    );
+    params.push(
+      cursor.type, cursor.type,
+      cursor.number, cursor.number, cursor.id,
+    );
+  }
+  const rows = await database
+    .prepare(`${clauses.join(' ')}${MEMBER_ORDER} LIMIT ?`)
+    .bind(...params, limit)
+    .all<ExportMemberRow>();
+  return rows.results;
+}
+
+function exportMemberCursor(
+  row: ExportMemberRow,
+): { type: string; number: string; id: string } {
+  return {
+    type: row.payable_type,
+    number: row.amazon_order_number_normalized,
+    id: row.id,
+  };
+}
+
+function exportCsvRow(row: ExportMemberRow, confirmedAtIso: string): string {
+  return exportRow(
+    {
+      amazon_order_number: row.amazon_order_number_normalized,
+      payable_type: row.payable_type,
+      frozen_amount_cny_fen: fixedInteger(row.frozen_amount_cny_fen),
+      paid_amount_cny_fen: fixedInteger(row.paid_amount_cny_fen),
+      outstanding_amount_cny_fen: fixedInteger(row.outstanding_amount_cny_fen),
+    },
+    confirmedAtIso,
+    new Date(Number(row.due_at)).toISOString(),
+  );
+}
+
+function encodeExportPage(
+  rows: readonly ExportMemberRow[],
+  confirmedAtIso: string,
+  encoder: TextEncoder,
+): Uint8Array {
+  let page = '';
+  for (const row of rows) page += exportCsvRow(row, confirmedAtIso);
+  return encoder.encode(page);
+}
+
+/**
+ * Pass 1 — preflight. Walks the exact pages pass 2 will send, enforcing the
+ * row/byte ceilings and folding the exact bytes into an incremental
+ * SHA-256. Only the current page exists in memory: no chunk array, no
+ * merged buffer, no batch-wide member list.
+ */
+async function preflightExport(
   database: SqlDatabase,
   batch: BatchRow,
+  exportAsOf: number,
   onLimit: (code: 'EXPORT_TOO_LARGE') => never,
-  limits: { rows: number; bytes: number } = { rows: EXPORT_ROW_LIMIT, bytes: EXPORT_BYTE_LIMIT },
-): Promise<{ chunks: Uint8Array[]; rowCount: number; byteLength: number; sha256: string }> {
+  limits: { rows: number; bytes: number },
+): Promise<{ rowCount: number; byteLength: number; sha256: string }> {
   const confirmedAtIso = batch.frozen_at === null
     ? ''
     : new Date(Number(batch.frozen_at)).toISOString();
   const encoder = new TextEncoder();
-  const dues = await database
-    .prepare(
-      `SELECT member.payable_id, payable.due_at
-      FROM seller_settlement_batch_members member
-      JOIN seller_payables payable ON payable.id=member.payable_id
-      WHERE member.batch_id=? AND member.active=1`,
-    )
-    .bind(batch.id)
-    .all<{ payable_id: string; due_at: number }>();
-  const dueMap = new Map(dues.results.map((row) => [row.payable_id, Number(row.due_at)]));
-
-  const chunks: Uint8Array[] = [encoder.encode(exportHeader())];
-  let byteLength = chunks[0]!.byteLength;
+  const hasher = new IncrementalSha256();
+  const header = encoder.encode(exportHeader());
+  hasher.update(header);
+  let byteLength = header.byteLength;
   let rowCount = 0;
   let cursor: { type: string; number: string; id: string } | null = null;
   for (;;) {
-    const rows = await readMemberPage(database, batch.id, EXPORT_PAGE, cursor);
+    const rows = await readExportMemberPage(
+      database, batch.id, exportAsOf, EXPORT_PAGE, cursor,
+    );
     if (rows.length === 0) break;
-    const lines: string[] = [];
-    for (const row of rows) {
+    for (let index = 0; index < rows.length; index += 1) {
       rowCount += 1;
       if (rowCount > limits.rows) onLimit('EXPORT_TOO_LARGE');
-      const member = projectMember(row);
-      const dueAt = dueMap.get(member.payable_id) ?? 0;
-      lines.push(exportRow(member, confirmedAtIso, new Date(dueAt).toISOString()));
     }
-    const chunk = encoder.encode(lines.join(''));
+    const chunk = encodeExportPage(rows, confirmedAtIso, encoder);
     byteLength += chunk.byteLength;
     if (byteLength > limits.bytes) onLimit('EXPORT_TOO_LARGE');
-    chunks.push(chunk);
+    hasher.update(chunk);
     if (rows.length < EXPORT_PAGE) break;
-    const last = rows.at(-1)!;
-    cursor = {
-      type: last.payable_type,
-      number: last.amazon_order_number_normalized,
-      id: last.id,
-    };
+    cursor = exportMemberCursor(rows.at(-1)!);
   }
-  const merged = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return { chunks, rowCount, byteLength, sha256: await sha256Hex(merged) };
+  return { rowCount, byteLength, sha256: hasher.digestHex() };
 }
 
 /**
- * Export command (7.5R):
+ * Pass 2 — lazy page iterator over the identical as-of query. The returned
+ * stream enqueues at most one page per pull(), so the runtime applies real
+ * backpressure and the worker never holds more than the current page.
+ */
+function exportCsvStream(
+  database: SqlDatabase,
+  batch: BatchRow,
+  exportAsOf: number,
+): ReadableStream<Uint8Array> {
+  const confirmedAtIso = batch.frozen_at === null
+    ? ''
+    : new Date(Number(batch.frozen_at)).toISOString();
+  const encoder = new TextEncoder();
+  let headerSent = false;
+  let cursor: { type: string; number: string; id: string } | null = null;
+  let exhausted = false;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (exhausted) {
+        controller.close();
+        return;
+      }
+      if (!headerSent) {
+        headerSent = true;
+        controller.enqueue(encoder.encode(exportHeader()));
+        return;
+      }
+      const rows = await readExportMemberPage(
+        database, batch.id, exportAsOf, EXPORT_PAGE, cursor,
+      );
+      if (rows.length === 0) {
+        exhausted = true;
+        controller.close();
+        return;
+      }
+      controller.enqueue(encodeExportPage(rows, confirmedAtIso, encoder));
+      if (rows.length < EXPORT_PAGE) exhausted = true;
+      else cursor = exportMemberCursor(rows.at(-1)!);
+    },
+  });
+}
+
+/**
+ * Export command (7.5R + 7.5R-2):
  * - Requires an Idempotency-Key; the request hash binds batch id + format +
  *   expected_version, so a same-key different-version retry is a stable 409.
  * - First run validates state (never DRAFT; expected_version when provided),
- *   enumerates the CSV with limit prechecks, then writes exactly one
- *   BATCH_EXPORTED event and completes the idempotency record with the receipt.
+ *   freezes export_as_of, preflights the CSV with limit checks and an
+ *   incremental SHA over the exact future bytes, then writes exactly one
+ *   BATCH_EXPORTED event and completes the idempotency record with the
+ *   receipt BEFORE the lazy pass-2 stream is handed to the response.
  * - Replay with the same key returns the stored receipt (JSON), not a second
  *   file; a batch cancelled after the first export fails closed with 409.
  */
@@ -1116,17 +1271,23 @@ export async function exportBatchCsv(
     const refuse = (code: 'EXPORT_TOO_LARGE'): never => {
       throw new SellerSettlementError(code, 409);
     };
-    const { chunks, rowCount, sha256: sha } = await enumerateCsvChunks(
+    // Freeze the as-of instant: both passes read payment facts and due
+    // dates with created_at <= export_as_of, so a payment recorded after
+    // the preflight cannot alter the streamed bytes.
+    const exportAsOf = now;
+    const { rowCount, sha256: sha } = await preflightExport(
       database,
       batch,
+      exportAsOf,
       refuse,
-      input.limits,
+      input.limits ?? { rows: EXPORT_ROW_LIMIT, bytes: EXPORT_BYTE_LIMIT },
     );
     const receipt: SellerSettlementBatchExportReceipt = Object.freeze({
       batch_id: input.batchId,
       row_count: rowCount,
       sha256: sha,
       exported_at: now,
+      export_as_of: exportAsOf,
       replayed: false,
     });
     await database.batch([
@@ -1141,7 +1302,7 @@ export async function exportBatchCsv(
           input.batchId,
           'BATCH_EXPORTED',
           command.actor.staffId,
-          JSON.stringify({ row_count: rowCount, sha256: sha }),
+          JSON.stringify({ row_count: rowCount, sha256: sha, export_as_of: exportAsOf }),
           now,
         ),
       auditStatement(database, {
@@ -1151,7 +1312,7 @@ export async function exportBatchCsv(
         idempotencyKey: command.idempotencyKey,
         requestId: command.requestId ?? null,
         previousState: null,
-        nextState: { row_count: rowCount, sha256: sha, format: 'csv' },
+        nextState: { row_count: rowCount, sha256: sha, format: 'csv', export_as_of: exportAsOf },
         now,
       }),
       completeIdempotencyStatement(database, acquired.claim, receipt, {
@@ -1160,7 +1321,11 @@ export async function exportBatchCsv(
       }),
       assertIdempotencyCompletionStatement(database, acquired.claim),
     ]);
-    return { kind: 'FILE', receipt, chunks };
+    return {
+      kind: 'FILE',
+      receipt,
+      createStream: () => exportCsvStream(database, batch, exportAsOf),
+    };
   } catch (error) {
     const message = String((error as Error)?.message ?? error);
     if (error instanceof SellerSettlementError) {
