@@ -283,7 +283,7 @@ describe('StaffShell rendering', () => {
       expect(semanticIcon).toHaveAttribute('data-icon', iconClass);
       expect(semanticIcon).toHaveAttribute('data-fill', label === '工作台' ? '1' : '0');
       expect(semanticIcon).toHaveAttribute('aria-hidden', 'true');
-      expect(semanticIcon?.getAttribute('style')).toContain('--moonwhite-icon-size: 24px');
+      expect(semanticIcon).toHaveAttribute('data-size', '24');
     }
   });
 
@@ -407,7 +407,7 @@ describe('StaffShell mobile drawer', () => {
     const icon = within(drawer).getByRole('link', { name: '工作台' }).querySelector('.moonwhite-icon');
     expect(icon).toHaveAttribute('data-icon', 'dashboard');
     expect(icon).toHaveAttribute('data-fill', '1');
-    expect(icon?.getAttribute('style')).toContain('--moonwhite-icon-size: 24px');
+    expect(icon).toHaveAttribute('data-size', '24');
     expect(icon?.querySelector('svg')).toHaveAttribute('viewBox', '0 0 24 24');
   });
 
