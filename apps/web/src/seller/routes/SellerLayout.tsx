@@ -23,7 +23,6 @@ import { CursorPagination } from '../../ui/CursorPagination';
 import { sellerApi } from '../api/client';
 import { sellerQueryKeys } from '../queries/keys';
 import { useSellerCursorPages } from '../queries/useSellerCursorPages';
-import { canViewSellerFinancials } from '../authorization';
 
 /* ---- 导航定义（只映射真实存在的路由） ---- */
 
@@ -44,17 +43,14 @@ const SELLER_SIDEBAR_NAVIGATION: readonly SellerNavItem[] = [
   { path: '/seller/settings', label: '成员与组织设置', icon: Users, end: false },
 ] as const;
 
-/** 移动端底部导航（模板 4 项；无财务权限时以“我的”替代“结算”）。 */
-function sellerMobileNavigation(canViewSettlement: boolean): readonly SellerNavItem[] {
-  const items = [
+/** 移动端底部导航（模板 4 项；7.5R-2 起全部角色可读结算批次，固定含“结算”）。 */
+function sellerMobileNavigation(): readonly SellerNavItem[] {
+  return [
     { path: '/seller', label: '首页', icon: Home, end: true },
     { path: '/seller/products', label: '产品', icon: PackageSearch, end: false },
     { path: '/seller/orders', label: '订单', icon: ReceiptText, end: false },
-    canViewSettlement
-      ? { path: '/seller/settlements', label: '结算', icon: WalletCards, end: false }
-      : { path: '/seller/settings', label: '我的', icon: Users, end: false },
+    { path: '/seller/settlements', label: '结算', icon: WalletCards, end: false },
   ];
-  return items;
 }
 
 function sellerMobileOwner(pathname: string): string {
@@ -100,20 +96,13 @@ export function useSellerStoreContext(): SellerContextValue {
 
 /* ---- 侧栏导航内容（桌面侧边栏 + 移动抽屉共用） ---- */
 
-function SellerNavigationContent({
-  memberRole,
-  onNavigate,
-}: {
-  memberRole: SellerMemberRole | undefined;
+function SellerNavigationContent({ onNavigate }: {
   onNavigate?: (() => void) | undefined;
 }): React.JSX.Element {
   return (
     <nav className="mws-nav-list" aria-label="卖家导航">
       {SELLER_SIDEBAR_NAVIGATION.map((item) => {
         const Icon = item.icon;
-        if (item.path === '/seller/settlements' && !canViewSellerFinancials(memberRole)) {
-          return null;
-        }
         return (
           <Fragment key={item.path}>
             {item.path === '/seller/settings' ? <hr className="mws-nav-divider" /> : null}
@@ -179,7 +168,6 @@ const FOCUSABLE_SELECTOR =
 function SellerMobileDrawer({
   open,
   onClose,
-  memberRole,
   organizationName,
   memberRoleLabel,
   stores,
@@ -188,7 +176,6 @@ function SellerMobileDrawer({
 }: {
   open: boolean;
   onClose: () => void;
-  memberRole: SellerMemberRole | undefined;
   organizationName: string | null;
   memberRoleLabel: string | null;
   stores: SellerStoresPageState;
@@ -268,7 +255,7 @@ function SellerMobileDrawer({
           </Button>
         </div>
         <div className="mws-drawer-body">
-          <SellerNavigationContent memberRole={memberRole} onNavigate={onClose} />
+          <SellerNavigationContent onNavigate={onClose} />
           <SellerStoreFilterContent stores={stores} storeId={storeId} setStoreId={setStoreId} />
           {stores.hasMore ? (
             <div className="mws-store-more">
@@ -312,9 +299,8 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
   const organization = me.data?.organization;
   const member = me.data?.member;
   const memberRoleLabel = member ? roleLabels[member.role] : null;
-  const canViewSettlement = canViewSellerFinancials(member?.role);
   const mobileOwner = sellerMobileOwner(pathname);
-  const mobileNavigation = sellerMobileNavigation(canViewSettlement);
+  const mobileNavigation = sellerMobileNavigation();
   const value = useMemo<SellerContextValue>(
     () => ({
       storeId,
@@ -368,7 +354,7 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
         <div className="mws-shell-body">
           {/* 桌面端侧边栏（230px 绿色胶囊导航） */}
           <aside className="mws-nav" aria-label="卖家端侧边栏">
-            <SellerNavigationContent memberRole={member?.role} />
+            <SellerNavigationContent />
             <SellerStoreFilterContent stores={stores} storeId={storeId} setStoreId={setStoreId} />
             {stores.hasMore ? (
               <div className="mws-store-more">
@@ -399,7 +385,6 @@ export function SellerLayout({ children }: { children?: ReactNode } = {}): React
         <SellerMobileDrawer
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
-          memberRole={member?.role}
           organizationName={organization?.name ?? null}
           memberRoleLabel={memberRoleLabel}
           stores={stores}

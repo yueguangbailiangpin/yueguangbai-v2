@@ -128,3 +128,50 @@ inventory：161 表 / 493 索引 / 312 触发器 / 12 视图（`db:verify` SHA-2
 6. `StageContactCard` 仅两页接入，阶段判定散落各页。
 
 7.5R 后真实基线：schema 35（0034/0035）、API inventory 240、`npm test` 1760/1760、`verify:settlement-export-capacity`（新容量验证器，5,000 成员满配额导出）与 `verify:order-list-capacity` 同入 `check:ci:test-build`。
+
+---
+
+## 10. 阶段 7.5R-2 最终真实性修复追记（2026-08-29）
+
+ChatGPT 总审确认五项剩余缺陷（伪流式导出、卖家角色错误、卖家详情缺失、无共享 strict schema、六项原任务未收口）后执行本轮。分支同上，起点 `7a92104e`（7.5R 完成点，schema 35 / 240 端点 / 工作树干净 / 61+6 任务）。**两个本地提交，未 push、未部署、未触碰任何远端**。
+
+### 修复内容
+
+1. **真流式导出**（问题一，任务 3.7）：`batches.ts` 的 `enumerateCsvChunks`（全量 dueMap + `Uint8Array[]` 累积 + merged 完整副本算 SHA）重写为两阶段：预检 `preflightExport`（keyset 500 行/页枚举、due date 直接 JOIN 当前页查询、增量 `IncrementalSha256` 折叠精确字节、行/字节超限于发字节前 409、内存仅持当前页）+ 发送 `exportCsvStream`（`ReadableStream` `pull()` 背压，每次 pull 编码并 enqueue 至多一页）。无 chunk 数组、无 merged buffer、无全批次成员数组；源码守卫测试禁止回归。
+2. **两遍一致性（方案 A，无新增 Migration）**：命令开始时冻结 `export_as_of`，两遍的付款/冲销事实均读 `created_at <= export_as_of`（已付 = allocations−reversals 净额，未付 = 应付额−已付），并写入收据（`SellerSettlementBatchExportReceipt.export_as_of`）、BATCH_EXPORTED 事件与审计 nextState。同键重放返回原始收据；晚于 as-of 的付款对两遍均不可见。
+3. **卖家角色矩阵**（问题二）：批次路由 `requireSellerActor` 移除 OWNER/FINANCE 限制，四类 ACTIVE 成员（OWNER/OPERATIONS/FINANCE/VIEWER）只读本组织非草稿批次；卖家门户无批次写端点；Staff 端不变；结算摘要/应付/打款仍限 OWNER/FINANCE。
+4. **共享 strict runtime schema**（问题四）：`packages/contracts/src/runtime-schemas.ts`（contracts 包新增 zod 4.4.3 依赖）：卖家批次 Batch/Member/Detail/DetailResponse/Page 五 schema + 买家渠道公开 schema + SafeFileReference schema，全部 `.strict()` 且 `satisfies z.ZodType<Dto>`；无 passthrough。后端合同测试与前端列表/详情解析同一对象；买家运行时与 `file-read-contracts.ts` 改为 re-export（同名 schema 不重复定义）。
+5. **卖家批次详情闭环**（问题三）：`SellerBatchDetailSection`（`/seller/settlements/:batchId`，App.tsx 生产与 review 两路由表注册）显示批次概况（状态/确认时间/冻结总额/已付/未付/笔数）与成员明细（订单号/类型文案/冻结/已付/未付），`members_next_cursor` 真实分页，loading/空态/错误重试/加载更多齐备，concealed 404 安全态；列表行加"查看详情"；OPERATIONS/VIEWER 得到批次专用页（无财务区、不发财务请求）。
+
+### 新增测试
+
+- `settlement-batches-75r.test.ts` 扩至 15 用例：+四角色矩阵（200/200×4、跨组织 concealed 404、DISABLED 401）、+真流式五例（惰性逐页拉取计数断言、201/500（整页边界）/1000 完整、客户端实收字节 SHA==header/receipt、`export_as_of` 冻结后两遍间插入晚到付款字节与 SHA 不变（命令级+路由级））。
+- `shared-runtime-schema.test.ts`（新，7 用例）：真实 D1+真实 Hono 路由+真实会话+真实 HTTP，四角色列表/详情响应以与生产前端相同的共享 strict schema（含信封）解析；受控 QR 买家渠道响应解析；strict 正负向（多余/缺失/未知 purpose 拒绝）；流式导出源码守卫（无 dueMap/chunks/merged/start(controller)，必须 createStream+created_at<=?）与前端共享 schema 引用守卫。
+- `SellerBatchDetail.msw.test.tsx`（新，5 用例）：列表→详情导航与内部 ID 不泄露、250 成员两页无重漏、失败重试恢复、concealed 404 安全态（无伪造数据）、四角色渲染。
+- `stage75r2-seller-batch-detail.spec.ts`（新 Playwright，3 用例）：四角色 1440/390 列表→详情+无水平溢出+截图（4 张正常态+1 张 404 态）、250 成员两页无重漏（1440/390 截图）、失败重试恢复+越权安全 404。截图目录 `tmp/stage75r2-seller-batch-detail-screenshots/`。
+- `settlement-export.capacity.verify.ts` 增客户端实收字节 SHA==header 断言（5000 满配额）。
+
+### 验证真实退出码（2026-08-29）
+
+| 命令 | 退出码 |
+|---|---|
+| `npm run typecheck` | 0 |
+| `npm test` | 0（258 文件 / **1,779 用例**全过；7.5R 基线 1760 + 本轮新增 19） |
+| `npm run build` | 0 |
+| `npm run check` | 0（全链：静态 verifier + 测试构建链 + 两项容量验证） |
+| `openspec validate stage75-operational-completeness --strict` | 0 |
+| `openspec validate --all --strict` | 0（64/64 Changes） |
+| `npm run db:verify` | 0 |
+| `npm run verify:migration-guards` | 0 |
+| `npm run verify:api-contract` | 0（240 documented endpoints 双向一致，本轮零新增端点） |
+| `npm run verify:web-source-boundaries` | 0 |
+| `npm run verify:web-static-build` | 0 |
+| `npm run verify:css-duplicates` | 0 |
+| `npm run verify:order-list-capacity` | 0 |
+| `npm run verify:settlement-export-capacity` | 0（5000 满配额 + 客户端 SHA 断言） |
+| 本地空库重放 `0001`→`0035`（node:sqlite 顺序执行全部 35 个迁移） | 全部成功；`schema_version=35`；`PRAGMA integrity_check`=ok；`PRAGMA foreign_key_check`=0 违规；161 表 |
+| Playwright 终门（14 spec 文件：7R 既定 10 + 7.5 三个 + 7.5R-2 一个） | 0：**175 passed / 1 skipped（预存在环境变量门控）/ 0 failed**（一次连续执行，1.3m） |
+
+### 边界声明
+
+本轮是本地真实性修复，**不是 Staging GO 也不是 Production GO**。Migration 保持 0001~0035 未动（无 0036，一致性采用方案 A）；不归档 Change、不进入阶段 8。REAL_HISTORICAL_IMPORT / REAL_IMAGE_INVENTORY 维持 NOT_RUN。

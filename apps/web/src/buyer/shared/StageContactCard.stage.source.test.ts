@@ -54,10 +54,16 @@ describe('buyer stage contact card stage selection', () => {
     const card = read('apps/web/src/buyer/shared/StageContactCard.tsx');
     expect(card).toContain('<ProtectedImage');
     expect(card).not.toContain('qr_file_object_id');
+    // Stage 7.5R-2: the channel + SafeFileReference runtime schema is the
+    // single shared contract in `@ygb/contracts`; the buyer runtime only
+    // re-exports it and must not re-declare a local copy.
     const runtime = read('apps/web/src/buyer/contracts/runtime.ts');
-    expect(runtime).toContain('qr_file: safeFileReferenceSchema.nullable()');
-    expect(runtime).toContain("purpose: z.literal('SERVICE_CHANNEL_QR')");
-    expect(runtime).toContain("visibility: z.literal('BUYER_VISIBLE')");
+    expect(runtime).toContain("from '@ygb/contracts'");
+    expect(runtime).toContain('buyerServiceChannelsResponseSchema as buyerServiceChannelsSchema');
+    expect(runtime).not.toContain('qr_file: z.object');
+    expect(runtime).not.toContain("z.literal('SERVICE_CHANNEL_QR')");
     expect(runtime).not.toContain('qr_file_object_id');
+    const shared = read('packages/contracts/src/runtime-schemas.ts');
+    expect(shared).toContain('qr_file: safeFileReferenceSchema.nullable()');
   });
 });

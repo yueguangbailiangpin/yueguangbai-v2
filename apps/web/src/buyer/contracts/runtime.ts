@@ -1,4 +1,21 @@
 import { z } from 'zod';
+// Stage 7.5R-2: the buyer service channel + SafeFileReference runtime
+// contracts live once in `@ygb/contracts` and are shared with the backend
+// contract tests and the file read controller — no local duplicates. The
+// historic local names stay available as re-exports of the same objects.
+import {
+  buyerServiceChannelSchema,
+  buyerServiceChannelsResponseSchema,
+  safeFileReferenceSchema,
+} from '@ygb/contracts';
+
+export {
+  buyerServiceChannelSchema,
+  buyerServiceChannelsResponseSchema as buyerServiceChannelsSchema,
+  safeFileReferenceSchema,
+};
+export type BuyerServiceChannel =
+  z.output<typeof buyerServiceChannelSchema>;
 
 export const identifierSchema = z.string().min(1).max(120)
   .regex(/^[^\u0000-\u001f\u007f]+$/u);
@@ -39,26 +56,9 @@ export const buyerMeSchema = z.object({
   }).strict(),
 }).strict();
 
-// Stage 7.5R: QR renders through the controlled read-intent chain (SafeFileReference)
-// instead of a bare internal file id.
-const safeFileReferenceSchema = z.object({
-  file_object_id: z.string(),
-  file_version: positiveIntegerSchema,
-  purpose: z.literal('SERVICE_CHANNEL_QR'),
-  visibility: z.literal('BUYER_VISIBLE'),
-}).strict();
-export const buyerServiceChannelsSchema = z.object({
-  channels: z.array(
-    z.object({
-      code: z.enum(['BUYER_PRE_SALES', 'BUYER_AFTER_SALES']),
-      display_name: z.string(),
-      wechat_id: z.string().nullable(),
-      qr_file: safeFileReferenceSchema.nullable(),
-    }).strict(),
-  ),
-}).strict();
-export type BuyerServiceChannel =
-  z.output<typeof buyerServiceChannelsSchema>['channels'][number];
+// Stage 7.5R: QR renders through the controlled read-intent chain
+// (SafeFileReference) instead of a bare internal file id — schema shared
+// from `@ygb/contracts` (see re-exports above).
 
 export const demandSchema = z.object({
   demand_id: identifierSchema,

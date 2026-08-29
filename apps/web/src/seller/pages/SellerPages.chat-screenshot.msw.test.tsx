@@ -17,7 +17,7 @@ import { SellerRoutePage } from '../routes/SellerRouteModule';
 afterEach(cleanup);
 
 describe('Seller formal-order chat screenshot UI', () => {
-  it('hides every settlement entry and route payload from OPERATIONS members', async () => {
+  it('shows OPERATIONS members the batch-only settlements page and hides every financial section', async () => {
     let settlementRequests = 0;
     server.use(
       http.get(apiUrl('/api/seller-portal/me'), () =>
@@ -46,15 +46,28 @@ describe('Seller formal-order chat screenshot UI', () => {
         });
       }),
     );
+    // Stage 7.5R-2: the batches read is allowed for every member role, so
+    // OPERATIONS gets the batch-only page instead of a permission warning.
+    server.use(
+      http.get(apiUrl('/api/seller-portal/settlement/batches'), () =>
+        HttpResponse.json({
+          data: { batches: [], next_cursor: null },
+          meta: { request_id: 'seller-batches-ops' },
+        }),
+      ),
+    );
     renderWithMsw(
       <SellerLayout>
         <SellerRoutePage />
       </SellerLayout>,
       { route: '/seller/settlements' },
     );
-    expect(await screen.findByText('当前成员角色不能查看财务结算。')).toBeVisible();
-    expect(screen.queryByRole('link', { name: '结算' })).not.toBeInTheDocument();
-    expect(screen.queryByText('本金与服务费')).not.toBeInTheDocument();
+    expect(await screen.findByText('暂无已确认的结算批次。')).toBeVisible();
+    // The settlements entry stays reachable: batches are readable for all roles.
+    expect(screen.getAllByRole('link', { name: '结算' }).length).toBeGreaterThan(0);
+    // The financial sections stay owner/finance-only and issue no requests.
+    expect(screen.queryByText('结算摘要')).not.toBeInTheDocument();
+    expect(screen.queryByText('打款记录')).not.toBeInTheDocument();
     expect(settlementRequests).toBe(0);
   });
 

@@ -1,33 +1,26 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router';
+import { sellerPortalSettlementBatchPageSchema } from '@ygb/contracts';
+import type { SellerPortalSettlementBatchPageDto } from '@ygb/contracts';
 import { identityApiRequest } from '../../api/identity-request';
 import { isFrontendApiError } from '../../api/errors';
 import { Alert, Button, StatusBadge } from '../../ui/primitives';
-import { z } from 'zod';
 import { formatShanghai } from '../../staff/shared/format';
 
 /**
- * Stage 7.5 batch 3 + 7.5R: the seller-side read-only settlement batch list.
- * DRAFT/CANCELLED batches are filtered out in the backend SQL before
- * pagination; the payload carries only seller-safe fields (no profit, no
- * buyer refund, no internal notes, no organization/version metadata). Pages
- * load through the real cursor (7.5R) instead of a single fixed page.
+ * Stage 7.5 batch 3 + 7.5R/7.5R-2: the seller-side read-only settlement
+ * batch list. DRAFT/CANCELLED batches are filtered out in the backend SQL
+ * before pagination; the payload carries only seller-safe fields (no
+ * profit, no buyer refund, no internal notes, no organization/version
+ * metadata). Pages load through the real cursor (7.5R) instead of a single
+ * fixed page, and every response is parsed with the shared strict runtime
+ * schema from `@ygb/contracts` (7.5R-2) — the same schema the backend
+ * request-level contract tests parse with. Each row links to the read-only
+ * batch detail at `/seller/settlements/:batchId`.
  */
 
-const sellerBatchSchema = z.object({
-  batch_id: z.string(),
-  status: z.enum(['CONFIRMED', 'PARTIALLY_PAID', 'PAID']),
-  frozen_total_cny_fen: z.string(),
-  frozen_payable_count: z.number().int().nonnegative(),
-  paid_amount_cny_fen: z.string(),
-  outstanding_amount_cny_fen: z.string(),
-  confirmed_at: z.number().int(),
-}).strict();
-
-const batchListSchema = z.object({
-  batches: z.array(sellerBatchSchema),
-  next_cursor: z.string().nullable(),
-}).strict();
+const batchListSchema = sellerPortalSettlementBatchPageSchema;
 
 const STATUS_LABELS: Record<string, string> = {
   CONFIRMED: '已确认',
@@ -38,7 +31,7 @@ const STATUS_LABELS: Record<string, string> = {
 export function SellerBatchListSection(): React.JSX.Element {
   const client = useQueryClient();
   const [laterPages, setLaterPages] = useState<
-    z.output<typeof batchListSchema>[]
+    SellerPortalSettlementBatchPageDto[]
   >([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const batches = useQuery({
@@ -91,7 +84,7 @@ export function SellerBatchListSection(): React.JSX.Element {
         <p role="status">正在读取结算批次</p>
       ) : batches.isError ? (
         isFrontendApiError(batches.error) && batches.error.code === 'NOT_FOUND' ? (
-          <p>当前角色没有结算批次查看权限。</p>
+          <p>结算批次对当前账号不可见。</p>
         ) : (
           <>
             <Alert tone="danger">结算批次读取失败。</Alert>
@@ -111,6 +104,12 @@ export function SellerBatchListSection(): React.JSX.Element {
               </StatusBadge>
               <span>确认于 {formatShanghai(batch.confirmed_at)}</span>
               <span>{batch.frozen_payable_count} 笔</span>
+              <Link
+                className="mws-tonal"
+                to={`/seller/settlements/${encodeURIComponent(batch.batch_id)}`}
+              >
+                查看详情
+              </Link>
             </li>
           ))}
         </ul>
@@ -123,6 +122,28 @@ export function SellerBatchListSection(): React.JSX.Element {
         </div>
       ) : null}
       {loadError ? <Alert tone="danger">{loadError}</Alert> : null}
+    </section>
+  );
+}
+
+/**
+ * Stage 7.5R-2: the `/seller/settlements` page for OPERATIONS/VIEWER
+ * members. Every ACTIVE member role may read settlement batches; the
+ * settlement summary, payables and payment history remain owner/finance
+ * only, so those roles get the batch list (and detail) without the
+ * financial sections instead of a wall of permission warnings.
+ */
+export function SellerSettlementBatchesPage(): React.JSX.Element {
+  return (
+    <section className="mws-page seller-page">
+      <div className="mws-heading">
+        <div>
+          <p>财务与结算</p>
+          <h1>结算批次</h1>
+          <span>按批次冻结的应付与付款进度；结算摘要与打款记录仅对负责人和财务成员展示。</span>
+        </div>
+      </div>
+      <SellerBatchListSection />
     </section>
   );
 }

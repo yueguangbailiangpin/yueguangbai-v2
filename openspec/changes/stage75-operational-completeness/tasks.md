@@ -54,7 +54,7 @@
 - [x] 2.3 核对既有 primary-contact 端点权限/幂等/审计（补缺测试，不改稳定合同）
 - [x] 2.4 员工产品列表/详情、卖家产品列表/详情 read model 联查主要对接人
 - [x] 2.5 `GET /api/staff/service-channels`、`PUT /api/staff/service-channels/:code`（Owner-only，幂等+expected_version+审计）
-- [ ] 2.6 `GET /api/buyer-portal/service-channels`（公开字段）；`GET /api/buyer-portal/me` 负责人公开名扩展（**7.5R 重开**：渠道返回裸 `qr_file_object_id`，未走受控文件链——无 SERVICE_CHANNEL_QR purpose/上传流/受众校验/read-intent/SafeFileReference）
+- [x] 2.6 `GET /api/buyer-portal/service-channels`（公开字段）；`GET /api/buyer-portal/me` 负责人公开名扩展（7.5R 经受控文件链修复后由 7.5R-2 收口验证：渠道 QR 走 SERVICE_CHANNEL_QR purpose/受控上传/受众校验/read-intent，Buyer DTO 只返回 `SafeFileReferenceDto|null`，绝无裸内部文件 ID；`shared-runtime-schema.test.ts` 以共享 strict schema 解析真实 HTTP 响应并断言 DTO 无内部字段；Buyer me 负责人公开名由 `service-channels.test.ts` 请求级覆盖）
 
 ### Tests（第二批专项）
 
@@ -68,9 +68,9 @@
 
 - [x] 2.12 员工产品列表/详情显示+管理主要对接人（设置/转移/清除，expected version + reason + 幂等）
 - [x] 2.13 卖家端产品页只读对接人
-- [ ] 2.14 买家预约/订单资料/订单/评论/返款页阶段化联系卡片（负责人公开名+渠道；未配置兜底）（**7.5R 重开**：实际只接入预约列表与正式订单两页，未覆盖预约详情/订单资料列表与填写/指引详情/评论列表填写详情/返款列表详情）
+- [x] 2.14 买家预约/订单资料/订单/评论/返款页阶段化联系卡片（负责人公开名+渠道；未配置兜底）（7.5R 统一 `StageContactCard` + 权威 `STAGE_FOR_ROUTE` 后由 7.5R-2 收口验证：真实映射为售前 6 页（预约列表/详情、订单资料列表/填写/详情、下单指引）+ 售后 7 页（正式订单列表/详情、评论列表/填写/详情、返款列表/详情）共 13 页全部经权威映射，无页面本地判定；`StageContactCard.stage.source.test.ts` 源码守卫逐文件断言 13 页）
 - [x] 2.15 员工 `/staff/service-channels` Owner-only 设置页（导航"系统设置"组）
-- [ ] 2.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图（**7.5R 重开**：全部为 mock 证据，未做真实 API 响应 → 前端 strict schema 的合同测试）
+- [x] 2.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图（7.5R-2 收口：真实 API 响应 → 前端共享 strict schema 的合同测试 `shared-runtime-schema.test.ts`（真实 D1 + 真实 Hono 路由 + 真实会话 + 真实 HTTP，四角色矩阵 + 受控 QR 渠道 + 正负向字段断言）；QR 图片真实解码与无错误态冒充由 Playwright 断言覆盖）
 - [x] 2.17 全量门禁 + 独立提交
 
 ## 3. 第三批：卖家结算批次（提交 `feat(settlements): add immutable seller settlement batches`）
@@ -89,7 +89,7 @@
 - [x] 3.4 批次 read model：状态权威计算（PARTIALLY_PAID/PAID 实时推导）、组织 scope concealed 404
 - [x] 3.5 员工 8 路由（list/create/detail/members add/remove/confirm/cancel/export）挂 `/api/staff/seller-settlements/:organizationId/`
 - [x] 3.6 卖家 2 路由（只读、DRAFT/CANCELLED 不可见、卖家安全字段）
-- [ ] 3.7 CSV 流式导出：白名单列、公式注入转义、稳定文件名、5,000 行/2 MiB 上限、流式分页拉取、导出幂等收据（**7.5R 重开**：readExportRows 复用 200 条 MEMBER_PAGE 截断；全部行 join('') 非流式；无 Idempotency-Key/请求哈希/重放收据，重试重复写 BATCH_EXPORTED 审计）
+- [x] 3.7 CSV 流式导出：白名单列、公式注入转义、稳定文件名、5,000 行/2 MiB 上限、流式分页拉取、导出幂等收据（7.5R 幂等+预检收口后由 7.5R-2 完成真流式：两阶段导出——预检阶段按 keyset 500 行/页枚举、due date 直接 JOIN 当前页查询（无批次级 due-date map）、增量 SHA-256 折叠精确字节、行/字节超限在发字节前 409；发送阶段 `ReadableStream` pull() 背压逐页编码 enqueue，Worker 任一时刻只持当前页，无 chunk 数组/无完整 merged buffer；`export_as_of` 冻结两遍读取的付款/冲销事实（created_at<=export_as_of）并写入收据，客户端实收字节 SHA 与 header/receipt 一致；源码守卫 + 惰性逐页拉取 + 201/500/1000/5000/5001 + 两遍间晚到付款不变测试覆盖）
 
 ### Tests（第三批专项）
 
@@ -103,7 +103,7 @@
 ### Web（第三批）
 
 - [x] 3.14 员工财务工作区"结算批次"面板：列表/建草稿/选应付/确认/取消/导出（390 可用）
-- [ ] 3.15 卖家端 `/seller/settlements` 批次只读列表+详情（**7.5R 重开**：卖家路由直接复用员工完整 DTO（真实数据会被前端 strict 精简 schema 拒绝或暴露多余字段）；列表先分页后在 JS 过滤 DRAFT/CANCELLED，确认批次被前页草稿挤出而漏显示）
+- [x] 3.15 卖家端 `/seller/settlements` 批次只读列表+详情（7.5R 专用安全 DTO+SQL 内过滤后由 7.5R-2 收口：`requireSellerActor` 按 OpenSpec 冻结规则放开为四类 ACTIVE 成员（OWNER/OPERATIONS/FINANCE/VIEWER）只读，写端点仍不存在、Staff 端不变；前端新增 `/seller/settlements/:batchId` 详情页（批次概况+成员明细走 `members_next_cursor` 真实分页、loading/空态/错误恢复/加载更多、concealed 404 安全态、非财务角色批次专用页），列表行加"查看详情"入口；组件测试 5 例 + Playwright 3 例（1440/390、250 成员两页无重漏、失败重试、越权 404、四角色）覆盖）
 - [x] 3.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图
 - [x] 3.17 全量门禁 + 独立提交
 
@@ -113,7 +113,7 @@
 - [x] 4.2 新建 `docs/migration/V2_STAGE75_OPERATIONAL_COMPLETENESS_HANDOFF.md`（六项完成情况/新路由/Migration/权限矩阵/容量结果/截图路径/未完成与 NOT_RUN/非 GO 声明）
 - [x] 4.3 全仓残留扫描（公共池/抢单/待认领/获客中心/双聊天截图入口/旧订单完整性页面）
 - [x] 4.4 本地 D1 `0001`→最新空库完整重放 + `PRAGMA integrity_check` + `PRAGMA foreign_key_check`
-- [ ] 4.5 全部验证命令真实退出码记录；OpenSpec tasks 全部真实完成；不归档任何 Change（**7.5R 重开**：`npm run check` 实际因 stage75-contacts.spec.ts 伪密钥字面量 exit 1，7.5 交接记录的 check(0) 不准确）
+- [x] 4.5 全部验证命令真实退出码记录；OpenSpec tasks 全部真实完成；不归档任何 Change（7.5R-2 收口：typecheck/test/build/check/openspec validate --strict/db:verify/migration-guards/api-contract/web-source-boundaries/web-static-build/css-duplicates/order-list-capacity/settlement-export-capacity 全部真实执行并逐项记录退出码于交接文档 7.5R-2 追记；本地 D1 0001→0035 空库重放 + PRAGMA integrity_check/foreign_key_check 通过；无归档、未进入阶段 8）
 
 ## 5. 阶段 7.5R 真实性修复（2026-08-29 重开）
 
@@ -125,3 +125,13 @@
 - [x] 5.6 卖家专用安全 DTO（contracts/后端/前端 strict 三方同一合同，无 passthrough；请求级测试断言 DTO 键集精确=7/5 字段且无内部 ID）+ SQL 内先过滤（stored CONFIRMED）再 keyset 分页（DRAFT/CANCELLED concealed 404）+ 前端游标加载（首页+追加页累积）
 - [x] 5.7 `npm run check` 真实 exit 0——采用比 fixture 构造更直接的方案：删除 `stage75-contacts.spec.ts` 中未使用的 `SESSION_SECRET` 死字面量，`node scripts/scan-secrets.mjs` 真实退出码 0；各步真实退出码见交接文档 7.5R 追记
 - [x] 5.8 真实请求级合同测试：`settlement-batches-75r.test.ts`（8 用例：分页/卖家 DTO+conceal/导出完整+重放+mismatch+版本/两档上限/取消后 fail-closed）、`service-channels.test.ts` 重写（9 用例：DTO/QR SafeFileReference/未配置兜底/非 Owner 403/错误 purpose/未验证/错误 visibility/外绑文件/清除 revoke/幂等）、`file-audience-grants.test.ts` 增买家 QR 动态窗口、`StageContactCard.stage.source.test.ts` 全部页面阶段选择、`settlement-export.capacity.verify.ts` 容量（入 check 链）——前端 strict schema 与后端同形（卖家 DTO 键集断言双向一致）
+
+## 6. 阶段 7.5R-2 最终真实性修复（2026-08-29 第二次重开，收口说明，无新增任务项）
+
+ChatGPT 总审确认五项剩余缺陷后重开。修复不新增任务（上方 2.6/2.14/2.16/3.7/3.15/4.5 已就地勾选并写明真实完成方式），本节仅为可追溯说明：
+
+1. 真流式导出：`enumerateCsvChunks`（全量 dueMap + chunks 数组 + merged 完整副本算 SHA）重写为两阶段 `preflightExport`/`exportCsvStream`——预检与发送同 keyset 顺序、同 `export_as_of`、增量 SHA；路由改为 `createStream()` 惰性 pull 流。一致性采用方案 A（as-of 事实冻结，无新增 Migration），未引入 0036。
+2. 卖家角色矩阵：批次路由 `requireSellerActor` 移除 OWNER/FINANCE 限制，四类 ACTIVE 成员只读（`shared-runtime-schema.test.ts` 真实 HTTP 矩阵断言 200/200；跨组织 concealed 404、DISABLED 401）。
+3. 共享 strict runtime schema：`packages/contracts/src/runtime-schemas.ts`（zod 4.4.3，`satisfies z.ZodType<Dto>` 钉死同形）——卖家批次四 schema、买家渠道公开 schema、SafeFileReference schema；后端合同测试与前端列表/详情页引用同一对象，买家运行时与文件读取控制器改为 re-export（同名 schema 不再重复定义）；无 passthrough。
+4. 卖家批次详情闭环：`SellerBatchDetailSection` + `/seller/settlements/:batchId` 路由（App.tsx 两处路由表注册）+ 列表"查看详情"入口 + OPERATIONS/VIEWER 批次专用页（财务区仍 owner/finance 专属）；Playwright `stage75r2-seller-batch-detail.spec.ts` 3 用例。
+5. 收口验证：`shared-runtime-schema.test.ts`（真实 D1/路由/会话/HTTP → 共享 strict schema + 正负向 + 流式源码守卫）与 `settlement-export.capacity.verify.ts`（5000 满配额 + 客户端实收字节 SHA==header）真实运行通过；全部退出码见交接文档 7.5R-2 追记。

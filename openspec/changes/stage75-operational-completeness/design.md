@@ -194,11 +194,19 @@ seller_settlement_batch_events (
 
 ### 6.3 卖家端点
 
+7.5R-2 追记：批次只读路由按冻结规则对全部四类 ACTIVE 卖家成员开放（OWNER/OPERATIONS/FINANCE/VIEWER 均可读本组织非草稿批次），结算摘要/应付/打款等财务端点仍限 OWNER/FINANCE；卖家门户不提供批次写端点，Staff 端权限不变。
+
+原设计要点：
+
 - `GET /api/seller-portal/settlement/batches`（本组织；仅 CONFIRMED/PARTIALLY_PAID/PAID，DRAFT/CANCELLED 不可见）；
 - `GET /api/seller-portal/settlement/batches/:id`（同可见性；详情仅暴露卖家安全字段）。
 - 卖家可见字段：batch 编号、状态、冻结总额/笔数、确认时间、每成员（订单号、类型、冻结金额、已付/未付进度）、导出禁止（Seller 无导出权限）。不含内部员工 ID、利润、买家返款、备注。
 
 ### 6.4 CSV 导出安全
+
+7.5R-2 追记（真流式与两遍一致性）：导出为两阶段实现。第一阶段预检按 keyset 500 行/页枚举（due date 直接 JOIN 当前页查询），逐页编码并折叠进增量 SHA-256（`IncrementalSha256`），行/字节超限在发出任何字节前 409 `EXPORT_TOO_LARGE`，内存仅持当前页；第二阶段以 `ReadableStream` 的 `pull()` 背压按相同顺序逐页读取、逐页编码 enqueue（每次 pull 至多一页），全程不持有 chunk 数组、完整 merged buffer 或全批次成员数组。两遍读取一致性采用"导出事实冻结"方案：命令开始时冻结 `export_as_of`，两遍的付款/冲销事实均读 `created_at <= export_as_of`（付款 = allocations−reversals，未付 = 应付额−已付），`export_as_of` 写入收据、BATCH_EXPORTED 事件与审计 nextState；同键重放返回原始收据，客户端实收字节的 SHA-256 与 header/receipt 一致。不新增快照表（无需 Migration 0036）。
+
+原设计要点：
 
 - 白名单列：`amazon_order_number,payable_type,frozen_amount_cny_fen,paid_amount_cny_fen,outstanding_amount_cny_fen,confirmed_at(ISO),due_at(ISO)`；金额十进制字符串原样输出。
 - 公式注入：单元格以 `=`,`+`,`-`,`@`,TAB,CR 开头时前缀 `'`（对全部字段统一处理，含订单号）。

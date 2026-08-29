@@ -199,6 +199,8 @@ export function AppRoutes(): React.JSX.Element {
         <Route path="orders" element={<SellerRouteSlot />} />
         <Route path="reviews" element={<SellerRouteSlot />} />
         <Route path="settlements" element={<SellerRouteSlot />} />
+        {/* Stage 7.5R-2: read-only batch detail for every member role. */}
+        <Route path="settlements/:batchId" element={<SellerRouteSlot />} />
         <Route path="settings" element={<SellerRouteSlot />} />
         <Route path="*" element={<DomainNotFound />} />
       </Route>
@@ -311,6 +313,8 @@ export function ReviewRoutes(): React.JSX.Element {
         <Route path="orders" element={<SellerRouteSlot />} />
         <Route path="reviews" element={<SellerRouteSlot />} />
         <Route path="settlements" element={<SellerRouteSlot />} />
+        {/* Stage 7.5R-2: read-only batch detail for every member role. */}
+        <Route path="settlements/:batchId" element={<SellerRouteSlot />} />
         <Route path="settings" element={<SellerRouteSlot />} />
         <Route path="*" element={<DomainNotFound />} />
       </Route>

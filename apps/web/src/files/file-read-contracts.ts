@@ -1,7 +1,6 @@
 import {
-  FILE_PURPOSES,
-  FILE_VISIBILITIES,
   type CreateFileReadIntentRequest,
+  safeFileReferenceSchema,
 } from '@ygb/contracts';
 import { z } from 'zod';
 
@@ -12,12 +11,10 @@ const positiveSafeInteger = z.number().int().positive()
 const nonnegativeSafeInteger = z.number().int().nonnegative()
   .max(Number.MAX_SAFE_INTEGER);
 
-export const safeFileReferenceSchema = z.object({
-  file_object_id: identifier,
-  file_version: positiveSafeInteger,
-  purpose: z.enum(FILE_PURPOSES),
-  visibility: z.enum(FILE_VISIBILITIES),
-}).strict();
+// Stage 7.5R-2: the SafeFileReference runtime contract lives once in
+// `@ygb/contracts` and is shared by the backend contract tests, the buyer
+// service-channel card and this file read controller — no local duplicate.
+export { safeFileReferenceSchema };
 
 export const createFileReadIntentRequestSchema = z.object({
   expected_file_version: positiveSafeInteger,
