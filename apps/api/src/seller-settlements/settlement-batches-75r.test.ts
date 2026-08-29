@@ -12,7 +12,14 @@ import {
   registerSellerBatchRoutes,
   registerStaffBatchRoutes,
 } from './batch-routes';
-import { exportBatchCsv, exportHeader } from './batches';
+import {
+  addMembers,
+  cancelBatch,
+  confirmBatch,
+  createBatch,
+  exportBatchCsv,
+  exportHeader,
+} from './batches';
 
 /**
  * Stage 7.5R request-level truthfulness coverage for settlement batches:
@@ -1006,8 +1013,8 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
       .bind(batchId, targetPayable)
       .first<{ frozen_amount_cny_fen: number }>();
 
-    // A REAL payment exists before the export: allocated at AT-1000.
-    const preExisting = AT - 1000;
+    // A REAL payment exists before the export: allocated at AT-1.
+    const preExisting = AT - 1;
     database!.exec(`
       INSERT INTO seller_payments(id,seller_organization_id,amount_cny_fen,paid_at,recorded_at,
         recorded_by_staff_id,version,created_at,updated_at)
@@ -1019,9 +1026,9 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
         ${balance!.frozen_amount_cny_fen},'r75-owner',${preExisting},${preExisting});
     `);
 
-    // Pass 1 + side effects: export_as_of is the exclusive watermark
-    // max(created_at)+1 over the batch's frozen members (here AT-999), NOT
-    // the command instant. The stream is not consumed yet.
+    // Pass 1 + side effects: export_as_of is the EXCLUSIVE command instant.
+    // The pre-existing payment (created_at = AT-1 < AT) is visible to the
+    // preflight. The stream is not consumed yet.
     const outcome = await exportBatchCsv(
       database!,
       { batchId, expectedVersion: null },
@@ -1029,11 +1036,12 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     );
     expect(outcome.kind).toBe('FILE');
     if (outcome.kind !== 'FILE') return;
-    expect(outcome.receipt.export_as_of).toBe(preExisting + 1);
+    expect(outcome.receipt.export_as_of).toBe(AT);
 
-    // Same-millisecond facts committed after the preflight: one new
-    // allocation and one reversal, both with created_at == export_as_of.
-    const sameMilli = preExisting + 1;
+    // Facts produced in the export's own start millisecond (created_at ==
+    // export_as_of == AT), committed after the preflight: one allocation
+    // and one reversal. They belong to the NEXT export.
+    const sameMilli = AT;
     database!.exec(`
       INSERT INTO seller_payments(id,seller_organization_id,amount_cny_fen,paid_at,recorded_at,
         recorded_by_staff_id,version,created_at,updated_at)
@@ -1049,9 +1057,9 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
         '${sellerOrganizationId}',${balance!.frozen_amount_cny_fen},'同毫秒冲销','r75-owner',${sameMilli},'asof-rev-0001',${sameMilli});
     `);
 
-    // Pass 2 consumes the stream: the same-millisecond allocation must not
-    // raise member 2's paid amount and the same-millisecond reversal must
-    // not zero member 1 — both stay at the preflight values.
+    // Pass 2 consumes the stream: the boundary-millisecond allocation must
+    // not raise member 2's paid amount and the boundary-millisecond
+    // reversal must not zero member 1 — both stay at the preflight values.
     const chunks: Uint8Array[] = [];
     const reader = outcome.createStream().getReader();
     for (;;) {
@@ -1092,11 +1100,11 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     expect(replay.kind).toBe('REPLAY');
     if (replay.kind === 'REPLAY') {
       expect(replay.receipt.sha256).toBe(digest);
-      expect(replay.receipt.export_as_of).toBe(preExisting + 1);
+      expect(replay.receipt.export_as_of).toBe(AT);
     }
   }, 120_000);
 
-  it('keeps export_as_of at the empty watermark when the batch has no payment facts', async () => {
+  it('uses the command instant as the exclusive boundary even with no prior payment facts', async () => {
     const payableIds = bulkSeedPayables(1, 'p75r-asof-empty');
     const { batchId } = await createConfirmedBatch(payableIds, 'asof-empty-key');
     const outcome = await exportBatchCsv(
@@ -1106,9 +1114,8 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     );
     expect(outcome.kind).toBe('FILE');
     if (outcome.kind !== 'FILE') return;
-    // No facts at all: watermark −1, exclusive bound 0 — an empty fact set
-    // that cannot grow inside either pass (created_at CHECK >= 0).
-    expect(outcome.receipt.export_as_of).toBe(0);
+    // export_as_of is simply the command instant, watermark or not.
+    expect(outcome.receipt.export_as_of).toBe(AT);
     const text = csvText(await drainStream(outcome.createStream()));
     for (const line of text.trimEnd().split('\n').slice(1)) {
       expect(line.split(',')[3]).toBe('0');
@@ -1151,6 +1158,82 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     for (const line of text.trimEnd().split('\n').slice(1)) {
       expect(line.split(',')[3]).toBe('0');
     }
+  }, 120_000);
+
+  it('keeps the frozen member set when confirm and cancel land on the same millisecond', async () => {
+    const payableIds = bulkSeedPayables(3, 'p75r-samemilli-cc');
+    // Command-level lifecycle with explicit instants: confirm at AT.
+    const created = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '同毫秒确认取消' },
+      { actor: actor(), idempotencyKey: 'sm-cc-create', now: AT - 10_000 },
+    );
+    const batchId = created.batchId;
+    await addMembers(
+      database!,
+      { batchId, payableIds, expectedVersion: 1, reason: '同毫秒加入' },
+      { actor: actor(), idempotencyKey: 'sm-cc-add', now: AT - 10_000 },
+    );
+    const confirmed = await confirmBatch(
+      database!,
+      { batchId, expectedVersion: 1, reason: '同毫秒确认' },
+      { actor: actor(), idempotencyKey: 'sm-cc-confirm', now: AT },
+    );
+    expect(confirmed.batch.status).toBe('CONFIRMED');
+
+    // The export starts (preflight + receipt written); body not consumed.
+    const response = await staffExportRequest(batchId, 'sm-cc-export-001', database!);
+    expect(response.status).toBe(200);
+    const headerSha = response.headers.get('x-export-sha256');
+
+    // Cancel in the SAME millisecond as the confirm (removed_at == frozen_at).
+    const cancelled = await cancelBatch(
+      database!,
+      { batchId, expectedVersion: confirmed.batch.version, reason: '同毫秒取消' },
+      { actor: actor(), idempotencyKey: 'sm-cc-cancel', now: AT },
+    );
+    expect(cancelled.batch.status).toBe('CANCELLED');
+
+    // The snapshot marker: every member released with removed_at === AT.
+    const members = database!.raw
+      .prepare(
+        `SELECT removed_at, removal_reason FROM seller_settlement_batch_members WHERE batch_id=?`,
+      )
+      .all(batchId) as Array<{ removed_at: number; removal_reason: string }>;
+    expect(members).toHaveLength(3);
+    for (const member of members) {
+      expect(Number(member.removed_at)).toBe(AT);
+      expect(member.removal_reason).toBe('BATCH_CANCELLED');
+    }
+    const frozenRow = database!.raw
+      .prepare(`SELECT frozen_at FROM seller_settlement_batches WHERE id=?`)
+      .get(batchId) as { frozen_at: number };
+    expect(Number(frozenRow.frozen_at)).toBe(AT);
+
+    // The original export body is still complete: all members, no dup, no gap.
+    const chunks = await drainStream(response.body!);
+    const text = csvText(chunks);
+    const lines = text.trimEnd().split('\n');
+    expect(lines).toHaveLength(4);
+    const numbers = lines.slice(1).map((line) => line.split(',')[0]);
+    expect(new Set(numbers).size).toBe(3);
+    const digest = await sha256Hex(new TextEncoder().encode(text));
+    expect(digest).toBe(headerSha);
+    // The BATCH_EXPORTED event detail carries the same receipt SHA.
+    const eventRow = database!.raw
+      .prepare(
+        `SELECT detail_json FROM seller_settlement_batch_events WHERE batch_id=? AND event_type='BATCH_EXPORTED'`,
+      )
+      .get(batchId) as { detail_json: string };
+    const event = JSON.parse(String(eventRow.detail_json)) as { sha256: string };
+    expect(event.sha256).toBe(digest);
+    // A fresh export on the cancelled batch is refused.
+    const fresh = await staffRequest(base(`/batches/${batchId}/export`), {
+      method: 'POST',
+      body: {},
+      key: 'sm-cc-export-002',
+    });
+    expect(fresh.status).toBe(409);
   }, 120_000);
 
   it('completes the untouched export body after the batch is cancelled between the passes', async () => {

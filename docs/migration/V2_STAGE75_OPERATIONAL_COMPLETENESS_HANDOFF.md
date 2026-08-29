@@ -214,3 +214,34 @@ ChatGPT 总审确认 7.5R-2 的两遍一致性存在并发缺口后重开 OpenSp
 | `git diff --check` | 0 |
 
 边界声明：仍是本地修复，非 Staging/Production GO；未 push、未部署、未归档 Change、未进入阶段 8。
+
+---
+
+## 12. 阶段 7.5R-4 追记：最后两个同毫秒导出竞态（2026-08-29）
+
+ChatGPT 总审确认 7.5R-3 仍有两处同毫秒竞态后重开 OpenSpec 3.7/5.4/5.5/4.5（起点 `f4b9dc44`）。**§11 的"max(created_at)+1 水位"与"removed_at > frozen_at"表述据此作废**，最终边界如下。
+
+### 两处竞态与修复
+
+1. **付款事实水位可被穿透**：`export_as_of = max(created_at)+1` 时，预检后新增 `created_at` 等于原最大时间的事实仍满足 `< export_as_of` 进入第二遍。**修复**：删除 `readPaymentFactWatermark` 及其 MAX 查询；`export_as_of` = 导出命令开始时刻 `command.now`，排他——两遍统一 `created_at < export_as_of`。**明确接受的语义**：导出开始同一毫秒产生的事实进入下一次导出（稳定、可复现、无同毫秒穿透）。分页流式与内存边界不变。
+2. **确认与取消同毫秒**：成员快照仅以 `removed_at > frozen_at` 判定时，confirm 与 cancel 同毫秒（removed_at == frozen_at）会把取消释放的成员错误排除。**修复**：成员冻结条件改为 `added_at <= frozen_at` 且（`removed_at IS NULL` 或 `removed_at > frozen_at` 或 `removal_reason='BATCH_CANCELLED' AND removed_at >= frozen_at`）——`BATCH_CANCELLED` 是 0033 取消释放触发器强制写入的系统保留标记（并强制 `removed_at == batch.cancelled_at`），人工移除（removed_at < frozen_at，无论 reason 是否撞串）始终排除；live `active` 不被读取；两遍使用同一条件（同一 SQL 常量）；取消释放业务行为不变。
+
+### 真实回归测试（settlement-batches-75r.test.ts，19 用例）
+
+- 指令场景：预置 created_at=AT-1 付款 → 导出 command.now=AT（receipt.export_as_of==AT，预检含该笔）→ 预检后写入 created_at=AT 的 allocation 与 reversal → 第二遍均不可见（付款行保持预检值）→ 实收 SHA == X-Export-Sha256 == receipt.sha256；更晚付款同样排除；同键重放 receipt 不变。
+- 确认/取消同毫秒：命令层 confirmBatch(now=AT) → route 导出发起（正文未消费）→ cancelBatch(now=AT) → 断言成员 removed_at===frozen_at===AT 且 removal_reason='BATCH_CANCELLED' → 消费原导出流：3 成员无重复无遗漏、实收 SHA == Header SHA == BATCH_EXPORTED 事件内 receipt SHA；已取消批次新导出 409。
+- 无预置付款时 export_as_of 仍 == command.now（空集场景）；源码守卫断言：`const exportAsOf = now`、无 `readPaymentFactWatermark`/`MAX(fact.created_at)`、成员条件含 BATCH_CANCELLED 分支、导出 SELECT 无 live active。
+
+### 验证真实退出码（2026-08-29）
+
+| 命令 | 退出码 |
+|---|---|
+| 专项测试（settlement-batches-75r + shared-runtime-schema 守卫） | 0（26 用例） |
+| `npm test` | 0（258 文件 / **1,783 用例**全过；7.5R-3 基线 1,782 + 本轮新增 1：同毫秒确认/取消冻结成员集） |
+| `npm run check` | 0 |
+| `openspec validate stage75-operational-completeness --strict` / `--all --strict` | 0 / 0 |
+| `npm run verify:settlement-export-capacity` | 0 |
+| 既定 Playwright 终门（14 spec 文件） | 0：**175 passed / 1 skipped（预存在环境变量门控）/ 0 failed** |
+| `git diff --check` | 0 |
+
+边界声明：仍是本地修复，非 Staging/Production GO；未 push、未部署、未归档 Change、未进入阶段 8。

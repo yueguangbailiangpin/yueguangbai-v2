@@ -40,17 +40,19 @@ import { fixedInteger, SellerSettlementError } from './shared';
  * memory, and no full-buffer merge exists. Pass 2 lazily re-walks the same
  * pages inside a pull()-backpressured ReadableStream, one page per pull.
  *
- * 7.5R-3 truthfulness (concurrent consistency of the two passes): both
- * passes run the identical member condition, order and cursor against the
- * CONFIRMATION-TIME frozen member snapshot (`added_at <= batch.frozen_at`
- * and not already removed at or before it) — a cancellation that releases
- * members between the passes cannot change the streamed bytes. Payment
- * facts (allocations/reversals) are read with the EXCLUSIVE watermark
- * `created_at < export_as_of`, where export_as_of = max(created_at) over
- * the batch's frozen members at export start, plus one — a payment or
- * reversal committed after the preflight with created_at == export_as_of
- * (or later) cannot enter the second pass. export_as_of is recorded in the
- * receipt, so the client-received SHA always equals the receipt SHA.
+ * 7.5R-3/7.5R-4 truthfulness (concurrent consistency of the two passes):
+ * both passes run the identical member condition, order and cursor against
+ * the CONFIRMATION-TIME frozen member snapshot (`added_at <=
+ * batch.frozen_at`, not already removed at or before it, or released by a
+ * trigger-enforced `BATCH_CANCELLED` removal — which keeps members whose
+ * removed_at EQUALS frozen_at when confirm and cancel share a
+ * millisecond) — a cancellation between the passes cannot change the
+ * streamed bytes, and the live `active` flag is never consulted. Payment
+ * facts (allocations/reversals) are read with the EXCLUSIVE command
+ * instant `created_at < export_as_of`, where export_as_of = command.now:
+ * facts produced in the export's own start millisecond belong to the NEXT
+ * export. export_as_of is recorded in the receipt, so the client-received
+ * SHA always equals the receipt SHA.
  */
 
 const BATCH_PAGE_LIMIT_MAX = 100;
@@ -988,12 +990,13 @@ export interface SellerSettlementBatchExportReceipt {
   sha256: string;
   exported_at: number;
   /**
-   * 7.5R-3: EXCLUSIVE upper bound on payment-fact timestamps — both export
+   * 7.5R-4: EXCLUSIVE upper bound on payment-fact timestamps — both export
    * passes read allocations/reversals with created_at < export_as_of, and
-   * the value is max(created_at) over the batch's confirmed member set at
-   * export start, plus one. A payment or reversal committed after the
-   * preflight with created_at == export_as_of (or later) cannot enter the
-   * second pass, so the streamed bytes always hash to this receipt's SHA.
+   * the value is the export command's start instant (command.now). Facts
+   * produced in that same start millisecond belong to the NEXT export, so
+   * a payment or reversal committed after the preflight with created_at ==
+   * export_as_of (or later) cannot enter the second pass, and the streamed
+   * bytes always hash to this receipt's SHA.
    */
   export_as_of: number;
   replayed: boolean;
@@ -1049,7 +1052,8 @@ const EXPORT_MEMBER_SELECT = `
   FROM seller_settlement_batch_members member
   JOIN seller_payables payable ON payable.id=member.payable_id
   WHERE member.batch_id=? AND member.added_at<=?
-    AND (member.removed_at IS NULL OR member.removed_at>?)`;
+    AND (member.removed_at IS NULL OR member.removed_at>?
+      OR (member.removal_reason='BATCH_CANCELLED' AND member.removed_at>=?))`;
 
 interface ExportMemberRow {
   id: string;
@@ -1074,7 +1078,7 @@ async function readExportMemberPage(
   const clauses = [EXPORT_MEMBER_SELECT];
   const params: unknown[] = [
     exportAsOf, exportAsOf, exportAsOf, exportAsOf,
-    batchId, frozenAt, frozenAt,
+    batchId, frozenAt, frozenAt, frozenAt,
   ];
   if (cursor !== null) {
     clauses.push(
@@ -1091,43 +1095,6 @@ async function readExportMemberPage(
     .bind(...params, limit)
     .all<ExportMemberRow>();
   return rows.results;
-}
-
-/**
- * 7.5R-3 stable payment-fact watermark: max created_at over the
- * allocation/reversal facts of the batch's frozen member set at export
- * start. export_as_of = watermark + 1 is an EXCLUSIVE bound, so a
- * same-millisecond (created_at == export_as_of) or later write committed
- * after the preflight can never enter the second pass. With no facts at
- * all the watermark is −1, giving export_as_of = 0 and an empty fact set
- * that stays empty in both passes.
- */
-async function readPaymentFactWatermark(
-  database: SqlDatabase,
-  batchId: string,
-  frozenAt: number,
-): Promise<number> {
-  const row = await database
-    .prepare(
-      `SELECT COALESCE(MAX(fact.created_at),-1) AS watermark FROM (
-      SELECT alloc.created_at
-      FROM seller_payment_allocations alloc
-      JOIN seller_settlement_batch_members member
-        ON member.payable_id=alloc.payable_id
-      WHERE member.batch_id=? AND member.added_at<=?
-        AND (member.removed_at IS NULL OR member.removed_at>?)
-      UNION ALL
-      SELECT reversal.created_at
-      FROM seller_payment_allocation_reversals reversal
-      JOIN seller_settlement_batch_members member
-        ON member.payable_id=reversal.payable_id
-      WHERE member.batch_id=? AND member.added_at<=?
-        AND (member.removed_at IS NULL OR member.removed_at>?)
-    ) fact`,
-    )
-    .bind(batchId, frozenAt, frozenAt, batchId, frozenAt, frozenAt)
-    .first<{ watermark: number }>();
-  return Number(row?.watermark ?? -1);
 }
 
 function exportMemberCursor(
@@ -1339,18 +1306,20 @@ export async function exportBatchCsv(
     const refuse = (code: 'EXPORT_TOO_LARGE'): never => {
       throw new SellerSettlementError(code, 409);
     };
-    // 7.5R-3 frozen export facts:
+    // 7.5R-4 frozen export facts:
     // - member set = the confirmation-time snapshot (added_at / removed_at
-    //   against batch.frozen_at), immune to a cancellation between passes;
-    // - payment facts = exclusive watermark max(created_at)+1 taken at
-    //   export start, so a same-millisecond write committed after the
-    //   preflight can never enter the second pass.
+    //   / trigger-enforced BATCH_CANCELLED marker against batch.frozen_at),
+    //   immune to a cancellation between the passes — even when confirm and
+    //   cancel land on the same millisecond (removed_at == frozen_at);
+    // - payment facts = the EXCLUSIVE command instant: both passes read
+    //   created_at < export_as_of with export_as_of = command.now. Facts
+    //   produced in the export's own start millisecond belong to the NEXT
+    //   export — that is the documented, stable boundary.
     if (batch.frozen_at === null) {
       throw new SellerSettlementError('SELLER_SETTLEMENT_CONFLICT', 409);
     }
     const frozenAt = Number(batch.frozen_at);
-    const watermark = await readPaymentFactWatermark(database, input.batchId, frozenAt);
-    const exportAsOf = watermark + 1;
+    const exportAsOf = now;
     const { rowCount, sha256: sha } = await preflightExport(
       database,
       batch,

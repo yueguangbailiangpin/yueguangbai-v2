@@ -345,14 +345,18 @@ describe('streaming export source guard (7.5R-2)', () => {
     // The incremental hasher and the lazy stream exist.
     expect(batches).toContain('IncrementalSha256');
     expect(batches).toContain('createStream: () => exportCsvStream');
-    // 7.5R-3: exclusive payment-fact watermark and the confirmation-time
-    // frozen member snapshot (no live `active` filter on the export path).
+    // 7.5R-4: exclusive command-instant payment boundary and the
+    // confirmation-time frozen member snapshot (no live `active` filter on
+    // the export path; same-millisecond cancellation stays included via
+    // the trigger-enforced BATCH_CANCELLED marker; no watermark query).
     expect(batches).toContain('alloc.created_at<?');
     expect(batches).toContain('reversal.created_at<?');
     expect(batches).toContain('member.added_at<=?');
-    expect(batches).toContain('(member.removed_at IS NULL OR member.removed_at>?)');
-    expect(batches).toContain('readPaymentFactWatermark');
+    expect(batches).toContain("(member.removal_reason='BATCH_CANCELLED' AND member.removed_at>=?)");
+    expect(batches).toContain('const exportAsOf = now;');
     expect(batches).toContain('export_as_of');
+    expect(batches).not.toContain('readPaymentFactWatermark');
+    expect(batches).not.toContain('MAX(fact.created_at)');
     // The export SELECT itself must not consult the live `active` flag
     // (batch totals and the live detail reads legitimately still do).
     const exportSelect = batches.slice(

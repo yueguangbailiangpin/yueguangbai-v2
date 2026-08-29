@@ -89,7 +89,7 @@
 - [x] 3.4 批次 read model：状态权威计算（PARTIALLY_PAID/PAID 实时推导）、组织 scope concealed 404
 - [x] 3.5 员工 8 路由（list/create/detail/members add/remove/confirm/cancel/export）挂 `/api/staff/seller-settlements/:organizationId/`
 - [x] 3.6 卖家 2 路由（只读、DRAFT/CANCELLED 不可见、卖家安全字段）
-- [x] 3.7 CSV 流式导出：白名单列、公式注入转义、稳定文件名、5,000 行/2 MiB 上限、流式分页拉取、导出幂等收据（7.5R-2 真流式架构 + 7.5R-3 并发一致性收口：①导出路径按批次确认时冻结成员快照读取——`member.added_at <= batch.frozen_at AND (member.removed_at IS NULL OR member.removed_at > batch.frozen_at)`，不读 live `active`，确认前移除的草稿成员排除、确认后取消释放的成员包含，预检与发送同条件/同排序/同游标，取消释放业务行为不变；②付款事实边界改为排他水位 `created_at < export_as_of`，`export_as_of = 导出开始时该批次冻结成员上 allocation/reversal 最大 created_at + 1`（无事实时为 0 恒空集），同毫秒（== export_as_of）付款与冲销无法进入第二遍；真实回归：Response 未读取时取消批次后正文完整（行数/无重漏/实收 SHA==header==receipt）、1000 行读取第一页后取消剩余页完整、同毫秒付款+冲销不变、已取消批次新导出与重放均 409、"导出后取消 fail-closed"测试真实消费首次正文并验证内容）
+- [x] 3.7 CSV 流式导出：白名单列、公式注入转义、稳定文件名、5,000 行/2 MiB 上限、流式分页拉取、导出幂等收据（7.5R-2 真流式架构 + 7.5R-3/7.5R-4 并发一致性最终收口：①成员集合按确认时冻结快照读取——`added_at <= batch.frozen_at` 且（`removed_at IS NULL` 或 `removed_at > frozen_at` 或触发器强制的 `removal_reason='BATCH_CANCELLED' AND removed_at >= frozen_at`），确认与取消同毫秒（removed_at==frozen_at）时取消释放的成员仍属冻结集合，人工移除始终排除，live `active` 不被读取；②付款事实边界 = 命令开始时刻排他上界 `created_at < export_as_of`（export_as_of = command.now，已删除 max(created_at)+1 水位查询），同毫秒事实明确归下一次导出；真实回归：预置 created_at=AT-1 付款 + 预检后 created_at=AT 付款与冲销不可见、同毫秒确认/取消后原导出流完整无重漏且三方 SHA 一致、Response 未读取时取消正文完整、1000 行第一页后取消剩余完整、已取消批次新导出与重放 409、fail-closed 测试真实消费首次正文）
 
 ### Tests（第三批专项）
 
@@ -113,15 +113,15 @@
 - [x] 4.2 新建 `docs/migration/V2_STAGE75_OPERATIONAL_COMPLETENESS_HANDOFF.md`（六项完成情况/新路由/Migration/权限矩阵/容量结果/截图路径/未完成与 NOT_RUN/非 GO 声明）
 - [x] 4.3 全仓残留扫描（公共池/抢单/待认领/获客中心/双聊天截图入口/旧订单完整性页面）
 - [x] 4.4 本地 D1 `0001`→最新空库完整重放 + `PRAGMA integrity_check` + `PRAGMA foreign_key_check`
-- [x] 4.5 全部验证命令真实退出码记录；OpenSpec tasks 全部真实完成；不归档任何 Change（7.5R-3 收口重跑：typecheck/test(1,782)/build/check/openspec validate --strict（单 Change 与 --all）/db:verify/verify:migration-guards/verify:api-contract/verify:settlement-export-capacity/既定 Playwright 终门（14 spec，175 过 1 skip 0 败）/git diff --check 全部真实执行，退出码见交接文档 §11；无归档、未进入阶段 8）
+- [x] 4.5 全部验证命令真实退出码记录；OpenSpec tasks 全部真实完成；不归档任何 Change（7.5R-4 收口重跑：专项测试（26 用例）/npm test(1,783)/npm run check/openspec validate --strict（单 Change 与 --all）/verify:settlement-export-capacity/既定 Playwright 终门（14 spec，175 过 1 skip 0 败）/git diff --check 全部真实执行且退出码 0，见交接文档 §12；无归档、未进入阶段 8）
 
 ## 5. 阶段 7.5R 真实性修复（2026-08-29 重开）
 
 - [x] 5.1 统一 `StageContactCard` 组件与阶段映射接入全部售前页面（预约列表/详情、订单资料列表/填写、指引或资料详情）与售后页面（正式订单列表/详情、评论列表/填写/详情、返款列表/详情）——13 页全部经权威 `STAGE_FOR_ROUTE`（`RouteFamily` 联合类型）；源码守卫测试 `StageContactCard.stage.source.test.ts` 禁止页面本地判定阶段或传字面量。
 - [x] 5.2 二维码受控文件链：`SERVICE_CHANNEL_QR` purpose（Migration 0034 如需）+ Owner 正常上传流 + purpose/visibility/受众/归属校验 + Buyer DTO 返回 `SafeFileReferenceDto|null` + read-intent + 前端真实渲染 + 无二维码文字兜底——Migration 0034（schema 34）；`POST /api/staff/service-channels/:code/qr` 全链校验（VERIFIED/purpose/visibility/版本/未绑他对象，清除 revoke）；Owner 上传改 intents→content→complete→attach 受控流；买家动态公开窗口由 `file-audience-grants.test.ts` 请求级覆盖（任意 ACTIVE 买家可读、卖家拒绝）；渲染与兜底由 e2e 覆盖；顺带修复 attach 幂等重放返回 null 渠道的缺陷。
 - [x] 5.3 结算导出全量化：keyset 全量读取（禁 OFFSET），详情 `members_next_cursor` 真实分页——201 成员完整导出、250 成员两页走完、5000 成员容量验证（整页倍数边界）、5001 稳定 409；500/1000 与上述同一 keyset 路径（5000 已覆盖整页边界与翻页循环）
-- [x] 5.4 结算导出流式：ReadableStream 分页边读边编码（500 行/页枚举，成员数组不整持）；行数与字节上限在枚举中同步执行，超限在任何字节发出前 409 `EXPORT_TOO_LARGE`（真实 5001 用例 + 注入字节上限用例 + 容量验证 5000 含 2 MiB 断言）（7.5R-3 随 3.7 一并重新验证：两遍并发一致性缺口已修复，流式架构与内存边界不变）
-- [x] 5.5 结算导出幂等：Idempotency-Key+请求哈希（绑批次/格式/expected_version）；首次流文件并记收据（X-Export-Row-Count/X-Export-Sha256），重放返回同一 receipt JSON；BATCH_EXPORTED 业务事件与 audit_events 各仅一次；mismatch 稳定 409；导出后取消 fail-closed（409）；跨组织导出 concealed 404（旧实现未校验批次归属，已堵）（7.5R-3 收口：receipt 绑定确认时冻结成员集合 + 排他付款水位，export_as_of 排他上界语义写入收据/事件/审计；fail-closed 测试已真实消费首次导出正文并验证行数与 SHA 后再断言重放 409）
+- [x] 5.4 结算导出流式：ReadableStream 分页边读边编码（500 行/页枚举，成员数组不整持）；行数与字节上限在枚举中同步执行，超限在任何字节发出前 409 `EXPORT_TOO_LARGE`（真实 5001 用例 + 注入字节上限用例 + 容量验证 5000 含 2 MiB 断言）（7.5R-4 随 3.7 重新验证：同毫秒竞态修复后流式架构、惰性逐页拉取与内存边界不变）
+- [x] 5.5 结算导出幂等：Idempotency-Key+请求哈希（绑批次/格式/expected_version）；首次流文件并记收据（X-Export-Row-Count/X-Export-Sha256），重放返回同一 receipt JSON；BATCH_EXPORTED 业务事件与 audit_events 各仅一次；mismatch 稳定 409；导出后取消 fail-closed（409）；跨组织导出 concealed 404（旧实现未校验批次归属，已堵）（7.5R-4 收口：receipt 绑定 command.now 排他边界 + BATCH_CANCELLED 成员快照，真实用例验证三方 SHA 一致与同键重放规则不变）
 - [x] 5.6 卖家专用安全 DTO（contracts/后端/前端 strict 三方同一合同，无 passthrough；请求级测试断言 DTO 键集精确=7/5 字段且无内部 ID）+ SQL 内先过滤（stored CONFIRMED）再 keyset 分页（DRAFT/CANCELLED concealed 404）+ 前端游标加载（首页+追加页累积）
 - [x] 5.7 `npm run check` 真实 exit 0——采用比 fixture 构造更直接的方案：删除 `stage75-contacts.spec.ts` 中未使用的 `SESSION_SECRET` 死字面量，`node scripts/scan-secrets.mjs` 真实退出码 0；各步真实退出码见交接文档 7.5R 追记
 - [x] 5.8 真实请求级合同测试：`settlement-batches-75r.test.ts`（8 用例：分页/卖家 DTO+conceal/导出完整+重放+mismatch+版本/两档上限/取消后 fail-closed）、`service-channels.test.ts` 重写（9 用例：DTO/QR SafeFileReference/未配置兜底/非 Owner 403/错误 purpose/未验证/错误 visibility/外绑文件/清除 revoke/幂等）、`file-audience-grants.test.ts` 增买家 QR 动态窗口、`StageContactCard.stage.source.test.ts` 全部页面阶段选择、`settlement-export.capacity.verify.ts` 容量（入 check 链）——前端 strict schema 与后端同形（卖家 DTO 键集断言双向一致）
@@ -143,3 +143,11 @@ ChatGPT 总审确认 7.5R-2 两遍一致性仍有并发缺口后重开 3.7/5.4/5
 1. 成员快照：导出 SQL 从 `member.active=1` 改为确认时冻结快照条件（`added_at <= batch.frozen_at` 且 `removed_at` 为空或大于 `frozen_at`），导出后取消批次不再改变第二遍读取的成员集合；确认/取消业务行为与触发器不变。
 2. 付款水位：`export_as_of` 由"命令时刻、非排他"改为"该批次冻结成员上付款事实最大 created_at+1、排他"，allocation 与 reversal 同时覆盖；同毫秒写入测试（created_at == export_as_of 的付款+冲销）与空水位用例补齐。
 3. 真实回归：Response 后取消仍可完整读取（含 1000 行读取第一页后取消）、fail-closed 测试真实消费首次正文——见 `settlement-batches-75r.test.ts`（18 用例）与交接文档 §11。全部退出码重跑记录于交接文档 §11。
+
+## 8. 阶段 7.5R-4 同毫秒竞态收口说明（2026-08-29 第四次重开，无新增任务项）
+
+ChatGPT 总审确认 7.5R-3 仍有两处同毫秒竞态后重开 3.7/5.4/5.5/4.5（起点 `f4b9dc44`）。修复不新增任务（四项已就地重新勾选）：
+
+1. 付款边界：删除 `readPaymentFactWatermark` MAX 查询，`export_as_of` = command.now（排他），同毫秒事实归下一次导出；预置 AT-1 付款 + 预检后 AT 付款/冲销的真实用例验证第二遍不可见、三方 SHA 一致。
+2. 成员快照：`removal_reason='BATCH_CANCELLED' AND removed_at >= frozen_at` 分支（0033 触发器强制的系统保留标记）使确认与取消同毫秒时取消释放的成员仍属冻结集合；命令层 confirm(AT)→导出→cancel(AT) 用例断言 removed_at===frozen_at 且原导出流无重漏、三方 SHA 一致。
+3. 全部门禁重跑全 0（1,783 测试 / 14 spec Playwright 175 过 / 容量 / git diff --check），记录于交接文档 §12。
