@@ -24,10 +24,7 @@ function createClient(): QueryClient {
   });
 }
 
-function renderShell(
-  session: StaffSession,
-  route = '/staff',
-): ReturnType<typeof render> {
+function renderShell(session: StaffSession, route = '/staff'): ReturnType<typeof render> {
   return render(
     <QueryClientProvider client={createClient()}>
       <MemoryRouter initialEntries={[route]}>
@@ -47,8 +44,15 @@ describe('staff-navigation config', () => {
   it('has exactly 9 top-level items with no placeholder entries (7F-1)', () => {
     expect(STAFF_NAV_ITEMS).toHaveLength(9);
     expect(STAFF_NAV_ITEMS.map((i) => i.id)).toEqual([
-      'workbench', 'buyer-customers', 'seller-customers', 'products',
-      'orders', 'buyer-refunds', 'finance', 'access-management', 'system',
+      'workbench',
+      'buyer-customers',
+      'seller-customers',
+      'products',
+      'orders',
+      'buyer-refunds',
+      'finance',
+      'access-management',
+      'system',
     ]);
     // 7F-1 收口：不再有规划中占位入口（评论与凭证/卖家结算/文件归档已退役）。
     const retired = ['reviews-evidence', 'seller-settlements', 'archive'];
@@ -56,9 +60,7 @@ describe('staff-navigation config', () => {
   });
 
   it('owner sees all items with required permissions', () => {
-    const session = staffTestSession('owner', [
-      'STAFF_MANAGE', 'FINANCIAL_VIEW', 'SELLER_MANAGE',
-    ]);
+    const session = staffTestSession('owner', ['STAFF_MANAGE', 'FINANCIAL_VIEW', 'SELLER_MANAGE']);
     const items = getVisibleNavItems(session);
     const ids = items.map((i) => i.id);
     expect(ids).toContain('workbench');
@@ -71,7 +73,6 @@ describe('staff-navigation config', () => {
     expect(ids).toContain('access-management');
     expect(ids).toContain('system');
   });
-
 
   it('pre_sales sees workbench, buyer customers, products, but not refunds/finance/access', () => {
     const session = staffTestSession('pre_sales', []);
@@ -149,18 +150,12 @@ describe('staff-navigation breadcrumb and title', () => {
 
   it('returns breadcrumb for finance page', () => {
     const crumbs = getBreadcrumbForPath('/staff/finance', ownerSession);
-    expect(crumbs).toEqual([
-      { label: '工作台', href: '/staff' },
-      { label: '财务' },
-    ]);
+    expect(crumbs).toEqual([{ label: '工作台', href: '/staff' }, { label: '财务' }]);
   });
 
   it('returns breadcrumb for customer page', () => {
     const crumbs = getBreadcrumbForPath('/staff/buyer-customers', ownerSession);
-    expect(crumbs).toEqual([
-      { label: '工作台', href: '/staff' },
-      { label: '买家客户' },
-    ]);
+    expect(crumbs).toEqual([{ label: '工作台', href: '/staff' }, { label: '买家客户' }]);
   });
 
   it('returns breadcrumb for work item', () => {
@@ -223,11 +218,14 @@ describe('StaffShell rendering', () => {
     const session = staffTestSession('owner', ['STAFF_MANAGE', 'FINANCIAL_VIEW', 'SELLER_MANAGE']);
     renderShell(session, '/staff');
     // brand appears in topbar
-    expect(screen.getByText('月光白', { selector: '.sa-topbar__brand strong' })).toBeInTheDocument();
+    expect(
+      screen.getByText('月光白', { selector: '.sa-topbar__brand strong' }),
+    ).toBeInTheDocument();
     // nav links by role
-    expect(screen.getByRole('link', { name: '工作台' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '财务' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '员工与权限' })).toBeInTheDocument();
+    const navigation = screen.getByRole('navigation', { name: '员工工作台主导航' });
+    expect(within(navigation).getByRole('link', { name: '工作台' })).toBeInTheDocument();
+    expect(within(navigation).getByRole('link', { name: '财务' })).toBeInTheDocument();
+    expect(within(navigation).getByRole('link', { name: '员工与权限' })).toBeInTheDocument();
   });
 
   it('renders session context with name, role and scope', () => {
@@ -278,17 +276,19 @@ describe('StaffShell rendering', () => {
 
 describe('StaffShell duplicate text guards (7R-1)', () => {
   const richPermissions = [
-    'STAFF_MANAGE', 'PERMISSION_MANAGE', 'FINANCIAL_VIEW', 'ORDER_VIEW',
-    'BUYER_VIEW', 'SELLER_MANAGE',
+    'STAFF_MANAGE',
+    'PERMISSION_MANAGE',
+    'FINANCIAL_VIEW',
+    'ORDER_VIEW',
+    'BUYER_VIEW',
+    'SELLER_MANAGE',
   ];
 
-  it('shows exactly one visible 工作台 context title on the staff home', () => {
+  it('leaves the staff home title to the workbench greeting instead of duplicating it in Shell', () => {
     const session = staffTestSession('owner', richPermissions);
     renderShell(session, '/staff');
-    // 内容区上下文标题只有一个"工作台"（单一面包屑不再与标题逐字重复）。
-    const contentHeading = document.querySelector<HTMLElement>('.sp-page-head')!;
-    expect(within(contentHeading).getAllByText('工作台')).toHaveLength(1);
-    expect(screen.getAllByRole('heading', { name: '工作台' })).toHaveLength(1);
+    expect(document.querySelector('.sp-page-head')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '工作台' })).not.toBeInTheDocument();
   });
 
   it('does not repeat identical display name and role text in the session context', () => {

@@ -201,14 +201,25 @@ async function mockApi(
       );
       return;
     }
-          if (identity === 'staff' && path === '/api/staff/me/work-items/summary') {
-        return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { summary: {
-          open_count: 0, due_today_count: 0, overdue_count: 0,
-          exception_order_count: 0, refund_due_today_cny_fen: null,
-          recent: [],
-        } }, meta: { request_id: 'summary' } }) });
-      }
-if (identity === 'staff' && path === '/api/staff/me/work-items') {
+    if (identity === 'staff' && path === '/api/staff/me/work-items/summary') {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            summary: {
+              open_count: 0,
+              due_today_count: 0,
+              overdue_count: 0,
+              exception_order_count: 0,
+              refund_due_today_cny_fen: null,
+              recent: [],
+            },
+          },
+          meta: { request_id: 'summary' },
+        }),
+      });
+    }
+    if (identity === 'staff' && path === '/api/staff/me/work-items') {
       await fulfillJson(route, success({ work_items: [], next_cursor: null }));
       return;
     }
@@ -876,16 +887,13 @@ test('Seller small screen uses the business dashboard without page overflow', as
   await expectNoCriticalHorizontalOverflow(page);
 });
 
-test('Staff desktop shell preserves the two-section task queue DOM order', async ({
-  page,
-}) => {
+test('Staff desktop shell preserves the two-section task queue DOM order', async ({ page }) => {
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-  // 7F-1：工作台为“我的待办 + 即将超时/异常/最近处理”，无公共池（claimable 已随 D-056 退役）。
-  await expect(page.getByText(/我的待办（\d+）/u).first()).toBeVisible();
-  await expect(page.getByRole('region', { name: '即将超时' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议先处理' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '我的工作' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日概览' })).toBeVisible();
   await expect(page.getByRole('button', { name: '刷新' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
@@ -894,11 +902,10 @@ test('Staff narrow shell keeps the task queue operable without overflow', async 
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-  await expect(page.getByText(/我的待办（\d+）/u).first()).toBeVisible();
-  await page.getByRole('button', { name: '刷新' }).focus();
-  await expect(page.getByRole('button', { name: '刷新' })).toBeFocused();
-  await expect(page.locator('.staff-sidebar .staff-account-actions')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议先处理' })).toBeVisible();
+  await expect(page.getByLabel('快捷入口')).toBeVisible();
+  await page.getByLabel('打开导航菜单').focus();
+  await expect(page.getByLabel('打开导航菜单')).toBeFocused();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
@@ -1003,7 +1010,7 @@ for (const [identity, path, heading, ownChunk, foreignChunks] of [
   [
     'staff',
     '/staff',
-    '工作台',
+    '建议先处理',
     'StaffRouteModule-',
     ['BuyerRouteModule-', 'SellerRouteModule-'],
   ],
@@ -1083,7 +1090,7 @@ test('staff workbench defers dashboard and scheduling chunks until their routes 
   });
   await mockApi(page, 'staff');
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议先处理' })).toBeVisible();
   expect(assets.some((asset) => asset.includes('StaffAdminRouteModule-'))).toBe(false);
   expect(assets.some((asset) => asset.includes('StaffSchedulingRouteModule-'))).toBe(false);
 

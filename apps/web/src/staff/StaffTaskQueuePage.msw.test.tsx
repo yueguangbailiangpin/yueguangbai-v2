@@ -57,7 +57,7 @@ describe('staff task queue home', () => {
     installQueue({ open: [mineItem, otherItem] });
     const user = userEvent.setup();
     renderQueue();
-    await screen.findByText('我的待办（1）');
+    await screen.findByRole('region', { name: '我的待办（1）' });
     await user.click(screen.getByText('全部待办（2）'));
     expect(await screen.findByText('预约处理')).toBeVisible();
     expect(screen.queryByText('可认领')).not.toBeInTheDocument();
@@ -66,7 +66,7 @@ describe('staff task queue home', () => {
   it('hides the all view from non-owner roles', async () => {
     installQueue({ open: [mineItem] });
     renderQueue(staffTestAdapter(staffTestSession('seller_ops', [])));
-    await screen.findByText('我的待办（1）');
+    await screen.findByRole('region', { name: '我的待办（1）' });
     expect(screen.queryByText(/全部待办/u)).not.toBeInTheDocument();
   });
 
@@ -98,8 +98,8 @@ describe('staff task queue home', () => {
       ],
     });
     renderQueue();
-    expect(await screen.findByText('最近处理')).toBeVisible();
-    expect(screen.getByText('今天还没有已完成的工作项。')).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '我的工作' })).toBeVisible();
+    expect(screen.getByText(/今天完成/u)).toHaveTextContent('今天完成 0');
   });
 });
 
@@ -110,13 +110,33 @@ function installQueue(options: {
   server.use(
     http.get(apiUrl('/api/staff/me/work-items'), ({ request }) => {
       const status = new URL(request.url).searchParams.get('status') ?? 'OPEN';
-      const work_items =
-        status === 'COMPLETED' ? (options.completed ?? []) : options.open;
+      const work_items = status === 'COMPLETED' ? (options.completed ?? []) : options.open;
       return HttpResponse.json({
         data: { work_items, next_cursor: null },
         meta: { request_id: `queue-${status}` },
       });
     }),
+    http.get(apiUrl('/api/staff/me/work-items/summary'), () =>
+      HttpResponse.json({
+        data: {
+          summary: {
+            open_count: options.open.length,
+            due_today_count: options.open.filter((item) => item.priority === 'DUE_TODAY').length,
+            overdue_count: options.open.filter((item) => item.is_overdue).length,
+            exception_order_count: 0,
+            refund_due_today_cny_fen: null,
+            recent: options.completed ?? [],
+          },
+        },
+        meta: { request_id: 'queue-summary' },
+      }),
+    ),
+    http.get(apiUrl('/api/staff/formal-orders'), () =>
+      HttpResponse.json({
+        data: { items: [], next_cursor: null },
+        meta: { request_id: 'queue-orders' },
+      }),
+    ),
   );
 }
 

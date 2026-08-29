@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { staffApi } from '../api/client';
@@ -42,11 +43,14 @@ export function GlobalSearchDropdown(): React.JSX.Element {
   });
   const results = query.data;
   const total = results
-    ? results.buyers.length + results.products.length
-      + results.orders.length + results.demands.length
+    ? results.buyers.length +
+      results.products.length +
+      results.orders.length +
+      results.demands.length
     : 0;
   return (
     <div className="staff-global-search" ref={boxRef}>
+      <Search className="staff-global-search__icon" aria-hidden="true" size={19} />
       <input
         type="search"
         role="searchbox"
@@ -59,12 +63,15 @@ export function GlobalSearchDropdown(): React.JSX.Element {
         }}
         onFocus={() => setOpen(true)}
       />
+      <kbd aria-hidden="true">⌘ K</kbd>
       {open && debounced.length >= 2 ? (
         <div className="staff-search-results" role="listbox" aria-label="搜索结果">
           {query.isPending ? (
             <p role="status">搜索中…</p>
           ) : query.isError ? (
-            <p className="inline-error" role="alert">搜索失败，请重试。</p>
+            <p className="inline-error" role="alert">
+              搜索失败，请重试。
+            </p>
           ) : !results || total === 0 ? (
             <p>没有匹配「{results?.query}」的结果。</p>
           ) : (
@@ -157,7 +164,13 @@ function SearchItem({
   onNavigate: () => void;
 }): React.JSX.Element {
   return (
-    <Link className="staff-search-item" role="option" aria-selected={false} to={to} onClick={onNavigate}>
+    <Link
+      className="staff-search-item"
+      role="option"
+      aria-selected={false}
+      to={to}
+      onClick={onNavigate}
+    >
       <strong>{primary}</strong>
       <span>{secondary}</span>
     </Link>

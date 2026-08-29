@@ -40,7 +40,7 @@ staff-pages.css   —— 员工端页面模式（工具栏筛选行、紧凑表�
 legacy/*.css      —— buyer/seller legacy 隔离层（旧 global/design-freeze/buyer-portal/seller-portal 仅服务未迁移页面）
 ```
 
-`main.tsx` 加载顺序：tokens → base → primitives → staff-shell → staff-pages → legacy 隔离层。员工端新页面只允许引用新层类名；源码守卫测试扫描 `src/staff/**` 禁止引用已退役旧类名清单。
+`main.tsx` 实际加载顺序：tokens → buyer/seller/旧员工 legacy 隔离层 → `.staff-app` scoped base → `sa-` primitives → `staff-shell` → `sp-` staff pages。概念依赖仍为 tokens → base → primitives → shell → pages；但 legacy 必须先加载、员工端 scoped 权威层后加载，避免 `global.css`/`design-freeze.css` 在层叠顺序上覆盖新员工端，同时新层不得使用会影响买家/卖家端的裸全局选择器。员工端新页面只允许引用新层类名；源码守卫测试扫描 `src/staff/**` 禁止引用已退役旧类名清单。
 
 ### 3. 员工端信息架构
 

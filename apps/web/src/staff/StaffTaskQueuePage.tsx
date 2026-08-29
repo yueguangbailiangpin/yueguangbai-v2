@@ -1,10 +1,22 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router';
-import { useNavigate } from 'react-router';
+import {
+  AlertTriangle,
+  CalendarCheck2,
+  ChevronRight,
+  CircleDollarSign,
+  ClipboardCheck,
+  FileCheck2,
+  PackageCheck,
+  ReceiptText,
+  Search,
+  UserPlus,
+  type LucideIcon,
+} from 'lucide-react';
+import { Link, useNavigate } from 'react-router';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { staffApi } from './api/client';
+import type { StaffOrderListItem, StaffWorkItem } from './contracts/runtime';
 import { fenToYuan } from './finance/finance-format';
-import type { StaffWorkItem } from './contracts/runtime';
 import { staffWorkbenchKeys } from './queries/keys';
 import { StaffPanelError } from './shared/StaffPanelError';
 import { workTypeLabels } from './work-panels/shared';
@@ -12,40 +24,47 @@ import { workTypeLabels } from './work-panels/shared';
 const STAFF_FACT_STALE_TIME_MS = 15_000;
 const QUEUE_PAGE_LIMIT = 100;
 
-function waitedLabel(createdAt: number, now: number): string {
-  const minutes = Math.max(0, Math.floor((now - createdAt) / 60_000));
-  if (minutes < 60) return `${minutes} 分钟`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours} 小时`;
-  return `${Math.floor(hours / 24)} 天`;
-}
-
-// Intl.DateTimeFormat 构造昂贵且队列页逐行调用：模块级缓存。
 const shanghaiDayFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Shanghai',
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
 });
-
-function shanghaiDate(epoch: number): string {
-  return shanghaiDayFormatter.format(new Date(epoch));
-}
-
 const shanghaiMinuteFormatter = new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Shanghai',
   hour: '2-digit',
   minute: '2-digit',
   hour12: false,
 });
-
 const headingDateFormatter = new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Shanghai',
   year: 'numeric',
   month: 'long',
   day: 'numeric',
-  weekday: 'short',
+  weekday: 'long',
 });
+
+const orderStageLabels: Record<string, string> = {
+  BUYER_REFUND: '待返款',
+  SELLER_SETTLEMENT: '待结算',
+  COMPLETED: '已完成',
+};
+const workVisuals: Record<
+  StaffWorkItem['work_type'],
+  { icon: LucideIcon; tone: 'blue' | 'green' | 'purple' }
+> = {
+  PRODUCT_APPLICATION_REVIEW: { icon: PackageCheck, tone: 'green' },
+  DEMAND_REVIEW: { icon: ClipboardCheck, tone: 'green' },
+  RESERVATION_DECISION: { icon: CalendarCheck2, tone: 'blue' },
+  ORDER_INSTRUCTION_PUBLISH: { icon: FileCheck2, tone: 'purple' },
+  ORDER_EVIDENCE_REVIEW: { icon: ReceiptText, tone: 'blue' },
+  REVIEW_DECISION: { icon: ClipboardCheck, tone: 'purple' },
+  BUYER_REFUND_PROCESSING: { icon: CircleDollarSign, tone: 'blue' },
+};
+
+function shanghaiDate(epoch: number): string {
+  return shanghaiDayFormatter.format(new Date(epoch));
+}
 
 function greeting(now: number): string {
   const hour = Number(
@@ -60,36 +79,121 @@ function greeting(now: number): string {
   return '晚上好';
 }
 
-function itemSummary(item: StaffWorkItem): string {
-  const parties = [
-    item.buyer_customer_id ? `买家 ${item.buyer_customer_id}` : null,
-    item.seller_organization_id ? `卖家 ${item.seller_organization_id}` : null,
-    item.store_id ? `店铺 ${item.store_id}` : null,
-  ].filter(Boolean);
-  return parties.length > 0 ? `${item.source_entity_id} · ${parties.join(' · ')}` : item.source_entity_id;
+function slaLabel(item: StaffWorkItem): string {
+  if (item.is_overdue) return '已逾期';
+  if (item.priority === 'DUE_TODAY') return '今日到期';
+  if (item.sla_due_at !== null)
+    return `${shanghaiMinuteFormatter.format(new Date(item.sla_due_at))} 前`;
+  return '待处理';
 }
 
-function slaBadge(item: StaffWorkItem): React.JSX.Element | null {
-  if (item.is_overdue) {
-    return <span className="sa-badge sa-badge--danger">已逾期</span>;
-  }
-  if (item.priority === 'DUE_TODAY') {
-    return <span className="sa-badge sa-badge--warning">今日到期</span>;
-  }
-  if (item.sla_due_at !== null) {
-    const hours = Math.round((item.sla_due_at - Date.now()) / 3_600_000);
-    if (hours >= 0 && hours <= 48) {
-      return <span className="sa-badge sa-badge--outline">{hours} 小时内到期</span>;
-    }
-  }
-  return null;
+function riskTone(item: StaffWorkItem): 'red' | 'amber' | 'blue' | 'green' | 'purple' {
+  if (item.is_overdue) return 'red';
+  if (item.priority === 'DUE_TODAY') return 'amber';
+  return workVisuals[item.work_type].tone;
 }
 
-/**
- * 工作台（7F-1 重做）：员工第一眼知道“今天要处理什么”。
- * 布局 = 问候行 + 指标带 + 两栏（待办队列 / 即将超时·异常·最近处理·Owner 摘要）。
- * 不展示公共池、抢任务、获客中心；不做大面积财务 BI。
- */
+function comparePriority(a: StaffWorkItem, b: StaffWorkItem): number {
+  const rank = (item: StaffWorkItem): number =>
+    item.is_overdue ? 0 : item.priority === 'DUE_TODAY' ? 1 : 2;
+  const risk = rank(a) - rank(b);
+  return risk !== 0
+    ? risk
+    : (a.sla_due_at ?? Number.MAX_SAFE_INTEGER) - (b.sla_due_at ?? Number.MAX_SAFE_INTEGER);
+}
+
+function businessIdentifier(item: StaffWorkItem): string {
+  return `${item.source_entity_id} · ${item.responsible_staff_name ?? item.responsible_role}`;
+}
+
+function workTitle(item: StaffWorkItem): string {
+  return item.next_action.includes('_') ? workTypeLabels[item.work_type] : item.next_action;
+}
+
+function WorkIcon({ item }: { item: StaffWorkItem }): React.JSX.Element {
+  const Icon = workVisuals[item.work_type].icon;
+  return (
+    <span className={`sp-round-icon sp-round-icon--${riskTone(item)}`} aria-hidden="true">
+      <Icon size={18} />
+    </span>
+  );
+}
+
+function WorkRow({
+  item,
+  action,
+  onOpen,
+}: {
+  item: StaffWorkItem;
+  action: boolean;
+  onOpen: (item: StaffWorkItem) => void;
+}): React.JSX.Element {
+  return (
+    <article className={action ? 'sp-priority-row' : 'sp-work-row'}>
+      {!action ? (
+        <time>
+          {item.sla_due_at === null
+            ? '待办'
+            : shanghaiMinuteFormatter.format(new Date(item.sla_due_at))}
+        </time>
+      ) : null}
+      <WorkIcon item={item} />
+      <div className="sp-task-copy">
+        <div className="sp-task-title-line">
+          <strong>{workTitle(item)}</strong>
+          {action ? (
+            <em className={`sp-task-sla sp-task-sla--${riskTone(item)}`}>{slaLabel(item)}</em>
+          ) : null}
+        </div>
+        <small>{businessIdentifier(item)}</small>
+      </div>
+      {action ? (
+        <button
+          type="button"
+          className="sa-btn sa-btn--primary sa-btn--small"
+          aria-label="去处理"
+          onClick={() => onOpen(item)}
+        >
+          去处理
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="sp-row-action"
+          aria-label={`打开 ${workTitle(item)}`}
+          onClick={() => onOpen(item)}
+        >
+          <ChevronRight aria-hidden="true" size={18} />
+        </button>
+      )}
+    </article>
+  );
+}
+
+function RecentOrderRow({ item }: { item: StaffOrderListItem }): React.JSX.Element {
+  const stage = orderStageLabels[item.responsibility.stage] ?? item.responsibility.stage;
+  const tone =
+    item.responsibility.exception_state === 'OPEN'
+      ? 'red'
+      : item.responsibility.stage === 'COMPLETED'
+        ? 'green'
+        : 'blue';
+  return (
+    <Link
+      className="sp-recent-order"
+      to={`/staff/orders/${encodeURIComponent(item.formal_order_id)}`}
+    >
+      <span>
+        <strong>{item.amazon_order_number}</strong>
+        <small>
+          {item.buyer_customer_no} · {item.product_name_snapshot}
+        </small>
+      </span>
+      <em className={`sp-task-sla sp-task-sla--${tone}`}>{stage}</em>
+    </Link>
+  );
+}
+
 export function StaffTaskQueuePage(): React.JSX.Element {
   const client = useQueryClient();
   const session = useCurrentStaffSession();
@@ -106,21 +210,24 @@ export function StaffTaskQueuePage(): React.JSX.Element {
       teamIds: [...session.data_scope.teamIds].sort(),
     },
   });
-  const queryKey = staffWorkbenchKeys.queue(
-    session.staff_id,
-    session.authorization_version,
-    session.session_version,
-    effectiveScopeFingerprint,
-    'OPEN',
-    null,
-    null,
-  );
   const openQuery = useQuery({
-    queryKey,
+    queryKey: staffWorkbenchKeys.queue(
+      session.staff_id,
+      session.authorization_version,
+      session.session_version,
+      effectiveScopeFingerprint,
+      'OPEN',
+      null,
+      null,
+    ),
     queryFn: ({ signal }) =>
       staffApi
-        .workItems(client, { status: 'OPEN', workType: null, cursor: null, limit: QUEUE_PAGE_LIMIT }, signal)
-        .then((r) => r.data),
+        .workItems(
+          client,
+          { status: 'OPEN', workType: null, cursor: null, limit: QUEUE_PAGE_LIMIT },
+          signal,
+        )
+        .then((response) => response.data),
     retry: false,
     staleTime: STAFF_FACT_STALE_TIME_MS,
   });
@@ -136,8 +243,12 @@ export function StaffTaskQueuePage(): React.JSX.Element {
     ),
     queryFn: ({ signal }) =>
       staffApi
-        .workItems(client, { status: 'COMPLETED', workType: null, cursor: null, limit: QUEUE_PAGE_LIMIT }, signal)
-        .then((r) => r.data),
+        .workItems(
+          client,
+          { status: 'COMPLETED', workType: null, cursor: null, limit: QUEUE_PAGE_LIMIT },
+          signal,
+        )
+        .then((response) => response.data),
     retry: false,
     staleTime: STAFF_FACT_STALE_TIME_MS,
   });
@@ -148,42 +259,35 @@ export function StaffTaskQueuePage(): React.JSX.Element {
       session.session_version,
     ),
     queryFn: ({ signal }) =>
-      staffApi.workbenchSummary(client, signal).then((r) => r.data),
+      staffApi.workbenchSummary(client, signal).then((response) => response.data),
     retry: false,
     staleTime: STAFF_FACT_STALE_TIME_MS,
   });
-  // Owner-only 简化经营摘要（链接到完整经营看板）。
-  const ownerSummaryQuery = useQuery({
-    queryKey: ['staff', 'admin-dashboard-summary', 'TODAY', session.authorization_version],
+  const recentOrdersQuery = useQuery({
+    queryKey: ['staff', 'workbench', 'recent-orders', session.authorization_version],
     queryFn: ({ signal }) =>
-      staffApi.adminDashboardSummary(client, 'TODAY', signal).then((r) => r.data),
-    enabled: owner,
+      staffApi.formalOrderList(client, '?limit=3', signal).then((response) => response.data),
     retry: false,
     staleTime: STAFF_FACT_STALE_TIME_MS,
   });
+
   const openItems = openQuery.data?.work_items ?? [];
-  // D-056：任务由固定分配产生，后端只返回当前岗位/站点相关的待办；
-  // “我的待办”即其中固定分配给本人的工作项。
   const mine = openItems
     .filter((item) => item.assigned_staff_id === session.staff_id)
-    .sort((a, b) => a.created_at - b.created_at);
+    .sort(comparePriority);
+  const recommended = mine.slice(0, 3);
   const now = Date.now();
   const today = shanghaiDate(now);
-  const completedItems = completedQuery.data?.work_items ?? [];
-  const completedToday = completedItems.filter(
+  const completedToday = (completedQuery.data?.work_items ?? []).filter(
     (item) =>
       item.completed_at !== null &&
       shanghaiDate(item.completed_at) === today &&
       (owner || item.assigned_staff_id === session.staff_id),
   );
-  const dueSoon = mine
-    .filter((item) => !item.is_overdue && (item.priority === 'DUE_TODAY' || (item.sla_due_at !== null && item.sla_due_at - now < 48 * 3_600_000)))
-    .slice(0, 5);
-  const exceptions = openItems.filter((item) => item.is_overdue).slice(0, 5);
-  const recent = completedToday.slice(0, 5);
+  const summary = summaryQuery.data?.summary;
+  const recentOrders = recentOrdersQuery.data?.items.slice(0, 3) ?? [];
 
   function open(item: StaffWorkItem): void {
-    // 返款待办直达返款工作台（P7b），其余走工作项分发面板。
     void navigate(
       item.work_type === 'BUYER_REFUND_PROCESSING'
         ? `/staff/refunds/${encodeURIComponent(item.source_entity_id)}`
@@ -194,277 +298,250 @@ export function StaffTaskQueuePage(): React.JSX.Element {
     void openQuery.refetch();
     void completedQuery.refetch();
     void summaryQuery.refetch();
-    if (owner) void ownerSummaryQuery.refetch();
+    void recentOrdersQuery.refetch();
   }
+
+  const mayCreateBuyer = session.role.code === 'owner' || session.role.code === 'pre_sales';
+  const mayOpenRefunds = session.role.code === 'owner' || session.role.code === 'buyer_refund';
 
   return (
     <div className="sp-workbench-root">
-      <div className="sp-hello">
+      <header className="sp-hello">
         <div>
           <p className="sp-hello__date">{headingDateFormatter.format(new Date(now))}</p>
-          <h2>
+          <h1 className="sp-hello__title">
             {greeting(now)}，{session.display_name}
-          </h2>
-          <p className="sp-hello__date">
-            今天有 {mine.length} 件固定分配给你的工作，等待最久的排最前。
+          </h1>
+          <p className="sp-hello__summary">
+            今天有 <strong>{mine.length} 件</strong>固定分配给你的工作
+            {summary && summary.overdue_count > 0
+              ? `，其中 ${summary.overdue_count} 件需要优先处理。`
+              : '。'}
           </p>
         </div>
-        <button type="button" className="sa-btn sa-btn--tonal sa-btn--small" onClick={refresh}>
-          刷新
-        </button>
+        <div className="sp-hello__actions">
+          <Link className="sa-btn sa-btn--tonal" to="/staff/orders">
+            <Search aria-hidden="true" size={17} />
+            查订单
+          </Link>
+          {mayCreateBuyer ? (
+            <Link className="sa-btn sa-btn--primary" to="/staff/buyer-customers">
+              <UserPlus aria-hidden="true" size={17} />
+              新建买家
+            </Link>
+          ) : null}
+          {mayOpenRefunds && !mayCreateBuyer ? (
+            <Link className="sa-btn sa-btn--primary" to="/staff/refunds">
+              <CircleDollarSign aria-hidden="true" size={17} />
+              买家返款
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            className="sa-btn sa-btn--ghost sp-refresh-action"
+            onClick={refresh}
+          >
+            刷新
+          </button>
+        </div>
+      </header>
+
+      <div className="sp-mobile-actions" aria-label="快捷入口">
+        {mayCreateBuyer ? (
+          <Link to="/staff/buyer-customers">
+            <UserPlus aria-hidden="true" size={18} />
+            <span>新建买家</span>
+          </Link>
+        ) : null}
+        <Link to="/staff/orders">
+          <Search aria-hidden="true" size={18} />
+          <span>查订单</span>
+        </Link>
+        {mayOpenRefunds ? (
+          <Link to="/staff/refunds">
+            <CircleDollarSign aria-hidden="true" size={18} />
+            <span>买家返款</span>
+          </Link>
+        ) : (
+          <Link to="/staff/products">
+            <PackageCheck aria-hidden="true" size={18} />
+            <span>产品预约</span>
+          </Link>
+        )}
       </div>
 
-      {summaryQuery.data ? (
-        <section className="sp-metrics" aria-label="工作台指标" data-testid="staff-workbench-metrics">
-          <div className="sp-metric">
-            <span className="sp-metric__label">我的待处理</span>
-            <span className="sp-metric__value">{summaryQuery.data.summary.open_count}</span>
-          </div>
-          <div className="sp-metric">
-            <span className="sp-metric__label">今日到期</span>
-            <span className="sp-metric__value sp-metric__value--warning">
-              {summaryQuery.data.summary.due_today_count}
-            </span>
-          </div>
-          <div className="sp-metric">
-            <span className="sp-metric__label">已逾期</span>
-            <span
-              className={
-                summaryQuery.data.summary.overdue_count > 0
-                  ? 'sp-metric__value sp-metric__value--danger'
-                  : 'sp-metric__value'
-              }
-            >
-              {summaryQuery.data.summary.overdue_count}
-            </span>
-          </div>
-          <div className="sp-metric">
-            <span className="sp-metric__label">异常订单</span>
-            <span
-              className={
-                summaryQuery.data.summary.exception_order_count > 0
-                  ? 'sp-metric__value sp-metric__value--danger'
-                  : 'sp-metric__value'
-              }
-            >
-              {summaryQuery.data.summary.exception_order_count}
-            </span>
-          </div>
-          {summaryQuery.data.summary.refund_due_today_cny_fen !== null ? (
-            <div className="sp-metric">
-              <span className="sp-metric__label">今日应处理返款</span>
-              <span className="sp-metric__value sp-metric__value--danger">
-                {fenToYuan(summaryQuery.data.summary.refund_due_today_cny_fen)}
+      <div className="sp-workbench">
+        <div className="sp-workbench__main">
+          <section className="sp-surface sp-recommended" aria-label={`我的待办（${mine.length}）`}>
+            <div className="sp-section-heading">
+              <div>
+                <h2>建议先处理</h2>
+                <p>按照超时风险和业务顺序排列</p>
+              </div>
+              <span className="sp-section-count">共 {mine.length} 件</span>
+            </div>
+            {openQuery.isPending ? (
+              <p role="status" className="sp-surface-state">
+                正在加载任务队列
+              </p>
+            ) : openQuery.isError ? (
+              <StaffPanelError error={openQuery.error} retry={() => void openQuery.refetch()} />
+            ) : recommended.length === 0 ? (
+              <div className="sp-surface-state">
+                <h3>暂无待办</h3>
+                <p>当前没有固定分配给你的工作。</p>
+              </div>
+            ) : (
+              recommended.map((item) => (
+                <WorkRow key={item.work_item_id} item={item} action onOpen={open} />
+              ))
+            )}
+          </section>
+
+          <section className="sp-surface sp-my-work" aria-labelledby="sp-my-work-title">
+            <div className="sp-section-heading">
+              <div>
+                <h2 id="sp-my-work-title">我的工作</h2>
+                <p>只显示固定分配给你的事项</p>
+              </div>
+            </div>
+            <div className="sp-material-tabs" aria-label="我的工作摘要">
+              <span className="is-active">
+                待处理 <b>{mine.length}</b>
+              </span>
+              <span>
+                今天完成 <b>{completedToday.length}</b>
               </span>
             </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      <div className="sp-workbench">
-        <div className="sp-workbench__main sp-stack">
-          {openQuery.isPending ? (
-            <p role="status" className="sp-hello__date">
-              正在加载任务队列
-            </p>
-          ) : openQuery.isError ? (
-            <StaffPanelError
-              error={openQuery.error}
-              retry={() => {
-                void openQuery.refetch();
-              }}
-            />
-          ) : mine.length === 0 ? (
-            <div className="sa-card">
-              <div className="sa-state">
-                <h3>暂无待办</h3>
-                <p>固定分配给你的工作项会出现在这里。</p>
-              </div>
-            </div>
-          ) : (
-            <section className="sa-card sa-card--flush" aria-labelledby="sp-queue-mine">
-              <div className="sa-card__header">
-                <div>
-                  <h3 className="sa-card__title" id="sp-queue-mine">
-                    我的待办（{mine.length}）
-                  </h3>
-                  <p className="sa-card__desc">只显示固定分配给你的事项</p>
+            {mine.slice(0, 4).map((item) => (
+              <WorkRow key={item.work_item_id} item={item} action={false} onOpen={open} />
+            ))}
+            {completedToday.slice(0, 2).map((item) => (
+              <article
+                className="sp-work-row sp-work-row--completed"
+                key={`completed-${item.work_item_id}`}
+              >
+                <time>
+                  {item.completed_at === null
+                    ? '完成'
+                    : shanghaiMinuteFormatter.format(new Date(item.completed_at))}
+                </time>
+                <span className="sp-round-icon sp-round-icon--green" aria-hidden="true">
+                  <ClipboardCheck size={18} />
+                </span>
+                <div className="sp-task-copy">
+                  <strong>{workTitle(item)}</strong>
+                  <small>{businessIdentifier(item)} · 已完成</small>
                 </div>
-              </div>
-              <div>
-                {mine.map((item) => (
-                  <div key={item.work_item_id} className="sp-workitem">
-                    <div className="sp-workitem__main">
-                      <span className="sp-workitem__title">{workTypeLabels[item.work_type]}</span>
-                      <span className="sp-workitem__meta">
-                        {itemSummary(item)} · 已等待 {waitedLabel(item.created_at, now)}
-                      </span>
-                    </div>
-                    <span className="sp-workitem__sla">{slaBadge(item)}</span>
-                    <button
-                      type="button"
-                      className="sa-btn sa-btn--primary sa-btn--small"
-                      onClick={() => open(item)}
-                    >
-                      去处理
-                    </button>
-                  </div>
+              </article>
+            ))}
+            {mine.length === 0 && completedToday.length === 0 ? (
+              <p className="sp-surface-state">今天还没有工作记录。</p>
+            ) : null}
+            {owner ? (
+              <details className="sp-all-work">
+                <summary>全部待办（{openItems.length}）</summary>
+                <p>当前岗位与负责站点范围内共 {openItems.length} 件开放工作项。</p>
+                {openItems.map((item) => (
+                  <p key={`all-${item.work_item_id}`}>{workTitle(item)}</p>
                 ))}
-              </div>
-            </section>
-          )}
-          {owner ? (
-            <details className="sa-card">
-              <summary className="sp-summary-trigger">
-                全部待办（{openItems.length}）
-              </summary>
-              {openItems.length === 0 ? (
-                <p className="sa-card__desc sp-desc-mt">
-                  当前岗位与负责站点范围内暂无工作项。
-                </p>
-              ) : (
-                <div>
-                  {openItems
-                    .slice()
-                    .sort((a, b) => a.created_at - b.created_at)
-                    .map((item) => (
-                      <div key={item.work_item_id} className="sp-workitem">
-                        <div className="sp-workitem__main">
-                          <span className="sp-workitem__title">{workTypeLabels[item.work_type]}</span>
-                          <span className="sp-workitem__meta">{itemSummary(item)}</span>
-                        </div>
-                        <span className="sp-workitem__sla">{slaBadge(item)}</span>
-                        <button
-                          type="button"
-                          className="sa-btn sa-btn--ghost sa-btn--small"
-                          onClick={() => open(item)}
-                        >
-                          去处理
-                        </button>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </details>
-          ) : null}
-          <p className="sp-hello__date">
-            队列按当前岗位与负责站点过滤，最多展示最近 {QUEUE_PAGE_LIMIT} 条。
-          </p>
+              </details>
+            ) : null}
+          </section>
         </div>
 
-        <aside className="sp-stack">
-          <section className="sa-card sa-card--flush" aria-labelledby="sp-due-soon">
-            <div className="sa-card__header">
-              <h3 className="sa-card__title" id="sp-due-soon">
-                即将超时
-              </h3>
-            </div>
-            <div>
-              {dueSoon.length === 0 ? (
-                <p className="sa-card__desc sp-inset">
-                  48 小时内没有到期的工作项。
-                </p>
-              ) : (
-                dueSoon.map((item) => (
-                  <div key={item.work_item_id} className="sp-workitem">
-                    <div className="sp-workitem__main">
-                      <span className="sp-workitem__title">{workTypeLabels[item.work_type]}</span>
-                      <span className="sp-workitem__meta">{itemSummary(item)}</span>
-                    </div>
-                    <span className="sp-workitem__sla">{slaBadge(item)}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          <section className="sa-card sa-card--flush" aria-labelledby="sp-exceptions">
-            <div className="sa-card__header">
-              <h3 className="sa-card__title" id="sp-exceptions">
-                异常工作项
-              </h3>
-            </div>
-            <div>
-              {exceptions.length === 0 ? (
-                <p className="sa-card__desc sp-inset">
-                  当前没有逾期的工作项。
-                </p>
-              ) : (
-                exceptions.map((item) => (
-                  <div key={item.work_item_id} className="sp-workitem">
-                    <div className="sp-workitem__main">
-                      <span className="sp-workitem__title">{workTypeLabels[item.work_type]}</span>
-                      <span className="sp-workitem__meta">{itemSummary(item)}</span>
-                    </div>
-                    <span className="sp-workitem__sla">
-                      <span className="sa-badge sa-badge--danger">已逾期</span>
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          <section className="sa-card sa-card--flush" aria-labelledby="sp-recent">
-            <div className="sa-card__header">
-              <h3 className="sa-card__title" id="sp-recent">
-                最近处理
-              </h3>
-            </div>
-            <div>
-              {recent.length === 0 ? (
-                <p className="sa-card__desc sp-inset">
-                  今天还没有已完成的工作项。
-                </p>
-              ) : (
-                recent.map((item) => (
-                  <div key={item.work_item_id} className="sp-workitem">
-                    <div className="sp-workitem__main">
-                      <span className="sp-workitem__title">{workTypeLabels[item.work_type]}</span>
-                      <span className="sp-workitem__meta">{itemSummary(item)}</span>
-                    </div>
-                    <span className="sp-workitem__sla">
-                      {item.completed_at === null
-                        ? ''
-                        : `${shanghaiMinuteFormatter.format(new Date(item.completed_at))} 完成`}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          {owner && ownerSummaryQuery.data ? (
-            <section className="sa-card sa-card--flush" aria-labelledby="sp-owner-summary">
-              <div className="sa-card__header">
-                <h3 className="sa-card__title" id="sp-owner-summary">
-                  今日经营摘要
-                </h3>
-                <Link
-                  to="/staff/admin-business-dashboard"
-                  className="sa-btn sa-btn--ghost sa-btn--small"
-                >
-                  经营看板
-                </Link>
+        <aside className="sp-workbench__side">
+          <section className="sp-surface sp-overview-card" aria-labelledby="sp-overview-title">
+            <div className="sp-section-heading">
+              <div>
+                <h2 id="sp-overview-title">今日概览</h2>
+                <p>实时工作项摘要</p>
               </div>
-              <div className="sp-inset--grid">
-                <dl className="sa-defs">
-                  <dt>新买家</dt>
-                  <dd>{ownerSummaryQuery.data.summary.cards.new_customers_buyer}</dd>
-                  <dt>新卖家</dt>
-                  <dd>{ownerSummaryQuery.data.summary.cards.new_customers_seller}</dd>
-                  <dt>预约</dt>
-                  <dd>{ownerSummaryQuery.data.summary.cards.reservations}</dd>
-                  <dt>正式订单</dt>
-                  <dd>{ownerSummaryQuery.data.summary.cards.formal_orders}</dd>
-                  <dt>待处理返款</dt>
-                  <dd>{ownerSummaryQuery.data.summary.pending.buyer_refunds}</dd>
-                  <dt>待结算批次</dt>
-                  <dd>{ownerSummaryQuery.data.summary.pending.seller_settlements}</dd>
-                </dl>
+            </div>
+            {summary ? (
+              <dl>
+                <div>
+                  <dt>待处理</dt>
+                  <dd>{summary.open_count}</dd>
+                </div>
+                <div>
+                  <dt>临近超时</dt>
+                  <dd className="sp-overview-warn">{summary.due_today_count}</dd>
+                </div>
+                <div>
+                  <dt>今日已完成</dt>
+                  <dd>{completedToday.length}</dd>
+                </div>
+                {summary.refund_due_today_cny_fen !== null ? (
+                  <div>
+                    <dt>今日应处理返款</dt>
+                    <dd>{fenToYuan(summary.refund_due_today_cny_fen)}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            ) : (
+              <p className="sp-surface-state">概览读取中</p>
+            )}
+          </section>
+
+          <section className="sp-surface sp-attention" aria-labelledby="sp-attention-title">
+            <div className="sp-section-heading">
+              <div>
+                <h2 id="sp-attention-title">需要关注</h2>
+                <p>来自当前权威摘要</p>
               </div>
-            </section>
-          ) : null}
+            </div>
+            {summary && summary.overdue_count > 0 ? (
+              <Link to="/staff" className="sp-attention-row">
+                <span className="sp-round-icon sp-round-icon--red">
+                  <AlertTriangle aria-hidden="true" size={18} />
+                </span>
+                <span>
+                  <strong>{summary.overdue_count} 件工作已逾期</strong>
+                  <small>请优先处理固定分配事项</small>
+                </span>
+                <ChevronRight aria-hidden="true" size={16} />
+              </Link>
+            ) : null}
+            {summary && summary.exception_order_count > 0 ? (
+              <Link to="/staff/orders?exception_state=OPEN" className="sp-attention-row">
+                <span className="sp-round-icon sp-round-icon--amber">
+                  <ReceiptText aria-hidden="true" size={18} />
+                </span>
+                <span>
+                  <strong>{summary.exception_order_count} 单存在异常</strong>
+                  <small>查看订单权威异常状态</small>
+                </span>
+                <ChevronRight aria-hidden="true" size={16} />
+              </Link>
+            ) : null}
+            {summary && summary.overdue_count === 0 && summary.exception_order_count === 0 ? (
+              <p className="sp-surface-state">当前没有异常事项。</p>
+            ) : null}
+          </section>
+
+          <section className="sp-surface sp-recent-orders" aria-labelledby="sp-recent-orders-title">
+            <div className="sp-section-heading">
+              <div>
+                <h2 id="sp-recent-orders-title">最近订单</h2>
+              </div>
+              <Link to="/staff/orders">全部</Link>
+            </div>
+            {recentOrdersQuery.isPending ? (
+              <p role="status" className="sp-surface-state">
+                正在加载最近订单
+              </p>
+            ) : null}
+            {recentOrders.map((item) => (
+              <RecentOrderRow key={item.formal_order_id} item={item} />
+            ))}
+            {!recentOrdersQuery.isPending && recentOrders.length === 0 ? (
+              <p className="sp-surface-state">暂无可见订单。</p>
+            ) : null}
+          </section>
+          <p className="sp-scope-note">
+            按当前岗位与负责站点过滤，最多展示最近 {QUEUE_PAGE_LIMIT} 条。
+          </p>
         </aside>
       </div>
     </div>

@@ -19,8 +19,11 @@
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 120ms ease, box-shadow 120ms ease,
-    border-color 120ms ease, color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .sa-btn:disabled {
@@ -28,50 +31,50 @@
   opacity: 0.55;
 }
 
-.sa-btn--primary {
+.staff-app .sa-btn--primary {
   background: var(--color-primary);
   color: var(--color-text-inverse);
 }
 
-.sa-btn--primary:hover:not(:disabled) {
+.staff-app .sa-btn--primary:hover:not(:disabled) {
   background: var(--color-primary-hover);
   box-shadow: 0 1px 2px rgba(11, 87, 208, 0.35);
 }
 
-.sa-btn--tonal {
+.staff-app .sa-btn--tonal {
   background: var(--color-primary-container);
   color: var(--color-on-primary-container);
 }
 
-.sa-btn--tonal:hover:not(:disabled) {
+.staff-app .sa-btn--tonal:hover:not(:disabled) {
   background: var(--color-primary-soft-hover);
 }
 
-.sa-btn--secondary {
+.staff-app .sa-btn--secondary {
   background: var(--color-surface);
   color: var(--color-primary);
   border-color: var(--color-border-strong);
 }
 
-.sa-btn--secondary:hover:not(:disabled) {
+.staff-app .sa-btn--secondary:hover:not(:disabled) {
   background: var(--color-primary-soft);
 }
 
-.sa-btn--danger {
+.staff-app .sa-btn--danger {
   background: var(--color-danger);
   color: #fff;
 }
 
-.sa-btn--danger:hover:not(:disabled) {
+.staff-app .sa-btn--danger:hover:not(:disabled) {
   background: var(--color-danger-hover);
 }
 
-.sa-btn--ghost {
+.staff-app .sa-btn--ghost {
   background: transparent;
   color: var(--color-primary);
 }
 
-.sa-btn--ghost:hover:not(:disabled) {
+.staff-app .sa-btn--ghost:hover:not(:disabled) {
   background: var(--color-primary-soft);
 }
 

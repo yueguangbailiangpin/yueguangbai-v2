@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Menu, X } from 'lucide-react';
+import { Home, Menu, MoreHorizontal, Plus, ReceiptText, Settings, Users, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
@@ -52,11 +52,21 @@ function StaffAccountActions({ compact = false }: { compact?: boolean }): React.
 
   return (
     <section aria-label="账户操作" className="sa-sidebar__actions">
-      <button type="button" className="sa-btn sa-btn--ghost sa-btn--small" disabled={busy} onClick={() => void finishLogout(false)}>
+      <button
+        type="button"
+        className="sa-btn sa-btn--ghost sa-btn--small"
+        disabled={busy}
+        onClick={() => void finishLogout(false)}
+      >
         退出登录
       </button>
       {!compact ? (
-        <button type="button" className="sa-btn sa-btn--secondary sa-btn--small" disabled={busy} onClick={() => setConfirming(true)}>
+        <button
+          type="button"
+          className="sa-btn sa-btn--secondary sa-btn--small"
+          disabled={busy}
+          onClick={() => setConfirming(true)}
+        >
           退出所有设备
         </button>
       ) : null}
@@ -77,10 +87,20 @@ function StaffAccountActions({ compact = false }: { compact?: boolean }): React.
             <h3>退出所有设备</h3>
             <p className="sp-page-head__meta">这会使其他设备上的员工会话立即失效。</p>
             <div className="sp-dialog-actions">
-              <button type="button" className="sa-btn sa-btn--secondary sa-btn--small" disabled={busy} onClick={cancel}>
+              <button
+                type="button"
+                className="sa-btn sa-btn--secondary sa-btn--small"
+                disabled={busy}
+                onClick={cancel}
+              >
                 取消
               </button>
-              <button type="button" className="sa-btn sa-btn--danger sa-btn--small" disabled={busy} onClick={() => void finishLogout(true)}>
+              <button
+                type="button"
+                className="sa-btn sa-btn--danger sa-btn--small"
+                disabled={busy}
+                onClick={() => void finishLogout(true)}
+              >
                 确认退出所有设备
               </button>
             </div>
@@ -88,6 +108,17 @@ function StaffAccountActions({ compact = false }: { compact?: boolean }): React.
         </div>
       ) : null}
     </section>
+  );
+}
+
+function MoonBrandMark({ small = false }: { small?: boolean }): React.JSX.Element {
+  return (
+    <span
+      className={small ? 'sa-brand-mark sa-brand-mark--small' : 'sa-brand-mark'}
+      aria-hidden="true"
+    >
+      <span />
+    </span>
   );
 }
 
@@ -145,7 +176,9 @@ function StaffNavigationContent({ onNavigate }: { onNavigate?: () => void }): Re
                       to={child.path}
                       end={child.path === '/staff'}
                       className={({ isActive }) =>
-                        isActive ? 'sa-nav__link sa-nav__child is-active' : 'sa-nav__link sa-nav__child'
+                        isActive
+                          ? 'sa-nav__link sa-nav__child is-active'
+                          : 'sa-nav__link sa-nav__child'
                       }
                       onClick={onNavigate}
                     >
@@ -160,6 +193,48 @@ function StaffNavigationContent({ onNavigate }: { onNavigate?: () => void }): Re
           )}
         </div>
       ))}
+    </nav>
+  );
+}
+
+function StaffCreateAction({ onNavigate }: { onNavigate?: () => void }): React.JSX.Element | null {
+  const session = useCurrentStaffSession();
+  if (session.role.code !== 'owner' && session.role.code !== 'pre_sales') return null;
+  return (
+    <NavLink className="sa-create-action" to="/staff/buyer-customers" onClick={onNavigate}>
+      <Plus aria-hidden="true" size={20} />
+      <span>新建买家</span>
+    </NavLink>
+  );
+}
+
+function StaffMobileBottomNav({ onMenu }: { onMenu: () => void }): React.JSX.Element {
+  const session = useCurrentStaffSession();
+  const customerPath =
+    session.role.code === 'seller_ops'
+      ? '/staff/seller-customers'
+      : session.role.code === 'buyer_refund'
+        ? '/staff/refunds'
+        : '/staff/buyer-customers';
+  const customerLabel = session.role.code === 'buyer_refund' ? '返款' : '客户';
+  return (
+    <nav className="sa-mobile-nav" aria-label="员工端手机快捷导航">
+      <NavLink to="/staff" end>
+        <Home aria-hidden="true" size={19} />
+        <span>工作台</span>
+      </NavLink>
+      <NavLink to="/staff/orders">
+        <ReceiptText aria-hidden="true" size={19} />
+        <span>订单</span>
+      </NavLink>
+      <NavLink to={customerPath}>
+        <Users aria-hidden="true" size={19} />
+        <span>{customerLabel}</span>
+      </NavLink>
+      <button type="button" aria-label="打开全部导航" onClick={onMenu}>
+        <MoreHorizontal aria-hidden="true" size={19} />
+        <span>更多</span>
+      </button>
     </nav>
   );
 }
@@ -235,9 +310,7 @@ function StaffMobileDrawer({
       >
         <div className="sa-drawer__header">
           <span className="sa-topbar__brand">
-            <span className="sa-topbar__mark" aria-hidden="true">
-              月
-            </span>
+            <MoonBrandMark small />
             <strong>月光白</strong>
           </span>
           <button
@@ -249,10 +322,12 @@ function StaffMobileDrawer({
             <X aria-hidden="true" size={18} />
           </button>
         </div>
+        <StaffCreateAction onNavigate={onClose} />
         <StaffNavigationContent onNavigate={onClose} />
         <div className="sa-sidebar__footer">
-          <p className="sp-workitem__meta">
-            {session.display_name} · {formatMarketplaceScope(session)}
+          <span className="sa-sidebar__scope">{formatMarketplaceScope(session)}</span>
+          <p className="sa-sidebar__meta">
+            {session.display_name} · {session.role.display_name}
           </p>
           <StaffAccountActions compact />
         </div>
@@ -261,7 +336,7 @@ function StaffMobileDrawer({
   );
 }
 
-/* ---- 主 Shell（7F-1 新基础层：sa- 命名空间，64px 顶栏 + 248px 侧栏） ---- */
+/* ---- 主 Shell（7F-1 视觉样板：模板 DOM 层级，64px 顶栏 + 240px 侧栏） ---- */
 
 export function StaffShell({ children }: { children?: ReactNode } = {}): React.JSX.Element {
   const session = useCurrentStaffSession();
@@ -271,6 +346,9 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
   const breadcrumb = getBreadcrumbForPath(location.pathname, session);
   const pageTitle = getPageTitleForPath(location.pathname, session);
   const scope = formatMarketplaceScope(session);
+  const home = location.pathname === '/staff' || location.pathname === '/staff/';
+  const mayOpenSettings =
+    session.role.code === 'owner' && session.permissions.includes('STAFF_MANAGE');
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -289,27 +367,37 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
           <Menu aria-hidden="true" size={20} />
         </button>
         <NavLink className="sa-topbar__brand" to="/staff" aria-label="月光白员工首页">
-          <span className="sa-topbar__mark" aria-hidden="true">
-            月
-          </span>
+          <MoonBrandMark />
           <strong>月光白</strong>
         </NavLink>
         <div className="sa-topbar__search">
           <GlobalSearchDropdown />
         </div>
-        <div className="sa-topbar__session">
+        <div className="sa-topbar__actions">
+          {mayOpenSettings ? (
+            <NavLink
+              className="sa-topbar__icon-action"
+              to="/staff/service-channels"
+              aria-label="打开系统设置"
+            >
+              <Settings aria-hidden="true" size={20} />
+            </NavLink>
+          ) : null}
           <span
-            className="sa-topbar__session-context"
+            className="sa-sr-only"
             aria-label={`当前会话信息：${session.display_name}（${session.role.display_name}）`}
           >
             <span className="sa-topbar__session-name">{session.display_name}</span>
-            {session.display_name === session.role.display_name
-            || session.display_name.endsWith(session.role.display_name) ? null : (
+            {session.display_name === session.role.display_name ||
+            session.display_name.endsWith(session.role.display_name) ? null : (
               <span className="sa-topbar__session-role">{session.role.display_name}</span>
             )}
             <span className="sa-topbar__session-role">{scope}</span>
           </span>
-          <span className="sa-topbar__avatar" aria-hidden="true">
+          <span
+            className="sa-topbar__avatar"
+            aria-label={`账户：${session.display_name}，${session.role.display_name}，${scope}`}
+          >
             {session.display_name.slice(0, 1)}
           </span>
         </div>
@@ -317,26 +405,33 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
 
       <div className="sa-body">
         <aside className="sa-sidebar" aria-label="员工端侧边栏">
+          <StaffCreateAction />
           <StaffNavigationContent />
           <div className="sa-sidebar__footer">
-            <p className="sp-workitem__meta">{scope}</p>
+            <span className="sa-sidebar__scope">{scope}</span>
+            <p className="sa-sidebar__meta">
+              {session.display_name} · {session.role.display_name}
+            </p>
             <StaffAccountActions />
           </div>
         </aside>
 
         <div className="sa-main">
           <div className="sa-content sa-content--wide">
-            <div className="sp-page-head">
-              <div>
-                <h1 className="sp-page-head__title">{pageTitle}</h1>
-                {breadcrumb.length > 1 ? <Breadcrumb items={breadcrumb} /> : null}
+            {!home ? (
+              <div className="sp-page-head">
+                <div>
+                  <h1 className="sp-page-head__title">{pageTitle}</h1>
+                  {breadcrumb.length > 1 ? <Breadcrumb items={breadcrumb} /> : null}
+                </div>
               </div>
-            </div>
+            ) : null}
             <main id="staff-main-content">{children ?? <Outlet />}</main>
           </div>
         </div>
       </div>
 
+      <StaffMobileBottomNav onMenu={() => setDrawerOpen(true)} />
       <StaffMobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   );

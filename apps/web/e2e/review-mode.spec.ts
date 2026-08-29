@@ -40,8 +40,9 @@ test('review entry and all three portals render without real API requests', asyn
 
   await page.goto('/review/staff');
   await expect(page.getByLabel('员工评审角色')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
-  await expect(page.getByText('商品申请审核').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Demo 总管理员/u })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议先处理' })).toBeVisible();
+  await expect(page.getByText('审核卖家产品申请').first()).toBeVisible();
 
   expect(apiRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
@@ -62,14 +63,29 @@ test('review role selectors update visible seller and staff permissions', async 
   const navigation = page.getByRole('navigation', { name: '员工工作台主导航' });
   // Stage 7.5 导航：订单对全部角色可见；upcoming（规划中）项渲染为 span 非 link，不计数。
   const roles = [
-    ['owner', ['工作台', '买家', '卖家', '产品与预约', '订单', '买家返款', '财务', '员工与权限', '经营看板', '客服渠道']],
-    ['pre_sales', ['工作台', '买家', '产品与预约', '订单']],
-    ['seller_ops', ['工作台', '卖家', '产品与预约', '订单', '财务']],
+    [
+      'owner',
+      [
+        '工作台',
+        '买家客户',
+        '卖家客户',
+        '产品与预约',
+        '订单',
+        '买家返款',
+        '财务',
+        '员工与权限',
+        '经营看板',
+        '客服渠道',
+      ],
+    ],
+    ['pre_sales', ['工作台', '买家客户', '产品与预约', '订单']],
+    ['seller_ops', ['工作台', '卖家客户', '产品与预约', '订单', '财务']],
     ['buyer_refund', ['工作台', '订单', '买家返款']],
   ] as const;
   for (const [role, expected] of roles) {
     await page.getByLabel('员工评审角色').selectOption(role);
-    for (const name of expected) await expect(navigation.getByRole('link', { name, exact: true })).toBeVisible();
+    for (const name of expected)
+      await expect(navigation.getByRole('link', { name, exact: true })).toBeVisible();
     await expect(navigation.getByRole('link')).toHaveCount(expected.length);
   }
   await expect(page.getByText(/买家返款/u).first()).toBeVisible();
@@ -118,7 +134,9 @@ test('review pages fit the required viewport matrix', async ({ page }) => {
   }
 });
 
-test('review detail surfaces keep their real layouts and valid demo contracts', async ({ page }) => {
+test('review detail surfaces keep their real layouts and valid demo contracts', async ({
+  page,
+}) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   const surfaces = [
@@ -155,7 +173,9 @@ test('review detail surfaces keep their real layouts and valid demo contracts', 
   for (const path of surfaces) {
     await page.goto(path);
     await expect(page.getByText('前端评审 · Demo 数据', { exact: true })).toBeVisible();
-    await expect(page.locator('body')).not.toContainText(/暂时无法加载|暂时无法读取|服务暂时不可用/u);
+    await expect(page.locator('body')).not.toContainText(
+      /暂时无法加载|暂时无法读取|服务暂时不可用/u,
+    );
   }
   expect(pageErrors).toEqual([]);
 });

@@ -61,6 +61,9 @@
 
 - [ ] 6.1 真实执行并记录退出码：typecheck / test / build / check / openspec validate（本 change 与 --all --strict）/ verify:api-contract / verify:web-source-boundaries / verify:web-static-build / verify:css-duplicates / 既定 Playwright 终门 / 新增视觉 Playwright / git diff --check；禁止管道后 `$?` 冒充
 - [ ] 6.2 视觉验收截图（员工端 17 项 + 评审恢复证据 4 项）逐张人工复核；截图前断言：关键正常数据可见、无错误 Alert、无加载中、无服务暂时不可用、无 MALFORMED_RESPONSE、图片真实解码、无水平溢出、无规划中/公共池/抢任务/获客中心
+  - [x] 6.2a 员工端视觉纠偏第一版：按 `moonwhite-google-console.html` 逐区块移植 Shell + 工作台样板（64px 顶栏、240px 侧栏、圆形月亮标、48px 搜索、20px 导航胶囊、24px Surface、建议先处理/我的工作/315px 右栏、390px 真手机布局与可操作 Drawer）；只覆盖本轮样板，不代表员工端 17 项视觉验收完成
+  - [x] 6.2b 使用真实 `/review/staff` 验证 owner + pre_sales 权限与字段隔离，并生成、程序化断言及逐张人工复核本轮三张证据：`tmp/stage7f1-staff-visual-correction/staff-workbench-owner-{1440x900,390x844}.png`、`staff-workbench-owner-drawer-390x844.png`
+  - [ ] 6.2c 员工端其余页面与完整 17 项 + 4 项评审恢复视觉矩阵（本轮按用户边界停止，不执行）
 - [ ] 6.3 四份独立提交（不 amend）；报告：三端可打开结论、完成/未完成页面清单、删除清单、保留旧 CSS 原因、四角色结果、截图路径与复核结果、全部退出码、提交与 HEAD、工作树状态、未 push/未部署/未进入阶段 8、下一步 = 用户视觉验收后 7F-2
 
 ## 7. 7F-2+（后续子阶段，本轮不执行）
