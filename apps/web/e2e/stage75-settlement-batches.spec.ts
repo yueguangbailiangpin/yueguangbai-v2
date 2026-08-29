@@ -331,6 +331,7 @@ test('阶段 7.5 第三批截图（1440 / 390）', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '结算批次' })).toBeVisible();
   for (const [width, height, name] of [
     [1440, 900, 'staff-settlement-batches-1440x900'],
+    [1280, 900, 'staff-settlement-batches-1280x900'],
     [390, 844, 'staff-settlement-batches-390x844'],
   ] as const) {
     await page.setViewportSize({ width, height });

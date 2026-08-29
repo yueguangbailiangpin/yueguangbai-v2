@@ -106,6 +106,21 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 - 只读取完成上述职责所必需的买家资料；
 - 不查看卖家内部协议、员工管理、高风险身份、系统管理或内部利润。
 
+### 阶段 7.5 员工订单与工作台
+
+- 员工正式订单游标列表与统一订单详情遵循同一固定分配可见性：owner 全局；pre_sales 仅其 `BUYER_PRE_SALES_OWNER` 买家、buyer_refund 仅其 `BUYER_REFUND_OWNER` 买家、seller_ops 仅其 `SELLER_ACCOUNT_MANAGER` 卖家组织的订单（另与 marketplace scope 取交集）；Personal DENY 始终优先；越权对象 concealed 404；无公共池/抢单/轮转/兜底。
+- 订单 `responsibility` 分区（业务阶段/负责员工/下一步/截止/逾期/异常）由后端权威计算；`GET /api/staff/me/work-items/summary` 的今日应处理返款金额仅 owner 与 buyer_refund 可见，其余角色为 null。
+
+### 公司公开客服渠道与买家联系人（阶段 7.5 第二批）
+
+- 渠道配置（`BUYER_PRE_SALES`/`BUYER_AFTER_SALES`）独立于员工身份，仅 owner（`STAFF_MANAGE`）可修改（幂等+expected_version+审计）；初始为空，未配置时买家端显示兜底文案且不泄露任何员工内部字段。
+- 买家端仅见当前阶段负责员工公开显示名与公司渠道公开字段；产品主要对接人是责任标记，不缩小组织可见性（owner 与负责 seller_ops 可操作，跨组织 concealed 404）。
+
+### 卖家结算批次（阶段 7.5 第三批）
+
+- owner 全局创建/确认/取消/导出；被分配该卖家组织的 seller_ops 在范围内同权（写需 `SELLER_SETTLEMENT_RECORD`，读需 `SELLER_SETTLEMENT_VIEW`）；Seller 门户 OWNER/FINANCE 只读本组织非草稿批次；Buyer 完全不可见。
+- 批次不暴露内部利润、买家返款、内部员工 ID、内部备注或对象存储 key；CSV 导出白名单字段并转义公式注入。
+
 ### 经营看板权限（阶段 4 简化后）
 
 - 经营看板两个只读端点（`summary`、`financial-projection`）仅允许 Active owner 且

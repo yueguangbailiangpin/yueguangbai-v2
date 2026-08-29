@@ -1,0 +1,114 @@
+# 阶段 7.5 交接：六项业务闭环补强（员工订单/工作台/联系人/结算批次）
+
+日期：2026-08-29。分支 `feature/staging-workflow-rate-ux`，起点 `9b1ab918`（阶段 7R-2 完成点，schema 30 / 224 端点）。本轮**三个**本地提交（未 push，现领先远程 33 个提交）：
+
+```text
+08bb223a feat(ops): add staff order list and authoritative next actions
+f8272577 feat(contacts): expose assigned business contacts safely
+9684a744 feat(settlements): add immutable seller settlement batches
+```
+
+依据：用户阶段 7.5 指令（2026-08-29）、OpenSpec Change `stage75-operational-completeness`（strict 校验通过后才开始改源码；proposal/design/tasks/spec 全新增，未动 `stage7-three-portal-remediation`）。
+
+> **声明**：本轮是本地业务闭环补强，**不是 Staging GO 也不是 Production GO**。未 push、未部署、未触碰 Cloudflare/Google Drive/GitHub 远端、真实数据。不得进入阶段 8 或营销官网开发。
+
+## 0. 三批范围与非目标
+
+三批严格串行、各自独立提交、各自全量门禁全绿后进入下一批。非目标：不建第二套订单详情/产品联系人/买家分配/财务台账模型；无公共池/抢单/轮转/兜底/认领交互；不归档任何 OpenSpec Change。
+
+## 1. 六项能力实际完成情况
+
+| # | 能力 | 结果 |
+|---|---|---|
+| 1 | 员工正式订单游标列表 | ✅ `GET /api/staff/formal-orders` 双模式：查询串恰为单个 `amazon_order_number` 时**逐字节保留**精确查单语义（同形状详情聚合）；其余进入 keyset 列表（`confirmed_at DESC, id DESC`，默认 20/最大 100/无 OFFSET）。筛选：订单号前缀（LIKE 转义）、买家编号、卖家组织、店铺、业务阶段、异常状态、负责人、确认时间范围；游标内嵌 filters echo，换筛选复用旧游标 400。轻量列表 DTO（金额取快照权威整数串）；`/staff/orders` 页面（筛选入 URL、桌面表格+390 紧凑卡片、空态、错误恢复重试、"加载更多"累积翻页 useInfiniteQuery） |
+| 2 | 订单负责人与下一步 | ✅ 统一详情新增 `responsibility` 分区：阶段（返款义务未结清→`BUYER_REFUND`；买家侧结清且 payable 未结清→`SELLER_SETTLEMENT`；两侧结清→`COMPLETED`）、固定分配负责员工+角色、下一步枚举（异常 OPEN 优先 `RESOLVE_EXCEPTION`，未分配→`ASSIGN_RESPONSIBLE_STAFF`）、截止（返款=义务 created_at+72h，结算=payable 最小 due_at）、逾期/异常原因、可执行动作。前端订单详情渲染"当前负责人 / 下一步"卡片区 |
+| 3 | 工作台 SLA 与关键指标 | ✅ work-item DTO 扩展 `sla_due_at`/`is_overdue`/`overdue_since`/`next_action`/`responsible_role`/`responsible_staff_name`/`priority`（`@ygb/domain` 常量表权威）；新端点 `GET /api/staff/me/work-items/summary`（我的待处理/今日到期/已逾期/异常订单/最近工作项 + 今日应处理返款金额**仅 owner 与 buyer_refund**，其余 null）；工作台指标卡从后端值渲染 |
+| 4 | 卖家产品主要对接人 | ✅ 核对既有 `POST /api/staff/products/:id/primary-contact`（幂等+expected version+审计+transaction_assertion）不变；员工产品列表/详情与卖家产品列表 DTO 接入 `primary_contact_member_id/name`；员工产品详情可设置/转移/清除（本组织 ACTIVE 成员，跨组织/非 ACTIVE 409，跨组织 concealed 404）；卖家端只读显示；组织可见性不缩小 |
+| 5 | 买家分阶段对接人 | ✅ 复用既有 `pre_sales_owner`/`refund_owner` 固定分配。新表 `company_public_service_channels`（两码 `BUYER_PRE_SALES`/`BUYER_AFTER_SALES`，**初始全空不编造**）；`GET /api/staff/service-channels`（全员读）、`PUT /api/staff/service-channels/:code`（Owner-only，幂等+expected_version+审计）、`GET /api/buyer-portal/service-channels`（买家公开投影）；`GET /api/buyer-portal/me` 扩展 `assigned_contacts`（仅公开显示名）。买家预约页=售前卡、订单页=售后卡；未配置显示"请联系工作人员"；员工端 `/staff/service-channels` Owner-only 设置页 |
+| 6 | 卖家结算批次 | ✅ append-only 三表 + 触发器 + 部分唯一索引（见 §3）。DRAFT→确认冻结成员/整数金额/关键订单快照引用→CONFIRMED；取消经取消事件释放成员；付款走既有账本，`PARTIALLY_PAID`/`PAID` 读取时由 live 余额推导。员工 8 路由 + 卖家 2 只读路由；CSV 白名单导出 |
+
+## 2. 新增/修改路由（API 224 → **238** 端点）
+
+新增 14 个 `/api/*`：
+
+- `GET /api/staff/me/work-items/summary`（批 1）
+- `GET /api/staff/service-channels`、`PUT /api/staff/service-channels/:code`、`GET /api/buyer-portal/service-channels`（批 2）
+- `GET|POST /api/staff/seller-settlements/:organizationId/batches`、`GET .../batches/:batchId`、`POST .../batches/:batchId/members`、`POST .../batches/:batchId/members/:payableId/remove`、`POST .../batches/:batchId/confirm`、`POST .../batches/:batchId/cancel`、`POST .../batches/:batchId/export`、`GET /api/seller-portal/settlement/batches`、`GET /api/seller-portal/settlement/batches/:batchId`（批 3）
+
+既有端点扩展（非新增）：`GET /api/staff/formal-orders`（双模式+详情 `responsibility`）；员工/卖家产品 DTO 增主要对接人字段；`GET /api/buyer-portal/me` 增 `assigned_contacts`；work-item DTO 增 SLA 字段。`V2_API_ROUTE_INVENTORY.md` 已同步（238 = 236 `/api/*` + `/health` + `/ready`），`verify:api-contract` 双向一致通过。
+
+## 3. Migration 与表（schema 30 → **33**，只追加）
+
+| Migration | 内容 |
+|---|---|
+| `0031_stage75_staff_order_list_indexes.sql` | formal_orders 游标主扫（confirmed_at,id）、买家编号、订单号前缀+游标续扫三索引（买家/卖家/店铺复合索引 0010/0020 已有，未重复建） |
+| `0032_stage75_public_service_channels.sql` | `company_public_service_channels` 表 + 两行空种子（`updated_by_must_be_owner=1` CHECK） |
+| `0033_stage75_seller_settlement_batches.sql` | `seller_settlement_batches`（状态 CHECK/冻结列约束）、`seller_settlement_batch_members`（UNIQUE(payable,batch)、active/removed 一致性 CHECK）、`seller_settlement_batch_events`；**部分唯一索引 `uq_active_batch_payable`**（一个 payable 只进一个有效批次）；触发器：成员仅 DRAFT 可加入/移除（取消释放走 `removal_reason='BATCH_CANCELLED'` + 状态/时间匹配的受控豁免）、成员插入守卫（组织一致+快照/金额/类型匹配+无分配记录+不在其他有效批次）、成员冻结列不可改（仅 active→0 伴 removed_at/reason）、批次不可删、状态迁移守卫（DRAFT→CONFIRMED 冻结值必须=成员合计、→CANCELLED 保持冻结值且带原因）、取消后自动释放全部 active 成员 |
+
+inventory：161 表 / 493 索引 / 312 触发器 / 12 视图（`db:verify` SHA-256 逐批重锚，最终 `06219b45…`）。全部版本锚点同步（verify-migrations/version-guards/baseline-schema/TARGET_SCHEMA×2/backup/staging-bootstrap/portal-isolation=238/11 个模块链长测试）。
+
+## 4. 权限矩阵（新增段已入 `V2_PERMISSION_MATRIX.md`）
+
+- 订单列表+详情同一固定分配可见性：owner 全局；pre_sales/buyer_refund 按 `BUYER_PRE_SALES_OWNER`/`BUYER_REFUND_OWNER` 买家；seller_ops 按 `SELLER_ACCOUNT_MANAGER` 卖家组织；与 marketplace scope 交集；Personal DENY 优先（`ORDER_VIEW` DENY→403）；越权 concealed 404 / 列表不可见；无分配→空列表。
+- 摘要返款金额仅 owner/buyer_refund；客服渠道写仅 owner（STAFF_MANAGE）；产品对接人 owner/seller_ops（SELLER_MANAGE）+组织 scope；结算批次 owner 全局、seller_ops 限分配组织（写 `SELLER_SETTLEMENT_RECORD`），Seller 门户 OWNER/FINANCE 只读非草稿批次，Buyer 完全不可见。
+- 批次 DTO/CSV 无内部利润、买家返款、内部员工 ID、内部备注、对象存储 key。
+
+## 5. 容量测试结果
+
+`npm run verify:order-list-capacity`（新 npm script，已入 `check:ci:test-build` 链与治理 allowlist）：**20,200 单**（20,000 历史 + 200 当日，101 天连续分布、逐买家预约/证据/订单/快照全链合法种子，触发器全过）：
+
+- 全量翻页（每页 100）无重复无遗漏，`seen.size === 20,200`；
+- 代表性筛选（当日窗口/订单号前缀/阶段）正确；
+- `EXPLAIN QUERY PLAN` 断言：游标/前缀/买家编号/卖家 IN 子查询四类查询**均无 `SCAN formal_orders` 全表扫描**。
+- 耗时 ~3s（本地 node:sqlite）。
+
+## 6. Playwright 与截图
+
+- 新增三 spec：`stage75-order-list.spec.ts`（7 用例）、`stage75-contacts.spec.ts`（9 用例含 1280）、`stage75-settlement-batches.spec.ts`（3 用例含 1280）。
+- 终门（13 spec：7R 既定 10 + 本轮 3 + 工作台）：**171 passed / 1 skipped（环境变量门控预存在）/ 0 failed**。
+- 既有 9 个 staff spec 补 `work-items/summary` mock 与 work-item SLA 字段。
+- 截图（gitignore，磁盘留存）：
+  - `tmp/stage75-order-list-screenshots/`：列表 1440/1280/390 + 责任区块 1440/390；
+  - `tmp/stage75-contacts-screenshots/`：买家联系卡 1440/1280/390 + 员工渠道设置 1440/1280/390；
+  - `tmp/stage75-settlement-batches-screenshots/`：员工批次 1440/1280/390。
+- 全部截图生成自断言通过后的真实渲染；无水平溢出断言；无错误态冒充正常态。
+
+## 7. 测试与验证真实结果（2026-08-29，最终提交前）
+
+| 命令 | 退出码 |
+|---|---|
+| `npm run typecheck` | 0 |
+| `npm test` | 0（254 文件 / 1,745 用例全过；含新增 staff-order-list 26、service-channels 6、settlement-batches 8、列表页 MSW 5） |
+| `npm run build` | 0 |
+| `npm run check` | 0（含全部命名 verifier + 两项既有容量验证 + **新 verify:order-list-capacity**） |
+| `openspec validate stage75-operational-completeness --strict` | 0 |
+| `openspec validate --all --strict` | 0（64/64） |
+| `npm run db:verify` | 0（161/493/312/12，SHA-256 一致） |
+| `npm run verify:migration-guards` | 0 |
+| `npm run verify:api-contract` | 0（238 documented endpoints 双向一致） |
+| `npm run verify:web-source-boundaries` | 0 |
+| `npm run verify:web-static-build` | 0 |
+| `npm run verify:css-duplicates` | 0 |
+| `npm run verify:order-list-capacity` | 0（3/3） |
+| wrangler 本地 D1 空库重放 0001→0033 | 全部 ✅；schema_version=33 |
+| node:sqlite 空库重放 + `PRAGMA integrity_check`/`foreign_key_check` | ok / [] |
+| Playwright 终门（13 spec） | 171 passed / 1 skipped / 0 failed |
+| 残留扫描（公共池/抢单/待认领/获客中心/双聊天入口/订单完整性页） | 0 功能性残留（命中项均为财务事实标签"待认领转入款"=unallocated credit、退役说明注释、7R 基线样式类名） |
+
+重点场景覆盖：游标翻页无重漏（单元+容量双证）；20k 容量+计划断言；四角色可见范围+DENY+concealed 404；负责人随阶段切换（返款→结算→完成+异常优先）；摘要金额角色门控；对接人本组织 ACTIVE 限定+跨组织 404+可见性不缩小；未配置渠道兜底且无员工字段泄露（负向 payload 断言）；同 payable 双批次拒绝+取消释放再入；确认后冻结（直改 SQL 被触发器拒）；幂等重放/payload mismatch/expected_version 冲突；CSV 公式注入转义（=,+,-,@,TAB,CR）；Buyer 不可见批次；Seller 无利润/返款/内部 ID。
+
+## 8. 未完成与 NOT_RUN 项
+
+- 真实历史导入（REAL_HISTORICAL_IMPORT=NOT_RUN，不变）。
+- 真实图片盘点（REAL_IMAGE_INVENTORY=NOT_RUN，不变）。
+- 客服渠道真实微信号/二维码：业务所有者未提供，保持空值（这是合同要求，不是缺口）。
+- 遗留 Playwright 套件（foundation/screenshots/review-mode/staff-visual-refresh/staff-product-reservation-scheduling/stage7a1 部分用例）在本轮起点 `9b1ab918` 即失败（干净基线 worktree 实证：仅 foundation+staff-visual-refresh 两文件 46 例中 45 败）——**预存在漂移，非本轮回归**；本轮沿用 7R 既定 10 文件终门并全部通过。
+- `Get current staff session` 之外的身份流程未在本轮范围。
+
+## 9. 远程边界
+
+零：未 push / 未建 PR / 未触碰 Cloudflare、Google Drive、GitHub 远端、真实数据。三个提交全部保留在本地分支（领先远程 33 提交）。
+
+## 10. 下一步
+
+停止并等待 ChatGPT 总审。审后可选：遗留 e2e 套件漂移单独修复 Change；阶段 8 部署准备仍需总控明确指令。

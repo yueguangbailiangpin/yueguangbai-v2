@@ -109,8 +109,8 @@
 
 ## 4. 收口
 
-- [ ] 4.1 `V2_API_ROUTE_INVENTORY.md`、`V2_PERMISSION_MATRIX.md`、`docs/CURRENT_SYSTEM_STATE.md`、Decision Register（必要时新增 Decision）同步
-- [ ] 4.2 新建 `docs/migration/V2_STAGE75_OPERATIONAL_COMPLETENESS_HANDOFF.md`（六项完成情况/新路由/Migration/权限矩阵/容量结果/截图路径/未完成与 NOT_RUN/非 GO 声明）
-- [ ] 4.3 全仓残留扫描（公共池/抢单/待认领/获客中心/双聊天截图入口/旧订单完整性页面）
-- [ ] 4.4 本地 D1 `0001`→最新空库完整重放 + `PRAGMA integrity_check` + `PRAGMA foreign_key_check`
-- [ ] 4.5 全部验证命令真实退出码记录；OpenSpec tasks 全部真实完成；不归档任何 Change
+- [x] 4.1 `V2_API_ROUTE_INVENTORY.md`、`V2_PERMISSION_MATRIX.md`、`docs/CURRENT_SYSTEM_STATE.md`、Decision Register（必要时新增 Decision）同步
+- [x] 4.2 新建 `docs/migration/V2_STAGE75_OPERATIONAL_COMPLETENESS_HANDOFF.md`（六项完成情况/新路由/Migration/权限矩阵/容量结果/截图路径/未完成与 NOT_RUN/非 GO 声明）
+- [x] 4.3 全仓残留扫描（公共池/抢单/待认领/获客中心/双聊天截图入口/旧订单完整性页面）
+- [x] 4.4 本地 D1 `0001`→最新空库完整重放 + `PRAGMA integrity_check` + `PRAGMA foreign_key_check`
+- [x] 4.5 全部验证命令真实退出码记录；OpenSpec tasks 全部真实完成；不归档任何 Change

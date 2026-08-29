@@ -524,6 +524,17 @@ D-019 的滚动冷归档业务语义保留，归档实现按 2026-08-25 授权�
 
 状态：Accepted by business owner 2026-08-26；Supersedes D-034's five-role set（acquisition 退役）、D-026/D-035/D-038/D-040 的获客运行裁决、D-053 的汇率维护权限分工与两表财务快照过渡形态（历史正文不改写）；仅授权本地代码/数据库/合同/测试/文档修改，不授权任何远程操作、真实数据导入或部署。实施事实（2026-08-27）：migrations 0027–0029（schema 29）、获客 CRM 与 Integration Outbox 源码/合同/脚本/前端整链退役、四角色固定分配与预约永久限制/一次性例外落地、API 基线 219 端点、全量本地验证绿——见 `docs/migration/V2_BACKEND_REBUILD_STAGE6_6_HANDOFF.md`
 
+### D-057 阶段 7.5 业务闭环补强（员工订单/联系人/结算批次）
+
+业务所有者 2026-08-29 指令授权（阶段 7.5：六项能力三批串行）。本 Decision 只记录实施事实，不改写任何历史 D 条目：
+
+- **员工订单列表与负责人**：`GET /api/staff/formal-orders` 扩展为双模式（仅含 `amazon_order_number` 时保留精确查单语义，其余为 keyset 游标列表，默认 20/最大 100/禁 OFFSET）；统一详情与列表执行同一固定分配可见性（owner 全局、buyer 双职责按买家、seller_ops 按卖家组织、marketplace 交集、Personal DENY 优先、concealed 404）；`responsibility` 分区（阶段/负责人/下一步/截止/逾期/异常）与工作台摘要（`GET /api/staff/me/work-items/summary`，返款金额仅 owner/buyer_refund）均为后端权威计算。
+- **业务对接人**：产品主要对接人沿用既有单一模型并接入员工/卖家产品 DTO（责任标记不缩小可见性）；公司公开客服渠道独立建表（`company_public_service_channels`，初始为空不得编造），Owner-only 配置，买家端仅公开显示名+渠道公开字段。
+- **卖家结算批次**：append-only 三表（batch/member/event）+ 部分唯一索引保证一个 payable 不能进入两个有效批次；确认冻结成员/金额/快照引用（触发器拒绝静默变更），取消释放成员；`PARTIALLY_PAID`/`PAID` 由既有付款账本实时推导，批次绝不复制付款事实、不回写历史财务；CSV 导出白名单+公式注入转义+稳定文件名+限额。
+- Migration 0031–0033 只追加（schema 33）；无公共池/抢单/获客中心/双聊天截图入口/旧订单完整性页面的运行时残留。
+
+状态：Accepted by business owner instruction 2026-08-29；三批本地提交（08bb223a / f8272577 / 9684a744），未 push、未部署、不构成 Staging/Production GO。
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

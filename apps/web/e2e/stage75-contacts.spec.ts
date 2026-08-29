@@ -321,8 +321,10 @@ test('卖家产品页显示主要对接人', async ({ page }) => {
 test('阶段 7.5 第二批截图（1440 / 390）', async ({ page }) => {
   for (const [width, height, name, portal, path] of [
     [1440, 900, 'buyer-stage-contact-1440x900', 'buyer', '/buyer/reservations'],
+    [1280, 900, 'buyer-stage-contact-1280x900', 'buyer', '/buyer/reservations'],
     [390, 844, 'buyer-stage-contact-390x844', 'buyer', '/buyer/reservations'],
     [1440, 900, 'staff-service-channels-1440x900', 'staff-owner', '/staff/service-channels'],
+    [1280, 900, 'staff-service-channels-1280x900', 'staff-owner', '/staff/service-channels'],
     [390, 844, 'staff-service-channels-390x844', 'staff-owner', '/staff/service-channels'],
   ] as const) {
     await page.setViewportSize({ width, height });
