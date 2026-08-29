@@ -243,6 +243,11 @@ const staffEmployees = (Object.keys(roleDisplay) as (keyof typeof roleDisplay)[]
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Stage 7.5 batch 1：work-item SLA/负责人投影 + 工作台权威摘要。
+// workTypes 与 demo 各业务事实的 source_entity_id 一一对应，工作项详情、
+// 处理面板与订单详情通过同一组 ID 互联。
+// ---------------------------------------------------------------------------
 const workTypes = [
   'PRODUCT_APPLICATION_REVIEW',
   'DEMAND_REVIEW',
@@ -252,63 +257,297 @@ const workTypes = [
   'REVIEW_DECISION',
   'BUYER_REFUND_PROCESSING',
 ] as const;
-const workSource = [
-  'review-app-1',
-  'review-seller-demand-1',
-  'review-buyer-reservation-001',
-  'review-buyer-reservation-002',
-  'review-staff-evidence-1',
-  'review-staff-review-1',
-  'review-staff-refund-1',
-];
+const workSource: Record<(typeof workTypes)[number], string> = {
+  PRODUCT_APPLICATION_REVIEW: 'review-app-1',
+  DEMAND_REVIEW: 'review-seller-demand-1',
+  RESERVATION_DECISION: 'review-buyer-reservation-001',
+  ORDER_INSTRUCTION_PUBLISH: 'review-instruction-1',
+  ORDER_EVIDENCE_REVIEW: 'review-staff-evidence-1',
+  REVIEW_DECISION: 'review-staff-review-1',
+  BUYER_REFUND_PROCESSING: 'review-staff-refund-1',
+};
+const workItemIds: Record<(typeof workTypes)[number], string> = {
+  PRODUCT_APPLICATION_REVIEW: 'review-work-product',
+  DEMAND_REVIEW: 'review-work-demand',
+  RESERVATION_DECISION: 'review-work-reservation',
+  ORDER_INSTRUCTION_PUBLISH: 'review-work-instruction',
+  ORDER_EVIDENCE_REVIEW: 'review-work-evidence',
+  REVIEW_DECISION: 'review-work-review',
+  BUYER_REFUND_PROCESSING: 'review-work-refund',
+};
+const roleWorkTypes: Record<string, readonly (typeof workTypes)[number][]> = {
+  owner: workTypes,
+  seller_ops: ['PRODUCT_APPLICATION_REVIEW', 'DEMAND_REVIEW', 'ORDER_EVIDENCE_REVIEW'],
+  pre_sales: ['RESERVATION_DECISION', 'ORDER_INSTRUCTION_PUBLISH', 'REVIEW_DECISION'],
+  buyer_refund: ['BUYER_REFUND_PROCESSING'],
+};
+const workTypeDuty: Record<(typeof workTypes)[number], string> = {
+  PRODUCT_APPLICATION_REVIEW: 'SELLER_ACCOUNT_MANAGER',
+  DEMAND_REVIEW: 'SELLER_ACCOUNT_MANAGER',
+  RESERVATION_DECISION: 'BUYER_PRE_SALES_OWNER',
+  ORDER_INSTRUCTION_PUBLISH: 'BUYER_PRE_SALES_OWNER',
+  ORDER_EVIDENCE_REVIEW: 'BUYER_PRE_SALES_OWNER',
+  REVIEW_DECISION: 'BUYER_AFTER_SALES_OWNER',
+  BUYER_REFUND_PROCESSING: 'BUYER_REFUND_OWNER',
+};
+const workTypeResponsibleRole: Record<(typeof workTypes)[number], string> = {
+  PRODUCT_APPLICATION_REVIEW: 'seller_ops',
+  DEMAND_REVIEW: 'seller_ops',
+  RESERVATION_DECISION: 'pre_sales',
+  ORDER_INSTRUCTION_PUBLISH: 'pre_sales',
+  ORDER_EVIDENCE_REVIEW: 'pre_sales',
+  REVIEW_DECISION: 'pre_sales',
+  BUYER_REFUND_PROCESSING: 'buyer_refund',
+};
+const workTypeNextAction: Record<(typeof workTypes)[number], string> = {
+  PRODUCT_APPLICATION_REVIEW: '审核卖家产品申请',
+  DEMAND_REVIEW: '审核需求批次并发布预约',
+  RESERVATION_DECISION: '审核买家预约申请',
+  ORDER_INSTRUCTION_PUBLISH: '发布买家下单指引',
+  ORDER_EVIDENCE_REVIEW: '核对买家订单截图',
+  REVIEW_DECISION: '审核买家评论凭证',
+  BUYER_REFUND_PROCESSING: '处理买家返款付款',
+};
 function workItems(status: string) {
   const role = currentStaffReviewRole();
-  const allowed =
-    role === 'owner'
-      ? workTypes
-      : role === 'seller_ops'
-        ? workTypes.filter((type) =>
-            ['PRODUCT_APPLICATION_REVIEW', 'DEMAND_REVIEW', 'ORDER_EVIDENCE_REVIEW'].includes(type),
-          )
-        : role === 'pre_sales'
-          ? workTypes.filter((type) =>
-              ['RESERVATION_DECISION', 'ORDER_INSTRUCTION_PUBLISH'].includes(type),
-            )
-          : role === 'buyer_refund'
-            ? workTypes.filter((type) => type === 'BUYER_REFUND_PROCESSING')
-            : [];
-  return allowed.map((type, index) => ({
-    work_item_id: `review-work-${type.toLowerCase()}`,
-    work_type: type,
-    source_entity_type: type.replace(/_REVIEW|_PROCESSING|_PUBLISH|_DECISION/u, ''),
-    source_entity_id: workSource[workTypes.indexOf(type)]!,
-    buyer_customer_id:
-      type.includes('BUYER') ||
-      type.includes('RESERVATION') ||
-      type.includes('ORDER_') ||
-      type.includes('REVIEW')
-        ? 'review-buyer-customer-1'
-        : null,
-    seller_organization_id:
-      type.includes('PRODUCT') || type.includes('DEMAND') ? 'review-seller-org' : null,
-    store_id: type.includes('PRODUCT') || type.includes('DEMAND') ? 'review-store-a' : null,
-    duty_code:
-      type === 'BUYER_REFUND_PROCESSING'
-        ? 'BUYER_REFUND_OWNER'
-        : type.includes('PRODUCT') || type.includes('DEMAND')
-          ? 'SELLER_ACCOUNT_MANAGER'
-          : type === 'REVIEW_DECISION'
-            ? 'BUYER_AFTER_SALES_OWNER'
-            : 'BUYER_PRE_SALES_OWNER',
-    fixed_assignment_id: `review-assignment-${index}`,
-    assigned_staff_id: `review-staff-${role}`,
-    status,
-    version: 1,
-    created_at: NOW - index * 3_600_000,
-    updated_at: NOW,
-    completed_at: status === 'COMPLETED' ? NOW : null,
-    cancelled_at: status === 'CANCELLED' ? NOW : null,
-  }));
+  const allowed = roleWorkTypes[role] ?? [];
+  return allowed.map((type, index) => {
+    // 第一条给 OVERDUE、第二条 DUE_TODAY，其余 NORMAL，让 SLA 徽标有真实层次。
+    const priority = status === 'OPEN' && index === 0 ? 'OVERDUE' : status === 'OPEN' && index === 1 ? 'DUE_TODAY' : 'NORMAL';
+    const overdue = priority === 'OVERDUE';
+    const dueToday = priority === 'DUE_TODAY';
+    const slaDueAt = status !== 'OPEN' ? null : overdue ? NOW - DAY : dueToday ? NOW + 2 * 3_600_000 : NOW + (index + 2) * DAY;
+    const responsibleRole = workTypeResponsibleRole[type]!;
+    return {
+      work_item_id: workItemIds[type]!,
+      work_type: type,
+      source_entity_type: type.replace(/_REVIEW|_PROCESSING|_PUBLISH|_DECISION/u, ''),
+      source_entity_id: workSource[type]!,
+      buyer_customer_id:
+        type === 'PRODUCT_APPLICATION_REVIEW' || type === 'DEMAND_REVIEW'
+          ? null
+          : 'review-buyer-customer-1',
+      seller_organization_id:
+        type === 'PRODUCT_APPLICATION_REVIEW' || type === 'DEMAND_REVIEW' ? 'review-seller-org' : null,
+      store_id: type === 'PRODUCT_APPLICATION_REVIEW' || type === 'DEMAND_REVIEW' ? 'review-store-a' : null,
+      duty_code: workTypeDuty[type]!,
+      fixed_assignment_id: `review-assignment-${type.toLowerCase()}`,
+      assigned_staff_id: `review-staff-${role}`,
+      status,
+      version: 1,
+      created_at: NOW - (index + 1) * 3_600_000,
+      updated_at: NOW,
+      completed_at: status === 'COMPLETED' ? NOW : null,
+      cancelled_at: status === 'CANCELLED' ? NOW : null,
+      sla_due_at: slaDueAt,
+      is_overdue: status === 'OPEN' && overdue,
+      overdue_since: status === 'OPEN' && overdue ? NOW - 6 * 3_600_000 : null,
+      next_action: workTypeNextAction[type]!,
+      responsible_role: responsibleRole,
+      responsible_staff_name: `Demo ${roleDisplay[responsibleRole as keyof typeof roleDisplay]}`,
+      priority: status === 'OPEN' ? priority : 'NORMAL',
+    };
+  });
+}
+function workbenchSummary() {
+  const role = currentStaffReviewRole();
+  const open = workItems('OPEN');
+  const overdue = open.filter((item) => item.is_overdue);
+  const dueToday = open.filter((item) => item.priority === 'DUE_TODAY');
+  return {
+    summary: {
+      open_count: open.length,
+      due_today_count: dueToday.length,
+      overdue_count: overdue.length,
+      exception_order_count: 1,
+      refund_due_today_cny_fen:
+        role === 'owner' || role === 'buyer_refund' ? '108800' : null,
+      recent: workItems('COMPLETED').slice(0, 3),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Stage 7.5 batch 1：员工正式订单游标列表（含权威 responsibility 投影）。
+// ---------------------------------------------------------------------------
+interface DemoStaffOrder {
+  id: string;
+  amazonOrderNumber: string;
+  amazonOrderDate: string;
+  confirmedAt: number;
+  buyerNo: string;
+  buyerName: string;
+  sellerOrganizationId: string;
+  storeId: string;
+  storeName: string;
+  productName: string;
+  reviewType: 'RATING' | 'TEXT' | 'IMAGE' | 'VIDEO';
+  buyerExpectedPrincipal: string | null;
+  sellerExpectedPrincipal: string | null;
+  stage: 'BUYER_REFUND' | 'SELLER_SETTLEMENT' | 'COMPLETED';
+  nextAction: 'PROCESS_BUYER_REFUND' | 'FOLLOW_SELLER_SETTLEMENT' | 'REVIEW_COMPLETED_ORDER' | 'RESOLVE_EXCEPTION' | 'ASSIGN_RESPONSIBLE_STAFF';
+  exceptionState: 'NONE' | 'OPEN';
+  finalPaidJpy: string;
+}
+const staffOrders: DemoStaffOrder[] = [
+  {
+    id: 'review-seller-order-1',
+    amazonOrderNumber: '503-7770001-0003001',
+    amazonOrderDate: '2026-08-08',
+    confirmedAt: NOW - 3 * DAY,
+    buyerNo: '20260808B00042',
+    buyerName: '张三丰（演示）',
+    sellerOrganizationId: 'review-seller-org',
+    storeId: 'review-store-a',
+    storeName: 'TEST 日本店 A',
+    productName: '轻量保温随行杯',
+    reviewType: 'IMAGE',
+    buyerExpectedPrincipal: '165000',
+    sellerExpectedPrincipal: '182500',
+    stage: 'BUYER_REFUND',
+    nextAction: 'PROCESS_BUYER_REFUND',
+    exceptionState: 'NONE',
+    finalPaidJpy: '39800',
+  },
+  {
+    id: 'review-seller-order-2',
+    amazonOrderNumber: '503-7770002-0003002',
+    amazonOrderDate: '2026-08-10',
+    confirmedAt: NOW - 2 * DAY,
+    buyerNo: '20260810B00051',
+    buyerName: '李逍遥（演示）',
+    sellerOrganizationId: 'review-seller-org',
+    storeId: 'review-store-b',
+    storeName: 'TEST 日本店 B',
+    productName: '无线静音鼠标',
+    reviewType: 'TEXT',
+    buyerExpectedPrincipal: '88200',
+    sellerExpectedPrincipal: '96400',
+    stage: 'SELLER_SETTLEMENT',
+    nextAction: 'FOLLOW_SELLER_SETTLEMENT',
+    exceptionState: 'OPEN',
+    finalPaidJpy: '21800',
+  },
+  {
+    id: 'review-seller-order-3',
+    amazonOrderNumber: '503-7770003-0003003',
+    amazonOrderDate: '2026-08-12',
+    confirmedAt: NOW - DAY,
+    buyerNo: '20260812B00058',
+    buyerName: '赵灵儿（演示）',
+    sellerOrganizationId: 'review-seller-org',
+    storeId: 'review-store-a',
+    storeName: 'TEST 日本店 A',
+    productName: '专业级家庭美容仪 Pro Max',
+    reviewType: 'VIDEO',
+    buyerExpectedPrincipal: '612400',
+    sellerExpectedPrincipal: '652800',
+    stage: 'BUYER_REFUND',
+    nextAction: 'RESOLVE_EXCEPTION',
+    exceptionState: 'OPEN',
+    finalPaidJpy: '128600',
+  },
+  {
+    id: 'review-seller-order-4',
+    amazonOrderNumber: '503-7770004-0003004',
+    amazonOrderDate: '2026-08-14',
+    confirmedAt: NOW - 6 * 3_600_000,
+    buyerNo: '20260814B00066',
+    buyerName: '林月如（演示）',
+    sellerOrganizationId: 'review-seller-org',
+    storeId: 'review-store-b',
+    storeName: 'TEST 日本店 B',
+    productName: '旅行收纳套装',
+    reviewType: 'RATING',
+    buyerExpectedPrincipal: '24600',
+    sellerExpectedPrincipal: '27300',
+    stage: 'COMPLETED',
+    nextAction: 'REVIEW_COMPLETED_ORDER',
+    exceptionState: 'NONE',
+    finalPaidJpy: '5820',
+  },
+  {
+    id: 'review-seller-order-5',
+    amazonOrderNumber: '503-7770005-0003005',
+    amazonOrderDate: '2026-08-16',
+    confirmedAt: NOW - 3_600_000,
+    buyerNo: '20260816B00071',
+    buyerName: '阿奴（演示）',
+    sellerOrganizationId: 'review-seller-org',
+    storeId: 'review-store-a',
+    storeName: 'TEST 日本店 A',
+    productName: '厨房电子秤',
+    reviewType: 'IMAGE',
+    buyerExpectedPrincipal: null,
+    sellerExpectedPrincipal: null,
+    stage: 'SELLER_SETTLEMENT',
+    nextAction: 'ASSIGN_RESPONSIBLE_STAFF',
+    exceptionState: 'NONE',
+    finalPaidJpy: '3280',
+  },
+];
+function orderResponsibility(order: DemoStaffOrder) {
+  return {
+    stage: order.stage,
+    responsible_role:
+      order.stage === 'BUYER_REFUND'
+        ? 'buyer_refund'
+        : order.stage === 'SELLER_SETTLEMENT'
+          ? 'seller_ops'
+          : 'owner',
+    responsible_staff: {
+      staff_id: 'review-staff-owner',
+      display_name: 'Demo 总管理员',
+    },
+    next_action: order.nextAction,
+    next_action_due_at: order.stage === 'COMPLETED' ? null : NOW + 2 * DAY,
+    is_overdue: order.exceptionState === 'OPEN',
+    overdue_since: order.exceptionState === 'OPEN' ? NOW - 4 * 3_600_000 : null,
+    exception_state: order.exceptionState,
+    exception_reason: order.exceptionState === 'OPEN' ? '评论展示状态与审核结果不一致，需要人工复核。' : null,
+    available_actions: ['VIEW'],
+  };
+}
+function staffOrderList(searchParams: URLSearchParams) {
+  const prefix = searchParams.get('amazon_order_number_prefix');
+  const buyerNo = searchParams.get('buyer_customer_no');
+  const sellerOrganizationId = searchParams.get('seller_organization_id');
+  const stage = searchParams.get('stage');
+  const exceptionState = searchParams.get('exception_state');
+  const confirmedFrom = searchParams.get('confirmed_from');
+  const confirmedTo = searchParams.get('confirmed_to');
+  const items = staffOrders
+    .filter((item) => !prefix || item.amazonOrderNumber.startsWith(prefix))
+    .filter((item) => !buyerNo || item.buyerNo === buyerNo)
+    .filter((item) => !sellerOrganizationId || item.sellerOrganizationId === sellerOrganizationId)
+    .filter((item) => !stage || item.stage === stage)
+    .filter((item) => !exceptionState || item.exceptionState === exceptionState)
+    .filter(
+      (item) =>
+        !confirmedFrom || item.confirmedAt >= Date.parse(`${confirmedFrom}T00:00:00Z`),
+    )
+    .filter(
+      (item) => !confirmedTo || item.confirmedAt <= Date.parse(`${confirmedTo}T23:59:59Z`),
+    )
+    .sort((a, b) => b.confirmedAt - a.confirmedAt)
+    .map((order) => ({
+      formal_order_id: order.id,
+      marketplace_code: 'AMAZON_JP',
+      amazon_order_number: order.amazonOrderNumber,
+      amazon_order_date: order.amazonOrderDate,
+      confirmed_at: order.confirmedAt,
+      buyer_customer_id: 'review-buyer-customer-1',
+      buyer_customer_no: order.buyerNo,
+      buyer_display_name: order.buyerName,
+      seller_organization_id: 'review-seller-org',
+      store_display_name: order.storeName,
+      product_name_snapshot: order.productName,
+      review_type: order.reviewType,
+      buyer_expected_principal_cny_fen: order.buyerExpectedPrincipal,
+      seller_expected_principal_cny_fen: order.sellerExpectedPrincipal,
+      responsibility: orderResponsibility(order),
+    }));
+  return { items, next_cursor: null };
 }
 
 const staffEvidence = {
@@ -359,15 +598,15 @@ const staffEvidence = {
     },
   ],
   workflow: {
-    work_item_id: 'review-work-order_evidence',
+    work_item_id: 'review-work-evidence',
     assigned_staff_id: 'review-staff-owner',
     assigned_team_id: null,
-    fixed_assignment_id: 'review-assignment-order',
+    fixed_assignment_id: 'review-assignment-order_evidence_review',
   },
 };
 const staffReview = {
   review_case_id: 'review-staff-review-1',
-  formal_order_id: 'review-buyer-order-001',
+  formal_order_id: 'review-seller-order-1',
   buyer_customer_id: 'review-buyer-customer-1',
   seller_organization_id: 'review-seller-org',
   review_type: 'IMAGE',
@@ -405,7 +644,7 @@ const staffReview = {
 const staffRefund = {
   obligation_id: 'review-staff-refund-1',
   buyer_customer_id: 'review-buyer-customer-1',
-  formal_order_id: 'review-buyer-order-001',
+  formal_order_id: 'review-seller-order-1',
   due_amount_cny_fen: '168800',
   gross_paid_cny_fen: '60000',
   reversed_cny_fen: '0',
@@ -418,22 +657,26 @@ const staffRefund = {
   updated_at: NOW,
   review_approved_at: NOW - 4 * DAY - 3_600_000,
   promise_deadline_at: NOW + 6 * DAY,
-  buyer: { buyer_customer_id: 'review-buyer-customer-1', buyer_customer_no: 'B-DEMO-001' },
+  reminder_count: 1,
+  last_reminded_at: NOW - DAY,
+  buyer: { buyer_customer_id: 'review-buyer-customer-1', buyer_customer_no: '20260808B00042' },
   order: {
-    formal_order_id: 'review-buyer-order-001',
+    formal_order_id: 'review-seller-order-1',
     marketplace: 'AMAZON_JP',
-    amazon_order_number_normalized: '503-1000001-9000001',
+    amazon_order_number_normalized: '503-7770001-0003001',
     product_id: 'review-product-1',
     asin: 'B0DEMO001X',
   },
   workflow: {
-    work_item_id: 'review-work-buyer-refund',
+    work_item_id: 'review-work-refund',
     assigned_staff_id: 'review-staff-owner',
     assigned_team_id: null,
-    fixed_assignment_id: 'review-assignment-refund',
+    fixed_assignment_id: 'review-assignment-buyer_refund_processing',
   },
   source_review_event_id: 'review-approved-event',
   review_case_id: 'review-staff-review-1',
+  refund_account_name: null,
+  refund_account_identifier: null,
   payments: [
     {
       payment_entry_id: 'review-refund-payment-1',
@@ -469,7 +712,125 @@ const staffProducts = sellerProducts.map((product) => ({
   product_name: product.current_version.product_name,
   cadence: { order_interval_days: 2, orders_per_run: 3 },
   updated_at: product.updated_at,
+  primary_contact_member_id: 'review-member-owner',
+  primary_contact_member_name: 'Demo Owner',
 }));
+
+// Stage 7.5 batch 3：卖家结算批次（与 payables/payments 同一组织）。
+const settlementBatches = [
+  {
+    batch_id: 'review-settlement-batch-1',
+    seller_organization_id: 'review-seller-org',
+    status: 'DRAFT',
+    frozen_total_cny_fen: '0',
+    frozen_payable_count: 0,
+    paid_amount_cny_fen: '0',
+    outstanding_amount_cny_fen: '0',
+    version: 1,
+    created_at: NOW - 3_600_000,
+    confirmed_at: null,
+    cancelled_at: null,
+    cancel_reason: null,
+  },
+  {
+    batch_id: 'review-settlement-batch-2',
+    seller_organization_id: 'review-seller-org',
+    status: 'CONFIRMED',
+    frozen_total_cny_fen: '47400',
+    frozen_payable_count: 3,
+    paid_amount_cny_fen: '0',
+    outstanding_amount_cny_fen: '47400',
+    version: 2,
+    created_at: NOW - 2 * DAY,
+    confirmed_at: NOW - DAY,
+    cancelled_at: null,
+    cancel_reason: null,
+  },
+  {
+    batch_id: 'review-settlement-batch-3',
+    seller_organization_id: 'review-seller-org',
+    status: 'PARTIALLY_PAID',
+    frozen_total_cny_fen: '486500',
+    frozen_payable_count: 5,
+    paid_amount_cny_fen: '200000',
+    outstanding_amount_cny_fen: '286500',
+    version: 3,
+    created_at: NOW - 8 * DAY,
+    confirmed_at: NOW - 7 * DAY,
+    cancelled_at: null,
+    cancel_reason: null,
+  },
+  {
+    batch_id: 'review-settlement-batch-4',
+    seller_organization_id: 'review-seller-org',
+    status: 'CANCELLED',
+    frozen_total_cny_fen: '9600',
+    frozen_payable_count: 1,
+    paid_amount_cny_fen: '0',
+    outstanding_amount_cny_fen: '0',
+    version: 2,
+    created_at: NOW - 12 * DAY,
+    confirmed_at: NOW - 11 * DAY,
+    cancelled_at: NOW - 10 * DAY,
+    cancel_reason: '成员金额核对有出入，取消后重新建批次。',
+  },
+];
+const staffSettlementPayments = [
+  {
+    payment_id: 'review-seller-payment-1',
+    amount_cny_fen: '200000',
+    paid_at: NOW - 5 * DAY,
+    recorded_at: NOW - 5 * DAY,
+    allocated_amount_cny_fen: '200000',
+    unallocated_amount_cny_fen: '0',
+    status: 'FULLY_ALLOCATED',
+    version: 1,
+    allocations: [
+      {
+        allocation_id: 'review-allocation-1',
+        payable_id: 'review-payable-3',
+        payable_type: 'SELLER_PRINCIPAL',
+        allocated_amount_cny_fen: '200000',
+        reversed_amount_cny_fen: '0',
+        net_amount_cny_fen: '200000',
+        allocated_at: NOW - 5 * DAY,
+      },
+    ],
+    proof: {
+      file_object_id: 'review-file-settlement-proof',
+      file_version: 1,
+      purpose: 'SELLER_SETTLEMENT_PROOF',
+      visibility: 'INTERNAL_ONLY',
+    },
+  },
+  {
+    payment_id: 'review-seller-payment-2',
+    amount_cny_fen: '50000',
+    paid_at: NOW - 2 * DAY,
+    recorded_at: NOW - 2 * DAY,
+    allocated_amount_cny_fen: '10000',
+    unallocated_amount_cny_fen: '40000',
+    status: 'PARTIALLY_ALLOCATED',
+    version: 1,
+    allocations: [
+      {
+        allocation_id: 'review-allocation-2',
+        payable_id: 'review-payable-2',
+        payable_type: 'SELLER_SERVICE_FEE',
+        allocated_amount_cny_fen: '10000',
+        reversed_amount_cny_fen: '0',
+        net_amount_cny_fen: '10000',
+        allocated_at: NOW - 2 * DAY,
+      },
+    ],
+    proof: {
+      file_object_id: 'review-file-settlement-proof-2',
+      file_version: 1,
+      purpose: 'SELLER_SETTLEMENT_PROOF',
+      visibility: 'INTERNAL_ONLY',
+    },
+  },
+];
 
 function dashboardSummary(windowKey: string) {
   // D-056：经营看板只读精简摘要（待办、异常、最近订单事实、owner 少量财务摘要）；
@@ -514,6 +875,23 @@ function reviewFileReadIntent(pathname: string) {
     replayed: false,
   };
 }
+function batchReadIntent(body: unknown) {
+  // file-read-api 校验：access_token_available=true 时 access_token 必须非空，
+  // 且 replayed !== access_token_available；intents 必须覆盖请求的每个文件。
+  const requested = Array.isArray((body as { requests?: unknown }).requests)
+    ? ((body as { requests: { file_object_id: string }[] }).requests)
+    : [];
+  return {
+    intents: requested.map((item) => ({
+      read_intent_id: `review-read-${sequence}`,
+      file_object_id: item.file_object_id,
+      access_token: demoReadCredential(),
+      access_token_available: true,
+      expires_at: NOW + 10 * 60_000,
+      replayed: false,
+    })),
+  };
+}
 
 function resolve(request: ApiRequest<z.ZodType>): unknown {
   const parsed = url(request.path);
@@ -522,6 +900,8 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
 
   if (method === 'POST' && /\/files\/[^/]+\/read-intents$/u.test(path))
     return reviewFileReadIntent(path);
+  if (method === 'POST' && /\/file-read-intents\/batch$/u.test(path))
+    return batchReadIntent(request.body);
   if (
     method === 'POST' &&
     /\/order-instruction\/images\/(?:main|[1-9][0-9]*)\/read-intent$/u.test(path)
@@ -557,6 +937,8 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         marketplace_code: 'AMAZON_JP',
         identity_review_status: 'CLEAR',
         customer_number: '20260822B03585',
+        refund_account_name: null,
+        refund_account_identifier: null,
       },
     };
   if (path === '/api/buyer-portal/demands' && method === 'GET')
@@ -575,9 +957,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     const created = {
       ...state.reservations[0]!,
       reservation_id: `review-buyer-reservation-${sequence}`,
-      demand: (({ target_quantity: _a, remaining_quantity: _b, open_at: _c, ...rest }) => rest)(
-        source,
-      ),
+      demand: reservationDemandView(source),
       submitted_at: NOW,
       updated_at: NOW,
     };
@@ -627,6 +1007,11 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     return {
       order_instruction: {
         status: 'ACTIVE',
+        instruction_version: 1,
+        current_version_no: 1,
+        evidence_status: 'NONE',
+        can_submit_evidence: true,
+        can_read_images: true,
         product_name: '专业级家庭美容仪 Pro Max',
         store_display_name: 'TEST 日本店 A',
         search_keywords: ['家庭美容仪', 'Pro Max'],
@@ -906,13 +1291,126 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     };
   if (/^\/api\/seller-portal\/member-invitations\/[^/]+\/revoke$/u.test(path) && method === 'POST')
     return { revoked: true, revoked_at: NOW };
+  if (path === '/api/seller-portal/me/settlement-account' && method === 'PATCH') {
+    const me = sellerMe();
+    return {
+      me: {
+        ...me.me,
+        organization: {
+          ...me.me.organization,
+          settlement_account_name: 'Demo 收款人',
+          settlement_account_identifier: 'demo@example.invalid',
+        },
+      },
+    };
+  }
+  if (path === '/api/seller-portal/settlement/payments' && method === 'GET')
+    return {
+      // 卖家视角付款列表不带 INTERNAL_ONLY 凭证文件。
+      items: staffSettlementPayments.map(({ proof: _proof, ...payment }) => payment),
+      page: { limit: 100, next_cursor: null },
+    };
+  if (path === '/api/seller-portal/settlement/batches' && method === 'GET') {
+    // 卖家侧只读且只见 CONFIRMED/PARTIALLY_PAID/PAID（DRAFT/CANCELLED 后端过滤）。
+    const sellerSafe = settlementBatches
+      .filter((batch) => batch.status !== 'DRAFT' && batch.status !== 'CANCELLED')
+      .map((batch) => ({
+        batch_id: batch.batch_id,
+        status: batch.status,
+        frozen_total_cny_fen: batch.frozen_total_cny_fen,
+        frozen_payable_count: batch.frozen_payable_count,
+        paid_amount_cny_fen: batch.paid_amount_cny_fen,
+        outstanding_amount_cny_fen: batch.outstanding_amount_cny_fen,
+        confirmed_at: batch.confirmed_at ?? NOW,
+      }));
+    return { batches: sellerSafe, next_cursor: null };
+  }
+  if (/^\/api\/seller-portal\/settlement\/batches\/[^/]+$/u.test(path) && method === 'GET') {
+    const id = idAfter(path, '/api/seller-portal/settlement/batches/');
+    const batch = settlementBatches.find((item) => item.batch_id === id) ?? settlementBatches[1]!;
+    return {
+      batch: {
+        batch_id: batch.batch_id,
+        status: batch.status === 'DRAFT' || batch.status === 'CANCELLED' ? 'CONFIRMED' : batch.status,
+        frozen_total_cny_fen: batch.frozen_total_cny_fen,
+        frozen_payable_count: batch.frozen_payable_count,
+        paid_amount_cny_fen: batch.paid_amount_cny_fen,
+        outstanding_amount_cny_fen: batch.outstanding_amount_cny_fen,
+        confirmed_at: batch.confirmed_at ?? NOW,
+        members: [
+          {
+            amazon_order_number: '503-7770001-0003001',
+            payable_type: 'SELLER_PRINCIPAL',
+            frozen_amount_cny_fen: '128800',
+            paid_amount_cny_fen: '100000',
+            outstanding_amount_cny_fen: '28800',
+          },
+          {
+            amazon_order_number: '503-7770002-0003002',
+            payable_type: 'SELLER_SERVICE_FEE',
+            frozen_amount_cny_fen: '28600',
+            paid_amount_cny_fen: '28600',
+            outstanding_amount_cny_fen: '0',
+          },
+        ],
+        members_next_cursor: null,
+      },
+    };
+  }
+  if (path === '/api/buyer-portal/service-channels' && method === 'GET') {
+    // 客服渠道种子为空：与后端初始状态一致，买家端显示“请联系工作人员”。
+    return { channels: [] };
+  }
+  if (path === '/api/buyer-portal/me/refund-account' && method === 'PATCH')
+    return {
+      buyer: {
+        display_name: 'Demo 多身份客户',
+        marketplace_code: 'AMAZON_JP',
+        identity_review_status: 'CLEAR',
+        customer_number: '20260822B03585',
+        refund_account_name: 'Demo 收款人',
+        refund_account_identifier: 'demo@example.invalid',
+      },
+    };
 
+  // -------------------------------------------------------------------------
+  // 员工端：工作台、工作项、订单、财务、客户、设置（Schema 36 / 240 合同）。
+  // -------------------------------------------------------------------------
+  if (path === '/api/staff/me/work-items' && method === 'GET') {
+    const status = parsed.searchParams.get('status') ?? 'OPEN';
+    const type = parsed.searchParams.get('work_type');
+    return {
+      work_items: clone(workItems(status).filter((item) => !type || item.work_type === type)),
+      next_cursor: null,
+    };
+  }
+  if (path === '/api/staff/me/work-items/summary' && method === 'GET')
+    return clone(workbenchSummary());
+  if (/^\/api\/staff\/me\/work-items\/[^/]+$/u.test(path) && method === 'GET') {
+    const id = idAfter(path, '/api/staff/me/work-items/');
+    const match =
+      workItems('OPEN').find((item) => item.work_item_id === id) ??
+      workItems('COMPLETED').find((item) => item.work_item_id === id);
+    if (!match) {
+      throw new FrontendApiError('NOT_FOUND', 404, 'review-work-item-missing', 'CONTRACT', null, {
+        path: path.slice(0, 200),
+      });
+    }
+    return { work_item: clone(match) };
+  }
   if (path === '/api/staff/formal-orders' && method === 'GET') {
-    // 按平台订单号查单后重放完整聚合。
-    return formalOrderAggregate();
+    // 仅含 amazon_order_number 单参数时保持“按订单号查单”语义：重放完整聚合。
+    const keys = [...parsed.searchParams.keys()];
+    if (keys.length === 1 && keys[0] === 'amazon_order_number') {
+      return formalOrderAggregate(parsed.searchParams.get('amazon_order_number') ?? undefined);
+    }
+    return staffOrderList(parsed.searchParams);
   }
   if (/^\/api\/staff\/formal-orders\/[^/]+$/u.test(path) && method === 'GET') {
-    return formalOrderAggregate();
+    return formalOrderAggregate(idAfter(path, '/api/staff/formal-orders/'));
+  }
+  if (/^\/api\/staff\/finance\/orders\/[^/]+$/u.test(path) && method === 'GET') {
+    return { order: clone(internalFinanceOrder()) };
   }
   if (
     /^\/api\/staff\/formal-orders\/[^/]+\/communication-screenshots\/intents$/u.test(path) &&
@@ -971,17 +1469,110 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
   if (/^\/api\/staff\/buyer-advance-principal\/[^/]+$/u.test(path) && method === 'GET') {
     return { entries: [] };
   }
-  if (path === '/api/staff/me/work-items' && method === 'GET') {
-    const status = parsed.searchParams.get('status') ?? 'OPEN';
-    const type = parsed.searchParams.get('work_type');
+  if (/^\/api\/staff\/order-integrity\/[^/]+\/(events|financial-adjustments)$/u.test(path) && method === 'POST') {
     return {
-      work_items: clone(workItems(status).filter((item) => !type || item.work_type === type)),
-      next_cursor: null,
+      event: { event_id: `review-op-event-${sequence}`, replayed: false },
+    };
+  }
+  if (/^\/api\/staff\/order-evidence\/[^/]+\/preflight$/u.test(path) && method === 'GET') {
+    return {
+      preflight: {
+        submission_id: idAfter(path, '/api/staff/order-evidence/'),
+        amazon_order_date: '2026-08-08',
+        ready: true,
+        checks: [
+          {
+            code: 'ORDER_DAY_BASE_RATE',
+            status: 'READY',
+            message: '订单日汇率已配置。',
+            action_path: '/staff/finance',
+            required_access: 'FINANCIAL_VIEW',
+          },
+        ],
+      },
+    };
+  }
+  if (/^\/api\/staff\/order-evidence\/[^/]+\/approve$/u.test(path) && method === 'POST') {
+    return {
+      formal_order_id: 'review-seller-order-1',
+      order_evidence_submission_id: idAfter(path, '/api/staff/order-evidence/'),
+      status: 'CONFIRMED',
+      version: 1,
+      reference_order_amount_jpy: '12000',
+      final_paid_jpy: '12860',
+      price_difference_jpy: '860',
+      price_mismatch_acknowledged: true,
+      confirmed_at: NOW,
+      replayed: false,
+    };
+  }
+  if (/^\/api\/staff\/order-evidence\/[^/]+\/request-changes$/u.test(path) && method === 'POST') {
+    return {
+      submission_id: idAfter(path, '/api/staff/order-evidence/'),
+      reservation_id: 'review-buyer-reservation-003',
+      buyer_customer_id: 'review-buyer-customer-1',
+      marketplace: 'AMAZON_JP',
+      status: 'CHANGES_REQUESTED',
+      version: 2,
+      current_evidence_version_no: 1,
+      current_evidence_version_id: 'review-evidence-version-1',
+      replayed: false,
+      public_change_reason: '订单金额与指引不一致，请核对后重新提交。',
     };
   }
   if (path.startsWith('/api/staff/order-evidence/') && method === 'GET')
     return { order_evidence: clone(staffEvidence) };
-  if (path.startsWith('/api/staff/reviews/') && method === 'GET' && !path.endsWith('/visibility'))
+  if (/^\/api\/staff\/reviews\/[^/]+\/approve$/u.test(path) && method === 'POST') {
+    return {
+      review: {
+        review_case_id: idAfter(path, '/api/staff/reviews/'),
+        formal_order_id: 'review-seller-order-1',
+        status: 'APPROVED',
+        version: 2,
+        current_evidence_version_no: 1,
+        current_evidence_version_id: 'review-staff-review-evidence-1',
+        approved_event_id: `review-approved-event-${sequence}`,
+        financial_events: [
+          {
+            event_id: `review-financial-event-${sequence}`,
+            event_type: 'BUYER_REFUND_BECAME_DUE',
+            amount_cny_fen: '168800',
+            formal_order_financial_snapshot_id: 'review-snapshot-1',
+          },
+        ],
+        replayed: false,
+      },
+    };
+  }
+  if (/^\/api\/staff\/reviews\/[^/]+\/(reject|request-changes)$/u.test(path) && method === 'POST') {
+    const action = path.endsWith('/reject') ? 'REJECTED' : 'CHANGES_REQUESTED';
+    return {
+      review: {
+        review_case_id: idAfter(path, '/api/staff/reviews/'),
+        formal_order_id: 'review-seller-order-1',
+        status: action,
+        version: 2,
+        current_evidence_version_no: 1,
+        current_evidence_version_id: 'review-staff-review-evidence-1',
+        replayed: false,
+      },
+    };
+  }
+  if (/^\/api\/staff\/reviews\/[^/]+\/visibility$/u.test(path) && method === 'POST') {
+    return {
+      observation: {
+        observation_id: `review-observation-${sequence}`,
+        review_case_id: idAfter(path, '/api/staff/reviews/'),
+        formal_order_id: 'review-seller-order-1',
+        visibility_status: 'VISIBLE',
+        note: 'Demo 展示状态观察',
+        observed_at: NOW,
+        actor_staff_id: 'review-staff-owner',
+        created_at: NOW,
+      },
+    };
+  }
+  if (path.startsWith('/api/staff/reviews/') && method === 'GET')
     return { review: clone(staffReview) };
   if (path === '/api/staff/search' && method === 'GET') {
     const query = parsed.searchParams.get('q') ?? '';
@@ -990,7 +1581,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
       buyers: query.includes('张') || query.toLowerCase().includes('zhang')
         ? [{
           buyer_customer_id: 'review-buyer-customer-1',
-          buyer_customer_no: 'B-DEMO-001',
+          buyer_customer_no: '20260808B00042',
           display_name: '张三丰（演示）',
           marketplace_code: 'AMAZON_JP',
         }]
@@ -1004,7 +1595,14 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
           status: 'ACTIVE',
         }]
         : [],
-      orders: [],
+      orders: query.startsWith('503')
+        ? [{
+          formal_order_id: 'review-seller-order-1',
+          amazon_order_number_normalized: '503-7770001-0003001',
+          asin_display: 'B0DEMO001X',
+          marketplace_code: 'AMAZON_JP',
+        }]
+        : [],
       demands: query.includes('杯')
         ? [{
           demand_batch_id: 'review-seller-demand-1',
@@ -1020,6 +1618,8 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     const {
       source_review_event_id: _sourceReviewEventId,
       review_case_id: _reviewCaseId,
+      refund_account_name: _refundAccountName,
+      refund_account_identifier: _refundAccountIdentifier,
       payments: _payments,
       reversals: _reversals,
       ...listItem
@@ -1028,6 +1628,193 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
   }
   if (path.startsWith('/api/staff/buyer-refunds/') && method === 'GET')
     return { buyer_refund: clone(staffRefund) };
+  if (/^\/api\/staff\/buyer-refunds\/[^/]+\/payments$/u.test(path) && method === 'POST') {
+    return {
+      obligation: {
+        obligation_id: 'review-staff-refund-1',
+        buyer_customer_id: 'review-buyer-customer-1',
+        formal_order_id: 'review-seller-order-1',
+        due_amount_cny_fen: '168800',
+        net_paid_cny_fen: '108800',
+        outstanding_amount_cny_fen: '60000',
+        overpaid_amount_cny_fen: '0',
+        status: 'PARTIALLY_PAID',
+        version: 3,
+      },
+      payment: {
+        payment_entry_id: `review-refund-payment-${sequence}`,
+        amount_cny_fen: '48800',
+        paid_at: NOW,
+        china_business_date: '2026-08-29',
+        payment_channel: 'WECHAT',
+        public_note: 'Demo 追加返款',
+        internal_note: null,
+        proofs: [
+          {
+            file_object_id: `review-file-refund-proof-${sequence}`,
+            file_version: 1,
+            purpose: 'BUYER_REFUND_PROOF',
+            visibility: 'INTERNAL_ONLY',
+          },
+        ],
+      },
+      replayed: false,
+    };
+  }
+  if (
+    /^\/api\/staff\/buyer-refunds\/[^/]+\/payments\/[^/]+\/reversals$/u.test(path) &&
+    method === 'POST'
+  ) {
+    return {
+      obligation: {
+        obligation_id: 'review-staff-refund-1',
+        buyer_customer_id: 'review-buyer-customer-1',
+        formal_order_id: 'review-seller-order-1',
+        due_amount_cny_fen: '168800',
+        net_paid_cny_fen: '11200',
+        outstanding_amount_cny_fen: '157600',
+        overpaid_amount_cny_fen: '0',
+        status: 'PARTIALLY_PAID',
+        version: 4,
+      },
+      reversal: {
+        reversal_entry_id: `review-refund-reversal-${sequence}`,
+        obligation_id: 'review-staff-refund-1',
+        entry_type: 'REVERSAL',
+        original_payment_entry_id: 'review-refund-payment-1',
+        amount_cny_fen: '48800',
+        reversed_at: NOW,
+        china_business_date: '2026-08-29',
+        payment_channel: 'WECHAT',
+        public_note: null,
+      },
+      replayed: false,
+    };
+  }
+  if (
+    /^\/api\/staff\/demand-batches\/[^/]+\/reservation-schedule$/u.test(path) &&
+    method === 'GET'
+  ) {
+    return {
+      page: {
+        demand: {
+          demand_batch_id: 'review-seller-demand-1',
+          product_id: 'review-product-1',
+          product_name: '轻量保温随行杯',
+          target_quantity: 12,
+          effective_reservation_count: 5,
+          order_deadline: NOW + 9 * DAY,
+          demand_version: 1,
+          schedule: {
+            schedule_version_id: 'review-schedule-version-1',
+            version_no: 1,
+            demand_version: 1,
+            order_interval_days: 2,
+            orders_per_run: 3,
+            first_order_date: '2026-08-12',
+            theoretical_last_order_date: '2026-08-22',
+            affected_reservation_count: 5,
+            preview_hash: '0'.repeat(64),
+            change_reason: '初始排期',
+            changed_by_staff_id: 'review-staff-owner',
+            created_at: NOW - DAY,
+          },
+        },
+        items: [
+          {
+            reservation_id: 'review-buyer-reservation-001',
+            status: 'APPROVED',
+            decision_source: 'STAFF',
+            version: 1,
+            submitted_at: NOW - 3 * DAY,
+            rank: 1,
+            planned_order_date: '2026-08-12',
+            buyer_reference: '张三丰（演示）',
+            buyer_customer_id: 'review-buyer-customer-1',
+            buyer_display_name: '张三丰（演示）',
+            actual_order_status: 'CONFIRMED',
+            actual_order_date: '2026-08-12',
+          },
+          {
+            reservation_id: 'review-buyer-reservation-002',
+            status: 'PENDING_REVIEW',
+            decision_source: null,
+            version: 1,
+            submitted_at: NOW - 2 * DAY,
+            rank: null,
+            planned_order_date: null,
+            buyer_reference: '李逍遥（演示）',
+            buyer_customer_id: 'review-buyer-customer-2',
+            buyer_display_name: '李逍遥（演示）',
+            actual_order_status: null,
+            actual_order_date: null,
+          },
+          {
+            reservation_id: 'review-buyer-reservation-003',
+            status: 'APPROVED',
+            decision_source: 'AUTO',
+            version: 1,
+            submitted_at: NOW - DAY,
+            rank: 3,
+            planned_order_date: '2026-08-16',
+            buyer_reference: '赵灵儿（演示）',
+            buyer_customer_id: 'review-buyer-customer-3',
+            buyer_display_name: '赵灵儿（演示）',
+            actual_order_status: null,
+            actual_order_date: null,
+          },
+        ],
+        next_cursor: null,
+        timezone: 'Asia/Tokyo',
+        sorting: 'submitted_at ASC, id ASC',
+        data_as_of: NOW,
+      },
+    };
+  }
+  if (/^\/api\/staff\/demand-batches\/[^/]+\/schedule\/preview$/u.test(path) && method === 'POST') {
+    return {
+      preview: {
+        demand_batch_id: idAfter(path, '/api/staff/demand-batches/'),
+        expected_version: 1,
+        current_schedule_version: 1,
+        order_interval_days: 3,
+        orders_per_run: 2,
+        first_order_date: '2026-08-13',
+        theoretical_last_order_date: '2026-08-25',
+        order_deadline_date: '2026-09-05',
+        effective_reservation_count: 5,
+        affected_reservation_count: 5,
+        before_first_order_date: '2026-08-12',
+        before_theoretical_last_order_date: '2026-08-22',
+        preview_hash: '1'.repeat(64),
+        timezone: 'Asia/Tokyo',
+        data_as_of: NOW,
+      },
+    };
+  }
+  if (/^\/api\/staff\/demand-batches\/[^/]+\/schedule\/confirm$/u.test(path) && method === 'POST') {
+    return {
+      schedule_confirmation: {
+        demand_batch_id: idAfter(path, '/api/staff/demand-batches/'),
+        demand_version: 1,
+        schedule: {
+          schedule_version_id: `review-schedule-version-${sequence}`,
+          version_no: 2,
+          demand_version: 1,
+          order_interval_days: 3,
+          orders_per_run: 2,
+          first_order_date: '2026-08-13',
+          theoretical_last_order_date: '2026-08-25',
+          affected_reservation_count: 5,
+          preview_hash: '1'.repeat(64),
+          change_reason: '调整下单节奏',
+          changed_by_staff_id: 'review-staff-owner',
+          created_at: NOW,
+        },
+        replayed: false,
+      },
+    };
+  }
   if (/^\/api\/staff\/demand-batches\/[^/]+\/review-context$/u.test(path) && method === 'GET')
     return {
       review_context: {
@@ -1053,7 +1840,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         color_spec_mode: 'MAIN_IMAGE_VARIANT',
         buyer_self_pay_bps_snapshot: null,
         can_publish: true,
-        timezone: 'Asia/Shanghai',
+        timezone: 'Asia/Tokyo',
         data_as_of: NOW,
       },
     };
@@ -1064,8 +1851,140 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         status: 'PUBLISHED',
         version: 2,
         review_reason: null,
-        schedule: null,
+        schedule: {
+          schedule_version_id: `review-schedule-version-${sequence}`,
+          version_no: 1,
+          demand_version: 2,
+          order_interval_days: 2,
+          orders_per_run: 3,
+          first_order_date: '2026-08-12',
+          theoretical_last_order_date: '2026-08-22',
+          affected_reservation_count: 5,
+          preview_hash: '0'.repeat(64),
+          change_reason: '审核通过时生成初始排期',
+          changed_by_staff_id: 'review-staff-owner',
+          created_at: NOW,
+        },
         replayed: false,
+      },
+    };
+  if (/^\/api\/staff\/product-applications\/[^/]+\/review-context$/u.test(path) && method === 'GET')
+    return {
+      review_context: {
+        application_id: idAfter(path, '/api/staff/product-applications/'),
+        store: { id: 'review-store-a', display_name: 'TEST 日本店 A' },
+        marketplace_code: 'AMAZON_JP',
+        asin: 'B0DEMOAPP0',
+        product_name: 'Demo 商品申请 1',
+        search_keywords: ['Demo', '日本'],
+        product_url: 'https://example.invalid/product',
+        buyer_visible_notes: 'Demo 买家可见说明',
+        seller_notes: 'Demo 卖家内部备注',
+        ordering_guide_expected_amount_jpy: '2980',
+        status: 'SUBMITTED',
+        version: 1,
+        submitted_at: NOW - DAY,
+        images: [
+          {
+            file_object_id: 'review-application-image-1',
+            file_version: 1,
+            client_file_name: 'demo-application-main.png',
+          },
+        ],
+      },
+    };
+  if (/^\/api\/staff\/product-applications\/[^/]+\/review$/u.test(path) && method === 'POST')
+    return {
+      product_application_review: {
+        application_id: idAfter(path, '/api/staff/product-applications/'),
+        status: 'APPROVED',
+        application_version: 2,
+        product_id: 'review-product-6',
+        product_version_id: 'review-product-version-6',
+        main_image_file_object_id: 'review-application-image-1',
+        review_reason: null,
+        replayed: false,
+      },
+    };
+  if (/^\/api\/staff\/reservations\/[^/]+\/review-context$/u.test(path) && method === 'GET')
+    return {
+      review_context: {
+        reservation_id: idAfter(path, '/api/staff/reservations/'),
+        buyer: {
+          id: 'review-buyer-customer-1',
+          customer_no: '20260808B00042',
+          name: '张三丰（演示）',
+          wechat: 'demo_buyer_wechat',
+        },
+        store: { id: 'review-store-a', display_name: 'TEST 日本店 A' },
+        marketplace_code: 'AMAZON_JP',
+        status: 'PENDING_REVIEW',
+        version: 1,
+        submitted_at: NOW - DAY,
+        hold_expires_at: NOW + 6 * 3_600_000,
+        order_deadline_snapshot: NOW + 9 * DAY,
+        buyer_self_pay_bps_snapshot: 0,
+        reference_order_amount_jpy_snapshot: '128000',
+        estimated_self_pay_jpy_snapshot: '0',
+        estimated_refundable_principal_jpy_snapshot: '108800',
+        demand: {
+          demand_batch_id: 'review-seller-demand-1',
+          product_name: '专业级家庭美容仪 Pro Max',
+          task_type: 'VIDEO',
+          reservation_deadline: NOW + 2 * DAY,
+          order_deadline: NOW + 9 * DAY,
+          store_display_name: 'TEST 日本店 A',
+        },
+      },
+    };
+  if (/^\/api\/staff\/reservations\/[^/]+\/decision$/u.test(path) && method === 'POST')
+    return {
+      reservation_decision: {
+        reservation_id: idAfter(path, '/api/staff/reservations/'),
+        demand_batch_id: 'review-seller-demand-1',
+        buyer_customer_id: 'review-buyer-customer-1',
+        status: 'APPROVED',
+        version: 2,
+        decision_reason: null,
+        replayed: false,
+      },
+    };
+  if (/^\/api\/staff\/reservations\/[^/]+\/reopen$/u.test(path) && method === 'POST')
+    return {
+      reservation_reopen: {
+        reservation_id: idAfter(path, '/api/staff/reservations/'),
+        demand_batch_id: 'review-seller-demand-1',
+        status: 'PENDING_REVIEW',
+        version: 3,
+        reopened_count: 1,
+        reason: 'Demo 重新打开预约',
+        replayed: false,
+      },
+    };
+  if (/^\/api\/staff\/order-instructions\/[^/]+\/publish$/u.test(path) && method === 'POST')
+    return {
+      publication: {
+        instruction: {
+          instruction_id: idAfter(path, '/api/staff/order-instructions/'),
+          status: 'ACTIVE',
+          version: 2,
+        },
+        instruction_version_id: `review-instruction-version-${sequence}`,
+        content_hash: '2'.repeat(64),
+        replayed: false,
+        unchanged: false,
+      },
+    };
+  if (/^\/api\/staff\/order-instructions\/[^/]+$/u.test(path) && method === 'GET')
+    return {
+      order_instruction: {
+        instruction_id: idAfter(path, '/api/staff/order-instructions/'),
+        reservation_id: 'review-buyer-reservation-003',
+        status: 'UNPUBLISHED',
+        current_version_no: 1,
+        version: 1,
+        published_at: null,
+        initial_deadline_at: NOW + 5 * DAY,
       },
     };
   if (path === '/api/staff/catalog/products' && method === 'GET')
@@ -1089,6 +2008,12 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
             buyer_visible_notes: 'Demo 产品说明',
             internal_notes: 'Demo 内部说明',
             cadence: { order_interval_days: 2, orders_per_run: 3 },
+            main_image: {
+              file_object_id: `review-product-main-${id}`,
+              file_version: 1,
+              client_file_name: 'demo-main.webp',
+              bound_at: NOW - DAY,
+            },
             created_at: NOW - DAY,
           },
         ],
@@ -1104,7 +2029,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
             first_order_date: '2026-08-12',
           },
         ],
-        timezone: 'Asia/Shanghai',
+        timezone: 'Asia/Tokyo',
         data_as_of: NOW,
       },
     };
@@ -1119,6 +2044,95 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     };
   if (path.startsWith('/api/staff/access-management/employees') && method === 'POST')
     return { employee: clone(staffEmployees[1]), replayed: false };
+  if (/^\/api\/staff\/access-management\/employees\/[^/]+\/status$/u.test(path) && method === 'POST')
+    return { employee: clone(staffEmployees[1]), replayed: false };
+  if (path === '/api/staff/service-channels' && method === 'GET') {
+    // 种子即空：演示环境与后端初始状态一致（未配置联系方式），不编造真实渠道。
+    return {
+      channels: [
+        {
+          code: 'BUYER_PRE_SALES',
+          display_name: '',
+          wechat_id: null,
+          qr_file: null,
+          version: 1,
+          updated_at: NOW - 7 * DAY,
+        },
+        {
+          code: 'BUYER_AFTER_SALES',
+          display_name: '',
+          wechat_id: null,
+          qr_file: null,
+          version: 1,
+          updated_at: NOW - 7 * DAY,
+        },
+      ],
+    };
+  }
+  if (/^\/api\/staff\/service-channels\/[^/]+(\/qr)?$/u.test(path) && method !== 'GET') {
+    return {
+      channel: {
+        code: 'BUYER_PRE_SALES',
+        display_name: '月光白客服',
+        wechat_id: null,
+        qr_file: null,
+        version: 2,
+        updated_at: NOW,
+      },
+      replayed: false,
+    };
+  }
+  if (
+    /^\/api\/staff\/seller-settlements\/[^/]+\/summary$/u.test(path) &&
+    method === 'GET'
+  ) {
+    return {
+      settlement: {
+        outstanding_principal_cny_fen: '615300',
+        outstanding_service_fee_cny_fen: '18600',
+        total_outstanding_cny_fen: '633900',
+        unallocated_credit_cny_fen: '40000',
+        settlement_account_name: null,
+        settlement_account_identifier: null,
+      },
+    };
+  }
+  if (
+    /^\/api\/staff\/seller-settlements\/[^/]+\/payables$/u.test(path) &&
+    method === 'GET'
+  ) {
+    return { items: clone(sellerPayables), page: { limit: 25, next_cursor: null } };
+  }
+  if (
+    /^\/api\/staff\/seller-settlements\/[^/]+\/payments$/u.test(path) &&
+    method === 'GET'
+  ) {
+    return { items: clone(staffSettlementPayments), page: { limit: 25, next_cursor: null } };
+  }
+  if (
+    /^\/api\/staff\/seller-settlements\/[^/]+\/payments$/u.test(path) &&
+    method === 'POST'
+  ) {
+    return {
+      payment: clone(staffSettlementPayments[0]),
+      replayed: false,
+    };
+  }
+  if (
+    /^\/api\/staff\/seller-settlements\/[^/]+\/batches$/u.test(path) &&
+    method === 'GET'
+  ) {
+    return { batches: clone(settlementBatches), next_cursor: null };
+  }
+  if (/^\/api\/staff\/seller-settlements\/[^/]+\/batches/u.test(path) && method === 'POST') {
+    return { batch: clone(settlementBatches[1]), replayed: false };
+  }
+  if (/^\/api\/staff\/seller-payments\/[^/]+\/(allocations|reverse)$/u.test(path) && method === 'POST') {
+    return {
+      payment: clone(staffSettlementPayments[1]),
+      replayed: false,
+    };
+  }
   if (path === '/api/staff/seller-principal-rate-policies' && method === 'GET') {
     const policy = {
       policy_version_id: 'review-policy-confirmed',
@@ -1262,7 +2276,6 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     };
   if (path === '/api/staff/admin-business-dashboard/summary' && method === 'GET')
     return dashboardSummary(parsed.searchParams.get('window') ?? 'TODAY');
-;
   if (path === '/api/staff/customer-onboarding/lookup' && method === 'GET')
     return {
       matches: [
@@ -1279,6 +2292,129 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
       ],
       resolution_required: false,
       manual_resolution_applied: false,
+    };
+  if (path === '/api/staff/customer-onboarding/seller-directory' && method === 'GET')
+    return {
+      items: [
+        {
+          seller_organization_id: 'review-seller-org',
+          seller_code: 'TEST-S001',
+          display_name: '月光白 Demo 卖家组织',
+          wechat_masked: 'demo****01',
+          marketplace_code: 'AMAZON_JP',
+          source_status: 'CURRENT_OR_NEW',
+          source_file_count: 0,
+          product_names: ['轻量保温随行杯', '无线静音鼠标'],
+          active_offering_count: 2,
+          has_portal_account: true,
+        },
+        {
+          seller_organization_id: 'review-seller-org-2',
+          seller_code: 'TEST-S002',
+          display_name: 'Demo 历史进口卖家',
+          wechat_masked: 'hist****88',
+          marketplace_code: 'AMAZON_JP',
+          source_status: 'HISTORICAL_FROZEN_IMPORT',
+          source_file_count: 6,
+          product_names: ['历史保温壶（存档）'],
+          active_offering_count: 0,
+          has_portal_account: false,
+        },
+      ],
+    };
+  if (path === '/api/staff/customer-onboarding/buyer-registration-invitations' && method === 'POST')
+    return {
+      invitation: {
+        invitation_id: `review-buyer-invite-${sequence}`,
+        registration_token: 'review-buyer-token',
+        registration_path: '/review/buyer/register?token=demo',
+        wechat_id: 'demo_new_buyer',
+        marketplace_code: 'AMAZON_JP',
+        status: 'ACTIVE',
+        version: 1,
+        expires_at: NOW + 7 * DAY,
+        replayed: false,
+      },
+    };
+  if (path === '/api/staff/buyer-customers' && method === 'POST')
+    return {
+      buyer_customer: {
+        buyer_customer_id: `review-buyer-customer-${sequence}`,
+        buyer_number: '20260829B00001',
+        access_status: 'INVITED',
+        activated: false,
+        initial_pre_sales_owner: {
+          assignment_id: `review-assignment-${sequence}`,
+          staff_id: 'review-staff-pre_sales',
+          staff_display_name: 'Demo 售前',
+          version: 1,
+        },
+      },
+      replayed: false,
+    };
+  if (path === '/api/staff/customer-security/seller-invitations' && method === 'POST')
+    return {
+      invitation: {
+        invitation_id: `review-seller-invite-${sequence}`,
+        registration_token: 'review-seller-token',
+        registration_path: '/review/seller/register?token=demo',
+        wechat_id: 'demo_new_seller',
+        marketplace_code: 'AMAZON_JP',
+        seller_organization_id: 'review-seller-org-2',
+        seller_name: 'Demo 历史进口卖家',
+        onboarding_kind: 'HISTORICAL_ACCOUNT_ONLY',
+        status: 'ACTIVE',
+        version: 1,
+        expires_at: NOW + 7 * DAY,
+        replayed: false,
+      },
+    };
+  if (
+    path === '/api/staff/customer-security/seller-invitations/current' &&
+    method === 'GET'
+  ) {
+    const organizationId = parsed.searchParams.get('seller_organization_id');
+    if (organizationId === 'review-seller-org-2') {
+      return {
+        invitation: {
+          invitation_id: 'review-seller-invite-active',
+          wechat_id: 'demo_new_seller',
+          marketplace_code: 'AMAZON_JP',
+          seller_organization_id: 'review-seller-org-2',
+          seller_member_id: null,
+          onboarding_kind: 'HISTORICAL_ACCOUNT_ONLY',
+          issued_by_staff_id: 'review-staff-seller_ops',
+          status: 'ACTIVE',
+          version: 1,
+          issued_at: NOW - DAY,
+          expires_at: NOW + 6 * DAY,
+          consumed_at: null,
+          revoked_at: null,
+          registration_link_recoverable: false,
+        },
+      };
+    }
+    return { invitation: null };
+  }
+  if (/^\/api\/staff\/customer-security\/[^/]+-invitations\/[^/]+\/revoke$/u.test(path) && method === 'POST')
+    return {
+      invitation: {
+        invitation_id: idAfter(path.split('/revoke')[0]!, '/api/staff/customer-security/'),
+        status: 'REVOKED',
+        version: 2,
+        revoked_at: NOW,
+      },
+    };
+  if (/^\/api\/staff\/customer-onboarding\/[^/]+\/[^/]+\/password-reset$/u.test(path) && method === 'POST')
+    return {
+      password_reset: {
+        reset_id: `review-reset-${sequence}`,
+        reset_token: 'review-reset-token',
+        reset_path: '/review/customer/reset-password?token=demo',
+        expires_at: NOW + 3_600_000,
+        affected_personas: ['BUYER'],
+        replayed: false,
+      },
     };
   if (path === '/api/staff/customer-identity-resolution/cases' && method === 'GET')
     return {
@@ -1300,28 +2436,50 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         },
       ],
     };
+  if (path === '/api/staff/customer-identity-resolution/cases' && method === 'POST')
+    return {
+      case: {
+        id: `review-identity-case-${sequence}`,
+        identity_masked: 'demo****99',
+        customer_type: 'BUYER',
+        marketplace_code: 'AMAZON_JP',
+        reason_code: 'AMBIGUOUS_HISTORY',
+        staff_note: '员工查询历史客户时同一站点匹配到多个业务主体，请总管理员人工核对。',
+        status: 'OPEN',
+        reported_by_staff_id: 'review-staff-pre_sales',
+        resolved_subject_id: null,
+        resolution_note: null,
+        resolved_by_staff_id: null,
+        created_at: NOW,
+        resolved_at: null,
+      },
+    };
   return blocked(`${method} ${request.path}`);
 }
 
-function formalOrderAggregate() {
+function formalOrderAggregate(orderNumber?: string) {
   const owner = currentStaffReviewRole() === 'owner';
+  const target =
+    (orderNumber !== undefined
+      ? staffOrders.find((order) => order.amazonOrderNumber === orderNumber)
+      : undefined) ?? staffOrders[0]!;
   const base = {
     order: {
-      formal_order_id: 'review-seller-order-1',
+      formal_order_id: target.id,
       marketplace_code: 'AMAZON_JP',
-      amazon_order_number: '503-7770001-0003001',
-      amazon_order_date: '2026-08-08',
+      amazon_order_number: target.amazonOrderNumber,
+      amazon_order_date: target.amazonOrderDate,
       status: 'CONFIRMED',
-      confirmed_at: NOW - 3 * DAY,
+      confirmed_at: target.confirmedAt,
     },
     buyer: {
       buyer_customer_id: 'review-buyer-customer-1',
-      display_name: 'Demo 买家',
-      customer_no: '20260808B00042',
+      display_name: target.buyerName,
+      customer_no: target.buyerNo,
     },
     seller: {
       seller_organization_id: 'review-seller-org',
-      store_display_name: 'TEST 日本店 A',
+      store_display_name: target.storeName,
     },
     payment_screenshot: {
       file_object_id: 'review-payment-file-1',
@@ -1333,6 +2491,9 @@ function formalOrderAggregate() {
         file_version: 1,
         purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
         visibility: 'SELLER_VISIBLE',
+        uploaded_at: NOW - DAY,
+        uploaded_by_staff_id: 'review-staff-seller_ops',
+        uploaded_by_staff_name: 'Demo 卖家对接',
       },
     ],
     operational_events: [
@@ -1344,21 +2505,146 @@ function formalOrderAggregate() {
         created_at: NOW - DAY,
       },
     ],
+    responsibility: orderResponsibility(target),
   };
   if (!owner) return base;
   return {
     ...base,
+    buyer_advance: {
+      authoritative_advance_amount_cny_fen: '0',
+      recorded_advance_amount_cny_fen: '0',
+      remaining_advance_amount_cny_fen: '0',
+      can_record_advance_payment: true,
+    },
     financial_adjustments: [],
     financial_snapshot: {
+      financial_snapshot_id: 'review-snapshot-1',
+      buyer_self_pay_bps: 1000,
+      buyer_self_pay_jpy: '398',
+      buyer_expected_principal_cny_fen: target.buyerExpectedPrincipal ?? '165000',
+      seller_expected_principal_cny_fen: target.sellerExpectedPrincipal ?? '182500',
+      service_fee_cny_fen: '1250',
+    },
+    finance_source: 'internal-finance',
+  };
+}
+
+function internalFinanceOrder() {
+  const target = staffOrders[0]!;
+  return {
+    position: {
+      formal_order_id: target.id,
+      amazon_order_number: target.amazonOrderNumber,
+      seller_organization_id: 'review-seller-org',
+      store_id: target.storeId,
+      product_id: 'review-product-1',
+      asin: 'B0DEMO001X',
+      product_name: target.productName,
+      review_type: target.reviewType,
+      confirmed_at: target.confirmedAt,
+      confirmed_business_date: '2026-08-08',
+      review_approved_at: NOW - 2 * DAY,
+      review_approved_business_date: '2026-08-27',
+      last_cash_business_date: '2026-08-28',
+      final_paid_jpy: target.finalPaidJpy,
+      financial_snapshot_id: 'review-snapshot-1',
+      buyer_self_pay_bps: 1000,
+      buyer_self_pay_jpy: '398',
+      buyer_expected_principal_cny_fen: '165000',
+      seller_expected_principal_cny_fen: '182500',
+      service_fee_snapshot_cny_fen: '1250',
+      projected_gross_profit_cny_fen: '18750',
+      completed_gross_profit_cny_fen: null,
+      seller_principal_due_cny_fen: '182500',
+      seller_principal_collected_cny_fen: '0',
+      seller_principal_outstanding_cny_fen: '182500',
+      seller_service_fee_due_cny_fen: '1250',
+      seller_service_fee_collected_cny_fen: '0',
+      seller_service_fee_outstanding_cny_fen: '1250',
+      buyer_refund_due_cny_fen: '165000',
+      buyer_refund_net_paid_cny_fen: '60000',
+      buyer_refund_outstanding_cny_fen: '105000',
+      buyer_refund_overpaid_cny_fen: '0',
+      attributed_cash_net_cny_fen: '60000',
+      finance_status: 'BUYER_REFUND_OUTSTANDING',
+    },
+    frozen_snapshot: {
       financial_snapshot_id: 'review-snapshot-1',
       buyer_self_pay_bps: 1000,
       buyer_self_pay_jpy: '398',
       buyer_expected_principal_cny_fen: '165000',
       seller_expected_principal_cny_fen: '182500',
       service_fee_cny_fen: '1250',
+      rate_detail: {
+        buyer_rate_business_date: '2026-08-08',
+        buyer_cny_per_jpy_e8: '4850000',
+        markup_rate_value: '1500000',
+        final_rate_value: '5000000',
+        policy_scope_type: 'CURRENCY_PAIR_DEFAULT',
+        policy_version_no: 3,
+        policy_effective_from: NOW - 30 * DAY,
+      },
     },
-    finance_source: 'internal-finance',
+    seller_payables: {
+      principal_due_cny_fen: '182500',
+      principal_collected_cny_fen: '0',
+      principal_outstanding_cny_fen: '182500',
+      service_fee_due_cny_fen: '1250',
+      service_fee_collected_cny_fen: '0',
+      service_fee_outstanding_cny_fen: '1250',
+    },
+    buyer_refund: {
+      due_cny_fen: '165000',
+      net_paid_cny_fen: '60000',
+      outstanding_cny_fen: '105000',
+      overpaid_cny_fen: '0',
+    },
+    attributed_cash: {
+      seller_allocated_net_cny_fen: '0',
+      buyer_refund_net_paid_cny_fen: '60000',
+      net_cny_fen: '60000',
+    },
+    calculations: {
+      projected_gross_profit: {
+        formula: 'seller_expected_principal - service_fee - buyer_expected_principal',
+        seller_expected_principal_cny_fen: '182500',
+        service_fee_cny_fen: '1250',
+        buyer_expected_principal_cny_fen: '165000',
+        result_cny_fen: '16250',
+      },
+      completed_gross_profit: {
+        formula: 'seller_principal_payable + seller_service_fee_payable - buyer_refund_due',
+        eligible: false,
+        seller_principal_payable_cny_fen: '0',
+        seller_service_fee_payable_cny_fen: '0',
+        buyer_refund_due_cny_fen: '165000',
+        result_cny_fen: null,
+      },
+      current_attributed_cash: {
+        formula: 'seller_current_net_allocation + buyer_refund_net_paid',
+        seller_current_net_allocation_cny_fen: '0',
+        buyer_refund_net_paid_cny_fen: '60000',
+        result_cny_fen: '60000',
+      },
+    },
+    finance_status: 'BUYER_REFUND_OUTSTANDING',
+    exception_codes: [],
+    suggested_actions: ['PROCESS_BUYER_REFUND'],
   };
+}
+
+function reservationDemandView(source: (typeof state.demands)[number]) {
+  // reservation DTO 内嵌的 demand 是严格子集（见 buyer reservationDemandSchema）。
+  const {
+    target_quantity: _a,
+    remaining_quantity: _b,
+    open_at: _c,
+    main_image: _d,
+    reservation_eligibility: _e,
+    reservation_ineligibility_reason: _f,
+    ...rest
+  } = source;
+  return rest;
 }
 
 function filterStore<T extends { store: { id: string } }>(

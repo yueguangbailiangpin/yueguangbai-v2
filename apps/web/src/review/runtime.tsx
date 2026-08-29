@@ -33,6 +33,10 @@ export function currentSellerReviewRole(): SellerReviewRole {
 export function currentStaffReviewRole(): StaffReviewRole {
   return staffRole;
 }
+/** 仅限测试：直接切换评审角色（UI 路径走 ReviewRuntimeProvider.chooseStaffRole）。 */
+export function chooseStaffRoleForTests(role: StaffReviewRole): void {
+  staffRole = role;
+}
 
 const staffRoleDisplay = {
   owner: '总管理员',

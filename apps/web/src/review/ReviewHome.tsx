@@ -32,7 +32,7 @@ export function ReviewHome(): React.JSX.Element {
           <Card>
             <span>Staff</span>
             <h2>员工端</h2>
-            <p>五种岗位、工作队列、客户、产品与经营工具。</p>
+            <p>四种岗位、工作台、订单、客户、产品、返款与财务。</p>
           </Card>
         </Link>
       </section>

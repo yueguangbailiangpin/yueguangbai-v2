@@ -13,11 +13,13 @@ function demand(
   }> = {},
 ) {
   const amount = input.amount ?? String(2_980 + index * 1_327);
+  const remaining = input.remaining ?? Math.max(0, 7 - index);
   return {
     demand_id: `review-buyer-demand-${String(index).padStart(3, '0')}`,
     demand_version: 1,
     marketplace_code: 'AMAZON_JP' as const,
     product_name: input.product_name ?? `Demo 日本站产品 ${index}`,
+    main_image: null,
     reference_order_amount_jpy: amount,
     buyer_self_pay_bps: index % 3 === 0 ? 1500 : 0,
     estimated_buyer_self_pay_jpy: index % 3 === 0 ? String(Math.round(Number(amount) * 0.15)) : '0',
@@ -27,10 +29,14 @@ function demand(
     store_display_name: index % 2 === 0 ? 'TEST 日本店 B' : 'TEST 日本店 A',
     task_type: input.task_type ?? (['RATING', 'TEXT', 'IMAGE', 'VIDEO'] as const)[(index - 1) % 4],
     target_quantity: 8,
-    remaining_quantity: input.remaining ?? Math.max(0, 7 - index),
+    remaining_quantity: remaining,
     open_at: NOW - DAY,
     reservation_deadline: NOW + (input.deadlineDays ?? index + 1) * DAY,
     order_deadline: NOW + (input.deadlineDays ?? index + 1) * DAY + 7 * DAY,
+    reservation_eligibility: (remaining > 0 ? 'ELIGIBLE' : 'INELIGIBLE_ACTIVE_STORE_RESERVATION') as
+      | 'ELIGIBLE'
+      | 'INELIGIBLE_ACTIVE_STORE_RESERVATION',
+    reservation_ineligibility_reason: remaining > 0 ? null : 'ACTIVE_STORE_RESERVATION',
   };
 }
 
@@ -61,6 +67,9 @@ function reservationDemand(source: (typeof demands)[number]) {
     target_quantity: _target,
     remaining_quantity: _remaining,
     open_at: _open,
+    main_image: _mainImage,
+    reservation_eligibility: _eligibility,
+    reservation_ineligibility_reason: _reason,
     ...value
   } = source;
   return value;
@@ -295,6 +304,11 @@ function refund(index: number, status: 'DUE' | 'PARTIALLY_PAID' | 'PAID' | 'OVER
       review_type: order.review_type,
       status: 'CONFIRMED' as const,
     },
+    reminder: {
+      reminder_count: 0,
+      last_reminded_at: null,
+      next_reminder_at: null,
+    },
     allowed_actions: [] as [],
     activities:
       paid > 0
@@ -344,24 +358,22 @@ function sellerOrder(
   paymentAmount: string,
   communicationScreenshots: readonly DemoCommunicationScreenshot[],
 ) {
+  // business_completion 只含评论/卖家本金/服务费三段（买家返款不属于卖家视角）。
   const parts =
     completion === 'COMPLETE'
       ? {
           review: 'COMPLETE',
-          buyer_refund: 'COMPLETE',
           seller_principal: 'COMPLETE',
           seller_service_fee: 'COMPLETE',
         }
       : index % 3 === 0
         ? {
             review: 'COMPLETE',
-            buyer_refund: 'COMPLETE',
             seller_principal: 'PENDING',
             seller_service_fee: 'PENDING',
           }
         : {
             review: index % 2 === 0 ? 'COMPLETE' : 'PENDING',
-            buyer_refund: index % 2 === 0 ? 'COMPLETE' : 'PENDING',
             seller_principal: 'PENDING',
             seller_service_fee: 'PENDING',
           };
@@ -448,6 +460,7 @@ function createDemoData() {
     product_url: 'https://example.invalid/product',
     buyer_visible_notes: 'Demo 买家可见说明',
     seller_notes: 'Demo 卖家内部备注',
+    ordering_guide_expected_amount_jpy: 2_980 + index * 1_500,
     status,
     review_reason: reason,
     product_id: status === 'APPROVED' ? `review-product-${index}` : null,

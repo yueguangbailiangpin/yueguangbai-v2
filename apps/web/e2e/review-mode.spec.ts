@@ -32,11 +32,11 @@ test('review entry and all three portals render without real API requests', asyn
 
   await page.goto('/review/buyer');
   await expect(page.getByText('前端评审 · Demo 数据', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '当前开放产品' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前可预约' })).toBeVisible();
 
   await page.goto('/review/seller');
   await expect(page.getByLabel('卖家评审角色')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议处理', exact: true })).toBeVisible();
 
   await page.goto('/review/staff');
   await expect(page.getByLabel('员工评审角色')).toBeVisible();
@@ -59,13 +59,13 @@ test('review role selectors update visible seller and staff permissions', async 
   await expect(page.getByRole('link', { name: '提交产品申请', exact: true })).toHaveCount(0);
 
   await page.goto('/review/staff');
-  const navigation = page.getByRole('navigation', { name: '员工工作台导航' });
+  const navigation = page.getByRole('navigation', { name: '员工工作台主导航' });
+  // Stage 7.5 导航：订单对全部角色可见；upcoming（规划中）项渲染为 span 非 link，不计数。
   const roles = [
-    // D-056 四角色（acquisition 退役）；upcoming 项渲染为 span 非 link，不计数。
-    ['owner', ['工作台', '买家', '卖家', '产品与预约', '买家返款', '财务', '员工与权限', '经营看板']],
-    ['pre_sales', ['工作台', '买家', '产品与预约']],
-    ['seller_ops', ['工作台', '卖家', '产品与预约', '财务']],
-    ['buyer_refund', ['工作台', '买家返款']],
+    ['owner', ['工作台', '买家', '卖家', '产品与预约', '订单', '买家返款', '财务', '员工与权限', '经营看板', '客服渠道']],
+    ['pre_sales', ['工作台', '买家', '产品与预约', '订单']],
+    ['seller_ops', ['工作台', '卖家', '产品与预约', '订单', '财务']],
+    ['buyer_refund', ['工作台', '订单', '买家返款']],
   ] as const;
   for (const [role, expected] of roles) {
     await page.getByLabel('员工评审角色').selectOption(role);
