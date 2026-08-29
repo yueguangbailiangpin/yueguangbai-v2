@@ -1,4 +1,6 @@
 import type {
+  SellerPortalSettlementBatchDetailDto,
+  SellerPortalSettlementBatchDto,
   SellerSettlementBatchDetailDto,
   SellerSettlementBatchDto,
   SellerSettlementBatchMemberDto,
@@ -6,7 +8,7 @@ import type {
   SqlDatabase,
   SqlStatement,
 } from '@ygb/contracts';
-import { hashCanonicalJson } from '@ygb/domain';
+import { hashCanonicalJson, sha256Hex } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
 import {
   acquireIdempotency,
@@ -18,15 +20,26 @@ import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { fixedInteger, SellerSettlementError } from './shared';
 
 /**
- * Stage 7.5 batch 3: immutable seller settlement batches. Commands are
+ * Stage 7.5 batch 3 + 7.5R: immutable seller settlement batches. Commands are
  * idempotent (key + request hash), version-guarded (expected_version),
  * state-machine-checked (database triggers), audited twice (audit_events +
  * seller_settlement_batch_events) and finish with transaction assertions.
  * Payment progress is always derived from the live payable balances.
+ *
+ * 7.5R truthfulness: member reads are keyset-paginated end to end (no silent
+ * MEMBER_PAGE truncation, no OFFSET), seller-portal routes project a dedicated
+ * seller-safe DTO, and CSV export enumerates pages while checking row/byte
+ * limits BEFORE the first byte is sent — an oversized batch answers
+ * 409 EXPORT_TOO_LARGE instead of a truncated file. Export is idempotent:
+ * the first request streams the file and records a receipt; replays with the
+ * same key return that receipt JSON, never a second side effect.
  */
 
 const BATCH_PAGE_LIMIT_MAX = 100;
-const MEMBER_PAGE = 200;
+const MEMBER_PAGE_DEFAULT = 200;
+const MEMBER_PAGE_MAX = 500;
+/** Export enumeration page size — matches the design's streaming page size. */
+const EXPORT_PAGE = 500;
 
 interface BatchRow {
   id: string;
@@ -119,10 +132,20 @@ async function readBatch(
 export async function listBatches(
   database: SqlDatabase,
   sellerOrganizationId: string,
-  options: { limit?: number; cursor?: string | null } = {},
+  options: {
+    limit?: number;
+    cursor?: string | null;
+    /** Filter to seller-visible batches (CONFIRMED stored status) in SQL. */
+    visibleOnly?: boolean;
+  } = {},
 ): Promise<{ batches: SellerSettlementBatchDto[]; next_cursor: string | null }> {
   const limit = Math.min(options.limit ?? 25, BATCH_PAGE_LIMIT_MAX);
   const clauses = ['batch.seller_organization_id=?'];
+  if (options.visibleOnly === true) {
+    // PARTIALLY_PAID/PAID are derived at read time from CONFIRMED rows, so
+    // the seller-visible filter is exactly the stored CONFIRMED status.
+    clauses.push("batch.status='CONFIRMED'");
+  }
   const params: unknown[] = [sellerOrganizationId];
   if (options.cursor !== null && options.cursor !== undefined) {
     clauses.push('(batch.created_at<? OR (batch.created_at=? AND batch.id<?))');
@@ -147,44 +170,119 @@ export async function listBatches(
   };
 }
 
+const MEMBER_SELECT = `
+  SELECT member.id, member.payable_id, member.formal_order_id,
+    member.amazon_order_number_normalized, member.payable_type,
+    member.frozen_amount_cny_fen,
+    COALESCE(balance.paid_amount_cny_fen,0) AS paid_amount_cny_fen,
+    COALESCE(balance.outstanding_amount_cny_fen,
+      member.frozen_amount_cny_fen) AS outstanding_amount_cny_fen
+  FROM seller_settlement_batch_members member
+  JOIN seller_payable_balances balance ON balance.payable_id=member.payable_id
+  WHERE member.batch_id=? AND member.active=1`;
+
+const MEMBER_ORDER = ' ORDER BY member.payable_type, member.amazon_order_number_normalized, member.id';
+
+function projectMember(row: MemberRow): SellerSettlementBatchMemberDto {
+  return Object.freeze({
+    member_id: row.id,
+    payable_id: row.payable_id,
+    formal_order_id: row.formal_order_id,
+    amazon_order_number: row.amazon_order_number_normalized,
+    payable_type: row.payable_type,
+    frozen_amount_cny_fen: fixedInteger(row.frozen_amount_cny_fen),
+    paid_amount_cny_fen: fixedInteger(row.paid_amount_cny_fen),
+    outstanding_amount_cny_fen: fixedInteger(row.outstanding_amount_cny_fen),
+  });
+}
+
+async function readMemberPage(
+  database: SqlDatabase,
+  batchId: string,
+  limit: number,
+  cursor: { type: string; number: string; id: string } | null,
+): Promise<MemberRow[]> {
+  const clauses = [`${MEMBER_SELECT}`];
+  const params: unknown[] = [batchId];
+  if (cursor !== null) {
+    clauses.push(
+      'AND (member.payable_type>? OR (member.payable_type=? AND (member.amazon_order_number_normalized>? '
+        + 'OR (member.amazon_order_number_normalized=? AND member.id>?))))',
+    );
+    params.push(
+      cursor.type, cursor.type,
+      cursor.number, cursor.number, cursor.id,
+    );
+  }
+  const rows = await database
+    .prepare(`${clauses.join(' ')}${MEMBER_ORDER} LIMIT ?`)
+    .bind(...params, limit)
+    .all<MemberRow>();
+  return rows.results;
+}
+
 export async function readBatchDetail(
   database: SqlDatabase,
   sellerOrganizationId: string,
   batchId: string,
+  options: { limit?: number; cursor?: string | null } = {},
 ): Promise<SellerSettlementBatchDetailDto> {
   const batch = await readBatch(database, batchId);
   if (batch.seller_organization_id !== sellerOrganizationId) {
     throw new SellerSettlementError('NOT_FOUND', 404);
   }
-  const members = await database
-    .prepare(
-      `SELECT member.id, member.payable_id, member.formal_order_id,
-        member.amazon_order_number_normalized, member.payable_type,
-        member.frozen_amount_cny_fen,
-        COALESCE(balance.paid_amount_cny_fen,0) AS paid_amount_cny_fen,
-        COALESCE(balance.outstanding_amount_cny_fen,
-          member.frozen_amount_cny_fen) AS outstanding_amount_cny_fen
-      FROM seller_settlement_batch_members member
-      JOIN seller_payable_balances balance ON balance.payable_id=member.payable_id
-      WHERE member.batch_id=? AND member.active=1
-      ORDER BY member.payable_type, member.amazon_order_number_normalized, member.id
-      LIMIT ?`,
-    )
-    .bind(batchId, MEMBER_PAGE)
-    .all<MemberRow>();
+  const limit = Math.min(
+    Math.max(options.limit ?? MEMBER_PAGE_DEFAULT, 1),
+    MEMBER_PAGE_MAX,
+  );
+  const cursor = options.cursor === null || options.cursor === undefined
+    ? null
+    : decodeMemberCursor(options.cursor);
+  // Fetch one extra row to detect has-more without counting the whole set.
+  const rows = await readMemberPage(database, batchId, limit + 1, cursor);
+  const hasMore = rows.length > limit;
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
   return Object.freeze({
     ...projectBatch(batch),
-    members: members.results.map((row) => Object.freeze({
-      member_id: row.id,
-      payable_id: row.payable_id,
-      formal_order_id: row.formal_order_id,
-      amazon_order_number: row.amazon_order_number_normalized,
-      payable_type: row.payable_type,
-      frozen_amount_cny_fen: fixedInteger(row.frozen_amount_cny_fen),
-      paid_amount_cny_fen: fixedInteger(row.paid_amount_cny_fen),
-      outstanding_amount_cny_fen: fixedInteger(row.outstanding_amount_cny_fen),
+    members: page.map(projectMember),
+    members_next_cursor: hasMore && last
+      ? encodeMemberCursor(last.payable_type, last.amazon_order_number_normalized, last.id)
+      : null,
+  });
+}
+
+/** Seller-portal projection: seller-safe fields only, strict contract. */
+export function projectSellerPortalBatch(
+  batch: SellerSettlementBatchDto,
+): SellerPortalSettlementBatchDto {
+  if (batch.status === 'DRAFT' || batch.status === 'CANCELLED') {
+    throw new SellerSettlementError('NOT_FOUND', 404);
+  }
+  return Object.freeze({
+    batch_id: batch.batch_id,
+    status: batch.status,
+    frozen_total_cny_fen: batch.frozen_total_cny_fen,
+    frozen_payable_count: batch.frozen_payable_count,
+    paid_amount_cny_fen: batch.paid_amount_cny_fen,
+    outstanding_amount_cny_fen: batch.outstanding_amount_cny_fen,
+    confirmed_at: batch.confirmed_at === null ? 0 : batch.confirmed_at,
+  });
+}
+
+export function projectSellerPortalDetail(
+  detail: SellerSettlementBatchDetailDto,
+): SellerPortalSettlementBatchDetailDto {
+  return Object.freeze({
+    ...projectSellerPortalBatch(detail),
+    members: detail.members.map((member) => Object.freeze({
+      amazon_order_number: member.amazon_order_number,
+      payable_type: member.payable_type,
+      frozen_amount_cny_fen: member.frozen_amount_cny_fen,
+      paid_amount_cny_fen: member.paid_amount_cny_fen,
+      outstanding_amount_cny_fen: member.outstanding_amount_cny_fen,
     })),
-    members_next_cursor: null,
+    members_next_cursor: detail.members_next_cursor,
   });
 }
 
@@ -813,15 +911,23 @@ export async function cancelBatch(
 }
 
 // ---------------------------------------------------------------------------
-// Export
+// Export (7.5R: prechecked, page-enumerated, idempotent)
 // ---------------------------------------------------------------------------
 
 export const EXPORT_ROW_LIMIT = 5_000;
 export const EXPORT_BYTE_LIMIT = 2 * 1024 * 1024;
 
-/** Neutralize CSV formula injection: prefix risky leading characters. */
+/**
+ * RFC 4180 quoting plus CSV formula neutralization: a leading =,+,-,@,TAB,CR
+ * gets a `'` prefix; any field containing a quote, comma, CR or LF is wrapped
+ * in double quotes with embedded quotes doubled.
+ */
 export function csvCell(value: string): string {
-  return /^[=+\-@\t\r]/u.test(value) ? `'${value}` : value;
+  const guarded = /^[=+\-@\t\r]/u.test(value) ? `'${value}` : value;
+  if (/["\r\n,]/u.test(guarded)) {
+    return `"${guarded.replaceAll('"', '""')}"`;
+  }
+  return guarded;
 }
 
 export function exportFilename(batchId: string): string {
@@ -840,37 +946,235 @@ export function exportRow(
 ): string {
   return [
     csvCell(member.amazon_order_number),
-    member.payable_type,
-    member.frozen_amount_cny_fen,
-    member.paid_amount_cny_fen,
-    member.outstanding_amount_cny_fen,
-    confirmedAtIso,
-    dueAtIso,
+    csvCell(member.payable_type),
+    csvCell(member.frozen_amount_cny_fen),
+    csvCell(member.paid_amount_cny_fen),
+    csvCell(member.outstanding_amount_cny_fen),
+    csvCell(confirmedAtIso),
+    csvCell(dueAtIso),
   ].join(',') + '\n';
 }
 
-export async function readExportRows(
+export interface SellerSettlementBatchExportReceipt {
+  batch_id: string;
+  row_count: number;
+  sha256: string;
+  exported_at: number;
+  replayed: boolean;
+}
+
+export type ExportOutcome =
+  | { kind: 'FILE'; receipt: SellerSettlementBatchExportReceipt; chunks: Uint8Array[] }
+  | { kind: 'REPLAY'; receipt: SellerSettlementBatchExportReceipt };
+
+/**
+ * Enumerate members keyset-page by keyset-page, encode each page, and enforce
+ * the row/byte ceilings during enumeration — an oversized batch fails BEFORE
+ * any byte reaches the response. Member DTOs are never accumulated: each page
+ * is encoded and dropped; only bounded CSV chunks (≤2 MiB total) remain.
+ */
+async function enumerateCsvChunks(
   database: SqlDatabase,
-  batchId: string,
-): Promise<
-  { members: SellerSettlementBatchMemberDto[]; batch: BatchRow; dues: Map<string, number> }
-> {
-  const batch = await readBatch(database, batchId);
-  if (batch.status === 'DRAFT') {
-    throw new SellerSettlementError('SELLER_SETTLEMENT_CONFLICT', 409);
-  }
-  const detail = await readBatchDetail(database, batch.seller_organization_id, batchId);
-  const dueRows = await database
+  batch: BatchRow,
+  onLimit: (code: 'EXPORT_TOO_LARGE') => never,
+  limits: { rows: number; bytes: number } = { rows: EXPORT_ROW_LIMIT, bytes: EXPORT_BYTE_LIMIT },
+): Promise<{ chunks: Uint8Array[]; rowCount: number; byteLength: number; sha256: string }> {
+  const confirmedAtIso = batch.frozen_at === null
+    ? ''
+    : new Date(Number(batch.frozen_at)).toISOString();
+  const encoder = new TextEncoder();
+  const dues = await database
     .prepare(
       `SELECT member.payable_id, payable.due_at
       FROM seller_settlement_batch_members member
       JOIN seller_payables payable ON payable.id=member.payable_id
       WHERE member.batch_id=? AND member.active=1`,
     )
-    .bind(batchId)
+    .bind(batch.id)
     .all<{ payable_id: string; due_at: number }>();
-  const dues = new Map(dueRows.results.map((row) => [row.payable_id, Number(row.due_at)]));
-  return { members: [...detail.members], batch, dues };
+  const dueMap = new Map(dues.results.map((row) => [row.payable_id, Number(row.due_at)]));
+
+  const chunks: Uint8Array[] = [encoder.encode(exportHeader())];
+  let byteLength = chunks[0]!.byteLength;
+  let rowCount = 0;
+  let cursor: { type: string; number: string; id: string } | null = null;
+  for (;;) {
+    const rows = await readMemberPage(database, batch.id, EXPORT_PAGE, cursor);
+    if (rows.length === 0) break;
+    const lines: string[] = [];
+    for (const row of rows) {
+      rowCount += 1;
+      if (rowCount > limits.rows) onLimit('EXPORT_TOO_LARGE');
+      const member = projectMember(row);
+      const dueAt = dueMap.get(member.payable_id) ?? 0;
+      lines.push(exportRow(member, confirmedAtIso, new Date(dueAt).toISOString()));
+    }
+    const chunk = encoder.encode(lines.join(''));
+    byteLength += chunk.byteLength;
+    if (byteLength > limits.bytes) onLimit('EXPORT_TOO_LARGE');
+    chunks.push(chunk);
+    if (rows.length < EXPORT_PAGE) break;
+    const last = rows.at(-1)!;
+    cursor = {
+      type: last.payable_type,
+      number: last.amazon_order_number_normalized,
+      id: last.id,
+    };
+  }
+  const merged = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { chunks, rowCount, byteLength, sha256: await sha256Hex(merged) };
+}
+
+/**
+ * Export command (7.5R):
+ * - Requires an Idempotency-Key; the request hash binds batch id + format +
+ *   expected_version, so a same-key different-version retry is a stable 409.
+ * - First run validates state (never DRAFT; expected_version when provided),
+ *   enumerates the CSV with limit prechecks, then writes exactly one
+ *   BATCH_EXPORTED event and completes the idempotency record with the receipt.
+ * - Replay with the same key returns the stored receipt (JSON), not a second
+ *   file; a batch cancelled after the first export fails closed with 409.
+ */
+export async function exportBatchCsv(
+  database: SqlDatabase,
+  input: {
+    batchId: string;
+    expectedVersion: number | null;
+    /** Cross-organization exports stay concealed (404). */
+    expectedOrganizationId?: string;
+    /** Test hook: shrink the row/byte ceilings without touching production. */
+    limits?: { rows: number; bytes: number };
+  },
+  command: {
+    actor: AssignmentStaffAuthorization;
+    idempotencyKey: string;
+    requestId?: string | null;
+    now?: number;
+  },
+): Promise<ExportOutcome> {
+  const now = command.now ?? Date.now();
+  const requestHash = await hashCanonicalJson({
+    action: 'EXPORT_SELLER_SETTLEMENT_BATCH',
+    target: input.batchId,
+    payload: { format: 'csv', expected_version: input.expectedVersion },
+  });
+  let acquired;
+  try {
+    acquired = await acquireIdempotency(database, {
+      actorType: 'STAFF',
+      actorId: command.actor.staffId,
+      action: 'EXPORT_SELLER_SETTLEMENT_BATCH',
+      targetType: 'SELLER_SETTLEMENT_BATCH',
+      targetId: input.batchId,
+      idempotencyKey: command.idempotencyKey,
+      requestHash,
+    }, { now });
+  } catch (error) {
+    const message = String((error as Error)?.message ?? error);
+    if (message.includes('IDEMPOTENCY_CONFLICT')) {
+      throw new SellerSettlementError('IDEMPOTENCY_CONFLICT', 409);
+    }
+    if (message.includes('REQUEST_IN_PROGRESS')) {
+      throw new SellerSettlementError('REQUEST_IN_PROGRESS', 409);
+    }
+    throw error;
+  }
+  if (acquired.kind === 'REPLAY') {
+    const receipt = acquired.response as SellerSettlementBatchExportReceipt;
+    // Fail closed: a batch cancelled after the original export must not
+    // replay an old receipt as if the export were still valid.
+    const batch = await readBatch(database, input.batchId);
+    if (input.expectedOrganizationId !== undefined
+      && batch.seller_organization_id !== input.expectedOrganizationId) {
+      throw new SellerSettlementError('NOT_FOUND', 404);
+    }
+    if (batch.status !== 'DRAFT' && batch.status !== 'CONFIRMED') {
+      throw new SellerSettlementError('SELLER_SETTLEMENT_CONFLICT', 409);
+    }
+    if (input.expectedVersion !== null && Number(batch.version) !== input.expectedVersion) {
+      throw new SellerSettlementError('VERSION_CONFLICT', 409);
+    }
+    return { kind: 'REPLAY', receipt: { ...receipt, replayed: true } };
+  }
+  try {
+    const batch = await readBatch(database, input.batchId);
+    if (input.expectedOrganizationId !== undefined
+      && batch.seller_organization_id !== input.expectedOrganizationId) {
+      throw new SellerSettlementError('NOT_FOUND', 404);
+    }
+    if (batch.status === 'DRAFT' || batch.status === 'CANCELLED') {
+      throw new SellerSettlementError('SELLER_SETTLEMENT_CONFLICT', 409);
+    }
+    if (input.expectedVersion !== null && Number(batch.version) !== input.expectedVersion) {
+      throw new SellerSettlementError('VERSION_CONFLICT', 409);
+    }
+    const refuse = (code: 'EXPORT_TOO_LARGE'): never => {
+      throw new SellerSettlementError(code, 409);
+    };
+    const { chunks, rowCount, sha256: sha } = await enumerateCsvChunks(
+      database,
+      batch,
+      refuse,
+      input.limits,
+    );
+    const receipt: SellerSettlementBatchExportReceipt = Object.freeze({
+      batch_id: input.batchId,
+      row_count: rowCount,
+      sha256: sha,
+      exported_at: now,
+      replayed: false,
+    });
+    await database.batch([
+      database
+        .prepare(
+          `INSERT INTO seller_settlement_batch_events(
+            id,batch_id,event_type,actor_staff_id,detail_json,created_at)
+          VALUES(?,?,?,?,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          input.batchId,
+          'BATCH_EXPORTED',
+          command.actor.staffId,
+          JSON.stringify({ row_count: rowCount, sha256: sha }),
+          now,
+        ),
+      auditStatement(database, {
+        batchId: input.batchId,
+        eventType: 'SELLER_SETTLEMENT_BATCH_EXPORTED',
+        actor: command.actor,
+        idempotencyKey: command.idempotencyKey,
+        requestId: command.requestId ?? null,
+        previousState: null,
+        nextState: { row_count: rowCount, sha256: sha, format: 'csv' },
+        now,
+      }),
+      completeIdempotencyStatement(database, acquired.claim, receipt, {
+        resultReferences: { batch_id: input.batchId },
+        now,
+      }),
+      assertIdempotencyCompletionStatement(database, acquired.claim),
+    ]);
+    return { kind: 'FILE', receipt, chunks };
+  } catch (error) {
+    const message = String((error as Error)?.message ?? error);
+    if (error instanceof SellerSettlementError) {
+      await markIdempotencyFailed(
+        database,
+        acquired.claim,
+        error.code,
+        now,
+      );
+      throw error;
+    }
+    await markIdempotencyFailed(database, acquired.claim, 'DEPENDENCY_UNAVAILABLE', now);
+    throw error instanceof Error ? error : new Error(message);
+  }
 }
 
 async function markFailed(
@@ -908,29 +1212,56 @@ function cleanReason(value: unknown): string {
 }
 
 function encodeCursor(createdAt: number, id: string): string {
-  const bytes = new TextEncoder().encode(JSON.stringify({ at: createdAt, id }));
+  return encodeOpaqueCursor({ at: createdAt, id });
+}
+
+function decodeCursor(raw: string): { createdAt: number; id: string } {
+  const decoded = decodeOpaqueCursor(raw);
+  if (!Number.isSafeInteger(decoded['at']) || typeof decoded['id'] !== 'string') {
+    throw new SellerSettlementError('VALIDATION_ERROR', 400);
+  }
+  return { createdAt: Number(decoded['at']), id: decoded['id'] as string };
+}
+
+function encodeMemberCursor(type: string, number: string, id: string): string {
+  return encodeOpaqueCursor({ t: type, n: number, id });
+}
+
+function decodeMemberCursor(
+  raw: string,
+): { type: string; number: string; id: string } {
+  const decoded = decodeOpaqueCursor(raw);
+  if (
+    typeof decoded['t'] !== 'string'
+    || typeof decoded['n'] !== 'string'
+    || typeof decoded['id'] !== 'string'
+  ) {
+    throw new SellerSettlementError('VALIDATION_ERROR', 400);
+  }
+  return {
+    type: decoded['t'] as string,
+    number: decoded['n'] as string,
+    id: decoded['id'] as string,
+  };
+}
+
+function encodeOpaqueCursor(payload: Record<string, unknown>): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
 }
 
-function decodeCursor(raw: string): { createdAt: number; id: string } {
+function decodeOpaqueCursor(raw: string): Record<string, unknown> {
   try {
     const base64 = raw.replaceAll('-', '+').replaceAll('_', '/')
       .padEnd(Math.ceil(raw.length / 4) * 4, '=');
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as {
-      at?: unknown;
-      id?: unknown;
-    };
-    if (
-      !Number.isSafeInteger(parsed.at)
-      || typeof parsed.id !== 'string'
-      || parsed.id.length < 1
-    ) {
+    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       throw new Error('bad');
     }
-    return { createdAt: Number(parsed.at), id: parsed.id };
+    return parsed as Record<string, unknown>;
   } catch {
     throw new SellerSettlementError('VALIDATION_ERROR', 400);
   }

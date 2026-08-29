@@ -1,6 +1,6 @@
 import type { ApiErrorCode } from '@ygb/contracts';
 import { apiFailure, apiSuccess } from '@ygb/contracts';
-import { parseIdempotencyKey, readBoundedJson, sha256Hex } from '@ygb/domain';
+import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -9,14 +9,12 @@ import {
   cancelBatch,
   confirmBatch,
   createBatch,
-  EXPORT_BYTE_LIMIT,
-  EXPORT_ROW_LIMIT,
+  exportBatchCsv,
   exportFilename,
-  exportHeader,
-  exportRow,
   listBatches,
+  projectSellerPortalBatch,
+  projectSellerPortalDetail,
   readBatchDetail,
-  readExportRows,
   removeMember,
 } from './batches';
 import { resolveSellerPortalActor } from '../seller-portal/actor';
@@ -109,11 +107,13 @@ async function detailHandler(context: Context<any>): Promise<Response> {
   const actor = requireAuthorization(context);
   const organizationId = organization(context);
   await authorizeSellerSettlement(context.env.DB, actor, organizationId, { viewOnly: true });
+  const pagination = memberPagination(context);
   return success(context, {
     batch: await readBatchDetail(
       context.env.DB,
       organizationId,
       cleanSettlementIdentifier(context.req.param('batchId')),
+      pagination,
     ),
   });
 }
@@ -196,62 +196,57 @@ async function cancelHandler(context: Context<any>): Promise<Response> {
   return success(context, result, result.replayed ? 200 : 201);
 }
 
+/**
+ * Stage 7.5R export: prechecked page-enumerated CSV with idempotent receipts.
+ * First request streams the file; a same-key replay answers with the stored
+ * receipt JSON instead of re-streaming (single audit side effect). Oversized
+ * batches fail with 409 EXPORT_TOO_LARGE before any byte is sent.
+ */
 async function exportHandler(context: Context<any>): Promise<Response> {
   const actor = requireAuthorization(context);
   const organizationId = organization(context);
   await authorizeSellerSettlement(context.env.DB, actor, organizationId);
   const batchId = cleanSettlementIdentifier(context.req.param('batchId'));
+  let expectedVersion: number | null = null;
   try {
     const body = await bodyRecord(context);
-    if (Object.keys(body).length > 0) {
-      throw new SellerSettlementError('VALIDATION_ERROR', 400);
+    allowedKeys(body, ['expected_version']);
+    if (body['expected_version'] !== undefined) {
+      expectedVersion = positiveInteger(body['expected_version']);
     }
   } catch (error) {
     if (error instanceof SellerSettlementError) throw error;
     throw new SellerSettlementError('VALIDATION_ERROR', 400);
   }
-  const { members, batch, dues } = await readExportRows(context.env.DB, batchId);
-  if (members.length > EXPORT_ROW_LIMIT) {
-    throw new SellerSettlementError('SELLER_SETTLEMENT_CONFLICT', 409);
+  const key = parseIdempotencyKey(context.req.header('Idempotency-Key'));
+  if (!key) throw new SellerSettlementError('VALIDATION_ERROR', 400);
+  const outcome = await exportBatchCsv(
+    context.env.DB,
+    { batchId, expectedVersion, expectedOrganizationId: organizationId },
+    {
+      actor,
+      idempotencyKey: key,
+      requestId: requestIdFromContext(context),
+    },
+  );
+  if (outcome.kind === 'REPLAY') {
+    return success(context, { receipt: outcome.receipt });
   }
-  const confirmedAtIso = batch.frozen_at === null
-    ? ''
-    : new Date(Number(batch.frozen_at)).toISOString();
-  const lines: string[] = [exportHeader()];
-  for (const member of members) {
-    const dueAt = dues.get(member.payable_id) ?? 0;
-    lines.push(exportRow(member, confirmedAtIso, new Date(dueAt).toISOString()));
-  }
-  const csv = lines.join('');
-  const bytes = new TextEncoder().encode(csv);
-  if (bytes.byteLength > EXPORT_BYTE_LIMIT) {
-    throw new SellerSettlementError('SELLER_SETTLEMENT_CONFLICT', 409);
-  }
-  const sha = await sha256Hex(bytes);
-  // Audit the export (append-only event) without blocking the stream.
-  await context.env.DB.batch([
-    context.env.DB
-      .prepare(
-        `INSERT INTO seller_settlement_batch_events(
-          id,batch_id,event_type,actor_staff_id,detail_json,created_at)
-        VALUES(?,?,?,?,?,?)`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        batchId,
-        'BATCH_EXPORTED',
-        actor.staffId,
-        JSON.stringify({ row_count: members.length, sha256: sha }),
-        Date.now(),
-      ),
-  ]);
   context.header('Cache-Control', 'no-store');
   context.header('Content-Type', 'text/csv; charset=utf-8');
   context.header(
     'Content-Disposition',
     `attachment; filename="${exportFilename(batchId)}"`,
   );
-  return context.body(csv);
+  context.header('X-Export-Row-Count', String(outcome.receipt.row_count));
+  context.header('X-Export-Sha256', outcome.receipt.sha256);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of outcome.chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+  return context.body(stream);
 }
 
 async function sellerListHandler(context: Context<any>): Promise<Response> {
@@ -263,29 +258,48 @@ async function sellerListHandler(context: Context<any>): Promise<Response> {
     throw new SellerSettlementError('VALIDATION_ERROR', 400);
   }
   const cursor = url.searchParams.get('cursor');
+  // DRAFT/CANCELLED batches are internal working state: filtered inside the
+  // keyset SQL (7.5R) so pagination never leaks them or stalls the cursor.
   const page = await listBatches(context.env.DB, actor.sellerOrganizationId, {
     limit,
+    visibleOnly: true,
     ...(cursor === null ? {} : { cursor }),
   });
-  // DRAFT/CANCELLED batches are internal working state and stay invisible
-  // to the seller portal.
   return success(context, {
-    batches: page.batches.filter((batch) => batch.status !== 'DRAFT'),
+    batches: page.batches.map(projectSellerPortalBatch),
     next_cursor: page.next_cursor,
   });
 }
 
 async function sellerDetailHandler(context: Context<any>): Promise<Response> {
   const actor = await requireSellerActor(context);
-  const batch = await readBatchDetail(
+  const detail = await readBatchDetail(
     context.env.DB,
     actor.sellerOrganizationId,
     cleanSettlementIdentifier(context.req.param('batchId')),
+    memberPagination(context),
   );
-  if (batch.status === 'DRAFT' || batch.status === 'CANCELLED') {
-    throw new SellerSettlementError('NOT_FOUND', 404);
+  return success(context, { batch: projectSellerPortalDetail(detail) });
+}
+
+function memberPagination(context: Context<any>): { limit?: number; cursor?: string | null } {
+  const url = new URL(context.req.url);
+  const limitRaw = url.searchParams.get('members_limit');
+  const cursorRaw = url.searchParams.get('members_cursor');
+  let limit: number | undefined;
+  if (limitRaw !== null) {
+    limit = Number(limitRaw);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
+      throw new SellerSettlementError('VALIDATION_ERROR', 400);
+    }
   }
-  return success(context, { batch });
+  if (cursorRaw !== null && (cursorRaw.length < 1 || cursorRaw.length > 1000)) {
+    throw new SellerSettlementError('VALIDATION_ERROR', 400);
+  }
+  return {
+    ...(limit === undefined ? {} : { limit }),
+    ...(cursorRaw === null ? {} : { cursor: cursorRaw }),
+  };
 }
 
 function requireAuthorization(context: Context<any>): AssignmentStaffAuthorization {

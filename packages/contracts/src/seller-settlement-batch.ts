@@ -52,6 +52,44 @@ export interface SellerSettlementBatchPageDto {
   next_cursor: string | null;
 }
 
+/**
+ * Stage 7.5R seller-portal projections: one shared contract for the backend
+ * route and the frontend strict schema — no passthrough, no internal staff
+ * ids, no version/cancel metadata, no buyer-refund facts. Sellers never see
+ * DRAFT/CANCELLED batches (filtered in SQL before pagination).
+ */
+export type SellerPortalSettlementBatchStatus =
+  'CONFIRMED' | 'PARTIALLY_PAID' | 'PAID';
+
+export interface SellerPortalSettlementBatchDto {
+  batch_id: string;
+  status: SellerPortalSettlementBatchStatus;
+  frozen_total_cny_fen: FixedIntegerString;
+  frozen_payable_count: number;
+  paid_amount_cny_fen: FixedIntegerString;
+  outstanding_amount_cny_fen: FixedIntegerString;
+  confirmed_at: number;
+}
+
+export interface SellerPortalSettlementBatchMemberDto {
+  amazon_order_number: string;
+  payable_type: SellerPayableType;
+  frozen_amount_cny_fen: FixedIntegerString;
+  paid_amount_cny_fen: FixedIntegerString;
+  outstanding_amount_cny_fen: FixedIntegerString;
+}
+
+export interface SellerPortalSettlementBatchDetailDto
+  extends SellerPortalSettlementBatchDto {
+  members: readonly SellerPortalSettlementBatchMemberDto[];
+  members_next_cursor: string | null;
+}
+
+export interface SellerPortalSettlementBatchPageDto {
+  batches: readonly SellerPortalSettlementBatchDto[];
+  next_cursor: string | null;
+}
+
 export interface CreateSellerSettlementBatchRequest {
   reason: string | null;
 }

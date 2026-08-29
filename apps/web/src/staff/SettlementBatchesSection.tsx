@@ -173,7 +173,14 @@ export function SettlementBatchesSection({
       credentials: 'same-origin',
     });
     if (!response.ok) {
-      setMessage('导出未完成，请稍后重试。');
+      const payload = await response.json().catch(() => null) as {
+        error?: { code?: string };
+      } | null;
+      setMessage(
+        payload?.error?.code === 'EXPORT_TOO_LARGE'
+          ? '批次成员超过导出上限（5000 行 / 2 MiB），请拆分批次后再导出。'
+          : '导出未完成，请稍后重试。',
+      );
       return;
     }
     const blob = await response.blob();

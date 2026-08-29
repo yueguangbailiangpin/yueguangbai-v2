@@ -1149,16 +1149,16 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(34);
+    expect(migrations).toHaveLength(35);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0034_stage75r_service_channel_qr_purpose.sql');
+    expect(migrations.at(-1)).toBe('0035_stage75r_settlement_batch_cancel_fix.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(34);
+    expect(Number(schema?.schema_version)).toBe(35);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name

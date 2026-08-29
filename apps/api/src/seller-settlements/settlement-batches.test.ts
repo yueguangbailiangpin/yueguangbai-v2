@@ -313,14 +313,20 @@ describe('settlement batch lifecycle', () => {
     expect(draftExport.status).toBe(409);
   });
 
-  it('escapes CSV formula injection and keeps the whitelist', () => {
-    expect(csvCell('=HYPERLINK("http://evil")')).toBe("'=HYPERLINK(\"http://evil\")");
+  it('escapes CSV formula injection and quotes separators (RFC 4180)', () => {
+    expect(csvCell('=HYPERLINK("http://evil")')).toBe('"\'=HYPERLINK(""http://evil"")"');
     expect(csvCell('+SUM(A1)')).toBe("'+SUM(A1)");
     expect(csvCell('-1')).toBe("'-1");
     expect(csvCell('@cmd')).toBe("'@cmd");
     expect(csvCell('\tTAB')).toBe("'\tTAB");
-    expect(csvCell('\rCR')).toBe("'\rCR");
+    expect(csvCell('\rCR')).toBe("\"'\rCR\"");
     expect(csvCell('123-1234567-0000001')).toBe('123-1234567-0000001');
+    // 7.5R: fields containing separators/quotes/newlines are quoted, with
+    // embedded quotes doubled.
+    expect(csvCell('a,b')).toBe('"a,b"');
+    expect(csvCell('say "hi"')).toBe('"say ""hi"""');
+    expect(csvCell('line1\nline2')).toBe('"line1\nline2"');
+    expect(csvCell('=1,2')).toBe('"\'=1,2"');
   });
 });
 
