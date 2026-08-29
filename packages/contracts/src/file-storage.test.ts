@@ -26,6 +26,7 @@ describe('file storage contracts', () => {
       'BUYER_REFUND_PROOF',
       'SELLER_SETTLEMENT_PROOF',
       'SUPPORT_ATTACHMENT',
+      'SERVICE_CHANNEL_QR',
     ]);
     expect(FILE_VISIBILITIES).toEqual([
       'INTERNAL_ONLY',
@@ -42,6 +43,7 @@ describe('file storage contracts', () => {
       'BUYER_REFUND',
       'SELLER_SETTLEMENT',
       'SUPPORT_CASE',
+      'SERVICE_CHANNEL',
     ]);
     expect(FILE_LINK_AUTHORIZATION_MODES).toEqual([
       'LEGACY_VISIBILITY',

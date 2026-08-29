@@ -138,7 +138,7 @@ describe('Wave 13 default app and route security boundaries', () => {
     expect([...wave13].filter((route) => route.includes('/staff-auth/')))
       .toHaveLength(4);
     expect([...wave13].filter((route) => route.includes('/file-uploads/')
-      && route.endsWith('/intents'))).toHaveLength(6);
+      && route.endsWith('/intents'))).toHaveLength(7);
     expect([...wave13].filter((route) =>
       Object.values(FILE_HTTP_LIFECYCLE_PATHS).some((path) =>
         route.endsWith(path),
@@ -151,7 +151,7 @@ describe('Wave 13 default app and route security boundaries', () => {
       Object.values(STAFF_BUYER_REFUND_PATHS).some((path) =>
         route.endsWith(path),
       ))).toHaveLength(4);
-    expect(wave13).toHaveLength(33);
+    expect(wave13).toHaveLength(34);
     const inventorySet = new Set(inventory);
     expect([...wave13].every((route) => inventorySet.has(route))).toBe(true);
 

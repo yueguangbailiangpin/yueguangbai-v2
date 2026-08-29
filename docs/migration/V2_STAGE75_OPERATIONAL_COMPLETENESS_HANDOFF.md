@@ -112,3 +112,19 @@ inventory：161 表 / 493 索引 / 312 触发器 / 12 视图（`db:verify` SHA-2
 ## 10. 下一步
 
 停止并等待 ChatGPT 总审。审后可选：遗留 e2e 套件漂移单独修复 Change；阶段 8 部署准备仍需总控明确指令。
+
+
+---
+
+## 9. 阶段 7.5R 更正与补全（2026-08-29 追记）
+
+上表为阶段 7.5 收尾时的记录，其中 `npm run check` = 0 与安全扫描结论不准确：当时 `apps/web/e2e/stage75-contacts.spec.ts` 含未使用的 `SESSION_SECRET` 字面量，`node scripts/scan-secrets.mjs` 真实退出码为 1（后台任务外层 echo 掩盖了退出码）。此外 7.5 三批存在以下真实性缺口，已由 7.5R 修复（详见 `openspec/changes/stage75-operational-completeness/tasks.md` §5）：
+
+1. 结算批次成员读取被 `MEMBER_PAGE=200` 静默截断，`members_next_cursor` 恒 null；CSV 导出同一截断。
+2. 导出无幂等（重放重复写审计）、超限返回通用 409 且可能在发半文件后失败、CSV 无 RFC 4180 引号转义。
+3. 卖家端直接复用员工 DTO（strict 前端合同实际会拒绝），DRAFT/CANCELLED 在 JS 内存过滤而非 SQL。
+4. 客服渠道二维码靠手填内部文件编号，无受控文件链。
+5. 0033 表 CHECK 使确认批次取消必然失败（与触发器语义矛盾）——Migration 0035 修复。
+6. `StageContactCard` 仅两页接入，阶段判定散落各页。
+
+7.5R 后真实基线：schema 35（0034/0035）、API inventory 240、`npm test` 1760/1760、`verify:settlement-export-capacity`（新容量验证器，5,000 成员满配额导出）与 `verify:order-list-capacity` 同入 `check:ci:test-build`。

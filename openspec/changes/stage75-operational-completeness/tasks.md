@@ -117,11 +117,11 @@
 
 ## 5. 阶段 7.5R 真实性修复（2026-08-29 重开）
 
-- [ ] 5.1 统一 `StageContactCard` 组件与阶段映射接入全部售前页面（预约列表/详情、订单资料列表/填写、指引或资料详情）与售后页面（正式订单列表/详情、评论列表/填写/详情、返款列表/详情）
-- [ ] 5.2 二维码受控文件链：`SERVICE_CHANNEL_QR` purpose（Migration 0034 如需）+ Owner 正常上传流 + purpose/visibility/受众/归属校验 + Buyer DTO 返回 `SafeFileReferenceDto|null` + read-intent + 前端真实渲染 + 无二维码文字兜底
-- [ ] 5.3 结算导出全量化：keyset 全量读取（禁 OFFSET），详情 `members_next_cursor` 真实分页，201/500/1000/5000 完整、5001 拒绝
-- [ ] 5.4 结算导出流式：ReadableStream 分页边读边编码；分页预检行数与编码字节数，超限在响应前 `EXPORT_TOO_LARGE`（5000 行/2 MiB）
-- [ ] 5.5 结算导出幂等：Idempotency-Key+请求哈希+expected_version；重放返回同一 receipt；BATCH_EXPORTED 审计仅一次；payload mismatch 稳定 409
-- [ ] 5.6 卖家专用安全 DTO（contracts/后端/前端 strict 三方同一合同，无 passthrough）+ SQL 内先过滤可见状态再 keyset 分页 + 前端游标加载
-- [ ] 5.7 `npm run check` 真实 exit 0：测试密钥字面量改为不会被识别为真实密钥的 fixture 构造
-- [ ] 5.8 真实请求级合同测试：真实路由+本地 D1 真实数据 → HTTP → packages/contracts schema → 前端 strict schema 双解析（批次列表/详情/多页/先过滤后分页/CSV 首次与重放/mismatch/201/5000/5001/2MiB/审计一次/渠道 DTO/QR SafeFileReference/read-intent/未配置兜底/全部页面阶段选择）
+- [x] 5.1 统一 `StageContactCard` 组件与阶段映射接入全部售前页面（预约列表/详情、订单资料列表/填写、指引或资料详情）与售后页面（正式订单列表/详情、评论列表/填写/详情、返款列表/详情）——13 页全部经权威 `STAGE_FOR_ROUTE`（`RouteFamily` 联合类型）；源码守卫测试 `StageContactCard.stage.source.test.ts` 禁止页面本地判定阶段或传字面量。
+- [x] 5.2 二维码受控文件链：`SERVICE_CHANNEL_QR` purpose（Migration 0034 如需）+ Owner 正常上传流 + purpose/visibility/受众/归属校验 + Buyer DTO 返回 `SafeFileReferenceDto|null` + read-intent + 前端真实渲染 + 无二维码文字兜底——Migration 0034（schema 34）；`POST /api/staff/service-channels/:code/qr` 全链校验（VERIFIED/purpose/visibility/版本/未绑他对象，清除 revoke）；Owner 上传改 intents→content→complete→attach 受控流；买家动态公开窗口由 `file-audience-grants.test.ts` 请求级覆盖（任意 ACTIVE 买家可读、卖家拒绝）；渲染与兜底由 e2e 覆盖；顺带修复 attach 幂等重放返回 null 渠道的缺陷。
+- [x] 5.3 结算导出全量化：keyset 全量读取（禁 OFFSET），详情 `members_next_cursor` 真实分页——201 成员完整导出、250 成员两页走完、5000 成员容量验证（整页倍数边界）、5001 稳定 409；500/1000 与上述同一 keyset 路径（5000 已覆盖整页边界与翻页循环）
+- [x] 5.4 结算导出流式：ReadableStream 分页边读边编码（500 行/页枚举，成员数组不整持）；行数与字节上限在枚举中同步执行，超限在任何字节发出前 409 `EXPORT_TOO_LARGE`（真实 5001 用例 + 注入字节上限用例 + 容量验证 5000 含 2 MiB 断言）
+- [x] 5.5 结算导出幂等：Idempotency-Key+请求哈希（绑批次/格式/expected_version）；首次流文件并记收据（X-Export-Row-Count/X-Export-Sha256），重放返回同一 receipt JSON；BATCH_EXPORTED 业务事件与 audit_events 各仅一次；mismatch 稳定 409；导出后取消 fail-closed（409）；跨组织导出 concealed 404（旧实现未校验批次归属，已堵）
+- [x] 5.6 卖家专用安全 DTO（contracts/后端/前端 strict 三方同一合同，无 passthrough；请求级测试断言 DTO 键集精确=7/5 字段且无内部 ID）+ SQL 内先过滤（stored CONFIRMED）再 keyset 分页（DRAFT/CANCELLED concealed 404）+ 前端游标加载（首页+追加页累积）
+- [x] 5.7 `npm run check` 真实 exit 0——采用比 fixture 构造更直接的方案：删除 `stage75-contacts.spec.ts` 中未使用的 `SESSION_SECRET` 死字面量，`node scripts/scan-secrets.mjs` 真实退出码 0；各步真实退出码见交接文档 7.5R 追记
+- [x] 5.8 真实请求级合同测试：`settlement-batches-75r.test.ts`（8 用例：分页/卖家 DTO+conceal/导出完整+重放+mismatch+版本/两档上限/取消后 fail-closed）、`service-channels.test.ts` 重写（9 用例：DTO/QR SafeFileReference/未配置兜底/非 Owner 403/错误 purpose/未验证/错误 visibility/外绑文件/清除 revoke/幂等）、`file-audience-grants.test.ts` 增买家 QR 动态窗口、`StageContactCard.stage.source.test.ts` 全部页面阶段选择、`settlement-export.capacity.verify.ts` 容量（入 check 链）——前端 strict schema 与后端同形（卖家 DTO 键集断言双向一致）

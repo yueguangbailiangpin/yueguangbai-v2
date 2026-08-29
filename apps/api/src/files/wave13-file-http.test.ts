@@ -23,7 +23,7 @@ describe('Wave 13 File HTTP contract and architecture', () => {
   it('freezes active purpose-bound intent routes', () => {
     // D-056 §4.1: the two chat-screenshot entries are unified into the
     // order-detail ORDER_COMMUNICATION_SCREENSHOT flow.
-    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(6);
+    expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(7);
     expect(FILE_HTTP_PURPOSE_ROUTES).toMatchObject({
       buyerOrderEvidence: {
         purpose: 'ORDER_EVIDENCE',

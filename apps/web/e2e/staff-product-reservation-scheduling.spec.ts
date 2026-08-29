@@ -182,7 +182,7 @@ test('product and reservation deep links are Chinese, responsive and keyboard us
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/staff/products?q=%E6%9C%88%E5%85%89');
   await expect(page).toHaveURL(/\/staff\/products\?q=/u);
-  await expect(page.getByRole('heading', { name: '产品与投放', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '产品与预约', exact: true })).toBeVisible();
   await expect(page.getByRole('table', { name: '员工产品库' })).toBeVisible();
   await page.getByRole('link', { name: '查看详情' }).click();
   await expect(page).toHaveURL(/\/staff\/products\/product-1$/u);
