@@ -633,7 +633,7 @@ function CommunicationScreenshotsCard({
       {value.communication_screenshots.length === 0 ? (
         <p>暂无沟通截图。</p>
       ) : (
-        <div className="buyer-chat-screenshots order-communication-screenshots">
+        <div className="order-communication-screenshots">
           {value.communication_screenshots.map((reference) => (
             <figure key={reference.file_object_id} className="order-communication-shot">
               <StaffProtectedImage
