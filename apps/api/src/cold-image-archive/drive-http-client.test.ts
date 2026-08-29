@@ -374,6 +374,38 @@ describe('stage 6.5 google drive http client (resumable protocol)', () => {
     expect(archiveRuntime({ ...full, ARCHIVE_DRIVE_CLIENT: injected }).client).toBe(injected);
   });
 
+  it('keeps every archive capability disabled when runtime switches are absent', () => {
+    const full = {
+      GOOGLE_DRIVE_FOLDER_ID: 'env-folder-1',
+      GOOGLE_DRIVE_CLIENT_ID: 'cid',
+      GOOGLE_DRIVE_CLIENT_SECRET: 'csecret',
+      GOOGLE_DRIVE_REFRESH_TOKEN: 'rtoken',
+    };
+    const base = {
+      ...full,
+      ARCHIVE_SELECTOR_ENABLED: 'false',
+      ARCHIVE_DRIVE_UPLOAD_ENABLED: 'false',
+      ARCHIVE_HOT_DELETE_ENABLED: 'false',
+      ARCHIVE_RESTORE_WORKER_ENABLED: 'false',
+    };
+    for (const flag of [
+      'ARCHIVE_SELECTOR_ENABLED',
+      'ARCHIVE_DRIVE_UPLOAD_ENABLED',
+      'ARCHIVE_HOT_DELETE_ENABLED',
+      'ARCHIVE_RESTORE_WORKER_ENABLED',
+    ] as const) {
+      const bindings = { ...base };
+      delete bindings[flag];
+      const runtime = archiveRuntime(bindings);
+      expect(runtime).toMatchObject({
+        selectorEnabled: false,
+        driveUploadEnabled: false,
+        hotDeleteEnabled: false,
+        restoreWorkerEnabled: false,
+      });
+    }
+  });
+
   it('refreshes oauth tokens through the token endpoint and caches until expiry', async () => {
     const tokenRequests: { body: string; contentType: string }[] = [];
     let issued = 0;

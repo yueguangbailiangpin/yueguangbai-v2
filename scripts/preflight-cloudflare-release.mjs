@@ -10,12 +10,18 @@ const root = path.resolve(import.meta.dirname, '..');
 const rootReal = realpathSync.native(root);
 const environments = new Set(['staging', 'production']);
 const placeholderPattern = /REQUIRED|REPLACE|PLACEHOLDER|CHANGEME|TODO/iu;
-const disabledFlags = [
+export const archiveReleaseFlags = Object.freeze([
+  'ARCHIVE_SELECTOR_ENABLED',
+  'ARCHIVE_DRIVE_UPLOAD_ENABLED',
+  'ARCHIVE_HOT_DELETE_ENABLED',
+  'ARCHIVE_RESTORE_WORKER_ENABLED',
+]);
+export const retiredArchiveReleaseFlags = Object.freeze([
   'DRIVE_ARCHIVE_ENABLED',
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-];
+]);
 const requiredCompatibilityFlags = Object.freeze([
   'global_fetch_strictly_public',
 ]);
@@ -233,8 +239,11 @@ function validateFrozenDefaults(config, environment) {
       errors.push('vars.BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED:must_be_false');
     }
   }
-  for (const flag of disabledFlags) {
+  for (const flag of archiveReleaseFlags) {
     if (vars?.[flag] !== 'false') errors.push(`vars.${flag}:must_be_false`);
+  }
+  for (const flag of retiredArchiveReleaseFlags) {
+    if (Object.hasOwn(vars ?? {}, flag)) errors.push(`vars.${flag}:deprecated`);
   }
   for (const key of Object.keys(vars ?? {})) {
     if (retiredCoreRuntimeKey.test(key)) {

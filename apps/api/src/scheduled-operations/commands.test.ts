@@ -70,15 +70,22 @@ describe('scheduled operation manual commands', () => {
       { jobName: 'reservation_expiry', command: { reason_code: 'OPERATOR_RETRY' } },
       commandContext('manual-race-key'),
     );
-    await expect(
-      runScheduledOperationManually(
-        database,
-        dependencies,
-        { jobName: 'reservation_expiry', command: { reason_code: 'OPERATOR_RETRY' } },
-        commandContext('manual-race-key'),
-      ),
-    ).rejects.toMatchObject({ code: 'REQUEST_IN_PROGRESS', status: 409 });
-    await expect(first).resolves.toMatchObject({ outcome: 'SUCCEEDED' });
+    const second = runScheduledOperationManually(
+      database,
+      dependencies,
+      { jobName: 'reservation_expiry', command: { reason_code: 'OPERATOR_RETRY' } },
+      commandContext('manual-race-key'),
+    );
+    const results = await Promise.allSettled([first, second]);
+    const fulfilled = results.filter((result) => result.status === 'fulfilled');
+    const rejected = results.filter((result) => result.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(fulfilled[0]).toMatchObject({ status: 'fulfilled', value: { outcome: 'SUCCEEDED' } });
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'REQUEST_IN_PROGRESS', status: 409 },
+    });
   });
 
 

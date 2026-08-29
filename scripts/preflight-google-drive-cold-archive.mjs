@@ -1,7 +1,12 @@
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { externalReleaseConfigPath, readLocalReleaseConfig } from './preflight-cloudflare-release.mjs';
+import {
+  archiveReleaseFlags,
+  externalReleaseConfigPath,
+  readLocalReleaseConfig,
+  retiredArchiveReleaseFlags,
+} from './preflight-cloudflare-release.mjs';
 
 const scope = 'https://www.googleapis.com/auth/drive.file';
 const environments = new Set(['staging', 'production']);
@@ -9,6 +14,8 @@ const secretNames = Object.freeze(['GOOGLE_DRIVE_CLIENT_SECRET', 'GOOGLE_DRIVE_R
 const sha256 = /^[a-f0-9]{64}$/u;
 const commitSha = /^[a-f0-9]{40}$/u;
 const safeIdentifier = /^[A-Za-z0-9._-]{1,500}$/u;
+const shadowCopyEnabledFlags = archiveReleaseFlags.slice(0, 2);
+const shadowCopyDisabledFlags = archiveReleaseFlags.slice(2);
 
 export function validateColdArchiveActivation(config, environment, declaredSecrets, evidence) {
   const vars = record(config?.vars);
@@ -16,11 +23,14 @@ export function validateColdArchiveActivation(config, environment, declaredSecre
   if (!environments.has(environment)) return ['environment:invalid'];
   if (!vars) return ['vars:missing'];
   if (vars.APP_ENVIRONMENT !== environment) errors.push('vars.APP_ENVIRONMENT:wrong_environment');
-  for (const key of ['SCHEDULED_OPERATIONS_ENABLED', 'DRIVE_ARCHIVE_ENABLED', 'DRIVE_ARCHIVE_COPY_ENABLED']) {
+  for (const key of ['SCHEDULED_OPERATIONS_ENABLED', ...shadowCopyEnabledFlags]) {
     if (vars[key] !== 'true') errors.push(`vars.${key}:must_be_true`);
   }
-  for (const key of ['DRIVE_ARCHIVE_PROXY_READ_ENABLED', 'DRIVE_ARCHIVE_R2_DELETE_ENABLED']) {
+  for (const key of shadowCopyDisabledFlags) {
     if (vars[key] !== 'false') errors.push(`vars.${key}:must_remain_false`);
+  }
+  for (const key of retiredArchiveReleaseFlags) {
+    if (Object.hasOwn(vars, key)) errors.push(`vars.${key}:deprecated`);
   }
   for (const key of ['GOOGLE_DRIVE_CLIENT_ID', 'GOOGLE_DRIVE_FOLDER_ID', 'GOOGLE_DRIVE_OWNER_ACCOUNT_KEY']) {
     if (typeof vars[key] !== 'string' || !safeIdentifier.test(vars[key]) || /REQUIRED|PLACEHOLDER|TODO/iu.test(vars[key])) errors.push(`vars.${key}:missing_or_invalid`);

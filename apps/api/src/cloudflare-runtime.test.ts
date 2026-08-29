@@ -99,6 +99,24 @@ describe('production Cloudflare Worker runtime', () => {
     }
   });
 
+  it('fails closed when any archive release switch is missing, enabled, or non-string', async () => {
+    const flags = [
+      'ARCHIVE_SELECTOR_ENABLED',
+      'ARCHIVE_DRIVE_UPLOAD_ENABLED',
+      'ARCHIVE_HOT_DELETE_ENABLED',
+      'ARCHIVE_RESTORE_WORKER_ENABLED',
+    ] as const;
+    for (const flag of flags) {
+      const missing = bindings();
+      delete missing[flag];
+      expect(await resolveCloudflareRuntime(missing)).toBeNull();
+      const enabled = { ...bindings(), [flag]: 'true' };
+      expect(await resolveCloudflareRuntime(enabled)).toBeNull();
+      const nonString = { ...bindings(), [flag]: false } as unknown as CloudflareWorkerBindings;
+      expect(await resolveCloudflareRuntime(nonString)).toBeNull();
+    }
+  });
+
   it('uses the canonical entrypoint descriptor at runtime and rejects stale fingerprints', async () => {
     const named = operationalAlertDescriptorFromRuntime({
       serviceTarget: 'ygb-operational-alerts',

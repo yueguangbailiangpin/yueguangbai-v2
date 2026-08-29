@@ -218,7 +218,17 @@ describe('file manifest and upload intent lifecycle', () => {
       },
     );
     if (!readIntent.accessToken) throw new Error('missing_read_token');
-    expect(JSON.stringify(readIntent)).not.toContain('url');
+    expect(readIntent).not.toHaveProperty('url');
+    expect(readIntent).not.toHaveProperty('permanentUrl');
+    expect(readIntent).not.toHaveProperty('permanent_url');
+    expect(Object.keys(readIntent).sort()).toEqual([
+      'accessToken',
+      'accessTokenAvailable',
+      'expiresAt',
+      'fileObjectId',
+      'readIntentId',
+      'replayed',
+    ]);
 
     const read = await consumeFileReadIntent(
       database,
