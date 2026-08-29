@@ -22,4 +22,4 @@
 
 - [x] 4.1 运行专项结算批次测试、typecheck、`npm test`、build、`npm run check`、`db:verify`、migration guards、API contract 与相关容量验证，并逐项记录直接退出码。
 - [x] 4.2 运行 OpenSpec 当前 Change 验证与全量 strict 验证，以及 `git diff --check`；复核 API、数据库/迁移、前端严格 schema 与权限/审计边界。
-- [ ] 4.3 检查 LOCAL/STAGING/REMOTE CI/PRODUCTION 边界、确认无远程写入，并在所有门禁通过后创建独立本地提交。
+- [x] 4.3 检查 LOCAL/STAGING/REMOTE CI/PRODUCTION 边界、确认无远程写入，并在所有门禁通过后创建独立本地提交。
