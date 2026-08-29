@@ -524,15 +524,15 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(35);
+    expect(Number(state?.schema_version)).toBe(36);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(35);
+    expect(migrations).toHaveLength(36);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0035_stage75r_settlement_batch_cancel_fix.sql');
+    expect(migrations.at(-1)).toBe('0036_stage75r5_settlement_cancelled_reason_reserved.sql');
   });
 });
 

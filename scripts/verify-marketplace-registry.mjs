@@ -12,8 +12,8 @@ const migrationDirectory = path.join(root, 'migrations');
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (migrations.length !== 35 || migrations.at(-1) !== '0035_stage75r_settlement_batch_cancel_fix.sql') {
-  throw new Error('expected the clean baseline 0001-0035');
+if (migrations.length !== 36 || migrations.at(-1) !== '0036_stage75r5_settlement_cancelled_reason_reserved.sql') {
+  throw new Error('expected the clean baseline 0001-0036');
 }
 for (const file of migrations) {
   const source = readFileSync(path.join(migrationDirectory, file), 'utf8');
@@ -37,7 +37,7 @@ try {
   }
 
   if (database.prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1')
-    .get().schema_version !== 35) throw new Error('schema version');
+    .get().schema_version !== 36) throw new Error('schema version');
 
   const registry = database.prepare(`
     SELECT code, status || ':' || adapter_status AS state

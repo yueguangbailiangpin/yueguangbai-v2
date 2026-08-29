@@ -204,6 +204,8 @@ seller_settlement_batch_events (
 
 ### 6.4 CSV 导出安全
 
+7.5R-5 追记（数据库保留标记，Migration 0036 / schema 36）：7.5R-4 依赖的 `removal_reason='BATCH_CANCELLED'` 至此由数据库触发器 `trg_settlement_member_cancelled_reason_reserved`（0036）强制为保留标记——任何把成员 `removal_reason` 写为该值的 UPDATE，仅当父批次已处于 `CANCELLED` 且 `batch.cancelled_at = NEW.removed_at`（即既有取消释放触发器路径的指纹）时才被允许，其余（含 DRAFT 阶段人工移除的撞串写入）一律 `settlement_cancelled_reason_reserved` 中止；普通人工移除原因不受影响。导出侧 7.5R-4 的成员冻结条件与该标记由此获得数据库级保证。
+
 7.5R-4 追记（同毫秒竞态最终边界，取代 7.5R-3 的 `max(created_at)+1` 水位与仅 `removed_at > frozen_at` 成员判定——前者可被预检后新增的"created_at 等于原最大时间"事实穿透，后者在确认与取消同毫秒时错误排除取消释放的成员）：两遍读取的一致性由两个稳定边界保证。**成员集合**：`member.added_at <= batch.frozen_at` 且（`removed_at IS NULL` 或 `removed_at > batch.frozen_at` 或 `removal_reason='BATCH_CANCELLED' AND removed_at >= batch.frozen_at`）——`BATCH_CANCELLED` 是取消释放触发器强制写入的系统保留标记（且要求 `removed_at == batch.cancelled_at`），因此确认后取消释放的成员即使与确认同毫秒（removed_at == frozen_at）也属于冻结集合；人工移除（removed_at < frozen_at）始终排除，live `active` 仍不被读取；取消释放业务行为不变。**付款事实**：`export_as_of` = 导出命令开始时刻 `command.now`，排他——两遍均读 `created_at < export_as_of`；明确接受并记录：导出开始同一毫秒产生的事实归**下一次**导出，这是稳定且可复现的边界（不存在可被同毫秒写入穿透的水位查询）。`export_as_of` 写入收据、BATCH_EXPORTED 事件与审计 nextState；同键重放返回原始收据；客户端实收字节 SHA-256 与 header/receipt 一致。真实回归覆盖：预置 created_at=AT-1 付款 + 预检后 created_at=AT 付款与冲销不可见、确认与取消同毫秒（removed_at==frozen_at）后原导出流仍完整无重漏、Response 未读取时取消批次后正文完整、1000 行读取第一页后取消剩余页完整、已取消批次新导出与重放均 409。不新增快照表（无需 Migration 0036）。
 
 7.5R-2 追记（真流式架构，边界表述由 7.5R-3 修正）：导出为两阶段实现。第一阶段预检按 keyset 500 行/页枚举（due date 直接 JOIN 当前页查询），逐页编码并折叠进增量 SHA-256（`IncrementalSha256`），行/字节超限在发出任何字节前 409 `EXPORT_TOO_LARGE`，内存仅持当前页；第二阶段以 `ReadableStream` 的 `pull()` 背压按相同顺序逐页读取、逐页编码 enqueue（每次 pull 至多一页），全程不持有 chunk 数组、完整 merged buffer 或全批次成员数组。

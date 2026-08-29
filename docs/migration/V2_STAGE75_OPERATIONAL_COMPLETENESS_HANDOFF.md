@@ -245,3 +245,45 @@ ChatGPT 总审确认 7.5R-3 仍有两处同毫秒竞态后重开 OpenSpec 3.7/5.
 | `git diff --check` | 0 |
 
 边界声明：仍是本地修复，非 Staging/Production GO；未 push、未部署、未归档 Change、未进入阶段 8。
+
+---
+
+## 13. 阶段 7.5R-5 追记：BATCH_CANCELLED 升级为数据库保留标记（2026-08-29）
+
+ChatGPT 总审确认 7.5R-4 依赖的 `removal_reason='BATCH_CANCELLED'` 尚非数据库强制后重开 OpenSpec 3.7/5.4/5.5/4.5（起点 `f8d5700b`）。**§12 中该标记仅由触发器写入的表述自此获得数据库级保证**（§11/§12 关于导出边界与成员快照语义的结论不变）。
+
+### Migration 0036（schema 35 → 36，只追加）
+
+`0036_stage75r5_settlement_cancelled_reason_reserved.sql`：新增触发器 `trg_settlement_member_cancelled_reason_reserved`——任何把 `seller_settlement_batch_members.removal_reason` 写为 `BATCH_CANCELLED` 的 UPDATE，仅当父批次已 `CANCELLED` 且 `batch.cancelled_at = NEW.removed_at`（既有取消释放触发器 `trg_settlement_batch_cancel_release` 写入路径的唯一指纹：该触发器 AFTER 批次 CANCELLED UPDATE 而执行，且 0033 冻结列守卫保证释放后成员行不可再改）时放行；否则 `settlement_cancelled_reason_reserved` 中止。DRAFT 阶段人工移除写该字符串（含撞串）被数据库拒绝；普通人工原因不受影响。旧 Migration 0001–0035 未改写。
+
+### 锚点同步（schema 36）
+
+`verify-migrations.mjs`（expectedLatestSchema/expectedLastMigration/trigger 313/inventory SHA 重锚 `3e5b4599…`）、`verify-migration-version-guards.mjs`、`baseline-schema.test.ts`（0001-0036 链 + 空库一次过 36）、`TARGET_SCHEMA = 36`×3（operational-readiness、production-readiness/recovery-attestation、staging-bootstrap/first-owner）、`second-layer-hardening.source.test.ts`、16 个模块链长/版本断言测试。
+
+### 真实回归测试（settlement-batches-75r.test.ts，22 用例）
+
+- DRAFT 人工移除写 `BATCH_CANCELLED`：SQL 直改被触发器中止（`settlement_cancelled_reason_reserved`）；命令层 `removeMember(reason='BATCH_CANCELLED')` fail-closed 409。
+- 普通人工原因（"常规人工原因"）仍可移除，落库 active=0 + 原 reason。
+- 人工移除与确认同毫秒（removed_at === frozen_at === AT，普通 reason）：导出排除该成员，其余完整；实收 SHA = Header SHA = BATCH_EXPORTED 事件 receipt SHA。
+- 确认与取消同毫秒（经 0036 触发器路径）：取消释放正常写入标记、原导出流仍含全部成员、无重漏、三方 SHA 一致。
+
+### 验证真实退出码（2026-08-29）
+
+| 命令 | 退出码 |
+|---|---|
+| `npm run typecheck` | 0 |
+| 专项测试（settlement-batches-75r 22 用例） | 0 |
+| `npm test` | 0（见计数） |
+| `npm run check` | 0 |
+| `npm run db:verify` | 0（313 触发器 / schema 36 / inventory SHA `3e5b4599…`） |
+| `npm run verify:migration-guards` | 0 |
+| `openspec validate stage75-operational-completeness --strict` / `--all --strict` | 0 / 0 |
+| `npm run verify:settlement-export-capacity` | 0 |
+| 既定 Playwright 终门（14 spec 文件） | 0：**179 passed / 1 skipped（预存在环境变量门控）/ 0 failed**（180 用例真实执行） |
+| `git diff --check` | 0 |
+
+
+
+### 更正：既定 Playwright 终门的历史记录（真实性更正）
+
+7.5R-5 串行复跑中发现 `stage7a1-screenshots.spec.ts` 自阶段 7.5 第一批提交 `08bb223a` 起即存在缺陷：其 `/api/staff/me/work-items/summary` mock 调用了从未在该文件定义的 `ok(...)` helper，4 个 staff-shell 用例一直以 `ok is not defined` 失败。此前 7.5R-2/3/4 交接记录的"175 passed / 0 failed"不准确——当时门禁脚本用 `| tail; echo $?` 取退出码，实际取到的是 `tail` 的退出码，掩盖了真实失败。本轮修复：为该 spec 补上与其它 e2e 同形的 `ok` helper（仅补定义使既有断言得以真实执行，未改任何断言），终门在 180 用例下真实全绿（179 过 / 1 skip 预存在）。`git diff --check` 与全部退出码自此均取自命令本身的退出码。边界声明：仍是本地修复，非 Staging/Production GO；未 push、未部署、未归档 Change、未进入阶段 8。

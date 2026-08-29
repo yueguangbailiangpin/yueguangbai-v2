@@ -4,6 +4,19 @@ import { expect, test, type Page } from '@playwright/test';
 
 const directory = process.env['STAGE7A1_SCREENSHOT_DIR'] ?? join(process.cwd(), 'tmp', 'stage7a1-screenshots');
 
+// Stage 7.5R-5: the summary mock below calls this helper, which 08bb223a
+// never defined in this file — the four staff-shell cases have been failing
+// with `ok is not defined` ever since. Same shape as the other e2e specs.
+function ok(data: unknown) {
+  return {
+    contentType: 'application/json',
+    body: JSON.stringify({
+      data,
+      meta: { request_id: 'stage7a1-screenshot' },
+    }),
+  };
+}
+
 function ownerSession() {
   return {
     staff_id: 'stage7a1-owner',

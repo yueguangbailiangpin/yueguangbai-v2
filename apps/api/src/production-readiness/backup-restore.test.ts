@@ -31,7 +31,7 @@ import {
   verifyDatabaseAgainstManifest,
 } from '@ygb/testkit';
 
-const CURRENT_SCHEMA = 35;
+const CURRENT_SCHEMA = 36;
 const directories: string[] = [];
 const RELEASE_SHA = 'a'.repeat(40);
 const LONG_RUNNING_TEST_TIMEOUT_MS = 30_000;

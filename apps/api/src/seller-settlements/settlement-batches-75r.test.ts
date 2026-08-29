@@ -19,6 +19,7 @@ import {
   createBatch,
   exportBatchCsv,
   exportHeader,
+  removeMember,
 } from './batches';
 
 /**
@@ -820,6 +821,45 @@ describe('settlement batch CSV export (7.5R)', () => {
   });
 });
 
+  async function staffExportRequest(
+  batchId: string,
+  key: string,
+  db: SqliteDatabase,
+): Promise<Response> {
+  const app = new Hono<any>();
+  app.use('*', async (context, next) => {
+    context.set('requestId', `r75-${crypto.randomUUID()}`);
+    context.set('staffAuthorization', actor('owner'));
+    await next();
+  });
+  registerStaffBatchRoutes(app);
+  return app.request(`${ORIGIN}${base(`/batches/${batchId}/export`)}`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+    headers: {
+      'content-type': 'application/json',
+      'Idempotency-Key': key,
+    },
+  }, { DB: db });
+}
+
+function csvText(chunks: Uint8Array[]): string {
+  let text = '';
+  for (const chunk of chunks) text += new TextDecoder().decode(chunk);
+  return text;
+}
+
+async function drainStream(stream: ReadableStream<Uint8Array>): Promise<Uint8Array[]> {
+  const chunks: Uint8Array[] = [];
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  return chunks;
+}
+
 describe('settlement batch CSV true streaming (7.5R-2)', () => {
   /**
    * Count export member-page queries (the as-of SELECT is the only SQL
@@ -846,27 +886,6 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     });
   }
 
-  async function staffExportRequest(
-    batchId: string,
-    key: string,
-    db: SqliteDatabase,
-  ): Promise<Response> {
-    const app = new Hono<any>();
-    app.use('*', async (context, next) => {
-      context.set('requestId', `r75-${crypto.randomUUID()}`);
-      context.set('staffAuthorization', actor('owner'));
-      await next();
-    });
-    registerStaffBatchRoutes(app);
-    return app.request(`${ORIGIN}${base(`/batches/${batchId}/export`)}`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-      headers: {
-        'content-type': 'application/json',
-        'Idempotency-Key': key,
-      },
-    }, { DB: db });
-  }
 
   /** Consume the body chunk by chunk; return chunks + the query counter. */
   async function readChunkByChunk(
@@ -883,23 +902,6 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
       // Assert the laziness invariant after every read: pages are fetched
       // during consumption, never buffered ahead of the consumer.
       expect(counter.pageQueries).toBeLessThanOrEqual(expectedReads);
-    }
-    return chunks;
-  }
-
-  function csvText(chunks: Uint8Array[]): string {
-    let text = '';
-    for (const chunk of chunks) text += new TextDecoder().decode(chunk);
-    return text;
-  }
-
-  async function drainStream(stream: ReadableStream<Uint8Array>): Promise<Uint8Array[]> {
-    const chunks: Uint8Array[] = [];
-    const reader = stream.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
     }
     return chunks;
   }
@@ -1318,4 +1320,167 @@ describe('settlement batch CSV true streaming (7.5R-2)', () => {
     expect(new Set(numbers).size).toBe(1_000);
     expect(await sha256Hex(new TextEncoder().encode(text))).toBe(headerSha);
   }, 240_000);
+});
+
+describe('BATCH_CANCELLED reserved release marker (7.5R-5)', () => {
+  it('rejects a draft-stage manual removal that writes the reserved marker, while ordinary reasons still work', async () => {
+    const payableIds = bulkSeedPayables(2, 'p75r5-reserved');
+    const created = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '保留标记测试' },
+      { actor: actor(), idempotencyKey: 'r5-create-001', now: AT - 10_000 },
+    );
+    const batchId = created.batchId;
+    await addMembers(
+      database!,
+      { batchId, payableIds, expectedVersion: 1, reason: '保留标记加入' },
+      { actor: actor(), idempotencyKey: 'r5-add-001', now: AT - 10_000 },
+    );
+
+    // Direct SQL: a draft-stage write of the reserved marker is aborted by
+    // the 0036 trigger — the batch is not CANCELLED yet.
+    expect(() =>
+      database!.raw
+        .prepare(
+          `UPDATE seller_settlement_batch_members
+          SET active=0, removed_at=1000, removal_reason='BATCH_CANCELLED'
+          WHERE batch_id=? AND payable_id=? AND active=1`,
+        )
+        .run(batchId, payableIds[0]!),
+    ).toThrow(/settlement_cancelled_reason_reserved/u);
+
+    // Command path with the reserved marker fails closed as well (the
+    // trigger aborts the statement inside the command).
+    await expect(removeMember(
+      database!,
+      { batchId, payableId: payableIds[0]!, expectedVersion: 1, reason: 'BATCH_CANCELLED' },
+      { actor: actor(), idempotencyKey: 'r5-remove-reserved', now: AT - 9_000 },
+    )).rejects.toMatchObject({ code: 'SELLER_SETTLEMENT_CONFLICT', status: 409 });
+
+    // Ordinary manual reasons keep working.
+    const removed = await removeMember(
+      database!,
+      { batchId, payableId: payableIds[0]!, expectedVersion: 1, reason: '常规人工原因' },
+      { actor: actor(), idempotencyKey: 'r5-remove-ordinary', now: AT - 8_000 },
+    );
+    expect(removed.batch.status).toBe('DRAFT');
+    const memberRow = database!.raw
+      .prepare(
+        `SELECT active, removed_at, removal_reason FROM seller_settlement_batch_members
+        WHERE batch_id=? AND payable_id=?`,
+      )
+      .get(batchId, payableIds[0]!) as { active: number; removed_at: number; removal_reason: string };
+    expect(memberRow.active).toBe(0);
+    expect(memberRow.removal_reason).toBe('常规人工原因');
+  }, 60_000);
+
+  it('excludes a manually removed member even when removal and confirm share a millisecond, and the export keeps the rest', async () => {
+    const payableIds = bulkSeedPayables(2, 'p75r5-samemilli-manual');
+    const created = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '同毫秒人工移除' },
+      { actor: actor(), idempotencyKey: 'r5-sm-create', now: AT - 10_000 },
+    );
+    const batchId = created.batchId;
+    await addMembers(
+      database!,
+      { batchId, payableIds, expectedVersion: 1, reason: '同毫秒加入' },
+      { actor: actor(), idempotencyKey: 'r5-sm-add', now: AT - 10_000 },
+    );
+    // Manual removal in the SAME millisecond as the confirm.
+    await removeMember(
+      database!,
+      { batchId, payableId: payableIds[0]!, expectedVersion: 1, reason: '同毫秒人工排除' },
+      { actor: actor(), idempotencyKey: 'r5-sm-remove', now: AT },
+    );
+    const confirmed = await confirmBatch(
+      database!,
+      { batchId, expectedVersion: 1, reason: '同毫秒确认' },
+      { actor: actor(), idempotencyKey: 'r5-sm-confirm', now: AT },
+    );
+    expect(confirmed.batch.status).toBe('CONFIRMED');
+
+    // Premise check: removed_at === frozen_at === AT, ordinary reason.
+    const removedRow = database!.raw
+      .prepare(
+        `SELECT member.removed_at, member.removal_reason, batch.frozen_at
+        FROM seller_settlement_batch_members member
+        JOIN seller_settlement_batches batch ON batch.id=member.batch_id
+        WHERE member.batch_id=? AND member.payable_id=?`,
+      )
+      .get(batchId, payableIds[0]!) as {
+      removed_at: number; removal_reason: string; frozen_at: number;
+    };
+    expect(Number(removedRow.removed_at)).toBe(AT);
+    expect(Number(removedRow.frozen_at)).toBe(AT);
+    expect(removedRow.removal_reason).toBe('同毫秒人工排除');
+
+    // The export keeps exactly the frozen set: the manually removed member
+    // is NOT resurrected by the same-millisecond removal.
+    const response = await staffExportRequest(batchId, 'r5-sm-export-001', database!);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-export-row-count')).toBe('1');
+    const text = await response.text();
+    const lines = text.trimEnd().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[1]!.split(',')[0]).toBe('900-0000002-0000002');
+    const digest = await sha256Hex(new TextEncoder().encode(text));
+    expect(digest).toBe(response.headers.get('x-export-sha256'));
+    const eventRow = database!.raw
+      .prepare(
+        `SELECT detail_json FROM seller_settlement_batch_events WHERE batch_id=? AND event_type='BATCH_EXPORTED'`,
+      )
+      .get(batchId) as { detail_json: string };
+    const event = JSON.parse(String(eventRow.detail_json)) as { sha256: string; row_count: number };
+    expect(event.sha256).toBe(digest);
+    expect(event.row_count).toBe(1);
+  }, 120_000);
+
+  it('still releases and keeps members exportable when confirm and cancel share a millisecond (through the 0036 trigger)', async () => {
+    const payableIds = bulkSeedPayables(2, 'p75r5-samemilli-cancel');
+    const created = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '同毫秒确认取消 0036' },
+      { actor: actor(), idempotencyKey: 'r5-cm-create', now: AT - 10_000 },
+    );
+    const batchId = created.batchId;
+    await addMembers(
+      database!,
+      { batchId, payableIds, expectedVersion: 1, reason: '同毫秒加入' },
+      { actor: actor(), idempotencyKey: 'r5-cm-add', now: AT - 10_000 },
+    );
+    const confirmed = await confirmBatch(
+      database!,
+      { batchId, expectedVersion: 1, reason: '同毫秒确认' },
+      { actor: actor(), idempotencyKey: 'r5-cm-confirm', now: AT },
+    );
+    // Export starts first (preflight + receipt), body unconsumed.
+    const response = await staffExportRequest(batchId, 'r5-cm-export-001', database!);
+    expect(response.status).toBe(200);
+    const headerSha = response.headers.get('x-export-sha256');
+    // Cancel in the same millisecond — the release trigger writes the
+    // reserved marker and the 0036 guard must LET IT THROUGH.
+    const cancelled = await cancelBatch(
+      database!,
+      { batchId, expectedVersion: confirmed.batch.version, reason: '同毫秒取消' },
+      { actor: actor(), idempotencyKey: 'r5-cm-cancel', now: AT },
+    );
+    expect(cancelled.batch.status).toBe('CANCELLED');
+
+    const chunks = await drainStream(response.body!);
+    const text = csvText(chunks);
+    const lines = text.trimEnd().split('\n');
+    expect(lines).toHaveLength(3);
+    const numbers = lines.slice(1).map((line) => line.split(',')[0]);
+    expect(new Set(numbers).size).toBe(2);
+    const digest = await sha256Hex(new TextEncoder().encode(text));
+    expect(digest).toBe(headerSha);
+    const eventRow = database!.raw
+      .prepare(
+        `SELECT detail_json FROM seller_settlement_batch_events WHERE batch_id=? AND event_type='BATCH_EXPORTED'`,
+      )
+      .get(batchId) as { detail_json: string };
+    const event = JSON.parse(String(eventRow.detail_json)) as { sha256: string };
+    expect(event.sha256).toBe(digest);
+  }, 120_000);
 });
