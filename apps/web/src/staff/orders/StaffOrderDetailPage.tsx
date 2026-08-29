@@ -186,7 +186,7 @@ export function StaffOrderDetailPage(): React.JSX.Element {
     );
   const value = detail.data ?? null;
   return (
-    <div className="sp-detail-sections">
+    <div className="sp-detail-sections sp-order-detail-page">
       {!canViewFinance ? (
         <p className="sp-page-head__meta">计价与财务金额仅 Owner 可见；以下为订单流程事实。</p>
       ) : null}
@@ -221,8 +221,11 @@ export function StaffOrderDetailPage(): React.JSX.Element {
             <ResponsibilityBlock responsibility={value.responsibility} />
           ) : null}
 
+          <BusinessInfoCard value={value} />
+          {value.responsibility ? <OrderProgress responsibility={value.responsibility} /> : null}
+
           <div className="sp-detail-grid">
-            <div className="sp-detail-grid__main sp-stack">
+            <div className="sp-detail-grid__main sp-order-detail-main sp-stack">
               <section aria-labelledby="staff-order-evidence-title">
                 <h2 id="staff-order-evidence-title" className="staff-group-heading">凭证与沟通截图</h2>
                 <div className="staff-order-evidence-grid">
@@ -239,7 +242,7 @@ export function StaffOrderDetailPage(): React.JSX.Element {
               <TimelineCard value={value} />
               <OrderOperationBlocks orderId={orderId} value={value} />
             </div>
-            <aside aria-label="订单参考" className="sp-stack">
+            <aside aria-label="订单参考" className="sp-stack sp-order-detail-aside">
               
               {value.buyer_advance ? (
                 <section className="staff-ref-section">
@@ -313,6 +316,103 @@ const RESPONSIBILITY_ACTION_LABELS: Record<string, string> = {
   RESOLVE_EXCEPTION: '处理订单异常',
   ASSIGN_RESPONSIBLE_STAFF: '联系管理员分配负责人',
 };
+
+function BusinessInfoCard({ value }: { value: StaffFormalOrderDetail }): React.JSX.Element {
+  return (
+    <section className="sa-card sp-business-info" aria-labelledby="staff-business-info-title">
+      <div className="sp-section-heading">
+        <div>
+          <h2 id="staff-business-info-title">业务参与方</h2>
+          <p>正式订单快照中的买家、卖家与渠道信息</p>
+        </div>
+      </div>
+      <dl className="sp-business-info__grid">
+        <div>
+          <dt>买家</dt>
+          <dd>
+            <strong>{value.buyer.display_name}</strong>
+            <small>{value.buyer.customer_no ?? value.buyer.buyer_customer_id}</small>
+          </dd>
+        </div>
+        <div>
+          <dt>卖家 / 店铺</dt>
+          <dd>
+            <strong>{value.seller.store_display_name}</strong>
+            <small>{value.seller.seller_organization_id}</small>
+          </dd>
+        </div>
+        <div>
+          <dt>站点</dt>
+          <dd>
+            <strong>{MARKET_LABELS[value.order.marketplace_code] ?? value.order.marketplace_code}</strong>
+            <small>{value.order.amazon_order_date ?? '未提供下单日期'}</small>
+          </dd>
+        </div>
+        <div>
+          <dt>确认时间</dt>
+          <dd>
+            <strong>{formatShanghai(value.order.confirmed_at)}</strong>
+            <small>确认后订单资料不可覆盖</small>
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+const PROGRESS_STEPS = [
+  { key: 'BUYER_REFUND', label: '买家返款' },
+  { key: 'SELLER_SETTLEMENT', label: '卖家结算' },
+  { key: 'COMPLETED', label: '订单完成' },
+] as const;
+
+function OrderProgress({
+  responsibility,
+}: {
+  responsibility: NonNullable<StaffFormalOrderDetail['responsibility']>;
+}): React.JSX.Element {
+  const currentIndex = Math.max(
+    0,
+    PROGRESS_STEPS.findIndex((step) => step.key === responsibility.stage),
+  );
+  return (
+    <section className="sa-card sp-order-progress" aria-labelledby="staff-order-progress-title">
+      <div className="sp-section-heading">
+        <div>
+          <h2 id="staff-order-progress-title">订单进度</h2>
+          <p>正式业务状态</p>
+        </div>
+        <span className="sp-order-progress__caption">
+          {RESPONSIBILITY_STAGE_LABELS[responsibility.stage] ?? responsibility.stage}
+        </span>
+      </div>
+      <ol className="sp-order-progress__steps">
+        {PROGRESS_STEPS.map((step, index) => {
+          const isCurrent = index === currentIndex;
+          const isDone = index < currentIndex || responsibility.stage === 'COMPLETED';
+          return (
+            <li
+              key={step.key}
+              className={isCurrent ? 'is-current' : isDone ? 'is-done' : undefined}
+            >
+              <span aria-hidden="true">{isDone ? '✓' : index + 1}</span>
+              <strong>{step.label}</strong>
+              <small>
+                {isCurrent
+                  ? responsibility.is_overdue
+                    ? '需要尽快处理'
+                    : '当前阶段'
+                  : isDone
+                    ? '已完成'
+                    : '等待前序完成'}
+              </small>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
 
 /**
  * Stage 7.5 batch 1: the authoritative "当前负责人 / 下一步" area. Every

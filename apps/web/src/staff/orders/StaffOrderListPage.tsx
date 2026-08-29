@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { Filter, X } from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { ChevronLeft, ChevronRight, Filter, UserRound, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
 import { staffApi } from '../api/client';
@@ -27,6 +27,7 @@ interface FilterState {
   amazonOrderNumberPrefix: string;
   buyerCustomerNo: string;
   sellerOrganizationId: string;
+  responsibleStaffId: string;
   stage: string;
   exceptionState: string;
   confirmedFrom: string;
@@ -37,6 +38,7 @@ const EMPTY_FILTERS: FilterState = {
   amazonOrderNumberPrefix: '',
   buyerCustomerNo: '',
   sellerOrganizationId: '',
+  responsibleStaffId: '',
   stage: '',
   exceptionState: '',
   confirmedFrom: '',
@@ -48,6 +50,7 @@ function filtersFromParams(params: URLSearchParams): FilterState {
     amazonOrderNumberPrefix: params.get('amazon_order_number_prefix') ?? '',
     buyerCustomerNo: params.get('buyer_customer_no') ?? '',
     sellerOrganizationId: params.get('seller_organization_id') ?? '',
+    responsibleStaffId: params.get('responsible_staff_id') ?? '',
     stage: params.get('stage') ?? '',
     exceptionState: params.get('exception_state') ?? '',
     confirmedFrom: params.get('confirmed_from') ?? '',
@@ -65,6 +68,7 @@ function filtersToParams(filters: FilterState): URLSearchParams {
     amazon_order_number_prefix: filters.amazonOrderNumberPrefix || null,
     buyer_customer_no: filters.buyerCustomerNo || null,
     seller_organization_id: filters.sellerOrganizationId || null,
+    responsible_staff_id: filters.responsibleStaffId || null,
     stage: filters.stage || null,
     exception_state: filters.exceptionState || null,
     confirmed_from: filters.confirmedFrom || null,
@@ -88,11 +92,33 @@ export function StaffOrderListPage(): React.JSX.Element {
   const filters = filtersFromParams(searchParams);
   const [draft, setDraft] = useState<FilterState>(filters);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setDraft(filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 URL 筛选变化时同步草稿。
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const frame = requestAnimationFrame(() => drawerCloseRef.current?.focus());
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDrawerOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      if (drawerTriggerRef.current?.isConnected) drawerTriggerRef.current.focus();
+    };
+  }, [drawerOpen]);
 
   // Infinite query accumulates pages so 加载更多 keeps earlier rows rendered.
   const list = useInfiniteQuery({
@@ -126,10 +152,18 @@ export function StaffOrderListPage(): React.JSX.Element {
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
   const nextCursor = list.data?.pages.at(-1)?.next_cursor ?? null;
   const activeCount = activeFilterCount(filters);
+  const responsibleStaffOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const item of items) {
+      const staff = item.responsibility.responsible_staff;
+      if (staff) options.set(staff.staff_id, staff.display_name);
+    }
+    return [...options.entries()];
+  }, [items]);
   void session;
 
   return (
-    <div className="sp-stack-sm">
+    <div className="sp-stack-sm sp-order-list-page">
       <div className="sp-page-head">
         <div>
           <p className="sp-page-head__meta">
@@ -145,19 +179,19 @@ export function StaffOrderListPage(): React.JSX.Element {
       </div>
 
       {/* 桌面单行工具栏：搜索 + 紧凑筛选 + 清除 */}
-      <form className="sp-toolbar" onSubmit={submitToolbar} aria-label="订单筛选">
+      <form className="sp-toolbar sp-order-toolbar" onSubmit={submitToolbar} aria-label="订单筛选">
         <div className="sp-toolbar__search sa-field">
           <input
             className="sa-input sa-input--search"
             aria-label="搜索平台订单号前缀"
-            placeholder="搜索订单号前缀，如 503-7770"
+            placeholder="搜索订单号，如 503-7770"
             value={draft.amazonOrderNumberPrefix}
             minLength={3}
             onChange={(event) => setDraft({ ...draft, amazonOrderNumberPrefix: event.target.value })}
           />
         </div>
         <div className="sp-toolbar__filters">
-          <div className="sa-field sp-toolbar__always">
+          <div className="sa-field">
             <select
               className="sa-select sa-select--compact"
               aria-label="按业务阶段筛选"
@@ -172,7 +206,7 @@ export function StaffOrderListPage(): React.JSX.Element {
               ))}
             </select>
           </div>
-          <div className="sa-field sp-toolbar__always">
+          <div className="sa-field">
             <select
               className="sa-select sa-select--compact"
               aria-label="按异常状态筛选"
@@ -182,6 +216,20 @@ export function StaffOrderListPage(): React.JSX.Element {
               <option value="">全部异常</option>
               <option value="OPEN">有异常</option>
               <option value="NONE">无异常</option>
+            </select>
+          </div>
+          <div className="sa-field">
+            <div className="sp-filter-control-label" aria-hidden="true"><UserRound size={14} /></div>
+            <select
+              className="sa-select sa-select--compact"
+              aria-label="按负责人筛选"
+              value={draft.responsibleStaffId}
+              onChange={(event) => setDraft({ ...draft, responsibleStaffId: event.target.value })}
+            >
+              <option value="">全部负责人</option>
+              {responsibleStaffOptions.map(([id, name]) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
             </select>
           </div>
           <div className="sa-field">
@@ -226,6 +274,7 @@ export function StaffOrderListPage(): React.JSX.Element {
         <button
           type="button"
           className="sa-btn sa-btn--secondary sa-btn--small sp-toolbar__drawer-trigger"
+          ref={drawerTriggerRef}
           aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen(true)}
         >
@@ -250,6 +299,7 @@ export function StaffOrderListPage(): React.JSX.Element {
                 type="button"
                 className="sa-btn sa-btn--ghost sa-btn--small"
                 aria-label="关闭筛选"
+                ref={drawerCloseRef}
                 onClick={() => setDrawerOpen(false)}
               >
                 <X aria-hidden="true" size={18} />
@@ -309,6 +359,20 @@ export function StaffOrderListPage(): React.JSX.Element {
                   value={draft.buyerCustomerNo}
                   onChange={(event) => setDraft({ ...draft, buyerCustomerNo: event.target.value })}
                 />
+              </div>
+              <div className="sa-field">
+                <label htmlFor="sp-order-responsible">负责人</label>
+                <select
+                  id="sp-order-responsible"
+                  className="sa-select"
+                  value={draft.responsibleStaffId}
+                  onChange={(event) => setDraft({ ...draft, responsibleStaffId: event.target.value })}
+                >
+                  <option value="">全部负责人</option>
+                  {responsibleStaffOptions.map(([id, name]) => (
+                    <option key={id} value={id}>{name}</option>
+                  ))}
+                </select>
               </div>
               <div className="sa-field">
                 <label htmlFor="sp-order-from">确认日期起</label>
@@ -371,20 +435,20 @@ export function StaffOrderListPage(): React.JSX.Element {
       ) : (
         <>
           {/* 桌面紧凑表格 */}
-          <div className="sa-card sa-card--flush sp-table-only">
+          <div className="sa-card sa-card--flush sp-table-only sp-order-table-card">
             <div className="sp-table-scroll">
               <table className="sa-table">
                 <thead>
                   <tr>
-                    <th>平台订单号</th>
-                    <th>买家</th>
-                    <th>店铺</th>
+                    <th>订单</th>
+                    <th>买家编号</th>
+                    <th>卖家 / 店铺</th>
                     <th>产品</th>
                     <th>业务阶段</th>
                     <th>负责人</th>
-                    <th>下一步</th>
-                    <th>应返买家</th>
-                    <th>确认时间</th>
+                    <th className="number">金额</th>
+                    <th>状态 / 异常</th>
+                    <th>更新时间</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -397,7 +461,7 @@ export function StaffOrderListPage(): React.JSX.Element {
           </div>
 
           {/* 移动端卡片列表 */}
-          <div className="sp-cards sp-cards-only">
+          <div className="sp-cards sp-cards-only sp-order-mobile-list">
             {items.map((item) => (
               <button
                 key={item.formal_order_id}
@@ -412,29 +476,43 @@ export function StaffOrderListPage(): React.JSX.Element {
                   </span>
                 </span>
                 <span className="sp-card-item__meta">
-                  {item.buyer_display_name}（{item.buyer_customer_no}）· {item.store_display_name}
+                  买家 {item.buyer_customer_no} · {item.buyer_display_name}
                 </span>
                 <span className="sp-card-item__meta">
-                  {item.product_name_snapshot} · 下一步：{NEXT_ACTION_LABELS[item.responsibility.next_action] ?? item.responsibility.next_action}
+                  {item.store_display_name} · {item.product_name_snapshot}
+                </span>
+                <span className="sp-card-item__foot">
+                  <span>{item.responsibility.responsible_staff?.display_name ?? '未分配'} · {NEXT_ACTION_LABELS[item.responsibility.next_action] ?? item.responsibility.next_action}</span>
+                  <strong>{item.buyer_expected_principal_cny_fen === null ? '—' : formatCny(item.buyer_expected_principal_cny_fen)}</strong>
                 </span>
               </button>
             ))}
           </div>
 
-          <div className="sp-list-footer">
+          <div className="sp-list-footer sp-order-pagination" aria-label="订单列表分页">
             <span>
-              已加载 {items.length} 条{nextCursor !== null ? ' · 还有更多' : ' · 已全部加载'}
+              已返回 {items.length} 条{nextCursor !== null ? ' · 还有更多' : ' · 已全部加载'}
             </span>
-            {nextCursor !== null ? (
+            <div className="sp-order-pagination__actions">
+              <button
+                type="button"
+                className="sa-btn sa-btn--ghost sa-btn--small"
+                disabled
+                aria-label="上一页（当前为第一页）"
+              >
+                <ChevronLeft aria-hidden="true" size={16} />
+                上一页
+              </button>
               <button
                 type="button"
                 className="sa-btn sa-btn--secondary sa-btn--small"
-                disabled={list.isFetchingNextPage}
+                disabled={nextCursor === null || list.isFetchingNextPage}
                 onClick={() => void list.fetchNextPage()}
               >
                 {list.isFetchingNextPage ? '加载中…' : '加载更多'}
+                <ChevronRight aria-hidden="true" size={16} />
               </button>
-            ) : null}
+            </div>
           </div>
         </>
       )}
@@ -453,6 +531,7 @@ function OrderRow({
     <tr
       className="sa-table__row"
       tabIndex={0}
+      aria-label={`打开订单 ${item.amazon_order_number}`}
       onClick={onOpen}
       onKeyDown={(event) => {
         if (event.key === 'Enter') onOpen();
@@ -460,14 +539,20 @@ function OrderRow({
     >
       <td>
         <strong>{item.amazon_order_number}</strong>
+        <small>{item.marketplace_code} · {item.amazon_order_date}</small>
       </td>
       <td>
-        {item.buyer_display_name}
-        <br />
-        <span className="sp-page-head__meta">{item.buyer_customer_no}</span>
+        <strong>{item.buyer_customer_no}</strong>
+        <small>{item.buyer_display_name}</small>
       </td>
-      <td>{item.store_display_name}</td>
-      <td>{item.product_name_snapshot}</td>
+      <td>
+        <strong>{item.seller_organization_id}</strong>
+        <small>{item.store_display_name}</small>
+      </td>
+      <td>
+        <strong>{item.product_name_snapshot}</strong>
+        <small>{item.review_type}</small>
+      </td>
       <td>
         <span className="sa-badge sa-badge--outline">{STAGE_LABELS[item.responsibility.stage] ?? item.responsibility.stage}</span>
       </td>
@@ -476,6 +561,13 @@ function OrderRow({
           <span className="sp-amount--muted">未分配</span>
         ) : (
           item.responsibility.responsible_staff.display_name
+        )}
+      </td>
+      <td className="sa-table__num">
+        {item.buyer_expected_principal_cny_fen === null ? (
+          <span className="sp-amount--muted">—</span>
+        ) : (
+          formatCny(item.buyer_expected_principal_cny_fen)
         )}
       </td>
       <td>
@@ -488,15 +580,13 @@ function OrderRow({
                 : 'sa-badge sa-badge--neutral'
           }
         >
-          {NEXT_ACTION_LABELS[item.responsibility.next_action] ?? item.responsibility.next_action}
+          {item.responsibility.exception_state === 'OPEN'
+            ? '有异常'
+            : item.responsibility.is_overdue
+              ? '已逾期'
+              : '正常'}
         </span>
-      </td>
-      <td className="sa-table__num">
-        {item.buyer_expected_principal_cny_fen === null ? (
-          <span className="sp-amount--muted">—</span>
-        ) : (
-          formatCny(item.buyer_expected_principal_cny_fen)
-        )}
+        <small className="sp-order-next-action">{NEXT_ACTION_LABELS[item.responsibility.next_action] ?? item.responsibility.next_action}</small>
       </td>
       <td className="sa-table__num">{formatShanghai(item.confirmed_at)}</td>
     </tr>

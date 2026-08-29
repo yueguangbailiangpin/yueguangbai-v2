@@ -57,18 +57,10 @@ export function FinanceAlertStrip({
   return <section className="staff-finance-strip" aria-label="待处理">{alerts}</section>;
 }
 
-/** 3,000 JPY — the fixed illustrative order used across the example card. */
-const EXAMPLE_ORDER_JPY = 3_000n;
-
-function jpyTimesRateToFen(jpy: bigint, rateE8: bigint): bigint {
-  const scaled = jpy * rateE8 * 100n;
-  return (scaled + 50_000_000n) / 100_000_000n;
-}
-
 /**
- * The comprehension anchor of the page: what is effective today, and what it
- * means for a concrete order — how much the buyer gets back, the seller
- * receives, and the platform earns.
+ * Configuration context only. Order-level amounts remain backend-authoritative
+ * and are rendered on the order detail/settlement surfaces; this card does not
+ * calculate buyer refunds, seller receipts or platform profit in the browser.
  */
 export function FinanceExampleCard({
   baseRate,
@@ -85,17 +77,6 @@ export function FinanceExampleCard({
   feeNote: string | null;
   dateLabel: string;
 }): React.JSX.Element {
-  const baseE8 = baseRate === null ? null : BigInt(baseRate);
-  const markupE8 = markup === null ? null : BigInt(markup);
-  const buyerFen = baseE8 === null ? null : jpyTimesRateToFen(EXAMPLE_ORDER_JPY, baseE8);
-  const sellerFen =
-    baseE8 === null || markupE8 === null
-      ? null
-      : jpyTimesRateToFen(EXAMPLE_ORDER_JPY, baseE8 + markupE8);
-  const profitFen =
-    sellerFen !== null && feeFen !== null
-      ? sellerFen + BigInt(feeFen) - (buyerFen ?? 0n)
-      : null;
   return (
     <Card className="customer-visible" id="finance-section-summary">
       <h3>{dateLabel}生效</h3>
@@ -111,22 +92,9 @@ export function FinanceExampleCard({
         {feeNote === null ? '' : <span className="inline-info">（{feeNote}）</span>}
       </p>
       <div className="staff-finance-example">
-        <p className="hint">一单 ¥{EXAMPLE_ORDER_JPY.toLocaleString('zh-CN')} 日元（评分单）为例：</p>
-        <p>
-          买家返 {buyerFen === null ? '¥—' : fenToYuan(buyerFen.toString())}
-          {' ｜ '}卖家收 {sellerFen === null ? '¥—' : fenToYuan(sellerFen.toString())}
-          {' ｜ '}服务费 {feeFen === null ? '¥—' : fenToYuan(feeFen)}
-        </p>
-        <p>
-          平台毛利{' '}
-          {profitFen === null ? (
-            <span className="inline-warning">配齐后自动显示</span>
-          ) : (
-            <strong>{fenToYuan(profitFen.toString())}</strong>
-          )}
-        </p>
+        <p className="hint">订单确认时冻结配置快照，订单级权威金额请在订单详情和结算账本查看。</p>
+        <p className="hint">当前页只显示后端返回的汇率、加点与服务费配置，不在浏览器推导返款或利润。</p>
       </div>
-      <p className="hint">订单确认时冻结这三项，之后的修改不影响已确认订单。</p>
     </Card>
   );
 }

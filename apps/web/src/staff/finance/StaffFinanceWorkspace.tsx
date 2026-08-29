@@ -19,6 +19,8 @@ import {
   type StaffMutationRequest,
 } from '../mutations/StaffMutationAuthority';
 import { PricingBreakdownCard } from '../shared/PricingBreakdownCard';
+import { SettlementBatchesSection } from '../SettlementBatchesSection';
+import { formatCny, formatShanghai } from '../shared/format';
 import {
   BaseRateBlock,
   FinanceAlertStrip,
@@ -45,11 +47,9 @@ const SECTION_ANCHORS: Record<string, string> = {
 };
 
 /**
- * /staff/finance — what a single order costs and earns, in plain terms:
- * the three pricing rules (base rate / markup / service fee) and where to
- * fix gaps.  Every save is immediately effective (D-056 single-save model).
- * Editing lives inside each block; reconciliation tools are folded away at
- * the bottom.
+ * /staff/finance — settlement facts first, followed by the three pricing
+ * rules (base rate / markup / service fee). Every save is immediately effective
+ * (D-056 single-save model); browser rendering never derives order amounts.
  */
 export function StaffFinanceWorkspace(): React.JSX.Element {
   const session = useCurrentStaffSession();
@@ -70,6 +70,8 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
   const canRead =
     (session.role.code === 'owner' || session.role.code === 'seller_ops') &&
     session.permissions.includes('SELLER_MANAGE');
+  const canViewLedger =
+    session.role.code === 'owner' && session.permissions.includes('FINANCIAL_VIEW');
   const hasManage = session.permissions.includes('SELLER_MANAGE');
   const isGlobalOwner =
     session.role.code === 'owner' && hasManage && session.data_scope.type === 'GLOBAL';
@@ -176,6 +178,29 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
   const visibleOrganizations = rateCenter.data?.seller_organizations
     ?? lastOrganizations.current
     ?? [];
+  const financeOrganizationId =
+    selectedOrganizationId ?? visibleOrganizations[0]?.seller_organization_id ?? null;
+  const settlementSummary = useQuery({
+    queryKey: ['staff', 'finance-settlement-summary', financeOrganizationId],
+    queryFn: ({ signal }) =>
+      staffApi.settlementSummary(client, financeOrganizationId!, signal).then((response) => response.data),
+    enabled: canViewLedger && financeOrganizationId !== null,
+    retry: false,
+  });
+  const settlementPayables = useQuery({
+    queryKey: ['staff', 'finance-settlement-payables', financeOrganizationId],
+    queryFn: ({ signal }) =>
+      staffApi.settlementPayables(client, financeOrganizationId!, signal).then((response) => response.data),
+    enabled: canViewLedger && financeOrganizationId !== null,
+    retry: false,
+  });
+  const settlementPayments = useQuery({
+    queryKey: ['staff', 'finance-settlement-payments', financeOrganizationId],
+    queryFn: ({ signal }) =>
+      staffApi.settlementPayments(client, financeOrganizationId!, signal).then((response) => response.data),
+    enabled: canViewLedger && financeOrganizationId !== null,
+    retry: false,
+  });
   useEffect(() => {
     if (isGlobalOwner || organizationId.length > 0) return;
     const first = visibleOrganizations[0];
@@ -246,6 +271,9 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
   const selectedOrg = visibleOrganizations.find(
     (organization) => organization.seller_organization_id === selectedOrganizationId,
   );
+  const financeOrg = visibleOrganizations.find(
+    (organization) => organization.seller_organization_id === financeOrganizationId,
+  );
 
   const missingFeeTypes = useMemo(
     () =>
@@ -267,9 +295,39 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
 
   return (
     <main className="sp-finance-page">
-      <p className="sp-page-head__meta">
-        基础汇率、加点、服务费共同决定每一单：买家返多少、卖家收多少、平台赚多少；结算批次按卖家组织管理。
-      </p>
+      <header className="sp-finance-hero">
+        <div>
+          <p className="sp-finance-hero__eyebrow">资金与结算</p>
+          <strong>订单资金工作区</strong>
+          <p>基础汇率、加点、服务费共同决定订单配置；应付、付款进度和结算批次均来自后端账本。</p>
+        </div>
+        <div className="sp-finance-hero__actions">
+          <label>
+            业务日
+            <TextInput
+              aria-label="财务业务日"
+              type="date"
+              value={businessDate}
+              onChange={(event) => setBusinessDate(event.target.value)}
+            />
+          </label>
+          <Button
+            className="secondary"
+            onClick={() => {
+              void Promise.all([
+                rateCenter.refetch(),
+                query.refetch(),
+                serviceFees.refetch(),
+                canViewLedger ? settlementSummary.refetch() : Promise.resolve(),
+                canViewLedger ? settlementPayables.refetch() : Promise.resolve(),
+                canViewLedger ? settlementPayments.refetch() : Promise.resolve(),
+              ]);
+            }}
+          >
+            刷新数据
+          </Button>
+        </div>
+      </header>
       <FinanceAlertStrip
         baseRateDate={businessDate}
         baseRateMissing={
@@ -278,6 +336,15 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
         feeOrgName={selectedOrg?.seller_organization_name ?? null}
         missingFeeTypes={missingFeeTypes}
       />
+      {canViewLedger ? (
+        <FinanceSettlementWorkspace
+          organizationId={financeOrganizationId}
+          organizationName={selectedOrg?.seller_organization_name ?? financeOrg?.seller_organization_name ?? null}
+          summary={settlementSummary}
+          payables={settlementPayables}
+          payments={settlementPayments}
+        />
+      ) : null}
       <FinanceExampleCard
         baseRate={rateCenter.data?.base_rate.active_version?.rate_value ?? null}
         markup={exampleMarkup?.markup_rate_value ?? null}
@@ -407,6 +474,151 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
       ) : null}
       <RequestIdDisplay requestId={requestId} />
     </main>
+  );
+}
+
+const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
+  UNPAID: '待付款',
+  PARTIALLY_PAID: '部分付款',
+  PAID: '已付清',
+  REVERSED: '已冲销',
+  UNALLOCATED: '待分配',
+  PARTIALLY_ALLOCATED: '部分分配',
+  FULLY_ALLOCATED: '已分配',
+};
+
+const PAYABLE_TYPE_LABELS: Record<string, string> = {
+  SELLER_PRINCIPAL: '卖家本金',
+  SELLER_SERVICE_FEE: '卖家服务费',
+};
+
+type SettlementSummaryQuery = ReturnType<typeof useQuery<Awaited<ReturnType<typeof staffApi.settlementSummary>>['data']>>;
+type SettlementPayablesQuery = ReturnType<typeof useQuery<Awaited<ReturnType<typeof staffApi.settlementPayables>>['data']>>;
+type SettlementPaymentsQuery = ReturnType<typeof useQuery<Awaited<ReturnType<typeof staffApi.settlementPayments>>['data']>>;
+
+function FinanceSettlementWorkspace({
+  organizationId,
+  organizationName,
+  summary,
+  payables,
+  payments,
+}: {
+  organizationId: string | null;
+  organizationName: string | null;
+  summary: SettlementSummaryQuery;
+  payables: SettlementPayablesQuery;
+  payments: SettlementPaymentsQuery;
+}): React.JSX.Element {
+  const summaryValue = summary.data?.settlement;
+  const payableItems = payables.data?.items ?? [];
+  const paymentItems = payments.data?.items ?? [];
+  return (
+    <section className="sp-finance-ledger" aria-labelledby="staff-finance-settlement-title">
+      <div className="sp-finance-ledger__heading">
+        <div>
+          <p className="sp-finance-kicker">卖家组织账本</p>
+          <h2 id="staff-finance-settlement-title">结算概览</h2>
+          <p>{organizationName ?? (organizationId ? '当前组织' : '选择卖家组织后显示')}</p>
+        </div>
+        {organizationId ? <span className="sp-finance-ledger__scope">后端权威余额</span> : null}
+      </div>
+      {organizationId === null ? (
+        <p className="sp-finance-state">当前账号没有可读取的卖家组织。</p>
+      ) : summary.isPending ? (
+        <p className="sp-finance-state" role="status">正在读取结算概览</p>
+      ) : summary.isError ? (
+        <p className="sp-finance-state sp-finance-state--error">结算概览读取失败，请刷新重试。</p>
+      ) : summaryValue ? (
+        <div className="sp-finance-summary" aria-label="结算余额摘要">
+          <div>
+            <span>应付本金</span>
+            <strong>{formatCny(summaryValue.outstanding_principal_cny_fen)}</strong>
+          </div>
+          <div>
+            <span>应付服务费</span>
+            <strong>{formatCny(summaryValue.outstanding_service_fee_cny_fen)}</strong>
+          </div>
+          <div className="is-emphasis">
+            <span>待结算合计</span>
+            <strong>{formatCny(summaryValue.total_outstanding_cny_fen)}</strong>
+          </div>
+          <div>
+            <span>未分配到账</span>
+            <strong>{formatCny(summaryValue.unallocated_credit_cny_fen)}</strong>
+          </div>
+        </div>
+      ) : null}
+      <div className="sp-finance-ledger__columns">
+        <section className="sp-finance-ledger__section" aria-labelledby="staff-finance-payables-title">
+          <div className="sp-section-heading">
+            <div>
+              <h3 id="staff-finance-payables-title">应付明细</h3>
+              <p>按后端状态与金额显示</p>
+            </div>
+            <span className="sp-section-count">{payableItems.length} 笔</span>
+          </div>
+          {payables.isPending ? (
+            <p className="sp-finance-state" role="status">正在读取应付明细</p>
+          ) : payables.isError ? (
+            <p className="sp-finance-state sp-finance-state--error">应付明细读取失败，请刷新重试。</p>
+          ) : payableItems.length === 0 ? (
+            <p className="sp-finance-state">暂无应付明细。</p>
+          ) : (
+            <div className="sp-finance-payables-table-wrap">
+              <table className="sp-finance-payables-table">
+                <thead>
+                  <tr><th>订单 / 产品</th><th>类型</th><th className="number">应付</th><th className="number">未付</th><th>状态</th></tr>
+                </thead>
+                <tbody>
+                  {payableItems.map((item) => (
+                    <tr key={item.payable_id}>
+                      <td><strong>{item.amazon_order_number}</strong><small>{item.product.name}</small></td>
+                      <td>{PAYABLE_TYPE_LABELS[item.payable_type] ?? item.payable_type}</td>
+                      <td className="number">{formatCny(item.due_amount_cny_fen)}</td>
+                      <td className="number">{formatCny(item.outstanding_amount_cny_fen)}</td>
+                      <td><span className={`sp-finance-status sp-finance-status--${item.status.toLowerCase()}`}>{SETTLEMENT_STATUS_LABELS[item.status] ?? item.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+        <section className="sp-finance-ledger__section" aria-labelledby="staff-finance-payments-title">
+          <div className="sp-section-heading">
+            <div>
+              <h3 id="staff-finance-payments-title">付款进度</h3>
+              <p>付款与分配状态来自账本</p>
+            </div>
+            <span className="sp-section-count">{paymentItems.length} 笔</span>
+          </div>
+          {payments.isPending ? (
+            <p className="sp-finance-state" role="status">正在读取付款记录</p>
+          ) : payments.isError ? (
+            <p className="sp-finance-state sp-finance-state--error">付款记录读取失败，请刷新重试。</p>
+          ) : paymentItems.length === 0 ? (
+            <p className="sp-finance-state">暂无付款记录。</p>
+          ) : (
+            <ul className="sp-finance-payment-list">
+              {paymentItems.map((payment) => (
+                <li key={payment.payment_id}>
+                  <div>
+                    <strong>{formatCny(payment.amount_cny_fen)}</strong>
+                    <small>{formatShanghai(payment.paid_at)}</small>
+                  </div>
+                  <div className="sp-finance-payment-values">
+                    <span>已分配 {formatCny(payment.allocated_amount_cny_fen)}</span>
+                    <span>未分配 {formatCny(payment.unallocated_amount_cny_fen)}</span>
+                  </div>
+                  <span className="sp-finance-status sp-finance-status--payment">{SETTLEMENT_STATUS_LABELS[payment.status] ?? payment.status}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+      {organizationId ? <SettlementBatchesSection organizationId={organizationId} /> : null}
+    </section>
   );
 }
 
