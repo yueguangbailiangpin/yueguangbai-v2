@@ -533,6 +533,8 @@ export async function addMembers(
       throw new SellerSettlementError('VERSION_CONFLICT', 409);
     }
     const statements: SqlStatement[] = [];
+    let addedPaidAmount = 0;
+    let addedOutstandingAmount = 0;
     for (const payableId of input.payableIds) {
       const payable = await database
         .prepare(
@@ -542,9 +544,13 @@ export async function addMembers(
             payable.payable_type,
             payable.financial_snapshot_id,
             payable.amount_cny_fen,
+            COALESCE(balance.paid_amount_cny_fen,0) AS paid_amount_cny_fen,
+            COALESCE(balance.outstanding_amount_cny_fen,
+              payable.amount_cny_fen) AS outstanding_amount_cny_fen,
             formal_order.amazon_order_number_normalized
           FROM seller_payables payable
           JOIN formal_orders formal_order ON formal_order.id=payable.formal_order_id
+          LEFT JOIN seller_payable_balances balance ON balance.payable_id=payable.id
           WHERE payable.id=?`,
         )
         .bind(payableId)
@@ -555,6 +561,8 @@ export async function addMembers(
           payable_type: 'SELLER_PRINCIPAL' | 'SELLER_SERVICE_FEE';
           financial_snapshot_id: string;
           amount_cny_fen: number;
+          paid_amount_cny_fen: number;
+          outstanding_amount_cny_fen: number;
           amazon_order_number_normalized: string;
         }>();
       if (
@@ -563,6 +571,8 @@ export async function addMembers(
       ) {
         throw new SellerSettlementError('NOT_FOUND', 404);
       }
+      addedPaidAmount += Number(payable.paid_amount_cny_fen);
+      addedOutstandingAmount += Number(payable.outstanding_amount_cny_fen);
       statements.push(
         database
           .prepare(
@@ -606,24 +616,26 @@ export async function addMembers(
         now,
       }),
     );
-    const response = { batch: null, replayed: false } as unknown as {
-      batch: SellerSettlementBatchDto;
-      replayed: boolean;
+    const response = {
+      batch: projectBatch({
+        ...batch,
+        paid_amount_cny_fen:
+          Number(batch.paid_amount_cny_fen) + addedPaidAmount,
+        outstanding_amount_cny_fen:
+          Number(batch.outstanding_amount_cny_fen)
+          + addedOutstandingAmount,
+      }),
+      replayed: false,
     };
-    const projected = await (async () => {
-      await database.batch([
-        ...statements,
-        completeIdempotencyStatement(database, acquired.claim, { batch: null, replayed: false }, {
-          resultReferences: { batch_id: input.batchId },
-          now,
-        }),
-        assertIdempotencyCompletionStatement(database, acquired.claim),
-      ]);
-      void response;
-      return await readBatch(database, input.batchId);
-    })();
-    const finalResponse = { batch: projectBatch(projected), replayed: false };
-    return finalResponse;
+    await database.batch([
+      ...statements,
+      completeIdempotencyStatement(database, acquired.claim, response, {
+        resultReferences: { batch_id: input.batchId },
+        now,
+      }),
+      assertIdempotencyCompletionStatement(database, acquired.claim),
+    ]);
+    return response;
   } catch (error) {
     await markFailed(database, acquired.claim, error, now);
     throw error;
@@ -666,6 +678,32 @@ export async function removeMember(
     if (Number(batch.version) !== input.expectedVersion) {
       throw new SellerSettlementError('VERSION_CONFLICT', 409);
     }
+    const member = await database
+      .prepare(
+        `SELECT
+          COALESCE(balance.paid_amount_cny_fen,0) AS paid_amount_cny_fen,
+          COALESCE(balance.outstanding_amount_cny_fen,
+            member.frozen_amount_cny_fen) AS outstanding_amount_cny_fen
+        FROM seller_settlement_batch_members member
+        JOIN seller_payable_balances balance ON balance.payable_id=member.payable_id
+        WHERE member.batch_id=? AND member.payable_id=? AND member.active=1`,
+      )
+      .bind(input.batchId, input.payableId)
+      .first<{
+        paid_amount_cny_fen: number;
+        outstanding_amount_cny_fen: number;
+      }>();
+    const response = {
+      batch: projectBatch({
+        ...batch,
+        paid_amount_cny_fen:
+          Number(batch.paid_amount_cny_fen) - Number(member?.paid_amount_cny_fen ?? 0),
+        outstanding_amount_cny_fen:
+          Number(batch.outstanding_amount_cny_fen)
+          - Number(member?.outstanding_amount_cny_fen ?? 0),
+      }),
+      replayed: false,
+    };
     await database.batch([
       database
         .prepare(
@@ -691,14 +729,13 @@ export async function removeMember(
         nextState: { removed: input.payableId, reason },
         now,
       }),
-      completeIdempotencyStatement(database, acquired.claim, { batch: null, replayed: false }, {
+      completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { batch_id: input.batchId },
         now,
       }),
       assertIdempotencyCompletionStatement(database, acquired.claim),
     ]);
-    const projected = await readBatch(database, input.batchId);
-    return { batch: projectBatch(projected), replayed: false };
+    return response;
   } catch (error) {
     await markFailed(database, acquired.claim, error, now);
     throw error;
@@ -765,6 +802,17 @@ export async function confirmBatch(
       if (!members || members.c < 1) {
         throw new SellerSettlementError('SELLER_SETTLEMENT_CONFLICT', 409);
       }
+      const response = {
+        batch: projectBatch({
+          ...batch,
+          status: 'CONFIRMED',
+          frozen_total_cny_fen: Number(members.total),
+          frozen_payable_count: Number(members.c),
+          frozen_at: now,
+          version: Number(batch.version) + 1,
+        }),
+        replayed: false,
+      };
       await database.batch([
         database
           .prepare(
@@ -819,15 +867,15 @@ export async function confirmBatch(
           },
           now,
         }),
-        completeIdempotencyStatement(database, acquired.claim, { batch: null, replayed: false }, {
+        completeIdempotencyStatement(database, acquired.claim, response, {
           resultReferences: { batch_id: input.batchId },
           now,
         }),
         assertIdempotencyCompletionStatement(database, acquired.claim),
       ]);
+      return response;
     }
-    const projected = await readBatch(database, input.batchId);
-    return { batch: projectBatch(projected), replayed: false };
+    return { batch: projectBatch(batch), replayed: false };
   } catch (error) {
     await markFailed(database, acquired.claim, error, now);
     throw error;
@@ -881,6 +929,18 @@ export async function cancelBatch(
     if (Number(batch.version) !== input.expectedVersion) {
       throw new SellerSettlementError('VERSION_CONFLICT', 409);
     }
+    const response = {
+      batch: projectBatch({
+        ...batch,
+        status: 'CANCELLED',
+        paid_amount_cny_fen: 0,
+        outstanding_amount_cny_fen: 0,
+        cancelled_at: now,
+        cancel_reason: reason,
+        version: Number(batch.version) + 1,
+      }),
+      replayed: false,
+    };
     await database.batch([
       database
         .prepare(
@@ -916,14 +976,13 @@ export async function cancelBatch(
         nextState: { status: 'CANCELLED', reason },
         now,
       }),
-      completeIdempotencyStatement(database, acquired.claim, { batch: null, replayed: false }, {
+      completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { batch_id: input.batchId },
         now,
       }),
       assertIdempotencyCompletionStatement(database, acquired.claim),
     ]);
-    const projected = await readBatch(database, input.batchId);
-    return { batch: projectBatch(projected), replayed: false };
+    return response;
   } catch (error) {
     await markFailed(database, acquired.claim, error, now);
     throw error;

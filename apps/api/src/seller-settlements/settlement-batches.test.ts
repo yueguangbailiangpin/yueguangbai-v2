@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import type { StaffPermissionCode } from '@ygb/contracts';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
+import { z } from 'zod';
 import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { seedConfirmedColdArchiveOrder } from '../../test-support/cold-archive-fixture';
@@ -14,6 +17,7 @@ import {
   csvCell,
   listBatches,
   readBatchDetail,
+  removeMember,
 } from './batches';
 
 /**
@@ -104,6 +108,78 @@ async function staffRequest(
 
 const base = (extra = '') =>
   `/api/staff/seller-settlements/${encodeURIComponent(sellerOrganizationId)}${extra}`;
+
+const staffBatchMutationSchema = z.object({
+  batch: z.object({
+    batch_id: z.string().min(1),
+    seller_organization_id: z.string().min(1),
+    status: z.enum(['DRAFT', 'CONFIRMED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']),
+    frozen_total_cny_fen: z.string().regex(/^(?:0|[1-9][0-9]*)$/u),
+    frozen_payable_count: z.number().int().nonnegative(),
+    paid_amount_cny_fen: z.string().regex(/^(?:0|[1-9][0-9]*)$/u),
+    outstanding_amount_cny_fen: z.string().regex(/^(?:0|[1-9][0-9]*)$/u),
+    version: z.number().int().positive(),
+    created_at: z.number().int().nonnegative(),
+    confirmed_at: z.number().int().nonnegative().nullable(),
+    cancelled_at: z.number().int().nonnegative().nullable(),
+    cancel_reason: z.string().nullable(),
+  }).strict(),
+  replayed: z.boolean(),
+}).strict();
+
+type BatchMutation = z.infer<typeof staffBatchMutationSchema>;
+
+function storedBatchMutation(key: string, action: string): BatchMutation {
+  const row = database!.raw.prepare(`
+    SELECT response_json
+    FROM command_idempotency_records
+    WHERE actor_type='STAFF' AND actor_id='batch-owner'
+      AND idempotency_key=? AND action=?
+  `).get(key, action) as { response_json: string | null } | undefined;
+  expect(row?.response_json).toEqual(expect.any(String));
+  return staffBatchMutationSchema.parse(JSON.parse(row!.response_json!));
+}
+
+async function expectBatchReplay(
+  first: BatchMutation,
+  replay: BatchMutation,
+  key: string,
+  action: string,
+): Promise<void> {
+  expect(first.batch).not.toBeNull();
+  expect(first.replayed).toBe(false);
+  expect(replay.batch).not.toBeNull();
+  expect(replay.replayed).toBe(true);
+  expect(replay.batch).toEqual(first.batch);
+  expect(storedBatchMutation(key, action)).toEqual({
+    batch: first.batch,
+    replayed: false,
+  });
+  const detail = await readBatchDetail(database!, sellerOrganizationId, first.batch.batch_id);
+  expect(first.batch).toEqual({
+    batch_id: detail.batch_id,
+    seller_organization_id: detail.seller_organization_id,
+    status: detail.status,
+    frozen_total_cny_fen: detail.frozen_total_cny_fen,
+    frozen_payable_count: detail.frozen_payable_count,
+    paid_amount_cny_fen: detail.paid_amount_cny_fen,
+    outstanding_amount_cny_fen: detail.outstanding_amount_cny_fen,
+    version: detail.version,
+    created_at: detail.created_at,
+    confirmed_at: detail.confirmed_at,
+    cancelled_at: detail.cancelled_at,
+    cancel_reason: detail.cancel_reason,
+  });
+}
+
+async function httpBatchMutation(
+  response: Response,
+  status: 200 | 201,
+): Promise<BatchMutation> {
+  expect(response.status).toBe(status);
+  const body = await response.json() as { data: unknown };
+  return staffBatchMutationSchema.parse(body.data);
+}
 
 describe('settlement batch lifecycle', () => {
   it('creates a draft, adds a member, confirms and derives payment progress', async () => {
@@ -327,6 +403,345 @@ describe('settlement batch lifecycle', () => {
     expect(csvCell('say "hi"')).toBe('"say ""hi"""');
     expect(csvCell('line1\nline2')).toBe('"line1\nline2"');
     expect(csvCell('=1,2')).toBe('"\'=1,2"');
+  });
+});
+
+describe('settlement batch mutation response consistency', () => {
+  it('persists and replays the complete add-members response', async () => {
+    const created = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '添加响应一致性' },
+      { actor: actor(), idempotencyKey: 'response-add-create-0001', now: AT },
+    );
+    const key = 'response-add-members-0001';
+    const input = {
+      batchId: created.batchId,
+      payableIds: [payableId],
+      expectedVersion: 1,
+      reason: '加入应付',
+    };
+    const first = await addMembers(database!, input, {
+      actor: actor(), idempotencyKey: key, now: AT + 1,
+    });
+    const replay = await addMembers(database!, input, {
+      actor: actor(), idempotencyKey: key, now: AT + 2,
+    });
+
+    await expectBatchReplay(first, replay, key, 'ADD_SELLER_SETTLEMENT_BATCH_MEMBERS');
+    expect(first.batch.status).toBe('DRAFT');
+    expect(Number(first.batch.outstanding_amount_cny_fen)).toBeGreaterThan(0);
+  });
+
+  it('persists and replays the complete remove-member response', async () => {
+    const created = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '移除响应一致性' },
+      { actor: actor(), idempotencyKey: 'response-remove-create-0001', now: AT },
+    );
+    await addMembers(
+      database!,
+      { batchId: created.batchId, payableIds: [payableId], expectedVersion: 1, reason: '加入应付' },
+      { actor: actor(), idempotencyKey: 'response-remove-add-0001', now: AT + 1 },
+    );
+    const key = 'response-remove-member-0001';
+    const input = {
+      batchId: created.batchId,
+      payableId,
+      expectedVersion: 1,
+      reason: '从批次移除',
+    };
+    const first = await removeMember(database!, input, {
+      actor: actor(), idempotencyKey: key, now: AT + 2,
+    });
+    const replay = await removeMember(database!, input, {
+      actor: actor(), idempotencyKey: key, now: AT + 3,
+    });
+
+    await expectBatchReplay(first, replay, key, 'REMOVE_SELLER_SETTLEMENT_BATCH_MEMBER');
+    expect(first.batch.status).toBe('DRAFT');
+    expect(first.batch.outstanding_amount_cny_fen).toBe('0');
+  });
+
+  it('persists and replays the complete confirm response', async () => {
+    const created = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '确认响应一致性' },
+      { actor: actor(), idempotencyKey: 'response-confirm-create-0001', now: AT },
+    );
+    await addMembers(
+      database!,
+      { batchId: created.batchId, payableIds: [payableId], expectedVersion: 1, reason: '加入应付' },
+      { actor: actor(), idempotencyKey: 'response-confirm-add-0001', now: AT + 1 },
+    );
+    const key = 'response-confirm-batch-0001';
+    const input = { batchId: created.batchId, expectedVersion: 1, reason: '确认批次' };
+    const first = await confirmBatch(database!, input, {
+      actor: actor(), idempotencyKey: key, now: AT + 2,
+    });
+    const replay = await confirmBatch(database!, input, {
+      actor: actor(), idempotencyKey: key, now: AT + 3,
+    });
+
+    await expectBatchReplay(first, replay, key, 'CONFIRM_SELLER_SETTLEMENT_BATCH');
+    expect(first.batch.status).toBe('CONFIRMED');
+    expect(first.batch.confirmed_at).toBe(AT + 2);
+    expect(first.batch.version).toBe(2);
+  });
+
+  it('persists and replays the complete cancel response', async () => {
+    const created = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '取消响应一致性' },
+      { actor: actor(), idempotencyKey: 'response-cancel-create-0001', now: AT },
+    );
+    await addMembers(
+      database!,
+      { batchId: created.batchId, payableIds: [payableId], expectedVersion: 1, reason: '加入应付' },
+      { actor: actor(), idempotencyKey: 'response-cancel-add-0001', now: AT + 1 },
+    );
+    const confirmed = await confirmBatch(
+      database!,
+      { batchId: created.batchId, expectedVersion: 1, reason: '确认批次' },
+      { actor: actor(), idempotencyKey: 'response-cancel-confirm-0001', now: AT + 2 },
+    );
+    const key = 'response-cancel-batch-0001';
+    const input = {
+      batchId: created.batchId,
+      expectedVersion: confirmed.batch.version,
+      reason: '取消批次',
+    };
+    const first = await cancelBatch(database!, input, {
+      actor: actor(), idempotencyKey: key, now: AT + 3,
+    });
+    const replay = await cancelBatch(database!, input, {
+      actor: actor(), idempotencyKey: key, now: AT + 4,
+    });
+
+    await expectBatchReplay(first, replay, key, 'CANCEL_SELLER_SETTLEMENT_BATCH');
+    expect(first.batch.status).toBe('CANCELLED');
+    expect(first.batch.cancelled_at).toBe(AT + 3);
+    expect(first.batch.cancel_reason).toBe('取消批次');
+    expect(first.batch.version).toBe(3);
+  });
+
+  it('keeps HTTP mutation DTOs non-null and identical across first response and replay', async () => {
+    const firstBatch = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: 'HTTP 响应一致性 A' },
+      { actor: actor(), idempotencyKey: 'response-http-create-a-1', now: AT },
+    );
+    const addBody = { payable_ids: [payableId], expected_version: 1, reason: 'HTTP 加入' };
+    const addFirst = await httpBatchMutation(
+      await staffRequest(base(`/batches/${firstBatch.batchId}/members`), {
+        method: 'POST', body: addBody, key: 'response-http-add-0001',
+      }),
+      201,
+    );
+    const addReplay = await httpBatchMutation(
+      await staffRequest(base(`/batches/${firstBatch.batchId}/members`), {
+        method: 'POST', body: addBody, key: 'response-http-add-0001',
+      }),
+      200,
+    );
+    await expectBatchReplay(
+      addFirst,
+      addReplay,
+      'response-http-add-0001',
+      'ADD_SELLER_SETTLEMENT_BATCH_MEMBERS',
+    );
+
+    const removeBody = { expected_version: 1, reason: 'HTTP 移除' };
+    const removeFirst = await httpBatchMutation(
+      await staffRequest(base(`/batches/${firstBatch.batchId}/members/${payableId}/remove`), {
+        method: 'POST', body: removeBody, key: 'response-http-remove-0001',
+      }),
+      201,
+    );
+    const removeReplay = await httpBatchMutation(
+      await staffRequest(base(`/batches/${firstBatch.batchId}/members/${payableId}/remove`), {
+        method: 'POST', body: removeBody, key: 'response-http-remove-0001',
+      }),
+      200,
+    );
+    await expectBatchReplay(
+      removeFirst,
+      removeReplay,
+      'response-http-remove-0001',
+      'REMOVE_SELLER_SETTLEMENT_BATCH_MEMBER',
+    );
+
+    const cancelDraftBody = { expected_version: 1, reason: 'HTTP 取消草稿' };
+    const cancelDraftFirst = await httpBatchMutation(
+      await staffRequest(base(`/batches/${firstBatch.batchId}/cancel`), {
+        method: 'POST', body: cancelDraftBody, key: 'response-http-cancel-draft-1',
+      }),
+      201,
+    );
+    const cancelDraftReplay = await httpBatchMutation(
+      await staffRequest(base(`/batches/${firstBatch.batchId}/cancel`), {
+        method: 'POST', body: cancelDraftBody, key: 'response-http-cancel-draft-1',
+      }),
+      200,
+    );
+    await expectBatchReplay(
+      cancelDraftFirst,
+      cancelDraftReplay,
+      'response-http-cancel-draft-1',
+      'CANCEL_SELLER_SETTLEMENT_BATCH',
+    );
+
+    const secondBatch = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: 'HTTP 响应一致性 B' },
+      { actor: actor(), idempotencyKey: 'response-http-create-b-1', now: AT + 4 },
+    );
+    const confirmAddBody = { payable_ids: [payableId], expected_version: 1, reason: 'HTTP 再次加入' };
+    await httpBatchMutation(
+      await staffRequest(base(`/batches/${secondBatch.batchId}/members`), {
+        method: 'POST', body: confirmAddBody, key: 'response-http-confirm-add-1',
+      }),
+      201,
+    );
+    const confirmBody = { expected_version: 1, reason: 'HTTP 确认' };
+    const confirmFirst = await httpBatchMutation(
+      await staffRequest(base(`/batches/${secondBatch.batchId}/confirm`), {
+        method: 'POST', body: confirmBody, key: 'response-http-confirm-0001',
+      }),
+      201,
+    );
+    const confirmReplay = await httpBatchMutation(
+      await staffRequest(base(`/batches/${secondBatch.batchId}/confirm`), {
+        method: 'POST', body: confirmBody, key: 'response-http-confirm-0001',
+      }),
+      200,
+    );
+    await expectBatchReplay(
+      confirmFirst,
+      confirmReplay,
+      'response-http-confirm-0001',
+      'CONFIRM_SELLER_SETTLEMENT_BATCH',
+    );
+  });
+
+  it('preserves mismatch, version-conflict and single-effect concurrency semantics', async () => {
+    const created = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '冲突响应一致性' },
+      { actor: actor(), idempotencyKey: 'response-conflict-create-1', now: AT },
+    );
+    const key = 'response-conflict-add-0001';
+    const input = {
+      batchId: created.batchId,
+      payableIds: [payableId],
+      expectedVersion: 1,
+      reason: '首次加入',
+    };
+    const first = await addMembers(database!, input, {
+      actor: actor(), idempotencyKey: key, now: AT + 1,
+    });
+    const beforeCounts = database!.raw.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM seller_settlement_batch_members WHERE batch_id=? AND active=1) AS members,
+        (SELECT COUNT(*) FROM seller_settlement_batch_events WHERE batch_id=? AND event_type='MEMBER_ADDED') AS events,
+        (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='SELLER_SETTLEMENT_BATCH_MEMBERS_ADDED') AS audits
+    `).get(created.batchId, created.batchId, created.batchId) as {
+      members: number;
+      events: number;
+      audits: number;
+    };
+    await expect(addMembers(database!, { ...input, reason: '不同请求体' }, {
+      actor: actor(), idempotencyKey: key, now: AT + 2,
+    })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT', status: 409 });
+    const afterMismatchCounts = database!.raw.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM seller_settlement_batch_members WHERE batch_id=? AND active=1) AS members,
+        (SELECT COUNT(*) FROM seller_settlement_batch_events WHERE batch_id=? AND event_type='MEMBER_ADDED') AS events,
+        (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='SELLER_SETTLEMENT_BATCH_MEMBERS_ADDED') AS audits
+    `).get(created.batchId, created.batchId, created.batchId) as typeof beforeCounts;
+    expect(afterMismatchCounts).toEqual(beforeCounts);
+    expect(first.batch).not.toBeNull();
+    await cancelBatch(database!, {
+      batchId: created.batchId,
+      expectedVersion: 1,
+      reason: '释放并发测试应付',
+    }, {
+      actor: actor(), idempotencyKey: 'response-conflict-release-1', now: AT + 2,
+    });
+
+    const stale = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '版本冲突' },
+      { actor: actor(), idempotencyKey: 'response-version-create-1', now: AT + 3 },
+    );
+    await expect(addMembers(database!, {
+      batchId: stale.batchId,
+      payableIds: [payableId],
+      expectedVersion: 2,
+      reason: '过期版本',
+    }, {
+      actor: actor(), idempotencyKey: 'response-version-add-0001', now: AT + 4,
+    })).rejects.toMatchObject({ code: 'VERSION_CONFLICT', status: 409 });
+    expect(database!.raw.prepare(`
+      SELECT status, response_json FROM command_idempotency_records
+      WHERE actor_id='batch-owner' AND idempotency_key=?
+    `).get('response-version-add-0001')).toEqual({ status: 'FAILED', response_json: null });
+
+    const concurrent = await createBatch(
+      database!,
+      { sellerOrganizationId, reason: '并发响应一致性' },
+      { actor: actor(), idempotencyKey: 'response-concurrent-create-1', now: AT + 5 },
+    );
+    const concurrentInput = {
+      batchId: concurrent.batchId,
+      payableIds: [payableId],
+      expectedVersion: 1,
+      reason: '并发加入',
+    };
+    const outcomes = await Promise.allSettled([
+      addMembers(database!, concurrentInput, {
+        actor: actor(), idempotencyKey: 'response-concurrent-add-1', now: AT + 6,
+      }),
+      addMembers(database!, concurrentInput, {
+        actor: actor(), idempotencyKey: 'response-concurrent-add-1', now: AT + 6,
+      }),
+    ]);
+    const fulfilled = outcomes.filter(
+      (outcome): outcome is PromiseFulfilledResult<BatchMutation> => outcome.status === 'fulfilled',
+    );
+    expect(fulfilled.length).toBeGreaterThanOrEqual(1);
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') {
+        expect(outcome.reason).toMatchObject({ code: 'REQUEST_IN_PROGRESS', status: 409 });
+      }
+    }
+    const finalReplay = await addMembers(database!, concurrentInput, {
+      actor: actor(), idempotencyKey: 'response-concurrent-add-1', now: AT + 7,
+    });
+    expect(finalReplay.replayed).toBe(true);
+    expect(finalReplay.batch).toEqual(fulfilled[0]!.value.batch);
+    expect(database!.raw.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM seller_settlement_batch_members WHERE batch_id=? AND active=1) AS members,
+        (SELECT COUNT(*) FROM seller_settlement_batch_events WHERE batch_id=? AND event_type='MEMBER_ADDED') AS events,
+        (SELECT COUNT(*) FROM audit_events WHERE aggregate_id=? AND event_type='SELLER_SETTLEMENT_BATCH_MEMBERS_ADDED') AS audits
+    `).get(concurrent.batchId, concurrent.batchId, concurrent.batchId)).toEqual({
+      members: 1,
+      events: 1,
+      audits: 1,
+    });
+  });
+});
+
+describe('settlement batch idempotency response source guard', () => {
+  it('never stores a null batch in a completed mutation response', () => {
+    const root = path.resolve(import.meta.dirname, '../../../..');
+    const source = readFileSync(
+      path.join(root, 'apps/api/src/seller-settlements/batches.ts'),
+      'utf8',
+    );
+    expect(source).not.toMatch(
+      /completeIdempotencyStatement\([\s\S]{0,500}?\{\s*batch:\s*null/u,
+    );
   });
 });
 
