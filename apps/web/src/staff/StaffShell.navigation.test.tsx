@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StaffSessionContext } from '../auth/staff/StaffSessionBoundary';
 import type { StaffSession } from '../auth/staff/staff-auth-api';
 import { StaffShell } from './StaffShell';
+import { MoonwhiteIcon } from './shared/MoonwhiteIcon';
 import {
   formatMarketplaceScope,
   getBreadcrumbForPath,
@@ -267,12 +268,41 @@ describe('StaffShell rendering', () => {
       const iconBox = link.querySelector('.sa-nav__icon');
       const semanticIcon = iconBox?.querySelector('.moonwhite-icon');
       expect(iconBox).toBeInTheDocument();
-      expect(iconBox?.querySelector('svg')).toBeNull();
+      const svg = iconBox?.querySelector('svg');
+      const path = svg?.querySelector('path');
+      expect(svg).toBeInTheDocument();
+      expect(svg).toHaveAttribute('viewBox', '0 0 24 24');
+      expect(svg).toHaveAttribute('width', '24');
+      expect(svg).toHaveAttribute('height', '24');
+      expect(svg).toHaveAttribute('aria-hidden', 'true');
+      expect(svg).toHaveAttribute('focusable', 'false');
+      expect(svg).toHaveAttribute('fill', 'currentColor');
+      expect(path).toHaveAttribute('fill', 'currentColor');
+      expect(path).toHaveAttribute('transform', 'matrix(0.025 0 0 0.025 0 24)');
+      expect(path?.getAttribute('d')).toBeTruthy();
       expect(semanticIcon).toHaveAttribute('data-icon', iconClass);
       expect(semanticIcon).toHaveAttribute('data-fill', label === '工作台' ? '1' : '0');
       expect(semanticIcon).toHaveAttribute('aria-hidden', 'true');
       expect(semanticIcon?.getAttribute('style')).toContain('--moonwhite-icon-size: 24px');
     }
+  });
+
+  it('selects distinct local outline and filled SVG states without ligature text', () => {
+    const { container } = render(
+      <div>
+        <MoonwhiteIcon name="dashboard" />
+        <MoonwhiteIcon name="dashboard" filled />
+      </div>,
+    );
+    const icons = [...container.querySelectorAll<HTMLElement>('.moonwhite-icon')];
+    expect(icons).toHaveLength(2);
+    expect(icons[0]).toHaveAttribute('data-fill', '0');
+    expect(icons[1]).toHaveAttribute('data-fill', '1');
+    expect(icons[0]?.textContent).toBe('');
+    expect(icons[1]?.textContent).toBe('');
+    expect(icons[0]?.querySelector('svg path')?.getAttribute('d')).not.toBe(
+      icons[1]?.querySelector('svg path')?.getAttribute('d'),
+    );
   });
 
   it('does not show access-management for non-owner', () => {
@@ -377,7 +407,8 @@ describe('StaffShell mobile drawer', () => {
     const icon = within(drawer).getByRole('link', { name: '工作台' }).querySelector('.moonwhite-icon');
     expect(icon).toHaveAttribute('data-icon', 'dashboard');
     expect(icon).toHaveAttribute('data-fill', '1');
-    expect(icon?.getAttribute('style')).toContain('--moonwhite-icon-size: 20px');
+    expect(icon?.getAttribute('style')).toContain('--moonwhite-icon-size: 24px');
+    expect(icon?.querySelector('svg')).toHaveAttribute('viewBox', '0 0 24 24');
   });
 
   it('closes drawer when close button clicked', () => {

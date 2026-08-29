@@ -289,12 +289,6 @@
   color: var(--color-text-muted);
 }
 
-.sa-nav__icon svg {
-  display: block;
-  width: 20px;
-  height: 20px;
-}
-
 .staff-app .sa-nav__link:hover {
   background: var(--color-surface-subtle);
   color: #3c4043;

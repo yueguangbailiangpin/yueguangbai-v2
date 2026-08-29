@@ -4,9 +4,8 @@ import type { CSSProperties } from 'react';
  * Staff-only Material Symbols Rounded vocabulary.
  *
  * Keeping the semantic name here means page components never depend on an
- * icon library component or its geometry. The glyph itself is served by the
- * locally bundled subset font in staff-icons.css, with currentColor inherited
- * from the surrounding control.
+ * icon library component or its geometry. The local outline and fill1 SVG
+ * assets are selected by this adapter and rendered with currentColor.
  */
 export type MoonwhiteIconName =
   | 'dashboard'
@@ -34,6 +33,38 @@ export type MoonwhiteIconName =
   | 'warning'
   | 'inventory_2';
 
+const localSvgSources = import.meta.glob('../../assets/material-symbols-rounded/*.svg', {
+  eager: true,
+  import: 'default',
+  query: '?raw',
+}) as Record<string, string>;
+
+const pathCache = new Map<string, readonly string[]>();
+
+function iconSourceKey(name: MoonwhiteIconName, filled: boolean): string {
+  return `../../assets/material-symbols-rounded/${name}-${filled ? 'filled' : 'outline'}.svg`;
+}
+
+function iconPaths(name: MoonwhiteIconName, filled: boolean): readonly string[] {
+  const sourceKey = iconSourceKey(name, filled);
+  const cached = pathCache.get(sourceKey);
+  if (cached) return cached;
+  const source = localSvgSources[sourceKey];
+  if (!source) {
+    throw new Error(`Missing local Material Symbols Rounded asset: ${sourceKey}`);
+  }
+  const paths: string[] = [];
+  for (const match of source.matchAll(/<path\b[^>]*\bd="([^"]+)"/gu)) {
+    const path = match[1];
+    if (path) paths.push(path);
+  }
+  if (paths.length === 0) {
+    throw new Error(`Material Symbols Rounded asset has no path data: ${sourceKey}`);
+  }
+  pathCache.set(sourceKey, paths);
+  return paths;
+}
+
 export type MoonwhiteIconProps = Readonly<{
   name: MoonwhiteIconName;
   size?: number;
@@ -51,6 +82,7 @@ export function MoonwhiteIcon({
   const classes = ['moonwhite-icon', filled ? 'is-filled' : 'is-outline', className]
     .filter(Boolean)
     .join(' ');
+  const paths = iconPaths(name, filled);
   return (
     <span
       className={classes}
@@ -59,7 +91,24 @@ export function MoonwhiteIcon({
       style={style}
       aria-hidden="true"
     >
-      {name}
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        aria-hidden="true"
+        focusable="false"
+      >
+        {paths.map((path) => (
+          <path
+            key={path}
+            d={path}
+            transform="matrix(0.025 0 0 0.025 0 24)"
+            fill="currentColor"
+          />
+        ))}
+      </svg>
     </span>
   );
 }

@@ -127,11 +127,9 @@ function MoonBrandMark({ small = false }: { small?: boolean }): React.JSX.Elemen
 function NavItemLink({
   item,
   onNavigate,
-  mobile = false,
 }: {
   item: StaffNavItem;
   onNavigate?: (() => void) | undefined;
-  mobile?: boolean;
 }): React.JSX.Element {
   return (
     <NavLink
@@ -143,7 +141,7 @@ function NavItemLink({
       {({ isActive }) => (
         <>
           <span className="sa-nav__icon" aria-hidden="true">
-            <MoonwhiteIcon name={item.icon} size={mobile ? 20 : 24} filled={isActive} />
+            <MoonwhiteIcon name={item.icon} size={24} filled={isActive} />
           </span>
           <span>{item.label}</span>
         </>
@@ -156,10 +154,8 @@ function NavItemLink({
 
 function StaffNavigationContent({
   onNavigate,
-  mobile = false,
 }: {
   onNavigate?: () => void;
-  mobile?: boolean;
 }): React.JSX.Element {
   const session = useCurrentStaffSession();
   const items = getVisibleNavItems(session);
@@ -201,7 +197,7 @@ function StaffNavigationContent({
                             <span className="sa-nav__icon" aria-hidden="true">
                               <MoonwhiteIcon
                                 name={child.icon}
-                                size={mobile ? 20 : 24}
+                                size={24}
                                 filled={isActive}
                               />
                             </span>
@@ -213,7 +209,7 @@ function StaffNavigationContent({
                   ))}
               </div>
             ) : (
-              <NavItemLink key={item.id} item={item} onNavigate={onNavigate} mobile={mobile} />
+              <NavItemLink key={item.id} item={item} onNavigate={onNavigate} />
             ),
           )}
         </div>
@@ -360,7 +356,7 @@ function StaffMobileDrawer({
           </button>
         </div>
         <StaffCreateAction onNavigate={onClose} />
-        <StaffNavigationContent onNavigate={onClose} mobile />
+        <StaffNavigationContent onNavigate={onClose} />
         <div className="sa-sidebar__footer">
           <span className="sa-sidebar__scope">{formatMarketplaceScope(session)}</span>
           <p className="sa-sidebar__meta">
@@ -417,7 +413,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
               to="/staff/service-channels"
               aria-label="打开系统设置"
             >
-              <MoonwhiteIcon name="settings" size={24} />
+              <MoonwhiteIcon name="settings" size={20} />
             </NavLink>
           ) : null}
           <span

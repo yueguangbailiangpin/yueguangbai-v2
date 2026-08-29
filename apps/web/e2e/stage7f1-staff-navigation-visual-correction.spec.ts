@@ -74,14 +74,16 @@ test('员工端导航颜色与图标视觉纠偏：桌面与手机 Drawer', asyn
       const icon = box.querySelector<HTMLElement>('.moonwhite-icon');
       const boxStyle = getComputedStyle(box);
       const iconStyle = icon ? getComputedStyle(icon) : null;
+      const svg = icon?.querySelector('svg');
       return {
         boxWidth: boxStyle.width,
         boxHeight: boxStyle.height,
         iconWidth: iconStyle?.width,
         iconHeight: iconStyle?.height,
-        fontSize: iconStyle?.fontSize,
         semanticName: icon?.dataset.icon,
         fill: icon?.dataset.fill,
+        viewBox: svg?.getAttribute('viewBox'),
+        hasPath: Boolean(svg?.querySelector('path[d]')),
       };
     }),
   );
@@ -93,9 +95,10 @@ test('员工端导航颜色与图标视觉纠偏：桌面与手机 Drawer', asyn
         metric.boxHeight === '24px' &&
         metric.iconWidth === '24px' &&
         metric.iconHeight === '24px' &&
-        metric.fontSize === '24px' &&
         typeof metric.semanticName === 'string' &&
-        (metric.fill === '0' || metric.fill === '1'),
+        (metric.fill === '0' || metric.fill === '1') &&
+        metric.viewBox === '0 0 24 24' &&
+        metric.hasPath,
     ),
   ).toBe(true);
 
@@ -128,17 +131,17 @@ test('员工端导航颜色与图标视觉纠偏：桌面与手机 Drawer', asyn
       return {
         width: style.width,
         height: style.height,
-        fontSize: style.fontSize,
         fill: icon.getAttribute('data-fill'),
+        viewBox: icon.querySelector('svg')?.getAttribute('viewBox'),
       };
     }),
   );
   expect(drawerIconMetrics.length).toBeGreaterThan(0);
   expect(drawerIconMetrics.every((metric) =>
-    metric.width === '20px' &&
-    metric.height === '20px' &&
-    metric.fontSize === '20px' &&
-    (metric.fill === '0' || metric.fill === '1'),
+    metric.width === '24px' &&
+    metric.height === '24px' &&
+    (metric.fill === '0' || metric.fill === '1') &&
+    metric.viewBox === '0 0 24 24',
   )).toBe(true);
   await assertNoHorizontalOverflow(page);
   await page.screenshot({
