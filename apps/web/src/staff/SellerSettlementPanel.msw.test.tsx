@@ -275,6 +275,14 @@ function installSettlementReads(
         meta: { request_id: 'queue' },
       }),
     ),
+    // Stage 7.5 batch 3: the batches section reads the batch list; keep it
+    // deterministically empty so assertions on settlement facts stay exact.
+    http.get(apiUrl('/api/staff/seller-settlements/seller-1/batches'), () =>
+      HttpResponse.json({
+        data: { batches: [], next_cursor: null },
+        meta: { request_id: 'batches' },
+      }),
+    ),
     http.get(apiUrl('/api/staff/me/work-items/work-seller'), () =>
       HttpResponse.json({
         data: { work_item: sellerSettlementWorkItem },

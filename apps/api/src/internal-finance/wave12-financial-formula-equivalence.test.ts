@@ -44,7 +44,7 @@ describe('Wave 12 financial formulas execute against the production SQL view', (
     database = createFormulaFixtureDatabase();
     expect(database.raw.prepare(`
       SELECT schema_version FROM app_schema_state WHERE singleton_id=1
-    `).get()).toMatchObject({ schema_version: 32 });
+    `).get()).toMatchObject({ schema_version: 33 });
     expect(database.raw.prepare('PRAGMA foreign_keys').get())
       .toMatchObject({ foreign_keys: 1 });
     for (const trigger of [

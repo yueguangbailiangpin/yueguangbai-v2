@@ -39,6 +39,7 @@ export * from './cold-image-archive';
 export * from './seller-formal-order-portal';
 export * from './seller-review-portal';
 export * from './seller-settlement';
+export * from './seller-settlement-batch';
 export * from './seller-principal-rate-policy';
 export * from './seller-portal';
 export * from './sql';

@@ -26,6 +26,7 @@ import { sellerQueryKeys } from '../queries/keys';
 import { canViewSellerFinancials } from '../authorization';
 import { useSellerCursorPages } from '../queries/useSellerCursorPages';
 import { useSellerStoreContext } from '../routes/SellerLayout';
+import { SellerBatchListSection } from './SellerBatchListSection';
 
 const shanghai = new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Tokyo',
@@ -1223,6 +1224,7 @@ export function SellerSettlementsPage(): React.JSX.Element {
       {summary.isError || payables.initialError ? (
         <Alert tone="danger">结算信息暂时无法完整读取，请刷新后重试。</Alert>
       ) : null}
+      <SellerBatchListSection />
       <div className="mws-settlement-grid">
         <section className="mws-surface mws-span-all" aria-label="结算摘要">
           <div className="mws-section-heading">

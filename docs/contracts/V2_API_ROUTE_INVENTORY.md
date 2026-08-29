@@ -1,6 +1,6 @@
 # V2 API Route Inventory
 
-这是默认 App 的可复现 route inventory。现有 228 个唯一端点：226 个 `/api/*`，以及 `/health`、`/ready`。阶段 7.5（第二批）：新增公司公开客服渠道三端点——员工读取 `GET /api/staff/service-channels`、Owner-only 配置 `PUT /api/staff/service-channels/:code`（幂等+expected_version+审计，种子初始为空，不编造真实微信号）、买家公开投影 `GET /api/buyer-portal/service-channels`；员工产品列表/详情与卖家产品列表/详情 DTO 接入主要对接人字段（`primary_contact_member_id/name`，读取随产品 DTO，写入走既有 `POST /api/staff/products/:id/primary-contact`）；`GET /api/buyer-portal/me` 扩展 `assigned_contacts`（仅公开显示名）。阶段 7.5（第一批）：新增员工工作台权威摘要端点 `GET /api/staff/me/work-items/summary`（SLA 计数、异常订单、角色门控的今日应处理返款金额、最近工作项）；`GET /api/staff/formal-orders` 扩展为双模式——查询串恰为单个 `amazon_order_number` 时保持精确查单语义，其余进入 keyset 游标列表（默认 20、最大 100、无 OFFSET，支持订单号前缀/买家编号/卖家组织/店铺/业务阶段/异常状态/负责人/确认时间范围筛选）。阶段 6.6E（D-056）：新增员工买家建档（`POST /api/staff/buyer-customers`，建档即分配 B/C 编号）、买家售前负责人管理（`POST /api/staff/access-management/buyer-pre-sales-assignments`）与 Personal DENY 管理（`GET/POST /api/staff/access-management/personal-denies`、`POST .../personal-denies/revoke`）；邀请签发合同改为必须绑定已建档买家（`buyer_customer_id`），邀请注册只认领并激活既有档案。阶段 6.6C（D-056）：获客 CRM 全部路由、Integration Outbox 与 dead-letter replay 路由、经营看板 financial-projection、order-integrity 详情、operating-integrity order-lookup 与 buyer-advance-principal-lookup 别名全部退役（一律真实 404）；新增唯一员工正式订单详情聚合端点 `GET /api/staff/formal-orders/:id`。阶段 6.6B（D-056）：员工固定分配新增买家返款负责人管理端点（`/api/staff/access-management/buyer-assignments`）；订单沟通截图统一为 `ORDER_COMMUNICATION_SCREENSHOT`（员工订单详情上传/挂载/列表 + 卖家组织读取 intent，替代退役的 buyer-chat / seller-order-chat 两套路由）；新增产品主要对接人（`/api/staff/products/:id/primary-contact`）与预约一次性人工例外（`/api/staff/reservations/participation-exceptions`）端点。阶段 5（D-055）以 ZIP Bundle 冷归档替换单文件 Drive 归档：per-file rehydrate 路由退役，新增 staff-only 的 bundle restore、bundle 列表与归档指标端点。Staff MCP、机器获客、关键词图片、飞书与 Rakuten/TikTok 预备层已随干净基线重建退役；经营看板收敛为 summary 与 financial-projection 两个只读端点（清单 §3.2）。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
+这是默认 App 的可复现 route inventory。现有 238 个唯一端点：236 个 `/api/*`，以及 `/health`、`/ready`。阶段 7.5（第三批）：新增卖家结算批次十端点——员工侧 `GET/POST /api/staff/seller-settlements/:organizationId/batches`、`GET .../batches/:batchId`、`POST .../batches/:batchId/members`、`POST .../batches/:batchId/members/:payableId/remove`、`POST .../batches/:batchId/confirm`、`POST .../batches/:batchId/cancel`、`POST .../batches/:batchId/export`（CSV 白名单+公式注入转义+流式+限额）；卖家侧 `GET /api/seller-portal/settlement/batches` 与 `GET .../batches/:batchId`（只读，DRAFT/CANCELLED 不可见）。批次为 append-only：确认冻结成员/金额/快照引用，一个 payable 不能进入两个有效批次（部分唯一索引），PARTIALLY_PAID/PAID 由既有付款账本实时推导。阶段 7.5（第二批）：新增公司公开客服渠道三端点——员工读取 `GET /api/staff/service-channels`、Owner-only 配置 `PUT /api/staff/service-channels/:code`（幂等+expected_version+审计，种子初始为空，不编造真实微信号）、买家公开投影 `GET /api/buyer-portal/service-channels`；员工产品列表/详情与卖家产品列表/详情 DTO 接入主要对接人字段（`primary_contact_member_id/name`，读取随产品 DTO，写入走既有 `POST /api/staff/products/:id/primary-contact`）；`GET /api/buyer-portal/me` 扩展 `assigned_contacts`（仅公开显示名）。阶段 7.5（第一批）：新增员工工作台权威摘要端点 `GET /api/staff/me/work-items/summary`（SLA 计数、异常订单、角色门控的今日应处理返款金额、最近工作项）；`GET /api/staff/formal-orders` 扩展为双模式——查询串恰为单个 `amazon_order_number` 时保持精确查单语义，其余进入 keyset 游标列表（默认 20、最大 100、无 OFFSET，支持订单号前缀/买家编号/卖家组织/店铺/业务阶段/异常状态/负责人/确认时间范围筛选）。阶段 6.6E（D-056）：新增员工买家建档（`POST /api/staff/buyer-customers`，建档即分配 B/C 编号）、买家售前负责人管理（`POST /api/staff/access-management/buyer-pre-sales-assignments`）与 Personal DENY 管理（`GET/POST /api/staff/access-management/personal-denies`、`POST .../personal-denies/revoke`）；邀请签发合同改为必须绑定已建档买家（`buyer_customer_id`），邀请注册只认领并激活既有档案。阶段 6.6C（D-056）：获客 CRM 全部路由、Integration Outbox 与 dead-letter replay 路由、经营看板 financial-projection、order-integrity 详情、operating-integrity order-lookup 与 buyer-advance-principal-lookup 别名全部退役（一律真实 404）；新增唯一员工正式订单详情聚合端点 `GET /api/staff/formal-orders/:id`。阶段 6.6B（D-056）：员工固定分配新增买家返款负责人管理端点（`/api/staff/access-management/buyer-assignments`）；订单沟通截图统一为 `ORDER_COMMUNICATION_SCREENSHOT`（员工订单详情上传/挂载/列表 + 卖家组织读取 intent，替代退役的 buyer-chat / seller-order-chat 两套路由）；新增产品主要对接人（`/api/staff/products/:id/primary-contact`）与预约一次性人工例外（`/api/staff/reservations/participation-exceptions`）端点。阶段 5（D-055）以 ZIP Bundle 冷归档替换单文件 Drive 归档：per-file rehydrate 路由退役，新增 staff-only 的 bundle restore、bundle 列表与归档指标端点。Staff MCP、机器获客、关键词图片、飞书与 Rakuten/TikTok 预备层已随干净基线重建退役；经营看板收敛为 summary 与 financial-projection 两个只读端点（清单 §3.2）。卖家投放提交仍使用现有 `POST /api/seller-portal/demand-batches`；该 Seller body 不再接受 `open_at`、`reservation_deadline`、`order_deadline`，窗口由服务端版本化策略生成。
 
 阶段 6.6（D-056）收敛说明：汇率/卖家服务费/本金汇率策略改为单次保存、即时生效；`rate-center/base-rates`、`seller-service-fees`、`seller-principal-rate-policies/save` 三个保存端点取代原有的 submit/confirm/reject/apply-defaults 双审批路由（被删除路由一律返回 404）。
 
@@ -50,6 +50,8 @@ GET /api/seller-portal/products/:id
 GET /api/seller-portal/products/:id/versions
 GET /api/seller-portal/reviews
 GET /api/seller-portal/reviews/:id
+GET /api/seller-portal/settlement/batches
+GET /api/seller-portal/settlement/batches/:batchId
 GET /api/seller-portal/settlement/payables
 GET /api/seller-portal/settlement/payables/:id
 GET /api/seller-portal/settlement/payments
@@ -110,6 +112,8 @@ GET /api/staff/search
 GET /api/staff/seller-principal-rate-policies
 GET /api/staff/service-channels
 GET /api/staff/seller-service-fees
+GET /api/staff/seller-settlements/:organizationId/batches
+GET /api/staff/seller-settlements/:organizationId/batches/:batchId
 GET /api/staff/seller-settlements/:organizationId/payables
 GET /api/staff/seller-settlements/:organizationId/payables/:payableId
 GET /api/staff/seller-settlements/:organizationId/payments
@@ -243,6 +247,12 @@ POST /api/staff/seller-payments/:paymentId/proof/read-intent
 POST /api/staff/seller-payments/:paymentId/reverse
 POST /api/staff/seller-principal-rate-policies/save
 POST /api/staff/seller-service-fees
+POST /api/staff/seller-settlements/:organizationId/batches
+POST /api/staff/seller-settlements/:organizationId/batches/:batchId/cancel
+POST /api/staff/seller-settlements/:organizationId/batches/:batchId/confirm
+POST /api/staff/seller-settlements/:organizationId/batches/:batchId/export
+POST /api/staff/seller-settlements/:organizationId/batches/:batchId/members
+POST /api/staff/seller-settlements/:organizationId/batches/:batchId/members/:payableId/remove
 POST /api/staff/seller-settlements/:organizationId/payments
 POST /api/staff/seller-settlements/:organizationId/reconciliation
 ```

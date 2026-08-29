@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { SettlementBatchesSection } from './SettlementBatchesSection';
 import { useMemo } from 'react';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import type { StaffSession } from '../auth/staff/staff-auth-api';
@@ -352,6 +353,9 @@ export function SellerSettlementPanel({ item }: { item: StaffWorkItem }): React.
           </p>
         </Card>
       </aside>
+      {organizationId !== null ? (
+        <SettlementBatchesSection organizationId={organizationId} />
+      ) : null}
     </>
   );
 }

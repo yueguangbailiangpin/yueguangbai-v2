@@ -77,35 +77,35 @@
 
 ### Migration
 
-- [ ] 3.1 `0033_stage75_seller_settlement_batches.sql`：批次三表 + `uq_active_batch_payable` 部分唯一索引 + 状态机/组织一致性/冻结列防改触发器；schema_version→33；锚点与守卫更新
+- [x] 3.1 `0033_stage75_seller_settlement_batches.sql`：批次三表 + `uq_active_batch_payable` 部分唯一索引 + 状态机/组织一致性/冻结列防改触发器；schema_version→33；锚点与守卫更新
 
 ### Contracts
 
-- [ ] 3.2 `SellerSettlementBatchDto`（员工/卖家两投影）、列表 DTO、成员 DTO、请求类型（建/增删/确认/取消）、`EXPORT_TOO_LARGE` 错误码；strict 正负向
+- [x] 3.2 `SellerSettlementBatchDto`（员工/卖家两投影）、列表 DTO、成员 DTO、请求类型（建/增删/确认/取消）、`EXPORT_TOO_LARGE` 错误码；strict 正负向
 
 ### Domain/API
 
-- [ ] 3.3 批次命令层：创建/增成员/移除/确认（冻结）/取消（释放）/导出，全部幂等+请求哈希+expected_version+状态机+transaction_assertions+审计（audit_events + batch_events 双写）
-- [ ] 3.4 批次 read model：状态权威计算（PARTIALLY_PAID/PAID 实时推导）、组织 scope concealed 404
-- [ ] 3.5 员工 8 路由（list/create/detail/members add/remove/confirm/cancel/export）挂 `/api/staff/seller-settlements/:organizationId/`
-- [ ] 3.6 卖家 2 路由（只读、DRAFT/CANCELLED 不可见、卖家安全字段）
-- [ ] 3.7 CSV 流式导出：白名单列、公式注入转义、稳定文件名、5,000 行/2 MiB 上限、流式分页拉取、导出幂等收据
+- [x] 3.3 批次命令层：创建/增成员/移除/确认（冻结）/取消（释放）/导出，全部幂等+请求哈希+expected_version+状态机+transaction_assertions+审计（audit_events + batch_events 双写）
+- [x] 3.4 批次 read model：状态权威计算（PARTIALLY_PAID/PAID 实时推导）、组织 scope concealed 404
+- [x] 3.5 员工 8 路由（list/create/detail/members add/remove/confirm/cancel/export）挂 `/api/staff/seller-settlements/:organizationId/`
+- [x] 3.6 卖家 2 路由（只读、DRAFT/CANCELLED 不可见、卖家安全字段）
+- [x] 3.7 CSV 流式导出：白名单列、公式注入转义、稳定文件名、5,000 行/2 MiB 上限、流式分页拉取、导出幂等收据
 
 ### Tests（第三批专项）
 
-- [ ] 3.8 同一 payable 不能进入两个有效批次（唯一索引 + 并发双插断言）
-- [ ] 3.9 确认后成员/金额不可静默修改（触发器拒绝 + 负向 SQL 测试）；取消释放后可再入新批次
-- [ ] 3.10 幂等重放、payload mismatch、expected_version 冲突、状态机非法迁移
-- [ ] 3.11 权限矩阵（Owner 全局/seller_ops 限分配组织/Seller 门户只读本组织/Buyer 完全不可见 404）
-- [ ] 3.12 CSV 公式注入（=,+,-,@,TAB,CR 前缀）转义、限额 409、Seller 视图无利润/买家/内部 ID/对象 key
-- [ ] 3.13 Migration 32→33 replay + 锚点
+- [x] 3.8 同一 payable 不能进入两个有效批次（唯一索引 + 并发双插断言）
+- [x] 3.9 确认后成员/金额不可静默修改（触发器拒绝 + 负向 SQL 测试）；取消释放后可再入新批次
+- [x] 3.10 幂等重放、payload mismatch、expected_version 冲突、状态机非法迁移
+- [x] 3.11 权限矩阵（Owner 全局/seller_ops 限分配组织/Seller 门户只读本组织/Buyer 完全不可见 404）
+- [x] 3.12 CSV 公式注入（=,+,-,@,TAB,CR 前缀）转义、限额 409、Seller 视图无利润/买家/内部 ID/对象 key
+- [x] 3.13 Migration 32→33 replay + 锚点
 
 ### Web（第三批）
 
-- [ ] 3.14 员工财务工作区"结算批次"面板：列表/建草稿/选应付/确认/取消/导出（390 可用）
-- [ ] 3.15 卖家端 `/seller/settlements` 批次只读列表+详情
-- [ ] 3.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图
-- [ ] 3.17 全量门禁 + 独立提交
+- [x] 3.14 员工财务工作区"结算批次"面板：列表/建草稿/选应付/确认/取消/导出（390 可用）
+- [x] 3.15 卖家端 `/seller/settlements` 批次只读列表+详情
+- [x] 3.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图
+- [x] 3.17 全量门禁 + 独立提交
 
 ## 4. 收口
 

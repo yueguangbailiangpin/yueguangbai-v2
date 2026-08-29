@@ -1,4 +1,6 @@
 export * from './allocation-commands';
+export * from './batch-routes';
+export * from './batches';
 export * from './payable-statements';
 export * from './payment-commands';
 export * from './read-model';

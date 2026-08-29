@@ -34,6 +34,8 @@ import { registerSellerMemberRoutes } from './seller-portal/member-routes';
 import { registerOrderCommunicationScreenshotRoutes } from './order-communication-screenshots';
 import { registerSellerRegistrationRoutes } from './seller-registration/routes';
 import {
+  registerSellerBatchRoutes,
+  registerStaffBatchRoutes,
   registerSellerSettlementRoutes,
   registerStaffSellerSettlementProofRoutes,
   registerStaffSellerSettlementRoutes,
@@ -101,6 +103,7 @@ registerStaffWorkflowClosureRoutes(app);
 registerMarketplaceFoundationRoutes(app);
 registerStaffReviewRoutes(app);
 registerStaffSellerSettlementRoutes(app);
+registerStaffBatchRoutes(app);
 registerStaffSellerSettlementProofRoutes(app);
 registerStaffFinanceRoutes(app);
 registerStaffOrderEvidenceRoutes(app);
@@ -123,5 +126,6 @@ registerSellerPortalRoutes(app);
 registerSellerFormalOrderRoutes(app);
 registerSellerReviewRoutes(app);
 registerSellerSettlementRoutes(app);
+registerSellerBatchRoutes(app);
 
 export default app;

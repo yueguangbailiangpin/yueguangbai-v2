@@ -153,7 +153,7 @@ describe('list filters', () => {
   it('filters by buyer customer number', async () => {
     const row = (await database!.prepare(
       'SELECT buyer_customer_no FROM formal_orders WHERE id=?',
-    ).bind(orderSettlement.orderId).first<{ buyer_customer_no: string }>());
+    ).bind(orderSettlement.orderId).first<{ buyer_customer_no: string }>())!;
     const body = await listJson(owner(), `?buyer_customer_no=${row.buyer_customer_no}`);
     expect(body.data.items.map((item) => item.formal_order_id))
       .toEqual([orderSettlement.orderId]);
@@ -222,7 +222,7 @@ describe('fixed-assignment visibility', () => {
 describe('authoritative responsibility projection', () => {
   it('follows refund → settlement → completed with the fixed-assignment owner', async () => {
     const refundBody = await detailJson(owner(), orderRefundOpen.orderId);
-    expect(refundBody.data.responsibility).toMatchObject({
+    expect(refundBody.data['responsibility']).toMatchObject({
       stage: 'BUYER_REFUND',
       responsible_role: 'buyer_refund',
       // Order A carries an open exception, which takes priority over the
@@ -231,14 +231,14 @@ describe('authoritative responsibility projection', () => {
       responsible_staff: { staff_id: 'list-refund' },
     });
     const settlementBody = await detailJson(owner(), orderSettlement.orderId);
-    expect(settlementBody.data.responsibility).toMatchObject({
+    expect(settlementBody.data['responsibility']).toMatchObject({
       stage: 'SELLER_SETTLEMENT',
       responsible_role: 'seller_ops',
       next_action: 'FOLLOW_SELLER_SETTLEMENT',
       responsible_staff: { staff_id: 'list-ops' },
     });
     const completedBody = await detailJson(owner(), orderCompleted.orderId);
-    expect(completedBody.data.responsibility).toMatchObject({
+    expect(completedBody.data['responsibility']).toMatchObject({
       stage: 'COMPLETED',
       responsible_role: 'owner',
       next_action: 'REVIEW_COMPLETED_ORDER',
@@ -248,7 +248,7 @@ describe('authoritative responsibility projection', () => {
 
   it('marks overdue from the authoritative deadline', async () => {
     const body = await detailJson(owner(), orderRefundOpen.orderId);
-    const responsibility = body.data.responsibility as {
+    const responsibility = body.data['responsibility'] as {
       next_action_due_at: number;
       is_overdue: boolean;
       overdue_since: number | null;
@@ -261,7 +261,7 @@ describe('authoritative responsibility projection', () => {
   it('returns NONE exception state after RESOLVED', async () => {
     await resolveException(orderRefundOpen.orderId, '已恢复');
     const body = await detailJson(owner(), orderRefundOpen.orderId);
-    expect(body.data.responsibility).toMatchObject({
+    expect(body.data['responsibility']).toMatchObject({
       exception_state: 'NONE',
       exception_reason: null,
     });
@@ -477,18 +477,18 @@ async function seedStaffAndAssignments(): Promise<void> {
       UPDATE buyer_staff_assignments
       SET status='REVOKED', revoked_at=?, updated_at=?, version=2
       WHERE buyer_customer_id=? AND duty_code='BUYER_PRE_SALES_OWNER' AND status='ACTIVE'
-    `).bind(AT + 1, AT + 1, buyerId).runSync();
+    `).bind(AT + 1, AT + 1, buyerId).run();
     try {
       d.prepare(`
         INSERT INTO buyer_staff_assignments(id,buyer_customer_id,duty_code,staff_id,status,source,
           assigned_by_actor_type,assigned_by_actor_id,reason,version,created_at,updated_at,revoked_at)
         VALUES(?,?,'BUYER_PRE_SALES_OWNER','list-pre','ACTIVE','MANUAL_REASSIGN','STAFF','list-owner','stage75',1,?,?,NULL)
-      `).bind(`list-pre-assign-${index}`, buyerId, AT + 2, AT + 2).runSync();
+      `).bind(`list-pre-assign-${index}`, buyerId, AT + 2, AT + 2).run();
         d.prepare(`
         INSERT INTO buyer_staff_assignments(id,buyer_customer_id,duty_code,staff_id,status,source,
           assigned_by_actor_type,assigned_by_actor_id,reason,version,created_at,updated_at,revoked_at)
         VALUES(?,?,'BUYER_REFUND_OWNER','list-refund','ACTIVE','MANUAL_REASSIGN','STAFF','list-owner','stage75',1,?,?,NULL)
-      `).bind(`list-refund-assign-${index}`, buyerId, AT + 2, AT + 2).runSync();
+      `).bind(`list-refund-assign-${index}`, buyerId, AT + 2, AT + 2).run();
       } catch (error) {
       console.log('SEED75 insert failed', index, (error as Error).message);
       console.log('SEED75 whole-when', JSON.stringify(d.raw.prepare(`
@@ -528,7 +528,7 @@ async function seedStaffAndAssignments(): Promise<void> {
       INSERT INTO seller_staff_assignments(id,seller_organization_id,duty_code,staff_id,status,source,
         assigned_by_actor_type,assigned_by_actor_id,reason,version,created_at,updated_at,revoked_at)
       VALUES(?,?, 'SELLER_ACCOUNT_MANAGER', 'list-ops','ACTIVE','AUTO_INITIAL','STAFF','list-owner',NULL,1,?,?,NULL)
-    `).bind(`list-ops-assign-${suffix}`, organizationId, AT, AT).runSync();
+    `).bind(`list-ops-assign-${suffix}`, organizationId, AT, AT).run();
   }
 }
 
@@ -536,14 +536,14 @@ async function openException(orderId: string, reason: string): Promise<void> {
   database!.prepare(`
     INSERT INTO formal_order_operational_events(id,formal_order_id,event_type,reason,actor_staff_id,created_at)
     VALUES(?,?,'PLATFORM_CANCELLED',?,'list-owner',?)
-  `).bind(`stage75-exc-${orderId.slice(0, 8)}`, orderId, reason, AT + 5000).runSync();
+  `).bind(`stage75-exc-${orderId.slice(0, 8)}`, orderId, reason, AT + 5000).run();
 }
 
 async function resolveException(orderId: string, reason: string): Promise<void> {
   database!.prepare(`
     INSERT INTO formal_order_operational_events(id,formal_order_id,event_type,reason,actor_staff_id,created_at)
     VALUES(?,?,'RESOLVED',?,'list-owner',?)
-  `).bind(`stage75-res-${orderId.slice(0, 8)}`, orderId, reason, AT + 6000).runSync();
+  `).bind(`stage75-res-${orderId.slice(0, 8)}`, orderId, reason, AT + 6000).run();
 }
 
 async function openRefundObligation(orderId: string, buyerId: string): Promise<string> {
@@ -561,16 +561,16 @@ async function openRefundObligation(orderId: string, buyerId: string): Promise<s
       decided_by_staff_id,decided_at,withdrawn_at,created_at)
     VALUES(?,?,?,(SELECT seller_organization_id FROM formal_orders WHERE id=?),
       ?,'PENDING_REVIEW',1,1,NULL,NULL,?,?,NULL,NULL,NULL,?)
-  `).bind(caseId, orderId, buyerId, orderId, reviewType, AT, AT, AT).runSync();
+  `).bind(caseId, orderId, buyerId, orderId, reviewType, AT, AT, AT).run();
   database!.prepare(`
     UPDATE review_cases SET status='APPROVED', version=2, updated_at=?, decided_by_staff_id='list-owner', decided_at=?
     WHERE id=?
-  `).bind(AT + 1, AT + 1, caseId).runSync();
+  `).bind(AT + 1, AT + 1, caseId).run();
   database!.prepare(`
     INSERT INTO review_evidence_versions(id,review_case_id,formal_order_id,version_no,review_type,submitted_by_buyer_id,
       buyer_note,created_at,review_url)
     VALUES(?,?,?,1,(SELECT review_type FROM formal_orders WHERE id=?),?,NULL,?,'https://example.test/review')
-  `).bind(evidenceId, caseId, orderId, orderId, buyerId, AT).runSync();
+  `).bind(evidenceId, caseId, orderId, orderId, buyerId, AT).run();
   database!.prepare(`
     INSERT INTO review_events(id,review_case_id,formal_order_id,evidence_version_id,event_type,actor_type,actor_id,
       previous_status,next_status,case_version,amount_cny_fen,formal_order_financial_snapshot_id,public_reason,
@@ -578,12 +578,12 @@ async function openRefundObligation(orderId: string, buyerId: string): Promise<s
     VALUES(?,?,?,?,'BUYER_REFUND_BECAME_DUE','STAFF','list-owner',
       'PENDING_REVIEW','APPROVED',2,10890,(SELECT id FROM formal_order_financial_snapshots WHERE formal_order_id=?),
       NULL,NULL,'{}',?,?)
-  `).bind(dueEventId, caseId, orderId, evidenceId, orderId, `stage75-due-${orderId.slice(0, 8)}`, AT + 1).runSync();
+  `).bind(dueEventId, caseId, orderId, evidenceId, orderId, `stage75-due-${orderId.slice(0, 8)}`, AT + 1).run();
   database!.prepare(`
     INSERT INTO buyer_refund_obligations(id,source_review_event_id,review_case_id,formal_order_id,buyer_customer_id,
       due_amount_cny_fen,version,created_at,updated_at)
     VALUES(?,?,?,?,?,10890,1,?,?)
-  `).bind(obligationId, dueEventId, caseId, orderId, buyerId, AT + 1, AT + 1).runSync();
+  `).bind(obligationId, dueEventId, caseId, orderId, buyerId, AT + 1, AT + 1).run();
   return obligationId;
 }
 
@@ -604,7 +604,7 @@ async function settleRefundFully(
     'WECHAT',
     `stage75-pay-${orderId.slice(0, 8)}`,
     AT + 2,
-  ).runSync();
+  ).run();
 }
 
 async function settleAllPayables(sellerOrganizationId: string): Promise<void> {
@@ -621,7 +621,7 @@ async function settleAllPayables(sellerOrganizationId: string): Promise<void> {
       INSERT INTO seller_payments(id,seller_organization_id,amount_cny_fen,paid_at,recorded_at,recorded_by_staff_id,
         version,created_at,updated_at)
       VALUES(?,?,?,?,?,'list-owner',1,?,?)
-    `).bind(paymentId, sellerOrganizationId, row.amount_cny_fen, AT + 3000, AT + 3000, AT + 3000, AT + 3000).runSync();
+    `).bind(paymentId, sellerOrganizationId, row.amount_cny_fen, AT + 3000, AT + 3000, AT + 3000, AT + 3000).run();
     database!.prepare(`
       INSERT INTO seller_payment_allocations(id,payment_id,payable_id,seller_organization_id,amount_cny_fen,
         allocated_by_staff_id,allocated_at,created_at)
@@ -632,7 +632,7 @@ async function settleAllPayables(sellerOrganizationId: string): Promise<void> {
       sellerOrganizationId,
       row.amount_cny_fen,
       AT + 3001,
-      AT + 3001,).runSync();
+      AT + 3001,).run();
   }
 }
 
@@ -661,5 +661,5 @@ async function seedWorkItem(
     assignmentRow.id,
     staffId,
     createdAt,
-    createdAt,).runSync();
+    createdAt,).run();
 }

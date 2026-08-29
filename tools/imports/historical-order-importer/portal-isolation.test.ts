@@ -19,7 +19,7 @@ import { runHistoricalImport } from './pipeline';
 const REPOSITORY_ROOT = process.cwd();
 const ROUTE_INVENTORY = path.join(REPOSITORY_ROOT, 'docs/contracts/V2_API_ROUTE_INVENTORY.md');
 const API_SOURCE_ROOT = path.join(REPOSITORY_ROOT, 'apps/api/src');
-const EXPECTED_ENDPOINT_COUNT = 228;
+const EXPECTED_ENDPOINT_COUNT = 238;
 
 function collectSourceFiles(directory: string): string[] {
   const files: string[] = [];
@@ -32,7 +32,7 @@ function collectSourceFiles(directory: string): string[] {
 }
 
 describe('historical import portal isolation (task 6.8)', () => {
-  it('keeps the API contract inventory at the stage 7.5 batch 1 baseline of 225 endpoints', () => {
+  it('keeps the API contract inventory at the stage 7.5 batch 3 baseline of 238 endpoints', () => {
     const inventory = readFileSync(ROUTE_INVENTORY, 'utf8');
     const endpointLines = inventory
       .split(/\r?\n/u)
