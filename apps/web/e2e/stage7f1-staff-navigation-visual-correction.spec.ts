@@ -71,14 +71,17 @@ test('员工端导航颜色与图标视觉纠偏：桌面与手机 Drawer', asyn
 
   const iconMetrics = await navigation.locator('.sa-nav__icon').evaluateAll((boxes) =>
     boxes.map((box) => {
-      const svg = box.querySelector('svg');
+      const icon = box.querySelector<HTMLElement>('.moonwhite-icon');
       const boxStyle = getComputedStyle(box);
+      const iconStyle = icon ? getComputedStyle(icon) : null;
       return {
         boxWidth: boxStyle.width,
         boxHeight: boxStyle.height,
-        width: svg?.getAttribute('width'),
-        height: svg?.getAttribute('height'),
-        strokeWidth: svg?.getAttribute('stroke-width'),
+        iconWidth: iconStyle?.width,
+        iconHeight: iconStyle?.height,
+        fontSize: iconStyle?.fontSize,
+        semanticName: icon?.dataset.icon,
+        fill: icon?.dataset.fill,
       };
     }),
   );
@@ -88,9 +91,11 @@ test('员工端导航颜色与图标视觉纠偏：桌面与手机 Drawer', asyn
       (metric) =>
         metric.boxWidth === '24px' &&
         metric.boxHeight === '24px' &&
-        metric.width === '20' &&
-        metric.height === '20' &&
-        metric.strokeWidth === '1.75',
+        metric.iconWidth === '24px' &&
+        metric.iconHeight === '24px' &&
+        metric.fontSize === '24px' &&
+        typeof metric.semanticName === 'string' &&
+        (metric.fill === '0' || metric.fill === '1'),
     ),
   ).toBe(true);
 
@@ -98,11 +103,8 @@ test('员工端导航颜色与图标视觉纠偏：桌面与手机 Drawer', asyn
   await expect
     .poll(() => inactive.evaluate((node) => getComputedStyle(node).color))
     .toBe('rgb(60, 64, 67)');
-  await expect(page.locator('.sa-create-action svg')).toHaveAttribute('stroke-width', '1.75');
-  await expect(page.getByLabel('打开系统设置').locator('svg')).toHaveAttribute(
-    'stroke-width',
-    '1.75',
-  );
+  await expect(page.locator('.sa-create-action .moonwhite-icon')).toHaveAttribute('data-icon', 'add');
+  await expect(page.getByLabel('打开系统设置').locator('.moonwhite-icon')).toHaveAttribute('data-icon', 'settings');
   await assertNoHorizontalOverflow(page);
   await page.screenshot({
     path: resolve(screenshotDirectory, 'staff-navigation-owner-1440x900.png'),
@@ -120,6 +122,24 @@ test('员工端导航颜色与图标视觉纠偏：桌面与手机 Drawer', asyn
   await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
   await expect(drawer.getByRole('link', { name: '工作台', exact: true })).toHaveClass(/is-active/u);
   await expect(drawer.getByRole('link', { name: '买家客户', exact: true })).toBeVisible();
+  const drawerIconMetrics = await drawer.locator('.sa-nav__icon .moonwhite-icon').evaluateAll((icons) =>
+    icons.map((icon) => {
+      const style = getComputedStyle(icon);
+      return {
+        width: style.width,
+        height: style.height,
+        fontSize: style.fontSize,
+        fill: icon.getAttribute('data-fill'),
+      };
+    }),
+  );
+  expect(drawerIconMetrics.length).toBeGreaterThan(0);
+  expect(drawerIconMetrics.every((metric) =>
+    metric.width === '20px' &&
+    metric.height === '20px' &&
+    metric.fontSize === '20px' &&
+    (metric.fill === '0' || metric.fill === '1'),
+  )).toBe(true);
   await assertNoHorizontalOverflow(page);
   await page.screenshot({
     path: resolve(screenshotDirectory, 'staff-navigation-owner-drawer-390x844.png'),

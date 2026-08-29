@@ -245,32 +245,33 @@ describe('StaffShell rendering', () => {
     expect(financeLink).toHaveClass('is-active');
   });
 
-  it('uses one Lucide family, size and stroke for every visible navigation icon', () => {
+  it('uses the semantic Material Symbols Rounded adapter for every visible navigation icon', () => {
     const session = staffTestSession('owner', ['STAFF_MANAGE', 'FINANCIAL_VIEW', 'SELLER_MANAGE']);
     renderShell(session, '/staff');
     const navigation = screen.getByRole('navigation', { name: '员工工作台主导航' });
     const expectedIcons: Record<string, string> = {
-      工作台: 'lucide-house',
-      买家客户: 'lucide-users-round',
-      卖家客户: 'lucide-building-2',
-      产品与预约: 'lucide-package-search',
-      订单: 'lucide-receipt-text',
-      买家返款: 'lucide-hand-coins',
-      财务: 'lucide-wallet-cards',
-      员工与权限: 'lucide-shield-check',
-      经营看板: 'lucide-chart-no-axes-combined',
-      客服渠道: 'lucide-headphones',
+      工作台: 'dashboard',
+      买家客户: 'groups',
+      卖家客户: 'storefront',
+      产品与预约: 'event_available',
+      订单: 'receipt_long',
+      买家返款: 'currency_exchange',
+      财务: 'account_balance',
+      员工与权限: 'manage_accounts',
+      经营看板: 'monitoring',
+      客服渠道: 'support_agent',
     };
 
     for (const [label, iconClass] of Object.entries(expectedIcons)) {
       const link = within(navigation).getByRole('link', { name: label });
       const iconBox = link.querySelector('.sa-nav__icon');
-      const icon = iconBox?.querySelector('svg');
+      const semanticIcon = iconBox?.querySelector('.moonwhite-icon');
       expect(iconBox).toBeInTheDocument();
-      expect(icon).toHaveClass(iconClass);
-      expect(icon).toHaveAttribute('width', '20');
-      expect(icon).toHaveAttribute('height', '20');
-      expect(icon).toHaveAttribute('stroke-width', '1.75');
+      expect(iconBox?.querySelector('svg')).toBeNull();
+      expect(semanticIcon).toHaveAttribute('data-icon', iconClass);
+      expect(semanticIcon).toHaveAttribute('data-fill', label === '工作台' ? '1' : '0');
+      expect(semanticIcon).toHaveAttribute('aria-hidden', 'true');
+      expect(semanticIcon?.getAttribute('style')).toContain('--moonwhite-icon-size: 24px');
     }
   });
 
@@ -371,7 +372,12 @@ describe('StaffShell mobile drawer', () => {
     const session = staffTestSession('owner', ['STAFF_MANAGE']);
     renderShell(session, '/staff');
     fireEvent.click(screen.getByLabelText('打开导航菜单'));
-    expect(screen.getByRole('dialog', { name: '员工导航菜单' })).toBeInTheDocument();
+    const drawer = screen.getByRole('dialog', { name: '员工导航菜单' });
+    expect(drawer).toBeInTheDocument();
+    const icon = within(drawer).getByRole('link', { name: '工作台' }).querySelector('.moonwhite-icon');
+    expect(icon).toHaveAttribute('data-icon', 'dashboard');
+    expect(icon).toHaveAttribute('data-fill', '1');
+    expect(icon?.getAttribute('style')).toContain('--moonwhite-icon-size: 20px');
   });
 
   it('closes drawer when close button clicked', () => {

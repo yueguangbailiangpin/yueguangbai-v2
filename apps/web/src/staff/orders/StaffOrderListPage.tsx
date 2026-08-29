@@ -1,11 +1,11 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Filter, UserRound, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
 import { staffApi } from '../api/client';
 import type { StaffOrderListItem } from '../contracts/runtime';
 import { formatCny, formatShanghai } from '../shared/format';
+import { MoonwhiteIcon } from '../shared/MoonwhiteIcon';
 
 const PAGE_LIMIT = 20;
 
@@ -219,7 +219,7 @@ export function StaffOrderListPage(): React.JSX.Element {
             </select>
           </div>
           <div className="sa-field">
-            <div className="sp-filter-control-label" aria-hidden="true"><UserRound size={14} /></div>
+            <div className="sp-filter-control-label" aria-hidden="true"><MoonwhiteIcon name="person" size={20} /></div>
             <select
               className="sa-select sa-select--compact"
               aria-label="按负责人筛选"
@@ -265,7 +265,7 @@ export function StaffOrderListPage(): React.JSX.Element {
           </button>
           {activeCount > 0 ? (
             <button type="button" className="sa-btn sa-btn--ghost sa-btn--small" onClick={clearFilters}>
-              <X aria-hidden="true" size={14} />
+              <MoonwhiteIcon name="close" size={20} />
               清除筛选
             </button>
           ) : null}
@@ -278,7 +278,7 @@ export function StaffOrderListPage(): React.JSX.Element {
           aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen(true)}
         >
-          <Filter aria-hidden="true" size={14} />
+          <MoonwhiteIcon name="filter_alt" size={20} />
           筛选{activeCount > 0 ? `（${activeCount}）` : ''}
         </button>
       </form>
@@ -302,7 +302,7 @@ export function StaffOrderListPage(): React.JSX.Element {
                 ref={drawerCloseRef}
                 onClick={() => setDrawerOpen(false)}
               >
-                <X aria-hidden="true" size={18} />
+                <MoonwhiteIcon name="close" size={20} />
               </button>
             </div>
             <form
@@ -500,7 +500,7 @@ export function StaffOrderListPage(): React.JSX.Element {
                 disabled
                 aria-label="上一页（当前为第一页）"
               >
-                <ChevronLeft aria-hidden="true" size={16} />
+                <MoonwhiteIcon name="chevron_left" size={20} />
                 上一页
               </button>
               <button
@@ -510,7 +510,7 @@ export function StaffOrderListPage(): React.JSX.Element {
                 onClick={() => void list.fetchNextPage()}
               >
                 {list.isFetchingNextPage ? '加载中…' : '加载更多'}
-                <ChevronRight aria-hidden="true" size={16} />
+                <MoonwhiteIcon name="chevron_right" size={20} />
               </button>
             </div>
           </div>

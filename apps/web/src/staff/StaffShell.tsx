@@ -1,20 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  House,
-  Menu,
-  MoreHorizontal,
-  Plus,
-  ReceiptText,
-  Settings,
-  UsersRound,
-  X,
-} from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from '../auth/staff/staff-auth-controller';
 import { Breadcrumb } from '../ui/primitives';
 import { GlobalSearchDropdown } from './shared/GlobalSearchDropdown';
+import { MoonwhiteIcon } from './shared/MoonwhiteIcon';
 import {
   formatMarketplaceScope,
   getBreadcrumbForPath,
@@ -23,9 +14,6 @@ import {
   staffNavSectionLabel,
   type StaffNavItem,
 } from './staff-navigation';
-
-const NAV_ICON_SIZE = 20;
-const NAV_ICON_STROKE_WIDTH = 1.75;
 
 /* ---- 账户操作（退出登录） ---- */
 
@@ -139,11 +127,12 @@ function MoonBrandMark({ small = false }: { small?: boolean }): React.JSX.Elemen
 function NavItemLink({
   item,
   onNavigate,
+  mobile = false,
 }: {
   item: StaffNavItem;
   onNavigate?: (() => void) | undefined;
+  mobile?: boolean;
 }): React.JSX.Element {
-  const Icon = item.icon;
   return (
     <NavLink
       to={item.path!}
@@ -151,17 +140,27 @@ function NavItemLink({
       className={({ isActive }) => (isActive ? 'sa-nav__link is-active' : 'sa-nav__link')}
       onClick={onNavigate}
     >
-      <span className="sa-nav__icon" aria-hidden="true">
-        <Icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
-      </span>
-      <span>{item.label}</span>
+      {({ isActive }) => (
+        <>
+          <span className="sa-nav__icon" aria-hidden="true">
+            <MoonwhiteIcon name={item.icon} size={mobile ? 20 : 24} filled={isActive} />
+          </span>
+          <span>{item.label}</span>
+        </>
+      )}
     </NavLink>
   );
 }
 
 /* ---- 侧边导航内容（桌面侧栏 + 移动 Drawer 共用） ---- */
 
-function StaffNavigationContent({ onNavigate }: { onNavigate?: () => void }): React.JSX.Element {
+function StaffNavigationContent({
+  onNavigate,
+  mobile = false,
+}: {
+  onNavigate?: () => void;
+  mobile?: boolean;
+}): React.JSX.Element {
   const session = useCurrentStaffSession();
   const items = getVisibleNavItems(session);
   const groups: Array<{ section: string | undefined; items: StaffNavItem[] }> = [];
@@ -196,17 +195,25 @@ function StaffNavigationContent({ onNavigate }: { onNavigate?: () => void }): Re
                       }
                       onClick={onNavigate}
                     >
-                      {child.icon ? (
-                        <span className="sa-nav__icon" aria-hidden="true">
-                          <child.icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
-                        </span>
-                      ) : null}
-                      <span>{child.label}</span>
+                      {({ isActive }) => (
+                        <>
+                          {child.icon ? (
+                            <span className="sa-nav__icon" aria-hidden="true">
+                              <MoonwhiteIcon
+                                name={child.icon}
+                                size={mobile ? 20 : 24}
+                                filled={isActive}
+                              />
+                            </span>
+                          ) : null}
+                          <span>{child.label}</span>
+                        </>
+                      )}
                     </NavLink>
                   ))}
               </div>
             ) : (
-              <NavItemLink key={item.id} item={item} onNavigate={onNavigate} />
+              <NavItemLink key={item.id} item={item} onNavigate={onNavigate} mobile={mobile} />
             ),
           )}
         </div>
@@ -220,7 +227,7 @@ function StaffCreateAction({ onNavigate }: { onNavigate?: () => void }): React.J
   if (session.role.code !== 'owner' && session.role.code !== 'pre_sales') return null;
   return (
     <NavLink className="sa-create-action" to="/staff/buyer-customers" onClick={onNavigate}>
-      <Plus aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
+      <MoonwhiteIcon name="add" size={20} />
       <span>新建买家</span>
     </NavLink>
   );
@@ -238,23 +245,31 @@ function StaffMobileBottomNav({ onMenu }: { onMenu: () => void }): React.JSX.Ele
   return (
     <nav className="sa-mobile-nav" aria-label="员工端手机快捷导航">
       <NavLink to="/staff" end>
-        <House aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
-        <span>工作台</span>
+        {({ isActive }) => (
+          <>
+            <MoonwhiteIcon name="dashboard" size={20} filled={isActive} />
+            <span>工作台</span>
+          </>
+        )}
       </NavLink>
       <NavLink to="/staff/orders">
-        <ReceiptText aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
-        <span>订单</span>
+        {({ isActive }) => (
+          <>
+            <MoonwhiteIcon name="receipt_long" size={20} filled={isActive} />
+            <span>订单</span>
+          </>
+        )}
       </NavLink>
       <NavLink to={customerPath}>
-        <UsersRound aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
-        <span>{customerLabel}</span>
+        {({ isActive }) => (
+          <>
+            <MoonwhiteIcon name={session.role.code === 'seller_ops' ? 'storefront' : 'groups'} size={20} filled={isActive} />
+            <span>{customerLabel}</span>
+          </>
+        )}
       </NavLink>
       <button type="button" aria-label="打开全部导航" onClick={onMenu}>
-        <MoreHorizontal
-          aria-hidden="true"
-          size={NAV_ICON_SIZE}
-          strokeWidth={NAV_ICON_STROKE_WIDTH}
-        />
+        <MoonwhiteIcon name="more_horiz" size={20} />
         <span>更多</span>
       </button>
     </nav>
@@ -341,11 +356,11 @@ function StaffMobileDrawer({
             aria-label="关闭导航菜单"
             onClick={onClose}
           >
-            <X aria-hidden="true" size={18} />
+            <MoonwhiteIcon name="close" size={20} />
           </button>
         </div>
         <StaffCreateAction onNavigate={onClose} />
-        <StaffNavigationContent onNavigate={onClose} />
+        <StaffNavigationContent onNavigate={onClose} mobile />
         <div className="sa-sidebar__footer">
           <span className="sa-sidebar__scope">{formatMarketplaceScope(session)}</span>
           <p className="sa-sidebar__meta">
@@ -386,7 +401,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
           aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen(true)}
         >
-          <Menu aria-hidden="true" size={20} />
+          <MoonwhiteIcon name="menu" size={20} />
         </button>
         <NavLink className="sa-topbar__brand" to="/staff" aria-label="月光白员工首页">
           <MoonBrandMark />
@@ -402,11 +417,7 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
               to="/staff/service-channels"
               aria-label="打开系统设置"
             >
-              <Settings
-                aria-hidden="true"
-                size={NAV_ICON_SIZE}
-                strokeWidth={NAV_ICON_STROKE_WIDTH}
-              />
+              <MoonwhiteIcon name="settings" size={24} />
             </NavLink>
           ) : null}
           <span

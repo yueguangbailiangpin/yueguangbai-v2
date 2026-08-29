@@ -268,21 +268,22 @@ test('列表读取失败展示错误态并可恢复', async ({ page }) => {
 test('工作台指标卡显示后端权威值（Owner 可见返款金额）', async ({ page }) => {
   await mockApis(page, { role: 'owner', firstPage: [] });
   await page.goto('/staff');
-  const metrics = page.getByTestId('staff-workbench-metrics');
-  await expect(metrics).toBeVisible();
-  await expect(metrics.getByText('我的待处理')).toBeVisible();
-  await expect(metrics.getByText('已逾期')).toBeVisible();
-  await expect(metrics.getByText('今日应处理返款')).toBeVisible();
-  await expect(metrics.getByText('¥1650.00')).toBeVisible();
+  const overview = page.getByRole('region', { name: '今日概览' });
+  await expect(overview).toBeVisible();
+  await expect(overview.getByText('待处理')).toBeVisible();
+  await expect(overview.getByText('临近超时')).toBeVisible();
+  await expect(overview.getByText('今日应处理返款')).toBeVisible();
+  await expect(overview.getByText('¥1650.00')).toBeVisible();
   await assertNoUnexpectedErrorState(page);
 });
 
 test('工作台指标卡对非 Owner 不显示返款金额', async ({ page }) => {
   await mockApis(page, { role: 'pre_sales', firstPage: [] });
   await page.goto('/staff');
-  const metrics = page.getByTestId('staff-workbench-metrics');
-  await expect(metrics).toBeVisible();
-  await expect(metrics.getByText('今日应处理返款')).toHaveCount(0);
+  const overview = page.getByRole('region', { name: '今日概览' });
+  await expect(overview).toBeVisible();
+  await expect(overview.getByText('待处理')).toBeVisible();
+  await expect(overview.getByText('今日应处理返款')).toHaveCount(0);
   await assertNoUnexpectedErrorState(page);
 });
 

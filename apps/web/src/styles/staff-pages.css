@@ -530,7 +530,7 @@
   .sp-mobile-actions a:hover {
     text-decoration: none;
   }
-  .sp-mobile-actions svg {
+  .sp-mobile-actions .moonwhite-icon {
     color: var(--color-primary);
   }
 

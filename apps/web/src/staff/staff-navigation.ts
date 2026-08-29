@@ -1,18 +1,5 @@
-import type { LucideIcon } from 'lucide-react';
-import {
-  Building2,
-  ChartNoAxesCombined,
-  HandCoins,
-  Headphones,
-  House,
-  PackageSearch,
-  ReceiptText,
-  ShieldCheck,
-  Settings,
-  UsersRound,
-  WalletCards,
-} from 'lucide-react';
 import type { StaffSession } from '../auth/staff/staff-auth-api';
+import type { MoonwhiteIconName } from './shared/MoonwhiteIcon';
 
 export type StaffRoleCode = StaffSession['role']['code'];
 
@@ -53,7 +40,7 @@ export interface StaffNavSection {
 export interface StaffNavChild {
   id: string;
   label: string;
-  icon?: LucideIcon;
+  icon?: MoonwhiteIconName;
   path: string;
   visible: StaffNavVisibility;
 }
@@ -62,7 +49,7 @@ export interface StaffNavChild {
 export interface StaffNavItem {
   id: string;
   label: string;
-  icon: LucideIcon;
+  icon: MoonwhiteIconName;
   section?: string;
   /** 直接路径（无子项时） */
   path?: string;
@@ -82,14 +69,14 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'workbench',
     label: '工作台',
-    icon: House,
+    icon: 'dashboard',
     path: '/staff',
     section: 'work',
   },
   {
     id: 'buyer-customers',
     label: '买家客户',
-    icon: UsersRound,
+    icon: 'groups',
     path: '/staff/buyer-customers',
     visible: mayBuyerCustomers,
     section: 'business',
@@ -97,7 +84,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'seller-customers',
     label: '卖家客户',
-    icon: Building2,
+    icon: 'storefront',
     path: '/staff/seller-customers',
     visible: maySellerCustomers,
     section: 'business',
@@ -105,7 +92,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'products',
     label: '产品与预约',
-    icon: PackageSearch,
+    icon: 'event_available',
     path: '/staff/products',
     visible: mayProducts,
     section: 'business',
@@ -113,14 +100,14 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'orders',
     label: '订单',
-    icon: ReceiptText,
+    icon: 'receipt_long',
     path: '/staff/orders',
     section: 'business',
   },
   {
     id: 'buyer-refunds',
     label: '买家返款',
-    icon: HandCoins,
+    icon: 'currency_exchange',
     path: '/staff/refunds',
     visible: mayRefunds,
     section: 'business',
@@ -128,7 +115,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'finance',
     label: '财务',
-    icon: WalletCards,
+    icon: 'account_balance',
     path: '/staff/finance',
     visible: mayFinance,
     section: 'finance',
@@ -136,7 +123,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'access-management',
     label: '员工与权限',
-    icon: ShieldCheck,
+    icon: 'manage_accounts',
     path: '/staff/access-management',
     visible: mayAccessManagement,
     section: 'admin',
@@ -144,19 +131,19 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'system',
     label: '系统设置',
-    icon: Settings,
+    icon: 'settings',
     children: [
       {
         id: 'admin-dashboard',
         label: '经营看板',
-        icon: ChartNoAxesCombined,
+        icon: 'monitoring',
         path: '/staff/admin-business-dashboard',
         visible: mayDashboard,
       },
       {
         id: 'service-channels',
         label: '客服渠道',
-        icon: Headphones,
+        icon: 'support_agent',
         path: '/staff/service-channels',
         visible: mayAccessManagement,
       },

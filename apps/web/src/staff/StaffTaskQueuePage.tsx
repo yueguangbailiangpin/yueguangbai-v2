@@ -1,17 +1,4 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertTriangle,
-  CalendarCheck2,
-  ChevronRight,
-  CircleDollarSign,
-  ClipboardCheck,
-  FileCheck2,
-  PackageCheck,
-  ReceiptText,
-  Search,
-  UserPlus,
-  type LucideIcon,
-} from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { staffApi } from './api/client';
@@ -19,6 +6,7 @@ import type { StaffOrderListItem, StaffWorkItem } from './contracts/runtime';
 import { fenToYuan } from './finance/finance-format';
 import { staffWorkbenchKeys } from './queries/keys';
 import { StaffPanelError } from './shared/StaffPanelError';
+import { MoonwhiteIcon, type MoonwhiteIconName } from './shared/MoonwhiteIcon';
 import { workTypeLabels } from './work-panels/shared';
 
 const STAFF_FACT_STALE_TIME_MS = 15_000;
@@ -51,15 +39,15 @@ const orderStageLabels: Record<string, string> = {
 };
 const workVisuals: Record<
   StaffWorkItem['work_type'],
-  { icon: LucideIcon; tone: 'blue' | 'green' | 'purple' }
+  { icon: MoonwhiteIconName; tone: 'blue' | 'green' | 'purple' }
 > = {
-  PRODUCT_APPLICATION_REVIEW: { icon: PackageCheck, tone: 'green' },
-  DEMAND_REVIEW: { icon: ClipboardCheck, tone: 'green' },
-  RESERVATION_DECISION: { icon: CalendarCheck2, tone: 'blue' },
-  ORDER_INSTRUCTION_PUBLISH: { icon: FileCheck2, tone: 'purple' },
-  ORDER_EVIDENCE_REVIEW: { icon: ReceiptText, tone: 'blue' },
-  REVIEW_DECISION: { icon: ClipboardCheck, tone: 'purple' },
-  BUYER_REFUND_PROCESSING: { icon: CircleDollarSign, tone: 'blue' },
+  PRODUCT_APPLICATION_REVIEW: { icon: 'storefront', tone: 'green' },
+  DEMAND_REVIEW: { icon: 'groups', tone: 'green' },
+  RESERVATION_DECISION: { icon: 'event_available', tone: 'blue' },
+  ORDER_INSTRUCTION_PUBLISH: { icon: 'task_alt', tone: 'purple' },
+  ORDER_EVIDENCE_REVIEW: { icon: 'receipt_long', tone: 'blue' },
+  REVIEW_DECISION: { icon: 'task_alt', tone: 'purple' },
+  BUYER_REFUND_PROCESSING: { icon: 'currency_exchange', tone: 'blue' },
 };
 
 function shanghaiDate(epoch: number): string {
@@ -111,10 +99,10 @@ function workTitle(item: StaffWorkItem): string {
 }
 
 function WorkIcon({ item }: { item: StaffWorkItem }): React.JSX.Element {
-  const Icon = workVisuals[item.work_type].icon;
+  const icon = workVisuals[item.work_type].icon;
   return (
     <span className={`sp-round-icon sp-round-icon--${riskTone(item)}`} aria-hidden="true">
-      <Icon size={18} />
+      <MoonwhiteIcon name={icon} size={24} />
     </span>
   );
 }
@@ -163,7 +151,7 @@ function WorkRow({
           aria-label={`打开 ${workTitle(item)}`}
           onClick={() => onOpen(item)}
         >
-          <ChevronRight aria-hidden="true" size={18} />
+          <MoonwhiteIcon name="chevron_right" size={20} />
         </button>
       )}
     </article>
@@ -321,18 +309,18 @@ export function StaffTaskQueuePage(): React.JSX.Element {
         </div>
         <div className="sp-hello__actions">
           <Link className="sa-btn sa-btn--tonal" to="/staff/orders">
-            <Search aria-hidden="true" size={17} />
+            <MoonwhiteIcon name="search" size={20} />
             查订单
           </Link>
           {mayCreateBuyer ? (
             <Link className="sa-btn sa-btn--primary" to="/staff/buyer-customers">
-              <UserPlus aria-hidden="true" size={17} />
+              <MoonwhiteIcon name="person_add" size={20} />
               新建买家
             </Link>
           ) : null}
           {mayOpenRefunds && !mayCreateBuyer ? (
             <Link className="sa-btn sa-btn--primary" to="/staff/refunds">
-              <CircleDollarSign aria-hidden="true" size={17} />
+              <MoonwhiteIcon name="currency_exchange" size={20} />
               买家返款
             </Link>
           ) : null}
@@ -349,22 +337,22 @@ export function StaffTaskQueuePage(): React.JSX.Element {
       <div className="sp-mobile-actions" aria-label="快捷入口">
         {mayCreateBuyer ? (
           <Link to="/staff/buyer-customers">
-            <UserPlus aria-hidden="true" size={18} />
+            <MoonwhiteIcon name="person_add" size={20} />
             <span>新建买家</span>
           </Link>
         ) : null}
         <Link to="/staff/orders">
-          <Search aria-hidden="true" size={18} />
+          <MoonwhiteIcon name="search" size={20} />
           <span>查订单</span>
         </Link>
         {mayOpenRefunds ? (
           <Link to="/staff/refunds">
-            <CircleDollarSign aria-hidden="true" size={18} />
+            <MoonwhiteIcon name="currency_exchange" size={20} />
             <span>买家返款</span>
           </Link>
         ) : (
           <Link to="/staff/products">
-            <PackageCheck aria-hidden="true" size={18} />
+            <MoonwhiteIcon name="event_available" size={20} />
             <span>产品预约</span>
           </Link>
         )}
@@ -427,7 +415,7 @@ export function StaffTaskQueuePage(): React.JSX.Element {
                     : shanghaiMinuteFormatter.format(new Date(item.completed_at))}
                 </time>
                 <span className="sp-round-icon sp-round-icon--green" aria-hidden="true">
-                  <ClipboardCheck size={18} />
+                  <MoonwhiteIcon name="task_alt" size={20} />
                 </span>
                 <div className="sp-task-copy">
                   <strong>{workTitle(item)}</strong>
@@ -494,25 +482,25 @@ export function StaffTaskQueuePage(): React.JSX.Element {
             {summary && summary.overdue_count > 0 ? (
               <Link to="/staff" className="sp-attention-row">
                 <span className="sp-round-icon sp-round-icon--red">
-                  <AlertTriangle aria-hidden="true" size={18} />
+                  <MoonwhiteIcon name="warning" size={20} />
                 </span>
                 <span>
                   <strong>{summary.overdue_count} 件工作已逾期</strong>
                   <small>请优先处理固定分配事项</small>
                 </span>
-                <ChevronRight aria-hidden="true" size={16} />
+                <MoonwhiteIcon name="chevron_right" size={20} />
               </Link>
             ) : null}
             {summary && summary.exception_order_count > 0 ? (
               <Link to="/staff/orders?exception_state=OPEN" className="sp-attention-row">
                 <span className="sp-round-icon sp-round-icon--amber">
-                  <ReceiptText aria-hidden="true" size={18} />
+                  <MoonwhiteIcon name="receipt_long" size={20} />
                 </span>
                 <span>
                   <strong>{summary.exception_order_count} 单存在异常</strong>
                   <small>查看订单权威异常状态</small>
                 </span>
-                <ChevronRight aria-hidden="true" size={16} />
+                <MoonwhiteIcon name="chevron_right" size={20} />
               </Link>
             ) : null}
             {summary && summary.overdue_count === 0 && summary.exception_order_count === 0 ? (

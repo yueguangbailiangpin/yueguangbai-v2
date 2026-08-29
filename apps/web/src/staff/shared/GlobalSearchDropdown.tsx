@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { staffApi } from '../api/client';
 import type { StaffSearchResults } from '../contracts/runtime';
+import { MoonwhiteIcon } from './MoonwhiteIcon';
 
 const DEBOUNCE_MS = 300;
 
@@ -50,7 +50,7 @@ export function GlobalSearchDropdown(): React.JSX.Element {
     : 0;
   return (
     <div className="staff-global-search" ref={boxRef}>
-      <Search className="staff-global-search__icon" aria-hidden="true" size={19} />
+      <MoonwhiteIcon name="search" size={20} className="staff-global-search__icon" />
       <input
         type="search"
         role="searchbox"

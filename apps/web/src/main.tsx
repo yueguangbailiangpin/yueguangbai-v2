@@ -25,6 +25,7 @@ import './styles/base.css';
 import './styles/primitives.css';
 import './styles/staff-shell.css';
 import './styles/staff-pages.css';
+import './styles/staff-icons.css';
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };

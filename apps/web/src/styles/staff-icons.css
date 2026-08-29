@@ -1,0 +1,66 @@
+/* Local Material Symbols Rounded subset. No remote font or CDN dependency. */
+@font-face {
+  font-family: 'Moonwhite Material Symbols Rounded';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url('../assets/material-symbols-rounded-staff.ttf') format('truetype');
+}
+
+.staff-app .moonwhite-icon {
+  --moonwhite-icon-size: 24px;
+  display: inline-block;
+  width: var(--moonwhite-icon-size);
+  height: var(--moonwhite-icon-size);
+  flex: 0 0 var(--moonwhite-icon-size);
+  overflow: hidden;
+  color: currentColor;
+  font-family: 'Moonwhite Material Symbols Rounded';
+  font-size: var(--moonwhite-icon-size);
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: normal;
+  text-align: center;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: 'liga';
+  -webkit-font-feature-settings: 'liga';
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  user-select: none;
+}
+
+.staff-app .moonwhite-icon.is-filled,
+.staff-app .moonwhite-icon[data-fill='1'] {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.staff-app .moonwhite-icon[data-icon='menu'],
+.staff-app .moonwhite-icon[data-icon='more_horiz'],
+.staff-app .moonwhite-icon[data-icon='close'],
+.staff-app .moonwhite-icon[data-icon='chevron_left'],
+.staff-app .moonwhite-icon[data-icon='chevron_right'],
+.staff-app .moonwhite-icon[data-icon='filter_alt'],
+.staff-app .moonwhite-icon[data-icon='person'],
+.staff-app .moonwhite-icon[data-icon='person_add'],
+.staff-app .moonwhite-icon[data-icon='search'],
+.staff-app .moonwhite-icon[data-icon='add'],
+.staff-app .moonwhite-icon[data-icon='settings'] {
+  --moonwhite-icon-size: 20px;
+}
+
+.staff-app .sa-nav__icon .moonwhite-icon {
+  --moonwhite-icon-size: 24px;
+}
+
+.staff-app .sa-drawer .sa-nav__icon .moonwhite-icon {
+  --moonwhite-icon-size: 20px;
+}
+
+.staff-app .sa-mobile-nav .moonwhite-icon,
+.staff-app .sa-menu-btn .moonwhite-icon,
+.staff-app .sa-drawer__header .moonwhite-icon {
+  --moonwhite-icon-size: 20px;
+}
