@@ -245,6 +245,35 @@ describe('StaffShell rendering', () => {
     expect(financeLink).toHaveClass('is-active');
   });
 
+  it('uses one Lucide family, size and stroke for every visible navigation icon', () => {
+    const session = staffTestSession('owner', ['STAFF_MANAGE', 'FINANCIAL_VIEW', 'SELLER_MANAGE']);
+    renderShell(session, '/staff');
+    const navigation = screen.getByRole('navigation', { name: '员工工作台主导航' });
+    const expectedIcons: Record<string, string> = {
+      工作台: 'lucide-house',
+      买家客户: 'lucide-users-round',
+      卖家客户: 'lucide-building-2',
+      产品与预约: 'lucide-package-search',
+      订单: 'lucide-receipt-text',
+      买家返款: 'lucide-hand-coins',
+      财务: 'lucide-wallet-cards',
+      员工与权限: 'lucide-shield-check',
+      经营看板: 'lucide-chart-no-axes-combined',
+      客服渠道: 'lucide-headphones',
+    };
+
+    for (const [label, iconClass] of Object.entries(expectedIcons)) {
+      const link = within(navigation).getByRole('link', { name: label });
+      const iconBox = link.querySelector('.sa-nav__icon');
+      const icon = iconBox?.querySelector('svg');
+      expect(iconBox).toBeInTheDocument();
+      expect(icon).toHaveClass(iconClass);
+      expect(icon).toHaveAttribute('width', '20');
+      expect(icon).toHaveAttribute('height', '20');
+      expect(icon).toHaveAttribute('stroke-width', '1.75');
+    }
+  });
+
   it('does not show access-management for non-owner', () => {
     const session = staffTestSession('pre_sales', []);
     renderShell(session, '/staff');

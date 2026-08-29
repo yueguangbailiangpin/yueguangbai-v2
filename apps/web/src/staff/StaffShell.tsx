@@ -1,5 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Home, Menu, MoreHorizontal, Plus, ReceiptText, Settings, Users, X } from 'lucide-react';
+import {
+  House,
+  Menu,
+  MoreHorizontal,
+  Plus,
+  ReceiptText,
+  Settings,
+  UsersRound,
+  X,
+} from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
@@ -14,6 +23,9 @@ import {
   staffNavSectionLabel,
   type StaffNavItem,
 } from './staff-navigation';
+
+const NAV_ICON_SIZE = 20;
+const NAV_ICON_STROKE_WIDTH = 1.75;
 
 /* ---- 账户操作（退出登录） ---- */
 
@@ -139,7 +151,9 @@ function NavItemLink({
       className={({ isActive }) => (isActive ? 'sa-nav__link is-active' : 'sa-nav__link')}
       onClick={onNavigate}
     >
-      <Icon aria-hidden="true" size={18} />
+      <span className="sa-nav__icon" aria-hidden="true">
+        <Icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
+      </span>
       <span>{item.label}</span>
     </NavLink>
   );
@@ -182,7 +196,11 @@ function StaffNavigationContent({ onNavigate }: { onNavigate?: () => void }): Re
                       }
                       onClick={onNavigate}
                     >
-                      {child.icon ? <child.icon aria-hidden="true" size={16} /> : null}
+                      {child.icon ? (
+                        <span className="sa-nav__icon" aria-hidden="true">
+                          <child.icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
+                        </span>
+                      ) : null}
                       <span>{child.label}</span>
                     </NavLink>
                   ))}
@@ -202,7 +220,7 @@ function StaffCreateAction({ onNavigate }: { onNavigate?: () => void }): React.J
   if (session.role.code !== 'owner' && session.role.code !== 'pre_sales') return null;
   return (
     <NavLink className="sa-create-action" to="/staff/buyer-customers" onClick={onNavigate}>
-      <Plus aria-hidden="true" size={20} />
+      <Plus aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
       <span>新建买家</span>
     </NavLink>
   );
@@ -220,19 +238,23 @@ function StaffMobileBottomNav({ onMenu }: { onMenu: () => void }): React.JSX.Ele
   return (
     <nav className="sa-mobile-nav" aria-label="员工端手机快捷导航">
       <NavLink to="/staff" end>
-        <Home aria-hidden="true" size={19} />
+        <House aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
         <span>工作台</span>
       </NavLink>
       <NavLink to="/staff/orders">
-        <ReceiptText aria-hidden="true" size={19} />
+        <ReceiptText aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
         <span>订单</span>
       </NavLink>
       <NavLink to={customerPath}>
-        <Users aria-hidden="true" size={19} />
+        <UsersRound aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} />
         <span>{customerLabel}</span>
       </NavLink>
       <button type="button" aria-label="打开全部导航" onClick={onMenu}>
-        <MoreHorizontal aria-hidden="true" size={19} />
+        <MoreHorizontal
+          aria-hidden="true"
+          size={NAV_ICON_SIZE}
+          strokeWidth={NAV_ICON_STROKE_WIDTH}
+        />
         <span>更多</span>
       </button>
     </nav>
@@ -380,7 +402,11 @@ export function StaffShell({ children }: { children?: ReactNode } = {}): React.J
               to="/staff/service-channels"
               aria-label="打开系统设置"
             >
-              <Settings aria-hidden="true" size={20} />
+              <Settings
+                aria-hidden="true"
+                size={NAV_ICON_SIZE}
+                strokeWidth={NAV_ICON_STROKE_WIDTH}
+              />
             </NavLink>
           ) : null}
           <span

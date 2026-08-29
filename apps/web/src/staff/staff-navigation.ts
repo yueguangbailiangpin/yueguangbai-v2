@@ -1,16 +1,16 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  BriefcaseBusiness,
-  PackageSearch,
-  ClipboardList,
-  CircleDollarSign,
-  Landmark,
-  UserCog,
-  Settings,
-  Store,
-  UserRound,
+  Building2,
   ChartNoAxesCombined,
-  Headset,
+  HandCoins,
+  Headphones,
+  House,
+  PackageSearch,
+  ReceiptText,
+  ShieldCheck,
+  Settings,
+  UsersRound,
+  WalletCards,
 } from 'lucide-react';
 import type { StaffSession } from '../auth/staff/staff-auth-api';
 
@@ -24,8 +24,7 @@ const isPreSales: StaffNavVisibility = (s) => s.role.code === 'pre_sales';
 const isSellerOps: StaffNavVisibility = (s) => s.role.code === 'seller_ops';
 const isBuyerRefund: StaffNavVisibility = (s) => s.role.code === 'buyer_refund';
 
-const mayProducts: StaffNavVisibility = (s) =>
-  isOwner(s) || isPreSales(s) || isSellerOps(s);
+const mayProducts: StaffNavVisibility = (s) => isOwner(s) || isPreSales(s) || isSellerOps(s);
 
 const mayFinance: StaffNavVisibility = (s) =>
   isOwner(s) || (isSellerOps(s) && s.permissions.includes('SELLER_MANAGE'));
@@ -83,14 +82,14 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'workbench',
     label: '工作台',
-    icon: BriefcaseBusiness,
+    icon: House,
     path: '/staff',
     section: 'work',
   },
   {
     id: 'buyer-customers',
     label: '买家客户',
-    icon: UserRound,
+    icon: UsersRound,
     path: '/staff/buyer-customers',
     visible: mayBuyerCustomers,
     section: 'business',
@@ -98,7 +97,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'seller-customers',
     label: '卖家客户',
-    icon: Store,
+    icon: Building2,
     path: '/staff/seller-customers',
     visible: maySellerCustomers,
     section: 'business',
@@ -114,14 +113,14 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'orders',
     label: '订单',
-    icon: ClipboardList,
+    icon: ReceiptText,
     path: '/staff/orders',
     section: 'business',
   },
   {
     id: 'buyer-refunds',
     label: '买家返款',
-    icon: CircleDollarSign,
+    icon: HandCoins,
     path: '/staff/refunds',
     visible: mayRefunds,
     section: 'business',
@@ -129,7 +128,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'finance',
     label: '财务',
-    icon: Landmark,
+    icon: WalletCards,
     path: '/staff/finance',
     visible: mayFinance,
     section: 'finance',
@@ -137,7 +136,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
     id: 'access-management',
     label: '员工与权限',
-    icon: UserCog,
+    icon: ShieldCheck,
     path: '/staff/access-management',
     visible: mayAccessManagement,
     section: 'admin',
@@ -157,7 +156,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
       {
         id: 'service-channels',
         label: '客服渠道',
-        icon: Headset,
+        icon: Headphones,
         path: '/staff/service-channels',
         visible: mayAccessManagement,
       },
