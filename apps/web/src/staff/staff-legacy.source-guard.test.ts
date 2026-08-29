@@ -152,4 +152,44 @@ describe('staff legacy source guard (7F-1)', () => {
     const dashboardFilled = readFileSync(join(assetsDir, 'dashboard-filled.svg'), 'utf8');
     expect(dashboardOutline).not.toBe(dashboardFilled);
   });
+
+  it('staff typography exposes scoped hierarchy tokens and selectors', () => {
+    const tokens = readFileSync(join(STAFF_DIR, '../styles/tokens.css'), 'utf8');
+    const base = readFileSync(join(STAFF_DIR, '../styles/base.css'), 'utf8');
+    const shell = readFileSync(join(STAFF_DIR, '../styles/staff-shell.css'), 'utf8');
+    const pages = readFileSync(join(STAFF_DIR, '../styles/staff-pages.css'), 'utf8');
+
+    for (const declaration of [
+      '--staff-font-family:',
+      '--staff-font-size-body: 14px',
+      '--staff-font-size-nav: 14px',
+      '--staff-font-size-group: 11px',
+      '--staff-font-size-title: 30px',
+      '--staff-font-size-section: 16px',
+      '--staff-font-size-task: 14px',
+      '--staff-font-size-meta: 12px',
+      '--staff-font-size-button: 14px',
+      '--staff-font-weight-regular: 400',
+      '--staff-font-weight-medium: 500',
+      '--staff-font-weight-semibold: 600',
+    ]) {
+      expect(tokens, declaration).toContain(declaration);
+    }
+
+    expect(base).toContain('.staff-app {');
+    expect(base).toContain('font-family: var(--staff-font-family);');
+    expect(base).toContain('font-size: var(--staff-font-size-body);');
+    expect(base).toContain('font-weight: var(--staff-font-weight-regular);');
+    expect(shell).toContain('.staff-app .sa-nav__link');
+    expect(shell).toContain('font-size: var(--staff-font-size-nav);');
+    expect(shell).toContain('font-weight: var(--staff-font-weight-medium);');
+    expect(shell).toContain('.staff-app .sa-nav__link.is-active');
+    expect(shell).toContain('font-weight: var(--staff-font-weight-semibold);');
+    expect(pages).toContain('.staff-app .sp-hello__title');
+    expect(pages).toContain('font-size: var(--staff-font-size-title);');
+    expect(pages).toContain('.staff-app .sp-workbench .sp-section-heading h2');
+    expect(pages).toContain('font-size: var(--staff-font-size-section);');
+    expect(pages).toContain('.staff-app .sp-workbench .sp-task-copy strong');
+    expect(pages).toContain('font-size: var(--staff-font-size-task);');
+  });
 });

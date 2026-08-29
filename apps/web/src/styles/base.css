@@ -7,10 +7,11 @@
    ============================================================ */
 
 .staff-app {
-  /* 元素默认：正文 14px，层级用 rem（1rem = 16px 基准） */
-  font-family: var(--font-family-sans);
-  font-size: 0.875rem; /* 14px */
-  line-height: 1.55;
+  /* 元素默认：正文 14px；员工端使用独立 token，避免 legacy 覆盖。 */
+  font-family: var(--staff-font-family);
+  font-size: var(--staff-font-size-body);
+  font-weight: var(--staff-font-weight-regular);
+  line-height: var(--staff-line-height-body);
   color: var(--color-text);
   background: var(--color-canvas);
   -webkit-font-smoothing: antialiased;

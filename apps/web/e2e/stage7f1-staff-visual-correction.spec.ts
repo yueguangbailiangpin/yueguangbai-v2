@@ -27,6 +27,51 @@ async function assertVisualReady(page: Page): Promise<void> {
   expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth + 1);
 }
 
+async function assertWorkbenchTypography(page: Page): Promise<void> {
+  const typography = await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>('.staff-app');
+    const activeNav = document.querySelector<HTMLElement>('.sa-nav__link.is-active');
+    const inactiveNav = document.querySelector<HTMLElement>('.sa-nav__link:not(.is-active)');
+    const groupLabel = document.querySelector<HTMLElement>('.sa-nav__group-label');
+    const title = document.querySelector<HTMLElement>('.sp-hello__title');
+    const section = document.querySelector<HTMLElement>('.sp-workbench .sp-section-heading h2');
+    const task = document.querySelector<HTMLElement>('.sp-workbench .sp-task-copy strong');
+    const meta = document.querySelector<HTMLElement>('.sp-workbench .sp-task-copy small');
+    const button = document.querySelector<HTMLElement>('.sp-hello__actions .sa-btn');
+    const style = (node: HTMLElement | null) =>
+      node
+        ? {
+            fontFamily: getComputedStyle(node).fontFamily,
+            fontSize: getComputedStyle(node).fontSize,
+            fontWeight: getComputedStyle(node).fontWeight,
+          }
+        : null;
+    return {
+      root: style(root),
+      activeNav: style(activeNav),
+      inactiveNav: style(inactiveNav),
+      groupLabel: style(groupLabel),
+      title: style(title),
+      section: style(section),
+      task: style(task),
+      meta: style(meta),
+      button: style(button),
+    };
+  });
+
+  expect(typography.root?.fontSize).toBe('14px');
+  expect(typography.root?.fontWeight).toBe('400');
+  expect(typography.root?.fontFamily).toContain('Google Sans Text');
+  expect(typography.activeNav).toMatchObject({ fontSize: '14px', fontWeight: '600' });
+  expect(typography.inactiveNav).toMatchObject({ fontSize: '14px', fontWeight: '500' });
+  expect(typography.groupLabel).toMatchObject({ fontSize: '11px', fontWeight: '600' });
+  expect(typography.title).toMatchObject({ fontSize: '30px', fontWeight: '600' });
+  expect(typography.section).toMatchObject({ fontSize: '16px', fontWeight: '600' });
+  expect(typography.task).toMatchObject({ fontSize: '14px', fontWeight: '500' });
+  expect(typography.meta).toMatchObject({ fontSize: '12px', fontWeight: '400' });
+  expect(typography.button).toMatchObject({ fontSize: '14px', fontWeight: '500' });
+}
+
 test('员工端 Shell + 工作台第一版：owner、非 Owner、手机 Drawer 与三张视觉证据', async ({
   page,
 }) => {
@@ -42,6 +87,7 @@ test('员工端 Shell + 工作台第一版：owner、非 Owner、手机 Drawer �
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/review/staff');
   await assertVisualReady(page);
+  await assertWorkbenchTypography(page);
   await expect(page.getByText('503-7770005-0003005')).toBeVisible();
 
   // 非 Owner：仍有固定分配、SLA 和工作项摘要；无 Owner/财务入口与返款金额。

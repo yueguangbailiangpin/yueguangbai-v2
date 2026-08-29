@@ -53,7 +53,7 @@
 
 .sa-topbar__brand strong {
   font-size: 19px;
-  font-weight: 500;
+  font-weight: var(--staff-font-weight-medium);
   letter-spacing: 0.01em;
 }
 
@@ -117,7 +117,8 @@
   outline: 0;
   background: transparent;
   color: var(--color-text);
-  font-size: 13px;
+  font-size: var(--staff-font-size-body);
+  font-weight: var(--staff-font-weight-regular);
 }
 
 .sa-topbar__search .staff-global-search input::placeholder {
@@ -133,7 +134,8 @@
   border: 0;
   background: transparent;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--staff-font-size-group);
+  font-weight: var(--staff-font-weight-regular);
 }
 
 .sa-topbar__search .staff-search-results {
@@ -154,7 +156,8 @@
 .sa-topbar__search .staff-search-results > p {
   margin: 8px;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--staff-font-size-group);
+  font-weight: var(--staff-font-weight-regular);
 }
 
 .sa-topbar__search .staff-search-group a {
@@ -211,8 +214,8 @@
   border-radius: 50%;
   background: #355f93;
   color: #fff;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--staff-font-size-body);
+  font-weight: var(--staff-font-weight-medium);
 }
 
 .sa-body {
@@ -250,8 +253,8 @@
   background: #c2e7ff;
   box-shadow: var(--shadow-sm);
   color: #001d35;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--staff-font-size-button);
+  font-weight: var(--staff-font-weight-medium);
 }
 
 .sa-create-action:hover {
@@ -276,8 +279,8 @@
   padding: 0 17px;
   border-radius: 20px;
   color: #3c4043;
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--staff-font-size-nav);
+  font-weight: var(--staff-font-weight-medium);
   text-decoration: none;
 }
 
@@ -298,7 +301,7 @@
 .staff-app .sa-nav__link.is-active {
   background: var(--color-surface-strong);
   color: var(--color-on-surface-strong);
-  font-weight: 500;
+  font-weight: var(--staff-font-weight-semibold);
 }
 
 .staff-app .sa-nav__link.is-active .sa-nav__icon {
@@ -308,8 +311,8 @@
 .sa-nav__group-label {
   margin: 12px 17px 4px;
   color: var(--color-text-muted);
-  font-size: 10px;
-  font-weight: 500;
+  font-size: var(--staff-font-size-group);
+  font-weight: var(--staff-font-weight-semibold);
   letter-spacing: 0.06em;
 }
 
@@ -326,13 +329,14 @@
 }
 
 .sa-sidebar__scope {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--staff-font-size-meta);
+  font-weight: var(--staff-font-weight-medium);
 }
 
 .sa-sidebar__meta {
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--staff-font-size-meta);
+  font-weight: var(--staff-font-weight-regular);
 }
 
 .sa-sidebar__actions {
@@ -345,7 +349,8 @@
 .sa-sidebar__actions .sa-btn {
   height: 28px;
   padding: 0 10px;
-  font-size: 11px;
+  font-size: var(--staff-font-size-button);
+  font-weight: var(--staff-font-weight-medium);
 }
 
 .sa-main {
@@ -409,6 +414,13 @@
   box-shadow: none;
 }
 
+/* 员工端按钮统一使用中等字重；紧凑尺寸只改变高度，不改变文字层级。 */
+.staff-app .sa-btn {
+  font-family: var(--staff-font-family);
+  font-size: var(--staff-font-size-button);
+  font-weight: var(--staff-font-weight-medium);
+}
+
 @media (max-width: 900px) {
   .review-runtime .sa-topbar {
     top: auto;
@@ -437,7 +449,8 @@
   }
 
   .sa-topbar__brand strong {
-    font-size: 14px;
+    font-size: var(--staff-font-size-body);
+    font-weight: var(--staff-font-weight-medium);
   }
 
   .sa-brand-mark {
@@ -514,13 +527,14 @@
     border: 0;
     background: transparent;
     color: var(--color-text-muted);
-    font-size: 9px;
+    font-size: var(--staff-font-size-meta);
+    font-weight: var(--staff-font-weight-medium);
     text-decoration: none;
   }
 
   .sa-mobile-nav a.active {
     color: var(--color-on-surface-strong);
-    font-weight: 500;
+    font-weight: var(--staff-font-weight-semibold);
   }
 
   .sa-mobile-nav a.active::before {
