@@ -75,16 +75,14 @@ export function ServiceChannelsPage(): React.JSX.Element {
 
   if (!isOwner) {
     return (
-      <main className="staff-service-channels">
+      <main className="sp-settings-page">
         <Alert tone="danger">只有总管理员可以修改公司公开客服渠道。</Alert>
       </main>
     );
   }
   return (
-    <main className="staff-service-channels">
+    <main className="sp-settings-page">
       <section aria-labelledby="service-channels-title">
-        <p className="eyebrow">系统设置 · 仅总管理员</p>
-        <h2 id="service-channels-title">公司公开客服渠道</h2>
         <p>
           买家端按业务阶段展示对应渠道；未配置时买家端显示"请联系工作人员"。
           当前没有真实微信号与二维码，初始为空，不得编造。二维码通过受控上传通道配置，不能手填文件编号。

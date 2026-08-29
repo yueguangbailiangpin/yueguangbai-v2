@@ -113,7 +113,7 @@ describe('staff order list page', () => {
     expect(screen.getAllByText('跟进卖家结算').length).toBeGreaterThan(0);
     expect(screen.getAllByText('处理买家返款').length).toBeGreaterThan(0);
     expect(screen.getAllByText('未分配').length).toBeGreaterThan(0);
-    expect(screen.getByText('已显示全部匹配订单。')).toBeVisible();
+    expect(screen.getByText(/已全部加载/u)).toBeVisible();
   });
 
   it('loads the next cursor page and navigates to the detail', async () => {

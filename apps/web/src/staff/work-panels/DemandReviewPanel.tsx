@@ -67,7 +67,7 @@ export function DemandReviewPanel({
   const failure = mutation.isError ? describeStaffMutationError(mutation.error) : null;
   return (
     <>
-      <section className="staff-detail">
+      <section className="sp-workpanel-aside">
         <PaneTitle item={item} />
         {completed ? (
           <Card className="customer-visible">

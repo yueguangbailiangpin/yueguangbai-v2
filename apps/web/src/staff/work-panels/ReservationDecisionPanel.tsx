@@ -104,7 +104,7 @@ export function ReservationDecisionPanel({
     },
   });
   return (
-    <section className="staff-workflow-closure staff-work-panel">
+    <section className="sa-card sp-workpanel">
       <Card className="sensitive-action">
         <div className="pane-heading">
           <h2>预约审核</h2>

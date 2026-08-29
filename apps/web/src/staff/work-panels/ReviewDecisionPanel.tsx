@@ -68,7 +68,7 @@ export function ReviewDecisionPanel({
   const failure = mutation.isError ? describeReviewMutationError(mutation.error) : null;
   return (
     <>
-      <section className="staff-detail">
+      <section className="sp-workpanel-aside">
         <PaneTitle item={item} />
         {query.isPending ? (
           <p role="status">正在加载评论资料</p>

@@ -15,7 +15,7 @@ import {
 import { validateFileSelection } from '../../files/file-descriptor';
 import type { FileUploadWorkflow } from '../../files/file-purpose-config';
 import { z } from 'zod';
-import { Alert, Button, Card, Dialog, FormField, RequestIdDisplay, Select, StatusBadge, TextInput } from '../../ui/primitives';
+import { Alert, Button, Dialog, FormField, RequestIdDisplay, Select, StatusBadge, TextInput } from '../../ui/primitives';
 import { staffApi } from '../api/client';
 import { fenToYuan } from '../finance/finance-format';
 import type { StaffFormalOrderDetail } from '../contracts/runtime';
@@ -180,20 +180,16 @@ export function StaffOrderDetailPage(): React.JSX.Element {
 
   if (orderId === undefined)
     return (
-      <main className="staff-order-detail">
+      <div>
         <Alert tone="danger">缺少订单 ID。</Alert>
-      </main>
+      </div>
     );
   const value = detail.data ?? null;
   return (
-    <main className="staff-order-detail">
-      <section aria-labelledby="staff-order-detail-title">
-        <p className="eyebrow">订单 · 仅 Staff</p>
-        <h2 id="staff-order-detail-title">订单详情</h2>
-        {!canViewFinance ? (
-          <Alert tone="info">计价与财务金额仅 Owner 可见；以下为订单流程事实。</Alert>
-        ) : null}
-      </section>
+    <div className="sp-detail-sections">
+      {!canViewFinance ? (
+        <p className="sp-page-head__meta">计价与财务金额仅 Owner 可见；以下为订单流程事实。</p>
+      ) : null}
       {detail.isPending ? (
         <p role="status">正在读取订单详情</p>
       ) : detail.isError ? (
@@ -203,54 +199,30 @@ export function StaffOrderDetailPage(): React.JSX.Element {
         </Alert>
       ) : value ? (
         <>
-          {/* 标题区：chip + 订单号 + 概要 */}
-          <div className="staff-detail-heading">
-            <div>
-              <div className="staff-detail-meta">
-                <StatusBadge tone="processing">{value.order.status}</StatusBadge>
-                <small>
-                  {`确认时间 ${formatShanghai(value.order.confirmed_at)}`}
-                </small>
-              </div>
-              <h1>{value.order.amazon_order_number}</h1>
-              <p>
-                {`${value.buyer.display_name}${value.buyer.customer_no ? `（${value.buyer.customer_no}）` : ''} · ${
-                  MARKET_LABELS[value.order.marketplace_code] ?? value.order.marketplace_code
-                } · 订单日期 ${value.order.amazon_order_date}`}
-              </p>
-            </div>
-          </div>
-
-          {/* 关键事实条 */}
-          <section className="staff-surface staff-key-facts" aria-label="订单关键事实">
-            <div>
-              <span>平台订单号</span>
-              <strong>{value.order.amazon_order_number}</strong>
-            </div>
-            <div>
-              <span>站点</span>
-              <strong>{MARKET_LABELS[value.order.marketplace_code] ?? value.order.marketplace_code}</strong>
-            </div>
-            <div>
-              <span>买家</span>
-              <strong>{value.buyer.display_name}</strong>
-            </div>
-            <div>
-              <span>卖家组织</span>
-              <strong>{value.seller.seller_organization_id}</strong>
-            </div>
-            <div>
-              <span>店铺</span>
-              <strong>{value.seller.store_display_name}</strong>
-            </div>
+          {/* 身份摘要条（不重复 Shell 标题/面包屑） */}
+          <section className="sp-identity" aria-label="订单身份摘要">
+            <span className="sp-identity__title">{value.order.amazon_order_number}</span>
+            <span className="sp-identity__tags">
+              <span className="sa-badge sa-badge--processing">{value.order.status}</span>
+              <span className="sa-badge sa-badge--outline">
+                {MARKET_LABELS[value.order.marketplace_code] ?? value.order.marketplace_code}
+              </span>
+            </span>
+            <span className="sp-identity__meta">
+              买家 {value.buyer.display_name}
+              {value.buyer.customer_no ? `（${value.buyer.customer_no}）` : ''} · 店铺{' '}
+              {value.seller.store_display_name}
+              <br />
+              {`订单日期 ${value.order.amazon_order_date} · 确认时间 ${formatShanghai(value.order.confirmed_at)}`}
+            </span>
           </section>
 
           {value.responsibility ? (
             <ResponsibilityBlock responsibility={value.responsibility} />
           ) : null}
 
-          <div className="staff-detail-layout">
-            <div className="staff-detail-main">
+          <div className="sp-detail-grid">
+            <div className="sp-detail-grid__main" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <section aria-labelledby="staff-order-evidence-title">
                 <h2 id="staff-order-evidence-title" className="staff-group-heading">凭证与沟通截图</h2>
                 <div className="staff-order-evidence-grid">
@@ -267,10 +239,8 @@ export function StaffOrderDetailPage(): React.JSX.Element {
               <TimelineCard value={value} />
               <OrderOperationBlocks orderId={orderId} value={value} />
             </div>
-            <aside className="staff-reference-panel" aria-label="订单参考">
-              <div className="staff-reference-head">
-                <strong>订单参考</strong>
-              </div>
+            <aside aria-label="订单参考" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              
               {value.buyer_advance ? (
                 <section className="staff-ref-section">
                   <h3>垫付（提前返本金）</h3>
@@ -326,7 +296,7 @@ export function StaffOrderDetailPage(): React.JSX.Element {
           </div>
         </>
       ) : null}
-    </main>
+    </div>
   );
 }
 
@@ -356,10 +326,10 @@ function ResponsibilityBlock({
 }): React.JSX.Element {
   return (
     <section
-      className="staff-surface staff-responsibility"
+      className="sa-card sp-responsibility"
       aria-labelledby="staff-responsibility-title"
     >
-      <div className="staff-responsibility-head">
+      <div className="sa-card__header">
         <strong id="staff-responsibility-title">当前负责人 / 下一步</strong>
         <StatusBadge
           tone={responsibility.is_overdue ? 'danger' : 'processing'}
@@ -368,7 +338,7 @@ function ResponsibilityBlock({
           {responsibility.is_overdue ? ' · 已逾期' : ''}
         </StatusBadge>
       </div>
-      <dl className="staff-responsibility-grid">
+      <div className="sp-responsibility-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <div>
           <dt>负责员工</dt>
           <dd>
@@ -401,7 +371,7 @@ function ResponsibilityBlock({
             {responsibility.is_overdue ? '（已逾期）' : ''}
           </dd>
         </div>
-      </dl>
+      </div>
     </section>
   );
 }
@@ -415,7 +385,7 @@ const RESPONSIBILITY_ROLE_LABELS: Record<string, string> = {
 
 function PaymentScreenshotCard({ value }: { value: StaffFormalOrderDetail }): React.JSX.Element {
   return (
-    <Card className="customer-visible">
+    <div className="sa-card">
       <h3>订单付款截图</h3>
       <p>买家提交订单资料时上传，每个订单资料版本严格一张，须可见订单号与金额。</p>
       {value.payment_screenshot === null ? (
@@ -433,7 +403,7 @@ function PaymentScreenshotCard({ value }: { value: StaffFormalOrderDetail }): Re
           fallback={<span className="protected-image-placeholder">付款截图加载中</span>}
         />
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -557,7 +527,7 @@ function CommunicationScreenshotsCard({
   }
 
   return (
-    <Card className="internal-note">
+    <div className="sa-card">
       <h3>订单沟通截图（{value.communication_screenshots.length}）</h3>
       <p>与买家、卖家的微信沟通截图统一挂在本订单上；卖家组织成员可见，买家不可见。</p>
       {value.communication_screenshots.length === 0 ? (
@@ -630,7 +600,7 @@ function CommunicationScreenshotsCard({
       {upload.isError ? (
         <RequestIdDisplay requestId={isFrontendApiError(upload.error) ? upload.error.requestId : null} />
       ) : null}
-    </Card>
+    </div>
   );
 }
 
@@ -660,7 +630,7 @@ function TimelineCard({ value }: { value: StaffFormalOrderDetail }): React.JSX.E
     });
   nodes.sort((left, right) => left.at - right.at);
   return (
-    <Card className="customer-visible">
+    <div className="sa-card">
       <h3>全链路时间线</h3>
       <ol className="staff-order-timeline">
         {nodes.map((node, index) => (
@@ -674,7 +644,7 @@ function TimelineCard({ value }: { value: StaffFormalOrderDetail }): React.JSX.E
           </li>
         ))}
       </ol>
-    </Card>
+    </div>
   );
 }
 
@@ -737,7 +707,7 @@ function OrderEventBlock({ orderId }: { orderId: string }): React.JSX.Element {
     },
   });
   return (
-    <Card>
+    <div className="sa-card">
       <h4>记录订单后续异常</h4>
       <form
         onSubmit={(formEvent: FormEvent<HTMLFormElement>) => {
@@ -768,7 +738,7 @@ function OrderEventBlock({ orderId }: { orderId: string }): React.JSX.Element {
       </form>
       {message ? <Alert tone="success">{message}</Alert> : null}
       {event.isError ? <MutationErrorAlert error={event.error} /> : null}
-    </Card>
+    </div>
   );
 }
 
@@ -830,7 +800,7 @@ function AdvanceBlock({
     },
   });
   return (
-    <Card>
+    <div className="sa-card">
       <h4>提前返本金</h4>
       {activeAdvance ? (
         <p>
@@ -959,7 +929,7 @@ function AdvanceBlock({
       {message ? <Alert tone="success">{message}</Alert> : null}
       {advance.isError ? <MutationErrorAlert error={advance.error} /> : null}
       {reverseAdvance.isError ? <MutationErrorAlert error={reverseAdvance.error} /> : null}
-    </Card>
+    </div>
   );
 }
 
@@ -981,7 +951,7 @@ function FinancialAdjustmentBlock({ orderId }: { orderId: string }): React.JSX.E
     },
   });
   return (
-    <Card>
+    <div className="sa-card">
       <h4>公司利润补偿（仅总管理员）</h4>
       <Alert tone="warning">
         这里只修正公司预计/完成利润的经营视图，不直接改卖家本金、服务费或买家返款账本。
@@ -1019,7 +989,7 @@ function FinancialAdjustmentBlock({ orderId }: { orderId: string }): React.JSX.E
       </form>
       {message ? <Alert tone="success">{message}</Alert> : null}
       {adjustment.isError ? <MutationErrorAlert error={adjustment.error} /> : null}
-    </Card>
+    </div>
   );
 }
 

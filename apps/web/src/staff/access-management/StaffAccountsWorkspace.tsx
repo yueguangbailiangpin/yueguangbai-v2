@@ -277,19 +277,19 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
   });
   if (!authorized)
     return (
-      <main className="staff-access-management">
+      <main className="sp-access-page">
         <Alert tone="danger">仅总管理员可以管理员工账号。</Alert>
       </main>
     );
   if (query.isPending)
     return (
-      <main className="staff-access-management">
+      <main className="sp-access-page">
         <p role="status">正在加载员工</p>
       </main>
     );
   if (query.isError)
     return (
-      <main className="staff-access-management">
+      <main className="sp-access-page">
         <Alert tone="danger">员工列表暂时加载不了。</Alert>
       </main>
     );
@@ -297,9 +297,7 @@ export function StaffAccountsWorkspace(): React.JSX.Element {
     <main className="staff-access-management staff-accounts-simple">
       <section className="staff-access-heading">
         <div>
-          <p className="eyebrow">仅总管理员</p>
-          <h2>员工管理</h2>
-          <p>岗位决定能做什么，站点决定能看什么；客户由固定负责人跟进（D-056：无轮转、无兜底、无自动重新分配）。</p>
+          <p className="eyebrow">仅总管理员</p>          <p>岗位决定能做什么，站点决定能看什么；客户由固定负责人跟进（D-056：无轮转、无兜底、无自动重新分配）。</p>
         </div>
         <Button onClick={() => setCreating(true)}>新增员工</Button>
       </section>

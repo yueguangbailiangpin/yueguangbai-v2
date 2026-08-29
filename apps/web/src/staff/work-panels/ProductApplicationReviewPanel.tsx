@@ -110,7 +110,7 @@ export function ProductApplicationReviewPanel({
     }
   }, [mutation.isSuccess, review, onCompleted, item]);
   return (
-    <section className="staff-workflow-closure staff-work-panel">
+    <section className="sa-card sp-workpanel">
       <Card className="sensitive-action">
         <div className="pane-heading">
           <h2>产品申请审核</h2>

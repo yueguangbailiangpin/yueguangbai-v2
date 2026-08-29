@@ -257,7 +257,7 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
 
   if (!canRead)
     return (
-      <main className="staff-finance-workspace">
+      <main className="sp-finance-page">
         <Alert tone="danger">当前员工没有此权限，后端会拒绝访问。</Alert>
       </main>
     );
@@ -266,14 +266,10 @@ export function StaffFinanceWorkspace(): React.JSX.Element {
   const exampleMarkup = query.data?.selected_policy ?? null;
 
   return (
-    <main className="staff-finance-workspace">
-      <section aria-labelledby="staff-finance-title">
-        <p className="eyebrow">财务配置 · 仅 Staff</p>
-        <h2 id="staff-finance-title">财务配置</h2>
-        <p className="hint">
-          基础汇率、加点、服务费共同决定每一单：买家返多少、卖家收多少、平台赚多少。
-        </p>
-      </section>
+    <main className="sp-finance-page">
+      <p className="sp-page-head__meta">
+        基础汇率、加点、服务费共同决定每一单：买家返多少、卖家收多少、平台赚多少；结算批次按卖家组织管理。
+      </p>
       <FinanceAlertStrip
         baseRateDate={businessDate}
         baseRateMissing={

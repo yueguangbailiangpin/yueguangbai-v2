@@ -1,26 +1,11 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, type FormEvent } from 'react';
+import { Filter, X } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { isFrontendApiError } from '../../api/errors';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
-import {
-  Alert,
-  Button,
-  Card,
-  EmptyState,
-  StatusBadge,
-  TextInput,
-} from '../../ui/primitives';
 import { staffApi } from '../api/client';
-import { formatShanghai } from '../shared/format';
-import { fenToYuan } from '../finance/finance-format';
-
-/**
- * Stage 7.5 batch 1: the staff formal-order cursor list. Filters and the
- * cursor live in the URL search params so a filtered view is shareable and
- * survives reloads. Amounts and SLA values come from the backend projection;
- * the page never computes them.
- */
+import type { StaffOrderListItem } from '../contracts/runtime';
+import { formatCny, formatShanghai } from '../shared/format';
 
 const PAGE_LIMIT = 20;
 
@@ -74,34 +59,49 @@ function activeFilterCount(filters: FilterState): number {
   return Object.values(filters).filter((value) => value !== '').length;
 }
 
+function filtersToParams(filters: FilterState): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries({
+    amazon_order_number_prefix: filters.amazonOrderNumberPrefix || null,
+    buyer_customer_no: filters.buyerCustomerNo || null,
+    seller_organization_id: filters.sellerOrganizationId || null,
+    stage: filters.stage || null,
+    exception_state: filters.exceptionState || null,
+    confirmed_from: filters.confirmedFrom || null,
+    confirmed_to: filters.confirmedTo || null,
+  })) {
+    if (value !== null) params.set(key, value);
+  }
+  return params;
+}
+
+/**
+ * 订单列表（7F-1 重做）：单行工具栏筛选 + 紧凑表格 + keyset 翻页。
+ * 筛选条件全部进 URL；移动端筛选走 Drawer，列表退化为卡片。
+ */
 export function StaffOrderListPage(): React.JSX.Element {
   const session = useCurrentStaffSession();
   const client = useQueryClient();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const cursor = searchParams.get('cursor');
-  const filters = useMemo(() => filtersFromParams(searchParams), [searchParams]);
+  const filters = filtersFromParams(searchParams);
   const [draft, setDraft] = useState<FilterState>(filters);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    setDraft(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 URL 筛选变化时同步草稿。
+  }, [searchParams]);
 
   // Infinite query accumulates pages so 加载更多 keeps earlier rows rendered.
   const list = useInfiniteQuery({
     queryKey: ['staff', 'formal-order-list', filters, cursor === null ? '' : cursor],
     initialPageParam: cursor as string | null,
     queryFn: ({ pageParam, signal }) => {
-      const params = new URLSearchParams();
+      const params = filtersToParams(filters);
       params.set('limit', String(PAGE_LIMIT));
-      for (const [key, value] of Object.entries({
-        amazon_order_number_prefix: filters.amazonOrderNumberPrefix || null,
-        buyer_customer_no: filters.buyerCustomerNo || null,
-        seller_organization_id: filters.sellerOrganizationId || null,
-        stage: filters.stage || null,
-        exception_state: filters.exceptionState || null,
-        confirmed_from: filters.confirmedFrom || null,
-        confirmed_to: filters.confirmedTo || null,
-        cursor: pageParam as string | null,
-      })) {
-        if (value !== null) params.set(key, value);
-      }
+      if (pageParam !== null) params.set('cursor', pageParam as string);
       return staffApi
         .formalOrderList(client, `?${params.toString()}`, signal)
         .then((response) => response.data);
@@ -110,276 +110,397 @@ export function StaffOrderListPage(): React.JSX.Element {
     retry: false,
   });
 
-  function applyFilters(event: FormEvent<HTMLFormElement>): void {
+  function applyFilters(next: FilterState): void {
+    setDrawerOpen(false);
+    setSearchParams(filtersToParams(next));
+  }
+  function submitToolbar(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries({
-      amazon_order_number_prefix: draft.amazonOrderNumberPrefix || null,
-      buyer_customer_no: draft.buyerCustomerNo || null,
-      seller_organization_id: draft.sellerOrganizationId || null,
-      stage: draft.stage || null,
-      exception_state: draft.exceptionState || null,
-      confirmed_from: draft.confirmedFrom || null,
-      confirmed_to: draft.confirmedTo || null,
-    })) {
-      if (value !== null) params.set(key, value);
-    }
-    setSearchParams(params);
+    applyFilters(draft);
+  }
+  function clearFilters(): void {
+    setDraft(EMPTY_FILTERS);
+    applyFilters(EMPTY_FILTERS);
   }
 
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
   const nextCursor = list.data?.pages.at(-1)?.next_cursor ?? null;
+  const activeCount = activeFilterCount(filters);
+  void session;
 
   return (
-    <main className="staff-order-list">
-      <section aria-labelledby="staff-order-list-title">
-        <p className="eyebrow">订单 · 仅 Staff</p>
-        <h2 id="staff-order-list-title">正式订单</h2>
-        <p>
-          按确认时间倒序的正式订单游标列表；金额与下一步截止时间均为后端权威值。
-        </p>
-      </section>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="sp-page-head">
+        <div>
+          <p className="sp-page-head__meta">
+            共 {items.length}
+            {activeCount > 0 ? ` 条（${activeCount} 项筛选生效）` : ' 条'} · 金额与下一步均为后端权威值
+          </p>
+        </div>
+        <div className="sp-page-head__actions">
+          <button type="button" className="sa-btn sa-btn--tonal sa-btn--small" onClick={() => void list.refetch()}>
+            刷新
+          </button>
+        </div>
+      </div>
 
-      <Card className="staff-order-filters">
-        <form onSubmit={applyFilters}>
-          <div className="staff-order-filter-grid">
-            <label>
-              平台订单号前缀
-              <TextInput
-                value={draft.amazonOrderNumberPrefix}
-                onChange={(event) =>
-                  setDraft({ ...draft, amazonOrderNumberPrefix: event.target.value })
-                }
-                placeholder="123-1234567"
-                minLength={3}
-              />
-            </label>
-            <label>
-              买家编号
-              <TextInput
-                value={draft.buyerCustomerNo}
-                onChange={(event) =>
-                  setDraft({ ...draft, buyerCustomerNo: event.target.value })
-                }
-                placeholder="20260801B00001"
-              />
-            </label>
-            <label>
-              卖家组织 ID
-              <TextInput
-                value={draft.sellerOrganizationId}
-                onChange={(event) =>
-                  setDraft({ ...draft, sellerOrganizationId: event.target.value })
-                }
-              />
-            </label>
-            <label>
-              业务阶段
-              <select
-                value={draft.stage}
-                onChange={(event) => setDraft({ ...draft, stage: event.target.value })}
-              >
-                <option value="">全部</option>
-                <option value="BUYER_REFUND">买家返款</option>
-                <option value="SELLER_SETTLEMENT">卖家结算</option>
-                <option value="COMPLETED">已完成</option>
-              </select>
-            </label>
-            <label>
-              异常状态
-              <select
-                value={draft.exceptionState}
-                onChange={(event) =>
-                  setDraft({ ...draft, exceptionState: event.target.value })
-                }
-              >
-                <option value="">全部</option>
-                <option value="OPEN">有未解决异常</option>
-                <option value="NONE">无异常</option>
-              </select>
-            </label>
-            <label>
-              确认时间从（毫秒）
-              <TextInput
-                value={draft.confirmedFrom}
-                onChange={(event) =>
-                  setDraft({ ...draft, confirmedFrom: event.target.value })
-                }
-                inputMode="numeric"
-              />
-            </label>
-            <label>
-              确认时间到（毫秒）
-              <TextInput
-                value={draft.confirmedTo}
-                onChange={(event) =>
-                  setDraft({ ...draft, confirmedTo: event.target.value })
-                }
-                inputMode="numeric"
-              />
-            </label>
+      {/* 桌面单行工具栏：搜索 + 紧凑筛选 + 清除 */}
+      <form className="sp-toolbar" onSubmit={submitToolbar} aria-label="订单筛选">
+        <div className="sp-toolbar__search sa-field">
+          <input
+            className="sa-input sa-input--search"
+            aria-label="搜索平台订单号前缀"
+            placeholder="搜索订单号前缀，如 503-7770"
+            value={draft.amazonOrderNumberPrefix}
+            minLength={3}
+            onChange={(event) => setDraft({ ...draft, amazonOrderNumberPrefix: event.target.value })}
+          />
+        </div>
+        <div className="sp-toolbar__filters">
+          <div className="sa-field sp-toolbar__always">
+            <select
+              className="sa-select sa-select--compact"
+              aria-label="按业务阶段筛选"
+              value={draft.stage}
+              onChange={(event) => setDraft({ ...draft, stage: event.target.value })}
+            >
+              <option value="">全部阶段</option>
+              {Object.entries(STAGE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="entry-actions">
-            <Button type="submit">应用筛选</Button>
-            {activeFilterCount(filters) > 0 || cursor ? (
-              <Button
-                className="secondary"
+          <div className="sa-field sp-toolbar__always">
+            <select
+              className="sa-select sa-select--compact"
+              aria-label="按异常状态筛选"
+              value={draft.exceptionState}
+              onChange={(event) => setDraft({ ...draft, exceptionState: event.target.value })}
+            >
+              <option value="">全部异常</option>
+              <option value="OPEN">有异常</option>
+              <option value="NONE">无异常</option>
+            </select>
+          </div>
+          <div className="sa-field">
+            <input
+              className="sa-input sa-input--compact"
+              aria-label="按买家编号筛选"
+              placeholder="买家编号"
+              value={draft.buyerCustomerNo}
+              onChange={(event) => setDraft({ ...draft, buyerCustomerNo: event.target.value })}
+            />
+          </div>
+          <div className="sa-field">
+            <input
+              className="sa-input sa-input--compact"
+              aria-label="确认日期起"
+              type="date"
+              aria-description="确认日期从"
+              value={draft.confirmedFrom}
+              onChange={(event) => setDraft({ ...draft, confirmedFrom: event.target.value })}
+            />
+          </div>
+          <div className="sa-field">
+            <input
+              className="sa-input sa-input--compact"
+              aria-label="确认日期止"
+              type="date"
+              value={draft.confirmedTo}
+              onChange={(event) => setDraft({ ...draft, confirmedTo: event.target.value })}
+            />
+          </div>
+          <button type="submit" className="sa-btn sa-btn--primary sa-btn--small">
+            应用筛选
+          </button>
+          {activeCount > 0 ? (
+            <button type="button" className="sa-btn sa-btn--ghost sa-btn--small" onClick={clearFilters}>
+              <X aria-hidden="true" size={14} />
+              清除筛选
+            </button>
+          ) : null}
+        </div>
+        {/* 移动端：筛选按钮打开 Drawer */}
+        <button
+          type="button"
+          className="sa-btn sa-btn--secondary sa-btn--small sp-toolbar__drawer-trigger"
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen(true)}
+        >
+          <Filter aria-hidden="true" size={14} />
+          筛选{activeCount > 0 ? `（${activeCount}）` : ''}
+        </button>
+      </form>
+
+      {/* 移动端筛选 Drawer */}
+      {drawerOpen ? (
+        <div className="sa-drawer-overlay" role="presentation" onClick={() => setDrawerOpen(false)}>
+          <aside
+            className="sa-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="订单筛选"
+            onClick={(event) => event.stopPropagation()}
+            style={{ top: 0, right: 0, left: 'auto' }}
+          >
+            <div className="sa-drawer__header">
+              <strong>订单筛选</strong>
+              <button
                 type="button"
-                onClick={() => {
-                  setDraft(EMPTY_FILTERS);
-                  setSearchParams(new URLSearchParams());
-                }}
+                className="sa-btn sa-btn--ghost sa-btn--small"
+                aria-label="关闭筛选"
+                onClick={() => setDrawerOpen(false)}
               >
-                清除筛选
-              </Button>
-            ) : null}
-          </div>
-        </form>
-      </Card>
+                <X aria-hidden="true" size={18} />
+              </button>
+            </div>
+            <form
+              style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '0 4px' }}
+              onSubmit={(event) => {
+                event.preventDefault();
+                applyFilters(draft);
+              }}
+            >
+              <div className="sa-field">
+                <label htmlFor="sp-order-prefix">平台订单号前缀</label>
+                <input
+                  id="sp-order-prefix"
+                  className="sa-input"
+                  value={draft.amazonOrderNumberPrefix}
+                  minLength={3}
+                  onChange={(event) => setDraft({ ...draft, amazonOrderNumberPrefix: event.target.value })}
+                />
+              </div>
+              <div className="sa-field">
+                <label htmlFor="sp-order-stage">业务阶段</label>
+                <select
+                  id="sp-order-stage"
+                  className="sa-select"
+                  value={draft.stage}
+                  onChange={(event) => setDraft({ ...draft, stage: event.target.value })}
+                >
+                  <option value="">全部阶段</option>
+                  {Object.entries(STAGE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sa-field">
+                <label htmlFor="sp-order-exception">异常状态</label>
+                <select
+                  id="sp-order-exception"
+                  className="sa-select"
+                  value={draft.exceptionState}
+                  onChange={(event) => setDraft({ ...draft, exceptionState: event.target.value })}
+                >
+                  <option value="">全部异常</option>
+                  <option value="OPEN">有异常</option>
+                  <option value="NONE">无异常</option>
+                </select>
+              </div>
+              <div className="sa-field">
+                <label htmlFor="sp-order-buyer">买家编号</label>
+                <input
+                  id="sp-order-buyer"
+                  className="sa-input"
+                  value={draft.buyerCustomerNo}
+                  onChange={(event) => setDraft({ ...draft, buyerCustomerNo: event.target.value })}
+                />
+              </div>
+              <div className="sa-field">
+                <label htmlFor="sp-order-from">确认日期起</label>
+                <input
+                  id="sp-order-from"
+                  className="sa-input"
+                  type="date"
+                  value={draft.confirmedFrom}
+                  onChange={(event) => setDraft({ ...draft, confirmedFrom: event.target.value })}
+                />
+              </div>
+              <div className="sa-field">
+                <label htmlFor="sp-order-to">确认日期止</label>
+                <input
+                  id="sp-order-to"
+                  className="sa-input"
+                  type="date"
+                  value={draft.confirmedTo}
+                  onChange={(event) => setDraft({ ...draft, confirmedTo: event.target.value })}
+                />
+              </div>
+              <div className="sp-dialog-actions">
+                <button type="button" className="sa-btn sa-btn--secondary sa-btn--small" onClick={clearFilters}>
+                  清除
+                </button>
+                <button type="submit" className="sa-btn sa-btn--primary sa-btn--small">
+                  应用筛选
+                </button>
+              </div>
+            </form>
+          </aside>
+        </div>
+      ) : null}
 
       {list.isPending ? (
-        <p role="status">正在读取订单列表</p>
+        <p role="status" className="sp-page-head__meta">
+          正在加载订单列表
+        </p>
       ) : list.isError ? (
-        <Alert tone="danger">
-          订单列表读取失败（
-          {isFrontendApiError(list.error) ? list.error.code : 'NETWORK_FAILURE'}
-          ）。请调整筛选或重试。
-          <Button
-            className="secondary"
-            onClick={() => void list.refetch()}
-            loading={list.isRefetching}
-          >
-            重试
-          </Button>
-        </Alert>
+        <div className="sa-card">
+          <div className="sa-state">
+            <h3>订单列表读取失败</h3>
+            <p>请调整筛选或重试。</p>
+            <button
+              type="button"
+              className="sa-btn sa-btn--tonal sa-btn--small"
+              onClick={() => void list.refetch()}
+            >
+              重试
+            </button>
+          </div>
+        </div>
       ) : items.length === 0 ? (
-        <EmptyState
-          title="没有符合条件的订单"
-              description="当前负责范围内没有匹配筛选条件的正式订单。"
-        />
+        <div className="sa-card">
+          <div className="sa-state">
+            <h3>没有符合条件的订单</h3>
+            <p>试试放宽筛选条件。</p>
+          </div>
+        </div>
       ) : (
         <>
-          <div className="staff-order-table-wrap" role="region" aria-label="订单列表">
-            <table className="staff-order-table">
-              <thead>
-                <tr>
-                  <th>平台订单号</th>
-                  <th>买家</th>
-                  <th>店铺</th>
-                  <th>产品</th>
-                  <th>业务阶段</th>
-                  <th>负责人</th>
-                  <th>下一步</th>
-                  <th>应返本金</th>
-                  <th>确认时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr
-                    key={item.formal_order_id}
-                    tabIndex={0}
-                    onClick={() => navigate(`/staff/orders/${item.formal_order_id}`)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter')
-                        navigate(`/staff/orders/${item.formal_order_id}`);
-                    }}
-                  >
-                    <td>
-                      <button
-                        className="link-button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          navigate(`/staff/orders/${item.formal_order_id}`);
-                        }}
-                      >
-                        {item.amazon_order_number}
-                      </button>
-                    </td>
-                    <td>
-                      {item.buyer_display_name}
-                      <small>{item.buyer_customer_no}</small>
-                    </td>
-                    <td>{item.store_display_name}</td>
-                    <td>{item.product_name_snapshot}</td>
-                    <td>
-                      <StatusBadge
-                        tone={
-                          item.responsibility.stage === 'COMPLETED'
-                            ? 'success'
-                            : 'processing'
-                        }
-                      >
-                        {STAGE_LABELS[item.responsibility.stage] ?? item.responsibility.stage}
-                      </StatusBadge>
-                    </td>
-                    <td>
-                      {item.responsibility.responsible_staff?.display_name ?? '未分配'}
-                    </td>
-                    <td>
-                      {NEXT_ACTION_LABELS[item.responsibility.next_action]
-                        ?? item.responsibility.next_action}
-                      {item.responsibility.is_overdue ? (
-                        <span className="staff-overdue-mark">已逾期</span>
-                      ) : item.responsibility.next_action_due_at !== null ? (
-                        <small>{formatShanghai(item.responsibility.next_action_due_at)}</small>
-                      ) : null}
-                    </td>
-                    <td>
-                      {item.buyer_expected_principal_cny_fen === null
-                        ? '—'
-                        : fenToYuan(item.buyer_expected_principal_cny_fen)}
-                    </td>
-                    <td>{formatShanghai(item.confirmed_at)}</td>
+          {/* 桌面紧凑表格 */}
+          <div className="sa-card sa-card--flush sp-table-only">
+            <div style={{ overflowX: 'auto' }}>
+              <table className="sa-table">
+                <thead>
+                  <tr>
+                    <th>平台订单号</th>
+                    <th>买家</th>
+                    <th>店铺</th>
+                    <th>产品</th>
+                    <th>业务阶段</th>
+                    <th>负责人</th>
+                    <th>下一步</th>
+                    <th>应返买家</th>
+                    <th>确认时间</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ul className="staff-order-cards">
-            {items.map((item) => (
-              <li key={item.formal_order_id} className="staff-order-card">
-                <button
-                  className="link-button"
-                  onClick={() => navigate(`/staff/orders/${item.formal_order_id}`)}
-                >
-                  {item.amazon_order_number}
-                </button>
-                <p>
-                  {item.buyer_display_name}（{item.buyer_customer_no}）·{' '}
-                  {item.store_display_name}
-                </p>
-                <p>
-                  {STAGE_LABELS[item.responsibility.stage]} ·{' '}
-                  {item.responsibility.responsible_staff?.display_name ?? '未分配'}
-                </p>
-                <p>
-                  下一步：
-                  {NEXT_ACTION_LABELS[item.responsibility.next_action]
-                    ?? item.responsibility.next_action}
-                  {item.responsibility.is_overdue ? '（已逾期）' : ''}
-                </p>
-                <p>
-                  应返本金：
-                  {item.buyer_expected_principal_cny_fen === null
-                    ? '—'
-                    : fenToYuan(item.buyer_expected_principal_cny_fen)}
-                </p>
-              </li>
-            ))}
-          </ul>
-          {nextCursor ? (
-            <div className="entry-actions">
-              <Button onClick={() => void list.fetchNextPage()}>加载更多</Button>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <OrderRow key={item.formal_order_id} item={item} onOpen={() => navigate(`/staff/orders/${encodeURIComponent(item.formal_order_id)}`)} />
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <p className="staff-list-end">已显示全部匹配订单。</p>
-          )}
+          </div>
+
+          {/* 移动端卡片列表 */}
+          <div className="sp-cards sp-cards-only">
+            {items.map((item) => (
+              <button
+                key={item.formal_order_id}
+                type="button"
+                className="sp-card-item"
+                style={{ textAlign: 'left', cursor: 'pointer' }}
+                onClick={() => navigate(`/staff/orders/${encodeURIComponent(item.formal_order_id)}`)}
+              >
+                <span className="sp-card-item__head">
+                  <strong className="sp-card-item__title">{item.amazon_order_number}</strong>
+                  <span className={`sa-badge ${item.responsibility.exception_state === 'OPEN' ? 'sa-badge--danger' : 'sa-badge--neutral'}`}>
+                    {STAGE_LABELS[item.responsibility.stage] ?? item.responsibility.stage}
+                  </span>
+                </span>
+                <span className="sp-card-item__meta">
+                  {item.buyer_display_name}（{item.buyer_customer_no}）· {item.store_display_name}
+                </span>
+                <span className="sp-card-item__meta">
+                  {item.product_name_snapshot} · 下一步：{NEXT_ACTION_LABELS[item.responsibility.next_action] ?? item.responsibility.next_action}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="sp-list-footer">
+            <span>
+              已加载 {items.length} 条{nextCursor !== null ? ' · 还有更多' : ' · 已全部加载'}
+            </span>
+            {nextCursor !== null ? (
+              <button
+                type="button"
+                className="sa-btn sa-btn--secondary sa-btn--small"
+                disabled={list.isFetchingNextPage}
+                onClick={() => void list.fetchNextPage()}
+              >
+                {list.isFetchingNextPage ? '加载中…' : '加载更多'}
+              </button>
+            ) : null}
+          </div>
         </>
       )}
-      <p className="staff-order-list-scope">
-        当前列表范围：{session.role.display_name}负责范围内的订单。
-      </p>
-    </main>
+    </div>
+  );
+}
+
+function OrderRow({
+  item,
+  onOpen,
+}: {
+  item: StaffOrderListItem;
+  onOpen: () => void;
+}): React.JSX.Element {
+  return (
+    <tr
+      className="sa-table__row"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') onOpen();
+      }}
+    >
+      <td>
+        <strong>{item.amazon_order_number}</strong>
+      </td>
+      <td>
+        {item.buyer_display_name}
+        <br />
+        <span className="sp-page-head__meta">{item.buyer_customer_no}</span>
+      </td>
+      <td>{item.store_display_name}</td>
+      <td>{item.product_name_snapshot}</td>
+      <td>
+        <span className="sa-badge sa-badge--outline">{STAGE_LABELS[item.responsibility.stage] ?? item.responsibility.stage}</span>
+      </td>
+      <td>
+        {item.responsibility.responsible_staff === null ? (
+          <span className="sp-amount--muted">未分配</span>
+        ) : (
+          item.responsibility.responsible_staff.display_name
+        )}
+      </td>
+      <td>
+        <span
+          className={
+            item.responsibility.exception_state === 'OPEN'
+              ? 'sa-badge sa-badge--danger'
+              : item.responsibility.is_overdue
+                ? 'sa-badge sa-badge--warning'
+                : 'sa-badge sa-badge--neutral'
+          }
+        >
+          {NEXT_ACTION_LABELS[item.responsibility.next_action] ?? item.responsibility.next_action}
+        </span>
+      </td>
+      <td className="sa-table__num">
+        {item.buyer_expected_principal_cny_fen === null ? (
+          <span className="sp-amount--muted">—</span>
+        ) : (
+          formatCny(item.buyer_expected_principal_cny_fen)
+        )}
+      </td>
+      <td className="sa-table__num">{formatShanghai(item.confirmed_at)}</td>
+    </tr>
   );
 }

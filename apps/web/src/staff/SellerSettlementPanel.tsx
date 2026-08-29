@@ -92,7 +92,7 @@ export function SellerSettlementPanel({ item }: { item: StaffWorkItem }): React.
 
   return (
     <>
-      <section className="staff-detail">
+      <section className="sp-workpanel-aside">
         <div className="pane-heading">
           <div>
             <p className="eyebrow">业务事实与证据</p>

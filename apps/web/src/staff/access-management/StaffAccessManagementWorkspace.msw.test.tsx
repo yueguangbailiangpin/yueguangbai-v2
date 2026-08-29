@@ -52,7 +52,7 @@ describe('员工账号管理工作台', () => {
       { route: '/staff/access-management' },
     );
 
-    expect(await screen.findByRole('heading', { name: '员工管理' })).toBeVisible();
+    expect(await screen.findByText(/岗位决定能做什么，站点决定能看什么/u)).toBeVisible();
     expect(screen.getByText('owner@example.test')).toBeVisible();
     expect(screen.queryByText(/open_id|user_id|tenant_key|飞书/iu)).not.toBeInTheDocument();
 

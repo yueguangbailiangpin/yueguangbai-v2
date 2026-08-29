@@ -98,24 +98,24 @@ export function WorkItemPage(): React.JSX.Element {
   }
   if (!workItemId)
     return (
-      <main className="staff-panes staff-workbench frozen-w1">
-        <section className="staff-detail">
+      <main className="sp-detail-sections">
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <EmptyState title="缺少待办编号" description="请从任务队列重新进入。" />
         </section>
       </main>
     );
   if (query.isPending)
     return (
-      <main className="staff-panes staff-workbench frozen-w1">
-        <section className="staff-detail">
+      <main className="sp-detail-sections">
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <p role="status">正在加载待办</p>
         </section>
       </main>
     );
   if (query.isError)
     return (
-      <main className="staff-panes staff-workbench frozen-w1">
-        <section className="staff-detail">
+      <main className="sp-detail-sections">
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <StaffPanelError
             error={query.error}
             retry={() => {
@@ -128,8 +128,8 @@ export function WorkItemPage(): React.JSX.Element {
   const item = query.data;
   if (item.status !== 'OPEN')
     return (
-      <main className="staff-panes staff-workbench frozen-w1">
-        <section className="staff-detail">
+      <main className="sp-detail-sections">
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <EmptyState
             title={item.status === 'COMPLETED' ? '该待办已处理完成' : '该待办已取消'}
             description="已完成或已取消的工作项不再展示处理面板。"
@@ -141,7 +141,7 @@ export function WorkItemPage(): React.JSX.Element {
       </main>
     );
   return (
-    <main className="staff-panes staff-workbench frozen-w1">
+    <main className="sp-detail-sections">
       {item.work_type === 'PRODUCT_APPLICATION_REVIEW' ? (
         <ProductApplicationReviewPanel item={item} onCompleted={onCompleted} />
       ) : item.work_type === 'DEMAND_REVIEW' ? (

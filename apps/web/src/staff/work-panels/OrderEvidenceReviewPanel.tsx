@@ -78,7 +78,7 @@ export function OrderEvidenceReviewPanel({
   const failure = mutation.isError ? describeOrderEvidenceMutationError(mutation.error) : null;
   return (
     <>
-      <section className="staff-detail">
+      <section className="sp-workpanel-aside">
         <PaneTitle item={item} />
         {query.isPending ? (
           <p role="status">正在加载订单资料</p>

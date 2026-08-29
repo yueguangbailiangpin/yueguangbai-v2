@@ -1,0 +1,241 @@
+/* ============================================================
+   月光白 V2 · staff-shell.css（7F-1 新样式层：员工端 Shell）
+   Google Workspace Admin 框架：64px 顶栏 + 240~256px 侧栏 +
+   内容区限宽。旧 staff-shell-v2.css 属 legacy 隔离层，commit 3
+   随旧页面一并退役。
+   ============================================================ */
+
+.sa-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--color-canvas);
+}
+
+/* ---- 64px 顶栏 ---- */
+.sa-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 64px;
+  padding: 0 20px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sa-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 1.0625rem;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.sa-topbar__brand:hover {
+  text-decoration: none;
+}
+
+.sa-topbar__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0b57d0, #0a4abb);
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.sa-topbar__search {
+  flex: 1;
+  max-width: 560px;
+}
+
+.sa-topbar__session {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sa-topbar__session-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.sa-topbar__session-role {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.sa-topbar__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* ---- 主体：侧栏 + 内容 ---- */
+.sa-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+/* ---- 侧栏（240~256px，Atlassian 式分组） ---- */
+.sa-sidebar {
+  width: 248px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  position: sticky;
+  top: 64px;
+  height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
+  overflow-y: auto;
+  padding: 12px 12px 16px;
+}
+
+.sa-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sa-nav__link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.sa-nav__link:hover {
+  background: var(--color-surface-subtle, #edf3fc);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.sa-nav__link.is-active {
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+  font-weight: 600;
+}
+
+.sa-nav__group-label {
+  margin: 14px 12px 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.sa-nav__child {
+  padding-left: 26px;
+  height: 36px;
+  font-size: 0.8438rem;
+  font-weight: 400;
+}
+
+.sa-sidebar__footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---- 内容区（限宽，超宽不留失控空白） ---- */
+.sa-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sa-content {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 28px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 内容更宽的页面（表格密集型）可放宽到 1440px */
+.sa-content--wide {
+  max-width: 1440px;
+}
+
+/* ---- 移动端：顶栏菜单按钮 + Drawer ---- */
+.sa-menu-btn {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .sa-sidebar {
+    display: none;
+  }
+
+  .sa-menu-btn {
+    display: inline-flex;
+  }
+
+  .sa-content {
+    padding: 16px 16px 40px;
+  }
+}
+
+.sa-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(31, 31, 31, 0.4);
+}
+
+.sa-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(300px, 86vw);
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px 16px;
+  overflow-y: auto;
+}
+
+.sa-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 12px;
+}

@@ -1,25 +1,22 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BriefcaseBusiness,
-  UsersRound,
   PackageSearch,
   ClipboardList,
-  MessageSquareText,
   CircleDollarSign,
   Landmark,
-  Wallet,
-  Archive,
   UserCog,
   Settings,
   Store,
   UserRound,
   ChartNoAxesCombined,
+  Headset,
 } from 'lucide-react';
 import type { StaffSession } from '../auth/staff/staff-auth-api';
 
 export type StaffRoleCode = StaffSession['role']['code'];
 
-/** 导航项可见性判定 */
+/** 导航项可见性判定（以后端 session 权威值为准，前端不得放宽） */
 export type StaffNavVisibility = (session: StaffSession) => boolean;
 
 const isOwner: StaffNavVisibility = (s) => s.role.code === 'owner';
@@ -44,6 +41,14 @@ const mayAccessManagement: StaffNavVisibility = (s) =>
 const mayDashboard: StaffNavVisibility = (s) =>
   isOwner(s) && s.permissions.includes('FINANCIAL_VIEW');
 
+/**
+ * 导航分组标签（Atlassian 式信息架构，7F-1 收口）。
+ * 只有真实页面的能力才出现在导航里。
+ */
+export interface StaffNavSection {
+  id: string;
+  label: string;
+}
 
 /** 二级导航项 */
 export interface StaffNavChild {
@@ -52,8 +57,6 @@ export interface StaffNavChild {
   icon?: LucideIcon;
   path: string;
   visible: StaffNavVisibility;
-  /** 标记为规划中（无真实页面，不创建假链接） */
-  upcoming?: boolean;
 }
 
 /** 一级导航项 */
@@ -61,19 +64,20 @@ export interface StaffNavItem {
   id: string;
   label: string;
   icon: LucideIcon;
+  section?: string;
   /** 直接路径（无子项时） */
   path?: string;
   /** 二级子项 */
   children?: readonly StaffNavChild[];
   /** 整组可见性（任一子项可见则显示组） */
   visible?: StaffNavVisibility;
-  /** 标记为规划中 */
-  upcoming?: boolean;
 }
 
 /**
- * 员工端一级导航（11 项，阶段 7A-1 信息架构）。
- * 不存在真实页面的功能标记为 upcoming，不创建假页面。
+ * 员工端导航（7F-1 信息架构收口）。
+ * 已退役的“规划中”入口（评论与凭证/卖家结算/文件归档）不再出现：
+ * 评论与凭证从订单详情或工作项进入；卖家结算并入财务工作区；
+ * 文件归档从订单详情与运营工具触发；客服渠道在系统设置内。
  */
 export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
   {
@@ -81,27 +85,23 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
     label: '工作台',
     icon: BriefcaseBusiness,
     path: '/staff',
+    section: 'work',
   },
   {
-    id: 'customers',
-    label: '客户',
-    icon: UsersRound,
-    children: [
-      {
-        id: 'buyer-customers',
-        label: '买家',
-        icon: UserRound,
-        path: '/staff/buyer-customers',
-        visible: mayBuyerCustomers,
-      },
-      {
-        id: 'seller-customers',
-        label: '卖家',
-        icon: Store,
-        path: '/staff/seller-customers',
-        visible: maySellerCustomers,
-      },
-    ],
+    id: 'buyer-customers',
+    label: '买家客户',
+    icon: UserRound,
+    path: '/staff/buyer-customers',
+    visible: mayBuyerCustomers,
+    section: 'business',
+  },
+  {
+    id: 'seller-customers',
+    label: '卖家客户',
+    icon: Store,
+    path: '/staff/seller-customers',
+    visible: maySellerCustomers,
+    section: 'business',
   },
   {
     id: 'products',
@@ -109,19 +109,14 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
     icon: PackageSearch,
     path: '/staff/products',
     visible: mayProducts,
+    section: 'business',
   },
   {
     id: 'orders',
     label: '订单',
     icon: ClipboardList,
     path: '/staff/orders',
-  },
-  {
-    id: 'reviews-evidence',
-    label: '评论与凭证',
-    icon: MessageSquareText,
-    upcoming: true,
-    // 评论审核通过工作台 work item 进入，无独立列表页。
+    section: 'business',
   },
   {
     id: 'buyer-refunds',
@@ -129,13 +124,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
     icon: CircleDollarSign,
     path: '/staff/refunds',
     visible: mayRefunds,
-  },
-  {
-    id: 'seller-settlements',
-    label: '卖家结算',
-    icon: Wallet,
-    upcoming: true,
-    // 卖家结算通过 /staff/finance 中的卖家组织维度查看，无独立列表页。
+    section: 'business',
   },
   {
     id: 'finance',
@@ -143,13 +132,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
     icon: Landmark,
     path: '/staff/finance',
     visible: mayFinance,
-  },
-  {
-    id: 'archive',
-    label: '文件归档',
-    icon: Archive,
-    upcoming: true,
-    // 归档操作通过运营工具和订单详情触发，无独立前端页面。
+    section: 'finance',
   },
   {
     id: 'access-management',
@@ -157,6 +140,7 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
     icon: UserCog,
     path: '/staff/access-management',
     visible: mayAccessManagement,
+    section: 'admin',
   },
   {
     id: 'system',
@@ -173,12 +157,25 @@ export const STAFF_NAV_ITEMS: readonly StaffNavItem[] = [
       {
         id: 'service-channels',
         label: '客服渠道',
+        icon: Headset,
         path: '/staff/service-channels',
         visible: mayAccessManagement,
       },
     ],
+    section: 'admin',
   },
 ];
+
+const SECTION_LABELS: Record<string, string> = {
+  work: '日常工作',
+  business: '业务',
+  finance: '财务',
+  admin: '管理',
+};
+
+export function staffNavSectionLabel(section: string | undefined): string | null {
+  return section ? (SECTION_LABELS[section] ?? null) : null;
+}
 
 /** 过滤当前角色可见的导航项 */
 export function getVisibleNavItems(session: StaffSession): StaffNavItem[] {
@@ -198,10 +195,8 @@ export function getBreadcrumbForPath(
 ): Array<{ label: string; href?: string }> {
   const crumbs: Array<{ label: string; href?: string }> = [{ label: '工作台', href: '/staff' }];
 
-  // 统一订单详情（/staff/orders/:id）：订单导航项仍为"规划中"（不可见），
-  // 必须显式匹配动态路径，否则标题与面包屑会回退成重复的"工作台"。
   if (/^\/staff\/orders(\/|$)/u.test(pathname)) {
-    crumbs.push({ label: '订单', href: '/staff/orders' });
+    if (pathname !== '/staff/orders') crumbs.push({ label: '订单', href: '/staff/orders' });
     return crumbs;
   }
 
@@ -231,7 +226,6 @@ export function getBreadcrumbForPath(
 
 /** 获取当前路径对应的页面标题 */
 export function getPageTitleForPath(pathname: string, session: StaffSession): string {
-  // 统一订单详情与订单上下文（订单导航项不可见，需显式匹配动态路径）。
   if (/^\/staff\/orders\/[^/]+$/u.test(pathname)) return '订单详情';
   if (/^\/staff\/orders/u.test(pathname)) return '订单';
   for (const item of getVisibleNavItems(session)) {
@@ -246,7 +240,6 @@ export function getPageTitleForPath(pathname: string, session: StaffSession): st
     }
   }
   if (pathname.startsWith('/staff/work/')) return '工作项';
-  if (pathname === '/staff' || pathname === '/staff/queue') return '工作台';
   return '工作台';
 }
 

@@ -17,7 +17,6 @@ import {
   StatusBadge,
   TextInput,
 } from '../ui/primitives';
-import { RateSummaryCard } from './shared/RateSummaryCard';
 import { formatShanghai } from './shared/format';
 
 const MARKET_LABELS: Record<string, string> = {
@@ -247,31 +246,25 @@ function CustomerManagementWorkspace({
   });
   if (!allowed)
     return (
-      <main className="customer-intake-workspace">
-        <Alert tone="danger">当前岗位不能处理{buyer ? '买家' : '卖家'}客户。</Alert>
-      </main>
+      <Alert tone="danger">当前岗位不能处理{buyer ? '买家' : '卖家'}客户。</Alert>
     );
   return (
-    <main className="customer-intake-workspace">
-      <header className="staff-customer-heading">
-        <div>
-          <p className="eyebrow">{buyer ? '买家管理' : '卖家管理'}</p>
-          <h2>{buyer ? '买家客户' : '卖家客户'}</h2>
-          <p>先查历史客户，再邀请新客户。账号开通、密码恢复都从具体客户记录发起。</p>
-        </div>
-      </header>
+    <div className="sp-detail-sections">
+      <p className="sp-page-head__meta">
+        先查历史客户，再邀请新客户。账号开通、密码恢复都从具体客户记录发起；买家编号是主要识别字段。
+      </p>
       <Alert tone="info">
         历史客户不重复建档；身份不明确时提交总管理员处理，不要自行猜测绑定。
       </Alert>
       <HistoricalCustomerLookup customerKind={customerKind} />
-      <div className="customer-intake-grid">
+      <div className="sp-finance-grid">
         <NewCustomerCard customerKind={customerKind} />
         {buyer ? (
           <Card className="customer-intake-list">
-            <h3>买家客户列表</h3>
+            <h3>买家客户</h3>
             <EmptyState
-              title="客户列表随阶段 7A-2 工作台上线"
-              description="先为左侧新客户生成注册链接；完整客户列表与业务进度视图在工作台重构后提供。"
+              title="买家以编号识别"
+              description="通过上方查询历史客户或为新买家建档；买家编号（如 20260829B00001）是跨页面检索的主键。"
             />
           </Card>
         ) : (
@@ -279,9 +272,6 @@ function CustomerManagementWorkspace({
             <h3>
               全部卖家客户{sellerDirectory.data ? `（${sellerDirectory.data.length} 个）` : ''}
             </h3>
-            <RateSummaryCard
-              organizationId={sellerDirectory.data?.[0]?.seller_organization_id ?? null}
-            />
             {sellerDirectory.isPending ? (
               <p role="status">加载中…</p>
             ) : sellerDirectory.isError ? (
@@ -339,7 +329,7 @@ function CustomerManagementWorkspace({
           </Card>
         )}
       </div>
-    </main>
+    </div>
   );
 }
 

@@ -58,7 +58,7 @@ describe('财务配置 Staff 工作台（D-056 单次保存模型）', () => {
         route: '/staff/finance',
       },
     );
-    expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '今天生效' })).toBeVisible();
     await screen.findByRole('option', { name: '测试卖家 · AMAZON_JP' });
     await user.click(await screen.findByRole('button', { name: '单独设置' }));
     const markupInput = screen.getByLabelText('加点（例如 +0.005 或 0）');
@@ -131,7 +131,7 @@ describe('财务配置 Staff 工作台（D-056 单次保存模型）', () => {
         route: '/staff/finance',
       },
     );
-    await screen.findByRole('heading', { name: '财务配置' });
+    await screen.findByRole('heading', { name: '今天生效' });
     await screen.findByText('全体卖家');
     await user.click(screen.getByRole('button', { name: '修改' }));
     const markupInput = screen.getByLabelText('加点（例如 +0.004 或 0）');
@@ -197,7 +197,7 @@ describe('财务配置 Staff 工作台（D-056 单次保存模型）', () => {
         route: '/staff/finance',
       },
     );
-    await screen.findByRole('heading', { name: '财务配置' });
+    await screen.findByRole('heading', { name: '今天生效' });
     await screen.findByText('全体卖家');
     await user.click(screen.getByRole('button', { name: '修改' }));
     const markupInput = screen.getByLabelText('加点（例如 +0.004 或 0）');
@@ -258,7 +258,7 @@ describe('财务配置 Staff 工作台（D-056 单次保存模型）', () => {
         route: '/staff/finance',
       },
     );
-    expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '今天生效' })).toBeVisible();
     await screen.findByRole('option', { name: '测试卖家 · AMAZON_JP' });
     await user.selectOptions(screen.getByLabelText('针对卖家组织'), 'seller-1');
     expect(await screen.findByText(/服务费未配置：测试卖家 还有 4\/4 类评价类型未配/u)).toBeVisible();
@@ -367,7 +367,7 @@ describe('财务配置 Staff 工作台（D-056 单次保存模型）', () => {
         route: '/staff/finance',
       },
     );
-    expect(await screen.findByRole('heading', { name: '财务配置' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '今天生效' })).toBeVisible();
     // 今日已有生效版本 → 显示说明与提前设明天入口
     expect(await screen.findByText(/当日汇率已保存并立即生效/u)).toBeVisible();
     await user.click(screen.getByRole('button', { name: '提前设明天' }));
@@ -443,7 +443,7 @@ describe('财务配置 Staff 工作台（D-056 单次保存模型）', () => {
         route: '/staff/finance?business_date=2026-08-01&seller_organization_id=seller-1&section=base-rate',
       },
     );
-    await screen.findByRole('heading', { name: '财务配置' });
+    await screen.findByText(/基础汇率、加点、服务费共同决定/u);
     await waitFor(() => expect(screen.getByText(/正在回查 2026-08-01/u)).toBeTruthy());
     expect(await screen.findByRole('heading', { name: /回查 2026-08-01 生效/u })).toBeVisible();
     await waitFor(() => expect(policySearches.length).toBeGreaterThan(0));

@@ -17,6 +17,22 @@ afterEach(cleanup);
 describe('员工统一订单详情页', () => {
   it('Owner 看到订单身份、付款截图、沟通截图、计价明细与全链路时间线', async () => {
     server.use(
+      http.post(apiUrl('/api/staff/file-read-intents/batch'), async ({ request }) => {
+        const body = (await request.json()) as { requests: { file_object_id: string }[] };
+        return HttpResponse.json({
+          data: {
+            intents: body.requests.map((item) => ({
+              read_intent_id: `read-${item.file_object_id}`,
+              file_object_id: item.file_object_id,
+              access_token: 't'.repeat(40),
+              access_token_available: true,
+              expires_at: Date.now() + 600_000,
+              replayed: false,
+            })),
+          },
+          meta: { request_id: 'batch-read' },
+        });
+      }),
       http.get(apiUrl('/api/staff/formal-orders/:id'), () =>
         HttpResponse.json({
           data: aggregateFixture(true),
@@ -44,8 +60,7 @@ describe('员工统一订单详情页', () => {
       </StaffSessionBoundary>,
       { route: '/staff/orders/order-1' },
     );
-    expect(await screen.findByRole('heading', { name: '订单详情' })).toBeVisible();
-    expect(await screen.findByRole('region', { name: '订单关键事实' })).toBeVisible();
+    expect(await screen.findByRole('region', { name: '订单身份摘要' })).toBeVisible();
     expect(screen.getAllByText('123-4567890-1234567').length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { name: '订单付款截图' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '订单沟通截图（2）' })).toBeVisible();
@@ -92,9 +107,8 @@ describe('员工统一订单详情页', () => {
       </StaffSessionBoundary>,
       { route: '/staff/orders/order-1' },
     );
-    expect(await screen.findByRole('heading', { name: '订单详情' })).toBeVisible();
+    expect(await screen.findByRole('region', { name: '订单身份摘要' })).toBeVisible();
     expect(screen.getByText(/计价与财务金额仅 Owner 可见/u)).toBeVisible();
-    expect(await screen.findByRole('region', { name: '订单关键事实' })).toBeVisible();
     expect(screen.getByRole('heading', { name: '全链路时间线' })).toBeVisible();
     expect(financeRequested).toBe(false);
     // seller_ops 可以记录运营事件，但没有人工财务调整区块

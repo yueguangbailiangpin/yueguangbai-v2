@@ -44,42 +44,42 @@ function renderShell(
    ============================================================ */
 
 describe('staff-navigation config', () => {
-  it('has exactly 11 top-level items', () => {
-    expect(STAFF_NAV_ITEMS).toHaveLength(11);
+  it('has exactly 9 top-level items with no placeholder entries (7F-1)', () => {
+    expect(STAFF_NAV_ITEMS).toHaveLength(9);
     expect(STAFF_NAV_ITEMS.map((i) => i.id)).toEqual([
-      'workbench', 'customers', 'products', 'orders', 'reviews-evidence',
-      'buyer-refunds', 'seller-settlements', 'finance', 'archive',
-      'access-management', 'system',
+      'workbench', 'buyer-customers', 'seller-customers', 'products',
+      'orders', 'buyer-refunds', 'finance', 'access-management', 'system',
     ]);
+    // 7F-1 收口：不再有规划中占位入口（评论与凭证/卖家结算/文件归档已退役）。
+    const retired = ['reviews-evidence', 'seller-settlements', 'archive'];
+    expect(STAFF_NAV_ITEMS.some((item) => retired.includes(item.id))).toBe(false);
   });
 
-  it('owner sees all non-upcoming items with required permissions', () => {
+  it('owner sees all items with required permissions', () => {
     const session = staffTestSession('owner', [
       'STAFF_MANAGE', 'FINANCIAL_VIEW', 'SELLER_MANAGE',
     ]);
     const items = getVisibleNavItems(session);
     const ids = items.map((i) => i.id);
     expect(ids).toContain('workbench');
-    expect(ids).toContain('customers');
+    expect(ids).toContain('buyer-customers');
+    expect(ids).toContain('seller-customers');
     expect(ids).toContain('products');
+    expect(ids).toContain('orders');
     expect(ids).toContain('buyer-refunds');
     expect(ids).toContain('finance');
     expect(ids).toContain('access-management');
     expect(ids).toContain('system');
-    // upcoming items still show (marked as 规划中)
-    expect(ids).toContain('orders');
-    expect(ids).toContain('reviews-evidence');
-    expect(ids).toContain('seller-settlements');
-    expect(ids).toContain('archive');
   });
 
 
-  it('pre_sales sees workbench, customers (buyer), products, but not refunds/finance/access', () => {
+  it('pre_sales sees workbench, buyer customers, products, but not refunds/finance/access', () => {
     const session = staffTestSession('pre_sales', []);
     const items = getVisibleNavItems(session);
     const ids = items.map((i) => i.id);
     expect(ids).toContain('workbench');
-    expect(ids).toContain('customers');
+    expect(ids).toContain('buyer-customers');
+    expect(ids).not.toContain('seller-customers');
     expect(ids).toContain('products');
     expect(ids).not.toContain('buyer-refunds');
     expect(ids).not.toContain('finance');
@@ -155,12 +155,11 @@ describe('staff-navigation breadcrumb and title', () => {
     ]);
   });
 
-  it('returns breadcrumb for nested customer page', () => {
+  it('returns breadcrumb for customer page', () => {
     const crumbs = getBreadcrumbForPath('/staff/buyer-customers', ownerSession);
     expect(crumbs).toEqual([
       { label: '工作台', href: '/staff' },
-      { label: '客户' },
-      { label: '买家' },
+      { label: '买家客户' },
     ]);
   });
 
@@ -224,7 +223,7 @@ describe('StaffShell rendering', () => {
     const session = staffTestSession('owner', ['STAFF_MANAGE', 'FINANCIAL_VIEW', 'SELLER_MANAGE']);
     renderShell(session, '/staff');
     // brand appears in topbar
-    expect(screen.getByText('月光白', { selector: '.staff-brand strong' })).toBeInTheDocument();
+    expect(screen.getByText('月光白', { selector: '.sa-topbar__brand strong' })).toBeInTheDocument();
     // nav links by role
     expect(screen.getByRole('link', { name: '工作台' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '财务' })).toBeInTheDocument();
@@ -245,7 +244,7 @@ describe('StaffShell rendering', () => {
     const session = staffTestSession('owner', ['SELLER_MANAGE']);
     renderShell(session, '/staff/finance');
     const financeLink = screen.getByRole('link', { name: '财务' });
-    expect(financeLink).toHaveClass('active');
+    expect(financeLink).toHaveClass('is-active');
   });
 
   it('does not show access-management for non-owner', () => {
@@ -261,10 +260,13 @@ describe('StaffShell rendering', () => {
     expect(screen.queryByRole('link', { name: /rate-center/i })).not.toBeInTheDocument();
   });
 
-  it('marks upcoming items with 规划中 badge', () => {
+  it('never renders 规划中 badges or placeholder navigation (7F-1)', () => {
     const session = staffTestSession('owner', []);
     renderShell(session, '/staff');
-    expect(screen.getAllByText('规划中').length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText('规划中')).not.toBeInTheDocument();
+    expect(screen.queryByText('评论与凭证')).not.toBeInTheDocument();
+    expect(screen.queryByText('卖家结算')).not.toBeInTheDocument();
+    expect(screen.queryByText('文件归档')).not.toBeInTheDocument();
   });
 
   it('renders page title in content heading', () => {
@@ -284,7 +286,7 @@ describe('StaffShell duplicate text guards (7R-1)', () => {
     const session = staffTestSession('owner', richPermissions);
     renderShell(session, '/staff');
     // 内容区上下文标题只有一个"工作台"（单一面包屑不再与标题逐字重复）。
-    const contentHeading = document.querySelector<HTMLElement>('.staff-content-heading')!;
+    const contentHeading = document.querySelector<HTMLElement>('.sp-page-head')!;
     expect(within(contentHeading).getAllByText('工作台')).toHaveLength(1);
     expect(screen.getAllByRole('heading', { name: '工作台' })).toHaveLength(1);
   });
@@ -304,7 +306,7 @@ describe('StaffShell duplicate text guards (7R-1)', () => {
     expect(screen.getByRole('heading', { name: '订单详情' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '工作台' })).not.toBeInTheDocument();
     // 面包屑提供订单分区上下文：工作台 / 订单。
-    const contentHeading = document.querySelector<HTMLElement>('.staff-content-heading')!;
+    const contentHeading = document.querySelector<HTMLElement>('.sp-page-head')!;
     expect(within(contentHeading).getByRole('link', { name: '工作台' })).toBeInTheDocument();
     expect(within(contentHeading).getByText('订单', { exact: true })).toBeInTheDocument();
     expect(getPageTitleForPath('/staff/orders/order-77', session)).toBe('订单详情');
@@ -317,7 +319,7 @@ describe('StaffShell duplicate text guards (7R-1)', () => {
   it('never falls other staff routes back to the generic 工作台 title', () => {
     const session = staffTestSession('owner', richPermissions);
     renderShell(session, '/staff/buyer-customers');
-    expect(screen.getByRole('heading', { name: '买家' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '买家客户' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '工作台' })).not.toBeInTheDocument();
     cleanup();
     renderShell(session, '/staff/finance');
@@ -377,7 +379,7 @@ describe('StaffShell mobile drawer', () => {
     renderShell(session, '/staff');
     fireEvent.click(screen.getByLabelText('打开导航菜单'));
     const drawer = screen.getByRole('dialog', { name: '员工导航菜单' });
-    const financeLink = within(drawer).getByText('财务');
+    const financeLink = within(drawer).getByRole('link', { name: '财务' });
     fireEvent.click(financeLink);
     expect(screen.queryByRole('dialog', { name: '员工导航菜单' })).not.toBeInTheDocument();
   });

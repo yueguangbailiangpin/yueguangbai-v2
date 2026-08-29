@@ -85,7 +85,7 @@ export function OrderInstructionPublishPanel({
     },
   });
   return (
-    <section className="staff-workflow-closure staff-work-panel">
+    <section className="sa-card sp-workpanel">
       <Card className="sensitive-action">
         <div className="pane-heading">
           <h2>下单指引发布</h2>

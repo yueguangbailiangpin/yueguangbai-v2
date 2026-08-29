@@ -484,6 +484,9 @@ export const staffWorkbenchSummarySchema = z
   .strict();
 
 /** Stage 7.5 batch 1: staff formal-order cursor list. */
+export type StaffOrderListItem = z.output<
+  typeof staffOrderListPageSchema
+>['items'][number];
 export const staffOrderListPageSchema = z
   .object({
     items: z.array(

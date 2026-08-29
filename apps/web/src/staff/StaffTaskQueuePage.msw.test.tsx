@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router';
@@ -30,25 +30,26 @@ describe('staff task queue home', () => {
   it('shows only work items fixed to me; no claimable pool exists', async () => {
     installQueue({ open: [mineItem, otherItem] });
     renderQueue();
-    expect(await screen.findByText('我的待办（1）')).toBeVisible();
-    expect(screen.queryByText('预约处理')).not.toBeInTheDocument();
+    const mineSection = await screen.findByRole('region', { name: '我的待办（1）' });
+    expect(mineSection).toBeVisible();
+    expect(within(mineSection).queryByText('预约处理')).not.toBeInTheDocument();
     expect(screen.queryByText('可认领')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '认领' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: '去处理' })).toHaveLength(1);
+    expect(within(mineSection).getAllByRole('button', { name: '去处理' })).toHaveLength(1);
   });
 
   it('shows a friendly empty state when nothing is assigned to me', async () => {
     installQueue({ open: [] });
     renderQueue();
-    expect(await screen.findByText('暂无我的待办')).toBeVisible();
+    expect(await screen.findByText('暂无待办')).toBeVisible();
   });
 
   it('navigates 去处理 to the work item page', async () => {
     installQueue({ open: [mineItem] });
     const user = userEvent.setup();
     renderQueue();
-    await screen.findByText('我的待办（1）');
-    await user.click(screen.getByRole('button', { name: '去处理' }));
+    const mineSection = await screen.findByRole('region', { name: '我的待办（1）' });
+    await user.click(within(mineSection).getByRole('button', { name: '去处理' }));
     expect(await screen.findByText('工作项面板占位')).toBeVisible();
   });
 
@@ -57,9 +58,8 @@ describe('staff task queue home', () => {
     const user = userEvent.setup();
     renderQueue();
     await screen.findByText('我的待办（1）');
-    await user.click(screen.getByRole('button', { name: '全部' }));
-    expect(await screen.findByText('全部待办（2）')).toBeVisible();
-    expect(screen.queryByText('我的待办（1）')).not.toBeInTheDocument();
+    await user.click(screen.getByText('全部待办（2）'));
+    expect(await screen.findByText('预约处理')).toBeVisible();
     expect(screen.queryByText('可认领')).not.toBeInTheDocument();
   });
 
@@ -67,10 +67,10 @@ describe('staff task queue home', () => {
     installQueue({ open: [mineItem] });
     renderQueue(staffTestAdapter(staffTestSession('seller_ops', [])));
     await screen.findByText('我的待办（1）');
-    expect(screen.queryByRole('button', { name: '全部' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/全部待办/u)).not.toBeInTheDocument();
   });
 
-  it('lists today completed items in the collapsed section', async () => {
+  it('lists today completed items in the recent section', async () => {
     const now = Date.now();
     installQueue({
       open: [],
@@ -83,16 +83,10 @@ describe('staff task queue home', () => {
       ],
     });
     renderQueue();
-    const summary = await screen.findByText(
-      (_content, element) =>
-        element?.tagName === 'SUMMARY' && /今日已处理（1/u.test(element.textContent ?? ''),
-    );
-    expect(summary).toBeVisible();
-    await userEvent.click(summary);
-    expect(screen.getByText('订单资料核对')).toBeVisible();
+    expect(await screen.findByText('订单资料核对')).toBeVisible();
   });
 
-  it('keeps yesterday completed items out of the today section', async () => {
+  it('keeps yesterday completed items out of the recent section', async () => {
     installQueue({
       open: [],
       completed: [
@@ -104,11 +98,7 @@ describe('staff task queue home', () => {
       ],
     });
     renderQueue();
-    const summary = await screen.findByText(
-      (_content, element) =>
-        element?.tagName === 'SUMMARY' && /今日已处理（0/u.test(element.textContent ?? ''),
-    );
-    await userEvent.click(summary);
+    expect(await screen.findByText('最近处理')).toBeVisible();
     expect(screen.getByText('今天还没有已完成的工作项。')).toBeVisible();
   });
 });

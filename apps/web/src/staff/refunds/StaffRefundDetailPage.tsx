@@ -51,7 +51,7 @@ export function StaffRefundDetailPage(): React.JSX.Element {
   });
   const value = query.data ?? null;
   return (
-    <main className="staff-refunds">
+    <main className="sp-refunds-page">
       <section aria-labelledby="staff-refund-detail-title">
         <p className="eyebrow">买家与订单 · 返款</p>
         <h2 id="staff-refund-detail-title">返款处理</h2>

@@ -51,11 +51,9 @@ export function StaffRefundsPage(): React.JSX.Element {
   });
   const outstanding = pages.items.filter((item) => item.status !== 'PAID').length;
   return (
-    <main className="staff-refunds">
-      <section aria-labelledby="staff-refunds-title">
-        <p className="eyebrow">买家与订单 · 返款</p>
-        <h2 id="staff-refunds-title">返款工作台</h2>
-        <p>
+    <main className="sp-refunds-page">
+      <div className="sp-page-head">
+        <p className="sp-page-head__meta">
           待结清 {outstanding} 笔，超期和临期排最前（承诺期限 = 评论通过 + 7 个工作日，
           仅提醒口径）；登记转账流水（可多笔），累计到账等于应返金额即自动结清，
           买家端即时可见。
@@ -68,7 +66,7 @@ export function StaffRefundsPage(): React.JSX.Element {
         >
           刷新
         </Button>
-      </section>
+      </div>
       {pages.isInitialPending ? (
         <p role="status">正在加载返款列表</p>
       ) : pages.initialError ? (
