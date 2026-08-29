@@ -1,5 +1,3 @@
-import type { CSSProperties } from 'react';
-
 /**
  * Shared semantic adapter for the locally bundled Material Symbols Rounded
  * SVG subset. Consumers choose a stable semantic name; geometry and the
@@ -76,7 +74,6 @@ export function MoonwhiteIcon({
   filled = false,
   className,
 }: MoonwhiteIconProps): React.JSX.Element {
-  const style: CSSProperties = { '--moonwhite-icon-size': `${size}px` } as CSSProperties;
   const classes = ['moonwhite-icon', filled ? 'is-filled' : 'is-outline', className]
     .filter(Boolean)
     .join(' ');
@@ -86,7 +83,7 @@ export function MoonwhiteIcon({
       className={classes}
       data-icon={name}
       data-fill={filled ? '1' : '0'}
-      style={style}
+      data-size={size}
       aria-hidden="true"
     >
       <svg

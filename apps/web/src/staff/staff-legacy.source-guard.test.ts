@@ -133,6 +133,7 @@ describe('staff legacy source guard (7F-1)', () => {
     expect(adapter).toContain("filled ? 'filled' : 'outline'");
     expect(adapter).toContain('viewBox="0 0 24 24"');
     expect(adapter).toContain('fill="currentColor"');
+    expect(adapter).not.toContain('style=');
     expect(staffReExport).toContain("from '../../ui/MoonwhiteIcon'");
     expect(styles).not.toMatch(/@font-face|font-feature-settings|font-variation-settings|liga|material-symbols-rounded-staff\.ttf/u);
     expect(readdirSync(webAssetsDir)).not.toContain('material-symbols-rounded-staff.ttf');

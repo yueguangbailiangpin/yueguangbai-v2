@@ -14,6 +14,16 @@
   user-select: none;
 }
 
+/* The verifier forbids JSX inline styles; the only production sizes are
+   represented as stable data attributes so all portals still share one rule. */
+.moonwhite-icon[data-size='20'] {
+  --moonwhite-icon-size: 20px;
+}
+
+.moonwhite-icon[data-size='24'] {
+  --moonwhite-icon-size: 24px;
+}
+
 .moonwhite-icon > svg {
   display: block;
   width: 100%;
