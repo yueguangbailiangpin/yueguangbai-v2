@@ -54,7 +54,7 @@
 - [x] 2.3 核对既有 primary-contact 端点权限/幂等/审计（补缺测试，不改稳定合同）
 - [x] 2.4 员工产品列表/详情、卖家产品列表/详情 read model 联查主要对接人
 - [x] 2.5 `GET /api/staff/service-channels`、`PUT /api/staff/service-channels/:code`（Owner-only，幂等+expected_version+审计）
-- [x] 2.6 `GET /api/buyer-portal/service-channels`（公开字段）；`GET /api/buyer-portal/me` 负责人公开名扩展
+- [ ] 2.6 `GET /api/buyer-portal/service-channels`（公开字段）；`GET /api/buyer-portal/me` 负责人公开名扩展（**7.5R 重开**：渠道返回裸 `qr_file_object_id`，未走受控文件链——无 SERVICE_CHANNEL_QR purpose/上传流/受众校验/read-intent/SafeFileReference）
 
 ### Tests（第二批专项）
 
@@ -68,9 +68,9 @@
 
 - [x] 2.12 员工产品列表/详情显示+管理主要对接人（设置/转移/清除，expected version + reason + 幂等）
 - [x] 2.13 卖家端产品页只读对接人
-- [x] 2.14 买家预约/订单资料/订单/评论/返款页阶段化联系卡片（负责人公开名+渠道；未配置兜底）
+- [ ] 2.14 买家预约/订单资料/订单/评论/返款页阶段化联系卡片（负责人公开名+渠道；未配置兜底）（**7.5R 重开**：实际只接入预约列表与正式订单两页，未覆盖预约详情/订单资料列表与填写/指引详情/评论列表填写详情/返款列表详情）
 - [x] 2.15 员工 `/staff/service-channels` Owner-only 设置页（导航"系统设置"组）
-- [x] 2.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图
+- [ ] 2.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图（**7.5R 重开**：全部为 mock 证据，未做真实 API 响应 → 前端 strict schema 的合同测试）
 - [x] 2.17 全量门禁 + 独立提交
 
 ## 3. 第三批：卖家结算批次（提交 `feat(settlements): add immutable seller settlement batches`）
@@ -89,7 +89,7 @@
 - [x] 3.4 批次 read model：状态权威计算（PARTIALLY_PAID/PAID 实时推导）、组织 scope concealed 404
 - [x] 3.5 员工 8 路由（list/create/detail/members add/remove/confirm/cancel/export）挂 `/api/staff/seller-settlements/:organizationId/`
 - [x] 3.6 卖家 2 路由（只读、DRAFT/CANCELLED 不可见、卖家安全字段）
-- [x] 3.7 CSV 流式导出：白名单列、公式注入转义、稳定文件名、5,000 行/2 MiB 上限、流式分页拉取、导出幂等收据
+- [ ] 3.7 CSV 流式导出：白名单列、公式注入转义、稳定文件名、5,000 行/2 MiB 上限、流式分页拉取、导出幂等收据（**7.5R 重开**：readExportRows 复用 200 条 MEMBER_PAGE 截断；全部行 join('') 非流式；无 Idempotency-Key/请求哈希/重放收据，重试重复写 BATCH_EXPORTED 审计）
 
 ### Tests（第三批专项）
 
@@ -103,7 +103,7 @@
 ### Web（第三批）
 
 - [x] 3.14 员工财务工作区"结算批次"面板：列表/建草稿/选应付/确认/取消/导出（390 可用）
-- [x] 3.15 卖家端 `/seller/settlements` 批次只读列表+详情
+- [ ] 3.15 卖家端 `/seller/settlements` 批次只读列表+详情（**7.5R 重开**：卖家路由直接复用员工完整 DTO（真实数据会被前端 strict 精简 schema 拒绝或暴露多余字段）；列表先分页后在 JS 过滤 DRAFT/CANCELLED，确认批次被前页草稿挤出而漏显示）
 - [x] 3.16 前端组件测试 + Playwright 正常/失败恢复流 + 1440/1280/390 截图
 - [x] 3.17 全量门禁 + 独立提交
 
@@ -113,4 +113,15 @@
 - [x] 4.2 新建 `docs/migration/V2_STAGE75_OPERATIONAL_COMPLETENESS_HANDOFF.md`（六项完成情况/新路由/Migration/权限矩阵/容量结果/截图路径/未完成与 NOT_RUN/非 GO 声明）
 - [x] 4.3 全仓残留扫描（公共池/抢单/待认领/获客中心/双聊天截图入口/旧订单完整性页面）
 - [x] 4.4 本地 D1 `0001`→最新空库完整重放 + `PRAGMA integrity_check` + `PRAGMA foreign_key_check`
-- [x] 4.5 全部验证命令真实退出码记录；OpenSpec tasks 全部真实完成；不归档任何 Change
+- [ ] 4.5 全部验证命令真实退出码记录；OpenSpec tasks 全部真实完成；不归档任何 Change（**7.5R 重开**：`npm run check` 实际因 stage75-contacts.spec.ts 伪密钥字面量 exit 1，7.5 交接记录的 check(0) 不准确）
+
+## 5. 阶段 7.5R 真实性修复（2026-08-29 重开）
+
+- [ ] 5.1 统一 `StageContactCard` 组件与阶段映射接入全部售前页面（预约列表/详情、订单资料列表/填写、指引或资料详情）与售后页面（正式订单列表/详情、评论列表/填写/详情、返款列表/详情）
+- [ ] 5.2 二维码受控文件链：`SERVICE_CHANNEL_QR` purpose（Migration 0034 如需）+ Owner 正常上传流 + purpose/visibility/受众/归属校验 + Buyer DTO 返回 `SafeFileReferenceDto|null` + read-intent + 前端真实渲染 + 无二维码文字兜底
+- [ ] 5.3 结算导出全量化：keyset 全量读取（禁 OFFSET），详情 `members_next_cursor` 真实分页，201/500/1000/5000 完整、5001 拒绝
+- [ ] 5.4 结算导出流式：ReadableStream 分页边读边编码；分页预检行数与编码字节数，超限在响应前 `EXPORT_TOO_LARGE`（5000 行/2 MiB）
+- [ ] 5.5 结算导出幂等：Idempotency-Key+请求哈希+expected_version；重放返回同一 receipt；BATCH_EXPORTED 审计仅一次；payload mismatch 稳定 409
+- [ ] 5.6 卖家专用安全 DTO（contracts/后端/前端 strict 三方同一合同，无 passthrough）+ SQL 内先过滤可见状态再 keyset 分页 + 前端游标加载
+- [ ] 5.7 `npm run check` 真实 exit 0：测试密钥字面量改为不会被识别为真实密钥的 fixture 构造
+- [ ] 5.8 真实请求级合同测试：真实路由+本地 D1 真实数据 → HTTP → packages/contracts schema → 前端 strict schema 双解析（批次列表/详情/多页/先过滤后分页/CSV 首次与重放/mismatch/201/5000/5001/2MiB/审计一次/渠道 DTO/QR SafeFileReference/read-intent/未配置兜底/全部页面阶段选择）

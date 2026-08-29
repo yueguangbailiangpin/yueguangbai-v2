@@ -11,6 +11,7 @@ import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { useFileUpload } from '../shared/useFileUpload';
 import { BuyerJourney } from '../shared/BuyerJourney';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 import { reviewTypeLabel } from '../shared/status';
 
 export function BuyerReviewFormPage(): React.JSX.Element {
@@ -87,6 +88,7 @@ export function BuyerReviewFormPage(): React.JSX.Element {
         title="提交评论资料"
         description={current.order.product_name}
       />
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/reviews']} />
       <Card className="buyer-action-panel">
         <div className="buyer-form-intro">
           <strong>准备评论资料</strong>

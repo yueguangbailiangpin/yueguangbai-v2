@@ -10,6 +10,7 @@ import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { BuyerJourney } from '../shared/BuyerJourney';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 import { useFileUpload } from '../shared/useFileUpload';
 
 export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
@@ -90,6 +91,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
   return <section className="buyer-page buyer-flow-page buyer-form-page">
     <BuyerJourney current="evidence" />
     <PageHeader eyebrow="订单资料阶段" title="提交订单资料" description={current.product_name} />
+    <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/order-materials']} />
     <Card className="buyer-action-panel"><div className="buyer-form-intro"><strong>填订单信息</strong>
       <p>照着 Amazon 订单页面填写；一笔订单只需上传一张完整付款截图，请确保订单号和金额清晰可见。</p></div>
       <form className="buyer-form" onSubmit={(event) => { void submit(event); }}>

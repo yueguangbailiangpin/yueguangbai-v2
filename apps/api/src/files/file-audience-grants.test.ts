@@ -417,6 +417,31 @@ describe('explicit file audiences', () => {
       /object_key|signed_url|session_token|secret|wechat|login_identifier/iu,
     );
   });
+
+  it('lets any ACTIVE buyer session read an attached service-channel QR', async () => {
+    // Stage 7.5R dynamic public window: the company QR is organization-
+    // independent, so every ACTIVE buyer reads it without per-buyer grants.
+    const resource = seedServiceChannelQr(database);
+    await expect(authorize(
+      resource,
+      buyerActor('buyer-1'),
+      buyerPrincipal(1),
+      6000,
+    )).resolves.toBeUndefined();
+    await expect(authorize(
+      resource,
+      buyerActor('buyer-2'),
+      buyerPrincipal(2),
+      6000,
+    )).resolves.toBeUndefined();
+    // Sellers never read the company QR channel file.
+    await expect(authorize(
+      resource,
+      sellerActor('seller-member-1'),
+      sellerPrincipal(1),
+      6000,
+    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
 });
 
 async function explicitFixture(options: {
@@ -829,6 +854,69 @@ function seedPublishedCatalogMainImage(
     entityType: 'PRODUCT_VERSION',
     entityId: 'catalog-product-version-1',
     fileEntityLinkId: 'catalog-main-link',
+    linkAuthorizationMode: 'EXPLICIT_AUDIENCES',
+    linkExpiresAt: null,
+    linkRevokedAt: null,
+  };
+}
+
+function seedServiceChannelQr(
+  target: SqliteDatabase,
+): FileAuthorizationResource {
+  target.exec(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility,
+      status, requested_file_count, manifest_hash, version, expires_at,
+      failure_code, created_at, updated_at, completed_at
+    ) VALUES (
+      'service-qr-intent', 'STAFF', 'staff-file-owner',
+      'SERVICE_CHANNEL_QR', 'BUYER_VISIBLE',
+      'ISSUED', 1, '${'d'.repeat(64)}', 1,
+      10000, NULL, 1000, 1000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size,
+      status, upload_token_hash, upload_expires_at, uploaded_byte_size,
+      detected_mime, uploaded_sha256, failure_code, delete_attempt_count,
+      next_delete_at, version, created_at, updated_at, uploaded_at,
+      verified_at, deleted_at
+    ) VALUES (
+      'service-qr-object', 'service-qr-intent', 1, 'SERVICE_CHANNEL_QR',
+      'BUYER_VISIBLE',
+      'files/v1/2026/08/serviceqrchannelobjectkeyxxxxxxxxxxxxxxxxxx',
+      'qr.png', 'png', 'image/png', 11, 'RESERVED',
+      '${'e'.repeat(64)}', 10000, NULL, NULL, NULL,
+      NULL, 0, NULL, 3, 1000, 1000, NULL, NULL, NULL
+    );
+    UPDATE file_upload_intents
+    SET status='VERIFIED', updated_at=1001, completed_at=1001
+    WHERE id='service-qr-intent';
+    UPDATE file_objects
+    SET status='VERIFIED', uploaded_byte_size=11, detected_mime='image/png',
+        uploaded_sha256='${'f'.repeat(64)}', updated_at=1001,
+        uploaded_at=1001, verified_at=1001
+    WHERE id='service-qr-object';
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      'service-qr-link', 'service-qr-object', 'SERVICE_CHANNEL',
+      'BUYER_PRE_SALES', 'SERVICE_CHANNEL_QR', 'BUYER_VISIBLE',
+      'STAFF', 'staff-file-owner', 1002, 'EXPLICIT_AUDIENCES', NULL, NULL
+    );
+  `);
+  return {
+    uploadIntentId: 'service-qr-intent',
+    fileObjectId: 'service-qr-object',
+    ownerActorType: 'STAFF',
+    ownerActorId: 'staff-file-owner',
+    purpose: 'SERVICE_CHANNEL_QR',
+    visibility: 'BUYER_VISIBLE',
+    entityType: 'SERVICE_CHANNEL',
+    entityId: 'BUYER_PRE_SALES',
+    fileEntityLinkId: 'service-qr-link',
     linkAuthorizationMode: 'EXPLICIT_AUDIENCES',
     linkExpiresAt: null,
     linkRevokedAt: null,

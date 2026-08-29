@@ -39,16 +39,26 @@ export const buyerMeSchema = z.object({
   }).strict(),
 }).strict();
 
+// Stage 7.5R: QR renders through the controlled read-intent chain (SafeFileReference)
+// instead of a bare internal file id.
+const safeFileReferenceSchema = z.object({
+  file_object_id: z.string(),
+  file_version: positiveIntegerSchema,
+  purpose: z.literal('SERVICE_CHANNEL_QR'),
+  visibility: z.literal('BUYER_VISIBLE'),
+}).strict();
 export const buyerServiceChannelsSchema = z.object({
   channels: z.array(
     z.object({
       code: z.enum(['BUYER_PRE_SALES', 'BUYER_AFTER_SALES']),
       display_name: z.string(),
       wechat_id: z.string().nullable(),
-      qr_file_object_id: z.string().nullable(),
+      qr_file: safeFileReferenceSchema.nullable(),
     }).strict(),
   ),
 }).strict();
+export type BuyerServiceChannel =
+  z.output<typeof buyerServiceChannelsSchema>['channels'][number];
 
 export const demandSchema = z.object({
   demand_id: identifierSchema,

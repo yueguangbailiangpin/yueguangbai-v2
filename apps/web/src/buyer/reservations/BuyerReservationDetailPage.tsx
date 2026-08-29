@@ -10,6 +10,7 @@ import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { BuyerJourney, reservationJourneyStep } from '../shared/BuyerJourney';
 import { reviewTypeLabel, statusLabel, statusTone } from '../shared/status';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerReservationDetailPage(): React.JSX.Element {
   const { reservationId = '' } = useParams();
@@ -39,6 +40,7 @@ export function BuyerReservationDetailPage(): React.JSX.Element {
         : null} />
     <PageHeader eyebrow="预约详情" title={item.demand.product_name} description={item.demand.store_display_name}>
       <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></PageHeader>
+    <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/reservations']} />
     <Card className="buyer-summary-card"><h2>预约信息</h2><dl className="buyer-facts"><div><dt>店铺</dt><dd>{item.demand.store_display_name}</dd></div>
       <div><dt>评论类型</dt><dd>{reviewTypeLabel(item.demand.task_type)}</dd></div>
       <div><dt>参考金额</dt><dd>{formatJpy(item.reference_order_amount_jpy_snapshot)}</dd></div>

@@ -32,6 +32,7 @@ import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { statusLabel, statusTone } from '../shared/status';
 import { useFileUpload } from '../shared/useFileUpload';
 import { BuyerJourney, evidenceJourneyStep } from '../shared/BuyerJourney';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
   const { submissionId = '' } = useParams();
@@ -66,6 +67,7 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
       >
         <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge>
       </PageHeader>
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/order-materials']} />
       {item.price_mismatch ? <Alert tone="warning">实际支付金额与参考金额不一致</Alert> : null}
       {item.status === 'CHANGES_REQUESTED' && item.public_change_reason ? (
         <Alert tone="warning">修改说明：{item.public_change_reason}</Alert>

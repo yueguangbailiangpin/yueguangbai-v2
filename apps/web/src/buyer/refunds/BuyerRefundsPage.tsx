@@ -9,6 +9,7 @@ import { formatCnyFen } from '../shared/format';
 import { BuyerEmpty, BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { statusLabel, statusTone } from '../shared/status';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerRefundsPage(): React.JSX.Element {
   const client = useQueryClient();
@@ -26,6 +27,7 @@ export function BuyerRefundsPage(): React.JSX.Element {
         title="返款记录"
         description="查看返款金额和每笔付款记录。"
       />
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/refunds']} />
       {pages.isInitialPending ? (
         <BuyerLoading />
       ) : pages.initialError ? (

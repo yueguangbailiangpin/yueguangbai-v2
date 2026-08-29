@@ -8,6 +8,7 @@ export const FILE_PURPOSES = [
   'BUYER_REFUND_PROOF',
   'SELLER_SETTLEMENT_PROOF',
   'SUPPORT_ATTACHMENT',
+  'SERVICE_CHANNEL_QR',
 ] as const;
 
 export type FilePurpose = typeof FILE_PURPOSES[number];
@@ -88,6 +89,7 @@ export const FILE_ENTITY_TYPES = [
   'BUYER_REFUND',
   'SELLER_SETTLEMENT',
   'SUPPORT_CASE',
+  'SERVICE_CHANNEL',
 ] as const;
 
 export type FileEntityType = typeof FILE_ENTITY_TYPES[number];

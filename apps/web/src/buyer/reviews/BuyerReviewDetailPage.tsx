@@ -24,6 +24,7 @@ import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { reviewTypeLabel, statusLabel, statusTone } from '../shared/status';
 import { useFileUpload } from '../shared/useFileUpload';
 import { BuyerJourney, reviewJourneyStep } from '../shared/BuyerJourney';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerReviewDetailPage(): React.JSX.Element {
   const { reviewCaseId = '' } = useParams();
@@ -58,6 +59,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
       >
         <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge>
       </PageHeader>
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/reviews']} />
       {item.status === 'CHANGES_REQUESTED' && item.public_change_reason ? (
         <Alert tone="warning">修改说明：{item.public_change_reason}</Alert>
       ) : null}

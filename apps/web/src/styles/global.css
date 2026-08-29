@@ -3025,6 +3025,126 @@ select:disabled {
   font-size: var(--font-size-lead);
 }
 
+/* 阶段联系卡（7.5/7.5R）：买家各业务阶段页顶部的联系人与渠道卡。 */
+.stage-contact-card {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  border-color: var(--color-border-strong);
+}
+
+.stage-contact-card > h3 {
+  margin: 0;
+  font-size: var(--font-size-section);
+  line-height: var(--line-height-tight);
+}
+
+.stage-contact-card dl {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.stage-contact-card dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+}
+
+.stage-contact-card dd {
+  margin: 0;
+  font-size: var(--font-size-lead);
+  overflow-wrap: anywhere;
+}
+
+.stage-contact-qr {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.stage-contact-qr-image {
+  display: block;
+  width: 132px;
+  height: 132px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  object-fit: cover;
+}
+
+.stage-contact-qr-fallback {
+  display: inline-flex;
+  width: 132px;
+  height: 132px;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+}
+
+.stage-contact-qr figcaption,
+.stage-contact-note {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+}
+
+.stage-contact-note {
+  margin: 0;
+}
+
+/* 员工渠道二维码区（7.5R）：受控上传与当前二维码预览。 */
+.channel-qr-section {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.channel-qr-section h4 {
+  margin: 0;
+  font-size: var(--font-size-lead);
+}
+
+.channel-qr-preview {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.channel-qr-image {
+  display: block;
+  width: 132px;
+  height: 132px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  object-fit: cover;
+}
+
+.channel-qr-preview figcaption,
+.staff-hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+}
+
+.channel-qr-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.channel-qr-form .entry-actions {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+}
+
+.staff-hint {
+  margin: 0;
+}
+
 .buyer-keyword-cards {
   display: flex;
   flex-wrap: wrap;

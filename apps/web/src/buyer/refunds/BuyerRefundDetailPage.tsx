@@ -7,6 +7,7 @@ import { formatCnyFen, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { paymentChannelLabel, statusLabel, statusTone } from '../shared/status';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 import { startOperation } from '../../api/idempotency';
 
 export function BuyerRefundDetailPage(): React.JSX.Element {
@@ -35,6 +36,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
       >
         <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge>
       </PageHeader>
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/refunds']} />
       <Card className="buyer-summary-card buyer-refund-summary">
         <h2>返款信息</h2>
         <dl className="buyer-facts">

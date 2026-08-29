@@ -9,6 +9,7 @@ import { BuyerPagination } from '../shared/BuyerPagination';
 import { BuyerEmpty, BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { reviewTypeLabel, statusLabel, statusTone } from '../shared/status';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerReviewsPage(): React.JSX.Element {
   const client = useQueryClient();
@@ -25,6 +26,7 @@ export function BuyerReviewsPage(): React.JSX.Element {
   return <section className="buyer-page buyer-flow-page buyer-list-page">
     <BuyerJourney current="review" />
     <PageHeader eyebrow="评论阶段" title="评论资料" description="按订单要求提交 1–3 个评论文件。" />
+    <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/reviews']} />
     <section className="buyer-work-section buyer-action-section"><h2>可提交评论</h2>
       {eligible.isInitialPending ? <BuyerLoading label="正在确认能否提交…" />
         : eligible.initialError ? <BuyerQueryError error={eligible.initialError} title="暂时无法确认能否提交评论" />

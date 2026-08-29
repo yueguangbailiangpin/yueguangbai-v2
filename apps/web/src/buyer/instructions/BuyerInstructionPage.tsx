@@ -11,6 +11,7 @@ import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { statusLabel, statusTone } from '../shared/status';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerInstructionPage(): React.JSX.Element {
   const { reservationId = '' } = useParams();
@@ -52,6 +53,7 @@ export function BuyerInstructionPage(): React.JSX.Element {
         <PageHeader eyebrow="下单步骤" title={statusLabel(state.data.status)}>
           <StatusBadge tone={statusTone(state.data.status)}>{statusLabel(state.data.status)}</StatusBadge>
         </PageHeader>
+        <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/reservations']} />
         <Card className="buyer-summary-card">
           <h2>当前状态</h2>
           <p>{instructionStateMessage(state.data.status)}</p>
@@ -83,6 +85,7 @@ function ActiveInstruction({
       >
         <StatusBadge tone={statusTone(instruction.status)}>{statusLabel(instruction.status)}</StatusBadge>
       </PageHeader>
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/reservations']} />
       {instruction.content_updated ? (
         <Card className="buyer-notice" as="div">
           <strong>指引内容已更新</strong>

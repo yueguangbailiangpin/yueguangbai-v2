@@ -4,8 +4,8 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..'),
   directory = path.join(root, 'migrations');
-const expectedLatestSchema = 33,
-  expectedLastMigration = '0033_stage75_seller_settlement_batches.sql';
+const expectedLatestSchema = 34,
+  expectedLastMigration = '0034_stage75r_service_channel_qr_purpose.sql';
 const migrationFiles = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();

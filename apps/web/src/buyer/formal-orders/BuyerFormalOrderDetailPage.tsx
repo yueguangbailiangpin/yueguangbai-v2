@@ -13,6 +13,7 @@ import {
   formatShanghai,
 } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 import { marketplaceLabel, reviewTypeLabel } from '../shared/status';
 
 /**
@@ -54,6 +55,8 @@ export function BuyerFormalOrderDetailPage(): React.JSX.Element {
           查看评论任务
         </Link>
       </div>
+
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/orders']} />
 
       <div className="mwb-order-layout">
         <div className="mwb-main-column">

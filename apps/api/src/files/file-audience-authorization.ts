@@ -58,6 +58,15 @@ export async function authorizeExplicitAudienceRead(
       && await activeBuyerGrantExists(database, linkId, principal, now)) {
       return;
     }
+    // Stage 7.5R: company service-channel QR codes are public to every
+    // ACTIVE buyer — the channel config is organization-independent and
+    // buyer-scoped grants would need one row per buyer. Same dynamic-public
+    // precedent as the product catalog image window above.
+    if (resource.purpose === 'SERVICE_CHANNEL_QR'
+      && resource.visibility === 'BUYER_VISIBLE'
+      && resource.entityType === 'SERVICE_CHANNEL') {
+      return;
+    }
     if (resource.purpose === 'PRODUCT_IMAGE'
       && resource.visibility === 'SELLER_VISIBLE'
       && resource.entityType === 'PRODUCT_VERSION'

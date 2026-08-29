@@ -80,6 +80,12 @@ const PURPOSE_POLICIES: Readonly<Record<FilePurpose, FilePurposePolicy>> =
       allowedMimes: EVIDENCE_MIMES,
       entityType: 'SUPPORT_CASE',
     }),
+    SERVICE_CHANNEL_QR: Object.freeze({
+      maximumFileCount: 1,
+      maximumByteSize: 5 * MEBIBYTE,
+      allowedMimes: IMAGE_MIMES,
+      entityType: 'SERVICE_CHANNEL',
+    }),
   });
 
 export function filePurposePolicy(

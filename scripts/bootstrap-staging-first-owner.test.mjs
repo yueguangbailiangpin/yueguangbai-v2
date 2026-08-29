@@ -87,7 +87,7 @@ describe('staging first owner operator entrypoint', () => {
         const result=queries.map((query)=>({
           success:true,
           results:String(query.sql).includes('SELECT schema_version FROM app_schema_state')
-            ?[{schema_version: 33}]
+            ?[{schema_version: 34}]
             :[],
           meta:{changes:String(query.sql).includes('INSERT OR IGNORE INTO command_idempotency_records')?1:0},
         }));

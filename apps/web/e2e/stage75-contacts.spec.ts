@@ -12,9 +12,6 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 const directory = process.env['STAGE75_CONTACTS_SCREENSHOT_DIR']
   ?? 'tmp/stage75-contacts-screenshots';
 
-const SESSION_SECRET =
-  'stage75-contacts-test-session-secret-with-at-least-32b';
-
 type Portal = 'buyer' | 'staff-owner' | 'staff-pre' | 'seller';
 
 function staffSession(role: 'owner' | 'pre_sales') {
@@ -50,7 +47,7 @@ const channelsConfigured = [
     code: 'BUYER_PRE_SALES',
     display_name: '售前客服',
     wechat_id: 'ygb-pre-sales',
-    qr_file_object_id: null,
+    qr_file: null,
     version: 2,
     updated_at: 1_788_000_000_000,
   },
@@ -58,7 +55,7 @@ const channelsConfigured = [
     code: 'BUYER_AFTER_SALES',
     display_name: '售后客服',
     wechat_id: null,
-    qr_file_object_id: null,
+    qr_file: null,
     version: 1,
     updated_at: 0,
   },
@@ -86,7 +83,7 @@ async function mockApis(page: Page, portal: Portal): Promise<void> {
           code: channel.code,
           display_name: channel.display_name,
           wechat_id: channel.wechat_id,
-          qr_file_object_id: channel.qr_file_object_id,
+          qr_file: channel.qr_file,
         })),
       }));
       return;
@@ -267,6 +264,62 @@ test('买家订单页售后渠道未配置时显示兜底文案', async ({ page 
   await expect(page.getByText('请联系工作人员').first()).toBeVisible();
 });
 
+// Stage 7.5R: the QR renders through the controlled read-intent chain and
+// never leaks a bare internal file id into the DOM.
+test('买家预约页二维码经受控读取链渲染且不泄露文件编号', async ({ page }) => {
+  await loginAs(page, 'buyer');
+  await page.route('**/api/buyer-portal/service-channels', async (route) => {
+    await route.fulfill(ok({
+      channels: [
+        {
+          code: 'BUYER_PRE_SALES',
+          display_name: '售前客服',
+          wechat_id: 'ygb-pre-sales',
+          qr_file: {
+            file_object_id: 'fqr-75c',
+            file_version: 1,
+            purpose: 'SERVICE_CHANNEL_QR',
+            visibility: 'BUYER_VISIBLE',
+          },
+        },
+        { code: 'BUYER_AFTER_SALES', display_name: '售后客服', wechat_id: null, qr_file: null },
+      ],
+    }));
+  });
+  await page.route('**/api/buyer-portal/files/fqr-75c/read-intents', async (route) => {
+    await route.fulfill(ok({
+      read_intent_id: 'ri-75c',
+      file_object_id: 'fqr-75c',
+      access_token: 't'.repeat(48),
+      access_token_available: true,
+      expires_at: 9_999_999_999_999,
+      replayed: false,
+    }));
+  });
+  await page.route('**/api/buyer-portal/file-read-intents/ri-75c/content', async (route) => {
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'image/png',
+        'Content-Length': String(png.byteLength),
+        'Cache-Control': 'private, max-age=60',
+        'X-Content-Type-Options': 'nosniff',
+      },
+      body: png,
+    });
+  });
+  await page.goto('/buyer/reservations');
+  await expect(page.getByText('扫二维码添加售前客服')).toBeVisible();
+  await expect(page.locator('img.stage-contact-qr-image')).toBeVisible();
+  const body = page.locator('body');
+  await expect(body).not.toContainText('fqr-75c');
+  await noHorizontalOverflow(page);
+});
+
 test('Owner 客服渠道设置页渲染两渠道并保存更新', async ({ page }) => {
   await loginAs(page, 'staff-owner');
   await expect(page.getByText('公司公开客服渠道')).toBeVisible();
@@ -284,7 +337,7 @@ test('Owner 客服渠道设置页渲染两渠道并保存更新', async ({ page 
             code: 'BUYER_AFTER_SALES',
             display_name: '售后客服',
             wechat_id: 'ygb-after-sales',
-            qr_file_object_id: null,
+            qr_file: null,
             version: 2,
             updated_at: 1_788_000_100_000,
           },

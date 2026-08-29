@@ -7,6 +7,7 @@ import { customerSessionMiddleware } from '../middleware/customer-auth';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
+  attachServiceChannelQr,
   listServiceChannels,
   ServiceChannelError,
   setServiceChannel,
@@ -32,9 +33,7 @@ export function registerStaffServiceChannelRoutes(app: Hono<any>): void {
   app.put('/api/staff/service-channels/:code', withErrors(async (context) => {
     const actor = requireStaff(context);
     const body = await bodyRecord(context);
-    exactKeys(body, [
-      'display_name', 'wechat_id', 'qr_file_object_id', 'expected_version', 'reason',
-    ]);
+    exactKeys(body, ['display_name', 'wechat_id', 'expected_version', 'reason']);
     const key = parseIdempotencyKey(context.req.header('Idempotency-Key'));
     if (!key) throw new ServiceChannelError('VALIDATION_ERROR', 400);
     const result = await setServiceChannel(
@@ -43,7 +42,34 @@ export function registerStaffServiceChannelRoutes(app: Hono<any>): void {
         code: context.req.param('code'),
         displayName: body['display_name'],
         wechatId: body['wechat_id'],
-        qrFileObjectId: body['qr_file_object_id'],
+        expectedVersion: body['expected_version'],
+        reason: body['reason'],
+      },
+      {
+        actor,
+        idempotencyKey: key,
+        requestId: requestIdFromContext(context),
+      },
+    );
+    return success(context, result, result.replayed ? 200 : 201);
+  }));
+
+  // Stage 7.5R: attach or clear the channel QR through the controlled file
+  // chain. The file must come from the SERVICE_CHANNEL_QR upload route.
+  app.post('/api/staff/service-channels/:code/qr', withErrors(async (context) => {
+    const actor = requireStaff(context);
+    const body = await bodyRecord(context);
+    exactKeys(body, [
+      'file_object_id', 'expected_file_version', 'expected_version', 'reason',
+    ]);
+    const key = parseIdempotencyKey(context.req.header('Idempotency-Key'));
+    if (!key) throw new ServiceChannelError('VALIDATION_ERROR', 400);
+    const result = await attachServiceChannelQr(
+      context.env.DB,
+      {
+        code: context.req.param('code'),
+        fileObjectId: body['file_object_id'],
+        expectedFileVersion: body['expected_file_version'],
         expectedVersion: body['expected_version'],
         reason: body['reason'],
       },
@@ -71,13 +97,14 @@ export function registerBuyerServiceChannelRoutes(app: Hono<any>): void {
         throw new ServiceChannelError('FORBIDDEN', 403);
       }
     const channels = await listServiceChannels(context.env.DB);
-    // Buyer-safe projection: never expose staff updater identity.
+    // Buyer-safe projection: the QR is a SafeFileReference resolved via the
+    // buyer read-intent route — never a bare internal file id.
     return success(context, {
       channels: channels.map((channel) => ({
         code: channel.code,
         display_name: channel.display_name,
         wechat_id: channel.wechat_id,
-        qr_file_object_id: channel.qr_file_object_id,
+        qr_file: channel.qr_file,
       })),
     });
   }));
