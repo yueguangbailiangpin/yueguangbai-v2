@@ -292,7 +292,10 @@ describe('application route registration', () => {
     renderWithMsw(<AppRoutes />, { route: '/staff/operations' });
 
     // 旧路径已从路由表移除：StaffRouteModule 兜底渲染工作台。
-    expect(await screen.findByText(/今天有 \d+ 件固定分配给你的工作/u)).toBeVisible();
+    expect(await screen.findByText((_, element) =>
+      element?.matches('.sp-hello__summary')
+      && /今天有 \d+ 件固定分配给你的工作/u.test(element.textContent ?? ''),
+    )).toBeVisible();
     expect(screen.queryByRole('heading', { name: '业务完整性工具' })).not.toBeInTheDocument();
   });
 });
