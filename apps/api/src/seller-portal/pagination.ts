@@ -2,6 +2,7 @@ import {
   SELLER_PORTAL_DEFAULT_PAGE_SIZE,
   SELLER_PORTAL_MAX_PAGE_SIZE,
 } from '@ygb/contracts';
+import { decodeBase64UrlJson, encodeBase64UrlJson } from '../foundation/cursor-codec';
 import { SellerPortalError } from './errors';
 
 export interface SellerPortalPagination {
@@ -30,13 +31,7 @@ export function parseSellerPortalPagination(
 }
 
 export function encodeSellerPortalCursor(value: unknown): string {
-  const bytes = new TextEncoder().encode(JSON.stringify(value));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/u, '');
+  return encodeBase64UrlJson(value);
 }
 
 export function decodeSellerPortalCursor<T>(
@@ -45,18 +40,7 @@ export function decodeSellerPortalCursor<T>(
 ): T | null {
   if (value === null) return null;
   try {
-    const base64 = value
-      .replaceAll('-', '+')
-      .replaceAll('_', '/')
-      .padEnd(Math.ceil(value.length / 4) * 4, '=');
-    const binary = atob(base64);
-    const bytes = Uint8Array.from(
-      binary,
-      (character) => character.charCodeAt(0),
-    );
-    const parsed = JSON.parse(
-      new TextDecoder().decode(bytes),
-    ) as unknown;
+    const parsed = decodeBase64UrlJson(value);
     if (!guard(parsed)) throw new Error('invalid_cursor');
     return parsed;
   } catch {

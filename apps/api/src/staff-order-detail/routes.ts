@@ -14,6 +14,10 @@ import {
   STAFF_ORDER_LIST_MAX_LIMIT,
 } from '@ygb/contracts';
 import type { Context, Hono } from 'hono';
+import {
+  decodeBase64UrlJson,
+  encodeBase64UrlJson,
+} from '../foundation/cursor-codec';
 import { listOrderCommunicationScreenshots } from '../order-communication-screenshots/read-model';
 import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -212,33 +216,27 @@ function cursorFilterEcho(filters: OrderListFilters): string {
   ]);
 }
 
-function encodeCursor(
+export function encodeCursor(
   filters: OrderListFilters,
   confirmedAt: number,
   id: string,
 ): string {
-  const bytes = new TextEncoder().encode(JSON.stringify({
+  return encodeBase64UrlJson({
     v: 1,
     kind: 'staff-order-list',
     at: confirmedAt,
     id,
     echo: cursorFilterEcho(filters),
-  }));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
+  });
 }
 
-function decodeCursor(
+export function decodeCursor(
   raw: string,
 ): { confirmedAt: number; id: string; echo: string } {
   if (raw.length < 1 || raw.length > 2000) throw validationError();
   let parsed: unknown;
   try {
-    const base64 = raw.replaceAll('-', '+').replaceAll('_', '/')
-      .padEnd(Math.ceil(raw.length / 4) * 4, '=');
-    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-    parsed = JSON.parse(new TextDecoder().decode(bytes));
+    parsed = decodeBase64UrlJson(raw);
   } catch {
     throw validationError();
   }

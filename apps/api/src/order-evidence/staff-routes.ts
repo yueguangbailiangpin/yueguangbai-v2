@@ -10,6 +10,10 @@ import {
 import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../app';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import {
+  decodeBase64UrlJson,
+  encodeBase64UrlJson,
+} from '../foundation/cursor-codec';
 import { requestOrderEvidenceChanges } from './review-order-evidence';
 import {
   approveOrderEvidenceAtomically,
@@ -617,20 +621,16 @@ function parseListQuery(context: Context<AppEnv>): {
   };
 }
 
-function encodeCursor(submittedAt: number, id: string): string {
-  const json = JSON.stringify({ v: 1, submitted_at: submittedAt, id });
-  return encodeBase64Url(new TextEncoder().encode(json));
+export function encodeCursor(submittedAt: number, id: string): string {
+  return encodeBase64UrlJson({ v: 1, submitted_at: submittedAt, id });
 }
 
-function decodeCursor(raw: string): { submittedAt: number; id: string } {
+export function decodeCursor(raw: string): { submittedAt: number; id: string } {
   if (raw.length < 1 || raw.length > CURSOR_MAX_LENGTH || !/^[A-Za-z0-9_-]+$/u.test(raw)) {
     return validationError();
   }
   try {
-    const value = JSON.parse(new TextDecoder().decode(decodeBase64Url(raw))) as Record<
-      string,
-      unknown
-    >;
+    const value = decodeBase64UrlJson(raw) as Record<string, unknown>;
     if (
       !value ||
       typeof value !== 'object' ||
@@ -830,19 +830,6 @@ function requireIdempotencyKey(context: Context<AppEnv>): string {
 
 function placeholders(values: readonly unknown[]): string {
   return values.map(() => '?').join(', ');
-}
-
-function encodeBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
-}
-
-function decodeBase64Url(value: string): Uint8Array {
-  const base64 =
-    value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4);
-  const binary = atob(base64);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 function requestId(context: Context<AppEnv>): string {

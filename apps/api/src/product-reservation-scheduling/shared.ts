@@ -8,6 +8,7 @@ import { addCalendarDays } from '@ygb/domain';
 import {
   scopeAllowsSellerOrganization,
 } from '../staff-assignment';
+import { decodeBase64UrlJson, encodeBase64UrlJson } from '../foundation/cursor-codec';
 
 export interface SchedulingStaffActor {
   staffId: string;
@@ -163,13 +164,9 @@ export function encodeScheduleCursor(
   kind: 'product' | 'reservation',
   cursor: ScheduleCursor,
 ): string {
-  const bytes = new TextEncoder().encode(JSON.stringify({
+  return encodeBase64UrlJson({
     v: 1, kind, at: cursor.at, id: cursor.id,
-  }));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_')
-    .replace(/=+$/u, '');
+  });
 }
 
 export function decodeScheduleCursor(
@@ -179,13 +176,7 @@ export function decodeScheduleCursor(
   if (value === undefined) return null;
   if (value.length < 1 || value.length > 1000) return validationError();
   try {
-    const base64 = value.replaceAll('-', '+').replaceAll('_', '/')
-      .padEnd(Math.ceil(value.length / 4) * 4, '=');
-    const binary = atob(base64);
-    const parsed = JSON.parse(new TextDecoder().decode(Uint8Array.from(
-      binary,
-      (character) => character.charCodeAt(0),
-    ))) as Record<string, unknown>;
+    const parsed = decodeBase64UrlJson(value) as Record<string, unknown>;
     if (parsed['v'] !== 1 || parsed['kind'] !== kind
       || !Number.isSafeInteger(parsed['at']) || Number(parsed['at']) < 0
       || typeof parsed['id'] !== 'string'

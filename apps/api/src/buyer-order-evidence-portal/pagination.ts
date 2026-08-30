@@ -1,4 +1,8 @@
 import { BuyerOrderEvidencePortalError } from './errors';
+import {
+  decodeBase64UrlBinary,
+  encodeBase64UrlBinary,
+} from '../foundation/cursor-codec';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -90,10 +94,7 @@ export function decodeOrderEvidenceCursor(
 function encodeCursor(
   value: Record<string, string | number>,
 ): string {
-  return btoa(JSON.stringify(value))
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/u, '');
+  return encodeBase64UrlBinary(JSON.stringify(value));
 }
 
 function decodeCursor(
@@ -106,11 +107,7 @@ function decodeCursor(
   }
 
   try {
-    const padding = '='.repeat((4 - (value.length % 4)) % 4);
-    const json = atob(
-      value.replaceAll('-', '+').replaceAll('_', '/') + padding,
-    );
-    const parsed: unknown = JSON.parse(json);
+    const parsed: unknown = JSON.parse(decodeBase64UrlBinary(value));
     if (!parsed
       || typeof parsed !== 'object'
       || Array.isArray(parsed)) {

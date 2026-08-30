@@ -10,6 +10,7 @@ import type {
 } from '@ygb/contracts';
 import { hashCanonicalJson, IncrementalSha256 } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
+import { decodeBase64UrlJson, encodeBase64UrlJson } from '../foundation/cursor-codec';
 import {
   acquireIdempotency,
   assertIdempotencyCompletionStatement,
@@ -1481,11 +1482,11 @@ function cleanReason(value: unknown): string {
   return normalized;
 }
 
-function encodeCursor(createdAt: number, id: string): string {
+export function encodeCursor(createdAt: number, id: string): string {
   return encodeOpaqueCursor({ at: createdAt, id });
 }
 
-function decodeCursor(raw: string): { createdAt: number; id: string } {
+export function decodeCursor(raw: string): { createdAt: number; id: string } {
   const decoded = decodeOpaqueCursor(raw);
   if (!Number.isSafeInteger(decoded['at']) || typeof decoded['id'] !== 'string') {
     throw new SellerSettlementError('VALIDATION_ERROR', 400);
@@ -1493,11 +1494,11 @@ function decodeCursor(raw: string): { createdAt: number; id: string } {
   return { createdAt: Number(decoded['at']), id: decoded['id'] as string };
 }
 
-function encodeMemberCursor(type: string, number: string, id: string): string {
+export function encodeMemberCursor(type: string, number: string, id: string): string {
   return encodeOpaqueCursor({ t: type, n: number, id });
 }
 
-function decodeMemberCursor(
+export function decodeMemberCursor(
   raw: string,
 ): { type: string; number: string; id: string } {
   const decoded = decodeOpaqueCursor(raw);
@@ -1516,18 +1517,12 @@ function decodeMemberCursor(
 }
 
 function encodeOpaqueCursor(payload: Record<string, unknown>): string {
-  const bytes = new TextEncoder().encode(JSON.stringify(payload));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
+  return encodeBase64UrlJson(payload);
 }
 
 function decodeOpaqueCursor(raw: string): Record<string, unknown> {
   try {
-    const base64 = raw.replaceAll('-', '+').replaceAll('_', '/')
-      .padEnd(Math.ceil(raw.length / 4) * 4, '=');
-    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    const parsed = decodeBase64UrlJson(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       throw new Error('bad');
     }

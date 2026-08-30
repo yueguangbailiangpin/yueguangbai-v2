@@ -22,6 +22,10 @@ import type { AppEnv } from '../app';
 import type { FileAuthorizationResource, FileAuthorizationService } from '../files/authorization';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
+  decodeBase64UrlJson,
+  encodeBase64UrlJson,
+} from '../foundation/cursor-codec';
+import {
   BuyerRefundError,
   recordBuyerRefundPayment,
   requireBuyerRefundRecordPermission,
@@ -825,20 +829,20 @@ function parseLimit(value: string): number {
   return number;
 }
 
-function encodeCursor(
+export function encodeCursor(
   reviewApprovedAt: number,
   settled: boolean,
   id: string,
 ): string {
-  return encodeBase64Url(new TextEncoder().encode(JSON.stringify({
+  return encodeBase64UrlJson({
     v: 2,
     review_approved_at: reviewApprovedAt,
     settled: settled ? 1 : 0,
     id,
-  })));
+  });
 }
 
-function decodeCursor(value: string): {
+export function decodeCursor(value: string): {
   settled: number;
   reviewApprovedAt: number;
   id: string;
@@ -846,9 +850,7 @@ function decodeCursor(value: string): {
   if (value.length < 1 || value.length > CURSOR_MAX_LENGTH
     || !/^[A-Za-z0-9_-]+$/u.test(value)) return validationError();
   try {
-    const parsed = (
-      JSON.parse(new TextDecoder().decode(decodeBase64Url(value)))
-    ) as Record<string, unknown>;
+    const parsed = decodeBase64UrlJson(value) as Record<string, unknown>;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
       || Object.keys(parsed).sort().join(',')
         !== 'id,review_approved_at,settled,v'
@@ -862,20 +864,6 @@ function decodeCursor(value: string): {
       id: requireIdentifier(parsed['id']),
     };
   } catch { return validationError(); }
-}
-
-function encodeBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_')
-    .replace(/=+$/u, '');
-}
-
-function decodeBase64Url(value: string): Uint8Array {
-  const base64 = value.replaceAll('-', '+').replaceAll('_', '/')
-    + '='.repeat((4 - value.length % 4) % 4);
-  const binary = atob(base64);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 class BuyerRefundHttpError extends Error {
