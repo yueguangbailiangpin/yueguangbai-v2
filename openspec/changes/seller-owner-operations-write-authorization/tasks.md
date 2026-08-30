@@ -46,6 +46,6 @@
   command exit codes.
 - [x] 5.2 Run `npm run typecheck`, `npm run build`, `npm test`, `npm run check`,
   current/all OpenSpec strict validation, and `git diff --check`.
-- [ ] 5.3 Inspect the final diff/import/routing scope and create one normal
+- [x] 5.3 Inspect the final diff/import/routing scope and create one normal
   non-amended local commit containing only this task's files; do not push,
   deploy, archive OpenSpec, or access remote/production resources.
