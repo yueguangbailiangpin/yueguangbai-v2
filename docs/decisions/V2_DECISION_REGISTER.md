@@ -535,6 +535,21 @@ D-019 的滚动冷归档业务语义保留，归档实现按 2026-08-25 授权�
 
 状态：Accepted by business owner instruction 2026-08-29；三批本地提交（08bb223a / f8272577 / 9684a744），未 push、未部署、不构成 Staging/Production GO。
 
+### D-058 Seller 结算读取端点级边界（阶段 7.5R 后续裁决）
+
+业务所有者 2026-08-30 确认 Seller Portal 结算读取采用以下端点级边界。本条是
+D-056“同一卖家组织全部有效成员可见结算金额与凭证”组织级语义的后续细化，保留
+D-056 历史正文，不将旧阶段的宽泛组织级表述改写为新的历史事实：
+
+- `summary`、`payables`、`payables/:id`、`payments`、`payments/:id` 五个完整结算财务端点仅允许 ACTIVE Seller `OWNER`、`FINANCE`；ACTIVE `OPERATIONS`、`VIEWER` 角色统一返回 concealed `404`，不得返回金额、付款、allocation、payable 或其他财务响应字段。
+- `batches`、`batches/:id` 两个 Seller 批次端点允许 ACTIVE Seller `OWNER`、`OPERATIONS`、`FINANCE`、`VIEWER` 读取本组织非草稿、非取消批次；四角色只读范围仅适用于专用 Seller-safe 批次 DTO，不扩大到上述五个完整财务端点。批次 DTO 不含内部利润、买家返款、内部员工 ID、内部备注或对象存储 key。
+- Buyer 在 Seller 批次列表/详情边界统一 concealed `404`；未认证、会话无效或 DISABLED Seller 成员继续 `401`；跨组织资源继续列表不出现或详情 concealed `404`。payables/payments 既有 cursor token、过滤、组织隔离、稳定排序和 malformed-token 行为不变。
+- 本条不新增 Migration，不修改 DTO 字段、财务账本、付款/分配事实、批次状态机、Seller 写端点、共享游标实现、前端视觉或预约自动审核；仅授权本地代码、测试、OpenSpec 与文档更新，不构成 Staging/Production GO。
+
+状态：Accepted by business owner instruction 2026-08-30；实现归入未归档的本地
+OpenSpec Change `seller-settlement-read-boundary`，未 push、未部署、未访问任何远程或
+生产资源。
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收

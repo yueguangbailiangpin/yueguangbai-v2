@@ -278,6 +278,16 @@
 
 - 汇率、卖家本金加点、服务费一次保存直接形成新的有效版本并即时生效；无提交/确认双人审批；历史版本不可修改；owner 与 seller_ops 拥有相同维护权限；正式订单保留不可变快照。
 
+### Seller 结算读取端点级补充（D-058，2026-08-30）
+
+上面的组织级可见性规则由 D-056 确认并保留其历史语义；在 Seller Portal
+端点级实施上，完整结算财务端点（`summary`、`payables`、`payables/:id`、
+`payments`、`payments/:id`）仅对 ACTIVE `OWNER`、`FINANCE` 开放，
+`OPERATIONS`、`VIEWER` 以 concealed `404` 处理。四类 ACTIVE Seller 成员的只读
+扩展仅适用于本组织非草稿、非取消的 Seller-safe 结算批次列表/详情 DTO；该 DTO
+不得包含内部利润、买家返款、内部员工 ID、内部备注或对象存储 key。Buyer 在 Seller
+批次边界为 concealed `404`，未认证、无效会话和 DISABLED Seller 成员继续 `401`。
+
 ### 预约永久限制
 
 - 买家在同一卖家组织获得 APPROVED 预约或形成正式订单即算参加过；跨店铺跨产品禁止再次预约；REJECTED/CANCELLED/EXPIRED 不算；检测到历史参加返回稳定错误并提示联系售前。
