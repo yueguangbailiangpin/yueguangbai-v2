@@ -18,10 +18,10 @@ const roleNames: Record<Role, string> = {
   owner: '总管理员', pre_sales: '售前', seller_ops: '卖家对接', buyer_refund: '买家返款',
 };
 const rolePermissions: Record<Role, string[]> = {
-  owner: ['PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH', 'FINANCIAL_VIEW',
-    'ORDER_VIEW', 'ORDER_CONFIRM'],
+  owner: ['STAFF_MANAGE', 'SELLER_MANAGE', 'PRODUCT_VIEW', 'PRODUCT_REVIEW',
+    'DEMAND_PUBLISH', 'FINANCIAL_VIEW', 'ORDER_VIEW', 'ORDER_CONFIRM'],
   pre_sales: ['PRODUCT_VIEW', 'ORDER_VIEW', 'ORDER_CONFIRM'],
-  seller_ops: ['PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH'],
+  seller_ops: ['SELLER_MANAGE', 'PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH'],
   buyer_refund: ['REVIEW_VIEW', 'REVIEW_APPROVE', 'BUYER_REFUND_VIEW', 'BUYER_REFUND_PAY'],
 };
 
@@ -106,38 +106,17 @@ const demandSchedule = {
   created_at: fixedNow,
 };
 
-function dashboardProfit(amount: string, valid: number, conflicts: number) {
-  return { amount_cny_fen: amount, valid_order_count: valid, conflict_order_count: conflicts };
-}
-
-function dashboardStage(code: string, label: string, count: number, conversion: number | null) {
-  return { code, label, count, conversion_rate_bps: conversion };
-}
-
 function dashboardSummary() {
-  const performance = {
-    dimension_id: 'staff-safe-id', dimension_name: '售前一组', consultation_count: null,
-    buyer_lead_count: 12, buyer_registered_count: 9, buyer_reservation_count: 7,
-    buyer_formal_order_count: 5, buyer_business_completed_count: 3,
-    buyer_no_participation_count: 2, seller_lead_count: 4, seller_cooperation_count: 2,
-    current_owner_active_lead_count: 5,
-    projected_profit: dashboardProfit('168800', 5, 1), completed_profit: dashboardProfit('88600', 3, 0),
-  };
   return {
     window: { key: 'TODAY', from_date: '2026-08-09', to_date: '2026-08-09',
       timezone: 'Asia/Shanghai', data_as_of: fixedNow },
-    cards: { new_buyers: 9, reservations: 7, formal_orders: 5, business_completions: 3 },
-    buyer_funnel: { stages: [dashboardStage('CONSULTATION', '咨询', 20, null),
-      dashboardStage('WECHAT_ADDED', '加微信', 12, 6000), dashboardStage('REGISTERED', '注册', 9, 7500),
-      dashboardStage('RESERVATION_SUBMITTED', '预约', 7, 7778),
-      dashboardStage('FORMAL_ORDER', '正式订单', 5, 7143),
-      dashboardStage('BUSINESS_COMPLETED', '业务完成', 3, 6000)], no_participation_count: 2 },
-    seller_funnel: { stages: [dashboardStage('CONSULTATION', '咨询', 8, null),
-      dashboardStage('WECHAT_ADDED', '加微信', 4, 5000), dashboardStage('COOPERATION', '确认合作', 2, 5000)] },
-    projected_profit: dashboardProfit('168800', 5, 1), completed_profit: dashboardProfit('88600', 3, 0),
-    staff_performance: [performance], channel_performance: [{ ...performance,
-      dimension_id: 'channel-safe-id', dimension_name: '小红书一号', consultation_count: 20,
-      current_owner_active_lead_count: null }],
+    cards: { new_customers_buyer: 9, new_customers_seller: 4, reservations: 7, formal_orders: 5 },
+    pending: { buyer_refunds: 2, seller_settlements: 1 },
+    overdue: { open_work_items: 1, finance_exceptions: 1 },
+    owner_summary: {
+      projected_profit: { amount_cny_fen: '168800', valid_order_count: 5, conflict_order_count: 1 },
+      completed_profit: { amount_cny_fen: '88600', valid_order_count: 3, conflict_order_count: 0 },
+    },
   };
 }
 
@@ -160,6 +139,37 @@ async function installStaffFixture(page: Page, role: Role = 'owner'): Promise<vo
     if (path === '/api/staff/me/work-items') return json(route, success({ work_items: [workItem], next_cursor: null }));
     if (path === '/api/staff/me/work-items/work-visual') return json(route, success({ work_item: workItem }));
     if (path === '/api/staff/order-evidence/evidence-visual') return json(route, success({ order_evidence: orderEvidence }));
+    if (path === '/api/staff/order-evidence/evidence-visual/preflight') return json(route, success({
+      preflight: {
+        submission_id: 'evidence-visual', amazon_order_date: '2026-08-09', ready: true,
+        checks: [
+          { code: 'ORDER_DAY_BASE_RATE', status: 'READY', message: '订单日基础汇率已确认',
+            action_path: '/staff/finance', required_access: 'FINANCIAL_VIEW' },
+          { code: 'SELLER_PRINCIPAL_MARKUP', status: 'READY', message: '卖家本金加价规则已确认',
+            action_path: '/staff/finance', required_access: 'FINANCIAL_VIEW' },
+          { code: 'SELLER_SERVICE_FEE', status: 'READY', message: '卖家服务费规则已确认',
+            action_path: '/staff/finance', required_access: 'FINANCIAL_VIEW' },
+        ],
+      },
+    }));
+    if (request.method() === 'POST' && /^\/api\/staff\/files\/[^/]+\/read-intents$/u.test(path)) {
+      const fileObjectId = path.split('/').at(-2) ?? 'visual-file';
+      return json(route, success({
+        read_intent_id: `read-${fileObjectId}`, file_object_id: fileObjectId,
+        access_token: 't'.repeat(40), access_token_available: true,
+        expires_at: fixedNow + 60_000, replayed: false,
+      }));
+    }
+    if (request.method() === 'GET' && /^\/api\/staff\/file-read-intents\/[^/]+\/content$/u.test(path)) {
+      const image = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      );
+      return route.fulfill({ status: 200, headers: {
+        'Content-Type': 'image/png', 'Content-Length': String(image.byteLength),
+        'Cache-Control': 'private, max-age=60', 'X-Content-Type-Options': 'nosniff',
+      }, body: image });
+    }
     if (path === '/api/staff/catalog/products') return json(route, success({ page: {
       items: [product], next_cursor: null, data_as_of: fixedNow,
     } }));
@@ -248,6 +258,15 @@ const surfaces = [
   ['dashboard', '/staff/admin-business-dashboard', '客户与订单'],
 ] as const;
 
+async function expectSurfaceMarker(page: Page, name: (typeof surfaces)[number][0], text: string) {
+  const marker = name === 'workbench'
+    ? page.getByRole('heading', { name: '订单资料', level: 3 })
+    : name === 'reservation-schedule'
+      ? page.getByRole('table', { name: '预约排名与预计下单日期' })
+      : page.getByRole('heading', { name: text, exact: true }).first();
+  await expect(marker).toBeVisible();
+}
+
 test('Staff visual refresh captures the deterministic responsive matrix', async ({ page }) => {
   test.setTimeout(120_000);
   await installStaffFixture(page);
@@ -259,7 +278,7 @@ test('Staff visual refresh captures the deterministic responsive matrix', async 
     await capture(page, `staff-login-${viewport.width}x${viewport.height}.png`);
     for (const [name, path, text] of surfaces) {
       await page.goto(path);
-      await expect(page.getByText(text, { exact: true }).first()).toBeVisible();
+      await expectSurfaceMarker(page, name, text);
       await verifyAfterOverflow(page);
       await capture(page, `staff-${name}-${viewport.width}x${viewport.height}.png`);
     }
@@ -269,7 +288,7 @@ test('Staff visual refresh captures the deterministic responsive matrix', async 
     for (const [name, path, text] of surfaces.filter(([name]) =>
       ['workbench', 'reservation-schedule', 'dashboard'].includes(name))) {
       await page.goto(path);
-      await expect(page.getByText(text, { exact: true }).first()).toBeVisible();
+      await expectSurfaceMarker(page, name, text);
       await verifyAfterOverflow(page);
       await capture(page, `staff-${name}-${viewport.width}x${viewport.height}.png`);
     }
@@ -277,21 +296,22 @@ test('Staff visual refresh captures the deterministic responsive matrix', async 
 });
 
 test('Staff navigation follows all four canonical role projections', async ({ browser }) => {
-  // D-056 四角色（acquisition 退役）；upcoming 导航项渲染为 span 非 link，不在断言内。
+  // D-056 四角色（acquisition 退役）；当前导航名称以 Staff 权威导航表为准。
   const expected: Record<Role, string[]> = {
-    owner: ['工作台', '买家', '卖家', '产品与预约', '买家返款', '财务', '员工与权限', '经营看板'],
-    pre_sales: ['工作台', '买家', '产品与预约'],
-    seller_ops: ['工作台', '卖家', '产品与预约'],
-    buyer_refund: ['工作台', '买家返款'],
+    owner: ['工作台', '买家客户', '卖家客户', '产品与预约', '订单', '买家返款', '财务', '员工与权限', '经营看板', '客服渠道'],
+    pre_sales: ['工作台', '买家客户', '产品与预约', '订单'],
+    seller_ops: ['工作台', '卖家客户', '产品与预约', '订单', '财务'],
+    buyer_refund: ['工作台', '订单', '买家返款'],
   };
+  const allLabels = [...new Set(Object.values(expected).flat())];
   for (const role of Object.keys(expected) as Role[]) {
     const context = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' });
     const page = await context.newPage();
     await installStaffFixture(page, role);
     await page.goto('/staff');
-    await expect(page.getByText(roleNames[role], { exact: true }).first()).toBeVisible();
+    await expect(page.locator('.sa-sidebar__meta')).toContainText(roleNames[role]);
     const navigation = page.getByRole('navigation', { name: '员工工作台主导航' });
-    for (const label of ['工作台', '买家', '卖家', '产品与预约', '买家返款', '财务', '员工与权限', '经营看板']) {
+    for (const label of allLabels) {
       const link = navigation.getByRole('link', { name: label, exact: true });
       if (expected[role].includes(label)) await expect(link).toBeVisible();
       else await expect(link).toHaveCount(0);

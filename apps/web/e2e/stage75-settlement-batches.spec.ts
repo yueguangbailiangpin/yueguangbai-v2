@@ -58,7 +58,8 @@ const BATCH = {
 
 async function mockStaffApis(page: Page): Promise<void> {
   await page.route('**/api/**', async (route: Route) => {
-    const path = new URL(route.request().url()).pathname;
+    const url = new URL(route.request().url());
+    const path = url.pathname;
     if (path.endsWith('/staff-auth/session')) {
       await route.fulfill(ok({ session: staffSession() }));
       return;
@@ -67,7 +68,7 @@ async function mockStaffApis(page: Page): Promise<void> {
       await route.fulfill(ok({ session: staffSession(), access_email: 'b@example.test' }));
       return;
     }
-    if (path.endsWith('/api/staff/me/work-items/summary')) {
+    if (path === '/api/staff/me/work-items/summary') {
       await route.fulfill(ok({
         summary: {
           open_count: 1, due_today_count: 0, overdue_count: 0,
@@ -76,7 +77,7 @@ async function mockStaffApis(page: Page): Promise<void> {
       }));
       return;
     }
-    if (path.endsWith('/api/staff/me/work-items/work-settle-75b')) {
+    if (path === '/api/staff/me/work-items/work-settle-75b') {
       await route.fulfill(ok({
         work_item: {
           work_item_id: 'work-settle-75b',
@@ -106,7 +107,7 @@ async function mockStaffApis(page: Page): Promise<void> {
       }));
       return;
     }
-    if (path.endsWith('/api/staff/me/work-items')) {
+    if (path === '/api/staff/me/work-items') {
       await route.fulfill(ok({
         work_items: [{
           work_item_id: 'work-settle-75b',
@@ -134,6 +135,139 @@ async function mockStaffApis(page: Page): Promise<void> {
           priority: 'NORMAL',
         }],
         next_cursor: null,
+      }));
+      return;
+    }
+    if (path === '/api/staff/product-applications/pa-75b/review-context') {
+      await route.fulfill(ok({
+        review_context: {
+          application_id: 'pa-75b',
+          store: { id: 'store-75b', display_name: '批次卖家日本店' },
+          marketplace_code: 'AMAZON_JP',
+          asin: 'B0BATCH75B',
+          product_name: '批次结算演示产品',
+          search_keywords: ['结算', '演示'],
+          product_url: 'https://example.invalid/batch-product',
+          buyer_visible_notes: '演示产品说明',
+          seller_notes: '演示卖家备注',
+          ordering_guide_expected_amount_jpy: '3980',
+          status: 'SUBMITTED',
+          version: 1,
+          submitted_at: 1_787_800_000_000,
+          images: [],
+        },
+      }));
+      return;
+    }
+    if (path === '/api/staff/rate-center') {
+      const businessDate = url.searchParams.get('business_date') ?? '2026-08-31';
+      const activeRate = {
+        rate_version_id: 'stage75b-rate-1',
+        business_date: businessDate,
+        version_no: 1,
+        rate_value: '4600000',
+        rate_scale: '100000000',
+        created_by_staff_id: 'stage75b-owner',
+        created_at: 1_787_800_000_000,
+      };
+      const policy = {
+        policy_version_id: 'stage75b-policy-1',
+        scope_type: 'CURRENCY_PAIR_DEFAULT',
+        seller_organization_id: null,
+        source_currency_code: 'JPY',
+        quote_currency_code: 'CNY',
+        version_no: 1,
+        markup_rate_value: '1500000',
+        markup_rate_scale: '100000000',
+        effective_from: 1_787_800_000_000,
+        created_by_staff_id: 'stage75b-owner',
+        created_at: 1_787_800_000_000,
+        replayed: false,
+      };
+      await route.fulfill(ok({
+        business_date: businessDate,
+        source_currency_code: 'JPY',
+        quote_currency_code: 'CNY',
+        base_rate: {
+          business_date: businessDate,
+          versions: [activeRate],
+          active_version: activeRate,
+          next_version: 2,
+        },
+        seller_organizations: [{
+          seller_organization_id: 'org-75b',
+          seller_organization_name: '批次卖家',
+          marketplace_code: 'AMAZON_JP',
+        }],
+        policies: {
+          source_currency_code: 'JPY',
+          quote_currency_code: 'CNY',
+          seller_organization_id: url.searchParams.get('seller_organization_id'),
+          default_policy: policy,
+          seller_override_policy: null,
+          default_next_version: 2,
+          seller_override_next_version: url.searchParams.has('seller_organization_id') ? 1 : null,
+          selected_policy: policy,
+        },
+      }));
+      return;
+    }
+    if (path === '/api/staff/seller-principal-rate-policies') {
+      const sellerOrganizationId = url.searchParams.get('seller_organization_id');
+      await route.fulfill(ok({
+        policies: {
+          source_currency_code: 'JPY',
+          quote_currency_code: 'CNY',
+          seller_organization_id: sellerOrganizationId,
+          default_policy: {
+            policy_version_id: 'stage75b-policy-1',
+            scope_type: 'CURRENCY_PAIR_DEFAULT',
+            seller_organization_id: null,
+            source_currency_code: 'JPY',
+            quote_currency_code: 'CNY',
+            version_no: 1,
+            markup_rate_value: '1500000',
+            markup_rate_scale: '100000000',
+            effective_from: 1_787_800_000_000,
+            created_by_staff_id: 'stage75b-owner',
+            created_at: 1_787_800_000_000,
+            replayed: false,
+          },
+          seller_override_policy: null,
+          default_next_version: 2,
+          seller_override_next_version: sellerOrganizationId === null ? null : 1,
+          selected_policy: {
+            policy_version_id: 'stage75b-policy-1',
+            scope_type: 'CURRENCY_PAIR_DEFAULT',
+            seller_organization_id: null,
+            source_currency_code: 'JPY',
+            quote_currency_code: 'CNY',
+            version_no: 1,
+            markup_rate_value: '1500000',
+            markup_rate_scale: '100000000',
+            effective_from: 1_787_800_000_000,
+            created_by_staff_id: 'stage75b-owner',
+            created_at: 1_787_800_000_000,
+            replayed: false,
+          },
+        },
+      }));
+      return;
+    }
+    if (path === '/api/staff/seller-service-fees') {
+      await route.fulfill(ok({
+        seller_organization_id: url.searchParams.get('seller_organization_id') ?? 'org-75b',
+        fees: ['RATING', 'TEXT', 'IMAGE', 'VIDEO'].map((reviewType, index) => ({
+          review_type: reviewType,
+          effective_fee: {
+            rule_version_id: `stage75b-fee-${reviewType.toLowerCase()}`,
+            version_no: 1,
+            fee_cny_fen: String(1250 + index * 100),
+            effective_from: 1_787_800_000_000,
+            created_at: 1_787_800_000_000,
+          },
+          next_version: 2,
+        })),
       }));
       return;
     }
@@ -177,16 +311,36 @@ async function mockStaffApis(page: Page): Promise<void> {
       return;
     }
     if (path === '/api/staff/seller-settlements/org-75b/payables') {
-      await route.fulfill(ok({
-        items: [{
-          payable_id: 'payable-75b',
-          amazon_order_number: '123-7654321-0000075',
-          payable_type: 'SELLER_PRINCIPAL',
-          outstanding_amount_cny_fen: '11880',
-          status: 'UNPAID',
-        }],
-        next_cursor: null,
-      }));
+      if (url.searchParams.get('limit') === '100') {
+        await route.fulfill(ok({
+          items: [{
+            payable_id: 'payable-75b',
+            amazon_order_number: '123-7654321-0000075',
+            payable_type: 'SELLER_PRINCIPAL',
+            outstanding_amount_cny_fen: '11880',
+            status: 'UNPAID',
+          }],
+          next_cursor: null,
+        }));
+      } else {
+        await route.fulfill(ok({
+          items: [{
+            payable_id: 'payable-75b',
+            formal_order_id: 'order-75b',
+            amazon_order_number: '123-7654321-0000075',
+            store: { id: 'store-75b', display_name: '批次卖家日本店' },
+            product: { id: 'product-75b', asin: 'B0BATCH75B', name: '批次结算演示产品' },
+            payable_type: 'SELLER_PRINCIPAL',
+            due_amount_cny_fen: '11880',
+            paid_amount_cny_fen: '0',
+            outstanding_amount_cny_fen: '11880',
+            status: 'UNPAID',
+            due_at: 1_788_000_000_000,
+            created_at: 1_787_800_000_000,
+          }],
+          page: { limit: 25, next_cursor: null },
+        }));
+      }
       return;
     }
     if (path === '/api/staff/seller-settlements/org-75b/summary') {
@@ -203,7 +357,7 @@ async function mockStaffApis(page: Page): Promise<void> {
       return;
     }
     if (path === '/api/staff/seller-settlements/org-75b/payments') {
-      await route.fulfill(ok({ items: [], next_cursor: null }));
+      await route.fulfill(ok({ items: [], page: { limit: 25, next_cursor: null } }));
       return;
     }
     if (path.endsWith('/api/staff/search')) {
@@ -329,6 +483,12 @@ test('阶段 7.5 第三批截图（1440 / 390）', async ({ page }) => {
   await page.goto('/staff');
   await page.getByRole('button', { name: '去处理' }).first().click();
   await expect(page.getByRole('heading', { name: '结算批次' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '产品申请审核' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '卖家结算' })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('body')).not.toContainText(
+    /正在读取|正在加载|读取失败|加载失败|当前面板加载失败|暂时不可用|MALFORMED_RESPONSE/u,
+  );
   for (const [width, height, name] of [
     [1440, 900, 'staff-settlement-batches-1440x900'],
     [1280, 900, 'staff-settlement-batches-1280x900'],

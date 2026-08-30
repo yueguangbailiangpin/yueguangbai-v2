@@ -1095,6 +1095,13 @@
   min-width: 34px;
 }
 
+/* Dashboard window controls are primary staff controls, so keep the shared
+   touch-target contract when the frozen dashboard uses the staff shell. */
+.staff-app .frozen-admin-dashboard .dashboard-window-switch .button {
+  height: 44px;
+  min-height: 44px;
+}
+
 .staff-app .sp-order-mobile-list {
   gap: 10px;
 }

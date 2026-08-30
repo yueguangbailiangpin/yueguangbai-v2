@@ -181,6 +181,7 @@ const homeMembersSchema = z
           member_id: z.string(),
           display_name: z.string(),
           role: z.enum(['OWNER', 'OPERATIONS', 'FINANCE', 'VIEWER']),
+          wechat_id: z.string().nullable(),
           primary_owner: z.boolean(),
           status: z.string(),
           member_number: z.number().int(),

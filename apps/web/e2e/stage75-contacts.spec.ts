@@ -165,7 +165,7 @@ async function mockApis(page: Page, portal: Portal): Promise<void> {
       }));
       return;
     }
-    if (path.endsWith('/api/staff/me/work-items/summary')) {
+    if (path === '/api/staff/me/work-items/summary') {
       await route.fulfill(ok({
         summary: {
           open_count: 0, due_today_count: 0, overdue_count: 0,
@@ -174,7 +174,7 @@ async function mockApis(page: Page, portal: Portal): Promise<void> {
       }));
       return;
     }
-    if (path.endsWith('/api/staff/me/work-items')) {
+    if (path === '/api/staff/me/work-items') {
       await route.fulfill(ok({ work_items: [], next_cursor: null }));
       return;
     }
@@ -384,7 +384,16 @@ test('阶段 7.5 第二批截图（1440 / 390）', async ({ page }) => {
     await page.setViewportSize({ width, height });
     await loginAs(page, portal);
     await page.goto(path);
-    await page.waitForTimeout(0);
+    if (portal === 'staff-owner') {
+      await expect(page.getByRole('heading', { name: '客服渠道' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: '售前客服（预约、订单资料阶段）' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: '售后客服（评论、返款、正式售后阶段）' })).toBeVisible();
+      await expect(page.getByRole('status')).toHaveCount(0);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(page.locator('body')).not.toContainText(
+        /正在加载|正在读取|加载失败|暂时加载不了|服务暂时不可用|MALFORMED_RESPONSE/u,
+      );
+    }
     await noHorizontalOverflow(page);
     await page.screenshot({ path: join(directory, `${name}.png`), fullPage: true });
   }

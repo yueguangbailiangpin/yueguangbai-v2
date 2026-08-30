@@ -2207,6 +2207,59 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         { code: 'AMAZON_US', display_name: '亚马逊美国站', status: 'ACTIVE' },
       ],
     };
+  if (path === '/api/staff/access-management/seller-organization-assignments' && method === 'GET')
+    return {
+      seller_organizations: [
+        {
+          seller_organization_id: 'review-seller-org',
+          seller_organization_name: '月光白 Demo 卖家组织',
+          marketplace_code: 'AMAZON_JP',
+          manager: {
+            assignment_id: 'review-assignment-seller-org',
+            staff_id: 'review-employee-seller_ops',
+            staff_display_name: 'Demo 卖家对接',
+            version: 1,
+          },
+        },
+      ],
+    };
+  if (path === '/api/staff/access-management/buyer-assignments' && method === 'GET')
+    return {
+      buyers: [
+        {
+          buyer_customer_id: 'review-buyer-customer-1',
+          buyer_display_name: '张三丰（演示）',
+          marketplace_code: 'AMAZON_JP',
+          pre_sales_owner: {
+            assignment_id: 'review-assignment-buyer-pre-sales',
+            staff_id: 'review-employee-pre_sales',
+            staff_display_name: 'Demo 售前',
+            version: 1,
+          },
+          refund_owner: {
+            assignment_id: 'review-assignment-buyer-refund',
+            staff_id: 'review-employee-buyer_refund',
+            staff_display_name: 'Demo 买家返款',
+            version: 1,
+          },
+        },
+      ],
+    };
+  if (path === '/api/staff/access-management/personal-denies' && method === 'GET')
+    return {
+      denies: [
+        {
+          staff_id: 'review-employee-pre_sales',
+          staff_display_name: 'Demo 售前',
+          permission_code: 'ORDER_CONFIRM',
+          status: 'ACTIVE',
+          reason: '演示期间临时收窄权限',
+          assigned_by_staff_id: 'review-employee-owner',
+          assigned_at: NOW - DAY,
+          revoked_at: null,
+        },
+      ],
+    };
   if (path.startsWith('/api/staff/access-management/employees') && method === 'POST')
     return { employee: clone(staffEmployees[1]), replayed: false };
   if (/^\/api\/staff\/access-management\/employees\/[^/]+\/status$/u.test(path) && method === 'POST')
