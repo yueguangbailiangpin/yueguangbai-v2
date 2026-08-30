@@ -40,6 +40,7 @@ const CI_NODE_COMMANDS=new Set([
   'scripts/verify-web-source-boundaries.mjs',
   'scripts/verify-web-static-build.mjs',
   'scripts/verify-css-duplicates.mjs',
+  'scripts/verify-css-ownership.mjs',
 ]);
 const CI_NODE_TEST_COMMANDS=new Set([
   'scripts/verify-dependency-lifecycle.node-test.mjs',

@@ -174,7 +174,7 @@
   --font-weight-bold: 700;
 
   /* ---- 焦点环 ---- */
-  /* global.css 的 :focus-visible 依赖 --color-focus；阶段 7 tokens 重写时误删导致
+  /* portal-compat.css 的 :focus-visible 依赖 --color-focus；阶段 7 tokens 重写时误删导致
      全部焦点环失效（无障碍回归），此处恢复为 Material 3 主色。 */
   --color-focus: var(--color-primary);
   --focus-ring-width: 2px;

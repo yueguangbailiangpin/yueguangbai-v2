@@ -1,7 +1,7 @@
 /* ============================================================
    买家端 App Shell V2（阶段 7B · Google Workspace / Material 3）
    视觉权威：moonwhite-buyer-seller-portals.html（buyer 视图）
-   在 tokens.css / global.css / design-freeze.css / staff-shell-v2.css
+   在 tokens.css / portal-compat.css
    之后加载。结构：64px 顶栏（月亮品牌 + 月光白 + 买家中心 + 头像）
    + 230px 胶囊导航侧栏（42px 项 / radius 21px / 选中 #d3e3fd）
    + 内容区；<1024px 侧栏隐藏，汉堡按钮 + 308px 导航抽屉

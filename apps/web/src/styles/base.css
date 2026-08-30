@@ -1,9 +1,9 @@
 /* ============================================================
    月光白 V2 · base.css（7F-1 新样式层：reset + 元素默认）
    作用域：.staff-app 之下只服务新员工端；买家/卖家 legacy 页面
-   不受影响（它们的 reset/base 仍在 global.css，属 legacy 隔离层）。
-   加载顺序见 main.tsx：tokens → legacy → 本文件 → primitives
-   → staff-shell → staff-pages；员工端权威层晚于 legacy 且严格作用域化。
+   不受影响（它们的 reset/base 仍在 portal-compat.css 兼容层）。
+   加载顺序见 main.tsx：tokens → portal-compat → 本文件 → primitives
+   → staff-shell → staff-pages；员工端权威层晚于兼容层且严格作用域化。
    ============================================================ */
 
 .staff-app {

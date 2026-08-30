@@ -1426,7 +1426,38 @@
 }
 
 .staff-app .sp-order-detail-aside .staff-ref-section dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   margin: 0;
+}
+
+/* Stage 7F-4：订单凭证与参考面板的基础布局归属页面层；保留旧消费者，
+   仅迁移未被现行订单详情精修规则覆盖的声明。 */
+.staff-app .sp-order-detail-main .staff-order-evidence-grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.staff-app .sp-order-detail-aside .staff-ref-section dt,
+.staff-app .sp-order-detail-aside .staff-ref-section dd {
+  min-width: 0;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.staff-app .sp-order-detail-aside .staff-ref-section dt {
+  color: var(--color-text-muted);
+}
+
+.staff-app .sp-order-detail-aside .staff-ref-section dd {
+  margin: 0;
+  text-align: right;
+  font-weight: var(--font-weight-medium);
+}
+
+.staff-app .staff-ref-danger {
+  color: var(--color-danger);
 }
 
 /* 财务：摘要 + 应付/付款 + 结算批次，不引入图表或利润推导。 */
