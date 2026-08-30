@@ -40,6 +40,6 @@
 - [x] 5.1 Run current Change strict validation and `openspec validate --all --strict`.
 - [x] 5.2 Re-run CSS/source/static boundary guards, Material Symbols/local-asset/no-Lucene/no-
   retired-entry guards, and existing API-contract/source-boundary/static-build guards.
-- [ ] 5.3 Inspect final `git diff --stat`, `git status --short --branch`, branch/HEAD, and
+- [x] 5.3 Inspect final `git diff --stat`, `git status --short --branch`, branch/HEAD, and
   commit scope; create one normal local commit containing only this Change and its CSS/
   guard/test evidence. Do not push, deploy, or archive the Change.
