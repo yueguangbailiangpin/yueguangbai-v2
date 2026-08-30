@@ -45,6 +45,7 @@ import {
   staffSellerServiceFeesSchema,
   staffSellerServiceFeeMutationSchema,
   reservationReopenSchema,
+  staffAssignmentsSchema,
 } from '../contracts/runtime';
 
 const orderMutationSchema = z.union([
@@ -150,6 +151,8 @@ function write<T extends z.ZodType>(
 }
 
 export const staffApi = Object.freeze({
+  assignments: (client: QueryClient, signal?: AbortSignal) =>
+    read(client, '/api/staff/me/assignments', staffAssignmentsSchema, signal),
   accessManagement: (client: QueryClient, signal?: AbortSignal) =>
     read(client, '/api/staff/access-management', staffAccessOverviewSchema, signal),
   changeStaffAccessStatus: (client: QueryClient, staffId: string, body: unknown, key: string) =>

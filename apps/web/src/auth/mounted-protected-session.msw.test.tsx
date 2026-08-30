@@ -9,8 +9,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Route, Routes, useLocation } from 'react-router';
 import '../test/msw/lifecycle';
 import { FrontendApiError, isFrontendApiError } from '../api/errors';
-import { protectedResourcesApi } from '../api/protected-resources';
 import { queryKeys } from '../api/query-client';
+import { buyerApi } from '../buyer/api/client';
+import { sellerApi } from '../seller/api/client';
+import { staffApi } from '../staff/api/client';
 import { getSessionInvalidationSnapshot, type SessionInvalidationIdentity } from './session-invalidation';
 import { RequestIdDisplay } from '../ui/primitives';
 import {
@@ -72,9 +74,9 @@ function expectStaffClearedCustomerPreserved(client: QueryClient): void {
 }
 
 function readProtected(identity: MountedIdentity, client: QueryClient): Promise<unknown> {
-  if (identity === 'buyer') return protectedResourcesApi.readBuyerMe(client);
-  if (identity === 'seller') return protectedResourcesApi.readSellerMe(client);
-  return protectedResourcesApi.readStaffAssignments(client);
+  if (identity === 'buyer') return buyerApi.me(client);
+  if (identity === 'seller') return sellerApi.me(client);
+  return staffApi.assignments(client);
 }
 
 function installSuccessfulSession(identity: MountedIdentity, requestCounter?: { current: number }): void {

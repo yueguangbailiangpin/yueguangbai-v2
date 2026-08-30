@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-30
+skip_specs: true
+goal: 清理安全死代码候选并记录逐项引用证据、保护边界与本地验证结果；不改变产品行为、API 合约或数据库语义。

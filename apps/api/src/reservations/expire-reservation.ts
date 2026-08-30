@@ -101,7 +101,7 @@ export async function expireReservation(
       database,
       reservationId,
     );
-    if (Number(source.version) !== Number(input.expectedVersion)) { console.error("VER:", typeof source.version, source.version, typeof input.expectedVersion, input.expectedVersion);
+    if (Number(source.version) !== Number(input.expectedVersion)) {
       throw new ReservationError(
         'VERSION_CONFLICT',
         409,

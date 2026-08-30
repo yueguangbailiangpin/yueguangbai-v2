@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StaffAssignmentDto } from '@ygb/contracts';
 
 export const epoch = z.number().int().nonnegative();
 // Backend returns the Marketplace-configured business timezone
@@ -19,6 +20,28 @@ export const workTypeSchema = z.enum([
   'BUYER_REFUND_PROCESSING',
 ]);
 export const workStatusSchema = z.enum(['OPEN', 'COMPLETED', 'CANCELLED']);
+const staffAssignmentSchema = z
+  .object({
+    assignment_id: z.string(),
+    subject_type: z.enum(['BUYER_CUSTOMER', 'SELLER_ORGANIZATION']),
+    subject_id: z.string(),
+    duty_code: z.enum([
+      'SELLER_ACCOUNT_MANAGER',
+      'BUYER_PRE_SALES_OWNER',
+      'BUYER_REFUND_OWNER',
+    ]),
+    staff_id: z.string(),
+    status: z.enum(['ACTIVE', 'REVOKED']),
+    source: z.enum(['AUTO_INITIAL', 'MANUAL_REASSIGN']),
+    reason: z.string().nullable(),
+    version: z.number().int(),
+    created_at: z.number().int(),
+    revoked_at: z.number().int().nullable(),
+  })
+  .strict() satisfies z.ZodType<StaffAssignmentDto>;
+export const staffAssignmentsSchema = z
+  .object({ assignments: z.array(staffAssignmentSchema) })
+  .strict();
 const sellerPrincipalRatePolicyScopeSchema = z.enum([
   'CURRENCY_PAIR_DEFAULT',
   'SELLER_ORGANIZATION',

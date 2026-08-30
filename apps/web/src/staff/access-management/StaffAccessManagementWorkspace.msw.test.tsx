@@ -10,7 +10,7 @@ import type { StaffAuthApiAdapter, StaffSession } from '../../auth/staff/staff-a
 import { apiUrl } from '../../test/msw/handlers';
 import { renderWithMsw } from '../../test/msw/render';
 import { server } from '../../test/msw/server';
-import { StaffAccessManagementWorkspace } from './StaffAccessManagementWorkspace';
+import { StaffAccountsWorkspace } from './StaffAccountsWorkspace';
 
 afterEach(cleanup);
 
@@ -47,7 +47,7 @@ describe('员工账号管理工作台', () => {
     const user = userEvent.setup();
     renderWithMsw(
       <StaffSessionBoundary adapter={adapter(owner())}>
-        <StaffAccessManagementWorkspace />
+        <StaffAccountsWorkspace />
       </StaffSessionBoundary>,
       { route: '/staff/access-management' },
     );
@@ -80,7 +80,7 @@ describe('员工账号管理工作台', () => {
     );
     renderWithMsw(
       <StaffSessionBoundary adapter={adapter(preSales())}>
-        <StaffAccessManagementWorkspace />
+        <StaffAccountsWorkspace />
       </StaffSessionBoundary>,
       { route: '/staff/access-management' },
     );

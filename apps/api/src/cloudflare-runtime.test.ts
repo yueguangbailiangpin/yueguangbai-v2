@@ -5,6 +5,7 @@ import { hashCanonicalJson, operationalAlertDescriptorFromRuntime } from '@ygb/d
 import worker from './worker';
 import {
   isAllowedSameOriginApiRequest,
+  isApiRequestPath,
   resolveCloudflareRuntime,
   type CloudflareWorkerBindings,
 } from './cloudflare-runtime';
@@ -20,6 +21,12 @@ const alertDescriptor = operationalAlertDescriptorFromRuntime({
 const alertFingerprint = await hashCanonicalJson(alertDescriptor);
 
 describe('production Cloudflare Worker runtime', () => {
+  it('does not classify retired MCP paths as API requests', () => {
+    expect(isApiRequestPath('/mcp')).toBe(false);
+    expect(isApiRequestPath('/.well-known/oauth-protected-resource/mcp')).toBe(false);
+    expect(isApiRequestPath('/api/staff/me/assignments')).toBe(true);
+  });
+
   it('routes API to Hono and serves SPA content with security headers', async () => {
     const health = await fetchWorker('/health');
     expect(health.status).toBe(200);

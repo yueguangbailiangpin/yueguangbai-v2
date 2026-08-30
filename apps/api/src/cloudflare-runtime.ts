@@ -94,9 +94,7 @@ export function isApiRequestPath(pathname: string): boolean {
   return pathname === '/health'
     || pathname === '/ready'
     || pathname === '/api'
-    || pathname.startsWith('/api/')
-    || pathname === '/mcp'
-    || pathname === '/.well-known/oauth-protected-resource/mcp';
+    || pathname.startsWith('/api/');
 }
 
 export function isAllowedSameOriginApiRequest(
