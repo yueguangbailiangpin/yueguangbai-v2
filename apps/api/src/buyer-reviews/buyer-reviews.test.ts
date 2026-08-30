@@ -161,7 +161,7 @@ describe('Phase 4B4 buyer review API read projection', () => {
   });
 
   it('traverses eligible orders across two stable pages', async () => {
-    const rows = [
+    const rows: Record<string, unknown>[] = [
       {
         formal_order_id: 'formal-3',
         marketplace_code: 'AMAZON_JP',
@@ -205,7 +205,9 @@ describe('Phase 4B4 buyer review API read projection', () => {
         review_version: 2,
       },
     ];
-    const database = fakeDatabase({ all: [[rows[0], rows[1], rows[2]], [rows[2]]] });
+    const database = fakeDatabase({
+      all: [[rows[0]!, rows[1]!, rows[2]!], [rows[2]!]],
+    });
 
     const first = await listBuyerReviewEligibleOrders(database, buyer, {
       limit: 2,

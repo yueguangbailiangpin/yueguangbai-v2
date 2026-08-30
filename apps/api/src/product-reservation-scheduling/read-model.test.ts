@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { SqlDatabase } from '@ygb/contracts';
+import type {
+  SqlDatabase,
+  StaffPermissionCode,
+  StaffRoleCode,
+} from '@ygb/contracts';
+import type { SchedulingStaffActor } from './shared';
 import { listStaffProducts, readStaffReservationSchedule } from './read-model';
 
-const ACTOR = {
+const ACTOR: SchedulingStaffActor = {
   staffId: 'staff-owner',
   displayName: 'Owner',
-  roles: ['owner'],
-  permissions: new Set(['PRODUCT_VIEW']),
+  roles: ['owner' as StaffRoleCode],
+  permissions: new Set<StaffPermissionCode>(['PRODUCT_VIEW']),
   dataScope: {
     type: 'GLOBAL',
     buyerCustomerIds: [],
@@ -18,13 +23,13 @@ const ACTOR = {
 
 describe('staff scheduling cursor pagination', () => {
   it('traverses product pages without gaps and preserves the descending tie-breaker', async () => {
-    const productRows = [
+    const productRows: Record<string, unknown>[] = [
       productRow('product-3', 3000),
       productRow('product-2', 3000),
       productRow('product-1', 2000),
     ];
     const database = fakeDatabase({
-      all: [[productRows[0], productRows[1], productRows[2]], [productRows[2]]],
+      all: [[productRows[0]!, productRows[1]!, productRows[2]!], [productRows[2]!]],
     });
 
     const first = await listStaffProducts(database, ACTOR, { limit: 2 });
@@ -42,14 +47,14 @@ describe('staff scheduling cursor pagination', () => {
   });
 
   it('traverses reservation pages without gaps and preserves the ascending tie-breaker', async () => {
-    const reservationRows = [
+    const reservationRows: Record<string, unknown>[] = [
       reservationRow('reservation-2', 1000),
       reservationRow('reservation-3', 1000),
       reservationRow('reservation-1', 2000),
     ];
     const database = fakeDatabase({
       first: [demandHeader(), demandHeader()],
-      all: [[reservationRows[0], reservationRows[1], reservationRows[2]], [reservationRows[2]]],
+      all: [[reservationRows[0]!, reservationRows[1]!, reservationRows[2]!], [reservationRows[2]!]],
     });
 
     const first = await readStaffReservationSchedule(database, ACTOR, 'demand-1', { limit: 2 });
