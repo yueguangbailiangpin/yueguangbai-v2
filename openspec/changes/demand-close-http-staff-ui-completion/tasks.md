@@ -51,3 +51,38 @@
 - [x] 4.3 Inspect the final diff and, only if all local gates are green, make
   one normal local atomic commit. Do not push, deploy, archive, or touch
   remote resources.
+
+## 5. Independent acceptance closure
+
+The previously checked items above did not prove the later same-version
+same-reason race or Demo parity findings. These scoped tasks close those two
+acceptance gaps without creating another Change.
+
+- [x] 5.1 Add and run a deterministic backend red test that holds two close
+  requests after the same authoritative read; record the pre-fix duplicate
+  event/audit/idempotency result and the 409 requirement.
+- [x] 5.2 Put the `changes()=1` assertion immediately after the guarded close
+  UPDATE in the same D1 batch; normalize the assertion failure to
+  `VERSION_CONFLICT` and preserve FAILED idempotency retry semantics.
+- [x] 5.3 Cover both different-reason and same-reason races, replay, body/key
+  mismatch, stale version, failed-idempotency follow-up, and no duplicate
+  event/audit/work-item completion facts.
+- [x] 5.4 Make the direct Demo CLOSE resolver require the strict body and
+  key contract, authoritative fixture permission/Personal DENY, version
+  checks, and same-key replay/mismatch behavior without permission leakage.
+- [x] 5.5 Add and run Demo red/green contract tests for missing key/reason,
+  blank reason, unknown field, invalid/stale version, role and effective
+  permission boundaries, replay, mismatch, and one-time state transition.
+- Evidence captured locally on 2026-08-31: the backend red run exited 1 and
+  reproduced 2 fulfilled closes with 4 events, 4 audits, and 2 committed
+  idempotency records; the Demo red run exited 1 with 2 failing tests because
+  the old resolver accepted missing key/reason/version/unknown fields and
+  could not replay the second request. After the fixes, the backend focused
+  run is 20/20 and the Demo contract run is 16/16; API and Web typechecks
+  exit 0.
+- [x] 5.6 Run the full local gates after the acceptance additions, capture
+  direct exits, and validate the updated Change strictly; do not infer remote
+  CI, staging, or production status.
+- [x] 5.7 After all local gates are green, inspect the diff and create one
+  normal local atomic commit only; do not push, deploy, archive, or touch
+  remote resources.

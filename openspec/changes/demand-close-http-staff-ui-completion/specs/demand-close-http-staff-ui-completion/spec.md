@@ -77,6 +77,30 @@ MUST return the existing stable conflict without duplicate side effects.
 - **THEN** the route returns the existing 409 state/version conflict and does
   not perform a partial close.
 
+### Requirement: The guarded close update is transaction-atomic
+
+The close command MUST assert that its guarded `PUBLISHED` plus expected-version
+`UPDATE` changes exactly one row immediately inside the same D1 batch. A zero
+row result MUST roll back the entire batch and normalize to 409
+`VERSION_CONFLICT`; it MUST NOT rely on the close reason or a later read to
+detect a race. The failed idempotency attempt MUST remain retryable according
+to the existing FAILED-state policy without committing any close side effect.
+
+#### Scenario: Same-version same-reason requests with different keys race
+
+- **WHEN** two requests read the same `PUBLISHED` demand version and submit the
+  same reason with different idempotency keys before either final batch commits
+- **THEN** exactly one request succeeds, the other returns
+  `VERSION_CONFLICT`, and only one close version increment, event, audit,
+  committed idempotency record, and work-item completion event is committed.
+
+#### Scenario: The failed race attempt can be retried without duplicate effects
+
+- **WHEN** the losing key is retried with the same stale expected version after
+  the winning batch commits
+- **THEN** it returns the stable version conflict, remains `FAILED` with the
+  conflict code, and does not add another event, audit, or work-item event.
+
 ### Requirement: Staff scheduling detail exposes a real close entry
 
 The existing Staff reservation-schedule DTO MUST expose only backend-derived
@@ -120,3 +144,29 @@ schemas MUST reject unknown fields and sensitive leakage.
   undeclared internal id, assignment, note, or storage field
 - **THEN** the runtime contract test rejects the payload and the UI treats it
   as a malformed response rather than rendering the field.
+
+### Requirement: The review Demo mirrors the formal close contract
+
+The direct Demo resolver MUST require a valid idempotency key, the exact
+`expected_version` and `close_reason` body fields, and effective close
+authorization. It MUST reject unknown fields, missing/blank reason, invalid or
+stale versions, non-owner/non-operations roles, missing `DEMAND_PUBLISH`, and
+Personal DENY. It MUST store and replay the exact first response for the same
+normalized key/body and return `IDEMPOTENCY_CONFLICT` for a same-key body
+mismatch, without leaking permission or assignment fields.
+
+#### Scenario: Demo validation and effective authorization fail closed
+
+- **WHEN** a Demo close omits the key/reason, includes an unknown field, sends
+  an invalid/stale version, uses `pre_sales`/`buyer_refund`, or lacks effective
+  `DEMAND_PUBLISH` because of a missing permission or Personal DENY
+- **THEN** it returns the matching 400/403/409 code and leaves the Demo demand
+  state unchanged.
+
+#### Scenario: Demo replay and same-key mismatch are stable
+
+- **WHEN** the same Demo key/body is submitted twice, followed by the same key
+  with a different reason
+- **THEN** the second identical request returns the first close response with
+  `replayed=true`, the mismatch returns `IDEMPOTENCY_CONFLICT`, and the Demo
+  demand remains closed at exactly one incremented version.

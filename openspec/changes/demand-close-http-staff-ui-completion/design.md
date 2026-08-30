@@ -52,11 +52,34 @@ uses the following order inside the claimed idempotency attempt:
    completion, work-item completion if needed, and transaction assertions.
 
 The update remains guarded by both `status='PUBLISHED'` and the source version.
+The guarded `UPDATE` MUST be followed immediately in the same D1 batch by an
+`INSERT INTO transaction_assertions ... SELECT CASE WHEN changes()=1 THEN 1
+ELSE 0 END` statement. A zero-row update therefore aborts the batch before the
+event, audit, idempotency completion, or work-item statements run; the
+transaction assertion error is normalized to the stable 409
+`VERSION_CONFLICT`, and the claimed idempotency attempt is marked `FAILED`
+after rollback. The close invariant must not use `close_reason` or a later
+read as a substitute for the changed-row assertion.
+
 An identical committed key/body returns the stored first response with
 `replayed=true`; a changed body under the key, in-progress claim, concurrent
 version race, stale expected version, missing reason, or non-published source
 keeps its stable current failure behavior without duplicate business side
 effects.
+
+## 2.1 Demo contract parity
+
+The review Demo's direct state resolver mirrors the formal close boundary only
+for the Demo fixture: it requires the same two body fields, rejects unknown
+fields and missing/invalid `Idempotency-Key`, normalizes and validates the
+reason, checks the expected version, and stores the first successful response
+under the key. The same normalized key/body replays the stored response with
+`replayed=true`; a changed body returns `IDEMPOTENCY_CONFLICT` without changing
+the Demo state. Demo authorization is an effective-permission projection for
+the fixture, not a client-only role check: only `owner`/`seller_ops` with
+effective `DEMAND_PUBLISH` may close, and the test fixture can exercise a
+missing permission or Personal DENY. The Demo response contains no permission,
+role, assignment, or other internal authorization fields.
 
 ## 3. Read-model capability projection
 
@@ -98,5 +121,7 @@ database and mocked Staff page. The current endpoint inventory will be
 updated only after the runtime `app.routes` and
 `npm run verify:api-contract` derive the new total. No schema or migration
 files change. Focused tests run before the implementation to record the
-current missing route and missing UI entry, then focused and full gates run
-with direct exit-code capture.
+current missing route and missing UI entry, plus the same-version/same-reason
+different-key race and Demo contract gaps, then focused and full gates run
+with direct exit-code capture. The existing Change is updated with the
+acceptance evidence; it is not archived as part of this work.

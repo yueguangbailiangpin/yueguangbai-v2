@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { ApiRequest } from '../api/transport';
-import { resetReviewDemoState, demoApiRequest } from './demo-api';
+import {
+  demoApiRequest,
+  resetReviewDemoState,
+  setReviewDemandCloseAccessForTests,
+} from './demo-api';
 import { STAFF_REVIEW_ROLES, chooseStaffRoleForTests } from './runtime';
 import {
   sellerPortalSettlementBatchDetailResponseSchema,
@@ -348,13 +352,44 @@ async function post<T extends z.ZodType>(
   path: string,
   schema: T,
   body: unknown,
+  headers?: Readonly<Record<string, string>>,
 ): Promise<unknown> {
   return demoApiRequest({
     path,
     method: 'POST',
     schema,
     body,
+    ...(headers === undefined ? {} : { headers }),
   } as ApiRequest<T>).then((result) => result.data);
+}
+
+async function demandCloseOutcome(
+  body: unknown,
+  key: string | null,
+  role: (typeof STAFF_REVIEW_ROLES)[number] = 'owner',
+  access: 'DEFAULT' | 'MISSING' | 'PERSONAL_DENY' = 'DEFAULT',
+): Promise<unknown> {
+  resetReviewDemoState();
+  currentStaffReviewRoleChoose(role);
+  setReviewDemandCloseAccessForTests(access);
+  try {
+    return {
+      ok: true,
+      data: await post(
+        '/api/staff/demand-batches/review-seller-demand-1/close',
+        demandCloseMutationSchema,
+        body,
+        key === null ? undefined : { 'Idempotency-Key': key },
+      ),
+    };
+  } catch (error) {
+    const candidate = error as { code?: unknown; httpStatus?: unknown };
+    return {
+      ok: false,
+      code: candidate.code,
+      status: candidate.httpStatus,
+    };
+  }
 }
 
 describe('review demo api satisfies current staff contract', () => {
@@ -504,6 +539,7 @@ describe('review demo api satisfies current staff contract', () => {
       '/api/staff/demand-batches/review-seller-demand-1/close',
       demandCloseMutationSchema,
       { expected_version: 1, close_reason: '演示需求已完成' },
+      { 'Idempotency-Key': 'review-demand-close-success' },
     )) as { demand_close: { status: string; version: number; close_reason: string } };
     expect(result.demand_close).toMatchObject({
       status: 'CLOSED',
@@ -518,6 +554,159 @@ describe('review demo api satisfies current staff contract', () => {
       status: 'CLOSED',
       can_close: false,
       demand_version: 2,
+    });
+  });
+
+  it('rejects incomplete or unauthorized Demo Demand CLOSE requests', async () => {
+    const cases = [
+      [
+        'missing key',
+        { expected_version: 1, close_reason: '必填原因' },
+        null,
+        'owner',
+        'DEFAULT',
+        { ok: false, code: 'VALIDATION_ERROR', status: 400 },
+      ],
+      [
+        'missing reason',
+        { expected_version: 1 },
+        'review-demand-close-missing-reason',
+        'owner',
+        'DEFAULT',
+        { ok: false, code: 'VALIDATION_ERROR', status: 400 },
+      ],
+      [
+        'blank reason',
+        { expected_version: 1, close_reason: '   ' },
+        'review-demand-close-blank-reason',
+        'owner',
+        'DEFAULT',
+        { ok: false, code: 'VALIDATION_ERROR', status: 400 },
+      ],
+      [
+        'unknown body field',
+        { expected_version: 1, close_reason: '原因', internal_note: '不允许' },
+        'review-demand-close-unknown-field',
+        'owner',
+        'DEFAULT',
+        { ok: false, code: 'VALIDATION_ERROR', status: 400 },
+      ],
+      [
+        'invalid version',
+        { expected_version: '1', close_reason: '原因' },
+        'review-demand-close-invalid-version',
+        'owner',
+        'DEFAULT',
+        { ok: false, code: 'VALIDATION_ERROR', status: 400 },
+      ],
+      [
+        'stale version',
+        { expected_version: 2, close_reason: '原因' },
+        'review-demand-close-stale-version',
+        'owner',
+        'DEFAULT',
+        { ok: false, code: 'VERSION_CONFLICT', status: 409 },
+      ],
+      [
+        'pre-sales role',
+        { expected_version: 1, close_reason: '原因' },
+        'review-demand-close-pre-sales',
+        'pre_sales',
+        'DEFAULT',
+        { ok: false, code: 'FORBIDDEN', status: 403 },
+      ],
+      [
+        'buyer refund role',
+        { expected_version: 1, close_reason: '原因' },
+        'review-demand-close-buyer-refund',
+        'buyer_refund',
+        'DEFAULT',
+        { ok: false, code: 'FORBIDDEN', status: 403 },
+      ],
+      [
+        'missing DEMAND_PUBLISH',
+        { expected_version: 1, close_reason: '原因' },
+        'review-demand-close-missing-permission',
+        'owner',
+        'MISSING',
+        { ok: false, code: 'FORBIDDEN', status: 403 },
+      ],
+      [
+        'Personal DENY',
+        { expected_version: 1, close_reason: '原因' },
+        'review-demand-close-personal-deny',
+        'seller_ops',
+        'PERSONAL_DENY',
+        { ok: false, code: 'FORBIDDEN', status: 403 },
+      ],
+    ] as const;
+    const outcomes = [];
+    for (const [label, body, key, role, access] of cases) {
+      outcomes.push({ label, outcome: await demandCloseOutcome(body, key, role, access) });
+    }
+    expect(outcomes).toEqual(cases.map(([label, , , , , expected]) => ({
+      label,
+      outcome: expected,
+    })));
+  });
+
+  it('projects Demo close capability from effective permission, not role labels alone', async () => {
+    const cases = [
+      ['pre_sales', 'DEFAULT'],
+      ['buyer_refund', 'DEFAULT'],
+      ['owner', 'MISSING'],
+      ['seller_ops', 'PERSONAL_DENY'],
+    ] as const;
+    for (const [role, access] of cases) {
+      resetReviewDemoState();
+      currentStaffReviewRoleChoose(role);
+      setReviewDemandCloseAccessForTests(access);
+      const page = (await get(
+        '/api/staff/demand-batches/review-seller-demand-1/reservation-schedule?limit=50',
+        staffReservationSchedulePageSchema,
+      )) as { page: { demand: { can_close: boolean } } };
+      expect(page.page.demand.can_close, `${role}/${access}`).toBe(false);
+    }
+  });
+
+  it('replays the exact Demo close response and rejects same-key payload mismatch', async () => {
+    resetReviewDemoState();
+    currentStaffReviewRoleChoose('owner');
+    const key = 'review-demand-close-replay';
+    const body = { expected_version: 1, close_reason: '演示需求已完成' };
+    const first = await post(
+      '/api/staff/demand-batches/review-seller-demand-1/close',
+      demandCloseMutationSchema,
+      body,
+      { 'Idempotency-Key': key },
+    );
+    const replay = await post(
+      '/api/staff/demand-batches/review-seller-demand-1/close',
+      demandCloseMutationSchema,
+      body,
+      { 'Idempotency-Key': key },
+    );
+    expect(replay).toEqual({
+      ...(first as object),
+      demand_close: {
+        ...((first as { demand_close: object }).demand_close),
+        replayed: true,
+      },
+    });
+    await expect(post(
+      '/api/staff/demand-batches/review-seller-demand-1/close',
+      demandCloseMutationSchema,
+      { ...body, close_reason: '同键不同原因' },
+      { 'Idempotency-Key': key },
+    )).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT', httpStatus: 409 });
+    const page = (await get(
+      '/api/staff/demand-batches/review-seller-demand-1/reservation-schedule?limit=50',
+      staffReservationSchedulePageSchema,
+    )) as { page: { demand: { status: string; demand_version: number; can_close: boolean } } };
+    expect(page.page.demand).toMatchObject({
+      status: 'CLOSED',
+      demand_version: 2,
+      can_close: false,
     });
   });
 

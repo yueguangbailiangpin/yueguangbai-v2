@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { parseIdempotencyKey } from '@ygb/domain';
 import { FrontendApiError } from '../api/errors';
 import type { ApiRequest, ApiResult } from '../api/transport';
 import { DAY, freshDemoData, NOW } from './demo-data';
@@ -7,12 +8,37 @@ import { currentSellerReviewRole, currentStaffReviewRole } from './runtime';
 let state = freshDemoData();
 let sequence = 100;
 let reviewDemandClosed = false;
+interface ReviewDemandCloseResponse {
+  demand_close: {
+    demand_batch_id: string;
+    status: 'CLOSED';
+    version: number;
+    close_reason: string;
+    replayed: boolean;
+  };
+}
+interface ReviewDemandCloseIdempotencyRecord {
+  fingerprint: string;
+  response: ReviewDemandCloseResponse;
+}
+let reviewDemandCloseIdempotency = new Map<string, ReviewDemandCloseIdempotencyRecord>();
+export type ReviewDemandCloseAccessForTests = 'DEFAULT' | 'MISSING' | 'PERSONAL_DENY';
+let reviewDemandCloseAccessForTests: ReviewDemandCloseAccessForTests = 'DEFAULT';
 const page = { limit: 100, next_cursor: null };
 
 export function resetReviewDemoState(): void {
   state = freshDemoData();
   sequence = 100;
   reviewDemandClosed = false;
+  reviewDemandCloseIdempotency = new Map();
+  reviewDemandCloseAccessForTests = 'DEFAULT';
+}
+
+/** Test-only fixture control for effective DEMAND_PUBLISH authorization. */
+export function setReviewDemandCloseAccessForTests(
+  access: ReviewDemandCloseAccessForTests,
+): void {
+  reviewDemandCloseAccessForTests = access;
 }
 
 function requestId(): string {
@@ -40,6 +66,73 @@ function blocked(path: string): never {
 }
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+function reviewDemandCloseError(
+  code: string,
+  httpStatus: number,
+  category: 'CONFLICT' | 'PERMISSION' | 'VALIDATION',
+): never {
+  throw new FrontendApiError(
+    code,
+    httpStatus,
+    `review-demand-close-${code.toLowerCase()}-${sequence}`,
+    category,
+    null,
+  );
+}
+
+function reviewDemandCloseHeader(
+  headers: Readonly<Record<string, string>> | undefined,
+  name: string,
+): string | null {
+  const entry = Object.entries(headers ?? {})
+    .find(([key]) => key.toLowerCase() === name.toLowerCase());
+  return entry?.[1] ?? null;
+}
+
+function parseReviewDemandCloseBody(value: unknown): {
+  expected_version: number;
+  close_reason: string;
+} {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return reviewDemandCloseError('VALIDATION_ERROR', 400, 'VALIDATION');
+  }
+  const body = value as Record<string, unknown>;
+  const allowed = new Set(['expected_version', 'close_reason']);
+  if (Object.keys(body).some((key) => !allowed.has(key))) {
+    return reviewDemandCloseError('VALIDATION_ERROR', 400, 'VALIDATION');
+  }
+  if (typeof body['expected_version'] !== 'number'
+    || !Number.isSafeInteger(body['expected_version'])
+    || body['expected_version'] < 1) {
+    return reviewDemandCloseError('VALIDATION_ERROR', 400, 'VALIDATION');
+  }
+  if (typeof body['close_reason'] !== 'string') {
+    return reviewDemandCloseError('VALIDATION_ERROR', 400, 'VALIDATION');
+  }
+  const closeReason = body['close_reason'].normalize('NFKC').trim();
+  if (closeReason.length < 1
+    || closeReason.length > 1000
+    || /[\u0000-\u001f\u007f]/u.test(closeReason)) {
+    return reviewDemandCloseError('VALIDATION_ERROR', 400, 'VALIDATION');
+  }
+  return {
+    expected_version: body['expected_version'],
+    close_reason: closeReason,
+  };
+}
+
+function canReviewDemandClose(): boolean {
+  const role = currentStaffReviewRole();
+  return reviewDemandCloseAccessForTests === 'DEFAULT'
+    && (role === 'owner' || role === 'seller_ops');
+}
+
+function requireReviewDemandClosePermission(): void {
+  if (!canReviewDemandClose()) {
+    reviewDemandCloseError('FORBIDDEN', 403, 'PERMISSION');
+  }
 }
 
 function sellerMe() {
@@ -1706,9 +1799,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
           ? 'CLOSED'
           : 'PUBLISHED'
         : source.status;
-    const canClose =
-      status === 'PUBLISHED' &&
-      (currentStaffReviewRole() === 'owner' || currentStaffReviewRole() === 'seller_ops');
+    const canClose = status === 'PUBLISHED' && canReviewDemandClose();
     return {
       page: {
         demand: {
@@ -1790,50 +1881,60 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
   if (/^\/api\/staff\/demand-batches\/[^/]+\/close$/u.test(path) && method === 'POST') {
     const demandId = idAfter(path, '/api/staff/demand-batches/');
     const source = state.sellerDemands.find((item) => item.id === demandId);
-    const role = currentStaffReviewRole();
-    if (role !== 'owner' && role !== 'seller_ops') {
-      throw new FrontendApiError(
-        'FORBIDDEN',
-        403,
-        `review-demand-close-forbidden-${sequence}`,
-        'PERMISSION',
-        null,
-      );
+    requireReviewDemandClosePermission();
+    const body = parseReviewDemandCloseBody(request.body);
+    const idempotencyKey = parseIdempotencyKey(
+      reviewDemandCloseHeader(request.headers, 'Idempotency-Key'),
+    );
+    if (!idempotencyKey) {
+      reviewDemandCloseError('VALIDATION_ERROR', 400, 'VALIDATION');
+    }
+    const fingerprint = JSON.stringify({
+      demand_batch_id: demandId,
+      expected_version: body.expected_version,
+      close_reason: body.close_reason,
+    });
+    const previous = reviewDemandCloseIdempotency.get(idempotencyKey);
+    if (previous) {
+      if (previous.fingerprint !== fingerprint) {
+        reviewDemandCloseError('IDEMPOTENCY_CONFLICT', 409, 'CONFLICT');
+      }
+      return {
+        demand_close: {
+          ...clone(previous.response.demand_close),
+          replayed: true,
+        },
+      };
     }
     if (demandId !== 'review-seller-demand-1' || reviewDemandClosed) {
-      throw new FrontendApiError(
-        'DEMAND_BATCH_NOT_PUBLISHED',
-        409,
-        `review-demand-close-state-${sequence}`,
-        'CONFLICT',
-        null,
-      );
+      reviewDemandCloseError('DEMAND_BATCH_NOT_PUBLISHED', 409, 'CONFLICT');
     }
-    const body = request.body as { close_reason?: unknown };
-    const closeReason =
-      typeof body?.close_reason === 'string' && body.close_reason.trim().length > 0
-        ? body.close_reason.trim()
-        : '演示关闭原因';
-    const version = (source?.version ?? 1) + 1;
-    if (source) {
-      Object.assign(source, {
-        status: 'CLOSED',
-        version,
-        close_reason: closeReason,
-        closed_at: NOW,
-        updated_at: NOW,
-      });
+    if (!source || source.version !== body.expected_version) {
+      reviewDemandCloseError('VERSION_CONFLICT', 409, 'CONFLICT');
     }
-    reviewDemandClosed = true;
-    return {
+    const version = source.version + 1;
+    const response: ReviewDemandCloseResponse = {
       demand_close: {
         demand_batch_id: demandId,
         status: 'CLOSED',
         version,
-        close_reason: closeReason,
+        close_reason: body.close_reason,
         replayed: false,
       },
     };
+    Object.assign(source, {
+      status: 'CLOSED',
+      version,
+      close_reason: body.close_reason,
+      closed_at: NOW,
+      updated_at: NOW,
+    });
+    reviewDemandClosed = true;
+    reviewDemandCloseIdempotency.set(idempotencyKey, {
+      fingerprint,
+      response: clone(response),
+    });
+    return response;
   }
   if (/^\/api\/staff\/demand-batches\/[^/]+\/schedule\/preview$/u.test(path) && method === 'POST') {
     return {

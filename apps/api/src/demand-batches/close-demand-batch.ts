@@ -188,6 +188,7 @@ export async function closeDemandBatch(
         demandBatchId,
         source.version,
       ),
+      assertDemandBatchUpdateChangedOnceStatement(database),
       insertDemandBatchEventStatement(database, {
         demandBatchId,
         organizationId: source.organization_id,
@@ -367,7 +368,6 @@ function assertClosedStatement(
         WHERE id=?
           AND status='CLOSED'
           AND version=?
-          AND close_reason=?
           AND closed_by_staff_id IS NOT NULL
           AND closed_at IS NOT NULL
       )
@@ -391,11 +391,19 @@ function assertClosedStatement(
   `).bind(
     response.demand_batch_id,
     response.version,
-    response.close_reason,
     claim.actorType,
     claim.actorId,
     claim.idempotencyKey,
     claim.leaseToken,
     response.demand_batch_id,
   );
+}
+
+function assertDemandBatchUpdateChangedOnceStatement(
+  database: SqlDatabase,
+): SqlStatement {
+  return database.prepare(`
+    INSERT INTO transaction_assertions (assertion_value)
+    SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END
+  `);
 }

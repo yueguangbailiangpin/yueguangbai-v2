@@ -6,6 +6,9 @@ import {
 } from 'vitest';
 import type {
   SellerMemberRole,
+  SqlDatabase,
+  SqlRunResult,
+  SqlStatement,
   StaffPermissionCode,
   StaffRoleCode,
 } from '@ygb/contracts';
@@ -40,6 +43,32 @@ import type {
 import { deriveSellerDemandSchedule } from './demand-shared';
 
 let database: SqliteDatabase | null = null;
+
+class CloseCommitBarrierDatabase implements SqlDatabase {
+  private batchCount = 0;
+  private releaseFirstBatch: () => void = () => undefined;
+  private readonly secondBatchArrived: Promise<void>;
+
+  constructor(private readonly delegate: SqliteDatabase) {
+    this.secondBatchArrived = new Promise<void>((resolve) => {
+      this.releaseFirstBatch = resolve;
+    });
+  }
+
+  prepare(sql: string): SqlStatement {
+    return this.delegate.prepare(sql);
+  }
+
+  async batch(statements: readonly SqlStatement[]): Promise<SqlRunResult[]> {
+    this.batchCount += 1;
+    if (this.batchCount === 1) {
+      await this.secondBatchArrived;
+    } else if (this.batchCount === 2) {
+      this.releaseFirstBatch();
+    }
+    return this.delegate.batch(statements);
+  }
+}
 
 afterEach(() => {
   database?.close();
@@ -669,10 +698,112 @@ describe('demand batch workflow', () => {
     const rejected = results.find((result) => result.status === 'rejected');
     expect(rejected).toMatchObject({
       status: 'rejected',
-      reason: expect.objectContaining({ status: 409 }),
+      reason: expect.objectContaining({ code: 'VERSION_CONFLICT', status: 409 }),
     });
     const counts = await demandReviewBusinessCounts(database, submitted.demand_batch_id);
     expect(counts).toMatchObject({ demand_status: 'CLOSED', events: 3, audits: 3 });
+  });
+
+  it('serializes same-reason different-key close races at the guarded update', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const submitted = await publishDemandForClose(database, 'demand:close-same-reason-race');
+    const raceDatabase = new CloseCommitBarrierDatabase(database);
+    const results = await Promise.allSettled([
+      closeDemandBatch(raceDatabase, {
+        demandBatchId: submitted.demand_batch_id,
+        expectedVersion: 2,
+        closeReason: '同一原因并发关闭',
+      }, {
+        actor: reviewerActor(),
+        idempotencyKey: 'demand:close-same-reason-race:a',
+        now: 12_000,
+      }),
+      closeDemandBatch(raceDatabase, {
+        demandBatchId: submitted.demand_batch_id,
+        expectedVersion: 2,
+        closeReason: '同一原因并发关闭',
+      }, {
+        actor: reviewerActor(),
+        idempotencyKey: 'demand:close-same-reason-race:b',
+        now: 12_001,
+      }),
+    ]);
+    const facts = await database.prepare(`
+      SELECT
+        (SELECT status FROM demand_batches WHERE id=?) AS demand_status,
+        (SELECT version FROM demand_batches WHERE id=?) AS demand_version,
+        (SELECT COUNT(*) FROM demand_batch_events WHERE demand_batch_id=?) AS events,
+        (SELECT COUNT(*) FROM audit_events
+          WHERE aggregate_type='DEMAND_BATCH' AND aggregate_id=?) AS audits,
+        (SELECT COUNT(*) FROM command_idempotency_records
+          WHERE action='CLOSE_DEMAND_BATCH' AND target_id=? AND status='COMMITTED')
+          AS committed_idempotencies,
+        (SELECT COUNT(*) FROM command_idempotency_records
+          WHERE action='CLOSE_DEMAND_BATCH' AND target_id=? AND status='FAILED')
+          AS failed_idempotencies,
+        (SELECT status FROM staff_work_items
+          WHERE source_entity_type='DEMAND_BATCH' AND source_entity_id=?) AS work_status,
+        (SELECT COUNT(*) FROM staff_assignment_events
+          WHERE subject_type='WORK_ITEM' AND subject_id=(
+            SELECT id FROM staff_work_items
+            WHERE source_entity_type='DEMAND_BATCH' AND source_entity_id=?
+          ) AND event_type='WORK_ITEM_COMPLETED') AS work_item_events
+    `).bind(
+      submitted.demand_batch_id,
+      submitted.demand_batch_id,
+      submitted.demand_batch_id,
+      submitted.demand_batch_id,
+      submitted.demand_batch_id,
+      submitted.demand_batch_id,
+      submitted.demand_batch_id,
+      submitted.demand_batch_id,
+    ).first();
+    expect({
+      fulfilled: results.filter((result) => result.status === 'fulfilled').length,
+      rejectedCodes: results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => (result.reason as { code?: string }).code),
+      facts,
+    }).toEqual({
+      fulfilled: 1,
+      rejectedCodes: ['VERSION_CONFLICT'],
+      facts: {
+        demand_status: 'CLOSED',
+        demand_version: 3,
+        events: 3,
+        audits: 3,
+        committed_idempotencies: 1,
+        failed_idempotencies: 1,
+        work_status: 'COMPLETED',
+        work_item_events: 1,
+      },
+    });
+
+    const failedKey = results[0]?.status === 'rejected'
+      ? 'demand:close-same-reason-race:a'
+      : 'demand:close-same-reason-race:b';
+    await expect(closeDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 2,
+      closeReason: '同一原因并发关闭',
+    }, {
+      actor: reviewerActor(),
+      idempotencyKey: failedKey,
+      now: 12_002,
+    })).rejects.toMatchObject({ code: 'VERSION_CONFLICT', status: 409 });
+    expect(await database.prepare(`
+      SELECT status, error_code, attempt_count
+      FROM command_idempotency_records
+      WHERE action='CLOSE_DEMAND_BATCH' AND target_id=? AND idempotency_key=?
+    `).bind(submitted.demand_batch_id, failedKey).first()).toEqual({
+      status: 'FAILED',
+      error_code: 'VERSION_CONFLICT',
+      attempt_count: 2,
+    });
+    expect(await database.prepare(`
+      SELECT COUNT(*) AS events FROM demand_batch_events WHERE demand_batch_id=?
+    `).bind(submitted.demand_batch_id).first()).toEqual({ events: 3 });
   });
 
   it('re-resolves close permission and hard role gates instead of trusting the caller actor', async () => {
