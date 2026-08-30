@@ -32,7 +32,7 @@ describe('Phase 4B5 buyer refund status read model', () => {
         refundRow('refund-3', 3000, 48_840, 48_841, 'OVERPAID'),
         refundRow('refund-2', 2000, 48_840, 48_840, 'PAID'),
         refundRow('refund-1', 1000, 48_840, 10_000, 'PARTIALLY_PAID'),
-      ]],
+      ], [refundRow('refund-1', 1000, 48_840, 10_000, 'PARTIALLY_PAID')]],
     });
     const page = await listBuyerRefunds(database, BUYER, {
       limit: 2,
@@ -44,6 +44,13 @@ describe('Phase 4B5 buyer refund status read model', () => {
       updatedAt: 2000,
       id: 'refund-2',
     });
+    const secondPage = await listBuyerRefunds(database, BUYER, {
+      limit: 2,
+      cursor: decodeBuyerRefundPortalCursor(page.next_cursor!),
+    });
+    expect(secondPage.items.map((item) => item.refund_obligation_id))
+      .toEqual(['refund-1']);
+    expect(secondPage.next_cursor).toBeNull();
     expect(database.calls[0]?.sql).toContain(
       'ledger.buyer_customer_id=?',
     );

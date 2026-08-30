@@ -9,6 +9,10 @@ import {
 } from './errors';
 import { buyerReviewFileAuthorization } from './file-authorization';
 import {
+  decodeBuyerReviewCursor,
+  decodeEligibleReviewOrderCursor,
+} from './pagination';
+import {
   buyerReviewAllowedActions,
   getBuyerReview,
   listBuyerReviewEligibleOrders,
@@ -154,6 +158,94 @@ describe('Phase 4B4 buyer review API read projection', () => {
     });
     expect(unfiltered.calls[0]?.sql).not.toContain('status IN');
     expect(unfiltered.calls[0]?.bindings).toEqual(['buyer-1', 3]);
+  });
+
+  it('traverses eligible orders across two stable pages', async () => {
+    const rows = [
+      {
+        formal_order_id: 'formal-3',
+        marketplace_code: 'AMAZON_JP',
+        amazon_order_number_normalized: '333-1234567-1234567',
+        asin_normalized: 'B0REVIEW03',
+        product_name_snapshot: '第三个产品',
+        review_type: 'IMAGE',
+        confirmed_at: 3000,
+        confirmed_business_date: '2026-08-01',
+        order_status: 'CONFIRMED',
+        review_case_id: null,
+        review_status: null,
+        review_version: null,
+      },
+      {
+        formal_order_id: 'formal-2',
+        marketplace_code: 'AMAZON_JP',
+        amazon_order_number_normalized: '222-1234567-1234567',
+        asin_normalized: 'B0REVIEW02',
+        product_name_snapshot: '第二个产品',
+        review_type: 'TEXT',
+        confirmed_at: 2000,
+        confirmed_business_date: '2026-08-01',
+        order_status: 'CONFIRMED',
+        review_case_id: null,
+        review_status: null,
+        review_version: null,
+      },
+      {
+        formal_order_id: 'formal-1',
+        marketplace_code: 'AMAZON_JP',
+        amazon_order_number_normalized: '111-1234567-1234567',
+        asin_normalized: 'B0REVIEW01',
+        product_name_snapshot: '第一个产品',
+        review_type: 'IMAGE',
+        confirmed_at: 1000,
+        confirmed_business_date: '2026-08-01',
+        order_status: 'CONFIRMED',
+        review_case_id: 'review-1',
+        review_status: 'CHANGES_REQUESTED',
+        review_version: 2,
+      },
+    ];
+    const database = fakeDatabase({ all: [[rows[0], rows[1], rows[2]], [rows[2]]] });
+
+    const first = await listBuyerReviewEligibleOrders(database, buyer, {
+      limit: 2,
+      cursor: null,
+    });
+    expect(first.items.map((item) => item.order.formal_order_id))
+      .toEqual(['formal-3', 'formal-2']);
+    const cursor = decodeEligibleReviewOrderCursor(first.next_cursor!);
+    const second = await listBuyerReviewEligibleOrders(database, buyer, {
+      limit: 2,
+      cursor,
+    });
+    expect(second.items.map((item) => item.order.formal_order_id))
+      .toEqual(['formal-1']);
+    expect(second.next_cursor).toBeNull();
+  });
+
+  it('traverses the own-reviews list across two stable pages', async () => {
+    const secondRow = {
+      ...approvedReviewRow,
+      review_case_id: 'review-2',
+      formal_order_id: 'formal-2',
+      updated_at: 2000,
+    };
+    const database = fakeDatabase({
+      all: [[approvedReviewRow, secondRow], [secondRow]],
+    });
+
+    const first = await listBuyerReviews(database, buyer, {
+      limit: 1,
+      cursor: null,
+    });
+    expect(first.items.map((item) => item.review_case_id)).toEqual(['review-1']);
+    const cursor = decodeBuyerReviewCursor(first.next_cursor!);
+    const second = await listBuyerReviews(database, buyer, {
+      limit: 1,
+      cursor,
+    });
+    expect(second.items.map((item) => item.review_case_id)).toEqual(['review-2']);
+    expect(second.next_cursor).toBeNull();
   });
 
   it('projects only buyer-public review and due-obligation fields', async () => {

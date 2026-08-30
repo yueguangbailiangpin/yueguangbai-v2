@@ -40,11 +40,11 @@ const NO_FILTERS: BuyerFormalOrderFilters = {
 describe('Phase 4B3 buyer formal order read model', () => {
   it('scopes list queries to the session buyer and uses stable keyset paging', async () => {
     const database = fakeDatabase({
-      all: [
+      allPages: [[
         row('formal-3', 3000, 'B0FORM0003'),
         row('formal-2', 2000, 'B0FORM0002'),
         row('formal-1', 1000, 'B0FORM0001'),
-      ],
+      ], [row('formal-1', 1000, 'B0FORM0001')]],
     });
 
     const page = await listBuyerFormalOrders(database, BUYER, {
@@ -60,6 +60,14 @@ describe('Phase 4B3 buyer formal order read model', () => {
       confirmedAt: 2000,
       id: 'formal-2',
     });
+    const secondPage = await listBuyerFormalOrders(database, BUYER, {
+      limit: 2,
+      cursor: decodeBuyerFormalOrderCursor(page.next_cursor!),
+      filters: NO_FILTERS,
+    });
+    expect(secondPage.items.map((item) => item.formal_order_id))
+      .toEqual(['formal-1']);
+    expect(secondPage.next_cursor).toBeNull();
     expect(database.calls[0]?.sql).toContain(
       'formal_order.buyer_customer_id=?',
     );
@@ -231,11 +239,13 @@ function row(
 
 function fakeDatabase(result: {
   all?: unknown[];
+  allPages?: unknown[][];
   first?: unknown | null;
 }): SqlDatabase & {
   calls: Array<{ sql: string; bindings: unknown[] }>;
 } {
   const calls: Array<{ sql: string; bindings: unknown[] }> = [];
+  const allPages = [...(result.allPages ?? [])];
   return {
     calls,
     prepare(sql: string): SqlStatement {
@@ -247,7 +257,11 @@ function fakeDatabase(result: {
           return statement;
         },
         async all<T>() {
-          return { results: (result.all ?? []) as T[] };
+          return {
+            results: (allPages.length > 0
+              ? allPages.shift()
+              : result.all ?? []) as T[],
+          };
         },
         async first<T>() {
           return (result.first ?? null) as T | null;

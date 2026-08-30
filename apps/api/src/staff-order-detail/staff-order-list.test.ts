@@ -333,6 +333,42 @@ describe('work item SLA metadata', () => {
   });
 });
 
+describe('work item cursor pagination', () => {
+  it('traverses all visible work items with the stable created-at/id order', async () => {
+    const createdAt = [AT + 4000, AT + 3000, AT + 2000];
+    for (const value of createdAt) {
+      await seedWorkItem(
+        orderRefundOpen.buyerId,
+        'list-refund',
+        'BUYER_REFUND_PROCESSING',
+        value,
+      );
+    }
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 4; page += 1) {
+      const query = cursor === null
+        ? '?limit=1'
+        : `?limit=1&cursor=${encodeURIComponent(cursor)}`;
+      const response = await request(refundStaff(), `/api/staff/me/work-items${query}`);
+      expect(response.status).toBe(200);
+      const body = await response.json() as {
+        data: { work_items: Array<{ work_item_id: string }>; next_cursor: string | null };
+      };
+      seen.push(...body.data.work_items.map((item) => item.work_item_id));
+      cursor = body.data.next_cursor;
+      if (cursor === null) break;
+    }
+
+    expect(seen).toEqual([...createdAt].reverse().map(
+      (value) => `stage75-workitem-list-refund-${value}`,
+    ));
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(cursor).toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
