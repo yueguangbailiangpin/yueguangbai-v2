@@ -494,7 +494,7 @@ export async function submitReservation(
     );
     if (command.autoApprove?.enabled) {
       try {
-        await autoApproveReservation(
+        const autoApproval = await autoApproveReservation(
           database,
           { reservationId },
           {
@@ -504,9 +504,21 @@ export async function submitReservation(
             now,
           },
         );
+        if (autoApproval?.status === 'MANUAL_REVIEW') {
+          // Internal protection reason only; the buyer response remains the
+          // existing PENDING_REVIEW contract without risk details.
+          console.info(
+            '[reservation-auto-approve] protected manual review',
+            {
+              reservationId,
+              reasonCode: autoApproval.reason_code,
+            },
+          );
+        }
       } catch (error) {
-        // 自动通过失败（含批次断言失败）时预约仍处于 PENDING_REVIEW、
-        // 待办仍在——人工兜底，不让买家看到错误。
+        // 提交预约批次已经提交；自动通过是独立批次。自动通过失败
+        // （含批次断言失败）不会回滚 PENDING_REVIEW、hold 或待办，
+        // 仍由人工兜底，不让买家看到内部错误。
         console.warn(
           '[reservation-auto-approve] fell back to manual review',
           {

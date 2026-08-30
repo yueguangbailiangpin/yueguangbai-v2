@@ -23,12 +23,26 @@ import {
   insertReservationEventStatement,
   ReservationError,
 } from './reservation-shared';
+import {
+  readBuyerFormalOrderAutoApprovalProtection,
+  type FormalOrderAutoApprovalProtectionReasonCode,
+} from '../staff-order-detail/responsibility';
+
+export {
+  FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES,
+} from '../staff-order-detail/responsibility';
+export type {
+  FormalOrderAutoApprovalProtectionReasonCode,
+} from '../staff-order-detail/responsibility';
 
 /**
- * 预约自动通过（P4 动作二）。买家提交预约时硬条件全部满足且不命中例外
- * 规则，则在同一原子批次内：确认预约（系统动作留痕）→ 创建并直接发布
- * 下单指引（买家即刻可见）。任何一步失败整体回滚，预约停留在
- * PENDING_REVIEW 并保留 RESERVATION_DECISION 待办（人工兜底）。
+ * 预约自动通过（P4 动作二）。买家提交预约的 D1 批次先提交
+ * PENDING_REVIEW、名额 hold 和人工待办；本函数随后在独立的 D1 批次中，
+ * 在所有批准状态、名额计数、指引发布和审计副作用前检查自动审核保护条件，
+ * 然后确认预约并直接发布下单指引。
+ *
+ * 提交预约与自动通过是两个事务。自动通过批次失败不会回滚已经提交的
+ * PENDING_REVIEW 预约，预约继续由人工审核。
  *
  * 例外规则（默认，环境变量可调）：同一买家 24 小时窗口内第 2 笔起转人工。
  * 单笔数量规则不适用——预约表无数量字段，每笔预约占 1 个名额。
@@ -78,6 +92,16 @@ export interface AutoApproveReservationResult {
   instruction_id: string;
 }
 
+export interface AutoApproveManualReviewResult {
+  reservation_id: string;
+  status: 'MANUAL_REVIEW';
+  reason_code: FormalOrderAutoApprovalProtectionReasonCode;
+}
+
+export type AutoApproveReservationOutcome =
+  | AutoApproveReservationResult
+  | AutoApproveManualReviewResult;
+
 interface AutoApproveSource {
   reservation_id: string;
   demand_batch_id: string;
@@ -107,10 +131,10 @@ interface AutoApproveSource {
 
 /**
  * Attempts the automatic approval. Returns null when the reservation must
- * stay in manual review (missing hard conditions, publish preconditions, or
- * an exception rule). Throws only on infrastructure failures — the caller
- * (submitReservation) treats a throw as "fall back to manual" as well,
- * because nothing commits unless the whole batch succeeds.
+ * stay in manual review for an ordinary hard-condition or exception-rule
+ * miss. A protected formal-order risk returns a stable internal reason code.
+ * Throws only on infrastructure failures; the caller keeps the already
+ * committed submission in manual review.
  */
 export async function autoApproveReservation(
   database: SqlDatabase,
@@ -121,7 +145,7 @@ export async function autoApproveReservation(
     idempotencyKey: string;
     now: number;
   },
-): Promise<AutoApproveReservationResult | null> {
+): Promise<AutoApproveReservationOutcome | null> {
   const now = command.now;
   const source = await readAutoApproveSource(database, input.reservationId);
   if (source === null) return null;
@@ -157,6 +181,18 @@ export async function autoApproveReservation(
     || Number(source.approved_reservation_count) + 1
       > Number(source.target_quantity)) {
     return null;
+  }
+  const protection = await readBuyerFormalOrderAutoApprovalProtection(
+    database,
+    source.buyer_customer_id,
+    now,
+  );
+  if (protection !== null) {
+    return {
+      reservation_id: source.reservation_id,
+      status: 'MANUAL_REVIEW',
+      reason_code: protection.reason_code,
+    };
   }
   // Publish preconditions mirror publishOrderInstruction: an instruction
   // that could not be published would leave the buyer without guidance,

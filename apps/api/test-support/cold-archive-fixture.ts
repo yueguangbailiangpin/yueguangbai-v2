@@ -15,7 +15,9 @@ export const coldArchiveOwner:AssignmentStaffAuthorization={
   memberTeamIds:[],leaderTeamIds:[],
 };
 
-export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:string):Promise<{
+export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:string,options:{
+  buyerCustomerId?:string;
+}={}):Promise<{
   formalOrderId:string;sellerOrganizationId:string;
 }>{
   const sellerOrganizationId=`cold-seller-${suffix}`;
@@ -24,14 +26,27 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
   // Stage 6.6: buyers carry their final YYYYMMDD+B/C+digits number from
   // creation; the migration-seeded 'B' channel provides the numbering code.
   const buyerSequence=10000+(Number(orderTail)%90000);
-  const buyerCustomerNo=`20260801B${buyerSequence}`;
+  const existingBuyer=options.buyerCustomerId
+    ? await db.prepare('SELECT buyer_customer_no FROM buyer_customers WHERE id=?')
+      .bind(options.buyerCustomerId)
+      .first<{buyer_customer_no:string}>()
+    : null;
+  if(options.buyerCustomerId&&!existingBuyer)throw new Error('cold_archive_buyer_missing');
+  const buyerCustomerNo=existingBuyer?.buyer_customer_no??`20260801B${buyerSequence}`;
   const sellerMemberId=`cold-seller-member-${suffix}`;
-  const buyerId=`cold-buyer-${suffix}`;
+  const buyerId=options.buyerCustomerId??`cold-buyer-${suffix}`;
   const reservationId=`cold-reservation-${suffix}`;
   const productId=`cold-product-${suffix}`;
   const productVersionId=`cold-product-version-${suffix}`;
   const submissionId=`cold-evidence-submission-${suffix}`;
   const evidenceVersionId=`cold-evidence-version-${suffix}`;
+  const buyerSubjectSql=existingBuyer?'':`,('cold-buyer-subject-${suffix}','BUYER_CUSTOMER',1000)`;
+  const buyerCustomerSql=existingBuyer?'':`
+    INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,buyer_sequence,
+      display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
+    VALUES('${buyerId}','cold-buyer-subject-${suffix}','AMAZON_JP','buyer-channel-wechat-b','${buyerCustomerNo}',${buyerSequence},
+      '归档测试买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
+  `;
   db.exec(`
     INSERT OR IGNORE INTO staff_users(id,display_name,status,authorization_version,version,created_at,updated_at,disabled_at)
     VALUES('cold-archive-owner','归档负责人','ACTIVE',1,1,1000,1000,NULL);
@@ -42,17 +57,14 @@ export async function seedConfirmedColdArchiveOrder(db:SqliteDatabase,suffix:str
     VALUES('${sellerOrganizationId}','AMAZON_JP','ido-mango-${sellerSequence}','seller-channel-ido-mango','seller-channel-ido-mango',${sellerSequence},
       '归档测试卖家','ACTIVE',1,1000,1000,1000,NULL,2);
     INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES
-      ('cold-seller-subject-${suffix}','SELLER_ORG_MEMBER',1000),('cold-buyer-subject-${suffix}','BUYER_CUSTOMER',1000);
+      ('cold-seller-subject-${suffix}','SELLER_ORG_MEMBER',1000)${buyerSubjectSql};
     INSERT INTO seller_organization_members(id,identity_subject_id,organization_id,member_number,username_fallback,
       display_name,role,primary_owner,status,version,created_at,updated_at,activated_at,disabled_at)
     VALUES('${sellerMemberId}','cold-seller-subject-${suffix}','${sellerOrganizationId}',1,'cold-seller-${suffix}-1',
       '负责人','OWNER',1,'ACTIVE',1,1000,1000,1000,NULL);
     INSERT OR IGNORE INTO buyer_channels(id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at)
     VALUES('buyer-channel-wechat-b','B','买家微信对接渠道 B','ACTIVE',1,1,1000,1000,NULL);
-    INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,buyer_sequence,
-      display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
-    VALUES('${buyerId}','cold-buyer-subject-${suffix}','AMAZON_JP','buyer-channel-wechat-b','${buyerCustomerNo}',${buyerSequence},
-      '归档测试买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
+    ${buyerCustomerSql}
     INSERT INTO seller_stores(id,organization_id,marketplace_code,display_name,normalized_name,status,version,created_at,updated_at,disabled_at)
     VALUES('cold-store-${suffix}','${sellerOrganizationId}','AMAZON_JP','归档测试店铺','归档测试店铺','ACTIVE',1,1000,1000,NULL);
     INSERT INTO products(id,organization_id,store_id,marketplace_code,asin_display,asin_normalized,status,current_version_no,

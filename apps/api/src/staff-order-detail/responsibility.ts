@@ -20,6 +20,22 @@ import type { AssignmentStaffAuthorization } from '../staff-assignment';
 
 const REFUND_SLA_MS = 72 * 60 * 60 * 1000;
 
+export const FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES = Object.freeze({
+  OVERDUE_FORMAL_ORDER: 'OVERDUE_FORMAL_ORDER_REQUIRES_MANUAL_REVIEW',
+  OPEN_FORMAL_ORDER_RISK: 'OPEN_FORMAL_ORDER_RISK_REQUIRES_MANUAL_REVIEW',
+} as const);
+export type FormalOrderAutoApprovalProtectionReasonCode =
+  typeof FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES[
+    keyof typeof FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES
+  ];
+
+const FORMAL_ORDER_AUTO_APPROVAL_RISK_EVENT_TYPES = [
+  'PLATFORM_CANCELLED',
+  'RETURN_REFUND',
+  'BUSINESS_VOID',
+  'MANUAL_INVESTIGATION',
+] as const;
+
 export interface ResponsibilityFacts {
   refund_open: 0 | 1;
   settlement_open: 0 | 1;
@@ -39,6 +55,10 @@ export interface ResponsibilityRow extends ResponsibilityFacts {
   formal_order_id: string;
   buyer_customer_id: string;
   seller_organization_id: string;
+}
+
+export interface BuyerFormalOrderAutoApprovalProtection {
+  reason_code: FormalOrderAutoApprovalProtectionReasonCode;
 }
 
 /**
@@ -227,6 +247,75 @@ function availableActionsFor(
   if (isOwner && actor.permissions.has('FINANCIAL_CORRECT')) actions.push('financial_adjustment');
   return Object.freeze(actions);
 }
+
+/**
+ * Buyer-global automatic-approval protection projection. It deliberately
+ * selects only formal orders and embeds the same responsibility facts used by
+ * the staff list/detail read model; callers must not derive a second deadline
+ * or exception state from reservation/order-material data.
+ */
+export async function readBuyerFormalOrderAutoApprovalProtection(
+  database: SqlDatabase,
+  buyerCustomerId: string,
+  now: number,
+): Promise<BuyerFormalOrderAutoApprovalProtection | null> {
+  const rows = await database.prepare(
+    `SELECT o.id AS formal_order_id, o.buyer_customer_id, o.seller_organization_id,
+      ${responsibilitySelects('o')}
+    FROM formal_orders o
+    WHERE o.buyer_customer_id=?
+    ORDER BY o.id`,
+  ).bind(buyerCustomerId).all<ResponsibilityRow>();
+
+  let hasOverdueFormalOrder = false;
+  let hasOpenFormalOrderRisk = false;
+  for (const row of rows.results) {
+    const responsibility = buildResponsibility(
+      row,
+      AUTO_APPROVAL_RESPONSIBILITY_ACTOR,
+      now,
+    );
+    if ((responsibility.stage === 'BUYER_REFUND'
+      || responsibility.stage === 'SELLER_SETTLEMENT')
+      && responsibility.is_overdue) {
+      hasOverdueFormalOrder = true;
+    }
+    if (responsibility.exception_state === 'OPEN'
+      && row.latest_event_type !== null
+      && FORMAL_ORDER_AUTO_APPROVAL_RISK_EVENT_TYPES.includes(
+        row.latest_event_type as typeof FORMAL_ORDER_AUTO_APPROVAL_RISK_EVENT_TYPES[number],
+      )) {
+      hasOpenFormalOrderRisk = true;
+    }
+  }
+
+  // Deterministic priority is part of the internal contract: overdue formal
+  // responsibility is reported before an operational-risk reason.
+  if (hasOverdueFormalOrder) {
+    return Object.freeze({
+      reason_code:
+        FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES.OVERDUE_FORMAL_ORDER,
+    });
+  }
+  if (hasOpenFormalOrderRisk) {
+    return Object.freeze({
+      reason_code:
+        FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES.OPEN_FORMAL_ORDER_RISK,
+    });
+  }
+  return null;
+}
+
+const AUTO_APPROVAL_RESPONSIBILITY_ACTOR: AssignmentStaffAuthorization = {
+  staffId: 'system-reservation-auto-approve',
+  displayName: '系统·预约自动通过',
+  staffStatus: 'ACTIVE',
+  authorizationVersion: 1,
+  roles: new Set(['owner']),
+  permissions: new Set(),
+  memberTeamIds: [],
+  leaderTeamIds: [],
+};
 
 /** Load the responsibility facts for a single order (detail endpoint). */
 export async function readResponsibilityRow(
