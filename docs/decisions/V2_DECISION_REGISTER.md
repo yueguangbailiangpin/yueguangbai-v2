@@ -546,9 +546,9 @@ D-056 历史正文，不将旧阶段的宽泛组织级表述改写为新的历�
 - Buyer 在 Seller 批次列表/详情边界统一 concealed `404`；未认证、会话无效或 DISABLED Seller 成员继续 `401`；跨组织资源继续列表不出现或详情 concealed `404`。payables/payments 既有 cursor token、过滤、组织隔离、稳定排序和 malformed-token 行为不变。
 - 本条不新增 Migration，不修改 DTO 字段、财务账本、付款/分配事实、批次状态机、Seller 写端点、共享游标实现、前端视觉或预约自动审核；仅授权本地代码、测试、OpenSpec 与文档更新，不构成 Staging/Production GO。
 
-状态：Accepted by business owner instruction 2026-08-30；实现归入未归档的本地
-OpenSpec Change `seller-settlement-read-boundary`，未 push、未部署、未访问任何远程或
-生产资源。
+状态：Accepted by business owner instruction 2026-08-30；实现已归档至本地
+OpenSpec Change `openspec/changes/archive/2026-08-30-seller-settlement-read-boundary`，未
+push、未部署、未访问任何远程或生产资源。
 
 ## 上线前必须关闭的风险项
 
