@@ -29,9 +29,11 @@
 - [x] 4.2 Run focused Buyer/Seller/Staff component and route tests covering shell, form/list/
   detail, drawer/modal, loading/empty/error, focus, reduced-motion, and protected-image
   presentation where those tests exist.
-- [ ] 4.3 Run local Playwright/screenshot harness against the built app for Buyer, Seller,
+- [x] 4.3 Run local Playwright/screenshot harness against the built app for Buyer, Seller,
   and Staff desktop and 390px mobile evidence; review generated images individually and
-  record fixture/authentication gaps rather than claiming static equivalence.
+  record fixture/authentication gaps rather than claiming static equivalence. The 13-image
+  harness passed; the separate legacy Staff visual suite's stale selector/DTO fixture gaps
+  are recorded in `evidence.md`.
 - [x] 4.4 Run `npm run typecheck`, `npm run build`, `npm test`, `npm run check`, and
   `git diff --check` with direct command exits captured from the final worktree.
 
