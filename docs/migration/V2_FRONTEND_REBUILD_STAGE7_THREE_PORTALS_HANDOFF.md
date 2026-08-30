@@ -149,25 +149,26 @@ staff-workbench / staff-order-detail / staff-mobile / staff-mobile-drawer、buye
 
 ### 仍未完成与环境边界
 
-- 7F-4 legacy CSS 子 Change 已完成且当前实现/门禁仍有效；子 Change `stage7f4-legacy-css-retirement` 仍未归档，不将“未归档”写成“未完成”。员工端完整 17 项视觉矩阵仍未验收，父 Change 6.2 保持未勾选；营销官网/阶段 8 未执行，买家/卖家后端能力缺口仍按 §11 记录。父级 7.3 记账与 21 项逐项审计见 `openspec/changes/stage7f-frontend-complete-rebuild/evidence.md`。
+- 7F-4 legacy CSS 子 Change 已完成且当前实现/门禁仍有效；子 Change `stage7f4-legacy-css-retirement` 仍未归档，不将“未归档”写成“未完成”。本地 21 项视觉矩阵已按父 Change 6.2/6.2c 收口，但不外推为 STAGING、REMOTE CI 或 PRODUCTION 验收；营销官网/阶段 8 未执行，买家/卖家后端能力缺口仍按 §11 记录。父级 7.3 记账与 21 项逐项审计见 `openspec/changes/stage7f-frontend-complete-rebuild/evidence.md`。
 - `npm run check` 的 Cloudflare dry-run 只报告 `BLOCKED_NEEDS_OPERATOR_INPUT`，外部调用、部署和资源变更均为 0；这不是部署证据。
 - 本次没有修改 `apps/api`、`packages/contracts`、`migrations` 或任何后端业务规则；`REMOTE_WRITES=no`、`GITHUB_REMOTE_TOUCHED=no`、`DEPLOY=no`。
 
 ## 16. 2026-08-31 Stage 7F 视觉证据 fixture 收口（本地）
 
-本次补充执行固定在 branch `feature/staging-workflow-rate-ux`、源码 HEAD `1a1148a4e0f1c54ef3a39074c246fe6842c6b776`；起点工作树干净，`HEAD...@{upstream}` 为 `85 0`。未使用 reset、rebase、stash、clean、squash、amend；未 push、未部署、未访问远端资源。
+本次补充执行固定在 branch `feature/staging-workflow-rate-ux`、源码 HEAD `6602e71a4e3e43235368adbcde5a0aff5621d2cb`；起点工作树干净，`HEAD...@{upstream}` 为 `86 0`。未使用 reset、rebase、stash、clean、squash、amend；未 push、未部署、未访问远端资源。
 
 ### 已解决
 
-- 修复 Staff 视觉 harness 的当前 role/navigation 文案、可见语义等待、lean Dashboard 严格 fixture、order-evidence preflight、受控图片 read-intent/content fixture、客服渠道/结算当前分页 envelope 与 Review access-management reads。
-- 只增加一个 `.staff-app .frozen-admin-dashboard .dashboard-window-switch .button` 的 44px/44px 规则，保留原验收断言；没有改共享 Button primitive。
-- Seller 首页读取 `/api/seller-portal/members` 时补齐现有 response DTO 的 nullable `wechat_id` schema 字段，消除 Review Seller 首页的真实 malformed/loading 告警；没有修改 API response。
-- 新增专用 evidence spec，真实渲染并落盘 17 个 Staff 视图和 4 个 Review 恢复视图，共 21 个 PNG。每项执行关键数据、禁止状态、图片解码、横向溢出和真实 Drawer 断言；结果 `1 passed`，并已逐张人工查看。证据清单：`openspec/changes/stage7f-visual-evidence-fixture-repair/evidence.md`。
+- 本轮仅修复三个精确视觉回归：图片解码后截图前将页面复位到顶部；在 `.staff-app` 范围恢复产品列表 `a.button-link` 的 inverse 文本色并以计算样式断言对比度 `>=4.5`；客服渠道 4 个可见表单字段复用既有 `TextInput`，使 8 个可编辑输入保持可见 Staff 输入样式。没有修改共享 Button primitive、API response、后端业务或权限契约。
+- 失败优先回归在修复前直接复现订单详情滚动偏移 `664`、产品按钮前景/背景均为 `rgb(11,87,208)`、客服输入高度 `23.25px < 40px`；修复后同一组断言为 `3 passed`。
+- 专用 evidence spec 最终真实渲染并落盘 17 个 Staff 视图和 4 个 Review 恢复视图，共 21 个 PNG；另有 3 项回归断言。最终 run 为 `4 passed`，21 张主截图逐张人工查看为 `PASS`。证据清单：`openspec/changes/stage7f-visual-evidence-fixture-repair/evidence.md`。
 
 ### 真实本地验证
 
 | 项目 | 结果 |
 |---|---|
+| 修复前精确回归 | 1；3 项新增断言按预期暴露旧问题 |
+| 修复后精确回归 | 0；3 passed |
 | 专用 21 项视觉证据 | 0；17 Staff + 4 Review，21/21 PNG，逐张人工 `PASS` |
 | 聚焦 Playwright（Staff / contacts / settlement / Review） | 0；19/19 passed |
 | `npm run typecheck` | 0 |
@@ -180,4 +181,4 @@ staff-workbench / staff-order-detail / staff-mobile / staff-mobile-drawer、buye
 
 ### 边界
 
-以上全部为 `LOCAL` 证据。STAGING 未部署/未访问，REMOTE CI 未访问，PRODUCTION 未访问/未变更并保持 `NO-GO`。综合 check 的 staging/production Cloudflare preflight 仅返回 `BLOCKED_NEEDS_OPERATOR_INPUT`，两者 external calls/deployments/resource mutations 均为 0。未触碰 Cloudflare/D1/R2/Google Drive/Feishu/GitHub remote，未执行 push、deploy、sync 或 OpenSpec archive。
+以上全部为 `LOCAL` 证据。STAGING 未部署/未访问，REMOTE CI 未访问，PRODUCTION 未访问/未变更并保持 `NO-GO`。综合 check 的 staging/production Cloudflare preflight 仅返回 `BLOCKED_NEEDS_OPERATOR_INPUT`，两者 external calls/deployments/resource mutations 均为 0。未触碰 Cloudflare/D1/R2/Queues/Google Drive/Feishu/GitHub remote，未执行 push、deploy、sync 或 OpenSpec archive。

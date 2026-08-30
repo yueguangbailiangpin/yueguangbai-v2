@@ -3,16 +3,23 @@
 ## 结论
 
 - 验证日期：2026-08-31。
-- 固定起点：branch `feature/staging-workflow-rate-ux`、HEAD `1a1148a4e0f1c54ef3a39074c246fe6842c6b776`；起始工作树干净，`HEAD...@{upstream}` 为 `85 0`。
-- 变更范围保持在视觉证据 fixture/harness、Seller 首页现有成员 DTO 的前端 schema 对齐、一个 Dashboard 专属 44px 控件规则，以及本 Change/父级收口文档；未修改 `apps/api`、`packages/contracts`、`migrations` 或业务/API/权限/数据库契约。
-- 21 项主证据由真实本地 Review runtime 渲染：17 个 Staff 视图 + `/review`、`/review/buyer`、`/review/seller`、`/review/staff` 四个恢复视图。专用 Playwright 证据测试为 `1 passed`，退出码 `0`。
+- 固定起点：branch `feature/staging-workflow-rate-ux`、HEAD `6602e71a4e3e43235368adbcde5a0aff5621d2cb`；起始工作树干净，`HEAD...@{upstream}` 为 `86 0`。
+- 本轮新增范围仅为当前视觉证据回归：图片解码后截图前复位页面滚动、产品列表 `查看详情` 的可读对比度、客服渠道 8 个可编辑输入复用 Staff 输入 primitive；没有修改 `apps/api`、`packages/contracts`、`migrations` 或业务/API/权限/数据库契约。
+- 专用 Playwright 最终 run 退出码 `0`、`4 passed`：21 项主证据（17 个 Staff 视图 + `/review`、`/review/buyer`、`/review/seller`、`/review/staff` 四个恢复视图）及 3 项回归断言；21 张主 PNG 均由真实本地 Review runtime 生成并逐张人工查看为 `PASS`。
 - 本地原子提交的 SHA 在最终交付报告中记录；提交后不再追加第二个内容提交。
+
+## 本轮修复与回归证据
+
+- `capture()` 在图片真实解码后将 `window` 与 `document.scrollingElement` 复位到顶部，并轮询确认 `scrollX=0, scrollY=0`，避免长页面截图把固定顶部/侧栏/底部栏捕获在页面中段。
+- 产品列表仅在 `.staff-app` 范围内恢复 `a.button-link` 的 inverse 文本色，保留现有按钮 primitive 与页面结构；回归断言以浏览器计算样式和 WCAG 对比度 `>= 4.5` 检查。
+- `ServiceChannelsPage` 的 4 个可见表单字段改用既有 `TextInput` primitive；文件上传隐藏 input 保持原生实现。回归断言确认 8 个可编辑输入可见、有边框、白色背景且高度 `>= 40px`。
+- 修复前新增回归断言直接复现 3 个问题：订单详情截图滚动偏移 `664`、产品按钮前景/背景均为 `rgb(11,87,208)`、客服输入高度 `23.25px < 40px`；修复后同一 grep run 为 `3 passed`、退出码 `0`。
 
 ## 21 项截图清单与人工复核
 
-截图目录：`/Users/yueguangbai/Documents/月光白项目开发/yueguangbai-v2-current-reservable-single-seller/tmp/stage7f-visual-evidence-repair/`。
+截图目录：`/Users/yueguangbai/Documents/月光白项目开发/yueguangbai-v2-current-reservable-single-seller/tmp/stage7f-visual-evidence-repair-20260831-final/`。
 
-每一项均满足：截图前可见关键正常数据；无错误 Alert、加载中、服务不可用或 `MALFORMED_RESPONSE`；页面图片真实解码；无横向溢出；无已退役导航。以下每行均为真实 PNG，文件尺寸由 `file` 直接核对，人工查看结果均为 `PASS`。
+每一项均满足：截图前可见关键正常数据；无错误 Alert、加载中、服务不可用或 `MALFORMED_RESPONSE`；页面图片真实解码；无横向溢出；无已退役导航。21 个 PNG 由 `file` 直接核对，人工查看结果均为 `PASS`。
 
 | # | 视图 | 文件 | 人工复核 |
 |---:|---|---|---|
@@ -38,29 +45,32 @@
 | 20 | `/review/seller` 恢复 | `review-seller-recovery-1440x900.png` | PASS |
 | 21 | `/review/staff` 恢复 | `review-staff-recovery-1440x900.png` | PASS |
 
-专用测试另外语义核对了 `/review/staff/admin-business-dashboard` 的 `客户与订单`、`¥8,965.20` 和 `/review/staff/access-management` 的三个负责人区块；这两项作为第 17 项 Owner-only 设置范围的补充正常态检查，不增加主清单数量。
+专用 run 另外语义核对了 `/review/staff/admin-business-dashboard` 的 `客户与订单`、`¥8,965.20` 和 `/review/staff/access-management` 的三个负责人区块；这两项作为第 17 项 Owner-only 设置范围的补充正常态检查，不增加主清单数量。另有独立回归截图：`tmp/stage7f-visual-regressions-20260831-final/regression-order-detail-scroll.png`。
 
 ## 浏览器与聚焦回归
 
 | 命令 | 结果 |
 |---|---|
-| `PLAYWRIGHT_PORT=4179 npm run test:browser -- stage7f-visual-evidence-repair.spec.ts` | 0；1 passed，21 张截图生成，`apiRequests=[]`、`pageErrors=[]` |
-| `PLAYWRIGHT_PORT=4180 npm run test:browser -- staff-visual-refresh.spec.ts stage75-contacts.spec.ts stage75-settlement-batches.spec.ts review-mode.spec.ts` | 0；19 passed |
+| `PLAYWRIGHT_PORT=4279 STAGE7F_VISUAL_EVIDENCE_DIR=tmp/stage7f-baseline-20260831 npm run test:browser -- stage7f-visual-evidence-repair.spec.ts` | 0；修复前旧 harness 1 passed，但未覆盖以下 3 个精确缺陷 |
+| `CI=1 PLAYWRIGHT_PORT=4290 STAGE7F_VISUAL_EVIDENCE_DIR=tmp/stage7f-regression-baseline-20260831 npm run test:browser -- stage7f-visual-evidence-repair.spec.ts --grep '回归'` | 1；新增的 3 项回归断言按预期全部暴露旧问题 |
+| `CI=1 PLAYWRIGHT_PORT=4292 STAGE7F_VISUAL_EVIDENCE_DIR=tmp/stage7f-regression-fixed-20260831 npm run test:browser -- stage7f-visual-evidence-repair.spec.ts --grep '回归'` | 0；3 passed |
+| `CI=1 PLAYWRIGHT_PORT=4293 STAGE7F_VISUAL_EVIDENCE_DIR=tmp/stage7f-visual-evidence-repair-20260831-final STAGE7F_REGRESSION_DIR=tmp/stage7f-visual-regressions-20260831-final npm run test:browser -- stage7f-visual-evidence-repair.spec.ts` | 0；4 passed，21 张主截图及回归截图生成，`apiRequests=[]`、`pageErrors=[]` |
+| `CI=1 PLAYWRIGHT_PORT=4294 STAGE75_CONTACTS_SCREENSHOT_DIR=tmp/stage75-contacts-fixed-20260831 STAGE75_BATCHES_SCREENSHOT_DIR=tmp/stage75-batches-fixed-20260831 npm run test:browser -- staff-visual-refresh.spec.ts stage75-contacts.spec.ts stage75-settlement-batches.spec.ts review-mode.spec.ts` | 0；19 passed |
 | `npm run build` | 0；Web Vite build 与本地 Wrangler `--dry-run` 均完成，无部署 |
 
-执行中曾发现并修正两个非业务问题：图片懒加载 helper 的异步计数错误、买家客户页多个“微信号”标签的定位歧义；另修正了安全扫描器识别的 Demo token 字面量写法。卖家恢复页暴露的真实问题是首页严格 schema 漏掉后端已有的 nullable `wechat_id` 字段，已按现有 `/api/seller-portal/members` 响应对齐；没有改变接口响应。
+旧 harness 的 baseline 虽然通过，是因为它没有断言这三个具体视觉回归；因此本轮先保留 baseline 直接结果，再用失败断言证明修复前缺口，最后用同一断言证明修复后通过。
 
 ## 本地门禁
 
-最终 `npm run check` 在当前变更内容上直接退出 `0`，包含以下结果：
+最终 `npm run check` 在文档更新后的最终内容上完整退出 `0`；随后未再修改运行时代码。已完成的直接门禁如下：
 
 | 门禁 | 结果 |
 |---|---|
 | `npm run typecheck` | 0 |
 | `npm test` | 0；264 files / 1870 tests |
 | `npm run build` | 0；本地 Wrangler `--dry-run`，无部署 |
-| `npm run check` | 0；静态、安全、依赖、迁移、容量、测试、构建、静态产物全部通过 |
-| `npm run security:scan` | 0 |
+| `npm run security:scan` | 0；1855 个项目文件 |
+| `npm run audit:dependencies` | 0；high/critical 均为 0 |
 | `npm run verify:css-ownership` | 0 |
 | `npm run verify:css-duplicates` | 0 |
 | `npm run verify:web-source-boundaries` | 0；14 rules / 0 violations / 0 external calls |
@@ -77,4 +87,4 @@
 - `STAGING`：未部署、未访问；无 staging 验收结论。
 - `REMOTE CI`：未访问；不把本地结果写成 Remote CI 结果。
 - `PRODUCTION`：未访问、未变更；Production 保持 `NO-GO`。
-- 未触碰 Cloudflare 远端资源、D1/R2、Google Drive、Feishu、GitHub remote；未 push、未 deploy、未 sync、未 archive Change。
+- 未触碰 Cloudflare 远端资源、D1/R2/Queues、Google Drive、Feishu、GitHub remote；未 push、未 deploy、未 sync、未 archive Change。

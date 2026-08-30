@@ -1095,6 +1095,19 @@
   min-width: 34px;
 }
 
+/* The legacy button-link primitive is still used by the product list. Its
+   color must win over the scoped Staff anchor reset without changing links
+   outside the Staff application. */
+.staff-app a.button-link {
+  color: var(--color-text-inverse);
+  text-decoration: none;
+}
+
+.staff-app a.button-link:hover {
+  color: var(--color-text-inverse);
+  text-decoration: none;
+}
+
 /* Dashboard window controls are primary staff controls, so keep the shared
    touch-target contract when the frozen dashboard uses the staff shell. */
 .staff-app .frozen-admin-dashboard .dashboard-window-switch .button {

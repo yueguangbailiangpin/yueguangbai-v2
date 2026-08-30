@@ -4,7 +4,7 @@ import { identityApiRequest } from '../../api/identity-request';
 import { operationHeaders } from '../../api/idempotency';
 import { isFrontendApiError } from '../../api/errors';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
-import { Alert, Button, Card, FormField, RequestIdDisplay } from '../../ui/primitives';
+import { Alert, Button, Card, FormField, RequestIdDisplay, TextInput } from '../../ui/primitives';
 import { StaffProtectedImage } from '../shared/StaffProtectedImage';
 import { uploadSingleFileMultipart } from '../../files/file-upload-transport';
 import {
@@ -159,7 +159,7 @@ function ChannelSettingsForm({ channel }: { channel: StaffChannel }): React.JSX.
       }}
     >
       <FormField label="公开名称" htmlFor={`channel-name-${channel.code}`}>
-        <input
+        <TextInput
           id={`channel-name-${channel.code}`}
           name="display_name"
           defaultValue={channel.display_name}
@@ -167,14 +167,14 @@ function ChannelSettingsForm({ channel }: { channel: StaffChannel }): React.JSX.
         />
       </FormField>
       <FormField label="微信号（留空即未配置）" htmlFor={`channel-wechat-${channel.code}`}>
-        <input
+        <TextInput
           id={`channel-wechat-${channel.code}`}
           name="wechat_id"
           defaultValue={channel.wechat_id ?? ''}
         />
       </FormField>
       <FormField label="变更原因" htmlFor={`channel-reason-${channel.code}`}>
-        <input
+        <TextInput
           id={`channel-reason-${channel.code}`}
           name="reason"
           minLength={3}
@@ -407,7 +407,7 @@ function QrAttachForm({
         </p>
       ) : null}
       <FormField label="变更原因" htmlFor={`channel-qr-reason-${channel.code}`}>
-        <input
+        <TextInput
           id={`channel-qr-reason-${channel.code}`}
           value={reason}
           onChange={(event) => setReason(event.target.value)}

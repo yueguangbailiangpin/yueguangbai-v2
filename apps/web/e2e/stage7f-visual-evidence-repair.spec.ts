@@ -12,6 +12,10 @@ const screenshotDirectory = resolve(
   process.cwd(),
   process.env['STAGE7F_VISUAL_EVIDENCE_DIR'] ?? 'tmp/stage7f-visual-evidence-repair',
 );
+const regressionScreenshotDirectory = resolve(
+  process.cwd(),
+  process.env['STAGE7F_REGRESSION_DIR'] ?? 'tmp/stage7f-visual-regressions',
+);
 
 const forbiddenState =
   /MALFORMED_RESPONSE|服务暂时不可用|当前面板加载失败|暂时无法加载|暂时无法读取|读取失败|加载失败|正在加载|正在读取|加载中|读取中/u;
@@ -73,10 +77,20 @@ async function assertNormalState(page: Page, key: string | RegExp): Promise<void
   await assertNoHorizontalOverflow(page);
 }
 
-async function capture(page: Page, name: string): Promise<void> {
-  mkdirSync(screenshotDirectory, { recursive: true });
+async function capture(page: Page, name: string, directory = screenshotDirectory): Promise<void> {
+  mkdirSync(directory, { recursive: true });
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    document.scrollingElement?.scrollTo(0, 0);
+  });
+  await expect
+    .poll(
+      () => page.evaluate(() => ({ scrollX: window.scrollX, scrollY: window.scrollY })),
+      { timeout: 5_000 },
+    )
+    .toEqual({ scrollX: 0, scrollY: 0 });
   await page.screenshot({
-    path: resolve(screenshotDirectory, name),
+    path: resolve(directory, name),
     fullPage: true,
     animations: 'disabled',
     caret: 'hide',
@@ -90,6 +104,87 @@ async function setOwner(page: Page): Promise<void> {
   await role.selectOption('owner');
   await expect(page.getByText('审核卖家产品申请').first()).toBeVisible();
 }
+
+function parseOpaqueRgb(value: string): readonly [number, number, number] {
+  const match = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/u.exec(value);
+  if (!match) throw new Error(`Expected an opaque RGB color, received ${value}`);
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function relativeLuminance([red, green, blue]: readonly [number, number, number]): number {
+  const channel = (value: number): number => {
+    const normalized = value / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue);
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(parseOpaqueRgb(foreground));
+  const backgroundLuminance = relativeLuminance(parseOpaqueRgb(background));
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+test('回归：订单详情图片解码后的截图必须从页面顶部开始', async ({ page }) => {
+  await setOwner(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/review/staff/orders/review-seller-order-1');
+  await expect(page.getByRole('heading', { name: '订单付款截图' })).toBeVisible();
+  await assertDecodedImages(page, true);
+  await capture(page, 'regression-order-detail-scroll.png', regressionScreenshotDirectory);
+});
+
+test('回归：产品列表查看详情按钮文字必须与按钮背景有可读对比度', async ({ page }) => {
+  await setOwner(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/review/staff/products');
+  await expect(page.getByRole('table', { name: '员工产品库' })).toBeVisible();
+  const links = page.locator('a.button-link');
+  await expect(links).toHaveCount(5);
+  const styles = await links.evaluateAll((nodes) => nodes.map((node) => {
+    const style = window.getComputedStyle(node);
+    return { foreground: style.color, background: style.backgroundColor };
+  }));
+  for (const style of styles) {
+    expect(style.foreground).not.toBe(style.background);
+    expect(contrastRatio(style.foreground, style.background)).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+test('回归：客服渠道的八个可编辑输入必须复用可见 Staff 输入样式', async ({ page }) => {
+  await setOwner(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/review/staff/service-channels');
+  await expect(page.getByRole('heading', { name: '客服渠道' })).toBeVisible();
+  const inputs = page.locator('.sp-settings-page input:not([type="file"])');
+  await expect(inputs).toHaveCount(8);
+  const styles = await inputs.evaluateAll((nodes) => nodes.map((node) => {
+    const computed = window.getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return {
+      height: rect.height,
+      width: rect.width,
+      borderTopWidth: computed.borderTopWidth,
+      borderRightWidth: computed.borderRightWidth,
+      borderBottomWidth: computed.borderBottomWidth,
+      borderLeftWidth: computed.borderLeftWidth,
+      backgroundColor: computed.backgroundColor,
+    };
+  }));
+  for (const style of styles) {
+    expect(style.width).toBeGreaterThan(0);
+    expect(style.height).toBeGreaterThanOrEqual(40);
+    expect(style.borderTopWidth).not.toBe('0px');
+    expect(style.borderRightWidth).not.toBe('0px');
+    expect(style.borderBottomWidth).not.toBe('0px');
+    expect(style.borderLeftWidth).not.toBe('0px');
+    expect(style.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  }
+});
 
 test('Stage 7F 17 Staff views and 4 Review recovery views', async ({ page }) => {
   test.setTimeout(180_000);
