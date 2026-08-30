@@ -40,6 +40,11 @@ for traceability and fail-closed handling.
    remaining Stage 8/production boundaries are stated separately.
 4. **Use `skip_specs: true`.** No observable requirement changes, so a delta
    spec would invent behavior and is intentionally omitted.
+5. **Keep child and parent OpenSpec status separate.** The independent
+   `stage7f4-legacy-css-retirement` Change is complete but not archived, while
+   its parent `stage7f-frontend-complete-rebuild` still has the 6.2 manual
+   visual-acceptance and 7.3 parent-bookkeeping checkboxes open. The current
+   state must record both facts without changing either Change's tasks.
 
 ## Risks / Trade-offs
 
@@ -50,6 +55,9 @@ for traceability and fail-closed handling.
 - **Risk:** Retained provider/import references can be misread as runtime
   support. **Mitigation:** State the core Worker/release boundary and the
   fail-closed/traceability purpose beside the retained references.
+- **Risk:** A completed child Change can be mistaken for a completed parent
+  Change. **Mitigation:** Keep the child archive state and parent pending
+  acceptance/bookkeeping state explicit in the current-state document.
 
 ## Migration Plan
 

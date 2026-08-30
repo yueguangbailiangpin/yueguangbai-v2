@@ -19,6 +19,8 @@
   NOT_RUN facts, Stage 8 authorization, and Production NO-GO.
 - [x] 2.4 Change D-058 to the archived-Change tense while preserving its
   no-push, no-deploy, and no-remote-resource facts.
+- [x] 2.5 Correct the Stage 7F-4 child/parent status distinction without
+  changing either existing Change's task checkboxes.
 
 ## 3. Verification and delivery
 
