@@ -29,6 +29,10 @@ describe('shared cursor wire primitives', () => {
     expect(decodeBase64UrlBytes(encodeBase64UrlBytes(bytes))).toEqual(bytes);
   });
 
+  it('preserves the existing undefined JSON encoder edge behavior', () => {
+    expect(encodeBase64UrlJson(undefined)).toBe('');
+  });
+
   it('preserves the legacy binary-string fixture', () => {
     const json = '{"k":"legacy","id":"row-1"}';
     const fixture = 'eyJrIjoibGVnYWN5IiwiaWQiOiJyb3ctMSJ9';

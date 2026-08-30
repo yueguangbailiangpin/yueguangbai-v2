@@ -28,7 +28,6 @@ export function decodeBase64UrlBinary(value: string): string {
 
 export function encodeBase64UrlJson(value: unknown): string {
   const json = JSON.stringify(value);
-  if (json === undefined) throw new TypeError('cursor_json_undefined');
   return encodeBase64UrlBytes(new TextEncoder().encode(json));
 }
 
