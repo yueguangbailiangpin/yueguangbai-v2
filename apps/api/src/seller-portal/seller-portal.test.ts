@@ -787,6 +787,184 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     }
   });
 
+  it('limits seller settlement payment list and detail to OWNER and FINANCE', async () => {
+    if (!database) throw new Error('test_database_missing');
+    seedSellerSettlementHistoryScope(database);
+    const app = testApp();
+
+    for (const role of ['owner', 'finance'] as const) {
+      const list = await request(app, '/api/seller-portal/settlement/payments', {
+        headers: { Cookie: await cookie(role) },
+      });
+      expect(list.status).toBe(200);
+      const listBody = await json<any>(list);
+      expect(listBody.data.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ payment_id: 'payment-organization-history' }),
+      ]));
+
+      const detail = await request(
+        app,
+        '/api/seller-portal/settlement/payments/payment-organization-history',
+        { headers: { Cookie: await cookie(role) } },
+      );
+      expect(detail.status).toBe(200);
+      await expect(json(detail)).resolves.toMatchObject({
+        data: { payment: {
+          payment_id: 'payment-organization-history',
+          amount_cny_fen: '500',
+        } },
+      });
+    }
+
+    for (const role of ['ops', 'viewer'] as const) {
+      for (const path of [
+        '/api/seller-portal/settlement/payments',
+        '/api/seller-portal/settlement/payments/payment-organization-history',
+      ]) {
+        const response = await request(app, path, {
+          headers: { Cookie: await cookie(role) },
+        });
+        expect(response.status).toBe(404);
+        const body = await json(response);
+        expect(body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+        expect(JSON.stringify(body)).not.toMatch(
+          /amount|payment|allocation|payable|unallocated/iu,
+        );
+      }
+    }
+
+    const foreignList = await request(app, '/api/seller-portal/settlement/payments', {
+      headers: { Cookie: await cookie('other-owner') },
+    });
+    expect(foreignList.status).toBe(200);
+    expect((await json<any>(foreignList)).data.items).toEqual([]);
+
+    const foreignDetail = await request(
+      app,
+      '/api/seller-portal/settlement/payments/payment-organization-history',
+      { headers: { Cookie: await cookie('other-owner') } },
+    );
+    expect(foreignDetail.status).toBe(404);
+    const foreignBody = await json(foreignDetail);
+    expect(foreignBody).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    expect(JSON.stringify(foreignBody)).not.toMatch(
+      /amount|payment|allocation|payable|unallocated/iu,
+    );
+
+    const foreignPayables = await request(app, '/api/seller-portal/settlement/payables', {
+      headers: { Cookie: await cookie('other-owner') },
+    });
+    expect(foreignPayables.status).toBe(200);
+    expect((await json<any>(foreignPayables)).data.items).toEqual([]);
+
+    const foreignPayable = await request(
+      app,
+      '/api/seller-portal/settlement/payables/payable-disabled-history',
+      { headers: { Cookie: await cookie('other-owner') } },
+    );
+    expect(foreignPayable.status).toBe(404);
+    const foreignPayableBody = await json(foreignPayable);
+    expect(foreignPayableBody).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    expect(JSON.stringify(foreignPayableBody)).not.toMatch(
+      /amount|payment|allocation|payable|unallocated/iu,
+    );
+
+    const unauthenticated = await request(
+      app,
+      '/api/seller-portal/settlement/payments',
+    );
+    expect(unauthenticated.status).toBe(401);
+
+    database.exec(
+      "UPDATE seller_organization_members SET status='DISABLED' WHERE id='member-viewer'",
+    );
+    const disabled = await request(app, '/api/seller-portal/settlement/payments', {
+      headers: { Cookie: await cookie('viewer') },
+    });
+    expect(disabled.status).toBe(401);
+  });
+
+  it('paginates seller payables and payments across two cursor pages', async () => {
+    if (!database) throw new Error('test_database_missing');
+    seedSellerSettlementHistoryScope(database);
+    database.exec(`
+      INSERT INTO seller_payments (
+        id, seller_organization_id, amount_cny_fen, paid_at,
+        recorded_at, recorded_by_staff_id, version, created_at, updated_at
+      ) VALUES (
+        'payment-organization-history-2', 'org-1', 250, 6500,
+        6500, 'staff-portal', 1, 6500, 6500
+      );
+    `);
+    const app = testApp();
+    const headers = { Cookie: await cookie('owner') };
+
+    const payableFirst = await request(
+      app,
+      '/api/seller-portal/settlement/payables?limit=1',
+      { headers },
+    );
+    expect(payableFirst.status).toBe(200);
+    const payableFirstBody = await json<any>(payableFirst);
+    expect(payableFirstBody.data.items).toHaveLength(1);
+    expect(payableFirstBody.data.page.next_cursor).toEqual(expect.any(String));
+    const payableSecond = await request(
+      app,
+      `/api/seller-portal/settlement/payables?limit=1&cursor=${encodeURIComponent(
+        payableFirstBody.data.page.next_cursor,
+      )}`,
+      { headers },
+    );
+    expect(payableSecond.status).toBe(200);
+    const payableSecondBody = await json<any>(payableSecond);
+    expect(payableSecondBody.data.items).toHaveLength(1);
+    expect(payableSecondBody.data.page.next_cursor).toBeNull();
+    expect([
+      ...payableFirstBody.data.items,
+      ...payableSecondBody.data.items,
+    ].map((item) => item.payable_id)).toEqual([
+      'payable-disabled-history',
+      'payable-active-history',
+    ]);
+
+    const paymentFirst = await request(
+      app,
+      '/api/seller-portal/settlement/payments?limit=1',
+      { headers },
+    );
+    expect(paymentFirst.status).toBe(200);
+    const paymentFirstBody = await json<any>(paymentFirst);
+    expect(paymentFirstBody.data.items).toHaveLength(1);
+    expect(paymentFirstBody.data.page.next_cursor).toEqual(expect.any(String));
+    const paymentSecond = await request(
+      app,
+      `/api/seller-portal/settlement/payments?limit=1&cursor=${encodeURIComponent(
+        paymentFirstBody.data.page.next_cursor,
+      )}`,
+      { headers },
+    );
+    expect(paymentSecond.status).toBe(200);
+    const paymentSecondBody = await json<any>(paymentSecond);
+    expect(paymentSecondBody.data.items).toHaveLength(1);
+    expect(paymentSecondBody.data.page.next_cursor).toBeNull();
+    expect([
+      ...paymentFirstBody.data.items,
+      ...paymentSecondBody.data.items,
+    ].map((item) => item.payment_id)).toEqual([
+      'payment-organization-history',
+      'payment-organization-history-2',
+    ]);
+
+    for (const endpoint of ['payables', 'payments']) {
+      const malformed = await request(
+        app,
+        `/api/seller-portal/settlement/${endpoint}?cursor=not-base64`,
+        { headers },
+      );
+      expect(malformed.status).toBe(400);
+    }
+  });
+
   it('preserves disabled-store settlement history for OWNER without widening FINANCE scope', async () => {
     if (!database) throw new Error('test_database_missing');
     seedSellerSettlementHistoryScope(database);

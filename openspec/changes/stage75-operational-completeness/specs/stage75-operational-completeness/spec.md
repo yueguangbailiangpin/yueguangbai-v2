@@ -177,3 +177,13 @@ After all three batches, the repository runtime code MUST NOT contain public poo
 
 - **WHEN** the new pages are captured at 1440px, 1280px, and 390px
 - **THEN** no horizontal overflow or unexpected error state appears and every rendered image is fully decoded.
+
+## Compatibility note
+
+The later `seller-settlement-read-boundary` Change is the authoritative
+endpoint-level follow-up for Seller Portal settlement reads. It narrows the
+five legacy financial read endpoints to active `OWNER`/`FINANCE`, preserves the
+four-role Seller-safe batch reads, and fixes the Seller batch Buyer boundary to
+concealed `404`. This note supersedes only the endpoint-level ambiguity in this
+historical Stage 7.5 spec; it does not change the batch state machine, write
+authorization, migration scope, or the historical acceptance record above.

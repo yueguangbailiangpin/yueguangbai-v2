@@ -37,6 +37,13 @@ and permission checks remain in their existing modules, avoiding a domain/API
 cycle and preventing same-spelled but differently scoped roles from being
 combined.
 
+## Historical scope note
+
+This write-authorization Change did not modify the Seller payment list/detail
+read boundary. The later `seller-settlement-read-boundary` Change makes those
+two reads reuse the existing `OWNER`/`FINANCE` financial-read policy; write
+authorization, Staff authorization, and the policy's scope remain unchanged.
+
 ## 3. Endpoint classification
 
 The following Seller portal commands are classified as organization writes and

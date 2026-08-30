@@ -96,6 +96,7 @@ function requireSellerFinancialReadRole(
 
 async function payments(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
+  requireSellerFinancialReadRole(actor);
   const pagination = parseSellerPortalPagination(new URL(context.req.url));
   return success(context, await listSellerPayments(
     context.env.DB,
@@ -106,6 +107,7 @@ async function payments(context: Context<any>): Promise<Response> {
 
 async function payment(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
+  requireSellerFinancialReadRole(actor);
   return success(context, {
     payment: await getSellerPayment(
       context.env.DB,

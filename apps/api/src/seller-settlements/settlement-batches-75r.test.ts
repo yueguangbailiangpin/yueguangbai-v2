@@ -55,6 +55,9 @@ beforeEach(async () => {
     INSERT INTO customer_login_accounts(id,identity_subject_id,account_type,login_identifier_display,login_identifier_normalized,status,session_version,password_change_required,version,created_at,updated_at,activated_at,disabled_at,registration_source)
     VALUES('r75-seller-account','cold-seller-subject-stage75r-settlements','SELLER_MEMBER','r75-seller','r75-seller','ACTIVE',1,0,1,1000,1000,1000,NULL,NULL)
       ON CONFLICT(id) DO NOTHING;
+    INSERT INTO customer_login_accounts(id,identity_subject_id,account_type,login_identifier_display,login_identifier_normalized,status,session_version,password_change_required,version,created_at,updated_at,activated_at,disabled_at,registration_source)
+    VALUES('r75-buyer-account','cold-buyer-subject-stage75r-settlements','BUYER','r75-buyer','r75-buyer','ACTIVE',1,0,1,1000,1000,1000,NULL,NULL)
+      ON CONFLICT(id) DO NOTHING;
   `);
   const row = await database!
     .prepare(
@@ -128,6 +131,26 @@ async function sellerRequest(
     accountId: identity.accountId,
     identitySubjectId: identity.subjectId,
     accountType: 'SELLER_MEMBER',
+    sessionVersion: 1,
+    passwordChangeRequired: false,
+  }, SESSION_SECRET, { now: Date.now(), ttlMs: 60 * 60 * 1000 });
+  const app = new Hono<any>();
+  app.use('*', customerSessionMiddleware());
+  registerSellerBatchRoutes(app);
+  return app.request(`${ORIGIN}${path}`, {
+    headers: {
+      Cookie: `__Host-ygb_customer_session=${token}`,
+      Origin: ORIGIN,
+      'Sec-Fetch-Site': 'same-origin',
+    },
+  }, { DB: database!, CUSTOMER_SESSION_SECRET: SESSION_SECRET } as never);
+}
+
+async function buyerRequest(path: string): Promise<Response> {
+  const token = await issueCustomerSession({
+    accountId: 'r75-buyer-account',
+    identitySubjectId: 'cold-buyer-subject-stage75r-settlements',
+    accountType: 'BUYER',
     sessionVersion: 1,
     passwordChangeRequired: false,
   }, SESSION_SECRET, { now: Date.now(), ttlMs: 60 * 60 * 1000 });
@@ -580,6 +603,27 @@ describe('seller portal settlement batches (7.5R)', () => {
       '/api/seller-portal/settlement/batches/batch-of-another-org',
     );
     expect(foreignDetail.status).toBe(404);
+  });
+
+  it('conceals Seller batch list and detail from Buyer sessions with 404', async () => {
+    const { batchId } = await createConfirmedBatch([templatePayableId], 'buyer-key');
+
+    const list = await buyerRequest('/api/seller-portal/settlement/batches');
+    expect(list.status).toBe(404);
+    const listBody = await list.json() as Record<string, unknown>;
+    expect(listBody).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    expect(JSON.stringify(listBody)).not.toContain(batchId);
+
+    const detail = await buyerRequest(
+      `/api/seller-portal/settlement/batches/${encodeURIComponent(batchId)}`,
+    );
+    expect(detail.status).toBe(404);
+    const detailBody = await detail.json() as Record<string, unknown>;
+    expect(detailBody).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    expect(JSON.stringify(detailBody)).not.toContain(batchId);
+    expect(JSON.stringify(detailBody)).not.toMatch(
+      /frozen_total|payable|outstanding|paid_amount/iu,
+    );
   });
 });
 

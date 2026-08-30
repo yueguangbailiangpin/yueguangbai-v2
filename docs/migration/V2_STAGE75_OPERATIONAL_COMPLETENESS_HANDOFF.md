@@ -50,7 +50,7 @@ inventory：161 表 / 493 索引 / 312 触发器 / 12 视图（`db:verify` SHA-2
 ## 4. 权限矩阵（新增段已入 `V2_PERMISSION_MATRIX.md`）
 
 - 订单列表+详情同一固定分配可见性：owner 全局；pre_sales/buyer_refund 按 `BUYER_PRE_SALES_OWNER`/`BUYER_REFUND_OWNER` 买家；seller_ops 按 `SELLER_ACCOUNT_MANAGER` 卖家组织；与 marketplace scope 交集；Personal DENY 优先（`ORDER_VIEW` DENY→403）；越权 concealed 404 / 列表不可见；无分配→空列表。
-- 摘要返款金额仅 owner/buyer_refund；客服渠道写仅 owner（STAFF_MANAGE）；产品对接人 owner/seller_ops（SELLER_MANAGE）+组织 scope；结算批次 owner 全局、seller_ops 限分配组织（写 `SELLER_SETTLEMENT_RECORD`），Seller 门户 OWNER/FINANCE 只读非草稿批次，Buyer 完全不可见。
+- 摘要返款金额仅 owner/buyer_refund；客服渠道写仅 owner（STAFF_MANAGE）；产品对接人 owner/seller_ops（SELLER_MANAGE）+组织 scope；结算批次 owner 全局、seller_ops 限分配组织（写 `SELLER_SETTLEMENT_RECORD`），Seller 门户批次读取由端点级矩阵约束：四类 ACTIVE Seller 成员均可读本组织非草稿批次，Buyer 在 Seller 批次边界为 concealed `404`；旧结算摘要/应付/打款五个端点仍仅 OWNER/FINANCE。
 - 批次 DTO/CSV 无内部利润、买家返款、内部员工 ID、内部备注、对象存储 key。
 
 ## 5. 容量测试结果
@@ -287,3 +287,21 @@ ChatGPT 总审确认 7.5R-4 依赖的 `removal_reason='BATCH_CANCELLED'` 尚非�
 ### 更正：既定 Playwright 终门的历史记录（真实性更正）
 
 7.5R-5 串行复跑中发现 `stage7a1-screenshots.spec.ts` 自阶段 7.5 第一批提交 `08bb223a` 起即存在缺陷：其 `/api/staff/me/work-items/summary` mock 调用了从未在该文件定义的 `ok(...)` helper，4 个 staff-shell 用例一直以 `ok is not defined` 失败。此前 7.5R-2/3/4 交接记录的"175 passed / 0 failed"不准确——当时门禁脚本用 `| tail; echo $?` 取退出码，实际取到的是 `tail` 的退出码，掩盖了真实失败。本轮修复：为该 spec 补上与其它 e2e 同形的 `ok` helper（仅补定义使既有断言得以真实执行，未改任何断言），终门在 180 用例下真实全绿（179 过 / 1 skip 预存在）。`git diff --check` 与全部退出码自此均取自命令本身的退出码。边界声明：仍是本地修复，非 Staging/Production GO；未 push、未部署、未归档 Change、未进入阶段 8。
+
+## 14. Seller 结算读取端点级后续裁决（2026-08-30）
+
+本节记录阶段 7.5R 之后对 Seller Portal 七个读取端点的业务裁决，来源为当前
+代码、回归测试和独立本地命令退出码；不把旧交接报告当作运行事实。它仅在端点级
+范围内补充并收敛本交接文档，不改写 D-056 的组织级历史语义。
+
+| 端点 | ACTIVE Seller 角色 | 角色不足/隔离 | 投影边界 |
+| --- | --- | --- | --- |
+| `summary`、`payables`、`payables/:id`、`payments`、`payments/:id` | `OWNER`、`FINANCE` | `OPERATIONS`/`VIEWER` concealed `404`；跨组织列表为空或详情 concealed `404` | Seller-safe 旧结算读取；不增加内部财务、利润、买家返款、内部备注或对象 key |
+| `batches`、`batches/:id` | `OWNER`、`OPERATIONS`、`FINANCE`、`VIEWER` | 跨组织/不可见状态 concealed `404`；`DRAFT`/`CANCELLED` 不可见；Buyer concealed `404` | 专用 Seller-safe 批次 DTO；四类角色均只读 |
+
+未认证、无效会话和 DISABLED Seller 成员均保持 `401`。批次读取的 Buyer `404`
+只适用于 Seller 批次边界，不改变 Staff 路由或其他 Buyer 访问语义。付款列表和
+详情原先缺少与摘要/应付相同的财务角色门禁，现已与五个旧结算财务端点统一。
+本次不新增 Migration，不修改 DTO 隐私边界、批次状态机、结算写端点或 Seller
+前端视觉/CSS；对应实现与测试归入独立 Change
+`seller-settlement-read-boundary`，该 Change 保留为未归档状态。

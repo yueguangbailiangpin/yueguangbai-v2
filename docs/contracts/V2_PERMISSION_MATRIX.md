@@ -120,7 +120,7 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 
 ### 卖家结算批次（阶段 7.5 第三批）
 
-- owner 全局创建/确认/取消/导出；被分配该卖家组织的 seller_ops 在范围内同权（写需 `SELLER_SETTLEMENT_RECORD`，读需 `SELLER_SETTLEMENT_VIEW`）；Seller 门户 OWNER/FINANCE 只读本组织非草稿批次；Buyer 完全不可见。
+- owner 全局创建/确认/取消/导出；被分配该卖家组织的 seller_ops 在范围内同权（写需 `SELLER_SETTLEMENT_RECORD`，读需 `SELLER_SETTLEMENT_VIEW`）；Seller 门户批次列表/详情由下方端点级矩阵约束；Buyer 在 Seller 批次边界收到 concealed `404`。
 - 批次不暴露内部利润、买家返款、内部员工 ID、内部备注或对象存储 key；CSV 导出白名单字段、RFC 4180 引号转义并中和公式注入。
 - 7.5R：导出为幂等命令（Idempotency-Key + 请求哈希 + 可选 expected_version；首次流式返回文件并在响应头带行数/SHA-256，同键重放返回收据 JSON；BATCH_EXPORTED 审计仅一次；超 5,000 行或 2 MiB 在响应前 409 `EXPORT_TOO_LARGE`；跨组织 concealed 404）；成员读取 keyset 分页（`members_limit`/`members_cursor`）；卖家门户使用专用 strict DTO（无组织 ID/版本/取消元数据/内部成员 ID），DRAFT/CANCELLED 在 SQL 内过滤后才分页。
 
@@ -174,21 +174,42 @@ effective permissions；它们不得扩张 canonical role 的默认能力。Pers
 
 ## 5. 卖家组织成员
 
+### 5.1 Seller 结算读取端点级矩阵（2026-08-30）
+
+D-056 与本表的组织级可见性语义仍然成立，但不能替代具体端点的字段投影和
+敏感财务字段门禁。以下是当前 Seller Portal 的七个读取端点的有效矩阵：
+
+| 端点 | 允许角色 | 越权/隔离行为 | 字段边界 |
+| --- | --- | --- | --- |
+| `summary` | `OWNER`, `FINANCE` | `OPERATIONS`/`VIEWER` concealed `404`；跨组织不适用 | Seller-safe 结算摘要；不含内部利润、买家返款、内部备注或对象 key |
+| `payables` | `OWNER`, `FINANCE` | `OPERATIONS`/`VIEWER` concealed `404`；跨组织列表为空 | Seller-safe 应付读取，按组织隔离并支持 cursor 分页 |
+| `payables/:id` | `OWNER`, `FINANCE` | `OPERATIONS`/`VIEWER` concealed `404`；跨组织 concealed `404` | 单笔 Seller-safe 应付字段；不扩展内部财务字段 |
+| `payments` | `OWNER`, `FINANCE` | `OPERATIONS`/`VIEWER` concealed `404`；跨组织列表为空 | Seller-safe 打款读取，按组织隔离并支持 cursor 分页 |
+| `payments/:id` | `OWNER`, `FINANCE` | `OPERATIONS`/`VIEWER` concealed `404`；跨组织 concealed `404` | 单笔 Seller-safe 打款字段；不扩展内部账户/利润字段 |
+| `batches` | `OWNER`, `OPERATIONS`, `FINANCE`, `VIEWER`（均须 ACTIVE） | 其他组织 concealed `404`；`DRAFT`/`CANCELLED` 不可见；Buyer concealed `404` | 专用 Seller-safe 批次列表 DTO |
+| `batches/:id` | `OWNER`, `OPERATIONS`, `FINANCE`, `VIEWER`（均须 ACTIVE） | 其他组织或不可见状态 concealed `404`；Buyer concealed `404` | 专用 Seller-safe 批次详情 DTO，不含内部员工 ID、内部利润、买家返款、内部备注或对象 key |
+
+未认证、会话无效或 Seller 成员已禁用时，端点返回 `401`；有效但角色不足的
+五个旧财务端点返回 concealed `404`。批次端点的 Buyer 账户不再落入 Seller
+actor 的 `403`，而是在该边界统一返回 `404`。这段端点级规则是对 D-056
+组织级历史语义的后续收敛，不改写其历史记录。
+
 ### OWNER
 
-授权店铺范围内全部产品、订单、图片、消息和财务；成员管理；唯一允许财务导出。
+授权店铺范围内全部产品、订单、图片、消息和结算读取；成员管理；唯一允许财务导出。
+结算五个旧财务端点与 Seller-safe 批次均可读。
 
 ### OPERATIONS
 
-授权店铺内产品、订单、图片和业务消息；不看财务；不管理成员；不导出。
+授权店铺内产品、订单、图片、业务消息和 Seller-safe 批次；不看旧财务端点；不管理成员；不导出。
 
 ### FINANCE
 
-授权店铺内基础订单、本金和服务费；不写消息；不管理成员；不导出。
+授权店铺内基础订单、本金、服务费、五个旧结算财务端点和 Seller-safe 批次；不写消息；不管理成员；不导出。
 
 ### VIEWER
 
-只读授权店铺基础业务；无财务、写消息、新品提交和成员管理。
+只读授权店铺基础业务和 Seller-safe 批次；无五个旧财务端点、写消息、新品提交和成员管理。
 
 ## 6. 系统硬禁止
 

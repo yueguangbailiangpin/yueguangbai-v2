@@ -259,3 +259,12 @@ seller_settlement_batch_events (
 - 工作台摘要：计数走 work-item 既有索引 + 返款义务索引；recent 限 5 条。
 - 批次导出：流式分页拉取；5,000 行/2 MiB 上限。
 - 所有新查询在容量 suite 中以 `EXPLAIN QUERY PLAN` 断言无 `SCAN <表>` 全表扫描（带 WHERE 的覆盖索引扫描除外，按 SQLite 术语为 `SEARCH ... USING INDEX`）。
+
+## 11. Seller 结算读取端点级后续裁决
+
+2026-08-30 的独立 Change `seller-settlement-read-boundary` 对本 Change 的
+Seller Portal 读取边界作端点级补充：`summary`、`payables`、`payables/:id`、
+`payments`、`payments/:id` 仅允许 ACTIVE `OWNER`/`FINANCE`；`batches` 与
+`batches/:id` 允许四类 ACTIVE Seller 成员读取本组织非草稿批次，且使用
+Seller-safe DTO；Buyer 在 Seller 批次边界为 concealed `404`。本节不改变本
+Change 的批次状态机、写权限、Migration 或历史追记，原有历史文字保留用于追溯。

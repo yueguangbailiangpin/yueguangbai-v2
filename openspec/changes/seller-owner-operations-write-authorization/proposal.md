@@ -61,11 +61,10 @@ policy is exported from `@ygb/domain` and has no database or HTTP dependencies.
 - No change to the Seller organization onboarding invariants that create or
   activate the fixed primary `OWNER` member; those are lifecycle/data guards,
   not active-member portal authorization.
-- The existing Seller settlement payment list/detail routes currently resolve
-  for every active Seller member while summary/payables/payable are gated to
-  `OWNER`/`FINANCE`; this observed read-side inconsistency is recorded for a
-  separate decision and is intentionally not changed by this write-only
-  refactor.
+- The original write-only Change intentionally did not add a financial gate to
+  payment list/detail. That historical scope is preserved, while the later
+  independent `seller-settlement-read-boundary` Change is now authoritative for
+  the payment read boundary and aligns it with summary/payables.
 - No frontend, CSS, deployment, push, remote CI, OpenSpec archive, or access to
   Cloudflare/D1/R2/Queues/Google Drive/production resources.
 

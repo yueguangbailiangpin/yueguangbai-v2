@@ -121,3 +121,11 @@ and permission rules MUST remain in their current Staff authorization modules.
   detail route
 - **THEN** the current route behavior remains unchanged, including its current
   lack of the summary/payables financial-role gate.
+
+## Compatibility note
+
+The payment-read scenario above records the historical scope of this
+write-authorization Change. The later `seller-settlement-read-boundary` Change
+supersedes only that payment list/detail read behavior by applying the existing
+`OWNER`/`FINANCE` financial-read gate; it does not alter any write
+authorization requirement in this spec.

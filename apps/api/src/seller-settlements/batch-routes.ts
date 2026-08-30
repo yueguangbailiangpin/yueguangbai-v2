@@ -4,6 +4,7 @@ import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import { requireCustomerSessionFromContext } from '../middleware/customer-auth';
 import {
   addMembers,
   cancelBatch,
@@ -29,8 +30,8 @@ import {
  * Stage 7.5 batch 3 routes. Staff endpoints live under the existing
  * organization-scoped prefix (owner global, seller_ops within scope; write
  * operations require SELLER_SETTLEMENT_RECORD). Seller portal members read
- * their organization's non-draft batches only; buyers never reach these
- * routes (404 from the auth layer).
+ * their organization's non-draft batches only; Buyer sessions receive a
+ * concealed 404 at this boundary.
  */
 
 const BODY_LIMIT = 32 * 1024;
@@ -326,6 +327,10 @@ interface SellerPortalActorContext {
 async function requireSellerActor(
   context: Context<any>,
 ): Promise<SellerPortalActorContext> {
+  const session = requireCustomerSessionFromContext(context);
+  if (session.accountType !== 'SELLER_MEMBER') {
+    throw new SellerSettlementError('NOT_FOUND', 404);
+  }
   const actor = await resolveSellerPortalActor(context);
   return { sellerOrganizationId: actor.sellerOrganizationId };
 }
