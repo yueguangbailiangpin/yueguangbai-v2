@@ -71,4 +71,4 @@
 
 - [x] 7.1 买家端视觉重做（7F-2）：首页、产品/预约、订单详情、手机布局、Drawer 与单张付款截图语义均由真实路由/fixture 验证；本轮补齐三端 Material Symbols 统一适配
 - [x] 7.2 卖家端视觉重做（7F-3）：首页、店铺/产品、订单沟通截图、结算、手机布局、Drawer 与权限边界均由真实路由/fixture 验证；本轮补齐三端 Material Symbols 统一适配
-- [ ] 7.3 legacy CSS 全量退役与收尾（7F-4）
+- [x] 7.3 legacy CSS 全量退役与收尾（7F-4）。子 Change `stage7f4-legacy-css-retirement` 已完成（`isComplete=true`、13/13 tasks），当前 CSS/source/static guards 复核通过；子 Change 仍未归档。父级证据见 `evidence.md`。

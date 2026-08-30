@@ -149,6 +149,6 @@ staff-workbench / staff-order-detail / staff-mobile / staff-mobile-drawer、buye
 
 ### 仍未完成与环境边界
 
-- 7F-4 legacy CSS 全量退役、员工端完整 17 项视觉矩阵以及营销官网/阶段 8 未执行；买家/卖家后端能力缺口仍按 §11 记录。
+- 7F-4 legacy CSS 子 Change 已完成且当前实现/门禁仍有效；子 Change `stage7f4-legacy-css-retirement` 仍未归档，不将“未归档”写成“未完成”。员工端完整 17 项视觉矩阵仍未验收，父 Change 6.2 保持未勾选；营销官网/阶段 8 未执行，买家/卖家后端能力缺口仍按 §11 记录。父级 7.3 记账与 21 项逐项审计见 `openspec/changes/stage7f-frontend-complete-rebuild/evidence.md`。
 - `npm run check` 的 Cloudflare dry-run 只报告 `BLOCKED_NEEDS_OPERATOR_INPUT`，外部调用、部署和资源变更均为 0；这不是部署证据。
 - 本次没有修改 `apps/api`、`packages/contracts`、`migrations` 或任何后端业务规则；`REMOTE_WRITES=no`、`GITHUB_REMOTE_TOUCHED=no`、`DEPLOY=no`。
