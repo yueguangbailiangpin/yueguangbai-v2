@@ -24,6 +24,7 @@ export * from './order-instructions';
 export * from './reviews/review-url';
 export * from './seller-settlement/status';
 export * from './seller-settlement/business-completion';
+export * from './seller-authorization';
 export * from './security/customer-password';
 export * from './security/customer-session';
 export * from './security/cloudflare-access-team-origin';

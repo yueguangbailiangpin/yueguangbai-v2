@@ -11,7 +11,7 @@ import {
   type ObjectStorageAdapter,
   type StaffDataScope,
 } from '@ygb/contracts';
-import { readBoundedJson } from '@ygb/domain';
+import { canWriteSellerOperations, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../app';
 import type { CustomerSessionContext } from '../customer-auth/authenticate-customer';
@@ -442,7 +442,7 @@ async function resolveRouteAuthority(
       accountId: seller.accountId,
       identitySubjectId: seller.identitySubjectId,
     },
-    allowedUploads: seller.role === 'OWNER' || seller.role === 'OPERATIONS'
+    allowedUploads: canWriteSellerOperations(seller.role)
       ? SELLER_UPLOADS
       : NO_UPLOADS,
   };

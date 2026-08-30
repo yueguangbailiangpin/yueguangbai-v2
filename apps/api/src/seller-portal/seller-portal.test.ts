@@ -16,6 +16,7 @@ import { createApp } from '../app';
 import { issueCustomerSession } from '../customer-auth/authenticate-customer';
 import { MockObjectStorage } from '../files/mock-object-storage';
 import { registerFileHttpRoutes } from '../files/routes';
+import { registerSellerMemberRoutes } from './member-routes';
 import { registerSellerPortalRoutes } from './routes';
 import { registerSellerSettlementRoutes } from '../seller-settlements';
 
@@ -75,6 +76,51 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     });
     expect(mismatched.status).toBe(401);
     await expect(json(mismatched)).resolves.toMatchObject({
+      error: { code: 'SESSION_INVALID' },
+    });
+  });
+
+  it('keeps unauthenticated and no-membership sessions outside Seller authorization', async () => {
+    const app = testApp();
+    const unauthenticated = await request(app, '/api/seller-portal/me');
+    expect(unauthenticated.status).toBe(401);
+    await expect(json(unauthenticated)).resolves.toMatchObject({
+      error: { code: 'UNAUTHENTICATED' },
+    });
+
+    if (!database) throw new Error('test_database_missing');
+    database.exec(`
+      INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+      VALUES ('subject-no-membership', 'SELLER_ORG_MEMBER', 1000);
+      INSERT INTO customer_login_accounts (
+        id, identity_subject_id, account_type,
+        login_identifier_display, login_identifier_normalized,
+        status, session_version, password_change_required,
+        version, created_at, updated_at, activated_at, disabled_at
+      ) VALUES (
+        'account-no-membership', 'subject-no-membership', 'SELLER_MEMBER',
+        'no-membership-001', 'no-membership-001',
+        'ACTIVE', 1, 0, 1, 1000, 1000, 1000, NULL
+      );
+    `);
+    const token = await issueCustomerSession(
+      {
+        accountId: 'account-no-membership',
+        identitySubjectId: 'subject-no-membership',
+        accountType: 'SELLER_MEMBER',
+        sessionVersion: 1,
+        passwordChangeRequired: false,
+      },
+      SESSION_SECRET,
+      { now: Date.now() },
+    );
+    const noMembership = await request(app, '/api/seller-portal/me', {
+      headers: {
+        Cookie: `__Host-ygb_customer_session=${token}`,
+      },
+    });
+    expect(noMembership.status).toBe(401);
+    await expect(json(noMembership)).resolves.toMatchObject({
       error: { code: 'SESSION_INVALID' },
     });
   });
@@ -653,6 +699,59 @@ describe('Phase 4C1 seller portal HTTP API', () => {
     expect(crossOrigin.status).toBe(403);
   });
 
+  it('keeps Seller member management owner-only for every non-owner role', async () => {
+    const app = testApp();
+    const ownerMembers = await request(app, '/api/seller-portal/members', {
+      headers: { Cookie: await cookie('owner') },
+    });
+    expect(ownerMembers.status).toBe(200);
+    await expect(json(ownerMembers)).resolves.toMatchObject({
+      data: { members: expect.any(Array) },
+    });
+
+    for (const role of ['ops', 'finance', 'viewer'] as const) {
+      const listed = await request(app, '/api/seller-portal/members', {
+        headers: { Cookie: await cookie(role) },
+      });
+      expect(listed.status).toBe(403);
+      await expect(json(listed)).resolves.toMatchObject({
+        error: { code: 'FORBIDDEN' },
+      });
+
+      const invited = await request(
+        app,
+        '/api/seller-portal/member-invitations',
+        {
+          method: 'POST',
+          headers: await stateHeaders(role, `member-invite-denied-${role}`),
+          body: JSON.stringify({
+            wechat_id: `1380013800${role.length}`,
+            display_name: '不应创建',
+            role: 'VIEWER',
+          }),
+        },
+      );
+      expect(invited.status).toBe(403);
+      await expect(json(invited)).resolves.toMatchObject({
+        error: { code: 'FORBIDDEN' },
+      });
+
+      const revoked = await request(
+        app,
+        '/api/seller-portal/member-invitations/not-owned/revoke',
+        {
+          method: 'POST',
+          headers: await stateHeaders(role, `member-revoke-denied-${role}`),
+          body: JSON.stringify({ expected_version: 1 }),
+        },
+      );
+      expect(revoked.status).toBe(403);
+      await expect(json(revoked)).resolves.toMatchObject({
+        error: { code: 'FORBIDDEN' },
+      });
+    }
+  });
+
   it('limits seller settlement financial reads to OWNER and FINANCE members', async () => {
     const app = testApp();
     for (const role of ['owner', 'finance'] as const) {
@@ -1159,6 +1258,7 @@ describe('Phase 4C1 seller portal HTTP API', () => {
 
 function testApp() {
   const app = createApp();
+  registerSellerMemberRoutes(app);
   registerSellerPortalRoutes(app);
   registerSellerSettlementRoutes(app);
   registerFileHttpRoutes(app);

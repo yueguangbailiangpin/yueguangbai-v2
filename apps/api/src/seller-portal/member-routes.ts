@@ -2,6 +2,7 @@ import { apiFailure, apiSuccess, type SqlDatabase, type SqlStatement } from '@yg
 import {
   hashCustomerPassword,
   hashOneTimeToken,
+  canManageSellerMembers,
   normalizeWechatId,
   validateCustomerPassword,
   verifyCustomerPassword,
@@ -394,7 +395,7 @@ async function completeInvitation(context: Context<AppEnv>) {
 
 async function ownerActor(context: Context<AppEnv>) {
   const actor = await resolveSellerPortalActor(context);
-  if (actor.role !== 'OWNER') throw new MemberError('FORBIDDEN', 403);
+  if (!canManageSellerMembers(actor.role)) throw new MemberError('FORBIDDEN', 403);
   return actor;
 }
 async function invitationByToken(database: SqlDatabase, token: string, now: number) {

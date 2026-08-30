@@ -8,6 +8,7 @@ import type {
 } from '@ygb/contracts';
 import {
   canonicalJson,
+  canWriteSellerOperations,
 } from '@ygb/domain';
 
 export interface SellerProductApplicationActor {
@@ -56,11 +57,7 @@ export class ProductApplicationError extends Error {
 export function requireSellerCanSubmitProducts(
   actor: SellerProductApplicationActor,
 ): void {
-  if (!actor.canManageProducts
-    || (
-      actor.role !== 'OWNER'
-      && actor.role !== 'OPERATIONS'
-    )) {
+  if (!actor.canManageProducts || !canWriteSellerOperations(actor.role)) {
     throw new ProductApplicationError('FORBIDDEN', 403);
   }
 }

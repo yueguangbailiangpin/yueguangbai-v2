@@ -4,6 +4,7 @@ import type {
   SqlStatement,
 } from '@ygb/contracts';
 import {
+  canCreateSellerStore,
   hashCanonicalJson,
   normalizeStoreName,
 } from '@ygb/domain';
@@ -63,7 +64,10 @@ export async function createSellerStore(
     : command.actor as CatalogSellerStoreActor;
   if (staffActor) {
     requireCatalogPermission(staffActor, 'SELLER_MANAGE');
-  } else if (sellerActor!.sellerOrganizationId !== input.sellerOrganizationId) {
+  } else if (
+    sellerActor!.sellerOrganizationId !== input.sellerOrganizationId
+    || !canCreateSellerStore(sellerActor!.role)
+  ) {
     throw new CatalogError('FORBIDDEN', 403);
   }
 

@@ -13,6 +13,7 @@ import {
 import {
   addCalendarDays,
   beijingDateFromEpochMs,
+  canWriteSellerOperations,
   validateOrderCadence,
 } from '@ygb/domain';
 
@@ -145,11 +146,7 @@ export function deriveSellerDemandSchedule(input: {
 export function requireSellerDemandPermission(
   actor: SellerDemandActor,
 ): void {
-  if (!actor.canManageProducts
-    || (
-      actor.role !== 'OWNER'
-      && actor.role !== 'OPERATIONS'
-    )) {
+  if (!actor.canManageProducts || !canWriteSellerOperations(actor.role)) {
     throw new DemandBatchError('FORBIDDEN', 403);
   }
 }

@@ -1,4 +1,5 @@
 import type { SellerMemberRole,SqlDatabase } from '@ygb/contracts';
+import { canWriteSellerOperations } from '@ygb/domain';
 
 interface SellerMemberAccessRow {
   member_id:string;organization_id:string;member_role:SellerMemberRole;member_status:string;organization_status:string;
@@ -12,7 +13,8 @@ export interface SellerMemberStoreAccess {
  * D-056 §4.4: every ACTIVE member of a seller organization sees all ACTIVE
  * stores of the organization. Store grant/scope tables are retired, so the
  * storeIds projection is role-independent and only membership status gates
- * access. Only the organization OWNER keeps management capabilities.
+ * access. Member management/settings remain OWNER-only; the existing
+ * operational-write capability is resolved by the shared Seller policy.
  */
 export async function resolveSellerMemberStoreAccess(database:SqlDatabase,memberId:string):Promise<SellerMemberStoreAccess|null>{
   const member=await database.prepare(`SELECT member.id AS member_id,member.organization_id,member.role AS member_role,
@@ -24,6 +26,6 @@ export async function resolveSellerMemberStoreAccess(database:SqlDatabase,member
   return Object.freeze({
     memberId:member.member_id,sellerOrganizationId:member.organization_id,role:member.member_role,allActiveStores:true,
     storeIds:Object.freeze(stores.results.map((row)=>row.store_id)),
-    canManageProducts:member.member_role==='OWNER'||member.member_role==='OPERATIONS',
+    canManageProducts:canWriteSellerOperations(member.member_role),
   });
 }

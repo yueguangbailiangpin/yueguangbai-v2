@@ -1,4 +1,5 @@
 import type { SellerMemberRole, SellerPortalMeDto, SqlDatabase } from '@ygb/contracts';
+import { canWriteSellerOperations } from '@ygb/domain';
 import type { Context } from 'hono';
 import { resolveSellerMemberStoreAccess } from '../catalog/seller-member-store-access';
 import { requireCustomerSessionFromContext } from '../middleware/customer-auth';
@@ -37,8 +38,8 @@ export async function resolveSellerPortalActor(context: Context<any>): Promise<S
   const access = await resolveSellerMemberStoreAccess(context.env.DB, row.member_id);
   if (!access || access.sellerOrganizationId !== row.organization_id || access.role !== row.role)
     throw new SellerPortalError('SESSION_INVALID', 401);
-  const canWrite =
-    access.canManageProducts && (access.role === 'OWNER' || access.role === 'OPERATIONS');
+  const canWrite = access.canManageProducts
+    && canWriteSellerOperations(access.role);
   const me: SellerPortalMeDto = Object.freeze({
     account_id: session.accountId,
     member: Object.freeze({
@@ -77,7 +78,7 @@ export async function resolveSellerPortalActor(context: Context<any>): Promise<S
 }
 
 export function requireSellerPortalWriteRole(actor: SellerPortalActor): void {
-  if (!actor.canManageProducts || (actor.role !== 'OWNER' && actor.role !== 'OPERATIONS'))
+  if (!actor.canManageProducts || !canWriteSellerOperations(actor.role))
     throw new SellerPortalError('FORBIDDEN', 403);
 }
 

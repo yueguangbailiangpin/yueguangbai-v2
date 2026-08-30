@@ -3,6 +3,7 @@ import {
   apiSuccess,
   type ApiErrorCode,
 } from '@ygb/contracts';
+import { canReadSellerSettlementFinancials } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerSessionMiddleware } from '../middleware/customer-auth';
@@ -88,7 +89,7 @@ async function payable(context: Context<any>): Promise<Response> {
 function requireSellerFinancialReadRole(
   actor: Awaited<ReturnType<typeof resolveSellerPortalActor>>,
 ): void {
-  if (actor.role !== 'OWNER' && actor.role !== 'FINANCE') {
+  if (!canReadSellerSettlementFinancials(actor.role)) {
     throw new SellerSettlementError('NOT_FOUND', 404);
   }
 }

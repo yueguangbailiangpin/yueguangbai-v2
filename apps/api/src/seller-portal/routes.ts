@@ -11,6 +11,9 @@ import {
   type ProductStatus,
   type SubmitSellerPortalProductApplicationBody,
 } from '@ygb/contracts';
+import {
+  canWriteSellerSettlementAccount,
+} from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { createSellerStore } from '../catalog/create-store';
 import { submitDemandBatch } from '../demand-batches/submit-demand-batch';
@@ -148,9 +151,7 @@ async function updateSettlementAccount(
   const input = parseSellerSettlementAccountInput(body);
   const actor = await resolveSellerPortalActor(context);
   // P16：结算账户写入限 OWNER / OPERATIONS / FINANCE；VIEWER 只读。
-  if (actor.role !== 'OWNER'
-    && actor.role !== 'OPERATIONS'
-    && actor.role !== 'FINANCE') {
+  if (!canWriteSellerSettlementAccount(actor.role)) {
     throw new SellerPortalError('FORBIDDEN', 403);
   }
   await updateSellerSettlementAccount(
