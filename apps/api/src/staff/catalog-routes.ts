@@ -32,6 +32,7 @@ import {
   readDemandReviewContext,
   reviewDemandBatch,
 } from '../demand-batches/review-demand-batch';
+import { closeDemandBatch } from '../demand-batches/close-demand-batch';
 import type { DemandStaffActor } from '../demand-batches/demand-shared';
 import { requestIdFromContext } from '../http-auth/errors';
 import { reviewProductApplication } from '../product-applications/review-product-application';
@@ -96,6 +97,10 @@ export function registerStaffCatalogWorkflowRoutes(app: Hono<any>): void {
   app.post(
     '/api/staff/demand-batches/:id/review',
     withStaffWorkflowErrors(reviewDemand),
+  );
+  app.post(
+    '/api/staff/demand-batches/:id/close',
+    withStaffWorkflowErrors(closeDemand),
   );
   app.post(
     '/api/staff/demand-batches/:id/schedule/preview',
@@ -472,6 +477,23 @@ async function reviewDemand(context: Context<any>): Promise<Response> {
     requestId: requestIdFromContext(context),
   });
   return success(context, { demand_review: result });
+}
+
+async function closeDemand(context: Context<any>): Promise<Response> {
+  exactQuery(context, new Set());
+  const authorization = requireAuthorization(context);
+  const body = await bodyRecord(context);
+  rejectUnknown(body, ['expected_version', 'close_reason']);
+  const result = await closeDemandBatch(context.env.DB, {
+    demandBatchId: requiredString(context.req.param('id')),
+    expectedVersion: integer(body['expected_version']),
+    closeReason: requiredString(body['close_reason'], 1000),
+  }, {
+    actor: workflowActor(authorization),
+    idempotencyKey: idempotencyKey(context),
+    requestId: requestIdFromContext(context),
+  });
+  return success(context, { demand_close: result });
 }
 
 function requireAuthorization(context: Context<any>): AssignmentStaffAuthorization {

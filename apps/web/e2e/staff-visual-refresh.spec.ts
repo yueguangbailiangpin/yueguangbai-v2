@@ -173,7 +173,8 @@ async function installStaffFixture(page: Page, role: Role = 'owner'): Promise<vo
     if (path === '/api/staff/demand-batches/demand-visual/reservation-schedule') return json(route, success({ page: {
       demand: { demand_batch_id: 'demand-visual', product_id: 'product-visual',
         product_name: product.product_name, target_quantity: 20, effective_reservation_count: 2,
-        order_deadline: fixedNow + 10 * 86_400_000, demand_version: 4, schedule: demandSchedule },
+        order_deadline: fixedNow + 10 * 86_400_000, demand_version: 4,
+        status: 'PUBLISHED', can_close: true, schedule: demandSchedule },
       items: [{ reservation_id: 'reservation-a', status: 'APPROVED', submitted_at: fixedNow - 5000,
         decision_source: 'STAFF', version: 2,
         rank: 1, planned_order_date: '2026-08-10', buyer_reference: 'B0001',

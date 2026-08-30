@@ -23,6 +23,7 @@ import {
   
   
   adminDashboardSummarySchema,
+  demandCloseMutationSchema,
   demandReviewContextSchema,
   demandReviewMutationSchema,
   demandScheduleConfirmationSchema,
@@ -252,6 +253,14 @@ export const staffApi = Object.freeze({
       `/api/staff/demand-batches/${encodeURIComponent(id)}/review`,
       body,
       demandReviewMutationSchema,
+      key,
+    ),
+  closeDemand: (client: QueryClient, id: string, body: unknown, key: string) =>
+    write(
+      client,
+      `/api/staff/demand-batches/${encodeURIComponent(id)}/close`,
+      body,
+      demandCloseMutationSchema,
       key,
     ),
   workItems: (

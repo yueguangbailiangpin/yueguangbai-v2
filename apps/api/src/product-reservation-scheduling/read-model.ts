@@ -1,4 +1,5 @@
 import type {
+  DemandBatchStatus,
   DemandOrderScheduleVersionDto,
   ReservationStatus,
   SqlDatabase,
@@ -14,6 +15,7 @@ import {
 } from '@ygb/contracts';
 import { plannedOrderDate } from '@ygb/domain';
 import { scopeAllowsBuyer } from '../staff-assignment';
+import { canCloseDemandBatch } from '../demand-batches/close-demand-batch';
 import {
   canViewDemand,
   canViewProduct,
@@ -78,9 +80,11 @@ interface DemandRow {
 export interface DemandHeaderRow {
   demand_batch_id: string;
   seller_organization_id: string;
+  store_id: string;
+  marketplace_code: string;
   product_id: string;
   source_product_version_id: string;
-  status: string;
+  status: DemandBatchStatus;
   product_name: string;
   target_quantity: number;
   order_deadline: number;
@@ -325,6 +329,17 @@ export async function readStaffReservationSchedule(
   if (!header || !await canViewDemand(
     database, actor, demandBatchId, header.seller_organization_id,
   )) throw new SchedulingError('NOT_FOUND', 404);
+  const canClose = header.status === 'PUBLISHED'
+    && await canCloseDemandBatch(database, {
+      demandBatchId,
+      staffId: actor.staffId,
+      source: {
+        demand_batch_id: header.demand_batch_id,
+        organization_id: header.seller_organization_id,
+        marketplace_code: header.marketplace_code,
+        status: header.status,
+      },
+    });
 
   const rows = await database.prepare(`
     WITH ranked AS (
@@ -390,6 +405,8 @@ export async function readStaffReservationSchedule(
       effective_reservation_count: Number(header.effective_reservation_count),
       order_deadline: Number(header.order_deadline),
       demand_version: Number(header.demand_version),
+      status: header.status,
+      can_close: canClose,
       schedule,
     },
     items: page.map((row) => reservationDto(row, actor, schedule)),
@@ -412,6 +429,8 @@ export async function readDemandHeader(
     SELECT
       demand.id AS demand_batch_id,
       demand.organization_id AS seller_organization_id,
+      demand.store_id,
+      demand.marketplace_code,
       demand.product_id,
       version.id AS source_product_version_id,
       demand.status,

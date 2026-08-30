@@ -6,11 +6,13 @@ import { currentSellerReviewRole, currentStaffReviewRole } from './runtime';
 
 let state = freshDemoData();
 let sequence = 100;
+let reviewDemandClosed = false;
 const page = { limit: 100, next_cursor: null };
 
 export function resetReviewDemoState(): void {
   state = freshDemoData();
   sequence = 100;
+  reviewDemandClosed = false;
 }
 
 function requestId(): string {
@@ -1374,7 +1376,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     };
 
   // -------------------------------------------------------------------------
-  // 员工端：工作台、工作项、订单、财务、客户、设置（Schema 36 / 240 合同）。
+  // 员工端：工作台、工作项、订单、财务、客户、设置（Schema 36 / 241 合同）。
   // -------------------------------------------------------------------------
   if (path === '/api/staff/me/work-items' && method === 'GET') {
     const status = parsed.searchParams.get('status') ?? 'OPEN';
@@ -1695,20 +1697,34 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     /^\/api\/staff\/demand-batches\/[^/]+\/reservation-schedule$/u.test(path) &&
     method === 'GET'
   ) {
+    const demandId = idAfter(path, '/api/staff/demand-batches/');
+    const source =
+      state.sellerDemands.find((item) => item.id === demandId) ?? state.sellerDemands[1]!;
+    const status =
+      demandId === 'review-seller-demand-1'
+        ? reviewDemandClosed
+          ? 'CLOSED'
+          : 'PUBLISHED'
+        : source.status;
+    const canClose =
+      status === 'PUBLISHED' &&
+      (currentStaffReviewRole() === 'owner' || currentStaffReviewRole() === 'seller_ops');
     return {
       page: {
         demand: {
-          demand_batch_id: 'review-seller-demand-1',
+          demand_batch_id: demandId,
           product_id: 'review-product-1',
           product_name: '轻量保温随行杯',
           target_quantity: 12,
           effective_reservation_count: 5,
           order_deadline: NOW + 9 * DAY,
-          demand_version: 1,
+          demand_version: status === 'CLOSED' ? 2 : 1,
+          status,
+          can_close: canClose,
           schedule: {
             schedule_version_id: 'review-schedule-version-1',
             version_no: 1,
-            demand_version: 1,
+            demand_version: status === 'CLOSED' ? 2 : 1,
             order_interval_days: 2,
             orders_per_run: 3,
             first_order_date: '2026-08-12',
@@ -1768,6 +1784,54 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
         timezone: 'Asia/Tokyo',
         sorting: 'submitted_at ASC, id ASC',
         data_as_of: NOW,
+      },
+    };
+  }
+  if (/^\/api\/staff\/demand-batches\/[^/]+\/close$/u.test(path) && method === 'POST') {
+    const demandId = idAfter(path, '/api/staff/demand-batches/');
+    const source = state.sellerDemands.find((item) => item.id === demandId);
+    const role = currentStaffReviewRole();
+    if (role !== 'owner' && role !== 'seller_ops') {
+      throw new FrontendApiError(
+        'FORBIDDEN',
+        403,
+        `review-demand-close-forbidden-${sequence}`,
+        'PERMISSION',
+        null,
+      );
+    }
+    if (demandId !== 'review-seller-demand-1' || reviewDemandClosed) {
+      throw new FrontendApiError(
+        'DEMAND_BATCH_NOT_PUBLISHED',
+        409,
+        `review-demand-close-state-${sequence}`,
+        'CONFLICT',
+        null,
+      );
+    }
+    const body = request.body as { close_reason?: unknown };
+    const closeReason =
+      typeof body?.close_reason === 'string' && body.close_reason.trim().length > 0
+        ? body.close_reason.trim()
+        : '演示关闭原因';
+    const version = (source?.version ?? 1) + 1;
+    if (source) {
+      Object.assign(source, {
+        status: 'CLOSED',
+        version,
+        close_reason: closeReason,
+        closed_at: NOW,
+        updated_at: NOW,
+      });
+    }
+    reviewDemandClosed = true;
+    return {
+      demand_close: {
+        demand_batch_id: demandId,
+        status: 'CLOSED',
+        version,
+        close_reason: closeReason,
+        replayed: false,
       },
     };
   }

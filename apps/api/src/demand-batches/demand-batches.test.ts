@@ -511,6 +511,202 @@ describe('demand batch workflow', () => {
     )).resolves.toEqual([]);
   });
 
+  it('exposes the published demand close operation through the formal Staff HTTP route', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const now = Date.now();
+    const submitted = await submitDemandBatch(database, {
+      ...demandInput('product-1'),
+      openAt: now - 1_000,
+      reservationDeadline: now + 60_000,
+      orderDeadline: now + 120_000,
+    }, {
+      actor: ownerActor(), idempotencyKey: 'demand:close-route:submit', now: now - 2_000,
+    });
+    await reviewDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 1,
+      decision: 'PUBLISH',
+      firstOrderDate: new Date(now + 8 * 3_600_000).toISOString().slice(0, 10),
+    }, {
+      actor: reviewerActor(), idempotencyKey: 'demand:close-route:publish', now,
+    });
+    const authorization = await resolveAssignmentStaffAuthorization(
+      database, 'staff-demand-reviewer',
+    );
+    expect(authorization).not.toBeNull();
+    const app = createApp();
+    app.use('/api/staff/*', async (context, next) => {
+      (context as any).set('staffAuthorization', authorization);
+      await next();
+    });
+    registerStaffCatalogWorkflowRoutes(app);
+    const response = await app.request(
+      `https://api.test/api/staff/demand-batches/${submitted.demand_batch_id}/close`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'demand:close-route:close',
+        },
+        body: JSON.stringify({
+          expected_version: 2,
+          close_reason: '正式路由关闭需求',
+        }),
+      },
+      { DB: database } as any,
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json() as any).data.demand_close).toMatchObject({
+      demand_batch_id: submitted.demand_batch_id,
+      status: 'CLOSED',
+      version: 3,
+      close_reason: '正式路由关闭需求',
+      replayed: false,
+    });
+    const unexpectedQuery = await app.request(
+      `https://api.test/api/staff/demand-batches/${submitted.demand_batch_id}/close?unexpected=1`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'demand:close-route:unexpected-query',
+        },
+        body: JSON.stringify({
+          expected_version: 3,
+          close_reason: '不应执行',
+        }),
+      },
+      { DB: database } as any,
+    );
+    expect(unexpectedQuery.status).toBe(400);
+    expect((await unexpectedQuery.json() as any).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('keeps close replay stable and rejects mismatch, stale version, invalid state, and empty reason', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const submitted = await publishDemandForClose(database, 'demand:close-contract');
+    const first = await closeDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 2,
+      closeReason: '关闭已发布需求',
+    }, {
+      actor: reviewerActor(), idempotencyKey: 'demand:close-contract:close', now: 5000,
+    });
+    const beforeReplay = await demandReviewBusinessCounts(database, submitted.demand_batch_id);
+    const replay = await closeDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 2,
+      closeReason: '关闭已发布需求',
+    }, {
+      actor: reviewerActor(), idempotencyKey: 'demand:close-contract:close', now: 6000,
+    });
+    expect(replay).toEqual({ ...first, replayed: true });
+    expect(await demandReviewBusinessCounts(database, submitted.demand_batch_id))
+      .toEqual(beforeReplay);
+
+    await expect(closeDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id,
+      expectedVersion: 2,
+      closeReason: '同键不同原因',
+    }, {
+      actor: reviewerActor(), idempotencyKey: 'demand:close-contract:close', now: 7000,
+    })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT', status: 409 });
+
+    const stale = await publishDemandForClose(database, 'demand:close-contract:stale');
+    await expect(closeDemandBatch(database, {
+      demandBatchId: stale.demand_batch_id,
+      expectedVersion: 1,
+      closeReason: '过期版本关闭',
+    }, {
+      actor: reviewerActor(), idempotencyKey: 'demand:close-contract:stale-close', now: 8000,
+    })).rejects.toMatchObject({ code: 'VERSION_CONFLICT', status: 409 });
+
+    const submittedOnly = await submitDemandBatch(
+      database,
+      demandInput('product-2'),
+      { actor: ownerActor(), idempotencyKey: 'demand:close-contract:submitted', now: 9000 },
+    );
+    await expect(closeDemandBatch(database, {
+      demandBatchId: submittedOnly.demand_batch_id,
+      expectedVersion: 1,
+      closeReason: '未发布关闭',
+    }, {
+      actor: reviewerActor(), idempotencyKey: 'demand:close-contract:state', now: 10_000,
+    })).rejects.toMatchObject({ code: 'DEMAND_BATCH_NOT_PUBLISHED', status: 409 });
+
+    await expect(closeDemandBatch(database, {
+      demandBatchId: stale.demand_batch_id,
+      expectedVersion: 2,
+      closeReason: '   ',
+    }, {
+      actor: reviewerActor(), idempotencyKey: 'demand:close-contract:empty', now: 11_000,
+    })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+  });
+
+  it('allows only one concurrent close to commit its event and audit', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const submitted = await publishDemandForClose(database, 'demand:close-concurrent');
+    const results = await Promise.allSettled([
+      closeDemandBatch(database, {
+        demandBatchId: submitted.demand_batch_id,
+        expectedVersion: 2,
+        closeReason: '并发关闭一',
+      }, {
+        actor: reviewerActor(), idempotencyKey: 'demand:close-concurrent:a', now: 12_000,
+      }),
+      closeDemandBatch(database, {
+        demandBatchId: submitted.demand_batch_id,
+        expectedVersion: 2,
+        closeReason: '并发关闭二',
+      }, {
+        actor: reviewerActor(), idempotencyKey: 'demand:close-concurrent:b', now: 12_001,
+      }),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: expect.objectContaining({ status: 409 }),
+    });
+    const counts = await demandReviewBusinessCounts(database, submitted.demand_batch_id);
+    expect(counts).toMatchObject({ demand_status: 'CLOSED', events: 3, audits: 3 });
+  });
+
+  it('re-resolves close permission and hard role gates instead of trusting the caller actor', async () => {
+    database = createMigratedTestDatabase();
+    seedDemandFixture(database);
+    const submitted = await publishDemandForClose(database, 'demand:close-auth');
+    database.exec(`INSERT INTO staff_permission_overrides (
+      staff_id, permission_code, effect, status, reason,
+      assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
+    ) VALUES ('staff-demand-reviewer','DEMAND_PUBLISH','DENY','ACTIVE','close deny',
+      'zz-phase3h-test-owner',4000,NULL,4000,4000)`);
+
+    await expect(closeDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id, expectedVersion: 2,
+      closeReason: '数据库拒绝关闭',
+    }, {
+      // Deliberately stale: the D1 Personal DENY must win.
+      actor: reviewerActor(), idempotencyKey: 'demand:close-auth:deny', now: 13_000,
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+
+    await expect(closeDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id, expectedVersion: 2,
+      closeReason: '伪造角色关闭',
+    }, {
+      actor: {
+        staffId: 'staff-demand-reviewer', displayName: '伪造角色',
+        roles: ['pre_sales'], permissions: new Set(['DEMAND_PUBLISH']),
+      },
+      idempotencyKey: 'demand:close-auth:role', now: 13_001,
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    expect(await database.prepare(`SELECT status, version FROM demand_batches WHERE id=?`)
+      .bind(submitted.demand_batch_id).first()).toEqual({ status: 'PUBLISHED', version: 2 });
+  });
+
   it('requires active and identity-clear buyers and hides future or expired batches', async () => {
     database = createMigratedTestDatabase();
     seedDemandFixture(database);
@@ -772,6 +968,11 @@ describe('demand batch workflow', () => {
       demandBatchId: submitted.demand_batch_id, expectedVersion: 1,
       decision: 'REJECT', rejectionReason: '恶意工作项组织',
     }, { actor: reviewerActor(), idempotencyKey: 'demand-scope:denied', now: 3000 }))
+      .rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+    await expect(closeDemandBatch(database, {
+      demandBatchId: submitted.demand_batch_id, expectedVersion: 1,
+      closeReason: '恶意工作项组织关闭',
+    }, { actor: reviewerActor(), idempotencyKey: 'demand-scope:close-denied', now: 3001 }))
       .rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
     expect(await demandReviewBusinessCounts(database, submitted.demand_batch_id)).toEqual(before);
     await expect(readDemandReviewContext(
@@ -1126,6 +1327,78 @@ describe('demand batch workflow', () => {
       demand_version: 2,
     });
 
+    const scheduleBeforeClose = await app.request(
+      `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/reservation-schedule?limit=50`,
+      { method: 'GET' },
+      env,
+    );
+    expect(scheduleBeforeClose.status).toBe(200);
+    expect((await scheduleBeforeClose.json() as any).data.page.demand).toMatchObject({
+      status: 'PUBLISHED', can_close: true,
+    });
+
+    const closeBody = JSON.stringify({
+      expected_version: 2,
+      close_reason: '正式关闭公开需求',
+    });
+    const closed = await app.request(
+      `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/close`,
+      { method: 'POST', headers: jsonHeaders('demand:route:close'), body: closeBody },
+      env,
+    );
+    expect(closed.status).toBe(200);
+    const closedPayload = await closed.json() as any;
+    expect(closedPayload.data.demand_close).toEqual({
+      demand_batch_id: publishSource.demand_batch_id,
+      status: 'CLOSED', version: 3, close_reason: '正式关闭公开需求', replayed: false,
+    });
+    expect(JSON.stringify(closedPayload)).not.toContain('staff-demand-reviewer');
+    expect(JSON.stringify(closedPayload)).not.toContain('sellerNotes');
+
+    const closeReplay = await app.request(
+      `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/close`,
+      { method: 'POST', headers: jsonHeaders('demand:route:close'), body: closeBody },
+      env,
+    );
+    expect(closeReplay.status).toBe(200);
+    expect((await closeReplay.json() as any).data.demand_close).toMatchObject({
+      status: 'CLOSED', version: 3, replayed: true,
+    });
+
+    const closeMismatch = await app.request(
+      `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/close`,
+      {
+        method: 'POST', headers: jsonHeaders('demand:route:close'),
+        body: JSON.stringify({ expected_version: 2, close_reason: '同键不同请求' }),
+      },
+      env,
+    );
+    expect(closeMismatch.status).toBe(409);
+    expect((await closeMismatch.json() as any).error.code).toBe('IDEMPOTENCY_CONFLICT');
+
+    const nonPublishedClose = await app.request(
+      `${base}/api/staff/demand-batches/${conflictSource.demand_batch_id}/close`,
+      {
+        method: 'POST', headers: jsonHeaders('demand:route:not-published'),
+        body: JSON.stringify({ expected_version: 1, close_reason: '未发布需求' }),
+      },
+      env,
+    );
+    expect(nonPublishedClose.status).toBe(409);
+    expect((await nonPublishedClose.json() as any).error.code)
+      .toBe('DEMAND_BATCH_NOT_PUBLISHED');
+
+    const invalidClose = await app.request(
+      `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/close`,
+      {
+        method: 'POST', headers: jsonHeaders('demand:route:invalid-close'),
+        body: JSON.stringify({ expected_version: 3, close_reason: ' ' }),
+      },
+      env,
+    );
+    expect(invalidClose.status).toBe(400);
+    expect((await invalidClose.json() as any).error.code).toBe('VALIDATION_ERROR');
+
     const replay = await app.request(
       `${base}/api/staff/demand-batches/${publishSource.demand_batch_id}/review`,
       {
@@ -1144,7 +1417,7 @@ describe('demand batch workflow', () => {
         method: 'POST',
         headers: jsonHeaders('demand:route:duplicate-submit'),
         body: JSON.stringify({
-          expected_version: 2,
+          expected_version: 3,
           decision: 'PUBLISH',
           first_order_date: '2999-01-01',
         }),
@@ -1201,6 +1474,30 @@ describe('demand batch workflow', () => {
     );
     expect(forbidden.status).toBe(403);
     expect((await forbidden.json() as any).error.code).toBe('FORBIDDEN');
+
+    const forbiddenClose = await preSalesApp.request(
+      `${base}/api/staff/demand-batches/${conflictSource.demand_batch_id}/close`,
+      {
+        method: 'POST', headers: jsonHeaders('demand:route:pre-sales-close'),
+        body: JSON.stringify({ expected_version: 1, close_reason: '售前越权关闭' }),
+      },
+      env,
+    );
+    expect(forbiddenClose.status).toBe(403);
+    expect((await forbiddenClose.json() as any).error.code).toBe('FORBIDDEN');
+
+    const unauthenticatedApp = createApp();
+    registerStaffCatalogWorkflowRoutes(unauthenticatedApp);
+    const unauthenticatedClose = await unauthenticatedApp.request(
+      `${base}/api/staff/demand-batches/${conflictSource.demand_batch_id}/close`,
+      {
+        method: 'POST', headers: jsonHeaders('demand:route:unauthenticated'),
+        body: JSON.stringify({ expected_version: 1, close_reason: '无会话关闭' }),
+      },
+      env,
+    );
+    expect(unauthenticatedClose.status).toBe(401);
+    expect((await unauthenticatedClose.json() as any).error.code).toBe('UNAUTHENTICATED');
 
     // 产品详情读模型按版本暴露主图事实：绑定的版本可见文件信息，
     // 未绑定的版本返回 null，员工端据此提示补齐。
@@ -1461,6 +1758,24 @@ function demandInput(
     reservationDeadline: 10_000,
     orderDeadline: 20_000,
   };
+}
+
+async function publishDemandForClose(
+  database: SqliteDatabase,
+  keyPrefix: string,
+): Promise<{ demand_batch_id: string }> {
+  const submitted = await submitDemandBatch(database, demandInput('product-1'), {
+    actor: ownerActor(), idempotencyKey: `${keyPrefix}:submit`, now: 2000,
+  });
+  await reviewDemandBatch(database, {
+    demandBatchId: submitted.demand_batch_id,
+    expectedVersion: 1,
+    decision: 'PUBLISH',
+    firstOrderDate: '1970-01-01',
+  }, {
+    actor: reviewerActor(), idempotencyKey: `${keyPrefix}:publish`, now: 3000,
+  });
+  return submitted;
 }
 
 function sellerActor(input: {

@@ -46,7 +46,8 @@ function schedule() {
 function schedulePage() {
   return { demand: { demand_batch_id: 'demand-1', product_id: 'product-1',
     product_name: '月光测试产品', target_quantity: 20, effective_reservation_count: 2,
-    order_deadline: 1_786_838_400_000, demand_version: 4, schedule: schedule() },
+    order_deadline: 1_786_838_400_000, demand_version: 4,
+    status: 'PUBLISHED', can_close: true, schedule: schedule() },
   items: [
     { reservation_id: 'reservation-1', status: 'APPROVED', submitted_at: 1000,
       decision_source: 'STAFF', version: 2,

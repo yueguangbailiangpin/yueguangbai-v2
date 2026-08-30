@@ -10,7 +10,7 @@ import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
 import { useFileUpload } from '../../buyer/shared/useFileUpload';
 import { FileDropZone } from '../../ui/FileDropZone';
 import {
-  Alert, Button, Card, DataTable, EmptyState, FormField,
+  Alert, Button, Card, Checkbox, DataTable, EmptyState, FormField,
   RequestIdDisplay, Select, StatusBadge, TextInput,
 } from '../../ui/primitives';
 import { staffApi } from '../api/client';
@@ -442,7 +442,13 @@ function ReservationScheduleDetail({ demandId }: { demandId: string }): React.JS
       <Card><p className="eyebrow">当前排期</p><strong>{page.demand.schedule
         ? cadenceLabel(page.demand.schedule) : '尚未配置排期'}</strong>
         <span>{page.demand.schedule?.first_order_date ?? '需要卖家对接人工补齐'}</span></Card>
+      <Card><p className="eyebrow">需求状态</p>
+        <StatusBadge tone={page.demand.status === 'PUBLISHED' ? 'success' : 'neutral'}>
+          {demandStatus(page.demand.status)}
+        </StatusBadge></Card>
     </section>
+    {page.demand.status === 'PUBLISHED' && page.demand.can_close
+      ? <DemandCloseForm demandId={demandId} page={page} /> : null}
     {canEdit ? <ScheduleChangeForm demandId={demandId} page={page} /> : null}
     <Card><DataTable caption="预约排名与预计下单日期"><thead><tr>
       <th scope="col">排名</th><th scope="col">买家标识</th><th scope="col">预约时间</th>
@@ -469,6 +475,103 @@ function ReservationScheduleDetail({ demandId }: { demandId: string }): React.JS
         setCursorHistory((all) => [...all, cursor]); setCursor(page.next_cursor);
       }}>下一页</Button></nav>
   </main>;
+}
+
+function DemandCloseForm({ demandId, page }: {
+  demandId: string; page: StaffReservationSchedulePage;
+}): React.JSX.Element {
+  const session = useCurrentStaffSession();
+  const client = useQueryClient();
+  const authority = useMemo(() => new StaffMutationAuthority<
+    Awaited<ReturnType<typeof staffApi.closeDemand>>
+  >(), []);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string|null>(null);
+  const [requestId, setRequestId] = useState<string|null>(null);
+
+  async function execute(request: StaffMutationRequest | null): Promise<void> {
+    setBusy(true); setMessage(null); setRequestId(null);
+    try {
+      const response = request === null
+        ? await authority.retry()
+        : await authority.execute(request, ({ body }, key) =>
+            staffApi.closeDemand(client, demandId, body, key));
+      setRequestId(response.requestId);
+      setMessage(response.data.demand_close.replayed
+        ? '需求已关闭，已复用首次请求结果。'
+        : '需求已关闭。');
+      await Promise.all([
+        client.invalidateQueries({
+          queryKey: ['staff', 'products', session.authorization_version,
+            'reservation-schedule', demandId],
+        }),
+        client.invalidateQueries({ queryKey: staffWorkbenchKeys.productsRoot }),
+        client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot }),
+      ]);
+    } catch (error) {
+      setRequestId(isFrontendApiError(error) ? error.requestId : null);
+      setMessage(errorMessage(error));
+    } finally { setBusy(false); }
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (authority.canRetry()) {
+      void execute(null);
+      return;
+    }
+    const data = new FormData(event.currentTarget);
+    const reason = String(data.get('close_reason') ?? '').trim();
+    if (!reason) {
+      setMessage('请填写关闭原因。');
+      return;
+    }
+    void execute({
+      action: 'close-demand-batch',
+      path: `/api/staff/demand-batches/${encodeURIComponent(demandId)}/close`,
+      body: {
+        expected_version: page.demand.demand_version,
+        close_reason: reason,
+      },
+    });
+  }
+
+  return <Card className="demand-close-form">
+    <h2>关闭需求</h2>
+    {!open ? <>
+      <p>需求当前为已发布状态；关闭后将不再出现在买家公开需求列表。</p>
+      <Button type="button" onClick={() => setOpen(true)}>关闭需求</Button>
+    </> : <form onSubmit={submit} onChange={() => {
+      if (busy) return;
+      authority.release(); setMessage(null); setRequestId(null);
+    }}>
+      <fieldset disabled={busy}>
+        <p>当前需求版本：v{page.demand.demand_version}</p>
+        <FormField label="关闭确认" htmlFor="demand-close-confirm">
+          <Checkbox
+            name="confirm_close"
+            label="我确认关闭该已发布需求"
+            required
+          />
+        </FormField>
+        <FormField label="关闭原因" htmlFor="demand-close-reason">
+          <textarea name="close_reason" required maxLength={1000}
+            placeholder="请输入关闭原因，便于后续审计追溯" />
+        </FormField>
+      </fieldset>
+      <Button type="submit" disabled={busy} loading={busy} loadingLabel="关闭中…">
+        确认关闭需求
+      </Button>
+      <Button type="button" className="secondary" disabled={busy} onClick={() => {
+        authority.release(); setOpen(false); setMessage(null); setRequestId(null);
+      }}>取消</Button>
+    </form>}
+    {message ? <Alert tone={message.startsWith('需求已关闭') ? 'success' : 'danger'}>{message}</Alert> : null}
+    <RequestIdDisplay requestId={requestId} />
+    {authority.canRetry() ? <Button type="button" className="secondary" disabled={busy}
+      onClick={() => { void execute(null); }}>重试原请求</Button> : null}
+  </Card>;
 }
 
 function ReopenReservationForm({ item }: {
@@ -631,6 +734,9 @@ function errorMessage(error: unknown): string {
   if (error.code === 'SCHEDULE_WINDOW_CONFLICT') return '最后一个理论名额晚于下单截止日，请调整日期或节奏。';
   if (error.code === 'FORBIDDEN') return '当前身份没有该操作权限。';
   if (error.code === 'NOT_FOUND') return '资源不存在，或已不在您的有效数据范围内。';
+  if (error.code === 'DEMAND_BATCH_NOT_PUBLISHED') return '需求状态已变化，请刷新后重试。';
+  if (error.code === 'IDEMPOTENCY_CONFLICT') return '原请求标识已对应其他内容，请刷新后重新发起。';
+  if (error.code === 'REQUEST_IN_PROGRESS') return '原请求仍在处理中，请稍后重试原请求。';
   return '操作未完成，请核对输入后重试。';
 }
 

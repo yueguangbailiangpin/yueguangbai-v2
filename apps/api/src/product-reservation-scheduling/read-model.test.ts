@@ -99,6 +99,8 @@ function demandHeader(): Record<string, unknown> {
   return {
     demand_batch_id: 'demand-1',
     seller_organization_id: 'seller-org-1',
+    store_id: 'store-1',
+    marketplace_code: 'AMAZON_JP',
     product_id: 'product-1',
     source_product_version_id: 'version-1',
     status: 'OPEN',

@@ -39,6 +39,7 @@ import {
 } from '../buyer/contracts/runtime';
 import {
   adminDashboardSummarySchema,
+  demandCloseMutationSchema,
   demandReviewContextSchema,
   internalFinanceOrderDetailSchema,
   settlementPayablesSchema,
@@ -495,6 +496,29 @@ describe('review demo api satisfies current staff contract', () => {
       buyers: unknown[];
     };
     expect(search.buyers.length).toBeGreaterThan(0);
+  });
+
+  it('serves the published demand close mutation and reflects the closed status', async () => {
+    currentStaffReviewRoleChoose('owner');
+    const result = (await post(
+      '/api/staff/demand-batches/review-seller-demand-1/close',
+      demandCloseMutationSchema,
+      { expected_version: 1, close_reason: '演示需求已完成' },
+    )) as { demand_close: { status: string; version: number; close_reason: string } };
+    expect(result.demand_close).toMatchObject({
+      status: 'CLOSED',
+      version: 2,
+      close_reason: '演示需求已完成',
+    });
+    const page = (await get(
+      '/api/staff/demand-batches/review-seller-demand-1/reservation-schedule?limit=50',
+      staffReservationSchedulePageSchema,
+    )) as { page: { demand: { status: string; can_close: boolean; demand_version: number } } };
+    expect(page.page.demand).toMatchObject({
+      status: 'CLOSED',
+      can_close: false,
+      demand_version: 2,
+    });
   });
 
   it('serves customer onboarding directory, invitations and identity cases', async () => {

@@ -69,6 +69,146 @@ describe('产品预约排期工作区', () => {
     expect(await screen.findByText(/排期新版本已确认/u)).toBeVisible();
   });
 
+  it('shows a close entry for a published demand that the backend says is closable', async () => {
+    server.use(http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () =>
+      HttpResponse.json({ data: { page: schedulePage() }, meta: { request_id: 'page' } })));
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    expect(await screen.findByRole('table', { name: '预约排名与预计下单日期' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: '关闭需求' })).toBeVisible();
+  });
+
+  it('submits close with exact ambiguous retry and refreshes the closed status', async () => {
+    const calls: Array<{ body: unknown; key: string|null }> = [];
+    let closeCalls = 0;
+    let pageCalls = 0;
+    server.use(
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () => {
+        pageCalls += 1;
+        const base = schedulePage();
+        return HttpResponse.json({ data: { page: {
+          ...base,
+          demand: {
+            ...base.demand,
+            demand_version: closeCalls > 1 ? 5 : 4,
+            status: closeCalls > 1 ? 'CLOSED' : 'PUBLISHED',
+            can_close: closeCalls <= 1,
+          },
+        } }, meta: { request_id: `page-${pageCalls}` } });
+      }),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/close'), async ({ request }) => {
+        calls.push({ body: await request.json(), key: request.headers.get('Idempotency-Key') });
+        closeCalls += 1;
+        if (closeCalls === 1) return HttpResponse.error();
+        return HttpResponse.json({ data: { demand_close: {
+          demand_batch_id: 'demand-1', status: 'CLOSED', version: 5,
+          close_reason: '提前结束活动', replayed: false,
+        } }, meta: { request_id: 'close-success' } });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    await user.click(screen.getByRole('button', { name: '关闭需求' }));
+    await user.click(screen.getByLabelText('我确认关闭该已发布需求'));
+    await user.type(screen.getByLabelText('关闭原因'), '提前结束活动');
+    await user.click(screen.getByRole('button', { name: '确认关闭需求' }));
+    expect(await screen.findByRole('button', { name: '重试原请求' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '重试原请求' }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]).toEqual(calls[0]);
+    expect(calls[0]).toMatchObject({
+      body: { expected_version: 4, close_reason: '提前结束活动' },
+    });
+    expect(calls[0]!.key).toMatch(/\S/u);
+    expect(await screen.findByText('已关闭')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '关闭需求' })).not.toBeInTheDocument();
+    expect(pageCalls).toBeGreaterThan(1);
+  });
+
+  it('starts a new close request when the reason changes after an ambiguous failure', async () => {
+    const calls: Array<{ body: unknown; key: string|null }> = [];
+    server.use(
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () =>
+        HttpResponse.json({ data: { page: schedulePage() }, meta: { request_id: 'page' } })),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/close'), async ({ request }) => {
+        calls.push({ body: await request.json(), key: request.headers.get('Idempotency-Key') });
+        if (calls.length === 1) return HttpResponse.error();
+        return HttpResponse.json({ data: { demand_close: {
+          demand_batch_id: 'demand-1', status: 'CLOSED', version: 5,
+          close_reason: '改后的关闭原因', replayed: false,
+        } }, meta: { request_id: 'close-new-request' } });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    await user.click(screen.getByRole('button', { name: '关闭需求' }));
+    await user.click(screen.getByLabelText('我确认关闭该已发布需求'));
+    const reason = screen.getByLabelText('关闭原因');
+    await user.type(reason, '原关闭原因');
+    await user.click(screen.getByRole('button', { name: '确认关闭需求' }));
+    expect(await screen.findByRole('button', { name: '重试原请求' })).toBeVisible();
+    await user.clear(reason);
+    await user.type(reason, '改后的关闭原因');
+    expect(screen.queryByRole('button', { name: '重试原请求' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '确认关闭需求' }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]!.key).not.toBe(calls[0]!.key);
+    expect(calls[0]!.body).toMatchObject({ close_reason: '原关闭原因' });
+    expect(calls[1]!.body).toMatchObject({ close_reason: '改后的关闭原因' });
+  });
+
+  it('hides the close entry when the backend capability is false or the demand is closed', async () => {
+    let closed = false;
+    server.use(http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () => {
+      const base = schedulePage();
+      return HttpResponse.json({ data: { page: {
+        ...base,
+        demand: { ...base.demand, status: closed ? 'CLOSED' : 'PUBLISHED', can_close: false },
+      } }, meta: { request_id: 'page-hidden' } });
+    }));
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    expect(screen.queryByRole('button', { name: '关闭需求' })).not.toBeInTheDocument();
+    cleanup();
+    closed = true;
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    expect(screen.queryByRole('button', { name: '关闭需求' })).not.toBeInTheDocument();
+  });
+
+  it('deduplicates a close submit while the first request is in flight', async () => {
+    let calls = 0;
+    const releaseRef: { current: (() => void) | null } = { current: null };
+    server.use(
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () =>
+        HttpResponse.json({ data: { page: schedulePage() }, meta: { request_id: 'page' } })),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/close'), () => {
+        calls += 1;
+        return new Promise<Response>((resolve) => {
+          releaseRef.current = () => resolve(HttpResponse.json({ data: { demand_close: {
+            demand_batch_id: 'demand-1', status: 'CLOSED', version: 5,
+            close_reason: '并发点击保护', replayed: false,
+          } }, meta: { request_id: 'close' } }));
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    await user.click(screen.getByRole('button', { name: '关闭需求' }));
+    await user.click(screen.getByLabelText('我确认关闭该已发布需求'));
+    await user.type(screen.getByLabelText('关闭原因'), '并发点击保护');
+    await user.click(screen.getByRole('button', { name: '确认关闭需求' }));
+    await waitFor(() => expect(calls).toBe(1));
+    const submit = screen.getByRole('button', { name: '关闭中…' });
+    expect(submit).toBeDisabled();
+    await user.click(submit);
+    expect(calls).toBe(1);
+    releaseRef.current?.();
+    await waitFor(() => expect(screen.getByText('需求已关闭。')).toBeVisible());
+  });
+
   it('does not request or expose schedule controls to buyer_refund', async () => {
     let requested = false;
     server.use(http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () => {
@@ -418,7 +558,8 @@ function schedulePage() {
   return {
     demand: { demand_batch_id: 'demand-1', product_id: 'product-1',
       product_name: '测试产品', target_quantity: 20, effective_reservation_count: 2,
-      order_deadline: 1_786_838_400_000, demand_version: 4, schedule: schedule() },
+      order_deadline: 1_786_838_400_000, demand_version: 4,
+      status: 'PUBLISHED', can_close: true, schedule: schedule() },
     items: [
       { reservation_id: 'reservation-1', status: 'APPROVED', submitted_at: 1000,
         decision_source: 'STAFF', version: 2,

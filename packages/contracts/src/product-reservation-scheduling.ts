@@ -138,6 +138,8 @@ export interface StaffReservationSchedulePageDto {
     effective_reservation_count: number;
     order_deadline: number;
     demand_version: number;
+    status: DemandBatchStatus;
+    can_close: boolean;
     schedule: DemandOrderScheduleVersionDto | null;
   };
   items: readonly StaffReservationScheduleItemDto[];

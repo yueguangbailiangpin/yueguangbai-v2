@@ -1143,6 +1143,8 @@ export const staffReservationSchedulePageSchema = z
             effective_reservation_count: z.number().int().nonnegative(),
             order_deadline: epoch,
             demand_version: z.number().int().positive(),
+            status: z.enum(['SUBMITTED', 'PUBLISHED', 'REJECTED', 'WITHDRAWN', 'CLOSED']),
+            can_close: z.boolean(),
             schedule: demandOrderScheduleVersionSchema.nullable(),
           })
           .strict(),
@@ -1219,6 +1221,19 @@ export const demandReviewMutationSchema = z
       .strict(),
   })
   .strict();
+export const demandCloseMutationSchema = z
+  .object({
+    demand_close: z
+      .object({
+        demand_batch_id: z.string(),
+        status: z.literal('CLOSED'),
+        version: z.number().int().positive(),
+        close_reason: z.string(),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
 export const productVersionMutationSchema = z
   .object({
     product_version: z
@@ -1268,6 +1283,7 @@ export type StaffProduct = z.output<typeof staffProductListItemSchema>;
 export type StaffProductDetail = z.output<typeof staffProductDetailSchema>['product'];
 export type DemandReviewContext = z.output<typeof demandReviewContextSchema>['review_context'];
 export type DemandReviewMutation = z.output<typeof demandReviewMutationSchema>;
+export type DemandCloseMutation = z.output<typeof demandCloseMutationSchema>;
 export type StaffReservationSchedulePage = z.output<
   typeof staffReservationSchedulePageSchema
 >['page'];

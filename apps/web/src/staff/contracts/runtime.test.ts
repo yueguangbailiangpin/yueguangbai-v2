@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  demandCloseMutationSchema,
   demandReviewContextSchema,
   staffReservationSchedulePageSchema,
   staffSellerPrincipalRatePoliciesResponseSchema,
@@ -63,7 +64,8 @@ describe('Staff workbench runtime DTOs', () => {
       const page = {
         demand: { demand_batch_id: 'demand-1', product_id: 'product-1',
           product_name: '产品', target_quantity: 1, effective_reservation_count: 1,
-          order_deadline: 1, demand_version: 1, schedule: null },
+          order_deadline: 1, demand_version: 1, status: 'PUBLISHED', can_close: false,
+          schedule: null },
         items: [{ reservation_id: 'reservation-1', status: 'APPROVED', submitted_at: 1,
           rank: 1, planned_order_date: null, buyer_reference: 'B001',
           buyer_customer_id: null, buyer_display_name: null,
@@ -95,6 +97,19 @@ describe('Staff workbench runtime DTOs', () => {
       .review_context.demand_version).toBe(2);
     expect(demandReviewContextSchema.safeParse({ review_context: {
       ...reviewContext, work_item_version: 99,
+    } }).success).toBe(false);
+  });
+
+  it('accepts the strict demand close result and rejects internal fields', () => {
+    const result = {
+      demand_batch_id: 'demand-1', status: 'CLOSED', version: 3,
+      close_reason: '活动结束', replayed: false,
+    };
+    expect(demandCloseMutationSchema.parse({ demand_close: result })).toEqual({
+      demand_close: result,
+    });
+    expect(demandCloseMutationSchema.safeParse({ demand_close: {
+      ...result, staff_id: 'internal-staff-id', assignment_id: 'internal-assignment',
     } }).success).toBe(false);
   });
 
