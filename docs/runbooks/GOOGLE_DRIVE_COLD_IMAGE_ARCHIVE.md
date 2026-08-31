@@ -6,7 +6,7 @@
 
 ## 本地验收
 
-1. 运行 `npm run check:drive-archive`。
+1. 运行 `npm run preflight:drive-archive`。
 2. 确认真实 scheduler runner dry-run 输出 Drive/R2 调用和 archive/Manifest/reconciliation/rehydration 业务事实写入均为 0。允许记录 `scheduled_job_states` / `scheduled_job_runs` 运行事实，不得把它们描述为归档业务写入为 0。
 3. 使用 mock adapter 验收六个月边界、四类白名单、断点续传、并发租约、Drive 回读校验、R2 删除失败和受控读取。
 4. 检查 `file_drive_archive_manifests` 不可更新/删除，`npm run db:verify` 与 migration guards 通过。

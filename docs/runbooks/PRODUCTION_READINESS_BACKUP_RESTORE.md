@@ -98,7 +98,7 @@ STAFF_AUTH_ALLOWED_ORIGINS=https://正式域名
 ## 本地与外部检查分离
 本地：
 ```text
-npm run check:production-readiness
+npm run check
 npm run verify:final-production-go:local
 ```
 必须保持离线，不读取生产。
