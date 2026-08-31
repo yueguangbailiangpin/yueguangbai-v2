@@ -106,12 +106,32 @@ class SqliteStatement implements SqlStatement {
 export function applyMigrations(
   database: SqliteDatabase,
   migrationsDirectory = path.resolve(process.cwd(), 'migrations'),
+  throughSchemaVersion?: number,
 ): string[] {
-  const files = readdirSync(migrationsDirectory)
+  const availableFiles = readdirSync(migrationsDirectory)
     .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
     .sort();
 
-  if (files.length === 0) throw new Error('no_migrations_found');
+  if (availableFiles.length === 0) throw new Error('no_migrations_found');
+  if (
+    throughSchemaVersion !== undefined
+    && (!Number.isInteger(throughSchemaVersion) || throughSchemaVersion < 1)
+  ) {
+    throw new Error('invalid_migration_target');
+  }
+  const files = throughSchemaVersion === undefined
+    ? availableFiles
+    : availableFiles.filter(
+      (name) => Number.parseInt(name.slice(0, 4), 10) <= throughSchemaVersion,
+    );
+  if (
+    throughSchemaVersion !== undefined
+    && !files.some(
+      (name) => Number.parseInt(name.slice(0, 4), 10) === throughSchemaVersion,
+    )
+  ) {
+    throw new Error('migration_target_not_found');
+  }
 
   for (const file of files) {
     database.exec('BEGIN IMMEDIATE;');
@@ -133,9 +153,19 @@ export function applyMigrations(
   return files;
 }
 
-export function createMigratedTestDatabase(): SqliteDatabase {
+export interface CreateMigratedTestDatabaseOptions {
+  throughSchemaVersion?: number;
+}
+
+export function createMigratedTestDatabase(
+  options: CreateMigratedTestDatabaseOptions = {},
+): SqliteDatabase {
   const database = new SqliteDatabase();
-  applyMigrations(database);
+  applyMigrations(
+    database,
+    path.resolve(process.cwd(), 'migrations'),
+    options.throughSchemaVersion,
+  );
   // Phase 3H workflows require an explicit, fully eligible assignee. Keep a
   // deterministic owner fixture available to tests that focus on another
   // bounded context and do not define their own staff topology. The D-056

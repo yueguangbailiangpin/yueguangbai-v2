@@ -52,4 +52,20 @@ describe('SQLite D1-compatible test adapter', () => {
     ).first();
     expect(row).toBeNull();
   });
+
+  it('can stop the real migration chain at an explicit historical schema', () => {
+    database = createMigratedTestDatabase({ throughSchemaVersion: 36 });
+
+    const schema = database.raw
+      .prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1')
+      .get() as { schema_version: number };
+    const laterIndex = database.raw
+      .prepare(
+        `SELECT name FROM sqlite_schema
+         WHERE type='index' AND name='idx_formal_orders_market_confirmed_id'`,
+      )
+      .get();
+    expect(Number(schema.schema_version)).toBe(36);
+    expect(laterIndex).toBeUndefined();
+  });
 });

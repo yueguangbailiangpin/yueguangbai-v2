@@ -40,10 +40,19 @@
 
 ## Local evidence (2026-08-31)
 
-- 旧 Schema 基线在加入 0037 前运行同一 focused suite 直接退出 `1`：目标索引不存在，
-  市场/业务日期路径出现顶层排序 TEMP-BTREE；加入 0037 后同一 suite 直接退出 `0`。
-- `npm run verify:order-list-capacity` 直接退出 `0`（2 files / 10 tests）；其中
-  `staff-order-list-multimarket-index.test.ts` 覆盖 1%/20%/80% 合成分布、旧计划红灯、
-  真实 Hono 列表结果、Owner 无市场路径、cursor echo 和 buyer_refund 计划边界。
-- `npm run check` 直接退出 `0`；完整本地证据仍只属于 LOCAL，未执行 staging、REMOTE CI、
-  Cloudflare、远程 D1/R2/Queues、部署或生产 Migration；Production=`NO-GO`。
+- 测试迁移辅助按真实迁移链分别停在 Schema 36 或走到 Schema 37；Schema 36 的 1%/20%/80%
+  合成分布均确认 `schema_version=36`、0037 索引不存在、一般 marketplace 查询使用既有
+  market/business-date 路径并出现顶层排序 TEMP-BTREE。Schema 37 的相同三分布均命中
+  `idx_formal_orders_market_confirmed_id`，且没有顶层排序 TEMP-BTREE。
+- focused suite 直接退出 `0`（1 file / 9 tests），测试迁移辅助回归直接退出 `0`
+  （1 file / 3 tests）；同 marketplace scope 与 `confirmed_from` filter 的第二页请求直接返回
+  `200`，cursor 解码后的 filter echo 与请求一致，分页结果无重复，并保留不同 filter 的 `400`。
+- `npm run verify:order-list-capacity` 直接退出 `0`（2 files / 12 tests），Staff order-list 回归
+  直接退出 `0`（1 file / 27 tests）；`buyer_refund` 固定分配 + seek OR 的顶层 TEMP-BTREE
+  仍为明确未解决边界，未修改其查询或权限。
+- `npm run typecheck`、`npm test`（265 files / 1880 tests）、`npm run build`、`npm run check`、
+  `npm run db:verify`、`npm run verify:migration-guards`、`npm run verify:api-contract`
+  （241 documented endpoints）、当前 Change strict、全量 OpenSpec strict（78 items）和
+  `git diff --check` 均直接退出 `0`。
+- 完整证据仍只属于 LOCAL；未执行 staging、REMOTE CI、Cloudflare、远程 D1/R2/Queues、
+  push、PR、部署或生产 Migration，Production=`NO-GO`。

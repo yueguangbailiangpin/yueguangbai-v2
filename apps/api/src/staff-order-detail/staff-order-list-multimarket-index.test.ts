@@ -4,7 +4,7 @@ import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
 import { describe, expect, it } from 'vitest';
 import { calculateEffectiveStaffAuthorization } from '../staff/authorization-policy';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { registerStaffOrderDetailRoutes } from './routes';
+import { decodeCursor, registerStaffOrderDetailRoutes } from './routes';
 import { responsibilitySelects } from './responsibility';
 
 /**
@@ -24,6 +24,11 @@ const SELLER_OPS_ID = 'synthetic-multimarket-seller-ops';
 const BUYER_REFUND_ID = 'synthetic-multimarket-buyer-refund';
 const TARGET_MARKET = 'AMAZON_US';
 const DISTRACTOR_MARKET = 'AMAZON_JP';
+const SELECTIVITY_CASES = [
+  { label: 'low-selectivity', share: 0.01 },
+  { label: 'medium-selectivity', share: 0.2 },
+  { label: 'high-selectivity', share: 0.8 },
+] as const;
 
 interface SyntheticCorpus {
   database: SqliteDatabase;
@@ -57,8 +62,11 @@ function sellerOpsActor(): AssignmentStaffAuthorization {
   };
 }
 
-function seedSyntheticCorpus(targetShare: number): SyntheticCorpus {
-  const database = createMigratedTestDatabase();
+function seedSyntheticCorpus(targetShare: number, throughSchemaVersion?: number): SyntheticCorpus {
+  const database =
+    throughSchemaVersion === undefined
+      ? createMigratedTestDatabase()
+      : createMigratedTestDatabase({ throughSchemaVersion });
   const targetCount = Math.round(TOTAL_ORDERS * targetShare);
   const targetOrderIds = Array.from(
     { length: targetCount },
@@ -453,52 +461,66 @@ async function listPage(
 }
 
 describe('future multi-market Staff order-list index preparation', () => {
-  it('records the old-schema market-scope regression before the forward index', () => {
-    const corpus = seedSyntheticCorpus(0.2);
-    // This is a transient local SQLite equivalent of Schema 36: remove only
-    // the candidate index from the test database, never from D1 or a checked-in
-    // migration. The real route-shaped query must show the pre-0037 fallback.
-    corpus.database.raw.exec('DROP INDEX idx_formal_orders_market_confirmed_id');
-    const plan = sellerOpsMarketPlan(corpus.database);
-    expect(planText(plan)).not.toContain('idx_formal_orders_market_confirmed_id');
-    expect(planText(plan)).toMatch(/idx_formal_orders_marketplace_business_date/u);
-    expect(topLevelSortSteps(plan).length).toBeGreaterThan(0);
-  });
+  it.each(SELECTIVITY_CASES)(
+    'records the real Schema 36 fallback for $label scoped pages',
+    ({ share }) => {
+      const corpus = seedSyntheticCorpus(share, 36);
+      const schema = corpus.database.raw
+        .prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1')
+        .get() as { schema_version: number };
+      const candidateIndex = corpus.database.raw
+        .prepare(
+          `SELECT name FROM sqlite_schema
+           WHERE type='index' AND name='idx_formal_orders_market_confirmed_id'`,
+        )
+        .get();
+      expect(Number(schema.schema_version)).toBe(36);
+      expect(candidateIndex).toBeUndefined();
 
-  it.each([
-    { label: 'low-selectivity', share: 0.01 },
-    { label: 'medium-selectivity', share: 0.2 },
-    { label: 'high-selectivity', share: 0.8 },
-  ])('uses the marketplace-leading order index for $label scoped pages', async ({ share }) => {
-    const corpus = seedSyntheticCorpus(share);
-    const actor = sellerOpsActor();
-    const expected = [...corpus.targetOrderIds].reverse();
-    const seen: string[] = [];
-    let cursor: string | null = null;
-    for (let page = 0; page < 40; page += 1) {
-      const query =
-        cursor === null ? '?limit=37' : `?limit=37&cursor=${encodeURIComponent(cursor)}`;
-      const response = await listPage(corpus.database, actor, query);
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as {
-        data: {
-          items: Array<{ formal_order_id: string; marketplace_code: string }>;
-          next_cursor: string | null;
+      const plan = sellerOpsMarketPlan(corpus.database);
+      expect(planText(plan)).not.toContain('idx_formal_orders_market_confirmed_id');
+      expect(planText(plan)).toMatch(/idx_formal_orders_marketplace_business_date/u);
+      expect(topLevelSortSteps(plan).length).toBeGreaterThan(0);
+    },
+  );
+
+  it.each(SELECTIVITY_CASES)(
+    'uses the marketplace-leading order index for $label scoped pages',
+    async ({ share }) => {
+      const corpus = seedSyntheticCorpus(share);
+      const schema = corpus.database.raw
+        .prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1')
+        .get() as { schema_version: number };
+      expect(Number(schema.schema_version)).toBe(37);
+      const actor = sellerOpsActor();
+      const expected = [...corpus.targetOrderIds].reverse();
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      for (let page = 0; page < 40; page += 1) {
+        const query =
+          cursor === null ? '?limit=37' : `?limit=37&cursor=${encodeURIComponent(cursor)}`;
+        const response = await listPage(corpus.database, actor, query);
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          data: {
+            items: Array<{ formal_order_id: string; marketplace_code: string }>;
+            next_cursor: string | null;
+          };
         };
-      };
-      expect(body.data.items.every((item) => item.marketplace_code === TARGET_MARKET)).toBe(true);
-      seen.push(...body.data.items.map((item) => item.formal_order_id));
-      cursor = body.data.next_cursor;
-      if (cursor === null) break;
-    }
-    expect(seen).toEqual(expected);
+        expect(body.data.items.every((item) => item.marketplace_code === TARGET_MARKET)).toBe(true);
+        seen.push(...body.data.items.map((item) => item.formal_order_id));
+        cursor = body.data.next_cursor;
+        if (cursor === null) break;
+      }
+      expect(seen).toEqual(expected);
 
-    const plan = sellerOpsMarketPlan(corpus.database);
-    expect(planText(plan)).toMatch(
-      /SEARCH o USING (?:COVERING )?INDEX idx_formal_orders_market_confirmed_id/u,
-    );
-    expect(topLevelSortSteps(plan)).toEqual([]);
-  });
+      const plan = sellerOpsMarketPlan(corpus.database);
+      expect(planText(plan)).toMatch(
+        /SEARCH o USING (?:COVERING )?INDEX idx_formal_orders_market_confirmed_id/u,
+      );
+      expect(topLevelSortSteps(plan)).toEqual([]);
+    },
+  );
 
   it('keeps the owner no-market path on the existing confirmed_at/id index', () => {
     const corpus = seedSyntheticCorpus(0.2);
@@ -524,18 +546,58 @@ describe('future multi-market Staff order-list index preparation', () => {
 
   it('preserves cursor filter echo at the existing HTTP boundary', async () => {
     const corpus = seedSyntheticCorpus(0.2);
-    const first = await listPage(corpus.database, sellerOpsActor(), '?limit=2');
+    const filter = `confirmed_from=${CONFIRMED_AT}`;
+    const first = await listPage(corpus.database, sellerOpsActor(), `?limit=2&${filter}`);
     expect(first.status).toBe(200);
     const firstBody = (await first.json()) as {
-      data: { next_cursor: string | null };
+      data: {
+        items: Array<{ formal_order_id: string; marketplace_code: string }>;
+        next_cursor: string | null;
+      };
     };
     expect(firstBody.data.next_cursor).not.toBeNull();
-    const replay = await listPage(
+    expect(firstBody.data.items).toHaveLength(2);
+    expect(firstBody.data.items.every((item) => item.marketplace_code === TARGET_MARKET)).toBe(
+      true,
+    );
+    expect(JSON.parse(decodeCursor(firstBody.data.next_cursor!).echo)).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      CONFIRMED_AT,
+      null,
+    ]);
+
+    const sameFilterPage = await listPage(
       corpus.database,
       sellerOpsActor(),
-      `?limit=2&confirmed_from=${CONFIRMED_AT}&cursor=${encodeURIComponent(firstBody.data.next_cursor!)}`,
+      `?limit=2&${filter}&cursor=${encodeURIComponent(firstBody.data.next_cursor!)}`,
     );
-    expect(replay.status).toBe(400);
+    expect(sameFilterPage.status).toBe(200);
+    const sameFilterBody = (await sameFilterPage.json()) as {
+      data: {
+        items: Array<{ formal_order_id: string; marketplace_code: string }>;
+        next_cursor: string | null;
+      };
+    };
+    expect(sameFilterBody.data.items).toHaveLength(2);
+    expect(sameFilterBody.data.items.every((item) => item.marketplace_code === TARGET_MARKET)).toBe(
+      true,
+    );
+    expect(sameFilterBody.data.items.map((item) => item.formal_order_id)).toEqual(
+      [...corpus.targetOrderIds].reverse().slice(2, 4),
+    );
+
+    const mismatchedFilter = await listPage(
+      corpus.database,
+      sellerOpsActor(),
+      `?limit=2&cursor=${encodeURIComponent(firstBody.data.next_cursor!)}`,
+    );
+    expect(mismatchedFilter.status).toBe(400);
   });
 
   it('keeps buyer-refund fixed-assignment planning outside the no-temp-sort claim', () => {
