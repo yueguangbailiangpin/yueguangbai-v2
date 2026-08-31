@@ -37,6 +37,17 @@ describe('Cloudflare Access Staff identity', () => {
     });
   });
 
+  it('requires signature tampering to change bytes even when the old aa replacement is a no-op', () => {
+    const original = 'a.b.aa';
+    const oldTampered = `${original.slice(0, -2)}aa`;
+    expect(oldTampered).toBe(original);
+
+    const tampered = tamperJwtSignature(original);
+    expect(tampered).not.toBe(original);
+    expect(Array.from(signatureBytes(tampered))).not.toEqual(Array.from(signatureBytes(original)));
+    expect(tampered).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
+  });
+
   it('fails closed for wrong audience, bad signature and unavailable keys', async () => {
     const fixture = await jwtFixture(
       'https://team-two.cloudflareaccess.com',
@@ -51,7 +62,7 @@ describe('Cloudflare Access Staff identity', () => {
         fixture.now,
       ),
     ).rejects.toMatchObject({ code: 'UNAUTHENTICATED', reason: 'AUDIENCE' });
-    const tampered = `${fixture.token.slice(0, -2)}aa`;
+    const tampered = tamperJwtSignature(fixture.token);
     await expect(
       verifyCloudflareAccessIdentity(
         request(tampered),
@@ -186,6 +197,26 @@ describe('Cloudflare Access Staff identity', () => {
 
 function request(token: string) {
   return new Request('https://app.example.test', { headers: { 'Cf-Access-Jwt-Assertion': token } });
+}
+function tamperJwtSignature(token: string) {
+  const segments = token.split('.');
+  if (segments.length !== 3 || segments.some((segment) => segment.length < 1)) {
+    throw new Error('invalid_jwt_fixture');
+  }
+  const bytes = signatureBytes(token);
+  if (bytes.length < 1) throw new Error('empty_jwt_signature');
+  bytes[0] = bytes[0]! ^ 1;
+  return `${segments[0]!}.${segments[1]!}.${base64url(bytes)}`;
+}
+function signatureBytes(token: string) {
+  const signature = token.split('.')[2];
+  if (!signature) throw new Error('empty_jwt_signature');
+  const padded = signature.replace(/-/gu, '+').replace(/_/gu, '/')
+    + '='.repeat((4 - signature.length % 4) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 function mockJwks(jwk: JsonWebKey) {
   return vi
