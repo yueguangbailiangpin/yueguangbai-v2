@@ -11,22 +11,27 @@ import { responsibilitySelects } from './responsibility';
 /**
  * Independent acceptance for the Schema 37 buyer_refund query-plan remainder.
  * The corpus uses the same guarded source chain as the existing multi-market
- * preparation suite, but gives the refund actor both markets and leaves one
- * buyer unassigned so result and concealment checks cannot be plan-only.
+ * preparation suite, gives the refund actor two scoped markets, adds many
+ * rows from an irrelevant registered market, and leaves one buyer unassigned
+ * so result and concealment checks cannot be plan-only.
  */
 
 const ORIGIN = 'https://api.example.test';
-const TOTAL_ORDERS = 100;
+const TOTAL_ORDERS = 1_000;
+const COST_PAGE_LIMIT = 3;
 const CONFIRMED_AT = Date.UTC(2026, 7, 1, 0, 0, 0);
 const OWNER_ID = 'zz-phase3h-test-owner';
 const BUYER_REFUND_ID = 'synthetic-buyer-refund-plan';
 const TARGET_MARKET = 'AMAZON_US';
 const DISTRACTOR_MARKET = 'AMAZON_JP';
+const IRRELEVANT_MARKET = 'COUPANG_KR';
 const SELECTIVITY_CASES = [
-  { label: 'low-selectivity', share: 0.01 },
-  { label: 'medium-selectivity', share: 0.2 },
-  { label: 'high-selectivity', share: 0.8 },
+  { label: 'scope-1-percent', share: 0.01, scopeNumerator: 1, scopeDenominator: 100 },
+  { label: 'scope-20-percent', share: 0.2, scopeNumerator: 1, scopeDenominator: 5 },
+  { label: 'scope-80-percent', share: 0.8, scopeNumerator: 4, scopeDenominator: 5 },
 ] as const;
+
+type SelectivityCase = (typeof SELECTIVITY_CASES)[number];
 
 interface QueryPlanRow {
   id: number;
@@ -39,6 +44,7 @@ interface SyntheticCorpus {
   targetOrderIds: string[];
   visibleOrderIds: string[];
   unassignedOrderId: string;
+  scopedOrderCount: number;
 }
 
 interface CapturedStatement {
@@ -69,14 +75,71 @@ function buyerRefundActor(denies: Array<'ORDER_VIEW'> = []): AssignmentStaffAuth
   };
 }
 
+function selectivityCaseForShare(share: number): SelectivityCase {
+  const selected = SELECTIVITY_CASES.find((candidate) => candidate.share === share);
+  if (!selected) throw new Error(`unknown_selectivity_case:${share}`);
+  return selected;
+}
+
+function scopeOrderRank(selectivity: SelectivityCase, ordinal: number): number {
+  const { scopeNumerator, scopeDenominator } = selectivity;
+  const gap = scopeDenominator - scopeNumerator;
+  if (gap === 0) return ordinal;
+  return Math.floor(ordinal / scopeNumerator) * scopeDenominator + (ordinal % scopeNumerator);
+}
+
+function syntheticOrderRank(
+  selectivity: SelectivityCase,
+  marketKey: 'us' | 'jp' | 'kr',
+  index: number,
+): number {
+  if (marketKey === 'kr') {
+    const irrelevantPerBucket = selectivity.scopeDenominator - selectivity.scopeNumerator;
+    return (
+      Math.floor(index / irrelevantPerBucket) * selectivity.scopeDenominator +
+      selectivity.scopeNumerator +
+      (index % irrelevantPerBucket)
+    );
+  }
+  const ordinal = index * 2 + (marketKey === 'jp' ? 1 : 0);
+  return scopeOrderRank(selectivity, ordinal);
+}
+
+function syntheticOrderId(
+  selectivity: SelectivityCase,
+  marketKey: 'us' | 'jp' | 'kr',
+  index: number,
+): string {
+  return `synthetic-refund-order-${String(
+    syntheticOrderRank(selectivity, marketKey, index),
+  ).padStart(6, '0')}-${marketKey}`;
+}
+
+function syntheticOrderRankExpression(
+  selectivity: SelectivityCase,
+  marketKey: 'us' | 'jp' | 'kr',
+): string {
+  if (marketKey === 'kr') {
+    const irrelevantPerBucket = selectivity.scopeDenominator - selectivity.scopeNumerator;
+    return (
+      `CAST(i/${irrelevantPerBucket} AS INTEGER)*${selectivity.scopeDenominator}` +
+      `+${selectivity.scopeNumerator}+(i%${irrelevantPerBucket})`
+    );
+  }
+  const ordinal = marketKey === 'jp' ? '(i*2+1)' : '(i*2)';
+  return selectivity.scopeNumerator === 1
+    ? `${ordinal}*${selectivity.scopeDenominator}`
+    : `CAST(${ordinal}/${selectivity.scopeNumerator} AS INTEGER)*${selectivity.scopeDenominator}` +
+        `+(${ordinal}%${selectivity.scopeNumerator})`;
+}
+
 function seedSyntheticCorpus(targetShare: number): SyntheticCorpus {
+  const selectivity = selectivityCaseForShare(targetShare);
+  const scopedOrderCount = Math.round(TOTAL_ORDERS * targetShare);
+  const targetCount = Math.ceil(scopedOrderCount / 2);
+  const distractorCount = scopedOrderCount - targetCount;
+  const irrelevantCount = TOTAL_ORDERS - scopedOrderCount;
   const database = createMigratedTestDatabase();
-  const targetCount = Math.round(TOTAL_ORDERS * targetShare);
-  const targetOrderIds = Array.from(
-    { length: targetCount },
-    (_, index) => `synthetic-us-order-${String(index).padStart(4, '0')}`,
-  );
-  const unassignedOrderId = 'synthetic-jp-order-0000';
 
   database.exec(`
     INSERT INTO staff_users(
@@ -108,10 +171,14 @@ function seedSyntheticCorpus(targetShare: number): SyntheticCorpus {
         'ACTIVE',1,1000,1000,1000,NULL,2),
       ('synthetic-jp-refund-seller','${DISTRACTOR_MARKET}','synthetic-jp-refund-seller',
         'seller-channel-ido-mango','seller-channel-ido-mango',9902,'合成日本返款卖家',
+        'ACTIVE',1,1000,1000,1000,NULL,2),
+      ('synthetic-kr-refund-seller','${IRRELEVANT_MARKET}','synthetic-kr-refund-seller',
+        'seller-channel-ido-mango','seller-channel-ido-mango',9903,'合成韩国无关卖家',
         'ACTIVE',1,1000,1000,1000,NULL,2);
     INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES
       ('synthetic-us-refund-seller-subject','SELLER_ORG_MEMBER',1000),
-      ('synthetic-jp-refund-seller-subject','SELLER_ORG_MEMBER',1000);
+      ('synthetic-jp-refund-seller-subject','SELLER_ORG_MEMBER',1000),
+      ('synthetic-kr-refund-seller-subject','SELLER_ORG_MEMBER',1000);
     INSERT INTO seller_organization_members(
       id,identity_subject_id,organization_id,member_number,username_fallback,display_name,role,
       primary_owner,status,version,created_at,updated_at,activated_at,disabled_at
@@ -121,6 +188,9 @@ function seedSyntheticCorpus(targetShare: number): SyntheticCorpus {
         'OWNER',1,'ACTIVE',1,1000,1000,1000,NULL),
       ('synthetic-jp-refund-seller-member','synthetic-jp-refund-seller-subject',
         'synthetic-jp-refund-seller',1,'synthetic-jp-refund-owner','合成日本卖家负责人',
+        'OWNER',1,'ACTIVE',1,1000,1000,1000,NULL),
+      ('synthetic-kr-refund-seller-member','synthetic-kr-refund-seller-subject',
+        'synthetic-kr-refund-seller',1,'synthetic-kr-refund-owner','合成韩国无关卖家负责人',
         'OWNER',1,'ACTIVE',1,1000,1000,1000,NULL);
     INSERT INTO seller_stores(
       id,organization_id,marketplace_code,display_name,normalized_name,status,version,
@@ -129,7 +199,9 @@ function seedSyntheticCorpus(targetShare: number): SyntheticCorpus {
       ('synthetic-us-refund-store','synthetic-us-refund-seller','${TARGET_MARKET}',
         '合成美国返款店铺','合成美国返款店铺','ACTIVE',1,1000,1000,NULL),
       ('synthetic-jp-refund-store','synthetic-jp-refund-seller','${DISTRACTOR_MARKET}',
-        '合成日本返款店铺','合成日本返款店铺','ACTIVE',1,1000,1000,NULL);
+        '合成日本返款店铺','合成日本返款店铺','ACTIVE',1,1000,1000,NULL),
+      ('synthetic-kr-refund-store','synthetic-kr-refund-seller','${IRRELEVANT_MARKET}',
+        '合成韩国无关店铺','合成韩国无关店铺','ACTIVE',1,1000,1000,NULL);
     INSERT INTO products(
       id,organization_id,store_id,marketplace_code,asin_display,asin_normalized,status,
       current_version_no,version,created_at,updated_at,disabled_at
@@ -137,7 +209,9 @@ function seedSyntheticCorpus(targetShare: number): SyntheticCorpus {
       ('synthetic-us-refund-product','synthetic-us-refund-seller','synthetic-us-refund-store',
         '${TARGET_MARKET}','B0RFDUS001','B0RFDUS001','ACTIVE',1,1,1000,1000,NULL),
       ('synthetic-jp-refund-product','synthetic-jp-refund-seller','synthetic-jp-refund-store',
-        '${DISTRACTOR_MARKET}','B0RFDJP001','B0RFDJP001','ACTIVE',1,1,1000,1000,NULL);
+        '${DISTRACTOR_MARKET}','B0RFDJP001','B0RFDJP001','ACTIVE',1,1,1000,1000,NULL),
+      ('synthetic-kr-refund-product','synthetic-kr-refund-seller','synthetic-kr-refund-store',
+        '${IRRELEVANT_MARKET}','B0RFDKR001','B0RFDKR001','ACTIVE',1,1,1000,1000,NULL);
     INSERT INTO product_versions(
       id,product_id,version_no,product_name,search_keywords_json,product_url,buyer_visible_notes,
       internal_notes,created_by_staff_id,created_at,ordering_guide_expected_amount_jpy,color_spec_mode
@@ -145,6 +219,8 @@ function seedSyntheticCorpus(targetShare: number): SyntheticCorpus {
       ('synthetic-us-refund-product-version','synthetic-us-refund-product',1,'合成美国返款产品',
         '[]',NULL,NULL,NULL,'${OWNER_ID}',1000,1980,'MAIN_IMAGE_VARIANT'),
       ('synthetic-jp-refund-product-version','synthetic-jp-refund-product',1,'合成日本返款产品',
+        '[]',NULL,NULL,NULL,'${OWNER_ID}',1000,1980,'MAIN_IMAGE_VARIANT'),
+      ('synthetic-kr-refund-product-version','synthetic-kr-refund-product',1,'合成韩国无关产品',
         '[]',NULL,NULL,NULL,'${OWNER_ID}',1000,1980,'MAIN_IMAGE_VARIANT');
     INSERT INTO demand_batches(
       id,organization_id,store_id,marketplace_code,product_id,product_version_no,submitted_by_member_id,
@@ -158,32 +234,57 @@ function seedSyntheticCorpus(targetShare: number): SyntheticCorpus {
         '${OWNER_ID}',NULL,2,1000,3000,3000,3000,NULL,NULL,0,${targetCount}),
       ('synthetic-jp-refund-demand','synthetic-jp-refund-seller','synthetic-jp-refund-store',
         '${DISTRACTOR_MARKET}','synthetic-jp-refund-product',1,'synthetic-jp-refund-seller-member',
-        'IMAGE',${TOTAL_ORDERS - targetCount || 1},NULL,NULL,2000,5000,20000,'PUBLISHED',NULL,NULL,
-        '${OWNER_ID}',NULL,2,1000,3000,3000,3000,NULL,NULL,0,${TOTAL_ORDERS - targetCount});
+        'IMAGE',${distractorCount || 1},NULL,NULL,2000,5000,20000,'PUBLISHED',NULL,NULL,
+        '${OWNER_ID}',NULL,2,1000,3000,3000,3000,NULL,NULL,0,${distractorCount}),
+      ('synthetic-kr-refund-demand','synthetic-kr-refund-seller','synthetic-kr-refund-store',
+        '${IRRELEVANT_MARKET}','synthetic-kr-refund-product',1,'synthetic-kr-refund-seller-member',
+        'IMAGE',${irrelevantCount || 1},NULL,NULL,2000,5000,20000,'PUBLISHED',NULL,NULL,
+        '${OWNER_ID}',NULL,2,1000,3000,3000,3000,NULL,NULL,0,${irrelevantCount});
   `);
 
-  seedMarketRows(database, TARGET_MARKET, 'us', targetCount, 0);
-  seedMarketRows(database, DISTRACTOR_MARKET, 'jp', TOTAL_ORDERS - targetCount, targetCount);
-  seedBuyerRefundAssignments(database, targetCount, TOTAL_ORDERS - targetCount);
+  seedMarketRows(database, TARGET_MARKET, 'us', targetCount, 0, selectivity);
+  seedMarketRows(database, DISTRACTOR_MARKET, 'jp', distractorCount, targetCount, selectivity);
+  seedMarketRows(database, IRRELEVANT_MARKET, 'kr', irrelevantCount, scopedOrderCount, selectivity);
+  seedBuyerRefundAssignments(database, targetCount, distractorCount);
 
-  const visibleOrderIds = [
-    ...targetOrderIds,
-    ...Array.from(
-      { length: TOTAL_ORDERS - targetCount },
-      (_, index) => `synthetic-jp-order-${String(index).padStart(4, '0')}`,
-    ).filter((id) => id !== unassignedOrderId),
-  ]
-    .sort()
-    .reverse();
-  return { database, targetOrderIds, visibleOrderIds, unassignedOrderId };
+  const targetOrderIds = (
+    database.raw
+      .prepare(
+        `SELECT id FROM formal_orders
+       WHERE marketplace_code=? ORDER BY confirmed_at DESC,id DESC`,
+      )
+      .all(TARGET_MARKET) as Array<{ id: string }>
+  ).map((row) => row.id);
+  const visibleOrderIds = readOrderIds(database);
+  const unassignedOrderId = syntheticOrderId(selectivity, 'jp', 0);
+  const totalRows = database.raw.prepare('SELECT COUNT(*) AS total FROM formal_orders').get() as {
+    total: number;
+  };
+  const scopedRows = database.raw
+    .prepare(
+      `SELECT COUNT(*) AS total FROM formal_orders
+       WHERE marketplace_code IN (?,?)`,
+    )
+    .get(TARGET_MARKET, DISTRACTOR_MARKET) as { total: number };
+  expect(Number(totalRows.total)).toBe(TOTAL_ORDERS);
+  expect(Number(scopedRows.total)).toBe(scopedOrderCount);
+  expect(visibleOrderIds).toHaveLength(scopedOrderCount - 1);
+  return {
+    database,
+    targetOrderIds,
+    visibleOrderIds,
+    unassignedOrderId,
+    scopedOrderCount,
+  };
 }
 
 function seedMarketRows(
   database: SqliteDatabase,
   marketplaceCode: string,
-  marketKey: 'us' | 'jp',
+  marketKey: 'us' | 'jp' | 'kr',
   count: number,
   buyerSequenceOffset: number,
+  selectivity: SelectivityCase,
 ): void {
   if (count < 1) return;
   const sellerId = `synthetic-${marketKey}-refund-seller`;
@@ -193,7 +294,15 @@ function seedMarketRows(
   const demandId = `synthetic-${marketKey}-refund-demand`;
   const marketBusinessDate = '2026-08-01';
   const startSequence = 10000 + buyerSequenceOffset;
-  const startOrderNumber = marketKey === 'us' ? 0 : 5000;
+  const startOrderNumber = marketKey === 'us' ? 0 : marketKey === 'jp' ? 5000 : 10000;
+  const orderRank = syntheticOrderRankExpression(selectivity, marketKey);
+  const productName =
+    marketKey === 'us'
+      ? '合成美国返款产品'
+      : marketKey === 'jp'
+        ? '合成日本返款产品'
+        : '合成韩国无关产品';
+  const asin = marketKey === 'us' ? 'B0RFDUS001' : marketKey === 'jp' ? 'B0RFDJP001' : 'B0RFDKR001';
 
   database.raw.exec('BEGIN');
   try {
@@ -284,8 +393,8 @@ function seedMarketRows(
         'synthetic-${marketKey}-refund-submission-'||printf('%04d',i),
         'synthetic-${marketKey}-refund-reservation-'||printf('%04d',i),
         'synthetic-${marketKey}-refund-buyer-'||printf('%04d',i),?,1,
-        '123-9000000-'||printf('%07d',${startOrderNumber}+i),
-        '123-9000000-'||printf('%07d',${startOrderNumber}+i),?,1980,
+        '123-9000000-'||printf('%07d',${startOrderNumber}+(${orderRank})),
+        '123-9000000-'||printf('%07d',${startOrderNumber}+(${orderRank})),?,1980,
         'synthetic-${marketKey}-refund-buyer-'||printf('%04d',i),NULL,NULL,7000 FROM n
     `,
       )
@@ -311,15 +420,15 @@ function seedMarketRows(
         final_paid_jpy,status,version,confirmed_by_staff_id,confirmed_at,confirmed_business_date,
         created_at,amazon_order_date,marketplace_business_date
       )
-      SELECT 'synthetic-${marketKey}-order-'||printf('%04d',i),
+      SELECT 'synthetic-refund-order-'||printf('%06d',${orderRank})||'-${marketKey}',
         'synthetic-${marketKey}-refund-submission-'||printf('%04d',i),
         'synthetic-${marketKey}-refund-evidence-'||printf('%04d',i),
         'synthetic-${marketKey}-refund-reservation-'||printf('%04d',i),?,
         'synthetic-${marketKey}-refund-buyer-'||printf('%04d',i),
         '20260801B'||printf('%05d',${startSequence}+i),?,?,?,
-        ?,?,1,?,?,'${marketKey === 'us' ? '合成美国返款产品' : '合成日本返款产品'}','IMAGE',
-        '123-9000000-'||printf('%07d',${startOrderNumber}+i),
-        '123-9000000-'||printf('%07d',${startOrderNumber}+i),1980,'CONFIRMED',1,?,
+        ?,?,1,?,?,'${productName}','IMAGE',
+        '123-9000000-'||printf('%07d',${startOrderNumber}+(${orderRank})),
+        '123-9000000-'||printf('%07d',${startOrderNumber}+(${orderRank})),1980,'CONFIRMED',1,?,
         ${CONFIRMED_AT},?,${CONFIRMED_AT},?,?
       FROM n
     `,
@@ -332,8 +441,8 @@ function seedMarketRows(
         marketplaceCode,
         productId,
         productVersionId,
-        marketKey === 'us' ? 'B0RFDUS001' : 'B0RFDJP001',
-        marketKey === 'us' ? 'B0RFDUS001' : 'B0RFDJP001',
+        asin,
+        asin,
         OWNER_ID,
         marketBusinessDate,
         marketBusinessDate,
@@ -441,8 +550,8 @@ function planText(plan: readonly QueryPlanRow[]): string {
 
 function seekParams(seekPredicate: string): SQLInputValue[] {
   return seekPredicate === SEEK_ROW_VALUE
-    ? [CONFIRMED_AT, 'synthetic-us-order-9999']
-    : [CONFIRMED_AT, CONFIRMED_AT, 'synthetic-us-order-9999'];
+    ? [CONFIRMED_AT, 'zzzzzzzz']
+    : [CONFIRMED_AT, CONFIRMED_AT, 'zzzzzzzz'];
 }
 
 function parentSortSteps(plan: readonly QueryPlanRow[]): QueryPlanRow[] {
@@ -464,6 +573,106 @@ function readOrderIds(database: SqliteDatabase, indexHint = '', seekPredicate = 
       TOTAL_ORDERS + 1,
     ) as Array<Record<string, unknown>>;
   return rows.map((row) => String(row['id']));
+}
+
+interface CostProbe {
+  page: 'first' | 'deep' | 'tail';
+  start: number;
+  cursorId: string | null;
+  returnedRows: number;
+  globalIndexCandidateRows: number;
+  marketplaceIndexCandidateRows: number;
+  amplification: number;
+}
+
+function readVisiblePage(database: SqliteDatabase, cursorId: string | null): string[] {
+  const seekPredicate = cursorId === null ? '1=1' : SEEK_OR;
+  const rows = database.raw
+    .prepare(orderListQuery('', seekPredicate))
+    .all(
+      TARGET_MARKET,
+      DISTRACTOR_MARKET,
+      BUYER_REFUND_ID,
+      ...(cursorId === null ? [] : [CONFIRMED_AT, CONFIRMED_AT, cursorId]),
+      COST_PAGE_LIMIT + 1,
+    ) as Array<Record<string, unknown>>;
+  return rows.slice(0, COST_PAGE_LIMIT).map((row) => String(row['id']));
+}
+
+function candidateRowsForInterval(
+  database: SqliteDatabase,
+  indexName: 'idx_formal_orders_confirmed_id' | 'idx_formal_orders_market_confirmed_id',
+  cursorId: string | null,
+  lastId: string,
+  scoped: boolean,
+): number {
+  // This is a deterministic pre-authorization candidate probe, not a timing
+  // benchmark: it counts the exact key interval an index must inspect before
+  // Marketplace and fixed-assignment predicates can discard rows.
+  const predicates: string[] = [];
+  const params: SQLInputValue[] = [];
+  if (scoped) {
+    predicates.push('o.marketplace_code IN (?,?)');
+    params.push(TARGET_MARKET, DISTRACTOR_MARKET);
+  }
+  if (cursorId !== null) {
+    predicates.push('(o.confirmed_at<? OR (o.confirmed_at=? AND o.id<?))');
+    params.push(CONFIRMED_AT, CONFIRMED_AT, cursorId);
+  }
+  predicates.push('(o.confirmed_at>? OR (o.confirmed_at=? AND o.id>=?))');
+  params.push(CONFIRMED_AT, CONFIRMED_AT, lastId);
+  const row = database.raw
+    .prepare(
+      `SELECT COUNT(*) AS total
+       FROM formal_orders o INDEXED BY ${indexName}
+       WHERE ${predicates.join(' AND ')}`,
+    )
+    .get(...params) as { total: number };
+  return Number(row.total);
+}
+
+function costProbeStarts(
+  visibleRowCount: number,
+): Array<{ page: CostProbe['page']; start: number }> {
+  const tail = Math.max(0, visibleRowCount - COST_PAGE_LIMIT);
+  const deep = Math.floor(visibleRowCount / 2);
+  return [
+    { page: 'first', start: 0 },
+    { page: 'deep', start: deep },
+    { page: 'tail', start: tail },
+  ];
+}
+
+function collectCostProbes(corpus: SyntheticCorpus): CostProbe[] {
+  return costProbeStarts(corpus.visibleOrderIds.length).map(({ page, start }) => {
+    const cursorId = start === 0 ? null : corpus.visibleOrderIds[start - 1]!;
+    const pageIds = readVisiblePage(corpus.database, cursorId);
+    const lastId = pageIds.at(-1);
+    if (!lastId) throw new Error(`empty_cost_probe_page:${page}`);
+    const globalIndexCandidateRows = candidateRowsForInterval(
+      corpus.database,
+      'idx_formal_orders_confirmed_id',
+      cursorId,
+      lastId,
+      false,
+    );
+    const marketplaceIndexCandidateRows = candidateRowsForInterval(
+      corpus.database,
+      'idx_formal_orders_market_confirmed_id',
+      cursorId,
+      lastId,
+      true,
+    );
+    return {
+      page,
+      start,
+      cursorId,
+      returnedRows: pageIds.length,
+      globalIndexCandidateRows,
+      marketplaceIndexCandidateRows,
+      amplification: globalIndexCandidateRows / marketplaceIndexCandidateRows,
+    };
+  });
 }
 
 function unionAllOrderIdsQuery(): string {
@@ -595,7 +804,7 @@ describe('buyer_refund fixed-assignment order-list query plan', () => {
   );
 
   it.each(SELECTIVITY_CASES)(
-    'requires the real route plan to remove the parent sort for $label',
+    'retains the real planner-selected route plan for $label',
     async ({ share }) => {
       const corpus = seedSyntheticCorpus(share);
       const captures: CapturedStatement[] = [];
@@ -617,11 +826,14 @@ describe('buyer_refund fixed-assignment order-list query plan', () => {
       );
       expect(response.status).toBe(200);
       const plan = capturedListPlan(corpus.database, captures);
-      expect(planText(plan)).toContain('idx_formal_orders_confirmed_id');
+      expect(planText(plan)).toContain('idx_formal_orders_market_confirmed_id');
+      expect(capturedListStatement(captures).sql).not.toContain(
+        'INDEXED BY idx_formal_orders_confirmed_id',
+      );
       expect(capturedListStatement(captures).sql).toContain(
         '(o.confirmed_at<? OR (o.confirmed_at=? AND o.id<?))',
       );
-      expect(parentSortSteps(plan)).toEqual([]);
+      expect(parentSortSteps(plan).length).toBeGreaterThan(0);
       expect(nestedSortSteps(plan).length).toBeGreaterThan(0);
       corpus.database.close();
     },
@@ -737,18 +949,65 @@ describe('buyer_refund fixed-assignment order-list query plan', () => {
     corpus.database.close();
   });
 
-  it('shows the global index hint as the smallest equivalent candidate plan', () => {
+  it('keeps the global index hint as a rejected equivalent candidate', () => {
     const corpus = seedSyntheticCorpus(0.2);
-    const plan = explain(corpus.database, ' INDEXED BY idx_formal_orders_confirmed_id');
-    expect(planText(plan)).toContain('idx_formal_orders_confirmed_id');
-    expect(planText(plan)).not.toContain('idx_formal_orders_market_confirmed_id');
-    expect(parentSortSteps(plan)).toEqual([]);
-    expect(nestedSortSteps(plan).length).toBeGreaterThan(0);
+    const baseline = explain(corpus.database, '');
+    const forced = explain(corpus.database, ' INDEXED BY idx_formal_orders_confirmed_id');
+    expect(planText(baseline)).toContain('idx_formal_orders_market_confirmed_id');
+    expect(planText(forced)).toContain('idx_formal_orders_confirmed_id');
+    expect(parentSortSteps(baseline).length).toBeGreaterThan(0);
+    expect(parentSortSteps(forced)).toEqual([]);
+    expect(nestedSortSteps(forced).length).toBeGreaterThan(0);
     expect(readOrderIds(corpus.database, ' INDEXED BY idx_formal_orders_confirmed_id')).toEqual(
       readOrderIds(corpus.database),
     );
     corpus.database.close();
   });
+
+  it.each(SELECTIVITY_CASES)(
+    'rejects an unconditional global-index hint with deterministic cost probes for $label',
+    ({ share, label }) => {
+      const corpus = seedSyntheticCorpus(share);
+      const baseline = explain(corpus.database, '');
+      const forced = explain(corpus.database, ' INDEXED BY idx_formal_orders_confirmed_id');
+      const probes = collectCostProbes(corpus);
+      const maximumAmplification = Math.max(...probes.map((probe) => probe.amplification));
+
+      expect(planText(baseline)).toContain('idx_formal_orders_market_confirmed_id');
+      expect(planText(forced)).toContain('idx_formal_orders_confirmed_id');
+      expect(parentSortSteps(baseline).length).toBeGreaterThan(0);
+      expect(parentSortSteps(forced)).toEqual([]);
+      expect(probes.map((probe) => probe.page)).toEqual(['first', 'deep', 'tail']);
+      expect(probes.every((probe) => probe.returnedRows > 0)).toBe(true);
+      expect(
+        probes.every(
+          (probe) => probe.globalIndexCandidateRows >= probe.marketplaceIndexCandidateRows,
+        ),
+      ).toBe(true);
+      expect(
+        probes.some(
+          (probe) => probe.globalIndexCandidateRows > probe.marketplaceIndexCandidateRows,
+        ),
+      ).toBe(true);
+      expect(maximumAmplification).toBeGreaterThan(1);
+      if (share <= 0.2) expect(maximumAmplification).toBeGreaterThan(4);
+      expect(corpus.visibleOrderIds).not.toContain(corpus.unassignedOrderId);
+      expect(corpus.visibleOrderIds).toHaveLength(corpus.scopedOrderCount - 1);
+
+      console.info(
+        `[LOCAL COST EVIDENCE] ${label} total=${TOTAL_ORDERS}` +
+          ` scoped=${corpus.scopedOrderCount} visible=${corpus.visibleOrderIds.length}` +
+          ` ${probes
+            .map(
+              (probe) =>
+                `${probe.page}=${probe.globalIndexCandidateRows}` +
+                `/${probe.marketplaceIndexCandidateRows}`,
+            )
+            .join(' ')}`,
+      );
+      corpus.database.close();
+    },
+  );
 
   it.each(SELECTIVITY_CASES)(
     'evaluates row-value and UNION ALL rewrite plans for $label',

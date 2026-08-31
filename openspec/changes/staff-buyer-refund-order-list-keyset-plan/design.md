@@ -1,69 +1,55 @@
 # Design: staff-buyer-refund-order-list-keyset-plan
 
-## Query authority and failure-first baseline
+## Query authority and NO-CHANGE boundary
 
-权威实现是 `apps/api/src/staff-order-detail/routes.ts` 的 `listOrders`。它继续使用
-`orderVisibilityForActor` 生成固定分配与 Marketplace scope SQL，并在同一条查询中执行
-列表过滤、seek、责任阶段/异常投影、`ORDER BY` 与 `LIMIT limit + 1`。cursor payload、
-编码和 filter echo 均保持原样。
+权威实现仍是 `apps/api/src/staff-order-detail/routes.ts` 的 `listOrders`。它继续调用
+`orderVisibilityForActor`，在同一条 SQL 中执行 Marketplace scope、固定买家 assignment、
+列表过滤、seek、责任阶段/异常投影、`ORDER BY confirmed_at DESC, id DESC` 与
+`LIMIT limit + 1`。cursor payload、编码、filter echo、DTO 和 HTTP response shape 均不变。
 
-失败测试在当前 Schema 37 建立合法合成订单源链，不写 Marketplace registry 或 enablement。
-目标市场占比为 1%、20%、80%，订单共享 `confirmed_at` 以验证 `id DESC` tie-breaker；
-`buyer_refund` 员工同时拥有两个市场 scope，固定 assignment 命中和一个未分配买家均在
-两市场内。测试先对真实原始 SQL 记录父级 `USE TEMP B-TREE FOR ORDER BY`，再通过真实路由
-捕获带 cursor 的查询计划。
+本 Change 不选择新的生产查询计划。`bda2ca12` 的 `INDEXED BY idx_formal_orders_confirmed_id`
+分支通过新的前向编辑移除，`orderVisibilityForActor` 恢复为只返回授权 SQL 和绑定参数，
+使生产 planner 自主选择既有索引。这与 `ed15f5a2` 的生产查询语义一致，且不改写历史。
 
-## Root cause from direct SQLite EQP
+## Failure-first corpus and deterministic cost probe
 
-在多 Marketplace scope 下，`idx_formal_orders_market_confirmed_id`
-`(marketplace_code, confirmed_at DESC, id DESC)` 可以分别扫描每个市场段，但不能直接产出
-跨市场统一的 `confirmed_at DESC, id DESC` 流，因此父查询必须排序并保留顶层 TEMP-BTREE。
+测试使用当前 Schema 37 与现有受保护 source chain，不写 Marketplace registry 或 enablement。
+每个 corpus 有 1,000 条正式订单：`AMAZON_US` 与 `AMAZON_JP` 是 actor 的两个 active
+scope，`COUPANG_KR` 承载大量无关订单。授权 scope 占全表恰为 1%、20%、80%；所有订单共享
+`confirmed_at`，ID 使用交错的固定 key，保证 `id DESC` tie-breaker 会真正参与排序。一个
+`AMAZON_JP` 买家不建立 active fixed assignment，作为命中/不命中的同一语料边界。
 
-计划中的其他结构被单独区分：
+成本 probe 不计时。对每个选择性读取真实可见的第一页、深页和尾页，取该页最后一个
+`(confirmed_at,id)`，然后分别用既有全局索引和 Marketplace 前缀索引计算这个 keyset 区间
+在授权谓词生效前的候选行数。这个数是可解释的 pre-authorization candidate metric：
+全局索引候选包含无关 Marketplace 行，前缀索引候选只包含两个 scoped Marketplace 行；
+它不是机器相关的 latency 承诺。
 
-- fixed assignment 是 `LIST SUBQUERY`，使用 assignment 索引/过滤，不是父级排序来源；
-- `confirmed_at/id` 的 seek OR 命中当前边界，但改写为 row-value 比较后父级 TEMP-BTREE
-  仍存在；
-- `responsibilitySelects` 中按时间/id 取最新负责人或事件的临时排序属于嵌套子查询，
-  本 Change 不宣称消除，也不改变这些投影；
-- `(marketplace_code, confirmed_at, id)` 的列序只适合单一 Marketplace 段，无法满足多段
-  合并后的全局 ORDER BY。
+## Direct EQP findings
 
-## Candidate evaluation and selected repair
+- 默认 planner 使用 `idx_formal_orders_market_confirmed_id`，跨两个 Marketplace 段后在
+  父查询保留 `USE TEMP B-TREE FOR ORDER BY`；这是当前已知边界，不在本 Change 伪称已解决。
+- test-only 的全局 hint 使用 `idx_formal_orders_confirmed_id`，可以消除父级 sort，但
+  没有 Marketplace 前缀约束，候选 probe 在低选择性语料中会携带大量无关行。因此该
+  physical plan 不能被推广为无条件安全修复。
+- fixed assignment 仍是 `LIST SUBQUERY`，不是父级 sort 来源；`responsibilitySelects`
+  中按时间/id 选最新责任或事件的嵌套 TEMP-BTREE 仍然存在，也不宣称消除。
+- row-value seek 与原 seek OR 的结果序列相同，但父级 TEMP-BTREE 仍存在；动态按市场复制
+  完整投影的 `UNION ALL` 虽可形成 merge 计划，却会复制动态过滤、权限 SQL、cursor 与
+  `limit+1` 绑定，属于未授权的查询架构重写。二者均拒绝落地。
 
-测试在 1%/20%/80% corpus 上比较候选：
+## Contract and authorization proof
 
-1. row-value seek `(confirmed_at,id)<(?,?)` 与原 OR 的完整结果序列一致，但真实 EQP
-   仍保留父级 TEMP-BTREE，因此拒绝。
-2. 以每个 Marketplace 为分支的完整 `UNION ALL` 投影可由 SQLite 形成 `MERGE (UNION ALL)`，
-   并在合成数据上与原 SQL 保持 ID 序列一致；但它要求将完整 responsibility 投影、所有
-   动态过滤、固定 scope、seek 和 limit+1 复制到每个动态市场分支，并让后续市场数量、
-   cursor 与参数顺序持续同步，属于不必要的高复杂度查询架构重写，拒绝落地。
-3. 选择现有全局索引 `idx_formal_orders_confirmed_id` 的 `INDEXED BY` 访问路径。它只
-   改变物理访问路径，不改变 WHERE、assignment、scope、投影、排序或绑定值；直接 EQP
-   在带 seek 的真实路由查询中消除父级 TEMP-BTREE。完整查询结果序列与原 SQL 一致。
+真实 HTTP 回归继续覆盖第一页和后续 cursor traversal、相同 `confirmed_at` 的 ID tie-breaker、
+`limit+1`、filter echo/mismatch、固定 assignment 命中/不命中、跨 Marketplace 与 Seller
+Organization、Personal DENY 的 403 和越权详情 concealed 404。固定分配与 Marketplace scope
+始终留在权威 SQL 内，不移到应用层过滤。
 
-生产查询仅在以下条件同时满足时带该 hint：actor 含 `buyer_refund` 且权威
-`resolveStaffMarketplaceCodes` 已解析出多于一个 Marketplace。解析出的 scope 列表随
-同一授权 SQL 结果返回给路由，避免再次读取 scope 表造成 TOCTOU；Owner、无 scope、单
-Marketplace 和其他 Staff 角色保留原有计划。Schema 31 已提供全局索引，故本 Change 不
-新增或删除 migration/index。
+## Explicit remaining risk and evidence boundary
 
-## Equivalence and boundary proof
+`NO-CHANGE` 只表示拒绝该 hint，不表示订单列表已达到最终性能目标。多市场父级
+`TEMP-BTREE`、责任/异常相关嵌套排序和更大数据量下的 planner 成本仍需未来独立 Change
+以直接 EQP、可解释候选评估和完整权限/分页回归证明。
 
-回归覆盖真实路由第一页与完整 cursor traversal、相同 `confirmed_at` 的 id tie-breaker、
-limit+1、filter echo 与 filter mismatch、跨市场/跨卖家组织、固定 assignment 命中/不命中、
-Personal DENY 的 403 和越权详情 concealed 404。HTTP response shape、DTO、cursor wire
-format、角色矩阵与 Marketplace/Organization scope 均不变。
-
-## Rejected alternatives and rollback
-
-- 不把 fixed assignment 移到 TypeScript 过滤，也不预取 buyer ID 列表：会破坏 SQL 权威
-  范围、分页、TOCTOU 和 concealed 404；
-- 不把 row-value 或 UNION ALL 查询重写落到生产路径：前者无计划收益，后者需要复制并
-  维护整条动态列表查询；
-- 不新增索引、删除 0037 或改变 cursor/DTO/API contract；
-- 回滚边界是移除单个 `INDEXED BY` 分支和 scope metadata 传递，不删除索引、不修改业务数据。
-
-所有证据均为 LOCAL；STAGING、REMOTE CI、Cloudflare、远程 D1/R2/Queues、真实数据、push、
-PR、部署和生产 migration 均不触碰，Production 保持 `NO-GO`。
+所有证据均为 LOCAL；未触碰 STAGING、REMOTE CI、Cloudflare、远程 D1/R2/Queues、真实数据、
+push、PR、部署或生产 migration；`PRODUCTION_STATUS=NO-GO`。0031/0037 与 D1 schema 保持不变。

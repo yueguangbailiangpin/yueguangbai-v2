@@ -2,63 +2,66 @@
 
 ## ADDED Requirements
 
-### Requirement: The current Schema 37 failure is reproducible before any rewrite
+### Requirement: The Change SHALL record an explicit NO-CHANGE plan decision
 
-The Change SHALL use the real Staff formal-order list SQL against Schema 37 and legal
-synthetic source chains with target-market shares of exactly 1%, 20%, and 80%. For the
-fixed-assigned `buyer_refund` path, the baseline SHALL record the plan parent/detail and
-whether SQLite emits a top-level `USE TEMP B-TREE FOR ORDER BY`.
+The Change SHALL reject an unconditional `INDEXED BY idx_formal_orders_confirmed_id`
+hint for the multi-Marketplace `buyer_refund` list. Production SHALL retain the
+planner-autonomous formal-order list SQL and SHALL NOT claim that the parent sort or
+the nested responsibility sorts are solved.
 
-#### Scenario: The fixed-assignment seek baseline exposes the sort remainder
+#### Scenario: Direct EQP distinguishes the retained boundary
 
-- **WHEN** a `buyer_refund` actor has two scoped canonical markets, an active fixed buyer
-  assignment subquery, and a `confirmed_at/id` seek cursor
-- **THEN** the test proves the real Schema 37 query uses the prepared market index while
-  retaining the observed parent-level sort TEMP-BTREE, without treating nested temporary
-  structures as the same claim
+- **WHEN** a Schema 37 `buyer_refund` actor has two canonical Marketplace scopes, a fixed
+  assignment subquery and a `confirmed_at/id` seek cursor
+- **THEN** the default plan records the Marketplace-leading index and the parent
+  `USE TEMP B-TREE FOR ORDER BY`, while nested temporary structures remain separately
+  classified; the production SQL contains no forced global-index branch
 
-### Requirement: Any query rewrite must be result and authorization equivalent
+### Requirement: Failure-first cost evidence SHALL be deterministic and scope-aware
 
-If a rewrite is implemented, it MUST preserve the authoritative SQL visibility fragment,
-all existing list filters, responsibility projections, `confirmed_at DESC,id DESC` order,
-`LIMIT limit+1`, cursor/filter echo and exact response shape. No fixed assignment or
-Marketplace scope may be evaluated only in application code.
+The acceptance test SHALL use legal Schema 37 source chains with many rows from an
+irrelevant registered Marketplace and exact scoped shares of 1%, 20% and 80%. It SHALL
+evaluate first, deep and tail pages using direct EQP plus a deterministic keyset candidate
+probe, not wall-clock timing. The probe SHALL distinguish candidate rows before
+Marketplace/fixed-assignment authorization from returned rows.
 
-#### Scenario: First and subsequent pages are equivalent
+#### Scenario: The global hint is rejected by candidate evidence
 
-- **WHEN** an authorized fixed-assigned `buyer_refund` actor reads the first page and
-  follows `next_cursor` through a second page across same-timestamp orders
-- **THEN** every item is authorized, ordered by the existing tie-breaker, appears exactly
-  once, and the cursor's filter echo remains unchanged
+- **WHEN** the test compares the existing Marketplace index candidate with the test-only
+  global-index hint across all three selectivities and page positions
+- **THEN** the global candidate includes out-of-scope rows and cannot be promoted to an
+  unconditional production hint; the result is recorded as `NO-CHANGE`
 
-#### Scenario: Assignment misses and Personal DENY remain fail-closed
+### Requirement: Existing list authorization and pagination SHALL remain unchanged
+
+Any evidence-only or compatibility edit MUST preserve the authoritative SQL visibility
+fragment, fixed buyer assignment, Marketplace/Seller Organization scope, Personal DENY,
+concealed 404, all list filters, `confirmed_at DESC,id DESC`, `LIMIT limit+1`, cursor/filter
+echo, exact DTO and cursor wire format. Fixed assignment and scope MUST NOT move to
+application-layer filtering.
+
+#### Scenario: Pages and tie-breaker remain equivalent
+
+- **WHEN** an authorized fixed-assigned `buyer_refund` actor reads the first page and follows
+  `next_cursor` across same-timestamp orders
+- **THEN** every visible item is authorized, ordered exactly once by the existing ID
+  tie-breaker, and the cursor filter echo remains unchanged
+
+#### Scenario: Assignment miss and Personal DENY remain fail-closed
 
 - **WHEN** the actor has no active assignment for a buyer, or `ORDER_VIEW` is removed by
   Personal DENY
-- **THEN** the unassigned buyer is absent and its detail is concealed as 404, while the
-  denied list request remains 403
+- **THEN** the unassigned buyer is absent, its detail is concealed as 404, and the denied
+  list request is 403
 
-### Requirement: The plan claim is made only from direct SQLite EQP evidence
+### Requirement: No external, migration or surface contract SHALL change
 
-The acceptance test SHALL distinguish the parent query's `USE TEMP B-TREE FOR ORDER BY`
-from nested subquery temporary structures, and SHALL require the new query form to remove
-the parent sort for every 1%, 20%, and 80% corpus before claiming a performance fix.
+The Change SHALL not add or modify a migration/index, registry/enablement, D1 schema, DTO,
+API path, cursor wire, role/permission matrix, Buyer surface or Seller surface. Evidence
+SHALL be labeled LOCAL and `PRODUCTION_STATUS=NO-GO`.
 
-#### Scenario: Safe plan improvement or explicit no-change
-
-- **WHEN** candidate SQL shapes are evaluated against the real route projection
-- **THEN** the Change either records a direct, stable parent-sort elimination with full
-  equivalence evidence or leaves production SQL unchanged and records `NO-CHANGE` with the
-  rejected alternatives and remaining risk
-
-### Requirement: No external or business-contract boundary changes
-
-The Change SHALL not add a Migration/index, change registry/enablement, modify DTO/API/
-cursor/role/permission/Marketplace/Seller scope, or touch Buyer/Seller surfaces. All
-evidence SHALL be labeled LOCAL and Production SHALL remain `NO-GO`.
-
-#### Scenario: Existing contracts remain intact
+#### Scenario: Repository boundaries remain intact
 
 - **WHEN** the focused tests and repository guards run
-- **THEN** existing Staff permissions, concealed 404, pagination semantics, Buyer/Seller
-  DTO isolation and current Schema 37 inventory remain unchanged
+- **THEN** Staff permission behavior, Buyer/Seller DTO isolation, concealed 404, pagination
+  semantics and the Schema 37 inventory remain unchanged
