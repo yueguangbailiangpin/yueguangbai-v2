@@ -133,9 +133,7 @@ function verifyCiWorkflow(workflow,analysis){
 function verifyHealthWorkflow(workflow,analysis){
   assertExactSet(Object.keys(workflow),HEALTH_ROOT_KEYS,'production-health-monitor.yml root keys');
   assert(workflow.name==='生产健康监控','production-health-monitor.yml name is not canonical');
-  assertExactSet(Object.keys(requireRecord(workflow.on,'production-health-monitor.yml.on')),['schedule','workflow_dispatch'],'production-health-monitor.yml triggers');
-  const schedule=requireSequence(workflow.on.schedule,'production-health-monitor.yml.on.schedule');
-  assert(schedule.length===1&&requireRecord(schedule[0],'production-health-monitor.yml schedule entry').cron==='17 * * * *','production-health-monitor.yml schedule must be hourly at minute 17');
+  assertExactSet(Object.keys(requireRecord(workflow.on,'production-health-monitor.yml.on')),['workflow_dispatch'],'production-health-monitor.yml triggers must remain manual-only until Stage 8 URL confirmation');
   assertExactWorkflowDispatch(workflow.on.workflow_dispatch);
   assertExactPermissions(workflow.permissions,{contents:'read',issues:'write'},'production-health-monitor.yml');
   assertExactConcurrency(workflow.concurrency,'production-health-monitor',false,'production-health-monitor.yml');
@@ -258,7 +256,7 @@ function assertExactWorkflowDispatch(value){
   assertExactSet(Object.keys(inputs),['simulation'],'production-health-monitor.yml workflow_dispatch input names');
   const simulation=requireRecord(inputs.simulation,'production-health-monitor.yml workflow_dispatch simulation');
   assertExactSet(Object.keys(simulation),['description','required','default','type','options'],'production-health-monitor.yml workflow_dispatch simulation keys');
-  assert(simulation.description==='验收模式'&&simulation.required===true&&simulation.default==='probe'&&simulation.type==='choice','production-health-monitor.yml workflow_dispatch simulation is not canonical');
+  assert(simulation.description==='仅手动诊断；Stage 8 正式部署并确认 production readiness URL 后方可恢复每小时定时探测'&&simulation.required===true&&simulation.default==='probe'&&simulation.type==='choice','production-health-monitor.yml workflow_dispatch simulation is not canonical');
   assert(Array.isArray(simulation.options)&&JSON.stringify(simulation.options)===JSON.stringify(['probe','failure','recovery']),'production-health-monitor.yml workflow_dispatch options are not canonical');
 }
 

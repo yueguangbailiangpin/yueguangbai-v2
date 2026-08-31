@@ -15,7 +15,7 @@
 - 验证边界：`db:verify`（fresh/sequential/两库 inventory SHA-256 一致 + 负向 DML）与 `verify:migration-guards`（fresh/sequential/wrong-order/repeat 拒绝/失败快照不变）对 37 链通过。阶段 4 完成 §7 映射的 verifier 等价迁移：7 个新命名 verifier（buyer-portal-contract、dto-isolation、secret-dto-hygiene、finance-security、staff-auth-composition、marketplace-registry、admin-dashboard-simplified）真实执行通过后，21 个旧 wave/phase3/module1 verifier 脚本与 npm 条目删除；`verify:api-contract` 不再依赖 origin/main diff，改以提交产物自身 + vitest 运行时 app.routes 双向断言（本地领先远程时既不漏报也不误报）
 - 历史阶段记录（D-054/D-055；以下阶段数字与说明保留追溯语义）：阶段 2 删除自动获客机器、Staff MCP、关键词图片生成与 Rakuten/TikTok adapter 预备层；阶段 3 完成数据库 baseline 重建与 platform_* 统一模型改造；阶段 4（2026-08-26）完成合同、API、路由与权限边界重建（242 端点）；阶段 5（2026-08-26）完成冷归档 ZIP Bundle/Queue/恢复/容量验证（`docs/migration/V2_BACKEND_REBUILD_STAGE5_HANDOFF.md`）；阶段 6（2026-08-26）完成历史订单及图片无损导入工具链：30 列 CSV/JSONL 冻结契约、AMAZON_JP canonical 映射（Rakuten/TikTok quarantine fail-closed）、微信 claim/店铺名确定性身份解析 + 人工 override 表（绝不模糊合并）、整数金额/E8 汇率快照（禁推算禁填 0）、exact 重复组折叠 + conflicting 组 quarantine、15 类 exception_code、dry-run 默认零写入、apply-local 双门禁（env + 仓库内路径，只写 historical_* 快照表绝不写 formal_orders）、按 (source_system, files_sha, parser, mapping, mode) 幂等、断点续传与 reconcile；20,000 单/100,000 文件计划容量验证 15.8s 全链（`verify:historical-import-capacity` 已入 check 链）；CLI `scripts/historical-import.mjs`（inspect/dry-run/apply-local/resume/reconcile + inspect-images/inventory-images/resume-image-inventory/reconcile-images，本地 only）；REAL_HISTORICAL_IMPORT=NOT_RUN（真实源在仓库外，见 `docs/migration/V2_BACKEND_REBUILD_STAGE6_HANDOFF.md` §10 材料清单）。阶段 6.5（2026-08-26）完成收口：真实 Google Drive HTTP 适配器代码实现并接入 runtime（默认关闭，REAL_DRIVE_REQUESTS=0，从未执行真实 Drive 请求）、100k 图片盘点容量验证（REAL_IMAGE_INVENTORY=NOT_RUN）、未匹配身份显式 IDENTITY_UNMATCHED 隔离 + override 全审计字段、归档时间统一为 6 个 UTC 日历月（月底截断）、多商品多行订单 MULTI_LINE_ORDER_REQUIRES_MAPPING 合同（见 `docs/migration/V2_BACKEND_REBUILD_STAGE6_5_HANDOFF.md`）。阶段 6.6 全部完成（6.6A–6.6D，含 Stage 7 安全验收与后端 Stage 8 全量验证，见 `V2_BACKEND_REBUILD_STAGE6_6_HANDOFF.md`）：获客 CRM 与 Integration Outbox 运行能力退役、四角色固定分配、订单沟通/付款截图统一、预约永久限制、唯一员工订单详情聚合端点；API 基线 219 端点。阶段 6.6E（2026-08-28）完成后端业务合同缺口收口（见 `V2_BACKEND_REBUILD_STAGE6_6E_HANDOFF.md`）：员工买家建档 HTTP 端点（建档即分配 B/C 编号）、邀请签发绑定既有买家、邀请注册只认领激活既有档案（fail closed）、订单沟通截图返回上传人/上传时间、统一订单详情向 Owner/Buyer Refund 返回权威垫付分区（`buyer_advance`，Buyer Refund 不见利润与卖家敏感财务）、Owner-only 售前/售后负责人管理与 Personal DENY 管理端点、获客权限码运行时清除；API 基线 224 端点。历史前端 7A-1R-B → 7A-2 路线已走完；Stage 8 部署准备仍待总控授权。历史订单字段级映射覆盖清单见 `docs/migration/V2_BASELINE_HISTORICAL_ORDER_FIELD_MAPPING.md`
 - 当前实现与未完成边界：后端干净基线重建已完成；当前 Schema、API inventory 和 Seller 结算读取边界以上方条目为准。独立 Change `staff-order-list-multimarket-index-preparation` 的 0037 只为未来多市场上线前性能准备，不改变当前可见性、市场启用或 API 合同。真实历史订单导入与真实图片盘点仍未运行（`REAL_HISTORICAL_IMPORT=NOT_RUN`、`REAL_IMAGE_INVENTORY=NOT_RUN`）；Stage 8 部署准备仍待总控授权。
-- 历史前端 7A-1R-B → 7A-2 路线已走完；独立 OpenSpec Change `stage7f4-legacy-css-retirement` 已完成但尚未归档；其父 Change `stage7f-frontend-complete-rebuild` 仍有 6.2 人工视觉验收与 7.3 legacy CSS 父级记账待收口。
+- 历史前端 7A-1R-B → 7A-2 路线已走完；独立 OpenSpec Change `stage7f4-legacy-css-retirement` 已完成（13/13 tasks）但尚未归档；其父 Change `stage7f-frontend-complete-rebuild` 也已完成（42/42 tasks，`isComplete=true`）但尚未归档。完成状态与 archive 状态分别记录，不能互相替代。
 - 发布状态：`LOCAL_RELEASE_CANDIDATE / PRODUCTION_REQUIRES_SEPARATE_APPROVAL`
 - 本地证明不能替代真实 Cloudflare Access、生产 D1/R2、恢复演练或员工试用结果
 
@@ -27,7 +27,7 @@
 - Owner 决策（2026-08-18）：① 开始推进 Production Gates（G1/G7/G8/G9 不依赖部署的事项优先，
   执行清单见 `docs/acceptance/PRODUCTION_GATE_OWNER_ACTIONS.md`）；② `app.yueguangbai.net`
   未文档化部署决定**清理**（程序见 `docs/runbooks/PRODUCTION_CLEANUP_APP_YUEGUANGBAI_NET.md`）；
-  2026-08-20 已完成清理；③ GitHub Actions billing 维持 $0（Remote CI 保持 NOT VERIFIED）
+  2026-08-20 已完成清理；③ 2026-08-20 的 GitHub Actions billing 维持 $0 记录已被 2026-08-21 billing 恢复记录取代，不再作为当前阻断
 - Authoritative Production Gate：`docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`（仓库唯一最终 GO/NO-GO 判断入口；其他 checklist/runbook 均为 supporting evidence）
 - STAGING acceptance（T9 register：62 PASS / 3 CONFLICT / 2 BLOCKED，2026-08-16/17）≠ PRODUCTION acceptance；staging PASS 不构成生产放行证据
 - 当前缺失（未执行；不因本地 / staging 通过而视为完成）：
@@ -39,7 +39,7 @@
     REAL_HISTORICAL_IMPORT=NOT_RUN）
   - 正式 production 上线前补齐 G1 五个责任角色的姓名/邮箱；Owner 已于 2026-08-20 直接批准 G1（签名豁免）
   - 远程 CI 证据（GitHub-hosted CI 已于 2026-08-21 恢复可用；此前 #103–#109 期间的合并依据为 owner 豁免 + 本地完整证据，见下）
-  - Google Drive 冷归档 / Staff MCP 生产激活（M10 P0-02 / P0-03 未执行；Drive 生产 HTTP 客户端代码已于阶段 6.5 就绪但从未对真实 Google Drive 执行请求——REAL_DRIVE_REQUESTS=0，激活需 `ARCHIVE_DRIVE_UPLOAD_ENABLED`（默认/保持 false）+ D1 `archive_runtime_controls` 双门 + R-006 外部清单，属阶段 8 部署准备）
+  - Google Drive 冷归档仍属阶段 8 部署准备；Staff MCP 运行能力已删除，发布侧仅保留禁 `STAFF_MCP_*` 绑定/变量的防复活墓碑。历史 M10 P0-03 激活材料仅作审计记录，不能作为当前恢复入口
 - `app.yueguangbai.net`：未文档化部署已按 Owner 决定于 2026-08-20 清理完成。
   Worker `yueguangbai-v2-production`、生产 D1/R2 和自定义域名绑定均已删除；DNS 无解析，
   staging 资源未触碰。该域名不再是运行中的部署；本记录不代表正式 production 已上线。

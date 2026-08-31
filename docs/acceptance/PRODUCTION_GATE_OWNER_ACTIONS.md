@@ -1,6 +1,6 @@
 # Owner 决策与行动清单（Production Gates 推进）
 
-> 状态记录：2026-08-20。Owner 已决定：① 开始推进 Production Gates；② app.yueguangbai.net 清理；③ GitHub Actions billing 维持 $0（Remote CI 保持 NOT VERIFIED）。Owner 于 2026-08-20 在对话中直接批准 G1，明确豁免另行签名；未提供责任人姓名/邮箱，不在此文档中虚构。
+> 状态记录：2026-08-31。Owner 已决定：① 开始推进 Production Gates；② app.yueguangbai.net 清理；③ 2026-08-20 的 GitHub Actions billing 维持 $0 决定已被 2026-08-21 的恢复记录取代，billing 不再是当前 Remote CI 阻断。Owner 于 2026-08-20 在对话中直接批准 G1，明确豁免另行签名；未提供责任人姓名/邮箱，不在此文档中虚构。
 > 本文档列出推进各 Gate 需要 Owner 本人执行或安排的事项；每项完成即更新对应 Gate 状态（见 `docs/runbooks/FINAL_PRODUCTION_GO_OWNER_CHECKLIST.md`）。
 
 ## G1 — 负责人指定与隐私/政策批准（Owner 直接批准，签名豁免）
@@ -39,8 +39,7 @@
 - [x] app.yueguangbai.net 清理：已按 Owner 授权执行并完成，详见
       `docs/runbooks/PRODUCTION_CLEANUP_APP_YUEGUANGBAI_NET.md`
 - [ ] 部署推进（G2–G6）：授权创建生产资源、批准迁移窗口、批准部署——当前未授权
-- [ ] GitHub Actions billing：维持 $0（已决定）→ Remote CI 保持 NOT VERIFIED；
-      若未来恢复，rerun CI 即可转 VERIFIED
+- [ ] GitHub Actions billing：历史阻断已于 2026-08-21 解除；当前候选仍需在对应 SHA 上直接回读 Remote CI，不能仅凭 billing 恢复或旧运行记录转为 VERIFIED
 
 ## 签署区（G1）
 
