@@ -8,6 +8,7 @@ export default defineConfig({
     include: [
       'apps/api/src/staff-order-detail/order-list.capacity.verify.ts',
       'apps/api/src/staff-order-detail/staff-order-list-multimarket-index.test.ts',
+      'apps/api/src/staff-order-detail/staff-buyer-refund-order-list-keyset-plan.test.ts',
     ],
     testTimeout: 600_000,
     hookTimeout: 600_000,

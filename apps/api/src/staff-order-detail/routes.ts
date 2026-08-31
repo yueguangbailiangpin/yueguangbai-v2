@@ -261,7 +261,7 @@ async function orderVisibility(
   database: SqlDatabase,
   actor: AssignmentStaffAuthorization,
   alias: string,
-): Promise<{ sql: string; params: unknown[] }> {
+): Promise<{ sql: string; params: unknown[]; marketplaceCodes: readonly string[] }> {
   return orderVisibilityForActor(database, actor, alias);
 }
 
@@ -272,6 +272,14 @@ async function listOrders(
   const url = new URL(context.req.url);
   const { filters, limit, cursor } = parseListFilters(url);
   const visibility = await orderVisibility(context.env.DB, actor, 'o');
+  // A marketplace-leading index cannot emit one global confirmed_at/id order
+  // when SQLite scans more than one marketplace segment. The existing global
+  // keyset index is the smallest equivalent path for the fixed buyer-refund
+  // read in that case; single-market and owner paths keep their current plan.
+  const orderIndexHint = actor.roles.has('buyer_refund')
+    && visibility.marketplaceCodes.length > 1
+    ? ' INDEXED BY idx_formal_orders_confirmed_id'
+    : '';
 
   const where: string[] = [visibility.sql];
   const params: unknown[] = [...visibility.params];
@@ -376,7 +384,7 @@ async function listOrders(
         CAST(snapshot.seller_expected_principal_cny_fen AS TEXT)
           AS seller_expected_principal_cny_fen,
         ${responsibilitySelects('o')}
-      FROM formal_orders o
+      FROM formal_orders o${orderIndexHint}
       JOIN seller_stores store ON store.id=o.store_id
       JOIN buyer_customers buyer ON buyer.id=o.buyer_customer_id
       LEFT JOIN formal_order_financial_snapshots snapshot

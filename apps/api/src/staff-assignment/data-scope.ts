@@ -104,8 +104,10 @@ export async function orderVisibilityForActor(
   database: SqlDatabase,
   actor: AssignmentStaffAuthorization,
   alias: string,
-): Promise<{ sql: string; params: unknown[] }> {
-  if (actor.roles.has('owner')) return { sql: '1=1', params: [] };
+): Promise<{ sql: string; params: unknown[]; marketplaceCodes: readonly string[] }> {
+  if (actor.roles.has('owner')) {
+    return { sql: '1=1', params: [], marketplaceCodes: [] };
+  }
   const role = [...actor.roles][0];
   const markets = await resolveStaffMarketplaceCodes(database, actor);
   const marketSql = markets.length > 0
@@ -123,6 +125,7 @@ export async function orderVisibilityForActor(
           AND assignment.status='ACTIVE'
       )`,
       params: [...marketParams, actor.staffId],
+      marketplaceCodes: markets,
     };
   }
   return {
@@ -132,6 +135,7 @@ export async function orderVisibilityForActor(
         AND assignment.status='ACTIVE'
     )`,
     params: [...marketParams, actor.staffId],
+    marketplaceCodes: markets,
   };
 }
 
