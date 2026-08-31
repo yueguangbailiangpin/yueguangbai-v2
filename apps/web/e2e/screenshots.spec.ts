@@ -68,6 +68,8 @@ async function mockSession(page: Page, identity: 'buyer' | 'seller' | 'staff'): 
                 name: '演示卖家组织',
                 marketplace_code: 'AMAZON_JP',
                 status: 'ACTIVE',
+                settlement_account_name: null,
+                settlement_account_identifier: null,
               },
               access: {
                 read_scope: 'ORGANIZATION',
@@ -210,6 +212,7 @@ test('capture Buyer password change mobile', async ({ page }) => {
 
 test('capture Buyer shell mobile', async ({ page }) => {
   await mockSession(page, 'buyer');
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/buyer');
   await expect(page.getByRole('navigation', { name: '买家导航' })).toBeVisible();
   await capture(page, 'buyer-shell-mobile-390x844.png', { width: 390, height: 844 });
@@ -217,30 +220,34 @@ test('capture Buyer shell mobile', async ({ page }) => {
 
 test('capture Seller shell desktop', async ({ page }) => {
   await mockSession(page, 'seller');
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/seller');
-  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '演示卖家组织', exact: true })).toBeVisible();
   await capture(page, 'seller-shell-desktop-1440x900.png', { width: 1440, height: 900 });
 });
 
 test('capture Seller orders desktop', async ({ page }) => {
   await mockSession(page, 'seller');
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/seller');
-  await page.getByRole('link', { name: '订单', exact: true }).click();
+  await page.getByRole('link', { name: '订单与沟通', exact: true }).click();
   await expect(page.getByRole('heading', { name: '订单与业务完成' })).toBeVisible();
   await capture(page, 'seller-orders-desktop-1440x900.png', { width: 1440, height: 900 });
 });
 
 test('capture Staff shell desktop', async ({ page }) => {
   await mockSession(page, 'staff');
+  await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /本地员工/u })).toBeVisible();
   await capture(page, 'staff-shell-desktop-1600x1000.png', { width: 1600, height: 1000 });
 });
 
 test('capture Staff shell narrow', async ({ page }) => {
   await mockSession(page, 'staff');
+  await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /本地员工/u })).toBeVisible();
   await capture(page, 'staff-shell-narrow-768x1024.png', { width: 768, height: 1024 });
 });
 

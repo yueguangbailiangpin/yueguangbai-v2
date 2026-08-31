@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-08-31
+skip_specs: true
+goal: Close the nine reproduced browser-gate failures with fixture- and
+  selector-only repairs, preserving current product navigation and visual
+  boundaries.

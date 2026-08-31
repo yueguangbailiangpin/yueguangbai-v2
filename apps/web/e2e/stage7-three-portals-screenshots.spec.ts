@@ -624,11 +624,11 @@ async function mockSellerApis(page: Page, sellerCommIntentFiles: string[] = []):
         members: [
           {
             member_id: 'stage7-member-owner', display_name: '田中 太郎',
-            role: 'OWNER', primary_owner: true, status: 'ACTIVE', member_number: 1,
+            role: 'OWNER', wechat_id: null, primary_owner: true, status: 'ACTIVE', member_number: 1,
           },
           {
             member_id: 'stage7-member-ops', display_name: '佐藤 花子',
-            role: 'OPERATIONS', primary_owner: false, status: 'ACTIVE', member_number: 2,
+            role: 'OPERATIONS', wechat_id: null, primary_owner: false, status: 'ACTIVE', member_number: 2,
           },
         ],
       }));

@@ -24,6 +24,6 @@
 
 ## Delivery
 
-- [ ] 4.1 Inspect the final diff, preserve the unrelated
-  `release-check-command-alignment` 6/8 task state, and create one normal local
-  commit only after in-scope checks pass; do not push, deploy, sync, or archive.
+- [x] 4.1 Inspect the final diff, preserve the unrelated
+  `release-check-command-alignment` scope, and create one normal local commit
+  only after in-scope checks pass; do not push, deploy, sync, or archive.

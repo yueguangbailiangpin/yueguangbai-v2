@@ -20,12 +20,12 @@
   retired name remains in the current aggregate.
 - [x] 3.3 Audit every non-audit release subcommand for LOCAL/loopback-only
   behavior and preserve Production NO-GO.
-- [ ] 3.4 Run the guard, `npm run release:check`, `npm run check`, targeted
+- [x] 3.4 Run the guard, `npm run release:check`, `npm run check`, targeted
   Production Gate checks, OpenSpec strict validation, and `git diff --check`
   with direct exit codes.
 
 ## Delivery
 
-- [ ] 4.1 Inspect final diff scope and create one normal local commit only
+- [x] 4.1 Inspect final diff scope and create one normal local commit only
   after all in-scope checks pass; do not push, deploy, sync, archive, amend,
   or rewrite history.

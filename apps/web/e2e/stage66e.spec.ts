@@ -305,7 +305,7 @@ test.describe('stage 6.6E staff contract wiring', () => {
   test('staff creates a buyer profile, sees the number, then issues the bound invitation', async ({ page }) => {
     await mockApis(page, 'pre_sales');
     await page.goto('/staff/buyer-customers');
-    await expect(page.getByRole('heading', { name: '买家客户', exact: true })).toBeVisible();
+    await expect(page.locator('#staff-main-content').getByRole('heading', { name: '买家客户', exact: true })).toBeVisible();
     await page.locator('#BUYER-market').selectOption('AMAZON_JP');
     await page.locator('#BUYER-wechat').fill('wx_stage66e');
     await page.locator('#BUYER-name').fill('阶段66E买家');
