@@ -1469,7 +1469,7 @@ function resolve(request: ApiRequest<z.ZodType>): unknown {
     };
 
   // -------------------------------------------------------------------------
-  // 员工端：工作台、工作项、订单、财务、客户、设置（Schema 36 / 241 合同）。
+  // 员工端：工作台、工作项、订单、财务、客户、设置（Schema 37 / 241 合同）。
   // -------------------------------------------------------------------------
   if (path === '/api/staff/me/work-items' && method === 'GET') {
     const status = parsed.searchParams.get('status') ?? 'OPEN';

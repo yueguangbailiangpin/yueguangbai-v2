@@ -44,7 +44,7 @@
 
 ## 数据库与迁移
 
-- 当前 Schema：36（迁移链 `0001`–`0036`）；权威 schema / migration 状态请参见 `docs/CURRENT_SYSTEM_STATE.md`
+- 当前 Schema：37（迁移链 `0001`–`0037`）；0037 仅为未来多市场上线前的 Staff 订单列表性能准备，不开启市场；权威 schema / migration 状态请参见 `docs/CURRENT_SYSTEM_STATE.md`
 - 既有迁移历史不得为“整理代码”重写；后续数据库变化一律从新的前向 Migration 开始
 
 ## 开发入口

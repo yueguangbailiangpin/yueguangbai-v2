@@ -13,14 +13,14 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 36;
-const expectedLastMigration = '0036_stage75r5_settlement_cancelled_reason_reserved.sql';
+const expectedLatestSchema = 37;
+const expectedLastMigration = '0037_stage75_multimarket_staff_order_list_index.sql';
 const expectedSchemaInventory = {
   table: 161,
-  index: 493,
+  index: 494,
   trigger: 313,
   view: 12,
-  sha256: '3e5b459986c91c80bc804980288fefedb5fe4be83c1068244f3a043e0730aea4',
+  sha256: 'afe36d4befdbe44d236de9069a67c914d8f01592103a5e3c969167bcd87b01e2',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2
@@ -803,7 +803,7 @@ try {
     migrationFiles.at(-1) !== expectedLastMigration ||
     migrationNumbers.some((number, index) => number !== index + 1)
   ) {
-    throw new Error('Migration 必须是唯一连续的 0001-0023');
+    throw new Error('Migration 必须是唯一连续的 0001-0037');
   }
 
   for (const [file, source] of migrationSources) {
@@ -1338,7 +1338,7 @@ try {
       JSON.stringify(
         {
           status: 'PASS',
-          baseline: 'clean-baseline-0001-0023',
+          baseline: 'clean-baseline-0001-0037',
           migrations: migrationFiles,
           table_count: tables.size,
           index_count: schemaCounts.index,

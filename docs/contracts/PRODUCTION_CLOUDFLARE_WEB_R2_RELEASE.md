@@ -4,7 +4,7 @@
 
 本合同只定义可审查的本地实现和操作者输入，不授权创建或修改 Cloudflare 资源。`apps/api/wrangler.staging.template.jsonc` 与 `apps/api/wrangler.production.template.jsonc` 故意保留 `REQUIRED_*`，不能部署。真实渲染配置必须保存在 Git 外并通过本地 preflight；任何本地通过都不等于真实 staging/production 验收。
 
-当前发布候选要求 Migration 连续为 `0001`–`0036`，尾部为 `0036_stage75r5_settlement_cancelled_reason_reserved.sql`；仓库连续性只证明本地候选结构，不能据此推断生产 ledger。
+当前发布候选要求 Migration 连续为 `0001`–`0037`，尾部为 `0037_stage75_multimarket_staff_order_list_index.sql`；0037 仅为未来多市场上线前性能准备，仓库连续性只证明本地候选结构，不能据此推断生产 ledger。
 
 ## 环境与 binding
 

@@ -72,7 +72,7 @@ describe('stage 4 simplified admin business dashboard read model', () => {
     });
     expect(database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
-    ).get()).toEqual({ schema_version: 36 });
+    ).get()).toEqual({ schema_version: 37 });
   });
 });
 
