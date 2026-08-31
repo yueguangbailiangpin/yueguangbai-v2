@@ -45,6 +45,7 @@ monitor script and fixed low-cardinality reasons.
 
 ## Rollback
 
-Revert the single local commit. Reactivation of an hourly schedule requires a
-separate, explicitly reviewed change after Stage 8 has formally deployed and
-confirmed a production `/ready` URL; it is not a rollback side effect.
+Revert the local commits for this Change. Reactivation of an hourly schedule
+requires a separate, explicitly reviewed change after Stage 8 has formally
+deployed and confirmed a production `/ready` URL; it is not a rollback side
+effect.

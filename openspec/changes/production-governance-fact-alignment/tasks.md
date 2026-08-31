@@ -36,5 +36,5 @@
 
 ## Delivery
 
-- [ ] 6.1 Inspect the final diff scope and create one normal local commit only
+- [x] 6.1 Inspect the final diff scope and create one normal local commit only
   after all in-scope checks pass; do not amend, push, deploy, sync, or archive.
