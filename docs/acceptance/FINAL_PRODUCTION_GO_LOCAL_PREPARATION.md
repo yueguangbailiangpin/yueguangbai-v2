@@ -41,7 +41,7 @@
 ## 4. 依赖、Migration、权限与产品安全边界
 
 - `react-router` 精确锁定 8.3.0，`react-router-dom` 不存在；每个候选仍须重新运行依赖审计，不能继承历史“0 vulnerabilities”文字。
-- Migration verifier 只证明仓库 `0001`–`0037` 连续（尾部为 `0037_stage75_multimarket_staff_order_list_index.sql`）、fresh/顺序/错序/重复/部分失败关闭；真实 D1 ledger、备份和恢复必须另获授权。
+- Migration verifier 只证明仓库 `0001`–`0040` 连续（尾部为 `0040_owner_seed_yueguangbai_channel.sql`）、fresh/顺序/错序/重复/部分失败关闭；真实 D1 ledger、备份和恢复必须另获授权。
 - Personal DENY、四角色唯一性、Team/Customer/Seller/Store/文件 Audience 和财务字段投影保持失败关闭；本任务未读取真实员工、客户或财务数据。
 - 金额使用整数最小单位/BigInt，事实时间使用 UTC 毫秒，业务显示使用 `Asia/Shanghai`；本地中文 UI 与 Chromium 合同不能替代真实移动网络矩阵。
 
