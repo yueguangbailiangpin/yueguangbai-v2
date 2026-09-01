@@ -13,3 +13,7 @@ Owner 2026-09-01 别名终裁把 `yueguangbai` 拆为独立 canonical（与 `yue
 
 - 只补种子与文档/守卫，不改任何表结构或运行时代码路径；导入器 commit 路径无需变更即可找到新通道。
 - schema 39→40 全锚点同步。
+
+## Reachability boundary（Codex push 总审 P1-1 采纳）
+
+通道种子消除的是注册表缺口；**导入路径可达性仍按设计受限**：显式 `yueguangbai` 别名与所在冻结文件夹默认通道不同时按 `FOLDER_CHANNEL_CONFLICT` 隔离（seller-partner 测试已固化该语义）。当前数据没有任何卖家被 Owner 指派为 yueguangbai（CF-016/019 两例均裁归 yueguangbaiai），故今日无可达性损失；未来若需要，须 Owner 裁定文件夹映射或像 queshengai 一样增设显式例外，并以 preview→commit 正向用例验收。

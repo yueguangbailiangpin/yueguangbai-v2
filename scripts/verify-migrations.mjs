@@ -947,6 +947,20 @@ try {
         throw new Error(`被删对象存在幸存引用: ${name} <- ${referencing.join(', ')}`);
       }
     }
+    // Positive counterpart (Codex 0901 P1-2): the two live staff guard
+    // triggers must still select the effective-permission view, proving the
+    // load-bearing defaults/view/trigger chain survived the 0038/0039 drops.
+    for (const guard of [
+      'trg_buyer_staff_assignments_staff_guard',
+      'trg_seller_staff_assignments_staff_guard',
+    ]) {
+      const row = database
+        .prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name=?")
+        .get(guard);
+      if (!row || !String(row.sql).includes('staff_effective_assignment_permissions')) {
+        throw new Error(`承重守卫触发器丢失或不再引用权限视图: ${guard}`);
+      }
+    }
     for (const [table, forbiddenColumns] of [
       ['formal_orders', ['canonical_marketplace_code']],
       [

@@ -35,6 +35,28 @@ describe('seller partner master-data import', () => {
       .toMatchObject({ exceptionCode: 'UNKNOWN_CHANNEL_ALIAS' });
   });
 
+  it('quarantines an explicit moonwhite alias that contradicts its frozen folder default', async () => {
+    // Owner ruling 2026-09-01: yueguangbai and yueguangbaiai are distinct
+    // accounts, and F4's frozen default stays yueguangbaiai. An explicit
+    // yueguangbai alias under F4 is therefore a folder/channel contradiction:
+    // it must quarantine as FOLDER_CHANNEL_CONFLICT instead of silently
+    // re-routing the seller to the other moonwhite account. Reaching a
+    // yueguangbai commit requires an owner-ruled folder mapping or alias
+    // exception (the pattern queshengai already has), not registry seeding.
+    const plan = await previewSellerPartnerImport({
+      records: [{
+        sourceFolderId: 'dhtkJdpmZEgh', sourceRecordId: 'explicit-yueguangbai',
+        sourceLocator: 'fixture://dhtkJdpmZEgh/explicit-yueguangbai',
+        sellerWechat: 'moonwhite-split-seller', asin: 'B0ABC12360',
+        productName: '显式月光白别名应隔离', channelAlias: 'yueguangbai',
+        cooperationStatus: 'CURRENT', currentReservable: true,
+      }],
+    });
+    expect(plan.counts).toMatchObject({ source: 1, valid: 0, quarantined: 1 });
+    expect(plan.records.find((record) => record.status === 'QUARANTINED'))
+      .toMatchObject({ exceptionCode: 'FOLDER_CHANNEL_CONFLICT' });
+  });
+
   it('commits two independent organizations for the same WeChat and one standard ASIN', async () => {
     database = createMigratedTestDatabase();
     const plan = await previewSellerPartnerImport(anonymousSellerPartnerFixture);

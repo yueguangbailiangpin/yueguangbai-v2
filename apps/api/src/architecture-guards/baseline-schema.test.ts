@@ -277,6 +277,18 @@ describe('stage 3 clean baseline schema', () => {
     }
   });
 
+  it('keeps the assignment permission guards selecting the effective-permission view', () => {
+    database = createMigratedTestDatabase();
+    const guards = database.raw.prepare(`
+      SELECT name FROM sqlite_schema
+      WHERE type='trigger' AND sql LIKE '%staff_effective_assignment_permissions%'
+    `).all() as { name: string }[];
+    expect(guards.map((row) => row.name).sort()).toEqual([
+      'trg_buyer_staff_assignments_staff_guard',
+      'trg_seller_staff_assignments_staff_guard',
+    ]);
+  });
+
   it('seeds the owner-ruled seven service channels with both moonwhite accounts', () => {
     database = createMigratedTestDatabase();
     const channels = database.raw.prepare(`
