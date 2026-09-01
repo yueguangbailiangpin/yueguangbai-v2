@@ -331,9 +331,9 @@ describe('Phase 4C3 route and schema guardrails', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(39);
+    expect(migrations).toHaveLength(40);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations.at(-1)).toBe('0039_owner_cleanup_bd_zero_consumer_objects.sql');
+    expect(migrations.at(-1)).toBe('0040_owner_seed_yueguangbai_channel.sql');
 
     const source = [
       'read-model.ts',

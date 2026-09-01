@@ -13,8 +13,8 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 39;
-const expectedLastMigration = '0039_owner_cleanup_bd_zero_consumer_objects.sql';
+const expectedLatestSchema = 40;
+const expectedLastMigration = '0040_owner_seed_yueguangbai_channel.sql';
 const expectedSchemaInventory = {
   table: 155,
   index: 488,
@@ -797,7 +797,7 @@ try {
     migrationFiles.at(-1) !== expectedLastMigration ||
     migrationNumbers.some((number, index) => number !== index + 1)
   ) {
-    throw new Error('Migration 必须是唯一连续的 0001-0039');
+    throw new Error('Migration 必须是唯一连续的 0001-0040');
   }
 
   for (const [file, source] of migrationSources) {
@@ -922,6 +922,30 @@ try {
     }
     for (const table of forbiddenTables) {
       if (tables.has(table)) throw new Error(`禁止遗留表: ${table}`);
+    }
+    // Owner cleanup 0038/0039 guard (Codex 0901 Q6): no surviving schema
+    // object may still reference a dropped table/view by name -- trigger and
+    // view bodies included, closing the audit blind spot that briefly
+    // dropped a load-bearing permission view.
+    for (const name of [
+      'buyer_registration_attempts',
+      'buyer_registration_conflicts',
+      'buyer_registration_conflict_events',
+      'staff_assignment_cursor_assertions',
+      'buyer_registration_conflict_statuses',
+      'formal_order_effective_dates',
+      'customer_buyer_invitation_lead_links',
+      'scheduled_operations_permission_catalog',
+    ]) {
+      const referencing = database
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE name != ? AND sql LIKE '%' || ? || '%'",
+        )
+        .all(name, name)
+        .map((row) => String(row.name));
+      if (referencing.length) {
+        throw new Error(`被删对象存在幸存引用: ${name} <- ${referencing.join(', ')}`);
+      }
     }
     for (const [table, forbiddenColumns] of [
       ['formal_orders', ['canonical_marketplace_code']],
@@ -1055,9 +1079,10 @@ try {
       throw new Error('seller_organizations 缺少 next_member_number');
     }
     if (
-      sellerChannels.length !== 6 ||
+      sellerChannels.length !== 7 ||
       sellerChannels.map((row) => row.code).join(',') !==
-        'ido-mango,portal-onboarding,queshengai,ygbceping,' + 'yinghua1942,yueguangbaiai'
+        'ido-mango,portal-onboarding,queshengai,ygbceping,' +
+        'yinghua1942,yueguangbai,yueguangbaiai'
     ) {
       throw new Error('卖家渠道种子或编号顺序不正确');
     }
@@ -1332,7 +1357,7 @@ try {
       JSON.stringify(
         {
           status: 'PASS',
-          baseline: 'clean-baseline-0001-0039',
+          baseline: 'clean-baseline-0001-0040',
           migrations: migrationFiles,
           table_count: tables.size,
           index_count: schemaCounts.index,

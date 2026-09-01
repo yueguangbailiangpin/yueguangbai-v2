@@ -19,7 +19,7 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 39, `expected 39 migrations, found ${migrations.length}`);
+assert(migrations.length === 40, `expected 40 migrations, found ${migrations.length}`);
 assert(migrations[0] === '0001_foundation.sql'
   && migrations[18] === '0019_read_model_views.sql'
   && migrations[23] === '0024_cold_archive_bundle_model.sql'
@@ -35,7 +35,7 @@ assert(migrations[0] === '0001_foundation.sql'
   && migrations[33] === '0034_stage75r_service_channel_qr_purpose.sql'
   && migrations[34] === '0035_stage75r_settlement_batch_cancel_fix.sql'
   && migrations[35] === '0036_stage75r5_settlement_cancelled_reason_reserved.sql'
-  && migrations[38] === '0039_owner_cleanup_bd_zero_consumer_objects.sql',
+  && migrations[39] === '0040_owner_seed_yueguangbai_channel.sql',
   'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {
@@ -182,7 +182,7 @@ console.log(JSON.stringify({
   status: 'PASS',
   change: 'production-cloudflare-web-r2-release-configuration',
   schema_change: 'NO_SCHEMA_CHANGE',
-  migration: '0001-0039_CONTINUOUS',
+  migration: '0001-0040_CONTINUOUS',
   release_templates: 'BLOCKED_NEEDS_OPERATOR_INPUT',
   local_implementation: 'PRESENT',
   external_acceptance: 'UNVERIFIED',

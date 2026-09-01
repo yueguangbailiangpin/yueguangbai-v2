@@ -119,7 +119,7 @@ WHERE id=? AND version=?;
 - Schema、Trigger、Index 和 Seed 都必须可重复验证。
 - 已进入集成基线的 Migration 字节不可修改，只能追加下一连续版本；完整连续 ledger、当前 schema tail 与逐文件/聚合保护以 `migrations/`、Migration verifier 和 `docs/CURRENT_SYSTEM_STATE.md` 为准，不得把本节的历史版本说明复制成第二个当前版本来源。
 - 本地 verifier 用显式外层事务证明失败/错序尝试不提交并比较完整 schema 与数据快照；历史 SQL 自身拒绝和 verifier 提交前拒绝必须分开报告，不能外推为生产 Wrangler/D1 已验证。
-- 当前 checkout（2026-08-31）的连续尾部是 `0037_stage75_multimarket_staff_order_list_index.sql`（Schema 37），只追加 Staff 订单列表的未来多市场性能索引；下列 `0037`–`0043` 是旧历史链的边界说明，不是当前 checkout 的 schema tail，也不是当前可执行的并行 Migration。
+- 当前 checkout（2026-09-01）的连续尾部是 `0040_owner_seed_yueguangbai_channel.sql`（Schema 40）：0038/0039 为 Owner 授权零消费者对象清理（A+C 与 B+D 收窄版），0040 补种 yueguangbai 第七客服通道对齐别名终裁；下列 `0037`–`0043` 是旧历史链的边界说明，不是当前 checkout 的 schema tail，也不是当前可执行的并行 Migration。
 
 以下是旧历史链中 `0037`–`0043` 的边界说明，不声明当前 schema tail：`0037_product_reservation_order_scheduling.sql` 曾拥有排期边界；`0038_staff_mcp_production_transport_oauth.sql` 新增 Staff MCP production transport 安全状态；`0039_staff_access_binding_management.sql` 新增仅存哈希的一次性员工绑定邀请、绑定 OAuth state 与不可变状态转换边界；`0040_seller_partner_master_data_import.sql` 新增卖家来源追溯、标准产品、卖家供给与预约资格边界；`0041_seller_principal_rate_policy.sql` 新增版本化卖家本金汇率策略和正式订单不可变策略快照；`0042_rakuten_tiktok_jp_marketplace_foundation.sql` 新增乐天/TikTok 日本站平台注册、店铺站点隔离与平台中性订单/产品身份边界；`0043_seller_principal_rate_integrity_hardening.sql` 以前向附加索引/触发器绑定策略事件身份与时间、future-effective、订单确认时点及旧/新卖家本金快照金额，不回填或重算历史事实：
 

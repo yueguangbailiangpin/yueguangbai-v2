@@ -19,14 +19,14 @@ afterEach(() => {
 const root = path.resolve(import.meta.dirname, '../../../..');
 
 describe('stage 3 clean baseline schema', () => {
-  it('is one continuous 0001-0039 chain ending at schema version 39', () => {
+  it('is one continuous 0001-0040 chain ending at schema version 40', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(39);
+    expect(migrations).toHaveLength(40);
     expect(migrations.map((name) => Number(name.slice(0, 4))))
-      .toEqual(Array.from({ length: 39 }, (_, index) => index + 1));
-    expect(migrations.at(-1)).toBe('0039_owner_cleanup_bd_zero_consumer_objects.sql');
+      .toEqual(Array.from({ length: 40 }, (_, index) => index + 1));
+    expect(migrations.at(-1)).toBe('0040_owner_seed_yueguangbai_channel.sql');
     for (const file of migrations) {
       const source = readFileSync(path.join(root, 'migrations', file), 'utf8');
       expect(source).not.toMatch(/SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu);
@@ -34,12 +34,12 @@ describe('stage 3 clean baseline schema', () => {
     }
   });
 
-  it('applies to an empty database in one pass at version 39', () => {
+  it('applies to an empty database in one pass at version 40', () => {
     database = createMigratedTestDatabase();
     const state = database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
     ).get();
-    expect(state).toEqual({ schema_version: 39 });
+    expect(state).toEqual({ schema_version: 40 });
     expect(database.raw.prepare('PRAGMA integrity_check').get())
       .toEqual({ integrity_check: 'ok' });
     expect(database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -275,6 +275,18 @@ describe('stage 3 clean baseline schema', () => {
         SELECT COUNT(*) AS count FROM sqlite_schema WHERE name='${table}'
       `).get()).toEqual({ count: 0 });
     }
+  });
+
+  it('seeds the owner-ruled seven service channels with both moonwhite accounts', () => {
+    database = createMigratedTestDatabase();
+    const channels = database.raw.prepare(`
+      SELECT code, status, prefix FROM seller_channels ORDER BY code
+    `).all() as { code: string; status: string; prefix: string }[];
+    expect(channels.map((row) => `${row.code}:${row.status}`).join(',')).toBe(
+      'ido-mango:ACTIVE,portal-onboarding:ACTIVE,queshengai:ACTIVE,' +
+        'ygbceping:ACTIVE,yinghua1942:ACTIVE,yueguangbai:ACTIVE,yueguangbaiai:ACTIVE',
+    );
+    expect(channels.find((row) => row.code === 'yueguangbai')?.prefix).toBe('yueguangbai');
   });
 
   it('seeds only the clean three-marketplace registry with COUPANG_KR fail-closed', () => {
