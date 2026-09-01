@@ -19,30 +19,35 @@ afterEach(() => {
 });
 
 describe('stage 4 marketplace canonical contract', () => {
-  it('accepts exactly the three registry codes and rejects every legacy short code', () => {
-    expect([...MARKETPLACE_CODES]).toEqual(['AMAZON_JP', 'AMAZON_US', 'COUPANG_KR']);
+  it('accepts exactly the seven registry codes and rejects every legacy short code', () => {
+    expect([...MARKETPLACE_CODES]).toEqual([
+      'AMAZON_JP', 'AMAZON_US', 'COUPANG_KR',
+      'RAKUTEN_JP', 'YAHOO_JP', 'TEMU_JP', 'TIKTOK_JP',
+    ]);
     for (const code of MARKETPLACE_CODES) expect(isMarketplaceCode(code)).toBe(true);
-    for (const retired of ['JP', 'US', 'KR', 'RAKUTEN_JP', 'TIKTOK_JP']) {
+    for (const retired of ['JP', 'US', 'KR', 'JP_RAKUTEN', 'JP_YAHOO']) {
       expect(isMarketplaceCode(retired)).toBe(false);
     }
   });
 
-  it('keeps AMAZON_JP as the only marketplace with a live order write path', async () => {
+  it('keeps the five owner-approved marketplaces live and COUPANG_KR fail-closed', async () => {
     database = createMigratedTestDatabase();
     const registry = database.raw.prepare(
       'SELECT code, status, adapter_status FROM marketplace_registry ORDER BY code',
     ).all() as { code: string; status: string; adapter_status: string }[];
     expect(registry).toEqual([
       { code: 'AMAZON_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
-      // Fail closed: present for expansion, never writable until an explicit
-      // future change opens the write path.
       { code: 'AMAZON_US', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
       { code: 'COUPANG_KR', status: 'DISABLED', adapter_status: 'UNAVAILABLE' },
+      { code: 'RAKUTEN_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
+      { code: 'TEMU_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
+      { code: 'TIKTOK_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
+      { code: 'YAHOO_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
     ]);
     // Every business marketplace column now stores canonical codes only.
     const shortCodeRows = database.raw.prepare(`
       SELECT COUNT(*) AS count FROM order_evidence_submissions
-      WHERE marketplace_code NOT IN ('AMAZON_JP','AMAZON_US','COUPANG_KR')
+      WHERE marketplace_code NOT IN ('AMAZON_JP','AMAZON_US','COUPANG_KR','RAKUTEN_JP','YAHOO_JP','TEMU_JP','TIKTOK_JP')
     `).get() as { count: number };
     expect(shortCodeRows.count).toBe(0);
     const retiredTables = database.raw.prepare(`
