@@ -19,7 +19,7 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length !== 41, `expected 41 migrations, found ${migrations.length}`);
+assert(migrations.length === 41, `expected 41 migrations, found ${migrations.length}`);
 assert(migrations[0] === '0001_foundation.sql'
   && migrations[18] === '0019_read_model_views.sql'
   && migrations[23] === '0024_cold_archive_bundle_model.sql'
