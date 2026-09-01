@@ -35,7 +35,7 @@ describe('channel alias contract (Owner ruling 2026-09-01)', () => {
 
   it('keeps yueguangbai out of the canonical target set and yueguangbaiai isolated', () => {
     for (const aliases of [sellerPartnerAliases, currentMappingAliases] as const) {
-      const targets = new Set(Object.values(aliases));
+      const targets = new Set<string>(Object.values(aliases));
       expect(targets.has('yueguangbai')).toBe(false);
       expect(targets.has('yueguangbaiai')).toBe(true);
       for (const [alias, target] of Object.entries(aliases)) {
