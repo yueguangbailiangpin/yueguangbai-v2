@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHANNEL_ALIASES as sellerPartnerAliases } from './seller-partner';
+import { CHANNEL_ALIASES as sellerPartnerAliases, validateMarketplaceIdentifier } from './seller-partner';
 import { CHANNEL_ALIASES as currentMappingAliases } from './current-product-seller-mapping';
 
 // Owner ruling 2026-09-01 (incl. the same-day follow-up): yueguangbai
@@ -43,5 +43,31 @@ describe('channel alias contract (Owner ruling 2026-09-01)', () => {
         expect(target, `alias ${alias}`).not.toBe('yueguangbaiai');
       }
     }
+  });
+});
+
+describe('marketplace identifier validation (D-059)', () => {
+  it('validates Amazon ASINs', () => {
+    expect(validateMarketplaceIdentifier('AMAZON_JP', 'B0ABC12345')).toBe('FORMAT_VALID');
+    expect(validateMarketplaceIdentifier('AMAZON_JP', 'not-an-asin')).toBe('IDENTIFIER_REVIEW_REQUIRED');
+  });
+  it('validates Rakuten product numbers against the archive-recognized set', () => {
+    expect(validateMarketplaceIdentifier('RAKUTEN_JP', 'R-1')).toBe('FORMAT_VALID');
+    expect(validateMarketplaceIdentifier('RAKUTEN_JP', 'S-1')).toBe('FORMAT_VALID');
+    expect(validateMarketplaceIdentifier('RAKUTEN_JP', 'DLP5713C')).toBe('IDENTIFIER_REVIEW_REQUIRED');
+  });
+  it('validates Yahoo 13-digit JAN codes with EAN-13 checksum', () => {
+    expect(validateMarketplaceIdentifier('YAHOO_JP', '4571504490230')).toBe('FORMAT_VALID');
+    expect(validateMarketplaceIdentifier('YAHOO_JP', '4571504490193')).toBe('FORMAT_VALID');
+    expect(validateMarketplaceIdentifier('YAHOO_JP', '4571504490231')).toBe('IDENTIFIER_REVIEW_REQUIRED');
+    expect(validateMarketplaceIdentifier('YAHOO_JP', '4571504193')).toBe('IDENTIFIER_REVIEW_REQUIRED');
+  });
+  it('validates TEMU product IDs', () => {
+    expect(validateMarketplaceIdentifier('TEMU_JP', 'FX281259')).toBe('FORMAT_VALID');
+    expect(validateMarketplaceIdentifier('TEMU_JP', 'invalid')).toBe('IDENTIFIER_REVIEW_REQUIRED');
+  });
+  it('keeps TikTok and COUPANG_KR fail-closed', () => {
+    expect(validateMarketplaceIdentifier('TIKTOK_JP', 'anything')).toBe('IDENTIFIER_REVIEW_REQUIRED');
+    expect(validateMarketplaceIdentifier('COUPANG_KR', 'anything')).toBe('IDENTIFIER_REVIEW_REQUIRED');
   });
 });

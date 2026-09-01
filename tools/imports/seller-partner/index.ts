@@ -5,6 +5,7 @@ import {
   normalizeWechatId,
   sha256Hex,
 } from '@ygb/domain';
+import type { CanonicalMarketplaceCode } from '@ygb/contracts';
 
 export const FROZEN_SOURCE_FOLDERS = {
   dJwldHrckeFY: 'ido-mango',
@@ -36,6 +37,35 @@ export const CHANNEL_ALIASES = {
 
 export type SellerChannelCode =
   typeof CHANNEL_ALIASES[keyof typeof CHANNEL_ALIASES];
+
+// D-059 identifier contracts per marketplace
+export function validateMarketplaceIdentifier(
+  marketplaceCode: CanonicalMarketplaceCode,
+  identifier: string,
+): 'FORMAT_VALID' | 'IDENTIFIER_REVIEW_REQUIRED' {
+  switch (marketplaceCode) {
+    case 'AMAZON_JP':
+    case 'AMAZON_US':
+      return /^B0[A-Z0-9]{8}$/u.test(identifier) ? 'FORMAT_VALID' : 'IDENTIFIER_REVIEW_REQUIRED';
+    case 'RAKUTEN_JP': {
+      const ARCHIVE_RECOGNIZED = new Set(['R-1', 'S-1']);
+      return ARCHIVE_RECOGNIZED.has(identifier) ? 'FORMAT_VALID' : 'IDENTIFIER_REVIEW_REQUIRED';
+    }
+    case 'YAHOO_JP': {
+      if (!/^\d{13}$/u.test(identifier)) return 'IDENTIFIER_REVIEW_REQUIRED';
+      let sum = 0;
+      for (let i = 0; i < 12; i++) sum += Number(identifier[i]) * (i % 2 === 0 ? 1 : 3);
+      return (10 - (sum % 10)) % 10 === Number(identifier[12]) ? 'FORMAT_VALID' : 'IDENTIFIER_REVIEW_REQUIRED';
+    }
+    case 'TEMU_JP':
+      return /^[A-Z]{2}\d{6}$/u.test(identifier) ? 'FORMAT_VALID' : 'IDENTIFIER_REVIEW_REQUIRED';
+    case 'TIKTOK_JP':
+      return 'IDENTIFIER_REVIEW_REQUIRED'; // no live identifier corpus yet
+    default:
+      return 'IDENTIFIER_REVIEW_REQUIRED';
+  }
+}
+
 export type CooperationStatus = 'CURRENT' | 'HISTORICAL' | 'UNKNOWN';
 
 export interface SellerPartnerSourceRecord {
@@ -50,6 +80,8 @@ export interface SellerPartnerSourceRecord {
   productUrl?: string | null;
   cooperationStatus?: CooperationStatus;
   currentReservable?: boolean;
+  /** Owner ruling 2026-09-01 (D-059): five approved marketplaces. Defaults to AMAZON_JP for backward compatibility. */
+  marketplaceCode?: CanonicalMarketplaceCode;
 }
 
 export interface SellerPartnerSourceManifest {
@@ -69,6 +101,7 @@ export interface NormalizedSourceRecord {
   productUrl: string | null;
   cooperationStatus: CooperationStatus;
   sourceReservable: boolean;
+  marketplaceCode: CanonicalMarketplaceCode;
   rowHash: string;
   status: 'VALID' | 'QUARANTINED';
   exceptionCode: string | null;
@@ -81,6 +114,7 @@ export interface SellerPartnerImportGroup {
   sellerWechatDisplay: string;
   sellerWechatNormalized: string;
   channelCode: SellerChannelCode;
+  marketplaceCode: CanonicalMarketplaceCode;
   cooperationStatus: CooperationStatus;
   sourceReservable: boolean;
   records: readonly NormalizedSourceRecord[];
@@ -91,6 +125,7 @@ export interface SellerPartnerStandardProduct {
   asinDisplay: string;
   canonicalName: string;
   canonicalUrl: string | null;
+  marketplaceCode: CanonicalMarketplaceCode;
   records: readonly NormalizedSourceRecord[];
 }
 
@@ -184,6 +219,7 @@ export async function previewSellerPartnerImport(
       sellerWechatDisplay: first.sellerWechatDisplay,
       sellerWechatNormalized: first.sellerWechatNormalized,
       channelCode: first.channelCode!,
+      marketplaceCode: first.marketplaceCode,
       cooperationStatus: rows.some((row) => row.cooperationStatus === 'CURRENT')
         ? 'CURRENT'
         : rows.some((row) => row.cooperationStatus === 'UNKNOWN')
@@ -211,6 +247,7 @@ export async function previewSellerPartnerImport(
       canonicalUrl: rows
         .map((row) => row.productUrl)
         .find((value): value is string => value !== null) ?? null,
+      marketplaceCode: rows[0]!.marketplaceCode,
       records: rows,
     }));
 
@@ -404,9 +441,10 @@ export async function commitSellerPartnerImport(
         id, marketplace_code, seller_code, origin_channel_id,
         current_channel_id, seller_sequence, organization_name, status, version,
         created_at, updated_at, activated_at, disabled_at, next_member_number
-      ) VALUES (?, 'AMAZON_JP', ?, ?, ?, ?, ?, 'DISABLED', 1, ?, ?, NULL, ?, 2)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'DISABLED', 1, ?, ?, NULL, ?, 2)
     `).bind(
       group.organizationId,
+      group.marketplaceCode,
       sellerCode,
       channel.id,
       channel.id,
@@ -436,10 +474,11 @@ export async function commitSellerPartnerImport(
       INSERT INTO seller_stores (
         id, organization_id, marketplace_code, display_name, normalized_name,
         status, version, created_at, updated_at, disabled_at
-      ) VALUES (?, ?, 'AMAZON_JP', ?, ?, 'DISABLED', 1, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 'DISABLED', 1, ?, ?, ?)
     `).bind(
       storeId,
       group.organizationId,
+      group.marketplaceCode,
       `${group.channelCode} historical store`,
       `${group.channelCode}-historical-store`,
       options.now,
@@ -454,9 +493,10 @@ export async function commitSellerPartnerImport(
       INSERT OR IGNORE INTO standard_products (
         id, marketplace_code, asin_display, asin_normalized, canonical_name,
         canonical_url, status, source_batch_id, created_at, updated_at
-      ) VALUES (?, 'AMAZON_JP', ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
     `).bind(
       standardId,
+      standard.marketplaceCode,
       standard.asinDisplay,
       standard.asinNormalized,
       standard.canonicalName,
@@ -491,12 +531,13 @@ export async function commitSellerPartnerImport(
           id, standard_product_id, seller_organization_id, seller_store_id,
           marketplace_code, status, cooperation_status, source_reservable,
           source_batch_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'AMAZON_JP', 'DISABLED', ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, 'DISABLED', ?, ?, ?, ?, ?)
       `).bind(
         offeringId,
         `standard-product-${asin}`,
         group.organizationId,
         storeId,
+        group.marketplaceCode,
         offeringCooperationStatus,
         offeringSourceReservable ? 1 : 0,
         batchId,
@@ -641,6 +682,7 @@ async function normalizeSourceRecord(
     sellerWechatNormalized: sellerWechatRaw.toLocaleLowerCase('en-US'),
     sourceSellerCode,
     channelCode: null,
+    marketplaceCode: (input as SellerPartnerSourceRecord).marketplaceCode ?? 'AMAZON_JP',
     asinNormalized: null,
     productName: null,
     productUrl,
@@ -729,6 +771,7 @@ async function malformedSourceRecord(
     sellerWechatNormalized: sellerWechatDisplay.toLocaleLowerCase('en-US'),
     sourceSellerCode: null,
     channelCode: null,
+    marketplaceCode: 'AMAZON_JP',
     asinNormalized: null,
     productName: null,
     productUrl: null,

@@ -550,6 +550,18 @@ D-056 历史正文，不将旧阶段的宽泛组织级表述改写为新的历�
 OpenSpec Change `openspec/changes/archive/2026-08-30-seller-settlement-read-boundary`，未
 push、未部署、未访问任何远程或生产资源。
 
+### D-059 运行时市场扩容至五平台（2026-09-01 Owner 终裁）
+
+业务所有者 2026-09-01 裁决将运行时 canonical 市场从仅 `AMAZON_JP` 扩容为五平台：`AMAZON_JP`、`AMAZON_US`、`RAKUTEN_JP`（乐天日本站）、`YAHOO_JP`（雅虎日本站）、`TEMU_JP`（TEMU 日本站）、`TIKTOK_JP`（TikTok 日本站）。`COUPANG_KR` 维持禁用 fail-closed 预留。本条取代 D-056"仅 `AMAZON_JP` 允许真实业务写入"的市场分层约束，不修改 D-056 其他内容：
+
+- **canonical 市场集合**：`AMAZON_JP`、`AMAZON_US`、`RAKUTEN_JP`、`YAHOO_JP`、`TEMU_JP`、`TIKTOK_JP`（六 ACTIVE）+ `COUPANG_KR`（DISABLED/UNAVAILABLE）。`MARKETPLACE_CODES`、`BUYER_SUPPORTED_MARKETPLACE_CODES`、runtime 定义（币种/时区）、注册表种子、全部市场 CHECK 约束同步七码。
+- **预约资格自动开放**：注册表启用的市场对应的商品自动具备可预约资格，无需逐商品二次确认。既有风控条件（合作状态、需求批次、永久限制等）不变。
+- **标识契约**：Amazon=ASIN（`B0[A-Z0-9]{8}`）；乐天=RAKUTEN_PRODUCT_NUMBER（归档认可集 R-1/S-1，集外 IDENTIFIER_REVIEW_REQUIRED）；雅虎=13 位 JAN（EAN-13 校验位验证）；TEMU=TEMU_PRODUCT_ID（`[A-Z]{2}\d{6}`）；TikTok=暂无编号数据，契约待首批真实编号定稿。
+- **历史导入冻结**：`historical_orders` 表的 `CHECK (marketplace_code IN ('AMAZON_JP'))` 不扩容——历史导入快照是日亚时代的语料，新平台订单是未来正式订单，不进历史快照。
+- **`AMAZON_US` 说明**：注册表早已 ACTIVE/AVAILABLE，本条授权的是业务写入路径开放（此前按 D-056 的 AMAZON_US 未启用口径冻结）。
+
+状态：Accepted by business owner instruction 2026-09-01（含同日乐天/雅虎/美国站三平台裁决、TEMU/TikTok 补充裁决、预约资格自动开放裁决）；迁移 0042、contracts/runtime/守卫/测试已完成并推送 `f4f77030`，staging 未部署。
+
 ## 上线前必须关闭的风险项
 
 ### R-001 Cloudflare Access真实策略验收
