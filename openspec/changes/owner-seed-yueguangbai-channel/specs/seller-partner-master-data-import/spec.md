@@ -28,7 +28,12 @@ The system MUST route a source row by its explicit source folder ID and MUST nor
 - **WHEN** a row in the `dhtkJdpmZEgh` folder (default `yueguangbaiai`) carries the explicit alias `yueguangbai`
 - **THEN** it normalizes to `ygbceping`, contradicts the folder default, and quarantines as `FOLDER_CHANNEL_CONFLICT`
 
-#### Scenario: registry carries six channels
+#### Scenario: registry carries six active channels with the moonwhite row entombed
 
 - **WHEN** migrations 0001-0041 are applied to an empty database
-- **THEN** `seller_channels` contains exactly six ACTIVE rows and no `yueguangbai` channel exists
+- **THEN** `seller_channels` contains exactly six ACTIVE rows and the `yueguangbai` row persists as a DISABLED tombstone so channel-event foreign keys stay intact
+
+#### Scenario: colliding per-channel seller numbers merge deterministically
+
+- **WHEN** a legal schema-40 database holds a `ygbceping`-origin organization and a `yueguangbai`-origin organization that both carry `seller_sequence` 1
+- **THEN** migration 0041 re-points the moonwhite organization onto the ygbceping channel, re-sequences it past the end of the ygbceping numbering space with its seller code rewritten, raises the ygbceping `next_sequence` past the merged maximum, and `PRAGMA foreign_key_check` stays empty

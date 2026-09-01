@@ -322,11 +322,13 @@ describe('stage 3 clean baseline schema', () => {
         id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
         seller_sequence, organization_name, status, version, created_at, updated_at,
         activated_at, disabled_at
-      ) VALUES (
-        'org-moonwhite-ref', 'AMAZON_JP', 'moonwhite-ref-seller',
-        'seller-channel-yueguangbai', 'seller-channel-yueguangbai',
-        1, '月光白归并前引用组织', 'ACTIVE', 1, 1, 1, 1, NULL
-      )
+      ) VALUES
+        ('org-ygbceping-first', 'AMAZON_JP', 'ygbceping-1',
+         'seller-channel-ygbceping', 'seller-channel-ygbceping',
+         1, 'ygbceping 原有 1 号组织', 'ACTIVE', 1, 1, 1, 1, NULL),
+        ('org-moonwhite-ref', 'AMAZON_JP', 'yueguangbai-1',
+         'seller-channel-yueguangbai', 'seller-channel-yueguangbai',
+         1, '月光白同名 1 号组织（撞号场景）', 'ACTIVE', 1, 1, 1, 1, NULL)
     `).run();
     db.exec(
       readFileSync(path.join(root, 'migrations', '0041_owner_alias_yueguangbai_ygbceping.sql'), 'utf8'),
@@ -334,12 +336,28 @@ describe('stage 3 clean baseline schema', () => {
     expect(db.prepare('SELECT schema_version FROM app_schema_state').get()).toEqual({ schema_version: 41 });
     expect(
       db.prepare(`
-        SELECT current_channel_id FROM seller_organizations WHERE id='org-moonwhite-ref'
+        SELECT origin_channel_id, current_channel_id, seller_sequence, seller_code
+        FROM seller_organizations WHERE id='org-moonwhite-ref'
       `).get(),
-    ).toEqual({ current_channel_id: 'seller-channel-ygbceping' });
+    ).toEqual({
+      origin_channel_id: 'seller-channel-ygbceping',
+      current_channel_id: 'seller-channel-ygbceping',
+      seller_sequence: 2,
+      seller_code: 'ygbceping-2',
+    });
+    expect(
+      db.prepare(`
+        SELECT seller_sequence, seller_code FROM seller_organizations
+        WHERE id='org-ygbceping-first'
+      `).get(),
+    ).toEqual({ seller_sequence: 1, seller_code: 'ygbceping-1' });
     expect(
       db.prepare("SELECT status FROM seller_channels WHERE code='yueguangbai'").get(),
     ).toEqual({ status: 'DISABLED' });
+    expect(
+      db.prepare("SELECT next_sequence FROM seller_channels WHERE code='ygbceping'").get(),
+    ).toMatchObject({ next_sequence: expect.any(Number) });
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     db.close();
   });
 
