@@ -63,6 +63,7 @@ import {
 import { registerCreateBuyerCustomerRoutes } from './customers/create-buyer-route';
 import { registerCreateSellerOrganizationRoutes } from './customers/create-seller-org-route';
 import { registerActivateSellerOrganizationRoutes } from './customers/activate-seller-org-route';
+import { registerFreezeBuyerAccountRoutes } from './customers/freeze-buyer-account-route';
 import { registerStaffSearchRoutes } from './staff-search/routes';
 import { registerProductionRecoveryAttestationRoutes } from './production-readiness/recovery-attestation-routes';
 import { registerFormalOrderPolicyGuards } from './formal-order-policy-routes';
@@ -97,6 +98,7 @@ registerStaffServiceChannelRoutes(app);
 registerCreateBuyerCustomerRoutes(app);
 registerCreateSellerOrganizationRoutes(app);
 registerActivateSellerOrganizationRoutes(app);
+registerFreezeBuyerAccountRoutes(app);
 registerStaffSearchRoutes(app);
 registerProductionRecoveryAttestationRoutes(app);
 registerOperationalAlertAttestationRoutes(app);

@@ -21,7 +21,7 @@ const ROUTE_INVENTORY = path.join(REPOSITORY_ROOT, 'docs/contracts/V2_API_ROUTE_
 const API_SOURCE_ROOT = path.join(REPOSITORY_ROOT, 'apps/api/src');
 // The current inventory includes the formal Demand CLOSE route; historical
 // stage 7.5R references to 240 endpoints remain historical facts in docs.
-const EXPECTED_ENDPOINT_COUNT = 243;
+const EXPECTED_ENDPOINT_COUNT = 244;
 
 function collectSourceFiles(directory: string): string[] {
   const files: string[] = [];
@@ -34,7 +34,7 @@ function collectSourceFiles(directory: string): string[] {
 }
 
 describe('historical import portal isolation (task 6.8)', () => {
-  it('keeps the current API contract inventory at 243 endpoints', () => {
+  it('keeps the current API contract inventory at 244 endpoints', () => {
     const inventory = readFileSync(ROUTE_INVENTORY, 'utf8');
     const endpointLines = inventory
       .split(/\r?\n/u)
