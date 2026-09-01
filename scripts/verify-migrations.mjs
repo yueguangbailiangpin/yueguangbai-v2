@@ -1062,7 +1062,7 @@ try {
     const sellerChannels = database
       .prepare(
         `
-      SELECT code, prefix, next_sequence
+      SELECT code, prefix, next_sequence, status
       FROM seller_channels
       ORDER BY code
     `,
@@ -1093,11 +1093,15 @@ try {
       throw new Error('seller_organizations 缺少 next_member_number');
     }
     if (
-      sellerChannels.length !== 6 ||
-      sellerChannels.map((row) => row.code).join(',') !==
+      sellerChannels.length !== 7 ||
+      sellerChannels.filter((row) => row.status === 'ACTIVE').map((row) => row.code).join(',') !==
         'ido-mango,portal-onboarding,queshengai,ygbceping,' + 'yinghua1942,yueguangbaiai'
     ) {
       throw new Error('卖家渠道种子或编号顺序不正确');
+    }
+    const moonwhiteTombstone = sellerChannels.find((row) => row.code === 'yueguangbai');
+    if (!moonwhiteTombstone || moonwhiteTombstone.status !== 'DISABLED') {
+      throw new Error('yueguangbai 必须以 DISABLED 墓碑保留（0041）');
     }
 
     const fileObjectColumns = database

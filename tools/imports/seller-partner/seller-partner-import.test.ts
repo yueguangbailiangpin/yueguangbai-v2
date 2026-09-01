@@ -57,6 +57,33 @@ describe('seller partner master-data import', () => {
       .toMatchObject({ exceptionCode: 'FOLDER_CHANNEL_CONFLICT' });
   });
 
+  it('imports an explicit yueguangbai alias under its own family folder as ygbceping', async () => {
+    // Codex 0901 P1-3: the fold ruling's positive path. F2's default is
+    // ygbceping, so an explicit 月光白 alias aligns with the folder and must
+    // preview valid and commit onto the ygbceping channel.
+    const plan = await previewSellerPartnerImport({
+      records: [{
+        sourceFolderId: 'dDUYsBOrYoEk', sourceRecordId: 'explicit-moonwhite-f2',
+        sourceLocator: 'fixture://dDUYsBOrYoEk/explicit-moonwhite-f2',
+        sellerWechat: 'moonwhite-family-seller', asin: 'B0ABC12361',
+        productName: '月光白家族文件夹显式别名', channelAlias: 'yueguangbai',
+        cooperationStatus: 'CURRENT', currentReservable: true,
+      }],
+    });
+    expect(plan.counts).toMatchObject({ source: 1, valid: 1, quarantined: 0 });
+    expect(plan.groups.map((group) => group.channelCode)).toEqual(['ygbceping']);
+    database = createMigratedTestDatabase();
+    const result = await commitSellerPartnerImport(database, plan, {
+      actorStaffId: 'fixture-staff', now: 1_700_000_000_000,
+    });
+    expect(result.organizationCount).toBe(1);
+    await expect(database.prepare(`
+      SELECT channels.code AS code FROM seller_organizations org
+      JOIN seller_channels channels ON channels.id=org.current_channel_id
+      WHERE org.id LIKE 'seller-import-org-%'
+    `).first()).resolves.toEqual({ code: 'ygbceping' });
+  });
+
   it('commits two independent organizations for the same WeChat and one standard ASIN', async () => {
     database = createMigratedTestDatabase();
     const plan = await previewSellerPartnerImport(anonymousSellerPartnerFixture);

@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
@@ -289,16 +290,57 @@ describe('stage 3 clean baseline schema', () => {
     ]);
   });
 
-  it('seeds the owner-ruled six service channels with yueguangbai folded into ygbceping', () => {
+  it('keeps six active service channels with yueguangbai as a disabled tombstone', () => {
     database = createMigratedTestDatabase();
     const channels = database.raw.prepare(`
-      SELECT code, status, prefix FROM seller_channels ORDER BY code
-    `).all() as { code: string; status: string; prefix: string }[];
-    expect(channels.map((row) => `${row.code}:${row.status}`).join(',')).toBe(
-      'ido-mango:ACTIVE,portal-onboarding:ACTIVE,queshengai:ACTIVE,' +
-        'ygbceping:ACTIVE,yinghua1942:ACTIVE,yueguangbaiai:ACTIVE',
+      SELECT code, status FROM seller_channels ORDER BY code
+    `).all() as { code: string; status: string }[];
+    expect(channels.filter((row) => row.status === 'ACTIVE').map((row) => row.code).join(',')).toBe(
+      'ido-mango,portal-onboarding,queshengai,' +
+        'ygbceping,yinghua1942,yueguangbaiai',
     );
-    expect(channels.some((row) => row.code === 'yueguangbai')).toBe(false);
+    expect(channels.find((row) => row.code === 'yueguangbai')?.status).toBe('DISABLED');
+  });
+
+  it('migrates a referencing schema-40 database to 41 by re-pointing and tombstoning', () => {
+    // Codex 0901 P1 probe as a permanent gate: a legal schema-40 database
+    // with an organization referencing the 0040-seeded yueguangbai channel
+    // must migrate cleanly -- re-pointed to ygbceping (same account per the
+    // owner ruling) with the channel kept as a DISABLED tombstone so the
+    // channel-event foreign keys and audit history stay intact.
+    const db = new DatabaseSync(':memory:');
+    db.exec('PRAGMA foreign_keys=ON');
+    const files = readdirSync(path.join(root, 'migrations'))
+      .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
+      .sort()
+      .filter((file) => Number(file.slice(0, 4)) <= 40);
+    for (const file of files) {
+      db.exec(readFileSync(path.join(root, 'migrations', file), 'utf8'));
+    }
+    db.prepare(`
+      INSERT INTO seller_organizations (
+        id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
+        seller_sequence, organization_name, status, version, created_at, updated_at,
+        activated_at, disabled_at
+      ) VALUES (
+        'org-moonwhite-ref', 'AMAZON_JP', 'moonwhite-ref-seller',
+        'seller-channel-yueguangbai', 'seller-channel-yueguangbai',
+        1, '月光白归并前引用组织', 'ACTIVE', 1, 1, 1, 1, NULL
+      )
+    `).run();
+    db.exec(
+      readFileSync(path.join(root, 'migrations', '0041_owner_alias_yueguangbai_ygbceping.sql'), 'utf8'),
+    );
+    expect(db.prepare('SELECT schema_version FROM app_schema_state').get()).toEqual({ schema_version: 41 });
+    expect(
+      db.prepare(`
+        SELECT current_channel_id FROM seller_organizations WHERE id='org-moonwhite-ref'
+      `).get(),
+    ).toEqual({ current_channel_id: 'seller-channel-ygbceping' });
+    expect(
+      db.prepare("SELECT status FROM seller_channels WHERE code='yueguangbai'").get(),
+    ).toEqual({ status: 'DISABLED' });
+    db.close();
   });
 
   it('seeds only the clean three-marketplace registry with COUPANG_KR fail-closed', () => {

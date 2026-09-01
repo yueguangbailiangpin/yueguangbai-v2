@@ -6,6 +6,6 @@
 
 ## 2. 验收
 
-- [x] 2.1 全量 npm test：267/267 文件、1906/1906 用例、退出码 0（/tmp/npmtest_41.log）。
+- [x] 2.1 全量 npm test：267/267 文件、1908/1908 用例（含 F2 正向与 FK 迁移两用例）、退出码 0（/tmp/npmtest_41f.log）。
 - [x] 2.2 db:verify/guards/marketplace/schema-docs/openspec strict（88/88）全部退出码 0。
 - [ ] 2.3 干净提交后 release:check 与 Codex 复审、push。
