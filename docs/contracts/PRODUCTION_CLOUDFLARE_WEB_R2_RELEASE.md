@@ -4,7 +4,7 @@
 
 本合同只定义可审查的本地实现和操作者输入，不授权创建或修改 Cloudflare 资源。`apps/api/wrangler.staging.template.jsonc` 与 `apps/api/wrangler.production.template.jsonc` 故意保留 `REQUIRED_*`，不能部署。真实渲染配置必须保存在 Git 外并通过本地 preflight；任何本地通过都不等于真实 staging/production 验收。
 
-当前发布候选要求 Migration 连续为 `0001`–`0040`，尾部为 `0040_owner_seed_yueguangbai_channel.sql`；0038/0039 为 Owner 授权零消费者对象清理、0040 为 yueguangbai 第七客服通道种子，仓库连续性只证明本地候选结构，不能据此推断生产 ledger。
+当前发布候选要求 Migration 连续为 `0001`–`0041`，尾部为 `0041_owner_alias_yueguangbai_ygbceping.sql`；0038/0039 为 Owner 授权零消费者对象清理、0040/0041 为客服通道种子补齐后按"月光白=ygbceping"终裁撤销（净效果回到六通道），仓库连续性只证明本地候选结构，不能据此推断生产 ledger。
 
 ## 环境与 binding
 

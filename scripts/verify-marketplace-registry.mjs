@@ -12,8 +12,8 @@ const migrationDirectory = path.join(root, 'migrations');
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (migrations.length !== 40 || migrations.at(-1) !== '0040_owner_seed_yueguangbai_channel.sql') {
-  throw new Error('expected the clean baseline 0001-0040');
+if (migrations.length !== 41 || migrations.at(-1) !== '0041_owner_alias_yueguangbai_ygbceping.sql') {
+  throw new Error('expected the clean baseline 0001-0041');
 }
 for (const file of migrations) {
   const source = readFileSync(path.join(migrationDirectory, file), 'utf8');
@@ -37,7 +37,7 @@ try {
   }
 
   if (database.prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1')
-    .get().schema_version !== 40) throw new Error('schema version');
+    .get().schema_version !== 41) throw new Error('schema version');
 
   const registry = database.prepare(`
     SELECT code, status || ':' || adapter_status AS state

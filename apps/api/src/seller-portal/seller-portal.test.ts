@@ -1421,16 +1421,16 @@ describe('Phase 4C1 seller portal HTTP API', () => {
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(40);
+    expect(Number(state?.schema_version)).toBe(41);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(40);
+    expect(migrations).toHaveLength(41);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
     expect(migrations[18]?.startsWith('0019_')).toBe(true);
-    expect(migrations.at(-1)).toBe('0040_owner_seed_yueguangbai_channel.sql');
+    expect(migrations.at(-1)).toBe('0041_owner_alias_yueguangbai_ygbceping.sql');
   });
 });
 

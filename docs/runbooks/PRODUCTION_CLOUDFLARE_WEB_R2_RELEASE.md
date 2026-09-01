@@ -11,7 +11,7 @@
 1. 冻结唯一 release SHA、Web build digest、Worker dry-run digest、Git 外渲染配置的加密快照和开关矩阵。
 2. 保持未获授权的 Scheduler、Drive copy/proxy/delete、MCP 与外部告警关闭；Staff 入口仅允许经批准的 Cloudflare Access 应用与策略。
 3. 记录当前线上 Worker/Web release、D1 ledger、D1 可恢复备份、R2/Drive Manifest 和最近隔离恢复证据；不得把 bucket key、Drive ID 或真实行/金额写入 Git。
-4. 只读比较生产 D1 ledger 与 release 的连续 `0001`–`0040`（尾部为 `0040_owner_seed_yueguangbai_channel.sql`）。未知、跳号、重复、并行、部分 Migration 或 schema 不匹配立即停止。
+4. 只读比较生产 D1 ledger 与 release 的连续 `0001`–`0041`（尾部为 `0041_owner_alias_yueguangbai_ygbceping.sql`）。未知、跳号、重复、并行、部分 Migration 或 schema 不匹配立即停止。
 5. 若 D1 有数据，先做完整加密备份，并在全新隔离目标通过 attestation、schema、rows、finance、integrity、foreign keys、Staff/Buyer/Seller/file smoke；恢复目标不得覆盖。
 
 ## 本地配置准备

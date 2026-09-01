@@ -36,13 +36,13 @@ describe('seller partner master-data import', () => {
   });
 
   it('quarantines an explicit moonwhite alias that contradicts its frozen folder default', async () => {
-    // Owner ruling 2026-09-01: yueguangbai and yueguangbaiai are distinct
-    // accounts, and F4's frozen default stays yueguangbaiai. An explicit
-    // yueguangbai alias under F4 is therefore a folder/channel contradiction:
-    // it must quarantine as FOLDER_CHANNEL_CONFLICT instead of silently
-    // re-routing the seller to the other moonwhite account. Reaching a
-    // yueguangbai commit requires an owner-ruled folder mapping or alias
-    // exception (the pattern queshengai already has), not registry seeding.
+    // Owner ruling 2026-09-01 (same-day follow-up): yueguangbai (月光白)
+    // folds into ygbceping, while F4's frozen default stays yueguangbaiai
+    // (月光白AI). An explicit yueguangbai alias under F4 therefore resolves
+    // to ygbceping -- a folder/channel contradiction that must quarantine as
+    // FOLDER_CHANNEL_CONFLICT instead of silently re-routing the seller to
+    // the moonwhite-AI account. Under F2 (default ygbceping) the same alias
+    // aligns with the folder default and imports without conflict.
     const plan = await previewSellerPartnerImport({
       records: [{
         sourceFolderId: 'dhtkJdpmZEgh', sourceRecordId: 'explicit-yueguangbai',

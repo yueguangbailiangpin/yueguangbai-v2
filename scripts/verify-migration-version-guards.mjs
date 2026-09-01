@@ -4,8 +4,8 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..'),
   directory = path.join(root, 'migrations');
-const expectedLatestSchema = 40,
-  expectedLastMigration = '0040_owner_seed_yueguangbai_channel.sql';
+const expectedLatestSchema = 41,
+  expectedLastMigration = '0041_owner_alias_yueguangbai_ygbceping.sql';
 const migrationFiles = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
@@ -16,7 +16,7 @@ if (
   migrationFiles.at(-1) !== expectedLastMigration ||
   numbers.some((number, index) => number !== expected[index])
 )
-  throw new Error('expected one continuous migration for every version 0001-0040');
+  throw new Error('expected one continuous migration for every version 0001-0041');
 const sql = migrationFiles.map((name) => readFileSync(path.join(directory, name), 'utf8'));
 function open() {
   const db = new DatabaseSync(':memory:');
@@ -171,10 +171,10 @@ console.log(
   JSON.stringify(
     {
       status: 'PASS',
-      baseline: 'clean-baseline-0001-0040',
+      baseline: 'clean-baseline-0001-0041',
       migration_count: migrationFiles.length,
       fresh_schema: expectedLatestSchema,
-      sequential_upgrade: '0001 -> 0040',
+      sequential_upgrade: '0001 -> 0041',
       sequential_steps: migrationFiles.length,
       wrong_order_cases: wrong.length,
       wrong_order_commits_rejected: wrong.length,

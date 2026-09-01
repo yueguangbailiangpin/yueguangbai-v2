@@ -13,8 +13,8 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 40;
-const expectedLastMigration = '0040_owner_seed_yueguangbai_channel.sql';
+const expectedLatestSchema = 41;
+const expectedLastMigration = '0041_owner_alias_yueguangbai_ygbceping.sql';
 const expectedSchemaInventory = {
   table: 155,
   index: 488,
@@ -797,7 +797,7 @@ try {
     migrationFiles.at(-1) !== expectedLastMigration ||
     migrationNumbers.some((number, index) => number !== index + 1)
   ) {
-    throw new Error('Migration 必须是唯一连续的 0001-0040');
+    throw new Error('Migration 必须是唯一连续的 0001-0041');
   }
 
   for (const [file, source] of migrationSources) {
@@ -1093,10 +1093,9 @@ try {
       throw new Error('seller_organizations 缺少 next_member_number');
     }
     if (
-      sellerChannels.length !== 7 ||
+      sellerChannels.length !== 6 ||
       sellerChannels.map((row) => row.code).join(',') !==
-        'ido-mango,portal-onboarding,queshengai,ygbceping,' +
-        'yinghua1942,yueguangbai,yueguangbaiai'
+        'ido-mango,portal-onboarding,queshengai,ygbceping,' + 'yinghua1942,yueguangbaiai'
     ) {
       throw new Error('卖家渠道种子或编号顺序不正确');
     }
@@ -1371,7 +1370,7 @@ try {
       JSON.stringify(
         {
           status: 'PASS',
-          baseline: 'clean-baseline-0001-0040',
+          baseline: 'clean-baseline-0001-0041',
           migrations: migrationFiles,
           table_count: tables.size,
           index_count: schemaCounts.index,

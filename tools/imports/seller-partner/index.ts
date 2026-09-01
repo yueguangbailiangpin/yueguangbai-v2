@@ -13,9 +13,10 @@ export const FROZEN_SOURCE_FOLDERS = {
   dhtkJdpmZEgh: 'yueguangbaiai',
 } as const;
 
-// Owner ruling 2026-09-01: yueguangbai and yueguangbaiai are distinct accounts
-// and must never merge; idomango/dio/ygc/ygcceping are confirmed input aliases;
-// yinghua1942ai→yinghua1942 and quesheng520ai→queshengai merges confirmed.
+// Owner ruling 2026-09-01: yueguangbai (月光白) and ygbceping are the same
+// account, so yueguangbai folds into ygbceping; yueguangbaiai (月光白AI) is a
+// separate account and must never merge with either. idomango/dio/ygc/ygcceping
+// are confirmed input aliases; the yinghua1942 and quesheng merges are confirmed.
 export const CHANNEL_ALIASES = {
   ido: 'ido-mango',
   'ido-mango': 'ido-mango',
@@ -25,7 +26,7 @@ export const CHANNEL_ALIASES = {
   ygc: 'ygbceping',
   ygcceping: 'ygbceping',
   ygbceping: 'ygbceping',
-  yueguangbai: 'yueguangbai',
+  yueguangbai: 'ygbceping',
   yueguangbaiai: 'yueguangbaiai',
   yinghua1942: 'yinghua1942',
   yinghua1942ai: 'yinghua1942',
